@@ -303,6 +303,90 @@ describe("cabane cli", () => {
 		expect((await run("add", "--help")).code).toBe(0);
 	});
 
+	it("db block opens another file with a prefix; two homes share it; the default stays separate", async () => {
+		const root = join(tmpdir(), `cabane-cli-db-${crypto.randomUUID()}`);
+		const shared = join(root, "jake-like", "jake.db");
+		const homeA = join(root, "a");
+		const homeB = join(root, "b");
+		const homeC = join(root, "c");
+		const runA = makeRunner(homeA, root);
+		const runB = makeRunner(homeB, root);
+		const runC = makeRunner(homeC, root);
+		mkdirSync(root, { recursive: true });
+		try {
+			const initA = await runA(
+				"init",
+				"--actor",
+				"cabane://actor/human/a",
+				"--device",
+				"a",
+				"--db-path",
+				shared,
+				"--table-prefix",
+				"planner_",
+				"--json",
+			);
+			expect(initA.code).toBe(0);
+			const cfg = JSON.parse(
+				readFileSync(join(homeA, "config.json"), "utf8"),
+			) as { db?: { path?: string; tablePrefix?: string } };
+			expect(cfg.db).toEqual({ path: shared, tablePrefix: "planner_" });
+			expect(initA.out).toContain("planner_");
+
+			const added = await runA("add", "Shared row", "--json");
+			expect(added.code).toBe(0);
+			const { shortId } = json<{ shortId: string }>(added);
+
+			// Same file, same prefix, different CABANE_HOME: same rows.
+			const initB = await runB(
+				"init",
+				"--device",
+				"b",
+				"--db-path",
+				shared,
+				"--table-prefix",
+				"planner_",
+			);
+			expect(initB.code).toBe(0);
+			const listB = await runB("list", "--json");
+			expect(listB.code).toBe(0);
+			expect(
+				json<{ shortId: string }[]>(listB).map((t) => t.shortId),
+			).toContain(shortId);
+			expect((await runB("show", shortId)).code).toBe(0);
+
+			// No db block: CABANE_HOME/cabane.db with plain names, nothing shared.
+			expect((await runC("init", "--device", "c")).code).toBe(0);
+			const cfgC = JSON.parse(
+				readFileSync(join(homeC, "config.json"), "utf8"),
+			) as { db?: unknown };
+			expect(cfgC.db).toBeUndefined();
+			expect(json<unknown[]>(await runC("list", "--json"))).toHaveLength(0);
+
+			// Sync against a shared file is allowed but warned about.
+			const initShared = await runB(
+				"init",
+				"--force",
+				"--device",
+				"b",
+				"--db-path",
+				shared,
+				"--table-prefix",
+				"planner_",
+				"--sync-url",
+				"http://127.0.0.1:1",
+				"--sync-token",
+				"t",
+			);
+			expect(initShared.code).toBe(0);
+			const status = await runB("sync", "status");
+			expect(status.code).toBe(0);
+			expect(status.out).toContain("another host may already sync");
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("mcp serves the same tools over stdio, with the directory scope as default", async () => {
 		const transport = new StdioClientTransport({
 			command: "bun",
