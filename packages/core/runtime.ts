@@ -47,6 +47,16 @@ export type ScopeResolver = (cwd: string) => Promise<string | null>;
 /** Where the sync block comes from. Default: sync disabled. */
 export type SyncSettingsSource = () => Promise<Result<SyncConfig>>;
 
+/**
+ * Who is writing. Returns an actor URI (`cabane://actor/human/david`,
+ * `cabane://actor/agent/claude`) stamped into `updated_by` on every local
+ * write. A function rather than a value so a host serving several identities
+ * (the hub) can answer per request. Default: an anonymous actor.
+ */
+export type ActorSource = () => string;
+
+export const ANONYMOUS_ACTOR = "cabane://actor/unknown";
+
 export type RuntimeConfig = {
 	provider: DbProvider;
 	/** Physical table-name prefix, e.g. "planner_". Default: none. */
@@ -55,6 +65,7 @@ export type RuntimeConfig = {
 	notifier?: Notifier;
 	scopeResolver?: ScopeResolver;
 	syncSettings?: SyncSettingsSource;
+	actor?: ActorSource;
 };
 
 // ============================================================
@@ -64,6 +75,7 @@ export type RuntimeConfig = {
 const identityTracer: Tracer = (_name, fn) => fn;
 const silentNotifier: Notifier = async () => {};
 const noScope: ScopeResolver = async () => null;
+const anonymous: ActorSource = () => ANONYMOUS_ACTOR;
 const syncDisabled: SyncSettingsSource = async () => {
 	const parsed = SyncConfigSchema.safeParse({});
 	return parsed.success
@@ -88,6 +100,7 @@ let ports: Ports = {
 	notifier: silentNotifier,
 	scopeResolver: noScope,
 	syncSettings: syncDisabled,
+	actor: anonymous,
 };
 
 // ============================================================
@@ -102,6 +115,7 @@ export namespace Runtime {
 			notifier: config.notifier ?? silentNotifier,
 			scopeResolver: config.scopeResolver ?? noScope,
 			syncSettings: config.syncSettings ?? syncDisabled,
+			actor: config.actor ?? anonymous,
 		};
 		setTablePrefix(config.tablePrefix ?? "");
 	};
@@ -110,6 +124,8 @@ export namespace Runtime {
 	export const notifier = (): Notifier => ports.notifier;
 	export const scopeResolver = (): ScopeResolver => ports.scopeResolver;
 	export const syncSettings = (): SyncSettingsSource => ports.syncSettings;
+	/** The actor URI to stamp on a local write, resolved now. */
+	export const actor = (): string => ports.actor();
 }
 
 /** Run `fn` against the database behind `basePath`. The one storage entry. */
