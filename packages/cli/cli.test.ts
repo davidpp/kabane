@@ -5,7 +5,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -232,6 +232,62 @@ describe("cabane cli", () => {
 		expect(push.err).toContain("disabled");
 		const bad = await run("sync", "wat");
 		expect(bad.code).toBe(2);
+	});
+
+	it("init writes Access service-token headers and the directory scope", async () => {
+		const other = join(tmpdir(), `cabane-cli-init-${crypto.randomUUID()}`);
+		const otherCwd = join(other, "repo");
+		mkdirSync(otherCwd, { recursive: true });
+		const runOther = makeRunner(other, otherCwd);
+		try {
+			const half = await runOther("init", "--access-client-id", "id.access");
+			expect(half.code).toBe(1);
+			expect(half.err).toContain("--access-client-secret");
+
+			const r = await runOther(
+				"init",
+				"--sync-url",
+				"http://127.0.0.1:1/",
+				"--sync-token",
+				"t",
+				"--access-client-id",
+				"id.access",
+				"--access-client-secret",
+				"s3cret",
+				"--scope",
+				"cabane",
+				"--json",
+			);
+			expect(r.code).toBe(0);
+			const shown = json<{
+				config: { sync: { headers: Record<string, string> } };
+				scope: string;
+			}>(r);
+			expect(shown.config.sync.headers["CF-Access-Client-Id"]).toBe(
+				"id.access",
+			);
+			expect(shown.config.sync.headers["CF-Access-Client-Secret"]).toBe("***");
+			expect(shown.scope).toBe("cabane");
+
+			const saved = JSON.parse(
+				readFileSync(join(other, "config.json"), "utf8"),
+			) as { sync: { headers: Record<string, string> } };
+			expect(saved.sync.headers).toEqual({
+				"CF-Access-Client-Id": "id.access",
+				"CF-Access-Client-Secret": "s3cret",
+			});
+			expect(readFileSync(join(otherCwd, ".cabane", "scope"), "utf8")).toBe(
+				"cabane\n",
+			);
+
+			const added = await runOther("add", "Scoped by init", "--json");
+			expect(added.code).toBe(0);
+			expect(json<{ scopeUri: string }>(added).scopeUri).toBe(
+				"jake://scope/cabane",
+			);
+		} finally {
+			rmSync(other, { recursive: true, force: true });
+		}
 	});
 
 	it("exit-code contract", async () => {

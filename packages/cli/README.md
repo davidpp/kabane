@@ -36,14 +36,15 @@ plain table names.
   enabled when `init` is given both `--sync-url` and `--sync-token`. `headers`
   are sent on every push and pull: the hub sits behind Cloudflare Access, so a
   device carries its Access service-token credentials here, separate from the
-  log's bearer `token`. Edit `config.json` to add them; `init` has no flag for
-  them yet.
+  log's bearer `token`. `init --access-client-id <id> --access-client-secret
+  <secret>` writes them as `CF-Access-Client-Id` / `CF-Access-Client-Secret`;
+  both or neither.
 
 ## Scope
 
 `scopeUri` is a string the tracker never resolves. It comes from `--scope`,
 else from `./.cabane/scope` in the current directory (one line, e.g. `cabane`),
-else nothing. Bare ids normalize to `jake://scope/<id>`. Git resolution is a
+else nothing. `cabane init --scope <uri>` writes that file for you. Bare ids normalize to `jake://scope/<id>`. Git resolution is a
 host concern (Jake does it); the CLI does not.
 
 ## Output and exit codes
@@ -55,7 +56,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 
 | Command | Flags |
 |---|---|
-| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--force` |
+| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--scope <uri>` (writes `./.cabane/scope`) `--force` |
 | `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD` |
 | `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` |
 | `show <id>` | task, links, comments, work log; `--json` also carries `updatedBy` (actor URI of the last writer) and `version` |
