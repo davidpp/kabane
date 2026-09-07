@@ -264,9 +264,31 @@ cabane sync push
 Expected: `⬆️  Pushed 0 ops (0 duplicates, 0 batches) as device <name>`. The device is
 now armed and every later write is captured.
 
-If you are migrating from Jake, do **not** copy `~/.jake/jake.db`: it uses `planner_`-
-prefixed tables and the CLI expects plain names. The Jake machine is itself a device once
-JCAB-4 merges; point it at the same hub and let it backfill through the log:
+If you are migrating from Jake there are two routes, depending on where the CLI runs.
+
+**Same machine as Jake: share the database, no migration.** Both hosts run the same
+`@cabane/core`, so the CLI can open `~/.jake/jake.db` directly with the `planner_` prefix
+Jake uses. Skip 2.2 and 2.3 and initialize like this instead:
+
+```bash
+cabane init \
+  --actor cabane://actor/human/<your name> \
+  --device <short machine name> \
+  --db-path ~/.jake/jake.db --table-prefix planner_
+cabane list --limit 5
+```
+
+Expected: the `init` output ends with `db: /Users/<you>/.jake/jake.db (tables planner_*)`
+and `list` shows the same tasks `jake plan list` shows. Nothing is copied and nothing
+syncs between the two hosts, because it is one file. Do **not** add `--sync-url` in this
+shape: Jake already syncs that file as device `<jake machine name>` through its own
+config, and `cabane sync` warns when `db.path` and sync are both set. Opening the file
+from the CLI runs the same idempotent schema apply Jake runs at boot (verified: a copy of a
+644 MB `jake.db` had an unchanged SHA-256 after `init`, `list`, `show`, and
+`sync status`).
+
+**Another machine: backfill through the log.** The Jake machine is itself a device once
+JCAB-4 merges; point it at the same hub and let it backfill:
 
 ```jsonc
 // ~/.jake/config.json

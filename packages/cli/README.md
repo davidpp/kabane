@@ -39,6 +39,23 @@ plain table names.
   log's bearer `token`. `init --access-client-id <id> --access-client-secret
   <secret>` writes them as `CF-Access-Client-Id` / `CF-Access-Client-Secret`;
   both or neither.
+- **db** (optional) points the CLI at another SQLite file and table prefix
+  instead of `CABANE_HOME/cabane.db` with plain names. `path` is absolute or
+  `~`-expanded; `tablePrefix` defaults to empty. This is how a Jake user opens
+  the tracker Jake already keeps, with zero migration and no sync between the
+  two hosts, because it is the same file:
+
+  ```json
+  { "actor": "cabane://actor/human/david", "deviceId": "mbp",
+    "sync": { "enabled": false, "batchBytes": 262144 },
+    "db": { "path": "~/.jake/jake.db", "tablePrefix": "planner_" } }
+  ```
+
+  `cabane init --db-path ~/.jake/jake.db --table-prefix planner_` writes that
+  block. Both hosts run the same `@cabane/core`, so the schema apply on open is
+  the same idempotent one Jake runs at boot. Leave `sync` disabled in this
+  shape: Jake already syncs that file as its own device, and `cabane sync`
+  warns when `db.path` and sync are both set.
 
 ## Scope
 
@@ -56,7 +73,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 
 | Command | Flags |
 |---|---|
-| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--scope <uri>` (writes `./.cabane/scope`) `--force` |
+| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--db-path <file>` `--table-prefix <prefix>` (open another database, e.g. Jake's `~/.jake/jake.db` with `planner_`) `--scope <uri>` (writes `./.cabane/scope`) `--force` |
 | `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD` |
 | `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` |
 | `show <id>` | task, links, comments, work log; `--json` also carries `updatedBy` (actor URI of the last writer) and `version` |
