@@ -153,6 +153,9 @@ imports `bun:test`, and 18 open scratch databases through `bun:sqlite` and
 - **Dependencies are pinned exactly.** Bun's `minimum-release-age` install policy
   rejects anything published in the last 5 days, so a `^` range on a daily-release
   package like `wrangler` fails to resolve.
+  The same 5-day rule is applied by hand to the Bun runtime pinned in `.bun-version`
+  (read by `setup-bun` in CI) and to the action majors in `.github/workflows/ci.yml`:
+  bump to the newest release older than 5 days, check `action.yml` inputs still match.
 - **`new_sqlite_classes`, not `new_classes`.** Both objects keep their state in DO
   SQLite; that is the storage the whole design rests on.
 - **No `workers.dev`, no preview URLs.** Cloudflare Access on `cabane.3pew.ca` is the
