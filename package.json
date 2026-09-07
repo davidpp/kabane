@@ -1,0 +1,25 @@
+{
+	"name": "cabane-monorepo",
+	"version": "0.1.0",
+	"description": "Cabane — local-first issue tracker and kanban for humans and AI agent runtimes",
+	"private": true,
+	"workspaces": [
+		"packages/*"
+	],
+	"scripts": {
+		"prepare": "lefthook install",
+		"check": "biome check .",
+		"fix": "biome check --write .",
+		"check:staged": "biome check --no-errors-on-unmatched --staged",
+		"typecheck": "for pkg in packages/*/; do (cd $pkg && bun run typecheck) || exit 1; done",
+		"test": "bun test packages/core packages/sqlite packages/cli packages/board && bun run --cwd packages/worker test",
+		"test:bun": "bun test packages/core packages/sqlite packages/cli packages/board",
+		"test:worker": "bun run --cwd packages/worker test",
+		"clean": "bun run --filter '*' clean"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.11",
+		"lefthook": "2.1.12",
+		"typescript": "5.9.3"
+	}
+}

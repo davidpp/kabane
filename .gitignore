@@ -1,0 +1,11 @@
+node_modules/
+.bun/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+.dev.vars
+.wrangler/
+.claude/settings.local.json
+.DS_Store
+*.db
