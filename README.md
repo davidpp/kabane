@@ -9,7 +9,7 @@ decision record in `~/Projects/jake/docs/ADR/032-cabane-extraction.md`.
 
 | Package | Name | Runtime | Holds |
 |---|---|---|---|
-| `packages/core` | `@cabane/core` | Bun + Workers | schemas, storage over the Db port, sync, MCP tool definitions |
+| `packages/core` | `@cabane/core` | Bun + Workers | schemas, storage over the Db port, sync, plan lint, commit linking (MCP tool definitions arrive with the hub) |
 | `packages/sqlite` | `@cabane/sqlite` | Bun | Db adapter over `bun:sqlite` |
 | `packages/cli` | `cabane` | Bun | the device command line |
 | `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource and Dispatcher ports |
