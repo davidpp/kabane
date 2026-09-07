@@ -131,6 +131,8 @@ export const formatWorkLogs = (logs: TaskWorkLog[]): string =>
 
 export const print = (outcome: Outcome, json: boolean): void => {
 	const text = json ? JSON.stringify(outcome.json, null, 2) : outcome.text;
+	// An empty text is a command that owned stdout itself (`mcp`); stay silent.
+	if (text.length === 0) return;
 	if (outcome.exitCode === 0) {
 		console.log(text);
 	} else {

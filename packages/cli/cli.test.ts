@@ -8,6 +8,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const BIN = join(import.meta.dir, "index.ts");
 
@@ -240,9 +242,39 @@ describe("cabane cli", () => {
 		expect((await run("show", "NOPE-999")).code).toBe(1);
 		// The test runner is not a TTY, which is the one way board fails.
 		expect((await run("board")).code).toBe(1);
-		expect((await run("mcp")).code).toBe(2);
 		expect((await run("help")).code).toBe(0);
 		expect((await run()).code).toBe(2);
 		expect((await run("add", "--help")).code).toBe(0);
+	});
+
+	it("mcp serves the same tools over stdio, with the directory scope as default", async () => {
+		const transport = new StdioClientTransport({
+			command: "bun",
+			args: [BIN, "mcp", "--as", "cabane://actor/agent/codex"],
+			cwd,
+			env: { ...process.env, CABANE_HOME: home },
+		});
+		const client = new Client({ name: "cli-test", version: "0" });
+		await client.connect(transport);
+		try {
+			const { tools } = await client.listTools();
+			expect(tools.map((t) => t.name)).toContain("cabane_add");
+
+			const created = await client.callTool({
+				name: "cabane_add",
+				arguments: { title: "Filed over stdio", kind: "issue" },
+			});
+			expect(created.isError).toBeFalsy();
+			const task = JSON.parse(
+				(created.content as { text: string }[])[0]?.text ?? "{}",
+			) as { scopeUri: string; updatedBy: string; shortId: string };
+			expect(task.scopeUri).toBe("jake://scope/demo");
+			expect(task.updatedBy).toBe("cabane://actor/agent/codex");
+
+			const shown = await run("show", task.shortId, "--json");
+			expect(shown.code).toBe(0);
+		} finally {
+			await client.close();
+		}
 	});
 });

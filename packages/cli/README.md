@@ -20,7 +20,10 @@ plain table names.
 {
   "actor": "cabane://actor/human/david",
   "deviceId": "mbp",
-  "sync": { "enabled": true, "url": "https://cabane.3pew.ca", "token": "…", "deviceId": "mbp", "batchBytes": 262144 }
+  "sync": {
+    "enabled": true, "url": "https://cabane.3pew.ca", "token": "…", "deviceId": "mbp", "batchBytes": 262144,
+    "headers": { "CF-Access-Client-Id": "…", "CF-Access-Client-Secret": "…" }
+  }
 }
 ```
 
@@ -30,7 +33,11 @@ plain table names.
 - **deviceId** seeds the sync identity on the first push and is write-once
   after that.
 - **sync** is the block `@cabane/core`'s `SyncDevice.connect` reads. Sync is
-  enabled when `init` is given both `--sync-url` and `--sync-token`.
+  enabled when `init` is given both `--sync-url` and `--sync-token`. `headers`
+  are sent on every push and pull: the hub sits behind Cloudflare Access, so a
+  device carries its Access service-token credentials here, separate from the
+  log's bearer `token`. Edit `config.json` to add them; `init` has no flag for
+  them yet.
 
 ## Scope
 
@@ -61,11 +68,25 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `context <id>` | `--no-deref` `--no-subtasks` — the assembled brief, the read entrypoint for agents |
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
 | `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
-| `mcp` | lands with JCAB-7 (`core/mcp/server.ts`, stdio); exits 2 until then |
+| `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`cabane_*`), with `./.cabane/scope` as the default scope so writes may omit `scopeUri` |
 
 Ids are short ids (`JCAB-12`) or ULIDs. Short ids are labels, not identities:
 two devices can mint the same one offline, and `sync pull` relabels the later
 one (`sync status` counts `renamed ids`).
+
+## MCP on this device
+
+```bash
+claude mcp add cabane -- cabane mcp --as cabane://actor/agent/claude
+```
+
+Same tools as the hub at `https://cabane.3pew.ca/mcp`: `cabane_scopeList`,
+`cabane_add`, `cabane_get`, `cabane_list`, `cabane_search`, `cabane_today`,
+`cabane_context`, `cabane_edit`, `cabane_done`, `cabane_link`,
+`cabane_comment`, `cabane_log`, `cabane_contextAdd`, `cabane_contextList`,
+`cabane_contextRemove`. The one difference: here a write may omit `scopeUri`
+and take the directory default; at the hub it is required. Stdout is the wire,
+so the command prints nothing of its own.
 
 ## Layout
 
