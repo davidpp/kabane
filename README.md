@@ -15,6 +15,20 @@ decision record in `~/Projects/jake/docs/ADR/032-cabane-extraction.md`.
 | `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource and Dispatcher ports |
 | `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP |
 
+## Quick start
+
+```bash
+cd packages/cli && bun link                      # `cabane` on PATH
+cabane init --actor cabane://actor/human/<you> --device <machine>
+cabane add "Write the deploy runbook" --kind issue --assignee claude --scope cabane
+cabane board
+```
+
+Multi-device sync and the hosted hub (Cloudflare Worker behind Access at
+`cabane.3pew.ca`) are set up by following [`docs/deploy.md`](docs/deploy.md): Cloudflare,
+first device, more devices, each client (Claude Code, Hermes, Codex, Claude.ai, ChatGPT),
+and day-two operations. The auth decision is in [`docs/auth.md`](docs/auth.md).
+
 ## Gate
 
 ```bash
