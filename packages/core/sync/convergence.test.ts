@@ -454,8 +454,8 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		const removed = await Planner.deleteTask(a.base, parent.id);
 		if (!removed.ok) throw removed.error;
 
-		// recursive_triggers = 0 does NOT suppress triggers on rows removed by FK
-		// enforcement: the cascade is captured, 1 + N ops, children first.
+		// The storage layer snapshots the cascade before the DELETE and captures
+		// it children first: 1 + N ops.
 		const deletes = await deleteOps(a.base);
 		expect(deletes).toHaveLength(6);
 		expect(deletes[deletes.length - 1]?.tbl).toBe("tasks");
@@ -536,6 +536,66 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		expect(await countOf(b.base, TABLES.tasks)).toBe(1);
 	});
 
+	it("converges three devices on one winner when two authors edit at the same millisecond", async () => {
+		const a = await createDevice("device-a");
+		const b = await createDevice("device-b");
+		const c = await createDevice("device-c");
+		const all = [a, b, c];
+		const convergeAll = async () => {
+			for (const d of all) await push(d);
+			for (const d of all) await pull(d);
+			// A second round so every device has also seen what the others pulled.
+			for (const d of all) await push(d);
+			for (const d of all) await pull(d);
+		};
+
+		const task = await addTask(a, "contested", { scopeUri: ALPHA });
+		await convergeAll();
+		for (const d of all) expect(await countOf(d.base, TABLES.tasks)).toBe(1);
+
+		// Same millisecond, same version bump, two different authors. Written
+		// through raw SQL so the clock is byte-identical (and later than the
+		// creation clock), then captured through the same step the storage layer
+		// uses.
+		const TIE = "2099-01-01T00:00:00.000Z";
+		const edit = (device: Device, actor: string, title: string) =>
+			withDb(device.base, (db) => {
+				db.run(
+					`UPDATE ${TABLES.tasks}
+              SET title = ?, updated_at = ?, version = version + 1, updated_by = ?
+            WHERE id = ?`,
+					[title, TIE, actor, task.id],
+				);
+				const captured = Oplog.captureRow(db, "tasks", "update", task.id);
+				if (!captured.ok) throw captured.error;
+			});
+		await edit(a, "cabane://actor/agent/hermes", "written by hermes");
+		await edit(b, "cabane://actor/agent/claude", "written by claude");
+
+		await convergeAll();
+
+		// Equal clock, equal version: the lower actor URI wins everywhere —
+		// including on C, which authored nothing and would previously have
+		// compared both rows as if it had written the one it held.
+		for (const d of all) {
+			const row = await taskByTitle(d.base, "written by claude");
+			expect(row.id).toBe(task.id);
+			expect(row.version).toBe(2);
+			expect(await countOf(d.base, TABLES.tasks)).toBe(1);
+		}
+
+		// The loser recorded the overwrite of its own lineage on the task.
+		const conflictsOnA = await withDb(a.base, (db) =>
+			db
+				.query<{ old_value: string; new_value: string }, [string]>(
+					`SELECT old_value, new_value FROM ${TABLES.activity}
+            WHERE task_id = ? AND event_type = 'sync_conflict_resolved'`,
+				)
+				.all(task.id),
+		);
+		expect(conflictsOnA).toEqual([{ old_value: "2", new_value: "2" }]);
+	});
+
 	it("is idempotent: re-applying a page duplicates nothing and re-captures nothing", async () => {
 		const a = await createDevice("device-a");
 		const b = await createDevice("device-b");
@@ -576,7 +636,7 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		// Append-only rows are recognized rather than re-inserted.
 		expect(second.value.skipped["already-present"]).toBeGreaterThan(0);
 
-		// The guard held: applying wrote rows without capturing a single op.
+		// Apply writes below the capture step: not a single op was recorded.
 		const after = await Sync.status(b.base);
 		if (!after.ok) throw after.error;
 		expect(after.value.pendingOps).toBe(1);

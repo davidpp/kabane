@@ -2,7 +2,16 @@
  * Planner Sync — Apply
  *
  * Write a pulled batch into the local DB: ordered by `serverSeq`, in one
- * transaction, under the capture guard, one `Resolve` decision per op.
+ * transaction, one `Resolve` decision per op. Rows are written directly, not
+ * through the storage functions, so nothing here is ever captured: a pulled
+ * row cannot ping-pong back into the log, and no guard is needed.
+ *
+ * VERSION IS THE HIGH-WATER MARK, NOT THE INCOMING VALUE. An applied row takes
+ * `max(local.version, incoming.version)` so a later local edit always moves
+ * past both lineages. When a local row that had at least as many writes as the
+ * incoming one is overwritten, a `sync_conflict_resolved` activity records the
+ * loser's version on the task — the one place a human can see that an edit of
+ * theirs was replaced rather than merged.
  *
  * RESOLVE BEFORE EXECUTE, PER OP, ALWAYS. Every decision is computed before its
  * statement is issued, and a `skip` means no statement at all. This is not a
@@ -110,6 +119,9 @@ const PARENTS: Record<SyncTable, readonly ParentRef[]> = {
 
 /** `event_type` of the audit row a rename leaves on the renamed task. */
 const RENAME_EVENT = "short_id_renamed";
+
+/** `event_type` of the audit row left when a local lineage loses row LWW. */
+const CONFLICT_EVENT = "sync_conflict_resolved";
 
 // ============================================================
 // Types
@@ -262,6 +274,48 @@ const writeRow = (db: Db, meta: TableMeta, rowId: string, row: Row) => {
 
 const deleteRow = (db: Db, physical: string, rowId: string) => {
 	db.run(`DELETE FROM ${physical} WHERE id = ?`, [rowId]);
+};
+
+const versionOf = (row: Row | undefined): number | undefined =>
+	typeof row?.version === "number" ? row.version : undefined;
+
+/** The row to write: incoming content, version raised to the high-water mark. */
+const withVersion = (row: Row, local: Row | undefined): Row => ({
+	...row,
+	version: Math.max(versionOf(local) ?? 0, versionOf(row) ?? 1),
+});
+
+/**
+ * A local lineage lost. Heuristic, not vector clocks: if the local row had at
+ * least as many writes as the incoming one, some local write is being replaced.
+ * A fresh replica that merely lags (local 3, incoming 4) records nothing.
+ */
+const overwritesLocalWrites = (
+	local: Row | undefined,
+	incoming: Row,
+): boolean =>
+	local !== undefined && (versionOf(local) ?? 1) >= (versionOf(incoming) ?? 1);
+
+const recordConflict = (
+	db: Db,
+	taskId: string,
+	local: Row,
+	incoming: Row,
+	now: string,
+) => {
+	db.run(
+		`INSERT INTO ${TABLES.activity}
+       (id, task_id, event_type, actor, actor_type, timestamp, old_value, new_value)
+     VALUES (?, ?, ?, 'sync', 'ai', ?, ?, ?)`,
+		[
+			generateId(),
+			taskId,
+			CONFLICT_EVENT,
+			now,
+			String(versionOf(local) ?? 1),
+			String(versionOf(incoming) ?? 1),
+		],
+	);
 };
 
 // ============================================================
@@ -546,9 +600,11 @@ const applyOrdered = (
 		}
 
 		const payload = prepared.op.payload;
+		const localById = selectRow(db, meta.physical, "id = ?", [op.rowId]);
+		const localByKey = byNaturalKey(db, meta, payload);
 		const decision = Resolve.decide(prepared.op, {
-			byId: selectRow(db, meta.physical, "id = ?", [op.rowId]),
-			byNaturalKey: byNaturalKey(db, meta, payload),
+			byId: localById,
+			byNaturalKey: localByKey,
 			byShortId: byShortId(db, meta, payload),
 			parentPresent: prepared.parentPresent,
 			deletedAt: deletedAt.get(deleteKey(op.tbl, op.rowId)),
@@ -570,13 +626,23 @@ const applyOrdered = (
 				applied++;
 				break;
 			case "apply":
-			case "merge":
+			case "merge": {
 				if (decision.dropRowId !== undefined) {
 					deleteRow(db, meta.physical, decision.dropRowId);
 				}
-				writeRow(db, meta, decision.rowId, decision.row);
+				const local = localById ?? localByKey;
+				const row = withVersion(decision.row, local);
+				writeRow(db, meta, decision.rowId, row);
+				if (
+					meta.table === "tasks" &&
+					local !== undefined &&
+					overwritesLocalWrites(local, decision.row)
+				) {
+					recordConflict(db, decision.rowId, local, decision.row, now);
+				}
 				applied++;
 				break;
+			}
 			case "rename":
 				executeRename(db, meta, decision, batchLabels, now);
 				applied++;
@@ -608,9 +674,9 @@ const applyBatchImpl = async (
 	basePath: string,
 	page: PullPage,
 ): Promise<Result<ApplyReport>> =>
-	// Throwing is how `Transaction.atomic` is told to ROLLBACK; it converts the
-	// throw into an `err`, so nothing escapes as an exception.
-	atomic(basePath, async (db) => {
+	// Throwing is how `atomic` is told to ROLLBACK; it converts the throw into
+	// an `err`, so nothing escapes as an exception.
+	atomic(basePath, (db) => {
 		const state = Oplog.getState(db);
 		if (!state.ok) throw state.error;
 		if (state.value === undefined) {
@@ -618,13 +684,7 @@ const applyBatchImpl = async (
 				"Cannot apply sync ops: this device has no sync state. Call Oplog.initDevice first.",
 			);
 		}
-		const { deviceId } = state.value;
-
-		const guarded = await Oplog.withApplyGuard(db, () =>
-			applyOrdered(db, page, deviceId),
-		);
-		if (!guarded.ok) throw guarded.error;
-		return guarded.value;
+		return applyOrdered(db, page, state.value.deviceId);
 	});
 
 // ============================================================
@@ -635,9 +695,10 @@ export namespace Apply {
 	/**
 	 * Write one pulled page into the local DB, atomically.
 	 *
-	 * Ordered by `serverSeq`, one transaction, capture suppressed for the whole
-	 * of it, and `last_applied_seq` advanced inside the same transaction so a
-	 * crash can never leave the watermark ahead of the rows.
+	 * Ordered by `serverSeq`, one transaction, never captured (rows are written
+	 * directly, below the capture step), and `last_applied_seq` advanced inside
+	 * the same transaction so a crash can never leave the watermark ahead of the
+	 * rows.
 	 *
 	 * Idempotent: re-applying the same page resolves to `already-present` /
 	 * `not-newer` / `already-absent` skips and writes nothing new.

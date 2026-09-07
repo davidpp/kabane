@@ -16,8 +16,11 @@
  * column on both sides (`CLOCK_COLUMN`) out of the payload and out of the local
  * row, so the resolver is deterministic and both devices reach the same answer
  * from opposite directions. One tie-break chain applies everywhere: clock, then
- * ULID order, then `device_id` for the same-id case where ULIDs are equal by
- * definition. All three are orderings the devices agree on without talking.
+ * ULID order, then `version`, then `updated_by`, then `device_id`. All five are
+ * orderings the devices agree on without talking. `version` and `updated_by`
+ * are what make the chain hold beyond two devices: `device_id` alone stood in
+ * for "who wrote this", which is exact for two machines and wrong the moment a
+ * third machine's row is compared as if this one had written it.
  *
  * ROW IDENTITY IS THE LOWER ULID. Three tables carry a UNIQUE key separate from
  * their primary key (`task_links`, `task_context_refs`, `focus_lists`), so two
@@ -251,13 +254,15 @@ const localClock = (row: Row, table: SyncTable): string | undefined => {
 };
 
 /**
- * Clock, then ULID, then `device_id`. One chain, used by every rule.
+ * Clock, then ULID, then version, then actor, then `device_id`. One chain,
+ * used by every rule.
  *
  * The ULID step decides rows that two devices minted separately. It is vacuous
- * when both sides carry the same id, and the device step is what stops those
- * from diverging forever: without it an identical-millisecond edit on two
- * machines leaves each holding its own content. Equal device ids mean the op is
- * a re-delivery of what is already here, so the local side stands.
+ * when both sides carry the same id. On a same-id clock tie the row with more
+ * writes behind it wins (`version`), then the lexically lower actor URI, then
+ * the lower device id — the last two are arbitrary but agreed, which is all a
+ * tie-break has to be. Equal device ids mean the op is a re-delivery of what
+ * is already here, so the local side stands.
  *
  * `incoming` and `local` read as "challenger" and "holder" at the item-merge
  * site, where the holder can be either device's row.
@@ -267,13 +272,49 @@ const incomingWins = (args: {
 	local: string | undefined;
 	incomingId: string;
 	localId: string;
+	versions?: { incoming: number | undefined; local: number | undefined };
+	actors?: { incoming: string | undefined; local: string | undefined };
 	devices: { incoming: string; local: string };
 }): boolean => {
 	if (args.local === undefined) return true;
 	if (args.incoming !== args.local) return args.incoming > args.local;
 	if (args.incomingId !== args.localId) return args.incomingId < args.localId;
+
+	const versions = args.versions;
+	if (
+		versions?.incoming !== undefined &&
+		versions.local !== undefined &&
+		versions.incoming !== versions.local
+	) {
+		return versions.incoming > versions.local;
+	}
+
+	const actors = args.actors;
+	if (
+		actors?.incoming !== undefined &&
+		actors.local !== undefined &&
+		actors.incoming !== actors.local
+	) {
+		return actors.incoming < actors.local;
+	}
+
 	return args.devices.incoming < args.devices.local;
 };
+
+const asNumber = (value: unknown): number | undefined =>
+	typeof value === "number" ? value : undefined;
+
+/** The version/actor pair a same-id comparison reads from each side. */
+const lineage = (op: SyncOp, localRow: Row | undefined) => ({
+	versions: {
+		incoming: asNumber(op.payload?.version),
+		local: asNumber(localRow?.version),
+	},
+	actors: {
+		incoming: col(op.payload, "updated_by"),
+		local: col(localRow, "updated_by"),
+	},
+});
 
 /** Ignore a natural-key row that is really the same row `byId` covers. */
 const otherRow = (row: Row | undefined, rowId: string): Row | undefined =>
@@ -401,6 +442,7 @@ const resolveRowLww = ({
 			local: localClock(local.byId, table),
 			incomingId: op.rowId,
 			localId: col(local.byId, "id") ?? op.rowId,
+			...lineage(op, local.byId),
 			devices: { incoming: op.deviceId, local: local.localDeviceId },
 		})
 	) {
@@ -474,6 +516,7 @@ const resolveNaturalKeyLww = ({
 		local: localClock(localRow, table),
 		incomingId: op.rowId,
 		localId,
+		...lineage(op, localRow),
 		devices: { incoming: op.deviceId, local: local.localDeviceId },
 	});
 
@@ -527,6 +570,7 @@ const resolveFocusList = ({
 		local: held,
 		incomingId: op.rowId,
 		localId,
+		...lineage(op, localRow),
 		devices: { incoming: op.deviceId, local: local.localDeviceId },
 	})
 		? payload
