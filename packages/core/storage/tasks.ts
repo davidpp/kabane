@@ -213,6 +213,8 @@ export namespace Planner {
 					: undefined,
 				tags: draft.tags ?? [],
 				context: draft.context,
+				updatedBy: Runtime.actor(),
+				version: 1,
 				createdAt: now,
 				updatedAt: now,
 			};

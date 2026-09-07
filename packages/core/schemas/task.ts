@@ -240,6 +240,21 @@ export const TaskSchema = z.object({
 	/** GTD context (physical context like @home, @office) */
 	context: z.string().optional(),
 
+	// --- Replication ---
+
+	/**
+	 * Actor URI of the last local writer (cabane://actor/...). Storage always
+	 * sets it; absent only on rows written before the column existed.
+	 */
+	updatedBy: z.string().optional(),
+
+	/**
+	 * Monotonic per-row version, bumped on every local write; the sync
+	 * resolver compares it. Storage always fills it, so it is present on every
+	 * task read back; optional here so callers never author it.
+	 */
+	version: z.number().int().min(1).optional(),
+
 	// --- Metadata ---
 
 	/** Creation timestamp */
@@ -259,6 +274,8 @@ export const TaskDraftSchema = TaskSchema.omit({
 	createdAt: true,
 	updatedAt: true,
 	completedAt: true,
+	updatedBy: true, // Storage-owned
+	version: true, // Storage-owned
 }).extend({
 	// Make provenance optional for drafts - will be filled with defaults
 	provenance: ProvenanceSchema.optional(),

@@ -279,6 +279,8 @@ export const rowToTask = (row: Record<string, unknown>): Task => ({
 		: undefined,
 	tags: row.tags ? JSON.parse(row.tags as string) : [],
 	context: (row.context as string) || undefined,
+	updatedBy: (row.updated_by as string) || undefined,
+	version: typeof row.version === "number" ? row.version : 1,
 	createdAt: row.created_at as string,
 	updatedAt: row.updated_at as string,
 });
