@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { HUMAN, withAccess } from "./test-access";
 import { MAX_PULL_LIMIT, type PullPage, type PushAck } from "./wire";
 
 // `SELF` is marked deprecated in favour of `ctx.exports` from
@@ -13,7 +14,9 @@ const call = (
 	init: { token?: string | null; method?: string } = {},
 ): Promise<Response> => {
 	const { token = TOKEN, method = "POST" } = init;
-	const headers = new Headers({ "Content-Type": "application/json" });
+	// Every log call carries a valid Access assertion: these tests are about the
+	// log's own bearer check, which sits BEHIND Access (see access.test.ts).
+	const headers = withAccess(HUMAN, { "Content-Type": "application/json" });
 	if (token !== null) headers.set("Authorization", `Bearer ${token}`);
 
 	return SELF.fetch(`https://cabane.test${path}`, {
@@ -64,19 +67,29 @@ describe("auth", () => {
 	it("rejects a non-Bearer scheme", async () => {
 		const res = await SELF.fetch("https://cabane.test/push", {
 			method: "POST",
-			headers: { Authorization: `Basic ${TOKEN}` },
+			headers: withAccess(HUMAN, { Authorization: `Basic ${TOKEN}` }),
 			body: "{}",
 		});
 
 		expect(res.status).toBe(401);
 	});
 
-	it("checks the token before the route and the body", async () => {
+	it("checks Access before the route and the body", async () => {
 		// Proves auth runs before anything can reach a stub: a request that is also
 		// unroutable and unparseable still answers 401, not 404 or 400.
 		const res = await SELF.fetch("https://cabane.test/nope", {
 			method: "GET",
 			body: undefined,
+		});
+
+		expect(res.status).toBe(401);
+	});
+
+	it("checks the bearer before the body on a log route", async () => {
+		const res = await SELF.fetch("https://cabane.test/push", {
+			method: "POST",
+			headers: withAccess(HUMAN),
+			body: "{ not json",
 		});
 
 		expect(res.status).toBe(401);
@@ -101,7 +114,7 @@ describe("routing", () => {
 	it("400s a body that is not JSON", async () => {
 		const res = await SELF.fetch("https://cabane.test/push", {
 			method: "POST",
-			headers: { Authorization: `Bearer ${TOKEN}` },
+			headers: withAccess(HUMAN, { Authorization: `Bearer ${TOKEN}` }),
 			body: "{ not json",
 		});
 
