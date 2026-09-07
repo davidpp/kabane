@@ -19,7 +19,8 @@
 	},
 	"dependencies": {
 		"@cabane/core": "workspace:*",
-		"@cabane/sqlite": "workspace:*"
+		"@cabane/sqlite": "workspace:*",
+		"zod": "3.25.76"
 	},
 	"devDependencies": {
 		"@types/bun": "1.4.0",
