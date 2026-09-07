@@ -15,8 +15,8 @@ bun run --cwd packages/worker test   # tsc --noEmit && vitest run
 bun run --cwd packages/worker dev    # wrangler dev on localhost, needs .dev.vars
 ```
 
-Deploys are manual and documented in `docs/deploy.md` once it exists. Never run
-`wrangler deploy` from an agent.
+Deploys are manual and documented in [`docs/deploy.md`](../../docs/deploy.md) (part 1
+builds the hub, part 5 operates it). Never run `wrangler deploy` from an agent.
 
 ## Access on every route
 
