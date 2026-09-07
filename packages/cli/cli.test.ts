@@ -194,6 +194,15 @@ describe("cabane cli", () => {
 		expect(shown.out).toContain("Comments:");
 		expect(shown.out).toContain("Work log:");
 		expect(shown.out).toContain("🤖 cabane://actor/agent/claude");
+
+		// Replication fields ride along in --json only: the edit above bumped the
+		// version past 1 and stamped this device's actor as the last writer.
+		const detail = json<{ task: { updatedBy?: string; version?: number } }>(
+			await run("show", issueId, "--json"),
+		);
+		expect(detail.task.updatedBy).toBe("cabane://actor/human/tester");
+		expect(detail.task.version).toBeGreaterThanOrEqual(2);
+		expect(shown.out).not.toMatch(/^Version:/m);
 	});
 
 	it("search and context", async () => {
@@ -229,7 +238,8 @@ describe("cabane cli", () => {
 		expect((await run("edit", issueId)).code).toBe(2);
 		expect((await run("link", taskId, issueId)).code).toBe(2);
 		expect((await run("show", "NOPE-999")).code).toBe(1);
-		expect((await run("board")).code).toBe(2);
+		// The test runner is not a TTY, which is the one way board fails.
+		expect((await run("board")).code).toBe(1);
 		expect((await run("mcp")).code).toBe(2);
 		expect((await run("help")).code).toBe(0);
 		expect((await run()).code).toBe(2);
