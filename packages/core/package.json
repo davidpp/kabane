@@ -1,20 +1,27 @@
 {
 	"name": "@cabane/core",
 	"version": "0.1.0",
-	"description": "Cabane core: schemas, storage over the Db port, sync, MCP tool definitions",
+	"description": "Cabane core: schemas, storage over the Db port, sync, lint, commit linking",
 	"private": true,
 	"type": "module",
 	"main": "index.ts",
 	"types": "index.ts",
 	"exports": {
-		".": "./index.ts"
+		".": "./index.ts",
+		"./schemas": "./schemas/index.ts",
+		"./testing": "./testing.ts"
 	},
 	"scripts": {
 		"test": "bun test",
 		"typecheck": "tsc --noEmit",
 		"clean": "rm -rf node_modules"
 	},
+	"dependencies": {
+		"ulid": "3.0.2",
+		"zod": "3.25.76"
+	},
 	"devDependencies": {
+		"@cabane/sqlite": "workspace:*",
 		"@types/bun": "1.4.0",
 		"typescript": "5.9.3"
 	}
