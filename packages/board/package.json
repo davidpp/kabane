@@ -1,0 +1,24 @@
+{
+	"name": "@cabane/board",
+	"version": "0.1.0",
+	"description": "Cabane terminal kanban (OpenTUI) over ActivitySource and Dispatcher ports",
+	"private": true,
+	"type": "module",
+	"main": "index.ts",
+	"types": "index.ts",
+	"exports": {
+		".": "./index.ts"
+	},
+	"scripts": {
+		"test": "bun test",
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf node_modules"
+	},
+	"dependencies": {
+		"@cabane/core": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/bun": "1.4.0",
+		"typescript": "5.9.3"
+	}
+}
