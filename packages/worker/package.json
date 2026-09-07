@@ -22,6 +22,7 @@
 	},
 	"dependencies": {
 		"@cabane/core": "workspace:*",
+		"jose": "6.2.10",
 		"zod": "3.25.76"
 	}
 }
