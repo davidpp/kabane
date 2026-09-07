@@ -1,0 +1,26 @@
+{
+	// The Cabane hub. Two SQLite-backed Durable Object classes: CabaneLog is the
+	// ordered oplog every device syncs through; CabaneHub is the cloud device that
+	// runs the core on DO SQLite and serves MCP. Both are stubs in this slice.
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "cabane-worker",
+	"main": "src/index.ts",
+	// >= 2024-04-03 is what makes RPC methods available on the DO stub.
+	"compatibility_date": "2026-07-01",
+	// Access is the only front door: no workers.dev, no preview URLs.
+	"workers_dev": false,
+	"preview_urls": false,
+	"routes": [{ "pattern": "cabane.3pew.ca", "custom_domain": true }],
+	"observability": { "enabled": true },
+	"durable_objects": {
+		"bindings": [
+			{ "name": "CABANE_LOG", "class_name": "CabaneLog" },
+			{ "name": "CABANE_HUB", "class_name": "CabaneHub" }
+		]
+	},
+	// new_sqlite_classes (not new_classes): both objects keep their state in DO
+	// SQLite, whose input/output gates give the total order the sync design rests on.
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["CabaneLog", "CabaneHub"] }
+	]
+}
