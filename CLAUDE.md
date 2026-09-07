@@ -30,9 +30,9 @@ under vitest via `bun run --cwd packages/worker test` and is invoked by the root
 
 ## Jake
 
-- PRD parent: see `jake plan list --scope cabane` (the `CAB-` prefix; parent is the issue titled "PRD: Cabane").
+- PRD parent: JCAB-1 (ids use the `JCAB-` prefix).
 - scopeUri: `jake://scope/cabane`
-- Commits: prefixed with the issue id (`CAB-12 core: ...`), one concern per commit.
+- Commits: prefixed with the issue id (`JCAB-12 core: ...`), one concern per commit.
 - Worktrees: `wt switch dp-<id>-<slug> --create`, then `bun install` in the worktree.
 - Testing constraint: never deploy to Cloudflare from an agent. `wrangler dev` and
   `@cloudflare/vitest-pool-workers` only. Deploys, DNS, and Access changes are manual steps
