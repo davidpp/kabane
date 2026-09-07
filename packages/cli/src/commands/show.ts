@@ -18,15 +18,15 @@ export const show: Command = {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", show.usage);
 
-		const task = await Planner.getTask(ctx.home, input);
+		const task = await Planner.getTask(ctx.store, input);
 		if (!task.ok) return failure(task.error);
 		if (!task.value) return failure(`No task found: ${input}`);
 		const id = task.value.id;
 
 		const [links, comments, logs] = await Promise.all([
-			Planner.getLinksForTask(ctx.home, id),
-			Planner.getComments(ctx.home, id),
-			Planner.getWorkLogs(ctx.home, id),
+			Planner.getLinksForTask(ctx.store, id),
+			Planner.getComments(ctx.store, id),
+			Planner.getWorkLogs(ctx.store, id),
 		]);
 		if (!links.ok) return failure(links.error);
 		if (!comments.ok) return failure(comments.error);

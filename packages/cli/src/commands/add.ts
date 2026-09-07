@@ -22,7 +22,7 @@ export const add: Command = {
 		const parentInput = flagString(args, "parent");
 		let parentTaskId: string | undefined;
 		if (parentInput) {
-			const parent = await Planner.resolveTaskId(ctx.home, parentInput);
+			const parent = await Planner.resolveTaskId(ctx.store, parentInput);
 			if (!parent.ok) return failure(parent.error);
 			parentTaskId = parent.value;
 		}
@@ -46,7 +46,7 @@ export const add: Command = {
 			},
 		};
 
-		const created = await Planner.addTask(ctx.home, draft);
+		const created = await Planner.addTask(ctx.store, draft);
 		if (!created.ok) return failure(created.error);
 		return success(created.value, `✓ Created ${formatTaskLine(created.value)}`);
 	},

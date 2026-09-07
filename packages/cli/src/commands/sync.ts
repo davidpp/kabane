@@ -1,6 +1,22 @@
 import { Backfill, Sync, SyncDevice, type SyncStatus } from "@cabane/core";
-import type { Command } from "../context";
+import type { Config } from "../config";
+import type { Command, Ctx } from "../context";
 import { failure, success, usage } from "../output";
+
+/**
+ * A database opened through `db.path` usually belongs to another host (Jake)
+ * that already syncs it as its own device. Syncing the same file from here too
+ * would race that device on the shared `sync_state` row.
+ */
+export const sharedDbWarning = (config: Config): string | undefined =>
+	config.db?.path !== undefined && config.sync.enabled
+		? `⚠️  db.path points at ${config.db.path}, which another host may already sync as its own device. Sync from that host instead, or drop the sync block from this config.`
+		: undefined;
+
+const withWarning = (ctx: Ctx, text: string): string => {
+	const warning = sharedDbWarning(ctx.config);
+	return warning ? `${warning}\n${text}` : text;
+};
 
 const formatStatus = (s: SyncStatus): string => {
 	if (!s.enabled)
@@ -26,40 +42,49 @@ export const sync: Command = {
 		const sub = args.positionals[0] ?? "status";
 
 		if (sub === "status") {
-			const status = await Sync.status(ctx.home);
+			const status = await Sync.status(ctx.store);
 			if (!status.ok) return failure(status.error);
-			return success(status.value, formatStatus(status.value));
+			return success(
+				{ ...status.value, warning: sharedDbWarning(ctx.config) },
+				withWarning(ctx, formatStatus(status.value)),
+			);
 		}
 		if (sub !== "push" && sub !== "pull" && sub !== "backfill") {
 			return usage(`Unknown sync subcommand: ${sub}`, sync.usage);
 		}
 
-		const connected = await SyncDevice.connect(ctx.home);
+		const connected = await SyncDevice.connect(ctx.store);
 		if (!connected.ok) return failure(connected.error);
 		const { transport, deviceId } = connected.value;
 
 		if (sub === "pull") {
-			const pulled = await Sync.pull(ctx.home, transport);
+			const pulled = await Sync.pull(ctx.store, transport);
 			if (!pulled.ok) return failure(pulled.error);
 			const r = pulled.value;
 			return success(
 				{ deviceId, ...r },
-				`⬇️  Pulled ${r.received} ops, applied ${r.applied}, renamed ${r.renamed} (${r.batches} batches, through seq ${r.throughSeq})`,
+				withWarning(
+					ctx,
+					`⬇️  Pulled ${r.received} ops, applied ${r.applied}, renamed ${r.renamed} (${r.batches} batches, through seq ${r.throughSeq})`,
+				),
 			);
 		}
 
 		let backfilled = "";
 		if (sub === "backfill") {
-			const report = await Backfill.run(ctx.home);
+			const report = await Backfill.run(ctx.store);
 			if (!report.ok) return failure(report.error);
 			backfilled = `📦 Backfilled ${report.value.written} rows into the oplog (${report.value.alreadyPresent} already present)\n`;
 		}
-		const pushed = await Sync.push(ctx.home, transport);
+		const pushed = await Sync.push(ctx.store, transport);
 		if (!pushed.ok) return failure(pushed.error);
 		const r = pushed.value;
 		return success(
 			{ deviceId, ...r },
-			`${backfilled}⬆️  Pushed ${r.pushed} ops (${r.duplicates} duplicates, ${r.batches} batches) as device ${deviceId}`,
+			withWarning(
+				ctx,
+				`${backfilled}⬆️  Pushed ${r.pushed} ops (${r.duplicates} duplicates, ${r.batches} batches) as device ${deviceId}`,
+			),
 		);
 	},
 };

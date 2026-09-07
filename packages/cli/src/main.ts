@@ -49,7 +49,7 @@ export const helpText = (): string =>
 		"",
 		...COMMANDS.map((c) => `  ${c.name.padEnd(9)} ${c.summary}`),
 		"",
-		"CABANE_HOME (default ~/.cabane) holds config.json and cabane.db.",
+		"CABANE_HOME (default ~/.cabane) holds config.json and cabane.db, unless config.json's db block points at another file.",
 	].join("\n");
 
 const HELP_USAGE = "cabane <command> [args]";
@@ -57,6 +57,7 @@ const HELP_USAGE = "cabane <command> [args]";
 /** A context init and mcp can run with: no config file needed. */
 const bareCtx = (home: string, cwd: string): Ctx => ({
 	home,
+	store: home,
 	cwd,
 	config: {
 		actor: "",

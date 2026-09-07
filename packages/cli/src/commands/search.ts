@@ -12,7 +12,7 @@ export const search: Command = {
 		const query = args.positionals.join(" ").trim();
 		if (!query) return usage("Search query required", search.usage);
 		const limitRaw = flagString(args, "limit");
-		const tasks = await Planner.searchTasks(ctx.home, query, {
+		const tasks = await Planner.searchTasks(ctx.store, query, {
 			state: flagString(args, "state") as TaskState | undefined,
 			scopeUri: resolveScope(args, ctx),
 			limit: limitRaw ? Number(limitRaw) : undefined,

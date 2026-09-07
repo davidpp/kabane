@@ -18,12 +18,12 @@ export const link: Command = {
 				link.usage,
 			);
 
-		const source = await Planner.resolveTaskId(ctx.home, sourceInput);
+		const source = await Planner.resolveTaskId(ctx.store, sourceInput);
 		if (!source.ok) return failure(source.error);
-		const target = await Planner.resolveTaskId(ctx.home, targetInput);
+		const target = await Planner.resolveTaskId(ctx.store, targetInput);
 		if (!target.ok) return failure(target.error);
 
-		const created = await Planner.addLink(ctx.home, {
+		const created = await Planner.addLink(ctx.store, {
 			sourceId: source.value,
 			targetId: target.value,
 			type: type.data as LinkType,

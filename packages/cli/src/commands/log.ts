@@ -40,10 +40,10 @@ export const log: Command = {
 				"At least one --ref (or --commit/--branch/--pr) required",
 				log.usage,
 			);
-		const resolved = await Planner.resolveTaskId(ctx.home, input);
+		const resolved = await Planner.resolveTaskId(ctx.store, input);
 		if (!resolved.ok) return failure(resolved.error);
 
-		const created = await Planner.addWorkLog(ctx.home, {
+		const created = await Planner.addWorkLog(ctx.store, {
 			taskId: resolved.value,
 			refs: refs.map((uri) => ({ uri })),
 			note: flagString(args, "note"),

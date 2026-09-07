@@ -4,6 +4,8 @@ import { flagBool, flagString } from "../args";
 import {
 	ConfigSchema,
 	configPath,
+	type DbConfig,
+	databaseLocation,
 	defaultActor,
 	defaultDeviceId,
 	SCOPE_FILE,
@@ -37,11 +39,25 @@ export const accessHeaders = (
 	});
 };
 
+/**
+ * The `db` block exists only when asked for, so a config written before it
+ * existed keeps meaning `CABANE_HOME/cabane.db` with plain names. A Jake user
+ * passes `--db-path ~/.jake/jake.db --table-prefix planner_` and shares Jake's
+ * database instead of migrating.
+ */
+export const dbBlock = (
+	path: string | undefined,
+	tablePrefix: string | undefined,
+): DbConfig | undefined =>
+	path === undefined && tablePrefix === undefined
+		? undefined
+		: { path, tablePrefix };
+
 export const init: Command = {
 	name: "init",
 	summary: "Create CABANE_HOME/config.json and the database",
 	usage:
-		"cabane init [--actor <uri>] [--device <id>] [--sync-url <url>] [--sync-token <token>] [--access-client-id <id> --access-client-secret <secret>] [--scope <uri>] [--force]",
+		"cabane init [--actor <uri>] [--device <id>] [--sync-url <url>] [--sync-token <token>] [--access-client-id <id> --access-client-secret <secret>] [--db-path <file> [--table-prefix <prefix>]] [--scope <uri>] [--force]",
 	standalone: true,
 	run: async (args, ctx) => {
 		const path = configPath(ctx.home);
@@ -65,13 +81,18 @@ export const init: Command = {
 				headers: headers.value,
 				deviceId: flagString(args, "device") ?? defaultDeviceId(),
 			},
+			db: dbBlock(
+				flagString(args, "db-path"),
+				flagString(args, "table-prefix"),
+			),
 		});
 		if (!parsed.success) return failure(parsed.error.message);
 
 		const saved = saveConfig(ctx.home, parsed.data);
 		if (!saved.ok) return failure(saved.error);
-		configureRuntime(parsed.data, parsed.data.actor);
-		const initialized = await Planner.init(ctx.home);
+		const location = databaseLocation(ctx.home, parsed.data);
+		configureRuntime(parsed.data, parsed.data.actor, location);
+		const initialized = await Planner.init(location.basePath);
 		if (!initialized.ok) return failure(initialized.error);
 
 		const scope = flagString(args, "scope");
@@ -102,6 +123,7 @@ export const init: Command = {
 				`  device: ${config.deviceId}`,
 				`  sync:   ${config.sync.enabled ? config.sync.url : "disabled (pass --sync-url and --sync-token)"}`,
 				`  access: ${config.sync.headers ? "service token headers set" : "none"}`,
+				`  db:     ${location.basePath}/${location.dbName}${location.tablePrefix ? ` (tables ${location.tablePrefix}*)` : ""}`,
 				...(scope ? [`  scope:  ${scope} (written to ./${SCOPE_FILE})`] : []),
 			].join("\n"),
 		);

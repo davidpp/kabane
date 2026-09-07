@@ -14,7 +14,7 @@ export const boardDeps = (args: ParsedArgs, ctx: Ctx): BoardDeps => {
 	const scopeUri = resolveScope(args, ctx);
 	return {
 		cwd: ctx.cwd,
-		basePath: ctx.home,
+		basePath: ctx.store,
 		resolveScope: async () => (scopeUri ? { scopeUri, label: scopeUri } : null),
 	};
 };

@@ -19,7 +19,7 @@ export const mcp: Command = {
 	run: async (_args, ctx) => {
 		await serveStdio(
 			{
-				basePath: ctx.home,
+				basePath: ctx.store,
 				actor: ctx.actor,
 				defaultScope: directoryScope(ctx.cwd),
 				scopeRequired: false,

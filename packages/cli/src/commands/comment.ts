@@ -12,10 +12,10 @@ export const comment: Command = {
 		const content = rest.join(" ").trim();
 		if (!input || !content)
 			return usage("Task ID and comment text required", comment.usage);
-		const resolved = await Planner.resolveTaskId(ctx.home, input);
+		const resolved = await Planner.resolveTaskId(ctx.store, input);
 		if (!resolved.ok) return failure(resolved.error);
 
-		const created = await Planner.addComment(ctx.home, {
+		const created = await Planner.addComment(ctx.store, {
 			taskId: resolved.value,
 			author: ctx.actor,
 			authorType: authorTypeOf(ctx.actor),

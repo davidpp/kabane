@@ -2,18 +2,28 @@
  * Command context: the resolved home, its config, and the wired runtime.
  *
  * `Runtime.configure` happens once per process, here. Every command receives
- * the same `Ctx` and calls core with `ctx.home` as the base path.
+ * the same `Ctx` and calls core with `ctx.store` as the base path, which is the
+ * home unless `config.db.path` points elsewhere.
  */
 
 import { ok, Planner, type Result, Runtime } from "@cabane/core";
 import { SqliteDb } from "@cabane/sqlite";
 import type { ParsedArgs } from "./args";
 import { flagString } from "./args";
-import { type Config, DB_NAME, directoryScope, loadConfig } from "./config";
+import {
+	type Config,
+	type DatabaseLocation,
+	databaseLocation,
+	directoryScope,
+	loadConfig,
+} from "./config";
 import type { Outcome } from "./output";
 
 export type Ctx = {
+	/** CABANE_HOME: where config.json lives. */
 	home: string;
+	/** The storage handle every core call receives (the database's directory). */
+	store: string;
 	cwd: string;
 	config: Config;
 	/** The actor for this invocation: `--as`, else the configured one. */
@@ -33,10 +43,14 @@ export type Command = {
  * `actor` is stamped into `updated_by` on every local write, so it has to be
  * the effective one for this invocation (`--as` wins over the config).
  */
-export const configureRuntime = (config: Config, actor: string): void => {
+export const configureRuntime = (
+	config: Config,
+	actor: string,
+	location: DatabaseLocation,
+): void => {
 	Runtime.configure({
-		provider: SqliteDb.provider({ dbName: DB_NAME }),
-		tablePrefix: "",
+		provider: SqliteDb.provider({ dbName: location.dbName }),
+		tablePrefix: location.tablePrefix,
 		actor: () => actor,
 		syncSettings: async () => ok(config.sync),
 	});
@@ -51,10 +65,17 @@ export const openContext = async (
 	const config = loadConfig(home);
 	if (!config.ok) return config;
 	const actor = flagString(args, "as") ?? config.value.actor;
-	configureRuntime(config.value, actor);
-	const initialized = await Planner.init(home);
+	const location = databaseLocation(home, config.value);
+	configureRuntime(config.value, actor, location);
+	const initialized = await Planner.init(location.basePath);
 	if (!initialized.ok) return initialized;
-	return ok({ home, cwd, config: config.value, actor });
+	return ok({
+		home,
+		store: location.basePath,
+		cwd,
+		config: config.value,
+		actor,
+	});
 };
 
 /** `--scope` wins, then `./.cabane/scope`, then nothing. */

@@ -9,9 +9,9 @@ export const done: Command = {
 	run: async (args, ctx) => {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", done.usage);
-		const resolved = await Planner.resolveTaskId(ctx.home, input);
+		const resolved = await Planner.resolveTaskId(ctx.store, input);
 		if (!resolved.ok) return failure(resolved.error);
-		const updated = await Planner.updateTask(ctx.home, resolved.value, {
+		const updated = await Planner.updateTask(ctx.store, resolved.value, {
 			state: "done",
 		});
 		if (!updated.ok) return failure(updated.error);

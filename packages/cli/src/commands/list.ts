@@ -19,7 +19,7 @@ export const list: Command = {
 		if (limit !== undefined && !(limit > 0))
 			return failure("--limit must be a positive number");
 
-		const tasks = await Planner.queryTasks(ctx.home, {
+		const tasks = await Planner.queryTasks(ctx.store, {
 			state: flagString(args, "state") as TaskState | undefined,
 			kind: flagString(args, "kind") as ItemKind | undefined,
 			priority: flagString(args, "priority") as TaskPriority | undefined,

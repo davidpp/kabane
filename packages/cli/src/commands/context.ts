@@ -10,7 +10,7 @@ export const context: Command = {
 	run: async (args, ctx) => {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", context.usage);
-		const brief = await Planner.assembleContext(ctx.home, input, {
+		const brief = await Planner.assembleContext(ctx.store, input, {
 			deref: !flagBool(args, "no-deref"),
 			includeSubtasks: !flagBool(args, "no-subtasks"),
 		});

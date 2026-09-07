@@ -21,13 +21,13 @@ export const edit: Command = {
 	run: async (args, ctx) => {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", edit.usage);
-		const resolved = await Planner.resolveTaskId(ctx.home, input);
+		const resolved = await Planner.resolveTaskId(ctx.store, input);
 		if (!resolved.ok) return failure(resolved.error);
 
 		const parentInput = flagString(args, "parent");
 		let parentTaskId: string | undefined;
 		if (parentInput && parentInput !== "none") {
-			const parent = await Planner.resolveTaskId(ctx.home, parentInput);
+			const parent = await Planner.resolveTaskId(ctx.store, parentInput);
 			if (!parent.ok) return failure(parent.error);
 			parentTaskId = parent.value;
 		}
@@ -47,7 +47,7 @@ export const edit: Command = {
 		};
 		if (nothingToChange(update)) return usage("Nothing to change", edit.usage);
 
-		const updated = await Planner.updateTask(ctx.home, resolved.value, update);
+		const updated = await Planner.updateTask(ctx.store, resolved.value, update);
 		if (!updated.ok) return failure(updated.error);
 		if (!updated.value) return failure(`No task found: ${input}`);
 		return success(
