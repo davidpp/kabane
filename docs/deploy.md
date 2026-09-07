@@ -27,7 +27,32 @@ Every device keeps an authoritative SQLite. The hub is one more device with a pu
 Prerequisites: the `3pew.ca` zone is on this Cloudflare account, and the Zero Trust team
 `3pew` exists (`https://3pew.cloudflareaccess.com`), both already true from FamilyOS.
 
-### 1.1 Log in and deploy — MANUAL
+### 1.0 Deploy from GitHub Actions instead of your laptop — MANUAL once
+
+`.github/workflows/ci.yml` runs the gate on every push and, on `main`, deploys the Worker
+with `cloudflare/wrangler-action`. The deploy step stays a green no-op until the credentials
+exist, so you can push before finishing this part. Once set up, 1.1, 1.2, 1.5 and 5.7 are
+things CI does for you; the Access application, service tokens and Managed OAuth (1.3, 1.4,
+1.6) remain dashboard work either way.
+
+In the repository settings create the `production` environment and add:
+
+| Kind | Name | Value |
+|---|---|---|
+| Secret | `CLOUDFLARE_API_TOKEN` | An API token from the Cloudflare dashboard with `Workers Scripts: Edit`, `Workers Routes: Edit`, `Account Settings: Read`, and, because the Worker owns the `cabane.3pew.ca` custom domain, `Zone: DNS: Edit` and `Zone: Workers Routes: Edit` on the `3pew.ca` zone |
+| Secret | `CLOUDFLARE_ACCOUNT_ID` | Overview page of the account |
+| Secret | `SYNC_TOKEN` | `openssl rand -base64 32`; uploaded to the Worker on every deploy |
+| Variable | `ACCESS_AUD` | The AUD tag from 1.3 |
+| Variable | `HUMAN_EMAIL` | Your address, the one in the Allow policy |
+| Variable | `SERVICE_ACTORS` | The JSON map from 1.5, one line |
+
+Variables can stay empty until 1.3 and 1.4 are done; an empty value deploys a Worker that
+admits nobody, exactly like a fresh manual deploy. Re-run the workflow (Actions, `ci`,
+`Run workflow`) after filling them. Do not put the AUD or the email into `wrangler.jsonc`
+when CI deploys: the `vars` block there stays empty and the workflow passes them with
+`--var`, which overrides the file.
+
+### 1.1 Log in and deploy — MANUAL, or skip when 1.0 is set up
 
 ```bash
 cd ~/Projects/cabane/packages/worker
@@ -539,7 +564,7 @@ its applied watermark to 0, and re-reads. To repopulate an empty log, run `caban
 backfill` on one device that has everything (or `jake plan sync backfill` on the Jake
 machine); the others pull. Short ids may be relabelled during that convergence.
 
-### 5.7 Redeploy after a code change — MANUAL
+### 5.7 Redeploy after a code change — MANUAL, or a push to `main` when 1.0 is set up
 
 ```bash
 cd ~/Projects/cabane && bun run check && bun run typecheck && bun run test
