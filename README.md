@@ -21,8 +21,7 @@ decision record in `~/Projects/jake/docs/ADR/032-cabane-extraction.md`.
 bun install
 bun run check       # biome lint + format
 bun run typecheck   # tsc --noEmit per package
-bun test            # bun packages; the Worker suite runs under vitest
-bun run test        # both runners
+bun run test        # bun packages, then the Worker suite under vitest
 ```
 
 Lefthook runs `biome check --write` on staged files and `typecheck` when `.ts`
