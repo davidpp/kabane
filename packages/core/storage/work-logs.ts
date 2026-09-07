@@ -3,10 +3,11 @@
  */
 
 import type { Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 
 import type { AddWorkLogInput, TaskWorkLog, WorkRef } from "../schemas";
 import { generateId, rowToWorkLog, TABLES } from "./helpers";
+import { Oplog } from "./oplog";
 
 export namespace Planner {
 	export const addWorkLog = async (
@@ -27,10 +28,18 @@ export namespace Planner {
 			}));
 
 			db.run(
-				`INSERT INTO ${TABLES.work_log} (id, task_id, refs, note, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-				[id, input.taskId, JSON.stringify(refs), input.note ?? null, now],
+				`INSERT INTO ${TABLES.work_log} (id, task_id, refs, note, updated_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+				[
+					id,
+					input.taskId,
+					JSON.stringify(refs),
+					input.note ?? null,
+					Runtime.actor(),
+					now,
+				],
 			);
+			Oplog.afterWrite(db, "task_work_log", "insert", id);
 
 			return {
 				id,
@@ -62,7 +71,12 @@ export namespace Planner {
 		id: string,
 	): Promise<Result<void>> => {
 		return withDb(basePath, (db) => {
+			const row = Oplog.snapshot(db, "task_work_log", id);
+			if (!row.ok) throw row.error;
 			db.run(`DELETE FROM ${TABLES.work_log} WHERE id = ?`, [id]);
+			if (row.value !== undefined) {
+				Oplog.afterDelete(db, [{ tbl: "task_work_log", row: row.value }]);
+			}
 		});
 	};
 }

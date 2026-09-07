@@ -3,7 +3,7 @@
  */
 
 import type { Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 
 import type {
 	TaskComment,
@@ -11,6 +11,7 @@ import type {
 	TaskCommentUpdate,
 } from "../schemas";
 import { generateId, rowToComment, TABLES } from "./helpers";
+import { Oplog } from "./oplog";
 
 export namespace Planner {
 	export const addComment = async (
@@ -22,10 +23,20 @@ export namespace Planner {
 			const id = generateId();
 
 			db.run(
-				`INSERT INTO ${TABLES.comments} (id, task_id, author, author_type, content, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-				[id, draft.taskId, draft.author, draft.authorType, draft.content, now],
+				`INSERT INTO ${TABLES.comments}
+           (id, task_id, author, author_type, content, updated_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				[
+					id,
+					draft.taskId,
+					draft.author,
+					draft.authorType,
+					draft.content,
+					Runtime.actor(),
+					now,
+				],
 			);
+			Oplog.afterWrite(db, "task_comments", "insert", id);
 
 			return {
 				id,
@@ -60,9 +71,12 @@ export namespace Planner {
 		const updateResult = await withDb(basePath, (db) => {
 			const now = new Date().toISOString();
 			db.run(
-				`UPDATE ${TABLES.comments} SET content = ?, updated_at = ? WHERE id = ?`,
-				[updates.content, now, id],
+				`UPDATE ${TABLES.comments}
+            SET content = ?, updated_at = ?, version = version + 1, updated_by = ?
+          WHERE id = ?`,
+				[updates.content, now, Runtime.actor(), id],
 			);
+			Oplog.afterWrite(db, "task_comments", "update", id);
 		});
 
 		if (!updateResult.ok) return updateResult;
@@ -90,7 +104,12 @@ export namespace Planner {
 		id: string,
 	): Promise<Result<void>> => {
 		return withDb(basePath, (db) => {
+			const row = Oplog.snapshot(db, "task_comments", id);
+			if (!row.ok) throw row.error;
 			db.run(`DELETE FROM ${TABLES.comments} WHERE id = ?`, [id]);
+			if (row.value !== undefined) {
+				Oplog.afterDelete(db, [{ tbl: "task_comments", row: row.value }]);
+			}
 		});
 	};
 }

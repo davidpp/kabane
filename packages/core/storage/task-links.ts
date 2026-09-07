@@ -3,10 +3,11 @@
  */
 
 import type { Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 
 import type { TaskLink, TaskLinkDraft } from "../schemas";
 import { generateId, rowToLink, TABLES } from "./helpers";
+import { Oplog } from "./oplog";
 
 export namespace Planner {
 	export const addLink = async (
@@ -18,17 +19,20 @@ export namespace Planner {
 			const id = generateId();
 
 			db.run(
-				`INSERT INTO ${TABLES.task_links} (id, source_id, target_id, type, note, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO ${TABLES.task_links}
+           (id, source_id, target_id, type, note, updated_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
 				[
 					id,
 					draft.sourceId,
 					draft.targetId,
 					draft.type,
 					draft.note ?? null,
+					Runtime.actor(),
 					now,
 				],
 			);
+			Oplog.afterWrite(db, "task_links", "insert", id);
 
 			return {
 				id,
@@ -61,7 +65,12 @@ export namespace Planner {
 		id: string,
 	): Promise<Result<void>> => {
 		return withDb(basePath, (db) => {
+			const row = Oplog.snapshot(db, "task_links", id);
+			if (!row.ok) throw row.error;
 			db.run(`DELETE FROM ${TABLES.task_links} WHERE id = ?`, [id]);
+			if (row.value !== undefined) {
+				Oplog.afterDelete(db, [{ tbl: "task_links", row: row.value }]);
+			}
 		});
 	};
 }

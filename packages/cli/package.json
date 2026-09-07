@@ -18,11 +18,17 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
+		"@cabane/board": "workspace:*",
 		"@cabane/core": "workspace:*",
-		"@cabane/sqlite": "workspace:*"
+		"@cabane/sqlite": "workspace:*",
+		"zod": "3.25.76"
 	},
 	"devDependencies": {
+		"@opentui/core": "0.4.2",
+		"@opentui/react": "0.4.2",
 		"@types/bun": "1.4.0",
+		"@types/react": "19.2.7",
+		"react": "19.2.3",
 		"typescript": "5.9.3"
 	}
 }

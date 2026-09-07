@@ -1,0 +1,231 @@
+// The one module the whole board reads tracker data through. Everything talks to storage via the
+// Planner.* functions over the configured Db provider (same path as the CLI — no server required),
+// so a future swap to a remote client touches this file only.
+import {
+	type ItemKind,
+	ok,
+	Planner,
+	type Result,
+	TASK_STATE_DISPLAY,
+	type Task,
+	type TaskQuery,
+	type TaskState,
+} from "@cabane/core";
+
+export namespace BoardData {
+	// Sections rendered top-to-bottom (linear-tui grouped-list order). `done` is SEARCH-ONLY: the
+	// board is a glance surface and done is archive — it never renders without an active `/` query
+	// (see BoardNav.visibleSections), but it's always loaded so search filters it with zero pop-in.
+	// This is the DISPLAY order — the `[`/`]` state move uses the GTD progression below instead, so
+	// a reordered display never changes what "next state" means.
+	export const SECTION_STATES = [
+		"in_progress",
+		"next",
+		"inbox",
+		"waiting",
+		"done",
+	] as const satisfies readonly TaskState[];
+
+	// Logical GTD progression for `[`/`]` (prev/next state), independent of the display order above.
+	export const STATE_PROGRESSION = [
+		"inbox",
+		"next",
+		"in_progress",
+		"waiting",
+		"done",
+	] as const satisfies readonly TaskState[];
+
+	export type SectionState = (typeof SECTION_STATES)[number];
+
+	// The done SEARCH window for instant client-side tier-1 search. FTS (tier 2) owns the deep
+	// archive; the loaded window is just the instant tier — 50 recent is enough for "did X land?"
+	// while FTS surfaces the full 800+ done backlog within ~200ms.
+	const DONE_LIMIT = 50;
+	const OPEN_LIMIT = 100;
+
+	// A visible top-level row plus its (depth-2, no deeper) subtasks. Planner nesting is one level, so
+	// `children` never nest further.
+	export type BoardRow = {
+		task: Task;
+		children: Task[];
+	};
+
+	export type BoardSection = {
+		state: SectionState;
+		label: string;
+		rows: BoardRow[];
+	};
+
+	export type BoardFilters = {
+		scopeUri?: string;
+		kind?: ItemKind;
+	};
+
+	export type ScopeInfo = {
+		scopeUri: string;
+		label: string;
+	};
+
+	// How a host maps the board's cwd to a scope. Absent → the board shows all scopes.
+	export type ScopeResolver = (cwd: string) => Promise<ScopeInfo | null>;
+
+	// Pure list assembly (the tree seam — unit-tested without a DB). Groups top-level tasks into their
+	// state sections and attaches children under their parent. Rules:
+	//   - a subtask whose parent is visible appears ONLY under that parent (deduped from its own section);
+	//   - a subtask whose parent is NOT visible (e.g. a done parent past the cap) stays a top-level row
+	//     in its own state section;
+	//   - empty sections are dropped.
+	// `tasksByState` are the per-state query results (section candidates, done already capped);
+	// `subtasks` are the children of the visible top-level tasks (fetched separately so done children
+	// under an open parent still show).
+	export const assembleSections = (
+		tasksByState: Partial<Record<SectionState, Task[]>>,
+		subtasks: Task[],
+	): BoardSection[] => {
+		const visibleIds = new Set<string>();
+		for (const state of SECTION_STATES) {
+			for (const task of tasksByState[state] ?? []) visibleIds.add(task.id);
+		}
+
+		const childrenByParent = new Map<string, Task[]>();
+		for (const sub of subtasks) {
+			const parentId = sub.parentTaskId;
+			if (!parentId || !visibleIds.has(parentId)) continue;
+			const list = childrenByParent.get(parentId) ?? [];
+			list.push(sub);
+			childrenByParent.set(parentId, list);
+		}
+
+		const sections: BoardSection[] = [];
+		for (const state of SECTION_STATES) {
+			const rows: BoardRow[] = [];
+			for (const task of tasksByState[state] ?? []) {
+				// Deduped: a child of a visible parent renders under the parent, not in its own section.
+				if (task.parentTaskId && visibleIds.has(task.parentTaskId)) continue;
+				rows.push({ task, children: childrenByParent.get(task.id) ?? [] });
+			}
+			if (rows.length > 0) {
+				sections.push({
+					state,
+					label: TASK_STATE_DISPLAY[state].label,
+					rows,
+				});
+			}
+		}
+		return sections;
+	};
+
+	// Load the grouped list: one query per state for the section rows (done capped + recency-ordered),
+	// then one query per top-level task for its subtasks. Planner nesting is one level, so tasks that
+	// already have a parent can't be parents themselves and are skipped as query roots.
+	export const loadBoard = async (
+		basePath: string,
+		filters: BoardFilters = {},
+	): Promise<Result<BoardSection[]>> => {
+		const tasksByState: Partial<Record<SectionState, Task[]>> = {};
+		const parentIds: string[] = [];
+		for (const state of SECTION_STATES) {
+			const isDone = state === "done";
+			const query: Partial<TaskQuery> = {
+				state,
+				kind: filters.kind,
+				scopeUri: filters.scopeUri,
+				includeClosed: isDone,
+				limit: isDone ? DONE_LIMIT : OPEN_LIMIT,
+				orderBy: isDone ? "updatedAt" : "createdAt",
+				orderDir: "desc",
+			};
+			const result = await Planner.queryTasks(basePath, query);
+			if (!result.ok) return result;
+			tasksByState[state] = result.value;
+			// Done rows render FLAT (search results, not a tree): skipping them as subtask roots keeps
+			// the 200-row done window from adding 200 per-parent queries to every 5s poll.
+			if (isDone) continue;
+			for (const task of result.value) {
+				if (!task.parentTaskId) parentIds.push(task.id);
+			}
+		}
+
+		const subtasks: Task[] = [];
+		for (const parentId of parentIds) {
+			const result = await Planner.queryTasks(basePath, {
+				parentTaskId: parentId,
+				kind: filters.kind,
+				includeClosed: true,
+				limit: OPEN_LIMIT,
+				orderBy: "createdAt",
+				orderDir: "asc",
+			});
+			if (!result.ok) return result;
+			subtasks.push(...result.value);
+		}
+
+		return ok(assembleSections(tasksByState, subtasks));
+	};
+
+	// FTS5 search for tier-2 results (description/tag matches, done beyond the loaded window, open
+	// tasks beyond the per-state caps). Returns flat tasks — the board merge fn handles section placement.
+	export const searchBoard = async (
+		basePath: string,
+		query: string,
+		filters: BoardFilters = {},
+	): Promise<Result<Task[]>> => {
+		return Planner.searchTasks(basePath, query, {
+			scopeUri: filters.scopeUri,
+			limit: 50,
+		});
+	};
+
+	// Full assembled brief for a task (used by the detail view).
+	export const taskBrief = async (
+		basePath: string,
+		id: string,
+	): Promise<Result<string>> => {
+		return Planner.assembleContext(basePath, id);
+	};
+
+	// State mutations (used by the keyboard actions).
+	export const setTaskState = async (
+		basePath: string,
+		id: string,
+		state: TaskState,
+	): Promise<Result<Task | null>> => {
+		return Planner.updateTask(basePath, id, { state });
+	};
+
+	export const markDone = async (
+		basePath: string,
+		id: string,
+	): Promise<Result<Task | null>> => {
+		return Planner.updateTask(basePath, id, { state: "done" });
+	};
+
+	// The planner's review op (mirrors tRPC `review` / `jake plan review`): clears the needsReview flag
+	// and stamps the verification record — NOT a bare boolean flip. Review is a flag lifecycle, never a
+	// state (planner CLAUDE.md: `needs_review` is not one of the 7 canonical states).
+	export const markReviewed = async (
+		basePath: string,
+		id: string,
+		reviewer = "human",
+	): Promise<Result<Task | null>> => {
+		return Planner.updateTask(basePath, id, {
+			needsReview: false,
+			verification: {
+				status: "passed",
+				method: "manual",
+				verifiedAt: new Date().toISOString(),
+				verifiedBy: reviewer,
+			},
+		});
+	};
+
+	// Apply a ctrl-z reverse patch — every board mutation is one updateTask, so its inverse is too. The
+	// patch is typed locally (not from nav) to keep data.ts the lower layer with no cycle back to the reducer.
+	export const applyUndo = async (
+		basePath: string,
+		id: string,
+		patch: Partial<Pick<Task, "state" | "needsReview" | "verification">>,
+	): Promise<Result<Task | null>> => {
+		return Planner.updateTask(basePath, id, patch);
+	};
+}

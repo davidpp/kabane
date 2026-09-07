@@ -60,6 +60,8 @@ export {
 	unwrapOr,
 } from "./result";
 export {
+	type ActorSource,
+	ANONYMOUS_ACTOR,
 	atomic,
 	type Notifier,
 	Runtime,

@@ -3,7 +3,10 @@
 	"include": ["**/*.ts", "**/*.tsx"],
 	"exclude": ["node_modules"],
 	"compilerOptions": {
-		"lib": ["ESNext"],
-		"types": ["bun"]
+		"lib": ["ESNext", "DOM"],
+		"types": ["bun"],
+		/* @cabane/board is OpenTUI React; its .tsx reaches tsc through the import. */
+		"jsx": "react-jsx",
+		"jsxImportSource": "@opentui/react"
 	}
 }

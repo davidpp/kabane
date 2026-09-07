@@ -7,10 +7,11 @@
  */
 
 import type { Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 
 import type { AddContextRefInput, TaskContextRef } from "../schemas";
 import { generateId, rowToContextRef, TABLES } from "./helpers";
+import { Oplog } from "./oplog";
 import { Planner as PlannerWorkLogs } from "./work-logs";
 
 export namespace Planner {
@@ -26,15 +27,26 @@ export namespace Planner {
 			const now = new Date().toISOString();
 			const id = generateId();
 
+			// Insert or update is decided by what was there, so the captured op
+			// kind matches what the row went through.
+			const existed =
+				db
+					.query<{ id: string }, [string, string]>(
+						`SELECT id FROM ${TABLES.context_refs} WHERE task_id = ? AND uri = ?`,
+					)
+					.get(input.taskId, input.uri) !== null;
+
 			db.run(
 				`INSERT INTO ${TABLES.context_refs}
-           (id, task_id, uri, kind, label, note, added_by, added_by_type, added_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           (id, task_id, uri, kind, label, note, added_by, added_by_type, added_at, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(task_id, uri) DO UPDATE SET
            kind = excluded.kind,
            label = excluded.label,
            note = excluded.note,
-           added_at = excluded.added_at`,
+           added_at = excluded.added_at,
+           updated_by = excluded.updated_by,
+           version = version + 1`,
 				[
 					id,
 					input.taskId,
@@ -45,6 +57,7 @@ export namespace Planner {
 					input.addedBy ?? null,
 					input.addedByType ?? null,
 					now,
+					Runtime.actor(),
 				],
 			);
 
@@ -53,6 +66,12 @@ export namespace Planner {
 					`SELECT * FROM ${TABLES.context_refs} WHERE task_id = ? AND uri = ?`,
 				)
 				.get(input.taskId, input.uri) as Record<string, unknown>;
+			Oplog.afterWrite(
+				db,
+				"task_context_refs",
+				existed ? "update" : "insert",
+				row.id as string,
+			);
 
 			return rowToContextRef(row);
 		});
@@ -84,7 +103,12 @@ export namespace Planner {
 		id: string,
 	): Promise<Result<void>> => {
 		return withDb(basePath, (db) => {
+			const row = Oplog.snapshot(db, "task_context_refs", id);
+			if (!row.ok) throw row.error;
 			db.run(`DELETE FROM ${TABLES.context_refs} WHERE id = ?`, [id]);
+			if (row.value !== undefined) {
+				Oplog.afterDelete(db, [{ tbl: "task_context_refs", row: row.value }]);
+			}
 		});
 	};
 

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db } from "../db/port";
 import { withDb as runWithDb } from "../runtime";
-
+import { configureTestRuntime } from "../testing";
 import { TABLES } from "./helpers";
 import { Planner } from "./index";
 import { type DrainedOp, Oplog } from "./oplog";
@@ -52,7 +52,7 @@ const allOplogRows = async (): Promise<{ tbl: string; op: string }[]> =>
 			.all(),
 	);
 
-describe("Oplog — trigger-based capture", () => {
+describe("Oplog — storage-layer capture", () => {
 	beforeEach(async () => {
 		base = join(tmpdir(), `planner-oplog-${crypto.randomUUID()}`);
 		mkdirSync(base, { recursive: true });
@@ -128,48 +128,6 @@ describe("Oplog — trigger-based capture", () => {
 		await Planner.deleteTask(base, id);
 
 		expect(await allOplogRows()).toEqual([]);
-	});
-
-	it("captures nothing while the apply guard is raised", async () => {
-		await armCapture();
-
-		const guarded = await withDb((db) =>
-			Oplog.withApplyGuard(db, () =>
-				db.run(
-					`INSERT INTO ${TABLES.projects} (id, title, state, created_at, updated_at)
-             VALUES ('proj-guarded', 'Guarded', 'active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
-				),
-			),
-		);
-		expect(guarded.ok).toBe(true);
-
-		expect(await allOplogRows()).toEqual([]);
-
-		// the guard is lowered again, so the next write IS captured
-		const after = await Planner.addProject(base, { title: "Unguarded" });
-		expect(after.ok).toBe(true);
-		const ops = await drainOps();
-		expect(ops).toHaveLength(1);
-		expect(ops[0]?.tbl).toBe("projects");
-	});
-
-	it("lowers the guard even when the guarded function throws", async () => {
-		await armCapture();
-
-		const failed = await withDb((db) =>
-			Oplog.withApplyGuard(db, () => {
-				throw new Error("apply blew up");
-			}),
-		);
-		expect(failed.ok).toBe(false);
-		if (!failed.ok) expect(failed.error.message).toBe("apply blew up");
-
-		const state = await withDb((db) => Oplog.getState(db));
-		expect(state.ok).toBe(true);
-		if (state.ok) expect(state.value?.applyGuard).toBe(false);
-
-		await createTask("captured after failure");
-		expect(await drainOps()).toHaveLength(1);
 	});
 
 	it("drains FIFO by seq and skips ops the ack covered", async () => {
@@ -268,6 +226,8 @@ describe("Oplog — trigger-based capture", () => {
 
 		const rows = await allOplogRows();
 		expect(rows.some((row) => row.tbl.includes("fts"))).toBe(false);
+		// nothing but the storage layer writes ops now, so there is no trigger
+		// left for the FTS shadow tables to fire
 		expect(rows.map((row) => row.tbl).sort()).toEqual([
 			"task_comments",
 			"tasks",
@@ -298,80 +258,122 @@ describe("Oplog — trigger-based capture", () => {
 		expect(await allOplogRows()).toHaveLength(baseline);
 	});
 
-	it("installs a capture trigger per replicated table and op, idempotently", async () => {
-		const triggerNames = async (): Promise<string[]> =>
-			withDb((db) =>
-				db
-					.query<{ name: string }, []>(
-						`SELECT name FROM sqlite_master
-              WHERE type = 'trigger' AND name LIKE 'sync_cap_%'
-              ORDER BY name`,
-					)
-					.all()
-					.map((row) => row.name),
-			);
-
-		const first = await triggerNames();
-		// 7 replicated tables x insert/update/delete
-		expect(first).toHaveLength(21);
-		expect(first).toContain("sync_cap_tasks_ins");
-		expect(first).toContain("sync_cap_task_context_refs_del");
-
-		// re-running writes nothing: every trigger already matches its column set
-		const reinit = await withDb((db) => Oplog.ensureOplogTriggers(db));
-		expect(reinit.ok).toBe(true);
-		if (reinit.ok) expect(reinit.value).toBe(0);
-		expect(await triggerNames()).toEqual(first);
-	});
-
-	it("rebuilds a stale trigger when a replicated table gains a column", async () => {
+	it("stamps updated_by from the actor port and bumps version on every update", async () => {
+		configureTestRuntime("", { actor: () => "cabane://actor/human/tester" });
 		await armCapture();
 
-		// baseline: Planner.init already converged everything
-		const clean = await withDb((db) => Oplog.ensureOplogTriggers(db));
-		expect(clean.ok).toBe(true);
-		if (clean.ok) expect(clean.value).toBe(0);
+		const id = await createTask("versioned");
+		await Planner.updateTask(base, id, { title: "v2" });
+		await Planner.updateTask(base, id, { title: "v3" });
+
+		const ops = await drainOps();
+		expect(ops.map((op) => op.version)).toEqual([1, 2, 3]);
+		expect(
+			ops.every((op) => op.updatedBy === "cabane://actor/human/tester"),
+		).toBe(true);
+		expect(ops[2]?.payload?.updated_by).toBe("cabane://actor/human/tester");
+		configureTestRuntime();
+	});
+
+	it("keeps a private row out of the log through insert, update and delete", async () => {
+		await armCapture();
+		const id = await createTask("shared then private");
+		expect(await drainOps()).toHaveLength(1);
 
 		await withDb((db) =>
-			db.run(`ALTER TABLE ${TABLES.tasks} ADD COLUMN probe_col TEXT`),
-		);
-
-		// only the three tasks triggers are stale; the other six tables are untouched
-		const healed = await withDb((db) => Oplog.ensureOplogTriggers(db));
-		expect(healed.ok).toBe(true);
-		if (healed.ok) expect(healed.value).toBe(3);
-
-		const id = await createTask("after column add");
-		await withDb((db) =>
-			db.run(`UPDATE ${TABLES.tasks} SET probe_col = 'probed' WHERE id = ?`, [
+			db.run(`UPDATE ${TABLES.tasks} SET visibility = 'private' WHERE id = ?`, [
 				id,
 			]),
 		);
+		await Planner.updateTask(base, id, { title: "edited while private" });
+		await Planner.deleteTask(base, id);
 
-		const ops = await drainOps();
-		const insert = ops.find((op) => op.op === "insert");
-		const update = ops.find((op) => op.op === "update");
-		// the new column is in the snapshot — this is the silent-data-loss case
-		expect(insert?.payload).toHaveProperty("probe_col");
-		expect(update?.payload?.probe_col).toBe("probed");
-
-		// and it has converged: a further run writes nothing
-		const settled = await withDb((db) => Oplog.ensureOplogTriggers(db));
-		if (settled.ok) expect(settled.value).toBe(0);
+		// the insert from before the row went private is all there is
+		expect(await allOplogRows()).toEqual([{ tbl: "tasks", op: "insert" }]);
 	});
 
-	it("rebuilds a trigger that was dropped out from under it", async () => {
-		await withDb((db) => db.run("DROP TRIGGER sync_cap_tasks_upd"));
-
-		const healed = await withDb((db) => Oplog.ensureOplogTriggers(db));
-		expect(healed.ok).toBe(true);
-		if (healed.ok) expect(healed.value).toBe(1);
-
+	it("captures a task delete as its cascade, children first, task last", async () => {
 		await armCapture();
-		const id = await createTask("recreated trigger");
-		await Planner.updateTask(base, id, { title: "captured again" });
+		const parent = await createTask("parent");
+		const child = await Planner.addTask(base, {
+			title: "subtask",
+			parentTaskId: parent,
+		});
+		if (!child.ok) throw child.error;
+		const sibling = await createTask("sibling");
+		await Planner.addComment(base, {
+			taskId: parent,
+			author: "me",
+			authorType: "human",
+			content: "on parent",
+		});
+		await Planner.addComment(base, {
+			taskId: child.value.id,
+			author: "me",
+			authorType: "human",
+			content: "on subtask",
+		});
+		await Planner.addLink(base, {
+			sourceId: sibling,
+			targetId: parent,
+			type: "blocks",
+		});
+		const before = (await allOplogRows()).length;
 
-		const ops = await drainOps();
-		expect(ops.map((op) => op.op)).toEqual(["insert", "update"]);
+		const deleted = await Planner.deleteTask(base, parent);
+		expect(deleted.ok).toBe(true);
+
+		const deletes = (await allOplogRows()).slice(before);
+		expect(deletes.every((row) => row.op === "delete")).toBe(true);
+		expect(deletes.map((row) => row.tbl)).toEqual([
+			"task_comments", // the subtask's comment
+			"tasks", // the subtask
+			"task_comments", // the parent's comment
+			"task_links", // the link pointing at the parent
+			"tasks", // the parent
+		]);
+	});
+
+	it("captures the project_id clear on every task a deleted project owned", async () => {
+		await armCapture();
+		const project = await Planner.addProject(base, { title: "doomed" });
+		if (!project.ok) throw project.error;
+		const owned = await Planner.addTask(base, {
+			title: "owned",
+			projectId: project.value.id,
+		});
+		if (!owned.ok) throw owned.error;
+		const before = (await allOplogRows()).length;
+
+		const removed = await Planner.deleteProject(base, project.value.id);
+		expect(removed.ok).toBe(true);
+
+		const ops = (await drainOps()).slice(before);
+		expect(ops.map((op) => `${op.tbl}:${op.op}`)).toEqual([
+			"tasks:update",
+			"projects:delete",
+		]);
+		expect(ops[0]?.payload?.project_id).toBeNull();
+		expect(ops[0]?.version).toBe(2);
+	});
+
+	it("drops the legacy capture triggers a trigger-era database still carries", async () => {
+		await withDb((db) =>
+			db.run(
+				`CREATE TRIGGER sync_cap_tasks_ins AFTER INSERT ON ${TABLES.tasks}
+           BEGIN SELECT 1; END`,
+			),
+		);
+		const reinit = await Planner.init(base);
+		expect(reinit.ok).toBe(true);
+
+		const triggers = await withDb((db) =>
+			db
+				.query<{ name: string }, []>(
+					`SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'sync_cap_%'`,
+				)
+				.all(),
+		);
+		expect(triggers).toEqual([]);
 	});
 });

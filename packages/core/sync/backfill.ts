@@ -1,25 +1,29 @@
 /**
  * Planner Sync — Backfill
  *
- * Capture is trigger-based, so a device that enables sync replicates only what
- * it changes *afterwards*. Everything already in the database is invisible to
- * the log. For the first device that is the whole history — thousands of tasks
- * that a second machine would never see.
+ * Capture happens at write time, so a device that enables sync replicates only
+ * what it changes *afterwards*. Everything already in the database is invisible
+ * to the log. For the first device that is the whole history — thousands of
+ * tasks that a second machine would never see.
  *
- * This synthesises the missing `insert` ops directly into `planner_sync_oplog`,
- * which is the one place it is correct to write ops by hand: triggers fire on
- * base-table mutations, and re-writing 4000 rows to provoke them would rewrite
- * their timestamps and their meaning.
+ * This synthesises the missing `insert` ops directly into `sync_oplog` through
+ * the same `Oplog.snapshotOp` live capture uses, so a backfilled row and a
+ * captured row are byte-identical on the wire. Re-writing 4000 rows to provoke
+ * capture instead would rewrite their timestamps and their meaning.
+ *
+ * PRIVATE ROWS STAY HOME. The visibility filter is the same one live capture
+ * applies; a row marked private is skipped and counted, never emitted.
  *
  * ORDER IS FK ORDER. The receiving device applies in `seq` order inside one
  * transaction, and `foreign_keys = ON` there means a child arriving before its
  * parent aborts the whole batch. Parents are emitted first, and within `tasks`
  * the roots precede their subtasks.
  *
- * IDEMPOTENT BY CONSTRUCTION. `op_id` is derived from the table and row rather
- * than minted randomly, so a second run collides on `UNIQUE(op_id)` and is
- * ignored. That matters because the honest response to a half-finished backfill
- * is to run it again.
+ * IDEMPOTENT BY CONSTRUCTION. `op_id` is derived from table, row and version
+ * rather than minted randomly, so a second run collides on `UNIQUE(op_id)` and
+ * is ignored, while a row edited since the last run gets a fresh op. That
+ * matters because the honest response to a half-finished backfill is to run it
+ * again.
  */
 
 import type { Db } from "../db/port";
@@ -27,9 +31,7 @@ import { err, ok, type Result } from "../result";
 import { withDb } from "../runtime";
 
 import type { SyncTable } from "../schemas";
-import { TABLES } from "../storage/helpers";
 import { Oplog, physicalTableFor } from "../storage/oplog";
-import { CLOCK_COLUMN } from "./resolve";
 
 /** Local mirror of the `oplog.ts` idiom — SQLite throws, this module does not. */
 const trySync = <T>(fn: () => T): Result<T> => {
@@ -81,6 +83,8 @@ export type BackfillReport = {
 	written: number;
 	/** Rows whose op already existed — a re-run, not a failure. */
 	alreadyPresent: number;
+	/** Rows kept out of the log by their `visibility`. */
+	skippedPrivate: number;
 };
 
 // ============================================================
@@ -91,14 +95,16 @@ const emptyReport = (): BackfillReport => ({
 	byTable: {},
 	written: 0,
 	alreadyPresent: 0,
+	skippedPrivate: 0,
 });
 
 /**
  * Deterministic idempotency key. Prefixed so a backfilled op is recognisable in
- * the log, and so it can never collide with a trigger's random hex.
+ * the log and can never collide with live capture's random hex; versioned so a
+ * row edited between two runs is re-emitted rather than treated as seen.
  */
-const backfillOpId = (tbl: SyncTable, rowId: string): string =>
-	`bf:${tbl}:${rowId}`;
+const backfillOpId = (tbl: SyncTable, rowId: string, version: number): string =>
+	`bf:${tbl}:${rowId}:v${version}`;
 
 const backfillTable = (
 	db: Db,
@@ -109,7 +115,6 @@ const backfillTable = (
 ): Result<void> => {
 	const physical = physicalTableFor(tbl);
 	const order = ROW_ORDER[tbl] ?? "id";
-	const clock = CLOCK_COLUMN[tbl];
 
 	const rows = trySync(() =>
 		db
@@ -120,33 +125,31 @@ const backfillTable = (
 	);
 	if (!rows.ok) return rows;
 
-	const insert = db.prepare(
-		`INSERT OR IGNORE INTO ${TABLES.sync_oplog}
-       (op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at)
-     VALUES (?, ?, ?, ?, 'insert', ?, ?, ?)`,
-	);
-
 	let written = 0;
 	for (const row of rows.value) {
 		const rowId = row.id;
 		if (typeof rowId !== "string") continue;
+		if (!Oplog.isShared(row)) {
+			report.skippedPrivate += 1;
+			continue;
+		}
 
-		const clockValue = clock === undefined ? null : (row[clock] ?? null);
-		const done = trySync(() =>
-			insert.run(
-				backfillOpId(tbl, rowId),
+		const version = typeof row.version === "number" ? row.version : 1;
+		const done = Oplog.record(
+			db,
+			Oplog.snapshotOp({
 				deviceId,
 				tbl,
-				rowId,
-				typeof clockValue === "string" ? clockValue : null,
-				JSON.stringify(row),
+				op: "insert",
+				row,
 				capturedAt,
-			),
+				opId: backfillOpId(tbl, rowId, version),
+			}),
 		);
 		if (!done.ok) return done;
 
-		// changes === 0 means OR IGNORE swallowed a duplicate op_id.
-		if (done.value.changes > 0) written += 1;
+		// false means OR IGNORE swallowed a duplicate op_id.
+		if (done.value) written += 1;
 		else report.alreadyPresent += 1;
 	}
 

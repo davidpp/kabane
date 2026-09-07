@@ -1,34 +1,31 @@
 /**
- * Planner Storage — Sync Oplog
+ * Storage — Sync Oplog
  *
- * Trigger-based change capture. Every mutation to a replicated base table
- * appends a row snapshot to `sync_oplog`, which a sync pass drains in
- * `seq` order.
+ * Explicit change capture. Every storage write on a replicated table ends with
+ * a capture call inside the same connection, which appends a row snapshot to
+ * `sync_oplog`; a sync pass drains those ops in `seq` order.
  *
- * WHY TRIGGERS ARE BUILT HERE AND NOT IN `SCHEMA_SQL`: `prefixSql` rewrites
- * `CREATE TABLE`, `CREATE INDEX`, `REFERENCES x(` and `ON x(` — that last
- * pattern needs a paren, so `AFTER INSERT ON tasks` never matches, and neither
- * does `INSERT INTO sync_oplog` in a trigger body. Raw trigger DDL in
- * `SCHEMA_SQL` would silently target unprefixed tables that do not exist. So
- * triggers are generated from the already-prefixed `TABLES.*` constants, the
- * same way `generateFtsSql` does it (packages/core/db/registry.ts).
+ * WHY EXPLICIT AND NOT TRIGGERS. Capture used to be SQLite triggers generated
+ * in code. Two things killed that: `CREATE TRIGGER` is undocumented on Durable
+ * Object SQLite, so the hub could not share the capture path; and a trigger
+ * fires for every writer, so the applier needed a database-level guard to stop
+ * pulled rows from being re-captured. With capture as a storage-layer step the
+ * applier, which writes rows directly, never enters it, and there is nothing to
+ * guard. The `apply_guard` column on `sync_state` is legacy and unread.
  *
- * CAPTURE IS ARMED BY DATA, NOT BY DDL. Triggers are installed unconditionally
- * but every one carries a `WHEN` clause that is false unless the `'local'`
- * `sync_state` row exists with `apply_guard = 0`. Two consequences:
- *   - a user who never enables sync pays baseline write cost
- *   - the applier can hold the guard while writing pulled ops, so applying does
- *     not re-capture and ping-pong forever
+ * CAPTURE IS ARMED BY DATA. Nothing is recorded unless the singleton `'local'`
+ * row in `sync_state` exists — a user who never enables sync pays one indexed
+ * read per write and nothing else.
  *
- * SCHEMA DRIFT SELF-HEALS. Payload columns are read from `PRAGMA table_info`,
- * so they match the live table including columns added by `runMigrations`. Each
- * trigger records the column set it was built for in a `-- capture-cols:`
- * marker, and `ensureOplogTriggers` drops and recreates any trigger whose
- * marker no longer matches. Plain `CREATE TRIGGER IF NOT EXISTS` would leave a
- * stale trigger in place and a newly added column would silently never
- * replicate — the marker turns "runs on every boot" into actually converged.
- * A trigger already matching is left untouched, so the steady state performs
- * no writes.
+ * VISIBILITY IS THE FILTER. A row whose `visibility` is `'private'` never
+ * becomes an op, whatever table it lives in. The set of tables that replicate
+ * (`SYNC_TABLES`) is still declared, because the resolver needs a family per
+ * table, but the per-row decision is the column.
+ *
+ * DELETES ARE CAPTURED FROM THE ROW THAT WAS. A delete carries no payload, but
+ * the visibility check and the cascade walk both need the row before it is
+ * gone, so callers snapshot first (`Oplog.snapshot`, `Oplog.cascadeOf`) and
+ * capture after.
  */
 
 import { z } from "zod";
@@ -40,7 +37,6 @@ import {
 	SYNC_TABLES,
 	type SyncOp,
 	type SyncOpKind,
-	SyncOpKindSchema,
 	SyncOpSchema,
 	type SyncTable,
 } from "../schemas";
@@ -52,11 +48,8 @@ import {
 /** Primary key of the singleton `sync_state` row. */
 const LOCAL_STATE_ID = "local";
 
-/**
- * Trigger-name prefix. Carries the table prefix: trigger names share one
- * namespace with every other table's triggers in a shared database.
- */
-const triggerPrefix = (): string => `${tablePrefix()}sync_cap`;
+/** The `visibility` value that keeps a row out of the log. */
+export const PRIVATE = "private";
 
 /**
  * Physical table for a replicated logical name. A function, not a map: the
@@ -65,42 +58,18 @@ const triggerPrefix = (): string => `${tablePrefix()}sync_cap`;
 export const physicalTableFor = (logical: SyncTable): string =>
 	physicalTable(logical);
 
-const TRIGGER_SUFFIX: Record<SyncOpKind, string> = {
-	insert: "ins",
-	update: "upd",
-	delete: "del",
-};
-
-const TRIGGER_EVENT: Record<SyncOpKind, string> = {
-	insert: "INSERT",
-	update: "UPDATE",
-	delete: "DELETE",
-};
-
-/** ISO-8601 with milliseconds, matching `new Date().toISOString()`. */
-const CAPTURED_AT_SQL = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`;
-
 /**
- * Marker embedded in every generated trigger recording the column set it
- * captures. SQLite stores a trigger's CREATE text verbatim apart from stripping
- * `IF NOT EXISTS` and the trailing semicolon, so comments survive and this is
- * readable back out of `sqlite_master` — which is what makes staleness
- * detectable without re-parsing the trigger body.
+ * Trigger-name suffixes the previous capture design installed. Dropped on boot
+ * so a database upgraded from trigger capture does not record every write twice.
  */
-const CAPTURE_COLS_MARKER = "-- capture-cols:";
-
-/**
- * Capture is armed only while the singleton row exists AND the guard is down.
- * One clause covers both suppression cases.
- */
-const armedSql = (): string => `WHEN EXISTS (
-    SELECT 1 FROM ${TABLES.sync_state}
-     WHERE id = '${LOCAL_STATE_ID}' AND apply_guard = 0
-  )`;
+const LEGACY_TRIGGER_SUFFIX = ["ins", "upd", "del"] as const;
 
 // ============================================================
 // Types
 // ============================================================
+
+/** A row snapshot keyed by DB column name. */
+export type Row = Record<string, unknown>;
 
 /**
  * The singleton local replication cursor. Distinct from `SyncStatus`, which is
@@ -111,13 +80,23 @@ export type SyncState = {
 	deviceId: string;
 	lastPushedSeq: number;
 	lastAppliedSeq: number;
-	applyGuard: boolean;
 	lastSyncAt?: string;
 	updatedAt: string;
 };
 
 /** A drained op carries its local `seq` so the caller knows what to ack. */
 export type DrainedOp = SyncOp & { seq: number };
+
+/** What a caller hands to capture: which row, in which table, did what. */
+export type CaptureInput = {
+	tbl: SyncTable;
+	op: SyncOpKind;
+	/** The row as it is (insert/update) or as it was (delete). */
+	row: Row;
+};
+
+/** Rows about to go, ordered so children precede their parent. */
+export type Cascade = { tbl: SyncTable; row: Row }[];
 
 type OplogRow = {
 	seq: number;
@@ -144,7 +123,6 @@ type SyncStateRow = {
 	device_id: string;
 	last_pushed_seq: number;
 	last_applied_seq: number;
-	apply_guard: number;
 	last_sync_at: string | null;
 	updated_at: string;
 };
@@ -162,77 +140,16 @@ const trySync = <T>(fn: () => T): Result<T> => {
 	}
 };
 
-const tableColumns = (db: Db, table: string): Result<string[]> =>
-	trySync(() =>
-		db
-			.query<{ name: string }, []>(`PRAGMA table_info(${table})`)
-			.all()
-			.map((row) => row.name),
-	);
+const asString = (value: unknown): string | undefined =>
+	typeof value === "string" ? value : undefined;
 
-const triggerName = (logical: SyncTable, op: SyncOpKind): string =>
-	`${triggerPrefix()}_${logical}_${TRIGGER_SUFFIX[op]}`;
+const asNumber = (value: unknown): number | undefined =>
+	typeof value === "number" ? value : undefined;
 
-/** Canonical form of a captured column set, for the marker and for comparison. */
-const columnFingerprint = (columns: string[]): string => columns.join(",");
-
-/** The column set an installed trigger captures; undefined if unmarked. */
-const installedFingerprint = (triggerSql: string): string | undefined =>
-	triggerSql
-		.split("\n")
-		.find((line) => line.trim().startsWith(CAPTURE_COLS_MARKER))
-		?.trim()
-		.slice(CAPTURE_COLS_MARKER.length)
-		.trim();
-
-const existingTriggerSql = (db: Db, name: string): Result<string | undefined> =>
-	trySync(
-		() =>
-			db
-				.query<{ sql: string | null }, [string]>(
-					`SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?`,
-				)
-				.get(name)?.sql ?? undefined,
-	);
-
-/** Full row snapshot keyed by column name. */
-const jsonObjectSql = (ref: "NEW" | "OLD", columns: string[]): string =>
-	`json_object(${columns.map((c) => `'${c}', ${ref}."${c}"`).join(", ")})`;
-
-const captureTriggerSql = (args: {
-	logical: SyncTable;
-	physical: string;
-	op: SyncOpKind;
-	columns: string[];
-	hasUpdatedAt: boolean;
-}): string => {
-	const { logical, physical, op, columns, hasUpdatedAt } = args;
-	const ref = op === "delete" ? "OLD" : "NEW";
-
-	// Deletes carry no snapshot; clock-less tables carry no LWW timestamp.
-	const rowUpdatedAt =
-		op === "delete" || !hasUpdatedAt ? "NULL" : `${ref}."updated_at"`;
-	const payload = op === "delete" ? "NULL" : jsonObjectSql(ref, columns);
-
-	return `CREATE TRIGGER IF NOT EXISTS ${triggerName(logical, op)}
-  ${CAPTURE_COLS_MARKER} ${columnFingerprint(columns)}
-  AFTER ${TRIGGER_EVENT[op]} ON ${physical}
-  ${armedSql()}
-  BEGIN
-    INSERT INTO ${TABLES.sync_oplog}
-      (op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at)
-    VALUES (
-      lower(hex(randomblob(16))),
-      (SELECT device_id FROM ${TABLES.sync_state} WHERE id = '${LOCAL_STATE_ID}'),
-      '${logical}',
-      ${ref}."id",
-      '${op}',
-      ${rowUpdatedAt},
-      ${payload},
-      ${CAPTURED_AT_SQL}
-    );
-  END;`;
-};
+const randomOpId = (): string =>
+	Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
+		b.toString(16).padStart(2, "0"),
+	).join("");
 
 const parsePayload = (
 	raw: string | null,
@@ -263,6 +180,8 @@ const toDrainedOp = (row: OplogRow): Result<DrainedOp> => {
 		op: row.op,
 		rowUpdatedAt: row.row_updated_at ?? undefined,
 		payload: payload.value,
+		updatedBy: asString(payload.value?.updated_by),
+		version: asNumber(payload.value?.version),
 		capturedAt: row.captured_at,
 	});
 	if (!parsed.success) {
@@ -274,80 +193,222 @@ const toDrainedOp = (row: OplogRow): Result<DrainedOp> => {
 	return ok({ ...parsed.data, seq: row.seq });
 };
 
+const selectRows = (
+	db: Db,
+	physical: string,
+	where: string,
+	params: string[],
+): Row[] =>
+	db
+		.query<Row, string[]>(`SELECT * FROM ${physical} WHERE ${where}`)
+		.all(...params);
+
+/**
+ * Everything the FK cascade will remove when `taskId` goes: the same walk for
+ * every subtask first (deepest first), then the task's own rows in the four
+ * child tables, then the task itself. Subtasks nest one level in practice; the
+ * walk is recursive so a deeper tree is still emitted FK-safely.
+ */
+const cascadeOfTask = (db: Db, taskId: string): Cascade => {
+	const out: Cascade = [];
+	for (const subtask of selectRows(db, TABLES.tasks, "parent_task_id = ?", [
+		taskId,
+	])) {
+		const id = asString(subtask.id);
+		if (id !== undefined) out.push(...cascadeOfTask(db, id));
+	}
+
+	const children: [SyncTable, string, string, string[]][] = [
+		["task_comments", TABLES.comments, "task_id = ?", [taskId]],
+		["task_work_log", TABLES.work_log, "task_id = ?", [taskId]],
+		["task_context_refs", TABLES.context_refs, "task_id = ?", [taskId]],
+		[
+			"task_links",
+			TABLES.task_links,
+			"source_id = ? OR target_id = ?",
+			[taskId, taskId],
+		],
+	];
+	for (const [tbl, physical, where, params] of children) {
+		for (const row of selectRows(db, physical, where, params)) {
+			out.push({ tbl, row });
+		}
+	}
+
+	const self = selectRows(db, TABLES.tasks, "id = ?", [taskId])[0];
+	if (self !== undefined) out.push({ tbl: "tasks", row: self });
+	return out;
+};
+
 // ============================================================
 // Oplog Namespace
 // ============================================================
 
 export namespace Oplog {
 	/**
-	 * Converge the capture triggers for every replicated table.
-	 *
-	 * Each trigger is (re)created only when it is missing or when the column set
-	 * it records no longer matches the live table, so the steady state is 21
-	 * cheap `sqlite_master` reads and no writes. Must run AFTER `runMigrations` —
-	 * the tables and their migration-added columns have to exist first.
-	 *
-	 * @returns how many triggers were written; 0 means everything was current.
+	 * Row snapshot → op. Pure: no database, no clock, no randomness beyond the
+	 * caller-supplied id. The one place the wire shape of a captured row is
+	 * decided, shared by live capture and by backfill.
 	 */
-	export const ensureOplogTriggers = (db: Db): Result<number> => {
-		let written = 0;
-
-		for (const logical of SYNC_TABLES) {
-			const physical = physicalTableFor(logical);
-
-			const columns = tableColumns(db, physical);
-			if (!columns.ok) return columns;
-			if (columns.value.length === 0) {
-				return err(
-					new Error(
-						`Cannot install capture triggers: table ${physical} does not exist`,
-					),
-				);
-			}
-			if (!columns.value.includes("id")) {
-				return err(
-					new Error(
-						`Cannot install capture triggers: table ${physical} has no id column to use as row_id`,
-					),
-				);
-			}
-
-			const fingerprint = columnFingerprint(columns.value);
-			const hasUpdatedAt = columns.value.includes("updated_at");
-
-			for (const op of SyncOpKindSchema.options) {
-				const name = triggerName(logical, op);
-
-				const existing = existingTriggerSql(db, name);
-				if (!existing.ok) return existing;
-				if (
-					existing.value !== undefined &&
-					installedFingerprint(existing.value) === fingerprint
-				) {
-					continue;
-				}
-
-				// Stale or absent. DROP first — CREATE ... IF NOT EXISTS alone would
-				// keep the old column set and the new column would never replicate.
-				const rebuilt = trySync(() => {
-					db.run(`DROP TRIGGER IF EXISTS ${name}`);
-					db.run(
-						captureTriggerSql({
-							logical,
-							physical,
-							op,
-							columns: columns.value,
-							hasUpdatedAt,
-						}),
-					);
-				});
-				if (!rebuilt.ok) return rebuilt;
-				written++;
-			}
-		}
-
-		return ok(written);
+	export const snapshotOp = (args: {
+		deviceId: string;
+		tbl: SyncTable;
+		op: SyncOpKind;
+		row: Row;
+		capturedAt: string;
+		opId?: string;
+	}): SyncOp => {
+		const isDelete = args.op === "delete";
+		return {
+			opId: args.opId ?? randomOpId(),
+			deviceId: args.deviceId,
+			tbl: args.tbl,
+			rowId: asString(args.row.id) ?? "",
+			op: args.op,
+			rowUpdatedAt: isDelete ? undefined : asString(args.row.updated_at),
+			payload: isDelete ? undefined : args.row,
+			updatedBy: isDelete ? undefined : asString(args.row.updated_by),
+			version: isDelete ? undefined : asNumber(args.row.version),
+			capturedAt: args.capturedAt,
+		};
 	};
+
+	/** Whether a row snapshot may enter the log. The filter is the column. */
+	export const isShared = (row: Row): boolean => row.visibility !== PRIVATE;
+
+	/** Write an already-built op. Idempotent on `op_id`. */
+	export const record = (db: Db, op: SyncOp): Result<boolean> =>
+		trySync(
+			() =>
+				db.run(
+					`INSERT OR IGNORE INTO ${TABLES.sync_oplog}
+             (op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+					[
+						op.opId,
+						op.deviceId,
+						op.tbl,
+						op.rowId,
+						op.op,
+						op.rowUpdatedAt ?? null,
+						op.payload === undefined ? null : JSON.stringify(op.payload),
+						op.capturedAt,
+					],
+				).changes > 0,
+		);
+
+	/**
+	 * The storage layer's one capture step. `ok(false)` means nothing was
+	 * recorded: sync is not armed, or the row is private.
+	 */
+	export const capture = (db: Db, input: CaptureInput): Result<boolean> => {
+		const state = getState(db);
+		if (!state.ok) return state;
+		if (state.value === undefined) return ok(false);
+		if (!isShared(input.row)) return ok(false);
+
+		return record(
+			db,
+			snapshotOp({
+				deviceId: state.value.deviceId,
+				tbl: input.tbl,
+				op: input.op,
+				row: input.row,
+				capturedAt: new Date().toISOString(),
+			}),
+		);
+	};
+
+	/**
+	 * `captureRow`, for use inside a `withDb` callback: a capture failure throws,
+	 * which the provider turns into the callback's `err`. Keeps every storage
+	 * write to one line of capture instead of a Result dance per function.
+	 */
+	export const afterWrite = (
+		db: Db,
+		tbl: SyncTable,
+		op: Exclude<SyncOpKind, "delete">,
+		rowId: string,
+	): void => {
+		const captured = captureRow(db, tbl, op, rowId);
+		if (!captured.ok) throw captured.error;
+	};
+
+	/** `captureDeletes` with the same throw-on-failure contract as `afterWrite`. */
+	export const afterDelete = (db: Db, rows: Cascade): void => {
+		const captured = captureDeletes(db, rows);
+		if (!captured.ok) throw captured.error;
+	};
+
+	/** Capture the current state of `rowId` as an insert or update. */
+	export const captureRow = (
+		db: Db,
+		tbl: SyncTable,
+		op: Exclude<SyncOpKind, "delete">,
+		rowId: string,
+	): Result<boolean> => {
+		const row = snapshot(db, tbl, rowId);
+		if (!row.ok) return row;
+		if (row.value === undefined) return ok(false);
+		return capture(db, { tbl, op, row: row.value });
+	};
+
+	/** Capture several rows as deletes, in the order given. */
+	export const captureDeletes = (db: Db, rows: Cascade): Result<number> => {
+		let recorded = 0;
+		for (const { tbl, row } of rows) {
+			const done = capture(db, { tbl, op: "delete", row });
+			if (!done.ok) return done;
+			if (done.value) recorded++;
+		}
+		return ok(recorded);
+	};
+
+	/** The row as it is now, for a capture or for a pre-delete snapshot. */
+	export const snapshot = (
+		db: Db,
+		tbl: SyncTable,
+		rowId: string,
+	): Result<Row | undefined> =>
+		trySync(
+			() =>
+				db
+					.query<Row, [string]>(
+						`SELECT * FROM ${physicalTableFor(tbl)} WHERE id = ?`,
+					)
+					.get(rowId) ?? undefined,
+		);
+
+	/**
+	 * Every row the FK cascade will remove when task `taskId` is deleted,
+	 * children first and the task itself last. Read BEFORE the delete.
+	 */
+	export const cascadeOf = (db: Db, taskId: string): Result<Cascade> =>
+		trySync(() => cascadeOfTask(db, taskId));
+
+	/**
+	 * Remove the triggers the trigger-based design installed. Idempotent, cheap,
+	 * and load-bearing on any database that predates explicit capture: leaving
+	 * them in place would record every write twice.
+	 */
+	export const dropLegacyTriggers = (db: Db): Result<number> =>
+		trySync(() => {
+			let dropped = 0;
+			for (const logical of SYNC_TABLES) {
+				for (const suffix of LEGACY_TRIGGER_SUFFIX) {
+					const name = `${tablePrefix()}sync_cap_${logical}_${suffix}`;
+					const exists = db
+						.query<{ one: number }, [string]>(
+							`SELECT 1 AS one FROM sqlite_master WHERE type = 'trigger' AND name = ?`,
+						)
+						.get(name);
+					if (!exists) continue;
+					db.run(`DROP TRIGGER IF EXISTS ${name}`);
+					dropped++;
+				}
+			}
+			return dropped;
+		});
 
 	/**
 	 * Create the singleton state row, which is what arms capture.
@@ -372,7 +433,7 @@ export namespace Oplog {
 		const row = trySync(() =>
 			db
 				.query<SyncStateRow, [string]>(
-					`SELECT device_id, last_pushed_seq, last_applied_seq, apply_guard, last_sync_at, updated_at
+					`SELECT device_id, last_pushed_seq, last_applied_seq, last_sync_at, updated_at
              FROM ${TABLES.sync_state} WHERE id = ?`,
 				)
 				.get(LOCAL_STATE_ID),
@@ -384,7 +445,6 @@ export namespace Oplog {
 			deviceId: row.value.device_id,
 			lastPushedSeq: row.value.last_pushed_seq,
 			lastAppliedSeq: row.value.last_applied_seq,
-			applyGuard: row.value.apply_guard === 1,
 			lastSyncAt: row.value.last_sync_at ?? undefined,
 			updatedAt: row.value.updated_at,
 		});
@@ -511,36 +571,4 @@ export namespace Oplog {
 				[new Date().toISOString(), LOCAL_STATE_ID],
 			);
 		});
-
-	/** Raise or lower the capture guard. Prefer `withApplyGuard`. */
-	export const setApplyGuard = (db: Db, on: boolean): Result<void> =>
-		trySync(() => {
-			db.run(
-				`UPDATE ${TABLES.sync_state} SET apply_guard = ?, updated_at = ? WHERE id = ?`,
-				[on ? 1 : 0, new Date().toISOString(), LOCAL_STATE_ID],
-			);
-		});
-
-	/**
-	 * Run `fn` with capture suppressed, clearing the guard on every exit path.
-	 * A guard left raised would silently stop capturing forever, so a failure
-	 * to clear it is surfaced rather than swallowed.
-	 */
-	export const withApplyGuard = async <T>(
-		db: Db,
-		fn: () => T | Promise<T>,
-	): Promise<Result<T>> => {
-		const raised = setApplyGuard(db, true);
-		if (!raised.ok) return raised;
-
-		try {
-			const value = await fn();
-			const lowered = setApplyGuard(db, false);
-			if (!lowered.ok) return lowered;
-			return ok(value);
-		} catch (e) {
-			setApplyGuard(db, false);
-			return err(e instanceof Error ? e : new Error(String(e)));
-		}
-	};
 }

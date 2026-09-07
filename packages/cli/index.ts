@@ -1,3 +1,5 @@
 #!/usr/bin/env bun
-/** Package identity, replaced by the real barrel as slices land. */
-export const PACKAGE_NAME = "cabane";
+/** `cabane` binary. Everything lives in src/. */
+import { main } from "./src/main";
+
+process.exit(await main(process.argv.slice(2)));
