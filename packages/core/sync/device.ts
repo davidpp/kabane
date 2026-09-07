@@ -124,6 +124,7 @@ export namespace SyncDevice {
 				token: config.token,
 				deviceId: deviceId.value,
 				name: hostname(),
+				headers: config.headers,
 				batchBytes: config.batchBytes,
 				maxAttempts: opts.maxAttempts,
 				fetchImpl: opts.fetchImpl,

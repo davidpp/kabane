@@ -31,6 +31,14 @@ export const SyncConfigSchema = z.object({
 	deviceId: z.string().optional(),
 
 	/**
+	 * Extra request headers sent with every push and pull. This is how a device
+	 * passes the edge in front of the hub: Cloudflare Access service-token
+	 * credentials (`CF-Access-Client-Id` / `CF-Access-Client-Secret`) travel
+	 * here, separate from the log's own bearer `token`.
+	 */
+	headers: z.record(z.string()).optional(),
+
+	/**
 	 * Push chunk ceiling in bytes. 256 KB sits comfortably inside every limit in
 	 * the path — the DO's 2 MB bound-parameter cap is the tight one.
 	 */

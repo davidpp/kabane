@@ -99,6 +99,8 @@ export type HttpTransportConfig = {
 	deviceId: string;
 	/** Friendly name for the server's `devices` row. */
 	name?: string;
+	/** Extra headers on every request, e.g. Access service-token credentials. */
+	headers?: Record<string, string>;
 	/** Push chunk ceiling in bytes (default 256 KB). */
 	batchBytes?: number;
 	/** Attempts per chunk (default 3). */
@@ -264,6 +266,7 @@ export namespace HttpTransport {
 				doFetch(routeUrl(config.url, route), {
 					method: "POST",
 					headers: {
+						...config.headers,
 						Authorization: `Bearer ${config.token}`,
 						"Content-Type": "application/json",
 					},
