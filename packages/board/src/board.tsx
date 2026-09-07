@@ -1,0 +1,429 @@
+/** @jsxImportSource @opentui/react */
+// The grouped-list surface (linear-tui style): a header line + one <scrollbox> holding sections by
+// state, each a muted header over one truncated line per task. Subtasks render indented under an
+// expanded parent. Pure rendering — it takes sections + selection + expansion and draws them; data
+// loading, selection, and expansion state live in App / BoardNav.
+
+import { TASK_PRIORITY_DISPLAY, TASK_STATE_DISPLAY } from "@cabane/core";
+import {
+	type MouseEvent,
+	type ScrollBoxRenderable,
+	TextAttributes,
+} from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
+import type { ReactNode, RefObject } from "react";
+import { BoardActivity } from "./activity";
+import type { BoardData } from "./data";
+import { StatusBar } from "./footer";
+import { Keymap } from "./keymap";
+import { BoardNav } from "./nav";
+import type { ActivityCard } from "./ports";
+import { SPINNER_IDLE, useSpinnerFrame } from "./spinner";
+
+// OpenTUI needs terminal colors (hex); the display configs carry Tailwind class tokens. Map the
+// priority tokens the board uses to hex so display.ts stays the single source of priority color.
+const TAILWIND_HEX: Record<string, string> = {
+	"text-gray-400": "#9ca3af",
+	"text-gray-500": "#6b7280",
+	"text-red-500": "#ef4444",
+	"text-orange-500": "#f97316",
+};
+
+const FALLBACK_COLOR = "#9ca3af";
+// The one accent — used for the review flag and (via the priority palette) high-priority ids.
+const REVIEW_COLOR = "#f97316";
+// Muted gray for all chrome: kind/state meta, section headers, footer hints.
+const MUTED_COLOR = "#6b7280";
+// Never let the title column collapse to nothing on a very narrow frame.
+const MIN_TITLE_WIDTH = 4;
+// Columns held back from the terminal width for the scrollbar + a safety margin, so a full row never
+// wraps into a second line (the small-screen fix is truncation, never wrapping).
+const RESERVED_COLS = 2;
+
+const toHex = (token: string): string => TAILWIND_HEX[token] ?? FALLBACK_COLOR;
+
+// Copy-feedback colors: accent on success (the one place accent flashes), error red on failure.
+const SUCCESS_COLOR = "#f97316";
+const ERROR_COLOR = "#ef4444";
+
+// Selection = a subtle dark highlight + bright, explicit fg on every cell. NEVER TextAttributes.INVERSE:
+// with unset colors inverse swaps undefined/default and renders white-on-white in a real terminal
+// (JJAK-1017). The tree caret (`▸`/`▾`) is NOT the selection marker — it signals expandability only.
+export const SELECTED_BG = "#2f2f2f";
+export const SELECTED_FG = "#e6edf3";
+
+// Per-row selection styling. Pure so nav-less tests can assert the invariant that a selected row ALWAYS
+// pairs an explicit bg with an explicit fg on every cell and never emits INVERSE. `idFg` keeps the
+// priority color when idle (the one content color); selection overrides it for contrast.
+export type RowStyle = {
+	bg: string | undefined;
+	idFg: string;
+	titleFg: string | undefined;
+	metaFg: string;
+	caretFg: string;
+};
+
+export const rowStyle = (selected: boolean, priorityColor: string): RowStyle =>
+	selected
+		? {
+				bg: SELECTED_BG,
+				idFg: SELECTED_FG,
+				titleFg: SELECTED_FG,
+				metaFg: SELECTED_FG,
+				caretFg: SELECTED_FG,
+			}
+		: {
+				bg: undefined,
+				idFg: priorityColor,
+				titleFg: undefined,
+				metaFg: MUTED_COLOR,
+				caretFg: MUTED_COLOR,
+			};
+
+// Truncate to a single line with a trailing ellipsis — the whole point of the list layout is one row
+// per task that never wraps, so titles are cut to fit the frame.
+const truncate = (text: string, max: number): string =>
+	text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
+
+// In-flight accents share the board's one accent color — the palette is deliberately narrow.
+const LOOP_COLOR = "#f97316";
+
+// The ` · `-prefixed badge for a row's first in-flight card: `⠹ loop · implement 3`. Paused shows ⏸
+// with no churn; a stale running card (the host's crashed-runner heuristic) keeps the badge but drops
+// the animation and dims to muted. Exported pure so the badge text/width contract is assertable
+// without a renderer.
+export const cardBadge = (
+	card: ActivityCard,
+	frame: string,
+): { text: string; muted: boolean } => {
+	if (card.status === "paused")
+		return { text: ` · ⏸ ${card.label} · paused`, muted: false };
+	const glyph = card.status === "running" && !card.stale ? frame : SPINNER_IDLE;
+	const detail = card.detail[0] ?? card.status;
+	return {
+		text: ` · ${glyph} ${card.label} · ${detail}`,
+		muted: card.stale === true,
+	};
+};
+
+// Extra in-flight cards beyond the first collapse to a count so a busy row never wraps.
+export const moreBadge = (count: number, frame: string): string =>
+	count > 0 ? ` · ${frame} +${count}` : "";
+
+// The header status strip: ` · ⠹ 2 loops · 1 run · 1 input` when anything is in flight, ""
+// otherwise (quiet by default). Cards count under their host-given `kind`, in first-seen order.
+export const activityStrip = (
+	activity: BoardActivity.ActivityMap,
+	frame: string,
+): string => {
+	const byKind = new Map<string, number>();
+	for (const card of activity.cards) {
+		if (
+			card.status !== "running" &&
+			card.status !== "pending" &&
+			card.status !== "paused"
+		)
+			continue;
+		byKind.set(card.kind, (byKind.get(card.kind) ?? 0) + 1);
+	}
+	const inputs = activity.questionsByTaskId.size;
+	const parts: string[] = [];
+	let first = true;
+	for (const [kind, count] of byKind) {
+		// Hosts name kinds in the plural ("loops"); one of them reads better singular.
+		const noun = count === 1 && kind.endsWith("s") ? kind.slice(0, -1) : kind;
+		parts.push(`${first ? `${frame} ` : ""}${count} ${noun}`);
+		first = false;
+	}
+	if (inputs > 0) parts.push(`${inputs} input`);
+	return parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
+};
+
+// Whether the spinner interval should run at all: a live (non-stale) running card animates the
+// shared spinner frame.
+export const anyActivityRunning = BoardActivity.anyRunning;
+
+// The tree caret for a row: two spaces where there is nothing to expand so ids stay column-aligned.
+const caretFor = (row: BoardNav.VisibleRow): string => {
+	if (row.depth === 1) return "    ";
+	if (!row.hasChildren) return "  ";
+	return row.expanded ? "▾ " : "▸ ";
+};
+
+const Row = ({
+	row,
+	rowIndex,
+	selected,
+	available,
+	activity,
+	spinnerFrame,
+	onSelect,
+	onToggle,
+}: {
+	row: BoardNav.VisibleRow;
+	// Index into the flattened visible-row list — the address mouse handlers dispatch back to the reducer.
+	rowIndex: number;
+	selected: boolean;
+	available: number;
+	activity?: BoardActivity.ActivityMap;
+	spinnerFrame: string;
+	onSelect?: (rowIndex: number) => void;
+	onToggle?: (rowIndex: number) => void;
+}): ReactNode => {
+	const task = row.task;
+	const style = rowStyle(
+		selected,
+		toHex(TASK_PRIORITY_DISPLAY[task.priority].color),
+	);
+	const shortId = task.shortId ?? task.id.slice(0, 8);
+	const caret = caretFor(row);
+	// Top-level rows show their kind; subtasks show their own state (it may differ from the parent's
+	// section) — both muted.
+	const meta =
+		row.depth === 1
+			? ` · ${TASK_STATE_DISPLAY[task.state].label.toLowerCase()}`
+			: ` · ${task.kind}`;
+	const review = task.needsReview ? " · review" : "";
+	// In-flight badges: cards match by task id or shortId, questions by task id.
+	const cards = activity
+		? BoardActivity.inFlightForTask(activity, task.id, shortId)
+		: [];
+	const badge = cards[0] ? cardBadge(cards[0], spinnerFrame) : null;
+	const more = moreBadge(cards.length - 1, spinnerFrame);
+	const input = activity?.questionsByTaskId.has(task.id) ? " · ? input" : "";
+	// Badge widths count against the title so a badged row still never wraps.
+	const fixed =
+		caret.length +
+		shortId.length +
+		2 +
+		meta.length +
+		review.length +
+		(badge?.text.length ?? 0) +
+		more.length +
+		input.length;
+	const title = truncate(
+		task.title,
+		Math.max(MIN_TITLE_WIDTH, available - fixed),
+	);
+
+	// Caret click toggles expansion without also selecting/opening — stopPropagation keeps the row box's
+	// select handler from firing on the same press.
+	const toggle =
+		onToggle && row.depth === 0 && row.hasChildren
+			? (event: MouseEvent) => {
+					event.stopPropagation();
+					onToggle(rowIndex);
+				}
+			: undefined;
+
+	return (
+		<box
+			id={`row-${task.id}`}
+			onMouseDown={onSelect ? () => onSelect(rowIndex) : undefined}
+			style={{
+				flexDirection: "row",
+				flexShrink: 0,
+				backgroundColor: style.bg,
+			}}
+		>
+			<text bg={style.bg} fg={style.caretFg} onMouseDown={toggle}>
+				{caret}
+			</text>
+			<text bg={style.bg} fg={style.titleFg}>
+				<span fg={style.idFg}>{shortId}</span>
+				{"  "}
+				{title}
+				<span fg={style.metaFg}>{meta}</span>
+				{task.needsReview ? <span fg={REVIEW_COLOR}> · review</span> : null}
+				{badge ? (
+					<span fg={badge.muted ? MUTED_COLOR : LOOP_COLOR}>{badge.text}</span>
+				) : null}
+				{more ? <span fg={LOOP_COLOR}>{more}</span> : null}
+				{input ? <span fg={LOOP_COLOR}>{input}</span> : null}
+			</text>
+		</box>
+	);
+};
+
+const Section = ({
+	group,
+	selectedId,
+	nextRowIndex,
+	available,
+	activity,
+	spinnerFrame,
+	onSelect,
+	onToggle,
+}: {
+	// Pre-flattened rows from BoardNav.visibleSections — the SAME flatten the reducer addresses, so
+	// the running row index below matches BoardNav.visibleRows by construction (filter included).
+	group: BoardNav.SectionRows;
+	selectedId: string | null;
+	// A running counter shared across sections so a row's index matches BoardNav.visibleRows. Mutated
+	// as rows are emitted, then returned to the caller for the next section.
+	nextRowIndex: { value: number };
+	available: number;
+	activity?: BoardActivity.ActivityMap;
+	spinnerFrame: string;
+	onSelect?: (rowIndex: number) => void;
+	onToggle?: (rowIndex: number) => void;
+}): ReactNode => {
+	// The header count is top-level rows only (matches the unfiltered section.rows.length; under a
+	// filter it becomes the matched-parent count for that section).
+	const topLevel = group.rows.filter((row) => row.depth === 0).length;
+	return (
+		<box style={{ flexDirection: "column", flexShrink: 0, marginBottom: 1 }}>
+			<text fg={MUTED_COLOR}>
+				{group.section.label.toLowerCase()} · {topLevel}
+			</text>
+			{group.rows.map((row) => (
+				<Row
+					key={row.task.id}
+					row={row}
+					rowIndex={nextRowIndex.value++}
+					selected={row.task.id === selectedId}
+					available={available}
+					activity={activity}
+					spinnerFrame={spinnerFrame}
+					onSelect={onSelect}
+					onToggle={onToggle}
+				/>
+			))}
+		</box>
+	);
+};
+
+const SEARCH_OFF: BoardNav.SearchState = { mode: "off" };
+
+// The footer, ONE line, four-way by priority: a transient notice always wins > search-input mode shows
+// the live query with a cursor glyph (normal fg — it's an active input, not chrome) > a committed
+// filter shows a muted summary with the match count > the trimmed key hints (full list behind `?`).
+// Always a StatusBar so the row is reserved and backgrounded whatever the variant.
+const Footer = ({
+	notice,
+	search,
+	matchCount,
+	hints,
+}: {
+	notice: BoardNav.Notice | null | undefined;
+	search: BoardNav.SearchState;
+	matchCount: number;
+	hints: string;
+}): ReactNode => {
+	if (notice) {
+		return (
+			<StatusBar
+				text={notice.undoable ? `${notice.text} · ⌃z undo` : notice.text}
+				fg={notice.tone === "success" ? SUCCESS_COLOR : ERROR_COLOR}
+			/>
+		);
+	}
+	if (search.mode === "typing") {
+		return <StatusBar text={`/${search.query}▌`} />;
+	}
+	if (search.mode === "committed") {
+		const matches = matchCount === 1 ? "1 match" : `${matchCount} matches`;
+		return (
+			<StatusBar
+				text={`search: "${search.query}" · ${matches} · esc clear`}
+				fg={MUTED_COLOR}
+			/>
+		);
+	}
+	return <StatusBar text={hints} fg={MUTED_COLOR} />;
+};
+
+export type BoardProps = {
+	sections: BoardData.BoardSection[];
+	expanded: ReadonlySet<string>;
+	selectedId: string | null;
+	// The `/` search state; drives both the row filter and the footer. Optional so render-only tests
+	// without search keep working.
+	search?: BoardNav.SearchState;
+	// In-flight activity (host cards + awaiting-input questions), fetched by app.tsx in the same 5s
+	// poll as the board data. Optional — absent means nothing in flight (quiet by default).
+	activity?: BoardActivity.ActivityMap;
+	scopeLabel?: string;
+	filterLabel?: string;
+	// The list's scrollbox; app.tsx holds the ref so it can scroll the selected row into view.
+	scrollRef?: RefObject<ScrollBoxRenderable | null>;
+	// Mouse callbacks; absent in the render-only tests. app.tsx routes both through BoardNav.reduceMouse.
+	onSelect?: (rowIndex: number) => void;
+	onToggle?: (rowIndex: number) => void;
+	// Transient footer feedback; when present it replaces the key hints in the footer for ~1.5s.
+	notice?: BoardNav.Notice | null;
+	// When the sidebar is visible, its width is subtracted from the available row width for
+	// truncation — otherwise a badged row wraps into a second line.
+	sidebarWidth?: number;
+};
+
+export const Board = ({
+	sections,
+	expanded,
+	selectedId,
+	search = SEARCH_OFF,
+	activity,
+	scopeLabel,
+	filterLabel,
+	scrollRef,
+	onSelect,
+	onToggle,
+	notice,
+	sidebarWidth: sbWidth = 0,
+}: BoardProps): ReactNode => {
+	const { width } = useTerminalDimensions();
+	// One shared spinner frame for every badge + the header strip; the interval only runs while a live
+	// running loop is visible (the leaked-idle-timer gotcha — see spinner.ts).
+	const spinnerFrame = useSpinnerFrame(
+		activity ? anyActivityRunning(activity) : false,
+	);
+	const strip = activity ? activityStrip(activity, spinnerFrame) : "";
+	const available = Math.max(MIN_TITLE_WIDTH, width - RESERVED_COLS - sbWidth);
+	const header = ["Cabane", scopeLabel ?? "all scopes", filterLabel].filter(
+		(part): part is string => Boolean(part),
+	);
+	// App-specific keys only — the vim-obvious ones live in the `?` help overlay (StatusBar handles
+	// its own truncation on narrow frames).
+	const hints = Keymap.hintLine(Keymap.BOARD_FOOTER);
+	// The SAME flatten the reducer uses for j/k, mouse addressing, and scroll-into-view — filter
+	// included — so the running rowIndex below is in lockstep with BoardNav.visibleRows.
+	const groups = BoardNav.visibleSections(sections, expanded, search);
+	const matchCount = groups.reduce((n, group) => n + group.rows.length, 0);
+	const filtering = BoardNav.activeQuery(search) !== "";
+	const nextRowIndex = { value: 0 };
+	return (
+		<box style={{ flexDirection: "column", flexGrow: 1 }}>
+			<text>
+				<span attributes={TextAttributes.BOLD}>
+					{header.join(" · ").toLowerCase()}
+				</span>
+				{strip ? <span fg={MUTED_COLOR}>{strip}</span> : null}
+			</text>
+			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
+				{filtering && groups.length === 0 ? (
+					<text fg={MUTED_COLOR}>no matches</text>
+				) : (
+					groups.map((group) => (
+						<Section
+							key={group.section.state}
+							group={group}
+							selectedId={selectedId}
+							nextRowIndex={nextRowIndex}
+							available={available}
+							activity={activity}
+							spinnerFrame={spinnerFrame}
+							onSelect={onSelect}
+							onToggle={onToggle}
+						/>
+					))
+				)}
+			</scrollbox>
+			<Footer
+				notice={notice}
+				search={search}
+				matchCount={matchCount}
+				hints={hints}
+			/>
+		</box>
+	);
+};

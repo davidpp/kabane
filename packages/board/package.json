@@ -15,10 +15,15 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
-		"@cabane/core": "workspace:*"
+		"@cabane/core": "workspace:*",
+		"@opentui/core": "0.4.2",
+		"@opentui/react": "0.4.2",
+		"react": "19.2.3"
 	},
 	"devDependencies": {
+		"@cabane/sqlite": "workspace:*",
 		"@types/bun": "1.4.0",
+		"@types/react": "19.2.7",
 		"typescript": "5.9.3"
 	}
 }

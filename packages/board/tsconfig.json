@@ -3,8 +3,10 @@
 	"include": ["**/*.ts", "**/*.tsx"],
 	"exclude": ["node_modules"],
 	"compilerOptions": {
-		"lib": ["ESNext"],
+		"lib": ["ESNext", "DOM"],
 		"types": ["bun"],
-		"jsx": "react-jsx"
+		/* OpenTUI React binding: Bun-native react-jsx, OpenTUI JSX namespace. */
+		"jsx": "react-jsx",
+		"jsxImportSource": "@opentui/react"
 	}
 }
