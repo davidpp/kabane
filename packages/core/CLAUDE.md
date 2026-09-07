@@ -102,6 +102,23 @@ Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is
 - **Projects**: a flat `projectId` on the task, not a scope boundary.
 - **Scope**: `scopeUri` is a string the core parses and formats (`ScopeUri`) and never resolves. Bare ids normalize to `jake://scope/<id>`; the scheme is kept for wire compatibility with existing data.
 
+## MCP (`mcp/`)
+
+`CABANE_TOOLS` is the one tool list: name, description, zod input shape, `read` or
+`write`, handler over `Planner` returning `Result`. Both servers build from it:
+`serveStdio` (the CLI's `cabane mcp`) and `handleHttpRequest` (the hub, stateless
+Streamable HTTP, fresh server per request). Only the replicated surface is exposed —
+no session tools, because sessions do not sync and the hub would have nothing to
+answer with. A `ToolContext` carries `basePath`, the `actor`, an optional
+`defaultScope`, and `scopeRequired`: a device defaults scope from its directory, the
+hub demands it and points at `cabane_scopeList`.
+
+The low-level SDK `Server` is used deliberately: `McpServer.registerTool` infers
+over each zod shape and, fed a generic `ZodRawShape`, tsc recurses until it gives up
+(TS2589). Inputs are validated by hand with `z.object(shape).safeParse`, and JSON
+schema comes from `zod-to-json-schema`. Handler `err`s become `isError` tool
+results, never thrown.
+
 ## Not moved from Jake (host adapters)
 
 `parser/` (AI extraction), `workflows/`, `hooks/`, `trpc/`, `cli/`, `widgets/`, `jake-module.ts`, `db-registration.ts`. `storage/schema.sql.ts` was dead and was not ported. The `proposals` surface is retired in Jake (JJAK-982) but still consumed by its CLI, router and dashboard, so it moved as-is; drop it once those consumers are gone.
