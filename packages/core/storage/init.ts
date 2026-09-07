@@ -3,9 +3,8 @@
  *
  * `init` is idempotent and cheap, so every host calls it at boot: the schema
  * is IF NOT EXISTS throughout, migrations are guarded by column checks, and
- * the capture triggers only rewrite themselves when their column set drifted.
- * Order matters: tables, then migration-added columns, then triggers, because
- * the triggers read the live column list.
+ * the legacy capture triggers are dropped if a pre-explicit-capture database
+ * still carries them. Order matters: tables, then migration-added columns.
  */
 
 import { applySchema } from "../db/schema";
@@ -22,11 +21,9 @@ export namespace Planner {
 		const migrations = await runMigrations(basePath);
 		if (!migrations.ok) return migrations;
 
-		const triggers = await withDb(basePath, (db) =>
-			Oplog.ensureOplogTriggers(db),
-		);
-		if (!triggers.ok) return triggers;
-		if (!triggers.value.ok) return triggers.value;
+		const legacy = await withDb(basePath, (db) => Oplog.dropLegacyTriggers(db));
+		if (!legacy.ok) return legacy;
+		if (!legacy.value.ok) return legacy.value;
 		return ok(undefined);
 	};
 

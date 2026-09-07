@@ -4,7 +4,7 @@
 
 import { Events, PLANNER_EVENTS } from "../events";
 import { err, ok, type Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 import {
 	type Task,
 	type TaskDraft,
@@ -24,6 +24,7 @@ import {
 	TABLES,
 	ULID_LENGTH,
 } from "./helpers";
+import { Oplog } from "./oplog";
 
 export namespace Planner {
 	// ----------------------------------------------------------
@@ -143,8 +144,9 @@ export namespace Planner {
           parent_task_id, project_id, needs_review, reviewed_at, reviewed_by,
           verification,
           tags, context,
+          updated_by,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					id,
 					shortId,
@@ -172,10 +174,12 @@ export namespace Planner {
 					draft.verification ? JSON.stringify(draft.verification) : null,
 					JSON.stringify(draft.tags ?? []),
 					draft.context ?? null,
+					Runtime.actor(),
 					now,
 					now,
 				],
 			);
+			Oplog.afterWrite(db, "tasks", "insert", id);
 
 			return {
 				id,
@@ -369,8 +373,12 @@ export namespace Planner {
 
 		const updateResult = await withDb(basePath, (db) => {
 			const now = new Date().toISOString();
-			const sets: string[] = ["updated_at = ?"];
-			const params: (string | number | null)[] = [now];
+			const sets: string[] = [
+				"updated_at = ?",
+				"version = version + 1",
+				"updated_by = ?",
+			];
+			const params: (string | number | null)[] = [now, Runtime.actor()];
 
 			if (updates.title !== undefined) {
 				sets.push("title = ?");
@@ -470,6 +478,7 @@ export namespace Planner {
 				`UPDATE ${TABLES.tasks} SET ${sets.join(", ")} WHERE id = ?`,
 				params,
 			);
+			Oplog.afterWrite(db, "tasks", "update", id);
 		});
 
 		if (!updateResult.ok) return updateResult;
@@ -489,7 +498,14 @@ export namespace Planner {
 		id: string,
 	): Promise<Result<void>> => {
 		const result = await withDb(basePath, (db) => {
-			db.run(`DELETE FROM ${TABLES.tasks} WHERE id = ?`, [id]);
+			// Snapshot what the FK cascade is about to remove, children first, so
+			// the log replays FK-safely on every other device.
+			const cascade = Oplog.cascadeOf(db, id);
+			if (!cascade.ok) throw cascade.error;
+			db.transaction(() => {
+				db.run(`DELETE FROM ${TABLES.tasks} WHERE id = ?`, [id]);
+				Oplog.afterDelete(db, cascade.value);
+			})();
 		});
 
 		// Emit event for SSE subscribers

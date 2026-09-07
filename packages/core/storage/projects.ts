@@ -5,7 +5,7 @@
  */
 
 import { err, ok, type Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 import type {
 	Project,
 	ProjectDraft,
@@ -24,6 +24,7 @@ import {
 	TABLES,
 	ULID_LENGTH,
 } from "./helpers";
+import { Oplog } from "./oplog";
 
 export namespace Planner {
 	// ----------------------------------------------------------
@@ -127,8 +128,8 @@ export namespace Planner {
 			db.run(
 				`INSERT INTO ${TABLES.projects} (
           id, short_id, title, description, state, scope_uri,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          updated_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					id,
 					shortId,
@@ -136,10 +137,12 @@ export namespace Planner {
 					draft.description ?? null,
 					draft.state ?? "active",
 					scopeUri ?? null,
+					Runtime.actor(),
 					now,
 					now,
 				],
 			);
+			Oplog.afterWrite(db, "projects", "insert", id);
 
 			return {
 				id,
@@ -176,8 +179,12 @@ export namespace Planner {
 
 		const updateResult = await withDb(basePath, (db) => {
 			const now = new Date().toISOString();
-			const sets: string[] = ["updated_at = ?"];
-			const params: (string | null)[] = [now];
+			const sets: string[] = [
+				"updated_at = ?",
+				"version = version + 1",
+				"updated_by = ?",
+			];
+			const params: (string | null)[] = [now, Runtime.actor()];
 
 			if (updates.title !== undefined) {
 				sets.push("title = ?");
@@ -201,6 +208,7 @@ export namespace Planner {
 				`UPDATE ${TABLES.projects} SET ${sets.join(", ")} WHERE id = ?`,
 				params,
 			);
+			Oplog.afterWrite(db, "projects", "update", id);
 		});
 
 		if (!updateResult.ok) return updateResult;
@@ -212,12 +220,33 @@ export namespace Planner {
 		id: string,
 	): Promise<Result<void>> => {
 		return withDb(basePath, (db) => {
-			// Clear project_id on tasks that reference this project
-			db.run(
-				`UPDATE ${TABLES.tasks} SET project_id = NULL WHERE project_id = ?`,
-				[id],
-			);
-			db.run(`DELETE FROM ${TABLES.projects} WHERE id = ?`, [id]);
+			const project = Oplog.snapshot(db, "projects", id);
+			if (!project.ok) throw project.error;
+			const orphaned = db
+				.query<{ id: string }, [string]>(
+					`SELECT id FROM ${TABLES.tasks} WHERE project_id = ?`,
+				)
+				.all(id)
+				.map((row) => row.id);
+
+			db.transaction(() => {
+				// Clearing project_id is a task write like any other: clocked,
+				// versioned, and captured per task, so the other devices see the
+				// same clear instead of an FK they cannot satisfy.
+				db.run(
+					`UPDATE ${TABLES.tasks}
+              SET project_id = NULL, updated_at = ?, version = version + 1, updated_by = ?
+            WHERE project_id = ?`,
+					[new Date().toISOString(), Runtime.actor(), id],
+				);
+				for (const taskId of orphaned) {
+					Oplog.afterWrite(db, "tasks", "update", taskId);
+				}
+				db.run(`DELETE FROM ${TABLES.projects} WHERE id = ?`, [id]);
+				if (project.value !== undefined) {
+					Oplog.afterDelete(db, [{ tbl: "projects", row: project.value }]);
+				}
+			})();
 		});
 	};
 
