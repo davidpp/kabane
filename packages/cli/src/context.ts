@@ -29,10 +29,15 @@ export type Command = {
 	run: (args: ParsedArgs, ctx: Ctx) => Promise<Outcome>;
 };
 
-export const configureRuntime = (config: Config): void => {
+/**
+ * `actor` is stamped into `updated_by` on every local write, so it has to be
+ * the effective one for this invocation (`--as` wins over the config).
+ */
+export const configureRuntime = (config: Config, actor: string): void => {
 	Runtime.configure({
 		provider: SqliteDb.provider({ dbName: DB_NAME }),
 		tablePrefix: "",
+		actor: () => actor,
 		syncSettings: async () => ok(config.sync),
 	});
 };
@@ -45,15 +50,11 @@ export const openContext = async (
 ): Promise<Result<Ctx>> => {
 	const config = loadConfig(home);
 	if (!config.ok) return config;
-	configureRuntime(config.value);
+	const actor = flagString(args, "as") ?? config.value.actor;
+	configureRuntime(config.value, actor);
 	const initialized = await Planner.init(home);
 	if (!initialized.ok) return initialized;
-	return ok({
-		home,
-		cwd,
-		config: config.value,
-		actor: flagString(args, "as") ?? config.value.actor,
-	});
+	return ok({ home, cwd, config: config.value, actor });
 };
 
 /** `--scope` wins, then `./.cabane/scope`, then nothing. */

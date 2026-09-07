@@ -38,7 +38,7 @@ export const init: Command = {
 
 		const saved = saveConfig(ctx.home, parsed.data);
 		if (!saved.ok) return failure(saved.error);
-		configureRuntime(parsed.data);
+		configureRuntime(parsed.data, parsed.data.actor);
 		const initialized = await Planner.init(ctx.home);
 		if (!initialized.ok) return failure(initialized.error);
 
