@@ -25,8 +25,18 @@ subclass is the one framework-imposed exception), `Result<T>` never throw, expli
 dependencies, co-located `*.test.ts`, `safeParse` only, no `as any`, no `!`, no `@ts-ignore`.
 Plain `zod` for domain schemas. Biome for lint and format.
 
-Gate: `bun run check && bun run typecheck && bun test` at the root; the Worker suite runs
-under vitest via `bun run --cwd packages/worker test` and is invoked by the root `test` script.
+## Gate
+
+```bash
+bun run check        # biome check .
+bun run typecheck    # tsc --noEmit in every packages/*/
+bun test             # bun packages only (core, sqlite, cli, board)
+bun run test         # the above plus `bun run --cwd packages/worker test` (tsc + vitest)
+```
+
+Root `bun test` must name the bun packages: a bare `bun test` sweeps the Worker's
+vitest files it cannot execute. Lefthook runs `biome check --write` on staged files
+and `typecheck` when `.ts` files are staged.
 
 ## Jake
 
