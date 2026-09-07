@@ -17,8 +17,10 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "1.30.0",
 		"ulid": "3.0.2",
-		"zod": "3.25.76"
+		"zod": "3.25.76",
+		"zod-to-json-schema": "3.25.1"
 	},
 	"devDependencies": {
 		"@cabane/sqlite": "workspace:*",

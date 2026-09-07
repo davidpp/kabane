@@ -47,6 +47,20 @@ export {
 export { Events, PLANNER_EVENTS, type PlannerEventType } from "./events";
 // Lint (plan quality checks)
 export * from "./lint";
+// MCP (tool definitions + stdio / Streamable HTTP servers)
+export {
+	type AfterWrite,
+	authorTypeOf,
+	CABANE_TOOLS,
+	createMcpServer,
+	handleHttpRequest,
+	type McpServerInfo,
+	SERVER_INSTRUCTIONS,
+	serveStdio,
+	type ToolContext,
+	type ToolDef,
+	type ToolHandler,
+} from "./mcp";
 export { type TracedOptions, traced } from "./observability";
 export {
 	err,
