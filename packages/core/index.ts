@@ -18,6 +18,8 @@ export {
 	parseReferences,
 	TASK_ID_PATTERN,
 } from "./commit-linker/patterns";
+// Db port conformance (adapter test suites run these)
+export { type ConformanceCase, conformanceCases } from "./db/conformance";
 // Ports and runtime wiring
 export type {
 	Changes,

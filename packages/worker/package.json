@@ -15,8 +15,13 @@
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "0.22.0",
 		"@cloudflare/workers-types": "5.20260901.1",
+		"@types/bun": "1.4.0",
 		"typescript": "5.9.3",
 		"vitest": "4.1.11",
 		"wrangler": "4.128.0"
+	},
+	"dependencies": {
+		"@cabane/core": "workspace:*",
+		"zod": "3.25.76"
 	}
 }
