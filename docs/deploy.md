@@ -175,30 +175,58 @@ bunx wrangler tail --format pretty      # in a second terminal, while running th
 Expected: a `302` to the Access login page (a browser) or `401` from Access (a non-browser
 client), and **no invocation in `wrangler tail`**. Access rejected before the Worker ran.
 
-### 1.6 Managed OAuth for browser connectors — MANUAL
+### 1.6 Managed OAuth for browser connectors — API for the toggle, MANUAL for the allowlist
 
-Only needed for Claude.ai and ChatGPT. In the `cabane` application → **Advanced settings
-→ Managed OAuth: on**. Allowed redirect URIs:
+Only needed for Claude.ai and ChatGPT. The Worker needs no change: Managed OAuth ends in
+the same `Cf-Access-Jwt-Assertion` the Worker already verifies (`auth.md`, topology a).
 
+**The toggle is an API field** (done 2026-09-07 on the live application). `PUT
+/accounts/<id>/access/apps/<app>` with the existing fields plus:
+
+```json
+"oauth_configuration": {
+  "enabled": true,
+  "dynamic_client_registration": {
+    "enabled": true,
+    "allow_any_on_localhost": true,
+    "allow_any_on_loopback": true
+  }
+}
 ```
-https://chatgpt.com/connector/oauth/*
-https://chatgpt.com/connector_platform_oauth_redirect
-https://claude.ai/api/mcp/auth_callback
-```
 
-Turn on **Allow localhost clients** and **Allow loopback clients** (Claude Code and the
-MCP inspector use `http://localhost:<port>/callback`). Access token lifetime 15 minutes,
-grant session 14 days. The Worker needs no change: Managed OAuth ends in the same
-`Cf-Access-Jwt-Assertion` the Worker already verifies (`auth.md`, topology a).
+The two `allow_any_on_*` flags are what the dashboard calls **Allow localhost clients** and
+**Allow loopback clients** (Claude Code and the MCP inspector redirect to
+`http://localhost:<port>/callback`). Note the PUT must resend `policies` as
+`[{ "id", "precedence" }]` or the application loses them.
 
-Check:
+**The allowlist and lifetimes are dashboard-only.** The API accepted but did not persist
+`allowed_redirect_uris`, `access_token_lifetime`, and `grant_session_duration` (verified:
+they never come back on GET). Set them by hand: Zero Trust → **Access controls** →
+**Applications** → `Cabane` → ⋯ → **Edit** → **Advanced settings** → Managed OAuth section:
+
+| Setting | Value |
+|---|---|
+| Allowed redirect URIs | `https://chatgpt.com/connector/oauth/*` |
+| | `https://chatgpt.com/connector_platform_oauth_redirect` |
+| | `https://claude.ai/api/mcp/auth_callback` |
+| Access token lifetime | 15 minutes |
+| Grant session duration | 14 days |
+
+Whether an empty allowlist admits any `https` redirect or none is not documented; add the
+three URIs before testing a browser connector so the result is unambiguous.
+
+Check (both were verified live after the API call):
 
 ```bash
-curl -s https://cabane.3pew.ca/.well-known/oauth-authorization-server | head -c 300
+curl -s https://cabane.3pew.ca/.well-known/oauth-authorization-server
+curl -s -o /dev/null -D - -X POST https://cabane.3pew.ca/mcp -H 'Content-Type: application/json' -d '{}' | grep -i www-authenticate
 ```
 
-Expected: JSON with `authorization_endpoint`, `token_endpoint`, `registration_endpoint`,
-and `code_challenge_methods_supported: ["S256"]`, served by Access.
+Expected: the first returns JSON with `issuer` `https://3pew.cloudflareaccess.com`,
+`authorization_endpoint`, `token_endpoint`, `registration_endpoint` under
+`/cdn-cgi/access/oauth/`, and `code_challenge_methods_supported: ["S256"]`. The second is a
+`401` carrying `WWW-Authenticate: Bearer realm="OAuth" ... resource_metadata="https://cabane.3pew.ca/.well-known/cloudflare-access-protected-resource/mcp"`,
+which is the RFC 9728 pointer ChatGPT and Claude.ai follow.
 
 ---
 
