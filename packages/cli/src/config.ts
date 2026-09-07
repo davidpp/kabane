@@ -78,6 +78,20 @@ export const directoryScope = (cwd: string): string | undefined => {
 	return value.length > 0 ? value : undefined;
 };
 
+/** `cabane init --scope` pins the directory default the rule above reads. */
+export const writeDirectoryScope = (
+	cwd: string,
+	scope: string,
+): Result<string> => {
+	const path = join(cwd, SCOPE_FILE);
+	const written = trySync(() => {
+		mkdirSync(join(cwd, ".cabane"), { recursive: true });
+		writeFileSync(path, `${scope.trim()}\n`);
+		return path;
+	});
+	return written.ok ? ok(written.value) : err(toError(written.error));
+};
+
 /** Human authors comment as `human`; agent actor URIs comment as `ai`. */
 export const authorTypeOf = (actor: string): "human" | "ai" =>
 	actor.startsWith("cabane://actor/agent/") ? "ai" : "human";
