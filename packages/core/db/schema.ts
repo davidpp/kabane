@@ -169,6 +169,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   tags TEXT,                        -- JSON array
   context TEXT,                     -- GTD context like @home
 
+  -- Replication (see the sync section of CLAUDE.md)
+  updated_by TEXT,                  -- actor URI of the last local writer
+  version INTEGER NOT NULL DEFAULT 1,
+  visibility TEXT NOT NULL DEFAULT 'shared',  -- shared | private; private never enters the oplog
+
   -- Timestamps
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -204,6 +209,9 @@ CREATE TABLE IF NOT EXISTS projects (
   description TEXT,
   state TEXT NOT NULL DEFAULT 'active',  -- active, someday, done, archived
   scope_uri TEXT,                   -- Canonical, branch-agnostic scope
+  updated_by TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  visibility TEXT NOT NULL DEFAULT 'shared',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -222,6 +230,9 @@ CREATE TABLE IF NOT EXISTS task_links (
   target_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   type TEXT NOT NULL,               -- parent, child, blocks, etc.
   note TEXT,
+  updated_by TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  visibility TEXT NOT NULL DEFAULT 'shared',
   created_at TEXT NOT NULL,
 
   -- Prevent duplicate links of same type
@@ -243,6 +254,9 @@ CREATE TABLE IF NOT EXISTS focus_lists (
   items TEXT NOT NULL DEFAULT '[]', -- JSON array of FocusItem
   theme TEXT,
   reflection TEXT,
+  updated_by TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  visibility TEXT NOT NULL DEFAULT 'shared',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -303,6 +317,9 @@ CREATE TABLE IF NOT EXISTS task_comments (
   author TEXT NOT NULL,             -- User name or agent identifier
   author_type TEXT NOT NULL,        -- 'human' or 'ai'
   content TEXT NOT NULL,            -- Markdown content
+  updated_by TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  visibility TEXT NOT NULL DEFAULT 'shared',
   created_at TEXT NOT NULL,
   updated_at TEXT
 );
@@ -319,6 +336,9 @@ CREATE TABLE IF NOT EXISTS task_work_log (
   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   refs TEXT NOT NULL,               -- JSON array of WorkRef
   note TEXT,                        -- Optional context/summary
+  updated_by TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  visibility TEXT NOT NULL DEFAULT 'shared',
   created_at TEXT NOT NULL
 );
 
@@ -361,6 +381,9 @@ CREATE TABLE IF NOT EXISTS task_context_refs (
   added_by TEXT,
   added_by_type TEXT,               -- 'human' or 'ai'
   added_at TEXT NOT NULL,
+  updated_by TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  visibility TEXT NOT NULL DEFAULT 'shared',
 
   UNIQUE(task_id, uri)
 );
@@ -388,6 +411,9 @@ CREATE TABLE IF NOT EXISTS upstream_links (
   refreshed_at TEXT NOT NULL,       -- Jake-local snapshot refresh time
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  -- The privacy invariant as schema, not prose: no writer sets this to
+  -- 'shared', so capture can never admit an upstream link to the oplog.
+  visibility TEXT NOT NULL DEFAULT 'private',
 
   UNIQUE(task_id, provider, external_id)
 );
@@ -455,7 +481,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_activities_durable ON agent_activities(sess
 
 CREATE TABLE IF NOT EXISTS sync_oplog (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
-  op_id TEXT NOT NULL UNIQUE,       -- idempotency key (random hex, minted in-trigger)
+  op_id TEXT NOT NULL UNIQUE,       -- idempotency key (random hex, minted at capture)
   device_id TEXT NOT NULL,
   tbl TEXT NOT NULL,                -- logical (unprefixed) table name
   row_id TEXT NOT NULL,
@@ -470,10 +496,11 @@ CREATE INDEX IF NOT EXISTS idx_sync_oplog_row ON sync_oplog(tbl, row_id);
 -- ============================================================
 -- SYNC STATE (singleton row keyed 'local')
 -- ============================================================
--- Presence of the 'local' row is what ARMS capture: with no row, every trigger
--- WHEN clause is false and write cost stays at baseline for anyone who never
--- enables sync. apply_guard disarms capture while the applier writes pulled
--- ops, which would otherwise re-capture and ping-pong forever.
+-- Presence of the 'local' row is what ARMS capture: with no row, the storage
+-- layer's capture step returns early and write cost stays at baseline for
+-- anyone who never enables sync. apply_guard is legacy from trigger-based
+-- capture (the applier writes rows directly and never enters the capture
+-- path); the column stays so existing databases keep booting.
 -- No CHECK constraint on the singleton key — house style forbids them.
 
 CREATE TABLE IF NOT EXISTS sync_state (

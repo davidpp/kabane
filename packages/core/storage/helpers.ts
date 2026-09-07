@@ -486,5 +486,48 @@ export const runMigrations = async (
 				`CREATE INDEX IF NOT EXISTS ${TABLES.proposals}_task_id_idx ON ${TABLES.proposals}(task_id)`,
 			);
 		}
+
+		// Migration: replication columns on every synced table. Existing rows
+		// get version 1 and visibility 'shared', which is exactly what they were
+		// implicitly before the columns existed.
+		for (const table of REPLICATED_PHYSICAL_TABLES()) {
+			addColumnIfMissing(db, table, "updated_by", "TEXT");
+			addColumnIfMissing(db, table, "version", "INTEGER NOT NULL DEFAULT 1");
+			addColumnIfMissing(
+				db,
+				table,
+				"visibility",
+				"TEXT NOT NULL DEFAULT 'shared'",
+			);
+		}
+		// upstream_links is private by construction; the column is what makes
+		// that structural instead of a comment.
+		addColumnIfMissing(
+			db,
+			TABLES.upstream_links,
+			"visibility",
+			"TEXT NOT NULL DEFAULT 'private'",
+		);
 	});
+};
+
+/** The physical names of the tables that replicate, for the column migration. */
+const REPLICATED_PHYSICAL_TABLES = (): string[] => [
+	TABLES.tasks,
+	TABLES.projects,
+	TABLES.task_links,
+	TABLES.focus_lists,
+	TABLES.comments,
+	TABLES.work_log,
+	TABLES.context_refs,
+];
+
+const addColumnIfMissing = (
+	db: Db,
+	table: string,
+	column: string,
+	ddl: string,
+): void => {
+	if (columnExists(db, table, column)) return;
+	db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
 };

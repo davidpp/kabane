@@ -570,6 +570,81 @@ describe("Resolve.decide — same-id clock tie", () => {
 		expect(onB.row.title).toBe("from aaa");
 	});
 
+	it("prefers the lineage with more writes before consulting actor or device", () => {
+		// bbb sorts after aaa and its actor sorts after too; only version can
+		// be carrying this.
+		const decision = Resolve.decide(
+			edit(DEVICE_B, "three edits on bbb"),
+			local({
+				byId: taskRow(LOW, T2, { title: "one edit on aaa", version: 1 }),
+				localDeviceId: DEVICE_A,
+			}),
+		);
+		expect(decision.kind).toBe("skip"); // same version (undefined vs 1) falls through to device
+
+		const versioned = Resolve.decide(
+			makeOp({
+				tbl: "tasks",
+				rowId: LOW,
+				op: "update",
+				deviceId: DEVICE_B,
+				rowUpdatedAt: T2,
+				payload: taskRow(LOW, T2, {
+					title: "three edits on bbb",
+					version: 3,
+					updated_by: "cabane://actor/human/zed",
+				}),
+			}),
+			local({
+				byId: taskRow(LOW, T2, {
+					title: "one edit on aaa",
+					version: 1,
+					updated_by: "cabane://actor/human/amy",
+				}),
+				localDeviceId: DEVICE_A,
+			}),
+		);
+		expect(versioned.kind).toBe("apply");
+		if (versioned.kind === "apply") {
+			expect(versioned.row.title).toBe("three edits on bbb");
+		}
+	});
+
+	it("breaks an equal-version tie on the lower actor URI, from both directions", () => {
+		const authored = (deviceId: string, actor: string, title: string): SyncOp =>
+			makeOp({
+				tbl: "tasks",
+				rowId: LOW,
+				op: "update",
+				deviceId,
+				rowUpdatedAt: T2,
+				payload: taskRow(LOW, T2, { title, version: 2, updated_by: actor }),
+			});
+		const held = (actor: string, title: string): Row =>
+			taskRow(LOW, T2, { title, version: 2, updated_by: actor });
+
+		// Device order says bbb loses; actor order says bbb's author (amy) wins.
+		// Actor is consulted first, so amy's content lands on both machines.
+		const onA = Resolve.decide(
+			authored(DEVICE_B, "cabane://actor/human/amy", "from amy"),
+			local({
+				byId: held("cabane://actor/human/zed", "from zed"),
+				localDeviceId: DEVICE_A,
+			}),
+		);
+		const onB = Resolve.decide(
+			authored(DEVICE_A, "cabane://actor/human/zed", "from zed"),
+			local({
+				byId: held("cabane://actor/human/amy", "from amy"),
+				localDeviceId: DEVICE_B,
+			}),
+		);
+
+		expect(onA.kind).toBe("apply");
+		if (onA.kind === "apply") expect(onA.row.title).toBe("from amy");
+		expect(onB).toEqual({ kind: "skip", reason: "not-newer" });
+	});
+
 	it("skips a re-delivered op from this same device", () => {
 		const decision = Resolve.decide(
 			edit(DEVICE_A, "from aaa"),

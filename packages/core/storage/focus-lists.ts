@@ -3,10 +3,11 @@
  */
 
 import type { Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 
 import type { FocusList, FocusListDraft, FocusListUpdate } from "../schemas";
 import { generateId, rowToFocusList, TABLES } from "./helpers";
+import { Oplog } from "./oplog";
 
 export namespace Planner {
 	export const getFocusList = async (
@@ -29,25 +30,37 @@ export namespace Planner {
 		return withDb(basePath, (db) => {
 			const now = new Date().toISOString();
 
-			// Upsert: delete existing and insert new
+			// Upsert: delete existing and insert new. The delete is captured from
+			// the row that was, so the other devices drop the same ULID.
+			const previous = db
+				.query<Record<string, unknown>, [string]>(
+					`SELECT * FROM ${TABLES.focus_lists} WHERE period = ?`,
+				)
+				.get(draft.period);
 			db.run(`DELETE FROM ${TABLES.focus_lists} WHERE period = ?`, [
 				draft.period,
 			]);
+			if (previous) {
+				Oplog.afterDelete(db, [{ tbl: "focus_lists", row: previous }]);
+			}
 
 			const id = generateId();
 			db.run(
-				`INSERT INTO ${TABLES.focus_lists} (id, period, items, theme, reflection, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO ${TABLES.focus_lists}
+           (id, period, items, theme, reflection, updated_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					id,
 					draft.period,
 					JSON.stringify(draft.items),
 					draft.theme ?? null,
 					draft.reflection ?? null,
+					Runtime.actor(),
 					now,
 					now,
 				],
 			);
+			Oplog.afterWrite(db, "focus_lists", "insert", id);
 
 			return {
 				id,
@@ -68,8 +81,12 @@ export namespace Planner {
 	): Promise<Result<FocusList | null>> => {
 		const updateResult = await withDb(basePath, (db) => {
 			const now = new Date().toISOString();
-			const sets: string[] = ["updated_at = ?"];
-			const params: (string | number | null)[] = [now];
+			const sets: string[] = [
+				"updated_at = ?",
+				"version = version + 1",
+				"updated_by = ?",
+			];
+			const params: (string | number | null)[] = [now, Runtime.actor()];
 
 			if (updates.items !== undefined) {
 				sets.push("items = ?");
@@ -90,6 +107,12 @@ export namespace Planner {
 				`UPDATE ${TABLES.focus_lists} SET ${sets.join(", ")} WHERE period = ?`,
 				params,
 			);
+			const row = db
+				.query<{ id: string }, [string]>(
+					`SELECT id FROM ${TABLES.focus_lists} WHERE period = ?`,
+				)
+				.get(period);
+			if (row) Oplog.afterWrite(db, "focus_lists", "update", row.id);
 		});
 
 		if (!updateResult.ok) return updateResult;

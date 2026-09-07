@@ -185,6 +185,42 @@ describe("Backfill.run", () => {
 		expect(clockOf("task_comments")).toBeNull();
 	});
 
+	it("skips private rows and keys each op on the row's version", async () => {
+		await seedRows();
+		await withDb((db) => {
+			db.run(
+				`UPDATE ${TABLES.tasks} SET visibility = 'private' WHERE id = '01TASKA'`,
+			);
+			db.run(`UPDATE ${TABLES.tasks} SET version = 4 WHERE id = '01TASKZ'`);
+			const armed = Oplog.initDevice(db, DEVICE);
+			if (!armed.ok) throw armed.error;
+		});
+
+		const result = await Backfill.run(base);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+
+		expect(result.value.skippedPrivate).toBe(1);
+		expect(result.value.byTable.tasks).toBe(1);
+
+		const ids = await withDb((db) =>
+			db
+				.query<{ op_id: string; row_id: string }, []>(
+					`SELECT op_id, row_id FROM ${TABLES.sync_oplog} WHERE tbl = 'tasks'`,
+				)
+				.all(),
+		);
+		expect(ids).toEqual([{ op_id: "bf:tasks:01TASKZ:v4", row_id: "01TASKZ" }]);
+
+		// An edit between runs is a new op, not an "already present" one.
+		await withDb((db) =>
+			db.run(`UPDATE ${TABLES.tasks} SET version = 5 WHERE id = '01TASKZ'`),
+		);
+		const again = await Backfill.run(base);
+		expect(again.ok).toBe(true);
+		if (again.ok) expect(again.value.byTable.tasks).toBe(1);
+	});
+
 	it("captures nothing itself — seeding does not re-enter the oplog", async () => {
 		await seedRows();
 		await withDb((db) => {

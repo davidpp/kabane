@@ -1,10 +1,10 @@
 /**
  * Sync Schemas
  *
- * Contracts for replicating planner state between machines. The local
- * `bun:sqlite` stays authoritative; capture triggers append row snapshots to
- * `planner_sync_oplog`, and a sync pass ships those ops to a remote log that
- * assigns a total order.
+ * Contracts for replicating tracker state between devices. The local database
+ * stays authoritative; the storage layer appends row snapshots to `sync_oplog`
+ * on every write, and a sync pass ships those ops to a remote log that assigns
+ * a total order.
  *
  * `tbl` and `op` stay soft strings on the wire (house style) with
  * SYNC_TABLES / SyncOpKindSchema as the known-value sets, so a newer device
@@ -21,7 +21,10 @@ import { z } from "zod";
  * Deliberately excluded: `task_activity` (high-volume audit trail),
  * `agent_sessions` / `agent_activities` (machine-local agent runs),
  * `proposals` (retired surface, drop pending), `sequences` (local counter),
- * and `upstream_links` (documented machine-private invariant).
+ * and `upstream_links` (`visibility` fixed to private by schema).
+ *
+ * This is the set the resolver knows a rule for. Whether a given ROW replicates
+ * is decided by its `visibility` column, not by this list.
  */
 export const SYNC_TABLES = [
 	"tasks",
@@ -62,6 +65,16 @@ export const SyncOpSchema = z.object({
 
 	/** Full row snapshot keyed by DB column name. Absent for deletes. */
 	payload: z.record(z.unknown()).optional(),
+
+	/**
+	 * Actor URI of the writer (`payload.updated_by`), lifted onto the envelope
+	 * so a resolver can break clock ties without reaching into the row. Absent
+	 * for deletes and for rows written before the column existed.
+	 */
+	updatedBy: z.string().optional(),
+
+	/** Monotonic per-row write counter (`payload.version`). Absent for deletes. */
+	version: z.number().optional(),
 
 	/** When capture fired (ISO timestamp) */
 	capturedAt: z.string(),

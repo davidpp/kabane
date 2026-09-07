@@ -22,7 +22,7 @@ import { SqliteDb } from "@cabane/sqlite";
 Runtime.configure({
   provider: SqliteDb.provider({ dbName: "cabane.db" }),
   tablePrefix: "",            // "planner_" when sharing a database with other modules
-  tracer, notifier, scopeResolver, syncSettings,   // all optional, all no-op by default
+  tracer, notifier, scopeResolver, syncSettings, actor,   // all optional, all no-op by default
 });
 await Planner.init(basePath);
 ```
@@ -64,17 +64,23 @@ Both share the same states with different interpretation: `inbox` = triage (task
 
 ## Multi-device sync
 
-Off by default. The local database stays authoritative; capture triggers append row snapshots to `sync_oplog`, and a pass ships them to a shared ordered log (the Worker) that assigns the total order.
+Off by default. The local database stays authoritative; every storage write on a replicated table ends with `Oplog.afterWrite` / `Oplog.afterDelete` (`storage/oplog.ts`), which appends a row snapshot to `sync_oplog`, and a pass ships those ops to a shared ordered log (the Worker) that assigns the total order.
+
+**Capture is a storage-layer step, not a trigger.** Triggers were dropped because `CREATE TRIGGER` is undocumented on Durable Object SQLite and because a trigger fires for every writer, which forced a database guard around the applier. `Apply` writes rows directly and never enters the capture path, so there is nothing to guard; `sync_state.apply_guard` is legacy and unread. `Planner.init` drops the old `sync_cap_*` triggers so an upgraded database does not capture twice. Consequences for anyone adding a write path: call `Oplog.afterWrite(db, tbl, "insert"|"update", id)` after the statement, snapshot first and `Oplog.afterDelete` after for deletes, and for a task delete use `Oplog.cascadeOf` so the FK cascade is captured children-first.
+
+**Every replicated row carries `updated_by`, `version`, `visibility`.** `updated_by` is the actor URI from the `actor` runtime port (`cabane://actor/human/<name>`, `cabane://actor/agent/<runtime>`; default `cabane://actor/unknown`). `version` starts at 1 and every local update does `version = version + 1`. `visibility` is `shared` by default on the seven replicated tables and fixed `private` on `upstream_links`; **a private row never enters the oplog**, whichever table it lives in — the filter is the column, `SYNC_TABLES` only says which tables the resolver knows a rule for. Old databases get the columns through `runMigrations` (guarded `ALTER TABLE`), and `storage/migrations.test.ts` boots new code on a pre-column table.
+
+**Tie-break chain** (`sync/resolve.ts`): clock, then ULID, then `version` (more writes win), then `updated_by` (lower URI wins), then `device_id`. The last two steps are what make three or more devices converge: the device id alone stood in for "who wrote this", which is exact for two machines and wrong once a third machine compares a row it merely received. `Apply` writes `max(local.version, incoming.version)` and, on `tasks`, leaves a `sync_conflict_resolved` activity (old_value = the local version that lost, new_value = the incoming version) when a local lineage with at least as many writes was overwritten.
 
 - `SyncDevice.connect` (`sync/device.ts`) is the one place settings become a transport, and it **arms capture as a side effect of the first connection**. Device identity is write-once.
-- **Nothing already in the database when you enable sync replicates.** `Backfill.run` (`sync/backfill.ts`) seeds the log for an armed device.
+- **Nothing already in the database when you enable sync replicates.** `Backfill.run` (`sync/backfill.ts`) seeds the log for an armed device through the same `Oplog.snapshotOp` live capture uses; op ids are `bf:<tbl>:<rowId>:v<version>`, so a re-run is a no-op and a row edited since is re-emitted. Private rows are skipped and counted.
 - **`server_seq` has gaps.** Only monotonicity is promised.
 - **`throughSeq` comes from the page**, never from `ops.at(-1)`.
 - **Quarantine is a liveness fix.** Only a server content refusal (400/413/500) quarantines; a 401 or a dead network propagates.
 - **A log reset is detected from `PushAck.head`.**
 - `local-relay.ts` is the permanent test double, so every convergence assertion runs with no Cloudflare.
 
-Sync set: `tasks`, `task_links`, `focus_lists`, `task_comments`, `task_work_log`, `projects`, `task_context_refs`. Excluded: `task_activity`, `agent_sessions`/`agent_activities`, `proposals`, `sequences`, `upstream_links`.
+Sync set: `tasks`, `task_links`, `focus_lists`, `task_comments`, `task_work_log`, `projects`, `task_context_refs`. Excluded: `task_activity`, `agent_sessions`/`agent_activities`, `proposals`, `sequences`, `upstream_links` (private by schema).
 
 ## `assembleContext` — THE agent read entrypoint
 
