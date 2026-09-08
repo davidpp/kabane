@@ -29,6 +29,109 @@ Multi-device sync and the hosted hub (Cloudflare Worker behind Access at
 first device, more devices, each client (Claude Code, Hermes, Codex, Claude.ai, ChatGPT),
 and day-two operations. The auth decision is in [`docs/auth.md`](docs/auth.md).
 
+## Set up a new machine as a device (for AI agents)
+
+For AI agents: paste this section to the agent. It needs `op` (1Password CLI) signed in
+to `botpress.1password.com` and Bun installed. Every credential is read from 1Password,
+vault `Employee`, items tagged `cabane`; nothing is typed by a human. Run the steps in
+order; each shows the line that means success. Background: [`docs/deploy.md`](docs/deploy.md)
+parts 2 to 4.
+
+1. **Check 1Password.** `op whoami` prints the account URL and email. If it errors, stop and
+   ask the human to run `op signin`, then continue.
+
+2. **Install the CLI.**
+
+   ```bash
+   git clone git@github.com:davidpp/cabane.git ~/Projects/cabane
+   cd ~/Projects/cabane && bun install && cd packages/cli && bun link
+   cabane --help | head -1
+   ```
+
+   Expected: `cabane — local-first tracker for humans and agent runtimes`. Use `bun link`,
+   not `bun install -g`; that is the verified route and the schedule templates assume
+   `~/.bun/bin/cabane`.
+
+3. **Initialize the device** with the shared log secret and the `cabane-cron` Access
+   service token (the identity of a machine; writes are still stamped with `--actor`).
+
+   ```bash
+   V=Employee
+   cabane init \
+     --actor cabane://actor/human/david \
+     --device "$(hostname -s)" \
+     --sync-url https://cabane.3pew.ca \
+     --sync-token "$(op item get 'Cabane hub SYNC_TOKEN (planner log bearer)' --vault $V --fields credential --reveal)" \
+     --access-client-id "$(op item get 'Cabane Access service token: cabane-cron' --vault $V --fields username)" \
+     --access-client-secret "$(op item get 'Cabane Access service token: cabane-cron' --vault $V --fields credential --reveal)"
+   ```
+
+   Expected: `✓ Initialized ~/.cabane`, then `sync:   https://cabane.3pew.ca` and
+   `access: service token headers set`. Secrets land only in `~/.cabane/config.json`.
+
+4. **Pull the tracker.** A fresh device replays the whole log; do not run `backfill`
+   here, there is nothing to seed.
+
+   ```bash
+   cabane sync pull
+   cabane sync status
+   cabane list --limit 5
+   ```
+
+   Expected: `⬇️  Pulled N ops, applied N, renamed 0 (...)`, then `Sync: armed as device
+   <hostname>` with `pending ops: 0` and `quarantined: 0`, then five tasks.
+
+5. **Schedule the pull** (push is opportunistic, pull writes rows and is never implicit).
+
+   macOS:
+
+   ```bash
+   sed "s|__HOME__|$HOME|g" ~/Projects/cabane/docs/schedule/com.cabane.sync-pull.plist \
+     > ~/Library/LaunchAgents/com.cabane.sync-pull.plist
+   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cabane.sync-pull.plist
+   launchctl print gui/$(id -u)/com.cabane.sync-pull | grep -E "state|interval"
+   ```
+
+   Expected: `state = waiting`, `interval = 300`. Linux:
+
+   ```bash
+   crontab -l 2>/dev/null | cat - ~/Projects/cabane/docs/schedule/cabane-sync-pull.cron | crontab -
+   crontab -l | grep cabane
+   ```
+
+6. **Give yourself MCP access.** Local device, no network, sessions included:
+
+   ```bash
+   claude mcp add -s user cabane -- cabane mcp --as cabane://actor/agent/claude
+   ```
+
+   Or the hub directly, with the runtime's own token (`cabane-claude-code`, `cabane-codex`,
+   `cabane-hermes` follow the same item-title pattern):
+
+   ```bash
+   claude mcp add --transport http -s user cabane https://cabane.3pew.ca/mcp \
+     --header "CF-Access-Client-Id: $(op item get 'Cabane Access service token: cabane-claude-code' --vault $V --fields username)" \
+     --header "CF-Access-Client-Secret: $(op item get 'Cabane Access service token: cabane-claude-code' --vault $V --fields credential --reveal)"
+   claude mcp list
+   ```
+
+   Expected: `cabane: ... - ✔ Connected`. Codex and Hermes wiring is in
+   [`docs/deploy.md`](docs/deploy.md) 4.2 and 4.3.
+
+7. **Pick up work.** After a pull, an agent runtime lists what is assigned to it, claims it,
+   reads the brief, works, and closes:
+
+   ```bash
+   cabane list --assignee cabane://actor/agent/claude --state next
+   cabane edit <id> --state in_progress
+   cabane context <id>
+   cabane comment <id> "what landed" --as cabane://actor/agent/claude
+   cabane done <id>
+   ```
+
+   The claim is `in_progress`; a runtime must not take a task another one already holds.
+   Push happens after each write; pull is the schedule from step 5.
+
 ## Gate
 
 ```bash
