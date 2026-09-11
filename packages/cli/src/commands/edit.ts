@@ -41,7 +41,7 @@ export const edit: Command = {
 			kind: flagString(args, "kind") as ItemKind | undefined,
 			assignee: assignee === "none" ? "" : assignee,
 			scopeUri: flagString(args, "scope"),
-			parentTaskId: parentInput === "none" ? "" : parentTaskId,
+			parentTaskId: parentInput === "none" ? null : parentTaskId,
 			tags: flagCsv(args, "tags"),
 			deadline: toDeadline(flagString(args, "due")),
 		};

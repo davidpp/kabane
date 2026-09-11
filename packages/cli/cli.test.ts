@@ -130,6 +130,37 @@ describe("cabane cli", () => {
 		expect(json<unknown[]>(closed)).toHaveLength(1);
 	});
 
+	// `--parent none` used to send an empty string, which the parent_task_id
+	// foreign key rejects outright — detaching a subtask failed every time.
+	it("attaches and detaches a subtask", async () => {
+		const parent = json<{ id: string }>(
+			await run("add", "Parent", "--scope", "home", "--json"),
+		);
+		const child = json<{ id: string; parentTaskId?: string }>(
+			await run(
+				"add",
+				"Child",
+				"--scope",
+				"home",
+				"--parent",
+				parent.id,
+				"--json",
+			),
+		);
+		expect(child.parentTaskId).toBe(parent.id);
+
+		const renamed = json<{ parentTaskId?: string }>(
+			await run("edit", child.id, "--title", "Child renamed", "--json"),
+		);
+		expect(renamed.parentTaskId).toBe(parent.id);
+
+		const detached = await run("edit", child.id, "--parent", "none", "--json");
+		expect(detached.code).toBe(0);
+		expect(
+			json<{ parentTaskId?: string }>(detached).parentTaskId,
+		).toBeUndefined();
+	});
+
 	it("edit, link, comment, log, show", async () => {
 		const edited = await run(
 			"edit",

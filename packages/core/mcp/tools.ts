@@ -325,7 +325,7 @@ Parameters:
 			kind: args.kind,
 			assignee: args.assignee === "none" ? "" : args.assignee,
 			scopeUri: args.scopeUri,
-			parentTaskId: args.parentTaskId === "none" ? "" : parentTaskId,
+			parentTaskId: args.parentTaskId === "none" ? null : parentTaskId,
 			tags: args.tags,
 			deadline: toDeadline(args.dueDate),
 		});

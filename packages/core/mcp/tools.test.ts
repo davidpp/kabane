@@ -176,6 +176,67 @@ describe("cabane tools", () => {
 		expect(Array.isArray(today.next)).toBe(true);
 	});
 
+	// parentTaskId 'none' used to write an empty string. Every JS reader sees
+	// undefined either way, so the break only shows in SQL: '' IS NULL is false,
+	// and topLevelOnly filters on IS NULL — a detached task fell out of both
+	// sides of the tree.
+	it("detaches a subtask to NULL, not an empty string", async () => {
+		const parent = unwrap(
+			await tool("cabane_add").handler(
+				{ title: "Parent", scopeUri: "cabane" },
+				ctx,
+			),
+		) as Task;
+		const child = unwrap(
+			await tool("cabane_add").handler(
+				{ title: "Child", scopeUri: "cabane", parentTaskId: parent.id },
+				ctx,
+			),
+		) as Task;
+		expect(child.parentTaskId).toBe(parent.id);
+
+		const detached = unwrap(
+			await tool("cabane_edit").handler(
+				{ id: child.id, parentTaskId: "none" },
+				ctx,
+			),
+		) as Task;
+		expect(detached.parentTaskId).toBeUndefined();
+
+		const topLevel = unwrap(
+			await Planner.queryTasks(base, { topLevelOnly: true }),
+		);
+		expect(topLevel.map((t) => t.id).sort()).toEqual(
+			[parent.id, child.id].sort(),
+		);
+		expect(
+			unwrap(await Planner.queryTasks(base, { parentTaskId: parent.id })),
+		).toEqual([]);
+	});
+
+	it("leaves the parent alone when the edit omits it", async () => {
+		const parent = unwrap(
+			await tool("cabane_add").handler(
+				{ title: "Parent", scopeUri: "cabane" },
+				ctx,
+			),
+		) as Task;
+		const child = unwrap(
+			await tool("cabane_add").handler(
+				{ title: "Child", scopeUri: "cabane", parentTaskId: parent.id },
+				ctx,
+			),
+		) as Task;
+
+		const edited = unwrap(
+			await tool("cabane_edit").handler(
+				{ id: child.id, title: "Renamed" },
+				ctx,
+			),
+		) as Task;
+		expect(edited.parentTaskId).toBe(parent.id);
+	});
+
 	it("reports an unknown id as a tool error, not a throw", async () => {
 		const result = await tool("cabane_get").handler({ id: "JCAB-999" }, ctx);
 		expect(result.ok).toBe(false);
