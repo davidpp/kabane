@@ -596,7 +596,7 @@ test("HelpOverlay renders the grouped full keybinding list with its close hint",
 		expect(frame).toContain("expand/collapse subtasks");
 		expect(frame).toContain("dispatch (host triggers)");
 		// The status filter is discoverable here only — like `i`, it is off the trimmed footer.
-		expect(frame).toContain("cycle status (open/done/review)");
+		expect(frame).toContain("cycle status (open · done+cancelled · review)");
 		expect(frame).toContain("? / esc close");
 	} finally {
 		destroy();
