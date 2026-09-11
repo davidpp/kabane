@@ -7,11 +7,14 @@ import {
 	Board,
 	cardBadge,
 	moreBadge,
+	rowMeta,
 	rowStyle,
 	SELECTED_BG,
 	SELECTED_FG,
+	shortIdIndex,
 } from "./board";
 import type { BoardData } from "./data";
+import type { BoardNav } from "./nav";
 import { DispatchOverlay, HelpOverlay, overlayRowStyle } from "./overlay";
 import type { ActivityCard, TriggerDescriptor } from "./ports";
 import { renderTest } from "./testing";
@@ -745,6 +748,108 @@ test("Board under status review says 'no matches' rather than going blank when n
 		expect(frame).toContain("status: review");
 		expect(frame).toContain("no matches");
 		expect(frame).not.toContain("JAKE-50");
+	} finally {
+		destroy();
+	}
+});
+
+// JCAB-30. A subtask whose parent never rendered it is promoted to depth 0; without a marker it reads
+// as a genuine root item, which is false. These pin the marker, not just the row's presence.
+const visibleRow = (
+	task: Task,
+	over: Partial<BoardNav.VisibleRow> = {},
+): BoardNav.VisibleRow => ({
+	task,
+	depth: 0,
+	parentId: null,
+	hasChildren: false,
+	expanded: false,
+	...over,
+});
+
+test("rowMeta marks an orphaned subtask with its parent id, and a root row without one", () => {
+	const root = visibleRow(task({ id: "r" }));
+	const orphan = visibleRow(task({ id: "o", parentTaskId: "p" }));
+	expect(rowMeta(root)).toBe(" · issue");
+	expect(rowMeta(orphan, "JCAB-1")).toBe(" · issue · in JCAB-1");
+	// The two must not be confusable — that is the whole point of the marker.
+	expect(rowMeta(orphan, "JCAB-1")).not.toBe(rowMeta(root));
+});
+
+test("rowMeta falls back to a bare marker when the parent is not loaded, never guessing why", () => {
+	const orphan = visibleRow(task({ id: "o", parentTaskId: "past-the-cap" }));
+	expect(rowMeta(orphan)).toBe(" · issue · subtask");
+});
+
+test("rowMeta still shows a real subtask its own state, not a parent reference", () => {
+	const child = task({ id: "c", state: "waiting", parentTaskId: "p" });
+	// depth 1 means it IS rendering under its parent — the relationship is already on screen.
+	expect(
+		rowMeta(visibleRow(child, { depth: 1, parentId: "p" }), "JCAB-1"),
+	).toBe(" · waiting");
+});
+
+test("shortIdIndex covers children and tasks in sections the filter is hiding", () => {
+	const index = shortIdIndex([
+		section("next", [
+			{
+				task: task({ id: "p", shortId: "JCAB-2" }),
+				children: [task({ id: "c", shortId: "JCAB-3" })],
+			},
+		]),
+		// Hidden under the `open` status filter, but still loaded — so still nameable.
+		section("done", [
+			{ task: task({ id: "d", shortId: "JCAB-1" }), children: [] },
+		]),
+	]);
+	expect(index.get("d")).toBe("JCAB-1");
+	expect(index.get("c")).toBe("JCAB-3");
+});
+
+test("Board renders an orphaned subtask distinguishably from a genuine top-level row", async () => {
+	const sections: BoardData.BoardSection[] = [
+		section("next", [
+			{
+				task: task({ id: "root", shortId: "JCAB-7", title: "A real root" }),
+				children: [],
+			},
+			{
+				task: task({
+					id: "orph",
+					shortId: "JCAB-9",
+					title: "Orphaned child",
+					parentTaskId: "p",
+				}),
+				children: [],
+			},
+		]),
+		section("done", [
+			{
+				task: task({
+					id: "p",
+					shortId: "JCAB-1",
+					title: "The done parent",
+					state: "done",
+				}),
+				children: [],
+			},
+		]),
+	];
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board sections={sections} expanded={new Set()} selectedId={null} />,
+		{ width: 120, height: 20 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JCAB-9"),
+		);
+		// The orphan is visible at all — the bug was that it rendered nowhere.
+		expect(frame).toContain("Orphaned child");
+		// ...and it names the parent that is not on screen (the done section is filtered out).
+		expect(frame).toContain("Orphaned child · issue · in JCAB-1");
+		// The genuine root carries no such marker.
+		expect(frame).toContain("A real root · issue");
+		expect(frame).not.toContain("A real root · issue · in");
 	} finally {
 		destroy();
 	}

@@ -4,7 +4,11 @@
 // expanded parent. Pure rendering — it takes sections + selection + expansion and draws them; data
 // loading, selection, and expansion state live in App / BoardNav.
 
-import { TASK_PRIORITY_DISPLAY, TASK_STATE_DISPLAY } from "@cabane/core";
+import {
+	TASK_PRIORITY_DISPLAY,
+	TASK_STATE_DISPLAY,
+	type Task,
+} from "@cabane/core";
 import {
 	type MouseEvent,
 	type ScrollBoxRenderable,
@@ -150,6 +154,54 @@ const caretFor = (row: BoardNav.VisibleRow): string => {
 	return row.expanded ? "▾ " : "▸ ";
 };
 
+// Task id -> shortId over every loaded row, children included. Built once per render from the sections
+// the board already holds: `loadBoard` queries all seven states regardless of the `f` filter, so a
+// CLOSED parent hidden from the current view is still in here to be named. A parent past the archive
+// cap isn't loaded at all, hence the miss path in `rowMeta`.
+export const shortIdIndex = (
+	sections: BoardData.BoardSection[],
+): Map<string, string> => {
+	const index = new Map<string, string>();
+	const add = (task: Task): void => {
+		if (task.shortId) index.set(task.id, task.shortId);
+	};
+	for (const section of sections) {
+		for (const row of section.rows) {
+			add(row.task);
+			for (const child of row.children) add(child);
+		}
+	}
+	return index;
+};
+
+// The muted meta tail. Depth 1 shows the subtask's own state (it may differ from the parent's section).
+// Depth 0 shows the kind — plus, when the row still carries a parent id, a parent reference: such a row
+// is an ORPHANED subtask, promoted to the top level because nothing rendered it as a child (its parent
+// is closed, and closed parents are never subtask roots, or it fell past a limit). Without the
+// reference the row is indistinguishable from a genuine root item, which is a thing the board would be
+// asserting falsely. Plain `in <id>` over a `↳` glyph: the board already spends `▸`/`▾` on tree state,
+// and a second arrow with a different meaning costs more to read than the one word it saves. When the
+// parent isn't loaded at all (past the archive cap) there is no id to name, so the row says only what
+// is certain — it is a subtask — rather than guessing at why its parent is absent.
+// The parent reference on an orphaned subtask: its id when the parent is loaded, a bare marker when it
+// is not, and nothing at all for a genuine root row.
+const orphanMeta = (task: Task, parentShortId?: string): string => {
+	if (!task.parentTaskId) return "";
+	return parentShortId ? ` · in ${parentShortId}` : " · subtask";
+};
+
+export const rowMeta = (
+	row: BoardNav.VisibleRow,
+	parentShortId?: string,
+): string => {
+	const task = row.task;
+	if (row.depth === 1)
+		return ` · ${TASK_STATE_DISPLAY[task.state].label.toLowerCase()}`;
+	// Name the parent when it is loaded; otherwise still mark the row, or the lie stands.
+	const parent = orphanMeta(task, parentShortId);
+	return ` · ${task.kind}${parent}`;
+};
+
 const Row = ({
 	row,
 	rowIndex,
@@ -159,8 +211,11 @@ const Row = ({
 	spinnerFrame,
 	onSelect,
 	onToggle,
+	parentShortId,
 }: {
 	row: BoardNav.VisibleRow;
+	// shortId of this row's parent, when the parent is loaded. Only ever set for an orphaned subtask.
+	parentShortId?: string;
 	// Index into the flattened visible-row list — the address mouse handlers dispatch back to the reducer.
 	rowIndex: number;
 	selected: boolean;
@@ -177,12 +232,7 @@ const Row = ({
 	);
 	const shortId = task.shortId ?? task.id.slice(0, 8);
 	const caret = caretFor(row);
-	// Top-level rows show their kind; subtasks show their own state (it may differ from the parent's
-	// section) — both muted.
-	const meta =
-		row.depth === 1
-			? ` · ${TASK_STATE_DISPLAY[task.state].label.toLowerCase()}`
-			: ` · ${task.kind}`;
+	const meta = rowMeta(row, parentShortId);
 	const review = task.needsReview ? " · review" : "";
 	// In-flight badges: cards match by task id or shortId, questions by task id.
 	const cards = activity
@@ -254,7 +304,10 @@ const Section = ({
 	spinnerFrame,
 	onSelect,
 	onToggle,
+	parentIds,
 }: {
+	// id -> shortId over every loaded task, for naming an orphaned subtask's parent.
+	parentIds: Map<string, string>;
 	// Pre-flattened rows from BoardNav.visibleSections — the SAME flatten the reducer addresses, so
 	// the running row index below matches BoardNav.visibleRows by construction (filter included).
 	group: BoardNav.SectionRows;
@@ -287,6 +340,11 @@ const Section = ({
 					spinnerFrame={spinnerFrame}
 					onSelect={onSelect}
 					onToggle={onToggle}
+					parentShortId={
+						row.task.parentTaskId
+							? parentIds.get(row.task.parentTaskId)
+							: undefined
+					}
 				/>
 			))}
 		</box>
@@ -398,6 +456,7 @@ export const Board = ({
 	// The SAME flatten the reducer uses for j/k, mouse addressing, and scroll-into-view — filter
 	// included — so the running rowIndex below is in lockstep with BoardNav.visibleRows.
 	const groups = BoardNav.visibleSections(sections, expanded, search, status);
+	const parentIds = shortIdIndex(sections);
 	const matchCount = groups.reduce((n, group) => n + group.rows.length, 0);
 	// Either filter can empty the list, and an empty scrollbox reads as a broken board — say "no
 	// matches" for a status that found nothing just as for a query that did.
@@ -426,6 +485,7 @@ export const Board = ({
 							spinnerFrame={spinnerFrame}
 							onSelect={onSelect}
 							onToggle={onToggle}
+							parentIds={parentIds}
 						/>
 					))
 				)}
