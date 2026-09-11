@@ -208,8 +208,8 @@ export const TaskSchema = z.object({
 
 	// --- Subtasks ---
 
-	/** Parent task ID (for subtasks - one level deep) */
-	parentTaskId: z.string().optional(),
+	/** Parent task ID (for subtasks - one level deep); null detaches from the parent */
+	parentTaskId: z.string().nullable().optional(),
 
 	// --- Project ---
 
