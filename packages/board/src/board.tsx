@@ -183,8 +183,6 @@ export const shortIdIndex = (
 // and a second arrow with a different meaning costs more to read than the one word it saves. When the
 // parent isn't loaded at all (past the archive cap) there is no id to name, so the row says only what
 // is certain — it is a subtask — rather than guessing at why its parent is absent.
-// The parent reference on an orphaned subtask: its id when the parent is loaded, a bare marker when it
-// is not, and nothing at all for a genuine root row.
 const orphanMeta = (task: Task, parentShortId?: string): string => {
 	if (!task.parentTaskId) return "";
 	return parentShortId ? ` · in ${parentShortId}` : " · subtask";
