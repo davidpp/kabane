@@ -9,6 +9,7 @@
 	"exports": {
 		".": "./index.ts",
 		"./schemas": "./schemas/index.ts",
+		"./scope": "./scope/detect.ts",
 		"./testing": "./testing.ts"
 	},
 	"scripts": {

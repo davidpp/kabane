@@ -100,7 +100,8 @@ Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is
 - **Work logs**: append-only URI refs — `session:`, `commit:`, `pr:owner/repo#n`, `issue:`, `file:`, `url:`, `branch:`.
 - **Links**: `blocks`/`blocked_by`, `parent`/`child`, `related`, `duplicate`, `follows`. `UNIQUE(source_id, target_id, type)`.
 - **Projects**: a flat `projectId` on the task, not a scope boundary.
-- **Scope**: `scopeUri` is a string the core parses and formats (`ScopeUri`) and never resolves. Bare ids normalize to `jake://scope/<id>`; the scheme is kept for wire compatibility with existing data.
+- **Scope**: `scopeUri` is a string storage parses and formats (`ScopeUri`) and never resolves. Bare ids normalize to `jake://scope/<id>`; the scheme is kept for wire compatibility with existing data.
+- **Scope detection** (`scope/detect.ts`, `@cabane/core/scope`): turns a cwd into a scope — marker walk, then git; pin → legacy pin → remote → first commit → path. Deliberately OFF the package barrel: it spawns `git` and reads the filesystem, so importing it from the Worker would break the hub. `Runtime.scopeResolver` is unrelated and stays the host's override.
 
 ## MCP (`mcp/`)
 

@@ -87,7 +87,9 @@ export {
 } from "./runtime";
 // Schemas
 export * from "./schemas";
-// Scope URIs (parse/format only — resolution is the host's job)
+// Scope URIs (parse/format only). Resolving a cwd to a scope lives in
+// `@cabane/core/scope`, kept off the barrel because it needs git and a
+// filesystem — neither of which the Worker runtime has.
 export * from "./scope/schemas";
 export { ScopeUri } from "./scope/uri";
 // Storage
