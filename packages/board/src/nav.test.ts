@@ -1212,6 +1212,47 @@ describe("withSearchResults (FTS tier-2 merge)", () => {
 		expect(doneSection?.rows.map((r) => r.task.id)).toEqual(["done1"]);
 	});
 
+	// Before JCAB-29 these two states were outside SECTION_STATES, so the merge fell through to a
+	// fabricated section carrying the RAW state string as its label ("someday", not "Someday").
+	it("places a someday hit in the real someday section with its display label", () => {
+		const s = withQuery("parked");
+		const parked = task({
+			id: "sd1",
+			shortId: "JAKE-51",
+			title: "Parked idea",
+			state: "someday",
+		});
+		const merged = BoardNav.withSearchResults(s, "parked", [parked]);
+		const section = merged.sections.find((sec) => sec.state === "someday");
+		expect(section?.rows.map((r) => r.task.id)).toEqual(["sd1"]);
+		expect(section?.label).toBe(TASK_STATE_DISPLAY.someday.label);
+	});
+
+	it("places a cancelled hit in the real cancelled section with its display label", () => {
+		const s = withQuery("dropped");
+		const killed = task({
+			id: "cx1",
+			shortId: "JAKE-52",
+			title: "Dropped work",
+			state: "cancelled",
+		});
+		const merged = BoardNav.withSearchResults(s, "dropped", [killed]);
+		const section = merged.sections.find((sec) => sec.state === "cancelled");
+		expect(section?.rows.map((r) => r.task.id)).toEqual(["cx1"]);
+		expect(section?.label).toBe(TASK_STATE_DISPLAY.cancelled.label);
+	});
+
+	it("keeps every merged section in SECTION_STATES display order", () => {
+		const s = withQuery("x");
+		const merged = BoardNav.withSearchResults(s, "x", [
+			task({ id: "cx2", title: "x cancelled", state: "cancelled" }),
+			task({ id: "sd2", title: "x someday", state: "someday" }),
+			task({ id: "dn2", title: "x done", state: "done" }),
+		]);
+		const order = merged.sections.map((sec) => sec.state);
+		expect(order).toEqual(["next", "someday", "done", "cancelled"]);
+	});
+
 	it("preserves section display order after merge", () => {
 		const s = state({
 			sections: sections({ next: [row(auth)] }),
@@ -1849,12 +1890,35 @@ describe("status filter", () => {
 		title: "shipped, verified",
 		state: "done",
 	});
-	// One of each quadrant: open/done × flagged/not.
+	const parked = task({
+		id: "sd",
+		shortId: "JAKE-5",
+		title: "parked idea",
+		state: "someday",
+	});
+	const parkedFlagged = task({
+		id: "sdf",
+		shortId: "JAKE-6",
+		title: "parked, unverified",
+		state: "someday",
+		needsReview: true,
+	});
+	const killed = task({
+		id: "cx",
+		shortId: "JAKE-7",
+		title: "abandoned, unverified",
+		state: "cancelled",
+		needsReview: true,
+	});
+	// Both sides of the lifecycle × flagged/not: unresolved (next, someday) and closed (done,
+	// cancelled). someday and cancelled are the two states the board could not reach before JCAB-29.
 	const board = (over: Partial<BoardNav.BoardState> = {}) =>
 		state({
 			sections: sections({
 				next: [row(openTask), row(flagged)],
+				someday: [row(parked), row(parkedFlagged)],
 				done: [row(doneFlagged), row(donePlain)],
+				cancelled: [row(killed)],
 			}),
 			selectedId: "a",
 			...over,
@@ -1877,12 +1941,24 @@ describe("status filter", () => {
 		expect(back.effect.type).toBe("none");
 	});
 
-	it("open is the default and renders exactly what the board always showed", () => {
+	it("open is the default and spans every UNRESOLVED section, someday included", () => {
 		expect(board().status).toBe("open");
-		expect(ids(board())).toEqual(["a", "fl"]);
+		// someday is parked, not finished — it belongs to open, and before JCAB-29 the board
+		// could send a task there (`s`) and never show it again.
+		expect(ids(board())).toEqual(["a", "fl", "sd", "sdf"]);
 	});
 
-	it("done shows the archive section with no query typed, and nothing else", () => {
+	it("open hides the closed archive — done and cancelled both", () => {
+		const groups = BoardNav.visibleSections(
+			board().sections,
+			new Set<string>(),
+			{ mode: "off" },
+			"open",
+		);
+		expect(groups.map((g) => g.section.state)).toEqual(["next", "someday"]);
+	});
+
+	it("done shows BOTH archive sections with no query typed, and nothing else", () => {
 		const s = BoardNav.reduceKey(board(), { name: "f" }).state;
 		const groups = BoardNav.visibleSections(
 			s.sections,
@@ -1890,8 +1966,18 @@ describe("status filter", () => {
 			s.search,
 			s.status,
 		);
-		expect(groups.map((g) => g.section.state)).toEqual(["done"]);
+		// cancelled is closed too: "done" is the lifecycle bucket, not the state name.
+		expect(groups.map((g) => g.section.state)).toEqual(["done", "cancelled"]);
+		expect(ids(s)).toEqual(["df", "dp", "cx"]);
+	});
+
+	it("a query from open still reaches the archive — 'did X land?' needs no filter change", () => {
+		let s = board();
+		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = typeQuery(s, "shipped");
+		// Both done rows surface even though the status is open.
 		expect(ids(s)).toEqual(["df", "dp"]);
+		expect(s.status).toBe("open");
 	});
 
 	it("review spans every section and keeps only flagged rows, done included", () => {
@@ -1902,9 +1988,15 @@ describe("status filter", () => {
 			s.search,
 			s.status,
 		);
-		expect(groups.map((g) => g.section.state)).toEqual(["next", "done"]);
-		// "done AND needs review" — the reason review composes over the states.
-		expect(ids(s)).toEqual(["fl", "df"]);
+		expect(groups.map((g) => g.section.state)).toEqual([
+			"next",
+			"someday",
+			"done",
+			"cancelled",
+		]);
+		// "done AND needs review" — the reason review composes over the states. It reaches the two
+		// closed states and the parked one alike: a flag is a flag wherever the task sits.
+		expect(ids(s)).toEqual(["fl", "sdf", "df", "cx"]);
 	});
 
 	it("review empties the board when nothing is flagged", () => {
@@ -1956,14 +2048,14 @@ describe("status filter", () => {
 	});
 
 	it("review keeps a flagged subtask's parent visible and forces it open", () => {
-		const parent = task({ id: "p", shortId: "JAKE-5", title: "parent" });
+		const parent = task({ id: "p", shortId: "JAKE-8", title: "parent" });
 		const child = task({
 			id: "c",
-			shortId: "JAKE-6",
+			shortId: "JAKE-9",
 			title: "child",
 			needsReview: true,
 		});
-		const sibling = task({ id: "c2", shortId: "JAKE-7", title: "sibling" });
+		const sibling = task({ id: "c2", shortId: "JAKE-10", title: "sibling" });
 		const s = state({
 			sections: sections({ next: [row(parent, [child, sibling])] }),
 			status: "review",

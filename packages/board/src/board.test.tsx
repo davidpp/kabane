@@ -630,6 +630,17 @@ const statusFixture: BoardData.BoardSection[] = [
 			children: [],
 		},
 	]),
+	section("someday", [
+		{
+			task: task({
+				id: "sd",
+				shortId: "JAKE-52",
+				title: "parked idea",
+				state: "someday",
+			}),
+			children: [],
+		},
+	]),
 	section("done", [
 		{
 			task: task({
@@ -642,9 +653,20 @@ const statusFixture: BoardData.BoardSection[] = [
 			children: [],
 		},
 	]),
+	section("cancelled", [
+		{
+			task: task({
+				id: "cx",
+				shortId: "JAKE-53",
+				title: "abandoned work",
+				state: "cancelled",
+			}),
+			children: [],
+		},
+	]),
 ];
 
-test("Board keeps the header chip and the done section hidden at the default status", async () => {
+test("Board at the default status shows the unresolved sections — someday included — and hides the archive", async () => {
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
 		<Board
 			sections={statusFixture}
@@ -659,16 +681,19 @@ test("Board keeps the header chip and the done section hidden at the default sta
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("JAKE-50"),
 		);
-		// `open` is the status quo: no fourth header part, no done rows.
+		// `open` stays quiet in the header, but it means UNRESOLVED: the parked someday row is on
+		// screen, and neither closed section is.
 		expect(frame).toContain("cabane · acme/widget · kind: all");
 		expect(frame).not.toContain("status:");
+		expect(frame).toContain("JAKE-52");
 		expect(frame).not.toContain("JAKE-51");
+		expect(frame).not.toContain("JAKE-53");
 	} finally {
 		destroy();
 	}
 });
 
-test("Board under status done shows the chip and the archive section with no query typed", async () => {
+test("Board under status done shows the chip and BOTH archive sections with no query typed", async () => {
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
 		<Board
 			sections={statusFixture}
@@ -685,8 +710,11 @@ test("Board under status done shows the chip and the archive section with no que
 			f.includes("JAKE-51"),
 		);
 		expect(frame).toContain("status: done");
+		// done AND cancelled — the closed bucket, not the state name.
 		expect(frame).toContain("JAKE-51");
+		expect(frame).toContain("JAKE-53");
 		expect(frame).not.toContain("JAKE-50");
+		expect(frame).not.toContain("JAKE-52");
 	} finally {
 		destroy();
 	}

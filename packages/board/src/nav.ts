@@ -240,15 +240,17 @@ export namespace BoardNav {
 		task.title.toLowerCase().includes(query) ||
 		shortId(task).toLowerCase().includes(query);
 
-	// The section half of the status filter. Done is archive: `open` keeps it search-only (as it has
-	// always been), `done` shows it alone, and `review` spans everything because a flagged task is as
-	// likely to be done as in flight.
+	// The section half of the status filter, on the lifecycle axis: `open` is the unresolved sections
+	// (someday included — parked is not finished), `done` is the closed archive alone, and `review`
+	// spans everything because a flagged task is as likely to be cancelled or done as in flight.
+	// The one exception is the search reach-through: a `/` query from `open` still reaches the
+	// archive, so "did X land?" needs no filter change.
 	const sectionInStatus = (
 		sectionState: BoardData.SectionState,
 		status: StatusFilter,
 		query: string,
 	): boolean =>
-		sectionState === "done"
+		BoardData.isClosed(sectionState)
 			? status !== "open" || query !== ""
 			: status !== "done";
 
@@ -378,9 +380,10 @@ export namespace BoardNav {
 		return { ...state, selectedId: firstId(rows) };
 	};
 
-	// When the selected task vanishes from a reload (cancelled/someday leave the visible sections, or `d`
-	// drops it past the done cap), re-anchor to the NEAREST surviving row by its old position — walking
-	// down first, then up — rather than snapping to the top of the list. Falls back to the first row.
+	// When the selected task vanishes from a reload (under `open`, closing it drops it out of the
+	// unresolved sections; or `d` drops it past the archive cap), re-anchor to the NEAREST surviving
+	// row by its old position — walking down first, then up — rather than snapping to the top of the
+	// list. Falls back to the first row.
 	const nearestSurvivor = (
 		oldRows: VisibleRow[],
 		newRows: VisibleRow[],
@@ -501,9 +504,10 @@ export namespace BoardNav {
 	};
 
 	// Direct state jump (`n` → next, `s` → someday, `x` → cancelled) on the action target — any current
-	// state, no progression walk. `cancelled`/`someday` leave the visible sections, so selection re-anchors
-	// on the following reload (see nearestSurvivor). `verb` shapes the flash: an arrow for a move that
-	// keeps it in play, a past-tense word for cancel.
+	// state, no progression walk. `someday` now lands in its own visible section; `cancelled` closes the
+	// task and so leaves the `open` view, and selection re-anchors on the following reload (see
+	// nearestSurvivor). `verb` shapes the flash: an arrow for a move that keeps it in play, a
+	// past-tense word for cancel.
 	const jumpState = (
 		state: BoardState,
 		task: Task | undefined,
@@ -623,7 +627,7 @@ export namespace BoardNav {
 		}
 
 		// Group new tasks by state for section placement.
-		const newByState = new Map<string, Task[]>();
+		const newByState = new Map<TaskState, Task[]>();
 		for (const task of tasks) {
 			if (existingIds.has(task.id)) continue;
 			const list = newByState.get(task.state) ?? [];
@@ -633,7 +637,10 @@ export namespace BoardNav {
 		if (newByState.size === 0) return state;
 
 		// Merge into existing sections or create new ones. Preserve display order from SECTION_STATES.
-		const sectionMap = new Map<string, BoardData.BoardSection>();
+		const sectionMap = new Map<
+			BoardData.SectionState,
+			BoardData.BoardSection
+		>();
 		for (const section of state.sections) {
 			sectionMap.set(section.state, section);
 		}
@@ -655,16 +662,10 @@ export namespace BoardNav {
 				rows,
 			});
 		}
-
-		// Also include any section states not in SECTION_STATES (shouldn't happen, but safe).
-		for (const [stateKey, tasks] of newByState) {
-			if (merged.some((s) => s.state === stateKey)) continue;
-			merged.push({
-				state: stateKey as BoardData.SectionState,
-				label: stateKey,
-				rows: tasks.map((task) => ({ task, children: [] })),
-			});
-		}
+		// No fallback pass for states outside SECTION_STATES: it now lists all seven, so the loop
+		// above reaches every key `newByState` can hold. The pass that used to sit here fabricated a
+		// section with an unchecked cast and labelled it with the raw state string — which is what a
+		// someday or cancelled FTS hit used to render as.
 
 		return withSelection({ ...state, sections: merged }, state.selectedId);
 	};
