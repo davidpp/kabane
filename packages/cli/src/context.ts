@@ -6,7 +6,10 @@
  * home unless `config.db.path` points elsewhere.
  */
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ok, Planner, type Result, Runtime } from "@cabane/core";
+import { detectScope } from "@cabane/core/scope";
 import { SqliteDb } from "@cabane/sqlite";
 import type { ParsedArgs } from "./args";
 import { flagString } from "./args";
@@ -14,7 +17,6 @@ import {
 	type Config,
 	type DatabaseLocation,
 	databaseLocation,
-	directoryScope,
 	loadConfig,
 } from "./config";
 import type { Outcome } from "./output";
@@ -78,6 +80,52 @@ export const openContext = async (
 	});
 };
 
-/** `--scope` wins, then `./.cabane/scope`, then nothing. */
-export const resolveScope = (args: ParsedArgs, ctx: Ctx): string | undefined =>
-	flagString(args, "scope") ?? directoryScope(ctx.cwd);
+/** A scope to filter on or file under, with the name a UI should show for it. */
+export type ScopeSelection = {
+	scopeUri: string;
+	label: string;
+};
+
+/**
+ * Jake pins a project's identity in `<root>/.jake/config.json`. A device
+ * configured with `db.path` pointing at a Jake database inherits its tasks, so
+ * it has to inherit that pin too: resolving the same repo to its git remote
+ * instead would be a different scope id, and every task already filed there
+ * would drop out of the filter.
+ */
+const jakeProjectPin = async (root: string): Promise<string | null> => {
+	try {
+		const raw = await readFile(join(root, ".jake", "config.json"), "utf8");
+		const id = (JSON.parse(raw) as { project?: { id?: unknown } }).project?.id;
+		return typeof id === "string" && id.length > 0 ? id : null;
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * `--scope` wins; otherwise the working directory decides, so a command run
+ * anywhere inside a project — its root, a nested package, or a worktree —
+ * lands on the same scope without any per-repo setup.
+ */
+export const resolveScope = async (
+	args: ParsedArgs,
+	ctx: Ctx,
+): Promise<ScopeSelection | undefined> => {
+	const explicit = flagString(args, "scope");
+	if (explicit) return { scopeUri: explicit, label: explicit };
+
+	const detected = await detectScope(ctx.cwd, {
+		home: ctx.home,
+		legacyPin: jakeProjectPin,
+	});
+	return detected
+		? { scopeUri: detected.scopeUri, label: detected.name }
+		: undefined;
+};
+
+/** The scope a query filters on; `resolveScope` without the display half. */
+export const resolveScopeUri = async (
+	args: ParsedArgs,
+	ctx: Ctx,
+): Promise<string | undefined> => (await resolveScope(args, ctx))?.scopeUri;

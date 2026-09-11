@@ -59,10 +59,27 @@ plain table names.
 
 ## Scope
 
-`scopeUri` is a string the tracker never resolves. It comes from `--scope`,
-else from `./.cabane/scope` in the current directory (one line, e.g. `cabane`),
-else nothing. `cabane init --scope <uri>` writes that file for you. Bare ids normalize to `jake://scope/<id>`. Git resolution is a
-host concern (Jake does it); the CLI does not.
+`scopeUri` is the context a task is filed under. Storage never resolves it; the
+CLI does, from the working directory, so `list`, `search`, `add`, `board` and
+`mcp` all land on the same scope whether you run them at a repo root, in a
+package below it, or in a worktree. The cascade, highest first:
+
+1. `--scope <uri>`
+2. `.cabane/scope` — the nearest one walking up (one line, e.g. `cabane`);
+   `cabane init --scope <uri>` writes it
+3. `.jake/config.json` → `project.id` — a device sharing a Jake database has to
+   honour the id Jake already filed tasks under
+4. the git remote, normalized to `host/owner/repo` (`origin`, else the first
+   remote listed), cached into `.cabane/scope`
+5. the first commit, as `git:<hash12>`, also cached — replaced by a real remote
+   id if one appears later, never the reverse
+6. the project root path
+
+Outside a project there is no scope and a query spans all of them. Bare ids
+normalize to `jake://scope/<id>`; a detected scope also carries `branch` and
+`package` as URI parameters, which record where a task was filed and never
+narrow a filter. The resolution itself is `@cabane/core/scope` — off the package
+barrel, because it needs git and a filesystem and the Worker has neither.
 
 ## Output and exit codes
 
@@ -86,7 +103,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `context <id>` | `--no-deref` `--no-subtasks` — the assembled brief, the read entrypoint for agents |
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
 | `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
-| `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`cabane_*`), with `./.cabane/scope` as the default scope so writes may omit `scopeUri` |
+| `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`cabane_*`), with the working directory's scope as the default so writes may omit `scopeUri` |
 
 Ids are short ids (`JCAB-12`) or ULIDs. Short ids are labels, not identities:
 two devices can mint the same one offline, and `sync pull` relabels the later
@@ -112,8 +129,8 @@ so the command prints nothing of its own.
 index.ts            bin shim
 src/main.ts         command table, help, exit codes
 src/args.ts         pure argv parser
-src/config.ts       CABANE_HOME, config.json, directory scope
-src/context.ts      Runtime.configure + Planner.init, the Ctx commands receive
+src/config.ts       CABANE_HOME, config.json, the scope pin file
+src/context.ts      Runtime.configure + Planner.init, the Ctx commands receive, scope resolution
 src/output.ts       --json vs human rendering, icons
 src/commands/*.ts   one file per command
 cli.test.ts         scripted session against the real binary

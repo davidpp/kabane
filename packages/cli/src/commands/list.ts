@@ -5,7 +5,7 @@ import {
 	type TaskState,
 } from "@cabane/core";
 import { flagBool, flagString } from "../args";
-import { type Command, resolveScope } from "../context";
+import { type Command, resolveScopeUri } from "../context";
 import { failure, formatTaskList, success } from "../output";
 
 export const list: Command = {
@@ -24,7 +24,7 @@ export const list: Command = {
 			kind: flagString(args, "kind") as ItemKind | undefined,
 			priority: flagString(args, "priority") as TaskPriority | undefined,
 			assignee: flagString(args, "assignee"),
-			scopeUri: resolveScope(args, ctx),
+			scopeUri: await resolveScopeUri(args, ctx),
 			tag: flagString(args, "tag"),
 			includeClosed:
 				flagBool(args, "all") || flagString(args, "state") !== undefined,

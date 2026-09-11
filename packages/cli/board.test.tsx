@@ -54,8 +54,10 @@ describe("cabane board", () => {
 		const deps = boardDeps(parseArgs([]), ctx);
 		expect(deps.basePath).toBe(home);
 		expect(deps.cwd).toBe(cwd);
+		// The pin resolves to a canonical URI, and the board labels it with the
+		// scope's friendly name rather than the raw URI.
 		expect(await deps.resolveScope?.(cwd)).toEqual({
-			scopeUri: "demo",
+			scopeUri: "jake://scope/demo",
 			label: "demo",
 		});
 
@@ -64,6 +66,19 @@ describe("cabane board", () => {
 			scopeUri: "other",
 			label: "other",
 		});
+	});
+
+	// The pin lives at the project root; a command run from a package below it
+	// has to land on the same scope, not fall out of the project entirely.
+	it("finds the pin from a nested directory", async () => {
+		const nested = join(cwd, "packages", "core");
+		mkdirSync(nested, { recursive: true });
+		const opened = await openContext(home, nested, parseArgs([]));
+		if (!opened.ok) throw opened.error;
+
+		expect(
+			await boardDeps(parseArgs([]), opened.value).resolveScope?.(nested),
+		).toEqual({ scopeUri: "jake://scope/demo", label: "demo" });
 	});
 
 	it("renders this device's tasks with the no-op ports", async () => {

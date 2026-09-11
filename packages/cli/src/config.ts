@@ -19,6 +19,7 @@ import {
 	toError,
 	trySync,
 } from "@cabane/core";
+import { MARKER_DIR, SCOPE_FILE } from "@cabane/core/scope";
 import { z } from "zod";
 
 export const DbConfigSchema = z.object({
@@ -48,7 +49,7 @@ export type DatabaseLocation = {
 
 export const CONFIG_FILE = "config.json";
 export const DB_NAME = "cabane.db";
-export const SCOPE_FILE = join(".cabane", "scope");
+export { MARKER_DIR, SCOPE_FILE };
 
 export const resolveHome = (env: NodeJS.ProcessEnv = process.env): string =>
 	env.CABANE_HOME && env.CABANE_HOME.length > 0
@@ -111,24 +112,16 @@ export const saveConfig = (home: string, config: Config): Result<string> => {
 };
 
 /**
- * The per-directory scope default: the trimmed content of `./.cabane/scope`
- * when present. No git resolution here; that is the host's business.
+ * `cabane init --scope` pins the scope for a directory tree. Reading it back is
+ * the first step of `detectScope`'s cascade, so nothing here reads it.
  */
-export const directoryScope = (cwd: string): string | undefined => {
-	const path = join(cwd, SCOPE_FILE);
-	if (!existsSync(path)) return undefined;
-	const value = readFileSync(path, "utf8").trim();
-	return value.length > 0 ? value : undefined;
-};
-
-/** `cabane init --scope` pins the directory default the rule above reads. */
 export const writeDirectoryScope = (
 	cwd: string,
 	scope: string,
 ): Result<string> => {
 	const path = join(cwd, SCOPE_FILE);
 	const written = trySync(() => {
-		mkdirSync(join(cwd, ".cabane"), { recursive: true });
+		mkdirSync(join(cwd, MARKER_DIR), { recursive: true });
 		writeFileSync(path, `${scope.trim()}\n`);
 		return path;
 	});

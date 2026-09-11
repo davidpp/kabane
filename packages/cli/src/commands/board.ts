@@ -7,17 +7,15 @@ import { failure, success } from "../output";
  * What the CLI hands the board: this device's home as the storage handle,
  * both host ports at their no-op defaults (no activity feed, no dispatcher —
  * those are a host's business, JCAB-14 is Jake's), and the CLI's own scope
- * rule (`--scope`, else `./.cabane/scope`) so the board opens where `list`
- * would. Pure so the wiring is testable without a TTY.
+ * rule, so the board opens where `list` would. The board calls the port with
+ * its own cwd; it is the same one, and passing the resolver through rather
+ * than a resolved value keeps the detection lazy and off the TTY path.
  */
-export const boardDeps = (args: ParsedArgs, ctx: Ctx): BoardDeps => {
-	const scopeUri = resolveScope(args, ctx);
-	return {
-		cwd: ctx.cwd,
-		basePath: ctx.store,
-		resolveScope: async () => (scopeUri ? { scopeUri, label: scopeUri } : null),
-	};
-};
+export const boardDeps = (args: ParsedArgs, ctx: Ctx): BoardDeps => ({
+	cwd: ctx.cwd,
+	basePath: ctx.store,
+	resolveScope: async () => (await resolveScope(args, ctx)) ?? null,
+});
 
 export const board: Command = {
 	name: "board",

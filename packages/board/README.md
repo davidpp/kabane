@@ -23,7 +23,7 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.cabane" });
 | `basePath` | yes | — (the handle the configured `DbProvider` reads) |
 | `activity: ActivitySource` | no | sidebar shows `no activity`, no badges, no header strip |
 | `dispatcher: Dispatcher` | no | `a` flashes `no dispatcher configured` in the footer |
-| `resolveScope(cwd)` | no | the board opens on all scopes |
+| `resolveScope(cwd)` | no | the board opens on all scopes (the CLI passes `@cabane/core/scope` detection) |
 
 The host calls `Runtime.configure` before `startBoard`; the board never opens a database itself.
 

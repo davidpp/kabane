@@ -1,6 +1,6 @@
 import { Planner, type TaskState } from "@cabane/core";
 import { flagString } from "../args";
-import { type Command, resolveScope } from "../context";
+import { type Command, resolveScopeUri } from "../context";
 import { failure, formatTaskList, success, usage } from "../output";
 
 export const search: Command = {
@@ -14,7 +14,7 @@ export const search: Command = {
 		const limitRaw = flagString(args, "limit");
 		const tasks = await Planner.searchTasks(ctx.store, query, {
 			state: flagString(args, "state") as TaskState | undefined,
-			scopeUri: resolveScope(args, ctx),
+			scopeUri: await resolveScopeUri(args, ctx),
 			limit: limitRaw ? Number(limitRaw) : undefined,
 		});
 		if (!tasks.ok) return failure(tasks.error);

@@ -6,7 +6,7 @@ import {
 	type TaskState,
 } from "@cabane/core";
 import { flagCsv, flagString } from "../args";
-import { type Command, resolveScope } from "../context";
+import { type Command, resolveScopeUri } from "../context";
 import { failure, formatTaskLine, success, usage } from "../output";
 import { toDeadline } from "./dates";
 
@@ -34,7 +34,7 @@ export const add: Command = {
 			state: (flagString(args, "state") as TaskState | undefined) ?? "inbox",
 			priority:
 				(flagString(args, "priority") as TaskPriority | undefined) ?? "normal",
-			scopeUri: resolveScope(args, ctx),
+			scopeUri: await resolveScopeUri(args, ctx),
 			assignee: flagString(args, "assignee"),
 			parentTaskId,
 			tags: flagCsv(args, "tags") ?? [],
