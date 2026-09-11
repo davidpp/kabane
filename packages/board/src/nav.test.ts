@@ -43,6 +43,7 @@ const state = (
 	selectedId: null,
 	expanded: new Set<string>(),
 	kind: "all",
+	status: "open",
 	scoped: false,
 	view: { type: "board" },
 	search: { mode: "off" },
@@ -1824,5 +1825,172 @@ describe("o key in the detail view emits openEvents effect", () => {
 		});
 		const { effect } = BoardNav.reduceKey(s, { name: "o" });
 		expect(effect.type).toBe("none");
+	});
+});
+
+describe("status filter", () => {
+	const openTask = task({ id: "a", shortId: "JAKE-1", title: "open work" });
+	const flagged = task({
+		id: "fl",
+		shortId: "JAKE-2",
+		title: "agent output",
+		needsReview: true,
+	});
+	const doneFlagged = task({
+		id: "df",
+		shortId: "JAKE-3",
+		title: "shipped, unverified",
+		state: "done",
+		needsReview: true,
+	});
+	const donePlain = task({
+		id: "dp",
+		shortId: "JAKE-4",
+		title: "shipped, verified",
+		state: "done",
+	});
+	// One of each quadrant: open/done × flagged/not.
+	const board = (over: Partial<BoardNav.BoardState> = {}) =>
+		state({
+			sections: sections({
+				next: [row(openTask), row(flagged)],
+				done: [row(doneFlagged), row(donePlain)],
+			}),
+			selectedId: "a",
+			...over,
+		});
+
+	const ids = (s: BoardNav.BoardState): string[] =>
+		BoardNav.visibleRows(s).map((r) => r.task.id);
+
+	it("f cycles open -> done -> review -> open WITHOUT a reload", () => {
+		const s = board();
+		const done = BoardNav.reduceKey(s, { name: "f" });
+		expect(done.state.status).toBe("done");
+		// The whole point of the view-level design: the rows are already in hand.
+		expect(done.effect.type).toBe("none");
+		const review = BoardNav.reduceKey(done.state, { name: "f" });
+		expect(review.state.status).toBe("review");
+		expect(review.effect.type).toBe("none");
+		const back = BoardNav.reduceKey(review.state, { name: "f" });
+		expect(back.state.status).toBe("open");
+		expect(back.effect.type).toBe("none");
+	});
+
+	it("open is the default and renders exactly what the board always showed", () => {
+		expect(board().status).toBe("open");
+		expect(ids(board())).toEqual(["a", "fl"]);
+	});
+
+	it("done shows the archive section with no query typed, and nothing else", () => {
+		const s = BoardNav.reduceKey(board(), { name: "f" }).state;
+		const groups = BoardNav.visibleSections(
+			s.sections,
+			s.expanded,
+			s.search,
+			s.status,
+		);
+		expect(groups.map((g) => g.section.state)).toEqual(["done"]);
+		expect(ids(s)).toEqual(["df", "dp"]);
+	});
+
+	it("review spans every section and keeps only flagged rows, done included", () => {
+		const s = board({ status: "review" });
+		const groups = BoardNav.visibleSections(
+			s.sections,
+			s.expanded,
+			s.search,
+			s.status,
+		);
+		expect(groups.map((g) => g.section.state)).toEqual(["next", "done"]);
+		// "done AND needs review" — the reason review composes over the states.
+		expect(ids(s)).toEqual(["fl", "df"]);
+	});
+
+	it("review empties the board when nothing is flagged", () => {
+		const s = state({
+			sections: sections({ next: [row(openTask)] }),
+			status: "review",
+			selectedId: "a",
+		});
+		expect(ids(s)).toEqual([]);
+	});
+
+	it("f re-anchors selection when the change hides the selected row", () => {
+		// `a` is open and unflagged, so `done` hides it: selection falls to the first surviving row.
+		const done = BoardNav.reduceKey(board({ selectedId: "a" }), { name: "f" });
+		expect(done.state.selectedId).toBe("df");
+		// And back the other way: `df` is done, so `open` hides it.
+		const back = BoardNav.reduceKey(
+			board({ status: "review", selectedId: "df" }),
+			{
+				name: "f",
+			},
+		);
+		expect(back.state.status).toBe("open");
+		expect(back.state.selectedId).toBe("a");
+	});
+
+	it("f keeps the selected row when it survives the change", () => {
+		// `df` is done AND flagged, so it is on screen under both statuses.
+		const s = board({ status: "done", selectedId: "df" });
+		const review = BoardNav.reduceKey(s, { name: "f" });
+		expect(review.state.status).toBe("review");
+		expect(review.state.selectedId).toBe("df");
+	});
+
+	it("a query narrows WITHIN the active status rather than replacing it", () => {
+		let s = board({ status: "review" });
+		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = typeQuery(s, "shipped");
+		// "shipped" matches both done rows; the review status keeps only the flagged one.
+		expect(ids(s)).toEqual(["df"]);
+	});
+
+	it("a query under status done never reaches the open sections", () => {
+		let s = board({ status: "done" });
+		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = typeQuery(s, "work");
+		// "open work" matches, but it lives in `next` — out of this status.
+		expect(ids(s)).toEqual([]);
+	});
+
+	it("review keeps a flagged subtask's parent visible and forces it open", () => {
+		const parent = task({ id: "p", shortId: "JAKE-5", title: "parent" });
+		const child = task({
+			id: "c",
+			shortId: "JAKE-6",
+			title: "child",
+			needsReview: true,
+		});
+		const sibling = task({ id: "c2", shortId: "JAKE-7", title: "sibling" });
+		const s = state({
+			sections: sections({ next: [row(parent, [child, sibling])] }),
+			status: "review",
+		});
+		const rows = BoardNav.visibleRows(s);
+		expect(rows.map((r) => r.task.id)).toEqual(["p", "c"]);
+		expect(rows[0]?.expanded).toBe(true);
+	});
+
+	it("esc leaves the status alone — its layering stays search then scope", () => {
+		let s = board({ status: "review", scoped: true });
+		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = typeQuery(s, "agent");
+		s = BoardNav.reduceKey(s, { name: "return" }).state;
+		const cleared = BoardNav.reduceKey(s, { name: "escape" });
+		expect(cleared.state.search.mode).toBe("off");
+		expect(cleared.state.status).toBe("review");
+		const widened = BoardNav.reduceKey(cleared.state, { name: "escape" });
+		expect(widened.state.scoped).toBe(false);
+		expect(widened.state.status).toBe("review");
+	});
+
+	it("f is inert while a search query is being typed", () => {
+		let s = board();
+		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = typeQuery(s, "f");
+		expect(s.status).toBe("open");
+		expect(BoardNav.activeQuery(s.search)).toBe("f");
 	});
 });

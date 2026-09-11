@@ -14,6 +14,13 @@ import type { TriggerDescriptor } from "./ports";
 export namespace BoardNav {
 	export type KindFilter = "all" | ItemKind;
 
+	// The second cycling filter (`f`), on the state/flag axis rather than the kind one. `open` is what
+	// the board has always shown — the four open sections, done left to search. `done` swaps to the
+	// archive section alone. `review` spans every section and keeps only the needsReview rows: an agent
+	// marks an issue done and flags it, so "done AND needs review" is the human's real inbox and has to
+	// stay askable — which is why review composes over the states instead of being a third bucket.
+	export type StatusFilter = "open" | "done" | "review";
+
 	// Transient footer feedback (copy result, state moves, review/cancel). Auto-cleared by app.tsx after a
 	// short flash; "never silent" — every mutation and every copy surfaces one. Owned here because the key
 	// reducer is what decides when a notice fires (e.g. the `v` no-op). `undoable` is set by app.tsx (not
@@ -113,6 +120,7 @@ export namespace BoardNav {
 		selectedId: string | null;
 		expanded: ReadonlySet<string>;
 		kind: KindFilter;
+		status: StatusFilter;
 		scoped: boolean;
 		view: BoardView;
 		search: SearchState;
@@ -171,6 +179,11 @@ export namespace BoardNav {
 	const NONE: Effect = { type: "none" };
 	const SEARCH_OFF: SearchState = { mode: "off" };
 	const KIND_CYCLE = ["all", "issue", "task"] as const satisfies KindFilter[];
+	const STATUS_CYCLE = [
+		"open",
+		"done",
+		"review",
+	] as const satisfies StatusFilter[];
 	// Bounded undo depth — a mis-press safety net, not an edit history.
 	const UNDO_CAP = 20;
 
@@ -212,6 +225,11 @@ export namespace BoardNav {
 		return KIND_CYCLE[(i + 1) % KIND_CYCLE.length] ?? "all";
 	};
 
+	const nextStatus = (status: StatusFilter): StatusFilter => {
+		const i = STATUS_CYCLE.indexOf(status);
+		return STATUS_CYCLE[(i + 1) % STATUS_CYCLE.length] ?? "open";
+	};
+
 	// The active filter query, lowercased for matching. Empty means "no filter" — both when search is
 	// off AND while typing with nothing entered yet (the full list stays visible until the first char).
 	export const activeQuery = (search: SearchState): string =>
@@ -221,6 +239,23 @@ export namespace BoardNav {
 	const matchesQuery = (task: Task, query: string): boolean =>
 		task.title.toLowerCase().includes(query) ||
 		shortId(task).toLowerCase().includes(query);
+
+	// The section half of the status filter. Done is archive: `open` keeps it search-only (as it has
+	// always been), `done` shows it alone, and `review` spans everything because a flagged task is as
+	// likely to be done as in flight.
+	const sectionInStatus = (
+		sectionState: BoardData.SectionState,
+		status: StatusFilter,
+		query: string,
+	): boolean =>
+		sectionState === "done"
+			? status !== "open" || query !== ""
+			: status !== "done";
+
+	// The row half. Only `review` narrows rows — by the flag, wherever it sits, parents and subtasks
+	// alike; `open`/`done` are settled a section at a time above.
+	const taskInStatus = (task: Task, status: StatusFilter): boolean =>
+		status !== "review" || task.needsReview;
 
 	// A section paired with its filtered, flattened rows — what board.tsx renders section-by-section.
 	// Concatenating the groups' rows in order IS visibleRows, so the renderer's running row index stays
@@ -232,8 +267,8 @@ export namespace BoardNav {
 
 	// Flatten sections into ordered on-screen rows, expanding only the parents in `expanded`. This is
 	// the single source of truth for j/k order, mouse row addressing, and scroll-into-view; board.tsx
-	// renders straight from it. The `/` search filter is applied HERE (not in a separate pass) so
-	// selection, mouse, and scroll all agree: with a query active, a matching subtask keeps its parent
+	// renders straight from it. BOTH filters — `/` search and the `f` status — are applied HERE (not in
+	// a separate pass) so selection, mouse, and scroll all agree: with one active, a matching subtask keeps its parent
 	// visible and forces it open (only matching siblings show, so the match is on screen); a matching
 	// parent renders normally — its non-matching children stay hidden unless it is in `expanded`.
 	// Sections left with no rows by the filter are dropped entirely.
@@ -241,14 +276,19 @@ export namespace BoardNav {
 		sections: BoardData.BoardSection[],
 		expanded: ReadonlySet<string>,
 		search: SearchState,
+		status: StatusFilter = "open",
 	): SectionRows[] => {
 		const query = activeQuery(search);
+		// Both filters fold into ONE row predicate so the two compose: `/` narrows within the active
+		// status rather than replacing it.
+		const matches = (task: Task): boolean =>
+			taskInStatus(task, status) && (query === "" || matchesQuery(task, query));
+		// Whether anything is narrowing the list — `review` filters rows just as a query does, so it
+		// takes the same tree-filter branch below (keep a flagged child's parent visible, forced open).
+		const narrowing = query !== "" || status === "review";
 		const groups: SectionRows[] = [];
 		for (const section of sections) {
-			// Done is search-only: the board is a glance surface and done is archive (800+ rows on big
-			// scopes). It's loaded (BoardData caps it to a recent window) so a query filters it with
-			// zero pop-in, but without a query the section never renders.
-			if (section.state === "done" && query === "") continue;
+			if (!sectionInStatus(section.state, status, query)) continue;
 			const rows: VisibleRow[] = [];
 			const pushChild = (child: Task, parentId: string): void => {
 				rows.push({
@@ -261,7 +301,7 @@ export namespace BoardNav {
 			};
 			for (const { task, children } of section.rows) {
 				const hasChildren = children.length > 0;
-				if (query === "") {
+				if (!narrowing) {
 					const isExpanded = hasChildren && expanded.has(task.id);
 					rows.push({
 						task,
@@ -274,11 +314,11 @@ export namespace BoardNav {
 						for (const child of children) pushChild(child, task.id);
 					continue;
 				}
-				const parentMatch = matchesQuery(task, query);
+				const parentMatch = matches(task);
 				const visibleChildren =
 					parentMatch && expanded.has(task.id)
 						? children
-						: children.filter((child) => matchesQuery(child, query));
+						: children.filter(matches);
 				if (!parentMatch && visibleChildren.length === 0) continue;
 				rows.push({
 					task,
@@ -295,9 +335,12 @@ export namespace BoardNav {
 	};
 
 	export const visibleRows = (state: BoardState): VisibleRow[] =>
-		visibleSections(state.sections, state.expanded, state.search).flatMap(
-			(group) => group.rows,
-		);
+		visibleSections(
+			state.sections,
+			state.expanded,
+			state.search,
+			state.status,
+		).flatMap((group) => group.rows);
 
 	const rowOf = (
 		rows: VisibleRow[],
@@ -517,13 +560,14 @@ export namespace BoardNav {
 
 	export const init = (
 		sections: BoardData.BoardSection[],
-		opts: { scoped: boolean; kind?: KindFilter },
+		opts: { scoped: boolean; kind?: KindFilter; status?: StatusFilter },
 	): BoardState => {
 		const base: BoardState = {
 			sections,
 			selectedId: null,
 			expanded: new Set<string>(),
 			kind: opts.kind ?? "all",
+			status: opts.status ?? "open",
 			scoped: opts.scoped,
 			view: { type: "board" },
 			search: SEARCH_OFF,
@@ -953,6 +997,17 @@ export namespace BoardNav {
 		effect: NONE,
 	});
 
+	// Same shape as withSearch: a view-level filter change re-anchors selection itself, because unlike
+	// the kind filter there is no reload (and so no withSections pass) to do it. Without this, `f` can
+	// leave selectedId on a row that is no longer rendered and j/k jump from nowhere.
+	const withStatus = (
+		state: BoardState,
+		status: StatusFilter,
+	): { state: BoardState; effect: Effect } => ({
+		state: withSelection({ ...state, status }, state.selectedId),
+		effect: NONE,
+	});
+
 	// A single printable character for the query: OpenTUI's ParsedKey carries the raw `sequence`; one
 	// char, no ctrl/meta, and above the C0 control range (also excludes DEL 0x7f). Space and every
 	// shifted symbol pass through; escape/return/backspace are handled by name before this runs.
@@ -1095,6 +1150,10 @@ export namespace BoardNav {
 					state: { ...state, kind: nextKind(state.kind) },
 					effect: { type: "reload" },
 				};
+			// No reload, unlike `i`: every state is already loaded each poll (done capped to its recent
+			// window) and every row already carries needsReview, so `f` filters rows in hand.
+			case "f":
+				return withStatus(state, nextStatus(state.status));
 			case "/":
 				// Enter search-input mode with a fresh query (vim idiom — `/` always starts over).
 				return {
