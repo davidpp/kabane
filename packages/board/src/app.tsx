@@ -647,6 +647,7 @@ export const App = ({
 					activity={activity}
 					scopeLabel={scopeLabel}
 					filterLabel={`kind: ${state.kind}`}
+					status={state.status}
 					scrollRef={listRef}
 					onSelect={(row) => dispatchMouse({ type: "select", row })}
 					onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}

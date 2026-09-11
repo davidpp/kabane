@@ -595,6 +595,8 @@ test("HelpOverlay renders the grouped full keybinding list with its close hint",
 		// The vim-obvious keys live HERE, not in the footer.
 		expect(frame).toContain("expand/collapse subtasks");
 		expect(frame).toContain("dispatch (host triggers)");
+		// The status filter is discoverable here only — like `i`, it is off the trimmed footer.
+		expect(frame).toContain("cycle status (open/done/review)");
 		expect(frame).toContain("? / esc close");
 	} finally {
 		destroy();
@@ -616,6 +618,105 @@ test("Board footer shows only the app-specific hints, ending in `? help`", async
 		// The vim-obvious ones are gone from the footer.
 		expect(frame).not.toContain("space expand");
 		expect(frame).not.toContain("enter open");
+	} finally {
+		destroy();
+	}
+});
+
+const statusFixture: BoardData.BoardSection[] = [
+	section("next", [
+		{
+			task: task({ id: "a", shortId: "JAKE-50", title: "open work" }),
+			children: [],
+		},
+	]),
+	section("done", [
+		{
+			task: task({
+				id: "df",
+				shortId: "JAKE-51",
+				title: "shipped unverified",
+				state: "done",
+				needsReview: true,
+			}),
+			children: [],
+		},
+	]),
+];
+
+test("Board keeps the header chip and the done section hidden at the default status", async () => {
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={statusFixture}
+			expanded={new Set()}
+			selectedId="a"
+			scopeLabel="acme/widget"
+			filterLabel="kind: all"
+		/>,
+		{ width: 120, height: 20 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JAKE-50"),
+		);
+		// `open` is the status quo: no fourth header part, no done rows.
+		expect(frame).toContain("cabane · acme/widget · kind: all");
+		expect(frame).not.toContain("status:");
+		expect(frame).not.toContain("JAKE-51");
+	} finally {
+		destroy();
+	}
+});
+
+test("Board under status done shows the chip and the archive section with no query typed", async () => {
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={statusFixture}
+			expanded={new Set()}
+			selectedId="df"
+			scopeLabel="acme/widget"
+			filterLabel="kind: all"
+			status="done"
+		/>,
+		{ width: 120, height: 20 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JAKE-51"),
+		);
+		expect(frame).toContain("status: done");
+		expect(frame).toContain("JAKE-51");
+		expect(frame).not.toContain("JAKE-50");
+	} finally {
+		destroy();
+	}
+});
+
+test("Board under status review says 'no matches' rather than going blank when nothing is flagged", async () => {
+	const unflagged: BoardData.BoardSection[] = [
+		section("next", [
+			{
+				task: task({ id: "a", shortId: "JAKE-50", title: "open work" }),
+				children: [],
+			},
+		]),
+	];
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={unflagged}
+			expanded={new Set()}
+			selectedId={null}
+			status="review"
+		/>,
+		{ width: 120, height: 20 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("no matches"),
+		);
+		expect(frame).toContain("status: review");
+		expect(frame).toContain("no matches");
+		expect(frame).not.toContain("JAKE-50");
 	} finally {
 		destroy();
 	}

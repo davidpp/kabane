@@ -268,9 +268,10 @@ export namespace BoardNav {
 	// Flatten sections into ordered on-screen rows, expanding only the parents in `expanded`. This is
 	// the single source of truth for j/k order, mouse row addressing, and scroll-into-view; board.tsx
 	// renders straight from it. BOTH filters — `/` search and the `f` status — are applied HERE (not in
-	// a separate pass) so selection, mouse, and scroll all agree: with one active, a matching subtask keeps its parent
-	// visible and forces it open (only matching siblings show, so the match is on screen); a matching
-	// parent renders normally — its non-matching children stay hidden unless it is in `expanded`.
+	// a separate pass) so selection, mouse, and scroll all agree: with one active, a matching subtask
+	// keeps its parent visible and forces it open (only matching siblings show, so the match is on
+	// screen); a matching parent renders normally — its non-matching children stay hidden unless it
+	// is in `expanded`.
 	// Sections left with no rows by the filter are dropped entirely.
 	export const visibleSections = (
 		sections: BoardData.BoardSection[],

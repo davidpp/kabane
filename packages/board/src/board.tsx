@@ -345,6 +345,9 @@ export type BoardProps = {
 	activity?: BoardActivity.ActivityMap;
 	scopeLabel?: string;
 	filterLabel?: string;
+	// The `f` status filter. Optional so render-only tests without it keep working, and defaulted to
+	// the value that renders the board exactly as it always has.
+	status?: BoardNav.StatusFilter;
 	// The list's scrollbox; app.tsx holds the ref so it can scroll the selected row into view.
 	scrollRef?: RefObject<ScrollBoxRenderable | null>;
 	// Mouse callbacks; absent in the render-only tests. app.tsx routes both through BoardNav.reduceMouse.
@@ -365,6 +368,7 @@ export const Board = ({
 	activity,
 	scopeLabel,
 	filterLabel,
+	status = "open",
 	scrollRef,
 	onSelect,
 	onToggle,
@@ -379,17 +383,25 @@ export const Board = ({
 	);
 	const strip = activity ? activityStrip(activity, spinnerFrame) : "";
 	const available = Math.max(MIN_TITLE_WIDTH, width - RESERVED_COLS - sbWidth);
-	const header = ["Cabane", scopeLabel ?? "all scopes", filterLabel].filter(
-		(part): part is string => Boolean(part),
-	);
+	// Quiet by default: `open` is what the board has always shown, and this header <text> does no
+	// truncation (unlike StatusBar), so a fourth always-on part would wrap on a narrow frame.
+	const statusLabel = status === "open" ? undefined : `status: ${status}`;
+	const header = [
+		"Cabane",
+		scopeLabel ?? "all scopes",
+		filterLabel,
+		statusLabel,
+	].filter((part): part is string => Boolean(part));
 	// App-specific keys only — the vim-obvious ones live in the `?` help overlay (StatusBar handles
 	// its own truncation on narrow frames).
 	const hints = Keymap.hintLine(Keymap.BOARD_FOOTER);
 	// The SAME flatten the reducer uses for j/k, mouse addressing, and scroll-into-view — filter
 	// included — so the running rowIndex below is in lockstep with BoardNav.visibleRows.
-	const groups = BoardNav.visibleSections(sections, expanded, search);
+	const groups = BoardNav.visibleSections(sections, expanded, search, status);
 	const matchCount = groups.reduce((n, group) => n + group.rows.length, 0);
-	const filtering = BoardNav.activeQuery(search) !== "";
+	// Either filter can empty the list, and an empty scrollbox reads as a broken board — say "no
+	// matches" for a status that found nothing just as for a query that did.
+	const filtering = BoardNav.activeQuery(search) !== "" || status !== "open";
 	const nextRowIndex = { value: 0 };
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>

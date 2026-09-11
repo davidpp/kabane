@@ -58,6 +58,7 @@ export namespace Keymap {
 				{ key: "⌃z", label: "undo last change" },
 				{ key: "/", label: "search (filter as you type)" },
 				{ key: "i", label: "cycle kind filter" },
+				{ key: "f", label: "cycle status (open/done/review)" },
 				{ key: "b", label: "toggle sidebar" },
 				{ key: "tab", label: "focus sidebar / board" },
 				{ key: "r", label: "refresh" },
