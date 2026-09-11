@@ -163,6 +163,101 @@ describe("BoardData", () => {
 			);
 		});
 
+		it("loads someday and cancelled — the states the board could once write but never read", async () => {
+			await Planner.addTask(
+				TEST_BASE,
+				draft({ title: "parked", state: "someday" }),
+			);
+			await Planner.addTask(
+				TEST_BASE,
+				draft({ title: "abandoned", state: "cancelled" }),
+			);
+
+			const result = await BoardData.loadBoard(TEST_BASE);
+			expect(result.ok).toBe(true);
+			if (!result.ok) return;
+
+			expect(sectionFor(result.value, "someday")?.rows[0]?.task.title).toBe(
+				"parked",
+			);
+			expect(sectionFor(result.value, "cancelled")?.rows[0]?.task.title).toBe(
+				"abandoned",
+			);
+		});
+
+		it("orders all seven sections unresolved-first, archive last", async () => {
+			for (const state of BoardData.SECTION_STATES) {
+				await Planner.addTask(TEST_BASE, draft({ title: `a ${state}`, state }));
+			}
+
+			const result = await BoardData.loadBoard(TEST_BASE);
+			expect(result.ok).toBe(true);
+			if (!result.ok) return;
+
+			expect(result.value.map((s) => s.state)).toEqual([
+				"in_progress",
+				"next",
+				"inbox",
+				"waiting",
+				"someday",
+				"done",
+				"cancelled",
+			]);
+		});
+
+		it("nests a subtask under a someday parent — parked is a tree, not archive", async () => {
+			const parent = await Planner.addTask(
+				TEST_BASE,
+				draft({ title: "parked parent", state: "someday" }),
+			);
+			expect(parent.ok).toBe(true);
+			if (!parent.ok) return;
+			await Planner.addTask(
+				TEST_BASE,
+				draft({
+					title: "parked child",
+					state: "someday",
+					parentTaskId: parent.value.id,
+				}),
+			);
+
+			const result = await BoardData.loadBoard(TEST_BASE);
+			expect(result.ok).toBe(true);
+			if (!result.ok) return;
+
+			const rows = sectionFor(result.value, "someday")?.rows;
+			expect(rows).toHaveLength(1);
+			expect(rows?.[0]?.children.map((c) => c.title)).toEqual(["parked child"]);
+		});
+
+		it("leaves the closed archive FLAT — a cancelled parent gets no subtask query", async () => {
+			const parent = await Planner.addTask(
+				TEST_BASE,
+				draft({ title: "killed parent", state: "cancelled" }),
+			);
+			expect(parent.ok).toBe(true);
+			if (!parent.ok) return;
+			await Planner.addTask(
+				TEST_BASE,
+				draft({
+					title: "killed child",
+					state: "cancelled",
+					parentTaskId: parent.value.id,
+				}),
+			);
+
+			const result = await BoardData.loadBoard(TEST_BASE);
+			expect(result.ok).toBe(true);
+			if (!result.ok) return;
+
+			// Cancelled joins done on the archive path: no per-parent query, so no children are
+			// attached. Skipping archive parents as subtask roots is what keeps two 50-row windows
+			// from adding 100 per-parent queries to every 5s poll.
+			const rows = sectionFor(result.value, "cancelled")?.rows;
+			expect(rows?.every((r) => r.children.length === 0)).toBe(true);
+			expect(rows?.map((r) => r.task.title)).toContain("killed parent");
+		});
+
 		it("loads all recent done rows inside the tier-1 search window (FTS owns the deep archive)", async () => {
 			for (let i = 0; i < 15; i++) {
 				await Planner.addTask(

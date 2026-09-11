@@ -13,9 +13,10 @@ import {
 } from "@cabane/core";
 
 export namespace BoardData {
-	// Sections rendered top-to-bottom (linear-tui grouped-list order). `done` is SEARCH-ONLY: the
-	// board is a glance surface and done is archive — it never renders without an active `/` query
-	// (see BoardNav.visibleSections), but it's always loaded so search filters it with zero pop-in.
+	// Sections rendered top-to-bottom (linear-tui grouped-list order) — every one of the seven states,
+	// so the board can reach anything it can write. Unresolved work leads, `someday` sits under it as
+	// the parked backlog, and the closed archive trails. WHICH of these render is the `f` status
+	// filter's business (see BoardNav.visibleSections), not this list's: it only fixes the order.
 	// This is the DISPLAY order — the `[`/`]` state move uses the GTD progression below instead, so
 	// a reordered display never changes what "next state" means.
 	export const SECTION_STATES = [
@@ -23,7 +24,9 @@ export namespace BoardData {
 		"next",
 		"inbox",
 		"waiting",
+		"someday",
 		"done",
+		"cancelled",
 	] as const satisfies readonly TaskState[];
 
 	// Logical GTD progression for `[`/`]` (prev/next state), independent of the display order above.
@@ -37,10 +40,19 @@ export namespace BoardData {
 
 	export type SectionState = (typeof SECTION_STATES)[number];
 
-	// The done SEARCH window for instant client-side tier-1 search. FTS (tier 2) owns the deep
-	// archive; the loaded window is just the instant tier — 50 recent is enough for "did X land?"
-	// while FTS surfaces the full 800+ done backlog within ~200ms.
-	const DONE_LIMIT = 50;
+	// The two lifecycle buckets. `closed` is exactly what core's `includeClosed: false` excludes
+	// (storage/tasks.ts: `state NOT IN ('done', 'cancelled')`), so the board's split and the query
+	// layer's agree by construction rather than by coincidence. Everything else — someday included —
+	// is unresolved: parked is not finished.
+	const CLOSED_STATES: readonly TaskState[] = ["done", "cancelled"];
+
+	export const isClosed = (state: TaskState): boolean =>
+		CLOSED_STATES.includes(state);
+
+	// The archive window for instant client-side tier-1 search, shared by done and cancelled. FTS
+	// (tier 2) owns the deep archive; the loaded window is just the instant tier — 50 recent each is
+	// enough for "did X land?" while FTS surfaces the full 800+ backlog within ~200ms.
+	const ARCHIVE_LIMIT = 50;
 	const OPEN_LIMIT = 100;
 
 	// A visible top-level row plus its (depth-2, no deeper) subtasks. Planner nesting is one level, so
@@ -75,7 +87,7 @@ export namespace BoardData {
 	//   - a subtask whose parent is NOT visible (e.g. a done parent past the cap) stays a top-level row
 	//     in its own state section;
 	//   - empty sections are dropped.
-	// `tasksByState` are the per-state query results (section candidates, done already capped);
+	// `tasksByState` are the per-state query results (section candidates, the archive already capped);
 	// `subtasks` are the children of the visible top-level tasks (fetched separately so done children
 	// under an open parent still show).
 	export const assembleSections = (
@@ -115,9 +127,11 @@ export namespace BoardData {
 		return sections;
 	};
 
-	// Load the grouped list: one query per state for the section rows (done capped + recency-ordered),
-	// then one query per top-level task for its subtasks. Planner nesting is one level, so tasks that
-	// already have a parent can't be parents themselves and are skipped as query roots.
+	// Load the grouped list: one query per state for the section rows, then one query per top-level
+	// task for its subtasks. Two treatments, keyed off the lifecycle rather than off one state name:
+	// unresolved states (someday included) load as a tree, ordered by creation; the closed archive
+	// loads capped and recency-ordered. Planner nesting is one level, so tasks that already have a
+	// parent can't be parents themselves and are skipped as query roots.
 	export const loadBoard = async (
 		basePath: string,
 		filters: BoardFilters = {},
@@ -125,22 +139,23 @@ export namespace BoardData {
 		const tasksByState: Partial<Record<SectionState, Task[]>> = {};
 		const parentIds: string[] = [];
 		for (const state of SECTION_STATES) {
-			const isDone = state === "done";
+			const closed = isClosed(state);
 			const query: Partial<TaskQuery> = {
 				state,
 				kind: filters.kind,
 				scopeUri: filters.scopeUri,
-				includeClosed: isDone,
-				limit: isDone ? DONE_LIMIT : OPEN_LIMIT,
-				orderBy: isDone ? "updatedAt" : "createdAt",
+				includeClosed: closed,
+				limit: closed ? ARCHIVE_LIMIT : OPEN_LIMIT,
+				orderBy: closed ? "updatedAt" : "createdAt",
 				orderDir: "desc",
 			};
 			const result = await Planner.queryTasks(basePath, query);
 			if (!result.ok) return result;
 			tasksByState[state] = result.value;
-			// Done rows render FLAT (search results, not a tree): skipping them as subtask roots keeps
-			// the 200-row done window from adding 200 per-parent queries to every 5s poll.
-			if (isDone) continue;
+			// Archive rows render FLAT (search results, not a tree): skipping them as subtask roots
+			// keeps the two archive windows from adding a per-parent query each to every 5s poll.
+			// Someday is NOT archive — a parked parent still has children worth seeing.
+			if (closed) continue;
 			for (const task of result.value) {
 				if (!task.parentTaskId) parentIds.push(task.id);
 			}
