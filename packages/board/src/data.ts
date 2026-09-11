@@ -83,9 +83,10 @@ export namespace BoardData {
 
 	// Pure list assembly (the tree seam — unit-tested without a DB). Groups top-level tasks into their
 	// state sections and attaches children under their parent. Rules:
-	//   - a subtask whose parent is visible appears ONLY under that parent (deduped from its own section);
-	//   - a subtask whose parent is NOT visible (e.g. a done parent past the cap) stays a top-level row
-	//     in its own state section;
+	//   - a subtask attached under its parent appears ONLY there (deduped from its own section);
+	//   - a subtask that was NOT attached stays a top-level row in its own state section — its parent
+	//     is past the cap, or closed and therefore never a subtask root. board.tsx marks such a row
+	//     with its parent id so it doesn't read as a genuine root item;
 	//   - empty sections are dropped.
 	// `tasksByState` are the per-state query results (section candidates, the archive already capped);
 	// `subtasks` are the children of the visible top-level tasks (fetched separately so done children
@@ -100,20 +101,27 @@ export namespace BoardData {
 		}
 
 		const childrenByParent = new Map<string, Task[]>();
+		// The ids that ACTUALLY ended up under a parent. This, not "the parent exists", is what earns
+		// the dedupe below: a subtask only renders under its parent when it is in that parent's list.
+		const attachedIds = new Set<string>();
 		for (const sub of subtasks) {
 			const parentId = sub.parentTaskId;
 			if (!parentId || !visibleIds.has(parentId)) continue;
 			const list = childrenByParent.get(parentId) ?? [];
 			list.push(sub);
 			childrenByParent.set(parentId, list);
+			attachedIds.add(sub.id);
 		}
 
 		const sections: BoardSection[] = [];
 		for (const state of SECTION_STATES) {
 			const rows: BoardRow[] = [];
 			for (const task of tasksByState[state] ?? []) {
-				// Deduped: a child of a visible parent renders under the parent, not in its own section.
-				if (task.parentTaskId && visibleIds.has(task.parentTaskId)) continue;
+				// Deduped: a child that is rendering under its parent doesn't render twice. Keyed on the
+				// child actually being attached, NOT on its parent merely existing — a closed parent is
+				// never a subtask root, so its children were never fetched and nothing would re-attach
+				// them. Testing the parent here dropped them from both places (JCAB-30).
+				if (attachedIds.has(task.id)) continue;
 				rows.push({ task, children: childrenByParent.get(task.id) ?? [] });
 			}
 			if (rows.length > 0) {

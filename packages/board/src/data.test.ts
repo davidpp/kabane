@@ -89,6 +89,50 @@ describe("BoardData.assembleSections (pure)", () => {
 		expect(row?.children).toEqual([]);
 	});
 
+	// JCAB-30: a closed parent is never a subtask root, so its children are never fetched and nothing
+	// re-attaches them. Deduping on "the parent exists" dropped them from BOTH places.
+	it("keeps an open subtask of a DONE parent as a top-level row in its own section", () => {
+		const parent = task({ id: "p", state: "done" });
+		const child = task({ id: "c", state: "next", parentTaskId: "p" });
+		// The parent is within the archive cap (so it IS in visibleIds), but loadBoard skipped it as a
+		// subtask root — hence the empty subtask list.
+		const sections = BoardData.assembleSections(
+			{ next: [child], done: [parent] },
+			[],
+		);
+		const row = sectionFor(sections, "next")?.rows[0];
+		expect(row?.task.id).toBe("c");
+		expect(sectionFor(sections, "done")?.rows[0]?.children).toEqual([]);
+	});
+
+	it("keeps an open subtask of a CANCELLED parent as a top-level row in its own section", () => {
+		const parent = task({ id: "p", state: "cancelled" });
+		const child = task({ id: "c", state: "in_progress", parentTaskId: "p" });
+		const sections = BoardData.assembleSections(
+			{ in_progress: [child], cancelled: [parent] },
+			[],
+		);
+		expect(sectionFor(sections, "in_progress")?.rows[0]?.task.id).toBe("c");
+	});
+
+	it("still dedupes only the child that was actually attached, not every child of that parent", () => {
+		const parent = task({ id: "p", state: "in_progress" });
+		const attached = task({ id: "c1", state: "next", parentTaskId: "p" });
+		// Came back in its own section query but NOT in the parent's subtask fetch (past its limit).
+		const unattached = task({ id: "c2", state: "next", parentTaskId: "p" });
+		const sections = BoardData.assembleSections(
+			{ in_progress: [parent], next: [attached, unattached] },
+			[attached],
+		);
+		expect(sectionFor(sections, "in_progress")?.rows[0]?.children).toHaveLength(
+			1,
+		);
+		// c2 renders nowhere else, so it must survive in its own section.
+		expect(sectionFor(sections, "next")?.rows.map((r) => r.task.id)).toEqual([
+			"c2",
+		]);
+	});
+
 	it("shows a done subtask under an open parent even when it is not in any section query (done cap)", () => {
 		const parent = task({ id: "p", state: "in_progress" });
 		const doneChild = task({ id: "c", state: "done", parentTaskId: "p" });
