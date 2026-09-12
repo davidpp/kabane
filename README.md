@@ -11,8 +11,9 @@ decision record in `~/Projects/jake/docs/ADR/032-cabane-extraction.md`.
 |---|---|---|---|
 | `packages/core` | `@cabane/core` | Bun + Workers | schemas, storage over the Db port, sync, plan lint, commit linking, MCP tool definitions and servers (stdio, Streamable HTTP) |
 | `packages/sqlite` | `@cabane/sqlite` | Bun | Db adapter over `bun:sqlite` |
+| `packages/acp` | `@cabane/acp` | Bun | Agent Client Protocol client: harness registry, session runner, the board's copilot |
 | `packages/cli` | `cabane` | Bun | the device command line |
-| `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource and Dispatcher ports |
+| `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource, Dispatcher and Copilot ports |
 | `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP |
 
 ## Quick start
@@ -28,6 +29,39 @@ Multi-device sync and the hosted hub (Cloudflare Worker behind Access at
 `cabane.3pew.ca`) are set up by following [`docs/deploy.md`](docs/deploy.md): Cloudflare,
 first device, more devices, each client (Claude Code, Hermes, Codex, Claude.ai, ChatGPT),
 and day-two operations. The auth decision is in [`docs/auth.md`](docs/auth.md).
+
+## Board
+
+`cabane board` opens the kanban on the scope the working directory resolves to; `?` lists
+every key. Two of them are the copilot: `m` marks rows into a working set, and `A` opens a
+one-line prompt that carries what you are looking at — the scope, the section, the filters,
+the selected row, the marked set and their briefs — to a coding harness running on your
+machine as you.
+
+```
+ cabane · cabane                                          · 3 marked
+ next
+   ● JCAB-37  Copilot over ACP: instruction block, slash shortcuts, …
+   ● JCAB-38  Wire the copilot into `cabane board`
+     JCAB-39  Agent writes: attribution, needsReview policy, triage tool
+
+ JCAB-31 · 3 marked · next
+ > verify which of these are still real todos, someday or next
+ ─────────────────────────────────────────────────────────────────────
+ ⠹ copilot · cabane_edit
+```
+
+`enter` sends it. The turn runs in the background, the board stays interactive, and the
+footer carries `⠹ copilot · <last tool call>` while it goes, then `✓ copilot · <the agent's
+last line>` until the next keypress. `o` opens the live transcript, `esc` cancels the turn.
+Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicates`,
+`/reparent`, `/check-plan`), which expand into the window so you read what will be sent.
+
+Every write the copilot makes goes through `cabane mcp` into this device's database, stamped
+`cabane://actor/agent/<harness>`, and the board reloads as each one lands. The harness is
+Claude Code unless `copilot.harness` in `~/.cabane/config.json` says `codex` or `gemini`, and
+`cabane board --copilot <harness>` overrides that for one run; it has to be installed and
+logged in on this machine ([`docs/deploy.md`](docs/deploy.md) part 4.7).
 
 ## Set up a new machine as a device (for AI agents)
 

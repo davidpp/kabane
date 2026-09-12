@@ -531,6 +531,51 @@ Test order, and stop at the first failure: inspector (4.4), Claude Code (4.1), C
 
 ---
 
+### 4.7 Board copilot — the harness `cabane board` talks to
+
+The other direction: `A` in the board starts an agent session on this machine and hands it
+what is on screen. Nothing here touches Cloudflare or the hub — the harness runs locally as
+you, and its writes go through `cabane mcp` into this device's database, stamped
+`cabane://actor/agent/<harness>`.
+
+| `copilot.harness` | Needs | What the board launches |
+|---|---|---|
+| `claude` (default) | `claude` on PATH, logged in (`claude` once) | `npx -y @agentclientprotocol/claude-agent-acp@0.76.0` |
+| `codex` | `codex` on PATH, `codex login` | `npx -y @agentclientprotocol/codex-acp@1.11.0` |
+| `gemini` | `gemini` on PATH, logged in (`gemini` once) | `gemini --acp` |
+
+Adapter versions are pinned so every device behaves the same. The block in
+`~/.cabane/config.json` is optional; with no block at all the board opens with a Claude
+copilot:
+
+```json
+{
+  "copilot": { "harness": "codex" }
+}
+```
+
+`cabane board --copilot gemini` overrides it for one run. `copilot.command` (with optional
+`copilot.args`) replaces the launch line entirely, for a local build or a wrapper script;
+the pinned adapter's own arguments are not kept.
+
+What the harness brings and what cabane adds:
+
+- **Inherited from your own harness config**: the model, the permission mode, hooks, skills,
+  and the `CLAUDE.md` / `AGENTS.md` of the project — the session's cwd is the scope's
+  project root, or the directory the board was opened from when `--scope` named a scope
+  that has no checkout here. Cabane configures none of it and sandboxes nothing. A harness in an
+  ask-first permission mode is the one case to watch: the board cannot answer a permission
+  request yet, so it declines it and says so in the transcript (JCAB-53).
+- **Added by cabane**: `CABANE_SESSION=1` in the harness environment, so your own hooks can
+  tell a board session from an interactive one; one instruction block naming the job; and
+  one MCP server, `cabane mcp --scope <uri> --as cabane://actor/agent/<harness>`.
+
+The first turn cold-starts `npx`, which takes a few seconds; the footer indicator appears
+immediately. If it fails with an npm resolution error, check for a release-age guard:
+`min-release-age` in `~/.npmrc` hides packages published in the last few days, pinned
+versions included. `NPM_CONFIG_USERCONFIG=/dev/null cabane board` bypasses it for one run
+(JCAB-52 is the proper fix).
+
 ## 5. Operations
 
 ### 5.1 Rotate the log secret — MANUAL
