@@ -74,6 +74,7 @@ interface Copilot {
   run(prompt: string, context: BoardContext.Context): AsyncIterable<CopilotUpdate>;
   cancel(): Promise<void>;
   shortcuts(): CopilotShortcut[];
+  readonly actor?: string;
 }
 ```
 
@@ -96,6 +97,12 @@ sidebar. `o` (from the board or the detail view, while the indicator is up) or `
 card opens the event view on its live transcript: prose as text lines, thoughts dimmed, tool
 calls with the usual glyphs; `x` there cancels a running turn, `esc` returns. Nothing about the
 turn is persisted; the next turn replaces the card.
+
+Rows the copilot changed during the turn carry `✦ ai` before the title: the reload after each of
+its writes brings the fresh `updatedBy`/`updatedAt`, and `BoardNav.copilotTouched` keeps the ones
+stamped with `actor` since the turn opened. The glyphs go the way the finished-turn indicator
+does — on the next keypress — so one press acknowledges the whole turn. A copilot that names no
+`actor` never glyphs anything.
 
 The port is protocol-free on purpose: `@cabane/acp` implements it over an ACP harness, and a
 test can implement it with a scripted async generator. `noCopilot` is an explicit no-op whose

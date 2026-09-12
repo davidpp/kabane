@@ -126,6 +126,10 @@ export interface Copilot {
 	): AsyncIterable<CopilotUpdate>;
 	cancel(): Promise<void>;
 	shortcuts(): CopilotShortcut[];
+	// The actor uri this copilot's writes are stamped with, so the board can tell the rows it just
+	// changed from the ones the human or another agent did. Absent for a copilot that writes nothing
+	// through the tracker — no row then ever matches, which is the truth.
+	readonly actor?: string;
 }
 
 export const noActivity: ActivitySource = {

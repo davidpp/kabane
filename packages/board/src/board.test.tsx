@@ -889,3 +889,36 @@ test("markedLabel is quiet at zero", () => {
 	expect(markedLabel(0)).toBe("");
 	expect(markedLabel(3)).toBe(" · 3 marked");
 });
+
+test("Board glyphs the rows the copilot touched, and leaves the rest their full width", async () => {
+	const changed = task({ id: "a", shortId: "JAKE-1", title: "Agent wrote it" });
+	const untouched = task({
+		id: "b",
+		shortId: "JAKE-2",
+		title: "Human wrote it",
+	});
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={[
+				section("next", [
+					{ task: changed, children: [] },
+					{ task: untouched, children: [] },
+				]),
+			]}
+			expanded={new Set()}
+			selectedId="b"
+			touched={new Set(["a"])}
+		/>,
+		{ width: 100, height: 12 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JAKE-2"),
+		);
+		expect(frame).toContain("JAKE-1    ✦ ai Agent wrote it");
+		// Transient, so it holds no column: an untouched title starts where it always did.
+		expect(frame).toContain("JAKE-2    Human wrote it");
+	} finally {
+		destroy();
+	}
+});

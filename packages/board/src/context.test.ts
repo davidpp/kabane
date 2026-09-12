@@ -50,7 +50,14 @@ const state = (
 	focus: "board",
 	sidebar: { visible: true, selected: 0, itemCount: 0 },
 	marked: new Set(["a", "m"]),
-	copilot: { text: "", history: [], historyAt: 0, turn: "idle", shortcuts: [] },
+	copilot: {
+		text: "",
+		history: [],
+		historyAt: 0,
+		turn: "idle",
+		shortcuts: [],
+		actor: null,
+	},
 	undo: [],
 	...over,
 });

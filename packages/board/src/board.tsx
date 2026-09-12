@@ -41,6 +41,10 @@ const MARK_COLOR = REVIEW_COLOR;
 // The `m` glyph, with its trailing space; two blanks keep unmarked titles column-aligned with it.
 const MARK_GLYPH = "● ";
 const MARK_BLANK = "  ";
+// The copilot's fingerprint on a row it changed this turn. Transient — the keypress that dismisses
+// the turn's footer indicator clears it — so unlike the mark it holds no column when absent.
+const AI_COLOR = REVIEW_COLOR;
+const AI_GLYPH = "✦ ai ";
 // Muted gray for all chrome: kind/state meta, section headers, footer hints.
 const MUTED_COLOR = "#6b7280";
 // Never let the title column collapse to nothing on a very narrow frame.
@@ -214,6 +218,7 @@ const Row = ({
 	rowIndex,
 	selected,
 	marked,
+	touched,
 	available,
 	activity,
 	onSelect,
@@ -222,6 +227,8 @@ const Row = ({
 }: {
 	row: BoardNav.VisibleRow;
 	marked: boolean;
+	// The copilot changed this row during the turn in hand.
+	touched: boolean;
 	// shortId of this row's parent, when the parent is loaded. Only ever set for an orphaned subtask.
 	parentShortId?: string;
 	// Index into the flattened visible-row list — the address mouse handlers dispatch back to the reducer.
@@ -250,12 +257,14 @@ const Row = ({
 	const more = moreBadge(cards.length - 1, RUNNING_ECHO);
 	const input = activity?.questionsByTaskId.has(task.id) ? " · ? input" : "";
 	const mark = marked ? MARK_GLYPH : MARK_BLANK;
+	const ai = touched ? AI_GLYPH : "";
 	// Badge widths count against the title so a badged row still never wraps.
 	const fixed =
 		caret.length +
 		shortId.length +
 		2 +
 		mark.length +
+		ai.length +
 		meta.length +
 		review.length +
 		(badge?.text.length ?? 0) +
@@ -293,6 +302,7 @@ const Row = ({
 				<span fg={style.idFg}>{shortId}</span>
 				{"  "}
 				<span fg={marked ? MARK_COLOR : style.titleFg}>{mark}</span>
+				{ai ? <span fg={AI_COLOR}>{ai}</span> : null}
 				{title}
 				<span fg={style.metaFg}>{meta}</span>
 				{task.needsReview ? <span fg={REVIEW_COLOR}> · review</span> : null}
@@ -310,6 +320,7 @@ const Section = ({
 	group,
 	selectedId,
 	marked,
+	touched,
 	nextRowIndex,
 	available,
 	activity,
@@ -318,6 +329,7 @@ const Section = ({
 	parentIds,
 }: {
 	marked: ReadonlySet<string>;
+	touched: ReadonlySet<string>;
 	// id -> shortId over every loaded task, for naming an orphaned subtask's parent.
 	parentIds: Map<string, string>;
 	// Pre-flattened rows from BoardNav.visibleSections — the SAME flatten the reducer addresses, so
@@ -347,6 +359,7 @@ const Section = ({
 					rowIndex={nextRowIndex.value++}
 					selected={row.task.id === selectedId}
 					marked={marked.has(row.task.id)}
+					touched={touched.has(row.task.id)}
 					available={available}
 					activity={activity}
 					onSelect={onSelect}
@@ -421,6 +434,9 @@ export type BoardProps = {
 	status?: BoardNav.StatusFilter;
 	// The `m` working set. Optional for the same reason; absent means nothing marked.
 	marked?: ReadonlySet<string>;
+	// Rows the copilot changed in the turn in hand (BoardNav.copilotTouched), glyphed until the next
+	// keypress. Optional for the same reason.
+	touched?: ReadonlySet<string>;
 	// The list's scrollbox; app.tsx holds the ref so it can scroll the selected row into view.
 	scrollRef?: RefObject<ScrollBoxRenderable | null>;
 	// Mouse callbacks; absent in the render-only tests. app.tsx routes both through BoardNav.reduceMouse.
@@ -448,6 +464,7 @@ export const Board = ({
 	filterLabel,
 	status = "open",
 	marked = NO_MARKS,
+	touched = NO_MARKS,
 	scrollRef,
 	onSelect,
 	onToggle,
@@ -510,6 +527,7 @@ export const Board = ({
 							group={group}
 							selectedId={selectedId}
 							marked={marked}
+							touched={touched}
 							nextRowIndex={nextRowIndex}
 							available={available}
 							activity={activity}

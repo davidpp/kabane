@@ -94,6 +94,9 @@ export namespace BoardNav {
 		turn: CopilotTurn;
 		// From the host's `Copilot.shortcuts()`, set once by app.tsx; the `/` expansions.
 		shortcuts: readonly CopilotShortcut[];
+		// The actor uri the copilot's writes are stamped with, likewise set once. Null for a host
+		// copilot that names none.
+		actor: string | null;
 	};
 
 	// `?` is a shifted key: terminals deliver it as a printable sequence and parsers disagree on the
@@ -268,6 +271,7 @@ export namespace BoardNav {
 		historyAt: 0,
 		turn: "idle",
 		shortcuts: [],
+		actor: null,
 	};
 
 	const withCopilot = (
@@ -283,10 +287,32 @@ export namespace BoardNav {
 	): BoardState =>
 		state.copilot.turn === turn ? state : withCopilot(state, { turn });
 
-	export const withCopilotShortcuts = (
+	// What the host's copilot says about itself, read once by app.tsx when the board opens: the `/`
+	// expansions it offers and the actor uri its writes carry.
+	export const withCopilotPort = (
 		state: BoardState,
-		shortcuts: readonly CopilotShortcut[],
-	): BoardState => withCopilot(state, { shortcuts });
+		port: { shortcuts: readonly CopilotShortcut[]; actor: string | null },
+	): BoardState => withCopilot(state, port);
+
+	// The rows the copilot itself changed during the turn in hand: stamped with its actor uri and
+	// updated since the turn opened (`since` is the turn's start, which app.tsx reads off the log).
+	// Empty while the copilot is idle, and `turn` returns to `idle` on the next keypress — so the
+	// press that dismisses the footer indicator clears these glyphs too, rather than the board
+	// carrying two notions of "you have seen this".
+	export const copilotTouched = (
+		state: BoardState,
+		since: string | undefined,
+	): ReadonlySet<string> => {
+		const { actor, turn } = state.copilot;
+		if (turn === "idle" || !actor || !since) return NO_MARKS;
+		const touched = new Set<string>();
+		for (const section of state.sections)
+			for (const { task, children } of section.rows)
+				for (const row of [task, ...children])
+					if (row.updatedBy === actor && row.updatedAt >= since)
+						touched.add(row.id);
+		return touched;
+	};
 
 	// The ring, in tab order. The sidebar drops out of it when hidden (`b`, or a terminal too narrow
 	// for it) — tab must never move focus somewhere the human cannot see.

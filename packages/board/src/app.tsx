@@ -599,9 +599,12 @@ export const App = ({
 			if (act.ok) setActivity(act.value);
 			if (result.ok)
 				setState(
-					BoardNav.withCopilotShortcuts(
+					BoardNav.withCopilotPort(
 						BoardNav.init(result.value, { scoped: Boolean(detected) }),
-						copilot?.shortcuts() ?? [],
+						{
+							shortcuts: copilot?.shortcuts() ?? [],
+							actor: copilot?.actor ?? null,
+						},
 					),
 				);
 			else setError(result.error.message);
@@ -845,6 +848,12 @@ export const App = ({
 					filterLabel={`kind: ${state.kind}`}
 					status={state.status}
 					marked={state.marked}
+					// The reload after each of the copilot's writes is what puts the fresh `updatedBy`
+					// and `updatedAt` in hand; the reducer decides which of them the glyph is for.
+					touched={BoardNav.copilotTouched(
+						state,
+						copilotLog?.current.card.startedAt,
+					)}
 					scrollRef={listRef}
 					onSelect={(row) => dispatchMouse({ type: "select", row })}
 					onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}

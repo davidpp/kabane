@@ -31,7 +31,8 @@ imports the SDK.
   `actorUri(harness)`, the `cabane://actor/agent/<harness>` every write of a session is
   stamped with.
 - `BoardCopilot` — `create(options)` returns the board's `Copilot` plus a `close()` for the
-  board's teardown to kill the harness with.
+  board's teardown to kill the harness with. It carries that same actor uri as the port's
+  `actor`, which is how the board glyphs the rows this session wrote.
 
 ## The copilot
 

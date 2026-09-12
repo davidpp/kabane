@@ -36,6 +36,18 @@ const sections = (
 		}),
 	);
 
+const copilotState = (
+	over: Partial<BoardNav.CopilotState> = {},
+): BoardNav.CopilotState => ({
+	text: "",
+	history: [],
+	historyAt: 0,
+	turn: "idle",
+	shortcuts: [],
+	actor: null,
+	...over,
+});
+
 const state = (
 	over: Partial<BoardNav.BoardState> = {},
 ): BoardNav.BoardState => ({
@@ -52,7 +64,7 @@ const state = (
 	focus: "board",
 	sidebar: { visible: true, selected: 0, itemCount: 0 },
 	marked: new Set<string>(),
-	copilot: { text: "", history: [], historyAt: 0, turn: "idle", shortcuts: [] },
+	copilot: copilotState(),
 	undo: [],
 	...over,
 });
@@ -2210,13 +2222,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 		state({
 			sections: sections({ inbox: [row(task({ id: "a" }))] }),
 			selectedId: "a",
-			copilot: {
-				text: "",
-				history: [],
-				historyAt: 0,
-				turn: "idle",
-				shortcuts: [triage],
-			},
+			copilot: copilotState({ shortcuts: [triage] }),
 			...over,
 		});
 	const open = (s: BoardNav.BoardState = ready()) =>
@@ -2279,13 +2285,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 		expect(BoardNav.submitCopilot(focused, "   ").effect.type).toBe("none");
 		const running = open(
 			ready({
-				copilot: {
-					text: "",
-					history: [],
-					historyAt: 0,
-					turn: "running",
-					shortcuts: [],
-				},
+				copilot: copilotState({ turn: "running" }),
 			}),
 		).state;
 		const r = BoardNav.submitCopilot(running, "second thing");
@@ -2367,13 +2367,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 	it("esc stops a running turn on the way out; tab leaves it alone", () => {
 		const running = open(
 			ready({
-				copilot: {
-					text: "",
-					history: [],
-					historyAt: 0,
-					turn: "running",
-					shortcuts: [],
-				},
+				copilot: copilotState({ turn: "running" }),
 			}),
 		).state;
 		const esc = BoardNav.reduceKey(running, { name: "escape" });
@@ -2408,15 +2402,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 	it("o opens the copilot's transcript while the indicator is up, from the board and the detail view", () => {
 		const idle = BoardNav.reduceKey(ready(), char("o"));
 		expect(idle.state.view.type).toBe("board");
-		const running = ready({
-			copilot: {
-				text: "",
-				history: [],
-				historyAt: 0,
-				turn: "running",
-				shortcuts: [],
-			},
-		});
+		const running = ready({ copilot: copilotState({ turn: "running" }) });
 		const fromBoard = BoardNav.reduceKey(running, char("o"));
 		expect(fromBoard.state.view).toEqual({
 			type: "events",
@@ -2453,13 +2439,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 	it("x on the copilot's transcript cancels the running turn; on a host card it is inert", () => {
 		const onCopilot = ready({
 			view: { type: "events", cardId: "copilot", fromView: "board" },
-			copilot: {
-				text: "",
-				history: [],
-				historyAt: 0,
-				turn: "running",
-				shortcuts: [],
-			},
+			copilot: copilotState({ turn: "running" }),
 		});
 		expect(BoardNav.reduceKey(onCopilot, char("x")).effect).toEqual({
 			type: "copilotCancel",
@@ -2468,13 +2448,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 		expect(BoardNav.reduceKey(finished, char("x")).effect.type).toBe("none");
 		const onHost = ready({
 			view: { type: "events", cardId: "r1", fromView: "board" },
-			copilot: {
-				text: "",
-				history: [],
-				historyAt: 0,
-				turn: "running",
-				shortcuts: [],
-			},
+			copilot: copilotState({ turn: "running" }),
 		});
 		expect(BoardNav.reduceKey(onHost, char("x")).effect.type).toBe("none");
 	});
@@ -2488,12 +2462,85 @@ describe("copilot prompt (`A` / `:`)", () => {
 	it("init starts on the board with an empty buffer and no shortcuts", () => {
 		const s = BoardNav.init([], { scoped: false });
 		expect(s.focus).toBe("board");
-		expect(s.copilot).toEqual({
-			text: "",
-			history: [],
-			historyAt: 0,
-			turn: "idle",
-			shortcuts: [],
+		expect(s.copilot).toEqual(copilotState());
+	});
+});
+
+describe("the copilot's fingerprint on the rows it changed (`✦ ai`)", () => {
+	const ACTOR = "cabane://actor/agent/claude";
+	const TURN_START = "2026-09-12T10:00:00.000Z";
+	const before = "2026-09-12T09:59:59.000Z";
+	const after = "2026-09-12T10:00:01.000Z";
+
+	// One parent with the rest as its subtasks, so a single helper covers both depths.
+	const board = (turn: BoardNav.CopilotTurn, rows: Task[]) =>
+		state({
+			sections: sections({ next: [row(rows[0] ?? task(), rows.slice(1))] }),
+			copilot: copilotState({ turn, actor: ACTOR }),
 		});
+
+	it("names the copilot's own writes since the turn opened, and nobody else's", () => {
+		const agent = task({ id: "agent", updatedBy: ACTOR, updatedAt: after });
+		const human = task({
+			id: "human",
+			parentTaskId: "agent",
+			updatedBy: "cabane://actor/human/david",
+			updatedAt: after,
+		});
+		const stale = task({
+			id: "stale",
+			parentTaskId: "agent",
+			updatedBy: ACTOR,
+			updatedAt: before,
+		});
+		expect([
+			...BoardNav.copilotTouched(
+				board("running", [agent, human, stale]),
+				TURN_START,
+			),
+		]).toEqual(["agent"]);
+	});
+
+	it("marks a subtask the copilot wrote even while its parent is collapsed", () => {
+		const parent = task({ id: "p", updatedBy: ACTOR, updatedAt: before });
+		const child = task({
+			id: "c",
+			parentTaskId: "p",
+			updatedBy: ACTOR,
+			updatedAt: after,
+		});
+		expect([
+			...BoardNav.copilotTouched(board("running", [parent, child]), TURN_START),
+		]).toEqual(["c"]);
+	});
+
+	it("clears on the keypress that dismisses the finished turn's indicator", () => {
+		const written = task({ id: "agent", updatedBy: ACTOR, updatedAt: after });
+		const done = board("done", [written]);
+		expect(BoardNav.copilotTouched(done, TURN_START).size).toBe(1);
+		const next = BoardNav.reduceKey(done, char("j")).state;
+		expect(next.copilot.turn).toBe("idle");
+		expect(BoardNav.copilotTouched(next, TURN_START).size).toBe(0);
+	});
+
+	it("keeps the glyphs through a running turn: a keypress is not an acknowledgement yet", () => {
+		const written = task({ id: "agent", updatedBy: ACTOR, updatedAt: after });
+		const next = BoardNav.reduceKey(
+			board("running", [written]),
+			char("j"),
+		).state;
+		expect(BoardNav.copilotTouched(next, TURN_START).size).toBe(1);
+	});
+
+	it("marks nothing for a copilot that names no actor, or before a turn has started", () => {
+		const written = task({ id: "agent", updatedBy: ACTOR, updatedAt: after });
+		const anonymous = state({
+			sections: sections({ next: [row(written)] }),
+			copilot: copilotState({ turn: "running" }),
+		});
+		expect(BoardNav.copilotTouched(anonymous, TURN_START).size).toBe(0);
+		expect(
+			BoardNav.copilotTouched(board("running", [written]), undefined).size,
+		).toBe(0);
 	});
 });

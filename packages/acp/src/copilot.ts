@@ -244,6 +244,9 @@ export namespace BoardCopilot {
 
 		return {
 			run,
+			// What `cabane mcp --as` stamps every write of this session with, so the board can glyph
+			// the rows this copilot changed rather than every row an agent ever touched.
+			actor,
 			// The port returns void: a cancel that fails has nothing left to tell the board, which
 			// has already ended the turn on its side.
 			cancel: async () => {
