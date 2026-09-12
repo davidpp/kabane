@@ -9,7 +9,12 @@ import type { ReactNode } from "react";
 import { App } from "./app";
 import type { BoardData } from "./data";
 import { ErrorBoundary } from "./error-boundary";
-import { type ActivitySource, type Dispatcher, noActivity } from "./ports";
+import {
+	type ActivitySource,
+	type Copilot,
+	type Dispatcher,
+	noActivity,
+} from "./ports";
 
 export type BoardDeps = {
 	// Working directory the board was launched from — handed to `resolveScope`.
@@ -20,6 +25,8 @@ export type BoardDeps = {
 	activity?: ActivitySource;
 	// Host dispatch. Default: none, `a` flashes "no dispatcher configured".
 	dispatcher?: Dispatcher;
+	// The `A` prompt's copilot. Default: none, `A` flashes "no copilot configured".
+	copilot?: Copilot;
 	// How cwd maps to a scope. Default: none, the board opens on all scopes.
 	resolveScope?: BoardData.ScopeResolver;
 };
@@ -49,6 +56,7 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 					basePath={deps.basePath}
 					activity={deps.activity ?? noActivity}
 					dispatcher={deps.dispatcher}
+					copilot={deps.copilot}
 					resolveScope={deps.resolveScope}
 				/>
 			</ErrorBoundary>,

@@ -12,9 +12,10 @@ import {
 } from "@opentui/core";
 import { type ReactNode, type RefObject, useEffect, useState } from "react";
 import type { BoardActivity } from "./activity";
+import type { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
 import { ErrorBoundary } from "./error-boundary";
-import { StatusBar } from "./footer";
+import { copilotIndicatorFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import type { ActivityCard, ActivityStatus } from "./ports";
@@ -157,6 +158,8 @@ export type DetailProps = {
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	// Transient footer feedback; replaces the hints in the footer for ~1.5s.
 	notice?: BoardNav.Notice | null;
+	// The copilot's turn indicator; shown in the footer under a notice, absent when idle.
+	copilot?: CopilotLog.Footer | null;
 	// Clicking the header [copy] affordance yanks the brief — same action as the `y` key.
 	onCopy?: () => void;
 };
@@ -179,6 +182,7 @@ export const Detail = ({
 	spinnerFrame,
 	scrollRef,
 	notice,
+	copilot,
 	onCopy,
 }: DetailProps): ReactNode => {
 	const [brief, setBrief] = useState<BriefState>({ status: "loading" });
@@ -287,6 +291,8 @@ export const Detail = ({
 					text={notice.undoable ? `${notice.text} · ⌃z undo` : notice.text}
 					fg={notice.tone === "success" ? ACCENT_COLOR : ERROR_COLOR}
 				/>
+			) : copilot ? (
+				<StatusBar text={copilot.text} fg={copilotIndicatorFg(copilot.tone)} />
 			) : (
 				<StatusBar text={hints} fg={HINT_COLOR} />
 			)}

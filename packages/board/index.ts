@@ -9,10 +9,13 @@ export type {
 	ActivityEvent,
 	ActivitySource,
 	ActivityStatus,
+	Copilot,
+	CopilotShortcut,
+	CopilotUpdate,
 	Dispatcher,
 	DispatchTarget,
 	TriggerDescriptor,
 	TriggerInput,
 } from "./src/ports";
-export { noActivity, noDispatcher } from "./src/ports";
+export { noActivity, noCopilot, noDispatcher } from "./src/ports";
 export { type BoardDeps, startBoard } from "./src/start";

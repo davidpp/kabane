@@ -7,9 +7,15 @@
 // ties in the footer's favor.
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
+import type { CopilotLog } from "./copilot-log";
 
 // Slightly lifted from the terminal bg (selection is #2f2f2f) — visible as a bar, quiet as chrome.
 export const FOOTER_BG = "#1c1c1c";
+
+// The copilot indicator's colour by tone, shared by the board and detail footers: the accent while
+// it runs and when it lands, the error red when it fails.
+export const copilotIndicatorFg = (tone: CopilotLog.Footer["tone"]): string =>
+	tone === "error" ? "#ef4444" : "#f97316";
 
 export type StatusBarProps = {
 	text: string;

@@ -1,8 +1,10 @@
-// The two seams a host plugs into the board. The board never learns what a "loop" or a "recipe"
-// is: the host projects whatever it runs into flat activity cards, and offers whatever it can start
-// on a task as trigger descriptors. Both ports default to no-ops so the board runs standalone with
-// no activity strip and a "no dispatcher configured" hint on `a`.
+// The three seams a host plugs into the board. The board never learns what a "loop" or a "recipe"
+// is: the host projects whatever it runs into flat activity cards, offers whatever it can start on a
+// task as trigger descriptors, and answers the `A` prompt with a copilot that streams updates. All
+// three default to no-ops so the board runs standalone with no activity strip, a "no dispatcher
+// configured" hint on `a`, and a "no copilot configured" hint on `A`.
 import { ok, type Result } from "@cabane/core";
+import type { BoardContext } from "./context";
 
 export type ActivityStatus =
 	| "pending"
@@ -82,6 +84,31 @@ export interface Dispatcher {
 	dispatch(triggerId: string, target: DispatchTarget): Promise<Result<string>>;
 }
 
+// One streamed step of a copilot turn. `summary` is the line the transcript shows; `text` carries
+// the agent's prose, `thought` its reasoning, the tool pair its writes (a `tool_result` is what the
+// board reloads on), `error` and `done` end the turn.
+export type CopilotUpdate = {
+	type: "text" | "thought" | "tool_call" | "tool_result" | "error" | "done";
+	summary: string;
+	at: string;
+};
+
+// A `/name` the prompt window expands client-side into `template`, so the human reads exactly what
+// will be sent before pressing enter. `hint` is the one-line description shown while picking.
+export type CopilotShortcut = { name: string; hint: string; template: string };
+
+// The copilot the `A` prompt talks to. `run` streams one turn for a prompt with the board's context
+// attached; `cancel` stops the turn in flight; `shortcuts` lists the `/` expansions. The board never
+// learns which protocol or harness sits behind it.
+export interface Copilot {
+	run(
+		prompt: string,
+		context: BoardContext.Context,
+	): AsyncIterable<CopilotUpdate>;
+	cancel(): Promise<void>;
+	shortcuts(): CopilotShortcut[];
+}
+
 export const noActivity: ActivitySource = {
 	load: async () => ok([]),
 };
@@ -89,6 +116,20 @@ export const noActivity: ActivitySource = {
 export const noDispatcher: Dispatcher = {
 	triggers: async () => ok([]),
 	dispatch: async () => ok("no dispatcher configured"),
+};
+
+// A copilot that answers every prompt with the same refusal, for hosts that want an explicit value
+// rather than leaving `copilot` undefined (both surface "no copilot configured").
+export const noCopilot: Copilot = {
+	run: async function* () {
+		yield {
+			type: "error",
+			summary: "no copilot configured",
+			at: new Date().toISOString(),
+		};
+	},
+	cancel: async () => {},
+	shortcuts: () => [],
 };
 
 export const isInFlight = (card: ActivityCard): boolean =>

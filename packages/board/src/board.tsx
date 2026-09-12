@@ -17,8 +17,9 @@ import {
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode, RefObject } from "react";
 import { BoardActivity } from "./activity";
+import type { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
-import { StatusBar } from "./footer";
+import { copilotIndicatorFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import type { ActivityCard } from "./ports";
@@ -369,18 +370,21 @@ const Section = ({
 const SEARCH_OFF: BoardNav.SearchState = { mode: "off" };
 const NO_MARKS: ReadonlySet<string> = new Set<string>();
 
-// The footer, ONE line, four-way by priority: a transient notice always wins > search-input mode shows
-// the live query with a cursor glyph (normal fg — it's an active input, not chrome) > a committed
-// filter shows a muted summary with the match count > the trimmed key hints (full list behind `?`).
-// Always a StatusBar so the row is reserved and backgrounded whatever the variant.
+// The footer, ONE line, by priority: a transient notice always wins > search-input mode shows the
+// live query with a cursor glyph (normal fg — it's an active input, not chrome) > the copilot's turn
+// indicator while one is up > a committed filter shows a muted summary with the match count > the
+// trimmed key hints (full list behind `?`). Always a StatusBar so the row is reserved and
+// backgrounded whatever the variant.
 const Footer = ({
 	notice,
 	search,
+	copilot,
 	matchCount,
 	hints,
 }: {
 	notice: BoardNav.Notice | null | undefined;
 	search: BoardNav.SearchState;
+	copilot: CopilotLog.Footer | null | undefined;
 	matchCount: number;
 	hints: string;
 }): ReactNode => {
@@ -394,6 +398,11 @@ const Footer = ({
 	}
 	if (search.mode === "typing") {
 		return <StatusBar text={`/${search.query}▌`} />;
+	}
+	if (copilot) {
+		return (
+			<StatusBar text={copilot.text} fg={copilotIndicatorFg(copilot.tone)} />
+		);
 	}
 	if (search.mode === "committed") {
 		const matches = matchCount === 1 ? "1 match" : `${matchCount} matches`;
@@ -431,6 +440,8 @@ export type BoardProps = {
 	onToggle?: (rowIndex: number) => void;
 	// Transient footer feedback; when present it replaces the key hints in the footer for ~1.5s.
 	notice?: BoardNav.Notice | null;
+	// The copilot's turn indicator; absent when idle (or acknowledged by a keypress).
+	copilot?: CopilotLog.Footer | null;
 	// When the sidebar is visible, its width is subtracted from the available row width for
 	// truncation — otherwise a badged row wraps into a second line.
 	sidebarWidth?: number;
@@ -450,6 +461,7 @@ export const Board = ({
 	onSelect,
 	onToggle,
 	notice,
+	copilot,
 	sidebarWidth: sbWidth = 0,
 }: BoardProps): ReactNode => {
 	const { width } = useTerminalDimensions();
@@ -515,6 +527,7 @@ export const Board = ({
 			<Footer
 				notice={notice}
 				search={search}
+				copilot={copilot}
 				matchCount={matchCount}
 				hints={hints}
 			/>

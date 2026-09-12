@@ -73,6 +73,8 @@ export type EventViewProps = {
 	resolveShortId: (taskId: string) => string | undefined;
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	notice?: BoardNav.Notice | null;
+	// Extra footer hints for this card (the copilot's `x cancel`); the scroll/back pair is always there.
+	extraHints?: string;
 };
 
 export const EventView = ({
@@ -82,6 +84,7 @@ export const EventView = ({
 	resolveShortId,
 	scrollRef,
 	notice,
+	extraHints,
 }: EventViewProps): ReactNode => {
 	const [card, setCard] = useState<ActivityCard | null>(initialCard ?? null);
 	const [events, setEvents] = useState<ActivityEvent[]>([]);
@@ -137,7 +140,9 @@ export const EventView = ({
 		(card.taskId ? (resolveShortId(card.taskId) ?? "—") : "—");
 	const duration = elapsed(card.startedAt, card.finishedAt);
 	const header = `${card.label} · ${shortId} · ${card.status} · ${duration}`;
-	const hints = "j/k scroll · esc back";
+	const hints = ["j/k scroll", extraHints, "esc back"]
+		.filter(Boolean)
+		.join(" · ");
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>

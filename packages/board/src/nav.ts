@@ -8,8 +8,9 @@ import {
 	type Task,
 	type TaskState,
 } from "@cabane/core";
+import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
-import type { TriggerDescriptor } from "./ports";
+import type { CopilotShortcut, TriggerDescriptor } from "./ports";
 
 export namespace BoardNav {
 	export type KindFilter = "all" | ItemKind;
@@ -75,11 +76,38 @@ export namespace BoardNav {
 		loading: boolean;
 	};
 
+	// The `A` (or `:`) copilot prompt: one line of text the human types, sent with the board context
+	// attached. Modal like search-typing — while open, printable keys are prompt characters. `busy`
+	// is set when it opened over a running turn: the window then only offers `esc` (cancel the turn).
+	export type CopilotWindow = { text: string; busy: boolean };
+
+	// Where the copilot's turn is, as far as the keyboard cares: `running` gates a second prompt and
+	// enables cancel; `done`/`error` keep the footer indicator up until the next keypress, which is
+	// what `idle` means. The transcript itself lives in app.tsx (CopilotLog), not here.
+	export type CopilotTurn = "idle" | "running" | "done" | "error";
+
+	export type CopilotState = {
+		window: CopilotWindow | null;
+		turn: CopilotTurn;
+		// From the host's `Copilot.shortcuts()`, set once by app.tsx; the `/` expansions.
+		shortcuts: readonly CopilotShortcut[];
+	};
+
 	// `?` is a shifted key: terminals deliver it as a printable sequence and parsers disagree on the
 	// `name`, so the router matches either. Search-typing never sees this (its branch runs first and
 	// eats `?` as a query character).
 	const isHelpKey = (key: KeyInput): boolean =>
 		!key.ctrl && !key.meta && (key.name === "?" || key.sequence === "?");
+
+	// `A` and `:` are shifted keys like `?`: match the name or the raw sequence. Search-typing never
+	// sees this (its branch runs first and eats both as query characters).
+	const isCopilotKey = (key: KeyInput): boolean =>
+		!key.ctrl &&
+		!key.meta &&
+		(key.name === "A" ||
+			key.sequence === "A" ||
+			key.name === ":" ||
+			key.sequence === ":");
 
 	// ctrl-z: OpenTUI delivers it as name `z` with the ctrl flag, or as the raw SUB control char (0x1a);
 	// match either. `!key.meta` excludes macOS cmd-z. Routing guards on search-typing so it stays inert
@@ -133,6 +161,7 @@ export namespace BoardNav {
 		// the copilot's context drops the OLDEST mark first when its brief budget runs out). Survives
 		// every reload; `esc` clears it before it clears anything else.
 		marked: ReadonlySet<string>;
+		copilot: CopilotState;
 		// Bounded, in-memory (per board session), LIFO stack of reverse patches. Pushed OPTIMISTICALLY at
 		// reduce time — mutations to local SQLite essentially never fail, and a failed forward write leaves
 		// its reverse patch a harmless no-op (the field is already at the prior value). Preserved across
@@ -170,7 +199,11 @@ export namespace BoardNav {
 		| { type: "dispatch"; triggerId: string; id: string }
 		| { type: "loadTriggers"; taskId: string }
 		| { type: "sidebarSelect" }
-		| { type: "openEvents"; taskId: string };
+		| { type: "openEvents"; taskId: string }
+		// The window just opened; app.tsx closes it with a flash when no copilot is configured.
+		| { type: "copilotOpen" }
+		| { type: "copilotPrompt"; prompt: string }
+		| { type: "copilotCancel" };
 
 	// Mouse actions routed through the SAME pure reducer as keys, so selection stays single-sourced.
 	// Rows are addressed by their VISIBLE index (see visibleRows) — the wheel no longer moves selection
@@ -218,6 +251,113 @@ export namespace BoardNav {
 	};
 
 	const NO_MARKS: ReadonlySet<string> = new Set<string>();
+
+	const COPILOT_IDLE: CopilotState = {
+		window: null,
+		turn: "idle",
+		shortcuts: [],
+	};
+
+	const withCopilot = (
+		state: BoardState,
+		copilot: Partial<CopilotState>,
+	): BoardState => ({ ...state, copilot: { ...state.copilot, ...copilot } });
+
+	// Called by app.tsx as the turn's log changes. Pure so the footer rule (indicator up until the next
+	// keypress) is testable: the reducer, not app.tsx, is what moves `done`/`error` back to `idle`.
+	export const withCopilotTurn = (
+		state: BoardState,
+		turn: CopilotTurn,
+	): BoardState =>
+		state.copilot.turn === turn ? state : withCopilot(state, { turn });
+
+	export const withCopilotShortcuts = (
+		state: BoardState,
+		shortcuts: readonly CopilotShortcut[],
+	): BoardState => withCopilot(state, { shortcuts });
+
+	// `A`/`:`: open the prompt window over whatever view is up. Opens optimistically (like the dispatch
+	// overlay); app.tsx runs `copilotOpen` and closes it with a flash when no copilot is configured.
+	const openCopilot = (
+		state: BoardState,
+	): { state: BoardState; effect: Effect } => ({
+		state: withCopilot(state, {
+			window: { text: "", busy: state.copilot.turn === "running" },
+		}),
+		effect: { type: "copilotOpen" },
+	});
+
+	// `o` while the indicator shows (any non-idle turn): the event view on the copilot card, from
+	// wherever the human is, back to the same place on `esc`.
+	const openCopilotEvents = (
+		state: BoardState,
+	): { state: BoardState; effect: Effect } => ({
+		state: {
+			...state,
+			view: {
+				type: "events",
+				cardId: CopilotLog.CARD_ID,
+				fromView: state.view.type === "detail" ? "detail" : "board",
+				fromTaskId:
+					state.view.type === "detail" ? state.view.taskId : undefined,
+			},
+		},
+		effect: NONE,
+	});
+
+	// The shortcut a `/name` prefix picks: the first whose name starts with what was typed.
+	export const matchingShortcuts = (
+		shortcuts: readonly CopilotShortcut[],
+		text: string,
+	): CopilotShortcut[] =>
+		text.startsWith("/")
+			? shortcuts.filter((s) => `/${s.name}`.startsWith(text))
+			: [];
+
+	// The prompt window owns the keyboard. `esc` closes it (and cancels the running turn it opened
+	// over); `enter` on an exact `/name` expands the shortcut so the text is read before it is sent,
+	// otherwise submits; `tab` expands the first matching shortcut; the rest edits the text. While
+	// busy only `esc` does anything — the window itself says so.
+	const reduceCopilotWindowKey = (
+		state: BoardState,
+		window: CopilotWindow,
+		key: KeyInput,
+	): { state: BoardState; effect: Effect } => {
+		const close = (copilot: Partial<CopilotState> = {}): BoardState =>
+			withCopilot(state, { window: null, ...copilot });
+		const edit = (text: string): { state: BoardState; effect: Effect } => ({
+			state: withCopilot(state, { window: { ...window, text } }),
+			effect: NONE,
+		});
+		if (key.name === "escape")
+			return window.busy
+				? { state: close(), effect: { type: "copilotCancel" } }
+				: { state: close(), effect: NONE };
+		if (window.busy) return { state, effect: NONE };
+		const matches = matchingShortcuts(state.copilot.shortcuts, window.text);
+		switch (key.name) {
+			case "return":
+			case "enter": {
+				const exact = matches.find((s) => `/${s.name}` === window.text);
+				if (exact) return edit(exact.template);
+				if (window.text.trim() === "") return { state: close(), effect: NONE };
+				return {
+					state: close({ turn: "running" }),
+					effect: { type: "copilotPrompt", prompt: window.text },
+				};
+			}
+			case "tab": {
+				const first = matches[0];
+				return first ? edit(first.template) : { state, effect: NONE };
+			}
+			case "backspace":
+				return edit(window.text.slice(0, -1));
+			default: {
+				const char = printableChar(key);
+				return char ? edit(window.text + char) : { state, effect: NONE };
+			}
+		}
+	};
 
 	// The reverse entry for a state change: restore the task's pre-mutation state. Shared by the
 	// GTD shift (`[`/`]`), the direct jumps (`n`/`s`/`x`), and `d` — all reverse to `{ state }`.
@@ -597,6 +737,7 @@ export namespace BoardNav {
 			help: false,
 			sidebar: { visible: true, focus: "board", selected: 0, itemCount: 0 },
 			marked: new Set<string>(),
+			copilot: COPILOT_IDLE,
 			undo: [],
 		};
 		return { ...base, selectedId: firstId(visibleRows(base)) };
@@ -699,6 +840,16 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		if (state.help) return reduceHelpKey(state, key);
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
+		if (state.copilot.window)
+			return reduceCopilotWindowKey(state, state.copilot.window, key);
+		// A finished turn's footer indicator stays up until the next keypress — except `o`, which is
+		// the key that opens it, and the search box, where a keypress is a query character.
+		if (
+			(state.copilot.turn === "done" || state.copilot.turn === "error") &&
+			key.name !== "o" &&
+			state.search.mode !== "typing"
+		)
+			return reduceKey(withCopilotTurn(state, "idle"), key);
 		// ctrl-z routes across every view (board + detail), after the modals own the keyboard and before
 		// view routing. Inert while a `/` query is being typed (ctrl isn't a printable query char anyway).
 		if (isUndoKey(key) && state.search.mode !== "typing")
@@ -761,6 +912,12 @@ export namespace BoardNav {
 			case "k":
 			case "up":
 				return { state, effect: { type: "scroll", delta: -2 } };
+			case "x":
+				// On the copilot's transcript, `x` stops the turn (host cards are read-only here).
+				return state.view.cardId === CopilotLog.CARD_ID &&
+					state.copilot.turn === "running"
+					? { state, effect: { type: "copilotCancel" } }
+					: { state, effect: NONE };
 			case "b":
 				return {
 					state: {
@@ -886,12 +1043,13 @@ export namespace BoardNav {
 
 	// Mouse router, parallel to reduceKey. Board-only actions (`select`, `toggleExpand`) no-op while the
 	// detail view is open (those handlers unmount with the board); `copy` is valid in both views. All
-	// mouse input is inert while the dispatch overlay is open (modal, same as keys).
+	// mouse input is inert while a modal (dispatch, help, the copilot prompt) is open, same as keys.
 	export const reduceMouse = (
 		state: BoardState,
 		action: MouseAction,
 	): { state: BoardState; effect: Effect } => {
-		if (state.help || state.dispatch) return { state, effect: NONE };
+		if (state.help || state.dispatch || state.copilot.window)
+			return { state, effect: NONE };
 		if (action.type === "copy") {
 			const id =
 				state.view.type === "detail" ? state.view.taskId : state.selectedId;
@@ -946,6 +1104,7 @@ export namespace BoardNav {
 		if (state.view.type !== "detail") return { state, effect: NONE };
 		if (isHelpKey(key))
 			return { state: { ...state, help: true }, effect: NONE };
+		if (isCopilotKey(key)) return openCopilot(state);
 		// Sidebar focus routing.
 		if (state.sidebar.focus === "sidebar" && state.sidebar.visible) {
 			return reduceSidebarKey(state, key);
@@ -966,10 +1125,13 @@ export namespace BoardNav {
 			case "m":
 				return toggleMark(state, state.view.taskId);
 			case "o":
-				return {
-					state,
-					effect: { type: "openEvents", taskId: state.view.taskId },
-				};
+				// The copilot's transcript wins while its indicator is up; otherwise the task's events.
+				return state.copilot.turn === "idle"
+					? {
+							state,
+							effect: { type: "openEvents", taskId: state.view.taskId },
+						}
+					: openCopilotEvents(state);
 			case "a":
 				return openDispatch(state, state.view.taskId);
 			case "v":
@@ -1131,6 +1293,7 @@ export namespace BoardNav {
 		// keys have parser-dependent names — isHelpKey matches the sequence too).
 		if (isHelpKey(key))
 			return { state: { ...state, help: true }, effect: NONE };
+		if (isCopilotKey(key)) return openCopilot(state);
 		// Sidebar focus routing: when sidebar has focus, delegate to sidebar reducer.
 		if (state.sidebar.focus === "sidebar" && state.sidebar.visible) {
 			return reduceSidebarKey(state, key);
@@ -1199,6 +1362,11 @@ export namespace BoardNav {
 					state,
 					rowOf(visibleRows(state), state.selectedId)?.task.id,
 				);
+			case "o":
+				// The board has no per-task events; `o` here is the copilot's transcript, when there is one.
+				return state.copilot.turn === "idle"
+					? { state, effect: NONE }
+					: openCopilotEvents(state);
 			case "[":
 				return shiftState(state, -1);
 			case "]":
