@@ -4,6 +4,7 @@
 // bottom; stops yanking if the user scrolled up.
 
 import type { ScrollBoxRenderable } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
 import {
 	type ReactNode,
 	type RefObject,
@@ -14,18 +15,30 @@ import {
 import { elapsed } from "./elapsed";
 import { StatusBar } from "./footer";
 import type { BoardNav } from "./nav";
+import { PlanBlock } from "./plan-block";
 import {
 	type ActivityCard,
 	type ActivityEvent,
 	type ActivitySource,
 	isInFlight,
+	type PlanEntry,
 } from "./ports";
+import { useSpinnerFrame } from "./spinner";
 
 const MUTED_COLOR = "#6b7280";
 const ACCENT_COLOR = "#f97316";
 const ERROR_COLOR = "#ef4444";
 const COMPLETED_COLOR = "#22c55e";
 const POLL_MS = 1000;
+// The transcript has the whole screen where the copilot panel has a dozen rows, so its pinned block
+// can be taller — never tall enough to push the events it heads out of view.
+const MAX_PLAN_ROWS = 8;
+// Timestamp column plus the glyph, reserved out of the row before an entry is fitted, and the floor
+// below which fitting stops (a narrow frame gets a wrapped entry rather than an ellipsis alone).
+const RESERVED_COLS = 12;
+const MIN_ENTRY_COLS = 20;
+
+const NO_PLAN: readonly PlanEntry[] = [];
 
 // Per-event-type glyph. Types are host-defined strings; the common ones get a glyph, the rest a blank.
 const eventGlyph = (type: string): { glyph: string; color: string } => {
@@ -73,8 +86,16 @@ export type EventViewProps = {
 	resolveShortId: (taskId: string) => string | undefined;
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	notice?: BoardNav.Notice | null;
+	// The card's todo list, pinned above the scrollbox so it stays readable while the events scroll.
+	// A prop rather than a widening of ActivitySource: a plan is the copilot's shape, and the card
+	// the board's own copilot writes is the only one that has one — the hosts behind the port have no
+	// concept to implement. Empty (the default) is the flat one-line header every host card keeps.
+	plan?: readonly PlanEntry[];
 	// Extra footer hints for this card (the copilot's `x cancel`); the scroll/back pair is always there.
 	extraHints?: string;
+	// Subtracted from the row width when the sidebar is up, so a long plan entry is fitted to what the
+	// view actually has rather than wrapping into a second line.
+	sidebarWidth?: number;
 	// The copilot pane, rendered between the content and the footer. A slot rather than a float: the
 	// panel has real height and must push the view up, not cover it.
 	pane?: ReactNode;
@@ -87,12 +108,16 @@ export const EventView = ({
 	resolveShortId,
 	scrollRef,
 	notice,
+	plan = NO_PLAN,
 	extraHints,
+	sidebarWidth = 0,
 	pane,
 }: EventViewProps): ReactNode => {
 	const [card, setCard] = useState<ActivityCard | null>(initialCard ?? null);
 	const [events, setEvents] = useState<ActivityEvent[]>([]);
 	const lastSeqRef = useRef(0);
+	const { width } = useTerminalDimensions();
+	const spinnerFrame = useSpinnerFrame(card ? isInFlight(card) : false);
 
 	// Initial load + poll. Stops polling once the card reaches a terminal state.
 	const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -153,6 +178,19 @@ export const EventView = ({
 			<text>
 				<span fg={statusColor(card.status)}>{header}</span>
 			</text>
+			{plan.length > 0 ? (
+				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
+					<PlanBlock
+						plan={plan}
+						spinnerFrame={spinnerFrame}
+						width={Math.max(
+							MIN_ENTRY_COLS,
+							width - sidebarWidth - RESERVED_COLS,
+						)}
+						maxRows={MAX_PLAN_ROWS}
+					/>
+				</box>
+			) : null}
 			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
 				{events.length === 0 ? (
 					<text fg={MUTED_COLOR}>no events yet</text>

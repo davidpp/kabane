@@ -22,12 +22,12 @@ import { CopilotLog } from "./copilot-log";
 import { elapsed } from "./elapsed";
 import { copilotIndicatorFg } from "./footer";
 import { BoardNav } from "./nav";
+import { PlanBlock } from "./plan-block";
 import type { PlanEntry } from "./ports";
 
 const CHIP_COLOR = "#f97316";
 const MUTED_COLOR = "#6b7280";
 const TEXT_COLOR = "#e6edf3";
-const DONE_COLOR = "#22c55e";
 const PANE_BG = "#1c1c1c";
 
 // Enter sends — the common case by far. A newline is ⇧enter where the terminal reports it and
@@ -52,20 +52,6 @@ export const contextChip = (ctx: BoardContext.Context): string => {
 	if (ctx.marked.length > 0) parts.push(`${ctx.marked.length} marked`);
 	if (ctx.section) parts.push(ctx.section);
 	return parts.length > 0 ? parts.join(" · ") : "no selection";
-};
-
-const planGlyph = (
-	status: PlanEntry["status"],
-	spinnerFrame: string,
-): { glyph: string; color: string } => {
-	switch (status) {
-		case "completed":
-			return { glyph: "✓", color: DONE_COLOR };
-		case "in_progress":
-			return { glyph: spinnerFrame, color: CHIP_COLOR };
-		case "pending":
-			return { glyph: "○", color: MUTED_COLOR };
-	}
 };
 
 // How many rows the panel may take: enough to be useful, never enough to bury the board. The input
@@ -122,13 +108,12 @@ export const CopilotPane = ({
 	}
 
 	const matches = BoardNav.matchingShortcuts(copilot.shortcuts, copilot.text);
-	const planRows = plan.slice(0, MAX_PLAN_ROWS);
 	const tail = (log?.tail ?? []).slice(-MAX_TAIL_ROWS);
 	const rows = inputRows(copilot.text, height);
 	// A shortcut palette replaces the plan while one is being picked: both at once is noise, and the
 	// human typing `/` is not watching the todo.
 	const showPalette = matches.length > 0;
-	const showPlan = !showPalette && planRows.length > 0;
+	const showPlan = !showPalette && plan.length > 0;
 	const showTail = !showPalette && tail.length > 0;
 	const state = running
 		? "running"
@@ -159,26 +144,14 @@ export const CopilotPane = ({
 			title={fit(`copilot · ${chip}${right ? ` · ${right}` : ""}`, width - 4)}
 			titleColor={CHIP_COLOR}
 		>
-			{showPlan
-				? planRows.map((entry) => {
-						const { glyph, color } = planGlyph(entry.status, spinnerFrame);
-						return (
-							// The entry's text is its identity — only its status moves.
-							<text key={entry.content} bg={PANE_BG} fg={color}>
-								{glyph}{" "}
-								<span
-									fg={entry.status === "pending" ? MUTED_COLOR : TEXT_COLOR}
-								>
-									{fit(entry.content, width - 8)}
-								</span>
-							</text>
-						);
-					})
-				: null}
-			{showPlan && plan.length > MAX_PLAN_ROWS ? (
-				<text bg={PANE_BG} fg={MUTED_COLOR}>
-					…{plan.length - MAX_PLAN_ROWS} more
-				</text>
+			{showPlan ? (
+				<PlanBlock
+					plan={plan}
+					spinnerFrame={spinnerFrame}
+					width={width - 8}
+					maxRows={MAX_PLAN_ROWS}
+					bg={PANE_BG}
+				/>
 			) : null}
 			{showTail
 				? tail.map((line, index) => (

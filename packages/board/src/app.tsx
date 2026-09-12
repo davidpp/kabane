@@ -776,11 +776,13 @@ export const App = ({
 						resolveShortId={resolveShortId}
 						scrollRef={scrollRef}
 						notice={notice}
+						plan={cardId === CopilotLog.CARD_ID ? copilotLog?.plan : undefined}
 						extraHints={
 							cardId === CopilotLog.CARD_ID && state.copilot.turn === "running"
 								? "x cancel"
 								: undefined
 						}
+						sidebarWidth={sbWidth}
 						pane={copilotPane}
 					/>
 				</box>

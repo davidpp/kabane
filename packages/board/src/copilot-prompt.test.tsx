@@ -12,29 +12,12 @@ import { contextChip } from "./copilot-prompt";
 import type { Copilot, CopilotStep, CopilotUpdate } from "./ports";
 import { noActivity } from "./ports";
 import { dropDb, freshDb } from "./test-db";
-import { renderTest } from "./testing";
+import { pumpUntil, renderTest } from "./testing";
 
 const TEST_BASE = join(tmpdir(), `cabane-board-copilot-${crypto.randomUUID()}`);
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
-
-const pumpUntil = async (
-	renderOnce: () => Promise<void>,
-	captureCharFrame: () => string,
-	predicate: (frame: string) => boolean,
-): Promise<string> => {
-	let frame = "";
-	for (let pass = 0; pass < 100; pass++) {
-		await renderOnce();
-		frame = captureCharFrame();
-		if (predicate(frame)) return frame;
-		await sleep(20);
-	}
-	// Silently returning a stale frame here makes the real failure surface somewhere else entirely,
-	// two seconds later — say which wait gave up, and on what.
-	throw new Error(`pumpUntil gave up. Last frame:\n${frame}`);
-};
 
 const ctx = (
 	over: Partial<BoardContext.Context> = {},
