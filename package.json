@@ -12,8 +12,8 @@
 		"fix": "biome check --write .",
 		"check:staged": "biome check --no-errors-on-unmatched --staged",
 		"typecheck": "for pkg in packages/*/; do (cd $pkg && bun run typecheck) || exit 1; done",
-		"test": "bun test packages/core packages/sqlite packages/cli packages/board && bun run --cwd packages/worker test",
-		"test:bun": "bun test packages/core packages/sqlite packages/cli packages/board",
+		"test": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board && bun run --cwd packages/worker test",
+		"test:bun": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board",
 		"test:worker": "bun run --cwd packages/worker test",
 		"clean": "bun run --filter '*' clean"
 	},
