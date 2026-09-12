@@ -374,10 +374,24 @@ export namespace AcpClient {
 		return result;
 	};
 
+	// npm prints this after every failure and it is never the diagnosis.
+	const NPM_LOG_NOTE = "A complete log of this run can be found in:";
+
+	const meaningfulStderr = (tail: string): string[] =>
+		tail
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line !== "" && !line.includes(NPM_LOG_NOTE));
+
+	// The SDK reports every transport failure as the same "ACP connection closed", so a
+	// renderer with room for one line must never be handed that first. The harness's own
+	// opening words lead instead, with the generic message and the rest of the stderr
+	// behind them for whoever reads the whole thing.
 	const withStderr = (error: unknown, connection: Connection): Error => {
 		const base = toError(error);
-		const tail = connection.stderr().trim();
-		return tail ? new Error(`${base.message}\n${tail}`) : base;
+		const [headline, ...rest] = meaningfulStderr(connection.stderr());
+		if (headline === undefined) return base;
+		return new Error([headline, base.message, ...rest].join("\n"));
 	};
 
 	const collectStderr = (stream: ReadableStream<Uint8Array>) => {

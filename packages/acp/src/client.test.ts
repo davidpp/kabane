@@ -289,4 +289,37 @@ describe("AcpClient", () => {
 		expect(updates[0]?.type).toBe("error");
 		AcpClient.close(conn);
 	});
+
+	// A harness that dies before it ever speaks ACP is the common first-run failure: not
+	// logged in, or an adapter npx cannot resolve. All the SDK says is "ACP connection
+	// closed", so what the harness itself printed has to come first.
+	it("leads a dead harness's failure with its own stderr, not the SDK's close message", async () => {
+		const conn = await AcpClient.spawn("claude", "/tmp", {
+			onPermission: allow,
+			overrides: {
+				command: "sh",
+				args: [
+					"-c",
+					"echo 'npm error code ETARGET' >&2; echo 'npm error notarget No matching version found' >&2; echo 'npm error A complete log of this run can be found in: /tmp/x.log' >&2; exit 1",
+				],
+			},
+		});
+		expect(conn.ok).toBe(false);
+		if (conn.ok) return;
+		const lines = conn.error.message.split("\n");
+		expect(lines[0]).toBe("npm error code ETARGET");
+		expect(lines).toContain("npm error notarget No matching version found");
+		// npm's log-path line is noise on every failure and never the answer.
+		expect(conn.error.message).not.toContain("A complete log of this run");
+	});
+
+	it("keeps the SDK's message alone when the harness printed nothing", async () => {
+		const conn = await AcpClient.spawn("claude", "/tmp", {
+			onPermission: allow,
+			overrides: { command: "sh", args: ["-c", "exit 1"] },
+		});
+		expect(conn.ok).toBe(false);
+		if (conn.ok) return;
+		expect(conn.error.message.split("\n")).toHaveLength(1);
+	});
 });
