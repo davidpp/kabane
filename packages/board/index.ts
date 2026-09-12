@@ -2,6 +2,7 @@
 // consumers that reach startBoard's type (e.g. the CLI) don't need OpenTUI's jsxImportSource.
 export { App, type AppProps } from "./src/app";
 export { Board, type BoardProps } from "./src/board";
+export { BoardContext } from "./src/context";
 export { BoardData } from "./src/data";
 export type {
 	ActivityCard,
