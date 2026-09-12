@@ -9,7 +9,9 @@ import { BoardContext } from "@cabane/board/context";
 import type {
 	Copilot,
 	CopilotShortcut,
+	CopilotStep,
 	CopilotUpdate,
+	PlanEntry,
 } from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
 import { AcpClient } from "./client";
@@ -132,10 +134,17 @@ export namespace BoardCopilot {
 
 		const at = (): string => new Date().toISOString();
 
-		const update = (
-			type: CopilotUpdate["type"],
-			summary: string,
-		): CopilotUpdate => ({ type, summary, at: at() });
+		const update = (type: CopilotStep, summary: string): CopilotUpdate => ({
+			type,
+			summary,
+			at: at(),
+		});
+
+		const plan = (entries: readonly PlanEntry[]): CopilotUpdate => ({
+			type: "plan",
+			entries,
+			at: at(),
+		});
 
 		const drainNotices = (): CopilotUpdate[] =>
 			notices.splice(0).map((text) => update("error", text));
@@ -166,9 +175,10 @@ export namespace BoardCopilot {
 						? [update("tool_result", title)]
 						: [];
 				}
-				// The port has no plan update; the tool calls the plan describes show up on their own.
+				// State, not a step: the board replaces its copy and counts it, and nothing lands in
+				// the transcript.
 				case "plan":
-					return [];
+					return [plan(incoming.entries)];
 				case "stop":
 					return [update("done", incoming.reason)];
 				case "error":

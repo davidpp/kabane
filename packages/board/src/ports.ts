@@ -84,14 +84,28 @@ export interface Dispatcher {
 	dispatch(triggerId: string, target: DispatchTarget): Promise<Result<string>>;
 }
 
-// One streamed step of a copilot turn. `summary` is the line the transcript shows; `text` carries
-// the agent's prose, `thought` its reasoning, the tool pair its writes (a `tool_result` is what the
+// One entry of the agent's own todo list for the turn. The harness owns the wording; the board only
+// counts and renders it.
+export type PlanEntryStatus = "pending" | "in_progress" | "completed";
+export type PlanEntry = { content: string; status: PlanEntryStatus };
+
+// The step kinds that advance a turn, each carrying the line the transcript shows: `text` is the
+// agent's prose, `thought` its reasoning, the tool pair its writes (a `tool_result` is what the
 // board reloads on), `error` and `done` end the turn.
-export type CopilotUpdate = {
-	type: "text" | "thought" | "tool_call" | "tool_result" | "error" | "done";
-	summary: string;
-	at: string;
-};
+export type CopilotStep =
+	| "text"
+	| "thought"
+	| "tool_call"
+	| "tool_result"
+	| "error"
+	| "done";
+
+// One streamed update of a copilot turn: a step, or the turn's plan. A plan is STATE, not a step —
+// the harness re-sends the whole list every time an entry moves, so it replaces rather than appends,
+// and it never becomes a transcript event.
+export type CopilotUpdate =
+	| { type: CopilotStep; summary: string; at: string }
+	| { type: "plan"; entries: readonly PlanEntry[]; at: string };
 
 // A `/name` the prompt window expands client-side into `template`, so the human reads exactly what
 // will be sent before pressing enter. `hint` is the one-line description shown while picking.

@@ -5,6 +5,7 @@ import {
 	type AgentApp,
 	agent as agentApp,
 	methods,
+	type PlanEntry,
 	PROTOCOL_VERSION,
 	type ToolCallStatus,
 } from "@agentclientprotocol/sdk";
@@ -27,7 +28,12 @@ type Seen = { newSession: unknown[]; prompts: unknown[] };
 // before the steps, so the decline path is observable.
 const scriptedAgent = (
 	seen: Seen,
-	options: { steps?: ToolStep[]; permission?: boolean; text?: string } = {},
+	options: {
+		steps?: ToolStep[];
+		permission?: boolean;
+		text?: string;
+		plans?: PlanEntry[][];
+	} = {},
 ): AgentApp =>
 	agentApp({ name: "scripted" })
 		.onRequest(methods.agent.initialize, () => ({
@@ -56,6 +62,8 @@ const scriptedAgent = (
 					sessionUpdate: "agent_message_chunk",
 					content: { type: "text", text: options.text },
 				});
+			for (const entries of options.plans ?? [])
+				await notify({ sessionUpdate: "plan", entries });
 			for (const step of options.steps ?? [])
 				await notify(
 					step.kind === "call"
@@ -254,6 +262,48 @@ describe("BoardCopilot", () => {
 			"tool_call",
 			"done",
 		]);
+		copilot.close();
+	});
+
+	it("streams the harness's plan through, entry for entry", async () => {
+		const seen: Seen = { newSession: [], prompts: [] };
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				plans: [
+					[
+						{
+							content: "read the issue",
+							priority: "high",
+							status: "in_progress",
+						},
+						{ content: "split it", priority: "medium", status: "pending" },
+					],
+					[
+						{
+							content: "read the issue",
+							priority: "high",
+							status: "completed",
+						},
+						{ content: "split it", priority: "medium", status: "in_progress" },
+					],
+				],
+			}),
+		);
+		const updates = await collect(copilot.run("split this", context()));
+		expect(types(updates)).toEqual(["plan", "plan", "done"]);
+		const [first, second] = updates.filter((u) => u.type === "plan");
+		expect(first).toMatchObject({
+			entries: [
+				{ content: "read the issue", status: "in_progress" },
+				{ content: "split it", status: "pending" },
+			],
+		});
+		expect(second).toMatchObject({
+			entries: [
+				{ content: "read the issue", status: "completed" },
+				{ content: "split it", status: "in_progress" },
+			],
+		});
 		copilot.close();
 	});
 

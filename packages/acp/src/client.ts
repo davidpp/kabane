@@ -37,7 +37,13 @@ export namespace AcpClient {
 				title?: string;
 				status?: string;
 		  }
-		| { type: "plan"; entries: { content: string; status: string }[] }
+		| {
+				type: "plan";
+				entries: {
+					content: string;
+					status: "pending" | "in_progress" | "completed";
+				}[];
+		  }
 		| { type: "stop"; reason: string }
 		| { type: "error"; message: string };
 

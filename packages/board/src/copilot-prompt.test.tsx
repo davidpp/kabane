@@ -9,7 +9,7 @@ import { Planner } from "@cabane/core";
 import { App } from "./app";
 import type { BoardContext } from "./context";
 import { contextChip } from "./copilot-prompt";
-import type { Copilot, CopilotUpdate } from "./ports";
+import type { Copilot, CopilotStep, CopilotUpdate } from "./ports";
 import { noActivity } from "./ports";
 import { dropDb, freshDb } from "./test-db";
 import { renderTest } from "./testing";
@@ -77,10 +77,7 @@ const scriptedCopilot = (gate: Promise<void>, seen: Seen): Copilot => ({
 		seen.prompts.push(prompt);
 		seen.contexts.push(context);
 		const at = (): string => new Date().toISOString();
-		const step = (
-			type: CopilotUpdate["type"],
-			summary: string,
-		): CopilotUpdate => ({
+		const step = (type: CopilotStep, summary: string): CopilotUpdate => ({
 			type,
 			summary,
 			at: at(),

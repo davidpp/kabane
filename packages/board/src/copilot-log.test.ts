@@ -2,16 +2,36 @@ import { describe, expect, it } from "bun:test";
 import { ok } from "@cabane/core";
 import { BoardActivity } from "./activity";
 import { CopilotLog } from "./copilot-log";
-import type { ActivityCard, ActivitySource, CopilotUpdate } from "./ports";
+import type {
+	ActivityCard,
+	ActivitySource,
+	CopilotStep,
+	CopilotUpdate,
+	PlanEntry,
+} from "./ports";
 
 const T0 = "2026-09-12T10:00:00.000Z";
 const T1 = "2026-09-12T10:00:01.000Z";
 
 const update = (
-	type: CopilotUpdate["type"],
+	type: CopilotStep,
 	summary: string,
 	at = T1,
 ): CopilotUpdate => ({ type, summary, at });
+
+const planUpdate = (entries: readonly PlanEntry[], at = T1): CopilotUpdate => ({
+	type: "plan",
+	entries,
+	at,
+});
+
+const PLAN: readonly PlanEntry[] = [
+	{ content: "read the issue", status: "completed" },
+	{ content: "propose the split", status: "completed" },
+	{ content: "create the subtasks", status: "in_progress" },
+	{ content: "link the blockers", status: "pending" },
+	{ content: "summarise", status: "pending" },
+];
 
 const hostCard = (over: Partial<ActivityCard> = {}): ActivityCard => ({
 	id: "r1",
@@ -34,6 +54,7 @@ describe("CopilotLog", () => {
 			hasEvents: true,
 		});
 		expect(log.events).toEqual([]);
+		expect(log.plan).toEqual([]);
 		expect(log.activity).toBe("thinking");
 	});
 
@@ -117,6 +138,45 @@ describe("CopilotLog", () => {
 		);
 		// The event view reads the card, so nothing is lost for the reader who opens it.
 		expect(log.card.error).toContain("No matching version found");
+	});
+
+	it("a plan replaces the last one and never lands in the transcript", () => {
+		let log = CopilotLog.apply(CopilotLog.start(T0), update("tool_call", "ls"));
+		log = CopilotLog.apply(log, planUpdate(PLAN));
+		expect(log.plan).toEqual(PLAN);
+		expect(log.events.map((e) => e.type)).toEqual(["tool_use"]);
+		// The harness re-sends the whole list as entries move, so the second one stands alone.
+		const advanced: readonly PlanEntry[] = [
+			{ content: "read the issue", status: "completed" },
+			{ content: "and one more", status: "pending" },
+		];
+		log = CopilotLog.apply(log, planUpdate(advanced));
+		expect(log.plan).toEqual(advanced);
+		expect(log.events.map((e) => e.type)).toEqual(["tool_use"]);
+	});
+
+	it("progress counts completed entries, and is absent without a plan", () => {
+		expect(CopilotLog.progress([])).toBeNull();
+		expect(CopilotLog.progress(PLAN)).toEqual({ done: 2, total: 5 });
+	});
+
+	it("footer counts the plan while running, and says nothing extra without one", () => {
+		let log = CopilotLog.apply(
+			CopilotLog.start(T0),
+			update("tool_call", "cabane_add"),
+		);
+		expect(CopilotLog.footer(log, "⠹").text).toBe("⠹ copilot · cabane_add");
+		log = CopilotLog.apply(log, planUpdate(PLAN));
+		expect(CopilotLog.footer(log, "⠹")).toEqual({
+			text: "⠹ copilot · 2/5 · cabane_add",
+			tone: "running",
+		});
+		// The count belongs to the running line only — a finished turn reports its outcome.
+		log = CopilotLog.apply(log, update("text", "Created three subtasks."));
+		log = CopilotLog.apply(log, update("done", ""));
+		expect(CopilotLog.footer(log, "⠹").text).toBe(
+			"✓ copilot · Created three subtasks.",
+		);
 	});
 
 	it("withActivity puts the copilot card first, keeps the host's cards and questions, and is a no-op without a log", () => {

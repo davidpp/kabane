@@ -10,6 +10,7 @@ import type {
 	ActivityEvent,
 	ActivitySource,
 	CopilotUpdate,
+	PlanEntry,
 } from "./ports";
 
 export namespace CopilotLog {
@@ -20,6 +21,8 @@ export namespace CopilotLog {
 	export type Log = {
 		card: ActivityCard;
 		events: ActivityEvent[];
+		// The agent's todo list for the turn, as last sent. Replaced wholesale, never merged.
+		plan: readonly PlanEntry[];
 		// What the footer says while running: the last tool call, else "thinking".
 		activity: string;
 		// The agent's last prose line, for the `✓ copilot · …` flash on `done`.
@@ -37,6 +40,7 @@ export namespace CopilotLog {
 			hasEvents: true,
 		},
 		events: [],
+		plan: [],
 		activity: "thinking",
 		lastText: "",
 	});
@@ -46,9 +50,22 @@ export namespace CopilotLog {
 	const eventType = (type: CopilotUpdate["type"]): string =>
 		type === "tool_call" ? "tool_use" : type;
 
+	// How far the turn is through its own plan, for the one-line indicator. Absent without a plan:
+	// harnesses that never send one keep today's text rather than showing a hollow `0/0`.
+	export const progress = (
+		plan: readonly PlanEntry[],
+	): { done: number; total: number } | null =>
+		plan.length === 0
+			? null
+			: {
+					done: plan.filter((e) => e.status === "completed").length,
+					total: plan.length,
+				};
+
 	const firstLine = (text: string): string => text.split("\n")[0] ?? "";
 
 	export const apply = (log: Log, update: CopilotUpdate): Log => {
+		if (update.type === "plan") return { ...log, plan: update.entries };
 		const events =
 			update.type === "done"
 				? log.events
@@ -149,11 +166,14 @@ export namespace CopilotLog {
 					text: `✗ copilot · ${firstLine(log.card.error ?? "failed")}`,
 					tone: "error",
 				};
-			default:
+			default: {
+				const done = progress(log.plan);
+				const counted = done ? `${done.done}/${done.total} · ` : "";
 				return {
-					text: `${spinnerFrame} copilot · ${log.activity}`,
+					text: `${spinnerFrame} copilot · ${counted}${log.activity}`,
 					tone: "running",
 				};
+			}
 		}
 	};
 }
