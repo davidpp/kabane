@@ -617,7 +617,7 @@ test("Board footer shows only the app-specific hints, ending in `? help`", async
 			f.includes("? help"),
 		);
 		expect(frame).toContain(
-			"a dispatch · / search · d done · v review · y copy · m mark · b sidebar · ? help",
+			"a dispatch · A copilot · / search · d done · v review · y copy · m mark · b sidebar · ? help",
 		);
 		// The vim-obvious ones are gone from the footer.
 		expect(frame).not.toContain("space expand");

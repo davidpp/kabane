@@ -14,18 +14,22 @@ import {
 	type ReactNode,
 	useCallback,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { BoardActivity } from "./activity";
 import { anyActivityRunning, Board } from "./board";
 import { Clipboard } from "./clipboard";
+import { BoardContext } from "./context";
+import { CopilotLog } from "./copilot-log";
+import { CopilotPrompt, contextChip } from "./copilot-prompt";
 import { BoardData } from "./data";
 import { Detail } from "./detail";
 import { EventView } from "./event-view";
 import { BoardNav } from "./nav";
 import { DispatchOverlay, HelpOverlay } from "./overlay";
-import type { ActivitySource, Dispatcher } from "./ports";
+import type { ActivitySource, Copilot, Dispatcher } from "./ports";
 import {
 	buildSidebarItems,
 	MIN_SIDEBAR_COLS,
@@ -41,6 +45,8 @@ export type AppProps = {
 	activity: ActivitySource;
 	// Absent → `a` flashes "no dispatcher configured".
 	dispatcher?: Dispatcher;
+	// Absent → `A` flashes "no copilot configured".
+	copilot?: Copilot;
 	// Absent → the board opens on all scopes.
 	resolveScope?: BoardData.ScopeResolver;
 };
@@ -72,6 +78,14 @@ const findTask = (state: BoardNav.BoardState, id: string): Task | undefined =>
 const shortIdOf = (task: Task | undefined, id: string): string =>
 	task?.shortId ?? id.slice(0, 8);
 
+const NO_COPILOT: BoardNav.Notice = {
+	text: "no copilot configured",
+	tone: "error",
+};
+
+const errorMessage = (e: unknown): string =>
+	e instanceof Error ? e.message : String(e);
+
 // Sidebar cards from hosts that only know the label: find the task by its shortId.
 const taskIdByShortId = (
 	state: BoardNav.BoardState,
@@ -93,6 +107,7 @@ export const App = ({
 	basePath,
 	activity: activitySource,
 	dispatcher,
+	copilot,
 	resolveScope,
 }: AppProps): ReactNode => {
 	const renderer = useRenderer();
@@ -109,14 +124,35 @@ export const App = ({
 	const [notice, setNotice] = useState<BoardNav.Notice | null>(null);
 	// Comments for the currently open detail view. Fetched alongside the brief, cleared on view change.
 	const [detailComments, setDetailComments] = useState<TaskComment[]>([]);
+	// The copilot's current turn: its card and transcript, replaced on the next turn, never persisted.
+	// Held in a ref as well because the composed ActivitySource below reads it while the event view
+	// polls, and the stream runner writes it between renders.
+	const [copilotLog, setCopilotLog] = useState<CopilotLog.Log | null>(null);
+	const copilotLogRef = useRef<CopilotLog.Log | null>(null);
+	const publishLog = useCallback((log: CopilotLog.Log): void => {
+		copilotLogRef.current = log;
+		setCopilotLog(log);
+	}, []);
+	// Which turn the stream runner is on; a cancel or a new prompt moves it so a stale stream's late
+	// updates are dropped rather than written over the next turn's log.
+	const turnRef = useRef(0);
+	// Host cards plus the copilot's, for every surface that lists activity.
+	const shownActivity = useMemo(
+		() => CopilotLog.withActivity(activity, copilotLog),
+		[activity, copilotLog],
+	);
+	const shownSource = useMemo(
+		() => CopilotLog.source(activitySource, () => copilotLogRef.current),
+		[activitySource],
+	);
 
 	// Refs mirror state for the keyboard/poll callbacks, which capture once but must read the latest.
 	const stateRef = useRef<BoardNav.BoardState | null>(null);
 	stateRef.current = state;
 	const scopeRef = useRef<BoardData.ScopeInfo | null>(null);
 	scopeRef.current = scope;
-	const activityRef = useRef<BoardActivity.ActivityMap>(activity);
-	activityRef.current = activity;
+	const activityRef = useRef<BoardActivity.ActivityMap>(shownActivity);
+	activityRef.current = shownActivity;
 	// The detail view's scrollbox lives inside <Detail>; app.tsx holds the ref so the `scroll` effect
 	// can drive it and every key stays in the one useKeyboard handler.
 	const scrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -251,6 +287,71 @@ export const App = ({
 		[dispatcher, basePath, reload],
 	);
 
+	// One copilot turn: assemble the context, stream the run into the log, reload the board on each
+	// completed write, and hand the reducer the turn's end. The stream is the one place the port can
+	// throw at us (an AsyncIterable has no Result), so the boundary catches and ends the turn as an
+	// error rather than letting it reach React.
+	const runCopilot = useCallback(
+		async (s: BoardNav.BoardState, prompt: string): Promise<void> => {
+			const endTurn = (turn: BoardNav.CopilotTurn): void =>
+				setState((prev) =>
+					prev ? BoardNav.withCopilotTurn(prev, turn) : prev,
+				);
+			const now = (): string => new Date().toISOString();
+			if (!copilot) {
+				setNotice(NO_COPILOT);
+				endTurn("idle");
+				return;
+			}
+			const turn = ++turnRef.current;
+			let log = CopilotLog.start(now());
+			publishLog(log);
+			const fail = (summary: string): void => {
+				log = CopilotLog.apply(log, { type: "error", summary, at: now() });
+				publishLog(log);
+				endTurn("error");
+			};
+			const context = await BoardContext.load(basePath, s, scopeRef.current);
+			if (turnRef.current !== turn) return;
+			if (!context.ok) {
+				fail(context.error.message);
+				return;
+			}
+			try {
+				for await (const update of copilot.run(prompt, context.value)) {
+					if (turnRef.current !== turn) return;
+					log = CopilotLog.apply(log, update);
+					publishLog(log);
+					if (update.type === "tool_result") {
+						const current = stateRef.current;
+						if (current) void reload(current);
+					}
+					if (update.type === "done") endTurn("done");
+					if (update.type === "error") endTurn("error");
+				}
+				// A stream that ends without saying so still ended.
+				if (log.card.status === "running") {
+					log = CopilotLog.apply(log, { type: "done", summary: "", at: now() });
+					publishLog(log);
+					endTurn("done");
+				}
+			} catch (e) {
+				if (turnRef.current === turn) fail(errorMessage(e));
+			}
+		},
+		[copilot, basePath, reload, publishLog],
+	);
+
+	// Stop the turn in flight: tell the copilot, drop its remaining updates, close the card.
+	const cancelCopilot = useCallback((): void => {
+		turnRef.current++;
+		void copilot?.cancel();
+		const log = copilotLogRef.current;
+		if (log && log.card.status === "running")
+			publishLog(CopilotLog.cancelled(log, new Date().toISOString()));
+		setState((prev) => (prev ? BoardNav.withCopilotTurn(prev, "error") : prev));
+	}, [copilot, publishLog]);
+
 	// The single effect runner, shared by the keyboard and mouse dispatchers so both interaction paths
 	// execute the reducer's output the same way. `next` is the post-reduce state a reload merges into.
 	const runEffect = useCallback(
@@ -314,6 +415,23 @@ export const App = ({
 					return;
 				case "loadTriggers":
 					void loadTriggers(effect.taskId);
+					return;
+				case "copilotOpen":
+					// The window opened optimistically; without a copilot it closes at once with the flash.
+					if (!copilot) {
+						setState((prev) =>
+							prev
+								? { ...prev, copilot: { ...prev.copilot, window: null } }
+								: prev,
+						);
+						setNotice(NO_COPILOT);
+					}
+					return;
+				case "copilotPrompt":
+					void runCopilot(next, effect.prompt);
+					return;
+				case "copilotCancel":
+					cancelCopilot();
 					return;
 				case "sidebarSelect": {
 					// Read activity from the ref to avoid stale closure over sidebarItems.
@@ -380,7 +498,17 @@ export const App = ({
 					return;
 			}
 		},
-		[renderer, reload, basePath, runCopy, runDispatch, loadTriggers],
+		[
+			renderer,
+			reload,
+			basePath,
+			runCopy,
+			runDispatch,
+			loadTriggers,
+			copilot,
+			runCopilot,
+			cancelCopilot,
+		],
 	);
 
 	// Route a board mouse action through the same pure reducer as keys, then run its effect. Keeps
@@ -438,13 +566,18 @@ export const App = ({
 			setScope(detected);
 			if (act.ok) setActivity(act.value);
 			if (result.ok)
-				setState(BoardNav.init(result.value, { scoped: Boolean(detected) }));
+				setState(
+					BoardNav.withCopilotShortcuts(
+						BoardNav.init(result.value, { scoped: Boolean(detected) }),
+						copilot?.shortcuts() ?? [],
+					),
+				);
 			else setError(result.error.message);
 		})();
 		return () => {
 			cancelled = true;
 		};
-	}, [cwd, basePath, resolveScope, activitySource, retryCount]);
+	}, [cwd, basePath, resolveScope, activitySource, copilot, retryCount]);
 
 	// 5s background poll — reloads with whatever filters are currently active.
 	useEffect(() => {
@@ -515,7 +648,7 @@ export const App = ({
 	useEffect(() => {
 		setState((prev) => {
 			if (!prev) return prev;
-			const items = buildSidebarItems(activity);
+			const items = buildSidebarItems(shownActivity);
 			if (prev.sidebar.itemCount === items.length) return prev;
 			return {
 				...prev,
@@ -529,10 +662,10 @@ export const App = ({
 				},
 			};
 		});
-	}, [activity]);
+	}, [shownActivity]);
 
 	const { width: termCols } = useTerminalDimensions();
-	const spinnerFrame = useSpinnerFrame(anyActivityRunning(activity));
+	const spinnerFrame = useSpinnerFrame(anyActivityRunning(shownActivity));
 
 	// Resolve task ULID → shortId from loaded sections (for sidebar display).
 	const resolveShortId = useCallback((taskId: string): string | undefined => {
@@ -560,6 +693,7 @@ export const App = ({
 
 	// The dispatch overlay floats over WHICHEVER view it opened on (it's a separate state field, not a
 	// view), so both branches render inside the same full-screen wrapper it absolutely positions against.
+	// The copilot prompt is the same kind of thing, pinned above the footer instead of centred.
 	const overlay = state.help ? (
 		<HelpOverlay />
 	) : state.dispatch ? (
@@ -570,13 +704,26 @@ export const App = ({
 			)}
 			overlay={state.dispatch}
 		/>
+	) : state.copilot.window ? (
+		<CopilotPrompt
+			window={state.copilot.window}
+			// Briefs are fetched on submit; the chip only needs the ids the state already holds.
+			chip={contextChip(BoardContext.project(state, scope, new Map()))}
+			shortcuts={state.copilot.shortcuts}
+		/>
 	) : null;
+	// The footer indicator: up from submit until the keypress after the turn ends (the reducer moves
+	// the turn back to idle), reading the live log for its text.
+	const copilotFooter =
+		copilotLog && state.copilot.turn !== "idle"
+			? CopilotLog.footer(copilotLog, spinnerFrame)
+			: null;
 
 	const showSidebar = state.sidebar.visible && termCols >= MIN_SIDEBAR_COLS;
 	const sbWidth = showSidebar ? sidebarWidth(termCols) : 0;
 	const sidebarEl = showSidebar ? (
 		<Sidebar
-			activity={activity}
+			activity={shownActivity}
 			sidebarWidth={sbWidth}
 			focused={state.sidebar.focus === "sidebar"}
 			selectedIndex={state.sidebar.selected}
@@ -592,11 +739,16 @@ export const App = ({
 				<box style={{ flexDirection: "column", flexGrow: 1 }}>
 					<EventView
 						cardId={cardId}
-						initialCard={activity.cards.find((c) => c.id === cardId)}
-						source={activitySource}
+						initialCard={shownActivity.cards.find((c) => c.id === cardId)}
+						source={shownSource}
 						resolveShortId={resolveShortId}
 						scrollRef={scrollRef}
 						notice={notice}
+						extraHints={
+							cardId === CopilotLog.CARD_ID && state.copilot.turn === "running"
+								? "x cancel"
+								: undefined
+						}
 					/>
 				</box>
 				{sidebarEl}
@@ -609,7 +761,7 @@ export const App = ({
 		const { taskId } = state.view;
 		const task = findTask(state, taskId);
 		const taskCards = BoardActivity.cardsForTask(
-			activity,
+			shownActivity,
 			taskId,
 			task?.shortId,
 		);
@@ -622,10 +774,11 @@ export const App = ({
 						task={task}
 						cards={taskCards.length > 0 ? taskCards : undefined}
 						comments={detailComments.length > 0 ? detailComments : undefined}
-						questions={activity.questionsByTaskId.get(taskId)}
+						questions={shownActivity.questionsByTaskId.get(taskId)}
 						spinnerFrame={spinnerFrame}
 						scrollRef={scrollRef}
 						notice={notice}
+						copilot={copilotFooter}
 						onCopy={() => dispatchMouse({ type: "copy" })}
 					/>
 				</box>
@@ -644,7 +797,7 @@ export const App = ({
 					expanded={state.expanded}
 					selectedId={state.selectedId}
 					search={state.search}
-					activity={activity}
+					activity={shownActivity}
 					scopeLabel={scopeLabel}
 					filterLabel={`kind: ${state.kind}`}
 					status={state.status}
@@ -653,6 +806,7 @@ export const App = ({
 					onSelect={(row) => dispatchMouse({ type: "select", row })}
 					onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}
 					notice={notice}
+					copilot={copilotFooter}
 					sidebarWidth={sbWidth}
 				/>
 			</box>
