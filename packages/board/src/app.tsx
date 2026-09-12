@@ -328,6 +328,14 @@ export const App = ({
 					if (turnRef.current !== turn) return;
 					log = CopilotLog.apply(log, update);
 					publishLog(log);
+					// The harness is blocked from here until the human presses something; the board
+					// only puts the question on screen and carries on rendering.
+					if (update.type === "permission")
+						setState((prev) =>
+							prev
+								? BoardNav.withCopilotPermission(prev, update.request)
+								: prev,
+						);
 					if (update.type === "tool_result") {
 						const current = stateRef.current;
 						if (current) void reload(current);
@@ -434,6 +442,9 @@ export const App = ({
 					return;
 				case "copilotCancel":
 					cancelCopilot();
+					return;
+				case "copilotAnswer":
+					copilot?.answerPermission(effect.id, effect.optionId);
 					return;
 				case "copilotSetText":
 					inputRef.current?.setText(effect.text);
@@ -599,9 +610,12 @@ export const App = ({
 			if (act.ok) setActivity(act.value);
 			if (result.ok)
 				setState(
-					BoardNav.withCopilotShortcuts(
+					BoardNav.withCopilotPort(
 						BoardNav.init(result.value, { scoped: Boolean(detected) }),
-						copilot?.shortcuts() ?? [],
+						{
+							shortcuts: copilot?.shortcuts() ?? [],
+							actor: copilot?.actor ?? null,
+						},
 					),
 				);
 			else setError(result.error.message);
@@ -785,6 +799,11 @@ export const App = ({
 								? copilotLog?.current.plan
 								: undefined
 						}
+						permission={
+							cardId === CopilotLog.CARD_ID
+								? state.copilot.permission
+								: undefined
+						}
 						extraHints={
 							cardId === CopilotLog.CARD_ID && state.copilot.turn === "running"
 								? "x cancel"
@@ -845,6 +864,12 @@ export const App = ({
 					filterLabel={`kind: ${state.kind}`}
 					status={state.status}
 					marked={state.marked}
+					// The reload after each of the copilot's writes is what puts the fresh `updatedBy`
+					// and `updatedAt` in hand; the reducer decides which of them the glyph is for.
+					touched={BoardNav.copilotTouched(
+						state,
+						copilotLog?.current.card.startedAt,
+					)}
 					scrollRef={listRef}
 					onSelect={(row) => dispatchMouse({ type: "select", row })}
 					onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}

@@ -22,6 +22,7 @@ import { CopilotLog } from "./copilot-log";
 import { elapsed } from "./elapsed";
 import { copilotIndicatorFg } from "./footer";
 import { BoardNav } from "./nav";
+import { PermissionBlock, permissionLine } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import type { PlanEntry } from "./ports";
 
@@ -120,11 +121,16 @@ export const CopilotPane = ({
 	const matches = BoardNav.matchingShortcuts(copilot.shortcuts, copilot.text);
 	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
 	const rows = inputRows(copilot.text, height);
+	// A blocked harness outranks everything else the panel could say: the turn is not going anywhere
+	// until it is answered, so the plan and the palette wait.
+	const showChoice = copilot.permission !== null && !detailShownElsewhere;
 	// A shortcut palette replaces the plan while one is being picked: both at once is noise, and the
 	// human typing `/` is not watching the todo.
-	const showPalette = matches.length > 0;
-	const showPlan = !showPalette && !detailShownElsewhere && plan.length > 0;
-	const showTail = !showPalette && !detailShownElsewhere && tail.length > 0;
+	const showPalette = !showChoice && matches.length > 0;
+	const showPlan =
+		!showChoice && !showPalette && !detailShownElsewhere && plan.length > 0;
+	const showTail =
+		!showChoice && !showPalette && !detailShownElsewhere && tail.length > 0;
 	const state = running
 		? "running"
 		: copilot.turn === "error"
@@ -156,6 +162,13 @@ export const CopilotPane = ({
 			title={fit(`copilot · ${chip}${right ? ` · ${right}` : ""}`, width - 4)}
 			titleColor={CHIP_COLOR}
 		>
+			{showChoice && copilot.permission ? (
+				<PermissionBlock
+					request={copilot.permission}
+					width={width - 8}
+					bg={PANE_BG}
+				/>
+			) : null}
 			{showPlan ? (
 				<PlanBlock
 					plan={plan}
@@ -236,8 +249,12 @@ const CollapsedRow = ({
 		copilot.turn === "idle" || !log
 			? null
 			: CopilotLog.footer(log, spinnerFrame);
-	const text =
-		log && status
+	// This one row is where a board with no transcript open learns that something is waiting on it:
+	// the pane is the only copilot surface present in every view, and a question outranks whatever
+	// progress the row would otherwise report — the progress has stopped.
+	const text = copilot.permission
+		? permissionLine(copilot.permission)
+		: log && status
 			? planLine(log, status)
 			: `▸ tab to ask the copilot${copilot.text ? ` · draft: ${copilot.text.split("\n")[0]}` : ""}`;
 	const line =

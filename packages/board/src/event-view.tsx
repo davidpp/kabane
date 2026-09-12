@@ -18,11 +18,13 @@ import {
 import { elapsed } from "./elapsed";
 import { StatusBar } from "./footer";
 import type { BoardNav } from "./nav";
+import { PermissionBlock } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import {
 	type ActivityCard,
 	type ActivityEvent,
 	type ActivitySource,
+	type CopilotPermission,
 	isInFlight,
 	type PlanEntry,
 	PROMPT_EVENT,
@@ -82,6 +84,8 @@ const eventGlyph = (type: string): { glyph: string; color: string } => {
 			return { glyph: "▶", color: ACCENT_COLOR };
 		case "progress":
 			return { glyph: "·", color: MUTED_COLOR };
+		case "permission":
+			return { glyph: "?", color: ACCENT_COLOR };
 		case "error":
 			return { glyph: "✗", color: ERROR_COLOR };
 		case "metric":
@@ -120,6 +124,10 @@ export type EventViewProps = {
 	// the board's own copilot writes is the only one that has one — the hosts behind the port have no
 	// concept to implement. Empty (the default) is the flat one-line header every host card keeps.
 	plan?: readonly PlanEntry[];
+	// The question the copilot's harness is blocked on, drawn between the events and the footer —
+	// outside the scrollbox, so reading back through the turn never scrolls the thing being asked
+	// off screen, and where the eye already goes for what to press.
+	permission?: CopilotPermission | null;
 	// Extra footer hints for this card (the copilot's `x cancel`); the scroll/back pair is always there.
 	extraHints?: string;
 	// Subtracted from the row width when the sidebar is up, so a long plan entry is fitted to what the
@@ -138,6 +146,7 @@ export const EventView = ({
 	scrollRef,
 	notice,
 	plan = NO_PLAN,
+	permission,
 	extraHints,
 	sidebarWidth = 0,
 	pane,
@@ -264,6 +273,11 @@ export const EventView = ({
 					</box>
 				) : null}
 			</scrollbox>
+			{permission ? (
+				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
+					<PermissionBlock request={permission} width={contentWidth} />
+				</box>
+			) : null}
 			{pane}
 			{notice ? (
 				<StatusBar
