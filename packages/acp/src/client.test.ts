@@ -322,4 +322,85 @@ describe("AcpClient", () => {
 		if (conn.ok) return;
 		expect(conn.error.message.split("\n")).toHaveLength(1);
 	});
+
+	// A dead process launched through npx means npm never put the adapter on disk, so the
+	// reader is looking at npm's words about a command they never typed. Cabane pinned that
+	// version and chose npx, so it says what it was doing before handing over the evidence.
+	// `connect` takes the process bundle directly, which is how this runs without an npx.
+	const deadNpx = (stderr: string) => ({
+		closed: Promise.resolve(1),
+		stderr: () => stderr,
+		close: () => {},
+		launch: {
+			command: "npx",
+			args: ["-y", "@agentclientprotocol/claude-agent-acp@0.76.0"],
+			env: {},
+		},
+	});
+
+	const mute = () =>
+		agentApp({ name: "mute" }).onRequest(
+			methods.agent.initialize,
+			() => new Promise<never>(() => {}),
+		);
+
+	it("explains an adapter npx could not install, in cabane's own words, above npm's", async () => {
+		const conn = await AcpClient.connect(
+			"claude",
+			mute(),
+			{ onPermission: allow, handshakeMs: 20 },
+			deadNpx(
+				"npm error code ETARGET\nnpm error notarget No matching version found for @agentclientprotocol/claude-agent-acp@0.76.0 with a date before 2026-09-07",
+			),
+		);
+		expect(conn.ok).toBe(false);
+		if (conn.ok) return;
+		const lines = conn.error.message.split("\n");
+		expect(lines[0]).toBe(
+			"claude adapter 0.76.0 could not be installed by npx",
+		);
+		// The date-before shape is npm reporting a release-age guard, so the hint is true here.
+		expect(lines[1]).toContain("hides recent publishes");
+		// npm's own diagnosis stays, contiguous, under cabane's sentence.
+		expect(lines[2]).toBe("npm error code ETARGET");
+		expect(lines[3]).toContain("No matching version found");
+		// The SDK's uninformative close message trails everything.
+		expect(lines[lines.length - 1]).toContain("no ACP initialize response");
+	});
+
+	it("does not blame a release-age guard when npm's output shows no date cutoff", async () => {
+		const conn = await AcpClient.connect(
+			"claude",
+			mute(),
+			{ onPermission: allow, handshakeMs: 20 },
+			deadNpx("npm error 404 Not Found - GET https://registry.npmjs.org/nope"),
+		);
+		expect(conn.ok).toBe(false);
+		if (conn.ok) return;
+		const lines = conn.error.message.split("\n");
+		expect(lines[0]).toBe(
+			"claude adapter 0.76.0 could not be installed by npx",
+		);
+		expect(conn.error.message).not.toContain("hides recent publishes");
+	});
+
+	// Still running means the adapter did install and is simply not answering; saying it
+	// could not be installed would be a lie.
+	it("does not claim an install failure while the process is still running", async () => {
+		const conn = await AcpClient.connect(
+			"claude",
+			mute(),
+			{ onPermission: allow, handshakeMs: 20 },
+			{
+				...deadNpx("npm warn something harmless"),
+				closed: new Promise<number>(() => {}),
+			},
+		);
+		expect(conn.ok).toBe(false);
+		if (conn.ok) return;
+		expect(conn.error.message).not.toContain("could not be installed");
+		expect(conn.error.message.split("\n")[0]).toBe(
+			"npm warn something harmless",
+		);
+	});
 });

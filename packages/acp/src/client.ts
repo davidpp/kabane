@@ -133,6 +133,7 @@ export namespace AcpClient {
 			closed: proc.exited,
 			stderr: stderr.text,
 			close: () => void closeGracefully(proc),
+			launch,
 		});
 		if (!connected.ok) proc.kill();
 		return connected;
@@ -157,7 +158,11 @@ export namespace AcpClient {
 		if (!exited.ok) proc.kill();
 	};
 
-	type Process = Pick<Connection, "closed" | "stderr" | "close">;
+	type Process = Pick<Connection, "closed" | "stderr" | "close"> & {
+		// What was launched, so a start that failed can say what cabane was trying to run.
+		// Absent for an in-process transport, which never started anything.
+		launch?: Harnesses.Launch;
+	};
 
 	const NO_PROCESS: Process = {
 		closed: Promise.resolve(null),
@@ -202,7 +207,7 @@ export namespace AcpClient {
 		);
 		if (!handshake.ok) {
 			connection.close();
-			return err(withStderr(handshake.error, connection));
+			return err(await startFailure(handshake.error, connection, process));
 		}
 		return ok(connection);
 	};
@@ -384,14 +389,75 @@ export namespace AcpClient {
 			.filter((line) => line !== "" && !line.includes(NPM_LOG_NOTE));
 
 	// The SDK reports every transport failure as the same "ACP connection closed", so a
-	// renderer with room for one line must never be handed that first. The harness's own
-	// opening words lead instead, with the generic message and the rest of the stderr
-	// behind them for whoever reads the whole thing.
-	const withStderr = (error: unknown, connection: Connection): Error => {
+	// renderer with room for one line must never be handed that first. What the harness
+	// itself printed leads, kept in its own order so it still reads as one block, and the
+	// generic message trails as the least informative part.
+	const assembleFailure = (
+		base: Error,
+		stderr: string,
+		explanation: string[],
+	): Error => {
+		const tail = meaningfulStderr(stderr);
+		if (explanation.length === 0 && tail.length === 0) return base;
+		return new Error([...explanation, ...tail, base.message].join("\n"));
+	};
+
+	const withStderr = (error: unknown, connection: Connection): Error =>
+		assembleFailure(toError(error), connection.stderr(), []);
+
+	// How long a failed start waits to learn whether the process is gone. Its exit also means
+	// stderr has reached EOF, so waiting here is what makes the harness's own words complete.
+	const EXIT_VERDICT_MS = 500;
+
+	// A start that failed with the process already dead, launched through `npx`, means npm
+	// never put the adapter on disk: the harness was never reached, so nothing it might have
+	// said is missing. Cabane pinned that version and chose to run it through npx, so it owns
+	// the sentence. npm's own diagnostics stay underneath as the evidence.
+	const startFailure = async (
+		error: unknown,
+		connection: Connection,
+		process: Process,
+	): Promise<Error> => {
 		const base = toError(error);
-		const [headline, ...rest] = meaningfulStderr(connection.stderr());
-		if (headline === undefined) return base;
-		return new Error([headline, base.message, ...rest].join("\n"));
+		const stderr = connection.stderr();
+		const exited = await withTimeout(
+			connection.closed,
+			EXIT_VERDICT_MS,
+			"still running",
+		);
+		const explanation = exited.ok
+			? installExplanation(connection.harness, process.launch, stderr)
+			: [];
+		return assembleFailure(base, stderr, explanation);
+	};
+
+	// npm says a version is missing "with a date before <date>" only when a `min-release-age`
+	// or `before` setting is filtering the registry. Without that in the output the version is
+	// simply not published, so the hint is only offered where it is true.
+	const RELEASE_AGE_EVIDENCE = "with a date before";
+
+	const installExplanation = (
+		harness: Harnesses.Id,
+		launch: Harnesses.Launch | undefined,
+		stderr: string,
+	): string[] => {
+		if (launch?.command !== "npx") return [];
+		const version = pinnedVersion(launch.args);
+		const named = version === undefined ? "" : ` ${version}`;
+		const headline = `${harness} adapter${named} could not be installed by npx`;
+		return stderr.includes(RELEASE_AGE_EVIDENCE)
+			? [
+					headline,
+					"your npm config hides recent publishes, so npx cannot see that version yet",
+				]
+			: [headline];
+	};
+
+	// `@scope/name@1.2.3` keeps its leading `@`, so only a later one separates the version.
+	const pinnedVersion = (args: string[]): string | undefined => {
+		const spec = args.find((arg) => !arg.startsWith("-"));
+		const at = spec === undefined ? -1 : spec.lastIndexOf("@");
+		return spec !== undefined && at > 0 ? spec.slice(at + 1) : undefined;
 	};
 
 	const collectStderr = (stream: ReadableStream<Uint8Array>) => {
