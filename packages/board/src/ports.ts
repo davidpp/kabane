@@ -105,12 +105,26 @@ export type CopilotStep =
 	| "error"
 	| "done";
 
-// One streamed update of a copilot turn: a step, or the turn's plan. A plan is STATE, not a step —
-// the harness re-sends the whole list every time an entry moves, so it replaces rather than appends,
-// and it never becomes a transcript event.
+// One choice the harness offers for a permission request: `id` is what an answer names back, `label`
+// what the human reads on the numbered row.
+export type CopilotPermissionOption = { id: string; label: string };
+
+// The harness stopped mid-turn to ask before doing something, and is BLOCKED until it hears back.
+// `id` is unique within the turn; `answerPermission` names it to answer.
+export type CopilotPermission = {
+	id: string;
+	title: string;
+	options: readonly CopilotPermissionOption[];
+};
+
+// One streamed update of a copilot turn: a step, the turn's plan, or a question the human has to
+// answer. A plan is STATE, not a step — the harness re-sends the whole list every time an entry
+// moves, so it replaces rather than appends. A permission is neither: it is a turn stopped dead
+// until someone answers it, and the board is the only thing that may.
 export type CopilotUpdate =
 	| { type: CopilotStep; summary: string; at: string }
-	| { type: "plan"; entries: readonly PlanEntry[]; at: string };
+	| { type: "plan"; entries: readonly PlanEntry[]; at: string }
+	| { type: "permission"; request: CopilotPermission; at: string };
 
 // A `/name` the prompt window expands client-side into `template`, so the human reads exactly what
 // will be sent before pressing enter. `hint` is the one-line description shown while picking.
@@ -126,6 +140,11 @@ export interface Copilot {
 	): AsyncIterable<CopilotUpdate>;
 	cancel(): Promise<void>;
 	shortcuts(): CopilotShortcut[];
+	// Answer a `permission` update: the chosen option's id, or null to decline. Returns nothing and
+	// cannot fail — the board has said its piece, and a turn that has meanwhile ended has nobody
+	// left to hear it. A request the human never answers simply keeps the turn waiting, which
+	// `cancel` is the way out of.
+	answerPermission(id: string, optionId: string | null): void;
 	// The actor uri this copilot's writes are stamped with, so the board can tell the rows it just
 	// changed from the ones the human or another agent did. Absent for a copilot that writes nothing
 	// through the tracker — no row then ever matches, which is the truth.
@@ -153,6 +172,7 @@ export const noCopilot: Copilot = {
 	},
 	cancel: async () => {},
 	shortcuts: () => [],
+	answerPermission: () => {},
 };
 
 export const isInFlight = (card: ActivityCard): boolean =>

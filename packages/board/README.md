@@ -74,6 +74,7 @@ interface Copilot {
   run(prompt: string, context: BoardContext.Context): AsyncIterable<CopilotUpdate>;
   cancel(): Promise<void>;
   shortcuts(): CopilotShortcut[];
+  answerPermission(id: string, optionId: string | null): void;
   readonly actor?: string;
 }
 ```
@@ -97,6 +98,15 @@ sidebar. `o` (from the board or the detail view, while the indicator is up) or `
 card opens the event view on its live transcript: prose as text lines, thoughts dimmed, tool
 calls with the usual glyphs; `x` there cancels a running turn, `esc` returns. Nothing about the
 turn is persisted; the next turn replaces the card.
+
+A harness that stops mid-turn to ask before doing something yields a `permission` update, and the
+turn is blocked until it is answered. The choice is shown on exactly one surface: the transcript
+when it is open on the copilot's card, the copilot pane's one row everywhere else — the pane being
+the only copilot surface present in every view, so a board with no transcript open still sees that
+something is waiting. A digit picks the option it numbers, `esc` declines, and both go straight to
+`answerPermission` ahead of whatever view is on screen. The board never answers by itself and there
+is no timeout: a question left alone keeps the turn waiting, and `x` on the transcript still
+cancels it.
 
 Rows the copilot changed during the turn carry `✦ ai` before the title: the reload after each of
 its writes brings the fresh `updatedBy`/`updatedAt`, and `BoardNav.copilotTouched` keeps the ones

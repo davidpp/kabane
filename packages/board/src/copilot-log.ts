@@ -105,6 +105,22 @@ export namespace CopilotLog {
 
 	const applyToTurn = (turn: Turn, update: CopilotUpdate): Turn => {
 		if (update.type === "plan") return { ...turn, plan: update.entries };
+		// The pending choice is rendered from the reducer's copy, not from here; what the transcript
+		// keeps is the RECORD that it was asked, which outlives the answer and reads in the order it
+		// happened, between the tool call that provoked it and whatever followed.
+		if (update.type === "permission")
+			return {
+				...turn,
+				events: [
+					...turn.events,
+					{
+						seq: lastSeq(turn) + 1,
+						at: update.at,
+						type: "permission",
+						summary: `permission: ${update.request.title}`,
+					},
+				],
+			};
 		const events =
 			update.type === "done"
 				? turn.events

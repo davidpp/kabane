@@ -10,7 +10,11 @@ import {
 } from "@cabane/core";
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
-import type { CopilotShortcut, TriggerDescriptor } from "./ports";
+import type {
+	CopilotPermission,
+	CopilotShortcut,
+	TriggerDescriptor,
+} from "./ports";
 
 export namespace BoardNav {
 	export type KindFilter = "all" | ItemKind;
@@ -97,6 +101,10 @@ export namespace BoardNav {
 		// The actor uri the copilot's writes are stamped with, likewise set once. Null for a host
 		// copilot that names none.
 		actor: string | null;
+		// The request the harness is blocked on, if any. Set from the stream, cleared the moment it
+		// is answered or the turn stops running — never by a timeout and never by the board picking
+		// an option, which is the whole point of carrying it this far.
+		permission: CopilotPermission | null;
 	};
 
 	// `?` is a shifted key: terminals deliver it as a printable sequence and parsers disagree on the
@@ -213,7 +221,9 @@ export namespace BoardNav {
 		| { type: "copilotPrompt"; prompt: string }
 		// Push a whole new value into the textarea, which owns the buffer: expand, recall, clear.
 		| { type: "copilotSetText"; text: string }
-		| { type: "copilotCancel" };
+		| { type: "copilotCancel" }
+		// The human picked an option for the blocked harness, or declined with `null`.
+		| { type: "copilotAnswer"; id: string; optionId: string | null };
 
 	// Mouse actions routed through the SAME pure reducer as keys, so selection stays single-sourced.
 	// Rows are addressed by their VISIBLE index (see visibleRows) — the wheel no longer moves selection
@@ -272,6 +282,7 @@ export namespace BoardNav {
 		turn: "idle",
 		shortcuts: [],
 		actor: null,
+		permission: null,
 	};
 
 	const withCopilot = (
@@ -281,11 +292,21 @@ export namespace BoardNav {
 
 	// Called by app.tsx as the turn's log changes. Pure so the footer rule (indicator up until the next
 	// keypress) is testable: the reducer, not app.tsx, is what moves `done`/`error` back to `idle`.
+	// A turn that has stopped — finished, failed, or acknowledged — can have nothing waiting on the
+	// human: there is no longer a harness on the other end to hear the answer.
 	export const withCopilotTurn = (
 		state: BoardState,
 		turn: CopilotTurn,
 	): BoardState =>
-		state.copilot.turn === turn ? state : withCopilot(state, { turn });
+		state.copilot.turn === turn && state.copilot.permission === null
+			? state
+			: withCopilot(state, { turn, permission: null });
+
+	// The harness asked something mid-turn, or its question has just been answered.
+	export const withCopilotPermission = (
+		state: BoardState,
+		permission: CopilotPermission | null,
+	): BoardState => withCopilot(state, { permission });
 
 	// What the host's copilot says about itself, read once by app.tsx when the board opens: the `/`
 	// expansions it offers and the actor uri its writes carry.
@@ -393,11 +414,41 @@ export namespace BoardNav {
 	): boolean => {
 		if (state.focus !== "copilot") return false;
 		if (key.name === "escape" || key.name === "tab") return true;
+		// A blocked harness takes the digits too: the draft in the buffer cannot be sent while a
+		// turn runs anyway, so a `1` typed here is an answer, not a character.
+		if (state.copilot.permission && optionIndex(key) !== null) return true;
 		return (
 			(key.name === "up" || key.name === "down") &&
 			state.copilot.text === "" &&
 			state.copilot.history.length > 0
 		);
+	};
+
+	// Which numbered choice a key names, 1-based, or null for a key that names none.
+	const optionIndex = (key: KeyInput): number | null => {
+		if (key.ctrl || key.meta) return null;
+		const digit = Number.parseInt(key.name, 10);
+		return digit >= 1 && digit <= 9 ? digit : null;
+	};
+
+	// The keys that answer a blocked harness: a digit picks its option, `esc` declines. Null for
+	// everything else, which then routes as it always does — so `x` on the transcript still cancels
+	// the turn, the way out when the human means to answer neither.
+	const answerPermission = (
+		state: BoardState,
+		request: CopilotPermission,
+		key: KeyInput,
+	): { state: BoardState; effect: Effect } | null => {
+		const answered = (
+			optionId: string | null,
+		): { state: BoardState; effect: Effect } => ({
+			state: withCopilot(state, { permission: null }),
+			effect: { type: "copilotAnswer", id: request.id, optionId },
+		});
+		if (key.name === "escape") return answered(null);
+		const index = optionIndex(key);
+		const option = index === null ? undefined : request.options[index - 1];
+		return option ? answered(option.id) : null;
 	};
 
 	const setText = (
@@ -971,6 +1022,15 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		if (state.help) return reduceHelpKey(state, key);
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
+		// A harness blocked on a question is the most urgent thing on screen, so it takes the keys
+		// that answer it — a digit, `esc` — ahead of every view and of the copilot's own focus. That
+		// is the esc layering the board already has, one press one level: the newest, most local
+		// thing goes first, and here it is the thing something else is waiting on. Search-typing is
+		// the exception, where a digit is a query character. Every other key falls through.
+		if (state.copilot.permission && state.search.mode !== "typing") {
+			const answered = answerPermission(state, state.copilot.permission, key);
+			if (answered) return answered;
+		}
 		// The copilot owns the keyboard while focused, and decides for itself what `tab` means there.
 		if (state.focus === "copilot") return reduceCopilotKey(state, key);
 		// A finished turn's footer indicator stays up until the next keypress — except `o`, which is

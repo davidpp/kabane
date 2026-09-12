@@ -57,6 +57,7 @@ const state = (
 		turn: "idle",
 		shortcuts: [],
 		actor: null,
+		permission: null,
 	},
 	undo: [],
 	...over,

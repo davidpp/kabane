@@ -328,6 +328,14 @@ export const App = ({
 					if (turnRef.current !== turn) return;
 					log = CopilotLog.apply(log, update);
 					publishLog(log);
+					// The harness is blocked from here until the human presses something; the board
+					// only puts the question on screen and carries on rendering.
+					if (update.type === "permission")
+						setState((prev) =>
+							prev
+								? BoardNav.withCopilotPermission(prev, update.request)
+								: prev,
+						);
 					if (update.type === "tool_result") {
 						const current = stateRef.current;
 						if (current) void reload(current);
@@ -434,6 +442,9 @@ export const App = ({
 					return;
 				case "copilotCancel":
 					cancelCopilot();
+					return;
+				case "copilotAnswer":
+					copilot?.answerPermission(effect.id, effect.optionId);
 					return;
 				case "copilotSetText":
 					inputRef.current?.setText(effect.text);
@@ -786,6 +797,11 @@ export const App = ({
 						plan={
 							cardId === CopilotLog.CARD_ID
 								? copilotLog?.current.plan
+								: undefined
+						}
+						permission={
+							cardId === CopilotLog.CARD_ID
+								? state.copilot.permission
 								: undefined
 						}
 						extraHints={

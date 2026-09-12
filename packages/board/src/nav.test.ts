@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { BoardData } from "./data";
 import { BoardNav } from "./nav";
-import type { TriggerDescriptor } from "./ports";
+import type { CopilotPermission, TriggerDescriptor } from "./ports";
 
 const task = (over: Partial<Task> = {}): Task => ({
 	id: "01H000000000000000000000AA",
@@ -45,6 +45,7 @@ const copilotState = (
 	turn: "idle",
 	shortcuts: [],
 	actor: null,
+	permission: null,
 	...over,
 });
 
@@ -2542,5 +2543,88 @@ describe("the copilot's fingerprint on the rows it changed (`✦ ai`)", () => {
 		expect(
 			BoardNav.copilotTouched(board("running", [written]), undefined).size,
 		).toBe(0);
+	});
+});
+
+describe("a permission request the harness is blocked on", () => {
+	const request: CopilotPermission = {
+		id: "t0",
+		title: "cabane_edit",
+		options: [
+			{ id: "allow", label: "Allow" },
+			{ id: "reject", label: "Reject" },
+		],
+	};
+	const asked = (over: Partial<BoardNav.BoardState> = {}) =>
+		state({
+			sections: sections({ next: [row(task({ id: "a" }))] }),
+			selectedId: "a",
+			copilot: copilotState({ turn: "running", permission: request }),
+			...over,
+		});
+
+	it("a digit answers with the option it numbers, and the question is gone", () => {
+		const r = BoardNav.reduceKey(asked(), char("2"));
+		expect(r.effect).toEqual({
+			type: "copilotAnswer",
+			id: "t0",
+			optionId: "reject",
+		});
+		expect(r.state.copilot.permission).toBeNull();
+	});
+
+	it("esc declines", () => {
+		const r = BoardNav.reduceKey(asked(), { name: "escape" });
+		expect(r.effect).toEqual({
+			type: "copilotAnswer",
+			id: "t0",
+			optionId: null,
+		});
+		expect(r.state.copilot.permission).toBeNull();
+	});
+
+	it("answers from the copilot pane and the transcript too — the question outranks the view", () => {
+		const fromPane = BoardNav.reduceKey(asked({ focus: "copilot" }), char("1"));
+		expect(fromPane.effect).toMatchObject({ optionId: "allow" });
+		const fromTranscript = BoardNav.reduceKey(
+			asked({ view: { type: "events", cardId: "copilot", fromView: "board" } }),
+			char("1"),
+		);
+		expect(fromTranscript.effect).toMatchObject({ optionId: "allow" });
+	});
+
+	it("the pane gives up the digits while one is pending, and takes them back after", () => {
+		const pending = asked({ focus: "copilot" });
+		expect(BoardNav.copilotConsumes(pending, char("1"))).toBe(true);
+		const answered = BoardNav.reduceKey(pending, char("1")).state;
+		expect(BoardNav.copilotConsumes(answered, char("1"))).toBe(false);
+	});
+
+	it("a digit past the last option answers nothing, and the key routes as it always does", () => {
+		const r = BoardNav.reduceKey(asked(), char("3"));
+		expect(r.effect.type).toBe("none");
+		expect(r.state.copilot.permission).toEqual(request);
+	});
+
+	it("leaves every other key alone: x on the transcript still cancels the waiting turn", () => {
+		const r = BoardNav.reduceKey(
+			asked({ view: { type: "events", cardId: "copilot", fromView: "board" } }),
+			char("x"),
+		);
+		expect(r.effect).toEqual({ type: "copilotCancel" });
+		// The board never answers on the human's behalf, cancelling included.
+		expect(r.state.copilot.permission).toEqual(request);
+	});
+
+	it("a digit stays a query character while a search is being typed", () => {
+		const typing = asked({ search: { mode: "typing", query: "au" } });
+		const r = BoardNav.reduceKey(typing, char("1"));
+		expect(r.effect.type).toBe("none");
+		expect(r.state.search).toEqual({ mode: "typing", query: "au1" });
+	});
+
+	it("a turn that stops takes the unanswered question with it", () => {
+		const stopped = BoardNav.withCopilotTurn(asked(), "error");
+		expect(stopped.copilot.permission).toBeNull();
 	});
 });

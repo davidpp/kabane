@@ -15,6 +15,10 @@ import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 
 const TEST_BASE = join(tmpdir(), `cabane-board-copilot-${crypto.randomUUID()}`);
+const PERMISSION_BASE = join(
+	tmpdir(),
+	`cabane-board-permission-${crypto.randomUUID()}`,
+);
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
@@ -84,7 +88,44 @@ const scriptedCopilot = (gate: Promise<void>, seen: Seen): Copilot => ({
 			template: "Triage every issue in view.",
 		},
 	],
+	answerPermission: () => {},
 });
+
+// A copilot whose turn stops on a question and waits — the board has to put it on screen and
+// answer it for anything more to happen, which is the point of the channel.
+const askingCopilot = (answers: (string | null)[]): Copilot => {
+	let respond: ((optionId: string | null) => void) | null = null;
+	return {
+		run: async function* () {
+			const at = (): string => new Date().toISOString();
+			yield {
+				type: "permission",
+				request: {
+					id: "t0",
+					title: "cabane_edit",
+					options: [
+						{ id: "allow", label: "Allow" },
+						{ id: "reject", label: "Reject" },
+					],
+				},
+				at: at(),
+			};
+			const answer = await new Promise<string | null>((resolve) => {
+				respond = resolve;
+			});
+			answers.push(answer);
+			yield {
+				type: "text",
+				summary: answer === null ? "Left it alone." : `Ran it with ${answer}.`,
+				at: at(),
+			};
+			yield { type: "done", summary: "", at: at() };
+		},
+		cancel: async () => {},
+		shortcuts: () => [],
+		answerPermission: (_id, optionId) => respond?.(optionId),
+	};
+};
 
 describe("the A prompt against a scripted copilot", () => {
 	beforeAll(async () => {
@@ -301,6 +342,90 @@ describe("the A prompt against a scripted copilot", () => {
 			expect(transcript.indexOf("── what is left here")).toBeLessThan(
 				transcript.indexOf("── and now link them"),
 			);
+		} finally {
+			destroy();
+		}
+	});
+});
+
+describe("a harness blocked on a permission request", () => {
+	beforeAll(async () => {
+		await freshDb(PERMISSION_BASE);
+		const added = await Planner.addTask(PERMISSION_BASE, {
+			title: "Wire the copilot",
+			kind: "issue",
+			state: "next",
+		});
+		if (!added.ok) throw added.error;
+	});
+
+	afterAll(() => {
+		dropDb(PERMISSION_BASE);
+	});
+
+	// Send a prompt and stop at the choice. The pane's one row is the whole answer to "where does a
+	// board with no transcript open learn that something is waiting on it".
+	const ask = async (answers: (string | null)[]) => {
+		const setup = await renderTest(
+			<App
+				cwd={PERMISSION_BASE}
+				basePath={PERMISSION_BASE}
+				activity={noActivity}
+				copilot={askingCopilot(answers)}
+			/>,
+			{ width: 120, height: 24 },
+		);
+		const { renderOnce, captureCharFrame, mockInput } = setup;
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		await until((f) => f.includes("Wire the copilot"));
+		mockInput.pressKey(":");
+		await until((f) => f.includes("┌─copilot"));
+		await mockInput.typeText("edit it");
+		mockInput.pressEnter();
+		// "esc decline" is the block's own line and appears nowhere else on the board.
+		const frame = await until((f) => f.includes("esc decline"));
+		return { ...setup, until, frame };
+	};
+
+	it("asks in the pane, again in the transcript, and a digit answers it", async () => {
+		const answers: (string | null)[] = [];
+		const { until, mockInput, frame, destroy } = await ask(answers);
+		try {
+			expect(frame).toContain(
+				"? cabane_edit · 1 Allow · 2 Reject · esc decline",
+			);
+
+			// `o` opens the transcript, which owns the copilot's detail while it is up: the record
+			// of the question among the events, and the live choice pinned below them.
+			mockInput.pressKey("o");
+			const transcript = await until((f) =>
+				f.includes("? permission: cabane_edit"),
+			);
+			expect(transcript).toContain("1 Allow · 2 Reject");
+			// One surface, not two: the pane says nothing while the transcript has it.
+			expect(transcript).not.toContain("? cabane_edit · 1 Allow");
+
+			mockInput.pressKey("1");
+			const answered = await until((f) => f.includes("Ran it with allow."));
+			expect(answers).toEqual(["allow"]);
+			expect(answered).not.toContain("esc decline");
+		} finally {
+			destroy();
+		}
+	});
+
+	it("esc declines, and nothing else ever answers for the human", async () => {
+		const answers: (string | null)[] = [];
+		const { until, mockInput, renderOnce, destroy } = await ask(answers);
+		try {
+			// Nobody has answered while the board rendered its way here.
+			expect(answers).toEqual([]);
+			mockInput.pressEscape();
+			await renderOnce();
+			const declined = await until((f) => f.includes("Left it alone."));
+			expect(answers).toEqual([null]);
+			expect(declined).not.toContain("esc decline");
 		} finally {
 			destroy();
 		}
