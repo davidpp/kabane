@@ -33,6 +33,8 @@ const scriptedAgent = (
 		permission?: boolean;
 		text?: string;
 		plans?: PlanEntry[][];
+		// Prose deltas and tool calls in order, to exercise the chunk buffering.
+		script?: ({ chunk: "text" | "thought"; text: string } | { tool: string })[];
 	} = {},
 ): AgentApp =>
 	agentApp({ name: "scripted" })
@@ -62,6 +64,22 @@ const scriptedAgent = (
 					sessionUpdate: "agent_message_chunk",
 					content: { type: "text", text: options.text },
 				});
+			for (const step of options.script ?? [])
+				await notify(
+					"chunk" in step
+						? {
+								sessionUpdate:
+									step.chunk === "text"
+										? "agent_message_chunk"
+										: "agent_thought_chunk",
+								content: { type: "text", text: step.text },
+							}
+						: {
+								sessionUpdate: "tool_call",
+								toolCallId: step.tool,
+								title: step.tool,
+							},
+				);
 			for (const entries of options.plans ?? [])
 				await notify({ sessionUpdate: "plan", entries });
 			for (const step of options.steps ?? [])
@@ -262,6 +280,49 @@ describe("BoardCopilot", () => {
 			"tool_call",
 			"done",
 		]);
+		copilot.close();
+	});
+
+	it("joins a run of prose deltas into one update, and keeps runs either side of a tool call apart", async () => {
+		const seen: Seen = { newSession: [], prompts: [] };
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				script: [
+					// Exactly the shape the codex harness sends: split mid-word.
+					{ chunk: "text", text: "I" },
+					{ chunk: "text", text: "'ll read" },
+					{ chunk: "text", text: " the iss" },
+					{ chunk: "text", text: "ue's context first." },
+					{ tool: "cabane_context" },
+					{ chunk: "text", text: "Two are stale." },
+				],
+			}),
+		);
+		const updates = await collect(copilot.run("check", context()));
+		expect(types(updates)).toEqual(["text", "tool_call", "text", "done"]);
+		const [first, second] = updates.filter((u) => u.type === "text");
+		expect(first?.summary).toBe("I'll read the issue's context first.");
+		// The run that follows the tool call is its own message, not a continuation.
+		expect(second?.summary).toBe("Two are stale.");
+		copilot.close();
+	});
+
+	it("a thought run and a message run stay separate updates", async () => {
+		const seen: Seen = { newSession: [], prompts: [] };
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				script: [
+					{ chunk: "thought", text: "weighing " },
+					{ chunk: "thought", text: "the options" },
+					{ chunk: "text", text: "Here is " },
+					{ chunk: "text", text: "what I found." },
+				],
+			}),
+		);
+		const updates = await collect(copilot.run("check", context()));
+		expect(types(updates)).toEqual(["thought", "text", "done"]);
+		expect(updates[0]?.summary).toBe("weighing the options");
+		expect(updates[1]?.summary).toBe("Here is what I found.");
 		copilot.close();
 	});
 

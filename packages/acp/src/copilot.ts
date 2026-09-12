@@ -67,6 +67,9 @@ export namespace BoardCopilot {
 		title: string,
 	): boolean => status === "completed" && namesWrite(title);
 
+	// The two update kinds ACP streams as DELTAS rather than as whole values.
+	type Prose = Extract<AcpClient.Update, { type: "text" | "thought" }>;
+
 	const defaultBin = (): string => {
 		const entry = process.argv[1];
 		return entry ? resolve(entry) : "cabane";
@@ -150,16 +153,13 @@ export namespace BoardCopilot {
 			notices.splice(0).map((text) => update("error", text));
 
 		// One harness update becomes zero, one or two port updates: a tool call shows in the
-		// transcript AND, when it completed a write, tells the board to reload.
+		// transcript AND, when it completed a write, tells the board to reload. Prose never reaches
+		// here — `run` buffers it — and the parameter type is what keeps that true.
 		const toUpdates = (
-			incoming: AcpClient.Update,
+			incoming: Exclude<AcpClient.Update, Prose>,
 			titles: Map<string, string>,
 		): CopilotUpdate[] => {
 			switch (incoming.type) {
-				case "text":
-					return [update("text", incoming.text)];
-				case "thought":
-					return [update("thought", incoming.text)];
 				case "tool_call": {
 					titles.set(incoming.id, incoming.title);
 					const out = [update("tool_call", incoming.title)];
@@ -202,6 +202,19 @@ export namespace BoardCopilot {
 			blocks.push({ type: "text", text: prompt });
 			const titles = new Map<string, string>();
 			let first = true;
+			// ACP streams prose as DELTAS: `agent_message_chunk` arrives mid-word, so one sentence is
+			// a dozen of them. Held as a run and emitted as ONE update when something else happens or
+			// the turn ends — otherwise the transcript gets a row per fragment, split where the
+			// tokenizer happened to break, and the footer flashes whatever syllable landed last. The
+			// cost is that a message appears when it finishes rather than as it types; the plan and
+			// the tool calls carry progress in the meantime.
+			let prose: Prose | null = null;
+			const flushed = (): CopilotUpdate[] => {
+				if (!prose) return [];
+				const out = update(prose.type, prose.text);
+				prose = null;
+				return [out];
+			};
 			for await (const incoming of AcpClient.prompt(started.value, blocks)) {
 				// A turn cancelled before it was dispatched never reached the agent, so the
 				// instruction block it carried has to ride the next one.
@@ -212,8 +225,20 @@ export namespace BoardCopilot {
 					);
 				}
 				yield* drainNotices();
+				if (incoming.type === "text" || incoming.type === "thought") {
+					// A thought does not continue a message, or the other way round.
+					if (prose && prose.type !== incoming.type) yield* flushed();
+					prose = prose
+						? { type: prose.type, text: prose.text + incoming.text }
+						: { type: incoming.type, text: incoming.text };
+					continue;
+				}
+				// Whatever ended the run goes after it, so a tool call the prose introduced reads
+				// in the order it was said.
+				yield* flushed();
 				for (const mapped of toUpdates(incoming, titles)) yield mapped;
 			}
+			yield* flushed();
 			yield* drainNotices();
 		};
 
