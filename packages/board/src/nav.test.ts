@@ -51,6 +51,7 @@ const state = (
 	help: false,
 	sidebar: { visible: true, focus: "board", selected: 0, itemCount: 0 },
 	marked: new Set<string>(),
+	copilot: { window: null, turn: "idle", shortcuts: [] },
 	undo: [],
 	...over,
 });
