@@ -47,9 +47,10 @@ const state = (
 	search: { mode: "off" },
 	dispatch: null,
 	help: false,
-	sidebar: { visible: true, focus: "board", selected: 0, itemCount: 0 },
+	focus: "board",
+	sidebar: { visible: true, selected: 0, itemCount: 0 },
 	marked: new Set(["a", "m"]),
-	copilot: { window: null, turn: "idle", shortcuts: [] },
+	copilot: { text: "", turn: "idle", shortcuts: [] },
 	undo: [],
 	...over,
 });

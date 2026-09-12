@@ -419,13 +419,9 @@ export const App = ({
 					void loadTriggers(effect.taskId);
 					return;
 				case "copilotOpen":
-					// The window opened optimistically; without a copilot it closes at once with the flash.
+					// Focus moved optimistically; without a copilot it goes straight back with the flash.
 					if (!copilot) {
-						setState((prev) =>
-							prev
-								? { ...prev, copilot: { ...prev.copilot, window: null } }
-								: prev,
-						);
+						setState((prev) => (prev ? { ...prev, focus: "board" } : prev));
 						setNotice(NO_COPILOT);
 					}
 					return;
@@ -451,7 +447,7 @@ export const App = ({
 								fromView: next.view.type === "detail" ? "detail" : "board",
 								fromTaskId,
 							},
-							sidebar: { ...next.sidebar, focus: "board" },
+							focus: "board",
 						});
 						return;
 					}
@@ -465,7 +461,7 @@ export const App = ({
 						setState({
 							...next,
 							view: { type: "detail", taskId },
-							sidebar: { ...next.sidebar, focus: "board" },
+							focus: "board",
 						});
 					}
 					return;
@@ -712,12 +708,11 @@ export const App = ({
 			)}
 			overlay={state.dispatch}
 		/>
-	) : state.copilot.window ? (
+	) : state.focus === "copilot" ? (
 		<CopilotPrompt
-			window={state.copilot.window}
+			copilot={state.copilot}
 			// Briefs are fetched on submit; the chip only needs the ids the state already holds.
 			chip={contextChip(BoardContext.project(state, scope, new Map()))}
-			shortcuts={state.copilot.shortcuts}
 		/>
 	) : null;
 	// The footer indicator: up from submit until the keypress after the turn ends (the reducer moves
@@ -733,7 +728,7 @@ export const App = ({
 		<Sidebar
 			activity={shownActivity}
 			sidebarWidth={sbWidth}
-			focused={state.sidebar.focus === "sidebar"}
+			focused={state.focus === "sidebar"}
 			selectedIndex={state.sidebar.selected}
 			spinnerFrame={spinnerFrame}
 			resolveShortId={resolveShortId}
@@ -787,6 +782,7 @@ export const App = ({
 						scrollRef={scrollRef}
 						notice={notice}
 						copilot={copilotFooter}
+						focus={state.focus}
 						onCopy={() => dispatchMouse({ type: "copy" })}
 					/>
 				</box>
@@ -815,6 +811,7 @@ export const App = ({
 					onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}
 					notice={notice}
 					copilot={copilotFooter}
+					focus={state.focus}
 					sidebarWidth={sbWidth}
 				/>
 			</box>

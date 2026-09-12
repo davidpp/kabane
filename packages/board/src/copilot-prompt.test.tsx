@@ -186,13 +186,11 @@ describe("the A prompt against a scripted copilot", () => {
 			frame = await until((f) => f.includes("Wire the copilot"));
 			expect(frame).toContain("copilot · cabane_edit");
 
-			// A second `A` while running shows the busy notice; esc there cancels the turn and the
-			// indicator turns to the error tone.
+			// `A` while running says so beside the chip and still takes keys; esc there stops the turn
+			// and the indicator turns to the error tone.
 			mockInput.pressKey("A");
 			frame = await until((f) => f.includes("a turn is running"));
-			expect(frame).toContain(
-				"next · a turn is running · esc to cancel it first",
-			);
+			expect(frame).toContain("next · a turn is running · esc stops it ▸");
 			await pressEsc();
 			frame = await until((f) => f.includes("✗ copilot · cancelled"));
 			expect(frame).not.toContain("a turn is running");

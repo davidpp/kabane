@@ -64,6 +64,8 @@ export namespace BoardNav {
 		sequence?: string;
 		ctrl?: boolean;
 		meta?: boolean;
+		// ⇧tab: terminals send `\x1b[Z`, which the parser names `tab` with this set.
+		shift?: boolean;
 	};
 
 	// The `a` dispatch overlay: a single-step picker over the host Dispatcher's triggers for one task.
@@ -76,18 +78,15 @@ export namespace BoardNav {
 		loading: boolean;
 	};
 
-	// The `A` (or `:`) copilot prompt: one line of text the human types, sent with the board context
-	// attached. Modal like search-typing — while open, printable keys are prompt characters. `busy`
-	// is set when it opened over a running turn: the window then only offers `esc` (cancel the turn).
-	export type CopilotWindow = { text: string; busy: boolean };
-
 	// Where the copilot's turn is, as far as the keyboard cares: `running` gates a second prompt and
 	// enables cancel; `done`/`error` keep the footer indicator up until the next keypress, which is
 	// what `idle` means. The transcript itself lives in app.tsx (CopilotLog), not here.
 	export type CopilotTurn = "idle" | "running" | "done" | "error";
 
 	export type CopilotState = {
-		window: CopilotWindow | null;
+		// The prompt buffer. Never closed: the pane is always mounted, and the text survives tabbing
+		// away to mark rows and back, which is the whole point of a focusable copilot.
+		text: string;
 		turn: CopilotTurn;
 		// From the host's `Copilot.shortcuts()`, set once by app.tsx; the `/` expansions.
 		shortcuts: readonly CopilotShortcut[];
@@ -119,11 +118,12 @@ export namespace BoardNav {
 	// selected even when the list reshuffles. `expanded` is the set of expanded parent ids, likewise
 	// preserved across reloads. `scoped` gates the project-scope filter — `esc` flips it off to widen
 	// to all scopes. `view` is the top of the view stack.
-	export type SidebarFocus = "board" | "sidebar";
+	// Which pane has the keyboard. One ring for the whole board: which view is on screen does not
+	// change what `tab` means.
+	export type Focus = "board" | "copilot" | "sidebar";
 
 	export type SidebarState = {
 		visible: boolean;
-		focus: SidebarFocus;
 		selected: number;
 		/** Total sidebar items — updated by app.tsx when activity loads. The reducer uses this
 		 *  for j/k bounds; render clamps if it drifts. */
@@ -156,6 +156,7 @@ export namespace BoardNav {
 		// The `?` help overlay (full keybinding list; footers show only the app-specific subset).
 		// A boolean modal flag, same lifecycle as `dispatch`: owns the keyboard while open.
 		help: boolean;
+		focus: Focus;
 		sidebar: SidebarState;
 		// The working set: task ids toggled with `m`, in mark order (a Set keeps insertion order, and
 		// the copilot's context drops the OLDEST mark first when its brief budget runs out). Survives
@@ -253,7 +254,7 @@ export namespace BoardNav {
 	const NO_MARKS: ReadonlySet<string> = new Set<string>();
 
 	const COPILOT_IDLE: CopilotState = {
-		window: null,
+		text: "",
 		turn: "idle",
 		shortcuts: [],
 	};
@@ -276,14 +277,38 @@ export namespace BoardNav {
 		shortcuts: readonly CopilotShortcut[],
 	): BoardState => withCopilot(state, { shortcuts });
 
-	// `A`/`:`: open the prompt window over whatever view is up. Opens optimistically (like the dispatch
-	// overlay); app.tsx runs `copilotOpen` and closes it with a flash when no copilot is configured.
-	const openCopilot = (
+	// The ring, in tab order. The sidebar drops out of it when hidden (`b`, or a terminal too narrow
+	// for it) — tab must never move focus somewhere the human cannot see.
+	const RING: readonly Focus[] = ["board", "copilot", "sidebar"];
+
+	const focusable = (state: BoardState): Focus[] =>
+		RING.filter((pane) => pane !== "sidebar" || state.sidebar.visible);
+
+	// `delta` is +1 for tab, -1 for ⇧tab. A focus that has left the ring (the sidebar was just
+	// hidden) lands on the board, which is always in it.
+	const cycleFocus = (state: BoardState, delta: 1 | -1): BoardState => {
+		const ring = focusable(state);
+		const at = ring.indexOf(state.focus);
+		const next = ring[(at + delta + ring.length) % ring.length] ?? "board";
+		return next === state.focus ? state : { ...state, focus: next };
+	};
+
+	// `b`: show or hide the sidebar. Focus cannot rest on a pane that is gone.
+	const toggleSidebar = (state: BoardState): BoardState => {
+		const visible = !state.sidebar.visible;
+		return {
+			...state,
+			sidebar: { ...state.sidebar, visible },
+			focus: !visible && state.focus === "sidebar" ? "board" : state.focus,
+		};
+	};
+
+	// `A`/`:`: jump straight to the copilot from anywhere. Optimistic like the dispatch overlay —
+	// app.tsx runs `copilotOpen` and hands focus back with a flash when no copilot is configured.
+	const focusCopilot = (
 		state: BoardState,
 	): { state: BoardState; effect: Effect } => ({
-		state: withCopilot(state, {
-			window: { text: "", busy: state.copilot.turn === "running" },
-		}),
+		state: { ...state, focus: "copilot" },
 		effect: { type: "copilotOpen" },
 	});
 
@@ -314,47 +339,57 @@ export namespace BoardNav {
 			? shortcuts.filter((s) => `/${s.name}`.startsWith(text))
 			: [];
 
-	// The prompt window owns the keyboard. `esc` closes it (and cancels the running turn it opened
-	// over); `enter` on an exact `/name` expands the shortcut so the text is read before it is sent,
-	// otherwise submits; `tab` expands the first matching shortcut; the rest edits the text. While
-	// busy only `esc` does anything — the window itself says so.
-	const reduceCopilotWindowKey = (
+	// The copilot pane while focused: printable keys are prompt characters, so the board's own letter
+	// bindings (d, v, y, m…) are inert here by construction. `enter` on an exact `/name` expands the
+	// shortcut so the human reads what will be sent before sending it; `tab` completes a `/` being
+	// typed and otherwise hands the ring its turn, the way a shell splits that key. `esc` stops a
+	// `esc` leaves, stopping a running turn on the way out; `tab` leaves without touching it.
+	const reduceCopilotKey = (
 		state: BoardState,
-		window: CopilotWindow,
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } => {
-		const close = (copilot: Partial<CopilotState> = {}): BoardState =>
-			withCopilot(state, { window: null, ...copilot });
-		const edit = (text: string): { state: BoardState; effect: Effect } => ({
-			state: withCopilot(state, { window: { ...window, text } }),
+		const { text, turn, shortcuts } = state.copilot;
+		const edit = (next: string): { state: BoardState; effect: Effect } => ({
+			state: withCopilot(state, { text: next }),
 			effect: NONE,
 		});
-		if (key.name === "escape")
-			return window.busy
-				? { state: close(), effect: { type: "copilotCancel" } }
-				: { state: close(), effect: NONE };
-		if (window.busy) return { state, effect: NONE };
-		const matches = matchingShortcuts(state.copilot.shortcuts, window.text);
+		const matches = matchingShortcuts(shortcuts, text);
 		switch (key.name) {
-			case "return":
-			case "enter": {
-				const exact = matches.find((s) => `/${s.name}` === window.text);
-				if (exact) return edit(exact.template);
-				if (window.text.trim() === "") return { state: close(), effect: NONE };
+			case "escape":
+				// One rule: leave, stopping a running turn on the way out — what the modal window did.
+				// `tab` is the exit that leaves the turn alone.
 				return {
-					state: close({ turn: "running" }),
-					effect: { type: "copilotPrompt", prompt: window.text },
+					state: { ...state, focus: "board" },
+					effect: turn === "running" ? { type: "copilotCancel" } : NONE,
 				};
-			}
 			case "tab": {
 				const first = matches[0];
-				return first ? edit(first.template) : { state, effect: NONE };
+				return first
+					? edit(first.template)
+					: { state: cycleFocus(state, key.shift ? -1 : 1), effect: NONE };
+			}
+			case "return":
+			case "enter": {
+				// One turn at a time; the pane says so rather than queueing behind the human's back.
+				if (turn === "running") return { state, effect: NONE };
+				const exact = matches.find((s) => `/${s.name}` === text);
+				if (exact) return edit(exact.template);
+				if (text.trim() === "") return { state, effect: NONE };
+				// The board takes the keyboard back: having sent a command, the next thing the human
+				// does is watch it — `o` for the transcript, j/k to look elsewhere. `A` returns here.
+				return {
+					state: {
+						...withCopilot(state, { text: "", turn: "running" }),
+						focus: "board",
+					},
+					effect: { type: "copilotPrompt", prompt: text },
+				};
 			}
 			case "backspace":
-				return edit(window.text.slice(0, -1));
+				return edit(text.slice(0, -1));
 			default: {
 				const char = printableChar(key);
-				return char ? edit(window.text + char) : { state, effect: NONE };
+				return char ? edit(text + char) : { state, effect: NONE };
 			}
 		}
 	};
@@ -735,7 +770,8 @@ export namespace BoardNav {
 			search: SEARCH_OFF,
 			dispatch: null,
 			help: false,
-			sidebar: { visible: true, focus: "board", selected: 0, itemCount: 0 },
+			focus: "board",
+			sidebar: { visible: true, selected: 0, itemCount: 0 },
 			marked: new Set<string>(),
 			copilot: COPILOT_IDLE,
 			undo: [],
@@ -840,8 +876,8 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		if (state.help) return reduceHelpKey(state, key);
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
-		if (state.copilot.window)
-			return reduceCopilotWindowKey(state, state.copilot.window, key);
+		// The copilot owns the keyboard while focused, and decides for itself what `tab` means there.
+		if (state.focus === "copilot") return reduceCopilotKey(state, key);
 		// A finished turn's footer indicator stays up until the next keypress — except `o`, which is
 		// the key that opens it, and the search box, where a keypress is a query character.
 		if (
@@ -854,6 +890,23 @@ export namespace BoardNav {
 		// view routing. Inert while a `/` query is being typed (ctrl isn't a printable query char anyway).
 		if (isUndoKey(key) && state.search.mode !== "typing")
 			return reduceUndo(state);
+		// Focus-level keys, once for every view: which pane has the keyboard is not a property of
+		// what is on screen. All four are query characters while a `/` search is being typed, so the
+		// whole group defers to that branch inside reduceBoardKey.
+		if (state.search.mode !== "typing") {
+			if (isHelpKey(key))
+				return { state: { ...state, help: true }, effect: NONE };
+			if (isCopilotKey(key)) return focusCopilot(state);
+			if (key.name === "tab")
+				return {
+					state: cycleFocus(state, key.shift ? -1 : 1),
+					effect: NONE,
+				};
+			if (key.name === "b")
+				return { state: toggleSidebar(state), effect: NONE };
+		}
+		if (state.focus === "sidebar" && state.sidebar.visible)
+			return reduceSidebarKey(state, key);
 		if (state.view.type === "events") return reduceEventsKey(state, key);
 		return state.view.type === "detail"
 			? reduceDetailKey(state, key)
@@ -893,10 +946,6 @@ export namespace BoardNav {
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } => {
 		if (state.view.type !== "events") return { state, effect: NONE };
-		// Sidebar focus routing.
-		if (state.sidebar.focus === "sidebar" && state.sidebar.visible) {
-			return reduceSidebarKey(state, key);
-		}
 		switch (key.name) {
 			case "escape":
 			case "q": {
@@ -918,30 +967,6 @@ export namespace BoardNav {
 					state.copilot.turn === "running"
 					? { state, effect: { type: "copilotCancel" } }
 					: { state, effect: NONE };
-			case "b":
-				return {
-					state: {
-						...state,
-						sidebar: {
-							...state.sidebar,
-							visible: !state.sidebar.visible,
-							focus: state.sidebar.visible ? "board" : state.sidebar.focus,
-						},
-					},
-					effect: NONE,
-				};
-			case "tab":
-				if (!state.sidebar.visible) return { state, effect: NONE };
-				return {
-					state: {
-						...state,
-						sidebar: {
-							...state.sidebar,
-							focus: state.sidebar.focus === "board" ? "sidebar" : "board",
-						},
-					},
-					effect: NONE,
-				};
 			default:
 				return { state, effect: NONE };
 		}
@@ -1043,13 +1068,17 @@ export namespace BoardNav {
 
 	// Mouse router, parallel to reduceKey. Board-only actions (`select`, `toggleExpand`) no-op while the
 	// detail view is open (those handlers unmount with the board); `copy` is valid in both views. All
-	// mouse input is inert while a modal (dispatch, help, the copilot prompt) is open, same as keys.
+	// mouse input is inert while a true modal (dispatch, help) is open, same as keys. The copilot is
+	// not one: a click lands on the board, so it brings focus along with it.
 	export const reduceMouse = (
-		state: BoardState,
+		incoming: BoardState,
 		action: MouseAction,
 	): { state: BoardState; effect: Effect } => {
-		if (state.help || state.dispatch || state.copilot.window)
-			return { state, effect: NONE };
+		if (incoming.help || incoming.dispatch)
+			return { state: incoming, effect: NONE };
+		// A click is the human saying they are working on the board now.
+		const state: BoardState =
+			incoming.focus === "board" ? incoming : { ...incoming, focus: "board" };
 		if (action.type === "copy") {
 			const id =
 				state.view.type === "detail" ? state.view.taskId : state.selectedId;
@@ -1102,13 +1131,6 @@ export namespace BoardNav {
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } => {
 		if (state.view.type !== "detail") return { state, effect: NONE };
-		if (isHelpKey(key))
-			return { state: { ...state, help: true }, effect: NONE };
-		if (isCopilotKey(key)) return openCopilot(state);
-		// Sidebar focus routing.
-		if (state.sidebar.focus === "sidebar" && state.sidebar.visible) {
-			return reduceSidebarKey(state, key);
-		}
 		const target = taskById(state, state.view.taskId);
 		switch (key.name) {
 			case "escape":
@@ -1142,30 +1164,6 @@ export namespace BoardNav {
 				return jumpState(state, target, "next", "→ next");
 			case "s":
 				return jumpState(state, target, "someday", "→ someday");
-			case "b":
-				return {
-					state: {
-						...state,
-						sidebar: {
-							...state.sidebar,
-							visible: !state.sidebar.visible,
-							focus: state.sidebar.visible ? "board" : state.sidebar.focus,
-						},
-					},
-					effect: NONE,
-				};
-			case "tab":
-				if (!state.sidebar.visible) return { state, effect: NONE };
-				return {
-					state: {
-						...state,
-						sidebar: {
-							...state.sidebar,
-							focus: state.sidebar.focus === "board" ? "sidebar" : "board",
-						},
-					},
-					effect: NONE,
-				};
 			default:
 				return { state, effect: NONE };
 		}
@@ -1242,11 +1240,7 @@ export namespace BoardNav {
 		const last = Math.max(0, state.sidebar.itemCount - 1);
 		switch (key.name) {
 			case "escape":
-			case "tab":
-				return {
-					state: { ...state, sidebar: { ...state.sidebar, focus: "board" } },
-					effect: NONE,
-				};
+				return { state: { ...state, focus: "board" }, effect: NONE };
 			case "j":
 			case "down":
 				return {
@@ -1291,13 +1285,6 @@ export namespace BoardNav {
 			return reduceSearchTyping(state, state.search.query, key);
 		// After the typing branch (there `?` is a query character), before the name switch (shifted
 		// keys have parser-dependent names — isHelpKey matches the sequence too).
-		if (isHelpKey(key))
-			return { state: { ...state, help: true }, effect: NONE };
-		if (isCopilotKey(key)) return openCopilot(state);
-		// Sidebar focus routing: when sidebar has focus, delegate to sidebar reducer.
-		if (state.sidebar.focus === "sidebar" && state.sidebar.visible) {
-			return reduceSidebarKey(state, key);
-		}
 		switch (key.name) {
 			case "q":
 				return { state, effect: { type: "quit" } };
@@ -1421,31 +1408,6 @@ export namespace BoardNav {
 				const row = rowOf(visibleRows(state), state.selectedId);
 				return row ? openDispatch(state, row.task.id) : { state, effect: NONE };
 			}
-			case "b":
-				return {
-					state: {
-						...state,
-						sidebar: {
-							...state.sidebar,
-							visible: !state.sidebar.visible,
-							// Reset focus to board when hiding.
-							focus: state.sidebar.visible ? "board" : state.sidebar.focus,
-						},
-					},
-					effect: NONE,
-				};
-			case "tab":
-				if (!state.sidebar.visible) return { state, effect: NONE };
-				return {
-					state: {
-						...state,
-						sidebar: {
-							...state.sidebar,
-							focus: state.sidebar.focus === "board" ? "sidebar" : "board",
-						},
-					},
-					effect: NONE,
-				};
 			default:
 				return { state, effect: NONE };
 		}

@@ -442,6 +442,8 @@ export type BoardProps = {
 	notice?: BoardNav.Notice | null;
 	// The copilot's turn indicator; absent when idle (or acknowledged by a keypress).
 	copilot?: CopilotLog.Footer | null;
+	// Which pane has the keyboard — the footer hints follow it.
+	focus?: BoardNav.Focus;
 	// When the sidebar is visible, its width is subtracted from the available row width for
 	// truncation — otherwise a badged row wraps into a second line.
 	sidebarWidth?: number;
@@ -462,6 +464,7 @@ export const Board = ({
 	onToggle,
 	notice,
 	copilot,
+	focus = "board",
 	sidebarWidth: sbWidth = 0,
 }: BoardProps): ReactNode => {
 	const { width } = useTerminalDimensions();
@@ -484,7 +487,9 @@ export const Board = ({
 	const markedPart = markedLabel(marked.size);
 	// App-specific keys only — the vim-obvious ones live in the `?` help overlay (StatusBar handles
 	// its own truncation on narrow frames).
-	const hints = Keymap.hintLine(Keymap.BOARD_FOOTER);
+	const hints = Keymap.hintLine(
+		focus === "copilot" ? Keymap.COPILOT_FOOTER : Keymap.BOARD_FOOTER,
+	);
 	// The SAME flatten the reducer uses for j/k, mouse addressing, and scroll-into-view — filter
 	// included — so the running rowIndex below is in lockstep with BoardNav.visibleRows.
 	const groups = BoardNav.visibleSections(sections, expanded, search, status);

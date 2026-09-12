@@ -8,14 +8,13 @@ import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
 import type { BoardContext } from "./context";
 import { BoardNav } from "./nav";
-import type { CopilotShortcut } from "./ports";
 
 const CHIP_COLOR = "#f97316";
 const MUTED_COLOR = "#6b7280";
 const TEXT_COLOR = "#e6edf3";
 const WINDOW_BG = "#262626";
 
-export const BUSY_NOTICE = "a turn is running · esc to cancel it first";
+export const BUSY_NOTICE = "a turn is running · esc stops it";
 
 // The chip text: the selected task, the working-set size, the section — whichever apply, in that
 // order. Exported pure so the copy is assertable without a renderer.
@@ -28,21 +27,20 @@ export const contextChip = (ctx: BoardContext.Context): string => {
 };
 
 export type CopilotPromptProps = {
-	window: BoardNav.CopilotWindow;
+	copilot: BoardNav.CopilotState;
 	chip: string;
-	shortcuts: readonly CopilotShortcut[];
 };
 
 export const CopilotPrompt = ({
-	window,
+	copilot,
 	chip,
-	shortcuts,
 }: CopilotPromptProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
-	const matches = window.busy
-		? []
-		: BoardNav.matchingShortcuts(shortcuts, window.text);
+	const matches = BoardNav.matchingShortcuts(copilot.shortcuts, copilot.text);
 	const rows = matches.length > 0 ? 2 : 1;
+	const notice = copilot.turn === "running" ? ` · ${BUSY_NOTICE}` : "";
+	// Everything left of the buffer, so the row pads to exactly one line.
+	const lead = `${chip}${notice} ▸ `;
 	const fit = (text: string): string =>
 		text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
 	const suggestions = matches.map((s) => `/${s.name} ${s.hint}`).join("  ");
@@ -65,18 +63,11 @@ export const CopilotPrompt = ({
 					{fit(suggestions).padEnd(width)}
 				</text>
 			) : null}
-			{window.busy ? (
-				<text bg={WINDOW_BG} fg={MUTED_COLOR}>
-					<span fg={CHIP_COLOR}>{chip}</span>
-					{fit(` · ${BUSY_NOTICE}`).padEnd(width - chip.length)}
-				</text>
-			) : (
-				<text bg={WINDOW_BG} fg={TEXT_COLOR}>
-					<span fg={CHIP_COLOR}>{chip}</span>
-					<span fg={MUTED_COLOR}> ▸ </span>
-					{fit(`${window.text}▌`).padEnd(width - chip.length - 3)}
-				</text>
-			)}
+			<text bg={WINDOW_BG} fg={TEXT_COLOR}>
+				<span fg={CHIP_COLOR}>{chip}</span>
+				<span fg={MUTED_COLOR}>{`${notice} ▸ `}</span>
+				{fit(`${copilot.text}▌`).padEnd(Math.max(0, width - lead.length))}
+			</text>
 		</box>
 	);
 };

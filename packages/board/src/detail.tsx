@@ -160,6 +160,8 @@ export type DetailProps = {
 	notice?: BoardNav.Notice | null;
 	// The copilot's turn indicator; shown in the footer under a notice, absent when idle.
 	copilot?: CopilotLog.Footer | null;
+	// Which pane has the keyboard — the footer hints follow it.
+	focus?: BoardNav.Focus;
 	// Clicking the header [copy] affordance yanks the brief — same action as the `y` key.
 	onCopy?: () => void;
 };
@@ -183,6 +185,7 @@ export const Detail = ({
 	scrollRef,
 	notice,
 	copilot,
+	focus = "board",
 	onCopy,
 }: DetailProps): ReactNode => {
 	const [brief, setBrief] = useState<BriefState>({ status: "loading" });
@@ -214,7 +217,9 @@ export const Detail = ({
 	const detailHints = cards?.some((c) => c.hasEvents)
 		? [{ key: "o", label: "events" }, ...Keymap.DETAIL_FOOTER]
 		: Keymap.DETAIL_FOOTER;
-	const hints = Keymap.hintLine(detailHints);
+	const hints = Keymap.hintLine(
+		focus === "copilot" ? Keymap.COPILOT_FOOTER : detailHints,
+	);
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
