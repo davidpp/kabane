@@ -34,8 +34,13 @@ const TAILWIND_HEX: Record<string, string> = {
 };
 
 const FALLBACK_COLOR = "#9ca3af";
-// The one accent — used for the review flag and (via the priority palette) high-priority ids.
+// The one accent — used for the review flag, the mark glyph, and (via the priority palette)
+// high-priority ids.
 const REVIEW_COLOR = "#f97316";
+const MARK_COLOR = REVIEW_COLOR;
+// The `m` glyph, with its trailing space; two blanks keep unmarked titles column-aligned with it.
+const MARK_GLYPH = "● ";
+const MARK_BLANK = "  ";
 // Muted gray for all chrome: kind/state meta, section headers, footer hints.
 const MUTED_COLOR = "#6b7280";
 // Never let the title column collapse to nothing on a very narrow frame.
@@ -147,6 +152,10 @@ export const activityStrip = (
 // shared spinner frame.
 export const anyActivityRunning = BoardActivity.anyRunning;
 
+// The header part for the working set: ` · 3 marked`, "" when nothing is marked (quiet by default).
+export const markedLabel = (count: number): string =>
+	count > 0 ? ` · ${count} marked` : "";
+
 // The tree caret for a row: two spaces where there is nothing to expand so ids stay column-aligned.
 const caretFor = (row: BoardNav.VisibleRow): string => {
 	if (row.depth === 1) return "    ";
@@ -204,6 +213,7 @@ const Row = ({
 	row,
 	rowIndex,
 	selected,
+	marked,
 	available,
 	activity,
 	spinnerFrame,
@@ -212,6 +222,7 @@ const Row = ({
 	parentShortId,
 }: {
 	row: BoardNav.VisibleRow;
+	marked: boolean;
 	// shortId of this row's parent, when the parent is loaded. Only ever set for an orphaned subtask.
 	parentShortId?: string;
 	// Index into the flattened visible-row list — the address mouse handlers dispatch back to the reducer.
@@ -239,11 +250,13 @@ const Row = ({
 	const badge = cards[0] ? cardBadge(cards[0], spinnerFrame) : null;
 	const more = moreBadge(cards.length - 1, spinnerFrame);
 	const input = activity?.questionsByTaskId.has(task.id) ? " · ? input" : "";
+	const mark = marked ? MARK_GLYPH : MARK_BLANK;
 	// Badge widths count against the title so a badged row still never wraps.
 	const fixed =
 		caret.length +
 		shortId.length +
 		2 +
+		mark.length +
 		meta.length +
 		review.length +
 		(badge?.text.length ?? 0) +
@@ -280,6 +293,7 @@ const Row = ({
 			<text bg={style.bg} fg={style.titleFg}>
 				<span fg={style.idFg}>{shortId}</span>
 				{"  "}
+				<span fg={marked ? MARK_COLOR : style.titleFg}>{mark}</span>
 				{title}
 				<span fg={style.metaFg}>{meta}</span>
 				{task.needsReview ? <span fg={REVIEW_COLOR}> · review</span> : null}
@@ -296,6 +310,7 @@ const Row = ({
 const Section = ({
 	group,
 	selectedId,
+	marked,
 	nextRowIndex,
 	available,
 	activity,
@@ -304,6 +319,7 @@ const Section = ({
 	onToggle,
 	parentIds,
 }: {
+	marked: ReadonlySet<string>;
 	// id -> shortId over every loaded task, for naming an orphaned subtask's parent.
 	parentIds: Map<string, string>;
 	// Pre-flattened rows from BoardNav.visibleSections — the SAME flatten the reducer addresses, so
@@ -333,6 +349,7 @@ const Section = ({
 					row={row}
 					rowIndex={nextRowIndex.value++}
 					selected={row.task.id === selectedId}
+					marked={marked.has(row.task.id)}
 					available={available}
 					activity={activity}
 					spinnerFrame={spinnerFrame}
@@ -350,6 +367,7 @@ const Section = ({
 };
 
 const SEARCH_OFF: BoardNav.SearchState = { mode: "off" };
+const NO_MARKS: ReadonlySet<string> = new Set<string>();
 
 // The footer, ONE line, four-way by priority: a transient notice always wins > search-input mode shows
 // the live query with a cursor glyph (normal fg — it's an active input, not chrome) > a committed
@@ -404,6 +422,8 @@ export type BoardProps = {
 	// The `f` status filter. Optional so render-only tests without it keep working, and defaulted to
 	// the value that renders the board exactly as it always has.
 	status?: BoardNav.StatusFilter;
+	// The `m` working set. Optional for the same reason; absent means nothing marked.
+	marked?: ReadonlySet<string>;
 	// The list's scrollbox; app.tsx holds the ref so it can scroll the selected row into view.
 	scrollRef?: RefObject<ScrollBoxRenderable | null>;
 	// Mouse callbacks; absent in the render-only tests. app.tsx routes both through BoardNav.reduceMouse.
@@ -425,6 +445,7 @@ export const Board = ({
 	scopeLabel,
 	filterLabel,
 	status = "open",
+	marked = NO_MARKS,
 	scrollRef,
 	onSelect,
 	onToggle,
@@ -448,6 +469,7 @@ export const Board = ({
 		filterLabel,
 		statusLabel,
 	].filter((part): part is string => Boolean(part));
+	const markedPart = markedLabel(marked.size);
 	// App-specific keys only — the vim-obvious ones live in the `?` help overlay (StatusBar handles
 	// its own truncation on narrow frames).
 	const hints = Keymap.hintLine(Keymap.BOARD_FOOTER);
@@ -466,6 +488,7 @@ export const Board = ({
 				<span attributes={TextAttributes.BOLD}>
 					{header.join(" · ").toLowerCase()}
 				</span>
+				{markedPart ? <span fg={MARK_COLOR}>{markedPart}</span> : null}
 				{strip ? <span fg={MUTED_COLOR}>{strip}</span> : null}
 			</text>
 			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
@@ -477,6 +500,7 @@ export const Board = ({
 							key={group.section.state}
 							group={group}
 							selectedId={selectedId}
+							marked={marked}
 							nextRowIndex={nextRowIndex}
 							available={available}
 							activity={activity}

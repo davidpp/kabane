@@ -129,6 +129,10 @@ export namespace BoardNav {
 		// A boolean modal flag, same lifecycle as `dispatch`: owns the keyboard while open.
 		help: boolean;
 		sidebar: SidebarState;
+		// The working set: task ids toggled with `m`, in mark order (a Set keeps insertion order, and
+		// the copilot's context drops the OLDEST mark first when its brief budget runs out). Survives
+		// every reload; `esc` clears it before it clears anything else.
+		marked: ReadonlySet<string>;
 		// Bounded, in-memory (per board session), LIFO stack of reverse patches. Pushed OPTIMISTICALLY at
 		// reduce time — mutations to local SQLite essentially never fail, and a failed forward write leaves
 		// its reverse patch a harmless no-op (the field is already at the prior value). Preserved across
@@ -201,6 +205,19 @@ export namespace BoardNav {
 		...state,
 		undo: pushUndo(state.undo, entry),
 	});
+
+	// `m`: add or drop one task from the working set. Pure; no effect — marks are board state only.
+	const toggleMark = (
+		state: BoardState,
+		id: string | undefined,
+	): { state: BoardState; effect: Effect } => {
+		if (!id) return { state, effect: NONE };
+		const marked = new Set(state.marked);
+		if (!marked.delete(id)) marked.add(id);
+		return { state: { ...state, marked }, effect: NONE };
+	};
+
+	const NO_MARKS: ReadonlySet<string> = new Set<string>();
 
 	// The reverse entry for a state change: restore the task's pre-mutation state. Shared by the
 	// GTD shift (`[`/`]`), the direct jumps (`n`/`s`/`x`), and `d` — all reverse to `{ state }`.
@@ -579,6 +596,7 @@ export namespace BoardNav {
 			dispatch: null,
 			help: false,
 			sidebar: { visible: true, focus: "board", selected: 0, itemCount: 0 },
+			marked: new Set<string>(),
 			undo: [],
 		};
 		return { ...base, selectedId: firstId(visibleRows(base)) };
@@ -945,6 +963,8 @@ export namespace BoardNav {
 				return { state, effect: { type: "scroll", delta: -SCROLL_STEP } };
 			case "y":
 				return { state, effect: { type: "copy", id: state.view.taskId } };
+			case "m":
+				return toggleMark(state, state.view.taskId);
 			case "o":
 				return {
 					state,
@@ -1163,13 +1183,22 @@ export namespace BoardNav {
 					effect: NONE,
 				};
 			case "escape":
-				// Esc layering: a committed filter clears BEFORE scope widens — one esc, one level.
-				// (Typing-mode esc never reaches here; reduceSearchTyping owns it.)
+				// Esc layering, one esc one level: marks clear first (the most recent, most local thing
+				// the human added), then a committed filter, then scope widens. Marks therefore never
+				// survive into a widened list they were not picked from. (Typing-mode esc never reaches
+				// here; reduceSearchTyping owns it.)
+				if (state.marked.size > 0)
+					return { state: { ...state, marked: NO_MARKS }, effect: NONE };
 				if (state.search.mode === "committed")
 					return withSearch(state, SEARCH_OFF);
 				return state.scoped
 					? { state: { ...state, scoped: false }, effect: { type: "reload" } }
 					: { state, effect: NONE };
+			case "m":
+				return toggleMark(
+					state,
+					rowOf(visibleRows(state), state.selectedId)?.task.id,
+				);
 			case "[":
 				return shiftState(state, -1);
 			case "]":

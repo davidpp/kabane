@@ -6,6 +6,7 @@ import {
 	activityStrip,
 	Board,
 	cardBadge,
+	markedLabel,
 	moreBadge,
 	rowMeta,
 	rowStyle,
@@ -616,7 +617,7 @@ test("Board footer shows only the app-specific hints, ending in `? help`", async
 			f.includes("? help"),
 		);
 		expect(frame).toContain(
-			"a dispatch · / search · d done · v review · y copy · b sidebar · ? help",
+			"a dispatch · / search · d done · v review · y copy · m mark · b sidebar · ? help",
 		);
 		// The vim-obvious ones are gone from the footer.
 		expect(frame).not.toContain("space expand");
@@ -853,4 +854,38 @@ test("Board renders an orphaned subtask distinguishably from a genuine top-level
 	} finally {
 		destroy();
 	}
+});
+
+test("Board draws the mark glyph on a marked row and counts marks in the header", async () => {
+	const a = task({ id: "a", shortId: "JAKE-1", title: "Marked one" });
+	const b = task({ id: "b", shortId: "JAKE-2", title: "Plain one" });
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={[
+				section("next", [
+					{ task: a, children: [] },
+					{ task: b, children: [] },
+				]),
+			]}
+			expanded={new Set()}
+			selectedId="b"
+			marked={new Set(["a"])}
+		/>,
+		{ width: 100, height: 12 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JAKE-2"),
+		);
+		expect(frame).toContain("JAKE-1  ● Marked one");
+		expect(frame).toContain("JAKE-2    Plain one");
+		expect(frame).toContain("cabane · all scopes · 1 marked");
+	} finally {
+		destroy();
+	}
+});
+
+test("markedLabel is quiet at zero", () => {
+	expect(markedLabel(0)).toBe("");
+	expect(markedLabel(3)).toBe(" · 3 marked");
 });

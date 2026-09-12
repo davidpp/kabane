@@ -14,6 +14,7 @@ export namespace Keymap {
 		{ key: "d", label: "done" },
 		{ key: "v", label: "review" },
 		{ key: "y", label: "copy" },
+		{ key: "m", label: "mark" },
 		{ key: "b", label: "sidebar" },
 		{ key: "?", label: "help" },
 	];
@@ -22,6 +23,7 @@ export namespace Keymap {
 		{ key: "a", label: "dispatch" },
 		{ key: "v", label: "review" },
 		{ key: "y", label: "copy" },
+		{ key: "m", label: "mark" },
 		{ key: "?", label: "help" },
 	];
 
@@ -35,7 +37,10 @@ export namespace Keymap {
 				{ key: "space", label: "expand/collapse subtasks" },
 				{ key: "h/l", label: "collapse · expand (h on child: parent)" },
 				{ key: "enter", label: "open detail" },
-				{ key: "esc", label: "back · clear search · widen scope" },
+				{
+					key: "esc",
+					label: "back · clear marks · clear search · widen scope",
+				},
 			],
 		},
 		{
@@ -55,6 +60,7 @@ export namespace Keymap {
 				{ key: "a", label: "dispatch (host triggers)" },
 				{ key: "o", label: "open event log (detail view)" },
 				{ key: "y", label: "copy agent brief" },
+				{ key: "m", label: "mark / unmark (the copilot's working set)" },
 				{ key: "⌃z", label: "undo last change" },
 				{ key: "/", label: "search (filter as you type)" },
 				{ key: "i", label: "cycle kind filter" },

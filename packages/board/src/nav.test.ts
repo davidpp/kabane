@@ -50,6 +50,7 @@ const state = (
 	dispatch: null,
 	help: false,
 	sidebar: { visible: true, focus: "board", selected: 0, itemCount: 0 },
+	marked: new Set<string>(),
 	undo: [],
 	...over,
 });
@@ -2084,5 +2085,83 @@ describe("status filter", () => {
 		s = typeQuery(s, "f");
 		expect(s.status).toBe("open");
 		expect(BoardNav.activeQuery(s.search)).toBe("f");
+	});
+});
+
+describe("marks (`m`)", () => {
+	const two = () =>
+		state({
+			sections: sections({
+				inbox: [row(task({ id: "a" })), row(task({ id: "b" }))],
+			}),
+			selectedId: "a",
+		});
+
+	it("m toggles the selected row in and out of the working set, with no effect", () => {
+		const on = BoardNav.reduceKey(two(), { name: "m" });
+		expect([...on.state.marked]).toEqual(["a"]);
+		expect(on.effect.type).toBe("none");
+		const off = BoardNav.reduceKey(on.state, { name: "m" });
+		expect(off.state.marked.size).toBe(0);
+	});
+
+	it("marks keep their order: oldest first", () => {
+		const a = BoardNav.reduceKey(two(), { name: "m" }).state;
+		const onB = BoardNav.reduceKey(a, { name: "j" }).state;
+		const both = BoardNav.reduceKey(onB, { name: "m" }).state;
+		expect([...both.marked]).toEqual(["a", "b"]);
+	});
+
+	it("m in the detail view toggles the OPEN task, not the board selection", () => {
+		const s = state({
+			...two(),
+			view: { type: "detail", taskId: "b" },
+		});
+		const marked = BoardNav.reduceKey(s, { name: "m" }).state;
+		expect([...marked.marked]).toEqual(["b"]);
+	});
+
+	it("m with nothing selected is inert", () => {
+		const s = state({ ...two(), selectedId: null });
+		const r = BoardNav.reduceKey(s, { name: "m" });
+		expect(r.state).toBe(s);
+	});
+
+	it("esc clears marks before it clears a committed search, then widens scope", () => {
+		const s = state({
+			...two(),
+			marked: new Set(["a"]),
+			search: { mode: "committed", query: "a" },
+			scoped: true,
+		});
+		const first = BoardNav.reduceKey(s, { name: "escape" });
+		expect(first.state.marked.size).toBe(0);
+		expect(first.state.search.mode).toBe("committed");
+		expect(first.effect.type).toBe("none");
+		const second = BoardNav.reduceKey(first.state, { name: "escape" });
+		expect(second.state.search.mode).toBe("off");
+		expect(second.state.scoped).toBe(true);
+		const third = BoardNav.reduceKey(second.state, { name: "escape" });
+		expect(third.state.scoped).toBe(false);
+		expect(third.effect.type).toBe("reload");
+	});
+
+	it("marks survive a reload and a search merge", () => {
+		const s = state({ ...two(), marked: new Set(["a", "b"]) });
+		const reloaded = BoardNav.withSections(
+			s,
+			sections({ inbox: [row(task({ id: "a" }))] }),
+		);
+		expect([...reloaded.marked]).toEqual(["a", "b"]);
+		const searched = BoardNav.withSearchResults(
+			{ ...s, search: { mode: "committed", query: "z" } },
+			"z",
+			[task({ id: "z", title: "z" })],
+		);
+		expect([...searched.marked]).toEqual(["a", "b"]);
+	});
+
+	it("init starts with nothing marked", () => {
+		expect(BoardNav.init([], { scoped: false }).marked.size).toBe(0);
 	});
 });
