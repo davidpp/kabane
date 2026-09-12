@@ -10,6 +10,7 @@ becomes a consumer. Decision record: `~/Projects/jake/docs/ADR/032-cabane-extrac
 packages/
 ├── core/      # @cabane/core   — schemas, storage over the Db port, sync (oplog, resolve, apply), MCP tool defs
 ├── sqlite/    # @cabane/sqlite — Db adapter over bun:sqlite (local devices)
+├── acp/       # @cabane/acp    — ACP client over Bun.spawn: harness registry, session runner, own Update union
 ├── cli/       # cabane         — add, list, show, edit, done, search, link, sync, board, mcp (stdio)
 ├── board/     # @cabane/board  — OpenTUI kanban; ActivitySource + Dispatcher ports, no-op defaults
 └── worker/    # cabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
