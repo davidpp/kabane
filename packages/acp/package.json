@@ -1,0 +1,25 @@
+{
+	"name": "@cabane/acp",
+	"version": "0.1.0",
+	"description": "Cabane ACP client: harness registry and a session runner over Bun.spawn",
+	"private": true,
+	"type": "module",
+	"main": "index.ts",
+	"types": "index.ts",
+	"exports": {
+		".": "./index.ts"
+	},
+	"scripts": {
+		"test": "bun test",
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf node_modules"
+	},
+	"dependencies": {
+		"@agentclientprotocol/sdk": "1.4.0",
+		"@cabane/core": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/bun": "1.4.0",
+		"typescript": "5.9.3"
+	}
+}
