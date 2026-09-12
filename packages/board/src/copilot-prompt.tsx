@@ -119,6 +119,12 @@ export const CopilotPane = ({
 	}
 
 	const matches = BoardNav.matchingShortcuts(copilot.shortcuts, copilot.text);
+	// Clamped here as well as in the reducer: the list shrinks as the name is typed, and a render
+	// between the two would otherwise point past the end of it.
+	const selected = Math.min(
+		Math.max(copilot.paletteAt, 0),
+		Math.max(0, matches.length - 1),
+	);
 	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
 	const rows = inputRows(copilot.text, height);
 	// A blocked harness outranks everything else the panel could say: the turn is not going anywhere
@@ -187,18 +193,24 @@ export const CopilotPane = ({
 					))
 				: null}
 			{showPalette
-				? matches.map((shortcut, index) => (
-						<text
-							key={shortcut.name}
-							bg={PANE_BG}
-							fg={index === 0 ? TEXT_COLOR : MUTED_COLOR}
-						>
-							<span fg={index === 0 ? CHIP_COLOR : MUTED_COLOR}>
-								{`/${shortcut.name}`.padEnd(14)}
-							</span>
-							{fit(shortcut.hint, width - 22)}
-						</text>
-					))
+				? matches.map((shortcut, index) => {
+						// ↑/↓ move this; the gutter says which one enter and tab will take. Not the input's
+						// `▸`: stacked directly above it, the same glyph made the selected row read as
+						// another prompt rather than as a choice.
+						const picked = index === selected;
+						return (
+							<text
+								key={shortcut.name}
+								bg={PANE_BG}
+								fg={picked ? TEXT_COLOR : MUTED_COLOR}
+							>
+								<span fg={picked ? CHIP_COLOR : MUTED_COLOR}>
+									{`${picked ? "› " : "  "}/${shortcut.name}`.padEnd(16)}
+								</span>
+								{fit(shortcut.hint, width - 24)}
+							</text>
+						);
+					})
 				: null}
 			<box style={{ flexDirection: "row", height: rows }}>
 				<text bg={PANE_BG} fg={CHIP_COLOR}>

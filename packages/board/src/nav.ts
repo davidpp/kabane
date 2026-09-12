@@ -93,6 +93,9 @@ export namespace BoardNav {
 		text: string;
 		// Prompts sent this session, oldest first; `up` in an empty buffer walks back through them.
 		history: readonly string[];
+		// Which `/` shortcut the palette has selected. Only meaningful while something matches, and
+		// reset whenever the text changes, because the list under it has changed too.
+		paletteAt: number;
 		// How far back the walk is, counted from the END so a new prompt does not shift it. 0 = out.
 		historyAt: number;
 		turn: CopilotTurn;
@@ -277,6 +280,7 @@ export namespace BoardNav {
 
 	const COPILOT_IDLE: CopilotState = {
 		text: "",
+		paletteAt: 0,
 		history: [],
 		historyAt: 0,
 		turn: "idle",
@@ -406,7 +410,7 @@ export namespace BoardNav {
 	// app.tsx preventDefaults on so the textarea does not act on them too:
 	//   esc       leave, stopping a running turn on the way out (tab is the exit that does not)
 	//   tab       complete a `/` being typed, else hand the ring its turn, the way a shell splits it
-	//   up/down   walk this session's sent prompts while the buffer is empty
+	//   up/down   move the `/` palette's selection, or walk this session's sent prompts
 	// `enter` is the textarea's own `submit` binding and arrives through submitCopilot, not here.
 	export const copilotConsumes = (
 		state: BoardState,
@@ -417,11 +421,14 @@ export namespace BoardNav {
 		// A blocked harness takes the digits too: the draft in the buffer cannot be sent while a
 		// turn runs anyway, so a `1` typed here is an answer, not a character.
 		if (state.copilot.permission && optionIndex(key) !== null) return true;
-		return (
-			(key.name === "up" || key.name === "down") &&
-			state.copilot.text === "" &&
-			state.copilot.history.length > 0
-		);
+		if (key.name !== "up" && key.name !== "down") return false;
+		// Picking from the palette beats moving a cursor through the one line that opened it. The two
+		// uses cannot collide: a palette needs a leading `/`, history recall an empty buffer.
+		if (
+			matchingShortcuts(state.copilot.shortcuts, state.copilot.text).length > 0
+		)
+			return true;
+		return state.copilot.text === "" && state.copilot.history.length > 0;
 	};
 
 	// Which numbered choice a key names, 1-based, or null for a key that names none.
@@ -481,7 +488,7 @@ export namespace BoardNav {
 		state: BoardState,
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } => {
-		const { text, turn, shortcuts } = state.copilot;
+		const { turn } = state.copilot;
 		switch (key.name) {
 			case "escape":
 				return {
@@ -489,15 +496,15 @@ export namespace BoardNav {
 					effect: turn === "running" ? { type: "copilotCancel" } : NONE,
 				};
 			case "tab": {
-				const first = matchingShortcuts(shortcuts, text)[0];
-				return first
-					? setText(state, first.template)
+				const picked = selectedShortcut(state);
+				return picked
+					? setText(state, picked.template)
 					: { state: cycleFocus(state, key.shift ? -1 : 1), effect: NONE };
 			}
 			case "up":
-				return recall(state, 1);
+				return movePalette(state, -1) ?? recall(state, 1);
 			case "down":
-				return recall(state, -1);
+				return movePalette(state, 1) ?? recall(state, -1);
 			default:
 				return { state, effect: NONE };
 		}
@@ -511,11 +518,11 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		// One turn at a time; the pane says so rather than queueing behind the human's back.
 		if (state.copilot.turn === "running") return { state, effect: NONE };
-		const exact = matchingShortcuts(state.copilot.shortcuts, text).find(
-			(s) => `/${s.name}` === text,
-		);
-		// Expanding puts the template in front of the human to read and edit before it is sent.
-		if (exact) return setText(state, exact.template);
+		// Expanding puts the template in front of the human to read and edit before it is sent. Any
+		// open palette expands, not just an exact name: `/tr` + enter means the `/triage` under the
+		// cursor, and sending the agent the literal text `/tr` is never what was meant.
+		const picked = selectedShortcut(state);
+		if (picked) return setText(state, picked.template);
 		if (text.trim() === "") return { state, effect: NONE };
 		return {
 			// The board takes the keyboard back: having sent a command, the next thing the human does
@@ -538,7 +545,41 @@ export namespace BoardNav {
 		state: BoardState,
 		text: string,
 	): BoardState =>
-		state.copilot.text === text ? state : withCopilot(state, { text });
+		state.copilot.text === text
+			? state
+			: withCopilot(state, { text, paletteAt: 0 });
+
+	// The shortcut `tab` and `enter` act on: what the palette is pointing at. Clamped rather than
+	// stored-and-trusted, because the list shrinks as more of the name is typed.
+	export const selectedShortcut = (
+		state: BoardState,
+	): CopilotShortcut | undefined => {
+		const matches = matchingShortcuts(
+			state.copilot.shortcuts,
+			state.copilot.text,
+		);
+		return matches[clamp(state.copilot.paletteAt, 0, matches.length - 1)];
+	};
+
+	// `up`/`down` while the palette is open. Null when there is nothing to move through, which is
+	// what hands the same keys to history recall.
+	const movePalette = (
+		state: BoardState,
+		delta: 1 | -1,
+	): { state: BoardState; effect: Effect } | null => {
+		const matches = matchingShortcuts(
+			state.copilot.shortcuts,
+			state.copilot.text,
+		);
+		if (matches.length === 0) return null;
+		const at = clamp(state.copilot.paletteAt, 0, matches.length - 1);
+		return {
+			state: withCopilot(state, {
+				paletteAt: clamp(at + delta, 0, matches.length - 1),
+			}),
+			effect: NONE,
+		};
+	};
 
 	// The reverse entry for a state change: restore the task's pre-mutation state. Shared by the
 	// GTD shift (`[`/`]`), the direct jumps (`n`/`s`/`x`), and `d` — all reverse to `{ state }`.

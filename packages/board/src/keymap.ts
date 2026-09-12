@@ -23,7 +23,7 @@ export namespace Keymap {
 	// board's own hints would be a lie.
 	export const COPILOT_FOOTER: readonly Hint[] = [
 		{ key: "enter", label: "send" },
-		{ key: "/", label: "shortcuts" },
+		{ key: "/", label: "shortcuts (↑↓ pick)" },
 		{ key: "tab", label: "next pane" },
 		{ key: "esc", label: "board (stops a running turn)" },
 	];

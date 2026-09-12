@@ -40,6 +40,7 @@ const copilotState = (
 	over: Partial<BoardNav.CopilotState> = {},
 ): BoardNav.CopilotState => ({
 	text: "",
+	paletteAt: 0,
 	history: [],
 	historyAt: 0,
 	turn: "idle",
@@ -2325,6 +2326,72 @@ describe("copilot prompt (`A` / `:`)", () => {
 			type: "copilotPrompt",
 			prompt: triage.template,
 		});
+	});
+
+	it("arrows move the palette, and tab and enter take what it points at", () => {
+		const shortcuts = [
+			triage,
+			{ name: "trim", hint: "shorten", template: "Trim it." },
+			{ name: "track", hint: "follow", template: "Track it." },
+		];
+		const focused = open(
+			ready({
+				copilot: {
+					text: "",
+					paletteAt: 0,
+					history: [],
+					historyAt: 0,
+					turn: "idle",
+					shortcuts,
+					actor: null,
+					permission: null,
+				},
+			}),
+		).state;
+		const typed = BoardNav.withCopilotText(focused, "/tr");
+		// All three match, so the arrows belong to the palette rather than the textarea's cursor.
+		expect(BoardNav.copilotConsumes(typed, { name: "down" })).toBe(true);
+		expect(BoardNav.selectedShortcut(typed)?.name).toBe("triage");
+		const down = BoardNav.reduceKey(typed, { name: "down" }).state;
+		expect(BoardNav.selectedShortcut(down)?.name).toBe("trim");
+		const down2 = BoardNav.reduceKey(down, { name: "down" }).state;
+		expect(BoardNav.selectedShortcut(down2)?.name).toBe("track");
+		// Clamped at the end, like the sidebar's j/k.
+		const stuck = BoardNav.reduceKey(down2, { name: "down" }).state;
+		expect(BoardNav.selectedShortcut(stuck)?.name).toBe("track");
+		const up = BoardNav.reduceKey(stuck, { name: "up" }).state;
+		expect(BoardNav.selectedShortcut(up)?.name).toBe("trim");
+		// tab takes the selection, not the first match.
+		expect(BoardNav.reduceKey(up, { name: "tab" }).effect).toEqual({
+			type: "copilotSetText",
+			text: "Trim it.",
+		});
+		// So does enter: sending the agent the literal text `/tr` is never what was meant.
+		expect(BoardNav.submitCopilot(up, "/tr").effect).toEqual({
+			type: "copilotSetText",
+			text: "Trim it.",
+		});
+		// Typing more resets the selection, because the list under it changed.
+		const narrowed = BoardNav.withCopilotText(down2, "/tri");
+		expect(narrowed.copilot.paletteAt).toBe(0);
+		expect(BoardNav.selectedShortcut(narrowed)?.name).toBe("triage");
+	});
+
+	it("with no palette open the arrows still belong to history", () => {
+		const sent = BoardNav.submitCopilot(open().state, "first");
+		const focused = BoardNav.reduceKey(
+			BoardNav.withCopilotTurn(sent.state, "idle"),
+			char("A"),
+		).state;
+		// Empty buffer, so nothing matches and recall keeps the keys.
+		expect(BoardNav.copilotConsumes(focused, { name: "up" })).toBe(true);
+		expect(BoardNav.reduceKey(focused, { name: "up" }).effect).toEqual({
+			type: "copilotSetText",
+			text: "first",
+		});
+		// Mid-sentence, they are the textarea's cursor again: no palette, no history.
+		const writing = BoardNav.withCopilotText(focused, "a normal prompt");
+		expect(BoardNav.copilotConsumes(writing, { name: "up" })).toBe(false);
 	});
 
 	it("tab with nothing to complete hands the ring its turn", () => {

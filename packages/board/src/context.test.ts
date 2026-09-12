@@ -52,6 +52,7 @@ const state = (
 	marked: new Set(["a", "m"]),
 	copilot: {
 		text: "",
+		paletteAt: 0,
 		history: [],
 		historyAt: 0,
 		turn: "idle",
