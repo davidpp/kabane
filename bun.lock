@@ -15,6 +15,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@agentclientprotocol/sdk": "1.4.0",
+        "@cabane/board": "workspace:*",
         "@cabane/core": "workspace:*",
       },
       "devDependencies": {
