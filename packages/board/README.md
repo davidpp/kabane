@@ -66,6 +66,21 @@ interface Dispatcher {
 trigger, an unsatisfiable one flashes its `hint`. `dispatch` receives the task id, shortId, title
 and the assembled brief (what `y` copies) and resolves to the footer notice.
 
+## Marks and the copilot context
+
+`m` toggles the row under the cursor (or the open task in the detail view) in and out of a
+working set. Marked rows carry a `●` before the title and the header counts them (`· 3 marked`).
+Marks survive every reload; `esc` on the board clears them first, then a committed search, then
+widens the scope, one level per press.
+
+`BoardContext` (`src/context.ts`) turns what the human is looking at into one value for a
+copilot: scope, view, the selected task's section, the kind and status filters and any query,
+the selected task, the marks oldest first, and the assembled briefs (what `y` copies) for the
+selection and the marks. Each brief is capped at 6000 characters and the whole set at 24000;
+the oldest marks are dropped first and `truncated` says when anything was cut. `project` and
+`render` are pure; `load(basePath, state, scope)` fetches the briefs. `render` produces a fenced
+`cabane-board` field block followed by the briefs under `### <shortId>` headings.
+
 ## Testing
 
 `bun test` in this package. Rendering tests go through `src/testing.ts`, a headless OpenTUI test
