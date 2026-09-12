@@ -2,6 +2,9 @@
 // Event view: the event log behind one activity card, read through ActivitySource.events. Polls at
 // 1s while the card is in flight, appending events incrementally. Auto-scrolls when pinned to the
 // bottom; stops yanking if the user scrolled up.
+//
+// Two things are not rows: a plan, which heads the view pinned outside the scrollbox, and a `prompt`
+// event, which is what was ASKED and so is drawn as the rule opening the turn that answers it.
 
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
@@ -22,6 +25,7 @@ import {
 	type ActivitySource,
 	isInFlight,
 	type PlanEntry,
+	PROMPT_EVENT,
 } from "./ports";
 import { useSpinnerFrame } from "./spinner";
 
@@ -39,6 +43,31 @@ const RESERVED_COLS = 12;
 const MIN_ENTRY_COLS = 20;
 
 const NO_PLAN: readonly PlanEntry[] = [];
+
+// `── split this into subtasks ─────`: the prompt that opened a turn, drawn as the rule that parts it
+// from the turn before. The lead is `── ` and a space, and the tail never shrinks to nothing — a
+// label with no rule after it reads as a stray line of text.
+const RULE_LEAD_COLS = 4;
+const MIN_RULE_TAIL = 3;
+
+const fit = (text: string, room: number): string =>
+	text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
+
+const promptRule = (
+	prompt: string,
+	width: number,
+): { label: string; tail: string } => {
+	const label = fit(
+		prompt.split("\n")[0] ?? "",
+		width - RULE_LEAD_COLS - MIN_RULE_TAIL,
+	);
+	return {
+		label,
+		tail: "─".repeat(
+			Math.max(MIN_RULE_TAIL, width - label.length - RULE_LEAD_COLS),
+		),
+	};
+};
 
 // Per-event-type glyph. Types are host-defined strings; the common ones get a glyph, the rest a blank.
 const eventGlyph = (type: string): { glyph: string; color: string } => {
@@ -172,6 +201,10 @@ export const EventView = ({
 	const hints = ["j/k scroll", extraHints, "esc back"]
 		.filter(Boolean)
 		.join(" · ");
+	const contentWidth = Math.max(
+		MIN_ENTRY_COLS,
+		width - sidebarWidth - RESERVED_COLS,
+	);
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
@@ -183,10 +216,7 @@ export const EventView = ({
 					<PlanBlock
 						plan={plan}
 						spinnerFrame={spinnerFrame}
-						width={Math.max(
-							MIN_ENTRY_COLS,
-							width - sidebarWidth - RESERVED_COLS,
-						)}
+						width={contentWidth}
 						maxRows={MAX_PLAN_ROWS}
 					/>
 				</box>
@@ -196,6 +226,18 @@ export const EventView = ({
 					<text fg={MUTED_COLOR}>no events yet</text>
 				) : (
 					events.map((event) => {
+						if (event.type === PROMPT_EVENT) {
+							const { label, tail } = promptRule(event.summary, contentWidth);
+							return (
+								<box key={event.seq} style={{ marginTop: 1 }}>
+									<text fg={MUTED_COLOR}>
+										{"── "}
+										<span fg={ACCENT_COLOR}>{label}</span>
+										{` ${tail}`}
+									</text>
+								</box>
+							);
+						}
 						const { glyph, color } = eventGlyph(event.type);
 						const time = new Date(event.at).toLocaleTimeString("en-US", {
 							hour12: false,

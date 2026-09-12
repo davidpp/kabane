@@ -71,7 +71,9 @@ export type CopilotPaneProps = {
 	copilot: BoardNav.CopilotState;
 	chip: string;
 	focused: boolean;
-	// The live turn, for the plan and the agent's last lines. Null before the first prompt.
+	// The session's turns, for the plan and the agent's last lines. Always the CURRENT one: the
+	// panel is the live surface, and the turns behind it are read in the transcript. Null before the
+	// first prompt.
 	log: CopilotLog.Log | null;
 	spinnerFrame: string;
 	textareaRef: RefObject<TextareaRenderable | null>;
@@ -91,7 +93,7 @@ export const CopilotPane = ({
 }: CopilotPaneProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
 	const running = copilot.turn === "running";
-	const plan = log?.plan ?? [];
+	const plan = log?.current.plan ?? [];
 	const progress = plan.length > 0 ? planProgress(plan) : null;
 	const fit = (text: string, room: number): string =>
 		text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
@@ -108,7 +110,7 @@ export const CopilotPane = ({
 	}
 
 	const matches = BoardNav.matchingShortcuts(copilot.shortcuts, copilot.text);
-	const tail = (log?.tail ?? []).slice(-MAX_TAIL_ROWS);
+	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
 	const rows = inputRows(copilot.text, height);
 	// A shortcut palette replaces the plan while one is being picked: both at once is noise, and the
 	// human typing `/` is not watching the todo.
@@ -125,7 +127,9 @@ export const CopilotPane = ({
 	const right = [
 		progress,
 		state,
-		log ? elapsed(log.card.startedAt, log.card.finishedAt) : null,
+		log
+			? elapsed(log.current.card.startedAt, log.current.card.finishedAt)
+			: null,
 	]
 		.filter(Boolean)
 		.join(" · ");
@@ -246,8 +250,8 @@ const CollapsedRow = ({
 // finished one keeps the footer's wording, which the tests already pin.
 const planLine = (log: CopilotLog.Log, status: CopilotLog.Footer): string => {
 	if (status.tone !== "running") return status.text;
-	const current = log.plan.find((entry) => entry.status === "in_progress");
-	return current
-		? status.text.replace(log.activity, current.content)
+	const entry = log.current.plan.find((e) => e.status === "in_progress");
+	return entry
+		? status.text.replace(log.current.activity, entry.content)
 		: status.text;
 };
