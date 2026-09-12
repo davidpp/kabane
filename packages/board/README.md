@@ -1,8 +1,8 @@
 # @cabane/board
 
 Terminal kanban for the Cabane tracker, built on OpenTUI. It reads the tracker through
-`@cabane/core` and learns about the host's running work and dispatch targets through two ports,
-so the same board runs standalone or inside a host like Jake.
+`@cabane/core` and learns about the host's running work, its dispatch targets and its copilot
+through three ports, so the same board runs standalone or inside a host like Jake.
 
 ## Start it
 
@@ -23,6 +23,7 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.cabane" });
 | `basePath` | yes | — (the handle the configured `DbProvider` reads) |
 | `activity: ActivitySource` | no | sidebar shows `no activity`, no badges, no header strip |
 | `dispatcher: Dispatcher` | no | `a` flashes `no dispatcher configured` in the footer |
+| `copilot: Copilot` | no | `A` flashes `no copilot configured` in the footer |
 | `resolveScope(cwd)` | no | the board opens on all scopes (the CLI passes `@cabane/core/scope` detection) |
 
 The host calls `Runtime.configure` before `startBoard`; the board never opens a database itself.
@@ -66,6 +67,40 @@ interface Dispatcher {
 trigger, an unsatisfiable one flashes its `hint`. `dispatch` receives the task id, shortId, title
 and the assembled brief (what `y` copies) and resolves to the footer notice.
 
+### `Copilot`
+
+```ts
+interface Copilot {
+  run(prompt: string, context: BoardContext.Context): AsyncIterable<CopilotUpdate>;
+  cancel(): Promise<void>;
+  shortcuts(): CopilotShortcut[];
+}
+```
+
+`A` (or `:`) opens a one-line prompt above the footer, with a chip on the left saying what the
+prompt carries (`JCAB-31 · 3 marked · inbox`). `enter` sends the text with the loaded
+`BoardContext` to `run`; `esc` closes the window. Typing `/` lists `shortcuts()` (`/triage`,
+`/refine`, …); `tab`, or `enter` on the exact name, expands the shortcut's `template` into the
+window so what will be sent is read before it goes.
+
+The turn runs in the background and the board stays fully interactive. The footer shows
+`⠹ copilot · <last tool call>` while it runs, `✓ copilot · <first line of the agent's last text>`
+when it ends, `✗ copilot · <reason>` on an error or a cancel; the finished indicator stays until
+the next keypress. `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
+`error`, `done`); each `tool_result` reloads the board so the copilot's writes appear as they
+land. One turn at a time: a second `A` while one runs shows `a turn is running · esc to cancel it
+first`, and that `esc` calls `cancel`.
+
+The turn also appears as an in-memory activity card (`kind: "copilot"`) at the top of the
+sidebar. `o` (from the board or the detail view, while the indicator is up) or `enter` on the
+card opens the event view on its live transcript: prose as text lines, thoughts dimmed, tool
+calls with the usual glyphs; `x` there cancels a running turn, `esc` returns. Nothing about the
+turn is persisted; the next turn replaces the card.
+
+The port is protocol-free on purpose: `@cabane/acp` implements it over an ACP harness, and a
+test can implement it with a scripted async generator. `noCopilot` is an explicit no-op whose
+every turn ends with `no copilot configured`.
+
 ## Marks and the copilot context
 
 `m` toggles the row under the cursor (or the open task in the detail view) in and out of a
@@ -86,5 +121,7 @@ the oldest marks are dropped first and `truncated` says when anything was cut. `
 `bun test` in this package. Rendering tests go through `src/testing.ts`, a headless OpenTUI test
 renderer that captures character frames; nothing needs a real TTY. Storage tests use
 `src/test-db.ts`, which configures the bun:sqlite provider with plain table names on a temp
-directory. Not covered here and left to a manual run: real keyboard input, mouse, the clipboard
-writers, and OSC 52 through a terminal multiplexer.
+directory. Key-driven flows (the `A` prompt against a scripted copilot) go through the test renderer's
+`mockInput`; a lone escape must be rendered through before the next key, or the parser reads the
+pair as Alt+key. Not covered here and left to a manual run: a real terminal's keyboard, mouse,
+the clipboard writers, and OSC 52 through a terminal multiplexer.
