@@ -135,7 +135,8 @@ export namespace CopilotLog {
 	export type Footer = { text: string; tone: "running" | "done" | "error" };
 
 	// The footer indicator: spinner + what the agent is doing while running; a check and the first
-	// line of its last prose on completion; the failure reason otherwise.
+	// line of its last prose on completion; the failure reason otherwise. A failure often carries
+	// the harness's whole stderr, and this is one row: the rest of it waits in the event view.
 	export const footer = (log: Log, spinnerFrame: string): Footer => {
 		switch (log.card.status) {
 			case "completed":
@@ -145,7 +146,7 @@ export namespace CopilotLog {
 				};
 			case "failed":
 				return {
-					text: `✗ copilot · ${log.card.error ?? "failed"}`,
+					text: `✗ copilot · ${firstLine(log.card.error ?? "failed")}`,
 					tone: "error",
 				};
 			default:

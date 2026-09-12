@@ -104,6 +104,21 @@ describe("CopilotLog", () => {
 		});
 	});
 
+	it("footer keeps a multi-line failure to its first line, and the card keeps the whole of it", () => {
+		const log = CopilotLog.apply(
+			CopilotLog.start(T0),
+			update(
+				"error",
+				"npm error code ETARGET\nACP connection closed\nnpm error notarget No matching version found",
+			),
+		);
+		expect(CopilotLog.footer(log, "⠹").text).toBe(
+			"✗ copilot · npm error code ETARGET",
+		);
+		// The event view reads the card, so nothing is lost for the reader who opens it.
+		expect(log.card.error).toContain("No matching version found");
+	});
+
 	it("withActivity puts the copilot card first, keeps the host's cards and questions, and is a no-op without a log", () => {
 		const host = BoardActivity.indexCards([hostCard()]);
 		host.questionsByTaskId.set("t1", [
