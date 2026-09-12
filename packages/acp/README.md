@@ -5,6 +5,10 @@ Agent Client Protocol client for the board copilot. It launches one coding harne
 prompt into a stream of cabane's own updates. The board consumes that stream and never
 imports the SDK.
 
+`BoardCopilot` is the piece the board actually holds: the `Copilot` port from
+`@cabane/board`, implemented over one lazily started session whose only tool server is
+`cabane mcp`.
+
 ## Pieces
 
 - `Harnesses` — registry of launch commands with pinned adapter versions
@@ -23,6 +27,58 @@ imports the SDK.
   lazy `AsyncIterable<Update>`; `cancel(session)`; `close(conn)` kills the process.
   `connect(harness, transport, options)` takes an SDK `Stream` or an in-process `AgentApp`,
   which is how the tests run without a subprocess.
+- `CopilotInstructions` — the instruction block, the `/` shortcut templates, and
+  `actorUri(harness)`, the `cabane://actor/agent/<harness>` every write of a session is
+  stamped with.
+- `BoardCopilot` — `create(options)` returns the board's `Copilot` plus a `close()` for the
+  board's teardown to kill the harness with.
+
+## The copilot
+
+```ts
+const copilot = BoardCopilot.create({
+  harness: "claude",
+  scopeDir: "/repos/cabane",        // the session cwd, so the harness reads the project's own rules
+  scopeUri: "jake://scope/cabane",  // omit on an all-scopes board
+  cabaneBin: "/usr/local/bin/cabane", // defaults to this process's entry script
+});
+```
+
+Nothing is spawned until the first `run`. The session opens with one stdio MCP server,
+`cabane mcp --scope <uri> --as cabane://actor/agent/<harness>`, so every write goes through
+the same tools and database the board reads and arrives stamped as an agent's.
+
+What the harness is told:
+
+- The instruction block goes out twice on Claude and once everywhere else — as
+  `_meta.systemPrompt.append` on `session/new` where the adapter reads it, and as the first
+  text block of the session's first prompt, which is the channel every harness has. An
+  adapter that ignores `_meta` would otherwise run with no instructions at all.
+- The tool loop is not restated: the cabane MCP server sends `SERVER_INSTRUCTIONS` on
+  initialize, and the block points at it.
+- Every prompt is preceded by `BoardContext.render(context)` — the board's scope, view,
+  section, filters, selected row, marked set, and the assembled briefs. It is refreshed each
+  turn, so "these", "here" and "the selection" always mean what is on screen now.
+
+What comes back, as the port's `CopilotUpdate`:
+
+| Harness update | Port update |
+|---|---|
+| `text`, `thought` | `text`, `thought` |
+| `tool_call` | `tool_call` (plus `tool_result` when it already completed a write) |
+| `tool_call_update`, completed, on a `cabane_*` write tool | `tool_result` → the board reloads |
+| `plan` | dropped: the tool calls it describes arrive on their own |
+| `stop`, `error` | `done`, `error` |
+
+A write is recognised by the tool call's **title**, never by its result: the two adapters
+disagree on where MCP results land, so the title is scanned for a `cabane_*` write tool name
+(`add`, `edit`, `done`, `link`, `comment`, `log`, `contextAdd`, `contextRemove`), which also
+survives a namespaced `mcp__cabane__cabane_edit`. Reads trigger no reload.
+
+A permission request is declined, visibly: the board has no way to answer one yet, so the
+callback returns an error (the outcome the agent sees is `cancelled`) and the transcript gets
+an `error` line naming the tool. Nothing is ever auto-allowed. In practice the harness runs
+under the human's own permission mode, so a permissive harness never asks.
 
 ## Updates
 
