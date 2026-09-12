@@ -12,29 +12,12 @@ import { contextChip } from "./copilot-prompt";
 import type { Copilot, CopilotStep, CopilotUpdate } from "./ports";
 import { noActivity } from "./ports";
 import { dropDb, freshDb } from "./test-db";
-import { renderTest } from "./testing";
+import { pumpUntil, renderTest } from "./testing";
 
 const TEST_BASE = join(tmpdir(), `cabane-board-copilot-${crypto.randomUUID()}`);
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
-
-const pumpUntil = async (
-	renderOnce: () => Promise<void>,
-	captureCharFrame: () => string,
-	predicate: (frame: string) => boolean,
-): Promise<string> => {
-	let frame = "";
-	for (let pass = 0; pass < 100; pass++) {
-		await renderOnce();
-		frame = captureCharFrame();
-		if (predicate(frame)) return frame;
-		await sleep(20);
-	}
-	// Silently returning a stale frame here makes the real failure surface somewhere else entirely,
-	// two seconds later — say which wait gave up, and on what.
-	throw new Error(`pumpUntil gave up. Last frame:\n${frame}`);
-};
 
 const ctx = (
 	over: Partial<BoardContext.Context> = {},
@@ -277,6 +260,47 @@ describe("the A prompt against a scripted copilot", () => {
 			const transcript = await until((f) => f.includes("completed ·"));
 			expect(transcript).toContain("Moved it to someday.");
 			expect(transcript).toContain("← ok");
+		} finally {
+			destroy();
+		}
+	});
+
+	it("asking a second thing keeps the first: both turns in the transcript, each under the prompt that started it", async () => {
+		const seen: Seen = { prompts: [], contexts: [], cancels: 0 };
+		const setup = await renderTest(
+			<App
+				cwd={TEST_BASE}
+				basePath={TEST_BASE}
+				activity={noActivity}
+				copilot={scriptedCopilot(Promise.resolve(), seen)}
+			/>,
+			{ width: 120, height: 24 },
+		);
+		const { renderOnce, captureCharFrame, mockInput, destroy } = setup;
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		const untilPanel = () => until((f) => f.includes("┌─copilot"));
+		const ask = async (prompt: string): Promise<void> => {
+			mockInput.pressKey(":");
+			await untilPanel();
+			await mockInput.typeText(prompt);
+			mockInput.pressEnter();
+			await until((f) => f.includes("✓ copilot ·"));
+		};
+		try {
+			await until((f) => f.includes("Wire the copilot"));
+			await ask("what is left here");
+			await ask("and now link them");
+			expect(seen.prompts).toEqual(["what is left here", "and now link them"]);
+
+			// One card, one `o`, both turns — the rule each opens with is the question it answers.
+			mockInput.pressKey("o");
+			const transcript = await until((f) => f.includes("── and now link them"));
+			expect(transcript).toContain("── what is left here");
+			// Oldest first: the turn you asked for second reads below the one before it.
+			expect(transcript.indexOf("── what is left here")).toBeLessThan(
+				transcript.indexOf("── and now link them"),
+			);
 		} finally {
 			destroy();
 		}

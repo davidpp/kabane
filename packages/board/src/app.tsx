@@ -124,7 +124,7 @@ export const App = ({
 	const [notice, setNotice] = useState<BoardNav.Notice | null>(null);
 	// Comments for the currently open detail view. Fetched alongside the brief, cleared on view change.
 	const [detailComments, setDetailComments] = useState<TaskComment[]>([]);
-	// The copilot's current turn: its card and transcript, replaced on the next turn, never persisted.
+	// This session's copilot turns, the current one at the head: its card, its plan and its transcript.
 	// Held in a ref as well because the composed ActivitySource below reads it while the event view
 	// polls, and the stream runner writes it between renders.
 	const [copilotLog, setCopilotLog] = useState<CopilotLog.Log | null>(null);
@@ -309,7 +309,8 @@ export const App = ({
 				return;
 			}
 			const turn = ++turnRef.current;
-			let log = CopilotLog.start(now());
+			// Behind this turn, the ones before it: the prompt is what opens a new one in the log.
+			let log = CopilotLog.start(copilotLogRef.current, prompt, now());
 			publishLog(log);
 			const fail = (summary: string): void => {
 				log = CopilotLog.apply(log, { type: "error", summary, at: now() });
@@ -335,7 +336,7 @@ export const App = ({
 					if (update.type === "error") endTurn("error");
 				}
 				// A stream that ends without saying so still ended.
-				if (log.card.status === "running") {
+				if (log.current.card.status === "running") {
 					log = CopilotLog.apply(log, { type: "done", summary: "", at: now() });
 					publishLog(log);
 					endTurn("done");
@@ -352,7 +353,7 @@ export const App = ({
 		turnRef.current++;
 		void copilot?.cancel();
 		const log = copilotLogRef.current;
-		if (log && log.card.status === "running")
+		if (log && log.current.card.status === "running")
 			publishLog(CopilotLog.cancelled(log, new Date().toISOString()));
 		setState((prev) => (prev ? BoardNav.withCopilotTurn(prev, "error") : prev));
 	}, [copilot, publishLog]);
@@ -776,11 +777,17 @@ export const App = ({
 						resolveShortId={resolveShortId}
 						scrollRef={scrollRef}
 						notice={notice}
+						plan={
+							cardId === CopilotLog.CARD_ID
+								? copilotLog?.current.plan
+								: undefined
+						}
 						extraHints={
 							cardId === CopilotLog.CARD_ID && state.copilot.turn === "running"
 								? "x cancel"
 								: undefined
 						}
+						sidebarWidth={sbWidth}
 						pane={copilotPane}
 					/>
 				</box>

@@ -1,16 +1,17 @@
-// The in-memory record of the copilot's current turn, projected as ONE activity card so the sidebar,
-// the event view and the footer spinner show it through the machinery they already have. Nothing
-// here persists: the log is replaced on the next turn and gone when the board closes. `start`,
-// `apply` and `footer` are pure; `source` is the ActivitySource-shaped adapter app.tsx hands the
-// event view, layered over the host's own source.
+// The in-memory record of the copilot's turns, the current one projected as ONE activity card so the
+// sidebar, the event view and the footer spinner show it through the machinery they already have.
+// Nothing here persists: the list is a session buffer, capped, and gone when the board closes.
+// `start`, `apply` and `footer` are pure; `source` is the ActivitySource-shaped adapter app.tsx
+// hands the event view, layered over the host's own source.
 import { ok } from "@cabane/core";
 import { BoardActivity } from "./activity";
-import type {
-	ActivityCard,
-	ActivityEvent,
-	ActivitySource,
-	CopilotUpdate,
-	PlanEntry,
+import {
+	type ActivityCard,
+	type ActivityEvent,
+	type ActivitySource,
+	type CopilotUpdate,
+	type PlanEntry,
+	PROMPT_EVENT,
 } from "./ports";
 
 export namespace CopilotLog {
@@ -18,7 +19,10 @@ export namespace CopilotLog {
 	export const CARD_ID = "copilot";
 	export const KIND = "copilot";
 
-	export type Log = {
+	// One prompt and everything it produced: the transcript of that exchange, the agent's todo list
+	// while it worked, and the card carrying its outcome.
+	export type Turn = {
+		prompt: string;
 		card: ActivityCard;
 		events: ActivityEvent[];
 		// The agent's todo list for the turn, as last sent. Replaced wholesale, never merged.
@@ -29,20 +33,48 @@ export namespace CopilotLog {
 		tail: readonly string[];
 	};
 
-	export const start = (at: string): Log => ({
-		card: {
-			id: CARD_ID,
-			kind: KIND,
-			label: "copilot",
-			status: "running",
-			startedAt: at,
-			detail: [],
-			hasEvents: true,
+	// The turn in hand and the few behind it. `current` is its own field rather than the last element
+	// of a list because there is ALWAYS one — a log exists only once a turn has started — and a
+	// current-turn-or-undefined would put a fallback in every reader of the pane and the footer.
+	export type Log = { past: readonly Turn[]; current: Turn };
+
+	// How many turns the transcript keeps. Enough to re-read what you asked two questions ago, which
+	// is what asking a second one used to cost; not a history, and never written down.
+	const TURN_CAP = 5;
+
+	const lastSeq = (turn: Turn): number =>
+		turn.events[turn.events.length - 1]?.seq ?? 0;
+
+	// Seqs run across the WHOLE log, not per turn: the event view reads every turn through the one
+	// card and asks for what comes after the last seq it saw, so a second turn restarting at 1 would
+	// read as already-seen. Numbering at read time instead would shift under the cap.
+	export const start = (log: Log | null, prompt: string, at: string): Log => ({
+		past: log ? [...log.past, log.current].slice(-(TURN_CAP - 1)) : [],
+		current: {
+			prompt,
+			card: {
+				id: CARD_ID,
+				kind: KIND,
+				label: "copilot",
+				status: "running",
+				startedAt: at,
+				detail: [],
+				hasEvents: true,
+			},
+			// The prompt opens its own transcript. It is what the event view draws the rule from, so
+			// every turn is introduced by the question it answers.
+			events: [
+				{
+					seq: log ? lastSeq(log.current) + 1 : 1,
+					at,
+					type: PROMPT_EVENT,
+					summary: prompt,
+				},
+			],
+			plan: [],
+			activity: "thinking",
+			tail: [],
 		},
-		events: [],
-		plan: [],
-		activity: "thinking",
-		tail: [],
 	});
 
 	// Event-view types: the glyph table there knows `text`, `tool_use`, `tool_result`, `error`;
@@ -71,15 +103,15 @@ export namespace CopilotLog {
 	const lastLine = (tail: readonly string[]): string =>
 		tail[tail.length - 1] ?? "";
 
-	export const apply = (log: Log, update: CopilotUpdate): Log => {
-		if (update.type === "plan") return { ...log, plan: update.entries };
+	const applyToTurn = (turn: Turn, update: CopilotUpdate): Turn => {
+		if (update.type === "plan") return { ...turn, plan: update.entries };
 		const events =
 			update.type === "done"
-				? log.events
+				? turn.events
 				: [
-						...log.events,
+						...turn.events,
 						{
-							seq: log.events.length + 1,
+							seq: lastSeq(turn) + 1,
 							at: update.at,
 							type: eventType(update.type),
 							summary: update.summary,
@@ -87,22 +119,22 @@ export namespace CopilotLog {
 					];
 		switch (update.type) {
 			case "tool_call":
-				return { ...log, events, activity: update.summary };
+				return { ...turn, events, activity: update.summary };
 			case "text":
 				return {
-					...log,
+					...turn,
 					events,
-					tail: [...log.tail, firstLine(update.summary)].slice(-TAIL_CAP),
+					tail: [...turn.tail, firstLine(update.summary)].slice(-TAIL_CAP),
 				};
 			case "thought":
 			case "tool_result":
-				return { ...log, events };
+				return { ...turn, events };
 			case "error":
 				return {
-					...log,
+					...turn,
 					events,
 					card: {
-						...log.card,
+						...turn.card,
 						status: "failed",
 						finishedAt: update.at,
 						error: update.summary,
@@ -110,16 +142,31 @@ export namespace CopilotLog {
 				};
 			case "done":
 				return {
-					...log,
-					card: { ...log.card, status: "completed", finishedAt: update.at },
+					...turn,
+					card: { ...turn.card, status: "completed", finishedAt: update.at },
 				};
 		}
 	};
 
+	// Every update belongs to the turn in flight; a finished one is never written to again (the
+	// reducer refuses a prompt while one runs, so there is only ever one).
+	export const apply = (log: Log, update: CopilotUpdate): Log => ({
+		...log,
+		current: applyToTurn(log.current, update),
+	});
+
 	// Cancel from the board side: the turn ends as failed with a reason, no event appended.
 	export const cancelled = (log: Log, at: string): Log => ({
 		...log,
-		card: { ...log.card, status: "failed", finishedAt: at, error: "cancelled" },
+		current: {
+			...log.current,
+			card: {
+				...log.current.card,
+				status: "failed",
+				finishedAt: at,
+				error: "cancelled",
+			},
+		},
 	});
 
 	// The copilot card leads the host's cards, so it is the first thing in the sidebar and the one
@@ -130,12 +177,16 @@ export namespace CopilotLog {
 	): BoardActivity.ActivityMap => {
 		if (!log) return activity;
 		const merged = BoardActivity.indexCards([
-			log.card,
+			log.current.card,
 			...activity.cards.filter((card) => card.id !== CARD_ID),
 		]);
 		merged.questionsByTaskId = activity.questionsByTaskId;
 		return merged;
 	};
+
+	// Every turn's events in the order they happened, each opened by its prompt.
+	const transcript = (log: Log): readonly ActivityEvent[] =>
+		[...log.past, log.current].flatMap((turn) => turn.events);
 
 	// The event view reads the copilot card through the same port as any host card. `read` is a
 	// getter, not a value, because the log changes while the view polls it.
@@ -146,42 +197,45 @@ export namespace CopilotLog {
 		load: async () => {
 			const cards = await host.load();
 			const log = read();
-			if (!cards.ok) return log ? ok([log.card]) : cards;
-			return ok(log ? [log.card, ...cards.value] : cards.value);
+			if (!cards.ok) return log ? ok([log.current.card]) : cards;
+			return ok(log ? [log.current.card, ...cards.value] : cards.value);
 		},
 		card: async (id) => {
 			if (id !== CARD_ID) return host.card ? host.card(id) : ok(null);
-			return ok(read()?.card ?? null);
+			return ok(read()?.current.card ?? null);
 		},
 		events: async (id, afterSeq) => {
 			if (id !== CARD_ID)
 				return host.events ? host.events(id, afterSeq) : ok([]);
-			return ok((read()?.events ?? []).filter((e) => e.seq > afterSeq));
+			const log = read();
+			return ok(log ? transcript(log).filter((e) => e.seq > afterSeq) : []);
 		},
 	});
 
 	export type Footer = { text: string; tone: "running" | "done" | "error" };
 
-	// The footer indicator: spinner + what the agent is doing while running; a check and the first
-	// line of its last prose on completion; the failure reason otherwise. A failure often carries
-	// the harness's whole stderr, and this is one row: the rest of it waits in the event view.
+	// The footer indicator, always about the CURRENT turn: spinner + what the agent is doing while
+	// running; a check and the first line of its last prose on completion; the failure reason
+	// otherwise. A failure often carries the harness's whole stderr, and this is one row: the rest of
+	// it waits in the event view.
 	export const footer = (log: Log, spinnerFrame: string): Footer => {
-		switch (log.card.status) {
+		const turn = log.current;
+		switch (turn.card.status) {
 			case "completed":
 				return {
-					text: `✓ copilot · ${lastLine(log.tail) || "done"}`,
+					text: `✓ copilot · ${lastLine(turn.tail) || "done"}`,
 					tone: "done",
 				};
 			case "failed":
 				return {
-					text: `✗ copilot · ${firstLine(log.card.error ?? "failed")}`,
+					text: `✗ copilot · ${firstLine(turn.card.error ?? "failed")}`,
 					tone: "error",
 				};
 			default: {
-				const done = progress(log.plan);
+				const done = progress(turn.plan);
 				const counted = done ? `${done.done}/${done.total} · ` : "";
 				return {
-					text: `${spinnerFrame} copilot · ${counted}${log.activity}`,
+					text: `${spinnerFrame} copilot · ${counted}${turn.activity}`,
 					tone: "running",
 				};
 			}

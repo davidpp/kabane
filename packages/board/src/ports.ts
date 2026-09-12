@@ -42,6 +42,11 @@ export type ActivityEvent = {
 	summary: string;
 };
 
+// The one event type the view draws as a rule rather than as a row: what was ASKED, which opens a
+// turn and so separates it from the one before. Shared vocabulary — a host whose cards run more than
+// one turn can emit it too.
+export const PROMPT_EVENT = "prompt";
+
 export interface ActivitySource {
 	// Everything worth showing, newest first, already capped by the host.
 	load(): Promise<Result<ActivityCard[]>>;

@@ -22,12 +22,12 @@ import { CopilotLog } from "./copilot-log";
 import { elapsed } from "./elapsed";
 import { copilotIndicatorFg } from "./footer";
 import { BoardNav } from "./nav";
+import { PlanBlock } from "./plan-block";
 import type { PlanEntry } from "./ports";
 
 const CHIP_COLOR = "#f97316";
 const MUTED_COLOR = "#6b7280";
 const TEXT_COLOR = "#e6edf3";
-const DONE_COLOR = "#22c55e";
 const PANE_BG = "#1c1c1c";
 
 // Enter sends — the common case by far. A newline is ⇧enter where the terminal reports it and
@@ -54,20 +54,6 @@ export const contextChip = (ctx: BoardContext.Context): string => {
 	return parts.length > 0 ? parts.join(" · ") : "no selection";
 };
 
-const planGlyph = (
-	status: PlanEntry["status"],
-	spinnerFrame: string,
-): { glyph: string; color: string } => {
-	switch (status) {
-		case "completed":
-			return { glyph: "✓", color: DONE_COLOR };
-		case "in_progress":
-			return { glyph: spinnerFrame, color: CHIP_COLOR };
-		case "pending":
-			return { glyph: "○", color: MUTED_COLOR };
-	}
-};
-
 // How many rows the panel may take: enough to be useful, never enough to bury the board. The input
 // keeps its floor even on a short terminal — a one-row input is what this pane exists to replace.
 const MIN_INPUT_ROWS = 3;
@@ -85,7 +71,9 @@ export type CopilotPaneProps = {
 	copilot: BoardNav.CopilotState;
 	chip: string;
 	focused: boolean;
-	// The live turn, for the plan and the agent's last lines. Null before the first prompt.
+	// The session's turns, for the plan and the agent's last lines. Always the CURRENT one: the
+	// panel is the live surface, and the turns behind it are read in the transcript. Null before the
+	// first prompt.
 	log: CopilotLog.Log | null;
 	spinnerFrame: string;
 	textareaRef: RefObject<TextareaRenderable | null>;
@@ -105,7 +93,7 @@ export const CopilotPane = ({
 }: CopilotPaneProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
 	const running = copilot.turn === "running";
-	const plan = log?.plan ?? [];
+	const plan = log?.current.plan ?? [];
 	const progress = plan.length > 0 ? planProgress(plan) : null;
 	const fit = (text: string, room: number): string =>
 		text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
@@ -122,13 +110,12 @@ export const CopilotPane = ({
 	}
 
 	const matches = BoardNav.matchingShortcuts(copilot.shortcuts, copilot.text);
-	const planRows = plan.slice(0, MAX_PLAN_ROWS);
-	const tail = (log?.tail ?? []).slice(-MAX_TAIL_ROWS);
+	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
 	const rows = inputRows(copilot.text, height);
 	// A shortcut palette replaces the plan while one is being picked: both at once is noise, and the
 	// human typing `/` is not watching the todo.
 	const showPalette = matches.length > 0;
-	const showPlan = !showPalette && planRows.length > 0;
+	const showPlan = !showPalette && plan.length > 0;
 	const showTail = !showPalette && tail.length > 0;
 	const state = running
 		? "running"
@@ -140,7 +127,9 @@ export const CopilotPane = ({
 	const right = [
 		progress,
 		state,
-		log ? elapsed(log.card.startedAt, log.card.finishedAt) : null,
+		log
+			? elapsed(log.current.card.startedAt, log.current.card.finishedAt)
+			: null,
 	]
 		.filter(Boolean)
 		.join(" · ");
@@ -159,26 +148,14 @@ export const CopilotPane = ({
 			title={fit(`copilot · ${chip}${right ? ` · ${right}` : ""}`, width - 4)}
 			titleColor={CHIP_COLOR}
 		>
-			{showPlan
-				? planRows.map((entry) => {
-						const { glyph, color } = planGlyph(entry.status, spinnerFrame);
-						return (
-							// The entry's text is its identity — only its status moves.
-							<text key={entry.content} bg={PANE_BG} fg={color}>
-								{glyph}{" "}
-								<span
-									fg={entry.status === "pending" ? MUTED_COLOR : TEXT_COLOR}
-								>
-									{fit(entry.content, width - 8)}
-								</span>
-							</text>
-						);
-					})
-				: null}
-			{showPlan && plan.length > MAX_PLAN_ROWS ? (
-				<text bg={PANE_BG} fg={MUTED_COLOR}>
-					…{plan.length - MAX_PLAN_ROWS} more
-				</text>
+			{showPlan ? (
+				<PlanBlock
+					plan={plan}
+					spinnerFrame={spinnerFrame}
+					width={width - 8}
+					maxRows={MAX_PLAN_ROWS}
+					bg={PANE_BG}
+				/>
 			) : null}
 			{showTail
 				? tail.map((line, index) => (
@@ -273,8 +250,8 @@ const CollapsedRow = ({
 // finished one keeps the footer's wording, which the tests already pin.
 const planLine = (log: CopilotLog.Log, status: CopilotLog.Footer): string => {
 	if (status.tone !== "running") return status.text;
-	const current = log.plan.find((entry) => entry.status === "in_progress");
-	return current
-		? status.text.replace(log.activity, current.content)
+	const entry = log.current.plan.find((e) => e.status === "in_progress");
+	return entry
+		? status.text.replace(log.current.activity, entry.content)
 		: status.text;
 };

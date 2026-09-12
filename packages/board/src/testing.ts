@@ -53,3 +53,28 @@ export const renderTest = async (
 	await setup.renderOnce();
 	return { ...setup, destroy: () => setup.renderer.destroy() };
 };
+
+const sleep = (ms: number): Promise<void> =>
+	new Promise((resolve) => setTimeout(resolve, ms));
+
+// Render frames until one satisfies `predicate`, and hand it back. Every async surface here — a poll,
+// a stream, a debounce — lands over several frames, so a bare renderOnce asserts on a stale screen.
+// Prefer a structurally unique predicate (a border, a rule) over a substring that also appears
+// elsewhere: a loose one matches the frame BEFORE the thing arrives and the keystrokes after it go to
+// whichever pane still had focus.
+export const pumpUntil = async (
+	renderOnce: () => Promise<void>,
+	captureCharFrame: () => string,
+	predicate: (frame: string) => boolean,
+): Promise<string> => {
+	let frame = "";
+	for (let pass = 0; pass < 100; pass++) {
+		await renderOnce();
+		frame = captureCharFrame();
+		if (predicate(frame)) return frame;
+		await sleep(20);
+	}
+	// Silently returning a stale frame here makes the real failure surface somewhere else entirely,
+	// two seconds later — say which wait gave up, and on what.
+	throw new Error(`pumpUntil gave up. Last frame:\n${frame}`);
+};
