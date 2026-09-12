@@ -751,13 +751,6 @@ export const App = ({
 			onContentChange={mirrorCopilotText}
 		/>
 	);
-	// The footer indicator: up from submit until the keypress after the turn ends (the reducer moves
-	// the turn back to idle), reading the live log for its text.
-	const copilotFooter =
-		copilotLog && state.copilot.turn !== "idle"
-			? CopilotLog.footer(copilotLog, spinnerFrame)
-			: null;
-
 	const showSidebar = state.sidebar.visible && termCols >= MIN_SIDEBAR_COLS;
 	const sbWidth = showSidebar ? sidebarWidth(termCols) : 0;
 	const sidebarEl = showSidebar ? (
@@ -815,10 +808,8 @@ export const App = ({
 						cards={taskCards.length > 0 ? taskCards : undefined}
 						comments={detailComments.length > 0 ? detailComments : undefined}
 						questions={shownActivity.questionsByTaskId.get(taskId)}
-						spinnerFrame={spinnerFrame}
 						scrollRef={scrollRef}
 						notice={notice}
-						copilot={copilotFooter}
 						focus={state.focus}
 						pane={copilotPane}
 						onCopy={() => dispatchMouse({ type: "copy" })}
@@ -848,7 +839,6 @@ export const App = ({
 					onSelect={(row) => dispatchMouse({ type: "select", row })}
 					onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}
 					notice={notice}
-					copilot={copilotFooter}
 					focus={state.focus}
 					pane={copilotPane}
 					sidebarWidth={sbWidth}

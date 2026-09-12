@@ -18,8 +18,9 @@ import { defaultTextareaKeyBindings } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode, RefObject } from "react";
 import type { BoardContext } from "./context";
-import type { CopilotLog } from "./copilot-log";
+import { CopilotLog } from "./copilot-log";
 import { elapsed } from "./elapsed";
+import { copilotIndicatorFg } from "./footer";
 import { BoardNav } from "./nav";
 import type { PlanEntry } from "./ports";
 
@@ -130,7 +131,7 @@ export const CopilotPane = ({
 	const showPlan = !showPalette && planRows.length > 0;
 	const showTail = !showPalette && tail.length > 0;
 	const state = running
-		? `${spinnerFrame} running`
+		? "running"
 		: copilot.turn === "error"
 			? "stopped"
 			: copilot.turn === "done"
@@ -246,23 +247,34 @@ const CollapsedRow = ({
 	spinnerFrame: string;
 	width: number;
 }): ReactNode => {
-	const idle = copilot.turn === "idle";
-	const text = idle
-		? `▸ A to ask the copilot${copilot.text ? ` · draft: ${copilot.text.split("\n")[0]}` : ""}`
-		: `${spinnerFrame} ${log ? planLine(log) : "copilot"}`;
+	const status =
+		copilot.turn === "idle" || !log
+			? null
+			: CopilotLog.footer(log, spinnerFrame);
+	const text =
+		log && status
+			? planLine(log, status)
+			: `▸ tab to ask the copilot${copilot.text ? ` · draft: ${copilot.text.split("\n")[0]}` : ""}`;
 	const line =
 		text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
 	return (
 		<box style={{ flexShrink: 0, height: 1, backgroundColor: PANE_BG }}>
-			<text bg={PANE_BG} fg={idle ? MUTED_COLOR : CHIP_COLOR}>
+			<text
+				bg={PANE_BG}
+				fg={status ? copilotIndicatorFg(status.tone) : MUTED_COLOR}
+			>
 				{line.padEnd(width)}
 			</text>
 		</box>
 	);
 };
 
-const planLine = (log: CopilotLog.Log): string => {
+// A running turn says which plan entry it is on — the agent's own words beat the tool name. A
+// finished one keeps the footer's wording, which the tests already pin.
+const planLine = (log: CopilotLog.Log, status: CopilotLog.Footer): string => {
+	if (status.tone !== "running") return status.text;
 	const current = log.plan.find((entry) => entry.status === "in_progress");
-	const progress = log.plan.length > 0 ? `${planProgress(log.plan)} · ` : "";
-	return `copilot · ${progress}${current?.content ?? log.activity}`;
+	return current
+		? status.text.replace(log.activity, current.content)
+		: status.text;
 };

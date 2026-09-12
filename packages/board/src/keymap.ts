@@ -10,7 +10,6 @@ export namespace Keymap {
 	// Board footer: the discoverable, app-specific actions. Everything else lives behind `?`.
 	export const BOARD_FOOTER: readonly Hint[] = [
 		{ key: "a", label: "dispatch" },
-		{ key: "A", label: "copilot" },
 		{ key: "/", label: "search" },
 		{ key: "d", label: "done" },
 		{ key: "v", label: "review" },
@@ -31,7 +30,6 @@ export namespace Keymap {
 
 	export const DETAIL_FOOTER: readonly Hint[] = [
 		{ key: "a", label: "dispatch" },
-		{ key: "A", label: "copilot" },
 		{ key: "v", label: "review" },
 		{ key: "y", label: "copy" },
 		{ key: "m", label: "mark" },

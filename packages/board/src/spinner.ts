@@ -18,8 +18,15 @@ export const SPINNER_FRAMES = [
 ] as const;
 const SPINNER_INTERVAL_MS = 80;
 
-// Static glyph for non-animated loop states (paused/pending/stale) so badge width stays constant.
+// A frozen spinner frame, for a running card whose host stopped updating it. Reading as a stuck
+// spinner is the point there: the thing really has stopped moving.
 export const SPINNER_IDLE: string = SPINNER_FRAMES[0];
+
+// Running, shown somewhere that is NOT the surface owning this fact. Motion is a claim that a thing
+// is alive, and one thing on four surfaces does not need claiming four times — exactly one animates,
+// the one that owns the detail, and every echo renders this. Deliberately not a spinner frame: a
+// frozen `⠋` beside a turning one reads as broken rather than as deliberate.
+export const RUNNING_ECHO = "●";
 
 export const useSpinnerFrame = (active: boolean): string => {
 	const [frame, setFrame] = useState(0);

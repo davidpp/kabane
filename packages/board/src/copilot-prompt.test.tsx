@@ -147,8 +147,9 @@ describe("the A prompt against a scripted copilot", () => {
 			await sleep(30);
 		};
 		try {
+			// The pane names its own key; the footer hints no longer repeat it.
 			expect(await until((f) => f.includes("Wire the copilot"))).toContain(
-				"A copilot",
+				"tab to ask the copilot",
 			);
 
 			// `A`: the pane opens into the panel — bordered, titled with the chip, and a real input
@@ -231,7 +232,7 @@ describe("the A prompt against a scripted copilot", () => {
 			frame = await until((f) => f.includes("Wire the copilot"));
 			// The keypress after the turn ended dismisses the indicator; hints are back, and the
 			// finished card stays in the sidebar.
-			expect(frame).toContain("A copilot");
+			expect(frame).toContain("tab to ask the copilot");
 			expect(frame).not.toContain("✗ copilot · cancelled");
 			expect(frame).toMatch(/✗ copilot · — · \d+s/);
 
