@@ -84,6 +84,13 @@ export const openContext = async (
 export type ScopeSelection = {
 	scopeUri: string;
 	label: string;
+	/**
+	 * The project directory the scope was detected in — what a subprocess that
+	 * should see the project gets as its cwd. Absent when `--scope` named the
+	 * scope: a URI on the command line says nothing about where that project is
+	 * checked out, or whether it is on this machine at all.
+	 */
+	root?: string;
 };
 
 /**
@@ -120,7 +127,7 @@ export const resolveScope = async (
 		legacyPin: jakeProjectPin,
 	});
 	return detected
-		? { scopeUri: detected.scopeUri, label: detected.name }
+		? { scopeUri: detected.scopeUri, label: detected.name, root: detected.root }
 		: undefined;
 };
 

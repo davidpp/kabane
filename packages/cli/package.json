@@ -18,6 +18,7 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
+		"@cabane/acp": "workspace:*",
 		"@cabane/board": "workspace:*",
 		"@cabane/core": "workspace:*",
 		"@cabane/sqlite": "workspace:*",

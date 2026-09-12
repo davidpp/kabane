@@ -383,9 +383,14 @@ export namespace AcpClient {
 	const collectStderr = (stream: ReadableStream<Uint8Array>) => {
 		let text = "";
 		const decoder = new TextDecoder();
+		// A reader loop rather than `for await`: the CLI compiles with the DOM lib,
+		// whose ReadableStream has no async iterator, and it imports this package.
 		void (async () => {
-			for await (const chunk of stream) {
-				text = (text + decoder.decode(chunk, { stream: true })).slice(
+			const reader = stream.getReader();
+			for (;;) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				text = (text + decoder.decode(value, { stream: true })).slice(
 					-STDERR_CAP,
 				);
 			}

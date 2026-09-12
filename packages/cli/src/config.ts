@@ -30,6 +30,21 @@ export const DbConfigSchema = z.object({
 });
 export type DbConfig = z.infer<typeof DbConfigSchema>;
 
+export const CopilotConfigSchema = z.object({
+	/**
+	 * Which harness the board's `A` prompt talks to. A plain string rather than
+	 * an enum: the list of harnesses lives in `@cabane/acp`, and importing it
+	 * here would put an ACP SDK load on the startup of every other command.
+	 * `cabane board` validates the value against the registry.
+	 */
+	harness: z.string().min(1).default("claude"),
+	/** Launch the harness with this command instead of the pinned adapter. */
+	command: z.string().min(1).optional(),
+	/** Arguments for `command`. The pinned adapter's own are not kept. */
+	args: z.array(z.string()).optional(),
+});
+export type CopilotConfig = z.infer<typeof CopilotConfigSchema>;
+
 export const ConfigSchema = z.object({
 	/** Actor URI stamped on what this device writes. */
 	actor: z.string().min(1),
@@ -37,6 +52,8 @@ export const ConfigSchema = z.object({
 	deviceId: z.string().min(1),
 	sync: SyncConfigSchema.default({}),
 	db: DbConfigSchema.optional(),
+	/** The board copilot. Absent is the default harness with its pinned adapter. */
+	copilot: CopilotConfigSchema.optional(),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 

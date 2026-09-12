@@ -46,6 +46,7 @@
         "cabane": "./index.ts",
       },
       "dependencies": {
+        "@cabane/acp": "workspace:*",
         "@cabane/board": "workspace:*",
         "@cabane/core": "workspace:*",
         "@cabane/sqlite": "workspace:*",
