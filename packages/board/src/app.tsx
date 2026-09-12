@@ -147,6 +147,8 @@ export const App = ({
 	);
 
 	// Refs mirror state for the keyboard/poll callbacks, which capture once but must read the latest.
+	// The key and mouse dispatchers also write it as soon as they reduce, so keys that land between
+	// renders (a paste into the prompt or the search box) each see the previous key's result.
 	const stateRef = useRef<BoardNav.BoardState | null>(null);
 	stateRef.current = state;
 	const scopeRef = useRef<BoardData.ScopeInfo | null>(null);
@@ -518,7 +520,10 @@ export const App = ({
 			const current = stateRef.current;
 			if (!current) return;
 			const { state: next, effect } = BoardNav.reduceMouse(current, action);
-			if (next !== current) setState(next);
+			if (next !== current) {
+				stateRef.current = next;
+				setState(next);
+			}
 			runEffect(next, effect);
 		},
 		[runEffect],
@@ -544,7 +549,10 @@ export const App = ({
 			return;
 		}
 		const { state: next, effect } = BoardNav.reduceKey(current, key);
-		if (next !== current) setState(next);
+		if (next !== current) {
+			stateRef.current = next;
+			setState(next);
+		}
 		runEffect(next, effect);
 	});
 
