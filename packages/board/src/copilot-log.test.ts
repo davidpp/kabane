@@ -74,7 +74,9 @@ describe("CopilotLog", () => {
 			[4, "text", "Two of these are stale.\nDetails…"],
 		]);
 		expect(log.activity).toBe("cabane_context");
-		expect(log.lastText).toBe("Two of these are stale.");
+		// One entry per message, its first line: recent headlines for the panel, and the footer
+		// flash still means "what it just said". The whole text is in the transcript.
+		expect(log.tail).toEqual(["Two of these are stale."]);
 		expect(log.card.status).toBe("running");
 	});
 

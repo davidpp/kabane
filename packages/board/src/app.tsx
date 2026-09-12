@@ -4,7 +4,7 @@
 // router) and runs the effect it returns. A 5s poll keeps the board fresh; selection survives every
 // reload by task id. The board starts scoped to the detected project — `esc` widens to all scopes.
 import { Planner, type Task, type TaskComment } from "@cabane/core";
-import type { ScrollBoxRenderable } from "@opentui/core";
+import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import {
 	useKeyboard,
 	useRenderer,
@@ -23,7 +23,7 @@ import { anyActivityRunning, Board } from "./board";
 import { Clipboard } from "./clipboard";
 import { BoardContext } from "./context";
 import { CopilotLog } from "./copilot-log";
-import { CopilotPrompt, contextChip } from "./copilot-prompt";
+import { CopilotPane, contextChip } from "./copilot-prompt";
 import { BoardData } from "./data";
 import { Detail } from "./detail";
 import { EventView } from "./event-view";
@@ -160,6 +160,9 @@ export const App = ({
 	const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 	// The board list's scrollbox; app.tsx keeps the selected row in view as j/k move it off-screen.
 	const listRef = useRef<ScrollBoxRenderable | null>(null);
+	// The copilot's input. It OWNS its text; the reducer only ever pushes a whole new value at it
+	// (a shortcut expansion, a recalled prompt, the clear after a send) through `copilotSetText`.
+	const inputRef = useRef<TextareaRenderable | null>(null);
 
 	const filtersFor = useCallback(
 		(s: BoardNav.BoardState): BoardData.BoardFilters => ({
@@ -431,6 +434,9 @@ export const App = ({
 				case "copilotCancel":
 					cancelCopilot();
 					return;
+				case "copilotSetText":
+					inputRef.current?.setText(effect.text);
+					return;
 				case "sidebarSelect": {
 					// Read activity from the ref to avoid stale closure over sidebarItems.
 					const currentItems = buildSidebarItems(activityRef.current);
@@ -544,6 +550,9 @@ export const App = ({
 			if (key.name === "q") renderer.destroy();
 			return;
 		}
+		// A focused textarea sees every key as well, global handler first. Claiming the keys the
+		// copilot reducer answers is what keeps `tab` and `esc` from also landing in the buffer.
+		if (BoardNav.copilotConsumes(current, key)) key.preventDefault();
 		const { state: next, effect } = BoardNav.reduceKey(current, key);
 		if (next !== current) {
 			stateRef.current = next;
@@ -551,6 +560,24 @@ export const App = ({
 		}
 		runEffect(next, effect);
 	});
+
+	// The textarea's own `submit` binding (enter). The reducer decides expand-versus-send so the
+	// `/name` rule lives in one place.
+	const submitCopilot = useCallback((): void => {
+		const current = stateRef.current;
+		if (!current) return;
+		const text = inputRef.current?.plainText ?? "";
+		const { state: next, effect } = BoardNav.submitCopilot(current, text);
+		stateRef.current = next;
+		setState(next);
+		runEffect(next, effect);
+	}, [runEffect]);
+
+	// Mirror the buffer into the reducer so `/` matching sees what the human sees.
+	const mirrorCopilotText = useCallback((): void => {
+		const text = inputRef.current?.plainText ?? "";
+		setState((prev) => (prev ? BoardNav.withCopilotText(prev, text) : prev));
+	}, []);
 
 	// Initial load: detect scope, then build the first state scoped to the project (if any).
 	// retryCount is in deps so `r` from the error screen re-triggers this effect.
@@ -708,13 +735,22 @@ export const App = ({
 			)}
 			overlay={state.dispatch}
 		/>
-	) : state.focus === "copilot" ? (
-		<CopilotPrompt
+	) : null;
+	// The pane is always mounted — one row unfocused, the panel when focused — so the copilot is a
+	// place on screen rather than something that appears when summoned.
+	const copilotPane = (
+		<CopilotPane
 			copilot={state.copilot}
 			// Briefs are fetched on submit; the chip only needs the ids the state already holds.
 			chip={contextChip(BoardContext.project(state, scope, new Map()))}
+			focused={state.focus === "copilot"}
+			log={copilotLog}
+			spinnerFrame={spinnerFrame}
+			textareaRef={inputRef}
+			onSubmit={submitCopilot}
+			onContentChange={mirrorCopilotText}
 		/>
-	) : null;
+	);
 	// The footer indicator: up from submit until the keypress after the turn ends (the reducer moves
 	// the turn back to idle), reading the live log for its text.
 	const copilotFooter =
@@ -752,6 +788,7 @@ export const App = ({
 								? "x cancel"
 								: undefined
 						}
+						pane={copilotPane}
 					/>
 				</box>
 				{sidebarEl}
@@ -783,6 +820,7 @@ export const App = ({
 						notice={notice}
 						copilot={copilotFooter}
 						focus={state.focus}
+						pane={copilotPane}
 						onCopy={() => dispatchMouse({ type: "copy" })}
 					/>
 				</box>
@@ -812,6 +850,7 @@ export const App = ({
 					notice={notice}
 					copilot={copilotFooter}
 					focus={state.focus}
+					pane={copilotPane}
 					sidebarWidth={sbWidth}
 				/>
 			</box>

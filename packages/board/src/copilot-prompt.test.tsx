@@ -28,10 +28,12 @@ const pumpUntil = async (
 	for (let pass = 0; pass < 100; pass++) {
 		await renderOnce();
 		frame = captureCharFrame();
-		if (predicate(frame)) break;
+		if (predicate(frame)) return frame;
 		await sleep(20);
 	}
-	return frame;
+	// Silently returning a stale frame here makes the real failure surface somewhere else entirely,
+	// two seconds later — say which wait gave up, and on what.
+	throw new Error(`pumpUntil gave up. Last frame:\n${frame}`);
 };
 
 const ctx = (
@@ -134,6 +136,9 @@ describe("the A prompt against a scripted copilot", () => {
 		const { renderOnce, captureCharFrame, mockInput, destroy } = setup;
 		const until = (p: (f: string) => boolean) =>
 			pumpUntil(renderOnce, captureCharFrame, p);
+		// The panel's own border — the collapsed row also carries a `▸`, so waiting on that races
+		// focus and sends the next keystrokes to the board instead of the input.
+		const untilPanel = () => until((f) => f.includes("┌─copilot"));
 		// A lone escape followed by another byte in the same tick reads as Alt+key to a terminal
 		// parser, so every escape here is rendered through before the next key is sent.
 		const pressEsc = async (): Promise<void> => {
@@ -146,23 +151,43 @@ describe("the A prompt against a scripted copilot", () => {
 				"A copilot",
 			);
 
-			// `A`: the window opens above the footer, chip on the left, cursor on the right.
+			// `A`: the pane opens into the panel — bordered, titled with the chip, and a real input
+			// several rows tall with a placeholder.
 			mockInput.pressKey("A");
-			let frame = await until((f) => f.includes("▸"));
-			expect(frame).toContain("next ▸ ▌");
+			let frame = await untilPanel();
+			expect(frame).toContain("copilot · JALL-1 · next");
+			expect(frame).toContain("ask about the selection · / for shortcuts");
+
+			// A half-written prompt survives leaving the pane and coming back — the point of making the
+			// copilot focusable rather than modal. The textarea unmounts with the panel, so the
+			// mirrored text is what seeds the new one.
+			await mockInput.typeText("/tr");
+			await until((f) => f.includes("/tr"));
+			await pressEsc();
+			await until((f) => !f.includes("┌─copilot"));
+			mockInput.pressKey("A");
+			frame = await untilPanel();
+			expect(frame).toContain("/tr");
 
 			// `/` shows the shortcut; tab expands it in place so the text is read before it is sent.
-			await mockInput.typeText("/tr");
-			frame = await until((f) => f.includes("/triage keep, someday or next"));
+			// The palette is a two-column list now — the name padded, then the hint.
+			frame = await until((f) => /\/triage\s+keep, someday or next/.test(f));
 			mockInput.pressTab();
-			frame = await until((f) => f.includes("Triage every issue in view.▌"));
-			expect(frame).not.toContain("/triage keep");
+			// The textarea takes the expansion imperatively, so its content lands a frame before the
+			// mirrored state that the palette is drawn from — wait for both to settle.
+			frame = await until(
+				(f) =>
+					f.includes("Triage every issue in view.") &&
+					!f.includes("keep, someday or next"),
+			);
+			expect(frame).toContain("Triage every issue in view.");
 
 			// Enter sends it; the window closes, the footer spins on the last tool, the sidebar lists
 			// the copilot card, and the board still answers keys (`?` opens help, esc closes it).
 			mockInput.pressEnter();
 			frame = await until((f) => f.includes("copilot · cabane_edit"));
-			expect(frame).not.toContain("▸");
+			// The panel collapses back to its one row; the board has the keyboard again.
+			expect(frame).not.toContain("┌─copilot");
 			expect(frame).toContain("copilot · cabane_edit");
 			// The sidebar card: glyph, label, no task, elapsed.
 			expect(frame).toMatch(/copilot · — · \d+s/);
@@ -189,8 +214,8 @@ describe("the A prompt against a scripted copilot", () => {
 			// `A` while running says so beside the chip and still takes keys; esc there stops the turn
 			// and the indicator turns to the error tone.
 			mockInput.pressKey("A");
-			frame = await until((f) => f.includes("a turn is running"));
-			expect(frame).toContain("next · a turn is running · esc stops it ▸");
+			frame = await untilPanel();
+			expect(frame).toContain("running");
 			await pressEsc();
 			frame = await until((f) => f.includes("✗ copilot · cancelled"));
 			expect(frame).not.toContain("a turn is running");
@@ -234,10 +259,13 @@ describe("the A prompt against a scripted copilot", () => {
 		const { renderOnce, captureCharFrame, mockInput, destroy } = setup;
 		const until = (p: (f: string) => boolean) =>
 			pumpUntil(renderOnce, captureCharFrame, p);
+		// The panel's own border — the collapsed row also carries a `▸`, so waiting on that races
+		// focus and sends the next keystrokes to the board instead of the input.
+		const untilPanel = () => until((f) => f.includes("┌─copilot"));
 		try {
 			await until((f) => f.includes("Wire the copilot"));
 			mockInput.pressKey(":");
-			await until((f) => f.includes("▸"));
+			await untilPanel();
 			await mockInput.typeText("is this still real?");
 			mockInput.pressEnter();
 			const frame = await until((f) => f.includes("✓ copilot"));

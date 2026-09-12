@@ -444,6 +444,9 @@ export type BoardProps = {
 	copilot?: CopilotLog.Footer | null;
 	// Which pane has the keyboard — the footer hints follow it.
 	focus?: BoardNav.Focus;
+	// The copilot pane, rendered between the content and the footer. A slot rather than a float: the
+	// panel has real height and must push the view up, not cover it.
+	pane?: ReactNode;
 	// When the sidebar is visible, its width is subtracted from the available row width for
 	// truncation — otherwise a badged row wraps into a second line.
 	sidebarWidth?: number;
@@ -465,6 +468,7 @@ export const Board = ({
 	notice,
 	copilot,
 	focus = "board",
+	pane,
 	sidebarWidth: sbWidth = 0,
 }: BoardProps): ReactNode => {
 	const { width } = useTerminalDimensions();
@@ -529,6 +533,7 @@ export const Board = ({
 					))
 				)}
 			</scrollbox>
+			{pane}
 			<Footer
 				notice={notice}
 				search={search}

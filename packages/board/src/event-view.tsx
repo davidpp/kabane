@@ -75,6 +75,9 @@ export type EventViewProps = {
 	notice?: BoardNav.Notice | null;
 	// Extra footer hints for this card (the copilot's `x cancel`); the scroll/back pair is always there.
 	extraHints?: string;
+	// The copilot pane, rendered between the content and the footer. A slot rather than a float: the
+	// panel has real height and must push the view up, not cover it.
+	pane?: ReactNode;
 };
 
 export const EventView = ({
@@ -85,6 +88,7 @@ export const EventView = ({
 	scrollRef,
 	notice,
 	extraHints,
+	pane,
 }: EventViewProps): ReactNode => {
 	const [card, setCard] = useState<ActivityCard | null>(initialCard ?? null);
 	const [events, setEvents] = useState<ActivityEvent[]>([]);
@@ -180,6 +184,7 @@ export const EventView = ({
 					</box>
 				) : null}
 			</scrollbox>
+			{pane}
 			{notice ? (
 				<StatusBar
 					text={notice.text}

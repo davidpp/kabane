@@ -25,8 +25,8 @@ export namespace CopilotLog {
 		plan: readonly PlanEntry[];
 		// What the footer says while running: the last tool call, else "thinking".
 		activity: string;
-		// The agent's last prose line, for the `✓ copilot · …` flash on `done`.
-		lastText: string;
+		// The agent's last prose lines, newest last: the panel shows a few, the footer flash the last.
+		tail: readonly string[];
 	};
 
 	export const start = (at: string): Log => ({
@@ -42,7 +42,7 @@ export namespace CopilotLog {
 		events: [],
 		plan: [],
 		activity: "thinking",
-		lastText: "",
+		tail: [],
 	});
 
 	// Event-view types: the glyph table there knows `text`, `tool_use`, `tool_result`, `error`;
@@ -64,6 +64,13 @@ export namespace CopilotLog {
 
 	const firstLine = (text: string): string => text.split("\n")[0] ?? "";
 
+	// How many of the agent's prose lines the log keeps. The transcript has all of them; this is the
+	// glance surface's tail.
+	const TAIL_CAP = 6;
+
+	const lastLine = (tail: readonly string[]): string =>
+		tail[tail.length - 1] ?? "";
+
 	export const apply = (log: Log, update: CopilotUpdate): Log => {
 		if (update.type === "plan") return { ...log, plan: update.entries };
 		const events =
@@ -82,7 +89,11 @@ export namespace CopilotLog {
 			case "tool_call":
 				return { ...log, events, activity: update.summary };
 			case "text":
-				return { ...log, events, lastText: firstLine(update.summary) };
+				return {
+					...log,
+					events,
+					tail: [...log.tail, firstLine(update.summary)].slice(-TAIL_CAP),
+				};
 			case "thought":
 			case "tool_result":
 				return { ...log, events };
@@ -158,7 +169,7 @@ export namespace CopilotLog {
 		switch (log.card.status) {
 			case "completed":
 				return {
-					text: `✓ copilot · ${log.lastText || "done"}`,
+					text: `✓ copilot · ${lastLine(log.tail) || "done"}`,
 					tone: "done",
 				};
 			case "failed":

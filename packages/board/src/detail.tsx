@@ -162,6 +162,9 @@ export type DetailProps = {
 	copilot?: CopilotLog.Footer | null;
 	// Which pane has the keyboard — the footer hints follow it.
 	focus?: BoardNav.Focus;
+	// The copilot pane, rendered between the content and the footer. A slot rather than a float: the
+	// panel has real height and must push the view up, not cover it.
+	pane?: ReactNode;
 	// Clicking the header [copy] affordance yanks the brief — same action as the `y` key.
 	onCopy?: () => void;
 };
@@ -186,6 +189,7 @@ export const Detail = ({
 	notice,
 	copilot,
 	focus = "board",
+	pane,
 	onCopy,
 }: DetailProps): ReactNode => {
 	const [brief, setBrief] = useState<BriefState>({ status: "loading" });
@@ -291,6 +295,7 @@ export const Detail = ({
 					<BriefBody content={stripTitleHeading(brief.content)} />
 				)}
 			</scrollbox>
+			{pane}
 			{notice ? (
 				<StatusBar
 					text={notice.undoable ? `${notice.text} · ⌃z undo` : notice.text}

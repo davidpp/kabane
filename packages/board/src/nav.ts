@@ -84,9 +84,13 @@ export namespace BoardNav {
 	export type CopilotTurn = "idle" | "running" | "done" | "error";
 
 	export type CopilotState = {
-		// The prompt buffer. Never closed: the pane is always mounted, and the text survives tabbing
-		// away to mark rows and back, which is the whole point of a focusable copilot.
+		// A MIRROR of the textarea's buffer, not the source of truth — app.tsx pushes it here on every
+		// content change so `/` matching and the collapsed row's draft hint see what the human sees.
 		text: string;
+		// Prompts sent this session, oldest first; `up` in an empty buffer walks back through them.
+		history: readonly string[];
+		// How far back the walk is, counted from the END so a new prompt does not shift it. 0 = out.
+		historyAt: number;
 		turn: CopilotTurn;
 		// From the host's `Copilot.shortcuts()`, set once by app.tsx; the `/` expansions.
 		shortcuts: readonly CopilotShortcut[];
@@ -204,6 +208,8 @@ export namespace BoardNav {
 		// The window just opened; app.tsx closes it with a flash when no copilot is configured.
 		| { type: "copilotOpen" }
 		| { type: "copilotPrompt"; prompt: string }
+		// Push a whole new value into the textarea, which owns the buffer: expand, recall, clear.
+		| { type: "copilotSetText"; text: string }
 		| { type: "copilotCancel" };
 
 	// Mouse actions routed through the SAME pure reducer as keys, so selection stays single-sourced.
@@ -253,8 +259,13 @@ export namespace BoardNav {
 
 	const NO_MARKS: ReadonlySet<string> = new Set<string>();
 
+	// Prompts kept for `up` recall. A session buffer, not persistence.
+	const HISTORY_CAP = 50;
+
 	const COPILOT_IDLE: CopilotState = {
 		text: "",
+		history: [],
+		historyAt: 0,
 		turn: "idle",
 		shortcuts: [],
 	};
@@ -339,60 +350,118 @@ export namespace BoardNav {
 			? shortcuts.filter((s) => `/${s.name}`.startsWith(text))
 			: [];
 
-	// The copilot pane while focused: printable keys are prompt characters, so the board's own letter
-	// bindings (d, v, y, m…) are inert here by construction. `enter` on an exact `/name` expands the
-	// shortcut so the human reads what will be sent before sending it; `tab` completes a `/` being
-	// typed and otherwise hands the ring its turn, the way a shell splits that key. `esc` stops a
-	// `esc` leaves, stopping a running turn on the way out; `tab` leaves without touching it.
+	// The copilot pane while focused. The TEXTAREA owns the buffer and every editing key — printable
+	// characters, backspace, word motions, paste, undo — so this reducer never touches the text
+	// except to push a whole new value at it (a shortcut expansion, a recalled prompt, a clear after
+	// send), which it does through the `copilotSetText` effect.
+	//
+	// These are the keys it takes away from the textarea, and `copilotConsumes` below is the list
+	// app.tsx preventDefaults on so the textarea does not act on them too:
+	//   esc       leave, stopping a running turn on the way out (tab is the exit that does not)
+	//   tab       complete a `/` being typed, else hand the ring its turn, the way a shell splits it
+	//   up/down   walk this session's sent prompts while the buffer is empty
+	// `enter` is the textarea's own `submit` binding and arrives through submitCopilot, not here.
+	export const copilotConsumes = (
+		state: BoardState,
+		key: KeyInput,
+	): boolean => {
+		if (state.focus !== "copilot") return false;
+		if (key.name === "escape" || key.name === "tab") return true;
+		return (
+			(key.name === "up" || key.name === "down") &&
+			state.copilot.text === "" &&
+			state.copilot.history.length > 0
+		);
+	};
+
+	const setText = (
+		state: BoardState,
+		text: string,
+		over: Partial<CopilotState> = {},
+	): { state: BoardState; effect: Effect } => ({
+		state: withCopilot(state, { text, ...over }),
+		effect: { type: "copilotSetText", text },
+	});
+
+	// `up` walks back through what was sent this session, `down` forward and then out to an empty
+	// buffer. `historyAt` is an index from the END, so a new prompt arriving does not shift the walk.
+	const recall = (
+		state: BoardState,
+		delta: 1 | -1,
+	): { state: BoardState; effect: Effect } => {
+		const { history, historyAt } = state.copilot;
+		const next = Math.min(
+			history.length,
+			Math.max(0, (historyAt ?? 0) + delta),
+		);
+		if (next === 0) return setText(state, "", { historyAt: 0 });
+		return setText(state, history[history.length - next] ?? "", {
+			historyAt: next,
+		});
+	};
+
 	const reduceCopilotKey = (
 		state: BoardState,
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } => {
 		const { text, turn, shortcuts } = state.copilot;
-		const edit = (next: string): { state: BoardState; effect: Effect } => ({
-			state: withCopilot(state, { text: next }),
-			effect: NONE,
-		});
-		const matches = matchingShortcuts(shortcuts, text);
 		switch (key.name) {
 			case "escape":
-				// One rule: leave, stopping a running turn on the way out — what the modal window did.
-				// `tab` is the exit that leaves the turn alone.
 				return {
 					state: { ...state, focus: "board" },
 					effect: turn === "running" ? { type: "copilotCancel" } : NONE,
 				};
 			case "tab": {
-				const first = matches[0];
+				const first = matchingShortcuts(shortcuts, text)[0];
 				return first
-					? edit(first.template)
+					? setText(state, first.template)
 					: { state: cycleFocus(state, key.shift ? -1 : 1), effect: NONE };
 			}
-			case "return":
-			case "enter": {
-				// One turn at a time; the pane says so rather than queueing behind the human's back.
-				if (turn === "running") return { state, effect: NONE };
-				const exact = matches.find((s) => `/${s.name}` === text);
-				if (exact) return edit(exact.template);
-				if (text.trim() === "") return { state, effect: NONE };
-				// The board takes the keyboard back: having sent a command, the next thing the human
-				// does is watch it — `o` for the transcript, j/k to look elsewhere. `A` returns here.
-				return {
-					state: {
-						...withCopilot(state, { text: "", turn: "running" }),
-						focus: "board",
-					},
-					effect: { type: "copilotPrompt", prompt: text },
-				};
-			}
-			case "backspace":
-				return edit(text.slice(0, -1));
-			default: {
-				const char = printableChar(key);
-				return char ? edit(text + char) : { state, effect: NONE };
-			}
+			case "up":
+				return recall(state, 1);
+			case "down":
+				return recall(state, -1);
+			default:
+				return { state, effect: NONE };
 		}
 	};
+
+	// The textarea's `submit` binding, routed through the reducer so the `/name` expansion and the
+	// send are one decision. `text` is read off the textarea, which is what the human actually sees.
+	export const submitCopilot = (
+		state: BoardState,
+		text: string,
+	): { state: BoardState; effect: Effect } => {
+		// One turn at a time; the pane says so rather than queueing behind the human's back.
+		if (state.copilot.turn === "running") return { state, effect: NONE };
+		const exact = matchingShortcuts(state.copilot.shortcuts, text).find(
+			(s) => `/${s.name}` === text,
+		);
+		// Expanding puts the template in front of the human to read and edit before it is sent.
+		if (exact) return setText(state, exact.template);
+		if (text.trim() === "") return { state, effect: NONE };
+		return {
+			// The board takes the keyboard back: having sent a command, the next thing the human does
+			// is watch it — `o` for the transcript, j/k to look elsewhere. `A` returns here.
+			state: {
+				...withCopilot(state, {
+					text: "",
+					turn: "running",
+					history: [...state.copilot.history, text].slice(-HISTORY_CAP),
+					historyAt: 0,
+				}),
+				focus: "board",
+			},
+			effect: { type: "copilotPrompt", prompt: text },
+		};
+	};
+
+	// What app.tsx mirrors into the reducer as the human types, so `/` matching sees what they see.
+	export const withCopilotText = (
+		state: BoardState,
+		text: string,
+	): BoardState =>
+		state.copilot.text === text ? state : withCopilot(state, { text });
 
 	// The reverse entry for a state change: restore the task's pre-mutation state. Shared by the
 	// GTD shift (`[`/`]`), the direct jumps (`n`/`s`/`x`), and `d` — all reverse to `{ state }`.
