@@ -747,6 +747,9 @@ export const App = ({
 			focused={state.focus === "copilot"}
 			log={copilotLog}
 			spinnerFrame={spinnerFrame}
+			detailShownElsewhere={
+				state.view.type === "events" && state.view.cardId === CopilotLog.CARD_ID
+			}
 			textareaRef={inputRef}
 			onSubmit={submitCopilot}
 			onContentChange={mirrorCopilotText}

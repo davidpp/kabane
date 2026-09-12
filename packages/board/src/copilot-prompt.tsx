@@ -76,6 +76,10 @@ export type CopilotPaneProps = {
 	// first prompt.
 	log: CopilotLog.Log | null;
 	spinnerFrame: string;
+	// True when another surface on screen already owns this turn's detail — the transcript, open on
+	// the copilot's own card, which pins the same plan and heads with the same status. The pane then
+	// contributes nothing but its input: no status row, no plan, no second thing animating.
+	detailShownElsewhere?: boolean;
 	textareaRef: RefObject<TextareaRenderable | null>;
 	onSubmit: () => void;
 	onContentChange: () => void;
@@ -87,6 +91,7 @@ export const CopilotPane = ({
 	focused,
 	log,
 	spinnerFrame,
+	detailShownElsewhere = false,
 	textareaRef,
 	onSubmit,
 	onContentChange,
@@ -97,6 +102,9 @@ export const CopilotPane = ({
 	const progress = plan.length > 0 ? planProgress(plan) : null;
 	const fit = (text: string, room: number): string =>
 		text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
+
+	// Nothing left to add: the transcript is showing all of it.
+	if (!focused && detailShownElsewhere) return null;
 
 	if (!focused) {
 		return (
@@ -115,8 +123,8 @@ export const CopilotPane = ({
 	// A shortcut palette replaces the plan while one is being picked: both at once is noise, and the
 	// human typing `/` is not watching the todo.
 	const showPalette = matches.length > 0;
-	const showPlan = !showPalette && plan.length > 0;
-	const showTail = !showPalette && tail.length > 0;
+	const showPlan = !showPalette && !detailShownElsewhere && plan.length > 0;
+	const showTail = !showPalette && !detailShownElsewhere && tail.length > 0;
 	const state = running
 		? "running"
 		: copilot.turn === "error"
