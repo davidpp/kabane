@@ -79,16 +79,29 @@ interface Copilot {
 }
 ```
 
-`A` (or `:`) opens a one-line prompt above the footer, with a chip on the left saying what the
-prompt carries (`JCAB-31 · 3 marked · inbox`). `enter` sends the text with the loaded
-`BoardContext` to `run`; `esc` closes the window. Typing `/` lists `shortcuts()` (`/triage`,
-`/refine`, …); `tab`, or `enter` on the exact name, expands the shortcut's `template` into the
-window so what will be sent is read before it goes.
+The copilot is a PANE above the footer, always mounted, never a modal: one status row when it is
+not focused, a bordered panel when it is. `tab` and `⇧tab` cycle focus board → copilot → sidebar,
+skipping panes that are not visible; `A` (or `:`) jumps straight to it. Its title carries a chip
+saying what the prompt carries (`JCAB-31 · 3 marked · inbox`), and because the buffer outlives a
+focus change you can type half a prompt, tab to the board, mark three more rows, and tab back to
+find the chip updated under you.
 
-The turn runs in the background and the board stays fully interactive. The footer shows
-`⠹ copilot · <last tool call>` while it runs, `✓ copilot · <first line of the agent's last text>`
-when it ends, `✗ copilot · <reason>` on an error or a cancel; the finished indicator stays until
-the next keypress. `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
+The input is an OpenTUI `<textarea>`, so paste, word motions, `ctrl+w` and undo all work; `enter`
+sends, `⇧enter` and `ctrl+j` make a newline. The textarea owns the buffer and `copilot.text`
+mirrors it — `BoardNav.copilotConsumes` names the keys the reducer takes back from it, and app.tsx
+`preventDefault`s exactly those. `esc` leaves the pane, stopping a running turn on the way out;
+`tab` is the exit that leaves it running. Typing `/` lists `shortcuts()` (`/triage`, `/refine`, …)
+as a palette; `tab`, or `enter` on the exact name, expands the `template` so what will be sent is
+read before it goes. `↑` on an empty buffer walks back through this session's prompts.
+
+The turn runs in the background and the board stays fully interactive. Submitting hands the
+keyboard back to the board, because the next thing after sending a command is watching it. The
+pane's row shows `⠹ copilot · 2/5 · <last tool call>` while it runs — the count is the agent's own
+plan — `✓ copilot · <the agent's last line>` when it ends, `✗ copilot · <reason>` on an error or a
+cancel; the finished indicator stays until the next keypress, which also clears the `✦ ai` glyphs.
+
+Exactly one surface animates per fact: the pane owns the copilot, the sidebar owns host cards, and
+every echo of a running thing renders `●` rather than a frozen spinner frame (see `spinner.ts`). `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
 `error`, `done`); each `tool_result` reloads the board so the copilot's writes appear as they
 land. One turn at a time: a second `A` while one runs shows `a turn is running · esc to cancel it
 first`, and that `esc` calls `cancel`.

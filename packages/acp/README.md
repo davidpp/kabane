@@ -68,10 +68,10 @@ What comes back, as the port's `CopilotUpdate`:
 
 | Harness update | Port update |
 |---|---|
-| `text`, `thought` | `text`, `thought` |
+| `text`, `thought` | one `text` / `thought` per MESSAGE: ACP streams these as deltas, and a run of them is joined until something else happens |
 | `tool_call` | `tool_call` (plus `tool_result` when it already completed a write) |
 | `tool_call_update`, completed, on a `cabane_*` write tool | `tool_result` → the board reloads |
-| `plan` | dropped: the tool calls it describes arrive on their own |
+| `plan` | `plan` → the pane and the transcript show the agent's todo, the footer counts it |
 | `session/request_permission` | `permission` → the board asks, and `answerPermission` unblocks the turn |
 | `stop`, `error` | `done`, `error` |
 
