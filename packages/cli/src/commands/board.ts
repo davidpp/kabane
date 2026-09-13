@@ -34,13 +34,18 @@ export const copilotHarness = (
 
 const copilotOverrides = (ctx: Ctx): Harnesses.Overrides | undefined => {
 	const configured = ctx.config.copilot;
-	if (configured?.command === undefined && configured?.args === undefined)
+	if (
+		configured?.command === undefined &&
+		configured?.args === undefined &&
+		configured?.model === undefined
+	)
 		return undefined;
 	return {
 		...(configured.command !== undefined
 			? { command: configured.command }
 			: {}),
 		...(configured.args !== undefined ? { args: configured.args } : {}),
+		...(configured.model !== undefined ? { model: configured.model } : {}),
 	};
 };
 

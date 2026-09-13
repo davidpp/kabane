@@ -9,7 +9,30 @@ describe("Harnesses.resolve", () => {
 			"-y",
 			"@agentclientprotocol/claude-agent-acp@0.76.0",
 		]);
-		expect(launch.env).toEqual({ CABANE_SESSION: "1" });
+		expect(launch.env).toEqual({
+			CABANE_SESSION: "1",
+			ANTHROPIC_MODEL: "sonnet",
+		});
+	});
+
+	it("pins Claude to Sonnet, and a configured model replaces it", () => {
+		expect(Harnesses.resolve("claude").env.ANTHROPIC_MODEL).toBe("sonnet");
+		expect(Harnesses.resolve("claude", { model: "opus" }).env).toEqual({
+			CABANE_SESSION: "1",
+			ANTHROPIC_MODEL: "opus",
+		});
+	});
+
+	it("the model survives a command override — it belongs to the harness", () => {
+		const launch = Harnesses.resolve("claude", { command: "/opt/my-claude" });
+		expect(launch.args).toEqual([]);
+		expect(launch.env.ANTHROPIC_MODEL).toBe("sonnet");
+	});
+
+	it("a harness whose model variable the registry does not name gets none", () => {
+		expect(Harnesses.resolve("codex", { model: "gpt-5" }).env).toEqual({
+			CABANE_SESSION: "1",
+		});
 	});
 
 	it("an overridden command drops the registry args", () => {

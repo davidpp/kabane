@@ -60,7 +60,8 @@ Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicat
 
 Every write the copilot makes goes through `cabane mcp` into this device's database, stamped
 `cabane://actor/agent/<harness>`, and the board reloads as each one lands. The harness is
-Claude Code unless `copilot.harness` in `~/.cabane/config.json` says `codex` or `gemini`, and
+Claude Code on Sonnet unless `~/.cabane/config.json` says otherwise — `copilot.harness`
+picks `codex` or `gemini`, `copilot.model` runs the harness as something else — and
 `cabane board --copilot <harness>` overrides that for one run; it has to be installed and
 logged in on this machine ([`docs/deploy.md`](docs/deploy.md) part 4.7).
 

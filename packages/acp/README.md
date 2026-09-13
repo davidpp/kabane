@@ -15,9 +15,15 @@ imports the SDK.
   (`claude` → `npx -y @agentclientprotocol/claude-agent-acp@0.76.0`,
   `codex` → `npx -y @agentclientprotocol/codex-acp@1.11.0`, `gemini` → `gemini --acp`).
   `resolve(id, overrides?)` returns `{ command, args, env }`; the env always carries
-  `CABANE_SESSION=1` so user hooks can tell a board session from an interactive one.
-  `acceptsSystemPrompt(id)` is true only for Claude, the one adapter that reads
-  `_meta.systemPrompt` on `session/new`.
+  `CABANE_SESSION=1` so user hooks can tell a board session from an interactive one,
+  and for Claude `ANTHROPIC_MODEL=sonnet` — a board turn is triage against a planner,
+  not what the frontier models are for, and the adapter reads that variable ahead of
+  the human's own `settings.json`. `overrides.model` replaces it with any name the
+  harness takes (`opus`, a full id) and rides through a `command` override, the model
+  being a property of the harness rather than of how it is launched. The other two
+  adapters get none: their variables are not documented here, and a guess would pin a
+  model silently wrong. `acceptsSystemPrompt(id)` is true only for Claude, the one
+  adapter that reads `_meta.systemPrompt` on `session/new`.
 - `Stdio` — the two adapters between `Bun.spawn` and the SDK's `ndJsonStream`:
   `stdinSink(FileSink)` wraps Bun's piped stdin as a `WritableStream`, and `jsonLines()` drops
   the log lines harnesses interleave with JSON-RPC on stdout.

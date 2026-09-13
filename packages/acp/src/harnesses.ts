@@ -12,12 +12,28 @@ export namespace Harnesses {
 		env: Record<string, string>;
 	};
 
-	export type Overrides = { command?: string; args?: string[] };
+	export type Overrides = { command?: string; args?: string[]; model?: string };
 
-	const REGISTRY: Record<Id, { command: string; args: string[] }> = {
+	type Entry = {
+		command: string;
+		args: string[];
+		// The env var this harness reads its model from, and what we pin it to. Board work is
+		// triage and small edits against a planner, not the reasoning the frontier models are
+		// for, so the default is the cheap one rather than whatever the human left in their
+		// own settings — a config `model` overrides it with any name the harness accepts.
+		// Only Claude has the pair: the other two adapters' variables are not documented here,
+		// and guessing one would pin a model silently wrong.
+		model?: { env: string; pinned: string };
+	};
+
+	const REGISTRY: Record<Id, Entry> = {
 		claude: {
 			command: "npx",
 			args: ["-y", "@agentclientprotocol/claude-agent-acp@0.76.0"],
+			// The adapter reads ANTHROPIC_MODEL ahead of settings.json, and takes the picker's
+			// aliases as well as full ids. The alias is the point: it tracks whatever Sonnet is
+			// current instead of pinning a version that ages out of the list.
+			model: { env: "ANTHROPIC_MODEL", pinned: "sonnet" },
 		},
 		codex: {
 			command: "npx",
@@ -33,13 +49,17 @@ export namespace Harnesses {
 		(IDS as readonly string[]).includes(value);
 
 	// An overridden command drops the registry args too: they belong to the npx package,
-	// not to whatever binary the user pointed at.
+	// not to whatever binary the user pointed at. The model rides in the env instead, so it
+	// survives a command override — it is a property of the harness, not of the launcher.
 	export const resolve = (id: Id, overrides: Overrides = {}): Launch => {
 		const base = REGISTRY[id];
 		const command = overrides.command ?? base.command;
 		const args =
 			overrides.args ?? (overrides.command === undefined ? base.args : []);
-		return { command, args: [...args], env: { ...SESSION_ENV } };
+		const model = base.model
+			? { [base.model.env]: overrides.model ?? base.model.pinned }
+			: {};
+		return { command, args: [...args], env: { ...SESSION_ENV, ...model } };
 	};
 
 	// Only the Claude adapter reads `_meta.systemPrompt` on `session/new`; the others get
