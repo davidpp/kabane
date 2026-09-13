@@ -25,7 +25,7 @@ export namespace Keymap {
 		{ key: "enter", label: "send" },
 		{ key: "/", label: "shortcuts (↑↓ pick)" },
 		{ key: "tab", label: "next pane" },
-		{ key: "esc", label: "board (stops a running turn)" },
+		{ key: "esc", label: "board" },
 	];
 
 	export const DETAIL_FOOTER: readonly Hint[] = [
@@ -73,7 +73,8 @@ export namespace Keymap {
 				},
 				{
 					key: "o",
-					label: "event log: the copilot's turn, else the task's (detail)",
+					label:
+						"event log: the copilot's transcript, else the task's (detail)",
 				},
 				{ key: "y", label: "copy agent brief" },
 				{ key: "m", label: "mark / unmark (the copilot's working set)" },

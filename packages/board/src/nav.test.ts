@@ -44,6 +44,7 @@ const copilotState = (
 	history: [],
 	historyAt: 0,
 	turn: "idle",
+	hasLog: false,
 	shortcuts: [],
 	actor: null,
 	permission: null,
@@ -2282,17 +2283,25 @@ describe("copilot prompt (`A` / `:`)", () => {
 		expect(r.state.focus).toBe("board");
 	});
 
-	it("submitting nothing, or while a turn runs, does nothing at all", () => {
+	it("submitting nothing does nothing; while a turn runs it flashes and keeps the draft", () => {
 		const focused = open().state;
 		expect(BoardNav.submitCopilot(focused, "   ").effect.type).toBe("none");
 		const running = open(
 			ready({
-				copilot: copilotState({ turn: "running" }),
+				copilot: copilotState({ turn: "running", text: "second thing" }),
 			}),
 		).state;
 		const r = BoardNav.submitCopilot(running, "second thing");
-		expect(r.effect.type).toBe("none");
+		expect(r.effect).toEqual({
+			type: "notice",
+			notice: {
+				text: "a turn is running · o for its transcript, x there stops it",
+				tone: "success",
+			},
+		});
 		expect(r.state.copilot.turn).toBe("running");
+		// The draft survives, so enter once the turn ends sends what was typed during it.
+		expect(r.state.copilot.text).toBe("second thing");
 	});
 
 	it("/ matches shortcuts; tab and submit both expand the template into the textarea", () => {
@@ -2334,20 +2343,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 			{ name: "trim", hint: "shorten", template: "Trim it." },
 			{ name: "track", hint: "follow", template: "Track it." },
 		];
-		const focused = open(
-			ready({
-				copilot: {
-					text: "",
-					paletteAt: 0,
-					history: [],
-					historyAt: 0,
-					turn: "idle",
-					shortcuts,
-					actor: null,
-					permission: null,
-				},
-			}),
-		).state;
+		const focused = open(ready({ copilot: copilotState({ shortcuts }) })).state;
 		const typed = BoardNav.withCopilotText(focused, "/tr");
 		// All three match, so the arrows belong to the palette rather than the textarea's cursor.
 		expect(BoardNav.copilotConsumes(typed, { name: "down" })).toBe(true);
@@ -2432,18 +2428,22 @@ describe("copilot prompt (`A` / `:`)", () => {
 		expect(out.effect).toEqual({ type: "copilotSetText", text: "" });
 	});
 
-	it("esc stops a running turn on the way out; tab leaves it alone", () => {
+	it("esc and tab both leave the pane; neither stops the running turn", () => {
 		const running = open(
 			ready({
-				copilot: copilotState({ turn: "running" }),
+				copilot: copilotState({ turn: "running", hasLog: true }),
 			}),
 		).state;
+		// esc is the back key everywhere else on the board and destroys nothing anywhere; it used to
+		// cancel here, which made tabbing in to look at a turn and tabbing back out kill it.
 		const esc = BoardNav.reduceKey(running, { name: "escape" });
-		expect(esc.effect).toEqual({ type: "copilotCancel" });
+		expect(esc.effect.type).toBe("none");
 		expect(esc.state.focus).toBe("board");
+		expect(esc.state.copilot.turn).toBe("running");
 		const tabbed = BoardNav.reduceKey(running, { name: "tab" });
 		expect(tabbed.state.focus).toBe("sidebar");
 		expect(tabbed.effect.type).toBe("none");
+		expect(tabbed.state.copilot.turn).toBe("running");
 	});
 
 	it("withCopilotTurn moves the turn; a keypress after done or error returns it to idle and still acts", () => {
@@ -2467,10 +2467,12 @@ describe("copilot prompt (`A` / `:`)", () => {
 		expect(r.state.search).toEqual({ mode: "typing", query: "a" });
 	});
 
-	it("o opens the copilot's transcript while the indicator is up, from the board and the detail view", () => {
+	it("o opens the copilot's transcript whenever there is one, from the board and the detail view", () => {
 		const idle = BoardNav.reduceKey(ready(), char("o"));
 		expect(idle.state.view.type).toBe("board");
-		const running = ready({ copilot: copilotState({ turn: "running" }) });
+		const running = ready({
+			copilot: copilotState({ turn: "running", hasLog: true }),
+		});
 		const fromBoard = BoardNav.reduceKey(running, char("o"));
 		expect(fromBoard.state.view).toEqual({
 			type: "events",
@@ -2494,6 +2496,18 @@ describe("copilot prompt (`A` / `:`)", () => {
 		// Back where it came from.
 		const back = BoardNav.reduceKey(fromDetail.state, { name: "escape" });
 		expect(back.state.view).toEqual({ type: "detail", taskId: "a" });
+		// The INDICATOR clears on the next keypress; the log behind it does not. Guarding `o` on the
+		// indicator made the session's turns unreachable the moment anything else was pressed —
+		// which is precisely when someone goes back looking for what just ran.
+		const settled = ready({
+			copilot: copilotState({ turn: "idle", hasLog: true }),
+		});
+		expect(BoardNav.reduceKey(settled, char("o")).state.view).toEqual({
+			type: "events",
+			cardId: "copilot",
+			fromView: "board",
+			fromTaskId: undefined,
+		});
 	});
 
 	it("o in the detail view with no turn still opens the task's own events", () => {

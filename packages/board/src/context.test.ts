@@ -56,6 +56,7 @@ const state = (
 		history: [],
 		historyAt: 0,
 		turn: "idle",
+		hasLog: false,
 		shortcuts: [],
 		actor: null,
 		permission: null,

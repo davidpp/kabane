@@ -236,29 +236,43 @@ describe("the A prompt against a scripted copilot", () => {
 			frame = await until((f) => f.includes("Wire the copilot"));
 			expect(frame).toContain("copilot · cabane_edit");
 
-			// `A` while running says so beside the chip and still takes keys; esc there stops the turn
-			// and the indicator turns to the error tone.
+			// `A` while running says so beside the chip, and the input stops inviting a prompt it would
+			// refuse. esc leaves the pane and the turn runs on — tabbing in to look and backing out
+			// used to kill it, which is the trap this whole flow exists to not set.
 			mockInput.pressKey("A");
 			frame = await untilPanel();
 			expect(frame).toContain("running");
+			expect(frame).toContain("a turn is running · send when it ends");
 			await pressEsc();
-			frame = await until((f) => f.includes("✗ copilot · cancelled"));
-			expect(frame).not.toContain("a turn is running");
-			expect(seen.cancels).toBe(1);
+			frame = await until((f) => f.includes("Wire the copilot"));
+			expect(frame).toContain("copilot · cabane_edit");
+			expect(seen.cancels).toBe(0);
 
-			// `o` opens the transcript on the copilot card, back on esc.
+			// `x` on the transcript is the one key that stops a turn; the header turns error-toned and
+			// the hint that offered it goes away with the thing it acted on.
 			mockInput.pressKey("o");
 			frame = await until((f) => f.includes("⚙ cabane_edit"));
 			expect(frame).toContain("reading the selection");
-			expect(frame).toContain("copilot · — · failed");
+			expect(frame).toContain("x cancel");
+			mockInput.pressKey("x");
+			frame = await until((f) => f.includes("copilot · — · failed"));
 			expect(frame).not.toContain("x cancel");
+			expect(seen.cancels).toBe(1);
 			await pressEsc();
 			frame = await until((f) => f.includes("Wire the copilot"));
-			// The keypress after the turn ended dismisses the indicator; hints are back, and the
-			// finished card stays in the sidebar.
+			// The keypress that popped the view also dismissed the indicator; the row now names the
+			// key that reopens the transcript, and the finished card stays in the sidebar.
 			expect(frame).toContain("tab to ask the copilot");
+			expect(frame).toContain("o transcript");
 			expect(frame).not.toContain("✗ copilot · cancelled");
 			expect(frame).toMatch(/✗ copilot · — · \d+s/);
+
+			// The indicator is gone; the transcript is not. `o` still opens it.
+			mockInput.pressKey("o");
+			frame = await until((f) => f.includes("⚙ cabane_edit"));
+			expect(frame).toContain("copilot · — · failed");
+			await pressEsc();
+			frame = await until((f) => f.includes("Wire the copilot"));
 
 			// Late updates from the cancelled stream are dropped, not written over the closed log.
 			release();

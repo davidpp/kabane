@@ -89,8 +89,9 @@ find the chip updated under you.
 The input is an OpenTUI `<textarea>`, so paste, word motions, `ctrl+w` and undo all work; `enter`
 sends, `⇧enter` and `ctrl+j` make a newline. The textarea owns the buffer and `copilot.text`
 mirrors it — `BoardNav.copilotConsumes` names the keys the reducer takes back from it, and app.tsx
-`preventDefault`s exactly those. `esc` leaves the pane, stopping a running turn on the way out;
-`tab` is the exit that leaves it running. Typing `/` lists `shortcuts()` (`/triage`, `/refine`, …)
+`preventDefault`s exactly those. `esc` and `tab` are both plain exits — `esc` to the board, `tab`
+to the next pane — and neither touches a running turn: `esc` is the back key in every other view
+and destroys nothing anywhere on the board. Typing `/` lists `shortcuts()` (`/triage`, `/refine`, …)
 as a palette; `tab`, or `enter` on the exact name, expands the `template` so what will be sent is
 read before it goes. `↑` on an empty buffer walks back through this session's prompts.
 
@@ -103,14 +104,18 @@ cancel; the finished indicator stays until the next keypress, which also clears 
 Exactly one surface animates per fact: the pane owns the copilot, the sidebar owns host cards, and
 every echo of a running thing renders `●` rather than a frozen spinner frame (see `spinner.ts`). `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
 `error`, `done`); each `tool_result` reloads the board so the copilot's writes appear as they
-land. One turn at a time: a second `A` while one runs shows `a turn is running · esc to cancel it
-first`, and that `esc` calls `cancel`.
+land. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
+rather than inviting a prompt, and `enter` flashes `a turn is running · o for its transcript, x
+there stops it` instead of dropping what was typed — the draft keeps until the turn ends.
 
 The turn also appears as an in-memory activity card (`kind: "copilot"`) at the top of the
-sidebar. `o` (from the board or the detail view, while the indicator is up) or `enter` on the
-card opens the event view on its live transcript: prose as text lines, thoughts dimmed, tool
-calls with the usual glyphs; `x` there cancels a running turn, `esc` returns. Nothing about the
-turn is persisted; the next turn replaces the card.
+sidebar. `o` — from the board once the session has a transcript at all, from the detail view while
+the indicator is up, the task's own events otherwise — or `enter` on the card opens the event view
+on it: prose as text lines, thoughts dimmed, tool calls with the usual glyphs, the last few turns
+oldest-first each under the prompt that started it. `x` there is the ONE key that stops a running
+turn; `esc` returns. The pane's row names `o` wherever there is a transcript to open, because the
+board's footer is trimmed to the board's own keys. Nothing is persisted: the log is a session
+buffer capped at the last few turns and gone when the board closes.
 
 A harness that stops mid-turn to ask before doing something yields a `permission` update, and the
 turn is blocked until it is answered. The choice is shown on exactly one surface: the transcript

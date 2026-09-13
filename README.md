@@ -53,7 +53,8 @@ machine as you.
 
 `enter` sends it. The turn runs in the background, the board stays interactive, and the
 footer carries `⠹ copilot · <last tool call>` while it goes, then `✓ copilot · <the agent's
-last line>` until the next keypress. `o` opens the live transcript, `esc` cancels the turn.
+last line>` until the next keypress. `o` opens the transcript — the session's last few turns,
+each under the prompt that started it — and `x` there stops a running one.
 Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicates`,
 `/reparent`, `/check-plan`), which expand into the window so you read what will be sent.
 

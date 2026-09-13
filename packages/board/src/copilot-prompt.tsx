@@ -44,6 +44,10 @@ export const INPUT_KEY_BINDINGS = [
 ];
 
 export const PLACEHOLDER = "ask about the selection · / for shortcuts";
+// One turn at a time, so while one runs `submitCopilot` refuses to send and flashes instead. The
+// input must not go on inviting what it cannot do — and the draft IS kept, so this says when it
+// will go rather than that it is lost.
+export const RUNNING_PLACEHOLDER = "a turn is running · send when it ends";
 
 // The chip text: the selected task, the working-set size, the section — whichever apply, in that
 // order. Exported pure so the copy is assertable without a renderer.
@@ -224,7 +228,7 @@ export const CopilotPane = ({
 					// survives tabbing to the board to mark rows and tabbing back. Applied once, on
 					// creation — after that the textarea is the source of truth again.
 					initialValue={copilot.text}
-					placeholder={PLACEHOLDER}
+					placeholder={running ? RUNNING_PLACEHOLDER : PLACEHOLDER}
 					placeholderColor={MUTED_COLOR}
 					backgroundColor={PANE_BG}
 					focusedBackgroundColor={PANE_BG}
@@ -261,14 +265,7 @@ const CollapsedRow = ({
 		copilot.turn === "idle" || !log
 			? null
 			: CopilotLog.footer(log, spinnerFrame);
-	// This one row is where a board with no transcript open learns that something is waiting on it:
-	// the pane is the only copilot surface present in every view, and a question outranks whatever
-	// progress the row would otherwise report — the progress has stopped.
-	const text = copilot.permission
-		? permissionLine(copilot.permission)
-		: log && status
-			? planLine(log, status)
-			: `▸ tab to ask the copilot${copilot.text ? ` · draft: ${copilot.text.split("\n")[0]}` : ""}`;
+	const text = collapsedText(copilot, log, status);
 	const line =
 		text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
 	return (
@@ -281,6 +278,26 @@ const CollapsedRow = ({
 			</text>
 		</box>
 	);
+};
+
+// What the one row says, in priority order. This row is where a board with no transcript open
+// learns that something is waiting on it — the pane is the only copilot surface present in every
+// view — so a question outranks the progress it would otherwise report: the progress has stopped.
+//
+// `o transcript` rides along wherever there is one to open. The board's footer is deliberately
+// trimmed to the board's own keys, which left the key the human reaches for right after sending a
+// prompt named nowhere on screen; this row is the place that fits, because it is the one they are
+// already reading. A pending question is the exception — it has its own answer keys to name.
+const collapsedText = (
+	copilot: BoardNav.CopilotState,
+	log: CopilotLog.Log | null,
+	status: CopilotLog.Footer | null,
+): string => {
+	if (copilot.permission) return permissionLine(copilot.permission);
+	const transcript = log ? " · o transcript" : "";
+	if (log && status) return `${planLine(log, status)}${transcript}`;
+	const draft = copilot.text ? ` · draft: ${copilot.text.split("\n")[0]}` : "";
+	return `▸ tab to ask the copilot${draft}${transcript}`;
 };
 
 // A running turn says which plan entry it is on — the agent's own words beat the tool name. A

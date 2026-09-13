@@ -132,6 +132,8 @@ export const App = ({
 	const publishLog = useCallback((log: CopilotLog.Log): void => {
 		copilotLogRef.current = log;
 		setCopilotLog(log);
+		// The reducer holds no log, but `o` routes on whether one exists — so it gets the one bit.
+		setState((prev) => (prev ? BoardNav.withCopilotLog(prev, true) : prev));
 	}, []);
 	// Which turn the stream runner is on; a cancel or a new prompt moves it so a stale stream's late
 	// updates are dropped rather than written over the next turn's log.

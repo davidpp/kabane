@@ -99,6 +99,10 @@ export namespace BoardNav {
 		// How far back the walk is, counted from the END so a new prompt does not shift it. 0 = out.
 		historyAt: number;
 		turn: CopilotTurn;
+		// Whether this session has a transcript to open. Mirrored from app.tsx, which owns the log,
+		// because `o` has to keep working long after the turn that wrote it stopped showing an
+		// indicator — the log outlives the turn by several of them.
+		hasLog: boolean;
 		// From the host's `Copilot.shortcuts()`, set once by app.tsx; the `/` expansions.
 		shortcuts: readonly CopilotShortcut[];
 		// The actor uri the copilot's writes are stamped with, likewise set once. Null for a host
@@ -284,6 +288,7 @@ export namespace BoardNav {
 		history: [],
 		historyAt: 0,
 		turn: "idle",
+		hasLog: false,
 		shortcuts: [],
 		actor: null,
 		permission: null,
@@ -305,6 +310,13 @@ export namespace BoardNav {
 		state.copilot.turn === turn && state.copilot.permission === null
 			? state
 			: withCopilot(state, { turn, permission: null });
+
+	// Called by app.tsx whenever the log changes; the reducer keeps only the one bit it routes on.
+	export const withCopilotLog = (
+		state: BoardState,
+		hasLog: boolean,
+	): BoardState =>
+		state.copilot.hasLog === hasLog ? state : withCopilot(state, { hasLog });
 
 	// The harness asked something mid-turn, or its question has just been answered.
 	export const withCopilotPermission = (
@@ -408,7 +420,8 @@ export namespace BoardNav {
 	//
 	// These are the keys it takes away from the textarea, and `copilotConsumes` below is the list
 	// app.tsx preventDefaults on so the textarea does not act on them too:
-	//   esc       leave, stopping a running turn on the way out (tab is the exit that does not)
+	//   esc       leave the pane — it never stops the turn, the way esc destroys nothing anywhere
+	//             else on the board; `x` on the transcript is the one key that stops one
 	//   tab       complete a `/` being typed, else hand the ring its turn, the way a shell splits it
 	//   up/down   move the `/` palette's selection, or walk this session's sent prompts
 	// `enter` is the textarea's own `submit` binding and arrives through submitCopilot, not here.
@@ -488,13 +501,9 @@ export namespace BoardNav {
 		state: BoardState,
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } => {
-		const { turn } = state.copilot;
 		switch (key.name) {
 			case "escape":
-				return {
-					state: { ...state, focus: "board" },
-					effect: turn === "running" ? { type: "copilotCancel" } : NONE,
-				};
+				return { state: { ...state, focus: "board" }, effect: NONE };
 			case "tab": {
 				const picked = selectedShortcut(state);
 				return picked
@@ -516,8 +525,20 @@ export namespace BoardNav {
 		state: BoardState,
 		text: string,
 	): { state: BoardState; effect: Effect } => {
-		// One turn at a time; the pane says so rather than queueing behind the human's back.
-		if (state.copilot.turn === "running") return { state, effect: NONE };
+		// One turn at a time; the pane says so rather than queueing behind the human's back. Never
+		// silent, like every other no-op key: the draft stays in the buffer for when the turn ends,
+		// and the flash names the two keys that would otherwise have to be guessed at.
+		if (state.copilot.turn === "running")
+			return {
+				state,
+				effect: {
+					type: "notice",
+					notice: {
+						text: "a turn is running · o for its transcript, x there stops it",
+						tone: "success",
+					},
+				},
+			};
 		// Expanding puts the template in front of the human to read and edit before it is sent. Any
 		// open palette expands, not just an exact name: `/tr` + enter means the `/triage` under the
 		// cursor, and sending the agent the literal text `/tr` is never what was meant.
@@ -1546,10 +1567,12 @@ export namespace BoardNav {
 					rowOf(visibleRows(state), state.selectedId)?.task.id,
 				);
 			case "o":
-				// The board has no per-task events; `o` here is the copilot's transcript, when there is one.
-				return state.copilot.turn === "idle"
-					? { state, effect: NONE }
-					: openCopilotEvents(state);
+				// The board has no per-task events; `o` here is the copilot's transcript, when there is
+				// one. Guarded on the LOG, not the turn: the indicator clears on the next keypress, and
+				// guarding on that made the session's turns unreachable the moment you pressed anything.
+				return state.copilot.hasLog
+					? openCopilotEvents(state)
+					: { state, effect: NONE };
 			case "[":
 				return shiftState(state, -1);
 			case "]":
