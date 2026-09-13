@@ -6,8 +6,8 @@ import { type Command, type Ctx, resolveScope } from "../context";
 import { failure, success } from "../output";
 
 /**
- * The board's deps plus the copilot's teardown. The `Copilot` port is three
- * methods on purpose, so killing the harness process is the host's business:
+ * The board's deps plus the copilot's teardown. The `Copilot` port carries no
+ * `close` on purpose, so killing the harness process is the host's business:
  * `run` closes the handle when the board comes down.
  */
 export type BoardWiring = BoardDeps & { copilot: BoardCopilot.Handle };
@@ -34,13 +34,18 @@ export const copilotHarness = (
 
 const copilotOverrides = (ctx: Ctx): Harnesses.Overrides | undefined => {
 	const configured = ctx.config.copilot;
-	if (configured?.command === undefined && configured?.args === undefined)
+	if (
+		configured?.command === undefined &&
+		configured?.args === undefined &&
+		configured?.model === undefined
+	)
 		return undefined;
 	return {
 		...(configured.command !== undefined
 			? { command: configured.command }
 			: {}),
 		...(configured.args !== undefined ? { args: configured.args } : {}),
+		...(configured.model !== undefined ? { model: configured.model } : {}),
 	};
 };
 

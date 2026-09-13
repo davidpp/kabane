@@ -10,7 +10,6 @@ export namespace Keymap {
 	// Board footer: the discoverable, app-specific actions. Everything else lives behind `?`.
 	export const BOARD_FOOTER: readonly Hint[] = [
 		{ key: "a", label: "dispatch" },
-		{ key: "A", label: "copilot" },
 		{ key: "/", label: "search" },
 		{ key: "d", label: "done" },
 		{ key: "v", label: "review" },
@@ -20,9 +19,17 @@ export namespace Keymap {
 		{ key: "?", label: "help" },
 	];
 
+	// Shown while the copilot pane has focus: every board key is a prompt character there, so the
+	// board's own hints would be a lie.
+	export const COPILOT_FOOTER: readonly Hint[] = [
+		{ key: "enter", label: "send" },
+		{ key: "/", label: "shortcuts (↑↓ pick)" },
+		{ key: "tab", label: "next pane" },
+		{ key: "esc", label: "board" },
+	];
+
 	export const DETAIL_FOOTER: readonly Hint[] = [
 		{ key: "a", label: "dispatch" },
-		{ key: "A", label: "copilot" },
 		{ key: "v", label: "review" },
 		{ key: "y", label: "copy" },
 		{ key: "m", label: "mark" },
@@ -62,11 +69,12 @@ export namespace Keymap {
 				{ key: "a", label: "dispatch (host triggers)" },
 				{
 					key: "A or :",
-					label: "copilot prompt on the selection (/ for shortcuts)",
+					label: "focus the copilot on the selection (/ for shortcuts)",
 				},
 				{
 					key: "o",
-					label: "event log: the copilot's turn, else the task's (detail)",
+					label:
+						"event log: the copilot's transcript, else the task's (detail)",
 				},
 				{ key: "y", label: "copy agent brief" },
 				{ key: "m", label: "mark / unmark (the copilot's working set)" },
@@ -75,7 +83,7 @@ export namespace Keymap {
 				{ key: "i", label: "cycle kind filter" },
 				{ key: "f", label: "cycle status (open · done+cancelled · review)" },
 				{ key: "b", label: "toggle sidebar" },
-				{ key: "tab", label: "focus sidebar / board" },
+				{ key: "tab / ⇧tab", label: "focus board · copilot · sidebar" },
 				{ key: "r", label: "refresh" },
 				{ key: "q", label: "quit (detail: back)" },
 			],

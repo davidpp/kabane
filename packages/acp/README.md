@@ -15,9 +15,15 @@ imports the SDK.
   (`claude` → `npx -y @agentclientprotocol/claude-agent-acp@0.76.0`,
   `codex` → `npx -y @agentclientprotocol/codex-acp@1.11.0`, `gemini` → `gemini --acp`).
   `resolve(id, overrides?)` returns `{ command, args, env }`; the env always carries
-  `CABANE_SESSION=1` so user hooks can tell a board session from an interactive one.
-  `acceptsSystemPrompt(id)` is true only for Claude, the one adapter that reads
-  `_meta.systemPrompt` on `session/new`.
+  `CABANE_SESSION=1` so user hooks can tell a board session from an interactive one,
+  and for Claude `ANTHROPIC_MODEL=sonnet` — a board turn is triage against a planner,
+  not what the frontier models are for, and the adapter reads that variable ahead of
+  the human's own `settings.json`. `overrides.model` replaces it with any name the
+  harness takes (`opus`, a full id) and rides through a `command` override, the model
+  being a property of the harness rather than of how it is launched. The other two
+  adapters get none: their variables are not documented here, and a guess would pin a
+  model silently wrong. `acceptsSystemPrompt(id)` is true only for Claude, the one
+  adapter that reads `_meta.systemPrompt` on `session/new`.
 - `Stdio` — the two adapters between `Bun.spawn` and the SDK's `ndJsonStream`:
   `stdinSink(FileSink)` wraps Bun's piped stdin as a `WritableStream`, and `jsonLines()` drops
   the log lines harnesses interleave with JSON-RPC on stdout.
@@ -30,8 +36,12 @@ imports the SDK.
 - `CopilotInstructions` — the instruction block, the `/` shortcut templates, and
   `actorUri(harness)`, the `cabane://actor/agent/<harness>` every write of a session is
   stamped with.
+- `Mailbox` — a one-consumer queue whose `filled()` is already settled when something is
+  waiting. `BoardCopilot` drains it alongside the harness's stream, which is the only way a
+  permission request can reach the board while the agent is blocked on the answer.
 - `BoardCopilot` — `create(options)` returns the board's `Copilot` plus a `close()` for the
-  board's teardown to kill the harness with.
+  board's teardown to kill the harness with. It carries that same actor uri as the port's
+  `actor`, which is how the board glyphs the rows this session wrote.
 
 ## The copilot
 
@@ -64,10 +74,11 @@ What comes back, as the port's `CopilotUpdate`:
 
 | Harness update | Port update |
 |---|---|
-| `text`, `thought` | `text`, `thought` |
+| `text`, `thought` | one `text` / `thought` per MESSAGE: ACP streams these as deltas, and a run of them is joined until something else happens |
 | `tool_call` | `tool_call` (plus `tool_result` when it already completed a write) |
 | `tool_call_update`, completed, on a `cabane_*` write tool | `tool_result` → the board reloads |
-| `plan` | dropped: the tool calls it describes arrive on their own |
+| `plan` | `plan` → the pane and the transcript show the agent's todo, the footer counts it |
+| `session/request_permission` | `permission` → the board asks, and `answerPermission` unblocks the turn |
 | `stop`, `error` | `done`, `error` |
 
 A write is recognised by the tool call's **title**, never by its result: the two adapters
@@ -75,10 +86,20 @@ disagree on where MCP results land, so the title is scanned for a `cabane_*` wri
 (`add`, `edit`, `done`, `link`, `comment`, `log`, `contextAdd`, `contextRemove`), which also
 survives a namespaced `mcp__cabane__cabane_edit`. Reads trigger no reload.
 
-A permission request is declined, visibly: the board has no way to answer one yet, so the
-callback returns an error (the outcome the agent sees is `cancelled`) and the transcript gets
-an `error` line naming the tool. Nothing is ever auto-allowed. In practice the harness runs
-under the human's own permission mode, so a permissive harness never asks.
+A permission request is carried to the human, never answered here. `session/request_permission`
+becomes a `permission` update on the port and the ACP callback's promise is held open until the
+board calls `answerPermission(id, optionId | null)` — an option id selects it, `null` answers
+`cancelled`. Nothing is ever auto-allowed and there is no timeout; `cancel` and `close` let go of
+whatever is outstanding with a decline, so a turn nobody answered is still cancellable and the
+harness is never left holding a promise that cannot settle.
+
+That update cannot ride the harness's own stream, which is why `Mailbox` exists: the request
+arrives on its own JSON-RPC call and the agent is blocked on the answer, so no further session
+update can come until it has one. `run` drains the mailbox and the stream together, taking
+whichever settles first.
+
+In practice the harness runs under the human's own permission mode, so a permissive one
+(`--permission-mode auto`) never asks at all.
 
 ## Updates
 
@@ -99,7 +120,8 @@ Every turn ends with exactly one `stop` or one `error`.
 
 - Harness defaults are inherited whole: no `fs` or `terminal` capability is advertised, no
   permission policy is applied. A `session/request_permission` goes to the caller's
-  `onPermission`; a failed callback answers `cancelled`. Nothing is ever auto-answered.
+  `onPermission`; a failed callback answers `cancelled`. Nothing is ever auto-answered — cabane
+  has no permission policy of its own and does not want one.
 - Cancel before the agent has seen the turn (the iterator was not started yet) never sends
   `session/cancel`; the turn stops as `cancelled` locally.
 - Every SDK call that can reject comes back as a `Result` or an `error` update.

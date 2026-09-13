@@ -12,14 +12,13 @@ import {
 } from "@opentui/core";
 import { type ReactNode, type RefObject, useEffect, useState } from "react";
 import type { BoardActivity } from "./activity";
-import type { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
 import { ErrorBoundary } from "./error-boundary";
-import { copilotIndicatorFg, StatusBar } from "./footer";
+import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import type { ActivityCard, ActivityStatus } from "./ports";
-import { SPINNER_IDLE } from "./spinner";
+import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
 
 const HINT_COLOR = "#6b7280";
 const ERROR_COLOR = "#ef4444";
@@ -67,7 +66,7 @@ export const cardStatusLine = (
 	spinnerFrame?: string,
 ): string => {
 	if (card.status === "paused") return `⏸ ${card.label} · paused`;
-	const glyph = card.stale ? SPINNER_IDLE : (spinnerFrame ?? SPINNER_IDLE);
+	const glyph = card.stale ? SPINNER_IDLE : (spinnerFrame ?? RUNNING_ECHO);
 	return [`${glyph} ${card.label}`, ...card.detail].join(" · ");
 };
 
@@ -79,7 +78,7 @@ export const cardStatusGlyph = (
 	switch (status) {
 		case "running":
 		case "pending":
-			return spinnerFrame ?? SPINNER_IDLE;
+			return spinnerFrame ?? RUNNING_ECHO;
 		case "paused":
 			return "⏸";
 		case "completed":
@@ -158,8 +157,11 @@ export type DetailProps = {
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	// Transient footer feedback; replaces the hints in the footer for ~1.5s.
 	notice?: BoardNav.Notice | null;
-	// The copilot's turn indicator; shown in the footer under a notice, absent when idle.
-	copilot?: CopilotLog.Footer | null;
+	// Which pane has the keyboard — the footer hints follow it.
+	focus?: BoardNav.Focus;
+	// The copilot pane, rendered between the content and the footer. A slot rather than a float: the
+	// panel has real height and must push the view up, not cover it.
+	pane?: ReactNode;
 	// Clicking the header [copy] affordance yanks the brief — same action as the `y` key.
 	onCopy?: () => void;
 };
@@ -182,7 +184,8 @@ export const Detail = ({
 	spinnerFrame,
 	scrollRef,
 	notice,
-	copilot,
+	focus = "board",
+	pane,
 	onCopy,
 }: DetailProps): ReactNode => {
 	const [brief, setBrief] = useState<BriefState>({ status: "loading" });
@@ -214,7 +217,9 @@ export const Detail = ({
 	const detailHints = cards?.some((c) => c.hasEvents)
 		? [{ key: "o", label: "events" }, ...Keymap.DETAIL_FOOTER]
 		: Keymap.DETAIL_FOOTER;
-	const hints = Keymap.hintLine(detailHints);
+	const hints = Keymap.hintLine(
+		focus === "copilot" ? Keymap.COPILOT_FOOTER : detailHints,
+	);
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
@@ -286,13 +291,12 @@ export const Detail = ({
 					<BriefBody content={stripTitleHeading(brief.content)} />
 				)}
 			</scrollbox>
+			{pane}
 			{notice ? (
 				<StatusBar
 					text={notice.undoable ? `${notice.text} · ⌃z undo` : notice.text}
 					fg={notice.tone === "success" ? ACCENT_COLOR : ERROR_COLOR}
 				/>
-			) : copilot ? (
-				<StatusBar text={copilot.text} fg={copilotIndicatorFg(copilot.tone)} />
 			) : (
 				<StatusBar text={hints} fg={HINT_COLOR} />
 			)}

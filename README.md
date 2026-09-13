@@ -53,13 +53,15 @@ machine as you.
 
 `enter` sends it. The turn runs in the background, the board stays interactive, and the
 footer carries `⠹ copilot · <last tool call>` while it goes, then `✓ copilot · <the agent's
-last line>` until the next keypress. `o` opens the live transcript, `esc` cancels the turn.
+last line>` until the next keypress. `o` opens the transcript — the session's last few turns,
+each under the prompt that started it — and `x` there stops a running one.
 Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicates`,
 `/reparent`, `/check-plan`), which expand into the window so you read what will be sent.
 
 Every write the copilot makes goes through `cabane mcp` into this device's database, stamped
 `cabane://actor/agent/<harness>`, and the board reloads as each one lands. The harness is
-Claude Code unless `copilot.harness` in `~/.cabane/config.json` says `codex` or `gemini`, and
+Claude Code on Sonnet unless `~/.cabane/config.json` says otherwise — `copilot.harness`
+picks `codex` or `gemini`, `copilot.model` runs the harness as something else — and
 `cabane board --copilot <harness>` overrides that for one run; it has to be installed and
 logged in on this machine ([`docs/deploy.md`](docs/deploy.md) part 4.7).
 

@@ -5,10 +5,12 @@ import {
 	type AgentApp,
 	agent as agentApp,
 	methods,
+	type PlanEntry,
 	PROTOCOL_VERSION,
 	type ToolCallStatus,
 } from "@agentclientprotocol/sdk";
 import type { BoardContext } from "@cabane/board/context";
+import type { CopilotPermission, CopilotUpdate } from "@cabane/board/ports";
 import { err } from "@cabane/core";
 import { AcpClient } from "./client";
 import { BoardCopilot } from "./copilot";
@@ -21,13 +23,27 @@ type ToolStep = {
 	status?: ToolCallStatus;
 };
 
-type Seen = { newSession: unknown[]; prompts: unknown[] };
+type Seen = {
+	newSession: unknown[];
+	prompts: unknown[];
+	// The outcome each permission request came back with, as the agent saw it.
+	permissions: unknown[];
+};
+
+const fresh = (): Seen => ({ newSession: [], prompts: [], permissions: [] });
 
 // An agent that runs a scripted list of tool steps, then stops. `permission` makes it ask once
 // before the steps, so the decline path is observable.
 const scriptedAgent = (
 	seen: Seen,
-	options: { steps?: ToolStep[]; permission?: boolean; text?: string } = {},
+	options: {
+		steps?: ToolStep[];
+		permission?: boolean;
+		text?: string;
+		plans?: PlanEntry[][];
+		// Prose deltas and tool calls in order, to exercise the chunk buffering.
+		script?: ({ chunk: "text" | "thought"; text: string } | { tool: string })[];
+	} = {},
 ): AgentApp =>
 	agentApp({ name: "scripted" })
 		.onRequest(methods.agent.initialize, () => ({
@@ -45,17 +61,43 @@ const scriptedAgent = (
 					sessionId: c.params.sessionId,
 					update,
 				});
-			if (options.permission)
-				await c.client.request(methods.client.session.requestPermission, {
-					sessionId: c.params.sessionId,
-					toolCall: { toolCallId: "t0", title: "cabane_edit" },
-					options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
-				});
+			if (options.permission) {
+				const answer = await c.client.request(
+					methods.client.session.requestPermission,
+					{
+						sessionId: c.params.sessionId,
+						toolCall: { toolCallId: "t0", title: "cabane_edit" },
+						options: [
+							{ optionId: "allow", name: "Allow", kind: "allow_once" },
+							{ optionId: "reject", name: "Reject", kind: "reject_once" },
+						],
+					},
+				);
+				seen.permissions.push(answer.outcome);
+			}
 			if (options.text)
 				await notify({
 					sessionUpdate: "agent_message_chunk",
 					content: { type: "text", text: options.text },
 				});
+			for (const step of options.script ?? [])
+				await notify(
+					"chunk" in step
+						? {
+								sessionUpdate:
+									step.chunk === "text"
+										? "agent_message_chunk"
+										: "agent_thought_chunk",
+								content: { type: "text", text: step.text },
+							}
+						: {
+								sessionUpdate: "tool_call",
+								toolCallId: step.tool,
+								title: step.tool,
+							},
+				);
+			for (const entries of options.plans ?? [])
+				await notify({ sessionUpdate: "plan", entries });
 			for (const step of options.steps ?? [])
 				await notify(
 					step.kind === "call"
@@ -123,7 +165,7 @@ const textOf = (prompt: unknown, index: number): string => {
 
 describe("BoardCopilot", () => {
 	it("starts no harness until the first run", async () => {
-		const seen: Seen = { newSession: [], prompts: [] };
+		const seen = fresh();
 		let connects = 0;
 		const copilot = copilotOver(scriptedAgent(seen), {
 			connect: (onPermission) => {
@@ -141,7 +183,7 @@ describe("BoardCopilot", () => {
 	});
 
 	it("gives session/new the scope dir and cabane mcp as its one tool server", async () => {
-		const seen: Seen = { newSession: [], prompts: [] };
+		const seen = fresh();
 		const copilot = copilotOver(scriptedAgent(seen));
 		await collect(copilot.run("go", context()));
 		expect(seen.newSession[0]).toEqual({
@@ -166,7 +208,7 @@ describe("BoardCopilot", () => {
 	});
 
 	it("omits --scope when the board is open on every scope", async () => {
-		const seen: Seen = { newSession: [], prompts: [] };
+		const seen = fresh();
 		const copilot = copilotOver(scriptedAgent(seen), { scopeUri: undefined });
 		await collect(copilot.run("go", context({ scopeUri: undefined })));
 		const server = (seen.newSession[0] as { mcpServers: { args: string[] }[] })
@@ -180,7 +222,7 @@ describe("BoardCopilot", () => {
 	});
 
 	it("carries the instruction block on the first prompt only, the context block on every one", async () => {
-		const seen: Seen = { newSession: [], prompts: [] };
+		const seen = fresh();
 		const copilot = copilotOver(scriptedAgent(seen));
 		await collect(
 			copilot.run("verify which of these are still real todos", context()),
@@ -203,7 +245,7 @@ describe("BoardCopilot", () => {
 	});
 
 	it("a completed cabane write yields tool_result, a read does not", async () => {
-		const seen: Seen = { newSession: [], prompts: [] };
+		const seen = fresh();
 		const copilot = copilotOver(
 			scriptedAgent(seen, {
 				steps: [
@@ -233,7 +275,7 @@ describe("BoardCopilot", () => {
 	});
 
 	it("recognises a write through a namespaced title and a call that completes in one step", async () => {
-		const seen: Seen = { newSession: [], prompts: [] };
+		const seen = fresh();
 		const copilot = copilotOver(
 			scriptedAgent(seen, {
 				steps: [
@@ -257,28 +299,176 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("declines a permission request and says so in the transcript", async () => {
-		const seen: Seen = { newSession: [], prompts: [] };
+	it("joins a run of prose deltas into one update, and keeps runs either side of a tool call apart", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				script: [
+					// Exactly the shape the codex harness sends: split mid-word.
+					{ chunk: "text", text: "I" },
+					{ chunk: "text", text: "'ll read" },
+					{ chunk: "text", text: " the iss" },
+					{ chunk: "text", text: "ue's context first." },
+					{ tool: "cabane_context" },
+					{ chunk: "text", text: "Two are stale." },
+				],
+			}),
+		);
+		const updates = await collect(copilot.run("check", context()));
+		expect(types(updates)).toEqual(["text", "tool_call", "text", "done"]);
+		const [first, second] = updates.filter((u) => u.type === "text");
+		expect(first?.summary).toBe("I'll read the issue's context first.");
+		// The run that follows the tool call is its own message, not a continuation.
+		expect(second?.summary).toBe("Two are stale.");
+		copilot.close();
+	});
+
+	it("a thought run and a message run stay separate updates", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				script: [
+					{ chunk: "thought", text: "weighing " },
+					{ chunk: "thought", text: "the options" },
+					{ chunk: "text", text: "Here is " },
+					{ chunk: "text", text: "what I found." },
+				],
+			}),
+		);
+		const updates = await collect(copilot.run("check", context()));
+		expect(types(updates)).toEqual(["thought", "text", "done"]);
+		expect(updates[0]?.summary).toBe("weighing the options");
+		expect(updates[1]?.summary).toBe("Here is what I found.");
+		copilot.close();
+	});
+
+	it("streams the harness's plan through, entry for entry", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				plans: [
+					[
+						{
+							content: "read the issue",
+							priority: "high",
+							status: "in_progress",
+						},
+						{ content: "split it", priority: "medium", status: "pending" },
+					],
+					[
+						{
+							content: "read the issue",
+							priority: "high",
+							status: "completed",
+						},
+						{ content: "split it", priority: "medium", status: "in_progress" },
+					],
+				],
+			}),
+		);
+		const updates = await collect(copilot.run("split this", context()));
+		expect(types(updates)).toEqual(["plan", "plan", "done"]);
+		const [first, second] = updates.filter((u) => u.type === "plan");
+		expect(first).toMatchObject({
+			entries: [
+				{ content: "read the issue", status: "in_progress" },
+				{ content: "split it", status: "pending" },
+			],
+		});
+		expect(second).toMatchObject({
+			entries: [
+				{ content: "read the issue", status: "completed" },
+				{ content: "split it", status: "in_progress" },
+			],
+		});
+		copilot.close();
+	});
+
+	// The turn is BLOCKED from the request until the answer, so these drive the stream by hand:
+	// nothing else can arrive on it in the meantime, which is the whole reason the request has to
+	// reach the board out of band.
+	const answering = async (
+		copilot: BoardCopilot.Handle,
+		answer: (request: CopilotPermission) => void | Promise<void>,
+	): Promise<CopilotUpdate[]> => {
+		const updates: CopilotUpdate[] = [];
+		for await (const update of copilot.run("edit it", context())) {
+			updates.push(update);
+			if (update.type === "permission") await answer(update.request);
+		}
+		return updates;
+	};
+
+	it("carries a permission request to the board and lets it pick an option", async () => {
+		const seen = fresh();
 		const copilot = copilotOver(
 			scriptedAgent(seen, { permission: true, text: "carrying on" }),
 		);
-		const updates = await collect(copilot.run("edit it", context()));
-		const declined = updates.find(
-			(u) => u.type === "error" && u.summary?.includes("permission requested"),
+		const updates = await answering(copilot, (request) =>
+			copilot.answerPermission(request.id, "allow"),
 		);
-		expect(declined?.summary).toContain("cabane_edit");
-		expect(declined?.summary).toContain("declined");
-		expect(types(updates)).toContain("text");
+		expect(types(updates)).toEqual(["permission", "text", "done"]);
+		expect(updates[0]).toMatchObject({
+			request: {
+				id: "t0",
+				title: "cabane_edit",
+				options: [
+					{ id: "allow", label: "Allow" },
+					{ id: "reject", label: "Reject" },
+				],
+			},
+		});
+		expect(seen.permissions).toEqual([
+			{ outcome: "selected", optionId: "allow" },
+		]);
+		copilot.close();
+	});
+
+	it("a decline reaches the harness as cancelled, and the turn carries on", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, { permission: true, text: "carrying on" }),
+		);
+		const updates = await answering(copilot, (request) =>
+			copilot.answerPermission(request.id, null),
+		);
+		expect(types(updates)).toEqual(["permission", "text", "done"]);
+		expect(seen.permissions).toEqual([{ outcome: "cancelled" }]);
+		copilot.close();
+	});
+
+	it("cancel lets go of a request nobody answered, so the harness is not left waiting", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, { permission: true, text: "carrying on" }),
+		);
+		const updates = await answering(copilot, () => copilot.cancel());
+		expect(types(updates)).toContain("permission");
+		expect(seen.permissions).toEqual([{ outcome: "cancelled" }]);
+		copilot.close();
+	});
+
+	it("answering a request that is no longer outstanding changes nothing", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, { permission: true, text: "carrying on" }),
+		);
+		const updates = await answering(copilot, (request) => {
+			copilot.answerPermission(request.id, "allow");
+			copilot.answerPermission(request.id, "reject");
+			copilot.answerPermission("never-asked", "allow");
+		});
+		expect(types(updates)).toEqual(["permission", "text", "done"]);
+		expect(seen.permissions).toEqual([
+			{ outcome: "selected", optionId: "allow" },
+		]);
 		copilot.close();
 	});
 
 	it("a harness that will not start ends the turn as one error update", async () => {
-		const copilot = copilotOver(
-			scriptedAgent({ newSession: [], prompts: [] }),
-			{
-				connect: async () => err(new Error("npx: command not found")),
-			},
-		);
+		const copilot = copilotOver(scriptedAgent(fresh()), {
+			connect: async () => err(new Error("npx: command not found")),
+		});
 		const updates = await collect(copilot.run("go", context()));
 		expect(updates).toHaveLength(1);
 		expect(updates[0]?.type).toBe("error");
@@ -287,7 +477,7 @@ describe("BoardCopilot", () => {
 	});
 
 	it("cancel before any turn is a no-op, and shortcuts are stable names with templates", async () => {
-		const copilot = copilotOver(scriptedAgent({ newSession: [], prompts: [] }));
+		const copilot = copilotOver(scriptedAgent(fresh()));
 		await copilot.cancel();
 		const names = copilot.shortcuts().map((s) => s.name);
 		expect(names).toEqual([

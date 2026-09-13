@@ -9,12 +9,15 @@ import { BoardContext } from "@cabane/board/context";
 import type {
 	Copilot,
 	CopilotShortcut,
+	CopilotStep,
 	CopilotUpdate,
+	PlanEntry,
 } from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
 import { AcpClient } from "./client";
 import type { Harnesses } from "./harnesses";
 import { CopilotInstructions } from "./instructions";
+import { Mailbox } from "./mailbox";
 
 export namespace BoardCopilot {
 	export type Options = {
@@ -65,6 +68,9 @@ export namespace BoardCopilot {
 		title: string,
 	): boolean => status === "completed" && namesWrite(title);
 
+	// The two update kinds ACP streams as DELTAS rather than as whole values.
+	type Prose = Extract<AcpClient.Update, { type: "text" | "thought" }>;
+
 	const defaultBin = (): string => {
 		const entry = process.argv[1];
 		return entry ? resolve(entry) : "cabane";
@@ -76,15 +82,40 @@ export namespace BoardCopilot {
 		let session: AcpClient.Session | null = null;
 		// The instruction block rides the first prompt of the session and only that one.
 		let instructed = false;
-		// Permission requests answered while a turn streams: pushed here by the callback, drained
-		// into the same stream so the human sees in the transcript what was asked and declined.
-		const notices: string[] = [];
+		// Updates that do not come off the harness's stream — today only permission requests, which
+		// arrive on their own call while that stream is necessarily quiet.
+		const outbox = Mailbox.create<CopilotUpdate>();
+		// Requests the harness is blocked on, by tool call id, each holding the resolver of the
+		// promise the ACP callback is awaiting. Answering one is what lets the turn continue.
+		const blocked = new Map<string, (answer: Result<string>) => void>();
 
-		const onPermission: AcpClient.OnPermission = async (request) => {
-			notices.push(
-				`permission requested · ${request.title} · declined: the board cannot answer permission requests yet`,
+		// Never answers by itself: it puts the question on the stream and waits. A request nobody
+		// answers keeps the turn waiting for as long as the human leaves it, which is what `cancel`
+		// is for — a board that guessed here would be deciding on their behalf.
+		const onPermission: AcpClient.OnPermission = (request) => {
+			outbox.push({
+				type: "permission",
+				request: {
+					id: request.toolCallId,
+					title: request.title,
+					options: request.options.map((option) => ({
+						id: option.id,
+						label: option.name,
+					})),
+				},
+				at: at(),
+			});
+			return new Promise<Result<string>>((resolve) =>
+				blocked.set(request.toolCallId, resolve),
 			);
-			return err(new Error("the board cannot answer permission requests"));
+		};
+
+		// Let go of every outstanding question with a decline. A cancelled or closed session has
+		// nobody left to answer, and the harness would otherwise sit on a promise that never settles.
+		const unblockAll = (): void => {
+			for (const resolve of blocked.values())
+				resolve(err(new Error("cancelled")));
+			blocked.clear();
 		};
 
 		const mcpServer = (): AcpClient.StdioServer => ({
@@ -132,25 +163,26 @@ export namespace BoardCopilot {
 
 		const at = (): string => new Date().toISOString();
 
-		const update = (
-			type: CopilotUpdate["type"],
-			summary: string,
-		): CopilotUpdate => ({ type, summary, at: at() });
+		const update = (type: CopilotStep, summary: string): CopilotUpdate => ({
+			type,
+			summary,
+			at: at(),
+		});
 
-		const drainNotices = (): CopilotUpdate[] =>
-			notices.splice(0).map((text) => update("error", text));
+		const plan = (entries: readonly PlanEntry[]): CopilotUpdate => ({
+			type: "plan",
+			entries,
+			at: at(),
+		});
 
 		// One harness update becomes zero, one or two port updates: a tool call shows in the
-		// transcript AND, when it completed a write, tells the board to reload.
+		// transcript AND, when it completed a write, tells the board to reload. Prose never reaches
+		// here — `run` buffers it — and the parameter type is what keeps that true.
 		const toUpdates = (
-			incoming: AcpClient.Update,
+			incoming: Exclude<AcpClient.Update, Prose>,
 			titles: Map<string, string>,
 		): CopilotUpdate[] => {
 			switch (incoming.type) {
-				case "text":
-					return [update("text", incoming.text)];
-				case "thought":
-					return [update("thought", incoming.text)];
 				case "tool_call": {
 					titles.set(incoming.id, incoming.title);
 					const out = [update("tool_call", incoming.title)];
@@ -166,9 +198,10 @@ export namespace BoardCopilot {
 						? [update("tool_result", title)]
 						: [];
 				}
-				// The port has no plan update; the tool calls the plan describes show up on their own.
+				// State, not a step: the board replaces its copy and counts it, and nothing lands in
+				// the transcript.
 				case "plan":
-					return [];
+					return [plan(incoming.entries)];
 				case "stop":
 					return [update("done", incoming.reason)];
 				case "error":
@@ -192,30 +225,104 @@ export namespace BoardCopilot {
 			blocks.push({ type: "text", text: prompt });
 			const titles = new Map<string, string>();
 			let first = true;
-			for await (const incoming of AcpClient.prompt(started.value, blocks)) {
-				// A turn cancelled before it was dispatched never reached the agent, so the
-				// instruction block it carried has to ride the next one.
-				if (first) {
-					first = false;
-					instructed ||= !(
-						incoming.type === "stop" && incoming.reason === "cancelled"
-					);
+			// ACP streams prose as DELTAS: `agent_message_chunk` arrives mid-word, so one sentence is
+			// a dozen of them. Held as a run and emitted as ONE update when something else happens or
+			// the turn ends — otherwise the transcript gets a row per fragment, split where the
+			// tokenizer happened to break, and the footer flashes whatever syllable landed last. The
+			// cost is that a message appears when it finishes rather than as it types; the plan and
+			// the tool calls carry progress in the meantime.
+			let prose: Prose | null = null;
+			const flushed = (): CopilotUpdate[] => {
+				if (!prose) return [];
+				const out = update(prose.type, prose.text);
+				prose = null;
+				return [out];
+			};
+			// The harness's stream and the outbox are drained together rather than one inside the
+			// other: a permission request arrives while the stream is quiet BECAUSE of it, so the
+			// generator has to be woken by the outbox itself. Whichever settles first is taken, and
+			// a stream read the outbox beat stays pending for the next pass rather than being
+			// reissued (an iterator has one next() in flight at a time).
+			const stream = AcpClient.prompt(started.value, blocks)[
+				Symbol.asyncIterator
+			]();
+			let reading: Promise<IteratorResult<AcpClient.Update>> | null = null;
+			// Anything still in the box belongs to a turn that is over — a question the board
+			// abandoned by cancelling — and must not open this one.
+			outbox.drain();
+			try {
+				for (;;) {
+					const mail = outbox.drain();
+					if (mail.length > 0) {
+						// Prose said before the question belongs before it.
+						yield* flushed();
+						yield* mail;
+						continue;
+					}
+					reading ??= stream.next();
+					const settled = await Promise.race([
+						reading.then((result) => ({ from: "harness" as const, result })),
+						outbox.filled().then(() => ({ from: "outbox" as const })),
+					]);
+					if (settled.from === "outbox") continue;
+					reading = null;
+					if (settled.result.done) break;
+					const incoming = settled.result.value;
+					// A turn cancelled before it was dispatched never reached the agent, so the
+					// instruction block it carried has to ride the next one.
+					if (first) {
+						first = false;
+						instructed ||= !(
+							incoming.type === "stop" && incoming.reason === "cancelled"
+						);
+					}
+					if (incoming.type === "text" || incoming.type === "thought") {
+						// A thought does not continue a message, or the other way round.
+						if (prose && prose.type !== incoming.type) yield* flushed();
+						prose = prose
+							? { type: prose.type, text: prose.text + incoming.text }
+							: { type: incoming.type, text: incoming.text };
+						continue;
+					}
+					// Whatever ended the run goes after it, so a tool call the prose introduced reads
+					// in the order it was said.
+					yield* flushed();
+					for (const mapped of toUpdates(incoming, titles)) yield mapped;
 				}
-				yield* drainNotices();
-				for (const mapped of toUpdates(incoming, titles)) yield mapped;
+			} finally {
+				// The board drops this generator mid-stream whenever a turn is cancelled or a new
+				// prompt starts, which used to close the harness's iterator for us — a `for await`
+				// did it on the way out. Driving it by hand, we owe it the same close, so its own
+				// cleanup runs. Not awaited: a close queued behind a read that never settles must
+				// not hold up the teardown of the turn that gave up on it.
+				void stream.return?.();
 			}
-			yield* drainNotices();
+			yield* flushed();
+			yield* outbox.drain();
 		};
 
 		return {
 			run,
+			// What `cabane mcp --as` stamps every write of this session with, so the board can glyph
+			// the rows this copilot changed rather than every row an agent ever touched.
+			actor,
 			// The port returns void: a cancel that fails has nothing left to tell the board, which
-			// has already ended the turn on its side.
+			// has already ended the turn on its side. A turn blocked on a question it never got an
+			// answer to is cancelled the same way — letting go of the question first is what lets
+			// the harness notice.
 			cancel: async () => {
+				unblockAll();
 				if (session) await AcpClient.cancel(session);
+			},
+			answerPermission: (id, optionId) => {
+				const resolve = blocked.get(id);
+				if (!resolve) return;
+				blocked.delete(id);
+				resolve(optionId === null ? err(new Error("declined")) : ok(optionId));
 			},
 			shortcuts: (): CopilotShortcut[] => [...CopilotInstructions.SHORTCUTS],
 			close: () => {
+				unblockAll();
 				if (connection) AcpClient.close(connection);
 				connection = null;
 				session = null;

@@ -176,7 +176,8 @@ test("Detail renders the awaiting-input question block above the brief", async (
 
 test("cardStatusLine covers paused and stale-agnostic running text", () => {
 	const running = loopCard({ detail: ["verify", "iteration 2", "$1.50"] });
-	expect(cardStatusLine(running)).toBe("⠋ loop · verify · iteration 2 · $1.50");
+	// No frame threaded: the detail view echoes the sidebar, which animates these same cards.
+	expect(cardStatusLine(running)).toBe("● loop · verify · iteration 2 · $1.50");
 	expect(cardStatusLine({ ...running, status: "paused" })).toBe(
 		"⏸ loop · paused",
 	);

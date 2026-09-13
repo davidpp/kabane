@@ -42,6 +42,13 @@ export const CopilotConfigSchema = z.object({
 	command: z.string().min(1).optional(),
 	/** Arguments for `command`. The pinned adapter's own are not kept. */
 	args: z.array(z.string()).optional(),
+	/**
+	 * Model the harness runs as, in whatever names it accepts (`sonnet`,
+	 * `opus`, a full id). Absent takes the harness's own pin — Sonnet for
+	 * Claude, because a board turn is triage against a planner. Harnesses
+	 * whose model variable the registry does not name ignore this.
+	 */
+	model: z.string().min(1).optional(),
 });
 export type CopilotConfig = z.infer<typeof CopilotConfigSchema>;
 

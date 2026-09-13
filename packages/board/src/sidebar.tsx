@@ -5,9 +5,10 @@
 import { TextAttributes } from "@opentui/core";
 import type { ReactNode } from "react";
 import type { BoardActivity } from "./activity";
+import { CopilotLog } from "./copilot-log";
 import { elapsed } from "./elapsed";
 import type { ActivityCard } from "./ports";
-import { SPINNER_IDLE } from "./spinner";
+import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
 
 const MUTED_COLOR = "#6b7280";
 const ACCENT_COLOR = "#f97316";
@@ -29,7 +30,11 @@ const cardGlyph = (card: ActivityCard, spinnerFrame: string): string => {
 			return "⏸";
 		case "running":
 		case "pending":
-			return card.stale ? SPINNER_IDLE : spinnerFrame;
+			// A stale card has nothing to animate, and the copilot's row is an echo: its pane is on
+			// screen in every view and animates the same turn. Both still SAY running, without motion.
+			if (card.stale) return SPINNER_IDLE;
+			// The copilot's pane is on screen in every view and animates this same turn.
+			return card.kind === CopilotLog.KIND ? RUNNING_ECHO : spinnerFrame;
 	}
 };
 

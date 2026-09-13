@@ -74,28 +74,63 @@ interface Copilot {
   run(prompt: string, context: BoardContext.Context): AsyncIterable<CopilotUpdate>;
   cancel(): Promise<void>;
   shortcuts(): CopilotShortcut[];
+  answerPermission(id: string, optionId: string | null): void;
+  readonly actor?: string;
 }
 ```
 
-`A` (or `:`) opens a one-line prompt above the footer, with a chip on the left saying what the
-prompt carries (`JCAB-31 · 3 marked · inbox`). `enter` sends the text with the loaded
-`BoardContext` to `run`; `esc` closes the window. Typing `/` lists `shortcuts()` (`/triage`,
-`/refine`, …); `tab`, or `enter` on the exact name, expands the shortcut's `template` into the
-window so what will be sent is read before it goes.
+The copilot is a PANE above the footer, always mounted, never a modal: one status row when it is
+not focused, a bordered panel when it is. `tab` and `⇧tab` cycle focus board → copilot → sidebar,
+skipping panes that are not visible; `A` (or `:`) jumps straight to it. Its title carries a chip
+saying what the prompt carries (`JCAB-31 · 3 marked · inbox`), and because the buffer outlives a
+focus change you can type half a prompt, tab to the board, mark three more rows, and tab back to
+find the chip updated under you.
 
-The turn runs in the background and the board stays fully interactive. The footer shows
-`⠹ copilot · <last tool call>` while it runs, `✓ copilot · <first line of the agent's last text>`
-when it ends, `✗ copilot · <reason>` on an error or a cancel; the finished indicator stays until
-the next keypress. `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
+The input is an OpenTUI `<textarea>`, so paste, word motions, `ctrl+w` and undo all work; `enter`
+sends, `⇧enter` and `ctrl+j` make a newline. The textarea owns the buffer and `copilot.text`
+mirrors it — `BoardNav.copilotConsumes` names the keys the reducer takes back from it, and app.tsx
+`preventDefault`s exactly those. `esc` and `tab` are both plain exits — `esc` to the board, `tab`
+to the next pane — and neither touches a running turn: `esc` is the back key in every other view
+and destroys nothing anywhere on the board. Typing `/` lists `shortcuts()` (`/triage`, `/refine`, …)
+as a palette; `tab`, or `enter` on the exact name, expands the `template` so what will be sent is
+read before it goes. `↑` on an empty buffer walks back through this session's prompts.
+
+The turn runs in the background and the board stays fully interactive. Submitting hands the
+keyboard back to the board, because the next thing after sending a command is watching it. The
+pane's row shows `⠹ copilot · 2/5 · <last tool call>` while it runs — the count is the agent's own
+plan — `✓ copilot · <the agent's last line>` when it ends, `✗ copilot · <reason>` on an error or a
+cancel; the finished indicator stays until the next keypress, which also clears the `✦ ai` glyphs.
+
+Exactly one surface animates per fact: the pane owns the copilot, the sidebar owns host cards, and
+every echo of a running thing renders `●` rather than a frozen spinner frame (see `spinner.ts`). `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
 `error`, `done`); each `tool_result` reloads the board so the copilot's writes appear as they
-land. One turn at a time: a second `A` while one runs shows `a turn is running · esc to cancel it
-first`, and that `esc` calls `cancel`.
+land. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
+rather than inviting a prompt, and `enter` flashes `a turn is running · o for its transcript, x
+there stops it` instead of dropping what was typed — the draft keeps until the turn ends.
 
 The turn also appears as an in-memory activity card (`kind: "copilot"`) at the top of the
-sidebar. `o` (from the board or the detail view, while the indicator is up) or `enter` on the
-card opens the event view on its live transcript: prose as text lines, thoughts dimmed, tool
-calls with the usual glyphs; `x` there cancels a running turn, `esc` returns. Nothing about the
-turn is persisted; the next turn replaces the card.
+sidebar. `o` — from the board once the session has a transcript at all, from the detail view while
+the indicator is up, the task's own events otherwise — or `enter` on the card opens the event view
+on it: prose as text lines, thoughts dimmed, tool calls with the usual glyphs, the last few turns
+oldest-first each under the prompt that started it. `x` there is the ONE key that stops a running
+turn; `esc` returns. The pane's row names `o` wherever there is a transcript to open, because the
+board's footer is trimmed to the board's own keys. Nothing is persisted: the log is a session
+buffer capped at the last few turns and gone when the board closes.
+
+A harness that stops mid-turn to ask before doing something yields a `permission` update, and the
+turn is blocked until it is answered. The choice is shown on exactly one surface: the transcript
+when it is open on the copilot's card, the copilot pane's one row everywhere else — the pane being
+the only copilot surface present in every view, so a board with no transcript open still sees that
+something is waiting. A digit picks the option it numbers, `esc` declines, and both go straight to
+`answerPermission` ahead of whatever view is on screen. The board never answers by itself and there
+is no timeout: a question left alone keeps the turn waiting, and `x` on the transcript still
+cancels it.
+
+Rows the copilot changed during the turn carry `✦ ai` before the title: the reload after each of
+its writes brings the fresh `updatedBy`/`updatedAt`, and `BoardNav.copilotTouched` keeps the ones
+stamped with `actor` since the turn opened. The glyphs go the way the finished-turn indicator
+does — on the next keypress — so one press acknowledges the whole turn. A copilot that names no
+`actor` never glyphs anything.
 
 The port is protocol-free on purpose: `@cabane/acp` implements it over an ACP harness, and a
 test can implement it with a scripted async generator. `noCopilot` is an explicit no-op whose

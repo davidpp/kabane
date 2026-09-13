@@ -17,13 +17,12 @@ import {
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode, RefObject } from "react";
 import { BoardActivity } from "./activity";
-import type { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
-import { copilotIndicatorFg, StatusBar } from "./footer";
+import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import type { ActivityCard } from "./ports";
-import { SPINNER_IDLE, useSpinnerFrame } from "./spinner";
+import { RUNNING_ECHO, SPINNER_IDLE, useSpinnerFrame } from "./spinner";
 
 // OpenTUI needs terminal colors (hex); the display configs carry Tailwind class tokens. Map the
 // priority tokens the board uses to hex so display.ts stays the single source of priority color.
@@ -42,6 +41,10 @@ const MARK_COLOR = REVIEW_COLOR;
 // The `m` glyph, with its trailing space; two blanks keep unmarked titles column-aligned with it.
 const MARK_GLYPH = "● ";
 const MARK_BLANK = "  ";
+// The copilot's fingerprint on a row it changed this turn. Transient — the keypress that dismisses
+// the turn's footer indicator clears it — so unlike the mark it holds no column when absent.
+const AI_COLOR = REVIEW_COLOR;
+const AI_GLYPH = "✦ ai ";
 // Muted gray for all chrome: kind/state meta, section headers, footer hints.
 const MUTED_COLOR = "#6b7280";
 // Never let the title column collapse to nothing on a very narrow frame.
@@ -215,15 +218,17 @@ const Row = ({
 	rowIndex,
 	selected,
 	marked,
+	touched,
 	available,
 	activity,
-	spinnerFrame,
 	onSelect,
 	onToggle,
 	parentShortId,
 }: {
 	row: BoardNav.VisibleRow;
 	marked: boolean;
+	// The copilot changed this row during the turn in hand.
+	touched: boolean;
 	// shortId of this row's parent, when the parent is loaded. Only ever set for an orphaned subtask.
 	parentShortId?: string;
 	// Index into the flattened visible-row list — the address mouse handlers dispatch back to the reducer.
@@ -231,7 +236,6 @@ const Row = ({
 	selected: boolean;
 	available: number;
 	activity?: BoardActivity.ActivityMap;
-	spinnerFrame: string;
 	onSelect?: (rowIndex: number) => void;
 	onToggle?: (rowIndex: number) => void;
 }): ReactNode => {
@@ -248,16 +252,19 @@ const Row = ({
 	const cards = activity
 		? BoardActivity.inFlightForTask(activity, task.id, shortId)
 		: [];
-	const badge = cards[0] ? cardBadge(cards[0], spinnerFrame) : null;
-	const more = moreBadge(cards.length - 1, spinnerFrame);
+	// Row badges echo the sidebar, which animates the same cards.
+	const badge = cards[0] ? cardBadge(cards[0], RUNNING_ECHO) : null;
+	const more = moreBadge(cards.length - 1, RUNNING_ECHO);
 	const input = activity?.questionsByTaskId.has(task.id) ? " · ? input" : "";
 	const mark = marked ? MARK_GLYPH : MARK_BLANK;
+	const ai = touched ? AI_GLYPH : "";
 	// Badge widths count against the title so a badged row still never wraps.
 	const fixed =
 		caret.length +
 		shortId.length +
 		2 +
 		mark.length +
+		ai.length +
 		meta.length +
 		review.length +
 		(badge?.text.length ?? 0) +
@@ -295,6 +302,7 @@ const Row = ({
 				<span fg={style.idFg}>{shortId}</span>
 				{"  "}
 				<span fg={marked ? MARK_COLOR : style.titleFg}>{mark}</span>
+				{ai ? <span fg={AI_COLOR}>{ai}</span> : null}
 				{title}
 				<span fg={style.metaFg}>{meta}</span>
 				{task.needsReview ? <span fg={REVIEW_COLOR}> · review</span> : null}
@@ -312,15 +320,16 @@ const Section = ({
 	group,
 	selectedId,
 	marked,
+	touched,
 	nextRowIndex,
 	available,
 	activity,
-	spinnerFrame,
 	onSelect,
 	onToggle,
 	parentIds,
 }: {
 	marked: ReadonlySet<string>;
+	touched: ReadonlySet<string>;
 	// id -> shortId over every loaded task, for naming an orphaned subtask's parent.
 	parentIds: Map<string, string>;
 	// Pre-flattened rows from BoardNav.visibleSections — the SAME flatten the reducer addresses, so
@@ -332,7 +341,6 @@ const Section = ({
 	nextRowIndex: { value: number };
 	available: number;
 	activity?: BoardActivity.ActivityMap;
-	spinnerFrame: string;
 	onSelect?: (rowIndex: number) => void;
 	onToggle?: (rowIndex: number) => void;
 }): ReactNode => {
@@ -351,9 +359,9 @@ const Section = ({
 					rowIndex={nextRowIndex.value++}
 					selected={row.task.id === selectedId}
 					marked={marked.has(row.task.id)}
+					touched={touched.has(row.task.id)}
 					available={available}
 					activity={activity}
-					spinnerFrame={spinnerFrame}
 					onSelect={onSelect}
 					onToggle={onToggle}
 					parentShortId={
@@ -371,20 +379,18 @@ const SEARCH_OFF: BoardNav.SearchState = { mode: "off" };
 const NO_MARKS: ReadonlySet<string> = new Set<string>();
 
 // The footer, ONE line, by priority: a transient notice always wins > search-input mode shows the
-// live query with a cursor glyph (normal fg — it's an active input, not chrome) > the copilot's turn
-// indicator while one is up > a committed filter shows a muted summary with the match count > the
+// live query with a cursor glyph (normal fg — it's an active input, not chrome) > a committed filter
+// shows a muted summary with the match count > the
 // trimmed key hints (full list behind `?`). Always a StatusBar so the row is reserved and
 // backgrounded whatever the variant.
 const Footer = ({
 	notice,
 	search,
-	copilot,
 	matchCount,
 	hints,
 }: {
 	notice: BoardNav.Notice | null | undefined;
 	search: BoardNav.SearchState;
-	copilot: CopilotLog.Footer | null | undefined;
 	matchCount: number;
 	hints: string;
 }): ReactNode => {
@@ -398,11 +404,6 @@ const Footer = ({
 	}
 	if (search.mode === "typing") {
 		return <StatusBar text={`/${search.query}▌`} />;
-	}
-	if (copilot) {
-		return (
-			<StatusBar text={copilot.text} fg={copilotIndicatorFg(copilot.tone)} />
-		);
 	}
 	if (search.mode === "committed") {
 		const matches = matchCount === 1 ? "1 match" : `${matchCount} matches`;
@@ -433,6 +434,9 @@ export type BoardProps = {
 	status?: BoardNav.StatusFilter;
 	// The `m` working set. Optional for the same reason; absent means nothing marked.
 	marked?: ReadonlySet<string>;
+	// Rows the copilot changed in the turn in hand (BoardNav.copilotTouched), glyphed until the next
+	// keypress. Optional for the same reason.
+	touched?: ReadonlySet<string>;
 	// The list's scrollbox; app.tsx holds the ref so it can scroll the selected row into view.
 	scrollRef?: RefObject<ScrollBoxRenderable | null>;
 	// Mouse callbacks; absent in the render-only tests. app.tsx routes both through BoardNav.reduceMouse.
@@ -440,8 +444,11 @@ export type BoardProps = {
 	onToggle?: (rowIndex: number) => void;
 	// Transient footer feedback; when present it replaces the key hints in the footer for ~1.5s.
 	notice?: BoardNav.Notice | null;
-	// The copilot's turn indicator; absent when idle (or acknowledged by a keypress).
-	copilot?: CopilotLog.Footer | null;
+	// Which pane has the keyboard — the footer hints follow it.
+	focus?: BoardNav.Focus;
+	// The copilot pane, rendered between the content and the footer. A slot rather than a float: the
+	// panel has real height and must push the view up, not cover it.
+	pane?: ReactNode;
 	// When the sidebar is visible, its width is subtracted from the available row width for
 	// truncation — otherwise a badged row wraps into a second line.
 	sidebarWidth?: number;
@@ -457,11 +464,13 @@ export const Board = ({
 	filterLabel,
 	status = "open",
 	marked = NO_MARKS,
+	touched = NO_MARKS,
 	scrollRef,
 	onSelect,
 	onToggle,
 	notice,
-	copilot,
+	focus = "board",
+	pane,
 	sidebarWidth: sbWidth = 0,
 }: BoardProps): ReactNode => {
 	const { width } = useTerminalDimensions();
@@ -470,7 +479,10 @@ export const Board = ({
 	const spinnerFrame = useSpinnerFrame(
 		activity ? anyActivityRunning(activity) : false,
 	);
-	const strip = activity ? activityStrip(activity, spinnerFrame) : "";
+	// A count of exactly what the sidebar is listing in full, three columns to the right. It earns
+	// its place only when there is no sidebar to read instead.
+	const strip =
+		activity && sbWidth === 0 ? activityStrip(activity, spinnerFrame) : "";
 	const available = Math.max(MIN_TITLE_WIDTH, width - RESERVED_COLS - sbWidth);
 	// Quiet by default: `open` is what the board has always shown, and this header <text> does no
 	// truncation (unlike StatusBar), so a fourth always-on part would wrap on a narrow frame.
@@ -484,7 +496,9 @@ export const Board = ({
 	const markedPart = markedLabel(marked.size);
 	// App-specific keys only — the vim-obvious ones live in the `?` help overlay (StatusBar handles
 	// its own truncation on narrow frames).
-	const hints = Keymap.hintLine(Keymap.BOARD_FOOTER);
+	const hints = Keymap.hintLine(
+		focus === "copilot" ? Keymap.COPILOT_FOOTER : Keymap.BOARD_FOOTER,
+	);
 	// The SAME flatten the reducer uses for j/k, mouse addressing, and scroll-into-view — filter
 	// included — so the running rowIndex below is in lockstep with BoardNav.visibleRows.
 	const groups = BoardNav.visibleSections(sections, expanded, search, status);
@@ -513,10 +527,10 @@ export const Board = ({
 							group={group}
 							selectedId={selectedId}
 							marked={marked}
+							touched={touched}
 							nextRowIndex={nextRowIndex}
 							available={available}
 							activity={activity}
-							spinnerFrame={spinnerFrame}
 							onSelect={onSelect}
 							onToggle={onToggle}
 							parentIds={parentIds}
@@ -524,10 +538,10 @@ export const Board = ({
 					))
 				)}
 			</scrollbox>
+			{pane}
 			<Footer
 				notice={notice}
 				search={search}
-				copilot={copilot}
 				matchCount={matchCount}
 				hints={hints}
 			/>

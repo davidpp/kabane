@@ -9,30 +9,19 @@ import { Planner } from "@cabane/core";
 import { App } from "./app";
 import type { BoardContext } from "./context";
 import { contextChip } from "./copilot-prompt";
-import type { Copilot, CopilotUpdate } from "./ports";
+import type { Copilot, CopilotStep, CopilotUpdate } from "./ports";
 import { noActivity } from "./ports";
 import { dropDb, freshDb } from "./test-db";
-import { renderTest } from "./testing";
+import { pumpUntil, renderTest } from "./testing";
 
 const TEST_BASE = join(tmpdir(), `cabane-board-copilot-${crypto.randomUUID()}`);
+const PERMISSION_BASE = join(
+	tmpdir(),
+	`cabane-board-permission-${crypto.randomUUID()}`,
+);
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
-
-const pumpUntil = async (
-	renderOnce: () => Promise<void>,
-	captureCharFrame: () => string,
-	predicate: (frame: string) => boolean,
-): Promise<string> => {
-	let frame = "";
-	for (let pass = 0; pass < 100; pass++) {
-		await renderOnce();
-		frame = captureCharFrame();
-		if (predicate(frame)) break;
-		await sleep(20);
-	}
-	return frame;
-};
 
 const ctx = (
 	over: Partial<BoardContext.Context> = {},
@@ -77,10 +66,7 @@ const scriptedCopilot = (gate: Promise<void>, seen: Seen): Copilot => ({
 		seen.prompts.push(prompt);
 		seen.contexts.push(context);
 		const at = (): string => new Date().toISOString();
-		const step = (
-			type: CopilotUpdate["type"],
-			summary: string,
-		): CopilotUpdate => ({
+		const step = (type: CopilotStep, summary: string): CopilotUpdate => ({
 			type,
 			summary,
 			at: at(),
@@ -102,7 +88,44 @@ const scriptedCopilot = (gate: Promise<void>, seen: Seen): Copilot => ({
 			template: "Triage every issue in view.",
 		},
 	],
+	answerPermission: () => {},
 });
+
+// A copilot whose turn stops on a question and waits — the board has to put it on screen and
+// answer it for anything more to happen, which is the point of the channel.
+const askingCopilot = (answers: (string | null)[]): Copilot => {
+	let respond: ((optionId: string | null) => void) | null = null;
+	return {
+		run: async function* () {
+			const at = (): string => new Date().toISOString();
+			yield {
+				type: "permission",
+				request: {
+					id: "t0",
+					title: "cabane_edit",
+					options: [
+						{ id: "allow", label: "Allow" },
+						{ id: "reject", label: "Reject" },
+					],
+				},
+				at: at(),
+			};
+			const answer = await new Promise<string | null>((resolve) => {
+				respond = resolve;
+			});
+			answers.push(answer);
+			yield {
+				type: "text",
+				summary: answer === null ? "Left it alone." : `Ran it with ${answer}.`,
+				at: at(),
+			};
+			yield { type: "done", summary: "", at: at() };
+		},
+		cancel: async () => {},
+		shortcuts: () => [],
+		answerPermission: (_id, optionId) => respond?.(optionId),
+	};
+};
 
 describe("the A prompt against a scripted copilot", () => {
 	beforeAll(async () => {
@@ -137,6 +160,9 @@ describe("the A prompt against a scripted copilot", () => {
 		const { renderOnce, captureCharFrame, mockInput, destroy } = setup;
 		const until = (p: (f: string) => boolean) =>
 			pumpUntil(renderOnce, captureCharFrame, p);
+		// The panel's own border — the collapsed row also carries a `▸`, so waiting on that races
+		// focus and sends the next keystrokes to the board instead of the input.
+		const untilPanel = () => until((f) => f.includes("┌─copilot"));
 		// A lone escape followed by another byte in the same tick reads as Alt+key to a terminal
 		// parser, so every escape here is rendered through before the next key is sent.
 		const pressEsc = async (): Promise<void> => {
@@ -145,27 +171,48 @@ describe("the A prompt against a scripted copilot", () => {
 			await sleep(30);
 		};
 		try {
+			// The pane names its own key; the footer hints no longer repeat it.
 			expect(await until((f) => f.includes("Wire the copilot"))).toContain(
-				"A copilot",
+				"tab to ask the copilot",
 			);
 
-			// `A`: the window opens above the footer, chip on the left, cursor on the right.
+			// `A`: the pane opens into the panel — bordered, titled with the chip, and a real input
+			// several rows tall with a placeholder.
 			mockInput.pressKey("A");
-			let frame = await until((f) => f.includes("▸"));
-			expect(frame).toContain("next ▸ ▌");
+			let frame = await untilPanel();
+			expect(frame).toContain("copilot · JALL-1 · next");
+			expect(frame).toContain("ask about the selection · / for shortcuts");
+
+			// A half-written prompt survives leaving the pane and coming back — the point of making the
+			// copilot focusable rather than modal. The textarea unmounts with the panel, so the
+			// mirrored text is what seeds the new one.
+			await mockInput.typeText("/tr");
+			await until((f) => f.includes("/tr"));
+			await pressEsc();
+			await until((f) => !f.includes("┌─copilot"));
+			mockInput.pressKey("A");
+			frame = await untilPanel();
+			expect(frame).toContain("/tr");
 
 			// `/` shows the shortcut; tab expands it in place so the text is read before it is sent.
-			await mockInput.typeText("/tr");
-			frame = await until((f) => f.includes("/triage keep, someday or next"));
+			// The palette is a two-column list now — the name padded, then the hint.
+			frame = await until((f) => /\/triage\s+keep, someday or next/.test(f));
 			mockInput.pressTab();
-			frame = await until((f) => f.includes("Triage every issue in view.▌"));
-			expect(frame).not.toContain("/triage keep");
+			// The textarea takes the expansion imperatively, so its content lands a frame before the
+			// mirrored state that the palette is drawn from — wait for both to settle.
+			frame = await until(
+				(f) =>
+					f.includes("Triage every issue in view.") &&
+					!f.includes("keep, someday or next"),
+			);
+			expect(frame).toContain("Triage every issue in view.");
 
 			// Enter sends it; the window closes, the footer spins on the last tool, the sidebar lists
 			// the copilot card, and the board still answers keys (`?` opens help, esc closes it).
 			mockInput.pressEnter();
 			frame = await until((f) => f.includes("copilot · cabane_edit"));
-			expect(frame).not.toContain("▸");
+			// The panel collapses back to its one row; the board has the keyboard again.
+			expect(frame).not.toContain("┌─copilot");
 			expect(frame).toContain("copilot · cabane_edit");
 			// The sidebar card: glyph, label, no task, elapsed.
 			expect(frame).toMatch(/copilot · — · \d+s/);
@@ -189,31 +236,43 @@ describe("the A prompt against a scripted copilot", () => {
 			frame = await until((f) => f.includes("Wire the copilot"));
 			expect(frame).toContain("copilot · cabane_edit");
 
-			// A second `A` while running shows the busy notice; esc there cancels the turn and the
-			// indicator turns to the error tone.
+			// `A` while running says so beside the chip, and the input stops inviting a prompt it would
+			// refuse. esc leaves the pane and the turn runs on — tabbing in to look and backing out
+			// used to kill it, which is the trap this whole flow exists to not set.
 			mockInput.pressKey("A");
-			frame = await until((f) => f.includes("a turn is running"));
-			expect(frame).toContain(
-				"next · a turn is running · esc to cancel it first",
-			);
+			frame = await untilPanel();
+			expect(frame).toContain("running");
+			expect(frame).toContain("a turn is running · send when it ends");
 			await pressEsc();
-			frame = await until((f) => f.includes("✗ copilot · cancelled"));
-			expect(frame).not.toContain("a turn is running");
-			expect(seen.cancels).toBe(1);
+			frame = await until((f) => f.includes("Wire the copilot"));
+			expect(frame).toContain("copilot · cabane_edit");
+			expect(seen.cancels).toBe(0);
 
-			// `o` opens the transcript on the copilot card, back on esc.
+			// `x` on the transcript is the one key that stops a turn; the header turns error-toned and
+			// the hint that offered it goes away with the thing it acted on.
 			mockInput.pressKey("o");
 			frame = await until((f) => f.includes("⚙ cabane_edit"));
 			expect(frame).toContain("reading the selection");
-			expect(frame).toContain("copilot · — · failed");
+			expect(frame).toContain("x cancel");
+			mockInput.pressKey("x");
+			frame = await until((f) => f.includes("copilot · — · failed"));
 			expect(frame).not.toContain("x cancel");
+			expect(seen.cancels).toBe(1);
 			await pressEsc();
 			frame = await until((f) => f.includes("Wire the copilot"));
-			// The keypress after the turn ended dismisses the indicator; hints are back, and the
-			// finished card stays in the sidebar.
-			expect(frame).toContain("A copilot");
+			// The keypress that popped the view also dismissed the indicator; the row now names the
+			// key that reopens the transcript, and the finished card stays in the sidebar.
+			expect(frame).toContain("tab to ask the copilot");
+			expect(frame).toContain("o transcript");
 			expect(frame).not.toContain("✗ copilot · cancelled");
 			expect(frame).toMatch(/✗ copilot · — · \d+s/);
+
+			// The indicator is gone; the transcript is not. `o` still opens it.
+			mockInput.pressKey("o");
+			frame = await until((f) => f.includes("⚙ cabane_edit"));
+			expect(frame).toContain("copilot · — · failed");
+			await pressEsc();
+			frame = await until((f) => f.includes("Wire the copilot"));
 
 			// Late updates from the cancelled stream are dropped, not written over the closed log.
 			release();
@@ -239,10 +298,13 @@ describe("the A prompt against a scripted copilot", () => {
 		const { renderOnce, captureCharFrame, mockInput, destroy } = setup;
 		const until = (p: (f: string) => boolean) =>
 			pumpUntil(renderOnce, captureCharFrame, p);
+		// The panel's own border — the collapsed row also carries a `▸`, so waiting on that races
+		// focus and sends the next keystrokes to the board instead of the input.
+		const untilPanel = () => until((f) => f.includes("┌─copilot"));
 		try {
 			await until((f) => f.includes("Wire the copilot"));
 			mockInput.pressKey(":");
-			await until((f) => f.includes("▸"));
+			await untilPanel();
 			await mockInput.typeText("is this still real?");
 			mockInput.pressEnter();
 			const frame = await until((f) => f.includes("✓ copilot"));
@@ -253,6 +315,131 @@ describe("the A prompt against a scripted copilot", () => {
 			const transcript = await until((f) => f.includes("completed ·"));
 			expect(transcript).toContain("Moved it to someday.");
 			expect(transcript).toContain("← ok");
+		} finally {
+			destroy();
+		}
+	});
+
+	it("asking a second thing keeps the first: both turns in the transcript, each under the prompt that started it", async () => {
+		const seen: Seen = { prompts: [], contexts: [], cancels: 0 };
+		const setup = await renderTest(
+			<App
+				cwd={TEST_BASE}
+				basePath={TEST_BASE}
+				activity={noActivity}
+				copilot={scriptedCopilot(Promise.resolve(), seen)}
+			/>,
+			{ width: 120, height: 24 },
+		);
+		const { renderOnce, captureCharFrame, mockInput, destroy } = setup;
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		const untilPanel = () => until((f) => f.includes("┌─copilot"));
+		const ask = async (prompt: string): Promise<void> => {
+			mockInput.pressKey(":");
+			await untilPanel();
+			await mockInput.typeText(prompt);
+			mockInput.pressEnter();
+			await until((f) => f.includes("✓ copilot ·"));
+		};
+		try {
+			await until((f) => f.includes("Wire the copilot"));
+			await ask("what is left here");
+			await ask("and now link them");
+			expect(seen.prompts).toEqual(["what is left here", "and now link them"]);
+
+			// One card, one `o`, both turns — the rule each opens with is the question it answers.
+			mockInput.pressKey("o");
+			const transcript = await until((f) => f.includes("── and now link them"));
+			expect(transcript).toContain("── what is left here");
+			// Oldest first: the turn you asked for second reads below the one before it.
+			expect(transcript.indexOf("── what is left here")).toBeLessThan(
+				transcript.indexOf("── and now link them"),
+			);
+		} finally {
+			destroy();
+		}
+	});
+});
+
+describe("a harness blocked on a permission request", () => {
+	beforeAll(async () => {
+		await freshDb(PERMISSION_BASE);
+		const added = await Planner.addTask(PERMISSION_BASE, {
+			title: "Wire the copilot",
+			kind: "issue",
+			state: "next",
+		});
+		if (!added.ok) throw added.error;
+	});
+
+	afterAll(() => {
+		dropDb(PERMISSION_BASE);
+	});
+
+	// Send a prompt and stop at the choice. The pane's one row is the whole answer to "where does a
+	// board with no transcript open learn that something is waiting on it".
+	const ask = async (answers: (string | null)[]) => {
+		const setup = await renderTest(
+			<App
+				cwd={PERMISSION_BASE}
+				basePath={PERMISSION_BASE}
+				activity={noActivity}
+				copilot={askingCopilot(answers)}
+			/>,
+			{ width: 120, height: 24 },
+		);
+		const { renderOnce, captureCharFrame, mockInput } = setup;
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		await until((f) => f.includes("Wire the copilot"));
+		mockInput.pressKey(":");
+		await until((f) => f.includes("┌─copilot"));
+		await mockInput.typeText("edit it");
+		mockInput.pressEnter();
+		// "esc decline" is the block's own line and appears nowhere else on the board.
+		const frame = await until((f) => f.includes("esc decline"));
+		return { ...setup, until, frame };
+	};
+
+	it("asks in the pane, again in the transcript, and a digit answers it", async () => {
+		const answers: (string | null)[] = [];
+		const { until, mockInput, frame, destroy } = await ask(answers);
+		try {
+			expect(frame).toContain(
+				"? cabane_edit · 1 Allow · 2 Reject · esc decline",
+			);
+
+			// `o` opens the transcript, which owns the copilot's detail while it is up: the record
+			// of the question among the events, and the live choice pinned below them.
+			mockInput.pressKey("o");
+			const transcript = await until((f) =>
+				f.includes("? permission: cabane_edit"),
+			);
+			expect(transcript).toContain("1 Allow · 2 Reject");
+			// One surface, not two: the pane says nothing while the transcript has it.
+			expect(transcript).not.toContain("? cabane_edit · 1 Allow");
+
+			mockInput.pressKey("1");
+			const answered = await until((f) => f.includes("Ran it with allow."));
+			expect(answers).toEqual(["allow"]);
+			expect(answered).not.toContain("esc decline");
+		} finally {
+			destroy();
+		}
+	});
+
+	it("esc declines, and nothing else ever answers for the human", async () => {
+		const answers: (string | null)[] = [];
+		const { until, mockInput, renderOnce, destroy } = await ask(answers);
+		try {
+			// Nobody has answered while the board rendered its way here.
+			expect(answers).toEqual([]);
+			mockInput.pressEscape();
+			await renderOnce();
+			const declined = await until((f) => f.includes("Left it alone."));
+			expect(answers).toEqual([null]);
+			expect(declined).not.toContain("esc decline");
 		} finally {
 			destroy();
 		}

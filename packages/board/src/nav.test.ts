@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { BoardData } from "./data";
 import { BoardNav } from "./nav";
-import type { TriggerDescriptor } from "./ports";
+import type { CopilotPermission, TriggerDescriptor } from "./ports";
 
 const task = (over: Partial<Task> = {}): Task => ({
 	id: "01H000000000000000000000AA",
@@ -36,6 +36,21 @@ const sections = (
 		}),
 	);
 
+const copilotState = (
+	over: Partial<BoardNav.CopilotState> = {},
+): BoardNav.CopilotState => ({
+	text: "",
+	paletteAt: 0,
+	history: [],
+	historyAt: 0,
+	turn: "idle",
+	hasLog: false,
+	shortcuts: [],
+	actor: null,
+	permission: null,
+	...over,
+});
+
 const state = (
 	over: Partial<BoardNav.BoardState> = {},
 ): BoardNav.BoardState => ({
@@ -49,9 +64,10 @@ const state = (
 	search: { mode: "off" },
 	dispatch: null,
 	help: false,
-	sidebar: { visible: true, focus: "board", selected: 0, itemCount: 0 },
+	focus: "board",
+	sidebar: { visible: true, selected: 0, itemCount: 0 },
 	marked: new Set<string>(),
-	copilot: { window: null, turn: "idle", shortcuts: [] },
+	copilot: copilotState(),
 	undo: [],
 	...over,
 });
@@ -1319,7 +1335,8 @@ describe("sidebar keyboard routing", () => {
 				next: [row(task({ id: "a", shortId: "JAKE-1" }))],
 			}),
 			selectedId: "a",
-			sidebar: { visible: true, focus: "board", selected: 0, itemCount: 3 },
+			focus: "board",
+			sidebar: { visible: true, selected: 0, itemCount: 3 },
 			...over,
 		});
 
@@ -1327,30 +1344,55 @@ describe("sidebar keyboard routing", () => {
 		const s = boardWith();
 		const { state: hidden } = BoardNav.reduceKey(s, { name: "b" });
 		expect(hidden.sidebar.visible).toBe(false);
-		expect(hidden.sidebar.focus).toBe("board");
+		expect(hidden.focus).toBe("board");
 		const { state: shown } = BoardNav.reduceKey(hidden, { name: "b" });
 		expect(shown.sidebar.visible).toBe(true);
 	});
 
-	it("tab toggles focus between board and sidebar", () => {
-		const s = boardWith();
-		const { state: focused } = BoardNav.reduceKey(s, { name: "tab" });
-		expect(focused.sidebar.focus).toBe("sidebar");
-		const { state: back } = BoardNav.reduceKey(focused, { name: "tab" });
-		expect(back.sidebar.focus).toBe("board");
+	it("tab walks the whole ring, ⇧tab walks it back", () => {
+		const ring = (
+			from: BoardNav.BoardState,
+			key: { name: string; shift?: boolean },
+		) => BoardNav.reduceKey(from, key).state;
+		let s = boardWith();
+		s = ring(s, { name: "tab" });
+		expect(s.focus).toBe("copilot");
+		s = ring(s, { name: "tab" });
+		expect(s.focus).toBe("sidebar");
+		s = ring(s, { name: "tab" });
+		expect(s.focus).toBe("board");
+		// ⇧tab arrives as `tab` with shift set.
+		s = ring(s, { name: "tab", shift: true });
+		expect(s.focus).toBe("sidebar");
+		s = ring(s, { name: "tab", shift: true });
+		expect(s.focus).toBe("copilot");
 	});
 
-	it("tab is a no-op when sidebar is hidden", () => {
-		const s = boardWith({
-			sidebar: { visible: false, focus: "board", selected: 0, itemCount: 3 },
+	it("a hidden sidebar drops out of the ring, leaving board and copilot", () => {
+		const hidden = boardWith({
+			focus: "board",
+			sidebar: { visible: false, selected: 0, itemCount: 3 },
 		});
-		const { state: next } = BoardNav.reduceKey(s, { name: "tab" });
-		expect(next.sidebar.focus).toBe("board");
+		const { state: one } = BoardNav.reduceKey(hidden, { name: "tab" });
+		expect(one.focus).toBe("copilot");
+		const { state: two } = BoardNav.reduceKey(one, { name: "tab" });
+		expect(two.focus).toBe("board");
+	});
+
+	it("hiding the sidebar while it is focused moves focus off it", () => {
+		const focused = boardWith({
+			focus: "sidebar",
+			sidebar: { visible: true, selected: 0, itemCount: 3 },
+		});
+		const { state: hidden } = BoardNav.reduceKey(focused, { name: "b" });
+		expect(hidden.sidebar.visible).toBe(false);
+		expect(hidden.focus).toBe("board");
 	});
 
 	it("j/k navigate sidebar items when focused", () => {
 		const s = boardWith({
-			sidebar: { visible: true, focus: "sidebar", selected: 0, itemCount: 3 },
+			focus: "sidebar",
+			sidebar: { visible: true, selected: 0, itemCount: 3 },
 		});
 		const { state: down } = BoardNav.reduceKey(s, { name: "j" });
 		expect(down.sidebar.selected).toBe(1);
@@ -1364,7 +1406,8 @@ describe("sidebar keyboard routing", () => {
 
 	it("enter in sidebar emits sidebarSelect effect", () => {
 		const s = boardWith({
-			sidebar: { visible: true, focus: "sidebar", selected: 0, itemCount: 3 },
+			focus: "sidebar",
+			sidebar: { visible: true, selected: 0, itemCount: 3 },
 		});
 		const { effect } = BoardNav.reduceKey(s, { name: "return" });
 		expect(effect.type).toBe("sidebarSelect");
@@ -1372,10 +1415,11 @@ describe("sidebar keyboard routing", () => {
 
 	it("esc from sidebar focus returns to board focus", () => {
 		const s = boardWith({
-			sidebar: { visible: true, focus: "sidebar", selected: 0, itemCount: 3 },
+			focus: "sidebar",
+			sidebar: { visible: true, selected: 0, itemCount: 3 },
 		});
 		const { state: next } = BoardNav.reduceKey(s, { name: "escape" });
-		expect(next.sidebar.focus).toBe("board");
+		expect(next.focus).toBe("board");
 	});
 
 	it("b works from the detail view", () => {
@@ -1384,16 +1428,27 @@ describe("sidebar keyboard routing", () => {
 		expect(hidden.sidebar.visible).toBe(false);
 	});
 
-	it("tab works from the detail view", () => {
-		const s = boardWith({ view: { type: "detail", taskId: "a" } });
-		const { state: focused } = BoardNav.reduceKey(s, { name: "tab" });
-		expect(focused.sidebar.focus).toBe("sidebar");
+	it("the ring is the same key in every view", () => {
+		for (const view of [
+			{ type: "detail" as const, taskId: "a" },
+			{
+				type: "events" as const,
+				cardId: "copilot",
+				fromView: "board" as const,
+			},
+		]) {
+			const s = boardWith({ view });
+			expect(BoardNav.reduceKey(s, { name: "tab" }).state.focus).toBe(
+				"copilot",
+			);
+		}
 	});
 
 	it("sidebar j/k works from the detail view when focused", () => {
 		const s = boardWith({
 			view: { type: "detail", taskId: "a" },
-			sidebar: { visible: true, focus: "sidebar", selected: 0, itemCount: 3 },
+			focus: "sidebar",
+			sidebar: { visible: true, selected: 0, itemCount: 3 },
 		});
 		const { state: down } = BoardNav.reduceKey(s, { name: "j" });
 		expect(down.sidebar.selected).toBe(1);
@@ -1407,18 +1462,11 @@ describe("sidebar keyboard routing", () => {
 		expect(hidden.sidebar.visible).toBe(false);
 	});
 
-	it("tab works from the event view", () => {
-		const s = boardWith({
-			view: { type: "events", cardId: "r1", fromView: "board" },
-		});
-		const { state: focused } = BoardNav.reduceKey(s, { name: "tab" });
-		expect(focused.sidebar.focus).toBe("sidebar");
-	});
-
 	it("sidebar j/k works from the event view when focused", () => {
 		const s = boardWith({
 			view: { type: "events", cardId: "r1", fromView: "board" },
-			sidebar: { visible: true, focus: "sidebar", selected: 0, itemCount: 3 },
+			focus: "sidebar",
+			sidebar: { visible: true, selected: 0, itemCount: 3 },
 		});
 		const { state: down } = BoardNav.reduceKey(s, { name: "j" });
 		expect(down.sidebar.selected).toBe(1);
@@ -2177,56 +2225,87 @@ describe("copilot prompt (`A` / `:`)", () => {
 		state({
 			sections: sections({ inbox: [row(task({ id: "a" }))] }),
 			selectedId: "a",
-			copilot: { window: null, turn: "idle", shortcuts: [triage] },
+			copilot: copilotState({ shortcuts: [triage] }),
 			...over,
 		});
 	const open = (s: BoardNav.BoardState = ready()) =>
 		BoardNav.reduceKey(s, char("A"));
 
-	it("A opens an empty window and asks app.tsx to confirm a copilot exists", () => {
+	it("A focuses the copilot and asks app.tsx to confirm one exists", () => {
 		const r = open();
-		expect(r.state.copilot.window).toEqual({ text: "", busy: false });
+		expect(r.state.focus).toBe("copilot");
 		expect(r.effect).toEqual({ type: "copilotOpen" });
 	});
 
-	it(": opens it too, and so does A in the detail view", () => {
-		expect(
-			BoardNav.reduceKey(ready(), char(":")).state.copilot.window,
-		).not.toBeNull();
+	it(": focuses it too, and so does A in the detail view", () => {
+		expect(BoardNav.reduceKey(ready(), char(":")).state.focus).toBe("copilot");
 		const detail = ready({ view: { type: "detail", taskId: "a" } });
-		expect(open(detail).state.copilot.window).not.toBeNull();
+		expect(open(detail).state.focus).toBe("copilot");
 	});
 
-	it("printable keys edit the text, backspace deletes, esc closes without submitting", () => {
-		const typed = typeQuery(open().state, "hi q");
-		expect(typed.copilot.window?.text).toBe("hi q");
-		// `q` was a prompt character, not quit; `j` did not move the selection.
-		expect(typed.selectedId).toBe("a");
-		const erased = BoardNav.reduceKey(typed, { name: "backspace" }).state;
-		expect(erased.copilot.window?.text).toBe("hi ");
-		const closed = BoardNav.reduceKey(erased, { name: "escape" });
-		expect(closed.state.copilot.window).toBeNull();
-		expect(closed.effect.type).toBe("none");
-		expect(closed.state.copilot.turn).toBe("idle");
+	it("the reducer never edits the buffer — the textarea owns it", () => {
+		const focused = open().state;
+		// Every printable key, backspace included, belongs to the textarea: the reducer is inert and
+		// says so through copilotConsumes, which is what app.tsx preventDefaults on.
+		for (const key of [char("d"), char("q"), { name: "backspace" }]) {
+			expect(BoardNav.reduceKey(focused, key).state).toBe(focused);
+			expect(BoardNav.copilotConsumes(focused, key)).toBe(false);
+		}
+		// The keys it does take away from the textarea.
+		expect(BoardNav.copilotConsumes(focused, { name: "escape" })).toBe(true);
+		expect(BoardNav.copilotConsumes(focused, { name: "tab" })).toBe(true);
+		// And none of them while the board has focus.
+		const onBoard = ready();
+		expect(BoardNav.copilotConsumes(onBoard, { name: "escape" })).toBe(false);
 	});
 
-	it("enter submits the text, closes the window and marks the turn running", () => {
-		const typed = typeQuery(open().state, "triage this");
-		const r = BoardNav.reduceKey(typed, { name: "return" });
+	it("esc returns to the board and the buffer survives the trip", () => {
+		const typed = BoardNav.withCopilotText(open().state, "hi there");
+		const left = BoardNav.reduceKey(typed, { name: "escape" });
+		expect(left.state.focus).toBe("board");
+		expect(left.effect.type).toBe("none");
+		expect(left.state.copilot.turn).toBe("idle");
+		// Tab away to mark rows, come back to what you were writing.
+		expect(left.state.copilot.text).toBe("hi there");
+		expect(BoardNav.reduceKey(left.state, char("A")).state.copilot.text).toBe(
+			"hi there",
+		);
+	});
+
+	it("submit sends, clears the buffer, records history and hands the board back", () => {
+		const typed = BoardNav.withCopilotText(open().state, "triage this");
+		const r = BoardNav.submitCopilot(typed, "triage this");
 		expect(r.effect).toEqual({ type: "copilotPrompt", prompt: "triage this" });
-		expect(r.state.copilot.window).toBeNull();
+		expect(r.state.copilot.text).toBe("");
 		expect(r.state.copilot.turn).toBe("running");
+		expect(r.state.copilot.history).toEqual(["triage this"]);
+		// Having sent a command, the next thing is watching it — every board key is live again.
+		expect(r.state.focus).toBe("board");
 	});
 
-	it("enter on an empty prompt just closes the window", () => {
-		const r = BoardNav.reduceKey(open().state, { name: "return" });
-		expect(r.effect.type).toBe("none");
-		expect(r.state.copilot.window).toBeNull();
-		expect(r.state.copilot.turn).toBe("idle");
+	it("submitting nothing does nothing; while a turn runs it flashes and keeps the draft", () => {
+		const focused = open().state;
+		expect(BoardNav.submitCopilot(focused, "   ").effect.type).toBe("none");
+		const running = open(
+			ready({
+				copilot: copilotState({ turn: "running", text: "second thing" }),
+			}),
+		).state;
+		const r = BoardNav.submitCopilot(running, "second thing");
+		expect(r.effect).toEqual({
+			type: "notice",
+			notice: {
+				text: "a turn is running · o for its transcript, x there stops it",
+				tone: "success",
+			},
+		});
+		expect(r.state.copilot.turn).toBe("running");
+		// The draft survives, so enter once the turn ends sends what was typed during it.
+		expect(r.state.copilot.text).toBe("second thing");
 	});
 
-	it("/ lists matching shortcuts; tab or enter on the exact name expands the template in place", () => {
-		const slash = typeQuery(open().state, "/tr");
+	it("/ matches shortcuts; tab and submit both expand the template into the textarea", () => {
+		const slash = BoardNav.withCopilotText(open().state, "/tr");
 		expect(
 			BoardNav.matchingShortcuts(slash.copilot.shortcuts, "/tr").map(
 				(s) => s.name,
@@ -2235,32 +2314,136 @@ describe("copilot prompt (`A` / `:`)", () => {
 		expect(BoardNav.matchingShortcuts(slash.copilot.shortcuts, "tr")).toEqual(
 			[],
 		);
+		// Expanding pushes the whole value at the textarea rather than editing state's copy.
 		const tabbed = BoardNav.reduceKey(slash, { name: "tab" });
-		expect(tabbed.state.copilot.window?.text).toBe(triage.template);
-		expect(tabbed.effect.type).toBe("none");
-		const exact = typeQuery(open().state, "/triage");
-		const entered = BoardNav.reduceKey(exact, { name: "return" });
-		expect(entered.state.copilot.window?.text).toBe(triage.template);
-		expect(entered.effect.type).toBe("none");
-		// A second enter sends the expanded text.
-		const sent = BoardNav.reduceKey(entered.state, { name: "return" });
+		expect(tabbed.effect).toEqual({
+			type: "copilotSetText",
+			text: triage.template,
+		});
+		expect(tabbed.state.copilot.text).toBe(triage.template);
+		// Completing does not move focus: the human is mid-prompt.
+		expect(tabbed.state.focus).toBe("copilot");
+		const exact = BoardNav.withCopilotText(open().state, "/triage");
+		const entered = BoardNav.submitCopilot(exact, "/triage");
+		expect(entered.effect).toEqual({
+			type: "copilotSetText",
+			text: triage.template,
+		});
+		// A second submit sends the expanded text, now that it has been read.
+		const sent = BoardNav.submitCopilot(entered.state, triage.template);
 		expect(sent.effect).toEqual({
 			type: "copilotPrompt",
 			prompt: triage.template,
 		});
 	});
 
-	it("A during a running turn opens the busy window: only esc works, and it cancels", () => {
-		const running = ready({
-			copilot: { window: null, turn: "running", shortcuts: [] },
+	it("arrows move the palette, and tab and enter take what it points at", () => {
+		const shortcuts = [
+			triage,
+			{ name: "trim", hint: "shorten", template: "Trim it." },
+			{ name: "track", hint: "follow", template: "Track it." },
+		];
+		const focused = open(ready({ copilot: copilotState({ shortcuts }) })).state;
+		const typed = BoardNav.withCopilotText(focused, "/tr");
+		// All three match, so the arrows belong to the palette rather than the textarea's cursor.
+		expect(BoardNav.copilotConsumes(typed, { name: "down" })).toBe(true);
+		expect(BoardNav.selectedShortcut(typed)?.name).toBe("triage");
+		const down = BoardNav.reduceKey(typed, { name: "down" }).state;
+		expect(BoardNav.selectedShortcut(down)?.name).toBe("trim");
+		const down2 = BoardNav.reduceKey(down, { name: "down" }).state;
+		expect(BoardNav.selectedShortcut(down2)?.name).toBe("track");
+		// Clamped at the end, like the sidebar's j/k.
+		const stuck = BoardNav.reduceKey(down2, { name: "down" }).state;
+		expect(BoardNav.selectedShortcut(stuck)?.name).toBe("track");
+		const up = BoardNav.reduceKey(stuck, { name: "up" }).state;
+		expect(BoardNav.selectedShortcut(up)?.name).toBe("trim");
+		// tab takes the selection, not the first match.
+		expect(BoardNav.reduceKey(up, { name: "tab" }).effect).toEqual({
+			type: "copilotSetText",
+			text: "Trim it.",
 		});
-		const r = open(running);
-		expect(r.state.copilot.window).toEqual({ text: "", busy: true });
-		const typed = BoardNav.reduceKey(r.state, char("x"));
-		expect(typed.state).toBe(r.state);
-		const esc = BoardNav.reduceKey(r.state, { name: "escape" });
-		expect(esc.effect).toEqual({ type: "copilotCancel" });
-		expect(esc.state.copilot.window).toBeNull();
+		// So does enter: sending the agent the literal text `/tr` is never what was meant.
+		expect(BoardNav.submitCopilot(up, "/tr").effect).toEqual({
+			type: "copilotSetText",
+			text: "Trim it.",
+		});
+		// Typing more resets the selection, because the list under it changed.
+		const narrowed = BoardNav.withCopilotText(down2, "/tri");
+		expect(narrowed.copilot.paletteAt).toBe(0);
+		expect(BoardNav.selectedShortcut(narrowed)?.name).toBe("triage");
+	});
+
+	it("with no palette open the arrows still belong to history", () => {
+		const sent = BoardNav.submitCopilot(open().state, "first");
+		const focused = BoardNav.reduceKey(
+			BoardNav.withCopilotTurn(sent.state, "idle"),
+			char("A"),
+		).state;
+		// Empty buffer, so nothing matches and recall keeps the keys.
+		expect(BoardNav.copilotConsumes(focused, { name: "up" })).toBe(true);
+		expect(BoardNav.reduceKey(focused, { name: "up" }).effect).toEqual({
+			type: "copilotSetText",
+			text: "first",
+		});
+		// Mid-sentence, they are the textarea's cursor again: no palette, no history.
+		const writing = BoardNav.withCopilotText(focused, "a normal prompt");
+		expect(BoardNav.copilotConsumes(writing, { name: "up" })).toBe(false);
+	});
+
+	it("tab with nothing to complete hands the ring its turn", () => {
+		const typed = BoardNav.withCopilotText(open().state, "not a slash");
+		const r = BoardNav.reduceKey(typed, { name: "tab" });
+		expect(r.state.focus).toBe("sidebar");
+		expect(r.state.copilot.text).toBe("not a slash");
+	});
+
+	it("up walks back through this session's prompts, down walks out again", () => {
+		const sent = BoardNav.submitCopilot(open().state, "first");
+		const again = BoardNav.submitCopilot(
+			BoardNav.reduceKey(
+				BoardNav.withCopilotTurn(sent.state, "idle"),
+				char("A"),
+			).state,
+			"second",
+		);
+		const focused = BoardNav.reduceKey(
+			BoardNav.withCopilotTurn(again.state, "idle"),
+			char("A"),
+		).state;
+		expect(focused.copilot.history).toEqual(["first", "second"]);
+		// Only while the buffer is empty — otherwise up is the textarea's cursor motion.
+		expect(BoardNav.copilotConsumes(focused, { name: "up" })).toBe(true);
+		const busy = BoardNav.withCopilotText(focused, "half a thought");
+		expect(BoardNav.copilotConsumes(busy, { name: "up" })).toBe(false);
+		const one = BoardNav.reduceKey(focused, { name: "up" });
+		expect(one.effect).toEqual({ type: "copilotSetText", text: "second" });
+		const two = BoardNav.reduceKey(one.state, { name: "up" });
+		expect(two.effect).toEqual({ type: "copilotSetText", text: "first" });
+		// Past the oldest it stays put.
+		const stuck = BoardNav.reduceKey(two.state, { name: "up" });
+		expect(stuck.state.copilot.text).toBe("first");
+		const back = BoardNav.reduceKey(two.state, { name: "down" });
+		expect(back.effect).toEqual({ type: "copilotSetText", text: "second" });
+		const out = BoardNav.reduceKey(back.state, { name: "down" });
+		expect(out.effect).toEqual({ type: "copilotSetText", text: "" });
+	});
+
+	it("esc and tab both leave the pane; neither stops the running turn", () => {
+		const running = open(
+			ready({
+				copilot: copilotState({ turn: "running", hasLog: true }),
+			}),
+		).state;
+		// esc is the back key everywhere else on the board and destroys nothing anywhere; it used to
+		// cancel here, which made tabbing in to look at a turn and tabbing back out kill it.
+		const esc = BoardNav.reduceKey(running, { name: "escape" });
+		expect(esc.effect.type).toBe("none");
+		expect(esc.state.focus).toBe("board");
+		expect(esc.state.copilot.turn).toBe("running");
+		const tabbed = BoardNav.reduceKey(running, { name: "tab" });
+		expect(tabbed.state.focus).toBe("sidebar");
+		expect(tabbed.effect.type).toBe("none");
+		expect(tabbed.state.copilot.turn).toBe("running");
 	});
 
 	it("withCopilotTurn moves the turn; a keypress after done or error returns it to idle and still acts", () => {
@@ -2284,11 +2467,11 @@ describe("copilot prompt (`A` / `:`)", () => {
 		expect(r.state.search).toEqual({ mode: "typing", query: "a" });
 	});
 
-	it("o opens the copilot's transcript while the indicator is up, from the board and the detail view", () => {
+	it("o opens the copilot's transcript whenever there is one, from the board and the detail view", () => {
 		const idle = BoardNav.reduceKey(ready(), char("o"));
 		expect(idle.state.view.type).toBe("board");
 		const running = ready({
-			copilot: { window: null, turn: "running", shortcuts: [] },
+			copilot: copilotState({ turn: "running", hasLog: true }),
 		});
 		const fromBoard = BoardNav.reduceKey(running, char("o"));
 		expect(fromBoard.state.view).toEqual({
@@ -2313,6 +2496,18 @@ describe("copilot prompt (`A` / `:`)", () => {
 		// Back where it came from.
 		const back = BoardNav.reduceKey(fromDetail.state, { name: "escape" });
 		expect(back.state.view).toEqual({ type: "detail", taskId: "a" });
+		// The INDICATOR clears on the next keypress; the log behind it does not. Guarding `o` on the
+		// indicator made the session's turns unreachable the moment anything else was pressed —
+		// which is precisely when someone goes back looking for what just ran.
+		const settled = ready({
+			copilot: copilotState({ turn: "idle", hasLog: true }),
+		});
+		expect(BoardNav.reduceKey(settled, char("o")).state.view).toEqual({
+			type: "events",
+			cardId: "copilot",
+			fromView: "board",
+			fromTaskId: undefined,
+		});
 	});
 
 	it("o in the detail view with no turn still opens the task's own events", () => {
@@ -2326,7 +2521,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 	it("x on the copilot's transcript cancels the running turn; on a host card it is inert", () => {
 		const onCopilot = ready({
 			view: { type: "events", cardId: "copilot", fromView: "board" },
-			copilot: { window: null, turn: "running", shortcuts: [] },
+			copilot: copilotState({ turn: "running" }),
 		});
 		expect(BoardNav.reduceKey(onCopilot, char("x")).effect).toEqual({
 			type: "copilotCancel",
@@ -2335,22 +2530,182 @@ describe("copilot prompt (`A` / `:`)", () => {
 		expect(BoardNav.reduceKey(finished, char("x")).effect.type).toBe("none");
 		const onHost = ready({
 			view: { type: "events", cardId: "r1", fromView: "board" },
-			copilot: { window: null, turn: "running", shortcuts: [] },
+			copilot: copilotState({ turn: "running" }),
 		});
 		expect(BoardNav.reduceKey(onHost, char("x")).effect.type).toBe("none");
 	});
 
-	it("mouse is inert while the window is open", () => {
+	it("a click on the board brings focus with it — the copilot is not a modal", () => {
 		const r = BoardNav.reduceMouse(open().state, { type: "select", row: 0 });
-		expect(r.state.view.type).toBe("board");
-		expect(r.effect.type).toBe("none");
+		expect(r.state.focus).toBe("board");
+		expect(r.state.selectedId).toBe("a");
 	});
 
-	it("init starts idle with no window and no shortcuts", () => {
-		expect(BoardNav.init([], { scoped: false }).copilot).toEqual({
-			window: null,
-			turn: "idle",
-			shortcuts: [],
+	it("init starts on the board with an empty buffer and no shortcuts", () => {
+		const s = BoardNav.init([], { scoped: false });
+		expect(s.focus).toBe("board");
+		expect(s.copilot).toEqual(copilotState());
+	});
+});
+
+describe("the copilot's fingerprint on the rows it changed (`✦ ai`)", () => {
+	const ACTOR = "cabane://actor/agent/claude";
+	const TURN_START = "2026-09-12T10:00:00.000Z";
+	const before = "2026-09-12T09:59:59.000Z";
+	const after = "2026-09-12T10:00:01.000Z";
+
+	// One parent with the rest as its subtasks, so a single helper covers both depths.
+	const board = (turn: BoardNav.CopilotTurn, rows: Task[]) =>
+		state({
+			sections: sections({ next: [row(rows[0] ?? task(), rows.slice(1))] }),
+			copilot: copilotState({ turn, actor: ACTOR }),
 		});
+
+	it("names the copilot's own writes since the turn opened, and nobody else's", () => {
+		const agent = task({ id: "agent", updatedBy: ACTOR, updatedAt: after });
+		const human = task({
+			id: "human",
+			parentTaskId: "agent",
+			updatedBy: "cabane://actor/human/david",
+			updatedAt: after,
+		});
+		const stale = task({
+			id: "stale",
+			parentTaskId: "agent",
+			updatedBy: ACTOR,
+			updatedAt: before,
+		});
+		expect([
+			...BoardNav.copilotTouched(
+				board("running", [agent, human, stale]),
+				TURN_START,
+			),
+		]).toEqual(["agent"]);
+	});
+
+	it("marks a subtask the copilot wrote even while its parent is collapsed", () => {
+		const parent = task({ id: "p", updatedBy: ACTOR, updatedAt: before });
+		const child = task({
+			id: "c",
+			parentTaskId: "p",
+			updatedBy: ACTOR,
+			updatedAt: after,
+		});
+		expect([
+			...BoardNav.copilotTouched(board("running", [parent, child]), TURN_START),
+		]).toEqual(["c"]);
+	});
+
+	it("clears on the keypress that dismisses the finished turn's indicator", () => {
+		const written = task({ id: "agent", updatedBy: ACTOR, updatedAt: after });
+		const done = board("done", [written]);
+		expect(BoardNav.copilotTouched(done, TURN_START).size).toBe(1);
+		const next = BoardNav.reduceKey(done, char("j")).state;
+		expect(next.copilot.turn).toBe("idle");
+		expect(BoardNav.copilotTouched(next, TURN_START).size).toBe(0);
+	});
+
+	it("keeps the glyphs through a running turn: a keypress is not an acknowledgement yet", () => {
+		const written = task({ id: "agent", updatedBy: ACTOR, updatedAt: after });
+		const next = BoardNav.reduceKey(
+			board("running", [written]),
+			char("j"),
+		).state;
+		expect(BoardNav.copilotTouched(next, TURN_START).size).toBe(1);
+	});
+
+	it("marks nothing for a copilot that names no actor, or before a turn has started", () => {
+		const written = task({ id: "agent", updatedBy: ACTOR, updatedAt: after });
+		const anonymous = state({
+			sections: sections({ next: [row(written)] }),
+			copilot: copilotState({ turn: "running" }),
+		});
+		expect(BoardNav.copilotTouched(anonymous, TURN_START).size).toBe(0);
+		expect(
+			BoardNav.copilotTouched(board("running", [written]), undefined).size,
+		).toBe(0);
+	});
+});
+
+describe("a permission request the harness is blocked on", () => {
+	const request: CopilotPermission = {
+		id: "t0",
+		title: "cabane_edit",
+		options: [
+			{ id: "allow", label: "Allow" },
+			{ id: "reject", label: "Reject" },
+		],
+	};
+	const asked = (over: Partial<BoardNav.BoardState> = {}) =>
+		state({
+			sections: sections({ next: [row(task({ id: "a" }))] }),
+			selectedId: "a",
+			copilot: copilotState({ turn: "running", permission: request }),
+			...over,
+		});
+
+	it("a digit answers with the option it numbers, and the question is gone", () => {
+		const r = BoardNav.reduceKey(asked(), char("2"));
+		expect(r.effect).toEqual({
+			type: "copilotAnswer",
+			id: "t0",
+			optionId: "reject",
+		});
+		expect(r.state.copilot.permission).toBeNull();
+	});
+
+	it("esc declines", () => {
+		const r = BoardNav.reduceKey(asked(), { name: "escape" });
+		expect(r.effect).toEqual({
+			type: "copilotAnswer",
+			id: "t0",
+			optionId: null,
+		});
+		expect(r.state.copilot.permission).toBeNull();
+	});
+
+	it("answers from the copilot pane and the transcript too — the question outranks the view", () => {
+		const fromPane = BoardNav.reduceKey(asked({ focus: "copilot" }), char("1"));
+		expect(fromPane.effect).toMatchObject({ optionId: "allow" });
+		const fromTranscript = BoardNav.reduceKey(
+			asked({ view: { type: "events", cardId: "copilot", fromView: "board" } }),
+			char("1"),
+		);
+		expect(fromTranscript.effect).toMatchObject({ optionId: "allow" });
+	});
+
+	it("the pane gives up the digits while one is pending, and takes them back after", () => {
+		const pending = asked({ focus: "copilot" });
+		expect(BoardNav.copilotConsumes(pending, char("1"))).toBe(true);
+		const answered = BoardNav.reduceKey(pending, char("1")).state;
+		expect(BoardNav.copilotConsumes(answered, char("1"))).toBe(false);
+	});
+
+	it("a digit past the last option answers nothing, and the key routes as it always does", () => {
+		const r = BoardNav.reduceKey(asked(), char("3"));
+		expect(r.effect.type).toBe("none");
+		expect(r.state.copilot.permission).toEqual(request);
+	});
+
+	it("leaves every other key alone: x on the transcript still cancels the waiting turn", () => {
+		const r = BoardNav.reduceKey(
+			asked({ view: { type: "events", cardId: "copilot", fromView: "board" } }),
+			char("x"),
+		);
+		expect(r.effect).toEqual({ type: "copilotCancel" });
+		// The board never answers on the human's behalf, cancelling included.
+		expect(r.state.copilot.permission).toEqual(request);
+	});
+
+	it("a digit stays a query character while a search is being typed", () => {
+		const typing = asked({ search: { mode: "typing", query: "au" } });
+		const r = BoardNav.reduceKey(typing, char("1"));
+		expect(r.effect.type).toBe("none");
+		expect(r.state.search).toEqual({ mode: "typing", query: "au1" });
+	});
+
+	it("a turn that stops takes the unanswered question with it", () => {
+		const stopped = BoardNav.withCopilotTurn(asked(), "error");
+		expect(stopped.copilot.permission).toBeNull();
 	});
 });

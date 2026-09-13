@@ -4,7 +4,7 @@
 // router) and runs the effect it returns. A 5s poll keeps the board fresh; selection survives every
 // reload by task id. The board starts scoped to the detected project — `esc` widens to all scopes.
 import { Planner, type Task, type TaskComment } from "@cabane/core";
-import type { ScrollBoxRenderable } from "@opentui/core";
+import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import {
 	useKeyboard,
 	useRenderer,
@@ -23,7 +23,7 @@ import { anyActivityRunning, Board } from "./board";
 import { Clipboard } from "./clipboard";
 import { BoardContext } from "./context";
 import { CopilotLog } from "./copilot-log";
-import { CopilotPrompt, contextChip } from "./copilot-prompt";
+import { CopilotPane, contextChip } from "./copilot-prompt";
 import { BoardData } from "./data";
 import { Detail } from "./detail";
 import { EventView } from "./event-view";
@@ -124,7 +124,7 @@ export const App = ({
 	const [notice, setNotice] = useState<BoardNav.Notice | null>(null);
 	// Comments for the currently open detail view. Fetched alongside the brief, cleared on view change.
 	const [detailComments, setDetailComments] = useState<TaskComment[]>([]);
-	// The copilot's current turn: its card and transcript, replaced on the next turn, never persisted.
+	// This session's copilot turns, the current one at the head: its card, its plan and its transcript.
 	// Held in a ref as well because the composed ActivitySource below reads it while the event view
 	// polls, and the stream runner writes it between renders.
 	const [copilotLog, setCopilotLog] = useState<CopilotLog.Log | null>(null);
@@ -132,6 +132,8 @@ export const App = ({
 	const publishLog = useCallback((log: CopilotLog.Log): void => {
 		copilotLogRef.current = log;
 		setCopilotLog(log);
+		// The reducer holds no log, but `o` routes on whether one exists — so it gets the one bit.
+		setState((prev) => (prev ? BoardNav.withCopilotLog(prev, true) : prev));
 	}, []);
 	// Which turn the stream runner is on; a cancel or a new prompt moves it so a stale stream's late
 	// updates are dropped rather than written over the next turn's log.
@@ -160,6 +162,9 @@ export const App = ({
 	const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 	// The board list's scrollbox; app.tsx keeps the selected row in view as j/k move it off-screen.
 	const listRef = useRef<ScrollBoxRenderable | null>(null);
+	// The copilot's input. It OWNS its text; the reducer only ever pushes a whole new value at it
+	// (a shortcut expansion, a recalled prompt, the clear after a send) through `copilotSetText`.
+	const inputRef = useRef<TextareaRenderable | null>(null);
 
 	const filtersFor = useCallback(
 		(s: BoardNav.BoardState): BoardData.BoardFilters => ({
@@ -306,7 +311,8 @@ export const App = ({
 				return;
 			}
 			const turn = ++turnRef.current;
-			let log = CopilotLog.start(now());
+			// Behind this turn, the ones before it: the prompt is what opens a new one in the log.
+			let log = CopilotLog.start(copilotLogRef.current, prompt, now());
 			publishLog(log);
 			const fail = (summary: string): void => {
 				log = CopilotLog.apply(log, { type: "error", summary, at: now() });
@@ -324,6 +330,14 @@ export const App = ({
 					if (turnRef.current !== turn) return;
 					log = CopilotLog.apply(log, update);
 					publishLog(log);
+					// The harness is blocked from here until the human presses something; the board
+					// only puts the question on screen and carries on rendering.
+					if (update.type === "permission")
+						setState((prev) =>
+							prev
+								? BoardNav.withCopilotPermission(prev, update.request)
+								: prev,
+						);
 					if (update.type === "tool_result") {
 						const current = stateRef.current;
 						if (current) void reload(current);
@@ -332,7 +346,7 @@ export const App = ({
 					if (update.type === "error") endTurn("error");
 				}
 				// A stream that ends without saying so still ended.
-				if (log.card.status === "running") {
+				if (log.current.card.status === "running") {
 					log = CopilotLog.apply(log, { type: "done", summary: "", at: now() });
 					publishLog(log);
 					endTurn("done");
@@ -349,7 +363,7 @@ export const App = ({
 		turnRef.current++;
 		void copilot?.cancel();
 		const log = copilotLogRef.current;
-		if (log && log.card.status === "running")
+		if (log && log.current.card.status === "running")
 			publishLog(CopilotLog.cancelled(log, new Date().toISOString()));
 		setState((prev) => (prev ? BoardNav.withCopilotTurn(prev, "error") : prev));
 	}, [copilot, publishLog]);
@@ -419,13 +433,9 @@ export const App = ({
 					void loadTriggers(effect.taskId);
 					return;
 				case "copilotOpen":
-					// The window opened optimistically; without a copilot it closes at once with the flash.
+					// Focus moved optimistically; without a copilot it goes straight back with the flash.
 					if (!copilot) {
-						setState((prev) =>
-							prev
-								? { ...prev, copilot: { ...prev.copilot, window: null } }
-								: prev,
-						);
+						setState((prev) => (prev ? { ...prev, focus: "board" } : prev));
 						setNotice(NO_COPILOT);
 					}
 					return;
@@ -434,6 +444,12 @@ export const App = ({
 					return;
 				case "copilotCancel":
 					cancelCopilot();
+					return;
+				case "copilotAnswer":
+					copilot?.answerPermission(effect.id, effect.optionId);
+					return;
+				case "copilotSetText":
+					inputRef.current?.setText(effect.text);
 					return;
 				case "sidebarSelect": {
 					// Read activity from the ref to avoid stale closure over sidebarItems.
@@ -451,7 +467,7 @@ export const App = ({
 								fromView: next.view.type === "detail" ? "detail" : "board",
 								fromTaskId,
 							},
-							sidebar: { ...next.sidebar, focus: "board" },
+							focus: "board",
 						});
 						return;
 					}
@@ -465,7 +481,7 @@ export const App = ({
 						setState({
 							...next,
 							view: { type: "detail", taskId },
-							sidebar: { ...next.sidebar, focus: "board" },
+							focus: "board",
 						});
 					}
 					return;
@@ -548,6 +564,9 @@ export const App = ({
 			if (key.name === "q") renderer.destroy();
 			return;
 		}
+		// A focused textarea sees every key as well, global handler first. Claiming the keys the
+		// copilot reducer answers is what keeps `tab` and `esc` from also landing in the buffer.
+		if (BoardNav.copilotConsumes(current, key)) key.preventDefault();
 		const { state: next, effect } = BoardNav.reduceKey(current, key);
 		if (next !== current) {
 			stateRef.current = next;
@@ -555,6 +574,24 @@ export const App = ({
 		}
 		runEffect(next, effect);
 	});
+
+	// The textarea's own `submit` binding (enter). The reducer decides expand-versus-send so the
+	// `/name` rule lives in one place.
+	const submitCopilot = useCallback((): void => {
+		const current = stateRef.current;
+		if (!current) return;
+		const text = inputRef.current?.plainText ?? "";
+		const { state: next, effect } = BoardNav.submitCopilot(current, text);
+		stateRef.current = next;
+		setState(next);
+		runEffect(next, effect);
+	}, [runEffect]);
+
+	// Mirror the buffer into the reducer so `/` matching sees what the human sees.
+	const mirrorCopilotText = useCallback((): void => {
+		const text = inputRef.current?.plainText ?? "";
+		setState((prev) => (prev ? BoardNav.withCopilotText(prev, text) : prev));
+	}, []);
 
 	// Initial load: detect scope, then build the first state scoped to the project (if any).
 	// retryCount is in deps so `r` from the error screen re-triggers this effect.
@@ -575,9 +612,12 @@ export const App = ({
 			if (act.ok) setActivity(act.value);
 			if (result.ok)
 				setState(
-					BoardNav.withCopilotShortcuts(
+					BoardNav.withCopilotPort(
 						BoardNav.init(result.value, { scoped: Boolean(detected) }),
-						copilot?.shortcuts() ?? [],
+						{
+							shortcuts: copilot?.shortcuts() ?? [],
+							actor: copilot?.actor ?? null,
+						},
 					),
 				);
 			else setError(result.error.message);
@@ -712,28 +752,32 @@ export const App = ({
 			)}
 			overlay={state.dispatch}
 		/>
-	) : state.copilot.window ? (
-		<CopilotPrompt
-			window={state.copilot.window}
+	) : null;
+	// The pane is always mounted — one row unfocused, the panel when focused — so the copilot is a
+	// place on screen rather than something that appears when summoned.
+	const copilotPane = (
+		<CopilotPane
+			copilot={state.copilot}
 			// Briefs are fetched on submit; the chip only needs the ids the state already holds.
 			chip={contextChip(BoardContext.project(state, scope, new Map()))}
-			shortcuts={state.copilot.shortcuts}
+			focused={state.focus === "copilot"}
+			log={copilotLog}
+			spinnerFrame={spinnerFrame}
+			detailShownElsewhere={
+				state.view.type === "events" && state.view.cardId === CopilotLog.CARD_ID
+			}
+			textareaRef={inputRef}
+			onSubmit={submitCopilot}
+			onContentChange={mirrorCopilotText}
 		/>
-	) : null;
-	// The footer indicator: up from submit until the keypress after the turn ends (the reducer moves
-	// the turn back to idle), reading the live log for its text.
-	const copilotFooter =
-		copilotLog && state.copilot.turn !== "idle"
-			? CopilotLog.footer(copilotLog, spinnerFrame)
-			: null;
-
+	);
 	const showSidebar = state.sidebar.visible && termCols >= MIN_SIDEBAR_COLS;
 	const sbWidth = showSidebar ? sidebarWidth(termCols) : 0;
 	const sidebarEl = showSidebar ? (
 		<Sidebar
 			activity={shownActivity}
 			sidebarWidth={sbWidth}
-			focused={state.sidebar.focus === "sidebar"}
+			focused={state.focus === "sidebar"}
 			selectedIndex={state.sidebar.selected}
 			spinnerFrame={spinnerFrame}
 			resolveShortId={resolveShortId}
@@ -752,11 +796,23 @@ export const App = ({
 						resolveShortId={resolveShortId}
 						scrollRef={scrollRef}
 						notice={notice}
+						plan={
+							cardId === CopilotLog.CARD_ID
+								? copilotLog?.current.plan
+								: undefined
+						}
+						permission={
+							cardId === CopilotLog.CARD_ID
+								? state.copilot.permission
+								: undefined
+						}
 						extraHints={
 							cardId === CopilotLog.CARD_ID && state.copilot.turn === "running"
 								? "x cancel"
 								: undefined
 						}
+						sidebarWidth={sbWidth}
+						pane={copilotPane}
 					/>
 				</box>
 				{sidebarEl}
@@ -783,10 +839,10 @@ export const App = ({
 						cards={taskCards.length > 0 ? taskCards : undefined}
 						comments={detailComments.length > 0 ? detailComments : undefined}
 						questions={shownActivity.questionsByTaskId.get(taskId)}
-						spinnerFrame={spinnerFrame}
 						scrollRef={scrollRef}
 						notice={notice}
-						copilot={copilotFooter}
+						focus={state.focus}
+						pane={copilotPane}
 						onCopy={() => dispatchMouse({ type: "copy" })}
 					/>
 				</box>
@@ -810,11 +866,18 @@ export const App = ({
 					filterLabel={`kind: ${state.kind}`}
 					status={state.status}
 					marked={state.marked}
+					// The reload after each of the copilot's writes is what puts the fresh `updatedBy`
+					// and `updatedAt` in hand; the reducer decides which of them the glyph is for.
+					touched={BoardNav.copilotTouched(
+						state,
+						copilotLog?.current.card.startedAt,
+					)}
 					scrollRef={listRef}
 					onSelect={(row) => dispatchMouse({ type: "select", row })}
 					onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}
 					notice={notice}
-					copilot={copilotFooter}
+					focus={state.focus}
+					pane={copilotPane}
 					sidebarWidth={sbWidth}
 				/>
 			</box>
