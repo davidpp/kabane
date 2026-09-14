@@ -241,6 +241,69 @@ describe("cabane tools", () => {
 		const result = await tool("cabane_get").handler({ id: "JCAB-999" }, ctx);
 		expect(result.ok).toBe(false);
 	});
+	it("links and unlinks an external issue by the pair that made it", async () => {
+		const task = unwrap(
+			await tool("cabane_add").handler(
+				{ title: "has a team-facing twin", scopeUri: "demo" },
+				ctx,
+			),
+		) as Task;
+		const args = {
+			id: task.shortId ?? task.id,
+			provider: "linear",
+			externalId: "linear-uuid",
+		};
+
+		unwrap(
+			await tool("cabane_upstream_link").handler(
+				{
+					...args,
+					identifier: "ENG-123",
+					url: "https://linear.app/acme/issue/ENG-123/x",
+					title: "Team feature",
+				},
+				ctx,
+			),
+		);
+
+		// The brief is the read path; there is deliberately no upstream read tool.
+		const brief = unwrap(
+			await tool("cabane_context").handler({ id: args.id }, ctx),
+		) as { markdown: string };
+		expect(brief.markdown).toContain("## Upstream");
+		expect(brief.markdown).toContain("- linear · ENG-123 — Team feature");
+
+		const removed = unwrap(
+			await tool("cabane_upstream_unlink").handler(args, ctx),
+		) as { unlinked: string };
+		expect(removed.unlinked).toBe("ENG-123");
+
+		const after = unwrap(
+			await tool("cabane_context").handler({ id: args.id }, ctx),
+		) as { markdown: string };
+		expect(after.markdown).not.toContain("## Upstream");
+	});
+
+	it("refuses to unlink an external issue the task is not linked to", async () => {
+		const task = unwrap(
+			await tool("cabane_add").handler(
+				{ title: "unlinked", scopeUri: "demo" },
+				ctx,
+			),
+		) as Task;
+
+		const result = await tool("cabane_upstream_unlink").handler(
+			{
+				id: task.shortId ?? task.id,
+				provider: "linear",
+				externalId: "never-linked",
+			},
+			ctx,
+		);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.message).toContain("never-linked");
+	});
 });
 
 describe("cabane MCP server over an in-memory transport", () => {

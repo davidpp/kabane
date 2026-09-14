@@ -7,9 +7,9 @@
  * from this list, so a browser connector and a local CLI see the same surface.
  *
  * ONLY REPLICATED DATA. The hub holds what the sync set carries: tasks,
- * links, comments, work logs, projects, context refs. Agent sessions do not
- * replicate, so there are no session tools here; the assembled brief's
- * Discussion section at the hub therefore carries comments only.
+ * links, comments, work logs, projects, context refs, upstream links. Agent
+ * sessions do not replicate, so there are no session tools here; the assembled
+ * brief's Discussion section at the hub therefore carries comments only.
  *
  * SCOPE IS EXPLICIT AT THE HUB. A device can default `scopeUri` from its
  * working directory; the hub has no directory, so `scopeRequired` makes every
@@ -507,6 +507,79 @@ Parameters:
 	},
 });
 
+const upstreamLink = define({
+	name: "cabane_upstream_link",
+	kind: "write",
+	description: `Record that a task points at an issue in an external tracker (Linear, GitHub). Identity only: the link names the issue and opens it, it does NOT hold what the issue says. Put what matters about the external issue into the task's own description with cabane_edit — a second copy here would rot. Re-linking the same task to the same issue corrects the identifier, url and title in place.
+
+Parameters:
+- id: ${ID_HINT}
+- provider: linear, github, or another tracker's name
+- externalId: The provider's own stable id for the issue
+- identifier: The human-readable key (ENG-123, owner/repo#12)
+- url: The https link a human opens
+- title: The issue's title, as it reads today`,
+	input: {
+		id: z.string().min(1),
+		provider: z.string().trim().min(1),
+		externalId: z.string().trim().min(1),
+		identifier: z.string().trim().min(1).optional(),
+		url: z.string().url(),
+		title: z.string().trim().min(1),
+	},
+	handler: async (args, ctx) => {
+		const id = await resolveId(ctx, args.id);
+		if (!id.ok) return id;
+		return Planner.upsertUpstreamLink(ctx.basePath, {
+			taskId: id.value,
+			provider: args.provider,
+			externalId: args.externalId,
+			identifier: args.identifier,
+			url: args.url,
+			title: args.title,
+		});
+	},
+});
+
+const upstreamUnlink = define({
+	name: "cabane_upstream_unlink",
+	kind: "write",
+	description: `Remove the link between a task and an external issue. Addressed by the pair that made it, not by a link id: the same arguments that linked it, unlink it.
+
+Parameters:
+- id: ${ID_HINT}
+- provider: The provider the link was made with
+- externalId: The provider's own id for the issue`,
+	input: {
+		id: z.string().min(1),
+		provider: z.string().trim().min(1),
+		externalId: z.string().trim().min(1),
+	},
+	handler: async (args, ctx) => {
+		const id = await resolveId(ctx, args.id);
+		if (!id.ok) return id;
+
+		const links = await Planner.getUpstreamLinksForTask(ctx.basePath, id.value);
+		if (!links.ok) return links;
+		const match = links.value.find(
+			(link) =>
+				link.provider === args.provider && link.externalId === args.externalId,
+		);
+		if (match === undefined) {
+			return err(
+				new Error(
+					`No ${args.provider} link on ${args.id} for external id ${args.externalId}.`,
+				),
+			);
+		}
+
+		const removed = await Planner.deleteUpstreamLink(ctx.basePath, match.id);
+		return removed.ok
+			? ok({ unlinked: match.identifier ?? match.externalId })
+			: removed;
+	},
+});
+
 const scopeList = define({
 	name: "cabane_scopeList",
 	kind: "read",
@@ -537,6 +610,8 @@ export const CABANE_TOOLS: readonly ToolDef[] = [
 	contextAdd,
 	contextList,
 	contextRemove,
+	upstreamLink,
+	upstreamUnlink,
 ];
 
 /** Server-level instructions sent on initialize. */
@@ -544,4 +619,5 @@ export const SERVER_INSTRUCTIONS = `Cabane is a shared work queue for humans and
 Two kinds of item: 'task' is human GTD work (inbox → next → done); 'issue' is work an agent runtime picks up.
 To brainstorm into work: cabane_add with kind issue, a description that is the brief, state next, and assignee set to the runtime (claude, hermes, codex).
 To pick up work as a runtime: cabane_list with your assignee and state next, cabane_context on the chosen id, cabane_edit to in_progress, then cabane_log and cabane_comment as you go, cabane_done at the end.
-Scopes are the context boundary (a repo, a client). Discover them with cabane_scopeList and pass scopeUri on writes.`;
+Scopes are the context boundary (a repo, a client). Discover them with cabane_scopeList and pass scopeUri on writes.
+When a task has a twin in Linear or GitHub, record it with cabane_upstream_link and put what the external issue says into the task's own description — the link is identity only, so nothing stored on it can go stale.`;
