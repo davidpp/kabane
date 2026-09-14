@@ -56,6 +56,8 @@ export namespace BoardCopilot {
 		"cabane_log",
 		"cabane_contextAdd",
 		"cabane_contextRemove",
+		"cabane_upstream_link",
+		"cabane_upstream_unlink",
 	] as const;
 
 	// Harnesses title an MCP tool call differently — the bare name, a namespaced `mcp__cabane__…`,
@@ -150,7 +152,7 @@ export namespace BoardCopilot {
 				// Honoured by the Claude adapter only. Every harness gets the same text as the first
 				// prompt below, because an adapter that ignores `_meta` would otherwise run with no
 				// instructions at all.
-				systemPromptAppend: CopilotInstructions.BLOCK,
+				systemPromptAppend: CopilotInstructions.SYSTEM_PROMPT,
 			});
 			if (!started.ok) {
 				AcpClient.close(opened.value);
@@ -220,7 +222,7 @@ export namespace BoardCopilot {
 			}
 			const blocks: AcpClient.PromptBlock[] = [];
 			if (!instructed)
-				blocks.push({ type: "text", text: CopilotInstructions.BLOCK });
+				blocks.push({ type: "text", text: CopilotInstructions.SYSTEM_PROMPT });
 			blocks.push({ type: "text", text: BoardContext.render(context) });
 			blocks.push({ type: "text", text: prompt });
 			const titles = new Map<string, string>();

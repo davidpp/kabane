@@ -202,7 +202,7 @@ describe("BoardCopilot", () => {
 					env: [],
 				},
 			],
-			_meta: { systemPrompt: { append: CopilotInstructions.BLOCK } },
+			_meta: { systemPrompt: { append: CopilotInstructions.SYSTEM_PROMPT } },
 		});
 		copilot.close();
 	});
@@ -229,7 +229,7 @@ describe("BoardCopilot", () => {
 		);
 		await collect(copilot.run("now split the first one", context()));
 
-		expect(textOf(seen.prompts[0], 0)).toBe(CopilotInstructions.BLOCK);
+		expect(textOf(seen.prompts[0], 0)).toBe(CopilotInstructions.SYSTEM_PROMPT);
 		const firstContext = textOf(seen.prompts[0], 1);
 		expect(firstContext).toContain("scope: jake://scope/cabane");
 		expect(firstContext).toContain("selected: JCAB-33 · Sweep the backlog");
@@ -271,6 +271,27 @@ describe("BoardCopilot", () => {
 		expect(updates.find((u) => u.type === "tool_result")?.summary).toBe(
 			"cabane_edit",
 		);
+		copilot.close();
+	});
+
+	// Recording a link is what makes the row's linked-issue glyph appear, so it has to reach the
+	// board the same way any other write does.
+	it("a completed upstream link is a write, so the board reloads", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				steps: [
+					{
+						kind: "call",
+						id: "t1",
+						title: "cabane_upstream_link",
+						status: "completed",
+					},
+				],
+			}),
+		);
+		const updates = await collect(copilot.run("/linear", context()));
+		expect(types(updates)).toEqual(["tool_call", "tool_result", "done"]);
 		copilot.close();
 	});
 
@@ -487,6 +508,8 @@ describe("BoardCopilot", () => {
 			"duplicates",
 			"reparent",
 			"check-plan",
+			"linear",
+			"github",
 		]);
 		for (const shortcut of copilot.shortcuts()) {
 			expect(shortcut.template.length).toBeGreaterThan(20);
