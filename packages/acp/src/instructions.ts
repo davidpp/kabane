@@ -2,6 +2,10 @@
 // the cabane MCP tools, and how to read the board context block that precedes every prompt. The
 // tool loop is deliberately NOT restated here — the cabane MCP server sends SERVER_INSTRUCTIONS on
 // initialize, and a second description of one loop is a second thing to keep in sync.
+//
+// BLOCK is who the copilot is; SKILLS is a procedure it cannot infer. They are separate constants
+// joined into one SYSTEM_PROMPT, because a skill is the kind of text that grows and growing it
+// should not dilute the identity paragraph.
 import type { CopilotShortcut } from "@cabane/board/ports";
 
 export namespace CopilotInstructions {
@@ -19,6 +23,26 @@ Prefer small, explained changes to sweeping ones. Keep ids and titles stable unl
 Every prompt is preceded by a fenced code block tagged cabane-board holding what the human is looking at: the scope, the view, the section and filters in force, the row under the cursor as selected, and their marked working set, followed by the assembled brief of each under a ### <shortId> heading. "this issue", "these", "here" and "the selection" mean what that block says. It is refreshed on every prompt, so trust it over anything you remember from an earlier turn.
 
 Finish each turn with a summary of at most three lines saying what you changed.`;
+
+	// Reaching outside the tracker is the one thing the copilot cannot work out from the tools it was
+	// handed: which provider tool to use, what goes in the task versus on the link, and that a created
+	// issue is unfinished until it is linked. Written as a procedure for that reason.
+	export const SKILLS = `LINKING A TASK TO AN EXTERNAL ISSUE. Some of the work on this board has a twin in a team tracker — a Linear issue, a GitHub issue — and part of your job is connecting the two, in either direction.
+
+Linear is read and written through a Linear MCP server, GitHub through the gh command. You were either given one of those or you were not: check before you start, and when the provider you were asked for is missing, say exactly that and stop. Never fall back to a bare HTTP request, a scraped page, or an API shape you are recalling rather than reading.
+
+Pulling one in: read the external issue, then put what matters about it into the cabane task's OWN description with cabane_edit — the problem, what should change, how it will be judged done — written as the brief whoever implements it will read, not pasted verbatim. Then record the link with cabane_upstream_link.
+
+Pushing one out: read the cabane task, create the issue in the external tracker from its description (the team-facing version, usually shorter than what is written here), then record the link back with cabane_upstream_link. Do not rewrite the cabane task to match what you filed. The local task is allowed to hold more than the team issue does; that is why it exists.
+
+The link carries identity only: the provider, the provider's own stable id, the human-readable key such as ENG-123 or owner/repo#12, the url, and the title as it reads today. Never put the external issue's body on the link. A second copy of someone else's text rots, and nothing in cabane will show it.
+
+Either direction is finished only when cabane_upstream_link has succeeded. An issue you filed and did not link is work this board cannot see.`;
+
+	// What every harness is actually given. Both of the places that send instructions — the session's
+	// systemPromptAppend and the first prompt's opening block — send this, so a harness that honours
+	// only one of the two still gets the whole thing.
+	export const SYSTEM_PROMPT = `${BLOCK}\n\n${SKILLS}`;
 
 	// The `/name` expansions the prompt window offers. `template` is dropped into the input line for
 	// the human to read and edit before they send it, so each one is a single line of plain prose,
@@ -60,6 +84,20 @@ Finish each turn with a summary of at most three lines saying what you changed.`
 			hint: "report gaps and ordering, write nothing",
 			template:
 				"Check this plan for gaps, wrong ordering and missing dependencies. Report what you find and write nothing unless I ask you to.",
+		},
+		// The template is the inbound direction because that is the common one; the hint says the
+		// other exists, and the skill text above carries the procedure for both.
+		{
+			name: "linear",
+			hint: "pull an issue in, or push this one out",
+			template:
+				"Pull Linear issue ENG-000 into the selected issue: read it, write what matters into the description, and record the link.",
+		},
+		{
+			name: "github",
+			hint: "pull an issue in, or push this one out",
+			template:
+				"Pull GitHub issue owner/repo#000 into the selected issue: read it, write what matters into the description, and record the link.",
 		},
 	];
 }
