@@ -953,6 +953,38 @@ test("Board glyphs a row with a linked issue and keeps every title aligned", asy
 	}
 });
 
+// The glyph is a column the title no longer has. If it were missing from `fixed`, a long title would
+// be one character too wide and wrap — which is the whole failure mode a 40-column split cares about.
+test("Board keeps a linked row on a single line at a narrow (40-col) width", async () => {
+	const longTitle =
+		"This linked task has a really long title that must truncate rather than wrap at forty columns";
+	const sections = [
+		section("next", [
+			{ task: task({ id: "a", title: longTitle }), children: [] },
+		]),
+	];
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={sections}
+			expanded={new Set()}
+			selectedId={null}
+			linked={new Set(["a"])}
+		/>,
+		{ width: 40, height: 20 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JAKE-42"),
+		);
+		expect(frame).toContain("◆");
+		expect(frame).toContain("…");
+		const widest = Math.max(...frame.split("\n").map((line) => line.length));
+		expect(widest).toBeLessThanOrEqual(40);
+	} finally {
+		destroy();
+	}
+});
+
 test("the footer offers O only while the selected row has a linked issue", async () => {
 	const linkedTask = task({ id: "a", shortId: "JAKE-1", title: "Team work" });
 	const plain = task({ id: "b", shortId: "JAKE-2", title: "Local work" });
