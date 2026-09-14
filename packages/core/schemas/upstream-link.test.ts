@@ -11,13 +11,10 @@ const input = {
 	identifier: "ENG-123",
 	url: "https://linear.app/acme/issue/ENG-123/example",
 	title: "Example feature",
-	description: "Team-wide product context",
-	state: "In Progress",
-	externalUpdatedAt: "2026-07-18T12:00:00.000Z",
 };
 
 describe("UpstreamLink schema", () => {
-	it("accepts an allowlisted snapshot with a soft provider", () => {
+	it("accepts an identity link with a soft provider", () => {
 		const result = UpsertUpstreamLinkInputSchema.safeParse({
 			...input,
 			provider: "jira",
@@ -33,7 +30,6 @@ describe("UpstreamLink schema", () => {
 		});
 		const storageOwnedFields = [
 			{ id: "link-1" },
-			{ refreshedAt: "2026-07-18T12:00:00.000Z" },
 			{ createdAt: "2026-07-18T12:00:00.000Z" },
 			{ updatedAt: "2026-07-18T12:00:00.000Z" },
 		];
@@ -42,6 +38,22 @@ describe("UpstreamLink schema", () => {
 		for (const field of storageOwnedFields) {
 			expect(
 				UpsertUpstreamLinkInputSchema.safeParse({ ...input, ...field }).success,
+			).toBe(false);
+		}
+	});
+
+	// The link names an issue; it never carries what the issue says. Strictness
+	// is what keeps a caller from quietly reintroducing a copy that can rot.
+	it("rejects the external issue's own content", () => {
+		for (const content of [
+			{ description: "Team-wide product context" },
+			{ state: "In Progress" },
+			{ externalUpdatedAt: "2026-07-18T12:00:00.000Z" },
+			{ refreshedAt: "2026-07-18T12:00:00.000Z" },
+		]) {
+			expect(
+				UpsertUpstreamLinkInputSchema.safeParse({ ...input, ...content })
+					.success,
 			).toBe(false);
 		}
 	});
@@ -62,7 +74,6 @@ describe("UpstreamLink schema", () => {
 		const result = UpstreamLinkSchema.safeParse({
 			...input,
 			id: "link-1",
-			refreshedAt: "2026-07-18T12:01:00.000Z",
 			createdAt: "2026-07-18T12:01:00.000Z",
 			updatedAt: "2026-07-18T12:01:00.000Z",
 		});

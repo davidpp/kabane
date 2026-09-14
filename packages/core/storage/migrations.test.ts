@@ -27,6 +27,8 @@ const withDb = async <T>(fn: (db: Db) => T): Promise<T> => {
 
 const REPLICATION_COLUMNS = ["updated_by", "version", "visibility"] as const;
 
+const NOW = "2026-07-18T12:00:00.000Z";
+
 describe("runMigrations — replication columns", () => {
 	beforeEach(async () => {
 		base = join(tmpdir(), `cabane-migrations-${crypto.randomUUID()}`);
@@ -66,7 +68,7 @@ describe("runMigrations — replication columns", () => {
 		}
 
 		// Existing rows read as version 1 and shared, which is what they were
-		// implicitly; upstream links come back private.
+		// implicitly.
 		const row = await withDb((db) =>
 			db
 				.query<
@@ -86,12 +88,75 @@ describe("runMigrations — replication columns", () => {
 				)
 				.get(),
 		);
-		expect(upstreamDefault?.dflt_value).toBe("'private'");
+		expect(upstreamDefault?.dflt_value).toBe("'shared'");
 
 		// And the migrated table writes like a fresh one.
 		const updated = await Planner.updateTask(base, seeded.value.id, {
 			title: "after migration",
 		});
 		expect(updated.ok).toBe(true);
+	});
+
+	it("drops the linked-issue snapshot columns and releases the held rows", async () => {
+		const task = await Planner.addTask(base, { title: "root" });
+		if (!task.ok) throw task.error;
+
+		// Rebuild the table as a snapshot-era database: the four content columns
+		// back, visibility pinned private, one row already in it.
+		await withDb((db) => {
+			db.run(`DROP TABLE ${TABLES.upstream_links}`);
+			db.run(
+				`CREATE TABLE ${TABLES.upstream_links} (
+				   id TEXT PRIMARY KEY,
+				   task_id TEXT NOT NULL REFERENCES ${TABLES.tasks}(id) ON DELETE CASCADE,
+				   provider TEXT NOT NULL,
+				   external_id TEXT NOT NULL,
+				   identifier TEXT,
+				   url TEXT NOT NULL,
+				   title TEXT NOT NULL,
+				   description TEXT,
+				   state TEXT,
+				   external_updated_at TEXT,
+				   refreshed_at TEXT NOT NULL,
+				   created_at TEXT NOT NULL,
+				   updated_at TEXT NOT NULL,
+				   visibility TEXT NOT NULL DEFAULT 'private',
+				   UNIQUE(task_id, provider, external_id)
+				 )`,
+			);
+			db.run(
+				`INSERT INTO ${TABLES.upstream_links}
+				   (id, task_id, provider, external_id, identifier, url, title,
+				    description, state, external_updated_at, refreshed_at,
+				    created_at, updated_at)
+				 VALUES ('01LINK', ?, 'linear', 'linear-uuid', 'ENG-123',
+				         'https://linear.app/acme/issue/ENG-123/x', 'Team feature',
+				         'cached body', 'In Progress', ?, ?, ?, ?)`,
+				[task.value.id, NOW, NOW, NOW, NOW],
+			);
+		});
+
+		const reinit = await Planner.init(base);
+		expect(reinit.ok).toBe(true);
+
+		for (const column of [
+			"description",
+			"state",
+			"external_updated_at",
+			"refreshed_at",
+		]) {
+			expect(
+				await withDb((db) => columnExists(db, TABLES.upstream_links, column)),
+			).toBe(false);
+		}
+
+		const row = await withDb((db) =>
+			db
+				.query<{ visibility: string; title: string }, [string]>(
+					`SELECT visibility, title FROM ${TABLES.upstream_links} WHERE id = ?`,
+				)
+				.get("01LINK"),
+		);
+		expect(row).toEqual({ visibility: "shared", title: "Team feature" });
 	});
 });

@@ -53,22 +53,12 @@ const descriptionSection = (task: Task): string | null =>
 const upstreamSection = (links: UpstreamLink[]): string | null => {
 	if (links.length === 0) return null;
 
-	const blocks = links.map((link) => {
+	const lines = links.map((link) => {
 		const label = link.identifier ?? link.externalId;
-		const lines = [
-			`### ${link.provider} · ${label} — ${link.title}`,
-			`- URL: ${link.url}`,
-		];
-		if (link.state) lines.push(`- State: ${link.state}`);
-		if (link.externalUpdatedAt) {
-			lines.push(`- External updated: ${link.externalUpdatedAt}`);
-		}
-		lines.push(`- Snapshot refreshed: ${link.refreshedAt}`);
-		if (link.description) lines.push("", link.description);
-		return lines.join("\n");
+		return `- ${link.provider} · ${label} — ${link.title} — ${link.url}`;
 	});
 
-	return `## Upstream\n\n${blocks.join("\n\n")}`;
+	return `## Upstream\n\n${lines.join("\n")}`;
 };
 
 /** Render a neighbor task as "SHORTID (state) — title", falling back to id. */

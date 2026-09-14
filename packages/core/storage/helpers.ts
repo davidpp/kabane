@@ -387,10 +387,6 @@ export const rowToUpstreamLink = (row: unknown): Result<UpstreamLink> => {
 		identifier: record.identifier ?? undefined,
 		url: record.url,
 		title: record.title,
-		description: record.description ?? undefined,
-		state: record.state ?? undefined,
-		externalUpdatedAt: record.external_updated_at ?? undefined,
-		refreshedAt: record.refreshed_at,
 		createdAt: record.created_at,
 		updatedAt: record.updated_at,
 	});
@@ -502,16 +498,29 @@ export const runMigrations = async (
 				"TEXT NOT NULL DEFAULT 'shared'",
 			);
 		}
-		// upstream_links is private by construction; the column is what makes
-		// that structural instead of a comment.
-		addColumnIfMissing(
-			db,
-			TABLES.upstream_links,
-			"visibility",
-			"TEXT NOT NULL DEFAULT 'private'",
+		// Migration: linked issues used to be identity + a snapshot of the
+		// external issue's content, and the content is what kept them home.
+		// The columns go, and the rows that were held back are released.
+		for (const column of DROPPED_UPSTREAM_SNAPSHOT_COLUMNS) {
+			dropColumnIfPresent(db, TABLES.upstream_links, column);
+		}
+		db.run(
+			`UPDATE ${TABLES.upstream_links} SET visibility = 'shared'
+			 WHERE visibility = 'private'`,
 		);
 	});
 };
+
+/**
+ * The snapshot columns a linked issue no longer carries. None is indexed, which
+ * is what makes DROP COLUMN legal here.
+ */
+const DROPPED_UPSTREAM_SNAPSHOT_COLUMNS = [
+	"description",
+	"state",
+	"external_updated_at",
+	"refreshed_at",
+] as const;
 
 /** The physical names of the tables that replicate, for the column migration. */
 const REPLICATED_PHYSICAL_TABLES = (): string[] => [
@@ -522,6 +531,7 @@ const REPLICATED_PHYSICAL_TABLES = (): string[] => [
 	TABLES.comments,
 	TABLES.work_log,
 	TABLES.context_refs,
+	TABLES.upstream_links,
 ];
 
 const addColumnIfMissing = (
@@ -532,4 +542,9 @@ const addColumnIfMissing = (
 ): void => {
 	if (columnExists(db, table, column)) return;
 	db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+};
+
+const dropColumnIfPresent = (db: Db, table: string, column: string): void => {
+	if (!columnExists(db, table, column)) return;
+	db.run(`ALTER TABLE ${table} DROP COLUMN ${column}`);
 };

@@ -53,7 +53,6 @@ const link = async (taskId: string, externalId = "linear-uuid") => {
 		identifier: "ENG-123",
 		url: "https://linear.app/acme/issue/ENG-123/example",
 		title: "Team feature",
-		state: "In Progress",
 	});
 	if (!result.ok) throw result.error;
 	return result.value;

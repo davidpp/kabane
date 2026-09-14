@@ -391,29 +391,29 @@ CREATE TABLE IF NOT EXISTS task_context_refs (
 CREATE INDEX IF NOT EXISTS idx_context_refs_task ON task_context_refs(task_id);
 
 -- ============================================================
--- UPSTREAM LINKS (private external work-item snapshots)
+-- UPSTREAM LINKS (the team-facing issue a task points at)
 -- ============================================================
--- Local-only relationship between a Jake implementation root and an external
--- team work item. Explicit snapshot columns prevent provider payloads or
--- credentials from leaking into Planner storage.
+-- Relationship between a Cabane task and an issue in an external tracker.
+-- IDENTITY ONLY: enough to name the issue and open it, never a copy of its
+-- content. What matters about the external issue goes in the task's own
+-- description when the link is made; nothing stored here can go stale.
+--
+-- These rows replicate. They once did not, because the snapshot columns held
+-- provider content nobody wanted on the wire. Those columns are gone, and a
+-- url plus an issue title is strictly less sensitive than the task
+-- descriptions that already replicate.
 
 CREATE TABLE IF NOT EXISTS upstream_links (
   id TEXT PRIMARY KEY,              -- ULID
   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  provider TEXT NOT NULL,           -- soft string; Linear is the first known value
+  provider TEXT NOT NULL,           -- soft string; linear and github are the known values
   external_id TEXT NOT NULL,        -- stable opaque provider ID
   identifier TEXT,                  -- human-readable key such as ENG-123
   url TEXT NOT NULL,
-  title TEXT NOT NULL,
-  description TEXT,
-  state TEXT,
-  external_updated_at TEXT,
-  refreshed_at TEXT NOT NULL,       -- Jake-local snapshot refresh time
+  title TEXT NOT NULL,              -- written once at link time, never re-read
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  -- The privacy invariant as schema, not prose: no writer sets this to
-  -- 'shared', so capture can never admit an upstream link to the oplog.
-  visibility TEXT NOT NULL DEFAULT 'private',
+  visibility TEXT NOT NULL DEFAULT 'shared',
 
   UNIQUE(task_id, provider, external_id)
 );

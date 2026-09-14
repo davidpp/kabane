@@ -1,13 +1,17 @@
 /**
- * Planner Storage — Private Upstream Links
+ * Planner Storage — Linked Issues
  *
- * Stores an allowlisted external work-item snapshot locally. This module does
- * not fetch providers or write anything back to them.
+ * Stores which external issue a task points at. Identity only: this module
+ * never fetches a provider, never writes back to one, and never caches what
+ * the external issue says.
+ *
+ * Writes are captured into the oplog like any other replicated table, so a
+ * link made on one device reaches the others.
  */
 
 import { z } from "zod";
 import { err, ok, type Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 import type {
 	UpsertUpstreamLinkInput,
 	UpstreamLink,
@@ -18,6 +22,7 @@ import {
 	UpstreamSummarySchema,
 } from "../schemas";
 import { generateId, rowToUpstreamLink, TABLES } from "./helpers";
+import { Oplog } from "./oplog";
 
 const convertRows = (rows: readonly unknown[]): Result<UpstreamLink[]> => {
 	const links: UpstreamLink[] = [];
@@ -49,7 +54,6 @@ const convertSummaryRows = (
 			taskId: record.task_id,
 			provider: record.provider,
 			identifier: record.identifier ?? undefined,
-			refreshedAt: record.refreshed_at,
 		});
 		if (!summaryResult.success) {
 			return err(
@@ -66,8 +70,8 @@ const convertSummaryRows = (
 
 export namespace Planner {
 	/**
-	 * Create a private upstream relationship or refresh its allowlisted
-	 * snapshot. The relationship id and createdAt stay stable across refreshes.
+	 * Link a task to an external issue, or correct an existing link's
+	 * identifier, url or title. The link id and createdAt stay stable.
 	 */
 	export const upsertUpstreamLink = async (
 		basePath: string,
@@ -81,23 +85,37 @@ export namespace Planner {
 		}
 
 		const link = inputResult.data;
-		const now = new Date().toISOString();
-		const id = generateId();
 		const rowResult = await withDb(basePath, (db) => {
+			const now = new Date().toISOString();
+			const id = generateId();
+
+			// Insert or update is decided by what was there, so the captured op
+			// kind matches what the row went through.
+			const existed =
+				db
+					.query<{ id: string }, [string, string, string]>(
+						`SELECT id FROM ${TABLES.upstream_links}
+						 WHERE task_id = ? AND provider = ? AND external_id = ?`,
+					)
+					.get(link.taskId, link.provider, link.externalId) !== null;
+
+			// `visibility` is written rather than defaulted: applySchema is
+			// IF NOT EXISTS and SQLite cannot ALTER a column default, so a
+			// database created before these rows replicated still carries
+			// DEFAULT 'private' and would silently keep every new link home.
 			db.run(
 				`INSERT INTO ${TABLES.upstream_links}
 				   (id, task_id, provider, external_id, identifier, url, title,
-				    description, state, external_updated_at, refreshed_at, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				    created_at, updated_at, updated_by, visibility)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'shared')
 				 ON CONFLICT(task_id, provider, external_id) DO UPDATE SET
 				   identifier = excluded.identifier,
 				   url = excluded.url,
 				   title = excluded.title,
-				   description = excluded.description,
-				   state = excluded.state,
-				   external_updated_at = excluded.external_updated_at,
-				   refreshed_at = excluded.refreshed_at,
-				   updated_at = excluded.updated_at`,
+				   updated_at = excluded.updated_at,
+				   updated_by = excluded.updated_by,
+				   visibility = 'shared',
+				   version = version + 1`,
 				[
 					id,
 					link.taskId,
@@ -106,28 +124,36 @@ export namespace Planner {
 					link.identifier ?? null,
 					link.url,
 					link.title,
-					link.description ?? null,
-					link.state ?? null,
-					link.externalUpdatedAt ?? null,
 					now,
 					now,
-					now,
+					Runtime.actor(),
 				],
 			);
 
-			return db
+			const row = db
 				.query(
 					`SELECT * FROM ${TABLES.upstream_links}
 					 WHERE task_id = ? AND provider = ? AND external_id = ?`,
 				)
-				.get(link.taskId, link.provider, link.externalId);
+				.get(link.taskId, link.provider, link.externalId) as Record<
+				string,
+				unknown
+			>;
+			Oplog.afterWrite(
+				db,
+				"upstream_links",
+				existed ? "update" : "insert",
+				row.id as string,
+			);
+
+			return row;
 		});
 		if (!rowResult.ok) return rowResult;
 
 		return rowToUpstreamLink(rowResult.value);
 	};
 
-	/** Get every private upstream relationship attached to one Jake root. */
+	/** Every external issue linked to one task. */
 	export const getUpstreamLinksForTask = async (
 		basePath: string,
 		taskId: string,
@@ -145,7 +171,7 @@ export namespace Planner {
 		return convertRows(rowsResult.value);
 	};
 
-	/** Get compact private-link metadata for a bounded task set. */
+	/** Compact link metadata for a bounded task set. One query, never N. */
 	export const getUpstreamSummariesForTasks = async (
 		basePath: string,
 		taskIds: string[],
@@ -156,7 +182,7 @@ export namespace Planner {
 		const rowsResult = await withDb(basePath, (db) =>
 			db
 				.query(
-					`SELECT task_id, provider, identifier, refreshed_at
+					`SELECT task_id, provider, identifier
 					 FROM ${TABLES.upstream_links}
 					 WHERE task_id IN (${placeholders})
 					 ORDER BY created_at ASC, id ASC`,
@@ -169,8 +195,8 @@ export namespace Planner {
 	};
 
 	/**
-	 * Resolve an external work item to all private implementation roots. One
-	 * team item may intentionally map to roots in multiple scopes/repos.
+	 * Resolve an external issue to every task linked to it. One team item may
+	 * intentionally map to tasks in multiple scopes/repos.
 	 */
 	export const getUpstreamLinksByExternalRef = async (
 		basePath: string,
@@ -191,13 +217,18 @@ export namespace Planner {
 		return convertRows(rowsResult.value);
 	};
 
-	/** Remove one local relationship by its private link id. */
+	/** Remove one link by its id. */
 	export const deleteUpstreamLink = async (
 		basePath: string,
 		id: string,
 	): Promise<Result<void>> => {
 		return withDb(basePath, (db) => {
+			const row = Oplog.snapshot(db, "upstream_links", id);
+			if (!row.ok) throw row.error;
 			db.run(`DELETE FROM ${TABLES.upstream_links} WHERE id = ?`, [id]);
+			if (row.value !== undefined) {
+				Oplog.afterDelete(db, [{ tbl: "upstream_links", row: row.value }]);
+			}
 		});
 	};
 }

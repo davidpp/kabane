@@ -22,9 +22,6 @@ const linkInput = (taskId: string): UpsertUpstreamLinkInput => ({
 	identifier: "ENG-123",
 	url: "https://linear.app/acme/issue/ENG-123/example",
 	title: "Example feature",
-	description: "Original product context",
-	state: "Todo",
-	externalUpdatedAt: "2026-07-18T12:00:00.000Z",
 });
 
 describe("Planner — Private Upstream Links", () => {
@@ -39,7 +36,7 @@ describe("Planner — Private Upstream Links", () => {
 		rmSync(TEST_BASE, { recursive: true, force: true });
 	});
 
-	it("stores and reads an allowlisted snapshot by task", async () => {
+	it("stores and reads a linked issue by task", async () => {
 		const taskId = await createTask("Implementation root");
 		const added = await Planner.upsertUpstreamLink(
 			TEST_BASE,
@@ -50,7 +47,7 @@ describe("Planner — Private Upstream Links", () => {
 		if (added.ok) {
 			expect(added.value.taskId).toBe(taskId);
 			expect(added.value.identifier).toBe("ENG-123");
-			expect(added.value.refreshedAt).toBeTruthy();
+			expect(added.value.title).toBe("Example feature");
 		}
 
 		const links = await Planner.getUpstreamLinksForTask(TEST_BASE, taskId);
@@ -88,7 +85,6 @@ describe("Planner — Private Upstream Links", () => {
 					taskId: requestedTaskId,
 					provider: "linear",
 					identifier: "ENG-123",
-					refreshedAt: expect.any(String),
 				},
 			]);
 		}
@@ -142,7 +138,7 @@ describe("Planner — Private Upstream Links", () => {
 		}
 	});
 
-	it("refreshes one relationship without changing its identity", async () => {
+	it("corrects a link's title without changing its identity", async () => {
 		const taskId = await createTask("Implementation root");
 		const first = await Planner.upsertUpstreamLink(
 			TEST_BASE,
@@ -155,9 +151,6 @@ describe("Planner — Private Upstream Links", () => {
 		const second = await Planner.upsertUpstreamLink(TEST_BASE, {
 			...linkInput(taskId),
 			title: "Updated feature",
-			description: "Updated product context",
-			state: "In Progress",
-			externalUpdatedAt: "2026-07-18T12:05:00.000Z",
 		});
 
 		expect(second.ok).toBe(true);
@@ -165,10 +158,6 @@ describe("Planner — Private Upstream Links", () => {
 			expect(second.value.id).toBe(first.value.id);
 			expect(second.value.createdAt).toBe(first.value.createdAt);
 			expect(second.value.title).toBe("Updated feature");
-			expect(second.value.description).toBe("Updated product context");
-			expect(second.value.state).toBe("In Progress");
-			expect(second.value.externalUpdatedAt).toBe("2026-07-18T12:05:00.000Z");
-			expect(second.value.refreshedAt > first.value.refreshedAt).toBe(true);
 			expect(second.value.updatedAt > first.value.updatedAt).toBe(true);
 		}
 

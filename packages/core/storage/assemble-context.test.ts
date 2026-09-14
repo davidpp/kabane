@@ -79,17 +79,14 @@ describe("Planner — assembleContext", () => {
 			identifier: "ENG-123",
 			url: "https://linear.app/acme/issue/ENG-123/example",
 			title: "Team feature",
-			description: "Cached team-wide product context",
-			state: "In Progress",
-			externalUpdatedAt: "2026-07-18T12:00:00.000Z",
 		});
 		if (!linked.ok) throw linked.error;
 
 		const md = await assemble(id);
 		expect(md).toContain("## Upstream");
-		expect(md).toContain("linear · ENG-123 — Team feature");
-		expect(md).toContain("Cached team-wide product context");
-		expect(md).toContain(`Snapshot refreshed: ${linked.value.refreshedAt}`);
+		expect(md).toContain(
+			"- linear · ENG-123 — Team feature — https://linear.app/acme/issue/ENG-123/example",
+		);
 		expect(md.indexOf("## Description")).toBeLessThan(
 			md.indexOf("## Upstream"),
 		);
