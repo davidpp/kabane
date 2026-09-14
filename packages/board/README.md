@@ -136,6 +136,23 @@ The port is protocol-free on purpose: `@cabane/acp` implements it over an ACP ha
 test can implement it with a scripted async generator. `noCopilot` is an explicit no-op whose
 every turn ends with `no copilot configured`.
 
+## Linked issues
+
+A task can point at one issue in an external tracker. The row says only that it does, with a gray
+`◆` in the gutter beside the mark: which issue it is belongs to the detail view, whose brief
+carries the line `assembleContext` writes. Sixteen columns of ` · linear ENG-123` on every linked
+row is not a trade this board makes — it is read in a narrow split beside an editor.
+
+`O` opens it (`o` is the event log: lowercase looks inward at this task, uppercase outward at the
+team's). The chain is the desktop app's scheme, then the web URL, then the clipboard — the last
+leg is what keeps the key useful over ssh, where there is no opener and `Clipboard.write` falls
+through to OSC 52. With several links the first opens; the detail brief lists them all. The footer
+offers `O` only while the row under the cursor has somewhere to go.
+
+Nothing here creates a link: that is `cabane upstream link`, or the copilot, which can read the
+external issue and write what matters into the task's own description. `Launcher` (`src/launcher.ts`)
+is exported so the CLI's `cabane open` walks the same chain.
+
 ## Marks and the copilot context
 
 `m` toggles the row under the cursor (or the open task in the detail view) in and out of a

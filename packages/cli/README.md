@@ -97,7 +97,10 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `edit <id>` | `--title` `--description` `--state` `--priority` `--kind` `--assignee <who>\|none` `--scope` `--parent <id>\|none` `--tags` `--due` |
 | `done <id>` | |
 | `search <query>` | `--state` `--scope` `--limit` |
-| `link <src> <dst>` | `--type blocks\|blocked_by\|parent\|child\|related\|duplicate\|follows` `--note` |
+| `link <src> <dst>` | `--type blocks\|blocked_by\|parent\|child\|related\|duplicate\|follows` `--note` — a task-to-task DAG edge, not an external issue |
+| `upstream link <id> <url>` | `--title <t>` `--provider <p>` `--id <key>` `--external-id <id>` — point a task at one issue in Linear or GitHub. Provider and issue key are read off the URL; the flags cover self-hosted or unfamiliar shapes |
+| `upstream unlink <id> [key]` | drop the link; the key is only needed when a task has more than one |
+| `open <id>` | launch the task's linked issue: the desktop app when its scheme is registered, else the browser, else the URL lands on the clipboard |
 | `comment <id> "<text>"` | `--as <actor>` |
 | `log <id>` | `--ref <type:value>` (repeatable) `--commit <sha>` `--branch <name>` `--pr <owner/repo#n>` `--url` `--session` `--file` `--note` |
 | `context <id>` | `--no-deref` `--no-subtasks` — the assembled brief, the read entrypoint for agents |

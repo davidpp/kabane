@@ -321,8 +321,50 @@ describe("cabane cli", () => {
 		}
 	});
 
+	it("links a task to an external issue and drops the link again", async () => {
+		const linked = await run(
+			"upstream",
+			"link",
+			taskId,
+			"https://linear.app/acme/issue/ENG-123/pancake-routing",
+			"--title",
+			"Pancake routing",
+			"--json",
+		);
+		expect(linked.code).toBe(0);
+		const record = json<{
+			provider: string;
+			identifier: string;
+			title: string;
+			url: string;
+		}>(linked);
+		// Provider and issue key are read off the URL, so the everyday call is two arguments.
+		expect(record.provider).toBe("linear");
+		expect(record.identifier).toBe("ENG-123");
+		expect(record.title).toBe("Pancake routing");
+
+		// The brief an agent reads carries the link as one line.
+		const brief = await run("context", taskId);
+		expect(brief.out).toContain("ENG-123");
+
+		const gone = await run("upstream", "unlink", taskId, "--json");
+		expect(gone.code).toBe(0);
+		expect((await run("context", taskId)).out).not.toContain("ENG-123");
+	});
+
+	it("refuses a url it cannot attribute, and an unlink with nothing to drop", async () => {
+		expect(
+			(await run("upstream", "link", taskId, "https://jira.acme.com/x")).code,
+		).toBe(2);
+		expect((await run("upstream", "unlink", taskId)).code).toBe(1);
+		// `open` on a task with no link fails rather than launching anything.
+		expect((await run("open", taskId)).code).toBe(1);
+	});
+
 	it("exit-code contract", async () => {
 		expect((await run("bogus")).code).toBe(2);
+		expect((await run("upstream")).code).toBe(2);
+		expect((await run("open")).code).toBe(1);
 		expect((await run("show")).code).toBe(2);
 		expect((await run("edit", issueId)).code).toBe(2);
 		expect((await run("link", taskId, issueId)).code).toBe(2);
