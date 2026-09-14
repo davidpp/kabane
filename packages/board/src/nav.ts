@@ -130,6 +130,12 @@ export namespace BoardNav {
 			key.name === ":" ||
 			key.sequence === ":");
 
+	// `O` opens the selected task's linked issue — shifted like `A`, so match the name or the sequence.
+	// It pairs with `o` (the event log): lowercase looks inward at this task's own history, uppercase
+	// looks outward at the team's tracker.
+	const isOpenLinkKey = (key: KeyInput): boolean =>
+		!key.ctrl && !key.meta && (key.name === "O" || key.sequence === "O");
+
 	// ctrl-z: OpenTUI delivers it as name `z` with the ctrl flag, or as the raw SUB control char (0x1a);
 	// match either. `!key.meta` excludes macOS cmd-z. Routing guards on search-typing so it stays inert
 	// while a `/` query is being entered.
@@ -223,6 +229,8 @@ export namespace BoardNav {
 		| { type: "loadTriggers"; taskId: string }
 		| { type: "sidebarSelect" }
 		| { type: "openEvents"; taskId: string }
+		// `O`: hand this task's linked issue to the OS. app.tsx reads the link and composes the notice.
+		| { type: "openLink"; id: string }
 		// The window just opened; app.tsx closes it with a flash when no copilot is configured.
 		| { type: "copilotOpen" }
 		| { type: "copilotPrompt"; prompt: string }
@@ -1114,6 +1122,9 @@ export namespace BoardNav {
 			if (isHelpKey(key))
 				return { state: { ...state, help: true }, effect: NONE };
 			if (isCopilotKey(key)) return focusCopilot(state);
+			// Also view-agnostic: `O` acts on the task in hand, which is the open one in detail and the
+			// selected row everywhere else.
+			if (isOpenLinkKey(key)) return openLink(state);
 			if (key.name === "tab")
 				return {
 					state: cycleFocus(state, key.shift ? -1 : 1),
@@ -1260,6 +1271,20 @@ export namespace BoardNav {
 
 	// Opens the overlay for `taskId` in its loading state; app.tsx runs the `loadTriggers` effect and
 	// merges the answer back with `withTriggers`.
+	// The task `O` acts on: the open one in the detail view, the selected row in every other. Nothing
+	// selected is a no-op rather than a notice — there is no task to say anything about.
+	const openLink = (
+		state: BoardState,
+	): { state: BoardState; effect: Effect } => {
+		const id =
+			state.view.type === "detail"
+				? state.view.taskId
+				: rowOf(visibleRows(state), state.selectedId)?.task.id;
+		return id
+			? { state, effect: { type: "openLink", id } }
+			: { state, effect: NONE };
+	};
+
 	const openDispatch = (
 		state: BoardState,
 		taskId: string,

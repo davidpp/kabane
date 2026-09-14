@@ -10,6 +10,7 @@ import {
 	type Task,
 	type TaskQuery,
 	type TaskState,
+	type UpstreamLink,
 } from "@cabane/core";
 
 export namespace BoardData {
@@ -205,6 +206,42 @@ export namespace BoardData {
 		id: string,
 	): Promise<Result<string>> => {
 		return Planner.assembleContext(basePath, id);
+	};
+
+	// Every task id in the loaded sections, parents and children alike.
+	const taskIdsOf = (sections: BoardSection[]): string[] => {
+		const ids: string[] = [];
+		for (const section of sections) {
+			for (const row of section.rows) {
+				ids.push(row.task.id);
+				for (const child of row.children) ids.push(child.id);
+			}
+		}
+		return ids;
+	};
+
+	// Which of the loaded tasks point at an external issue. A set of ids, not the links themselves:
+	// the row asks one yes/no question, and one query answers it for every row at once. WHICH issue a
+	// row points at is read on demand, when something actually opens it.
+	export const loadLinkedTaskIds = async (
+		basePath: string,
+		sections: BoardSection[],
+	): Promise<Result<Set<string>>> => {
+		const summaries = await Planner.getUpstreamSummariesForTasks(
+			basePath,
+			taskIdsOf(sections),
+		);
+		if (!summaries.ok) return summaries;
+		return ok(new Set(summaries.value.map((summary) => summary.taskId)));
+	};
+
+	// The external issues one task points at, in creation order. Read on the keypress that opens one,
+	// so the board's poll never pays for it.
+	export const taskLinks = async (
+		basePath: string,
+		id: string,
+	): Promise<Result<UpstreamLink[]>> => {
+		return Planner.getUpstreamLinksForTask(basePath, id);
 	};
 
 	// State mutations (used by the keyboard actions).

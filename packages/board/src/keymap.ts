@@ -36,6 +36,11 @@ export namespace Keymap {
 		{ key: "?", label: "help" },
 	];
 
+	// Prepended to either footer only while the task in hand has a linked issue. Most tasks do not, and
+	// a hint for an action that would flash "no linked issue" is worse than no hint in a narrow pane.
+	// The `?` overlay lists it unconditionally, which is what makes it discoverable at all.
+	export const OPEN_LINK_HINT: Hint = { key: "O", label: "open issue" };
+
 	// The full list, grouped for the help overlay. Keep every binding here — this is the reference
 	// the trimmed footers point at.
 	export const HELP_GROUPS: readonly HelpGroup[] = [
@@ -76,6 +81,7 @@ export namespace Keymap {
 					label:
 						"event log: the copilot's transcript, else the task's (detail)",
 				},
+				{ key: "O", label: "open the linked issue in its app or the browser" },
 				{ key: "y", label: "copy agent brief" },
 				{ key: "m", label: "mark / unmark (the copilot's working set)" },
 				{ key: "⌃z", label: "undo last change" },

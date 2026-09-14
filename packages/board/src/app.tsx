@@ -27,6 +27,7 @@ import { CopilotPane, contextChip } from "./copilot-prompt";
 import { BoardData } from "./data";
 import { Detail } from "./detail";
 import { EventView } from "./event-view";
+import { Launcher } from "./launcher";
 import { BoardNav } from "./nav";
 import { DispatchOverlay, HelpOverlay } from "./overlay";
 import type { ActivitySource, Copilot, Dispatcher } from "./ports";
@@ -56,6 +57,8 @@ const POLL_INTERVAL_MS = 5000;
 const NOTICE_MS = 1500;
 // Undoable mutations hold their flash longer so the ⌃z hint has time to register.
 const UNDO_HINT_MS = 4000;
+// Stable identity so a board with nothing linked doesn't re-render on it.
+const EMPTY_LINKS: ReadonlySet<string> = new Set<string>();
 
 // Turn a mutation Result into the footer flash: the reducer's composed text on success, the raw error
 // message on failure. Structural on Result<T> so it works for every BoardData mutation.
@@ -118,6 +121,9 @@ export const App = ({
 	const [activity, setActivity] = useState<BoardActivity.ActivityMap>(
 		BoardActivity.emptyActivity(),
 	);
+	// Task ids pointing at an external issue, refreshed by the same poll. Degrades the same way the
+	// activity map does: a failed read keeps the last-good set rather than un-glyphing every row.
+	const [linked, setLinked] = useState<ReadonlySet<string>>(EMPTY_LINKS);
 	const [error, setError] = useState<string | null>(null);
 	// Transient footer flash, auto-cleared after NOTICE_MS. Never silent — copies, state moves, review,
 	// and cancel all surface a notice; failures show the error, successes a confirmation.
@@ -211,6 +217,8 @@ export const App = ({
 				prev ? BoardNav.withSections(prev, result.value) : prev,
 			);
 			if (act.ok) setActivity(act.value);
+			const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
+			if (links.ok) setLinked(links.value);
 			if (BoardNav.activeQuery(s.search)) void fireFts(s);
 		},
 		[basePath, filtersFor, fireFts, activitySource],
@@ -230,6 +238,44 @@ export const App = ({
 				wrote.ok
 					? { text: "copied brief to clipboard", tone: "success" }
 					: { text: wrote.error.message, tone: "error" },
+			);
+		},
+		[basePath, renderer],
+	);
+
+	// `O`: hand the task's linked issue to the OS. Several links open the first — the picker a rare
+	// case would want costs a modal on the common one, and the detail brief lists them all anyway.
+	// The clipboard leg of the chain gets this renderer so it can reach OSC 52 over ssh.
+	const runOpenLink = useCallback(
+		async (id: string): Promise<void> => {
+			const links = await BoardData.taskLinks(basePath, id);
+			if (!links.ok) {
+				setNotice({ text: links.error.message, tone: "error" });
+				return;
+			}
+			const link = links.value[0];
+			if (!link) {
+				setNotice({ text: "no linked issue", tone: "error" });
+				return;
+			}
+			const target = {
+				provider: link.provider,
+				identifier: link.identifier,
+				url: link.url,
+			};
+			const opened = await Launcher.open(target, {
+				copy: async (text) =>
+					(await Clipboard.write(text, { osc52: renderer })).ok,
+			});
+			const name = Launcher.label(target);
+			if (!opened.ok) {
+				setNotice({ text: opened.error.message, tone: "error" });
+				return;
+			}
+			setNotice(
+				opened.value === "clipboard"
+					? { text: `no opener · ${name} copied`, tone: "success" }
+					: { text: `opening ${name} in ${link.provider}`, tone: "success" },
 			);
 		},
 		[basePath, renderer],
@@ -423,6 +469,9 @@ export const App = ({
 				case "copy":
 					void runCopy(effect.id);
 					return;
+				case "openLink":
+					void runOpenLink(effect.id);
+					return;
 				case "notice":
 					setNotice(effect.notice);
 					return;
@@ -521,6 +570,7 @@ export const App = ({
 			reload,
 			basePath,
 			runCopy,
+			runOpenLink,
 			runDispatch,
 			loadTriggers,
 			copilot,
@@ -610,6 +660,10 @@ export const App = ({
 			if (cancelled) return;
 			setScope(detected);
 			if (act.ok) setActivity(act.value);
+			if (result.ok) {
+				const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
+				if (!cancelled && links.ok) setLinked(links.value);
+			}
 			if (result.ok)
 				setState(
 					BoardNav.withCopilotPort(
@@ -843,6 +897,7 @@ export const App = ({
 						notice={notice}
 						focus={state.focus}
 						pane={copilotPane}
+						linked={linked.has(taskId)}
 						onCopy={() => dispatchMouse({ type: "copy" })}
 					/>
 				</box>
@@ -872,6 +927,7 @@ export const App = ({
 						state,
 						copilotLog?.current.card.startedAt,
 					)}
+					linked={linked}
 					scrollRef={listRef}
 					onSelect={(row) => dispatchMouse({ type: "select", row })}
 					onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}
