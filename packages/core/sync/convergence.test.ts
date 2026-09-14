@@ -202,6 +202,15 @@ describe("Sync — two devices, one relay, no cloud", () => {
 			items: [{ taskId: a1.id, order: 0, completed: false }],
 		});
 		if (!focusA.ok) throw focusA.error;
+		const upstreamA = await Planner.upsertUpstreamLink(a.base, {
+			taskId: a1.id,
+			provider: "linear",
+			externalId: "linear-a",
+			identifier: "ENG-1",
+			url: "https://linear.app/acme/issue/ENG-1/a",
+			title: "Team feature A",
+		});
+		if (!upstreamA.ok) throw upstreamA.error;
 		const bumped = await Planner.updateTask(a.base, a1.id, {
 			priority: "high",
 		});
@@ -249,6 +258,15 @@ describe("Sync — two devices, one relay, no cloud", () => {
 			items: [{ taskId: b1.id, order: 0, completed: false }],
 		});
 		if (!focusB.ok) throw focusB.error;
+		const upstreamB = await Planner.upsertUpstreamLink(b.base, {
+			taskId: b2.id,
+			provider: "github",
+			externalId: "github-b",
+			identifier: "davidpp/cabane#12",
+			url: "https://github.com/davidpp/cabane/issues/12",
+			title: "Team feature B",
+		});
+		if (!upstreamB.ok) throw upstreamB.error;
 
 		await converge(a, b);
 
@@ -641,5 +659,48 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		if (!after.ok) throw after.error;
 		expect(after.value.pendingOps).toBe(1);
 		expect(after.value.lastAppliedSeq).toBe(batch.throughSeq);
+	});
+
+	it("dedupes the same task linked to the same issue on two devices", async () => {
+		const a = await createDevice("device-a");
+		const b = await createDevice("device-b");
+
+		// One task both devices already agree on.
+		const task = await addTask(a, "linked twice", { scopeUri: ALPHA });
+		await converge(a, b);
+
+		// Then, offline, each device links it to the SAME external issue. Two
+		// ULIDs are minted for one logical row; UNIQUE(task_id, provider,
+		// external_id) is what lets the resolver see they are the same link.
+		const onA = await Planner.upsertUpstreamLink(a.base, {
+			taskId: task.id,
+			provider: "linear",
+			externalId: "linear-shared",
+			identifier: "ENG-7",
+			url: "https://linear.app/acme/issue/ENG-7/from-a",
+			title: "Titled on A",
+		});
+		if (!onA.ok) throw onA.error;
+		const onB = await Planner.upsertUpstreamLink(b.base, {
+			taskId: task.id,
+			provider: "linear",
+			externalId: "linear-shared",
+			identifier: "ENG-7",
+			url: "https://linear.app/acme/issue/ENG-7/from-b",
+			title: "Titled on B",
+		});
+		if (!onB.ok) throw onB.error;
+
+		await converge(a, b);
+		await converge(a, b);
+
+		const rowsA = await rowsOf(a.base, TABLES.upstream_links);
+		const rowsB = await rowsOf(b.base, TABLES.upstream_links);
+		expect(rowsA).toHaveLength(1);
+		expect(rowsB).toEqual(rowsA);
+
+		// The lower ULID owns the surviving row on both devices.
+		const winner = onA.value.id < onB.value.id ? onA.value.id : onB.value.id;
+		expect(rowsA[0]?.id).toBe(winner);
 	});
 });

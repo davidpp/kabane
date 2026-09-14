@@ -246,16 +246,41 @@ describe("Oplog — storage-layer capture", () => {
            VALUES ('act-1', ?, 'state_changed', 'me', 'human', '2026-01-01T00:00:00.000Z')`,
 				[taskId],
 			);
-			db.run(
-				`INSERT INTO ${TABLES.upstream_links}
-           (id, task_id, provider, external_id, url, title, refreshed_at, created_at, updated_at)
-         VALUES ('up-1', ?, 'linear', 'ENG-1', 'https://example.test/ENG-1', 'Upstream',
-                 '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
-				[taskId],
-			);
 		});
 
 		expect(await allOplogRows()).toHaveLength(baseline);
+	});
+
+	it("captures a linked issue through link and unlink", async () => {
+		await armCapture();
+		const taskId = await createTask("has a team-facing twin");
+		await drainOps();
+
+		const linked = await Planner.upsertUpstreamLink(base, {
+			taskId,
+			provider: "linear",
+			externalId: "linear-uuid",
+			identifier: "ENG-123",
+			url: "https://linear.app/acme/issue/ENG-123/x",
+			title: "Team feature",
+		});
+		if (!linked.ok) throw linked.error;
+		await Planner.upsertUpstreamLink(base, {
+			taskId,
+			provider: "linear",
+			externalId: "linear-uuid",
+			identifier: "ENG-123",
+			url: "https://linear.app/acme/issue/ENG-123/x",
+			title: "Team feature, retitled",
+		});
+		await Planner.deleteUpstreamLink(base, linked.value.id);
+
+		const rows = await allOplogRows();
+		expect(rows.filter((row) => row.tbl === "upstream_links")).toEqual([
+			{ tbl: "upstream_links", op: "insert" },
+			{ tbl: "upstream_links", op: "update" },
+			{ tbl: "upstream_links", op: "delete" },
+		]);
 	});
 
 	it("stamps updated_by from the actor port and bumps version on every update", async () => {

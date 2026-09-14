@@ -65,6 +65,7 @@ export const CLOCK_COLUMN: Partial<Record<SyncTable, string>> = {
 	focus_lists: "updated_at",
 	task_comments: "updated_at",
 	task_context_refs: "added_at",
+	upstream_links: "updated_at",
 };
 
 /** Tables whose rows carry an FK to `tasks`. Orphan candidates. */
@@ -73,6 +74,7 @@ const CHILD_TABLES: readonly SyncTable[] = [
 	"task_work_log",
 	"task_links",
 	"task_context_refs",
+	"upstream_links",
 ];
 
 /** How a table resolves. One family per distinct rule, not one per table. */
@@ -95,6 +97,7 @@ const FAMILY: Record<SyncTable, Family> = {
 	task_work_log: "append-only",
 	task_links: "natural-key-dedupe",
 	task_context_refs: "natural-key-lww",
+	upstream_links: "natural-key-lww",
 	focus_lists: "focus-list",
 };
 

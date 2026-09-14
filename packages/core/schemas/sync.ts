@@ -20,8 +20,7 @@ import { z } from "zod";
  *
  * Deliberately excluded: `task_activity` (high-volume audit trail),
  * `agent_sessions` / `agent_activities` (machine-local agent runs),
- * `proposals` (retired surface, drop pending), `sequences` (local counter),
- * and `upstream_links` (`visibility` fixed to private by schema).
+ * `proposals` (retired surface, drop pending), and `sequences` (local counter).
  *
  * This is the set the resolver knows a rule for. Whether a given ROW replicates
  * is decided by its `visibility` column, not by this list.
@@ -34,6 +33,7 @@ export const SYNC_TABLES = [
 	"task_work_log",
 	"projects",
 	"task_context_refs",
+	"upstream_links",
 ] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 

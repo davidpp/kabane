@@ -78,6 +78,7 @@ import type { PullPage, RelayOp } from "./transport";
 const NATURAL_KEY: Partial<Record<SyncTable, readonly string[]>> = {
 	task_links: ["source_id", "target_id", "type"],
 	task_context_refs: ["task_id", "uri"],
+	upstream_links: ["task_id", "provider", "external_id"],
 	focus_lists: ["period"],
 };
 
@@ -113,6 +114,9 @@ const PARENTS: Record<SyncTable, readonly ParentRef[]> = {
 		{ column: "task_id", table: TABLES.tasks, onDelete: "cascade" },
 	],
 	task_context_refs: [
+		{ column: "task_id", table: TABLES.tasks, onDelete: "cascade" },
+	],
+	upstream_links: [
 		{ column: "task_id", table: TABLES.tasks, onDelete: "cascade" },
 	],
 };
