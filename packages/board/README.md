@@ -136,6 +136,16 @@ The port is protocol-free on purpose: `@cabane/acp` implements it over an ACP ha
 test can implement it with a scripted async generator. `noCopilot` is an explicit no-op whose
 every turn ends with `no copilot configured`.
 
+What the ACP copilot knows beyond the tracker itself is one procedure: linking a task to its twin
+in a team tracker, in either direction. `/linear` and `/github` expand to the inbound form, and the
+skill text behind them (`CopilotInstructions.SKILLS`) carries both. It is injected with the identity
+block rather than living in each repo's `.claude/skills`, so the two work in every scope the board
+opens against with nothing to install. Pulling one in puts what matters into the task's OWN
+description and only identity on the link; pushing one out files the team-facing version and links
+it back. Provider access belongs to the harness — a Linear MCP server, `gh` on `PATH` — and a
+missing one is reported rather than worked around: cabane holds no provider credentials and makes
+no network call of its own.
+
 ## Marks and the copilot context
 
 `m` toggles the row under the cursor (or the open task in the detail view) in and out of a
