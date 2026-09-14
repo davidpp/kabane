@@ -4,6 +4,8 @@ export { App, type AppProps } from "./src/app";
 export { Board, type BoardProps } from "./src/board";
 export { BoardContext } from "./src/context";
 export { BoardData } from "./src/data";
+// Exported for the CLI: `cabane open` walks the same app → browser → clipboard chain the `O` key does.
+export { Launcher } from "./src/launcher";
 export type {
 	ActivityCard,
 	ActivityEvent,

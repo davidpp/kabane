@@ -374,6 +374,64 @@ describe("BoardNav.reduceKey", () => {
 		});
 	});
 
+	describe("open the linked issue (O)", () => {
+		const board = () =>
+			state({
+				sections: sections({ next: [row(task({ id: "a" }))] }),
+				selectedId: "a",
+			});
+
+		it("O on the board emits openLink for the selected row without opening detail", () => {
+			const { state: next, effect } = BoardNav.reduceKey(board(), {
+				name: "O",
+			});
+			expect(effect).toEqual({ type: "openLink", id: "a" });
+			expect(next.view).toEqual({ type: "board" });
+		});
+
+		it("matches the raw sequence too, since parsers disagree on shifted keys", () => {
+			expect(
+				BoardNav.reduceKey(board(), { name: "o", sequence: "O" }).effect,
+			).toEqual({ type: "openLink", id: "a" });
+		});
+
+		it("O in the detail view acts on the open task, not the selection", () => {
+			const s = state({
+				sections: sections({ next: [row(task({ id: "a" }))] }),
+				selectedId: "a",
+				view: { type: "detail", taskId: "b" },
+			});
+			expect(BoardNav.reduceKey(s, { name: "O" }).effect).toEqual({
+				type: "openLink",
+				id: "b",
+			});
+		});
+
+		it("is a no-op when nothing is selected", () => {
+			expect(BoardNav.reduceKey(state(), { name: "O" }).effect.type).toBe(
+				"none",
+			);
+		});
+
+		it("lowercase o still opens the event log, not the issue", () => {
+			const s = state({ view: { type: "detail", taskId: "a" } });
+			expect(BoardNav.reduceKey(s, { name: "o" }).effect).toEqual({
+				type: "openEvents",
+				taskId: "a",
+			});
+		});
+
+		it("is a query character while a search is being typed", () => {
+			const typing = BoardNav.reduceKey(board(), { name: "/" }).state;
+			const { state: next, effect } = BoardNav.reduceKey(typing, {
+				name: "O",
+				sequence: "O",
+			});
+			expect(effect.type).not.toBe("openLink");
+			expect(next.search).toEqual({ mode: "typing", query: "O" });
+		});
+	});
+
 	describe("lifecycle keys", () => {
 		it("q quits and r reloads", () => {
 			expect(BoardNav.reduceKey(state(), { name: "q" }).effect.type).toBe(

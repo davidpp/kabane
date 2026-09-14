@@ -162,6 +162,9 @@ export type DetailProps = {
 	// The copilot pane, rendered between the content and the footer. A slot rather than a float: the
 	// panel has real height and must push the view up, not cover it.
 	pane?: ReactNode;
+	// This task points at an issue in an external tracker, so `O` has somewhere to go. WHICH issue is
+	// already in the brief below (assembleContext writes it), so this only gates the footer hint.
+	linked?: boolean;
 	// Clicking the header [copy] affordance yanks the brief — same action as the `y` key.
 	onCopy?: () => void;
 };
@@ -186,6 +189,7 @@ export const Detail = ({
 	notice,
 	focus = "board",
 	pane,
+	linked = false,
 	onCopy,
 }: DetailProps): ReactNode => {
 	const [brief, setBrief] = useState<BriefState>({ status: "loading" });
@@ -214,9 +218,12 @@ export const Detail = ({
 		(c) =>
 			c.status === "running" || c.status === "pending" || c.status === "paused",
 	);
-	const detailHints = cards?.some((c) => c.hasEvents)
-		? [{ key: "o", label: "events" }, ...Keymap.DETAIL_FOOTER]
-		: Keymap.DETAIL_FOOTER;
+	const detailHints = [
+		...(linked ? [Keymap.OPEN_LINK_HINT] : []),
+		...(cards?.some((c) => c.hasEvents)
+			? [{ key: "o", label: "events" }, ...Keymap.DETAIL_FOOTER]
+			: Keymap.DETAIL_FOOTER),
+	];
 	const hints = Keymap.hintLine(
 		focus === "copilot" ? Keymap.COPILOT_FOOTER : detailHints,
 	);

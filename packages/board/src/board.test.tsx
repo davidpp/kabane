@@ -877,8 +877,9 @@ test("Board draws the mark glyph on a marked row and counts marks in the header"
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("JAKE-2"),
 		);
-		expect(frame).toContain("JAKE-1  ● Marked one");
-		expect(frame).toContain("JAKE-2    Plain one");
+		// Mark gutter, then the (empty) linked-issue gutter, then the title.
+		expect(frame).toContain("JAKE-1  ●   Marked one");
+		expect(frame).toContain("JAKE-2      Plain one");
 		expect(frame).toContain("cabane · all scopes · 1 marked");
 	} finally {
 		destroy();
@@ -915,10 +916,122 @@ test("Board glyphs the rows the copilot touched, and leaves the rest their full 
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("JAKE-2"),
 		);
-		expect(frame).toContain("JAKE-1    ✦ ai Agent wrote it");
+		expect(frame).toContain("JAKE-1      ✦ ai Agent wrote it");
 		// Transient, so it holds no column: an untouched title starts where it always did.
-		expect(frame).toContain("JAKE-2    Human wrote it");
+		expect(frame).toContain("JAKE-2      Human wrote it");
 	} finally {
 		destroy();
+	}
+});
+
+test("Board glyphs a row with a linked issue and keeps every title aligned", async () => {
+	const linkedTask = task({ id: "a", shortId: "JAKE-1", title: "Team work" });
+	const plain = task({ id: "b", shortId: "JAKE-2", title: "Local work" });
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={[
+				section("next", [
+					{ task: linkedTask, children: [] },
+					{ task: plain, children: [] },
+				]),
+			]}
+			expanded={new Set()}
+			selectedId="b"
+			linked={new Set(["a"])}
+		/>,
+		{ width: 100, height: 12 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JAKE-2"),
+		);
+		expect(frame).toContain("JAKE-1    ◆ Team work");
+		// The gutter holds its column when empty, which is what makes the glyphs scannable.
+		expect(frame).toContain("JAKE-2      Local work");
+	} finally {
+		destroy();
+	}
+});
+
+// The glyph is a column the title no longer has. If it were missing from `fixed`, a long title would
+// be one character too wide and wrap — which is the whole failure mode a 40-column split cares about.
+test("Board keeps a linked row on a single line at a narrow (40-col) width", async () => {
+	const longTitle =
+		"This linked task has a really long title that must truncate rather than wrap at forty columns";
+	const sections = [
+		section("next", [
+			{ task: task({ id: "a", title: longTitle }), children: [] },
+		]),
+	];
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={sections}
+			expanded={new Set()}
+			selectedId={null}
+			linked={new Set(["a"])}
+		/>,
+		{ width: 40, height: 20 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JAKE-42"),
+		);
+		expect(frame).toContain("◆");
+		expect(frame).toContain("…");
+		const widest = Math.max(...frame.split("\n").map((line) => line.length));
+		expect(widest).toBeLessThanOrEqual(40);
+	} finally {
+		destroy();
+	}
+});
+
+test("the footer offers O only while the selected row has a linked issue", async () => {
+	const linkedTask = task({ id: "a", shortId: "JAKE-1", title: "Team work" });
+	const plain = task({ id: "b", shortId: "JAKE-2", title: "Local work" });
+	const sections = [
+		section("next", [
+			{ task: linkedTask, children: [] },
+			{ task: plain, children: [] },
+		]),
+	];
+
+	const onLinked = await renderTest(
+		<Board
+			sections={sections}
+			expanded={new Set()}
+			selectedId="a"
+			linked={new Set(["a"])}
+		/>,
+		{ width: 100, height: 12 },
+	);
+	try {
+		const frame = await pumpUntil(
+			onLinked.renderOnce,
+			onLinked.captureCharFrame,
+			(f) => f.includes("JAKE-2"),
+		);
+		expect(frame).toContain("O open issue");
+	} finally {
+		onLinked.destroy();
+	}
+
+	const onPlain = await renderTest(
+		<Board
+			sections={sections}
+			expanded={new Set()}
+			selectedId="b"
+			linked={new Set(["a"])}
+		/>,
+		{ width: 100, height: 12 },
+	);
+	try {
+		const frame = await pumpUntil(
+			onPlain.renderOnce,
+			onPlain.captureCharFrame,
+			(f) => f.includes("JAKE-2"),
+		);
+		expect(frame).not.toContain("O open issue");
+	} finally {
+		onPlain.destroy();
 	}
 });

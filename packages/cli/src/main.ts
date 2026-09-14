@@ -17,9 +17,11 @@ import { link } from "./commands/link";
 import { list } from "./commands/list";
 import { log } from "./commands/log";
 import { mcp } from "./commands/mcp";
+import { open } from "./commands/open";
 import { search } from "./commands/search";
 import { show } from "./commands/show";
 import { sync } from "./commands/sync";
+import { upstream } from "./commands/upstream";
 import { resolveHome } from "./config";
 import { type Command, type Ctx, openContext } from "./context";
 import { failure, type Outcome, print, usage } from "./output";
@@ -33,6 +35,8 @@ export const COMMANDS: Command[] = [
 	done,
 	search,
 	link,
+	upstream,
+	open,
 	comment,
 	log,
 	context,

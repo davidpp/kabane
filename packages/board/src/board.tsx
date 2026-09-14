@@ -45,6 +45,14 @@ const MARK_BLANK = "  ";
 // the turn's footer indicator clears it — so unlike the mark it holds no column when absent.
 const AI_COLOR = REVIEW_COLOR;
 const AI_GLYPH = "✦ ai ";
+// This row points at an issue in someone else's tracker. Like the mark it holds its column when
+// absent, so the glyphs line up and one vertical scan answers "which of these is team work" — a
+// trailing badge would float at a different offset on every row and answer nothing at a glance.
+// It is the only thing the row says about the link: WHICH issue is the detail view's job. Single
+// narrow BMP codepoint on purpose; `fixed` below counts columns with `.length`, and the font target
+// (IBM Plex Mono) has no Nerd Font private-use range to draw a real provider logo from.
+const LINK_GLYPH = "◆ ";
+const LINK_BLANK = "  ";
 // Muted gray for all chrome: kind/state meta, section headers, footer hints.
 const MUTED_COLOR = "#6b7280";
 // Never let the title column collapse to nothing on a very narrow frame.
@@ -219,6 +227,7 @@ const Row = ({
 	selected,
 	marked,
 	touched,
+	linked,
 	available,
 	activity,
 	onSelect,
@@ -234,6 +243,7 @@ const Row = ({
 	// Index into the flattened visible-row list — the address mouse handlers dispatch back to the reducer.
 	rowIndex: number;
 	selected: boolean;
+	linked: boolean;
 	available: number;
 	activity?: BoardActivity.ActivityMap;
 	onSelect?: (rowIndex: number) => void;
@@ -257,6 +267,7 @@ const Row = ({
 	const more = moreBadge(cards.length - 1, RUNNING_ECHO);
 	const input = activity?.questionsByTaskId.has(task.id) ? " · ? input" : "";
 	const mark = marked ? MARK_GLYPH : MARK_BLANK;
+	const link = linked ? LINK_GLYPH : LINK_BLANK;
 	const ai = touched ? AI_GLYPH : "";
 	// Badge widths count against the title so a badged row still never wraps.
 	const fixed =
@@ -264,6 +275,7 @@ const Row = ({
 		shortId.length +
 		2 +
 		mark.length +
+		link.length +
 		ai.length +
 		meta.length +
 		review.length +
@@ -302,6 +314,8 @@ const Row = ({
 				<span fg={style.idFg}>{shortId}</span>
 				{"  "}
 				<span fg={marked ? MARK_COLOR : style.titleFg}>{mark}</span>
+				{/* Chrome, not accent: a linked issue is a fact about the row, not a request for action. */}
+				<span fg={MUTED_COLOR}>{link}</span>
 				{ai ? <span fg={AI_COLOR}>{ai}</span> : null}
 				{title}
 				<span fg={style.metaFg}>{meta}</span>
@@ -321,6 +335,7 @@ const Section = ({
 	selectedId,
 	marked,
 	touched,
+	linked,
 	nextRowIndex,
 	available,
 	activity,
@@ -330,6 +345,7 @@ const Section = ({
 }: {
 	marked: ReadonlySet<string>;
 	touched: ReadonlySet<string>;
+	linked: ReadonlySet<string>;
 	// id -> shortId over every loaded task, for naming an orphaned subtask's parent.
 	parentIds: Map<string, string>;
 	// Pre-flattened rows from BoardNav.visibleSections — the SAME flatten the reducer addresses, so
@@ -360,6 +376,7 @@ const Section = ({
 					selected={row.task.id === selectedId}
 					marked={marked.has(row.task.id)}
 					touched={touched.has(row.task.id)}
+					linked={linked.has(row.task.id)}
 					available={available}
 					activity={activity}
 					onSelect={onSelect}
@@ -437,6 +454,9 @@ export type BoardProps = {
 	// Rows the copilot changed in the turn in hand (BoardNav.copilotTouched), glyphed until the next
 	// keypress. Optional for the same reason.
 	touched?: ReadonlySet<string>;
+	// Tasks that point at an issue in an external tracker, from the same poll as the board data.
+	// Optional for the same reason; absent means nothing is linked.
+	linked?: ReadonlySet<string>;
 	// The list's scrollbox; app.tsx holds the ref so it can scroll the selected row into view.
 	scrollRef?: RefObject<ScrollBoxRenderable | null>;
 	// Mouse callbacks; absent in the render-only tests. app.tsx routes both through BoardNav.reduceMouse.
@@ -465,6 +485,7 @@ export const Board = ({
 	status = "open",
 	marked = NO_MARKS,
 	touched = NO_MARKS,
+	linked = NO_MARKS,
 	scrollRef,
 	onSelect,
 	onToggle,
@@ -496,8 +517,14 @@ export const Board = ({
 	const markedPart = markedLabel(marked.size);
 	// App-specific keys only — the vim-obvious ones live in the `?` help overlay (StatusBar handles
 	// its own truncation on narrow frames).
+	// `O` is offered only when the selected row actually has an issue to open. Most rows do not, and
+	// in the narrow pane this board is built for, a permanent hint for a usually-inert key is rent.
+	const boardHints =
+		selectedId !== null && linked.has(selectedId)
+			? [Keymap.OPEN_LINK_HINT, ...Keymap.BOARD_FOOTER]
+			: Keymap.BOARD_FOOTER;
 	const hints = Keymap.hintLine(
-		focus === "copilot" ? Keymap.COPILOT_FOOTER : Keymap.BOARD_FOOTER,
+		focus === "copilot" ? Keymap.COPILOT_FOOTER : boardHints,
 	);
 	// The SAME flatten the reducer uses for j/k, mouse addressing, and scroll-into-view — filter
 	// included — so the running rowIndex below is in lockstep with BoardNav.visibleRows.
@@ -528,6 +555,7 @@ export const Board = ({
 							selectedId={selectedId}
 							marked={marked}
 							touched={touched}
+							linked={linked}
 							nextRowIndex={nextRowIndex}
 							available={available}
 							activity={activity}
