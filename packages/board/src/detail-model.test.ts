@@ -76,6 +76,8 @@ const records = (
 	links: [],
 	neighbors: [],
 	upstream: [],
+	subtasks: [],
+	contextRefs: [],
 	...over,
 });
 
@@ -406,5 +408,112 @@ describe("actorName", () => {
 			"david-paquet",
 		);
 		expect(DetailModel.actorName("david")).toBe("david");
+	});
+});
+
+describe("subtasks and curated context", () => {
+	const child = (id: string, state: Task["state"], title: string): Task =>
+		task({ id, shortId: id.toUpperCase(), state, title, parentTaskId: "t1" });
+
+	it("the pinned line counts the open and the done, and a cancelled one apart", () => {
+		expect(DetailModel.subtaskSummary([])).toBeUndefined();
+		expect(
+			DetailModel.subtaskSummary([
+				child("c-1", "next", "one"),
+				child("c-2", "done", "two"),
+				child("c-3", "in_progress", "three"),
+			]),
+		).toBe("3 · 1 done");
+		expect(
+			DetailModel.subtaskSummary([
+				child("c-1", "next", "one"),
+				child("c-2", "cancelled", "two"),
+			]),
+		).toBe("1 · 1 cancelled");
+	});
+
+	it("the subtask count sits under the parent line, and only when there are subtasks", () => {
+		const withParent = records({
+			task: task({ parentTaskId: "p1" }),
+			neighbors: [task({ id: "p1", shortId: "CAB-0", title: "The plan" })],
+			subtasks: [child("c-1", "done", "one")],
+		});
+		expect(DetailModel.position(withParent).map((l) => l.key)).toEqual([
+			"parent",
+			"subtasks",
+		]);
+		expect(DetailModel.position(records()).map((l) => l.key)).toEqual([]);
+	});
+
+	it("each subtask says whether it is done, names an open one's state, and keeps a cancelled one", () => {
+		const lines = DetailModel.subtasks(
+			records({
+				subtasks: [
+					child("c-1", "done", "Shipped"),
+					child("c-2", "in_progress", "Working"),
+					child("c-3", "cancelled", "Dropped"),
+				],
+			}),
+		);
+		expect(
+			lines.map(({ shortId, done, cancelled, state }) => ({
+				shortId,
+				done,
+				cancelled,
+				state,
+			})),
+		).toEqual([
+			{ shortId: "C-1", done: true, cancelled: false, state: undefined },
+			{ shortId: "C-2", done: false, cancelled: false, state: "in progress" },
+			{ shortId: "C-3", done: false, cancelled: true, state: "cancelled" },
+		]);
+	});
+
+	it("a context ref reads as its kind, its label and its ref, never its content", () => {
+		const lines = DetailModel.contextRefs(
+			records({
+				contextRefs: [
+					{
+						id: "r1",
+						taskId: "t1",
+						uri: "obsidian:prds/cabane.md",
+						kind: "PRD",
+						label: " Cabane PRD ",
+						addedAt: "2026-09-20T10:00:00.000Z",
+					},
+					{
+						id: "r2",
+						taskId: "t1",
+						uri: "docs/research/ai-in-the-tui.md",
+						kind: "research",
+						label: "",
+						addedAt: "2026-09-21T10:00:00.000Z",
+					},
+				],
+			}),
+		);
+		expect(lines).toEqual([
+			{
+				id: "r1",
+				kind: "PRD",
+				label: "Cabane PRD",
+				uri: "obsidian:prds/cabane.md",
+			},
+			{
+				id: "r2",
+				kind: "research",
+				label: undefined,
+				uri: "docs/research/ai-in-the-tui.md",
+			},
+		]);
+	});
+
+	it("a description tab with only subtasks or context in it is not empty", () => {
+		const bare = records({ task: task({ description: undefined }) });
+		expect(DetailModel.tabs(bare)[0]?.empty).toBe(true);
+		expect(
+			DetailModel.tabs({ ...bare, subtasks: [child("c-1", "next", "one")] })[0]
+				?.empty,
+		).toBe(false);
 	});
 });

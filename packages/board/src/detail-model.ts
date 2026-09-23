@@ -2,9 +2,10 @@
 // the view's content out, so which record lands where is decided and tested without a renderer. The
 // view never reads the agent brief (assembleContext); `y` still copies that.
 //
-// Pinned above the tabs: the task at a glance, where it sits, and any question waiting on a human.
-// Then one tab each for the description, the comments and the agent log. The tabs and the log's
-// sources are lists, so another tab or another kind of log entry is one more item, not a reshape.
+// Pinned above the tabs: the task at a glance, where it sits (its subtasks counted there), and any
+// question waiting on a human. Then one tab each for the description (with the subtasks and the
+// curated context under it), the comments and the agent log. The tabs and the log's sources are
+// lists, so another tab or another kind of log entry is one more item, not a reshape.
 import {
 	type AgentActivity,
 	isAnswerTo,
@@ -12,6 +13,7 @@ import {
 	TASK_STATE_DISPLAY,
 	type Task,
 	type TaskComment,
+	type TaskContextRef,
 	type WorkRef,
 } from "@cabane/core";
 import type { BoardActivity } from "./activity";
@@ -43,6 +45,27 @@ export namespace DetailModel {
 	export type SummaryPart = { text: string; request: boolean };
 
 	export type TabSummary = { tab: Tab; count?: number; empty: boolean };
+
+	/**
+	 * One subtask under the description. `done` carries the `✓`; an open one names its state after
+	 * the title; a cancelled one stays listed, faint, because it is part of the plan's record.
+	 */
+	export type SubtaskLine = {
+		id: string;
+		shortId: string;
+		title: string;
+		done: boolean;
+		cancelled: boolean;
+		state?: string;
+	};
+
+	/** One curated input: its kind, its label, and the ref it points at. Identity, never content. */
+	export type ContextLine = {
+		id: string;
+		kind: string;
+		label?: string;
+		uri: string;
+	};
 
 	/** A comment author as a name: `cabane://actor/agent/claude` → `claude`. */
 	export const actorName = (author: string): string =>
@@ -118,7 +141,7 @@ export namespace DetailModel {
 	 * `follows` read target → source.
 	 */
 	export const position = (records: BoardData.DetailRecords): MetaLine[] => {
-		const { task, links, neighbors, upstream } = records;
+		const { task, links, neighbors, upstream, subtasks } = records;
 		const byId = new Map(neighbors.map((t) => [t.id, t]));
 		const shortIdOf = (id: string): string =>
 			byId.get(id)?.shortId ?? id.slice(0, 8);
@@ -144,6 +167,8 @@ export namespace DetailModel {
 		const lines: MetaLine[] = [];
 		if (task.parentTaskId)
 			lines.push({ key: "parent", value: name(task.parentTaskId) });
+		const children = subtaskSummary(subtasks);
+		if (children) lines.push({ key: "subtasks", value: children });
 		for (const id of blockers)
 			lines.push({ key: "blocked by", value: blockerName(id) });
 		for (const id of blocks) lines.push({ key: "blocks", value: name(id) });
@@ -154,6 +179,54 @@ export namespace DetailModel {
 			});
 		return lines;
 	};
+
+	/**
+	 * How far the subtasks have got, as the pinned line says it: `3 · 1 done`, a cancelled one
+	 * counted apart (`· 1 cancelled`) rather than as work. Absent when there are none.
+	 */
+	export const subtaskSummary = (
+		subtasks: readonly Task[],
+	): string | undefined => {
+		if (subtasks.length === 0) return undefined;
+		const cancelled = subtasks.filter((t) => t.state === "cancelled").length;
+		const done = subtasks.filter((t) => t.state === "done").length;
+		const parts = [`${subtasks.length - cancelled}`];
+		if (done > 0) parts.push(`${done} done`);
+		if (cancelled > 0) parts.push(`${cancelled} cancelled`);
+		return parts.join(" · ");
+	};
+
+	// ── description ─────────────────────────────────────────────────────────────────────────────
+
+	/** The subtasks, in the order they were filed. */
+	export const subtasks = (records: BoardData.DetailRecords): SubtaskLine[] =>
+		records.subtasks.map((t) => {
+			const done = t.state === "done";
+			const cancelled = t.state === "cancelled";
+			return {
+				id: t.id,
+				shortId: t.shortId ?? t.id.slice(0, 8),
+				title: t.title,
+				done,
+				cancelled,
+				state: cancelled
+					? "cancelled"
+					: done
+						? undefined
+						: TASK_STATE_DISPLAY[t.state].label.toLowerCase(),
+			};
+		});
+
+	/** The curated context, in the order it was added. */
+	export const contextRefs = (
+		records: BoardData.DetailRecords,
+	): ContextLine[] =>
+		records.contextRefs.map((ref: TaskContextRef) => ({
+			id: ref.id,
+			kind: ref.kind,
+			label: ref.label?.trim() || undefined,
+			uri: ref.uri,
+		}));
 
 	// ── comments ────────────────────────────────────────────────────────────────────────────────
 
@@ -260,8 +333,12 @@ export namespace DetailModel {
 	): TabSummary[] => {
 		const said = records ? records.comments.length : 0;
 		const logged = (records ? log(records).length : 0) + liveCards;
+		const described =
+			Boolean(records?.task.description?.trim()) ||
+			(records?.subtasks.length ?? 0) > 0 ||
+			(records?.contextRefs.length ?? 0) > 0;
 		return [
-			{ tab: "description", empty: !records?.task.description?.trim() },
+			{ tab: "description", empty: !described },
 			{ tab: "comments", count: said, empty: said === 0 },
 			{ tab: "log", count: logged, empty: logged === 0 },
 		];
