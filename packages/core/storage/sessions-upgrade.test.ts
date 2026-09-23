@@ -17,7 +17,7 @@ import type { TaskDraft } from "../schemas";
 import { Planner } from "./index";
 
 const TEST_BASE = join(import.meta.dir, ".test-data-sessions-upgrade");
-const DB_PATH = join(TEST_BASE, "cabane.db");
+const DB_PATH = join(TEST_BASE, "kabane.db");
 
 const draft: TaskDraft = { title: "Pre-upgrade task", kind: "issue" };
 

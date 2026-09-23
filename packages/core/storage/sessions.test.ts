@@ -32,7 +32,7 @@ const startOn = async (
 
 /** Count rows in the raw agent_activities table (for compaction assertions). */
 const countActivities = (sessionId: string): number => {
-	const db = new Database(join(TEST_BASE, "cabane.db"));
+	const db = new Database(join(TEST_BASE, "kabane.db"));
 	try {
 		const row = db
 			.query("SELECT COUNT(*) AS n FROM agent_activities WHERE session_id = ?")
@@ -156,7 +156,7 @@ describe("Planner — Agent Sessions", () => {
 		// lexicographic `id DESC` tiebreak would pick the FIRST-written row — only
 		// an insertion-ordered rowid tiebreak returns the last-written ("third").
 		const sameMs = "2026-07-16T12:00:00.000Z";
-		const db = new Database(join(TEST_BASE, "cabane.db"));
+		const db = new Database(join(TEST_BASE, "kabane.db"));
 		try {
 			const insert = (id: string, body: string) =>
 				db.run(
@@ -543,7 +543,7 @@ const UPGRADE_BASE = join(import.meta.dir, ".test-data-sessions-upgrade");
  * (idx_tasks_scope on scope_uri, etc.) and the tasks FTS triggers.
  */
 const seedPreS4aDb = (legacyTaskId: string): void => {
-	const db = new Database(join(UPGRADE_BASE, "cabane.db"));
+	const db = new Database(join(UPGRADE_BASE, "kabane.db"));
 	try {
 		db.run(`CREATE TABLE tasks (
       id TEXT PRIMARY KEY,
@@ -611,7 +611,7 @@ describe("Planner — Agent Sessions (existing-DB upgrade)", () => {
 		const initResult = await Planner.init(UPGRADE_BASE);
 		expect(initResult.ok).toBe(true);
 
-		const db = new Database(join(UPGRADE_BASE, "cabane.db"));
+		const db = new Database(join(UPGRADE_BASE, "kabane.db"));
 		try {
 			db.run("PRAGMA foreign_keys = ON");
 
@@ -667,7 +667,7 @@ describe("Planner — Agent Sessions (existing-DB upgrade)", () => {
 			body: "work",
 		});
 
-		const cascadeDb = new Database(join(UPGRADE_BASE, "cabane.db"));
+		const cascadeDb = new Database(join(UPGRADE_BASE, "kabane.db"));
 		try {
 			cascadeDb.run("PRAGMA foreign_keys = ON");
 			cascadeDb.run("DELETE FROM agent_sessions WHERE id = ?", [

@@ -42,8 +42,8 @@ describe("cabane cli", () => {
 	let taskId = "";
 
 	beforeAll(() => {
-		mkdirSync(join(cwd, ".cabane"), { recursive: true });
-		writeFileSync(join(cwd, ".cabane", "scope"), "demo\n");
+		mkdirSync(join(cwd, ".kabane"), { recursive: true });
+		writeFileSync(join(cwd, ".kabane", "scope"), "demo\n");
 	});
 
 	afterAll(() => {
@@ -306,7 +306,7 @@ describe("cabane cli", () => {
 				"CF-Access-Client-Id": "id.access",
 				"CF-Access-Client-Secret": "s3cret",
 			});
-			expect(readFileSync(join(otherCwd, ".cabane", "scope"), "utf8")).toBe(
+			expect(readFileSync(join(otherCwd, ".kabane", "scope"), "utf8")).toBe(
 				"cabane\n",
 			);
 
@@ -500,8 +500,8 @@ describe("the owner's timezone", () => {
 	const run = makeRunner(home, cwd);
 
 	beforeAll(async () => {
-		mkdirSync(join(cwd, ".cabane"), { recursive: true });
-		writeFileSync(join(cwd, ".cabane", "scope"), "demo\n");
+		mkdirSync(join(cwd, ".kabane"), { recursive: true });
+		writeFileSync(join(cwd, ".kabane", "scope"), "demo\n");
 		const init = await run(
 			"init",
 			"--actor",

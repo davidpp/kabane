@@ -3,7 +3,7 @@
  *
  * One list of tools, each a name, a description an agent reads, a zod input
  * shape, and a handler over the storage namespace returning `Result`. The
- * stdio server (`cabane mcp`) and the hub Worker both build their MCP server
+ * stdio server (`kabane mcp`) and the hub Worker both build their MCP server
  * from this list, so a browser connector and a local CLI see the same surface.
  *
  * ONLY REPLICATED DATA. The hub holds what the sync set carries: tasks,

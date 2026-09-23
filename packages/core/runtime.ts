@@ -57,6 +57,8 @@ export type SyncSettingsSource = () => Promise<Result<SyncConfig>>;
  */
 export type ActorSource = () => string;
 
+// `cabane://` predates the rename to kabane and is stored in every row, so it
+// changes only with a migration.
 export const ANONYMOUS_ACTOR = "cabane://actor/unknown";
 
 /**

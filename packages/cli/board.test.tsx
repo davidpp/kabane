@@ -26,8 +26,8 @@ describe("cabane board", () => {
 	let ctx: Ctx;
 
 	beforeAll(async () => {
-		mkdirSync(join(cwd, ".cabane"), { recursive: true });
-		writeFileSync(join(cwd, ".cabane", "scope"), "demo\n");
+		mkdirSync(join(cwd, ".kabane"), { recursive: true });
+		writeFileSync(join(cwd, ".kabane", "scope"), "demo\n");
 		const saved = saveConfig(home, {
 			actor: "cabane://actor/human/tester",
 			deviceId: "t1",

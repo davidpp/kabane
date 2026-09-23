@@ -12,7 +12,7 @@
 import { SqliteDb } from "@cabane/sqlite";
 import { Runtime, type RuntimeConfig } from "./runtime";
 
-export const TEST_DB_NAME = "cabane.db";
+export const TEST_DB_NAME = "kabane.db";
 
 export const configureTestRuntime = (
 	tablePrefix = "",

@@ -2,7 +2,7 @@
  * MCP server over the tool definitions.
  *
  * Two transports, one tool list. `serveStdio` blocks for a CLI process
- * (`cabane mcp`); `handleHttpRequest` is stateless Streamable HTTP for the hub:
+ * (`kabane mcp`); `handleHttpRequest` is stateless Streamable HTTP for the hub:
  * a fresh server and transport per request, torn down after the response, so a
  * Durable Object never holds MCP session state and a request carries its own
  * actor.
