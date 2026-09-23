@@ -114,17 +114,3 @@ export const PlannerConfigSchema = z.object({
 	sync: SyncConfigSchema.default({}),
 });
 export type PlannerConfig = z.infer<typeof PlannerConfigSchema>;
-
-/**
- * Parse and validate planner config from module config
- */
-export const parsePlannerConfig = (moduleConfig: unknown): PlannerConfig => {
-	return PlannerConfigSchema.parse(moduleConfig ?? {});
-};
-
-/**
- * Get default config
- */
-export const getDefaultPlannerConfig = (): PlannerConfig => {
-	return PlannerConfigSchema.parse({});
-};
