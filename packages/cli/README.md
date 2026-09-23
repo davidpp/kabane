@@ -107,6 +107,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
 | `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
 | `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`cabane_*`), with the working directory's scope as the default so writes may omit `scopeUri` |
+| `mcp install` | `--harness claude\|codex\|gemini` (repeatable) `--force` `--print` — register `mcp` in each harness on PATH through its own `mcp add`, as `cabane://actor/agent/<harness>`; `--print` prints the snippets instead, also the fallback when none is found |
 
 Ids are short ids (`JCAB-12`) or ULIDs. Short ids are labels, not identities:
 two devices can mint the same one offline, and `sync pull` relabels the later
@@ -115,8 +116,18 @@ one (`sync status` counts `renamed ids`).
 ## MCP on this device
 
 ```bash
-claude mcp add cabane -- cabane mcp --as cabane://actor/agent/claude
+cabane mcp install          # every harness on PATH: claude, codex, gemini
+cabane mcp install --print  # .mcp.json, config.toml, settings.json, and a generic entry
 ```
+
+Each harness gets `cabane` at user scope, spawning `<absolute bun> <this
+clone>/index.ts mcp --as cabane://actor/agent/<harness>`: absolute because a
+harness spawns servers with its own PATH, which often lacks `~/.bun/bin`, and
+the bin's `#!/usr/bin/env bun` needs bun on it. An existing entry is reported
+and left alone unless `--force`. The table behind both the install and the
+snippets is `src/mcp-clients.ts`; `McpInstall.run(harnesses, opts)` in
+`src/commands/mcp-install.ts` is the same install for callers other than the
+command.
 
 Same tools as the hub at `https://cabane.3pew.ca/mcp`: `cabane_scopeList`,
 `cabane_add`, `cabane_get`, `cabane_list`, `cabane_search`, `cabane_today`,
@@ -135,6 +146,7 @@ src/args.ts         pure argv parser
 src/config.ts       CABANE_HOME, config.json, the scope pin file
 src/context.ts      Runtime.configure + Planner.init, the Ctx commands receive, scope resolution
 src/output.ts       --json vs human rendering, icons
+src/mcp-clients.ts  per-harness MCP registration argv and config snippets (pure)
 src/commands/*.ts   one file per command
 cli.test.ts         scripted session against the real binary
 ```
