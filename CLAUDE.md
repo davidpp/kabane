@@ -35,6 +35,11 @@ bun test             # bun packages only (core, sqlite, acp, cli, board)
 bun run test         # the above plus `bun run --cwd packages/worker test` (tsc + vitest)
 ```
 
+To run the CLI or the TUI live, use `bun run sandbox [cabane args]` (README, "Try a change
+without touching your own device"). It gives cabane a throwaway `CABANE_HOME` and git repo
+and keeps setup from registering in the real harness configs. Never run a live check
+against `~/.cabane`: on David's machine it is his real tracker.
+
 Root `bun test` must name the bun packages: a bare `bun test` sweeps the Worker's
 vitest files it cannot execute. Lefthook runs `biome check --write` on staged files
 and `typecheck` when `.ts` files are staged.

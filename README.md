@@ -205,3 +205,18 @@ bun run test        # bun packages, then the Worker suite under vitest
 
 Lefthook runs `biome check --write` on staged files and `typecheck` when `.ts`
 files are staged, on every commit.
+
+## Try a change without touching your own device
+
+```bash
+bun run sandbox                # first-run setup, then the board, on a throwaway device
+bun run sandbox list           # any cabane command, inside the sandbox's git repo
+bun run sandbox --fresh        # start over
+bun run sandbox --harnesses    # also let setup install into harness configs under the sandbox
+```
+
+The sandbox is its own `CABANE_HOME` plus a seeded git repo in the system temp directory,
+one per checkout. By default setup finds no agents, so nothing is registered in your real
+Claude Code, Codex or Gemini config. `--harnesses` gives the harnesses a sandbox HOME, so
+the install step runs for real, but a harness may not be logged in there: try the copilot
+without it.
