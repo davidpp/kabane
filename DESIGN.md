@@ -219,14 +219,16 @@ for default and renders white on white (JJAK-1017).
 - **Notation, left to right:** caret (`▸` / `▾`, expandability only), short id, two spaces,
   mark column, link column, transient `✦ ai`, title, muted meta, then badges (`· review`,
   the in-flight badge, `+N`, `· ? input`).
-- **Held columns:** the mark and link columns keep their width when empty, so one vertical
-  scan answers "which of these". Transient glyphs hold no column.
+- **Held columns:** the mark and link columns keep their width on the rows without a glyph,
+  so one vertical scan answers "which of these", but only while at least one visible strip
+  uses the column; a board with nothing marked or linked gives those cells to the titles.
+  Transient glyphs hold no column.
 - **Fit:** one line per strip, always. The title truncates with `…` and never wraps; badge
   widths count against it; it never drops below four columns.
 - **Selected:** `{components.strip-selected}` under the Selection Rule.
 - **Fresh:** a strip an agent just wrote shows `✦ ai` in default fg, and its row steps up to
-  raised, then eases back to the base over about 600ms with an ease-out curve. It happens once
-  and never loops.
+  raised until the keypress that dismisses the turn. The ease back to the base (about 600ms,
+  ease-out, once, never looping) is not built yet (JCAB-86).
 - **Cold:** a strip whose brief has gone untouched past one threshold takes a faint title. It
   gets no glyph, no timestamp, and no warning; its age is spelled out in the detail view.
 
@@ -267,7 +269,11 @@ against every glyph already here.
   take the accent.
 
 ### Detail view
-- **Header:** `id · title` as Title, then the in-flight status line.
+- **Header:** a raised block, one cell of padding each side: `id · title` as Title with the
+  `[copy]` affordance at its right, then the in-flight status line in the working hue.
+- **Comments:** a Label (`comments · 2`), then one raised block per comment: the author's
+  name (the actor URI's last segment, never the URI) in Label weight and the time muted, then
+  the comment's first line.
 - **Brief:** rendered markdown. Headings as Label, list bullets muted, code on raised. No
   heading color: blue belongs to working.
 - **Age:** the meta line says how old the brief is in words (`brief · 41d`). This is where

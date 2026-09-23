@@ -48,10 +48,10 @@ machine as you.
 
 ```
  cabane · cabane                                          · 3 marked
- next
-   ● JCAB-37  Copilot over ACP: instruction block, slash shortcuts, …
-   ● JCAB-38  Wire the copilot into `cabane board`
-     JCAB-39  Agent writes: attribution, needsReview policy, triage tool
+ next · 3
+   JCAB-37  ● Copilot over ACP: instruction block, slash shortcuts, …
+   JCAB-38  ● Wire the copilot into `cabane board`
+   JCAB-39    Agent writes: attribution, needsReview policy, triage tool
 
  JCAB-31 · 3 marked · next
  > verify which of these are still real todos, someday or next
