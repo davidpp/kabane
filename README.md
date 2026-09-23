@@ -26,9 +26,10 @@ cd packages/cli && bun link                      # `cabane` on PATH
 cabane
 ```
 
-The first run shows three short cards on what cabane is, then a setup screen: your name
-and the coding harnesses found on this machine that get a `cabane` MCP entry.
-Enter writes the config (one machine, local SQLite) and opens the board; every later
+The first run shows one card on what cabane is, then a setup screen: your name and the
+coding harnesses found on this machine that get a `cabane` MCP entry. Enter writes the
+config (one machine, local SQLite), files a first issue that has your agent add cabane to
+the project's `CLAUDE.md`, `AGENTS.md` or `GEMINI.md`, and opens the board; every later
 `cabane` opens the board directly. Scripts and agents that run `cabane` without a terminal
 still get the help text, and `cabane init --actor … --device …` remains the flag form.
 

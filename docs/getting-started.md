@@ -35,9 +35,9 @@ clone anywhere; the harness entries record its absolute path.
 
 ## Run `cabane`
 
-Run `cabane` from inside a project you want to track. The first run opens on three short
-cards about what cabane is. Enter moves to the next card; esc skips straight to the setup
-screen:
+Run `cabane` from inside a project you want to track. The first run opens on one card
+about what cabane is. Enter moves on to the setup screen; esc quits without writing
+anything:
 
 ```
 cabane · setup
@@ -52,6 +52,7 @@ cabane · setup
 
 enter saves ~/.cabane/config.json
       adds cabane to 3 agents
+      files one issue for claude
       opens the board
 
 space toggle · enter confirm · esc quit
@@ -65,15 +66,16 @@ space toggle · enter confirm · esc quit
   `none found on PATH`; install one, then run `cabane mcp install`. With `CABANE_HARNESSES`
   set and nothing it names on your PATH, the row reads `install off` instead (that is what
   `bun run sandbox` shows).
-- The lines under **enter** follow the form: uncheck every agent and the `adds` line goes.
-  A long config path is cut from the left, `…/.cabane/config.json`, to fit the pane.
+- The lines under **enter** follow the form: uncheck every agent and the `adds` and
+  `files` lines go. Outside a project, there is no `files` line. A long config path is cut
+  from the left, `…/.cabane/config.json`, to fit the pane.
 
 The screen does not ask for a device name: setup saves the short hostname. It only matters
 once sync is set up, and [deploy.md](deploy.md) says how to change it before the first push.
 To change your name later, edit `actor` in `~/.cabane/config.json`; to add an agent later,
 run `cabane mcp install`.
 
-Enter saves the config and adds cabane to each checked harness:
+Enter saves the config, adds cabane to each checked harness, and files your first issue:
 
 ```
 ✓ saved ~/.cabane/config.json
@@ -81,12 +83,25 @@ Enter saves the config and adds cabane to each checked harness:
 Claude Code    ✓ installed
 Codex          ✓ installed
 Gemini CLI     ✓ installed
+
+✓ filed WIDG-1 for claude
+  Add cabane to CLAUDE.md
+
+next: in a new claude session here,
+say "take the next cabane issue" and
+watch WIDG-1 move on the board.
 ```
 
 A failed install shows the last line of the harness's error under its row; `cabane mcp
-install` prints the whole of it. Enter again opens the board. With no agent checked, enter
-opens the board straight away. Esc on the setup screen, before confirming, leaves without
-writing anything. After this, `cabane` always opens the board directly.
+install` prints the whole of it. The first issue goes to the first agent whose install
+landed, as a `next` issue assigned to it. Its brief is the tracker block from
+[Agents](#agents) below, with the ask to add it to the harness's instruction file
+(`CLAUDE.md`, `AGENTS.md` or `GEMINI.md`) at the project root. The agent works it the way
+the block says, so you watch its first pass through the tracker on the board. It has to be
+a new session, because a harness loads its MCP servers when a session starts. Enter again
+opens the board. With no agent checked, enter opens the board straight away. Esc on the
+setup screen, before confirming, leaves without writing anything. After this, `cabane`
+always opens the board directly.
 
 What setup changed outside `~/.cabane`: one user-scope MCP entry named `cabane` in each
 checked harness, added through that harness's own `mcp add`:
@@ -104,7 +119,8 @@ content stays the same, but keep a copy if you diff that file.
 ## The board
 
 The board shows the scope of the directory you opened it in: the repo's name in the header,
-tasks grouped by state. The footer lists the everyday keys, and `?` lists all of them:
+tasks grouped by state. A scope with nothing open says so, and how to file the first task.
+The footer lists the everyday keys, and `?` lists all of them:
 
 - `j`/`k` move, `enter` opens a task, `esc` goes back, `q` quits.
 - `[` and `]` move a task through the states (inbox, next, in progress, waiting, done).
@@ -165,8 +181,10 @@ The server exposes `cabane_*` tools: `cabane_list`, `cabane_get`, `cabane_contex
 `cabane_link` and a few more. The agent's working directory sets the default scope, so a
 new task lands in the repo the agent is working in.
 
-Agents use the tracker reliably only when the project tells them to. Paste this block into
-the project's `CLAUDE.md` (Claude Code), `AGENTS.md` (Codex) or `GEMINI.md` (Gemini CLI):
+Agents use the tracker reliably only when the project tells them to. In the project you ran
+setup in, the first issue has your agent add this block. For any other project, paste it
+into the project's `CLAUDE.md` (Claude Code), `AGENTS.md` (Codex) or `GEMINI.md` (Gemini
+CLI):
 
 ```markdown
 ## Tracker
