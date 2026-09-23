@@ -86,5 +86,13 @@ describe("outcomeOf", () => {
 		expect(
 			outcomeOf({ harness: "gemini", status: "failed", error: "auth needed" }),
 		).toEqual({ id: "gemini", status: "failed", message: "auth needed" });
+		expect(
+			outcomeOf({
+				harness: "codex",
+				status: "failed",
+				error:
+					"WARNING: proceeding\nError: failed to load\nCaused by: no home\n",
+			}).message,
+		).toBe("Caused by: no home");
 	});
 });

@@ -35,6 +35,11 @@ const LABELS: Record<McpClients.Id, string> = {
 	gemini: "Gemini CLI",
 };
 
+// A harness's stderr can run to warnings and a backtrace; its last line is usually the cause, and
+// `cabane mcp install` still prints the whole of it.
+const lastLine = (text: string): string =>
+	text.trim().split("\n").at(-1)?.trim() ?? text;
+
 // `replaced` cannot happen without `--force`, which setup never passes; it reads as installed.
 // The agent's actor URI goes unsaid: it is jargon to a newcomer, and the guide lists it per harness.
 export const outcomeOf = (
@@ -50,7 +55,7 @@ export const outcomeOf = (
 		case "missing":
 			return { id, status: "failed", message: "not on PATH" };
 		case "failed":
-			return { id, status: "failed", message: report.error };
+			return { id, status: "failed", message: lastLine(report.error) };
 	}
 };
 
