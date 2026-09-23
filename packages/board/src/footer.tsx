@@ -8,7 +8,8 @@
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
 import type { CopilotLog } from "./copilot-log";
-import type { Keymap } from "./keymap";
+import { Keymap } from "./keymap";
+import { Segments } from "./segments";
 import { type Theme, useTheme } from "./theme";
 
 // The copilot indicator's colour by tone, shared by the board and detail footers: the working hue
@@ -27,66 +28,61 @@ export const copilotIndicatorFg = (
 	}
 };
 
-/** A run of footer text in one colour. */
-export type Segment = { text: string; fg: string };
-
 /** Hints two-tone: the key in the bar's foreground, its label and the separators muted. */
 export const hintSegments = (
 	hints: readonly Keymap.Hint[],
 	theme: Theme.Tokens,
-): Segment[] =>
+): Segments.Segment[] =>
 	hints.flatMap((hint, index) => [
 		...(index > 0 ? [{ text: " · ", fg: theme.muted }] : []),
 		{ text: hint.key, fg: theme.text },
 		{ text: ` ${hint.label}`, fg: theme.muted },
 	]);
 
+// Between a lead (the query being typed, a search summary) and the hints after it.
+const LEAD_GAP = "  ";
+
 /**
- * Segments cut to `width` columns, the last one ending in `…` when anything was cut. The same cut the
- * single-colour bar has always made, so a small screen truncates hints and never wraps them.
+ * The bar's parts for `width` columns. A lead keeps its words and gives way to nothing; hints after it
+ * fit whole, dropping from the end with `? help` kept (Keymap.fitHints), so a hint is never cut
+ * mid-word. A plain line with no hints is cut at the end with `…`, as a notice always was.
  */
-export const fitSegments = (
-	segments: readonly Segment[],
+export const barSegments = (
+	{ text, fg, lead, leadFg, hints }: StatusBarProps,
 	width: number,
-): Segment[] => {
-	const total = segments.reduce((n, segment) => n + segment.text.length, 0);
-	if (total <= width) return [...segments];
-	const fitted: Segment[] = [];
-	let room = Math.max(0, width - 1);
-	for (const segment of segments) {
-		if (room === 0) break;
-		const text = segment.text.slice(0, room);
-		fitted.push({ ...segment, text });
-		room -= text.length;
-	}
-	const last = fitted.at(-1);
-	if (last) fitted[fitted.length - 1] = { ...last, text: `${last.text}…` };
-	return fitted;
+	theme: Theme.Tokens,
+): Segments.Segment[] => {
+	if (!hints)
+		return Segments.fit([{ text: text ?? "", fg: fg ?? theme.text }], width);
+	const head: Segments.Segment[] = lead
+		? [{ text: lead, fg: leadFg ?? theme.text }]
+		: [];
+	const room = Math.max(0, width - (lead ? lead.length + LEAD_GAP.length : 0));
+	const fitted = Keymap.fitHints(hints, room);
+	const gap: Segments.Segment[] =
+		lead && fitted.length > 0 ? [{ text: LEAD_GAP, fg: theme.muted }] : [];
+	return Segments.fit([...head, ...gap, ...hintSegments(fitted, theme)], width);
 };
 
 export type StatusBarProps = {
-	// One string in one colour: a notice, the live search query, a filter summary.
+	// One string in one colour: a notice. Used when there are no hints.
 	text?: string;
-	// Key hints, drawn two-tone. Wins over `text` when both are given.
-	hints?: readonly Keymap.Hint[];
 	fg?: string;
+	// Key hints, drawn two-tone after the lead, if any.
+	hints?: readonly Keymap.Hint[];
+	// What the bar says before its hints: the live query, a search summary.
+	lead?: string;
+	leadFg?: string;
 };
 
-export const StatusBar = ({
-	text = "",
-	hints,
-	fg,
-}: StatusBarProps): ReactNode => {
+export const StatusBar = (props: StatusBarProps): ReactNode => {
 	const { width } = useTerminalDimensions();
 	const theme = useTheme();
 	// The bar sits on the raised surface: one step up from the terminal's own background, visible
 	// as a bar, quiet as chrome. Text without a colour of its own takes the surface's foreground.
 	const bg = theme.surface.raised;
-	const segments = fitSegments(
-		hints ? hintSegments(hints, theme) : [{ text, fg: fg ?? theme.text }],
-		width,
-	);
-	const used = segments.reduce((n, segment) => n + segment.text.length, 0);
+	const segments = barSegments(props, width, theme);
+	const used = Segments.plain(segments).length;
 	return (
 		<box
 			style={{
@@ -97,12 +93,7 @@ export const StatusBar = ({
 			}}
 		>
 			<text bg={bg} fg={theme.text}>
-				{segments.map((segment, index) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: a fixed run of segments, rebuilt each render.
-					<span key={index} fg={segment.fg}>
-						{segment.text}
-					</span>
-				))}
+				{Segments.spans(segments)}
 				{" ".repeat(Math.max(0, width - used))}
 			</text>
 		</box>

@@ -1190,9 +1190,24 @@ describe("help overlay", () => {
 		}
 	});
 
-	it("all other keys are inert while open — j/d/a change nothing and emit nothing", () => {
+	it("j/k scroll the sheet, and move nothing on the board under it", () => {
 		const open = BoardNav.reduceKey(boardWith(), helpKey).state;
-		for (const name of ["j", "d", "a", "x", "/", "space", "return"]) {
+		for (const [name, delta] of [
+			["j", 2],
+			["down", 2],
+			["k", -2],
+			["up", -2],
+		] as const) {
+			const { state: next, effect } = BoardNav.reduceKey(open, { name });
+			expect(effect).toEqual({ type: "helpScroll", delta });
+			expect(next.help).toBe(true);
+			expect(next.selectedId).toBe("a");
+		}
+	});
+
+	it("all other keys are inert while open — d/a/x change nothing and emit nothing", () => {
+		const open = BoardNav.reduceKey(boardWith(), helpKey).state;
+		for (const name of ["d", "a", "x", "/", "space", "return"]) {
 			const { state: next, effect } = BoardNav.reduceKey(open, { name });
 			expect(effect.type).toBe("none");
 			expect(next.help).toBe(true);

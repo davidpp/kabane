@@ -159,10 +159,13 @@ describe("cabane board", () => {
 				await sleep(20);
 			}
 			expect(frame).toContain("Render me on the board");
-			// Header shows the CLI's scope; footer still offers `a`, which the
-			// no-op dispatcher answers with its flash rather than a picker.
+			// Header shows the CLI's scope; the footer carries the board's everyday keys and
+			// `? help`. `a` is on the `?` sheet, not the footer: with the no-op dispatcher it
+			// only flashes that there is none.
 			expect(frame).toContain("cabane · demo");
-			expect(frame).toContain("a dispatch");
+			expect(frame).toContain("/ search · d done");
+			expect(frame).toContain("? help");
+			expect(frame).not.toContain("a dispatch");
 		} finally {
 			setup.renderer.destroy();
 			deps.copilot.close();

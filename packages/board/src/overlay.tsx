@@ -1,13 +1,15 @@
 /** @jsxImportSource @opentui/react */
-// Centered overlays: the `a` dispatch picker (one list of host triggers), the `?` help sheet.
-// Deliberately the MINIMAL cut of zact-v2's select-modal — no filter, no groups, no mouse: the
-// reducers (nav.ts reduceDispatchKey / reduceHelpKey) own all input; these only draw their state.
-// Frameless: herdr and the terminal already draw the pane's lines, so an overlay is set apart by
-// the overlay surface and a cell of padding, never a border. Selection highlight follows board.tsx's
-// rowStyle rule — explicit bg + fg on the row, NEVER INVERSE (JJAK-1017).
-import { TextAttributes } from "@opentui/core";
+// The overlays: the `a` dispatch picker (one list of host triggers, centered) and the `?` sheet (the
+// keys of the view in hand, anchored at the bottom, which-key style). Deliberately minimal — no
+// filter, no mouse: the reducers (nav.ts reduceDispatchKey / reduceHelpKey) own all input; these only
+// draw their state, and every hint they show comes from Keymap. Frameless: herdr and the terminal
+// already draw the pane's lines, so an overlay is set apart by the overlay surface and a cell of
+// padding, never a border. Selection highlight follows board.tsx's rowStyle rule — explicit bg + fg
+// on the row, NEVER INVERSE (JJAK-1017).
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
+import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import type { TriggerDescriptor } from "./ports";
@@ -17,12 +19,9 @@ import { type Theme, useTheme } from "./theme";
 // one above the raised panels it floats over.
 const overlayBg = (theme: Theme.Tokens): string => theme.surface.overlay;
 
-const DISPATCH_HINTS: readonly Keymap.Hint[] = [
-	{ key: "enter", label: "run" },
-	{ key: "esc", label: "close" },
-];
-const CLOSE_HINTS: readonly Keymap.Hint[] = [{ key: "esc", label: "close" }];
-const HELP_HINTS: readonly Keymap.Hint[] = [{ key: "? / esc", label: "close" }];
+const DISPATCH_HINTS = Keymap.footer("dispatch", { ready: true });
+// Loading, or nothing to pick: only the way out does anything.
+const CLOSE_HINTS = Keymap.footer("dispatch", { ready: false });
 
 const hintsLength = (hints: readonly Keymap.Hint[]): number =>
 	Keymap.hintLine(hints).length;
@@ -72,70 +71,143 @@ export type DispatchOverlayProps = {
 	overlay: BoardNav.DispatchOverlay;
 };
 
-// The `?` help overlay: the FULL keybinding list (footers show only the app-specific subset),
-// grouped, in the same centered-modal frame as the dispatch overlay. Pure display — the reducer
-// (nav.ts reduceHelpKey) owns open/close.
-export const HelpOverlay = (): ReactNode => {
+// One row of the `?` sheet, laid out: a group title, a gap between groups, or a binding with its key
+// padded to the sheet's key column. Pure, so every row's width is checkable without a renderer.
+export type SheetLine =
+	| { kind: "title"; text: string; primary: boolean }
+	| { kind: "gap" }
+	| { kind: "row"; key: string; label: string; available: boolean };
+
+export const sheetLines = (
+	groups: readonly Keymap.SheetGroup[],
+): SheetLine[] => {
+	const keyWidth = Math.max(
+		0,
+		...groups.flatMap((group) => group.rows.map((row) => row.key.length)),
+	);
+	return groups.flatMap((group, index): SheetLine[] => [
+		...(index > 0 ? [{ kind: "gap" } as const] : []),
+		{ kind: "title", text: group.title, primary: index === 0 },
+		...group.rows.map(
+			(row): SheetLine => ({
+				kind: "row",
+				key: row.key.padEnd(keyWidth),
+				label: row.label,
+				available: row.available,
+			}),
+		),
+	]);
+};
+
+/** Columns a sheet line takes, before padding. */
+export const sheetLineWidth = (line: SheetLine): number =>
+	line.kind === "row"
+		? line.key.length + 2 + line.label.length
+		: line.kind === "title"
+			? line.text.length
+			: 0;
+
+export type HelpSheetProps = {
+	// Whose keys to list (BoardNav.sheetContext) and what is true right now (keySituation).
+	context: Keymap.ContextId;
+	situation: Keymap.Situation;
+	// The sheet's own scrollbox, which j/k move (the `helpScroll` effect). app.tsx holds the ref.
+	scrollRef?: RefObject<ScrollBoxRenderable | null>;
+};
+
+// The `?` sheet, which-key style: across the pane at the bottom, the keys of the view in hand under
+// its name, then the keys that work everywhere. A key that does nothing right now is faint rather
+// than gone, so the sheet teaches the whole view and says what works now. As tall as its content up
+// to the pane, less the header row, and scrollable past that; short, it leaves the view above it in
+// sight. Its last row is its own footer: how to scroll it and close it.
+export const HelpSheet = ({
+	context,
+	situation,
+	scrollRef,
+}: HelpSheetProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	const bg = overlayBg(theme);
-	const title = "keyboard shortcuts";
-	// One flat render list: group titles + `key  label` rows (keys padded to a shared column).
-	const keyWidth = Math.max(
-		...Keymap.HELP_GROUPS.flatMap((g) => g.hints.map((h) => h.key.length)),
-	);
-	type HelpRow =
-		| { kind: "gap" }
-		| { kind: "group"; title: string }
-		| { kind: "hint"; key: string; label: string };
-	const rows: HelpRow[] = [];
-	for (const group of Keymap.HELP_GROUPS) {
-		if (rows.length > 0) rows.push({ kind: "gap" });
-		rows.push({ kind: "group", title: group.title });
-		for (const h of group.hints)
-			rows.push({ kind: "hint", key: h.key.padEnd(keyWidth), label: h.label });
-	}
-	const rowLength = (row: HelpRow): number =>
-		row.kind === "hint"
-			? row.key.length + 2 + row.label.length
-			: row.kind === "group"
-				? row.title.length
-				: 0;
-	const inner = Math.max(
-		title.length,
-		hintsLength(HELP_HINTS),
-		...rows.map(rowLength),
-	);
+	const lines = sheetLines(Keymap.sheet(context, situation));
+	const inner = Math.max(0, width - 2);
+	// The padding row on top, every line, then the sheet's footer row.
+	const wanted = lines.length + 2;
+	const room = Math.max(3, height - 1);
+	const sheetHeight = Math.min(wanted, room);
+	const scrollable = wanted > room;
+	const hints = Keymap.footer("help", { scrollable });
 	return (
-		<OverlayBox
-			width={width}
-			height={height}
-			title={title}
-			hints={HELP_HINTS}
-			rows={rows.length}
-			inner={inner}
+		<box
+			style={{
+				position: "absolute",
+				left: 0,
+				top: Math.max(0, height - sheetHeight),
+				width,
+				height: sheetHeight,
+				zIndex: 100,
+				flexDirection: "column",
+				backgroundColor: bg,
+			}}
 		>
-			{rows.map((row, i) => (
-				<text
-					// biome-ignore lint/suspicious/noArrayIndexKey: static list, blank spacer rows repeat.
-					key={i}
-					bg={bg}
-					fg={theme.muted}
-					attributes={row.kind === "group" ? TextAttributes.BOLD : undefined}
+			{/* A scrollbar only when there is something to scroll: otherwise it is chrome for nothing. */}
+			<scrollbox
+				ref={scrollRef}
+				style={{ flexGrow: 1 }}
+				verticalScrollbarOptions={{ visible: scrollable }}
+			>
+				<box
+					style={{
+						flexDirection: "column",
+						paddingTop: 1,
+						paddingLeft: 1,
+						paddingRight: 1,
+						backgroundColor: bg,
+					}}
 				>
-					{row.kind === "hint" ? (
-						<>
-							<span fg={theme.text}>{row.key}</span>
-							{`  ${row.label}`.padEnd(inner - row.key.length)}
-						</>
-					) : row.kind === "group" ? (
-						<span fg={theme.text}>{row.title.padEnd(inner)}</span>
-					) : (
-						" ".repeat(inner)
-					)}
-				</text>
-			))}
-		</OverlayBox>
+					{lines.map((line, i) => (
+						<SheetRow
+							// biome-ignore lint/suspicious/noArrayIndexKey: a fixed list, and gap rows repeat.
+							key={i}
+							line={line}
+							inner={inner}
+						/>
+					))}
+				</box>
+			</scrollbox>
+			<StatusBar hints={hints} />
+		</box>
+	);
+};
+
+const SheetRow = ({
+	line,
+	inner,
+}: {
+	line: SheetLine;
+	inner: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const bg = overlayBg(theme);
+	const pad = " ".repeat(Math.max(0, inner - sheetLineWidth(line)));
+	if (line.kind === "gap") return <text bg={bg}>{" ".repeat(inner)}</text>;
+	if (line.kind === "title")
+		return (
+			<text
+				bg={bg}
+				fg={line.primary ? theme.text : theme.muted}
+				attributes={TextAttributes.BOLD}
+			>
+				{line.text}
+				{pad}
+			</text>
+		);
+	// Two-tone as the footer is, and faint across the row when the key does nothing right now.
+	return (
+		<text bg={bg} fg={line.available ? theme.muted : theme.faint}>
+			<span fg={line.available ? theme.text : theme.faint}>{line.key}</span>
+			{`  ${line.label}`}
+			{pad}
+		</text>
 	);
 };
 

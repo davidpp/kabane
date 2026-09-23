@@ -145,6 +145,9 @@ export type DetailProps = {
 	onCopy?: () => void;
 	// Columns the sidebar takes beside the view, so the tab bar fits the room it really has.
 	sidebarWidth?: number;
+	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation).
+	// Optional so render-only tests fall back to what the view knows itself.
+	keys?: Keymap.Live;
 };
 
 // Markdown render is the one place a throw can reach the app; wrap it so a parse failure degrades to
@@ -178,6 +181,7 @@ export const Detail = ({
 	linked = false,
 	onCopy,
 	sidebarWidth = 0,
+	keys,
 }: DetailProps): ReactNode => {
 	const theme = useTheme();
 	const { width } = useTerminalDimensions();
@@ -195,13 +199,14 @@ export const Detail = ({
 	);
 	const open = DetailModel.openQuestions(loaded, questions);
 	const summaries = DetailModel.tabs(loaded, cards?.length ?? 0);
-	const detailHints = [
-		...(linked ? [Keymap.OPEN_LINK_HINT] : []),
-		...(cards?.some((c) => c.hasEvents)
-			? [{ key: "o", label: "events" }, ...Keymap.DETAIL_FOOTER]
-			: Keymap.DETAIL_FOOTER),
-	];
-	const hints = focus === "copilot" ? Keymap.COPILOT_FOOTER : detailHints;
+	const live: Keymap.Live = keys ?? {
+		context: focus === "copilot" ? "copilot" : "detail",
+		situation: {
+			linked,
+			events: cards?.some((c) => c.hasEvents) ?? false,
+		},
+	};
+	const hints = Keymap.footer(live.context, live.situation);
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>

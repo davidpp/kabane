@@ -17,8 +17,15 @@ import {
 	shortIdIndex,
 } from "./board";
 import type { BoardData } from "./data";
+import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
-import { DispatchOverlay, HelpOverlay, overlayRowStyle } from "./overlay";
+import {
+	DispatchOverlay,
+	HelpSheet,
+	overlayRowStyle,
+	sheetLines,
+	sheetLineWidth,
+} from "./overlay";
 import type { ActivityCard, TriggerDescriptor } from "./ports";
 import { renderTest } from "./testing";
 import { Theme } from "./theme";
@@ -274,7 +281,7 @@ test("Board with a committed filter shows the match-count summary and only match
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("esc clear"),
 		);
-		expect(frame).toContain('search: "auth" · 1 match · esc clear');
+		expect(frame).toContain("/auth · 1 match  esc clear · ? help");
 		expect(frame).toContain("JAKE-10");
 		expect(frame).not.toContain("JAKE-11");
 	} finally {
@@ -607,45 +614,114 @@ test("overlayRowStyle: selection pairs the board's explicit bg+fg (never INVERSE
 	expect(idle.fg).toBeDefined();
 });
 
-test("HelpOverlay renders the grouped full keybinding list with its close hint", async () => {
+test("the ? sheet lists the view's own keys under its name, then the ones that work everywhere", async () => {
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
-		<HelpOverlay />,
-		{ width: 90, height: 40 },
+		<HelpSheet context="detail" situation={{ linked: false }} />,
+		{ width: 120, height: 40 },
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("keyboard shortcuts"),
+			f.includes("everywhere"),
 		);
-		expect(frame).toContain("keyboard shortcuts");
-		expect(frame).toContain("navigate");
-		expect(frame).toContain("task state");
-		expect(frame).toContain("actions");
-		// The vim-obvious keys live HERE, not in the footer.
-		expect(frame).toContain("expand/collapse subtasks");
-		expect(frame).toContain("dispatch (host triggers)");
-		// The status filter is discoverable here only — like `i`, it is off the trimmed footer.
-		expect(frame).toContain("cycle status (open · done+cancelled · review)");
-		expect(frame).toContain("? / esc close");
+		const rows = frame.split("\n");
+		const at = (text: string): number =>
+			rows.findIndex((row) => row.includes(text));
+		expect(at("detail")).toBeGreaterThanOrEqual(0);
+		expect(at("detail")).toBeLessThan(at("everywhere"));
+		// Every detail key reads once, and none of the board's own rows leak in.
+		for (const binding of Keymap.CONTEXTS.detail.bindings)
+			expect({
+				label: binding.label,
+				rows: rows.filter(
+					(row) =>
+						row.trimStart().startsWith(binding.key) &&
+						row.includes(binding.label),
+				).length,
+			}).toEqual({ label: binding.label, rows: 1 });
+		expect(frame).not.toContain("fold subtasks");
+		// Short enough for the pane, so the sheet's own row only says how to close it.
+		expect(frame).toContain("? esc close");
+		expect(frame).not.toContain("j/k scroll ·");
 	} finally {
 		destroy();
 	}
 });
 
-test("Board footer shows only the app-specific hints, ending in `? help`", async () => {
-	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+test("every ? sheet row reads whole at forty columns", () => {
+	for (const context of ["board", "detail", "transcript", "sidebar"] as const)
+		for (const line of sheetLines(Keymap.sheet(context)))
+			expect({ context, line, fits: sheetLineWidth(line) <= 38 }).toEqual({
+				context,
+				line,
+				fits: true,
+			});
+});
+
+test("Board footer hints only the keys that do something: the row keys wait for a selected row", async () => {
+	const empty = await renderTest(
 		<Board sections={[]} expanded={new Set()} selectedId={null} />,
 		{ width: 100, height: 12 },
+	);
+	try {
+		const frame = await pumpUntil(
+			empty.renderOnce,
+			empty.captureCharFrame,
+			(f) => f.includes("? help"),
+		);
+		expect(frame).toContain("/ search · ? help");
+		expect(frame).not.toContain("d done");
+	} finally {
+		empty.destroy();
+	}
+	const rows = [
+		section("next", [
+			{
+				task: task({ id: "a", shortId: "JAKE-1", title: "one" }),
+				children: [],
+			},
+		]),
+	];
+	const selected = await renderTest(
+		<Board sections={rows} expanded={new Set()} selectedId="a" />,
+		{ width: 100, height: 12 },
+	);
+	try {
+		const frame = await pumpUntil(
+			selected.renderOnce,
+			selected.captureCharFrame,
+			(f) => f.includes("? help"),
+		);
+		expect(frame).toContain(
+			"/ search · d done · v review · m mark · y copy brief · ? help",
+		);
+		// The vim-obvious ones live in the `?` sheet, not the footer.
+		expect(frame).not.toContain("space fold");
+		expect(frame).not.toContain("enter open");
+	} finally {
+		selected.destroy();
+	}
+});
+
+test("Board footer at forty columns drops whole hints from the end and keeps `? help`", async () => {
+	const rows = [
+		section("next", [
+			{
+				task: task({ id: "a", shortId: "JAKE-1", title: "one" }),
+				children: [],
+			},
+		]),
+	];
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board sections={rows} expanded={new Set()} selectedId="a" />,
+		{ width: 40, height: 12 },
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("? help"),
 		);
-		expect(frame).toContain(
-			"a dispatch · / search · d done · v review · y copy · m mark · b sidebar · ? help",
-		);
-		// The vim-obvious ones are gone from the footer.
-		expect(frame).not.toContain("space expand");
-		expect(frame).not.toContain("enter open");
+		const footer = frame.split("\n").find((row) => row.includes("? help"));
+		expect(footer?.trimEnd()).toBe("/ search · d done · v review · ? help");
+		expect(frame).not.toContain("…");
 	} finally {
 		destroy();
 	}
@@ -1241,8 +1317,8 @@ test("Board footer draws each key in the bar's foreground and its label muted", 
 		await pumpUntil(renderOnce, captureCharFrame, (f) => f.includes("? help"));
 		const spans = spansOf(captureSpans);
 		// Adjacent cells of one style capture as one span: a label runs on into the separator after it.
-		const key = spans.find((span) => span.text === "d");
-		const label = spans.find((span) => span.text.startsWith(" done"));
+		const key = spans.find((span) => span.text === "/");
+		const label = spans.find((span) => span.text.startsWith(" search"));
 		expect(key && hexOf(key.fg)).toBe(Theme.DARK.text);
 		expect(label && hexOf(label.fg)).toBe(Theme.DARK.muted);
 	} finally {
@@ -1250,25 +1326,37 @@ test("Board footer draws each key in the bar's foreground and its label muted", 
 	}
 });
 
-test("HelpOverlay is frameless, on the overlay surface, with its keys brighter than their labels", async () => {
+test("the ? sheet at 40x24: frameless along the bottom, scrollable, and a key that does nothing right now is faint", async () => {
 	const { renderOnce, captureCharFrame, captureSpans, destroy } =
-		await renderTest(<HelpOverlay />, { width: 90, height: 40 });
+		await renderTest(
+			<HelpSheet context="board" situation={{ selection: false }} />,
+			{ width: 40, height: 24 },
+		);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("keyboard shortcuts"),
+			f.includes("board"),
 		);
 		for (const corner of ["┌", "┐", "└", "┘", "│", "─"])
 			expect(frame).not.toContain(corner);
-		const spans = spansOf(captureSpans);
-		const title = spans.find((span) =>
-			span.text.includes("keyboard shortcuts"),
+		const rows = frame.split("\n");
+		// The board's keys run past a 24-row pane, so the sheet says it scrolls; the header row
+		// above it stays the view's.
+		expect(rows.some((row) => row.includes("j/k scroll · ? esc close"))).toBe(
+			true,
 		);
+		expect(rows[0]?.trim()).toBe("");
+		const spans = spansOf(captureSpans);
+		const title = spans.find((span) => span.text.trim() === "board");
 		expect(title && hexOf(title.bg)).toBe(Theme.DARK.surface.overlay);
 		expect(title && title.attributes & TextAttributes.BOLD).toBeTruthy();
-		const label = spans.find((span) =>
-			span.text.includes("expand/collapse subtasks"),
+		// `d` needs a selected row and there is none: faint, not gone.
+		const done = spans.find(
+			(span) => span.text.startsWith("d ") && span.text.includes("done"),
 		);
-		expect(label && hexOf(label.fg)).toBe(Theme.DARK.muted);
+		expect(done && hexOf(done.fg)).toBe(Theme.DARK.faint);
+		// `/` works with nothing selected: its key reads brighter than its label.
+		const search = spans.find((span) => span.text.trim() === "/");
+		expect(search && hexOf(search.fg)).toBe(Theme.DARK.text);
 	} finally {
 		destroy();
 	}

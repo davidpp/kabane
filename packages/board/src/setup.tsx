@@ -20,7 +20,7 @@ import {
 import { type ReactNode, useRef, useState } from "react";
 import { ErrorBoundary } from "./error-boundary";
 import { StatusBar } from "./footer";
-import type { Keymap } from "./keymap";
+import { Keymap } from "./keymap";
 import { SetupPlan } from "./setup-plan";
 import { useSpinnerFrame } from "./spinner";
 import { Theme, ThemeProvider, useTheme } from "./theme";
@@ -72,33 +72,22 @@ export const WELCOME: readonly (readonly string[])[] = [
 	["one screen of setup: your name and", "which agents get cabane."],
 ];
 
-const WELCOME_FOOTER: readonly Keymap.Hint[] = [
-	{ key: "enter", label: "set up" },
-	{ key: "esc", label: "quit" },
-];
+// Each phase's keys, from the one registry. Space toggles a harness row, so with none detected it is
+// left out; while enter's work runs every key is ignored, so the footer says nothing.
+const SETUP_CONTEXT: Record<Phase["kind"], Keymap.ContextId> = {
+	welcome: "setupWelcome",
+	form: "setupForm",
+	working: "setupWorking",
+	done: "setupDone",
+};
 
-// Tab and the arrows go unsaid, as j/k do on the board: the footer has to fit a 40-column pane.
-const FORM_FOOTER: readonly Keymap.Hint[] = [
-	{ key: "space", label: "toggle" },
-	{ key: "enter", label: "confirm" },
-	{ key: "esc", label: "quit" },
-];
-
-const DONE_FOOTER: readonly Keymap.Hint[] = [
-	{ key: "enter", label: "open the board" },
-	{ key: "q", label: "quit" },
-];
-
-// Space toggles a harness row, so with none detected there is nothing to toggle.
 const footerFor = (
 	phase: Phase,
 	defaults: SetupPlan.Defaults,
-): readonly Keymap.Hint[] => {
-	if (phase.kind === "welcome") return WELCOME_FOOTER;
-	if (phase.kind === "done") return DONE_FOOTER;
-	if (defaults.harnesses.length > 0) return FORM_FOOTER;
-	return FORM_FOOTER.filter((hint) => hint.key !== "space");
-};
+): readonly Keymap.Hint[] =>
+	Keymap.footer(SETUP_CONTEXT[phase.kind], {
+		harnesses: defaults.harnesses.length > 0,
+	});
 
 // Each field's one-line purpose, dim under it. At 40 columns a note has 31 after the label column.
 export const NAME_NOTE = "signs what you write";

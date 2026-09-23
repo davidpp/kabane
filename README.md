@@ -40,8 +40,10 @@ and day-two operations. The auth decision is in [`docs/auth.md`](docs/auth.md).
 
 ## Board
 
-`cabane board` opens the kanban on the scope the working directory resolves to; `?` lists
-every key. Two of them are the copilot: `m` marks rows into a working set, and `A` opens a
+`cabane board` opens the kanban on the scope the working directory resolves to. The footer
+shows the everyday keys of where you are, and `?` opens a sheet along the bottom with every key
+of the view you are in, then the ones that work everywhere; a key that does nothing right now
+(no row selected, say) shows faint. Two of them are the copilot: `m` marks rows into a working set, and `A` opens a
 one-line prompt that carries what you are looking at — the scope, the section, the filters,
 the selected row, the marked set and their briefs — to a coding harness running on your
 machine as you.

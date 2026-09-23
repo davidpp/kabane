@@ -123,7 +123,10 @@ content stays the same, but keep a copy if you diff that file.
 
 The board shows the scope of the directory you opened it in: the repo's name in the header,
 tasks grouped by state. A scope with nothing open says so, and how to file the first task.
-The footer lists the everyday keys, and `?` lists all of them:
+The footer lists the everyday keys of where you are: the board, a task, the transcript, the
+sidebar or the copilot each has its own. `?` opens a sheet along the bottom with every key of
+the view you are in, then the ones that work everywhere, and `j`/`k` scroll it when it is taller
+than the pane. A key that does nothing right now (no row selected, no linked issue) shows faint:
 
 - `j`/`k` move, `enter` opens a task, `esc` goes back, `q` quits. The detail view pins the
   task at a glance, where it sits and any question waiting on you, then shows one tab at a
@@ -136,6 +139,9 @@ The footer lists the everyday keys, and `?` lists all of them:
 - `y` copies a task's agent brief to paste into any chat.
 - `⌃z` undoes the last change.
 - `a` is dispatch, a hook for host apps. On its own, cabane has no dispatcher.
+- `O` opens a task's linked issue. On the board, `space` and `h`/`l` fold subtasks, and `r`
+  refreshes. `b` shows or hides the sidebar, and `tab` moves between the board, the copilot
+  and the sidebar.
 
 The copilot is `A` (or `:`). It opens a one-line prompt at the bottom of the board and
 hands a coding harness what you are looking at: the scope, the selected task, and anything
