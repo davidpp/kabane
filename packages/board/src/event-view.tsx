@@ -4,9 +4,14 @@
 // bottom; stops yanking if the user scrolled up.
 //
 // Two things are not rows: a plan, which heads the view pinned outside the scrollbox, and a `prompt`
-// event, which is what was ASKED and so is drawn as the rule opening the turn that answers it.
+// event, which is what was ASKED and so opens the turn that answers it as a block of its own, on the
+// raised surface (opencode's user-message block, without its bar: DESIGN.md's No-Line Rule).
 
-import type { ColorInput, ScrollBoxRenderable } from "@opentui/core";
+import {
+	type ColorInput,
+	type ScrollBoxRenderable,
+	TextAttributes,
+} from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import {
 	type ReactNode,
@@ -43,56 +48,89 @@ const MIN_ENTRY_COLS = 20;
 
 const NO_PLAN: readonly PlanEntry[] = [];
 
-// `── split this into subtasks ─────`: the prompt that opened a turn, drawn as the rule that parts it
-// from the turn before. The lead is `── ` and a space, and the tail never shrinks to nothing — a
-// label with no rule after it reads as a stray line of text.
-const RULE_LEAD_COLS = 4;
-const MIN_RULE_TAIL = 3;
+// The prompt block: its padding either side, the scrollbar and a cell to spare come out of the row,
+// and it is held to a few rows so a long pasted prompt heads its turn rather than burying it.
+const PROMPT_CHROME_COLS = 4;
+const MAX_PROMPT_ROWS = 3;
 
 const fit = (text: string, room: number): string =>
 	text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
 
-const promptRule = (
-	prompt: string,
-	width: number,
-): { label: string; tail: string } => {
-	const label = fit(
-		prompt.split("\n")[0] ?? "",
-		width - RULE_LEAD_COLS - MIN_RULE_TAIL,
-	);
-	return {
-		label,
-		tail: "─".repeat(
-			Math.max(MIN_RULE_TAIL, width - label.length - RULE_LEAD_COLS),
-		),
-	};
+const wrapWords = (text: string, room: number): string[] => {
+	const lines: string[] = [];
+	let line = "";
+	for (const word of text.split(/\s+/).filter(Boolean)) {
+		const next = line === "" ? word : `${line} ${word}`;
+		if (next.length <= room) {
+			line = next;
+			continue;
+		}
+		if (line !== "") lines.push(line);
+		line = fit(word, room);
+	}
+	if (line !== "") lines.push(line);
+	return lines;
 };
 
-// Per-event-type glyph. Types are host-defined strings; the common ones get a glyph, the rest a blank.
-// The agent's own text carries no colour: it reads on the terminal's foreground, dark or light.
-const eventGlyph = (
+/**
+ * The prompt that opened a turn, word-wrapped to `room` and held to `max` rows, its own line breaks
+ * kept and its blank lines dropped; the last row kept ends in `…` when there was more. Exported pure
+ * so the wrapping is assertable without a renderer.
+ */
+export const promptLines = (
+	prompt: string,
+	room: number,
+	max: number,
+): string[] => {
+	const lines = prompt
+		.split("\n")
+		.flatMap((paragraph) => wrapWords(paragraph, room));
+	if (lines.length === 0) return [""];
+	if (lines.length <= max) return lines;
+	const kept = lines.slice(0, max);
+	const last = kept[max - 1] ?? "";
+	kept[max - 1] =
+		last.length < room ? `${last}…` : `${last.slice(0, room - 1)}…`;
+	return kept;
+};
+
+// A harness names a call `Read src/app.tsx` or `mcp__cabane__cabane_list`: the tool, then what it was
+// called on. Split there, so the tool reads in the text color and its arguments as an aside. A title
+// that does not open on a tool-shaped word (a quoted shell command) stays whole.
+export const toolParts = (summary: string): { name: string; args: string } => {
+	const match = /^([A-Za-z][\w.:-]*)\s+(.+)$/s.exec(summary.trim());
+	return match
+		? { name: match[1] ?? summary, args: match[2] ?? "" }
+		: { name: summary.trim(), args: "" };
+};
+
+// Per-event-type glyph and text colors. Types are host-defined strings; the common ones get a glyph,
+// the rest a blank. The glyph carries the hue (DESIGN.md's glyph table): work that ran is the working
+// hue, a question the accent, a failure the failed hue, the rest muted. The agent's own words carry
+// no hue: they read on the terminal's foreground, dark or light.
+const eventStyle = (
 	type: string,
 	theme: Theme.Tokens,
-): { glyph: string; color: ColorInput } => {
+): { glyph: string; glyphFg: ColorInput; textFg: ColorInput } => {
 	switch (type) {
 		case "text":
-			return { glyph: " ", color: theme.defaultFg };
+			return { glyph: " ", glyphFg: theme.defaultFg, textFg: theme.defaultFg };
 		case "tool_use":
-			return { glyph: "⚙", color: theme.accent };
+			return { glyph: "⚙", glyphFg: theme.working, textFg: theme.defaultFg };
 		case "tool_result":
-			return { glyph: "←", color: theme.muted };
+			return { glyph: "←", glyphFg: theme.muted, textFg: theme.muted };
 		case "phase":
-			return { glyph: "▶", color: theme.accent };
+			return { glyph: "▶", glyphFg: theme.working, textFg: theme.defaultFg };
 		case "progress":
-			return { glyph: "·", color: theme.muted };
+			return { glyph: "·", glyphFg: theme.muted, textFg: theme.muted };
 		case "permission":
-			return { glyph: "?", color: theme.accent };
+			return { glyph: "?", glyphFg: theme.accent, textFg: theme.defaultFg };
 		case "error":
-			return { glyph: "✗", color: theme.failed };
+			return { glyph: "✗", glyphFg: theme.failed, textFg: theme.failed };
 		case "metric":
-			return { glyph: "$", color: theme.muted };
+			return { glyph: "$", glyphFg: theme.muted, textFg: theme.muted };
 		default:
-			return { glyph: " ", color: theme.muted };
+			return { glyph: " ", glyphFg: theme.muted, textFg: theme.muted };
 	}
 };
 
@@ -101,7 +139,7 @@ const statusColor = (status: string, theme: Theme.Tokens): string => {
 	switch (status) {
 		case "running":
 		case "pending":
-			return theme.accent;
+			return theme.working;
 		case "completed":
 			return theme.done;
 		case "failed":
@@ -199,7 +237,7 @@ export const EventView = ({
 	if (!card) {
 		return (
 			<box style={{ flexDirection: "column", flexGrow: 1 }}>
-				<text fg={theme.muted}>Loading…</text>
+				<text fg={theme.muted}>loading…</text>
 			</box>
 		);
 	}
@@ -208,7 +246,6 @@ export const EventView = ({
 		card.taskShortId ??
 		(card.taskId ? (resolveShortId(card.taskId) ?? "—") : "—");
 	const duration = elapsed(card.startedAt, card.finishedAt);
-	const header = `${card.label} · ${shortId} · ${card.status} · ${duration}`;
 	const hints = ["j/k scroll", extraHints, "esc back"]
 		.filter(Boolean)
 		.join(" · ");
@@ -216,11 +253,20 @@ export const EventView = ({
 		MIN_ENTRY_COLS,
 		width - sidebarWidth - RESERVED_COLS,
 	);
+	const promptRoom = Math.max(
+		MIN_ENTRY_COLS,
+		width - sidebarWidth - PROMPT_CHROME_COLS,
+	);
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<text fg={theme.defaultFg}>
-				<span fg={statusColor(card.status, theme)}>{header}</span>
+			<text>
+				<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
+					{card.label}
+				</span>
+				<span fg={theme.muted}>{` · ${shortId} · `}</span>
+				<span fg={statusColor(card.status, theme)}>{card.status}</span>
+				<span fg={theme.muted}>{` · ${duration}`}</span>
 			</text>
 			{plan.length > 0 ? (
 				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
@@ -236,33 +282,17 @@ export const EventView = ({
 				{events.length === 0 ? (
 					<text fg={theme.muted}>no events yet</text>
 				) : (
-					events.map((event) => {
-						if (event.type === PROMPT_EVENT) {
-							const { label, tail } = promptRule(event.summary, contentWidth);
-							return (
-								<box key={event.seq} style={{ marginTop: 1 }}>
-									<text fg={theme.muted}>
-										{"── "}
-										<span fg={theme.accent}>{label}</span>
-										{` ${tail}`}
-									</text>
-								</box>
-							);
-						}
-						const { glyph, color } = eventGlyph(event.type, theme);
-						const time = new Date(event.at).toLocaleTimeString("en-US", {
-							hour12: false,
-							hour: "2-digit",
-							minute: "2-digit",
-							second: "2-digit",
-						});
-						return (
-							<text key={event.seq} fg={color}>
-								<span fg={theme.muted}>{time} </span>
-								{glyph} {event.summary}
-							</text>
-						);
-					})
+					events.map((event, index) =>
+						event.type === PROMPT_EVENT ? (
+							<PromptBlock
+								key={event.seq}
+								lines={promptLines(event.summary, promptRoom, MAX_PROMPT_ROWS)}
+								first={index === 0}
+							/>
+						) : (
+							<EventRow key={event.seq} event={event} />
+						),
+					)
 				)}
 				{card.status === "completed" ? (
 					<box style={{ marginTop: 1 }}>
@@ -276,19 +306,102 @@ export const EventView = ({
 				) : null}
 			</scrollbox>
 			{permission ? (
-				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
-					<PermissionBlock request={permission} width={contentWidth} />
+				<box
+					style={{
+						flexDirection: "column",
+						flexShrink: 0,
+						marginTop: 1,
+						backgroundColor: theme.surface.raised,
+						paddingLeft: 1,
+						paddingRight: 1,
+					}}
+				>
+					<PermissionBlock
+						request={permission}
+						width={contentWidth}
+						bg={theme.surface.raised}
+					/>
 				</box>
 			) : null}
 			{pane}
 			{notice ? (
 				<StatusBar
 					text={notice.text}
-					fg={notice.tone === "success" ? theme.accent : theme.failed}
+					fg={notice.tone === "success" ? theme.done : theme.failed}
 				/>
 			) : (
 				<StatusBar text={hints} fg={theme.muted} />
 			)}
+		</box>
+	);
+};
+
+// The prompt a turn opened with, on the raised surface across the row. A gap above parts it from the
+// turn before; the first turn needs none, the header's own gap already stands there.
+const PromptBlock = ({
+	lines,
+	first,
+}: {
+	lines: readonly string[];
+	first: boolean;
+}): ReactNode => {
+	const theme = useTheme();
+	const bg = theme.surface.raised;
+	return (
+		<box
+			style={{
+				flexDirection: "column",
+				flexShrink: 0,
+				marginTop: first ? 0 : 1,
+				backgroundColor: bg,
+				paddingLeft: 1,
+				paddingRight: 1,
+			}}
+		>
+			{lines.map((line, index) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: wrapped rows of one prompt are positional, and a row can repeat.
+				<text key={index} bg={bg} fg={theme.text}>
+					{line}
+				</text>
+			))}
+		</box>
+	);
+};
+
+// One event: the time and the glyph hold their columns, and the text wraps beside them with a
+// hanging indent, so an agent's paragraph reads as a paragraph instead of restarting at column 0.
+const EventRow = ({ event }: { event: ActivityEvent }): ReactNode => {
+	const theme = useTheme();
+	const { glyph, glyphFg, textFg } = eventStyle(event.type, theme);
+	const time = new Date(event.at).toLocaleTimeString("en-US", {
+		hour12: false,
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+	});
+	const tool = event.type === "tool_use" ? toolParts(event.summary) : null;
+	return (
+		<box style={{ flexDirection: "row", flexShrink: 0 }}>
+			<text fg={theme.muted} style={{ flexShrink: 0 }}>
+				{`${time} `}
+			</text>
+			<text fg={glyphFg} style={{ flexShrink: 0 }}>
+				{`${glyph} `}
+			</text>
+			<text fg={textFg} style={{ flexGrow: 1, flexShrink: 1 }}>
+				{tool ? (
+					<>
+						{tool.name}
+						{tool.args ? (
+							<span fg={theme.muted} attributes={TextAttributes.ITALIC}>
+								{` ${tool.args}`}
+							</span>
+						) : null}
+					</>
+				) : (
+					event.summary
+				)}
+			</text>
 		</box>
 	);
 };

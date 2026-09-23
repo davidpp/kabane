@@ -22,10 +22,11 @@ import { CopilotLog } from "./copilot-log";
 import { elapsed } from "./elapsed";
 import { copilotIndicatorFg } from "./footer";
 import { BoardNav } from "./nav";
-import { PermissionBlock, permissionLine } from "./permission-block";
+import { PermissionBlock, permissionSegments } from "./permission-block";
 import { PlanBlock } from "./plan-block";
-import type { PlanEntry } from "./ports";
-import { useTheme } from "./theme";
+import type { CopilotShortcut, PlanEntry } from "./ports";
+import { Segments } from "./segments";
+import { type Theme, useTheme } from "./theme";
 
 // Enter sends — the common case by far. A newline is ⇧enter where the terminal reports it and
 // ctrl+j everywhere (⇧enter needs the kitty keyboard protocol; ctrl+j is plain ASCII LF).
@@ -54,6 +55,70 @@ export const contextChip = (ctx: BoardContext.Context): string => {
 	if (ctx.section) parts.push(ctx.section);
 	return parts.length > 0 ? parts.join(" · ") : "no selection";
 };
+
+const fit = (text: string, room: number): string =>
+	text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
+
+// The harness the copilot runs as, from the actor its writes are stamped with:
+// `cabane://actor/agent/claude` → `claude`. Null when the host gave no actor.
+export const harnessOf = (actor: string | null): string | null =>
+	actor?.split("/").at(-1) || null;
+
+type TurnState = "running" | "stopped" | "done" | "";
+
+const turnState = (turn: BoardNav.CopilotState["turn"]): TurnState =>
+	turn === "running"
+		? "running"
+		: turn === "error"
+			? "stopped"
+			: turn === "done"
+				? "done"
+				: "";
+
+const stateFg = (state: TurnState, theme: Theme.Tokens): string =>
+	state === "running"
+		? theme.working
+		: state === "stopped"
+			? theme.failed
+			: state === "done"
+				? theme.done
+				: theme.muted;
+
+/**
+ * The panel's first row: `copilot · claude · JALL-1 · next · 1/3 · running · 12s`. Chrome is muted;
+ * the harness is the one name in the text color, and the turn's state takes its hue. Exported pure so
+ * the copy and its colors are assertable without a renderer.
+ */
+export const titleSegments = (
+	parts: {
+		harness: string | null;
+		chip: string;
+		progress: string | null;
+		state: TurnState;
+		elapsed: string | null;
+	},
+	theme: Theme.Tokens,
+): Segments.Segment[] => {
+	const sep = { text: " · ", fg: theme.muted };
+	return [
+		{ text: "copilot", fg: theme.muted },
+		...(parts.harness ? [sep, { text: parts.harness, fg: theme.text }] : []),
+		sep,
+		{ text: parts.chip, fg: theme.muted },
+		...(parts.progress ? [sep, { text: parts.progress, fg: theme.muted }] : []),
+		...(parts.state
+			? [sep, { text: parts.state, fg: stateFg(parts.state, theme) }]
+			: []),
+		...(parts.elapsed ? [sep, { text: parts.elapsed, fg: theme.muted }] : []),
+	];
+};
+
+// The palette's name column, sized to the longest name on offer: `› /setup-dispatch` must never run
+// into its own expansion. The gutter, the slash and a two-cell gap are the chrome around the name.
+export const paletteNameCols = (
+	shortcuts: readonly CopilotShortcut[],
+): number =>
+	Math.max(0, ...shortcuts.map((shortcut) => shortcut.name.length)) + 5;
 
 // How many rows the panel may take: enough to be useful, never enough to bury the board. The input
 // keeps its floor even on a short terminal — a one-row input is what this pane exists to replace.
@@ -99,13 +164,14 @@ export const CopilotPane = ({
 }: CopilotPaneProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
-	// The pane is a raised panel; the accent frames it because the input is waiting on you.
+	// A raised panel with no frame of its own: herdr draws the lines, and the accent is kept for the
+	// cursor, the one thing in the pane that is waiting on you.
 	const paneBg = theme.surface.raised;
+	// Columns inside the panel's one cell of padding either side.
+	const inner = width - 2;
 	const running = copilot.turn === "running";
 	const plan = log?.current.plan ?? [];
 	const progress = plan.length > 0 ? planProgress(plan) : null;
-	const fit = (text: string, room: number): string =>
-		text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
 
 	// Nothing left to add: the transcript is showing all of it.
 	if (!focused && detailShownElsewhere) return null;
@@ -140,41 +206,35 @@ export const CopilotPane = ({
 		!showChoice && !showPalette && !detailShownElsewhere && plan.length > 0;
 	const showTail =
 		!showChoice && !showPalette && !detailShownElsewhere && tail.length > 0;
-	const state = running
-		? "running"
-		: copilot.turn === "error"
-			? "stopped"
-			: copilot.turn === "done"
-				? "done"
-				: "";
-	const right = [
-		progress,
-		state,
-		log
-			? elapsed(log.current.card.startedAt, log.current.card.finishedAt)
-			: null,
-	]
-		.filter(Boolean)
-		.join(" · ");
+	const title = titleSegments(
+		{
+			harness: harnessOf(copilot.actor),
+			chip,
+			progress,
+			state: turnState(copilot.turn),
+			elapsed: log
+				? elapsed(log.current.card.startedAt, log.current.card.finishedAt)
+				: null,
+		},
+		theme,
+	);
+	const nameCols = paletteNameCols(matches);
 
 	return (
 		<box
 			style={{
 				flexShrink: 0,
 				flexDirection: "column",
-				border: true,
-				borderColor: theme.accent,
 				backgroundColor: paneBg,
 				paddingLeft: 1,
 				paddingRight: 1,
 			}}
-			title={fit(`copilot · ${chip}${right ? ` · ${right}` : ""}`, width - 4)}
-			titleColor={theme.accent}
 		>
+			<text bg={paneBg}>{Segments.spans(Segments.fit(title, inner))}</text>
 			{showChoice && copilot.permission ? (
 				<PermissionBlock
 					request={copilot.permission}
-					width={width - 8}
+					width={inner - 4}
 					bg={paneBg}
 				/>
 			) : null}
@@ -182,7 +242,7 @@ export const CopilotPane = ({
 				<PlanBlock
 					plan={plan}
 					spinnerFrame={spinnerFrame}
-					width={width - 8}
+					width={inner - 4}
 					maxRows={MAX_PLAN_ROWS}
 					bg={paneBg}
 				/>
@@ -191,32 +251,23 @@ export const CopilotPane = ({
 				? tail.map((line, index) => (
 						// biome-ignore lint/suspicious/noArrayIndexKey: a positional window on the last few lines, not a list of things — row N is its only identity, and the same line can legitimately repeat.
 						<text key={index} bg={paneBg} fg={theme.muted}>
-							{fit(line, width - 6)}
+							{fit(line, inner - 2)}
 						</text>
 					))
 				: null}
 			{showPalette
-				? matches.map((shortcut, index) => {
-						// ↑/↓ move this; the gutter says which one enter and tab will take. Not the input's
-						// `▸`: stacked directly above it, the same glyph made the selected row read as
-						// another prompt rather than as a choice.
-						const picked = index === selected;
-						return (
-							<text
-								key={shortcut.name}
-								bg={paneBg}
-								fg={picked ? theme.text : theme.muted}
-							>
-								<span fg={picked ? theme.accent : theme.muted}>
-									{`${picked ? "› " : "  "}/${shortcut.name}`.padEnd(16)}
-								</span>
-								{fit(shortcut.hint, width - 24)}
-							</text>
-						);
-					})
+				? matches.map((shortcut, index) => (
+						<PaletteRow
+							key={shortcut.name}
+							shortcut={shortcut}
+							picked={index === selected}
+							nameCols={nameCols}
+							width={inner}
+						/>
+					))
 				: null}
 			<box style={{ flexDirection: "row", height: rows }}>
-				<text bg={paneBg} fg={theme.accent}>
+				<text bg={paneBg} fg={theme.muted}>
 					▸{" "}
 				</text>
 				<textarea
@@ -247,6 +298,34 @@ export const CopilotPane = ({
 const planProgress = (plan: readonly PlanEntry[]): string =>
 	`${plan.filter((entry) => entry.status === "completed").length}/${plan.length}`;
 
+// One `/` shortcut: its name in the text color and its expansion muted, so the list reads as the
+// repertoire it is. ↑/↓ move the pick, which paints the selected surface across the whole row (the
+// Selection Rule); the `›` gutter says which one enter and tab will take. Not the input's `▸`:
+// stacked directly above it, the same glyph made the picked row read as another prompt.
+const PaletteRow = ({
+	shortcut,
+	picked,
+	nameCols,
+	width,
+}: {
+	shortcut: CopilotShortcut;
+	picked: boolean;
+	nameCols: number;
+	width: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const bg = picked ? theme.surface.selected : theme.surface.raised;
+	const name = `${picked ? "› " : "  "}/${shortcut.name}`.padEnd(nameCols);
+	const hint = fit(shortcut.hint, Math.max(0, width - nameCols));
+	return (
+		<text bg={bg}>
+			<span fg={picked ? theme.accent : theme.muted}>{name.slice(0, 2)}</span>
+			<span fg={theme.text}>{name.slice(2)}</span>
+			<span fg={theme.muted}>{hint.padEnd(width - nameCols)}</span>
+		</text>
+	);
+};
+
 // The one-row form: what the turn is doing, or how to start one. Padded to full width so the row is
 // owned the way the footer's is.
 const CollapsedRow = ({
@@ -266,16 +345,16 @@ const CollapsedRow = ({
 			: CopilotLog.footer(log, spinnerFrame);
 	const theme = useTheme();
 	const paneBg = theme.surface.raised;
-	const text = collapsedText(copilot, log, status);
-	const line =
-		text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
+	const line = Segments.fit(
+		collapsedSegments(copilot, log, status, theme),
+		width,
+	);
+	const used = Segments.plain(line).length;
 	return (
 		<box style={{ flexShrink: 0, height: 1, backgroundColor: paneBg }}>
-			<text
-				bg={paneBg}
-				fg={status ? copilotIndicatorFg(status.tone, theme) : theme.muted}
-			>
-				{line.padEnd(width)}
+			<text bg={paneBg}>
+				{Segments.spans(line)}
+				{" ".repeat(Math.max(0, width - used))}
 			</text>
 		</box>
 	);
@@ -289,16 +368,45 @@ const CollapsedRow = ({
 // trimmed to the board's own keys, which left the key the human reaches for right after sending a
 // prompt named nowhere on screen; this row is the place that fits, because it is the one they are
 // already reading. A pending question is the exception — it has its own answer keys to name.
-const collapsedText = (
+//
+// Keys read as the footer's do: the key in the text color, what it does muted. The turn's own status
+// keeps the indicator's color, the same one the footer gives it.
+export const collapsedSegments = (
 	copilot: BoardNav.CopilotState,
 	log: CopilotLog.Log | null,
 	status: CopilotLog.Footer | null,
-): string => {
-	if (copilot.permission) return permissionLine(copilot.permission);
-	const transcript = log ? " · o transcript" : "";
-	if (log && status) return `${planLine(log, status)}${transcript}`;
-	const draft = copilot.text ? ` · draft: ${copilot.text.split("\n")[0]}` : "";
-	return `▸ tab to ask the copilot${draft}${transcript}`;
+	theme: Theme.Tokens,
+): Segments.Segment[] => {
+	if (copilot.permission)
+		return permissionSegments(copilot.permission, theme, theme.text);
+	const transcript: Segments.Segment[] = log
+		? [
+				{ text: " · ", fg: theme.muted },
+				{ text: "o", fg: theme.text },
+				{ text: " transcript", fg: theme.muted },
+			]
+		: [];
+	if (log && status)
+		return [
+			{
+				text: planLine(log, status),
+				fg: copilotIndicatorFg(status.tone, theme),
+			},
+			...transcript,
+		];
+	const draft: Segments.Segment[] = copilot.text
+		? [
+				{ text: " · draft: ", fg: theme.muted },
+				{ text: copilot.text.split("\n")[0] ?? "", fg: theme.text },
+			]
+		: [];
+	return [
+		{ text: "▸ ", fg: theme.muted },
+		{ text: "tab", fg: theme.text },
+		{ text: " to ask the copilot", fg: theme.muted },
+		...draft,
+		...transcript,
+	];
 };
 
 // A running turn says which plan entry it is on — the agent's own words beat the tool name. A
