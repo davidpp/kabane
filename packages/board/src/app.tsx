@@ -134,6 +134,10 @@ export const App = ({
 	// loads, cleared on view change.
 	const [detailRecords, setDetailRecords] =
 		useState<Result<BoardData.DetailRecords> | null>(null);
+	// Which task those records are for, and their stamp (BoardData.recordsStamp): the poll compares a
+	// fresh stamp against it and reloads the records only when something landed.
+	const detailLoadedId = useRef<string | null>(null);
+	const detailStamp = useRef<string | null>(null);
 	// This session's copilot turns, the current one at the head: its card, its plan and its transcript.
 	// Held in a ref as well because the composed ActivitySource below reads it while the event view
 	// polls, and the stream runner writes it between renders.
@@ -204,6 +208,34 @@ export const App = ({
 		[basePath, filtersFor],
 	);
 
+	// Store the records of the open detail view and the stamp they carry.
+	const showDetail = useCallback(
+		(taskId: string, records: Result<BoardData.DetailRecords>): void => {
+			detailLoadedId.current = taskId;
+			detailStamp.current = records.ok
+				? BoardData.recordsStamp(records.value)
+				: null;
+			setDetailRecords(records);
+		},
+		[],
+	);
+
+	// A comment, work log or session activity lands without touching the task row, so the open
+	// detail view checks the cheap stamp on every poll and reloads its records only when it moved.
+	// The records are replaced in place, never cleared, so the view keeps its tab and its scroll.
+	// A failed read keeps what is on screen: the board's own poll already reports a broken store.
+	const refreshDetail = useCallback(
+		async (taskId: string): Promise<void> => {
+			const stamp = await BoardData.detailStamp(basePath, taskId);
+			if (!stamp.ok || stamp.value === detailStamp.current) return;
+			const records = await BoardData.taskDetail(basePath, taskId);
+			const open = stateRef.current?.view;
+			if (open?.type !== "detail" || open.taskId !== taskId) return;
+			if (records.ok) showDetail(taskId, records);
+		},
+		[basePath, showDetail],
+	);
+
 	// Reload columns using the filters implied by `s`, then merge them in preserving selection.
 	// When a query is active, re-fire the FTS search after the reload so tier-2 results stay merged.
 	const reload = useCallback(
@@ -226,8 +258,9 @@ export const App = ({
 			const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
 			if (links.ok) setLinked(links.value);
 			if (BoardNav.activeQuery(s.search)) void fireFts(s);
+			if (s.view.type === "detail") void refreshDetail(s.view.taskId);
 		},
-		[basePath, filtersFor, fireFts, activitySource],
+		[basePath, filtersFor, fireFts, activitySource, refreshDetail],
 	);
 
 	// Copy a task's exact assembled brief to the system clipboard, flashing the outcome in the footer.
@@ -735,24 +768,29 @@ export const App = ({
 		if (selectedId) listRef.current?.scrollChildIntoView(`row-${selectedId}`);
 	}, [selectedId]);
 
-	// Fetch the detail view's records when it opens or the task changes. Cleared on view change.
+	// Fetch the detail view's records when it opens or the task changes. A different task opens on
+	// its loading line; the same task refetches in place, so a v/x/n/s on it keeps tab and scroll.
 	const detailTaskId = state?.view.type === "detail" ? state.view.taskId : null;
 	const detailTask =
 		detailTaskId && state ? findTask(state, detailTaskId) : undefined;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: detailTask?.updatedAt is an intentional trigger — a v/x/n/s mutation on the open task re-fetches the records without changing taskId.
 	useEffect(() => {
-		setDetailRecords(null);
+		if (detailLoadedId.current !== detailTaskId) {
+			detailLoadedId.current = null;
+			detailStamp.current = null;
+			setDetailRecords(null);
+		}
 		if (!detailTaskId) return;
 		let cancelled = false;
 		void (async () => {
 			const result = await BoardData.taskDetail(basePath, detailTaskId);
 			if (cancelled) return;
-			setDetailRecords(result);
+			showDetail(detailTaskId, result);
 		})();
 		return () => {
 			cancelled = true;
 		};
-	}, [basePath, detailTaskId, detailTask?.updatedAt]);
+	}, [basePath, detailTaskId, detailTask?.updatedAt, showDetail]);
 
 	// Update sidebar itemCount whenever activity changes (so the reducer has correct bounds).
 	useEffect(() => {
