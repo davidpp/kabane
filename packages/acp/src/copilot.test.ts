@@ -510,6 +510,7 @@ describe("BoardCopilot", () => {
 			"check-plan",
 			"linear",
 			"github",
+			"setup-dispatch",
 		]);
 		for (const shortcut of copilot.shortcuts()) {
 			expect(shortcut.template.length).toBeGreaterThan(20);
