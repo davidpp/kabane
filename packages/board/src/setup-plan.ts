@@ -1,6 +1,7 @@
 // The first-run setup screen's logic, without a renderer: which rows the form has, how focus and
 // the checkboxes move, and what the answers become — an actor URI, a device id and the harnesses to
-// wire. setup.tsx is a thin layer over this; the host turns a Plan into its own
+// wire. The device id is the short hostname, never asked: it only names the machine once sync is
+// set up (docs/deploy.md), and it can be renamed in the config until the first push. setup.tsx is a thin layer over this; the host turns a Plan into its own
 // config (the board cannot see the CLI's schema) and runs the installs.
 import { err, ok, type Result } from "@cabane/core";
 
@@ -11,7 +12,7 @@ export namespace SetupPlan {
 	export type Defaults = {
 		/** Prefilled name: the OS username. */
 		name: string;
-		/** Prefilled device id: the short hostname. */
+		/** The device id setup saves: the short hostname. */
 		device: string;
 		/** Detected harnesses, checked by default. Empty shows where the snippets are instead. */
 		harnesses: readonly Harness[];
@@ -19,14 +20,10 @@ export namespace SetupPlan {
 		configPath: string;
 	};
 
-	export type Field =
-		| { kind: "name" }
-		| { kind: "device" }
-		| { kind: "harness"; harness: Harness };
+	export type Field = { kind: "name" } | { kind: "harness"; harness: Harness };
 
 	export type Form = {
 		name: string;
-		device: string;
 		checked: readonly string[];
 		focus: number;
 	};
@@ -50,7 +47,6 @@ export namespace SetupPlan {
 
 	export const fields = (defaults: Defaults): Field[] => [
 		{ kind: "name" },
-		{ kind: "device" },
 		...defaults.harnesses.map(
 			(harness): Field => ({ kind: "harness", harness }),
 		),
@@ -59,7 +55,6 @@ export namespace SetupPlan {
 	// Every detected harness starts checked: wiring the agents is why most people run setup at all.
 	export const initialForm = (defaults: Defaults): Form => ({
 		name: defaults.name,
-		device: defaults.device,
 		checked: defaults.harnesses.map((h) => h.id),
 		focus: 0,
 	});
@@ -107,11 +102,9 @@ export namespace SetupPlan {
 	export const plan = (form: Form, defaults: Defaults): Result<Plan> => {
 		const slug = actorSlug(form.name);
 		if (slug === "") return err(new Error("name needs a letter or a digit"));
-		const deviceId = form.device.trim();
-		if (deviceId === "") return err(new Error("device cannot be empty"));
 		return ok({
 			actor: `${ACTOR_PREFIX}${slug}`,
-			deviceId,
+			deviceId: defaults.device,
 			// In detection order, whatever order the boxes were ticked in.
 			install: defaults.harnesses
 				.map((h) => h.id)

@@ -141,7 +141,7 @@ describe("SetupScreen at 100 and 40 columns", () => {
 			try {
 				const frame = await toForm();
 				expect(frame).toContain("› name   david");
-				expect(frame).toContain("  device mbp");
+				expect(frame).not.toContain("device");
 				for (const text of [
 					"cabane://actor/human/david",
 					HARNESS_HEADING,
@@ -267,7 +267,6 @@ describe("SetupScreen form", () => {
 		const { mockInput, toForm, until, seen, destroy } = await mount(DEFAULTS);
 		try {
 			await toForm();
-			mockInput.pressTab();
 			mockInput.pressTab();
 			mockInput.pressKey(" ");
 			mockInput.pressArrow("down");

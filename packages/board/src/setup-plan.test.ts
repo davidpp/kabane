@@ -21,10 +21,9 @@ const up = (form: SetupPlan.Form) => SetupPlan.moveFocus(form, DEFAULTS, -1);
 const space = (form: SetupPlan.Form) => SetupPlan.toggle(form, DEFAULTS);
 
 describe("fields", () => {
-	test("name, device, then one row per harness", () => {
+	test("name, then one row per harness", () => {
 		expect(SetupPlan.fields(DEFAULTS).map((f) => f.kind)).toEqual([
 			"name",
-			"device",
 			"harness",
 			"harness",
 		]);
@@ -33,7 +32,7 @@ describe("fields", () => {
 	test("no harness, no harness rows", () => {
 		expect(
 			SetupPlan.fields({ ...DEFAULTS, harnesses: [] }).map((f) => f.kind),
-		).toEqual(["name", "device"]);
+		).toEqual(["name"]);
 	});
 });
 
@@ -51,14 +50,14 @@ describe("plan", () => {
 	});
 
 	test("space on a harness row unchecks it", () => {
-		const form = answer(down, down, space);
+		const form = answer(down, space);
 		const planned = SetupPlan.plan(form, DEFAULTS);
 		expect(planned.ok && planned.value.install).toEqual(["codex"]);
 	});
 
 	test("install order follows detection, not the order boxes were ticked", () => {
 		// Both off, then codex back on before claude.
-		const form = answer(down, down, space, down, space, space, up, space);
+		const form = answer(down, space, down, space, space, up, space);
 		expect(form.checked).toEqual(["codex", "claude"]);
 		const planned = SetupPlan.plan(form, DEFAULTS);
 		expect(planned.ok && planned.value.install).toEqual(["claude", "codex"]);
@@ -78,17 +77,15 @@ describe("plan", () => {
 		);
 	});
 
-	test("a name with nothing sluggable, or an empty device, is refused", () => {
+	test("a name with nothing sluggable is refused", () => {
 		const noName = SetupPlan.plan({ ...answer(), name: " ?! " }, DEFAULTS);
 		expect(noName.ok).toBe(false);
-		const noDevice = SetupPlan.plan({ ...answer(), device: "  " }, DEFAULTS);
-		expect(noDevice.ok).toBe(false);
 	});
 });
 
 describe("moveFocus", () => {
 	test("wraps both ways", () => {
-		expect(answer(up).focus).toBe(3);
+		expect(answer(up).focus).toBe(2);
 		expect(answer(up, down).focus).toBe(0);
 	});
 });

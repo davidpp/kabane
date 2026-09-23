@@ -1,7 +1,6 @@
 /** @jsxImportSource @opentui/react */
 // The first-run screen `cabane` shows on a device with no config: three short cards on what cabane
-// is, then who you are, what this machine is called, and which detected harnesses get the MCP
-// server. Enter writes the config through the host, runs the installs, and shows each
+// is, then who you are and which detected harnesses get the MCP server. Enter writes the config through the host, runs the installs, and shows each
 // harness's outcome; enter again hands over to the board. Everything it decides lives in SetupPlan.
 //
 // Key arbitration is the copilot pane's: the focused <input> and the one useKeyboard handler both
@@ -144,7 +143,7 @@ export const SetupScreen = ({
 }: SetupScreenProps): ReactNode => {
 	const [form, setForm] = useState(() => SetupPlan.initialForm(defaults));
 	// Keys can land faster than renders, so each one reads the form the last one left, not the
-	// form the last render saw: tab, tab, space must toggle the row two below the name.
+	// form the last render saw: tab, down, space must toggle the row two below the name.
 	const current = useRef(form);
 	const update = (next: SetupPlan.Form): void => {
 		current.current = next;
@@ -243,7 +242,6 @@ export const SetupScreen = ({
 						defaults={defaults}
 						form={form}
 						onName={(name) => update({ ...current.current, name })}
-						onDevice={(device) => update({ ...current.current, device })}
 					/>
 				)}
 				{phase.kind === "form" ? (
@@ -289,15 +287,9 @@ type SetupFormProps = {
 	defaults: SetupPlan.Defaults;
 	form: SetupPlan.Form;
 	onName: (name: string) => void;
-	onDevice: (device: string) => void;
 };
 
-const SetupForm = ({
-	defaults,
-	form,
-	onName,
-	onDevice,
-}: SetupFormProps): ReactNode => {
+const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 	const row = (field: SetupPlan.Field, index: number): ReactNode => {
 		const focused = index === form.focus;
 		switch (field.kind) {
@@ -312,16 +304,6 @@ const SetupForm = ({
 						note={SetupPlan.actorUri(form.name)}
 					/>
 				);
-			case "device":
-				return (
-					<TextRow
-						key="device"
-						label="device"
-						value={form.device}
-						focused={focused}
-						onInput={onDevice}
-					/>
-				);
 			case "harness":
 				return (
 					<CheckRow
@@ -333,11 +315,10 @@ const SetupForm = ({
 				);
 		}
 	};
-	const [name, device, ...rest] = SetupPlan.fields(defaults).map(row);
+	const [name, ...rest] = SetupPlan.fields(defaults).map(row);
 	return (
 		<box style={{ flexDirection: "column" }}>
 			{name}
-			{device}
 			<box style={{ flexDirection: "column", marginTop: 1 }}>
 				{defaults.harnesses.length === 0 ? (
 					<>
