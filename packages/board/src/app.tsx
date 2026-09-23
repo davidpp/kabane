@@ -773,7 +773,7 @@ export const App = ({
 	const detailTaskId = state?.view.type === "detail" ? state.view.taskId : null;
 	const detailTask =
 		detailTaskId && state ? findTask(state, detailTaskId) : undefined;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: detailTask?.updatedAt is an intentional trigger — a v/x/n/s mutation on the open task re-fetches the records without changing taskId.
+	// detailTask?.updatedAt is an intentional trigger — a v/x/n/s mutation on the open task re-fetches the records without changing taskId.
 	useEffect(() => {
 		if (detailLoadedId.current !== detailTaskId) {
 			detailLoadedId.current = null;

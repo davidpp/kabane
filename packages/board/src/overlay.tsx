@@ -164,7 +164,7 @@ export const HelpSheet = ({
 				>
 					{lines.map((line, i) => (
 						<SheetRow
-							// biome-ignore lint/suspicious/noArrayIndexKey: a fixed list, and gap rows repeat.
+							// Index keys: a fixed list, and gap rows repeat.
 							key={i}
 							line={line}
 							inner={inner}
@@ -383,7 +383,7 @@ export const DispatchOverlay = ({
 			<text bg={bg}> </text>
 			{previewLines.map((line, i) => (
 				<text
-					// biome-ignore lint/suspicious/noArrayIndexKey: static preview, lines can repeat.
+					// Index keys: static preview, lines can repeat.
 					key={i}
 					bg={bg}
 					fg={theme.muted}
