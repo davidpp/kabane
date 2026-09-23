@@ -221,12 +221,13 @@ parts 2 to 4.
 
 ```bash
 bun install
-bun run check       # biome lint + format
+bun run check       # oxlint, its type-aware pass, oxfmt --check
 bun run typecheck   # tsc --noEmit per package
 bun run test        # bun packages, then the Worker suite under vitest
 ```
 
-Lefthook runs `biome check --write` on staged files and `typecheck` when `.ts`
+`bun run fix` applies oxlint's fixes and oxfmt. Lefthook runs oxfmt on staged
+files, both oxlint passes on staged `.ts`/`.tsx`, and `typecheck` when `.ts`
 files are staged, on every commit.
 
 ## Try a change without touching your own device
