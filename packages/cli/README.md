@@ -158,6 +158,7 @@ src/args.ts         pure argv parser
 src/config.ts       CABANE_HOME, config.json, the scope pin file
 src/context.ts      Runtime.configure + Planner.init, the Ctx commands receive, scope resolution
 src/output.ts       --json vs human rendering, icons
+src/first-run.ts    bare `cabane` in a terminal: the setup screen's deps, then the board
 src/mcp-clients.ts  per-harness MCP registration argv and config snippets (pure)
 src/commands/*.ts   one file per command
 cli.test.ts         scripted session against the real binary
