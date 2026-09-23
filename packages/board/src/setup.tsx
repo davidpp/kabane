@@ -20,7 +20,7 @@ import {
 import { type ReactNode, useRef, useState } from "react";
 import { ErrorBoundary } from "./error-boundary";
 import { StatusBar } from "./footer";
-import { Keymap } from "./keymap";
+import type { Keymap } from "./keymap";
 import { SetupPlan } from "./setup-plan";
 import { useSpinnerFrame } from "./spinner";
 import { Theme, ThemeProvider, useTheme } from "./theme";
@@ -329,10 +329,7 @@ export const SetupScreen = ({
 					</text>
 				) : null}
 			</box>
-			<StatusBar
-				text={Keymap.hintLine(footerFor(phase, defaults))}
-				fg={theme.muted}
-			/>
+			<StatusBar hints={footerFor(phase, defaults)} />
 		</box>
 	);
 };
