@@ -1,6 +1,7 @@
 import { serveStdio } from "@cabane/core";
-import { type Command, resolveScopeUri } from "../context";
-import { success } from "../output";
+import { type Command, openContext, resolveScopeUri } from "../context";
+import { failure, success } from "../output";
+import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
 
 /**
  * Serve this device's tracker over MCP on stdio. Same tool list as the hub;
@@ -10,18 +11,25 @@ import { success } from "../output";
  *
  * Stdout is the wire, so nothing is printed before the server takes it, and
  * the outcome text is empty once it closes.
+ *
+ * Standalone because `mcp install` registers the server in a harness and
+ * needs no config; serving opens the context itself.
  */
 export const mcp: Command = {
 	name: "mcp",
 	summary:
-		"Serve this device's tracker over MCP on stdio (for Claude Code, Hermes, Codex)",
-	usage: "cabane mcp [--as <actor-uri>]",
-	run: async (args, ctx) => {
+		"Serve this device's tracker over MCP on stdio; `mcp install` registers it in Claude Code, Codex, Gemini",
+	usage: `cabane mcp [--as <actor-uri>]\n       ${MCP_INSTALL_USAGE}`,
+	standalone: true,
+	run: async (args, bare) => {
+		if (args.positionals[0] === "install") return mcpInstall(args);
+		const ctx = await openContext(bare.home, bare.cwd, args);
+		if (!ctx.ok) return failure(ctx.error);
 		await serveStdio(
 			{
-				basePath: ctx.store,
-				actor: ctx.actor,
-				defaultScope: await resolveScopeUri(args, ctx),
+				basePath: ctx.value.store,
+				actor: ctx.value.actor,
+				defaultScope: await resolveScopeUri(args, ctx.value),
 				scopeRequired: false,
 			},
 			{ name: "cabane" },

@@ -139,11 +139,21 @@ parts 2 to 4.
    crontab -l | grep cabane
    ```
 
-6. **Give yourself MCP access.** Local device, no network, sessions included:
+6. **Give yourself MCP access.** Local device, no network, sessions included. This
+   registers `cabane` at user scope in every harness on PATH (Claude Code, Codex, Gemini
+   CLI), each serving as its own actor (`cabane://actor/agent/<harness>`):
 
    ```bash
-   claude mcp add -s user cabane -- cabane mcp --as cabane://actor/agent/claude
+   cabane mcp install
+   claude mcp list | grep cabane
    ```
+
+   Expected: one `✓ <harness> installed` line per harness found, then
+   `cabane: ... mcp --as cabane://actor/agent/claude - ✔ Connected`. The entry spawns an
+   absolute bun and this clone's `packages/cli/index.ts`, so a harness's own PATH does not
+   matter; after upgrading bun or moving the clone, run `cabane mcp install --force`.
+   `--harness <id>` narrows it, `--print` prints paste-ready config for each harness and
+   for any other MCP client instead of installing.
 
    Or the hub directly, with the runtime's own token (`cabane-claude-code`, `cabane-codex`,
    `cabane-hermes` follow the same item-title pattern):
@@ -155,8 +165,8 @@ parts 2 to 4.
    claude mcp list
    ```
 
-   Expected: `cabane: ... - ✔ Connected`. Codex and Hermes wiring is in
-   [`docs/deploy.md`](docs/deploy.md) 4.2 and 4.3.
+   Expected: `cabane: https://cabane.3pew.ca/mcp (HTTP) - ✔ Connected`. Hub wiring for
+   Codex and Hermes is in [`docs/deploy.md`](docs/deploy.md) 4.2 and 4.3.
 
 7. **Pick up work.** After a pull, an agent runtime lists what is assigned to it, claims it,
    reads the brief, works, and closes:

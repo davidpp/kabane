@@ -456,8 +456,16 @@ connection are stamped `cabane://actor/agent/claude`.
 Local device instead (no network, sessions included):
 
 ```bash
-claude mcp add -s user cabane -- cabane mcp --as cabane://actor/agent/claude
+cabane mcp install --harness claude
+claude mcp list | grep cabane
 ```
+
+Expected: `✓ claude installed  as cabane://actor/agent/claude`, then `cabane: <bun>
+<clone>/packages/cli/index.ts mcp --as cabane://actor/agent/claude - ✔ Connected`. It
+runs `claude mcp add -s user`; an existing `cabane` entry, local or hub, is left alone and
+reported as already installed, and `--force` replaces it. Without `--harness` the same
+command covers Codex and Gemini CLI too. `cabane mcp install --print` shows the config
+it would register, for pasting into a client with no registration CLI.
 
 ### 4.2 Hermes
 
@@ -493,6 +501,27 @@ CF-Access-Client-Secret = "<codex client secret>"
 
 Or keep the secret out of the file with `env_http_headers`, mapping header names to
 environment variable names, in the same table position.
+
+Local device instead:
+
+```bash
+cabane mcp install --harness codex
+codex mcp get cabane
+```
+
+Expected: `args: <clone>/packages/cli/index.ts mcp --as cabane://actor/agent/codex`.
+`codex mcp add` rewrites the whole `config.toml` in its own formatting (table order,
+`120` as `120.0`); the content is the same, but keep a copy if you diff that file.
+
+Gemini CLI has no hub section here; the local device is one line, registered at user
+scope in `~/.gemini/settings.json`:
+
+```bash
+cabane mcp install --harness gemini
+gemini mcp list
+```
+
+Expected: `✓ cabane: ... mcp --as cabane://actor/agent/gemini (stdio) - Connected`.
 
 ### 4.4 MCP inspector, the first browser-style test — MANUAL
 
@@ -666,6 +695,7 @@ localhost.
 | collision repair | hub and device A had both minted `JCAB-1`; device B's next pull applied the hub's task, `renamed 1`, and all three sides agree on `JCAB-3` for it |
 | 3.1 templates | `plutil -lint` OK on the plist, before and after the `__HOME__` substitution |
 | 4.1 Claude Code | `claude mcp add --transport http … --header "Cf-Access-Jwt-Assertion: …"` against localhost → `claude mcp list` shows `✔ Connected`; removed afterwards |
+| 4.1 to 4.3 local | `cabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `cabane_add` through the registered argv, spawned with a bare PATH, was stamped `cabane://actor/agent/claude`; all three configs restored afterwards |
 | 4.4 inspector | `npx @modelcontextprotocol/inspector --cli … --method tools/list` → 15 tools; `tools/call cabane_add` created a task |
 
 Not verifiable without the real account, therefore **MANUAL** above: `wrangler login` and
