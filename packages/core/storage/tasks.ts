@@ -322,7 +322,7 @@ export namespace Planner {
 	};
 
 	/**
-	 * Get multiple tasks by ID (for focus list hydration)
+	 * Get multiple tasks by ID.
 	 */
 	export const getTasks = async (
 		basePath: string,

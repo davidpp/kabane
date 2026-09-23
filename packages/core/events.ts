@@ -14,7 +14,6 @@ export const PLANNER_EVENTS = {
 	TASK_DELETED: "planner.task.deleted",
 	/** Task state changed (subset of updated) */
 	TASK_STATE_CHANGED: "planner.task.state_changed",
-	FOCUS_UPDATED: "planner.focus.updated",
 } as const;
 
 export type PlannerEventType =

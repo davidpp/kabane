@@ -49,7 +49,7 @@ namespace PreRelease {
 		TABLES.tasks,
 		TABLES.projects,
 		TABLES.task_links,
-		TABLES.focus_lists,
+		physicalTable("focus_lists"), // retired by migration 3
 		TABLES.comments,
 		TABLES.work_log,
 		TABLES.context_refs,
@@ -176,6 +176,14 @@ export namespace Migrations {
 				dropTable(db, "proposals");
 				dropTable(db, "proposals_fts");
 			},
+		},
+		{
+			// Only Jake read or wrote focus lists, and it retires them (JCAB-97).
+			// The table replicated: a focus-list op still arriving from a device on
+			// an older build is skipped as `unknown-table`, and one still waiting in
+			// this device's own log is pushed and skipped the same way elsewhere.
+			name: "drop-focus-lists",
+			up: (db) => dropTable(db, "focus_lists"),
 		},
 	];
 

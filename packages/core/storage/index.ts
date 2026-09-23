@@ -11,7 +11,6 @@
 import { Planner as AssembleContext } from "./assemble-context";
 import { Planner as Comments } from "./comments";
 import { Planner as ContextRefs } from "./context-refs";
-import { Planner as FocusLists } from "./focus-lists";
 import { Planner as Implementation } from "./implementation";
 // Import domain namespaces
 import { Planner as Init } from "./init";
@@ -51,10 +50,6 @@ export const Planner = {
 	addLink: TaskLinks.addLink,
 	getLinksForTask: TaskLinks.getLinksForTask,
 	deleteLink: TaskLinks.deleteLink,
-	// Focus Lists
-	getFocusList: FocusLists.getFocusList,
-	saveFocusList: FocusLists.saveFocusList,
-	updateFocusList: FocusLists.updateFocusList,
 	// Projects
 	resolveProjectId: Projects.resolveProjectId,
 	addProject: Projects.addProject,

@@ -28,7 +28,6 @@ import { z } from "zod";
 export const SYNC_TABLES = [
 	"tasks",
 	"task_links",
-	"focus_lists",
 	"task_comments",
 	"task_work_log",
 	"projects",

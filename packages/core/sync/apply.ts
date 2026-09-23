@@ -79,7 +79,6 @@ const NATURAL_KEY: Partial<Record<SyncTable, readonly string[]>> = {
 	task_links: ["source_id", "target_id", "type"],
 	task_context_refs: ["task_id", "uri"],
 	upstream_links: ["task_id", "provider", "external_id"],
-	focus_lists: ["period"],
 };
 
 /** Tables carrying a human-facing `short_id`, i.e. the ones a rename can hit. */
@@ -102,7 +101,6 @@ const PARENTS: Record<SyncTable, readonly ParentRef[]> = {
 		{ column: "project_id", table: TABLES.projects, onDelete: "set-null" },
 	],
 	projects: [],
-	focus_lists: [],
 	task_links: [
 		{ column: "source_id", table: TABLES.tasks, onDelete: "cascade" },
 		{ column: "target_id", table: TABLES.tasks, onDelete: "cascade" },
@@ -629,8 +627,7 @@ const applyOrdered = (
 				deleteRow(db, meta.physical, decision.rowId);
 				applied++;
 				break;
-			case "apply":
-			case "merge": {
+			case "apply": {
 				if (decision.dropRowId !== undefined) {
 					deleteRow(db, meta.physical, decision.dropRowId);
 				}

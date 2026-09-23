@@ -13,7 +13,6 @@ import { err, ok, type Result } from "../result";
 import type {
 	AgentActivity,
 	AgentSession,
-	FocusList,
 	Project,
 	Task,
 	TaskComment,
@@ -301,16 +300,6 @@ export const rowToLink = (row: Record<string, unknown>): TaskLink => ({
 	type: row.type as TaskLink["type"],
 	note: (row.note as string) || undefined,
 	createdAt: row.created_at as string,
-});
-
-export const rowToFocusList = (row: Record<string, unknown>): FocusList => ({
-	id: row.id as string,
-	period: row.period as FocusList["period"],
-	items: JSON.parse(row.items as string),
-	theme: (row.theme as string) || undefined,
-	reflection: (row.reflection as string) || undefined,
-	createdAt: row.created_at as string,
-	updatedAt: row.updated_at as string,
 });
 
 export const rowToComment = (row: Record<string, unknown>): TaskComment => ({

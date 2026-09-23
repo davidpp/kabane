@@ -23,7 +23,7 @@
  * third machine's row is compared as if this one had written it.
  *
  * ROW IDENTITY IS THE LOWER ULID. Three tables carry a UNIQUE key separate from
- * their primary key (`task_links`, `task_context_refs`, `focus_lists`), so two
+ * their primary key (`task_links`, `task_context_refs`, `upstream_links`), so two
  * devices can mint two ULIDs for one logical row. The lower ULID survives and
  * the decision names the loser in `dropRowId` — without that, `UNIQUE` rejects
  * the second row and the two devices never converge.
@@ -40,9 +40,6 @@
  * executes anything.
  */
 
-// plain zod (not zui): domain-side parsing, and zui cannot compose into the
-// router's plain-zod schemas — see JJAK-959.
-import { z } from "zod";
 import { SYNC_TABLES, type SyncOp, type SyncTable } from "../schemas";
 
 // ============================================================
@@ -62,7 +59,6 @@ import { SYNC_TABLES, type SyncOp, type SyncTable } from "../schemas";
 export const CLOCK_COLUMN: Partial<Record<SyncTable, string>> = {
 	tasks: "updated_at",
 	projects: "updated_at",
-	focus_lists: "updated_at",
 	task_comments: "updated_at",
 	task_context_refs: "added_at",
 	upstream_links: "updated_at",
@@ -86,9 +82,7 @@ type Family =
 	/** Insert-if-absent on a natural key; lower ULID survives a collision. */
 	| "natural-key-dedupe"
 	/** Upsert on a natural key; lower ULID survives, content is LWW. */
-	| "natural-key-lww"
-	/** Lowest ULID owns the row; `items` merge instead of replace. */
-	| "focus-list";
+	| "natural-key-lww";
 
 const FAMILY: Record<SyncTable, Family> = {
 	tasks: "row-lww",
@@ -98,11 +92,7 @@ const FAMILY: Record<SyncTable, Family> = {
 	task_links: "natural-key-dedupe",
 	task_context_refs: "natural-key-lww",
 	upstream_links: "natural-key-lww",
-	focus_lists: "focus-list",
 };
-
-/** `items` is opaque TEXT: a JSON array of objects with unknown extra fields. */
-const FocusItemsSchema = z.array(z.record(z.unknown()));
 
 // ============================================================
 // Types
@@ -116,7 +106,10 @@ type Row = Record<string, unknown>;
  * is never silent.
  */
 export const SKIP_REASONS = [
-	/** `tbl` is not replicated by this build. A newer device sent it. */
+	/**
+	 * `tbl` is not replicated by this build: a newer device sent a table this
+	 * build does not have yet, or an older one sent a table a migration dropped.
+	 */
 	"unknown-table",
 	/** Insert/update with no payload, or an `items` blob that will not parse. */
 	"malformed-payload",
@@ -148,13 +141,6 @@ export type ResolveDecision =
 			rowId: string;
 			row: Row;
 			/** Losing local row holding the same natural key, if any. */
-			dropRowId: string | undefined;
-	  }
-	/** Same as `apply`, but `row` is a field/item merge of both sides. */
-	| {
-			kind: "merge";
-			rowId: string;
-			row: Row;
 			dropRowId: string | undefined;
 	  }
 	/**
@@ -189,8 +175,8 @@ export type ResolveLocalState = {
 	/**
 	 * Local row holding the incoming row's UNIQUE natural key under a DIFFERENT
 	 * id: `task_links` UNIQUE(source_id, target_id, type), `task_context_refs`
-	 * UNIQUE(task_id, uri), `focus_lists` UNIQUE(period). `undefined` for tables
-	 * with no second unique key.
+	 * UNIQUE(task_id, uri), `upstream_links` UNIQUE(task_id, provider,
+	 * external_id). `undefined` for tables with no second unique key.
 	 */
 	byNaturalKey: Row | undefined;
 	/**
@@ -325,102 +311,6 @@ const otherRow = (row: Row | undefined, rowId: string): Row | undefined =>
 
 const lower = (a: string, b: string): string => (a < b ? a : b);
 
-const earliest = (
-	a: string | undefined,
-	b: string | undefined,
-): string | undefined => {
-	if (a === undefined) return b;
-	if (b === undefined) return a;
-	return lower(a, b);
-};
-
-const latest = (a: string, b: string | undefined): string =>
-	b === undefined || a > b ? a : b;
-
-/** `undefined` means not JSON — a valid document can never decode to it. */
-const parseJson = (raw: string): unknown => {
-	try {
-		return JSON.parse(raw) as unknown;
-	} catch {
-		return undefined;
-	}
-};
-
-/** `[]` for an absent column; `undefined` means the blob is unusable. */
-const parseFocusItems = (raw: unknown): Row[] | undefined => {
-	if (raw === undefined || raw === null) return [];
-	const text = asString(raw);
-	if (text === undefined) return undefined;
-
-	const decoded = parseJson(text);
-	if (decoded === undefined) return undefined;
-
-	const parsed = FocusItemsSchema.safeParse(decoded);
-	return parsed.success ? parsed.data : undefined;
-};
-
-/**
- * `taskId` is the item key the focus-list schema already enforces as unique.
- * Items without one keep their identity by value so a merge cannot duplicate
- * them.
- */
-const itemKey = (item: Row): string =>
-	col(item, "taskId") ?? JSON.stringify(item);
-
-/**
- * Per-item clock. `FocusItem` has no `updatedAt`, so `completedAt` is the only
- * timestamp an item owns and an untouched item inherits its row's clock. Item
- * accuracy is therefore bounded by row granularity — the union of items is what
- * this rule guarantees.
- */
-const itemClock = (item: Row, rowClock: string): string =>
-	col(item, "completedAt") ?? rowClock;
-
-const itemOrder = (item: Row): number =>
-	typeof item.order === "number" ? item.order : Number.MAX_SAFE_INTEGER;
-
-/** Canonical array order, so both devices serialize byte-identical `items`. */
-const byOrderThenKey = (left: Row, right: Row): number =>
-	itemOrder(left) - itemOrder(right) ||
-	(itemKey(left) < itemKey(right) ? -1 : 1);
-
-type ItemSide = { items: Row[]; clock: string; id: string; device: string };
-
-/**
- * Union by item key with per-item LWW. Both devices see the same two sides and
- * the comparator is total, so the merge is commutative.
- *
- * `device` matters when both sides are the same row — the two devices edited one
- * already-replicated focus list — because then the ULID step cannot separate
- * them and two same-millisecond item edits would each survive only locally.
- */
-const mergeFocusItems = (a: ItemSide, b: ItemSide): Row[] => {
-	type Held = { item: Row; clock: string; id: string; device: string };
-	const merged = new Map<string, Held>();
-
-	for (const side of [a, b]) {
-		for (const item of side.items) {
-			const key = itemKey(item);
-			const clock = itemClock(item, side.clock);
-			const held = merged.get(key);
-			const takes =
-				held === undefined ||
-				incomingWins({
-					incoming: clock,
-					local: held.clock,
-					incomingId: side.id,
-					localId: held.id,
-					devices: { incoming: side.device, local: held.device },
-				});
-			if (takes) {
-				merged.set(key, { item, clock, id: side.id, device: side.device });
-			}
-		}
-	}
-
-	return [...merged.values()].map((entry) => entry.item).sort(byOrderThenKey);
-};
-
 // ============================================================
 // Per-family Resolution
 // ============================================================
@@ -537,88 +427,11 @@ const resolveNaturalKeyLww = ({
 	};
 };
 
-const resolveFocusList = ({
-	table,
-	op,
-	payload,
-	local,
-}: WriteArgs): ResolveDecision => {
-	const holder = otherRow(local.byNaturalKey, op.rowId);
-	const localRow = local.byId ?? holder;
-	if (localRow === undefined) {
-		return {
-			kind: "apply",
-			rowId: op.rowId,
-			row: payload,
-			dropRowId: undefined,
-		};
-	}
-
-	const incomingItems = parseFocusItems(payload.items);
-	const localItems = parseFocusItems(localRow.items);
-	if (incomingItems === undefined || localItems === undefined) {
-		return skip("malformed-payload");
-	}
-
-	const localId = col(localRow, "id") ?? op.rowId;
-	const winnerId = lower(op.rowId, localId);
-	const incoming = opClock(op, table);
-	const held = localClock(localRow, table);
-
-	// theme, reflection, and any column a newer device added ride along with the
-	// row-LWW winner. `items` never does — replacing them is the data loss this
-	// whole rule exists to prevent.
-	const base = incomingWins({
-		incoming,
-		local: held,
-		incomingId: op.rowId,
-		localId,
-		...lineage(op, localRow),
-		devices: { incoming: op.deviceId, local: local.localDeviceId },
-	})
-		? payload
-		: localRow;
-
-	const items = mergeFocusItems(
-		{
-			items: incomingItems,
-			clock: incoming,
-			id: op.rowId,
-			device: op.deviceId,
-		},
-		{
-			items: localItems,
-			clock: held ?? incoming,
-			id: localId,
-			device: local.localDeviceId,
-		},
-	);
-	const createdAt = earliest(
-		col(payload, "created_at"),
-		col(localRow, "created_at"),
-	);
-
-	return {
-		kind: "merge",
-		rowId: winnerId,
-		row: {
-			...base,
-			id: winnerId,
-			items: JSON.stringify(items),
-			updated_at: latest(incoming, held),
-			...(createdAt === undefined ? {} : { created_at: createdAt }),
-		},
-		dropRowId:
-			holder !== undefined && localId !== winnerId ? localId : undefined,
-	};
-};
-
 const RESOLVERS: Record<Family, (args: WriteArgs) => ResolveDecision> = {
 	"row-lww": resolveRowLww,
 	"append-only": resolveAppendOnly,
 	"natural-key-dedupe": resolveNaturalKeyDedupe,
 	"natural-key-lww": resolveNaturalKeyLww,
-	"focus-list": resolveFocusList,
 };
 
 const resolveDelete = (

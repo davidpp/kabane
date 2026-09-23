@@ -359,12 +359,19 @@ describe("Migrations on a device stamped at the baseline", () => {
 				[NOW, NOW],
 			),
 		);
+		await withDb((db) =>
+			db.run(
+				`INSERT INTO ${physicalTable("focus_lists")} (id, period, created_at, updated_at)
+				 VALUES ('01FOCUS', 'daily', ?, ?)`,
+				[NOW, NOW],
+			),
+		);
 
 		await mustInit(base);
 
 		expect(await versionRows()).toEqual(ALL_VERSIONS);
 		const tables = await tableNames();
-		for (const retired of ["proposals", "proposals_fts"]) {
+		for (const retired of ["proposals", "proposals_fts", "focus_lists"]) {
 			expect(tables).not.toContain(retired);
 		}
 		const kept = await Planner.getTask(base, task.value.id);

@@ -197,11 +197,6 @@ describe("Sync — two devices, one relay, no cloud", () => {
 			kind: "PRD",
 		});
 		if (!refA.ok) throw refA.error;
-		const focusA = await Planner.saveFocusList(a.base, {
-			period: "daily",
-			items: [{ taskId: a1.id, order: 0, completed: false }],
-		});
-		if (!focusA.ok) throw focusA.error;
 		const upstreamA = await Planner.upsertUpstreamLink(a.base, {
 			taskId: a1.id,
 			provider: "linear",
@@ -253,11 +248,6 @@ describe("Sync — two devices, one relay, no cloud", () => {
 			kind: "PRD",
 		});
 		if (!refB.ok) throw refB.error;
-		const focusB = await Planner.saveFocusList(b.base, {
-			period: "weekly",
-			items: [{ taskId: b1.id, order: 0, completed: false }],
-		});
-		if (!focusB.ok) throw focusB.error;
 		const upstreamB = await Planner.upsertUpstreamLink(b.base, {
 			taskId: b2.id,
 			provider: "github",
@@ -393,44 +383,6 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		);
 		expect((await taskByTitle(a.base, "A wins")).short_id).toBe(winner.shortId);
 		expect((await taskByTitle(a.base, "B loses")).id).toBe(loser.id);
-	});
-
-	it("merges focus_lists items instead of overwriting the period", async () => {
-		const a = await createDevice("device-a");
-		const b = await createDevice("device-b");
-
-		const a1 = await addTask(a, "A focus", { scopeUri: ALPHA });
-		const b1 = await addTask(b, "B focus", { scopeUri: BETA });
-
-		const savedA = await Planner.saveFocusList(a.base, {
-			period: "daily",
-			items: [{ taskId: a1.id, order: 0, completed: false }],
-		});
-		if (!savedA.ok) throw savedA.error;
-		const savedB = await Planner.saveFocusList(b.base, {
-			period: "daily",
-			items: [{ taskId: b1.id, order: 1, completed: false }],
-		});
-		if (!savedB.ok) throw savedB.error;
-
-		await converge(a, b);
-
-		const survivingId =
-			savedA.value.id < savedB.value.id ? savedA.value.id : savedB.value.id;
-
-		for (const device of [a, b]) {
-			const lists = await rowsOf(device.base, TABLES.focus_lists);
-			expect(lists, `${device.deviceId} has a duplicate period`).toHaveLength(
-				1,
-			);
-			// Lowest ULID owns the row — UNIQUE(period) allows exactly one.
-			expect(lists[0]?.id).toBe(survivingId);
-
-			const items = JSON.parse(String(lists[0]?.items)) as { taskId: string }[];
-			expect(items.map((item) => item.taskId).sort()).toEqual(
-				[a1.id, b1.id].sort(),
-			);
-		}
 	});
 
 	it("captures a cascade as children-before-parent and replays it FK-safely", async () => {

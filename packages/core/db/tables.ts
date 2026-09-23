@@ -16,7 +16,6 @@ export const LOGICAL_TABLES = {
 	tasks: "tasks",
 	tasks_fts: "tasks_fts",
 	task_links: "task_links",
-	focus_lists: "focus_lists",
 	sequences: "sequences",
 	comments: "task_comments",
 	comments_fts: "task_comments_fts",

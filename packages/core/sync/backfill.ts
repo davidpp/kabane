@@ -50,8 +50,7 @@ const trySync = <T>(fn: () => T): Result<T> => {
  * Emission order, chosen so every FK parent precedes its children.
  *
  * `projects` first (`tasks.project_id` references it), then `tasks`, then the
- * four tables holding an FK to `tasks`. `focus_lists` has no FK and sorts last
- * only because it is the least interesting to see arrive.
+ * four tables holding an FK to `tasks`.
  */
 const BACKFILL_ORDER: readonly SyncTable[] = [
 	"projects",
@@ -60,7 +59,6 @@ const BACKFILL_ORDER: readonly SyncTable[] = [
 	"task_comments",
 	"task_work_log",
 	"task_context_refs",
-	"focus_lists",
 ];
 
 /**

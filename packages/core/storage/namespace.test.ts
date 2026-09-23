@@ -3,12 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import type {
-	FocusListDraft,
-	TaskDraft,
-	TaskLinkDraft,
-	TaskUpdate,
-} from "../schemas";
+import type { TaskDraft, TaskLinkDraft, TaskUpdate } from "../schemas";
 import { Planner } from "./index";
 
 const TEST_BASE = join(import.meta.dir, ".test-data");
@@ -1019,71 +1014,6 @@ describe("Planner", () => {
 			expect(linksResult.ok).toBe(true);
 			if (linksResult.ok) {
 				expect(linksResult.value.length).toBe(0);
-			}
-		});
-	});
-
-	// ----------------------------------------------------------
-	// Focus Lists
-	// ----------------------------------------------------------
-
-	describe("focus lists", () => {
-		it("should save a focus list", async () => {
-			const draft: FocusListDraft = {
-				period: "daily",
-				items: [
-					{ taskId: "task-1", order: 0, completed: false },
-					{ taskId: "task-2", order: 1, completed: false },
-				],
-				theme: "Shipping features",
-			};
-
-			const result = await Planner.saveFocusList(TEST_BASE, draft);
-			expect(result.ok).toBe(true);
-			if (result.ok) {
-				expect(result.value.period).toBe("daily");
-				expect(result.value.items.length).toBe(2);
-				expect(result.value.theme).toBe("Shipping features");
-			}
-		});
-
-		it("should get a focus list by period", async () => {
-			await Planner.saveFocusList(TEST_BASE, {
-				period: "daily",
-				items: [{ taskId: "task-1", order: 0, completed: false }],
-			});
-
-			const result = await Planner.getFocusList(TEST_BASE, "daily");
-			expect(result.ok).toBe(true);
-			if (result.ok) {
-				expect(result.value).not.toBeNull();
-				expect(result.value?.items.length).toBe(1);
-			}
-		});
-
-		it("should update a focus list", async () => {
-			await Planner.saveFocusList(TEST_BASE, {
-				period: "daily",
-				items: [{ taskId: "task-1", order: 0, completed: false }],
-			});
-
-			const updateResult = await Planner.updateFocusList(TEST_BASE, "daily", {
-				items: [{ taskId: "task-1", order: 0, completed: true }],
-				reflection: "Good progress today!",
-			});
-			expect(updateResult.ok).toBe(true);
-			if (updateResult.ok) {
-				expect(updateResult.value?.items[0].completed).toBe(true);
-				expect(updateResult.value?.reflection).toBe("Good progress today!");
-			}
-		});
-
-		it("should return null for non-existent focus list", async () => {
-			// Weekly focus hasn't been created in this test
-			const result = await Planner.getFocusList(TEST_BASE, "weekly");
-			expect(result.ok).toBe(true);
-			if (result.ok) {
-				expect(result.value).toBeNull();
 			}
 		});
 	});

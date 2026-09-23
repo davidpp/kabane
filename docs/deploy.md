@@ -369,7 +369,7 @@ jake plan sync backfill    # one op per existing replicated row, then push
 
 Expected: a per-table count under `Planner Sync — Backfill`, then a push. Backfill is
 idempotent (op ids derive from table, row id and version), so a re-run is a no-op. What
-carries over: tasks, links, comments, work logs, projects, focus lists, context refs. What
+carries over: tasks, links, comments, work logs, projects, context refs. What
 does **not**: agent sessions and activities, the task activity timeline, upstream links
 (private by schema), session defaults, and anything marked `visibility: private`. Jake's
 `jake plan sync backfill` exists on the JCAB-4 branch and lands with it.

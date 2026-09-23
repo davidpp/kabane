@@ -67,19 +67,6 @@ export {
 	TaskLinkDraftSchema,
 	TaskLinkSchema,
 } from "./link";
-// Focus list schemas
-export {
-	type FocusItem,
-	FocusItemSchema,
-	type FocusList,
-	type FocusListDraft,
-	FocusListDraftSchema,
-	FocusListSchema,
-	type FocusListUpdate,
-	FocusListUpdateSchema,
-	type FocusPeriod,
-	FocusPeriodSchema,
-} from "./list";
 // Project schemas
 export {
 	type Project,
