@@ -18,6 +18,9 @@ decision record in `~/Projects/jake/docs/ADR/032-cabane-extraction.md`.
 
 ## Quick start
 
+New to cabane? Follow [`docs/getting-started.md`](docs/getting-started.md): install, run
+`cabane`, wire your agents, one machine on local SQLite.
+
 ```bash
 cd packages/cli && bun link                      # `cabane` on PATH
 cabane
@@ -69,7 +72,11 @@ picks `codex` or `gemini`, `copilot.model` runs the harness as something else â€
 `cabane board --copilot <harness>` overrides that for one run; it has to be installed and
 logged in on this machine ([`docs/deploy.md`](docs/deploy.md) part 4.7).
 
-## Set up a new machine as a device (for AI agents)
+## Set up one of David's devices (for AI agents)
+
+This section is David's own setup: his 1Password vault, his hub at `cabane.3pew.ca`, his
+actor. Trying cabane on your own machine? Follow
+[`docs/getting-started.md`](docs/getting-started.md) instead.
 
 For AI agents: paste this section to the agent. It needs `op` (1Password CLI) signed in
 to `botpress.1password.com` and Bun installed. Every credential is read from 1Password,
