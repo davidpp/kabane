@@ -444,7 +444,10 @@ const NotedLine = ({ head, note, indent, fg }: NotedLineProps): ReactNode => {
 	return (
 		<box style={{ flexDirection: "column" }}>
 			<text fg={fg}>{head}</text>
-			<text fg={fg ?? MUTED_COLOR}>{`${" ".repeat(indent)}${note}`}</text>
+			{/* A harness's error can outrun the pane: padding, not spaces, keeps its wrap indented. */}
+			<box style={{ paddingLeft: indent }}>
+				<text fg={fg ?? MUTED_COLOR}>{note}</text>
+			</box>
 		</box>
 	);
 };

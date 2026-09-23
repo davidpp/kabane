@@ -351,6 +351,37 @@ describe("SetupScreen form", () => {
 		}
 	});
 
+	it("a long install error wraps under its row, indented, at 40 columns", async () => {
+		const reason =
+			'Caused by: CODEX_HOME points to "/tmp/x/.codex", but that path does not exist';
+		const setup = await renderTest(
+			<SetupScreen
+				defaults={DEFAULTS}
+				save={async () => ok("~/.cabane/config.json")}
+				install={async (ids) =>
+					ids.map((id) => ({ id, status: "failed" as const, message: reason }))
+				}
+				onComplete={() => {}}
+				onQuit={() => {}}
+			/>,
+			{ width: 40, height: 24 },
+		);
+		try {
+			const until = (predicate: (frame: string) => boolean) =>
+				pumpUntil(setup.renderOnce, setup.captureCharFrame, predicate);
+			await until((f) => f.includes("cabane · 1/3"));
+			setup.mockInput.pressEscape();
+			await until((f) => f.includes(FORM_TITLE));
+			setup.mockInput.pressEnter();
+			const frame = await until((f) => f.includes("✓ saved"));
+			const first = rows(frame).findIndex((row) => row.includes("Caused by"));
+			expect(rows(frame)[first]?.startsWith("  Caused by")).toBe(true);
+			expect(rows(frame)[first + 1]?.startsWith("  ")).toBe(true);
+		} finally {
+			setup.destroy();
+		}
+	});
+
 	it("a failed save stays on the form with the error, and esc quits", async () => {
 		const { mockInput, toForm, until, seen, destroy } = await mount(DEFAULTS, {
 			saveResult: err(new Error("disk full")),
