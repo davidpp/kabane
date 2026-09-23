@@ -185,6 +185,13 @@ export namespace Migrations {
 			name: "drop-focus-lists",
 			up: (db) => dropTable(db, "focus_lists"),
 		},
+		{
+			// Nothing read it. Sync apply wrote renames and lost-lineage records into
+			// it; renames stay in `short_id_history`, and the rest was an audit trail
+			// no surface showed.
+			name: "drop-task-activity",
+			up: (db) => dropTable(db, "task_activity"),
+		},
 	];
 
 	/**

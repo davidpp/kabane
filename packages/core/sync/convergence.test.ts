@@ -317,20 +317,6 @@ describe("Sync — two devices, one relay, no cloud", () => {
 			expect(history).toEqual([
 				{ old_short_id: winner.shortId ?? "", task_id: loser.id },
 			]);
-
-			// The audit trail cannot be looked up (the winner keeps the label live),
-			// so the rename has to be visible on the task itself.
-			const activity = await withDb(device.base, (db) =>
-				db
-					.query<Row, [string]>(
-						`SELECT * FROM ${TABLES.activity} WHERE task_id = ?`,
-					)
-					.all(loser.id),
-			);
-			expect(activity).toHaveLength(1);
-			expect(activity[0]?.event_type).toBe("short_id_renamed");
-			expect(activity[0]?.old_value).toBe(winner.shortId);
-			expect(activity[0]?.new_value).toBe(renamed?.short_id);
 		}
 
 		// Both devices minted the SAME replacement label: the mint is derived from
@@ -553,17 +539,6 @@ describe("Sync — two devices, one relay, no cloud", () => {
 			expect(row.version).toBe(2);
 			expect(await countOf(d.base, TABLES.tasks)).toBe(1);
 		}
-
-		// The loser recorded the overwrite of its own lineage on the task.
-		const conflictsOnA = await withDb(a.base, (db) =>
-			db
-				.query<{ old_value: string; new_value: string }, [string]>(
-					`SELECT old_value, new_value FROM ${TABLES.activity}
-            WHERE task_id = ? AND event_type = 'sync_conflict_resolved'`,
-				)
-				.all(task.id),
-		);
-		expect(conflictsOnA).toEqual([{ old_value: "2", new_value: "2" }]);
 	});
 
 	it("is idempotent: re-applying a page duplicates nothing and re-captures nothing", async () => {

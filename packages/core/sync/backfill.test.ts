@@ -69,8 +69,8 @@ const seedRows = () =>
 		);
 		// Excluded from SYNC_TABLES — must never be emitted.
 		db.run(
-			`INSERT INTO ${TABLES.activity} (id, task_id, event_type, actor, actor_type, timestamp)
-       VALUES ('01ACT', '01TASKZ', 'created', 'me', 'human', ?)`,
+			`INSERT INTO ${TABLES.short_id_history} (old_short_id, task_id, superseded_at)
+       VALUES ('OLD-1', '01TASKZ', ?)`,
 			[NOW],
 		);
 	});
@@ -125,7 +125,7 @@ describe("Backfill.run", () => {
 		);
 
 		// An excluded table never reaches the log.
-		expect(order.some((k) => k.startsWith("task_activity:"))).toBe(false);
+		expect(order.some((k) => k.startsWith("short_id_history:"))).toBe(false);
 
 		expect(result.value.byTable.projects).toBe(1);
 		expect(result.value.byTable.tasks).toBe(2);

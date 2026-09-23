@@ -18,9 +18,8 @@ import { z } from "zod";
 /**
  * Base tables that replicate.
  *
- * Deliberately excluded: `task_activity` (high-volume audit trail),
- * `agent_sessions` / `agent_activities` (machine-local agent runs),
- * and `sequences` (local counter).
+ * Deliberately excluded: `agent_sessions` / `agent_activities` (machine-local
+ * agent runs) and `sequences` (local counter).
  *
  * This is the set the resolver knows a rule for. Whether a given ROW replicates
  * is decided by its `visibility` column, not by this list.

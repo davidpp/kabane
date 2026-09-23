@@ -8,10 +8,7 @@
  *
  * VERSION IS THE HIGH-WATER MARK, NOT THE INCOMING VALUE. An applied row takes
  * `max(local.version, incoming.version)` so a later local edit always moves
- * past both lineages. When a local row that had at least as many writes as the
- * incoming one is overwritten, a `sync_conflict_resolved` activity records the
- * loser's version on the task — the one place a human can see that an edit of
- * theirs was replaced rather than merged.
+ * past both lineages.
  *
  * RESOLVE BEFORE EXECUTE, PER OP, ALWAYS. Every decision is computed before its
  * statement is issued, and a `skip` means no statement at all. This is not a
@@ -56,7 +53,7 @@ import type { Result } from "../result";
 import { atomic } from "../runtime";
 
 import { SYNC_TABLES, type SyncTable } from "../schemas";
-import { generateId, TABLES } from "../storage/helpers";
+import { TABLES } from "../storage/helpers";
 import { Oplog, physicalTableFor } from "../storage/oplog";
 import {
 	Resolve,
@@ -119,12 +116,6 @@ const PARENTS: Record<SyncTable, readonly ParentRef[]> = {
 	],
 };
 
-/** `event_type` of the audit row a rename leaves on the renamed task. */
-const RENAME_EVENT = "short_id_renamed";
-
-/** `event_type` of the audit row left when a local lineage loses row LWW. */
-const CONFLICT_EVENT = "sync_conflict_resolved";
-
 // ============================================================
 // Types
 // ============================================================
@@ -150,7 +141,7 @@ export type ApplyReport = {
 	received: number;
 	/** Decisions executed (writes, merges, renames, deletes). */
 	applied: number;
-	/** `short_id` reassignments, each with an audit row and a visible activity row. */
+	/** `short_id` reassignments, each recorded in `short_id_history`. */
 	renamed: number;
 	/** FK columns nulled because their parent was deleted on another device. */
 	clearedRefs: number;
@@ -287,39 +278,6 @@ const withVersion = (row: Row, local: Row | undefined): Row => ({
 	version: Math.max(versionOf(local) ?? 0, versionOf(row) ?? 1),
 });
 
-/**
- * A local lineage lost. Heuristic, not vector clocks: if the local row had at
- * least as many writes as the incoming one, some local write is being replaced.
- * A fresh replica that merely lags (local 3, incoming 4) records nothing.
- */
-const overwritesLocalWrites = (
-	local: Row | undefined,
-	incoming: Row,
-): boolean =>
-	local !== undefined && (versionOf(local) ?? 1) >= (versionOf(incoming) ?? 1);
-
-const recordConflict = (
-	db: Db,
-	taskId: string,
-	local: Row,
-	incoming: Row,
-	now: string,
-) => {
-	db.run(
-		`INSERT INTO ${TABLES.activity}
-       (id, task_id, event_type, actor, actor_type, timestamp, old_value, new_value)
-     VALUES (?, ?, ?, 'sync', 'ai', ?, ?, ?)`,
-		[
-			generateId(),
-			taskId,
-			CONFLICT_EVENT,
-			now,
-			String(versionOf(local) ?? 1),
-			String(versionOf(incoming) ?? 1),
-		],
-	);
-};
-
 // ============================================================
 // Private Helpers — short_id renames
 // ============================================================
@@ -403,41 +361,26 @@ const mintShortId = (
  * winner keeps the contested label live, so resolving it finds the winner's real
  * row and never reaches history; a fallback could only ever return the wrong
  * task. See the `short_id` ruling in `packages/planner/CLAUDE.md`.
- *
- * The activity row is what a human can actually find, and it is only legal on
- * `tasks`: `task_activity.task_id` REFERENCES `tasks(id)`, so writing one for a
- * renamed project would abort the batch on the FK.
  */
 const recordSupersession = (
 	db: Db,
-	meta: TableMeta,
 	args: {
 		loserId: string;
 		oldShortId: string;
-		newShortId: string;
 		now: string;
 	},
 ) => {
-	const { loserId, oldShortId, newShortId, now } = args;
+	const { loserId, oldShortId, now } = args;
 
 	// One label can be claimed by more than two devices, and the audit table
 	// keys on the label alone. Freshest supersession wins rather than failing
-	// the batch; the per-task activity row keeps the full record.
+	// the batch.
 	db.run(
 		`INSERT INTO ${TABLES.short_id_history} (old_short_id, task_id, superseded_at)
      VALUES (?, ?, ?)
      ON CONFLICT(old_short_id) DO UPDATE
         SET task_id = excluded.task_id, superseded_at = excluded.superseded_at`,
 		[oldShortId, loserId, now],
-	);
-
-	if (meta.table !== "tasks") return;
-
-	db.run(
-		`INSERT INTO ${TABLES.activity}
-       (id, task_id, event_type, actor, actor_type, timestamp, old_value, new_value)
-     VALUES (?, ?, ?, 'sync', 'ai', ?, ?, ?)`,
-		[generateId(), loserId, RENAME_EVENT, now, oldShortId, newShortId],
 	);
 };
 
@@ -460,12 +403,7 @@ const executeRename = (
 		// contested one it arrived with.
 		const minted = mintShortId(db, meta, shortId, batchLabels, now);
 		writeRow(db, meta, rowId, { ...row, short_id: minted });
-		recordSupersession(db, meta, {
-			loserId,
-			oldShortId: shortId,
-			newShortId: minted,
-			now,
-		});
+		recordSupersession(db, { loserId, oldShortId: shortId, now });
 		return;
 	}
 
@@ -478,12 +416,7 @@ const executeRename = (
 		loserId,
 	]);
 	writeRow(db, meta, rowId, row);
-	recordSupersession(db, meta, {
-		loserId,
-		oldShortId: shortId,
-		newShortId: minted,
-		now,
-	});
+	recordSupersession(db, { loserId, oldShortId: shortId, now });
 };
 
 // ============================================================
@@ -634,13 +567,6 @@ const applyOrdered = (
 				const local = localById ?? localByKey;
 				const row = withVersion(decision.row, local);
 				writeRow(db, meta, decision.rowId, row);
-				if (
-					meta.table === "tasks" &&
-					local !== undefined &&
-					overwritesLocalWrites(local, decision.row)
-				) {
-					recordConflict(db, decision.rowId, local, decision.row, now);
-				}
 				applied++;
 				break;
 			}

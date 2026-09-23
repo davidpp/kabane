@@ -149,8 +149,8 @@ export type ResolveDecision =
 	 * and must be written with that new label instead of the one in `row`.
 	 *
 	 * `short_id_history` is an audit trail, not a lookup fallback: the winner keeps
-	 * the old label live, so nothing can resolve it back to the loser. The rename
-	 * must land visibly on the renamed task instead — see the `short_id` ruling in
+	 * the old label live, so nothing can resolve it back to the loser, whose new
+	 * label is on its own row — see the `short_id` ruling in
 	 * `packages/planner/CLAUDE.md`.
 	 */
 	| {

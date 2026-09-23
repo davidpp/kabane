@@ -20,7 +20,6 @@ export const LOGICAL_TABLES = {
 	comments: "task_comments",
 	comments_fts: "task_comments_fts",
 	work_log: "task_work_log",
-	activity: "task_activity",
 	context_refs: "task_context_refs",
 	upstream_links: "upstream_links",
 	projects: "projects",

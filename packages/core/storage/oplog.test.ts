@@ -242,8 +242,8 @@ describe("Oplog — storage-layer capture", () => {
 
 		await withDb((db) => {
 			db.run(
-				`INSERT INTO ${TABLES.activity} (id, task_id, event_type, actor, actor_type, timestamp)
-           VALUES ('act-1', ?, 'state_changed', 'me', 'human', '2026-01-01T00:00:00.000Z')`,
+				`INSERT INTO ${TABLES.short_id_history} (old_short_id, task_id, superseded_at)
+           VALUES ('OLD-1', ?, '2026-01-01T00:00:00.000Z')`,
 				[taskId],
 			);
 		});
