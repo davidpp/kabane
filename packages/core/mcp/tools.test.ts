@@ -62,6 +62,31 @@ describe("cabane tools", () => {
 		expect(created.provenance.source).toBe("ai");
 	});
 
+	it("takes a due date as YYYY-MM-DD or an ISO datetime, and names the fix for anything else", async () => {
+		const scoped = { ...ctx, defaultScope: "demo" };
+		const byDate = unwrap(
+			await tool("cabane_add").handler(
+				{ title: "by date", dueDate: "2026-02-06" },
+				scoped,
+			),
+		) as Task;
+		expect(byDate.deadline).toBe("2026-02-06T23:59:59.000Z");
+		const byTime = unwrap(
+			await tool("cabane_add").handler(
+				{ title: "by time", dueDate: "2026-02-06T10:00:00Z" },
+				scoped,
+			),
+		) as Task;
+		expect(byTime.deadline).toBe("2026-02-06T10:00:00.000Z");
+		const bad = await tool("cabane_edit").handler(
+			{ id: byTime.id, dueDate: "friday" },
+			scoped,
+		);
+		expect(bad.ok).toBe(false);
+		if (!bad.ok)
+			expect(bad.error.message).toContain("YYYY-MM-DD or an ISO datetime");
+	});
+
 	it("runs the pickup flow: add, list by assignee, context, edit, log, comment, done", async () => {
 		const issue = unwrap(
 			await tool("cabane_add").handler(
