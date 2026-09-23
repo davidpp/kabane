@@ -1,11 +1,21 @@
-# Deploy runbook
+# Self-hosting the hub
 
 This is the optional Cloudflare hub, for syncing several machines; one machine on local
-SQLite needs none of it ([`getting-started.md`](getting-started.md)).
+SQLite needs none of it ([`getting-started.md`](getting-started.md)). You host it on your own
+Cloudflare account, on a domain you own, behind your own Cloudflare Access team. Nobody
+else's hub is involved.
 
-**Issue:** JCAB-11 · **Verified locally:** 2026-09-07 against `wrangler dev` with the dev
-verifier (see the last section). Steps an agent must never perform are marked **MANUAL**:
-they touch Cloudflare, DNS, Access, or a connector UI. Everything else was run as written.
+**Verified locally:** 2026-09-07 against `wrangler dev` with the dev verifier (see the last
+section). Steps an agent must never perform are marked **MANUAL**: they touch Cloudflare,
+DNS, Access, or a connector UI. Everything else was run as written.
+
+Placeholders used throughout:
+
+| Placeholder | Example | What it is |
+|---|---|---|
+| `<your-domain>` | `hub.example.com` | the hostname the hub answers on, in a zone on your Cloudflare account |
+| `<team>` | `example` | your Zero Trust team name; the Access issuer is `https://<team>.cloudflareaccess.com` |
+| `<your clone>` | `~/src/kabane` | where you cloned this repository |
 
 Reading order matters. Part 1 builds the hub, part 2 the first device, part 3 the others,
 part 4 connects clients, part 5 is what you do when something changes. The auth decision
@@ -15,7 +25,7 @@ What you end up with:
 
 ```
 laptop ──┐                       ┌── Claude Code  (service token, CLI or hub)
-desktop ─┼── cabane.3pew.ca ─────┼── Hermes       (service token)
+desktop ─┼── <your-domain> ──────┼── Hermes       (service token)
 hermes ──┘   CabaneLog (oplog)   ├── Codex        (service token)
              CabaneHub (device   ├── Claude.ai    (Managed OAuth)
              "cloud", MCP)       └── ChatGPT      (Managed OAuth)
@@ -27,55 +37,67 @@ Every device keeps an authoritative SQLite. The hub is one more device with a pu
 
 ## 1. Cloudflare
 
-Prerequisites: the `3pew.ca` zone is on this Cloudflare account, and the Zero Trust team
-`3pew` exists (`https://3pew.cloudflareaccess.com`), both already true from FamilyOS.
+Prerequisites, all on your own Cloudflare account:
+
+- A zone for the domain `<your-domain>` lives in (the hub's hostname can be a subdomain of it).
+  Wrangler creates the DNS record for the custom domain; add nothing by hand.
+- A Zero Trust organization, which gives you the Access team `<team>` and its issuer
+  `https://<team>.cloudflareaccess.com` (Zero Trust → Settings → Team name). The Zero Trust
+  Free plan is enough.
+- The Workers Free plan is enough (1.1 says why).
 
 ### 1.0 Deploy from GitHub Actions instead of your laptop — MANUAL once
 
-`.github/workflows/ci.yml` runs the gate on every push and, on `main`, deploys the Worker
-with `cloudflare/wrangler-action`. The deploy step stays a green no-op until the credentials
-exist, so you can push before finishing this part. Once set up, 1.1, 1.2, 1.5 and 5.7 are
-things CI does for you; the Access application, service tokens and Managed OAuth (1.3, 1.4,
-1.6) remain dashboard work either way.
+`.github/workflows/ci.yml` runs the gate on every push. Its `deploy` job runs only when you
+start it: in your fork or copy of this repository, Actions → `ci` → **Run workflow** on
+`main`. It runs the gate, then deploys the Worker with `cloudflare/wrangler-action` to the
+domain and Access team you configure below. A run with a required value missing fails
+before deploying and names what is missing. Once set up, 1.1, 1.2, 1.5 and 5.7 are one
+workflow run each; the Access application, service tokens and Managed OAuth (1.3, 1.4, 1.6)
+remain dashboard work either way.
 
 In the repository settings create the `production` environment and add:
 
-| Kind | Name | Value |
-|---|---|---|
-| Secret | `CLOUDFLARE_API_TOKEN` | An API token from the Cloudflare dashboard with `Workers Scripts: Edit`, `Workers Routes: Edit`, `Account Settings: Read`, and, because the Worker owns the `cabane.3pew.ca` custom domain, `Zone: DNS: Edit` and `Zone: Workers Routes: Edit` on the `3pew.ca` zone |
-| Secret | `CLOUDFLARE_ACCOUNT_ID` | Overview page of the account |
-| Secret | `SYNC_TOKEN` | `openssl rand -base64 32`; uploaded to the Worker on every deploy |
-| Variable | `ACCESS_AUD` | The AUD tag from 1.3 |
-| Variable | `HUMAN_EMAIL` | Your address, the one in the Allow policy |
-| Variable | `SERVICE_ACTORS` | The JSON map from 1.5, one line |
+| Kind | Name | Required | Value |
+|---|---|---|---|
+| Secret | `CLOUDFLARE_API_TOKEN` | yes | An API token from the Cloudflare dashboard with `Workers Scripts: Edit`, `Workers Routes: Edit`, `Account Settings: Read`, and, because the Worker owns the `<your-domain>` custom domain, `Zone: DNS: Edit` and `Zone: Workers Routes: Edit` on that zone |
+| Secret | `CLOUDFLARE_ACCOUNT_ID` | yes | Overview page of the account |
+| Secret | `SYNC_TOKEN` | yes | `openssl rand -base64 32`; uploaded to the Worker on every deploy |
+| Variable | `HUB_DOMAIN` | yes | `<your-domain>`, bare hostname, no scheme; passed as `wrangler deploy --domain` |
+| Variable | `ACCESS_TEAM_DOMAIN` | yes | `https://<team>.cloudflareaccess.com` |
+| Variable | `ACCESS_AUD` | no | The AUD tag from 1.3 |
+| Variable | `HUMAN_EMAIL` | no | Your address, the one in the Allow policy |
+| Variable | `SERVICE_ACTORS` | no | The JSON map from 1.5, one line |
+| Variable | `KABANE_TIMEZONE` | no | Your IANA timezone (1.5); empty is UTC |
 
-Variables can stay empty until 1.3 and 1.4 are done; an empty value deploys a Worker that
-admits nobody, exactly like a fresh manual deploy. Re-run the workflow (Actions, `ci`,
-`Run workflow`) after filling them. Do not put the AUD or the email into `wrangler.jsonc`
-when CI deploys: the `vars` block there stays empty and the workflow passes them with
-`--var`, which overrides the file.
+`ACCESS_AUD`, `HUMAN_EMAIL` and `SERVICE_ACTORS` can stay empty until 1.3 and 1.4 are done;
+an empty value deploys a Worker that admits nobody, exactly like a fresh manual deploy. Run
+the workflow again after filling them. None of these values go into `wrangler.jsonc`: its
+`vars` block holds empty placeholders, the job passes each variable with `--var`, which
+overrides the file, and the domain with `--domain`.
 
 ### 1.1 Log in and deploy — MANUAL, or skip when 1.0 is set up
 
 ```bash
-cd ~/Projects/cabane/packages/worker
+cd <your clone>/packages/worker
 bunx wrangler login
-bunx wrangler deploy
+bunx wrangler deploy --domain <your-domain>
 ```
 
 Expected: the deploy creates the Worker `cabane-worker`, applies migration tag `v1`
 (`CabaneLog` and `CabaneHub` as SQLite-backed Durable Object classes), and attaches the
-custom domain `cabane.3pew.ca` (from `routes` in `wrangler.jsonc`, `custom_domain: true`).
-Wrangler creates the DNS record for a custom domain; nothing to add by hand. No
-`workers.dev` URL and no preview URL are published (`workers_dev` and `preview_urls` are
-`false`). The Workers Free plan is enough: SQLite-backed Durable Objects are the only kind
+custom domain `<your-domain>`. `wrangler.jsonc` names no route or domain, so every deploy
+passes `--domain`. Wrangler creates the DNS record for a custom domain; nothing to add by
+hand. `bunx wrangler deploy --dry-run` builds and lists the bindings without uploading, if
+you want to check the bundle first. No `workers.dev` URL and no preview URL are published
+(`workers_dev` and `preview_urls` are `false`). The Workers Free plan is enough: SQLite-backed Durable Objects are the only kind
 it offers, and the limits (100k requests and 100k rows written per day, 5 GB stored) are
 far above one person's tracker.
 
 Check:
 
 ```bash
-curl -i https://cabane.3pew.ca/health
+curl -i https://<your-domain>/health
 ```
 
 Expected: `HTTP/2 401` **from the Worker** with body `{"error":"unauthorized"}`. Access
@@ -103,19 +125,19 @@ model). Fill:
 
 | Field | Value |
 |---|---|
-| Application name | `cabane` |
-| Application domain | `cabane.3pew.ca`, path empty (every route is protected, `/health` included) |
+| Application name | `kabane` |
+| Application domain | `<your-domain>`, path empty (every route is protected, `/health` included) |
 | Session duration | 24 hours (browser sessions only; service tokens do not use it) |
 
 Policies, two of them:
 
 | Policy | Action | Include |
 |---|---|---|
-| `david` | Allow | Emails: your address |
+| `owner` | Allow | Emails: your address |
 | `runtimes` | Service Auth | Service Token: every token created in 1.4 (come back and add them) |
 
-No Bypass policy anywhere. This is the FamilyOS invariant (their ADR 0001 exit criteria:
-"the Access application has no bypass") and `auth.md` depends on it.
+No Bypass policy anywhere. `auth.md` depends on it: Access rejects every unauthenticated
+request before the Worker runs, and a Bypass would take that away.
 
 After saving, open the application and copy the **Application Audience (AUD) Tag**. That is
 `ACCESS_AUD`.
@@ -127,10 +149,10 @@ times, duration 1 year:
 
 | Token name | Runtime | Actor the Worker stamps |
 |---|---|---|
-| `cabane-claude-code` | Claude Code | `cabane://actor/agent/claude` |
-| `cabane-hermes` | Hermes | `cabane://actor/agent/hermes` |
-| `cabane-codex` | Codex | `cabane://actor/agent/codex` |
-| `cabane-cron` | scheduled pulls on devices | `cabane://actor/agent/cron` |
+| `kabane-claude-code` | Claude Code | `cabane://actor/agent/claude` |
+| `kabane-hermes` | Hermes | `cabane://actor/agent/hermes` |
+| `kabane-codex` | Codex | `cabane://actor/agent/codex` |
+| `kabane-cron` | scheduled pulls on devices | `cabane://actor/agent/cron` |
 
 Each creation shows the **Client ID** (ends in `.access`) and the **Client Secret** once.
 Store the secret in the runtime machine's keychain or env; it never goes into a repo. The
@@ -139,35 +161,39 @@ tokens to the `runtimes` Service Auth policy.
 
 ### 1.5 Fill the vars and redeploy — MANUAL
 
-Edit `packages/worker/wrangler.jsonc`, the `vars` block:
-
-```jsonc
-"vars": {
-  "ACCESS_TEAM_DOMAIN": "https://3pew.cloudflareaccess.com",
-  "ACCESS_AUD": "<the AUD tag from 1.3>",
-  "HUMAN_EMAIL": "<your address, the one in the Allow policy>",
-  "SERVICE_ACTORS": "{\"<claude-code client id>.access\":\"cabane://actor/agent/claude\",\"<hermes client id>.access\":\"cabane://actor/agent/hermes\",\"<codex client id>.access\":\"cabane://actor/agent/codex\",\"<cron client id>.access\":\"cabane://actor/agent/cron\"}",
-  "SYNC_INTERVAL_MINUTES": "5",
-  "CABANE_TIMEZONE": "America/Montreal"
-}
-```
-
-Empty `ACCESS_AUD`, `HUMAN_EMAIL`, or `SERVICE_ACTORS` means nobody is admitted, which is
-the state the fresh deploy from 1.1 was in. `CABANE_TIMEZONE` is your IANA timezone: the
-hub has no timezone of its own, and it decides which day is today and when a date deadline's
-day ends for the browser clients (ChatGPT, Claude.ai) that reach cabane through the hub.
-Unset, the hub uses UTC, so a date due today turns overdue at 19:00 or 20:00 in Montreal; a
-name the runtime does not know stops the hub from booting and says so, rather than guessing. Commit this change (the AUD and client ids are
-identifiers, not secrets; FamilyOS commits the same two), then:
+With CI (1.0), set the variables `ACCESS_AUD`, `HUMAN_EMAIL`, `SERVICE_ACTORS` and
+`KABANE_TIMEZONE` in the `production` environment and run the workflow again. By hand,
+pass them on the deploy command:
 
 ```bash
-bunx wrangler deploy
+cd <your clone>/packages/worker
+bunx wrangler deploy --domain <your-domain> --var \
+  "ACCESS_TEAM_DOMAIN:https://<team>.cloudflareaccess.com" \
+  "ACCESS_AUD:<the AUD tag from 1.3>" \
+  "HUMAN_EMAIL:<your address, the one in the Allow policy>" \
+  'SERVICE_ACTORS:{"<claude-code client id>.access":"cabane://actor/agent/claude","<hermes client id>.access":"cabane://actor/agent/hermes","<codex client id>.access":"cabane://actor/agent/codex","<cron client id>.access":"cabane://actor/agent/cron"}' \
+  "KABANE_TIMEZONE:<your IANA timezone, e.g. America/Toronto>"
 ```
+
+`wrangler.jsonc` keeps empty placeholders for the Access vars, and a deploy replaces every
+var with the file's value unless `--var` names it. So every manual deploy passes the whole
+set: a later `bunx wrangler deploy` without it resets them to empty and closes the hub. Keep
+the command somewhere outside the repository (a script next to your other credentials), or
+let CI deploy. The AUD and the client ids are identifiers, not secrets, but they are yours
+and do not belong in a tracked file.
+
+Empty `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `HUMAN_EMAIL`, or `SERVICE_ACTORS` means nobody is
+admitted, which is the state the fresh deploy from 1.1 was in. `KABANE_TIMEZONE` is your
+IANA timezone: the hub has no timezone of its own, and it decides which day is today and
+when a date deadline's day ends for the browser clients (ChatGPT, Claude.ai) that reach
+kabane through the hub. Unset, the hub uses UTC, so a date due today turns overdue in the
+evening anywhere west of Greenwich; a name the runtime does not know stops the hub from
+booting and says so, rather than guessing.
 
 Check, from a machine with a service token:
 
 ```bash
-curl -s https://cabane.3pew.ca/health \
+curl -s https://<your-domain>/health \
   -H "CF-Access-Client-Id: <client id>" \
   -H "CF-Access-Client-Secret: <client secret>"
 ```
@@ -176,7 +202,7 @@ Expected: `{"ok":true,"service":"cabane-worker","actor":"cabane://actor/agent/cl
 with the actor matching the token you used. And the reject test:
 
 ```bash
-curl -i https://cabane.3pew.ca/health
+curl -i https://<your-domain>/health
 bunx wrangler tail --format pretty      # in a second terminal, while running the curl
 ```
 
@@ -188,7 +214,7 @@ client), and **no invocation in `wrangler tail`**. Access rejected before the Wo
 Only needed for Claude.ai and ChatGPT. The Worker needs no change: Managed OAuth ends in
 the same `Cf-Access-Jwt-Assertion` the Worker already verifies (`auth.md`, topology a).
 
-**The toggle is an API field** (done 2026-09-07 on the live application). `PUT
+**The toggle is an API field** (verified 2026-09-07 on a live application). `PUT
 /accounts/<id>/access/apps/<app>` with the existing fields plus:
 
 ```json
@@ -210,7 +236,7 @@ The two `allow_any_on_*` flags are what the dashboard calls **Allow localhost cl
 **The allowlist and lifetimes are dashboard-only.** The API accepted but did not persist
 `allowed_redirect_uris`, `access_token_lifetime`, and `grant_session_duration` (verified:
 they never come back on GET). Set them by hand: Zero Trust → **Access controls** →
-**Applications** → `Cabane` → ⋯ → **Edit** → **Advanced settings** → Managed OAuth section:
+**Applications** → `Kabane` → ⋯ → **Edit** → **Advanced settings** → Managed OAuth section:
 
 | Setting | Value |
 |---|---|
@@ -226,14 +252,14 @@ three URIs before testing a browser connector so the result is unambiguous.
 Check (both were verified live after the API call):
 
 ```bash
-curl -s https://cabane.3pew.ca/.well-known/oauth-authorization-server
-curl -s -o /dev/null -D - -X POST https://cabane.3pew.ca/mcp -H 'Content-Type: application/json' -d '{}' | grep -i www-authenticate
+curl -s https://<your-domain>/.well-known/oauth-authorization-server
+curl -s -o /dev/null -D - -X POST https://<your-domain>/mcp -H 'Content-Type: application/json' -d '{}' | grep -i www-authenticate
 ```
 
-Expected: the first returns JSON with `issuer` `https://3pew.cloudflareaccess.com`,
+Expected: the first returns JSON with `issuer` `https://<team>.cloudflareaccess.com`,
 `authorization_endpoint`, `token_endpoint`, `registration_endpoint` under
 `/cdn-cgi/access/oauth/`, and `code_challenge_methods_supported: ["S256"]`. The second is a
-`401` carrying `WWW-Authenticate: Bearer realm="OAuth" ... resource_metadata="https://cabane.3pew.ca/.well-known/cloudflare-access-protected-resource/mcp"`,
+`401` carrying `WWW-Authenticate: Bearer realm="OAuth" ... resource_metadata="https://<your-domain>/.well-known/cloudflare-access-protected-resource/mcp"`,
 which is the RFC 9728 pointer ChatGPT and Claude.ai follow.
 
 ---
@@ -242,41 +268,42 @@ which is the RFC 9728 pointer ChatGPT and Claude.ai follow.
 
 ### 2.1 Install the CLI
 
-The CLI is not published (JCAB-15 is parked), so it runs from the checkout. `bun link` is
-the install path that was verified; `bun install -g` from a path is not supported for a
-workspace package and was not used.
+The CLI is not on npm yet, so it runs from a clone. `bun link` is the install path that was
+verified; `bun install -g` from a path is not supported for a workspace package and was not
+used.
 
 ```bash
-cd ~/Projects/cabane && bun install
+git clone https://github.com/davidpp/cabane.git kabane
+cd kabane && bun install
 cd packages/cli && bun link
-cabane --help
+kabane --help
 ```
 
-Expected: `bun link` prints `Success! Registered "cabane"`, `which cabane` answers
-`~/.bun/bin/cabane`, and `--help` lists fourteen commands. The link points at this
+Expected: `bun link` prints `Success! Registered "kabane"`, `which kabane` answers
+`~/.bun/bin/kabane`, and `--help` lists fourteen commands. The link points at this
 checkout, so `git pull` updates the binary; do not link from a worktree that will be
 removed.
 
 ### 2.2 Initialize
 
 ```bash
-cabane init \
+kabane init \
   --actor cabane://actor/human/<your name> \
   --device <short machine name> \
-  --sync-url https://cabane.3pew.ca \
+  --sync-url https://<your-domain> \
   --sync-token '<SYNC_TOKEN from 1.2>'
 ```
 
 Expected:
 
 ```
-✓ Initialized /Users/<you>/.cabane
+✓ Initialized /Users/<you>/.kabane
   actor:  cabane://actor/human/<your name>
   device: <short machine name>
-  sync:   https://cabane.3pew.ca
+  sync:   https://<your-domain>
 ```
 
-`CABANE_HOME` (default `~/.cabane`) now holds `config.json` and `cabane.db`. The device id
+`KABANE_HOME` (default `~/.kabane`) now holds `config.json` and `kabane.db`. The device id
 is write-once: it becomes the device's identity in the log on the first push and renaming
 it afterwards makes the log treat the machine as new. A device set up through the
 first-run screen instead of `init` took its short hostname as the device id; to pick
@@ -285,14 +312,16 @@ another, change both `deviceId` fields in `config.json` before the first push.
 ### 2.3 Give the device its Access credentials
 
 The hub is behind Access, so every push and pull must carry a service token. Use the
-`cabane-cron` token from 1.4 for devices (it is the identity of the machine, not of the
+`kabane-cron` token from 1.4 for devices (it is the identity of the machine, not of the
 person; writes are still stamped with the device's `actor`). Edit
-`~/.cabane/config.json` and add `headers` inside `sync`:[^init-flags]
+`~/.kabane/config.json` and add `headers` inside `sync`, or pass
+`--access-client-id <id> --access-client-secret <secret>` to `init` in 2.2, which writes the
+same block:
 
 ```json
 "sync": {
   "enabled": true,
-  "url": "https://cabane.3pew.ca",
+  "url": "https://<your-domain>",
   "token": "<SYNC_TOKEN>",
   "deviceId": "<short machine name>",
   "batchBytes": 262144,
@@ -303,94 +332,69 @@ person; writes are still stamped with the device's `actor`). Edit
 }
 ```
 
-[^init-flags]: `cabane init --access-client-id <id> --access-client-secret <secret>` writes
-this block, and `--scope <id>` writes `./.cabane/scope`. Both land with JCAB-19; until it
-merges, edit the file.
-
 Check:
 
 ```bash
-cabane sync status
+kabane sync status
 ```
 
-Expected: `Sync: not armed on this device (run \`cabane sync push\` once with sync
+Expected: `Sync: not armed on this device (run \`kabane sync push\` once with sync
 configured).` Arming happens on the first connection.
 
-### 2.4 Arm, and backfill if you are migrating
-
-If this is a fresh tracker:
+### 2.4 Arm, and backfill what the device already holds
 
 ```bash
-cabane sync push
+kabane sync push
 ```
 
 Expected: `⬆️  Pushed 0 ops (0 duplicates, 0 batches) as device <name>`. The device is
 now armed and every later write is captured.
 
-If you are migrating from Jake there are two routes, depending on where the CLI runs.
-
-**Same machine as Jake: share the database, no migration.** Both hosts run the same
-`@cabane/core`, so the CLI can open `~/.jake/jake.db` directly with the `planner_` prefix
-Jake uses. Skip 2.2 and 2.3 and initialize like this instead:
+Nothing already in the database when sync is armed replicates by itself. If this device
+had tasks before you set up sync (a machine you used on local SQLite first), seed the log
+with them once:
 
 ```bash
-cabane init \
-  --actor cabane://actor/human/<your name> \
-  --device <short machine name> \
-  --db-path ~/.jake/jake.db --table-prefix planner_
-cabane list --limit 5
+kabane sync backfill
 ```
 
-Expected: the `init` output ends with `db: /Users/<you>/.jake/jake.db (tables planner_*)`
-and `list` shows the same tasks `jake plan list` shows. Nothing is copied and nothing
-syncs between the two hosts, because it is one file. Do **not** add `--sync-url` in this
-shape: Jake already syncs that file as device `<jake machine name>` through its own
-config, and `cabane sync` warns when `db.path` and sync are both set. The first time a
-cabane build with numbered migrations (JCAB-94) opens the file, it adds one table,
-`planner_schema_migrations`, and records version 1; every other table and row is left as
-it was (verified on a seeded copy made with the previous build: every table byte-identical,
-no op captured). A Jake still on an older `@cabane/core` keeps booting the stamped file
-unchanged. Once a later migration ships, update Jake's `@cabane/core` link before either
-host opens the file on the new build, because the two share one schema (§5.8).
-
-**Another machine: backfill through the log.** The Jake machine is itself a device once
-JCAB-4 merges; point it at the same hub and let it backfill:
-
-```jsonc
-// ~/.jake/config.json
-{ "modules": { "planner": { "sync": {
-  "enabled": true,
-  "url": "https://cabane.3pew.ca",
-  "token": "<SYNC_TOKEN>",
-  "deviceId": "<jake machine name>",
-  "headers": { "CF-Access-Client-Id": "<cron client id>.access", "CF-Access-Client-Secret": "<cron client secret>" }
-} } } }
-```
-
-```bash
-jake plan sync push        # arms the Jake device
-jake plan sync backfill    # one op per existing replicated row, then push
-```
-
-Expected: a per-table count under `Planner Sync — Backfill`, then a push. Backfill is
-idempotent (op ids derive from table, row id and version), so a re-run is a no-op. What
-carries over: tasks, links, comments, work logs, projects, context refs. What
-does **not**: agent sessions and activities, upstream links
-(private by schema), and anything marked `visibility: private`. Jake's
-`jake plan sync backfill` exists on the JCAB-4 branch and lands with it.
-
-Then, on the Cabane device: `cabane sync pull`. Expected: `⬇️  Pulled N ops, applied N,
-renamed 0` and `cabane list --all` shows the tasks. Short ids may be relabelled when two
-devices minted the same one offline; `cabane sync status` counts them under `renamed ids`.
+Expected: `📦 Backfilled N rows into the oplog (0 already present)`, then the push line.
+Backfill is idempotent (op ids derive from table,
+row id and version), so a re-run is a no-op. What carries over: tasks, links, comments,
+work logs, projects, context refs, upstream links. What does **not**: agent sessions and
+activities, and anything marked `visibility: private`.
 
 Check:
 
 ```bash
-cabane sync status
+kabane sync status
 ```
 
 Expected: `Sync: armed as device <name>`, `pending ops: 0`, `last sync:` a timestamp,
 `quarantined: 0`.
+
+### 2.5 Or share a host app's database instead
+
+A device can open a database another host already keeps, instead of its own
+`~/.kabane/kabane.db`. This is for a host app that embeds `@cabane/core` and keeps its
+tables behind a prefix (Jake, the planner kabane was extracted from, uses `planner_` in
+`~/.jake/jake.db`). Skip 2.2 to 2.4 and initialize like this instead:
+
+```bash
+kabane init \
+  --actor cabane://actor/human/<your name> \
+  --device <short machine name> \
+  --db-path <the host's database file> --table-prefix <its table prefix>
+kabane list --limit 5
+```
+
+Expected: the `init` output ends with `db: <the file> (tables <prefix>*)` and `list` shows
+the host's tasks. Nothing is copied and nothing syncs between the two hosts, because it is
+one file. Do **not** add `--sync-url` in this shape: the host syncs that file as its own
+device, and `kabane sync` warns when `db.path` and sync are both set. Opening the file
+applies the migrations it has not had yet (§5.8), so update the host's `@cabane/core` to
+the same release before either host opens the file on a newer build; the two share one
+schema.
 
 ---
 
@@ -400,7 +404,7 @@ Repeat 2.1 to 2.3 with a different `--device` name (same `SYNC_TOKEN`, same or a
 dedicated service token), then:
 
 ```bash
-cabane sync pull
+kabane sync pull
 ```
 
 Expected: every replicated row from the log applied. A fresh device replays the full log;
@@ -409,75 +413,74 @@ nothing to seed.
 
 ### 3.1 Scheduled pull
 
-Push is opportunistic (the hub pushes after every write, a device after `cabane sync
+Push is opportunistic (the hub pushes after every write, a device after `kabane sync
 push`), but pull writes rows and may relabel ids, so it is never automatic inside another
 command. Schedule it.
 
-macOS (launchd), template in [`schedule/com.cabane.sync-pull.plist`](schedule/com.cabane.sync-pull.plist):
+macOS (launchd), template in [`schedule/com.kabane.sync-pull.plist`](schedule/com.kabane.sync-pull.plist):
 
 ```bash
-sed "s|__HOME__|$HOME|g" ~/Projects/cabane/docs/schedule/com.cabane.sync-pull.plist \
-  > ~/Library/LaunchAgents/com.cabane.sync-pull.plist
-plutil -lint ~/Library/LaunchAgents/com.cabane.sync-pull.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cabane.sync-pull.plist
-launchctl print gui/$(id -u)/com.cabane.sync-pull | grep -E "state|interval"
+sed "s|__HOME__|$HOME|g" <your clone>/docs/schedule/com.kabane.sync-pull.plist \
+  > ~/Library/LaunchAgents/com.kabane.sync-pull.plist
+plutil -lint ~/Library/LaunchAgents/com.kabane.sync-pull.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kabane.sync-pull.plist
+launchctl print gui/$(id -u)/com.kabane.sync-pull | grep -E "state|interval"
 ```
 
 Expected: `OK` from `plutil`, then `state = waiting` and `interval = 300`. Output lands in
-`~/.cabane/sync-pull.log`. Remove with `launchctl bootout gui/$(id -u)/com.cabane.sync-pull`.
+`~/.kabane/sync-pull.log`. Remove with `launchctl bootout gui/$(id -u)/com.kabane.sync-pull`.
 
-Linux (cron), line in [`schedule/cabane-sync-pull.cron`](schedule/cabane-sync-pull.cron):
+Linux (cron), line in [`schedule/kabane-sync-pull.cron`](schedule/kabane-sync-pull.cron):
 
 ```bash
-crontab -l 2>/dev/null | cat - ~/Projects/cabane/docs/schedule/cabane-sync-pull.cron | crontab -
-crontab -l | grep cabane
+crontab -l 2>/dev/null | cat - <your clone>/docs/schedule/kabane-sync-pull.cron | crontab -
+crontab -l | grep kabane
 ```
 
-Both assume the `bun link` install (`~/.bun/bin/cabane`) and the default `CABANE_HOME`.
+Both assume the `bun link` install (`~/.bun/bin/kabane`) and the default `KABANE_HOME`.
 Five minutes matches the hub's `SYNC_INTERVAL_MINUTES`; a task filed at the hub reaches a
 device within two intervals.
 
 ### 3.2 A runtime that polls for work
 
-Hermes, Codex, and Claude Code pick up issues assigned to them with `cabane list
---assignee <runtime> --state next` after a pull, then `cabane context <id>` for the brief.
-The pollers themselves live outside this repo (JCAB-12 Hermes, JCAB-13 Codex, both
-parked); `jake loop` is the Claude one.
+Hermes, Codex, and Claude Code pick up issues assigned to them with `kabane list
+--assignee <runtime> --state next` after a pull, then `kabane context <id>` for the brief.
+The pollers themselves live outside this repo.
 
 ---
 
 ## 4. Clients
 
 Two ways in: a device's own CLI over stdio (full local tracker, no network), or the hub
-over HTTP (the replicated surface, fifteen `cabane_*` tools, `scopeUri` required on
+over HTTP (the replicated surface, fifteen `kabane_*` tools, `scopeUri` required on
 writes). Header-capable clients use a service token; browser connectors use Managed OAuth.
 
 ### 4.1 Claude Code
 
-Hub, with the `cabane-claude-code` token:
+Hub, with the `kabane-claude-code` token:
 
 ```bash
-claude mcp add --transport http -s user cabane https://cabane.3pew.ca/mcp \
+claude mcp add --transport http -s user kabane https://<your-domain>/mcp \
   --header "CF-Access-Client-Id: <client id>.access" \
   --header "CF-Access-Client-Secret: <client secret>"
 claude mcp list
 ```
 
-Expected: `cabane: https://cabane.3pew.ca/mcp (HTTP) - ✔ Connected`. Writes from this
+Expected: `kabane: https://<your-domain>/mcp (HTTP) - ✔ Connected`. Writes from this
 connection are stamped `cabane://actor/agent/claude`.
 
 Local device instead (no network, sessions included):
 
 ```bash
-cabane mcp install --harness claude
-claude mcp list | grep cabane
+kabane mcp install --harness claude
+claude mcp list | grep kabane
 ```
 
-Expected: `✓ claude installed  as cabane://actor/agent/claude`, then `cabane: <bun>
+Expected: `✓ claude installed  as cabane://actor/agent/claude`, then `kabane: <bun>
 <clone>/packages/cli/index.ts mcp --as cabane://actor/agent/claude - ✔ Connected`. It
-runs `claude mcp add -s user`; an existing `cabane` entry, local or hub, is left alone and
+runs `claude mcp add -s user`; an existing `kabane` entry, local or hub, is left alone and
 reported as already installed, and `--force` replaces it. Without `--harness` the same
-command covers Codex and Gemini CLI too. `cabane mcp install --print` shows the config
+command covers Codex and Gemini CLI too. `kabane mcp install --print` shows the config
 it would register, for pasting into a client with no registration CLI.
 
 ### 4.2 Hermes
@@ -487,16 +490,16 @@ it would register, for pasting into a client with no registration CLI.
 
 ```yaml
 mcp_servers:
-  cabane:
-    url: https://cabane.3pew.ca/mcp
+  kabane:
+    url: https://<your-domain>/mcp
     headers:
       CF-Access-Client-Id: "<hermes client id>.access"
       CF-Access-Client-Secret: "<hermes client secret>"
     timeout: 30
 ```
 
-Expected: Hermes registers tools named `mcp_cabane_cabane_add` and so on. Alternatively,
-install the CLI on the Hermes machine (part 2) and let Hermes drive `cabane` through its
+Expected: Hermes registers tools named `mcp_kabane_kabane_add` and so on. Alternatively,
+install the CLI on the Hermes machine (part 2) and let Hermes drive `kabane` through its
 terminal toolset; that gives it sessions and the board, not just the replicated surface.
 
 ### 4.3 Codex
@@ -504,10 +507,10 @@ terminal toolset; that gives it sessions and the board, not just the replicated 
 `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.cabane]
-url = "https://cabane.3pew.ca/mcp"
+[mcp_servers.kabane]
+url = "https://<your-domain>/mcp"
 
-[mcp_servers.cabane.http_headers]
+[mcp_servers.kabane.http_headers]
 CF-Access-Client-Id = "<codex client id>.access"
 CF-Access-Client-Secret = "<codex client secret>"
 ```
@@ -518,8 +521,8 @@ environment variable names, in the same table position.
 Local device instead:
 
 ```bash
-cabane mcp install --harness codex
-codex mcp get cabane
+kabane mcp install --harness codex
+codex mcp get kabane
 ```
 
 Expected: `args: <clone>/packages/cli/index.ts mcp --as cabane://actor/agent/codex`.
@@ -530,28 +533,28 @@ Gemini CLI has no hub section here; the local device is one line, registered at 
 scope in `~/.gemini/settings.json`:
 
 ```bash
-cabane mcp install --harness gemini
+kabane mcp install --harness gemini
 gemini mcp list
 ```
 
-Expected: `✓ cabane: ... mcp --as cabane://actor/agent/gemini (stdio) - Connected`.
+Expected: `✓ kabane: ... mcp --as cabane://actor/agent/gemini (stdio) - Connected`.
 
 ### 4.4 MCP inspector, the first browser-style test — MANUAL
 
 Before touching a connector UI, prove Managed OAuth end to end with a client you can read:
 
 ```bash
-npx -y @modelcontextprotocol/inspector https://cabane.3pew.ca/mcp
+npx -y @modelcontextprotocol/inspector https://<your-domain>/mcp
 ```
 
 In the UI, transport Streamable HTTP, no headers, Connect. Expected: a browser tab opens on
 the Access login, you authenticate as `HUMAN_EMAIL`, the inspector lists fifteen tools, and
-`cabane_scopeList` returns your scopes. Writes are stamped `cabane://actor/human/<local
+`kabane_scopeList` returns your scopes. Writes are stamped `cabane://actor/human/<local
 part>`.
 
 ### 4.5 Claude.ai — MANUAL
 
-Settings → Connectors → Add custom connector → URL `https://cabane.3pew.ca/mcp`, no
+Settings → Connectors → Add custom connector → URL `https://<your-domain>/mcp`, no
 client id. Expected: an Access login, then the connector shows as connected.
 
 Known risk (`auth.md`): Claude.ai failed against Managed OAuth in June 2026 while Claude
@@ -564,7 +567,7 @@ ADR because it introduces an Access bypass.
 ### 4.6 ChatGPT — MANUAL
 
 Settings → Connectors → Advanced → Developer mode, then Create → URL
-`https://cabane.3pew.ca/mcp`, Authentication OAuth, no client id. Expected: an Access
+`https://<your-domain>/mcp`, Authentication OAuth, no client id. Expected: an Access
 login, then the connector lists the tools. There is no public report of ChatGPT against
 Managed OAuth either way; this is the last test in the order.
 
@@ -573,11 +576,11 @@ Test order, and stop at the first failure: inspector (4.4), Claude Code (4.1), C
 
 ---
 
-### 4.7 Board copilot — the harness `cabane board` talks to
+### 4.7 Board copilot — the harness `kabane board` talks to
 
 The other direction: `A` in the board starts an agent session on this machine and hands it
 what is on screen. Nothing here touches Cloudflare or the hub — the harness runs locally as
-you, and its writes go through `cabane mcp` into this device's database, stamped
+you, and its writes go through `kabane mcp` into this device's database, stamped
 `cabane://actor/agent/<harness>`.
 
 | `copilot.harness` | Needs | What the board launches |
@@ -587,7 +590,7 @@ you, and its writes go through `cabane mcp` into this device's database, stamped
 | `gemini` | `gemini` on PATH, logged in (`gemini` once) | `gemini --acp` |
 
 Adapter versions are pinned so every device behaves the same. The block in
-`~/.cabane/config.json` is optional; with no block at all the board opens with a Claude
+`~/.kabane/config.json` is optional; with no block at all the board opens with a Claude
 copilot:
 
 ```json
@@ -596,27 +599,26 @@ copilot:
 }
 ```
 
-`cabane board --copilot gemini` overrides it for one run. `copilot.command` (with optional
+`kabane board --copilot gemini` overrides it for one run. `copilot.command` (with optional
 `copilot.args`) replaces the launch line entirely, for a local build or a wrapper script;
 the pinned adapter's own arguments are not kept.
 
-What the harness brings and what cabane adds:
+What the harness brings and what kabane adds:
 
 - **Inherited from your own harness config**: the model, the permission mode, hooks, skills,
   and the `CLAUDE.md` / `AGENTS.md` of the project — the session's cwd is the scope's
   project root, or the directory the board was opened from when `--scope` named a scope
-  that has no checkout here. Cabane configures none of it and sandboxes nothing. A harness in an
+  that has no checkout here. Kabane configures none of it and sandboxes nothing. A harness in an
   ask-first permission mode is the one case to watch: the board cannot answer a permission
-  request yet, so it declines it and says so in the transcript (JCAB-53).
-- **Added by cabane**: `CABANE_SESSION=1` in the harness environment, so your own hooks can
+  request yet, so it declines it and says so in the transcript.
+- **Added by kabane**: `KABANE_SESSION=1` in the harness environment, so your own hooks can
   tell a board session from an interactive one; one instruction block naming the job; and
-  one MCP server, `cabane mcp --scope <uri> --as cabane://actor/agent/<harness>`.
+  one MCP server, `kabane mcp --scope <uri> --as cabane://actor/agent/<harness>`.
 
 The first turn cold-starts `npx`, which takes a few seconds; the footer indicator appears
 immediately. If it fails with an npm resolution error, check for a release-age guard:
 `min-release-age` in `~/.npmrc` hides packages published in the last few days, pinned
-versions included. `NPM_CONFIG_USERCONFIG=/dev/null cabane board` bypasses it for one run
-(JCAB-52 is the proper fix).
+versions included. `NPM_CONFIG_USERCONFIG=/dev/null kabane board` bypasses it for one run.
 
 ## 5. Operations
 
@@ -627,11 +629,11 @@ openssl rand -base64 32
 bunx wrangler secret put SYNC_TOKEN
 ```
 
-Then update `sync.token` on every device (`~/.cabane/config.json`, and
-`modules.planner.sync.token` in `~/.jake/config.json` for the Jake device). Until a device
-is updated its pushes fail with `401`, which propagates as an error and leaves the
-watermark in place; nothing is quarantined on a `401`. Run `cabane sync push` on each
-device to confirm.
+Then update `sync.token` on every device (`~/.kabane/config.json`, or wherever a host app
+keeps its sync settings). With CI (1.0), update the `SYNC_TOKEN` secret too, or the next
+workflow run uploads the old value again. Until a device is updated its pushes fail with
+`401`, which propagates as an error and leaves the watermark in place; nothing is
+quarantined on a `401`. Run `kabane sync push` on each device to confirm.
 
 ### 5.2 Rotate or revoke a service token — MANUAL
 
@@ -643,10 +645,10 @@ devices: `sync.headers`). A revoked token gets `401` from Access before the Work
 ### 5.3 Add a runtime — MANUAL
 
 Create a service token (1.4), add it to the `runtimes` Service Auth policy (1.3), add its
-client id to `SERVICE_ACTORS` with the actor URI you want stamped (1.5), `bunx wrangler
-deploy`. A token that is in the policy but not in `SERVICE_ACTORS` is admitted by Access
-and refused by the Worker with `401 unknown service identity`; the Worker is closed by
-default.
+client id to `SERVICE_ACTORS` with the actor URI you want stamped, and redeploy with the
+new map (1.5). A token that is in the policy but not in `SERVICE_ACTORS` is admitted by
+Access and refused by the Worker with `401 unknown service identity`; the Worker is closed
+by default.
 
 ### 5.4 Watch it run — MANUAL
 
@@ -661,7 +663,7 @@ takes effect at the next alarm.
 
 ### 5.5 What `quarantined` means
 
-`cabane sync status` shows `quarantined: N` and the last ten op ids. A quarantined op is
+`kabane sync status` shows `quarantined: N` and the last ten op ids. A quarantined op is
 one the server refused on content (a `400`, `413`, or `500`, typically a row over the 2 MB
 Durable Object value cap: descriptions are PRDs). The transport bisected the failing batch
 until the offender was alone, recorded it, and moved the watermark past it so everything
@@ -671,35 +673,35 @@ network never quarantines.
 
 ### 5.6 The log was wiped or restored
 
-There is no restore command in Cabane, and none is needed for the data: every device is
+There is no restore command in Kabane, and none is needed for the data: every device is
 authoritative. If the Durable Object is deleted or rolled back (Cloudflare keeps 30 days of
 point-in-time bookmarks for SQLite-backed objects, restorable from the dashboard), the next
 push from any device sees `head < last_applied_seq`, logs `sync log reset detected`, rewinds
-its applied watermark to 0, and re-reads. To repopulate an empty log, run `cabane sync
-backfill` on one device that has everything (or `jake plan sync backfill` on the Jake
-machine); the others pull. Short ids may be relabelled during that convergence.
+its applied watermark to 0, and re-reads. To repopulate an empty log, run `kabane sync
+backfill` on one device that has everything; the others pull. Short ids may be relabelled
+during that convergence.
 
-### 5.7 Redeploy after a code change — MANUAL, or a push to `main` when 1.0 is set up
+### 5.7 Redeploy after a code change — MANUAL, or a workflow run when 1.0 is set up
 
 ```bash
-cd ~/Projects/cabane && bun run check && bun run typecheck && bun run test
-cd packages/worker && bunx wrangler deploy
+cd <your clone> && bun run check && bun run typecheck && bun run test
+cd packages/worker && bunx wrangler deploy --domain <your-domain> --var …   # the full set from 1.5
 ```
 
 `wrangler.jsonc` `migrations` only ever gain tags; never rename or remove a class.
 
-### 5.8 Upgrade cabane across devices: the hub first, then each device
+### 5.8 Upgrade kabane across devices: the hub first, then each device
 
-Every database carries a numbered schema version (`schema_migrations`; `planner_…` on
-Jake's shared `jake.db`). On boot, cabane applies the migrations the database has not had
-yet, each once and each in its own transaction: a migration that fails is reported by
+Every database carries a numbered schema version (`schema_migrations`, behind the table
+prefix when a host app shares its database). On boot, kabane applies the migrations the
+database has not had yet, each once and each in its own transaction: a migration that fails is reported by
 number and leaves the database at the version before it. A database already at a newer
-version than the build opening it is refused with "update cabane before opening it",
+version than the build opening it is refused with "update kabane before opening it",
 rather than written by code that does not know its schema.
 
 The version also rides on every op a device pushes. A device that pulls an op from a newer
 schema than its own applies everything before that op, stops its watermark just short of
-it, and fails the pull with "Update cabane on this device and sync again". Nothing is
+it, and fails the pull with "Update kabane on this device and sync again". Nothing is
 skipped: after the update, the next pull starts at that op. Pushing keeps working
 meanwhile, since a newer device reads an older one's ops.
 
@@ -708,17 +710,17 @@ So a release that adds a migration goes out in this order:
 1. The hub: redeploy the Worker (§5.7). The cloud device migrates on its next boot, and
    browser clients (Claude.ai, ChatGPT) stay current throughout.
 2. Each device: pull the clone and `bun install` in it (`bun link` follows the clone), then
-   run any `cabane` command once. Until a device updates, its scheduled pull logs the
-   "update cabane" error and holds its place.
-3. The Jake machine, if it shares `jake.db`: update Jake's `@cabane/core` link at the same
-   time as the CLI on that machine.
+   run any `kabane` command once. Until a device updates, its scheduled pull logs the
+   "update kabane" error and holds its place.
+3. A host app that shares a database file with a device (2.5): update its `@cabane/core`
+   at the same time as the CLI on that machine.
 
 A device that updates before the hub is safe too: the hub's cloud device and every older
 device stop at that device's first op until they update.
 
 Migration 5 (calendar-date deadlines) rewrites every deadline stored as the end of a UTC day
 (`…T23:59:59.999Z`, `…T23:59:00Z` and the like) as the date it meant, on each database as it
-boots; deadlines with a real time are left alone. Set `CABANE_TIMEZONE` on the hub (1.5) in
+boots; deadlines with a real time are left alone. Set `KABANE_TIMEZONE` on the hub (1.5) in
 the same redeploy, or the hub keeps reading those dates in UTC.
 
 ---
@@ -733,16 +735,16 @@ localhost.
 
 | Step | Result |
 |---|---|
-| 1.1 reject test | `GET /health` bare → `401`; with a human assertion → `{"ok":true,…,"actor":"cabane://actor/human/david"}`; with a service assertion → the mapped agent actor; `GET /mcp` → `405`; `POST /push` without the bearer → `401` |
-| 2.1 `bun link` | `cabane` on PATH at `~/.bun/bin/cabane`, `--help` lists the commands |
+| 1.1 reject test | `GET /health` bare → `401`; with a human assertion → `{"ok":true,…,"actor":"cabane://actor/human/<local part>"}`; with a service assertion → the mapped agent actor; `GET /mcp` → `405`; `POST /push` without the bearer → `401` |
+| 2.1 `bun link` | `kabane` on PATH at `~/.bun/bin/kabane`, `--help` lists the commands |
 | 2.2 to 2.4 device A | `init` → `sync status` "not armed" → a task added before arming → `sync backfill` seeded and pushed it (1 op) → a task added after arming was captured and pushed live |
 | 3 device B | `init`, `sync pull` → 2 ops applied, both tasks listed |
-| hub as device | after the alarm the hub's `cabane_list` returned both device tasks with the right `updatedBy`; `cabane_add` at the hub as the Hermes service identity was stamped `cabane://actor/agent/hermes` |
+| hub as device | after the alarm the hub's `kabane_list` returned both device tasks with the right `updatedBy`; `kabane_add` at the hub as the Hermes service identity was stamped `cabane://actor/agent/hermes` |
 | collision repair | hub and device A had both minted `JCAB-1`; device B's next pull applied the hub's task, `renamed 1`, and all three sides agree on `JCAB-3` for it |
 | 3.1 templates | `plutil -lint` OK on the plist, before and after the `__HOME__` substitution |
 | 4.1 Claude Code | `claude mcp add --transport http … --header "Cf-Access-Jwt-Assertion: …"` against localhost → `claude mcp list` shows `✔ Connected`; removed afterwards |
-| 4.1 to 4.3 local | `cabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `cabane_add` through the registered argv, spawned with a bare PATH, was stamped `cabane://actor/agent/claude`; all three configs restored afterwards |
-| 4.4 inspector | `npx @modelcontextprotocol/inspector --cli … --method tools/list` → 15 tools; `tools/call cabane_add` created a task |
+| 4.1 to 4.3 local | `kabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `kabane_add` through the registered argv, spawned with a bare PATH, was stamped `cabane://actor/agent/claude`; all three configs restored afterwards |
+| 4.4 inspector | `npx @modelcontextprotocol/inspector --cli … --method tools/list` → 15 tools; `tools/call kabane_add` created a task |
 
 Not verifiable without the real account, therefore **MANUAL** above: `wrangler login` and
 `deploy`, the custom domain, the Access application and policies, service tokens, Managed
