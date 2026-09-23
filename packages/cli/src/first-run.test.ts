@@ -1,12 +1,31 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Planner } from "@cabane/core";
+import { parseArgs } from "./args";
 import { configPath, loadConfig } from "./config";
-import { type Installer, outcomeOf, setupDeps, tildePath } from "./first-run";
+import { openContext } from "./context";
+import {
+	firstIssueBrief,
+	type Installer,
+	outcomeOf,
+	setupDeps,
+	tildePath,
+} from "./first-run";
 
 const ROOT = join(tmpdir(), `cabane-first-run-${crypto.randomUUID()}`);
 afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
+
+// Not a project: nothing above the system temp directory is a git repo or carries a `.cabane` pin.
+const NOWHERE = ROOT;
+
+const gitRepo = (name: string): string => {
+	const dir = join(ROOT, name);
+	mkdirSync(dir, { recursive: true });
+	Bun.spawnSync(["git", "init", "-q"], { cwd: dir });
+	return dir;
+};
 
 const installer: Installer = {
 	detect: async () => [{ id: "claude", label: "Claude Code" }],
@@ -16,7 +35,11 @@ const installer: Installer = {
 
 describe("setupDeps", () => {
 	test("prefills the device and the detected harnesses", async () => {
-		const deps = await setupDeps(join(ROOT, "home-defaults"), installer);
+		const deps = await setupDeps(
+			join(ROOT, "home-defaults"),
+			NOWHERE,
+			installer,
+		);
 		expect(deps.defaults.harnesses).toEqual([
 			{ id: "claude", label: "Claude Code" },
 		]);
@@ -28,14 +51,14 @@ describe("setupDeps", () => {
 
 	test("tells install turned off apart from no harness installed", async () => {
 		const none = { ...installer, detect: async () => [] };
-		const off = await setupDeps(join(ROOT, "home-off"), {
+		const off = await setupDeps(join(ROOT, "home-off"), NOWHERE, {
 			...none,
 			narrowed: () => true,
 		});
 		expect(off.defaults.installOff).toBe(true);
-		const absent = await setupDeps(join(ROOT, "home-absent"), none);
+		const absent = await setupDeps(join(ROOT, "home-absent"), NOWHERE, none);
 		expect(absent.defaults.installOff).toBe(false);
-		const found = await setupDeps(join(ROOT, "home-found"), {
+		const found = await setupDeps(join(ROOT, "home-found"), NOWHERE, {
 			...installer,
 			narrowed: () => true,
 		});
@@ -44,7 +67,7 @@ describe("setupDeps", () => {
 
 	test("save writes a local-only config, then refuses to overwrite it", async () => {
 		const home = join(ROOT, "home-save");
-		const deps = await setupDeps(home, installer);
+		const deps = await setupDeps(home, NOWHERE, installer);
 		const plan = {
 			actor: "cabane://actor/human/ada",
 			deviceId: "mbp",
@@ -56,6 +79,68 @@ describe("setupDeps", () => {
 		expect(config.ok && config.value.actor).toBe("cabane://actor/human/ada");
 		expect(config.ok && config.value.sync.enabled).toBe(false);
 		expect((await deps.save(plan)).ok).toBe(false);
+	});
+
+	test("the project is the one the working directory is in, and absent outside one", async () => {
+		const repo = gitRepo("widget");
+		const inside = await setupDeps(join(ROOT, "home-project"), repo, installer);
+		expect(inside.defaults.project).toBe("widget");
+		const outside = await setupDeps(
+			join(ROOT, "home-project"),
+			NOWHERE,
+			installer,
+		);
+		expect(outside.defaults.project).toBeUndefined();
+	});
+
+	test("fileFirstIssue files a next issue for the agent, in the project, naming its instruction file", async () => {
+		const home = join(ROOT, "home-first-issue");
+		const repo = gitRepo("gadget");
+		const deps = await setupDeps(home, repo, installer);
+		await deps.save({
+			actor: "cabane://actor/human/ada",
+			deviceId: "mbp",
+			install: ["claude"],
+		});
+		const filed = await deps.fileFirstIssue("codex");
+		expect(filed.ok && filed.value.title).toBe("Add cabane to AGENTS.md");
+		const ctx = await openContext(home, repo, parseArgs([]));
+		if (!ctx.ok || !filed.ok) throw new Error("setup did not land");
+		const task = await Planner.getTask(ctx.value.store, filed.value.shortId);
+		expect(task.ok && task.value).toMatchObject({
+			kind: "issue",
+			state: "next",
+			assignee: "codex",
+			description: firstIssueBrief("AGENTS.md"),
+		});
+	});
+
+	test("fileFirstIssue outside a project files nothing and says why", async () => {
+		const home = join(ROOT, "home-no-project");
+		const deps = await setupDeps(home, NOWHERE, installer);
+		await deps.save({
+			actor: "cabane://actor/human/ada",
+			deviceId: "mbp",
+			install: ["claude"],
+		});
+		const filed = await deps.fileFirstIssue("claude");
+		expect(filed.ok).toBe(false);
+	});
+});
+
+describe("firstIssueBrief", () => {
+	// The guide gives a human the same block to paste by hand; the two must not drift apart.
+	test("carries the tracker block getting-started.md gives, word for word", () => {
+		const guide = readFileSync(
+			join(import.meta.dir, "../../../docs/getting-started.md"),
+			"utf8",
+		);
+		const block = /```markdown\n(## Tracker[\s\S]*?)```/.exec(guide)?.[1];
+		expect(block).toBeDefined();
+		expect(firstIssueBrief("CLAUDE.md")).toContain(block ?? "");
+		expect(firstIssueBrief("CLAUDE.md")).toContain(
+			"`CLAUDE.md` at the project root",
+		);
 	});
 });
 

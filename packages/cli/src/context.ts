@@ -9,7 +9,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ok, Planner, type Result, Runtime } from "@cabane/core";
-import { detectScope } from "@cabane/core/scope";
+import { detectScope, type ProjectScope } from "@cabane/core/scope";
 import { SqliteDb } from "@cabane/sqlite";
 import type { ParsedArgs } from "./args";
 import { flagString } from "./args";
@@ -111,6 +111,16 @@ const jakeProjectPin = async (root: string): Promise<string | null> => {
 };
 
 /**
+ * The project `cwd` sits in, the way every command resolves it, or null outside
+ * one. Needs no config, so setup can ask it before the device has one.
+ */
+export const detectProject = (
+	cwd: string,
+	home: string,
+): Promise<ProjectScope | null> =>
+	detectScope(cwd, { home, legacyPin: jakeProjectPin });
+
+/**
  * `--scope` wins; otherwise the working directory decides, so a command run
  * anywhere inside a project — its root, a nested package, or a worktree —
  * lands on the same scope without any per-repo setup.
@@ -122,10 +132,7 @@ export const resolveScope = async (
 	const explicit = flagString(args, "scope");
 	if (explicit) return { scopeUri: explicit, label: explicit };
 
-	const detected = await detectScope(ctx.cwd, {
-		home: ctx.home,
-		legacyPin: jakeProjectPin,
-	});
+	const detected = await detectProject(ctx.cwd, ctx.home);
 	return detected
 		? { scopeUri: detected.scopeUri, label: detected.name, root: detected.root }
 		: undefined;

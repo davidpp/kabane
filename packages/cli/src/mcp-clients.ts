@@ -1,9 +1,9 @@
 /**
  * What each coding harness needs to register this device's MCP server: the
  * binary to look for, the argv that adds, finds and removes the `cabane`
- * entry, and the config snippet a human pastes instead. One table, so the
- * install and the printed snippets cannot drift apart. Pure: nothing here
- * spawns.
+ * entry, the config snippet a human pastes instead, and the project file it
+ * reads its instructions from. One table, so the install and the printed
+ * snippets cannot drift apart. Pure: nothing here spawns.
  */
 export namespace McpClients {
 	/**
@@ -30,6 +30,8 @@ export namespace McpClients {
 		isPresent: (probe: Probe) => boolean;
 		remove: string[];
 		snippet: (launch: Launch) => Snippet;
+		/** The file at a project root this harness reads as its instructions. */
+		instructionFile: string;
 	};
 
 	export type Snippet = { title: string; text: string };
@@ -80,6 +82,7 @@ export namespace McpClients {
 				title: "Claude Code: .mcp.json at a project root",
 				text: mcpServersJson(launch),
 			}),
+			instructionFile: "CLAUDE.md",
 		},
 		codex: {
 			binary: "codex",
@@ -99,6 +102,7 @@ export namespace McpClients {
 				title: "Codex: ~/.codex/config.toml",
 				text: toml(launch),
 			}),
+			instructionFile: "AGENTS.md",
 		},
 		gemini: {
 			binary: "gemini",
@@ -119,6 +123,7 @@ export namespace McpClients {
 				title: "Gemini CLI: ~/.gemini/settings.json",
 				text: mcpServersJson(launch),
 			}),
+			instructionFile: "GEMINI.md",
 		},
 	};
 
