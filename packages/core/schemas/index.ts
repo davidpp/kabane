@@ -103,11 +103,6 @@ export {
 	type SessionState,
 	SessionStateSchema,
 } from "./session";
-// Session defaults schemas
-export {
-	type SessionDefaults,
-	SessionDefaultsSchema,
-} from "./session-defaults";
 // Sync schemas
 export {
 	type QuarantinedOp,

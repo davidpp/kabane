@@ -38,9 +38,10 @@ export type Tracer = <TArgs extends unknown[], TReturn>(
 export type Notifier = (type: string, payload: unknown) => Promise<void>;
 
 /**
- * Resolves a working directory to a stable project identity for the
- * session-defaults fallback key. Returns null when the host has no notion of
- * project identity, which is the default.
+ * Resolves a working directory to a stable project identity, for a host that
+ * keys its own state by project (Jake's session defaults). Nothing in the core
+ * calls it. Returns null when the host has no notion of project identity, which
+ * is the default.
  */
 export type ScopeResolver = (cwd: string) => Promise<string | null>;
 

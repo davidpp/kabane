@@ -144,9 +144,8 @@ imports `bun:test`, and 18 open scratch databases through `bun:sqlite` and
 - **`bun` is in the worker's `types`** only because `@cabane/core`'s commit-linker,
   lint collectors and file-ref deref reference Bun globals and `tsc` walks the
   imported sources. The hub never calls those paths.
-- **`nodejs_compat` is on.** Two core files reach for `node:fs/promises`,
-  `node:path` and `node:os` (session defaults, device name), and the hub uses
-  `node:async_hooks` for the per-request actor.
+- **`nodejs_compat` is on.** One core file reaches for `node:os` (the device
+  name), and the hub uses `node:async_hooks` for the per-request actor.
 - **The MCP SDK bundles fine.** `@modelcontextprotocol/sdk`'s low-level `Server`
   plus `WebStandardStreamableHTTPServerTransport` run under workerd; the
   high-level `McpServer` was avoided in core for a tsc reason (see

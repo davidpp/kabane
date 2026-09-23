@@ -371,7 +371,7 @@ Expected: a per-table count under `Planner Sync — Backfill`, then a push. Back
 idempotent (op ids derive from table, row id and version), so a re-run is a no-op. What
 carries over: tasks, links, comments, work logs, projects, context refs. What
 does **not**: agent sessions and activities, upstream links
-(private by schema), session defaults, and anything marked `visibility: private`. Jake's
+(private by schema), and anything marked `visibility: private`. Jake's
 `jake plan sync backfill` exists on the JCAB-4 branch and lands with it.
 
 Then, on the Cabane device: `cabane sync pull`. Expected: `⬇️  Pulled N ops, applied N,

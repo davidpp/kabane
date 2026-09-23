@@ -8,9 +8,9 @@
 	"main": "src/index.ts",
 	// >= 2024-04-03 is what makes RPC methods available on the DO stub.
 	"compatibility_date": "2026-07-01",
-	// The core reaches for node:fs/promises, node:path and node:os in two files
-	// (session defaults, device name), and the hub uses node:async_hooks for the
-	// per-request actor; nodejs_compat provides them.
+	// The core reaches for node:os in one file (the device name), and the hub
+	// uses node:async_hooks for the per-request actor; nodejs_compat provides
+	// them.
 	"compatibility_flags": ["nodejs_compat"],
 	// Access is the only front door: no workers.dev, no preview URLs.
 	"workers_dev": false,

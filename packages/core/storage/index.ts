@@ -15,7 +15,6 @@ import { Planner as ContextRefs } from "./context-refs";
 import { Planner as Init } from "./init";
 import { Planner as Projects } from "./projects";
 import { Planner as SelectDurable } from "./select-durable";
-import { Planner as SessionDefaults } from "./session-defaults";
 import { Planner as SessionLinks } from "./session-links";
 import { Planner as Sessions } from "./sessions";
 import { Planner as Stale } from "./stale";
@@ -77,16 +76,6 @@ export const Planner = {
 	getUpstreamSummariesForTasks: UpstreamLinks.getUpstreamSummariesForTasks,
 	getUpstreamLinksByExternalRef: UpstreamLinks.getUpstreamLinksByExternalRef,
 	deleteUpstreamLink: UpstreamLinks.deleteUpstreamLink,
-	// Session Defaults
-	resolveDefaultsKey: SessionDefaults.resolveDefaultsKey,
-	getDefaults: SessionDefaults.getDefaults,
-	setDefaults: SessionDefaults.setDefaults,
-	clearDefaults: SessionDefaults.clearDefaults,
-	applySessionDefaults: SessionDefaults.applySessionDefaults,
-	setMcpDefaultsKey: SessionDefaults.setMcpDefaultsKey,
-	getMcpDefaultsKey: SessionDefaults.getMcpDefaultsKey,
-	clearMcpDefaultsKey: SessionDefaults.clearMcpDefaultsKey,
-	MCP_DEFAULTS_KEY: SessionDefaults.MCP_DEFAULTS_KEY,
 	// Session Links
 	linkIssueToSession: SessionLinks.linkIssueToSession,
 	unlinkIssueFromSession: SessionLinks.unlinkIssueFromSession,
