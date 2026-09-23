@@ -24,6 +24,7 @@ import { sync } from "./commands/sync";
 import { upstream } from "./commands/upstream";
 import { resolveHome } from "./config";
 import { type Command, type Ctx, openContext } from "./context";
+import { openTui } from "./first-run";
 import { failure, type Outcome, print, usage } from "./output";
 
 export const COMMANDS: Command[] = [
@@ -77,6 +78,10 @@ export const run = async (
 	cwd: string = process.cwd(),
 ): Promise<Outcome> => {
 	const [name, ...rest] = argv;
+	// A human at a terminal gets the board (setup first on a new device); a
+	// pipe or an agent still gets help, as it always has.
+	if (!name && process.stdin.isTTY && process.stdout.isTTY)
+		return openTui(resolveHome(env), cwd);
 	if (!name || name === "help" || name === "--help" || name === "-h") {
 		return {
 			exitCode: name ? 0 : 2,
