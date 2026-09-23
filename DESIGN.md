@@ -124,9 +124,10 @@ requests and three status hues for states.
 - **Failed** (`{colors.failed}`): `✗` and every error line.
 
 ### Neutral
-- **Default Foreground** (unset): the terminal's own foreground, for every piece of text that
-  carries no meaning of its own on the unpainted background: titles, brief text, labels. Never a
-  fixed hex.
+- **Default Foreground** (`Theme.defaultFg`, written as SGR 39): the terminal's own foreground,
+  for every piece of text that carries no meaning of its own on the unpainted background:
+  titles, brief text, labels. Never a fixed hex, and never an unset `fg` either: OpenTUI 0.5.10
+  draws an unset foreground as explicit white, which vanishes on a light terminal.
 - **Text** (`{colors.text}`): the same foreground made explicit, for a cell on a painted surface.
   The Selection Rule needs it; it is the terminal's reported foreground when there is one.
 - **Secondary** (`{colors.text-secondary}`): one step down from the foreground. A normal-priority
