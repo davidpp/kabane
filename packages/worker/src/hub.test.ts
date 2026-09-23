@@ -11,10 +11,10 @@
  */
 
 import { env, runInDurableObject } from "cloudflare:test";
-import { conformanceCases, Planner } from "@cabane/core";
+import { conformanceCases, Deadline, Planner } from "@cabane/core";
 import { describe, expect, it } from "vitest";
 import { DoDb } from "./db-do";
-import { type CabaneHub, HUB_BASE } from "./hub";
+import { type CabaneHub, HUB_BASE, hubTimezone } from "./hub";
 
 const unwrap = <T>(
 	result: { ok: true; value: T } | { ok: false; error: Error },
@@ -36,6 +36,27 @@ describe("CabaneHub boot", () => {
 		expect(tables).toContain("sync_oplog");
 		expect(tables.some((t) => t.startsWith("planner_"))).toBe(false);
 		expect(await h.taskCount()).toBe(0);
+	});
+});
+
+describe("the hub's timezone", () => {
+	it("is CABANE_TIMEZONE when set, UTC when unset, and an error when unknown", () => {
+		expect(hubTimezone(undefined)).toEqual({ ok: true, value: "UTC" });
+		expect(hubTimezone(" ")).toEqual({ ok: true, value: "UTC" });
+		expect(hubTimezone("America/Montreal")).toEqual({
+			ok: true,
+			value: "America/Montreal",
+		});
+		const unknown = hubTimezone("Mars/Olympus");
+		expect(unknown.ok).toBe(false);
+		if (!unknown.ok) expect(unknown.error.message).toContain("CABANE_TIMEZONE");
+	});
+
+	it("workerd's zone data places a Montreal day and its DST jump as Bun does", () => {
+		const start = Deadline.startOfDay("2026-03-08", "America/Montreal");
+		const end = Deadline.endOfDay("2026-03-08", "America/Montreal");
+		expect(new Date(start).toISOString()).toBe("2026-03-08T05:00:00.000Z");
+		expect(new Date(end).toISOString()).toBe("2026-03-09T03:59:59.999Z");
 	});
 });
 

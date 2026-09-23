@@ -208,6 +208,24 @@ describe("hub MCP over Streamable HTTP", () => {
 		};
 		expect(Array.isArray(today.next)).toBe(true);
 
+		// A date deadline is stored as the date and counts on its own day, in
+		// the hub's zone: CABANE_TIMEZONE is unset here, so UTC.
+		const utcToday = new Date().toISOString().slice(0, 10);
+		const dated = (
+			await callTool(HUMAN, "cabane_add", {
+				title: "due today by date",
+				scopeUri: "tools",
+				dueDate: utcToday,
+			})
+		).value as TaskLike & { deadline: string };
+		expect(dated.deadline).toBe(utcToday);
+		const withDate = (await callTool(HUMAN, "cabane_today", {})).value as {
+			dueToday: TaskLike[];
+			overdue: TaskLike[];
+		};
+		expect(withDate.dueToday.map((t) => t.id)).toContain(dated.id);
+		expect(withDate.overdue.map((t) => t.id)).not.toContain(dated.id);
+
 		const scopes = (await callTool(HUMAN, "cabane_scopeList")).value as {
 			scopeId: string;
 		}[];
