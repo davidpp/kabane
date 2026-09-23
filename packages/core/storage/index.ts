@@ -15,7 +15,6 @@ import { Planner as ContextRefs } from "./context-refs";
 import { Planner as Init } from "./init";
 import { Planner as Projects } from "./projects";
 import { Planner as SelectDurable } from "./select-durable";
-import { Planner as SessionLinks } from "./session-links";
 import { Planner as Sessions } from "./sessions";
 import { Planner as Stale } from "./stale";
 import { Planner as Stats } from "./stats";
@@ -76,10 +75,6 @@ export const Planner = {
 	getUpstreamSummariesForTasks: UpstreamLinks.getUpstreamSummariesForTasks,
 	getUpstreamLinksByExternalRef: UpstreamLinks.getUpstreamLinksByExternalRef,
 	deleteUpstreamLink: UpstreamLinks.deleteUpstreamLink,
-	// Session Links
-	linkIssueToSession: SessionLinks.linkIssueToSession,
-	unlinkIssueFromSession: SessionLinks.unlinkIssueFromSession,
-	getIssuesForSession: SessionLinks.getIssuesForSession,
 	// Timeline
 	getTimeline: Timeline.getTimeline,
 	assembleDigest: Timeline.assembleDigest,

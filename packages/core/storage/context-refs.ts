@@ -114,7 +114,7 @@ export namespace Planner {
 
 	/**
 	 * Promote a ref into the curated context AND record it in the work log —
-	 * one call, two rows. Mirrors linkIssueToSession's two-write composition.
+	 * one call, two rows.
 	 */
 	export const promoteToContext = async (
 		basePath: string,
