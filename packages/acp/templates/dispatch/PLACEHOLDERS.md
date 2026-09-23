@@ -9,6 +9,11 @@ about a value, write the fallback given here. The fallback is safer than a conve
 project does not actually have, because the skill's agents will follow whatever the skill says
 literally.
 
+When the instructions file already states a value (the gate, the commit style, the testing
+constraints), point at it instead of copying it: "the gate in CLAUDE.md". Every session loads
+that file anyway, and a copy in the skill drifts away from it the first time either one is
+edited. Copy a value only when the project leaves it unstated and the fallback below fills it.
+
 - `{{PROJECT}}`: the project's name, from its package manifest or its instructions file.
 - `{{ISSUE_PREFIX}}`: the prefix of this scope's issue ids as the board context block shows them
   (`ABC` for `ABC-12`). Take it from those ids and not from an example in the docs.
@@ -26,17 +31,18 @@ literally.
 - `{{INTEGRATION}}`: how finished work reaches main. That is either a local merge (`git merge
   --no-edit <branch>` on main) or a pull request, if the project's history or instructions show
   PRs. Otherwise use the local merge.
-- `{{COMMIT_STYLE}}`: the commit message shape that the instructions or the recent `git log` use,
-  including where an issue id goes. If the repo is public and its history carries no ids, the
-  shape states that ids stay out of the message and go into `cabane_log` instead.
-- `{{GATE}}`: the exact commands that must pass, as a list. Take them from the instructions'
-  gate section, or else from the package scripts (lint, typecheck, test). Never list a command
+- `{{GATE}}`: a pointer to the instructions' gate section when it has one. Otherwise, the
+  commands the package scripts provide (lint, typecheck, test), as a list. Never list a command
   the project does not have.
+- `{{DECISIONS}}`: where the instructions put decisions, research and ADRs, whether that is
+  `docs/adr/`, a vault path, a wiki or something else. Otherwise use `a Decisions section in
+  the description of the issue they govern, with the full record in the parent issue for a
+  wave`.
 - `{{DOCS}}`: the docs that describe behaviour here, such as the README, package READMEs,
   `docs/` and ADRs.
-- `{{TESTING_CONSTRAINTS}}`: what agents must never do while testing, taken verbatim from the
-  instructions (never deploy, never touch production, which environments are allowed).
-  Otherwise use `Ask before anything that leaves this machine: a deploy, a publish, a write to a
+- `{{TESTING_CONSTRAINTS}}`: a pointer to what the instructions say agents must never do while
+  testing (never deploy, never touch production, which environments are allowed). Otherwise
+  use `Ask before anything that leaves this machine: a deploy, a publish, a write to a
   shared service.`
 - `{{AGENTS}}`: one line per file in `.claude/agents/`, giving the agent type and the territory
   it takes, from its description. Otherwise use `None. Use a general-purpose agent with the

@@ -37,6 +37,14 @@ When the ask is really a question or a trade-off, answer it with evidence and st
 work follows from the answer, file it in `next` without dispatching it, and say which decision
 it is waiting on.
 
+A wave-sized ask sometimes still has open design decisions: a behaviour nobody has specified, or
+a trade-off with two reasonable answers. If so, offer to grill it before filing anything. Do not
+offer a grill for inline or one-issue work, because there the questions cost more than the
+answers save. A grill runs in rounds. Each round asks every question that can be answered now,
+each with your recommended answer. Look up anything the code or docs can answer rather than
+asking the user. Go ahead once the user confirms. The confirmed answers become the decisions
+record (below).
+
 ## Investigate, then write the issues
 
 Read only what you need to state what is true today: the entry files, the line that proves a
@@ -51,6 +59,14 @@ under {{PARENT}}). A wave holds one issue per concern that can be merged on its 
 seven at most, because past that the merges and seams outgrow one orchestrator's attention.
 Real ideas that are not for now become `someday` issues with two lines of description, which
 keeps them visible without widening the wave.
+
+Decisions, research and ADRs go where {{INSTRUCTIONS_FILE}} says they go: {{DECISIONS}}. Some
+of them may land in an issue's description, and there they are already part of that issue's
+brief. For everything that lands elsewhere, attach it to each issue that relies on it with
+`cabane_contextAdd` (kind `ADR`, `research`, `doc` or `spec`), so that `cabane_context` puts it
+in the implementer's brief. A `file:` reference is inlined into the brief. Any other URI shows up
+as a pointer for the agent to follow. A record that no issue links to is a record the agent
+never reads.
 
 ## Plan the wave
 

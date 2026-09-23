@@ -23,12 +23,16 @@ the package graph forbids, write the port or callback into the design.
 **Out of scope.** The neighbouring work this issue does not touch. Naming it stops an agent from
 widening the change in good faith.
 
-**Verify.** The concrete steps and what to observe, under the project's testing constraints
-({{TESTING_CONSTRAINTS}}). List the checks nothing can script (keys, GUIs, a deploy) as manual
+**Decisions.** The decisions this issue relies on, when they are recorded in the description.
+If they are recorded elsewhere, attach them with `cabane_contextAdd` instead of copying them
+here.
+
+**Verify.** The concrete steps and what to observe, under the testing constraints in
+{{INSTRUCTIONS_FILE}}. List the checks nothing can script (keys, GUIs, a deploy) as manual
 here, so the agent does not try.
 
-**Conventions.** Commit style ({{COMMIT_STYLE}}), one concern per commit, the gate, docs updated
-in the same issue, the working copy it runs in.
+**Conventions.** Only what {{INSTRUCTIONS_FILE}} leaves out for this issue: the working copy
+it runs in, and any exception to the project's usual commit or gate rules.
 
 When filing, set `priority` too: `high` for the wave's spine, `normal` otherwise, `low` for
 parked or out-of-scope findings. A `someday` issue needs only its title and two lines saying what

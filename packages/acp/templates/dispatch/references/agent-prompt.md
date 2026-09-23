@@ -23,8 +23,7 @@ matters here.>
 
 <The "Limits every agent is told about" section of the dispatch skill, verbatim.>
 
-As you go: commit in this form: {{COMMIT_STYLE}}. Run the gate before you finish:
-{{GATE}}
+Commit and run the gate as {{INSTRUCTIONS_FILE}} describes.
 
 When you finish: add a cabane_comment on <issue id> with what landed, what you verified live and
 what is left manual, and anything you saw that is out of scope. Record your branch and each

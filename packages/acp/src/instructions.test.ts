@@ -86,7 +86,12 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 
 	it("the template tracks work through cabane and nothing else", () => {
 		const skill = template("SKILL.md");
-		for (const tool of ["cabane_add", "cabane_link", "cabane_done"])
+		for (const tool of [
+			"cabane_add",
+			"cabane_link",
+			"cabane_contextAdd",
+			"cabane_done",
+		])
 			expect(skill).toContain(tool);
 		for (const path of SKILL_FILES)
 			expect(template(path).toLowerCase()).not.toContain("jake");
