@@ -33,6 +33,7 @@ export const LOGICAL_TABLES = {
 	sync_state: "sync_state",
 	sync_quarantine: "sync_quarantine",
 	short_id_history: "short_id_history",
+	schema_migrations: "schema_migrations",
 } as const;
 
 export type TableKey = keyof typeof LOGICAL_TABLES;

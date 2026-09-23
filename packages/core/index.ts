@@ -20,6 +20,8 @@ export {
 } from "./commit-linker/patterns";
 // Db port conformance (adapter test suites run these)
 export { type ConformanceCase, conformanceCases } from "./db/conformance";
+// Schema migrations: the runner and the list it applies
+export { Migrate } from "./db/migrate";
 // Ports and runtime wiring
 export type {
 	Changes,
