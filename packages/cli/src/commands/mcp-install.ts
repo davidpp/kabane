@@ -54,9 +54,23 @@ export namespace McpInstall {
 		args: [Bun.main],
 	});
 
-	/** The harnesses whose binary is on PATH. */
-	export const detect = (which: Which = Bun.which): McpClients.Id[] =>
-		McpClients.IDS.filter((id) => which(McpClients.entry(id).binary) !== null);
+	/**
+	 * The harnesses whose binary is on PATH. `CABANE_HARNESSES` narrows that to
+	 * a comma-separated list, and set but empty means none: `bun run sandbox`
+	 * relies on it so a throwaway device never registers itself in the real
+	 * harness configs.
+	 */
+	export const detect = (
+		which: Which = Bun.which,
+		env: NodeJS.ProcessEnv = process.env,
+	): McpClients.Id[] => {
+		const allowed = env.CABANE_HARNESSES?.split(",").map((id) => id.trim());
+		return McpClients.IDS.filter(
+			(id) =>
+				(allowed === undefined || allowed.includes(id)) &&
+				which(McpClients.entry(id).binary) !== null,
+		);
+	};
 
 	const failed = (harness: McpClients.Id, result: Run): Report => ({
 		harness,

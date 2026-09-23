@@ -120,10 +120,18 @@ describe("McpInstall.run", () => {
 
 describe("McpInstall.detect", () => {
 	it("keeps the harnesses on PATH, in table order", () => {
-		expect(McpInstall.detect(onPath("gemini", "claude"))).toEqual([
+		expect(McpInstall.detect(onPath("gemini", "claude"), {})).toEqual([
 			"claude",
 			"gemini",
 		]);
+	});
+
+	it("narrows to CABANE_HARNESSES, and finds none when it is empty", () => {
+		const all = onPath("claude", "codex", "gemini");
+		expect(
+			McpInstall.detect(all, { CABANE_HARNESSES: "gemini, claude" }),
+		).toEqual(["claude", "gemini"]);
+		expect(McpInstall.detect(all, { CABANE_HARNESSES: "" })).toEqual([]);
 	});
 });
 
