@@ -1,4 +1,5 @@
 import {
+	Deadline,
 	type ItemKind,
 	Planner,
 	type TaskDraft,
@@ -8,7 +9,6 @@ import {
 import { flagCsv, flagString } from "../args";
 import { type Command, resolveScopeUri } from "../context";
 import { failure, formatTaskLine, success, usage } from "../output";
-import { toDeadline } from "./dates";
 
 export const add: Command = {
 	name: "add",
@@ -18,6 +18,8 @@ export const add: Command = {
 	run: async (args, ctx) => {
 		const title = args.positionals.join(" ").trim();
 		if (!title) return usage("Title required", add.usage);
+		const deadline = Deadline.fromInput(flagString(args, "due"));
+		if (!deadline.ok) return usage(deadline.error.message, add.usage);
 
 		const parentInput = flagString(args, "parent");
 		let parentTaskId: string | undefined;
@@ -38,7 +40,7 @@ export const add: Command = {
 			assignee: flagString(args, "assignee"),
 			parentTaskId,
 			tags: flagCsv(args, "tags") ?? [],
-			deadline: toDeadline(flagString(args, "due")),
+			deadline: deadline.value,
 			provenance: {
 				source: "human",
 				discoveredAt: new Date().toISOString(),
