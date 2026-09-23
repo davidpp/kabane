@@ -398,6 +398,75 @@ describe("Migrations on a device stamped at the baseline", () => {
 	});
 });
 
+describe("Migration 5: end-of-UTC-day deadlines become the dates they meant", () => {
+	const SHAPES: [stored: string, expected: string][] = [
+		["2026-02-06T23:59:59.999Z", "2026-02-06"],
+		["2026-02-07T23:59:59.000Z", "2026-02-07"],
+		["2026-02-08T23:59:59Z", "2026-02-08"],
+		["2026-02-09T23:59:00.000Z", "2026-02-09"],
+		["2026-02-10T23:59:00Z", "2026-02-10"],
+		// Real instants and dates stay as they are.
+		["2026-02-11T21:00:00Z", "2026-02-11T21:00:00Z"],
+		["2026-02-12T09:00:00.000Z", "2026-02-12T09:00:00.000Z"],
+		["2026-02-13T23:59:58.000Z", "2026-02-13T23:59:58.000Z"],
+		["2026-02-14", "2026-02-14"],
+	];
+
+	afterEach(() => {
+		configureTestRuntime();
+		rmSync(base, { recursive: true, force: true });
+	});
+
+	for (const prefix of ["", "planner_"]) {
+		it(`converts only the end-of-day shapes${prefix ? " behind Jake's prefix" : ""}, once`, async () => {
+			configureTestRuntime(prefix);
+			base = freshBase(`deadlines${prefix}`);
+			// A device on the build before this migration: versions 1 to 4.
+			await withDb((db) => {
+				const stamped = Migrate.run(db, Migrations.LIST.slice(0, 4));
+				if (!stamped.ok) throw stamped.error;
+			});
+			const ids: string[] = [];
+			for (const [stored] of SHAPES) {
+				// Written as the old build stored it, past today's input parsing.
+				const task = await Planner.addTask(base, { title: stored });
+				if (!task.ok) throw task.error;
+				await withDb((db) =>
+					db.run(`UPDATE ${TABLES.tasks} SET deadline = ? WHERE id = ?`, [
+						stored,
+						task.value.id,
+					]),
+				);
+				ids.push(task.value.id);
+			}
+			const none = await Planner.addTask(base, { title: "no deadline" });
+			if (!none.ok) throw none.error;
+
+			await mustInit(base);
+			expect(await versionRows()).toEqual(ALL_VERSIONS);
+			const read = async () =>
+				withDb((db) =>
+					ids.map(
+						(id) =>
+							db
+								.query<{ deadline: string | null }, [string]>(
+									`SELECT deadline FROM ${TABLES.tasks} WHERE id = ?`,
+								)
+								.get(id)?.deadline,
+					),
+				);
+			expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
+			const kept = await Planner.getTask(base, none.value.id);
+			expect(kept.ok && kept.value?.deadline).toBeUndefined();
+
+			// A second boot applies nothing and changes nothing.
+			await mustInit(base);
+			expect(await versionRows()).toEqual(ALL_VERSIONS);
+			expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
+		});
+	}
+});
+
 describe("Migrations with Jake's table prefix", () => {
 	afterEach(() => {
 		configureTestRuntime();

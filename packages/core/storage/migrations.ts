@@ -148,6 +148,15 @@ const createLateIndexes = (db: Db): void => {
 	);
 };
 
+/** The time parts an end-of-UTC-day deadline was written with, by cabane and by Jake. */
+const END_OF_UTC_DAY = [
+	"T23:59:59.999Z",
+	"T23:59:59.000Z",
+	"T23:59:59Z",
+	"T23:59:00.000Z",
+	"T23:59:00Z",
+] as const;
+
 /** Drop a retired table; its indexes and triggers go with it. */
 const dropTable = (db: Db, logical: string): void => {
 	db.run(`DROP TABLE IF EXISTS ${physicalTable(logical)}`);
@@ -191,6 +200,23 @@ export namespace Migrations {
 			// no surface showed.
 			name: "drop-task-activity",
 			up: (db) => dropTable(db, "task_activity"),
+		},
+		{
+			// A deadline entered as a date used to be stored as the end of that day
+			// in UTC, which falls due at 19:59 in Montreal and reads as the day
+			// before in JavaScript. Those rows become the calendar date they meant;
+			// every instant with a real time stays (schemas/deadline.ts, JCAB-101).
+			// A device on an older build may still push an end-of-day instant
+			// back; it reads on the same local day, so nothing lands wrong.
+			name: "deadlines-as-dates",
+			up: (db) => {
+				db.run(
+					`UPDATE ${TABLES.tasks} SET deadline = substr(deadline, 1, 10)
+					 WHERE length(deadline) > 10
+					   AND substr(deadline, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+					   AND substr(deadline, 11) IN (${END_OF_UTC_DAY.map((tail) => `'${tail}'`).join(", ")})`,
+				);
+			},
 		},
 	];
 
