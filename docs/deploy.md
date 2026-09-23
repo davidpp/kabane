@@ -273,7 +273,9 @@ Expected:
 
 `CABANE_HOME` (default `~/.cabane`) now holds `config.json` and `cabane.db`. The device id
 is write-once: it becomes the device's identity in the log on the first push and renaming
-it afterwards makes the log treat the machine as new.
+it afterwards makes the log treat the machine as new. A device set up through the
+first-run screen instead of `init` took its short hostname as the device id; to pick
+another, change both `deviceId` fields in `config.json` before the first push.
 
 ### 2.3 Give the device its Access credentials
 

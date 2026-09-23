@@ -42,42 +42,51 @@ screen:
 ```
 cabane · setup
 
-› name   alex                      cabane://actor/human/alex
-  device alex-mbp
+› name   alex
+         signs what you write
 
-let these agents use cabane
-adds cabane to each one's mcp config
-  [x] Claude Code
-  [x] Codex
-  [x] Gemini CLI
+  agents [x] Claude Code
+         [x] Codex
+         [x] Gemini CLI
+         checked ones get cabane's tools
 
-enter writes ~/.cabane/config.json
-more machines: docs/deploy.md
+enter saves ~/.cabane/config.json
+      adds cabane to 3 agents
+      opens the board
+
 space toggle · enter confirm · esc quit
 ```
 
 - **name** is prefilled with your OS username. It becomes your actor, the identity stamped
-  on everything you write: `cabane://actor/human/<name>`. In a narrow pane the actor sits
-  on its own line under the name.
-- **device** is this machine's name, prefilled with the short hostname.
-- **let these agents use cabane** lists the harnesses found on your PATH, all checked. Tab
-  or the arrow keys move between rows, and space unchecks one. Each checked harness gets a
-  `cabane` entry in its user-level MCP config (its own `mcp add`). If none are found, the
-  screen says so and points at `cabane mcp install --print`.
+  on everything you write: `cabane://actor/human/<name>`, lowercased with spaces as dashes.
+- **agents** lists the harnesses found on your PATH, all checked. Tab or the arrow keys
+  move between rows, and space unchecks one. Each checked harness gets a `cabane` entry in
+  its user-level MCP config (its own `mcp add`). With none on your PATH the row reads
+  `none found on PATH`; install one, then run `cabane mcp install`. With `CABANE_HARNESSES`
+  set and nothing it names on your PATH, the row reads `install off` instead (that is what
+  `bun run sandbox` shows).
+- The lines under **enter** follow the form: uncheck every agent and the `adds` line goes.
+  A long config path is cut from the left, `…/.cabane/config.json`, to fit the pane.
 
-Enter writes `~/.cabane/config.json` and adds cabane to each checked harness:
+The screen does not ask for a device name: setup saves the short hostname. It only matters
+once sync is set up, and [deploy.md](deploy.md) says how to change it before the first push.
+To change your name later, edit `actor` in `~/.cabane/config.json`; to add an agent later,
+run `cabane mcp install`.
+
+Enter saves the config and adds cabane to each checked harness:
 
 ```
-✓ wrote ~/.cabane/config.json
+✓ saved ~/.cabane/config.json
 
-Claude Code    ✓ installed as cabane://actor/agent/claude
-Codex          ✓ installed as cabane://actor/agent/codex
-Gemini CLI     ✓ installed as cabane://actor/agent/gemini
+Claude Code    ✓ installed
+Codex          ✓ installed
+Gemini CLI     ✓ installed
 ```
 
-Enter again opens the board. Esc on the setup screen, before confirming, leaves without
-writing anything. After
-this, `cabane` always opens the board directly.
+A failed install shows the last line of the harness's error under its row; `cabane mcp
+install` prints the whole of it. Enter again opens the board. With no agent checked, enter
+opens the board straight away. Esc on the setup screen, before confirming, leaves without
+writing anything. After this, `cabane` always opens the board directly.
 
 What setup changed outside `~/.cabane`: one user-scope MCP entry named `cabane` in each
 checked harness, added through that harness's own `mcp add`:
