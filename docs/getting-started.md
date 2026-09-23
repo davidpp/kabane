@@ -36,8 +36,10 @@ clone anywhere; the harness entries record its absolute path.
 ## Run `cabane`
 
 Run `cabane` from inside a project you want to track. The first run opens on one card
-about what cabane is. Enter moves on to the setup screen; esc quits without writing
-anything:
+about what cabane is, under a `cabane` wordmark (the bold word on a pane narrower than 31
+columns). Enter moves on to the setup screen; esc quits without writing anything. The form
+and what enter will change each sit on a raised panel, the focused row highlighted across
+it:
 
 ```
 cabane · setup
@@ -50,10 +52,10 @@ cabane · setup
          [x] Gemini CLI
          checked ones get cabane's tools
 
-enter saves ~/.cabane/config.json
-      adds cabane to 3 agents
-      files one issue for claude
-      opens the board
+  enter  saves ~/.cabane/config.json
+         adds cabane to 3 agents
+         files one issue for claude
+         opens the board
 
 space toggle · enter confirm · esc quit
 ```
@@ -75,7 +77,8 @@ once sync is set up, and [deploy.md](deploy.md) says how to change it before the
 To change your name later, edit `actor` in `~/.cabane/config.json`; to add an agent later,
 run `cabane mcp install`.
 
-Enter saves the config, adds cabane to each checked harness, and files your first issue:
+Enter saves the config, adds cabane to each checked harness, and files your first issue.
+What happened and the first issue each get a panel, with the phrase to say highlighted:
 
 ```
 ✓ saved ~/.cabane/config.json
