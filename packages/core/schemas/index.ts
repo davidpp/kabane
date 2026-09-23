@@ -35,8 +35,8 @@ export {
 	type TaskContextRef,
 	TaskContextRefSchema,
 } from "./context-ref";
-// Deadline: an ISO datetime or a calendar date
-export { Deadline, DeadlineSchema } from "./deadline";
+// Deadline: a calendar date or an instant, read in the owner's timezone
+export { Deadline, DeadlineSchema, TimeZoneSchema } from "./deadline";
 // Display configs (for UI consumers like dashboard)
 export {
 	AGENT_ACTIVITY_TYPE_DISPLAY,

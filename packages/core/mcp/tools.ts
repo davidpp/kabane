@@ -18,6 +18,7 @@
 
 import { z } from "zod";
 import { err, ok, type Result } from "../result";
+import { Runtime } from "../runtime";
 import {
 	Deadline,
 	ItemKindSchema,
@@ -118,7 +119,7 @@ Parameters:
 - assignee: Who completes it: a person, or an agent runtime such as claude, hermes, codex
 - parentTaskId: Optional parent (short id or ULID) to file this under
 - tags: Optional labels
-- dueDate: Optional YYYY-MM-DD (due by the end of that day, UTC) or an ISO datetime`,
+- dueDate: Optional. YYYY-MM-DD is a calendar date, due by the end of that day in the owner's timezone; an ISO datetime with Z or an offset is that exact instant; one without is a local time in the owner's timezone`,
 	input: {
 		title: z.string().min(1).max(500),
 		kind: ItemKindSchema.optional(),
@@ -134,7 +135,7 @@ Parameters:
 	handler: async (args, ctx) => {
 		const scope = resolveScope(args.scopeUri, ctx);
 		if (!scope.ok) return scope;
-		const deadline = Deadline.fromInput(args.dueDate);
+		const deadline = Deadline.fromInput(args.dueDate, Runtime.timezone());
 		if (!deadline.ok) return deadline;
 		let parentTaskId: string | undefined;
 		if (args.parentTaskId) {
@@ -244,7 +245,7 @@ Parameters:
 const today = define({
 	name: "cabane_today",
 	kind: "read",
-	description: `Today's view for daily planning: overdue, due today, and the next actions.
+	description: `Today's view for daily planning: overdue, due today, and the next actions. Today is the owner's local day; a calendar-date deadline counts on its own day.
 
 Parameters:
 - scopeUri: ${SCOPE_HINT} Omit for every scope
@@ -309,7 +310,7 @@ Parameters:
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
-		const deadline = Deadline.fromInput(args.dueDate);
+		const deadline = Deadline.fromInput(args.dueDate, Runtime.timezone());
 		if (!deadline.ok) return deadline;
 		let parentTaskId: string | undefined;
 		if (args.parentTaskId && args.parentTaskId !== "none") {

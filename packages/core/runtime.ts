@@ -15,6 +15,7 @@ import type { Db, DbProvider } from "./db/port";
 import { setTablePrefix } from "./db/tables";
 import { err, ok, type Result } from "./result";
 import { type SyncConfig, SyncConfigSchema } from "./schemas/config";
+import { Deadline } from "./schemas/deadline";
 
 // ============================================================
 // Port types
@@ -58,6 +59,13 @@ export type ActorSource = () => string;
 
 export const ANONYMOUS_ACTOR = "cabane://actor/unknown";
 
+/**
+ * The owner's timezone, an IANA name (`America/Montreal`). It decides when a
+ * calendar-date deadline's day ends and which day is today (schemas/deadline.ts).
+ * Default: the zone the process runs in, which honours `TZ`.
+ */
+export type TimezoneSource = () => string;
+
 export type RuntimeConfig = {
 	provider: DbProvider;
 	/** Physical table-name prefix, e.g. "planner_". Default: none. */
@@ -67,6 +75,7 @@ export type RuntimeConfig = {
 	scopeResolver?: ScopeResolver;
 	syncSettings?: SyncSettingsSource;
 	actor?: ActorSource;
+	timezone?: TimezoneSource;
 };
 
 // ============================================================
@@ -77,6 +86,7 @@ const identityTracer: Tracer = (_name, fn) => fn;
 const silentNotifier: Notifier = async () => {};
 const noScope: ScopeResolver = async () => null;
 const anonymous: ActorSource = () => ANONYMOUS_ACTOR;
+const processZone: TimezoneSource = () => Deadline.systemZone();
 const syncDisabled: SyncSettingsSource = async () => {
 	const parsed = SyncConfigSchema.safeParse({});
 	return parsed.success
@@ -102,6 +112,7 @@ let ports: Ports = {
 	scopeResolver: noScope,
 	syncSettings: syncDisabled,
 	actor: anonymous,
+	timezone: processZone,
 };
 
 // ============================================================
@@ -117,6 +128,7 @@ export namespace Runtime {
 			scopeResolver: config.scopeResolver ?? noScope,
 			syncSettings: config.syncSettings ?? syncDisabled,
 			actor: config.actor ?? anonymous,
+			timezone: config.timezone ?? processZone,
 		};
 		setTablePrefix(config.tablePrefix ?? "");
 	};
@@ -127,6 +139,8 @@ export namespace Runtime {
 	export const syncSettings = (): SyncSettingsSource => ports.syncSettings;
 	/** The actor URI to stamp on a local write, resolved now. */
 	export const actor = (): string => ports.actor();
+	/** The owner's IANA timezone, resolved now. */
+	export const timezone = (): string => ports.timezone();
 }
 
 /** Run `fn` against the database behind `basePath`. The one storage entry. */

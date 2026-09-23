@@ -70,7 +70,7 @@ describe("cabane tools", () => {
 				scoped,
 			),
 		) as Task;
-		expect(byDate.deadline).toBe("2026-02-06T23:59:59.000Z");
+		expect(byDate.deadline).toBe("2026-02-06");
 		const byTime = unwrap(
 			await tool("cabane_add").handler(
 				{ title: "by time", dueDate: "2026-02-06T10:00:00Z" },
@@ -78,6 +78,18 @@ describe("cabane tools", () => {
 			),
 		) as Task;
 		expect(byTime.deadline).toBe("2026-02-06T10:00:00.000Z");
+		configureTestRuntime("", { timezone: () => "America/Montreal" });
+		try {
+			const byLocalTime = unwrap(
+				await tool("cabane_add").handler(
+					{ title: "by local time", dueDate: "2026-02-06T17:00" },
+					scoped,
+				),
+			) as Task;
+			expect(byLocalTime.deadline).toBe("2026-02-06T22:00:00.000Z");
+		} finally {
+			configureTestRuntime();
+		}
 		const bad = await tool("cabane_edit").handler(
 			{ id: byTime.id, dueDate: "friday" },
 			scoped,

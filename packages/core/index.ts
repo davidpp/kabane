@@ -84,6 +84,7 @@ export {
 	type RuntimeConfig,
 	type ScopeResolver,
 	type SyncSettingsSource,
+	type TimezoneSource,
 	type Tracer,
 	withDb,
 } from "./runtime";
