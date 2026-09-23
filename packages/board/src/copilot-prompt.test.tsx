@@ -6,13 +6,29 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner } from "@cabane/core";
+import {
+	type CapturedSpan,
+	RGBA,
+	type TextareaRenderable,
+} from "@opentui/core";
+import { createRef } from "react";
 import { App } from "./app";
 import type { BoardContext } from "./context";
-import { contextChip } from "./copilot-prompt";
+import {
+	CopilotPane,
+	collapsedSegments,
+	contextChip,
+	harnessOf,
+	paletteNameCols,
+	titleSegments,
+} from "./copilot-prompt";
+import type { BoardNav } from "./nav";
 import type { Copilot, CopilotStep, CopilotUpdate } from "./ports";
 import { noActivity } from "./ports";
+import { Segments } from "./segments";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
+import { Theme } from "./theme";
 
 const TEST_BASE = join(tmpdir(), `cabane-board-copilot-${crypto.randomUUID()}`);
 const PERMISSION_BASE = join(
@@ -22,6 +38,11 @@ const PERMISSION_BASE = join(
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
+
+// The open panel's title row, inside its one cell of padding. The panel has no frame to wait on any
+// more, and the collapsed row and the footer both start at column 0, so this is the panel alone.
+const panelOpen = (frame: string): boolean =>
+	frame.split("\n").some((row) => row.startsWith(" copilot · "));
 
 const ctx = (
 	over: Partial<BoardContext.Context> = {},
@@ -160,9 +181,9 @@ describe("the A prompt against a scripted copilot", () => {
 		const { renderOnce, captureCharFrame, mockInput, destroy } = setup;
 		const until = (p: (f: string) => boolean) =>
 			pumpUntil(renderOnce, captureCharFrame, p);
-		// The panel's own border — the collapsed row also carries a `▸`, so waiting on that races
+		// The panel's own title row — the collapsed row also carries a `▸`, so waiting on that races
 		// focus and sends the next keystrokes to the board instead of the input.
-		const untilPanel = () => until((f) => f.includes("┌─copilot"));
+		const untilPanel = () => until(panelOpen);
 		// A lone escape followed by another byte in the same tick reads as Alt+key to a terminal
 		// parser, so every escape here is rendered through before the next key is sent.
 		const pressEsc = async (): Promise<void> => {
@@ -176,11 +197,12 @@ describe("the A prompt against a scripted copilot", () => {
 				"tab to ask the copilot",
 			);
 
-			// `A`: the pane opens into the panel — bordered, titled with the chip, and a real input
-			// several rows tall with a placeholder.
+			// `A`: the pane opens into the panel — a raised panel with no frame, titled with the chip,
+			// and a real input several rows tall with a placeholder.
 			mockInput.pressKey("A");
 			let frame = await untilPanel();
 			expect(frame).toContain("copilot · JALL-1 · next");
+			expect(frame).not.toMatch(/[┌┐└┘│─]/);
 			expect(frame).toContain("ask about the selection · / for shortcuts");
 
 			// A half-written prompt survives leaving the pane and coming back — the point of making the
@@ -189,7 +211,7 @@ describe("the A prompt against a scripted copilot", () => {
 			await mockInput.typeText("/tr");
 			await until((f) => f.includes("/tr"));
 			await pressEsc();
-			await until((f) => !f.includes("┌─copilot"));
+			await until((f) => !panelOpen(f));
 			mockInput.pressKey("A");
 			frame = await untilPanel();
 			expect(frame).toContain("/tr");
@@ -212,7 +234,7 @@ describe("the A prompt against a scripted copilot", () => {
 			mockInput.pressEnter();
 			frame = await until((f) => f.includes("copilot · cabane_edit"));
 			// The panel collapses back to its one row; the board has the keyboard again.
-			expect(frame).not.toContain("┌─copilot");
+			expect(panelOpen(frame)).toBe(false);
 			expect(frame).toContain("copilot · cabane_edit");
 			// The sidebar card: glyph, label, no task, elapsed.
 			expect(frame).toMatch(/copilot · — · \d+s/);
@@ -298,9 +320,9 @@ describe("the A prompt against a scripted copilot", () => {
 		const { renderOnce, captureCharFrame, mockInput, destroy } = setup;
 		const until = (p: (f: string) => boolean) =>
 			pumpUntil(renderOnce, captureCharFrame, p);
-		// The panel's own border — the collapsed row also carries a `▸`, so waiting on that races
+		// The panel's own title row — the collapsed row also carries a `▸`, so waiting on that races
 		// focus and sends the next keystrokes to the board instead of the input.
-		const untilPanel = () => until((f) => f.includes("┌─copilot"));
+		const untilPanel = () => until(panelOpen);
 		try {
 			await until((f) => f.includes("Wire the copilot"));
 			mockInput.pressKey(":");
@@ -334,7 +356,7 @@ describe("the A prompt against a scripted copilot", () => {
 		const { renderOnce, captureCharFrame, mockInput, destroy } = setup;
 		const until = (p: (f: string) => boolean) =>
 			pumpUntil(renderOnce, captureCharFrame, p);
-		const untilPanel = () => until((f) => f.includes("┌─copilot"));
+		const untilPanel = () => until(panelOpen);
 		const ask = async (prompt: string): Promise<void> => {
 			mockInput.pressKey(":");
 			await untilPanel();
@@ -348,13 +370,17 @@ describe("the A prompt against a scripted copilot", () => {
 			await ask("and now link them");
 			expect(seen.prompts).toEqual(["what is left here", "and now link them"]);
 
-			// One card, one `o`, both turns — the rule each opens with is the question it answers.
+			// One card, one `o`, both turns — each opens on the question it answers, as a block of its
+			// own rather than a rule.
 			mockInput.pressKey("o");
-			const transcript = await until((f) => f.includes("── and now link them"));
-			expect(transcript).toContain("── what is left here");
+			const transcript = await until(
+				(f) =>
+					f.includes("and now link them") && f.includes("what is left here"),
+			);
+			expect(transcript).not.toContain("──");
 			// Oldest first: the turn you asked for second reads below the one before it.
-			expect(transcript.indexOf("── what is left here")).toBeLessThan(
-				transcript.indexOf("── and now link them"),
+			expect(transcript.indexOf("what is left here")).toBeLessThan(
+				transcript.indexOf("and now link them"),
 			);
 		} finally {
 			destroy();
@@ -394,7 +420,7 @@ describe("a harness blocked on a permission request", () => {
 			pumpUntil(renderOnce, captureCharFrame, p);
 		await until((f) => f.includes("Wire the copilot"));
 		mockInput.pressKey(":");
-		await until((f) => f.includes("┌─copilot"));
+		await until(panelOpen);
 		await mockInput.typeText("edit it");
 		mockInput.pressEnter();
 		// "esc decline" is the block's own line and appears nowhere else on the board.
@@ -443,5 +469,178 @@ describe("a harness blocked on a permission request", () => {
 		} finally {
 			destroy();
 		}
+	});
+});
+
+// The pane's look against DESIGN.md: no frame of its own (herdr draws the lines), a raised panel,
+// chrome muted and names in the text color, the accent kept for the cursor.
+const T = Theme.DARK;
+const ints = (color: RGBA): number[] => color.toInts().slice(0, 3);
+const rgb = (hex: string): number[] => ints(RGBA.fromHex(hex));
+const spanWith = (
+	spans: readonly CapturedSpan[],
+	text: string,
+): CapturedSpan | undefined => spans.find((span) => span.text.includes(text));
+
+const idle = (
+	over: Partial<BoardNav.CopilotState> = {},
+): BoardNav.CopilotState => ({
+	text: "",
+	paletteAt: 0,
+	history: [],
+	historyAt: 0,
+	turn: "idle",
+	hasLog: false,
+	shortcuts: [],
+	actor: null,
+	permission: null,
+	...over,
+});
+
+const SHORTCUTS = [
+	{ name: "triage", hint: "keep, someday or next", template: "Triage." },
+	{
+		name: "setup-dispatch",
+		hint: "write this project's dispatch skill",
+		template: "Set up.",
+	},
+];
+
+const mountPane = async (
+	copilot: BoardNav.CopilotState,
+	focused: boolean,
+	width = 40,
+) => {
+	const setup = await renderTest(
+		<CopilotPane
+			copilot={copilot}
+			chip="JALL-1 · next"
+			focused={focused}
+			log={null}
+			spinnerFrame="⠋"
+			textareaRef={createRef<TextareaRenderable>()}
+			onSubmit={() => {}}
+			onContentChange={() => {}}
+		/>,
+		{ width, height: 16 },
+	);
+	await setup.renderOnce();
+	return {
+		...setup,
+		frame: setup.captureCharFrame(),
+		spans: setup.captureSpans().lines.flatMap((line) => line.spans),
+	};
+};
+
+describe("the copilot pane's look", () => {
+	it("is a raised panel with no frame, titled with the harness in the text color", async () => {
+		const { frame, spans, destroy } = await mountPane(
+			idle({ actor: "cabane://actor/agent/claude" }),
+			true,
+		);
+		try {
+			expect(frame).not.toMatch(/[┌┐└┘│─]/);
+			expect(frame).toContain(" copilot · claude · JALL-1 · next");
+			const harness = spanWith(spans, "claude");
+			expect(harness && ints(harness.fg)).toEqual(rgb(T.text));
+			expect(harness && ints(harness.bg)).toEqual(rgb(T.surface.raised));
+			const chrome = spanWith(spans, "copilot");
+			expect(chrome && ints(chrome.fg)).toEqual(rgb(T.muted));
+			// Nothing in the idle panel is orange: the accent is the cursor's, which is not a cell.
+			expect(
+				spans.some((span) => ints(span.fg).join() === rgb(T.accent).join()),
+			).toBe(false);
+		} finally {
+			destroy();
+		}
+	});
+
+	it("sizes the palette's names so the longest never runs into its hint, and paints the pick", async () => {
+		const { frame, spans, destroy } = await mountPane(
+			idle({ text: "/", shortcuts: SHORTCUTS, paletteAt: 1 }),
+			true,
+		);
+		try {
+			expect(frame).toMatch(/\/setup-dispatch {2,}write/);
+			const picked = spanWith(spans, "/setup-dispatch");
+			expect(picked && ints(picked.bg)).toEqual(rgb(T.surface.selected));
+			expect(picked && ints(picked.fg)).toEqual(rgb(T.text));
+			const other = spanWith(spans, "/triage");
+			expect(other && ints(other.bg)).toEqual(rgb(T.surface.raised));
+			const hint = spanWith(spans, "keep, someday");
+			expect(hint && ints(hint.fg)).toEqual(rgb(T.muted));
+		} finally {
+			destroy();
+		}
+	});
+
+	it("collapsed, names its key in the text color and says the rest muted", async () => {
+		const { frame, spans, destroy } = await mountPane(idle(), false);
+		try {
+			expect(frame).toContain("▸ tab to ask the copilot");
+			const key = spans.find((span) => span.text === "tab");
+			expect(key && ints(key.fg)).toEqual(rgb(T.text));
+			const rest = spanWith(spans, "to ask the copilot");
+			expect(rest && ints(rest.fg)).toEqual(rgb(T.muted));
+		} finally {
+			destroy();
+		}
+	});
+});
+
+describe("the pane's words", () => {
+	it("harnessOf reads the harness from the actor, and nothing from no actor", () => {
+		expect(harnessOf("cabane://actor/agent/codex")).toBe("codex");
+		expect(harnessOf(null)).toBeNull();
+	});
+
+	it("titleSegments leaves out what is absent and gives the state its hue", () => {
+		const title = titleSegments(
+			{
+				harness: null,
+				chip: "JALL-1",
+				progress: "1/3",
+				state: "running",
+				elapsed: "12s",
+			},
+			T,
+		);
+		expect(Segments.plain(title)).toBe(
+			"copilot · JALL-1 · 1/3 · running · 12s",
+		);
+		expect(title.find((part) => part.text === "running")?.fg).toBe(T.working);
+		const stopped = titleSegments(
+			{
+				harness: null,
+				chip: "JALL-1",
+				progress: null,
+				state: "stopped",
+				elapsed: null,
+			},
+			T,
+		);
+		expect(stopped.find((part) => part.text === "stopped")?.fg).toBe(T.failed);
+	});
+
+	it("paletteNameCols leaves the gutter, the slash and a two-cell gap around the longest name", () => {
+		expect(paletteNameCols(SHORTCUTS)).toBe("setup-dispatch".length + 5);
+		expect(paletteNameCols([])).toBe(5);
+	});
+
+	it("collapsedSegments puts a waiting question ahead of everything, its ? in the accent", () => {
+		const permission = {
+			id: "p1",
+			title: "cabane_edit",
+			options: [
+				{ id: "allow", label: "Allow" },
+				{ id: "reject", label: "Reject" },
+			],
+		};
+		const line = collapsedSegments(idle({ permission }), null, null, T);
+		expect(Segments.plain(line)).toBe(
+			"? cabane_edit · 1 Allow · 2 Reject · esc decline",
+		);
+		expect(line[0]?.fg).toBe(T.accent);
+		expect(line.find((part) => part.text === "1")?.fg).toBe(T.text);
 	});
 });
