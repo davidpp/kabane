@@ -57,6 +57,9 @@ last line>` until the next keypress. `o` opens the transcript — the session's 
 each under the prompt that started it — and `x` there stops a running one.
 Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicates`,
 `/reparent`, `/check-plan`), which expand into the window so you read what will be sent.
+`/setup-dispatch` is the one that writes a file: it reads the project's CLAUDE.md/AGENTS.md,
+gate and `.claude/agents/`, and writes a dispatch skill under `.claude/skills/dispatch/` for
+coding sessions to turn asks into issues here, showing each file before it lands.
 
 Every write the copilot makes goes through `cabane mcp` into this device's database, stamped
 `cabane://actor/agent/<harness>`, and the board reloads as each one lands. The harness is
