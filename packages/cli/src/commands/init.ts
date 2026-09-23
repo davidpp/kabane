@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { err, ok, Planner, type Result } from "@cabane/core";
 import { flagBool, flagString } from "../args";
 import {
+	type Config,
 	ConfigSchema,
 	configPath,
 	type DbConfig,
@@ -53,6 +54,42 @@ export const dbBlock = (
 		? undefined
 		: { path, tablePrefix };
 
+/** Everything a device's config is made of, as `init`'s flags or the setup screen give it. */
+export type ConfigInput = {
+	actor: string;
+	deviceId: string;
+	syncUrl?: string;
+	syncToken?: string;
+	accessClientId?: string;
+	accessClientSecret?: string;
+	dbPath?: string;
+	tablePrefix?: string;
+};
+
+/**
+ * The config half of `init`, with no file or database touched: `init` and the first-run setup
+ * screen both build through here, so a device set up either way holds the same shape.
+ */
+export const buildConfig = (input: ConfigInput): Result<Config> => {
+	const headers = accessHeaders(input.accessClientId, input.accessClientSecret);
+	if (!headers.ok) return headers;
+	const parsed = ConfigSchema.safeParse({
+		actor: input.actor,
+		deviceId: input.deviceId,
+		sync: {
+			enabled: input.syncUrl !== undefined && input.syncToken !== undefined,
+			url: input.syncUrl,
+			token: input.syncToken,
+			headers: headers.value,
+			deviceId: input.deviceId,
+		},
+		db: dbBlock(input.dbPath, input.tablePrefix),
+	});
+	return parsed.success
+		? ok(parsed.data)
+		: err(new Error(parsed.error.message));
+};
+
 export const init: Command = {
 	name: "init",
 	summary: "Create CABANE_HOME/config.json and the database",
@@ -64,34 +101,22 @@ export const init: Command = {
 		if (existsSync(path) && !flagBool(args, "force")) {
 			return failure(`${path} already exists. Pass --force to overwrite.`);
 		}
-		const url = flagString(args, "sync-url");
-		const token = flagString(args, "sync-token");
-		const headers = accessHeaders(
-			flagString(args, "access-client-id"),
-			flagString(args, "access-client-secret"),
-		);
-		if (!headers.ok) return failure(headers.error);
-		const parsed = ConfigSchema.safeParse({
+		const built = buildConfig({
 			actor: flagString(args, "actor") ?? defaultActor(),
 			deviceId: flagString(args, "device") ?? defaultDeviceId(),
-			sync: {
-				enabled: url !== undefined && token !== undefined,
-				url,
-				token,
-				headers: headers.value,
-				deviceId: flagString(args, "device") ?? defaultDeviceId(),
-			},
-			db: dbBlock(
-				flagString(args, "db-path"),
-				flagString(args, "table-prefix"),
-			),
+			syncUrl: flagString(args, "sync-url"),
+			syncToken: flagString(args, "sync-token"),
+			accessClientId: flagString(args, "access-client-id"),
+			accessClientSecret: flagString(args, "access-client-secret"),
+			dbPath: flagString(args, "db-path"),
+			tablePrefix: flagString(args, "table-prefix"),
 		});
-		if (!parsed.success) return failure(parsed.error.message);
+		if (!built.ok) return failure(built.error);
 
-		const saved = saveConfig(ctx.home, parsed.data);
+		const saved = saveConfig(ctx.home, built.value);
 		if (!saved.ok) return failure(saved.error);
-		const location = databaseLocation(ctx.home, parsed.data);
-		configureRuntime(parsed.data, parsed.data.actor, location);
+		const location = databaseLocation(ctx.home, built.value);
+		configureRuntime(built.value, built.value.actor, location);
 		const initialized = await Planner.init(location.basePath);
 		if (!initialized.ok) return failure(initialized.error);
 
@@ -101,7 +126,7 @@ export const init: Command = {
 			if (!wrote.ok) return failure(wrote.error);
 		}
 
-		const config = parsed.data;
+		const config = built.value;
 		return success(
 			{
 				home: ctx.home,
