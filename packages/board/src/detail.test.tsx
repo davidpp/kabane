@@ -524,3 +524,52 @@ test("relativeTime formats relative timestamps", () => {
 		"2d ago",
 	);
 });
+
+test("Detail at 40 columns: the subtask count pinned, and the subtasks and context under the description, each once and whole", async () => {
+	const parent = await seed({ title: "Parent plan" });
+	for (const [title, state] of [
+		["First step", "done"],
+		["Second step", "in_progress"],
+		["Third step", "next"],
+	] as const) {
+		const child = await seed({ title, state, parentTaskId: parent.id });
+		expect(child.parentTaskId).toBe(parent.id);
+	}
+	for (const [uri, kind, label] of [
+		["obsidian:prds/cabane.md", "PRD", "Cabane PRD"],
+		["docs/adr.md", "ADR", undefined],
+	] as const) {
+		const added = await Planner.addContextRef(TEST_BASE, {
+			taskId: parent.id,
+			uri,
+			kind,
+			label,
+		});
+		expect(added.ok).toBe(true);
+	}
+	const { renderOnce, captureCharFrame, destroy } = await mount(parent, {
+		width: 40,
+		height: 30,
+	});
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("Third step"),
+		);
+		expect(onOneRow(frame, "subtasks 3 · 1 done")).toBe(true);
+		for (const text of [
+			"First step",
+			"Second step",
+			"Third step",
+			"Cabane PRD",
+		])
+			expect(frame.split(text).length - 1).toBe(1);
+		// The state is held at the row's right, so a long title never pushes it off.
+		const working = rows(frame).find((row) => row.includes("Second step"));
+		expect(working?.trimEnd().endsWith("in progress")).toBe(true);
+		expect(onOneRow(frame, "ADR docs/adr.md")).toBe(true);
+		for (const row of rows(frame))
+			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
+	} finally {
+		destroy();
+	}
+});

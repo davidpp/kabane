@@ -1,7 +1,8 @@
 /** @jsxImportSource @opentui/react */
 // Detail view for a single task, read as parts rather than one wall. Pinned on a raised block: the
 // title, the task at a glance, what is running on it and where it sits; under it, any question
-// waiting on the human. Then tabs: the description, the comments and the agent log, one at a time,
+// waiting on the human. Then tabs: the description (its subtasks and curated context under it), the
+// comments and the agent log, one at a time,
 // scrolled by app.tsx's `scroll` effect (it owns the ref so every key stays in the one useKeyboard
 // handler). DetailModel decides what goes where; this file only draws it. The agent brief is not
 // drawn here: `y` copies it, and it is what an agent reads.
@@ -407,10 +408,31 @@ const TabContent = ({
 	switch (tab) {
 		case "description": {
 			const description = records.task.description?.trim();
-			return description ? (
-				<MarkdownBody content={description} />
-			) : (
-				<text fg={theme.faint}>no description</text>
+			const subtasks = DetailModel.subtasks(records);
+			const context = DetailModel.contextRefs(records);
+			if (!description && subtasks.length === 0 && context.length === 0)
+				return <text fg={theme.faint}>no description</text>;
+			return (
+				<box style={{ flexDirection: "column" }}>
+					{description ? <MarkdownBody content={description} /> : null}
+					{subtasks.length > 0 ? (
+						<Section title="subtasks" first={!description}>
+							{subtasks.map((line) => (
+								<SubtaskRow key={line.id} line={line} room={room} />
+							))}
+						</Section>
+					) : null}
+					{context.length > 0 ? (
+						<Section
+							title="context"
+							first={!description && subtasks.length === 0}
+						>
+							{context.map((line) => (
+								<ContextRow key={line.id} line={line} room={room} />
+							))}
+						</Section>
+					) : null}
+				</box>
 			);
 		}
 		case "comments": {
@@ -446,6 +468,90 @@ const TabContent = ({
 			);
 		}
 	}
+};
+
+// A list under the description, headed in Label weight like a bay, one blank line above it.
+const Section = ({
+	title,
+	first,
+	children,
+}: {
+	title: string;
+	first: boolean;
+	children: ReactNode;
+}): ReactNode => {
+	const theme = useTheme();
+	return (
+		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
+			<text fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
+				{title}
+			</text>
+			{children}
+		</box>
+	);
+};
+
+// One subtask: `✓` in the done hue for a finished one, `○` muted for an open one, the whole row faint
+// when cancelled. The title's tail is cut with `…`; an open or cancelled one's state is held to the
+// right, as the log holds its age, so the cut never takes the fact a plan is read for.
+const SubtaskRow = ({
+	line,
+	room,
+}: {
+	line: DetailModel.SubtaskLine;
+	room: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const faint = line.cancelled ? theme.faint : undefined;
+	const state = line.state ?? "";
+	const segments = [
+		{
+			text: line.done ? "✓ " : "○ ",
+			fg: faint ?? (line.done ? theme.done : theme.muted),
+		},
+		{ text: `${line.shortId} `, fg: faint ?? theme.muted },
+		{ text: line.title, fg: faint ?? theme.defaultFg },
+	];
+	const titled = Segments.fit(
+		segments,
+		Math.max(0, room - (state ? state.length + 1 : 0)),
+	);
+	return (
+		<box style={{ flexDirection: "row" }}>
+			<text style={{ flexGrow: 1, flexShrink: 1 }}>
+				{Segments.spans(titled)}
+			</text>
+			{state ? (
+				<text
+					fg={faint ?? theme.muted}
+					style={{ flexShrink: 0, marginLeft: 1 }}
+				>
+					{state}
+				</text>
+			) : null}
+		</box>
+	);
+};
+
+// One curated input: its kind muted, its label, then the ref it points at, muted, cut first.
+const ContextRow = ({
+	line,
+	room,
+}: {
+	line: DetailModel.ContextLine;
+	room: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const segments = [
+		{ text: `${line.kind} `, fg: theme.muted },
+		...(line.label
+			? [
+					{ text: line.label, fg: theme.defaultFg },
+					{ text: ` · ${line.uri}`, fg: theme.muted },
+				]
+			: [{ text: line.uri, fg: theme.defaultFg }]),
+	];
+	return <text>{Segments.spans(Segments.fit(segments, room))}</text>;
 };
 
 // A card at the head of the log: the status glyph carries the hue, the label reads in the terminal's
