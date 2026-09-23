@@ -2267,24 +2267,4 @@ describe("Planner", () => {
 			}
 		});
 	});
-
-	describe("clearAll", () => {
-		it("should clear all data", async () => {
-			await Planner.addTask(TEST_BASE, { title: "Task 1" });
-			await Planner.addTask(TEST_BASE, {
-				title: "Task 2",
-				scopeUri: "jake://scope/test",
-			});
-
-			const clearResult = await Planner.clearAll(TEST_BASE);
-			expect(clearResult.ok).toBe(true);
-
-			const statsResult = await Planner.stats(TEST_BASE);
-			expect(statsResult.ok).toBe(true);
-			if (statsResult.ok) {
-				expect(statsResult.value.totalTasks).toBe(0);
-				expect(Object.keys(statsResult.value.byScope).length).toBe(0);
-			}
-		});
-	});
 });

@@ -34,7 +34,6 @@ import { Planner as WorkLogs } from "./work-logs";
 export const Planner = {
 	// Init
 	init: Init.init,
-	clearAll: Init.clearAll,
 	// Tasks & ID Resolution
 	resolveTaskId: Tasks.resolveTaskId,
 	addTask: Tasks.addTask,

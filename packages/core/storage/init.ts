@@ -1,5 +1,5 @@
 /**
- * Storage — Initialization & Clear
+ * Storage — Initialization
  *
  * `init` is idempotent and cheap, so every host calls it at boot: it applies
  * whatever numbered migrations the database has not had yet (`migrations.ts`),
@@ -10,7 +10,6 @@
 
 import { ok, type Result } from "../result";
 import { withDb } from "../runtime";
-import { TABLES } from "./helpers";
 import { Migrations } from "./migrations";
 
 export namespace Planner {
@@ -19,21 +18,5 @@ export namespace Planner {
 		if (!migrated.ok) return migrated;
 		if (!migrated.value.ok) return migrated.value;
 		return ok(undefined);
-	};
-
-	export const clearAll = async (basePath: string): Promise<Result<void>> => {
-		return withDb(basePath, (db) => {
-			db.run(`DELETE FROM ${TABLES.agent_activities}`);
-			db.run(`DELETE FROM ${TABLES.agent_sessions}`);
-			db.run(`DELETE FROM ${TABLES.upstream_links}`);
-			db.run(`DELETE FROM ${TABLES.activity}`);
-			db.run(`DELETE FROM ${TABLES.context_refs}`);
-			db.run(`DELETE FROM ${TABLES.work_log}`);
-			db.run(`DELETE FROM ${TABLES.comments}`);
-			db.run(`DELETE FROM ${TABLES.proposals}`);
-			db.run(`DELETE FROM ${TABLES.focus_lists}`);
-			db.run(`DELETE FROM ${TABLES.task_links}`);
-			db.run(`DELETE FROM ${TABLES.tasks}`);
-		});
 	};
 }
