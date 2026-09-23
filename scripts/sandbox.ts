@@ -79,6 +79,9 @@ const sandboxEnv = (harnesses: boolean): NodeJS.ProcessEnv => {
 const { own, rest } = splitArgs(process.argv.slice(2));
 if (own.has("--fresh")) rmSync(SANDBOX, { recursive: true, force: true });
 seedRepo();
+// Codex refuses to start when CODEX_HOME names a directory that does not exist.
+if (own.has("--harnesses"))
+	mkdirSync(join(SANDBOX, ".codex"), { recursive: true });
 
 console.error(
 	`sandbox: ${REPO} · harness installs ${own.has("--harnesses") ? "into the sandbox HOME" : "off"}`,
