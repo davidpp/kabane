@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { BoardData } from "./data";
+import type { DetailModel } from "./detail-model";
 import { BoardNav } from "./nav";
 import type { CopilotPermission, TriggerDescriptor } from "./ports";
 
@@ -2765,5 +2766,67 @@ describe("a permission request the harness is blocked on", () => {
 	it("a turn that stops takes the unanswered question with it", () => {
 		const stopped = BoardNav.withCopilotTurn(asked(), "error");
 		expect(stopped.copilot.permission).toBeNull();
+	});
+});
+
+describe("detail tabs", () => {
+	const detail = (tab?: DetailModel.Tab) =>
+		state({ view: { type: "detail", taskId: "a", tab } });
+
+	it("opens on the description, the default tab", () => {
+		expect(BoardNav.detailTab(detail().view)).toBe("description");
+	});
+
+	it("a digit jumps to its tab, and one past the last does nothing", () => {
+		expect(
+			BoardNav.detailTab(
+				BoardNav.reduceKey(detail(), { name: "3" }).state.view,
+			),
+		).toBe("log");
+		expect(
+			BoardNav.detailTab(
+				BoardNav.reduceKey(detail(), { name: "2" }).state.view,
+			),
+		).toBe("comments");
+		const s = detail("log");
+		expect(BoardNav.reduceKey(s, { name: "4" }).state).toBe(s);
+	});
+
+	it("h/l and the arrows step through the tabs and wrap at either end", () => {
+		const step = (s: BoardNav.BoardState, name: string) =>
+			BoardNav.detailTab(BoardNav.reduceKey(s, { name }).state.view);
+		expect(step(detail(), "l")).toBe("comments");
+		expect(step(detail(), "right")).toBe("comments");
+		expect(step(detail(), "h")).toBe("log");
+		expect(step(detail("log"), "l")).toBe("description");
+		expect(step(detail("comments"), "left")).toBe("description");
+	});
+
+	it("the tab already in view hands back the same state, so nothing re-renders", () => {
+		const s = detail("comments");
+		expect(BoardNav.reduceKey(s, { name: "2" }).state).toBe(s);
+	});
+
+	it("a click on a tab selects it, and does nothing off the detail view", () => {
+		const { state: next } = BoardNav.reduceMouse(detail(), {
+			type: "detailTab",
+			tab: "log",
+		});
+		expect(BoardNav.detailTab(next.view)).toBe("log");
+		const board = state();
+		expect(
+			BoardNav.reduceMouse(board, { type: "detailTab", tab: "log" }).state.view,
+		).toEqual({ type: "board" });
+	});
+
+	it("esc from the copilot's transcript lands back on the tab it was opened from", () => {
+		const s = state({
+			view: { type: "detail", taskId: "a", tab: "comments" },
+			copilot: copilotState({ turn: "running", hasLog: true }),
+		});
+		const opened = BoardNav.reduceKey(s, { name: "o" }).state;
+		expect(opened.view.type).toBe("events");
+		const back = BoardNav.reduceKey(opened, { name: "escape" }).state;
+		expect(back.view).toEqual({ type: "detail", taskId: "a", tab: "comments" });
 	});
 });

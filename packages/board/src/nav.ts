@@ -10,6 +10,7 @@ import {
 } from "@cabane/core";
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
+import { DetailModel } from "./detail-model";
 import type {
 	CopilotPermission,
 	CopilotShortcut,
@@ -39,16 +40,23 @@ export namespace BoardNav {
 
 	// The view stack: the board is always the base; `enter` pushes a detail view for the selected task
 	// on top. Modeled as a discriminated `view` (not a flat `detailOpen` boolean) so `esc` pops exactly
-	// one level — from detail back to the board — WITHOUT the same press also widening scope.
+	// one level — from detail back to the board — WITHOUT the same press also widening scope. A detail
+	// view without a `tab` is on the default one; the events view remembers the tab it was opened
+	// from, so `esc` lands back on it.
 	export type BoardView =
 		| { type: "board" }
-		| { type: "detail"; taskId: string }
+		| { type: "detail"; taskId: string; tab?: DetailModel.Tab }
 		| {
 				type: "events";
 				cardId: string;
 				fromView: "board" | "detail";
 				fromTaskId?: string;
+				fromTab?: DetailModel.Tab;
 		  };
+
+	/** The tab a detail view is on. */
+	export const detailTab = (view: BoardView): DetailModel.Tab =>
+		(view.type === "detail" ? view.tab : undefined) ?? DetailModel.DEFAULT_TAB;
 
 	// Vim-style `/` search over the loaded board. `typing` is input mode (the footer shows the query,
 	// every other board key is inert — printable chars go to the query); `enter` commits to `committed`
@@ -246,7 +254,8 @@ export namespace BoardNav {
 	export type MouseAction =
 		| { type: "select"; row: number }
 		| { type: "toggleExpand"; row: number }
-		| { type: "copy" };
+		| { type: "copy" }
+		| { type: "detailTab"; tab: DetailModel.Tab };
 
 	const NONE: Effect = { type: "none" };
 	const SEARCH_OFF: SearchState = { mode: "off" };
@@ -407,6 +416,7 @@ export namespace BoardNav {
 				fromView: state.view.type === "detail" ? "detail" : "board",
 				fromTaskId:
 					state.view.type === "detail" ? state.view.taskId : undefined,
+				fromTab: state.view.type === "detail" ? state.view.tab : undefined,
 			},
 		},
 		effect: NONE,
@@ -1179,7 +1189,11 @@ export namespace BoardNav {
 			case "q": {
 				const back =
 					state.view.fromView === "detail" && state.view.fromTaskId
-						? { type: "detail" as const, taskId: state.view.fromTaskId }
+						? {
+								type: "detail" as const,
+								taskId: state.view.fromTaskId,
+								tab: state.view.fromTab,
+							}
 						: { type: "board" as const };
 				return { state: { ...state, view: back }, effect: NONE };
 			}
@@ -1328,6 +1342,10 @@ export namespace BoardNav {
 				? { state, effect: { type: "copy", id } }
 				: { state, effect: NONE };
 		}
+		if (action.type === "detailTab")
+			return state.view.type === "detail"
+				? withDetailTab(state, action.tab)
+				: { state, effect: NONE };
 		if (state.view.type !== "board") return { state, effect: NONE };
 		const rows = visibleRows(state);
 		const row = rows[action.row];
@@ -1365,16 +1383,40 @@ export namespace BoardNav {
 		}
 	};
 
-	// Detail view: `esc`/`q` pop back to the board (never widen scope or quit); j/k/arrows scroll the
-	// brief; `y` copies the open task's brief; the status keys (`v`/`x`/`n`/`s`) act on the OPEN task (not
-	// the board's selection) and the brief refreshes after the mutation; everything else is a no-op.
+	// A detail view on `tab`. The same state back when it already is, so the caller skips a render.
+	const withDetailTab = (
+		state: BoardState,
+		tab: DetailModel.Tab,
+	): { state: BoardState; effect: Effect } =>
+		state.view.type !== "detail" || detailTab(state.view) === tab
+			? { state, effect: NONE }
+			: { state: { ...state, view: { ...state.view, tab } }, effect: NONE };
+
+	// Detail view: `esc`/`q` pop back to the board (never widen scope or quit); j/k/up/down scroll the
+	// tab in view; a digit picks a tab and `h`/`l` (or left/right) step through them; `y` copies the
+	// open task's brief; the status keys (`v`/`x`/`n`/`s`) act on the OPEN task (not the board's
+	// selection) and the view refreshes after the mutation; everything else is a no-op.
 	const reduceDetailKey = (
 		state: BoardState,
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } => {
 		if (state.view.type !== "detail") return { state, effect: NONE };
 		const target = taskById(state, state.view.taskId);
+		const digitTab = DetailModel.tabAt(Number.parseInt(key.name, 10));
+		if (digitTab) return withDetailTab(state, digitTab);
 		switch (key.name) {
+			case "h":
+			case "left":
+				return withDetailTab(
+					state,
+					DetailModel.stepTab(detailTab(state.view), -1),
+				);
+			case "l":
+			case "right":
+				return withDetailTab(
+					state,
+					DetailModel.stepTab(detailTab(state.view), 1),
+				);
 			case "escape":
 			case "q":
 				return { state: { ...state, view: { type: "board" } }, effect: NONE };

@@ -29,6 +29,7 @@ export namespace Keymap {
 	];
 
 	export const DETAIL_FOOTER: readonly Hint[] = [
+		{ key: "h/l", label: "tabs" },
 		{ key: "a", label: "dispatch" },
 		{ key: "v", label: "review" },
 		{ key: "y", label: "copy" },
@@ -50,6 +51,7 @@ export namespace Keymap {
 				{ key: "j/k", label: "move row (detail: scroll)" },
 				{ key: "space", label: "expand/collapse subtasks" },
 				{ key: "h/l", label: "collapse · expand (h on child: parent)" },
+				{ key: "1-3 h/l", label: "detail: switch tab" },
 				{ key: "enter", label: "open detail" },
 				{
 					key: "esc",
