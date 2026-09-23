@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 // The grouped-list surface (linear-tui style): a header line + one <scrollbox> holding sections by
-// state, each a muted header over one truncated line per task. Subtasks render indented under an
+// state, each a bold header over one truncated line per task. Subtasks render indented under an
 // expanded parent. Pure rendering — it takes sections + selection + expansion and draws them; data
 // loading, selection, and expansion state live in App / BoardNav.
 
@@ -40,15 +40,17 @@ const PRIORITY_ROLE: Record<string, (theme: Theme.Tokens) => string> = {
 const priorityColor = (token: string, theme: Theme.Tokens): string =>
 	PRIORITY_ROLE[token]?.(theme) ?? theme.secondary;
 
-// The `m` glyph, with its trailing space; two blanks keep unmarked titles column-aligned with it.
+// The `m` glyph, with its trailing space; two blanks keep unmarked titles column-aligned with it
+// while any visible row is marked (see heldColumns).
 const MARK_GLYPH = "● ";
 const MARK_BLANK = "  ";
 // The copilot's fingerprint on a row it changed this turn. Transient — the keypress that dismisses
 // the turn's footer indicator clears it — so unlike the mark it holds no column when absent.
 const AI_GLYPH = "✦ ai ";
-// This row points at an issue in someone else's tracker. Like the mark it holds its column when
-// absent, so the glyphs line up and one vertical scan answers "which of these is team work" — a
-// trailing badge would float at a different offset on every row and answer nothing at a glance.
+// This row points at an issue in someone else's tracker. Like the mark it holds its column on the
+// rows without one while any visible row has one, so the glyphs line up and one vertical scan
+// answers "which of these is team work" — a trailing badge would float at a different offset on
+// every row and answer nothing at a glance.
 // It is the only thing the row says about the link: WHICH issue is the detail view's job. Single
 // narrow BMP codepoint on purpose; `fixed` below counts columns with `.length`, and the font target
 // (IBM Plex Mono) has no Nerd Font private-use range to draw a real provider logo from.
@@ -65,7 +67,9 @@ const RESERVED_COLS = 2;
 // (JJAK-1017). The tree caret (`▸`/`▾`) is NOT the selection marker — it signals expandability only.
 // Per-row selection styling. Pure so nav-less tests can assert the invariant that a selected row ALWAYS
 // pairs an explicit bg with an explicit fg on every cell and never emits INVERSE. `idFg` keeps the
-// priority color when idle (the one content color); selection overrides it for contrast.
+// priority color when idle (the one content color); selection overrides it for contrast. A row the
+// copilot touched this turn steps up to the raised surface — fresh change is contrast, not hue — and
+// a painted row needs the explicit fg as much as a selected one does.
 export type RowStyle = {
 	bg: string | undefined;
 	idFg: string;
@@ -78,22 +82,38 @@ export const rowStyle = (
 	selected: boolean,
 	idColor: string,
 	theme: Theme.Tokens,
-): RowStyle =>
-	selected
-		? {
-				bg: theme.surface.selected,
-				idFg: theme.text,
-				titleFg: theme.text,
-				metaFg: theme.text,
-				caretFg: theme.text,
-			}
-		: {
-				bg: undefined,
-				idFg: idColor,
-				titleFg: theme.defaultFg,
-				metaFg: theme.muted,
-				caretFg: theme.muted,
-			};
+	touched = false,
+): RowStyle => {
+	if (selected)
+		return {
+			bg: theme.surface.selected,
+			idFg: theme.text,
+			titleFg: theme.text,
+			metaFg: theme.text,
+			caretFg: theme.text,
+		};
+	return {
+		bg: touched ? theme.surface.raised : undefined,
+		idFg: idColor,
+		titleFg: touched ? theme.text : theme.defaultFg,
+		metaFg: theme.muted,
+		caretFg: theme.muted,
+	};
+};
+
+/**
+ * Which gutter columns the visible rows hold. A column costs its two cells on every row, so it is
+ * held only while at least one visible row puts a glyph in it; a board with nothing marked and
+ * nothing linked gives those four columns back to the titles.
+ */
+export const heldColumns = (
+	rows: readonly BoardNav.VisibleRow[],
+	marked: ReadonlySet<string>,
+	linked: ReadonlySet<string>,
+): { mark: boolean; link: boolean } => ({
+	mark: rows.some((row) => marked.has(row.task.id)),
+	link: rows.some((row) => linked.has(row.task.id)),
+});
 
 // Truncate to a single line with a trailing ellipsis — the whole point of the list layout is one row
 // per task that never wraps, so titles are cut to fit the frame.
@@ -154,6 +174,17 @@ export const activityStrip = (
 // Whether the spinner interval should run at all: a live (non-stale) running card animates the
 // shared spinner frame.
 export const anyActivityRunning = BoardActivity.anyRunning;
+
+// The header part for the filters in force: ` · kind: issue · status: done`, "" unfiltered (quiet by
+// default, as the marked count is).
+export const headerFilters = (
+	kind: BoardNav.KindFilter,
+	status: BoardNav.StatusFilter,
+): string =>
+	[
+		kind === "all" ? "" : ` · kind: ${kind}`,
+		status === "open" ? "" : ` · status: ${status}`,
+	].join("");
 
 // The header part for the working set: ` · 3 marked`, "" when nothing is marked (quiet by default).
 export const markedLabel = (count: number): string =>
@@ -219,6 +250,7 @@ const Row = ({
 	marked,
 	touched,
 	linked,
+	columns,
 	available,
 	activity,
 	onSelect,
@@ -227,6 +259,8 @@ const Row = ({
 }: {
 	row: BoardNav.VisibleRow;
 	marked: boolean;
+	// The gutter columns every visible row holds this frame (heldColumns).
+	columns: { mark: boolean; link: boolean };
 	// The copilot changed this row during the turn in hand.
 	touched: boolean;
 	// shortId of this row's parent, when the parent is loaded. Only ever set for an orphaned subtask.
@@ -246,6 +280,7 @@ const Row = ({
 		selected,
 		priorityColor(TASK_PRIORITY_DISPLAY[task.priority].color, theme),
 		theme,
+		touched,
 	);
 	const shortId = task.shortId ?? task.id.slice(0, 8);
 	const caret = caretFor(row);
@@ -259,8 +294,8 @@ const Row = ({
 	const badge = cards[0] ? cardBadge(cards[0], RUNNING_ECHO) : null;
 	const more = moreBadge(cards.length - 1, RUNNING_ECHO);
 	const input = activity?.questionsByTaskId.has(task.id) ? " · ? input" : "";
-	const mark = marked ? MARK_GLYPH : MARK_BLANK;
-	const link = linked ? LINK_GLYPH : LINK_BLANK;
+	const mark = columns.mark ? (marked ? MARK_GLYPH : MARK_BLANK) : "";
+	const link = columns.link ? (linked ? LINK_GLYPH : LINK_BLANK) : "";
 	const ai = touched ? AI_GLYPH : "";
 	// Badge widths count against the title so a badged row still never wraps.
 	const fixed =
@@ -309,16 +344,17 @@ const Row = ({
 				<span fg={marked ? theme.accent : style.titleFg}>{mark}</span>
 				{/* Chrome, not accent: a linked issue is a fact about the row, not a request for action. */}
 				<span fg={theme.muted}>{link}</span>
-				{ai ? <span fg={theme.accent}>{ai}</span> : null}
+				{/* Fresh change, not a request: the row's own foreground, on the raised surface. */}
+				{ai ? <span fg={style.titleFg}>{ai}</span> : null}
 				{title}
 				<span fg={style.metaFg}>{meta}</span>
 				{task.needsReview ? <span fg={theme.accent}> · review</span> : null}
 				{badge ? (
-					<span fg={badge.muted ? theme.muted : theme.accent}>
+					<span fg={badge.muted ? theme.muted : theme.working}>
 						{badge.text}
 					</span>
 				) : null}
-				{more ? <span fg={theme.accent}>{more}</span> : null}
+				{more ? <span fg={theme.working}>{more}</span> : null}
 				{input ? <span fg={theme.accent}>{input}</span> : null}
 			</text>
 		</box>
@@ -331,6 +367,7 @@ const Section = ({
 	marked,
 	touched,
 	linked,
+	columns,
 	nextRowIndex,
 	available,
 	activity,
@@ -341,6 +378,7 @@ const Section = ({
 	marked: ReadonlySet<string>;
 	touched: ReadonlySet<string>;
 	linked: ReadonlySet<string>;
+	columns: { mark: boolean; link: boolean };
 	// id -> shortId over every loaded task, for naming an orphaned subtask's parent.
 	parentIds: Map<string, string>;
 	// Pre-flattened rows from BoardNav.visibleSections — the SAME flatten the reducer addresses, so
@@ -361,8 +399,11 @@ const Section = ({
 	const topLevel = group.rows.filter((row) => row.depth === 0).length;
 	return (
 		<box style={{ flexDirection: "column", flexShrink: 0, marginBottom: 1 }}>
-			<text fg={theme.muted}>
-				{group.section.label.toLowerCase()} · {topLevel}
+			<text>
+				<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
+					{group.section.label.toLowerCase()}
+				</span>
+				<span fg={theme.muted}> · {topLevel}</span>
 			</text>
 			{group.rows.map((row) => (
 				<Row
@@ -373,6 +414,7 @@ const Section = ({
 					marked={marked.has(row.task.id)}
 					touched={touched.has(row.task.id)}
 					linked={linked.has(row.task.id)}
+					columns={columns}
 					available={available}
 					activity={activity}
 					onSelect={onSelect}
@@ -426,15 +468,14 @@ const Footer = ({
 	notice: BoardNav.Notice | null | undefined;
 	search: BoardNav.SearchState;
 	matchCount: number;
-	hints: string;
+	hints: readonly Keymap.Hint[];
 }): ReactNode => {
 	const theme = useTheme();
 	if (notice) {
 		return (
 			<StatusBar
 				text={notice.undoable ? `${notice.text} · ⌃z undo` : notice.text}
-				// Copy feedback: the accent on success (the one place it flashes), failed on failure.
-				fg={notice.tone === "success" ? theme.accent : theme.failed}
+				fg={notice.tone === "success" ? theme.done : theme.failed}
 			/>
 		);
 	}
@@ -450,7 +491,7 @@ const Footer = ({
 			/>
 		);
 	}
-	return <StatusBar text={hints} fg={theme.muted} />;
+	return <StatusBar hints={hints} />;
 };
 
 export type BoardProps = {
@@ -464,8 +505,8 @@ export type BoardProps = {
 	// poll as the board data. Optional — absent means nothing in flight (quiet by default).
 	activity?: BoardActivity.ActivityMap;
 	scopeLabel?: string;
-	filterLabel?: string;
-	// The `i` kind filter. Optional for the same reason as `status` below, and defaulted to `all`.
+	// The `i` kind filter. Optional for the same reason as `status` below, and defaulted to `all`,
+	// which the header leaves unsaid.
 	kind?: BoardNav.KindFilter;
 	// The `f` status filter. Optional so render-only tests without it keep working, and defaulted to
 	// the value that renders the board exactly as it always has.
@@ -502,7 +543,6 @@ export const Board = ({
 	search = SEARCH_OFF,
 	activity,
 	scopeLabel,
-	filterLabel,
 	kind = "all",
 	status = "open",
 	marked = NO_MARKS,
@@ -528,15 +568,10 @@ export const Board = ({
 	const strip =
 		activity && sbWidth === 0 ? activityStrip(activity, spinnerFrame) : "";
 	const available = Math.max(MIN_TITLE_WIDTH, width - RESERVED_COLS - sbWidth);
-	// Quiet by default: `open` is what the board has always shown, and this header <text> does no
-	// truncation (unlike StatusBar), so a fourth always-on part would wrap on a narrow frame.
-	const statusLabel = status === "open" ? undefined : `status: ${status}`;
-	const header = [
-		"Cabane",
-		scopeLabel ?? "all scopes",
-		filterLabel,
-		statusLabel,
-	].filter((part): part is string => Boolean(part));
+	// Quiet by default: `all` kinds and `open` are what the board shows unfiltered, and this header
+	// <text> does no truncation (unlike StatusBar), so an always-on filter part would spend a narrow
+	// frame's columns saying that nothing is filtered.
+	const filters = headerFilters(kind, status);
 	const markedPart = markedLabel(marked.size);
 	// App-specific keys only — the vim-obvious ones live in the `?` help overlay (StatusBar handles
 	// its own truncation on narrow frames).
@@ -546,9 +581,7 @@ export const Board = ({
 		selectedId !== null && linked.has(selectedId)
 			? [Keymap.OPEN_LINK_HINT, ...Keymap.BOARD_FOOTER]
 			: Keymap.BOARD_FOOTER;
-	const hints = Keymap.hintLine(
-		focus === "copilot" ? Keymap.COPILOT_FOOTER : boardHints,
-	);
+	const hints = focus === "copilot" ? Keymap.COPILOT_FOOTER : boardHints;
 	// The SAME flatten the reducer uses for j/k, mouse addressing, and scroll-into-view — filter
 	// included — so the running rowIndex below is in lockstep with BoardNav.visibleRows.
 	const groups = BoardNav.visibleSections(sections, expanded, search, status);
@@ -558,13 +591,19 @@ export const Board = ({
 	// matches" for a status or a kind that found nothing just as for a query that did.
 	const filtering =
 		BoardNav.activeQuery(search) !== "" || status !== "open" || kind !== "all";
+	const columns = heldColumns(
+		groups.flatMap((group) => group.rows),
+		marked,
+		linked,
+	);
 	const nextRowIndex = { value: 0 };
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			<text fg={theme.defaultFg}>
 				<span attributes={TextAttributes.BOLD}>
-					{header.join(" · ").toLowerCase()}
+					{`cabane · ${scopeLabel ?? "all scopes"}`.toLowerCase()}
 				</span>
+				{filters ? <span fg={theme.muted}>{filters}</span> : null}
 				{markedPart ? <span fg={theme.accent}>{markedPart}</span> : null}
 				{strip ? <span fg={theme.muted}>{strip}</span> : null}
 			</text>
@@ -584,6 +623,7 @@ export const Board = ({
 							marked={marked}
 							touched={touched}
 							linked={linked}
+							columns={columns}
 							nextRowIndex={nextRowIndex}
 							available={available}
 							activity={activity}

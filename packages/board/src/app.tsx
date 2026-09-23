@@ -920,7 +920,6 @@ export const App = ({
 					search={state.search}
 					activity={shownActivity}
 					scopeLabel={scopeLabel}
-					filterLabel={`kind: ${state.kind}`}
 					kind={state.kind}
 					status={state.status}
 					marked={state.marked}

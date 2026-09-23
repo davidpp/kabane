@@ -1,12 +1,15 @@
 /** @jsxImportSource @opentui/react */
 import { expect, test } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import { type CapturedSpan, type RGBA, TextAttributes } from "@opentui/core";
 import { BoardActivity } from "./activity";
 import {
 	activityStrip,
 	Board,
 	cardBadge,
 	EMPTY_HINTS,
+	headerFilters,
+	heldColumns,
 	markedLabel,
 	moreBadge,
 	rowMeta,
@@ -698,7 +701,6 @@ test("Board at the default status shows the unresolved sections — someday incl
 			expanded={new Set()}
 			selectedId="a"
 			scopeLabel="acme/widget"
-			filterLabel="kind: all"
 		/>,
 		{ width: 120, height: 20 },
 	);
@@ -708,7 +710,9 @@ test("Board at the default status shows the unresolved sections — someday incl
 		);
 		// `open` stays quiet in the header, but it means UNRESOLVED: the parked someday row is on
 		// screen, and neither closed section is.
-		expect(frame).toContain("cabane · acme/widget · kind: all");
+		// Nothing filtered, so the header says only where it is: no `kind: all`, no `status: open`.
+		expect(frame).toContain("cabane · acme/widget");
+		expect(frame).not.toContain("kind:");
 		expect(frame).not.toContain("status:");
 		expect(frame).toContain("JAKE-52");
 		expect(frame).not.toContain("JAKE-51");
@@ -725,7 +729,6 @@ test("Board under status done shows the chip and BOTH archive sections with no q
 			expanded={new Set()}
 			selectedId="df"
 			scopeLabel="acme/widget"
-			filterLabel="kind: all"
 			status="done"
 		/>,
 		{ width: 120, height: 20 },
@@ -782,7 +785,6 @@ test("Board with nothing open and no filter says so, and where the first issue c
 			expanded={new Set()}
 			selectedId={null}
 			scopeLabel="repo"
-			filterLabel="kind: all"
 		/>,
 		{ width: 40, height: 20 },
 	);
@@ -801,13 +803,7 @@ test("Board with nothing open and no filter says so, and where the first issue c
 
 test("Board under a kind filter that finds nothing says 'no matches', not that the scope is empty", async () => {
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
-		<Board
-			sections={[]}
-			expanded={new Set()}
-			selectedId={null}
-			filterLabel="kind: issue"
-			kind="issue"
-		/>,
+		<Board sections={[]} expanded={new Set()} selectedId={null} kind="issue" />,
 		{ width: 120, height: 20 },
 	);
 	try {
@@ -943,9 +939,9 @@ test("Board draws the mark glyph on a marked row and counts marks in the header"
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("JAKE-2"),
 		);
-		// Mark gutter, then the (empty) linked-issue gutter, then the title.
-		expect(frame).toContain("JAKE-1  ●   Marked one");
-		expect(frame).toContain("JAKE-2      Plain one");
+		// The mark gutter, held on the unmarked row too; no row is linked, so no link gutter at all.
+		expect(frame).toContain("JAKE-1  ● Marked one");
+		expect(frame).toContain("JAKE-2    Plain one");
 		expect(frame).toContain("cabane · all scopes · 1 marked");
 	} finally {
 		destroy();
@@ -982,9 +978,9 @@ test("Board glyphs the rows the copilot touched, and leaves the rest their full 
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("JAKE-2"),
 		);
-		expect(frame).toContain("JAKE-1      ✦ ai Agent wrote it");
+		expect(frame).toContain("JAKE-1  ✦ ai Agent wrote it");
 		// Transient, so it holds no column: an untouched title starts where it always did.
-		expect(frame).toContain("JAKE-2      Human wrote it");
+		expect(frame).toContain("JAKE-2  Human wrote it");
 	} finally {
 		destroy();
 	}
@@ -1011,9 +1007,10 @@ test("Board glyphs a row with a linked issue and keeps every title aligned", asy
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("JAKE-2"),
 		);
-		expect(frame).toContain("JAKE-1    ◆ Team work");
-		// The gutter holds its column when empty, which is what makes the glyphs scannable.
-		expect(frame).toContain("JAKE-2      Local work");
+		expect(frame).toContain("JAKE-1  ◆ Team work");
+		// The gutter holds its column on the row without a link, which is what makes the glyphs
+		// scannable; nothing is marked, so the mark gutter costs nothing.
+		expect(frame).toContain("JAKE-2    Local work");
 	} finally {
 		destroy();
 	}
@@ -1099,5 +1096,180 @@ test("the footer offers O only while the selected row has a linked issue", async
 		expect(frame).not.toContain("O open issue");
 	} finally {
 		onPlain.destroy();
+	}
+});
+
+// A span's color as `#rrggbb`, to compare with the dark ramp the render-only tests get.
+const hexOf = (color: RGBA): string =>
+	`#${color
+		.toInts()
+		.slice(0, 3)
+		.map((c) => c.toString(16).padStart(2, "0"))
+		.join("")}`;
+
+const spansOf = (capture: () => { lines: { spans: CapturedSpan[] }[] }) =>
+	capture().lines.flatMap((line) => line.spans);
+
+test("heldColumns holds a gutter only while a visible row puts a glyph in it", () => {
+	const rows: BoardNav.VisibleRow[] = [
+		{
+			task: task({ id: "a" }),
+			depth: 0,
+			parentId: null,
+			hasChildren: false,
+			expanded: false,
+		},
+		{
+			task: task({ id: "b" }),
+			depth: 0,
+			parentId: null,
+			hasChildren: false,
+			expanded: false,
+		},
+	];
+	expect(heldColumns(rows, new Set(), new Set())).toEqual({
+		mark: false,
+		link: false,
+	});
+	expect(heldColumns(rows, new Set(["a"]), new Set(["b"]))).toEqual({
+		mark: true,
+		link: true,
+	});
+	// A mark on a row the filter hides holds nothing: the column is for the rows on screen.
+	expect(heldColumns(rows, new Set(["gone"]), new Set())).toEqual({
+		mark: false,
+		link: false,
+	});
+});
+
+test("headerFilters is quiet unfiltered and names each filter in force", () => {
+	expect(headerFilters("all", "open")).toBe("");
+	expect(headerFilters("issue", "open")).toBe(" · kind: issue");
+	expect(headerFilters("all", "done")).toBe(" · status: done");
+	expect(headerFilters("task", "review")).toBe(
+		" · kind: task · status: review",
+	);
+});
+
+test("rowStyle paints a touched row on the raised surface with an explicit fg; selection still wins", () => {
+	const touched = rowStyle(false, "#9ca3af", Theme.DARK, true);
+	expect(touched.bg).toBe(Theme.DARK.surface.raised);
+	expect(touched.titleFg).toBe(Theme.DARK.text);
+	expect(touched.idFg).toBe("#9ca3af");
+	const both = rowStyle(true, "#9ca3af", Theme.DARK, true);
+	expect(both.bg).toBe(Theme.DARK.surface.selected);
+});
+
+test("Board shows the kind in the header only while a kind filter is on", async () => {
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={fixture}
+			expanded={new Set()}
+			selectedId={null}
+			scopeLabel="acme/widget"
+			kind="issue"
+		/>,
+		{ width: 120, height: 20 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JAKE-42"),
+		);
+		expect(frame).toContain("cabane · acme/widget · kind: issue");
+	} finally {
+		destroy();
+	}
+});
+
+test("Board draws a bay's label bold in the terminal's foreground and its count muted", async () => {
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await renderTest(
+			<Board sections={fixture} expanded={new Set()} selectedId={null} />,
+			{ width: 120, height: 20 },
+		);
+	try {
+		await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("next · 1"),
+		);
+		const spans = spansOf(captureSpans);
+		const label = spans.find((span) => span.text.trim() === "next");
+		const count = spans.find((span) => span.text.includes("· 1"));
+		expect(label && label.attributes & TextAttributes.BOLD).toBeTruthy();
+		expect(label?.fg.intent).toBe("default");
+		expect(count && hexOf(count.fg)).toBe(Theme.DARK.muted);
+	} finally {
+		destroy();
+	}
+});
+
+test("Board draws in-flight badges in the working hue and keeps the accent for input", async () => {
+	const activity = activityWith(
+		[activeLoop()],
+		[question(fixture[0]?.rows[0]?.task.id ?? "")],
+	);
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await renderTest(
+			<Board
+				sections={fixture}
+				expanded={new Set()}
+				selectedId={null}
+				activity={activity}
+			/>,
+			{ width: 120, height: 20 },
+		);
+	try {
+		await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("loop · implement 3"),
+		);
+		const spans = spansOf(captureSpans);
+		const badge = spans.find((span) => span.text.includes("loop · implement"));
+		const input = spans.find((span) => span.text.includes("? input"));
+		expect(badge && hexOf(badge.fg)).toBe(Theme.DARK.working);
+		expect(input && hexOf(input.fg)).toBe(Theme.DARK.accent);
+	} finally {
+		destroy();
+	}
+});
+
+test("Board footer draws each key in the bar's foreground and its label muted", async () => {
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await renderTest(
+			<Board sections={[]} expanded={new Set()} selectedId={null} />,
+			{ width: 100, height: 12 },
+		);
+	try {
+		await pumpUntil(renderOnce, captureCharFrame, (f) => f.includes("? help"));
+		const spans = spansOf(captureSpans);
+		// Adjacent cells of one style capture as one span: a label runs on into the separator after it.
+		const key = spans.find((span) => span.text === "d");
+		const label = spans.find((span) => span.text.startsWith(" done"));
+		expect(key && hexOf(key.fg)).toBe(Theme.DARK.text);
+		expect(label && hexOf(label.fg)).toBe(Theme.DARK.muted);
+	} finally {
+		destroy();
+	}
+});
+
+test("HelpOverlay is frameless, on the overlay surface, with its keys brighter than their labels", async () => {
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await renderTest(<HelpOverlay />, { width: 90, height: 40 });
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("keyboard shortcuts"),
+		);
+		for (const corner of ["┌", "┐", "└", "┘", "│", "─"])
+			expect(frame).not.toContain(corner);
+		const spans = spansOf(captureSpans);
+		const title = spans.find((span) =>
+			span.text.includes("keyboard shortcuts"),
+		);
+		expect(title && hexOf(title.bg)).toBe(Theme.DARK.surface.overlay);
+		expect(title && title.attributes & TextAttributes.BOLD).toBeTruthy();
+		const label = spans.find((span) =>
+			span.text.includes("expand/collapse subtasks"),
+		);
+		expect(label && hexOf(label.fg)).toBe(Theme.DARK.muted);
+	} finally {
+		destroy();
 	}
 });
