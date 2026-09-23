@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configPath, loadConfig, SCOPE_FILE } from "./config";
-import { type Installer, setupDeps } from "./first-run";
+import { type Installer, outcomeOf, setupDeps } from "./first-run";
 
 const ROOT = join(tmpdir(), `cabane-first-run-${crypto.randomUUID()}`);
 afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
@@ -64,5 +64,25 @@ describe("setupDeps", () => {
 			`${deps.defaults.repo?.scopeId}\n`,
 		);
 		expect((await deps.save(plan)).ok).toBe(false);
+	});
+});
+
+describe("outcomeOf", () => {
+	test("each install report reads as installed, already, or failed with the reason", () => {
+		expect(outcomeOf({ harness: "claude", status: "installed" })).toEqual({
+			id: "claude",
+			status: "installed",
+			message: "as cabane://actor/agent/claude",
+		});
+		expect(outcomeOf({ harness: "codex", status: "present" })).toEqual({
+			id: "codex",
+			status: "already",
+		});
+		expect(outcomeOf({ harness: "gemini", status: "missing" }).status).toBe(
+			"failed",
+		);
+		expect(
+			outcomeOf({ harness: "gemini", status: "failed", error: "auth needed" }),
+		).toEqual({ id: "gemini", status: "failed", message: "auth needed" });
 	});
 });

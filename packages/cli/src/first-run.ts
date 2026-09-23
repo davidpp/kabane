@@ -14,6 +14,7 @@ import { detectScope } from "@cabane/core/scope";
 import { parseArgs } from "./args";
 import { board } from "./commands/board";
 import { buildConfig } from "./commands/init";
+import { McpInstall } from "./commands/mcp-install";
 import {
 	configPath,
 	defaultDeviceId,
@@ -21,6 +22,7 @@ import {
 	writeDirectoryScope,
 } from "./config";
 import { openContext } from "./context";
+import { McpClients } from "./mcp-clients";
 import { failure, type Outcome, success } from "./output";
 
 /** What setup needs from the MCP installer: which harnesses are here, and wiring them. */
@@ -29,16 +31,40 @@ export type Installer = {
 	install: (ids: readonly string[]) => Promise<SetupPlan.InstallOutcome[]>;
 };
 
-// STUB until JCAB-40 lands `McpInstall.run` and its harness detection: nothing
-// is detected, so the screen points at `cabane mcp install --print` instead.
-const pendingInstaller: Installer = {
-	detect: async () => [],
+const LABELS: Record<McpClients.Id, string> = {
+	claude: "Claude Code",
+	codex: "Codex",
+	gemini: "Gemini CLI",
+};
+
+// `replaced` cannot happen without `--force`, which setup never passes; it reads as installed.
+export const outcomeOf = (
+	report: McpInstall.Report,
+): SetupPlan.InstallOutcome => {
+	const id = report.harness;
+	switch (report.status) {
+		case "installed":
+		case "replaced":
+			return {
+				id,
+				status: "installed",
+				message: `as ${McpClients.actorFor(id)}`,
+			};
+		case "present":
+			return { id, status: "already" };
+		case "missing":
+			return { id, status: "failed", message: "not on PATH" };
+		case "failed":
+			return { id, status: "failed", message: report.error };
+	}
+};
+
+/** `cabane mcp install`'s detection and registration, reported the way the screen shows them. */
+const mcpInstaller: Installer = {
+	detect: async () =>
+		McpInstall.detect().map((id) => ({ id, label: LABELS[id] })),
 	install: async (ids) =>
-		ids.map((id) => ({
-			id,
-			status: "failed" as const,
-			message: "cabane mcp install is not wired yet",
-		})),
+		(await McpInstall.run(ids.filter(McpClients.isId))).map(outcomeOf),
 };
 
 const repoOf = async (
@@ -55,7 +81,7 @@ const repoOf = async (
 export const setupDeps = async (
 	home: string,
 	cwd: string,
-	installer: Installer = pendingInstaller,
+	installer: Installer = mcpInstaller,
 ): Promise<SetupDeps> => ({
 	defaults: {
 		name: userInfo().username,
