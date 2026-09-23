@@ -14,11 +14,6 @@ const DEFAULTS: SetupPlan.Defaults = {
 		{ id: "claude", label: "Claude Code" },
 		{ id: "codex", label: "Codex" },
 	],
-	repo: {
-		root: "/work/cabane",
-		scopeId: "github.com/acme/cabane",
-		name: "cabane",
-	},
 };
 
 type Seen = {
@@ -63,16 +58,13 @@ const mount = async (
 };
 
 describe("SetupScreen", () => {
-	it("opens on the defaults: the actor it will write, every harness checked, the pin off", async () => {
+	it("opens on the defaults: the actor it will write, every harness checked", async () => {
 		const { until, destroy } = await mount(DEFAULTS);
 		try {
 			const frame = await until((f) => f.includes("cabane · setup"));
 			expect(frame).toContain("cabane://actor/human/david");
 			expect(frame).toContain("[x] Claude Code");
 			expect(frame).toContain("[x] Codex");
-			expect(frame).toContain(
-				"[ ] pin this repo's scope · cabane (github.com/acme/cabane)",
-			);
 			expect(frame).toContain(SYNC_HINT);
 		} finally {
 			destroy();
@@ -83,12 +75,10 @@ describe("SetupScreen", () => {
 		const { until, destroy } = await mount({
 			...DEFAULTS,
 			harnesses: [],
-			repo: null,
 		});
 		try {
 			const frame = await until((f) => f.includes("cabane · setup"));
 			expect(frame).toContain(NO_HARNESS_HINT);
-			expect(frame).not.toContain("pin this repo");
 		} finally {
 			destroy();
 		}
@@ -108,7 +98,6 @@ describe("SetupScreen", () => {
 					actor: "cabane://actor/human/david",
 					deviceId: "mbp",
 					install: ["claude", "codex"],
-					pin: null,
 				},
 			]);
 			expect(seen.installed).toEqual([["claude", "codex"]]);
@@ -120,7 +109,7 @@ describe("SetupScreen", () => {
 		}
 	});
 
-	it("space unchecks a harness and pins the scope; with nothing to install it goes straight on", async () => {
+	it("space unchecks a harness; with nothing to install it goes straight on", async () => {
 		const { mockInput, until, seen, destroy } = await mount(DEFAULTS);
 		try {
 			await until((f) => f.includes("[x] Codex"));
@@ -129,18 +118,12 @@ describe("SetupScreen", () => {
 			mockInput.pressKey(" ");
 			mockInput.pressArrow("down");
 			mockInput.pressKey(" ");
-			mockInput.pressArrow("down");
-			mockInput.pressKey(" ");
 			await until(
-				(f) =>
-					f.includes("[ ] Claude Code") &&
-					f.includes("[ ] Codex") &&
-					f.includes("[x] pin this repo"),
+				(f) => f.includes("[ ] Claude Code") && f.includes("[ ] Codex"),
 			);
 			mockInput.pressEnter();
 			await until(() => seen.completed === 1);
 			expect(seen.saved[0]?.install).toEqual([]);
-			expect(seen.saved[0]?.pin).toEqual(DEFAULTS.repo);
 			expect(seen.installed).toEqual([]);
 		} finally {
 			destroy();

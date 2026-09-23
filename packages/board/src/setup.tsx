@@ -1,7 +1,6 @@
 /** @jsxImportSource @opentui/react */
 // The first-run screen `cabane` shows on a device with no config: who you are, what this machine is
-// called, which detected harnesses get the MCP server, and optionally a scope pin for the repo it
-// was opened in. Enter writes the config through the host, runs the installs, and shows each
+// called, and which detected harnesses get the MCP server. Enter writes the config through the host, runs the installs, and shows each
 // harness's outcome; enter again hands over to the board. Everything it decides lives in SetupPlan.
 //
 // Key arbitration is the copilot pane's: the focused <input> and the one useKeyboard handler both
@@ -26,7 +25,7 @@ const INPUT_WIDTH = 24;
 
 export type SetupDeps = {
 	defaults: SetupPlan.Defaults;
-	// Writes the config (and the pin) for this plan; resolves to where it went. The host's business:
+	// Writes the config for this plan; resolves to where it went. The host's business:
 	// the config schema is the CLI's, and the board never sees it.
 	save: (plan: SetupPlan.Plan) => Promise<Result<string>>;
 	// Registers the MCP server in each named harness, one outcome per id.
@@ -141,10 +140,7 @@ export const SetupScreen = ({
 		else if (key.name === "return") {
 			key.preventDefault();
 			void confirm();
-		} else if (
-			key.name === "space" &&
-			(field?.kind === "harness" || field?.kind === "pin")
-		) {
+		} else if (key.name === "space" && field?.kind === "harness") {
 			key.preventDefault();
 			update(SetupPlan.toggle(current.current, defaults));
 		}
@@ -248,16 +244,6 @@ const SetupForm = ({
 						checked={form.checked.includes(field.harness.id)}
 						focused={focused}
 					/>
-				);
-			case "pin":
-				return (
-					<box key="pin" style={{ marginTop: 1 }}>
-						<CheckRow
-							label={`pin this repo's scope · ${field.repo.name} (${field.repo.scopeId})`}
-							checked={form.pin}
-							focused={focused}
-						/>
-					</box>
 				);
 		}
 	};
