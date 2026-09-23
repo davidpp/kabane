@@ -5,6 +5,7 @@
 // at the 40-column pane PRODUCT.md targets.
 import { describe, expect, it } from "bun:test";
 import { err, ok, type Result } from "@cabane/core";
+import { type CapturedSpan, RGBA, TextAttributes } from "@opentui/core";
 import {
 	AGENTS_NOTE,
 	AGENTS_OFF,
@@ -12,14 +13,20 @@ import {
 	elidePath,
 	enterLines,
 	NAME_NOTE,
+	NEXT_PHRASE,
 	NO_AGENTS,
 	NO_AGENTS_NOTE,
 	nextLines,
 	SetupScreen,
 	WELCOME,
+	WORDMARK,
+	WORDMARK_WIDTH,
+	wordmarkFits,
+	wordmarkRuns,
 } from "./setup";
 import type { SetupPlan } from "./setup-plan";
 import { pumpUntil, renderTest } from "./testing";
+import { Theme, ThemeProvider } from "./theme";
 
 const DEFAULTS: SetupPlan.Defaults = {
 	name: "david",
@@ -57,6 +64,8 @@ type MountOptions = {
 	saveResult?: Result<string>;
 	fileResult?: Result<SetupPlan.FirstIssue>;
 	width?: number;
+	// Without one the screen gets the dark ramp, as a provider-less mount always has.
+	theme?: Theme.Tokens;
 };
 
 const mount = async (
@@ -65,6 +74,7 @@ const mount = async (
 		saveResult = ok("~/.cabane/config.json"),
 		fileResult = ok(FIRST_ISSUE),
 		width = 120,
+		theme = Theme.DARK,
 	}: MountOptions = {},
 ) => {
 	const seen: Seen = {
@@ -75,31 +85,37 @@ const mount = async (
 		quit: 0,
 	};
 	const setup = await renderTest(
-		<SetupScreen
-			defaults={defaults}
-			save={async (plan) => {
-				seen.saved.push(plan);
-				return saveResult;
-			}}
-			install={async (ids) => {
-				seen.installed.push(ids);
-				return ids.map((id) =>
-					id === "codex"
-						? { id, status: "failed" as const, message: "codex: not logged in" }
-						: { id, status: "installed" as const },
-				);
-			}}
-			fileFirstIssue={async (harness) => {
-				seen.filed.push(harness);
-				return fileResult;
-			}}
-			onComplete={() => {
-				seen.completed++;
-			}}
-			onQuit={() => {
-				seen.quit++;
-			}}
-		/>,
+		<ThemeProvider value={theme}>
+			<SetupScreen
+				defaults={defaults}
+				save={async (plan) => {
+					seen.saved.push(plan);
+					return saveResult;
+				}}
+				install={async (ids) => {
+					seen.installed.push(ids);
+					return ids.map((id) =>
+						id === "codex"
+							? {
+									id,
+									status: "failed" as const,
+									message: "codex: not logged in",
+								}
+							: { id, status: "installed" as const },
+					);
+				}}
+				fileFirstIssue={async (harness) => {
+					seen.filed.push(harness);
+					return fileResult;
+				}}
+				onComplete={() => {
+					seen.completed++;
+				}}
+				onQuit={() => {
+					seen.quit++;
+				}}
+			/>
+		</ThemeProvider>,
 		{ width, height: 24 },
 	);
 	const until = (predicate: (frame: string) => boolean) =>
@@ -179,7 +195,8 @@ describe("SetupScreen at 120 and 40 columns", () => {
 					...enterLines(DEFAULTS.configPath, 2, "claude"),
 					"space toggle · enter confirm · esc quit",
 				]);
-				expect(frame).toContain("enter saves ~/.cabane/config.json");
+				// The consequences start in the form's value column, so the key sits in the label column.
+				expect(frame).toContain("  enter  saves ~/.cabane/config.json");
 			} finally {
 				destroy();
 			}
@@ -224,7 +241,7 @@ describe("SetupScreen at 120 and 40 columns", () => {
 					"opens the board",
 				]);
 				expect(frame).not.toContain(NO_AGENTS);
-				const saveRow = rows(frame).find((row) => row.includes("enter saves"));
+				const saveRow = rows(frame).find((row) => row.includes("enter  saves"));
 				expect(saveRow?.trimEnd().endsWith("/.cabane/config.json")).toBe(true);
 				expect(saveRow?.trimEnd().length).toBeLessThanOrEqual(width);
 			} finally {
@@ -398,9 +415,13 @@ describe("SetupScreen form", () => {
 			await until((f) => f.includes(FORM_TITLE));
 			setup.mockInput.pressEnter();
 			const frame = await until((f) => f.includes("✓ saved"));
+			// Under its row, indented past the row's own start, and its wrap holds that indent. The
+			// outcomes sit in a padded panel, so the row starts one cell in and the note three.
 			const first = rows(frame).findIndex((row) => row.includes("Caused by"));
-			expect(rows(frame)[first]?.startsWith("  Caused by")).toBe(true);
-			expect(rows(frame)[first + 1]?.startsWith("  ")).toBe(true);
+			const indent = rows(frame)[first]?.indexOf("Caused by") ?? -1;
+			const head = rows(frame)[first - 1] ?? "";
+			expect(indent).toBeGreaterThan(head.search(/\S/));
+			expect(rows(frame)[first + 1]?.slice(0, indent).trim()).toBe("");
 		} finally {
 			setup.destroy();
 		}
@@ -456,5 +477,216 @@ describe("SetupScreen form", () => {
 		} finally {
 			destroy();
 		}
+	});
+});
+
+// The colours a span was painted with, as `[r, g, b]`, to hold them against the theme's tokens.
+const rgb = (hex: string): number[] => RGBA.fromHex(hex).toInts().slice(0, 3);
+const ints = (color: RGBA): number[] => color.toInts().slice(0, 3);
+const spanWith = (
+	spans: readonly CapturedSpan[],
+	text: string,
+): CapturedSpan | undefined => spans.find((span) => span.text.includes(text));
+
+describe("the wordmark", () => {
+	it("is four rows of one width, drawn only in narrow block glyphs and its three marks", () => {
+		for (const row of WORDMARK) {
+			expect(row.length).toBe(WORDMARK_WIDTH);
+			expect(/^[ █▀▄_^~]*$/.test(row)).toBe(true);
+		}
+		expect(WORDMARK).toHaveLength(4);
+		expect(WORDMARK_WIDTH).toBe(29);
+	});
+
+	it("turns its marks into the glyphs they draw, in runs of like cells", () => {
+		const runs = wordmarkRuns("█__█ ▀~~▀");
+		expect(runs).toEqual([
+			{ text: "█", cell: "ink" },
+			{ text: "  ", cell: "counter" },
+			{ text: "█ ▀", cell: "ink" },
+			{ text: "▀▀", cell: "floor" },
+			{ text: "▀", cell: "ink" },
+		]);
+		expect(
+			wordmarkRuns(WORDMARK[2] ?? "")
+				.map((r) => r.text)
+				.join(""),
+		).toBe("█    █▀▀█ █  █ █▀▀█ █  █ █▀▀▀");
+	});
+
+	it("fits a forty-column pane inside its panel, and gives way to the bold word below 31", () => {
+		expect(wordmarkFits(40)).toBe(true);
+		expect(wordmarkFits(31)).toBe(true);
+		expect(wordmarkFits(30)).toBe(false);
+	});
+});
+
+describe("SetupScreen surfaces", () => {
+	it("the welcome is one raised panel under a wordmark, its estimate muted", async () => {
+		const { until, captureSpans, destroy } = await mount(DEFAULTS, {
+			width: 40,
+		});
+		try {
+			const frame = await until((f) => f.includes(WELCOME_LEAD));
+			expect(frame).toContain("█▀▀▀ ▀▀▀█ █▀▀█ ▀▀▀█ █▀▀▄ █▀▀█");
+			// The wordmark is the title: no `cabane` header line above it.
+			expect(rows(frame).some((row) => row.trim() === "cabane")).toBe(false);
+			const spans = captureSpans().lines.flatMap((line) => line.spans);
+			const lead = spanWith(spans, WELCOME_LEAD);
+			expect(lead && ints(lead.bg)).toEqual(rgb(Theme.DARK.surface.raised));
+			expect(lead && ints(lead.fg)).toEqual(rgb(Theme.DARK.text));
+			expect(lead ? lead.attributes & TextAttributes.BOLD : 0).toBeTruthy();
+			const estimate = spanWith(spans, "which agents get cabane.");
+			expect(estimate && ints(estimate.fg)).toEqual(rgb(Theme.DARK.muted));
+		} finally {
+			destroy();
+		}
+	});
+
+	it("below 31 columns the welcome says cabane in bold instead of the wordmark", async () => {
+		const { until, destroy } = await mount(DEFAULTS, { width: 30 });
+		try {
+			const frame = await until((f) => f.includes("cabane"));
+			expect(frame).not.toContain("█");
+		} finally {
+			destroy();
+		}
+	});
+
+	it("the focused field paints the selected surface across the row; tab moves it", async () => {
+		const { mockInput, toForm, until, captureSpans, destroy } = await mount(
+			DEFAULTS,
+			{ width: 40 },
+		);
+		try {
+			await toForm();
+			const nameRow = (): CapturedSpan[] =>
+				captureSpans().lines.find((line) =>
+					line.spans.some((span) => span.text.includes("name")),
+				)?.spans ?? [];
+			const label = spanWith(nameRow(), "name");
+			expect(label && ints(label.bg)).toEqual(rgb(Theme.DARK.surface.selected));
+			mockInput.pressTab();
+			await until(() => {
+				const moved = spanWith(nameRow(), "name");
+				return (
+					moved !== undefined &&
+					ints(moved.bg).join() === rgb(Theme.DARK.surface.raised).join()
+				);
+			});
+			const claude = spanWith(
+				captureSpans().lines.flatMap((line) => line.spans),
+				"Claude Code",
+			);
+			expect(claude && ints(claude.bg)).toEqual(
+				rgb(Theme.DARK.surface.selected),
+			);
+		} finally {
+			destroy();
+		}
+	});
+
+	it("an unchecked agent reads muted as well as `[ ]`", async () => {
+		const { mockInput, toForm, until, captureSpans, destroy } = await mount(
+			DEFAULTS,
+			{ width: 40 },
+		);
+		try {
+			await toForm();
+			mockInput.pressTab();
+			mockInput.pressKey(" ");
+			await until((f) => f.includes("[ ] Claude Code"));
+			const spans = captureSpans().lines.flatMap((line) => line.spans);
+			const off = spanWith(spans, "[ ] Claude Code");
+			const on = spanWith(spans, "[x] Codex");
+			expect(off && ints(off.fg)).toEqual(rgb(Theme.DARK.muted));
+			expect(on && ints(on.fg)).toEqual(rgb(Theme.DARK.text));
+		} finally {
+			destroy();
+		}
+	});
+
+	it("enter's consequences share one raised panel with the key in the label column", async () => {
+		const { toForm, captureSpans, destroy } = await mount(DEFAULTS, {
+			width: 40,
+		});
+		try {
+			const frame = await toForm();
+			for (const line of enterLines(DEFAULTS.configPath, 2, "claude"))
+				expect(onOneRow(frame, line)).toBe(true);
+			const spans = captureSpans().lines.flatMap((line) => line.spans);
+			for (const line of ["saves ~/.cabane/config.json", "opens the board"]) {
+				const span = spanWith(spans, line);
+				expect(span && ints(span.bg)).toEqual(rgb(Theme.DARK.surface.raised));
+			}
+			// The form's value column and the consequences' column are the same column.
+			const valueAt = rows(frame)
+				.find((row) => row.includes(NAME_NOTE))
+				?.indexOf(NAME_NOTE);
+			const savesAt = rows(frame)
+				.find((row) => row.includes("saves "))
+				?.indexOf("saves ");
+			expect(savesAt).toBe(valueAt);
+		} finally {
+			destroy();
+		}
+	});
+
+	it("done sets the phrase to say apart on the selected surface, inside the issue's panel", async () => {
+		const { mockInput, toForm, until, captureSpans, destroy } = await mount(
+			DEFAULTS,
+			{ width: 40 },
+		);
+		try {
+			await toForm();
+			mockInput.pressEnter();
+			await until((f) => f.includes("✓ filed"));
+			const spans = captureSpans().lines.flatMap((line) => line.spans);
+			const phrase = spanWith(spans, NEXT_PHRASE);
+			expect(phrase?.text).toBe(NEXT_PHRASE);
+			expect(phrase && ints(phrase.bg)).toEqual(
+				rgb(Theme.DARK.surface.selected),
+			);
+			for (const text of ["saved", "installed", "watch REPO-1"]) {
+				const span = spanWith(spans, text);
+				expect(span && ints(span.bg)).toEqual(rgb(Theme.DARK.surface.raised));
+			}
+		} finally {
+			destroy();
+		}
+	});
+
+	it("on the light ramp every panel and its text come from the light tokens", async () => {
+		const { mockInput, toForm, until, captureSpans, destroy } = await mount(
+			DEFAULTS,
+			{ width: 40, theme: Theme.LIGHT },
+		);
+		try {
+			const welcome = await until((f) => f.includes(WELCOME_LEAD));
+			expect(welcome).toContain(WELCOME_LEAD);
+			const lead = spanWith(
+				captureSpans().lines.flatMap((line) => line.spans),
+				WELCOME_LEAD,
+			);
+			expect(lead && ints(lead.bg)).toEqual(rgb(Theme.LIGHT.surface.raised));
+			expect(lead && ints(lead.fg)).toEqual(rgb(Theme.LIGHT.text));
+			await toForm();
+			mockInput.pressEnter();
+			await until((f) => f.includes("✓ filed"));
+			const spans = captureSpans().lines.flatMap((line) => line.spans);
+			const filed = spanWith(spans, "for claude");
+			expect(filed && ints(filed.bg)).toEqual(rgb(Theme.LIGHT.surface.raised));
+			expect(filed && ints(filed.fg)).toEqual(rgb(Theme.LIGHT.text));
+		} finally {
+			destroy();
+		}
+	});
+});
+
+// The copy JCAB-82 settled, pinned so a restyle cannot reword it.
+describe("SetupScreen copy", () => {
+	it("keeps JCAB-82's next step word for word", () => {
+		expect(nextLines("claude", "REPO-1")[1]).toBe(`say ${NEXT_PHRASE} and`);
+		expect(NEXT_PHRASE).toBe('"take the next cabane issue"');
 	});
 });

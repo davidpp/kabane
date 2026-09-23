@@ -3,7 +3,7 @@
 // is, then who you are and which detected harnesses get the MCP server. Enter writes the config
 // through the host, runs the installs, files a first issue for an agent inside a project, and shows
 // each outcome with the next step; enter again hands over to the board. Everything it decides lives
-// in SetupPlan.
+// in SetupPlan. Each phase groups its parts on raised panels, the welcome under a block wordmark.
 //
 // Key arbitration is the copilot pane's: the focused <input> and the one useKeyboard handler both
 // see every key, handler first, and the handler preventDefaults the keys it takes (tab, arrows,
@@ -26,12 +26,13 @@ import { useSpinnerFrame } from "./spinner";
 import { Theme, ThemeProvider, useTheme } from "./theme";
 
 const INPUT_WIDTH = 24;
-// `› ` plus the widest label, padded: where an input, a checkbox, or the note under one starts.
+// `› ` plus the widest label, padded: where an input, a checkbox, the note under one, and each of
+// enter's consequences start, so the form and the enter panel share one value column.
 const LABEL_WIDTH = 9;
-// `enter ` before the first line of what enter does: where the rest of those lines start.
-const ENTER_INDENT = 6;
 // Where a line's note starts when it goes under the line rather than beside it.
 const NOTE_INDENT = 2;
+// One cell of air inside every panel, left and right.
+const PANEL_PAD = 1;
 
 export type SetupDeps = {
 	defaults: SetupPlan.Defaults;
@@ -122,15 +123,61 @@ export const enterLines = (
 	"opens the board",
 ];
 
+/** What to say to the agent: the done screen sets it apart as the thing to copy. */
+export const NEXT_PHRASE = `"take the next cabane issue"`;
+
 /**
  * What to do once the board opens, for the first issue to move. A new session because a harness
  * reads its MCP servers when a session starts, so one already running has no cabane tools.
  */
 export const nextLines = (harness: string, shortId: string): string[] => [
 	`next: in a new ${harness} session here,`,
-	`say "take the next cabane issue" and`,
+	`say ${NEXT_PHRASE} and`,
 	`watch ${shortId} move on the board.`,
 ];
+
+/**
+ * The welcome's wordmark, in opencode's block-glyph manner: each letter four cells of `█▀▄` over
+ * three rows, and a row above for the `b`'s ascender. Three marks are not drawn as themselves:
+ * `_` is a counter cell (blank, on the shadow), `^` a top half over the shadow, `~` a top half in the
+ * shadow's color, so each letter reads solid with a recessed inside. Every glyph drawn is one narrow
+ * BMP codepoint, and the whole mark is 29 columns: it fits the forty-column pane inside its panel.
+ */
+export const WORDMARK: readonly string[] = [
+	"          ▄                  ",
+	"█▀▀▀ ▀▀▀█ █▀▀█ ▀▀▀█ █▀▀▄ █▀▀█",
+	"█___ █^^█ █__█ █^^█ █__█ █^^^",
+	"▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀~~▀ ▀▀▀▀",
+];
+
+export const WORDMARK_WIDTH = WORDMARK[0]?.length ?? 0;
+
+/** Below this width the wordmark cannot fit its panel, and the welcome says `cabane` in bold. */
+export const wordmarkFits = (width: number): boolean =>
+	width - 2 * PANEL_PAD >= WORDMARK_WIDTH;
+
+export type WordmarkCell = "ink" | "counter" | "lid" | "floor";
+
+export type WordmarkRun = { text: string; cell: WordmarkCell };
+
+const WORDMARK_CELLS: Record<string, { glyph: string; cell: WordmarkCell }> = {
+	_: { glyph: " ", cell: "counter" },
+	"^": { glyph: "▀", cell: "lid" },
+	"~": { glyph: "▀", cell: "floor" },
+};
+
+/** One wordmark row as runs of like cells, with the marks turned into the glyphs they draw. */
+export const wordmarkRuns = (row: string): WordmarkRun[] =>
+	Array.from(row).reduce<WordmarkRun[]>((runs, char) => {
+		const { glyph, cell } = WORDMARK_CELLS[char] ?? {
+			glyph: char,
+			cell: "ink",
+		};
+		const last = runs.at(-1);
+		if (last?.cell === cell) last.text += glyph;
+		else runs.push({ text: glyph, cell });
+		return runs;
+	}, []);
 
 /**
  * A path cut to `room` columns from the left, whole segments at a time, so it never wraps mid-word
@@ -279,29 +326,32 @@ export const SetupScreen = ({
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<text fg={theme.defaultFg}>
-				<span attributes={TextAttributes.BOLD}>cabane</span>
-				{phase.kind === "welcome" ? null : (
+			{/* The welcome's wordmark is its title; every later phase says where it is. */}
+			{phase.kind === "welcome" ? null : (
+				<text fg={theme.defaultFg}>
+					<span attributes={TextAttributes.BOLD}>cabane</span>
 					<span fg={theme.muted}> · setup</span>
-				)}
-			</text>
+				</text>
+			)}
 			<box style={{ flexDirection: "column", flexGrow: 1, marginTop: 1 }}>
 				{phase.kind === "welcome" ? (
 					<WelcomeCard />
 				) : phase.kind === "done" ? (
 					<>
-						<SavedLine path={phase.configPath} />
-						<box style={{ flexDirection: "column", marginTop: 1 }}>
-							{phase.outcomes.map((outcome) => (
-								<OutcomeRow
-									key={outcome.id}
-									outcome={outcome}
-									label={labelOf(outcome.id)}
-								/>
-							))}
-						</box>
+						<Panel first>
+							<SavedLine path={phase.configPath} />
+							<box style={{ flexDirection: "column", marginTop: 1 }}>
+								{phase.outcomes.map((outcome) => (
+									<OutcomeRow
+										key={outcome.id}
+										outcome={outcome}
+										label={labelOf(outcome.id)}
+									/>
+								))}
+							</box>
+						</Panel>
 						{phase.firstIssue ? (
-							<FirstIssueBlock filed={phase.firstIssue} />
+							<FirstIssuePanel filed={phase.firstIssue} />
 						) : null}
 					</>
 				) : (
@@ -311,21 +361,21 @@ export const SetupScreen = ({
 						onName={(name) => update({ ...current.current, name })}
 					/>
 				)}
+				{/* The enter panel turns into the progress line while enter's work runs, so nothing jumps. */}
 				{phase.kind === "form" ? (
-					<EnterLines
+					<EnterPanel
 						configPath={defaults.configPath}
 						agents={form.checked.length}
 						firstAgent={SetupPlan.firstAgent(form, defaults)}
 					/>
+				) : phase.kind === "working" ? (
+					<Panel>
+						<text fg={theme.working}>{`${spinnerFrame} ${phase.step}`}</text>
+					</Panel>
 				) : null}
 				{phase.kind === "form" && phase.error ? (
 					<text fg={theme.failed} style={{ marginTop: 1 }}>
 						{phase.error}
-					</text>
-				) : null}
-				{phase.kind === "working" ? (
-					<text fg={theme.working} style={{ marginTop: 1 }}>
-						{`${spinnerFrame} ${phase.step}`}
 					</text>
 				) : null}
 			</box>
@@ -334,29 +384,108 @@ export const SetupScreen = ({
 	);
 };
 
-const WelcomeCard = (): ReactNode => {
+// The width inside a padded panel: the pane less the panel's air on either side.
+const usePanelWidth = (): number =>
+	useTerminalDimensions().width - 2 * PANEL_PAD;
+
+// A raised panel, one tonal step up from the terminal's own background: how setup groups what
+// belongs together, the way the board sets a block apart (DESIGN.md: a surface, never a rule). Its
+// cells are painted, so text inside names its foreground (`theme.text`), never the default.
+const Panel = ({
+	first = false,
+	gutter = false,
+	children,
+}: {
+	// The first panel of a phase sits right under the header's gap; the rest keep one row apart.
+	first?: boolean;
+	// Its rows open with their own `› ` gutter, which is the panel's air: no padding beside it, so a
+	// note in the value column keeps all of a forty-column pane's room.
+	gutter?: boolean;
+	children: ReactNode;
+}): ReactNode => {
 	const theme = useTheme();
 	return (
+		<box
+			style={{
+				flexDirection: "column",
+				flexShrink: 0,
+				marginTop: first ? 0 : 1,
+				backgroundColor: theme.surface.raised,
+				paddingLeft: gutter ? 0 : PANEL_PAD,
+				paddingRight: gutter ? 0 : PANEL_PAD,
+				paddingTop: 1,
+				paddingBottom: 1,
+			}}
+		>
+			{children}
+		</box>
+	);
+};
+
+const Wordmark = (): ReactNode => {
+	const theme = useTheme();
+	// The recess: the strongest painted step, so the counters read as cut into the letters.
+	const shadow = theme.surface.selected;
+	const style = (
+		cell: WordmarkCell,
+	): { fg: string; bg: string | undefined } => {
+		switch (cell) {
+			case "ink":
+				return { fg: theme.text, bg: undefined };
+			case "counter":
+			case "lid":
+				return { fg: theme.text, bg: shadow };
+			case "floor":
+				return { fg: shadow, bg: undefined };
+		}
+	};
+	return (
 		<box style={{ flexDirection: "column" }}>
+			{WORDMARK.map((row, index) => (
+				// biome-ignore lint/suspicious/noArrayIndexKey: the wordmark's rows are fixed and positional.
+				<text key={index} fg={theme.text}>
+					{wordmarkRuns(row).map((run, at) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: a row's runs are positional.
+						<span key={at} {...style(run.cell)}>
+							{run.text}
+						</span>
+					))}
+				</text>
+			))}
+		</box>
+	);
+};
+
+const WelcomeCard = (): ReactNode => {
+	const theme = useTheme();
+	const { width } = useTerminalDimensions();
+	const last = WELCOME.length - 1;
+	return (
+		<Panel first>
+			{wordmarkFits(width) ? (
+				<Wordmark />
+			) : (
+				<text fg={theme.text} attributes={TextAttributes.BOLD}>
+					cabane
+				</text>
+			)}
 			{WELCOME.map(([lead, ...rest], index) => (
-				<box
-					key={lead}
-					style={{ flexDirection: "column", marginTop: index === 0 ? 0 : 1 }}
-				>
+				<box key={lead} style={{ flexDirection: "column", marginTop: 1 }}>
+					{/* The lead in Title weight; the last paragraph is the time estimate, and reads as aside. */}
 					<text
-						fg={theme.defaultFg}
+						fg={index === last ? theme.muted : theme.text}
 						attributes={index === 0 ? TextAttributes.BOLD : undefined}
 					>
 						{lead}
 					</text>
 					{rest.map((line) => (
-						<text key={line} fg={theme.defaultFg}>
+						<text key={line} fg={index === last ? theme.muted : theme.text}>
 							{line}
 						</text>
 					))}
 				</box>
 			))}
-		</box>
+		</Panel>
 	);
 };
 
@@ -395,7 +524,7 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 	};
 	const [name, ...agents] = SetupPlan.fields(defaults).map(row);
 	return (
-		<box style={{ flexDirection: "column" }}>
+		<Panel first gutter>
 			{name}
 			<Note text={NAME_NOTE} />
 			<box style={{ flexDirection: "column", marginTop: 1 }}>
@@ -406,7 +535,7 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 					</>
 				) : (
 					<>
-						<text fg={theme.defaultFg}>
+						<text fg={theme.text}>
 							{`${" ".repeat(2)}${"agents".padEnd(LABEL_WIDTH - 2)}`}
 							{defaults.installOff ? AGENTS_OFF : NO_AGENTS}
 						</text>
@@ -416,7 +545,7 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 					</>
 				)}
 			</box>
-		</box>
+		</Panel>
 	);
 };
 
@@ -426,8 +555,9 @@ const Note = ({ text }: { text: string }): ReactNode => {
 	return <text fg={theme.muted}>{`${" ".repeat(LABEL_WIDTH)}${text}`}</text>;
 };
 
-// `enter` in the footer's key colour, then what it will do, dim.
-const EnterLines = ({
+// Everything enter will change, as one panel: the key in the label column, bold, and each
+// consequence in the form's value column, so the form above and this panel read as one grid.
+const EnterPanel = ({
 	configPath,
 	agents,
 	firstAgent,
@@ -436,32 +566,61 @@ const EnterLines = ({
 	agents: number;
 	firstAgent?: string;
 }): ReactNode => {
-	const { width } = useTerminalDimensions();
 	const theme = useTheme();
-	const room = width - ENTER_INDENT - "saves ".length;
+	const { width } = useTerminalDimensions();
+	const room = width - LABEL_WIDTH - "saves ".length;
 	return (
-		<box style={{ flexDirection: "column", marginTop: 1 }}>
+		<Panel gutter>
 			{enterLines(elidePath(configPath, room), agents, firstAgent).map(
 				(line, index) => (
-					<text key={line} fg={theme.defaultFg}>
-						{index === 0 ? "enter " : " ".repeat(ENTER_INDENT)}
-						<span fg={theme.muted}>{line}</span>
+					<text key={line} fg={theme.text}>
+						{index === 0 ? (
+							<span attributes={TextAttributes.BOLD}>
+								{`  ${"enter".padEnd(LABEL_WIDTH - 2)}`}
+							</span>
+						) : (
+							" ".repeat(LABEL_WIDTH)
+						)}
+						{line}
 					</text>
 				),
 			)}
-		</box>
+		</Panel>
 	);
 };
 
 const SavedLine = ({ path }: { path: string }): ReactNode => {
-	const { width } = useTerminalDimensions();
 	const theme = useTheme();
 	const head = "✓ saved ";
+	const room = usePanelWidth() - head.length;
 	return (
-		<text fg={theme.defaultFg}>
+		<text fg={theme.text}>
 			<span fg={theme.done}>✓</span>
-			{` saved ${elidePath(path, width - head.length)}`}
+			{` saved ${elidePath(path, room)}`}
 		</text>
+	);
+};
+
+// A field's row. The focused one paints the selected surface across the panel, with an explicit fg
+// on every cell (the Selection Rule), and the accent `›` saying which field is waiting on you.
+const FieldRow = ({
+	focused,
+	children,
+}: {
+	focused: boolean;
+	children: ReactNode;
+}): ReactNode => {
+	const theme = useTheme();
+	return (
+		<box
+			style={{
+				flexDirection: "row",
+				height: 1,
+				backgroundColor: focused ? theme.surface.selected : undefined,
+			}}
+		>
+			{children}
+		</box>
 	);
 };
 
@@ -489,6 +648,8 @@ const Gutter = ({
 	);
 };
 
+// The input sits on the overlay step in both states: lifted off the panel when idle, inset in the
+// selected row when focused, so it reads as a field either way.
 const TextRow = ({
 	label,
 	value,
@@ -497,21 +658,21 @@ const TextRow = ({
 }: TextRowProps): ReactNode => {
 	const theme = useTheme();
 	return (
-		<box style={{ flexDirection: "row", height: 1 }}>
-			<text fg={theme.defaultFg} style={{ flexShrink: 0 }}>
+		<FieldRow focused={focused}>
+			<text fg={theme.text} style={{ flexShrink: 0 }}>
 				<Gutter label={label} focused={focused} />
 			</text>
 			<input
 				value={value}
 				focused={focused}
 				onInput={onInput}
-				backgroundColor={theme.surface.raised}
-				focusedBackgroundColor={theme.surface.selected}
+				backgroundColor={theme.surface.overlay}
+				focusedBackgroundColor={theme.surface.overlay}
 				textColor={theme.text}
 				focusedTextColor={theme.text}
 				style={{ width: INPUT_WIDTH, flexShrink: 0 }}
 			/>
-		</box>
+		</FieldRow>
 	);
 };
 
@@ -529,20 +690,20 @@ const NotedLine = ({
 	note,
 	noteFg,
 }: NotedLineProps): ReactNode => {
-	const { width } = useTerminalDimensions();
+	const width = usePanelWidth();
 	const theme = useTheme();
 	if (note === undefined || note === "")
-		return <text fg={theme.defaultFg}>{head}</text>;
+		return <text fg={theme.text}>{head}</text>;
 	if (fitsBeside(width, headLength, note))
 		return (
-			<text fg={theme.defaultFg}>
+			<text fg={theme.text}>
 				{head}
 				<span fg={noteFg}>{` ${note}`}</span>
 			</text>
 		);
 	return (
 		<box style={{ flexDirection: "column" }}>
-			<text fg={theme.defaultFg}>{head}</text>
+			<text fg={theme.text}>{head}</text>
 			{/* A harness's error can outrun the pane: padding, not spaces, keeps its wrap indented. */}
 			<box style={{ paddingLeft: NOTE_INDENT }}>
 				<text fg={noteFg}>{note}</text>
@@ -576,41 +737,61 @@ const OutcomeRow = ({
 	);
 };
 
+// A next-step line, with the phrase to say set apart on the selected surface as the thing to copy.
+const NextLine = ({ line }: { line: string }): ReactNode => {
+	const theme = useTheme();
+	const at = line.indexOf(NEXT_PHRASE);
+	if (at < 0) return <text fg={theme.text}>{line}</text>;
+	return (
+		<text fg={theme.text}>
+			{line.slice(0, at)}
+			<span
+				fg={theme.text}
+				bg={theme.surface.selected}
+				attributes={TextAttributes.BOLD}
+			>
+				{NEXT_PHRASE}
+			</span>
+			{line.slice(at + NEXT_PHRASE.length)}
+		</text>
+	);
+};
+
 // The issue setup filed, and the one thing to do for it to move. A failure to file says why and
 // nothing more: the config and the installs already landed, and the board opens either way.
-const FirstIssueBlock = ({ filed }: { filed: FiledIssue }): ReactNode => {
+const FirstIssuePanel = ({ filed }: { filed: FiledIssue }): ReactNode => {
 	const theme = useTheme();
 	if (!filed.result.ok) {
 		const head = "✗ first issue not filed";
 		return (
-			<box style={{ marginTop: 1 }}>
+			<Panel>
 				<NotedLine
 					head={<span fg={theme.failed}>{head}</span>}
 					headLength={head.length}
 					note={filed.result.error.message}
 					noteFg={theme.failed}
 				/>
-			</box>
+			</Panel>
 		);
 	}
 	const { shortId, title } = filed.result.value;
 	return (
-		<box style={{ flexDirection: "column", marginTop: 1 }}>
-			<text fg={theme.defaultFg}>
+		<Panel>
+			<text fg={theme.text}>
 				<span fg={theme.done}>✓</span>
-				{` filed ${shortId} for ${filed.harness}`}
+				{" filed "}
+				<span attributes={TextAttributes.BOLD}>{shortId}</span>
+				{` for ${filed.harness}`}
 			</text>
 			<box style={{ paddingLeft: NOTE_INDENT }}>
 				<text fg={theme.muted}>{title}</text>
 			</box>
 			<box style={{ flexDirection: "column", marginTop: 1 }}>
 				{nextLines(filed.harness, shortId).map((line) => (
-					<text key={line} fg={theme.defaultFg}>
-						{line}
-					</text>
+					<NextLine key={line} line={line} />
 				))}
 			</box>
-		</box>
+		</Panel>
 	);
 };
 
@@ -622,6 +803,8 @@ type CheckRowProps = {
 	focused: boolean;
 };
 
+// Checked and unchecked differ in shape (`[x]` against `[ ]`) and in tone: a harness left out reads
+// muted, so the rows that will get cabane's tools stand out without color carrying it.
 const CheckRow = ({
 	label,
 	harness,
@@ -630,12 +813,14 @@ const CheckRow = ({
 }: CheckRowProps): ReactNode => {
 	const theme = useTheme();
 	return (
-		<text fg={theme.defaultFg}>
-			<Gutter label={label} focused={focused} />
-			<span bg={focused ? theme.surface.selected : undefined}>
-				{`[${checked ? "x" : " "}] ${harness}`}
-			</span>
-		</text>
+		<FieldRow focused={focused}>
+			<text fg={theme.text}>
+				<Gutter label={label} focused={focused} />
+				<span fg={checked ? theme.text : theme.muted}>
+					{`[${checked ? "x" : " "}] ${harness}`}
+				</span>
+			</text>
+		</FieldRow>
 	);
 };
 
