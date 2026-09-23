@@ -298,6 +298,78 @@ export namespace BoardData {
 		});
 	};
 
+	/** The record kinds an open detail view shows that can change while the task row does not. */
+	export type StampParts = {
+		comments: readonly TaskComment[];
+		workLogs: readonly TaskWorkLog[];
+		sessions: readonly AgentSession[];
+		links: readonly TaskLink[];
+		upstream: readonly UpstreamLink[];
+	};
+
+	const latest = (stamps: readonly string[]): string =>
+		stamps.reduce((newest, at) => (at > newest ? at : newest), "");
+
+	/**
+	 * A fingerprint of those records: a count and the newest timestamp per kind. A session's
+	 * `lastActivityAt` moves with every activity and transition, so a session that recorded
+	 * something moves the stamp without its activities being read. Two stamps differ when a record
+	 * landed, went away or changed; pure, so a stamp read fresh and one taken from loaded records agree.
+	 */
+	export const stampOf = (parts: StampParts): string =>
+		[
+			`c${parts.comments.length}@${latest(parts.comments.map((c) => c.updatedAt ?? c.createdAt))}`,
+			`w${parts.workLogs.length}@${latest(parts.workLogs.map((w) => w.createdAt))}`,
+			`s${parts.sessions.length}@${latest(parts.sessions.map((s) => s.lastActivityAt))}`,
+			`l${parts.links
+				.map((l) => `${l.id}:${l.type}`)
+				.sort()
+				.join(",")}`,
+			`u${parts.upstream.length}@${latest(parts.upstream.map((u) => u.updatedAt))}`,
+		].join("|");
+
+	/** The stamp of records already loaded, to compare the next `detailStamp` against. */
+	export const recordsStamp = (records: DetailRecords): string =>
+		stampOf({
+			comments: records.comments,
+			workLogs: records.workLogs,
+			sessions: records.sessions.map((s) => s.session),
+			links: records.links,
+			upstream: records.upstream,
+		});
+
+	/**
+	 * The stamp of a task's records as they stand now, for the poll to decide whether the open detail
+	 * view needs `taskDetail` again. One read per kind and none per session or per neighbor, which is
+	 * what makes it cheaper than the load it guards.
+	 */
+	export const detailStamp = async (
+		basePath: string,
+		id: string,
+	): Promise<Result<string>> => {
+		const [comments, workLogs, sessions, links, upstream] = await Promise.all([
+			Planner.getComments(basePath, id),
+			Planner.getWorkLogs(basePath, id),
+			Planner.querySessions(basePath, { taskId: id }),
+			Planner.getLinksForTask(basePath, id),
+			Planner.getUpstreamLinksForTask(basePath, id),
+		]);
+		if (!comments.ok) return comments;
+		if (!workLogs.ok) return workLogs;
+		if (!sessions.ok) return sessions;
+		if (!links.ok) return links;
+		if (!upstream.ok) return upstream;
+		return ok(
+			stampOf({
+				comments: comments.value,
+				workLogs: workLogs.value,
+				sessions: sessions.value,
+				links: links.value,
+				upstream: upstream.value,
+			}),
+		);
+	};
+
 	// Every task id in the loaded sections, parents and children alike.
 	const taskIdsOf = (sections: BoardSection[]): string[] => {
 		const ids: string[] = [];

@@ -413,6 +413,73 @@ describe("BoardData", () => {
 		});
 	});
 
+	describe("detailStamp", () => {
+		// Timestamps are ISO to the millisecond; two writes inside one would read as one moment.
+		const tick = () => Bun.sleep(5);
+		const stampNow = async (id: string): Promise<string> => {
+			const stamp = await BoardData.detailStamp(TEST_BASE, id);
+			if (!stamp.ok) throw stamp.error;
+			return stamp.value;
+		};
+
+		it("holds while nothing lands, and moves for a comment, a work log and session activity", async () => {
+			const added = await Planner.addTask(TEST_BASE, draft());
+			if (!added.ok) throw added.error;
+			const id = added.value.id;
+			const quiet = await stampNow(id);
+			expect(await stampNow(id)).toBe(quiet);
+
+			await Planner.addComment(TEST_BASE, {
+				taskId: id,
+				author: "claude",
+				authorType: "ai",
+				content: "found the cause",
+			});
+			const commented = await stampNow(id);
+			expect(commented).not.toBe(quiet);
+
+			await tick();
+			await Planner.addWorkLog(TEST_BASE, {
+				taskId: id,
+				refs: [{ uri: "commit:abc1234" }],
+			});
+			const logged = await stampNow(id);
+			expect(logged).not.toBe(commented);
+
+			await tick();
+			const session = await Planner.startSession(TEST_BASE, {
+				taskId: id,
+				agent: "claude",
+			});
+			if (!session.ok) throw session.error;
+			const started = await stampNow(id);
+			expect(started).not.toBe(logged);
+
+			await tick();
+			await Planner.addActivity(TEST_BASE, {
+				sessionId: session.value.id,
+				type: "progress",
+				body: "halfway",
+			});
+			expect(await stampNow(id)).not.toBe(started);
+		});
+
+		it("agrees with the stamp of the records taskDetail loads", async () => {
+			const added = await Planner.addTask(TEST_BASE, draft());
+			if (!added.ok) throw added.error;
+			const id = added.value.id;
+			await Planner.addComment(TEST_BASE, {
+				taskId: id,
+				author: "david",
+				authorType: "human",
+				content: "looks right",
+			});
+			const records = await BoardData.taskDetail(TEST_BASE, id);
+			if (!records.ok) throw records.error;
+			expect(BoardData.recordsStamp(records.value)).toBe(await stampNow(id));
+		});
+	});
+
 	describe("markDone", () => {
 		it("moves a task to done", async () => {
 			const added = await Planner.addTask(TEST_BASE, draft({ state: "next" }));
