@@ -24,8 +24,6 @@ export {
 } from "./comment";
 // Config schemas
 export {
-	type PlannerConfig,
-	PlannerConfigSchema,
 	type SyncConfig,
 	SyncConfigSchema,
 } from "./config";
