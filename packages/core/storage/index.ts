@@ -11,7 +11,6 @@
 import { Planner as AssembleContext } from "./assemble-context";
 import { Planner as Comments } from "./comments";
 import { Planner as ContextRefs } from "./context-refs";
-import { Planner as Implementation } from "./implementation";
 // Import domain namespaces
 import { Planner as Init } from "./init";
 import { Planner as Projects } from "./projects";
@@ -78,8 +77,6 @@ export const Planner = {
 	getUpstreamSummariesForTasks: UpstreamLinks.getUpstreamSummariesForTasks,
 	getUpstreamLinksByExternalRef: UpstreamLinks.getUpstreamLinksByExternalRef,
 	deleteUpstreamLink: UpstreamLinks.deleteUpstreamLink,
-	// Composed private implementation view
-	implementation: Implementation.implementation,
 	// Session Defaults
 	resolveDefaultsKey: SessionDefaults.resolveDefaultsKey,
 	getDefaults: SessionDefaults.getDefaults,
