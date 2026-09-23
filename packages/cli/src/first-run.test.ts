@@ -10,6 +10,7 @@ afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
 
 const installer: Installer = {
 	detect: async () => [{ id: "claude", label: "Claude Code" }],
+	narrowed: () => false,
 	install: async (ids) => ids.map((id) => ({ id, status: "installed" })),
 };
 
@@ -23,6 +24,22 @@ describe("setupDeps", () => {
 		expect(deps.defaults.configPath).toBe(
 			tildePath(configPath(join(ROOT, "home-defaults"))),
 		);
+	});
+
+	test("tells install turned off apart from no harness installed", async () => {
+		const none = { ...installer, detect: async () => [] };
+		const off = await setupDeps(join(ROOT, "home-off"), {
+			...none,
+			narrowed: () => true,
+		});
+		expect(off.defaults.installOff).toBe(true);
+		const absent = await setupDeps(join(ROOT, "home-absent"), none);
+		expect(absent.defaults.installOff).toBe(false);
+		const found = await setupDeps(join(ROOT, "home-found"), {
+			...installer,
+			narrowed: () => true,
+		});
+		expect(found.defaults.installOff).toBe(false);
 	});
 
 	test("save writes a local-only config, then refuses to overwrite it", async () => {

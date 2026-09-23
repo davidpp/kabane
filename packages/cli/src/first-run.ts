@@ -19,9 +19,13 @@ import { openContext } from "./context";
 import { McpClients } from "./mcp-clients";
 import { failure, type Outcome, success } from "./output";
 
-/** What setup needs from the MCP installer: which harnesses are here, and wiring them. */
+/**
+ * What setup needs from the MCP installer: which harnesses are here, whether detection was narrowed
+ * by configuration (so an empty list means install is off, not that none are installed), and wiring them.
+ */
 export type Installer = {
 	detect: () => Promise<SetupPlan.Harness[]>;
+	narrowed: () => boolean;
 	install: (ids: readonly string[]) => Promise<SetupPlan.InstallOutcome[]>;
 };
 
@@ -57,6 +61,7 @@ export const outcomeOf = (
 const mcpInstaller: Installer = {
 	detect: async () =>
 		McpInstall.detect().map((id) => ({ id, label: LABELS[id] })),
+	narrowed: () => McpInstall.narrowed(),
 	install: async (ids) =>
 		(await McpInstall.run(ids.filter(McpClients.isId))).map(outcomeOf),
 };
@@ -68,24 +73,31 @@ export const tildePath = (path: string, home = homedir()): string =>
 export const setupDeps = async (
 	home: string,
 	installer: Installer = mcpInstaller,
-): Promise<SetupDeps> => ({
-	defaults: {
-		name: userInfo().username,
-		device: defaultDeviceId(),
-		harnesses: await installer.detect(),
-		configPath: tildePath(configPath(home)),
-	},
-	save: async (plan) => {
-		// The screen only opens without a config; this holds that if one appeared since.
-		const path = configPath(home);
-		if (existsSync(path)) return err(new Error(`${path} already exists`));
-		const config = buildConfig({ actor: plan.actor, deviceId: plan.deviceId });
-		if (!config.ok) return config;
-		const saved = saveConfig(home, config.value);
-		return saved.ok ? ok(tildePath(saved.value)) : saved;
-	},
-	install: installer.install,
-});
+): Promise<SetupDeps> => {
+	const harnesses = await installer.detect();
+	return {
+		defaults: {
+			name: userInfo().username,
+			device: defaultDeviceId(),
+			harnesses,
+			installOff: harnesses.length === 0 && installer.narrowed(),
+			configPath: tildePath(configPath(home)),
+		},
+		save: async (plan) => {
+			// The screen only opens without a config; this holds that if one appeared since.
+			const path = configPath(home);
+			if (existsSync(path)) return err(new Error(`${path} already exists`));
+			const config = buildConfig({
+				actor: plan.actor,
+				deviceId: plan.deviceId,
+			});
+			if (!config.ok) return config;
+			const saved = saveConfig(home, config.value);
+			return saved.ok ? ok(tildePath(saved.value)) : saved;
+		},
+		install: installer.install,
+	};
+};
 
 export const openTui = async (
 	home: string,

@@ -133,6 +133,12 @@ describe("McpInstall.detect", () => {
 		).toEqual(["claude", "gemini"]);
 		expect(McpInstall.detect(all, { CABANE_HARNESSES: "" })).toEqual([]);
 	});
+
+	it("is narrowed whenever CABANE_HARNESSES is set, empty included", () => {
+		expect(McpInstall.narrowed({})).toBe(false);
+		expect(McpInstall.narrowed({ CABANE_HARNESSES: "" })).toBe(true);
+		expect(McpInstall.narrowed({ CABANE_HARNESSES: "codex" })).toBe(true);
+	});
 });
 
 describe("mcp install command", () => {

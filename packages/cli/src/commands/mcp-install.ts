@@ -54,6 +54,10 @@ export namespace McpInstall {
 		args: [Bun.main],
 	});
 
+	/** Whether `CABANE_HARNESSES` narrows detection, so finding none is a setting, not a fact. */
+	export const narrowed = (env: NodeJS.ProcessEnv = process.env): boolean =>
+		env.CABANE_HARNESSES !== undefined;
+
 	/**
 	 * The harnesses whose binary is on PATH. `CABANE_HARNESSES` narrows that to
 	 * a comma-separated list, and set but empty means none: `bun run sandbox`

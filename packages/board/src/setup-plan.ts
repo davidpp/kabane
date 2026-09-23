@@ -14,8 +14,10 @@ export namespace SetupPlan {
 		name: string;
 		/** The device id setup saves: the short hostname. */
 		device: string;
-		/** Detected harnesses, checked by default. Empty shows where the snippets are instead. */
+		/** Detected harnesses, checked by default. */
 		harnesses: readonly Harness[];
+		/** No harnesses because the host turned install off, not because none are installed. */
+		installOff: boolean;
 		/** Where confirming writes the config, as the screen says it before enter. */
 		configPath: string;
 	};

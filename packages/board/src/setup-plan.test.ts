@@ -8,6 +8,7 @@ const DEFAULTS: SetupPlan.Defaults = {
 		{ id: "claude", label: "Claude Code" },
 		{ id: "codex", label: "Codex" },
 	],
+	installOff: false,
 	configPath: "~/.cabane/config.json",
 };
 
