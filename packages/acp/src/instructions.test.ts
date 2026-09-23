@@ -45,8 +45,8 @@ describe("CopilotInstructions.SHORTCUTS", () => {
 
 describe("CopilotInstructions.SKILLS", () => {
 	it("names the tool the substance goes through and the tool the link goes through", () => {
-		expect(CopilotInstructions.SKILLS).toContain("cabane_edit");
-		expect(CopilotInstructions.SKILLS).toContain("cabane_upstream_link");
+		expect(CopilotInstructions.SKILLS).toContain("kabane_edit");
+		expect(CopilotInstructions.SKILLS).toContain("kabane_upstream_link");
 	});
 
 	it("rides along with the identity block in the one prompt harnesses are sent", () => {
@@ -84,13 +84,13 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 		for (const placeholder of used) expect(documented).toContain(placeholder);
 	});
 
-	it("the template tracks work through cabane and nothing else", () => {
+	it("the template tracks work through kabane and nothing else", () => {
 		const skill = template("SKILL.md");
 		for (const tool of [
-			"cabane_add",
-			"cabane_link",
-			"cabane_contextAdd",
-			"cabane_done",
+			"kabane_add",
+			"kabane_link",
+			"kabane_contextAdd",
+			"kabane_done",
 		])
 			expect(skill).toContain(tool);
 		for (const path of SKILL_FILES)

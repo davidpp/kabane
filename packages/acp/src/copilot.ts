@@ -48,19 +48,19 @@ export namespace BoardCopilot {
 	// Tools that change tracker state. A completed call to one of these is what makes the board
 	// reload; everything else the agent runs is its own business.
 	const WRITE_TOOLS = [
-		"cabane_add",
-		"cabane_edit",
-		"cabane_done",
-		"cabane_link",
-		"cabane_comment",
-		"cabane_log",
-		"cabane_contextAdd",
-		"cabane_contextRemove",
-		"cabane_upstream_link",
-		"cabane_upstream_unlink",
+		"kabane_add",
+		"kabane_edit",
+		"kabane_done",
+		"kabane_link",
+		"kabane_comment",
+		"kabane_log",
+		"kabane_contextAdd",
+		"kabane_contextRemove",
+		"kabane_upstream_link",
+		"kabane_upstream_unlink",
 	] as const;
 
-	// Harnesses title an MCP tool call differently — the bare name, a namespaced `mcp__cabane__…`,
+	// Harnesses title an MCP tool call differently — the bare name, a namespaced `mcp__kabane__…`,
 	// or a label with the arguments folded in — so the title is scanned, not compared.
 	const namesWrite = (title: string): boolean =>
 		WRITE_TOOLS.some((tool) => title.includes(tool));
@@ -121,7 +121,7 @@ export namespace BoardCopilot {
 		};
 
 		const mcpServer = (): AcpClient.StdioServer => ({
-			name: "cabane",
+			name: "kabane",
 			command: options.cabaneBin ?? defaultBin(),
 			args: [
 				"mcp",

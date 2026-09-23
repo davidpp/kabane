@@ -125,7 +125,7 @@ const runUnlink = async (ctx: Ctx, positionals: string[]): Promise<Outcome> => {
 };
 
 /**
- * Named for the storage and the MCP tools it fronts (`cabane_upstream_link`),
+ * Named for the storage and the MCP tools it fronts (`kabane_upstream_link`),
  * not for the prose: one vocabulary means a human and an agent reach for the
  * same word. `cabane link` is the task-to-task DAG edge and stays that;
  * discriminating it by a `--url` flag would make one command two.

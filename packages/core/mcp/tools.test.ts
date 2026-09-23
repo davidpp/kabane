@@ -15,7 +15,7 @@ import type { Task } from "../schemas";
 import { Planner } from "../storage";
 import { configureTestRuntime } from "../testing";
 import { createMcpServer } from "./server";
-import { CABANE_TOOLS, type ToolContext, type ToolDef } from "./tools";
+import { KABANE_TOOLS, type ToolContext, type ToolDef } from "./tools";
 
 const unwrap = <T>(result: Result<T>): T => {
 	if (!result.ok) throw result.error;
@@ -23,7 +23,7 @@ const unwrap = <T>(result: Result<T>): T => {
 };
 
 const tool = (name: string): ToolDef => {
-	const found = CABANE_TOOLS.find((t) => t.name === name);
+	const found = KABANE_TOOLS.find((t) => t.name === name);
 	if (!found) throw new Error(`no tool ${name}`);
 	return found;
 };
@@ -47,15 +47,15 @@ describe("cabane tools", () => {
 	});
 
 	it("refuses a scopeless write when scope is required, and names the fix", async () => {
-		const result = await tool("cabane_add").handler({ title: "x" }, ctx);
+		const result = await tool("kabane_add").handler({ title: "x" }, ctx);
 		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.error.message).toContain("cabane_scopeList");
+		if (!result.ok) expect(result.error.message).toContain("kabane_scopeList");
 	});
 
 	it("falls back to the default scope when one is configured", async () => {
 		const withDefault = { ...ctx, defaultScope: "demo" };
 		const created = unwrap(
-			await tool("cabane_add").handler({ title: "scoped" }, withDefault),
+			await tool("kabane_add").handler({ title: "scoped" }, withDefault),
 		) as Task;
 		expect(created.scopeUri).toBe("jake://scope/demo");
 		expect(created.updatedBy).toBe(AGENT);
@@ -65,14 +65,14 @@ describe("cabane tools", () => {
 	it("takes a due date as YYYY-MM-DD or an ISO datetime, and names the fix for anything else", async () => {
 		const scoped = { ...ctx, defaultScope: "demo" };
 		const byDate = unwrap(
-			await tool("cabane_add").handler(
+			await tool("kabane_add").handler(
 				{ title: "by date", dueDate: "2026-02-06" },
 				scoped,
 			),
 		) as Task;
 		expect(byDate.deadline).toBe("2026-02-06");
 		const byTime = unwrap(
-			await tool("cabane_add").handler(
+			await tool("kabane_add").handler(
 				{ title: "by time", dueDate: "2026-02-06T10:00:00Z" },
 				scoped,
 			),
@@ -81,7 +81,7 @@ describe("cabane tools", () => {
 		configureTestRuntime("", { timezone: () => "America/Montreal" });
 		try {
 			const byLocalTime = unwrap(
-				await tool("cabane_add").handler(
+				await tool("kabane_add").handler(
 					{ title: "by local time", dueDate: "2026-02-06T17:00" },
 					scoped,
 				),
@@ -90,7 +90,7 @@ describe("cabane tools", () => {
 		} finally {
 			configureTestRuntime();
 		}
-		const bad = await tool("cabane_edit").handler(
+		const bad = await tool("kabane_edit").handler(
 			{ id: byTime.id, dueDate: "friday" },
 			scoped,
 		);
@@ -101,7 +101,7 @@ describe("cabane tools", () => {
 
 	it("runs the pickup flow: add, list by assignee, context, edit, log, comment, done", async () => {
 		const issue = unwrap(
-			await tool("cabane_add").handler(
+			await tool("kabane_add").handler(
 				{
 					title: "Wire the hub",
 					kind: "issue",
@@ -116,7 +116,7 @@ describe("cabane tools", () => {
 		expect(issue.shortId).toMatch(/^JCAB-\d+$/);
 
 		const queue = unwrap(
-			await tool("cabane_list").handler(
+			await tool("kabane_list").handler(
 				{ assignee: "hermes", state: "next" },
 				ctx,
 			),
@@ -124,13 +124,13 @@ describe("cabane tools", () => {
 		expect(queue.map((t) => t.id)).toEqual([issue.id]);
 
 		const brief = unwrap(
-			await tool("cabane_context").handler({ id: issue.shortId ?? "" }, ctx),
+			await tool("kabane_context").handler({ id: issue.shortId ?? "" }, ctx),
 		) as { markdown: string };
 		expect(brief.markdown).toContain("Wire the hub");
 		expect(brief.markdown).toContain("The brief.");
 
 		const claimed = unwrap(
-			await tool("cabane_edit").handler(
+			await tool("kabane_edit").handler(
 				{ id: issue.shortId ?? "", state: "in_progress" },
 				ctx,
 			),
@@ -139,13 +139,13 @@ describe("cabane tools", () => {
 		expect(claimed.version).toBe(2);
 
 		unwrap(
-			await tool("cabane_log").handler(
+			await tool("kabane_log").handler(
 				{ id: issue.id, refs: [{ uri: "commit:abc123" }], note: "landed" },
 				ctx,
 			),
 		);
 		unwrap(
-			await tool("cabane_comment").handler(
+			await tool("kabane_comment").handler(
 				{ id: issue.id, content: "done, see the commit" },
 				ctx,
 			),
@@ -156,24 +156,24 @@ describe("cabane tools", () => {
 		expect(comments[0]?.authorType).toBe("ai");
 
 		const finished = unwrap(
-			await tool("cabane_done").handler({ id: issue.id }, ctx),
+			await tool("kabane_done").handler({ id: issue.id }, ctx),
 		) as Task;
 		expect(finished.state).toBe("done");
 	});
 
 	it("links, searches, lists scopes, and manages context refs", async () => {
 		const a = unwrap(
-			await tool("cabane_add").handler(
+			await tool("kabane_add").handler(
 				{ title: "Alpha durable", scopeUri: "one" },
 				ctx,
 			),
 		) as Task;
 		const b = unwrap(
-			await tool("cabane_add").handler({ title: "Beta", scopeUri: "two" }, ctx),
+			await tool("kabane_add").handler({ title: "Beta", scopeUri: "two" }, ctx),
 		) as Task;
 
 		unwrap(
-			await tool("cabane_link").handler(
+			await tool("kabane_link").handler(
 				{ sourceId: a.id, targetId: b.id, type: "blocks" },
 				ctx,
 			),
@@ -182,32 +182,32 @@ describe("cabane tools", () => {
 		expect(links.map((l) => l.type)).toContain("blocks");
 
 		const found = unwrap(
-			await tool("cabane_search").handler({ query: "durable" }, ctx),
+			await tool("kabane_search").handler({ query: "durable" }, ctx),
 		) as Task[];
 		expect(found.map((t) => t.id)).toEqual([a.id]);
 
-		const scopes = unwrap(await tool("cabane_scopeList").handler({}, ctx)) as {
+		const scopes = unwrap(await tool("kabane_scopeList").handler({}, ctx)) as {
 			scopeId: string;
 			count: number;
 		}[];
 		expect(scopes.map((s) => s.scopeId).sort()).toEqual(["one", "two"]);
 
 		const ref = unwrap(
-			await tool("cabane_contextAdd").handler(
+			await tool("kabane_contextAdd").handler(
 				{ id: a.id, uri: "file:docs/auth.md", kind: "ADR" },
 				ctx,
 			),
 		) as { id: string };
 		const listed = unwrap(
-			await tool("cabane_contextList").handler({ id: a.id }, ctx),
+			await tool("kabane_contextList").handler({ id: a.id }, ctx),
 		) as { id: string }[];
 		expect(listed.map((r) => r.id)).toEqual([ref.id]);
-		unwrap(await tool("cabane_contextRemove").handler({ refId: ref.id }, ctx));
+		unwrap(await tool("kabane_contextRemove").handler({ refId: ref.id }, ctx));
 		expect(
-			unwrap(await tool("cabane_contextList").handler({ id: a.id }, ctx)),
+			unwrap(await tool("kabane_contextList").handler({ id: a.id }, ctx)),
 		).toEqual([]);
 
-		const today = unwrap(await tool("cabane_today").handler({}, ctx)) as {
+		const today = unwrap(await tool("kabane_today").handler({}, ctx)) as {
 			next: Task[];
 		};
 		expect(Array.isArray(today.next)).toBe(true);
@@ -219,13 +219,13 @@ describe("cabane tools", () => {
 	// sides of the tree.
 	it("detaches a subtask to NULL, not an empty string", async () => {
 		const parent = unwrap(
-			await tool("cabane_add").handler(
+			await tool("kabane_add").handler(
 				{ title: "Parent", scopeUri: "cabane" },
 				ctx,
 			),
 		) as Task;
 		const child = unwrap(
-			await tool("cabane_add").handler(
+			await tool("kabane_add").handler(
 				{ title: "Child", scopeUri: "cabane", parentTaskId: parent.id },
 				ctx,
 			),
@@ -233,7 +233,7 @@ describe("cabane tools", () => {
 		expect(child.parentTaskId).toBe(parent.id);
 
 		const detached = unwrap(
-			await tool("cabane_edit").handler(
+			await tool("kabane_edit").handler(
 				{ id: child.id, parentTaskId: "none" },
 				ctx,
 			),
@@ -253,20 +253,20 @@ describe("cabane tools", () => {
 
 	it("leaves the parent alone when the edit omits it", async () => {
 		const parent = unwrap(
-			await tool("cabane_add").handler(
+			await tool("kabane_add").handler(
 				{ title: "Parent", scopeUri: "cabane" },
 				ctx,
 			),
 		) as Task;
 		const child = unwrap(
-			await tool("cabane_add").handler(
+			await tool("kabane_add").handler(
 				{ title: "Child", scopeUri: "cabane", parentTaskId: parent.id },
 				ctx,
 			),
 		) as Task;
 
 		const edited = unwrap(
-			await tool("cabane_edit").handler(
+			await tool("kabane_edit").handler(
 				{ id: child.id, title: "Renamed" },
 				ctx,
 			),
@@ -275,12 +275,12 @@ describe("cabane tools", () => {
 	});
 
 	it("reports an unknown id as a tool error, not a throw", async () => {
-		const result = await tool("cabane_get").handler({ id: "JCAB-999" }, ctx);
+		const result = await tool("kabane_get").handler({ id: "JCAB-999" }, ctx);
 		expect(result.ok).toBe(false);
 	});
 	it("links and unlinks an external issue by the pair that made it", async () => {
 		const task = unwrap(
-			await tool("cabane_add").handler(
+			await tool("kabane_add").handler(
 				{ title: "has a team-facing twin", scopeUri: "demo" },
 				ctx,
 			),
@@ -292,7 +292,7 @@ describe("cabane tools", () => {
 		};
 
 		unwrap(
-			await tool("cabane_upstream_link").handler(
+			await tool("kabane_upstream_link").handler(
 				{
 					...args,
 					identifier: "ENG-123",
@@ -305,31 +305,31 @@ describe("cabane tools", () => {
 
 		// The brief is the read path; there is deliberately no upstream read tool.
 		const brief = unwrap(
-			await tool("cabane_context").handler({ id: args.id }, ctx),
+			await tool("kabane_context").handler({ id: args.id }, ctx),
 		) as { markdown: string };
 		expect(brief.markdown).toContain("## Upstream");
 		expect(brief.markdown).toContain("- linear · ENG-123 — Team feature");
 
 		const removed = unwrap(
-			await tool("cabane_upstream_unlink").handler(args, ctx),
+			await tool("kabane_upstream_unlink").handler(args, ctx),
 		) as { unlinked: string };
 		expect(removed.unlinked).toBe("ENG-123");
 
 		const after = unwrap(
-			await tool("cabane_context").handler({ id: args.id }, ctx),
+			await tool("kabane_context").handler({ id: args.id }, ctx),
 		) as { markdown: string };
 		expect(after.markdown).not.toContain("## Upstream");
 	});
 
 	it("refuses to unlink an external issue the task is not linked to", async () => {
 		const task = unwrap(
-			await tool("cabane_add").handler(
+			await tool("kabane_add").handler(
 				{ title: "unlinked", scopeUri: "demo" },
 				ctx,
 			),
 		) as Task;
 
-		const result = await tool("cabane_upstream_unlink").handler(
+		const result = await tool("kabane_upstream_unlink").handler(
 			{
 				id: task.shortId ?? task.id,
 				provider: "linear",
@@ -375,12 +375,12 @@ describe("cabane MCP server over an in-memory transport", () => {
 		const { client, server } = await connect();
 		const { tools } = await client.listTools();
 		expect(tools.map((t) => t.name).sort()).toEqual(
-			CABANE_TOOLS.map((t) => t.name).sort(),
+			KABANE_TOOLS.map((t) => t.name).sort(),
 		);
-		const add = tools.find((t) => t.name === "cabane_add");
+		const add = tools.find((t) => t.name === "kabane_add");
 		expect(add?.inputSchema.required).toContain("title");
 		expect(add?.annotations?.readOnlyHint).toBe(false);
-		const list = tools.find((t) => t.name === "cabane_list");
+		const list = tools.find((t) => t.name === "kabane_list");
 		expect(list?.annotations?.readOnlyHint).toBe(true);
 		expect(server.getClientVersion()).toBeDefined();
 		await client.close();
@@ -391,23 +391,23 @@ describe("cabane MCP server over an in-memory transport", () => {
 		const { client } = await connect((t) => writes.push(t.name));
 
 		const created = await client.callTool({
-			name: "cabane_add",
+			name: "kabane_add",
 			arguments: { title: "From the wire", scopeUri: "wire" },
 		});
 		expect(created.isError).toBeFalsy();
-		expect(writes).toEqual(["cabane_add"]);
+		expect(writes).toEqual(["kabane_add"]);
 		const text = (created.content as { text: string }[])[0]?.text ?? "";
 		expect(JSON.parse(text).title).toBe("From the wire");
 
 		const bad = await client.callTool({
-			name: "cabane_add",
+			name: "kabane_add",
 			arguments: { title: "no scope" },
 		});
 		expect(bad.isError).toBe(true);
 		expect(writes).toHaveLength(1);
 
 		const invalid = await client.callTool({
-			name: "cabane_link",
+			name: "kabane_link",
 			arguments: { sourceId: "x" },
 		});
 		expect(invalid.isError).toBe(true);

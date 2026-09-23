@@ -79,16 +79,16 @@ export const firstIssueBrief = (instructionFile: string): string =>
 	[
 		`Setup registered cabane's MCP server in your harness. Agents use the tracker reliably only when the project says so, and this issue adds that: append the block below to \`${instructionFile}\` at the project root, creating the file if it is missing.`,
 		"",
-		"Work this issue the way the block says: set it `in_progress` first, then `cabane_comment` what you changed and `cabane_done` it.",
+		"Work this issue the way the block says: set it `in_progress` first, then `kabane_comment` what you changed and `kabane_done` it.",
 		"",
 		"```markdown",
 		"## Tracker",
 		"",
 		"Work is tracked in cabane (MCP server `cabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.",
-		'- Before starting, `cabane_list` with `assignee` set to your name and `state: "next"`; read the task with `cabane_context`.',
-		"- Set the task `in_progress` with `cabane_edit` before touching code. Never take a task that is already in progress.",
-		"- When finished, `cabane_comment` what landed (files, commits, what is left), then `cabane_done`.",
-		"- File new work you find with `cabane_add` instead of doing it unasked.",
+		'- Before starting, `kabane_list` with `assignee` set to your name and `state: "next"`; read the task with `kabane_context`.',
+		"- Set the task `in_progress` with `kabane_edit` before touching code. Never take a task that is already in progress.",
+		"- When finished, `kabane_comment` what landed (files, commits, what is left), then `kabane_done`.",
+		"- File new work you find with `kabane_add` instead of doing it unasked.",
 		"```",
 	].join("\n");
 

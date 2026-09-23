@@ -32,7 +32,7 @@ export const mcp: Command = {
 				defaultScope: await resolveScopeUri(args, ctx.value),
 				scopeRequired: false,
 			},
-			{ name: "cabane" },
+			{ name: "kabane" },
 		);
 		return success({ served: true }, "");
 	},

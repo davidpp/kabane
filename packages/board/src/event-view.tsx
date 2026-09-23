@@ -95,7 +95,7 @@ export const promptLines = (
 	return kept;
 };
 
-// A harness names a call `Read src/app.tsx` or `mcp__cabane__cabane_list`: the tool, then what it was
+// A harness names a call `Read src/app.tsx` or `mcp__kabane__kabane_list`: the tool, then what it was
 // called on. Split there, so the tool reads in the text color and its arguments as an aside. A title
 // that does not open on a tool-shaped word (a quoted shell command) stays whole.
 export const toolParts = (summary: string): { name: string; args: string } => {

@@ -473,10 +473,10 @@ describe("cabane cli", () => {
 		await client.connect(transport);
 		try {
 			const { tools } = await client.listTools();
-			expect(tools.map((t) => t.name)).toContain("cabane_add");
+			expect(tools.map((t) => t.name)).toContain("kabane_add");
 
 			const created = await client.callTool({
-				name: "cabane_add",
+				name: "kabane_add",
 				arguments: { title: "Filed over stdio", kind: "issue" },
 			});
 			expect(created.isError).toBeFalsy();

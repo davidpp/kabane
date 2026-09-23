@@ -48,7 +48,7 @@ const scriptedAgent = (
 			await notify({
 				sessionUpdate: "tool_call",
 				toolCallId: "t1",
-				title: "cabane_edit",
+				title: "kabane_edit",
 				kind: "edit",
 				status: "pending",
 			});
@@ -57,7 +57,7 @@ const scriptedAgent = (
 					methods.client.session.requestPermission,
 					{
 						sessionId: c.params.sessionId,
-						toolCall: { toolCallId: "t1", title: "cabane_edit" },
+						toolCall: { toolCallId: "t1", title: "kabane_edit" },
 						options: [
 							{ optionId: "allow", name: "Allow", kind: "allow_once" },
 							{ optionId: "reject", name: "Reject", kind: "reject_once" },
@@ -136,7 +136,7 @@ describe("AcpClient", () => {
 			{
 				type: "tool_call",
 				id: "t1",
-				title: "cabane_edit",
+				title: "kabane_edit",
 				kind: "edit",
 				status: "pending",
 			},
@@ -193,7 +193,7 @@ describe("AcpClient", () => {
 		expect(asked).toEqual([
 			{
 				toolCallId: "t1",
-				title: "cabane_edit",
+				title: "kabane_edit",
 				options: [
 					{ id: "allow", name: "Allow", kind: "allow_once" },
 					{ id: "reject", name: "Reject", kind: "reject_once" },

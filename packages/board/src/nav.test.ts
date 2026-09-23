@@ -2704,7 +2704,7 @@ describe("the copilot's fingerprint on the rows it changed (`✦ ai`)", () => {
 describe("a permission request the harness is blocked on", () => {
 	const request: CopilotPermission = {
 		id: "t0",
-		title: "cabane_edit",
+		title: "kabane_edit",
 		options: [
 			{ id: "allow", label: "Allow" },
 			{ id: "reject", label: "Reject" },

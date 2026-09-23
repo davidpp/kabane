@@ -24,7 +24,7 @@ the package graph forbids, write the port or callback into the design.
 widening the change in good faith.
 
 **Decisions.** The decisions this issue relies on, when they are recorded in the description.
-If they are recorded elsewhere, attach them with `cabane_contextAdd` instead of copying them
+If they are recorded elsewhere, attach them with `kabane_contextAdd` instead of copying them
 here.
 
 **Verify.** The concrete steps and what to observe, under the testing constraints in

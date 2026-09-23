@@ -93,7 +93,7 @@ const scriptedCopilot = (gate: Promise<void>, seen: Seen): Copilot => ({
 			at: at(),
 		});
 		yield step("thought", "reading the selection");
-		yield step("tool_call", "cabane_edit");
+		yield step("tool_call", "kabane_edit");
 		await gate;
 		yield step("tool_result", "ok");
 		yield step("text", "Moved it to someday.\nNothing else changed.");
@@ -123,7 +123,7 @@ const askingCopilot = (answers: (string | null)[]): Copilot => {
 				type: "permission",
 				request: {
 					id: "t0",
-					title: "cabane_edit",
+					title: "kabane_edit",
 					options: [
 						{ id: "allow", label: "Allow" },
 						{ id: "reject", label: "Reject" },
@@ -232,10 +232,10 @@ describe("the A prompt against a scripted copilot", () => {
 			// Enter sends it; the window closes, the footer spins on the last tool, the sidebar lists
 			// the copilot card, and the board still answers keys (`?` opens help, esc closes it).
 			mockInput.pressEnter();
-			frame = await until((f) => f.includes("copilot · cabane_edit"));
+			frame = await until((f) => f.includes("copilot · kabane_edit"));
 			// The panel collapses back to its one row; the board has the keyboard again.
 			expect(panelOpen(frame)).toBe(false);
-			expect(frame).toContain("copilot · cabane_edit");
+			expect(frame).toContain("copilot · kabane_edit");
 			// The sidebar card: glyph, label, no task, elapsed.
 			expect(frame).toMatch(/copilot · — · \d+s/);
 			expect(seen.prompts).toEqual(["Triage every issue in view."]);
@@ -245,18 +245,18 @@ describe("the A prompt against a scripted copilot", () => {
 			frame = await until((f) => f.includes("? esc close"));
 			await pressEsc();
 			frame = await until((f) => !f.includes("? esc close"));
-			expect(frame).toContain("copilot · cabane_edit");
+			expect(frame).toContain("copilot · kabane_edit");
 
 			// `o` while it runs: the live transcript, with `x stop the turn` on offer; esc comes back and the
 			// turn runs on.
 			mockInput.pressKey("o");
-			frame = await until((f) => f.includes("⚙ cabane_edit"));
+			frame = await until((f) => f.includes("⚙ kabane_edit"));
 			expect(frame).toContain("reading the selection");
 			expect(frame).toContain("copilot · — · running");
 			expect(frame).toContain("x stop the turn");
 			await pressEsc();
 			frame = await until((f) => f.includes("Wire the copilot"));
-			expect(frame).toContain("copilot · cabane_edit");
+			expect(frame).toContain("copilot · kabane_edit");
 
 			// `A` while running says so beside the chip, and the input stops inviting a prompt it would
 			// refuse. esc leaves the pane and the turn runs on — tabbing in to look and backing out
@@ -267,13 +267,13 @@ describe("the A prompt against a scripted copilot", () => {
 			expect(frame).toContain("a turn is running · send when it ends");
 			await pressEsc();
 			frame = await until((f) => f.includes("Wire the copilot"));
-			expect(frame).toContain("copilot · cabane_edit");
+			expect(frame).toContain("copilot · kabane_edit");
 			expect(seen.cancels).toBe(0);
 
 			// `x` on the transcript is the one key that stops a turn; the header turns error-toned and
 			// the hint that offered it goes away with the thing it acted on.
 			mockInput.pressKey("o");
-			frame = await until((f) => f.includes("⚙ cabane_edit"));
+			frame = await until((f) => f.includes("⚙ kabane_edit"));
 			expect(frame).toContain("reading the selection");
 			expect(frame).toContain("x stop the turn");
 			mockInput.pressKey("x");
@@ -291,7 +291,7 @@ describe("the A prompt against a scripted copilot", () => {
 
 			// The indicator is gone; the transcript is not. `o` still opens it.
 			mockInput.pressKey("o");
-			frame = await until((f) => f.includes("⚙ cabane_edit"));
+			frame = await until((f) => f.includes("⚙ kabane_edit"));
 			expect(frame).toContain("copilot · — · failed");
 			await pressEsc();
 			frame = await until((f) => f.includes("Wire the copilot"));
@@ -433,18 +433,18 @@ describe("a harness blocked on a permission request", () => {
 		const { until, mockInput, frame, destroy } = await ask(answers);
 		try {
 			expect(frame).toContain(
-				"? cabane_edit · 1 Allow · 2 Reject · esc decline",
+				"? kabane_edit · 1 Allow · 2 Reject · esc decline",
 			);
 
 			// `o` opens the transcript, which owns the copilot's detail while it is up: the record
 			// of the question among the events, and the live choice pinned below them.
 			mockInput.pressKey("o");
 			const transcript = await until((f) =>
-				f.includes("? permission: cabane_edit"),
+				f.includes("? permission: kabane_edit"),
 			);
 			expect(transcript).toContain("1 Allow · 2 Reject");
 			// One surface, not two: the pane says nothing while the transcript has it.
-			expect(transcript).not.toContain("? cabane_edit · 1 Allow");
+			expect(transcript).not.toContain("? kabane_edit · 1 Allow");
 
 			mockInput.pressKey("1");
 			const answered = await until((f) => f.includes("Ran it with allow."));
@@ -630,7 +630,7 @@ describe("the pane's words", () => {
 	it("collapsedSegments puts a waiting question ahead of everything, its ? in the accent", () => {
 		const permission = {
 			id: "p1",
-			title: "cabane_edit",
+			title: "kabane_edit",
 			options: [
 				{ id: "allow", label: "Allow" },
 				{ id: "reject", label: "Reject" },
@@ -638,7 +638,7 @@ describe("the pane's words", () => {
 		};
 		const line = collapsedSegments(idle({ permission }), null, null, T);
 		expect(Segments.plain(line)).toBe(
-			"? cabane_edit · 1 Allow · 2 Reject · esc decline",
+			"? kabane_edit · 1 Allow · 2 Reject · esc decline",
 		);
 		expect(line[0]?.fg).toBe(T.accent);
 		expect(line.find((part) => part.text === "1")?.fg).toBe(T.text);

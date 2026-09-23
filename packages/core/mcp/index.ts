@@ -7,7 +7,7 @@ export {
 } from "./server";
 export {
 	authorTypeOf,
-	CABANE_TOOLS,
+	KABANE_TOOLS,
 	SERVER_INSTRUCTIONS,
 	type ToolContext,
 	type ToolDef,
