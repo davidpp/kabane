@@ -9,7 +9,12 @@
 
 import type { Result } from "@cabane/core";
 import { createCliRenderer, TextAttributes } from "@opentui/core";
-import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
+import {
+	createRoot,
+	useKeyboard,
+	useRenderer,
+	useTerminalDimensions,
+} from "@opentui/react";
 import { type ReactNode, useRef, useState } from "react";
 import { SELECTED_BG } from "./board";
 import { ErrorBoundary } from "./error-boundary";
@@ -22,6 +27,8 @@ const ACCENT_COLOR = "#f97316";
 const ERROR_COLOR = "#ef4444";
 const INPUT_BG = "#1c1c1c";
 const INPUT_WIDTH = 24;
+// `› ` plus the widest label, padded: where an input, or a note moved under one, starts.
+const LABEL_WIDTH = 9;
 
 export type SetupDeps = {
 	defaults: SetupPlan.Defaults;
@@ -41,8 +48,8 @@ type Phase =
 			outcomes: SetupPlan.InstallOutcome[];
 	  };
 
+// Tab and the arrows go unsaid, as j/k do on the board: the footer has to fit a 40-column pane.
 const FORM_FOOTER: readonly Keymap.Hint[] = [
-	{ key: "tab/↑↓", label: "move" },
 	{ key: "space", label: "toggle" },
 	{ key: "enter", label: "confirm" },
 	{ key: "esc", label: "quit" },
@@ -53,10 +60,23 @@ const DONE_FOOTER: readonly Keymap.Hint[] = [
 	{ key: "q", label: "quit" },
 ];
 
-export const SYNC_HINT =
-	"several machines? cabane init --sync-url … --sync-token … (docs/deploy.md)";
-export const NO_HARNESS_HINT =
-	"no harness found on PATH · snippets for any MCP client: cabane mcp install --print";
+// Space toggles a harness row, so with none detected there is nothing to toggle.
+const footerFor = (
+	phase: Phase,
+	defaults: SetupPlan.Defaults,
+): readonly Keymap.Hint[] => {
+	if (phase.kind === "done") return DONE_FOOTER;
+	if (defaults.harnesses.length > 0) return FORM_FOOTER;
+	return FORM_FOOTER.filter((hint) => hint.key !== "space");
+};
+
+export const HARNESS_HEADING = "let these agents use cabane";
+export const HARNESS_HINT = "adds cabane to each one's mcp config";
+export const NO_HARNESS_HEADING = "no agents found on PATH";
+export const NO_HARNESS_HINT = "snippets: cabane mcp install --print";
+export const SYNC_HINT = "more machines: docs/deploy.md";
+export const writesLine = (configPath: string): string =>
+	`enter writes ${configPath}`;
 
 const STATUS_TEXT: Record<SetupPlan.InstallStatus, string> = {
 	installed: "✓ installed",
@@ -67,10 +87,12 @@ const STATUS_TEXT: Record<SetupPlan.InstallStatus, string> = {
 export const outcomeLine = (
 	outcome: SetupPlan.InstallOutcome,
 	label: string,
-): string =>
-	[label.padEnd(14), STATUS_TEXT[outcome.status], outcome.message]
-		.filter((part) => part !== undefined && part !== "")
-		.join(" ");
+): string => `${label.padEnd(14)} ${STATUS_TEXT[outcome.status]}`;
+
+// A note sits beside its row while the pane has room for both, and on its own indented line under
+// the row when it does not: a narrow pane never loses the row to the note.
+const fitsBeside = (width: number, head: number, note: string): boolean =>
+	head + 1 + note.length <= width;
 
 export type SetupScreenProps = SetupDeps & {
 	// The config is written: open the board.
@@ -115,7 +137,7 @@ export const SetupScreen = ({
 		}
 		setPhase({
 			kind: "working",
-			step: `wiring ${planned.value.install.join(", ")}…`,
+			step: `adding cabane to ${planned.value.install.join(", ")}…`,
 		});
 		const outcomes = await install(planned.value.install);
 		setPhase({ kind: "done", configPath: saved.value, outcomes });
@@ -152,7 +174,8 @@ export const SetupScreen = ({
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			<text>
-				<span attributes={TextAttributes.BOLD}>cabane · setup</span>
+				<span attributes={TextAttributes.BOLD}>cabane</span>
+				<span fg={MUTED_COLOR}> · setup</span>
 			</text>
 			<box style={{ flexDirection: "column", flexGrow: 1, marginTop: 1 }}>
 				{phase.kind === "done" ? (
@@ -160,12 +183,13 @@ export const SetupScreen = ({
 						<text>✓ wrote {phase.configPath}</text>
 						<box style={{ flexDirection: "column", marginTop: 1 }}>
 							{phase.outcomes.map((outcome) => (
-								<text
+								<NotedLine
 									key={outcome.id}
+									head={outcomeLine(outcome, labelOf(outcome.id))}
+									note={outcome.message}
+									indent={2}
 									fg={outcome.status === "failed" ? ERROR_COLOR : undefined}
-								>
-									{outcomeLine(outcome, labelOf(outcome.id))}
-								</text>
+								/>
 							))}
 						</box>
 					</>
@@ -177,6 +201,11 @@ export const SetupScreen = ({
 						onDevice={(device) => update({ ...current.current, device })}
 					/>
 				)}
+				{phase.kind === "form" ? (
+					<text fg={MUTED_COLOR} style={{ marginTop: 1 }}>
+						{writesLine(defaults.configPath)}
+					</text>
+				) : null}
 				{phase.kind === "form" && phase.error ? (
 					<text fg={ERROR_COLOR} style={{ marginTop: 1 }}>
 						{phase.error}
@@ -188,11 +217,9 @@ export const SetupScreen = ({
 					</text>
 				) : null}
 			</box>
-			<text fg={MUTED_COLOR}>{SYNC_HINT}</text>
+			{phase.kind === "done" ? null : <text fg={MUTED_COLOR}>{SYNC_HINT}</text>}
 			<StatusBar
-				text={Keymap.hintLine(
-					phase.kind === "done" ? DONE_FOOTER : FORM_FOOTER,
-				)}
+				text={Keymap.hintLine(footerFor(phase, defaults))}
 				fg={MUTED_COLOR}
 			/>
 		</box>
@@ -252,12 +279,19 @@ const SetupForm = ({
 		<box style={{ flexDirection: "column" }}>
 			{name}
 			{device}
-			<text fg={MUTED_COLOR} style={{ marginTop: 1 }}>
-				wire the cabane mcp server into
-			</text>
-			{defaults.harnesses.length === 0 ? (
-				<text fg={MUTED_COLOR}>{`  ${NO_HARNESS_HINT}`}</text>
-			) : null}
+			<box style={{ flexDirection: "column", marginTop: 1 }}>
+				{defaults.harnesses.length === 0 ? (
+					<>
+						<text>{NO_HARNESS_HEADING}</text>
+						<text fg={MUTED_COLOR}>{NO_HARNESS_HINT}</text>
+					</>
+				) : (
+					<>
+						<text>{HARNESS_HEADING}</text>
+						<text fg={MUTED_COLOR}>{HARNESS_HINT}</text>
+					</>
+				)}
+			</box>
 			{rest}
 		</box>
 	);
@@ -277,22 +311,53 @@ const TextRow = ({
 	focused,
 	onInput,
 	note,
-}: TextRowProps): ReactNode => (
-	<box style={{ flexDirection: "row", height: 1 }}>
-		<text fg={focused ? ACCENT_COLOR : undefined}>
-			{`${focused ? "›" : " "} ${label.padEnd(7)}`}
-		</text>
-		<input
-			value={value}
-			focused={focused}
-			onInput={onInput}
-			backgroundColor={INPUT_BG}
-			focusedBackgroundColor={SELECTED_BG}
-			style={{ width: INPUT_WIDTH }}
-		/>
-		{note ? <text fg={MUTED_COLOR}>{`  ${note}`}</text> : null}
-	</box>
-);
+}: TextRowProps): ReactNode => {
+	const { width } = useTerminalDimensions();
+	const beside =
+		note !== undefined &&
+		fitsBeside(width, LABEL_WIDTH + INPUT_WIDTH + 1, note);
+	return (
+		<box style={{ flexDirection: "column" }}>
+			<box style={{ flexDirection: "row", height: 1 }}>
+				<text fg={focused ? ACCENT_COLOR : undefined} style={{ flexShrink: 0 }}>
+					{`${focused ? "›" : " "} ${label.padEnd(LABEL_WIDTH - 2)}`}
+				</text>
+				<input
+					value={value}
+					focused={focused}
+					onInput={onInput}
+					backgroundColor={INPUT_BG}
+					focusedBackgroundColor={SELECTED_BG}
+					style={{ width: INPUT_WIDTH, flexShrink: 0 }}
+				/>
+				{beside ? <text fg={MUTED_COLOR}>{`  ${note}`}</text> : null}
+			</box>
+			{note !== undefined && !beside ? (
+				<text fg={MUTED_COLOR}>{`${" ".repeat(LABEL_WIDTH)}${note}`}</text>
+			) : null}
+		</box>
+	);
+};
+
+type NotedLineProps = {
+	head: string;
+	note?: string;
+	indent: number;
+	fg?: string;
+};
+
+const NotedLine = ({ head, note, indent, fg }: NotedLineProps): ReactNode => {
+	const { width } = useTerminalDimensions();
+	if (note === undefined || note === "") return <text fg={fg}>{head}</text>;
+	if (fitsBeside(width, head.length, note))
+		return <text fg={fg}>{`${head} ${note}`}</text>;
+	return (
+		<box style={{ flexDirection: "column" }}>
+			<text fg={fg}>{head}</text>
+			<text fg={fg ?? MUTED_COLOR}>{`${" ".repeat(indent)}${note}`}</text>
+		</box>
+	);
+};
 
 type CheckRowProps = { label: string; checked: boolean; focused: boolean };
 

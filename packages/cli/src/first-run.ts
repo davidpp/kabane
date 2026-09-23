@@ -7,9 +7,9 @@
  */
 
 import { existsSync } from "node:fs";
-import { userInfo } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { type SetupDeps, type SetupPlan, startSetup } from "@cabane/board";
-import { err } from "@cabane/core";
+import { err, ok } from "@cabane/core";
 import { parseArgs } from "./args";
 import { board } from "./commands/board";
 import { buildConfig } from "./commands/init";
@@ -61,6 +61,10 @@ const mcpInstaller: Installer = {
 		(await McpInstall.run(ids.filter(McpClients.isId))).map(outcomeOf),
 };
 
+/** `/Users/alex/.cabane/config.json` as `~/.cabane/config.json`: the screen has 40 columns. */
+export const tildePath = (path: string, home = homedir()): string =>
+	path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+
 export const setupDeps = async (
 	home: string,
 	installer: Installer = mcpInstaller,
@@ -69,6 +73,7 @@ export const setupDeps = async (
 		name: userInfo().username,
 		device: defaultDeviceId(),
 		harnesses: await installer.detect(),
+		configPath: tildePath(configPath(home)),
 	},
 	save: async (plan) => {
 		// The screen only opens without a config; this holds that if one appeared since.
@@ -76,7 +81,8 @@ export const setupDeps = async (
 		if (existsSync(path)) return err(new Error(`${path} already exists`));
 		const config = buildConfig({ actor: plan.actor, deviceId: plan.deviceId });
 		if (!config.ok) return config;
-		return saveConfig(home, config.value);
+		const saved = saveConfig(home, config.value);
+		return saved.ok ? ok(tildePath(saved.value)) : saved;
 	},
 	install: installer.install,
 });

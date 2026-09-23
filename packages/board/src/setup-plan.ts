@@ -15,6 +15,8 @@ export namespace SetupPlan {
 		device: string;
 		/** Detected harnesses, checked by default. Empty shows where the snippets are instead. */
 		harnesses: readonly Harness[];
+		/** Where confirming writes the config, as the screen says it before enter. */
+		configPath: string;
 	};
 
 	export type Field =
