@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/react */
-// The first-run screen `cabane` shows on a device with no config: who you are, what this machine is
-// called, and which detected harnesses get the MCP server. Enter writes the config through the host, runs the installs, and shows each
+// The first-run screen `cabane` shows on a device with no config: three short cards on what cabane
+// is, then who you are, what this machine is called, and which detected harnesses get the MCP
+// server. Enter writes the config through the host, runs the installs, and shows each
 // harness's outcome; enter again hands over to the board. Everything it decides lives in SetupPlan.
 //
 // Key arbitration is the copilot pane's: the focused <input> and the one useKeyboard handler both
@@ -40,6 +41,7 @@ export type SetupDeps = {
 };
 
 type Phase =
+	| { kind: "intro"; card: number }
 	| { kind: "form"; error?: string }
 	| { kind: "working"; step: string }
 	| {
@@ -47,6 +49,37 @@ type Phase =
 			configPath: string;
 			outcomes: SetupPlan.InstallOutcome[];
 	  };
+
+// Each card is one screen, first line bold. Every line fits 40 columns, so none wraps in the pane.
+export const INTRO_CARDS: readonly (readonly string[])[] = [
+	[
+		"a tracker for you and your agents.",
+		"issues live in sqlite on this machine.",
+		"claude, codex, gemini use it over mcp.",
+	],
+	[
+		"you plan, agents do the work.",
+		"they pick up issues and report back.",
+		"each write names you or the agent.",
+	],
+	[
+		"not a team tracker.",
+		"linear and github stay the team record.",
+		"cabane links to their issues.",
+		"your working notes stay here.",
+	],
+];
+
+// The last card's enter opens the form, as esc does from any card.
+const afterCard = (card: number): Phase =>
+	card + 1 < INTRO_CARDS.length
+		? { kind: "intro", card: card + 1 }
+		: { kind: "form" };
+
+const INTRO_FOOTER: readonly Keymap.Hint[] = [
+	{ key: "enter", label: "next" },
+	{ key: "esc", label: "skip" },
+];
 
 // Tab and the arrows go unsaid, as j/k do on the board: the footer has to fit a 40-column pane.
 const FORM_FOOTER: readonly Keymap.Hint[] = [
@@ -65,6 +98,7 @@ const footerFor = (
 	phase: Phase,
 	defaults: SetupPlan.Defaults,
 ): readonly Keymap.Hint[] => {
+	if (phase.kind === "intro") return INTRO_FOOTER;
 	if (phase.kind === "done") return DONE_FOOTER;
 	if (defaults.harnesses.length > 0) return FORM_FOOTER;
 	return FORM_FOOTER.filter((hint) => hint.key !== "space");
@@ -116,7 +150,7 @@ export const SetupScreen = ({
 		current.current = next;
 		setForm(next);
 	};
-	const [phase, setPhase] = useState<Phase>({ kind: "form" });
+	const [phase, setPhase] = useState<Phase>({ kind: "intro", card: 0 });
 
 	const confirm = async (): Promise<void> => {
 		const planned = SetupPlan.plan(current.current, defaults);
@@ -145,6 +179,11 @@ export const SetupScreen = ({
 
 	useKeyboard((key) => {
 		if (phase.kind === "working") return;
+		if (phase.kind === "intro") {
+			if (key.name === "escape") setPhase({ kind: "form" });
+			else if (key.name === "return") setPhase(afterCard(phase.card));
+			return;
+		}
 		if (phase.kind === "done") {
 			if (key.name === "return") onComplete();
 			else if (key.name === "q" || key.name === "escape") onQuit();
@@ -175,10 +214,16 @@ export const SetupScreen = ({
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			<text>
 				<span attributes={TextAttributes.BOLD}>cabane</span>
-				<span fg={MUTED_COLOR}> · setup</span>
+				<span fg={MUTED_COLOR}>
+					{phase.kind === "intro"
+						? ` · ${phase.card + 1}/${INTRO_CARDS.length}`
+						: " · setup"}
+				</span>
 			</text>
 			<box style={{ flexDirection: "column", flexGrow: 1, marginTop: 1 }}>
-				{phase.kind === "done" ? (
+				{phase.kind === "intro" ? (
+					<IntroCard lines={INTRO_CARDS[phase.card] ?? []} />
+				) : phase.kind === "done" ? (
 					<>
 						<text>✓ wrote {phase.configPath}</text>
 						<box style={{ flexDirection: "column", marginTop: 1 }}>
@@ -217,11 +262,25 @@ export const SetupScreen = ({
 					</text>
 				) : null}
 			</box>
-			{phase.kind === "done" ? null : <text fg={MUTED_COLOR}>{SYNC_HINT}</text>}
+			{phase.kind === "form" || phase.kind === "working" ? (
+				<text fg={MUTED_COLOR}>{SYNC_HINT}</text>
+			) : null}
 			<StatusBar
 				text={Keymap.hintLine(footerFor(phase, defaults))}
 				fg={MUTED_COLOR}
 			/>
+		</box>
+	);
+};
+
+const IntroCard = ({ lines }: { lines: readonly string[] }): ReactNode => {
+	const [lead, ...rest] = lines;
+	return (
+		<box style={{ flexDirection: "column" }}>
+			<text attributes={TextAttributes.BOLD}>{lead}</text>
+			{rest.map((line) => (
+				<text key={line}>{line}</text>
+			))}
 		</box>
 	);
 };

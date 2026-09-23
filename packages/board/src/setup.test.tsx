@@ -1,12 +1,13 @@
 /** @jsxImportSource @opentui/react */
-// The setup screen against scripted host deps: the form it opens on, the keys that edit it, and the
-// hand-off — save with the plan, install the checked harnesses, show each outcome,
+// The setup screen against scripted host deps: the intro cards it opens on, the form, the keys that
+// edit it, and the hand-off — save with the plan, install the checked harnesses, show each outcome,
 // then the board. Frames are checked at 100 columns and at the 40-column pane PRODUCT.md targets.
 import { describe, expect, it } from "bun:test";
 import { err, ok, type Result } from "@cabane/core";
 import {
 	HARNESS_HEADING,
 	HARNESS_HINT,
+	INTRO_CARDS,
 	NO_HARNESS_HEADING,
 	NO_HARNESS_HINT,
 	SetupScreen,
@@ -72,7 +73,12 @@ const mount = async (
 	);
 	const until = (predicate: (frame: string) => boolean) =>
 		pumpUntil(setup.renderOnce, setup.captureCharFrame, predicate);
-	const toForm = (): Promise<string> => until((f) => f.includes(FORM_TITLE));
+	// Esc on the first card skips the intro, which is what every form test wants.
+	const toForm = async (): Promise<string> => {
+		await until((f) => f.includes("cabane · 1/3"));
+		setup.mockInput.pressEscape();
+		return until((f) => f.includes(FORM_TITLE));
+	};
 	return { ...setup, seen, until, toForm };
 };
 
@@ -82,8 +88,54 @@ const rows = (frame: string): string[] => frame.split("\n");
 const onOneRow = (frame: string, text: string): boolean =>
 	rows(frame).some((row) => row.includes(text));
 
+describe("SetupScreen intro", () => {
+	it("enter walks the three cards, then opens the form", async () => {
+		const { mockInput, until, destroy } = await mount(DEFAULTS);
+		try {
+			for (const [index, card] of INTRO_CARDS.entries()) {
+				const frame = await until((f) => f.includes(`cabane · ${index + 1}/3`));
+				for (const line of card) expect(frame).toContain(line);
+				expect(frame).toContain("enter next · esc skip");
+				mockInput.pressEnter();
+			}
+			await until((f) => f.includes(FORM_TITLE));
+		} finally {
+			destroy();
+		}
+	});
+
+	it("esc on a card skips straight to the form without quitting", async () => {
+		const { mockInput, until, seen, destroy } = await mount(DEFAULTS);
+		try {
+			await until((f) => f.includes("cabane · 1/3"));
+			mockInput.pressEnter();
+			await until((f) => f.includes("cabane · 2/3"));
+			mockInput.pressEscape();
+			await until((f) => f.includes(FORM_TITLE));
+			expect(seen.quit).toBe(0);
+		} finally {
+			destroy();
+		}
+	});
+});
+
 describe("SetupScreen at 100 and 40 columns", () => {
 	for (const width of [100, 40]) {
+		it(`${width} columns: every card line reads whole`, async () => {
+			const { mockInput, until, destroy } = await mount(DEFAULTS, { width });
+			try {
+				for (const [index, card] of INTRO_CARDS.entries()) {
+					const frame = await until((f) =>
+						f.includes(`cabane · ${index + 1}/3`),
+					);
+					for (const line of card) expect(onOneRow(frame, line)).toBe(true);
+					mockInput.pressEnter();
+				}
+			} finally {
+				destroy();
+			}
+		});
+
 		it(`${width} columns: the form keeps its labels and every hint whole`, async () => {
 			const { toForm, destroy } = await mount(DEFAULTS, { width });
 			try {
@@ -181,10 +233,14 @@ describe("SetupScreen form", () => {
 		}
 	});
 
-	it("enter saves, installs the checked harnesses, shows each outcome, and enter opens the board", async () => {
-		const { mockInput, toForm, until, seen, destroy } = await mount(DEFAULTS);
+	it("intro, form, enter: saves, installs the checked harnesses, shows each outcome, and enter opens the board", async () => {
+		const { mockInput, until, seen, destroy } = await mount(DEFAULTS);
 		try {
-			await toForm();
+			for (let card = 1; card <= INTRO_CARDS.length; card++) {
+				await until((f) => f.includes(`cabane · ${card}/3`));
+				mockInput.pressEnter();
+			}
+			await until((f) => f.includes("[x] Codex"));
 			mockInput.pressEnter();
 			const frame = await until((f) => f.includes("✓ wrote"));
 			expect(frame).toContain(
