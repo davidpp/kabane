@@ -3,7 +3,7 @@
 // interaction through ONE useKeyboard handler that delegates to BoardNav.reduceKey (the pure key
 // router) and runs the effect it returns. A 5s poll keeps the board fresh; selection survives every
 // reload by task id. The board starts scoped to the detected project — `esc` widens to all scopes.
-import { Planner, type Task, type TaskComment } from "@cabane/core";
+import type { Result, Task } from "@cabane/core";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import {
 	useKeyboard,
@@ -130,8 +130,10 @@ export const App = ({
 	// Transient footer flash, auto-cleared after NOTICE_MS. Never silent — copies, state moves, review,
 	// and cancel all surface a notice; failures show the error, successes a confirmation.
 	const [notice, setNotice] = useState<BoardNav.Notice | null>(null);
-	// Comments for the currently open detail view. Fetched alongside the brief, cleared on view change.
-	const [detailComments, setDetailComments] = useState<TaskComment[]>([]);
+	// The records the open detail view shows (BoardData.taskDetail): null while none is open or it
+	// loads, cleared on view change.
+	const [detailRecords, setDetailRecords] =
+		useState<Result<BoardData.DetailRecords> | null>(null);
 	// This session's copilot turns, the current one at the head: its card, its plan and its transcript.
 	// Held in a ref as well because the composed ActivitySource below reads it while the event view
 	// polls, and the stream runner writes it between renders.
@@ -559,6 +561,7 @@ export const App = ({
 							cardId: target.id,
 							fromView: "detail",
 							fromTaskId: effect.taskId,
+							fromTab: BoardNav.detailTab(next.view),
 						},
 					});
 					return;
@@ -727,21 +730,19 @@ export const App = ({
 		if (selectedId) listRef.current?.scrollChildIntoView(`row-${selectedId}`);
 	}, [selectedId]);
 
-	// Fetch comments when the detail view opens or the task changes. Cleared on view change.
+	// Fetch the detail view's records when it opens or the task changes. Cleared on view change.
 	const detailTaskId = state?.view.type === "detail" ? state.view.taskId : null;
 	const detailTask =
 		detailTaskId && state ? findTask(state, detailTaskId) : undefined;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: detailTask?.updatedAt is an intentional trigger — a v/x/n/s mutation on the open task re-fetches comments without changing taskId.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: detailTask?.updatedAt is an intentional trigger — a v/x/n/s mutation on the open task re-fetches the records without changing taskId.
 	useEffect(() => {
-		if (!detailTaskId) {
-			setDetailComments([]);
-			return;
-		}
+		setDetailRecords(null);
+		if (!detailTaskId) return;
 		let cancelled = false;
 		void (async () => {
-			const result = await Planner.getComments(basePath, detailTaskId);
+			const result = await BoardData.taskDetail(basePath, detailTaskId);
 			if (cancelled) return;
-			setDetailComments(result.ok ? result.value : []);
+			setDetailRecords(result);
 		})();
 		return () => {
 			cancelled = true;
@@ -889,12 +890,14 @@ export const App = ({
 			<box style={{ flexDirection: "row", flexGrow: 1 }}>
 				<box style={{ flexDirection: "column", flexGrow: 1 }}>
 					<Detail
-						basePath={basePath}
 						taskId={taskId}
 						task={task}
+						records={detailRecords ?? undefined}
 						cards={taskCards.length > 0 ? taskCards : undefined}
-						comments={detailComments.length > 0 ? detailComments : undefined}
 						questions={shownActivity.questionsByTaskId.get(taskId)}
+						tab={BoardNav.detailTab(state.view)}
+						onTab={(tab) => dispatchMouse({ type: "detailTab", tab })}
+						sidebarWidth={sbWidth}
 						scrollRef={scrollRef}
 						notice={notice}
 						focus={state.focus}
