@@ -6,7 +6,6 @@ import { Events, PLANNER_EVENTS } from "../events";
 import { err, ok, type Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 import {
-	Deadline,
 	type Task,
 	type TaskDraft,
 	TaskDraftSchema,
@@ -14,6 +13,7 @@ import {
 	type TaskUpdate,
 	TaskUpdateSchema,
 } from "../schemas";
+import { DeadlineSql } from "./deadline-sql";
 import {
 	buildScopeFamilyMatch,
 	derivePrefix,
@@ -618,14 +618,17 @@ export namespace Planner {
 				params.push(query.needsReview ? 1 : 0);
 			}
 
+			const zone = Runtime.timezone();
 			if (query.dueBefore) {
-				conditions.push(`${Deadline.DUE_AT_SQL} <= ?`);
-				params.push(query.dueBefore);
+				const before = DeadlineSql.dueBefore(query.dueBefore, zone);
+				conditions.push(before.sql);
+				params.push(...before.params);
 			}
 
 			if (query.dueAfter) {
-				conditions.push(`${Deadline.DUE_AT_SQL} >= ?`);
-				params.push(query.dueAfter);
+				const after = DeadlineSql.dueAfter(query.dueAfter, zone);
+				conditions.push(after.sql);
+				params.push(...after.params);
 			}
 
 			const whereClause =
@@ -633,12 +636,14 @@ export namespace Planner {
 
 			const orderBy = query.orderBy ?? "createdAt";
 			const orderDir = query.orderDir ?? "desc";
-			const orderColumn = {
-				createdAt: "created_at",
-				updatedAt: "updated_at",
-				deadline: Deadline.DUE_AT_SQL,
-				priority: "priority",
-			}[orderBy];
+			const orderColumn =
+				orderBy === "deadline"
+					? DeadlineSql.dueAtKey(db, TABLES.tasks, zone)
+					: {
+							createdAt: "created_at",
+							updatedAt: "updated_at",
+							priority: "priority",
+						}[orderBy];
 
 			const limit = query.limit ?? 100;
 			const offset = query.offset ?? 0;
@@ -753,7 +758,8 @@ export namespace Planner {
 	};
 
 	/**
-	 * Get tasks for "today" view: next + due today + overdue
+	 * Get tasks for "today" view: next + due today + overdue. Today is the
+	 * owner's local day (`Runtime.timezone()`, or `opts.zone`) at `opts.now`.
 	 */
 	export const getToday = async (
 		basePath: string,
@@ -761,12 +767,20 @@ export namespace Planner {
 			scopeUri?: string;
 			includeDone?: boolean;
 			kind?: "task" | "issue";
+			/** Epoch ms to take today at. Default: now. */
+			now?: number;
+			/** IANA zone whose day is today. Default: `Runtime.timezone()`. */
+			zone?: string;
 		} = {},
 	): Promise<Result<{ overdue: Task[]; dueToday: Task[]; next: Task[] }>> => {
 		return withDb(basePath, (db) => {
-			const today = new Date().toISOString().split("T")[0];
-			const todayStart = `${today}T00:00:00.000Z`;
-			const todayEnd = `${today}T23:59:59.999Z`;
+			const today = DeadlineSql.today(
+				opts.now ?? Date.now(),
+				opts.zone ?? Runtime.timezone(),
+			);
+			const overdue = DeadlineSql.overdue(today);
+			const dueToday = DeadlineSql.dueToday(today);
+			const later = DeadlineSql.noneOrLater(today);
 
 			const scopeFamily = opts.scopeUri
 				? buildScopeFamilyMatch(opts.scopeUri)
@@ -787,14 +801,20 @@ export namespace Planner {
 			const kindFilter = opts.kind ? "AND kind = ?" : "";
 			const kindParam = opts.kind ? [opts.kind] : [];
 
+			const dueKey = DeadlineSql.dueAtKey(
+				db,
+				TABLES.tasks,
+				opts.zone ?? Runtime.timezone(),
+			);
+
 			// Overdue
 			const overdueRows = db
 				.query(
 					`SELECT * FROM ${TABLES.tasks}
-           WHERE ${Deadline.DUE_AT_SQL} < ? ${doneFilter} ${scopeFilter} ${kindFilter}
-           ORDER BY ${Deadline.DUE_AT_SQL} ASC`,
+           WHERE deadline IS NOT NULL AND ${overdue.sql} ${doneFilter} ${scopeFilter} ${kindFilter}
+           ORDER BY ${dueKey} ASC`,
 				)
-				.all(todayStart, ...scopeParam, ...kindParam) as Record<
+				.all(...overdue.params, ...scopeParam, ...kindParam) as Record<
 				string,
 				unknown
 			>[];
@@ -803,24 +823,24 @@ export namespace Planner {
 			const dueTodayRows = db
 				.query(
 					`SELECT * FROM ${TABLES.tasks}
-           WHERE ${Deadline.DUE_AT_SQL} >= ? AND ${Deadline.DUE_AT_SQL} <= ? ${doneFilter} ${scopeFilter} ${kindFilter}
-           ORDER BY ${Deadline.DUE_AT_SQL} ASC`,
+           WHERE deadline IS NOT NULL AND ${dueToday.sql} ${doneFilter} ${scopeFilter} ${kindFilter}
+           ORDER BY ${dueKey} ASC`,
 				)
-				.all(todayStart, todayEnd, ...scopeParam, ...kindParam) as Record<
+				.all(...dueToday.params, ...scopeParam, ...kindParam) as Record<
 				string,
 				unknown
 			>[];
 
-			// Next actions (state = next, no deadline or future deadline)
+			// Next actions (state = next, no deadline or a deadline after today)
 			const nextRows = db
 				.query(
 					`SELECT * FROM ${TABLES.tasks}
-           WHERE state = 'next' AND (deadline IS NULL OR ${Deadline.DUE_AT_SQL} > ?)
+           WHERE state = 'next' AND ${later.sql}
            ${doneFilter} ${scopeFilter} ${kindFilter}
            ORDER BY priority ASC, created_at ASC
            LIMIT 20`,
 				)
-				.all(todayEnd, ...scopeParam, ...kindParam) as Record<
+				.all(...later.params, ...scopeParam, ...kindParam) as Record<
 				string,
 				unknown
 			>[];

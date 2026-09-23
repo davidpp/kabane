@@ -1,9 +1,8 @@
-import "../testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-
 import type { Task, TaskDraft, TaskLinkDraft, TaskUpdate } from "../schemas";
+import { configureTestRuntime } from "../testing";
 import { Planner } from "./index";
 
 const TEST_BASE = join(import.meta.dir, ".test-data");
@@ -1012,6 +1011,129 @@ describe("Planner", () => {
 				expect(dueByNoon.value.map((task) => task.title)).toEqual([
 					"Morning of",
 				]);
+		});
+	});
+
+	describe("deadlines in the owner's zone", () => {
+		const MONTREAL = "America/Montreal";
+		// 23:30 on 2026-02-06 in Montreal, already 2026-02-07 in UTC.
+		const lateEvening = Date.parse("2026-02-07T04:30:00.000Z");
+		const titles = (tasks: Task[]) => tasks.map((task) => task.title);
+
+		afterEach(() => configureTestRuntime());
+
+		const seed = async (): Promise<void> => {
+			const drafts: TaskDraft[] = [
+				{ title: "date on the 6th", deadline: "2026-02-06" },
+				{ title: "17:00 on the 6th", deadline: "2026-02-06T22:00:00.000Z" },
+				{ title: "22:00 on the 6th", deadline: "2026-02-07T03:00:00.000Z" },
+				{ title: "date on the 5th", deadline: "2026-02-05" },
+				{ title: "23:00 on the 5th", deadline: "2026-02-06T04:00:00.000Z" },
+				{ title: "date on the 7th", state: "next", deadline: "2026-02-07" },
+				{
+					title: "01:00 on the 7th",
+					state: "next",
+					deadline: "2026-02-07T06:00:00.000Z",
+				},
+			];
+			for (const draft of drafts) await Planner.addTask(TEST_BASE, draft);
+		};
+
+		it("today is the owner's local day: at 23:30 a date due today is not overdue", async () => {
+			await seed();
+			const montreal = await Planner.getToday(TEST_BASE, {
+				now: lateEvening,
+				zone: MONTREAL,
+			});
+			expect(montreal.ok).toBe(true);
+			if (montreal.ok) {
+				expect(titles(montreal.value.dueToday)).toEqual([
+					"17:00 on the 6th",
+					"22:00 on the 6th",
+					"date on the 6th",
+				]);
+				expect(titles(montreal.value.overdue)).toEqual([
+					"23:00 on the 5th",
+					"date on the 5th",
+				]);
+				expect(titles(montreal.value.next).sort()).toEqual([
+					"01:00 on the 7th",
+					"date on the 7th",
+				]);
+			}
+
+			const utc = await Planner.getToday(TEST_BASE, {
+				now: lateEvening,
+				zone: "UTC",
+			});
+			expect(utc.ok).toBe(true);
+			if (utc.ok) {
+				expect(titles(utc.value.dueToday)).toEqual([
+					"22:00 on the 6th",
+					"01:00 on the 7th",
+					"date on the 7th",
+				]);
+				expect(titles(utc.value.overdue)).toContain("date on the 6th");
+			}
+		});
+
+		it("sorts by when each falls due in the runtime's zone, DST-aware", async () => {
+			await seed();
+			configureTestRuntime("", { timezone: () => MONTREAL });
+			const sorted = await Planner.queryTasks(TEST_BASE, {
+				orderBy: "deadline",
+				orderDir: "asc",
+			});
+			expect(sorted.ok).toBe(true);
+			if (sorted.ok)
+				expect(titles(sorted.value)).toEqual([
+					"23:00 on the 5th",
+					"date on the 5th",
+					"17:00 on the 6th",
+					"22:00 on the 6th",
+					"date on the 6th",
+					"01:00 on the 7th",
+					"date on the 7th",
+				]);
+		});
+
+		it("a date bound covers its whole local day, and a date deadline ends with its day", async () => {
+			await seed();
+			configureTestRuntime("", { timezone: () => MONTREAL });
+			const byThe6th = await Planner.queryTasks(TEST_BASE, {
+				dueAfter: "2026-02-06",
+				dueBefore: "2026-02-06",
+				orderBy: "deadline",
+				orderDir: "asc",
+			});
+			expect(byThe6th.ok).toBe(true);
+			if (byThe6th.ok)
+				expect(titles(byThe6th.value)).toEqual([
+					"17:00 on the 6th",
+					"22:00 on the 6th",
+					"date on the 6th",
+				]);
+
+			// 20:00 local on the 6th: the date on the 6th is not due by then.
+			const byEight = await Planner.queryTasks(TEST_BASE, {
+				dueAfter: "2026-02-06",
+				dueBefore: "2026-02-07T01:00:00.000Z",
+			});
+			expect(byEight.ok).toBe(true);
+			if (byEight.ok)
+				expect(titles(byEight.value)).toEqual(["17:00 on the 6th"]);
+		});
+
+		it("compares instants stored at different precisions as the same instant", async () => {
+			await Planner.addTask(TEST_BASE, {
+				title: "seconds",
+				deadline: "2026-02-06T21:00:00Z",
+			});
+			const due = await Planner.queryTasks(TEST_BASE, {
+				dueBefore: "2026-02-06T21:00:00.000Z",
+			});
+			expect(due.ok).toBe(true);
+			if (due.ok) expect(titles(due.value)).toEqual(["seconds"]);
 		});
 	});
 

@@ -185,7 +185,7 @@ export const TaskSchema = z.object({
 
 	// --- Time ---
 
-	/** Due date: an ISO datetime or a calendar date (deadline.ts) */
+	/** Due date: a calendar date or an instant, read in the owner's zone (deadline.ts) */
 	deadline: DeadlineSchema.optional(),
 
 	/** Defer until date (hide until this date) */
@@ -339,11 +339,11 @@ export const TaskQuerySchema = z.object({
 	/** Filter tasks needing review */
 	needsReview: z.boolean().optional(),
 
-	/** Due before this date */
-	dueBefore: z.string().datetime().optional(),
+	/** Due at or before this: a date includes its whole day (deadline.ts) */
+	dueBefore: DeadlineSchema.optional(),
 
-	/** Due after this date */
-	dueAfter: z.string().datetime().optional(),
+	/** Due at or after this: a date from its first instant (deadline.ts) */
+	dueAfter: DeadlineSchema.optional(),
 
 	/** Full-text search query */
 	query: z.string().optional(),
