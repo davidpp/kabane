@@ -10,7 +10,12 @@ const template = (path: string): string =>
 	readFileSync(join(CopilotInstructions.DISPATCH_TEMPLATE, path), "utf8");
 
 // What the copilot copies into a project, as opposed to PLACEHOLDERS.md, which it only reads.
-const SKILL_FILES = ["SKILL.md", "references/specialists.md"];
+const SKILL_FILES = [
+	"SKILL.md",
+	"references/issue-template.md",
+	"references/agent-prompt.md",
+	"references/specialists.md",
+];
 
 describe("CopilotInstructions.SHORTCUTS", () => {
 	it("every name is unique — the `/` palette resolves on it", () => {
