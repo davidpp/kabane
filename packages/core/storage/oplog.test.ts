@@ -1,4 +1,3 @@
-import "../testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -140,7 +139,7 @@ describe("Oplog — storage-layer capture", () => {
 		const ops = await drainOps();
 		expect(ops).toHaveLength(3);
 		expect(ops.map((op) => op.seq)).toEqual(
-			[...ops.map((op) => op.seq)].sort((a, b) => a - b),
+			ops.map((op) => op.seq).sort((a, b) => a - b),
 		);
 		expect(ops.map((op) => op.payload?.title)).toEqual([
 			"first",

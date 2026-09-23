@@ -602,10 +602,10 @@ export const App = ({
 							fromTab: BoardNav.detailTab(next.view),
 						},
 					});
-					return;
+					break;
 				}
 				case "none":
-					return;
+					break;
 			}
 		},
 		[
