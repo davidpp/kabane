@@ -1,5 +1,8 @@
 # Deploy runbook
 
+This is the optional Cloudflare hub, for syncing several machines; one machine on local
+SQLite needs none of it ([`getting-started.md`](getting-started.md)).
+
 **Issue:** JCAB-11 · **Verified locally:** 2026-09-07 against `wrangler dev` with the dev
 verifier (see the last section). Steps an agent must never perform are marked **MANUAL**:
 they touch Cloudflare, DNS, Access, or a connector UI. Everything else was run as written.
