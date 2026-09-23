@@ -35,42 +35,48 @@ clone anywhere; the harness entries record its absolute path.
 
 ## Run `cabane`
 
-Run `cabane` from inside a project you want to track. The first run opens a setup screen:
+Run `cabane` from inside a project you want to track. The first run opens on three short
+cards about what cabane is. Enter moves to the next card; esc skips straight to the setup
+screen:
 
 ```
 cabane · setup
+
 › name   alex                      cabane://actor/human/alex
   device alex-mbp
-wire the cabane mcp server into
+
+let these agents use cabane
+adds cabane to each one's mcp config
   [x] Claude Code
   [x] Codex
   [x] Gemini CLI
-  [ ] pin this repo's scope · myapp (github.com/alex/myapp)
-several machines? cabane init --sync-url … --sync-token … (docs/deploy.md)
-tab/↑↓ move · space toggle · enter confirm · esc quit
+
+enter writes ~/.cabane/config.json
+more machines: docs/deploy.md
+space toggle · enter confirm · esc quit
 ```
 
 - **name** is prefilled with your OS username. It becomes your actor, the identity stamped
-  on everything you write: `cabane://actor/human/<name>`.
+  on everything you write: `cabane://actor/human/<name>`. In a narrow pane the actor sits
+  on its own line under the name.
 - **device** is this machine's name, prefilled with the short hostname.
-- **wire the cabane mcp server into** lists the harnesses found on your PATH, all checked.
-  Space unchecks one. If none are found, the screen says so and points at
-  `cabane mcp install --print`.
-- **pin this repo's scope** appears when you run setup inside a git repo. Leave it off.
-  Cabane already works out the scope from the git remote (or from the first commit when
-  there is no remote) and caches it in `.cabane/scope` at the repo root.
+- **let these agents use cabane** lists the harnesses found on your PATH, all checked. Tab
+  or the arrow keys move between rows, and space unchecks one. Each checked harness gets a
+  `cabane` entry in its user-level MCP config (its own `mcp add`). If none are found, the
+  screen says so and points at `cabane mcp install --print`.
 
-Enter writes `~/.cabane/config.json` and wires each checked harness:
+Enter writes `~/.cabane/config.json` and adds cabane to each checked harness:
 
 ```
-✓ wrote /Users/alex/.cabane/config.json
+✓ wrote ~/.cabane/config.json
 
 Claude Code    ✓ installed as cabane://actor/agent/claude
 Codex          ✓ installed as cabane://actor/agent/codex
 Gemini CLI     ✓ installed as cabane://actor/agent/gemini
 ```
 
-Enter again opens the board. Esc before confirming leaves without writing anything. After
+Enter again opens the board. Esc on the setup screen, before confirming, leaves without
+writing anything. After
 this, `cabane` always opens the board directly.
 
 What setup changed outside `~/.cabane`: one user-scope MCP entry named `cabane` in each

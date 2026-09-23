@@ -1,12 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SetupPlan } from "./setup-plan";
 
-const REPO: SetupPlan.Repo = {
-	root: "/work/cabane",
-	scopeId: "github.com/acme/cabane",
-	name: "cabane",
-};
-
 const DEFAULTS: SetupPlan.Defaults = {
 	name: "david",
 	device: "mbp",
@@ -14,7 +8,7 @@ const DEFAULTS: SetupPlan.Defaults = {
 		{ id: "claude", label: "Claude Code" },
 		{ id: "codex", label: "Codex" },
 	],
-	repo: REPO,
+	configPath: "~/.cabane/config.json",
 };
 
 // Scripted answers: a sequence of form edits applied from the defaults, as the screen would.
@@ -27,27 +21,24 @@ const up = (form: SetupPlan.Form) => SetupPlan.moveFocus(form, DEFAULTS, -1);
 const space = (form: SetupPlan.Form) => SetupPlan.toggle(form, DEFAULTS);
 
 describe("fields", () => {
-	test("name, device, one row per harness, then the pin", () => {
+	test("name, device, then one row per harness", () => {
 		expect(SetupPlan.fields(DEFAULTS).map((f) => f.kind)).toEqual([
 			"name",
 			"device",
 			"harness",
 			"harness",
-			"pin",
 		]);
 	});
 
-	test("no repo, no pin row; no harness, no harness rows", () => {
+	test("no harness, no harness rows", () => {
 		expect(
-			SetupPlan.fields({ ...DEFAULTS, harnesses: [], repo: null }).map(
-				(f) => f.kind,
-			),
+			SetupPlan.fields({ ...DEFAULTS, harnesses: [] }).map((f) => f.kind),
 		).toEqual(["name", "device"]);
 	});
 });
 
 describe("plan", () => {
-	test("accepting the defaults wires every detected harness and pins nothing", () => {
+	test("accepting the defaults wires every detected harness", () => {
 		const planned = SetupPlan.plan(answer(), DEFAULTS);
 		expect(planned).toEqual({
 			ok: true,
@@ -55,16 +46,14 @@ describe("plan", () => {
 				actor: "cabane://actor/human/david",
 				deviceId: "mbp",
 				install: ["claude", "codex"],
-				pin: null,
 			},
 		});
 	});
 
-	test("space on a harness row unchecks it; on the pin row it pins", () => {
-		const form = answer(down, down, space, up, up, up, space);
+	test("space on a harness row unchecks it", () => {
+		const form = answer(down, down, space);
 		const planned = SetupPlan.plan(form, DEFAULTS);
 		expect(planned.ok && planned.value.install).toEqual(["codex"]);
-		expect(planned.ok && planned.value.pin).toEqual(REPO);
 	});
 
 	test("install order follows detection, not the order boxes were ticked", () => {
@@ -99,7 +88,7 @@ describe("plan", () => {
 
 describe("moveFocus", () => {
 	test("wraps both ways", () => {
-		expect(answer(up).focus).toBe(4);
+		expect(answer(up).focus).toBe(3);
 		expect(answer(up, down).focus).toBe(0);
 	});
 });

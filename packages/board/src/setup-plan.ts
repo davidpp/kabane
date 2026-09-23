@@ -1,15 +1,12 @@
 // The first-run setup screen's logic, without a renderer: which rows the form has, how focus and
-// the checkboxes move, and what the answers become — an actor URI, a device id, the harnesses to
-// wire and the scope to pin. setup.tsx is a thin layer over this; the host turns a Plan into its own
+// the checkboxes move, and what the answers become — an actor URI, a device id and the harnesses to
+// wire. setup.tsx is a thin layer over this; the host turns a Plan into its own
 // config (the board cannot see the CLI's schema) and runs the installs.
 import { err, ok, type Result } from "@cabane/core";
 
 export namespace SetupPlan {
 	/** A harness the host found on this machine, by the id its installer takes. */
 	export type Harness = { id: string; label: string };
-
-	/** The git project the screen was opened in, as scope detection resolved it. */
-	export type Repo = { root: string; scopeId: string; name: string };
 
 	export type Defaults = {
 		/** Prefilled name: the OS username. */
@@ -18,21 +15,19 @@ export namespace SetupPlan {
 		device: string;
 		/** Detected harnesses, checked by default. Empty shows where the snippets are instead. */
 		harnesses: readonly Harness[];
-		/** Null when the cwd is in no git project: the pin row is not offered. */
-		repo: Repo | null;
+		/** Where confirming writes the config, as the screen says it before enter. */
+		configPath: string;
 	};
 
 	export type Field =
 		| { kind: "name" }
 		| { kind: "device" }
-		| { kind: "harness"; harness: Harness }
-		| { kind: "pin"; repo: Repo };
+		| { kind: "harness"; harness: Harness };
 
 	export type Form = {
 		name: string;
 		device: string;
 		checked: readonly string[];
-		pin: boolean;
 		focus: number;
 	};
 
@@ -40,8 +35,6 @@ export namespace SetupPlan {
 		actor: string;
 		deviceId: string;
 		install: readonly string[];
-		/** The scope to pin at the repo root, or null to leave detection to the cascade. */
-		pin: Repo | null;
 	};
 
 	export type InstallStatus = "installed" | "already" | "failed";
@@ -61,16 +54,13 @@ export namespace SetupPlan {
 		...defaults.harnesses.map(
 			(harness): Field => ({ kind: "harness", harness }),
 		),
-		...(defaults.repo ? [{ kind: "pin" as const, repo: defaults.repo }] : []),
 	];
 
 	// Every detected harness starts checked: wiring the agents is why most people run setup at all.
-	// The pin starts off, because detection already resolves the repo without one.
 	export const initialForm = (defaults: Defaults): Form => ({
 		name: defaults.name,
 		device: defaults.device,
 		checked: defaults.harnesses.map((h) => h.id),
-		pin: false,
 		focus: 0,
 	});
 
@@ -90,7 +80,6 @@ export namespace SetupPlan {
 	/** Space on a checkbox row flips it; on a text row it does nothing. */
 	export const toggle = (form: Form, defaults: Defaults): Form => {
 		const field = focused(form, defaults);
-		if (field?.kind === "pin") return { ...form, pin: !form.pin };
 		if (field?.kind !== "harness") return form;
 		const id = field.harness.id;
 		return {
@@ -127,7 +116,6 @@ export namespace SetupPlan {
 			install: defaults.harnesses
 				.map((h) => h.id)
 				.filter((id) => form.checked.includes(id)),
-			pin: form.pin ? defaults.repo : null,
 		});
 	};
 }

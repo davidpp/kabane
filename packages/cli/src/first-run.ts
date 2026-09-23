@@ -7,20 +7,14 @@
  */
 
 import { existsSync } from "node:fs";
-import { userInfo } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { type SetupDeps, type SetupPlan, startSetup } from "@cabane/board";
 import { err, ok } from "@cabane/core";
-import { detectScope } from "@cabane/core/scope";
 import { parseArgs } from "./args";
 import { board } from "./commands/board";
 import { buildConfig } from "./commands/init";
 import { McpInstall } from "./commands/mcp-install";
-import {
-	configPath,
-	defaultDeviceId,
-	saveConfig,
-	writeDirectoryScope,
-} from "./config";
+import { configPath, defaultDeviceId, saveConfig } from "./config";
 import { openContext } from "./context";
 import { McpClients } from "./mcp-clients";
 import { failure, type Outcome, success } from "./output";
@@ -67,27 +61,19 @@ const mcpInstaller: Installer = {
 		(await McpInstall.run(ids.filter(McpClients.isId))).map(outcomeOf),
 };
 
-const repoOf = async (
-	home: string,
-	cwd: string,
-): Promise<SetupPlan.Repo | null> => {
-	// No extensions: a pin names the project, never the branch it was set up on.
-	const detected = await detectScope(cwd, { home, detectExtensions: false });
-	return detected
-		? { root: detected.root, scopeId: detected.scopeId, name: detected.name }
-		: null;
-};
+/** `/Users/alex/.cabane/config.json` as `~/.cabane/config.json`: the screen has 40 columns. */
+export const tildePath = (path: string, home = homedir()): string =>
+	path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 
 export const setupDeps = async (
 	home: string,
-	cwd: string,
 	installer: Installer = mcpInstaller,
 ): Promise<SetupDeps> => ({
 	defaults: {
 		name: userInfo().username,
 		device: defaultDeviceId(),
 		harnesses: await installer.detect(),
-		repo: await repoOf(home, cwd),
+		configPath: tildePath(configPath(home)),
 	},
 	save: async (plan) => {
 		// The screen only opens without a config; this holds that if one appeared since.
@@ -96,12 +82,7 @@ export const setupDeps = async (
 		const config = buildConfig({ actor: plan.actor, deviceId: plan.deviceId });
 		if (!config.ok) return config;
 		const saved = saveConfig(home, config.value);
-		if (!saved.ok) return saved;
-		if (plan.pin) {
-			const pinned = writeDirectoryScope(plan.pin.root, plan.pin.scopeId);
-			if (!pinned.ok) return pinned;
-		}
-		return ok(saved.value);
+		return saved.ok ? ok(tildePath(saved.value)) : saved;
 	},
 	install: installer.install,
 });
@@ -112,7 +93,7 @@ export const openTui = async (
 	installer?: Installer,
 ): Promise<Outcome> => {
 	if (!existsSync(configPath(home))) {
-		const completed = await startSetup(await setupDeps(home, cwd, installer));
+		const completed = await startSetup(await setupDeps(home, installer));
 		if (!completed) return success({ setup: "cancelled" }, "");
 	}
 	const args = parseArgs([]);
