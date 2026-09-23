@@ -77,10 +77,12 @@ picks `codex` or `gemini`, `copilot.model` runs the harness as something else �
 logged in on this machine ([`docs/deploy.md`](docs/deploy.md) part 4.7).
 
 `enter` on a row opens its detail view. Pinned on top: the title, the task at a glance
-(state, priority, kind, assignee), what is running on it, its parent, what blocks it and
-what it blocks, the issue it links to, and any question an agent is waiting on. Under it,
-three tabs, one at a time: the description, the comments (whole, newest first) and the log
-(work logs with short shas and session activity, one line each). `1`-`3` jump to a tab,
+(state, priority, kind, assignee), what is running on it, its parent, how many subtasks it
+has and how many are done, what blocks it and what it blocks, the issue it links to, and any
+question an agent is waiting on. Under it, three tabs, one at a time: the description, with
+the subtasks (done or open, and an open one's state) and the curated context refs (kind,
+label, ref) under it; the comments (whole, newest first); and the log (work logs with short
+shas and session activity, one line each). `1`-`3` jump to a tab,
 `h`/`l` step through them, and a click picks one. The view draws the task's records, not the
 agent brief; `y` still copies the brief for pasting into a chat.
 
@@ -88,6 +90,7 @@ agent brief; `y` still copies the brief for pasting into a chat.
  JCAB-89 · Detail view reads as parts    [copy]
  in progress · issue · @claude
  parent JCAB-1 PRD: Cabane
+ subtasks 3 · 1 done
  blocked by JCAB-84 done · Board surfaces…
 
  description  comments 2  log 9

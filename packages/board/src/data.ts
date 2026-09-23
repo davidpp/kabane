@@ -12,6 +12,7 @@ import {
 	TASK_STATE_DISPLAY,
 	type Task,
 	type TaskComment,
+	type TaskContextRef,
 	type TaskLink,
 	type TaskQuery,
 	type TaskState,
@@ -234,7 +235,14 @@ export namespace BoardData {
 		// The parent and every linked task, for naming them in the meta lines.
 		neighbors: Task[];
 		upstream: UpstreamLink[];
+		// The task's children, oldest first, closed and deferred ones included.
+		subtasks: Task[];
+		// The curated input context (PRD, ADR, research…), as identities: label, kind and ref.
+		contextRefs: TaskContextRef[];
 	};
+
+	// A parent with more subtasks than this is a plan, and the view names the first ones only.
+	const SUBTASK_LIMIT = 200;
 
 	const sessionRecords = async (
 		basePath: string,
@@ -264,18 +272,37 @@ export namespace BoardData {
 		const task = await Planner.getTask(basePath, id);
 		if (!task.ok) return task;
 		if (!task.value) return err(new Error(`task ${id} not found`));
-		const [comments, workLogs, sessions, links, upstream] = await Promise.all([
+		const [
+			comments,
+			workLogs,
+			sessions,
+			links,
+			upstream,
+			subtasks,
+			contextRefs,
+		] = await Promise.all([
 			Planner.getComments(basePath, id),
 			Planner.getWorkLogs(basePath, id),
 			Planner.querySessions(basePath, { taskId: id }),
 			Planner.getLinksForTask(basePath, id),
 			Planner.getUpstreamLinksForTask(basePath, id),
+			Planner.queryTasks(basePath, {
+				parentTaskId: task.value.id,
+				includeClosed: true,
+				includeDeferred: true,
+				orderBy: "createdAt",
+				orderDir: "asc",
+				limit: SUBTASK_LIMIT,
+			}),
+			Planner.getContextRefs(basePath, task.value.id),
 		]);
 		if (!comments.ok) return comments;
 		if (!workLogs.ok) return workLogs;
 		if (!sessions.ok) return sessions;
 		if (!links.ok) return links;
 		if (!upstream.ok) return upstream;
+		if (!subtasks.ok) return subtasks;
+		if (!contextRefs.ok) return contextRefs;
 		const perSession: SessionRecords[] = [];
 		for (const session of sessions.value) {
 			const records = await sessionRecords(basePath, session);
@@ -295,6 +322,8 @@ export namespace BoardData {
 			links: links.value,
 			neighbors: neighbors.value,
 			upstream: upstream.value,
+			subtasks: subtasks.value,
+			contextRefs: contextRefs.value,
 		});
 	};
 
