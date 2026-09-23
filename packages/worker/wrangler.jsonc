@@ -12,10 +12,11 @@
 	// uses node:async_hooks for the per-request actor; nodejs_compat provides
 	// them.
 	"compatibility_flags": ["nodejs_compat"],
-	// Access is the only front door: no workers.dev, no preview URLs.
+	// Access is the only front door: no workers.dev, no preview URLs. The custom
+	// domain is not in this file: each deploy names its own with
+	// `wrangler deploy --domain <your-domain>` (docs/deploy.md, part 1).
 	"workers_dev": false,
 	"preview_urls": false,
-	"routes": [{ "pattern": "cabane.3pew.ca", "custom_domain": true }],
 	"observability": { "enabled": true },
 	"durable_objects": {
 		"bindings": [
@@ -28,13 +29,14 @@
 	"migrations": [
 		{ "tag": "v1", "new_sqlite_classes": ["CabaneLog", "CabaneHub"] }
 	],
-	// Access wiring. ACCESS_AUD, HUMAN_EMAIL and SERVICE_ACTORS are placeholders
-	// filled from the Zero Trust dashboard at deploy time (README, "Configure").
+	// Access wiring. ACCESS_TEAM_DOMAIN, ACCESS_AUD, HUMAN_EMAIL and
+	// SERVICE_ACTORS are placeholders filled from the Zero Trust dashboard at
+	// deploy time, with `--var` or the CI deploy job (docs/deploy.md, 1.0 and 1.5).
 	// Empty values are CLOSED: no human and no service is admitted until set.
 	// SYNC_TOKEN is a secret (`wrangler secret put`), never a var.
 	// ACCESS_DEV_UNVERIFIED must never appear here; it lives in .dev.vars only.
 	"vars": {
-		"ACCESS_TEAM_DOMAIN": "https://3pew.cloudflareaccess.com",
+		"ACCESS_TEAM_DOMAIN": "",
 		"ACCESS_AUD": "",
 		"HUMAN_EMAIL": "",
 		"SERVICE_ACTORS": "{}",

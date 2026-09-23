@@ -18,7 +18,7 @@ declare namespace Cloudflare {
 		 */
 		SYNC_TOKEN?: string;
 
-		/** Access team, the JWT issuer. `https://3pew.cloudflareaccess.com`. */
+		/** Access team, the JWT issuer. `https://<team>.cloudflareaccess.com`. */
 		ACCESS_TEAM_DOMAIN: string;
 		/** The Access application's AUD tag. Copied from the dashboard after creation. */
 		ACCESS_AUD: string;
