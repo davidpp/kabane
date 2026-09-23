@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/react */
-// The first-run screen `cabane` shows on a device with no config: one welcome card on what cabane
+// The first-run screen `kabane` shows on a device with no config: one welcome card on what kabane
 // is, then who you are and which detected harnesses get the MCP server. Enter writes the config
 // through the host, runs the installs, files a first issue for an agent inside a project, and shows
 // each outcome with the next step; enter again hands over to the board. Everything it decides lives
@@ -41,7 +41,7 @@ export type SetupDeps = {
 	save: (plan: SetupPlan.Plan) => Promise<Result<string>>;
 	// Registers the MCP server in each named harness, one outcome per id.
 	install: (ids: readonly string[]) => Promise<SetupPlan.InstallOutcome[]>;
-	// Files the issue that has the named agent add cabane to the project's instruction file.
+	// Files the issue that has the named agent add kabane to the project's instruction file.
 	fileFirstIssue: (harness: string) => Promise<Result<SetupPlan.FirstIssue>>;
 };
 
@@ -69,7 +69,7 @@ export const WELCOME: readonly (readonly string[])[] = [
 		"made it.",
 	],
 	["not a team tracker: linear and github", "stay the team record."],
-	["one screen of setup: your name and", "which agents get cabane."],
+	["one screen of setup: your name and", "which agents get kabane."],
 ];
 
 // Each phase's keys, from the one registry. Space toggles a harness row, so with none detected it is
@@ -91,11 +91,11 @@ const footerFor = (
 
 // Each field's one-line purpose, dim under it. At 40 columns a note has 31 after the label column.
 export const NAME_NOTE = "signs what you write";
-export const AGENTS_NOTE = "checked ones get cabane's tools";
+export const AGENTS_NOTE = "checked ones get kabane's tools";
 export const NO_AGENTS = "none found on PATH";
-export const NO_AGENTS_NOTE = "add later: cabane mcp install";
+export const NO_AGENTS_NOTE = "add later: kabane mcp install";
 export const AGENTS_OFF = "install off";
-export const AGENTS_OFF_NOTE = "CABANE_HARNESSES is set";
+export const AGENTS_OFF_NOTE = "KABANE_HARNESSES is set";
 
 const agentCount = (count: number): string =>
 	`${count} agent${count === 1 ? "" : "s"}`;
@@ -107,17 +107,17 @@ export const enterLines = (
 	firstAgent?: string,
 ): readonly string[] => [
 	`saves ${configPath}`,
-	...(agents > 0 ? [`adds cabane to ${agentCount(agents)}`] : []),
+	...(agents > 0 ? [`adds kabane to ${agentCount(agents)}`] : []),
 	...(firstAgent ? [`files one issue for ${firstAgent}`] : []),
 	"opens the board",
 ];
 
 /** What to say to the agent: the done screen sets it apart as the thing to copy. */
-export const NEXT_PHRASE = `"take the next cabane issue"`;
+export const NEXT_PHRASE = `"take the next kabane issue"`;
 
 /**
  * What to do once the board opens, for the first issue to move. A new session because a harness
- * reads its MCP servers when a session starts, so one already running has no cabane tools.
+ * reads its MCP servers when a session starts, so one already running has no kabane tools.
  */
 export const nextLines = (harness: string, shortId: string): string[] => [
 	`next: in a new ${harness} session here,`,
@@ -127,21 +127,22 @@ export const nextLines = (harness: string, shortId: string): string[] => [
 
 /**
  * The welcome's wordmark, in opencode's block-glyph manner: each letter four cells of `█▀▄` over
- * three rows, and a row above for the `b`'s ascender. Three marks are not drawn as themselves:
- * `_` is a counter cell (blank, on the shadow), `^` a top half over the shadow, `~` a top half in the
- * shadow's color, so each letter reads solid with a recessed inside. Every glyph drawn is one narrow
- * BMP codepoint, and the whole mark is 29 columns: it fits the forty-column pane inside its panel.
+ * three rows, and a row above for the `k`'s and the `b`'s ascenders. Three marks are not drawn as
+ * themselves: `_` is a counter cell (blank, on the shadow), `^` a top half over the shadow, `~` a
+ * top half in the shadow's color, so each letter reads solid with a recessed inside. Every glyph
+ * drawn is one narrow BMP codepoint, and the whole mark is 29 columns: it fits the forty-column
+ * pane inside its panel.
  */
 export const WORDMARK: readonly string[] = [
-	"          ▄                  ",
-	"█▀▀▀ ▀▀▀█ █▀▀█ ▀▀▀█ █▀▀▄ █▀▀█",
-	"█___ █^^█ █__█ █^^█ █__█ █^^^",
-	"▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀~~▀ ▀▀▀▀",
+	"▄         ▄                  ",
+	"█ ▄▀ ▀▀▀█ █▀▀█ ▀▀▀█ █▀▀▄ █▀▀█",
+	"█▀▄  █^^█ █__█ █^^█ █__█ █^^^",
+	"▀  ▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀~~▀ ▀▀▀▀",
 ];
 
 export const WORDMARK_WIDTH = WORDMARK[0]?.length ?? 0;
 
-/** Below this width the wordmark cannot fit its panel, and the welcome says `cabane` in bold. */
+/** Below this width the wordmark cannot fit its panel, and the welcome says `kabane` in bold. */
 export const wordmarkFits = (width: number): boolean =>
 	width - 2 * PANEL_PAD >= WORDMARK_WIDTH;
 
@@ -170,7 +171,7 @@ export const wordmarkRuns = (row: string): WordmarkRun[] =>
 
 /**
  * A path cut to `room` columns from the left, whole segments at a time, so it never wraps mid-word
- * and keeps the file name: `/var/folders/…/cabane/.cabane/config.json` → `…/.cabane/config.json`.
+ * and keeps the file name: `/var/folders/…/cabane/.kabane/config.json` → `…/.kabane/config.json`.
  */
 export const elidePath = (path: string, room: number): string => {
 	if (path.length <= room) return path;
@@ -273,7 +274,7 @@ export const SetupScreen = ({
 		}
 		setPhase({
 			kind: "working",
-			step: `adding cabane to ${agentCount(planned.value.install.length)}`,
+			step: `adding kabane to ${agentCount(planned.value.install.length)}`,
 		});
 		const outcomes = await install(planned.value.install);
 		const firstIssue = await fileFor(outcomes);
@@ -318,7 +319,7 @@ export const SetupScreen = ({
 			{/* The welcome's wordmark is its title; every later phase says where it is. */}
 			{phase.kind === "welcome" ? null : (
 				<text fg={theme.defaultFg}>
-					<span attributes={TextAttributes.BOLD}>cabane</span>
+					<span attributes={TextAttributes.BOLD}>kabane</span>
 					<span fg={theme.muted}> · setup</span>
 				</text>
 			)}
@@ -455,7 +456,7 @@ const WelcomeCard = (): ReactNode => {
 				<Wordmark />
 			) : (
 				<text fg={theme.text} attributes={TextAttributes.BOLD}>
-					cabane
+					kabane
 				</text>
 			)}
 			{WELCOME.map(([lead, ...rest], index) => (
@@ -793,7 +794,7 @@ type CheckRowProps = {
 };
 
 // Checked and unchecked differ in shape (`[x]` against `[ ]`) and in tone: a harness left out reads
-// muted, so the rows that will get cabane's tools stand out without color carrying it.
+// muted, so the rows that will get kabane's tools stand out without color carrying it.
 const CheckRow = ({
 	label,
 	harness,

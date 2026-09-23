@@ -162,7 +162,7 @@ describe("cabane board", () => {
 			// Header shows the CLI's scope; the footer carries the board's everyday keys and
 			// `? help`. `a` is on the `?` sheet, not the footer: with the no-op dispatcher it
 			// only flashes that there is none.
-			expect(frame).toContain("cabane · demo");
+			expect(frame).toContain("kabane · demo");
 			expect(frame).toContain("/ search · d done");
 			expect(frame).toContain("? help");
 			expect(frame).not.toContain("a dispatch");

@@ -36,7 +36,7 @@ const DEFAULTS: SetupPlan.Defaults = {
 		{ id: "codex", label: "Codex" },
 	],
 	installOff: false,
-	configPath: "~/.cabane/config.json",
+	configPath: "~/.kabane/config.json",
 	project: "repo",
 };
 
@@ -44,13 +44,13 @@ const WELCOME_LEAD = WELCOME[0]?.[0] ?? "";
 const WELCOME_LINES = WELCOME.flat();
 const FIRST_ISSUE: SetupPlan.FirstIssue = {
 	shortId: "REPO-1",
-	title: "Add cabane to CLAUDE.md",
+	title: "Add kabane to CLAUDE.md",
 };
 
-const FORM_TITLE = "cabane · setup";
+const FORM_TITLE = "kabane · setup";
 // Where `bun run sandbox` puts the config: outside HOME, so no `~` shortens it.
 const SANDBOX_PATH =
-	"/var/folders/0b/x7k2m9q1r3s5t8v0w2y4z6a8b0c2d4/T/cabane-sandbox/cabane/.cabane/config.json";
+	"/var/folders/0b/x7k2m9q1r3s5t8v0w2y4z6a8b0c2d4/T/cabane-sandbox/cabane/.kabane/config.json";
 
 type Seen = {
 	saved: SetupPlan.Plan[];
@@ -71,7 +71,7 @@ type MountOptions = {
 const mount = async (
 	defaults: SetupPlan.Defaults,
 	{
-		saveResult = ok("~/.cabane/config.json"),
+		saveResult = ok("~/.kabane/config.json"),
 		fileResult = ok(FIRST_ISSUE),
 		width = 120,
 		theme = Theme.DARK,
@@ -143,7 +143,7 @@ const expectWhole = (frame: string, texts: readonly string[]): void => {
 };
 
 describe("SetupScreen welcome", () => {
-	it("one card says what cabane is, and enter opens the form", async () => {
+	it("one card says what kabane is, and enter opens the form", async () => {
 		const { mockInput, until, destroy } = await mount(DEFAULTS);
 		try {
 			const frame = await until((f) => f.includes(WELCOME_LEAD));
@@ -196,7 +196,7 @@ describe("SetupScreen at 120 and 40 columns", () => {
 					"space toggle · enter confirm · esc quit",
 				]);
 				// The consequences start in the form's value column, so the key sits in the label column.
-				expect(frame).toContain("  enter  saves ~/.cabane/config.json");
+				expect(frame).toContain("  enter  saves ~/.kabane/config.json");
 			} finally {
 				destroy();
 			}
@@ -217,7 +217,7 @@ describe("SetupScreen at 120 and 40 columns", () => {
 				]);
 				expect(frame).not.toContain(AGENTS_OFF);
 				expect(frame).not.toContain("space toggle");
-				expect(frame).not.toContain("adds cabane");
+				expect(frame).not.toContain("adds kabane");
 			} finally {
 				destroy();
 			}
@@ -242,7 +242,7 @@ describe("SetupScreen at 120 and 40 columns", () => {
 				]);
 				expect(frame).not.toContain(NO_AGENTS);
 				const saveRow = rows(frame).find((row) => row.includes("enter  saves"));
-				expect(saveRow?.trimEnd().endsWith("/.cabane/config.json")).toBe(true);
+				expect(saveRow?.trimEnd().endsWith("/.kabane/config.json")).toBe(true);
 				expect(saveRow?.trimEnd().length).toBeLessThanOrEqual(width);
 			} finally {
 				destroy();
@@ -258,7 +258,7 @@ describe("SetupScreen at 120 and 40 columns", () => {
 				mockInput.pressEnter();
 				const frame = await until((f) => f.includes("✓ filed"));
 				expectWhole(frame, [
-					"✓ saved ~/.cabane/config.json",
+					"✓ saved ~/.kabane/config.json",
 					"Claude Code    ✓ installed",
 					"Codex          ✗ failed",
 					"codex: not logged in",
@@ -276,10 +276,10 @@ describe("SetupScreen at 120 and 40 columns", () => {
 
 describe("elidePath", () => {
 	it("keeps a path that fits, and cuts one that does not at a segment", () => {
-		expect(elidePath("~/.cabane/config.json", 28)).toBe(
-			"~/.cabane/config.json",
+		expect(elidePath("~/.kabane/config.json", 28)).toBe(
+			"~/.kabane/config.json",
 		);
-		expect(elidePath(SANDBOX_PATH, 28)).toBe("…/cabane/.cabane/config.json");
+		expect(elidePath(SANDBOX_PATH, 28)).toBe("…/cabane/.kabane/config.json");
 		expect(elidePath(SANDBOX_PATH, 12)).toBe("…/config.json");
 	});
 });
@@ -308,7 +308,7 @@ describe("SetupScreen form", () => {
 			expect(frame).toContain("Claude Code    ✓ installed");
 			expect(frame).toContain("Codex          ✗ failed codex: not logged in");
 			expect(frame).toContain("✓ filed REPO-1 for claude");
-			expect(frame).toContain('say "take the next cabane issue" and');
+			expect(frame).toContain('say "take the next kabane issue" and');
 			expect(seen.filed).toEqual(["claude"]);
 			expect(seen.saved).toEqual([
 				{
@@ -338,7 +338,7 @@ describe("SetupScreen form", () => {
 				(f) =>
 					f.includes("[ ] Claude Code") &&
 					f.includes("[ ] Codex") &&
-					!f.includes("adds cabane"),
+					!f.includes("adds kabane"),
 			);
 			mockInput.pressEnter();
 			await until(() => seen.completed === 1);
@@ -356,7 +356,7 @@ describe("SetupScreen form", () => {
 			mockInput.pressTab();
 			mockInput.pressKey(" ");
 			await until((f) =>
-				rows(f).some((row) => row.trimEnd().endsWith("adds cabane to 1 agent")),
+				rows(f).some((row) => row.trimEnd().endsWith("adds kabane to 1 agent")),
 			);
 		} finally {
 			destroy();
@@ -397,7 +397,7 @@ describe("SetupScreen form", () => {
 		const setup = await renderTest(
 			<SetupScreen
 				defaults={DEFAULTS}
-				save={async () => ok("~/.cabane/config.json")}
+				save={async () => ok("~/.kabane/config.json")}
 				install={async (ids) =>
 					ids.map((id) => ({ id, status: "failed" as const, message: reason }))
 				}
@@ -511,7 +511,7 @@ describe("the wordmark", () => {
 			wordmarkRuns(WORDMARK[2] ?? "")
 				.map((r) => r.text)
 				.join(""),
-		).toBe("█    █▀▀█ █  █ █▀▀█ █  █ █▀▀▀");
+		).toBe("█▀▄  █▀▀█ █  █ █▀▀█ █  █ █▀▀▀");
 	});
 
 	it("fits a forty-column pane inside its panel, and gives way to the bold word below 31", () => {
@@ -528,25 +528,25 @@ describe("SetupScreen surfaces", () => {
 		});
 		try {
 			const frame = await until((f) => f.includes(WELCOME_LEAD));
-			expect(frame).toContain("█▀▀▀ ▀▀▀█ █▀▀█ ▀▀▀█ █▀▀▄ █▀▀█");
-			// The wordmark is the title: no `cabane` header line above it.
-			expect(rows(frame).some((row) => row.trim() === "cabane")).toBe(false);
+			expect(frame).toContain("█ ▄▀ ▀▀▀█ █▀▀█ ▀▀▀█ █▀▀▄ █▀▀█");
+			// The wordmark is the title: no `kabane` header line above it.
+			expect(rows(frame).some((row) => row.trim() === "kabane")).toBe(false);
 			const spans = captureSpans().lines.flatMap((line) => line.spans);
 			const lead = spanWith(spans, WELCOME_LEAD);
 			expect(lead && ints(lead.bg)).toEqual(rgb(Theme.DARK.surface.raised));
 			expect(lead && ints(lead.fg)).toEqual(rgb(Theme.DARK.text));
 			expect(lead ? lead.attributes & TextAttributes.BOLD : 0).toBeTruthy();
-			const estimate = spanWith(spans, "which agents get cabane.");
+			const estimate = spanWith(spans, "which agents get kabane.");
 			expect(estimate && ints(estimate.fg)).toEqual(rgb(Theme.DARK.muted));
 		} finally {
 			destroy();
 		}
 	});
 
-	it("below 31 columns the welcome says cabane in bold instead of the wordmark", async () => {
+	it("below 31 columns the welcome says kabane in bold instead of the wordmark", async () => {
 		const { until, destroy } = await mount(DEFAULTS, { width: 30 });
 		try {
-			const frame = await until((f) => f.includes("cabane"));
+			const frame = await until((f) => f.includes("kabane"));
 			expect(frame).not.toContain("█");
 		} finally {
 			destroy();
@@ -615,7 +615,7 @@ describe("SetupScreen surfaces", () => {
 			for (const line of enterLines(DEFAULTS.configPath, 2, "claude"))
 				expect(onOneRow(frame, line)).toBe(true);
 			const spans = captureSpans().lines.flatMap((line) => line.spans);
-			for (const line of ["saves ~/.cabane/config.json", "opens the board"]) {
+			for (const line of ["saves ~/.kabane/config.json", "opens the board"]) {
 				const span = spanWith(spans, line);
 				expect(span && ints(span.bg)).toEqual(rgb(Theme.DARK.surface.raised));
 			}
@@ -687,6 +687,6 @@ describe("SetupScreen surfaces", () => {
 describe("SetupScreen copy", () => {
 	it("keeps JCAB-82's next step word for word", () => {
 		expect(nextLines("claude", "REPO-1")[1]).toBe(`say ${NEXT_PHRASE} and`);
-		expect(NEXT_PHRASE).toBe('"take the next cabane issue"');
+		expect(NEXT_PHRASE).toBe('"take the next kabane issue"');
 	});
 });
