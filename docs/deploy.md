@@ -147,12 +147,17 @@ Edit `packages/worker/wrangler.jsonc`, the `vars` block:
   "ACCESS_AUD": "<the AUD tag from 1.3>",
   "HUMAN_EMAIL": "<your address, the one in the Allow policy>",
   "SERVICE_ACTORS": "{\"<claude-code client id>.access\":\"cabane://actor/agent/claude\",\"<hermes client id>.access\":\"cabane://actor/agent/hermes\",\"<codex client id>.access\":\"cabane://actor/agent/codex\",\"<cron client id>.access\":\"cabane://actor/agent/cron\"}",
-  "SYNC_INTERVAL_MINUTES": "5"
+  "SYNC_INTERVAL_MINUTES": "5",
+  "CABANE_TIMEZONE": "America/Montreal"
 }
 ```
 
 Empty `ACCESS_AUD`, `HUMAN_EMAIL`, or `SERVICE_ACTORS` means nobody is admitted, which is
-the state the fresh deploy from 1.1 was in. Commit this change (the AUD and client ids are
+the state the fresh deploy from 1.1 was in. `CABANE_TIMEZONE` is your IANA timezone: the
+hub has no timezone of its own, and it decides which day is today and when a date deadline's
+day ends for the browser clients (ChatGPT, Claude.ai) that reach cabane through the hub.
+Unset, the hub uses UTC, so a date due today turns overdue at 19:00 or 20:00 in Montreal; a
+name the runtime does not know stops the hub from booting and says so, rather than guessing. Commit this change (the AUD and client ids are
 identifiers, not secrets; FamilyOS commits the same two), then:
 
 ```bash
@@ -710,6 +715,11 @@ So a release that adds a migration goes out in this order:
 
 A device that updates before the hub is safe too: the hub's cloud device and every older
 device stop at that device's first op until they update.
+
+Migration 5 (calendar-date deadlines) rewrites every deadline stored as the end of a UTC day
+(`…T23:59:59.999Z`, `…T23:59:00Z` and the like) as the date it meant, on each database as it
+boots; deadlines with a real time are left alone. Set `CABANE_TIMEZONE` on the hub (1.5) in
+the same redeploy, or the hub keeps reading those dates in UTC.
 
 ---
 

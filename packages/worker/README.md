@@ -93,6 +93,7 @@ was repaired to the same label on both.
 | | `HUMAN_EMAIL` | the one human allowed in |
 | | `SERVICE_ACTORS` | JSON, service-token client id → `cabane://actor/agent/<runtime>` |
 | | `SYNC_INTERVAL_MINUTES` | scheduled pass interval, default `5` |
+| | `CABANE_TIMEZONE` | the owner's IANA timezone (`America/Montreal`): which day is today and when a date deadline's day ends for MCP clients; unset is UTC, an unknown name stops the hub from booting |
 | `wrangler secret put` | `SYNC_TOKEN` | the log bearer secret every device carries |
 | `.dev.vars` (local only) | all of the above plus `ACCESS_DEV_UNVERIFIED=true` | |
 

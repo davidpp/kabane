@@ -238,6 +238,20 @@ Outside a repo, `list` and `search` span every scope. `cabane <command> --help` 
 command's flags, `cabane --help` lists the commands, and
 [`packages/cli/README.md`](../packages/cli/README.md) has the full reference.
 
+### Due dates and your timezone
+
+`--due` (and an agent's `dueDate`) takes one of two kinds of deadline:
+
+- **A date**, `--due 2026-02-06`: due by the end of that day where you are. It is stored as the
+  date itself, so it never slips to the day before.
+- **A time**, `--due 2026-02-06T17:00`: 17:00 your time, stored as that moment. An ISO time
+  with `Z` or an offset (`2026-02-06T22:00:00Z`) is taken as written.
+
+"Where you are" is your system timezone. To pin another, add an IANA name to
+`~/.cabane/config.json`: `"timezone": "America/Montreal"`. It decides which day is today, when a
+date deadline's day ends, and how a time is shown. A name cabane does not know is an error, not
+a silent UTC.
+
 ## Updating
 
 ```bash
