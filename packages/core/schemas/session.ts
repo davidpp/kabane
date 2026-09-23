@@ -186,7 +186,7 @@ export type AgentActivityDraft = z.input<typeof AgentActivityDraftSchema>;
 /**
  * The folded summary of a session — one screen line + excerpt instead of the
  * full activity prose. Built by `Planner.toSessionCard` from a session + its
- * activity trail; consumed by the folded timeline, CLI `plan show`, and the
+ * activity trail; consumed by Jake's folded timeline, `jake plan show`, and its
  * dashboard SessionCardEntry.
  */
 export const SessionCardSchema = z.object({

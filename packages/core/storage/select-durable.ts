@@ -4,8 +4,8 @@
  * The shared read fold. From a session's activity trail, `selectDurableActivities`
  * keeps only the durable signal (response|finding|verification|decision|handoff)
  * and drops progress/action/question/error plus all-but-latest ephemeral. S3's
- * Discussion, the folded timeline, and the digest all consume it, so "what
- * matters" is defined in exactly one place.
+ * Discussion and a host's timeline (Jake's folded timeline and digest) consume
+ * it, so "what matters" is defined in exactly one place.
  *
  * Pure — no DB. Callers pass activities from `getActivities` (the S4a shared
  * read: durable + latest-ephemeral, chronological), so a stable pass preserves

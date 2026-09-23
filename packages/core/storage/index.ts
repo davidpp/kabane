@@ -20,7 +20,6 @@ import { Planner as Stale } from "./stale";
 import { Planner as Stats } from "./stats";
 import { Planner as TaskLinks } from "./task-links";
 import { Planner as Tasks } from "./tasks";
-import { Planner as Timeline } from "./timeline";
 import { Planner as UpstreamLinks } from "./upstream-links";
 import { Planner as WorkLogs } from "./work-logs";
 
@@ -75,9 +74,6 @@ export const Planner = {
 	getUpstreamSummariesForTasks: UpstreamLinks.getUpstreamSummariesForTasks,
 	getUpstreamLinksByExternalRef: UpstreamLinks.getUpstreamLinksByExternalRef,
 	deleteUpstreamLink: UpstreamLinks.deleteUpstreamLink,
-	// Timeline
-	getTimeline: Timeline.getTimeline,
-	assembleDigest: Timeline.assembleDigest,
 	// Durable activity selector + session card (S5)
 	selectDurableActivities: SelectDurable.selectDurableActivities,
 	toSessionCard: SelectDurable.toSessionCard,
@@ -99,13 +95,5 @@ export const Planner = {
 	getNeedsInput: Sessions.getNeedsInput,
 	sweepStaleSessions: Sessions.sweepStaleSessions,
 } as const;
-
-// Re-export the TimelineEntry type
-export type TimelineEntry = Timeline.TimelineEntry;
-
-// Augment Planner with the TimelineEntry type for namespace-style access
-export namespace Planner {
-	export type TimelineEntry = Timeline.TimelineEntry;
-}
 
 export { normalizeScopeUri } from "./helpers";
