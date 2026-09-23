@@ -36,6 +36,7 @@ const LABELS: Record<McpClients.Id, string> = {
 };
 
 // `replaced` cannot happen without `--force`, which setup never passes; it reads as installed.
+// The agent's actor URI goes unsaid: it is jargon to a newcomer, and the guide lists it per harness.
 export const outcomeOf = (
 	report: McpInstall.Report,
 ): SetupPlan.InstallOutcome => {
@@ -43,11 +44,7 @@ export const outcomeOf = (
 	switch (report.status) {
 		case "installed":
 		case "replaced":
-			return {
-				id,
-				status: "installed",
-				message: `as ${McpClients.actorFor(id)}`,
-			};
+			return { id, status: "installed" };
 		case "present":
 			return { id, status: "already" };
 		case "missing":

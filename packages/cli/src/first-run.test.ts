@@ -75,7 +75,6 @@ describe("outcomeOf", () => {
 		expect(outcomeOf({ harness: "claude", status: "installed" })).toEqual({
 			id: "claude",
 			status: "installed",
-			message: "as cabane://actor/agent/claude",
 		});
 		expect(outcomeOf({ harness: "codex", status: "present" })).toEqual({
 			id: "codex",
