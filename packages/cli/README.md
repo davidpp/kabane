@@ -6,7 +6,19 @@ is authoritative on this machine and `cabane sync` converges it with the others.
 
 ```bash
 bun link            # from packages/cli, once; then `cabane` is on PATH
-cabane init
+cabane              # first run: the setup screen, then the board
+```
+
+Bare `cabane` in a terminal opens the board. On a device with no
+`config.json` it first shows a setup screen: your name (the actor slug,
+`cabane://actor/human/<name>`), the device id, the detected coding harnesses
+to register `cabane mcp` in, and, inside a git repo, whether to pin its scope.
+It writes the same config `cabane init` would, local SQLite and no sync, and
+never replaces one that exists. Piped or run by an agent, bare `cabane` prints
+help as before. The flag form stays for scripts and for sync:
+
+```bash
+cabane init --actor cabane://actor/human/<you> --device <machine> [--sync-url … --sync-token …]
 cabane add "Write the deploy runbook" --kind issue --assignee claude --scope cabane
 cabane list
 ```
