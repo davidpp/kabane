@@ -187,26 +187,23 @@ export namespace Theme {
 		);
 	};
 
-	// Inline code in a brief. JCAB-84 moves code onto the raised surface; until then the dark
-	// terminal keeps its light blue, and a light one gets a blue it can read.
-	const MARKUP_RAW: Record<ThemeMode, string> = {
-		dark: "#a5d6ff",
-		light: "#0550ae",
-	};
-
 	// SyntaxStyle allocates a native FFI handle: one per theme for the process, never one per render.
 	const markdownStyles = new WeakMap<Tokens, SyntaxStyle>();
 
-	/** The brief's markdown styles. The default keeps the text on the terminal's own foreground. */
+	/**
+	 * The brief's markdown styles. The default keeps the text on the terminal's own foreground. No
+	 * hue: headings are Label weight (blue is the working hue), bullets are chrome, and code is set
+	 * apart by the raised surface rather than a color of its own.
+	 */
 	export const markdownStyle = (tokens: Tokens): SyntaxStyle => {
 		const cached = markdownStyles.get(tokens);
 		if (cached) return cached;
 		const style = SyntaxStyle.fromStyles({
-			"markup.heading": { fg: tokens.working, bold: true },
-			"markup.heading.1": { fg: tokens.working, bold: true },
-			"markup.heading.2": { fg: tokens.working, bold: true },
-			"markup.list": { fg: tokens.accent },
-			"markup.raw": { fg: MARKUP_RAW[tokens.mode] },
+			"markup.heading": { fg: tokens.defaultFg, bold: true },
+			"markup.heading.1": { fg: tokens.defaultFg, bold: true },
+			"markup.heading.2": { fg: tokens.defaultFg, bold: true },
+			"markup.list": { fg: tokens.muted },
+			"markup.raw": { fg: tokens.text, bg: tokens.surface.raised },
 			"markup.bold": { bold: true },
 			"markup.italic": { italic: true },
 			default: { fg: tokens.defaultFg },

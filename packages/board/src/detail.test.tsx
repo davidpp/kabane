@@ -6,6 +6,7 @@ import type { ScrollBoxRenderable } from "@opentui/core";
 import type { RefObject } from "react";
 import type { BoardActivity } from "./activity";
 import {
+	actorName,
 	cardRowLine,
 	cardStatusGlyph,
 	cardStatusLine,
@@ -385,7 +386,7 @@ test("Detail renders comments section when comments are provided", async () => {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("Body"),
 		);
-		expect(frame).toContain("comments (2)");
+		expect(frame).toContain("comments · 2");
 		expect(frame).toContain("david");
 		expect(frame).toContain("option B");
 	} finally {
@@ -419,6 +420,56 @@ test("Detail does not show the o events hint when no card has events", async () 
 		const footerLine = frame.split("\n").find((l) => l.includes("? help"));
 		expect(footerLine).toBeDefined();
 		expect(footerLine).not.toContain("o events");
+	} finally {
+		destroy();
+	}
+});
+
+test("actorName names an actor URI by its last segment and passes anything else through", () => {
+	expect(actorName("cabane://actor/agent/claude")).toBe("claude");
+	expect(actorName("cabane://actor/human/david-paquet")).toBe("david-paquet");
+	expect(actorName("david")).toBe("david");
+});
+
+test("Detail names a comment's author, not its actor URI, on a raised block", async () => {
+	const added = await Planner.addTask(TEST_BASE, {
+		title: "Task with an agent comment",
+		description: "Body.",
+		state: "next",
+	});
+	expect(added.ok).toBe(true);
+	if (!added.ok) return;
+	const comments: TaskComment[] = [
+		{
+			id: "c1",
+			taskId: added.value.id,
+			author: "cabane://actor/agent/claude",
+			authorType: "ai",
+			content: "Picked this up, tests next.",
+			createdAt: new Date(Date.now() - 60_000).toISOString(),
+		},
+	];
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await renderTest(
+			<Detail
+				basePath={TEST_BASE}
+				taskId={added.value.id}
+				task={added.value}
+				comments={comments}
+				scrollRef={nullRef}
+			/>,
+			{ width: 40, height: 30 },
+		);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("Picked this up"),
+		);
+		expect(frame).toContain("claude · 1m ago");
+		expect(frame).not.toContain("cabane://actor");
+		const body = captureSpans()
+			.lines.flatMap((line) => line.spans)
+			.find((span) => span.text.includes("Picked this up"));
+		expect(body?.bg.toInts().slice(0, 3)).toEqual([0x1c, 0x1c, 0x1c]);
 	} finally {
 		destroy();
 	}

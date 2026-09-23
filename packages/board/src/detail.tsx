@@ -68,7 +68,8 @@ export const cardStatusGlyph = (
 	}
 };
 
-// Status color for a card glyph.
+// Status color for a card glyph: DESIGN.md's glyph table. Running work is the working hue, never the
+// accent — nothing about it is waiting on the human.
 const cardGlyphColor = (
 	status: ActivityStatus,
 	theme: Theme.Tokens,
@@ -76,7 +77,7 @@ const cardGlyphColor = (
 	switch (status) {
 		case "running":
 		case "pending":
-			return theme.accent;
+			return theme.working;
 		case "completed":
 			return theme.done;
 		case "failed":
@@ -109,6 +110,15 @@ export const cardRowLine = (
 		card.durationMs != null ? ` · ${formatElapsed(card.durationMs)}` : "";
 	return `${glyph} ${card.label} · ${card.status}${elapsed}`;
 };
+
+/**
+ * A comment author as a name: `cabane://actor/agent/claude` → `claude`. The URI is how writes are
+ * stamped; on screen it is jargon that spends half a forty-column row. Anything else passes through.
+ */
+export const actorName = (author: string): string =>
+	author.startsWith("cabane://actor/")
+		? (author.split("/").at(-1) ?? author)
+		: author;
 
 // Relative time label: "2d ago", "3h ago", "5m ago", "just now".
 export const relativeTime = (iso: string, now: number = Date.now()): string => {
@@ -215,54 +225,60 @@ export const Detail = ({
 			? [{ key: "o", label: "events" }, ...Keymap.DETAIL_FOOTER]
 			: Keymap.DETAIL_FOOTER),
 	];
-	const hints = Keymap.hintLine(
-		focus === "copilot" ? Keymap.COPILOT_FOOTER : detailHints,
-	);
+	const hints = focus === "copilot" ? Keymap.COPILOT_FOOTER : detailHints;
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<box style={{ flexDirection: "row" }}>
-				<text
-					fg={theme.defaultFg}
-					attributes={TextAttributes.BOLD}
-					style={{ flexGrow: 1 }}
-				>
-					{header}
-				</text>
-				<text
-					fg={notice?.tone === "success" ? theme.accent : theme.muted}
-					onMouseDown={onCopy}
-				>
-					[copy]
-				</text>
-			</box>
-			{/* Boxed, not a bare <text>: a bare text sibling after the header row-box paints over row 0. */}
-			{headline ? (
-				<box style={{ flexDirection: "row", flexShrink: 0 }}>
-					<text fg={headline.stale ? theme.muted : theme.accent}>
-						{cardStatusLine(headline, spinnerFrame)}
+			{/* The header block: the task and what is running on it, one tonal step up, the way opencode
+			    sets a message apart — a surface, never a rule. Painted, so every cell names its fg. */}
+			<box
+				style={{
+					flexDirection: "column",
+					flexShrink: 0,
+					backgroundColor: theme.surface.raised,
+					paddingLeft: 1,
+					paddingRight: 1,
+				}}
+			>
+				<box style={{ flexDirection: "row" }}>
+					<text
+						fg={theme.text}
+						attributes={TextAttributes.BOLD}
+						style={{ flexGrow: 1 }}
+					>
+						{header}
+					</text>
+					<text
+						fg={notice?.tone === "success" ? theme.done : theme.muted}
+						onMouseDown={onCopy}
+						style={{ marginLeft: 1, flexShrink: 0 }}
+					>
+						[copy]
 					</text>
 				</box>
-			) : null}
+				{/* Boxed, not a bare <text>: a bare text sibling after the header row-box paints over row 0. */}
+				{headline ? (
+					<box style={{ flexDirection: "row", flexShrink: 0 }}>
+						<text fg={headline.stale ? theme.muted : theme.working}>
+							{cardStatusLine(headline, spinnerFrame)}
+						</text>
+					</box>
+				) : null}
+			</box>
 			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
 				{cards && cards.length > 0 ? (
 					<box style={{ flexDirection: "column", marginBottom: 1 }}>
-						<text fg={theme.muted} attributes={TextAttributes.BOLD}>
-							activity
-						</text>
+						<SectionLabel label="activity" />
 						{cards.map((card) => (
-							<text key={card.id} fg={cardGlyphColor(card.status, theme)}>
-								{"  "}
-								{cardRowLine(card, spinnerFrame)}
-							</text>
+							<CardRow key={card.id} card={card} spinnerFrame={spinnerFrame} />
 						))}
 					</box>
 				) : null}
 				{questions && questions.length > 0 ? (
 					<box style={{ flexDirection: "column", marginBottom: 1 }}>
 						{questions.map((q) => (
-							<text key={q.questionActivityId} fg={theme.muted}>
-								? awaiting input: {q.question}
+							<text key={q.questionActivityId} fg={theme.defaultFg}>
+								<span fg={theme.accent}>?</span> awaiting input: {q.question}
 							</text>
 						))}
 						<text fg={theme.muted}>answer: cabane needs-input</text>
@@ -270,23 +286,14 @@ export const Detail = ({
 				) : null}
 				{comments && comments.length > 0 ? (
 					<box style={{ flexDirection: "column", marginBottom: 1 }}>
-						<text fg={theme.muted} attributes={TextAttributes.BOLD}>
-							comments ({comments.length})
-						</text>
-						{comments.map((c) => (
-							<text
-								key={c.id}
-								fg={c.authorType === "human" ? theme.defaultFg : theme.muted}
-							>
-								{"  "}
-								{c.author} · {relativeTime(c.createdAt)}:{" "}
-								{c.content.split("\n")[0]}
-							</text>
+						<SectionLabel label="comments" count={comments.length} />
+						{comments.map((c, index) => (
+							<CommentBlock key={c.id} comment={c} first={index === 0} />
 						))}
 					</box>
 				) : null}
 				{brief.status === "loading" ? (
-					<text fg={theme.muted}>Loading brief…</text>
+					<text fg={theme.muted}>loading brief</text>
 				) : brief.status === "failed" ? (
 					<text fg={theme.failed}>{brief.content}</text>
 				) : (
@@ -297,11 +304,84 @@ export const Detail = ({
 			{notice ? (
 				<StatusBar
 					text={notice.undoable ? `${notice.text} · ⌃z undo` : notice.text}
-					fg={notice.tone === "success" ? theme.accent : theme.failed}
+					fg={notice.tone === "success" ? theme.done : theme.failed}
 				/>
 			) : (
-				<StatusBar text={hints} fg={theme.muted} />
+				<StatusBar hints={hints} />
 			)}
+		</box>
+	);
+};
+
+// A section's label in Label weight, as the board's bays have it, and its count muted.
+const SectionLabel = ({
+	label,
+	count,
+}: {
+	label: string;
+	count?: number;
+}): ReactNode => {
+	const theme = useTheme();
+	return (
+		<text>
+			<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
+				{label}
+			</span>
+			{count !== undefined ? <span fg={theme.muted}> · {count}</span> : null}
+		</text>
+	);
+};
+
+// A card in the activity block: the status glyph carries the hue, the label reads in the terminal's
+// own foreground, and the status and elapsed time are meta.
+const CardRow = ({
+	card,
+	spinnerFrame,
+}: {
+	card: ActivityCard;
+	spinnerFrame?: string;
+}): ReactNode => {
+	const theme = useTheme();
+	const glyph = cardStatusGlyph(card.status, spinnerFrame);
+	const rest = cardRowLine(card, spinnerFrame).slice(glyph.length);
+	const [label = "", ...meta] = rest.split(" · ");
+	return (
+		<text fg={theme.defaultFg}>
+			{"  "}
+			<span fg={cardGlyphColor(card.status, theme)}>{glyph}</span>
+			{label}
+			<span fg={theme.muted}>{meta.map((part) => ` · ${part}`).join("")}</span>
+		</text>
+	);
+};
+
+// One comment as a raised block: who and when on the first line, what they said under it. The
+// whole comment is in the brief's Discussion below; this is the glance.
+const CommentBlock = ({
+	comment,
+	first,
+}: {
+	comment: TaskComment;
+	first: boolean;
+}): ReactNode => {
+	const theme = useTheme();
+	return (
+		<box
+			style={{
+				flexDirection: "column",
+				marginTop: first ? 0 : 1,
+				backgroundColor: theme.surface.raised,
+				paddingLeft: 1,
+				paddingRight: 1,
+			}}
+		>
+			<text fg={theme.text}>
+				<span attributes={TextAttributes.BOLD}>
+					{actorName(comment.author)}
+				</span>
+				<span fg={theme.muted}> · {relativeTime(comment.createdAt)}</span>
+			</text>
+			<text fg={theme.text}>{comment.content.split("\n")[0]}</text>
 		</box>
 	);
 };
