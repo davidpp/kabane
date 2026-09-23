@@ -11,6 +11,7 @@ import {
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
+import type { Keymap } from "./keymap";
 import type {
 	CopilotPermission,
 	CopilotShortcut,
@@ -231,6 +232,8 @@ export namespace BoardNav {
 		| { type: "markReviewed"; id: string; notice: string }
 		| { type: "applyUndo"; id: string; patch: UndoPatch; notice: string }
 		| { type: "scroll"; delta: number }
+		// j/k on the `?` sheet: its own scrollbox, not the view's under it (app.tsx holds that ref too).
+		| { type: "helpScroll"; delta: number }
 		| { type: "copy"; id: string }
 		| { type: "notice"; notice: Notice }
 		| { type: "dispatch"; triggerId: string; id: string }
@@ -1214,7 +1217,8 @@ export namespace BoardNav {
 		}
 	};
 
-	// Help overlay: `?`, esc, or q closes; everything else is inert (modal, same as dispatch).
+	// The `?` sheet: `?`, esc or q closes it, j/k scroll it when it is taller than the pane; everything
+	// else is inert (modal, same as dispatch).
 	const reduceHelpKey = (
 		state: BoardState,
 		key: KeyInput,
@@ -1222,7 +1226,72 @@ export namespace BoardNav {
 		if (isHelpKey(key) || key.name === "escape" || key.name === "q") {
 			return { state: { ...state, help: false }, effect: NONE };
 		}
-		return { state, effect: NONE };
+		switch (key.name) {
+			case "j":
+			case "down":
+				return { state, effect: { type: "helpScroll", delta: SCROLL_STEP } };
+			case "k":
+			case "up":
+				return { state, effect: { type: "helpScroll", delta: -SCROLL_STEP } };
+			default:
+				return { state, effect: NONE };
+		}
+	};
+
+	// Whose keys are live right now, in the order reduceKey hands them out: a modal first, then the
+	// pane with focus, then the view. The footer shows this context's hints and `?` opens its sheet.
+	export const keyContext = (state: BoardState): Keymap.ContextId => {
+		if (state.dispatch) return "dispatch";
+		if (state.focus === "copilot")
+			return matchingShortcuts(state.copilot.shortcuts, state.copilot.text)
+				.length > 0
+				? "palette"
+				: "copilot";
+		if (state.search.mode === "typing") return "search";
+		if (state.focus === "sidebar" && state.sidebar.visible) return "sidebar";
+		if (state.view.type === "events") return "transcript";
+		if (state.view.type === "detail") return "detail";
+		return state.search.mode === "committed" ? "searchResults" : "board";
+	};
+
+	/** The context the `?` sheet lists: a committed search is still the board, keys and all. */
+	export const sheetContext = (state: BoardState): Keymap.ContextId => {
+		const context = keyContext(state);
+		return context === "searchResults" ? "board" : context;
+	};
+
+	/**
+	 * The facts that decide which keys do something right now. `linked` and `events` come from the
+	 * host's data, which app.tsx holds and the reducer does not: the tasks pointing at an external
+	 * issue, and whether the open task has host activity to read.
+	 */
+	export const keySituation = (
+		state: BoardState,
+		facts: { linked: ReadonlySet<string>; events: boolean },
+	): Keymap.Situation => {
+		const inHand =
+			state.view.type === "detail"
+				? state.view.taskId
+				: rowOf(visibleRows(state), state.selectedId)?.task.id;
+		return {
+			selection: rowOf(visibleRows(state), state.selectedId) !== undefined,
+			linked: inHand !== undefined && facts.linked.has(inHand),
+			events: facts.events,
+			transcript: state.copilot.hasLog,
+			stoppable:
+				state.view.type === "events" &&
+				state.view.cardId === CopilotLog.CARD_ID &&
+				state.copilot.turn === "running",
+			clearable:
+				state.marked.size > 0 ||
+				state.search.mode === "committed" ||
+				state.scoped,
+			history: state.copilot.text === "" && state.copilot.history.length > 0,
+			ready:
+				state.dispatch !== null &&
+				!state.dispatch.loading &&
+				state.dispatch.triggers.length > 0,
+		};
 	};
 
 	// Dispatch overlay: one list of host triggers. While loading only esc works; then j/k and 1-9
