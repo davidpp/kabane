@@ -125,6 +125,7 @@ export const init: Command = {
 				`  access: ${config.sync.headers ? "service token headers set" : "none"}`,
 				`  db:     ${location.basePath}/${location.dbName}${location.tablePrefix ? ` (tables ${location.tablePrefix}*)` : ""}`,
 				...(scope ? [`  scope:  ${scope} (written to ./${SCOPE_FILE})`] : []),
+				"Next: `cabane mcp install` gives Claude Code, Codex and Gemini this tracker over MCP.",
 			].join("\n"),
 		);
 	},
