@@ -6,6 +6,7 @@ import {
 	activityStrip,
 	Board,
 	cardBadge,
+	EMPTY_HINTS,
 	markedLabel,
 	moreBadge,
 	rowMeta,
@@ -749,6 +750,51 @@ test("Board under status review says 'no matches' rather than going blank when n
 		expect(frame).toContain("status: review");
 		expect(frame).toContain("no matches");
 		expect(frame).not.toContain("JAKE-50");
+	} finally {
+		destroy();
+	}
+});
+
+test("Board with nothing open and no filter says so, and where the first issue comes from", async () => {
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={[]}
+			expanded={new Set()}
+			selectedId={null}
+			scopeLabel="repo"
+			filterLabel="kind: all"
+		/>,
+		{ width: 40, height: 20 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("nothing open here."),
+		);
+		// Whole at 40 columns: a hint that wraps splits its sentence across two rows.
+		for (const hint of EMPTY_HINTS)
+			expect(frame.split("\n").some((row) => row.includes(hint))).toBe(true);
+		expect(frame).not.toContain("no matches");
+	} finally {
+		destroy();
+	}
+});
+
+test("Board under a kind filter that finds nothing says 'no matches', not that the scope is empty", async () => {
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={[]}
+			expanded={new Set()}
+			selectedId={null}
+			filterLabel="kind: issue"
+			kind="issue"
+		/>,
+		{ width: 120, height: 20 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("no matches"),
+		);
+		expect(frame).not.toContain("nothing open here.");
 	} finally {
 		destroy();
 	}

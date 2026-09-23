@@ -919,6 +919,7 @@ export const App = ({
 					activity={shownActivity}
 					scopeLabel={scopeLabel}
 					filterLabel={`kind: ${state.kind}`}
+					kind={state.kind}
 					status={state.status}
 					marked={state.marked}
 					// The reload after each of the copilot's writes is what puts the fresh `updatedBy`

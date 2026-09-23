@@ -392,6 +392,24 @@ const Section = ({
 	);
 };
 
+// Nothing open and nothing filtered: what a new scope shows, and where its first issue comes from.
+// The copilot is the pane right under the list, always mounted.
+export const EMPTY_HINTS = [
+	"ask the copilot below to file one,",
+	'or run cabane add "…" in a shell.',
+] as const;
+
+const EmptyBoard = (): ReactNode => (
+	<box style={{ flexDirection: "column" }}>
+		<text>nothing open here.</text>
+		{EMPTY_HINTS.map((line) => (
+			<text key={line} fg={MUTED_COLOR}>
+				{line}
+			</text>
+		))}
+	</box>
+);
+
 const SEARCH_OFF: BoardNav.SearchState = { mode: "off" };
 const NO_MARKS: ReadonlySet<string> = new Set<string>();
 
@@ -446,6 +464,8 @@ export type BoardProps = {
 	activity?: BoardActivity.ActivityMap;
 	scopeLabel?: string;
 	filterLabel?: string;
+	// The `i` kind filter. Optional for the same reason as `status` below, and defaulted to `all`.
+	kind?: BoardNav.KindFilter;
 	// The `f` status filter. Optional so render-only tests without it keep working, and defaulted to
 	// the value that renders the board exactly as it always has.
 	status?: BoardNav.StatusFilter;
@@ -482,6 +502,7 @@ export const Board = ({
 	activity,
 	scopeLabel,
 	filterLabel,
+	kind = "all",
 	status = "open",
 	marked = NO_MARKS,
 	touched = NO_MARKS,
@@ -531,9 +552,10 @@ export const Board = ({
 	const groups = BoardNav.visibleSections(sections, expanded, search, status);
 	const parentIds = shortIdIndex(sections);
 	const matchCount = groups.reduce((n, group) => n + group.rows.length, 0);
-	// Either filter can empty the list, and an empty scrollbox reads as a broken board — say "no
-	// matches" for a status that found nothing just as for a query that did.
-	const filtering = BoardNav.activeQuery(search) !== "" || status !== "open";
+	// Any filter can empty the list, and an empty scrollbox reads as a broken board — say "no
+	// matches" for a status or a kind that found nothing just as for a query that did.
+	const filtering =
+		BoardNav.activeQuery(search) !== "" || status !== "open" || kind !== "all";
 	const nextRowIndex = { value: 0 };
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
@@ -545,8 +567,12 @@ export const Board = ({
 				{strip ? <span fg={MUTED_COLOR}>{strip}</span> : null}
 			</text>
 			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
-				{filtering && groups.length === 0 ? (
-					<text fg={MUTED_COLOR}>no matches</text>
+				{groups.length === 0 ? (
+					filtering ? (
+						<text fg={MUTED_COLOR}>no matches</text>
+					) : (
+						<EmptyBoard />
+					)
 				) : (
 					groups.map((group) => (
 						<Section
