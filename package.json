@@ -1,13 +1,14 @@
 {
 	"name": "cabane-monorepo",
 	"version": "0.1.0",
-	"description": "Cabane — local-first issue tracker and kanban for humans and AI agent runtimes",
+	"description": "Cabane \u2014 local-first issue tracker and kanban for humans and AI agent runtimes",
 	"private": true,
 	"workspaces": [
 		"packages/*"
 	],
 	"scripts": {
 		"prepare": "lefthook install",
+		"sandbox": "bun scripts/sandbox.ts",
 		"check": "biome check .",
 		"fix": "biome check --write .",
 		"check:staged": "biome check --no-errors-on-unmatched --staged",
