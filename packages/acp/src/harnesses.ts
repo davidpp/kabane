@@ -43,7 +43,7 @@ export namespace Harnesses {
 	};
 
 	// Lets the user's harness hooks tell a board session from an interactive one.
-	export const SESSION_ENV = { CABANE_SESSION: "1" };
+	export const SESSION_ENV = { KABANE_SESSION: "1" };
 
 	export const isId = (value: string): value is Id =>
 		(IDS as readonly string[]).includes(value);

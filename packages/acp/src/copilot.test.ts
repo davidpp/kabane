@@ -140,7 +140,7 @@ const copilotOver = (
 		harness: "claude",
 		scopeDir: "/repos/cabane",
 		scopeUri: "jake://scope/cabane",
-		cabaneBin: "/usr/local/bin/cabane",
+		kabaneBin: "/usr/local/bin/kabane",
 		connect: (onPermission) =>
 			AcpClient.connect("claude", agent, { onPermission }),
 		...over,
@@ -191,7 +191,7 @@ describe("BoardCopilot", () => {
 			mcpServers: [
 				{
 					name: "kabane",
-					command: "/usr/local/bin/cabane",
+					command: "/usr/local/bin/kabane",
 					args: [
 						"mcp",
 						"--scope",

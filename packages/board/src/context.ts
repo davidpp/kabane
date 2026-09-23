@@ -175,7 +175,7 @@ export namespace BoardContext {
 				: `marked: ${ctx.marked.map(refLine).join("; ")}`,
 		);
 		if (ctx.truncated) fields.push("truncated: yes");
-		const parts = ["```cabane-board", ...fields, "```"];
+		const parts = ["```kabane-board", ...fields, "```"];
 		for (const { shortId, brief } of ctx.briefs) {
 			parts.push("", `### ${shortId}`, "", brief);
 		}
