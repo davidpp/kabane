@@ -154,7 +154,7 @@ describe("Planner", () => {
 		// they keep their case AND their leading slash — folding or stripping
 		// would orphan the live rows filed under them.
 		it("should keep a path-shaped bare scope ID byte-identical", async () => {
-			const path = "/Users/davidpaquet/Projects/botpress";
+			const path = "/Users/alex/Projects/acme";
 			const stored = `jake://scope/${encodeURIComponent(path)}`;
 
 			const result = await Planner.addTask(TEST_BASE, {
@@ -803,16 +803,16 @@ describe("Planner", () => {
 		});
 
 		it("should match scope family by scopeId (ignoring query params)", async () => {
-			const baseScope = "jake://scope/desk";
+			const baseScope = "jake://scope/shop";
 			const scopedVariant =
-				"jake://scope/desk?branch=main&package=botpress-support-desk";
+				"jake://scope/shop?branch=main&package=shop-storefront";
 
 			await Planner.addTask(TEST_BASE, {
-				title: "Desk base",
+				title: "Shop base",
 				scopeUri: baseScope,
 			});
 			await Planner.addTask(TEST_BASE, {
-				title: "Desk variant",
+				title: "Shop variant",
 				scopeUri: scopedVariant,
 			});
 
@@ -823,8 +823,8 @@ describe("Planner", () => {
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				const titles = result.value.map((task) => task.title);
-				expect(titles).toContain("Desk base");
-				expect(titles).toContain("Desk variant");
+				expect(titles).toContain("Shop base");
+				expect(titles).toContain("Shop variant");
 			}
 		});
 	});
@@ -875,23 +875,23 @@ describe("Planner", () => {
 
 		it("should search across scope variants sharing the same scopeId", async () => {
 			await Planner.addTask(TEST_BASE, {
-				title: "Desk scoped auth issue",
-				scopeUri: "jake://scope/desk",
+				title: "Shop scoped auth issue",
+				scopeUri: "jake://scope/shop",
 			});
 			await Planner.addTask(TEST_BASE, {
-				title: "Desk branch auth issue",
-				scopeUri: "jake://scope/desk?branch=main&package=botpress-support-desk",
+				title: "Shop branch auth issue",
+				scopeUri: "jake://scope/shop?branch=main&package=shop-storefront",
 			});
 
 			const result = await Planner.searchTasks(TEST_BASE, "auth", {
-				scopeUri: "jake://scope/desk",
+				scopeUri: "jake://scope/shop",
 				limit: 50,
 			});
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				const titles = result.value.map((task) => task.title);
-				expect(titles).toContain("Desk scoped auth issue");
-				expect(titles).toContain("Desk branch auth issue");
+				expect(titles).toContain("Shop scoped auth issue");
+				expect(titles).toContain("Shop branch auth issue");
 			}
 		});
 	});
@@ -954,24 +954,24 @@ describe("Planner", () => {
 		it("should apply scope filter by scope family", async () => {
 			const today = new Date().toISOString();
 			await Planner.addTask(TEST_BASE, {
-				title: "Desk today base",
+				title: "Shop today base",
 				deadline: today,
-				scopeUri: "jake://scope/desk",
+				scopeUri: "jake://scope/shop",
 			});
 			await Planner.addTask(TEST_BASE, {
-				title: "Desk today variant",
+				title: "Shop today variant",
 				deadline: today,
-				scopeUri: "jake://scope/desk?branch=main&package=botpress-support-desk",
+				scopeUri: "jake://scope/shop?branch=main&package=shop-storefront",
 			});
 
 			const result = await Planner.getToday(TEST_BASE, {
-				scopeUri: "jake://scope/desk",
+				scopeUri: "jake://scope/shop",
 			});
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				const dueTodayTitles = result.value.dueToday.map((task) => task.title);
-				expect(dueTodayTitles).toContain("Desk today base");
-				expect(dueTodayTitles).toContain("Desk today variant");
+				expect(dueTodayTitles).toContain("Shop today base");
+				expect(dueTodayTitles).toContain("Shop today variant");
 			}
 		});
 	});

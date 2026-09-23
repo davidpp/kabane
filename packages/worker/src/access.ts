@@ -7,8 +7,8 @@
  * token carries `common_name` (its client id), a human carries `email`. Both
  * map to an actor URI that `updated_by` records on every write.
  *
- * Same shape as FamilyOS (`apps/familyos-api/src/auth.ts`): issuer is the team
- * domain, audience is the application AUD, JWKS from `/cdn-cgi/access/certs`.
+ * The standard Access JWT check: issuer is the team domain, audience is the
+ * application AUD, JWKS from `/cdn-cgi/access/certs`.
  * Unknown service ids and any human other than the configured one are
  * refused — one human, N runtimes, nothing open by default.
  *

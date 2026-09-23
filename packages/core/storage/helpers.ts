@@ -75,8 +75,8 @@ const collapseSlashes = (scopeId: string): string =>
  * have to converge. Ids carrying a separator are exempt: those come from the
  * ADR-009 cascade (a filesystem path, or host/owner/repo off a git remote)
  * where the case on disk or on the remote is authoritative, and folding would
- * orphan what the cascade already wrote — 248 memories sit under
- * /Users/davidpaquet/Projects/botpress alone.
+ * orphan what the cascade already wrote, which can be hundreds of rows under
+ * a single path.
  */
 const foldBareScopeId = (scopeId: string): string =>
 	scopeId.includes("/") ? scopeId : scopeId.toLowerCase();

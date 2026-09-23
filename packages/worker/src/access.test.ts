@@ -15,7 +15,7 @@ import {
 } from "./test-access";
 
 const ENV = {
-	ACCESS_TEAM_DOMAIN: "https://3pew.cloudflareaccess.com",
+	ACCESS_TEAM_DOMAIN: "https://example.cloudflareaccess.com",
 	ACCESS_AUD: "aud",
 	HUMAN_EMAIL: "david@example.com",
 	SERVICE_ACTORS: JSON.stringify({

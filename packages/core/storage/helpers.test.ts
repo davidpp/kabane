@@ -41,7 +41,7 @@ describe("normalizeScopeUri", () => {
 			"jake://scope/jake/",
 			" jake ",
 			"github.com/user/repo",
-			"/Users/davidpaquet/Projects/botpress",
+			"/Users/alex/Projects/acme",
 			"jake://scope/jake?client=acme",
 		]) {
 			const once = normalized(input);
@@ -77,12 +77,12 @@ describe("normalizeScopeUri", () => {
 
 	// Case folding applies to typed bare ids only. Everything below is
 	// cascade-derived, where the stored case is authoritative — folding it would
-	// orphan live rows (248 memories under the botpress path alone).
+	// orphan live rows (hundreds of rows under a single path).
 	it("keeps the case of a path-shaped bare ID, leading slash included", () => {
 		for (const path of [
-			"/Users/davidpaquet/Projects/botpress",
-			"/Users/davidpaquet/.jake/pa",
-			"/Users/davidpaquet",
+			"/Users/alex/Projects/acme",
+			"/Users/alex/.jake/pa",
+			"/Users/alex",
 		]) {
 			expect(normalized(path)).toBe(`jake://scope/${encodeURIComponent(path)}`);
 		}
@@ -152,8 +152,8 @@ describe("buildScopeFamilyMatch", () => {
 	});
 
 	it("matches the stored family for a path-shaped scope", () => {
-		const stored = "jake://scope/%2FUsers%2Fdavidpaquet%2FProjects%2Fbotpress";
-		for (const input of ["/Users/davidpaquet/Projects/botpress", stored]) {
+		const stored = "jake://scope/%2FUsers%2Falex%2FProjects%2Facme";
+		for (const input of ["/Users/alex/Projects/acme", stored]) {
 			expect(buildScopeFamilyMatch(input)?.baseScopeUri).toBe(stored);
 		}
 	});
