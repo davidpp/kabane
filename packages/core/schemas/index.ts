@@ -61,8 +61,6 @@ export {
 } from "./implementation";
 // Link schemas
 export {
-	type EmbeddedLink,
-	EmbeddedLinkSchema,
 	type LinkType,
 	LinkTypeSchema,
 	type TaskLink,

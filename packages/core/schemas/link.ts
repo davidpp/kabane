@@ -53,19 +53,3 @@ export const TaskLinkDraftSchema = TaskLinkSchema.omit({
 	createdAt: true,
 });
 export type TaskLinkDraft = z.infer<typeof TaskLinkDraftSchema>;
-
-/**
- * Embedded link reference (for task responses)
- * Lighter weight than full TaskLink - just the relationship info
- */
-export const EmbeddedLinkSchema = z.object({
-	/** Relationship type */
-	type: LinkTypeSchema,
-
-	/** The other task's ID */
-	taskId: z.string(),
-
-	/** Optional note */
-	note: z.string().optional(),
-});
-export type EmbeddedLink = z.infer<typeof EmbeddedLinkSchema>;
