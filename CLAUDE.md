@@ -21,10 +21,7 @@ Local SQLite is authoritative on every device. The hub is one more device that h
 
 ## Conventions
 
-Inherited verbatim from Jake's `CONVENTIONS.md`: namespaces over classes (a `DurableObject`
-subclass is the one framework-imposed exception), `Result<T>` never throw, explicit
-dependencies, co-located `*.test.ts`, `safeParse` only, no `as any`, no `!`, no `@ts-ignore`.
-Plain `zod` for domain schemas. Biome for lint and format.
+See `CODING_PRINCIPLE.md` for the coding rules and the architectural invariants.
 
 ## Gate
 
