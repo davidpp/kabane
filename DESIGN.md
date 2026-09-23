@@ -6,11 +6,17 @@ colors:
   working: "#58a6ff"
   done: "#22c55e"
   failed: "#ef4444"
+  text: "#e6edf3"
+  text-secondary: "#9ca3af"
   text-muted: "#6b7280"
   text-faint: "#4b5563"
   surface-raised: "#1c1c1c"
   surface-overlay: "#262626"
   surface-selected: "#2f2f2f"
+  text-light: "#1f2328"
+  text-secondary-light: "#57606a"
+  text-muted-light: "#6e7781"
+  text-faint-light: "#8c959f"
   surface-raised-light: "#f0f0f0"
   surface-overlay-light: "#e8e8e8"
   surface-selected-light: "#dddddd"
@@ -119,14 +125,21 @@ requests and three status hues for states.
 
 ### Neutral
 - **Default Foreground** (unset): the terminal's own foreground, for every piece of text that
-  carries no meaning of its own: titles, brief text, labels. Never a fixed hex.
+  carries no meaning of its own on the unpainted background: titles, brief text, labels. Never a
+  fixed hex.
+- **Text** (`{colors.text}`): the same foreground made explicit, for a cell on a painted surface.
+  The Selection Rule needs it; it is the terminal's reported foreground when there is one.
+- **Secondary** (`{colors.text-secondary}`): one step down from the foreground. A normal-priority
+  id.
 - **Muted** (`{colors.text-muted}`): chrome. Meta, counts, footer key labels, a linked-issue
-  glyph, a paused or stale card. Mid-gray on purpose, so it holds on both polarities.
+  glyph, a paused or stale card.
 - **Faint** (`{colors.text-faint}`): what cannot be acted on right now (an unsatisfiable
   trigger), and the title of a cold strip.
 - **Raised, Overlay, Selected** (`{colors.surface-raised}`, `{colors.surface-overlay}`,
-  `{colors.surface-selected}`, and their `-light` counterparts): the three painted steps above
-  the terminal's own background.
+  `{colors.surface-selected}`): the three painted steps above the terminal's own background.
+
+The grays run the other way on a light terminal: faint is the lightest there, not the darkest,
+which is why the `-light` ramp has grays of its own rather than reusing the dark ones.
 
 ### Named Rules
 **The Cocked Strip Rule.** The accent means a human is needed, and it is never used for
@@ -140,12 +153,15 @@ settles; a brief nobody has touched in a long time drops to faint. Hue never enc
 contrast never encodes state. Say "contrast", not "brightness": on a light terminal, brighter
 means fainter.
 
-**The Derived Surface Rule.** Painted surfaces are derived from the terminal's own background,
-read with OpenTUI's `renderer.getPalette()`, by stepping it toward the default foreground.
+**The Derived Surface Rule.** Painted surfaces and the grays are derived from the terminal's own
+colors, read once at startup with OpenTUI's `renderer.getPalette()`: the surfaces step the
+background toward the foreground, and the grays step the foreground toward the background.
 That way cabane matches herdr's pane and any theme, on either polarity, with no tint of its
 own. The fixed ramps in the frontmatter are the fallback, chosen by `renderer.themeMode`
 when the palette query goes unanswered (tmux without passthrough, for one), and the dark
-ramp when neither answers.
+ramp when neither answers. The steps live in `packages/board/src/theme.ts`, tuned so a
+near-black terminal lands on the dark ramp and a near-white one on the light ramp. Every
+color in the board comes from there; a hex literal anywhere else fails a test.
 
 **Open.** Priority is color-only today (an urgent id is tinted `{colors.failed}`, a high one
 `{colors.accent}`), which breaks "never color-only" and collides with two meanings above.
