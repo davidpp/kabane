@@ -16,6 +16,7 @@ import {
 	ok,
 	type Result,
 	SyncConfigSchema,
+	TimeZoneSchema,
 	toError,
 	trySync,
 } from "@cabane/core";
@@ -61,6 +62,11 @@ export const ConfigSchema = z.object({
 	db: DbConfigSchema.optional(),
 	/** The board copilot. Absent is the default harness with its pinned adapter. */
 	copilot: CopilotConfigSchema.optional(),
+	/**
+	 * The owner's IANA timezone (`America/Montreal`): when a date deadline's day
+	 * ends and which day is today. Absent is the system zone, which honours `TZ`.
+	 */
+	timezone: TimeZoneSchema.optional(),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 

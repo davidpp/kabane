@@ -50,11 +50,14 @@ export const configureRuntime = (
 	actor: string,
 	location: DatabaseLocation,
 ): void => {
+	const zone = config.timezone;
 	Runtime.configure({
 		provider: SqliteDb.provider({ dbName: location.dbName }),
 		tablePrefix: location.tablePrefix,
 		actor: () => actor,
 		syncSettings: async () => ok(config.sync),
+		// Absent, the runtime's default: the system zone, which honours `TZ`.
+		timezone: zone === undefined ? undefined : () => zone,
 	});
 };
 

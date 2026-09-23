@@ -2,6 +2,7 @@ import {
 	Deadline,
 	type ItemKind,
 	Planner,
+	Runtime,
 	type TaskDraft,
 	type TaskPriority,
 	type TaskState,
@@ -14,11 +15,14 @@ export const add: Command = {
 	name: "add",
 	summary: "Create a task (inbox by default)",
 	usage:
-		'cabane add "<title>" [--kind task|issue] [--state <state>] [--priority <p>] [--scope <uri>] [--assignee <who>] [--parent <id>] [--description <text>] [--tags a,b] [--due YYYY-MM-DD]',
+		'cabane add "<title>" [--kind task|issue] [--state <state>] [--priority <p>] [--scope <uri>] [--assignee <who>] [--parent <id>] [--description <text>] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM]',
 	run: async (args, ctx) => {
 		const title = args.positionals.join(" ").trim();
 		if (!title) return usage("Title required", add.usage);
-		const deadline = Deadline.fromInput(flagString(args, "due"));
+		const deadline = Deadline.fromInput(
+			flagString(args, "due"),
+			Runtime.timezone(),
+		);
 		if (!deadline.ok) return usage(deadline.error.message, add.usage);
 
 		const parentInput = flagString(args, "parent");

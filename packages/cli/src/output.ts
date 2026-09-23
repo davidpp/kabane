@@ -5,13 +5,15 @@
  * `main` prints one or the other. Exit codes: 0 ok, 1 error, 2 usage.
  */
 
-import type {
-	Task,
-	TaskComment,
-	TaskLink,
-	TaskPriority,
-	TaskState,
-	TaskWorkLog,
+import {
+	Deadline,
+	Runtime,
+	type Task,
+	type TaskComment,
+	type TaskLink,
+	type TaskPriority,
+	type TaskState,
+	type TaskWorkLog,
 } from "@cabane/core";
 
 export type Outcome = {
@@ -58,7 +60,9 @@ export const displayId = (task: Pick<Task, "id" | "shortId">): string =>
 	task.shortId ?? task.id;
 
 export const formatTaskLine = (task: Task): string => {
-	const deadline = task.deadline ? ` 📅 ${task.deadline.slice(0, 10)}` : "";
+	const deadline = task.deadline
+		? ` 📅 ${Deadline.format(task.deadline, Runtime.timezone())}`
+		: "";
 	const tags = task.tags.length > 0 ? ` [${task.tags.join(", ")}]` : "";
 	const assignee = task.assignee ? ` @${task.assignee}` : "";
 	const review = task.needsReview ? " 👀" : "";
@@ -91,7 +95,10 @@ export const formatTaskDetail = (task: Task): string => {
 	if (task.parentTaskId) lines.push(`Parent: ${task.parentTaskId}`);
 	if (task.projectId) lines.push(`Project: ${task.projectId}`);
 	if (task.assignee) lines.push(`Assignee: ${task.assignee}`);
-	if (task.deadline) lines.push(`Deadline: ${task.deadline}`);
+	if (task.deadline)
+		lines.push(
+			`Deadline: ${Deadline.format(task.deadline, Runtime.timezone())}`,
+		);
 	if (task.deferUntil) lines.push(`Deferred until: ${task.deferUntil}`);
 	if (task.tags.length > 0) lines.push(`Tags: ${task.tags.join(", ")}`);
 	if (task.needsReview) lines.push("Needs review: yes");

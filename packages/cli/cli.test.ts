@@ -112,9 +112,8 @@ describe("cabane cli", () => {
 			t,
 		).shortId;
 		expect(json<{ scopeUri: string }>(t).scopeUri).toBe("jake://scope/home");
-		expect(
-			json<{ deadline: string }>(t).deadline.startsWith("2026-12-24"),
-		).toBe(true);
+		// A date is stored as the calendar date itself, not an instant.
+		expect(json<{ deadline: string }>(t).deadline).toBe("2026-12-24");
 	});
 
 	it("list filters by scope and hides closed by default", async () => {
@@ -492,5 +491,63 @@ describe("cabane cli", () => {
 		} finally {
 			await client.close();
 		}
+	});
+});
+
+describe("the owner's timezone", () => {
+	const home = join(tmpdir(), `cabane-cli-tz-${crypto.randomUUID()}`);
+	const cwd = join(home, "project");
+	const run = makeRunner(home, cwd);
+
+	beforeAll(async () => {
+		mkdirSync(join(cwd, ".cabane"), { recursive: true });
+		writeFileSync(join(cwd, ".cabane", "scope"), "demo\n");
+		const init = await run(
+			"init",
+			"--actor",
+			"cabane://actor/human/tester",
+			"--device",
+			"tz",
+		);
+		expect(init.code).toBe(0);
+	});
+
+	afterAll(() => rmSync(home, { recursive: true, force: true }));
+
+	const setZone = (zone: string): void => {
+		const path = join(home, "config.json");
+		const config = JSON.parse(readFileSync(path, "utf8")) as Record<
+			string,
+			unknown
+		>;
+		writeFileSync(path, JSON.stringify({ ...config, timezone: zone }));
+	};
+
+	it("reads a local due time, and shows an instant, in the configured zone", async () => {
+		setZone("America/Montreal");
+		const added = await run(
+			"add",
+			"Call the bank",
+			"--due",
+			"2026-02-06T17:00",
+			"--json",
+		);
+		expect(added.code).toBe(0);
+		const task = json<{ shortId: string; deadline: string }>(added);
+		expect(task.deadline).toBe("2026-02-06T22:00:00.000Z");
+		const shown = await run("show", task.shortId);
+		expect(shown.out).toContain("Deadline: 2026-02-06 17:00");
+
+		setZone("UTC");
+		const inUtc = await run("show", task.shortId);
+		expect(inUtc.out).toContain("Deadline: 2026-02-06 22:00");
+	});
+
+	it("refuses a timezone it does not know rather than guessing one", async () => {
+		setZone("Mars/Olympus");
+		const listed = await run("list");
+		expect(listed.code).toBe(1);
+		expect(listed.err).toContain("timezone");
+		setZone("UTC");
 	});
 });

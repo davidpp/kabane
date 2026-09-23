@@ -2,6 +2,7 @@ import {
 	Deadline,
 	type ItemKind,
 	Planner,
+	Runtime,
 	type TaskPriority,
 	type TaskState,
 	type TaskUpdate,
@@ -17,7 +18,7 @@ export const edit: Command = {
 	name: "edit",
 	summary: "Update fields on a task",
 	usage:
-		"cabane edit <id> [--title <t>] [--description <d>] [--state <s>] [--priority <p>] [--kind task|issue] [--assignee <who>|none] [--scope <uri>] [--parent <id>|none] [--tags a,b] [--due YYYY-MM-DD]",
+		"cabane edit <id> [--title <t>] [--description <d>] [--state <s>] [--priority <p>] [--kind task|issue] [--assignee <who>|none] [--scope <uri>] [--parent <id>|none] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM]",
 	run: async (args, ctx) => {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", edit.usage);
@@ -32,7 +33,10 @@ export const edit: Command = {
 			parentTaskId = parent.value;
 		}
 		const assignee = flagString(args, "assignee");
-		const deadline = Deadline.fromInput(flagString(args, "due"));
+		const deadline = Deadline.fromInput(
+			flagString(args, "due"),
+			Runtime.timezone(),
+		);
 		if (!deadline.ok) return usage(deadline.error.message, edit.usage);
 
 		const update: TaskUpdate = {
