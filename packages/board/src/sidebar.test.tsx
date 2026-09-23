@@ -177,3 +177,38 @@ test("sidebarWidth clamps to [28, 44] at a quarter of the terminal", () => {
 	expect(sidebarWidth(140)).toBe(35);
 	expect(sidebarWidth(400)).toBe(44);
 });
+
+test("Sidebar draws a running glyph in the working hue and paints the focused selection", async () => {
+	const activity = BoardActivity.indexCards([
+		card({ id: "a" }),
+		card({ id: "b", label: "done-one", status: "completed" }),
+	]);
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await renderTest(
+			<Sidebar
+				activity={activity}
+				sidebarWidth={44}
+				focused={true}
+				selectedIndex={1}
+				spinnerFrame="⠹"
+				resolveShortId={resolve}
+			/>,
+			{ width: 44, height: 12 },
+		);
+	try {
+		await pumpUntil(renderOnce, captureCharFrame, (f) => f.includes("scout"));
+		const spans = captureSpans().lines.flatMap((line) => line.spans);
+		const glyph = spans.find((span) => span.text === "⠹");
+		expect(
+			glyph?.fg
+				.toInts()
+				.slice(0, 3)
+				.map((c) => c.toString(16).padStart(2, "0"))
+				.join(""),
+		).toBe("58a6ff");
+		const selected = spans.find((span) => span.text.includes("done-one"));
+		expect(selected?.bg.toInts().slice(0, 3)).toEqual([0x2f, 0x2f, 0x2f]);
+	} finally {
+		destroy();
+	}
+});

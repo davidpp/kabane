@@ -34,29 +34,50 @@ const cardGlyph = (card: ActivityCard, spinnerFrame: string): string => {
 	}
 };
 
-const cardColor = (card: ActivityCard, theme: Theme.Tokens): string => {
+// DESIGN.md's glyph table: the glyph carries the state's hue. Running work is the working hue, never
+// the accent — nothing about it is waiting on the human — and a stale runner drops to muted.
+const glyphColor = (card: ActivityCard, theme: Theme.Tokens): string => {
 	switch (card.status) {
 		case "completed":
-			return theme.muted;
+			return theme.done;
 		case "failed":
 			return theme.failed;
 		case "paused":
 			return theme.muted;
 		case "running":
 		case "pending":
-			return card.stale ? theme.muted : theme.accent;
+			return card.stale ? theme.muted : theme.working;
+	}
+};
+
+// The row's words after the glyph: live work reads in the panel's foreground, settled work is meta.
+const textColor = (card: ActivityCard, theme: Theme.Tokens): string => {
+	switch (card.status) {
+		case "failed":
+			return theme.failed;
+		case "running":
+		case "pending":
+			return card.stale ? theme.muted : theme.text;
+		case "completed":
+		case "paused":
+			return theme.muted;
 	}
 };
 
 // A single flat row in the sidebar. `focus` is whether the sidebar is focused; `selected`
-// is whether THIS row is the active selection.
+// is whether THIS row is the active selection. The glyph keeps its hue; a focused selection paints
+// the selected surface with an explicit fg on every cell (the Selection Rule).
 const SidebarRow = ({
+	glyph,
+	glyphFg,
 	text,
 	fg,
 	focused,
 	selected,
 	available,
 }: {
+	glyph: string;
+	glyphFg: string;
 	text: string;
 	fg: string;
 	focused: boolean;
@@ -64,16 +85,18 @@ const SidebarRow = ({
 	available: number;
 }): ReactNode => {
 	const theme = useTheme();
-	const gutter = focused && selected ? FOCUS_GUTTER : NORMAL_GUTTER;
-	const rowFg = selected && focused ? theme.text : fg;
-	const truncated =
-		text.length + gutter.length > available
-			? `${text.slice(0, Math.max(0, available - gutter.length - 1))}…`
-			: text;
+	const active = focused && selected;
+	const gutter = active ? FOCUS_GUTTER : NORMAL_GUTTER;
+	const bg = active ? theme.surface.selected : theme.surface.raised;
+	const line = `${glyph} ${text}`;
+	const room = Math.max(0, available - gutter.length);
+	const shown =
+		line.length > room ? `${line.slice(0, Math.max(0, room - 1))}…` : line;
 	return (
-		<text bg={theme.surface.raised} fg={rowFg}>
+		<text bg={bg} fg={active ? theme.text : fg}>
 			{gutter}
-			{truncated}
+			<span fg={glyphFg}>{shown.slice(0, glyph.length)}</span>
+			{shown.slice(glyph.length)}
 		</text>
 	);
 };
@@ -116,20 +139,27 @@ export const buildSidebarItems = (
 	return items;
 };
 
-// The row text for a card: `⠹ impl-tasks · JAKE-9 · 2m14s`, detail lines after the task label.
-export const cardRowText = (
+// The words after a card's glyph: `impl-tasks · JAKE-9 · 2m14s`, detail lines after the task label.
+const cardWords = (
 	card: ActivityCard,
-	spinnerFrame: string,
 	resolveShortId: TaskResolver,
 ): string => {
 	const shortId =
 		card.taskShortId ??
 		(card.taskId ? (resolveShortId(card.taskId) ?? "—") : "—");
-	const parts = [`${cardGlyph(card, spinnerFrame)} ${card.label}`, shortId];
+	const parts = [card.label, shortId];
 	if (card.detail.length > 0) parts.push(...card.detail);
 	else parts.push(elapsed(card.startedAt, card.finishedAt));
 	return parts.join(" · ");
 };
+
+// The row text for a card: `⠹ impl-tasks · JAKE-9 · 2m14s`, detail lines after the task label.
+export const cardRowText = (
+	card: ActivityCard,
+	spinnerFrame: string,
+	resolveShortId: TaskResolver,
+): string =>
+	`${cardGlyph(card, spinnerFrame)} ${cardWords(card, resolveShortId)}`;
 
 export type SidebarProps = {
 	activity: BoardActivity.ActivityMap;
@@ -160,7 +190,7 @@ const SectionTitle = ({
 			<text
 				key={`${id}-title`}
 				bg={theme.surface.raised}
-				fg={theme.muted}
+				fg={theme.text}
 				attributes={TextAttributes.BOLD}
 			>
 				{title}
@@ -218,8 +248,10 @@ export const Sidebar = ({
 			sections.push(
 				<SidebarRow
 					key={`card-${card.id}`}
-					text={cardRowText(card, spinnerFrame, resolveShortId)}
-					fg={cardColor(card, theme)}
+					glyph={cardGlyph(card, spinnerFrame)}
+					glyphFg={glyphColor(card, theme)}
+					text={cardWords(card, resolveShortId)}
+					fg={textColor(card, theme)}
 					focused={focused}
 					selected={globalIdx === selectedIndex}
 					available={available}
@@ -248,8 +280,10 @@ export const Sidebar = ({
 			sections.push(
 				<SidebarRow
 					key={`input-${question.questionActivityId}`}
-					text={`? ${shortId} · ${firstLine}`}
-					fg={theme.accent}
+					glyph="?"
+					glyphFg={theme.accent}
+					text={`${shortId} · ${firstLine}`}
+					fg={theme.text}
 					focused={focused}
 					selected={globalIdx === selectedIndex}
 					available={available}
