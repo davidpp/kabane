@@ -53,10 +53,8 @@ machine as you.
    ● JCAB-38  Wire the copilot into `cabane board`
      JCAB-39  Agent writes: attribution, needsReview policy, triage tool
 
- JCAB-31 · 3 marked · next
- > verify which of these are still real todos, someday or next
- ─────────────────────────────────────────────────────────────────────
- ⠹ copilot · cabane_edit
+ copilot · claude · JCAB-31 · 3 marked · next
+ ▸ verify which of these are still real todos, someday or next
 ```
 
 `enter` sends it. The turn runs in the background, the board stays interactive, and the
