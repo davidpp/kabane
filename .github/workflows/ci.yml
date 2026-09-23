@@ -24,11 +24,12 @@ jobs:
       - run: bun run test
 
   deploy:
-    # The hub Worker deploys from main only, after the gate, and only once the
-    # Cloudflare credentials exist as repository secrets. Until then the job
-    # reports what is missing instead of failing, so the first pushes stay green.
+    # Manual only: Actions, `ci`, Run workflow on main. It deploys the hub of
+    # whoever owns this repository's `production` environment, after the gate,
+    # and names what is missing instead of deploying a half-configured Worker.
+    # Setup is docs/deploy.md, 1.0.
     needs: gate
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -37,27 +38,45 @@ jobs:
         with:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile
-      - id: creds
-        run: echo "ok=${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}" >> "$GITHUB_OUTPUT"
-      - if: steps.creds.outputs.ok != 'true'
-        run: echo "::notice::Deploy skipped. Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to the production environment (docs/deploy.md, part 1)."
-      - if: steps.creds.outputs.ok == 'true'
-        uses: cloudflare/wrangler-action@v4
+      - name: Check the deploy configuration
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          HUB_DOMAIN: ${{ vars.HUB_DOMAIN }}
+          ACCESS_TEAM_DOMAIN: ${{ vars.ACCESS_TEAM_DOMAIN }}
+        run: |
+          missing=""
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID SYNC_TOKEN HUB_DOMAIN ACCESS_TEAM_DOMAIN; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Not deployed. Set$missing in the production environment (docs/deploy.md, 1.0)."
+            exit 1
+          fi
+      - uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: packages/worker
           packageManager: bun
-          # Access identity lives in repository variables, never in wrangler.jsonc.
+          # The custom domain and the Access identity live in repository
+          # variables, never in wrangler.jsonc; the action appends each `vars`
+          # name as `--var NAME:value` to this command.
+          command: deploy --domain ${{ vars.HUB_DOMAIN }}
           vars: |
+            ACCESS_TEAM_DOMAIN
             ACCESS_AUD
             HUMAN_EMAIL
             SERVICE_ACTORS
+            KABANE_TIMEZONE
           # The log bearer secret is uploaded on every deploy from the GitHub secret.
           secrets: |
             SYNC_TOKEN
         env:
+          ACCESS_TEAM_DOMAIN: ${{ vars.ACCESS_TEAM_DOMAIN }}
           ACCESS_AUD: ${{ vars.ACCESS_AUD }}
           HUMAN_EMAIL: ${{ vars.HUMAN_EMAIL }}
           SERVICE_ACTORS: ${{ vars.SERVICE_ACTORS }}
+          KABANE_TIMEZONE: ${{ vars.KABANE_TIMEZONE }}
           SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
