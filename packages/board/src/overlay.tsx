@@ -1,9 +1,11 @@
 /** @jsxImportSource @opentui/react */
-// Centered modal overlays: the `a` dispatch picker (one list of host triggers), the `?` help
-// sheet. Deliberately the MINIMAL cut of zact-v2's select-modal — no filter, no groups, no
-// mouse: the reducers (nav.ts reduceDispatchKey / reduceHelpKey) own all input; these only
-// draw their state. Selection highlight follows board.tsx's rowStyle rule — explicit bg + fg on
-// the row, NEVER INVERSE (JJAK-1017).
+// Centered overlays: the `a` dispatch picker (one list of host triggers), the `?` help sheet.
+// Deliberately the MINIMAL cut of zact-v2's select-modal — no filter, no groups, no mouse: the
+// reducers (nav.ts reduceDispatchKey / reduceHelpKey) own all input; these only draw their state.
+// Frameless: herdr and the terminal already draw the pane's lines, so an overlay is set apart by
+// the overlay surface and a cell of padding, never a border. Selection highlight follows board.tsx's
+// rowStyle rule — explicit bg + fg on the row, NEVER INVERSE (JJAK-1017).
+import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
 import { Keymap } from "./keymap";
@@ -11,10 +13,49 @@ import type { BoardNav } from "./nav";
 import type { TriggerDescriptor } from "./ports";
 import { type Theme, useTheme } from "./theme";
 
-// A solid backdrop so the list behind the modal never bleeds through unset cells.
-const overlayBg = (theme: Theme.Tokens): string => theme.surface.raised;
+// A solid backdrop so the list behind the overlay never bleeds through unset cells: the overlay step,
+// one above the raised panels it floats over.
+const overlayBg = (theme: Theme.Tokens): string => theme.surface.overlay;
 
-const DISPATCH_HINT = "enter run · esc close";
+const DISPATCH_HINTS: readonly Keymap.Hint[] = [
+	{ key: "enter", label: "run" },
+	{ key: "esc", label: "close" },
+];
+const CLOSE_HINTS: readonly Keymap.Hint[] = [{ key: "esc", label: "close" }];
+const HELP_HINTS: readonly Keymap.Hint[] = [{ key: "? / esc", label: "close" }];
+
+const hintsLength = (hints: readonly Keymap.Hint[]): number =>
+	Keymap.hintLine(hints).length;
+
+// A hint row two-tone, as the footer draws it: the key in the overlay's foreground, the label muted.
+const HintRow = ({ hints }: { hints: readonly Keymap.Hint[] }): ReactNode => {
+	const theme = useTheme();
+	const bg = overlayBg(theme);
+	return (
+		<text bg={bg} fg={theme.muted}>
+			{hints.map((hint, index) => (
+				<span key={hint.key}>
+					{index > 0 ? " · " : ""}
+					<span fg={theme.text}>{hint.key}</span> {hint.label}
+				</span>
+			))}
+		</text>
+	);
+};
+
+// The overlay's title in Title weight.
+const Title = ({ text }: { text: string }): ReactNode => {
+	const theme = useTheme();
+	return (
+		<text
+			bg={overlayBg(theme)}
+			fg={theme.text}
+			attributes={TextAttributes.BOLD}
+		>
+			{text}
+		</text>
+	);
+};
 
 // Per-row colors, pure so the highlight contract (explicit bg+fg pair, never inverse) is assertable
 // without a renderer — same seam as board.tsx's rowStyle.
@@ -39,73 +80,72 @@ export const HelpOverlay = (): ReactNode => {
 	const theme = useTheme();
 	const bg = overlayBg(theme);
 	const title = "keyboard shortcuts";
-	const hint = "? / esc close";
-	// One flat render list: group header rows + `key  label` rows (keys padded to a shared column).
+	// One flat render list: group titles + `key  label` rows (keys padded to a shared column).
 	const keyWidth = Math.max(
 		...Keymap.HELP_GROUPS.flatMap((g) => g.hints.map((h) => h.key.length)),
 	);
-	const rows: { text: string; muted: boolean }[] = [];
+	type HelpRow =
+		| { kind: "gap" }
+		| { kind: "group"; title: string }
+		| { kind: "hint"; key: string; label: string };
+	const rows: HelpRow[] = [];
 	for (const group of Keymap.HELP_GROUPS) {
-		if (rows.length > 0) rows.push({ text: "", muted: true });
-		rows.push({ text: group.title, muted: true });
-		for (const h of group.hints) {
-			rows.push({
-				text: `${h.key.padEnd(keyWidth)}  ${h.label}`,
-				muted: false,
-			});
-		}
+		if (rows.length > 0) rows.push({ kind: "gap" });
+		rows.push({ kind: "group", title: group.title });
+		for (const h of group.hints)
+			rows.push({ kind: "hint", key: h.key.padEnd(keyWidth), label: h.label });
 	}
+	const rowLength = (row: HelpRow): number =>
+		row.kind === "hint"
+			? row.key.length + 2 + row.label.length
+			: row.kind === "group"
+				? row.title.length
+				: 0;
 	const inner = Math.max(
 		title.length,
-		hint.length,
-		...rows.map((row) => row.text.length),
+		hintsLength(HELP_HINTS),
+		...rows.map(rowLength),
 	);
-	const boxWidth = inner + 4;
-	const boxHeight = rows.length + 5;
 	return (
-		<box
-			style={{
-				position: "absolute",
-				left: Math.max(0, Math.floor((width - boxWidth) / 2)),
-				top: Math.max(0, Math.floor((height - boxHeight) / 2)),
-				width: boxWidth,
-				height: Math.min(boxHeight, height),
-				zIndex: 100,
-				flexDirection: "column",
-				border: true,
-				borderColor: theme.muted,
-				backgroundColor: bg,
-				paddingLeft: 1,
-				paddingRight: 1,
-			}}
+		<OverlayBox
+			width={width}
+			height={height}
+			title={title}
+			hints={HELP_HINTS}
+			rows={rows.length}
+			inner={inner}
 		>
-			<text bg={bg} fg={theme.text}>
-				{title}
-			</text>
-			<text bg={bg}> </text>
 			{rows.map((row, i) => (
 				<text
 					// biome-ignore lint/suspicious/noArrayIndexKey: static list, blank spacer rows repeat.
 					key={i}
 					bg={bg}
-					fg={row.muted ? theme.muted : theme.text}
+					fg={theme.muted}
+					attributes={row.kind === "group" ? TextAttributes.BOLD : undefined}
 				>
-					{row.text.padEnd(inner)}
+					{row.kind === "hint" ? (
+						<>
+							<span fg={theme.text}>{row.key}</span>
+							{`  ${row.label}`.padEnd(inner - row.key.length)}
+						</>
+					) : row.kind === "group" ? (
+						<span fg={theme.text}>{row.title.padEnd(inner)}</span>
+					) : (
+						" ".repeat(inner)
+					)}
 				</text>
 			))}
-			<text bg={bg} fg={theme.muted}>
-				{hint}
-			</text>
-		</box>
+		</OverlayBox>
 	);
 };
 
-// Centered modal box helper.
-const ModalBox = ({
+// Centered, frameless overlay helper: the overlay surface, one cell of padding all round, the title,
+// a blank row, the body, then its hints.
+const OverlayBox = ({
 	width: termW,
 	height: termH,
 	title,
-	hint,
+	hints,
 	rows,
 	inner,
 	children,
@@ -113,14 +153,15 @@ const ModalBox = ({
 	width: number;
 	height: number;
 	title: string;
-	hint: string;
+	hints: readonly Keymap.Hint[];
 	rows: number;
 	inner: number;
 	children: ReactNode;
 }): ReactNode => {
 	const theme = useTheme();
 	const bg = overlayBg(theme);
-	const boxWidth = inner + 4;
+	const boxWidth = inner + 2;
+	// Padding above and below, the title, the blank under it, the body, the hint row.
 	const boxHeight = rows + 5;
 	return (
 		<box
@@ -132,21 +173,14 @@ const ModalBox = ({
 				height: Math.min(boxHeight, termH),
 				zIndex: 100,
 				flexDirection: "column",
-				border: true,
-				borderColor: theme.muted,
 				backgroundColor: bg,
-				paddingLeft: 1,
-				paddingRight: 1,
+				padding: 1,
 			}}
 		>
-			<text bg={bg} fg={theme.text}>
-				{title}
-			</text>
+			<Title text={title} />
 			<text bg={bg}> </text>
 			{children}
-			<text bg={bg} fg={theme.muted}>
-				{hint}
-			</text>
+			<HintRow hints={hints} />
 		</box>
 	);
 };
@@ -192,38 +226,38 @@ export const DispatchOverlay = ({
 	const { triggers, selected, loading } = overlay;
 
 	if (loading) {
-		const inner = Math.max(title.length, DISPATCH_HINT.length, 20);
+		const inner = Math.max(title.length, hintsLength(DISPATCH_HINTS), 20);
 		return (
-			<ModalBox
+			<OverlayBox
 				width={width}
 				height={height}
 				title={title}
-				hint="esc close"
+				hints={CLOSE_HINTS}
 				rows={1}
 				inner={inner}
 			>
 				<text bg={bg} fg={theme.muted}>
 					{"loading triggers…".padEnd(inner)}
 				</text>
-			</ModalBox>
+			</OverlayBox>
 		);
 	}
 
 	if (triggers.length === 0) {
-		const inner = Math.max(title.length, DISPATCH_HINT.length, 30);
+		const inner = Math.max(title.length, hintsLength(DISPATCH_HINTS), 30);
 		return (
-			<ModalBox
+			<OverlayBox
 				width={width}
 				height={height}
 				title={title}
-				hint="esc close"
+				hints={CLOSE_HINTS}
 				rows={1}
 				inner={inner}
 			>
 				<text bg={bg} fg={theme.muted}>
 					{"nothing to dispatch to".padEnd(inner)}
 				</text>
-			</ModalBox>
+			</OverlayBox>
 		);
 	}
 
@@ -242,7 +276,7 @@ export const DispatchOverlay = ({
 	}));
 	const inner = Math.max(
 		title.length,
-		DISPATCH_HINT.length,
+		hintsLength(DISPATCH_HINTS),
 		...rowLines.map(
 			(r) => r.head.length + 3 + r.desc.length + 3 + r.tag.length,
 		),
@@ -254,11 +288,11 @@ export const DispatchOverlay = ({
 	const totalRows = rowLines.length + 1 + previewLines.length;
 
 	return (
-		<ModalBox
+		<OverlayBox
 			width={width}
 			height={height}
 			title={title}
-			hint={DISPATCH_HINT}
+			hints={DISPATCH_HINTS}
 			rows={totalRows}
 			inner={inner}
 		>
@@ -287,6 +321,6 @@ export const DispatchOverlay = ({
 					{line.padEnd(inner)}
 				</text>
 			))}
-		</ModalBox>
+		</OverlayBox>
 	);
 };
