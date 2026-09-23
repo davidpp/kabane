@@ -10,6 +10,7 @@ import {
 	type Task,
 } from "@cabane/core";
 import {
+	type ColorInput,
 	type MouseEvent,
 	type ScrollBoxRenderable,
 	TextAttributes,
@@ -23,27 +24,27 @@ import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import type { ActivityCard } from "./ports";
 import { RUNNING_ECHO, SPINNER_IDLE, useSpinnerFrame } from "./spinner";
+import { type Theme, useTheme } from "./theme";
 
-// OpenTUI needs terminal colors (hex); the display configs carry Tailwind class tokens. Map the
-// priority tokens the board uses to hex so display.ts stays the single source of priority color.
-const TAILWIND_HEX: Record<string, string> = {
-	"text-gray-400": "#9ca3af",
-	"text-gray-500": "#6b7280",
-	"text-red-500": "#ef4444",
-	"text-orange-500": "#f97316",
+// OpenTUI needs terminal colors; the display configs carry Tailwind class tokens. Map the priority
+// tokens the board uses to theme roles, so display.ts stays the single source of which priority gets
+// which color and the theme owns the values. The accent also marks the review flag, the mark glyph
+// and the copilot's fingerprint below.
+const PRIORITY_ROLE: Record<string, (theme: Theme.Tokens) => string> = {
+	"text-gray-400": (theme) => theme.secondary,
+	"text-gray-500": (theme) => theme.muted,
+	"text-red-500": (theme) => theme.failed,
+	"text-orange-500": (theme) => theme.accent,
 };
 
-const FALLBACK_COLOR = "#9ca3af";
-// The one accent — used for the review flag, the mark glyph, and (via the priority palette)
-// high-priority ids.
-const REVIEW_COLOR = "#f97316";
-const MARK_COLOR = REVIEW_COLOR;
+const priorityColor = (token: string, theme: Theme.Tokens): string =>
+	PRIORITY_ROLE[token]?.(theme) ?? theme.secondary;
+
 // The `m` glyph, with its trailing space; two blanks keep unmarked titles column-aligned with it.
 const MARK_GLYPH = "● ";
 const MARK_BLANK = "  ";
 // The copilot's fingerprint on a row it changed this turn. Transient — the keypress that dismisses
 // the turn's footer indicator clears it — so unlike the mark it holds no column when absent.
-const AI_COLOR = REVIEW_COLOR;
 const AI_GLYPH = "✦ ai ";
 // This row points at an issue in someone else's tracker. Like the mark it holds its column when
 // absent, so the glyphs line up and one vertical scan answers "which of these is team work" — a
@@ -53,61 +54,51 @@ const AI_GLYPH = "✦ ai ";
 // (IBM Plex Mono) has no Nerd Font private-use range to draw a real provider logo from.
 const LINK_GLYPH = "◆ ";
 const LINK_BLANK = "  ";
-// Muted gray for all chrome: kind/state meta, section headers, footer hints.
-const MUTED_COLOR = "#6b7280";
 // Never let the title column collapse to nothing on a very narrow frame.
 const MIN_TITLE_WIDTH = 4;
 // Columns held back from the terminal width for the scrollbar + a safety margin, so a full row never
 // wraps into a second line (the small-screen fix is truncation, never wrapping).
 const RESERVED_COLS = 2;
 
-const toHex = (token: string): string => TAILWIND_HEX[token] ?? FALLBACK_COLOR;
-
-// Copy-feedback colors: accent on success (the one place accent flashes), error red on failure.
-const SUCCESS_COLOR = "#f97316";
-const ERROR_COLOR = "#ef4444";
-
-// Selection = a subtle dark highlight + bright, explicit fg on every cell. NEVER TextAttributes.INVERSE:
+// Selection = the selected surface + an explicit fg on every cell. NEVER TextAttributes.INVERSE:
 // with unset colors inverse swaps undefined/default and renders white-on-white in a real terminal
 // (JJAK-1017). The tree caret (`▸`/`▾`) is NOT the selection marker — it signals expandability only.
-export const SELECTED_BG = "#2f2f2f";
-export const SELECTED_FG = "#e6edf3";
-
 // Per-row selection styling. Pure so nav-less tests can assert the invariant that a selected row ALWAYS
 // pairs an explicit bg with an explicit fg on every cell and never emits INVERSE. `idFg` keeps the
 // priority color when idle (the one content color); selection overrides it for contrast.
 export type RowStyle = {
 	bg: string | undefined;
 	idFg: string;
-	titleFg: string | undefined;
+	titleFg: ColorInput;
 	metaFg: string;
 	caretFg: string;
 };
 
-export const rowStyle = (selected: boolean, priorityColor: string): RowStyle =>
+export const rowStyle = (
+	selected: boolean,
+	idColor: string,
+	theme: Theme.Tokens,
+): RowStyle =>
 	selected
 		? {
-				bg: SELECTED_BG,
-				idFg: SELECTED_FG,
-				titleFg: SELECTED_FG,
-				metaFg: SELECTED_FG,
-				caretFg: SELECTED_FG,
+				bg: theme.surface.selected,
+				idFg: theme.text,
+				titleFg: theme.text,
+				metaFg: theme.text,
+				caretFg: theme.text,
 			}
 		: {
 				bg: undefined,
-				idFg: priorityColor,
-				titleFg: undefined,
-				metaFg: MUTED_COLOR,
-				caretFg: MUTED_COLOR,
+				idFg: idColor,
+				titleFg: theme.defaultFg,
+				metaFg: theme.muted,
+				caretFg: theme.muted,
 			};
 
 // Truncate to a single line with a trailing ellipsis — the whole point of the list layout is one row
 // per task that never wraps, so titles are cut to fit the frame.
 const truncate = (text: string, max: number): string =>
 	text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
-
-// In-flight accents share the board's one accent color — the palette is deliberately narrow.
-const LOOP_COLOR = "#f97316";
 
 // The ` · `-prefixed badge for a row's first in-flight card: `⠹ loop · implement 3`. Paused shows ⏸
 // with no churn; a stale running card (the host's crashed-runner heuristic) keeps the badge but drops
@@ -249,10 +240,12 @@ const Row = ({
 	onSelect?: (rowIndex: number) => void;
 	onToggle?: (rowIndex: number) => void;
 }): ReactNode => {
+	const theme = useTheme();
 	const task = row.task;
 	const style = rowStyle(
 		selected,
-		toHex(TASK_PRIORITY_DISPLAY[task.priority].color),
+		priorityColor(TASK_PRIORITY_DISPLAY[task.priority].color, theme),
+		theme,
 	);
 	const shortId = task.shortId ?? task.id.slice(0, 8);
 	const caret = caretFor(row);
@@ -313,18 +306,20 @@ const Row = ({
 			<text bg={style.bg} fg={style.titleFg}>
 				<span fg={style.idFg}>{shortId}</span>
 				{"  "}
-				<span fg={marked ? MARK_COLOR : style.titleFg}>{mark}</span>
+				<span fg={marked ? theme.accent : style.titleFg}>{mark}</span>
 				{/* Chrome, not accent: a linked issue is a fact about the row, not a request for action. */}
-				<span fg={MUTED_COLOR}>{link}</span>
-				{ai ? <span fg={AI_COLOR}>{ai}</span> : null}
+				<span fg={theme.muted}>{link}</span>
+				{ai ? <span fg={theme.accent}>{ai}</span> : null}
 				{title}
 				<span fg={style.metaFg}>{meta}</span>
-				{task.needsReview ? <span fg={REVIEW_COLOR}> · review</span> : null}
+				{task.needsReview ? <span fg={theme.accent}> · review</span> : null}
 				{badge ? (
-					<span fg={badge.muted ? MUTED_COLOR : LOOP_COLOR}>{badge.text}</span>
+					<span fg={badge.muted ? theme.muted : theme.accent}>
+						{badge.text}
+					</span>
 				) : null}
-				{more ? <span fg={LOOP_COLOR}>{more}</span> : null}
-				{input ? <span fg={LOOP_COLOR}>{input}</span> : null}
+				{more ? <span fg={theme.accent}>{more}</span> : null}
+				{input ? <span fg={theme.accent}>{input}</span> : null}
 			</text>
 		</box>
 	);
@@ -360,12 +355,13 @@ const Section = ({
 	onSelect?: (rowIndex: number) => void;
 	onToggle?: (rowIndex: number) => void;
 }): ReactNode => {
+	const theme = useTheme();
 	// The header count is top-level rows only (matches the unfiltered section.rows.length; under a
 	// filter it becomes the matched-parent count for that section).
 	const topLevel = group.rows.filter((row) => row.depth === 0).length;
 	return (
 		<box style={{ flexDirection: "column", flexShrink: 0, marginBottom: 1 }}>
-			<text fg={MUTED_COLOR}>
+			<text fg={theme.muted}>
 				{group.section.label.toLowerCase()} · {topLevel}
 			</text>
 			{group.rows.map((row) => (
@@ -399,16 +395,19 @@ export const EMPTY_HINTS = [
 	'or run cabane add "…" in a shell.',
 ] as const;
 
-const EmptyBoard = (): ReactNode => (
-	<box style={{ flexDirection: "column" }}>
-		<text>nothing open here.</text>
-		{EMPTY_HINTS.map((line) => (
-			<text key={line} fg={MUTED_COLOR}>
-				{line}
-			</text>
-		))}
-	</box>
-);
+const EmptyBoard = (): ReactNode => {
+	const theme = useTheme();
+	return (
+		<box style={{ flexDirection: "column" }}>
+			<text fg={theme.defaultFg}>nothing open here.</text>
+			{EMPTY_HINTS.map((line) => (
+				<text key={line} fg={theme.muted}>
+					{line}
+				</text>
+			))}
+		</box>
+	);
+};
 
 const SEARCH_OFF: BoardNav.SearchState = { mode: "off" };
 const NO_MARKS: ReadonlySet<string> = new Set<string>();
@@ -429,11 +428,13 @@ const Footer = ({
 	matchCount: number;
 	hints: string;
 }): ReactNode => {
+	const theme = useTheme();
 	if (notice) {
 		return (
 			<StatusBar
 				text={notice.undoable ? `${notice.text} · ⌃z undo` : notice.text}
-				fg={notice.tone === "success" ? SUCCESS_COLOR : ERROR_COLOR}
+				// Copy feedback: the accent on success (the one place it flashes), failed on failure.
+				fg={notice.tone === "success" ? theme.accent : theme.failed}
 			/>
 		);
 	}
@@ -445,11 +446,11 @@ const Footer = ({
 		return (
 			<StatusBar
 				text={`search: "${search.query}" · ${matches} · esc clear`}
-				fg={MUTED_COLOR}
+				fg={theme.muted}
 			/>
 		);
 	}
-	return <StatusBar text={hints} fg={MUTED_COLOR} />;
+	return <StatusBar text={hints} fg={theme.muted} />;
 };
 
 export type BoardProps = {
@@ -516,6 +517,7 @@ export const Board = ({
 	sidebarWidth: sbWidth = 0,
 }: BoardProps): ReactNode => {
 	const { width } = useTerminalDimensions();
+	const theme = useTheme();
 	// One shared spinner frame for every badge + the header strip; the interval only runs while a live
 	// running loop is visible (the leaked-idle-timer gotcha — see spinner.ts).
 	const spinnerFrame = useSpinnerFrame(
@@ -559,17 +561,17 @@ export const Board = ({
 	const nextRowIndex = { value: 0 };
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<text>
+			<text fg={theme.defaultFg}>
 				<span attributes={TextAttributes.BOLD}>
 					{header.join(" · ").toLowerCase()}
 				</span>
-				{markedPart ? <span fg={MARK_COLOR}>{markedPart}</span> : null}
-				{strip ? <span fg={MUTED_COLOR}>{strip}</span> : null}
+				{markedPart ? <span fg={theme.accent}>{markedPart}</span> : null}
+				{strip ? <span fg={theme.muted}>{strip}</span> : null}
 			</text>
 			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
 				{groups.length === 0 ? (
 					filtering ? (
-						<text fg={MUTED_COLOR}>no matches</text>
+						<text fg={theme.muted}>no matches</text>
 					) : (
 						<EmptyBoard />
 					)

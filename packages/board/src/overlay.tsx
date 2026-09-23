@@ -2,20 +2,17 @@
 // Centered modal overlays: the `a` dispatch picker (one list of host triggers), the `?` help
 // sheet. Deliberately the MINIMAL cut of zact-v2's select-modal — no filter, no groups, no
 // mouse: the reducers (nav.ts reduceDispatchKey / reduceHelpKey) own all input; these only
-// draw their state. Selection highlight follows board.tsx's SELECTED_BG/FG rule — explicit
-// bg + fg on the row, NEVER INVERSE (JJAK-1017).
+// draw their state. Selection highlight follows board.tsx's rowStyle rule — explicit bg + fg on
+// the row, NEVER INVERSE (JJAK-1017).
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
-import { SELECTED_BG, SELECTED_FG } from "./board";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import type { TriggerDescriptor } from "./ports";
+import { type Theme, useTheme } from "./theme";
 
-const MUTED_COLOR = "#6b7280";
 // A solid backdrop so the list behind the modal never bleeds through unset cells.
-const OVERLAY_BG = "#1c1c1c";
-// Dimmed text for unsatisfiable triggers.
-const DIMMED_COLOR = "#4b5563";
+const overlayBg = (theme: Theme.Tokens): string => theme.surface.raised;
 
 const DISPATCH_HINT = "enter run · esc close";
 
@@ -23,10 +20,11 @@ const DISPATCH_HINT = "enter run · esc close";
 // without a renderer — same seam as board.tsx's rowStyle.
 export const overlayRowStyle = (
 	selected: boolean,
+	theme: Theme.Tokens,
 ): { bg: string; fg: string } =>
 	selected
-		? { bg: SELECTED_BG, fg: SELECTED_FG }
-		: { bg: OVERLAY_BG, fg: "#c9d1d9" };
+		? { bg: theme.surface.selected, fg: theme.text }
+		: { bg: overlayBg(theme), fg: theme.text };
 
 export type DispatchOverlayProps = {
 	shortId: string;
@@ -38,6 +36,8 @@ export type DispatchOverlayProps = {
 // (nav.ts reduceHelpKey) owns open/close.
 export const HelpOverlay = (): ReactNode => {
 	const { width, height } = useTerminalDimensions();
+	const theme = useTheme();
+	const bg = overlayBg(theme);
 	const title = "keyboard shortcuts";
 	const hint = "? / esc close";
 	// One flat render list: group header rows + `key  label` rows (keys padded to a shared column).
@@ -73,27 +73,27 @@ export const HelpOverlay = (): ReactNode => {
 				zIndex: 100,
 				flexDirection: "column",
 				border: true,
-				borderColor: MUTED_COLOR,
-				backgroundColor: OVERLAY_BG,
+				borderColor: theme.muted,
+				backgroundColor: bg,
 				paddingLeft: 1,
 				paddingRight: 1,
 			}}
 		>
-			<text bg={OVERLAY_BG} fg={SELECTED_FG}>
+			<text bg={bg} fg={theme.text}>
 				{title}
 			</text>
-			<text bg={OVERLAY_BG}> </text>
+			<text bg={bg}> </text>
 			{rows.map((row, i) => (
 				<text
 					// biome-ignore lint/suspicious/noArrayIndexKey: static list, blank spacer rows repeat.
 					key={i}
-					bg={OVERLAY_BG}
-					fg={row.muted ? MUTED_COLOR : "#c9d1d9"}
+					bg={bg}
+					fg={row.muted ? theme.muted : theme.text}
 				>
 					{row.text.padEnd(inner)}
 				</text>
 			))}
-			<text bg={OVERLAY_BG} fg={MUTED_COLOR}>
+			<text bg={bg} fg={theme.muted}>
 				{hint}
 			</text>
 		</box>
@@ -118,6 +118,8 @@ const ModalBox = ({
 	inner: number;
 	children: ReactNode;
 }): ReactNode => {
+	const theme = useTheme();
+	const bg = overlayBg(theme);
 	const boxWidth = inner + 4;
 	const boxHeight = rows + 5;
 	return (
@@ -131,18 +133,18 @@ const ModalBox = ({
 				zIndex: 100,
 				flexDirection: "column",
 				border: true,
-				borderColor: MUTED_COLOR,
-				backgroundColor: OVERLAY_BG,
+				borderColor: theme.muted,
+				backgroundColor: bg,
 				paddingLeft: 1,
 				paddingRight: 1,
 			}}
 		>
-			<text bg={OVERLAY_BG} fg={SELECTED_FG}>
+			<text bg={bg} fg={theme.text}>
 				{title}
 			</text>
-			<text bg={OVERLAY_BG}> </text>
+			<text bg={bg}> </text>
 			{children}
-			<text bg={OVERLAY_BG} fg={MUTED_COLOR}>
+			<text bg={bg} fg={theme.muted}>
 				{hint}
 			</text>
 		</box>
@@ -184,6 +186,8 @@ export const DispatchOverlay = ({
 	overlay,
 }: DispatchOverlayProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
+	const theme = useTheme();
+	const bg = overlayBg(theme);
 	const title = `dispatch ${shortId}`;
 	const { triggers, selected, loading } = overlay;
 
@@ -198,7 +202,7 @@ export const DispatchOverlay = ({
 				rows={1}
 				inner={inner}
 			>
-				<text bg={OVERLAY_BG} fg={MUTED_COLOR}>
+				<text bg={bg} fg={theme.muted}>
 					{"loading triggers…".padEnd(inner)}
 				</text>
 			</ModalBox>
@@ -216,7 +220,7 @@ export const DispatchOverlay = ({
 				rows={1}
 				inner={inner}
 			>
-				<text bg={OVERLAY_BG} fg={MUTED_COLOR}>
+				<text bg={bg} fg={theme.muted}>
 					{"nothing to dispatch to".padEnd(inner)}
 				</text>
 			</ModalBox>
@@ -261,24 +265,24 @@ export const DispatchOverlay = ({
 			{rowLines.map((r, i) => {
 				const isSel = i === selected;
 				const style = isSel
-					? overlayRowStyle(true)
-					: { bg: OVERLAY_BG, fg: r.satisfiable ? "#c9d1d9" : DIMMED_COLOR };
+					? overlayRowStyle(true, theme)
+					: { bg, fg: r.satisfiable ? theme.text : theme.faint };
 				const line = `${r.head}  ${truncateStr(r.desc, inner - r.head.length - r.tag.length - 5)}`;
 				return (
 					<text key={r.id} bg={style.bg} fg={style.fg}>
 						{line.padEnd(inner - r.tag.length - 2)}
-						<span fg={MUTED_COLOR}>{r.tag}</span>
+						<span fg={theme.muted}>{r.tag}</span>
 						{"  "}
 					</text>
 				);
 			})}
-			<text bg={OVERLAY_BG}> </text>
+			<text bg={bg}> </text>
 			{previewLines.map((line, i) => (
 				<text
 					// biome-ignore lint/suspicious/noArrayIndexKey: static preview, lines can repeat.
 					key={i}
-					bg={OVERLAY_BG}
-					fg={MUTED_COLOR}
+					bg={bg}
+					fg={theme.muted}
 				>
 					{line.padEnd(inner)}
 				</text>

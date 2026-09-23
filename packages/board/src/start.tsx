@@ -15,6 +15,7 @@ import {
 	type Dispatcher,
 	noActivity,
 } from "./ports";
+import { Theme, ThemeProvider, useTheme } from "./theme";
 
 export type BoardDeps = {
 	// Working directory the board was launched from — handed to `resolveScope`.
@@ -35,13 +36,14 @@ export type BoardDeps = {
 // finally still destroys the renderer, so the terminal is restored either way.
 const CrashScreen = ({ error }: { error: Error }): ReactNode => {
 	const renderer = useRenderer();
+	const theme = useTheme();
 	useKeyboard((key) => {
 		if (key.name === "q") renderer.destroy();
 	});
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<text fg="#ef4444">Board crashed: {error.message}</text>
-			<text fg="#6b7280">q quit</text>
+			<text fg={theme.failed}>Board crashed: {error.message}</text>
+			<text fg={theme.muted}>q quit</text>
 		</box>
 	);
 };
@@ -49,17 +51,21 @@ const CrashScreen = ({ error }: { error: Error }): ReactNode => {
 export const startBoard = async (deps: BoardDeps): Promise<void> => {
 	const renderer = await createCliRenderer({ exitOnCtrlC: true });
 	try {
+		// Once, before the first frame: every surface below reads its colours from this.
+		const theme = await Theme.detect(renderer);
 		createRoot(renderer).render(
-			<ErrorBoundary fallback={(error) => <CrashScreen error={error} />}>
-				<App
-					cwd={deps.cwd}
-					basePath={deps.basePath}
-					activity={deps.activity ?? noActivity}
-					dispatcher={deps.dispatcher}
-					copilot={deps.copilot}
-					resolveScope={deps.resolveScope}
-				/>
-			</ErrorBoundary>,
+			<ThemeProvider value={theme}>
+				<ErrorBoundary fallback={(error) => <CrashScreen error={error} />}>
+					<App
+						cwd={deps.cwd}
+						basePath={deps.basePath}
+						activity={deps.activity ?? noActivity}
+						dispatcher={deps.dispatcher}
+						copilot={deps.copilot}
+						resolveScope={deps.resolveScope}
+					/>
+				</ErrorBoundary>
+			</ThemeProvider>,
 		);
 		// Resolve when the user quits (`q` or Ctrl-C both call renderer.destroy()).
 		await new Promise<void>((resolve) => {

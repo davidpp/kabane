@@ -18,20 +18,13 @@ import {
 	useTerminalDimensions,
 } from "@opentui/react";
 import { type ReactNode, useRef, useState } from "react";
-import { SELECTED_BG } from "./board";
 import { ErrorBoundary } from "./error-boundary";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { SetupPlan } from "./setup-plan";
 import { useSpinnerFrame } from "./spinner";
+import { Theme, ThemeProvider, useTheme } from "./theme";
 
-const MUTED_COLOR = "#6b7280";
-// The focus gutter: the field is waiting on you.
-const ACCENT_COLOR = "#f97316";
-const WORKING_COLOR = "#58a6ff";
-const DONE_COLOR = "#22c55e";
-const ERROR_COLOR = "#ef4444";
-const INPUT_BG = "#1c1c1c";
 const INPUT_WIDTH = 24;
 // `› ` plus the widest label, padded: where an input, a checkbox, or the note under one starts.
 const LABEL_WIDTH = 9;
@@ -153,10 +146,24 @@ export const elidePath = (path: string, room: number): string => {
 	return `…/${segments.at(-1)}`;
 };
 
-const STATUS: Record<SetupPlan.InstallStatus, { text: string; fg: string }> = {
-	installed: { text: "✓ installed", fg: DONE_COLOR },
-	already: { text: "· already installed", fg: MUTED_COLOR },
-	failed: { text: "✗ failed", fg: ERROR_COLOR },
+const STATUS_TEXT: Record<SetupPlan.InstallStatus, string> = {
+	installed: "✓ installed",
+	already: "· already installed",
+	failed: "✗ failed",
+};
+
+const statusFg = (
+	status: SetupPlan.InstallStatus,
+	theme: Theme.Tokens,
+): string => {
+	switch (status) {
+		case "installed":
+			return theme.done;
+		case "already":
+			return theme.muted;
+		case "failed":
+			return theme.failed;
+	}
 };
 
 const OUTCOME_LABEL_WIDTH = 14;
@@ -165,7 +172,7 @@ export const outcomeLine = (
 	outcome: SetupPlan.InstallOutcome,
 	label: string,
 ): string =>
-	`${label.padEnd(OUTCOME_LABEL_WIDTH)} ${STATUS[outcome.status].text}`;
+	`${label.padEnd(OUTCOME_LABEL_WIDTH)} ${STATUS_TEXT[outcome.status]}`;
 
 // A note sits beside its row while the pane has room for both, and on its own indented line under
 // the row when it does not: a narrow pane never loses the row to the note.
@@ -197,6 +204,7 @@ export const SetupScreen = ({
 	};
 	const [phase, setPhase] = useState<Phase>({ kind: "welcome" });
 	const spinnerFrame = useSpinnerFrame(phase.kind === "working");
+	const theme = useTheme();
 
 	const fileFor = async (
 		outcomes: readonly SetupPlan.InstallOutcome[],
@@ -271,10 +279,10 @@ export const SetupScreen = ({
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<text>
+			<text fg={theme.defaultFg}>
 				<span attributes={TextAttributes.BOLD}>cabane</span>
 				{phase.kind === "welcome" ? null : (
-					<span fg={MUTED_COLOR}> · setup</span>
+					<span fg={theme.muted}> · setup</span>
 				)}
 			</text>
 			<box style={{ flexDirection: "column", flexGrow: 1, marginTop: 1 }}>
@@ -311,41 +319,49 @@ export const SetupScreen = ({
 					/>
 				) : null}
 				{phase.kind === "form" && phase.error ? (
-					<text fg={ERROR_COLOR} style={{ marginTop: 1 }}>
+					<text fg={theme.failed} style={{ marginTop: 1 }}>
 						{phase.error}
 					</text>
 				) : null}
 				{phase.kind === "working" ? (
-					<text fg={WORKING_COLOR} style={{ marginTop: 1 }}>
+					<text fg={theme.working} style={{ marginTop: 1 }}>
 						{`${spinnerFrame} ${phase.step}`}
 					</text>
 				) : null}
 			</box>
 			<StatusBar
 				text={Keymap.hintLine(footerFor(phase, defaults))}
-				fg={MUTED_COLOR}
+				fg={theme.muted}
 			/>
 		</box>
 	);
 };
 
-const WelcomeCard = (): ReactNode => (
-	<box style={{ flexDirection: "column" }}>
-		{WELCOME.map(([lead, ...rest], index) => (
-			<box
-				key={lead}
-				style={{ flexDirection: "column", marginTop: index === 0 ? 0 : 1 }}
-			>
-				<text attributes={index === 0 ? TextAttributes.BOLD : undefined}>
-					{lead}
-				</text>
-				{rest.map((line) => (
-					<text key={line}>{line}</text>
-				))}
-			</box>
-		))}
-	</box>
-);
+const WelcomeCard = (): ReactNode => {
+	const theme = useTheme();
+	return (
+		<box style={{ flexDirection: "column" }}>
+			{WELCOME.map(([lead, ...rest], index) => (
+				<box
+					key={lead}
+					style={{ flexDirection: "column", marginTop: index === 0 ? 0 : 1 }}
+				>
+					<text
+						fg={theme.defaultFg}
+						attributes={index === 0 ? TextAttributes.BOLD : undefined}
+					>
+						{lead}
+					</text>
+					{rest.map((line) => (
+						<text key={line} fg={theme.defaultFg}>
+							{line}
+						</text>
+					))}
+				</box>
+			))}
+		</box>
+	);
+};
 
 type SetupFormProps = {
 	defaults: SetupPlan.Defaults;
@@ -354,6 +370,7 @@ type SetupFormProps = {
 };
 
 const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
+	const theme = useTheme();
 	const row = (field: SetupPlan.Field, index: number): ReactNode => {
 		const focused = index === form.focus;
 		switch (field.kind) {
@@ -392,7 +409,7 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 					</>
 				) : (
 					<>
-						<text>
+						<text fg={theme.defaultFg}>
 							{`${" ".repeat(2)}${"agents".padEnd(LABEL_WIDTH - 2)}`}
 							{defaults.installOff ? AGENTS_OFF : NO_AGENTS}
 						</text>
@@ -407,9 +424,10 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 };
 
 // A field's purpose, dim, under its value.
-const Note = ({ text }: { text: string }): ReactNode => (
-	<text fg={MUTED_COLOR}>{`${" ".repeat(LABEL_WIDTH)}${text}`}</text>
-);
+const Note = ({ text }: { text: string }): ReactNode => {
+	const theme = useTheme();
+	return <text fg={theme.muted}>{`${" ".repeat(LABEL_WIDTH)}${text}`}</text>;
+};
 
 // `enter` in the footer's key colour, then what it will do, dim.
 const EnterLines = ({
@@ -422,14 +440,15 @@ const EnterLines = ({
 	firstAgent?: string;
 }): ReactNode => {
 	const { width } = useTerminalDimensions();
+	const theme = useTheme();
 	const room = width - ENTER_INDENT - "saves ".length;
 	return (
 		<box style={{ flexDirection: "column", marginTop: 1 }}>
 			{enterLines(elidePath(configPath, room), agents, firstAgent).map(
 				(line, index) => (
-					<text key={line}>
+					<text key={line} fg={theme.defaultFg}>
 						{index === 0 ? "enter " : " ".repeat(ENTER_INDENT)}
-						<span fg={MUTED_COLOR}>{line}</span>
+						<span fg={theme.muted}>{line}</span>
 					</text>
 				),
 			)}
@@ -439,10 +458,11 @@ const EnterLines = ({
 
 const SavedLine = ({ path }: { path: string }): ReactNode => {
 	const { width } = useTerminalDimensions();
+	const theme = useTheme();
 	const head = "✓ saved ";
 	return (
-		<text>
-			<span fg={DONE_COLOR}>✓</span>
+		<text fg={theme.defaultFg}>
+			<span fg={theme.done}>✓</span>
 			{` saved ${elidePath(path, width - head.length)}`}
 		</text>
 	);
@@ -462,33 +482,41 @@ const Gutter = ({
 }: {
 	label: string;
 	focused: boolean;
-}): ReactNode => (
-	<>
-		<span fg={ACCENT_COLOR}>{focused ? "›" : " "}</span>
-		{` ${label.padEnd(LABEL_WIDTH - 2)}`}
-	</>
-);
+}): ReactNode => {
+	const theme = useTheme();
+	return (
+		<>
+			<span fg={theme.accent}>{focused ? "›" : " "}</span>
+			{` ${label.padEnd(LABEL_WIDTH - 2)}`}
+		</>
+	);
+};
 
 const TextRow = ({
 	label,
 	value,
 	focused,
 	onInput,
-}: TextRowProps): ReactNode => (
-	<box style={{ flexDirection: "row", height: 1 }}>
-		<text style={{ flexShrink: 0 }}>
-			<Gutter label={label} focused={focused} />
-		</text>
-		<input
-			value={value}
-			focused={focused}
-			onInput={onInput}
-			backgroundColor={INPUT_BG}
-			focusedBackgroundColor={SELECTED_BG}
-			style={{ width: INPUT_WIDTH, flexShrink: 0 }}
-		/>
-	</box>
-);
+}: TextRowProps): ReactNode => {
+	const theme = useTheme();
+	return (
+		<box style={{ flexDirection: "row", height: 1 }}>
+			<text fg={theme.defaultFg} style={{ flexShrink: 0 }}>
+				<Gutter label={label} focused={focused} />
+			</text>
+			<input
+				value={value}
+				focused={focused}
+				onInput={onInput}
+				backgroundColor={theme.surface.raised}
+				focusedBackgroundColor={theme.surface.selected}
+				textColor={theme.text}
+				focusedTextColor={theme.text}
+				style={{ width: INPUT_WIDTH, flexShrink: 0 }}
+			/>
+		</box>
+	);
+};
 
 type NotedLineProps = {
 	head: ReactNode;
@@ -505,17 +533,19 @@ const NotedLine = ({
 	noteFg,
 }: NotedLineProps): ReactNode => {
 	const { width } = useTerminalDimensions();
-	if (note === undefined || note === "") return <text>{head}</text>;
+	const theme = useTheme();
+	if (note === undefined || note === "")
+		return <text fg={theme.defaultFg}>{head}</text>;
 	if (fitsBeside(width, headLength, note))
 		return (
-			<text>
+			<text fg={theme.defaultFg}>
 				{head}
 				<span fg={noteFg}>{` ${note}`}</span>
 			</text>
 		);
 	return (
 		<box style={{ flexDirection: "column" }}>
-			<text>{head}</text>
+			<text fg={theme.defaultFg}>{head}</text>
 			{/* A harness's error can outrun the pane: padding, not spaces, keeps its wrap indented. */}
 			<box style={{ paddingLeft: NOTE_INDENT }}>
 				<text fg={noteFg}>{note}</text>
@@ -531,18 +561,20 @@ const OutcomeRow = ({
 	outcome: SetupPlan.InstallOutcome;
 	label: string;
 }): ReactNode => {
-	const status = STATUS[outcome.status];
+	const theme = useTheme();
 	return (
 		<NotedLine
 			head={
 				<>
 					{`${label.padEnd(OUTCOME_LABEL_WIDTH)} `}
-					<span fg={status.fg}>{status.text}</span>
+					<span fg={statusFg(outcome.status, theme)}>
+						{STATUS_TEXT[outcome.status]}
+					</span>
 				</>
 			}
 			headLength={outcomeLine(outcome, label).length}
 			note={outcome.message}
-			noteFg={outcome.status === "failed" ? ERROR_COLOR : MUTED_COLOR}
+			noteFg={outcome.status === "failed" ? theme.failed : theme.muted}
 		/>
 	);
 };
@@ -550,15 +582,16 @@ const OutcomeRow = ({
 // The issue setup filed, and the one thing to do for it to move. A failure to file says why and
 // nothing more: the config and the installs already landed, and the board opens either way.
 const FirstIssueBlock = ({ filed }: { filed: FiledIssue }): ReactNode => {
+	const theme = useTheme();
 	if (!filed.result.ok) {
 		const head = "✗ first issue not filed";
 		return (
 			<box style={{ marginTop: 1 }}>
 				<NotedLine
-					head={<span fg={ERROR_COLOR}>{head}</span>}
+					head={<span fg={theme.failed}>{head}</span>}
 					headLength={head.length}
 					note={filed.result.error.message}
-					noteFg={ERROR_COLOR}
+					noteFg={theme.failed}
 				/>
 			</box>
 		);
@@ -566,16 +599,18 @@ const FirstIssueBlock = ({ filed }: { filed: FiledIssue }): ReactNode => {
 	const { shortId, title } = filed.result.value;
 	return (
 		<box style={{ flexDirection: "column", marginTop: 1 }}>
-			<text>
-				<span fg={DONE_COLOR}>✓</span>
+			<text fg={theme.defaultFg}>
+				<span fg={theme.done}>✓</span>
 				{` filed ${shortId} for ${filed.harness}`}
 			</text>
 			<box style={{ paddingLeft: NOTE_INDENT }}>
-				<text fg={MUTED_COLOR}>{title}</text>
+				<text fg={theme.muted}>{title}</text>
 			</box>
 			<box style={{ flexDirection: "column", marginTop: 1 }}>
 				{nextLines(filed.harness, shortId).map((line) => (
-					<text key={line}>{line}</text>
+					<text key={line} fg={theme.defaultFg}>
+						{line}
+					</text>
 				))}
 			</box>
 		</box>
@@ -595,14 +630,17 @@ const CheckRow = ({
 	harness,
 	checked,
 	focused,
-}: CheckRowProps): ReactNode => (
-	<text>
-		<Gutter label={label} focused={focused} />
-		<span bg={focused ? SELECTED_BG : undefined}>
-			{`[${checked ? "x" : " "}] ${harness}`}
-		</span>
-	</text>
-);
+}: CheckRowProps): ReactNode => {
+	const theme = useTheme();
+	return (
+		<text fg={theme.defaultFg}>
+			<Gutter label={label} focused={focused} />
+			<span bg={focused ? theme.surface.selected : undefined}>
+				{`[${checked ? "x" : " "}] ${harness}`}
+			</span>
+		</text>
+	);
+};
 
 /**
  * Run the setup screen on its own renderer. Resolves true when the config was written and the
@@ -612,17 +650,20 @@ export const startSetup = async (deps: SetupDeps): Promise<boolean> => {
 	const renderer = await createCliRenderer({ exitOnCtrlC: true });
 	let completed = false;
 	try {
+		const theme = await Theme.detect(renderer);
 		createRoot(renderer).render(
-			<ErrorBoundary fallback={(error) => <SetupCrash error={error} />}>
-				<SetupScreen
-					{...deps}
-					onComplete={() => {
-						completed = true;
-						renderer.destroy();
-					}}
-					onQuit={() => renderer.destroy()}
-				/>
-			</ErrorBoundary>,
+			<ThemeProvider value={theme}>
+				<ErrorBoundary fallback={(error) => <SetupCrash error={error} />}>
+					<SetupScreen
+						{...deps}
+						onComplete={() => {
+							completed = true;
+							renderer.destroy();
+						}}
+						onQuit={() => renderer.destroy()}
+					/>
+				</ErrorBoundary>
+			</ThemeProvider>,
 		);
 		await new Promise<void>((resolve) => {
 			renderer.on("destroy", resolve);
@@ -635,13 +676,14 @@ export const startSetup = async (deps: SetupDeps): Promise<boolean> => {
 
 const SetupCrash = ({ error }: { error: Error }): ReactNode => {
 	const renderer = useRenderer();
+	const theme = useTheme();
 	useKeyboard((key) => {
 		if (key.name === "q") renderer.destroy();
 	});
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<text fg={ERROR_COLOR}>Setup crashed: {error.message}</text>
-			<text fg={MUTED_COLOR}>q quit</text>
+			<text fg={theme.failed}>Setup crashed: {error.message}</text>
+			<text fg={theme.muted}>q quit</text>
 		</box>
 	);
 };

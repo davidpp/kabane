@@ -6,23 +6,20 @@
 // be, and the background its rows sit on.
 import type { ReactNode } from "react";
 import type { PlanEntry } from "./ports";
-
-const CHIP_COLOR = "#f97316";
-const MUTED_COLOR = "#6b7280";
-const TEXT_COLOR = "#e6edf3";
-const DONE_COLOR = "#22c55e";
+import { type Theme, useTheme } from "./theme";
 
 export const planGlyph = (
 	status: PlanEntry["status"],
 	spinnerFrame: string,
+	theme: Theme.Tokens,
 ): { glyph: string; color: string } => {
 	switch (status) {
 		case "completed":
-			return { glyph: "✓", color: DONE_COLOR };
+			return { glyph: "✓", color: theme.done };
 		case "in_progress":
-			return { glyph: spinnerFrame, color: CHIP_COLOR };
+			return { glyph: spinnerFrame, color: theme.accent };
 		case "pending":
-			return { glyph: "○", color: MUTED_COLOR };
+			return { glyph: "○", color: theme.muted };
 	}
 };
 
@@ -45,24 +42,29 @@ export const PlanBlock = ({
 	width,
 	maxRows,
 	bg,
-}: PlanBlockProps): ReactNode => (
-	<>
-		{plan.slice(0, maxRows).map((entry) => {
-			const { glyph, color } = planGlyph(entry.status, spinnerFrame);
-			return (
-				// The entry's text is its identity — only its status moves.
-				<text key={entry.content} bg={bg} fg={color}>
-					{glyph}{" "}
-					<span fg={entry.status === "pending" ? MUTED_COLOR : TEXT_COLOR}>
-						{fit(entry.content, width)}
-					</span>
+}: PlanBlockProps): ReactNode => {
+	const theme = useTheme();
+	// On a painted surface the text takes the surface's foreground; off one, the terminal's own.
+	const textFg = bg ? theme.text : theme.defaultFg;
+	return (
+		<>
+			{plan.slice(0, maxRows).map((entry) => {
+				const { glyph, color } = planGlyph(entry.status, spinnerFrame, theme);
+				return (
+					// The entry's text is its identity — only its status moves.
+					<text key={entry.content} bg={bg} fg={color}>
+						{glyph}{" "}
+						<span fg={entry.status === "pending" ? theme.muted : textFg}>
+							{fit(entry.content, width)}
+						</span>
+					</text>
+				);
+			})}
+			{plan.length > maxRows ? (
+				<text bg={bg} fg={theme.muted}>
+					…{plan.length - maxRows} more
 				</text>
-			);
-		})}
-		{plan.length > maxRows ? (
-			<text bg={bg} fg={MUTED_COLOR}>
-				…{plan.length - maxRows} more
-			</text>
-		) : null}
-	</>
-);
+			) : null}
+		</>
+	);
+};

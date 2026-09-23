@@ -9,12 +9,8 @@ import { CopilotLog } from "./copilot-log";
 import { elapsed } from "./elapsed";
 import type { ActivityCard } from "./ports";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
+import { type Theme, useTheme } from "./theme";
 
-const MUTED_COLOR = "#6b7280";
-const ACCENT_COLOR = "#f97316";
-const SIDEBAR_BG = "#1c1c1c";
-const FAILED_COLOR = "#ef4444";
-const SELECTED_FG = "#e6edf3";
 const FOCUS_GUTTER = "> ";
 const NORMAL_GUTTER = "  ";
 
@@ -38,17 +34,17 @@ const cardGlyph = (card: ActivityCard, spinnerFrame: string): string => {
 	}
 };
 
-const cardColor = (card: ActivityCard): string => {
+const cardColor = (card: ActivityCard, theme: Theme.Tokens): string => {
 	switch (card.status) {
 		case "completed":
-			return MUTED_COLOR;
+			return theme.muted;
 		case "failed":
-			return FAILED_COLOR;
+			return theme.failed;
 		case "paused":
-			return MUTED_COLOR;
+			return theme.muted;
 		case "running":
 		case "pending":
-			return card.stale ? MUTED_COLOR : ACCENT_COLOR;
+			return card.stale ? theme.muted : theme.accent;
 	}
 };
 
@@ -67,14 +63,15 @@ const SidebarRow = ({
 	selected: boolean;
 	available: number;
 }): ReactNode => {
+	const theme = useTheme();
 	const gutter = focused && selected ? FOCUS_GUTTER : NORMAL_GUTTER;
-	const rowFg = selected && focused ? SELECTED_FG : fg;
+	const rowFg = selected && focused ? theme.text : fg;
 	const truncated =
 		text.length + gutter.length > available
 			? `${text.slice(0, Math.max(0, available - gutter.length - 1))}…`
 			: text;
 	return (
-		<text bg={SIDEBAR_BG} fg={rowFg}>
+		<text bg={theme.surface.raised} fg={rowFg}>
 			{gutter}
 			{truncated}
 		</text>
@@ -151,23 +148,26 @@ const SectionTitle = ({
 	id: string;
 	title: string;
 	spaced: boolean;
-}): ReactNode => (
-	<>
-		{spaced ? (
-			<text key={`${id}-spacer`} bg={SIDEBAR_BG}>
-				{" "}
+}): ReactNode => {
+	const theme = useTheme();
+	return (
+		<>
+			{spaced ? (
+				<text key={`${id}-spacer`} bg={theme.surface.raised}>
+					{" "}
+				</text>
+			) : null}
+			<text
+				key={`${id}-title`}
+				bg={theme.surface.raised}
+				fg={theme.muted}
+				attributes={TextAttributes.BOLD}
+			>
+				{title}
 			</text>
-		) : null}
-		<text
-			key={`${id}-title`}
-			bg={SIDEBAR_BG}
-			fg={MUTED_COLOR}
-			attributes={TextAttributes.BOLD}
-		>
-			{title}
-		</text>
-	</>
-);
+		</>
+	);
+};
 
 export const Sidebar = ({
 	activity,
@@ -177,6 +177,9 @@ export const Sidebar = ({
 	spinnerFrame,
 	resolveShortId,
 }: SidebarProps): ReactNode => {
+	const theme = useTheme();
+	// The panel sits on the raised surface, one step up from the terminal's own background.
+	const panelBg = theme.surface.raised;
 	const items = buildSidebarItems(activity);
 	const available = sidebarWidth - 1; // -1 for border
 
@@ -186,11 +189,11 @@ export const Sidebar = ({
 				style={{
 					width: sidebarWidth,
 					flexDirection: "column",
-					backgroundColor: SIDEBAR_BG,
+					backgroundColor: panelBg,
 					paddingLeft: 1,
 				}}
 			>
-				<text bg={SIDEBAR_BG} fg={MUTED_COLOR}>
+				<text bg={panelBg} fg={theme.muted}>
 					no activity
 				</text>
 			</box>
@@ -216,7 +219,7 @@ export const Sidebar = ({
 				<SidebarRow
 					key={`card-${card.id}`}
 					text={cardRowText(card, spinnerFrame, resolveShortId)}
-					fg={cardColor(card)}
+					fg={cardColor(card, theme)}
 					focused={focused}
 					selected={globalIdx === selectedIndex}
 					available={available}
@@ -246,7 +249,7 @@ export const Sidebar = ({
 				<SidebarRow
 					key={`input-${question.questionActivityId}`}
 					text={`? ${shortId} · ${firstLine}`}
-					fg={ACCENT_COLOR}
+					fg={theme.accent}
 					focused={focused}
 					selected={globalIdx === selectedIndex}
 					available={available}
@@ -261,7 +264,7 @@ export const Sidebar = ({
 			style={{
 				width: sidebarWidth,
 				flexDirection: "column",
-				backgroundColor: SIDEBAR_BG,
+				backgroundColor: panelBg,
 				paddingLeft: 1,
 			}}
 		>

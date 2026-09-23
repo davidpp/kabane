@@ -6,7 +6,7 @@
 // Two things are not rows: a plan, which heads the view pinned outside the scrollbox, and a `prompt`
 // event, which is what was ASKED and so is drawn as the rule opening the turn that answers it.
 
-import type { ScrollBoxRenderable } from "@opentui/core";
+import type { ColorInput, ScrollBoxRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import {
 	type ReactNode,
@@ -30,11 +30,8 @@ import {
 	PROMPT_EVENT,
 } from "./ports";
 import { useSpinnerFrame } from "./spinner";
+import { type Theme, useTheme } from "./theme";
 
-const MUTED_COLOR = "#6b7280";
-const ACCENT_COLOR = "#f97316";
-const ERROR_COLOR = "#ef4444";
-const COMPLETED_COLOR = "#22c55e";
 const POLL_MS = 1000;
 // The transcript has the whole screen where the copilot panel has a dozen rows, so its pinned block
 // can be taller — never tall enough to push the events it heads out of view.
@@ -72,41 +69,45 @@ const promptRule = (
 };
 
 // Per-event-type glyph. Types are host-defined strings; the common ones get a glyph, the rest a blank.
-const eventGlyph = (type: string): { glyph: string; color: string } => {
+// The agent's own text carries no colour: it reads on the terminal's foreground, dark or light.
+const eventGlyph = (
+	type: string,
+	theme: Theme.Tokens,
+): { glyph: string; color: ColorInput } => {
 	switch (type) {
 		case "text":
-			return { glyph: " ", color: "#c9d1d9" };
+			return { glyph: " ", color: theme.defaultFg };
 		case "tool_use":
-			return { glyph: "⚙", color: ACCENT_COLOR };
+			return { glyph: "⚙", color: theme.accent };
 		case "tool_result":
-			return { glyph: "←", color: MUTED_COLOR };
+			return { glyph: "←", color: theme.muted };
 		case "phase":
-			return { glyph: "▶", color: ACCENT_COLOR };
+			return { glyph: "▶", color: theme.accent };
 		case "progress":
-			return { glyph: "·", color: MUTED_COLOR };
+			return { glyph: "·", color: theme.muted };
 		case "permission":
-			return { glyph: "?", color: ACCENT_COLOR };
+			return { glyph: "?", color: theme.accent };
 		case "error":
-			return { glyph: "✗", color: ERROR_COLOR };
+			return { glyph: "✗", color: theme.failed };
 		case "metric":
-			return { glyph: "$", color: MUTED_COLOR };
+			return { glyph: "$", color: theme.muted };
 		default:
-			return { glyph: " ", color: MUTED_COLOR };
+			return { glyph: " ", color: theme.muted };
 	}
 };
 
 // Status color for the header.
-const statusColor = (status: string): string => {
+const statusColor = (status: string, theme: Theme.Tokens): string => {
 	switch (status) {
 		case "running":
 		case "pending":
-			return ACCENT_COLOR;
+			return theme.accent;
 		case "completed":
-			return COMPLETED_COLOR;
+			return theme.done;
 		case "failed":
-			return ERROR_COLOR;
+			return theme.failed;
 		default:
-			return MUTED_COLOR;
+			return theme.muted;
 	}
 };
 
@@ -155,6 +156,7 @@ export const EventView = ({
 	const [events, setEvents] = useState<ActivityEvent[]>([]);
 	const lastSeqRef = useRef(0);
 	const { width } = useTerminalDimensions();
+	const theme = useTheme();
 	const spinnerFrame = useSpinnerFrame(card ? isInFlight(card) : false);
 
 	// Initial load + poll. Stops polling once the card reaches a terminal state.
@@ -197,7 +199,7 @@ export const EventView = ({
 	if (!card) {
 		return (
 			<box style={{ flexDirection: "column", flexGrow: 1 }}>
-				<text fg={MUTED_COLOR}>Loading…</text>
+				<text fg={theme.muted}>Loading…</text>
 			</box>
 		);
 	}
@@ -217,8 +219,8 @@ export const EventView = ({
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<text>
-				<span fg={statusColor(card.status)}>{header}</span>
+			<text fg={theme.defaultFg}>
+				<span fg={statusColor(card.status, theme)}>{header}</span>
 			</text>
 			{plan.length > 0 ? (
 				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
@@ -232,22 +234,22 @@ export const EventView = ({
 			) : null}
 			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
 				{events.length === 0 ? (
-					<text fg={MUTED_COLOR}>no events yet</text>
+					<text fg={theme.muted}>no events yet</text>
 				) : (
 					events.map((event) => {
 						if (event.type === PROMPT_EVENT) {
 							const { label, tail } = promptRule(event.summary, contentWidth);
 							return (
 								<box key={event.seq} style={{ marginTop: 1 }}>
-									<text fg={MUTED_COLOR}>
+									<text fg={theme.muted}>
 										{"── "}
-										<span fg={ACCENT_COLOR}>{label}</span>
+										<span fg={theme.accent}>{label}</span>
 										{` ${tail}`}
 									</text>
 								</box>
 							);
 						}
-						const { glyph, color } = eventGlyph(event.type);
+						const { glyph, color } = eventGlyph(event.type, theme);
 						const time = new Date(event.at).toLocaleTimeString("en-US", {
 							hour12: false,
 							hour: "2-digit",
@@ -256,7 +258,7 @@ export const EventView = ({
 						});
 						return (
 							<text key={event.seq} fg={color}>
-								<span fg={MUTED_COLOR}>{time} </span>
+								<span fg={theme.muted}>{time} </span>
 								{glyph} {event.summary}
 							</text>
 						);
@@ -264,12 +266,12 @@ export const EventView = ({
 				)}
 				{card.status === "completed" ? (
 					<box style={{ marginTop: 1 }}>
-						<text fg={COMPLETED_COLOR}>completed · {duration}</text>
+						<text fg={theme.done}>completed · {duration}</text>
 					</box>
 				) : null}
 				{card.status === "failed" && card.error ? (
 					<box style={{ marginTop: 1 }}>
-						<text fg={ERROR_COLOR}>failed: {card.error}</text>
+						<text fg={theme.failed}>failed: {card.error}</text>
 					</box>
 				) : null}
 			</scrollbox>
@@ -282,10 +284,10 @@ export const EventView = ({
 			{notice ? (
 				<StatusBar
 					text={notice.text}
-					fg={notice.tone === "success" ? ACCENT_COLOR : ERROR_COLOR}
+					fg={notice.tone === "success" ? theme.accent : theme.failed}
 				/>
 			) : (
-				<StatusBar text={hints} fg={MUTED_COLOR} />
+				<StatusBar text={hints} fg={theme.muted} />
 			)}
 		</box>
 	);

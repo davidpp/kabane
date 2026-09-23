@@ -38,6 +38,7 @@ import {
 	sidebarWidth,
 } from "./sidebar";
 import { useSpinnerFrame } from "./spinner";
+import { useTheme } from "./theme";
 
 export type AppProps = {
 	cwd: string;
@@ -114,6 +115,7 @@ export const App = ({
 	resolveScope,
 }: AppProps): ReactNode => {
 	const renderer = useRenderer();
+	const theme = useTheme();
 	const [state, setState] = useState<BoardNav.BoardState | null>(null);
 	const [scope, setScope] = useState<BoardData.ScopeInfo | null>(null);
 	// In-flight host cards + awaiting-input questions, refreshed by the same poll as the board data. A
@@ -785,13 +787,13 @@ export const App = ({
 
 	if (error)
 		return (
-			<text fg="#ef4444">
+			<text fg={theme.failed}>
 				Failed to load board: {error}
 				{"\n"}
-				<text fg="#a1a1aa">press r to retry · q to quit</text>
+				<text fg={theme.muted}>press r to retry · q to quit</text>
 			</text>
 		);
-	if (!state) return <text>Loading…</text>;
+	if (!state) return <text fg={theme.defaultFg}>Loading…</text>;
 
 	// The dispatch overlay floats over WHICHEVER view it opened on (it's a separate state field, not a
 	// view), so both branches render inside the same full-screen wrapper it absolutely positions against.

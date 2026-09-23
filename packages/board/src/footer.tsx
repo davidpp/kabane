@@ -8,14 +8,14 @@
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
 import type { CopilotLog } from "./copilot-log";
-
-// Slightly lifted from the terminal bg (selection is #2f2f2f) — visible as a bar, quiet as chrome.
-export const FOOTER_BG = "#1c1c1c";
+import { type Theme, useTheme } from "./theme";
 
 // The copilot indicator's colour by tone, shared by the board and detail footers: the accent while
 // it runs and when it lands, the error red when it fails.
-export const copilotIndicatorFg = (tone: CopilotLog.Footer["tone"]): string =>
-	tone === "error" ? "#ef4444" : "#f97316";
+export const copilotIndicatorFg = (
+	tone: CopilotLog.Footer["tone"],
+	theme: Theme.Tokens,
+): string => (tone === "error" ? theme.failed : theme.accent);
 
 export type StatusBarProps = {
 	text: string;
@@ -24,6 +24,10 @@ export type StatusBarProps = {
 
 export const StatusBar = ({ text, fg }: StatusBarProps): ReactNode => {
 	const { width } = useTerminalDimensions();
+	const theme = useTheme();
+	// The bar sits on the raised surface: one step up from the terminal's own background, visible
+	// as a bar, quiet as chrome. Text without a colour of its own takes the surface's foreground.
+	const bg = theme.surface.raised;
 	// Truncate-then-pad: one line, every column painted. Small screens cut hints, never wrap them.
 	const line =
 		text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
@@ -33,10 +37,10 @@ export const StatusBar = ({ text, fg }: StatusBarProps): ReactNode => {
 				flexShrink: 0,
 				height: 1,
 				zIndex: 10,
-				backgroundColor: FOOTER_BG,
+				backgroundColor: bg,
 			}}
 		>
-			<text bg={FOOTER_BG} fg={fg}>
+			<text bg={bg} fg={fg ?? theme.text}>
 				{line.padEnd(width)}
 			</text>
 		</box>

@@ -9,10 +9,7 @@
 // the turn behind it still has to be cancellable.
 import type { ReactNode } from "react";
 import type { CopilotPermission } from "./ports";
-
-const CHIP_COLOR = "#f97316";
-const MUTED_COLOR = "#6b7280";
-const TEXT_COLOR = "#e6edf3";
+import { useTheme } from "./theme";
 
 const fit = (text: string, room: number): string =>
 	text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
@@ -40,14 +37,19 @@ export const PermissionBlock = ({
 	request,
 	width,
 	bg,
-}: PermissionBlockProps): ReactNode => (
-	<>
-		<text bg={bg} fg={CHIP_COLOR}>
-			? <span fg={TEXT_COLOR}>{fit(request.title, width - 2)}</span>
-		</text>
-		<text bg={bg} fg={CHIP_COLOR}>
-			{fit(optionsLine(request), width)}
-			<span fg={MUTED_COLOR}> · esc decline</span>
-		</text>
-	</>
-);
+}: PermissionBlockProps): ReactNode => {
+	const theme = useTheme();
+	// On a painted surface the text takes the surface's foreground; off one, the terminal's own.
+	const textFg = bg ? theme.text : theme.defaultFg;
+	return (
+		<>
+			<text bg={bg} fg={theme.accent}>
+				? <span fg={textFg}>{fit(request.title, width - 2)}</span>
+			</text>
+			<text bg={bg} fg={theme.accent}>
+				{fit(optionsLine(request), width)}
+				<span fg={theme.muted}> · esc decline</span>
+			</text>
+		</>
+	);
+};

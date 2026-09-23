@@ -25,11 +25,7 @@ import { BoardNav } from "./nav";
 import { PermissionBlock, permissionLine } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import type { PlanEntry } from "./ports";
-
-const CHIP_COLOR = "#f97316";
-const MUTED_COLOR = "#6b7280";
-const TEXT_COLOR = "#e6edf3";
-const PANE_BG = "#1c1c1c";
+import { useTheme } from "./theme";
 
 // Enter sends — the common case by far. A newline is ⇧enter where the terminal reports it and
 // ctrl+j everywhere (⇧enter needs the kitty keyboard protocol; ctrl+j is plain ASCII LF).
@@ -102,6 +98,9 @@ export const CopilotPane = ({
 	onContentChange,
 }: CopilotPaneProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
+	const theme = useTheme();
+	// The pane is a raised panel; the accent frames it because the input is waiting on you.
+	const paneBg = theme.surface.raised;
 	const running = copilot.turn === "running";
 	const plan = log?.current.plan ?? [];
 	const progress = plan.length > 0 ? planProgress(plan) : null;
@@ -164,19 +163,19 @@ export const CopilotPane = ({
 				flexShrink: 0,
 				flexDirection: "column",
 				border: true,
-				borderColor: CHIP_COLOR,
-				backgroundColor: PANE_BG,
+				borderColor: theme.accent,
+				backgroundColor: paneBg,
 				paddingLeft: 1,
 				paddingRight: 1,
 			}}
 			title={fit(`copilot · ${chip}${right ? ` · ${right}` : ""}`, width - 4)}
-			titleColor={CHIP_COLOR}
+			titleColor={theme.accent}
 		>
 			{showChoice && copilot.permission ? (
 				<PermissionBlock
 					request={copilot.permission}
 					width={width - 8}
-					bg={PANE_BG}
+					bg={paneBg}
 				/>
 			) : null}
 			{showPlan ? (
@@ -185,13 +184,13 @@ export const CopilotPane = ({
 					spinnerFrame={spinnerFrame}
 					width={width - 8}
 					maxRows={MAX_PLAN_ROWS}
-					bg={PANE_BG}
+					bg={paneBg}
 				/>
 			) : null}
 			{showTail
 				? tail.map((line, index) => (
 						// biome-ignore lint/suspicious/noArrayIndexKey: a positional window on the last few lines, not a list of things — row N is its only identity, and the same line can legitimately repeat.
-						<text key={index} bg={PANE_BG} fg={MUTED_COLOR}>
+						<text key={index} bg={paneBg} fg={theme.muted}>
 							{fit(line, width - 6)}
 						</text>
 					))
@@ -205,10 +204,10 @@ export const CopilotPane = ({
 						return (
 							<text
 								key={shortcut.name}
-								bg={PANE_BG}
-								fg={picked ? TEXT_COLOR : MUTED_COLOR}
+								bg={paneBg}
+								fg={picked ? theme.text : theme.muted}
 							>
-								<span fg={picked ? CHIP_COLOR : MUTED_COLOR}>
+								<span fg={picked ? theme.accent : theme.muted}>
 									{`${picked ? "› " : "  "}/${shortcut.name}`.padEnd(16)}
 								</span>
 								{fit(shortcut.hint, width - 24)}
@@ -217,7 +216,7 @@ export const CopilotPane = ({
 					})
 				: null}
 			<box style={{ flexDirection: "row", height: rows }}>
-				<text bg={PANE_BG} fg={CHIP_COLOR}>
+				<text bg={paneBg} fg={theme.accent}>
 					▸{" "}
 				</text>
 				<textarea
@@ -229,12 +228,12 @@ export const CopilotPane = ({
 					// creation — after that the textarea is the source of truth again.
 					initialValue={copilot.text}
 					placeholder={running ? RUNNING_PLACEHOLDER : PLACEHOLDER}
-					placeholderColor={MUTED_COLOR}
-					backgroundColor={PANE_BG}
-					focusedBackgroundColor={PANE_BG}
-					textColor={TEXT_COLOR}
-					focusedTextColor={TEXT_COLOR}
-					cursorColor={CHIP_COLOR}
+					placeholderColor={theme.muted}
+					backgroundColor={paneBg}
+					focusedBackgroundColor={paneBg}
+					textColor={theme.text}
+					focusedTextColor={theme.text}
+					cursorColor={theme.accent}
 					wrapMode="word"
 					onSubmit={onSubmit}
 					onContentChange={onContentChange}
@@ -265,14 +264,16 @@ const CollapsedRow = ({
 		copilot.turn === "idle" || !log
 			? null
 			: CopilotLog.footer(log, spinnerFrame);
+	const theme = useTheme();
+	const paneBg = theme.surface.raised;
 	const text = collapsedText(copilot, log, status);
 	const line =
 		text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
 	return (
-		<box style={{ flexShrink: 0, height: 1, backgroundColor: PANE_BG }}>
+		<box style={{ flexShrink: 0, height: 1, backgroundColor: paneBg }}>
 			<text
-				bg={PANE_BG}
-				fg={status ? copilotIndicatorFg(status.tone) : MUTED_COLOR}
+				bg={paneBg}
+				fg={status ? copilotIndicatorFg(status.tone, theme) : theme.muted}
 			>
 				{line.padEnd(width)}
 			</text>

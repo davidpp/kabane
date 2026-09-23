@@ -11,8 +11,6 @@ import {
 	moreBadge,
 	rowMeta,
 	rowStyle,
-	SELECTED_BG,
-	SELECTED_FG,
 	shortIdIndex,
 } from "./board";
 import type { BoardData } from "./data";
@@ -20,6 +18,7 @@ import type { BoardNav } from "./nav";
 import { DispatchOverlay, HelpOverlay, overlayRowStyle } from "./overlay";
 import type { ActivityCard, TriggerDescriptor } from "./ports";
 import { renderTest } from "./testing";
+import { Theme } from "./theme";
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
@@ -187,6 +186,26 @@ test("Board renders the selected row's title on the highlight background, not in
 		expect(titleSpan).toBeDefined();
 		expect(titleSpan?.bg.toInts().slice(0, 3)).toEqual([0x2f, 0x2f, 0x2f]);
 		expect(titleSpan?.fg.toInts().slice(0, 3)).not.toEqual([0x2f, 0x2f, 0x2f]);
+	} finally {
+		destroy();
+	}
+});
+
+// OpenTUI draws an unset foreground as explicit white, which vanishes on a light terminal. An idle
+// title carries no meaning of its own, so it must be the terminal's own foreground (SGR 39).
+test("Board draws an idle row's title in the terminal's own foreground, not white", async () => {
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await renderTest(
+			<Board sections={fixture} expanded={new Set()} selectedId={null} />,
+			{ width: 120, height: 20 },
+		);
+	try {
+		await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("Wire the board"),
+		);
+		const spans = captureSpans().lines.flatMap((line) => line.spans);
+		const titleSpan = spans.find((s) => s.text.includes("Wire the board"));
+		expect(titleSpan?.fg.intent).toBe("default");
 	} finally {
 		destroy();
 	}
@@ -466,7 +485,7 @@ test("activityStrip counts cards by kind (singular for one), omits zero parts, a
 });
 
 test("rowStyle pairs an explicit bg with explicit fg on every selected cell and never emits INVERSE", () => {
-	const selected = rowStyle(true, "#eab308");
+	const selected = rowStyle(true, "#eab308", Theme.DARK);
 	expect(selected.bg).toBeDefined();
 	expect(selected.idFg).toBeDefined();
 	// The title cell is the one that was invisible under INVERSE — it must carry an explicit fg.
@@ -476,10 +495,11 @@ test("rowStyle pairs an explicit bg with explicit fg on every selected cell and 
 	// Selection is colors only — no attributes field means TextAttributes.INVERSE can never be set.
 	expect(selected).not.toHaveProperty("attributes");
 
-	const idle = rowStyle(false, "#eab308");
+	const idle = rowStyle(false, "#eab308", Theme.DARK);
 	expect(idle.bg).toBeUndefined();
 	expect(idle.idFg).toBe("#eab308");
-	expect(idle.titleFg).toBeUndefined();
+	// The terminal's own foreground, not an unset one: OpenTUI draws unset as white.
+	expect(idle.titleFg).toBe(Theme.DARK.defaultFg);
 });
 
 test("DispatchOverlay renders the title, the numbered host triggers, the preview, and the hint row", async () => {
@@ -573,14 +593,14 @@ test("DispatchOverlay shows the loading and empty states", async () => {
 });
 
 test("overlayRowStyle: selection pairs the board's explicit bg+fg (never INVERSE); idle rows keep the backdrop bg", () => {
-	const selected = overlayRowStyle(true);
-	expect(selected.bg).toBe(SELECTED_BG);
-	expect(selected.fg).toBe(SELECTED_FG);
+	const selected = overlayRowStyle(true, Theme.DARK);
+	expect(selected.bg).toBe(Theme.DARK.surface.selected);
+	expect(selected.fg).toBe(Theme.DARK.text);
 	expect(selected).not.toHaveProperty("attributes");
 
-	const idle = overlayRowStyle(false);
+	const idle = overlayRowStyle(false, Theme.DARK);
 	expect(idle.bg).toBeDefined();
-	expect(idle.bg).not.toBe(SELECTED_BG);
+	expect(idle.bg).not.toBe(Theme.DARK.surface.selected);
 	expect(idle.fg).toBeDefined();
 });
 

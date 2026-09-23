@@ -5,11 +5,7 @@
 // plain text: a Result error (show the message) and a markdown render throw (show the raw brief, via
 // the ErrorBoundary) — the view never crashes the app.
 import type { Task, TaskComment } from "@cabane/core";
-import {
-	type ScrollBoxRenderable,
-	SyntaxStyle,
-	TextAttributes,
-} from "@opentui/core";
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { type ReactNode, type RefObject, useEffect, useState } from "react";
 import type { BoardActivity } from "./activity";
 import { BoardData } from "./data";
@@ -19,23 +15,7 @@ import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import type { ActivityCard, ActivityStatus } from "./ports";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
-
-const HINT_COLOR = "#6b7280";
-const ERROR_COLOR = "#ef4444";
-// The one accent — flashed on the [copy] button and the success notice; muted otherwise.
-const ACCENT_COLOR = "#f97316";
-
-// SyntaxStyle allocates a native FFI handle — build ONE for the process, never per render.
-const SYNTAX_STYLE = SyntaxStyle.fromStyles({
-	"markup.heading": { fg: "#58a6ff", bold: true },
-	"markup.heading.1": { fg: "#58a6ff", bold: true },
-	"markup.heading.2": { fg: "#58a6ff", bold: true },
-	"markup.list": { fg: "#f97316" },
-	"markup.raw": { fg: "#a5d6ff" },
-	"markup.bold": { bold: true },
-	"markup.italic": { italic: true },
-	default: { fg: "#e6edf3" },
-});
+import { Theme, useTheme } from "./theme";
 
 // The header already shows `shortId · title`, and the brief (assembleContext) opens with the same
 // title as its `# ` heading — showing both reads as a bug. Strip that first heading (and the blank
@@ -89,17 +69,20 @@ export const cardStatusGlyph = (
 };
 
 // Status color for a card glyph.
-const cardGlyphColor = (status: ActivityStatus): string => {
+const cardGlyphColor = (
+	status: ActivityStatus,
+	theme: Theme.Tokens,
+): string => {
 	switch (status) {
 		case "running":
 		case "pending":
-			return ACCENT_COLOR;
+			return theme.accent;
 		case "completed":
-			return "#22c55e"; // green
+			return theme.done;
 		case "failed":
-			return ERROR_COLOR;
+			return theme.failed;
 		case "paused":
-			return HINT_COLOR;
+			return theme.muted;
 	}
 };
 
@@ -171,11 +154,18 @@ export type DetailProps = {
 
 // Markdown render is the one place a throw can reach the app; wrap it so a parse failure degrades to
 // the raw brief as plain text instead of tearing down the tree.
-const BriefBody = ({ content }: { content: string }): ReactNode => (
-	<ErrorBoundary fallback={<text>{content}</text>}>
-		<markdown content={content} syntaxStyle={SYNTAX_STYLE} />
-	</ErrorBoundary>
-);
+const BriefBody = ({ content }: { content: string }): ReactNode => {
+	const theme = useTheme();
+	return (
+		<ErrorBoundary fallback={<text fg={theme.defaultFg}>{content}</text>}>
+			<markdown
+				content={content}
+				syntaxStyle={Theme.markdownStyle(theme)}
+				fg={theme.defaultFg}
+			/>
+		</ErrorBoundary>
+	);
+};
 
 export const Detail = ({
 	basePath,
@@ -192,6 +182,7 @@ export const Detail = ({
 	linked = false,
 	onCopy,
 }: DetailProps): ReactNode => {
+	const theme = useTheme();
 	const [brief, setBrief] = useState<BriefState>({ status: "loading" });
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: task?.updatedAt is an intentional trigger — a v/x/n/s mutation on the open task re-fetches the brief without changing taskId.
@@ -231,11 +222,15 @@ export const Detail = ({
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			<box style={{ flexDirection: "row" }}>
-				<text attributes={TextAttributes.BOLD} style={{ flexGrow: 1 }}>
+				<text
+					fg={theme.defaultFg}
+					attributes={TextAttributes.BOLD}
+					style={{ flexGrow: 1 }}
+				>
 					{header}
 				</text>
 				<text
-					fg={notice?.tone === "success" ? ACCENT_COLOR : HINT_COLOR}
+					fg={notice?.tone === "success" ? theme.accent : theme.muted}
 					onMouseDown={onCopy}
 				>
 					[copy]
@@ -244,7 +239,7 @@ export const Detail = ({
 			{/* Boxed, not a bare <text>: a bare text sibling after the header row-box paints over row 0. */}
 			{headline ? (
 				<box style={{ flexDirection: "row", flexShrink: 0 }}>
-					<text fg={headline.stale ? HINT_COLOR : ACCENT_COLOR}>
+					<text fg={headline.stale ? theme.muted : theme.accent}>
 						{cardStatusLine(headline, spinnerFrame)}
 					</text>
 				</box>
@@ -252,11 +247,11 @@ export const Detail = ({
 			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
 				{cards && cards.length > 0 ? (
 					<box style={{ flexDirection: "column", marginBottom: 1 }}>
-						<text fg={HINT_COLOR} attributes={TextAttributes.BOLD}>
+						<text fg={theme.muted} attributes={TextAttributes.BOLD}>
 							activity
 						</text>
 						{cards.map((card) => (
-							<text key={card.id} fg={cardGlyphColor(card.status)}>
+							<text key={card.id} fg={cardGlyphColor(card.status, theme)}>
 								{"  "}
 								{cardRowLine(card, spinnerFrame)}
 							</text>
@@ -266,22 +261,22 @@ export const Detail = ({
 				{questions && questions.length > 0 ? (
 					<box style={{ flexDirection: "column", marginBottom: 1 }}>
 						{questions.map((q) => (
-							<text key={q.questionActivityId} fg={HINT_COLOR}>
+							<text key={q.questionActivityId} fg={theme.muted}>
 								? awaiting input: {q.question}
 							</text>
 						))}
-						<text fg={HINT_COLOR}>answer: cabane needs-input</text>
+						<text fg={theme.muted}>answer: cabane needs-input</text>
 					</box>
 				) : null}
 				{comments && comments.length > 0 ? (
 					<box style={{ flexDirection: "column", marginBottom: 1 }}>
-						<text fg={HINT_COLOR} attributes={TextAttributes.BOLD}>
+						<text fg={theme.muted} attributes={TextAttributes.BOLD}>
 							comments ({comments.length})
 						</text>
 						{comments.map((c) => (
 							<text
 								key={c.id}
-								fg={c.authorType === "human" ? "#e6edf3" : HINT_COLOR}
+								fg={c.authorType === "human" ? theme.defaultFg : theme.muted}
 							>
 								{"  "}
 								{c.author} · {relativeTime(c.createdAt)}:{" "}
@@ -291,9 +286,9 @@ export const Detail = ({
 					</box>
 				) : null}
 				{brief.status === "loading" ? (
-					<text fg={HINT_COLOR}>Loading brief…</text>
+					<text fg={theme.muted}>Loading brief…</text>
 				) : brief.status === "failed" ? (
-					<text fg={ERROR_COLOR}>{brief.content}</text>
+					<text fg={theme.failed}>{brief.content}</text>
 				) : (
 					<BriefBody content={stripTitleHeading(brief.content)} />
 				)}
@@ -302,10 +297,10 @@ export const Detail = ({
 			{notice ? (
 				<StatusBar
 					text={notice.undoable ? `${notice.text} · ⌃z undo` : notice.text}
-					fg={notice.tone === "success" ? ACCENT_COLOR : ERROR_COLOR}
+					fg={notice.tone === "success" ? theme.accent : theme.failed}
 				/>
 			) : (
-				<StatusBar text={hints} fg={HINT_COLOR} />
+				<StatusBar text={hints} fg={theme.muted} />
 			)}
 		</box>
 	);
