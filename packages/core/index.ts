@@ -96,6 +96,7 @@ export * from "./scope/schemas";
 export { ScopeUri } from "./scope/uri";
 // Storage
 export { normalizeScopeUri, Planner } from "./storage";
+export { Migrations } from "./storage/migrations";
 export { Oplog } from "./storage/oplog";
 // Sync (multi-device replication)
 export { Backfill } from "./sync/backfill";

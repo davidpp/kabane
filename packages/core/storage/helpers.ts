@@ -1,8 +1,8 @@
 /**
  * Planner Storage Helpers
  *
- * Shared constants, ID generation, row converters, and migrations
- * used across all domain files.
+ * Shared constants, ID generation, row converters, and schema introspection
+ * used across all domain files. The migration list is in `migrations.ts`.
  */
 
 import { ulid } from "ulid";
@@ -10,7 +10,6 @@ import { z } from "zod";
 import type { Db } from "../db/port";
 import { TABLES } from "../db/tables";
 import { err, ok, type Result } from "../result";
-import { withDb } from "../runtime";
 import type {
 	AgentActivity,
 	AgentSession,
@@ -426,7 +425,7 @@ export const rowToAgentActivity = (
 });
 
 // ============================================================
-// Migrations
+// Schema introspection
 // ============================================================
 
 /**
@@ -441,110 +440,4 @@ export const columnExists = (
 		name: string;
 	}[];
 	return rows.some((r) => r.name === column);
-};
-
-/**
- * Run migrations for existing databases.
- * Safe to call multiple times - checks before applying.
- */
-export const runMigrations = async (
-	basePath: string,
-): Promise<Result<void>> => {
-	return withDb(basePath, (db) => {
-		// Migration: Add short_id column to tasks table
-		// Note: SQLite doesn't support ADD COLUMN with UNIQUE constraint,
-		// so we add the column first, then create a unique index.
-		if (!columnExists(db, TABLES.tasks, "short_id")) {
-			db.run(`ALTER TABLE ${TABLES.tasks} ADD COLUMN short_id TEXT`);
-		}
-		// Always ensure index exists (handles both fresh and migrated DBs)
-		db.run(
-			`CREATE UNIQUE INDEX IF NOT EXISTS ${TABLES.tasks}_short_id_idx ON ${TABLES.tasks}(short_id)`,
-		);
-
-		// Migration: Add project_id column to tasks table
-		if (!columnExists(db, TABLES.tasks, "project_id")) {
-			db.run(`ALTER TABLE ${TABLES.tasks} ADD COLUMN project_id TEXT`);
-		}
-		db.run(
-			`CREATE INDEX IF NOT EXISTS ${TABLES.tasks}_project_id_idx ON ${TABLES.tasks}(project_id)`,
-		);
-
-		// Migration: kind column (task/issue) on databases created before it existed
-		if (!columnExists(db, TABLES.tasks, "kind")) {
-			db.run(
-				`ALTER TABLE ${TABLES.tasks} ADD COLUMN kind TEXT NOT NULL DEFAULT 'task'`,
-			);
-		}
-
-		// Migration: Add task_id column to proposals table for issue linkage
-		if (!columnExists(db, TABLES.proposals, "task_id")) {
-			db.run(`ALTER TABLE ${TABLES.proposals} ADD COLUMN task_id TEXT`);
-			db.run(
-				`CREATE INDEX IF NOT EXISTS ${TABLES.proposals}_task_id_idx ON ${TABLES.proposals}(task_id)`,
-			);
-		}
-
-		// Migration: replication columns on every synced table. Existing rows
-		// get version 1 and visibility 'shared', which is exactly what they were
-		// implicitly before the columns existed.
-		for (const table of REPLICATED_PHYSICAL_TABLES()) {
-			addColumnIfMissing(db, table, "updated_by", "TEXT");
-			addColumnIfMissing(db, table, "version", "INTEGER NOT NULL DEFAULT 1");
-			addColumnIfMissing(
-				db,
-				table,
-				"visibility",
-				"TEXT NOT NULL DEFAULT 'shared'",
-			);
-		}
-		// Migration: linked issues used to be identity + a snapshot of the
-		// external issue's content, and the content is what kept them home.
-		// The columns go, and the rows that were held back are released.
-		for (const column of DROPPED_UPSTREAM_SNAPSHOT_COLUMNS) {
-			dropColumnIfPresent(db, TABLES.upstream_links, column);
-		}
-		db.run(
-			`UPDATE ${TABLES.upstream_links} SET visibility = 'shared'
-			 WHERE visibility = 'private'`,
-		);
-	});
-};
-
-/**
- * The snapshot columns a linked issue no longer carries. None is indexed, which
- * is what makes DROP COLUMN legal here.
- */
-const DROPPED_UPSTREAM_SNAPSHOT_COLUMNS = [
-	"description",
-	"state",
-	"external_updated_at",
-	"refreshed_at",
-] as const;
-
-/** The physical names of the tables that replicate, for the column migration. */
-const REPLICATED_PHYSICAL_TABLES = (): string[] => [
-	TABLES.tasks,
-	TABLES.projects,
-	TABLES.task_links,
-	TABLES.focus_lists,
-	TABLES.comments,
-	TABLES.work_log,
-	TABLES.context_refs,
-	TABLES.upstream_links,
-];
-
-const addColumnIfMissing = (
-	db: Db,
-	table: string,
-	column: string,
-	ddl: string,
-): void => {
-	if (columnExists(db, table, column)) return;
-	db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
-};
-
-const dropColumnIfPresent = (db: Db, table: string, column: string): void => {
-	if (!columnExists(db, table, column)) return;
-	db.run(`ALTER TABLE ${table} DROP COLUMN ${column}`);
 };

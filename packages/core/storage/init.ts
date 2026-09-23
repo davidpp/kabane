@@ -1,29 +1,23 @@
 /**
  * Storage — Initialization & Clear
  *
- * `init` is idempotent and cheap, so every host calls it at boot: the schema
- * is IF NOT EXISTS throughout, migrations are guarded by column checks, and
- * the legacy capture triggers are dropped if a pre-explicit-capture database
- * still carries them. Order matters: tables, then migration-added columns.
+ * `init` is idempotent and cheap, so every host calls it at boot: it applies
+ * whatever numbered migrations the database has not had yet (`migrations.ts`),
+ * each once and each in its own transaction. On a current database that is one
+ * read of the version table. A failed migration is reported with its number and
+ * leaves the database at the version before it.
  */
 
-import { applySchema } from "../db/schema";
 import { ok, type Result } from "../result";
 import { withDb } from "../runtime";
-import { runMigrations, TABLES } from "./helpers";
-import { Oplog } from "./oplog";
+import { TABLES } from "./helpers";
+import { Migrations } from "./migrations";
 
 export namespace Planner {
 	export const init = async (basePath: string): Promise<Result<void>> => {
-		const schema = await withDb(basePath, (db) => applySchema(db));
-		if (!schema.ok) return schema;
-
-		const migrations = await runMigrations(basePath);
-		if (!migrations.ok) return migrations;
-
-		const legacy = await withDb(basePath, (db) => Oplog.dropLegacyTriggers(db));
-		if (!legacy.ok) return legacy;
-		if (!legacy.value.ok) return legacy.value;
+		const migrated = await withDb(basePath, (db) => Migrations.apply(db));
+		if (!migrated.ok) return migrated;
+		if (!migrated.value.ok) return migrated.value;
 		return ok(undefined);
 	};
 
