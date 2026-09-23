@@ -49,3 +49,23 @@ describe("TaskSchema replication fields", () => {
 		}
 	});
 });
+
+describe("TaskSchema deadline", () => {
+	// Other writers of the shared database store calendar dates; a read that
+	// validates its output (Jake's tRPC `today`) must accept them.
+	it("accepts a calendar date as well as a datetime", () => {
+		expect(
+			TaskSchema.safeParse({ ...base, deadline: "2026-02-06" }).success,
+		).toBe(true);
+		expect(
+			TaskSchema.safeParse({ ...base, deadline: "2026-02-06T23:59:59.000Z" })
+				.success,
+		).toBe(true);
+	});
+
+	it("rejects a deadline that is neither", () => {
+		expect(
+			TaskSchema.safeParse({ ...base, deadline: "2026-02-30" }).success,
+		).toBe(false);
+	});
+});

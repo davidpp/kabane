@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import type { TaskDraft, TaskLinkDraft, TaskUpdate } from "../schemas";
+import type { Task, TaskDraft, TaskLinkDraft, TaskUpdate } from "../schemas";
 import { Planner } from "./index";
 
 const TEST_BASE = join(import.meta.dir, ".test-data");
@@ -924,6 +924,34 @@ describe("Planner", () => {
 			}
 		});
 
+		it("buckets a calendar-date deadline by its day, like a datetime due that day", async () => {
+			const day = (offset: number): string =>
+				new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+			await Planner.addTask(TEST_BASE, {
+				title: "Date today",
+				deadline: day(0),
+			});
+			await Planner.addTask(TEST_BASE, {
+				title: "Date yesterday",
+				deadline: day(-1),
+			});
+			await Planner.addTask(TEST_BASE, {
+				title: "Date tomorrow",
+				state: "next",
+				deadline: day(1),
+			});
+
+			const result = await Planner.getToday(TEST_BASE);
+			expect(result.ok).toBe(true);
+			if (result.ok) {
+				const titles = (tasks: Task[]) => tasks.map((task) => task.title);
+				expect(titles(result.value.dueToday)).toContain("Date today");
+				expect(titles(result.value.overdue)).not.toContain("Date today");
+				expect(titles(result.value.overdue)).toContain("Date yesterday");
+				expect(titles(result.value.next)).toContain("Date tomorrow");
+			}
+		});
+
 		it("should apply scope filter by scope family", async () => {
 			const today = new Date().toISOString();
 			await Planner.addTask(TEST_BASE, {
@@ -946,6 +974,44 @@ describe("Planner", () => {
 				expect(dueTodayTitles).toContain("Desk today base");
 				expect(dueTodayTitles).toContain("Desk today variant");
 			}
+		});
+	});
+
+	describe("deadline ordering and filters", () => {
+		it("sorts and filters a calendar date as the end of that day", async () => {
+			await Planner.addTask(TEST_BASE, {
+				title: "Date only",
+				deadline: "2026-02-06",
+			});
+			await Planner.addTask(TEST_BASE, {
+				title: "Morning of",
+				deadline: "2026-02-06T10:00:00.000Z",
+			});
+			await Planner.addTask(TEST_BASE, {
+				title: "Next day",
+				deadline: "2026-02-07T01:00:00.000Z",
+			});
+
+			const sorted = await Planner.queryTasks(TEST_BASE, {
+				orderBy: "deadline",
+				orderDir: "asc",
+			});
+			expect(sorted.ok).toBe(true);
+			if (sorted.ok)
+				expect(sorted.value.map((task) => task.title)).toEqual([
+					"Morning of",
+					"Date only",
+					"Next day",
+				]);
+
+			const dueByNoon = await Planner.queryTasks(TEST_BASE, {
+				dueBefore: "2026-02-06T12:00:00.000Z",
+			});
+			expect(dueByNoon.ok).toBe(true);
+			if (dueByNoon.ok)
+				expect(dueByNoon.value.map((task) => task.title)).toEqual([
+					"Morning of",
+				]);
 		});
 	});
 

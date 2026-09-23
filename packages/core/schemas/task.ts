@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { DeadlineSchema } from "./deadline";
 
 // ============================================================
 // Verification Schema
@@ -184,8 +185,8 @@ export const TaskSchema = z.object({
 
 	// --- Time ---
 
-	/** Due date (ISO datetime) */
-	deadline: z.string().datetime().optional(),
+	/** Due date: an ISO datetime or a calendar date (deadline.ts) */
+	deadline: DeadlineSchema.optional(),
 
 	/** Defer until date (hide until this date) */
 	deferUntil: z.string().datetime().optional(),
