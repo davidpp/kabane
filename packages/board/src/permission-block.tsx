@@ -7,9 +7,11 @@
 // The options are numbered rather than moved through with j/k: the dispatch overlay's digits are
 // the board's idiom for a short list, and unlike that overlay this one must not own the keyboard —
 // the turn behind it still has to be cancellable.
+import type { ColorInput } from "@opentui/core";
 import type { ReactNode } from "react";
 import type { CopilotPermission } from "./ports";
-import { useTheme } from "./theme";
+import { Segments } from "./segments";
+import { type Theme, useTheme } from "./theme";
 
 const fit = (text: string, room: number): string =>
 	text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
@@ -24,6 +26,35 @@ export const optionsLine = (request: CopilotPermission): string =>
 // Exported pure so the copy is assertable without a renderer.
 export const permissionLine = (request: CopilotPermission): string =>
 	`? ${request.title} · ${optionsLine(request)} · esc decline`;
+
+// How to answer, in the footer's manner: each key in the text color, what it does muted. The `?`
+// before the title is the request, and the only part in the accent: the options are keys, not asks.
+const answerSegments = (
+	request: CopilotPermission,
+	theme: Theme.Tokens,
+	textFg: ColorInput,
+): Segments.Segment[] => [
+	...request.options.flatMap((option, index) => [
+		...(index > 0 ? [{ text: " · ", fg: theme.muted }] : []),
+		{ text: `${index + 1}`, fg: textFg },
+		{ text: ` ${option.label}`, fg: theme.muted },
+	]),
+	{ text: " · ", fg: theme.muted },
+	{ text: "esc", fg: textFg },
+	{ text: " decline", fg: theme.muted },
+];
+
+/** `permissionLine` in its colors: the collapsed pane's one row, and the same words as the block. */
+export const permissionSegments = (
+	request: CopilotPermission,
+	theme: Theme.Tokens,
+	textFg: ColorInput,
+): Segments.Segment[] => [
+	{ text: "? ", fg: theme.accent },
+	{ text: request.title, fg: textFg },
+	{ text: " · ", fg: theme.muted },
+	...answerSegments(request, theme, textFg),
+];
 
 export type PermissionBlockProps = {
 	request: CopilotPermission;
@@ -46,9 +77,10 @@ export const PermissionBlock = ({
 			<text bg={bg} fg={theme.accent}>
 				? <span fg={textFg}>{fit(request.title, width - 2)}</span>
 			</text>
-			<text bg={bg} fg={theme.accent}>
-				{fit(optionsLine(request), width)}
-				<span fg={theme.muted}> · esc decline</span>
+			<text bg={bg}>
+				{Segments.spans(
+					Segments.fit(answerSegments(request, theme, textFg), width),
+				)}
 			</text>
 		</>
 	);

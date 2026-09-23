@@ -17,7 +17,7 @@ export const planGlyph = (
 		case "completed":
 			return { glyph: "✓", color: theme.done };
 		case "in_progress":
-			return { glyph: spinnerFrame, color: theme.accent };
+			return { glyph: spinnerFrame, color: theme.working };
 		case "pending":
 			return { glyph: "○", color: theme.muted };
 	}
