@@ -22,6 +22,7 @@ import {
 } from "react";
 import { elapsed } from "./elapsed";
 import { StatusBar } from "./footer";
+import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import { PermissionBlock } from "./permission-block";
 import { PlanBlock } from "./plan-block";
@@ -167,8 +168,10 @@ export type EventViewProps = {
 	// outside the scrollbox, so reading back through the turn never scrolls the thing being asked
 	// off screen, and where the eye already goes for what to press.
 	permission?: CopilotPermission | null;
-	// Extra footer hints for this card (the copilot's `x cancel`); the scroll/back pair is always there.
-	extraHints?: string;
+	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation):
+	// `x` is hinted only on the copilot's transcript while its turn runs. Optional so render-only
+	// tests get the transcript's own keys.
+	keys?: Keymap.Live;
 	// Subtracted from the row width when the sidebar is up, so a long plan entry is fitted to what the
 	// view actually has rather than wrapping into a second line.
 	sidebarWidth?: number;
@@ -176,6 +179,8 @@ export type EventViewProps = {
 	// panel has real height and must push the view up, not cover it.
 	pane?: ReactNode;
 };
+
+const TRANSCRIPT_KEYS: Keymap.Live = { context: "transcript", situation: {} };
 
 export const EventView = ({
 	cardId,
@@ -186,7 +191,7 @@ export const EventView = ({
 	notice,
 	plan = NO_PLAN,
 	permission,
-	extraHints,
+	keys = TRANSCRIPT_KEYS,
 	sidebarWidth = 0,
 	pane,
 }: EventViewProps): ReactNode => {
@@ -246,9 +251,7 @@ export const EventView = ({
 		card.taskShortId ??
 		(card.taskId ? (resolveShortId(card.taskId) ?? "—") : "—");
 	const duration = elapsed(card.startedAt, card.finishedAt);
-	const hints = ["j/k scroll", extraHints, "esc back"]
-		.filter(Boolean)
-		.join(" · ");
+	const hints = Keymap.footer(keys.context, keys.situation);
 	const contentWidth = Math.max(
 		MIN_ENTRY_COLS,
 		width - sidebarWidth - RESERVED_COLS,
@@ -330,7 +333,7 @@ export const EventView = ({
 					fg={notice.tone === "success" ? theme.done : theme.failed}
 				/>
 			) : (
-				<StatusBar text={hints} fg={theme.muted} />
+				<StatusBar hints={hints} />
 			)}
 		</box>
 	);

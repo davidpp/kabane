@@ -29,7 +29,7 @@ import { Detail } from "./detail";
 import { EventView } from "./event-view";
 import { Launcher } from "./launcher";
 import { BoardNav } from "./nav";
-import { DispatchOverlay, HelpOverlay } from "./overlay";
+import { DispatchOverlay, HelpSheet } from "./overlay";
 import type { ActivitySource, Copilot, Dispatcher } from "./ports";
 import {
 	buildSidebarItems,
@@ -172,6 +172,8 @@ export const App = ({
 	const scrollRef = useRef<ScrollBoxRenderable | null>(null);
 	// The board list's scrollbox; app.tsx keeps the selected row in view as j/k move it off-screen.
 	const listRef = useRef<ScrollBoxRenderable | null>(null);
+	// The `?` sheet's scrollbox, which j/k move while it is open (`helpScroll`).
+	const helpRef = useRef<ScrollBoxRenderable | null>(null);
 	// The copilot's input. It OWNS its text; the reducer only ever pushes a whole new value at it
 	// (a shortcut expansion, a recalled prompt, the clear after a send) through `copilotSetText`.
 	const inputRef = useRef<TextareaRenderable | null>(null);
@@ -469,6 +471,9 @@ export const App = ({
 					return;
 				case "scroll":
 					scrollRef.current?.scrollBy(effect.delta);
+					return;
+				case "helpScroll":
+					helpRef.current?.scrollBy(effect.delta);
 					return;
 				case "copy":
 					void runCopy(effect.id);
@@ -796,11 +801,28 @@ export const App = ({
 		);
 	if (!state) return <text fg={theme.defaultFg}>Loading…</text>;
 
+	// Which keys are live and what they can act on, once for the footer and the `?` sheet alike.
+	const openTaskId = state.view.type === "detail" ? state.view.taskId : null;
+	const situation = BoardNav.keySituation(state, {
+		linked,
+		events:
+			openTaskId !== null &&
+			BoardActivity.cardsForTask(
+				shownActivity,
+				openTaskId,
+				findTask(state, openTaskId)?.shortId,
+			).some((c) => c.hasEvents),
+	});
+	const keys = { context: BoardNav.keyContext(state), situation };
 	// The dispatch overlay floats over WHICHEVER view it opened on (it's a separate state field, not a
 	// view), so both branches render inside the same full-screen wrapper it absolutely positions against.
-	// The copilot prompt is the same kind of thing, pinned above the footer instead of centred.
+	// The `?` sheet is the same kind of thing, anchored at the bottom instead of centred.
 	const overlay = state.help ? (
-		<HelpOverlay />
+		<HelpSheet
+			context={BoardNav.sheetContext(state)}
+			situation={situation}
+			scrollRef={helpRef}
+		/>
 	) : state.dispatch ? (
 		<DispatchOverlay
 			shortId={shortIdOf(
@@ -863,11 +885,7 @@ export const App = ({
 								? state.copilot.permission
 								: undefined
 						}
-						extraHints={
-							cardId === CopilotLog.CARD_ID && state.copilot.turn === "running"
-								? "x cancel"
-								: undefined
-						}
+						keys={keys}
 						sidebarWidth={sbWidth}
 						pane={copilotPane}
 					/>
@@ -903,6 +921,7 @@ export const App = ({
 						focus={state.focus}
 						pane={copilotPane}
 						linked={linked.has(taskId)}
+						keys={keys}
 						onCopy={() => dispatchMouse({ type: "copy" })}
 					/>
 				</box>
@@ -933,6 +952,7 @@ export const App = ({
 						copilotLog?.current.card.startedAt,
 					)}
 					linked={linked}
+					keys={keys}
 					scrollRef={listRef}
 					onSelect={(row) => dispatchMouse({ type: "select", row })}
 					onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}

@@ -454,21 +454,21 @@ const EmptyBoard = (): ReactNode => {
 const SEARCH_OFF: BoardNav.SearchState = { mode: "off" };
 const NO_MARKS: ReadonlySet<string> = new Set<string>();
 
-// The footer, ONE line, by priority: a transient notice always wins > search-input mode shows the
-// live query with a cursor glyph (normal fg — it's an active input, not chrome) > a committed filter
-// shows a muted summary with the match count > the
-// trimmed key hints (full list behind `?`). Always a StatusBar so the row is reserved and
-// backgrounded whatever the variant.
+// The footer, ONE line, by priority: a transient notice always wins > otherwise the live context's
+// hints (Keymap.footer), led by the query being typed (normal fg: it is an active input, not chrome)
+// or a committed search's summary, the query as it was typed and its match count, kept short so
+// `esc clear` still fits beside it at forty columns. Always a StatusBar so the row is reserved
+// and backgrounded whatever the variant.
 const Footer = ({
 	notice,
 	search,
 	matchCount,
-	hints,
+	keys,
 }: {
 	notice: BoardNav.Notice | null | undefined;
 	search: BoardNav.SearchState;
 	matchCount: number;
-	hints: readonly Keymap.Hint[];
+	keys: Keymap.Live;
 }): ReactNode => {
 	const theme = useTheme();
 	if (notice) {
@@ -479,20 +479,43 @@ const Footer = ({
 			/>
 		);
 	}
-	if (search.mode === "typing") {
-		return <StatusBar text={`/${search.query}▌`} />;
-	}
-	if (search.mode === "committed") {
+	const hints = Keymap.footer(keys.context, keys.situation);
+	if (keys.context === "search" && search.mode === "typing")
+		return <StatusBar lead={`/${search.query}▌`} hints={hints} />;
+	if (keys.context === "searchResults" && search.mode === "committed") {
 		const matches = matchCount === 1 ? "1 match" : `${matchCount} matches`;
 		return (
 			<StatusBar
-				text={`search: "${search.query}" · ${matches} · esc clear`}
-				fg={theme.muted}
+				lead={`/${search.query} · ${matches}`}
+				leadFg={theme.muted}
+				hints={hints}
 			/>
 		);
 	}
 	return <StatusBar hints={hints} />;
 };
+
+// The footer's context when app.tsx does not say (render-only tests): the pane with focus, else the
+// board as its search leaves it, with what the board itself knows about the selected row.
+const ownKeys = (
+	focus: BoardNav.Focus,
+	search: BoardNav.SearchState,
+	selectedId: string | null,
+	linked: ReadonlySet<string>,
+): Keymap.Live => ({
+	context:
+		focus === "copilot"
+			? "copilot"
+			: search.mode === "typing"
+				? "search"
+				: search.mode === "committed"
+					? "searchResults"
+					: "board",
+	situation: {
+		selection: selectedId !== null,
+		linked: selectedId !== null && linked.has(selectedId),
+	},
+});
 
 export type BoardProps = {
 	sections: BoardData.BoardSection[];
@@ -534,6 +557,9 @@ export type BoardProps = {
 	// When the sidebar is visible, its width is subtracted from the available row width for
 	// truncation — otherwise a badged row wraps into a second line.
 	sidebarWidth?: number;
+	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation).
+	// Optional so render-only tests fall back to what the board knows itself.
+	keys?: Keymap.Live;
 };
 
 export const Board = ({
@@ -555,6 +581,7 @@ export const Board = ({
 	focus = "board",
 	pane,
 	sidebarWidth: sbWidth = 0,
+	keys,
 }: BoardProps): ReactNode => {
 	const { width } = useTerminalDimensions();
 	const theme = useTheme();
@@ -573,15 +600,6 @@ export const Board = ({
 	// frame's columns saying that nothing is filtered.
 	const filters = headerFilters(kind, status);
 	const markedPart = markedLabel(marked.size);
-	// App-specific keys only — the vim-obvious ones live in the `?` help overlay (StatusBar handles
-	// its own truncation on narrow frames).
-	// `O` is offered only when the selected row actually has an issue to open. Most rows do not, and
-	// in the narrow pane this board is built for, a permanent hint for a usually-inert key is rent.
-	const boardHints =
-		selectedId !== null && linked.has(selectedId)
-			? [Keymap.OPEN_LINK_HINT, ...Keymap.BOARD_FOOTER]
-			: Keymap.BOARD_FOOTER;
-	const hints = focus === "copilot" ? Keymap.COPILOT_FOOTER : boardHints;
 	// The SAME flatten the reducer uses for j/k, mouse addressing, and scroll-into-view — filter
 	// included — so the running rowIndex below is in lockstep with BoardNav.visibleRows.
 	const groups = BoardNav.visibleSections(sections, expanded, search, status);
@@ -639,7 +657,7 @@ export const Board = ({
 				notice={notice}
 				search={search}
 				matchCount={matchCount}
-				hints={hints}
+				keys={keys ?? ownKeys(focus, search, selectedId, linked)}
 			/>
 		</box>
 	);

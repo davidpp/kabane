@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 // The `A` flow end to end against a scripted copilot: the window and its chip, the running
 // indicator while the board stays interactive, the copilot card in the sidebar, the live transcript
-// in the event view with `x cancel`, the `✓` flash on completion, and the keypress that dismisses it.
+// in the event view with `x stop the turn`, the `✓` flash on completion, and the keypress that dismisses it.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -242,18 +242,18 @@ describe("the A prompt against a scripted copilot", () => {
 			expect(seen.contexts[0]?.selected?.title).toBe("Wire the copilot");
 			expect(seen.contexts[0]?.briefs.length).toBe(1);
 			mockInput.pressKey("?");
-			frame = await until((f) => f.includes("? / esc close"));
+			frame = await until((f) => f.includes("? esc close"));
 			await pressEsc();
-			frame = await until((f) => !f.includes("? / esc close"));
+			frame = await until((f) => !f.includes("? esc close"));
 			expect(frame).toContain("copilot · cabane_edit");
 
-			// `o` while it runs: the live transcript, with `x cancel` on offer; esc comes back and the
+			// `o` while it runs: the live transcript, with `x stop the turn` on offer; esc comes back and the
 			// turn runs on.
 			mockInput.pressKey("o");
 			frame = await until((f) => f.includes("⚙ cabane_edit"));
 			expect(frame).toContain("reading the selection");
 			expect(frame).toContain("copilot · — · running");
-			expect(frame).toContain("x cancel");
+			expect(frame).toContain("x stop the turn");
 			await pressEsc();
 			frame = await until((f) => f.includes("Wire the copilot"));
 			expect(frame).toContain("copilot · cabane_edit");
@@ -275,10 +275,10 @@ describe("the A prompt against a scripted copilot", () => {
 			mockInput.pressKey("o");
 			frame = await until((f) => f.includes("⚙ cabane_edit"));
 			expect(frame).toContain("reading the selection");
-			expect(frame).toContain("x cancel");
+			expect(frame).toContain("x stop the turn");
 			mockInput.pressKey("x");
 			frame = await until((f) => f.includes("copilot · — · failed"));
-			expect(frame).not.toContain("x cancel");
+			expect(frame).not.toContain("x stop the turn");
 			expect(seen.cancels).toBe(1);
 			await pressEsc();
 			frame = await until((f) => f.includes("Wire the copilot"));
