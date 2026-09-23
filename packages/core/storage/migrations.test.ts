@@ -12,7 +12,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
+import { physicalTable } from "../db/tables";
 import { withDb as runWithDb } from "../runtime";
 import { configureTestRuntime } from "../testing";
 import { columnExists, TABLES } from "./helpers";
@@ -93,6 +95,24 @@ const schemaSignature = (at: string) =>
 		return { objects: objects.map((o) => `${o.type}:${o.name}`), columns };
 	}, at);
 
+/** What a database reports once every migration has run. */
+const ALL_VERSIONS = Migrations.LIST.map((m, i) => ({
+	version: i + 1,
+	name: m.name,
+}));
+
+const tableNames = (at = base) =>
+	withDb(
+		(db) =>
+			db
+				.query<{ name: string }, []>(
+					"SELECT name FROM sqlite_master WHERE type = 'table'",
+				)
+				.all()
+				.map((r) => r.name),
+		at,
+	);
+
 const REPLICATION_COLUMNS = ["updated_by", "version", "visibility"] as const;
 
 const NOW = "2026-07-18T12:00:00.000Z";
@@ -105,14 +125,18 @@ describe("Migrations on a fresh database", () => {
 
 	afterEach(() => rmSync(base, { recursive: true, force: true }));
 
-	it("records the baseline once, and a second boot applies nothing", async () => {
-		expect(await versionRows()).toEqual([{ version: 1, name: "baseline" }]);
+	it("records every migration once, and a second boot applies nothing", async () => {
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
 		await mustInit(base);
-		expect(await versionRows()).toEqual([{ version: 1, name: "baseline" }]);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
 		const again = await withDb((db) => Migrations.apply(db));
 		expect(again).toEqual({
 			ok: true,
-			value: { from: 1, to: Migrations.SCHEMA_VERSION, applied: [] },
+			value: {
+				from: Migrations.SCHEMA_VERSION,
+				to: Migrations.SCHEMA_VERSION,
+				applied: [],
+			},
 		});
 	});
 
@@ -122,9 +146,7 @@ describe("Migrations on a fresh database", () => {
 			await mustInit(upgraded);
 			await withDb(forgetVersion, upgraded);
 			await mustInit(upgraded);
-			expect(await versionRows(upgraded)).toEqual([
-				{ version: 1, name: "baseline" },
-			]);
+			expect(await versionRows(upgraded)).toEqual(ALL_VERSIONS);
 			expect(await schemaSignature(upgraded)).toEqual(
 				await schemaSignature(base),
 			);
@@ -200,7 +222,7 @@ describe("Migrations on a pre-release database", () => {
 
 		const reinit = await Planner.init(base);
 		expect(reinit.ok).toBe(true);
-		expect(await versionRows()).toEqual([{ version: 1, name: "baseline" }]);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
 
 		for (const column of REPLICATION_COLUMNS) {
 			expect(await withDb((db) => columnExists(db, TABLES.tasks, column))).toBe(
@@ -306,6 +328,56 @@ describe("Migrations on a pre-release database", () => {
 	});
 });
 
+describe("Migrations on a device stamped at the baseline", () => {
+	beforeEach(async () => {
+		base = freshBase("stamped");
+		// What David's devices are after their first boot on the runner: version 1
+		// and nothing above it.
+		await withDb((db) => {
+			const stamped = Migrate.run(db, Migrations.LIST.slice(0, 1));
+			if (!stamped.ok) throw stamped.error;
+		});
+	});
+
+	afterEach(() => rmSync(base, { recursive: true, force: true }));
+
+	it("drops the retired tables and keeps every live row", async () => {
+		const task = await Planner.addTask(base, { title: "keeps" });
+		if (!task.ok) throw task.error;
+		const comment = await Planner.addComment(base, {
+			taskId: task.value.id,
+			author: "david",
+			authorType: "human",
+			content: "keeps too",
+		});
+		if (!comment.ok) throw comment.error;
+		await withDb((db) =>
+			db.run(
+				`INSERT INTO ${physicalTable("proposals")}
+				   (id, action, confidence, summary, payload, created_at, updated_at)
+				 VALUES ('01PROPOSAL', 'ask_question', 0.9, 'retired', '{}', ?, ?)`,
+				[NOW, NOW],
+			),
+		);
+
+		await mustInit(base);
+
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
+		const tables = await tableNames();
+		for (const retired of ["proposals", "proposals_fts"]) {
+			expect(tables).not.toContain(retired);
+		}
+		const kept = await Planner.getTask(base, task.value.id);
+		expect(kept.ok && kept.value?.title).toBe("keeps");
+		const comments = await Planner.getComments(base, task.value.id);
+		expect(comments.ok && comments.value.map((c) => c.content)).toEqual([
+			"keeps too",
+		]);
+		const found = await Planner.searchTasks(base, "keeps");
+		expect(found.ok && found.value.map((t) => t.id)).toEqual([task.value.id]);
+	});
+});
+
 describe("Migrations with Jake's table prefix", () => {
 	afterEach(() => {
 		configureTestRuntime();
@@ -325,7 +397,7 @@ describe("Migrations with Jake's table prefix", () => {
 				.map((r) => r.name),
 		);
 		expect(names).toEqual(["planner_schema_migrations"]);
-		expect(await versionRows()).toEqual([{ version: 1, name: "baseline" }]);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
 	});
 });
 
@@ -354,6 +426,6 @@ describe("Migrations when several processes boot one database at once", () => {
 			codes: [0, 0, 0, 0],
 			errors: ["", "", "", ""],
 		});
-		expect(await versionRows()).toEqual([{ version: 1, name: "baseline" }]);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
 	});
 });

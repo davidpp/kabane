@@ -43,7 +43,6 @@ export {
 	AGENT_SESSION_STATE_DISPLAY,
 	CONTEXT_KIND_DISPLAY,
 	type DisplayConfig,
-	PROPOSAL_ACTION_DISPLAY,
 	TASK_PRIORITY_DISPLAY,
 	TASK_SOURCE_DISPLAY,
 	TASK_STATE_DISPLAY,
@@ -94,23 +93,6 @@ export {
 	type ProjectUpdate,
 	ProjectUpdateSchema,
 } from "./project";
-// Proposal schemas
-export {
-	AskQuestionPayloadSchema,
-	type Proposal,
-	type ProposalAction,
-	ProposalActionSchema,
-	type ProposalDraft,
-	ProposalDraftSchema,
-	type ProposalPayload,
-	type ProposalPayloadInput,
-	ProposalPayloadSchema,
-	type ProposalQuery,
-	ProposalQuerySchema,
-	ProposalSchema,
-	type ProposalStatus,
-	ProposalStatusSchema,
-} from "./proposal";
 // Question-body convention (S4b — ask_question onto sessions)
 export {
 	answersContext,

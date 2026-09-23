@@ -39,8 +39,6 @@ export namespace Planner {
 			totalTasks: number;
 			byState: Record<string, number>;
 			byScope: Record<string, number>;
-			totalProposals: number;
-			pendingProposals: number;
 			doneToday: number;
 			/** Age in days of the oldest inbox task (0 when inbox is empty). */
 			oldestInboxDays: number;
@@ -85,20 +83,6 @@ export namespace Planner {
 			const byScope: Record<string, number> = Object.fromEntries(
 				mergeByScopeId(scopeRows),
 			);
-
-			const totalProposals = (
-				db.query(`SELECT COUNT(*) as count FROM ${TABLES.proposals}`).get() as {
-					count: number;
-				}
-			).count;
-
-			const pendingProposals = (
-				db
-					.query(
-						`SELECT COUNT(*) as count FROM ${TABLES.proposals} WHERE status = 'pending'`,
-					)
-					.get() as { count: number }
-			).count;
 
 			const today = new Date().toISOString().slice(0, 10);
 			const doneToday = (
@@ -150,8 +134,6 @@ export namespace Planner {
 				totalTasks,
 				byState,
 				byScope,
-				totalProposals,
-				pendingProposals,
 				doneToday,
 				oldestInboxDays,
 				staleInProgressCount,

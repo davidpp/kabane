@@ -1,7 +1,7 @@
 /**
  * Domain events.
  *
- * Emitted by the storage layer on task and proposal mutations and delivered
+ * Emitted by the storage layer on task mutations and delivered
  * through the `Notifier` port, so a host can fan them out (SSE, a dashboard)
  * without the core knowing how. Names follow `{module}.{entity}.{action}`.
  */
@@ -14,8 +14,6 @@ export const PLANNER_EVENTS = {
 	TASK_DELETED: "planner.task.deleted",
 	/** Task state changed (subset of updated) */
 	TASK_STATE_CHANGED: "planner.task.state_changed",
-	PROPOSAL_CREATED: "planner.proposal.created",
-	PROPOSAL_STATUS_CHANGED: "planner.proposal.status_changed",
 	FOCUS_UPDATED: "planner.focus.updated",
 } as const;
 

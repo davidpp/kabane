@@ -9,7 +9,6 @@
  */
 
 import type { CONTEXT_REF_KINDS } from "./context-ref";
-import type { ProposalAction } from "./proposal";
 import type { ACTIVITY_TYPES, SESSION_STATES } from "./session";
 import type { TaskPriority, TaskSource, TaskState } from "./task";
 
@@ -133,7 +132,3 @@ export const AGENT_ACTIVITY_TYPE_DISPLAY = {
 	error: { label: "Error", color: "text-red-400" },
 	question: { label: "Question", color: "text-purple-400" },
 } satisfies Record<(typeof ACTIVITY_TYPES)[number], DisplayConfig>;
-
-export const PROPOSAL_ACTION_DISPLAY = {
-	ask_question: { label: "Question", color: "text-cyan-500" },
-} satisfies Record<ProposalAction, DisplayConfig>;

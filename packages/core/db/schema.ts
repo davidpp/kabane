@@ -12,6 +12,11 @@
  * at the same schema. Every statement stays IF NOT EXISTS because a
  * pre-release database already has most of these tables when the baseline
  * runs on it.
+ *
+ * Being frozen, it still creates the tables later migrations drop (proposals,
+ * focus_lists, task_activity); `migrations.ts` removes them right after. So the
+ * DDL here is what a database looked like at the baseline, not what it holds
+ * now: `TABLES` and `FTS_TABLES` are that.
  */
 
 import type { Db } from "./port";
@@ -26,7 +31,27 @@ export type FtsTable = {
 	columns: string[];
 };
 
+/** The full-text tables a database has now. */
 export const FTS_TABLES: readonly FtsTable[] = [
+	{
+		name: "tasks_fts",
+		sourceTable: "tasks",
+		columns: ["title", "description", "tags"],
+	},
+	{
+		name: "task_comments_fts",
+		sourceTable: "task_comments",
+		columns: ["content"],
+	},
+];
+
+/**
+ * The full-text tables the baseline creates, frozen with it: written out rather
+ * than derived from `FTS_TABLES`, so a later change to the live list cannot
+ * change what migration 1 does. `proposals_fts` was one; migration 2 drops it
+ * with its source table.
+ */
+const BASELINE_FTS_TABLES: readonly FtsTable[] = [
 	{
 		name: "tasks_fts",
 		sourceTable: "tasks",
@@ -104,11 +129,11 @@ END;
 `;
 };
 
-/** Create every base table, index, and FTS table for the configured prefix. */
+/** Migration 1: create the baseline's tables, indexes and FTS tables for the configured prefix. */
 export const applySchema = (db: Db): void => {
 	const prefix = tablePrefix();
 	db.exec(prefixSql(SCHEMA_SQL, prefix));
-	for (const fts of FTS_TABLES) {
+	for (const fts of BASELINE_FTS_TABLES) {
 		db.exec(generateFtsSql(prefix, fts));
 	}
 };

@@ -15,7 +15,6 @@ import type {
 	AgentSession,
 	FocusList,
 	Project,
-	Proposal,
 	Task,
 	TaskComment,
 	TaskContextRef,
@@ -310,24 +309,6 @@ export const rowToFocusList = (row: Record<string, unknown>): FocusList => ({
 	items: JSON.parse(row.items as string),
 	theme: (row.theme as string) || undefined,
 	reflection: (row.reflection as string) || undefined,
-	createdAt: row.created_at as string,
-	updatedAt: row.updated_at as string,
-});
-
-export const rowToProposal = (row: Record<string, unknown>): Proposal => ({
-	id: row.id as string,
-	action: row.action as Proposal["action"],
-	status: row.status as Proposal["status"],
-	confidence: row.confidence as number,
-	summary: row.summary as string,
-	reasoning: (row.reasoning as string) || undefined,
-	payload: JSON.parse(row.payload as string),
-	sessionId: (row.session_id as string) || undefined,
-	taskId: (row.task_id as string) || undefined,
-	context: (row.context as string) || undefined,
-	expiresAt: (row.expires_at as string) || undefined,
-	reviewedAt: (row.reviewed_at as string) || undefined,
-	reviewNotes: (row.review_notes as string) || undefined,
 	createdAt: row.created_at as string,
 	updatedAt: row.updated_at as string,
 });

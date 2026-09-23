@@ -20,7 +20,7 @@ import { z } from "zod";
  *
  * Deliberately excluded: `task_activity` (high-volume audit trail),
  * `agent_sessions` / `agent_activities` (machine-local agent runs),
- * `proposals` (retired surface, drop pending), and `sequences` (local counter).
+ * and `sequences` (local counter).
  *
  * This is the set the resolver knows a rule for. Whether a given ROW replicates
  * is decided by its `visibility` column, not by this list.

@@ -80,7 +80,7 @@ Off by default. The local database stays authoritative; every storage write on a
 - **A log reset is detected from `PushAck.head`.**
 - `local-relay.ts` is the permanent test double, so every convergence assertion runs with no Cloudflare.
 
-Sync set: `tasks`, `task_links`, `focus_lists`, `task_comments`, `task_work_log`, `projects`, `task_context_refs`, `upstream_links`. Excluded: `task_activity`, `agent_sessions`/`agent_activities`, `proposals`, `sequences`.
+Sync set: `tasks`, `task_links`, `focus_lists`, `task_comments`, `task_work_log`, `projects`, `task_context_refs`, `upstream_links`. Excluded: `task_activity`, `agent_sessions`/`agent_activities`, `sequences`.
 
 `upstream_links` holds the external issue a task points at, and identity only: provider, external id, identifier, url, title. It carries no copy of what the external issue says, which is both why it replicates (a url and a title are less sensitive than the task descriptions already on the wire) and why nothing reading it needs a staleness rule. Whatever matters about the external issue goes in the task's own description when the link is made.
 
@@ -124,4 +124,4 @@ results, never thrown.
 
 ## Not moved from Jake (host adapters)
 
-`parser/` (AI extraction), `workflows/`, `hooks/`, `trpc/`, `cli/`, `widgets/`, `jake-module.ts`, `db-registration.ts`. `storage/schema.sql.ts` was dead and was not ported. The `proposals` surface is retired in Jake (JJAK-982) but still consumed by its CLI, router and dashboard, so it moved as-is; drop it once those consumers are gone.
+`parser/` (AI extraction), `workflows/`, `hooks/`, `trpc/`, `cli/`, `widgets/`, `jake-module.ts`, `db-registration.ts`. `storage/schema.sql.ts` was dead and was not ported. The `proposals` surface moved as-is and was dropped by migration 2 once Jake retired its consumers (JCAB-93, JCAB-97).

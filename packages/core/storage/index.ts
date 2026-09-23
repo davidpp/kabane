@@ -16,7 +16,6 @@ import { Planner as Implementation } from "./implementation";
 // Import domain namespaces
 import { Planner as Init } from "./init";
 import { Planner as Projects } from "./projects";
-import { Planner as Proposals } from "./proposals";
 import { Planner as SelectDurable } from "./select-durable";
 import { Planner as SessionDefaults } from "./session-defaults";
 import { Planner as SessionLinks } from "./session-links";
@@ -56,16 +55,6 @@ export const Planner = {
 	getFocusList: FocusLists.getFocusList,
 	saveFocusList: FocusLists.saveFocusList,
 	updateFocusList: FocusLists.updateFocusList,
-	// Proposals
-	addProposal: Proposals.addProposal,
-	getProposal: Proposals.getProposal,
-	queryProposals: Proposals.queryProposals,
-	approveProposal: Proposals.approveProposal,
-	rejectProposal: Proposals.rejectProposal,
-	reopenProposal: Proposals.reopenProposal,
-	getProposalsForTask: Proposals.getProposalsForTask,
-	getQuestionGroup: Proposals.getQuestionGroup,
-	resolveQuestionGroup: Proposals.resolveQuestionGroup,
 	// Projects
 	resolveProjectId: Projects.resolveProjectId,
 	addProject: Projects.addProject,

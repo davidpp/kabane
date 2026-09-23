@@ -17,11 +17,16 @@
  * Jake's shared `jake.db`; once each of those has booted on this build and been
  * stamped, `PreRelease` can be deleted and migration 1 becomes the schema, the
  * late indexes and nothing else.
+ *
+ * A TABLE A RELEASE RETIRES keeps its place in migration 1, which still creates
+ * it, and a later migration drops it. `TABLES` stops listing it, so the steps
+ * that still touch it name it with `physicalTable("<logical name>")`.
  */
 
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
 import { applySchema } from "../db/schema";
+import { physicalTable } from "../db/tables";
 import type { Result } from "../result";
 import { columnExists, TABLES } from "./helpers";
 import { Oplog } from "./oplog";
@@ -99,10 +104,12 @@ namespace PreRelease {
 			"kind",
 			"TEXT NOT NULL DEFAULT 'task'",
 		);
-		if (!columnExists(db, TABLES.proposals, "task_id")) {
-			db.run(`ALTER TABLE ${TABLES.proposals} ADD COLUMN task_id TEXT`);
+		// Retired by migration 2.
+		const proposals = physicalTable("proposals");
+		if (!columnExists(db, proposals, "task_id")) {
+			db.run(`ALTER TABLE ${proposals} ADD COLUMN task_id TEXT`);
 			db.run(
-				`CREATE INDEX IF NOT EXISTS ${TABLES.proposals}_task_id_idx ON ${TABLES.proposals}(task_id)`,
+				`CREATE INDEX IF NOT EXISTS ${proposals}_task_id_idx ON ${proposals}(task_id)`,
 			);
 		}
 
@@ -141,6 +148,11 @@ const createLateIndexes = (db: Db): void => {
 	);
 };
 
+/** Drop a retired table; its indexes and triggers go with it. */
+const dropTable = (db: Db, logical: string): void => {
+	db.run(`DROP TABLE IF EXISTS ${physicalTable(logical)}`);
+};
+
 export namespace Migrations {
 	/**
 	 * Append-only. Version = index + 1. A migration may be any SQL over the
@@ -153,6 +165,16 @@ export namespace Migrations {
 				applySchema(db);
 				PreRelease.upgrade(db);
 				createLateIndexes(db);
+			},
+		},
+		{
+			// A retired surface: nothing in cabane reads or writes it, and Jake
+			// retires its own proposals commands with it (JCAB-97).
+			name: "drop-proposals",
+			up: (db) => {
+				// The FTS triggers are on `proposals` and go with it; the FTS table is its own.
+				dropTable(db, "proposals");
+				dropTable(db, "proposals_fts");
 			},
 		},
 	];
