@@ -1,41 +1,30 @@
 /** @jsxImportSource @opentui/react */
-// Detail view for a single task: the folded agent brief (BoardData.taskBrief → Planner.assembleContext)
-// rendered as scrollable markdown. Header shows shortId + title; the scrollbox is driven by app.tsx's
-// `scroll` effect (it owns the ref so all keys stay in the one useKeyboard handler). Two fallbacks to
-// plain text: a Result error (show the message) and a markdown render throw (show the raw brief, via
-// the ErrorBoundary) — the view never crashes the app.
-import type { Task, TaskComment } from "@cabane/core";
+// Detail view for a single task, read as parts rather than one wall. Pinned on a raised block: the
+// title, the task at a glance, what is running on it and where it sits; under it, any question
+// waiting on the human. Then tabs: the description, the comments and the agent log, one at a time,
+// scrolled by app.tsx's `scroll` effect (it owns the ref so every key stays in the one useKeyboard
+// handler). DetailModel decides what goes where; this file only draws it. The agent brief is not
+// drawn here: `y` copies it, and it is what an agent reads.
+import type { Result, TaskComment } from "@cabane/core";
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
-import { type ReactNode, type RefObject, useEffect, useState } from "react";
+import { useTerminalDimensions } from "@opentui/react";
+import type { ReactNode, RefObject } from "react";
 import type { BoardActivity } from "./activity";
-import { BoardData } from "./data";
+import type { BoardData } from "./data";
+import { DetailModel } from "./detail-model";
 import { ErrorBoundary } from "./error-boundary";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import type { ActivityCard, ActivityStatus } from "./ports";
+import { Segments } from "./segments";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
 import { Theme, useTheme } from "./theme";
 
-// The header already shows `shortId · title`, and the brief (assembleContext) opens with the same
-// title as its `# ` heading — showing both reads as a bug. Strip that first heading (and the blank
-// line under it) before the markdown render; anything else passes through untouched. Exported pure
-// for tests.
-export const stripTitleHeading = (content: string): string => {
-	const lines = content.split("\n");
-	let i = 0;
-	while (i < lines.length && lines[i]?.trim() === "") i++;
-	if (!lines[i]?.startsWith("# ")) return content;
-	i++;
-	if (lines[i]?.trim() === "") i++;
-	return lines.slice(i).join("\n");
-};
-
-// `content` in `failed` is the plain text to render — the error message on a Result failure.
-type BriefState =
-	| { status: "loading" }
-	| { status: "ready"; content: string }
-	| { status: "failed"; content: string };
+// Columns the header block's padding takes, and those the scrollbox's bar and a safety margin hold
+// back, so a cut row is cut to the room it really has and never wraps.
+const HEADER_PADDING = 2;
+const SCROLL_RESERVED = 2;
 
 // The one-line status under the header for the task's first in-flight card:
 // `⠋ loop · implement · iteration 3 · $0.42` — the card's label then every detail line. When
@@ -100,7 +89,7 @@ export const formatElapsed = (ms: number | undefined): string => {
 	return remMin > 0 ? `${hr}h${remMin}m` : `${hr}h`;
 };
 
-// One-line text for a card row in the activity block: `⠹ scout · running · 2m14s`.
+// One-line text for a card row in the log: `⠹ scout · running · 2m14s`.
 export const cardRowLine = (
 	card: ActivityCard,
 	spinnerFrame?: string,
@@ -110,15 +99,6 @@ export const cardRowLine = (
 		card.durationMs != null ? ` · ${formatElapsed(card.durationMs)}` : "";
 	return `${glyph} ${card.label} · ${card.status}${elapsed}`;
 };
-
-/**
- * A comment author as a name: `cabane://actor/agent/claude` → `claude`. The URI is how writes are
- * stamped; on screen it is jargon that spends half a forty-column row. Anything else passes through.
- */
-export const actorName = (author: string): string =>
-	author.startsWith("cabane://actor/")
-		? (author.split("/").at(-1) ?? author)
-		: author;
 
 // Relative time label: "2d ago", "3h ago", "5m ago", "just now".
 export const relativeTime = (iso: string, now: number = Date.now()): string => {
@@ -133,18 +113,21 @@ export const relativeTime = (iso: string, now: number = Date.now()): string => {
 };
 
 export type DetailProps = {
-	basePath: string;
 	taskId: string;
-	// The selected task, for the header. Absent (e.g. filtered out on a poll) → fall back to the id.
-	task?: Task;
+	// The selected task, fresh from the board's poll. Absent (e.g. filtered out on a poll) → the one
+	// the records carry, else the id.
+	task?: BoardData.DetailRecords["task"];
+	// What the tabs show (BoardData.taskDetail): absent while it loads, an error when a read failed.
+	records?: Result<BoardData.DetailRecords>;
 	// Host activity cards for this task (BoardActivity, refreshed by app.tsx's poll): the first
-	// in-flight one is the status line under the header; all of them list in the activity block.
+	// in-flight one is the status line under the header; all of them head the log.
 	cards?: ActivityCard[];
-	// Task comments — rendered as a section above the brief.
-	comments?: TaskComment[];
-	// Unanswered questions parked on this task — rendered above the brief so what's blocked on the
-	// human is the first thing they see. Answering happens via the CLI, not the board (yet).
+	// Questions the host says are parked on this task, beside any the records carry. Pinned, so what
+	// is blocked on the human is the first thing they see.
 	questions?: BoardActivity.AwaitingQuestion[];
+	// The tab in view (BoardNav.detailTab) and what a click on another one asks for.
+	tab?: DetailModel.Tab;
+	onTab?: (tab: DetailModel.Tab) => void;
 	// Animated spinner frame threaded from app.tsx — animates card glyphs.
 	spinnerFrame?: string;
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
@@ -155,16 +138,18 @@ export type DetailProps = {
 	// The copilot pane, rendered between the content and the footer. A slot rather than a float: the
 	// panel has real height and must push the view up, not cover it.
 	pane?: ReactNode;
-	// This task points at an issue in an external tracker, so `O` has somewhere to go. WHICH issue is
-	// already in the brief below (assembleContext writes it), so this only gates the footer hint.
+	// This task points at an issue in an external tracker, so `O` has somewhere to go. It gates the
+	// footer hint; which issue is in the pinned meta lines.
 	linked?: boolean;
 	// Clicking the header [copy] affordance yanks the brief — same action as the `y` key.
 	onCopy?: () => void;
+	// Columns the sidebar takes beside the view, so the tab bar fits the room it really has.
+	sidebarWidth?: number;
 };
 
 // Markdown render is the one place a throw can reach the app; wrap it so a parse failure degrades to
-// the raw brief as plain text instead of tearing down the tree.
-const BriefBody = ({ content }: { content: string }): ReactNode => {
+// the raw text instead of tearing down the tree.
+const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 	const theme = useTheme();
 	return (
 		<ErrorBoundary fallback={<text fg={theme.defaultFg}>{content}</text>}>
@@ -178,12 +163,13 @@ const BriefBody = ({ content }: { content: string }): ReactNode => {
 };
 
 export const Detail = ({
-	basePath,
 	taskId,
-	task,
+	task: freshTask,
+	records,
 	cards,
-	comments,
 	questions,
+	tab = DetailModel.DEFAULT_TAB,
+	onTab,
 	spinnerFrame,
 	scrollRef,
 	notice,
@@ -191,27 +177,15 @@ export const Detail = ({
 	pane,
 	linked = false,
 	onCopy,
+	sidebarWidth = 0,
 }: DetailProps): ReactNode => {
 	const theme = useTheme();
-	const [brief, setBrief] = useState<BriefState>({ status: "loading" });
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: task?.updatedAt is an intentional trigger — a v/x/n/s mutation on the open task re-fetches the brief without changing taskId.
-	useEffect(() => {
-		let cancelled = false;
-		setBrief({ status: "loading" });
-		void (async () => {
-			const result = await BoardData.taskBrief(basePath, taskId);
-			if (cancelled) return;
-			setBrief(
-				result.ok
-					? { status: "ready", content: result.value }
-					: { status: "failed", content: result.error.message },
-			);
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [basePath, taskId, task?.updatedAt]);
+	const { width } = useTerminalDimensions();
+	const room = Math.max(0, width - sidebarWidth);
+	const headerRoom = Math.max(0, room - HEADER_PADDING);
+	const contentRoom = Math.max(0, room - SCROLL_RESERVED);
+	const loaded = records?.ok ? records.value : undefined;
+	const task = freshTask ?? loaded?.task;
 
 	const shortId = task?.shortId ?? taskId.slice(0, 8);
 	const header = [shortId, task?.title].filter(Boolean).join(" · ");
@@ -219,6 +193,8 @@ export const Detail = ({
 		(c) =>
 			c.status === "running" || c.status === "pending" || c.status === "paused",
 	);
+	const open = DetailModel.openQuestions(loaded, questions);
+	const summaries = DetailModel.tabs(loaded, cards?.length ?? 0);
 	const detailHints = [
 		...(linked ? [Keymap.OPEN_LINK_HINT] : []),
 		...(cards?.some((c) => c.hasEvents)
@@ -229,8 +205,9 @@ export const Detail = ({
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			{/* The header block: the task and what is running on it, one tonal step up, the way opencode
-			    sets a message apart — a surface, never a rule. Painted, so every cell names its fg. */}
+			{/* The header block: the task, what is running on it and where it sits, one tonal step
+			    up, the way opencode sets a message apart — a surface, never a rule. Painted, so every
+			    cell names its fg. */}
 			<box
 				style={{
 					flexDirection: "column",
@@ -256,6 +233,9 @@ export const Detail = ({
 						[copy]
 					</text>
 				</box>
+				{task ? (
+					<SummaryLine parts={DetailModel.summary(task)} room={headerRoom} />
+				) : null}
 				{/* Boxed, not a bare <text>: a bare text sibling after the header row-box paints over row 0. */}
 				{headline ? (
 					<box style={{ flexDirection: "row", flexShrink: 0 }}>
@@ -264,40 +244,44 @@ export const Detail = ({
 						</text>
 					</box>
 				) : null}
+				{loaded
+					? DetailModel.position(loaded).map((line) => (
+							<MetaRow
+								key={`${line.key} ${line.value}`}
+								line={line}
+								room={headerRoom}
+							/>
+						))
+					: null}
 			</box>
-			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
-				{cards && cards.length > 0 ? (
-					<box style={{ flexDirection: "column", marginBottom: 1 }}>
-						<SectionLabel label="activity" />
-						{cards.map((card) => (
-							<CardRow key={card.id} card={card} spinnerFrame={spinnerFrame} />
-						))}
-					</box>
-				) : null}
-				{questions && questions.length > 0 ? (
-					<box style={{ flexDirection: "column", marginBottom: 1 }}>
-						{questions.map((q) => (
-							<text key={q.questionActivityId} fg={theme.defaultFg}>
-								<span fg={theme.accent}>?</span> awaiting input: {q.question}
-							</text>
-						))}
-						<text fg={theme.muted}>answer: cabane needs-input</text>
-					</box>
-				) : null}
-				{comments && comments.length > 0 ? (
-					<box style={{ flexDirection: "column", marginBottom: 1 }}>
-						<SectionLabel label="comments" count={comments.length} />
-						{comments.map((c, index) => (
-							<CommentBlock key={c.id} comment={c} first={index === 0} />
-						))}
-					</box>
-				) : null}
-				{brief.status === "loading" ? (
-					<text fg={theme.muted}>loading brief</text>
-				) : brief.status === "failed" ? (
-					<text fg={theme.failed}>{brief.content}</text>
+			{open.length > 0 ? (
+				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
+					{open.map((q) => (
+						<text key={q.id} fg={theme.defaultFg}>
+							<span fg={theme.accent}>?</span> {q.question}
+						</text>
+					))}
+				</box>
+			) : null}
+			<TabBarRow summaries={summaries} active={tab} room={room} onTab={onTab} />
+			{/* Keyed by tab, so a switch opens the new tab at its top rather than at the old scroll. */}
+			<scrollbox
+				key={tab}
+				ref={scrollRef}
+				style={{ flexGrow: 1, marginTop: 1 }}
+			>
+				{records === undefined ? (
+					<text fg={theme.muted}>loading</text>
+				) : !records.ok ? (
+					<text fg={theme.failed}>{records.error.message}</text>
 				) : (
-					<BriefBody content={stripTitleHeading(brief.content)} />
+					<TabContent
+						tab={tab}
+						records={records.value}
+						cards={cards ?? []}
+						spinnerFrame={spinnerFrame}
+						room={contentRoom}
+					/>
 				)}
 			</scrollbox>
 			{pane}
@@ -313,50 +297,204 @@ export const Detail = ({
 	);
 };
 
-// A section's label in Label weight, as the board's bays have it, and its count muted.
-const SectionLabel = ({
-	label,
-	count,
+// The task at a glance under its title: meta in muted, a part waiting on the human in the accent.
+// One row, its tail cut with `…` when the pane is narrow.
+const SummaryLine = ({
+	parts,
+	room,
 }: {
-	label: string;
-	count?: number;
+	parts: readonly DetailModel.SummaryPart[];
+	room: number;
 }): ReactNode => {
 	const theme = useTheme();
+	const segments = parts.map((part, index) => ({
+		text: index === 0 ? part.text : ` · ${part.text}`,
+		fg: part.request ? theme.accent : theme.muted,
+	}));
+	return <text>{Segments.spans(Segments.fit(segments, room))}</text>;
+};
+
+// A pinned fact: its key muted, its value in the text color, one row, its tail cut with `…`.
+const MetaRow = ({
+	line,
+	room,
+}: {
+	line: DetailModel.MetaLine;
+	room: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const segments = [
+		{ text: `${line.key} `, fg: theme.muted },
+		{ text: line.value, fg: theme.text },
+	];
+	return <text>{Segments.spans(Segments.fit(segments, room))}</text>;
+};
+
+// The tab bar: the active tab in Label weight on the selected surface, an empty one faint, every
+// other in the terminal's own foreground; counts muted. A click on a cell asks for its tab.
+const TabBarRow = ({
+	summaries,
+	active,
+	room,
+	onTab,
+}: {
+	summaries: readonly DetailModel.TabSummary[];
+	active: DetailModel.Tab;
+	room: number;
+	onTab?: (tab: DetailModel.Tab) => void;
+}): ReactNode => {
+	const theme = useTheme();
+	const bar = DetailModel.tabBar(summaries, room);
+	const pad = " ".repeat(bar.pad);
 	return (
-		<text>
-			<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
-				{label}
-			</span>
-			{count !== undefined ? <span fg={theme.muted}> · {count}</span> : null}
-		</text>
+		<box style={{ flexDirection: "row", flexShrink: 0, marginTop: 1 }}>
+			{bar.cells.map((cell, index) => {
+				const summary = summaries.find((s) => s.tab === cell.tab);
+				const isActive = cell.tab === active;
+				const fg = isActive
+					? theme.text
+					: summary?.empty
+						? theme.faint
+						: theme.defaultFg;
+				const [label = "", count] = cell.text.split(" ");
+				return (
+					<text
+						key={cell.tab}
+						bg={isActive ? theme.surface.selected : undefined}
+						fg={fg}
+						attributes={isActive ? TextAttributes.BOLD : undefined}
+						onMouseDown={onTab ? () => onTab(cell.tab) : undefined}
+						style={{
+							flexShrink: 0,
+							marginLeft: bar.pad === 0 && index > 0 ? 1 : 0,
+						}}
+					>
+						{pad}
+						{label}
+						{count !== undefined ? (
+							<span fg={isActive || summary?.empty ? fg : theme.muted}>
+								{` ${count}`}
+							</span>
+						) : null}
+						{pad}
+					</text>
+				);
+			})}
+		</box>
 	);
 };
 
-// A card in the activity block: the status glyph carries the hue, the label reads in the terminal's
+const TabContent = ({
+	tab,
+	records,
+	cards,
+	spinnerFrame,
+	room,
+}: {
+	tab: DetailModel.Tab;
+	records: BoardData.DetailRecords;
+	cards: readonly ActivityCard[];
+	spinnerFrame?: string;
+	// Columns a log row may use.
+	room: number;
+}): ReactNode => {
+	const theme = useTheme();
+	switch (tab) {
+		case "description": {
+			const description = records.task.description?.trim();
+			return description ? (
+				<MarkdownBody content={description} />
+			) : (
+				<text fg={theme.faint}>no description</text>
+			);
+		}
+		case "comments": {
+			const comments = DetailModel.comments(records);
+			return comments.length > 0 ? (
+				<box style={{ flexDirection: "column" }}>
+					{comments.map((c, index) => (
+						<CommentBlock key={c.id} comment={c} first={index === 0} />
+					))}
+				</box>
+			) : (
+				<text fg={theme.faint}>no comments</text>
+			);
+		}
+		case "log": {
+			const lines = DetailModel.log(records);
+			return cards.length + lines.length > 0 ? (
+				<box style={{ flexDirection: "column" }}>
+					{cards.map((card) => (
+						<CardRow
+							key={card.id}
+							card={card}
+							spinnerFrame={spinnerFrame}
+							room={room}
+						/>
+					))}
+					{lines.map((line) => (
+						<LogRow key={line.id} line={line} room={room} />
+					))}
+				</box>
+			) : (
+				<text fg={theme.faint}>nothing logged</text>
+			);
+		}
+	}
+};
+
+// A card at the head of the log: the status glyph carries the hue, the label reads in the terminal's
 // own foreground, and the status and elapsed time are meta.
 const CardRow = ({
 	card,
 	spinnerFrame,
+	room,
 }: {
 	card: ActivityCard;
 	spinnerFrame?: string;
+	room: number;
 }): ReactNode => {
 	const theme = useTheme();
 	const glyph = cardStatusGlyph(card.status, spinnerFrame);
 	const rest = cardRowLine(card, spinnerFrame).slice(glyph.length);
 	const [label = "", ...meta] = rest.split(" · ");
+	const segments = [
+		{ text: glyph, fg: cardGlyphColor(card.status, theme) },
+		{ text: label, fg: theme.defaultFg },
+		{ text: meta.map((part) => ` · ${part}`).join(""), fg: theme.muted },
+	];
+	return <text>{Segments.spans(Segments.fit(segments, room))}</text>;
+};
+
+// One log line: glyph, kind and what was said, muted, its tail cut with `…`; its age held to the
+// right so the cut never takes it. An error is the failed hue from end to end.
+const LogRow = ({
+	line,
+	room,
+}: {
+	line: DetailModel.LogLine;
+	room: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const fg = line.failed ? theme.failed : theme.muted;
+	const kind = line.kind ? `${line.kind} ` : "";
+	const age = relativeTime(line.at);
+	const said = Segments.fit(
+		[{ text: `${line.glyph} ${kind}${line.text}`, fg }],
+		Math.max(0, room - age.length - 1),
+	);
 	return (
-		<text fg={theme.defaultFg}>
-			{"  "}
-			<span fg={cardGlyphColor(card.status, theme)}>{glyph}</span>
-			{label}
-			<span fg={theme.muted}>{meta.map((part) => ` · ${part}`).join("")}</span>
-		</text>
+		<box style={{ flexDirection: "row" }}>
+			<text style={{ flexGrow: 1, flexShrink: 1 }}>{Segments.spans(said)}</text>
+			<text fg={theme.muted} style={{ flexShrink: 0, marginLeft: 1 }}>
+				{age}
+			</text>
+		</box>
 	);
 };
 
-// One comment as a raised block: who and when on the first line, what they said under it. The
-// whole comment is in the brief's Discussion below; this is the glance.
+// One comment as a raised block: who and when on the first line, what they said, whole, under it.
+// A human and an agent are told apart by name and weight: a person's name is bold.
 const CommentBlock = ({
 	comment,
 	first,
@@ -365,6 +503,7 @@ const CommentBlock = ({
 	first: boolean;
 }): ReactNode => {
 	const theme = useTheme();
+	const human = comment.authorType === "human";
 	return (
 		<box
 			style={{
@@ -376,12 +515,12 @@ const CommentBlock = ({
 			}}
 		>
 			<text fg={theme.text}>
-				<span attributes={TextAttributes.BOLD}>
-					{actorName(comment.author)}
+				<span attributes={human ? TextAttributes.BOLD : undefined}>
+					{DetailModel.actorName(comment.author)}
 				</span>
 				<span fg={theme.muted}> · {relativeTime(comment.createdAt)}</span>
 			</text>
-			<text fg={theme.text}>{comment.content.split("\n")[0]}</text>
+			<MarkdownBody content={comment.content.trim()} />
 		</box>
 	);
 };

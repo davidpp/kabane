@@ -1,20 +1,20 @@
 /** @jsxImportSource @opentui/react */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import { Planner, type TaskComment } from "@cabane/core";
+import { Planner, type Result, type Task } from "@cabane/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { RefObject } from "react";
 import type { BoardActivity } from "./activity";
+import { BoardData } from "./data";
 import {
-	actorName,
 	cardRowLine,
 	cardStatusGlyph,
 	cardStatusLine,
 	Detail,
 	formatElapsed,
 	relativeTime,
-	stripTitleHeading,
 } from "./detail";
+import type { DetailModel } from "./detail-model";
 import type { ActivityCard } from "./ports";
 import { SPINNER_FRAMES } from "./spinner";
 import { dropDb, freshDb } from "./test-db";
@@ -25,7 +25,7 @@ const TEST_BASE = join(import.meta.dir, ".test-detail");
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
 
-// The detail view loads its brief in a useEffect, so pump the renderer until the async content lands.
+// Markdown lands a frame or two after the first render, so pump until the content is on screen.
 const pumpUntil = async (
 	renderOnce: () => Promise<void>,
 	captureCharFrame: () => string,
@@ -51,6 +51,56 @@ afterEach(() => {
 	dropDb(TEST_BASE);
 });
 
+const seed = async (
+	over: Partial<Parameters<typeof Planner.addTask>[1]> = {},
+) => {
+	const added = await Planner.addTask(TEST_BASE, {
+		title: "Render the detail",
+		description: "The description reads here.",
+		state: "next",
+		...over,
+	});
+	if (!added.ok) throw added.error;
+	return added.value;
+};
+
+// The records the app hands the view, read the way it reads them.
+const recordsOf = (task: Task): Promise<Result<BoardData.DetailRecords>> =>
+	BoardData.taskDetail(TEST_BASE, task.id);
+
+const mount = async (
+	task: Task,
+	{
+		tab,
+		width = 100,
+		height = 30,
+		cards,
+		questions,
+	}: {
+		tab?: DetailModel.Tab;
+		width?: number;
+		height?: number;
+		cards?: ActivityCard[];
+		questions?: BoardActivity.AwaitingQuestion[];
+	} = {},
+) =>
+	renderTest(
+		<Detail
+			taskId={task.id}
+			task={task}
+			records={await recordsOf(task)}
+			tab={tab}
+			cards={cards}
+			questions={questions}
+			scrollRef={nullRef}
+		/>,
+		{ width, height },
+	);
+
+const rows = (frame: string): string[] => frame.split("\n");
+const onOneRow = (frame: string, text: string): boolean =>
+	rows(frame).some((row) => row.includes(text));
+
 // A host "loop" card the way Jake would project one: label + three detail lines.
 const loopCard = (over: Partial<ActivityCard> = {}): ActivityCard => ({
 	id: "loop-JAKE-1",
@@ -75,60 +125,52 @@ const runCard = (over: Partial<ActivityCard> = {}): ActivityCard => ({
 	...over,
 });
 
-test("Detail renders the assembled brief for a seeded task", async () => {
-	const added = await Planner.addTask(TEST_BASE, {
-		title: "Render the detail",
-		description: "The folded brief body appears here.",
-		state: "next",
-	});
-	expect(added.ok).toBe(true);
-	if (!added.ok) return;
-
-	const { renderOnce, captureCharFrame, destroy } = await renderTest(
-		<Detail
-			basePath={TEST_BASE}
-			taskId={added.value.id}
-			task={added.value}
-			scrollRef={nullRef}
-		/>,
-		{ width: 100, height: 30 },
-	);
+test("Detail opens on the description, with the title once, the task at a glance and the tab bar", async () => {
+	const task = await seed({ title: "Unique Sunflower Title" });
+	const { renderOnce, captureCharFrame, destroy } = await mount(task);
 	try {
-		// Real assembleContext read path → the title and description flow through the markdown render.
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("appears"),
+			f.includes("The description reads here."),
 		);
-		expect(frame).toContain("Render the detail");
-		expect(frame).toContain("appears");
+		expect(frame.split("Unique Sunflower Title").length - 1).toBe(1);
+		expect(frame).toContain("next · task");
+		expect(onOneRow(frame, "description")).toBe(true);
+		expect(frame).toContain("comments 0");
+		expect(frame).toContain("log 0");
+		// The agent brief is not drawn: none of its headings reach the screen.
+		expect(frame).not.toContain("## ");
+		expect(frame).not.toContain("Description\n");
+		// Trimmed footer: app-specific keys + `? help`, none of the vim-obvious ones.
+		expect(frame).toContain("h/l tabs");
+		expect(frame).toContain("? help");
+		expect(frame).not.toContain("j/k scroll");
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail says so when a task has no description", async () => {
+	const task = await seed({ description: undefined });
+	const { renderOnce, captureCharFrame, destroy } = await mount(task);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("no description"),
+		);
+		expect(frame).toContain("no description");
 	} finally {
 		destroy();
 	}
 });
 
 test("Detail shows a loop status line for a task with an active loop", async () => {
-	const added = await Planner.addTask(TEST_BASE, {
-		title: "Looped task",
-		description: "Body.",
-		state: "in_progress",
+	const task = await seed({ state: "in_progress" });
+	const loop = loopCard({ taskShortId: task.shortId ?? "JAKE-1" });
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		cards: [loop],
 	});
-	expect(added.ok).toBe(true);
-	if (!added.ok) return;
-
-	const loop = loopCard({ taskShortId: added.value.shortId ?? "JAKE-1" });
-	const { renderOnce, captureCharFrame, destroy } = await renderTest(
-		<Detail
-			basePath={TEST_BASE}
-			taskId={added.value.id}
-			task={added.value}
-			cards={[loop]}
-			scrollRef={nullRef}
-		/>,
-		{ width: 100, height: 30 },
-	);
 	try {
-		// Wait for the brief body — layout is settled once the async content lands.
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("Body"),
+			f.includes("reads here"),
 		);
 		expect(frame).toContain("loop · implement · iteration 3 · $0.42");
 	} finally {
@@ -136,44 +178,290 @@ test("Detail shows a loop status line for a task with an active loop", async () 
 	}
 });
 
-test("Detail renders the awaiting-input question block above the brief", async () => {
-	const added = await Planner.addTask(TEST_BASE, {
-		title: "Blocked task",
-		description: "The brief body.",
-		state: "in_progress",
-	});
-	expect(added.ok).toBe(true);
-	if (!added.ok) return;
-
+test("Detail pins a waiting question above the tabs, with no answer hint for a command that does not exist", async () => {
+	const task = await seed({ state: "in_progress" });
 	const questions: BoardActivity.AwaitingQuestion[] = [
 		{
-			taskId: added.value.id,
+			taskId: task.id,
 			sessionId: "sess-1",
 			questionActivityId: "act-1",
 			question: "Which auth flow should the CLI use?",
 		},
 	];
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		questions,
+	});
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("reads here"),
+		);
+		const question = rows(frame).findIndex((r) =>
+			r.includes("? Which auth flow should the CLI use?"),
+		);
+		const bar = rows(frame).findIndex((r) => r.includes("comments 0"));
+		expect(question).toBeGreaterThan(-1);
+		expect(question).toBeLessThan(bar);
+		expect(frame).not.toContain("answer:");
+		expect(frame).not.toContain("needs-input");
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail falls back to a plain error message when the task is missing", async () => {
+	const records = await BoardData.taskDetail(
+		TEST_BASE,
+		"01H000000000000000000MISSING",
+	);
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
 		<Detail
-			basePath={TEST_BASE}
-			taskId={added.value.id}
-			task={added.value}
-			questions={questions}
+			taskId="01H000000000000000000MISSING"
+			records={records}
 			scrollRef={nullRef}
 		/>,
 		{ width: 100, height: 30 },
 	);
 	try {
-		// Wait for the brief body — layout is settled once the async content lands.
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("The brief body"),
+			f.toLowerCase().includes("found"),
 		);
-		expect(frame).toContain("? awaiting input: Which auth flow should the CLI");
-		expect(frame).toContain("answer: cabane needs-input");
+		expect(frame.toLowerCase()).toContain("not found");
 	} finally {
 		destroy();
 	}
 });
+
+test("Detail shows loading until the records arrive", async () => {
+	const task = await seed();
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Detail taskId={task.id} task={task} scrollRef={nullRef} />,
+		{ width: 100, height: 30 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("loading"),
+		);
+		expect(frame).toContain("loading");
+		expect(frame).toContain("Render the detail");
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail's log heads with the host's cards and offers the o events hint", async () => {
+	const task = await seed({ state: "in_progress" });
+	const cards: ActivityCard[] = [
+		runCard({ id: "r1", taskId: task.id, hasEvents: true }),
+		runCard({
+			id: "r2",
+			label: "investigate",
+			status: "completed",
+			taskId: task.id,
+			finishedAt: new Date().toISOString(),
+			durationMs: 134000,
+			hasEvents: true,
+		}),
+	];
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		tab: "log",
+		cards,
+	});
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("investigate"),
+		);
+		expect(frame).toContain("scout");
+		expect(frame).toContain("investigate · completed · 2m14s");
+		expect(frame).toContain("log 2");
+		expect(frame).toContain("o events");
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail's log puts work logs and session activity on one line each, newest first, and pins the open question instead", async () => {
+	const task = await seed({ state: "in_progress" });
+	const session = await Planner.startSession(TEST_BASE, {
+		taskId: task.id,
+		agent: "claude",
+	});
+	if (!session.ok) throw session.error;
+	const add = async (
+		draft: Omit<Parameters<typeof Planner.addActivity>[1], "sessionId">,
+	) => {
+		const added = await Planner.addActivity(TEST_BASE, {
+			sessionId: session.value.id,
+			...draft,
+		});
+		if (!added.ok) throw added.error;
+		await sleep(5);
+		return added.value;
+	};
+	await add({ type: "progress", body: "read the brief" });
+	const q = await add({ type: "question", body: "Tabs or one scroll?" });
+	await add({ type: "decision", body: "tabs", context: `answers ${q.id}` });
+	await add({ type: "question", body: "Which tab opens first?" });
+	await add({ type: "error", body: "the gate failed on biome" });
+	const logged = await Planner.addWorkLog(TEST_BASE, {
+		taskId: task.id,
+		refs: [{ uri: "commit:6f2a9c1d0e3b4a5f" }],
+		note: "landed the tabs",
+	});
+	if (!logged.ok) throw logged.error;
+
+	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
+		task,
+		{ tab: "log" },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("landed the tabs"),
+		);
+		expect(frame).toContain("• commit 6f2a9c1 · landed the tabs");
+		expect(frame).toContain("✗ error the gate failed on biome");
+		expect(frame).toContain("· decision tabs");
+		expect(frame).toContain("· question Tabs or one scroll?");
+		expect(frame).toContain("· progress read the brief");
+		// The open question is pinned above the tabs and nowhere else.
+		expect(frame.split("Which tab opens first?").length - 1).toBe(1);
+		expect(frame).toContain("? Which tab opens first?");
+		const commit = rows(frame).findIndex((r) => r.includes("landed the tabs"));
+		const progress = rows(frame).findIndex((r) => r.includes("read the brief"));
+		expect(commit).toBeLessThan(progress);
+		const error = captureSpans()
+			.lines.flatMap((line) => line.spans)
+			.find((span) => span.text.includes("the gate failed"));
+		expect(error?.fg.toInts().slice(0, 3)).toEqual([0xef, 0x44, 0x44]);
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail's comments tab shows every comment whole, newest first", async () => {
+	const task = await seed();
+	for (const [author, content] of [
+		["david", "Let's go with option B\nbecause it keeps the scan."],
+		["cabane://actor/agent/claude", "Implemented option B per feedback."],
+	] as const) {
+		const added = await Planner.addComment(TEST_BASE, {
+			taskId: task.id,
+			author,
+			authorType: author === "david" ? "human" : "ai",
+			content,
+		});
+		if (!added.ok) throw added.error;
+		await sleep(5);
+	}
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		tab: "comments",
+	});
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("keeps the scan"),
+		);
+		expect(frame).toContain("comments 2");
+		expect(frame).toContain("because it keeps the scan.");
+		expect(frame).not.toContain("cabane://actor");
+		const agent = rows(frame).findIndex((r) => r.includes("claude ·"));
+		const human = rows(frame).findIndex((r) => r.includes("david ·"));
+		expect(agent).toBeGreaterThan(-1);
+		expect(agent).toBeLessThan(human);
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail sets a comment on a raised block at forty columns, its author by name", async () => {
+	const task = await seed();
+	const added = await Planner.addComment(TEST_BASE, {
+		taskId: task.id,
+		author: "cabane://actor/agent/claude",
+		authorType: "ai",
+		content: "Picked this up, tests next.",
+	});
+	if (!added.ok) throw added.error;
+	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
+		task,
+		{ tab: "comments", width: 40 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("Picked this up"),
+		);
+		expect(frame).toContain("claude · just now");
+		const body = captureSpans()
+			.lines.flatMap((line) => line.spans)
+			.find((span) => span.text.includes("Picked this up"));
+		expect(body?.bg.toInts().slice(0, 3)).toEqual([0x1c, 0x1c, 0x1c]);
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail's tab bar reads whole at forty columns and paints the active tab", async () => {
+	const task = await seed();
+	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
+		task,
+		{ tab: "comments", width: 40 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("no comments"),
+		);
+		expect(onOneRow(frame, " description  comments 0  log 0 ")).toBe(true);
+		const active = captureSpans()
+			.lines.flatMap((line) => line.spans)
+			.find((span) => span.text.includes("comments"));
+		expect(active?.bg.toInts().slice(0, 3)).toEqual([0x2f, 0x2f, 0x2f]);
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail hands a click on a tab to onTab", async () => {
+	const task = await seed();
+	const clicked: DetailModel.Tab[] = [];
+	const { renderOnce, captureCharFrame, mockMouse, destroy } = await renderTest(
+		<Detail
+			taskId={task.id}
+			task={task}
+			records={await recordsOf(task)}
+			onTab={(tab) => clicked.push(tab)}
+			scrollRef={nullRef}
+		/>,
+		{ width: 40, height: 24 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("reads here"),
+		);
+		const y = rows(frame).findIndex((r) => r.includes("log 0"));
+		const x = rows(frame)[y]?.indexOf("log 0") ?? -1;
+		expect(y).toBeGreaterThan(-1);
+		await mockMouse.click(x + 1, y);
+		await renderOnce();
+		expect(clicked).toEqual(["log"]);
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail does not show the o events hint when no card has events", async () => {
+	const task = await seed();
+	const { renderOnce, captureCharFrame, destroy } = await mount(task);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("reads here"),
+		);
+		const footerLine = frame.split("\n").find((l) => l.includes("? help"));
+		expect(footerLine).toBeDefined();
+		expect(footerLine).not.toContain("o events");
+	} finally {
+		destroy();
+	}
+});
+
+// --- Pure helpers ---
 
 test("cardStatusLine covers paused and stale-agnostic running text", () => {
 	const running = loopCard({ detail: ["verify", "iteration 2", "$1.50"] });
@@ -183,69 +471,6 @@ test("cardStatusLine covers paused and stale-agnostic running text", () => {
 		"⏸ loop · paused",
 	);
 });
-
-test("Detail falls back to a plain error message when the task is missing", async () => {
-	const { renderOnce, captureCharFrame, destroy } = await renderTest(
-		<Detail
-			basePath={TEST_BASE}
-			taskId="01H000000000000000000MISSING"
-			scrollRef={nullRef}
-		/>,
-		{ width: 100, height: 30 },
-	);
-	try {
-		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.toLowerCase().includes("found"),
-		);
-		expect(frame.toLowerCase()).toContain("found");
-	} finally {
-		destroy();
-	}
-});
-
-test("stripTitleHeading drops the leading `# ` heading and its blank line, nothing else", () => {
-	expect(stripTitleHeading("# Title\n\nBody line\n## Sub")).toBe(
-		"Body line\n## Sub",
-	);
-	// Leading blank lines before the heading are tolerated.
-	expect(stripTitleHeading("\n# Title\nBody")).toBe("Body");
-	// No h1 heading -> untouched (h2 is NOT the duplicated title).
-	expect(stripTitleHeading("## Section\nBody")).toBe("## Section\nBody");
-	expect(stripTitleHeading("plain text")).toBe("plain text");
-});
-
-test("Detail hides the brief's duplicate `# ` title and shows the trimmed footer", async () => {
-	const added = await Planner.addTask(TEST_BASE, {
-		title: "Unique Sunflower Title",
-		description: "Recognizable body content.",
-		state: "next",
-	});
-	expect(added.ok).toBe(true);
-	if (!added.ok) return;
-
-	const { renderOnce, captureCharFrame, destroy } = await renderTest(
-		<Detail
-			basePath={TEST_BASE}
-			taskId={added.value.id}
-			task={added.value}
-			scrollRef={nullRef}
-		/>,
-		{ width: 100, height: 24 },
-	);
-	const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-		f.includes("Recognizable body content."),
-	);
-	destroy();
-
-	// Header shows the title once; the brief's own `# ` heading is stripped, so exactly one occurrence.
-	const occurrences = frame.split("Unique Sunflower Title").length - 1;
-	expect(occurrences).toBe(1);
-	// Trimmed footer: app-specific keys + `? help`, none of the vim-obvious ones.
-	expect(frame).toContain("? help");
-	expect(frame).not.toContain("j/k scroll");
-});
-
-// --- Pure function tests for new helpers ---
 
 test("cardStatusLine uses spinnerFrame when provided and the card is not stale", () => {
 	const line = cardStatusLine(loopCard(), "⠹");
@@ -298,179 +523,4 @@ test("relativeTime formats relative timestamps", () => {
 	expect(relativeTime(new Date(now - 2 * 86400_000).toISOString(), now)).toBe(
 		"2d ago",
 	);
-});
-
-test("Detail renders the activity block when cards are provided", async () => {
-	const added = await Planner.addTask(TEST_BASE, {
-		title: "Task with runs",
-		description: "Body.",
-		state: "in_progress",
-	});
-	expect(added.ok).toBe(true);
-	if (!added.ok) return;
-
-	const cards: ActivityCard[] = [
-		runCard({ id: "r1", taskId: added.value.id, hasEvents: true }),
-		runCard({
-			id: "r2",
-			label: "investigate",
-			status: "completed",
-			taskId: added.value.id,
-			finishedAt: new Date().toISOString(),
-			durationMs: 134000,
-			hasEvents: true,
-		}),
-	];
-	const { renderOnce, captureCharFrame, destroy } = await renderTest(
-		<Detail
-			basePath={TEST_BASE}
-			taskId={added.value.id}
-			task={added.value}
-			cards={cards}
-			scrollRef={nullRef}
-		/>,
-		{ width: 100, height: 30 },
-	);
-	try {
-		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("Body"),
-		);
-		expect(frame).toContain("activity");
-		expect(frame).toContain("scout");
-		expect(frame).toContain("investigate");
-		// Footer should include the "o events" hint when a card has events.
-		expect(frame).toContain("o events");
-	} finally {
-		destroy();
-	}
-});
-
-test("Detail renders comments section when comments are provided", async () => {
-	const added = await Planner.addTask(TEST_BASE, {
-		title: "Task with comments",
-		description: "Body.",
-		state: "next",
-	});
-	expect(added.ok).toBe(true);
-	if (!added.ok) return;
-
-	const comments: TaskComment[] = [
-		{
-			id: "c1",
-			taskId: added.value.id,
-			author: "david",
-			authorType: "human",
-			content: "Let's go with option B",
-			createdAt: new Date(Date.now() - 2 * 86400_000).toISOString(),
-		},
-		{
-			id: "c2",
-			taskId: added.value.id,
-			author: "claude",
-			authorType: "ai",
-			content: "Implemented option B per feedback.",
-			createdAt: new Date(Date.now() - 86400_000).toISOString(),
-		},
-	];
-	const { renderOnce, captureCharFrame, destroy } = await renderTest(
-		<Detail
-			basePath={TEST_BASE}
-			taskId={added.value.id}
-			task={added.value}
-			comments={comments}
-			scrollRef={nullRef}
-		/>,
-		{ width: 100, height: 30 },
-	);
-	try {
-		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("Body"),
-		);
-		expect(frame).toContain("comments · 2");
-		expect(frame).toContain("david");
-		expect(frame).toContain("option B");
-	} finally {
-		destroy();
-	}
-});
-
-test("Detail does not show the o events hint when no card has events", async () => {
-	const added = await Planner.addTask(TEST_BASE, {
-		title: "Task without activity",
-		description: "Body content here.",
-		state: "next",
-	});
-	expect(added.ok).toBe(true);
-	if (!added.ok) return;
-
-	const { renderOnce, captureCharFrame, destroy } = await renderTest(
-		<Detail
-			basePath={TEST_BASE}
-			taskId={added.value.id}
-			task={added.value}
-			scrollRef={nullRef}
-		/>,
-		{ width: 100, height: 30 },
-	);
-	try {
-		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("Body content here"),
-		);
-		// The footer line should not contain the "o events" hint.
-		const footerLine = frame.split("\n").find((l) => l.includes("? help"));
-		expect(footerLine).toBeDefined();
-		expect(footerLine).not.toContain("o events");
-	} finally {
-		destroy();
-	}
-});
-
-test("actorName names an actor URI by its last segment and passes anything else through", () => {
-	expect(actorName("cabane://actor/agent/claude")).toBe("claude");
-	expect(actorName("cabane://actor/human/david-paquet")).toBe("david-paquet");
-	expect(actorName("david")).toBe("david");
-});
-
-test("Detail names a comment's author, not its actor URI, on a raised block", async () => {
-	const added = await Planner.addTask(TEST_BASE, {
-		title: "Task with an agent comment",
-		description: "Body.",
-		state: "next",
-	});
-	expect(added.ok).toBe(true);
-	if (!added.ok) return;
-	const comments: TaskComment[] = [
-		{
-			id: "c1",
-			taskId: added.value.id,
-			author: "cabane://actor/agent/claude",
-			authorType: "ai",
-			content: "Picked this up, tests next.",
-			createdAt: new Date(Date.now() - 60_000).toISOString(),
-		},
-	];
-	const { renderOnce, captureCharFrame, captureSpans, destroy } =
-		await renderTest(
-			<Detail
-				basePath={TEST_BASE}
-				taskId={added.value.id}
-				task={added.value}
-				comments={comments}
-				scrollRef={nullRef}
-			/>,
-			{ width: 40, height: 30 },
-		);
-	try {
-		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("Picked this up"),
-		);
-		expect(frame).toContain("claude · 1m ago");
-		expect(frame).not.toContain("cabane://actor");
-		const body = captureSpans()
-			.lines.flatMap((line) => line.spans)
-			.find((span) => span.text.includes("Picked this up"));
-		expect(body?.bg.toInts().slice(0, 3)).toEqual([0x1c, 0x1c, 0x1c]);
-	} finally {
-		destroy();
-	}
 });

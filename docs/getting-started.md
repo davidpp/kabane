@@ -125,7 +125,10 @@ The board shows the scope of the directory you opened it in: the repo's name in 
 tasks grouped by state. A scope with nothing open says so, and how to file the first task.
 The footer lists the everyday keys, and `?` lists all of them:
 
-- `j`/`k` move, `enter` opens a task, `esc` goes back, `q` quits.
+- `j`/`k` move, `enter` opens a task, `esc` goes back, `q` quits. The detail view pins the
+  task at a glance, where it sits and any question waiting on you, then shows one tab at a
+  time: the description, the comments, and the log of work and agent activity. `1`-`3` or
+  `h`/`l` switch tabs.
 - `[` and `]` move a task through the states (inbox, next, in progress, waiting, done).
   `d` marks it done, `n` next, `s` someday, `x` cancel.
 - `/` filters as you type, `f` cycles open, done and cancelled, and review, `i` cycles the
