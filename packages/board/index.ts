@@ -20,4 +20,6 @@ export type {
 	TriggerInput,
 } from "./src/ports";
 export { noActivity, noCopilot, noDispatcher } from "./src/ports";
+export { type SetupDeps, startSetup } from "./src/setup";
+export { SetupPlan } from "./src/setup-plan";
 export { type BoardDeps, startBoard } from "./src/start";
