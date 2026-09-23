@@ -88,14 +88,12 @@ export const sheetLines = (
 	return groups.flatMap((group, index): SheetLine[] => [
 		...(index > 0 ? [{ kind: "gap" } as const] : []),
 		{ kind: "title", text: group.title, primary: index === 0 },
-		...group.rows.map(
-			(row): SheetLine => ({
-				kind: "row",
-				key: row.key.padEnd(keyWidth),
-				label: row.label,
-				available: row.available,
-			}),
-		),
+		...group.rows.map((row): SheetLine => ({
+			kind: "row",
+			key: row.key.padEnd(keyWidth),
+			label: row.label,
+			available: row.available,
+		})),
 	]);
 };
 

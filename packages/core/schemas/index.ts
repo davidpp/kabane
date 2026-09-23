@@ -23,10 +23,7 @@ export {
 	TaskCommentUpdateSchema,
 } from "./comment";
 // Config schemas
-export {
-	type SyncConfig,
-	SyncConfigSchema,
-} from "./config";
+export { type SyncConfig, SyncConfigSchema } from "./config";
 // Context ref schemas
 export {
 	type AddContextRefInput,

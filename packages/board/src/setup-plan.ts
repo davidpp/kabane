@@ -55,9 +55,10 @@ export namespace SetupPlan {
 
 	export const fields = (defaults: Defaults): Field[] => [
 		{ kind: "name" },
-		...defaults.harnesses.map(
-			(harness): Field => ({ kind: "harness", harness }),
-		),
+		...defaults.harnesses.map((harness): Field => ({
+			kind: "harness",
+			harness,
+		})),
 	];
 
 	// Every detected harness starts checked: wiring the agents is why most people run setup at all.
