@@ -90,3 +90,28 @@ describe("moveFocus", () => {
 		expect(answer(up, down).focus).toBe(0);
 	});
 });
+
+describe("the first issue", () => {
+	const inProject = { ...DEFAULTS, project: "repo" };
+
+	test("enter names the first checked agent, and only inside a project", () => {
+		expect(SetupPlan.firstAgent(answer(), inProject)).toBe("claude");
+		expect(SetupPlan.firstAgent(answer(down, space), inProject)).toBe("codex");
+		expect(
+			SetupPlan.firstAgent(answer(down, space, down, space), inProject),
+		).toBe(undefined);
+		expect(SetupPlan.firstAgent(answer(), DEFAULTS)).toBe(undefined);
+	});
+
+	test("it goes to the first agent whose install landed, never to one that failed", () => {
+		const claudeFailed: SetupPlan.InstallOutcome[] = [
+			{ id: "claude", status: "failed", message: "not logged in" },
+			{ id: "codex", status: "already" },
+		];
+		expect(SetupPlan.firstIssueFor(claudeFailed, inProject)).toBe("codex");
+		expect(
+			SetupPlan.firstIssueFor([{ id: "claude", status: "failed" }], inProject),
+		).toBe(undefined);
+		expect(SetupPlan.firstIssueFor(claudeFailed, DEFAULTS)).toBe(undefined);
+	});
+});

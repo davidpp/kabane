@@ -1,8 +1,9 @@
 // The first-run setup screen's logic, without a renderer: which rows the form has, how focus and
-// the checkboxes move, and what the answers become — an actor URI, a device id and the harnesses to
-// wire. The device id is the short hostname, never asked: it only names the machine once sync is
-// set up (docs/deploy.md), and it can be renamed in the config until the first push. setup.tsx is a thin layer over this; the host turns a Plan into its own
-// config (the board cannot see the CLI's schema) and runs the installs.
+// the checkboxes move, and what the answers become — an actor URI, a device id, the harnesses to
+// wire and the agent the first issue goes to. The device id is the short hostname, never asked: it
+// only names the machine once sync is set up (docs/deploy.md), and it can be renamed in the config
+// until the first push. setup.tsx is a thin layer over this; the host turns a Plan into its own
+// config (the board cannot see the CLI's schema), runs the installs and files the first issue.
 import { err, ok, type Result } from "@cabane/core";
 
 export namespace SetupPlan {
@@ -20,6 +21,8 @@ export namespace SetupPlan {
 		installOff: boolean;
 		/** Where confirming writes the config, as the screen says it before enter. */
 		configPath: string;
+		/** The project the working directory is in: where the first issue is filed. Absent outside one. */
+		project?: string;
 	};
 
 	export type Field = { kind: "name" } | { kind: "harness"; harness: Harness };
@@ -44,6 +47,9 @@ export namespace SetupPlan {
 		status: InstallStatus;
 		message?: string;
 	};
+
+	/** The issue setup filed for an agent, as the host reports it. */
+	export type FirstIssue = { shortId: string; title: string };
 
 	export const ACTOR_PREFIX = "cabane://actor/human/";
 
@@ -97,6 +103,31 @@ export namespace SetupPlan {
 			.toLowerCase()
 			.replace(/[^a-z0-9._-]+/g, "-")
 			.replace(/^-+|-+$/g, "");
+
+	/**
+	 * The agent enter will file the first issue for, as the screen says it before enter: the first
+	 * checked harness, and only inside a project, since the issue edits that project's files.
+	 */
+	export const firstAgent = (
+		form: Form,
+		defaults: Defaults,
+	): string | undefined =>
+		defaults.project === undefined
+			? undefined
+			: defaults.harnesses.find((h) => form.checked.includes(h.id))?.id;
+
+	/**
+	 * Who the first issue actually goes to: the first harness whose install landed. It can differ
+	 * from `firstAgent` only when that one's install failed, and an agent without cabane's tools
+	 * could never pick the issue up.
+	 */
+	export const firstIssueFor = (
+		outcomes: readonly InstallOutcome[],
+		defaults: Defaults,
+	): string | undefined =>
+		defaults.project === undefined
+			? undefined
+			: outcomes.find((o) => o.status !== "failed")?.id;
 
 	export const plan = (form: Form, defaults: Defaults): Result<Plan> => {
 		const slug = actorSlug(form.name);

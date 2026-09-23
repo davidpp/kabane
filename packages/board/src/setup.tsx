@@ -1,7 +1,9 @@
 /** @jsxImportSource @opentui/react */
-// The first-run screen `cabane` shows on a device with no config: three short cards on what cabane
-// is, then who you are and which detected harnesses get the MCP server. Enter writes the config through the host, runs the installs, and shows each
-// harness's outcome; enter again hands over to the board. Everything it decides lives in SetupPlan.
+// The first-run screen `cabane` shows on a device with no config: one welcome card on what cabane
+// is, then who you are and which detected harnesses get the MCP server. Enter writes the config
+// through the host, runs the installs, files a first issue for an agent inside a project, and shows
+// each outcome with the next step; enter again hands over to the board. Everything it decides lives
+// in SetupPlan.
 //
 // Key arbitration is the copilot pane's: the focused <input> and the one useKeyboard handler both
 // see every key, handler first, and the handler preventDefaults the keys it takes (tab, arrows,
@@ -21,9 +23,13 @@ import { ErrorBoundary } from "./error-boundary";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { SetupPlan } from "./setup-plan";
+import { useSpinnerFrame } from "./spinner";
 
 const MUTED_COLOR = "#6b7280";
+// The focus gutter: the field is waiting on you.
 const ACCENT_COLOR = "#f97316";
+const WORKING_COLOR = "#58a6ff";
+const DONE_COLOR = "#22c55e";
 const ERROR_COLOR = "#ef4444";
 const INPUT_BG = "#1c1c1c";
 const INPUT_WIDTH = 24;
@@ -31,6 +37,8 @@ const INPUT_WIDTH = 24;
 const LABEL_WIDTH = 9;
 // `enter ` before the first line of what enter does: where the rest of those lines start.
 const ENTER_INDENT = 6;
+// Where a line's note starts when it goes under the line rather than beside it.
+const NOTE_INDENT = 2;
 
 export type SetupDeps = {
 	defaults: SetupPlan.Defaults;
@@ -39,47 +47,40 @@ export type SetupDeps = {
 	save: (plan: SetupPlan.Plan) => Promise<Result<string>>;
 	// Registers the MCP server in each named harness, one outcome per id.
 	install: (ids: readonly string[]) => Promise<SetupPlan.InstallOutcome[]>;
+	// Files the issue that has the named agent add cabane to the project's instruction file.
+	fileFirstIssue: (harness: string) => Promise<Result<SetupPlan.FirstIssue>>;
 };
 
+type FiledIssue = { harness: string; result: Result<SetupPlan.FirstIssue> };
+
 type Phase =
-	| { kind: "intro"; card: number }
+	| { kind: "welcome" }
 	| { kind: "form"; error?: string }
 	| { kind: "working"; step: string }
 	| {
 			kind: "done";
 			configPath: string;
 			outcomes: SetupPlan.InstallOutcome[];
+			firstIssue?: FiledIssue;
 	  };
 
-// Each card is one screen, first line bold. Every line fits 40 columns, so none wraps in the pane.
-export const INTRO_CARDS: readonly (readonly string[])[] = [
+// Paragraphs of the one welcome card, its first line bold. Every line fits 40 columns, so none
+// wraps in the pane. The last paragraph is the honest time estimate: one screen follows.
+export const WELCOME: readonly (readonly string[])[] = [
 	[
 		"a tracker for you and your agents.",
-		"issues live in sqlite on this machine.",
-		"claude, codex, gemini use it over mcp.",
+		"issues live in sqlite on this machine;",
+		"claude, codex and gemini work them",
+		"over mcp, and each write names who",
+		"made it.",
 	],
-	[
-		"you plan, agents do the work.",
-		"they pick up issues and report back.",
-		"each write names you or the agent.",
-	],
-	[
-		"not a team tracker.",
-		"linear and github stay the team record.",
-		"cabane links to their issues.",
-		"your working notes stay here.",
-	],
+	["not a team tracker: linear and github", "stay the team record."],
+	["one screen of setup: your name and", "which agents get cabane."],
 ];
 
-// The last card's enter opens the form, as esc does from any card.
-const afterCard = (card: number): Phase =>
-	card + 1 < INTRO_CARDS.length
-		? { kind: "intro", card: card + 1 }
-		: { kind: "form" };
-
-const INTRO_FOOTER: readonly Keymap.Hint[] = [
-	{ key: "enter", label: "next" },
-	{ key: "esc", label: "skip" },
+const WELCOME_FOOTER: readonly Keymap.Hint[] = [
+	{ key: "enter", label: "set up" },
+	{ key: "esc", label: "quit" },
 ];
 
 // Tab and the arrows go unsaid, as j/k do on the board: the footer has to fit a 40-column pane.
@@ -99,7 +100,7 @@ const footerFor = (
 	phase: Phase,
 	defaults: SetupPlan.Defaults,
 ): readonly Keymap.Hint[] => {
-	if (phase.kind === "intro") return INTRO_FOOTER;
+	if (phase.kind === "welcome") return WELCOME_FOOTER;
 	if (phase.kind === "done") return DONE_FOOTER;
 	if (defaults.harnesses.length > 0) return FORM_FOOTER;
 	return FORM_FOOTER.filter((hint) => hint.key !== "space");
@@ -113,16 +114,29 @@ export const NO_AGENTS_NOTE = "add later: cabane mcp install";
 export const AGENTS_OFF = "install off";
 export const AGENTS_OFF_NOTE = "CABANE_HARNESSES is set";
 
+const agentCount = (count: number): string =>
+	`${count} agent${count === 1 ? "" : "s"}`;
+
 /** What enter will do, one change a line, so nothing it touches goes unsaid. */
 export const enterLines = (
 	configPath: string,
 	agents: number,
+	firstAgent?: string,
 ): readonly string[] => [
 	`saves ${configPath}`,
-	...(agents > 0
-		? [`adds cabane to ${agents} agent${agents === 1 ? "" : "s"}`]
-		: []),
+	...(agents > 0 ? [`adds cabane to ${agentCount(agents)}`] : []),
+	...(firstAgent ? [`files one issue for ${firstAgent}`] : []),
 	"opens the board",
+];
+
+/**
+ * What to do once the board opens, for the first issue to move. A new session because a harness
+ * reads its MCP servers when a session starts, so one already running has no cabane tools.
+ */
+export const nextLines = (harness: string, shortId: string): string[] => [
+	`next: in a new ${harness} session here,`,
+	`say "take the next cabane issue" and`,
+	`watch ${shortId} move on the board.`,
 ];
 
 /**
@@ -139,16 +153,19 @@ export const elidePath = (path: string, room: number): string => {
 	return `…/${segments.at(-1)}`;
 };
 
-const STATUS_TEXT: Record<SetupPlan.InstallStatus, string> = {
-	installed: "✓ installed",
-	already: "· already installed",
-	failed: "✗ failed",
+const STATUS: Record<SetupPlan.InstallStatus, { text: string; fg: string }> = {
+	installed: { text: "✓ installed", fg: DONE_COLOR },
+	already: { text: "· already installed", fg: MUTED_COLOR },
+	failed: { text: "✗ failed", fg: ERROR_COLOR },
 };
+
+const OUTCOME_LABEL_WIDTH = 14;
 
 export const outcomeLine = (
 	outcome: SetupPlan.InstallOutcome,
 	label: string,
-): string => `${label.padEnd(14)} ${STATUS_TEXT[outcome.status]}`;
+): string =>
+	`${label.padEnd(OUTCOME_LABEL_WIDTH)} ${STATUS[outcome.status].text}`;
 
 // A note sits beside its row while the pane has room for both, and on its own indented line under
 // the row when it does not: a narrow pane never loses the row to the note.
@@ -166,6 +183,7 @@ export const SetupScreen = ({
 	defaults,
 	save,
 	install,
+	fileFirstIssue,
 	onComplete,
 	onQuit,
 }: SetupScreenProps): ReactNode => {
@@ -177,7 +195,20 @@ export const SetupScreen = ({
 		current.current = next;
 		setForm(next);
 	};
-	const [phase, setPhase] = useState<Phase>({ kind: "intro", card: 0 });
+	const [phase, setPhase] = useState<Phase>({ kind: "welcome" });
+	const spinnerFrame = useSpinnerFrame(phase.kind === "working");
+
+	const fileFor = async (
+		outcomes: readonly SetupPlan.InstallOutcome[],
+	): Promise<FiledIssue | undefined> => {
+		const harness = SetupPlan.firstIssueFor(outcomes, defaults);
+		if (harness === undefined) return undefined;
+		setPhase({
+			kind: "working",
+			step: `filing the first issue for ${harness}`,
+		});
+		return { harness, result: await fileFirstIssue(harness) };
+	};
 
 	const confirm = async (): Promise<void> => {
 		const planned = SetupPlan.plan(current.current, defaults);
@@ -185,7 +216,7 @@ export const SetupScreen = ({
 			setPhase({ kind: "form", error: planned.error.message });
 			return;
 		}
-		setPhase({ kind: "working", step: "writing the config…" });
+		setPhase({ kind: "working", step: "writing the config" });
 		const saved = await save(planned.value);
 		if (!saved.ok) {
 			setPhase({ kind: "form", error: saved.error.message });
@@ -198,17 +229,18 @@ export const SetupScreen = ({
 		}
 		setPhase({
 			kind: "working",
-			step: `adding cabane to ${planned.value.install.join(", ")}…`,
+			step: `adding cabane to ${agentCount(planned.value.install.length)}`,
 		});
 		const outcomes = await install(planned.value.install);
-		setPhase({ kind: "done", configPath: saved.value, outcomes });
+		const firstIssue = await fileFor(outcomes);
+		setPhase({ kind: "done", configPath: saved.value, outcomes, firstIssue });
 	};
 
 	useKeyboard((key) => {
 		if (phase.kind === "working") return;
-		if (phase.kind === "intro") {
-			if (key.name === "escape") setPhase({ kind: "form" });
-			else if (key.name === "return") setPhase(afterCard(phase.card));
+		if (phase.kind === "welcome") {
+			if (key.name === "return") setPhase({ kind: "form" });
+			else if (key.name === "escape") onQuit();
 			return;
 		}
 		if (phase.kind === "done") {
@@ -241,29 +273,28 @@ export const SetupScreen = ({
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			<text>
 				<span attributes={TextAttributes.BOLD}>cabane</span>
-				<span fg={MUTED_COLOR}>
-					{phase.kind === "intro"
-						? ` · ${phase.card + 1}/${INTRO_CARDS.length}`
-						: " · setup"}
-				</span>
+				{phase.kind === "welcome" ? null : (
+					<span fg={MUTED_COLOR}> · setup</span>
+				)}
 			</text>
 			<box style={{ flexDirection: "column", flexGrow: 1, marginTop: 1 }}>
-				{phase.kind === "intro" ? (
-					<IntroCard lines={INTRO_CARDS[phase.card] ?? []} />
+				{phase.kind === "welcome" ? (
+					<WelcomeCard />
 				) : phase.kind === "done" ? (
 					<>
 						<SavedLine path={phase.configPath} />
 						<box style={{ flexDirection: "column", marginTop: 1 }}>
 							{phase.outcomes.map((outcome) => (
-								<NotedLine
+								<OutcomeRow
 									key={outcome.id}
-									head={outcomeLine(outcome, labelOf(outcome.id))}
-									note={outcome.message}
-									indent={2}
-									fg={outcome.status === "failed" ? ERROR_COLOR : undefined}
+									outcome={outcome}
+									label={labelOf(outcome.id)}
 								/>
 							))}
 						</box>
+						{phase.firstIssue ? (
+							<FirstIssueBlock filed={phase.firstIssue} />
+						) : null}
 					</>
 				) : (
 					<SetupForm
@@ -276,6 +307,7 @@ export const SetupScreen = ({
 					<EnterLines
 						configPath={defaults.configPath}
 						agents={form.checked.length}
+						firstAgent={SetupPlan.firstAgent(form, defaults)}
 					/>
 				) : null}
 				{phase.kind === "form" && phase.error ? (
@@ -284,8 +316,8 @@ export const SetupScreen = ({
 					</text>
 				) : null}
 				{phase.kind === "working" ? (
-					<text fg={ACCENT_COLOR} style={{ marginTop: 1 }}>
-						{phase.step}
+					<text fg={WORKING_COLOR} style={{ marginTop: 1 }}>
+						{`${spinnerFrame} ${phase.step}`}
 					</text>
 				) : null}
 			</box>
@@ -297,17 +329,23 @@ export const SetupScreen = ({
 	);
 };
 
-const IntroCard = ({ lines }: { lines: readonly string[] }): ReactNode => {
-	const [lead, ...rest] = lines;
-	return (
-		<box style={{ flexDirection: "column" }}>
-			<text attributes={TextAttributes.BOLD}>{lead}</text>
-			{rest.map((line) => (
-				<text key={line}>{line}</text>
-			))}
-		</box>
-	);
-};
+const WelcomeCard = (): ReactNode => (
+	<box style={{ flexDirection: "column" }}>
+		{WELCOME.map(([lead, ...rest], index) => (
+			<box
+				key={lead}
+				style={{ flexDirection: "column", marginTop: index === 0 ? 0 : 1 }}
+			>
+				<text attributes={index === 0 ? TextAttributes.BOLD : undefined}>
+					{lead}
+				</text>
+				{rest.map((line) => (
+					<text key={line}>{line}</text>
+				))}
+			</box>
+		))}
+	</box>
+);
 
 type SetupFormProps = {
 	defaults: SetupPlan.Defaults;
@@ -377,20 +415,24 @@ const Note = ({ text }: { text: string }): ReactNode => (
 const EnterLines = ({
 	configPath,
 	agents,
+	firstAgent,
 }: {
 	configPath: string;
 	agents: number;
+	firstAgent?: string;
 }): ReactNode => {
 	const { width } = useTerminalDimensions();
 	const room = width - ENTER_INDENT - "saves ".length;
 	return (
 		<box style={{ flexDirection: "column", marginTop: 1 }}>
-			{enterLines(elidePath(configPath, room), agents).map((line, index) => (
-				<text key={line}>
-					{index === 0 ? "enter " : " ".repeat(ENTER_INDENT)}
-					<span fg={MUTED_COLOR}>{line}</span>
-				</text>
-			))}
+			{enterLines(elidePath(configPath, room), agents, firstAgent).map(
+				(line, index) => (
+					<text key={line}>
+						{index === 0 ? "enter " : " ".repeat(ENTER_INDENT)}
+						<span fg={MUTED_COLOR}>{line}</span>
+					</text>
+				),
+			)}
 		</box>
 	);
 };
@@ -398,7 +440,12 @@ const EnterLines = ({
 const SavedLine = ({ path }: { path: string }): ReactNode => {
 	const { width } = useTerminalDimensions();
 	const head = "✓ saved ";
-	return <text>{`${head}${elidePath(path, width - head.length)}`}</text>;
+	return (
+		<text>
+			<span fg={DONE_COLOR}>✓</span>
+			{` saved ${elidePath(path, width - head.length)}`}
+		</text>
+	);
 };
 
 type TextRowProps = {
@@ -408,6 +455,20 @@ type TextRowProps = {
 	onInput: (value: string) => void;
 };
 
+// `› ` in the accent on the focused row, blank elsewhere, then the label padded to its column.
+const Gutter = ({
+	label,
+	focused,
+}: {
+	label: string;
+	focused: boolean;
+}): ReactNode => (
+	<>
+		<span fg={ACCENT_COLOR}>{focused ? "›" : " "}</span>
+		{` ${label.padEnd(LABEL_WIDTH - 2)}`}
+	</>
+);
+
 const TextRow = ({
 	label,
 	value,
@@ -415,8 +476,8 @@ const TextRow = ({
 	onInput,
 }: TextRowProps): ReactNode => (
 	<box style={{ flexDirection: "row", height: 1 }}>
-		<text fg={focused ? ACCENT_COLOR : undefined} style={{ flexShrink: 0 }}>
-			{`${focused ? "›" : " "} ${label.padEnd(LABEL_WIDTH - 2)}`}
+		<text style={{ flexShrink: 0 }}>
+			<Gutter label={label} focused={focused} />
 		</text>
 		<input
 			value={value}
@@ -430,23 +491,92 @@ const TextRow = ({
 );
 
 type NotedLineProps = {
-	head: string;
+	head: ReactNode;
+	// The head's width in columns, for deciding whether the note fits beside it.
+	headLength: number;
 	note?: string;
-	indent: number;
-	fg?: string;
+	noteFg: string;
 };
 
-const NotedLine = ({ head, note, indent, fg }: NotedLineProps): ReactNode => {
+const NotedLine = ({
+	head,
+	headLength,
+	note,
+	noteFg,
+}: NotedLineProps): ReactNode => {
 	const { width } = useTerminalDimensions();
-	if (note === undefined || note === "") return <text fg={fg}>{head}</text>;
-	if (fitsBeside(width, head.length, note))
-		return <text fg={fg}>{`${head} ${note}`}</text>;
+	if (note === undefined || note === "") return <text>{head}</text>;
+	if (fitsBeside(width, headLength, note))
+		return (
+			<text>
+				{head}
+				<span fg={noteFg}>{` ${note}`}</span>
+			</text>
+		);
 	return (
 		<box style={{ flexDirection: "column" }}>
-			<text fg={fg}>{head}</text>
+			<text>{head}</text>
 			{/* A harness's error can outrun the pane: padding, not spaces, keeps its wrap indented. */}
-			<box style={{ paddingLeft: indent }}>
-				<text fg={fg ?? MUTED_COLOR}>{note}</text>
+			<box style={{ paddingLeft: NOTE_INDENT }}>
+				<text fg={noteFg}>{note}</text>
+			</box>
+		</box>
+	);
+};
+
+const OutcomeRow = ({
+	outcome,
+	label,
+}: {
+	outcome: SetupPlan.InstallOutcome;
+	label: string;
+}): ReactNode => {
+	const status = STATUS[outcome.status];
+	return (
+		<NotedLine
+			head={
+				<>
+					{`${label.padEnd(OUTCOME_LABEL_WIDTH)} `}
+					<span fg={status.fg}>{status.text}</span>
+				</>
+			}
+			headLength={outcomeLine(outcome, label).length}
+			note={outcome.message}
+			noteFg={outcome.status === "failed" ? ERROR_COLOR : MUTED_COLOR}
+		/>
+	);
+};
+
+// The issue setup filed, and the one thing to do for it to move. A failure to file says why and
+// nothing more: the config and the installs already landed, and the board opens either way.
+const FirstIssueBlock = ({ filed }: { filed: FiledIssue }): ReactNode => {
+	if (!filed.result.ok) {
+		const head = "✗ first issue not filed";
+		return (
+			<box style={{ marginTop: 1 }}>
+				<NotedLine
+					head={<span fg={ERROR_COLOR}>{head}</span>}
+					headLength={head.length}
+					note={filed.result.error.message}
+					noteFg={ERROR_COLOR}
+				/>
+			</box>
+		);
+	}
+	const { shortId, title } = filed.result.value;
+	return (
+		<box style={{ flexDirection: "column", marginTop: 1 }}>
+			<text>
+				<span fg={DONE_COLOR}>✓</span>
+				{` filed ${shortId} for ${filed.harness}`}
+			</text>
+			<box style={{ paddingLeft: NOTE_INDENT }}>
+				<text fg={MUTED_COLOR}>{title}</text>
+			</box>
+			<box style={{ flexDirection: "column", marginTop: 1 }}>
+				{nextLines(filed.harness, shortId).map((line) => (
+					<text key={line}>{line}</text>
+				))}
 			</box>
 		</box>
 	);
@@ -466,8 +596,8 @@ const CheckRow = ({
 	checked,
 	focused,
 }: CheckRowProps): ReactNode => (
-	<text fg={focused ? ACCENT_COLOR : undefined}>
-		{`${focused ? "›" : " "} ${label.padEnd(LABEL_WIDTH - 2)}`}
+	<text>
+		<Gutter label={label} focused={focused} />
 		<span bg={focused ? SELECTED_BG : undefined}>
 			{`[${checked ? "x" : " "}] ${harness}`}
 		</span>
