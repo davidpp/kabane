@@ -26,11 +26,11 @@ cd packages/cli && bun link                      # `cabane` on PATH
 cabane
 ```
 
-The first run is a setup screen: your name, this machine's name, and the coding harnesses
-found on it to wire the `cabane` MCP server into. Enter writes the config (one machine,
-local SQLite) and opens the board; every later `cabane` opens the board directly. Scripts
-and agents that run `cabane` without a terminal still get the help text, and
-`cabane init --actor … --device …` remains the flag form.
+The first run shows three short cards on what cabane is, then a setup screen: your name,
+this machine's name, and the coding harnesses found on it that get a `cabane` MCP entry.
+Enter writes the config (one machine, local SQLite) and opens the board; every later
+`cabane` opens the board directly. Scripts and agents that run `cabane` without a terminal
+still get the help text, and `cabane init --actor … --device …` remains the flag form.
 
 Multi-device sync and the hosted hub (Cloudflare Worker behind Access at
 `cabane.3pew.ca`) are set up by following [`docs/deploy.md`](docs/deploy.md): Cloudflare,
