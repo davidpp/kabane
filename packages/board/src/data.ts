@@ -2,14 +2,20 @@
 // Planner.* functions over the configured Db provider (same path as the CLI — no server required),
 // so a future swap to a remote client touches this file only.
 import {
+	type AgentActivity,
+	type AgentSession,
+	err,
 	type ItemKind,
 	ok,
 	Planner,
 	type Result,
 	TASK_STATE_DISPLAY,
 	type Task,
+	type TaskComment,
+	type TaskLink,
 	type TaskQuery,
 	type TaskState,
+	type TaskWorkLog,
 	type UpstreamLink,
 } from "@cabane/core";
 
@@ -200,12 +206,96 @@ export namespace BoardData {
 		});
 	};
 
-	// Full assembled brief for a task (used by the detail view).
+	// Full assembled brief for a task: what `y` copies and the copilot reads. The agent's view of a
+	// task; the detail view reads the records instead (taskDetail).
 	export const taskBrief = async (
 		basePath: string,
 		id: string,
 	): Promise<Result<string>> => {
 		return Planner.assembleContext(basePath, id);
+	};
+
+	/** One agent session on a task and what it recorded, oldest activity first. */
+	export type SessionRecords = {
+		session: AgentSession;
+		activities: AgentActivity[];
+	};
+
+	/**
+	 * Everything the detail view shows about a task: the same reads the agent brief makes, handed
+	 * over as records so the view can place each one once.
+	 */
+	export type DetailRecords = {
+		task: Task;
+		comments: TaskComment[];
+		workLogs: TaskWorkLog[];
+		sessions: SessionRecords[];
+		links: TaskLink[];
+		// The parent and every linked task, for naming them in the meta lines.
+		neighbors: Task[];
+		upstream: UpstreamLink[];
+	};
+
+	const sessionRecords = async (
+		basePath: string,
+		session: AgentSession,
+	): Promise<Result<SessionRecords>> => {
+		const activities = await Planner.getActivities(basePath, session.id);
+		return activities.ok
+			? ok({ session, activities: activities.value })
+			: activities;
+	};
+
+	const neighborIds = (task: Task, links: TaskLink[]): string[] => {
+		const ids = new Set<string>();
+		if (task.parentTaskId) ids.add(task.parentTaskId);
+		for (const link of links)
+			ids.add(link.sourceId === task.id ? link.targetId : link.sourceId);
+		ids.delete(task.id);
+		return [...ids];
+	};
+
+	// The detail view's records for one task. A read that fails fails the whole load: a view that
+	// silently dropped the comments would read as "no comments", which is not true.
+	export const taskDetail = async (
+		basePath: string,
+		id: string,
+	): Promise<Result<DetailRecords>> => {
+		const task = await Planner.getTask(basePath, id);
+		if (!task.ok) return task;
+		if (!task.value) return err(new Error(`task ${id} not found`));
+		const [comments, workLogs, sessions, links, upstream] = await Promise.all([
+			Planner.getComments(basePath, id),
+			Planner.getWorkLogs(basePath, id),
+			Planner.querySessions(basePath, { taskId: id }),
+			Planner.getLinksForTask(basePath, id),
+			Planner.getUpstreamLinksForTask(basePath, id),
+		]);
+		if (!comments.ok) return comments;
+		if (!workLogs.ok) return workLogs;
+		if (!sessions.ok) return sessions;
+		if (!links.ok) return links;
+		if (!upstream.ok) return upstream;
+		const perSession: SessionRecords[] = [];
+		for (const session of sessions.value) {
+			const records = await sessionRecords(basePath, session);
+			if (!records.ok) return records;
+			perSession.push(records.value);
+		}
+		const neighbors = await Planner.getTasks(
+			basePath,
+			neighborIds(task.value, links.value),
+		);
+		if (!neighbors.ok) return neighbors;
+		return ok({
+			task: task.value,
+			comments: comments.value,
+			workLogs: workLogs.value,
+			sessions: perSession,
+			links: links.value,
+			neighbors: neighbors.value,
+			upstream: upstream.value,
+		});
 	};
 
 	// Every task id in the loaded sections, parents and children alike.
