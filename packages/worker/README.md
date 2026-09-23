@@ -109,7 +109,8 @@ platform facts shape it:
 - `rowsWritten` counts index writes, so `changes` comes from `SELECT changes()`.
 
 `PRAGMA user_version` is unsupported; the log keeps its version in
-`_sql_schema_migrations`. `CREATE TRIGGER` works on this engine: the core's FTS
+`_sql_schema_migrations`, and the hub's cloud device keeps the core's in
+`schema_migrations` (packages/core/db/migrate.ts), both applied once per version. `CREATE TRIGGER` works on this engine: the core's FTS
 triggers apply and the conformance suite asserts they exist.
 
 ## Tests

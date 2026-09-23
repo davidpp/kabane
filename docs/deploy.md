@@ -340,10 +340,13 @@ Expected: the `init` output ends with `db: /Users/<you>/.jake/jake.db (tables pl
 and `list` shows the same tasks `jake plan list` shows. Nothing is copied and nothing
 syncs between the two hosts, because it is one file. Do **not** add `--sync-url` in this
 shape: Jake already syncs that file as device `<jake machine name>` through its own
-config, and `cabane sync` warns when `db.path` and sync are both set. Opening the file
-from the CLI runs the same idempotent schema apply Jake runs at boot (verified: a copy of a
-644 MB `jake.db` had an unchanged SHA-256 after `init`, `list`, `show`, and
-`sync status`).
+config, and `cabane sync` warns when `db.path` and sync are both set. The first time a
+cabane build with numbered migrations (JCAB-94) opens the file, it adds one table,
+`planner_schema_migrations`, and records version 1; every other table and row is left as
+it was (verified on a seeded copy made with the previous build: every table byte-identical,
+no op captured). A Jake still on an older `@cabane/core` keeps booting the stamped file
+unchanged. Once a later migration ships, update Jake's `@cabane/core` link before either
+host opens the file on the new build, because the two share one schema (§5.8).
 
 **Another machine: backfill through the log.** The Jake machine is itself a device once
 JCAB-4 merges; point it at the same hub and let it backfill:
@@ -679,6 +682,34 @@ cd packages/worker && bunx wrangler deploy
 ```
 
 `wrangler.jsonc` `migrations` only ever gain tags; never rename or remove a class.
+
+### 5.8 Upgrade cabane across devices: the hub first, then each device
+
+Every database carries a numbered schema version (`schema_migrations`; `planner_…` on
+Jake's shared `jake.db`). On boot, cabane applies the migrations the database has not had
+yet, each once and each in its own transaction: a migration that fails is reported by
+number and leaves the database at the version before it. A database already at a newer
+version than the build opening it is refused with "update cabane before opening it",
+rather than written by code that does not know its schema.
+
+The version also rides on every op a device pushes. A device that pulls an op from a newer
+schema than its own applies everything before that op, stops its watermark just short of
+it, and fails the pull with "Update cabane on this device and sync again". Nothing is
+skipped: after the update, the next pull starts at that op. Pushing keeps working
+meanwhile, since a newer device reads an older one's ops.
+
+So a release that adds a migration goes out in this order:
+
+1. The hub: redeploy the Worker (§5.7). The cloud device migrates on its next boot, and
+   browser clients (Claude.ai, ChatGPT) stay current throughout.
+2. Each device: pull the clone and `bun install` in it (`bun link` follows the clone), then
+   run any `cabane` command once. Until a device updates, its scheduled pull logs the
+   "update cabane" error and holds its place.
+3. The Jake machine, if it shares `jake.db`: update Jake's `@cabane/core` link at the same
+   time as the CLI on that machine.
+
+A device that updates before the hub is safe too: the hub's cloud device and every older
+device stop at that device's first op until they update.
 
 ---
 

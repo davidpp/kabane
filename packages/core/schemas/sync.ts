@@ -78,6 +78,14 @@ export const SyncOpSchema = z.object({
 
 	/** When capture fired (ISO timestamp) */
 	capturedAt: z.string(),
+
+	/**
+	 * Schema version of the cabane that pushed the op (`Migrations.SCHEMA_VERSION`).
+	 * A device on an older schema stops pulling at the first op above its own
+	 * instead of storing part of a row it does not understand. Absent on ops
+	 * pushed before the field existed, which read as the baseline, version 1.
+	 */
+	schema: z.number().int().positive().optional(),
 });
 export type SyncOp = z.infer<typeof SyncOpSchema>;
 

@@ -4,7 +4,8 @@
  * Every adapter runs the same cases so the two engines cannot drift apart on
  * the details storage relies on: exact `changes`, transaction rollback on a
  * throw, `atomic` surviving an await, parameter binding, multi-statement
- * `exec`, FTS5 and `json_each` being present, and the core schema applying.
+ * `exec`, FTS5 and `json_each` being present, the core schema applying, and
+ * the migration runner committing, rolling back and refusing a newer database.
  *
  * Framework-free on purpose. `bun:test` and vitest cannot both be imported
  * here, so each case is a plain async function that throws on failure and the
@@ -15,6 +16,7 @@
  * ```
  */
 
+import { Migrate } from "./migrate";
 import type { Db, DbProvider, Row } from "./port";
 import { applySchema } from "./schema";
 import { setTablePrefix, TABLES } from "./tables";
@@ -53,6 +55,15 @@ const scratch = (label: string): string =>
 	`conf_${label}_${Math.random().toString(36).slice(2, 8)}`;
 
 const BASE = "conformance";
+
+/** Unwrap a runner result inside a case, or fail the case with its error. */
+const migrated = (result: ReturnType<typeof Migrate.run>): Migrate.Report => {
+	if (!result.ok) throw new Error(`conformance: ${result.error.message}`);
+	return result.value;
+};
+
+const rowCount = (db: Db, table: string): number =>
+	db.query<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).get()?.n ?? -1;
 
 export const conformanceCases = (): ConformanceCase[] => [
 	{
@@ -353,6 +364,149 @@ export const conformanceCases = (): ConformanceCase[] => [
 					assert(
 						names.includes(`${TABLES.tasks_fts}_ai`),
 						"FTS insert trigger exists (CREATE TRIGGER works on this engine)",
+					);
+				}),
+			);
+		},
+	},
+	{
+		name: "migrations run once each, in order, and a second run applies nothing",
+		run: async (provider) => {
+			const versions = scratch("mig_versions");
+			const data = scratch("mig_data");
+			const list: Migrate.Migration[] = [
+				{
+					name: "create",
+					up: (db) => db.exec(`CREATE TABLE ${data} (n INTEGER)`),
+				},
+				{
+					name: "seed",
+					up: (db) => {
+						db.run(`INSERT INTO ${data} (n) VALUES (1)`);
+					},
+				},
+			];
+			await must(
+				provider.withDb(BASE, (db) => {
+					const first = migrated(Migrate.run(db, list, versions));
+					assertEqual(
+						first,
+						{ from: 0, to: 2, applied: ["create", "seed"] },
+						"first run",
+					);
+					const second = migrated(Migrate.run(db, list, versions));
+					assertEqual(second, { from: 2, to: 2, applied: [] }, "second run");
+					assertEqual(rowCount(db, data), 1, "seed ran once");
+					assertEqual(
+						db
+							.query<{ version: number; name: string }>(
+								`SELECT version, name FROM ${versions} ORDER BY version`,
+							)
+							.all(),
+						[
+							{ version: 1, name: "create" },
+							{ version: 2, name: "seed" },
+						],
+						"version rows",
+					);
+				}),
+			);
+		},
+	},
+	{
+		name: "a migration that throws rolls back with its version row, and the next run retries it",
+		run: async (provider) => {
+			const versions = scratch("mig_versions");
+			const data = scratch("mig_data");
+			const create: Migrate.Migration = {
+				name: "create",
+				up: (db) => db.exec(`CREATE TABLE ${data} (n INTEGER)`),
+			};
+			const failing: Migrate.Migration = {
+				name: "half",
+				up: (db) => {
+					db.run(`INSERT INTO ${data} (n) VALUES (1)`);
+					throw new Error("boom");
+				},
+			};
+			const fixed: Migrate.Migration = {
+				name: "half",
+				up: (db) => {
+					db.run(`INSERT INTO ${data} (n) VALUES (2)`);
+				},
+			};
+			await must(
+				provider.withDb(BASE, (db) => {
+					const failed = Migrate.run(db, [create, failing], versions);
+					assert(!failed.ok, "a throwing migration is an err");
+					assert(
+						!failed.ok &&
+							failed.error.message.includes("schema migration 2 (half)") &&
+							failed.error.message.includes("still at version 1") &&
+							failed.error.message.includes("boom"),
+						`the error names the migration and the version left: ${failed.ok ? "" : failed.error.message}`,
+					);
+					assertEqual(
+						rowCount(db, data),
+						0,
+						"the failed migration's insert rolled back",
+					);
+					assertEqual(Migrate.current(db, versions), 1, "version stays at 1");
+					const retried = migrated(Migrate.run(db, [create, fixed], versions));
+					assertEqual(retried.applied, ["half"], "the next run retries it");
+					assertEqual(rowCount(db, data), 1, "and it lands once");
+				}),
+			);
+		},
+	},
+	{
+		name: "a database already past the list is refused, untouched",
+		run: async (provider) => {
+			const versions = scratch("mig_versions");
+			await must(
+				provider.withDb(BASE, (db) => {
+					migrated(
+						Migrate.run(
+							db,
+							[
+								{ name: "a", up: () => {} },
+								{ name: "b", up: () => {} },
+							],
+							versions,
+						),
+					);
+					const older = Migrate.run(
+						db,
+						[{ name: "a", up: () => {} }],
+						versions,
+					);
+					assert(
+						!older.ok && older.error.message.includes("update cabane"),
+						"an older list refuses a newer database and says to update",
+					);
+					assertEqual(Migrate.current(db, versions), 2, "version unchanged");
+				}),
+			);
+		},
+	},
+	{
+		name: "the core schema applies inside a migration's transaction",
+		run: async (provider) => {
+			setTablePrefix("");
+			const versions = scratch("mig_versions");
+			await must(
+				provider.withDb(BASE, (db) => {
+					const report = migrated(
+						Migrate.run(db, [{ name: "baseline", up: applySchema }], versions),
+					);
+					assertEqual(report.applied, ["baseline"], "applied");
+					assert(
+						db
+							.query<{ name: string }>(
+								"SELECT name FROM sqlite_master WHERE name = ?",
+							)
+							.get(`${TABLES.tasks_fts}_ai`) !== null,
+						"FTS triggers exist after a transactional apply",
 					);
 				}),
 			);

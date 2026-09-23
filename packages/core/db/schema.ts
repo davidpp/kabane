@@ -6,9 +6,12 @@
  * so "shared database with a prefix" versus "own database with plain names"
  * is configuration, not a fork of the schema.
  *
- * Idempotent: every statement is IF NOT EXISTS, and it re-runs on every
- * `init`. Column additions to existing tables go through `runMigrations` in
- * `storage/helpers.ts`, never here.
+ * THIS IS MIGRATION 1, THE RELEASE BASELINE (`storage/migrations.ts`), and it
+ * runs once per database. Do not edit it to change the schema: append a
+ * migration to that list instead, so a fresh database and an upgraded one end
+ * at the same schema. Every statement stays IF NOT EXISTS because a
+ * pre-release database already has most of these tables when the baseline
+ * runs on it.
  */
 
 import type { Db } from "./port";
@@ -192,8 +195,8 @@ CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_review ON tasks(needs_review) WHERE needs_review = 1;
--- NOTE: idx_tasks_short_id and idx_tasks_project created by migration
--- (helpers.ts runMigrations) to avoid boot-order issues on existing DBs
+-- NOTE: the short_id and project_id indexes come after the pre-release
+-- column adds, in migration 1 (storage/migrations.ts createLateIndexes)
 
 -- Composite index for active tasks view
 CREATE INDEX IF NOT EXISTS idx_tasks_active ON tasks(state, priority, deadline);

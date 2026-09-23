@@ -20,6 +20,8 @@ export {
 } from "./commit-linker/patterns";
 // Db port conformance (adapter test suites run these)
 export { type ConformanceCase, conformanceCases } from "./db/conformance";
+// Schema migrations: the runner and the list it applies
+export { Migrate } from "./db/migrate";
 // Ports and runtime wiring
 export type {
 	Changes,
@@ -94,6 +96,7 @@ export * from "./scope/schemas";
 export { ScopeUri } from "./scope/uri";
 // Storage
 export { normalizeScopeUri, Planner } from "./storage";
+export { Migrations } from "./storage/migrations";
 export { Oplog } from "./storage/oplog";
 // Sync (multi-device replication)
 export { Backfill } from "./sync/backfill";

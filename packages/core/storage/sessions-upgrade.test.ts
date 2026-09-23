@@ -34,13 +34,15 @@ describe("session tables on an existing (pre-S4a) database", () => {
 
 		// Full current init, then drop the session tables to simulate a DB
 		// created before S4a existed (faithful for the IF NOT EXISTS path:
-		// the tables are simply absent).
+		// the tables are simply absent), and the version table, which a
+		// database from before the migration runner does not have either.
 		const init = await Planner.init(TEST_BASE);
 		if (!init.ok) throw new Error("init failed");
 		const db = new Database(DB_PATH);
 		try {
 			db.run("DROP TABLE IF EXISTS agent_activities");
 			db.run("DROP TABLE IF EXISTS agent_sessions");
+			db.run("DROP TABLE IF EXISTS schema_migrations");
 		} finally {
 			db.close();
 		}
