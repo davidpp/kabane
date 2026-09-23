@@ -158,8 +158,10 @@ Work is tracked in cabane (MCP server `cabane`). Your assignee name is your harn
 - File new work you find with `cabane_add` instead of doing it unasked.
 ```
 
-Assign work from the board, or with `cabane add "…" --assignee claude`. The assignee is a
-plain name, so it has to match the name in the block.
+The board shows assignees (`@claude`) but does not set them. Assign with
+`cabane add "…" --assignee claude` or `cabane edit <id> --assignee claude`, or ask the
+copilot to do it. The assignee is a plain name, not the actor URI, and `list` matches it
+exactly: `--assignee cabane://actor/agent/claude` finds nothing.
 
 ## The CLI, for scripts and agents
 

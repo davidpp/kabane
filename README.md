@@ -179,14 +179,16 @@ parts 2 to 4.
    reads the brief, works, and closes:
 
    ```bash
-   cabane list --assignee cabane://actor/agent/claude --state next
+   cabane list --assignee claude --state next
    cabane edit <id> --state in_progress
    cabane context <id>
    cabane comment <id> "what landed" --as cabane://actor/agent/claude
    cabane done <id>
    ```
 
-   The claim is `in_progress`; a runtime must not take a task another one already holds.
+   The assignee is the runtime's plain name (`claude`, `codex`, `hermes`), matched exactly;
+   the actor URI goes on `--as`. The claim is `in_progress`; a runtime must not take a task
+   another one already holds.
    Push happens after each write; pull is the schedule from step 5.
 
 ## Gate
