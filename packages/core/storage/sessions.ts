@@ -34,8 +34,8 @@ import {
 
 /**
  * Idle threshold before an active/awaiting_input session counts as stale (24h).
- * Distinct from DEFAULT_STALE_THRESHOLD_MS (stale.ts, 7d) — that's for issue
- * states; this is for agent sessions. Different concepts, different constants.
+ * Distinct from the 7-day threshold for stale in-progress issues (stats.ts):
+ * that one is for issue states, this one for agent sessions.
  */
 export const SESSION_STALE_MS = 24 * 60 * 60 * 1000;
 

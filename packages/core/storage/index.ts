@@ -16,7 +16,6 @@ import { Planner as Init } from "./init";
 import { Planner as Projects } from "./projects";
 import { Planner as SelectDurable } from "./select-durable";
 import { Planner as Sessions } from "./sessions";
-import { Planner as Stale } from "./stale";
 import { Planner as Stats } from "./stats";
 import { Planner as TaskLinks } from "./task-links";
 import { Planner as Tasks } from "./tasks";
@@ -82,8 +81,6 @@ export const Planner = {
 	// Stats
 	stats: Stats.stats,
 	listScopes: Stats.listScopes,
-	// Stale sweep
-	getStaleInProgress: Stale.getStaleInProgress,
 	// Agent Sessions (S4a)
 	startSession: Sessions.startSession,
 	getSession: Sessions.getSession,

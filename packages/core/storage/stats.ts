@@ -7,12 +7,11 @@ import { withDb } from "../runtime";
 import { ScopeUri } from "../scope/uri";
 
 import { TABLES } from "./helpers";
-import {
-	DEFAULT_STALE_THRESHOLD_MS as STALE_IN_PROGRESS_MS,
-	Planner as StalePlanner,
-} from "./stale";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** How long an in-progress issue goes untouched before it counts as stale. */
+const STALE_IN_PROGRESS_MS = 7 * DAY_MS;
 
 /**
  * Stored scope_uri values vary for the same logical scope (branch/package
@@ -42,7 +41,10 @@ export namespace Planner {
 			doneToday: number;
 			/** Age in days of the oldest inbox task (0 when inbox is empty). */
 			oldestInboxDays: number;
-			/** In-progress issues untouched for >7d (shared stale helper). */
+			/**
+			 * In-progress issues whose last touch (the row, its latest comment or
+			 * work log) is older than 7 days. Personal tasks never count.
+			 */
 			staleInProgressCount: number;
 			/** Inbox tasks created more than 30 days ago. */
 			inboxOver30d: number;
@@ -50,13 +52,6 @@ export namespace Planner {
 			probablyDoneCount: number;
 		}>
 	> => {
-		// Reuse the landed stale helper (opens its own connection).
-		const staleResult = await StalePlanner.getStaleInProgress(
-			basePath,
-			STALE_IN_PROGRESS_MS,
-		);
-		const staleInProgressCount = staleResult.ok ? staleResult.value.length : 0;
-
 		return withDb(basePath, (db) => {
 			const totalTasks = (
 				db.query(`SELECT COUNT(*) as count FROM ${TABLES.tasks}`).get() as {
@@ -104,6 +99,29 @@ export namespace Planner {
 			const oldestInboxDays = oldestInbox.oldest
 				? Math.floor((now - Date.parse(oldestInbox.oldest)) / DAY_MS)
 				: 0;
+
+			// ISO-8601 UTC timestamps sort lexicographically, so MAX and `<` on
+			// the strings are chronological.
+			const staleInProgressCount = (
+				db
+					.query(
+						`SELECT COUNT(*) as count FROM ${TABLES.tasks} t
+						 WHERE t.kind = 'issue'
+						   AND t.state = 'in_progress'
+						   AND (
+						     SELECT MAX(ts) FROM (
+						       SELECT t.updated_at AS ts
+						       UNION ALL
+						       SELECT c.created_at FROM ${TABLES.comments} c WHERE c.task_id = t.id
+						       UNION ALL
+						       SELECT w.created_at FROM ${TABLES.work_log} w WHERE w.task_id = t.id
+						     )
+						   ) < ?`,
+					)
+					.get(new Date(now - STALE_IN_PROGRESS_MS).toISOString()) as {
+					count: number;
+				}
+			).count;
 
 			const thirtyDaysAgo = new Date(now - 30 * DAY_MS).toISOString();
 			const inboxOver30d = (
