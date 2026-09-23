@@ -27,8 +27,10 @@ const ACCENT_COLOR = "#f97316";
 const ERROR_COLOR = "#ef4444";
 const INPUT_BG = "#1c1c1c";
 const INPUT_WIDTH = 24;
-// `› ` plus the widest label, padded: where an input, or a note moved under one, starts.
+// `› ` plus the widest label, padded: where an input, a checkbox, or the note under one starts.
 const LABEL_WIDTH = 9;
+// `enter ` before the first line of what enter does: where the rest of those lines start.
+const ENTER_INDENT = 6;
 
 export type SetupDeps = {
 	defaults: SetupPlan.Defaults;
@@ -103,13 +105,39 @@ const footerFor = (
 	return FORM_FOOTER.filter((hint) => hint.key !== "space");
 };
 
-export const HARNESS_HEADING = "let these agents use cabane";
-export const HARNESS_HINT = "adds cabane to each one's mcp config";
-export const NO_HARNESS_HEADING = "no agents found on PATH";
-export const NO_HARNESS_HINT = "snippets: cabane mcp install --print";
-export const SYNC_HINT = "more machines: docs/deploy.md";
-export const writesLine = (configPath: string): string =>
-	`enter writes ${configPath}`;
+// Each field's one-line purpose, dim under it. At 40 columns a note has 31 after the label column.
+export const NAME_NOTE = "signs what you write";
+export const AGENTS_NOTE = "checked ones get cabane's tools";
+export const NO_AGENTS = "none found on PATH";
+export const NO_AGENTS_NOTE = "add later: cabane mcp install";
+export const AGENTS_OFF = "install off";
+export const AGENTS_OFF_NOTE = "CABANE_HARNESSES is set";
+
+/** What enter will do, one change a line, so nothing it touches goes unsaid. */
+export const enterLines = (
+	configPath: string,
+	agents: number,
+): readonly string[] => [
+	`saves ${configPath}`,
+	...(agents > 0
+		? [`adds cabane to ${agents} agent${agents === 1 ? "" : "s"}`]
+		: []),
+	"opens the board",
+];
+
+/**
+ * A path cut to `room` columns from the left, whole segments at a time, so it never wraps mid-word
+ * and keeps the file name: `/var/folders/…/cabane/.cabane/config.json` → `…/.cabane/config.json`.
+ */
+export const elidePath = (path: string, room: number): string => {
+	if (path.length <= room) return path;
+	const segments = path.split("/");
+	for (let start = 1; start < segments.length - 1; start++) {
+		const tail = `…/${segments.slice(start).join("/")}`;
+		if (tail.length <= room) return tail;
+	}
+	return `…/${segments.at(-1)}`;
+};
 
 const STATUS_TEXT: Record<SetupPlan.InstallStatus, string> = {
 	installed: "✓ installed",
@@ -224,7 +252,7 @@ export const SetupScreen = ({
 					<IntroCard lines={INTRO_CARDS[phase.card] ?? []} />
 				) : phase.kind === "done" ? (
 					<>
-						<text>✓ wrote {phase.configPath}</text>
+						<SavedLine path={phase.configPath} />
 						<box style={{ flexDirection: "column", marginTop: 1 }}>
 							{phase.outcomes.map((outcome) => (
 								<NotedLine
@@ -245,9 +273,10 @@ export const SetupScreen = ({
 					/>
 				)}
 				{phase.kind === "form" ? (
-					<text fg={MUTED_COLOR} style={{ marginTop: 1 }}>
-						{writesLine(defaults.configPath)}
-					</text>
+					<EnterLines
+						configPath={defaults.configPath}
+						agents={form.checked.length}
+					/>
 				) : null}
 				{phase.kind === "form" && phase.error ? (
 					<text fg={ERROR_COLOR} style={{ marginTop: 1 }}>
@@ -260,9 +289,6 @@ export const SetupScreen = ({
 					</text>
 				) : null}
 			</box>
-			{phase.kind === "form" || phase.kind === "working" ? (
-				<text fg={MUTED_COLOR}>{SYNC_HINT}</text>
-			) : null}
 			<StatusBar
 				text={Keymap.hintLine(footerFor(phase, defaults))}
 				fg={MUTED_COLOR}
@@ -301,40 +327,78 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 						value={form.name}
 						focused={focused}
 						onInput={onName}
-						note={SetupPlan.actorUri(form.name)}
 					/>
 				);
 			case "harness":
 				return (
 					<CheckRow
 						key={field.harness.id}
-						label={field.harness.label}
+						label={index === 1 ? "agents" : ""}
+						harness={field.harness.label}
 						checked={form.checked.includes(field.harness.id)}
 						focused={focused}
 					/>
 				);
 		}
 	};
-	const [name, ...rest] = SetupPlan.fields(defaults).map(row);
+	const [name, ...agents] = SetupPlan.fields(defaults).map(row);
 	return (
 		<box style={{ flexDirection: "column" }}>
 			{name}
+			<Note text={NAME_NOTE} />
 			<box style={{ flexDirection: "column", marginTop: 1 }}>
-				{defaults.harnesses.length === 0 ? (
+				{agents.length > 0 ? (
 					<>
-						<text>{NO_HARNESS_HEADING}</text>
-						<text fg={MUTED_COLOR}>{NO_HARNESS_HINT}</text>
+						{agents}
+						<Note text={AGENTS_NOTE} />
 					</>
 				) : (
 					<>
-						<text>{HARNESS_HEADING}</text>
-						<text fg={MUTED_COLOR}>{HARNESS_HINT}</text>
+						<text>
+							{`${" ".repeat(2)}${"agents".padEnd(LABEL_WIDTH - 2)}`}
+							{defaults.installOff ? AGENTS_OFF : NO_AGENTS}
+						</text>
+						<Note
+							text={defaults.installOff ? AGENTS_OFF_NOTE : NO_AGENTS_NOTE}
+						/>
 					</>
 				)}
 			</box>
-			{rest}
 		</box>
 	);
+};
+
+// A field's purpose, dim, under its value.
+const Note = ({ text }: { text: string }): ReactNode => (
+	<text fg={MUTED_COLOR}>{`${" ".repeat(LABEL_WIDTH)}${text}`}</text>
+);
+
+// `enter` in the footer's key colour, then what it will do, dim.
+const EnterLines = ({
+	configPath,
+	agents,
+}: {
+	configPath: string;
+	agents: number;
+}): ReactNode => {
+	const { width } = useTerminalDimensions();
+	const room = width - ENTER_INDENT - "saves ".length;
+	return (
+		<box style={{ flexDirection: "column", marginTop: 1 }}>
+			{enterLines(elidePath(configPath, room), agents).map((line, index) => (
+				<text key={line}>
+					{index === 0 ? "enter " : " ".repeat(ENTER_INDENT)}
+					<span fg={MUTED_COLOR}>{line}</span>
+				</text>
+			))}
+		</box>
+	);
+};
+
+const SavedLine = ({ path }: { path: string }): ReactNode => {
+	const { width } = useTerminalDimensions();
+	const head = "✓ saved ";
+	return <text>{`${head}${elidePath(path, width - head.length)}`}</text>;
 };
 
 type TextRowProps = {
@@ -342,7 +406,6 @@ type TextRowProps = {
 	value: string;
 	focused: boolean;
 	onInput: (value: string) => void;
-	note?: string;
 };
 
 const TextRow = ({
@@ -350,34 +413,21 @@ const TextRow = ({
 	value,
 	focused,
 	onInput,
-	note,
-}: TextRowProps): ReactNode => {
-	const { width } = useTerminalDimensions();
-	const beside =
-		note !== undefined &&
-		fitsBeside(width, LABEL_WIDTH + INPUT_WIDTH + 1, note);
-	return (
-		<box style={{ flexDirection: "column" }}>
-			<box style={{ flexDirection: "row", height: 1 }}>
-				<text fg={focused ? ACCENT_COLOR : undefined} style={{ flexShrink: 0 }}>
-					{`${focused ? "›" : " "} ${label.padEnd(LABEL_WIDTH - 2)}`}
-				</text>
-				<input
-					value={value}
-					focused={focused}
-					onInput={onInput}
-					backgroundColor={INPUT_BG}
-					focusedBackgroundColor={SELECTED_BG}
-					style={{ width: INPUT_WIDTH, flexShrink: 0 }}
-				/>
-				{beside ? <text fg={MUTED_COLOR}>{`  ${note}`}</text> : null}
-			</box>
-			{note !== undefined && !beside ? (
-				<text fg={MUTED_COLOR}>{`${" ".repeat(LABEL_WIDTH)}${note}`}</text>
-			) : null}
-		</box>
-	);
-};
+}: TextRowProps): ReactNode => (
+	<box style={{ flexDirection: "row", height: 1 }}>
+		<text fg={focused ? ACCENT_COLOR : undefined} style={{ flexShrink: 0 }}>
+			{`${focused ? "›" : " "} ${label.padEnd(LABEL_WIDTH - 2)}`}
+		</text>
+		<input
+			value={value}
+			focused={focused}
+			onInput={onInput}
+			backgroundColor={INPUT_BG}
+			focusedBackgroundColor={SELECTED_BG}
+			style={{ width: INPUT_WIDTH, flexShrink: 0 }}
+		/>
+	</box>
+);
 
 type NotedLineProps = {
 	head: string;
@@ -399,14 +449,25 @@ const NotedLine = ({ head, note, indent, fg }: NotedLineProps): ReactNode => {
 	);
 };
 
-type CheckRowProps = { label: string; checked: boolean; focused: boolean };
+type CheckRowProps = {
+	// The column label, on the first agent row only.
+	label: string;
+	harness: string;
+	checked: boolean;
+	focused: boolean;
+};
 
-const CheckRow = ({ label, checked, focused }: CheckRowProps): ReactNode => (
-	<text
-		fg={focused ? ACCENT_COLOR : undefined}
-		bg={focused ? SELECTED_BG : undefined}
-	>
-		{`${focused ? "›" : " "} [${checked ? "x" : " "}] ${label}`}
+const CheckRow = ({
+	label,
+	harness,
+	checked,
+	focused,
+}: CheckRowProps): ReactNode => (
+	<text fg={focused ? ACCENT_COLOR : undefined}>
+		{`${focused ? "›" : " "} ${label.padEnd(LABEL_WIDTH - 2)}`}
+		<span bg={focused ? SELECTED_BG : undefined}>
+			{`[${checked ? "x" : " "}] ${harness}`}
+		</span>
 	</text>
 );
 

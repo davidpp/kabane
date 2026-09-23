@@ -98,9 +98,6 @@ export namespace SetupPlan {
 			.replace(/[^a-z0-9._-]+/g, "-")
 			.replace(/^-+|-+$/g, "");
 
-	export const actorUri = (name: string): string =>
-		`${ACTOR_PREFIX}${actorSlug(name)}`;
-
 	export const plan = (form: Form, defaults: Defaults): Result<Plan> => {
 		const slug = actorSlug(form.name);
 		if (slug === "") return err(new Error("name needs a letter or a digit"));
