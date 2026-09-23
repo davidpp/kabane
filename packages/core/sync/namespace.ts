@@ -22,9 +22,10 @@ import { withDb } from "../runtime";
 
 import type { SyncStatus } from "../schemas";
 import { TABLES } from "../storage/helpers";
+import { Migrations } from "../storage/migrations";
 import { Oplog } from "../storage/oplog";
 import { Apply, type ApplyReport } from "./apply";
-import type { SyncTransport } from "./transport";
+import type { PullPage, RelayOp, SyncTransport } from "./transport";
 
 // ============================================================
 // Constants
@@ -38,6 +39,9 @@ const DEFAULT_BATCH = 500;
  * against a log another device is actively writing would never return.
  */
 const DEFAULT_MAX_BATCHES = 100;
+
+/** The schema an op without a `schema` field was pushed by: before the field, the baseline. */
+const BASELINE_SCHEMA = 1;
 
 /**
  * Quarantined ops listed in `status`. The count beside them is the true total —
@@ -108,6 +112,27 @@ const pendingOps = (db: Db): number =>
 		)
 		.get()?.count ?? 0;
 
+/**
+ * The first op this build cannot store: one pushed by a cabane with a newer
+ * schema. Applying it would drop the columns this build lacks (apply writes only
+ * the columns it knows) or skip a table it has never heard of, and the watermark
+ * would move past it for good.
+ */
+const firstNewerOp = (ops: readonly RelayOp[]): RelayOp | undefined =>
+	ops.find((op) => (op.schema ?? BASELINE_SCHEMA) > Migrations.SCHEMA_VERSION);
+
+/** The part of a page before `op`, with the watermark stopping just short of it. */
+const pageBefore = (page: PullPage, op: RelayOp): PullPage => ({
+	ops: page.ops.filter((o) => o.serverSeq < op.serverSeq),
+	throughSeq: op.serverSeq - 1,
+	hasMore: true,
+});
+
+const schemaAhead = (op: RelayOp): Error =>
+	new Error(
+		`the sync log holds a change from a newer cabane (schema ${op.schema}; this device runs schema ${Migrations.SCHEMA_VERSION}). Update cabane on this device and sync again: the pull stopped before that change, at server seq ${op.serverSeq}, and skipped nothing.`,
+	);
+
 const renamedShortIds = (db: Db): number =>
 	db
 		.query<{ count: number }, []>(
@@ -142,8 +167,14 @@ const pushImpl = async (
 		const ops = drained.value;
 		if (ops.length === 0) break;
 
-		// The local `seq` is meaningless to the log — strip it at the seam.
-		const ack = await transport.push(ops.map(({ seq: _seq, ...op }) => op));
+		// The local `seq` is meaningless to the log — strip it at the seam. The
+		// schema version goes on instead, so an older device knows to stop.
+		const ack = await transport.push(
+			ops.map(({ seq: _seq, ...op }) => ({
+				...op,
+				schema: Migrations.SCHEMA_VERSION,
+			})),
+		);
 		if (!ack.ok) return ack;
 
 		const last = ops[ops.length - 1];
@@ -187,22 +218,31 @@ const pullImpl = async (
 		const page = await transport.pull(total.throughSeq, limit);
 		if (!page.ok) return page;
 
+		// An op from a newer schema ends the pull: what comes before it applies,
+		// the watermark stops just short of it, and the next pull (after an
+		// update) starts there, so nothing is skipped.
+		const newer = firstNewerOp(page.value.ops);
+		const applicable =
+			newer === undefined ? page.value : pageBefore(page.value, newer);
+
 		// A page can be empty and still move the cursor: everything in its window
 		// was this device's own work.
 		if (
-			page.value.ops.length === 0 &&
-			page.value.throughSeq <= total.throughSeq
+			applicable.ops.length === 0 &&
+			applicable.throughSeq <= total.throughSeq
 		) {
+			if (newer !== undefined) return err(schemaAhead(newer));
 			break;
 		}
 
-		const report = await Apply.applyBatch(basePath, page.value);
+		const report = await Apply.applyBatch(basePath, applicable);
 		if (!report.ok) return report;
 
 		total = Apply.mergeReports(total, report.value);
 		batches++;
 
-		if (!page.value.hasMore) break;
+		if (newer !== undefined) return err(schemaAhead(newer));
+		if (!applicable.hasMore) break;
 	}
 
 	if (batches > 0) {
