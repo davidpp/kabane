@@ -19,6 +19,7 @@
 import { z } from "zod";
 import { err, ok, type Result } from "../result";
 import {
+	Deadline,
 	ItemKindSchema,
 	LinkTypeSchema,
 	type TaskDraft,
@@ -93,11 +94,6 @@ const resolveScope = (
 const resolveId = (ctx: ToolContext, input: string): Promise<Result<string>> =>
 	Planner.resolveTaskId(ctx.basePath, input);
 
-const toDeadline = (date: string | undefined): string | undefined =>
-	date === undefined
-		? undefined
-		: new Date(`${date}T23:59:59.000Z`).toISOString();
-
 const definedOnly = <T extends Record<string, unknown>>(value: T): T =>
 	Object.fromEntries(
 		Object.entries(value).filter(([, v]) => v !== undefined),
@@ -122,7 +118,7 @@ Parameters:
 - assignee: Who completes it: a person, or an agent runtime such as claude, hermes, codex
 - parentTaskId: Optional parent (short id or ULID) to file this under
 - tags: Optional labels
-- dueDate: Optional YYYY-MM-DD`,
+- dueDate: Optional YYYY-MM-DD (due by the end of that day, UTC) or an ISO datetime`,
 	input: {
 		title: z.string().min(1).max(500),
 		kind: ItemKindSchema.optional(),
@@ -138,6 +134,8 @@ Parameters:
 	handler: async (args, ctx) => {
 		const scope = resolveScope(args.scopeUri, ctx);
 		if (!scope.ok) return scope;
+		const deadline = Deadline.fromInput(args.dueDate);
+		if (!deadline.ok) return deadline;
 		let parentTaskId: string | undefined;
 		if (args.parentTaskId) {
 			const parent = await resolveId(ctx, args.parentTaskId);
@@ -154,7 +152,7 @@ Parameters:
 			assignee: args.assignee,
 			parentTaskId,
 			tags: args.tags ?? [],
-			deadline: toDeadline(args.dueDate),
+			deadline: deadline.value,
 			provenance: {
 				source: authorTypeOf(ctx.actor),
 				discoveredAt: new Date().toISOString(),
@@ -311,6 +309,8 @@ Parameters:
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
+		const deadline = Deadline.fromInput(args.dueDate);
+		if (!deadline.ok) return deadline;
 		let parentTaskId: string | undefined;
 		if (args.parentTaskId && args.parentTaskId !== "none") {
 			const parent = await resolveId(ctx, args.parentTaskId);
@@ -327,7 +327,7 @@ Parameters:
 			scopeUri: args.scopeUri,
 			parentTaskId: args.parentTaskId === "none" ? null : parentTaskId,
 			tags: args.tags,
-			deadline: toDeadline(args.dueDate),
+			deadline: deadline.value,
 		});
 		if (Object.keys(update).length === 0) {
 			return err(new Error("Nothing to change: pass at least one field."));

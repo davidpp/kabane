@@ -6,6 +6,7 @@ import { Events, PLANNER_EVENTS } from "../events";
 import { err, ok, type Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 import {
+	Deadline,
 	type Task,
 	type TaskDraft,
 	TaskDraftSchema,
@@ -618,12 +619,12 @@ export namespace Planner {
 			}
 
 			if (query.dueBefore) {
-				conditions.push("deadline <= ?");
+				conditions.push(`${Deadline.DUE_AT_SQL} <= ?`);
 				params.push(query.dueBefore);
 			}
 
 			if (query.dueAfter) {
-				conditions.push("deadline >= ?");
+				conditions.push(`${Deadline.DUE_AT_SQL} >= ?`);
 				params.push(query.dueAfter);
 			}
 
@@ -635,7 +636,7 @@ export namespace Planner {
 			const orderColumn = {
 				createdAt: "created_at",
 				updatedAt: "updated_at",
-				deadline: "deadline",
+				deadline: Deadline.DUE_AT_SQL,
 				priority: "priority",
 			}[orderBy];
 
@@ -790,8 +791,8 @@ export namespace Planner {
 			const overdueRows = db
 				.query(
 					`SELECT * FROM ${TABLES.tasks}
-           WHERE deadline < ? ${doneFilter} ${scopeFilter} ${kindFilter}
-           ORDER BY deadline ASC`,
+           WHERE ${Deadline.DUE_AT_SQL} < ? ${doneFilter} ${scopeFilter} ${kindFilter}
+           ORDER BY ${Deadline.DUE_AT_SQL} ASC`,
 				)
 				.all(todayStart, ...scopeParam, ...kindParam) as Record<
 				string,
@@ -802,8 +803,8 @@ export namespace Planner {
 			const dueTodayRows = db
 				.query(
 					`SELECT * FROM ${TABLES.tasks}
-           WHERE deadline >= ? AND deadline <= ? ${doneFilter} ${scopeFilter} ${kindFilter}
-           ORDER BY deadline ASC`,
+           WHERE ${Deadline.DUE_AT_SQL} >= ? AND ${Deadline.DUE_AT_SQL} <= ? ${doneFilter} ${scopeFilter} ${kindFilter}
+           ORDER BY ${Deadline.DUE_AT_SQL} ASC`,
 				)
 				.all(todayStart, todayEnd, ...scopeParam, ...kindParam) as Record<
 				string,
@@ -814,7 +815,7 @@ export namespace Planner {
 			const nextRows = db
 				.query(
 					`SELECT * FROM ${TABLES.tasks}
-           WHERE state = 'next' AND (deadline IS NULL OR deadline > ?)
+           WHERE state = 'next' AND (deadline IS NULL OR ${Deadline.DUE_AT_SQL} > ?)
            ${doneFilter} ${scopeFilter} ${kindFilter}
            ORDER BY priority ASC, created_at ASC
            LIMIT 20`,

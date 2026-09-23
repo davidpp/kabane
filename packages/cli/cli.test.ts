@@ -367,6 +367,9 @@ describe("cabane cli", () => {
 		expect((await run("open")).code).toBe(1);
 		expect((await run("show")).code).toBe(2);
 		expect((await run("edit", issueId)).code).toBe(2);
+		// A due date the CLI cannot read is a usage error, not a silently dropped deadline.
+		expect((await run("add", "Undated", "--due", "friday")).code).toBe(2);
+		expect((await run("edit", issueId, "--due", "2026-02-30")).code).toBe(2);
 		expect((await run("link", taskId, issueId)).code).toBe(2);
 		expect((await run("show", "NOPE-999")).code).toBe(1);
 		// The test runner is not a TTY, which is the one way board fails.

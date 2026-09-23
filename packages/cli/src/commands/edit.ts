@@ -1,4 +1,5 @@
 import {
+	Deadline,
 	type ItemKind,
 	Planner,
 	type TaskPriority,
@@ -8,7 +9,6 @@ import {
 import { flagCsv, flagString } from "../args";
 import type { Command } from "../context";
 import { failure, formatTaskLine, success, usage } from "../output";
-import { toDeadline } from "./dates";
 
 const nothingToChange = (update: TaskUpdate): boolean =>
 	Object.values(update).every((v) => v === undefined);
@@ -32,6 +32,8 @@ export const edit: Command = {
 			parentTaskId = parent.value;
 		}
 		const assignee = flagString(args, "assignee");
+		const deadline = Deadline.fromInput(flagString(args, "due"));
+		if (!deadline.ok) return usage(deadline.error.message, edit.usage);
 
 		const update: TaskUpdate = {
 			title: flagString(args, "title"),
@@ -43,7 +45,7 @@ export const edit: Command = {
 			scopeUri: flagString(args, "scope"),
 			parentTaskId: parentInput === "none" ? null : parentTaskId,
 			tags: flagCsv(args, "tags"),
-			deadline: toDeadline(flagString(args, "due")),
+			deadline: deadline.value,
 		};
 		if (nothingToChange(update)) return usage("Nothing to change", edit.usage);
 
