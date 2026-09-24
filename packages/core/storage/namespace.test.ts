@@ -113,7 +113,7 @@ describe("Planner", () => {
 			for (const [scope, expected, prefix] of [
 				["acme", "jake://scope/acme", "JACM-"],
 				["work", "jake://scope/work", "JWOR-"],
-			]) {
+			] satisfies [string, string, string][]) {
 				const result = await Planner.addTask(TEST_BASE, {
 					...draft,
 					scopeUri: scope,
@@ -310,7 +310,7 @@ describe("Planner", () => {
 			expect(result.ok).toBe(true);
 			if (!result.ok) return;
 			expect(result.value.length).toBe(1);
-			expect(result.value[0].title).toBe("Email task A");
+			expect(result.value[0]?.title).toBe("Email task A");
 		});
 
 		it("should return empty when sourceId not found", async () => {
@@ -356,8 +356,8 @@ describe("Planner", () => {
 			expect(result.ok).toBe(true);
 			if (!result.ok) return;
 			expect(result.value.length).toBe(1);
-			expect(result.value[0].sourceId).toBe("19dfa060b02f01c1");
-			expect(result.value[0].tasks.length).toBe(2);
+			expect(result.value[0]?.sourceId).toBe("19dfa060b02f01c1");
+			expect(result.value[0]?.tasks.length).toBe(2);
 		});
 
 		it("should return empty when no duplicates exist", async () => {
@@ -798,7 +798,7 @@ describe("Planner", () => {
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				expect(result.value.length).toBe(1);
-				expect(result.value[0].title).toBe("Next task");
+				expect(result.value[0]?.title).toBe("Next task");
 			}
 		});
 
@@ -852,7 +852,7 @@ describe("Planner", () => {
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				expect(result.value.length).toBeGreaterThan(0);
-				expect(result.value[0].title).toContain("authentication");
+				expect(result.value[0]?.title).toContain("authentication");
 			}
 		});
 
@@ -861,7 +861,7 @@ describe("Planner", () => {
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				expect(result.value.length).toBe(1);
-				expect(result.value[0].title).toBe("Add login rate limiting");
+				expect(result.value[0]?.title).toBe("Add login rate limiting");
 			}
 		});
 
@@ -1179,7 +1179,7 @@ describe("Planner", () => {
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				expect(result.value.length).toBe(1);
-				expect(result.value[0].type).toBe("parent");
+				expect(result.value[0]?.type).toBe("parent");
 			}
 		});
 

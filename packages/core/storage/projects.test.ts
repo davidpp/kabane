@@ -185,7 +185,7 @@ describe("Planner — Projects", () => {
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				expect(result.value.length).toBe(1);
-				expect(result.value[0].title).toBe("Active");
+				expect(result.value[0]?.title).toBe("Active");
 			}
 		});
 
@@ -221,7 +221,7 @@ describe("Planner — Projects", () => {
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				expect(result.value.length).toBe(1);
-				expect(result.value[0].title).toBe("Someday");
+				expect(result.value[0]?.title).toBe("Someday");
 			}
 		});
 
@@ -235,7 +235,7 @@ describe("Planner — Projects", () => {
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				expect(result.value.length).toBe(1);
-				expect(result.value[0].title).toBe("Auth Rewrite");
+				expect(result.value[0]?.title).toBe("Auth Rewrite");
 			}
 		});
 	});
@@ -284,7 +284,7 @@ describe("Planner — Projects", () => {
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				expect(result.value.length).toBe(1);
-				expect(result.value[0].title).toBe("T1");
+				expect(result.value[0]?.title).toBe("T1");
 			}
 		});
 

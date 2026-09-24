@@ -5,6 +5,8 @@
  * Follows Linear/GitHub conventions.
  */
 
+import { firstGroups } from "../regex";
+
 /**
  * Task ID pattern - matches short IDs like JAKE-123, ALL-45
  */
@@ -61,40 +63,17 @@ export function parseConventionalCommit(message: string): string[] {
  * Parse task IDs from reference markers
  */
 export function parseReferences(message: string): string[] {
-	const ids: string[] = [];
-
-	// Reset regex lastIndex
-	PATTERNS.references.lastIndex = 0;
-
-	let match = PATTERNS.references.exec(message);
-	while (match !== null) {
-		// Extract all IDs from the match (handles "JAKE-1, JAKE-2")
-		const idsInMatch = match[1].match(TASK_ID_PATTERN);
-		if (idsInMatch) {
-			ids.push(...idsInMatch);
-		}
-		match = PATTERNS.references.exec(message);
-	}
-
-	return ids;
+	// Extract all IDs from each match (handles "JAKE-1, JAKE-2")
+	return firstGroups(message, PATTERNS.references).flatMap(
+		(group) => group.match(TASK_ID_PATTERN) ?? [],
+	);
 }
 
 /**
  * Parse task IDs with "closes" semantics
  */
 export function parseCloseKeywords(message: string): string[] {
-	const ids: string[] = [];
-
-	// Reset regex lastIndex
-	PATTERNS.closes.lastIndex = 0;
-
-	let match = PATTERNS.closes.exec(message);
-	while (match !== null) {
-		ids.push(match[1]);
-		match = PATTERNS.closes.exec(message);
-	}
-
-	return ids;
+	return firstGroups(message, PATTERNS.closes);
 }
 
 /**

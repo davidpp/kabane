@@ -83,12 +83,13 @@ export function parseQuestionBody(body: string): ParsedQuestion {
 	};
 
 	const match = body.match(JSON_FENCE);
-	if (!match) return defaults;
+	const json = match?.[1];
+	if (!match || json === undefined) return defaults;
 
 	const parsed = QuestionMetaSchema.safeParse(
 		((): unknown => {
 			try {
-				return JSON.parse(match[1]);
+				return JSON.parse(json);
 			} catch {
 				return undefined;
 			}

@@ -51,8 +51,8 @@ describe("RiskAnalyzer.checkFileOverlap", () => {
 		];
 		const risks = RiskAnalyzer.checkFileOverlap(subtasks);
 		expect(risks.length).toBe(1);
-		expect(risks[0].type).toBe("file_overlap");
-		expect(risks[0].message).toContain("packages/loop/schemas/loop.ts");
+		expect(risks[0]?.type).toBe("file_overlap");
+		expect(risks[0]?.message).toContain("packages/loop/schemas/loop.ts");
 	});
 
 	it("returns high severity for 3+ subtasks on same file", () => {
@@ -62,7 +62,7 @@ describe("RiskAnalyzer.checkFileOverlap", () => {
 			makeSubtask("C", "z", "And more `packages/loop/cli/handler.ts`"),
 		];
 		const risks = RiskAnalyzer.checkFileOverlap(subtasks);
-		expect(risks[0].severity).toBe("high");
+		expect(risks[0]?.severity).toBe("high");
 	});
 
 	it("ignores non-path strings", () => {
@@ -96,8 +96,8 @@ describe("RiskAnalyzer.checkMissingTests", () => {
 			existingTests,
 		);
 		expect(risks.length).toBe(1);
-		expect(risks[0].type).toBe("no_tests");
-		expect(risks[0].message).toContain("packages/dashboard");
+		expect(risks[0]?.type).toBe("no_tests");
+		expect(risks[0]?.message).toContain("packages/dashboard");
 	});
 });
 
@@ -111,12 +111,12 @@ describe("RiskAnalyzer.checkLargeScope", () => {
 
 	it("returns medium for 11-20 subtasks", () => {
 		const risks = RiskAnalyzer.checkLargeScope(15);
-		expect(risks[0].severity).toBe("medium");
-		expect(risks[0].type).toBe("large_scope");
+		expect(risks[0]?.severity).toBe("medium");
+		expect(risks[0]?.type).toBe("large_scope");
 	});
 
 	it("returns high for >20 subtasks", () => {
-		expect(RiskAnalyzer.checkLargeScope(25)[0].severity).toBe("high");
+		expect(RiskAnalyzer.checkLargeScope(25)[0]?.severity).toBe("high");
 	});
 });
 
@@ -140,8 +140,8 @@ describe("RiskAnalyzer.checkPastThrash", () => {
 			makeReopen("A"),
 			makeReopen("A"),
 		]);
-		expect(risks[0].severity).toBe("medium");
-		expect(risks[0].type).toBe("past_thrash");
+		expect(risks[0]?.severity).toBe("medium");
+		expect(risks[0]?.type).toBe("past_thrash");
 	});
 
 	it("detects high thrash at 3+ reopens", () => {
@@ -150,7 +150,7 @@ describe("RiskAnalyzer.checkPastThrash", () => {
 			makeReopen("A"),
 			makeReopen("A"),
 		]);
-		expect(risks[0].severity).toBe("high");
+		expect(risks[0]?.severity).toBe("high");
 	});
 
 	it("tracks multiple subtasks independently", () => {
@@ -173,15 +173,15 @@ describe("RiskAnalyzer.checkVagueDescription", () => {
 		const risks = RiskAnalyzer.checkVagueDescription([
 			makeSubtask("A", "Do x"),
 		]);
-		expect(risks[0].severity).toBe("high");
-		expect(risks[0].type).toBe("vague_description");
+		expect(risks[0]?.severity).toBe("high");
+		expect(risks[0]?.type).toBe("vague_description");
 	});
 
 	it("flags short description as medium severity", () => {
 		const risks = RiskAnalyzer.checkVagueDescription([
 			makeSubtask("A", "Do x", "Short note"),
 		]);
-		expect(risks[0].severity).toBe("medium");
+		expect(risks[0]?.severity).toBe("medium");
 	});
 
 	it("flags long description with no file paths as low severity", () => {
@@ -194,7 +194,7 @@ describe("RiskAnalyzer.checkVagueDescription", () => {
 				),
 			),
 		]);
-		expect(risks[0].severity).toBe("low");
+		expect(risks[0]?.severity).toBe("low");
 	});
 
 	it("accepts long description that mentions file paths", () => {
@@ -231,7 +231,7 @@ describe("RiskAnalyzer.checkUnreviewableScope", () => {
 			makeSubtask("A", "Do everything", desc),
 		]);
 		expect(risks.length).toBe(1);
-		expect(risks[0].type).toBe("unreviewable_scope");
+		expect(risks[0]?.type).toBe("unreviewable_scope");
 	});
 
 	it("returns high severity for very wide scope", () => {
@@ -242,7 +242,7 @@ describe("RiskAnalyzer.checkUnreviewableScope", () => {
 		const risks = RiskAnalyzer.checkUnreviewableScope([
 			makeSubtask("A", "Touch many files", desc),
 		]);
-		expect(risks[0].severity).toBe("high");
+		expect(risks[0]?.severity).toBe("high");
 	});
 });
 
@@ -293,7 +293,7 @@ describe("RiskAnalyzer.analyze", () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(result.value[0].severity).toBe("high");
+		expect(result.value[0]?.severity).toBe("high");
 	});
 
 	it("returns empty for clean plan", () => {

@@ -78,7 +78,8 @@ export namespace Planner {
 		if (!result.ok) return result;
 
 		const matches = result.value;
-		if (matches.length === 0) {
+		const [match] = matches;
+		if (match === undefined) {
 			return err(new Error(`No project found with ID prefix: ${input}`));
 		}
 		if (matches.length > 1) {
@@ -95,7 +96,7 @@ export namespace Planner {
 			);
 		}
 
-		return ok(matches[0].id);
+		return ok(match.id);
 	};
 
 	// ----------------------------------------------------------
