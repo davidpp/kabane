@@ -24,6 +24,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { GitFixture } from "../packages/core/scope/git-fixture";
 
 const ROOT = resolve(import.meta.dir, "..");
 const SANDBOX = join(tmpdir(), "cabane-sandbox", basename(ROOT));
@@ -53,7 +54,7 @@ const splitArgs = (argv: string[]): { own: Set<OwnFlag>; rest: string[] } => {
 const seedRepo = (): void => {
 	if (existsSync(REPO)) return;
 	mkdirSync(REPO, { recursive: true });
-	Bun.spawnSync(["git", "init", "-q"], { cwd: REPO });
+	GitFixture.run(REPO, ["init", "-q"]);
 	writeFileSync(
 		join(REPO, "CLAUDE.md"),
 		"# Sandbox project\n\nGate: `bun test`. Commits: `<issue id> <area>: <what>`.\n",
