@@ -278,7 +278,7 @@ describe("Planner — Private Upstream Links", () => {
 		expect(links.ok).toBe(true);
 		if (links.ok) {
 			expect(links.value).toHaveLength(1);
-			expect(links.value[0].title).toBe("Refreshed title");
+			expect(links.value[0]?.title).toBe("Refreshed title");
 		}
 	});
 });

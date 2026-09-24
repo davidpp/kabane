@@ -82,10 +82,12 @@ export namespace ScopeUri {
 
 		if (parts.extensions && Object.keys(parts.extensions).length > 0) {
 			// Sort keys for canonical output
-			const sortedKeys = Object.keys(parts.extensions).sort();
+			const sortedEntries = Object.entries(parts.extensions).sort(([a], [b]) =>
+				a < b ? -1 : 1,
+			);
 			const params = new URLSearchParams();
-			for (const key of sortedKeys) {
-				params.set(key.toLowerCase(), parts.extensions[key]);
+			for (const [key, value] of sortedEntries) {
+				params.set(key.toLowerCase(), value);
 			}
 			uri += `?${params.toString()}`;
 		}
