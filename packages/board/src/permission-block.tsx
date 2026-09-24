@@ -17,7 +17,7 @@ const fit = (text: string, room: number): string =>
 	text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
 
 // `1 Allow once · 2 Reject`: the numbered options, in the order the harness offered them.
-export const optionsLine = (request: CopilotPermission): string =>
+const optionsLine = (request: CopilotPermission): string =>
 	request.options
 		.map((option, index) => `${index + 1} ${option.label}`)
 		.join(" · ");

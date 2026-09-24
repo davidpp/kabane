@@ -23,7 +23,7 @@ import {
 import { MARKER_DIR, SCOPE_FILE } from "@cabane/core/scope";
 import { z } from "zod";
 
-export const DbConfigSchema = z.object({
+const DbConfigSchema = z.object({
 	/** SQLite file to open instead of `KABANE_HOME/kabane.db`; `~` expands. */
 	path: z.string().min(1).optional(),
 	/** Table-name prefix inside that file (`planner_` for a Jake database). */
@@ -31,7 +31,7 @@ export const DbConfigSchema = z.object({
 });
 export type DbConfig = z.infer<typeof DbConfigSchema>;
 
-export const CopilotConfigSchema = z.object({
+const CopilotConfigSchema = z.object({
 	/**
 	 * Which harness the board's `A` prompt talks to. A plain string rather than
 	 * an enum: the list of harnesses lives in `@cabane/acp`, and importing it
@@ -51,7 +51,6 @@ export const CopilotConfigSchema = z.object({
 	 */
 	model: z.string().min(1).optional(),
 });
-export type CopilotConfig = z.infer<typeof CopilotConfigSchema>;
 
 export const ConfigSchema = z.object({
 	/** Actor URI stamped on what this device writes. */
@@ -77,9 +76,9 @@ export type DatabaseLocation = {
 	tablePrefix: string;
 };
 
-export const CONFIG_FILE = "config.json";
-export const DB_NAME = "kabane.db";
-export { MARKER_DIR, SCOPE_FILE };
+const CONFIG_FILE = "config.json";
+const DB_NAME = "kabane.db";
+export { SCOPE_FILE };
 
 export const resolveHome = (env: NodeJS.ProcessEnv = process.env): string =>
 	env.KABANE_HOME && env.KABANE_HOME.length > 0
@@ -88,7 +87,7 @@ export const resolveHome = (env: NodeJS.ProcessEnv = process.env): string =>
 
 export const configPath = (home: string): string => join(home, CONFIG_FILE);
 
-export const expandHome = (path: string): string =>
+const expandHome = (path: string): string =>
 	path === "~"
 		? homedir()
 		: path.startsWith("~/")

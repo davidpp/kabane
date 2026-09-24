@@ -21,7 +21,7 @@ import { failure, success } from "../output";
  * service token carried as two headers on every push and pull. Both halves or
  * neither: one without the other is a typo, not a configuration.
  */
-export const accessHeaders = (
+const accessHeaders = (
 	clientId: string | undefined,
 	clientSecret: string | undefined,
 ): Result<Record<string, string> | undefined> => {
@@ -46,7 +46,7 @@ export const accessHeaders = (
  * passes `--db-path ~/.jake/jake.db --table-prefix planner_` and shares Jake's
  * database instead of migrating.
  */
-export const dbBlock = (
+const dbBlock = (
 	path: string | undefined,
 	tablePrefix: string | undefined,
 ): DbConfig | undefined =>

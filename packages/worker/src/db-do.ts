@@ -71,7 +71,7 @@ const toStatement = <T, P extends SqlValue[]>(
 });
 
 /** Adapt a Durable Object's storage to the port. */
-export const adapt = (storage: DurableObjectStorage): Db => {
+const adapt = (storage: DurableObjectStorage): Db => {
 	const sql = storage.sql;
 	return {
 		query: <T = Row, P extends SqlValue[] = SqlValue[]>(statement: string) =>

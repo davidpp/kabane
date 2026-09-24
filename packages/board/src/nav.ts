@@ -44,7 +44,7 @@ export namespace BoardNav {
 	// one level — from detail back to the board — WITHOUT the same press also widening scope. A detail
 	// view without a `tab` is on the default one; the events view remembers the tab it was opened
 	// from, so `esc` lands back on it.
-	export type BoardView =
+	type BoardView =
 		| { type: "board" }
 		| { type: "detail"; taskId: string; tab?: DetailModel.Tab }
 		| {
@@ -159,7 +159,7 @@ export namespace BoardNav {
 	// change what `tab` means.
 	export type Focus = "board" | "copilot" | "sidebar";
 
-	export type SidebarState = {
+	type SidebarState = {
 		visible: boolean;
 		selected: number;
 		/** Total sidebar items — updated by app.tsx when activity loads. The reducer uses this
@@ -169,7 +169,7 @@ export namespace BoardNav {
 
 	// Reverse patch — the subset of task fields any board mutation can change. Applied verbatim through
 	// Planner.updateTask to walk a task back to its pre-mutation values.
-	export type UndoPatch = Partial<
+	type UndoPatch = Partial<
 		Pick<Task, "state" | "needsReview" | "verification">
 	>;
 	// One entry on the undo stack: the reverse patch plus the copy the footer flashes on undo.

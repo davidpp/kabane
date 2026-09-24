@@ -38,9 +38,9 @@ export namespace Keymap {
 		harnesses?: boolean;
 	};
 
-	export type Tier = "footer" | "help";
+	type Tier = "footer" | "help";
 
-	export type Binding = Hint & {
+	type Binding = Hint & {
 		tier: Tier;
 		/** The key names this hint stands for, as nav.ts's KeyInput carries them. */
 		keys: readonly string[];
@@ -68,7 +68,7 @@ export namespace Keymap {
 		| "setupWorking"
 		| "setupDone";
 
-	export type Context = {
+	type Context = {
 		/** What the sheet calls it. */
 		name: string;
 		bindings: readonly Binding[];
@@ -79,7 +79,7 @@ export namespace Keymap {
 	const selection = (s: Situation): boolean => s.selection === true;
 
 	/** `?` itself: last in every footer where the sheet opens. */
-	export const HELP: Binding = {
+	const HELP: Binding = {
 		key: "?",
 		label: "help",
 		tier: "footer",
@@ -502,7 +502,7 @@ export namespace Keymap {
 	/** Whose keys a view's footer shows and what is true right now; app.tsx builds it from BoardNav. */
 	export type Live = { context: ContextId; situation: Situation };
 
-	export const available = (binding: Binding, situation: Situation): boolean =>
+	const available = (binding: Binding, situation: Situation): boolean =>
 		binding.when === undefined || binding.when(situation);
 
 	const asHint = ({ key, label }: Binding): Hint => ({ key, label });
@@ -516,7 +516,7 @@ export namespace Keymap {
 		return context.sheet ? [...own, asHint(HELP)] : own;
 	};
 
-	export type SheetRow = Hint & { available: boolean };
+	type SheetRow = Hint & { available: boolean };
 	export type SheetGroup = { title: string; rows: SheetRow[] };
 
 	/** The `?` sheet for a context: its own keys under its name, then the keys that work everywhere. */

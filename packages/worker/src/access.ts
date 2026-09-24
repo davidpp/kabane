@@ -42,7 +42,7 @@ export type Principal = {
 	actor: string;
 };
 
-export type AccessEnv = Pick<
+type AccessEnv = Pick<
 	Cloudflare.Env,
 	| "ACCESS_TEAM_DOMAIN"
 	| "ACCESS_AUD"
@@ -70,7 +70,7 @@ const unauthorized = (reason: string): Error =>
 
 export namespace Access {
 	/** The claims, verified against the team's keys unless dev mode says otherwise. */
-	export const verify = async (
+	const verify = async (
 		token: string,
 		env: AccessEnv,
 	): Promise<Result<AccessClaims>> => {

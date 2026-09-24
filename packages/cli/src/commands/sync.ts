@@ -8,7 +8,7 @@ import { failure, success, usage } from "../output";
  * that already syncs it as its own device. Syncing the same file from here too
  * would race that device on the shared `sync_state` row.
  */
-export const sharedDbWarning = (config: Config): string | undefined =>
+const sharedDbWarning = (config: Config): string | undefined =>
 	config.db?.path !== undefined && config.sync.enabled
 		? `⚠️  db.path points at ${config.db.path}, which another host may already sync as its own device. Sync from that host instead, or drop the sync block from this config.`
 		: undefined;

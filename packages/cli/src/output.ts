@@ -56,7 +56,7 @@ const PRIORITY_ICONS: Record<TaskPriority, string> = {
 	low: "🟢",
 };
 
-export const displayId = (task: Pick<Task, "id" | "shortId">): string =>
+const displayId = (task: Pick<Task, "id" | "shortId">): string =>
 	task.shortId ?? task.id;
 
 export const formatTaskLine = (task: Task): string => {

@@ -56,7 +56,7 @@ import { SYNC_TABLES, type SyncOp, type SyncTable } from "../schemas";
  * resolver reads. Two copies of this map would drift the moment a table's clock
  * changes, and the failure would be a silently wrong LWW comparison.
  */
-export const CLOCK_COLUMN: Partial<Record<SyncTable, string>> = {
+const CLOCK_COLUMN: Partial<Record<SyncTable, string>> = {
 	tasks: "updated_at",
 	projects: "updated_at",
 	task_comments: "updated_at",

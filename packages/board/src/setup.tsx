@@ -146,7 +146,7 @@ export const WORDMARK_WIDTH = WORDMARK[0]?.length ?? 0;
 export const wordmarkFits = (width: number): boolean =>
 	width - 2 * PANEL_PAD >= WORDMARK_WIDTH;
 
-export type WordmarkCell = "ink" | "counter" | "lid" | "floor";
+type WordmarkCell = "ink" | "counter" | "lid" | "floor";
 
 export type WordmarkRun = { text: string; cell: WordmarkCell };
 
@@ -205,7 +205,7 @@ const statusFg = (
 
 const OUTCOME_LABEL_WIDTH = 14;
 
-export const outcomeLine = (
+const outcomeLine = (
 	outcome: SetupPlan.InstallOutcome,
 	label: string,
 ): string =>

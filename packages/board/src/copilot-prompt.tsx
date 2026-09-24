@@ -30,7 +30,7 @@ import { type Theme, useTheme } from "./theme";
 
 // Enter sends — the common case by far. A newline is ⇧enter where the terminal reports it and
 // ctrl+j everywhere (⇧enter needs the kitty keyboard protocol; ctrl+j is plain ASCII LF).
-export const INPUT_KEY_BINDINGS = [
+const INPUT_KEY_BINDINGS = [
 	...defaultTextareaKeyBindings.filter(
 		(binding) => binding.action !== "newline" && binding.action !== "submit",
 	),
@@ -40,11 +40,11 @@ export const INPUT_KEY_BINDINGS = [
 	{ name: "j", ctrl: true, action: "newline" as const },
 ];
 
-export const PLACEHOLDER = "ask about the selection · / for shortcuts";
+const PLACEHOLDER = "ask about the selection · / for shortcuts";
 // One turn at a time, so while one runs `submitCopilot` refuses to send and flashes instead. The
 // input must not go on inviting what it cannot do — and the draft IS kept, so this says when it
 // will go rather than that it is lost.
-export const RUNNING_PLACEHOLDER = "a turn is running · send when it ends";
+const RUNNING_PLACEHOLDER = "a turn is running · send when it ends";
 
 // The chip text: the selected task, the working-set size, the section — whichever apply, in that
 // order. Exported pure so the copy is assertable without a renderer.
@@ -127,7 +127,7 @@ const MAX_INPUT_ROWS = 8;
 const MAX_PLAN_ROWS = 6;
 const MAX_TAIL_ROWS = 3;
 
-export const inputRows = (text: string, termRows: number): number => {
+const inputRows = (text: string, termRows: number): number => {
 	const typed = text === "" ? 1 : text.split("\n").length;
 	const room = Math.max(MIN_INPUT_ROWS, Math.floor(termRows * 0.25));
 	return Math.min(Math.max(MIN_INPUT_ROWS, typed), MAX_INPUT_ROWS, room);

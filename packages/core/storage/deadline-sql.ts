@@ -17,7 +17,7 @@
 import type { Db } from "../db/port";
 import { Deadline } from "../schemas/deadline";
 
-export type SqlCondition = { sql: string; params: string[] };
+type SqlCondition = { sql: string; params: string[] };
 
 const IS_DATE = "length(deadline) = 10";
 const IS_INSTANT = "length(deadline) > 10";
@@ -30,7 +30,7 @@ const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 export namespace DeadlineSql {
 	/** Today in `zone` at `now`: the local day and its first and last instants. */
-	export type Today = { day: string; start: string; end: string };
+	type Today = { day: string; start: string; end: string };
 
 	export const today = (now: number, zone: string): Today => {
 		const day = Deadline.localDate(now, zone);

@@ -14,7 +14,7 @@ const SHORTHANDS = [
 	"file",
 ] as const;
 
-export const collectRefs = (
+const collectRefs = (
 	refs: string[],
 	shorthand: (key: string) => string[],
 ): string[] => [

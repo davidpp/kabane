@@ -39,7 +39,7 @@ export type ConnectedSync = {
 };
 
 /** Test seams, passed straight through to the transport. */
-export type ConnectOpts = Pick<
+type ConnectOpts = Pick<
 	HttpTransportConfig,
 	"fetchImpl" | "sleep" | "maxAttempts"
 > & {

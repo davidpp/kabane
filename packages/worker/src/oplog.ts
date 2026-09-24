@@ -99,7 +99,7 @@ const ackDevice = (sql: SqlStorage, deviceId: string, seq: number): void => {
 
 export namespace Oplog {
 	/** `server_seq` of the head, or 0 when the log is empty. */
-	export const head = (sql: SqlStorage): number =>
+	const head = (sql: SqlStorage): number =>
 		sql.exec<{ head: number }>(HEAD_SQL).one().head;
 
 	/**

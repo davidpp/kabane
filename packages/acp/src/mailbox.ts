@@ -6,7 +6,7 @@
 // wake the generator itself; waiting to piggyback on the next harness update would deadlock, the
 // update being precisely what the unsent answer is holding up.
 export namespace Mailbox {
-	export type Mailbox<T> = {
+	type Mailbox<T> = {
 		push: (item: T) => void;
 		// Everything queued, in arrival order, leaving the box empty.
 		drain: () => T[];

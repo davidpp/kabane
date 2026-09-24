@@ -261,7 +261,7 @@ const truncateStr = (text: string, max: number): string =>
 
 // The preview block under the list: description, inputs, and the hint when unsatisfiable. Exported
 // pure so the copy is assertable without a renderer.
-export const triggerPreview = (trigger: TriggerDescriptor): string[] => {
+const triggerPreview = (trigger: TriggerDescriptor): string[] => {
 	const lines: string[] = [];
 	const desc = trigger.description || "(no description)";
 	lines.push(...desc.split("\n").slice(0, 4));

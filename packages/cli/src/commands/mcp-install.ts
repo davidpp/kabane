@@ -9,11 +9,11 @@ import { type Outcome, success, usage } from "../output";
  * argv without executing a harness.
  */
 export namespace McpInstall {
-	export type Run = McpClients.Probe;
+	type Run = McpClients.Probe;
 	export type Runner = (argv: string[]) => Promise<Run>;
 	export type Which = (binary: string) => string | null;
 
-	export type Options = { force?: boolean };
+	type Options = { force?: boolean };
 	export type Deps = {
 		run?: Runner;
 		which?: Which;

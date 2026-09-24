@@ -76,7 +76,7 @@ const countUnansweredQuestions = (db: Db, sessionId: string): number => {
  * rows (the unit is the question, not the session), each carrying its own
  * `question` activity (answer it via answerQuestion with `question.id`).
  */
-export type NeedsInputItem = {
+type NeedsInputItem = {
 	session: AgentSession;
 	task: Task | undefined;
 	/** The unanswered `question` activity this row represents. */

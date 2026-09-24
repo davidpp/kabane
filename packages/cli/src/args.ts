@@ -5,7 +5,7 @@
  * collects into an array. Anything else is a positional. `--` ends flag parsing.
  */
 
-export type FlagValue = string | boolean | string[];
+type FlagValue = string | boolean | string[];
 
 export type ParsedArgs = {
 	positionals: string[];

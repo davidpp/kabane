@@ -23,7 +23,7 @@ export const MAX_PULL_LIMIT = 1000;
  * planner column this build has never heard of, which inside a sync path is
  * silent data loss.
  */
-export const WireOpSchema = z
+const WireOpSchema = z
 	.object({
 		opId: z.string().min(1),
 		deviceId: z.string().min(1),
@@ -69,7 +69,7 @@ export type PushAck = {
  * { ...JSON.parse(op.payload), serverSeq: op.serverSeq }
  * ```
  */
-export type WirePullOp = {
+type WirePullOp = {
 	serverSeq: number;
 	payload: string;
 };

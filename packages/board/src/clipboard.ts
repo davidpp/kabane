@@ -6,7 +6,7 @@ import { platform } from "node:os";
 import { err, ok, type Result } from "@cabane/core";
 
 export namespace Clipboard {
-	export type WriteMethod = "native" | "osc52";
+	type WriteMethod = "native" | "osc52";
 
 	// The OpenTUI renderer exposes both of these; injected as a narrow interface so the copy path can
 	// be tested without a live renderer.

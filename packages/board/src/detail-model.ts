@@ -20,13 +20,13 @@ import type { BoardActivity } from "./activity";
 import type { BoardData } from "./data";
 
 export namespace DetailModel {
-	export const TABS = ["description", "comments", "log"] as const;
+	const TABS = ["description", "comments", "log"] as const;
 	export type Tab = (typeof TABS)[number];
 
 	export const DEFAULT_TAB: Tab = "description";
 
 	/** A question waiting on a human, pinned above the tabs. */
-	export type OpenQuestion = { id: string; question: string };
+	type OpenQuestion = { id: string; question: string };
 
 	/** One compact line of the agent log. `failed` puts it in the failed hue. */
 	export type LogLine = {
@@ -351,10 +351,10 @@ export namespace DetailModel {
 		{ description: "about", comments: "comments", log: "log" },
 	];
 
-	export type TabCell = { tab: Tab; text: string };
+	type TabCell = { tab: Tab; text: string };
 
 	/** The bar: each tab's text and the padding either side of it. */
-	export type TabBar = { cells: TabCell[]; pad: number };
+	type TabBar = { cells: TabCell[]; pad: number };
 
 	/** Columns the bar takes: each cell padded, or one space between cells when unpadded. */
 	export const barWidth = (bar: TabBar): number =>

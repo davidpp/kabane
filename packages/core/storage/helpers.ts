@@ -176,11 +176,7 @@ export const derivePrefix = (scopeUri?: string): Result<string> => {
  * Get next sequence number for a prefix (atomic increment).
  * Creates the sequence entry if it doesn't exist.
  */
-export const nextSequence = (
-	db: Db,
-	prefix: string,
-	scopeUri?: string,
-): number => {
+const nextSequence = (db: Db, prefix: string, scopeUri?: string): number => {
 	const now = new Date().toISOString();
 
 	// Try to insert new sequence (will fail if exists)

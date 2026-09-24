@@ -74,7 +74,7 @@ const ROW_ORDER: Partial<Record<SyncTable, string>> = {
 // Types
 // ============================================================
 
-export type BackfillReport = {
+type BackfillReport = {
 	/** Ops written, per table. Absent means the table was empty. */
 	byTable: Partial<Record<SyncTable, number>>;
 	/** Ops written this run. */

@@ -49,7 +49,7 @@ import {
 const LOCAL_STATE_ID = "local";
 
 /** The `visibility` value that keeps a row out of the log. */
-export const PRIVATE = "private";
+const PRIVATE = "private";
 
 /**
  * Physical table for a replicated logical name. A function, not a map: the
@@ -69,14 +69,14 @@ const LEGACY_TRIGGER_SUFFIX = ["ins", "upd", "del"] as const;
 // ============================================================
 
 /** A row snapshot keyed by DB column name. */
-export type Row = Record<string, unknown>;
+type Row = Record<string, unknown>;
 
 /**
  * The singleton local replication cursor. Distinct from `SyncStatus`, which is
  * the human/agent-facing view (it adds `enabled` and `pendingOps` from config
  * and the oplog).
  */
-export type SyncState = {
+type SyncState = {
 	deviceId: string;
 	lastPushedSeq: number;
 	lastAppliedSeq: number;
@@ -88,7 +88,7 @@ export type SyncState = {
 export type DrainedOp = SyncOp & { seq: number };
 
 /** What a caller hands to capture: which row, in which table, did what. */
-export type CaptureInput = {
+type CaptureInput = {
 	tbl: SyncTable;
 	op: SyncOpKind;
 	/** The row as it is (insert/update) or as it was (delete). */
@@ -96,7 +96,7 @@ export type CaptureInput = {
 };
 
 /** Rows about to go, ordered so children precede their parent. */
-export type Cascade = { tbl: SyncTable; row: Row }[];
+type Cascade = { tbl: SyncTable; row: Row }[];
 
 type OplogRow = {
 	seq: number;

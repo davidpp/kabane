@@ -40,7 +40,7 @@ export namespace Theme {
 	};
 
 	/** What the terminal reported, as OpenTUI hands it over: `#rrggbb` or nothing. */
-	export type Reported = {
+	type Reported = {
 		foreground: string | null;
 		background: string | null;
 	};

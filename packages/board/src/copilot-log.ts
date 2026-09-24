@@ -21,7 +21,7 @@ export namespace CopilotLog {
 
 	// One prompt and everything it produced: the transcript of that exchange, the agent's todo list
 	// while it worked, and the card carrying its outcome.
-	export type Turn = {
+	type Turn = {
 		prompt: string;
 		card: ActivityCard;
 		events: ActivityEvent[];
