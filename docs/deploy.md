@@ -273,7 +273,7 @@ verified; `bun install -g` from a path is not supported for a workspace package 
 used.
 
 ```bash
-git clone https://github.com/davidpp/cabane.git kabane
+git clone https://github.com/davidpp/kabane.git
 cd kabane && bun install
 cd packages/cli && bun link
 kabane --help
