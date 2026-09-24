@@ -1,0 +1,17 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"workspaces": {
+		".": {
+			"entry": ["scripts/*.ts"]
+		},
+		"packages/acp": {
+			"entry": ["scripts/*.ts"]
+		},
+		"packages/worker": {
+			// knip's vitest plugin finds vitest.config.ts but not the suite behind the pool-workers plugin.
+			"entry": ["src/**/*.test.ts"],
+			// `cloudflare:workers` and `cloudflare:test` are runtime modules, not npm packages.
+			"ignoreDependencies": ["cloudflare"]
+		}
+	}
+}

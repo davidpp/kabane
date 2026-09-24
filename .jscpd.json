@@ -1,0 +1,15 @@
+{
+	"threshold": 0.5,
+	"reporters": ["console"],
+	"minLines": 10,
+	"minTokens": 80,
+	"mode": "weak",
+	"formats": ["typescript", "tsx"],
+	"ignore": [
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/node_modules/**",
+		"**/dist/**",
+		"**/.wrangler/**"
+	]
+}

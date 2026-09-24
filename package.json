@@ -15,6 +15,9 @@
 		"lint": "oxlint && oxlint --type-aware --config .oxlintrc.typed.json",
 		"fmt": "oxfmt",
 		"fmt:check": "oxfmt --check",
+		"knip": "knip-bun",
+		"duplicates": "jscpd --config .jscpd.json --no-tips packages scripts",
+		"quality": "bun run knip && bun run duplicates",
 		"typecheck": "for pkg in packages/*/; do (cd $pkg && bun run typecheck) || exit 1; done",
 		"test": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board && bun run --cwd packages/worker test",
 		"test:bun": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board",
@@ -22,6 +25,8 @@
 		"clean": "bun run --filter '*' clean"
 	},
 	"devDependencies": {
+		"jscpd": "5.3.0",
+		"knip": "6.37.0",
 		"lefthook": "2.1.12",
 		"oxfmt": "0.68.0",
 		"oxlint": "1.83.0",
