@@ -1,7 +1,8 @@
 {
 	"name": "cabane-monorepo",
 	"version": "0.1.0",
-	"description": "Cabane \u2014 local-first issue tracker and kanban for humans and AI agent runtimes",
+	"description": "Kabane — local-first issue tracker and kanban for humans and AI agent runtimes",
+	"license": "MIT",
 	"private": true,
 	"workspaces": [
 		"packages/*"

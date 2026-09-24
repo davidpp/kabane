@@ -1,7 +1,27 @@
 {
 	"name": "kabane",
 	"version": "0.1.0",
-	"description": "Kabane command line: a local device of the tracker",
+	"description": "Local-first issue tracker and kanban for humans and AI agent runtimes",
+	"keywords": [
+		"kanban",
+		"issue-tracker",
+		"local-first",
+		"mcp",
+		"ai-agents",
+		"cli",
+		"tui",
+		"bun",
+		"sqlite"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/davidpp/kabane.git"
+	},
+	"homepage": "https://github.com/davidpp/kabane#readme",
+	"bugs": {
+		"url": "https://github.com/davidpp/kabane/issues"
+	},
 	"private": true,
 	"type": "module",
 	"main": "index.ts",
