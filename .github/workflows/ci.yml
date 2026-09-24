@@ -6,12 +6,13 @@ on:
   pull_request:
   workflow_dispatch:
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   gate:
+    # A newer push supersedes a running gate on the same ref. The event is part of the group so a
+    # push never cancels the gate of a manual deploy run.
+    concurrency:
+      group: gate-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -22,6 +23,8 @@ jobs:
       - run: bun run check
       - run: bun run typecheck
       - run: bun run test
+      # Builds the npm package, packs it, installs the tarball into a throwaway HOME and runs it.
+      - run: bun run smoke
 
   deploy:
     # Manual only: Actions, `ci`, Run workflow on main. It deploys the hub of
@@ -30,6 +33,11 @@ jobs:
     # Setup is docs/deploy.md, 1.0.
     needs: gate
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    # Its own group, never cancelled: a deploy stopped halfway can leave the Worker and its
+    # secret out of step. A second dispatch waits for the running one instead.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     environment: production
     steps:
