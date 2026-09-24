@@ -1,4 +1,0 @@
-# Scheduled pull for one Cabane device (Linux cron). Install with:
-#   crontab -l 2>/dev/null | cat - cabane-sync-pull.cron | crontab -
-# Assumes `cabane` was bun-linked into ~/.bun/bin and CABANE_HOME is the default ~/.cabane.
-*/5 * * * * PATH=$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin CABANE_HOME=$HOME/.cabane $HOME/.bun/bin/cabane sync pull >> $HOME/.cabane/sync-pull.log 2>> $HOME/.cabane/sync-pull.error.log

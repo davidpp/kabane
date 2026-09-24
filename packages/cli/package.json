@@ -1,13 +1,13 @@
 {
-	"name": "cabane",
+	"name": "kabane",
 	"version": "0.1.0",
-	"description": "Cabane command line: a local device of the tracker",
+	"description": "Kabane command line: a local device of the tracker",
 	"private": true,
 	"type": "module",
 	"main": "index.ts",
 	"types": "index.ts",
 	"bin": {
-		"cabane": "./index.ts"
+		"kabane": "./index.ts"
 	},
 	"exports": {
 		".": "./index.ts"

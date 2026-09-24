@@ -239,7 +239,7 @@ describe("the transcript's look", () => {
 				scrollRef={createRef<ScrollBoxRenderable>()}
 				permission={{
 					id: "p1",
-					title: "cabane_edit JREP-1",
+					title: "kabane_edit JREP-1",
 					options: [{ id: "once", label: "Allow once" }],
 				}}
 			/>,
@@ -247,10 +247,10 @@ describe("the transcript's look", () => {
 		);
 		try {
 			await pumpUntil(setup.renderOnce, setup.captureCharFrame, (f) =>
-				f.includes("cabane_edit JREP-1"),
+				f.includes("kabane_edit JREP-1"),
 			);
 			const spans = setup.captureSpans().lines.flatMap((line) => line.spans);
-			const body = spanWith(spans, "cabane_edit JREP-1");
+			const body = spanWith(spans, "kabane_edit JREP-1");
 			expect(body && ints(body.bg)).toEqual(rgb(Theme.DARK.surface.raised));
 			expect(body && ints(body.fg)).toEqual(rgb(Theme.DARK.text));
 		} finally {
@@ -310,8 +310,8 @@ describe("toolParts", () => {
 			name: "Read",
 			args: "src/app.tsx",
 		});
-		expect(toolParts("mcp__cabane__cabane_list")).toEqual({
-			name: "mcp__cabane__cabane_list",
+		expect(toolParts("mcp__kabane__kabane_list")).toEqual({
+			name: "mcp__kabane__kabane_list",
 			args: "",
 		});
 		expect(toolParts("`git status --short`")).toEqual({

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Scheduled pull for one Cabane device (macOS launchd).
+  Scheduled pull for one Kabane device (macOS launchd).
 
-  Install:  sed "s|__HOME__|$HOME|g" com.cabane.sync-pull.plist > ~/Library/LaunchAgents/com.cabane.sync-pull.plist
-            launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cabane.sync-pull.plist
-  Remove:   launchctl bootout gui/$(id -u)/com.cabane.sync-pull
+  Install:  sed "s|__HOME__|$HOME|g" com.kabane.sync-pull.plist > ~/Library/LaunchAgents/com.kabane.sync-pull.plist
+            launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kabane.sync-pull.plist
+  Remove:   launchctl bootout gui/$(id -u)/com.kabane.sync-pull
 
-  `cabane` is the bun-linked binary at ~/.bun/bin/cabane; its shebang is `/usr/bin/env bun`, so
+  `kabane` is the bun-linked binary at ~/.bun/bin/kabane; its shebang is `/usr/bin/env bun`, so
   PATH below must also reach `bun` itself: mise shims first (exit 127 "env: bun: No such file"
   otherwise, measured on a mise-managed machine), then ~/.bun/bin and Homebrew.
   A pull writes rows and may relabel colliding short ids, which is why it is
@@ -16,11 +16,11 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.cabane.sync-pull</string>
+    <string>com.kabane.sync-pull</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>__HOME__/.bun/bin/cabane</string>
+        <string>__HOME__/.bun/bin/kabane</string>
         <string>sync</string>
         <string>pull</string>
     </array>
@@ -35,13 +35,13 @@
     <dict>
         <key>PATH</key>
         <string>__HOME__/.local/share/mise/shims:__HOME__/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-        <key>CABANE_HOME</key>
-        <string>__HOME__/.cabane</string>
+        <key>KABANE_HOME</key>
+        <string>__HOME__/.kabane</string>
     </dict>
 
     <key>StandardOutPath</key>
-    <string>__HOME__/.cabane/sync-pull.log</string>
+    <string>__HOME__/.kabane/sync-pull.log</string>
     <key>StandardErrorPath</key>
-    <string>__HOME__/.cabane/sync-pull.error.log</string>
+    <string>__HOME__/.kabane/sync-pull.error.log</string>
 </dict>
 </plist>

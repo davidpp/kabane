@@ -1,7 +1,7 @@
 /**
  * Planner Sync — the schema version on the wire.
  *
- * A device on an older schema must stop at the first op a newer cabane pushed,
+ * A device on an older schema must stop at the first op a newer kabane pushed,
  * rather than store part of it (apply writes only the columns it knows) or skip
  * a table it has never heard of while its watermark moves past for good. Two
  * devices share one in-process relay; the "newer" op is appended to the relay
@@ -137,7 +137,7 @@ describe("the schema version on the wire", () => {
 		const pulled = await Sync.pull(beta.base, beta.transport);
 		expect(pulled.ok).toBe(false);
 		expect(pulled.ok ? "" : pulled.error.message).toContain(
-			"Update cabane on this device",
+			"Update kabane on this device",
 		);
 		expect(await titles(beta)).toEqual(["before"]);
 		expect(await watermark(beta)).toBe(beforeSeq);

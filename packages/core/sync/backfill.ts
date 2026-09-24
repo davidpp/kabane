@@ -178,7 +178,7 @@ export namespace Backfill {
 			if (state.value === undefined)
 				return err(
 					new Error(
-						"Sync is not armed on this device, so backfilled ops would have no device identity. Run a sync first (jake plan sync status), then backfill.",
+						"Sync is not armed on this device, so backfilled ops would have no device identity. Run a sync first (kabane sync status), then backfill.",
 					),
 				);
 

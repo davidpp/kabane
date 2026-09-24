@@ -351,7 +351,7 @@ export namespace HttpTransport {
 			if (!recorded.ok) return recorded;
 
 			console.warn(
-				`[jake planner] sync quarantined op ${op.opId} (${op.tbl}/${op.rowId}): ${failure.error.message}`,
+				`[kabane] sync quarantined op ${op.opId} (${op.tbl}/${op.rowId}): ${failure.error.message}`,
 			);
 			return ok({ accepted: 0, duplicates: 0, head: 0, quarantined: 1 });
 		};
@@ -408,7 +408,7 @@ export namespace HttpTransport {
 			if (head >= state.value.lastAppliedSeq) return ok(undefined);
 
 			console.warn(
-				`[jake planner] sync log reset detected: remote head ${head} is below applied watermark ${state.value.lastAppliedSeq}; resyncing from 0`,
+				`[kabane] sync log reset detected: remote head ${head} is below applied watermark ${state.value.lastAppliedSeq}; resyncing from 0`,
 			);
 			return inDb(basePath, Oplog.resetApplied);
 		};

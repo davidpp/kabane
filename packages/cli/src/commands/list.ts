@@ -12,7 +12,7 @@ export const list: Command = {
 	name: "list",
 	summary: "List open tasks (done and cancelled hidden unless --all)",
 	usage:
-		"cabane list [--state <state>] [--kind task|issue] [--priority <p>] [--assignee <who>] [--scope <uri>] [--tag <tag>] [--all] [--limit <n>]",
+		"kabane list [--state <state>] [--kind task|issue] [--priority <p>] [--assignee <who>] [--scope <uri>] [--tag <tag>] [--all] [--limit <n>]",
 	run: async (args, ctx) => {
 		const limitRaw = flagString(args, "limit");
 		const limit = limitRaw ? Number(limitRaw) : undefined;

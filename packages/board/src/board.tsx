@@ -433,7 +433,7 @@ const Section = ({
 // The copilot is the pane right under the list, always mounted.
 export const EMPTY_HINTS = [
 	"ask the copilot below to file one,",
-	'or run cabane add "…" in a shell.',
+	'or run kabane add "…" in a shell.',
 ] as const;
 
 // Each section with where its rows start in BoardNav.visibleRows.
@@ -629,7 +629,7 @@ export const Board = ({
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			<text fg={theme.defaultFg}>
 				<span attributes={TextAttributes.BOLD}>
-					{`cabane · ${scopeLabel ?? "all scopes"}`.toLowerCase()}
+					{`kabane · ${scopeLabel ?? "all scopes"}`.toLowerCase()}
 				</span>
 				{filters ? <span fg={theme.muted}>{filters}</span> : null}
 				{markedPart ? <span fg={theme.accent}>{markedPart}</span> : null}

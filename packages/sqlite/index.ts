@@ -25,7 +25,7 @@ import {
 } from "@cabane/core";
 
 export type SqliteProviderOptions = {
-	/** File name inside `basePath`. Default `cabane.db`. */
+	/** File name inside `basePath`. Default `kabane.db`. */
 	dbName?: string;
 	/** SQLITE_BUSY retries before giving up. Default 3. */
 	maxBusyRetries?: number;
@@ -98,11 +98,11 @@ export const adapt = (db: Database): Db => ({
 
 export namespace SqliteDb {
 	/** Path of the database file the provider opens for `basePath`. */
-	export const pathFor = (basePath: string, dbName = "cabane.db"): string =>
+	export const pathFor = (basePath: string, dbName = "kabane.db"): string =>
 		join(basePath, dbName);
 
 	export const provider = (options: SqliteProviderOptions = {}): DbProvider => {
-		const dbName = options.dbName ?? "cabane.db";
+		const dbName = options.dbName ?? "kabane.db";
 		const maxBusyRetries = options.maxBusyRetries ?? 3;
 
 		return {

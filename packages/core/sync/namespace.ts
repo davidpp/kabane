@@ -113,7 +113,7 @@ const pendingOps = (db: Db): number =>
 		.get()?.count ?? 0;
 
 /**
- * The first op this build cannot store: one pushed by a cabane with a newer
+ * The first op this build cannot store: one pushed by a kabane with a newer
  * schema. Applying it would drop the columns this build lacks (apply writes only
  * the columns it knows) or skip a table it has never heard of, and the watermark
  * would move past it for good.
@@ -130,7 +130,7 @@ const pageBefore = (page: PullPage, op: RelayOp): PullPage => ({
 
 const schemaAhead = (op: RelayOp): Error =>
 	new Error(
-		`the sync log holds a change from a newer cabane (schema ${op.schema}; this device runs schema ${Migrations.SCHEMA_VERSION}). Update cabane on this device and sync again: the pull stopped before that change, at server seq ${op.serverSeq}, and skipped nothing.`,
+		`the sync log holds a change from a newer kabane (schema ${op.schema}; this device runs schema ${Migrations.SCHEMA_VERSION}). Update kabane on this device and sync again: the pull stopped before that change, at server seq ${op.serverSeq}, and skipped nothing.`,
 	);
 
 const renamedShortIds = (db: Db): number =>

@@ -53,9 +53,9 @@ export * from "./lint";
 export {
 	type AfterWrite,
 	authorTypeOf,
-	CABANE_TOOLS,
 	createMcpServer,
 	handleHttpRequest,
+	KABANE_TOOLS,
 	type McpServerInfo,
 	SERVER_INSTRUCTIONS,
 	serveStdio,

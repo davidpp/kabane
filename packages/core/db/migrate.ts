@@ -16,7 +16,7 @@
  * object (packages/worker/src/migrations.ts) uses the same pattern for its own,
  * separate schema.
  *
- * TWO PROCESSES OPENING ONE FILE AT ONCE (the board and `cabane mcp`, say) are
+ * TWO PROCESSES OPENING ONE FILE AT ONCE (the board and `kabane mcp`, say) are
  * safe: each migration's first statement claims its version row with
  * `INSERT OR IGNORE`, which takes the write lock before anything else is read.
  * The loser waits on the lock, finds the row already there, and skips the
@@ -107,7 +107,7 @@ export namespace Migrate {
 	 * Bring `db` up to `migrations.length`. A second call is a read of the
 	 * version table and nothing else.
 	 *
-	 * Refuses a database already past the list: a newer cabane migrated it, and
+	 * Refuses a database already past the list: a newer kabane migrated it, and
 	 * this build writing to a schema it does not know is how rows get damaged.
 	 */
 	export const run = (
@@ -125,7 +125,7 @@ export namespace Migrate {
 		if (from > migrations.length) {
 			return err(
 				new Error(
-					`this database is at schema version ${from}, newer than this cabane knows (${migrations.length}); update cabane before opening it`,
+					`this database is at schema version ${from}, newer than this kabane knows (${migrations.length}); update kabane before opening it`,
 				),
 			);
 		}

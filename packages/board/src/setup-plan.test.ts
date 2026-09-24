@@ -9,7 +9,7 @@ const DEFAULTS: SetupPlan.Defaults = {
 		{ id: "codex", label: "Codex" },
 	],
 	installOff: false,
-	configPath: "~/.cabane/config.json",
+	configPath: "~/.kabane/config.json",
 };
 
 // Scripted answers: a sequence of form edits applied from the defaults, as the screen would.

@@ -6,7 +6,7 @@ import { failure, success, usage } from "../output";
 export const comment: Command = {
 	name: "comment",
 	summary: "Add a comment (author is the actor; agent actors comment as ai)",
-	usage: 'cabane comment <id> "<text>" [--as <actor-uri>]',
+	usage: 'kabane comment <id> "<text>" [--as <actor-uri>]',
 	run: async (args, ctx) => {
 		const [input, ...rest] = args.positionals;
 		const content = rest.join(" ").trim();

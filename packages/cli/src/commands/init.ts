@@ -42,7 +42,7 @@ export const accessHeaders = (
 
 /**
  * The `db` block exists only when asked for, so a config written before it
- * existed keeps meaning `CABANE_HOME/cabane.db` with plain names. A Jake user
+ * existed keeps meaning `KABANE_HOME/kabane.db` with plain names. A Jake user
  * passes `--db-path ~/.jake/jake.db --table-prefix planner_` and shares Jake's
  * database instead of migrating.
  */
@@ -92,9 +92,9 @@ export const buildConfig = (input: ConfigInput): Result<Config> => {
 
 export const init: Command = {
 	name: "init",
-	summary: "Create CABANE_HOME/config.json and the database",
+	summary: "Create KABANE_HOME/config.json and the database",
 	usage:
-		"cabane init [--actor <uri>] [--device <id>] [--sync-url <url>] [--sync-token <token>] [--access-client-id <id> --access-client-secret <secret>] [--db-path <file> [--table-prefix <prefix>]] [--scope <uri>] [--force]",
+		"kabane init [--actor <uri>] [--device <id>] [--sync-url <url>] [--sync-token <token>] [--access-client-id <id> --access-client-secret <secret>] [--db-path <file> [--table-prefix <prefix>]] [--scope <uri>] [--force]",
 	standalone: true,
 	run: async (args, ctx) => {
 		const path = configPath(ctx.home);
@@ -150,7 +150,7 @@ export const init: Command = {
 				`  access: ${config.sync.headers ? "service token headers set" : "none"}`,
 				`  db:     ${location.basePath}/${location.dbName}${location.tablePrefix ? ` (tables ${location.tablePrefix}*)` : ""}`,
 				...(scope ? [`  scope:  ${scope} (written to ./${SCOPE_FILE})`] : []),
-				"Next: `cabane mcp install` gives Claude Code, Codex and Gemini this tracker over MCP.",
+				"Next: `kabane mcp install` gives Claude Code, Codex and Gemini this tracker over MCP.",
 			].join("\n"),
 		);
 	},

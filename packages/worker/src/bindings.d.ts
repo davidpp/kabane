@@ -32,7 +32,7 @@ declare namespace Cloudflare {
 		 * The owner's IANA timezone (`America/Montreal`): which day is today and
 		 * when a date deadline's day ends for the hub's MCP clients. Unset is UTC.
 		 */
-		CABANE_TIMEZONE?: string;
+		KABANE_TIMEZONE?: string;
 		/**
 		 * `"true"` trusts assertion payloads without checking the signature.
 		 * `wrangler dev` and vitest only; never set in `wrangler.jsonc`.

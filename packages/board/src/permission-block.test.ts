@@ -7,7 +7,7 @@ const T = Theme.DARK;
 
 const request = {
 	id: "p1",
-	title: "cabane_edit JREP-1",
+	title: "kabane_edit JREP-1",
 	options: [
 		{ id: "once", label: "Allow once" },
 		{ id: "no", label: "Reject" },

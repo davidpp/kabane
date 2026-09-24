@@ -25,7 +25,7 @@ export namespace Events {
 		try {
 			await Runtime.notifier()(type, payload);
 		} catch (e) {
-			console.error(`[cabane] notifier failed for ${type}:`, e);
+			console.error(`[kabane] notifier failed for ${type}:`, e);
 		}
 	};
 }

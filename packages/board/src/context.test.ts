@@ -170,7 +170,7 @@ describe("BoardContext.render", () => {
 		);
 		expect(BoardContext.render(ctx)).toBe(
 			[
-				"```cabane-board",
+				"```kabane-board",
 				"scope: jake://scope/cabane",
 				"view: board",
 				"section: next",
@@ -210,7 +210,7 @@ describe("BoardContext.render", () => {
 			truncated: true,
 		};
 		expect(BoardContext.render(ctx)).toBe(
-			"```cabane-board\nscope: all\nview: board\nfilter: kind=issue status=review\nmarked: none\ntruncated: yes\n```\n",
+			"```kabane-board\nscope: all\nview: board\nfilter: kind=issue status=review\nmarked: none\ntruncated: yes\n```\n",
 		);
 	});
 });

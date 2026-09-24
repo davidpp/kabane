@@ -10,7 +10,7 @@ describe("Harnesses.resolve", () => {
 			"@agentclientprotocol/claude-agent-acp@0.76.0",
 		]);
 		expect(launch.env).toEqual({
-			CABANE_SESSION: "1",
+			KABANE_SESSION: "1",
 			ANTHROPIC_MODEL: "sonnet",
 		});
 	});
@@ -18,7 +18,7 @@ describe("Harnesses.resolve", () => {
 	it("pins Claude to Sonnet, and a configured model replaces it", () => {
 		expect(Harnesses.resolve("claude").env.ANTHROPIC_MODEL).toBe("sonnet");
 		expect(Harnesses.resolve("claude", { model: "opus" }).env).toEqual({
-			CABANE_SESSION: "1",
+			KABANE_SESSION: "1",
 			ANTHROPIC_MODEL: "opus",
 		});
 	});
@@ -31,7 +31,7 @@ describe("Harnesses.resolve", () => {
 
 	it("a harness whose model variable the registry does not name gets none", () => {
 		expect(Harnesses.resolve("codex", { model: "gpt-5" }).env).toEqual({
-			CABANE_SESSION: "1",
+			KABANE_SESSION: "1",
 		});
 	});
 
@@ -39,7 +39,7 @@ describe("Harnesses.resolve", () => {
 		expect(Harnesses.resolve("codex", { command: "/opt/codex-acp" })).toEqual({
 			command: "/opt/codex-acp",
 			args: [],
-			env: { CABANE_SESSION: "1" },
+			env: { KABANE_SESSION: "1" },
 		});
 	});
 

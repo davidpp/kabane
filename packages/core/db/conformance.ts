@@ -481,7 +481,7 @@ export const conformanceCases = (): ConformanceCase[] => [
 						versions,
 					);
 					assert(
-						!older.ok && older.error.message.includes("update cabane"),
+						!older.ok && older.error.message.includes("update kabane"),
 						"an older list refuses a newer database and says to update",
 					);
 					assertEqual(Migrate.current(db, versions), 2, "version unchanged");

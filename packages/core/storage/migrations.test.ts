@@ -182,7 +182,7 @@ describe("Migrations on a fresh database", () => {
 		expect(row?.visibility).toBe("private");
 	});
 
-	it("refuses a database a newer cabane has migrated, and says to update", async () => {
+	it("refuses a database a newer kabane has migrated, and says to update", async () => {
 		await withDb((db) =>
 			db.run(
 				`INSERT INTO ${TABLES.schema_migrations} (version, name, applied_at) VALUES (?, 'from-the-future', ?)`,
@@ -191,7 +191,7 @@ describe("Migrations on a fresh database", () => {
 		);
 		const init = await Planner.init(base);
 		expect(init.ok).toBe(false);
-		expect(init.ok ? "" : init.error.message).toContain("update cabane");
+		expect(init.ok ? "" : init.error.message).toContain("update kabane");
 	});
 });
 
@@ -500,7 +500,7 @@ describe("Migrations when several processes boot one database at once", () => {
 		const script = `
 			import { Planner, Runtime } from ${JSON.stringify(core)};
 			import { SqliteDb } from ${JSON.stringify(sqlite)};
-			Runtime.configure({ provider: SqliteDb.provider({ dbName: "cabane.db" }) });
+			Runtime.configure({ provider: SqliteDb.provider({ dbName: "kabane.db" }) });
 			const init = await Planner.init(${JSON.stringify(base)});
 			if (!init.ok) { console.error(init.error.message); process.exit(1); }
 		`;

@@ -1,5 +1,5 @@
 // The board's `Copilot` port over a real harness: one lazily started ACP session whose only tool
-// server is `cabane mcp`, so everything the agent writes is stamped with this session's agent actor
+// server is `kabane mcp`, so everything the agent writes is stamped with this session's agent actor
 // and lands in the database the board is already reading. The board hands us what the human is
 // looking at as a `BoardContext`; we render it ahead of every prompt and map the harness's updates
 // back into the port's small union. Nothing here parses a tool RESULT: the adapters disagree on
@@ -25,12 +25,12 @@ export namespace BoardCopilot {
 		// The session's cwd: the scope's directory, so the harness picks up the project's own
 		// CLAUDE.md / AGENTS.md the way it would if the human had started it there.
 		scopeDir: string;
-		// Passed to `cabane mcp --scope`. Absent when the board is open on every scope, and then
+		// Passed to `kabane mcp --scope`. Absent when the board is open on every scope, and then
 		// writes take the scope of `scopeDir` the way any CLI command there would.
 		scopeUri?: string;
-		// The `cabane` executable the MCP server runs as. Defaults to this process's own entry
-		// script, which is what `cabane board` is.
-		cabaneBin?: string;
+		// The `kabane` executable the MCP server runs as. Defaults to this process's own entry
+		// script, which is what `kabane board` is.
+		kabaneBin?: string;
 		overrides?: Harnesses.Overrides;
 		// How the harness is reached. Defaults to spawning it; tests pass an in-process transport,
 		// and it is the seam for a connection opened elsewhere.
@@ -48,19 +48,19 @@ export namespace BoardCopilot {
 	// Tools that change tracker state. A completed call to one of these is what makes the board
 	// reload; everything else the agent runs is its own business.
 	const WRITE_TOOLS = [
-		"cabane_add",
-		"cabane_edit",
-		"cabane_done",
-		"cabane_link",
-		"cabane_comment",
-		"cabane_log",
-		"cabane_contextAdd",
-		"cabane_contextRemove",
-		"cabane_upstream_link",
-		"cabane_upstream_unlink",
+		"kabane_add",
+		"kabane_edit",
+		"kabane_done",
+		"kabane_link",
+		"kabane_comment",
+		"kabane_log",
+		"kabane_contextAdd",
+		"kabane_contextRemove",
+		"kabane_upstream_link",
+		"kabane_upstream_unlink",
 	] as const;
 
-	// Harnesses title an MCP tool call differently — the bare name, a namespaced `mcp__cabane__…`,
+	// Harnesses title an MCP tool call differently — the bare name, a namespaced `mcp__kabane__…`,
 	// or a label with the arguments folded in — so the title is scanned, not compared.
 	const namesWrite = (title: string): boolean =>
 		WRITE_TOOLS.some((tool) => title.includes(tool));
@@ -75,7 +75,7 @@ export namespace BoardCopilot {
 
 	const defaultBin = (): string => {
 		const entry = process.argv[1];
-		return entry ? resolve(entry) : "cabane";
+		return entry ? resolve(entry) : "kabane";
 	};
 
 	export const create = (options: Options): Handle => {
@@ -121,8 +121,8 @@ export namespace BoardCopilot {
 		};
 
 		const mcpServer = (): AcpClient.StdioServer => ({
-			name: "cabane",
-			command: options.cabaneBin ?? defaultBin(),
+			name: "kabane",
+			command: options.kabaneBin ?? defaultBin(),
 			args: [
 				"mcp",
 				...(options.scopeUri ? ["--scope", options.scopeUri] : []),
@@ -305,7 +305,7 @@ export namespace BoardCopilot {
 
 		return {
 			run,
-			// What `cabane mcp --as` stamps every write of this session with, so the board can glyph
+			// What `kabane mcp --as` stamps every write of this session with, so the board can glyph
 			// the rows this copilot changed rather than every row an agent ever touched.
 			actor,
 			// The port returns void: a cancel that fails has nothing left to tell the board, which

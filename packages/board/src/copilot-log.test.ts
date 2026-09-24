@@ -79,7 +79,7 @@ describe("CopilotLog", () => {
 	it("appends each update as a numbered event, mapping tool_call to the event view's tool_use", async () => {
 		let log = started();
 		log = CopilotLog.apply(log, update("thought", "looking at JCAB-31"));
-		log = CopilotLog.apply(log, update("tool_call", "cabane_context"));
+		log = CopilotLog.apply(log, update("tool_call", "kabane_context"));
 		log = CopilotLog.apply(log, update("tool_result", "ok"));
 		log = CopilotLog.apply(
 			log,
@@ -88,11 +88,11 @@ describe("CopilotLog", () => {
 		expect(await transcript(log)).toEqual([
 			[1, "prompt", PROMPT],
 			[2, "thought", "looking at JCAB-31"],
-			[3, "tool_use", "cabane_context"],
+			[3, "tool_use", "kabane_context"],
 			[4, "tool_result", "ok"],
 			[5, "text", "Two of these are stale.\nDetails…"],
 		]);
-		expect(log.current.activity).toBe("cabane_context");
+		expect(log.current.activity).toBe("kabane_context");
 		// One entry per message, its first line: recent headlines for the panel, and the footer
 		// flash still means "what it just said". The whole text is in the transcript.
 		expect(log.current.tail).toEqual(["Two of these are stale."]);
@@ -134,8 +134,8 @@ describe("CopilotLog", () => {
 			text: "⠹ copilot · thinking",
 			tone: "running",
 		});
-		log = CopilotLog.apply(log, update("tool_call", "cabane_edit"));
-		expect(CopilotLog.footer(log, "⠸").text).toBe("⠸ copilot · cabane_edit");
+		log = CopilotLog.apply(log, update("tool_call", "kabane_edit"));
+		expect(CopilotLog.footer(log, "⠸").text).toBe("⠸ copilot · kabane_edit");
 		log = CopilotLog.apply(log, update("text", "Moved two to someday.\nmore"));
 		log = CopilotLog.apply(log, update("done", ""));
 		expect(CopilotLog.footer(log, "⠹")).toEqual({
@@ -187,11 +187,11 @@ describe("CopilotLog", () => {
 	});
 
 	it("footer counts the plan while running, and says nothing extra without one", () => {
-		let log = CopilotLog.apply(started(), update("tool_call", "cabane_add"));
-		expect(CopilotLog.footer(log, "⠹").text).toBe("⠹ copilot · cabane_add");
+		let log = CopilotLog.apply(started(), update("tool_call", "kabane_add"));
+		expect(CopilotLog.footer(log, "⠹").text).toBe("⠹ copilot · kabane_add");
 		log = CopilotLog.apply(log, planUpdate(PLAN));
 		expect(CopilotLog.footer(log, "⠹")).toEqual({
-			text: "⠹ copilot · 2/5 · cabane_add",
+			text: "⠹ copilot · 2/5 · kabane_add",
 			tone: "running",
 		});
 		// The count belongs to the running line only — a finished turn reports its outcome.
@@ -209,7 +209,7 @@ describe("CopilotLog", () => {
 		);
 		log = CopilotLog.apply(log, update("done", ""));
 		log = CopilotLog.start(log, "now link the blockers", T1);
-		log = CopilotLog.apply(log, update("tool_call", "cabane_link"));
+		log = CopilotLog.apply(log, update("tool_call", "kabane_link"));
 
 		expect(log.past.map((t) => t.prompt)).toEqual([PROMPT]);
 		expect(log.current.prompt).toBe("now link the blockers");
@@ -218,12 +218,12 @@ describe("CopilotLog", () => {
 			[1, "prompt", PROMPT],
 			[2, "text", "Done: three of them."],
 			[3, "prompt", "now link the blockers"],
-			[4, "tool_use", "cabane_link"],
+			[4, "tool_use", "kabane_link"],
 		]);
 		// Seqs run across the whole log, so the view's "everything after what I have" still works.
 		expect(await transcript(log, 2)).toEqual([
 			[3, "prompt", "now link the blockers"],
-			[4, "tool_use", "cabane_link"],
+			[4, "tool_use", "kabane_link"],
 		]);
 		// Each turn keeps its own plan and outcome: the first one's is not the current one's.
 		expect(log.past[0]?.card.status).toBe("completed");

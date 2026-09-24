@@ -96,7 +96,7 @@ export namespace SetupPlan {
 
 	/**
 	 * The name as an actor URI's last segment: `David Paquet` → `david-paquet`. The URI format is
-	 * what the old `cabane init --actor` asked a newcomer to type; here they type a name.
+	 * what the old `kabane init --actor` asked a newcomer to type; here they type a name.
 	 */
 	export const actorSlug = (name: string): string =>
 		name
@@ -119,7 +119,7 @@ export namespace SetupPlan {
 
 	/**
 	 * Who the first issue actually goes to: the first harness whose install landed. It can differ
-	 * from `firstAgent` only when that one's install failed, and an agent without cabane's tools
+	 * from `firstAgent` only when that one's install failed, and an agent without kabane's tools
 	 * could never pick the issue up.
 	 */
 	export const firstIssueFor = (

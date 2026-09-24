@@ -33,7 +33,7 @@ const dir = (...segments: string[]): string => {
 };
 
 const pin = (root: string, scope: string): void => {
-	mkdirSync(join(root, ".cabane"), { recursive: true });
+	mkdirSync(join(root, ".kabane"), { recursive: true });
 	writeFileSync(join(root, SCOPE_FILE), `${scope}\n`);
 };
 
@@ -60,7 +60,7 @@ beforeEach(() => {
 	workspace = realpathSync(mkdtempSync(join(tmpdir(), "cabane-detect-")));
 	home = join(
 		realpathSync(mkdtempSync(join(tmpdir(), "cabane-home-"))),
-		".cabane",
+		".kabane",
 	);
 	mkdirSync(home, { recursive: true });
 });
@@ -114,7 +114,7 @@ describe("findProjectRoot", () => {
 		expect(await findProjectRoot(tree, home)).toBe(root);
 	});
 
-	// ~/.cabane is the home, not a project. Without the guard every directory
+	// ~/.kabane is the home, not a project. Without the guard every directory
 	// under ~ that is outside a repo collapses into one "home" scope.
 	it("never returns the home directory as a project root", async () => {
 		const homeParent = join(home, "..");

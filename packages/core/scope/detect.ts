@@ -3,7 +3,7 @@
  *
  * Lifted from Jake's `@jake/core/scope/resolver.ts` (ADR-009) so Cabane owns
  * the rule outright — a host that has no scope opinion of its own gets the same
- * answer `jake plan` gives, and `cabane board` opens where `jake board` does.
+ * answer `jake plan` gives, and `kabane board` opens where `jake board` does.
  *
  * NOT exported from the package barrel, and deliberately so: this module spawns
  * `git` and reads the filesystem, neither of which exists on Workers. The hub
@@ -19,9 +19,9 @@ import { ScopeUri } from "./uri";
 const run = promisify(execFile);
 
 /** The directory that marks a project root and holds its pinned scope. */
-export const MARKER_DIR = ".cabane";
+export const MARKER_DIR = ".kabane";
 
-/** The pin `cabane init --scope` writes, and the detector's cache. */
+/** The pin `kabane init --scope` writes, and the detector's cache. */
 export const SCOPE_FILE = join(MARKER_DIR, "scope");
 
 /**
@@ -41,7 +41,7 @@ export type ProjectScope = {
 };
 
 export type DetectOptions = {
-	/** CABANE_HOME. Guards the walk from mistaking `~/.cabane` for a project. */
+	/** KABANE_HOME. Guards the walk from mistaking `~/.kabane` for a project. */
 	home: string;
 	/** Skip `branch`/`package` detection. Default: detect. */
 	detectExtensions?: boolean;
@@ -89,7 +89,7 @@ const canonical = async (path: string): Promise<string> => {
 };
 
 /**
- * `~/.cabane` is the home, not a project marker, so the home's parent — the
+ * `~/.kabane` is the home, not a project marker, so the home's parent — the
  * user's home directory — must never win the walk. Without this guard every
  * directory under `~` that is outside a repo resolves to one giant "home"
  * scope.
@@ -127,7 +127,7 @@ const findGitRoot = async (
 };
 
 /**
- * Two-phase root detection: walk up for a `.cabane/` marker, then fall back to
+ * Two-phase root detection: walk up for a `.kabane/` marker, then fall back to
  * git. The marker wins so a repo can pin a root that is not its git toplevel
  * (a package inside a monorepo that tracks its own issues).
  */

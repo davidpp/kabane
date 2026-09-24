@@ -183,7 +183,7 @@ export namespace AcpClient {
 		options: ConnectOptions,
 		process: Process = NO_PROCESS,
 	): Promise<Result<Connection>> => {
-		const app = clientApp({ name: "cabane" }).onRequest(
+		const app = clientApp({ name: "kabane" }).onRequest(
 			methods.client.session.requestPermission,
 			async (c) => answerPermission(options.onPermission, c.params),
 		);

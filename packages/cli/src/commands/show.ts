@@ -13,7 +13,7 @@ import {
 export const show: Command = {
 	name: "show",
 	summary: "Show a task with its links, comments, and work logs",
-	usage: "cabane show <id>",
+	usage: "kabane show <id>",
 	run: async (args, ctx) => {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", show.usage);

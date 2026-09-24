@@ -1,7 +1,7 @@
 ---
 name: dispatch
-description: Turn an ask in {{PROJECT}} into shipped work. Size it first (do it inline, file one cabane issue, or plan a wave), then write issues that are complete briefs, run parallel agents with owned file territories, merge each one behind the gate, and report what is left for a human to check. Use this whenever the user asks to dispatch, plan and run, or parallelize work in this repo (for example `/dispatch` or "dispatch {{ISSUE_PREFIX}}-123"), or asks for a change with more than one independent piece, even if they never say "dispatch".
-argument-hint: <cabane issue id | freeform ask>
+description: Turn an ask in {{PROJECT}} into shipped work. Size it first (do it inline, file one kabane issue, or plan a wave), then write issues that are complete briefs, run parallel agents with owned file territories, merge each one behind the gate, and report what is left for a human to check. Use this whenever the user asks to dispatch, plan and run, or parallelize work in this repo (for example `/dispatch` or "dispatch {{ISSUE_PREFIX}}-123"), or asks for a change with more than one independent piece, even if they never say "dispatch".
+argument-hint: <kabane issue id | freeform ask>
 ---
 
 # Dispatch — {{PROJECT}}
@@ -16,7 +16,7 @@ conventions and the commands. A prompt carries only what that file does not say:
 territory, who else is running, and how to finish. Anything you repeat from it costs tokens on
 every agent, and the two copies drift apart.
 
-Work is tracked in cabane, through the `cabane_*` MCP tools, under scope `{{SCOPE_URI}}`. Issues
+Work is tracked in kabane, through the `kabane_*` MCP tools, under scope `{{SCOPE_URI}}`. Issues
 are the spec, and together with their comments and work logs they are the audit trail. If the
 tools are missing from this session, tell the user and stop, because a plan that lives only in
 this conversation is gone when the conversation ends.
@@ -54,7 +54,7 @@ Then think past the literal ask to the neighbouring behaviour a careful user wou
 Each issue is the entire brief its agent gets, so an agent that reads nothing else can still do
 the work. Follow `references/issue-template.md`. It names the files, a "Finding." paragraph with
 the evidence, the design, what is out of scope, the verify steps under the project's
-constraints, and the conventions. File each one with `cabane_add` (kind `issue`, state `next`,
+constraints, and the conventions. File each one with `kabane_add` (kind `issue`, state `next`,
 under {{PARENT}}). A wave holds one issue per concern that can be merged on its own, and five to
 seven at most, because past that the merges and seams outgrow one orchestrator's attention.
 Real ideas that are not for now become `someday` issues with two lines of description, which
@@ -63,14 +63,14 @@ keeps them visible without widening the wave.
 Decisions, research and ADRs go where {{INSTRUCTIONS_FILE}} says they go: {{DECISIONS}}. Some
 of them may land in an issue's description, and there they are already part of that issue's
 brief. For everything that lands elsewhere, attach it to each issue that relies on it with
-`cabane_contextAdd` (kind `ADR`, `research`, `doc` or `spec`), so that `cabane_context` puts it
+`kabane_contextAdd` (kind `ADR`, `research`, `doc` or `spec`), so that `kabane_context` puts it
 in the implementer's brief. A `file:` reference is inlined into the brief. Any other URI shows up
 as a pointer for the agent to follow. A record that no issue links to is a record the agent
 never reads.
 
 ## Plan the wave
 
-Record order with `cabane_link`: `blocks` for a hard dependency, `related` otherwise. Give every
+Record order with `kabane_link`: `blocks` for a hard dependency, `related` otherwise. Give every
 issue a territory, meaning the files or globs it owns (`references/specialists.md` has the
 project's map). Two issues that reshuffle the same file cannot run in parallel. Two issues that
 each add a line to a shared registration file can, provided each agent is told about the other.
@@ -87,7 +87,7 @@ They know things about priority and risk that are not in the code.
 
 ## Dispatch
 
-Set each unblocked issue to `in_progress` with `cabane_edit`, then start one agent per issue,
+Set each unblocked issue to `in_progress` with `kabane_edit`, then start one agent per issue,
 all in a single message so they run in parallel. When `.claude/agents/` has a specialist for
 the issue's territory, use it (see `references/specialists.md`). Otherwise use a general-purpose
 agent. Model: {{MODEL}}.
@@ -111,7 +111,7 @@ keeps later conflicts small and unblocks dependents sooner. As each agent finish
 3. Run the full gate on the merged result, not just on the branch:
    {{GATE}}
 4. Remove the agent's working copy, keep its manual-check list, and mark the issue done with
-   `cabane_done`.
+   `kabane_done`.
 5. Dispatch whatever that merge unblocked, and tell any agent that was working against a stub.
 
 Anything an agent reports outside its scope, whether a bug it noticed or a workaround it
@@ -133,7 +133,7 @@ Your final report is for someone who did not watch the work happen:
 - what is still running, blocked, or waiting on a decision;
 - the manual checks, numbered, with the testing constraints repeated beside them.
 
-Post the same report as a `cabane_comment` on the parent, so that it outlives this session.
+Post the same report as a `kabane_comment` on the parent, so that it outlives this session.
 
 ## Limits every agent is told about
 

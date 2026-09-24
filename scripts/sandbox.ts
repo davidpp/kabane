@@ -1,23 +1,23 @@
 #!/usr/bin/env bun
 /**
- * A throwaway cabane device for trying a change by hand, or for an agent verifying one: its own
- * CABANE_HOME and a seeded git repo in a temp directory, so the first-run screen, the board, the
- * copilot and `/setup-dispatch` run against it without touching `~/.cabane` or the harness
+ * A throwaway kabane device for trying a change by hand, or for an agent verifying one: its own
+ * KABANE_HOME and a seeded git repo in a temp directory, so the first-run screen, the board, the
+ * copilot and `/setup-dispatch` run against it without touching `~/.kabane` or the harness
  * configs a real install writes to. Written in TypeScript rather than shell so it runs the same
  * under fish, zsh and bash.
  *
  * It lives in the system temp directory, one per checkout, and not inside the repo: scope
  * detection walks up from the working directory, and inside this checkout it would find
- * cabane's own `.cabane/scope` pin and file every sandbox task under cabane.
+ * cabane's own `.kabane/scope` pin and file every sandbox task under cabane.
  *
  *   bun run sandbox                 the TUI: setup on the first run, then the board
- *   bun run sandbox list            any cabane command, run inside the sandbox repo
+ *   bun run sandbox list            any kabane command, run inside the sandbox repo
  *   bun run sandbox --fresh         wipe the sandbox first
  *   bun run sandbox --harnesses     give the harnesses a sandbox HOME too, so setup's install step
  *                                   runs for real into files under the sandbox (a harness may not
  *                                   be logged in there, so try the copilot without this flag)
  *
- * Without `--harnesses`, CABANE_HARNESSES is set empty and setup finds no agents: the harness
+ * Without `--harnesses`, KABANE_HARNESSES is set empty and setup finds no agents: the harness
  * configs live under the real HOME, and a sandbox must never register itself there.
  */
 
@@ -26,7 +26,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
-const SANDBOX = join(tmpdir(), "cabane-sandbox", basename(ROOT));
+const SANDBOX = join(tmpdir(), "kabane-sandbox", basename(ROOT));
 const REPO = join(SANDBOX, "repo");
 const CLI = join(ROOT, "packages/cli/index.ts");
 
@@ -36,7 +36,7 @@ type OwnFlag = (typeof OWN_FLAGS)[number];
 const isOwnFlag = (arg: string): arg is OwnFlag =>
 	(OWN_FLAGS as readonly string[]).includes(arg);
 
-/** Leading `--fresh`/`--harnesses` are the sandbox's; everything after is cabane's. */
+/** Leading `--fresh`/`--harnesses` are the sandbox's; everything after is kabane's. */
 const splitArgs = (argv: string[]): { own: Set<OwnFlag>; rest: string[] } => {
 	const own = new Set<OwnFlag>();
 	let i = 0;
@@ -65,15 +65,15 @@ const seedRepo = (): void => {
 };
 
 const sandboxEnv = (harnesses: boolean): NodeJS.ProcessEnv => {
-	const cabaneHome = join(SANDBOX, ".cabane");
+	const kabaneHome = join(SANDBOX, ".kabane");
 	return harnesses
 		? {
 				...process.env,
 				HOME: SANDBOX,
 				CODEX_HOME: join(SANDBOX, ".codex"),
-				CABANE_HOME: cabaneHome,
+				KABANE_HOME: kabaneHome,
 			}
-		: { ...process.env, CABANE_HOME: cabaneHome, CABANE_HARNESSES: "" };
+		: { ...process.env, KABANE_HOME: kabaneHome, KABANE_HARNESSES: "" };
 };
 
 const { own, rest } = splitArgs(process.argv.slice(2));

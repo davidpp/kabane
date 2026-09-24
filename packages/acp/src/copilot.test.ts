@@ -66,7 +66,7 @@ const scriptedAgent = (
 					methods.client.session.requestPermission,
 					{
 						sessionId: c.params.sessionId,
-						toolCall: { toolCallId: "t0", title: "cabane_edit" },
+						toolCall: { toolCallId: "t0", title: "kabane_edit" },
 						options: [
 							{ optionId: "allow", name: "Allow", kind: "allow_once" },
 							{ optionId: "reject", name: "Reject", kind: "reject_once" },
@@ -140,7 +140,7 @@ const copilotOver = (
 		harness: "claude",
 		scopeDir: "/repos/cabane",
 		scopeUri: "jake://scope/cabane",
-		cabaneBin: "/usr/local/bin/cabane",
+		kabaneBin: "/usr/local/bin/kabane",
 		connect: (onPermission) =>
 			AcpClient.connect("claude", agent, { onPermission }),
 		...over,
@@ -190,8 +190,8 @@ describe("BoardCopilot", () => {
 			cwd: "/repos/cabane",
 			mcpServers: [
 				{
-					name: "cabane",
-					command: "/usr/local/bin/cabane",
+					name: "kabane",
+					command: "/usr/local/bin/kabane",
 					args: [
 						"mcp",
 						"--scope",
@@ -252,11 +252,11 @@ describe("BoardCopilot", () => {
 					{
 						kind: "call",
 						id: "t1",
-						title: "cabane_context",
+						title: "kabane_context",
 						status: "pending",
 					},
 					{ kind: "update", id: "t1", status: "completed" },
-					{ kind: "call", id: "t2", title: "cabane_edit", status: "pending" },
+					{ kind: "call", id: "t2", title: "kabane_edit", status: "pending" },
 					{ kind: "update", id: "t2", status: "completed" },
 				],
 			}),
@@ -269,7 +269,7 @@ describe("BoardCopilot", () => {
 			"done",
 		]);
 		expect(updates.find((u) => u.type === "tool_result")?.summary).toBe(
-			"cabane_edit",
+			"kabane_edit",
 		);
 		copilot.close();
 	});
@@ -284,7 +284,7 @@ describe("BoardCopilot", () => {
 					{
 						kind: "call",
 						id: "t1",
-						title: "cabane_upstream_link",
+						title: "kabane_upstream_link",
 						status: "completed",
 					},
 				],
@@ -303,7 +303,7 @@ describe("BoardCopilot", () => {
 					{
 						kind: "call",
 						id: "t1",
-						title: "mcp__cabane__cabane_link",
+						title: "mcp__kabane__kabane_link",
 						status: "completed",
 					},
 					{ kind: "call", id: "t2", title: "Read", status: "completed" },
@@ -330,7 +330,7 @@ describe("BoardCopilot", () => {
 					{ chunk: "text", text: "'ll read" },
 					{ chunk: "text", text: " the iss" },
 					{ chunk: "text", text: "ue's context first." },
-					{ tool: "cabane_context" },
+					{ tool: "kabane_context" },
 					{ chunk: "text", text: "Two are stale." },
 				],
 			}),
@@ -432,7 +432,7 @@ describe("BoardCopilot", () => {
 		expect(updates[0]).toMatchObject({
 			request: {
 				id: "t0",
-				title: "cabane_edit",
+				title: "kabane_edit",
 				options: [
 					{ id: "allow", label: "Allow" },
 					{ id: "reject", label: "Reject" },

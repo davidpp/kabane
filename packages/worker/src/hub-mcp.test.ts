@@ -7,7 +7,7 @@
  * Sync round trip, both directions, without bun:sqlite (unavailable under
  * pool-workers): a write at the hub is pushed to `CabaneLog` and shows up on
  * a device's `/pull`; an op pushed by a device is applied by the hub's alarm
- * and shows up in `cabane_list`. The device-side op is derived from one the
+ * and shows up in `kabane_list`. The device-side op is derived from one the
  * hub itself emitted, so the payload shape is exactly what a real device sends.
  */
 
@@ -118,7 +118,7 @@ describe("hub MCP over Streamable HTTP", () => {
 			instructions?: string;
 		};
 		expect(result.serverInfo.name).toBe("cabane-hub");
-		expect(result.instructions).toContain("cabane_scopeList");
+		expect(result.instructions).toContain("kabane_scopeList");
 	});
 
 	it("lists the replicated-surface tools and no session tools", async () => {
@@ -126,20 +126,20 @@ describe("hub MCP over Streamable HTTP", () => {
 		const names = (body.result as { tools: { name: string }[] }).tools.map(
 			(t) => t.name,
 		);
-		expect(names).toContain("cabane_add");
-		expect(names).toContain("cabane_context");
-		expect(names).toContain("cabane_scopeList");
+		expect(names).toContain("kabane_add");
+		expect(names).toContain("kabane_context");
+		expect(names).toContain("kabane_scopeList");
 		expect(names.some((n) => n.toLowerCase().includes("session"))).toBe(false);
 	});
 
 	it("requires a scope on writes at the hub", async () => {
-		const bad = await callTool(HUMAN, "cabane_add", { title: "no scope" });
+		const bad = await callTool(HUMAN, "kabane_add", { title: "no scope" });
 		expect(bad.isError).toBe(true);
-		expect(String(bad.value)).toContain("cabane_scopeList");
+		expect(String(bad.value)).toContain("kabane_scopeList");
 	});
 
 	it("stamps the Access identity as the actor: human and service", async () => {
-		const human = await callTool(HUMAN, "cabane_add", {
+		const human = await callTool(HUMAN, "kabane_add", {
 			title: "Filed by David",
 			scopeUri: "cabane",
 		});
@@ -148,7 +148,7 @@ describe("hub MCP over Streamable HTTP", () => {
 			"cabane://actor/human/david",
 		);
 
-		const service = await callTool(HERMES, "cabane_add", {
+		const service = await callTool(HERMES, "kabane_add", {
 			title: "Filed by Hermes",
 			kind: "issue",
 			state: "next",
@@ -160,7 +160,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(issue.updatedBy).toBe("cabane://actor/agent/hermes");
 		expect(issue.shortId).toMatch(/^JCAB-\d+$/);
 
-		const comment = await callTool(HERMES, "cabane_comment", {
+		const comment = await callTool(HERMES, "kabane_comment", {
 			id: issue.id,
 			content: "from hermes",
 		});
@@ -169,7 +169,7 @@ describe("hub MCP over Streamable HTTP", () => {
 
 	it("runs every tool once", async () => {
 		const a = (
-			await callTool(HUMAN, "cabane_add", {
+			await callTool(HUMAN, "kabane_add", {
 				title: "Alpha searchable",
 				scopeUri: "tools",
 				kind: "issue",
@@ -178,16 +178,16 @@ describe("hub MCP over Streamable HTTP", () => {
 			})
 		).value as TaskLike;
 		const b = (
-			await callTool(HUMAN, "cabane_add", { title: "Beta", scopeUri: "tools" })
+			await callTool(HUMAN, "kabane_add", { title: "Beta", scopeUri: "tools" })
 		).value as TaskLike;
 
 		expect(
-			((await callTool(HUMAN, "cabane_get", { id: a.id })).value as TaskLike)
+			((await callTool(HUMAN, "kabane_get", { id: a.id })).value as TaskLike)
 				.title,
 		).toBe("Alpha searchable");
 
 		const queue = (
-			await callTool(HUMAN, "cabane_list", {
+			await callTool(HUMAN, "kabane_list", {
 				assignee: "claude",
 				state: "next",
 				scopeUri: "tools",
@@ -196,44 +196,44 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(queue.map((t) => t.id)).toEqual([a.id]);
 
 		const found = (
-			await callTool(HUMAN, "cabane_search", {
+			await callTool(HUMAN, "kabane_search", {
 				query: "searchable",
 				scopeUri: "tools",
 			})
 		).value as TaskLike[];
 		expect(found.map((t) => t.id)).toEqual([a.id]);
 
-		const today = (await callTool(HUMAN, "cabane_today", {})).value as {
+		const today = (await callTool(HUMAN, "kabane_today", {})).value as {
 			next: TaskLike[];
 		};
 		expect(Array.isArray(today.next)).toBe(true);
 
 		// A date deadline is stored as the date and counts on its own day, in
-		// the hub's zone: CABANE_TIMEZONE is unset here, so UTC.
+		// the hub's zone: KABANE_TIMEZONE is unset here, so UTC.
 		const utcToday = new Date().toISOString().slice(0, 10);
 		const dated = (
-			await callTool(HUMAN, "cabane_add", {
+			await callTool(HUMAN, "kabane_add", {
 				title: "due today by date",
 				scopeUri: "tools",
 				dueDate: utcToday,
 			})
 		).value as TaskLike & { deadline: string };
 		expect(dated.deadline).toBe(utcToday);
-		const withDate = (await callTool(HUMAN, "cabane_today", {})).value as {
+		const withDate = (await callTool(HUMAN, "kabane_today", {})).value as {
 			dueToday: TaskLike[];
 			overdue: TaskLike[];
 		};
 		expect(withDate.dueToday.map((t) => t.id)).toContain(dated.id);
 		expect(withDate.overdue.map((t) => t.id)).not.toContain(dated.id);
 
-		const scopes = (await callTool(HUMAN, "cabane_scopeList")).value as {
+		const scopes = (await callTool(HUMAN, "kabane_scopeList")).value as {
 			scopeId: string;
 		}[];
 		expect(scopes.map((s) => s.scopeId)).toContain("tools");
 
 		expect(
 			(
-				await callTool(HUMAN, "cabane_link", {
+				await callTool(HUMAN, "kabane_link", {
 					sourceId: a.id,
 					targetId: b.id,
 					type: "blocks",
@@ -242,7 +242,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		).toBe(false);
 
 		const edited = (
-			await callTool(HUMAN, "cabane_edit", {
+			await callTool(HUMAN, "kabane_edit", {
 				id: a.shortId ?? a.id,
 				state: "in_progress",
 			})
@@ -252,7 +252,7 @@ describe("hub MCP over Streamable HTTP", () => {
 
 		expect(
 			(
-				await callTool(HUMAN, "cabane_log", {
+				await callTool(HUMAN, "kabane_log", {
 					id: a.id,
 					refs: [{ uri: "commit:deadbeef" }],
 				})
@@ -260,26 +260,26 @@ describe("hub MCP over Streamable HTTP", () => {
 		).toBe(false);
 
 		const ref = (
-			await callTool(HUMAN, "cabane_contextAdd", {
+			await callTool(HUMAN, "kabane_contextAdd", {
 				id: a.id,
 				uri: "file:docs/auth.md",
 				kind: "ADR",
 			})
 		).value as { id: string };
-		const refs = (await callTool(HUMAN, "cabane_contextList", { id: a.id }))
+		const refs = (await callTool(HUMAN, "kabane_contextList", { id: a.id }))
 			.value as { id: string }[];
 		expect(refs.map((r) => r.id)).toEqual([ref.id]);
 		expect(
-			(await callTool(HUMAN, "cabane_contextRemove", { refId: ref.id }))
+			(await callTool(HUMAN, "kabane_contextRemove", { refId: ref.id }))
 				.isError,
 		).toBe(false);
 
-		const brief = (await callTool(HUMAN, "cabane_context", { id: a.id }))
+		const brief = (await callTool(HUMAN, "kabane_context", { id: a.id }))
 			.value as { markdown: string };
 		expect(brief.markdown).toContain("Alpha searchable");
 
 		expect(
-			((await callTool(HUMAN, "cabane_done", { id: a.id })).value as TaskLike)
+			((await callTool(HUMAN, "kabane_done", { id: a.id })).value as TaskLike)
 				.state,
 		).toBe("done");
 	});
@@ -288,7 +288,7 @@ describe("hub MCP over Streamable HTTP", () => {
 describe("hub as sync device cloud", () => {
 	it("pushes an MCP write to the log, where a device can pull it", async () => {
 		const created = (
-			await callTool(HUMAN, "cabane_add", {
+			await callTool(HUMAN, "kabane_add", {
 				title: "Replicated from the hub",
 				scopeUri: "sync",
 			})
@@ -317,7 +317,7 @@ describe("hub as sync device cloud", () => {
 		// Seed the log with a real-shaped insert: take one the hub emitted and
 		// re-author it as device-a with a fresh identity and title.
 		const seed = (
-			await callTool(HUMAN, "cabane_add", {
+			await callTool(HUMAN, "kabane_add", {
 				title: "Template",
 				scopeUri: "sync",
 			})
@@ -363,7 +363,7 @@ describe("hub as sync device cloud", () => {
 		expect(await hub.nextAlarm()).not.toBeNull();
 
 		const listed = (
-			await callTool(HUMAN, "cabane_list", {
+			await callTool(HUMAN, "kabane_list", {
 				scopeUri: "sync",
 				includeClosed: true,
 			})

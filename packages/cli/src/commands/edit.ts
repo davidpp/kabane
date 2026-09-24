@@ -18,7 +18,7 @@ export const edit: Command = {
 	name: "edit",
 	summary: "Update fields on a task",
 	usage:
-		"cabane edit <id> [--title <t>] [--description <d>] [--state <s>] [--priority <p>] [--kind task|issue] [--assignee <who>|none] [--scope <uri>] [--parent <id>|none] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM]",
+		"kabane edit <id> [--title <t>] [--description <d>] [--state <s>] [--priority <p>] [--kind task|issue] [--assignee <who>|none] [--scope <uri>] [--parent <id>|none] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM]",
 	run: async (args, ctx) => {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", edit.usage);

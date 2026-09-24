@@ -2,7 +2,7 @@
  * MCP server over the tool definitions.
  *
  * Two transports, one tool list. `serveStdio` blocks for a CLI process
- * (`cabane mcp`); `handleHttpRequest` is stateless Streamable HTTP for the hub:
+ * (`kabane mcp`); `handleHttpRequest` is stateless Streamable HTTP for the hub:
  * a fresh server and transport per request, torn down after the response, so a
  * Durable Object never holds MCP session state and a request carries its own
  * actor.
@@ -30,7 +30,7 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { err, type Result } from "../result";
 import {
-	CABANE_TOOLS,
+	KABANE_TOOLS,
 	SERVER_INSTRUCTIONS,
 	type ToolContext,
 	type ToolDef,
@@ -41,7 +41,7 @@ export type McpServerInfo = {
 	version?: string;
 };
 
-const DEFAULT_INFO = { name: "cabane", version: "0.1.0" };
+const DEFAULT_INFO = { name: "kabane", version: "0.1.0" };
 
 /** Called after a write tool succeeds; the hub pushes to the log here. */
 export type AfterWrite = (tool: ToolDef) => void;
@@ -94,12 +94,12 @@ export const createMcpServer = (
 		{ ...DEFAULT_INFO, ...info },
 		{ capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
 	);
-	const tools = CABANE_TOOLS.map(toSdkTool);
+	const tools = KABANE_TOOLS.map(toSdkTool);
 
 	server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 
 	server.setRequestHandler(CallToolRequestSchema, async (request) => {
-		const tool = CABANE_TOOLS.find((t) => t.name === request.params.name);
+		const tool = KABANE_TOOLS.find((t) => t.name === request.params.name);
 		if (!tool) {
 			return toCallResult(
 				err(new Error(`Unknown tool: ${request.params.name}`)),

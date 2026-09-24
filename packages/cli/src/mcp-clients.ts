@@ -1,6 +1,6 @@
 /**
  * What each coding harness needs to register this device's MCP server: the
- * binary to look for, the argv that adds, finds and removes the `cabane`
+ * binary to look for, the argv that adds, finds and removes the `kabane`
  * entry, the config snippet a human pastes instead, and the project file it
  * reads its instructions from. One table, so the install and the printed
  * snippets cannot drift apart. Pure: nothing here spawns.
@@ -14,7 +14,7 @@ export namespace McpClients {
 	export const IDS = ["claude", "codex", "gemini"] as const;
 	export type Id = (typeof IDS)[number];
 
-	export const SERVER_NAME = "cabane";
+	export const SERVER_NAME = "kabane";
 
 	/** How a harness spawns the server: an absolute command and its args. */
 	export type Launch = { command: string; args: string[] };

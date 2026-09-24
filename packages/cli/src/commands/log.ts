@@ -28,7 +28,7 @@ export const log: Command = {
 	name: "log",
 	summary: "Record work done, as URI references",
 	usage:
-		"cabane log <id> --ref <type:value> [--ref ...] [--commit <sha>] [--branch <name>] [--pr <owner/repo#n>] [--note <text>]",
+		"kabane log <id> --ref <type:value> [--ref ...] [--commit <sha>] [--branch <name>] [--pr <owner/repo#n>] [--note <text>]",
 	run: async (args, ctx) => {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", log.usage);

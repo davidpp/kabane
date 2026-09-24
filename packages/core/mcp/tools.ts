@@ -3,7 +3,7 @@
  *
  * One list of tools, each a name, a description an agent reads, a zod input
  * shape, and a handler over the storage namespace returning `Result`. The
- * stdio server (`cabane mcp`) and the hub Worker both build their MCP server
+ * stdio server (`kabane mcp`) and the hub Worker both build their MCP server
  * from this list, so a browser connector and a local CLI see the same surface.
  *
  * ONLY REPLICATED DATA. The hub holds what the sync set carries: tasks,
@@ -13,7 +13,7 @@
  *
  * SCOPE IS EXPLICIT AT THE HUB. A device can default `scopeUri` from its
  * working directory; the hub has no directory, so `scopeRequired` makes every
- * write demand one and points the agent at `cabane_scopeList`.
+ * write demand one and points the agent at `kabane_scopeList`.
  */
 
 import { z } from "zod";
@@ -85,7 +85,7 @@ const resolveScope = (
 	if (ctx.scopeRequired && scope === undefined) {
 		return err(
 			new Error(
-				"scopeUri is required here: there is no working directory to detect it from. Call cabane_scopeList to see the scopes in use.",
+				"scopeUri is required here: there is no working directory to detect it from. Call kabane_scopeList to see the scopes in use.",
 			),
 		);
 	}
@@ -105,7 +105,7 @@ const definedOnly = <T extends Record<string, unknown>>(value: T): T =>
 // ============================================================
 
 const add = define({
-	name: "cabane_add",
+	name: "kabane_add",
 	kind: "write",
 	description: `Create a task or an issue (inbox by default).
 
@@ -165,9 +165,9 @@ Parameters:
 });
 
 const get = define({
-	name: "cabane_get",
+	name: "kabane_get",
 	kind: "read",
-	description: `Get one task's own fields: title, description, state, priority, assignee, scope, who last wrote it and its version. A raw record read; use cabane_context for the full brief.
+	description: `Get one task's own fields: title, description, state, priority, assignee, scope, who last wrote it and its version. A raw record read; use kabane_context for the full brief.
 
 Parameters:
 - id: ${ID_HINT}`,
@@ -182,7 +182,7 @@ Parameters:
 });
 
 const list = define({
-	name: "cabane_list",
+	name: "kabane_list",
 	kind: "read",
 	description: `Query tasks with filters. Open tasks only unless includeClosed.
 
@@ -219,7 +219,7 @@ Parameters:
 });
 
 const search = define({
-	name: "cabane_search",
+	name: "kabane_search",
 	kind: "read",
 	description: `Full-text search over titles and descriptions.
 
@@ -243,7 +243,7 @@ Parameters:
 });
 
 const today = define({
-	name: "cabane_today",
+	name: "kabane_today",
 	kind: "read",
 	description: `Today's view for daily planning: overdue, due today, and the next actions. Today is the owner's local day; a calendar-date deadline counts on its own day.
 
@@ -265,7 +265,7 @@ Parameters:
 });
 
 const done = define({
-	name: "cabane_done",
+	name: "kabane_done",
 	kind: "write",
 	description: `Mark a task done. Add a comment first if the outcome needs explaining.
 
@@ -286,13 +286,13 @@ Parameters:
 });
 
 const edit = define({
-	name: "cabane_edit",
+	name: "kabane_edit",
 	kind: "write",
 	description: `Edit a task. Pass the id and only the fields to change. Setting state to in_progress with your own assignee is how a runtime claims an issue.
 
 Parameters:
 - id: ${ID_HINT}
-- title, description, state, priority, kind, assignee, scopeUri, parentTaskId, tags, dueDate: as in cabane_add
+- title, description, state, priority, kind, assignee, scopeUri, parentTaskId, tags, dueDate: as in kabane_add
 - assignee 'none' and parentTaskId 'none' clear the field`,
 	input: {
 		id: z.string().min(1),
@@ -342,7 +342,7 @@ Parameters:
 });
 
 const link = define({
-	name: "cabane_link",
+	name: "kabane_link",
 	kind: "write",
 	description: `Create a typed link in the task DAG, read source → target: one issue blocks another, follows it, duplicates it, or is related. Dependency order becomes queryable instead of buried in prose.
 
@@ -372,7 +372,7 @@ Parameters:
 });
 
 const comment = define({
-	name: "cabane_comment",
+	name: "kabane_comment",
 	kind: "write",
 	description: `Add a comment to a task. The author is the connected identity; agent identities comment as ai. Human comments are never dropped from the brief, so this is how to steer an agent.
 
@@ -393,7 +393,7 @@ Parameters:
 });
 
 const workLog = define({
-	name: "cabane_log",
+	name: "kabane_log",
 	kind: "write",
 	description: `Log work done on a task as URI references.
 
@@ -424,7 +424,7 @@ Parameters:
 });
 
 const contextAdd = define({
-	name: "cabane_contextAdd",
+	name: "kabane_contextAdd",
 	kind: "write",
 	description: `Add a curated input-context ref to a task: the PRD, ADR, research note or transcript an implementer should read. The input side of an issue, distinct from the work log.
 
@@ -457,7 +457,7 @@ Parameters:
 });
 
 const contextList = define({
-	name: "cabane_contextList",
+	name: "kabane_contextList",
 	kind: "read",
 	description: `List a task's curated context refs, oldest first.
 
@@ -472,9 +472,9 @@ Parameters:
 });
 
 const contextRemove = define({
-	name: "cabane_contextRemove",
+	name: "kabane_contextRemove",
 	kind: "write",
-	description: `Remove a context ref by its ref id (from cabane_contextList). Never touches the work log.
+	description: `Remove a context ref by its ref id (from kabane_contextList). Never touches the work log.
 
 Parameters:
 - refId: The context ref id`,
@@ -486,7 +486,7 @@ Parameters:
 });
 
 const context = define({
-	name: "cabane_context",
+	name: "kabane_context",
 	kind: "read",
 	description: `The assembled work brief for a task: description, position in the DAG, curated context, prior work, discussion. One call gives an agent everything it needs to start. THE read entrypoint before picking up an issue.
 
@@ -509,9 +509,9 @@ Parameters:
 });
 
 const upstreamLink = define({
-	name: "cabane_upstream_link",
+	name: "kabane_upstream_link",
 	kind: "write",
-	description: `Record that a task points at an issue in an external tracker (Linear, GitHub). Identity only: the link names the issue and opens it, it does NOT hold what the issue says. Put what matters about the external issue into the task's own description with cabane_edit — a second copy here would rot. Re-linking the same task to the same issue corrects the identifier, url and title in place.
+	description: `Record that a task points at an issue in an external tracker (Linear, GitHub). Identity only: the link names the issue and opens it, it does NOT hold what the issue says. Put what matters about the external issue into the task's own description with kabane_edit — a second copy here would rot. Re-linking the same task to the same issue corrects the identifier, url and title in place.
 
 Parameters:
 - id: ${ID_HINT}
@@ -543,7 +543,7 @@ Parameters:
 });
 
 const upstreamUnlink = define({
-	name: "cabane_upstream_unlink",
+	name: "kabane_upstream_unlink",
 	kind: "write",
 	description: `Remove the link between a task and an external issue. Addressed by the pair that made it, not by a link id: the same arguments that linked it, unlink it.
 
@@ -582,7 +582,7 @@ Parameters:
 });
 
 const scopeList = define({
-	name: "cabane_scopeList",
+	name: "kabane_scopeList",
 	kind: "read",
 	description:
 		"List the scopes in use with a task count each. Call this before a write when you do not know which scopeUri to pass.",
@@ -595,7 +595,7 @@ const scopeList = define({
 // ============================================================
 
 /** Every tool, in the order an agent should discover them. */
-export const CABANE_TOOLS: readonly ToolDef[] = [
+export const KABANE_TOOLS: readonly ToolDef[] = [
 	scopeList,
 	add,
 	get,
@@ -616,9 +616,9 @@ export const CABANE_TOOLS: readonly ToolDef[] = [
 ];
 
 /** Server-level instructions sent on initialize. */
-export const SERVER_INSTRUCTIONS = `Cabane is a shared work queue for humans and agent runtimes.
+export const SERVER_INSTRUCTIONS = `Kabane is a shared work queue for humans and agent runtimes.
 Two kinds of item: 'task' is human GTD work (inbox → next → done); 'issue' is work an agent runtime picks up.
-To brainstorm into work: cabane_add with kind issue, a description that is the brief, state next, and assignee set to the runtime (claude, hermes, codex).
-To pick up work as a runtime: cabane_list with your assignee and state next, cabane_context on the chosen id, cabane_edit to in_progress, then cabane_log and cabane_comment as you go, cabane_done at the end.
-Scopes are the context boundary (a repo, a client). Discover them with cabane_scopeList and pass scopeUri on writes.
-When a task has a twin in Linear or GitHub, record it with cabane_upstream_link and put what the external issue says into the task's own description — the link is identity only, so nothing stored on it can go stale.`;
+To brainstorm into work: kabane_add with kind issue, a description that is the brief, state next, and assignee set to the runtime (claude, hermes, codex).
+To pick up work as a runtime: kabane_list with your assignee and state next, kabane_context on the chosen id, kabane_edit to in_progress, then kabane_log and kabane_comment as you go, kabane_done at the end.
+Scopes are the context boundary (a repo, a client). Discover them with kabane_scopeList and pass scopeUri on writes.
+When a task has a twin in Linear or GitHub, record it with kabane_upstream_link and put what the external issue says into the task's own description — the link is identity only, so nothing stored on it can go stale.`;

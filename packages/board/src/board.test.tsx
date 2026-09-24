@@ -787,7 +787,7 @@ test("Board at the default status shows the unresolved sections — someday incl
 		// `open` stays quiet in the header, but it means UNRESOLVED: the parked someday row is on
 		// screen, and neither closed section is.
 		// Nothing filtered, so the header says only where it is: no `kind: all`, no `status: open`.
-		expect(frame).toContain("cabane · acme/widget");
+		expect(frame).toContain("kabane · acme/widget");
 		expect(frame).not.toContain("kind:");
 		expect(frame).not.toContain("status:");
 		expect(frame).toContain("JAKE-52");
@@ -1018,7 +1018,7 @@ test("Board draws the mark glyph on a marked row and counts marks in the header"
 		// The mark gutter, held on the unmarked row too; no row is linked, so no link gutter at all.
 		expect(frame).toContain("JAKE-1  ● Marked one");
 		expect(frame).toContain("JAKE-2    Plain one");
-		expect(frame).toContain("cabane · all scopes · 1 marked");
+		expect(frame).toContain("kabane · all scopes · 1 marked");
 	} finally {
 		destroy();
 	}
@@ -1251,7 +1251,7 @@ test("Board shows the kind in the header only while a kind filter is on", async 
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("JAKE-42"),
 		);
-		expect(frame).toContain("cabane · acme/widget · kind: issue");
+		expect(frame).toContain("kabane · acme/widget · kind: issue");
 	} finally {
 		destroy();
 	}
