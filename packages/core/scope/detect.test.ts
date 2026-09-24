@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { execFile } from "node:child_process";
 import {
 	mkdirSync,
 	mkdtempSync,
@@ -10,7 +9,6 @@ import {
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import {
 	detectScope,
 	findProjectRoot,
@@ -19,8 +17,9 @@ import {
 	resolveScopeId,
 	SCOPE_FILE,
 } from "./detect";
+import { GitFixture } from "./git-fixture";
 
-const run = promisify(execFile);
+const git = GitFixture.run;
 
 /** A home far from the fixtures, so the home guard never fires accidentally. */
 let home: string;
@@ -41,16 +40,14 @@ const gitInit = async (
 	root: string,
 	opts: { remote?: string; commit?: boolean } = {},
 ): Promise<void> => {
-	await run("git", ["-C", root, "init", "-q", "-b", "main"]);
-	await run("git", ["-C", root, "config", "user.email", "t@example.com"]);
-	await run("git", ["-C", root, "config", "user.name", "Test"]);
+	git(root, ["init", "-q"]);
 	if (opts.remote) {
-		await run("git", ["-C", root, "remote", "add", "origin", opts.remote]);
+		git(root, ["remote", "add", "origin", opts.remote]);
 	}
 	if (opts.commit !== false) {
 		writeFileSync(join(root, "README.md"), "fixture\n");
-		await run("git", ["-C", root, "add", "."]);
-		await run("git", ["-C", root, "commit", "-qm", "init"]);
+		git(root, ["add", "."]);
+		git(root, ["commit", "-qm", "init"]);
 	}
 };
 
@@ -109,7 +106,7 @@ describe("findProjectRoot", () => {
 		const root = dir("main");
 		await gitInit(root);
 		const tree = join(workspace, "main.feature");
-		await run("git", ["-C", root, "worktree", "add", "-q", "-b", "feat", tree]);
+		git(root, ["worktree", "add", "-q", "-b", "feat", tree]);
 
 		expect(await findProjectRoot(tree, home)).toBe(root);
 	});
@@ -164,14 +161,7 @@ describe("resolveScopeId", () => {
 		const frozen = await resolveScopeId(root);
 		expect(frozen).toStartWith("git:");
 
-		await run("git", [
-			"-C",
-			root,
-			"remote",
-			"add",
-			"origin",
-			"git@github.com:davidpp/cabane.git",
-		]);
+		git(root, ["remote", "add", "origin", "git@github.com:davidpp/cabane.git"]);
 
 		expect(await resolveScopeId(root)).toBe("github.com/davidpp/cabane");
 	});
@@ -260,7 +250,7 @@ describe("detectScope", () => {
 		const root = dir("main");
 		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
 		const tree = join(workspace, "main.feature");
-		await run("git", ["-C", root, "worktree", "add", "-q", "-b", "feat", tree]);
+		git(root, ["worktree", "add", "-q", "-b", "feat", tree]);
 
 		const fromRoot = await detectScope(root, { home });
 		const fromNested = await detectScope(dir("main", "packages"), { home });
