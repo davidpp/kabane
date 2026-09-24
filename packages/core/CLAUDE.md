@@ -2,7 +2,7 @@
 
 Coordination substrate for agent teams, with humans consuming it to plan and review. Most items are AI-created; the tracker's job is to hold the *structure* agents need — sessions, typed activities, curated context, a link DAG — so no consumer reinvents it in prose.
 
-Extracted from Jake's planner (`~/Projects/jake/packages/planner`, JCAB-3). Public storage function names were kept so Jake's CLI and tRPC router compile against this package unchanged.
+Extracted from Jake's planner, a host app that still consumes this package. Public storage function names were kept so Jake's CLI and tRPC router compile against it unchanged.
 
 ## Design principles
 
@@ -20,7 +20,7 @@ import { Runtime } from "@cabane/core";
 import { SqliteDb } from "@cabane/sqlite";
 
 Runtime.configure({
-  provider: SqliteDb.provider({ dbName: "cabane.db" }),
+  provider: SqliteDb.provider({ dbName: "kabane.db" }),
   tablePrefix: "",            // "planner_" when sharing a database with other modules
   tracer, notifier, scopeResolver, syncSettings, actor,   // all optional, all no-op by default
 });
@@ -32,7 +32,7 @@ await Planner.init(basePath);
 - **`atomic(basePath, fn)`** (`runtime.ts`) runs `fn` inside BEGIN IMMEDIATE / COMMIT with awaits allowed between statements. A provider that cannot issue BEGIN supplies its own `atomic`.
 - **Table names** (`db/tables.ts`): `TABLES.x` are getters over a runtime prefix. Never capture `TABLES.x` into a module-level constant — it evaluates at import, before configuration. `physicalTable(logical)` and `tablePrefix()` exist for names built in code (triggers, indexes).
 - **Schema** (`db/schema.ts`): one DDL with logical names, `prefixSql` rewrites CREATE TABLE / INDEX / REFERENCES / ON, `generateFtsSql` builds the FTS5 tables and triggers. `prefixSql` does NOT rewrite CREATE TRIGGER, which is why capture triggers are built in `storage/oplog.ts` from physical names.
-- **Migrations** (`db/migrate.ts` runner, `storage/migrations.ts` list): numbered and append-only, version = index + 1, recorded in `schema_migrations` (behind the prefix), each applied once in its own transaction. `Planner.init` is `Migrations.apply`. To change the schema, append a migration (any SQL over `TABLES.x`, backfills and rebuilds included); never edit a shipped one and never edit `SCHEMA_SQL`, which is migration 1, the release baseline. Migration 1 also carries `PreRelease.upgrade`, the old column-guarded steps, for databases created before the runner; delete it once David's devices and Jake's `jake.db` are stamped. `Migrations.SCHEMA_VERSION` rides on every pushed op, and a pull stops before an op from a newer schema.
+- **Migrations** (`db/migrate.ts` runner, `storage/migrations.ts` list): numbered and append-only, version = index + 1, recorded in `schema_migrations` (behind the prefix), each applied once in its own transaction. `Planner.init` is `Migrations.apply`. To change the schema, append a migration (any SQL over `TABLES.x`, backfills and rebuilds included); never edit a shipped one and never edit `SCHEMA_SQL`, which is migration 1, the release baseline. Migration 1 also carries `PreRelease.upgrade`, the old column-guarded steps, for databases created before the runner; delete it once every database created before the runner is stamped. `Migrations.SCHEMA_VERSION` rides on every pushed op, and a pull stops before an op from a newer schema.
 - **Ports with no-op defaults:** `traced()` (`observability.ts`) delegates to the configured `Tracer`; `Events.emit` to the `Notifier`; `Runtime.scopeResolver()` is a host hook no core code calls (Jake keys its session defaults with it); `SyncDevice.settings()` to `SyncSettingsSource`.
 
 Tests import `./testing`, which configures the bun:sqlite provider with plain names. The smoke test in `packages/sqlite/smoke.test.ts` runs the same flow under `""` and `"planner_"`.
@@ -107,14 +107,14 @@ Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is
 
 ## MCP (`mcp/`)
 
-`CABANE_TOOLS` is the one tool list: name, description, zod input shape, `read` or
+`KABANE_TOOLS` is the one tool list: name, description, zod input shape, `read` or
 `write`, handler over `Planner` returning `Result`. Both servers build from it:
-`serveStdio` (the CLI's `cabane mcp`) and `handleHttpRequest` (the hub, stateless
+`serveStdio` (the CLI's `kabane mcp`) and `handleHttpRequest` (the hub, stateless
 Streamable HTTP, fresh server per request). Only the replicated surface is exposed —
 no session tools, because sessions do not sync and the hub would have nothing to
 answer with. A `ToolContext` carries `basePath`, the `actor`, an optional
 `defaultScope`, and `scopeRequired`: a device defaults scope from its directory, the
-hub demands it and points at `cabane_scopeList`.
+hub demands it and points at `kabane_scopeList`.
 
 The low-level SDK `Server` is used deliberately: `McpServer.registerTool` infers
 over each zod shape and, fed a generic `ZodRawShape`, tsc recurses until it gives up
@@ -124,4 +124,4 @@ results, never thrown.
 
 ## Not moved from Jake (host adapters)
 
-`parser/` (AI extraction), `workflows/`, `hooks/`, `trpc/`, `cli/`, `widgets/`, `jake-module.ts`, `db-registration.ts`. `storage/schema.sql.ts` was dead and was not ported. The `proposals` surface moved as-is and was dropped by migration 2 once Jake retired its consumers (JCAB-93, JCAB-97).
+`parser/` (AI extraction), `workflows/`, `hooks/`, `trpc/`, `cli/`, `widgets/`, `jake-module.ts`, `db-registration.ts`. `storage/schema.sql.ts` was dead and was not ported. The `proposals` surface moved as-is and was dropped by migration 2 once Jake retired its consumers.

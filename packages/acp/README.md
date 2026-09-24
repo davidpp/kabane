@@ -2,12 +2,12 @@
 
 Agent Client Protocol client for the board copilot. It launches one coding harness
 (Claude Code, Codex, or Gemini) as a subprocess, speaks ACP to it over stdio, and turns a
-prompt into a stream of cabane's own updates. The board consumes that stream and never
+prompt into a stream of kabane's own updates. The board consumes that stream and never
 imports the SDK.
 
 `BoardCopilot` is the piece the board actually holds: the `Copilot` port from
 `@cabane/board`, implemented over one lazily started session whose only tool server is
-`cabane mcp`.
+`kabane mcp`.
 
 ## Pieces
 
@@ -15,7 +15,7 @@ imports the SDK.
   (`claude` → `npx -y @agentclientprotocol/claude-agent-acp@0.76.0`,
   `codex` → `npx -y @agentclientprotocol/codex-acp@1.11.0`, `gemini` → `gemini --acp`).
   `resolve(id, overrides?)` returns `{ command, args, env }`; the env always carries
-  `CABANE_SESSION=1` so user hooks can tell a board session from an interactive one,
+  `KABANE_SESSION=1` so user hooks can tell a board session from an interactive one,
   and for Claude `ANTHROPIC_MODEL=sonnet` — a board turn is triage against a planner,
   not what the frontier models are for, and the adapter reads that variable ahead of
   the human's own `settings.json`. `overrides.model` replaces it with any name the
@@ -51,14 +51,14 @@ imports the SDK.
 ```ts
 const copilot = BoardCopilot.create({
   harness: "claude",
-  scopeDir: "/repos/cabane",        // the session cwd, so the harness reads the project's own rules
-  scopeUri: "jake://scope/cabane",  // omit on an all-scopes board
-  cabaneBin: "/usr/local/bin/cabane", // defaults to this process's entry script
+  scopeDir: "/repos/myapp",         // the session cwd, so the harness reads the project's own rules
+  scopeUri: "jake://scope/myapp",   // omit on an all-scopes board
+  kabaneBin: "/usr/local/bin/kabane", // defaults to this process's entry script
 });
 ```
 
 Nothing is spawned until the first `run`. The session opens with one stdio MCP server,
-`cabane mcp --scope <uri> --as cabane://actor/agent/<harness>`, so every write goes through
+`kabane mcp --scope <uri> --as cabane://actor/agent/<harness>`, so every write goes through
 the same tools and database the board reads and arrives stamped as an agent's.
 
 What the harness is told:
@@ -67,7 +67,7 @@ What the harness is told:
   `_meta.systemPrompt.append` on `session/new` where the adapter reads it, and as the first
   text block of the session's first prompt, which is the channel every harness has. An
   adapter that ignores `_meta` would otherwise run with no instructions at all.
-- The tool loop is not restated: the cabane MCP server sends `SERVER_INSTRUCTIONS` on
+- The tool loop is not restated: the kabane MCP server sends `SERVER_INSTRUCTIONS` on
   initialize, and the block points at it.
 - Every prompt is preceded by `BoardContext.render(context)` — the board's scope, view,
   section, filters, selected row, marked set, and the assembled briefs. It is refreshed each
@@ -79,15 +79,15 @@ What comes back, as the port's `CopilotUpdate`:
 |---|---|
 | `text`, `thought` | one `text` / `thought` per MESSAGE: ACP streams these as deltas, and a run of them is joined until something else happens |
 | `tool_call` | `tool_call` (plus `tool_result` when it already completed a write) |
-| `tool_call_update`, completed, on a `cabane_*` write tool | `tool_result` → the board reloads |
+| `tool_call_update`, completed, on a `kabane_*` write tool | `tool_result` → the board reloads |
 | `plan` | `plan` → the pane and the transcript show the agent's todo, the footer counts it |
 | `session/request_permission` | `permission` → the board asks, and `answerPermission` unblocks the turn |
 | `stop`, `error` | `done`, `error` |
 
 A write is recognised by the tool call's **title**, never by its result: the two adapters
-disagree on where MCP results land, so the title is scanned for a `cabane_*` write tool name
+disagree on where MCP results land, so the title is scanned for a `kabane_*` write tool name
 (`add`, `edit`, `done`, `link`, `comment`, `log`, `contextAdd`, `contextRemove`), which also
-survives a namespaced `mcp__cabane__cabane_edit`. Reads trigger no reload.
+survives a namespaced `mcp__kabane__kabane_edit`. Reads trigger no reload.
 
 A permission request is carried to the human, never answered here. `session/request_permission`
 becomes a `permission` update on the port and the ACP callback's promise is held open until the
@@ -123,7 +123,7 @@ Every turn ends with exactly one `stop` or one `error`.
 
 - Harness defaults are inherited whole: no `fs` or `terminal` capability is advertised, no
   permission policy is applied. A `session/request_permission` goes to the caller's
-  `onPermission`; a failed callback answers `cancelled`. Nothing is ever auto-answered — cabane
+  `onPermission`; a failed callback answers `cancelled`. Nothing is ever auto-answered — kabane
   has no permission policy of its own and does not want one.
 - Cancel before the agent has seen the turn (the iterator was not started yet) never sends
   `session/cancel`; the turn stops as `cancelled` locally.

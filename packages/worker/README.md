@@ -1,11 +1,12 @@
 # cabane-worker
 
-The Cabane hub on Cloudflare Workers, two SQLite-backed Durable Objects behind
-Cloudflare Access at `cabane.3pew.ca`:
+The Kabane hub on Cloudflare Workers, two SQLite-backed Durable Objects behind
+Cloudflare Access, on a custom domain of whoever deploys it. The Worker, its classes and
+its bindings keep the project's earlier name, Cabane, because a deployed hub stores data
+under them:
 
 - **`CabaneLog`** is the ordered sync oplog every device pushes to and pulls
-  from. Two tables, opaque JSON payloads, no planner schema. Moved verbatim
-  from Jake's `workers/planner-sync` apart from names.
+  from. Two tables, opaque JSON payloads, no planner schema.
 - **`CabaneHub`** is the cloud device: the `@cabane/core` storage running on
   this object's SQLite through the `Db` port, serving MCP over Streamable HTTP,
   and syncing with `CabaneLog` under the device identity `cloud`.
@@ -16,13 +17,15 @@ bun run --cwd packages/worker dev    # wrangler dev on localhost, needs .dev.var
 ```
 
 Deploys are manual and documented in [`docs/deploy.md`](../../docs/deploy.md) (part 1
-builds the hub, part 5 operates it). Never run `wrangler deploy` from an agent.
+builds the hub, part 5 operates it): by hand with `wrangler deploy --domain <your-domain>`
+and `--var`, or through the manually dispatched `deploy` job in `.github/workflows/ci.yml`.
+Never run `wrangler deploy` from an agent; `wrangler deploy --dry-run` is safe.
 
 ## Access on every route
 
 Every request, `/health` included, must carry a `Cf-Access-Jwt-Assertion` that
 verifies against the team (`ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`) and names
-someone the Worker knows (`src/access.ts`, same shape as FamilyOS):
+someone the Worker knows (`src/access.ts`):
 
 | Assertion carries | Admitted when | Actor stamped on writes |
 |---|---|---|
@@ -76,24 +79,29 @@ The actor for a request comes from the `X-Cabane-Actor` header the edge sets
 after Access verification, read through an `AsyncLocalStorage` so concurrent
 requests in one object cannot see each other's identity. Writes at the hub
 require `scopeUri` (there is no working directory to detect one from); the
-`cabane_scopeList` tool exists for that.
+`kabane_scopeList` tool exists for that.
 
 Verified live against `wrangler dev` with a CLI device: a task added on the
-device and backfilled appeared in `cabane_list` at the hub after the alarm; a
+device and backfilled appeared in `kabane_list` at the hub after the alarm; a
 task added at the hub as the Hermes service token appeared on the device after
-`cabane sync pull`, and the short-id collision both sides produced (`JCAB-1`)
+`kabane sync pull`, and the short-id collision both sides produced (`JCAB-1`)
 was repaired to the same label on both.
 
 ## Configure (what the runbook fills in)
 
+`wrangler.jsonc` holds no domain and no Access identity: its Access vars are empty
+placeholders, and a deploy supplies the values (`--domain`, `--var`, or the CI job's
+repository variables, `docs/deploy.md` 1.0 and 1.5).
+
 | Where | Key | Value |
 |---|---|---|
-| `wrangler.jsonc` vars | `ACCESS_TEAM_DOMAIN` | `https://3pew.cloudflareaccess.com` |
+| `wrangler deploy --domain` (CI: `HUB_DOMAIN`) | | `<your-domain>`, the custom domain the Worker owns |
+| vars (`--var`, CI: repository variables) | `ACCESS_TEAM_DOMAIN` | `https://<team>.cloudflareaccess.com` |
 | | `ACCESS_AUD` | the Access application's AUD tag |
 | | `HUMAN_EMAIL` | the one human allowed in |
 | | `SERVICE_ACTORS` | JSON, service-token client id → `cabane://actor/agent/<runtime>` |
-| | `SYNC_INTERVAL_MINUTES` | scheduled pass interval, default `5` |
-| | `CABANE_TIMEZONE` | the owner's IANA timezone (`America/Montreal`): which day is today and when a date deadline's day ends for MCP clients; unset is UTC, an unknown name stops the hub from booting |
+| | `KABANE_TIMEZONE` | the owner's IANA timezone (`America/Toronto`): which day is today and when a date deadline's day ends for MCP clients; unset is UTC, an unknown name stops the hub from booting |
+| `wrangler.jsonc` vars | `SYNC_INTERVAL_MINUTES` | scheduled pass interval, default `5` |
 | `wrangler secret put` | `SYNC_TOKEN` | the log bearer secret every device carries |
 | `.dev.vars` (local only) | all of the above plus `ACCESS_DEV_UNVERIFIED=true` | |
 
@@ -159,7 +167,7 @@ imports `bun:test`, and 18 open scratch databases through `bun:sqlite` and
   bump to the newest release older than 5 days, check `action.yml` inputs still match.
 - **`new_sqlite_classes`, not `new_classes`.** Both objects keep their state in DO
   SQLite; that is the storage the whole design rests on.
-- **No `workers.dev`, no preview URLs.** Cloudflare Access on `cabane.3pew.ca` is the
+- **No `workers.dev`, no preview URLs.** Cloudflare Access on the custom domain is the
   only front door. `bindings.d.ts` is hand-written so secrets, which never appear
   in `wrangler.jsonc`, are not silently dropped from `Env`.
 - **Keep a push batch under ~1.5 MB.** The batch crosses as one bound parameter and

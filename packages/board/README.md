@@ -1,6 +1,6 @@
 # @cabane/board
 
-Terminal kanban for the Cabane tracker, built on OpenTUI. It reads the tracker through
+Terminal kanban for the Kabane tracker, built on OpenTUI. It reads the tracker through
 `@cabane/core` and learns about the host's running work, its dispatch targets and its copilot
 through three ports, so the same board runs standalone or inside a host like Jake.
 
@@ -12,7 +12,7 @@ import { SqliteDb } from "@cabane/sqlite";
 import { startBoard } from "@cabane/board";
 
 Runtime.configure({ provider: SqliteDb.provider() });
-await startBoard({ cwd: process.cwd(), basePath: "~/.cabane" });
+await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 ```
 
 `startBoard(deps)` takes:
@@ -143,7 +143,7 @@ block rather than living in each repo's `.claude/skills`, so the two work in eve
 opens against with nothing to install. Pulling one in puts what matters into the task's OWN
 description and only identity on the link; pushing one out files the team-facing version and links
 it back. Provider access belongs to the harness — a Linear MCP server, `gh` on `PATH` — and a
-missing one is reported rather than worked around: cabane holds no provider credentials and makes
+missing one is reported rather than worked around: kabane holds no provider credentials and makes
 no network call of its own.
 
 ## Linked issues
@@ -159,9 +159,9 @@ leg is what keeps the key useful over ssh, where there is no opener and `Clipboa
 through to OSC 52. With several links the first opens; the detail brief lists them all. The footer
 offers `O` only while the row under the cursor has somewhere to go.
 
-Nothing here creates a link: that is `cabane upstream link`, or the copilot, which can read the
+Nothing here creates a link: that is `kabane upstream link`, or the copilot, which can read the
 external issue and write what matters into the task's own description. `Launcher` (`src/launcher.ts`)
-is exported so the CLI's `cabane open` walks the same chain.
+is exported so the CLI's `kabane open` walks the same chain.
 
 ## Marks and the copilot context
 
@@ -176,7 +176,7 @@ the selected task, the marks oldest first, and the assembled briefs (what `y` co
 selection and the marks. Each brief is capped at 6000 characters and the whole set at 24000;
 the oldest marks are dropped first and `truncated` says when anything was cut. `project` and
 `render` are pure; `load(basePath, state, scope)` fetches the briefs. `render` produces a fenced
-`cabane-board` field block followed by the briefs under `### <shortId>` headings.
+`kabane-board` field block followed by the briefs under `### <shortId>` headings.
 
 ## Testing
 
