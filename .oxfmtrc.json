@@ -1,0 +1,35 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"useTabs": true,
+	"printWidth": 80,
+	"sortPackageJson": false,
+	"sortImports": {
+		"customGroups": [
+			{ "groupName": "protocol", "elementNamePattern": ["cloudflare:*"] }
+		],
+		"groups": [
+			["builtin", "protocol"],
+			"external",
+			["parent", "sibling", "index"],
+			"unknown"
+		],
+		"newlinesBetween": false,
+		"partitionByNewline": true,
+		"ignoreCase": false
+	},
+	"ignorePatterns": [
+		"**/worker-configuration.d.ts",
+		"**/*.md",
+		"**/*.yml",
+		"**/*.yaml",
+		"**/*.toml",
+		"**/*.css",
+		"**/*.html"
+	],
+	"overrides": [
+		{
+			"files": ["**/*.jsonc"],
+			"options": { "trailingComma": "none" }
+		}
+	]
+}
