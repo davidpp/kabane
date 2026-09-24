@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner } from "@cabane/core";
+import { GitFixture } from "@cabane/core/git-fixture";
 import { parseArgs } from "./args";
 import { configPath, loadConfig } from "./config";
 import { openContext } from "./context";
@@ -23,7 +24,7 @@ const NOWHERE = ROOT;
 const gitRepo = (name: string): string => {
 	const dir = join(ROOT, name);
 	mkdirSync(dir, { recursive: true });
-	Bun.spawnSync(["git", "init", "-q"], { cwd: dir });
+	GitFixture.run(dir, ["init", "-q"]);
 	return dir;
 };
 
