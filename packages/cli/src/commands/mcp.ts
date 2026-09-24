@@ -1,4 +1,5 @@
 import { serveStdio } from "@cabane/core";
+import { version } from "../../package.json";
 import { type Command, openContext, resolveScopeUri } from "../context";
 import { failure, success } from "../output";
 import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
@@ -32,7 +33,7 @@ export const mcp: Command = {
 				defaultScope: await resolveScopeUri(args, ctx.value),
 				scopeRequired: false,
 			},
-			{ name: "kabane" },
+			{ name: "kabane", version },
 		);
 		return success({ served: true }, "");
 	},

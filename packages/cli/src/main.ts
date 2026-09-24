@@ -5,6 +5,7 @@
  * outcome's JSON instead of the human text.
  */
 
+import { version } from "../package.json";
 import { flagBool, parseArgs } from "./args";
 import { add } from "./commands/add";
 import { board } from "./commands/board";
@@ -51,6 +52,7 @@ export const helpText = (): string =>
 		"kabane — local-first tracker for humans and agent runtimes",
 		"",
 		"Usage: kabane <command> [args] [--json] [--as <actor-uri>]",
+		"       kabane --version",
 		"",
 		...COMMANDS.map((c) => `  ${c.name.padEnd(9)} ${c.summary}`),
 		"",
@@ -82,6 +84,8 @@ export const run = async (
 	// pipe or an agent still gets help, as it always has.
 	if (!name && process.stdin.isTTY && process.stdout.isTTY)
 		return openTui(resolveHome(env), cwd);
+	if (name === "--version" || name === "-v")
+		return { exitCode: 0, json: { version }, text: version };
 	if (!name || name === "help" || name === "--help" || name === "-h") {
 		return {
 			exitCode: name ? 0 : 2,
