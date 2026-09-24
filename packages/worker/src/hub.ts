@@ -121,7 +121,7 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 			scopeRequired: true,
 		};
 		return actorStore.run(actor, () =>
-			handleHttpRequest(toolCtx, request, { name: "cabane-hub" }, () =>
+			handleHttpRequest(toolCtx, request, { name: "kabane-hub" }, () =>
 				this.ctx.waitUntil(this.push()),
 			),
 		);

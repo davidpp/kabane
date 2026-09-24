@@ -117,7 +117,7 @@ describe("hub MCP over Streamable HTTP", () => {
 			serverInfo: { name: string };
 			instructions?: string;
 		};
-		expect(result.serverInfo.name).toBe("cabane-hub");
+		expect(result.serverInfo.name).toBe("kabane-hub");
 		expect(result.instructions).toContain("kabane_scopeList");
 	});
 
