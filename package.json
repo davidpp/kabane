@@ -9,7 +9,7 @@
 	"scripts": {
 		"prepare": "lefthook install",
 		"sandbox": "bun scripts/sandbox.ts",
-		"check": "bun run lint && bun run fmt:check",
+		"check": "bun run lint && bun run fmt:check && bun run quality",
 		"fix": "oxlint --fix && oxfmt",
 		"check:staged": "lefthook run pre-commit",
 		"lint": "oxlint && oxlint --type-aware --config .oxlintrc.typed.json",
