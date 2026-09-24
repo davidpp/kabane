@@ -136,7 +136,12 @@ export namespace AcpClient {
 			proc.stdout.pipeThrough(Stdio.jsonLines()),
 		);
 		const connected = await connect(harness, stream, options, {
-			closed: proc.exited,
+			// Exit alone does not mean the stderr reader has caught up; a failure report
+			// read at exit can miss the harness's own words (seen on Linux as a bare EPIPE).
+			closed: proc.exited.then(async (code) => {
+				await stderr.drained;
+				return code;
+			}),
 			stderr: stderr.text,
 			close: () => void closeGracefully(proc),
 			launch,
@@ -425,12 +430,12 @@ export namespace AcpClient {
 		process: Process,
 	): Promise<Error> => {
 		const base = toError(error);
-		const stderr = connection.stderr();
 		const exited = await withTimeout(
 			connection.closed,
 			EXIT_VERDICT_MS,
 			"still running",
 		);
+		const stderr = connection.stderr();
 		const explanation = exited.ok
 			? installExplanation(connection.harness, process.launch, stderr)
 			: [];
@@ -471,7 +476,7 @@ export namespace AcpClient {
 		const decoder = new TextDecoder();
 		// A reader loop rather than `for await`: the CLI compiles with the DOM lib,
 		// whose ReadableStream has no async iterator, and it imports this package.
-		void (async () => {
+		const drained = (async () => {
 			const reader = stream.getReader();
 			for (;;) {
 				const { done, value } = await reader.read();
@@ -481,6 +486,6 @@ export namespace AcpClient {
 				);
 			}
 		})().catch(() => {});
-		return { text: () => text };
+		return { text: () => text, drained };
 	};
 }
