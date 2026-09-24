@@ -368,7 +368,7 @@ const Section = ({
 	touched,
 	linked,
 	columns,
-	nextRowIndex,
+	firstRowIndex,
 	available,
 	activity,
 	onSelect,
@@ -385,9 +385,8 @@ const Section = ({
 	// the running row index below matches BoardNav.visibleRows by construction (filter included).
 	group: BoardNav.SectionRows;
 	selectedId: string | null;
-	// A running counter shared across sections so a row's index matches BoardNav.visibleRows. Mutated
-	// as rows are emitted, then returned to the caller for the next section.
-	nextRowIndex: { value: number };
+	// Where this section's rows start in BoardNav.visibleRows, so a row's index matches it.
+	firstRowIndex: number;
 	available: number;
 	activity?: BoardActivity.ActivityMap;
 	onSelect?: (rowIndex: number) => void;
@@ -405,11 +404,11 @@ const Section = ({
 				</span>
 				<span fg={theme.muted}> · {topLevel}</span>
 			</text>
-			{group.rows.map((row) => (
+			{group.rows.map((row, index) => (
 				<Row
 					key={row.task.id}
 					row={row}
-					rowIndex={nextRowIndex.value++}
+					rowIndex={firstRowIndex + index}
 					selected={row.task.id === selectedId}
 					marked={marked.has(row.task.id)}
 					touched={touched.has(row.task.id)}
@@ -436,6 +435,18 @@ export const EMPTY_HINTS = [
 	"ask the copilot below to file one,",
 	'or run kabane add "…" in a shell.',
 ] as const;
+
+// Each section with where its rows start in BoardNav.visibleRows.
+const withFirstRowIndex = (
+	groups: BoardNav.SectionRows[],
+): { group: BoardNav.SectionRows; firstRowIndex: number }[] => {
+	let next = 0;
+	return groups.map((group) => {
+		const firstRowIndex = next;
+		next += group.rows.length;
+		return { group, firstRowIndex };
+	});
+};
 
 const EmptyBoard = (): ReactNode => {
 	const theme = useTheme();
@@ -614,7 +625,6 @@ export const Board = ({
 		marked,
 		linked,
 	);
-	const nextRowIndex = { value: 0 };
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			<text fg={theme.defaultFg}>
@@ -633,7 +643,7 @@ export const Board = ({
 						<EmptyBoard />
 					)
 				) : (
-					groups.map((group) => (
+					withFirstRowIndex(groups).map(({ group, firstRowIndex }) => (
 						<Section
 							key={group.section.state}
 							group={group}
@@ -642,7 +652,7 @@ export const Board = ({
 							touched={touched}
 							linked={linked}
 							columns={columns}
-							nextRowIndex={nextRowIndex}
+							firstRowIndex={firstRowIndex}
 							available={available}
 							activity={activity}
 							onSelect={onSelect}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review OSS TypeScript"
+  short_description: "Review public TypeScript changes rigorously"
+  default_prompt: "Use $review-oss-typescript to review this project or change for correctness, maintainability, public API quality, and open-source readiness."

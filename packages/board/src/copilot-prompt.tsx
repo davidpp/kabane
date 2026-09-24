@@ -249,7 +249,7 @@ export const CopilotPane = ({
 			) : null}
 			{showTail
 				? tail.map((line, index) => (
-						// biome-ignore lint/suspicious/noArrayIndexKey: a positional window on the last few lines, not a list of things — row N is its only identity, and the same line can legitimately repeat.
+						// Index keys: a positional window on the last few lines, not a list of things — row N is its only identity, and the same line can legitimately repeat.
 						<text key={index} bg={paneBg} fg={theme.muted}>
 							{fit(line, inner - 2)}
 						</text>

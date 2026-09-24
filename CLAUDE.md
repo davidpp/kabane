@@ -21,15 +21,12 @@ Local SQLite is authoritative on every device. The hub is one more device that h
 
 ## Conventions
 
-Inherited verbatim from Jake's `CONVENTIONS.md`: namespaces over classes (a `DurableObject`
-subclass is the one framework-imposed exception), `Result<T>` never throw, explicit
-dependencies, co-located `*.test.ts`, `safeParse` only, no `as any`, no `!`, no `@ts-ignore`.
-Plain `zod` for domain schemas. Biome for lint and format.
+See `CODING_PRINCIPLE.md` for the coding rules and the architectural invariants.
 
 ## Gate
 
 ```bash
-bun run check        # biome check .
+bun run check        # oxlint, its type-aware pass, oxfmt --check
 bun run typecheck    # tsc --noEmit in every packages/*/
 bun test             # bun packages only (core, sqlite, acp, cli, board)
 bun run test         # the above plus `bun run --cwd packages/worker test` (tsc + vitest)
@@ -41,8 +38,9 @@ and keeps setup from registering in the real harness configs. Never run a live c
 against `~/.cabane`: on David's machine it is his real tracker.
 
 Root `bun test` must name the bun packages: a bare `bun test` sweeps the Worker's
-vitest files it cannot execute. Lefthook runs `biome check --write` on staged files
-and `typecheck` when `.ts` files are staged.
+vitest files it cannot execute. `bun run fix` applies oxlint's fixes and oxfmt.
+Lefthook runs oxfmt on staged files, both oxlint passes on staged `.ts`/`.tsx`, and
+`typecheck` when `.ts` files are staged.
 
 ## Jake
 

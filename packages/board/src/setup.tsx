@@ -432,10 +432,10 @@ const Wordmark = (): ReactNode => {
 	return (
 		<box style={{ flexDirection: "column" }}>
 			{WORDMARK.map((row, index) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: the wordmark's rows are fixed and positional.
+				// Index keys: the wordmark's rows are fixed and positional.
 				<text key={index} fg={theme.text}>
 					{wordmarkRuns(row).map((run, at) => (
-						// biome-ignore lint/suspicious/noArrayIndexKey: a row's runs are positional.
+						// Index keys: a row's runs are positional.
 						<span key={at} {...style(run.cell)}>
 							{run.text}
 						</span>

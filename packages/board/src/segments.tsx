@@ -37,7 +37,7 @@ export namespace Segments {
 	/** The parts as spans, inside a `<text>` that owns the row and its background. */
 	export const spans = (segments: readonly Segment[]): ReactNode[] =>
 		segments.map((segment, index) => (
-			// biome-ignore lint/suspicious/noArrayIndexKey: a line's parts are positional, and the same text can repeat.
+			// Index keys: a line's parts are positional, and the same text can repeat.
 			<span key={index} fg={segment.fg}>
 				{segment.text}
 			</span>

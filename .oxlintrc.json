@@ -1,0 +1,47 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["typescript", "unicorn", "oxc", "react", "import"],
+	"categories": {
+		"correctness": "error"
+	},
+	"ignorePatterns": ["**/worker-configuration.d.ts"],
+	"rules": {
+		"complexity": ["warn", 20],
+		"import/no-duplicates": "error",
+		"max-depth": ["warn", 4],
+		"max-lines-per-function": [
+			"warn",
+			{ "max": 120, "skipBlankLines": true, "skipComments": true }
+		],
+		"max-params": ["warn", 5],
+		"no-empty-function": ["error", { "allow": ["arrowFunctions"] }],
+		"no-useless-constructor": "error",
+		"no-useless-return": "error",
+		"no-warning-comments": ["warn", { "terms": ["fixme", "todo", "xxx"] }],
+		"typescript/ban-ts-comment": "error",
+		"typescript/no-explicit-any": "error",
+		"typescript/no-non-null-assertion": "error",
+		"unicorn/no-useless-fallback-in-spread": "error"
+	},
+	"overrides": [
+		{
+			"files": ["**/*.test.ts", "**/*.test.tsx"],
+			"rules": {
+				"complexity": "off",
+				"max-depth": "off",
+				"max-lines-per-function": "off",
+				"max-params": "off"
+			}
+		},
+		{
+			"files": ["packages/board/**"],
+			"rules": {
+				"react/refs": "off",
+				"react/set-state-in-effect": "off"
+			}
+		}
+	],
+	"env": {
+		"builtin": true
+	}
+}

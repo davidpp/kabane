@@ -29,7 +29,7 @@ export class CabaneLog extends DurableObject<Cloudflare.Env> {
 		// Constructor ONLY. Per request this would serialize everything behind a
 		// full concurrency block; here it just means the first caller waits for the
 		// schema. `Migrations.apply` is synchronous, hence the resolved promise.
-		ctx.blockConcurrencyWhile(() => {
+		void ctx.blockConcurrencyWhile(() => {
 			Migrations.apply(ctx.storage.sql);
 			return Promise.resolve();
 		});

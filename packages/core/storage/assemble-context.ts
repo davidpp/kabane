@@ -16,19 +16,17 @@
 
 import { traced } from "../observability";
 import { err, ok, type Result } from "../result";
-import type {
-	AgentSession,
-	ResolvedAssembleContextOpts,
-	Task,
-	TaskComment,
-	TaskContextRef,
-	TaskLink,
-	TaskWorkLog,
-	UpstreamLink,
-} from "../schemas";
 import {
+	type AgentSession,
 	type AssembleContextOpts,
 	AssembleContextOptsSchema,
+	type ResolvedAssembleContextOpts,
+	type Task,
+	type TaskComment,
+	type TaskContextRef,
+	type TaskLink,
+	type TaskWorkLog,
+	type UpstreamLink,
 } from "../schemas";
 import { Planner as PlannerComments } from "./comments";
 import { Planner as PlannerContextRefs } from "./context-refs";

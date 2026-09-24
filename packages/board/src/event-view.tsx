@@ -362,7 +362,7 @@ const PromptBlock = ({
 			}}
 		>
 			{lines.map((line, index) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: wrapped rows of one prompt are positional, and a row can repeat.
+				// Index keys: wrapped rows of one prompt are positional, and a row can repeat.
 				<text key={index} bg={bg} fg={theme.text}>
 					{line}
 				</text>
