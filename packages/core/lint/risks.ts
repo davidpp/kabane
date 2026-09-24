@@ -8,6 +8,7 @@
  * progress data on top of what the planner-side collector produces.
  */
 
+import { firstGroups } from "../regex";
 import { ok, type Result } from "../result";
 import type { Risk } from "./schemas";
 
@@ -58,15 +59,9 @@ export interface AnalyzeOptions {
 const extractFilePaths = (text: string): string[] => {
 	const pattern =
 		/(?:^|\s|`|"|')([a-zA-Z0-9_./-]+\.[a-zA-Z]{1,4})(?:\s|`|"|'|$|,|;|\))/g;
-	const matches = text.matchAll(pattern);
-	const paths: string[] = [];
-	for (const match of matches) {
-		const candidate = match[1];
-		if (candidate.includes("/") && !candidate.startsWith("http")) {
-			paths.push(candidate);
-		}
-	}
-	return paths;
+	return firstGroups(text, pattern).filter(
+		(candidate) => candidate.includes("/") && !candidate.startsWith("http"),
+	);
 };
 
 // ── Individual risk checks (pure) ───────────────────────────────────

@@ -8,6 +8,7 @@
  * history) are overlaid by callers via `AnalyzeOptions.progressEntries`.
  */
 
+import { firstGroups } from "../regex";
 import { ok, type Result, tryCatch } from "../result";
 import { Planner } from "../storage";
 import type { SubtaskInput } from "./risks";
@@ -17,16 +18,10 @@ import type { SubtaskInput } from "./risks";
 const FILE_PATTERN =
 	/(?:^|\s|`|"|')([a-zA-Z0-9_./-]+\.[a-zA-Z]{1,4})(?:\s|`|"|'|$|,|;|\))/g;
 
-const extractFilePaths = (text: string): string[] => {
-	const paths: string[] = [];
-	for (const match of text.matchAll(FILE_PATTERN)) {
-		const candidate = match[1];
-		if (candidate.includes("/") && !candidate.startsWith("http")) {
-			paths.push(candidate);
-		}
-	}
-	return paths;
-};
+const extractFilePaths = (text: string): string[] =>
+	firstGroups(text, FILE_PATTERN).filter(
+		(candidate) => candidate.includes("/") && !candidate.startsWith("http"),
+	);
 
 /**
  * Extract distinct package paths referenced across all subtasks.
