@@ -58,7 +58,7 @@ describe("Planner.selectDurableActivities", () => {
 		const durable = Planner.selectDurableActivities(acts);
 		// Only the last ephemeral finding survives.
 		expect(durable).toHaveLength(1);
-		expect(durable[0].id).toBe(acts[2].id);
+		expect(durable[0]?.id).toBe(acts[2]?.id);
 	});
 
 	it("preserves input (chronological) order", () => {
