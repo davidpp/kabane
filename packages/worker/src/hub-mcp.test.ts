@@ -209,7 +209,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(Array.isArray(today.next)).toBe(true);
 
 		// A date deadline is stored as the date and counts on its own day, in
-		// the hub's zone: CABANE_TIMEZONE is unset here, so UTC.
+		// the hub's zone: KABANE_TIMEZONE is unset here, so UTC.
 		const utcToday = new Date().toISOString().slice(0, 10);
 		const dated = (
 			await callTool(HUMAN, "kabane_add", {

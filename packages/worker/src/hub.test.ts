@@ -40,7 +40,7 @@ describe("CabaneHub boot", () => {
 });
 
 describe("the hub's timezone", () => {
-	it("is CABANE_TIMEZONE when set, UTC when unset, and an error when unknown", () => {
+	it("is KABANE_TIMEZONE when set, UTC when unset, and an error when unknown", () => {
 		expect(hubTimezone(undefined)).toEqual({ ok: true, value: "UTC" });
 		expect(hubTimezone(" ")).toEqual({ ok: true, value: "UTC" });
 		expect(hubTimezone("America/Montreal")).toEqual({
@@ -49,7 +49,7 @@ describe("the hub's timezone", () => {
 		});
 		const unknown = hubTimezone("Mars/Olympus");
 		expect(unknown.ok).toBe(false);
-		if (!unknown.ok) expect(unknown.error.message).toContain("CABANE_TIMEZONE");
+		if (!unknown.ok) expect(unknown.error.message).toContain("KABANE_TIMEZONE");
 	});
 
 	it("workerd's zone data places a Montreal day and its DST jump as Bun does", () => {

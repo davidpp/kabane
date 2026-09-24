@@ -58,7 +58,7 @@ const intervalMs = (raw: string | undefined): number => {
 export type SyncPass = { pull: Result<PullResult>; push: Result<PushResult> };
 
 /**
- * The owner's timezone for the hub: `CABANE_TIMEZONE` (an IANA name), or UTC
+ * The owner's timezone for the hub: `KABANE_TIMEZONE` (an IANA name), or UTC
  * when it is unset. It decides which day is today and when a date deadline's
  * day ends for every MCP client the hub serves (schemas/deadline.ts). A zone
  * the runtime does not know is an error rather than a silent UTC.
@@ -70,7 +70,7 @@ export const hubTimezone = (raw: string | undefined): Result<string> => {
 		? ok(zone)
 		: err(
 				new Error(
-					`CABANE_TIMEZONE "${zone}" is not a timezone this runtime knows (use an IANA name such as America/Montreal)`,
+					`KABANE_TIMEZONE "${zone}" is not a timezone this runtime knows (use an IANA name such as America/Montreal)`,
 				),
 			);
 };
@@ -80,7 +80,7 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 
 	constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
 		super(ctx, env);
-		const zone = hubTimezone(env.CABANE_TIMEZONE);
+		const zone = hubTimezone(env.KABANE_TIMEZONE);
 		Runtime.configure({
 			provider: DoDb.provider(ctx.storage),
 			actor: () => actorStore.getStore() ?? ANONYMOUS_ACTOR,
