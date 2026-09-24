@@ -9,9 +9,12 @@
 	"scripts": {
 		"prepare": "lefthook install",
 		"sandbox": "bun scripts/sandbox.ts",
-		"check": "biome check .",
-		"fix": "biome check --write .",
-		"check:staged": "biome check --no-errors-on-unmatched --staged",
+		"check": "bun run lint && bun run fmt:check",
+		"fix": "oxlint --fix && oxfmt",
+		"check:staged": "lefthook run pre-commit",
+		"lint": "oxlint && oxlint --type-aware --config .oxlintrc.typed.json",
+		"fmt": "oxfmt",
+		"fmt:check": "oxfmt --check",
 		"typecheck": "for pkg in packages/*/; do (cd $pkg && bun run typecheck) || exit 1; done",
 		"test": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board && bun run --cwd packages/worker test",
 		"test:bun": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board",
@@ -19,8 +22,10 @@
 		"clean": "bun run --filter '*' clean"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.11",
 		"lefthook": "2.1.12",
+		"oxfmt": "0.68.0",
+		"oxlint": "1.83.0",
+		"oxlint-tsgolint": "7.0.2002",
 		"typescript": "5.9.3"
 	}
 }

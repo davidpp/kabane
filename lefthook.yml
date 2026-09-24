@@ -1,10 +1,14 @@
 pre-commit:
   parallel: true
   jobs:
-    - name: biome
-      glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc,css}"
-      run: bunx biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --colors=off {staged_files}
+    - name: format
+      glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc}"
+      run: bunx oxfmt --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
+
+    - name: lint
+      glob: "*.{ts,tsx}"
+      run: bunx oxlint {staged_files} && bunx oxlint --type-aware --config .oxlintrc.typed.json {staged_files}
 
     - name: typecheck
       glob: "*.{ts,tsx,d.ts,d.mts,d.cts}"

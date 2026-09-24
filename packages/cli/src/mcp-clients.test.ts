@@ -34,7 +34,8 @@ describe("McpClients", () => {
 			"user",
 			"cabane",
 			"--",
-			...[launch.command, ...launch.args],
+			launch.command,
+			...launch.args,
 		]);
 		expect(McpClients.entry("codex").add(launch).slice(0, 5)).toEqual([
 			"codex",

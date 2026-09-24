@@ -89,7 +89,7 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 		// Constructor only: the first caller waits for the schema and the device
 		// identity, later ones do not pay for it.
 		this.booted = new Promise<Result<void>>((resolve) => {
-			ctx.blockConcurrencyWhile(async () => {
+			void ctx.blockConcurrencyWhile(async () => {
 				if (!zone.ok) return resolve(zone);
 				const initialized = await Planner.init(HUB_BASE);
 				if (!initialized.ok) return resolve(initialized);
