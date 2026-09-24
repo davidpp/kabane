@@ -18,7 +18,7 @@ Syncing several machines through a Cloudflare hub is optional and lives in
 ## Install
 
 ```bash
-git clone https://github.com/davidpp/cabane.git kabane
+git clone https://github.com/davidpp/kabane.git
 cd kabane && bun install
 cd packages/cli && bun link
 kabane --help | head -1

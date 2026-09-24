@@ -22,18 +22,26 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 
 ## Install
 
-Kabane is not on npm yet, so it runs from a clone. It needs [Bun](https://bun.sh) 1.4 or
-later.
+Kabane runs on [Bun](https://bun.sh) 1.4 or later, which has to be installed first: the
+package is a Bun program, not a Node one.
 
 ```bash
-git clone https://github.com/davidpp/cabane.git kabane
-cd kabane && bun install
-cd packages/cli && bun link                      # `kabane` on PATH
-kabane --help | head -1
+bun add -g kabane           # `kabane` on PATH, in ~/.bun/bin
+kabane --version
 ```
 
-`bun link` puts the command in `~/.bun/bin`, pointing at this clone, so pulling the clone
-updates it.
+`bunx kabane` runs it once without installing. Install it globally before you let setup
+wire your coding agents: their MCP entries point at the installed file.
+
+To work on kabane itself, run it from a clone instead:
+
+```bash
+git clone https://github.com/davidpp/kabane.git
+cd kabane && bun install
+cd packages/cli && bun link                      # `kabane` on PATH, pointing at the clone
+```
+
+Releases are cut by following [`docs/release.md`](docs/release.md).
 
 ## Quick start
 
