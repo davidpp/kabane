@@ -34,12 +34,9 @@ const extractPackagePaths = (subtasks: SubtaskInput[]): string[] => {
 	for (const subtask of subtasks) {
 		const text = [subtask.title, subtask.description ?? ""].join(" ");
 		for (const file of extractFilePaths(text)) {
-			const segments = file.split("/");
-			if (segments.length >= 2 && segments[0] === "packages") {
-				packages.add(`${segments[0]}/${segments[1]}`);
-			} else if (segments.length >= 2) {
-				packages.add(segments[0]);
-			}
+			const [head, second] = file.split("/");
+			if (head === undefined || second === undefined) continue;
+			packages.add(head === "packages" ? `${head}/${second}` : head);
 		}
 	}
 	return [...packages];

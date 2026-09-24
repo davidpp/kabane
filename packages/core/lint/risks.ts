@@ -279,7 +279,7 @@ const analyzeImpl = (options: AnalyzeOptions): Result<Risk[]> => {
 		...checkUnreviewableScopeImpl(options.subtasks),
 	];
 
-	const severityOrder: Record<string, number> = {
+	const severityOrder: Record<Risk["severity"], number> = {
 		high: 0,
 		medium: 1,
 		low: 2,
