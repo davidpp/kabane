@@ -126,6 +126,9 @@ export const serveStdio = async (
 	await server.connect(transport);
 	await new Promise<void>((resolve) => {
 		transport.onclose = () => resolve();
+		// The SDK transport never watches for end of input, so without this a server whose client
+		// went away keeps its process alive, spinning on a closed stdin.
+		process.stdin.once("end", () => void server.close());
 		for (const signal of ["SIGINT", "SIGTERM"] as const) {
 			process.once(signal, () => {
 				void server.close();
