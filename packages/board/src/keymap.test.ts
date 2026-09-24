@@ -256,21 +256,20 @@ describe("Keymap.footer", () => {
 });
 
 describe("Keymap.fitHints", () => {
-	const hints = [
-		{ key: "a", label: "one" },
-		{ key: "b", label: "two" },
-		{ key: "?", label: "help" },
-	];
+	const one = { key: "a", label: "one" };
+	const two = { key: "b", label: "two" };
+	const help = { key: "?", label: "help" };
+	const hints = [one, two, help];
 
 	test("keeps what fits, drops whole hints from the end, and keeps `? help` last", () => {
 		expect(Keymap.fitHints(hints, 40)).toEqual(hints);
-		expect(Keymap.fitHints(hints, 16)).toEqual([hints[0], hints[2]]);
-		expect(Keymap.fitHints(hints, 6)).toEqual([hints[2]]);
+		expect(Keymap.fitHints(hints, 16)).toEqual([one, help]);
+		expect(Keymap.fitHints(hints, 6)).toEqual([help]);
 		expect(Keymap.fitHints(hints, 3)).toEqual([]);
 	});
 
 	test("with no `? help` at the end, the tail simply drops", () => {
-		expect(Keymap.fitHints(hints.slice(0, 2), 6)).toEqual([hints[0]]);
+		expect(Keymap.fitHints([one, two], 6)).toEqual([one]);
 	});
 });
 
