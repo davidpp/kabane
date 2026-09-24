@@ -27,7 +27,7 @@ See `CODING_PRINCIPLE.md` for the coding rules and the architectural invariants.
 ## Gate
 
 ```bash
-bun run check        # oxlint, its type-aware pass, oxfmt --check
+bun run check        # oxlint, its type-aware pass, oxfmt --check, knip, jscpd
 bun run typecheck    # tsc --noEmit in every packages/*/
 bun test             # bun packages only (core, sqlite, acp, cli, board)
 bun run test         # the above plus `bun run --cwd packages/worker test` (tsc + vitest)

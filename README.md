@@ -120,7 +120,7 @@ agent brief; `y` still copies the brief for pasting into a chat.
 
 ```bash
 bun install
-bun run check       # oxlint, its type-aware pass, oxfmt --check
+bun run check       # oxlint, its type-aware pass, oxfmt --check, knip, jscpd
 bun run typecheck   # tsc --noEmit per package
 bun run test        # bun packages, then the Worker suite under vitest
 ```
