@@ -11,6 +11,7 @@
 		"prepare": "lefthook install",
 		"sandbox": "bun scripts/sandbox.ts",
 		"build": "bun scripts/build.ts",
+		"smoke": "bun scripts/smoke.ts",
 		"check": "bun run lint && bun run fmt:check",
 		"fix": "oxlint --fix && oxfmt",
 		"check:staged": "lefthook run pre-commit",
