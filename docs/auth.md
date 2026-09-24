@@ -1,8 +1,9 @@
-# Authentication for the Cabane hub
+# Authentication for the Kabane hub
 
-**Issue:** JCAB-8 · **Phase:** research and decision (implementation waits on JCAB-2, JCAB-7) · **Checked:** 2026-09-07
+**Status:** decided and implemented · **Checked:** 2026-09-07
 
-The hub at `cabane.3pew.ca` has two kinds of clients. Machines that can send
+A self-hosted hub, at `<your-domain>` behind the Access team `<team>` (placeholders as in
+[`deploy.md`](deploy.md)), has two kinds of clients. Machines that can send
 headers (Claude Code, Hermes, Codex, cron pullers) and browser connectors that
 cannot (ChatGPT, Claude.ai web and mobile). The question was whether Cloudflare
 Access can serve both without the Worker growing its own OAuth server.
@@ -18,8 +19,8 @@ via RFC 7591 Dynamic Client Registration, runs the authorization-code flow with
 S256 PKCE, and receives an opaque token. Access resolves that token to the user
 on every request and forwards a signed JWT in `Cf-Access-Jwt-Assertion`, so
 "from your origin's perspective, the request looks the same as a
-browser-authenticated request." The Worker keeps the FamilyOS verifier
-unchanged. Service tokens keep working alongside through a `Service Auth`
+browser-authenticated request." The Worker keeps its standard Access JWT
+verifier unchanged. Service tokens keep working alongside through a `Service Auth`
 policy. Sources: [Managed OAuth doc][mo], [blog post][mo-blog],
 [Secure MCP servers][smcp], [Managed OAuth vs service tokens table][mo].
 
@@ -70,11 +71,10 @@ report either way.
 ## Topologies
 
 **(a) One Access application, Managed OAuth on, two policies.** The MCP server
-application covers `cabane.3pew.ca`. An `Allow` policy for David's identity
+application covers `<your-domain>`. An `Allow` policy for the owner's identity
 serves browser connectors through Managed OAuth. A `Service Auth` policy with
 one service token per runtime serves Claude Code, Hermes, Codex, and cron. The
-Worker verifies `Cf-Access-Jwt-Assertion` on every request, as FamilyOS does,
-and maps `common_name` to `cabane://actor/agent/<runtime>` and `email` to
+Worker verifies `Cf-Access-Jwt-Assertion` on every request and maps `common_name` to `cabane://actor/agent/<runtime>` and `email` to
 `cabane://actor/human/<local-part>`. *Security consequence:* Access rejects
 every unauthenticated request before Worker code runs, requests are logged, and
 no OAuth token or client secret is ever stored by the Worker. The one new trust
@@ -89,14 +89,14 @@ OAuth server, which logs the user in through an Access for SaaS OIDC app.
 *Security consequence:* Bypass "does not enforce any Access security controls
 and requests are not logged" ([policies][pol]), so the registration, authorize,
 and token endpoints are public and defended only by the Worker's own code and
-by KV-stored hashed secrets. FamilyOS ADR 0001 rejected exactly this shape
-("Public Worker with application authentication only"), and its shadow exit
-criteria require "the Access application has no bypass".
+by KV-stored hashed secrets. That is a public Worker with application
+authentication only, and it gives up the invariant (a) rests on: the Access
+application has no bypass.
 
 ## Decision
 
 **Go with (a).** Managed OAuth is the product Cloudflare built for this case,
-it keeps the FamilyOS invariant that Access rejects before the Worker runs, the
+it keeps the invariant that Access rejects before the Worker runs, the
 Worker code is the verifier we already have, and there is nothing to rotate but
 service tokens. The cost is one unverified interoperability question with
 Claude.ai's connector, which is cheap to test and has (b) as a documented
@@ -105,40 +105,40 @@ fallback that changes nothing in the tool layer.
 The implementation phase is therefore small. Nothing OAuth-specific lands in
 the Worker.
 
-## Implementation plan (after JCAB-7 merges)
+## Implementation
 
 Worker changes, all in `packages/worker`:
 
-1. `src/auth.ts`: keep the JWT verifier (issuer `https://3pew.cloudflareaccess.com`,
+1. `src/access.ts`: the JWT verifier (issuer `https://<team>.cloudflareaccess.com`,
    audience `ACCESS_AUD`, RS256, `type === "app"`). Add the actor mapping:
    `common_name` present → look up in `SERVICE_ACTORS` (a JSON var mapping
    client id → `cabane://actor/agent/<name>`), unknown id → `401`; otherwise
    `email` present → `cabane://actor/human/<local-part>`, and the email must
-   equal `HUMAN_EMAIL` or the request is `401` (single human, per the brief).
+   equal `HUMAN_EMAIL` or the request is `401` (one human per hub).
 2. `src/hub.ts`: return `401` with no body for a missing or invalid assertion.
    Do **not** emit `WWW-Authenticate`; Managed OAuth owns the `401` shape and
    the doc says enabling it "replaces the 401 response behavior on the
    protected application".
-3. `wrangler.jsonc` vars: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `HUMAN_EMAIL`,
-   `SERVICE_ACTORS`. No new bindings, no KV, no secrets beyond `SYNC_TOKEN`.
-4. Tests: the verifier is injected (FamilyOS `WorkerDependencies` pattern), so
-   the vitest suite covers service mapping, human mapping, unknown service id,
+3. Vars `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `HUMAN_EMAIL`, `SERVICE_ACTORS`:
+   empty placeholders in `wrangler.jsonc`, values passed at deploy time
+   (`deploy.md` 1.5). No new bindings, no KV, no secrets beyond `SYNC_TOKEN`.
+4. Tests: the verifier is injected, so the vitest suite covers service mapping, human mapping, unknown service id,
    wrong human, and missing header without touching Access.
 
 Fallback (b), only if the deploy test fails and Cloudflare has not fixed the
 connector path: add `workers-oauth-provider`, an `OAUTH_KV` namespace, the six
 secrets listed above, an Access for SaaS OIDC app with redirect
-`https://cabane.3pew.ca/callback`, and a second Access self-hosted app with a
-Bypass policy scoped to `cabane.3pew.ca/oauth/*` and `/.well-known/*`. Record
+`https://<your-domain>/callback`, and a second Access self-hosted app with a
+Bypass policy scoped to `<your-domain>/oauth/*` and `/.well-known/*`. Record
 the decision to accept a bypass in an ADR before doing it.
 
-## Manual steps for the deploy runbook (JCAB-11)
+## Manual steps, as the deploy runbook runs them
 
 Cloudflare dashboard, Zero Trust, after `wrangler deploy` of the hub:
 
 1. **Access controls → AI controls → MCP servers → Add an MCP server.**
-   HTTP URL `https://cabane.3pew.ca/mcp`. Proxy status on for the hostname.
-2. **Policies.** `Allow` with Include `email = <David's email>`. `Service Auth`
+   HTTP URL `https://<your-domain>/mcp`. Proxy status on for the hostname.
+2. **Policies.** `Allow` with Include `email = <your email>`. `Service Auth`
    with Include `Service Token` for each token created in step 4.
 3. **Advanced settings → Managed OAuth: on.** Allowed redirect URIs:
    `https://chatgpt.com/connector/oauth/*`,
@@ -147,20 +147,20 @@ Cloudflare dashboard, Zero Trust, after `wrangler deploy` of the hub:
    loopback clients on (Claude Code, MCP inspector). Access token lifetime 15m,
    grant session 14d, per Cloudflare's CLI recommendation.
 4. **Access controls → Service credentials → Service tokens.** Create
-   `cabane-claude-code`, `cabane-hermes`, `cabane-codex`, `cabane-cron`. Copy
+   `kabane-claude-code`, `kabane-hermes`, `kabane-codex`, `kabane-cron`. Copy
    each Client ID into `SERVICE_ACTORS`; secrets go to each machine's keychain
    or env, never into the repo. Copy the application `AUD` into `ACCESS_AUD`.
 5. **Connect and verify, in this order.** MCP inspector with the localhost
    redirect (proves Managed OAuth end to end). Claude Code:
-   `claude mcp add --transport http cabane https://cabane.3pew.ca/mcp` with
+   `claude mcp add --transport http kabane https://<your-domain>/mcp` with
    `--header "CF-Access-Client-Id: …" --header "CF-Access-Client-Secret: …"`.
    Codex: `http_headers` / `env_http_headers` in `config.toml` ([Codex MCP][codex]).
-   Hermes: `mcp.json` with the same two headers, as FamilyOS already does.
+   Hermes: its MCP server config with the same two headers.
    Claude.ai: add custom connector by URL, no client id. If it fails at
    Connect, capture the `ofid_` reference and test whether `resource` and the
    `oauth` method are the cause before falling back to (b). ChatGPT: developer
    mode, custom connector, authentication OAuth, no client id.
-6. **Reject test.** `curl -i https://cabane.3pew.ca/mcp` with no headers must
+6. **Reject test.** `curl -i https://<your-domain>/mcp` with no headers must
    return `401` from Access, and `wrangler tail` must show no Worker
    invocation.
 
@@ -187,7 +187,6 @@ come from the same range.
 - [gh402]: https://github.com/anthropics/claude-ai-mcp/issues/402
 - [codex]: https://learn.chatgpt.com/docs/extend/mcp?surface=cli
 - MCP authorization spec 2025-06-18: https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization
-- FamilyOS precedent: `~/Projects/familyos/apps/familyos-api/src/auth.ts`, `~/Projects/familyos/skills/family-os-core/references/adr/0001-private-cloudflare-d1-shadow.md`
 
 [mo]: https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/
 [mo-blog]: https://blog.cloudflare.com/managed-oauth-for-access/
