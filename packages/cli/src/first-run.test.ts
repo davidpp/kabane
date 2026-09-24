@@ -17,7 +17,7 @@ import {
 const ROOT = join(tmpdir(), `cabane-first-run-${crypto.randomUUID()}`);
 afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
 
-// Not a project: nothing above the system temp directory is a git repo or carries a `.cabane` pin.
+// Not a project: nothing above the system temp directory is a git repo or carries a `.kabane` pin.
 const NOWHERE = ROOT;
 
 const gitRepo = (name: string): string => {
@@ -103,7 +103,7 @@ describe("setupDeps", () => {
 			install: ["claude"],
 		});
 		const filed = await deps.fileFirstIssue("codex");
-		expect(filed.ok && filed.value.title).toBe("Add cabane to AGENTS.md");
+		expect(filed.ok && filed.value.title).toBe("Add kabane to AGENTS.md");
 		const ctx = await openContext(home, repo, parseArgs([]));
 		if (!ctx.ok || !filed.ok) throw new Error("setup did not land");
 		const task = await Planner.getTask(ctx.value.store, filed.value.shortId);
@@ -146,8 +146,8 @@ describe("firstIssueBrief", () => {
 
 describe("tildePath", () => {
 	test("shortens a path under the home directory, and only that", () => {
-		expect(tildePath("/Users/alex/.cabane/config.json", "/Users/alex")).toBe(
-			"~/.cabane/config.json",
+		expect(tildePath("/Users/alex/.kabane/config.json", "/Users/alex")).toBe(
+			"~/.kabane/config.json",
 		);
 		expect(tildePath("/Users/alexa/config.json", "/Users/alex")).toBe(
 			"/Users/alexa/config.json",

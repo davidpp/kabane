@@ -5,7 +5,7 @@ import { failure, formatTaskLine, success, usage } from "../output";
 export const done: Command = {
 	name: "done",
 	summary: "Mark a task done",
-	usage: "cabane done <id>",
+	usage: "kabane done <id>",
 	run: async (args, ctx) => {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", done.usage);

@@ -6,7 +6,7 @@ import { failure, success, usage } from "../output";
 export const link: Command = {
 	name: "link",
 	summary: "Create a typed link between two tasks",
-	usage: `cabane link <source-id> <target-id> --type <${LinkTypeSchema.options.join("|")}> [--note <text>]`,
+	usage: `kabane link <source-id> <target-id> --type <${LinkTypeSchema.options.join("|")}> [--note <text>]`,
 	run: async (args, ctx) => {
 		const [sourceInput, targetInput] = args.positionals;
 		if (!sourceInput || !targetInput)

@@ -57,9 +57,9 @@ const copilotOverrides = (ctx: Ctx): Harnesses.Overrides | undefined => {
  *
  * The scope is resolved here rather than passed through as a resolver, because
  * the copilot needs the same answer the board shows: the project directory as
- * the harness cwd, and the URI for `cabane mcp --scope`, so a write lands in the
+ * the harness cwd, and the URI for `kabane mcp --scope`, so a write lands in the
  * scope on screen instead of wherever the adapter happened to start the server.
- * `run` has already checked for a TTY, so a piped `cabane board` still detects
+ * `run` has already checked for a TTY, so a piped `kabane board` still detects
  * nothing.
  */
 export const boardDeps = async (
@@ -90,11 +90,11 @@ export const boardDeps = async (
 export const board: Command = {
 	name: "board",
 	summary: "Open the terminal kanban for this device",
-	usage: "cabane board [--scope <uri>] [--copilot <harness>]",
+	usage: "kabane board [--scope <uri>] [--copilot <harness>]",
 	run: async (args, ctx) => {
 		// The board owns a full-screen renderer; on a pipe it would block forever.
 		if (!process.stdout.isTTY)
-			return failure("cabane board needs a terminal; use `cabane list` here");
+			return failure("kabane board needs a terminal; use `kabane list` here");
 		const harness = copilotHarness(args, ctx);
 		if (!harness.ok) return failure(harness.error.message);
 		const deps = await boardDeps(args, ctx, harness.value);

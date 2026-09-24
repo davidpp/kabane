@@ -202,7 +202,7 @@ CLI):
 ```markdown
 ## Tracker
 
-Work is tracked in cabane (MCP server `cabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.
+Work is tracked in kabane (MCP server `kabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.
 - Before starting, `kabane_list` with `assignee` set to your name and `state: "next"`; read the task with `kabane_context`.
 - Set the task `in_progress` with `kabane_edit` before touching code. Never take a task that is already in progress.
 - When finished, `kabane_comment` what landed (files, commits, what is left), then `kabane_done`.

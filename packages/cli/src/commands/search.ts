@@ -7,7 +7,7 @@ export const search: Command = {
 	name: "search",
 	summary: "Full-text search over titles and descriptions",
 	usage:
-		"cabane search <query> [--state <state>] [--scope <uri>] [--limit <n>]",
+		"kabane search <query> [--state <state>] [--scope <uri>] [--limit <n>]",
 	run: async (args, ctx) => {
 		const query = args.positionals.join(" ").trim();
 		if (!query) return usage("Search query required", search.usage);

@@ -19,7 +19,7 @@ const fakeRunner = (present: McpClients.Id[] = [], failing: string[] = []) => {
 			return {
 				code: 0,
 				out: "",
-				err: listed ? "✓ cabane: /opt/bun (stdio) - Connected" : "",
+				err: listed ? "✓ kabane: /opt/bun (stdio) - Connected" : "",
 			};
 		return { code: 0, out: "", err: "" };
 	};
@@ -47,14 +47,14 @@ describe("McpInstall.run", () => {
 		);
 		expect(reports).toEqual([{ harness: "claude", status: "installed" }]);
 		expect(fake.calls).toEqual([
-			["claude", "mcp", "get", "cabane"],
+			["claude", "mcp", "get", "kabane"],
 			[
 				"claude",
 				"mcp",
 				"add",
 				"-s",
 				"user",
-				"cabane",
+				"kabane",
 				"--",
 				"/opt/bun",
 				"/src/cli/index.ts",
@@ -126,18 +126,18 @@ describe("McpInstall.detect", () => {
 		]);
 	});
 
-	it("narrows to CABANE_HARNESSES, and finds none when it is empty", () => {
+	it("narrows to KABANE_HARNESSES, and finds none when it is empty", () => {
 		const all = onPath("claude", "codex", "gemini");
 		expect(
-			McpInstall.detect(all, { CABANE_HARNESSES: "gemini, claude" }),
+			McpInstall.detect(all, { KABANE_HARNESSES: "gemini, claude" }),
 		).toEqual(["claude", "gemini"]);
-		expect(McpInstall.detect(all, { CABANE_HARNESSES: "" })).toEqual([]);
+		expect(McpInstall.detect(all, { KABANE_HARNESSES: "" })).toEqual([]);
 	});
 
-	it("is narrowed whenever CABANE_HARNESSES is set, empty included", () => {
+	it("is narrowed whenever KABANE_HARNESSES is set, empty included", () => {
 		expect(McpInstall.narrowed({})).toBe(false);
-		expect(McpInstall.narrowed({ CABANE_HARNESSES: "" })).toBe(true);
-		expect(McpInstall.narrowed({ CABANE_HARNESSES: "codex" })).toBe(true);
+		expect(McpInstall.narrowed({ KABANE_HARNESSES: "" })).toBe(true);
+		expect(McpInstall.narrowed({ KABANE_HARNESSES: "codex" })).toBe(true);
 	});
 });
 
@@ -181,7 +181,7 @@ describe("mcp install command", () => {
 		});
 		expect(outcome.exitCode).toBe(0);
 		expect(outcome.text).toContain("No claude, codex or gemini on PATH");
-		expect(outcome.text).toContain("[mcp_servers.cabane]");
+		expect(outcome.text).toContain("[mcp_servers.kabane]");
 	});
 
 	it("narrows --print to the named harness", async () => {

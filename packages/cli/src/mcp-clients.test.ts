@@ -32,7 +32,7 @@ describe("McpClients", () => {
 			"add",
 			"-s",
 			"user",
-			"cabane",
+			"kabane",
 			"--",
 			...[launch.command, ...launch.args],
 		]);
@@ -40,7 +40,7 @@ describe("McpClients", () => {
 			"codex",
 			"mcp",
 			"add",
-			"cabane",
+			"kabane",
 			"--",
 		]);
 		// Gemini takes the command positionally; a `--` would become the command.
@@ -50,7 +50,7 @@ describe("McpClients", () => {
 			"add",
 			"-s",
 			"user",
-			"cabane",
+			"kabane",
 			launch.command,
 		]);
 	});
@@ -59,7 +59,7 @@ describe("McpClients", () => {
 		expect(
 			McpClients.entry("claude").isPresent({
 				code: 0,
-				out: "cabane:",
+				out: "kabane:",
 				err: "",
 			}),
 		).toBe(true);
@@ -71,35 +71,35 @@ describe("McpClients", () => {
 			"Configured MCP servers:",
 			"",
 			"✓ nanobanana (from nanobanana): node index.js (stdio) - Connected",
-			"✓ cabane: /opt/bun/bin/bun index.ts mcp (stdio) - Connected",
+			"✓ kabane: /opt/bun/bin/bun index.ts mcp (stdio) - Connected",
 		].join("\n");
 		expect(gemini.isPresent({ code: 0, out: "", err: listed })).toBe(true);
 		expect(
 			gemini.isPresent({
 				code: 0,
 				out: "",
-				err: "✓ cabane-hub: https://x/mcp (http) - Connected",
+				err: "✓ kabane-hub: https://x/mcp (http) - Connected",
 			}),
 		).toBe(false);
 	});
 
 	it("prints each harness's own config shape from the same launch", () => {
 		const claude = JSON.parse(McpClients.snippetFor("claude", LAUNCHER).text);
-		expect(claude.mcpServers.cabane.command).toBe("/opt/bun/bin/bun");
-		expect(claude.mcpServers.cabane.args.at(-1)).toBe(
+		expect(claude.mcpServers.kabane.command).toBe("/opt/bun/bin/bun");
+		expect(claude.mcpServers.kabane.args.at(-1)).toBe(
 			"cabane://actor/agent/claude",
 		);
 
 		expect(McpClients.snippetFor("codex", LAUNCHER).text).toBe(
 			[
-				"[mcp_servers.cabane]",
+				"[mcp_servers.kabane]",
 				'command = "/opt/bun/bin/bun"',
 				'args = ["/home/me/cabane/packages/cli/index.ts", "mcp", "--as", "cabane://actor/agent/codex"]',
 			].join("\n"),
 		);
 
 		const gemini = JSON.parse(McpClients.snippetFor("gemini", LAUNCHER).text);
-		expect(gemini.mcpServers.cabane.args.at(-1)).toBe(
+		expect(gemini.mcpServers.kabane.args.at(-1)).toBe(
 			"cabane://actor/agent/gemini",
 		);
 	});

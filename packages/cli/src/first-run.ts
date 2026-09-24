@@ -1,5 +1,5 @@
 /**
- * Bare `cabane` in a terminal: the board, after the setup screen when this
+ * Bare `kabane` in a terminal: the board, after the setup screen when this
  * device has no config yet. The screen lives in `@cabane/board` and cannot see
  * the CLI's config schema or the MCP installer, so this module hands it all of
  * that as deps: the defaults to prefill, the detected harnesses, `save` (which
@@ -37,7 +37,7 @@ const LABELS: Record<McpClients.Id, string> = {
 };
 
 // A harness's stderr can run to warnings and a backtrace; its last line is usually the cause, and
-// `cabane mcp install` still prints the whole of it.
+// `kabane mcp install` still prints the whole of it.
 const lastLine = (text: string): string =>
 	text.trim().split("\n").at(-1)?.trim() ?? text;
 
@@ -60,7 +60,7 @@ export const outcomeOf = (
 	}
 };
 
-/** `cabane mcp install`'s detection and registration, reported the way the screen shows them. */
+/** `kabane mcp install`'s detection and registration, reported the way the screen shows them. */
 const mcpInstaller: Installer = {
 	detect: async () =>
 		McpInstall.detect().map((id) => ({ id, label: LABELS[id] })),
@@ -70,21 +70,21 @@ const mcpInstaller: Installer = {
 };
 
 /**
- * The brief of the first issue. It asks for the step an agent needs before it uses cabane
+ * The brief of the first issue. It asks for the step an agent needs before it uses kabane
  * unprompted, and it is worked the way the block says, so the agent's first pass through the
  * tracker is on the issue that teaches it the tracker. The block is the one getting-started.md
  * gives a human to paste by hand.
  */
 export const firstIssueBrief = (instructionFile: string): string =>
 	[
-		`Setup registered cabane's MCP server in your harness. Agents use the tracker reliably only when the project says so, and this issue adds that: append the block below to \`${instructionFile}\` at the project root, creating the file if it is missing.`,
+		`Setup registered kabane's MCP server in your harness. Agents use the tracker reliably only when the project says so, and this issue adds that: append the block below to \`${instructionFile}\` at the project root, creating the file if it is missing.`,
 		"",
 		"Work this issue the way the block says: set it `in_progress` first, then `kabane_comment` what you changed and `kabane_done` it.",
 		"",
 		"```markdown",
 		"## Tracker",
 		"",
-		"Work is tracked in cabane (MCP server `cabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.",
+		"Work is tracked in kabane (MCP server `kabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.",
 		'- Before starting, `kabane_list` with `assignee` set to your name and `state: "next"`; read the task with `kabane_context`.',
 		"- Set the task `in_progress` with `kabane_edit` before touching code. Never take a task that is already in progress.",
 		"- When finished, `kabane_comment` what landed (files, commits, what is left), then `kabane_done`.",
@@ -110,7 +110,7 @@ const fileFirstIssue = async (
 	if (!scope) return err(new Error("not inside a project"));
 	const { instructionFile } = McpClients.entry(harness);
 	const created = await Planner.addTask(ctx.value.store, {
-		title: `Add cabane to ${instructionFile}`,
+		title: `Add kabane to ${instructionFile}`,
 		description: firstIssueBrief(instructionFile),
 		kind: "issue",
 		state: "next",
@@ -131,7 +131,7 @@ const fileFirstIssue = async (
 	});
 };
 
-/** `/Users/alex/.cabane/config.json` as `~/.cabane/config.json`: the screen has 40 columns. */
+/** `/Users/alex/.kabane/config.json` as `~/.kabane/config.json`: the screen has 40 columns. */
 export const tildePath = (path: string, home = homedir()): string =>
 	path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 

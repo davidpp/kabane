@@ -20,7 +20,7 @@ const withWarning = (ctx: Ctx, text: string): string => {
 
 const formatStatus = (s: SyncStatus): string => {
 	if (!s.enabled)
-		return "Sync: not armed on this device (run `cabane sync push` once with sync configured).";
+		return "Sync: not armed on this device (run `kabane sync push` once with sync configured).";
 	const lines = [
 		`Sync: armed as device ${s.deviceId}`,
 		`  pending ops:     ${s.pendingOps}`,
@@ -37,7 +37,7 @@ const formatStatus = (s: SyncStatus): string => {
 export const sync: Command = {
 	name: "sync",
 	summary: "Replicate with the shared log: status, push, pull, backfill",
-	usage: "cabane sync [status|push|pull|backfill]",
+	usage: "kabane sync [status|push|pull|backfill]",
 	run: async (args, ctx) => {
 		const sub = args.positionals[0] ?? "status";
 

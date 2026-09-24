@@ -1,7 +1,7 @@
 /**
  * Scripted session against the real binary: every command, human and JSON
  * output, and the exit-code contract (0 ok, 1 error, 2 usage). Each test
- * file gets its own CABANE_HOME under the OS temp dir.
+ * file gets its own KABANE_HOME under the OS temp dir.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -19,7 +19,7 @@ const makeRunner = (home: string, cwd: string) => {
 	return async (...argv: string[]): Promise<Run> => {
 		const proc = Bun.spawn(["bun", BIN, ...argv], {
 			cwd,
-			env: { ...process.env, CABANE_HOME: home },
+			env: { ...process.env, KABANE_HOME: home },
 			stdout: "pipe",
 			stderr: "pipe",
 		});
@@ -34,7 +34,7 @@ const makeRunner = (home: string, cwd: string) => {
 
 const json = <T>(run: Run): T => JSON.parse(run.out) as T;
 
-describe("cabane cli", () => {
+describe("kabane cli", () => {
 	const home = join(tmpdir(), `cabane-cli-${crypto.randomUUID()}`);
 	const cwd = join(home, "project");
 	const run = makeRunner(home, cwd);
@@ -53,7 +53,7 @@ describe("cabane cli", () => {
 	it("refuses to run without a config", async () => {
 		const r = await run("list");
 		expect(r.code).toBe(1);
-		expect(r.err).toContain("cabane init");
+		expect(r.err).toContain("kabane init");
 	});
 
 	it("init writes config and creates the database", async () => {
@@ -412,7 +412,7 @@ describe("cabane cli", () => {
 			expect(added.code).toBe(0);
 			const { shortId } = json<{ shortId: string }>(added);
 
-			// Same file, same prefix, different CABANE_HOME: same rows.
+			// Same file, same prefix, different KABANE_HOME: same rows.
 			const initB = await runB(
 				"init",
 				"--device",
@@ -430,7 +430,7 @@ describe("cabane cli", () => {
 			).toContain(shortId);
 			expect((await runB("show", shortId)).code).toBe(0);
 
-			// No db block: CABANE_HOME/cabane.db with plain names, nothing shared.
+			// No db block: KABANE_HOME/kabane.db with plain names, nothing shared.
 			expect((await runC("init", "--device", "c")).code).toBe(0);
 			const cfgC = JSON.parse(
 				readFileSync(join(homeC, "config.json"), "utf8"),
@@ -467,7 +467,7 @@ describe("cabane cli", () => {
 			command: "bun",
 			args: [BIN, "mcp", "--as", "cabane://actor/agent/codex"],
 			cwd,
-			env: { ...process.env, CABANE_HOME: home },
+			env: { ...process.env, KABANE_HOME: home },
 		});
 		const client = new Client({ name: "cli-test", version: "0" });
 		await client.connect(transport);

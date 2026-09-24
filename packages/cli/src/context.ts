@@ -22,7 +22,7 @@ import {
 import type { Outcome } from "./output";
 
 export type Ctx = {
-	/** CABANE_HOME: where config.json lives. */
+	/** KABANE_HOME: where config.json lives. */
 	home: string;
 	/** The storage handle every core call receives (the database's directory). */
 	store: string;

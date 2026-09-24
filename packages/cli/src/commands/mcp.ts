@@ -19,7 +19,7 @@ export const mcp: Command = {
 	name: "mcp",
 	summary:
 		"Serve this device's tracker over MCP on stdio; `mcp install` registers it in Claude Code, Codex, Gemini",
-	usage: `cabane mcp [--as <actor-uri>]\n       ${MCP_INSTALL_USAGE}`,
+	usage: `kabane mcp [--as <actor-uri>]\n       ${MCP_INSTALL_USAGE}`,
 	standalone: true,
 	run: async (args, bare) => {
 		if (args.positionals[0] === "install") return mcpInstall(args);

@@ -1,8 +1,8 @@
 /**
- * Device configuration: `CABANE_HOME/config.json`.
+ * Device configuration: `KABANE_HOME/config.json`.
  *
- * `CABANE_HOME` defaults to `~/.cabane`. By default the database lives beside
- * the config as `cabane.db` with plain table names; an optional `db` block
+ * `KABANE_HOME` defaults to `~/.kabane`. By default the database lives beside
+ * the config as `kabane.db` with plain table names; an optional `db` block
  * points the CLI at another SQLite file and prefix instead, which is how a Jake
  * user opens `~/.jake/jake.db` (`planner_` tables) with zero migration. Nothing
  * here touches the database.
@@ -24,7 +24,7 @@ import { MARKER_DIR, SCOPE_FILE } from "@cabane/core/scope";
 import { z } from "zod";
 
 export const DbConfigSchema = z.object({
-	/** SQLite file to open instead of `CABANE_HOME/cabane.db`; `~` expands. */
+	/** SQLite file to open instead of `KABANE_HOME/kabane.db`; `~` expands. */
 	path: z.string().min(1).optional(),
 	/** Table-name prefix inside that file (`planner_` for a Jake database). */
 	tablePrefix: z.string().optional(),
@@ -36,7 +36,7 @@ export const CopilotConfigSchema = z.object({
 	 * Which harness the board's `A` prompt talks to. A plain string rather than
 	 * an enum: the list of harnesses lives in `@cabane/acp`, and importing it
 	 * here would put an ACP SDK load on the startup of every other command.
-	 * `cabane board` validates the value against the registry.
+	 * `kabane board` validates the value against the registry.
 	 */
 	harness: z.string().min(1).default("claude"),
 	/** Launch the harness with this command instead of the pinned adapter. */
@@ -78,13 +78,13 @@ export type DatabaseLocation = {
 };
 
 export const CONFIG_FILE = "config.json";
-export const DB_NAME = "cabane.db";
+export const DB_NAME = "kabane.db";
 export { MARKER_DIR, SCOPE_FILE };
 
 export const resolveHome = (env: NodeJS.ProcessEnv = process.env): string =>
-	env.CABANE_HOME && env.CABANE_HOME.length > 0
-		? env.CABANE_HOME
-		: join(homedir(), ".cabane");
+	env.KABANE_HOME && env.KABANE_HOME.length > 0
+		? env.KABANE_HOME
+		: join(homedir(), ".kabane");
 
 export const configPath = (home: string): string => join(home, CONFIG_FILE);
 
@@ -121,7 +121,7 @@ export const defaultDeviceId = (): string =>
 export const loadConfig = (home: string): Result<Config> => {
 	const path = configPath(home);
 	if (!existsSync(path)) {
-		return err(new Error(`No config at ${path}. Run \`cabane init\` first.`));
+		return err(new Error(`No config at ${path}. Run \`kabane init\` first.`));
 	}
 	const raw = trySync(() => JSON.parse(readFileSync(path, "utf8")));
 	if (!raw.ok) return err(toError(raw.error));
@@ -142,7 +142,7 @@ export const saveConfig = (home: string, config: Config): Result<string> => {
 };
 
 /**
- * `cabane init --scope` pins the scope for a directory tree. Reading it back is
+ * `kabane init --scope` pins the scope for a directory tree. Reading it back is
  * the first step of `detectScope`'s cascade, so nothing here reads it.
  */
 export const writeDirectoryScope = (

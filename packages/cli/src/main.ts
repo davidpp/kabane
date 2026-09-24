@@ -1,5 +1,5 @@
 /**
- * `cabane` entry: pick the command, open the context, print the outcome.
+ * `kabane` entry: pick the command, open the context, print the outcome.
  *
  * Exit codes: 0 ok, 1 error, 2 usage. `--json` on any command prints the
  * outcome's JSON instead of the human text.
@@ -48,16 +48,16 @@ export const COMMANDS: Command[] = [
 
 export const helpText = (): string =>
 	[
-		"cabane — local-first tracker for humans and agent runtimes",
+		"kabane — local-first tracker for humans and agent runtimes",
 		"",
-		"Usage: cabane <command> [args] [--json] [--as <actor-uri>]",
+		"Usage: kabane <command> [args] [--json] [--as <actor-uri>]",
 		"",
 		...COMMANDS.map((c) => `  ${c.name.padEnd(9)} ${c.summary}`),
 		"",
-		"CABANE_HOME (default ~/.cabane) holds config.json and cabane.db, unless config.json's db block points at another file.",
+		"KABANE_HOME (default ~/.kabane) holds config.json and kabane.db, unless config.json's db block points at another file.",
 	].join("\n");
 
-const HELP_USAGE = "cabane <command> [args]";
+const HELP_USAGE = "kabane <command> [args]";
 
 /** A context init and mcp can run with: no config file needed. */
 const bareCtx = (home: string, cwd: string): Ctx => ({

@@ -54,12 +54,12 @@ export namespace McpInstall {
 		args: [Bun.main],
 	});
 
-	/** Whether `CABANE_HARNESSES` narrows detection, so finding none is a setting, not a fact. */
+	/** Whether `KABANE_HARNESSES` narrows detection, so finding none is a setting, not a fact. */
 	export const narrowed = (env: NodeJS.ProcessEnv = process.env): boolean =>
-		env.CABANE_HARNESSES !== undefined;
+		env.KABANE_HARNESSES !== undefined;
 
 	/**
-	 * The harnesses whose binary is on PATH. `CABANE_HARNESSES` narrows that to
+	 * The harnesses whose binary is on PATH. `KABANE_HARNESSES` narrows that to
 	 * a comma-separated list, and set but empty means none: `bun run sandbox`
 	 * relies on it so a throwaway device never registers itself in the real
 	 * harness configs.
@@ -68,7 +68,7 @@ export namespace McpInstall {
 		which: Which = Bun.which,
 		env: NodeJS.ProcessEnv = process.env,
 	): McpClients.Id[] => {
-		const allowed = env.CABANE_HARNESSES?.split(",").map((id) => id.trim());
+		const allowed = env.KABANE_HARNESSES?.split(",").map((id) => id.trim());
 		return McpClients.IDS.filter(
 			(id) =>
 				(allowed === undefined || allowed.includes(id)) &&
@@ -157,9 +157,9 @@ const formatReport = (report: McpInstall.Report): string => {
 };
 
 export const MCP_INSTALL_USAGE =
-	"cabane mcp install [--harness claude|codex|gemini]... [--force] [--print]";
+	"kabane mcp install [--harness claude|codex|gemini]... [--force] [--print]";
 
-/** `cabane mcp install`: every detected harness, or the ones `--harness` names. */
+/** `kabane mcp install`: every detected harness, or the ones `--harness` names. */
 export const mcpInstall = async (
 	args: ParsedArgs,
 	deps: McpInstall.Deps = {},
