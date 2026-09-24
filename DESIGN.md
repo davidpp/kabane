@@ -1,5 +1,5 @@
 ---
-name: Cabane
+name: Kabane
 description: A kanban for one person and their agents, read at a glance in a forty-column pane.
 colors:
   accent: "#f97316"
@@ -64,7 +64,7 @@ components:
     textColor: "{colors.accent}"
 ---
 
-# Design System: Cabane
+# Design System: Kabane
 
 ## 1. Overview
 
@@ -74,7 +74,7 @@ In an air traffic control tower, every flight is a paper strip in a holder, and 
 sit in bays ordered by what happens next. A controller reads the whole bay at a glance,
 moves one strip, marks it in a shorthand every controller shares, and slides a strip out of
 line when it needs attention so it cannot be missed. Pilots fly; the controller sequences.
-Cabane is that bay. Rows are strips, sections are bays, agents fly the work, and the person
+Kabane is that bay. Rows are strips, sections are bays, agents fly the work, and the person
 at the board sequences it. Every flight is different and the procedures repeat, which is the
 shape of software work: every issue is a one-off, and what repeats is the repertoire of
 skills.
@@ -157,7 +157,7 @@ means fainter.
 **The Derived Surface Rule.** Painted surfaces and the grays are derived from the terminal's own
 colors, read once at startup with OpenTUI's `renderer.getPalette()`: the surfaces step the
 background toward the foreground, and the grays step the foreground toward the background.
-That way cabane matches herdr's pane and any theme, on either polarity, with no tint of its
+That way kabane matches herdr's pane and any theme, on either polarity, with no tint of its
 own. The fixed ramps in the frontmatter are the fallback, chosen by `renderer.themeMode`
 when the palette query goes unanswered (tmux without passthrough, for one), and the dark
 ramp when neither answers. The steps live in `packages/board/src/theme.ts`, tuned so a
@@ -205,7 +205,7 @@ on. A floating layer sits one step above what it covers and carries one cell of 
 instead of a frame.
 
 ### Named Rules
-**The No-Line Rule.** herdr draws the lines. Cabane draws no box-drawing borders and no
+**The No-Line Rule.** herdr draws the lines. Kabane draws no box-drawing borders and no
 horizontal rules, and the overlays and the copilot pane lose theirs. A region change is a tone
 change. If you reach for a border, the fix is a surface step or a blank line.
 
@@ -228,7 +228,7 @@ for default and renders white on white (JJAK-1017).
 - **Selected:** `{components.strip-selected}` under the Selection Rule.
 - **Fresh:** a strip an agent just wrote shows `✦ ai` in default fg, and its row steps up to
   raised until the keypress that dismisses the turn. The ease back to the base (about 600ms,
-  ease-out, once, never looping) is not built yet (JCAB-86).
+  ease-out, once, never looping) is not built yet.
 - **Cold:** a strip whose brief has gone untouched past one threshold takes a faint title. It
   gets no glyph, no timestamp, and no warning; its age is spelled out in the detail view.
 
@@ -285,7 +285,7 @@ against every glyph already here.
 - **Input:** OpenTUI's `<textarea>` on raised, with the cursor in accent because the input is
   waiting on you.
 - **The repertoire:** the `/` list shows each skill name in default fg with its description
-  muted. This is the part of cabane that repeats, and it should read like a tidy set of
+  muted. This is the part of kabane that repeats, and it should read like a tidy set of
   tools.
 
 ### Overlays (picker, help)
