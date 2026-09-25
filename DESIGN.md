@@ -13,6 +13,9 @@ colors:
   surface-raised: "#1c1c1c"
   surface-overlay: "#262626"
   surface-selected: "#2f2f2f"
+  ink-heading: "#c4a7e7"
+  ink-code: "#e5c07b"
+  ink-link: "#56b6c2"
   text-light: "#1f2328"
   text-secondary-light: "#57606a"
   text-muted-light: "#6e7781"
@@ -20,6 +23,9 @@ colors:
   surface-raised-light: "#f0f0f0"
   surface-overlay-light: "#e8e8e8"
   surface-selected-light: "#dddddd"
+  ink-heading-light: "#6f42c1"
+  ink-code-light: "#8a5a00"
+  ink-link-light: "#006d77"
 typography:
   title:
     fontFamily: "the terminal's font (reference: IBM Plex Mono)"
@@ -35,6 +41,7 @@ typography:
     fontWeight: 400
 spacing:
   gutter: "1ch"
+  prose-measure: "80ch"
   bay-gap: "1lh"
   panel-padding: "1ch"
   reserved: "2ch"
@@ -54,6 +61,15 @@ components:
   copilot-pane:
     backgroundColor: "{colors.surface-raised}"
     padding: "{spacing.panel-padding}"
+  copilot-input:
+    backgroundColor: "{colors.surface-overlay}"
+  comment-band:
+    backgroundColor: "{colors.surface-raised}"
+  code-panel:
+    backgroundColor: "{colors.surface-raised}"
+  code-inline:
+    textColor: "{colors.ink-code}"
+    backgroundColor: "{colors.surface-overlay}"
   field:
     backgroundColor: "{colors.surface-raised}"
   field-focused:
@@ -142,6 +158,14 @@ requests and three status hues for states.
 The grays run the other way on a light terminal: faint is the lightest there, not the darkest,
 which is why the `-light` ramp has grays of its own rather than reusing the dark ones.
 
+### Ink
+- **Heading, Code, Link** (`{colors.ink-heading}`, `{colors.ink-code}`, `{colors.ink-link}`):
+  the structure of what an author wrote, inside rendered markdown only. The terminal's own ANSI
+  magenta, yellow and cyan, read with the palette at startup, so a brief reads like every other
+  tool in that terminal; the frontmatter values stand in for a slot the terminal does not
+  report, and pass 4.5:1 on their polarity's base and on the overlay step. Blue, green and red
+  are never read: they are the terminal's cousins of working, done and failed.
+
 ### Named Rules
 **The Cocked Strip Rule.** The accent means a human is needed, and it is never used for
 anything else. Not for success, not for running work, not for decoration, not for markdown
@@ -164,6 +188,11 @@ ramp when neither answers. The steps live in `packages/board/src/theme.ts`, tune
 near-black terminal lands on the dark ramp and a near-white one on the light ramp. Every
 color in the board comes from there; a hex literal anywhere else fails a test.
 
+**The Ink Rule.** Ink is the author's structure, never the board's. It appears only inside
+rendered markdown (a brief, a comment): a heading, inline code, a link's label. Chrome,
+strips, badges and the footer never take it, so it cannot be misread as a state. A checked
+task box takes `{colors.done}`, because a checked box is done.
+
 **Open.** Priority is color-only today (an urgent id is tinted `{colors.failed}`, a high one
 `{colors.accent}`), which breaks "never color-only" and collides with two meanings above.
 Resolve it in the `/colorize` pass.
@@ -180,7 +209,9 @@ italic. That is enough if every step is used deliberately.
 - **Title** (bold, default fg): the board's header line, the detail view's `id · title`, the
   first line of each intro card.
 - **Label** (bold, default fg, with a muted count): bay labels (`next · 3`), sidebar group
-  titles, markdown headings in a brief.
+  titles, the copilot pane's `copilot`.
+- **Heading** (bold, `{colors.ink-heading}`; an `#` heading also underlined): markdown headings
+  in a brief or a comment.
 - **Body** (regular, default fg): strip titles, brief text, transcript text.
 - **Meta** (regular, muted): kind and state meta, times, key labels in the footer.
 - **Aside** (italic, muted): the detail under a line (an error's message, a tool's
@@ -199,9 +230,10 @@ glyphs.
 
 Flat and tonal. There are no shadows and no borders. Depth is three painted steps above the
 terminal's unpainted background: **raised** for docked panels (the sidebar, the footer, the
-copilot pane, input fields and code in a brief), **overlay** for floating layers (the
-dispatch picker, the help sheet), and **selected** for the one row or field the keyboard is
-on. A floating layer sits one step above what it covers and carries one cell of padding
+copilot pane, setup fields, a comment's author band, and code blocks and quotes in a brief),
+**overlay** for floating layers (the dispatch picker, the help sheet) and for what sits on a
+raised panel and must still read apart from it (inline code, the copilot's input), and
+**selected** for the one row or field the keyboard is on. A floating layer sits one step above what it covers and carries one cell of padding
 instead of a frame.
 
 ### Named Rules
@@ -270,20 +302,29 @@ against every glyph already here.
 
 ### Detail view
 - **Header:** a raised block, one cell of padding each side: `id · title` as Title with the
-  `[copy]` affordance at its right, then the in-flight status line in the working hue.
-- **Comments:** a Label (`comments · 2`), then one raised block per comment: the author's
-  name (the actor URI's last segment, never the URI) in Label weight and the time muted, then
-  the comment's first line.
-- **Brief:** rendered markdown. Headings as Label, list bullets muted, code on raised. No
-  heading color: blue belongs to working.
+  `[copy]` affordance at its right, then the in-flight status line in the working hue, then
+  the pinned facts, their key muted and their value secondary, so the title is the one bright
+  line in the block.
+- **Tabs:** the active tab in Label weight on selected, the others secondary, an empty one
+  faint.
+- **Content column:** every tab's content starts one cell in, under the header's text.
+- **Comments:** one per comment, a raised author band (the actor URI's last segment, never
+  the URI, bold for a human; the time muted), then the comment whole, on the terminal's own
+  background like the brief. The band is the seam between comments.
+- **Brief:** rendered markdown, prose stopping at `{spacing.prose-measure}` however wide the
+  pane, with a cell clear of the scrollbar. Headings in heading ink, list bullets muted,
+  inline code in code ink on overlay, code blocks and quotes on a raised panel with no bar,
+  a link's label in link ink underlined and its URL muted, tables as columns with no grid, a
+  rule as a blank line.
 - **Age:** the meta line says how old the brief is in words (`brief · 41d`). This is where
   decay is spelled out.
 
 ### Copilot pane
-- **Style:** `{components.copilot-pane}`, no border. The first line is `copilot · <harness>`
-  with the harness name in default fg and the rest muted.
-- **Input:** OpenTUI's `<textarea>` on raised, with the cursor in accent because the input is
-  waiting on you.
+- **Style:** `{components.copilot-pane}`, no border. The first line is `copilot · <harness>`,
+  `copilot` as a Label, the harness name in default fg and the rest muted.
+- **Input:** OpenTUI's `<textarea>` as a field the width of the pane, on
+  `{components.copilot-input}`, so it reads as the place to type and not as more footer; its
+  placeholder secondary, the cursor in accent because the input is waiting on you.
 - **The repertoire:** the `/` list shows each skill name in default fg with its description
   muted. This is the part of kabane that repeats, and it should read like a tidy set of
   tools.
