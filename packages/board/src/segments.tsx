@@ -6,7 +6,7 @@ import type { ColorInput } from "@opentui/core";
 import type { ReactNode } from "react";
 
 export namespace Segments {
-	export type Segment = { text: string; fg: ColorInput };
+	export type Segment = { text: string; fg: ColorInput; attributes?: number };
 
 	export const plain = (segments: readonly Segment[]): string =>
 		segments.map((segment) => segment.text).join("");
@@ -38,7 +38,7 @@ export namespace Segments {
 	export const spans = (segments: readonly Segment[]): ReactNode[] =>
 		segments.map((segment, index) => (
 			// Index keys: a line's parts are positional, and the same text can repeat.
-			<span key={index} fg={segment.fg}>
+			<span key={index} fg={segment.fg} attributes={segment.attributes}>
 				{segment.text}
 			</span>
 		));

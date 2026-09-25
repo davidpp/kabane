@@ -14,7 +14,7 @@
 // global first. app.tsx calls preventDefault for exactly the keys BoardNav.copilotConsumes names, so
 // those reach the reducer alone and everything else is the textarea's.
 import type { TextareaRenderable } from "@opentui/core";
-import { defaultTextareaKeyBindings } from "@opentui/core";
+import { defaultTextareaKeyBindings, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode, RefObject } from "react";
 import type { BoardContext } from "./context";
@@ -85,9 +85,10 @@ const stateFg = (state: TurnState, theme: Theme.Tokens): string =>
 				: theme.muted;
 
 /**
- * The panel's first row: `copilot · claude · JALL-1 · next · 1/3 · running · 12s`. Chrome is muted;
- * the harness is the one name in the text color, and the turn's state takes its hue. Exported pure so
- * the copy and its colors are assertable without a renderer.
+ * The panel's first row: `copilot · claude · JALL-1 · next · 1/3 · running · 12s`. `copilot` is the
+ * panel's Label, bold in the text color; the harness is the one name in the text color, the rest is
+ * muted chrome, and the turn's state takes its hue. Exported pure so the copy and its colors are
+ * assertable without a renderer.
  */
 export const titleSegments = (
 	parts: {
@@ -101,7 +102,7 @@ export const titleSegments = (
 ): Segments.Segment[] => {
 	const sep = { text: " · ", fg: theme.muted };
 	return [
-		{ text: "copilot", fg: theme.muted },
+		{ text: "copilot", fg: theme.text, attributes: TextAttributes.BOLD },
 		...(parts.harness ? [sep, { text: parts.harness, fg: theme.text }] : []),
 		sep,
 		{ text: parts.chip, fg: theme.muted },
@@ -165,8 +166,10 @@ export const CopilotPane = ({
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	// A raised panel with no frame of its own: herdr draws the lines, and the accent is kept for the
-	// cursor, the one thing in the pane that is waiting on you.
+	// cursor, the one thing in the pane that is waiting on you. The input is a field one step up, the
+	// width of the pane, so it reads as the place to type and not as more footer under the footer.
 	const paneBg = theme.surface.raised;
+	const fieldBg = theme.surface.overlay;
 	// Columns inside the panel's one cell of padding either side.
 	const inner = width - 2;
 	const running = copilot.turn === "running";
@@ -226,48 +229,56 @@ export const CopilotPane = ({
 				flexShrink: 0,
 				flexDirection: "column",
 				backgroundColor: paneBg,
-				paddingLeft: 1,
-				paddingRight: 1,
 			}}
 		>
-			<text bg={paneBg}>{Segments.spans(Segments.fit(title, inner))}</text>
-			{showChoice && copilot.permission ? (
-				<PermissionBlock
-					request={copilot.permission}
-					width={inner - 4}
-					bg={paneBg}
-				/>
-			) : null}
-			{showPlan ? (
-				<PlanBlock
-					plan={plan}
-					spinnerFrame={spinnerFrame}
-					width={inner - 4}
-					maxRows={MAX_PLAN_ROWS}
-					bg={paneBg}
-				/>
-			) : null}
-			{showTail
-				? tail.map((line, index) => (
-						// Index keys: a positional window on the last few lines, not a list of things — row N is its only identity, and the same line can legitimately repeat.
-						<text key={index} bg={paneBg} fg={theme.muted}>
-							{fit(line, inner - 2)}
-						</text>
-					))
-				: null}
-			{showPalette
-				? matches.map((shortcut, index) => (
-						<PaletteRow
-							key={shortcut.name}
-							shortcut={shortcut}
-							picked={index === selected}
-							nameCols={nameCols}
-							width={inner}
-						/>
-					))
-				: null}
-			<box style={{ flexDirection: "row", height: rows }}>
-				<text bg={paneBg} fg={theme.muted}>
+			<box style={{ flexDirection: "column", paddingLeft: 1, paddingRight: 1 }}>
+				<text bg={paneBg}>{Segments.spans(Segments.fit(title, inner))}</text>
+				{showChoice && copilot.permission ? (
+					<PermissionBlock
+						request={copilot.permission}
+						width={inner - 4}
+						bg={paneBg}
+					/>
+				) : null}
+				{showPlan ? (
+					<PlanBlock
+						plan={plan}
+						spinnerFrame={spinnerFrame}
+						width={inner - 4}
+						maxRows={MAX_PLAN_ROWS}
+						bg={paneBg}
+					/>
+				) : null}
+				{showTail
+					? tail.map((line, index) => (
+							// Index keys: a positional window on the last few lines, not a list of things — row N is its only identity, and the same line can legitimately repeat.
+							<text key={index} bg={paneBg} fg={theme.muted}>
+								{fit(line, inner - 2)}
+							</text>
+						))
+					: null}
+				{showPalette
+					? matches.map((shortcut, index) => (
+							<PaletteRow
+								key={shortcut.name}
+								shortcut={shortcut}
+								picked={index === selected}
+								nameCols={nameCols}
+								width={inner}
+							/>
+						))
+					: null}
+			</box>
+			<box
+				style={{
+					flexDirection: "row",
+					height: rows,
+					backgroundColor: fieldBg,
+					paddingLeft: 1,
+					paddingRight: 1,
+				}}
+			>
+				<text bg={fieldBg} fg={theme.muted}>
 					▸{" "}
 				</text>
 				<textarea
@@ -279,9 +290,10 @@ export const CopilotPane = ({
 					// creation — after that the textarea is the source of truth again.
 					initialValue={copilot.text}
 					placeholder={running ? RUNNING_PLACEHOLDER : PLACEHOLDER}
-					placeholderColor={theme.muted}
-					backgroundColor={paneBg}
-					focusedBackgroundColor={paneBg}
+					// One step brighter than chrome: on the field's surface, muted falls under 3.5:1.
+					placeholderColor={theme.secondary}
+					backgroundColor={fieldBg}
+					focusedBackgroundColor={fieldBg}
 					textColor={theme.text}
 					focusedTextColor={theme.text}
 					cursorColor={theme.accent}

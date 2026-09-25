@@ -9,6 +9,7 @@ import { Planner } from "@cabane/core";
 import {
 	type CapturedSpan,
 	RGBA,
+	TextAttributes,
 	type TextareaRenderable,
 } from "@opentui/core";
 import { createRef } from "react";
@@ -533,7 +534,7 @@ const mountPane = async (
 };
 
 describe("the copilot pane's look", () => {
-	it("is a raised panel with no frame, titled with the harness in the text color", async () => {
+	it("is a raised panel with no frame, titled as a Label, the harness in the text color, over a field one step up", async () => {
 		const { frame, spans, destroy } = await mountPane(
 			idle({ actor: "cabane://actor/agent/claude" }),
 			true,
@@ -544,8 +545,13 @@ describe("the copilot pane's look", () => {
 			const harness = spanWith(spans, "claude");
 			expect(harness && ints(harness.fg)).toEqual(rgb(T.text));
 			expect(harness && ints(harness.bg)).toEqual(rgb(T.surface.raised));
-			const chrome = spanWith(spans, "copilot");
+			const label = spanWith(spans, "copilot");
+			expect(label && ints(label.fg)).toEqual(rgb(T.text));
+			expect((label?.attributes ?? 0) & TextAttributes.BOLD).toBeTruthy();
+			const chrome = spanWith(spans, "JALL-1");
 			expect(chrome && ints(chrome.fg)).toEqual(rgb(T.muted));
+			const prompt = spanWith(spans, "▸");
+			expect(prompt && ints(prompt.bg)).toEqual(rgb(T.surface.overlay));
 			// Nothing in the idle panel is orange: the accent is the cursor's, which is not a cell.
 			expect(
 				spans.some((span) => ints(span.fg).join() === rgb(T.accent).join()),
