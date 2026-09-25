@@ -37,12 +37,19 @@ export namespace Theme {
 		faint: string;
 		/** Painted steps above the terminal's own, unpainted background. */
 		surface: { raised: string; overlay: string; selected: string };
+		/**
+		 * The structure of what an author wrote, inside rendered markdown and never in chrome: a
+		 * heading, code, a link. The terminal's own ANSI colors when it reports them, so a brief reads
+		 * like every other tool in that terminal.
+		 */
+		ink: { heading: string; code: string; link: string };
 	};
 
 	/** What the terminal reported, as OpenTUI hands it over: `#rrggbb` or nothing. */
 	type Reported = {
 		foreground: string | null;
 		background: string | null;
+		palette?: readonly (string | null)[];
 	};
 
 	const HUES = {
@@ -64,6 +71,7 @@ export namespace Theme {
 		muted: "#6b7280",
 		faint: "#4b5563",
 		surface: { raised: "#1c1c1c", overlay: "#262626", selected: "#2f2f2f" },
+		ink: { heading: "#c4a7e7", code: "#e5c07b", link: "#56b6c2" },
 	};
 
 	/** DESIGN.md's light ramp. The grays run the other way: faint is the lightest, not the darkest. */
@@ -76,7 +84,12 @@ export namespace Theme {
 		muted: "#6e7781",
 		faint: "#8c959f",
 		surface: { raised: "#f0f0f0", overlay: "#e8e8e8", selected: "#dddddd" },
+		ink: { heading: "#6f42c1", code: "#8a5a00", link: "#006d77" },
 	};
+
+	// The ANSI slots the ink reads: magenta, yellow, cyan. Never blue, green or red, the terminal's
+	// cousins of the working, done and failed hues.
+	const INK_SLOTS = { heading: 5, code: 3, link: 6 } as const;
 
 	// How far each surface steps from the background toward the foreground. Chosen so a near-black
 	// terminal lands on the dark ramp's surfaces and a near-white one on the light ramp's.
@@ -130,10 +143,26 @@ export namespace Theme {
 	const ramp = (mode: ThemeMode | null): Tokens =>
 		mode === "light" ? LIGHT : DARK;
 
+	const inkOf = (
+		palette: Reported["palette"],
+		fallback: Tokens["ink"],
+	): Tokens["ink"] => {
+		const slot = (index: number): string | null => {
+			const rgb = parseHex(palette?.[index] ?? null);
+			return rgb && toHex(rgb);
+		};
+		return {
+			heading: slot(INK_SLOTS.heading) ?? fallback.heading,
+			code: slot(INK_SLOTS.code) ?? fallback.code,
+			link: slot(INK_SLOTS.link) ?? fallback.link,
+		};
+	};
+
 	/**
 	 * The tokens for what the terminal reported. With a background, surfaces and neutrals derive from
-	 * it (and from the reported foreground, else the ramp's text for that polarity). Without one there
-	 * is nothing to derive from: the fixed ramp for `mode`, and the dark ramp when that is unknown too.
+	 * it (and from the reported foreground, else the ramp's text for that polarity), and the ink is
+	 * the terminal's own ANSI slot where it named one. Without a background there is nothing to derive
+	 * from: the fixed ramp for `mode`, and the dark ramp when that is unknown too.
 	 */
 	export const derive = (
 		reported: Reported | null,
@@ -160,6 +189,7 @@ export namespace Theme {
 				overlay: toHex(mix(bg, fg, SURFACE_STEPS.overlay)),
 				selected: toHex(mix(bg, fg, SURFACE_STEPS.selected)),
 			},
+			ink: inkOf(reported?.palette, ramp(detected).ink),
 		};
 	};
 
@@ -182,6 +212,7 @@ export namespace Theme {
 			colors && {
 				foreground: colors.defaultForeground,
 				background: colors.defaultBackground,
+				palette: colors.palette,
 			},
 			renderer.themeMode,
 		);
@@ -191,22 +222,40 @@ export namespace Theme {
 	const markdownStyles = new WeakMap<Tokens, SyntaxStyle>();
 
 	/**
-	 * The brief's markdown styles. The default keeps the text on the terminal's own foreground. No
-	 * hue: headings are Label weight (blue is the working hue), bullets are chrome, and code is set
-	 * apart by the raised surface rather than a color of its own.
+	 * The markdown styles for a brief or a comment. Prose stays on the terminal's own foreground; the
+	 * author's structure takes the ink (a heading, inline code on the overlay step, a link's label),
+	 * and markdown's own punctuation (bullets, a link's URL, a table's pipes) is chrome. Every scope
+	 * OpenTUI emits is named: a missing one falls back to its first segment, `markup`, which has no
+	 * style, so `markup.heading.3` would read as plain text.
 	 */
 	export const markdownStyle = (tokens: Tokens): SyntaxStyle => {
 		const cached = markdownStyles.get(tokens);
 		if (cached) return cached;
+		const heading = { fg: tokens.ink.heading, bold: true };
 		const style = SyntaxStyle.fromStyles({
-			"markup.heading": { fg: tokens.defaultFg, bold: true },
-			"markup.heading.1": { fg: tokens.defaultFg, bold: true },
-			"markup.heading.2": { fg: tokens.defaultFg, bold: true },
-			"markup.list": { fg: tokens.muted },
-			"markup.raw": { fg: tokens.text, bg: tokens.surface.raised },
-			"markup.bold": { bold: true },
-			"markup.italic": { italic: true },
 			default: { fg: tokens.defaultFg },
+			"markup.heading.1": { ...heading, underline: true },
+			"markup.heading.2": heading,
+			"markup.heading.3": heading,
+			"markup.heading.4": heading,
+			"markup.heading.5": heading,
+			"markup.heading.6": heading,
+			// A table's header row: data, not a section, so Label weight and no ink.
+			"markup.heading": { bold: true },
+			"markup.strong": { bold: true },
+			"markup.italic": { italic: true },
+			"markup.strikethrough": { fg: tokens.muted },
+			"markup.raw": { fg: tokens.ink.code, bg: tokens.surface.overlay },
+			"markup.link": { fg: tokens.muted },
+			"markup.link.label": { fg: tokens.ink.link, underline: true },
+			"markup.link.url": { fg: tokens.muted, underline: true },
+			"markup.list": { fg: tokens.muted },
+			"markup.list.checked": { fg: tokens.done },
+			"markup.list.unchecked": { fg: tokens.muted },
+			"markup.quote": { fg: tokens.secondary, italic: true },
+			"punctuation.special": { fg: tokens.faint },
+			// What OpenTUI draws a table's lines in, when a table keeps any.
+			conceal: { fg: tokens.faint },
 		});
 		markdownStyles.set(tokens, style);
 		return style;

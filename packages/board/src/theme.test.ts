@@ -121,7 +121,69 @@ describe("derive", () => {
 	});
 });
 
+describe("ink", () => {
+	test("is the terminal's own magenta, yellow and cyan when it reports them", () => {
+		const palette = Array<string | null>(16).fill(null);
+		palette[3] = "#E5C07B";
+		palette[5] = "#9d7cd8";
+		palette[6] = "#56b6c2";
+		const tokens = Theme.derive(
+			{ foreground: "#eeeeee", background: "#0a0a0a", palette },
+			null,
+		);
+		expect(tokens.ink).toEqual({
+			heading: "#9d7cd8",
+			code: "#e5c07b",
+			link: "#56b6c2",
+		});
+	});
+
+	test("falls back to the ramp's ink for the polarity, slot by slot", () => {
+		const palette = Array<string | null>(16).fill(null);
+		palette[5] = "#8839ef";
+		const tokens = Theme.derive(
+			{ foreground: "#1f2328", background: "#ffffff", palette },
+			null,
+		);
+		expect(tokens.ink).toEqual({ ...Theme.LIGHT.ink, heading: "#8839ef" });
+		expect(
+			Theme.derive({ foreground: "#eeeeee", background: "#0a0a0a" }, null).ink,
+		).toEqual(Theme.DARK.ink);
+	});
+});
+
 describe("markdownStyle", () => {
+	const hexOf = (
+		fg: { toInts: () => number[] } | undefined,
+	): string | undefined =>
+		fg &&
+		`#${fg
+			.toInts()
+			.slice(0, 3)
+			.map((c) => c.toString(16).padStart(2, "0"))
+			.join("")}`;
+
+	// OpenTUI falls back from a missing scope to its first segment only (`markup`), so a scope left
+	// out is a scope drawn as plain text.
+	test("names every scope OpenTUI emits: each heading level, strong, code on the overlay step", () => {
+		const style = Theme.markdownStyle(Theme.DARK);
+		for (const level of [1, 2, 3, 4, 5, 6]) {
+			const heading = style.getStyle(`markup.heading.${level}`);
+			expect({ level, fg: hexOf(heading?.fg), bold: heading?.bold }).toEqual({
+				level,
+				fg: Theme.DARK.ink.heading,
+				bold: true,
+			});
+		}
+		expect(style.getStyle("markup.strong")?.bold).toBe(true);
+		const code = style.getStyle("markup.raw");
+		expect(hexOf(code?.fg)).toBe(Theme.DARK.ink.code);
+		expect(hexOf(code?.bg)).toBe(Theme.DARK.surface.overlay);
+		expect(hexOf(style.getStyle("markup.link.label")?.fg)).toBe(
+			Theme.DARK.ink.link,
+		);
+	});
+
 	test("one style per theme, however many renders ask", () => {
 		expect(Theme.markdownStyle(Theme.DARK)).toBe(
 			Theme.markdownStyle(Theme.DARK),
