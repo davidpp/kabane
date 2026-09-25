@@ -7,9 +7,16 @@
 // handler). DetailModel decides what goes where; this file only draws it. The agent brief is not
 // drawn here: `y` copies it, and it is what an agent reads.
 import type { Result, TaskComment } from "@cabane/core";
-import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
+import {
+	BoxRenderable,
+	type MarkdownOptions,
+	type Renderable,
+	type ScrollBoxRenderable,
+	TextAttributes,
+	Yoga,
+} from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import type { ReactNode, RefObject } from "react";
+import { type ReactNode, type RefObject, useMemo } from "react";
 import type { BoardActivity } from "./activity";
 import type { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
@@ -26,6 +33,11 @@ import { Theme, useTheme } from "./theme";
 // back, so a cut row is cut to the room it really has and never wraps.
 const HEADER_PADDING = 2;
 const SCROLL_RESERVED = 2;
+// The column the tabs' content starts on: under the header's text, not one to its left.
+const CONTENT_INSET = 1;
+// Where prose stops however wide the pane: the terminal's own line, still a comfortable read, and as
+// wide as a code line is usually written. A narrower pane wraps inside it.
+const PROSE_MEASURE = 80;
 
 // The one-line status under the header for the task's first in-flight card:
 // `⠋ loop · implement · iteration 3 · $0.42` — the card's label then every detail line. When
@@ -151,20 +163,96 @@ export type DetailProps = {
 	keys?: Keymap.Live;
 };
 
+// Code, quotes and rules are set apart by a surface, never a line. OpenTUI draws a quote with a bar
+// down its left and a rule as a line, both refused by the No-Line Rule, and a code block with no
+// surface at all, so it read as prose.
+const blockOnSurface = (theme: Theme.Tokens): RenderNode => {
+	const render: RenderNode = (token, { defaultRender }) => {
+		switch (token.type) {
+			case "code":
+				return codePanel(defaultRender(), theme.surface.raised);
+			case "blockquote":
+				return unlined(defaultRender(), theme.surface.raised);
+			case "hr":
+				return unlined(defaultRender());
+			default:
+				return undefined;
+		}
+	};
+	// OpenTUI's own flag (createMarkdownCodeBlockRenderer sets it). Without it any renderNode switches
+	// the markdown to one block per token, which drops the blank line above a heading and a task
+	// item's checkbox; with it, prose stays coalesced and only the blocks OpenTUI draws apart (code,
+	// quote, rule, table) come through here.
+	return Object.assign(render, { codeBlockOnly: true });
+};
+
+type RenderNode = NonNullable<MarkdownOptions["renderNode"]>;
+
+// A fresh painted box around the block, not a restyle of it: a code block's own `bg` paints only
+// under its glyphs, and OpenTUI resets it when the content changes in place, while a block it did
+// not make is rebuilt through here instead. The block's margins move out to the box, or the gap
+// under it would be a strip of panel; OpenTUI sets the bottom one and gives it no getter, so it is
+// read off the layout node.
+const codePanel = (block: Renderable | null, bg: string): Renderable | null => {
+	if (!block) return null;
+	const gap = block.getLayoutNode().getMargin(Yoga.Edge.Bottom).value;
+	const panel = new BoxRenderable(block.ctx, {
+		width: "100%",
+		flexShrink: 0,
+		backgroundColor: bg,
+		paddingLeft: 1,
+		paddingRight: 1,
+		marginTop: block.marginTop,
+		marginBottom: Number.isNaN(gap) ? 0 : gap,
+	});
+	block.marginTop = 0;
+	block.marginBottom = 0;
+	panel.add(block);
+	return panel;
+};
+
+const unlined = (block: Renderable | null, bg?: string): Renderable | null => {
+	if (block instanceof BoxRenderable) {
+		block.border = false;
+		if (bg) {
+			block.backgroundColor = bg;
+			block.paddingRight = 1;
+		}
+	}
+	return block;
+};
+
 // Markdown render is the one place a throw can reach the app; wrap it so a parse failure degrades to
-// the raw text instead of tearing down the tree.
+// the raw text instead of tearing down the tree. Prose keeps a column clear of the scrollbar and
+// stops at the measure.
 const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 	const theme = useTheme();
+	// Stable per theme: a new renderNode has OpenTUI rebuild every block.
+	const renderNode = useMemo(() => blockOnSurface(theme), [theme]);
 	return (
-		<ErrorBoundary fallback={<text fg={theme.defaultFg}>{content}</text>}>
-			<markdown
-				content={content}
-				syntaxStyle={Theme.markdownStyle(theme)}
-				fg={theme.defaultFg}
-			/>
-		</ErrorBoundary>
+		<box style={{ paddingRight: CONTENT_INSET }}>
+			<ErrorBoundary
+				fallback={
+					<text fg={theme.defaultFg} style={{ maxWidth: PROSE_MEASURE }}>
+						{content}
+					</text>
+				}
+			>
+				<markdown
+					content={content}
+					syntaxStyle={Theme.markdownStyle(theme)}
+					fg={theme.defaultFg}
+					renderNode={renderNode}
+					tableOptions={TABLE}
+					style={{ maxWidth: PROSE_MEASURE }}
+				/>
+			</ErrorBoundary>
+		</box>
 	);
 };
+
+// A table as columns, with no grid drawn around it.
+const TABLE: MarkdownOptions["tableOptions"] = { style: "columns" };
 
 export const Detail = ({
 	taskId,
@@ -188,7 +276,7 @@ export const Detail = ({
 	const { width } = useTerminalDimensions();
 	const room = Math.max(0, width - sidebarWidth);
 	const headerRoom = Math.max(0, room - HEADER_PADDING);
-	const contentRoom = Math.max(0, room - SCROLL_RESERVED);
+	const contentRoom = Math.max(0, room - SCROLL_RESERVED - CONTENT_INSET);
 	const loaded = records?.ok ? records.value : undefined;
 	const task = freshTask ?? loaded?.task;
 
@@ -261,7 +349,14 @@ export const Detail = ({
 					: null}
 			</box>
 			{open.length > 0 ? (
-				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
+				<box
+					style={{
+						flexDirection: "column",
+						flexShrink: 0,
+						marginTop: 1,
+						paddingLeft: CONTENT_INSET,
+					}}
+				>
 					{open.map((q) => (
 						<text key={q.id} fg={theme.defaultFg}>
 							<span fg={theme.accent}>?</span> {q.question}
@@ -277,9 +372,13 @@ export const Detail = ({
 				style={{ flexGrow: 1, marginTop: 1 }}
 			>
 				{records === undefined ? (
-					<text fg={theme.muted}>loading</text>
+					<text fg={theme.muted} style={{ marginLeft: CONTENT_INSET }}>
+						loading
+					</text>
 				) : !records.ok ? (
-					<text fg={theme.failed}>{records.error.message}</text>
+					<text fg={theme.failed} style={{ marginLeft: CONTENT_INSET }}>
+						{records.error.message}
+					</text>
 				) : (
 					<TabContent
 						tab={tab}
@@ -320,7 +419,8 @@ const SummaryLine = ({
 	return <text>{Segments.spans(Segments.fit(segments, room))}</text>;
 };
 
-// A pinned fact: its key muted, its value in the text color, one row, its tail cut with `…`.
+// A pinned fact: its key muted, its value one step down from the title it sits under, one row, its
+// tail cut with `…`.
 const MetaRow = ({
 	line,
 	room,
@@ -331,13 +431,14 @@ const MetaRow = ({
 	const theme = useTheme();
 	const segments = [
 		{ text: `${line.key} `, fg: theme.muted },
-		{ text: line.value, fg: theme.text },
+		{ text: line.value, fg: theme.secondary },
 	];
 	return <text>{Segments.spans(Segments.fit(segments, room))}</text>;
 };
 
 // The tab bar: the active tab in Label weight on the selected surface, an empty one faint, every
-// other in the terminal's own foreground; counts muted. A click on a cell asks for its tab.
+// other one step down, so the bar reads as chrome above the content; counts muted. A click on a cell
+// asks for its tab.
 const TabBarRow = ({
 	summaries,
 	active,
@@ -361,7 +462,7 @@ const TabBarRow = ({
 					? theme.text
 					: summary?.empty
 						? theme.faint
-						: theme.defaultFg;
+						: theme.secondary;
 				const [label = "", count] = cell.text.split(" ");
 				return (
 					<text
@@ -411,9 +512,13 @@ const TabContent = ({
 			const subtasks = DetailModel.subtasks(records);
 			const context = DetailModel.contextRefs(records);
 			if (!description && subtasks.length === 0 && context.length === 0)
-				return <text fg={theme.faint}>no description</text>;
+				return (
+					<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
+						no description
+					</text>
+				);
 			return (
-				<box style={{ flexDirection: "column" }}>
+				<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
 					{description ? <MarkdownBody content={description} /> : null}
 					{subtasks.length > 0 ? (
 						<Section title="subtasks" first={!description}>
@@ -444,13 +549,15 @@ const TabContent = ({
 					))}
 				</box>
 			) : (
-				<text fg={theme.faint}>no comments</text>
+				<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
+					no comments
+				</text>
 			);
 		}
 		case "log": {
 			const lines = DetailModel.log(records);
 			return cards.length + lines.length > 0 ? (
-				<box style={{ flexDirection: "column" }}>
+				<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
 					{cards.map((card) => (
 						<CardRow
 							key={card.id}
@@ -464,7 +571,9 @@ const TabContent = ({
 					))}
 				</box>
 			) : (
-				<text fg={theme.faint}>nothing logged</text>
+				<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
+					nothing logged
+				</text>
 			);
 		}
 	}
@@ -604,8 +713,10 @@ const LogRow = ({
 	);
 };
 
-// One comment as a raised block: who and when on the first line, what they said, whole, under it.
-// A human and an agent are told apart by name and weight: a person's name is bold.
+// One comment: who and when on a raised band, what they said, whole, under it on the terminal's own
+// background, where the description reads too. The band is the seam between two comments; a body
+// on the band's surface would leave nothing to tell them, or their code, apart. A human and an
+// agent are told apart by name and weight: a person's name is bold.
 const CommentBlock = ({
 	comment,
 	first,
@@ -616,22 +727,24 @@ const CommentBlock = ({
 	const theme = useTheme();
 	const human = comment.authorType === "human";
 	return (
-		<box
-			style={{
-				flexDirection: "column",
-				marginTop: first ? 0 : 1,
-				backgroundColor: theme.surface.raised,
-				paddingLeft: 1,
-				paddingRight: 1,
-			}}
-		>
-			<text fg={theme.text}>
-				<span attributes={human ? TextAttributes.BOLD : undefined}>
-					{DetailModel.actorName(comment.author)}
-				</span>
-				<span fg={theme.muted}> · {relativeTime(comment.createdAt)}</span>
-			</text>
-			<MarkdownBody content={comment.content.trim()} />
+		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
+			<box
+				style={{
+					backgroundColor: theme.surface.raised,
+					paddingLeft: CONTENT_INSET,
+					paddingRight: 1,
+				}}
+			>
+				<text fg={theme.text}>
+					<span attributes={human ? TextAttributes.BOLD : undefined}>
+						{DetailModel.actorName(comment.author)}
+					</span>
+					<span fg={theme.muted}> · {relativeTime(comment.createdAt)}</span>
+				</text>
+			</box>
+			<box style={{ paddingLeft: CONTENT_INSET }}>
+				<MarkdownBody content={comment.content.trim()} />
+			</box>
 		</box>
 	);
 };

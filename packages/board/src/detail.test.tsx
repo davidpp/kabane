@@ -371,13 +371,13 @@ test("Detail's comments tab shows every comment whole, newest first", async () =
 	}
 });
 
-test("Detail sets a comment on a raised block at forty columns, its author by name", async () => {
+test("Detail heads a comment with a raised author band at forty columns, and sets what was said on the terminal's own background", async () => {
 	const task = await seed();
 	const added = await Planner.addComment(TEST_BASE, {
 		taskId: task.id,
 		author: "cabane://actor/agent/claude",
 		authorType: "ai",
-		content: "Picked this up, tests next.",
+		content: "Picked this up, `bun test` next.",
 	});
 	if (!added.ok) throw added.error;
 	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
@@ -389,10 +389,39 @@ test("Detail sets a comment on a raised block at forty columns, its author by na
 			f.includes("Picked this up"),
 		);
 		expect(frame).toContain("claude · just now");
-		const body = captureSpans()
-			.lines.flatMap((line) => line.spans)
-			.find((span) => span.text.includes("Picked this up"));
-		expect(body?.bg.toInts().slice(0, 3)).toEqual([0x1c, 0x1c, 0x1c]);
+		const spans = captureSpans().lines.flatMap((line) => line.spans);
+		const bgOf = (text: string) =>
+			spans.find((span) => span.text.includes(text))?.bg.toInts();
+		expect(bgOf("claude")?.slice(0, 3)).toEqual([0x1c, 0x1c, 0x1c]);
+		expect(bgOf("Picked this up")?.[3]).toBe(0);
+		// Inline code keeps a surface of its own, so it still reads as code under the band.
+		expect(bgOf("bun test")?.slice(0, 3)).toEqual([0x26, 0x26, 0x26]);
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail sets a quote and a code block on panels, with no line drawn beside or across them", async () => {
+	const task = await seed({
+		description:
+			"> the cube is ported\n\n```sh\nbunx vite\n```\n\n---\n\nafter the rule",
+	});
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await mount(task);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("after the rule"),
+		);
+		expect(frame).not.toMatch(/[│─]/);
+		const spans = captureSpans().lines.flatMap((line) => line.spans);
+		for (const text of ["the cube is ported", "bunx vite"])
+			expect({
+				text,
+				bg: spans
+					.find((span) => span.text.includes(text))
+					?.bg.toInts()
+					.slice(0, 3),
+			}).toEqual({ text, bg: [0x1c, 0x1c, 0x1c] });
 	} finally {
 		destroy();
 	}
