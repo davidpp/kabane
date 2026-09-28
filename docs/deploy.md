@@ -3,7 +3,8 @@
 This is the optional Cloudflare hub, for syncing several machines; one machine on local
 SQLite needs none of it ([`getting-started.md`](getting-started.md)). You host it on your own
 Cloudflare account, on a domain you own, behind your own Cloudflare Access team. Nobody
-else's hub is involved.
+else's hub is involved. The project was called Cabane; [the README](../README.md) explains
+why the Worker and stored actor URIs retain that name.
 
 **Verified locally:** 2026-09-07 against `wrangler dev` with the dev verifier (see the last
 section). Steps an agent must never perform are marked **MANUAL**: they touch Cloudflare,
@@ -46,50 +47,47 @@ Prerequisites, all on your own Cloudflare account:
   Free plan is enough.
 - The Workers Free plan is enough (1.1 says why).
 
-### 1.0 Deploy from GitHub Actions instead of your laptop — MANUAL once
+### 1.0 Configure deployment on your machine — MANUAL once
 
-`.github/workflows/ci.yml` runs the gate on every push. Its `deploy` job runs only when you
-start it: in your fork or copy of this repository, Actions → `ci` → **Run workflow** on
-`main`. It runs the gate, then deploys the Worker with `cloudflare/wrangler-action` to the
-domain and Access team you configure below. A run with a required value missing fails
-before deploying and names what is missing. Once set up, 1.1, 1.2, 1.5 and 5.7 are one
-workflow run each; the Access application, service tokens and Managed OAuth (1.3, 1.4, 1.6)
-remain dashboard work either way.
+Clone this repository **only to host the optional hub**; the local CLI installs from npm
+without a clone. The public CI runs checks but never deploys. Supply these environment
+variables from your own shell, secret manager or CI; do not commit them or put them in
+`wrangler.jsonc`:
 
-In the repository settings create the `production` environment and add:
+| Name | Required | Value |
+|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | yes | An API token with Workers Scripts: Edit, Workers Routes: Edit, Account Settings: Read, and Zone: DNS: Edit and Zone: Workers Routes: Edit on your zone |
+| `CLOUDFLARE_ACCOUNT_ID` | yes | Overview page of the account |
+| `SYNC_TOKEN` | yes | Generate once with `openssl rand -base64 32`; keep the same value on every deploy and each device |
+| `HUB_DOMAIN` | yes | `<your-domain>`, bare hostname, no scheme |
+| `ACCESS_TEAM_DOMAIN` | yes | `https://<team>.cloudflareaccess.com` |
+| `ACCESS_AUD` | no | The AUD tag from 1.3 |
+| `HUMAN_EMAIL` | no | Your address, the one in the Allow policy |
+| `SERVICE_ACTORS` | no | The JSON map from 1.5, one line |
+| `KABANE_TIMEZONE` | no | Your IANA timezone (1.5); empty is UTC |
 
-| Kind | Name | Required | Value |
-|---|---|---|---|
-| Secret | `CLOUDFLARE_API_TOKEN` | yes | An API token from the Cloudflare dashboard with `Workers Scripts: Edit`, `Workers Routes: Edit`, `Account Settings: Read`, and, because the Worker owns the `<your-domain>` custom domain, `Zone: DNS: Edit` and `Zone: Workers Routes: Edit` on that zone |
-| Secret | `CLOUDFLARE_ACCOUNT_ID` | yes | Overview page of the account |
-| Secret | `SYNC_TOKEN` | yes | `openssl rand -base64 32`; uploaded to the Worker on every deploy |
-| Variable | `HUB_DOMAIN` | yes | `<your-domain>`, bare hostname, no scheme; passed as `wrangler deploy --domain` |
-| Variable | `ACCESS_TEAM_DOMAIN` | yes | `https://<team>.cloudflareaccess.com` |
-| Variable | `ACCESS_AUD` | no | The AUD tag from 1.3 |
-| Variable | `HUMAN_EMAIL` | no | Your address, the one in the Allow policy |
-| Variable | `SERVICE_ACTORS` | no | The JSON map from 1.5, one line |
-| Variable | `KABANE_TIMEZONE` | no | Your IANA timezone (1.5); empty is UTC |
+`bun run deploy` checks required values, passes the domain and **all** vars to Wrangler,
+then uploads `SYNC_TOKEN` via stdin as a Worker secret (never as a `--var` or argv).
+`bun run deploy --dry-run` checks and builds without uploading either the Worker or the
+secret. Leave `ACCESS_AUD`, `HUMAN_EMAIL` and `SERVICE_ACTORS` empty until 1.3 and 1.4;
+the Worker admits nobody until they are filled and you redeploy. The Access application,
+service tokens and Managed OAuth (1.3, 1.4, 1.6) are dashboard work either way.
 
-`ACCESS_AUD`, `HUMAN_EMAIL` and `SERVICE_ACTORS` can stay empty until 1.3 and 1.4 are done;
-an empty value deploys a Worker that admits nobody, exactly like a fresh manual deploy. Run
-the workflow again after filling them. None of these values go into `wrangler.jsonc`: its
-`vars` block holds empty placeholders, the job passes each variable with `--var`, which
-overrides the file, and the domain with `--domain`.
-
-### 1.1 Log in and deploy — MANUAL, or skip when 1.0 is set up
+### 1.1 Deploy — MANUAL
 
 ```bash
-cd <your clone>/packages/worker
-bunx wrangler login
-bunx wrangler deploy --domain <your-domain>
+git clone https://github.com/davidpp/kabane.git
+cd kabane && bun install --frozen-lockfile
+# Load the values in 1.0 into your environment, then:
+bun run deploy --dry-run
+bun run deploy
 ```
 
 Expected: the deploy creates the Worker `cabane-worker`, applies migration tag `v1`
 (`CabaneLog` and `CabaneHub` as SQLite-backed Durable Object classes), and attaches the
-custom domain `<your-domain>`. `wrangler.jsonc` names no route or domain, so every deploy
-passes `--domain`. Wrangler creates the DNS record for a custom domain; nothing to add by
-hand. `bunx wrangler deploy --dry-run` builds and lists the bindings without uploading, if
-you want to check the bundle first. No `workers.dev` URL and no preview URL are published
+custom domain `<your-domain>`. `wrangler.jsonc` names no route or domain, so the script
+always passes `--domain`. Wrangler creates the DNS record for a custom domain; nothing to
+add by hand. No `workers.dev` URL and no preview URL are published
 (`workers_dev` and `preview_urls` are `false`). The Workers Free plan is enough: SQLite-backed Durable Objects are the only kind
 it offers, and the limits (100k requests and 100k rows written per day, 5 GB stored) are
 far above one person's tracker.
@@ -105,14 +103,10 @@ is not in front yet, so the request reaches the Worker, which refuses it because
 assertion is present. If you get `522` or a Cloudflare error page, the custom domain has
 not finished provisioning; wait a minute.
 
-### 1.2 The log secret — MANUAL
+### 1.2 The log secret
 
-```bash
-openssl rand -base64 32          # keep the output, every device needs it
-bunx wrangler secret put SYNC_TOKEN
-```
-
-Paste the value when prompted. Expected: `✨ Success! Uploaded secret SYNC_TOKEN`. Devices
+`bun run deploy` uploads the `SYNC_TOKEN` from 1.0 after the Worker deploys. Keep that value:
+every device needs it. Expected: `✨ Success! Uploaded secret SYNC_TOKEN`. Devices
 send this as `Authorization: Bearer` on `/push` and `/pull`; it is the log's own check and
 sits behind Access, so it is the second wall, not the perimeter.
 
@@ -161,26 +155,18 @@ tokens to the `runtimes` Service Auth policy.
 
 ### 1.5 Fill the vars and redeploy — MANUAL
 
-With CI (1.0), set the variables `ACCESS_AUD`, `HUMAN_EMAIL`, `SERVICE_ACTORS` and
-`KABANE_TIMEZONE` in the `production` environment and run the workflow again. By hand,
-pass them on the deploy command:
+Set `ACCESS_AUD` to the tag from 1.3, `HUMAN_EMAIL` to the address in the Allow policy,
+`SERVICE_ACTORS` to a one-line JSON map of client IDs to actor URIs, and
+`KABANE_TIMEZONE` to your IANA timezone, e.g. `America/Toronto`. For example, the map's
+shape is `{"<claude-code client id>.access":"cabane://actor/agent/claude"}`; add the other
+clients from 1.4 the same way. Source these values in your environment and run
+`bun run deploy` again from the clone root.
 
-```bash
-cd <your clone>/packages/worker
-bunx wrangler deploy --domain <your-domain> --var \
-  "ACCESS_TEAM_DOMAIN:https://<team>.cloudflareaccess.com" \
-  "ACCESS_AUD:<the AUD tag from 1.3>" \
-  "HUMAN_EMAIL:<your address, the one in the Allow policy>" \
-  'SERVICE_ACTORS:{"<claude-code client id>.access":"cabane://actor/agent/claude","<hermes client id>.access":"cabane://actor/agent/hermes","<codex client id>.access":"cabane://actor/agent/codex","<cron client id>.access":"cabane://actor/agent/cron"}' \
-  "KABANE_TIMEZONE:<your IANA timezone, e.g. America/Toronto>"
-```
-
-`wrangler.jsonc` keeps empty placeholders for the Access vars, and a deploy replaces every
-var with the file's value unless `--var` names it. So every manual deploy passes the whole
-set: a later `bunx wrangler deploy` without it resets them to empty and closes the hub. Keep
-the command somewhere outside the repository (a script next to your other credentials), or
-let CI deploy. The AUD and the client ids are identifiers, not secrets, but they are yours
-and do not belong in a tracked file.
+`wrangler.jsonc` keeps empty placeholders for the Access vars. Deploying with raw
+`wrangler deploy` instead of the script resets them to empty and closes the hub. The
+script passes every var on every deploy, including empty optional ones. The AUD and
+client IDs are identifiers, not secrets, but they are yours and do not belong in a
+tracked file.
 
 Empty `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, `HUMAN_EMAIL`, or `SERVICE_ACTORS` means nobody is
 admitted, which is the state the fresh deploy from 1.1 was in. `KABANE_TIMEZONE` is your
@@ -268,21 +254,17 @@ which is the RFC 9728 pointer ChatGPT and Claude.ai follow.
 
 ### 2.1 Install the CLI
 
-The CLI is not on npm yet, so it runs from a clone. `bun link` is the install path that was
-verified; `bun install -g` from a path is not supported for a workspace package and was not
-used.
+Bun 1.4 or later is required. The CLI installs independently of the hub clone:
 
 ```bash
-git clone https://github.com/davidpp/kabane.git
-cd kabane && bun install
-cd packages/cli && bun link
+bun add -g kabane
 kabane --help
 ```
 
-Expected: `bun link` prints `Success! Registered "kabane"`, `which kabane` answers
-`~/.bun/bin/kabane`, and `--help` lists fourteen commands. The link points at this
-checkout, so `git pull` updates the binary; do not link from a worktree that will be
-removed.
+Expected: `kabane` is on PATH (`~/.bun/bin` for a standard Bun install) and `--help`
+lists the commands. Install globally before registering coding agents: their MCP entries
+point at the installed file. For working on Kabane from source, see the
+[README's clone path](../README.md#install).
 
 ### 2.2 Initialize
 
@@ -437,7 +419,7 @@ crontab -l 2>/dev/null | cat - <your clone>/docs/schedule/kabane-sync-pull.cron 
 crontab -l | grep kabane
 ```
 
-Both assume the `bun link` install (`~/.bun/bin/kabane`) and the default `KABANE_HOME`.
+Both assume the global Bun install (`~/.bun/bin/kabane`) and the default `KABANE_HOME`.
 Five minutes matches the hub's `SYNC_INTERVAL_MINUTES`; a task filed at the hub reaches a
 device within two intervals.
 
@@ -477,7 +459,7 @@ claude mcp list | grep kabane
 ```
 
 Expected: `✓ claude installed  as cabane://actor/agent/claude`, then `kabane: <bun>
-<clone>/packages/cli/index.ts mcp --as cabane://actor/agent/claude - ✔ Connected`. It
+<installed kabane bin> mcp --as cabane://actor/agent/claude - ✔ Connected`. It
 runs `claude mcp add -s user`; an existing `kabane` entry, local or hub, is left alone and
 reported as already installed, and `--force` replaces it. Without `--harness` the same
 command covers Codex and Gemini CLI too. `kabane mcp install --print` shows the config
@@ -525,7 +507,7 @@ kabane mcp install --harness codex
 codex mcp get kabane
 ```
 
-Expected: `args: <clone>/packages/cli/index.ts mcp --as cabane://actor/agent/codex`.
+Expected: `args: <installed kabane bin> mcp --as cabane://actor/agent/codex`.
 `codex mcp add` rewrites the whole `config.toml` in its own formatting (table order,
 `120` as `120.0`); the content is the same, but keep a copy if you diff that file.
 
@@ -624,14 +606,10 @@ versions included. `NPM_CONFIG_USERCONFIG=/dev/null kabane board` bypasses it fo
 
 ### 5.1 Rotate the log secret — MANUAL
 
-```bash
-openssl rand -base64 32
-bunx wrangler secret put SYNC_TOKEN
-```
-
-Then update `sync.token` on every device (`~/.kabane/config.json`, or wherever a host app
-keeps its sync settings). With CI (1.0), update the `SYNC_TOKEN` secret too, or the next
-workflow run uploads the old value again. Until a device is updated its pushes fail with
+Generate a new value with `openssl rand -base64 32`, update `SYNC_TOKEN` in your deploy
+environment, then run `bun run deploy` (1.0). Update `sync.token` on every device
+(`~/.kabane/config.json`, or wherever a host app keeps its sync settings). Until a device
+is updated its pushes fail with
 `401`, which propagates as an error and leaves the watermark in place; nothing is
 quarantined on a `401`. Run `kabane sync push` on each device to confirm.
 
@@ -681,11 +659,13 @@ its applied watermark to 0, and re-reads. To repopulate an empty log, run `kaban
 backfill` on one device that has everything; the others pull. Short ids may be relabelled
 during that convergence.
 
-### 5.7 Redeploy after a code change — MANUAL, or a workflow run when 1.0 is set up
+### 5.7 Redeploy after a code change — MANUAL
 
 ```bash
-cd <your clone> && bun run check && bun run typecheck && bun run test
-cd packages/worker && bunx wrangler deploy --domain <your-domain> --var …   # the full set from 1.5
+cd <your clone> && bun install --frozen-lockfile
+bun run check && bun run typecheck && bun run test
+bun run deploy --dry-run
+bun run deploy                   # with all values from 1.0 and 1.5 in your environment
 ```
 
 `wrangler.jsonc` `migrations` only ever gain tags; never rename or remove a class.
@@ -709,8 +689,8 @@ So a release that adds a migration goes out in this order:
 
 1. The hub: redeploy the Worker (§5.7). The cloud device migrates on its next boot, and
    browser clients (Claude.ai, ChatGPT) stay current throughout.
-2. Each device: pull the clone and `bun install` in it (`bun link` follows the clone), then
-   run any `kabane` command once. Until a device updates, its scheduled pull logs the
+2. Each device: `bun add -g kabane@<version>`, then run any `kabane` command once. Until
+   a device updates, its scheduled pull logs the
    "update kabane" error and holds its place.
 3. A host app that shares a database file with a device (2.5): update its `@cabane/core`
    at the same time as the CLI on that machine.
@@ -736,7 +716,7 @@ localhost.
 | Step | Result |
 |---|---|
 | 1.1 reject test | `GET /health` bare → `401`; with a human assertion → `{"ok":true,…,"actor":"cabane://actor/human/<local part>"}`; with a service assertion → the mapped agent actor; `GET /mcp` → `405`; `POST /push` without the bearer → `401` |
-| 2.1 `bun link` | `kabane` on PATH at `~/.bun/bin/kabane`, `--help` lists the commands |
+| 2.1 historical `bun link` | `kabane` on PATH at `~/.bun/bin/kabane`, `--help` lists the commands; the current npm install path is covered by `bun run smoke` in CI |
 | 2.2 to 2.4 device A | `init` → `sync status` "not armed" → a task added before arming → `sync backfill` seeded and pushed it (1 op) → a task added after arming was captured and pushed live |
 | 3 device B | `init`, `sync pull` → 2 ops applied, both tasks listed |
 | hub as device | after the alarm the hub's `kabane_list` returned both device tasks with the right `updatedBy`; `kabane_add` at the hub as the Hermes service identity was stamped `cabane://actor/agent/hermes` |
@@ -746,8 +726,17 @@ localhost.
 | 4.1 to 4.3 local | `kabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `kabane_add` through the registered argv, spawned with a bare PATH, was stamped `cabane://actor/agent/claude`; all three configs restored afterwards |
 | 4.4 inspector | `npx @modelcontextprotocol/inspector --cli … --method tools/list` → 15 tools; `tools/call kabane_add` created a task |
 
-Not verifiable without the real account, therefore **MANUAL** above: `wrangler login` and
-`deploy`, the custom domain, the Access application and policies, service tokens, Managed
+Not verifiable without the real account, therefore **MANUAL** above: `bun run deploy`,
+the custom domain, the Access application and policies, service tokens, Managed
 OAuth and its metadata endpoint, the `wrangler tail` reject test, Claude.ai and ChatGPT
 connectors, Hermes and Codex against the real hub, and the launchd job on a machine you are
 willing to have pull every five minutes.
+
+## Using your own CI instead
+
+The public workflow runs checks only. If you want deployments in your own CI, make a
+separate, manually triggered job that checks out the source, installs with
+`bun install --frozen-lockfile`, runs the gate, and calls `bun run deploy` with the 1.0/1.5
+environment supplied by your CI's secret store. Restrict access to that job and serialize
+deploys; never commit the values or run it on pull requests. No fork is required for local
+CLI users.
