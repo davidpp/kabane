@@ -6,31 +6,27 @@ MCP server running on your machine. Everything lives in one SQLite file under `~
 
 This guide covers one machine with local storage, which is a complete setup on its own.
 Syncing several machines through a Cloudflare hub is optional and lives in
-[`deploy.md`](deploy.md).
+[`deploy.md`](deploy.md). The project was called Cabane; [the README](../README.md) explains
+why some internal names still use it.
 
 ## Prerequisites
 
 - **Bun 1.4 or later.** The repo pins `1.4.0` in `.bun-version`. `bun --version` to check.
-- **git**, to clone the repo. There is no npm package yet.
+- **git**, for detecting project scopes. You do not need to clone Kabane for local use.
 - **Optional: a coding harness.** Claude Code, Codex or Gemini CLI on your PATH, logged in.
   Setup wires any it finds, and the board's copilot runs one.
 
 ## Install
 
 ```bash
-git clone https://github.com/davidpp/kabane.git
-cd kabane && bun install
-cd packages/cli && bun link
+bun add -g kabane
 kabane --help | head -1
 ```
 
-`bun link` prints `Success! Registered "kabane"`. The last line prints
-`kabane — local-first tracker for humans and agent runtimes`. If it prints
-`command not found` instead, add `~/.bun/bin` to your PATH. That is where `bun link` puts
-the binary.
-
-The link points at your clone, so pulling the clone updates the command. You can put the
-clone anywhere; the harness entries record its absolute path.
+The last line prints `kabane — local-first tracker for humans and agent runtimes`. If it
+prints `command not found` instead, add `~/.bun/bin` to your PATH. Install globally before
+setup registers coding agents: their MCP entries point at the installed file. To work on
+Kabane itself from source, use the [clone and `bun link` path](../README.md#install).
 
 ## Run `kabane`
 
@@ -111,7 +107,7 @@ checked harness, added through that harness's own `mcp add`:
 
 | Harness | File | Entry runs |
 |---|---|---|
-| Claude Code | `~/.claude.json` | `<bun> <clone>/packages/cli/index.ts mcp --as cabane://actor/agent/claude` |
+| Claude Code | `~/.claude.json` | `<bun> <installed kabane bin> mcp --as cabane://actor/agent/claude` |
 | Codex | `~/.codex/config.toml` | the same, `--as cabane://actor/agent/codex` |
 | Gemini CLI | `~/.gemini/settings.json` | the same, `--as cabane://actor/agent/gemini` |
 
@@ -255,12 +251,12 @@ a silent UTC.
 ## Updating
 
 ```bash
-cd <your clone> && git pull && bun install
+bun add -g kabane@latest
 ```
 
-No re-link is needed, and the database upgrades itself when it opens. If you upgrade Bun
-through a version manager (mise, asdf), the harness entries still point at the old Bun
-binary. Run `kabane mcp install --force` to re-point them.
+The database upgrades itself when it opens. If you upgrade Bun through a version manager
+(mise, asdf), the harness entries still point at the old Bun binary. Run
+`kabane mcp install --force` to re-point them.
 
 ## Starting over
 
@@ -275,7 +271,7 @@ The next `kabane` shows the setup screen again.
 
 ## Rough edges
 
-Kabane is unreleased. Known rough edges:
+Known rough edges:
 
 - **Ids and scopes still carry Jake's prefixes.** Kabane was extracted from a planner called
   Jake. Short ids start with `J` plus the first letters of the scope (`JMYA-1` in `myapp`),

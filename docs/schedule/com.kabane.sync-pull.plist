@@ -7,7 +7,7 @@
             launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kabane.sync-pull.plist
   Remove:   launchctl bootout gui/$(id -u)/com.kabane.sync-pull
 
-  `kabane` is the bun-linked binary at ~/.bun/bin/kabane; its shebang is `/usr/bin/env bun`, so
+  `kabane` is the globally installed binary at ~/.bun/bin/kabane; its shebang is `/usr/bin/env bun`, so
   PATH below must also reach `bun` itself: mise shims first (exit 127 "env: bun: No such file"
   otherwise, measured on a mise-managed machine), then ~/.bun/bin and Homebrew.
   A pull writes rows and may relabel colliding short ids, which is why it is

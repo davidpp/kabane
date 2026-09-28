@@ -89,7 +89,7 @@ Publish the `dist` the smoke just built and tested; do not rebuild in between.
 ```bash
 cd packages/cli/dist
 npm pack --dry-run            # the file list: bin/, templates/, README.md, LICENSE, package.json
-npm whoami                    # the account that owns `kabane` on npm
+npm whoami                    # the account that will publish `kabane`
 npm publish --access public
 npm view kabane version       # the version from step 1
 ```
@@ -120,6 +120,7 @@ fails until the version is old enough. That is the guard working, not the releas
 - The repository is `github.com/davidpp/kabane` before the first publish: the manifest's
   `repository`, `homepage` and `bugs` point there, and npm resolves the README's relative
   links against `repository`.
-- `docs/getting-started.md` (Prerequisites, Install) and `docs/deploy.md` (2.1) describe a
-  clone and `bun link` because there was no package yet. Once `npm view kabane` answers,
-  lead both with `bun add -g kabane` as the README's Install section does.
+- Push the release-prep commit before publishing, so the README's links on npm land on
+  guides that describe the installable package.
+- `docs/getting-started.md` and `docs/deploy.md` lead with `bun add -g kabane`. That
+  command will return 404 until this first publish completes; verify it after publishing.
