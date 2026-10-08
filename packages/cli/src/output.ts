@@ -20,12 +20,20 @@ export type Outcome = {
 	exitCode: 0 | 1 | 2;
 	json: unknown;
 	text: string;
+	compact?: boolean;
 };
 
 export const success = (json: unknown, text: string): Outcome => ({
 	exitCode: 0,
 	json,
 	text,
+});
+
+export const conciseSuccess = (json: unknown): Outcome => ({
+	exitCode: 0,
+	json,
+	text: JSON.stringify(json),
+	compact: true,
 });
 
 export const failure = (error: Error | string): Outcome => {
@@ -137,9 +145,15 @@ export const formatWorkLogs = (logs: TaskWorkLog[]): string =>
 		.join("\n");
 
 export const print = (outcome: Outcome, json: boolean): void => {
-	const text = json ? JSON.stringify(outcome.json, null, 2) : outcome.text;
+	const text = json
+		? JSON.stringify(outcome.json, null, outcome.compact ? undefined : 2)
+		: outcome.text;
 	// An empty text is a command that owned stdout itself (`mcp`); stay silent.
 	if (text.length === 0) return;
+	if (outcome.compact && outcome.exitCode === 0) {
+		process.stdout.write(text);
+		return;
+	}
 	if (outcome.exitCode === 0) {
 		console.log(text);
 	} else {

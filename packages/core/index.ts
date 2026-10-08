@@ -6,6 +6,16 @@
  * `Runtime.configure` and gets the same behaviour on any SQLite engine.
  */
 
+export {
+	CONTEXT_BYTES,
+	CONTEXT_SECTIONS,
+	ContextSectionSchema,
+	ContextPageOptionsSchema,
+	ContextPageSchema,
+	type ContextSection,
+	type ContextPage,
+	type ContextPageOptions,
+} from "./context-output";
 export type { GitCommit, ScanResult } from "./commit-linker/namespace";
 // Commit Linker
 export { CommitLinker } from "./commit-linker/namespace";
@@ -64,6 +74,12 @@ export {
 	type ToolHandler,
 } from "./mcp";
 export { type TracedOptions, traced } from "./observability";
+export {
+	ResponseFormatSchema,
+	taskReceipt,
+	serializedBytes,
+} from "./task-output";
+export { PageOptionsSchema, type TaskPage } from "./storage/task-pages";
 export {
 	err,
 	flatMap,

@@ -85,10 +85,10 @@ export const firstIssueBrief = (instructionFile: string): string =>
 		"## Tracker",
 		"",
 		"Work is tracked in kabane (MCP server `kabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.",
-		'- Before starting, `kabane_list` with `assignee` set to your name and `state: "next"`; read the task with `kabane_context`.',
-		"- Set the task `in_progress` with `kabane_edit` before touching code. Never take a task that is already in progress.",
-		"- When finished, `kabane_comment` what landed (files, commits, what is left), then `kabane_done`.",
-		"- File new work you find with `kabane_add` instead of doing it unasked.",
+		'- Before starting, `kabane_list` with `assignee` set to your name, `state: "next"`, and `responseFormat: "concise"`. If no suitable task is on the page and `hasMore` is true, follow `nextCursor` with the same filters; only assert no work remains after `hasMore` is false. Read the chosen task with `kabane_context` and `responseFormat: "concise"`; consume every preceding chunk and continue with `nextCursor` until `selectedComplete`, `descriptionComplete`, and `humanSteeringComplete` are true before starting work. Use the same id/options; request any omitted required sections.',
+		'- Set the task `in_progress` with `kabane_edit` and `responseFormat: "concise"` before touching code. Never take a task that is already in progress.',
+		'- When finished, `kabane_comment` what landed (files, commits, what is left), then `kabane_done` with `responseFormat: "concise"`.',
+		'- File new work you find with `kabane_add` and `responseFormat: "concise"` instead of doing it unasked. Use `kabane_get` for full own fields.',
 		"```",
 	].join("\n");
 

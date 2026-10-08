@@ -104,23 +104,35 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | Command | Flags |
 |---|---|
 | `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--db-path <file>` `--table-prefix <prefix>` (open another database, e.g. Jake's `~/.jake/jake.db` with `planner_`) `--scope <uri>` (writes `./.kabane/scope`) `--force` |
-| `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD\|<ISO time>` (a date is due by the end of that day in your timezone; a time without `Z` or an offset is your local time) |
-| `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` |
+| `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD\|<ISO time>` (a date is due by the end of that day in your timezone; a time without `Z` or an offset is your local time) `--format concise\|full` |
+| `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` `--format concise\|full` `--cursor <cursor>` |
 | `show <id>` | task, links, comments, work log; `--json` also carries `updatedBy` (actor URI of the last writer) and `version` |
-| `edit <id>` | `--title` `--description` `--state` `--priority` `--kind` `--assignee <who>\|none` `--scope` `--parent <id>\|none` `--tags` `--due` |
-| `done <id>` | |
-| `search <query>` | `--state` `--scope` `--limit` |
+| `edit <id>` | `--title` `--description` `--state` `--priority` `--kind` `--assignee <who>\|none` `--scope` `--parent <id>\|none` `--tags` `--due` `--format concise\|full` |
+| `done <id>` | `--format concise\|full` |
+| `search <query>` | `--state` `--scope` `--limit` `--format concise\|full` `--cursor <cursor>` |
 | `link <src> <dst>` | `--type blocks\|blocked_by\|parent\|child\|related\|duplicate\|follows` `--note` — a task-to-task DAG edge, not an external issue |
 | `upstream link <id> <url>` | `--title <t>` `--provider <p>` `--id <key>` `--external-id <id>` — point a task at one issue in Linear or GitHub. Provider and issue key are read off the URL; the flags cover self-hosted or unfamiliar shapes |
 | `upstream unlink <id> [key]` | drop the link; the key is only needed when a task has more than one |
 | `open <id>` | launch the task's linked issue: the desktop app when its scheme is registered, else the browser, else the URL lands on the clipboard |
 | `comment <id> "<text>"` | `--as <actor>` |
 | `log <id>` | `--ref <type:value>` (repeatable) `--commit <sha>` `--branch <name>` `--pr <owner/repo#n>` `--url` `--session` `--file` `--note` |
-| `context <id>` | `--no-deref` `--no-subtasks` — the assembled brief, the read entrypoint for agents |
+| `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,upstream,position,context,priorWork,discussion` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise |
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
 | `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
 | `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`kabane_*`), with the working directory's scope as the default so writes may omit `scopeUri` |
 | `mcp install` | `--harness claude\|codex\|gemini` (repeatable) `--force` `--print` — register `mcp` in each harness on PATH through its own `mcp add`, as `cabane://actor/agent/<harness>`; `--print` prints the snippets instead, also the fallback when none is found |
+
+Agents should select `--format concise` on list/search/add/edit/done/context.
+Context defaults to all sections; concatenate chunks by offset and consume every
+preceding chunk before relying on its completeness flags. Finish required
+description and human steering before starting work; request omitted sections
+with `--sections` and continue using the same flags plus `--cursor`. Queue output
+is compact JSON pages (default 20, maximum 100, <=16KiB UTF-8); mutation receipts
+are <=2KiB with identity/state/version and no description echo. Follow
+`nextCursor` via `--cursor` with the same filters. Preview truncation is explicit;
+`show <id> --json` retrieves full fields. Omitted/full formats keep legacy human
+text or raw `--json` records. See [concise read semantics](../../docs/concise-reads.md),
+including query-relevant stale cursors and independent MCP today buckets.
 
 Ids are short ids (`JCAB-12`) or ULIDs. Short ids are labels, not identities:
 two devices can mint the same one offline, and `sync pull` relabels the later

@@ -14,6 +14,7 @@
  * section is omitted entirely. A bare reminder returns just its description.
  */
 
+import { CONTEXT_SECTIONS, type ContextSection } from "../context-output";
 import { traced } from "../observability";
 import { err, ok, type Result } from "../result";
 import {
@@ -78,8 +79,8 @@ const positionSection = async (
 	task: Task,
 	links: TaskLink[],
 	subtasks: Task[],
-	includeSubtasks: boolean,
-): Promise<string | null> => {
+	{ includeSubtasks, strict }: { includeSubtasks: boolean; strict: boolean },
+): Promise<Result<string | null>> => {
 	const blockerIds = new Set<string>();
 	const blocksIds = new Set<string>();
 	for (const link of links) {
@@ -103,14 +104,21 @@ const positionSection = async (
 	if (task.parentTaskId) neighborIds.add(task.parentTaskId);
 
 	const fetched = await Promise.all(
-		[...neighborIds].map(async (id) => {
-			const r = await PlannerTasks.getTask(jakePath, id);
-			return r.ok && r.value ? ([id, r.value] as const) : null;
-		}),
+		[...neighborIds].map(async (id) => ({
+			id,
+			result: await PlannerTasks.getTask(jakePath, id),
+		})),
 	);
-	const neighbors = new Map<string, Task>(
-		fetched.filter((e): e is readonly [string, Task] => e !== null),
-	);
+	const neighbors = new Map<string, Task>();
+	for (const { id, result } of fetched) {
+		if (!result.ok && strict)
+			return err(
+				new Error(
+					"Cannot read context position neighbors; retry the bounded read.",
+				),
+			);
+		if (result.ok && result.value) neighbors.set(id, result.value);
+	}
 
 	const lines: string[] = [];
 	if (task.parentTaskId)
@@ -133,8 +141,7 @@ const positionSection = async (
 		}
 	}
 
-	if (lines.length === 0) return null;
-	return `## Position\n\n${lines.join("\n")}`;
+	return ok(lines.length === 0 ? null : `## Position\n\n${lines.join("\n")}`);
 };
 
 // ── file: dereferencing (memory-safe: .size checked BEFORE .text()) ─────────
@@ -180,6 +187,7 @@ const contextRefBlock = async (
 	ref: TaskContextRef,
 	opts: ResolvedAssembleContextOpts,
 	totalUsed: number,
+	strict: boolean,
 ): Promise<{ block: string; chars: number }> => {
 	const label = ref.label ?? ref.uri;
 	const header = `### [${ref.kind}] ${label}`;
@@ -203,7 +211,12 @@ const contextRefBlock = async (
 				chars: 0,
 			};
 		}
-		// status === "pointer" → fall through to pointer rendering
+		if (strict)
+			return {
+				block: `${header}\n${ref.uri}${note}\n_(file unreadable/unavailable on this host; pointer only)_`,
+				chars: 0,
+			};
+		// Full mode retains its legacy pointer fallback.
 	}
 
 	// Pointer: non-file scheme, deref off, total-cap exhausted, or unreadable.
@@ -213,12 +226,18 @@ const contextRefBlock = async (
 const contextSection = async (
 	refs: TaskContextRef[],
 	opts: ResolvedAssembleContextOpts,
+	strict: boolean,
 ): Promise<string | null> => {
 	if (refs.length === 0) return null;
 	const blocks: string[] = [];
 	let totalUsed = 0;
 	for (const ref of refs) {
-		const { block, chars } = await contextRefBlock(ref, opts, totalUsed);
+		const { block, chars } = await contextRefBlock(
+			ref,
+			opts,
+			totalUsed,
+			strict,
+		);
 		totalUsed += chars;
 		blocks.push(block);
 	}
@@ -267,21 +286,35 @@ const lastAiCommentEntries = (comments: TaskComment[]): DiscussionEntry[] =>
 const sessionActivityEntries = async (
 	jakePath: string,
 	sessions: AgentSession[],
-): Promise<DiscussionEntry[]> => {
+	strict: boolean,
+): Promise<Result<DiscussionEntry[]>> => {
 	const perSession = await Promise.all(
 		sessions.map(async (s) => {
 			const r = await PlannerSessions.getActivities(jakePath, s.id);
+			if (!r.ok && strict)
+				return err(
+					new Error(
+						"Cannot read context discussion activities; retry the bounded read.",
+					),
+				);
 			const activities = r.ok ? r.value : [];
-			return SelectDurable.selectDurableActivities(activities).map((a) => {
-				const tag = a.severity ? `${a.type}/${a.severity}` : a.type;
-				return {
-					createdAt: a.createdAt,
-					line: `**${s.agent}** (${tag}, ${a.createdAt}):\n${a.body}`,
-				};
-			});
+			return ok(
+				SelectDurable.selectDurableActivities(activities).map((a) => {
+					const tag = a.severity ? `${a.type}/${a.severity}` : a.type;
+					return {
+						createdAt: a.createdAt,
+						line: `**${s.agent}** (${tag}, ${a.createdAt}):\n${a.body}`,
+					};
+				}),
+			);
 		}),
 	);
-	return perSession.flat();
+	const entries: DiscussionEntry[] = [];
+	for (const result of perSession) {
+		if (!result.ok) return result;
+		entries.push(...result.value);
+	}
+	return ok(entries);
 };
 
 /**
@@ -307,6 +340,132 @@ const discussionSection = (
 	const merged = [...human, ...bounded].sort(byCreatedAtAscEntry);
 	if (merged.length === 0) return null;
 	return `## Discussion\n\n${merged.map((e) => e.line).join("\n\n")}`;
+};
+
+type RenderedSection = { section: ContextSection; markdown: string | null };
+
+const sourceRows = <T>(
+	result: Result<T[]>,
+	source: string,
+	strict: boolean,
+): Result<T[]> =>
+	result.ok
+		? result
+		: strict
+			? err(new Error(`Cannot read context ${source}; retry the bounded read.`))
+			: ok([]);
+
+/** Shared renderer: full reads degrade; bounded reads require selected sources. */
+export const readContextSections = async (
+	basePath: string,
+	task: Task,
+	opts: ResolvedAssembleContextOpts,
+	sections: readonly ContextSection[],
+	strict: boolean,
+): Promise<Result<RenderedSection[]>> => {
+	const render = async (
+		section: ContextSection,
+	): Promise<Result<string | null>> => {
+		switch (section) {
+			case "metadata":
+				return ok(
+					`# ${task.shortId ?? task.id}: ${task.title}\n\n${metadataLine(task)}`,
+				);
+			case "description":
+				return ok(descriptionSection(task));
+			case "upstream": {
+				const links = sourceRows(
+					await PlannerUpstreamLinks.getUpstreamLinksForTask(basePath, task.id),
+					"upstream",
+					strict,
+				);
+				return links.ok ? ok(upstreamSection(links.value)) : links;
+			}
+			case "position": {
+				const [linksR, subtasksR] = await Promise.all([
+					PlannerTaskLinks.getLinksForTask(basePath, task.id),
+					opts.includeSubtasks
+						? PlannerTasks.queryTasks(basePath, {
+								parentTaskId: task.id,
+								includeClosed: true,
+								includeDeferred: true,
+								limit: Number.MAX_SAFE_INTEGER,
+							})
+						: Promise.resolve(ok([] as Task[])),
+				]);
+				const links = sourceRows(linksR, "position links", strict);
+				if (!links.ok) return links;
+				const subtasks = sourceRows(subtasksR, "position subtasks", strict);
+				if (!subtasks.ok) return subtasks;
+				return positionSection(basePath, task, links.value, subtasks.value, {
+					includeSubtasks: opts.includeSubtasks,
+					strict,
+				});
+			}
+			case "context": {
+				const refs = sourceRows(
+					await PlannerContextRefs.getContextRefs(basePath, task.id),
+					"references",
+					strict,
+				);
+				return refs.ok
+					? ok(await contextSection(refs.value, opts, strict))
+					: refs;
+			}
+			case "priorWork": {
+				const logs = sourceRows(
+					await PlannerWorkLogs.getWorkLogs(basePath, task.id),
+					"prior work",
+					strict,
+				);
+				return logs.ok ? ok(priorWorkSection(logs.value)) : logs;
+			}
+			case "discussion": {
+				const [commentsR, sessionsR] = await Promise.all([
+					PlannerComments.getComments(basePath, task.id),
+					PlannerSessions.querySessions(basePath, { taskId: task.id }),
+				]);
+				const comments = sourceRows(commentsR, "discussion comments", strict);
+				if (!comments.ok) return comments;
+				const sessions = sourceRows(sessionsR, "discussion sessions", strict);
+				if (!sessions.ok) return sessions;
+				const machine =
+					sessions.value.length > 0
+						? await sessionActivityEntries(basePath, sessions.value, strict)
+						: ok(lastAiCommentEntries(comments.value));
+				if (!machine.ok) return machine;
+				return ok(
+					discussionSection(
+						humanCommentEntries(comments.value),
+						machine.value,
+						opts,
+					),
+				);
+			}
+		}
+	};
+	try {
+		const rendered = await Promise.all(
+			sections.map(async (section) => ({
+				section,
+				result: await render(section),
+			})),
+		);
+		const output: RenderedSection[] = [];
+		for (const { section, result } of rendered) {
+			if (!result.ok) return result;
+			output.push({ section, markdown: result.value });
+		}
+		return ok(output);
+	} catch (e) {
+		return err(
+			strict
+				? new Error("Cannot assemble selected context sources; retry the read.")
+				: e instanceof Error
+					? e
+					: new Error(String(e)),
+		);
+	}
 };
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -345,66 +504,19 @@ export namespace Planner {
 				const task = taskResult.value;
 				if (!task) return err(new Error(`Task not found: ${taskIdInput}`));
 
-				// Independent per-source fetch — a failed source degrades to empty.
-				const [
-					linksR,
-					subtasksR,
-					refsR,
-					workLogsR,
-					commentsR,
-					sessionsR,
-					upstreamLinksR,
-				] = await Promise.all([
-					PlannerTaskLinks.getLinksForTask(jakePath, taskId),
-					o.includeSubtasks
-						? PlannerTasks.queryTasks(jakePath, {
-								parentTaskId: taskId,
-								includeClosed: true,
-							})
-						: Promise.resolve(ok([] as Task[])),
-					PlannerContextRefs.getContextRefs(jakePath, taskId),
-					PlannerWorkLogs.getWorkLogs(jakePath, taskId),
-					PlannerComments.getComments(jakePath, taskId),
-					PlannerSessions.querySessions(jakePath, { taskId }),
-					PlannerUpstreamLinks.getUpstreamLinksForTask(jakePath, taskId),
-				]);
-
-				const links = linksR.ok ? linksR.value : [];
-				const subtasks = subtasksR.ok ? subtasksR.value : [];
-				const refs = refsR.ok ? refsR.value : [];
-				const workLogs = workLogsR.ok ? workLogsR.value : [];
-				const comments = commentsR.ok ? commentsR.value : [];
-				const sessions = sessionsR.ok ? sessionsR.value : [];
-				const upstreamLinks = upstreamLinksR.ok ? upstreamLinksR.value : [];
-
-				// ALL human comments always; the machine signal is the durable
-				// session activities (session-bearing) or the last-3-AI heuristic
-				// (session-less). Merged chronologically in discussionSection.
-				const human = humanCommentEntries(comments);
-				const machine =
-					sessions.length > 0
-						? await sessionActivityEntries(jakePath, sessions)
-						: lastAiCommentEntries(comments);
-				const discussion = discussionSection(human, machine, o);
-
-				const sections: (string | null)[] = [
-					`# ${task.shortId ?? task.id}: ${task.title}`,
-					metadataLine(task),
-					descriptionSection(task),
-					upstreamSection(upstreamLinks),
-					await positionSection(
-						jakePath,
-						task,
-						links,
-						subtasks,
-						o.includeSubtasks,
-					),
-					await contextSection(refs, o),
-					priorWorkSection(workLogs),
-					discussion,
-				];
-
-				return ok(sections.filter((s): s is string => s !== null).join("\n\n"));
+				const sections = await readContextSections(
+					jakePath,
+					task,
+					o,
+					CONTEXT_SECTIONS,
+					false,
+				);
+				if (!sections.ok) return sections;
+				return ok(
+					sections.value
+						.flatMap(({ markdown }) => (markdown === null ? [] : [markdown]))
+						.join("\n\n"),
+				);
 			} catch (e) {
 				return err(e instanceof Error ? e : new Error(String(e)));
 			}

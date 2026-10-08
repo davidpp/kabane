@@ -13,9 +13,7 @@ import {
 	type TaskUpdate,
 	TaskUpdateSchema,
 } from "../schemas";
-import { DeadlineSql } from "./deadline-sql";
 import {
-	buildScopeFamilyMatch,
 	derivePrefix,
 	generateId,
 	generateShortId,
@@ -26,6 +24,11 @@ import {
 	ULID_LENGTH,
 } from "./helpers";
 import { Oplog } from "./oplog";
+import {
+	selectTaskQuery,
+	selectTaskSearch,
+	selectTodayBucket,
+} from "./task-selection";
 
 export namespace Planner {
 	// ----------------------------------------------------------
@@ -525,141 +528,14 @@ export namespace Planner {
 		query: Partial<TaskQuery> = {},
 	): Promise<Result<Task[]>> => {
 		return withDb(basePath, (db) => {
-			const conditions: string[] = [];
-			const params: (string | number | null)[] = [];
-
-			// State filter
-			if (query.states && query.states.length > 0) {
-				conditions.push(`state IN (${query.states.map(() => "?").join(", ")})`);
-				params.push(...query.states);
-			} else if (query.state) {
-				conditions.push("state = ?");
-				params.push(query.state);
-			}
-
-			// Exclude closed unless requested
-			if (!query.includeClosed) {
-				conditions.push("state NOT IN ('done', 'cancelled')");
-			}
-
-			// Exclude deferred unless requested
-			if (!query.includeDeferred) {
-				conditions.push("(defer_until IS NULL OR defer_until <= ?)");
-				params.push(new Date().toISOString());
-			}
-
-			// Filter by kind (task vs issue)
-			if (query.kind) {
-				conditions.push("kind = ?");
-				params.push(query.kind);
-			}
-
-			if (query.priority) {
-				conditions.push("priority = ?");
-				params.push(query.priority);
-			}
-
-			if (query.scopeUri) {
-				const scopeFamily = buildScopeFamilyMatch(query.scopeUri);
-				if (scopeFamily) {
-					conditions.push("(scope_uri = ? OR scope_uri LIKE ?)");
-					params.push(scopeFamily.baseScopeUri, scopeFamily.queryPattern);
-				} else {
-					conditions.push("scope_uri = ?");
-					params.push(query.scopeUri);
-				}
-			}
-
-			if (query.scopeUriPattern) {
-				conditions.push("scope_uri LIKE ?");
-				params.push(query.scopeUriPattern);
-			}
-
-			if (query.source) {
-				conditions.push("source = ?");
-				params.push(query.source);
-			}
-
-			if (query.sourceId) {
-				conditions.push("source_id = ?");
-				params.push(query.sourceId);
-			}
-
-			if (query.tag) {
-				conditions.push("tags LIKE ?");
-				params.push(`%"${query.tag}"%`);
-			}
-
-			if (query.context) {
-				conditions.push("context = ?");
-				params.push(query.context);
-			}
-
-			if (query.assignee) {
-				conditions.push("assignee = ?");
-				params.push(query.assignee);
-			}
-
-			if (query.parentTaskId) {
-				conditions.push("parent_task_id = ?");
-				params.push(query.parentTaskId);
-			}
-
-			if (query.topLevelOnly) {
-				conditions.push("parent_task_id IS NULL");
-			}
-
-			if (query.projectId) {
-				conditions.push("project_id = ?");
-				params.push(query.projectId);
-			}
-
-			if (query.needsReview !== undefined) {
-				conditions.push("needs_review = ?");
-				params.push(query.needsReview ? 1 : 0);
-			}
-
-			const zone = Runtime.timezone();
-			if (query.dueBefore) {
-				const before = DeadlineSql.dueBefore(query.dueBefore, zone);
-				conditions.push(before.sql);
-				params.push(...before.params);
-			}
-
-			if (query.dueAfter) {
-				const after = DeadlineSql.dueAfter(query.dueAfter, zone);
-				conditions.push(after.sql);
-				params.push(...after.params);
-			}
-
-			const whereClause =
-				conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-			const orderBy = query.orderBy ?? "createdAt";
-			const orderDir = query.orderDir ?? "desc";
-			const orderColumn =
-				orderBy === "deadline"
-					? DeadlineSql.dueAtKey(db, TABLES.tasks, zone)
-					: {
-							createdAt: "created_at",
-							updatedAt: "updated_at",
-							priority: "priority",
-						}[orderBy];
-
-			const limit = query.limit ?? 100;
-			const offset = query.offset ?? 0;
-
-			const sql = `
-        SELECT * FROM ${TABLES.tasks}
-        ${whereClause}
-        ORDER BY ${orderColumn} ${orderDir.toUpperCase()}
-        LIMIT ? OFFSET ?
-      `;
-
-			const rows = db.query(sql).all(...params, limit, offset) as Record<
-				string,
-				unknown
-			>[];
+			const selection = selectTaskQuery(db, query);
+			const rows = db
+				.query(`SELECT * ${selection.sql} LIMIT ? OFFSET ?`)
+				.all(
+					...selection.params,
+					query.limit ?? 100,
+					query.offset ?? 0,
+				) as Record<string, unknown>[];
 
 			return rows.map(rowToTask);
 		});
@@ -671,54 +547,15 @@ export namespace Planner {
 		opts: { state?: Task["state"]; scopeUri?: string; limit?: number } = {},
 	): Promise<Result<Task[]>> => {
 		return withDb(basePath, (db) => {
-			// FTS5 treats '-', ':', '*', etc. as operators, so a raw term like
-			// "jdel-9" parses as `jdel NOT 9` and throws ("no such column: 9").
-			// Wrap each whitespace-separated term in double quotes (FTS5 string
-			// literals) so the query matches literal text; escape embedded quotes
-			// by doubling them.
-			const ftsQuery = searchQuery
-				.trim()
-				.split(/\s+/)
-				.filter(Boolean)
-				.map((term) => `"${term.replace(/"/g, '""')}"`)
-				.join(" ");
-			if (!ftsQuery) {
-				return [];
-			}
-
-			const limit = opts.limit ?? 20;
-			const conditions: string[] = [];
-			const params: (string | number | null)[] = [ftsQuery];
-
-			if (opts.state) {
-				conditions.push("t.state = ?");
-				params.push(opts.state);
-			}
-
-			if (opts.scopeUri) {
-				const scopeFamily = buildScopeFamilyMatch(opts.scopeUri);
-				if (scopeFamily) {
-					conditions.push("(t.scope_uri = ? OR t.scope_uri LIKE ?)");
-					params.push(scopeFamily.baseScopeUri, scopeFamily.queryPattern);
-				} else {
-					conditions.push("t.scope_uri = ?");
-					params.push(opts.scopeUri);
-				}
-			}
-
-			const whereExtra =
-				conditions.length > 0 ? `AND ${conditions.join(" AND ")}` : "";
-
+			// Quote FTS terms in the shared selection, retaining literal operator handling.
+			const selection = selectTaskSearch(searchQuery, opts);
+			if (!selection) return [];
 			const rows = db
-				.query(
-					`SELECT t.* FROM ${TABLES.tasks} t
-           JOIN ${TABLES.tasks_fts} fts ON t.rowid = fts.rowid
-           WHERE ${TABLES.tasks_fts} MATCH ?
-           ${whereExtra}
-           ORDER BY bm25(${TABLES.tasks_fts}) ASC
-           LIMIT ?`,
-				)
-				.all(...params, limit) as Record<string, unknown>[];
+				.query(`SELECT t.* ${selection.sql} LIMIT ?`)
+				.all(...selection.params, opts.limit ?? 20) as Record<
+				string,
+				unknown
+			>[];
 
 			return rows.map(rowToTask);
 		});
@@ -775,81 +612,24 @@ export namespace Planner {
 		} = {},
 	): Promise<Result<{ overdue: Task[]; dueToday: Task[]; next: Task[] }>> => {
 		return withDb(basePath, (db) => {
-			const today = DeadlineSql.today(
-				opts.now ?? Date.now(),
-				opts.zone ?? Runtime.timezone(),
-			);
-			const overdue = DeadlineSql.overdue(today);
-			const dueToday = DeadlineSql.dueToday(today);
-			const later = DeadlineSql.noneOrLater(today);
-
-			const scopeFamily = opts.scopeUri
-				? buildScopeFamilyMatch(opts.scopeUri)
-				: undefined;
-			const scopeFilter = opts.scopeUri
-				? scopeFamily
-					? "AND (scope_uri = ? OR scope_uri LIKE ?)"
-					: "AND scope_uri = ?"
-				: "";
-			const scopeParam = opts.scopeUri
-				? scopeFamily
-					? [scopeFamily.baseScopeUri, scopeFamily.queryPattern]
-					: [opts.scopeUri]
-				: [];
-			const doneFilter = opts.includeDone
-				? ""
-				: "AND state NOT IN ('done', 'cancelled')";
-			const kindFilter = opts.kind ? "AND kind = ?" : "";
-			const kindParam = opts.kind ? [opts.kind] : [];
-
-			const dueKey = DeadlineSql.dueAtKey(
-				db,
-				TABLES.tasks,
-				opts.zone ?? Runtime.timezone(),
-			);
-
-			// Overdue
-			const overdueRows = db
-				.query(
-					`SELECT * FROM ${TABLES.tasks}
-           WHERE deadline IS NOT NULL AND ${overdue.sql} ${doneFilter} ${scopeFilter} ${kindFilter}
-           ORDER BY ${dueKey} ASC`,
-				)
-				.all(...overdue.params, ...scopeParam, ...kindParam) as Record<
-				string,
-				unknown
-			>[];
-
-			// Due today
-			const dueTodayRows = db
-				.query(
-					`SELECT * FROM ${TABLES.tasks}
-           WHERE deadline IS NOT NULL AND ${dueToday.sql} ${doneFilter} ${scopeFilter} ${kindFilter}
-           ORDER BY ${dueKey} ASC`,
-				)
-				.all(...dueToday.params, ...scopeParam, ...kindParam) as Record<
-				string,
-				unknown
-			>[];
-
-			// Next actions (state = next, no deadline or a deadline after today)
-			const nextRows = db
-				.query(
-					`SELECT * FROM ${TABLES.tasks}
-           WHERE state = 'next' AND ${later.sql}
-           ${doneFilter} ${scopeFilter} ${kindFilter}
-           ORDER BY priority ASC, created_at ASC
-           LIMIT 20`,
-				)
-				.all(...later.params, ...scopeParam, ...kindParam) as Record<
-				string,
-				unknown
-			>[];
-
+			const resolved = {
+				...opts,
+				now: opts.now ?? Date.now(),
+				zone: opts.zone ?? Runtime.timezone(),
+			};
+			const read = (bucket: "overdue" | "dueToday" | "next"): Task[] => {
+				const selection = selectTodayBucket(db, bucket, resolved);
+				const rows = db
+					.query(
+						`SELECT * ${selection.sql}${bucket === "next" ? " LIMIT 20" : ""}`,
+					)
+					.all(...selection.params) as Record<string, unknown>[];
+				return rows.map(rowToTask);
+			};
 			return {
-				overdue: overdueRows.map(rowToTask),
-				dueToday: dueTodayRows.map(rowToTask),
-				next: nextRows.map(rowToTask),
+				overdue: read("overdue"),
+				dueToday: read("dueToday"),
+				next: read("next"),
 			};
 		});
 	};

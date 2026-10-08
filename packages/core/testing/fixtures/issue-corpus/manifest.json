@@ -1,0 +1,13 @@
+{
+	"dataset": "https://huggingface.co/datasets/helmo/github-issues",
+	"revision": "e344be7b84d199661a9956036991e1fc25715a47",
+	"input": "data/train-00000-of-00001.parquet",
+	"inputSha256": "09453eefae39e45a969ab0bee72ca0e188fe79dc50403b0f2a78c39894f5d1a3",
+	"normalizationVersion": 2,
+	"license": "Apache-2.0",
+	"issueNumbers": [
+		2, 3, 4, 5, 116, 143, 2572, 2767, 2877, 3122, 3550, 3688, 4840, 5100, 5351,
+		5354, 6060, 6100, 7567, 7588, 7599, 7607, 7611, 7612
+	],
+	"fixtureSha256": "4c41742ee9a5f862a1ae8c24fcdb7d11c1394f247ffecc4eee7f15170eead948"
+}

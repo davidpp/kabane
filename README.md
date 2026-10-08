@@ -124,6 +124,19 @@ agent brief; `y` still copies the brief for pasting into a chat.
  A declined card fails the order today…
 ```
 
+## Agent reads
+
+Select efficient output explicitly: `kabane list --assignee codex --state next
+--format concise`, `kabane search license --format concise`, and `kabane edit
+JCAB-12 --state in_progress --format concise`. MCP uses `responseFormat:
+"concise"` on list/search/today/add/edit/done/context. Use `kabane context <id>
+--format concise` for lossless bounded context; consume all preceding chunks and
+finish required description/human steering before starting work. Follow page
+continuations; read full fields with `kabane_get` / `kabane show <id> --json`.
+Defaults and explicit full keep legacy records and complete context briefs
+(with the complete subtask rollup, including deferred and closed children). [Contracts and examples](docs/concise-reads.md)
+cover byte bounds, preview markers and stale cursors.
+
 ## Gate
 
 ```bash

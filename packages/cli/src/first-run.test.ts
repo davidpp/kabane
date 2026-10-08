@@ -130,6 +130,24 @@ describe("setupDeps", () => {
 });
 
 describe("firstIssueBrief", () => {
+	test("teaches targeted concise pickup and continuation before declaring no work", () => {
+		const brief = firstIssueBrief("AGENTS.md");
+		expect(brief).toContain(
+			'`assignee` set to your name, `state: "next"`, and `responseFormat: "concise"`',
+		);
+		expect(brief).toContain("follow `nextCursor` with the same filters");
+		expect(brief).toContain(
+			"only assert no work remains after `hasMore` is false",
+		);
+		expect(brief).toContain('`kabane_edit` and `responseFormat: "concise"`');
+		expect(brief).toContain('`kabane_done` with `responseFormat: "concise"`');
+		expect(brief).toContain('`kabane_context` and `responseFormat: "concise"`');
+		expect(brief).toContain("consume every preceding chunk");
+		expect(brief).toContain(
+			"`selectedComplete`, `descriptionComplete`, and `humanSteeringComplete` are true before starting work",
+		);
+		expect(brief).toContain("request any omitted required sections");
+	});
 	// The guide gives a human the same block to paste by hand; the two must not drift apart.
 	test("carries the tracker block getting-started.md gives, word for word", () => {
 		const guide = readFileSync(

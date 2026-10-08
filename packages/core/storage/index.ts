@@ -10,6 +10,7 @@
 
 import { Planner as AssembleContext } from "./assemble-context";
 import { Planner as Comments } from "./comments";
+import { Planner as ContextPages } from "./context-pages";
 import { Planner as ContextRefs } from "./context-refs";
 // Import domain namespaces
 import { Planner as Init } from "./init";
@@ -18,6 +19,8 @@ import { Planner as SelectDurable } from "./select-durable";
 import { Planner as Sessions } from "./sessions";
 import { Planner as Stats } from "./stats";
 import { Planner as TaskLinks } from "./task-links";
+import { Planner as TaskPages } from "./task-pages";
+import { Planner as TaskReceipts } from "./task-receipts";
 import { Planner as Tasks } from "./tasks";
 import { Planner as UpstreamLinks } from "./upstream-links";
 import { Planner as WorkLogs } from "./work-logs";
@@ -36,11 +39,15 @@ export const Planner = {
 	getTasks: Tasks.getTasks,
 	findDuplicatesBySourceId: Tasks.findDuplicatesBySourceId,
 	updateTask: Tasks.updateTask,
+	updateTaskReceipt: TaskReceipts.updateTaskReceipt,
 	deleteTask: Tasks.deleteTask,
 	queryTasks: Tasks.queryTasks,
 	searchTasks: Tasks.searchTasks,
 	getSubtaskCounts: Tasks.getSubtaskCounts,
 	getToday: Tasks.getToday,
+	queryTaskPage: TaskPages.queryTaskPage,
+	searchTaskPage: TaskPages.searchTaskPage,
+	getTodayPages: TaskPages.getTodayPages,
 	// Task Links
 	addLink: TaskLinks.addLink,
 	getLinksForTask: TaskLinks.getLinksForTask,
@@ -78,6 +85,7 @@ export const Planner = {
 	toSessionCard: SelectDurable.toSessionCard,
 	// Context assembly (S3)
 	assembleContext: AssembleContext.assembleContext,
+	getContextPage: ContextPages.getContextPage,
 	// Stats
 	stats: Stats.stats,
 	listScopes: Stats.listScopes,

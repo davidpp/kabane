@@ -17,6 +17,7 @@
  */
 
 import { z } from "zod";
+import { ContextPageOptionsSchema } from "../context-output";
 import { err, ok, type Result } from "../result";
 import { Runtime } from "../runtime";
 import {
@@ -29,6 +30,7 @@ import {
 	type TaskUpdate,
 } from "../schemas";
 import { Planner } from "../storage";
+import { ResponseFormatSchema, taskReceipt } from "../task-output";
 
 // ============================================================
 // Types
@@ -119,7 +121,8 @@ Parameters:
 - assignee: Who completes it: a person, or an agent runtime such as claude, hermes, codex
 - parentTaskId: Optional parent (short id or ULID) to file this under
 - tags: Optional labels
-- dueDate: Optional. YYYY-MM-DD is a calendar date, due by the end of that day in the owner's timezone; an ISO datetime with Z or an offset is that exact instant; one without is a local time in the owner's timezone`,
+- dueDate: Optional. YYYY-MM-DD is a calendar date, due by the end of that day in the owner's timezone; an ISO datetime with Z or an offset is that exact instant; one without is a local time in the owner's timezone
+- responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
 	input: {
 		title: z.string().min(1).max(500),
 		kind: ItemKindSchema.optional(),
@@ -131,6 +134,7 @@ Parameters:
 		parentTaskId: z.string().optional(),
 		tags: z.array(z.string()).optional(),
 		dueDate: z.string().optional(),
+		responseFormat: ResponseFormatSchema.optional(),
 	},
 	handler: async (args, ctx) => {
 		const scope = resolveScope(args.scopeUri, ctx);
@@ -160,7 +164,11 @@ Parameters:
 				discoveredBy: ctx.actor,
 			},
 		};
-		return Planner.addTask(ctx.basePath, draft);
+		const created = await Planner.addTask(ctx.basePath, draft);
+		if (!created.ok) return created;
+		return args.responseFormat === "concise"
+			? taskReceipt(created.value)
+			: created;
 	},
 });
 
@@ -194,7 +202,9 @@ Parameters:
 - scopeUri: ${SCOPE_HINT} Omit for every scope
 - tag: One tag
 - includeClosed: Include done and cancelled (default false)
-- limit: Max results (default 50)`,
+- limit: Full default 100; concise default 20, maximum 100
+- responseFormat: concise returns a <=16KiB summary page; omitted/full returns raw records
+- cursor: Concise continuation; repeat the same filters. Relevant writes invalidate it`,
 	input: {
 		state: TaskStateSchema.optional(),
 		kind: ItemKindSchema.optional(),
@@ -204,9 +214,11 @@ Parameters:
 		tag: z.string().optional(),
 		includeClosed: z.boolean().optional(),
 		limit: z.number().int().positive().optional(),
+		responseFormat: ResponseFormatSchema.optional(),
+		cursor: z.string().max(700).optional(),
 	},
-	handler: (args, ctx) =>
-		Planner.queryTasks(ctx.basePath, {
+	handler: (args, ctx) => {
+		const query = {
 			state: args.state,
 			kind: args.kind,
 			priority: args.priority,
@@ -214,8 +226,18 @@ Parameters:
 			scopeUri: args.scopeUri,
 			tag: args.tag,
 			includeClosed: args.includeClosed ?? args.state !== undefined,
-			limit: args.limit,
-		}),
+		};
+		if (args.responseFormat === "concise")
+			return Planner.queryTaskPage(ctx.basePath, query, {
+				limit: args.limit,
+				cursor: args.cursor,
+			});
+		if (args.cursor !== undefined)
+			return Promise.resolve(
+				err(new Error("cursor requires responseFormat: concise.")),
+			);
+		return Planner.queryTasks(ctx.basePath, { ...query, limit: args.limit });
+	},
 });
 
 const search = define({
@@ -227,19 +249,33 @@ Parameters:
 - query: Search terms
 - state: Optional state filter
 - scopeUri: ${SCOPE_HINT} Omit for every scope
-- limit: Optional max results`,
+- limit: Full default 20; concise default 20, maximum 100
+- responseFormat: concise returns a <=16KiB ranked summary page; omitted/full returns raw records
+- cursor: Concise continuation; repeat query, filters and format`,
 	input: {
 		query: z.string().min(1),
 		state: TaskStateSchema.optional(),
 		scopeUri: z.string().optional(),
 		limit: z.number().int().positive().optional(),
+		responseFormat: ResponseFormatSchema.optional(),
+		cursor: z.string().max(700).optional(),
 	},
-	handler: (args, ctx) =>
-		Planner.searchTasks(ctx.basePath, args.query, {
-			state: args.state,
-			scopeUri: args.scopeUri,
+	handler: (args, ctx) => {
+		const opts = { state: args.state, scopeUri: args.scopeUri };
+		if (args.responseFormat === "concise")
+			return Planner.searchTaskPage(ctx.basePath, args.query, opts, {
+				limit: args.limit,
+				cursor: args.cursor,
+			});
+		if (args.cursor !== undefined)
+			return Promise.resolve(
+				err(new Error("cursor requires responseFormat: concise.")),
+			);
+		return Planner.searchTasks(ctx.basePath, args.query, {
+			...opts,
 			limit: args.limit,
-		}),
+		});
+	},
 });
 
 const today = define({
@@ -250,18 +286,42 @@ const today = define({
 Parameters:
 - scopeUri: ${SCOPE_HINT} Omit for every scope
 - kind: task or issue; omit for both
-- includeDone: Include completed tasks (default false)`,
+- includeDone: Include completed tasks (default false)
+- responseFormat: concise returns independent bucket pages, all text <=16KiB; omitted/full returns legacy buckets
+- limit: Concise per-bucket rows (default 20, maximum 100)
+- cursors: Per-bucket concise continuation; repeat scope/filters. Owner day/timezone changes require restarting`,
 	input: {
 		scopeUri: z.string().optional(),
 		kind: ItemKindSchema.optional(),
 		includeDone: z.boolean().optional(),
+		responseFormat: ResponseFormatSchema.optional(),
+		limit: z.number().int().positive().optional(),
+		cursors: z
+			.object({
+				overdue: z.string().max(700).optional(),
+				dueToday: z.string().max(700).optional(),
+				next: z.string().max(700).optional(),
+			})
+			.strict()
+			.optional(),
 	},
-	handler: (args, ctx) =>
-		Planner.getToday(ctx.basePath, {
+	handler: (args, ctx) => {
+		const opts = {
 			scopeUri: args.scopeUri,
 			kind: args.kind,
 			includeDone: args.includeDone,
-		}),
+		};
+		if (args.responseFormat === "concise")
+			return Planner.getTodayPages(ctx.basePath, opts, {
+				limit: args.limit,
+				cursors: args.cursors,
+			});
+		if (args.limit !== undefined || args.cursors !== undefined)
+			return Promise.resolve(
+				err(new Error("today limit/cursors require responseFormat: concise.")),
+			);
+		return Planner.getToday(ctx.basePath, opts);
+	},
 });
 
 const done = define({
@@ -270,11 +330,19 @@ const done = define({
 	description: `Mark a task done. Add a comment first if the outcome needs explaining.
 
 Parameters:
-- id: ${ID_HINT}`,
-	input: { id: z.string().min(1) },
+- id: ${ID_HINT}
+- responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
+	input: {
+		id: z.string().min(1),
+		responseFormat: ResponseFormatSchema.optional(),
+	},
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
+		if (args.responseFormat === "concise")
+			return Planner.updateTaskReceipt(ctx.basePath, id.value, {
+				state: "done",
+			});
 		const updated = await Planner.updateTask(ctx.basePath, id.value, {
 			state: "done",
 		});
@@ -293,7 +361,8 @@ const edit = define({
 Parameters:
 - id: ${ID_HINT}
 - title, description, state, priority, kind, assignee, scopeUri, parentTaskId, tags, dueDate: as in kabane_add
-- assignee 'none' and parentTaskId 'none' clear the field`,
+- assignee 'none' and parentTaskId 'none' clear the field
+- responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
 	input: {
 		id: z.string().min(1),
 		title: z.string().min(1).max(500).optional(),
@@ -306,6 +375,7 @@ Parameters:
 		parentTaskId: z.string().optional(),
 		tags: z.array(z.string()).optional(),
 		dueDate: z.string().optional(),
+		responseFormat: ResponseFormatSchema.optional(),
 	},
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
@@ -333,6 +403,8 @@ Parameters:
 		if (Object.keys(update).length === 0) {
 			return err(new Error("Nothing to change: pass at least one field."));
 		}
+		if (args.responseFormat === "concise")
+			return Planner.updateTaskReceipt(ctx.basePath, id.value, update);
 		const updated = await Planner.updateTask(ctx.basePath, id.value, update);
 		if (!updated.ok) return updated;
 		return updated.value
@@ -488,18 +560,35 @@ Parameters:
 const context = define({
 	name: "kabane_context",
 	kind: "read",
-	description: `The assembled work brief for a task: description, position in the DAG, curated context, prior work, discussion. One call gives an agent everything it needs to start. THE read entrypoint before picking up an issue.
+	description: `THE read entrypoint before picking up an issue: description, DAG position, curated references, prior work and discussion. Prefer responseFormat: concise for bounded selected markdown (16KiB UTF-8 including JSON); consume ALL preceding chunks and finish required description/human steering before starting work. Completeness describes coverage from offset zero through this chunk, not instructions repeated in this response. Omitted/full preserves the complete legacy markdown envelope without a size bound. Local sessions/files may not be available at the hub.
 
 Parameters:
 - id: ${ID_HINT}
-- deref: Inline file: refs when the host can read them (default true)
-- includeSubtasks: Include the subtask roll-up (default true)`,
+- deref: Inline file: refs within existing caps when the host can read them (default true)
+- includeSubtasks: Include all children in the subtask roll-up (default true)
+- responseFormat: concise or full; omission preserves full
+- sections: Concise only; subset of metadata, description, upstream, position, context, priorWork, discussion (default all). Canonical order, duplicates ignored; omitted sections explicitly named.
+- cursor: Concise only; pass nextCursor with the same id/options. Concatenate markdown chunks by offset to recover exact selected text. Relevant content changes invalidate continuation; restart without cursor.`,
 	input: {
 		id: z.string().min(1),
 		deref: z.boolean().optional(),
 		includeSubtasks: z.boolean().optional(),
+		responseFormat: ResponseFormatSchema.optional(),
+		sections: ContextPageOptionsSchema.shape.sections.optional(),
+		cursor: ContextPageOptionsSchema.shape.cursor,
 	},
 	handler: async (args, ctx) => {
+		if (args.responseFormat === "concise")
+			return Planner.getContextPage(ctx.basePath, args.id, {
+				deref: args.deref,
+				includeSubtasks: args.includeSubtasks,
+				sections: args.sections,
+				cursor: args.cursor,
+			});
+		if (args.sections !== undefined || args.cursor !== undefined)
+			return err(
+				new Error("Context sections/cursor require responseFormat: concise."),
+			);
 		const brief = await Planner.assembleContext(ctx.basePath, args.id, {
 			deref: args.deref,
 			includeSubtasks: args.includeSubtasks,
@@ -619,6 +708,6 @@ export const KABANE_TOOLS: readonly ToolDef[] = [
 export const SERVER_INSTRUCTIONS = `Kabane is a shared work queue for humans and agent runtimes.
 Two kinds of item: 'task' is human GTD work (inbox → next → done); 'issue' is work an agent runtime picks up.
 To brainstorm into work: kabane_add with kind issue, a description that is the brief, state next, and assignee set to the runtime (claude, hermes, codex).
-To pick up work as a runtime: kabane_list with your assignee and state next, kabane_context on the chosen id, kabane_edit to in_progress, then kabane_log and kabane_comment as you go, kabane_done at the end.
+To pick up work as a runtime: kabane_list with responseFormat concise, your assignee and state next (follow nextCursor with the same filters), kabane_context on the chosen id, kabane_edit to in_progress with responseFormat concise, then kabane_log and kabane_comment as you go, kabane_done with responseFormat concise at the end. Use kabane_get for full fields; omitted/full formats remain legacy and unbounded.
 Scopes are the context boundary (a repo, a client). Discover them with kabane_scopeList and pass scopeUri on writes.
 When a task has a twin in Linear or GitHub, record it with kabane_upstream_link and put what the external issue says into the task's own description — the link is identity only, so nothing stored on it can go stale.`;

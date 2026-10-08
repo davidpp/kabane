@@ -9,7 +9,14 @@ import {
 } from "@cabane/core";
 import { flagCsv, flagString } from "../args";
 import type { Command } from "../context";
-import { failure, formatTaskLine, success, usage } from "../output";
+import {
+	conciseSuccess,
+	failure,
+	formatTaskLine,
+	success,
+	usage,
+} from "../output";
+import { responseFormat } from "../response-format";
 
 const nothingToChange = (update: TaskUpdate): boolean =>
 	Object.values(update).every((v) => v === undefined);
@@ -18,8 +25,10 @@ export const edit: Command = {
 	name: "edit",
 	summary: "Update fields on a task",
 	usage:
-		"kabane edit <id> [--title <t>] [--description <d>] [--state <s>] [--priority <p>] [--kind task|issue] [--assignee <who>|none] [--scope <uri>] [--parent <id>|none] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM]",
+		"kabane edit <id> [--title <t>] [--description <d>] [--state <s>] [--priority <p>] [--kind task|issue] [--assignee <who>|none] [--scope <uri>] [--parent <id>|none] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM] [--format concise|full]",
 	run: async (args, ctx) => {
+		const format = responseFormat(args);
+		if (!format.ok) return usage(format.error.message, edit.usage);
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", edit.usage);
 		const resolved = await Planner.resolveTaskId(ctx.store, input);
@@ -53,6 +62,16 @@ export const edit: Command = {
 		};
 		if (nothingToChange(update)) return usage("Nothing to change", edit.usage);
 
+		if (format.value === "concise") {
+			const receipt = await Planner.updateTaskReceipt(
+				ctx.store,
+				resolved.value,
+				update,
+			);
+			return receipt.ok
+				? conciseSuccess(receipt.value)
+				: failure(receipt.error);
+		}
 		const updated = await Planner.updateTask(ctx.store, resolved.value, update);
 		if (!updated.ok) return failure(updated.error);
 		if (!updated.value) return failure(`No task found: ${input}`);

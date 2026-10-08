@@ -55,17 +55,27 @@ const toSdkTool = (tool: ToolDef): Tool => ({
 	annotations: { readOnlyHint: tool.kind === "read" },
 });
 
-const toCallResult = (result: Result<unknown>): CallToolResult => {
+const toCallResult = (
+	result: Result<unknown>,
+	concise = false,
+): CallToolResult => {
 	if (!result.ok) {
+		const message = concise
+			? result.error.message.slice(0, 400)
+			: result.error.message;
+		const suffix =
+			message === result.error.message
+				? ""
+				: "… [error truncated; check arguments]";
 		return {
-			content: [{ type: "text", text: `Error: ${result.error.message}` }],
+			content: [{ type: "text", text: `Error: ${message}${suffix}` }],
 			isError: true,
 		};
 	}
 	const text =
 		typeof result.value === "string"
 			? result.value
-			: JSON.stringify(result.value, null, 2);
+			: JSON.stringify(result.value, null, concise ? undefined : 2);
 	return { content: [{ type: "text", text }] };
 };
 
@@ -107,6 +117,8 @@ export const createMcpServer = (
 		}
 		return toCallResult(
 			await callTool(tool, request.params.arguments, ctx, afterWrite),
+			tool.input.responseFormat !== undefined &&
+				request.params.arguments?.responseFormat === "concise",
 		);
 	});
 

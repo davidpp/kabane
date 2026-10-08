@@ -21,6 +21,7 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
+import { ContextPageSchema } from "../packages/core/context-output";
 import { build, DIST } from "./build";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -129,7 +130,8 @@ const install = (tarball: string): void => {
 const kabane = (...args: string[]): Ran =>
 	runOk([BIN, ...args], REPO, isolated);
 
-const checkCommands = (version: string): void => {
+const SMOKE_CONTEXT_BODY = "SMOKE_BODY_MUST_NOT_ECHO 🧭\n".repeat(1000);
+const checkCommands = (version: string): string => {
 	const printed = kabane("--version").stdout.trim();
 	if (printed !== version)
 		fail(`kabane --version printed ${printed}, expected ${version}`);
@@ -141,20 +143,103 @@ const checkCommands = (version: string): void => {
 	kabane("add", "Smoke task");
 	if (!kabane("list", "--json").stdout.includes("Smoke task"))
 		fail("kabane list does not show the task kabane add created");
-	pass("--version, --help, init, add, list");
+	const concise = kabane("list", "--format", "concise", "--json").stdout.trim();
+	const page = JSON.parse(concise) as {
+		items?: { id: string; title: string }[];
+		hasMore?: boolean;
+	};
+	if (
+		!page.items?.some((item) => item.title === "Smoke task") ||
+		page.hasMore !== false ||
+		Buffer.byteLength(concise) > 16384
+	)
+		fail("installed concise CLI list shape/budget", {
+			code: 0,
+			stdout: concise,
+			stderr: "",
+		});
+	const receipt = kabane(
+		"add",
+		"Concise smoke",
+		"--description",
+		SMOKE_CONTEXT_BODY,
+		"--format",
+		"concise",
+		"--json",
+	).stdout.trim();
+	if (
+		receipt.includes("SMOKE_BODY_MUST_NOT_ECHO") ||
+		Buffer.byteLength(receipt) > 2048 ||
+		!receipt.includes('"version"')
+	)
+		fail("installed concise CLI receipt");
+	const created: unknown = JSON.parse(receipt);
+	if (
+		!created ||
+		typeof created !== "object" ||
+		!("id" in created) ||
+		typeof created.id !== "string"
+	)
+		return fail("installed concise receipt missing identity");
+	kabane("comment", created.id, "SMOKE_HUMAN_STEERING");
+	let markdown = "";
+	let cursor: string | undefined;
+	do {
+		const text = kabane(
+			"context",
+			created.id,
+			"--format",
+			"concise",
+			"--sections",
+			"description,discussion",
+			"--no-deref",
+			...(cursor ? ["--cursor", cursor] : []),
+		).stdout;
+		const context = ContextPageSchema.safeParse(JSON.parse(text));
+		if (!context.success || Buffer.byteLength(text) > 16384)
+			return fail("installed concise CLI context shape/budget");
+		if (context.data.offset !== markdown.length)
+			return fail("installed concise CLI context offset");
+		markdown += context.data.markdown;
+		cursor = context.data.nextCursor;
+		if (
+			!cursor &&
+			(!context.data.completeness.descriptionComplete ||
+				!context.data.completeness.humanSteeringComplete)
+		)
+			return fail("installed concise CLI context completeness");
+	} while (cursor);
+	if (
+		!markdown.includes(SMOKE_CONTEXT_BODY) ||
+		!markdown.includes("SMOKE_HUMAN_STEERING")
+	)
+		return fail("installed concise CLI context reconstruction");
+	pass(
+		"--version, --help, init, add, list, concise pages/receipts/context chunks",
+	);
+	return created.id;
 };
 
-const readLine = async (
+const readReplies = async (
 	stream: ReadableStream<Uint8Array>,
-): Promise<string> => {
+): Promise<string[]> => {
 	const decoder = new TextDecoder();
+	const reader = stream.getReader();
+	const lines: string[] = [];
 	let buffered = "";
-	for await (const chunk of stream) {
-		buffered += decoder.decode(chunk, { stream: true });
-		const newline = buffered.indexOf("\n");
-		if (newline >= 0) return buffered.slice(0, newline);
+	while (lines.length < 4) {
+		const chunk = await reader.read();
+		if (chunk.done) break;
+		buffered += decoder.decode(chunk.value, { stream: true });
+		let newline = buffered.indexOf("\n");
+		while (newline >= 0) {
+			lines.push(buffered.slice(0, newline));
+			buffered = buffered.slice(newline + 1);
+			newline = buffered.indexOf("\n");
+		}
 	}
-	return buffered;
+	reader.releaseLock();
+	return lines;
 };
 
 const INITIALIZE = {
@@ -171,8 +256,47 @@ const INITIALIZE = {
 const within = <T>(ms: number, promise: Promise<T>): Promise<T | "timeout"> =>
 	Promise.race([promise, Bun.sleep(ms).then(() => "timeout" as const)]);
 
+type SmokeReply = {
+	id?: number;
+	result?: {
+		serverInfo?: { name?: string; version?: string };
+		tools?: {
+			name: string;
+			inputSchema?: { properties?: Record<string, unknown> };
+		}[];
+		content?: { text?: string }[];
+		isError?: boolean;
+	};
+};
+const checkMcpDiscovery = (reply: SmokeReply | undefined): void => {
+	const tool = reply?.result?.tools?.find(
+		(tool) => tool.name === "kabane_list",
+	);
+	if (!tool?.inputSchema?.properties?.responseFormat)
+		fail("installed MCP schema omits responseFormat");
+	const context = reply?.result?.tools?.find(
+		(tool) => tool.name === "kabane_context",
+	);
+	if (
+		!context?.inputSchema?.properties?.sections ||
+		!context.inputSchema.properties.cursor ||
+		!context.inputSchema.properties.responseFormat
+	)
+		fail("installed MCP schema omits concise context options");
+};
+const checkMcpPage = (reply: SmokeReply | undefined): void => {
+	const text = reply?.result?.content?.[0]?.text ?? "";
+	if (
+		reply?.result?.isError ||
+		!text.includes('"items"') ||
+		!text.includes("Smoke task") ||
+		Buffer.byteLength(text) > 16384
+	)
+		fail("installed MCP concise list shape/budget");
+};
+
 // A harness closes the server's stdin when it goes away; the server must exit then, not linger.
-const checkMcp = async (version: string): Promise<void> => {
+const checkMcp = async (version: string, taskId: string): Promise<void> => {
 	const proc = Bun.spawn([BIN, "mcp"], {
 		cwd: REPO,
 		env: isolated,
@@ -180,23 +304,63 @@ const checkMcp = async (version: string): Promise<void> => {
 		stdout: "pipe",
 		stderr: "inherit",
 	});
-	proc.stdin.write(`${JSON.stringify(INITIALIZE)}\n`);
+	const requests = [
+		INITIALIZE,
+		{ jsonrpc: "2.0", method: "notifications/initialized" },
+		{ jsonrpc: "2.0", id: 2, method: "tools/list" },
+		{
+			jsonrpc: "2.0",
+			id: 3,
+			method: "tools/call",
+			params: { name: "kabane_list", arguments: { responseFormat: "concise" } },
+		},
+		{
+			jsonrpc: "2.0",
+			id: 4,
+			method: "tools/call",
+			params: {
+				name: "kabane_context",
+				arguments: { id: taskId, responseFormat: "concise", deref: false },
+			},
+		},
+	];
+	await proc.stdin.write(
+		requests.map((request) => JSON.stringify(request)).join("\n") + "\n",
+	);
 	await proc.stdin.flush();
-	const line = await within(10_000, readLine(proc.stdout));
+	const lines = await within(10_000, readReplies(proc.stdout));
 	await proc.stdin.end();
 	const exited = await within(10_000, proc.exited);
 	if (exited === "timeout") proc.kill();
-	if (line === "timeout") return fail("kabane mcp never answered initialize");
-	const reply = JSON.parse(line || "{}") as {
-		result?: { serverInfo?: { name?: string; version?: string } };
-	};
-	const info = reply.result?.serverInfo;
+	if (lines === "timeout")
+		return fail("kabane mcp never answered initialize/discover/concise call");
+	const replies = lines.map((line) => JSON.parse(line) as SmokeReply);
+	const info = replies.find((reply) => reply.id === 1)?.result?.serverInfo;
+	checkMcpDiscovery(replies.find((reply) => reply.id === 2));
+	checkMcpPage(replies.find((reply) => reply.id === 3));
+	const contextReply = replies.find((reply) => reply.id === 4);
+	const contextText = contextReply?.result?.content?.[0]?.text ?? "";
+	const context = ContextPageSchema.safeParse(
+		JSON.parse(contextText || "null"),
+	);
+	if (
+		contextReply?.result?.isError ||
+		!context.success ||
+		Buffer.byteLength(contextText) > 16384 ||
+		context.data.taskId !== taskId ||
+		!context.data.nextCursor ||
+		context.data.completeness.descriptionComplete ||
+		context.data.completeness.humanSteeringComplete
+	)
+		fail("installed concise MCP context shape/budget/partial completeness");
 	if (info?.name !== "kabane" || info.version !== version)
-		fail(`kabane mcp answered initialize with ${line || "nothing"}`);
+		fail(
+			`kabane mcp answered initialize with ${lines.join("\n") || "nothing"}`,
+		);
 	if (exited === "timeout")
 		fail("kabane mcp kept running after its stdin closed");
 	pass(
-		`kabane mcp initialize: ${info?.name} ${info?.version}, exits when stdin closes`,
+		`kabane mcp initialize/discover/concise call: ${info?.name} ${info?.version}, exits when stdin closes`,
 	);
 };
 
@@ -212,7 +376,7 @@ inspect(tarball);
 install(tarball);
 mkdirSync(REPO);
 runOk(["git", "init", "-q"], REPO, isolated);
-checkCommands(version);
-await checkMcp(version);
+const contextId = checkCommands(version);
+await checkMcp(version, contextId);
 rmSync(WORK, { recursive: true, force: true });
 console.error("smoke: passed");

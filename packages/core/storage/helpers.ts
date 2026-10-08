@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { Db } from "../db/port";
 import { TABLES } from "../db/tables";
 import { err, ok, type Result } from "../result";
+import { withDb } from "../runtime";
 import type {
 	AgentActivity,
 	AgentSession,
@@ -172,6 +173,21 @@ export const derivePrefix = (scopeUri?: string): Result<string> => {
 	return ok(`J${normalized.slice(0, 3).padEnd(3, "X")}`);
 };
 
+const shortIdFor = (prefix: string, number: number): string =>
+	`${prefix}-${number}`;
+
+/** Read-only preview; another writer may advance the counter before allocation. */
+export const prospectiveShortId = (
+	basePath: string,
+	prefix: string,
+): Promise<Result<string>> =>
+	withDb(basePath, (db) => {
+		const row = db
+			.query(`SELECT next_number FROM ${TABLES.sequences} WHERE prefix = ?`)
+			.get(prefix) as { next_number: number } | null;
+		return shortIdFor(prefix, (row?.next_number ?? 0) + 1);
+	});
+
 /**
  * Get next sequence number for a prefix (atomic increment).
  * Creates the sequence entry if it doesn't exist.
@@ -210,8 +226,7 @@ export const generateShortId = (
 	prefix: string,
 	scopeUri?: string,
 ): string => {
-	const num = nextSequence(db, prefix, scopeUri);
-	return `${prefix}-${num}`;
+	return shortIdFor(prefix, nextSequence(db, prefix, scopeUri));
 };
 
 /**

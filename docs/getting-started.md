@@ -199,10 +199,10 @@ CLI):
 ## Tracker
 
 Work is tracked in kabane (MCP server `kabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.
-- Before starting, `kabane_list` with `assignee` set to your name and `state: "next"`; read the task with `kabane_context`.
-- Set the task `in_progress` with `kabane_edit` before touching code. Never take a task that is already in progress.
-- When finished, `kabane_comment` what landed (files, commits, what is left), then `kabane_done`.
-- File new work you find with `kabane_add` instead of doing it unasked.
+- Before starting, `kabane_list` with `assignee` set to your name, `state: "next"`, and `responseFormat: "concise"`. If no suitable task is on the page and `hasMore` is true, follow `nextCursor` with the same filters; only assert no work remains after `hasMore` is false. Read the chosen task with `kabane_context` and `responseFormat: "concise"`; consume every preceding chunk and continue with `nextCursor` until `selectedComplete`, `descriptionComplete`, and `humanSteeringComplete` are true before starting work. Use the same id/options; request any omitted required sections.
+- Set the task `in_progress` with `kabane_edit` and `responseFormat: "concise"` before touching code. Never take a task that is already in progress.
+- When finished, `kabane_comment` what landed (files, commits, what is left), then `kabane_done` with `responseFormat: "concise"`.
+- File new work you find with `kabane_add` and `responseFormat: "concise"` instead of doing it unasked. Use `kabane_get` for full own fields.
 ```
 
 The board shows assignees (`@claude`) but does not set them. Assign with
@@ -217,14 +217,24 @@ Everything the board does is also a command. Every command takes `--json`:
 ```bash
 kabane add "Write the README" --kind issue --assignee claude --priority high
 kabane list                                  # open tasks in this repo's scope
-kabane list --assignee claude --state next --json
-kabane edit JMYA-1 --state in_progress
+kabane list --assignee claude --state next --format concise
+kabane edit JMYA-1 --state in_progress --format concise
 kabane comment JMYA-1 "README drafted"
-kabane context JMYA-1                        # the full brief an agent reads
-kabane done JMYA-1
+kabane context JMYA-1 --format concise      # finish required description/steering
+kabane context JMYA-1 --format concise --cursor '<nextCursor>'  # same flags
+kabane done JMYA-1 --format concise
 kabane list --all                            # include done and cancelled
-kabane search license
+kabane search license --format concise
 ```
+
+For agent reads, select concise explicitly; default human output and legacy JSON
+stay unchanged. Concise list/search return bounded pages (`items`, `hasMore`,
+`nextCursor`), not raw arrays. Continue with `--cursor '<nextCursor>'` and the same
+filters/scope. `--format full --json` retrieves legacy raw records. See
+[concise reads](concise-reads.md) for budgets, truncation markers and stale-cursor
+semantics and lossless bounded context retrieval. Context chunks concatenate exactly;
+completeness assumes all preceding chunks were consumed. Full context remains
+available without a new size bound; its subtask rollup now includes all children.
 
 ```
 ✓ Created 📥 🟠 🔧JMYA-1  Write the README @claude
