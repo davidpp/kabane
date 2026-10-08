@@ -118,9 +118,18 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `log <id>` | `--ref <type:value>` (repeatable) `--commit <sha>` `--branch <name>` `--pr <owner/repo#n>` `--url` `--session` `--file` `--note` |
 | `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,upstream,position,context,priorWork,discussion` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise |
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
+| `update` | `--check` `--json` — metadata-only stable candidate (policy-unverified), or explicit verified update of a supported hoisted Bun global registry install; no tracker initialization |
 | `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
 | `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`kabane_*`), with the working directory's scope as the default so writes may omit `scopeUri` |
 | `mcp install` | `--harness claude\|codex\|gemini` (repeatable) `--force` `--print` — register `mcp` in each harness on PATH through its own `mcp add`, as `cabane://actor/agent/<harness>`; `--print` prints the snippets instead, also the fallback when none is found |
+
+Updates are latest-stable only within the installed major (`0.x`: same minor). Source links,
+file/tarball/other-manager and unverified isolated/missing-global-bin installs refuse mutation;
+no automatic link repair, downgrade, git pull, startup networking or MCP rewiring is performed.
+The explicit update preserves Bun registry/proxy/age policy; dry-run may populate external
+package-manager caches, while check only reads metadata and may use runtime/metadata caches.
+No tracker DB/config is opened. Restart board/MCP after a verified update; binary rollback
+is not database rollback. See [compatibility/backup procedure](../../docs/getting-started.md#updating).
 
 Agents should select `--format concise` on list/search/add/edit/done/context.
 Context defaults to all sections; concatenate chunks by offset and consume every

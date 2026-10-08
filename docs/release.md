@@ -1,126 +1,183 @@
 # Releasing kabane
 
-Kabane ships as one npm package, `kabane`, whose bin needs Bun at runtime. This is the
-maintainer's runbook for cutting a release. Publishing, tagging and the GitHub release are
-**MANUAL**: an agent may run every step up to the smoke test and must never run
-`npm publish`, `npm login`, or push a tag.
+Kabane ships as one npm package, `kabane`, requiring Bun at runtime. A release is
+**human-triggered**: agents must never publish, log in, create/push tags, run a
+publish-capable workflow, or configure npm/GitHub release settings. Nonpublishing local
+verification and installed smoke are safe with the disposable homes described below.
 
-## What gets published
+The implementation is committed; the additional review was stopped at the maintainer's
+request without a release/update verdict. No release version is selected by this work.
+Live environment protection, trusted publishing, provenance and immutable-release behavior
+remain unverified until a human performs the approved release.
 
-`bun run build` (`scripts/build.ts`) writes the package into `packages/cli/dist`, which is
-the directory `npm pack` and `npm publish` run in:
+## Package and version
 
-| Path | What it is |
-|---|---|
-| `bin/kabane.js` | the CLI, `bun build --target bun` from `packages/cli/index.ts`, every `@cabane/*` workspace package and every pure-JS dependency inlined, `#!/usr/bin/env bun` kept |
-| `templates/dispatch/` | the copilot's dispatch skill template, read from disk at runtime (`../templates/dispatch` from the bin) |
-| `package.json` | generated, see below |
-| `README.md`, `LICENSE` | the repository's own |
+`packages/cli/package.json` is the only release version. Its development manifest stays
+private, with a source bin and `workspace:*` dependencies. `scripts/build.ts` generates
+`packages/cli/dist` containing:
 
-Three dependencies stay external and are listed as exact `dependencies`:
+- `bin/kabane.js`: Bun bundle, workspace and pure-JS dependencies inlined, Bun shebang kept.
+- `templates/dispatch/`, repository README and LICENSE, and generated package.json.
+- Exactly pinned external `@opentui/core`, `@opentui/react` and `react`, taken from the
+  board manifest. OpenTUI installs its platform-native optional dependency; React must not
+  be duplicated inside the bundle. No published dependency may name `@cabane/*`.
 
-- `@opentui/core` loads its native renderer, `@opentui/core-<platform>-<arch>`, at runtime
-  from an optional dependency, so it has to be installed per machine by the package manager.
-- `@opentui/react` and `react`: `@opentui/react` imports `react` itself, and a second React
-  bundled beside it would break every hook, so both stay external with it.
+The build carries CLI name/version/description/keywords/license/repository/homepage/bugs,
+adds type/bin/files/dependencies, and derives the minimum Bun engine from `.bun-version`.
+CLI `--version` and stdio MCP identify this version. Do not publish the private source
+package or rebuild/repack after choosing a verified archive.
 
-Their versions are read from `packages/board/package.json`, which must pin them exactly;
-the build fails otherwise. Bumping OpenTUI or React is a change there, nothing else.
+## Human-owned setup (before any publishing run)
 
-### Why a generated manifest
+1. Review the proposed exact action pins in `.github/workflows/release.yml`, Node
+   **24.21.0** and npm **12.2.0**. These versions/pins were checked against official
+   distribution/registry/GitHub refs; availability is not approval to execute a release.
+   Keep Bun **1.4.0** from `.bun-version`. npm trusted publishing requires CLI >=11.5.1
+   and Node >=22.14.0; npm12.2.0 also requires a sufficiently recent Node24.
+2. Configure GitHub environment **`npm-release`**, required reviewers and an appropriate
+   self-review/bypass policy. A solo maintainer needs a reviewer arrangement that can
+   actually approve their run. Restrict allowed release refs; protect tags from movement.
+   Enable repository **release immutability**.
+3. Configure the npm trusted publisher for public package `kabane`: owner **davidpp**,
+   repository **kabane**, workflow filename **release.yml**, environment **npm-release**,
+   GitHub-hosted runners. Explicitly permit **direct `npm publish`**: current npm defaults
+   newly configured publishers to staged-publish permission only. No long-lived token
+   fallback is provided. Public package/repository are needed for automatic provenance.
+4. Only after checking those settings, set environment variable
+   **`RELEASE_SETUP_CONFIRMED=true`** in `npm-release`. This is a human assertion, not
+   programmatic proof that reviewers, tag protection, immutability or OIDC are configured.
+   `npm whoami` is not an OIDC permission check.
+5. Review compatibility and prepare notes. The pipeline compares the existing tag's commit
+   but does not authenticate a maintainer signing key; signed-tag review is a human step.
 
-`packages/cli/package.json` stays the development manifest: `private: true`, the source
-entry (`index.ts`), and `workspace:*` dependencies on the `@cabane/*` packages. The npm name
-`cabane` and the `@cabane` scope belong to other people, so the published manifest must name
-none of those packages, or an install would resolve someone else's code. Making the CLI
-package itself publishable with a `prepack` build would mean rewriting its dependencies,
-entry and bin in place and back again around every pack; generating a separate manifest in
-the output directory keeps both honest and leaves nothing to restore. The build carries
-`name`, `version`, `description`, `keywords`, `license`, `repository`, `homepage` and `bugs`
-over from `packages/cli/package.json`, takes `engines.bun` from `.bun-version`, and adds
-`type`, `bin`, `files` and the external `dependencies`. `private: true` on the CLI package
-means `npm publish` run from `packages/cli` by mistake refuses.
+No script or agent performs these setup steps. An accidentally auto-created unprotected
+GitHub environment is not authorization: the publication script also requires confirmed
+setup, a matching tag-ref event/source SHA, OIDC request permissions and no inherited npm
+publish credentials.
 
-## Steps
+## Human version and tag selection
 
-### 1. Version
+Choose the version in `packages/cli/package.json`; do not change the private root version
+or reset data. Commit the reviewed implementation and selected release version, then a
+human creates/pushes the signed existing tag:
 
-Set `version` in `packages/cli/package.json`. It is the only version the package has:
-`kabane --version` and the MCP server's `serverInfo` read it. Commit that alone, as
-`release: kabane <version>`.
+```bash
+# HUMAN ONLY, after choosing/reviewing the version and source commit:
+git tag -s v<version> -m "kabane <version>"
+git push origin v<version>
+```
 
-### 2. Gate
+The workflow never creates or pushes a missing tag. Package version, tag suffix, peeled
+remote tag commit, checkout HEAD, event source SHA and installed CLI/MCP identity must
+agree. Publishing a stable version must advance npm `latest` rather than downgrade it.
+An already published name/version cannot be replaced, even after npm unpublish.
+
+## Verification without publishing
+
+Ordinary local gate:
 
 ```bash
 bun install --frozen-lockfile
 bun run check && bun run typecheck && bun run test
-```
-
-### 3. Build and smoke
-
-```bash
 bun run smoke
 ```
 
-It builds `packages/cli/dist`, runs `npm pack`, checks the tarball names no `@cabane/*`
-package and carries no source map or absolute path of the machine, installs it with
-`bun add -g` into a throwaway HOME, BUN_INSTALL and KABANE_HOME under the system temp
-directory, then runs `kabane --version`, `--help`, `init`, `add` and `list` in a temp git
-repo and an MCP `initialize` handshake over `kabane mcp`, which must also exit when its
-stdin closes. Expected: `smoke: passed`. The CI gate runs the same script.
+Default smoke builds/packs a temporary archive, checks safe members, published identity,
+exact externals, workspace dependencies, maps and machine-path leaks, installs into
+throwaway HOME/Bun global directories/cache/KABANE_HOME, then exercises installed CLI
+and stdio MCP, including concise queue/receipt/context checks and stdin-close exit.
+Installation preserves the invoking user's registry/release-age settings; it does not
+null out npmrc or weaken age/integrity policy. It does not open the board.
 
-The smoke does not open the board. Once per release, open it from the installed tarball
-by hand, in a real terminal, against a throwaway home:
-
-```bash
-cd "$(mktemp -d)" && git init -q
-npm pack --pack-destination . <your clone>/packages/cli/dist
-HOME=$PWD BUN_INSTALL=$PWD/.bun KABANE_HOME=$PWD/.kabane KABANE_HARNESSES= \
-  bun add -g ./kabane-<version>.tgz
-HOME=$PWD KABANE_HOME=$PWD/.kabane KABANE_HARNESSES= ./.bun/bin/kabane
-```
-
-Expected: the first-run card, then setup, then the board; `q` quits.
-
-### 4. Publish (**MANUAL**)
-
-Publish the `dist` the smoke just built and tested; do not rebuild in between.
+A retained nonpublishing archive and local byte round trip:
 
 ```bash
-cd packages/cli/dist
-npm pack --dry-run            # the file list: bin/, templates/, README.md, LICENSE, package.json
-npm whoami                    # the account that will publish `kabane`
-npm publish --access public
-npm view kabane version       # the version from step 1
+work=$(mktemp -d)
+bun scripts/release.ts prepare "$work/release"
+bun scripts/release.ts verify "$work/release"
+bun scripts/smoke.ts --artifact-dir "$work/release"
+# Existing archive only (no build/pack), for additional local checks:
+bun scripts/smoke.ts --tarball "$work/release/kabane-<version>.tgz"
 ```
 
-### 5. Tag and GitHub release (**MANUAL**)
+Preparation builds/packs **once** and retains archive, `manifest.json`, `SHA256SUMS` and
+`release-notes.md`. The manifest records commit, tag (or null), dirty-source status,
+Bun/npm versions, archive SHA256/SHA512 and notes SHA256. Dirty or branch artifacts can
+be checked but are nonpromotable. Remove your disposable directory afterward; preserve it
+on failure for investigation. Never substitute a rebuilt archive in partial-release recovery.
+
+GitHub's **verified release** workflow is `workflow_dispatch` only; `publish` defaults
+false. Branch verification is allowed. A human may run nonpublishing verification on an
+existing tag, inspect the retained Actions artifact and review its notes/checksums. It
+executes no `npm publish` (including `--dry-run`), draft/tag/release writes or OIDC exchange.
+This tests artifact preparation/transfer/install, not publisher authentication.
+
+## Human publishing run
+
+Dispatch on the **existing `v<version>` tag ref**, with `publish=true` and reviewed public
+notes. Do not dispatch a branch and substitute a different checkout ref. The workflow:
+
+1. Frozen install and full gates on Linux; build/pack one release archive, inspect and
+   upload that immutable Actions artifact identity.
+2. Linux x64 and macOS arm64 jobs download **the same artifact ID**, independently verify
+   hashes, and install/drive CLI+MCP from that archive without another build/pack. No wider
+   platform or interactive-board support is claimed.
+3. The `npm-release` job waits for the configured human approval. Download **this run's
+   archive** and perform the real-terminal board check before approving; a prior dry-run
+   archive is not necessarily byte-identical to this run's archive.
+4. Revalidate original bytes, clean source, remote tag, registry version/integrity/latest and
+   release state. Prepare a draft with matching archive/manifest/checksum/notes using
+   `gh release create --verify-tag`; append only missing matching draft assets, never
+   overwrite remote assets.
+5. Publish the **archive path**, not dist, using npm OIDC; bounded registry readback confirms
+   integrity/stable-tag state. Publish the draft only afterward; verify final asset hashes
+   and immutability. Notes/title can still be edited on GitHub, so the reviewed notes file
+   is also an immutable asset. Checksums establish bytes, not independently trusted origin.
+
+Only publication has GitHub contents-write/id-token-write permissions. Its package-wide
+concurrency group does not cancel an in-flight publication and is separate from superseding
+CI gates. Pending runs can be replaced; external publishers are not locked by Actions.
+Tag protection and human setup remain important because the remote services are not an
+atomic transaction.
+
+### Manual real-terminal smoke
+
+Use the publishing run's downloaded archive in a disposable home. Keep registry/age policy;
+if blocked, inspect it rather than bypassing it. The package manager must install the
+supported global bin; do not synthesize an internal-bin fallback.
 
 ```bash
-git tag -s v<version> -m "kabane <version>"
-git push origin v<version>
-gh release create v<version> --title "kabane <version>" --generate-notes
+# HUMAN, in a real terminal; replace the archive path with this run's original bytes:
+work=$(mktemp -d)
+cd "$work" && git init -q
+HOME="$work/home" BUN_INSTALL="$work/bun" \
+  BUN_INSTALL_GLOBAL_DIR="$work/bun/install/global" BUN_INSTALL_BIN="$work/bun/bin" \
+  KABANE_HOME="$work/tracker" KABANE_HARNESSES= \
+  bun add -g /absolute/path/to/kabane-<version>.tgz
+HOME="$work/home" KABANE_HOME="$work/tracker" KABANE_HARNESSES= "$work/bun/bin/kabane"
 ```
 
-### 6. Check the published package
+Expect first-run card/setup/board; `q` quits. This command is not an agent authorization.
 
-From a shell with no clone on its PATH:
+## Duplicate and partial-release recovery
 
-```bash
-bun add -g kabane@<version>
-kabane --version
-```
+- Identical npm version plus immutable matching GitHub release: verified no-op, no writes.
+- Matching draft: verify each existing asset; add only missing assets, never clobber.
+- npm version already exists with matching original bytes/stable-tag state: finish GitHub
+  only, never republish. A later `latest` is not rolled back during older-release recovery.
+- Any source/tag/version/hash/asset conflict, unknown state or unprotected final release:
+  nonzero failure; investigate manually. Never unpublish/delete/move tags automatically.
+- Publisher timeout/error: read committed state with a bounded retry, **no blind publish
+  retry**. npm success followed by GitHub failure leaves a recoverable draft and nonzero
+  partial result. Rerun failed jobs while the successful producer's original artifact is
+  retained. If unavailable, recover the original hash-verified bytes from retained draft
+  assets, or stop; rebuilding the same source does not recover its artifact identity.
 
-A release-age guard (`minimumReleaseAge` in `~/.bunfig.toml`, `min-release-age` in
-`~/.npmrc`) hides a version for its first days, so on a machine that has one this step
-fails until the version is old enough. That is the guard working, not the release.
+A live human release must verify trusted-publisher token exchange, npm provenance and
+integrity, protected-environment behavior, immutable GitHub assets/tag/attestation and
+actual supported-platform execution. Local mocks/static workflow validation do not prove
+those properties.
 
-## First release only
-
-- The repository is `github.com/davidpp/kabane` before the first publish: the manifest's
-  `repository`, `homepage` and `bugs` point there, and npm resolves the README's relative
-  links against `repository`.
-- Push the release-prep commit before publishing, so the README's links on npm land on
-  guides that describe the installable package.
-- `docs/getting-started.md` and `docs/deploy.md` lead with `bun add -g kabane`. That
-  command will return 404 until this first publish completes; verify it after publishing.
+Official sources and pinned-Bun proof are recorded in
+[`release-update-plan.md`](release-update-plan.md). Binary updates/data rollback are
+separate procedures; see [updating](getting-started.md#updating).

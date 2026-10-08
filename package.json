@@ -22,19 +22,21 @@
 		"knip": "knip-bun",
 		"duplicates": "jscpd --config .jscpd.json --no-tips packages scripts",
 		"quality": "bun run knip && bun run duplicates",
-		"typecheck": "bun run --filter '*' typecheck",
-		"test": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board && bun run --cwd packages/worker test",
-		"test:bun": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board",
+		"typecheck": "bun run --filter '*' typecheck && tsc --noEmit -p scripts",
+		"test": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board scripts && bun run --cwd packages/worker test",
+		"test:bun": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board scripts",
 		"test:worker": "bun run --cwd packages/worker test",
 		"clean": "bun run --filter '*' clean"
 	},
 	"devDependencies": {
+		"@types/bun": "1.4.0",
 		"jscpd": "5.3.0",
 		"knip": "6.37.0",
 		"lefthook": "2.1.12",
 		"oxfmt": "0.68.0",
 		"oxlint": "1.83.0",
 		"oxlint-tsgolint": "7.0.2002",
-		"typescript": "5.9.3"
+		"typescript": "5.9.3",
+		"zod": "3.25.76"
 	}
 }

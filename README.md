@@ -42,6 +42,12 @@ cd packages/cli && bun link                      # `kabane` on PATH, pointing at
 ```
 
 Releases are cut by following [`docs/release.md`](docs/release.md).
+For a positively verified hoisted Bun global registry install, `kabane update --check`
+reports a stable candidate (installation policy is unverified), and `kabane update`
+explicitly checks Bun policy and verifies an exact installation. Updates stay within
+major, or minor for `0.x`; source links, local tarballs and unknown/missing-bin layouts
+refuse replacement. No startup check, tracker DB open or automatic MCP rewiring is added.
+See [updating and data compatibility](docs/getting-started.md#updating).
 
 ## Quick start
 

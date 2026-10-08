@@ -261,12 +261,45 @@ a silent UTC.
 ## Updating
 
 ```bash
-bun add -g kabane@latest
+kabane update --check        # metadata-only candidate, eligibility unknown/policy-unverified
+kabane update               # explicit policy preflight, exact install, owned-bin verification
 ```
 
-The database upgrades itself when it opens. If you upgrade Bun through a version manager
-(mise, asdf), the harness entries still point at the old Bun binary. Run
-`kabane mcp install --force` to re-point them.
+Supported: positively identified **hoisted Bun global registry installs**, including proven
+explicit global-directory overrides. Source `bun link`, development, local-tarball,
+other-manager and unknown/missing-global-bin layouts refuse mutation with manual guidance.
+No internal-bin/PATH fallback or link repair is performed. This is not a claim that every
+Bun isolated layout is broken; unverified layouts are simply outside this updater's support.
+
+Selection is registry `latest`, stable only, within the installed major; `0.x` stays within
+its minor. No historical fallback, prerelease/channel/force option, implicit downgrade or
+major/pre-1.0 minor jump. Crossing that boundary requires reviewing compatibility notes and
+choosing an explicit manual `bun add -g kabane@<version>`; do not overwrite a source link.
+Check and current/no-op results do **not** validate installation eligibility. Update uses
+Bun's exact-target policy-enforcing dry-run before installation; exact requests honor release
+age but bypass Bun's range-resolution stability heuristic. Metadata/runtime caches may be
+maintained; preflight can download/extract into external package-manager cache. No age,
+integrity, registry/proxy settings or user config are weakened. A configured Bun dry-run
+requests no installation and is conservatively refused by explicit update.
+
+No tracker config/DB is opened, migrated or deleted by check/update, and no startup/MCP
+network check or automatic harness rewiring is added. A manager failure, timeout, missing bin
+or mismatched installed version is nonzero and may have changed the executable partially;
+inspect the installation manually, without automatic rollback/repair.
+
+**Data compatibility is separate from installing the executable.** Before the first normal
+open of a release with schema changes, stop board/MCP and all other shared-data writers,
+read compatibility notes, and make a consistent backup of the **actual configured database**
+(including externally shared DBs), config and WAL state. Use SQLite backup or a closed,
+checkpointed DB; copying an arbitrary live main file alone is not a reliable backup. Normal
+commands may migrate on open. Reinstalling an older binary is not database rollback; after
+a migration, only a compatible binary or a coordinated backup restore is safe. The updater
+does not orchestrate backup/restore/downgrade.
+
+Restart running board/MCP sessions after a verified update. Source-pinned harness commands
+still point at source and need deliberate manual rewiring if desired. If you separately
+upgrade Bun through mise/asdf, existing harness entries can still point at the old Bun;
+review and explicitly run `kabane mcp install --force` when you want to re-point them.
 
 ## Starting over
 

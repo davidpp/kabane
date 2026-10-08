@@ -22,6 +22,7 @@ import { open } from "./commands/open";
 import { search } from "./commands/search";
 import { show } from "./commands/show";
 import { sync } from "./commands/sync";
+import { update } from "./commands/update";
 import { upstream } from "./commands/upstream";
 import { resolveHome } from "./config";
 import { type Command, type Ctx, openContext } from "./context";
@@ -45,6 +46,7 @@ export const COMMANDS: Command[] = [
 	sync,
 	board,
 	mcp,
+	update,
 ];
 
 export const helpText = (): string =>

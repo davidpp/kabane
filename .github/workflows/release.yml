@@ -1,0 +1,121 @@
+name: verified release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish after protected-environment approval (existing stable tag ref only)"
+        type: boolean
+        default: false
+      notes:
+        description: "Review these public release notes before approving publication"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      # Proposed exact official pins; maintainer review is required before a live release.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - run: npm install --global npm@12.2.0 --ignore-scripts
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run typecheck
+      - run: bun run test
+      - name: Build and pack the retained artifact once
+        run: bun scripts/release.ts prepare "$RUNNER_TEMP/release"
+        env:
+          RELEASE_PUBLISH: ${{ inputs.publish }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+      - id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: kabane-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/release/*.tgz
+            ${{ runner.temp }}/release/manifest.json
+            ${{ runner.temp }}/release/SHA256SUMS
+            ${{ runner.temp }}/release/release-notes.md
+
+  installed-smoke:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - run: npm install --global npm@12.2.0 --ignore-scripts
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.artifact_id }}
+          path: ${{ runner.temp }}/release
+          merge-multiple: true
+      - run: bun scripts/release.ts verify "$RUNNER_TEMP/release"
+      - name: Install and drive exactly the downloaded archive (no build or pack)
+        run: bun scripts/smoke.ts --artifact-dir "$RUNNER_TEMP/release"
+
+  publish:
+    if: inputs.publish && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'davidpp/kabane'
+    needs: [prepare, installed-smoke]
+    runs-on: ubuntu-24.04
+    environment: npm-release
+    concurrency:
+      group: release-kabane-stable
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - run: npm install --global npm@12.2.0 --ignore-scripts
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.artifact_id }}
+          path: ${{ runner.temp }}/release
+          merge-multiple: true
+      - run: bun scripts/release.ts verify "$RUNNER_TEMP/release"
+      # No NODE_AUTH_TOKEN/npm secret: OIDC only. Setup confirmation is a human
+      # assertion, not proof of environment protection or a trusted-publisher exchange.
+      - name: Complete the verified exact-archive publication
+        run: bun scripts/release.ts publish "$RUNNER_TEMP/release"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PUBLISH: ${{ inputs.publish }}
+          RELEASE_SETUP_CONFIRMED: ${{ vars.RELEASE_SETUP_CONFIRMED }}

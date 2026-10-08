@@ -16,13 +16,14 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
-	readFileSync,
 	rmSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { z } from "zod";
 import { ContextPageSchema } from "../packages/core/context-output";
 import { build, DIST } from "./build";
+import { inspectArchive, verifyReleaseFiles } from "./release-artifact";
 
 const ROOT = resolve(import.meta.dir, "..");
 const WORK = mkdtempSync(join(tmpdir(), "kabane-smoke-"));
@@ -68,6 +69,10 @@ const isolated: NodeJS.ProcessEnv = {
 	HOME,
 	XDG_CONFIG_HOME: join(HOME, ".config"),
 	BUN_INSTALL,
+	BUN_INSTALL_GLOBAL_DIR: join(BUN_INSTALL, "install/global"),
+	BUN_INSTALL_BIN: join(BUN_INSTALL, "bin"),
+	BUN_INSTALL_CACHE_DIR: join(WORK, "cache"),
+	BUN_RUNTIME_TRANSPILER_CACHE_PATH: join(WORK, "transpile-cache"),
 	KABANE_HOME,
 	KABANE_HARNESSES: "",
 	PATH: `${join(BUN_INSTALL, "bin")}:${process.env.PATH ?? ""}`,
@@ -78,44 +83,32 @@ const pack = (): string => {
 		["npm", "pack", "--json", "--pack-destination", WORK],
 		DIST,
 	);
-	const [packed] = JSON.parse(ran.stdout) as {
-		filename: string;
-		size: number;
-	}[];
-	if (!packed) return fail("npm pack printed no tarball", ran);
+	const parsed = z
+		.array(
+			z.object({
+				filename: z.string().regex(/^kabane-\d+\.\d+\.\d+\.tgz$/),
+				size: z.number().int().positive(),
+			}),
+		)
+		.length(1)
+		.safeParse(JSON.parse(ran.stdout));
+	const packed = parsed.success ? parsed.data[0] : undefined;
+	if (!packed) return fail("npm pack printed no valid tarball", ran);
 	pass(`packed ${packed.filename}, ${(packed.size / 1024).toFixed(0)} kB`);
 	return join(WORK, packed.filename);
 };
 
-const filesUnder = (dir: string): string[] =>
-	readdirSync(dir, { recursive: true, withFileTypes: true })
-		.filter((entry) => entry.isFile())
-		.map((entry) => join(entry.parentPath, entry.name));
-
-// The tarball must install nobody else's code and carry nothing of the machine that built it.
-const inspect = (tarball: string): void => {
-	mkdirSync(UNPACKED);
-	runOk(["tar", "-xzf", tarball, "-C", UNPACKED], WORK);
-	const files = filesUnder(join(UNPACKED, "package"));
-	if (
-		readFileSync(join(UNPACKED, "package/package.json"), "utf8").includes(
-			"@cabane/",
-		)
-	)
-		fail("the published package.json names a @cabane/* package");
-	const maps = files.filter((file) => file.endsWith(".map"));
-	if (maps.length > 0) fail(`source maps in the tarball: ${maps.join(", ")}`);
-	const leaks = files.filter((file) => {
-		const text = readFileSync(file, "utf8");
-		return text.includes(ROOT) || text.includes(homedir());
-	});
-	if (leaks.length > 0)
-		fail(
-			`absolute paths of this machine in ${leaks.map((f) => relative(UNPACKED, f)).join(", ")}`,
-		);
+const inspect = async (tarball: string): Promise<string> => {
+	const result = await inspectArchive(tarball, UNPACKED, [ROOT, homedir()]);
+	if (!result.ok) return fail(result.error.message);
+	const count = readdirSync(join(UNPACKED, "package"), {
+		recursive: true,
+		withFileTypes: true,
+	}).filter((file) => file.isFile()).length;
 	pass(
-		`tarball holds ${files.length} files, no @cabane/* dependency, no machine paths`,
+		`tarball holds ${count} files, verified identity/exact externals, no unsafe member/map/machine path`,
 	);
+	return result.value.version;
 };
 
 const install = (tarball: string): void => {
@@ -364,19 +357,46 @@ const checkMcp = async (version: string, taskId: string): Promise<void> => {
 	);
 };
 
-await build();
-pass("built");
-const { version } = JSON.parse(
-	readFileSync(join(DIST, "package.json"), "utf8"),
-) as {
-	version: string;
-};
-const tarball = pack();
-inspect(tarball);
+const [mode, input, ...extra] = process.argv.slice(2);
+if (
+	(mode !== undefined && mode !== "--tarball" && mode !== "--artifact-dir") ||
+	(mode !== undefined && !input) ||
+	extra.length
+)
+	fail(
+		"usage: bun run smoke [--tarball <existing.tgz> | --artifact-dir <retained-release>]",
+	);
+let tarball: string;
+let expectedVersion: string | undefined;
+let artifactDir: string | undefined;
+if (mode === "--artifact-dir" && input) {
+	artifactDir = resolve(input);
+	const verified = verifyReleaseFiles(artifactDir);
+	const record = verified.ok ? verified.value : fail(verified.error.message);
+	if (process.env.GITHUB_SHA && record.commit !== process.env.GITHUB_SHA)
+		fail("artifact/event source commit mismatch");
+	tarball = join(artifactDir, record.filename);
+	expectedVersion = record.version;
+	pass("retained artifact hashes verified; no build/pack");
+} else if (mode === "--tarball" && input) {
+	tarball = resolve(input);
+	pass("using existing archive; no build/pack");
+} else {
+	await build();
+	pass("built");
+	tarball = pack();
+}
+const version = await inspect(tarball);
+if (expectedVersion && version !== expectedVersion)
+	fail("archive/release manifest version mismatch");
 install(tarball);
 mkdirSync(REPO);
 runOk(["git", "init", "-q"], REPO, isolated);
 const contextId = checkCommands(version);
 await checkMcp(version, contextId);
+if (artifactDir) {
+	const verified = verifyReleaseFiles(artifactDir);
+	if (!verified.ok) fail("retained artifact changed during installed smoke");
+}
 rmSync(WORK, { recursive: true, force: true });
 console.error("smoke: passed");
