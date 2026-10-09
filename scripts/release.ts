@@ -30,19 +30,20 @@ export const prepareRelease = async (
 	ref?: string,
 	expectedCommit?: string,
 	notes?: string,
+	root = ROOT,
 ): Promise<Result<string>> => {
 	try {
 		const source = z
 			.object({ name: z.literal("kabane"), version: z.string() })
 			.safeParse(
 				JSON.parse(
-					readFileSync(join(ROOT, "packages/cli/package.json"), "utf8"),
+					readFileSync(join(root, "packages/cli/package.json"), "utf8"),
 				),
 			);
 		if (!source.success) return err(new Error("Invalid source CLI manifest."));
-		const commit = await command(["git", "rev-parse", "HEAD"]);
-		const status = await command(["git", "status", "--porcelain"]);
-		const npm = await command(["npm", "--version"]);
+		const commit = await command(["git", "rev-parse", "HEAD"], root);
+		const status = await command(["git", "status", "--porcelain"], root);
+		const npm = await command(["npm", "--version"], root);
 		if (!commit.ok || !status.ok || !npm.ok)
 			return err(new Error("Could not establish source/tool identity."));
 		if (expectedCommit && commit.value !== expectedCommit)
@@ -52,7 +53,7 @@ export const prepareRelease = async (
 			: null;
 		if (tag !== null && tag !== `v${source.data.version}`)
 			return err(new Error("Tag/source version mismatch."));
-		const built = await command([process.execPath, "scripts/build.ts"]);
+		const built = await command([process.execPath, "scripts/build.ts"], root);
 		if (!built.ok) return built;
 		mkdirSync(output);
 		const packed = await command(
@@ -64,7 +65,7 @@ export const prepareRelease = async (
 				"--pack-destination",
 				output,
 			],
-			join(ROOT, "packages/cli/dist"),
+			join(root, "packages/cli/dist"),
 		);
 		if (!packed.ok) return packed;
 		const pack = z
@@ -79,7 +80,7 @@ export const prepareRelease = async (
 		const inspected = await inspectArchive(
 			archive,
 			join(output, "inspection"),
-			[ROOT, homedir()],
+			[root, homedir()],
 		);
 		if (!inspected.ok || inspected.value.version !== source.data.version)
 			return err(

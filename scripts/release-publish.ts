@@ -10,6 +10,7 @@ import {
 	sha256,
 	verifyReleaseFiles,
 } from "./release-artifact";
+import { runReleaseInteractive } from "./release-process";
 
 export type RegistryState = {
 	existingIntegrity: string | null;
@@ -30,7 +31,7 @@ export type PublishOperations = {
 	finalizeDraft: () => Promise<Result<void>>;
 };
 const failure = (message: string): Result<never> => err(new Error(message));
-const compareVersion = (a: string, b: string): number => {
+export const compareVersion = (a: string, b: string): number => {
 	const aa = a.split(".").map(Number),
 		bb = b.split(".").map(Number);
 	for (const i of [0, 1, 2]) {
@@ -206,28 +207,38 @@ const GitHubRecord = z.object({
 	assets: z.array(z.object({ name: z.string() })),
 });
 
-/** Real operations are wired only after authorization. Local tests use completeRelease mocks. */
-export const publishRelease = async (
+/** CI uses OIDC-only configuration; the explicit local command keeps human npm credentials. */
+const publishVerifiedRelease = async (
 	directory: string,
 	originalEnv: NodeJS.ProcessEnv,
+	mode: "oidc" | "local",
 ): Promise<Result<string>> => {
 	const verified = verifyReleaseFiles(directory);
 	if (!verified.ok) return verified;
 	const record = verified.value;
-	const allowed = authorizePublication(record, originalEnv);
-	if (!allowed.ok) return allowed;
+	if (mode === "oidc") {
+		const allowed = authorizePublication(record, originalEnv);
+		if (!allowed.ok) return allowed;
+	} else if (originalEnv.GITHUB_ACTIONS === "true") {
+		return failure(
+			"Local publication is human-run, not an alternative CI authentication path.",
+		);
+	}
 	let work: string | undefined;
 	try {
 		work = mkdtempSync(join(tmpdir(), "kabane-publication-"));
-		const userConfig = join(work, "npmrc"),
-			globalConfig = join(work, "global-npmrc");
-		writeFileSync(userConfig, "registry=https://registry.npmjs.org/\n");
-		writeFileSync(globalConfig, "");
-		const env = {
-			...originalEnv,
-			NPM_CONFIG_USERCONFIG: userConfig,
-			NPM_CONFIG_GLOBALCONFIG: globalConfig,
-		};
+		let env = originalEnv;
+		if (mode === "oidc") {
+			const userConfig = join(work, "npmrc"),
+				globalConfig = join(work, "global-npmrc");
+			writeFileSync(userConfig, "registry=https://registry.npmjs.org/\n");
+			writeFileSync(globalConfig, "");
+			env = {
+				...originalEnv,
+				NPM_CONFIG_USERCONFIG: userConfig,
+				NPM_CONFIG_GLOBALCONFIG: globalConfig,
+			};
+		}
 		const call = (argv: string[], cwd = ROOT, timeout = 120_000) =>
 			runUpdateProcess(argv, cwd, env, timeout);
 		const assets = [
@@ -479,21 +490,21 @@ export const publishRelease = async (
 						);
 			},
 			publishArchive: async () => {
-				const result = await call(
-					[
-						"npm",
-						"publish",
-						join(directory, record.filename),
-						"--access",
-						"public",
-						"--tag",
-						"latest",
-						"--ignore-scripts",
-						"--registry",
-						"https://registry.npmjs.org/",
-					],
-					work,
-				);
+				const argv = [
+					"npm",
+					"publish",
+					join(directory, record.filename),
+					"--access",
+					"public",
+					"--tag",
+					"latest",
+					"--ignore-scripts",
+					"--registry",
+					"https://registry.npmjs.org/",
+				];
+				if (mode === "local")
+					return runReleaseInteractive(argv, work ?? ROOT, env);
+				const result = await call(argv, work);
 				return result.ok && result.value.code === 0
 					? ok(undefined)
 					: failure(
@@ -532,3 +543,13 @@ export const publishRelease = async (
 		if (work) rmSync(work, { recursive: true, force: true });
 	}
 };
+
+export const publishRelease = (
+	directory: string,
+	env: NodeJS.ProcessEnv,
+): Promise<Result<string>> => publishVerifiedRelease(directory, env, "oidc");
+
+export const publishLocalRelease = (
+	directory: string,
+	env: NodeJS.ProcessEnv,
+): Promise<Result<string>> => publishVerifiedRelease(directory, env, "local");

@@ -12,14 +12,14 @@ import { z } from "zod";
 import { runUpdateProcess } from "../packages/cli/src/update-process";
 import { err, ok, type Result } from "../packages/core/result";
 
-const Version = z
+export const ReleaseVersionSchema = z
 	.string()
 	.max(64)
 	.regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
 export const PublishManifestSchema = z
 	.object({
 		name: z.literal("kabane"),
-		version: Version,
+		version: ReleaseVersionSchema,
 		private: z.literal(false).optional(),
 		type: z.literal("module"),
 		bin: z.object({ kabane: z.literal("bin/kabane.js") }),
@@ -30,16 +30,16 @@ export const PublishManifestSchema = z
 		}),
 		dependencies: z
 			.object({
-				"@opentui/core": Version,
-				"@opentui/react": Version,
-				react: Version,
+				"@opentui/core": ReleaseVersionSchema,
+				"@opentui/react": ReleaseVersionSchema,
+				react: ReleaseVersionSchema,
 			})
 			.strict(),
 	})
 	.passthrough();
 export const ReleaseManifestSchema = z
 	.object({
-		version: Version,
+		version: ReleaseVersionSchema,
 		commit: z.string().regex(/^[a-f0-9]{40}$/),
 		tag: z
 			.string()
@@ -50,8 +50,8 @@ export const ReleaseManifestSchema = z
 		sha256: z.string().regex(/^[a-f0-9]{64}$/),
 		integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+=*$/),
 		notesSha256: z.string().regex(/^[a-f0-9]{64}$/),
-		bun: Version,
-		npm: Version,
+		bun: ReleaseVersionSchema,
+		npm: ReleaseVersionSchema,
 	})
 	.strict();
 export type ReleaseManifest = z.infer<typeof ReleaseManifestSchema>;

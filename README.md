@@ -41,7 +41,9 @@ cd kabane && bun install
 cd packages/cli && bun link                      # `kabane` on PATH, pointing at the clone
 ```
 
-Releases are cut by following [`docs/release.md`](docs/release.md).
+For a human-run local release, use `bun run release:local prepare --version <version>`,
+then authenticate to npm and resume with `bun run release:local publish --version <version>`.
+See [`docs/release.md`](docs/release.md) for retained artifacts, recovery and the optional Actions route.
 For a positively verified hoisted Bun global registry install, `kabane update --check`
 reports a stable candidate (installation policy is unverified), and `kabane update`
 explicitly checks Bun policy and verifies an exact installation. Updates stay within

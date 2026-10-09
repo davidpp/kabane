@@ -10,6 +10,59 @@ request without a release/update verdict. No release version is selected by this
 Live environment protection, trusted publishing, provenance and immutable-release behavior
 remain unverified until a human performs the approved release.
 
+## Local release (human-run)
+
+You can release from your computer without an Actions environment, npm trusted publisher,
+or OIDC. Use a clean `main` checkout with this implementation committed and pushed. GitHub
+CLI must already be authenticated (`gh auth login` if needed), with repository admin access
+when enabling release immutability. Choose a new stable version, for example:
+
+```bash
+bun run release:local prepare --version 0.1.1
+```
+
+This command updates **only** the CLI version and lockfile, commits those files, runs
+check/typecheck/test, builds/packs **once**, validates the archive and runs the installed
+CLI/MCP smoke on those bytes. It retains the original archive, manifest, checksums, release
+notes and verification record under gitignored `.releases/0.1.1/`. Default notes contain
+recent commit subjects for review; provide `--notes-file /path/to/reviewed-notes.md` during
+fresh preparation to supply your own public notes.
+
+After verification it enables GitHub release immutability if disabled, creates an annotated
+`v0.1.1` tag (honoring configured Git signing), and atomically pushes main plus that tag.
+It never moves an existing tag. A configured signing key may require its own authentication.
+**Preparation does not publish, run npm login, replace your installed Kabane, or open tracker
+config/data.** These source/tag/settings writes are authorization granted by the human
+running the command; agents must not execute the release flow against real accounts.
+
+Review the retained notes and perform the real-terminal board check below using that archive,
+then authenticate to npm and explicitly resume:
+
+```bash
+npm login
+bun run release:local publish --version 0.1.1
+```
+
+Publication uses your local npm configuration/authentication, including interactive npm
+2FA prompts. It refuses a missing/unverified artifact, changed source/tool versions, moved
+remote tag, disabled immutability, conflicting assets or registry bytes. It creates the
+matching GitHub draft/assets, publishes the exact retained tarball once, verifies registry
+integrity/latest, then finalizes and verifies the immutable GitHub release. **It does not
+rerun gates, build or pack.** Local publication does not claim GitHub Actions OIDC provenance.
+
+Rerun `prepare` for the same untouched prepared source to finish a failed setting/tag/push
+step without rerunning successful gates/smoke or rebuilding. Rerun `publish` for matching
+npm-success/GitHub-failure state to complete GitHub only. An identical completed release
+is a verified no-op. Never delete the archive and rebuild after an ambiguous publication.
+A failed gate/version commit may leave local source changes: inspect/fix them deliberately,
+not by stashing/resetting unrelated work. A `.releases/<version>.lock` prevents overlapping
+local commands on this checkout; investigate a stale lock before removing it. It is not a
+cross-machine lock against other publishers.
+
+The `.releases/` directory is deliberately retained, not automatically cleaned up. Keep the
+four original public assets for recovery; remove local artifacts only after a verified
+successful release and an intentional retention decision.
+
 ## Package and version
 
 `packages/cli/package.json` is the only release version. Its development manifest stays
@@ -27,7 +80,7 @@ adds type/bin/files/dependencies, and derives the minimum Bun engine from `.bun-
 CLI `--version` and stdio MCP identify this version. Do not publish the private source
 package or rebuild/repack after choosing a verified archive.
 
-## Human-owned setup (before any publishing run)
+## Human-owned Actions setup (optional; before workflow publishing)
 
 1. Review the proposed exact action pins in `.github/workflows/release.yml`, Node
    **24.21.0** and npm **12.2.0**. These versions/pins were checked against official
@@ -50,16 +103,19 @@ package or rebuild/repack after choosing a verified archive.
 5. Review compatibility and prepare notes. The pipeline compares the existing tag's commit
    but does not authenticate a maintainer signing key; signed-tag review is a human step.
 
-No script or agent performs these setup steps. An accidentally auto-created unprotected
+The local command needs none of the Actions environment/trusted-publisher setup above.
+It can enable release immutability when the human explicitly runs preparation. No agent
+performs account setup or executes release operations. An accidentally auto-created unprotected
 GitHub environment is not authorization: the publication script also requires confirmed
 setup, a matching tag-ref event/source SHA, OIDC request permissions and no inherited npm
 publish credentials.
 
 ## Human version and tag selection
 
-Choose the version in `packages/cli/package.json`; do not change the private root version
-or reset data. Commit the reviewed implementation and selected release version, then a
-human creates/pushes the signed existing tag:
+The local command handles version/lock commit and annotated tag creation/push. For the
+Actions route, choose the version in `packages/cli/package.json` and refresh its lockfile;
+do not change the private root version or reset data. Commit the reviewed implementation
+and selected release version, then a human creates/pushes the signed existing tag:
 
 ```bash
 # HUMAN ONLY, after choosing/reviewing the version and source commit:
