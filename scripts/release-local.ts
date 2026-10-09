@@ -3,24 +3,31 @@ import {
 	mkdirSync,
 	readFileSync,
 	rmSync,
+	renameSync,
 	writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { runUpdateProcess } from "../packages/cli/src/update-process";
 import { err, ok, type Result } from "../packages/core/result";
 import { prepareRelease } from "./release";
 import {
 	readArtifactFile,
-	ReleaseVersionSchema,
 	sha256,
 	verifyReleaseFiles,
 } from "./release-artifact";
-import { runReleaseInteractive } from "./release-process";
+import {
+	queryRelease as query,
+	runReleaseInteractive,
+} from "./release-process";
 import { compareVersion, publishLocalRelease } from "./release-publish";
+import {
+	SemanticBumpSchema,
+	StableReleaseVersionSchema as StableVersionSchema,
+	selectReleaseVersion,
+} from "./release-version";
 
 const ROOT = resolve(import.meta.dir, "..");
-export const LOCAL_RELEASE_HELP = `Usage: bun run release:local prepare|publish --version X.Y.Z [--notes-file path]
+export const LOCAL_RELEASE_HELP = `Usage: bun run release:local prepare|publish [--bump auto|major|minor|patch | --version X.Y.Z] [--notes-file path]
 
 prepare: require clean main, commit the version/lock, run the gates, build/pack once,
          smoke and retain .releases/X.Y.Z, enable GitHub release immutability,
@@ -29,18 +36,29 @@ prepare: require clean main, commit the version/lock, run the gates, build/pack 
 publish: require that verified original archive, use local npm authentication,
          publish once and complete the matching GitHub release. Never rebuild.
 
+prepare defaults to auto: inspect Conventional Commits since npm latest's tag/gitHead.
+Breaking -> major (minor during 0.x), feat -> minor, fix/perf -> patch.
+Maintenance-only or unclear history requires an explicit --bump. --bump major is
+an explicit decision to enter stable 1.0.0 during initial development.
+publish and repeated prepare reuse .releases/current.json, never bump again.
 Run npm login between phases if needed. Only prepare accepts --notes-file.
 Human-run only; agents must not execute these release operations.`;
 
-const StableVersionSchema = ReleaseVersionSchema.refine((version) =>
-	version.split(".").every((part) => Number.isSafeInteger(Number(part))),
-);
-
-type LocalReleaseArgs = {
-	mode: "prepare" | "publish";
-	version: string;
-	notesFile?: string;
-};
+const LocalReleaseArgsSchema = z
+	.object({
+		mode: z.enum(["prepare", "publish"]),
+		version: StableVersionSchema.optional(),
+		bump: z.enum(["auto", ...SemanticBumpSchema.options]).optional(),
+		notesFile: z.string().min(1).optional(),
+	})
+	.strict()
+	.refine(
+		(args) =>
+			!(args.version && args.bump) &&
+			!(args.mode === "publish" && args.notesFile),
+	);
+type LocalReleaseArgs = z.infer<typeof LocalReleaseArgsSchema>;
+type SelectedReleaseArgs = LocalReleaseArgs & { version: string };
 export const parseLocalReleaseArgs = (
 	argv: string[],
 ): Result<LocalReleaseArgs> => {
@@ -53,27 +71,19 @@ export const parseLocalReleaseArgs = (
 			!flag ||
 			!value ||
 			value.startsWith("--") ||
-			!["--version", "--notes-file"].includes(flag) ||
+			!["--version", "--bump", "--notes-file"].includes(flag) ||
 			flag in values
 		)
 			return err(new Error(LOCAL_RELEASE_HELP));
 		values[flag] = value;
 	}
-	const parsed = z
-		.object({
-			mode: z.enum(["prepare", "publish"]),
-			version: StableVersionSchema,
-			notesFile: z.string().min(1).optional(),
-		})
-		.safeParse({
-			mode,
-			version: values["--version"],
-			notesFile: values["--notes-file"],
-		});
-	return parsed.success &&
-		!(parsed.data.mode === "publish" && parsed.data.notesFile)
-		? ok(parsed.data)
-		: err(new Error(LOCAL_RELEASE_HELP));
+	const parsed = LocalReleaseArgsSchema.safeParse({
+		mode,
+		version: values["--version"],
+		bump: values["--bump"],
+		notesFile: values["--notes-file"],
+	});
+	return parsed.success ? ok(parsed.data) : err(new Error(LOCAL_RELEASE_HELP));
 };
 
 const Source = z
@@ -85,18 +95,117 @@ const Source = z
 	.passthrough();
 const Immutable = z.object({ enabled: z.boolean() });
 const fail = (message: string): Result<never> => err(new Error(message));
+const ReleaseChoiceSchema = z
+	.object({
+		version: StableVersionSchema,
+		selector: z.enum(["auto", ...SemanticBumpSchema.options, "version"]),
+		commit: z.string().regex(/^[a-f0-9]{40}$/),
+		state: z.enum(["preparing", "prepared", "published"]),
+	})
+	.strict();
+type ReleaseChoice = z.infer<typeof ReleaseChoiceSchema>;
 
-const query = async (
-	argv: string[],
+const readReleaseChoice = (root: string): Result<ReleaseChoice | undefined> => {
+	const path = join(root, ".releases/current.json");
+	if (!existsSync(path)) return ok(undefined);
+	try {
+		const file = readArtifactFile(path, 1024);
+		if (!file.ok) return file;
+		const choice = ReleaseChoiceSchema.safeParse(
+			JSON.parse(file.value.toString()),
+		);
+		return choice.success
+			? ok(choice.data)
+			: fail(
+					"Invalid .releases/current.json; inspect it before resuming. Original artifacts were not modified.",
+				);
+	} catch {
+		return fail(
+			"Could not decode .releases/current.json; inspect it before resuming.",
+		);
+	}
+};
+
+const saveReleaseChoice = (
+	root: string,
+	choice: ReleaseChoice,
+): Result<void> => {
+	const temporary = join(root, ".releases/current.json.tmp");
+	try {
+		writeFileSync(temporary, `${JSON.stringify(choice, null, 2)}\n`);
+		renameSync(temporary, join(root, ".releases/current.json"));
+		return ok(undefined);
+	} catch {
+		return fail(
+			"Could not retain the selected version in .releases/current.json; inspect source and artifacts before resuming.",
+		);
+	}
+};
+
+const resumeReleaseChoice = async (
+	args: LocalReleaseArgs,
+	current: ReleaseChoice,
+	head: string,
 	root: string,
 	env: NodeJS.ProcessEnv,
-): Promise<Result<string>> => {
-	const result = await runUpdateProcess(argv, root, env, 30_000);
-	return result.ok && result.value.code === 0
-		? ok(result.value.stdout.trim())
-		: fail(
-				`${argv[0]} ${argv[1] ?? ""} failed; check local authentication/configuration. No automatic retry or rollback.`,
+): Promise<Result<ReleaseChoice>> => {
+	if (
+		(args.version && args.version !== current.version) ||
+		(args.bump && args.bump !== "auto" && args.bump !== current.selector)
+	)
+		return fail(
+			"A different release is already selected; omit the selector to resume its original version. Never bump again during handoff.",
+		);
+	if (args.mode === "prepare" && current.commit !== head) {
+		if (
+			current.state !== "preparing" ||
+			existsSync(join(root, ".releases", current.version))
+		)
+			return fail(
+				"Source changed after preparation. Restore its original source/artifact; no replacement or new bump attempted.",
 			);
+		const reselected =
+			current.selector === "version"
+				? ok(current.version)
+				: await selectReleaseVersion(current.selector, root, env);
+		if (!reselected.ok) return reselected;
+		if (reselected.value !== current.version)
+			return fail(
+				"Source changes require a different bump. Inspect the pending choice before deliberately selecting a new release; no artifact was replaced.",
+			);
+	}
+	return ok({
+		...current,
+		commit: args.mode === "prepare" ? head : current.commit,
+	});
+};
+
+const resolveReleaseChoice = async (
+	args: LocalReleaseArgs,
+	head: string,
+	root: string,
+	env: NodeJS.ProcessEnv,
+): Promise<Result<ReleaseChoice>> => {
+	const saved = readReleaseChoice(root);
+	if (!saved.ok) return saved;
+	const current = saved.value;
+	if (current && (current.state !== "published" || args.mode === "publish"))
+		return resumeReleaseChoice(args, current, head, root, env);
+	if (args.mode === "publish" && !args.version)
+		return fail(
+			"No release has been selected. Run prepare first, or pass --version for an existing verified archive.",
+		);
+	const selected = args.version
+		? ok(args.version)
+		: await selectReleaseVersion(args.bump ?? "auto", root, env);
+	return selected.ok
+		? ok({
+				version: selected.value,
+				selector: args.version ? "version" : (args.bump ?? "auto"),
+				commit: head,
+				state: "preparing",
+			})
+		: selected;
 };
 
 const sourceState = async (
@@ -243,7 +352,7 @@ const verifyExistingTag = async (
 type PreparedSource = { commit: string; tagged: boolean; notes?: string };
 
 const prepareSource = async (
-	args: LocalReleaseArgs,
+	args: SelectedReleaseArgs,
 	root: string,
 	env: NodeJS.ProcessEnv,
 	directory: string,
@@ -394,13 +503,20 @@ const prepareArchive = async (
 };
 
 const prepare = async (
-	args: LocalReleaseArgs,
+	args: SelectedReleaseArgs,
 	root: string,
 	env: NodeJS.ProcessEnv,
 	directory: string,
+	choice: ReleaseChoice,
 ): Promise<Result<string>> => {
 	const source = await prepareSource(args, root, env, directory);
 	if (!source.ok) return source;
+	const saved = saveReleaseChoice(root, {
+		...choice,
+		commit: source.value.commit,
+		state: "preparing",
+	});
+	if (!saved.ok) return saved;
 	const archive = await prepareArchive(
 		args.version,
 		source.value,
@@ -433,8 +549,14 @@ const prepare = async (
 		env,
 	);
 	if (!pushed.ok) return pushed;
+	const completed = saveReleaseChoice(root, {
+		...choice,
+		commit: source.value.commit,
+		state: "prepared",
+	});
+	if (!completed.ok) return completed;
 	return ok(
-		`Verified archive retained at ${directory}. No npm publication attempted.\nReview release-notes.md and perform the manual board check, then:\n  npm login\n  bun run release:local publish --version ${args.version}\nPublishing will reuse these bytes without running gates, building or packing again.`,
+		`Verified archive retained at ${directory}. No npm publication attempted.\nReview release-notes.md and perform the manual board check, then:\n  npm login\n  bun run release:local publish\nPublishing will reuse these bytes without running gates, building or packing again.`,
 	);
 };
 
@@ -443,6 +565,9 @@ export const runLocalRelease = async (
 	root = ROOT,
 	env: NodeJS.ProcessEnv = process.env,
 ): Promise<Result<string>> => {
+	const validated = LocalReleaseArgsSchema.safeParse(args);
+	if (!validated.success) return fail(LOCAL_RELEASE_HELP);
+	args = validated.data;
 	if (env.GITHUB_ACTIONS === "true")
 		return fail(
 			"Use the protected OIDC workflow in CI; local release is human-run.",
@@ -458,20 +583,35 @@ export const runLocalRelease = async (
 			env,
 		);
 		if (!access.ok) return access;
-		const parent = join(root, ".releases"),
-			directory = join(parent, args.version);
+		const parent = join(root, ".releases");
 		mkdirSync(parent, { recursive: true });
-		const candidate = join(parent, `${args.version}.lock`);
+		const candidate = join(parent, "release.lock");
 		if (existsSync(candidate))
 			return fail(
 				`Release lock exists at ${candidate}; another local release may be running. Investigate before removing a stale lock.`,
 			);
 		mkdirSync(candidate);
 		lock = candidate;
+		const selected = await resolveReleaseChoice(args, head.value, root, env);
+		if (!selected.ok) return selected;
+		const choice = selected.value;
+		const directory = join(parent, choice.version);
 		if (args.mode === "prepare")
-			return await prepare(args, root, env, directory);
-		const proven = verifiedPreparation(directory, args.version, head.value);
+			return await prepare(
+				{ ...args, version: choice.version },
+				root,
+				env,
+				directory,
+				choice,
+			);
+		const proven = verifiedPreparation(directory, choice.version, head.value);
 		if (!proven.ok) return proven;
+		const selectedArchive = saveReleaseChoice(root, {
+			...choice,
+			commit: head.value,
+			state: choice.state === "published" ? "published" : "prepared",
+		});
+		if (!selectedArchive.ok) return selectedArchive;
 		const setting = await immutable(root, env, false);
 		if (!setting.ok) return setting;
 		const authenticated = await query(
@@ -481,9 +621,16 @@ export const runLocalRelease = async (
 		);
 		if (!authenticated.ok)
 			return fail(
-				`Run npm login, then retry publish --version ${args.version}. Original archive retained; no draft or npm publication attempted.`,
+				`Run npm login, then retry publish. Selected version ${choice.version} and original archive retained; no draft or npm publication attempted.`,
 			);
-		return await publishLocalRelease(directory, env);
+		const published = await publishLocalRelease(directory, env);
+		if (!published.ok) return published;
+		const retained = saveReleaseChoice(root, {
+			...choice,
+			commit: head.value,
+			state: "published",
+		});
+		return retained.ok ? published : retained;
 	} catch {
 		return fail(
 			"Local release stopped; source/settings may have changed. Inspect the retained .releases directory and git state. No automatic rollback, tag movement or artifact replacement.",

@@ -41,8 +41,9 @@ cd kabane && bun install
 cd packages/cli && bun link                      # `kabane` on PATH, pointing at the clone
 ```
 
-For a human-run local release, use `bun run release:local prepare --version <version>`,
-then authenticate to npm and resume with `bun run release:local publish --version <version>`.
+For a human-run local release, use `bun run release:local prepare` to infer and bump the
+version (or select `--bump patch|minor|major`), then authenticate to npm and resume with
+`bun run release:local publish`. Publication reuses the selected version and original bytes.
 See [`docs/release.md`](docs/release.md) for retained artifacts, recovery and the optional Actions route.
 For a positively verified hoisted Bun global registry install, `kabane update --check`
 reports a stable candidate (installation policy is unverified), and `kabane update`

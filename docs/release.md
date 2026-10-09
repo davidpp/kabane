@@ -15,21 +15,42 @@ remain unverified until a human performs the approved release.
 You can release from your computer without an Actions environment, npm trusted publisher,
 or OIDC. Use a clean `main` checkout with this implementation committed and pushed. GitHub
 CLI must already be authenticated (`gh auth login` if needed), with repository admin access
-when enabling release immutability. Choose a new stable version, for example:
+when enabling release immutability. Let the command choose and bump the version:
 
 ```bash
-bun run release:local prepare --version 0.1.1
+bun run release:local prepare
 ```
+
+Auto reads npm `latest` and inspects the complete commit range since that release's
+consistent tag or registry `gitHead`. It checks the baseline's CLI version and ancestry;
+missing/conflicting baselines, shallow history, more than 1000 commits, or oversized/unclear
+history fail rather than guessing. Selection uses declared Conventional Commit intent, not
+an automatic proof of API compatibility:
+
+- `!`, `BREAKING CHANGE:` or `BREAKING-CHANGE:`: major, **minor during 0.x**. Auto never
+  declares initial development stable 1.0.0.
+- `feat:`: minor; `fix:` / `perf:`: patch. Highest severity wins.
+- `docs`, `chore`, `style`, `refactor`, `test` / `tests`, and `ci`: no automatic release
+  without release-affecting commits. Unknown/substantive types without declared breaking
+  intent (`build`, `revert`) and unclassified merges require a deliberate override.
+
+For a fresh release, force a semantic increment with `prepare --bump patch`, `--bump minor`,
+or `--bump major`; these increment npm latest without requiring history inference. Explicit
+major during 0.x means deliberately entering stable 1.0.0. Numeric `--version X.Y.Z` remains
+available for deliberate selection/recovery. Do not combine selectors.
 
 This command updates **only** the CLI version and lockfile, commits those files, runs
 check/typecheck/test, builds/packs **once**, validates the archive and runs the installed
 CLI/MCP smoke on those bytes. It retains the original archive, manifest, checksums, release
-notes and verification record under gitignored `.releases/0.1.1/`. Default notes contain
+notes and verification record under gitignored `.releases/<selected-version>/`. The selected
+version/selector/source and phase are retained in `.releases/current.json`. Repeated preparation
+and publication reuse that choice; authentication handoff never increments again, even if
+npm latest has already advanced during partial publication. Default notes contain
 recent commit subjects for review; provide `--notes-file /path/to/reviewed-notes.md` during
 fresh preparation to supply your own public notes.
 
 After verification it enables GitHub release immutability if disabled, creates an annotated
-`v0.1.1` tag (honoring configured Git signing), and atomically pushes main plus that tag.
+`v<selected-version>` tag (honoring configured Git signing), and atomically pushes main plus that tag.
 It never moves an existing tag. A configured signing key may require its own authentication.
 **Preparation does not publish, run npm login, replace your installed Kabane, or open tracker
 config/data.** These source/tag/settings writes are authorization granted by the human
@@ -40,7 +61,7 @@ then authenticate to npm and explicitly resume:
 
 ```bash
 npm login
-bun run release:local publish --version 0.1.1
+bun run release:local publish
 ```
 
 Publication uses your local npm configuration/authentication, including interactive npm
@@ -55,9 +76,14 @@ step without rerunning successful gates/smoke or rebuilding. Rerun `publish` for
 npm-success/GitHub-failure state to complete GitHub only. An identical completed release
 is a verified no-op. Never delete the archive and rebuild after an ambiguous publication.
 A failed gate/version commit may leave local source changes: inspect/fix them deliberately,
-not by stashing/resetting unrelated work. A `.releases/<version>.lock` prevents overlapping
-local commands on this checkout; investigate a stale lock before removing it. It is not a
-cross-machine lock against other publishers.
+not by stashing/resetting unrelated work. Before an archive exists, auto rechecks changed
+source and resumes only if it still selects the original version; once an archive exists,
+restore the original source instead of replacing its bytes. After successful publication,
+a new `prepare` selects the next release from the newly published baseline. Keep the selection
+record; if it is missing for an older verified archive, deliberately pass its numeric
+`--version` to publish. A `.releases/release.lock` prevents overlapping local commands on this
+checkout; investigate a stale lock before removing it. It is not a cross-machine lock against
+other publishers.
 
 The `.releases/` directory is deliberately retained, not automatically cleaned up. Keep the
 four original public assets for recovery; remove local artifacts only after a verified

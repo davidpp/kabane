@@ -13,7 +13,6 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
-import { ok } from "../packages/core/result";
 import { sha256 } from "./release-artifact";
 import { parseLocalReleaseArgs } from "./release-local";
 
@@ -32,6 +31,8 @@ const State = z.object({
 	assets: z.array(z.string()),
 	writes: z.array(z.string()),
 	failFinalize: z.boolean(),
+	version: z.string(),
+	baseline: z.string(),
 });
 const fixtureTool = `#!/usr/bin/env bun
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
@@ -42,7 +43,8 @@ const root = process.env.LOCAL_RELEASE_FIXTURE_ROOT;
 const args = process.argv.slice(2), tool = basename(process.argv[1]);
 const save = () => writeFileSync(path, JSON.stringify(state));
 const at = flag => args[args.indexOf(flag) + 1];
-const directory = join(root, ".releases/0.1.1");
+const selectedVersion = JSON.parse(readFileSync(join(root, "packages/cli/package.json"), "utf8")).version;
+const directory = join(root, ".releases", selectedVersion);
 const record = () => JSON.parse(readFileSync(join(directory, "manifest.json"), "utf8"));
 if (tool === "npm") {
   if (args[0] === "--version") console.log("11.19.0");
@@ -53,14 +55,15 @@ if (tool === "npm") {
     if (!state.authenticated) process.exit(1);
     console.log("fixture-maintainer");
   } else if (args[0] === "view") {
-    if (args[2] === "dist-tags.latest") console.log(JSON.stringify(state.published ? "0.1.1" : "0.1.0"));
-    else if (!state.published) { console.log(JSON.stringify({ error: { code: "E404" } })); process.exit(1); }
-    else console.log(JSON.stringify({ name: "kabane", version: "0.1.1", dist: { integrity: state.integrity } }));
+    if (args[2] === "dist-tags.latest") console.log(JSON.stringify(state.published ? state.version : "0.1.0"));
+    else if (args[1] === "kabane@0.1.0") console.log(JSON.stringify({ name: "kabane", version: "0.1.0", ...(state.baseline ? { gitHead: state.baseline } : {}) }));
+    else if (!state.published || args[1] !== "kabane@" + state.version) { console.log(JSON.stringify({ error: { code: "E404" } })); process.exit(1); }
+    else console.log(JSON.stringify({ name: "kabane", version: state.version, dist: { integrity: state.integrity } }));
   } else if (args[0] === "publish") {
-    if (!state.authenticated || !args.includes("--ignore-scripts") || args[1] !== join(directory, "kabane-0.1.1.tgz")) process.exit(1);
+    if (!state.authenticated || !args.includes("--ignore-scripts") || args[1] !== join(directory, "kabane-" + selectedVersion + ".tgz")) process.exit(1);
     if (process.env.NPM_CONFIG_USERCONFIG !== join(root, ".test-state/home/.npmrc")) process.exit(1);
     if (!readFileSync(process.env.NPM_CONFIG_USERCONFIG, "utf8").includes("fixture-config-preserved")) process.exit(1);
-    state.writes.push("publish"); state.published = true; state.integrity = record().integrity; save();
+    state.writes.push("publish"); state.published = true; state.version = selectedVersion; state.integrity = record().integrity; save();
     console.log("Published controlled fixture archive");
   } else process.exit(1);
 } else if (tool === "gh") {
@@ -69,12 +72,12 @@ if (tool === "npm") {
     else console.log(JSON.stringify({ enabled: state.immutable }));
   } else if (args[0] === "api" && args.includes("--include")) {
     if (!state.release) { console.log("HTTP/2.0 404 Not Found\\n\\n{}"); process.exit(1); }
-    console.log("HTTP/2.0 200 OK\\n\\n" + JSON.stringify({ tag_name: "v0.1.1", draft: state.draft, immutable: !state.draft && state.immutable, assets: state.assets.map(name => ({ name })) }));
+    console.log("HTTP/2.0 200 OK\\n\\n" + JSON.stringify({ tag_name: "v" + state.version, draft: state.draft, immutable: !state.draft && state.immutable, assets: state.assets.map(name => ({ name })) }));
   } else if (args[0] === "release" && args[1] === "create") {
     if (!args.includes("--verify-tag") || !args.includes("--draft")) process.exit(1);
     const store = join(root, ".test-state/assets"); mkdirSync(store, { recursive: true });
     for (const file of args.slice(3, args.indexOf("--repo"))) { copyFileSync(file, join(store, basename(file))); state.assets.push(basename(file)); }
-    state.release = true; state.draft = true; state.writes.push("draft"); save();
+    state.version = selectedVersion; state.release = true; state.draft = true; state.writes.push("draft"); save();
   } else if (args[0] === "release" && args[1] === "download") copyFileSync(join(root, ".test-state/assets", at("--pattern")), join(at("--dir"), at("--pattern")));
   else if (args[0] === "release" && args[1] === "edit") {
     if (state.failFinalize) process.exit(1);
@@ -119,6 +122,8 @@ const createFixture = () => {
 		assets: [],
 		writes: [],
 		failFinalize: false,
+		version: "0.1.1",
+		baseline: "",
 	};
 	writeFileSync(statePath, JSON.stringify(initial));
 	writeFileSync(join(home, ".npmrc"), "# fixture-config-preserved\n");
@@ -146,6 +151,7 @@ const createFixture = () => {
 	for (const file of [
 		"scripts/release-local.ts",
 		"scripts/release-process.ts",
+		"scripts/release-version.ts",
 		"scripts/release-publish.ts",
 		"scripts/release-artifact.ts",
 		"scripts/release.ts",
@@ -213,6 +219,24 @@ const createFixture = () => {
 		"https://github.com/davidpp/kabane.git",
 	);
 	git("push", "origin", "main");
+	writeFileSync(
+		statePath,
+		JSON.stringify({ ...initial, baseline: git("rev-parse", "HEAD") }),
+	);
+	const command = async (
+		...args: string[]
+	): Promise<{ ok: true; value: { code: number; stdout: string } }> => {
+		const child = Bun.spawn(
+			[process.execPath, "run", "release:local", ...args],
+			{ cwd: root, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+		);
+		const [stdout, stderr, code] = await Promise.all([
+			new Response(child.stdout).text(),
+			new Response(child.stderr).text(),
+			child.exited,
+		]);
+		return { ok: true, value: { code, stdout: stdout + stderr } };
+	};
 	return {
 		root,
 		env,
@@ -234,26 +258,9 @@ const createFixture = () => {
 				}),
 			);
 		},
-		run: async (mode: string, ...extra: string[]) => {
-			const child = Bun.spawn(
-				[
-					process.execPath,
-					"run",
-					"release:local",
-					mode,
-					"--version",
-					"0.1.1",
-					...extra,
-				],
-				{ cwd: root, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
-			);
-			const [stdout, stderr, code] = await Promise.all([
-				new Response(child.stdout).text(),
-				new Response(child.stderr).text(),
-				child.exited,
-			]);
-			return ok({ code, stdout: stdout + stderr });
-		},
+		command,
+		run: (mode: string, ...extra: string[]) =>
+			command(mode, "--version", "0.1.1", ...extra),
 		events: () => readFileSync(join(root, ".test-state/events"), "utf8"),
 		directory: join(root, ".releases/0.1.1"),
 	};
@@ -306,6 +313,143 @@ test("actual local command prepares once, pauses for authentication and resumes 
 	);
 }, 30_000);
 
+test("default auto uses the complete release range, pins the handoff and selects a fresh next release only after completion", async () => {
+	const fixture = createFixture();
+	fixture.git("commit", "--allow-empty", "-m", "feat(cli): add command");
+	for (let index = 0; index < 14; index++)
+		fixture.git("commit", "--allow-empty", "-m", `docs: note ${index}`);
+	const prepared = await fixture.command("prepare");
+	expect(prepared.value.code).toBe(0);
+	const directory = join(fixture.root, ".releases/0.2.0");
+	const archive = readFileSync(join(directory, "kabane-0.2.0.tgz"));
+	const events = fixture.events();
+	expect(fixture.git("rev-parse", "v0.2.0^{commit}")).toBe(
+		fixture.git("rev-parse", "HEAD"),
+	);
+	expect((await fixture.command("prepare")).value.code).toBe(0);
+	expect((await fixture.command("publish")).value.code).toBe(1);
+	expect((await fixture.command("prepare", "--bump", "patch")).value.code).toBe(
+		1,
+	);
+	fixture.change({ authenticated: true, failFinalize: true });
+	expect((await fixture.command("publish")).value.code).toBe(1);
+	fixture.change({ failFinalize: false });
+	expect((await fixture.command("publish")).value.code).toBe(0);
+	expect((await fixture.command("publish")).value.code).toBe(0);
+	expect(fixture.events()).toBe(events);
+	expect(readFileSync(join(directory, "kabane-0.2.0.tgz"))).toEqual(archive);
+	expect(
+		fixture.state().writes.filter((write) => write === "publish"),
+	).toHaveLength(1);
+	fixture.git("commit", "--allow-empty", "-m", "fix: repair next release");
+	expect((await fixture.command("prepare")).value.code).toBe(0);
+	expect(
+		existsSync(join(fixture.root, ".releases/0.2.1/verified.sha256")),
+	).toBe(true);
+	expect(readFileSync(join(directory, "kabane-0.2.0.tgz"))).toEqual(archive);
+}, 30_000);
+
+test("explicit semantic bumps work without auto history, and publishing never applies the bump twice", async () => {
+	for (const { bump, version } of [
+		{ bump: "patch", version: "0.1.1" },
+		{ bump: "minor", version: "0.2.0" },
+		{ bump: "major", version: "1.0.0" },
+	]) {
+		const fixture = createFixture();
+		fixture.change({ baseline: "" });
+		const prepared = await fixture.command("prepare", "--bump", bump);
+		expect(prepared.value.code).toBe(0);
+		expect(
+			existsSync(join(fixture.root, `.releases/${version}/verified.sha256`)),
+		).toBe(true);
+		fixture.change({ authenticated: true });
+		expect((await fixture.command("publish", "--bump", bump)).value.code).toBe(
+			0,
+		);
+		expect((await fixture.command("publish")).value.code).toBe(0);
+		expect(fixture.state().version).toBe(version);
+		expect(
+			fixture.state().writes.filter((write) => write === "publish"),
+		).toHaveLength(1);
+	}
+}, 30_000);
+
+test("auto refuses missing/conflicting baselines and unclear changes without source/settings writes", async () => {
+	for (const failure of [
+		"missing",
+		"conflicting",
+		"unknown",
+		"shallow",
+		"local-only",
+	]) {
+		const fixture = createFixture();
+		fixture.git("commit", "--allow-empty", "-m", "feat: add command");
+		if (failure === "missing") fixture.change({ baseline: "" });
+		if (failure === "local-only") {
+			fixture.git(
+				"tag",
+				"-a",
+				"v0.1.0",
+				"-m",
+				"unconfirmed local baseline",
+				fixture.state().baseline,
+			);
+			fixture.change({ baseline: "" });
+		}
+		if (failure === "conflicting") {
+			fixture.git("tag", "-a", "v0.1.0", "-m", "wrong baseline");
+			fixture.git("push", "origin", "v0.1.0");
+		}
+		if (failure === "unknown")
+			fixture.git(
+				"commit",
+				"--allow-empty",
+				"-m",
+				"unclassified packaging change",
+			);
+		if (failure === "shallow")
+			writeFileSync(
+				join(fixture.root, ".git/shallow"),
+				`${fixture.state().baseline}\n`,
+			);
+		const selected = await fixture.command("prepare");
+		expect(selected.value.code).toBe(1);
+		expect(fixture.state().writes).toEqual([]);
+		expect(fixture.git("status", "--porcelain")).toBe("");
+		expect(existsSync(join(fixture.root, ".releases/current.json"))).toBe(
+			false,
+		);
+	}
+}, 30_000);
+
+test("an existing verified archive remains publishable by exact version without the new selection record", async () => {
+	const fixture = createFixture();
+	expect((await fixture.run("prepare")).value.code).toBe(0);
+	const archive = readFileSync(join(fixture.directory, "kabane-0.1.1.tgz"));
+	const events = fixture.events();
+	rmSync(join(fixture.root, ".releases/current.json"));
+	fixture.change({ authenticated: true });
+	expect((await fixture.command("publish")).value.code).toBe(1);
+	expect((await fixture.run("publish")).value.code).toBe(0);
+	expect(fixture.events()).toBe(events);
+	expect(readFileSync(join(fixture.directory, "kabane-0.1.1.tgz"))).toEqual(
+		archive,
+	);
+}, 30_000);
+
+test("corrupt selected-version state refuses without touching retained archive", async () => {
+	const fixture = createFixture();
+	expect((await fixture.run("prepare")).value.code).toBe(0);
+	const archive = readFileSync(join(fixture.directory, "kabane-0.1.1.tgz"));
+	writeFileSync(join(fixture.root, ".releases/current.json"), "invalid");
+	fixture.change({ authenticated: true });
+	expect((await fixture.command("publish")).value.code).toBe(1);
+	expect(readFileSync(join(fixture.directory, "kabane-0.1.1.tgz"))).toEqual(
+		archive,
+	);
+	expect(fixture.state().writes).toEqual(["enable-immutable"]);
+}, 30_000);
+
 test("actual command resumes npm-success/GitHub-failure without rebuilding or republishing", async () => {
 	const fixture = createFixture();
 	const prepared = await fixture.run("prepare");
@@ -330,7 +474,9 @@ test("actual command resumes npm-success/GitHub-failure without rebuilding or re
 test("dirty/wrong repository and invalid CLI refuse before release writes", async () => {
 	for (const input of [
 		[],
-		["publish"],
+		["prepare", "--bump", "minor", "--version", "0.1.1"],
+		["prepare", "--bump", "unknown"],
+		["prepare", "--bump", "minor", "--bump", "patch"],
 		["prepare", "--version", "0.1.1", "--version", "0.1.2"],
 		["publish", "--version", "0.1.1", "--notes-file", "x"],
 		["prepare", "--version", "../escape"],
@@ -419,7 +565,7 @@ test("stale source, conflicting remote assets and an existing local lock never a
 	expect(
 		fixture.state().writes.filter((write) => write === "publish"),
 	).toHaveLength(1);
-	const lock = join(fixture.root, ".releases/0.1.1.lock");
+	const lock = join(fixture.root, ".releases/release.lock");
 	mkdirSync(lock);
 	const locked = await fixture.run("publish");
 	expect(locked.ok && locked.value.code).toBe(1);
