@@ -260,6 +260,62 @@ a silent UTC.
 
 ## Updating
 
+### One-time upgrade from 0.1.0
+
+Version 0.1.0 predates `kabane update`. For an existing **Bun global registry install**, stop
+running board/MCP sessions, read the new release's compatibility notes, then install that
+published version once:
+
+```bash
+version='<published-version>'  # replace with the version from the new release
+bun add --global --exact "kabane@$version"
+kabane --version              # must print the selected version
+kabane update --check
+```
+
+Do not run this against a source `bun link` installation: it would replace your development
+link. Keep source-linked installations on the contributor checkout/build/link path. No
+tracker reset or `mcp install --force` is needed for an existing registry installation whose
+harness command still points to the same global executable; restart its board/MCP processes.
+
+If the selected version is still registry `latest`, `update --check` reports **current**;
+`kabane update` is then a no-op, not an upgrade. A later eligible release produces a
+**candidate**, and `kabane update` performs the policy preflight and verified installation.
+`--check` never installs and does not certify that Bun's policy will allow installation.
+
+### Try the registry flow without replacing a development link
+
+After the new version is published, run this in a subshell. It installs into disposable
+Bun directories while preserving your registry/auth/release-age configuration. It does
+not use your real tracker, change PATH, register harnesses or replace your existing bin.
+
+```bash
+(
+  set -eu
+  version='<published-version>'  # replace before running
+  work=$(mktemp -d)
+  trap 'rm -rf "$work"' EXIT
+  export BUN_INSTALL="$work/bun"
+  export BUN_INSTALL_GLOBAL_DIR="$work/global"
+  export BUN_INSTALL_BIN="$work/bin"
+  export BUN_INSTALL_CACHE_DIR="$work/cache"
+  export BUN_RUNTIME_TRANSPILER_CACHE_PATH="$work/transpile-cache"
+  export KABANE_HOME="$work/tracker"
+  export KABANE_HARNESSES=
+  mkdir -p "$work/bin"
+  bun add --global --exact "kabane@$version" --linker hoisted
+  "$work/bin/kabane" --version
+  "$work/bin/kabane" update --check
+  "$work/bin/kabane" update
+)
+```
+
+Installing the current latest tests bootstrap, ownership detection and the current/no-op
+path. It cannot demonstrate a real version transition until a newer eligible release exists.
+If Bun blocks a fresh release under your release-age policy, wait; do not weaken the policy.
+
+### Subsequent updates
+
 ```bash
 kabane update --check        # metadata-only candidate, eligibility unknown/policy-unverified
 kabane update               # explicit policy preflight, exact install, owned-bin verification
