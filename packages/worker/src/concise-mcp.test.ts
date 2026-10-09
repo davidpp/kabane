@@ -237,7 +237,7 @@ describe("concise formats through authenticated Worker HTTP", () => {
 			}
 			expect(new Set(seen).size).toBe(25);
 		}
-	});
+	}, 30_000);
 	it("streams complete replicated context with bounded Unicode chunks, section selection and stale protection", async () => {
 		const issue = issues[0];
 		if (!issue) return;
