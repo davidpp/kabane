@@ -1,6 +1,7 @@
 {
 	"name": "kabane",
-	"version": "0.1.0",
+	"private": true,
+	"version": "0.2.0",
 	"description": "Local-first issue tracker and kanban for humans and AI agent runtimes",
 	"keywords": [
 		"kanban",
@@ -22,7 +23,6 @@
 	"bugs": {
 		"url": "https://github.com/davidpp/kabane/issues"
 	},
-	"private": true,
 	"type": "module",
 	"main": "index.ts",
 	"types": "index.ts",
