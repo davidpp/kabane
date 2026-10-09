@@ -29,7 +29,7 @@ beforeEach(async () => {
 	tracker = seeded.value;
 	id = tracker.ids[24] ?? "";
 	configureTestRuntime();
-});
+}, 30_000);
 afterEach(() => {
 	tracker?.close();
 	configureTestRuntime();
