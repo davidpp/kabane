@@ -71,6 +71,27 @@ matching GitHub draft/assets, publishes the exact retained tarball once, verifie
 integrity/latest, then finalizes and verifies the immutable GitHub release. **It does not
 rerun gates, build or pack.** Local publication does not claim GitHub Actions OIDC provenance.
 
+GitHub's tag endpoint exposes **published** releases, not drafts. The publisher discovers
+drafts through an authenticated push-authorized releases listing, consumes all pages within
+its bound (100 releases/page, at most 10 pages), and rejects conflicting, duplicate,
+malformed or incomplete metadata/pagination. A tag-route 404 alone never proves absence.
+All matching asset bytes are still downloaded and hashed; API digests do not replace this.
+
+If a tooling bug blocks an already verified release, keep its source checkout and original
+archive unchanged. A separate fixed tooling checkout can use that clean `main` source root
+for **publish only**, without committing source changes or rebuilding:
+
+```bash
+# HUMAN ONLY, from the original verified source checkout:
+bun /path/to/fixed-tooling/scripts/release-local.ts publish --source-root "$PWD"
+```
+
+Source-root selection still requires the original manifest/proof/bytes, exact source commit,
+remote tag and producer tool versions, local authentication, and enabled immutability. It is
+not accepted for preparation or as an alternative to CI's protected OIDC authorization.
+Retain the recovery tooling/checkpoint until publication is verified complete; only then
+integrate the fix into main for future releases.
+
 Rerun `prepare` for the same untouched prepared source to finish a failed setting/tag/push
 step without rerunning successful gates/smoke or rebuilding. Rerun `publish` for matching
 npm-success/GitHub-failure state to complete GitHub only. An identical completed release

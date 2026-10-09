@@ -10,6 +10,7 @@ import {
 	sha256,
 	verifyReleaseFiles,
 } from "./release-artifact";
+import { discoverGitHubRelease, type GitHubRelease } from "./release-github";
 import { runReleaseInteractive } from "./release-process";
 
 export type RegistryState = {
@@ -200,18 +201,12 @@ const NpmRecord = z.object({
 	gitHead: z.string().optional(),
 	dist: z.object({ integrity: z.string() }),
 });
-const GitHubRecord = z.object({
-	tag_name: z.string(),
-	draft: z.boolean(),
-	immutable: z.boolean().optional(),
-	assets: z.array(z.object({ name: z.string() })),
-});
-
 /** CI uses OIDC-only configuration; the explicit local command keeps human npm credentials. */
 const publishVerifiedRelease = async (
 	directory: string,
 	originalEnv: NodeJS.ProcessEnv,
 	mode: "oidc" | "local",
+	sourceRoot = ROOT,
 ): Promise<Result<string>> => {
 	const verified = verifyReleaseFiles(directory);
 	if (!verified.ok) return verified;
@@ -239,7 +234,7 @@ const publishVerifiedRelease = async (
 				NPM_CONFIG_GLOBALCONFIG: globalConfig,
 			};
 		}
-		const call = (argv: string[], cwd = ROOT, timeout = 120_000) =>
+		const call = (argv: string[], cwd = sourceRoot, timeout = 120_000) =>
 			runUpdateProcess(argv, cwd, env, timeout);
 		const assets = [
 			record.filename,
@@ -253,34 +248,12 @@ const publishVerifiedRelease = async (
 			if (!bytes.ok) return bytes;
 			expected.set(name, sha256(bytes.value));
 		}
-		const api = async (): Promise<
-			Result<z.infer<typeof GitHubRecord> | null>
-		> => {
-			const result = await call([
-				"gh",
-				"api",
-				"--include",
-				`repos/davidpp/kabane/releases/tags/${record.tag}`,
-			]);
-			if (!result.ok) return failure("GitHub release lookup failed.");
-			const split = result.value.stdout.search(/\r?\n\r?\n/),
-				header = result.value.stdout.slice(0, split);
-			if (/^HTTP\/\S+ 404\b/.test(header)) return ok(null);
-			if (result.value.code !== 0 || !/^HTTP\/\S+ 200\b/.test(header))
-				return failure("GitHub release lookup failed, not proven absent.");
-			try {
-				const body = GitHubRecord.safeParse(
-					JSON.parse(result.value.stdout.slice(split).trim()),
-				);
-				return body.success
-					? ok(body.data)
-					: failure("Invalid GitHub release metadata.");
-			} catch {
-				return failure("Invalid GitHub release JSON.");
-			}
-		};
+		const api = () =>
+			discoverGitHubRelease(record.tag, (endpoint) =>
+				call(["gh", "api", "--include", endpoint], sourceRoot, 30_000),
+			);
 		const assetMatches = async (
-			state: z.infer<typeof GitHubRecord>,
+			state: GitHubRelease,
 		): Promise<Result<boolean>> => {
 			if (
 				state.tag_name !== record.tag ||
@@ -552,4 +525,6 @@ export const publishRelease = (
 export const publishLocalRelease = (
 	directory: string,
 	env: NodeJS.ProcessEnv,
-): Promise<Result<string>> => publishVerifiedRelease(directory, env, "local");
+	sourceRoot = ROOT,
+): Promise<Result<string>> =>
+	publishVerifiedRelease(directory, env, "local", sourceRoot);

@@ -27,7 +27,7 @@ import {
 } from "./release-version";
 
 const ROOT = resolve(import.meta.dir, "..");
-export const LOCAL_RELEASE_HELP = `Usage: bun run release:local prepare|publish [--bump auto|major|minor|patch | --version X.Y.Z] [--notes-file path]
+export const LOCAL_RELEASE_HELP = `Usage: bun run release:local prepare|publish [--bump auto|major|minor|patch | --version X.Y.Z] [--notes-file path] [--source-root path]
 
 prepare: require clean main, commit the version/lock, run the gates, build/pack once,
          smoke and retain .releases/X.Y.Z, enable GitHub release immutability,
@@ -42,6 +42,8 @@ Maintenance-only or unclear history requires an explicit --bump. --bump major is
 an explicit decision to enter stable 1.0.0 during initial development.
 publish and repeated prepare reuse .releases/current.json, never bump again.
 Run npm login between phases if needed. Only prepare accepts --notes-file.
+Only publish accepts --source-root: use fixed tooling with an original clean source
+checkout and its retained archive. All source/tag/byte/tool/auth guards still apply.
 Human-run only; agents must not execute these release operations.`;
 
 const LocalReleaseArgsSchema = z
@@ -50,12 +52,14 @@ const LocalReleaseArgsSchema = z
 		version: StableVersionSchema.optional(),
 		bump: z.enum(["auto", ...SemanticBumpSchema.options]).optional(),
 		notesFile: z.string().min(1).optional(),
+		sourceRoot: z.string().min(1).optional(),
 	})
 	.strict()
 	.refine(
 		(args) =>
 			!(args.version && args.bump) &&
-			!(args.mode === "publish" && args.notesFile),
+			!(args.mode === "publish" && args.notesFile) &&
+			!(args.mode === "prepare" && args.sourceRoot),
 	);
 type LocalReleaseArgs = z.infer<typeof LocalReleaseArgsSchema>;
 type SelectedReleaseArgs = LocalReleaseArgs & { version: string };
@@ -71,7 +75,9 @@ export const parseLocalReleaseArgs = (
 			!flag ||
 			!value ||
 			value.startsWith("--") ||
-			!["--version", "--bump", "--notes-file"].includes(flag) ||
+			!["--version", "--bump", "--notes-file", "--source-root"].includes(
+				flag,
+			) ||
 			flag in values
 		)
 			return err(new Error(LOCAL_RELEASE_HELP));
@@ -82,6 +88,7 @@ export const parseLocalReleaseArgs = (
 		version: values["--version"],
 		bump: values["--bump"],
 		notesFile: values["--notes-file"],
+		sourceRoot: values["--source-root"],
 	});
 	return parsed.success ? ok(parsed.data) : err(new Error(LOCAL_RELEASE_HELP));
 };
@@ -568,6 +575,7 @@ export const runLocalRelease = async (
 	const validated = LocalReleaseArgsSchema.safeParse(args);
 	if (!validated.success) return fail(LOCAL_RELEASE_HELP);
 	args = validated.data;
+	if (args.sourceRoot) root = resolve(args.sourceRoot);
 	if (env.GITHUB_ACTIONS === "true")
 		return fail(
 			"Use the protected OIDC workflow in CI; local release is human-run.",
@@ -623,7 +631,7 @@ export const runLocalRelease = async (
 			return fail(
 				`Run npm login, then retry publish. Selected version ${choice.version} and original archive retained; no draft or npm publication attempted.`,
 			);
-		const published = await publishLocalRelease(directory, env);
+		const published = await publishLocalRelease(directory, env, root);
 		if (!published.ok) return published;
 		const retained = saveReleaseChoice(root, {
 			...choice,
