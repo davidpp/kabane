@@ -167,6 +167,100 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect((comment.value as { authorType: string }).authorType).toBe("ai");
 	});
 
+	it("accepts familiar write inputs with Access attribution and rejects invalid writes without replicated effects", async () => {
+		const created = await callTool(HUMAN, "kabane_add", {
+			title: "HTTP write inputs",
+			scopeUri: "inputs",
+		});
+		expect(created.isError).toBe(false);
+		const id = (created.value as TaskLike).id;
+		const body = "  ## HTTP Markdown\n\n- unchanged\n";
+		for (const args of [
+			{ body },
+			{ text: body },
+			{ content: body },
+			{ body, text: body, content: body },
+		]) {
+			const comment = await callTool(HERMES, "kabane_comment", { id, ...args });
+			expect(comment.isError).toBe(false);
+			expect(comment.value).toMatchObject({
+				content: body,
+				author: "cabane://actor/agent/hermes",
+				authorType: "ai",
+			});
+		}
+		const labeled = { uri: "commit:abc123", label: "Keep this label" };
+		for (const args of [
+			{ refs: [labeled] },
+			{ commit: "HEAD~1" },
+			{ refs: [labeled], commit: "abc123" },
+			{ refs: [labeled], commit: "def456" },
+		]) {
+			const entry = await callTool(HERMES, "kabane_log", { id, ...args });
+			expect(entry.isError).toBe(false);
+		}
+		const hub = env.CABANE_HUB.getByName(HUB_NAME);
+		await hub.syncNow();
+		const before = await (
+			await log("/pull", { deviceId: "write-inputs", sinceSeq: 0, limit: 1000 })
+		).json<PullPage>();
+		const rows = before.ops
+			.map((op) => JSON.parse(op.payload))
+			.filter((op) => op.payload?.task_id === id);
+		const comments = rows.filter((op) => op.tbl === "task_comments");
+		expect(comments).toHaveLength(4);
+		for (const comment of comments)
+			expect(comment.payload).toMatchObject({
+				content: body,
+				author: "cabane://actor/agent/hermes",
+				author_type: "ai",
+			});
+		expect(
+			rows
+				.filter((op) => op.tbl === "task_work_log")
+				.map((op) =>
+					JSON.parse(op.payload.refs).map(
+						(ref: { uri: string; label?: string }) => ({
+							uri: ref.uri,
+							label: ref.label,
+						}),
+					),
+				),
+		).toEqual([
+			[labeled],
+			[{ uri: "commit:HEAD~1", label: undefined }],
+			[labeled],
+			[labeled, { uri: "commit:def456", label: undefined }],
+		]);
+		for (const args of [
+			{},
+			{ body: "a", text: "b" },
+			{ body: "" },
+			{ content: 42 },
+		]) {
+			const invalid = await callTool(HERMES, "kabane_comment", { id, ...args });
+			expect(invalid.isError).toBe(true);
+		}
+		for (const args of [
+			{},
+			{ commit: "" },
+			{ commit: 42 },
+			{ commit: "valid", refs: [] },
+		]) {
+			const invalid = await callTool(HERMES, "kabane_log", { id, ...args });
+			expect(invalid.isError).toBe(true);
+		}
+		await hub.syncNow();
+		const after = await (
+			await log("/pull", {
+				deviceId: "write-inputs",
+				sinceSeq: before.throughSeq,
+				limit: 1000,
+			})
+		).json<PullPage>();
+		expect(after.ops).toEqual([]);
+	});
+
 	it("runs every tool once", async () => {
 		const a = (
 			await callTool(HUMAN, "kabane_add", {

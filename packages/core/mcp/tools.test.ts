@@ -10,8 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { Result } from "../result";
-import type { Task } from "../schemas";
+import { err, type Result } from "../result";
+import { Runtime } from "../runtime";
+import type { Task, TaskComment, TaskWorkLog } from "../schemas";
 import { Planner } from "../storage";
 import { configureTestRuntime } from "../testing";
 import { createMcpServer } from "./server";
@@ -29,6 +30,18 @@ const tool = (name: string): ToolDef => {
 };
 
 const AGENT = "cabane://actor/agent/hermes";
+const COMMENT_ALIASES = ["body", "text", "content"];
+const COMMENT_CONFLICTS = [
+	{ body: "a", text: "b" },
+	{ body: "a", content: "b" },
+	{ text: "a", content: "b" },
+	{ body: "a", text: "a", content: "b" },
+	{ body: "a", text: "b", content: "a" },
+	{ body: "b", text: "a", content: "a" },
+	{ body: "a", text: "b", content: "c" },
+	{ body: "a", text: " a" },
+	{ body: "a\n", content: "a" },
+];
 
 describe("cabane tools", () => {
 	let base: string;
@@ -159,6 +172,122 @@ describe("cabane tools", () => {
 			await tool("kabane_done").handler({ id: issue.id }, ctx),
 		) as Task;
 		expect(finished.state).toBe("done");
+	});
+
+	it("preserves Markdown and authors for every comment alias and identical combination", async () => {
+		const issue = unwrap(await Planner.addTask(base, { title: "Comments" }));
+		const markdown = "  ## Kept verbatim\n\n```ts\nconst x = 1;\n```\n";
+		const combinations = [
+			["body"],
+			["text"],
+			["content"],
+			["body", "text"],
+			["body", "content"],
+			["text", "content"],
+			COMMENT_ALIASES,
+		];
+		for (const aliases of combinations) {
+			const comment = unwrap(
+				await tool("kabane_comment").handler(
+					{
+						id: issue.id,
+						...Object.fromEntries(aliases.map((alias) => [alias, markdown])),
+					},
+					ctx,
+				),
+			) as TaskComment;
+			expect(comment.content).toBe(markdown);
+			expect(comment.author).toBe(AGENT);
+			expect(comment.authorType).toBe("ai");
+			expect(unwrap(await Planner.getComment(base, comment.id))).toEqual(
+				comment,
+			);
+		}
+		expect(unwrap(await Planner.getComments(base, issue.id))).toHaveLength(7);
+	});
+
+	it("rejects missing or differing write inputs before any storage or ID lookup", async () => {
+		let accesses = 0;
+		Runtime.configure({
+			provider: {
+				withDb: async () => {
+					accesses++;
+					return err(new Error("Storage must not be reached"));
+				},
+			},
+		});
+		try {
+			for (const args of [{}, ...COMMENT_CONFLICTS]) {
+				const result = await tool("kabane_comment").handler(
+					{ id: "JCAB-999", ...args },
+					ctx,
+				);
+				expect(result.ok).toBe(false);
+				if (!result.ok) {
+					expect(result.error.message).toContain("body");
+					expect(result.error.message).toContain("supply");
+				}
+			}
+			const missingLog = await tool("kabane_log").handler(
+				{ id: "JCAB-999" },
+				ctx,
+			);
+			expect(missingLog.ok).toBe(false);
+			if (!missingLog.ok)
+				expect(missingLog.error.message).toContain("supply commit");
+			expect(accesses).toBe(0);
+		} finally {
+			configureTestRuntime("", { actor: () => AGENT });
+		}
+	});
+
+	it("normalizes commit shorthand without changing explicit refs, labels or duplicates", async () => {
+		const issue = unwrap(await Planner.addTask(base, { title: "Work logs" }));
+		const labeled = { uri: "commit:abc123", label: "Kept label" };
+		const explicit = [labeled, { uri: "file:src/index.ts" }];
+		const cases = [
+			{ args: { refs: explicit }, refs: explicit },
+			{ args: { refs: [labeled, labeled] }, refs: [labeled, labeled] },
+			{ args: { commit: "abc123" }, refs: [{ uri: "commit:abc123" }] },
+			{ args: { commit: "HEAD~1" }, refs: [{ uri: "commit:HEAD~1" }] },
+			{
+				args: { refs: explicit, commit: "def456" },
+				refs: [...explicit, { uri: "commit:def456" }],
+			},
+			{ args: { refs: explicit, commit: "abc123" }, refs: explicit },
+			{
+				args: { refs: [labeled, labeled], commit: "abc123" },
+				refs: [labeled, labeled],
+			},
+		];
+		for (const { args, refs } of cases) {
+			const entry = unwrap(
+				await tool("kabane_log").handler(
+					{ id: issue.id, ...args, note: "Summary" },
+					ctx,
+				),
+			) as TaskWorkLog;
+			expect(entry.refs.map(({ uri, label }) => ({ uri, label }))).toEqual(
+				refs.map((ref) => ({
+					uri: ref.uri,
+					label: "label" in ref ? ref.label : undefined,
+				})),
+			);
+			expect(entry.note).toBe("Summary");
+			for (const ref of entry.refs) {
+				expect(ref.addedBy).toBe(AGENT);
+				expect(ref.addedByType).toBe("ai");
+			}
+			expect(
+				unwrap(await Planner.getWorkLogs(base, issue.id)).find(
+					(log) => log.id === entry.id,
+				),
+			).toEqual(entry);
+		}
+		expect(explicit).toHaveLength(2);
+		expect(unwrap(await Planner.getWorkLogs(base, issue.id))).toHaveLength(
+			cases.length,
+		);
 	});
 
 	it("links, searches, lists scopes, and manages context refs", async () => {
@@ -382,8 +511,101 @@ describe("cabane MCP server over an in-memory transport", () => {
 		expect(add?.annotations?.readOnlyHint).toBe(false);
 		const list = tools.find((t) => t.name === "kabane_list");
 		expect(list?.annotations?.readOnlyHint).toBe(true);
+		const comment = tools.find((t) => t.name === "kabane_comment");
+		expect(comment?.inputSchema.required).toEqual(["id"]);
+		for (const alias of COMMENT_ALIASES) {
+			expect(comment?.inputSchema.properties?.[alias]).toMatchObject({
+				type: "string",
+				minLength: 1,
+				description: expect.stringContaining(
+					alias === "body" ? "recommended" : "body",
+				),
+			});
+		}
+		const log = tools.find((t) => t.name === "kabane_log");
+		expect(log?.inputSchema.required).toEqual(["id"]);
+		expect(log?.inputSchema.properties?.commit).toMatchObject({
+			type: "string",
+			minLength: 1,
+			description: expect.stringContaining("Bare SHA or revision"),
+		});
+		expect(log?.inputSchema.properties?.refs).toMatchObject({
+			type: "array",
+			minItems: 1,
+		});
 		expect(server.getClientVersion()).toBeDefined();
 		await client.close();
+	});
+
+	it("validates write inputs without mutation or afterWrite on errors", async () => {
+		const writes: string[] = [];
+		const { client } = await connect((t) => writes.push(t.name));
+		const issue = unwrap(await Planner.addTask(base, { title: "Validation" }));
+		try {
+			const invalidValues: unknown[] = ["", null, 42, true, [], {}];
+			const invalidComments = [
+				{},
+				...COMMENT_CONFLICTS,
+				...COMMENT_ALIASES.flatMap((alias) =>
+					invalidValues.map((value) => ({ [alias]: value })),
+				),
+				{ body: "valid", content: "" },
+			];
+			for (const args of invalidComments) {
+				const response = await client.callTool({
+					name: "kabane_comment",
+					arguments: { id: issue.id, ...args },
+				});
+				expect(response.isError).toBe(true);
+			}
+			const invalidLogs = [
+				{},
+				...invalidValues.map((commit) => ({ commit })),
+				...[
+					null,
+					42,
+					true,
+					"refs",
+					[],
+					{},
+					[{ uri: "" }],
+					[{ uri: 42 }],
+					[{ uri: "file:x", label: 42 }],
+				].map((refs) => ({ refs })),
+				{ commit: "valid", refs: [] },
+				{ commit: "", refs: [{ uri: "file:x" }] },
+			];
+			for (const args of invalidLogs) {
+				const response = await client.callTool({
+					name: "kabane_log",
+					arguments: { id: issue.id, ...args },
+				});
+				expect(response.isError).toBe(true);
+			}
+			expect(writes).toEqual([]);
+			expect(unwrap(await Planner.getComments(base, issue.id))).toEqual([]);
+			expect(unwrap(await Planner.getWorkLogs(base, issue.id))).toEqual([]);
+			const comment = await client.callTool({
+				name: "kabane_comment",
+				arguments: { id: issue.id, body: " " },
+			});
+			expect(comment.isError).toBeFalsy();
+			expect(
+				unwrap(await Planner.getComments(base, issue.id))[0],
+			).toMatchObject({
+				content: " ",
+				author: "cabane://actor/human/david",
+				authorType: "human",
+			});
+			const log = await client.callTool({
+				name: "kabane_log",
+				arguments: { id: issue.id, commit: "HEAD" },
+			});
+			expect(log.isError).toBeFalsy();
+			expect(writes).toEqual(["kabane_comment", "kabane_log"]);
+		} finally {
+			await client.close();
+		}
 	});
 
 	it("calls a write, fires afterWrite, and surfaces errors as isError", async () => {

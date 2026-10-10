@@ -190,6 +190,23 @@ The server exposes `kabane_*` tools: `kabane_list`, `kabane_get`, `kabane_contex
 `kabane_link` and a few more. The agent's working directory sets the default scope, so a
 new task lands in the repo the agent is working in.
 
+For MCP comments, use `body` for Markdown. `text` is also accepted, and legacy `content`
+remains supported. Supply at least one nonempty string; if you supply several aliases, their values
+must be **exactly equal**, including whitespace. The stored content is not trimmed or rewritten.
+
+```jsonl
+{"name":"kabane_comment","arguments":{"id":"JMYA-1","body":"Implemented the change; tests pass."}}
+{"name":"kabane_log","arguments":{"id":"JMYA-1","commit":"abc123","note":"Implementation commit"}}
+{"name":"kabane_log","arguments":{"id":"JMYA-1","refs":[{"uri":"commit:abc123","label":"Implementation"},{"uri":"file:src/index.ts"}]}}
+```
+
+`kabane_log` requires `commit` or a nonempty `refs` array of `{uri, label?}`. `commit` is a
+nonempty bare SHA or revision (for example `HEAD~1`), shorthand for `commit:<value>`. You may
+supply both: explicit refs and labels are preserved, and the shorthand is appended only if
+that exact commit URI is absent. Existing duplicates in `refs` are not removed. Comment
+authorship still comes from the connected identity. Check each write result for errors
+before issuing dependent writes or `kabane_done`.
+
 Agents use the tracker reliably only when the project tells them to. In the project you ran
 setup in, the first issue has your agent add this block. For any other project, paste it
 into the project's `CLAUDE.md` (Claude Code), `AGENTS.md` (Codex) or `GEMINI.md` (Gemini
@@ -201,7 +218,7 @@ CLI):
 Work is tracked in kabane (MCP server `kabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.
 - Before starting, `kabane_list` with `assignee` set to your name, `state: "next"`, and `responseFormat: "concise"`. If no suitable task is on the page and `hasMore` is true, follow `nextCursor` with the same filters; only assert no work remains after `hasMore` is false. Read the chosen task with `kabane_context` and `responseFormat: "concise"`; consume every preceding chunk and continue with `nextCursor` until `selectedComplete`, `descriptionComplete`, and `humanSteeringComplete` are true before starting work. Use the same id/options; request any omitted required sections.
 - Set the task `in_progress` with `kabane_edit` and `responseFormat: "concise"` before touching code. Never take a task that is already in progress.
-- When finished, `kabane_comment` what landed (files, commits, what is left), then `kabane_done` with `responseFormat: "concise"`.
+- When finished, `kabane_comment` with `body` describing what landed (files, commits, what is left). Check write results for errors before `kabane_done` with `responseFormat: "concise"`.
 - File new work you find with `kabane_add` and `responseFormat: "concise"` instead of doing it unasked. Use `kabane_get` for full own fields.
 ```
 

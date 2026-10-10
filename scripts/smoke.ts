@@ -22,6 +22,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { ContextPageSchema } from "../packages/core/context-output";
+import { TaskCommentSchema, TaskWorkLogSchema } from "../packages/core/schemas";
 import { build, DIST } from "./build";
 import { inspectArchive, verifyReleaseFiles } from "./release-artifact";
 
@@ -215,12 +216,13 @@ const checkCommands = (version: string): string => {
 
 const readReplies = async (
 	stream: ReadableStream<Uint8Array>,
+	count: number,
 ): Promise<string[]> => {
 	const decoder = new TextDecoder();
 	const reader = stream.getReader();
 	const lines: string[] = [];
 	let buffered = "";
-	while (lines.length < 4) {
+	while (lines.length < count) {
 		const chunk = await reader.read();
 		if (chunk.done) break;
 		buffered += decoder.decode(chunk.value, { stream: true });
@@ -255,7 +257,10 @@ type SmokeReply = {
 		serverInfo?: { name?: string; version?: string };
 		tools?: {
 			name: string;
-			inputSchema?: { properties?: Record<string, unknown> };
+			inputSchema?: {
+				properties?: Record<string, unknown>;
+				required?: string[];
+			};
 		}[];
 		content?: { text?: string }[];
 		isError?: boolean;
@@ -276,6 +281,24 @@ const checkMcpDiscovery = (reply: SmokeReply | undefined): void => {
 		!context.inputSchema.properties.responseFormat
 	)
 		fail("installed MCP schema omits concise context options");
+	checkMcpWriteDiscovery(reply);
+};
+const checkMcpWriteDiscovery = (reply: SmokeReply | undefined): void => {
+	const tools = reply?.result?.tools ?? [];
+	const comment = tools.find((tool) => tool.name === "kabane_comment");
+	for (const alias of ["body", "text", "content"])
+		if (
+			!comment?.inputSchema?.properties?.[alias] ||
+			comment.inputSchema.required?.includes(alias)
+		)
+			fail(`installed MCP schema omits optional comment ${alias}`);
+	const log = tools.find((tool) => tool.name === "kabane_log");
+	for (const field of ["refs", "commit"])
+		if (
+			!log?.inputSchema?.properties?.[field] ||
+			log.inputSchema.required?.includes(field)
+		)
+			fail(`installed MCP schema omits optional log ${field}`);
 };
 const checkMcpPage = (reply: SmokeReply | undefined): void => {
 	const text = reply?.result?.content?.[0]?.text ?? "";
@@ -286,6 +309,94 @@ const checkMcpPage = (reply: SmokeReply | undefined): void => {
 		Buffer.byteLength(text) > 16384
 	)
 		fail("installed MCP concise list shape/budget");
+};
+
+const MCP_COMMENT_BODY = "  ## Installed MCP Markdown\n\n- kept verbatim\n";
+const MCP_LABELED_REF = {
+	uri: "commit:abc123",
+	label: "Installed explicit label",
+};
+const MCP_WRITE_CALLS = [
+	{ name: "kabane_comment", args: { body: MCP_COMMENT_BODY }, error: false },
+	{ name: "kabane_comment", args: { text: MCP_COMMENT_BODY }, error: false },
+	{ name: "kabane_comment", args: { content: MCP_COMMENT_BODY }, error: false },
+	{
+		name: "kabane_comment",
+		args: {
+			body: MCP_COMMENT_BODY,
+			text: MCP_COMMENT_BODY,
+			content: MCP_COMMENT_BODY,
+		},
+		error: false,
+	},
+	{ name: "kabane_log", args: { refs: [MCP_LABELED_REF] }, error: false },
+	{ name: "kabane_log", args: { commit: "HEAD~1" }, error: false },
+	{
+		name: "kabane_log",
+		args: { refs: [MCP_LABELED_REF], commit: "abc123" },
+		error: false,
+	},
+	{
+		name: "kabane_log",
+		args: { refs: [MCP_LABELED_REF], commit: "def456" },
+		error: false,
+	},
+	{ name: "kabane_comment", args: {}, error: true },
+	{ name: "kabane_comment", args: { body: "a", text: "b" }, error: true },
+	{ name: "kabane_log", args: {}, error: true },
+	{ name: "kabane_log", args: { commit: "" }, error: true },
+];
+
+const checkMcpWrites = (replies: SmokeReply[], taskId: string): void => {
+	for (const [index, call] of MCP_WRITE_CALLS.entries()) {
+		const reply = replies.find((reply) => reply.id === 5 + index);
+		if (!reply?.result || Boolean(reply.result.isError) !== call.error)
+			fail(
+				`installed MCP write ${call.name} #${index} returned unexpected result`,
+			);
+	}
+	const stored = z
+		.object({
+			comments: z.array(TaskCommentSchema),
+			workLogs: z.array(TaskWorkLogSchema),
+		})
+		.safeParse(JSON.parse(kabane("show", taskId, "--json").stdout));
+	if (!stored.success)
+		return fail("installed MCP writes have invalid stored shape");
+	const comments = stored.data.comments.filter(
+		(comment) => comment.content === MCP_COMMENT_BODY,
+	);
+	if (
+		stored.data.comments.length !== 5 ||
+		comments.length !== 4 ||
+		comments.some(
+			(comment) =>
+				comment.author !== "cabane://actor/human/smoke" ||
+				comment.authorType !== "human",
+		)
+	)
+		fail(
+			"installed MCP comment aliases changed content/author or wrote on error",
+		);
+	const refs = stored.data.workLogs.map((entry) =>
+		entry.refs.map((ref) => ({
+			uri: ref.uri,
+			...(ref.label === undefined ? {} : { label: ref.label }),
+		})),
+	);
+	const expectedRefs = [
+		[MCP_LABELED_REF],
+		[{ uri: "commit:HEAD~1" }],
+		[MCP_LABELED_REF],
+		[MCP_LABELED_REF, { uri: "commit:def456" }],
+	];
+	if (JSON.stringify(refs) !== JSON.stringify(expectedRefs))
+		fail(
+			"installed MCP commit shorthand changed refs/labels/dedup or wrote on error",
+		);
+	pass(
+		"installed MCP comment aliases and commit shorthand persist, invalid inputs do not write",
+	);
 };
 
 // A harness closes the server's stdin when it goes away; the server must exit then, not linger.
@@ -316,12 +427,21 @@ const checkMcp = async (version: string, taskId: string): Promise<void> => {
 				arguments: { id: taskId, responseFormat: "concise", deref: false },
 			},
 		},
+		...MCP_WRITE_CALLS.map((call, index) => ({
+			jsonrpc: "2.0",
+			id: 5 + index,
+			method: "tools/call",
+			params: { name: call.name, arguments: { id: taskId, ...call.args } },
+		})),
 	];
 	await proc.stdin.write(
 		requests.map((request) => JSON.stringify(request)).join("\n") + "\n",
 	);
 	await proc.stdin.flush();
-	const lines = await within(10_000, readReplies(proc.stdout));
+	const lines = await within(
+		10_000,
+		readReplies(proc.stdout, 4 + MCP_WRITE_CALLS.length),
+	);
 	await proc.stdin.end();
 	const exited = await within(10_000, proc.exited);
 	if (exited === "timeout") proc.kill();
@@ -352,6 +472,7 @@ const checkMcp = async (version: string, taskId: string): Promise<void> => {
 		);
 	if (exited === "timeout")
 		fail("kabane mcp kept running after its stdin closed");
+	checkMcpWrites(replies, taskId);
 	pass(
 		`kabane mcp initialize/discover/concise call: ${info?.name} ${info?.version}, exits when stdin closes`,
 	);

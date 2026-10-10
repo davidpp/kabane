@@ -450,16 +450,50 @@ const comment = define({
 
 Parameters:
 - id: ${ID_HINT}
-- content: Markdown`,
-	input: { id: z.string().min(1), content: z.string().min(1) },
+- body: Markdown (recommended); text and legacy content are aliases. Supply at least one; multiple must be exactly equal`,
+	input: {
+		id: z.string().min(1),
+		body: z
+			.string()
+			.min(1)
+			.optional()
+			.describe("Markdown comment (recommended)."),
+		text: z
+			.string()
+			.min(1)
+			.optional()
+			.describe("Alias for body; must match exactly if combined."),
+		content: z
+			.string()
+			.min(1)
+			.optional()
+			.describe("Legacy alias for body; must match exactly if combined."),
+	},
 	handler: async (args, ctx) => {
+		const content = args.body ?? args.text ?? args.content;
+		if (content === undefined)
+			return err(
+				new Error(
+					"Comment requires Markdown: supply body (recommended), text or content.",
+				),
+			);
+		if (
+			[args.body, args.text, args.content].some(
+				(value) => value !== undefined && value !== content,
+			)
+		)
+			return err(
+				new Error(
+					"Comment body, text and content must be exactly equal when combined; supply only body or make all supplied aliases identical.",
+				),
+			);
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
 		return Planner.addComment(ctx.basePath, {
 			taskId: id.value,
 			author: ctx.actor,
 			authorType: authorTypeOf(ctx.actor),
-			content: args.content,
+			content,
 		});
 	},
 });
@@ -473,21 +507,42 @@ Ref forms: commit:<sha>, branch:<name>, pr:<owner>/<repo>#<n>, issue:<owner>/<re
 
 Parameters:
 - id: ${ID_HINT}
-- refs: Array of { uri, label? }
+- refs: Optional nonempty array of { uri, label? }; supply refs or commit
+- commit: Optional bare SHA or revision, shorthand for a commit: URI; appended unless that exact URI is already in refs
 - note: Optional summary`,
 	input: {
 		id: z.string().min(1),
 		refs: z
 			.array(z.object({ uri: z.string().min(1), label: z.string().optional() }))
-			.min(1),
+			.min(1)
+			.optional()
+			.describe("Work references {uri, label?}; supply refs or commit."),
+		commit: z
+			.string()
+			.min(1)
+			.optional()
+			.describe(
+				"Bare SHA or revision; adds commit:<value> unless already in refs.",
+			),
 		note: z.string().optional(),
 	},
 	handler: async (args, ctx) => {
+		if (args.refs === undefined && args.commit === undefined)
+			return err(
+				new Error(
+					"Work log requires references: supply commit (bare SHA or revision) or a nonempty refs array of {uri, label?}.",
+				),
+			);
+		const refs = [...(args.refs ?? [])];
+		if (args.commit !== undefined) {
+			const uri = `commit:${args.commit}`;
+			if (!refs.some((ref) => ref.uri === uri)) refs.push({ uri });
+		}
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
 		return Planner.addWorkLog(ctx.basePath, {
 			taskId: id.value,
-			refs: args.refs,
+			refs,
 			note: args.note,
 			addedBy: ctx.actor,
 			addedByType: authorTypeOf(ctx.actor),

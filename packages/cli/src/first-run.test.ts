@@ -141,6 +141,10 @@ describe("firstIssueBrief", () => {
 		);
 		expect(brief).toContain('`kabane_edit` and `responseFormat: "concise"`');
 		expect(brief).toContain('`kabane_done` with `responseFormat: "concise"`');
+		expect(brief).toContain("`kabane_comment` with `body`");
+		expect(brief).toContain(
+			"Check write results for errors before `kabane_done`",
+		);
 		expect(brief).toContain('`kabane_context` and `responseFormat: "concise"`');
 		expect(brief).toContain("consume every preceding chunk");
 		expect(brief).toContain(

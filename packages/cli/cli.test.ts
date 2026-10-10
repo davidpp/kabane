@@ -8,8 +8,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { TaskCommentSchema, TaskWorkLogSchema } from "@cabane/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { z } from "zod";
 
 const BIN = join(import.meta.dir, "index.ts");
 
@@ -492,6 +494,149 @@ describe("kabane cli", () => {
 			await client.close();
 		}
 	});
+});
+
+describe("MCP write inputs over the actual stdio entry point", () => {
+	it("accepts aliases and commit shorthand, keeps stored values, and rejects invalid writes", async () => {
+		const home = join(tmpdir(), `cabane-mcp-inputs-${crypto.randomUUID()}`);
+		const cwd = join(home, "project");
+		mkdirSync(join(cwd, ".kabane"), { recursive: true });
+		writeFileSync(join(cwd, ".kabane", "scope"), "inputs\n");
+		const run = makeRunner(home, cwd);
+		const actor = "cabane://actor/agent/stdio-test";
+		const client = new Client({ name: "write-inputs-test", version: "0" });
+		try {
+			expect(
+				(
+					await run(
+						"init",
+						"--actor",
+						"cabane://actor/human/tester",
+						"--device",
+						"inputs",
+					)
+				).code,
+			).toBe(0);
+			await client.connect(
+				new StdioClientTransport({
+					command: process.execPath,
+					args: [BIN, "mcp", "--as", actor],
+					cwd,
+					env: { ...process.env, KABANE_HOME: home },
+				}),
+			);
+			const call = async (
+				name: string,
+				args: Record<string, unknown>,
+				error = false,
+			) => {
+				const parsed = z
+					.object({
+						isError: z.boolean().optional(),
+						content: z.array(
+							z.object({ type: z.literal("text"), text: z.string() }),
+						),
+					})
+					.safeParse(await client.callTool({ name, arguments: args }));
+				expect(parsed.success).toBe(true);
+				if (!parsed.success) return "";
+				expect(Boolean(parsed.data.isError)).toBe(error);
+				return parsed.data.content.map((block) => block.text).join("");
+			};
+			const { tools } = await client.listTools();
+			expect(
+				tools.find((tool) => tool.name === "kabane_comment")?.inputSchema
+					.properties,
+			).toHaveProperty("body");
+			expect(
+				tools.find((tool) => tool.name === "kabane_log")?.inputSchema
+					.properties,
+			).toHaveProperty("commit");
+			const created = z
+				.object({ id: z.string() })
+				.safeParse(
+					JSON.parse(await call("kabane_add", { title: "Stdio inputs" })),
+				);
+			expect(created.success).toBe(true);
+			if (!created.success) return;
+			const id = created.data.id;
+			const body = "  ## Verbatim Markdown\n\n- shipped\n";
+			for (const args of [
+				{ body },
+				{ text: body },
+				{ content: body },
+				{ body, text: body, content: body },
+			]) {
+				const comment = TaskCommentSchema.safeParse(
+					JSON.parse(await call("kabane_comment", { id, ...args })),
+				);
+				expect(comment.success).toBe(true);
+				if (comment.success)
+					expect(comment.data).toMatchObject({
+						content: body,
+						author: actor,
+						authorType: "ai",
+					});
+			}
+			for (const args of [
+				{},
+				{ body: "different", text: "values" },
+				{ body: "" },
+				{ text: 42 },
+			])
+				await call("kabane_comment", { id, ...args }, true);
+			const labeled = { uri: "commit:abc123", label: "Explicit label" };
+			const logInputs = [
+				{ refs: [labeled] },
+				{ commit: "HEAD~1" },
+				{ refs: [labeled], commit: "def456" },
+				{ refs: [labeled], commit: "abc123" },
+			];
+			for (const args of logInputs) {
+				const entry = TaskWorkLogSchema.safeParse(
+					JSON.parse(await call("kabane_log", { id, ...args })),
+				);
+				expect(entry.success).toBe(true);
+			}
+			for (const args of [
+				{},
+				{ commit: "" },
+				{ commit: 42 },
+				{ commit: "valid", refs: [] },
+			])
+				await call("kabane_log", { id, ...args }, true);
+			const shown = await run("show", id, "--json");
+			expect(shown.code).toBe(0);
+			const stored = z
+				.object({
+					comments: z.array(TaskCommentSchema),
+					workLogs: z.array(TaskWorkLogSchema),
+				})
+				.safeParse(JSON.parse(shown.out));
+			expect(stored.success).toBe(true);
+			if (!stored.success) return;
+			expect(stored.data.comments).toHaveLength(4);
+			for (const comment of stored.data.comments)
+				expect(comment).toMatchObject({
+					content: body,
+					author: actor,
+					authorType: "ai",
+				});
+			expect(
+				stored.data.workLogs.map((entry) =>
+					entry.refs.map(({ uri, label }) => ({ uri, label })),
+				),
+			).toEqual([
+				[labeled],
+				[{ uri: "commit:HEAD~1", label: undefined }],
+				[labeled, { uri: "commit:def456", label: undefined }],
+				[labeled],
+			]);
+		} finally {
+			await client.close();
+			rmSync(home, { recursive: true, force: true });
+		}
+	}, 30_000);
 });
 
 describe("the owner's timezone", () => {
