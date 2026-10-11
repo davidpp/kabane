@@ -388,7 +388,7 @@ export namespace BoardTabs {
 		key.shift || !/^[1-9]$/.test(key.name) ? undefined : Number(key.name);
 
 	/** Open the prompt for a typed answer to `question` (`enter` on its banner or its card's tab). */
-	export const typeAnswer = (state: State, question: Question): Step =>
+	const typeAnswer = (state: State, question: Question): Step =>
 		BoardPrompt.open(state, {
 			target: { type: "answer", questionId: question.questionActivityId },
 			title: "answer",
