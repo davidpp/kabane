@@ -16,6 +16,7 @@ import {
 } from "react";
 import { BoardActivity } from "./activity";
 import { anyActivityRunning, Board } from "./board";
+import { CardTab } from "./card-tab";
 import { Clipboard } from "./clipboard";
 import { BoardContext } from "./context";
 import { CopilotLog } from "./copilot-log";
@@ -26,7 +27,12 @@ import { EventView } from "./event-view";
 import { Launcher } from "./launcher";
 import { BoardNav } from "./nav";
 import { DispatchOverlay, HelpSheet } from "./overlay";
-import type { ActivitySource, Copilot, Dispatcher } from "./ports";
+import type {
+	ActivityCard,
+	ActivitySource,
+	Copilot,
+	Dispatcher,
+} from "./ports";
 import { useSpinnerFrame } from "./spinner";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
 import { BoardTabs } from "./tabs";
@@ -799,6 +805,11 @@ export const App = ({
 
 	const spinnerFrame = useSpinnerFrame(anyActivityRunning(shownActivity));
 
+	// The event view on a card's tab refreshes its card every second; the keys read the same card.
+	const takeCard = useCallback((card: ActivityCard): void => {
+		setState((prev) => (prev ? BoardTabs.withCard(prev, card) : prev));
+	}, []);
+
 	// Resolve task ULID → shortId from loaded sections (for the event view's header).
 	const resolveShortId = useCallback((taskId: string): string | undefined => {
 		const s = stateRef.current;
@@ -905,6 +916,10 @@ export const App = ({
 				permission={
 					cardId === CopilotLog.CARD_ID ? state.copilot.permission : undefined
 				}
+				tabbed={tabs.active === cardId}
+				lane={CardTab.view(tabs, cardId).lane}
+				onLane={(index) => dispatchMouse({ type: "lane", index })}
+				onCard={takeCard}
 				// On a card's own tab, the question its sessions wait on.
 				banner={<CardTabQuestion tabs={tabs} />}
 				keys={keys}

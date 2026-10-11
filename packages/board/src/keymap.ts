@@ -44,6 +44,8 @@ export namespace Keymap {
 		unanswered?: boolean;
 		/** A question is pinned over the detail view, so the digits are its own. */
 		pinned?: boolean;
+		/** The card on screen has lanes to walk. */
+		lanes?: boolean;
 		/** The `?` sheet is taller than the pane. */
 		scrollable?: boolean;
 		/** Setup found harnesses to tick. */
@@ -376,6 +378,13 @@ export namespace Keymap {
 					tier: "footer",
 					keys: ["w"],
 					when: (s) => s.closable === true,
+				},
+				{
+					key: "h/l",
+					label: "lanes",
+					tier: "footer",
+					keys: ["h", "l", "left", "right"],
+					when: (s) => s.lanes === true,
 				},
 				{
 					key: "j/k",

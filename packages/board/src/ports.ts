@@ -42,6 +42,12 @@ export type ActivityCard = {
 	// The core agent sessions this card's work runs as. A question one of them asks is the card's:
 	// its tab counts it, and `!` lands on the tab rather than on the question's task.
 	sessionIds?: readonly string[];
+	// Named streams inside the card (one per agent session, say), in a stable order: on the card's
+	// tab `h/l` pick one, and every line of the all-lanes stream is tagged with its lane in a color
+	// that stays the lane's. Append, never reorder: a lane's place is its color.
+	lanes?: readonly string[];
+	// What the lanes are, for the first chip (`all agents · live`). "lanes" when absent.
+	laneNoun?: string;
 };
 
 export type ActivityEvent = {
@@ -49,6 +55,8 @@ export type ActivityEvent = {
 	at: string;
 	type: string;
 	summary: string;
+	// Which of the card's `lanes` this event belongs to; absent, it shows under every lane.
+	lane?: string;
 };
 
 // The one event type the view draws as a rule rather than as a row: what was ASKED, which opens a

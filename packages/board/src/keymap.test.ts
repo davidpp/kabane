@@ -95,7 +95,17 @@ const QUESTION: BoardTabs.Question = {
 const TABS: BoardTabs.Tabs = {
 	...BoardTabs.NONE,
 	open: [LOOP],
-	cards: new Map([[LOOP, { finished: true, sessionIds: ["s1"], taskId: "p" }]]),
+	cards: new Map([
+		[
+			LOOP,
+			{
+				finished: true,
+				sessionIds: ["s1"],
+				taskId: "p",
+				lanes: ["claude:JAKE-3", "codex:JAKE-4"],
+			},
+		],
+	]),
 	queue: [QUESTION],
 };
 

@@ -82,6 +82,18 @@ goes back to the card's tab when the question came from one. An answered banner 
 answered and clears when you leave the view; an unanswered one stays pinned until it is answered.
 A question that offers no answers (freeform) is shown but has to be answered where it was asked.
 
+#### Lanes on a card's tab
+
+A card may split its stream into `lanes` (one per agent session, say), naming them with `laneNoun`
+(`agents`), and tag each event with the `lane` it belongs to. Its tab then shows the lanes as chips
+under the header: the first, `all agents · live`, is every lane at once and where the tab opens;
+`h`/`l` walk them, wrapping, and a click on a chip picks it. On the all-lanes stream every line
+carries its lane's tag in the lane's color, a categorical series from the theme that no status hue
+or the accent is part of, chosen by the lane's place in `lanes` (so a host appends lanes and never
+reorders them). A picked lane shows its own events and the ones on no lane. The lane on screen is
+kept by name, per card, across tab switches. A card's tab follows its newest line until the human
+scrolls up, and again once they scroll back down. Thoughts are dimmed under the agent's words.
+
 ### `Dispatcher`
 
 ```ts

@@ -8,6 +8,7 @@ import {
 	type Task,
 	type TaskState,
 } from "@cabane/core";
+import { CardTab } from "./card-tab";
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
@@ -265,7 +266,9 @@ export namespace BoardNav {
 		// The tab bar: a card's tab, or the tracker (null).
 		| { type: "tab"; id: string | null }
 		// The pinned banner's `index`th answer.
-		| { type: "answer"; index: number };
+		| { type: "answer"; index: number }
+		// A lane chip on a card's tab (0 is every lane).
+		| { type: "lane"; index: number };
 
 	const NONE: Effect = { type: "none" };
 	const SEARCH_OFF: SearchState = { mode: "off" };
@@ -1156,7 +1159,8 @@ export namespace BoardNav {
 			const own =
 				tabs.active === null
 					? null
-					: BoardTabs.reduceCardTabKey(state, tabs.active, key);
+					: (BoardTabs.reduceCardTabKey(state, tabs.active, key) ??
+						CardTab.reduceKey(state, tabs.active, key));
 			return own ?? reduceEventsKey(state, key);
 		}
 		return view.type === "detail"
@@ -1301,6 +1305,7 @@ export namespace BoardNav {
 				!state.dispatch.loading &&
 				state.dispatch.triggers.length > 0,
 			...BoardTabs.situation(state),
+			...CardTab.situation(state),
 		};
 	};
 
@@ -1427,6 +1432,7 @@ export namespace BoardNav {
 				: { state, effect: NONE };
 		if (action.type === "tab" || action.type === "answer")
 			return BoardTabs.reduceMouse(state, action);
+		if (action.type === "lane") return CardTab.reduceLane(state, action.index);
 		if (state.view.type !== "board") return { state, effect: NONE };
 		const rows = visibleRows(state);
 		const row = rows[action.row];

@@ -20,13 +20,19 @@ export namespace BoardTabs {
 	type Step = { state: State; effect: BoardNav.Effect };
 	export type Question = BoardActivity.AwaitingQuestion;
 
-	// What the tab bar keeps of a card between polls: what `w`, `o` and `!` route on.
-	type TabCard = {
+	// What the tab bar keeps of a card between polls: what `w`, `o`, `!` and the card's own keys
+	// route on.
+	export type TabCard = {
 		finished: boolean;
 		sessionIds: readonly string[];
 		taskId?: string;
 		taskShortId?: string;
+		lanes?: readonly string[];
 	};
+
+	// How a card's tab is being read, kept per card so a tab looks the same when the human comes
+	// back to it: the lane on screen (null is every lane).
+	export type CardView = { lane: string | null };
 
 	export type Tabs = {
 		// Card ids with a tab, in the order they opened.
@@ -43,6 +49,8 @@ export namespace BoardTabs {
 		queue: readonly Question[];
 		// The question `!` last landed on, which is where the next press continues from.
 		landed?: string;
+		// Each card tab's own reading state, by card id.
+		views: ReadonlyMap<string, CardView>;
 	};
 
 	/**
@@ -62,6 +70,7 @@ export namespace BoardTabs {
 		active: null,
 		cards: new Map(),
 		queue: [],
+		views: new Map(),
 	};
 
 	const NOTHING: BoardNav.Effect = { type: "none" };
@@ -109,6 +118,7 @@ export namespace BoardTabs {
 		sessionIds: card.sessionIds ?? [],
 		...(card.taskId ? { taskId: card.taskId } : {}),
 		...(card.taskShortId ? { taskShortId: card.taskShortId } : {}),
+		...(card.lanes && card.lanes.length > 0 ? { lanes: card.lanes } : {}),
 	});
 
 	// Everything a poll can change that the bar or the keys read, as one comparable string.
@@ -149,6 +159,20 @@ export namespace BoardTabs {
 		return next.active !== null && !next.open.includes(next.active)
 			? show(moved, null)
 			: moved;
+	};
+
+	/**
+	 * One card as the event view on its tab just refreshed it, so the keys see a new lane the moment
+	 * its chip appears rather than at the next board poll. The same state when nothing moved.
+	 */
+	export const withCard = (state: State, card: ActivityCard): State => {
+		const { tabs } = state;
+		if (!card.tab || !tabs.cards.has(card.id)) return state;
+		const cards = new Map(tabs.cards).set(card.id, tabCard(card));
+		const next = { ...tabs, cards };
+		return fingerprint(next) === fingerprint(tabs)
+			? state
+			: { ...state, tabs: next };
 	};
 
 	// Leaving the tracker drops a banner whose question is settled, so the task reads as itself when

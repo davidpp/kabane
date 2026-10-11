@@ -169,6 +169,12 @@ which is why the `-light` ramp has grays of its own rather than reusing the dark
   report, and pass 4.5:1 on their polarity's base and on the overlay step. Blue, green and red
   are never read: they are the terminal's cousins of working, done and failed.
 
+### Series
+- **Session tags** (`Theme.seriesOf`): six categorical hues for telling sources apart, a lane's
+  chip and the tag on each of its lines in a card's stream. Cyan, magenta, yellow, violet, teal
+  and pink, a step darker on a light terminal; none is a status hue or the accent, so a tag never
+  reads as a state. A lane keeps its hue by its place in the card's list.
+
 ### Named Rules
 **The Cocked Strip Rule.** The accent means a human is needed, and it is never used for
 anything else. Not for success, not for running work, not for decoration, not for markdown
@@ -308,6 +314,14 @@ against every glyph already here.
   them all.
 - **Motion:** only the tab on screen animates its spinner. A running card on another tab
   shows the still `●`.
+
+### Lane chips
+- **Style:** one row under a card tab's header, a chip per lane on the terminal's own background;
+  the chip on screen sits on selected in Label weight behind a `▸`. The first chip,
+  `all <noun> · live`, is in the text color; each lane's chip is in its series hue, the same hue
+  as the tag on its lines.
+- **Tags:** on the all-lanes stream only, after the time, padded to the widest lane and held to
+  a quarter of the row.
 
 ### Question banner
 - **Style:** `{components.question-banner}`, raised, pinned over the detail view it asks about

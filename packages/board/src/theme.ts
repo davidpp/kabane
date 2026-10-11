@@ -43,6 +43,12 @@ export namespace Theme {
 		 * like every other tool in that terminal.
 		 */
 		ink: { heading: string; code: string; link: string };
+		/**
+		 * Categorical hues for telling sources apart, a session's tag on each line of a card's
+		 * stream: never a status hue or the accent, so a tag never reads as working, done, failed or
+		 * waiting on you. Pick one with `seriesOf`.
+		 */
+		series: readonly string[];
 	};
 
 	/** What the terminal reported, as OpenTUI hands it over: `#rrggbb` or nothing. */
@@ -72,6 +78,7 @@ export namespace Theme {
 		faint: "#4b5563",
 		surface: { raised: "#1c1c1c", overlay: "#262626", selected: "#2f2f2f" },
 		ink: { heading: "#c4a7e7", code: "#e5c07b", link: "#56b6c2" },
+		series: ["#22d3ee", "#d946ef", "#eab308", "#a78bfa", "#2dd4bf", "#f472b6"],
 	};
 
 	/** DESIGN.md's light ramp. The grays run the other way: faint is the lightest, not the darkest. */
@@ -85,7 +92,13 @@ export namespace Theme {
 		faint: "#8c959f",
 		surface: { raised: "#f0f0f0", overlay: "#e8e8e8", selected: "#dddddd" },
 		ink: { heading: "#6f42c1", code: "#8a5a00", link: "#006d77" },
+		// The dark series a step darker, so a tag holds its contrast on a white terminal.
+		series: ["#0e7490", "#a21caf", "#a16207", "#6d28d9", "#0f766e", "#be185d"],
 	};
+
+	/** The series hue for the `index`th source: the same source keeps its color all session. */
+	export const seriesOf = (tokens: Tokens, index: number): string =>
+		tokens.series[index % tokens.series.length] ?? tokens.secondary;
 
 	// The ANSI slots the ink reads: magenta, yellow, cyan. Never blue, green or red, the terminal's
 	// cousins of the working, done and failed hues.
@@ -190,6 +203,7 @@ export namespace Theme {
 				selected: toHex(mix(bg, fg, SURFACE_STEPS.selected)),
 			},
 			ink: inkOf(reported?.palette, ramp(detected).ink),
+			series: ramp(detected).series,
 		};
 	};
 
