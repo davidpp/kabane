@@ -8,6 +8,7 @@ import type { Harnesses } from "@cabane/acp";
 import {
 	err,
 	ok,
+	type AgentActivity,
 	type ParsedQuestion,
 	Planner,
 	parseQuestionBody,
@@ -379,43 +380,83 @@ export namespace Loop {
 	 * the same answer the board gives. A permission question takes one of the harness's options
 	 * by id, label or position, and the decision records its label.
 	 */
-	export const answer = async (
-		deps: Pick<Deps, "home" | "basePath"> & { actor: string },
+	type AnswerDeps = Pick<Deps, "home" | "basePath"> & { actor: string };
+
+	type Asked = { question: AgentActivity; runId: string; task: string };
+
+	/** The question `questionId`, the run whose session waits on it, and its task; undefined if no loop's. */
+	const waiting = async (
+		basePath: string,
 		questionId: string,
-		given: string,
-	): Promise<Result<Answered>> => {
-		const needs = await Planner.getNeedsInput(deps.basePath);
+	): Promise<Result<Asked | undefined>> => {
+		const needs = await Planner.getNeedsInput(basePath);
 		if (!needs.ok) return needs;
 		const row = needs.value.find((r) => r.question?.id === questionId);
 		const runId = RunStore.runOfSession(row?.session.externalRef);
-		if (!row?.question || runId === undefined)
-			return err(
-				new Error(
-					`No loop session is waiting on question ${questionId}: it is answered, its session ended, or the id is wrong. \`kabane loop status <runId>\` lists the open ones`,
-				),
-			);
-		const text = answerText(parseQuestionBody(row.question.body), given);
-		if (!text.ok) return text;
-		// Core records no author on an activity, so who answered rides the run's inbox, noted
-		// before the answer so the runner finds it once it sees the decision. A note that cannot
-		// be written (the run's directory is gone) does not hold the answer back.
+		return ok(
+			row?.question && runId !== undefined
+				? {
+						question: row.question,
+						runId,
+						task: row.task?.shortId ?? row.session.taskId,
+					}
+				: undefined,
+		);
+	};
+
+	// Core records no author on an activity, so who answered rides the run's inbox, noted before
+	// the answer so the runner finds it once it sees the decision.
+	const note = (
+		deps: AnswerDeps,
+		runId: string,
+		questionId: string,
+	): Result<void> =>
 		RunStore.appendInbox(deps.home, runId, {
 			kind: "answered",
 			questionId,
 			by: deps.actor,
 			at: new Date().toISOString(),
 		});
+
+	/**
+	 * Note that `deps.actor` is answering `questionId`, when a loop session waits on it: what the
+	 * board does before it writes an answer of its own. Any other question is not the loop's to note.
+	 */
+	export const answering = async (
+		deps: AnswerDeps,
+		questionId: string,
+	): Promise<Result<void>> => {
+		const found = await waiting(deps.basePath, questionId);
+		if (!found.ok) return found;
+		return found.value
+			? note(deps, found.value.runId, questionId)
+			: ok(undefined);
+	};
+
+	export const answer = async (
+		deps: AnswerDeps,
+		questionId: string,
+		given: string,
+	): Promise<Result<Answered>> => {
+		const found = await waiting(deps.basePath, questionId);
+		if (!found.ok) return found;
+		if (!found.value)
+			return err(
+				new Error(
+					`No loop session is waiting on question ${questionId}: it is answered, its session ended, or the id is wrong. \`kabane loop status <runId>\` lists the open ones`,
+				),
+			);
+		const { question, runId, task } = found.value;
+		const text = answerText(parseQuestionBody(question.body), given);
+		if (!text.ok) return text;
+		// A note that cannot be written (the run's directory is gone) does not hold the answer back.
+		note(deps, runId, questionId);
 		const answered = await Planner.answerQuestion(deps.basePath, {
 			questionId,
 			answer: text.value,
 		});
 		if (!answered.ok) return answered;
-		return ok({
-			questionId,
-			answer: text.value,
-			runId,
-			task: row.task?.shortId ?? row.session.taskId,
-		});
+		return ok({ questionId, answer: text.value, runId, task });
 	};
 
 	/**

@@ -7,6 +7,7 @@ import { LoopConfig } from "./config";
 import { RunStore } from "./store";
 
 let home = "";
+const ACTOR = "cabane://actor/human/david";
 
 beforeEach(() => {
 	home = mkdtempSync(join(tmpdir(), "loop-activity-"));
@@ -69,7 +70,7 @@ describe("LoopActivity", () => {
 	});
 
 	it("reads the runs and their events off disk on every call", async () => {
-		const source = LoopActivity.source(home);
+		const source = LoopActivity.source({ home, basePath: home, actor: ACTOR });
 		expect(await source.load()).toEqual({ ok: true, value: [] });
 		RunStore.create(home, run({ status: "pending", exit: undefined }));
 		const log = RunStore.eventLog(home, "KAB-1-abc");
@@ -93,7 +94,7 @@ describe("LoopActivity", () => {
 	});
 
 	it("a dismissed run is not listed again, and a live one cannot be dismissed", async () => {
-		const source = LoopActivity.source(home);
+		const source = LoopActivity.source({ home, basePath: home, actor: ACTOR });
 		RunStore.create(home, run({ status: "running", pid: process.pid }));
 		const refused = await source.dismiss?.("KAB-1-abc");
 		expect(refused?.ok).toBe(false);

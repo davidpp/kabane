@@ -181,6 +181,23 @@ describe("Loop.answer", () => {
 		expect(after.ok && after.value).toEqual([]);
 	});
 
+	it("answering notes who answers a loop session's question, and nothing for any other", async () => {
+		const deps = { home, basePath: home, actor: HUMAN };
+		const { questionId } = await blocked("run-1");
+		expect(await Loop.answering(deps, questionId)).toEqual({
+			ok: true,
+			value: undefined,
+		});
+		expect(await Loop.answering(deps, "not-a-loop-question")).toEqual({
+			ok: true,
+			value: undefined,
+		});
+		const inbox = RunStore.readInbox(home, "run-1", 0);
+		expect(inbox.ok && inbox.value.entries).toMatchObject([
+			{ kind: "answered", questionId, by: HUMAN },
+		]);
+	});
+
 	it("refuses an answer that is none of the harness's options, and answers nothing", async () => {
 		const { sessionId, questionId } = await blocked("run-1");
 		const answered = await Loop.answer(

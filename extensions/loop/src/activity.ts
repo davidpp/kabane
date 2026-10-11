@@ -109,8 +109,20 @@ export namespace LoopActivity {
 		return appended.ok ? ok(`inject queued for ${claim.lane}`) : appended;
 	};
 
-	/** The device's newest runs, read from `$KABANE_HOME/loops` on every call. */
-	export const source = (home: string): ActivitySource => ({
+	/**
+	 * The device's newest runs, read from `$KABANE_HOME/loops` on every call. A question the board
+	 * answers for one of a run's sessions is noted in the run's inbox as answered by `actor`, the
+	 * board's, as `kabane loop answer` notes its own.
+	 */
+	export const source = ({
+		home,
+		basePath,
+		actor,
+	}: {
+		home: string;
+		basePath: string;
+		actor: string;
+	}): ActivitySource => ({
 		// A run whose tab the human closed is not listed again; `kabane loop status` still shows it.
 		load: async () => {
 			const runs = RunStore.list(home);
@@ -146,5 +158,7 @@ export namespace LoopActivity {
 			const dismissed = RunStore.dismiss(home, id, new Date());
 			return dismissed.ok ? ok(undefined) : dismissed;
 		},
+		answering: (questionId) =>
+			Loop.answering({ home, basePath, actor }, questionId),
 	});
 }

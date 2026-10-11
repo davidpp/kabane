@@ -178,7 +178,11 @@ export const loop: Extension = {
 	commands: [command],
 	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
 	board: (ctx) => ({
-		activity: LoopActivity.source(ctx.home),
+		activity: LoopActivity.source({
+			home: ctx.home,
+			basePath: ctx.store,
+			actor: ctx.actor,
+		}),
 		headers: { [LoopActivity.KIND]: LoopHeader.make(ctx.home, ctx.store) },
 	}),
 };
