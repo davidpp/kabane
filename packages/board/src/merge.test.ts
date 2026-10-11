@@ -83,6 +83,27 @@ describe("Activity.merge", () => {
 		expect((await merged.dismiss?.("c:1"))?.ok).toBe(false);
 	});
 
+	test("answering reaches every contributor that keeps who answered, and names the one that failed", async () => {
+		const noted: string[] = [];
+		const recording = (name: string, fails = false): ActivitySource => ({
+			...a,
+			answering: async (questionId) => {
+				noted.push(`${name}/${questionId}`);
+				return fails ? err(new Error("inbox gone")) : ok(undefined);
+			},
+		});
+		expect(
+			await Activity.merge({ a: recording("a"), b }).answering?.("q1"),
+		).toEqual(ok(undefined));
+		expect(noted).toEqual(["a/q1"]);
+		const failed = await Activity.merge({
+			a: recording("a"),
+			c: recording("c", true),
+		}).answering?.("q2");
+		expect(failed?.ok === false && failed.error.message).toBe("c: inbox gone");
+		expect(noted).toEqual(["a/q1", "a/q2", "c/q2"]);
+	});
+
 	test("act reaches its contributor with its own id; one that takes no actions says so", async () => {
 		const acting: ActivitySource = {
 			...a,

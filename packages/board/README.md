@@ -40,6 +40,7 @@ interface ActivitySource {
   events?(id: string, afterSeq: number): Promise<Result<ActivityEvent[]>>;
   act?(id: string, actionId: string, input: { text?: string; lane?: string }): Promise<Result<string>>;
   dismiss?(id: string): Promise<Result<void>>;
+  answering?(questionId: string): Promise<Result<void>>;
 }
 ```
 
@@ -85,6 +86,12 @@ answered and clears when you leave the view; an unanswered one stays pinned unti
 A question that offers no answers (freeform) takes a typed one: `enter`, on its banner or on the
 card's tab that shows it, opens the board's prompt (below), and what is sent goes to
 `Planner.answerQuestion` as the answer.
+
+Core records no author on an activity. Before it writes any answer, the board calls the source's
+optional `answering(questionId)`, so a host that keeps who answered (the loop notes the board's actor
+in its run's inbox) has it on record by the time its work sees the decision. The id is core's, so a
+merged source hands it to every contributor, and a host whose sessions did not ask it does nothing. A
+failed note does not hold the answer back.
 
 #### A card's header
 

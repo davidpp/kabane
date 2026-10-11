@@ -481,13 +481,16 @@ export const App = ({
 	);
 
 	// A banner's question answered: core writes the decision, the banner says what was answered until
-	// the human leaves, and the reload takes the question off every badge.
+	// the human leaves, and the reload takes the question off every badge. The host hears it first, so
+	// one that keeps who answered has it before its work sees the answer; a failed note does not hold
+	// the answer back.
 	const answer = useCallback(
 		async (
 			s: BoardNav.BoardState,
 			questionId: string,
 			text: string,
 		): Promise<void> => {
+			await shownSource.answering?.(questionId);
 			const res = await BoardData.answerQuestion(basePath, questionId, text);
 			setNotice(flash(res, `answered ${text}`));
 			if (res.ok)
@@ -496,7 +499,7 @@ export const App = ({
 				);
 			await reload(s);
 		},
-		[basePath, reload],
+		[basePath, reload, shownSource],
 	);
 
 	// `w` closed a finished card's tab: the host forgets it, so a relaunch does not bring it back. The

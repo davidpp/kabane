@@ -113,6 +113,12 @@ export interface ActivitySource {
 	// The human closed a finished card's tab with `w`: stop listing it, for good, so it stays closed
 	// across a relaunch. Optional: without it the tab stays closed for this session only.
 	dismiss?(id: string): Promise<Result<void>>;
+	// The human is answering the core session question `questionId` from the board, whoever asked
+	// it. Called just before the answer is written, so a host that keeps who answered (core records
+	// no author on an activity) has it on record by the time its work sees the decision; a host
+	// whose sessions did not ask it has nothing to do. A failure does not hold the answer back.
+	// Optional.
+	answering?(questionId: string): Promise<Result<void>>;
 }
 
 // One setting a trigger takes. A trigger whose every input has a `default` and either `options` or
