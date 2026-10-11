@@ -157,7 +157,31 @@ type Verb = (args: ParsedArgs, deps: Deps, target: string) => Promise<Outcome>;
 const ran = (result: Result<RunStore.Run>): Outcome =>
 	result.ok ? success(result.value, line(result.value)) : failure(result.error);
 
+// What `start` takes, and `--as` and `--scope`, which every command takes. A misspelt flag
+// (`--work-tree`) is refused rather than dropped, which would start a run the human did not ask for.
+const START_FLAGS: ReadonlySet<string> = new Set([
+	"dir",
+	"implementer",
+	"model",
+	"concurrency",
+	"wall-minutes",
+	"continuations",
+	"spend",
+	"gate",
+	"worktree",
+	"lens",
+	"verifier",
+	"as",
+	"scope",
+]);
+
 const start: Verb = async (args, deps, target) => {
+	const unknown = Object.keys(args.flags).filter((f) => !START_FLAGS.has(f));
+	if (unknown.length > 0)
+		return usage(
+			`Unknown loop start flag${unknown.length === 1 ? "" : "s"}: ${unknown.map((f) => `--${f}`).join(", ")}`,
+			USAGE,
+		);
 	for (const flag of ["implementer", "verifier"]) {
 		const harness = flagString(args, flag);
 		if (harness && !Harnesses.isId(harness))
