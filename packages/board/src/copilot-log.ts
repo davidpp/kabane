@@ -227,6 +227,8 @@ export namespace CopilotLog {
 			const log = read();
 			return ok(log ? transcript(log).filter((e) => e.seq > afterSeq) : []);
 		},
+		// The copilot's card never asks for a tab, so every dismissal is the host's.
+		...(host.dismiss ? { dismiss: host.dismiss.bind(host) } : {}),
 	});
 
 	export type Footer = { text: string; tone: "running" | "done" | "error" };

@@ -231,7 +231,8 @@ export namespace BoardTabs {
 		};
 	};
 
-	// `w`: close a finished card's tab for good. A running one says why it stays.
+	// `w`: close a finished card's tab for good, and tell the host so it stops listing the card across
+	// a relaunch too. A running one says why it stays.
 	const close = (state: State, id: string): Step => {
 		if (!state.tabs.cards.get(id)?.finished)
 			return notice(state, "still running · w closes it once it ends");
@@ -240,7 +241,7 @@ export namespace BoardTabs {
 		const open = tabs.open.filter((tab) => tab !== id);
 		return {
 			state: show(withTabs(state, { open, closed }), null),
-			effect: NOTHING,
+			effect: { type: "dismiss", cardId: id },
 		};
 	};
 

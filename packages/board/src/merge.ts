@@ -66,6 +66,14 @@ export namespace Activity {
 				? routed.part.events(routed.id, afterSeq)
 				: ok([]);
 		},
+		dismiss: async (id) => {
+			const routed = route(sources, id);
+			if (!routed) return err(unrouted("card", id));
+			// A contributor that keeps nothing to dismiss has nothing to forget.
+			return routed.part.dismiss
+				? routed.part.dismiss(routed.id)
+				: ok(undefined);
+		},
 	});
 }
 

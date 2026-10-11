@@ -259,7 +259,9 @@ describe("a card's tab", () => {
 			},
 		});
 		const finished = onTab(withLoop([card({ status: "failed" })]));
-		const closed = press(finished, "w").state;
+		const { state: closed, effect } = press(finished, "w");
+		// The host is told, so it stops listing the card across a relaunch too.
+		expect(effect).toEqual({ type: "dismiss", cardId: "loop:r1" });
 		expect(closed.tabs.open).toEqual([]);
 		expect(closed.tabs.active).toBeNull();
 		// The next poll still lists it; it stays closed.

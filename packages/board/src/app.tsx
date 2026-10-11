@@ -484,6 +484,16 @@ export const App = ({
 		[basePath, reload],
 	);
 
+	// `w` closed a finished card's tab: the host forgets it, so a relaunch does not bring it back. The
+	// tab is already gone either way; only a failure has anything to say.
+	const dismissCard = useCallback(
+		async (cardId: string): Promise<void> => {
+			const res = await shownSource.dismiss?.(cardId);
+			if (res && !res.ok) setNotice({ text: res.error.message, tone: "error" });
+		},
+		[shownSource],
+	);
+
 	// The single effect runner, shared by the keyboard and mouse dispatchers so both interaction paths
 	// execute the reducer's output the same way. `next` is the post-reduce state a reload merges into.
 	const runEffect = useCallback(
@@ -576,6 +586,9 @@ export const App = ({
 				case "answerQuestion":
 					void answer(next, effect.questionId, effect.answer);
 					return;
+				case "dismiss":
+					void dismissCard(effect.cardId);
+					return;
 				case "openEvents":
 					openEvents(next, effect.taskId);
 					break;
@@ -595,6 +608,7 @@ export const App = ({
 			runCopilot,
 			cancelCopilot,
 			answer,
+			dismissCard,
 			openEvents,
 		],
 	);

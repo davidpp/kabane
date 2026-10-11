@@ -91,6 +91,8 @@ export namespace RunStore {
 		stall: Stall.StateSchema.optional(),
 		/** Inbox lines already handled. */
 		inboxRead: z.number().int().min(0).default(0),
+		/** When the human closed the run's board tab: the board stops listing it. */
+		dismissedAt: z.string().optional(),
 	});
 	export type Run = z.infer<typeof RunSchema>;
 
@@ -214,6 +216,25 @@ export namespace RunStore {
 	): Result<Run> => {
 		const raw = readRaw(home, runId);
 		return raw.ok ? ok(effective(raw.value, alive)) : raw;
+	};
+
+	/**
+	 * Record that the human closed the run's tab. Only a run that is over: the runner owns
+	 * run.json while it is live, and a live run has a tab for a reason. A run whose runner died
+	 * is over, and its runner is not there to race the write.
+	 */
+	export const dismiss = (
+		home: string,
+		runId: string,
+		now: Date,
+		alive: (pid: number) => boolean = pidAlive,
+	): Result<Run> => {
+		const raw = readRaw(home, runId);
+		if (!raw.ok) return raw;
+		if (isLive(effective(raw.value, alive).status))
+			return err(new Error(`Run ${runId} is still running; stop it first`));
+		if (raw.value.dismissedAt) return raw;
+		return write(home, { ...raw.value, dismissedAt: now.toISOString() });
 	};
 
 	/** Every run on this device, newest first. A run that cannot be read is skipped. */

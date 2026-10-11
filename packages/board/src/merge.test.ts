@@ -64,6 +64,22 @@ describe("Activity.merge", () => {
 		expect(await merged.events?.("b:1", 0)).toEqual(ok([]));
 	});
 
+	test("dismiss reaches its contributor with its own id; one that keeps nothing has nothing to forget", async () => {
+		const dismissed: string[] = [];
+		const keeping: ActivitySource = {
+			...a,
+			dismiss: async (id) => {
+				dismissed.push(id);
+				return ok(undefined);
+			},
+		};
+		const merged = Activity.merge({ a: keeping, b });
+		expect(await merged.dismiss?.("a:1")).toEqual(ok(undefined));
+		expect(dismissed).toEqual(["1"]);
+		expect(await merged.dismiss?.("b:1")).toEqual(ok(undefined));
+		expect((await merged.dismiss?.("c:1"))?.ok).toBe(false);
+	});
+
 	test("an id no contributor minted is an error", async () => {
 		const merged = Activity.merge({ a });
 		expect((await merged.card?.("c:1"))?.ok).toBe(false);

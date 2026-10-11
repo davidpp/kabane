@@ -37,13 +37,15 @@ interface ActivitySource {
   load(): Promise<Result<ActivityCard[]>>;
   card?(id: string): Promise<Result<ActivityCard | null>>;
   events?(id: string, afterSeq: number): Promise<Result<ActivityEvent[]>>;
+  dismiss?(id: string): Promise<Result<void>>;
 }
 ```
 
 `load()` returns flat cards, newest first, already capped. A card carries `kind` (what the
 header strip counts it as — the host picks the word, `"loops"`, `"runs"`), `label`, `status`
-(`pending | running | paused | completed | stopped | failed`; `stopped` is over but not failed: halted on purpose, why in `error`), an optional `taskId` or `taskShortId`, and
-`detail` lines joined with ` · ` after the label. The board renders:
+(`pending | running | paused | completed | stopped | failed`; `stopped` is over but not failed,
+halted on purpose with why in `error`), an optional `taskId` or `taskShortId`, and `detail` lines
+joined with ` · ` after the label. The board renders:
 
 - a row badge for the first in-flight card of a task: `· ● loop · implement 3`, plus `· ● +n` for more
 - a header strip counting in-flight cards per kind and the questions waiting: `· ⠹ 2 loops · 1 run · 1 input`
@@ -59,7 +61,9 @@ the in-flight states.
 The top row is the tab bar. Tab 1 is the tracker (the board and every view pushed over it); then
 one tab per card with `tab: true`, in the order they appeared, labelled with the card's state glyph
 and its `taskShortId` (else its `label`). The tab is the card's event log. A finished card keeps its
-tab until `w` closes it, and a closed one does not come back this session. `{` and `}` walk the
+tab until `w` closes it, and a closed one does not come back: `w` also calls the source's optional
+`dismiss(id)`, so a host that remembers it stops listing the card across a relaunch (without
+`dismiss`, it stays closed for this session only). `{` and `}` walk the
 tabs, wrapping; a click on a tab switches to it. Starting work does not switch tabs. Only the tab on
 screen animates its spinner; a running card on another tab is the still `●`.
 

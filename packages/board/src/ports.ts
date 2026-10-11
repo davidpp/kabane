@@ -64,6 +64,9 @@ export interface ActivitySource {
 	card?(id: string): Promise<Result<ActivityCard | null>>;
 	// Events after `afterSeq`, oldest first. Optional: without it cards never open an event view.
 	events?(id: string, afterSeq: number): Promise<Result<ActivityEvent[]>>;
+	// The human closed a finished card's tab with `w`: stop listing it, for good, so it stays closed
+	// across a relaunch. Optional: without it the tab stays closed for this session only.
+	dismiss?(id: string): Promise<Result<void>>;
 }
 
 export type TriggerInput = {

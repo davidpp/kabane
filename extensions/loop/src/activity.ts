@@ -53,9 +53,17 @@ export namespace LoopActivity {
 
 	/** The device's newest runs, read from `$KABANE_HOME/loops` on every call. */
 	export const source = (home: string): ActivitySource => ({
+		// A run whose tab the human closed is not listed again; `kabane loop status` still shows it.
 		load: async () => {
 			const runs = RunStore.list(home);
-			return runs.ok ? ok(runs.value.slice(0, RECENT_RUNS).map(card)) : runs;
+			return runs.ok
+				? ok(
+						runs.value
+							.filter((run) => !run.dismissedAt)
+							.slice(0, RECENT_RUNS)
+							.map(card),
+					)
+				: runs;
 		},
 		card: async (id) => {
 			const run = RunStore.read(home, id);
@@ -73,6 +81,10 @@ export namespace LoopActivity {
 						})),
 					)
 				: events;
+		},
+		dismiss: async (id) => {
+			const dismissed = RunStore.dismiss(home, id, new Date());
+			return dismissed.ok ? ok(undefined) : dismissed;
 		},
 	});
 }

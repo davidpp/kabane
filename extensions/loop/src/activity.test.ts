@@ -86,4 +86,34 @@ describe("LoopActivity", () => {
 			[2, "claude claims KAB-2"],
 		]);
 	});
+
+	it("a dismissed run is not listed again, and a live one cannot be dismissed", async () => {
+		const source = LoopActivity.source(home);
+		RunStore.create(home, run({ status: "running", pid: process.pid }));
+		const refused = await source.dismiss?.("KAB-1-abc");
+		expect(refused?.ok).toBe(false);
+		expect((await source.load()).ok).toBe(true);
+
+		RunStore.write(home, run());
+		expect(await source.dismiss?.("KAB-1-abc")).toEqual({
+			ok: true,
+			value: undefined,
+		});
+		expect(await source.load()).toEqual({ ok: true, value: [] });
+		const kept = RunStore.read(home, "KAB-1-abc");
+		expect(kept.ok && kept.value.dismissedAt).toBeString();
+	});
+
+	it("a run whose runner died is over, so it can be dismissed", () => {
+		RunStore.create(home, run({ status: "running", pid: 999_999 }));
+		const dismissed = RunStore.dismiss(
+			home,
+			"KAB-1-abc",
+			new Date("2026-10-11T00:00:00.000Z"),
+			() => false,
+		);
+		expect(dismissed.ok && dismissed.value.dismissedAt).toBe(
+			"2026-10-11T00:00:00.000Z",
+		);
+	});
 });

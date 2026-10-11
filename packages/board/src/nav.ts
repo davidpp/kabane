@@ -240,6 +240,8 @@ export namespace BoardNav {
 		| { type: "loadTriggers"; taskId: string }
 		// A session question answered from its banner: core writes the decision.
 		| { type: "answerQuestion"; questionId: string; answer: string }
+		// `w` closed a finished card's tab: the host forgets the card (ActivitySource.dismiss).
+		| { type: "dismiss"; cardId: string }
 		| { type: "openEvents"; taskId: string }
 		// `O`: hand this task's linked issue to the OS. app.tsx reads the link and composes the notice.
 		| { type: "openLink"; id: string }
