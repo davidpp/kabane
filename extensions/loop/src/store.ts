@@ -113,9 +113,18 @@ export namespace RunStore {
 	export type Event = z.infer<typeof EventSchema>;
 	export type EventDraft = Omit<Event, "seq" | "at">;
 
-	// Steering (inject, pause, skip, next) joins this union with the package that consumes it.
+	// Steering (pause, skip, next) joins this union with the package that consumes it. `inject` is
+	// written by the board today and delivered to its session by the runner once C4 lands.
 	export const InboxEntrySchema = z.discriminatedUnion("kind", [
 		z.object({ kind: z.literal("stop"), at: z.string() }),
+		z.object({
+			kind: z.literal("inject"),
+			at: z.string(),
+			/** The core session the text is for, and the lane it was aimed at on the board. */
+			session: z.string(),
+			lane: z.string(),
+			text: z.string(),
+		}),
 	]);
 	export type InboxEntry = z.infer<typeof InboxEntrySchema>;
 

@@ -1,12 +1,15 @@
 // The loop's runs as board activity: each run is a card with a tab of its own, its events are the
 // run's `events.jsonl`, and the core sessions it claimed are what its tab counts questions on. Each
 // claim is a lane, so the tab can follow one session or tag every line with whose it is.
-import type {
-	ActivityCard,
-	ActivitySource,
-	ActivityStatus,
+import {
+	type ActivityCard,
+	type ActivitySource,
+	type ActivityStatus,
+	type CardAction,
+	STOP_ACTION,
 } from "@cabane/board/ports";
-import { ok } from "@cabane/core";
+import { err, ok, type Result } from "@cabane/core";
+import { Loop } from "./commands";
 import { RunStore } from "./store";
 
 // A board polls every few seconds, and every run ever started on the device stays on disk.
@@ -30,6 +33,18 @@ export namespace LoopActivity {
 	const plural = (count: number, noun: string): string =>
 		`${count} ${noun}${count === 1 ? "" : "s"}`;
 
+	// What the human can do to a live run from its tab: stop it, or say something to one session.
+	const ACTIONS: readonly CardAction[] = [
+		{ id: STOP_ACTION, key: "x", label: "stop" },
+		{
+			id: "inject",
+			key: "i",
+			label: "inject",
+			input: "a prompt for this session · enter sends it",
+			lane: true,
+		},
+	];
+
 	export const card = (run: RunStore.Run): ActivityCard => ({
 		id: run.id,
 		kind: "loops",
@@ -52,7 +67,44 @@ export namespace LoopActivity {
 		// One lane per claim, in claim order: claims only append, so a session keeps its color.
 		lanes: run.claims.map((claim) => claim.lane),
 		laneNoun: "agents",
+		...(RunStore.isLive(run.status) ? { actions: ACTIONS } : {}),
 	});
+
+	/**
+	 * Run an action through the run's inbox, which the runner reads every tick. `stop` is the
+	 * command's own (`kabane loop stop`), without waiting for the run to wind down; `inject` is
+	 * appended for the session behind the lane, and refused for a session that has ended.
+	 */
+	export const act = async (
+		home: string,
+		runId: string,
+		actionId: string,
+		input: { text?: string; lane?: string },
+	): Promise<Result<string>> => {
+		const run = RunStore.read(home, runId);
+		if (!run.ok) return run;
+		if (!RunStore.isLive(run.value.status))
+			return err(new Error(`${runId} is ${run.value.status}`));
+		if (actionId === STOP_ACTION) {
+			const stopped = await Loop.stop({ home, waitMs: 0 }, runId);
+			return stopped.ok ? ok(`stop requested for ${runId}`) : stopped;
+		}
+		if (actionId !== "inject")
+			return err(new Error(`Unknown loop action: ${actionId}`));
+		const claim = run.value.claims.find((c) => c.lane === input.lane);
+		if (!claim) return err(new Error(`No session on lane ${input.lane ?? ""}`));
+		if (claim.endedAt) return err(new Error(`${claim.lane} has ended`));
+		const text = input.text?.trim() ?? "";
+		if (text === "") return err(new Error("Nothing to inject"));
+		const appended = RunStore.appendInbox(home, runId, {
+			kind: "inject",
+			at: new Date().toISOString(),
+			session: claim.sessionId,
+			lane: claim.lane,
+			text,
+		});
+		return appended.ok ? ok(`inject queued for ${claim.lane}`) : appended;
+	};
 
 	/** The device's newest runs, read from `$KABANE_HOME/loops` on every call. */
 	export const source = (home: string): ActivitySource => ({
@@ -86,6 +138,7 @@ export namespace LoopActivity {
 					)
 				: events;
 		},
+		act: (id, actionId, input) => act(home, id, actionId, input),
 		dismiss: async (id) => {
 			const dismissed = RunStore.dismiss(home, id, new Date());
 			return dismissed.ok ? ok(undefined) : dismissed;
