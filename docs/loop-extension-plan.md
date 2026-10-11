@@ -181,6 +181,17 @@ Done on branch `worktree-agent-a02640e27e5096832` (`4a190e2..ae7d894`).
 - Port `CardHeader` by kind, with the board theme exported for it.
 - Reserve `x` as the stop key on a card tab, and keep it consistent with the copilot transcript.
 
+Done on branch `worktree-agent-a830dce27b8802384` (on top of `4682f30`), with B1's follow-ups. Found on the
+way:
+- The input is not a one-line prompt: an action with `input`, and a question that offers no
+  answers, open the copilot's own textarea (`PromptField`), so paste, multi-line and `up` history
+  work.
+- Lanes, actions and the header live on a card's tab only; a card opened with `o` as a plain event
+  view keeps the one-line title.
+- `inject` needs a live session to aim at, so it waits for a lane; a run that has claimed nothing
+  has no one to inject into. The runner reads `inject` inbox entries and drops them until C4.
+- `stop` is the command's own (`Loop.stop` with no wait).
+
 ### B3. Board: trigger form
 - Port `TriggerInput.label`, `group` and `options`, `TriggerDescriptor.preview`, the third
   `inputs` argument to `dispatch`, and the two-column grouped form with dimmed defaults and `•`
