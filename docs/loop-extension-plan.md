@@ -206,8 +206,9 @@ way:
   work.
 - Lanes, actions and the header live on a card's tab only; a card opened with `o` as a plain event
   view keeps the one-line title.
-- `inject` needs a live session to aim at, so it waits for a lane; a run that has claimed nothing
-  has no one to inject into.
+- `inject` (labelled `message` on the tab) needs a live session to aim at: the lane on screen, else
+  the card's `liveLanes`, the only one or the newest with `tab` in the prompt walking the rest. A
+  run with no session running has no one to message.
 - `stop` is the command's own (`Loop.stop` with no wait).
 
 ### B3. Board: trigger form

@@ -138,14 +138,14 @@ describe("LoopActivity", () => {
 		expect(ids).not.toContain("over-12");
 	});
 
-	it("a live run offers stop, inject and steering; a finished one offers nothing", () => {
+	it("a live run offers stop, a message and steering; a finished one offers nothing", () => {
 		const live = LoopActivity.card(run({ status: "running", exit: undefined }));
-		expect(live.actions?.map((a) => [a.id, a.key])).toEqual([
-			["stop", "x"],
-			["inject", "i"],
-			["pause", "p"],
-			["skip", "s"],
-			["next", "n"],
+		expect(live.actions?.map((a) => [a.id, a.key, a.label])).toEqual([
+			["stop", "x", "stop"],
+			["inject", "i", "message"],
+			["pause", "p", "pause"],
+			["skip", "s", "skip"],
+			["next", "n", "next"],
 		]);
 		const paused = LoopActivity.card(
 			run({
@@ -158,7 +158,24 @@ describe("LoopActivity", () => {
 		expect(LoopActivity.card(run()).actions).toBeUndefined();
 	});
 
-	it("inject goes to the inbox for the session behind the lane; an ended one is refused", async () => {
+	it("a live run's message can reach the sessions still running, the newest first", () => {
+		const live = run({
+			status: "running",
+			exit: undefined,
+			claims: [
+				{ ...claim("s1", "claude:KAB-2"), endedAt: "2026-10-10T12:01:00.000Z" },
+				claim("s2", "claude:KAB-3"),
+				claim("s3", "claude:KAB-4"),
+			],
+		});
+		expect(LoopActivity.card(live).liveLanes).toEqual([
+			"claude:KAB-4",
+			"claude:KAB-3",
+		]);
+		expect(LoopActivity.card(run()).liveLanes).toBeUndefined();
+	});
+
+	it("a message goes to the inbox as an inject for the session behind the lane; an ended one is refused", async () => {
 		const live = run({
 			status: "running",
 			exit: undefined,
@@ -180,7 +197,7 @@ describe("LoopActivity", () => {
 		);
 		expect(sent).toEqual({
 			ok: true,
-			value: "inject queued for claude:KAB-2#2",
+			value: "message queued for claude:KAB-2#2",
 		});
 		const ended = await LoopActivity.act(
 			{ home, basePath: home },

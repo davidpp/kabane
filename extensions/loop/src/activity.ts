@@ -33,16 +33,16 @@ export namespace LoopActivity {
 	const plural = (count: number, noun: string): string =>
 		`${count} ${noun}${count === 1 ? "" : "s"}`;
 
-	// What the human can do to a live run from its tab: stop it, say something to one session, and
-	// steer what it claims. `p` pauses a running run and resumes a paused one. None of these keys is
-	// one the board keeps for itself on a card's tab (card-tab.ts).
+	// What the human can do to a live run from its tab: stop it, message one session (the inbox's
+	// `inject`), and steer what it claims. `p` pauses a running run and resumes a paused one. None of
+	// these keys is one the board keeps for itself on a card's tab (card-tab.ts).
 	const actions = (run: RunStore.Run): readonly CardAction[] => [
 		{ id: STOP_ACTION, key: "x", label: "stop" },
 		{
 			id: "inject",
 			key: "i",
-			label: "inject",
-			input: "a prompt for this session · enter sends it",
+			label: "message",
+			input: "a message for this agent · enter sends it",
 			lane: true,
 		},
 		run.steering.paused
@@ -61,6 +61,14 @@ export namespace LoopActivity {
 			input: "a subtask's short id · claimed first once ready",
 		},
 	];
+
+	// The lanes a message can still reach: the claims whose session has not ended, the most recently
+	// started first, which is where the board aims a message sent from the all-agents view.
+	const liveLanes = (run: RunStore.Run): string[] =>
+		run.claims
+			.filter((claim) => claim.endedAt === undefined)
+			.map((claim) => claim.lane)
+			.toReversed();
 
 	/** The kind a run's card has: what the board's strip counts and the header is keyed by. */
 	export const KIND = "loops";
@@ -87,7 +95,9 @@ export namespace LoopActivity {
 		// One lane per claim, in claim order: claims only append, so a session keeps its color.
 		lanes: run.claims.map((claim) => claim.lane),
 		laneNoun: "agents",
-		...(RunStore.isLive(run.status) ? { actions: actions(run) } : {}),
+		...(RunStore.isLive(run.status)
+			? { actions: actions(run), liveLanes: liveLanes(run) }
+			: {}),
 	});
 
 	/**
@@ -143,7 +153,7 @@ export namespace LoopActivity {
 		if (!claim) return err(new Error(`No session on lane ${input.lane ?? ""}`));
 		if (claim.endedAt) return err(new Error(`${claim.lane} has ended`));
 		const text = input.text?.trim() ?? "";
-		if (text === "") return err(new Error("Nothing to inject"));
+		if (text === "") return err(new Error("Nothing to send"));
 		const appended = RunStore.appendInbox(home, runId, {
 			kind: "inject",
 			at: new Date().toISOString(),
@@ -151,7 +161,7 @@ export namespace LoopActivity {
 			lane: claim.lane,
 			text,
 		});
-		return appended.ok ? ok(`inject queued for ${claim.lane}`) : appended;
+		return appended.ok ? ok(`message queued for ${claim.lane}`) : appended;
 	};
 
 	/**
