@@ -100,10 +100,13 @@ export namespace CardTab {
 	const run = (state: State, id: string, action: CardAction): Step => {
 		const card = state.tabs.cards.get(id);
 		const lane = view(state.tabs, id).lane ?? undefined;
+		const noun = card?.laneNoun ?? "lanes";
+		if (action.lane && lanesOf(state.tabs, id).length === 0)
+			return notice(state, `no ${noun} to ${action.label} yet`);
 		if (action.lane && lane === undefined)
 			return notice(
 				state,
-				`${action.label} goes to one of the ${card?.laneNoun ?? "lanes"} · h/l picks it`,
+				`${action.label} goes to one of the ${noun} · h/l picks it`,
 			);
 		if (action.input !== undefined)
 			return BoardPrompt.open(state, {
@@ -189,8 +192,11 @@ export namespace CardTab {
 	export const hints = (state: State): Keymap.Hint[] => {
 		const id = state.tabs.active;
 		if (id === null || state.view.type !== "events") return [];
+		// An action aimed at a lane, on a card with none yet, has nothing to say in the footer.
+		const lanes = lanesOf(state.tabs, id).length;
 		return actionsOf(state.tabs, id)
 			.filter((action) => action.id !== STOP_ACTION)
+			.filter((action) => !action.lane || lanes > 0)
 			.map((action) => ({ key: action.key, label: action.label }));
 	};
 

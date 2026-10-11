@@ -168,6 +168,15 @@ describe("actions", () => {
 		);
 	});
 
+	it("an action aimed at a lane, on a card with none yet, says so and is left out of the footer", () => {
+		const s = acting({ lanes: [] });
+		expect(press(s, "i").effect).toEqual({
+			type: "notice",
+			notice: { text: "no agents to inject yet", tone: "success" },
+		});
+		expect(CardTab.hints(s)).toEqual([]);
+	});
+
 	it("an action aimed at a lane asks for one first", () => {
 		const { state, effect } = press(acting(), "i");
 		expect(state.prompt.open).toBeNull();
