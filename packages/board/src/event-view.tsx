@@ -43,9 +43,9 @@ const POLL_MS = 1000;
 // The transcript has the whole screen where the copilot panel has a dozen rows, so its pinned block
 // can be taller — never tall enough to push the events it heads out of view.
 const MAX_PLAN_ROWS = 8;
-// Timestamp column plus the glyph, reserved out of the row before an entry is fitted, and the floor
+// The glyph and a cell to spare, reserved out of the row before an entry is fitted, and the floor
 // below which fitting stops (a narrow frame gets a wrapped entry rather than an ellipsis alone).
-const RESERVED_COLS = 12;
+const RESERVED_COLS = 3;
 const MIN_ENTRY_COLS = 20;
 
 const NO_PLAN: readonly PlanEntry[] = [];
@@ -565,7 +565,7 @@ const PromptBlock = ({
 	);
 };
 
-// One event: the time, the lane's tag and the glyph hold their columns, and the text wraps beside
+// One event: the lane's tag and the glyph hold their columns, and the text wraps beside
 // them with a hanging indent, so an agent's paragraph reads as a paragraph instead of restarting at
 // column 0. A thought is dimmed under the agent's words.
 const EventRow = ({
@@ -577,21 +577,12 @@ const EventRow = ({
 }): ReactNode => {
 	const theme = useTheme();
 	const { glyph, glyphFg, textFg } = eventStyle(event.type, theme);
-	const time = new Date(event.at).toLocaleTimeString("en-US", {
-		hour12: false,
-		hour: "2-digit",
-		minute: "2-digit",
-		second: "2-digit",
-	});
 	const tool =
 		event.type === "tool_use" || event.type === "tool_call"
 			? toolParts(event.summary)
 			: null;
 	return (
 		<box style={{ flexDirection: "row", flexShrink: 0 }}>
-			<text fg={theme.muted} style={{ flexShrink: 0 }}>
-				{`${time} `}
-			</text>
 			{tag ? (
 				<text fg={tag.fg} style={{ flexShrink: 0 }}>
 					{`${tag.text} `}

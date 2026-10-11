@@ -221,8 +221,8 @@ describe("the transcript's look", () => {
 			const rows = frame.split("\n");
 			const first = rows.findIndex((row) => row.includes("Split it in"));
 			const next = rows[first + 1] ?? "";
-			// The continuation starts under the text, past the time and the glyph.
-			expect(next.slice(0, 11).trim()).toBe("");
+			// The continuation starts under the text, past the glyph.
+			expect(next.slice(0, 2).trim()).toBe("");
 			expect(next.trim().length).toBeGreaterThan(0);
 		} finally {
 			destroy();
