@@ -105,12 +105,16 @@ describe("Harnesses.installedCli", () => {
 			{ CLAUDE_CODE_EXECUTABLE: "/opt/my-wrapper/claude" },
 			on("claude"),
 		);
-		expect(claude.ok && claude.value).toEqual({});
+		expect(claude.ok && claude.value).toEqual({
+			CLAUDE_CODE_EXECUTABLE: "/opt/my-wrapper/claude",
+		});
 		const codex = Harnesses.installedCli(
 			"codex",
 			{ CODEX_PATH: "/opt/codex-dev/codex" },
 			() => null,
 		);
-		expect(codex.ok && codex.value).toEqual({});
+		expect(codex.ok && codex.value).toEqual({
+			CODEX_PATH: "/opt/codex-dev/codex",
+		});
 	});
 });

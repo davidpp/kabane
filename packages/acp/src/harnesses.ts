@@ -104,7 +104,10 @@ export namespace Harnesses {
 		which: (bin: string) => string | null = Bun.which,
 	): Result<Record<string, string>> => {
 		const cli = CLI[id];
-		if (!cli || env[cli.env]) return ok({});
+		if (!cli) return ok({});
+		// The user's own copy wins; naming it keeps the run's launch record honest.
+		const own = env[cli.env];
+		if (own) return ok({ [cli.env]: own });
 		const path = which(cli.bin);
 		if (path === null)
 			return err(
