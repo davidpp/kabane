@@ -16,6 +16,8 @@ packages/
 ├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, board, mcp (stdio)
 ├── board/     # @cabane/board  — OpenTUI kanban; ActivitySource + Dispatcher + Copilot ports, no-op defaults
 └── worker/    # cabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
+extensions/
+└── loop/      # @cabane/loop   — drives a parent issue's subtasks through ACP harnesses from a detached runner
 ```
 
 Two runtimes: Bun (devices) and Cloudflare Workers (the hub). The same core runs in both.
@@ -29,8 +31,8 @@ See `CODING_PRINCIPLE.md` for the coding rules and the architectural invariants.
 
 ```bash
 bun run check        # oxlint, its type-aware pass, oxfmt --check, knip, jscpd
-bun run typecheck    # tsc --noEmit in every packages/*/
-bun test             # bun packages only (core, sqlite, acp, extension, cli, board)
+bun run typecheck    # tsc --noEmit in every workspace package
+bun test             # bun packages only (core, sqlite, acp, extension, cli, board, extensions/*)
 bun run test         # the above plus `bun run --cwd packages/worker test` (tsc + vitest)
 ```
 

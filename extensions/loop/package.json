@@ -1,0 +1,27 @@
+{
+	"name": "@cabane/loop",
+	"version": "0.1.0",
+	"description": "Kabane loop extension: drives a parent issue's subtasks to completion through ACP harnesses",
+	"license": "MIT",
+	"private": true,
+	"type": "module",
+	"main": "index.ts",
+	"types": "index.ts",
+	"exports": {
+		".": "./index.ts"
+	},
+	"scripts": {
+		"test": "bun test",
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf node_modules"
+	},
+	"dependencies": {
+		"@cabane/acp": "workspace:*",
+		"@cabane/core": "workspace:*",
+		"zod": "3.25.76"
+	},
+	"devDependencies": {
+		"@types/bun": "1.4.0",
+		"typescript": "5.9.3"
+	}
+}
