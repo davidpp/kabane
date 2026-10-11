@@ -141,6 +141,9 @@ export namespace BoardTabs {
 	 * unless it was closed, a card the host stopped listing loses its tab (the tracker comes back if
 	 * it was on screen), and the queue is replaced. The same state when nothing moved, so the poll
 	 * re-renders nothing.
+	 *
+	 * New tabs open oldest first, whatever order the host lists its cards in (activity is newest
+	 * first), so the bar reads the same at launch as when the cards arrive one poll at a time.
 	 */
 	export const withActivity = (
 		state: State,
@@ -150,14 +153,15 @@ export namespace BoardTabs {
 		const { tabs } = state;
 		const tabbed = cards.filter((card) => card.tab);
 		const listed = new Set(tabbed.map((card) => card.id));
+		const opened = tabbed
+			.filter(
+				(card) => !tabs.open.includes(card.id) && !tabs.closed.has(card.id),
+			)
+			.toSorted((a, b) => a.startedAt.localeCompare(b.startedAt))
+			.map((card) => card.id);
 		const next: Tabs = {
 			...tabs,
-			open: [
-				...tabs.open.filter((id) => listed.has(id)),
-				...tabbed
-					.map((card) => card.id)
-					.filter((id) => !tabs.open.includes(id) && !tabs.closed.has(id)),
-			],
+			open: [...tabs.open.filter((id) => listed.has(id)), ...opened],
 			cards: new Map(tabbed.map((card) => [card.id, tabCard(card)])),
 			queue,
 		};
