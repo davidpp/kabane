@@ -94,13 +94,17 @@ export namespace Harnesses {
 	/**
 	 * The env that makes the adapter run the user's installed CLI, found on PATH, so its
 	 * version, login and settings are the user's own. An error when it is not installed:
-	 * falling back to a bundled copy would run a version the user never chose.
+	 * falling back to a bundled copy would run a version the user never chose. Nothing when
+	 * `env` (the one the session inherits) already sets the variable: the user chose that
+	 * copy, and the spawn merge would otherwise overwrite it.
 	 */
 	export const installedCli = (
 		id: Id,
+		env: Readonly<Record<string, string | undefined>> = process.env,
 		which: (bin: string) => string | null = Bun.which,
 	): Result<Record<string, string>> => {
 		const cli = CLI[id];
+		if (cli.env && env[cli.env]) return ok({});
 		const path = which(cli.bin);
 		if (path === null)
 			return err(
