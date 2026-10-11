@@ -30,7 +30,8 @@ export namespace RunState {
 	};
 
 	type Live = {
-		sessionId: string;
+		/** The subtask it works on, or the parent for a lens. */
+		taskId: string;
 		handle: Dispatch.Handle;
 		/** Resolves once the session has ended and its gates, if any, have run. */
 		settled: Promise<void>;
@@ -50,7 +51,7 @@ export namespace RunState {
 		tree: (cwd: string) => string;
 		log: RunStore.EventLog;
 		run: RunStore.Run;
-		/** Live claims by task id. */
+		/** Live claims by core session id. */
 		live: Map<string, Live>;
 		/** Claims whose session ended and that the loop has not settled yet. */
 		settled: Settled[];
@@ -60,6 +61,10 @@ export namespace RunState {
 		/** Aborted when the run halts: kills a gate still running. */
 		stopping: AbortController;
 	};
+
+	/** The tasks live claims hold: what the frontier leaves out. */
+	export const liveTasks = (ctx: Ctx): Set<string> =>
+		new Set([...ctx.live.values()].map((l) => l.taskId));
 
 	export const event = (ctx: Ctx, draft: RunStore.EventDraft): void => {
 		const appended = ctx.log.append(draft);

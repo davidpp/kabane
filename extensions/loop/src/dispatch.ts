@@ -1,13 +1,21 @@
 // One claim, driven over ACP: spawn the harness in the run's repository with `kabane mcp` as its
-// tool server, open the subtask with its assembled brief, and run turns until the subtask is
-// closed, the turn ends with it open and no continuation is left, or the run cancels it. Every
-// update goes out through `hooks.event` tagged with the claim's lane and core session.
+// tool server, open it with its assembled brief, and run turns until it is over. An implementing
+// claim is over when its subtask is closed, a turn ends with it open and no continuation is left,
+// or the run cancels it; a lens is over when its review turn ends. Every update goes out through
+// `hooks.event` tagged with the claim's lane and core session.
 //
 // The core session itself is opened and closed by the runner, which owns the claim; this module
 // only writes into it (an ephemeral progress row per tool call, so a card can show what the agent
 // is doing now).
 import { AcpClient, CopilotInstructions, Harnesses } from "@cabane/acp";
-import { ok, Planner, type Result, type Task, tryCatch } from "@cabane/core";
+import {
+	err,
+	ok,
+	Planner,
+	type Result,
+	type Task,
+	tryCatch,
+} from "@cabane/core";
 import { Brief } from "./brief";
 import type { Budget } from "./budget";
 import type { Gates } from "./gates";
@@ -25,14 +33,22 @@ export namespace Dispatch {
 		overrides?: Harnesses.Overrides;
 	};
 
+	/**
+	 * What the session is for: implementing its subtask (with the gate that failed after the
+	 * subtask's last session, for its brief), or reviewing the parent through a lens.
+	 */
+	export type Work =
+		| { kind: "implement"; retry?: Gates.Result }
+		| { kind: "lens"; name: string; prompt: string };
+
 	type Claim = {
 		parent: Task;
+		/** The subtask it implements, or the parent a lens reviews. */
 		task: Task;
 		harness: Harnesses.Id;
 		sessionId: string;
 		lane: string;
-		/** The gate that failed after the subtask's last session, for this one's brief. */
-		retry?: Gates.Result;
+		work: Work;
 	};
 
 	export type Hooks = {
@@ -329,17 +345,91 @@ export namespace Dispatch {
 		return ok(started.value);
 	};
 
+	type Next =
+		| { kind: "end"; outcome: Outcome["outcome"]; detail: string }
+		| { kind: "prompt"; prompt: string };
+
+	// A lens has one turn: its review. Its findings are in the tracker, not in what it said.
+	const reviewed = (name: string, reason: string): Next =>
+		reason === "end_turn"
+			? {
+					kind: "end",
+					outcome: "done",
+					detail: `the ${name} lens finished its review`,
+				}
+			: {
+					kind: "end",
+					outcome: "incomplete",
+					detail: `the ${name} lens's turn ended (${reason})`,
+				};
+
+	// An implementing claim is over once its subtask is closed; else it is nudged while the run
+	// has continuations left.
+	const implemented = async (
+		claim: Claim,
+		env: Env,
+		hooks: Hooks,
+		sink: Sink,
+		reason: string,
+	): Promise<Next> => {
+		const now = await Planner.getTask(env.basePath, claim.task.id);
+		if (!now.ok)
+			return { kind: "end", outcome: "error", detail: now.error.message };
+		const task = now.value;
+		if (!task)
+			return {
+				kind: "end",
+				outcome: "incomplete",
+				detail: `${label(claim.task)} was deleted`,
+			};
+		if (task.state === "done" || task.state === "cancelled")
+			return {
+				kind: "end",
+				outcome: "done",
+				detail: `${label(task)} is ${task.state}`,
+			};
+		if (reason !== "end_turn" || !hooks.continueTurn())
+			return {
+				kind: "end",
+				outcome: "incomplete",
+				detail: `turn ended (${reason}) with ${label(task)} still ${task.state}`,
+			};
+		sink.emit("continuation", `${label(task)} still ${task.state}: nudged`);
+		return { kind: "prompt", prompt: Brief.continuation(task) };
+	};
+
+	/** The claim's first prompt: its task's assembled brief, under the lens's or the run's words. */
+	const opening = async (claim: Claim, env: Env): Promise<Result<string>> => {
+		const assembled = await Planner.assembleContext(
+			env.basePath,
+			claim.task.id,
+		);
+		if (!assembled.ok)
+			return err(new Error(`brief: ${assembled.error.message}`));
+		const subject = {
+			runId: env.runId,
+			parent: claim.parent,
+			task: claim.task,
+		};
+		const { work } = claim;
+		return ok(
+			work.kind === "lens"
+				? Brief.lens(
+						{ ...subject, lens: work.name, prompt: work.prompt },
+						assembled.value,
+					)
+				: Brief.opening(
+						{ ...subject, ...(work.retry ? { retry: work.retry } : {}) },
+						assembled.value,
+					),
+		);
+	};
+
 	export const begin = (claim: Claim, env: Env, hooks: Hooks): Handle => {
 		const tag = {
 			lane: claim.lane,
 			session: claim.sessionId,
 			task: label(claim.task),
-		};
-		const subject = {
-			runId: env.runId,
-			parent: claim.parent,
-			task: claim.task,
-			...(claim.retry ? { retry: claim.retry } : {}),
 		};
 		let connection: AcpClient.Connection | null = null;
 		let session: AcpClient.Session | null = null;
@@ -378,22 +468,23 @@ export namespace Dispatch {
 		const steering = injector(claim.harness, sink);
 
 		const drive = async (): Promise<Outcome> => {
-			const assembled = await Planner.assembleContext(
-				env.basePath,
-				claim.task.id,
-			);
-			if (!assembled.ok)
-				return ended("error", `brief: ${assembled.error.message}`);
+			const first = await opening(claim, env);
+			if (!first.ok) return ended("error", first.error.message);
 			const opened = await open(claim, env, sink, {
 				permission: (request) => hooks.permission(request, waiting.signal),
 				connected: (c) => {
 					connection = c;
 				},
 			});
-			if (opened.ok) session = opened.value;
 			if (!opened.ok) return ended("error", opened.error.message);
-			sink.emit("session_start", `${claim.harness} on ${label(claim.task)}`);
-			let text = Brief.opening(subject, assembled.value);
+			session = opened.value;
+			sink.emit(
+				"session_start",
+				claim.work.kind === "lens"
+					? `${claim.harness} reviews ${label(claim.task)} through the ${claim.work.name} lens`
+					: `${claim.harness} on ${label(claim.task)}`,
+			);
+			let text = first.value;
 			for (;;) {
 				if (cancelled) return ended("cancelled");
 				const result = await steering.turn(opened.value, text);
@@ -407,20 +498,12 @@ export namespace Dispatch {
 					text = injected;
 					continue;
 				}
-				const now = await Planner.getTask(env.basePath, claim.task.id);
-				if (!now.ok) return ended("error", now.error.message);
-				const task = now.value;
-				if (!task)
-					return ended("incomplete", `${label(claim.task)} was deleted`);
-				if (task.state === "done" || task.state === "cancelled")
-					return ended("done", `${label(task)} is ${task.state}`);
-				if (result.reason !== "end_turn" || !hooks.continueTurn())
-					return ended(
-						"incomplete",
-						`turn ended (${result.reason}) with ${label(task)} still ${task.state}`,
-					);
-				text = Brief.continuation(task);
-				sink.emit("continuation", `${label(task)} still ${task.state}: nudged`);
+				const next =
+					claim.work.kind === "lens"
+						? reviewed(claim.work.name, result.reason)
+						: await implemented(claim, env, hooks, sink, result.reason);
+				if (next.kind === "end") return ended(next.outcome, next.detail);
+				text = next.prompt;
 			}
 		};
 

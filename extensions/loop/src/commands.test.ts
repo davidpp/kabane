@@ -114,6 +114,7 @@ describe("Loop.start refusals", () => {
 				stallAfter: 1,
 				gates: {},
 				worktree: false,
+				lenses: [],
 			},
 			status: "running",
 			pid: process.pid,

@@ -1,7 +1,7 @@
 // What a run is configured with: the harness that implements, its budgets, when it counts as
-// stalled, its gates and whether it works in a worktree. Layered: defaults, then the repo's
-// `.kabane/loop.json`, then what the caller passes (the trigger form or flags); budgets and gates
-// merge key by key. Keys no schema names yet pass through the file untouched and are stripped here.
+// stalled, its gates, whether it works in a worktree, and the lenses that verify it. Layered:
+// defaults, then the repo's `.kabane/loop.json`, then what the caller passes (the trigger form or
+// flags); budgets and gates merge key by key. Keys no schema names yet pass through the file untouched and are stripped here.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Harnesses } from "@cabane/acp";
@@ -32,6 +32,11 @@ export namespace LoopConfig {
 		.string()
 		.regex(/^[A-Za-z][A-Za-z0-9_.-]*$/, "a gate name is one word");
 
+	// A lens's name is its prompt's file name and a tag on its findings.
+	const LensNameSchema = z
+		.string()
+		.regex(/^[a-z][a-z0-9-]*$/, "a lens name is one lowercase word");
+
 	export const Schema = z.object({
 		/** The harness for a subtask whose assignee does not name one. */
 		implementer: z.enum(Harnesses.IDS).default("claude"),
@@ -52,6 +57,15 @@ export namespace LoopConfig {
 		 * checkout itself and nothing is committed.
 		 */
 		worktree: z.boolean().default(false),
+		/**
+		 * Verifier lenses, each its own session once the plan is done and the gates are green,
+		 * filing findings as tagged child issues of the parent. A lens is a prompt file: shipped
+		 * (`functional`, `quality`) or the repo's `.kabane/loop/lenses/<name>.md`. None: no
+		 * verification, and the run completes on its gates.
+		 */
+		lenses: z.array(LensNameSchema).default([]),
+		/** The harness every lens runs on; absent, the implementer. */
+		verifier: z.enum(Harnesses.IDS).optional(),
 	});
 
 	export type Config = z.output<typeof Schema>;

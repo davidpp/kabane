@@ -20,6 +20,7 @@ import {
 import { detectScope } from "@cabane/core/scope";
 import { LoopConfig } from "./config";
 import { Gates } from "./gates";
+import { Lenses } from "./lenses";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Runner } from "./runner";
@@ -162,16 +163,26 @@ export namespace Loop {
 		deps: StartDeps,
 		plan: LoopPlan.Plan,
 		config: LoopConfig.Config,
+		projectDir: string,
 	): Promise<Result<void>> => {
 		const short = plan.parent.shortId ?? plan.parent.id;
 		if (!plan.nodes.some(LoopPlan.isWork))
 			return err(new Error(`${short} has no subtasks for a loop to run`));
-		if (Stop.workDone(plan) && !Gates.configured(config.gates))
+		if (
+			Stop.workDone(plan) &&
+			!Gates.configured(config.gates) &&
+			config.lenses.length === 0
+		)
 			return err(
 				new Error(
-					`Every subtask of ${short} is already closed and no gates are configured to check it`,
+					`Every subtask of ${short} is already closed and no gates or lenses are configured to check it`,
 				),
 			);
+		// A lens with no prompt would fail the run at its end; say so before it starts.
+		for (const name of config.lenses) {
+			const prompt = Lenses.prompt(projectDir, name);
+			if (!prompt.ok) return prompt;
+		}
 		const runs = RunStore.list(deps.home);
 		if (!runs.ok) return runs;
 		const active = runs.value.find(
@@ -230,7 +241,12 @@ export namespace Loop {
 		if (!projectDir.ok) return projectDir;
 		const config = LoopConfig.resolve(projectDir.value, input.config);
 		if (!config.ok) return config;
-		const checked = await checkParent(deps, plan.value, config.value);
+		const checked = await checkParent(
+			deps,
+			plan.value,
+			config.value,
+			projectDir.value,
+		);
 		if (!checked.ok) return checked;
 		const now = (deps.now ?? (() => new Date()))();
 		const short = parent.shortId ?? parent.id;

@@ -1,9 +1,10 @@
 /** @jsxImportSource @opentui/react */
 // The loop tab's header: what the board draws above a run's stream, in place of its one-line title.
 // Three rows, in order of what matters: the run's state, its steps as a strip, its budgets as
-// meters. `e` adds the sessions and the plan. It shows only what the run has: the implement step and
-// the gates when it has some, wall time, spend where a harness priced its work, context occupancy (ACP
-// reports occupancy, not a running token count) and continuations.
+// meters. `e` adds the sessions and the plan. It shows only what the run has: the implement step,
+// the gates and the lenses (with what they found) when it has some, wall time, spend where a
+// harness priced its work, context occupancy (ACP reports occupancy, not a running token count)
+// and continuations.
 //
 // It reads the board's theme and nothing else of the board's: tones are the theme's roles, and a
 // session's color is the theme's series at its claim's place, the same as its lane chip and its
@@ -18,6 +19,7 @@ import {
 import { TextAttributes } from "@opentui/core";
 import { type ReactNode, useEffect, useState } from "react";
 import { Budget } from "./budget";
+import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
 import { RunStore } from "./store";
 
@@ -122,24 +124,69 @@ export namespace LoopHeader {
 		];
 	};
 
-	/** The steps the run has, as a strip: implement, then the gates when it has some. */
-	export const steps = (run: RunStore.Run): Part[] => {
+	// The lenses' step, and the debrief's count of what they filed: findings, and the open `p1`s
+	// that keep the run going.
+	const lensStep = (run: RunStore.Run, plan: LoopPlan.Plan | null): Part[] => {
+		const { lenses } = run.config;
+		if (lenses.length === 0) return [];
+		const status = Lenses.status(lenses, run.claims);
+		const glyph: Part =
+			status.failed.length > 0
+				? { text: "✗ ", tone: "failed" }
+				: status.running.length > 0
+					? { text: "● ", tone: "working" }
+					: Lenses.finished(status)
+						? { text: "✓ ", tone: "done" }
+						: { text: "○ ", tone: "muted" };
+		const found = plan ? LoopPlan.findings(plan) : undefined;
+		return [
+			{ text: "  ›  ", tone: "faint" },
+			glyph,
+			{ text: "lenses", tone: "text", bold: status.running.length > 0 },
+			{ text: ` ${lenses.join("·")}`, tone: "muted" },
+			...(found && found.total > 0
+				? [
+						{
+							text: ` · ${found.total} finding${found.total === 1 ? "" : "s"}`,
+							tone: "muted" as const,
+						},
+						...(found.openP1 > 0
+							? [
+									{
+										text: ` · ${found.openP1} p1 open`,
+										tone: "accent" as const,
+									},
+								]
+							: []),
+					]
+				: []),
+		];
+	};
+
+	/** The steps the run has, as a strip: implement, then its gates and its lenses when it has some. */
+	export const steps = (
+		run: RunStore.Run,
+		plan: LoopPlan.Plan | null,
+	): Part[] => {
+		const implementing = run.claims.filter((claim) => claim.lens === undefined);
+		const working = implementing.some((claim) => claim.endedAt === undefined);
 		const glyph =
 			run.status === "completed"
 				? { text: "✓ ", tone: "done" as const }
 				: run.status === "failed"
 					? { text: "✗ ", tone: "failed" as const }
-					: liveClaims(run).length > 0
+					: working
 						? { text: "● ", tone: "working" as const }
 						: { text: "○ ", tone: "muted" as const };
 		return [
 			glyph,
-			{ text: "implement", tone: "text", bold: liveClaims(run).length > 0 },
+			{ text: "implement", tone: "text", bold: working },
 			{
-				text: ` ×${run.claims.length} session${run.claims.length === 1 ? "" : "s"}`,
+				text: ` ×${implementing.length} session${implementing.length === 1 ? "" : "s"}`,
 				tone: "muted",
 			},
 			...gateStep(run),
+			...lensStep(run, plan),
 		];
 	};
 
@@ -435,7 +482,7 @@ export namespace LoopHeader {
 				<Row
 					bg={bg}
 					parts={[
-						...steps(run),
+						...steps(run, plan),
 						{
 							text: `   ${live}/${run.config.budget.concurrency} slots · ${run.config.implementer}${run.config.model ? ` ${run.config.model}` : ""}`,
 							tone: "muted",

@@ -228,4 +228,13 @@ export namespace LoopPlan {
 		plan.nodes
 			.filter((n) => isWork(n) && isClosed(n.task))
 			.map((n) => n.task.id);
+
+	/** What the lenses filed: every finding, and the open `p1`s among them. */
+	export const findings = (plan: Plan): { total: number; openP1: number } => {
+		const found = plan.nodes.filter((n) => n.finding);
+		return {
+			total: found.length,
+			openP1: found.filter((n) => n.p1 && !isClosed(n.task)).length,
+		};
+	};
 }

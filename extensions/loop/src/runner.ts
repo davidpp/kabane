@@ -9,6 +9,7 @@ import { Budget } from "./budget";
 import { Checks } from "./checks";
 import { Claims } from "./claims";
 import { Gates } from "./gates";
+import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
 import { Stall } from "./stall";
 import { RunState } from "./state";
@@ -88,7 +89,7 @@ export namespace Runner {
 		for (const { handle } of pending) handle.close();
 		await Promise.race([all, sleep(CANCEL_GRACE_MS)]);
 		for (const s of ctx.settled.splice(0)) await Claims.settle(ctx, s);
-		for (const [taskId, { sessionId }] of ctx.live)
+		for (const [sessionId, { taskId }] of ctx.live)
 			await Claims.settle(ctx, {
 				taskId,
 				sessionId,
@@ -102,9 +103,7 @@ export namespace Runner {
 		ctx: Ctx,
 		entry: Extract<RunStore.InboxEntry, { kind: "inject" }>,
 	): void => {
-		const live = [...ctx.live.values()].find(
-			(l) => l.sessionId === entry.session,
-		);
+		const live = ctx.live.get(entry.session);
 		if (live) void live.handle.inject(entry.text);
 		else
 			RunState.event(ctx, {
@@ -216,7 +215,7 @@ export namespace Runner {
 		const skipped = new Set(ctx.run.steering.skipped);
 		const ready = LoopPlan.frontier(
 			plan,
-			new Set(ctx.live.keys()),
+			RunState.liveTasks(ctx),
 			ctx.now(),
 			skipped,
 		);
@@ -230,7 +229,7 @@ export namespace Runner {
 		}
 		const health = LoopPlan.health(
 			plan,
-			new Set(ctx.live.keys()),
+			RunState.liveTasks(ctx),
 			ctx.now(),
 			skipped,
 		);
@@ -265,21 +264,61 @@ export namespace Runner {
 
 	/**
 	 * The work is done and nothing is running: the run completes once its gates are green on the
-	 * tree as it is. Gates not green yet (none run since the last change) run once more, here; a red
-	 * pass with no subtask to reopen stops the run for a human. Undefined goes on ticking.
+	 * tree as it is and every lens has reviewed it. Gates come first, so a lens reviews work that
+	 * passes them. Undefined goes on ticking.
 	 */
 	const finalChecks = async (
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
 	): Promise<Exit | undefined> => {
-		const { gates } = ctx.run.config;
-		const tree = () => ctx.tree(RunStore.sessionDir(ctx.run));
-		if (
-			Stop.evaluate(plan, {
-				gatesGreen: Gates.green(gates, ctx.run.gateRuns, tree()),
-			}).done
-		)
+		const { gates, lenses } = ctx.run.config;
+		const gatesGreen = Gates.green(
+			gates,
+			ctx.run.gateRuns,
+			ctx.tree(RunStore.sessionDir(ctx.run)),
+		);
+		const reviewed = Lenses.status(lenses, ctx.run.claims);
+		const checks = { gatesGreen, lensesDone: Lenses.finished(reviewed) };
+		if (Stop.evaluate(plan, checks).done)
 			return { status: "completed", reason: "plan-done" };
+		if (!gatesGreen) return finalGates(ctx, plan);
+		const failed = reviewed.failed[0];
+		if (failed)
+			return {
+				status: "stopped",
+				reason: "lens-failed",
+				detail: `${failed.name}: ${failed.detail}`,
+			};
+		return startLenses(ctx, plan, reviewed.pending);
+	};
+
+	// Lenses take free slots like any claim, and none while the run is paused. Their findings are
+	// children of the parent, so an open `p1` is claimed as work on the next tick.
+	const startLenses = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+		pending: readonly string[],
+	): Promise<Exit | undefined> => {
+		if (ctx.run.steering.paused) return undefined;
+		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
+		for (const name of pending.slice(0, slots)) {
+			const started = await Claims.lens(ctx, name, plan);
+			if (!started.ok)
+				return {
+					status: "stopped",
+					reason: "lens-failed",
+					detail: `${name}: ${started.error.message}`,
+				};
+		}
+		return undefined;
+	};
+
+	// Gates not green on the tree as it is (none run since the last change) run once more; a red
+	// pass with no subtask to reopen stops the run for a human.
+	const finalGates = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+	): Promise<Exit | undefined> => {
 		const label = ctx.run.parentShortId;
 		const pass = await hearingStop(ctx, () =>
 			Checks.gate(ctx, { label, title: plan.parent.title }),

@@ -273,6 +273,29 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
 - Findings filed as tagged child issues.
 - A `p1` keeps the run open and reopens work.
 
+Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
+- **Config:** `lenses: string[]` (none by default, so a run with no lenses completes on its
+  gates) and `verifier` (a harness, else the implementer); `--lens <name>` repeatable and
+  `--verifier`. `start` refuses a lens with no prompt before writing the run.
+- **Prompts:** `extensions/loop/templates/lenses/{functional,quality}.md`, read from disk
+  like the copilot's dispatch template; the build copies them to `templates/lenses` in the
+  package. A repo's `.kabane/loop/lenses/<name>.md` adds a lens or replaces a shipped one.
+  The loop's own part of every lens prompt (how to file, the tags, no edits) is prepended in
+  `Brief.lens`, so a repository's lens cannot drop the structured channel.
+- **When:** the work is done, nothing is running, and the gates are green on the tree as it
+  is. Lenses take free slots like claims, none while paused. Each is a claim on the parent
+  (`lens` on the claim, lane `<harness>:<name>-lens`) that leaves the parent's state alone,
+  runs no gates, and counts toward no stall. One turn: its end is the review's end.
+- **One round:** a lens runs once per run, which the plan did not say. A `p1` it files is
+  claimed like any subtask, and once it is closed and the gates are green the run completes
+  without a second review. Repeating lenses after every fix has no natural bound short of the
+  budgets.
+- **Failure:** a lens that ends without finishing (error, cancelled, a stop reason other than
+  `end_turn`) stops the run as `lens-failed`, rather than completing unreviewed; one
+  interrupted by a runner that died runs again on resume.
+- **Stop:** `Stop.evaluate(plan, {gatesGreen, lensesDone})`. Header: a lens step after the
+  gates, with the findings count and open `p1`s from the plan.
+
 ### C4. Questions, permissions and steering
 - **Permissions:** done on branch `worktree-agent-a74b0c0ae0b7397eb`. Every request goes to the
   human; the loop never answers one itself (Decision 7).

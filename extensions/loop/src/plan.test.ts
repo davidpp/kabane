@@ -193,7 +193,7 @@ describe("LoopPlan.health", () => {
 });
 
 describe("Stop.evaluate", () => {
-	const GREEN = { gatesGreen: true };
+	const GREEN = { gatesGreen: true, lensesDone: true };
 
 	it("is done only when every subtask is closed and no p1 finding is open", async () => {
 		const parent = await add({ title: "parent" });
@@ -208,6 +208,7 @@ describe("Stop.evaluate", () => {
 			openSubtasks: 1,
 			openP1: 0,
 			gatesGreen: true,
+			lensesDone: true,
 		});
 
 		await close(a);
@@ -223,17 +224,29 @@ describe("Stop.evaluate", () => {
 			openSubtasks: 0,
 			openP1: 1,
 			gatesGreen: true,
+			lensesDone: true,
 		});
 		await close(p1);
 		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({ done: true });
 		// The work is done, but red gates keep the run going.
 		expect(Stop.workDone(await load(parent))).toBe(true);
-		expect(Stop.evaluate(await load(parent), { gatesGreen: false })).toEqual({
+		expect(
+			Stop.evaluate(await load(parent), {
+				gatesGreen: false,
+				lensesDone: true,
+			}),
+		).toEqual({
 			done: false,
 			openSubtasks: 0,
 			openP1: 0,
 			gatesGreen: false,
+			lensesDone: true,
 		});
+		// Green gates, but a lens has not reviewed the work yet.
+		expect(
+			Stop.evaluate(await load(parent), { gatesGreen: true, lensesDone: false })
+				.done,
+		).toBe(false);
 	});
 
 	it("counts a cancelled subtask as closed and a parked one as open", async () => {

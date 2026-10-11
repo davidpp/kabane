@@ -119,7 +119,7 @@ describe("LoopHeader.state", () => {
 
 describe("LoopHeader.steps", () => {
 	const text = (r: RunStore.Run): string =>
-		LoopHeader.steps(r)
+		LoopHeader.steps(r, null)
 			.map((part) => part.text)
 			.join("");
 	const gated = (gateRuns: RunStore.Run["gateRuns"]): RunStore.Run => {

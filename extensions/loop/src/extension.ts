@@ -20,7 +20,7 @@ import type { LoopConfig } from "./config";
 import { LoopHeader } from "./header";
 import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--wall-minutes <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree]
+const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--wall-minutes <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree] [--lens <name>]... [--verifier claude|codex|gemini]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
@@ -59,7 +59,9 @@ const gatesFrom = (args: ParsedArgs): Result<Record<string, string>> => {
 // Flags become config overrides; LoopConfig validates them with the repo file.
 const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 	const implementer = flagString(args, "implementer");
+	const verifier = flagString(args, "verifier");
 	const model = flagString(args, "model");
+	const lenses = flagList(args, "lens");
 	const gates = gatesFrom(args);
 	if (!gates.ok) return gates;
 	const budget = Object.fromEntries(
@@ -76,6 +78,8 @@ const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 		budget,
 		gates: gates.value,
 		...(flagBool(args, "worktree") ? { worktree: true } : {}),
+		...(lenses.length > 0 ? { lenses } : {}),
+		...(verifier && Harnesses.isId(verifier) ? { verifier } : {}),
 	});
 };
 
@@ -153,12 +157,14 @@ const ran = (result: Result<RunStore.Run>): Outcome =>
 	result.ok ? success(result.value, line(result.value)) : failure(result.error);
 
 const start: Verb = async (args, deps, target) => {
-	const implementer = flagString(args, "implementer");
-	if (implementer && !Harnesses.isId(implementer))
-		return usage(
-			`--implementer must be one of ${Harnesses.IDS.join(", ")}`,
-			USAGE,
-		);
+	for (const flag of ["implementer", "verifier"]) {
+		const harness = flagString(args, flag);
+		if (harness && !Harnesses.isId(harness))
+			return usage(
+				`--${flag} must be one of ${Harnesses.IDS.join(", ")}`,
+				USAGE,
+			);
+	}
 	const config = configFrom(args);
 	if (!config.ok) return usage(config.error.message, USAGE);
 	const dir = flagString(args, "dir");

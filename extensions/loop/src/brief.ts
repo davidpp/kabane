@@ -1,6 +1,7 @@
-// What an implementing session is told. The issue's own brief comes from `assembleContext`; this
-// adds only what the run knows and the issue does not: that it is one of several sessions, which
-// subtask is its own, and how it signals that it is finished. The kabane tool loop itself is the
+// What a session is told. The issue's own brief comes from `assembleContext`; this adds only what
+// the run knows and the issue does not. An implementing session hears that it is one of several,
+// which subtask is its own, and how it signals that it is finished; a lens hears what it reviews
+// and how it files findings. The kabane tool loop itself is the
 // MCP server's to describe, so it is not restated.
 import type { Task } from "@cabane/core";
 import type { Gates } from "./gates";
@@ -38,6 +39,22 @@ export namespace Brief {
 			...(subject.retry ? [retried(subject.task, subject.retry)] : []),
 			assembled,
 		].join("\n\n---\n\n");
+
+	type Lens = { runId: string; parent: Task; lens: string; prompt: string };
+
+	// How a lens reports: findings are child issues of the parent, through kabane MCP, tagged so
+	// the run reads them back structurally. It is the run's part of every lens, so a repository's
+	// own lens cannot leave it out.
+	const filing = ({ runId, parent, lens }: Lens): string =>
+		[
+			`You are the \`${lens}\` verifier of kabane loop run ${runId}, which drove the subtasks of ${label(parent)} ("${parent.title}") to completion. The plan is done and the project's gates pass. Review the result through the lens below and file what you find. Do not change files and do not fix anything: a finding is work for an implementing session.`,
+			`File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. A p1 keeps the run open until it is fixed, so file p1 only for what must be fixed before this work is done. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
+			"When everything is filed, end your turn with one line: how many findings you filed at each severity.",
+		].join("\n\n");
+
+	/** A lens's prompt: how to file, the lens itself, then the parent's own brief. */
+	export const lens = (subject: Lens, assembled: string): string =>
+		[filing(subject), subject.prompt.trim(), assembled].join("\n\n---\n\n");
 
 	/** The nudge for a turn that ended with the subtask still open. */
 	export const continuation = (task: Task): string =>
