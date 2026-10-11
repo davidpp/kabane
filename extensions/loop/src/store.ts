@@ -80,8 +80,13 @@ export namespace RunStore {
 		scopeUri: z.string().optional(),
 		/** The directory the loop was started from: the project checkout it works on. */
 		projectDir: z.string(),
-		/** A worktree of `projectDir` the run works in instead, when one is enabled. */
+		/** A worktree of `projectDir`'s repository the run works in instead, when one is enabled. */
 		worktree: z.string().optional(),
+		/**
+		 * Where `projectDir` sits in its repository (`git rev-parse --show-prefix`, "" at the
+		 * top): the run works in the same folder of the worktree, not at its top.
+		 */
+		worktreePrefix: z.string().optional(),
 		config: LoopConfig.Schema,
 		status: StatusSchema,
 		exit: z
@@ -143,9 +148,14 @@ export namespace RunStore {
 		return run.clock.spentMs + Math.max(0, since);
 	};
 
-	/** Where the run's sessions work: its worktree when it has one, else the project. */
+	/**
+	 * Where the run's sessions and gates work: the project's folder in the run's worktree when it
+	 * has one, else the project.
+	 */
 	export const sessionDir = (run: Run): string =>
-		run.worktree ?? run.projectDir;
+		run.worktree === undefined
+			? run.projectDir
+			: join(run.worktree, run.worktreePrefix ?? "");
 
 	export const EventSchema = z.object({
 		seq: z.number().int().positive(),

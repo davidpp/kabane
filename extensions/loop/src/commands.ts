@@ -314,11 +314,18 @@ export namespace Loop {
 	};
 
 	// The run's own worktree of the project's HEAD, beside its files. What is not committed in the
-	// project (work in progress) is not in it.
+	// project (work in progress) is not in it. A loop started in a folder of the repository works
+	// in that folder of the worktree.
 	const withWorktree = async (
 		deps: StartDeps,
 		run: RunStore.Run,
 	): Promise<Result<RunStore.Run>> => {
+		const failed = (error: Error): Result<RunStore.Run> => {
+			markFailed(deps.home, run, "worktree-not-created", error.message);
+			return err(error);
+		};
+		const prefix = await Worktree.prefixOf(run.projectDir, deps.git);
+		if (!prefix.ok) return failed(prefix.error);
 		const dir = Worktree.dirFor(RunStore.paths(deps.home, run.id).dir);
 		const added = await Worktree.add(
 			run.projectDir,
@@ -326,11 +333,19 @@ export namespace Loop {
 			Worktree.branchFor(run.id),
 			deps.git,
 		);
-		if (!added.ok) {
-			markFailed(deps.home, run, "worktree-not-created", added.error.message);
-			return added;
-		}
-		return RunStore.write(deps.home, { ...run, worktree: dir });
+		if (!added.ok) return failed(added.error);
+		const withDir: RunStore.Run = {
+			...run,
+			worktree: dir,
+			worktreePrefix: prefix.value,
+		};
+		if (!existsSync(RunStore.sessionDir(withDir)))
+			return failed(
+				new Error(
+					`${prefix.value} is not committed, so the worktree of HEAD at ${dir} has no such folder: commit it, or start without --worktree`,
+				),
+			);
+		return RunStore.write(deps.home, withDir);
 	};
 
 	export type RunDeps = Deps & {

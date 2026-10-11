@@ -66,6 +66,15 @@ export namespace Worktree {
 		return added.ok ? ok(undefined) : added;
 	};
 
+	/** Where `dir` sits inside its repository, relative to the top: "" at the top. */
+	export const prefixOf = async (
+		dir: string,
+		run: Git = git,
+	): Promise<Result<string>> => {
+		const shown = await run(dir, ["rev-parse", "--show-prefix"]);
+		return shown.ok ? ok(shown.value.trim().replace(/\/$/, "")) : shown;
+	};
+
 	// A linked worktree's git dir is its own, under the main repository's common dir; the main
 	// checkout's is the common dir itself.
 	const linked = async (dir: string, run: Git): Promise<Result<void>> => {
