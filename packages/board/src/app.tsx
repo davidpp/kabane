@@ -33,6 +33,8 @@ import type {
 	Copilot,
 	Dispatcher,
 } from "./ports";
+import { BoardPrompt } from "./prompt";
+import { PromptPanel } from "./prompt-field";
 import { useSpinnerFrame } from "./spinner";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
 import { BoardTabs } from "./tabs";
@@ -163,6 +165,8 @@ export const App = ({
 	// The copilot's input. It OWNS its text; the reducer only ever pushes a whole new value at it
 	// (a shortcut expansion, a recalled prompt, the clear after a send) through `copilotSetText`.
 	const inputRef = useRef<TextareaRenderable | null>(null);
+	// The same input, opened as a prompt for a card's action or a typed answer.
+	const promptRef = useRef<TextareaRenderable | null>(null);
 
 	const filtersFor = useCallback(
 		(s: BoardNav.BoardState): BoardData.BoardFilters => ({
@@ -500,6 +504,31 @@ export const App = ({
 		[shownSource],
 	);
 
+	// One of a card's actions: the host runs it and says what happened, and the reload shows it.
+	const runAct = useCallback(
+		async (
+			s: BoardNav.BoardState,
+			effect: Extract<BoardNav.Effect, { type: "act" }>,
+		): Promise<void> => {
+			const { cardId, actionId, text, lane } = effect;
+			const res = shownSource.act
+				? await shownSource.act(cardId, actionId, {
+						...(text !== undefined ? { text } : {}),
+						...(lane !== undefined ? { lane } : {}),
+					})
+				: null;
+			setNotice(
+				res === null
+					? { text: "this card takes no actions", tone: "error" }
+					: res.ok
+						? { text: res.value, tone: "success" }
+						: { text: res.error.message, tone: "error" },
+			);
+			await reload(s);
+		},
+		[shownSource, reload],
+	);
+
 	// The single effect runner, shared by the keyboard and mouse dispatchers so both interaction paths
 	// execute the reducer's output the same way. `next` is the post-reduce state a reload merges into.
 	const runEffect = useCallback(
@@ -587,13 +616,20 @@ export const App = ({
 					copilot?.answerPermission(effect.id, effect.optionId);
 					return;
 				case "copilotSetText":
-					inputRef.current?.setText(effect.text);
+				case "promptSetText":
+					(effect.type === "copilotSetText"
+						? inputRef
+						: promptRef
+					).current?.setText(effect.text);
 					return;
 				case "answerQuestion":
 					void answer(next, effect.questionId, effect.answer);
 					return;
 				case "dismiss":
 					void dismissCard(effect.cardId);
+					return;
+				case "act":
+					void runAct(next, effect);
 					return;
 				case "openEvents":
 					openEvents(next, effect.taskId);
@@ -615,6 +651,7 @@ export const App = ({
 			cancelCopilot,
 			answer,
 			dismissCard,
+			runAct,
 			openEvents,
 		],
 	);
@@ -656,7 +693,11 @@ export const App = ({
 		}
 		// A focused textarea sees every key as well, global handler first. Claiming the keys the
 		// copilot reducer answers is what keeps `tab` and `esc` from also landing in the buffer.
-		if (BoardNav.copilotConsumes(current, key)) key.preventDefault();
+		if (
+			BoardNav.copilotConsumes(current, key) ||
+			BoardPrompt.consumes(current, key)
+		)
+			key.preventDefault();
 		const { state: next, effect } = BoardNav.reduceKey(current, key);
 		if (next !== current) {
 			stateRef.current = next;
@@ -681,6 +722,21 @@ export const App = ({
 	const mirrorCopilotText = useCallback((): void => {
 		const text = inputRef.current?.plainText ?? "";
 		setState((prev) => (prev ? BoardNav.withCopilotText(prev, text) : prev));
+	}, []);
+
+	// The same two for a prompt a card's tab or a banner opened.
+	const submitPrompt = useCallback((): void => {
+		const current = stateRef.current;
+		if (!current) return;
+		const text = promptRef.current?.plainText ?? "";
+		const { state: next, effect } = BoardPrompt.submit(current, text);
+		stateRef.current = next;
+		setState(next);
+		runEffect(next, effect);
+	}, [runEffect]);
+	const mirrorPromptText = useCallback((): void => {
+		const text = promptRef.current?.plainText ?? "";
+		setState((prev) => (prev ? BoardPrompt.withText(prev, text) : prev));
 	}, []);
 
 	// Initial load: detect scope, then build the first state scoped to the project (if any).
@@ -846,7 +902,11 @@ export const App = ({
 				findTask(state, openTaskId)?.shortId,
 			).some((c) => c.hasEvents),
 	});
-	const keys = { context: BoardNav.keyContext(state), situation };
+	const keys = {
+		context: BoardNav.keyContext(state),
+		situation,
+		host: CardTab.hints(state),
+	};
 	// The dispatch overlay floats over WHICHEVER view it opened on (it's a separate state field, not a
 	// view), so both branches render inside the same full-screen wrapper it absolutely positions against.
 	// The `?` sheet is the same kind of thing, anchored at the bottom instead of centred.
@@ -855,6 +915,7 @@ export const App = ({
 			context={BoardNav.sheetContext(state)}
 			situation={situation}
 			scrollRef={helpRef}
+			host={keys.host}
 		/>
 	) : state.dispatch ? (
 		<DispatchOverlay
@@ -882,6 +943,24 @@ export const App = ({
 			onSubmit={submitCopilot}
 			onContentChange={mirrorCopilotText}
 		/>
+	);
+	// A prompt a card's tab or a banner opened sits where the copilot's panel would, above its row.
+	const opened = state.prompt.open;
+	const pane = (
+		<>
+			{opened ? (
+				<PromptPanel
+					title={opened.title}
+					aim={opened.aim}
+					placeholder={opened.placeholder}
+					text={state.prompt.text}
+					textareaRef={promptRef}
+					onSubmit={submitPrompt}
+					onContentChange={mirrorPromptText}
+				/>
+			) : null}
+			{copilotPane}
+		</>
 	);
 	// Every view sits under the tab bar; the overlays float over whichever view is on screen.
 	const { tabs } = state;
@@ -923,7 +1002,7 @@ export const App = ({
 				// On a card's own tab, the question its sessions wait on.
 				banner={<CardTabQuestion tabs={tabs} />}
 				keys={keys}
-				pane={copilotPane}
+				pane={pane}
 			/>,
 		);
 	}
@@ -956,7 +1035,7 @@ export const App = ({
 					scrollRef={scrollRef}
 					notice={notice}
 					focus={state.focus}
-					pane={copilotPane}
+					pane={pane}
 					linked={linked.has(taskId)}
 					keys={keys}
 					onCopy={() => dispatchMouse({ type: "copy" })}
@@ -990,7 +1069,7 @@ export const App = ({
 			onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}
 			notice={notice}
 			focus={state.focus}
-			pane={copilotPane}
+			pane={pane}
 		/>,
 	);
 };

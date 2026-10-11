@@ -5,7 +5,8 @@
 // undo and multi-line input behave the same everywhere. The textarea owns its buffer: a caller mirrors
 // it through `onContentChange` and pushes a whole new value in through the ref (a recalled prompt).
 import type { TextareaRenderable } from "@opentui/core";
-import { defaultTextareaKeyBindings } from "@opentui/core";
+import { defaultTextareaKeyBindings, TextAttributes } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode, RefObject } from "react";
 import { useTheme } from "./theme";
 
@@ -31,6 +32,56 @@ export const fieldRows = (text: string, termRows: number): number => {
 	const typed = text === "" ? 1 : text.split("\n").length;
 	const room = Math.max(MIN_ROWS, Math.floor(termRows * 0.25));
 	return Math.min(Math.max(MIN_ROWS, typed), MAX_ROWS, room);
+};
+
+/**
+ * A prompt the board opened for a card's action or a typed answer: a raised panel naming what the
+ * text is for and where it goes (`inject → claude:JREP-2`), over the field. It sits where the copilot
+ * pane does, above the footer, and takes the keyboard the same way.
+ */
+export const PromptPanel = ({
+	title,
+	aim,
+	placeholder,
+	text,
+	textareaRef,
+	onSubmit,
+	onContentChange,
+}: {
+	title: string;
+	aim?: string;
+	placeholder: string;
+	// The mirror of what is typed, for the field's height.
+	text: string;
+	textareaRef: RefObject<TextareaRenderable | null>;
+	onSubmit: () => void;
+	onContentChange: () => void;
+}): ReactNode => {
+	const { height } = useTerminalDimensions();
+	const theme = useTheme();
+	const bg = theme.surface.raised;
+	return (
+		<box
+			style={{ flexDirection: "column", flexShrink: 0, backgroundColor: bg }}
+		>
+			<box style={{ paddingLeft: 1, paddingRight: 1 }}>
+				<text bg={bg} fg={theme.muted}>
+					<span fg={theme.text} attributes={TextAttributes.BOLD}>
+						{title}
+					</span>
+					{aim ? ` → ${aim}` : ""}
+				</text>
+			</box>
+			<PromptField
+				textareaRef={textareaRef}
+				initialValue=""
+				placeholder={placeholder}
+				rows={fieldRows(text, height)}
+				onSubmit={onSubmit}
+				onContentChange={onContentChange}
+			/>
+		</box>
+	);
 };
 
 export const PromptField = ({

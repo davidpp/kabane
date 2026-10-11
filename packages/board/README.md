@@ -37,6 +37,7 @@ interface ActivitySource {
   load(): Promise<Result<ActivityCard[]>>;
   card?(id: string): Promise<Result<ActivityCard | null>>;
   events?(id: string, afterSeq: number): Promise<Result<ActivityEvent[]>>;
+  act?(id: string, actionId: string, input: { text?: string; lane?: string }): Promise<Result<string>>;
   dismiss?(id: string): Promise<Result<void>>;
 }
 ```
@@ -80,7 +81,30 @@ question pinned over it as a banner, and a digit (or a click on an answer) answe
 pinned the digits are its alone: one past its answers does nothing (`h/l` still walk the sections). `b` on the banner
 goes back to the card's tab when the question came from one. An answered banner says what was
 answered and clears when you leave the view; an unanswered one stays pinned until it is answered.
-A question that offers no answers (freeform) is shown but has to be answered where it was asked.
+A question that offers no answers (freeform) takes a typed one: `enter`, on its banner or on the
+card's tab that shows it, opens the board's prompt (below), and what is sent goes to
+`Planner.answerQuestion` as the answer.
+
+#### Card actions and the prompt
+
+```ts
+act?(id: string, actionId: string, input: { text?: string; lane?: string }): Promise<Result<string>>;
+```
+
+A card may list `actions` (`{ id, key, label, input?, lane? }`) the human can press on its tab; the
+source's `act` runs them and resolves to the footer notice. The footer leads with them, and the `?`
+sheet lists them as `this card`. The board's own keys on a card's tab come first and cannot be taken
+(`h/l`, `j/k`, `e`, `o`, `w`, `q`, the digits, the everywhere keys), and `x` is reserved for the
+action whose id is `STOP_ACTION` (`stop`), as it stops the copilot's turn on its transcript: `x` runs
+it while the card is in flight, and does nothing on a card that offers none. An action passes the
+lane on screen; one with `lane: true` is aimed at a single lane and asks for one (`h/l`) first.
+
+An action with `input` opens the prompt: the copilot's own input (`PromptField`, the same textarea,
+bindings and `up` history as the copilot pane), in a raised panel above the copilot's row that says
+what it is for (`inject → claude:JREP-2`), with `input` as its placeholder. While it is open it has
+the keyboard: `enter` sends to `act` with the text, `⇧enter`/`ctrl+j` make a newline, paste works,
+`up` on an empty buffer recalls what was sent from it before, `esc` drops it, and a click on the
+board closes it.
 
 #### Lanes on a card's tab
 

@@ -4,6 +4,7 @@ import { BoardData } from "./data";
 import type { DetailModel } from "./detail-model";
 import { BoardNav } from "./nav";
 import type { CopilotPermission, TriggerDescriptor } from "./ports";
+import { BoardPrompt } from "./prompt";
 import { BoardTabs } from "./tabs";
 
 const task = (over: Partial<Task> = {}): Task => ({
@@ -71,6 +72,7 @@ const state = (
 	marked: new Set<string>(),
 	copilot: copilotState(),
 	undo: [],
+	prompt: BoardPrompt.CLOSED,
 	...over,
 });
 

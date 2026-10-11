@@ -8,6 +8,7 @@ import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
+import { BoardPrompt } from "./prompt";
 import { BoardTabs } from "./tabs";
 
 const task = (over: Partial<Task> = {}): Task => ({
@@ -77,6 +78,7 @@ const state = (
 	marked: new Set<string>(),
 	copilot: copilot(),
 	undo: [],
+	prompt: BoardPrompt.CLOSED,
 	...over,
 });
 
@@ -107,6 +109,30 @@ const TABS: BoardTabs.Tabs = {
 		],
 	]),
 	queue: [QUESTION],
+};
+
+// The same card still running, offering stop, its session waiting on a question with no answers.
+const FREEFORM: BoardTabs.Question = {
+	...QUESTION,
+	questionActivityId: "q2",
+	question: "What should the cache key be?",
+	choices: [],
+};
+const RUNNING: BoardTabs.Tabs = {
+	...TABS,
+	active: LOOP,
+	cards: new Map([
+		[
+			LOOP,
+			{
+				finished: false,
+				sessionIds: ["s1"],
+				taskId: "p",
+				actions: [{ id: "stop", key: "x", label: "stop" }],
+			},
+		],
+	]),
+	queue: [FREEFORM],
 };
 
 const TRIGGERS = [1, 2, 3].map((n) => ({
@@ -146,6 +172,10 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 			},
 			tabs: TABS,
 		}),
+		state({
+			view: { type: "detail", taskId: "p", banner: { question: FREEFORM } },
+			tabs: { ...RUNNING, active: null },
+		}),
 	],
 	transcript: [
 		state({
@@ -157,6 +187,26 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 		state({
 			view: { type: "events", cardId: LOOP, fromView: "board" },
 			tabs: { ...TABS, active: LOOP },
+		}),
+		state({
+			view: { type: "events", cardId: LOOP, fromView: "board" },
+			tabs: RUNNING,
+		}),
+	],
+	prompt: [
+		state({
+			view: { type: "events", cardId: LOOP, fromView: "board" },
+			tabs: RUNNING,
+			prompt: {
+				open: {
+					target: { type: "answer", questionId: "q2" },
+					title: "answer",
+					placeholder: "type the answer",
+				},
+				text: "",
+				history: ["earlier"],
+				historyAt: 0,
+			},
 		}),
 	],
 	copilot: [

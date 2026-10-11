@@ -299,7 +299,7 @@ export const EventView = ({
 		);
 	}
 
-	const hints = Keymap.footer(keys.context, keys.situation);
+	const hints = Keymap.footer(keys.context, keys.situation, keys.host);
 	const contentWidth = Math.max(MIN_ENTRY_COLS, width - RESERVED_COLS);
 	const lanes = tabbed ? (card.lanes ?? []) : [];
 

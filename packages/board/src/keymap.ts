@@ -46,6 +46,8 @@ export namespace Keymap {
 		pinned?: boolean;
 		/** The card on screen has lanes to walk. */
 		lanes?: boolean;
+		/** The question on screen offers no answers to pick, so `enter` types one. */
+		freeform?: boolean;
 		/** The `?` sheet is taller than the pane. */
 		scrollable?: boolean;
 		/** Setup found harnesses to tick. */
@@ -75,6 +77,7 @@ export namespace Keymap {
 		| "cardTab"
 		| "copilot"
 		| "palette"
+		| "prompt"
 		| "dispatch"
 		| "help"
 		| "setupWelcome"
@@ -141,6 +144,15 @@ export namespace Keymap {
 		tier: "footer",
 		keys: ["O"],
 		when: (s) => s.linked === true,
+	};
+
+	// `enter` over a question that offers no answers: the prompt, to type one.
+	const TYPE_ANSWER: Binding = {
+		key: "enter",
+		label: "answer",
+		tier: "footer",
+		keys: ["return"],
+		when: (s) => s.freeform === true,
 	};
 
 	const ESC_BOARD: Binding = {
@@ -296,6 +308,7 @@ export namespace Keymap {
 					keys: ["1", "2"],
 					when: (s) => s.unanswered === true,
 				},
+				TYPE_ANSWER,
 				{
 					key: "b",
 					label: "back to its tab",
@@ -371,6 +384,14 @@ export namespace Keymap {
 			name: "tab",
 			sheet: true,
 			bindings: [
+				TYPE_ANSWER,
+				{
+					key: "x",
+					label: "stop",
+					tier: "footer",
+					keys: ["x"],
+					when: (s) => s.stoppable === true,
+				},
 				{ key: "o", label: "its issue", tier: "footer", keys: ["o"] },
 				{
 					key: "w",
@@ -435,6 +456,35 @@ export namespace Keymap {
 				{
 					key: "enter",
 					label: "expand",
+					tier: "help",
+					keys: [],
+					routed: "textarea",
+				},
+			],
+		},
+		// The prompt a card's action or a typed answer opens: the copilot's input, so the same keys.
+		prompt: {
+			name: "prompt",
+			sheet: false,
+			bindings: [
+				{
+					key: "enter",
+					label: "send",
+					tier: "footer",
+					keys: [],
+					routed: "textarea",
+				},
+				{ key: "esc", label: "cancel", tier: "footer", keys: ["escape"] },
+				{
+					key: "↑",
+					label: "previous",
+					tier: "footer",
+					keys: ["up"],
+					when: (s) => s.history === true,
+				},
+				{
+					key: "⇧enter ⌃j",
+					label: "newline",
 					tier: "help",
 					keys: [],
 					routed: "textarea",
@@ -563,16 +613,30 @@ export namespace Keymap {
 		},
 	};
 
-	/** Whose keys a view's footer shows and what is true right now; app.tsx builds it from BoardNav. */
-	export type Live = { context: ContextId; situation: Situation };
+	/**
+	 * Whose keys a view's footer shows and what is true right now; app.tsx builds it from BoardNav.
+	 * `host` is the card on screen's own actions, which no registry can list: the host names them.
+	 */
+	export type Live = {
+		context: ContextId;
+		situation: Situation;
+		host?: readonly Hint[];
+	};
 
 	const available = (binding: Binding, situation: Situation): boolean =>
 		binding.when === undefined || binding.when(situation);
 
 	const asHint = ({ key, label }: Binding): Hint => ({ key, label });
 
-	/** The footer for a context: its available `footer` tier in order, then `? help` where the sheet opens. */
-	export const footer = (id: ContextId, situation: Situation = {}): Hint[] => {
+	/**
+	 * The footer for a context: a host card's own keys, then the context's available `footer` tier
+	 * in order, then `? help` where the sheet opens.
+	 */
+	export const footer = (
+		id: ContextId,
+		situation: Situation = {},
+		host: readonly Hint[] = [],
+	): Hint[] => {
 		const context = CONTEXTS[id];
 		const own = context.bindings
 			.filter((b) => b.tier === "footer" && available(b, situation))
@@ -581,22 +645,36 @@ export namespace Keymap {
 		const waiting = available(NEXT_QUESTION, situation)
 			? [asHint(NEXT_QUESTION)]
 			: [];
-		return context.sheet ? [...waiting, ...own, asHint(HELP)] : own;
+		return context.sheet
+			? [...waiting, ...host, ...own, asHint(HELP)]
+			: [...host, ...own];
 	};
 
 	type SheetRow = Hint & { available: boolean };
 	export type SheetGroup = { title: string; rows: SheetRow[] };
 
-	/** The `?` sheet for a context: its own keys under its name, then the keys that work everywhere. */
+	/**
+	 * The `?` sheet for a context: a host card's own keys, its own keys under its name, then the keys
+	 * that work everywhere.
+	 */
 	export const sheet = (
 		id: ContextId,
 		situation: Situation = {},
+		host: readonly Hint[] = [],
 	): SheetGroup[] => {
 		const row = (binding: Binding): SheetRow => ({
 			...asHint(binding),
 			available: available(binding, situation),
 		});
 		return [
+			...(host.length > 0
+				? [
+						{
+							title: "this card",
+							rows: host.map((hint) => ({ ...hint, available: true })),
+						},
+					]
+				: []),
 			{ title: CONTEXTS[id].name, rows: CONTEXTS[id].bindings.map(row) },
 			{ title: "everywhere", rows: EVERYWHERE.map(row) },
 		];

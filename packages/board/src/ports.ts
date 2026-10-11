@@ -48,6 +48,24 @@ export type ActivityCard = {
 	lanes?: readonly string[];
 	// What the lanes are, for the first chip (`all agents · live`). "lanes" when absent.
 	laneNoun?: string;
+	// Keys the human can press on the card's tab, run through `ActivitySource.act`. The host lists
+	// what makes sense now (no `stop` on a card that is over).
+	actions?: readonly CardAction[];
+};
+
+// The action `x` runs on a card's tab: the board reserves `x` for stopping, as on the copilot's
+// transcript, so a host offers stop under this id and no other action can take the key.
+export const STOP_ACTION = "stop";
+
+// One key on a card's tab. `input` is the placeholder of the prompt the board opens first (the
+// copilot's own input), whose text goes to `act`; `lane` says the action is aimed at one lane, so it
+// needs one on screen. A key the board answers on a card's tab is never offered.
+export type CardAction = {
+	id: string;
+	key: string;
+	label: string;
+	input?: string;
+	lane?: boolean;
 };
 
 export type ActivityEvent = {
@@ -72,6 +90,13 @@ export interface ActivitySource {
 	card?(id: string): Promise<Result<ActivityCard | null>>;
 	// Events after `afterSeq`, oldest first. Optional: without it cards never open an event view.
 	events?(id: string, afterSeq: number): Promise<Result<ActivityEvent[]>>;
+	// Run one of a card's `actions`, with the prompt's text when it takes some and the lane on screen
+	// when one is picked. Resolves to the footer notice. Optional: without it no action runs.
+	act?(
+		id: string,
+		actionId: string,
+		input: { text?: string; lane?: string },
+	): Promise<Result<string>>;
 	// The human closed a finished card's tab with `w`: stop listing it, for good, so it stays closed
 	// across a relaunch. Optional: without it the tab stays closed for this session only.
 	dismiss?(id: string): Promise<Result<void>>;

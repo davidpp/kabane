@@ -192,8 +192,10 @@ const QuestionBanner = ({
 				{answer ? <span fg={theme.done}>{`  → ${answer}`}</span> : null}
 			</text>
 			{answered ? null : freeform ? (
+				// No answers to pick: `enter` opens the prompt to type one, here or over the task.
 				<text bg={bg} fg={theme.muted}>
-					no answers offered · answer it where it was asked
+					<span fg={theme.text}>enter</span>
+					{" type the answer"}
 				</text>
 			) : (
 				// Each answer its own cell, so a click lands on the one it means.
@@ -217,7 +219,7 @@ const QuestionBanner = ({
 					))}
 				</box>
 			)}
-			{!answered && !answerable ? (
+			{!answered && !answerable && !freeform ? (
 				<text bg={bg} fg={theme.muted}>
 					<span fg={theme.text}>o</span>
 					{` answer it over ${taskShortId}`}

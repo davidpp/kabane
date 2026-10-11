@@ -66,6 +66,13 @@ export namespace Activity {
 				? routed.part.events(routed.id, afterSeq)
 				: ok([]);
 		},
+		act: async (id, actionId, input) => {
+			const routed = route(sources, id);
+			if (!routed) return err(unrouted("card", id));
+			return routed.part.act
+				? routed.part.act(routed.id, actionId, input)
+				: err(new Error(`${id} takes no actions`));
+		},
 		dismiss: async (id) => {
 			const routed = route(sources, id);
 			if (!routed) return err(unrouted("card", id));

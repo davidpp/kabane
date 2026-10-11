@@ -18,6 +18,7 @@ import type {
 	CopilotShortcut,
 	TriggerDescriptor,
 } from "./ports";
+import { BoardPrompt } from "./prompt";
 import { PromptHistory } from "./prompt-history";
 import { BoardTabs } from "./tabs";
 
@@ -202,6 +203,9 @@ export namespace BoardNav {
 		// every reload; `esc` clears it before it clears anything else.
 		marked: ReadonlySet<string>;
 		copilot: CopilotState;
+		// A prompt opened over a card's tab or a question's banner (prompt.ts): the copilot's input,
+		// typed for a card's action or a question's answer instead.
+		prompt: BoardPrompt.Prompt;
 		// Bounded, in-memory (per board session), LIFO stack of reverse patches. Pushed OPTIMISTICALLY at
 		// reduce time — mutations to local SQLite essentially never fail, and a failed forward write leaves
 		// its reverse patch a harmless no-op (the field is already at the prior value). Preserved across
@@ -244,6 +248,16 @@ export namespace BoardNav {
 		| { type: "answerQuestion"; questionId: string; answer: string }
 		// `w` closed a finished card's tab: the host forgets the card (ActivitySource.dismiss).
 		| { type: "dismiss"; cardId: string }
+		// One of a card's actions, with the prompt's text and the lane on screen when it has them.
+		| {
+				type: "act";
+				cardId: string;
+				actionId: string;
+				text?: string;
+				lane?: string;
+		  }
+		// Push a whole new value into the prompt's textarea (a recalled one).
+		| { type: "promptSetText"; text: string }
 		| { type: "openEvents"; taskId: string }
 		// `O`: hand this task's linked issue to the OS. app.tsx reads the link and composes the notice.
 		| { type: "openLink"; id: string }
@@ -989,6 +1003,7 @@ export namespace BoardNav {
 			tabs: BoardTabs.NONE,
 			marked: new Set<string>(),
 			copilot: COPILOT_IDLE,
+			prompt: BoardPrompt.CLOSED,
 			undo: [],
 		};
 		return { ...base, selectedId: firstId(visibleRows(base)) };
@@ -1101,6 +1116,8 @@ export namespace BoardNav {
 			if (answered) return answered;
 		}
 		// The copilot owns the keyboard while focused, and decides for itself what `tab` means there.
+		// An open prompt has the keyboard the same way, its textarea taking what it does not.
+		if (state.prompt.open) return BoardPrompt.reduceKey(state, key);
 		if (state.focus === "copilot") return reduceCopilotKey(state, key);
 		// A finished turn's footer indicator stays up until the next keypress — except `o`, which is
 		// the key that opens it, and the search box, where a keypress is a query character.
@@ -1114,26 +1131,29 @@ export namespace BoardNav {
 		// view routing. Inert while a `/` query is being typed (ctrl isn't a printable query char anyway).
 		if (isUndoKey(key) && state.search.mode !== "typing")
 			return reduceUndo(state);
-		// Focus-level keys, once for every view: which pane has the keyboard is not a property of
-		// what is on screen. All four are query characters while a `/` search is being typed, so the
-		// whole group defers to that branch inside reduceBoardKey.
-		if (state.search.mode !== "typing") {
-			if (isHelpKey(key))
-				return { state: { ...state, help: true }, effect: NONE };
-			if (isCopilotKey(key)) return focusCopilot(state);
-			// Also view-agnostic: `O` acts on the task in hand, which is the open one in detail and the
-			// selected row everywhere else.
-			if (isOpenLinkKey(key)) return openLink(state);
-			if (key.name === "tab")
-				return {
-					state: cycleFocus(state, key.shift ? -1 : 1),
-					effect: NONE,
-				};
-			// The tab bar's keys: which tab is on screen is not a view's business.
-			const tabbed = BoardTabs.reduceGlobalKey(state, key);
-			if (tabbed) return tabbed;
-		}
-		return reduceViewKey(state, key);
+		// Focus-level keys, once for every view. All are query characters while a `/` search is being
+		// typed, so the whole group defers to that branch inside reduceBoardKey.
+		const everywhere =
+			state.search.mode === "typing" ? null : reduceEverywhereKey(state, key);
+		return everywhere ?? reduceViewKey(state, key);
+	};
+
+	// The keys that mean the same in every view: which pane has the keyboard, and which tab is on
+	// screen, are not a property of what is on screen. Null for every other key.
+	const reduceEverywhereKey = (
+		state: BoardState,
+		key: KeyInput,
+	): { state: BoardState; effect: Effect } | null => {
+		if (isHelpKey(key))
+			return { state: { ...state, help: true }, effect: NONE };
+		if (isCopilotKey(key)) return focusCopilot(state);
+		// Also view-agnostic: `O` acts on the task in hand, which is the open one in detail and the
+		// selected row everywhere else.
+		if (isOpenLinkKey(key)) return openLink(state);
+		if (key.name === "tab")
+			return { state: cycleFocus(state, key.shift ? -1 : 1), effect: NONE };
+		// The tab bar's keys: which tab is on screen is not a view's business.
+		return BoardTabs.reduceGlobalKey(state, key);
 	};
 
 	// The view's own keys. A banner pinned over the detail view takes the keys that answer it first,
@@ -1247,6 +1267,7 @@ export namespace BoardNav {
 	// pane with focus, then the view. The footer shows this context's hints and `?` opens its sheet.
 	export const keyContext = (state: BoardState): Keymap.ContextId => {
 		if (state.dispatch) return "dispatch";
+		if (state.prompt.open) return "prompt";
 		if (state.focus === "copilot")
 			return matchingShortcuts(state.copilot.shortcuts, state.copilot.text)
 				.length > 0
@@ -1278,28 +1299,38 @@ export namespace BoardNav {
 			state.view.type === "detail"
 				? state.view.taskId
 				: rowOf(visibleRows(state), state.selectedId)?.task.id;
+		const card = CardTab.situation(state);
 		return {
 			selection: rowOf(visibleRows(state), state.selectedId) !== undefined,
 			linked: inHand !== undefined && facts.linked.has(inHand),
 			events: facts.events,
 			transcript: state.copilot.hasLog,
-			stoppable:
-				state.view.type === "events" &&
-				state.view.cardId === CopilotLog.CARD_ID &&
-				state.copilot.turn === "running",
+			stoppable: turnStoppable(state) || card.stoppable,
 			clearable:
 				state.marked.size > 0 ||
 				state.search.mode === "committed" ||
 				state.scoped,
-			history: state.copilot.text === "" && state.copilot.history.length > 0,
+			history: recallable(state.prompt.open ? state.prompt : state.copilot),
 			ready:
 				state.dispatch !== null &&
 				!state.dispatch.loading &&
 				state.dispatch.triggers.length > 0,
 			...BoardTabs.situation(state),
-			...CardTab.situation(state),
+			lanes: card.lanes,
 		};
 	};
+
+	// `x` on the copilot's transcript while its turn runs.
+	const turnStoppable = (state: BoardState): boolean =>
+		state.view.type === "events" &&
+		state.view.cardId === CopilotLog.CARD_ID &&
+		state.copilot.turn === "running";
+
+	// `up` has something to recall: an empty buffer, and something sent before.
+	const recallable = (input: {
+		text: string;
+		history: readonly string[];
+	}): boolean => input.text === "" && input.history.length > 0;
 
 	// Dispatch overlay: one list of host triggers. While loading only esc works; then j/k and 1-9
 	// select, enter fires a satisfiable trigger (an unsatisfiable one flashes its hint), esc closes.
@@ -1408,9 +1439,11 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		if (incoming.help || incoming.dispatch)
 			return { state: incoming, effect: NONE };
-		// A click is the human saying they are working on the board now.
-		const state: BoardState =
-			incoming.focus === "board" ? incoming : { ...incoming, focus: "board" };
+		// A click is the human saying they are working on the board now: the copilot loses focus and an
+		// open prompt closes.
+		const state: BoardState = BoardPrompt.close(
+			incoming.focus === "board" ? incoming : { ...incoming, focus: "board" },
+		);
 		if (action.type === "copy") {
 			const id =
 				state.view.type === "detail" ? state.view.taskId : state.selectedId;

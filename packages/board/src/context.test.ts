@@ -3,6 +3,7 @@ import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { BoardContext } from "./context";
 import { BoardData } from "./data";
 import type { BoardNav } from "./nav";
+import { BoardPrompt } from "./prompt";
 import { BoardTabs } from "./tabs";
 
 const task = (over: Partial<Task> = {}): Task => ({
@@ -63,6 +64,7 @@ const state = (
 		permission: null,
 	},
 	undo: [],
+	prompt: BoardPrompt.CLOSED,
 	...over,
 });
 

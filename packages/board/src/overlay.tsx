@@ -111,6 +111,8 @@ export type HelpSheetProps = {
 	situation: Keymap.Situation;
 	// The sheet's own scrollbox, which j/k move (the `helpScroll` effect). app.tsx holds the ref.
 	scrollRef?: RefObject<ScrollBoxRenderable | null>;
+	// The card on screen's own actions, listed first.
+	host?: readonly Keymap.Hint[];
 };
 
 // The `?` sheet, which-key style: across the pane at the bottom, the keys of the view in hand under
@@ -122,11 +124,12 @@ export const HelpSheet = ({
 	context,
 	situation,
 	scrollRef,
+	host,
 }: HelpSheetProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	const bg = overlayBg(theme);
-	const lines = sheetLines(Keymap.sheet(context, situation));
+	const lines = sheetLines(Keymap.sheet(context, situation, host));
 	const inner = Math.max(0, width - 2);
 	// The padding row on top, every line, then the sheet's footer row.
 	const wanted = lines.length + 2;

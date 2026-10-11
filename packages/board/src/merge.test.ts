@@ -80,6 +80,19 @@ describe("Activity.merge", () => {
 		expect((await merged.dismiss?.("c:1"))?.ok).toBe(false);
 	});
 
+	test("act reaches its contributor with its own id; one that takes no actions says so", async () => {
+		const acting: ActivitySource = {
+			...a,
+			act: async (id, actionId, input) =>
+				ok(`${id} ${actionId} ${input.lane ?? ""} ${input.text ?? ""}`),
+		};
+		const merged = Activity.merge({ a: acting, b });
+		expect(
+			await merged.act?.("a:1", "inject", { text: "hi", lane: "s1" }),
+		).toEqual(ok("1 inject s1 hi"));
+		expect((await merged.act?.("b:1", "stop", {}))?.ok).toBe(false);
+	});
+
 	test("an id no contributor minted is an error", async () => {
 		const merged = Activity.merge({ a });
 		expect((await merged.card?.("c:1"))?.ok).toBe(false);

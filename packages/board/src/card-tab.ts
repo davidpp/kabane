@@ -1,12 +1,20 @@
-// A host card's own tab, past what the tab bar decides (tabs.ts): which of its lanes is on screen.
-// Plain functions over the board's state, like the rest of the key routing, so the keys and the
-// mouse are tested without a renderer.
+// A host card's own tab, past what the tab bar decides (tabs.ts): which of its lanes is on screen,
+// the actions it offers, and a question it shows that takes a typed answer. Plain functions over the
+// board's state, like the rest of the key routing, so the keys and the mouse are tested without a
+// renderer.
 //
 // Lanes are the card's named streams (one per agent session, say). Lane 0 is all of them, live; then
 // each lane in the host's order. The lane on screen is kept by NAME per card, so a lane the host adds
 // does not shift what the human was reading, and coming back to the tab finds it where it was left.
+//
+// Actions are the host's keys. The board's own keys on a card's tab come first and cannot be taken,
+// and `x` is reserved for the host's `stop` action, as it stops the copilot's turn on its transcript.
+// An action with `input` opens the board's prompt (prompt.ts) and sends what was typed.
+import type { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
-import type { BoardTabs } from "./tabs";
+import { type CardAction, STOP_ACTION } from "./ports";
+import { BoardPrompt } from "./prompt";
+import { BoardTabs } from "./tabs";
 
 export namespace CardTab {
 	type State = BoardNav.BoardState;
@@ -14,6 +22,19 @@ export namespace CardTab {
 
 	const NOTHING: BoardNav.Effect = { type: "none" };
 	const UNREAD: BoardTabs.CardView = { lane: null };
+
+	// Keys the board answers on a card's tab, whatever a host binds: an action under one is never
+	// offered. `x` is the stop action's alone.
+	const RESERVED: ReadonlySet<string> = new Set([
+		..."xhlewoqjk{}!?A:O0123456789",
+		"escape",
+		"return",
+		"tab",
+		"up",
+		"down",
+		"left",
+		"right",
+	]);
 
 	/** How the card's tab is being read: its lane on screen. */
 	export const view = (tabs: BoardTabs.Tabs, id: string): BoardTabs.CardView =>
@@ -46,6 +67,68 @@ export namespace CardTab {
 		return { state: withLane(state, id, at), effect: NOTHING };
 	};
 
+	/** The actions a key can reach on the card's tab, `stop` included. */
+	const actionsOf = (tabs: BoardTabs.Tabs, id: string): readonly CardAction[] =>
+		(tabs.cards.get(id)?.actions ?? []).filter((action) =>
+			action.id === STOP_ACTION ? true : !RESERVED.has(action.key),
+		);
+
+	const notice = (state: State, text: string): Step => ({
+		state,
+		effect: { type: "notice", notice: { text, tone: "success" } },
+	});
+
+	// One of the card's actions: straight to the host, or through the prompt when it takes text. One
+	// aimed at a lane needs one on screen.
+	const run = (state: State, id: string, action: CardAction): Step => {
+		const card = state.tabs.cards.get(id);
+		const lane = view(state.tabs, id).lane ?? undefined;
+		if (action.lane && lane === undefined)
+			return notice(
+				state,
+				`${action.label} goes to one of the ${card?.laneNoun ?? "lanes"} · h/l picks it`,
+			);
+		if (action.input !== undefined)
+			return BoardPrompt.open(state, {
+				target: {
+					type: "act",
+					cardId: id,
+					actionId: action.id,
+					...(lane ? { lane } : {}),
+				},
+				title: action.label,
+				...(lane ? { aim: lane } : {}),
+				placeholder: action.input,
+			});
+		return {
+			state,
+			effect: {
+				type: "act",
+				cardId: id,
+				actionId: action.id,
+				...(lane ? { lane } : {}),
+			},
+		};
+	};
+
+	// `x`: the card's stop action, while it has one and is still going. Reserved either way.
+	const stop = (state: State, id: string): Step => {
+		const action = actionsOf(state.tabs, id).find((a) => a.id === STOP_ACTION);
+		return action && !state.tabs.cards.get(id)?.finished
+			? run(state, id, action)
+			: { state, effect: NOTHING };
+	};
+
+	// `enter`: type the answer to the question the tab shows, when it offers none to pick.
+	const answer = (state: State): Step | null => {
+		const question = BoardTabs.cardQuestion(state.tabs);
+		return question && question.choices.length === 0
+			? BoardTabs.typeAnswer(state, question)
+			: null;
+	};
+
+	const keyOf = (key: BoardNav.KeyInput): string => key.sequence ?? key.name;
+
 	/** The card's own keys on its tab. Null for the keys the event view under it answers (j/k). */
 	export const reduceKey = (
 		state: State,
@@ -60,8 +143,17 @@ export namespace CardTab {
 			case "l":
 			case "right":
 				return stepLane(state, id, 1);
-			default:
-				return null;
+			case "x":
+				return stop(state, id);
+			case "return":
+			case "enter":
+				return answer(state);
+			default: {
+				const action = actionsOf(state.tabs, id).find(
+					(a) => a.id !== STOP_ACTION && a.key === keyOf(key),
+				);
+				return action ? run(state, id, action) : null;
+			}
 		}
 	};
 
@@ -74,9 +166,27 @@ export namespace CardTab {
 			: { state, effect: NOTHING };
 	};
 
-	/** Facts the footer's `when`s read, about the card on screen. */
-	export const situation = (state: State): { lanes: boolean } => {
+	/** The footer's hints for the card on screen's own actions, `stop` left to the registry's `x`. */
+	export const hints = (state: State): Keymap.Hint[] => {
 		const id = state.tabs.active;
-		return { lanes: id !== null && lanesOf(state.tabs, id).length > 0 };
+		if (id === null || state.view.type !== "events") return [];
+		return actionsOf(state.tabs, id)
+			.filter((action) => action.id !== STOP_ACTION)
+			.map((action) => ({ key: action.key, label: action.label }));
+	};
+
+	/** Facts the footer's `when`s read, about the card on screen. */
+	export const situation = (
+		state: State,
+	): { lanes: boolean; stoppable: boolean } => {
+		const id = state.tabs.active;
+		if (id === null || state.view.type !== "events")
+			return { lanes: false, stoppable: false };
+		return {
+			lanes: lanesOf(state.tabs, id).length > 0,
+			stoppable:
+				!state.tabs.cards.get(id)?.finished &&
+				actionsOf(state.tabs, id).some((a) => a.id === STOP_ACTION),
+		};
 	};
 }

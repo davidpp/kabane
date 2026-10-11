@@ -12,7 +12,8 @@
 // it through `Planner.answerQuestion`.
 import type { BoardActivity } from "./activity";
 import type { BoardNav } from "./nav";
-import { type ActivityCard, isInFlight } from "./ports";
+import { type ActivityCard, type CardAction, isInFlight } from "./ports";
+import { BoardPrompt } from "./prompt";
 
 export namespace BoardTabs {
 	type State = BoardNav.BoardState;
@@ -28,6 +29,8 @@ export namespace BoardTabs {
 		taskId?: string;
 		taskShortId?: string;
 		lanes?: readonly string[];
+		laneNoun?: string;
+		actions?: readonly CardAction[];
 	};
 
 	// How a card's tab is being read, kept per card so a tab looks the same when the human comes
@@ -119,6 +122,10 @@ export namespace BoardTabs {
 		...(card.taskId ? { taskId: card.taskId } : {}),
 		...(card.taskShortId ? { taskShortId: card.taskShortId } : {}),
 		...(card.lanes && card.lanes.length > 0 ? { lanes: card.lanes } : {}),
+		...(card.laneNoun ? { laneNoun: card.laneNoun } : {}),
+		...(card.actions && card.actions.length > 0
+			? { actions: card.actions }
+			: {}),
 	});
 
 	// Everything a poll can change that the bar or the keys read, as one comparable string.
@@ -329,8 +336,22 @@ export namespace BoardTabs {
 		}
 	};
 
+	// A question still waiting that offers no answers to pick: it takes a typed one.
+	const freeform = (tabs: Tabs, banner: Banner): boolean =>
+		!isAnswered(tabs, banner) && banner.question.choices.length === 0;
+
+	/** Open the prompt for a typed answer to `question` (`enter` on its banner or its card's tab). */
+	export const typeAnswer = (state: State, question: Question): Step =>
+		BoardPrompt.open(state, {
+			target: { type: "answer", questionId: question.questionActivityId },
+			title: "answer",
+			aim: question.taskShortId,
+			placeholder: "type the answer · enter sends it",
+		});
+
 	/**
-	 * The banner over a detail view: `b` goes back to the card's tab, and the digits are the banner's
+	 * The banner over a detail view: `b` goes back to the card's tab, `enter` types the answer to a
+	 * question that offers none, and the digits are the banner's
 	 * alone while it is pinned. One picks the answer it numbers; one past the answers, or any once it
 	 * is answered, does nothing rather than switching the section under it. Null for every other key.
 	 */
@@ -346,6 +367,10 @@ export namespace BoardTabs {
 		)
 			return { state: show(state, banner.cardId), effect: NOTHING };
 		if (key.ctrl || key.meta) return null;
+		if (key.name === "return" || key.name === "enter")
+			return freeform(state.tabs, banner)
+				? typeAnswer(state, banner.question)
+				: null;
 		const digit = Number.parseInt(key.name, 10);
 		if (!(digit >= 1 && digit <= 9)) return null;
 		const answer = isAnswered(state.tabs, banner)
@@ -412,10 +437,15 @@ export namespace BoardTabs {
 		back: boolean;
 		unanswered: boolean;
 		pinned: boolean;
+		freeform: boolean;
 	} => {
 		const { tabs, view } = state;
 		const banner = view.type === "detail" ? view.banner : undefined;
+		const shown = view.type === "events" ? cardQuestion(tabs) : undefined;
 		return {
+			freeform: banner
+				? freeform(tabs, banner)
+				: shown !== undefined && shown.choices.length === 0,
 			waiting: tabs.queue.length > 0,
 			tabs: tabs.open.length > 0,
 			closable:

@@ -360,6 +360,13 @@ against every glyph already here.
   muted. This is the part of kabane that repeats, and it should read like a tidy set of
   tools.
 
+### Prompt
+- **What:** the copilot's own input, opened for something else: a card's action that takes
+  text (`inject`), or the answer to a question that offers none to pick.
+- **Style:** a raised panel above the copilot's row, no border: what it is for as a Label and
+  where it goes muted after `→` (`inject → claude:JREP-2`), then the copilot's field on overlay,
+  its placeholder the host's words, the cursor in the accent.
+
 ### Overlays (picker, help)
 - **Style:** `{components.overlay}`, centered, no border. The title as Title, then one row per
   item, with a selected row under the Selection Rule and unsatisfiable rows faint.
