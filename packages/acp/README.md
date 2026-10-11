@@ -23,7 +23,14 @@ imports the SDK.
   being a property of the harness rather than of how it is launched. The other two
   adapters get none: their variables are not documented here, and a guess would pin a
   model silently wrong. `acceptsSystemPrompt(id)` is true only for Claude, the one
-  adapter that reads `_meta.systemPrompt` on `session/new`.
+  adapter that reads `_meta.systemPrompt` on `session/new`. All of that is the
+  copilot's profile, `COPILOT`, and the default: `resolve`'s third argument is a
+  `Profile` (`pinModel`, `env`) for another launcher, such as the loop, which runs the
+  user's own default model under its own env marker. `installedCli(id)` is the env
+  that points an adapter at the CLI on PATH instead of the copy it bundles
+  (`CLAUDE_CODE_EXECUTABLE` for claude-agent-acp, `CODEX_PATH` for codex-acp), and an
+  error when that CLI is not installed. `AcpClient.spawn` takes the profile as
+  `profile`.
 - `Stdio` — the two adapters between `Bun.spawn` and the SDK's `ndJsonStream`:
   `stdinSink(FileSink)` wraps Bun's piped stdin as a `WritableStream`, and `jsonLines()` drops
   the log lines harnesses interleave with JSON-RPC on stdout.

@@ -108,6 +108,8 @@ export namespace AcpClient {
 
 	export type SpawnOptions = ConnectOptions & {
 		overrides?: Harnesses.Overrides;
+		// The board copilot's profile when absent.
+		profile?: Harnesses.Profile;
 	};
 
 	export type NewSessionOptions = {
@@ -126,7 +128,11 @@ export namespace AcpClient {
 		cwd: string,
 		options: SpawnOptions,
 	): Promise<Result<Connection>> => {
-		const launch = Harnesses.resolve(harness, options.overrides);
+		const launch = Harnesses.resolve(
+			harness,
+			options.overrides,
+			options.profile,
+		);
 		const spawned = await tryCatch(async () =>
 			Bun.spawn([launch.command, ...launch.args], {
 				cwd,

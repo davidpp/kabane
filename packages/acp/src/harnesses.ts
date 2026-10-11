@@ -1,6 +1,8 @@
 // Which coding harness to talk ACP to and how to launch it. Adapter versions are pinned so a
 // board session behaves the same on every device; a user overrides the command when they run
 // a harness from somewhere else (a local build, a wrapper script).
+import { err, ok, type Result } from "@cabane/core";
+
 export namespace Harnesses {
 	export const IDS = ["claude", "codex", "gemini"] as const;
 	export type Id = (typeof IDS)[number];
@@ -45,21 +47,68 @@ export namespace Harnesses {
 	// Lets the user's harness hooks tell a board session from an interactive one.
 	export const SESSION_ENV = { KABANE_SESSION: "1" };
 
+	// Who launches a session and on what terms. The board copilot pins the cheap model and
+	// marks its sessions with SESSION_ENV; another launcher (the loop) runs the user's own
+	// default model and carries its own marker, plus whatever else its env needs.
+	export type Profile = {
+		/** Pin the registry's model when no override names one. */
+		pinModel: boolean;
+		/** Added to the launch env, on top of the parent's. */
+		env: Record<string, string>;
+	};
+
+	export const COPILOT: Profile = { pinModel: true, env: SESSION_ENV };
+
 	export const isId = (value: string): value is Id =>
 		(IDS as readonly string[]).includes(value);
 
 	// An overridden command drops the registry args too: they belong to the npx package,
 	// not to whatever binary the user pointed at. The model rides in the env instead, so it
 	// survives a command override — it is a property of the harness, not of the launcher.
-	export const resolve = (id: Id, overrides: Overrides = {}): Launch => {
+	export const resolve = (
+		id: Id,
+		overrides: Overrides = {},
+		profile: Profile = COPILOT,
+	): Launch => {
 		const base = REGISTRY[id];
 		const command = overrides.command ?? base.command;
 		const args =
 			overrides.args ?? (overrides.command === undefined ? base.args : []);
-		const model = base.model
-			? { [base.model.env]: overrides.model ?? base.model.pinned }
-			: {};
-		return { command, args: [...args], env: { ...SESSION_ENV, ...model } };
+		const chosen =
+			overrides.model ?? (profile.pinModel ? base.model?.pinned : undefined);
+		const model =
+			base.model && chosen !== undefined ? { [base.model.env]: chosen } : {};
+		return { command, args: [...args], env: { ...profile.env, ...model } };
+	};
+
+	// The CLI each adapter drives, and the variable that points the adapter at an installed
+	// copy instead of the one it bundles (claude-agent-acp: CLAUDE_CODE_EXECUTABLE, else the
+	// Agent SDK's bundled binary; codex-acp: CODEX_PATH, else its bundled @openai/codex).
+	// Gemini has no adapter: `gemini --acp` is the installed CLI already.
+	const CLI: Record<Id, { bin: string; env?: string }> = {
+		claude: { bin: "claude", env: "CLAUDE_CODE_EXECUTABLE" },
+		codex: { bin: "codex", env: "CODEX_PATH" },
+		gemini: { bin: "gemini" },
+	};
+
+	/**
+	 * The env that makes the adapter run the user's installed CLI, found on PATH, so its
+	 * version, login and settings are the user's own. An error when it is not installed:
+	 * falling back to a bundled copy would run a version the user never chose.
+	 */
+	export const installedCli = (
+		id: Id,
+		which: (bin: string) => string | null = Bun.which,
+	): Result<Record<string, string>> => {
+		const cli = CLI[id];
+		const path = which(cli.bin);
+		if (path === null)
+			return err(
+				new Error(
+					`${cli.bin} is not on PATH: install the ${id} CLI, or put it on PATH, so sessions run your own copy`,
+				),
+			);
+		return ok(cli.env ? { [cli.env]: path } : {});
 	};
 
 	// Only the Claude adapter reads `_meta.systemPrompt` on `session/new`; the others get

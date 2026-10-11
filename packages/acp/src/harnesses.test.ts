@@ -54,10 +54,45 @@ describe("Harnesses.resolve", () => {
 		expect(Harnesses.resolve("claude").args).toHaveLength(2);
 	});
 
+	it("a profile without the pin leaves the model to the user, and carries its own env", () => {
+		const loop = { pinModel: false, env: { KABANE_LOOP: "1" } };
+		expect(Harnesses.resolve("claude", {}, loop).env).toEqual({
+			KABANE_LOOP: "1",
+		});
+		expect(Harnesses.resolve("claude", { model: "opus" }, loop).env).toEqual({
+			KABANE_LOOP: "1",
+			ANTHROPIC_MODEL: "opus",
+		});
+	});
+
 	it("knows its ids and which harness reads a system prompt", () => {
 		expect(Harnesses.isId("claude")).toBe(true);
 		expect(Harnesses.isId("cursor")).toBe(false);
 		expect(Harnesses.acceptsSystemPrompt("claude")).toBe(true);
 		expect(Harnesses.acceptsSystemPrompt("codex")).toBe(false);
+	});
+});
+
+describe("Harnesses.installedCli", () => {
+	const on = (bin: string) => (name: string) =>
+		name === bin ? `/usr/local/bin/${bin}` : null;
+
+	it("points each adapter at the installed CLI through the variable it reads", () => {
+		const claude = Harnesses.installedCli("claude", on("claude"));
+		expect(claude.ok && claude.value).toEqual({
+			CLAUDE_CODE_EXECUTABLE: "/usr/local/bin/claude",
+		});
+		const codex = Harnesses.installedCli("codex", on("codex"));
+		expect(codex.ok && codex.value).toEqual({
+			CODEX_PATH: "/usr/local/bin/codex",
+		});
+		const gemini = Harnesses.installedCli("gemini", on("gemini"));
+		expect(gemini.ok && gemini.value).toEqual({});
+	});
+
+	it("fails, rather than falling back to a bundled copy, when the CLI is missing", () => {
+		const missing = Harnesses.installedCli("claude", () => null);
+		expect(missing.ok).toBe(false);
+		if (!missing.ok) expect(missing.error.message).toContain("claude");
 	});
 });
