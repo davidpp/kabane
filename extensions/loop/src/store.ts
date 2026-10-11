@@ -302,11 +302,18 @@ export namespace RunStore {
 		return ok(runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
 	};
 
+	const readText = (file: string): Result<string> =>
+		existsSync(file) ? trySync(() => readFileSync(file, "utf8")) : ok("");
+
+	const nonBlank = (text: string): string[] =>
+		text.split("\n").filter((line) => line.trim() !== "");
+
+	// The lines a writer has finished: a tail with no newline yet is an append still in progress,
+	// left for the next read rather than taken for a broken line and skipped for good.
 	const lines = (file: string): Result<string[]> => {
-		if (!existsSync(file)) return ok([]);
-		const text = trySync(() => readFileSync(file, "utf8"));
+		const text = readText(file);
 		if (!text.ok) return text;
-		return ok(text.value.split("\n").filter((line) => line.trim() !== ""));
+		return ok(nonBlank(text.value.slice(0, text.value.lastIndexOf("\n") + 1)));
 	};
 
 	const parseLine = <T>(schema: z.ZodType<T>, line: string): T | undefined => {
@@ -327,9 +334,9 @@ export namespace RunStore {
 		now: () => Date = () => new Date(),
 	): Result<EventLog> => {
 		const file = paths(home, runId).events;
-		const existing = lines(file);
+		const existing = readText(file);
 		if (!existing.ok) return existing;
-		let seq = existing.value.length;
+		let seq = nonBlank(existing.value).length;
 		return ok({
 			append: (draft) => {
 				const event: Event = {

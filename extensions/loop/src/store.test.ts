@@ -144,4 +144,24 @@ describe("RunStore events and inbox", () => {
 		const rest = RunStore.readInbox(home, "KAB-1-abc", 2);
 		expect(rest.ok && rest.value.entries).toEqual([]);
 	});
+
+	it("leaves a line still being appended for the next read", () => {
+		RunStore.create(home, draft());
+		const inbox = RunStore.paths(home, "KAB-1-abc").inbox;
+		const line = JSON.stringify({
+			kind: "stop",
+			at: "2026-10-10T12:00:00.000Z",
+		});
+		appendFileSync(inbox, line.slice(0, 10));
+		const early = RunStore.readInbox(home, "KAB-1-abc", 0);
+		expect(early.ok && early.value).toEqual({
+			entries: [],
+			invalid: [],
+			next: 0,
+		});
+		appendFileSync(inbox, `${line.slice(10)}\n`);
+		const late = RunStore.readInbox(home, "KAB-1-abc", 0);
+		expect(late.ok && late.value.entries.map((e) => e.kind)).toEqual(["stop"]);
+		expect(late.ok && late.value.next).toBe(1);
+	});
 });
