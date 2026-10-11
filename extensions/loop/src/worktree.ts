@@ -75,6 +75,14 @@ export namespace Worktree {
 		return shown.ok ? ok(shown.value.trim().replace(/\/$/, "")) : shown;
 	};
 
+	/** Whether `path`, relative to the repository top, is in `dir`'s HEAD. */
+	export const has = async (
+		dir: string,
+		path: string,
+		run: Git = git,
+	): Promise<boolean> =>
+		(await run(dir, ["cat-file", "-e", `HEAD:${path}`])).ok;
+
 	// A linked worktree's git dir is its own, under the main repository's common dir; the main
 	// checkout's is the common dir itself.
 	const linked = async (dir: string, run: Git): Promise<Result<void>> => {

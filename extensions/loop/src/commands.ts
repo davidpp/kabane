@@ -327,6 +327,16 @@ export namespace Loop {
 		const prefix = await Worktree.prefixOf(run.projectDir, deps.git);
 		if (!prefix.ok) return failed(prefix.error);
 		const dir = Worktree.dirFor(RunStore.paths(deps.home, run.id).dir);
+		// Checked before the worktree is added, so a refusal leaves no worktree or branch behind.
+		if (
+			prefix.value !== "" &&
+			!(await Worktree.has(run.projectDir, prefix.value, deps.git))
+		)
+			return failed(
+				new Error(
+					`${prefix.value} is not committed, so a worktree of HEAD would not have it: commit it, or start without --worktree`,
+				),
+			);
 		const added = await Worktree.add(
 			run.projectDir,
 			dir,
@@ -339,12 +349,6 @@ export namespace Loop {
 			worktree: dir,
 			worktreePrefix: prefix.value,
 		};
-		if (!existsSync(RunStore.sessionDir(withDir)))
-			return failed(
-				new Error(
-					`${prefix.value} is not committed, so the worktree of HEAD at ${dir} has no such folder: commit it, or start without --worktree`,
-				),
-			);
 		return RunStore.write(deps.home, withDir);
 	};
 

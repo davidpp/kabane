@@ -169,6 +169,34 @@ describe("Loop.start with a worktree", () => {
 	});
 });
 
+describe("Loop.start with a worktree, from a folder HEAD lacks", () => {
+	it("refuses before adding a worktree or a branch", async () => {
+		const scopeUri = await repoScope();
+		const parent = await add("parent", { scopeUri });
+		await add("child", { parentTaskId: parent.id, scopeUri });
+		const folder = join(repo, "packages", "new");
+		mkdirSync(folder, { recursive: true });
+		writeFileSync(join(folder, "draft.ts"), "\n");
+		const git: Worktree.Git = async (cwd, args) =>
+			trySync(() => GitFixture.run(cwd, args));
+
+		const started = await Loop.start(
+			{ ...deps(), cwd: folder, git },
+			{ parent: parent.id, config: { worktree: true } },
+		);
+		expect(started.ok).toBe(false);
+		if (!started.ok) expect(started.error.message).toContain("not committed");
+		const branches = GitFixture.run(repo, [
+			"branch",
+			"--list",
+			"kabane-loop/*",
+		]);
+		expect(branches.trim()).toBe("");
+		const worktrees = GitFixture.run(repo, ["worktree", "list"]);
+		expect(worktrees.trim().split("\n")).toHaveLength(1);
+	});
+});
+
 describe("Loop.answer", () => {
 	const HUMAN = "cabane://actor/human/david";
 
