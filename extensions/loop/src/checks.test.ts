@@ -121,6 +121,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 		wake: () => {},
 		stopRequested: false,
 		stopping: new AbortController(),
+		gating: Promise.resolve(),
 	};
 };
 
@@ -213,6 +214,19 @@ describe("Checks", () => {
 			"not a linked worktree",
 		);
 		expect(head(repo)).toBe(before);
+	});
+
+	it("two sessions ending together get their gate passes one after the other", async () => {
+		const parent = await add("parent");
+		// Fails if another pass holds the directory's lock while this one runs.
+		const exclusive = "mkdir .gate-lock || exit 9; sleep 0.2; rmdir .gate-lock";
+		const ctx = ctxFor(runOn(parent, { exclusive }, true));
+		const [a, b] = await Promise.all([
+			Checks.gate(ctx, { label: "K-2", title: "a" }),
+			Checks.gate(ctx, { label: "K-3", title: "b" }),
+		]);
+		expect([a.ok, b.ok]).toEqual([true, true]);
+		expect(ctx.run.gateRuns).toHaveLength(2);
 	});
 });
 

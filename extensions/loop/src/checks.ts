@@ -62,10 +62,15 @@ export namespace Checks {
 	 * Run the gates for `subject` in the sessions' directory, commit a checkpoint when they pass in
 	 * a run with a worktree, and record the pass. A run that stops meanwhile kills the gate.
 	 */
-	export const gate = async (
-		ctx: Ctx,
-		subject: Subject,
-	): Promise<Gates.Run> => {
+	export const gate = (ctx: Ctx, subject: Subject): Promise<Gates.Run> => {
+		// One pass at a time: two sessions ending together share a directory, and two passes
+		// would run the gates over each other and race for git's index.
+		const pass = ctx.gating.then(() => gateNow(ctx, subject));
+		ctx.gating = pass.catch(() => undefined);
+		return pass;
+	};
+
+	const gateNow = async (ctx: Ctx, subject: Subject): Promise<Gates.Run> => {
 		const dir = RunStore.sessionDir(ctx.run);
 		const { gates } = ctx.run.config;
 		const tag = subject.lane ? { lane: subject.lane } : {};

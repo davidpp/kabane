@@ -60,6 +60,8 @@ export namespace RunState {
 		stopRequested: boolean;
 		/** Aborted when the run halts: kills a gate still running. */
 		stopping: AbortController;
+		/** The gate pass running or last run; the next one waits for it. */
+		gating: Promise<unknown>;
 	};
 
 	/** The tasks live claims hold: what the frontier leaves out. */

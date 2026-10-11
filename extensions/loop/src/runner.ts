@@ -408,6 +408,7 @@ export namespace Runner {
 			wake: () => {},
 			stopRequested: false,
 			stopping: new AbortController(),
+			gating: Promise.resolve(),
 		};
 		deps.signal?.addEventListener("abort", () => {
 			ctx.stopRequested = true;
