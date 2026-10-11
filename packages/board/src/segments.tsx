@@ -34,6 +34,70 @@ export namespace Segments {
 		return fitted;
 	};
 
+	// A part wraps under the column it started at unless that leaves it less than this; then it
+	// starts again at the row's left edge.
+	const MIN_HANG = 8;
+
+	/** Where to cut `text` to fit `width`: after the last space or comma that fits, else at `width`. */
+	const breakAt = (text: string, width: number): number => {
+		for (let at = width; at > 0; at--) {
+			const before = text[at - 1];
+			if (before === " " || before === ",") return at;
+		}
+		return width;
+	};
+
+	/**
+	 * The parts as rows of `room` columns, for a host's line that must be read whole (a plan's
+	 * blockers) rather than cut. Parts that fit stay on the row; the part that overflows breaks at
+	 * a space or a comma and carries on under the column it started at, with its color. Padding
+	 * that would only spill over the edge is dropped.
+	 */
+	export const wrap = (
+		segments: readonly Segment[],
+		room: number,
+	): Segment[][] => {
+		const width = Math.max(1, room);
+		const rows: Segment[][] = [[]];
+		let used = 0;
+		const push = (segment: Segment): void => {
+			rows[rows.length - 1]?.push(segment);
+			used += segment.text.length;
+		};
+		const newRow = (indent: number, like: Segment): void => {
+			rows.push(indent > 0 ? [{ ...like, text: " ".repeat(indent) }] : []);
+			used = indent;
+		};
+		for (const segment of segments) {
+			if (segment.text.length <= width - used) {
+				push(segment);
+				continue;
+			}
+			const trimmed = segment.text.trimEnd();
+			if (trimmed.length <= width - used) {
+				// Its padding kept the next part apart: with no room for it, the next part starts a row.
+				if (trimmed !== "") push({ ...segment, text: trimmed });
+				used = width;
+				continue;
+			}
+			const hang = width - used >= MIN_HANG ? used : 0;
+			if (hang === 0 && used > 0) newRow(0, segment);
+			let text = segment.text;
+			while (text.length > width - used) {
+				const cut = breakAt(text, width - used);
+				push({ ...segment, text: text.slice(0, cut).trimEnd() });
+				text = text.slice(cut).trimStart();
+				if (text === "") {
+					used = width;
+					break;
+				}
+				newRow(hang, segment);
+			}
+			if (text !== "") push({ ...segment, text });
+		}
+		return rows;
+	};
+
 	/** The parts as spans, inside a `<text>` that owns the row and its background. */
 	export const spans = (segments: readonly Segment[]): ReactNode[] =>
 		segments.map((segment, index) => (

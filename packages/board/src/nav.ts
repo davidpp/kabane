@@ -21,6 +21,7 @@ import type {
 import { BoardPrompt } from "./prompt";
 import { PromptHistory } from "./prompt-history";
 import { BoardTabs } from "./tabs";
+import { TriggerForm } from "./trigger-form";
 
 export namespace BoardNav {
 	export type KindFilter = "all" | ItemKind;
@@ -91,14 +92,16 @@ export namespace BoardNav {
 		shift?: boolean;
 	};
 
-	// The `a` dispatch overlay: a single-step picker over the host Dispatcher's triggers for one task.
-	// Opens in `loading` while the host lists them; while open it owns the keyboard (same modal
-	// discipline as search-typing).
+	// The `a` dispatch overlay: a picker over the host Dispatcher's triggers for one task. Opens in
+	// `loading` while the host lists them; while open it owns the keyboard (same modal discipline as
+	// search-typing). A trigger the board can fill in opens its form over the picker
+	// (trigger-form.ts) before it fires.
 	export type DispatchOverlay = {
 		taskId: string;
 		triggers: TriggerDescriptor[];
 		selected: number;
 		loading: boolean;
+		form?: TriggerForm.Form;
 	};
 
 	// Where the copilot's turn is, as far as the keyboard cares: `running` gates a second prompt and
@@ -242,7 +245,13 @@ export namespace BoardNav {
 		| { type: "helpScroll"; delta: number }
 		| { type: "copy"; id: string }
 		| { type: "notice"; notice: Notice }
-		| { type: "dispatch"; triggerId: string; id: string }
+		// Fire a trigger on a task, with its form's values when it had one.
+		| {
+				type: "dispatch";
+				triggerId: string;
+				id: string;
+				inputs?: Readonly<Record<string, unknown>>;
+		  }
 		| { type: "loadTriggers"; taskId: string }
 		// A session question answered from its banner: core writes the decision.
 		| { type: "answerQuestion"; questionId: string; answer: string }
@@ -283,7 +292,9 @@ export namespace BoardNav {
 		// The pinned banner's `index`th answer.
 		| { type: "answer"; index: number }
 		// A lane chip on a card's tab (0 is every lane).
-		| { type: "lane"; index: number };
+		| { type: "lane"; index: number }
+		// A field of the trigger form, by its place in the trigger's inputs.
+		| { type: "formField"; index: number };
 
 	const NONE: Effect = { type: "none" };
 	const SEARCH_OFF: SearchState = { mode: "off" };
@@ -1105,6 +1116,8 @@ export namespace BoardNav {
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } => {
 		if (state.help) return reduceHelpKey(state, key);
+		if (state.dispatch?.form)
+			return TriggerForm.reduceKey(state, state.dispatch.form, key);
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
 		// A harness blocked on a question is the most urgent thing on screen, so it takes the keys
 		// that answer it — a digit, `esc` — ahead of every view and of the copilot's own focus. That
@@ -1266,7 +1279,8 @@ export namespace BoardNav {
 	// Whose keys are live right now, in the order reduceKey hands them out: a modal first, then the
 	// pane with focus, then the view. The footer shows this context's hints and `?` opens its sheet.
 	export const keyContext = (state: BoardState): Keymap.ContextId => {
-		if (state.dispatch) return "dispatch";
+		if (state.dispatch)
+			return state.dispatch.form ? "dispatchForm" : "dispatch";
 		if (state.prompt.open) return "prompt";
 		if (state.focus === "copilot")
 			return matchingShortcuts(state.copilot.shortcuts, state.copilot.text)
@@ -1335,7 +1349,8 @@ export namespace BoardNav {
 	}): boolean => input.text === "" && input.history.length > 0;
 
 	// Dispatch overlay: one list of host triggers. While loading only esc works; then j/k and 1-9
-	// select, enter fires a satisfiable trigger (an unsatisfiable one flashes its hint), esc closes.
+	// select, enter fires a satisfiable trigger (an unsatisfiable one flashes its hint), or opens its
+	// form when the board can fill it in, and esc closes.
 	const reduceDispatchKey = (
 		state: BoardState,
 		overlay: DispatchOverlay,
@@ -1374,6 +1389,14 @@ export namespace BoardNav {
 						},
 					};
 				}
+				if (TriggerForm.fillable(trigger))
+					return {
+						state: {
+							...state,
+							dispatch: { ...overlay, form: TriggerForm.open(trigger) },
+						},
+						effect: NONE,
+					};
 				return {
 					state: { ...state, dispatch: null },
 					effect: {
@@ -1431,14 +1454,28 @@ export namespace BoardNav {
 		};
 	};
 
+	// `[copy]`: the open task in the detail view, else the selected row.
+	const copyClick = (
+		state: BoardState,
+	): { state: BoardState; effect: Effect } => {
+		const id =
+			state.view.type === "detail" ? state.view.taskId : state.selectedId;
+		return id
+			? { state, effect: { type: "copy", id } }
+			: { state, effect: NONE };
+	};
+
 	// Mouse router, parallel to reduceKey. Board-only actions (`select`, `toggleExpand`) no-op while the
 	// detail view is open (those handlers unmount with the board); `copy` is valid in both views. All
-	// mouse input is inert while a true modal (dispatch, help) is open, same as keys. The copilot is
-	// not one: a click lands on the board, so it brings focus along with it.
+	// mouse input is inert while a true modal (dispatch, help) is open, same as keys, but for the
+	// trigger form's fields, which are rows like the board's. The copilot is not a modal: a click lands
+	// on the board, so it brings focus along with it.
 	export const reduceMouse = (
 		incoming: BoardState,
 		action: MouseAction,
 	): { state: BoardState; effect: Effect } => {
+		if (action.type === "formField")
+			return TriggerForm.click(incoming, action.index);
 		if (incoming.help || incoming.dispatch)
 			return { state: incoming, effect: NONE };
 		// A click is the human saying they are working on the board now: the copilot loses focus and an
@@ -1446,13 +1483,7 @@ export namespace BoardNav {
 		const state: BoardState = BoardPrompt.close(
 			incoming.focus === "board" ? incoming : { ...incoming, focus: "board" },
 		);
-		if (action.type === "copy") {
-			const id =
-				state.view.type === "detail" ? state.view.taskId : state.selectedId;
-			return id
-				? { state, effect: { type: "copy", id } }
-				: { state, effect: NONE };
-		}
+		if (action.type === "copy") return copyClick(state);
 		if (action.type === "detailTab")
 			return state.view.type === "detail"
 				? withDetailTab(state, action.tab)

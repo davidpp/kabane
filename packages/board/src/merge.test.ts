@@ -135,8 +135,10 @@ describe("Dispatchers.merge", () => {
 	const seen: string[] = [];
 	const named = (name: string): Dispatcher => ({
 		triggers: async () => ok([trigger("start")]),
-		dispatch: async (triggerId) => {
-			seen.push(`${name}/${triggerId}`);
+		dispatch: async (triggerId, _target, inputs) => {
+			seen.push(
+				`${name}/${triggerId}${inputs ? ` ${JSON.stringify(inputs)}` : ""}`,
+			);
 			return ok(`${name} started`);
 		},
 	});
@@ -151,6 +153,13 @@ describe("Dispatchers.merge", () => {
 		expect(await merged.dispatch("hi:start", target)).toEqual(ok("hi started"));
 		expect(seen).toEqual(["hi/start"]);
 		expect((await merged.dispatch("nope:start", target)).ok).toBe(false);
+	});
+
+	test("a form's values reach the owner as they were set", async () => {
+		seen.length = 0;
+		const merged = Dispatchers.merge({ loop: named("loop") });
+		await merged.dispatch("loop:start", target, { concurrency: "3" });
+		expect(seen).toEqual(['loop/start {"concurrency":"3"}']);
 	});
 
 	test("a failing contributor's triggers are reported by name", async () => {

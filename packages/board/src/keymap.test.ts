@@ -10,6 +10,7 @@ import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { BoardPrompt } from "./prompt";
 import { BoardTabs } from "./tabs";
+import { TriggerForm } from "./trigger-form";
 
 const task = (over: Partial<Task> = {}): Task => ({
 	id: "01H000000000000000000000AA",
@@ -142,6 +143,16 @@ const TRIGGERS = [1, 2, 3].map((n) => ({
 	satisfiable: true,
 }));
 
+const FORM_TRIGGER = {
+	id: "f",
+	label: "start",
+	inputs: {
+		size: { type: "number", required: false, default: 2 },
+		on: { type: "boolean", required: false, default: false },
+	},
+	satisfiable: true,
+};
+
 const SHORTCUTS = [
 	{ name: "triage", template: "Triage.", hint: "sort" },
 	{ name: "trim", template: "Trim.", hint: "cut" },
@@ -225,6 +236,18 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 	dispatch: [0, 1].map((selected) =>
 		state({
 			dispatch: { taskId: "p", triggers: TRIGGERS, selected, loading: false },
+		}),
+	),
+	// A form of two fields, on each: j has somewhere to go from the first, k from the second.
+	dispatchForm: [0, 1].map((field) =>
+		state({
+			dispatch: {
+				taskId: "p",
+				triggers: [FORM_TRIGGER],
+				selected: 0,
+				loading: false,
+				form: { ...TriggerForm.open(FORM_TRIGGER), field },
+			},
 		}),
 	),
 	help: [state({ help: true })],

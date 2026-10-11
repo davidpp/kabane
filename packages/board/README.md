@@ -139,13 +139,35 @@ scrolls up, and again once they scroll back down. Thoughts are dimmed under the 
 ```ts
 interface Dispatcher {
   triggers(taskId: string): Promise<Result<TriggerDescriptor[]>>;
-  dispatch(triggerId: string, target: DispatchTarget): Promise<Result<string>>;
+  dispatch(
+    triggerId: string,
+    target: DispatchTarget,
+    inputs?: Readonly<Record<string, unknown>>,
+  ): Promise<Result<string>>;
 }
 ```
 
 `a` opens a picker over `triggers(taskId)`: `j/k` or a digit select, `enter` fires a satisfiable
 trigger, an unsatisfiable one flashes its `hint`. `dispatch` receives the task id, shortId, title
 and the assembled brief (what `y` copies) and resolves to the footer notice.
+
+#### The trigger form
+
+A trigger whose every input has a `default` and either `options` or a `number` or `boolean` type
+is filled in on the board before it fires: `enter` on it opens its form instead. Each input is a
+row, called by its `label` (else its name) and filed under its `group`, a titled section, in the
+host's order. `j/k` move between rows, `h/l` change the one in hand (the next or previous option,
+wrapping; a number up or down, never below zero; a boolean on and off), a click focuses a row and
+a second click changes it, `enter` fires with every value, and `esc` goes back to the picker. A
+value still at its default is dimmed, and a changed one is bright with a `•` after it. `dispatch`
+gets the values as its third argument, by input name; an option input's value is the option, as
+written, so the host converts it back.
+
+The trigger's `preview`, lines of toned parts (`{ text, tone?, bold? }`, the tone a role such as
+`muted`, `working` or `accent`), sits at the centre with the settings in a column beside it, or
+above them when the pane is under a hundred columns. A preview line too long for its room wraps:
+the part that overflows breaks at a space or a comma and carries on under the column it started
+at, so a list at the end of a line is read whole rather than cut.
 
 ### `Copilot`
 

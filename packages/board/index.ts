@@ -20,6 +20,9 @@ export type {
 	CopilotUpdate,
 	Dispatcher,
 	DispatchTarget,
+	PanelLine,
+	PanelPart,
+	PanelTone,
 	TriggerDescriptor,
 	TriggerInput,
 } from "./src/ports";

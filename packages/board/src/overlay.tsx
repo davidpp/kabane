@@ -14,10 +14,11 @@ import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import type { TriggerDescriptor } from "./ports";
 import { type Theme, useTheme } from "./theme";
+import { TriggerForm } from "./trigger-form";
 
 // A solid backdrop so the list behind the overlay never bleeds through unset cells: the overlay step,
 // one above the raised panels it floats over.
-const overlayBg = (theme: Theme.Tokens): string => theme.surface.overlay;
+export const overlayBg = (theme: Theme.Tokens): string => theme.surface.overlay;
 
 const DISPATCH_HINTS = Keymap.footer("dispatch", { ready: true });
 // Loading, or nothing to pick: only the way out does anything.
@@ -27,7 +28,11 @@ const hintsLength = (hints: readonly Keymap.Hint[]): number =>
 	Keymap.hintLine(hints).length;
 
 // A hint row two-tone, as the footer draws it: the key in the overlay's foreground, the label muted.
-const HintRow = ({ hints }: { hints: readonly Keymap.Hint[] }): ReactNode => {
+export const HintRow = ({
+	hints,
+}: {
+	hints: readonly Keymap.Hint[];
+}): ReactNode => {
 	const theme = useTheme();
 	const bg = overlayBg(theme);
 	return (
@@ -269,7 +274,13 @@ const triggerPreview = (trigger: TriggerDescriptor): string[] => {
 	const desc = trigger.description || "(no description)";
 	lines.push(...desc.split("\n").slice(0, 4));
 	const inputEntries = Object.entries(trigger.inputs);
-	if (inputEntries.length > 0) {
+	// A trigger with a form says so rather than listing what the form is about to show.
+	if (TriggerForm.fillable(trigger)) {
+		lines.push("");
+		lines.push(
+			`enter opens its ${inputEntries.length} settings before it starts`,
+		);
+	} else if (inputEntries.length > 0) {
 		lines.push("");
 		lines.push("inputs:");
 		for (const [name, param] of inputEntries) {

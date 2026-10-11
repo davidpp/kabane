@@ -115,11 +115,35 @@ export interface ActivitySource {
 	dismiss?(id: string): Promise<Result<void>>;
 }
 
+// One setting a trigger takes. A trigger whose every input has a `default` and either `options` or
+// a `number` or `boolean` type is filled in on the board, in a form, before it fires; any other
+// input is the host's to collect.
 export type TriggerInput = {
 	type: string;
 	required: boolean;
 	default?: unknown;
+	// What the form's row calls it; the input's name otherwise.
+	label?: string;
+	// The titled section the form files it under. Inputs of one group sit together, in the host's
+	// order.
+	group?: string;
+	// The values `h/l` cycle through, as the row shows them; the one picked is what `dispatch` gets.
+	options?: readonly string[];
 };
+
+// A tone is a role, not a color: the board maps it onto its own palette, light or dark, so a host
+// says what a part is (a request, work in flight) and never which hue it is.
+export type PanelTone =
+	| "default"
+	| "muted"
+	| "working"
+	| "done"
+	| "failed"
+	| "accent";
+export type PanelPart = { text: string; tone?: PanelTone; bold?: boolean };
+// One line a host composes from toned parts. The board draws it and never reads it; a line too long
+// for its room wraps rather than losing its tail.
+export type PanelLine = readonly PanelPart[];
 
 // Something the host can start on a task. `satisfiable` is false when the trigger needs inputs the
 // board cannot supply; `hint` is what the footer flashes in that case.
@@ -131,6 +155,9 @@ export type TriggerDescriptor = {
 	inputs: Record<string, TriggerInput>;
 	satisfiable: boolean;
 	hint?: string;
+	// What the form shows beside its settings: whatever the host wants read before it starts (a
+	// plan, say). Only a trigger with a form shows it.
+	preview?: readonly PanelLine[];
 };
 
 export type DispatchTarget = {
@@ -143,8 +170,13 @@ export type DispatchTarget = {
 
 export interface Dispatcher {
 	triggers(taskId: string): Promise<Result<TriggerDescriptor[]>>;
-	// Resolves to the footer notice on success.
-	dispatch(triggerId: string, target: DispatchTarget): Promise<Result<string>>;
+	// Resolves to the footer notice on success. `inputs` carries the form's values, by input name,
+	// when the trigger had a form: an option input's value is the option picked, as written.
+	dispatch(
+		triggerId: string,
+		target: DispatchTarget,
+		inputs?: Readonly<Record<string, unknown>>,
+	): Promise<Result<string>>;
 }
 
 // One entry of the agent's own todo list for the turn. The harness owns the wording; the board only

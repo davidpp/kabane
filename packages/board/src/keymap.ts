@@ -81,6 +81,7 @@ export namespace Keymap {
 		| "palette"
 		| "prompt"
 		| "dispatch"
+		| "dispatchForm"
 		| "help"
 		| "setupWelcome"
 		| "setupForm"
@@ -526,6 +527,27 @@ export namespace Keymap {
 					keys: ["1", "2"],
 					when: (s) => s.ready === true,
 				},
+			],
+		},
+		// A trigger's settings before it fires (trigger-form.ts).
+		dispatchForm: {
+			name: "settings",
+			sheet: false,
+			bindings: [
+				{ key: "enter", label: "start", tier: "footer", keys: ["return"] },
+				{
+					key: "h/l",
+					label: "change",
+					tier: "footer",
+					keys: ["h", "l", "left", "right"],
+				},
+				{
+					key: "j/k",
+					label: "field",
+					tier: "footer",
+					keys: ["j", "k", "down", "up"],
+				},
+				{ key: "esc", label: "back", tier: "footer", keys: ["escape"] },
 			],
 		},
 		// The sheet's own row: how to move through it and leave it.

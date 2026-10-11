@@ -26,7 +26,7 @@ import { Detail } from "./detail";
 import { EventView } from "./event-view";
 import { Launcher } from "./launcher";
 import { BoardNav } from "./nav";
-import { DispatchOverlay, HelpSheet } from "./overlay";
+import { HelpSheet } from "./overlay";
 import type {
 	ActivityCard,
 	ActivitySource,
@@ -40,6 +40,7 @@ import { useSpinnerFrame } from "./spinner";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
 import { BoardTabs } from "./tabs";
 import { useTheme } from "./theme";
+import { DispatchLayer } from "./trigger-form-view";
 
 export type AppProps = {
 	cwd: string;
@@ -339,6 +340,7 @@ export const App = ({
 			s: BoardNav.BoardState,
 			triggerId: string,
 			id: string,
+			inputs?: Readonly<Record<string, unknown>>,
 		): Promise<void> => {
 			if (!dispatcher) {
 				setNotice({ text: "no dispatcher configured", tone: "error" });
@@ -351,12 +353,11 @@ export const App = ({
 				setNotice({ text: brief.error.message, tone: "error" });
 				return;
 			}
-			const res = await dispatcher.dispatch(triggerId, {
-				id,
-				shortId,
-				title: task?.title ?? "",
-				brief: brief.value,
-			});
+			const res = await dispatcher.dispatch(
+				triggerId,
+				{ id, shortId, title: task?.title ?? "", brief: brief.value },
+				inputs,
+			);
 			setNotice(
 				res.ok
 					? { text: res.value, tone: "success" }
@@ -598,7 +599,7 @@ export const App = ({
 					setNotice(effect.notice);
 					return;
 				case "dispatch":
-					void runDispatch(next, effect.triggerId, effect.id);
+					void runDispatch(next, effect.triggerId, effect.id, effect.inputs);
 					return;
 				case "loadTriggers":
 					void loadTriggers(effect.taskId);
@@ -928,12 +929,13 @@ export const App = ({
 			host={keys.host}
 		/>
 	) : state.dispatch ? (
-		<DispatchOverlay
+		<DispatchLayer
 			shortId={shortIdOf(
 				findTask(state, state.dispatch.taskId),
 				state.dispatch.taskId,
 			)}
 			overlay={state.dispatch}
+			onField={(index) => dispatchMouse({ type: "formField", index })}
 		/>
 	) : null;
 	// The pane is always mounted — one row unfocused, the panel when focused — so the copilot is a
