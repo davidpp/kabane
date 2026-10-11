@@ -9,6 +9,7 @@ import type {
 import { err, Lint, ok, type Result } from "@cabane/core";
 import { Briefing } from "./briefing";
 import { Loop } from "./commands";
+import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
 import { LoopSettings } from "./settings";
 
@@ -68,8 +69,13 @@ export namespace LoopDispatcher {
 		const { projectDir, config } = prepared.value;
 		const risks = await lintOf(deps.basePath, taskId, projectDir);
 		return ok([
-			trigger(LoopSettings.inputs(config), {
-				preview: Briefing.preview(prepared.value.plan, risks, now),
+			trigger(LoopSettings.inputs(config, Lenses.offered(projectDir)), {
+				preview: Briefing.preview(
+					prepared.value.plan,
+					config.gates,
+					risks,
+					now,
+				),
 			}),
 		]);
 	};

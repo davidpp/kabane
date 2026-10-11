@@ -2,7 +2,7 @@
 // are green. `functional` and `quality` ship with the extension; a repository adds a lens, or
 // replaces a shipped one, with `.kabane/loop/lenses/<name>.md`. Which lenses a run has run, and
 // how they ended, is read off its claims, so a runner that resumes knows where it was.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { err, type Result, trySync } from "@cabane/core";
@@ -19,6 +19,16 @@ export namespace Lenses {
 	/** Where a repository keeps its own lenses. */
 	export const dir = (projectDir: string): string =>
 		join(projectDir, ".kabane", "loop", "lenses");
+
+	/** The lenses a run in `projectDir` can have: the shipped ones, then the repository's own. */
+	export const offered = (projectDir: string): string[] => {
+		const own = trySync(() => readdirSync(dir(projectDir)));
+		const names = (own.ok ? own.value : [])
+			.filter((file) => file.endsWith(".md"))
+			.map((file) => file.slice(0, -".md".length))
+			.sort();
+		return [...new Set([...SHIPPED, ...names])];
+	};
 
 	/** Lens `name`'s prompt: the repository's own file first, else the shipped one. */
 	export const prompt = (projectDir: string, name: string): Result<string> => {

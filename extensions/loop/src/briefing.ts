@@ -118,6 +118,27 @@ export namespace Briefing {
 		];
 	};
 
+	// The gates the run will hold each subtask to, in order. The form cannot edit a named command,
+	// so they are read here and set in the repo's file or with `--gate`.
+	const gateLines = (gates: Readonly<Record<string, string>>): PanelLine[] => {
+		const named = Object.entries(gates);
+		const width = Math.max(0, ...named.map(([name]) => name.length));
+		return [
+			[],
+			[
+				{ text: `Gates  ${named.length || "none"}`, bold: true },
+				{
+					text: `  set in .kabane/loop.json or with --gate`,
+					tone: "muted",
+				},
+			],
+			...named.map(([name, command]): PanelLine => [
+				{ text: ` ${name.padEnd(width)}  `, tone: "muted" },
+				{ text: command },
+			]),
+		];
+	};
+
 	const riskLines = (risks: readonly string[]): PanelLine[] =>
 		risks.length === 0
 			? []
@@ -136,6 +157,7 @@ export namespace Briefing {
 	 */
 	export const preview = (
 		plan: LoopPlan.Plan,
+		gates: Readonly<Record<string, string>>,
 		lint: readonly string[],
 		now: Date,
 	): PanelLine[] => {
@@ -171,6 +193,7 @@ export namespace Briefing {
 						])),
 				{ text: `   ${path.length} deep`, tone: "muted" },
 			],
+			...gateLines(gates),
 			...riskLines([...planRisks(plan, now), ...lint]),
 		];
 	};

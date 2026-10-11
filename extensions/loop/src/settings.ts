@@ -6,9 +6,9 @@
 // config what it is set to. `LOOKS` only says how a known field reads: its label, its group, and
 // the values `h/l` steps through. A field with no look still shows, under its path and an `Other`
 // group (or its parent object's name), stepping through its enum, by one for a number, or on and
-// off. A field the form cannot hold (free text with no options, a list, a record) is left to the
-// repo's `.kabane/loop.json` and flags: that is the seam for gates, lenses and the like, which
-// need a look of their own (a set of toggles, say) before the form can carry them.
+// off. The lenses, a list of names, get a toggle each over the lenses the project can run. A field
+// the form cannot hold (free text with no options, a record) is left to the repo's
+// `.kabane/loop.json` and flags: the gates, named shell commands, which the preview lists read-only.
 import type { TriggerInput } from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
 import { z } from "zod";
@@ -74,7 +74,17 @@ export namespace LoopSettings {
 			group: "Limits",
 			options: range(1, 6),
 		},
+		// Unset, the lenses run on the implementer's harness.
+		verifier: { label: "verifier", group: "Agents", none: "implementer" },
+		worktree: { label: "own git worktree", group: "Workspace" },
 	};
+
+	// The form's sections, in this order whatever order the schema has its fields in; a group no
+	// look names comes after them.
+	const GROUPS = ["Agents", "Limits", "Checks", "Workspace"];
+
+	// Lenses are a list of names; the form holds one toggle per lens it can offer, `lenses.<name>`.
+	const LENS_PREFIX = "lenses.";
 
 	// Peel the wrappers that say how a value may be absent, keeping whether it may.
 	const unwrap = (
@@ -165,33 +175,68 @@ export namespace LoopSettings {
 			: listed;
 	};
 
+	/** One field's input, or undefined when the form cannot hold it. */
+	const inputOf = (
+		field: Field,
+		config: LoopConfig.Config,
+	): TriggerInput | undefined => {
+		const look = lookOf(field);
+		const value = valueAt(config, field.path);
+		const options = optionsOf(field, look, value);
+		const common = { label: look.label, group: look.group, required: false };
+		if (options.length > 0)
+			return {
+				...common,
+				type: field.kind === "number" ? "number" : "string",
+				options,
+				default: value === undefined ? (look.none ?? NONE) : String(value),
+			};
+		return (field.kind === "number" || field.kind === "boolean") &&
+			value !== undefined
+			? { ...common, type: field.kind, default: value }
+			: undefined;
+	};
+
+	// A lens toggle per lens on offer and per lens the config already names, on when it names it.
+	const lensInputs = (
+		config: LoopConfig.Config,
+		offered: readonly string[],
+	): [string, TriggerInput][] =>
+		[...new Set([...offered, ...config.lenses])].map((name) => [
+			`${LENS_PREFIX}${name}`,
+			{
+				type: "boolean",
+				required: false,
+				default: config.lenses.includes(name),
+				label: `lens ${name}`,
+				group: "Checks",
+			},
+		]);
+
+	const groupRank = (input: TriggerInput): number => {
+		const at = GROUPS.indexOf(input.group ?? "");
+		return at === -1 ? GROUPS.length : at;
+	};
+
 	/**
 	 * The form's inputs for a run configured as `config`, by setting path (`budget.concurrency`),
-	 * each defaulting to what the config says. A setting the form cannot hold is left out.
+	 * each defaulting to what the config says, plus a toggle per lens in `lenses` (the ones the
+	 * project can run). Grouped in GROUPS order; a setting the form cannot hold (the gates, a
+	 * named command each) is left out.
 	 */
 	export const inputs = (
 		config: LoopConfig.Config,
+		lenses: readonly string[] = [],
 	): Record<string, TriggerInput> => {
-		const out: Record<string, TriggerInput> = {};
+		const entries: [string, TriggerInput][] = [];
 		for (const field of FIELDS) {
-			const look = lookOf(field);
-			const value = valueAt(config, field.path);
-			const options = optionsOf(field, look, value);
-			const common = { label: look.label, group: look.group, required: false };
-			if (options.length > 0)
-				out[nameOf(field)] = {
-					...common,
-					type: field.kind === "number" ? "number" : "string",
-					options,
-					default: value === undefined ? (look.none ?? NONE) : String(value),
-				};
-			else if (
-				(field.kind === "number" || field.kind === "boolean") &&
-				value !== undefined
-			)
-				out[nameOf(field)] = { ...common, type: field.kind, default: value };
+			const input = inputOf(field, config);
+			if (input) entries.push([nameOf(field), input]);
 		}
-		return out;
+		entries.push(...lensInputs(config, lenses));
+		// A stable sort: within a group, the schema's order.
+		entries.sort(([, a], [, b]) => groupRank(a) - groupRank(b));
+		return Object.fromEntries(entries);
 	};
 
 	const setAt = (
@@ -234,6 +279,14 @@ export namespace LoopSettings {
 			if (!value.ok) return value;
 			setAt(out, field.path, value.value);
 		}
+		// The lens toggles become the list, in the form's order; without any, the file's list stands.
+		const toggles = Object.entries(values).filter(([name]) =>
+			name.startsWith(LENS_PREFIX),
+		);
+		if (toggles.length > 0)
+			out.lenses = toggles
+				.filter(([, on]) => on === true)
+				.map(([name]) => name.slice(LENS_PREFIX.length));
 		return ok(out);
 	};
 }

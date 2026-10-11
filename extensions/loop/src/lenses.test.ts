@@ -80,6 +80,15 @@ describe("Lenses.prompt", () => {
 			join(Lenses.dir(repo), "perf.md"),
 		);
 	});
+
+	it("offers the shipped lenses, then the repository's own, once each", () => {
+		expect(Lenses.offered(repo)).toEqual(["functional", "quality"]);
+		mkdirSync(Lenses.dir(repo), { recursive: true });
+		writeFileSync(join(Lenses.dir(repo), "security.md"), "# Security\n");
+		writeFileSync(join(Lenses.dir(repo), "quality.md"), "# Ours\n");
+		writeFileSync(join(Lenses.dir(repo), "notes.txt"), "not a lens\n");
+		expect(Lenses.offered(repo)).toEqual(["functional", "quality", "security"]);
+	});
 });
 
 describe("Lenses.status", () => {

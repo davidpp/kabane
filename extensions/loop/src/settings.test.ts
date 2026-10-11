@@ -9,17 +9,40 @@ const config = (input: LoopConfig.Input = {}): LoopConfig.Config => {
 };
 
 describe("LoopSettings.inputs", () => {
-	it("one input per setting the form can hold, read off the schema, at the config's values", () => {
-		const inputs = LoopSettings.inputs(config());
+	it("one input per setting the form can hold, read off the schema, grouped, at the config's values", () => {
+		const inputs = LoopSettings.inputs(config(), ["functional", "quality"]);
 		expect(Object.keys(inputs)).toEqual([
 			"implementer",
 			"model",
+			"verifier",
 			"budget.concurrency",
 			"budget.wallMinutes",
 			"budget.continuations",
 			"budget.spend",
 			"stallAfter",
+			"lenses.functional",
+			"lenses.quality",
+			"worktree",
 		]);
+		// The gates are named commands the form cannot edit.
+		expect(Object.keys(inputs).some((name) => name.startsWith("gates"))).toBe(
+			false,
+		);
+		expect(inputs.verifier).toMatchObject({
+			default: "implementer",
+			options: ["implementer", "claude", "codex", "gemini"],
+		});
+		expect(inputs.worktree).toMatchObject({
+			type: "boolean",
+			default: false,
+			group: "Workspace",
+		});
+		expect(inputs["lenses.quality"]).toMatchObject({
+			type: "boolean",
+			default: false,
+			label: "lens quality",
+			group: "Checks",
+		});
 		expect(inputs.implementer).toMatchObject({
 			default: "claude",
 			options: ["claude", "codex", "gemini"],
@@ -59,15 +82,17 @@ describe("LoopSettings.inputs", () => {
 
 describe("LoopSettings.overrides", () => {
 	it("the form's values back as config, numbers as numbers, the unset options as absent", () => {
+		const configured = config({ lenses: ["quality"] });
 		const values = Object.fromEntries(
-			Object.entries(LoopSettings.inputs(config())).map(([name, input]) => [
-				name,
-				input.default,
-			]),
+			Object.entries(
+				LoopSettings.inputs(configured, ["functional", "quality"]),
+			).map(([name, input]) => [name, input.default]),
 		);
 		const overrides = LoopSettings.overrides({
 			...values,
 			"budget.concurrency": "3",
+			"lenses.functional": true,
+			worktree: true,
 		});
 		expect(overrides).toEqual({
 			ok: true,
@@ -81,14 +106,19 @@ describe("LoopSettings.overrides", () => {
 					spend: undefined,
 				},
 				stallAfter: 3,
+				worktree: true,
+				verifier: undefined,
+				lenses: ["functional", "quality"],
 			},
 		});
-		// What the form starts from resolves to the config it was read from, with the one change.
+		// What the form starts from resolves to the config it was read from, with the changes.
 		const resolved =
 			overrides.ok && LoopConfig.Schema.safeParse(overrides.value);
 		expect(resolved && resolved.success && resolved.data).toEqual({
-			...config(),
-			budget: { ...config().budget, concurrency: 3 },
+			...configured,
+			budget: { ...configured.budget, concurrency: 3 },
+			worktree: true,
+			lenses: ["functional", "quality"],
 		});
 	});
 

@@ -53,7 +53,7 @@ describe("Briefing.criticalPath", () => {
 
 describe("Briefing.preview", () => {
 	it("marks the ready work, lists every open blocker in full, and counts the plan", () => {
-		const lines = Briefing.preview(DIAMOND, [], NOW).map(text);
+		const lines = Briefing.preview(DIAMOND, {}, [], NOW).map(text);
 		expect(lines[0]).toBe("Plan  4 subtasks · 3 links · 2 ready");
 		const row = (id: string) => lines.find((l) => l.includes(` ${id}  `));
 		expect(row("P-2")).toMatch(/^ ● P-2 .*ready$/);
@@ -68,16 +68,37 @@ describe("Briefing.preview", () => {
 			LoopPlan.node(task("P-2", "first", "done"), []),
 			LoopPlan.node(task("P-3", "second", "waiting"), ["P-2"]),
 		]);
-		const lines = Briefing.preview(moving, [], NOW).map(text);
+		const lines = Briefing.preview(moving, {}, [], NOW).map(text);
 		expect(lines.find((l) => l.includes("P-2"))).toMatch(/^ ✓ P-2 .*done$/);
 		expect(lines.find((l) => l.includes("P-3 "))).toMatch(/waiting$/);
 	});
 
+	it("lists the gates read-only, in order, and says where they are set", () => {
+		const lines = Briefing.preview(
+			DIAMOND,
+			{ test: "bun test", typecheck: "bun run typecheck" },
+			[],
+			NOW,
+		).map(text);
+		const at = lines.findIndex((l) => l.startsWith("Gates"));
+		expect(lines.slice(at, at + 3)).toEqual([
+			"Gates  2  set in .kabane/loop.json or with --gate",
+			" test       bun test",
+			" typecheck  bun run typecheck",
+		]);
+		expect(Briefing.preview(DIAMOND, {}, [], NOW).map(text)).toContain(
+			"Gates  none  set in .kabane/loop.json or with --gate",
+		);
+	});
+
 	it("risks: the plan's own first (nothing ready), then lint's", () => {
 		const stuck = plan([LoopPlan.node(task("P-2", "first", "waiting"), [])]);
-		const lines = Briefing.preview(stuck, ["P-2 has no brief (high)"], NOW).map(
-			text,
-		);
+		const lines = Briefing.preview(
+			stuck,
+			{},
+			["P-2 has no brief (high)"],
+			NOW,
+		).map(text);
 		const at = lines.indexOf("Risks  2");
 		expect(at).toBeGreaterThan(0);
 		expect(lines.slice(at + 1)).toEqual([
