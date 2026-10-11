@@ -14,7 +14,7 @@
 // global first. app.tsx calls preventDefault for exactly the keys BoardNav.copilotConsumes names, so
 // those reach the reducer alone and everything else is the textarea's.
 import type { TextareaRenderable } from "@opentui/core";
-import { defaultTextareaKeyBindings, TextAttributes } from "@opentui/core";
+import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode, RefObject } from "react";
 import type { BoardContext } from "./context";
@@ -25,20 +25,9 @@ import { BoardNav } from "./nav";
 import { PermissionBlock, permissionSegments } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import type { CopilotShortcut, PlanEntry } from "./ports";
+import { fieldRows, PromptField } from "./prompt-field";
 import { Segments } from "./segments";
 import { type Theme, useTheme } from "./theme";
-
-// Enter sends — the common case by far. A newline is ⇧enter where the terminal reports it and
-// ctrl+j everywhere (⇧enter needs the kitty keyboard protocol; ctrl+j is plain ASCII LF).
-const INPUT_KEY_BINDINGS = [
-	...defaultTextareaKeyBindings.filter(
-		(binding) => binding.action !== "newline" && binding.action !== "submit",
-	),
-	{ name: "return", action: "submit" as const },
-	{ name: "kpenter", action: "submit" as const },
-	{ name: "return", shift: true, action: "newline" as const },
-	{ name: "j", ctrl: true, action: "newline" as const },
-];
 
 const PLACEHOLDER = "ask about the selection · / for shortcuts";
 // One turn at a time, so while one runs `submitCopilot` refuses to send and flashes instead. The
@@ -121,18 +110,9 @@ export const paletteNameCols = (
 ): number =>
 	Math.max(0, ...shortcuts.map((shortcut) => shortcut.name.length)) + 5;
 
-// How many rows the panel may take: enough to be useful, never enough to bury the board. The input
-// keeps its floor even on a short terminal — a one-row input is what this pane exists to replace.
-const MIN_INPUT_ROWS = 3;
-const MAX_INPUT_ROWS = 8;
+// How many rows the plan and the agent's last lines may take above the input.
 const MAX_PLAN_ROWS = 6;
 const MAX_TAIL_ROWS = 3;
-
-const inputRows = (text: string, termRows: number): number => {
-	const typed = text === "" ? 1 : text.split("\n").length;
-	const room = Math.max(MIN_INPUT_ROWS, Math.floor(termRows * 0.25));
-	return Math.min(Math.max(MIN_INPUT_ROWS, typed), MAX_INPUT_ROWS, room);
-};
 
 export type CopilotPaneProps = {
 	copilot: BoardNav.CopilotState;
@@ -169,7 +149,6 @@ export const CopilotPane = ({
 	// cursor, the one thing in the pane that is waiting on you. The input is a field one step up, the
 	// width of the pane, so it reads as the place to type and not as more footer under the footer.
 	const paneBg = theme.surface.raised;
-	const fieldBg = theme.surface.overlay;
 	// Columns inside the panel's one cell of padding either side.
 	const inner = width - 2;
 	const running = copilot.turn === "running";
@@ -198,7 +177,6 @@ export const CopilotPane = ({
 		Math.max(0, matches.length - 1),
 	);
 	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
-	const rows = inputRows(copilot.text, height);
 	// A blocked harness outranks everything else the panel could say: the turn is not going anywhere
 	// until it is answered, so the plan and the palette wait.
 	const showChoice = copilot.permission !== null && !detailShownElsewhere;
@@ -269,40 +247,16 @@ export const CopilotPane = ({
 						))
 					: null}
 			</box>
-			<box
-				style={{
-					flexDirection: "row",
-					height: rows,
-					backgroundColor: fieldBg,
-					paddingLeft: 1,
-					paddingRight: 1,
-				}}
-			>
-				<text bg={fieldBg} fg={theme.muted}>
-					▸{" "}
-				</text>
-				<textarea
-					ref={textareaRef}
-					focused
-					keyBindings={INPUT_KEY_BINDINGS}
-					// The textarea unmounts with the panel, so the mirror seeds the new one: a draft
-					// survives tabbing to the board to mark rows and tabbing back. Applied once, on
-					// creation — after that the textarea is the source of truth again.
-					initialValue={copilot.text}
-					placeholder={running ? RUNNING_PLACEHOLDER : PLACEHOLDER}
-					// One step brighter than chrome: on the field's surface, muted falls under 3.5:1.
-					placeholderColor={theme.secondary}
-					backgroundColor={fieldBg}
-					focusedBackgroundColor={fieldBg}
-					textColor={theme.text}
-					focusedTextColor={theme.text}
-					cursorColor={theme.accent}
-					wrapMode="word"
-					onSubmit={onSubmit}
-					onContentChange={onContentChange}
-					style={{ flexGrow: 1, height: rows }}
-				/>
-			</box>
+			<PromptField
+				textareaRef={textareaRef}
+				// The textarea unmounts with the panel, so the mirror seeds the new one: a draft
+				// survives tabbing to the board to mark rows and tabbing back.
+				initialValue={copilot.text}
+				placeholder={running ? RUNNING_PLACEHOLDER : PLACEHOLDER}
+				rows={fieldRows(copilot.text, height)}
+				onSubmit={onSubmit}
+				onContentChange={onContentChange}
+			/>
 		</box>
 	);
 };

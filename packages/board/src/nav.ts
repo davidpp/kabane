@@ -18,6 +18,7 @@ import type {
 	CopilotShortcut,
 	TriggerDescriptor,
 } from "./ports";
+import { PromptHistory } from "./prompt-history";
 import { BoardTabs } from "./tabs";
 
 export namespace BoardNav {
@@ -309,9 +310,6 @@ export namespace BoardNav {
 
 	const NO_MARKS: ReadonlySet<string> = new Set<string>();
 
-	// Prompts kept for `up` recall. A session buffer, not persistence.
-	const HISTORY_CAP = 50;
-
 	const COPILOT_IDLE: CopilotState = {
 		text: "",
 		paletteAt: 0,
@@ -502,14 +500,8 @@ export namespace BoardNav {
 		delta: 1 | -1,
 	): { state: BoardState; effect: Effect } => {
 		const { history, historyAt } = state.copilot;
-		const next = Math.min(
-			history.length,
-			Math.max(0, (historyAt ?? 0) + delta),
-		);
-		if (next === 0) return setText(state, "", { historyAt: 0 });
-		return setText(state, history[history.length - next] ?? "", {
-			historyAt: next,
-		});
+		const { text, at } = PromptHistory.step(history, historyAt, delta);
+		return setText(state, text, { historyAt: at });
 	};
 
 	const reduceCopilotKey = (
@@ -567,7 +559,7 @@ export namespace BoardNav {
 				...withCopilot(state, {
 					text: "",
 					turn: "running",
-					history: [...state.copilot.history, text].slice(-HISTORY_CAP),
+					history: PromptHistory.push(state.copilot.history, text),
 					historyAt: 0,
 				}),
 				focus: "board",
