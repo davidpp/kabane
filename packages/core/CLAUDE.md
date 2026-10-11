@@ -90,7 +90,7 @@ One primitive builds an issue's full brief as markdown. Sections in order, empty
 
 ## Agent sessions
 
-`agent_sessions` + `agent_activities`, CASCADE from tasks, soft TEXT. State machine in `storage/sessions.ts`: `start → active`, a `question` activity → `awaiting_input`, any non-question activity once no question is unanswered → `active`, `end(complete|error)` compacts ephemerals and emits a `response` activity from the summary, idle > 24h → `stale` via `sweepStaleSessions`.
+`agent_sessions` + `agent_activities`, CASCADE from tasks, soft TEXT. State machine in `storage/sessions.ts`: `start → active`, a `question` activity → `awaiting_input`, any non-question activity once no question is unanswered → `active`, `end(complete|error)` compacts ephemerals and emits a `response` activity from the summary, an `active` session idle > 24h → `stale` via `sweepStaleSessions` (an `awaiting_input` one waits on a human and is never swept).
 
 Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is `Planner.selectDurableActivities`: keeps `response`/`finding`/`verification`/`decision`/`handoff`, drops the rest plus all-but-latest ephemeral.
 

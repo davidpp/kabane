@@ -506,7 +506,7 @@ describe("Planner — Agent Sessions", () => {
 		expect(countActivities(sessionId)).toBe(0);
 	});
 
-	it("sweeps idle active/awaiting_input sessions to stale", async () => {
+	it("sweeps idle active sessions to stale", async () => {
 		const { sessionId } = await startOn();
 
 		// Fresh session is not stale under the real threshold.
@@ -520,6 +520,26 @@ describe("Planner — Agent Sessions", () => {
 
 		const s = await Planner.getSession(TEST_BASE, sessionId);
 		expect(s.ok && s.value?.state).toBe("stale");
+	});
+
+	it("sweep leaves a session waiting on a human, and its question, in place", async () => {
+		const { sessionId } = await startOn();
+		await Planner.addActivity(TEST_BASE, {
+			sessionId,
+			type: "question",
+			context: "self-contained",
+			body: "which way?",
+		});
+
+		const swept = await Planner.sweepStaleSessions(TEST_BASE, -60_000);
+		expect(swept.ok && swept.value.length).toBe(0);
+
+		const s = await Planner.getSession(TEST_BASE, sessionId);
+		expect(s.ok && s.value?.state).toBe("awaiting_input");
+		const waiting = await Planner.getNeedsInput(TEST_BASE);
+		expect(waiting.ok && waiting.value.map((row) => row.session.id)).toEqual([
+			sessionId,
+		]);
 	});
 
 	it("sweep never touches completed sessions", async () => {

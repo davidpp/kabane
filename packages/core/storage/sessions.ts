@@ -519,9 +519,13 @@ export namespace Planner {
 	};
 
 	/**
-	 * Mark active/awaiting_input sessions idle beyond `thresholdMs` as stale.
-	 * The staleness clock (last_activity_at) is preserved — marking stale does
-	 * NOT bump it. Returns the swept sessions. S6's scheduled workflow calls this.
+	 * Mark active sessions idle beyond `thresholdMs` as stale. The staleness
+	 * clock (last_activity_at) is preserved — marking stale does NOT bump it.
+	 * Returns the swept sessions. S6's scheduled workflow calls this.
+	 *
+	 * A session in `awaiting_input` is never swept: it is idle because a human
+	 * has not answered yet, not because the agent went away, and stale would
+	 * take its question out of `getNeedsInput` while it still waits.
 	 */
 	export const sweepStaleSessions = async (
 		basePath: string,
@@ -536,7 +540,7 @@ export namespace Planner {
 				const rows = db
 					.query(
 						`SELECT * FROM ${TABLES.agent_sessions}
-             WHERE state IN ('active', 'awaiting_input')
+             WHERE state = 'active'
                AND last_activity_at < ?`,
 					)
 					.all(cutoff) as Record<string, unknown>[];
@@ -546,7 +550,7 @@ export namespace Planner {
 				db.run(
 					`UPDATE ${TABLES.agent_sessions}
            SET state = 'stale'
-           WHERE state IN ('active', 'awaiting_input')
+           WHERE state = 'active'
              AND last_activity_at < ?`,
 					[cutoff],
 				);

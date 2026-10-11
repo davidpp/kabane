@@ -30,7 +30,8 @@ import { z } from "zod";
  *   question activity → awaiting_input
  *   any non-question activity on an awaiting_input session → active
  *   endSession(complete|error) → complete | error
- *   idle > SESSION_STALE_MS → stale (via sweepStaleSessions)
+ *   active and idle > SESSION_STALE_MS → stale (via sweepStaleSessions); awaiting_input
+ *   waits on a human and is never swept
  */
 export const SESSION_STATES = [
 	"pending",
