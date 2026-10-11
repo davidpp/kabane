@@ -214,6 +214,16 @@ way:
   marks for changed values.
 - Fix the truncated blocker list (`← JREP-2,JRE…`) the prototype left.
 
+Done on branch `worktree-agent-ae0c8bf171811033c` (on top of `9e8facc`). Found on the way:
+- The form is its own module (`trigger-form.ts` for keys and clicks, `trigger-form-view.tsx` to
+  draw it); nav only routes to it. `esc` goes back to the picker, one level per press, rather than
+  closing everything.
+- The fix is generic: a preview line too long for its room wraps (`Segments.wrap`), the
+  overflowing part breaking at a space or a comma under the column it started at. The settings
+  stack under the preview below a hundred columns, and the overlay's hint row is dropped when it
+  does not fit one row (the footer under it names the same keys).
+- An option input's value crosses the port as the option's text; the host converts it back.
+
 ### C1. Loop engine: run, dispatch, plan, stop
 - In `extensions/loop`:
   - the run store (Decision 8)
@@ -263,8 +273,9 @@ way:
     option's label. `kabane loop status <runId>` lists the run's open questions.
   - **Who answered:** core records no author on an activity, and adding one is a migration,
     which would stop older devices from pulling. Instead the answering surface appends
-    `{kind: "answered", questionId, by}` to the run's inbox. A board answer has no such note
-    yet, so its `by` reads `unrecorded`. D can add the note.
+    `{kind: "answered", questionId, by}` to the run's inbox. The board does too, since D: it
+    calls `ActivitySource.answering(questionId)` before it writes an answer, and the loop notes
+    the board's actor when one of its sessions asked.
 - Agent questions become core `question` activities the same way, and the session waits for
   `answerQuestion`.
 - The `inbox.jsonl` consumer handles `inject`, `pause`, `skip` and `next`, plus the matching CLI
@@ -280,6 +291,24 @@ way:
 - The loop `CardHeader` is ported from the prototype's `header.tsx`; actions are written to the
   inbox.
 - The prototype's `scripted-timeline.ts`, `seed.ts` and frame script do not come over.
+
+The trigger and who-answered are done on branch `worktree-agent-ae0c8bf171811033c`. Found on the
+way:
+- `board(ctx)` needed nothing new: `Extension.Ctx` already carries `home`, `store`, `cwd` and
+  `actor`, and `Loop.start`'s folder check runs on `cwd` as the CLI's does. `--scope` on the board
+  does not move it.
+- `Loop.prepare` is `start` without the write: the trigger shows the same refusal `start` would
+  give (wrong folder, a live run, nothing open) as its hint, and the same resolved config as its
+  defaults.
+- The form is read off `LoopConfig.Schema` (`settings.ts`): a field the schema gains that is an
+  enum, a number or a boolean shows up under its path. Lists and free text (gates, lenses) do not:
+  each needs a look in `LOOKS` (toggles, say) before the form can carry it. Config overrides are
+  now any object, validated with the repo file, so the form can unset what the file sets.
+- Who answered has to be noted before the answer, not after: the permission relay reads the inbox
+  the moment it sees the decision. And the question is core's, not a card's: a card only lists the
+  sessions its claims recorded, so the seam takes the question id alone and the loop finds the run
+  from the session's `externalRef`, as `kabane loop answer` does.
+- Q1 stays open: starting a loop leaves the tracker on screen, and the run's tab appears.
 
 ### E. Real end-to-end
 - In a `bun run sandbox` home, against a small throwaway git repo with an issue of 3–5 subtasks
