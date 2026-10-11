@@ -267,6 +267,14 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
   HEAD` at `start`, so uncommitted work in the checkout is not in it, and a project's
   untracked settings (say, `.claude/settings.local.json`) are not either. Never removed.
   `kabane loop status <runId>` prints it and its checkpoints.
+  - **Ignored files do not come with it:** no `node_modules`, no build output. A gate that
+    needs them installs them itself (`"test": "bun install && bun test"`), or the first pass
+    fails in a fresh worktree. The loop adds no setup step of its own; `loop start --worktree`
+    prints a one-line reminder.
+  - **Started in a folder of the repository:** the worktree is still the whole repository, and
+    `run.json` records the folder's place in it (`worktreePrefix`, from `git rev-parse
+    --show-prefix`). Sessions and gates run in that folder of the worktree, the folder the loop
+    was started from. A folder HEAD does not have is refused at `start`.
 - **Checkpoints:** `git add -A` and a commit in the worktree after each green pass, with the
   user's own git config and hooks (no `--no-verify`). Nothing to commit makes no checkpoint.
   `Worktree.checkpoint` and `reset` refuse a directory that is not a linked worktree, so the

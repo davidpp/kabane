@@ -157,6 +157,10 @@ type Verb = (args: ParsedArgs, deps: Deps, target: string) => Promise<Outcome>;
 const ran = (result: Result<RunStore.Run>): Outcome =>
 	result.ok ? success(result.value, line(result.value)) : failure(result.error);
 
+// `git worktree add` checks out what is committed, and nothing git ignores comes with it.
+const WORKTREE_NOTE =
+	"  note: the worktree has no ignored files (node_modules, build output): a gate that needs them installs them first, say `bun install && bun test`";
+
 // What `start` takes, and `--as` and `--scope`, which every command takes. A misspelt flag
 // (`--work-tree`) is refused rather than dropped, which would start a run the human did not ask for.
 const START_FLAGS: ReadonlySet<string> = new Set([
@@ -193,12 +197,15 @@ const start: Verb = async (args, deps, target) => {
 	const config = configFrom(args);
 	if (!config.ok) return usage(config.error.message, USAGE);
 	const dir = flagString(args, "dir");
-	return ran(
-		await Loop.start(deps, {
-			parent: target,
-			...(dir ? { dir } : {}),
-			config: config.value,
-		}),
+	const started = await Loop.start(deps, {
+		parent: target,
+		...(dir ? { dir } : {}),
+		config: config.value,
+	});
+	if (!started.ok || started.value.worktree === undefined) return ran(started);
+	return success(
+		started.value,
+		[line(started.value), ...worktree(started.value), WORKTREE_NOTE].join("\n"),
 	);
 };
 
