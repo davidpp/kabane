@@ -21,6 +21,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@cabane/acp": "workspace:*",
+        "@cabane/board": "workspace:*",
         "@cabane/core": "workspace:*",
         "@cabane/extension": "workspace:*",
         "zod": "3.25.76",

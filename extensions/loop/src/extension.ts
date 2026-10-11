@@ -10,6 +10,7 @@ import {
 	success,
 	usage,
 } from "@cabane/extension";
+import { LoopActivity } from "./activity";
 import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
 import type { RunStore } from "./store";
@@ -126,4 +127,9 @@ const command: Extension.Command = {
 	},
 };
 
-export const loop: Extension = { name: "loop", commands: [command] };
+export const loop: Extension = {
+	name: "loop",
+	commands: [command],
+	// Each run on this device is a card with a tab of its own on the board.
+	board: (ctx) => ({ activity: LoopActivity.source(ctx.home) }),
+};
