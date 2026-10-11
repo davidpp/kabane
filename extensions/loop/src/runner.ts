@@ -36,21 +36,21 @@ export namespace Runner {
 	const sleep = (ms: number) =>
 		new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-	const git = (cwd: string, args: string[]): string => {
-		const out = Bun.spawnSync(["git", "-C", cwd, ...args], {
-			stderr: "ignore",
-		});
-		return out.success ? out.stdout.toString() : "";
+	const git = async (cwd: string, args: string[]): Promise<string> => {
+		const out = await Worktree.git(cwd, args);
+		return out.ok ? out.value : "";
 	};
 
 	/** HEAD, the status and the diff, hashed: changes whenever an agent changes a file. */
-	const gitTree = (cwd: string): string =>
+	const gitTree = async (cwd: string): Promise<string> =>
 		Bun.hash(
-			[
-				git(cwd, ["rev-parse", "HEAD"]),
-				git(cwd, ["status", "--porcelain"]),
-				git(cwd, ["diff"]),
-			].join("\0"),
+			(
+				await Promise.all([
+					git(cwd, ["rev-parse", "HEAD"]),
+					git(cwd, ["status", "--porcelain"]),
+					git(cwd, ["diff"]),
+				])
+			).join("\0"),
 		).toString(36);
 
 	const nap = (ctx: Ctx, ms: number): Promise<void> =>
@@ -275,7 +275,7 @@ export namespace Runner {
 		const gatesGreen = Gates.green(
 			gates,
 			ctx.run.gateRuns,
-			ctx.tree(RunStore.sessionDir(ctx.run)),
+			await ctx.tree(RunStore.sessionDir(ctx.run)),
 		);
 		const reviewed = Lenses.status(lenses, ctx.run.claims);
 		const checks = { gatesGreen, lensesDone: Lenses.finished(reviewed) };
@@ -354,7 +354,7 @@ export namespace Runner {
 			const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
 			RunState.save(ctx, {
 				...ctx.run,
-				stall: Stall.start(plan.ok ? Claims.mark(ctx, plan.value) : ""),
+				stall: Stall.start(plan.ok ? await Claims.mark(ctx, plan.value) : ""),
 			});
 		}
 	};

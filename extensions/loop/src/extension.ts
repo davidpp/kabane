@@ -181,7 +181,7 @@ const start: Verb = async (args, deps, target) => {
 const rollback: Verb = async (args, deps, target) => {
 	const sha = args.positionals[2];
 	if (!sha) return usage("rollback needs a run id and a checkpoint sha", USAGE);
-	const reset = Loop.rollback(deps, target, sha);
+	const reset = await Loop.rollback(deps, target, sha);
 	return reset.ok
 		? success(
 				reset.value,

@@ -296,7 +296,9 @@ export namespace Loop {
 			gateRuns: [],
 		});
 		if (!created.ok) return created;
-		const run = config.worktree ? withWorktree(deps, created.value) : created;
+		const run = config.worktree
+			? await withWorktree(deps, created.value)
+			: created;
 		if (!run.ok) return run;
 		const spawned = spawnRunner(deps, run.value);
 		if (!spawned.ok) {
@@ -313,12 +315,12 @@ export namespace Loop {
 
 	// The run's own worktree of the project's HEAD, beside its files. What is not committed in the
 	// project (work in progress) is not in it.
-	const withWorktree = (
+	const withWorktree = async (
 		deps: StartDeps,
 		run: RunStore.Run,
-	): Result<RunStore.Run> => {
+	): Promise<Result<RunStore.Run>> => {
 		const dir = Worktree.dirFor(RunStore.paths(deps.home, run.id).dir);
-		const added = Worktree.add(
+		const added = await Worktree.add(
 			run.projectDir,
 			dir,
 			Worktree.branchFor(run.id),
@@ -591,11 +593,11 @@ export namespace Loop {
 	 * while a session is working in it (pause the run and let them finish, or stop it). The
 	 * tracker is not rolled back: subtasks closed after the checkpoint stay closed.
 	 */
-	export const rollback = (
+	export const rollback = async (
 		deps: Pick<Deps, "home"> & { actor: string; git?: Worktree.Git },
 		runId: string,
 		given: string,
-	): Result<RolledBack> => {
+	): Promise<Result<RolledBack>> => {
 		const read = RunStore.read(deps.home, runId);
 		if (!read.ok) return read;
 		const run = read.value;
@@ -615,7 +617,7 @@ export namespace Loop {
 					`${working.map((c) => c.lane).join(", ")} still working in ${run.worktree}: pause the run and let them finish, or stop it`,
 				),
 			);
-		const reset = Worktree.reset(run.worktree, sha.value, deps.git);
+		const reset = await Worktree.reset(run.worktree, sha.value, deps.git);
 		if (!reset.ok) return reset;
 		const at = new Date().toISOString();
 		// The trace is the runner's to write while it is live; it puts the note there itself.

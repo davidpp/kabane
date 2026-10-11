@@ -22,15 +22,15 @@ export namespace Checks {
 
 	const NOTE_CHARS = 2_000;
 
-	const commit = (
+	const commit = async (
 		ctx: Ctx,
 		subject: Subject,
 		results: readonly Gates.Result[],
-	): string | undefined => {
+	): Promise<string | undefined> => {
 		const dir = ctx.run.worktree;
 		if (dir === undefined) return undefined;
 		const message = `kabane loop ${ctx.run.id}: ${subject.label} ${subject.title}\n\nGates passed: ${results.map((r) => r.name).join(", ")}.`;
-		const made = Worktree.checkpoint(dir, message, ctx.deps.git);
+		const made = await Worktree.checkpoint(dir, message, ctx.deps.git);
 		const tag = subject.lane ? { lane: subject.lane } : {};
 		if (!made.ok) {
 			RunState.event(ctx, {
@@ -93,13 +93,13 @@ export namespace Checks {
 			task: subject.label,
 			summary: results.map(Gates.describe).join(" · ") || "no gate ran",
 		});
-		const checkpoint = ok ? commit(ctx, subject, results) : undefined;
+		const checkpoint = ok ? await commit(ctx, subject, results) : undefined;
 		const pass: Gates.Run = {
 			at: ctx.now().toISOString(),
 			...(subject.taskId ? { taskId: subject.taskId } : {}),
 			results,
 			ok,
-			tree: ctx.tree(dir),
+			tree: await ctx.tree(dir),
 			...(checkpoint ? { checkpoint } : {}),
 		};
 		RunState.save(ctx, { ...ctx.run, gateRuns: [...ctx.run.gateRuns, pass] });

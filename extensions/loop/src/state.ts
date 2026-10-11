@@ -22,7 +22,7 @@ export namespace RunState {
 		/** Aborting it stops the run the way an inbox `stop` does. */
 		signal?: AbortSignal;
 		/** A fingerprint of the working tree, for the stall detector and the gates. Defaults to git. */
-		tree?: (cwd: string) => string;
+		tree?: (cwd: string) => Promise<string>;
 		/** How checkpoints run git. Defaults to the user's own git and config. */
 		git?: Worktree.Git;
 		now?: () => Date;
@@ -48,7 +48,7 @@ export namespace RunState {
 	export type Ctx = {
 		deps: Deps;
 		now: () => Date;
-		tree: (cwd: string) => string;
+		tree: (cwd: string) => Promise<string>;
 		log: RunStore.EventLog;
 		run: RunStore.Run;
 		/** Live claims by core session id. */
