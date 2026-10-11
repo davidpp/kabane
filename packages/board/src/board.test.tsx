@@ -16,6 +16,7 @@ import {
 	rowStyle,
 	shortIdIndex,
 } from "./board";
+import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
@@ -495,6 +496,14 @@ test("activityStrip counts cards by kind (singular for one), omits zero parts, a
 	).toBe(" · ⠹ 2 loops · 1 run · 1 input");
 	expect(activityStrip(activityWith([], [question("t1")]), "⠹")).toBe(
 		" · 1 input",
+	);
+});
+
+test("activityStrip leaves the copilot's running turn to the copilot pane", () => {
+	const turn = activeLoop({ id: CopilotLog.CARD_ID, kind: "copilot" });
+	expect(activityStrip(activityWith([turn]), "⠹")).toBe("");
+	expect(activityStrip(activityWith([turn, activeLoop()]), "⠹")).toBe(
+		" · ⠹ 1 loop",
 	);
 });
 

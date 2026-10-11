@@ -131,8 +131,8 @@ land. One turn at a time: while one runs the input reads `a turn is running · s
 rather than inviting a prompt, and `enter` flashes `a turn is running · o for its transcript, x
 there stops it` instead of dropping what was typed — the draft keeps until the turn ends.
 
-The turn also appears as an in-memory activity card (`kind: "copilot"`), counted in the header
-strip while it runs. `o` — from the board once the session has a transcript at all, from the detail
+The turn also appears as an in-memory activity card (`kind: "copilot"`). The header strip neither
+counts nor animates it: the pane owns the turn. `o` — from the board once the session has a transcript at all, from the detail
 view while the indicator is up, the task's own events otherwise — opens the event view on it: prose as text lines, thoughts dimmed, tool calls with the usual glyphs, the last few turns
 oldest-first each under the prompt that started it. `x` there is the ONE key that stops a running
 turn; `esc` returns. The pane's row names `o` wherever there is a transcript to open, because the

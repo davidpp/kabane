@@ -18,6 +18,7 @@ import {
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode, RefObject } from "react";
 import { BoardActivity } from "./activity";
+import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
@@ -142,6 +143,11 @@ export const cardBadge = (
 export const moreBadge = (count: number, frame: string): string =>
 	count > 0 ? ` · ${frame} +${count}` : "";
 
+// The copilot's own card is the copilot pane's to show and to animate (one surface per fact): the
+// strip neither counts it nor spins for it.
+const hostCards = (activity: BoardActivity.ActivityMap): ActivityCard[] =>
+	activity.cards.filter((card) => card.id !== CopilotLog.CARD_ID);
+
 // The header status strip: ` · ⠹ 2 loops · 1 run · 1 input` when anything is in flight, ""
 // otherwise (quiet by default). Cards count under their host-given `kind`, in first-seen order.
 export const activityStrip = (
@@ -149,7 +155,7 @@ export const activityStrip = (
 	frame: string,
 ): string => {
 	const byKind = new Map<string, number>();
-	for (const card of activity.cards) {
+	for (const card of hostCards(activity)) {
 		if (
 			card.status !== "running" &&
 			card.status !== "pending" &&
@@ -595,7 +601,9 @@ export const Board = ({
 	// One shared spinner frame for every badge + the header strip; the interval only runs while a live
 	// running loop is visible (the leaked-idle-timer gotcha — see spinner.ts).
 	const spinnerFrame = useSpinnerFrame(
-		activity ? anyActivityRunning(activity) : false,
+		activity
+			? anyActivityRunning({ ...activity, cards: hostCards(activity) })
+			: false,
 	);
 	// What is in flight and what waits on the human, counted; the tab bar above names the tabbed
 	// cards one by one.

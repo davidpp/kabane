@@ -185,8 +185,9 @@ export namespace CopilotLog {
 		},
 	});
 
-	// The copilot card leads the host's cards, so it is the first thing the strip counts and the one
-	// `anyRunning` animates on. Questions come from the tracker and pass through untouched.
+	// The copilot card leads the host's cards, so the event view, `o` and the shared spinner find it;
+	// the board's header strip skips it, the pane being where the turn is shown. Questions come from
+	// the tracker and pass through untouched.
 	export const withActivity = (
 		activity: BoardActivity.ActivityMap,
 		log: Log | null,

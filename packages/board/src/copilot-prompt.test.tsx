@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 // The `A` flow end to end against a scripted copilot: the window and its chip, the running
-// indicator while the board stays interactive, the copilot card in the header strip, the live transcript
+// indicator while the board stays interactive (and the header strip leaving it alone), the live transcript
 // in the event view with `x stop the turn`, the `✓` flash on completion, and the keypress that dismisses it.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
@@ -164,7 +164,7 @@ describe("the A prompt against a scripted copilot", () => {
 		dropDb(TEST_BASE);
 	});
 
-	it("runs a turn in the background, shows it in the footer, header strip and event view, then flashes ✓ until a keypress", async () => {
+	it("runs a turn in the background, shows it in the pane's row and event view, then flashes ✓ until a keypress", async () => {
 		let release: () => void = () => {};
 		const gate = new Promise<void>((resolve) => {
 			release = resolve;
@@ -230,14 +230,14 @@ describe("the A prompt against a scripted copilot", () => {
 			);
 			expect(frame).toContain("Triage every issue in view.");
 
-			// Enter sends it; the window closes, the footer spins on the last tool, the header strip
-			// counts the copilot card, and the board still answers keys (`?` opens help, esc closes it).
+			// Enter sends it; the window closes, the pane's row spins on the last tool, the header strip
+			// leaves the turn to that row, and the board still answers keys (`?` opens help, esc closes it).
 			mockInput.pressEnter();
 			frame = await until((f) => f.includes("copilot · kabane_edit"));
 			// The panel collapses back to its one row; the board has the keyboard again.
 			expect(panelOpen(frame)).toBe(false);
 			expect(frame).toContain("copilot · kabane_edit");
-			expect(frame).toMatch(/kabane · all scopes · \S 1 copilot/);
+			expect(frame).not.toContain("1 copilot");
 			expect(seen.prompts).toEqual(["Triage every issue in view."]);
 			expect(seen.contexts[0]?.selected?.title).toBe("Wire the copilot");
 			expect(seen.contexts[0]?.briefs.length).toBe(1);
