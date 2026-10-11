@@ -1,8 +1,8 @@
 /**
- * Rendering — one place that knows about `--json`, icons, and exit codes.
+ * Rendering — one place that knows about `--json` and icons.
  *
- * Commands return an `Outcome`: an exit code, a JSON value, and the human text.
- * `main` prints one or the other. Exit codes: 0 ok, 1 error, 2 usage.
+ * Commands return an `Outcome` (`@cabane/extension`): an exit code, a JSON
+ * value, and the human text. `main` prints one or the other.
  */
 
 import {
@@ -15,37 +15,7 @@ import {
 	type TaskState,
 	type TaskWorkLog,
 } from "@cabane/core";
-
-export type Outcome = {
-	exitCode: 0 | 1 | 2;
-	json: unknown;
-	text: string;
-	compact?: boolean;
-};
-
-export const success = (json: unknown, text: string): Outcome => ({
-	exitCode: 0,
-	json,
-	text,
-});
-
-export const conciseSuccess = (json: unknown): Outcome => ({
-	exitCode: 0,
-	json,
-	text: JSON.stringify(json),
-	compact: true,
-});
-
-export const failure = (error: Error | string): Outcome => {
-	const message = typeof error === "string" ? error : error.message;
-	return { exitCode: 1, json: { error: message }, text: `Error: ${message}` };
-};
-
-export const usage = (message: string, usageLine: string): Outcome => ({
-	exitCode: 2,
-	json: { error: message, usage: usageLine },
-	text: `Error: ${message}\nUsage: ${usageLine}`,
-});
+import type { Outcome } from "@cabane/extension";
 
 const STATE_ICONS: Record<TaskState, string> = {
 	inbox: "📥",

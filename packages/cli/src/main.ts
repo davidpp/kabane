@@ -5,8 +5,14 @@
  * outcome's JSON instead of the human text.
  */
 
+import {
+	failure,
+	flagBool,
+	type Outcome,
+	parseArgs,
+	usage,
+} from "@cabane/extension";
 import { version } from "../package.json";
-import { flagBool, parseArgs } from "./args";
 import { add } from "./commands/add";
 import { board } from "./commands/board";
 import { comment } from "./commands/comment";
@@ -27,7 +33,7 @@ import { upstream } from "./commands/upstream";
 import { resolveHome } from "./config";
 import { type Command, type Ctx, openContext } from "./context";
 import { openTui } from "./first-run";
-import { failure, type Outcome, print, usage } from "./output";
+import { print } from "./output";
 
 export const COMMANDS: Command[] = [
 	init,

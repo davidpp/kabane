@@ -1,8 +1,7 @@
+import { type Outcome, type ParsedArgs, usage } from "@cabane/extension";
 import { z } from "zod";
 import { version } from "../../package.json";
-import type { ParsedArgs } from "../args";
 import type { Command } from "../context";
-import { type Outcome, usage } from "../output";
 import {
 	inspectRegistryInstall,
 	StableVersionSchema,

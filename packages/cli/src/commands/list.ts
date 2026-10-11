@@ -4,15 +4,16 @@ import {
 	type TaskPriority,
 	type TaskState,
 } from "@cabane/core";
-import { flagBool, flagString } from "../args";
-import { type Command, resolveScopeUri } from "../context";
 import {
 	conciseSuccess,
 	failure,
-	formatTaskList,
+	flagBool,
+	flagString,
 	success,
 	usage,
-} from "../output";
+} from "@cabane/extension";
+import { type Command, resolveScopeUri } from "../context";
+import { formatTaskList } from "../output";
 import { pageOptions, responseFormat } from "../response-format";
 
 export const list: Command = {

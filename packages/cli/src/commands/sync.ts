@@ -1,7 +1,7 @@
 import { Backfill, Sync, SyncDevice, type SyncStatus } from "@cabane/core";
+import { failure, success, usage } from "@cabane/extension";
 import type { Config } from "../config";
 import type { Command, Ctx } from "../context";
-import { failure, success, usage } from "../output";
 
 /**
  * A database opened through `db.path` usually belongs to another host (Jake)

@@ -24,8 +24,8 @@
 		"duplicates": "jscpd --config .jscpd.json --no-tips packages scripts",
 		"quality": "bun run knip && bun run duplicates",
 		"typecheck": "bun run --filter '*' typecheck && tsc --noEmit -p scripts",
-		"test": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board scripts && bun run --cwd packages/worker test",
-		"test:bun": "bun test packages/core packages/sqlite packages/acp packages/cli packages/board scripts",
+		"test": "bun test packages/core packages/sqlite packages/acp packages/extension packages/cli packages/board scripts && bun run --cwd packages/worker test",
+		"test:bun": "bun test packages/core packages/sqlite packages/acp packages/extension packages/cli packages/board scripts",
 		"test:worker": "bun run --cwd packages/worker test",
 		"clean": "bun run --filter '*' clean"
 	},

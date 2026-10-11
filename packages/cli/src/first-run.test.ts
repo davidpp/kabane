@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
-import { parseArgs } from "./args";
+import { parseArgs } from "@cabane/extension";
 import { configPath, loadConfig } from "./config";
 import { openContext } from "./context";
 import {

@@ -7,15 +7,16 @@ import {
 	type TaskState,
 	type TaskUpdate,
 } from "@cabane/core";
-import { flagCsv, flagString } from "../args";
-import type { Command } from "../context";
 import {
 	conciseSuccess,
 	failure,
-	formatTaskLine,
+	flagCsv,
+	flagString,
 	success,
 	usage,
-} from "../output";
+} from "@cabane/extension";
+import type { Command } from "../context";
+import { formatTaskLine } from "../output";
 import { responseFormat } from "../response-format";
 
 const nothingToChange = (update: TaskUpdate): boolean =>

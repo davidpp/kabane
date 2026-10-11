@@ -1,12 +1,7 @@
 import { Planner } from "@cabane/core";
+import { conciseSuccess, failure, success, usage } from "@cabane/extension";
 import type { Command } from "../context";
-import {
-	conciseSuccess,
-	failure,
-	formatTaskLine,
-	success,
-	usage,
-} from "../output";
+import { formatTaskLine } from "../output";
 import { responseFormat } from "../response-format";
 
 export const done: Command = {

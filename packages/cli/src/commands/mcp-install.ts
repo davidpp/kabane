@@ -1,6 +1,12 @@
-import { flagBool, flagList, type ParsedArgs } from "../args";
+import {
+	flagBool,
+	flagList,
+	type Outcome,
+	type ParsedArgs,
+	success,
+	usage,
+} from "@cabane/extension";
 import { McpClients } from "../mcp-clients";
-import { type Outcome, success, usage } from "../output";
 
 /**
  * Register this device's MCP server in the coding harnesses on this machine,

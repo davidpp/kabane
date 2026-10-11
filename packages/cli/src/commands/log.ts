@@ -1,8 +1,13 @@
 import { Planner } from "@cabane/core";
-import { flagList, flagString } from "../args";
+import {
+	failure,
+	flagList,
+	flagString,
+	success,
+	usage,
+} from "@cabane/extension";
 import { authorTypeOf } from "../config";
 import type { Command } from "../context";
-import { failure, success, usage } from "../output";
 
 /** `--commit`, `--branch`, `--pr`, `--url` are shorthands for `--ref <type>:<value>`. */
 const SHORTHANDS = [

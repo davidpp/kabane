@@ -8,15 +8,16 @@ import {
 	type TaskPriority,
 	type TaskState,
 } from "@cabane/core";
-import { flagCsv, flagString } from "../args";
-import { type Command, resolveScopeUri } from "../context";
 import {
 	conciseSuccess,
 	failure,
-	formatTaskLine,
+	flagCsv,
+	flagString,
 	success,
 	usage,
-} from "../output";
+} from "@cabane/extension";
+import { type Command, resolveScopeUri } from "../context";
+import { formatTaskLine } from "../output";
 import { responseFormat } from "../response-format";
 
 export const add: Command = {

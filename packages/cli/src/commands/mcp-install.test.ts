@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseArgs } from "../args";
+import { parseArgs } from "@cabane/extension";
 import type { McpClients } from "../mcp-clients";
 import { McpInstall, mcpInstall } from "./mcp-install";
 

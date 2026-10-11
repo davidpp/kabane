@@ -12,6 +12,7 @@ packages/
 ├── core/      # @cabane/core   — schemas, storage over the Db port, sync (oplog, resolve, apply), MCP tool defs
 ├── sqlite/    # @cabane/sqlite — Db adapter over bun:sqlite (local devices)
 ├── acp/       # @cabane/acp    — ACP client over Bun.spawn: harness registry, session runner, own Update union
+├── extension/ # @cabane/extension — extension contract (Command, Ctx, board ports), args, outcomes
 ├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, board, mcp (stdio)
 ├── board/     # @cabane/board  — OpenTUI kanban; ActivitySource + Dispatcher + Copilot ports, no-op defaults
 └── worker/    # cabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
@@ -29,7 +30,7 @@ See `CODING_PRINCIPLE.md` for the coding rules and the architectural invariants.
 ```bash
 bun run check        # oxlint, its type-aware pass, oxfmt --check, knip, jscpd
 bun run typecheck    # tsc --noEmit in every packages/*/
-bun test             # bun packages only (core, sqlite, acp, cli, board)
+bun test             # bun packages only (core, sqlite, acp, extension, cli, board)
 bun run test         # the above plus `bun run --cwd packages/worker test` (tsc + vitest)
 ```
 

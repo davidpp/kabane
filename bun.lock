@@ -55,6 +55,7 @@
         "@cabane/acp": "workspace:*",
         "@cabane/board": "workspace:*",
         "@cabane/core": "workspace:*",
+        "@cabane/extension": "workspace:*",
         "@cabane/sqlite": "workspace:*",
         "zod": "3.25.76",
       },
@@ -78,6 +79,17 @@
       },
       "devDependencies": {
         "@cabane/sqlite": "workspace:*",
+        "@types/bun": "1.4.0",
+        "typescript": "5.9.3",
+      },
+    },
+    "packages/extension": {
+      "name": "@cabane/extension",
+      "version": "0.1.0",
+      "dependencies": {
+        "@cabane/board": "workspace:*",
+      },
+      "devDependencies": {
         "@types/bun": "1.4.0",
         "typescript": "5.9.3",
       },
@@ -119,6 +131,8 @@
     "@cabane/board": ["@cabane/board@workspace:packages/board"],
 
     "@cabane/core": ["@cabane/core@workspace:packages/core"],
+
+    "@cabane/extension": ["@cabane/extension@workspace:packages/extension"],
 
     "@cabane/sqlite": ["@cabane/sqlite@workspace:packages/sqlite"],
 

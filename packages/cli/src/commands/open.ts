@@ -1,7 +1,7 @@
 import { Launcher } from "@cabane/board";
 import { Planner } from "@cabane/core";
+import { failure, success } from "@cabane/extension";
 import type { Command } from "../context";
-import { failure, success } from "../output";
 
 /**
  * The high-frequency half of linked issues gets the short name. Creating a link

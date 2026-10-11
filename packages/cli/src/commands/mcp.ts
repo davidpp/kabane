@@ -1,7 +1,7 @@
 import { serveStdio } from "@cabane/core";
+import { failure, success } from "@cabane/extension";
 import { version } from "../../package.json";
 import { type Command, openContext, resolveScopeUri } from "../context";
-import { failure, success } from "../output";
 import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
 
 /**

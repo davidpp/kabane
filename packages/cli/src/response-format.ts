@@ -1,5 +1,5 @@
 import { err, ok, PageOptionsSchema, ResponseFormatSchema } from "@cabane/core";
-import { flagString, type ParsedArgs } from "./args";
+import { flagString, type ParsedArgs } from "@cabane/extension";
 
 export const responseFormat = (args: ParsedArgs) => {
 	const raw =

@@ -1,7 +1,13 @@
 import { ContextPageOptionsSchema, Planner } from "@cabane/core";
-import { flagBool, flagString } from "../args";
+import {
+	conciseSuccess,
+	failure,
+	flagBool,
+	flagString,
+	success,
+	usage,
+} from "@cabane/extension";
 import type { Command } from "../context";
-import { conciseSuccess, failure, success, usage } from "../output";
 import { responseFormat } from "../response-format";
 
 export const context: Command = {

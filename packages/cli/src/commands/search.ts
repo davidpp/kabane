@@ -1,13 +1,13 @@
 import { Planner, type TaskState } from "@cabane/core";
-import { flagString } from "../args";
-import { type Command, resolveScopeUri } from "../context";
 import {
 	conciseSuccess,
 	failure,
-	formatTaskList,
+	flagString,
 	success,
 	usage,
-} from "../output";
+} from "@cabane/extension";
+import { type Command, resolveScopeUri } from "../context";
+import { formatTaskList } from "../output";
 import { pageOptions, responseFormat } from "../response-format";
 
 export const search: Command = {

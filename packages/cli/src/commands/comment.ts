@@ -1,7 +1,7 @@
 import { Planner } from "@cabane/core";
+import { failure, success, usage } from "@cabane/extension";
 import { authorTypeOf } from "../config";
 import type { Command } from "../context";
-import { failure, success, usage } from "../output";
 
 export const comment: Command = {
 	name: "comment",

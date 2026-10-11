@@ -1,9 +1,13 @@
 import { BoardCopilot, Harnesses } from "@cabane/acp";
 import { type BoardDeps, startBoard } from "@cabane/board";
 import { err, ok, type Result } from "@cabane/core";
-import { flagString, type ParsedArgs } from "../args";
+import {
+	failure,
+	flagString,
+	type ParsedArgs,
+	success,
+} from "@cabane/extension";
 import { type Command, type Ctx, resolveScope } from "../context";
-import { failure, success } from "../output";
 
 /**
  * The board's deps plus the copilot's teardown. The `Copilot` port carries no

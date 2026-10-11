@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { err, ok, Planner, type Result } from "@cabane/core";
-import { flagBool, flagString } from "../args";
+import { failure, flagBool, flagString, success } from "@cabane/extension";
 import {
 	type Config,
 	ConfigSchema,
@@ -14,7 +14,6 @@ import {
 	writeDirectoryScope,
 } from "../config";
 import { type Command, configureRuntime } from "../context";
-import { failure, success } from "../output";
 
 /**
  * The hub sits behind Cloudflare Access; a device passes the edge with a

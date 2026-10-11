@@ -1,13 +1,11 @@
 import { Planner } from "@cabane/core";
+import { failure, success, usage } from "@cabane/extension";
 import type { Command } from "../context";
 import {
-	failure,
 	formatComments,
 	formatLinks,
 	formatTaskDetail,
 	formatWorkLogs,
-	success,
-	usage,
 } from "../output";
 
 export const show: Command = {

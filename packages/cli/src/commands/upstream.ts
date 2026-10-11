@@ -1,7 +1,12 @@
 import { Planner, type UpstreamLink } from "@cabane/core";
-import { flagString } from "../args";
+import {
+	failure,
+	flagString,
+	type Outcome,
+	success,
+	usage,
+} from "@cabane/extension";
 import type { Command, Ctx } from "../context";
-import { failure, type Outcome, success, usage } from "../output";
 
 /**
  * Deriving the provider from the URL means the common call is two arguments.

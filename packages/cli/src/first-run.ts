@@ -11,14 +11,13 @@ import { existsSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { type SetupDeps, type SetupPlan, startSetup } from "@cabane/board";
 import { err, ok, Planner, type Result } from "@cabane/core";
-import { parseArgs } from "./args";
+import { failure, type Outcome, parseArgs, success } from "@cabane/extension";
 import { board } from "./commands/board";
 import { buildConfig } from "./commands/init";
 import { McpInstall } from "./commands/mcp-install";
 import { configPath, defaultDeviceId, saveConfig } from "./config";
 import { detectProject, openContext, resolveScope } from "./context";
 import { McpClients } from "./mcp-clients";
-import { failure, type Outcome, success } from "./output";
 
 /**
  * What setup needs from the MCP installer: which harnesses are here, whether detection was narrowed

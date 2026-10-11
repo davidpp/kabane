@@ -10,36 +10,20 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ok, Planner, type Result, Runtime } from "@cabane/core";
 import { detectScope, type ProjectScope } from "@cabane/core/scope";
+import { type Extension, flagString, type ParsedArgs } from "@cabane/extension";
 import { SqliteDb } from "@cabane/sqlite";
-import type { ParsedArgs } from "./args";
-import { flagString } from "./args";
 import {
 	type Config,
 	type DatabaseLocation,
 	databaseLocation,
 	loadConfig,
 } from "./config";
-import type { Outcome } from "./output";
 
-export type Ctx = {
-	/** KABANE_HOME: where config.json lives. */
-	home: string;
-	/** The storage handle every core call receives (the database's directory). */
-	store: string;
-	cwd: string;
-	config: Config;
-	/** The actor for this invocation: `--as`, else the configured one. */
-	actor: string;
-};
+/** An extension's context plus the device config, which only built-in commands read. */
+export type Ctx = Extension.Ctx & { config: Config };
 
-export type Command = {
-	name: string;
-	usage: string;
-	summary: string;
-	/** Runs without a config file (init, help). */
-	standalone?: boolean;
-	run: (args: ParsedArgs, ctx: Ctx) => Promise<Outcome>;
-};
+/** A built-in command; an extension's command, which asks for less, fits it too. */
+export type Command = Extension.Command<Ctx>;
 
 /**
  * `actor` is stamped into `updated_by` on every local write, so it has to be
