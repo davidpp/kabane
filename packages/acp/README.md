@@ -82,6 +82,7 @@ What comes back, as the port's `CopilotUpdate`:
 | `tool_call_update`, completed, on a `kabane_*` write tool | `tool_result` → the board reloads |
 | `plan` | `plan` → the pane and the transcript show the agent's todo, the footer counts it |
 | `session/request_permission` | `permission` → the board asks, and `answerPermission` unblocks the turn |
+| `usage` (from `usage_update`) | nothing: the copilot shows no meter; the loop extension reads it for its budget |
 | `stop`, `error` | `done`, `error` |
 
 A write is recognised by the tool call's **title**, never by its result: the two adapters

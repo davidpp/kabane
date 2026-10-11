@@ -44,6 +44,14 @@ export namespace AcpClient {
 					status: "pending" | "in_progress" | "completed";
 				}[];
 		  }
+		// Context occupancy, not a running token count: `used` is what is in the window now.
+		// `cost` is cumulative for the session, and only some harnesses report it.
+		| {
+				type: "usage";
+				used: number;
+				size: number;
+				cost?: { amount: number; currency: string };
+		  }
 		| { type: "stop"; reason: string }
 		| { type: "error"; message: string };
 
@@ -370,6 +378,20 @@ export namespace AcpClient {
 						content: e.content,
 						status: e.status,
 					})),
+				};
+			case "usage_update":
+				return {
+					type: "usage",
+					used: update.used,
+					size: update.size,
+					...(update.cost
+						? {
+								cost: {
+									amount: update.cost.amount,
+									currency: update.cost.currency,
+								},
+							}
+						: {}),
 				};
 			default:
 				return null;

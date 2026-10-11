@@ -404,3 +404,28 @@ describe("AcpClient", () => {
 		);
 	});
 });
+
+describe("AcpClient.toUpdate", () => {
+	it("maps a usage update to occupancy, with cost only when reported", () => {
+		expect(
+			AcpClient.toUpdate({
+				sessionUpdate: "usage_update",
+				used: 52_000,
+				size: 200_000,
+				cost: { amount: 0.42, currency: "USD" },
+			}),
+		).toEqual({
+			type: "usage",
+			used: 52_000,
+			size: 200_000,
+			cost: { amount: 0.42, currency: "USD" },
+		});
+		expect(
+			AcpClient.toUpdate({
+				sessionUpdate: "usage_update",
+				used: 10,
+				size: 100,
+			}),
+		).toEqual({ type: "usage", used: 10, size: 100 });
+	});
+});
