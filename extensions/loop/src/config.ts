@@ -38,7 +38,7 @@ export namespace LoopConfig {
 		.regex(/^[A-Za-z][A-Za-z0-9_.-]*$/, "a gate name is one word");
 
 	// A lens's name is its prompt's file name and a tag on its findings.
-	const LensNameSchema = z
+	export const LensNameSchema = z
 		.string()
 		.regex(/^[a-z][a-z0-9-]*$/, "a lens name is one lowercase word");
 

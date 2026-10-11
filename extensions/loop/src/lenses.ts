@@ -6,6 +6,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { err, type Result, trySync } from "@cabane/core";
+import { LoopConfig } from "./config";
 import type { RunStore } from "./store";
 
 export namespace Lenses {
@@ -20,12 +21,17 @@ export namespace Lenses {
 	export const dir = (projectDir: string): string =>
 		join(projectDir, ".kabane", "loop", "lenses");
 
-	/** The lenses a run in `projectDir` can have: the shipped ones, then the repository's own. */
+	/**
+	 * The lenses a run in `projectDir` can have: the shipped ones, then the repository's own. A
+	 * prompt whose file name is no lens name (`security_review.md`) is not offered: a run would
+	 * refuse it.
+	 */
 	export const offered = (projectDir: string): string[] => {
 		const own = trySync(() => readdirSync(dir(projectDir)));
 		const names = (own.ok ? own.value : [])
 			.filter((file) => file.endsWith(".md"))
 			.map((file) => file.slice(0, -".md".length))
+			.filter((name) => LoopConfig.LensNameSchema.safeParse(name).success)
 			.sort();
 		return [...new Set([...SHIPPED, ...names])];
 	};
