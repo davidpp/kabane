@@ -308,6 +308,110 @@ describe("a card's tab", () => {
 	});
 });
 
+describe("a card's tab answers its question in place", () => {
+	const onTab = (s: BoardNav.BoardState = withLoop()) => press(s, "}").state;
+
+	it("a digit answers the question it shows, without leaving the tab", () => {
+		const { state, effect } = press(onTab(), "2");
+		expect(effect).toEqual({
+			type: "answerQuestion",
+			questionId: "q-loop",
+			answer: "TTL",
+		});
+		expect(state.tabs.active).toBe("loop:r1");
+		expect(state.view.type).toBe("events");
+		expect(state.tabs.answered.get("q-loop")).toBe("TTL");
+	});
+
+	it("answers on the keypress, so a second digit answers nothing; a failed write takes it back", () => {
+		const first = press(onTab(), "1").state;
+		expect(press(first, "2").effect.type).toBe("none");
+		const failed = BoardTabs.withoutAnswer(first, "q-loop", "LRU");
+		expect(failed.tabs.answered.has("q-loop")).toBe(false);
+		expect(press(failed, "2").effect).toMatchObject({ answer: "TTL" });
+	});
+
+	it("one past its answers does nothing; with no question the digits are not its", () => {
+		const s = onTab();
+		const past = press(s, "3");
+		expect(past.effect.type).toBe("none");
+		expect(past.state).toBe(s);
+		const quiet = onTab(withLoop([card()], [SOLO_Q]));
+		expect(press(quiet, "1").state).toBe(quiet);
+	});
+
+	it("a shifted digit is not a digit: shift+1 reported by its base key never answers", () => {
+		const shifted = BoardNav.reduceKey(onTab(), {
+			name: "1",
+			sequence: "1",
+			shift: true,
+		});
+		expect(shifted.effect.type).not.toBe("answerQuestion");
+		const pinned = press(withLoop(), "!").state;
+		expect(
+			BoardNav.reduceKey(pinned, { name: "1", sequence: "1", shift: true })
+				.effect.type,
+		).not.toBe("answerQuestion");
+	});
+
+	it("a click on an answer is its digit", () => {
+		expect(
+			BoardNav.reduceMouse(onTab(), { type: "answer", index: 1 }).effect,
+		).toEqual({ type: "answerQuestion", questionId: "q-loop", answer: "TTL" });
+	});
+
+	it("shows the oldest of several first, counts the rest, and the poll moves it on once answered", () => {
+		const later = question({
+			questionActivityId: "q-loop-2",
+			question: "Keep the old index?",
+			choices: ["Keep", "Drop"],
+			askedAt: "2026-10-10T00:02:00.000Z",
+		});
+		const s = onTab(withLoop([card()], [SOLO_Q, LOOP_Q, later]));
+		expect(BoardTabs.cardQuestion(s.tabs)).toEqual(LOOP_Q);
+		expect(BoardTabs.moreOnCard(s.tabs)).toBe(1);
+		const answered = press(s, "1").state;
+		// Still on screen, settled, until the poll drops it; then the next one, answerable.
+		expect(BoardTabs.cardQuestion(answered.tabs)).toEqual(LOOP_Q);
+		const polled = BoardTabs.withActivity(answered, [card()], [SOLO_Q, later]);
+		expect(polled.tabs.answered.size).toBe(0);
+		expect(BoardTabs.cardQuestion(polled.tabs)).toEqual(later);
+		expect(BoardTabs.moreOnCard(polled.tabs)).toBe(0);
+		expect(press(polled, "2").effect).toEqual({
+			type: "answerQuestion",
+			questionId: "q-loop-2",
+			answer: "Drop",
+		});
+	});
+
+	it("! from the tracker lands on the card's tab, where the next key answers it", () => {
+		const landed = press(withLoop([card()], [LOOP_Q]), "!").state;
+		expect(landed.tabs.active).toBe("loop:r1");
+		expect(landed.view.type).toBe("events");
+		expect(press(landed, "1").effect).toEqual({
+			type: "answerQuestion",
+			questionId: "q-loop",
+			answer: "LRU",
+		});
+	});
+
+	it("! on the tab already showing the only question says nothing else waits", () => {
+		const s = onTab(withLoop([card()], [LOOP_Q]));
+		expect(press(s, "!").effect).toEqual({
+			type: "notice",
+			notice: { text: "nothing else is waiting on you", tone: "success" },
+		});
+	});
+
+	it("the footer offers the digits while its question waits, and not once it is answered", () => {
+		const facts = { linked: new Set<string>(), events: false };
+		const s = onTab();
+		expect(BoardNav.keySituation(s, facts).unanswered).toBe(true);
+		const answered = press(s, "1").state;
+		expect(BoardNav.keySituation(answered, facts).unanswered).toBe(false);
+	});
+});
+
 describe("the pinned banner", () => {
 	const pinned = (): BoardNav.BoardState => press(withLoop(), "!").state;
 

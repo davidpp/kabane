@@ -7,9 +7,9 @@
 // own view is kept aside, so returning to it lands where the human left.
 //
 // The queue is every core session question nobody has answered, oldest first, whoever asked it. `!`
-// walks it: a question one of a tabbed card's sessions asked lands on that card's tab, any other on
-// its task's detail view with the question pinned over the brief as a banner, where a digit answers
-// it through `Planner.answerQuestion`.
+// walks it: a question one of a tabbed card's sessions asked lands on that card's tab, pinned under
+// its header, any other on its task's detail view with the question pinned over the brief as a
+// banner. Either way a digit answers it in place, through `Planner.answerQuestion`.
 import type { BoardActivity } from "./activity";
 import type { BoardNav } from "./nav";
 import { type ActivityCard, type CardAction, isInFlight } from "./ports";
@@ -52,6 +52,9 @@ export namespace BoardTabs {
 		queue: readonly Question[];
 		// The question `!` last landed on, which is where the next press continues from.
 		landed?: string;
+		// What this board answered a question still in the queue with, by question id: set on the
+		// keypress, taken back when the write fails, dropped once the poll no longer lists it.
+		answered: ReadonlyMap<string, string>;
 		// Each card tab's own reading state, by card id.
 		views: ReadonlyMap<string, CardView>;
 	};
@@ -73,6 +76,7 @@ export namespace BoardTabs {
 		active: null,
 		cards: new Map(),
 		queue: [],
+		answered: new Map(),
 		views: new Map(),
 	};
 
@@ -107,13 +111,25 @@ export namespace BoardTabs {
 			(q) => q.questionActivityId === banner.question.questionActivityId,
 		);
 
+	/** The questions the sessions of the card on screen wait on, oldest first. */
+	const cardQuestions = (tabs: Tabs): Question[] =>
+		tabs.queue.filter((q) => ownerOf(tabs, q) === tabs.active);
+
 	/**
-	 * The question a card's tab shows: the one `!` landed on when it is this card's, else the oldest
-	 * of its own. Answering happens over the task, with `o`.
+	 * The question a card's tab shows, pinned and answered in place: the one `!` landed on when it is
+	 * this card's, else the oldest of its own.
 	 */
 	export const cardQuestion = (tabs: Tabs): Question | undefined => {
-		const mine = tabs.queue.filter((q) => ownerOf(tabs, q) === tabs.active);
+		const mine = cardQuestions(tabs);
 		return mine.find((q) => q.questionActivityId === tabs.landed) ?? mine[0];
+	};
+
+	/** How many of the card's questions wait besides the one its tab shows, unanswered. */
+	export const moreOnCard = (tabs: Tabs): number => {
+		const shown = cardQuestion(tabs);
+		return cardQuestions(tabs).filter(
+			(q) => q !== shown && !tabs.answered.has(q.questionActivityId),
+		).length;
 	};
 
 	const tabCard = (card: ActivityCard): TabCard => ({
@@ -159,11 +175,15 @@ export namespace BoardTabs {
 			)
 			.toSorted((a, b) => a.startedAt.localeCompare(b.startedAt))
 			.map((card) => card.id);
+		const waiting = new Set(queue.map((q) => q.questionActivityId));
 		const next: Tabs = {
 			...tabs,
 			open: [...tabs.open.filter((id) => listed.has(id)), ...opened],
 			cards: new Map(tabbed.map((card) => [card.id, tabCard(card)])),
 			queue,
+			answered: new Map(
+				[...tabs.answered].filter(([questionId]) => waiting.has(questionId)),
+			),
 		};
 		if (fingerprint(next) === fingerprint(tabs)) return state;
 		const moved = { ...state, tabs: next };
@@ -226,13 +246,14 @@ export namespace BoardTabs {
 		return { state: show(state, next), effect: NOTHING };
 	};
 
-	// Where the human is in the queue: the question pinned over the detail view, or the one `!` left
-	// on the card tab on screen. Anywhere else the next press starts from the oldest.
+	// Where the human is in the queue: the question pinned over the detail view, or the one the card
+	// tab on screen shows. Anywhere else the next press starts from the oldest.
 	const position = (state: State): string | undefined => {
 		const { view, tabs } = state;
 		if (view.type === "detail") return view.banner?.question.questionActivityId;
-		const shown = tabs.active === null ? undefined : cardQuestion(tabs);
-		return shown?.questionActivityId === tabs.landed ? tabs.landed : undefined;
+		return tabs.active === null
+			? undefined
+			: cardQuestion(tabs)?.questionActivityId;
 	};
 
 	// The question's task in the tracker, with the question pinned over it.
@@ -249,13 +270,17 @@ export namespace BoardTabs {
 		};
 	};
 
-	// `!`: the next question after the one in hand, oldest first, wrapping.
+	// `!`: the next question after the one in hand, oldest first, wrapping. The one on screen, alone in
+	// the queue, says so rather than landing where the human already is with nothing moved.
 	const nextQuestion = (state: State): Step => {
 		const { queue } = state.tabs;
 		if (queue.length === 0) return notice(state, "nothing is waiting on you");
-		const at = queue.findIndex((q) => q.questionActivityId === position(state));
+		const here = position(state);
+		const at = queue.findIndex((q) => q.questionActivityId === here);
 		const next = queue[(at + 1) % queue.length];
 		if (!next) return { state, effect: NOTHING };
+		if (next.questionActivityId === here)
+			return notice(state, "nothing else is waiting on you");
 		const owner = ownerOf(state.tabs, next);
 		if (owner === undefined)
 			return { state: pin(state, next), effect: NOTHING };
@@ -319,14 +344,20 @@ export namespace BoardTabs {
 	};
 
 	/**
-	 * A card's own tab: `esc`/`q` go to the tracker rather than down a stack, `o` to the question's
-	 * task, `w` closes it. Null for the keys the event view under it answers (j/k).
+	 * A card's own tab: the question it shows takes a digit or, offering no answers, `enter`; `esc`/`q`
+	 * go to the tracker rather than down a stack, `o` to the question's task, `w` closes it. Null for
+	 * the keys the event view under it answers (j/k).
 	 */
 	export const reduceCardTabKey = (
 		state: State,
 		id: string,
 		key: BoardNav.KeyInput,
 	): Step | null => {
+		const shown = cardQuestion(state.tabs);
+		const answered = shown
+			? answerKey(state, shown, isSettled(state.tabs, shown), key)
+			: null;
+		if (answered) return answered;
 		// A letter by what it types, as on CardTab: shift+w is `W`, not close.
 		switch (key.name.length === 1 ? (key.sequence ?? key.name) : key.name) {
 			case "escape":
@@ -342,8 +373,17 @@ export namespace BoardTabs {
 	};
 
 	// A question still waiting that offers no answers to pick: it takes a typed one.
-	const freeform = (tabs: Tabs, banner: Banner): boolean =>
-		!isAnswered(tabs, banner) && banner.question.choices.length === 0;
+	const freeform = (question: Question, settled: boolean): boolean =>
+		!settled && question.choices.length === 0;
+
+	// A question a card's tab shows is settled once this board answered it; the poll then drops it.
+	const isSettled = (tabs: Tabs, question: Question): boolean =>
+		tabs.answered.has(question.questionActivityId);
+
+	// The digit a key types, 1-9, or undefined. A shifted digit is not one: a terminal that reports
+	// shift+1 by its base key (kitty's protocol without alternate keys) means `!`, never answer 1.
+	const digitOf = (key: BoardNav.KeyInput): number | undefined =>
+		key.shift || !/^[1-9]$/.test(key.name) ? undefined : Number(key.name);
 
 	/** Open the prompt for a typed answer to `question` (`enter` on its banner or its card's tab). */
 	export const typeAnswer = (state: State, question: Question): Step =>
@@ -355,10 +395,36 @@ export namespace BoardTabs {
 		});
 
 	/**
-	 * The banner over a detail view: `b` goes back to the card's tab, `enter` types the answer to a
-	 * question that offers none, and the digits are the banner's
-	 * alone while it is pinned. One picks the answer it numbers; one past the answers, or any once it
-	 * is answered, does nothing rather than switching the section under it. Null for every other key.
+	 * The keys that answer the question in hand, on its banner or on its card's tab: `enter` types the
+	 * answer to one that offers none, and a digit picks the answer it numbers. One past the answers,
+	 * or any once it is settled, does nothing rather than reaching the view under it. Null for every
+	 * other key.
+	 */
+	const answerKey = (
+		state: State,
+		question: Question,
+		settled: boolean,
+		key: BoardNav.KeyInput,
+	): Step | null => {
+		if (key.ctrl || key.meta) return null;
+		if (key.name === "return" || key.name === "enter")
+			return freeform(question, settled) ? typeAnswer(state, question) : null;
+		const digit = digitOf(key);
+		if (digit === undefined) return null;
+		const answer = settled ? undefined : question.choices[digit - 1];
+		if (answer === undefined) return { state, effect: NOTHING };
+		// Answered on the keypress, not when the write lands, so a second digit pressed before it
+		// does cannot answer again. A failed write takes it back (withoutAnswer).
+		const questionId = question.questionActivityId;
+		return {
+			state: withAnswered(state, questionId, answer),
+			effect: { type: "answerQuestion", questionId, answer },
+		};
+	};
+
+	/**
+	 * The banner over a detail view: `b` goes back to the card's tab, and the answering keys are the
+	 * banner's alone while it is pinned, so a digit never switches the section under it.
 	 */
 	export const reduceBannerKey = (
 		state: State,
@@ -371,24 +437,12 @@ export namespace BoardTabs {
 			state.tabs.open.includes(banner.cardId)
 		)
 			return { state: show(state, banner.cardId), effect: NOTHING };
-		if (key.ctrl || key.meta) return null;
-		if (key.name === "return" || key.name === "enter")
-			return freeform(state.tabs, banner)
-				? typeAnswer(state, banner.question)
-				: null;
-		const digit = Number.parseInt(key.name, 10);
-		if (!(digit >= 1 && digit <= 9)) return null;
-		const answer = isAnswered(state.tabs, banner)
-			? undefined
-			: banner.question.choices[digit - 1];
-		if (answer === undefined) return { state, effect: NOTHING };
-		// Answered on the keypress, not when the write lands, so a second digit pressed before it
-		// does cannot answer again. A failed write takes it back (withoutAnswer).
-		const questionId = banner.question.questionActivityId;
-		return {
-			state: withAnswered(state, questionId, answer),
-			effect: { type: "answerQuestion", questionId, answer },
-		};
+		return answerKey(
+			state,
+			banner.question,
+			isAnswered(state.tabs, banner),
+			key,
+		);
 	};
 
 	const withBanner = (
@@ -405,21 +459,32 @@ export namespace BoardTabs {
 		return { ...state, view: { ...view, banner: patch(view.banner) } };
 	};
 
-	/** The banner's question was answered with `answer`: it stays up, saying so, until the human leaves. */
+	/**
+	 * The question was answered with `answer`: a banner stays up saying so until the human leaves, and
+	 * a card's tab says so until the poll drops the question.
+	 */
 	export const withAnswered = (
 		state: State,
 		questionId: string,
 		answer: string,
-	): State =>
-		withBanner(state, questionId, (banner) => ({ ...banner, answer }));
+	): State => {
+		const pinned = withBanner(state, questionId, (banner) => ({
+			...banner,
+			answer,
+		}));
+		if (!state.tabs.queue.some((q) => q.questionActivityId === questionId))
+			return pinned;
+		const answered = new Map(state.tabs.answered).set(questionId, answer);
+		return withTabs(pinned, { answered });
+	};
 
-	/** The write of `answer` failed: the banner takes digits again, unless it has since moved on. */
+	/** The write of `answer` failed: the question takes digits again, unless it has since moved on. */
 	export const withoutAnswer = (
 		state: State,
 		questionId: string,
 		answer: string,
-	): State =>
-		withBanner(state, questionId, (banner) =>
+	): State => {
+		const pinned = withBanner(state, questionId, (banner) =>
 			banner.answer === answer
 				? {
 						question: banner.question,
@@ -427,8 +492,13 @@ export namespace BoardTabs {
 					}
 				: banner,
 		);
+		if (state.tabs.answered.get(questionId) !== answer) return pinned;
+		const answered = new Map(state.tabs.answered);
+		answered.delete(questionId);
+		return withTabs(pinned, { answered });
+	};
 
-	/** A click on a tab (null is the tracker), or on the banner's `index`th answer. */
+	/** A click on a tab (null is the tracker), or on the `index`th answer of the question on screen. */
 	export const reduceMouse = (
 		state: State,
 		action:
@@ -436,14 +506,15 @@ export namespace BoardTabs {
 			| { type: "answer"; index: number },
 	): Step => {
 		if (action.type === "answer") {
-			const { view } = state;
+			const { view, tabs } = state;
 			// A click on answer n is the digit n: one path, so the two can never disagree.
+			const digit = { name: String(action.index + 1) };
 			const answered =
 				view.type === "detail" && view.banner
-					? reduceBannerKey(state, view.banner, {
-							name: String(action.index + 1),
-						})
-					: null;
+					? reduceBannerKey(state, view.banner, digit)
+					: view.type === "events" && tabs.active !== null
+						? reduceCardTabKey(state, tabs.active, digit)
+						: null;
 			return answered ?? { state, effect: NOTHING };
 		}
 		const known = action.id === null || state.tabs.open.includes(action.id);
@@ -466,20 +537,27 @@ export namespace BoardTabs {
 	} => {
 		const { tabs, view } = state;
 		const banner = view.type === "detail" ? view.banner : undefined;
-		const shown = view.type === "events" ? cardQuestion(tabs) : undefined;
+		const shown =
+			view.type === "events" && tabs.active !== null
+				? cardQuestion(tabs)
+				: undefined;
+		// The question in hand and whether it is settled: the banner's, else the card tab's.
+		const asked = banner
+			? { question: banner.question, settled: isAnswered(tabs, banner) }
+			: shown
+				? { question: shown, settled: isSettled(tabs, shown) }
+				: undefined;
 		return {
-			freeform: banner
-				? freeform(tabs, banner)
-				: shown !== undefined && shown.choices.length === 0,
+			freeform: asked !== undefined && freeform(asked.question, asked.settled),
 			waiting: tabs.queue.length > 0,
 			tabs: tabs.open.length > 0,
 			closable:
 				tabs.active !== null && tabs.cards.get(tabs.active)?.finished === true,
 			back: banner?.cardId !== undefined && tabs.open.includes(banner.cardId),
 			unanswered:
-				banner !== undefined &&
-				!isAnswered(tabs, banner) &&
-				banner.question.choices.length > 0,
+				asked !== undefined &&
+				!asked.settled &&
+				asked.question.choices.length > 0,
 			pinned: banner !== undefined,
 		};
 	};

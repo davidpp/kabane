@@ -40,7 +40,7 @@ export namespace Keymap {
 		closable?: boolean;
 		/** The banner over the detail view is a tabbed card's, so `b` has a tab to go back to. */
 		back?: boolean;
-		/** The banner's question still waits, and offers answers to pick. */
+		/** The question on screen (a banner's or a card tab's) still waits, and offers answers to pick. */
 		unanswered?: boolean;
 		/** A question is pinned over the detail view, so the digits are its own. */
 		pinned?: boolean;
@@ -147,6 +147,15 @@ export namespace Keymap {
 		tier: "footer",
 		keys: ["O"],
 		when: (s) => s.linked === true,
+	};
+
+	// A digit over a question that offers answers: the one it numbers.
+	const PICK_ANSWER: Binding = {
+		key: "1-9",
+		label: "answer",
+		tier: "footer",
+		keys: ["1", "2"],
+		when: (s) => s.unanswered === true,
 	};
 
 	// `enter` over a question that offers no answers: the prompt, to type one.
@@ -304,13 +313,7 @@ export namespace Keymap {
 			name: "detail",
 			sheet: true,
 			bindings: [
-				{
-					key: "1-9",
-					label: "answer",
-					tier: "footer",
-					keys: ["1", "2"],
-					when: (s) => s.unanswered === true,
-				},
+				PICK_ANSWER,
 				TYPE_ANSWER,
 				{
 					key: "b",
@@ -381,12 +384,13 @@ export namespace Keymap {
 				{ key: "esc q", label: "back", tier: "footer", keys: ["escape", "q"] },
 			],
 		},
-		// A host card on a tab of its own: its events, the question its sessions asked, and `o` to
-		// the task that question is about.
+		// A host card on a tab of its own: its events, the question its sessions asked answered in
+		// place, and `o` to the task that question is about.
 		cardTab: {
 			name: "tab",
 			sheet: true,
 			bindings: [
+				PICK_ANSWER,
 				TYPE_ANSWER,
 				{
 					key: "x",

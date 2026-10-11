@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 import { expect, test } from "bun:test";
 import type { ActivityCard } from "./ports";
-import { TabBar } from "./tab-bar";
+import { CardTabQuestion, TabBar } from "./tab-bar";
 import { BoardTabs } from "./tabs";
 import { pumpUntil, renderTest } from "./testing";
 
@@ -71,4 +71,53 @@ test("a bar too wide for the pane keeps the tracker, the tab on screen and the o
 	const wide = (await frameOf(tabs, cards, 120)).split("\n")[0] ?? "";
 	expect(wide).toContain("JREP-4");
 	expect(wide).not.toMatch(/\+\d /);
+});
+
+const asked = (n: number, choices: string[]): BoardTabs.Question => ({
+	taskId: `t${n}`,
+	taskShortId: `JREP-${n}`,
+	sessionId: "s1",
+	questionActivityId: `q${n}`,
+	question: `Install dependencies ${n}?`,
+	choices,
+	agent: "claude",
+	askedAt: `2026-10-10T00:0${n}:00.000Z`,
+});
+
+const questionFrame = async (tabs: BoardTabs.Tabs): Promise<string> => {
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<CardTabQuestion tabs={tabs} onAnswer={() => {}} />,
+		{ width: 80, height: 6 },
+	);
+	try {
+		return await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("asks about"),
+		);
+	} finally {
+		destroy();
+	}
+};
+
+test("a card's tab pins its oldest question answerable, counts the rest, and says what was answered", async () => {
+	const card = loop(1);
+	const tabs: BoardTabs.Tabs = {
+		...BoardTabs.NONE,
+		open: [card.id],
+		active: card.id,
+		cards: new Map([[card.id, { finished: false, sessionIds: ["s1"] }]]),
+		queue: [asked(2, ["Yes", "No"]), asked(3, ["Yes", "No"])],
+	};
+	const waiting = await questionFrame(tabs);
+	expect(waiting).toContain(
+		"waiting on you · claude asks about JREP-2 · +1 more",
+	);
+	expect(waiting).toContain("1 Yes · 2 No");
+	expect(waiting).not.toContain("answer it over");
+	const answered = await questionFrame({
+		...tabs,
+		answered: new Map([["q2", "No"]]),
+	});
+	expect(answered).toContain("✓ answered");
+	expect(answered).toContain("→ No");
+	expect(answered).not.toContain("1 Yes");
 });

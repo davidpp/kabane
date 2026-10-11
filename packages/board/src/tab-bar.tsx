@@ -209,15 +209,16 @@ type QuestionBannerProps = {
 	answer?: string;
 	// Where `b` goes: the tabbed card the question is from, as its tab reads (`loop JREP-1`).
 	back?: string;
-	// Over its own task the digits answer it; on a card's tab, `o` takes the human there to.
-	answerable: boolean;
+	// On a card's tab, how many more of its questions wait behind this one.
+	more?: number;
 	// A click on an answer, by index.
-	onAnswer?: (index: number) => void;
+	onAnswer: (index: number) => void;
 };
 
 /**
  * A session question on a raised surface: who asks about which task, the question, and its numbered
- * answers while it waits; what was answered once it is; and the way back to the card's tab.
+ * answers while it waits; what was answered once it is; and the way back to the card's tab. The
+ * digits and a click answer it wherever it is pinned.
  */
 const QuestionBanner = ({
 	question,
@@ -225,7 +226,7 @@ const QuestionBanner = ({
 	answered,
 	answer,
 	back,
-	answerable,
+	more = 0,
 	onAnswer,
 }: QuestionBannerProps): ReactNode => {
 	const theme = useTheme();
@@ -249,6 +250,7 @@ const QuestionBanner = ({
 					{answered ? "✓ answered" : "waiting on you"}
 				</span>
 				{` · ${question.agent} asks about ${taskShortId}`}
+				{more > 0 ? <span fg={theme.accent}>{` · +${more} more`}</span> : null}
 			</text>
 			<text bg={bg} fg={theme.text}>
 				{answered ? null : <span fg={theme.accent}>? </span>}
@@ -269,26 +271,16 @@ const QuestionBanner = ({
 							key={choice}
 							bg={bg}
 							fg={theme.muted}
-							onMouseDown={
-								answerable && onAnswer ? () => onAnswer(index) : undefined
-							}
+							onMouseDown={() => onAnswer(index)}
 							style={{ flexShrink: 0 }}
 						>
 							{index > 0 ? " · " : ""}
-							{answerable ? (
-								<span fg={theme.text}>{`${index + 1} `}</span>
-							) : null}
+							<span fg={theme.text}>{`${index + 1} `}</span>
 							{choice}
 						</text>
 					))}
 				</box>
 			)}
-			{!answered && !answerable && !freeform ? (
-				<text bg={bg} fg={theme.muted}>
-					<span fg={theme.text}>o</span>
-					{` answer it over ${taskShortId}`}
-				</text>
-			) : null}
 			{back ? (
 				<text bg={bg} fg={theme.muted}>
 					<span fg={theme.text}>b</span>
@@ -303,23 +295,32 @@ const QuestionBanner = ({
 const cardName = (card: ActivityCard): string =>
 	[card.label, card.taskShortId].filter(Boolean).join(" ");
 
-/** On a card's own tab, the question its sessions wait on, if any; nothing anywhere else. */
+/**
+ * On a card's own tab, the question its sessions wait on, if any, answered in place, with how many
+ * more wait behind it; nothing anywhere else.
+ */
 export const CardTabQuestion = ({
 	tabs,
+	onAnswer,
 }: {
 	tabs: BoardTabs.Tabs;
+	onAnswer: (index: number) => void;
 }): ReactNode => {
 	const asked = BoardTabs.cardQuestion(tabs);
-	return asked ? (
+	if (!asked) return null;
+	const answer = tabs.answered.get(asked.questionActivityId);
+	return (
 		<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
 			<QuestionBanner
 				question={asked}
 				taskShortId={asked.taskShortId}
-				answered={false}
-				answerable={false}
+				answered={answer !== undefined}
+				{...(answer !== undefined ? { answer } : {})}
+				more={BoardTabs.moreOnCard(tabs)}
+				onAnswer={onAnswer}
 			/>
 		</box>
-	) : null;
+	);
 };
 
 /** The banner pinned over a detail view, if it has one, with the way back to its card's tab. */
@@ -345,7 +346,6 @@ export const PinnedQuestion = ({
 			answered={BoardTabs.isAnswered(tabs, banner)}
 			answer={banner.answer}
 			back={from ? `${cardName(from)}'s tab` : undefined}
-			answerable
 			onAnswer={onAnswer}
 		/>
 	);

@@ -78,17 +78,23 @@ returns, whoever asked it. A card says which are its own by listing the core `ag
 its work runs as in `sessionIds`. The tracker tab's `?n` counts every question; a card's tab counts
 its sessions' questions.
 
-`!` walks them all, oldest first, from any view. A question one of a tabbed card's sessions asked
-lands on that card's tab, which shows it under its header; `o` there opens the question's task. Any
-other question lands straight on its task. Either way the task's detail view opens with the
-question pinned over it as a banner, and a digit (or a click on an answer) answers it through
-`Planner.answerQuestion`, which writes the `decision` and unblocks the session. While the banner is
-pinned the digits are its alone: one past its answers does nothing (`h/l` still walk the sections). `b` on the banner
-goes back to the card's tab when the question came from one. An answered banner says what was
-answered and clears when you leave the view; an unanswered one stays pinned until it is answered.
-A question that offers no answers (freeform) takes a typed one: `enter`, on its banner or on the
-card's tab that shows it, opens the board's prompt (below), and what is sent goes to
-`Planner.answerQuestion` as the answer.
+`!` walks them all, oldest first, from any view; on the only question, already on screen, it says
+nothing else is waiting. A question one of a tabbed card's sessions asked lands on that card's tab,
+pinned under its header and answered there: a digit (or a click on an answer) answers it through
+`Planner.answerQuestion`, which writes the `decision` and unblocks the session. The tab shows its
+sessions' oldest question first, with `+n more` for the rest, and says what was answered until the
+next poll drops it and moves on to the next. `o` there opens the question's task for context, with
+the question pinned over it. Any other question lands straight on its task's detail view, pinned
+over it as a banner that answers the same way. While a question is pinned the digits are its alone:
+one past its answers does nothing (`h/l` still walk the sections or lanes), and a shifted digit is
+never one (a terminal that reports shift+1 by its base key means `!`). `b` on the banner goes back
+to the card's tab when the question came from one. An answered banner says what was answered and
+clears when you leave the view; an unanswered one stays pinned until it is answered. A question
+that offers no answers (freeform) takes a typed one: `enter`, on its banner or on the card's tab
+that shows it, opens the board's prompt (below), and what is sent goes to
+`Planner.answerQuestion` as the answer. Every surface answers through the one `answerQuestion`
+effect: marked answered on the keypress, so a second digit answers nothing, and taken back if the
+write fails.
 
 Core records no author on an activity. Before it writes any answer, the board calls the source's
 optional `answering(questionId)`, so a host that keeps who answered (the loop notes the board's actor

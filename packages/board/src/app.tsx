@@ -1021,8 +1021,13 @@ export const App = ({
 				onCard={takeCard}
 				header={tabs.active === cardId ? cardHeader : undefined}
 				expanded={CardTab.view(tabs, cardId).expanded}
-				// On a card's own tab, the question its sessions wait on.
-				banner={<CardTabQuestion tabs={tabs} />}
+				// On a card's own tab, the question its sessions wait on, answered in place.
+				banner={
+					<CardTabQuestion
+						tabs={tabs}
+						onAnswer={(index) => dispatchMouse({ type: "answer", index })}
+					/>
+				}
 				keys={keys}
 				pane={pane}
 			/>,

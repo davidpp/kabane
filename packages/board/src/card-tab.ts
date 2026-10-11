@@ -1,8 +1,7 @@
-// A host card's own tab, past what the tab bar decides (tabs.ts): which of its lanes is on screen,
-// whether its header is expanded, the actions it offers, and a question it shows that takes a typed
-// answer. Plain functions over the
-// board's state, like the rest of the key routing, so the keys and the mouse are tested without a
-// renderer.
+// A host card's own tab, past what the tab bar decides (tabs.ts, which also answers the question the
+// tab shows): which of its lanes is on screen, whether its header is expanded, and the actions it
+// offers. Plain functions over the board's state, like the rest of the key routing, so the keys and
+// the mouse are tested without a renderer.
 //
 // Lanes are the card's named streams (one per agent session, say). Lane 0 is all of them, live; then
 // each lane in the host's order. The lane on screen is kept by NAME per card, so a lane the host adds
@@ -15,7 +14,7 @@ import type { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { type CardAction, STOP_ACTION } from "./ports";
 import { BoardPrompt } from "./prompt";
-import { BoardTabs } from "./tabs";
+import type { BoardTabs } from "./tabs";
 
 export namespace CardTab {
 	type State = BoardNav.BoardState;
@@ -139,14 +138,6 @@ export namespace CardTab {
 			: { state, effect: NOTHING };
 	};
 
-	// `enter`: type the answer to the question the tab shows, when it offers none to pick.
-	const answer = (state: State): Step | null => {
-		const question = BoardTabs.cardQuestion(state.tabs);
-		return question && question.choices.length === 0
-			? BoardTabs.typeAnswer(state, question)
-			: null;
-	};
-
 	const keyOf = (key: BoardNav.KeyInput): string => key.sequence ?? key.name;
 
 	/** The card's own keys on its tab. Null for the keys the event view under it answers (j/k). */
@@ -169,9 +160,6 @@ export namespace CardTab {
 				return stop(state, id);
 			case "e":
 				return toggleHeader(state, id);
-			case "return":
-			case "enter":
-				return answer(state);
 			default: {
 				const action = actionsOf(state.tabs, id).find(
 					(a) => a.id !== STOP_ACTION && a.key === keyOf(key),
