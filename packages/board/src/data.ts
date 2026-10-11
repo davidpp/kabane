@@ -451,6 +451,15 @@ export namespace BoardData {
 		return Planner.updateTask(basePath, id, { state: "done" });
 	};
 
+	// An agent session's question, answered from the board: core writes the `decision` that answers
+	// it and unblocks the session once nothing on it is left unanswered.
+	export const answerQuestion = async (
+		basePath: string,
+		questionId: string,
+		answer: string,
+	): Promise<Result<AgentActivity>> =>
+		Planner.answerQuestion(basePath, { questionId, answer });
+
 	// The planner's review op (mirrors tRPC `review` / `jake plan review`): clears the needsReview flag
 	// and stamps the verification record — NOT a bare boolean flip. Review is a flag lifecycle, never a
 	// state (planner CLAUDE.md: `needs_review` is not one of the 7 canonical states).

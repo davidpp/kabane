@@ -158,7 +158,7 @@ export const activityStrip = (
 			continue;
 		byKind.set(card.kind, (byKind.get(card.kind) ?? 0) + 1);
 	}
-	const inputs = activity.questionsByTaskId.size;
+	const inputs = BoardActivity.questions(activity).length;
 	const parts: string[] = [];
 	let first = true;
 	for (const [kind, count] of byKind) {
@@ -290,7 +290,7 @@ const Row = ({
 	const cards = activity
 		? BoardActivity.inFlightForTask(activity, task.id, shortId)
 		: [];
-	// Row badges echo the sidebar, which animates the same cards.
+	// Row badges echo the header strip, which animates the same cards.
 	const badge = cards[0] ? cardBadge(cards[0], RUNNING_ECHO) : null;
 	const more = moreBadge(cards.length - 1, RUNNING_ECHO);
 	const input = activity?.questionsByTaskId.has(task.id) ? " · ? input" : "";
@@ -565,9 +565,6 @@ export type BoardProps = {
 	// The copilot pane, rendered between the content and the footer. A slot rather than a float: the
 	// panel has real height and must push the view up, not cover it.
 	pane?: ReactNode;
-	// When the sidebar is visible, its width is subtracted from the available row width for
-	// truncation — otherwise a badged row wraps into a second line.
-	sidebarWidth?: number;
 	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation).
 	// Optional so render-only tests fall back to what the board knows itself.
 	keys?: Keymap.Live;
@@ -591,7 +588,6 @@ export const Board = ({
 	notice,
 	focus = "board",
 	pane,
-	sidebarWidth: sbWidth = 0,
 	keys,
 }: BoardProps): ReactNode => {
 	const { width } = useTerminalDimensions();
@@ -601,11 +597,10 @@ export const Board = ({
 	const spinnerFrame = useSpinnerFrame(
 		activity ? anyActivityRunning(activity) : false,
 	);
-	// A count of exactly what the sidebar is listing in full, three columns to the right. It earns
-	// its place only when there is no sidebar to read instead.
-	const strip =
-		activity && sbWidth === 0 ? activityStrip(activity, spinnerFrame) : "";
-	const available = Math.max(MIN_TITLE_WIDTH, width - RESERVED_COLS - sbWidth);
+	// What is in flight and what waits on the human, counted; the tab bar above names the tabbed
+	// cards one by one.
+	const strip = activity ? activityStrip(activity, spinnerFrame) : "";
+	const available = Math.max(MIN_TITLE_WIDTH, width - RESERVED_COLS);
 	// Quiet by default: `all` kinds and `open` are what the board shows unfiltered, and this header
 	// <text> does no truncation (unlike StatusBar), so an always-on filter part would spend a narrow
 	// frame's columns saying that nothing is filtered.

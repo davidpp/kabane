@@ -21,7 +21,7 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 |---|---|---|
 | `cwd` | yes | — |
 | `basePath` | yes | — (the handle the configured `DbProvider` reads) |
-| `activity: ActivitySource` | no | sidebar shows `no activity`, no badges, no header strip |
+| `activity: ActivitySource` | no | no badges, no header strip, no tabs beside the tracker |
 | `dispatcher: Dispatcher` | no | `a` flashes `no dispatcher configured` in the footer |
 | `copilot: Copilot` | no | `A` flashes `no copilot configured` in the footer |
 | `resolveScope(cwd)` | no | the board opens on all scopes (the CLI passes `@cabane/core/scope` detection) |
@@ -40,19 +40,42 @@ interface ActivitySource {
 }
 ```
 
-`load()` returns flat cards, newest first, already capped. A card carries `kind` (the sidebar
-section it groups under — the host picks the word, `"loops"`, `"runs"`), `label`, `status`
+`load()` returns flat cards, newest first, already capped. A card carries `kind` (what the
+header strip counts it as — the host picks the word, `"loops"`, `"runs"`), `label`, `status`
 (`pending | running | paused | completed | failed`), an optional `taskId` or `taskShortId`, and
 `detail` lines joined with ` · ` after the label. The board renders:
 
-- a row badge for the first in-flight card of a task: `· ⠹ loop · implement 3`, plus `· ⠹ +n` for more
-- a header strip counting in-flight cards per kind: `· ⠹ 2 loops · 1 run · 1 input`
+- a row badge for the first in-flight card of a task: `· ● loop · implement 3`, plus `· ● +n` for more
+- a header strip counting in-flight cards per kind and the questions waiting: `· ⠹ 2 loops · 1 run · 1 input`
 - a status line under the detail header for the first in-flight card, and an `activity` block listing all
-- the sidebar, grouped by kind, then `input needed` (questions come from the tracker, not the host)
+- a tab of its own for a card with `tab: true` (below)
 
 `card` and `events` are optional. When a card has `hasEvents: true` and the source implements
-`events`, `enter` on it in the sidebar (or `o` in the detail view) opens the event log, polled every
-second until the card leaves the in-flight states.
+`events`, `o` in the detail view opens the event log, polled every second until the card leaves
+the in-flight states.
+
+#### Tabs and the questions waiting on you
+
+The top row is the tab bar. Tab 1 is the tracker (the board and every view pushed over it); then
+one tab per card with `tab: true`, in the order they appeared, labelled with the card's state glyph
+and its `taskShortId` (else its `label`). The tab is the card's event log. A finished card keeps its
+tab until `w` closes it, and a closed one does not come back this session. `{` and `}` walk the
+tabs, wrapping; a click on a tab switches to it. Starting work does not switch tabs. Only the tab on
+screen animates its spinner; a running card on another tab is the still `●`.
+
+Questions are core's, never the host's: every unanswered `question` activity `Planner.getNeedsInput`
+returns, whoever asked it. A card says which are its own by listing the core `agent_session` ids
+its work runs as in `sessionIds`. The tracker tab's `?n` counts every question; a card's tab counts
+its sessions' questions.
+
+`!` walks them all, oldest first, from any view. A question one of a tabbed card's sessions asked
+lands on that card's tab, which shows it under its header; `o` there opens the question's task. Any
+other question lands straight on its task. Either way the task's detail view opens with the
+question pinned over it as a banner, and a digit (or a click on an answer) answers it through
+`Planner.answerQuestion`, which writes the `decision` and unblocks the session. `b` on the banner
+goes back to the card's tab when the question came from one. An answered banner says what was
+answered and clears when you leave the view; an unanswered one stays pinned until it is answered.
+A question that offers no answers (freeform) is shown but has to be answered where it was asked.
 
 ### `Dispatcher`
 
@@ -80,8 +103,8 @@ interface Copilot {
 ```
 
 The copilot is a PANE above the footer, always mounted, never a modal: one status row when it is
-not focused, a bordered panel when it is. `tab` and `⇧tab` cycle focus board → copilot → sidebar,
-skipping panes that are not visible; `A` (or `:`) jumps straight to it. Its title carries a chip
+not focused, a bordered panel when it is. `tab` and `⇧tab` move focus between the view and the
+copilot; `A` (or `:`) jumps straight to it. Its title carries a chip
 saying what the prompt carries (`JCAB-31 · 3 marked · inbox`), and because the buffer outlives a
 focus change you can type half a prompt, tab to the board, mark three more rows, and tab back to
 find the chip updated under you.
@@ -101,17 +124,16 @@ pane's row shows `⠹ copilot · 2/5 · <last tool call>` while it runs — the 
 plan — `✓ copilot · <the agent's last line>` when it ends, `✗ copilot · <reason>` on an error or a
 cancel; the finished indicator stays until the next keypress, which also clears the `✦ ai` glyphs.
 
-Exactly one surface animates per fact: the pane owns the copilot, the sidebar owns host cards, and
-every echo of a running thing renders `●` rather than a frozen spinner frame (see `spinner.ts`). `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
+Exactly one surface animates per fact: the pane owns the copilot, the tab on screen owns its card,
+and every echo of a running thing renders `●` rather than a frozen spinner frame (see `spinner.ts`). `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
 `error`, `done`); each `tool_result` reloads the board so the copilot's writes appear as they
 land. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
 rather than inviting a prompt, and `enter` flashes `a turn is running · o for its transcript, x
 there stops it` instead of dropping what was typed — the draft keeps until the turn ends.
 
-The turn also appears as an in-memory activity card (`kind: "copilot"`) at the top of the
-sidebar. `o` — from the board once the session has a transcript at all, from the detail view while
-the indicator is up, the task's own events otherwise — or `enter` on the card opens the event view
-on it: prose as text lines, thoughts dimmed, tool calls with the usual glyphs, the last few turns
+The turn also appears as an in-memory activity card (`kind: "copilot"`), counted in the header
+strip while it runs. `o` — from the board once the session has a transcript at all, from the detail
+view while the indicator is up, the task's own events otherwise — opens the event view on it: prose as text lines, thoughts dimmed, tool calls with the usual glyphs, the last few turns
 oldest-first each under the prompt that started it. `x` there is the ONE key that stops a running
 turn; `esc` returns. The pane's row names `o` wherever there is a transcript to open, because the
 board's footer is trimmed to the board's own keys. Nothing is persisted: the log is a session

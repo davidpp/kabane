@@ -8,14 +8,20 @@ import { type ActivityCard, type ActivitySource, isInFlight } from "./ports";
 export namespace BoardActivity {
 	export type AwaitingQuestion = {
 		taskId: string;
+		taskShortId: string;
 		sessionId: string;
 		questionActivityId: string;
 		/** Human-readable question text (metadata fence stripped). */
 		question: string;
+		/** The answers the asker offered, in order; empty for a freeform question. */
+		choices: readonly string[];
+		/** Who asks: the session's agent. */
+		agent: string;
+		askedAt: string;
 	};
 
 	export type ActivityMap = {
-		// Every card the source returned, newest first (the sidebar list).
+		// Every card the source returned, newest first.
 		cards: ActivityCard[];
 		// In-flight cards keyed by task ULID (card badges, detail header).
 		inFlightByTaskId: Map<string, ActivityCard[]>;
@@ -68,14 +74,24 @@ export namespace BoardActivity {
 			const parsed = parseQuestionBody(row.question.body);
 			push(activity.questionsByTaskId, row.task.id, {
 				taskId: row.task.id,
+				taskShortId: row.task.shortId ?? row.task.id.slice(0, 8),
 				sessionId: row.session.id,
 				questionActivityId: row.question.id,
 				question: parsed.question,
+				choices: parsed.choices,
+				agent: row.session.agent,
+				askedAt: row.question.createdAt,
 			});
 		}
 
 		return ok(activity);
 	};
+
+	// Every question waiting on the human, oldest first: the order `!` walks them in.
+	export const questions = (activity: ActivityMap): AwaitingQuestion[] =>
+		[...activity.questionsByTaskId.values()]
+			.flat()
+			.sort((a, b) => a.askedAt.localeCompare(b.askedAt));
 
 	// In-flight cards for a task, matched by ULID or shortId, deduped by card id. Pure.
 	export const inFlightForTask = (

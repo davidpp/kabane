@@ -22,7 +22,7 @@ export type BoardDeps = {
 	cwd: string;
 	// Storage handle for the configured Db provider (a directory for bun:sqlite).
 	basePath: string;
-	// Host activity feed. Default: none, the sidebar shows "no activity".
+	// Host activity feed. Default: none, no badges and no tabs beside the tracker.
 	activity?: ActivitySource;
 	// Host dispatch. Default: none, `a` flashes "no dispatcher configured".
 	dispatcher?: Dispatcher;

@@ -13,8 +13,8 @@ export type ActivityStatus =
 	| "completed"
 	| "failed";
 
-// One in-flight or recent unit of host work, projected for display. `kind` is the sidebar section
-// it groups under (the host picks the word: "loops", "runs"); `label` is the short name on the row;
+// One in-flight or recent unit of host work, projected for display. `kind` is what the header strip
+// counts it as (the host picks the word: "loops", "runs"); `label` is the short name on the row;
 // `detail` lines are joined with ` · ` after the label. A card may reference its task by ULID, by
 // shortId (when the host only knows the label), or not at all.
 export type ActivityCard = {
@@ -31,8 +31,14 @@ export type ActivityCard = {
 	stale?: boolean;
 	detail: string[];
 	error?: string;
-	// Whether `ActivitySource.events` has anything for this card (enter/`o` opens the event view).
+	// Whether `ActivitySource.events` has anything for this card (`o` opens the event view).
 	hasEvents?: boolean;
+	// Show this card as a tab of its own beside the tracker. A finished card keeps its tab until the
+	// human closes it with `w`.
+	tab?: boolean;
+	// The core agent sessions this card's work runs as. A question one of them asks is the card's:
+	// its tab counts it, and `!` lands on the tab rather than on the question's task.
+	sessionIds?: readonly string[];
 };
 
 export type ActivityEvent = {

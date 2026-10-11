@@ -32,6 +32,16 @@ export namespace Keymap {
 		history?: boolean;
 		/** The dispatch picker has triggers to move through. */
 		ready?: boolean;
+		/** A session question waits on the human, so `!` has somewhere to go. */
+		waiting?: boolean;
+		/** There are tabs besides the tracker. */
+		tabs?: boolean;
+		/** The card on screen is over, so its tab can close. */
+		closable?: boolean;
+		/** The banner over the detail view is a tabbed card's, so `b` has a tab to go back to. */
+		back?: boolean;
+		/** The banner's question still waits, and offers answers to pick. */
+		unanswered?: boolean;
 		/** The `?` sheet is taller than the pane. */
 		scrollable?: boolean;
 		/** Setup found harnesses to tick. */
@@ -58,7 +68,7 @@ export namespace Keymap {
 		| "searchResults"
 		| "detail"
 		| "transcript"
-		| "sidebar"
+		| "cardTab"
 		| "copilot"
 		| "palette"
 		| "dispatch"
@@ -86,9 +96,29 @@ export namespace Keymap {
 		keys: ["?"],
 	};
 
-	/** The keys that work wherever the sheet opens: board, detail, transcript, sidebar. */
+	/**
+	 * `!`: the next question waiting on the human. The one everywhere key a footer shows, and only
+	 * while something waits: from any tab, it is the way to whatever is blocked on you.
+	 */
+	const NEXT_QUESTION: Binding = {
+		key: "!",
+		label: "answer next",
+		tier: "footer",
+		keys: ["!"],
+		when: (s) => s.waiting === true,
+	};
+
+	/** The keys that work wherever the sheet opens: board, detail, transcript, a card's tab. */
 	export const EVERYWHERE: readonly Binding[] = [
 		HELP,
+		NEXT_QUESTION,
+		{
+			key: "{ }",
+			label: "previous · next tab",
+			tier: "help",
+			keys: ["{", "}"],
+			when: (s) => s.tabs === true,
+		},
 		{ key: "A :", label: "ask the copilot", tier: "help", keys: ["A", ":"] },
 		{
 			key: "tab ⇧tab",
@@ -96,7 +126,6 @@ export namespace Keymap {
 			tier: "help",
 			keys: ["tab", "shift+tab"],
 		},
-		{ key: "b", label: "show · hide sidebar", tier: "help", keys: ["b"] },
 		{ key: "⌃z", label: "undo", tier: "help", keys: ["ctrl+z"] },
 	];
 
@@ -256,6 +285,20 @@ export namespace Keymap {
 			name: "detail",
 			sheet: true,
 			bindings: [
+				{
+					key: "1-9",
+					label: "answer",
+					tier: "footer",
+					keys: ["1", "2"],
+					when: (s) => s.unanswered === true,
+				},
+				{
+					key: "b",
+					label: "back to its tab",
+					tier: "footer",
+					keys: ["b"],
+					when: (s) => s.back === true,
+				},
 				OPEN_LINK,
 				{
 					key: "o",
@@ -317,18 +360,27 @@ export namespace Keymap {
 				{ key: "esc q", label: "back", tier: "footer", keys: ["escape", "q"] },
 			],
 		},
-		sidebar: {
-			name: "sidebar",
+		// A host card on a tab of its own: its events, the question its sessions asked, and `o` to
+		// the task that question is about.
+		cardTab: {
+			name: "tab",
 			sheet: true,
 			bindings: [
+				{ key: "o", label: "its issue", tier: "footer", keys: ["o"] },
+				{
+					key: "w",
+					label: "close tab",
+					tier: "footer",
+					keys: ["w"],
+					when: (s) => s.closable === true,
+				},
 				{
 					key: "j/k",
-					label: "move",
-					tier: "footer",
+					label: "scroll",
+					tier: "help",
 					keys: ["j", "k", "down", "up"],
 				},
-				{ key: "enter", label: "open", tier: "footer", keys: ["return"] },
-				ESC_BOARD,
+				{ key: "esc q", label: "tracker", tier: "help", keys: ["escape", "q"] },
 			],
 		},
 		// Every key is a prompt character while the copilot has focus, so `?` types a `?`: no sheet.
@@ -513,7 +565,11 @@ export namespace Keymap {
 		const own = context.bindings
 			.filter((b) => b.tier === "footer" && available(b, situation))
 			.map(asHint);
-		return context.sheet ? [...own, asHint(HELP)] : own;
+		// Where the sheet opens, so do the everywhere keys: `!` leads while something waits on you.
+		const waiting = available(NEXT_QUESTION, situation)
+			? [asHint(NEXT_QUESTION)]
+			: [];
+		return context.sheet ? [...waiting, ...own, asHint(HELP)] : own;
 	};
 
 	type SheetRow = Hint & { available: boolean };

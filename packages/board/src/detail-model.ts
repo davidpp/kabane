@@ -98,11 +98,13 @@ export namespace DetailModel {
 
 	/**
 	 * What waits on a human: every question a session asked that nothing answers yet, then any the
-	 * host reported that the records do not carry (a host that tracks sessions of its own).
+	 * host reported that the records do not carry (a host that tracks sessions of its own). The one
+	 * `pinned` in a banner over the view is left to the banner, so it is not read twice.
 	 */
 	export const openQuestions = (
 		records: BoardData.DetailRecords | undefined,
 		awaiting: readonly BoardActivity.AwaitingQuestion[] = [],
+		pinned?: string,
 	): OpenQuestion[] => {
 		const fromSessions = records
 			? unansweredQuestions(activitiesOf(records)).map((a) => ({
@@ -114,7 +116,7 @@ export namespace DetailModel {
 		const fromHost = awaiting
 			.filter((q) => !seen.has(q.questionActivityId))
 			.map((q) => ({ id: q.questionActivityId, question: q.question }));
-		return [...fromSessions, ...fromHost];
+		return [...fromSessions, ...fromHost].filter((q) => q.id !== pinned);
 	};
 
 	/** The task at a glance: state, a priority other than normal, kind, assignee, review. */

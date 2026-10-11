@@ -331,6 +331,10 @@ const question = (taskId: string): BoardActivity.AwaitingQuestion => ({
 	sessionId: "s1",
 	questionActivityId: "q1",
 	question: "Which auth flow?",
+	taskShortId: "JAKE-1",
+	choices: [],
+	agent: "claude",
+	askedAt: "2026-10-10T00:00:00.000Z",
 });
 
 const activityWith = (
@@ -648,7 +652,7 @@ test("the ? sheet lists the view's own keys under its name, then the ones that w
 });
 
 test("every ? sheet row reads whole at forty columns", () => {
-	for (const context of ["board", "detail", "transcript", "sidebar"] as const)
+	for (const context of ["board", "detail", "transcript", "cardTab"] as const)
 		for (const line of sheetLines(Keymap.sheet(context)))
 			expect({ context, line, fits: sheetLineWidth(line) <= 38 }).toEqual({
 				context,

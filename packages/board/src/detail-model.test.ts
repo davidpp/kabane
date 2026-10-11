@@ -126,12 +126,20 @@ describe("openQuestions", () => {
 				sessionId: "s1",
 				questionActivityId: "q2",
 				question: "Which tab opens first?",
+				taskShortId: "JAKE-1",
+				choices: [],
+				agent: "claude",
+				askedAt: "2026-10-10T00:00:00.000Z",
 			},
 			{
 				taskId: "t1",
 				sessionId: "s9",
 				questionActivityId: "h1",
 				question: "Ship it?",
+				taskShortId: "JAKE-1",
+				choices: [],
+				agent: "claude",
+				askedAt: "2026-10-10T00:00:00.000Z",
 			},
 		]);
 		expect(open.map((q) => q.id)).toEqual(["q2", "h1"]);
@@ -145,9 +153,17 @@ describe("openQuestions", () => {
 					sessionId: "s9",
 					questionActivityId: "h1",
 					question: "Ship it?",
+					taskShortId: "JAKE-1",
+					choices: [],
+					agent: "claude",
+					askedAt: "2026-10-10T00:00:00.000Z",
 				},
 			]),
 		).toEqual([{ id: "h1", question: "Ship it?" }]);
+	});
+
+	it("leaves the question pinned in a banner over the view to the banner", () => {
+		expect(DetailModel.openQuestions(askedTwice(), [], "q2")).toEqual([]);
 	});
 });
 

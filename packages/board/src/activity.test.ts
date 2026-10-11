@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { err, formatQuestionBody, ok, Planner } from "@cabane/core";
 import { BoardActivity } from "./activity";
+import { BoardData } from "./data";
 import { type ActivityCard, type ActivitySource, noActivity } from "./ports";
 import { dropDb, freshDb } from "./test-db";
 
@@ -197,6 +198,48 @@ describe("BoardActivity.loadActivity", () => {
 		expect(questions?.[0]?.question).toBe("Redis or in-memory?");
 		expect(questions?.[0]?.sessionId).toBe(started.value.id);
 		expect(questions?.[0]?.questionActivityId).toBe(activity.value.id);
+		expect(questions?.[0]?.choices).toEqual(["Redis", "In-memory"]);
+		expect(questions?.[0]?.agent).toBe("claude");
+		expect(questions?.[0]?.taskShortId).toBe(added.value.shortId);
+	});
+
+	it("answering through the board takes the question off the queue and unblocks the session", async () => {
+		const added = await Planner.addTask(TEST_BASE, {
+			title: "Asked twice",
+			kind: "issue",
+		});
+		if (!added.ok) throw added.error;
+		const started = await Planner.startSession(TEST_BASE, {
+			taskId: added.value.id,
+			agent: "claude",
+		});
+		if (!started.ok) throw started.error;
+		const ask = async (body: string): Promise<string> => {
+			const asked = await Planner.addActivity(TEST_BASE, {
+				sessionId: started.value.id,
+				type: "question",
+				body: formatQuestionBody(body, { choices: ["Yes", "No"] }),
+			});
+			if (!asked.ok) throw asked.error;
+			return asked.value.id;
+		};
+		const first = await ask("First?");
+		await ask("Second?");
+
+		const before = await BoardActivity.loadActivity(TEST_BASE, noActivity);
+		if (!before.ok) throw before.error;
+		// Oldest first: the order `!` walks them in.
+		expect(
+			BoardActivity.questions(before.value).map((q) => q.question),
+		).toEqual(["First?", "Second?"]);
+
+		const answered = await BoardData.answerQuestion(TEST_BASE, first, "Yes");
+		expect(answered.ok).toBe(true);
+		const after = await BoardActivity.loadActivity(TEST_BASE, noActivity);
+		if (!after.ok) throw after.error;
+		expect(BoardActivity.questions(after.value).map((q) => q.question)).toEqual(
+			["Second?"],
+		);
 	});
 
 	it("groups multiple unanswered questions under the same task", async () => {

@@ -17,6 +17,7 @@ import type {
 	CopilotShortcut,
 	TriggerDescriptor,
 } from "./ports";
+import { BoardTabs } from "./tabs";
 
 export namespace BoardNav {
 	export type KindFilter = "all" | ItemKind;
@@ -43,10 +44,16 @@ export namespace BoardNav {
 	// on top. Modeled as a discriminated `view` (not a flat `detailOpen` boolean) so `esc` pops exactly
 	// one level — from detail back to the board — WITHOUT the same press also widening scope. A detail
 	// view without a `tab` is on the default one; the events view remembers the tab it was opened
-	// from, so `esc` lands back on it.
+	// from, so `esc` lands back on it. A detail view may carry a session question pinned over it
+	// (`!`, or `o` from a card's tab), answerable with the brief on screen.
 	type BoardView =
 		| { type: "board" }
-		| { type: "detail"; taskId: string; tab?: DetailModel.Tab }
+		| {
+				type: "detail";
+				taskId: string;
+				tab?: DetailModel.Tab;
+				banner?: BoardTabs.Banner;
+		  }
 		| {
 				type: "events";
 				cardId: string;
@@ -157,15 +164,7 @@ export namespace BoardNav {
 	// to all scopes. `view` is the top of the view stack.
 	// Which pane has the keyboard. One ring for the whole board: which view is on screen does not
 	// change what `tab` means.
-	export type Focus = "board" | "copilot" | "sidebar";
-
-	type SidebarState = {
-		visible: boolean;
-		selected: number;
-		/** Total sidebar items — updated by app.tsx when activity loads. The reducer uses this
-		 *  for j/k bounds; render clamps if it drifts. */
-		itemCount: number;
-	};
+	export type Focus = "board" | "copilot";
 
 	// Reverse patch — the subset of task fields any board mutation can change. Applied verbatim through
 	// Planner.updateTask to walk a task back to its pre-mutation values.
@@ -194,7 +193,8 @@ export namespace BoardNav {
 		// A boolean modal flag, same lifecycle as `dispatch`: owns the keyboard while open.
 		help: boolean;
 		focus: Focus;
-		sidebar: SidebarState;
+		// The tab bar and the questions waiting on the human (tabs.ts).
+		tabs: BoardTabs.Tabs;
 		// The working set: task ids toggled with `m`, in mark order (a Set keeps insertion order, and
 		// the copilot's context drops the OLDEST mark first when its brief budget runs out). Survives
 		// every reload; `esc` clears it before it clears anything else.
@@ -238,7 +238,8 @@ export namespace BoardNav {
 		| { type: "notice"; notice: Notice }
 		| { type: "dispatch"; triggerId: string; id: string }
 		| { type: "loadTriggers"; taskId: string }
-		| { type: "sidebarSelect" }
+		// A session question answered from its banner: core writes the decision.
+		| { type: "answerQuestion"; questionId: string; answer: string }
 		| { type: "openEvents"; taskId: string }
 		// `O`: hand this task's linked issue to the OS. app.tsx reads the link and composes the notice.
 		| { type: "openLink"; id: string }
@@ -258,7 +259,11 @@ export namespace BoardNav {
 		| { type: "select"; row: number }
 		| { type: "toggleExpand"; row: number }
 		| { type: "copy" }
-		| { type: "detailTab"; tab: DetailModel.Tab };
+		| { type: "detailTab"; tab: DetailModel.Tab }
+		// The tab bar: a card's tab, or the tracker (null).
+		| { type: "tab"; id: string | null }
+		// The pinned banner's `index`th answer.
+		| { type: "answer"; index: number };
 
 	const NONE: Effect = { type: "none" };
 	const SEARCH_OFF: SearchState = { mode: "off" };
@@ -371,30 +376,14 @@ export namespace BoardNav {
 		return touched;
 	};
 
-	// The ring, in tab order. The sidebar drops out of it when hidden (`b`, or a terminal too narrow
-	// for it) — tab must never move focus somewhere the human cannot see.
-	const RING: readonly Focus[] = ["board", "copilot", "sidebar"];
+	// The ring, in tab order: the view on screen, then the copilot pane under it.
+	const RING: readonly Focus[] = ["board", "copilot"];
 
-	const focusable = (state: BoardState): Focus[] =>
-		RING.filter((pane) => pane !== "sidebar" || state.sidebar.visible);
-
-	// `delta` is +1 for tab, -1 for ⇧tab. A focus that has left the ring (the sidebar was just
-	// hidden) lands on the board, which is always in it.
+	// `delta` is +1 for tab, -1 for ⇧tab.
 	const cycleFocus = (state: BoardState, delta: 1 | -1): BoardState => {
-		const ring = focusable(state);
-		const at = ring.indexOf(state.focus);
-		const next = ring[(at + delta + ring.length) % ring.length] ?? "board";
+		const at = RING.indexOf(state.focus);
+		const next = RING[(at + delta + RING.length) % RING.length] ?? "board";
 		return next === state.focus ? state : { ...state, focus: next };
-	};
-
-	// `b`: show or hide the sidebar. Focus cannot rest on a pane that is gone.
-	const toggleSidebar = (state: BoardState): BoardState => {
-		const visible = !state.sidebar.visible;
-		return {
-			...state,
-			sidebar: { ...state.sidebar, visible },
-			focus: !visible && state.focus === "sidebar" ? "board" : state.focus,
-		};
 	};
 
 	// `A`/`:`: jump straight to the copilot from anywhere. Optimistic like the dispatch overlay —
@@ -1000,7 +989,7 @@ export namespace BoardNav {
 			dispatch: null,
 			help: false,
 			focus: "board",
-			sidebar: { visible: true, selected: 0, itemCount: 0 },
+			tabs: BoardTabs.NONE,
 			marked: new Set<string>(),
 			copilot: COPILOT_IDLE,
 			undo: [],
@@ -1143,13 +1132,32 @@ export namespace BoardNav {
 					state: cycleFocus(state, key.shift ? -1 : 1),
 					effect: NONE,
 				};
-			if (key.name === "b")
-				return { state: toggleSidebar(state), effect: NONE };
+			// The tab bar's keys: which tab is on screen is not a view's business.
+			const tabbed = BoardTabs.reduceGlobalKey(state, key);
+			if (tabbed) return tabbed;
 		}
-		if (state.focus === "sidebar" && state.sidebar.visible)
-			return reduceSidebarKey(state, key);
-		if (state.view.type === "events") return reduceEventsKey(state, key);
-		return state.view.type === "detail"
+		return reduceViewKey(state, key);
+	};
+
+	// The view's own keys. A banner pinned over the detail view takes the keys that answer it first,
+	// and a card's tab answers its own before the event view under it does.
+	const reduceViewKey = (
+		state: BoardState,
+		key: KeyInput,
+	): { state: BoardState; effect: Effect } => {
+		const { view, tabs } = state;
+		if (view.type === "detail" && view.banner) {
+			const answered = BoardTabs.reduceBannerKey(state, view.banner, key);
+			if (answered) return answered;
+		}
+		if (view.type === "events") {
+			const own =
+				tabs.active === null
+					? null
+					: BoardTabs.reduceCardTabKey(state, tabs.active, key);
+			return own ?? reduceEventsKey(state, key);
+		}
+		return view.type === "detail"
 			? reduceDetailKey(state, key)
 			: reduceBoardKey(state, key);
 	};
@@ -1180,8 +1188,7 @@ export namespace BoardNav {
 		};
 	};
 
-	// Event view: j/k scroll, esc/q pop back to the previous view. `b` and `tab` control sidebar
-	// visibility and focus (same as board/detail views).
+	// Event view: j/k scroll, esc/q pop back to the previous view.
 	const reduceEventsKey = (
 		state: BoardState,
 		key: KeyInput,
@@ -1248,8 +1255,8 @@ export namespace BoardNav {
 				? "palette"
 				: "copilot";
 		if (state.search.mode === "typing") return "search";
-		if (state.focus === "sidebar" && state.sidebar.visible) return "sidebar";
-		if (state.view.type === "events") return "transcript";
+		if (state.view.type === "events")
+			return state.tabs.active === null ? "transcript" : "cardTab";
 		if (state.view.type === "detail") return "detail";
 		return state.search.mode === "committed" ? "searchResults" : "board";
 	};
@@ -1291,6 +1298,7 @@ export namespace BoardNav {
 				state.dispatch !== null &&
 				!state.dispatch.loading &&
 				state.dispatch.triggers.length > 0,
+			...BoardTabs.situation(state),
 		};
 	};
 
@@ -1415,6 +1423,8 @@ export namespace BoardNav {
 			return state.view.type === "detail"
 				? withDetailTab(state, action.tab)
 				: { state, effect: NONE };
+		if (action.type === "tab" || action.type === "answer")
+			return BoardTabs.reduceMouse(state, action);
 		if (state.view.type !== "board") return { state, effect: NONE };
 		const rows = visibleRows(state);
 		const row = rows[action.row];
@@ -1581,52 +1591,6 @@ export namespace BoardNav {
 					? withSearch(state, { mode: "typing", query: query + char })
 					: { state, effect: NONE };
 			}
-		}
-	};
-
-	// Sidebar key routing: j/k navigate the flat sidebar item list, enter opens the item,
-	// esc returns focus to the board, tab toggles focus.
-	const reduceSidebarKey = (
-		state: BoardState,
-		key: KeyInput,
-	): { state: BoardState; effect: Effect } => {
-		const last = Math.max(0, state.sidebar.itemCount - 1);
-		switch (key.name) {
-			case "escape":
-				return { state: { ...state, focus: "board" }, effect: NONE };
-			case "j":
-			case "down":
-				return {
-					state: {
-						...state,
-						sidebar: {
-							...state.sidebar,
-							selected: clamp(state.sidebar.selected + 1, 0, last),
-						},
-					},
-					effect: NONE,
-				};
-			case "k":
-			case "up":
-				return {
-					state: {
-						...state,
-						sidebar: {
-							...state.sidebar,
-							selected: clamp(state.sidebar.selected - 1, 0, last),
-						},
-					},
-					effect: NONE,
-				};
-			case "return":
-			case "enter":
-				// The actual item resolution happens in app.tsx — we emit a sidebarSelect effect.
-				return {
-					state,
-					effect: { type: "sidebarSelect" },
-				};
-			default:
-				return { state, effect: NONE };
 		}
 	};
 

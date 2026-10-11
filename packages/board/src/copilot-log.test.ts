@@ -265,7 +265,16 @@ describe("CopilotLog", () => {
 	it("withActivity puts the copilot card first, keeps the host's cards and questions, and is a no-op without a log", () => {
 		const host = BoardActivity.indexCards([hostCard()]);
 		host.questionsByTaskId.set("t1", [
-			{ taskId: "t1", sessionId: "s", questionActivityId: "q", question: "?" },
+			{
+				taskId: "t1",
+				taskShortId: "JAKE-1",
+				sessionId: "s",
+				questionActivityId: "q",
+				question: "?",
+				choices: [],
+				agent: "claude",
+				askedAt: "2026-10-10T00:00:00.000Z",
+			},
 		]);
 		expect(CopilotLog.withActivity(host, null)).toBe(host);
 		const merged = CopilotLog.withActivity(host, started());

@@ -172,9 +172,8 @@ export type EventViewProps = {
 	// `x` is hinted only on the copilot's transcript while its turn runs. Optional so render-only
 	// tests get the transcript's own keys.
 	keys?: Keymap.Live;
-	// Subtracted from the row width when the sidebar is up, so a long plan entry is fitted to what the
-	// view actually has rather than wrapping into a second line.
-	sidebarWidth?: number;
+	// Pinned under the header, above the events: what the card's own tab says is waiting on the human.
+	banner?: ReactNode;
 	// The copilot pane, rendered between the content and the footer. A slot rather than a float: the
 	// panel has real height and must push the view up, not cover it.
 	pane?: ReactNode;
@@ -192,7 +191,7 @@ export const EventView = ({
 	plan = NO_PLAN,
 	permission,
 	keys = TRANSCRIPT_KEYS,
-	sidebarWidth = 0,
+	banner,
 	pane,
 }: EventViewProps): ReactNode => {
 	const [card, setCard] = useState<ActivityCard | null>(initialCard ?? null);
@@ -252,14 +251,8 @@ export const EventView = ({
 		(card.taskId ? (resolveShortId(card.taskId) ?? "—") : "—");
 	const duration = elapsed(card.startedAt, card.finishedAt);
 	const hints = Keymap.footer(keys.context, keys.situation);
-	const contentWidth = Math.max(
-		MIN_ENTRY_COLS,
-		width - sidebarWidth - RESERVED_COLS,
-	);
-	const promptRoom = Math.max(
-		MIN_ENTRY_COLS,
-		width - sidebarWidth - PROMPT_CHROME_COLS,
-	);
+	const contentWidth = Math.max(MIN_ENTRY_COLS, width - RESERVED_COLS);
+	const promptRoom = Math.max(MIN_ENTRY_COLS, width - PROMPT_CHROME_COLS);
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
@@ -271,6 +264,7 @@ export const EventView = ({
 				<span fg={statusColor(card.status, theme)}>{card.status}</span>
 				<span fg={theme.muted}>{` · ${duration}`}</span>
 			</text>
+			{banner}
 			{plan.length > 0 ? (
 				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
 					<PlanBlock

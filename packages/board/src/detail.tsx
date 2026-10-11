@@ -156,8 +156,8 @@ export type DetailProps = {
 	linked?: boolean;
 	// Clicking the header [copy] affordance yanks the brief — same action as the `y` key.
 	onCopy?: () => void;
-	// Columns the sidebar takes beside the view, so the tab bar fits the room it really has.
-	sidebarWidth?: number;
+	// The question pinned in a banner over this view, which the view then does not repeat.
+	pinned?: string;
 	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation).
 	// Optional so render-only tests fall back to what the view knows itself.
 	keys?: Keymap.Live;
@@ -269,12 +269,11 @@ export const Detail = ({
 	pane,
 	linked = false,
 	onCopy,
-	sidebarWidth = 0,
+	pinned,
 	keys,
 }: DetailProps): ReactNode => {
 	const theme = useTheme();
-	const { width } = useTerminalDimensions();
-	const room = Math.max(0, width - sidebarWidth);
+	const { width: room } = useTerminalDimensions();
 	const headerRoom = Math.max(0, room - HEADER_PADDING);
 	const contentRoom = Math.max(0, room - SCROLL_RESERVED - CONTENT_INSET);
 	const loaded = records?.ok ? records.value : undefined;
@@ -286,7 +285,7 @@ export const Detail = ({
 		(c) =>
 			c.status === "running" || c.status === "pending" || c.status === "paused",
 	);
-	const open = DetailModel.openQuestions(loaded, questions);
+	const open = DetailModel.openQuestions(loaded, questions, pinned);
 	const summaries = DetailModel.tabs(loaded, cards?.length ?? 0);
 	const live: Keymap.Live = keys ?? {
 		context: focus === "copilot" ? "copilot" : "detail",

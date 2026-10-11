@@ -3,6 +3,7 @@ import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { BoardContext } from "./context";
 import { BoardData } from "./data";
 import type { BoardNav } from "./nav";
+import { BoardTabs } from "./tabs";
 
 const task = (over: Partial<Task> = {}): Task => ({
 	id: "01H000000000000000000000AA",
@@ -48,7 +49,7 @@ const state = (
 	dispatch: null,
 	help: false,
 	focus: "board",
-	sidebar: { visible: true, selected: 0, itemCount: 0 },
+	tabs: BoardTabs.NONE,
 	marked: new Set(["a", "m"]),
 	copilot: {
 		text: "",

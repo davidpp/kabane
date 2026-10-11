@@ -5,11 +5,7 @@
 // reload by task id. The board starts scoped to the detected project — `esc` widens to all scopes.
 import type { Result, Task } from "@cabane/core";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
-import {
-	useKeyboard,
-	useRenderer,
-	useTerminalDimensions,
-} from "@opentui/react";
+import { useKeyboard, useRenderer } from "@opentui/react";
 import {
 	type ReactNode,
 	useCallback,
@@ -31,13 +27,9 @@ import { Launcher } from "./launcher";
 import { BoardNav } from "./nav";
 import { DispatchOverlay, HelpSheet } from "./overlay";
 import type { ActivitySource, Copilot, Dispatcher } from "./ports";
-import {
-	buildSidebarItems,
-	MIN_SIDEBAR_COLS,
-	Sidebar,
-	sidebarWidth,
-} from "./sidebar";
 import { useSpinnerFrame } from "./spinner";
+import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
+import { BoardTabs } from "./tabs";
 import { useTheme } from "./theme";
 
 export type AppProps = {
@@ -89,22 +81,6 @@ const NO_COPILOT: BoardNav.Notice = {
 
 const errorMessage = (e: unknown): string =>
 	e instanceof Error ? e.message : String(e);
-
-// Sidebar cards from hosts that only know the label: find the task by its shortId.
-const taskIdByShortId = (
-	state: BoardNav.BoardState,
-	shortId: string | undefined,
-): string | null => {
-	if (!shortId) return null;
-	for (const section of state.sections) {
-		for (const { task, children } of section.rows) {
-			if (task.shortId === shortId) return task.id;
-			for (const child of children)
-				if (child.shortId === shortId) return child.id;
-		}
-	}
-	return null;
-};
 
 export const App = ({
 	cwd,
@@ -453,6 +429,61 @@ export const App = ({
 		setState((prev) => (prev ? BoardNav.withCopilotTurn(prev, "error") : prev));
 	}, [copilot, publishLog]);
 
+	// `o` in the detail view: the task's first in-flight card with events, else its most recent one.
+	// A card with a tab of its own opens as that tab, so one card never shows in two places.
+	const openEvents = useCallback(
+		(s: BoardNav.BoardState, taskId: string): void => {
+			const cards = BoardActivity.cardsForTask(
+				activityRef.current,
+				taskId,
+				findTask(s, taskId)?.shortId,
+			).filter((c) => c.hasEvents);
+			const target =
+				cards.find((c) => c.status === "running" || c.status === "pending") ??
+				cards[0];
+			if (!target) {
+				setNotice({ text: "no events", tone: "success" });
+				return;
+			}
+			if (s.tabs.open.includes(target.id)) {
+				setState(
+					BoardTabs.reduceMouse(s, { type: "tab", id: target.id }).state,
+				);
+				return;
+			}
+			setState({
+				...s,
+				view: {
+					type: "events",
+					cardId: target.id,
+					fromView: "detail",
+					fromTaskId: taskId,
+					fromTab: BoardNav.detailTab(s.view),
+				},
+			});
+		},
+		[],
+	);
+
+	// A banner's question answered: core writes the decision, the banner says what was answered until
+	// the human leaves, and the reload takes the question off every badge.
+	const answer = useCallback(
+		async (
+			s: BoardNav.BoardState,
+			questionId: string,
+			text: string,
+		): Promise<void> => {
+			const res = await BoardData.answerQuestion(basePath, questionId, text);
+			setNotice(flash(res, `answered ${text}`));
+			if (res.ok)
+				setState((prev) =>
+					prev ? BoardTabs.withAnswered(prev, questionId, text) : prev,
+				);
+			await reload(s);
+		},
+		[basePath, reload],
+	);
+
 	// The single effect runner, shared by the keyboard and mouse dispatchers so both interaction paths
 	// execute the reducer's output the same way. `next` is the post-reduce state a reload merges into.
 	const runEffect = useCallback(
@@ -542,68 +573,12 @@ export const App = ({
 				case "copilotSetText":
 					inputRef.current?.setText(effect.text);
 					return;
-				case "sidebarSelect": {
-					// Read activity from the ref to avoid stale closure over sidebarItems.
-					const currentItems = buildSidebarItems(activityRef.current);
-					const item = currentItems[next.sidebar.selected];
-					if (!item) return;
-					if (item.type === "card" && item.card.hasEvents) {
-						const fromTaskId =
-							next.view.type === "detail" ? next.view.taskId : undefined;
-						setState({
-							...next,
-							view: {
-								type: "events",
-								cardId: item.card.id,
-								fromView: next.view.type === "detail" ? "detail" : "board",
-								fromTaskId,
-							},
-							focus: "board",
-						});
-						return;
-					}
-					// A card without events, or a question: jump to its task.
-					const taskId =
-						item.type === "input"
-							? item.question.taskId
-							: (item.card.taskId ??
-								taskIdByShortId(next, item.card.taskShortId));
-					if (taskId) {
-						setState({
-							...next,
-							view: { type: "detail", taskId },
-							focus: "board",
-						});
-					}
+				case "answerQuestion":
+					void answer(next, effect.questionId, effect.answer);
 					return;
-				}
-				case "openEvents": {
-					// The first in-flight card with events for the task, else the most recent one.
-					const cards = BoardActivity.cardsForTask(
-						activityRef.current,
-						effect.taskId,
-						findTask(next, effect.taskId)?.shortId,
-					).filter((c) => c.hasEvents);
-					const target =
-						cards.find(
-							(c) => c.status === "running" || c.status === "pending",
-						) ?? cards[0];
-					if (!target) {
-						setNotice({ text: "no events", tone: "success" });
-						return;
-					}
-					setState({
-						...next,
-						view: {
-							type: "events",
-							cardId: target.id,
-							fromView: "detail",
-							fromTaskId: effect.taskId,
-							fromTab: BoardNav.detailTab(next.view),
-						},
-					});
+				case "openEvents":
+					openEvents(next, effect.taskId);
 					break;
-				}
 				case "none":
 					break;
 			}
@@ -619,6 +594,8 @@ export const App = ({
 			copilot,
 			runCopilot,
 			cancelCopilot,
+			answer,
+			openEvents,
 		],
 	);
 
@@ -792,30 +769,23 @@ export const App = ({
 		};
 	}, [basePath, detailTaskId, detailTask?.updatedAt, showDetail]);
 
-	// Update sidebar itemCount whenever activity changes (so the reducer has correct bounds).
+	// The tab bar follows the cards that ask for a tab, and the attention queue follows the tracker's
+	// unanswered questions, both on every activity load.
 	useEffect(() => {
-		setState((prev) => {
-			if (!prev) return prev;
-			const items = buildSidebarItems(shownActivity);
-			if (prev.sidebar.itemCount === items.length) return prev;
-			return {
-				...prev,
-				sidebar: {
-					...prev.sidebar,
-					itemCount: items.length,
-					selected: Math.min(
-						prev.sidebar.selected,
-						Math.max(0, items.length - 1),
-					),
-				},
-			};
-		});
+		setState((prev) =>
+			prev
+				? BoardTabs.withActivity(
+						prev,
+						shownActivity.cards,
+						BoardActivity.questions(shownActivity),
+					)
+				: prev,
+		);
 	}, [shownActivity]);
 
-	const { width: termCols } = useTerminalDimensions();
 	const spinnerFrame = useSpinnerFrame(anyActivityRunning(shownActivity));
 
-	// Resolve task ULID → shortId from loaded sections (for sidebar display).
+	// Resolve task ULID → shortId from loaded sections (for the event view's header).
 	const resolveShortId = useCallback((taskId: string): string | undefined => {
 		const s = stateRef.current;
 		if (!s) return undefined;
@@ -888,120 +858,110 @@ export const App = ({
 			onContentChange={mirrorCopilotText}
 		/>
 	);
-	const showSidebar = state.sidebar.visible && termCols >= MIN_SIDEBAR_COLS;
-	const sbWidth = showSidebar ? sidebarWidth(termCols) : 0;
-	const sidebarEl = showSidebar ? (
-		<Sidebar
-			activity={shownActivity}
-			sidebarWidth={sbWidth}
-			focused={state.focus === "sidebar"}
-			selectedIndex={state.sidebar.selected}
-			spinnerFrame={spinnerFrame}
-			resolveShortId={resolveShortId}
-		/>
-	) : null;
+	// Every view sits under the tab bar; the overlays float over whichever view is on screen.
+	const { tabs } = state;
+	const framed = (view: ReactNode): ReactNode => (
+		<box style={{ flexDirection: "column", flexGrow: 1 }}>
+			<TabBar
+				tabs={tabs}
+				cards={shownActivity.cards}
+				spinnerFrame={spinnerFrame}
+				onSelect={(id) => dispatchMouse({ type: "tab", id })}
+			/>
+			<box style={{ flexDirection: "column", flexGrow: 1 }}>{view}</box>
+			{overlay}
+		</box>
+	);
 
 	if (state.view.type === "events") {
-		const cardId = state.view.cardId;
-		return (
-			<box style={{ flexDirection: "row", flexGrow: 1 }}>
-				<box style={{ flexDirection: "column", flexGrow: 1 }}>
-					<EventView
-						cardId={cardId}
-						initialCard={shownActivity.cards.find((c) => c.id === cardId)}
-						source={shownSource}
-						resolveShortId={resolveShortId}
-						scrollRef={scrollRef}
-						notice={notice}
-						plan={
-							cardId === CopilotLog.CARD_ID
-								? copilotLog?.current.plan
-								: undefined
-						}
-						permission={
-							cardId === CopilotLog.CARD_ID
-								? state.copilot.permission
-								: undefined
-						}
-						keys={keys}
-						sidebarWidth={sbWidth}
-						pane={copilotPane}
-					/>
-				</box>
-				{sidebarEl}
-				{overlay}
-			</box>
+		const { cardId } = state.view;
+		return framed(
+			<EventView
+				// One view per card: switching tabs remounts it on the other card's events.
+				key={cardId}
+				cardId={cardId}
+				initialCard={shownActivity.cards.find((c) => c.id === cardId)}
+				source={shownSource}
+				resolveShortId={resolveShortId}
+				scrollRef={scrollRef}
+				notice={notice}
+				plan={
+					cardId === CopilotLog.CARD_ID ? copilotLog?.current.plan : undefined
+				}
+				permission={
+					cardId === CopilotLog.CARD_ID ? state.copilot.permission : undefined
+				}
+				// On a card's own tab, the question its sessions wait on.
+				banner={<CardTabQuestion tabs={tabs} />}
+				keys={keys}
+				pane={copilotPane}
+			/>,
 		);
 	}
 
 	if (state.view.type === "detail") {
-		const { taskId } = state.view;
+		const { taskId, banner } = state.view;
 		const task = findTask(state, taskId);
 		const taskCards = BoardActivity.cardsForTask(
 			shownActivity,
 			taskId,
 			task?.shortId,
 		);
-		return (
-			<box style={{ flexDirection: "row", flexGrow: 1 }}>
-				<box style={{ flexDirection: "column", flexGrow: 1 }}>
-					<Detail
-						taskId={taskId}
-						task={task}
-						records={detailRecords ?? undefined}
-						cards={taskCards.length > 0 ? taskCards : undefined}
-						questions={shownActivity.questionsByTaskId.get(taskId)}
-						tab={BoardNav.detailTab(state.view)}
-						onTab={(tab) => dispatchMouse({ type: "detailTab", tab })}
-						sidebarWidth={sbWidth}
-						scrollRef={scrollRef}
-						notice={notice}
-						focus={state.focus}
-						pane={copilotPane}
-						linked={linked.has(taskId)}
-						keys={keys}
-						onCopy={() => dispatchMouse({ type: "copy" })}
-					/>
-				</box>
-				{sidebarEl}
-				{overlay}
-			</box>
+		return framed(
+			<>
+				<PinnedQuestion
+					tabs={tabs}
+					banner={banner}
+					cards={shownActivity.cards}
+					onAnswer={(index) => dispatchMouse({ type: "answer", index })}
+				/>
+				<Detail
+					taskId={taskId}
+					task={task}
+					records={detailRecords ?? undefined}
+					cards={taskCards.length > 0 ? taskCards : undefined}
+					questions={shownActivity.questionsByTaskId.get(taskId)}
+					pinned={banner?.question.questionActivityId}
+					tab={BoardNav.detailTab(state.view)}
+					onTab={(tab) => dispatchMouse({ type: "detailTab", tab })}
+					scrollRef={scrollRef}
+					notice={notice}
+					focus={state.focus}
+					pane={copilotPane}
+					linked={linked.has(taskId)}
+					keys={keys}
+					onCopy={() => dispatchMouse({ type: "copy" })}
+				/>
+			</>,
 		);
 	}
 
 	const scopeLabel = state.scoped && scope ? scope.label : "all scopes";
-	return (
-		<box style={{ flexDirection: "row", flexGrow: 1 }}>
-			<box style={{ flexDirection: "column", flexGrow: 1 }}>
-				<Board
-					sections={state.sections}
-					expanded={state.expanded}
-					selectedId={state.selectedId}
-					search={state.search}
-					activity={shownActivity}
-					scopeLabel={scopeLabel}
-					kind={state.kind}
-					status={state.status}
-					marked={state.marked}
-					// The reload after each of the copilot's writes is what puts the fresh `updatedBy`
-					// and `updatedAt` in hand; the reducer decides which of them the glyph is for.
-					touched={BoardNav.copilotTouched(
-						state,
-						copilotLog?.current.card.startedAt,
-					)}
-					linked={linked}
-					keys={keys}
-					scrollRef={listRef}
-					onSelect={(row) => dispatchMouse({ type: "select", row })}
-					onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}
-					notice={notice}
-					focus={state.focus}
-					pane={copilotPane}
-					sidebarWidth={sbWidth}
-				/>
-			</box>
-			{sidebarEl}
-			{overlay}
-		</box>
+	return framed(
+		<Board
+			sections={state.sections}
+			expanded={state.expanded}
+			selectedId={state.selectedId}
+			search={state.search}
+			activity={shownActivity}
+			scopeLabel={scopeLabel}
+			kind={state.kind}
+			status={state.status}
+			marked={state.marked}
+			// The reload after each of the copilot's writes is what puts the fresh `updatedBy`
+			// and `updatedAt` in hand; the reducer decides which of them the glyph is for.
+			touched={BoardNav.copilotTouched(
+				state,
+				copilotLog?.current.card.startedAt,
+			)}
+			linked={linked}
+			keys={keys}
+			scrollRef={listRef}
+			onSelect={(row) => dispatchMouse({ type: "select", row })}
+			onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}
+			notice={notice}
+			focus={state.focus}
+			pane={copilotPane}
+		/>,
 	);
 };

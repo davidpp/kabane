@@ -53,8 +53,11 @@ components:
   footer:
     backgroundColor: "{colors.surface-raised}"
     height: "1lh"
-  sidebar:
+  tab-bar:
     backgroundColor: "{colors.surface-raised}"
+  question-banner:
+    backgroundColor: "{colors.surface-raised}"
+    padding: "{spacing.panel-padding}"
   overlay:
     backgroundColor: "{colors.surface-overlay}"
     padding: "{spacing.panel-padding}"
@@ -208,8 +211,8 @@ italic. That is enough if every step is used deliberately.
 ### Hierarchy
 - **Title** (bold, default fg): the board's header line, the detail view's `id · title`, the
   first line of each intro card.
-- **Label** (bold, default fg, with a muted count): bay labels (`next · 3`), sidebar group
-  titles, the copilot pane's `copilot`.
+- **Label** (bold, default fg, with a muted count): bay labels (`next · 3`), the tab on
+  screen, the copilot pane's `copilot`.
 - **Heading** (bold, `{colors.ink-heading}`; an `#` heading also underlined): markdown headings
   in a brief or a comment.
 - **Body** (regular, default fg): strip titles, brief text, transcript text.
@@ -229,8 +232,8 @@ glyphs.
 ## 4. Elevation
 
 Flat and tonal. There are no shadows and no borders. Depth is three painted steps above the
-terminal's unpainted background: **raised** for docked panels (the sidebar, the footer, the
-copilot pane, setup fields, a comment's author band, and code blocks and quotes in a brief),
+terminal's unpainted background: **raised** for docked panels (the tab bar, the footer, the
+copilot pane, a pinned question, setup fields, a comment's author band, and code blocks and quotes in a brief),
 **overlay** for floating layers (the dispatch picker, the help sheet) and for what sits on a
 raised panel and must still read apart from it (inline code, the copilot's input), and
 **selected** for the one row or field the keyboard is on. A floating layer sits one step above what it covers and carries one cell of padding
@@ -295,10 +298,23 @@ against every glyph already here.
 - **Hints:** the key in default fg, its label muted (`esc close`), in the opencode manner.
   The full list lives behind `?`. A hint for a key that is inert on this row is not shown.
 
-### Sidebar (activity)
-- **Style:** `{components.sidebar}`, frameless rows, bold group labels, `> ` focus gutter.
-- **Content:** activity cards grouped by kind, then the questions waiting for input, which
-  take the accent.
+### Tab bar
+- **Style:** `{components.tab-bar}`, one row across the top of every view. Each tab is its
+  number muted, then for a card its state glyph in the state's hue, then its name; the tab on
+  screen sits on selected in Label weight, the others secondary, split by a faint `│`.
+- **Content:** `tracker` first, then one tab per host card that asked for one, named by its
+  task's short id. `?n` in the accent counts the questions waiting there; the tracker's counts
+  them all.
+- **Motion:** only the tab on screen animates its spinner. A running card on another tab
+  shows the still `●`.
+
+### Question banner
+- **Style:** `{components.question-banner}`, raised, pinned over the detail view it asks about
+  (or under a card tab's header).
+- **Content:** `waiting on you` in the accent and bold, then who asks about which task, muted;
+  the question with an accent `?`; the numbered answers, each key in the text color. Once
+  answered: `✓ answered` in the done hue and the answer after `→`. The detail view under it
+  does not repeat the question.
 
 ### Detail view
 - **Header:** a raised block, one cell of padding each side: `id · title` as Title with the

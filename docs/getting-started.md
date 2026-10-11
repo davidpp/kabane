@@ -119,8 +119,8 @@ content stays the same, but keep a copy if you diff that file.
 
 The board shows the scope of the directory you opened it in: the repo's name in the header,
 tasks grouped by state. A scope with nothing open says so, and how to file the first task.
-The footer lists the everyday keys of where you are: the board, a task, the transcript, the
-sidebar or the copilot each has its own. `?` opens a sheet along the bottom with every key of
+The footer lists the everyday keys of where you are: the board, a task, the transcript, a
+card's tab or the copilot each has its own. `?` opens a sheet along the bottom with every key of
 the view you are in, then the ones that work everywhere, and `j`/`k` scroll it when it is taller
 than the pane. A key that does nothing right now (no row selected, no linked issue) shows faint:
 
@@ -137,8 +137,13 @@ than the pane. A key that does nothing right now (no row selected, no linked iss
 - `⌃z` undoes the last change.
 - `a` is dispatch, a hook for host apps. On its own, kabane has no dispatcher.
 - `O` opens a task's linked issue. On the board, `space` and `h`/`l` fold subtasks, and `r`
-  refreshes. `b` shows or hides the sidebar, and `tab` moves between the board, the copilot
-  and the sidebar.
+  refreshes. `tab` moves between the board and the copilot.
+- The top row is the tab bar: the tracker, then one tab per piece of running work that asks
+  for one (an extension's run, say). `{` and `}` switch tabs, and `w` closes a finished one.
+  `?n` on a tab counts the agent questions waiting on you there.
+- `!` goes to the next question waiting on you, oldest first. It opens the question's task
+  with the question pinned over it, and a digit answers it. From a run's tab, `o` does the
+  same for the question that run's agents asked, and `b` goes back to the run.
 
 The copilot is `A` (or `:`). It opens a one-line prompt at the bottom of the board and
 hands a coding harness what you are looking at: the scope, the selected task, and anything

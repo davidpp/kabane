@@ -1,5 +1,5 @@
 // The in-memory record of the copilot's turns, the current one projected as ONE activity card so the
-// sidebar, the event view and the footer spinner show it through the machinery they already have.
+// header strip, the event view and the footer spinner show it through the machinery they already have.
 // Nothing here persists: the list is a session buffer, capped, and gone when the board closes.
 // `start`, `apply` and `footer` are pure; `source` is the ActivitySource-shaped adapter app.tsx
 // hands the event view, layered over the host's own source.
@@ -17,7 +17,7 @@ import {
 export namespace CopilotLog {
 	// The one card id the reducer and the source agree on; `o` opens the event view on it.
 	export const CARD_ID = "copilot";
-	export const KIND = "copilot";
+	const KIND = "copilot";
 
 	// One prompt and everything it produced: the transcript of that exchange, the agent's todo list
 	// while it worked, and the card carrying its outcome.
@@ -185,7 +185,7 @@ export namespace CopilotLog {
 		},
 	});
 
-	// The copilot card leads the host's cards, so it is the first thing in the sidebar and the one
+	// The copilot card leads the host's cards, so it is the first thing the strip counts and the one
 	// `anyRunning` animates on. Questions come from the tracker and pass through untouched.
 	export const withActivity = (
 		activity: BoardActivity.ActivityMap,

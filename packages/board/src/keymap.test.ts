@@ -8,6 +8,7 @@ import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
+import { BoardTabs } from "./tabs";
 
 const task = (over: Partial<Task> = {}): Task => ({
 	id: "01H000000000000000000000AA",
@@ -72,12 +73,31 @@ const state = (
 	dispatch: null,
 	help: false,
 	focus: "board",
-	sidebar: { visible: true, selected: 1, itemCount: 3 },
+	tabs: BoardTabs.NONE,
 	marked: new Set<string>(),
 	copilot: copilot(),
 	undo: [],
 	...over,
 });
+
+// A finished loop card with a tab, one of whose sessions asked QUESTION about JAKE-2.
+const LOOP = "loop:r1";
+const QUESTION: BoardTabs.Question = {
+	taskId: "p",
+	taskShortId: "JAKE-2",
+	sessionId: "s1",
+	questionActivityId: "q1",
+	question: "LRU or TTL?",
+	choices: ["LRU", "TTL"],
+	agent: "claude",
+	askedAt: "2026-10-10T00:00:00.000Z",
+};
+const TABS: BoardTabs.Tabs = {
+	...BoardTabs.NONE,
+	open: [LOOP],
+	cards: new Map([[LOOP, { finished: true, sessionIds: ["s1"], taskId: "p" }]]),
+	queue: [QUESTION],
+};
 
 const TRIGGERS = [1, 2, 3].map((n) => ({
 	id: `t${n}`,
@@ -108,6 +128,14 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 	detail: [
 		state({ view: { type: "detail", taskId: "p" } }),
 		state({ view: { type: "detail", taskId: "p", tab: "comments" } }),
+		state({
+			view: {
+				type: "detail",
+				taskId: "p",
+				banner: { question: QUESTION, cardId: LOOP },
+			},
+			tabs: TABS,
+		}),
 	],
 	transcript: [
 		state({
@@ -115,7 +143,12 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 			copilot: copilot({ turn: "running", hasLog: true }),
 		}),
 	],
-	sidebar: [state({ focus: "sidebar" })],
+	cardTab: [
+		state({
+			view: { type: "events", cardId: LOOP, fromView: "board" },
+			tabs: { ...TABS, active: LOOP },
+		}),
+	],
 	copilot: [
 		state({ focus: "copilot", copilot: copilot({ history: ["earlier"] }) }),
 	],
@@ -315,10 +348,10 @@ describe("BoardNav.keyContext", () => {
 		expect(
 			BoardNav.keyContext({
 				...base,
-				focus: "sidebar",
-				sidebar: { ...base.sidebar, visible: false },
+				view: { type: "events", cardId: LOOP, fromView: "board" },
+				tabs: { ...TABS, active: LOOP },
 			}),
-		).toBe("board");
+		).toBe("cardTab");
 		expect(
 			BoardNav.keyContext({
 				...base,
