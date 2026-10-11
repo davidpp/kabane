@@ -13,6 +13,7 @@ import {
 import { LoopActivity } from "./activity";
 import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
+import { LoopHeader } from "./header";
 import type { RunStore } from "./store";
 
 const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--wall-minutes <n>] [--continuations <n>] [--spend <amount>]
@@ -130,6 +131,9 @@ const command: Extension.Command = {
 export const loop: Extension = {
 	name: "loop",
 	commands: [command],
-	// Each run on this device is a card with a tab of its own on the board.
-	board: (ctx) => ({ activity: LoopActivity.source(ctx.home) }),
+	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
+	board: (ctx) => ({
+		activity: LoopActivity.source(ctx.home),
+		headers: { [LoopActivity.KIND]: LoopHeader.make(ctx.home, ctx.store) },
+	}),
 };

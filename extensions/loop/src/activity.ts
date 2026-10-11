@@ -45,9 +45,12 @@ export namespace LoopActivity {
 		},
 	];
 
+	/** The kind a run's card has: what the board's strip counts and the header is keyed by. */
+	export const KIND = "loops";
+
 	export const card = (run: RunStore.Run): ActivityCard => ({
 		id: run.id,
-		kind: "loops",
+		kind: KIND,
 		label: "loop",
 		status: STATUS[run.status],
 		taskId: run.parentId,

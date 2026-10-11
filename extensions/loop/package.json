@@ -20,10 +20,14 @@
 		"@cabane/board": "workspace:*",
 		"@cabane/core": "workspace:*",
 		"@cabane/extension": "workspace:*",
+		"@opentui/core": "0.5.10",
+		"@opentui/react": "0.5.10",
+		"react": "19.2.3",
 		"zod": "3.25.76"
 	},
 	"devDependencies": {
 		"@types/bun": "1.4.0",
+		"@types/react": "19.2.7",
 		"typescript": "5.9.3"
 	}
 }

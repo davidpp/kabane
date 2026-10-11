@@ -3,7 +3,10 @@
 	"include": ["**/*.ts", "**/*.tsx"],
 	"exclude": ["node_modules"],
 	"compilerOptions": {
-		"lib": ["ESNext"],
-		"types": ["bun"]
+		"lib": ["ESNext", "DOM"],
+		"types": ["bun"],
+		/* The run's tab header renders inside the board: OpenTUI's React binding. */
+		"jsx": "react-jsx",
+		"jsxImportSource": "@opentui/react"
 	}
 }
