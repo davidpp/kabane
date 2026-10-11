@@ -98,7 +98,7 @@ export namespace LoopHeader {
 					tone: "accent",
 					bold: true,
 				}
-			: { text: "● healthy · claiming ready work", tone: "done", bold: true };
+			: { text: "● running", tone: "done", bold: true };
 	};
 
 	// The gates' step: the last pass, by gate. Green ones are checked; the first red one is named.

@@ -112,9 +112,7 @@ describe("LoopHeader.state", () => {
 			LoopHeader.state(run({ stall: { mark: "m", unchanged: 2 } }), null, NOW)
 				.text,
 		).toBe("● no progress across 2 of 3 session ends");
-		expect(LoopHeader.state(run(), null, NOW).text).toBe(
-			"● healthy · claiming ready work",
-		);
+		expect(LoopHeader.state(run(), null, NOW).text).toBe("● running");
 	});
 
 	it("a paused run says so before anything else about its health", () => {
