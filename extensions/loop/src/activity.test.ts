@@ -44,6 +44,8 @@ const run = (overrides: Partial<RunStore.Run> = {}): RunStore.Run => {
 		usage: {},
 		continuationsUsed: 0,
 		inboxRead: 0,
+		steering: { paused: false, skipped: [], next: [] },
+		gateRuns: [],
 		...overrides,
 	};
 };
@@ -110,12 +112,23 @@ describe("LoopActivity", () => {
 		expect(kept.ok && kept.value.dismissedAt).toBeString();
 	});
 
-	it("a live run offers stop and inject; a finished one offers nothing", () => {
+	it("a live run offers stop, inject and steering; a finished one offers nothing", () => {
 		const live = LoopActivity.card(run({ status: "running", exit: undefined }));
 		expect(live.actions?.map((a) => [a.id, a.key])).toEqual([
 			["stop", "x"],
 			["inject", "i"],
+			["pause", "p"],
+			["skip", "s"],
+			["next", "n"],
 		]);
+		const paused = LoopActivity.card(
+			run({
+				status: "running",
+				exit: undefined,
+				steering: { paused: true, skipped: [], next: [] },
+			}),
+		);
+		expect(paused.actions?.find((a) => a.key === "p")?.id).toBe("resume");
 		expect(LoopActivity.card(run()).actions).toBeUndefined();
 	});
 
@@ -130,18 +143,28 @@ describe("LoopActivity", () => {
 			],
 		});
 		RunStore.create(home, live);
-		const sent = await LoopActivity.act(home, live.id, "inject", {
-			text: "  use the LRU  ",
-			lane: "claude:KAB-2#2",
-		});
+		const sent = await LoopActivity.act(
+			{ home, basePath: home },
+			live.id,
+			"inject",
+			{
+				text: "  use the LRU  ",
+				lane: "claude:KAB-2#2",
+			},
+		);
 		expect(sent).toEqual({
 			ok: true,
 			value: "inject queued for claude:KAB-2#2",
 		});
-		const ended = await LoopActivity.act(home, live.id, "inject", {
-			text: "hi",
-			lane: "claude:KAB-2",
-		});
+		const ended = await LoopActivity.act(
+			{ home, basePath: home },
+			live.id,
+			"inject",
+			{
+				text: "hi",
+				lane: "claude:KAB-2",
+			},
+		);
 		expect(!ended.ok && ended.error.message).toBe("claude:KAB-2 has ended");
 		const inbox = RunStore.readInbox(home, live.id, 0);
 		expect(inbox.ok && inbox.value.entries).toEqual([
@@ -158,14 +181,24 @@ describe("LoopActivity", () => {
 	it("stop asks the runner through the inbox; a run that is over takes no action", async () => {
 		const live = run({ status: "running", exit: undefined, pid: process.pid });
 		RunStore.create(home, live);
-		const asked = await LoopActivity.act(home, live.id, "stop", {});
+		const asked = await LoopActivity.act(
+			{ home, basePath: home },
+			live.id,
+			"stop",
+			{},
+		);
 		expect(asked).toEqual({ ok: true, value: `stop requested for ${live.id}` });
 		const inbox = RunStore.readInbox(home, live.id, 0);
 		expect(inbox.ok && inbox.value.entries.map((e) => e.kind)).toEqual([
 			"stop",
 		]);
 		RunStore.write(home, run());
-		const over = await LoopActivity.act(home, live.id, "stop", {});
+		const over = await LoopActivity.act(
+			{ home, basePath: home },
+			live.id,
+			"stop",
+			{},
+		);
 		expect(!over.ok && over.error.message).toBe(`${live.id} is stopped`);
 	});
 

@@ -6,13 +6,17 @@
 // claims it left open are closed as interrupted and their subtasks released.
 import { err, ok, type Result } from "@cabane/core";
 import { Budget } from "./budget";
+import { Checks } from "./checks";
 import { Claims } from "./claims";
+import { Gates } from "./gates";
+import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
-import { Scheduler } from "./scheduler";
 import { Stall } from "./stall";
 import { RunState } from "./state";
+import { Steering } from "./steering";
 import { Stop } from "./stop";
 import { RunStore } from "./store";
+import { Worktree } from "./worktree";
 
 export namespace Runner {
 	type Deps = RunState.Deps;
@@ -25,6 +29,9 @@ export namespace Runner {
 	const CANCEL_GRACE_MS = 10_000;
 	// Consecutive failed plan reads before the run gives up rather than spinning.
 	const PLAN_FAILURES = 3;
+
+	const plural = (count: number, noun: string): string =>
+		`${count} ${noun}${count === 1 ? "" : "s"}`;
 
 	const sleep = (ms: number) =>
 		new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -74,14 +81,15 @@ export namespace Runner {
 
 	/** Cancel what is live, give it time to stop, kill what will not, settle all of it. */
 	const halt = async (ctx: Ctx, exit: Exit): Promise<RunStore.Run> => {
+		ctx.stopping.abort();
 		const pending = [...ctx.live.values()];
 		for (const { handle } of pending) await handle.cancel();
-		const all = Promise.allSettled(pending.map((l) => l.handle.done));
+		const all = Promise.allSettled(pending.map((l) => l.settled));
 		await Promise.race([all, sleep(CANCEL_GRACE_MS)]);
 		for (const { handle } of pending) handle.close();
 		await Promise.race([all, sleep(CANCEL_GRACE_MS)]);
 		for (const s of ctx.settled.splice(0)) await Claims.settle(ctx, s);
-		for (const [taskId, { sessionId }] of ctx.live)
+		for (const [sessionId, { taskId }] of ctx.live)
 			await Claims.settle(ctx, {
 				taskId,
 				sessionId,
@@ -90,8 +98,23 @@ export namespace Runner {
 		return finish(ctx, exit);
 	};
 
-	// Steering (inject, pause, skip, next) is handled here once its package lands; today the
-	// inbox carries `stop`, and `answered` notes, which the permission relay reads for itself.
+	// Text for a session goes to it while it is live, and is dropped, saying so, once it is not.
+	const deliver = (
+		ctx: Ctx,
+		entry: Extract<RunStore.InboxEntry, { kind: "inject" }>,
+	): void => {
+		const live = ctx.live.get(entry.session);
+		if (live) void live.handle.inject(entry.text);
+		else
+			RunState.event(ctx, {
+				type: "warning",
+				lane: entry.lane,
+				session: entry.session,
+				summary: `inject for ${entry.lane} dropped: its session has ended`,
+			});
+	};
+
+	// `answered` notes are the permission relay's to read, from the start of the inbox.
 	const readInbox = (ctx: Ctx): void => {
 		const inbox = RunStore.readInbox(
 			ctx.deps.home,
@@ -104,9 +127,34 @@ export namespace Runner {
 				type: "warning",
 				summary: `inbox line ignored: ${line}`,
 			});
-		if (inbox.value.entries.some((e) => e.kind === "stop"))
-			ctx.stopRequested = true;
-		RunState.save(ctx, { ...ctx.run, inboxRead: inbox.value.next });
+		let steering = ctx.run.steering;
+		for (const entry of inbox.value.entries) {
+			switch (entry.kind) {
+				case "stop":
+					ctx.stopRequested = true;
+					break;
+				case "inject":
+					deliver(ctx, entry);
+					break;
+				case "answered":
+					break;
+				case "rolled_back":
+					RunState.event(ctx, Worktree.rolledBack(entry.sha, entry.by));
+					break;
+				default: {
+					const applied = Steering.apply(steering, entry);
+					steering = applied.state;
+					RunState.event(ctx, {
+						type: applied.type,
+						summary: applied.summary,
+						...(entry.kind === "skip" || entry.kind === "next"
+							? { task: entry.task }
+							: {}),
+					});
+				}
+			}
+		}
+		RunState.save(ctx, { ...ctx.run, steering, inboxRead: inbox.value.next });
 	};
 
 	// Say once why nothing moves, rather than on every tick.
@@ -115,8 +163,9 @@ export namespace Runner {
 		health: LoopPlan.Health,
 		last: { said: string },
 	): void => {
-		const said =
-			health.kind === "waiting"
+		const said = ctx.run.steering.paused
+			? `paused with ${plural(ctx.live.size, "session")} running`
+			: health.kind === "waiting"
 				? `waiting on ${health.on.join(", ") || "nothing claimable"}`
 				: "";
 		if (said !== "" && said !== last.said)
@@ -161,13 +210,29 @@ export namespace Runner {
 		}
 		state.planFailures = 0;
 		const plan = loaded.value;
-		if (Stop.evaluate(plan).done && ctx.live.size === 0)
-			return { status: "completed", reason: "plan-done" };
-		const ready = LoopPlan.frontier(plan, new Set(ctx.live.keys()), ctx.now());
+		if (ctx.live.size === 0 && Stop.workDone(plan))
+			return finalChecks(ctx, plan);
+		const skipped = new Set(ctx.run.steering.skipped);
+		const ready = LoopPlan.frontier(
+			plan,
+			RunState.liveTasks(ctx),
+			ctx.now(),
+			skipped,
+		);
 		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
-		for (const node of Scheduler.pick(ready, slots))
+		for (const node of Steering.pick(ctx.run.steering, ready, slots)) {
 			await Claims.claim(ctx, node, plan);
-		const health = LoopPlan.health(plan, new Set(ctx.live.keys()), ctx.now());
+			RunState.save(ctx, {
+				...ctx.run,
+				steering: Steering.claimed(ctx.run.steering, node.task.id),
+			});
+		}
+		const health = LoopPlan.health(
+			plan,
+			RunState.liveTasks(ctx),
+			ctx.now(),
+			skipped,
+		);
 		if (health.kind === "deadlocked")
 			return {
 				status: "stopped",
@@ -176,6 +241,99 @@ export namespace Runner {
 			};
 		reportWaiting(ctx, health, state.health);
 		return undefined;
+	};
+
+	/**
+	 * Run `body` while still hearing a stop: the inbox is read every tick meanwhile, and a stop
+	 * kills what `body` is running through `ctx.stopping`.
+	 */
+	const hearingStop = async <T>(
+		ctx: Ctx,
+		body: () => Promise<T>,
+	): Promise<T> => {
+		const timer = setInterval(() => {
+			readInbox(ctx);
+			if (ctx.stopRequested) ctx.stopping.abort();
+		}, ctx.deps.tickMs ?? TICK_MS);
+		try {
+			return await body();
+		} finally {
+			clearInterval(timer);
+		}
+	};
+
+	/**
+	 * The work is done and nothing is running: the run completes once its gates are green on the
+	 * tree as it is and every lens has reviewed it. Gates come first, so a lens reviews work that
+	 * passes them. Undefined goes on ticking.
+	 */
+	const finalChecks = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+	): Promise<Exit | undefined> => {
+		const { gates, lenses } = ctx.run.config;
+		const gatesGreen = Gates.green(
+			gates,
+			ctx.run.gateRuns,
+			ctx.tree(RunStore.sessionDir(ctx.run)),
+		);
+		const reviewed = Lenses.status(lenses, ctx.run.claims);
+		const checks = { gatesGreen, lensesDone: Lenses.finished(reviewed) };
+		if (Stop.evaluate(plan, checks).done)
+			return { status: "completed", reason: "plan-done" };
+		if (!gatesGreen) return finalGates(ctx, plan);
+		const failed = reviewed.failed[0];
+		if (failed)
+			return {
+				status: "stopped",
+				reason: "lens-failed",
+				detail: `${failed.name}: ${failed.detail}`,
+			};
+		return startLenses(ctx, plan, reviewed.pending);
+	};
+
+	// Lenses take free slots like any claim, and none while the run is paused. Their findings are
+	// children of the parent, so an open `p1` is claimed as work on the next tick.
+	const startLenses = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+		pending: readonly string[],
+	): Promise<Exit | undefined> => {
+		if (ctx.run.steering.paused) return undefined;
+		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
+		for (const name of pending.slice(0, slots)) {
+			const started = await Claims.lens(ctx, name, plan);
+			if (!started.ok)
+				return {
+					status: "stopped",
+					reason: "lens-failed",
+					detail: `${name}: ${started.error.message}`,
+				};
+		}
+		return undefined;
+	};
+
+	// Gates not green on the tree as it is (none run since the last change) run once more; a red
+	// pass with no subtask to reopen stops the run for a human.
+	const finalGates = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+	): Promise<Exit | undefined> => {
+		const label = ctx.run.parentShortId;
+		const pass = await hearingStop(ctx, () =>
+			Checks.gate(ctx, { label, title: plan.parent.title }),
+		);
+		await Checks.record(ctx, pass, { taskId: ctx.run.parentId, label });
+		if (ctx.stopRequested)
+			return { status: "stopped", reason: "stop-requested" };
+		const failed = pass.results.find((r) => !r.ok);
+		return failed
+			? {
+					status: "stopped",
+					reason: "gates-red",
+					detail: Gates.describe(failed),
+				}
+			: undefined;
 	};
 
 	const boot = async (ctx: Ctx): Promise<void> => {
@@ -249,9 +407,12 @@ export namespace Runner {
 			settled: [],
 			wake: () => {},
 			stopRequested: false,
+			stopping: new AbortController(),
+			gating: Promise.resolve(),
 		};
 		deps.signal?.addEventListener("abort", () => {
 			ctx.stopRequested = true;
+			ctx.stopping.abort();
 			ctx.wake();
 		});
 		await boot(ctx);

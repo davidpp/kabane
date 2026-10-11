@@ -6,6 +6,7 @@
  *   bin/kabane.js         the CLI bundled for Bun, every `@cabane/*` workspace package inlined,
  *                         each official extension under extensions/ among them
  *   templates/dispatch/   the copilot's dispatch skill template, read from disk at runtime
+ *   templates/lenses/     the loop's shipped verifier lens prompts, read from disk at runtime
  *   package.json          generated from packages/cli/package.json, no workspace dependency left
  *   README.md, LICENSE    the repository's own
  *
@@ -131,6 +132,12 @@ export const build = async (): Promise<void> => {
 	cpSync(
 		join(ROOT, "packages/acp/templates/dispatch"),
 		join(DIST, "templates/dispatch"),
+		{ recursive: true },
+	);
+	// The loop's Lenses resolve their shipped prompts as ../templates/lenses the same way.
+	cpSync(
+		join(ROOT, "extensions/loop/templates/lenses"),
+		join(DIST, "templates/lenses"),
 		{ recursive: true },
 	);
 	cpSync(join(ROOT, "README.md"), join(DIST, "README.md"));

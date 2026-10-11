@@ -3,7 +3,9 @@
 // which is what lets a run resume after its runner dies.
 import type { Harnesses } from "@cabane/acp";
 import type { Dispatch } from "./dispatch";
+import type { Gates } from "./gates";
 import { RunStore } from "./store";
+import type { Worktree } from "./worktree";
 
 export namespace RunState {
 	export type Deps = {
@@ -19,18 +21,28 @@ export namespace RunState {
 		overrides?: Partial<Record<Harnesses.Id, Harnesses.Overrides>>;
 		/** Aborting it stops the run the way an inbox `stop` does. */
 		signal?: AbortSignal;
-		/** A fingerprint of the working tree, for the stall detector. Defaults to git. */
+		/** A fingerprint of the working tree, for the stall detector and the gates. Defaults to git. */
 		tree?: (cwd: string) => string;
+		/** How checkpoints run git. Defaults to the user's own git and config. */
+		git?: Worktree.Git;
 		now?: () => Date;
 		tickMs?: number;
 	};
 
-	type Live = { sessionId: string; handle: Dispatch.Handle };
+	type Live = {
+		/** The subtask it works on, or the parent for a lens. */
+		taskId: string;
+		handle: Dispatch.Handle;
+		/** Resolves once the session has ended and its gates, if any, have run. */
+		settled: Promise<void>;
+	};
 
 	export type Settled = {
 		taskId: string;
 		sessionId: string;
 		outcome: Dispatch.Outcome;
+		/** The gates its end ran: a session that closed its subtask, in a run with gates. */
+		gates?: Gates.Run;
 	};
 
 	export type Ctx = {
@@ -39,14 +51,22 @@ export namespace RunState {
 		tree: (cwd: string) => string;
 		log: RunStore.EventLog;
 		run: RunStore.Run;
-		/** Live claims by task id. */
+		/** Live claims by core session id. */
 		live: Map<string, Live>;
 		/** Claims whose session ended and that the loop has not settled yet. */
 		settled: Settled[];
 		/** Ends the runner's current wait early. */
 		wake: () => void;
 		stopRequested: boolean;
+		/** Aborted when the run halts: kills a gate still running. */
+		stopping: AbortController;
+		/** The gate pass running or last run; the next one waits for it. */
+		gating: Promise<unknown>;
 	};
+
+	/** The tasks live claims hold: what the frontier leaves out. */
+	export const liveTasks = (ctx: Ctx): Set<string> =>
+		new Set([...ctx.live.values()].map((l) => l.taskId));
 
 	export const event = (ctx: Ctx, draft: RunStore.EventDraft): void => {
 		const appended = ctx.log.append(draft);

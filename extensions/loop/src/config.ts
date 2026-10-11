@@ -1,7 +1,7 @@
-// What a run is configured with: the harness that implements, its budgets, and when it counts as
-// stalled. Layered: defaults, then the repo's `.kabane/loop.json`, then what the caller passes (the
-// trigger form or flags). Keys a later package owns (gates, lenses) pass through the file untouched
-// and are stripped here until a schema names them.
+// What a run is configured with: the harness that implements, its budgets, when it counts as
+// stalled, its gates, whether it works in a worktree, and the lenses that verify it. Layered:
+// defaults, then the repo's `.kabane/loop.json`, then what the caller passes (the trigger form or
+// flags); budgets and gates merge key by key. Keys no schema names yet pass through the file untouched and are stripped here.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Harnesses } from "@cabane/acp";
@@ -27,6 +27,16 @@ export namespace LoopConfig {
 		currency: z.string().min(1).default("USD"),
 	});
 
+	// A gate's name is the `gate:<name>` ref on a work log, so it is one word.
+	const GateNameSchema = z
+		.string()
+		.regex(/^[A-Za-z][A-Za-z0-9_.-]*$/, "a gate name is one word");
+
+	// A lens's name is its prompt's file name and a tag on its findings.
+	const LensNameSchema = z
+		.string()
+		.regex(/^[a-z][a-z0-9-]*$/, "a lens name is one lowercase word");
+
 	export const Schema = z.object({
 		/** The harness for a subtask whose assignee does not name one. */
 		implementer: z.enum(Harnesses.IDS).default("claude"),
@@ -35,6 +45,27 @@ export namespace LoopConfig {
 		budget: BudgetSchema.default({}),
 		/** Session ends in a row with no progress before the run halts as stalled. */
 		stallAfter: z.number().int().min(1).default(3),
+		/**
+		 * Named shell commands, run in this order in the session's directory when an implementing
+		 * session ends with its subtask done, and once more before the run completes. The first
+		 * that fails reopens the subtask. None configured: nothing runs and nothing is reopened.
+		 */
+		gates: z.record(GateNameSchema, z.string().min(1)).default({}),
+		/**
+		 * Work in a `git worktree` of the project made for the run, never removed by it, and
+		 * commit a checkpoint there after every green gate. Off: sessions work in the project
+		 * checkout itself and nothing is committed.
+		 */
+		worktree: z.boolean().default(false),
+		/**
+		 * Verifier lenses, each its own session once the plan is done and the gates are green,
+		 * filing findings as tagged child issues of the parent. A lens is a prompt file: shipped
+		 * (`functional`, `quality`) or the repo's `.kabane/loop/lenses/<name>.md`. None: no
+		 * verification, and the run completes on its gates.
+		 */
+		lenses: z.array(LensNameSchema).default([]),
+		/** The harness every lens runs on; absent, the implementer. */
+		verifier: z.enum(Harnesses.IDS).optional(),
 	});
 
 	export type Config = z.output<typeof Schema>;
@@ -77,6 +108,7 @@ export namespace LoopConfig {
 			...file.value,
 			...overrides,
 			budget: { ...asObject(file.value.budget), ...asObject(overrides.budget) },
+			gates: { ...asObject(file.value.gates), ...asObject(overrides.gates) },
 		};
 		const parsed = Schema.safeParse(merged);
 		if (parsed.success) return ok(parsed.data);

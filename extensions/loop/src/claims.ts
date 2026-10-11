@@ -1,10 +1,17 @@
 // A claim's life in the tracker: open a core session on the subtask, move it to in_progress,
-// log the session on it, dispatch; when the session ends, close the core session, put a
-// subtask the agent left in progress back in the ready pool, and take a progress mark for the
-// stall detector. A runner that died mid-claim leaves claims with no end; `recover` closes them.
-import { Planner } from "@cabane/core";
+// log the session on it, dispatch; when the session ends with the subtask done, run the gates
+// while the claim still holds it; then close the core session, put a subtask the agent left in
+// progress back in the ready pool, record the gates (a red one reopens the subtask), and take a
+// progress mark for the stall detector. A lens is a claim on the parent that leaves its state
+// alone and has no gates. A runner that died mid-claim leaves claims with no end; `recover`
+// closes them.
+import type { Harnesses } from "@cabane/acp";
+import { err, ok, Planner, type Result, type Task } from "@cabane/core";
 import { Budget } from "./budget";
+import { Checks } from "./checks";
 import { Dispatch } from "./dispatch";
+import { Gates } from "./gates";
+import { Lenses } from "./lenses";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Scheduler } from "./scheduler";
@@ -57,6 +64,7 @@ export namespace Claims {
 		Stall.mark(
 			LoopPlan.closedWork(plan),
 			ctx.tree(RunStore.sessionDir(ctx.run)),
+			Gates.signature(ctx.run.gateRuns.at(-1)),
 		);
 
 	/** Close the claims a runner that died left open. */
@@ -65,7 +73,7 @@ export namespace Claims {
 		for (const claim of open) {
 			const detail = "the runner exited while this session was open";
 			await closeSession(ctx, claim.sessionId, { outcome: "error", detail });
-			await release(ctx, claim.taskId);
+			if (claim.lens === undefined) await release(ctx, claim.taskId);
 			RunState.patchClaim(ctx, claim.sessionId, {
 				endedAt: ctx.now().toISOString(),
 				outcome: "interrupted",
@@ -146,14 +154,15 @@ export namespace Claims {
 			),
 	});
 
-	// Open the core session and mark the subtask as taken; the session id, or undefined.
+	// Open the core session and, for a subtask it takes, mark it as taken; the session id, or
+	// undefined.
 	const open = async (
 		ctx: Ctx,
-		node: LoopPlan.Node,
+		task: Task,
 		harness: string,
 		lane: string,
+		takes: boolean,
 	): Promise<string | undefined> => {
-		const task = node.task;
 		const tag = { lane, task: label(task) };
 		const session = await Planner.startSession(ctx.deps.basePath, {
 			taskId: task.id,
@@ -169,9 +178,11 @@ export namespace Claims {
 			return undefined;
 		}
 		const sessionId = session.value.id;
-		const moved = await Planner.updateTask(ctx.deps.basePath, task.id, {
-			state: "in_progress",
-		});
+		const moved = takes
+			? await Planner.updateTask(ctx.deps.basePath, task.id, {
+					state: "in_progress",
+				})
+			: { ok: true as const };
 		if (!moved.ok)
 			RunState.event(ctx, {
 				...tag,
@@ -193,18 +204,19 @@ export namespace Claims {
 		return sessionId;
 	};
 
-	/** Claim one ready subtask: a core session, a dispatched ACP session, a live entry. */
-	export const claim = async (
-		ctx: Ctx,
-		node: LoopPlan.Node,
-		plan: LoopPlan.Plan,
-	): Promise<void> => {
-		const task = node.task;
-		const harness = Scheduler.harnessFor(node, ctx.run.config.implementer);
-		const attempts = ctx.run.claims.filter((c) => c.taskId === task.id).length;
-		const lane = `${harness}:${label(task)}${attempts > 0 ? `#${attempts + 1}` : ""}`;
-		const sessionId = await open(ctx, node, harness, lane);
-		if (sessionId === undefined) return;
+	type Started = {
+		task: Task;
+		harness: Harnesses.Id;
+		lane: string;
+		sessionId: string;
+		work: Dispatch.Work;
+		/** What the trace says about it. */
+		summary: string;
+	};
+
+	// Record the claim, dispatch its session and hold it live until it has settled.
+	const launch = (ctx: Ctx, plan: LoopPlan.Plan, started: Started): void => {
+		const { task, harness, lane, sessionId, work } = started;
 		RunState.save(ctx, {
 			...ctx.run,
 			claims: [
@@ -217,6 +229,7 @@ export namespace Claims {
 					sessionId,
 					startedAt: ctx.now().toISOString(),
 					continuations: 0,
+					...(work.kind === "lens" ? { lens: work.name } : {}),
 				},
 			],
 		});
@@ -225,11 +238,11 @@ export namespace Claims {
 			lane,
 			session: sessionId,
 			task: label(task),
-			summary: `${harness} claims ${label(task)}: ${task.title}`,
+			summary: started.summary,
 		});
 		const model = ctx.run.config.model;
 		const handle = Dispatch.begin(
-			{ parent: plan.parent, task, harness, sessionId, lane },
+			{ parent: plan.parent, task, harness, sessionId, lane, work },
 			{
 				basePath: ctx.deps.basePath,
 				home: ctx.deps.home,
@@ -244,21 +257,106 @@ export namespace Claims {
 			},
 			hooks(ctx, sessionId, lane, label(task), harness),
 		);
-		ctx.live.set(task.id, { sessionId, handle });
-		void handle.done.then((outcome) => {
-			ctx.settled.push({ taskId: task.id, sessionId, outcome });
+		const settled = handle.done.then(async (outcome) => {
+			const gates =
+				work.kind === "implement"
+					? await gatesAfter(ctx, outcome, {
+							taskId: task.id,
+							label: label(task),
+							title: task.title,
+							lane,
+						})
+					: undefined;
+			ctx.settled.push({
+				taskId: task.id,
+				sessionId,
+				outcome,
+				...(gates ? { gates } : {}),
+			});
 			ctx.wake();
 		});
+		ctx.live.set(sessionId, { taskId: task.id, handle, settled });
+	};
+
+	/** Claim one ready subtask: a core session, a dispatched ACP session, a live entry. */
+	export const claim = async (
+		ctx: Ctx,
+		node: LoopPlan.Node,
+		plan: LoopPlan.Plan,
+	): Promise<void> => {
+		const task = node.task;
+		const harness = Scheduler.harnessFor(node, ctx.run.config.implementer);
+		const attempts = ctx.run.claims.filter((c) => c.taskId === task.id).length;
+		const lane = `${harness}:${label(task)}${attempts > 0 ? `#${attempts + 1}` : ""}`;
+		const sessionId = await open(ctx, task, harness, lane, true);
+		if (sessionId === undefined) return;
+		const retry = Gates.lastFailure(ctx.run.gateRuns, task.id);
+		launch(ctx, plan, {
+			task,
+			harness,
+			lane,
+			sessionId,
+			work: { kind: "implement", ...(retry ? { retry } : {}) },
+			summary: `${harness} claims ${label(task)}: ${task.title}`,
+		});
+	};
+
+	/**
+	 * Run lens `name` on the parent, on the run's verifier harness. An error when its prompt
+	 * cannot be read or its session cannot start.
+	 */
+	export const lens = async (
+		ctx: Ctx,
+		name: string,
+		plan: LoopPlan.Plan,
+	): Promise<Result<void>> => {
+		const prompt = Lenses.prompt(ctx.run.projectDir, name);
+		if (!prompt.ok) return prompt;
+		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;
+		const attempts = ctx.run.claims.filter((c) => c.lens === name).length;
+		const lane = `${harness}:${name}-lens${attempts > 0 ? `#${attempts + 1}` : ""}`;
+		const sessionId = await open(ctx, plan.parent, harness, lane, false);
+		if (sessionId === undefined)
+			return err(new Error(`the ${name} lens's session did not start`));
+		launch(ctx, plan, {
+			task: plan.parent,
+			harness,
+			lane,
+			sessionId,
+			work: { kind: "lens", name, prompt: prompt.value },
+			summary: `${harness} reviews ${label(plan.parent)} through the ${name} lens`,
+		});
+		return ok(undefined);
+	};
+
+	// A session that closed its subtask as done is followed by the gates, while the claim still
+	// holds the subtask, so nothing claims it again before its gates have spoken.
+	const gatesAfter = async (
+		ctx: Ctx,
+		outcome: Dispatch.Outcome,
+		subject: Checks.Subject & { taskId: string },
+	) => {
+		if (
+			outcome.outcome !== "done" ||
+			!Gates.configured(ctx.run.config.gates) ||
+			ctx.stopping.signal.aborted
+		)
+			return undefined;
+		const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
+		if (!task.ok || task.value?.state !== "done") return undefined;
+		return Checks.gate(ctx, subject);
 	};
 
 	/** Close the books on one ended session; true when the run has stalled. */
 	export const settle = async (
 		ctx: Ctx,
-		{ taskId, sessionId, outcome }: RunState.Settled,
+		{ taskId, sessionId, outcome, gates }: RunState.Settled,
 	): Promise<boolean> => {
-		ctx.live.delete(taskId);
+		ctx.live.delete(sessionId);
+		const lens =
+			ctx.run.claims.find((c) => c.sessionId === sessionId)?.lens !== undefined;
 		await closeSession(ctx, sessionId, outcome);
-		await release(ctx, taskId);
+		if (!lens) await release(ctx, taskId);
 		RunState.patchClaim(ctx, sessionId, {
 			endedAt: ctx.now().toISOString(),
 			outcome: outcome.outcome,
@@ -271,6 +369,15 @@ export namespace Claims {
 			session: sessionId,
 			summary: `${outcome.outcome}${outcome.detail ? `: ${outcome.detail}` : ""}`,
 		});
+		if (gates)
+			await Checks.record(ctx, gates, {
+				taskId,
+				label: ended?.shortId ?? taskId,
+				...(ended ? { lane: ended.lane } : {}),
+			});
+		// A lens runs once per run and files findings rather than closing work: its end is not a
+		// step the stall detector should count.
+		if (lens) return false;
 		const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
 		if (!plan.ok) return false;
 		const stall = Stall.observe(

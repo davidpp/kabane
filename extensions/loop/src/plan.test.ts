@@ -193,6 +193,8 @@ describe("LoopPlan.health", () => {
 });
 
 describe("Stop.evaluate", () => {
+	const GREEN = { gatesGreen: true, lensesDone: true };
+
 	it("is done only when every subtask is closed and no p1 finding is open", async () => {
 		const parent = await add({ title: "parent" });
 		const a = await add({ title: "a", parentTaskId: parent });
@@ -201,34 +203,57 @@ describe("Stop.evaluate", () => {
 			parentTaskId: parent,
 			tags: ["finding", "p3"],
 		});
-		expect(Stop.evaluate(await load(parent))).toEqual({
+		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({
 			done: false,
 			openSubtasks: 1,
 			openP1: 0,
+			gatesGreen: true,
+			lensesDone: true,
 		});
 
 		await close(a);
-		expect(Stop.evaluate(await load(parent))).toEqual({ done: true });
+		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({ done: true });
 
 		const p1 = await add({
 			title: "broken",
 			parentTaskId: parent,
 			tags: ["finding", "P1"],
 		});
-		expect(Stop.evaluate(await load(parent))).toEqual({
+		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({
 			done: false,
 			openSubtasks: 0,
 			openP1: 1,
+			gatesGreen: true,
+			lensesDone: true,
 		});
 		await close(p1);
-		expect(Stop.evaluate(await load(parent))).toEqual({ done: true });
+		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({ done: true });
+		// The work is done, but red gates keep the run going.
+		expect(Stop.workDone(await load(parent))).toBe(true);
+		expect(
+			Stop.evaluate(await load(parent), {
+				gatesGreen: false,
+				lensesDone: true,
+			}),
+		).toEqual({
+			done: false,
+			openSubtasks: 0,
+			openP1: 0,
+			gatesGreen: false,
+			lensesDone: true,
+		});
+		// Green gates, but a lens has not reviewed the work yet.
+		expect(
+			Stop.evaluate(await load(parent), { gatesGreen: true, lensesDone: false })
+				.done,
+		).toBe(false);
 	});
 
 	it("counts a cancelled subtask as closed and a parked one as open", async () => {
 		const parent = await add({ title: "parent" });
 		await add({ title: "dropped", parentTaskId: parent, state: "cancelled" });
-		expect(Stop.evaluate(await load(parent)).done).toBe(true);
+		expect(Stop.evaluate(await load(parent), GREEN).done).toBe(true);
 		await add({ title: "parked", parentTaskId: parent, state: "waiting" });
-		expect(Stop.evaluate(await load(parent)).done).toBe(false);
+		expect(Stop.evaluate(await load(parent), GREEN).done).toBe(false);
 	});
 });

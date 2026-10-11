@@ -205,7 +205,7 @@ way:
 - Lanes, actions and the header live on a card's tab only; a card opened with `o` as a plain event
   view keeps the one-line title.
 - `inject` needs a live session to aim at, so it waits for a lane; a run that has claimed nothing
-  has no one to inject into. The runner reads `inject` inbox entries and drops them until C4.
+  has no one to inject into.
 - `stop` is the command's own (`Loop.stop` with no wait).
 
 ### B3. Board: trigger form
@@ -247,10 +247,64 @@ Done on branch `worktree-agent-ae0c8bf171811033c` (on top of `9e8facc`). Found o
 - Optional git worktree per run.
 - A checkpoint commit per passing gate, and `kabane loop rollback <runId> <sha>`.
 
+Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
+- **Config:** `gates: {name: command}` (one-word names, run in key order) and `worktree: bool`,
+  from `.kabane/loop.json` or `--gate name=command` (repeatable) and `--worktree`; gates merge
+  key by key like budgets. No gates: nothing runs, the run behaves as before.
+- **When gates run:** after an implementing session ends with its subtask `done`, while the
+  claim still holds the subtask, so nothing re-claims it mid-gate. They stop at the first red
+  gate. Stdout and stderr are read together; the last 40 lines are kept.
+- **A final pass the plan did not have:** a run whose work is done runs the gates once more
+  unless the last pass was green on the same tree fingerprint. Without it a subtask a human
+  closes, or a plan already done at `start`, would complete unchecked. A red final pass has
+  no subtask to reopen, so the run stops as `gates-red` for a human. `start` therefore accepts
+  a plan whose work is done when gates are configured: the run is then a check.
+- **On the tracker:** each pass is a work log entry with `gate:<name>` refs (label: `passed in
+  2s`, `failed (exit 1) in 300ms`) and `commit:<sha>` for a checkpoint; a red pass's note is
+  the failing tail. A red pass reopens the subtask to `next`, and the next claim's brief opens
+  with the gate, its exit and the tail. The final pass logs on the parent.
+- **Worktree:** `git worktree add -b kabane-loop/<runId> $KABANE_HOME/loops/<runId>/worktree
+  HEAD` at `start`, so uncommitted work in the checkout is not in it, and a project's
+  untracked settings (say, `.claude/settings.local.json`) are not either. Never removed.
+  `kabane loop status <runId>` prints it and its checkpoints.
+- **Checkpoints:** `git add -A` and a commit in the worktree after each green pass, with the
+  user's own git config and hooks (no `--no-verify`). Nothing to commit makes no checkpoint.
+  `Worktree.checkpoint` and `reset` refuse a directory that is not a linked worktree, so the
+  user's checkout cannot be committed to or reset even by mistake.
+- **Rollback:** a full sha or a unique prefix of one of the run's checkpoints, else refused.
+  Also refused while a claim is live (pause and let it finish, or stop). `reset --hard` plus
+  `clean -fd` (ignored files stay). The tracker is not rolled back. The `rollback` event is
+  written by the CLI for a finished run and through the inbox (`rolled_back`) for a live one,
+  so the runner stays the trace's one writer.
+- **Stall mark:** closed work, the tree fingerprint and the last pass's gate results.
+
 ### C3. Verifier lenses and findings
 - Lens prompt files, the shipped `functional` and `quality` lenses, and repo overrides.
 - Findings filed as tagged child issues.
 - A `p1` keeps the run open and reopens work.
+
+Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
+- **Config:** `lenses: string[]` (none by default, so a run with no lenses completes on its
+  gates) and `verifier` (a harness, else the implementer); `--lens <name>` repeatable and
+  `--verifier`. `start` refuses a lens with no prompt before writing the run.
+- **Prompts:** `extensions/loop/templates/lenses/{functional,quality}.md`, read from disk
+  like the copilot's dispatch template; the build copies them to `templates/lenses` in the
+  package. A repo's `.kabane/loop/lenses/<name>.md` adds a lens or replaces a shipped one.
+  The loop's own part of every lens prompt (how to file, the tags, no edits) is prepended in
+  `Brief.lens`, so a repository's lens cannot drop the structured channel.
+- **When:** the work is done, nothing is running, and the gates are green on the tree as it
+  is. Lenses take free slots like claims, none while paused. Each is a claim on the parent
+  (`lens` on the claim, lane `<harness>:<name>-lens`) that leaves the parent's state alone,
+  runs no gates, and counts toward no stall. One turn: its end is the review's end.
+- **One round:** a lens runs once per run, which the plan did not say. A `p1` it files is
+  claimed like any subtask, and once it is closed and the gates are green the run completes
+  without a second review. Repeating lenses after every fix has no natural bound short of the
+  budgets.
+- **Failure:** a lens that ends without finishing (error, cancelled, a stop reason other than
+  `end_turn`) stops the run as `lens-failed`, rather than completing unreviewed; one
+  interrupted by a runner that died runs again on resume.
+- **Stop:** `Stop.evaluate(plan, {gatesGreen, lensesDone})`. Header: a lens step after the
+  gates, with the findings count and open `p1`s from the plan.
 
 ### C4. Questions, permissions and steering
 - **Permissions:** done on branch `worktree-agent-a74b0c0ae0b7397eb`. Every request goes to the
@@ -278,8 +332,30 @@ Done on branch `worktree-agent-ae0c8bf171811033c` (on top of `9e8facc`). Found o
     the board's actor when one of its sessions asked.
 - Agent questions become core `question` activities the same way, and the session waits for
   `answerQuestion`.
-- The `inbox.jsonl` consumer handles `inject`, `pause`, `skip` and `next`, plus the matching CLI
-  commands.
+- **Steering:** done on branch `worktree-agent-aec5e4f6bb339d036`.
+  - **Inject:** the runner hands an `inject` entry to the live claim behind its session
+    (`Dispatch.Handle.inject`); one for a session that has ended is dropped with a warning.
+    While a turn runs and the harness advertised steering, the text goes through
+    `AcpClient.steer` (`_session/steering`) into that turn. Otherwise, or when the harness
+    reports the turn had ended, it is queued and sent as the session's next prompt once the
+    turn ends, ahead of any continuation, and spends none. Events: `inject_delivered`
+    (`data.via`: `steering`, `new_turn`, `prompt`) and `inject_queued` (`data.why`).
+  - **Checked against the adapters:** claude-agent-acp 0.76.0 and codex-acp 1.11.0 both
+    advertise `_meta.steering.supported` on `initialize` (seen on the real processes).
+    Claude honours `idleBehavior: promptRequired`: an idle steer on a real session returned
+    `promptRequired` and started nothing. Codex ignores the hint: an idle steer waits for the
+    previous prompt and starts a turn of its own, which `steer` reports as `new_turn`. The
+    loop steers only while its own turn runs, so that is a race at the turn's end, not the
+    common path. A steer into a running turn has not been watched on either harness yet
+    (paid; package E).
+  - **Pause, skip, next:** inbox kinds folded into `run.json`'s `steering` by
+    `Steering.apply`. Pause claims nothing and lets running sessions finish. A skipped
+    subtask leaves the frontier and stays open, so its dependents stay blocked and the run
+    reports `waiting on X (skipped)`. `next` puts a subtask ahead of priority order once it
+    is ready, and un-skips it. CLI: `kabane loop pause|resume <runId>`,
+    `kabane loop skip|next <subtask>` (the run is the live one on the subtask's parent). Card
+    actions: `p` pause/resume, `s` skip, `n` next (the latter two take a short id), next to
+    `x` and `i`.
 
 ### D. Loop on the board
 - `board(ctx)` receives the extension context, not the board's resolved scope. Add the scope to

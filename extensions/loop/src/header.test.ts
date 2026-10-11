@@ -48,6 +48,8 @@ const run = (
 		},
 		continuationsUsed: 1,
 		inboxRead: 0,
+		steering: { paused: false, skipped: [], next: [] },
+		gateRuns: [],
 		...over,
 	};
 };
@@ -105,5 +107,60 @@ describe("LoopHeader.state", () => {
 		expect(LoopHeader.state(run(), null, NOW).text).toBe(
 			"● healthy · claiming ready work",
 		);
+	});
+
+	it("a paused run says so before anything else about its health", () => {
+		const paused = run({ steering: { paused: true, skipped: [], next: [] } });
+		expect(LoopHeader.state(paused, null, NOW).text).toBe(
+			"⏸ paused · 1 session finishing · p resumes",
+		);
+	});
+});
+
+describe("LoopHeader.steps", () => {
+	const text = (r: RunStore.Run): string =>
+		LoopHeader.steps(r, null)
+			.map((part) => part.text)
+			.join("");
+	const gated = (gateRuns: RunStore.Run["gateRuns"]): RunStore.Run => {
+		const config = LoopConfig.Schema.safeParse({
+			gates: { test: "bun test", lint: "bun run check" },
+		});
+		if (!config.success) throw config.error;
+		return run({ config: config.data, gateRuns, worktree: "/wt" });
+	};
+	const result = (name: string, ok: boolean) => ({
+		name,
+		command: name,
+		ok,
+		exit: ok ? 0 : 1,
+		ms: 1000,
+		tail: "",
+	});
+
+	it("shows the gates only for a run that has some, by their last pass", () => {
+		expect(text(run())).toBe("● implement ×2 sessions");
+		expect(text(gated([]))).toBe(
+			"● implement ×2 sessions  ›  ○ gates test·lint",
+		);
+		expect(
+			text(
+				gated([
+					{
+						at: "2026-10-10T12:05:00.000Z",
+						results: [result("test", true), result("lint", true)],
+						ok: true,
+						tree: "t",
+						checkpoint: "abc123",
+					},
+					{
+						at: "2026-10-10T12:20:00.000Z",
+						results: [result("test", false)],
+						ok: false,
+						tree: "t2",
+					},
+				]),
+			),
+		).toBe("● implement ×2 sessions  ›  ✗ gates test red · 1 checkpoint");
 	});
 });

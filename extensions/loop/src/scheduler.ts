@@ -12,19 +12,32 @@ export namespace Scheduler {
 		low: 3,
 	};
 
-	/** Ready nodes in claim order: priority, then the order they were planned in. */
-	const order = (ready: readonly LoopPlan.Node[]): LoopPlan.Node[] =>
-		[...ready].sort(
+	/**
+	 * Ready nodes in claim order: the ids in `first` in their own order, then priority, then the
+	 * order they were planned in.
+	 */
+	const order = (
+		ready: readonly LoopPlan.Node[],
+		first: readonly string[],
+	): LoopPlan.Node[] => {
+		const asked = (node: LoopPlan.Node): number => {
+			const at = first.indexOf(node.task.id);
+			return at === -1 ? first.length : at;
+		};
+		return [...ready].sort(
 			(a, b) =>
+				asked(a) - asked(b) ||
 				RANK[a.task.priority] - RANK[b.task.priority] ||
 				a.task.createdAt.localeCompare(b.task.createdAt),
 		);
+	};
 
 	/** What to claim now: the first `slots` of the ready frontier in claim order. */
 	export const pick = (
 		ready: readonly LoopPlan.Node[],
 		slots: number,
-	): LoopPlan.Node[] => (slots > 0 ? order(ready).slice(0, slots) : []);
+		first: readonly string[] = [],
+	): LoopPlan.Node[] => (slots > 0 ? order(ready, first).slice(0, slots) : []);
 
 	/** The subtask's assignee when it names a harness kabane can drive, else the implementer. */
 	export const harnessFor = (

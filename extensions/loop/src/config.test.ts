@@ -29,6 +29,9 @@ describe("LoopConfig.resolve", () => {
 				currency: "USD",
 			},
 			stallAfter: 3,
+			gates: {},
+			worktree: false,
+			lenses: [],
 		});
 	});
 
@@ -43,6 +46,7 @@ describe("LoopConfig.resolve", () => {
 		const config = LoopConfig.resolve(repo, {
 			budget: { wallMinutes: 5 },
 			stallAfter: 2,
+			gates: { lint: "bun run check" },
 		});
 		expect(config.ok).toBe(true);
 		if (!config.ok) return;
@@ -54,6 +58,10 @@ describe("LoopConfig.resolve", () => {
 			currency: "USD",
 		});
 		expect(config.value.stallAfter).toBe(2);
+		expect(config.value.gates).toEqual({
+			test: "bun test",
+			lint: "bun run check",
+		});
 	});
 
 	it("names the repo file when it is not JSON or the result is invalid", () => {

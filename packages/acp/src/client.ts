@@ -79,6 +79,9 @@ export namespace AcpClient {
 	export type Connection = {
 		harness: Harnesses.Id;
 		agent: ClientContext;
+		// The harness advertised `_session/steering` (`_meta.steering.supported` on initialize),
+		// so `steer` can put text into a turn while it runs.
+		steering: boolean;
 		// Resolves once the transport is gone; for a spawned harness, with its exit code.
 		closed: Promise<number | null>;
 		// What the harness wrote to stderr so far, for error reporting only.
@@ -215,6 +218,7 @@ export namespace AcpClient {
 		const connection: Connection = {
 			harness,
 			agent: raw.agent,
+			steering: false,
 			closed: process.closed,
 			stderr: process.stderr,
 			close: () => {
@@ -234,7 +238,65 @@ export namespace AcpClient {
 			connection.close();
 			return err(await startFailure(handshake.error, connection, process));
 		}
+		connection.steering = advertisesSteering(handshake.value._meta);
 		return ok(connection);
+	};
+
+	const field = (value: unknown, key: string): unknown =>
+		typeof value === "object" && value !== null
+			? Object.entries(value).find(([k]) => k === key)?.[1]
+			: undefined;
+
+	// The steering extension's advert, a sibling of `agentCapabilities` on initialize. Both pinned
+	// adapters send it (claude-agent-acp 0.76.0, codex-acp 1.11.0); Gemini's does not.
+	const advertisesSteering = (meta: unknown): boolean =>
+		field(field(meta, "steering"), "supported") === true;
+
+	/**
+	 * Where steered text went: into the running turn; into a turn the harness started for it,
+	 * because the one it was aimed at had just ended; or nowhere, because the session was idle and
+	 * the text is still the caller's to send as a prompt.
+	 */
+	export type Steered = "injected" | "new_turn" | "prompt_required";
+
+	const STEERED: Readonly<Record<string, Steered>> = {
+		injected: "injected",
+		startedNewTurn: "new_turn",
+		promptRequired: "prompt_required",
+	};
+
+	/**
+	 * Put text into the session's running turn through the `_session/steering` extension method.
+	 * An idle session is asked to hand the text back (`idleBehavior: promptRequired`) rather than
+	 * start a turn that no `prompt` is reading; an adapter that ignores the hint (codex-acp) and
+	 * starts one says so as `new_turn`. An error for a harness that does not advertise steering.
+	 */
+	export const steer = async (
+		session: Session,
+		blocks: PromptBlock[],
+	): Promise<Result<Steered>> => {
+		const { connection } = session;
+		if (!connection.steering)
+			return err(
+				new Error(`${connection.harness} does not advertise ACP steering`),
+			);
+		const sent = await tryCatch(() =>
+			connection.agent.request("_session/steering", {
+				sessionId: session.id,
+				prompt: blocks.map(toContentBlock),
+				_meta: { steering: { idleBehavior: "promptRequired" } },
+			}),
+		);
+		if (!sent.ok) return err(withStderr(sent.error, connection));
+		const outcome = field(sent.value, "outcome");
+		const steered = typeof outcome === "string" ? STEERED[outcome] : undefined;
+		return steered
+			? ok(steered)
+			: err(
+					new Error(
+						`${connection.harness}: unexpected _session/steering response ${JSON.stringify(sent.value)}`,
+					),
+				);
 	};
 
 	export const newSession = async (

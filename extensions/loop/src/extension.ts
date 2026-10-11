@@ -2,9 +2,12 @@
 // entry point. The CLI has already wired the runtime (`openContext`) by the time `run` is called.
 import { resolve } from "node:path";
 import { Harnesses } from "@cabane/acp";
+import { err, ok, type Result } from "@cabane/core";
 import {
 	type Extension,
 	failure,
+	flagBool,
+	flagList,
 	flagString,
 	type Outcome,
 	type ParsedArgs,
@@ -16,12 +19,15 @@ import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
 import { LoopHeader } from "./header";
-import type { RunStore } from "./store";
+import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--wall-minutes <n>] [--continuations <n>] [--spend <amount>]
+const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--wall-minutes <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree] [--lens <name>]... [--verifier claude|codex|gemini]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
+       kabane loop pause|resume <runId>
+       kabane loop skip|next <subtask>
+       kabane loop rollback <runId> <sha>
        kabane loop answer <questionId> <option>`;
 
 // The executable the runner and each session's MCP server run as: this process's own entry.
@@ -35,10 +41,30 @@ const number = (args: ParsedArgs, flag: string): number | undefined => {
 	return value === undefined ? undefined : Number(value);
 };
 
+// `--gate test="bun test"`, repeated: the name before the first `=`, the command after it.
+const gatesFrom = (args: ParsedArgs): Result<Record<string, string>> => {
+	const gates: Record<string, string> = {};
+	for (const given of flagList(args, "gate")) {
+		const at = given.indexOf("=");
+		if (at <= 0)
+			return err(
+				new Error(
+					`--gate takes <name>=<command>, not ${JSON.stringify(given)}`,
+				),
+			);
+		gates[given.slice(0, at).trim()] = given.slice(at + 1).trim();
+	}
+	return ok(gates);
+};
+
 // Flags become config overrides; LoopConfig validates them with the repo file.
-const configFrom = (args: ParsedArgs): LoopConfig.Input => {
+const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 	const implementer = flagString(args, "implementer");
+	const verifier = flagString(args, "verifier");
 	const model = flagString(args, "model");
+	const lenses = flagList(args, "lens");
+	const gates = gatesFrom(args);
+	if (!gates.ok) return gates;
 	const budget = Object.fromEntries(
 		[
 			["concurrency", number(args, "concurrency")],
@@ -47,11 +73,15 @@ const configFrom = (args: ParsedArgs): LoopConfig.Input => {
 			["spend", number(args, "spend")],
 		].filter(([, value]) => value !== undefined),
 	);
-	return {
+	return ok({
 		...(implementer && Harnesses.isId(implementer) ? { implementer } : {}),
 		...(model ? { model } : {}),
 		budget,
-	};
+		gates: gates.value,
+		...(flagBool(args, "worktree") ? { worktree: true } : {}),
+		...(lenses.length > 0 ? { lenses } : {}),
+		...(verifier && Harnesses.isId(verifier) ? { verifier } : {}),
+	});
 };
 
 const line = (run: RunStore.Run): string =>
@@ -75,7 +105,16 @@ const question = (q: Loop.Waiting): string =>
 		`    kabane loop answer ${q.questionId} <option>`,
 	].join("\n");
 
-/** One run, and the questions its sessions are waiting on a human for. */
+// Where a run with a worktree works, and the checkpoints `rollback` takes.
+const worktree = (run: RunStore.Run): string[] =>
+	run.worktree
+		? [
+				`  worktree: ${run.worktree}`,
+				...RunStore.checkpoints(run).map((sha) => `    checkpoint ${sha}`),
+			]
+		: [];
+
+/** One run, its worktree, and the questions its sessions are waiting on a human for. */
 const statusOf = async (
 	deps: Pick<Loop.Deps, "home" | "basePath">,
 	runId: string,
@@ -86,7 +125,11 @@ const statusOf = async (
 	if (!waiting.ok) return failure(waiting.error);
 	return success(
 		{ ...run.value, questions: waiting.value },
-		[line(run.value), ...waiting.value.map(question)].join("\n"),
+		[
+			line(run.value),
+			...worktree(run.value),
+			...waiting.value.map(question),
+		].join("\n"),
 	);
 };
 
@@ -108,6 +151,91 @@ const answer = async (
 		: failure(answered.error);
 };
 
+type Deps = Loop.Deps & { cwd: string; actor: string };
+type Verb = (args: ParsedArgs, deps: Deps, target: string) => Promise<Outcome>;
+
+const ran = (result: Result<RunStore.Run>): Outcome =>
+	result.ok ? success(result.value, line(result.value)) : failure(result.error);
+
+const start: Verb = async (args, deps, target) => {
+	for (const flag of ["implementer", "verifier"]) {
+		const harness = flagString(args, flag);
+		if (harness && !Harnesses.isId(harness))
+			return usage(
+				`--${flag} must be one of ${Harnesses.IDS.join(", ")}`,
+				USAGE,
+			);
+	}
+	const config = configFrom(args);
+	if (!config.ok) return usage(config.error.message, USAGE);
+	const dir = flagString(args, "dir");
+	return ran(
+		await Loop.start(deps, {
+			parent: target,
+			...(dir ? { dir } : {}),
+			config: config.value,
+		}),
+	);
+};
+
+const rollback: Verb = async (args, deps, target) => {
+	const sha = args.positionals[2];
+	if (!sha) return usage("rollback needs a run id and a checkpoint sha", USAGE);
+	const reset = Loop.rollback(deps, target, sha);
+	return reset.ok
+		? success(
+				reset.value,
+				`${reset.value.worktree} reset to ${reset.value.sha.slice(0, 12)}; the tracker is unchanged`,
+			)
+		: failure(reset.error);
+};
+
+const pause =
+	(kind: "pause" | "resume"): Verb =>
+	async (_args, deps, target) => {
+		const asked = Loop.pause(deps, target, kind);
+		return asked.ok
+			? success(asked.value, `${kind} requested for ${target}`)
+			: failure(asked.error);
+	};
+
+const direct =
+	(kind: "skip" | "next"): Verb =>
+	async (_args, deps, target) => {
+		const asked = await Loop.direct(deps, kind, target);
+		return asked.ok
+			? success(
+					asked.value,
+					`${kind} ${asked.value.task} requested for ${asked.value.runId}`,
+				)
+			: failure(asked.error);
+	};
+
+// Each verb that takes a target, with what the target is for the usage line when it is missing.
+const VERBS: Record<string, { needs: string; run: Verb }> = {
+	start: { needs: "a parent issue", run: start },
+	run: {
+		needs: "a run id",
+		run: async (_a, deps, id) => ran(await Loop.run(deps, id)),
+	},
+	stop: {
+		needs: "a run id",
+		run: async (_a, deps, id) => ran(await Loop.stop(deps, id)),
+	},
+	pause: { needs: "a run id", run: pause("pause") },
+	resume: { needs: "a run id", run: pause("resume") },
+	skip: { needs: "a subtask", run: direct("skip") },
+	next: { needs: "a subtask", run: direct("next") },
+	rollback: { needs: "a run id", run: rollback },
+};
+
+const list = (deps: Deps): Outcome => {
+	const runs = Loop.list(deps);
+	return runs.ok
+		? success(runs.value, runs.value.map(line).join("\n") || "No loop runs")
+		: failure(runs.error);
+};
+
 const command: Extension.Command = {
 	name: "loop",
 	summary:
@@ -115,62 +243,24 @@ const command: Extension.Command = {
 	usage: USAGE,
 	run: async (args, ctx) => {
 		const [verb, target] = args.positionals;
-		const deps = {
+		const deps: Deps = {
 			home: ctx.home,
 			basePath: ctx.store,
 			kabaneBin: kabaneBin(),
+			cwd: ctx.cwd,
+			actor: ctx.actor,
 		};
-		const done = (
-			result: { ok: true; value: RunStore.Run } | { ok: false; error: Error },
-		) =>
-			result.ok
-				? success(result.value, line(result.value))
-				: failure(result.error);
-		switch (verb) {
-			case "start": {
-				if (!target) return usage("start needs a parent issue", USAGE);
-				const implementer = flagString(args, "implementer");
-				if (implementer && !Harnesses.isId(implementer))
-					return usage(
-						`--implementer must be one of ${Harnesses.IDS.join(", ")}`,
-						USAGE,
-					);
-				const dir = flagString(args, "dir");
-				return done(
-					await Loop.start(
-						{ ...deps, cwd: ctx.cwd },
-						{
-							parent: target,
-							...(dir ? { dir } : {}),
-							config: configFrom(args),
-						},
-					),
-				);
-			}
-			case "run":
-				if (!target) return usage("run needs a run id", USAGE);
-				return done(await Loop.run(deps, target));
-			case "stop":
-				if (!target) return usage("stop needs a run id", USAGE);
-				return done(await Loop.stop(deps, target));
-			case "answer":
-				return answer(args, { ...deps, actor: ctx.actor });
-			case "status": {
-				if (target) return statusOf(deps, target);
-				const runs = Loop.list(deps);
-				return runs.ok
-					? success(
-							runs.value,
-							runs.value.map(line).join("\n") || "No loop runs",
-						)
-					: failure(runs.error);
-			}
-			default:
-				return usage(
-					verb ? `Unknown loop command: ${verb}` : "Missing loop command",
-					USAGE,
-				);
-		}
+		if (verb === "answer") return answer(args, deps);
+		if (verb === "status") return target ? statusOf(deps, target) : list(deps);
+		const known = verb && Object.hasOwn(VERBS, verb) ? VERBS[verb] : undefined;
+		if (!known)
+			return usage(
+				verb ? `Unknown loop command: ${verb}` : "Missing loop command",
+				USAGE,
+			);
+		return target
+			? known.run(args, deps, target)
+			: usage(`${verb} needs ${known.needs}`, USAGE);
 	},
 };
 

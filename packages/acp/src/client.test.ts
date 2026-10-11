@@ -255,6 +255,50 @@ describe("AcpClient", () => {
 		AcpClient.close(conn);
 	});
 
+	it("steers only a harness that advertises it, asking an idle one for the text back", async () => {
+		const steered: unknown[] = [];
+		const steerable = (advertise: boolean) =>
+			agentApp({ name: "steerable" })
+				.onRequest(methods.agent.initialize, () => ({
+					protocolVersion: PROTOCOL_VERSION,
+					agentCapabilities: { loadSession: false },
+					...(advertise ? { _meta: { steering: { supported: true } } } : {}),
+				}))
+				.onRequest(methods.agent.session.new, () => ({ sessionId: "s-3" }))
+				.onRequest(
+					"_session/steering",
+					{ parse: (params: unknown) => params },
+					(c) => {
+						steered.push(c.params);
+						return { outcome: "promptRequired" };
+					},
+				);
+
+		const yes = await openSession(steerable(true));
+		expect(yes.conn.steering).toBe(true);
+		const result = await AcpClient.steer(yes.session, [
+			{ type: "text", text: "use the other API" },
+		]);
+		expect(result).toEqual(ok("prompt_required"));
+		expect(steered).toEqual([
+			{
+				sessionId: "s-3",
+				prompt: [{ type: "text", text: "use the other API" }],
+				_meta: { steering: { idleBehavior: "promptRequired" } },
+			},
+		]);
+		AcpClient.close(yes.conn);
+
+		const no = await openSession(steerable(false));
+		expect(no.conn.steering).toBe(false);
+		const refused = await AcpClient.steer(no.session, [
+			{ type: "text", text: "x" },
+		]);
+		expect(refused.ok).toBe(false);
+		expect(steered).toHaveLength(1);
+		AcpClient.close(no.conn);
+	});
+
 	it("a handshake that never answers fails within the cap", async () => {
 		const mute = agentApp({ name: "mute" }).onRequest(
 			methods.agent.initialize,
