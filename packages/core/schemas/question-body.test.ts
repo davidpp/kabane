@@ -51,6 +51,28 @@ describe("question-body convention", () => {
 		expect(parsed.allowFreeform).toBe(true);
 	});
 
+	test("round-trips a relayed permission request's options verbatim", () => {
+		const permission = {
+			toolCallId: "toolu_01",
+			title: "Write `notes.md`\n```",
+			options: [
+				{ id: "allow", label: "Allow", kind: "allow_once" },
+				{ id: "allow_always", label: "Always Allow", kind: "allow_always" },
+				{ id: "reject", label: "Reject", kind: "reject_once" },
+			],
+		};
+		const body = formatQuestionBody("claude asks to run: Write notes.md", {
+			choices: permission.options.map((o) => o.label),
+			allowFreeform: false,
+			permission,
+		});
+		const parsed = parseQuestionBody(body);
+		expect(parsed.question).toBe("claude asks to run: Write notes.md");
+		expect(parsed.choices).toEqual(["Allow", "Always Allow", "Reject"]);
+		expect(parsed.allowFreeform).toBe(false);
+		expect(parsed.permission).toEqual(permission);
+	});
+
 	test("tolerates a malformed json fence (whole body is the question)", () => {
 		const body = "```json\n{not valid}\n```\n\nHello?";
 		const parsed = parseQuestionBody(body);

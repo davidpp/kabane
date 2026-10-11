@@ -74,6 +74,7 @@ export {
 	formatQuestionBody,
 	isAnswerTo,
 	type ParsedQuestion,
+	type PermissionRequestMeta,
 	parseQuestionBody,
 	type QuestionMeta,
 	QuestionMetaSchema,
