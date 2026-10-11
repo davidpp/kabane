@@ -103,10 +103,16 @@ export namespace Extensions {
 		return ok({ found: "none" });
 	};
 
+	/** Without a config there is no file to edit yet, and init is what writes one. */
 	export const enableHint = (
 		command: string,
 		extension: string,
 		home: string,
-	): string =>
-		`\`kabane ${command}\` comes with the ${extension} extension, which is off; add "${extension}" to "extensions" in ${configPath(home)}`;
+	): string => {
+		const path = configPath(home);
+		const off = `\`kabane ${command}\` comes with the ${extension} extension, which is off`;
+		return existsSync(path)
+			? `${off}; add "${extension}" to "extensions" in ${path}`
+			: `${off}; run \`kabane init\`, then add "${extension}" to "extensions" in ${path}`;
+	};
 }
