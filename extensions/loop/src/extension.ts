@@ -6,6 +6,7 @@ import {
 	type Extension,
 	failure,
 	flagString,
+	type Outcome,
 	type ParsedArgs,
 	success,
 	usage,
@@ -19,7 +20,8 @@ import type { RunStore } from "./store";
 const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--wall-minutes <n>] [--continuations <n>] [--spend <amount>]
        kabane loop run <runId>
        kabane loop status [<runId>]
-       kabane loop stop <runId>`;
+       kabane loop stop <runId>
+       kabane loop answer <questionId> <option>`;
 
 // The executable the runner and each session's MCP server run as: this process's own entry.
 const kabaneBin = (): string => {
@@ -63,6 +65,47 @@ const line = (run: RunStore.Run): string =>
 	]
 		.filter((part) => part !== "")
 		.join("  ");
+
+// A question waiting on a human, with what `kabane loop answer` takes for it.
+const question = (q: Loop.Waiting): string =>
+	[
+		`  waiting on you: ${q.task} ${q.question}`,
+		...q.choices.map((choice, i) => `    ${i + 1}. ${choice}`),
+		`    kabane loop answer ${q.questionId} <option>`,
+	].join("\n");
+
+/** One run, and the questions its sessions are waiting on a human for. */
+const statusOf = async (
+	deps: Pick<Loop.Deps, "home" | "basePath">,
+	runId: string,
+): Promise<Outcome> => {
+	const run = Loop.status(deps, runId);
+	if (!run.ok) return failure(run.error);
+	const waiting = await Loop.questions(deps, runId);
+	if (!waiting.ok) return failure(waiting.error);
+	return success(
+		{ ...run.value, questions: waiting.value },
+		[line(run.value), ...waiting.value.map(question)].join("\n"),
+	);
+};
+
+const answer = async (
+	args: ParsedArgs,
+	deps: Pick<Loop.Deps, "home" | "basePath"> & { actor: string },
+): Promise<Outcome> => {
+	const [, questionId] = args.positionals;
+	// A label can be several words: everything after the id is the answer.
+	const given = args.positionals.slice(2).join(" ");
+	if (!questionId || given === "")
+		return usage("answer needs a question id and an option", USAGE);
+	const answered = await Loop.answer(deps, questionId, given);
+	return answered.ok
+		? success(
+				answered.value,
+				`${answered.value.task}: answered "${answered.value.answer}" (run ${answered.value.runId})`,
+			)
+		: failure(answered.error);
+};
 
 const command: Extension.Command = {
 	name: "loop",
@@ -109,8 +152,10 @@ const command: Extension.Command = {
 			case "stop":
 				if (!target) return usage("stop needs a run id", USAGE);
 				return done(await Loop.stop(deps, target));
+			case "answer":
+				return answer(args, { ...deps, actor: ctx.actor });
 			case "status": {
-				if (target) return done(Loop.status(deps, target));
+				if (target) return statusOf(deps, target);
 				const runs = Loop.list(deps);
 				return runs.ok
 					? success(

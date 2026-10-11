@@ -96,6 +96,15 @@ export namespace RunStore {
 	});
 	export type Run = z.infer<typeof RunSchema>;
 
+	/** The `externalRef` of every core session run `runId` opens: how a session finds its run. */
+	export const sessionRef = (runId: string): string => `loop:${runId}`;
+
+	/** The run a core session belongs to, from its `externalRef`; undefined for any other session. */
+	export const runOfSession = (
+		externalRef: string | undefined,
+	): string | undefined =>
+		externalRef?.startsWith("loop:") ? externalRef.slice(5) : undefined;
+
 	/** Where the run's sessions work: its worktree when it has one, else the project. */
 	export const sessionDir = (run: Run): string =>
 		run.worktree ?? run.projectDir;
@@ -109,6 +118,8 @@ export namespace RunStore {
 		/** The core session id, for an event that came from one. */
 		session: z.string().optional(),
 		task: z.string().optional(),
+		/** Machine-readable fields behind the summary, for an event that has some. */
+		data: z.record(z.union([z.string(), z.number()])).optional(),
 	});
 	export type Event = z.infer<typeof EventSchema>;
 	export type EventDraft = Omit<Event, "seq" | "at">;
@@ -124,6 +135,14 @@ export namespace RunStore {
 			session: z.string(),
 			lane: z.string(),
 			text: z.string(),
+		}),
+		// Who answered one of the run's questions. The answer itself is the core `decision`; core
+		// records no author on activities, so the answering surface notes its actor here.
+		z.object({
+			kind: z.literal("answered"),
+			questionId: z.string(),
+			by: z.string(),
+			at: z.string(),
 		}),
 	]);
 	export type InboxEntry = z.infer<typeof InboxEntrySchema>;

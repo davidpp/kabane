@@ -22,6 +22,27 @@
 
 import { z } from "zod";
 
+/**
+ * A harness permission request relayed as a question: the tool call it is about and the
+ * options the harness offered, verbatim. The answer names one of those options; nothing here
+ * adds an option the harness did not offer, and nothing picks one for the human.
+ */
+const PermissionRequestMetaSchema = z.object({
+	toolCallId: z.string(),
+	/** The tool call's title, as the harness gave it. */
+	title: z.string(),
+	options: z.array(
+		z.object({
+			/** The harness's own option id: what the harness is answered with. */
+			id: z.string(),
+			label: z.string(),
+			/** ACP's option kind: allow_once, allow_always, reject_once, reject_always. */
+			kind: z.string(),
+		}),
+	),
+});
+export type PermissionRequestMeta = z.infer<typeof PermissionRequestMetaSchema>;
+
 /** Answerable metadata serialized into a question activity's body. */
 export const QuestionMetaSchema = z.object({
 	/** Predefined choices (rendered as buttons/pills). */
@@ -36,6 +57,8 @@ export const QuestionMetaSchema = z.object({
 	totalQuestions: z.number().optional(),
 	/** Default answer for "apply all defaults" batch flows. */
 	defaultAnswer: z.string().optional(),
+	/** Set when the question relays a harness permission request. */
+	permission: PermissionRequestMetaSchema.optional(),
 });
 export type QuestionMeta = z.infer<typeof QuestionMetaSchema>;
 
@@ -49,6 +72,7 @@ export type ParsedQuestion = {
 	questionIndex?: number;
 	totalQuestions?: number;
 	defaultAnswer?: string;
+	permission?: PermissionRequestMeta;
 };
 
 const JSON_FENCE = /^```json\n([\s\S]*?)\n```\n?/;
@@ -106,6 +130,7 @@ export function parseQuestionBody(body: string): ParsedQuestion {
 		questionIndex: meta.questionIndex,
 		totalQuestions: meta.totalQuestions,
 		defaultAnswer: meta.defaultAnswer,
+		permission: meta.permission,
 	};
 }
 

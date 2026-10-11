@@ -26,7 +26,10 @@ imports the SDK.
   adapter that reads `_meta.systemPrompt` on `session/new`. All of that is the
   copilot's profile, `COPILOT`, and the default: `resolve`'s third argument is a
   `Profile` (`pinModel`, `env`) for another launcher, such as the loop, which runs the
-  user's own default model under its own env marker. `installedCli(id)` is the env
+  user's own default model under its own env marker. A profile has no permission mode,
+  allow list or settings file: what a harness asks before running a tool is the user's
+  own settings, and `onPermission` hands every request to the caller, which never answers
+  one for the human. `installedCli(id)` is the env
   that points an adapter at the CLI on PATH instead of the copy it bundles
   (`CLAUDE_CODE_EXECUTABLE` for claude-agent-acp, `CODEX_PATH` for codex-acp), and an
   error when that CLI is not installed. `AcpClient.spawn` takes the profile as

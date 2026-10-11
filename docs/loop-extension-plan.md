@@ -75,6 +75,22 @@ answered from the board, a finding filed. Mocked transcripts do not count.
      - sets `KABANE_LOOP=1`
 
      This goes through a generic profile argument to `Harnesses.resolve`.
+   - **Thin wrapper:** Kabane adds no security and no policy the user did not configure, and
+     it overrides none of their settings. The loop forces no permission mode (`acceptEdits`,
+     bypass, …), injects no allow rules or settings file, and pins no model. The user's own
+     Claude Code or Codex settings decide what gets asked.
+   - **Permissions:** whatever the harness would prompt in an interactive session reaches the
+     human through the tracker, unchanged. The loop never approves or declines a request
+     itself.
+     - Each request becomes a `question` on the asking session, carrying the harness's options
+       verbatim.
+     - The human answers from the board or with `kabane loop answer`, and the harness gets
+       the option id they picked.
+     - A run that stops while a request waits sends it back to ACP as `cancelled`,
+       unanswered.
+     - Other claims keep running meanwhile.
+     - The wait spends wall time, which is the user's budget. It never counts toward the stall
+       count, which counts session ends, not time.
    - **Folder:** `run.json` records `projectDir`, the directory the loop was started from.
      `start` refuses when that directory's detected scope is not the issue's `scopeUri`, unless
      `--dir` is given. Sessions run in the run's worktree, else in `projectDir`.
@@ -227,8 +243,30 @@ way:
 - A `p1` keeps the run open and reopens work.
 
 ### C4. Questions, permissions and steering
-- ACP `onPermission` and agent questions become core `question` activities, and the session waits
-  for `answerQuestion`.
+- **Permissions:** done on branch `worktree-agent-a74b0c0ae0b7397eb`. Every request goes to the
+  human; the loop never answers one itself (Decision 7).
+  - **The question:** `extensions/loop/src/permission.ts` turns an ACP `onPermission` request
+    into a `question` activity on the claim's core session. The session moves to
+    `awaiting_input`, so the request shows on `getNeedsInput`. The question body carries
+    `permission` (`schemas/question-body.ts`): the tool call's title and the harness's
+    options verbatim (id, label, kind). The labels are its `choices`, and free text is off.
+  - **The wait:** the relay polls the session for the `decision` that `answerQuestion`
+    writes, maps its body to an option (id, then label in any case, then 1-based position)
+    and answers the harness with that option's id. An answer that names no option is asked
+    again, never guessed.
+  - **Stop:** `Dispatch` aborts every waiting relay on `cancel`, on `close` and when the claim
+    ends. The ACP client then answers `cancelled`. The claim settles as `cancelled`, and its
+    core session ends as `error`, which takes it off `getNeedsInput`.
+  - **Events:** `permission_asked`, then `permission_answered` (option id, kind, who, wait)
+    or `permission_cancelled`. Each carries the details in `data`.
+  - **CLI:** `kabane loop answer <questionId> <option>` calls `answerQuestion` with the
+    option's label. `kabane loop status <runId>` lists the run's open questions.
+  - **Who answered:** core records no author on an activity, and adding one is a migration,
+    which would stop older devices from pulling. Instead the answering surface appends
+    `{kind: "answered", questionId, by}` to the run's inbox. A board answer has no such note
+    yet, so its `by` reads `unrecorded`. D can add the note.
+- Agent questions become core `question` activities the same way, and the session waits for
+  `answerQuestion`.
 - The `inbox.jsonl` consumer handles `inject`, `pause`, `skip` and `next`, plus the matching CLI
   commands.
 

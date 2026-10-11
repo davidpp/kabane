@@ -7,6 +7,7 @@ import { Planner } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope } from "@cabane/core/scope";
 import { Loop } from "./commands";
+import { Permission } from "./permission";
 import { RunStore } from "./store";
 
 // `start`'s refusals, which all come before a runner is spawned. Starting a real runner is the
@@ -123,5 +124,74 @@ describe("Loop.start refusals", () => {
 		const started = await Loop.start(deps(), { parent: parent.id });
 		expect(started.ok).toBe(false);
 		if (!started.ok) expect(started.error.message).toContain("live-run");
+	});
+});
+
+describe("Loop.answer", () => {
+	const HUMAN = "cabane://actor/human/david";
+
+	// A loop session of run `runId` blocked on a relayed permission request.
+	const blocked = async (runId: string) => {
+		mkdirSync(RunStore.paths(home, runId).dir, { recursive: true });
+		const task = await add("child");
+		const session = await Planner.startSession(home, {
+			taskId: task.id,
+			agent: "claude",
+			externalRef: RunStore.sessionRef(runId),
+		});
+		if (!session.ok) throw session.error;
+		const question = await Planner.addActivity(home, {
+			sessionId: session.value.id,
+			type: "question",
+			body: Permission.body("claude", {
+				toolCallId: "toolu_01",
+				title: "Write notes.md",
+				options: [
+					{ id: "allow", name: "Allow", kind: "allow_once" },
+					{ id: "reject", name: "Reject", kind: "reject_once" },
+				],
+			}),
+		});
+		if (!question.ok) throw question.error;
+		return { sessionId: session.value.id, questionId: question.value.id };
+	};
+
+	it("writes the chosen option's label as the decision and notes who answered", async () => {
+		const { sessionId, questionId } = await blocked("run-1");
+		const listed = await Loop.questions({ basePath: home }, "run-1");
+		expect(listed.ok && listed.value.map((q) => q.questionId)).toEqual([
+			questionId,
+		]);
+
+		const answered = await Loop.answer(
+			{ home, basePath: home, actor: HUMAN },
+			questionId,
+			"2",
+		);
+		expect(answered.ok && answered.value.answer).toBe("Reject");
+		const activities = await Planner.getActivities(home, sessionId);
+		const decision =
+			activities.ok && activities.value.find((a) => a.type === "decision");
+		expect(decision && decision.body).toBe("Reject");
+		const inbox = RunStore.readInbox(home, "run-1", 0);
+		expect(inbox.ok && inbox.value.entries).toMatchObject([
+			{ kind: "answered", questionId, by: HUMAN },
+		]);
+		const after = await Loop.questions({ basePath: home }, "run-1");
+		expect(after.ok && after.value).toEqual([]);
+	});
+
+	it("refuses an answer that is none of the harness's options, and answers nothing", async () => {
+		const { sessionId, questionId } = await blocked("run-1");
+		const answered = await Loop.answer(
+			{ home, basePath: home, actor: HUMAN },
+			questionId,
+			"yes please",
+		);
+		expect(answered.ok).toBe(false);
+		const activities = await Planner.getActivities(home, sessionId);
+		expect(
+			activities.ok && activities.value.some((a) => a.type === "decision"),
+		).toBe(false);
 	});
 });

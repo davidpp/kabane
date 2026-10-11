@@ -91,7 +91,7 @@ export namespace Runner {
 	};
 
 	// Steering (inject, pause, skip, next) is handled here once its package lands; today the
-	// inbox carries `stop`.
+	// inbox carries `stop`, and `answered` notes, which the permission relay reads for itself.
 	const readInbox = (ctx: Ctx): void => {
 		const inbox = RunStore.readInbox(
 			ctx.deps.home,

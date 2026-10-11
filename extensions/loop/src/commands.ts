@@ -1,6 +1,6 @@
-// The loop's entry points, as plain functions over explicit dependencies. The CLI wires them to
-// `kabane loop start|run|status|stop` once the extension contract exists; nothing here parses
-// argv or reads the environment for its own settings.
+// The loop's entry points, as plain functions over explicit dependencies. The extension wires
+// them to `kabane loop start|run|status|stop|answer`; nothing here parses argv or reads the
+// environment for its own settings.
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -8,7 +8,9 @@ import type { Harnesses } from "@cabane/acp";
 import {
 	err,
 	ok,
+	type ParsedQuestion,
 	Planner,
+	parseQuestionBody,
 	type Result,
 	ScopeUri,
 	type Task,
@@ -17,6 +19,7 @@ import {
 } from "@cabane/core";
 import { detectScope } from "@cabane/core/scope";
 import { LoopConfig } from "./config";
+import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Runner } from "./runner";
 import { Stop } from "./stop";
@@ -287,6 +290,107 @@ export namespace Loop {
 	/** Every run on this device, newest first. */
 	export const list = (deps: Pick<Deps, "home">): Result<RunStore.Run[]> =>
 		RunStore.list(deps.home);
+
+	/** A question one of a run's sessions is blocked on. */
+	export type Waiting = {
+		questionId: string;
+		task: string;
+		question: string;
+		choices: string[];
+	};
+
+	/** The questions run `runId`'s sessions are waiting on a human for, from core. */
+	export const questions = async (
+		deps: Pick<Deps, "basePath">,
+		runId: string,
+	): Promise<Result<Waiting[]>> => {
+		const needs = await Planner.getNeedsInput(deps.basePath);
+		if (!needs.ok) return needs;
+		return ok(
+			needs.value.flatMap(({ session, task, question }) => {
+				if (!question || session.externalRef !== RunStore.sessionRef(runId))
+					return [];
+				const parsed = parseQuestionBody(question.body);
+				return [
+					{
+						questionId: question.id,
+						task: task?.shortId ?? session.taskId,
+						question: parsed.question,
+						choices: parsed.choices,
+					},
+				];
+			}),
+		);
+	};
+
+	// The decision's body for `given`: the label of the option it names. A permission question
+	// takes only the harness's options; another question also takes free text when it allows it.
+	const answerText = (
+		question: ParsedQuestion,
+		given: string,
+	): Result<string> => {
+		const options =
+			question.permission?.options ??
+			question.choices.map((label) => ({ label }));
+		const chosen = Permission.choose(options, given);
+		if (chosen) return ok(chosen.label);
+		if (!question.permission && question.allowFreeform) return ok(given);
+		const listed = options.map((o, i) => `${i + 1}. ${o.label}`).join(", ");
+		return err(
+			new Error(`"${given}" is none of this question's options: ${listed}`),
+		);
+	};
+
+	export type Answered = {
+		questionId: string;
+		answer: string;
+		runId: string;
+		task: string;
+	};
+
+	/**
+	 * Answer a question a loop session is waiting on, as `actor`, through `Planner.answerQuestion`:
+	 * the same answer the board gives. A permission question takes one of the harness's options
+	 * by id, label or position, and the decision records its label.
+	 */
+	export const answer = async (
+		deps: Pick<Deps, "home" | "basePath"> & { actor: string },
+		questionId: string,
+		given: string,
+	): Promise<Result<Answered>> => {
+		const needs = await Planner.getNeedsInput(deps.basePath);
+		if (!needs.ok) return needs;
+		const row = needs.value.find((r) => r.question?.id === questionId);
+		const runId = RunStore.runOfSession(row?.session.externalRef);
+		if (!row?.question || runId === undefined)
+			return err(
+				new Error(
+					`No loop session is waiting on question ${questionId}: it is answered, its session ended, or the id is wrong. \`kabane loop status <runId>\` lists the open ones`,
+				),
+			);
+		const text = answerText(parseQuestionBody(row.question.body), given);
+		if (!text.ok) return text;
+		// Core records no author on an activity, so who answered rides the run's inbox, noted
+		// before the answer so the runner finds it once it sees the decision. A note that cannot
+		// be written (the run's directory is gone) does not hold the answer back.
+		RunStore.appendInbox(deps.home, runId, {
+			kind: "answered",
+			questionId,
+			by: deps.actor,
+			at: new Date().toISOString(),
+		});
+		const answered = await Planner.answerQuestion(deps.basePath, {
+			questionId,
+			answer: text.value,
+		});
+		if (!answered.ok) return answered;
+		return ok({
+			questionId,
+			answer: text.value,
+			runId,
+			task: row.task?.shortId ?? row.session.taskId,
+		});
+	};
 
 	/**
 	 * Ask a run to stop and wait for it to wind down. A live runner hears it through the inbox,
