@@ -1,6 +1,6 @@
 // The loop's runs as board activity: each run is a card with a tab of its own, its events are the
-// run's `events.jsonl`, and the core sessions it claimed are what its tab counts questions on. This
-// is the minimal source the board's tabs read; the richer header, lanes and actions come later.
+// run's `events.jsonl`, and the core sessions it claimed are what its tab counts questions on. Each
+// claim is a lane, so the tab can follow one session or tag every line with whose it is.
 import type {
 	ActivityCard,
 	ActivitySource,
@@ -49,6 +49,9 @@ export namespace LoopActivity {
 		hasEvents: true,
 		tab: true,
 		sessionIds: sessionsOf(run),
+		// One lane per claim, in claim order: claims only append, so a session keeps its color.
+		lanes: run.claims.map((claim) => claim.lane),
+		laneNoun: "agents",
 	});
 
 	/** The device's newest runs, read from `$KABANE_HOME/loops` on every call. */
@@ -73,11 +76,12 @@ export namespace LoopActivity {
 			const events = RunStore.readEvents(home, id, afterSeq);
 			return events.ok
 				? ok(
-						events.value.map(({ seq, at, type, summary }) => ({
+						events.value.map(({ seq, at, type, summary, lane }) => ({
 							seq,
 							at,
 							type,
 							summary,
+							...(lane ? { lane } : {}),
 						})),
 					)
 				: events;

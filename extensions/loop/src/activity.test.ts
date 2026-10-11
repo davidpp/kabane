@@ -63,6 +63,8 @@ describe("LoopActivity", () => {
 			hasEvents: true,
 			tab: true,
 			sessionIds: ["s1", "s2"],
+			lanes: ["claude:KAB-2", "claude:KAB-2#2"],
+			laneNoun: "agents",
 		});
 	});
 
@@ -81,9 +83,12 @@ describe("LoopActivity", () => {
 		]);
 		const refreshed = await source.card?.("KAB-1-abc");
 		expect(refreshed?.ok && refreshed.value?.status).toBe("pending");
-		const events = await source.events?.("KAB-1-abc", 1);
-		expect(events?.ok && events.value.map((e) => [e.seq, e.summary])).toEqual([
-			[2, "claude claims KAB-2"],
+		const events = await source.events?.("KAB-1-abc", 0);
+		expect(
+			events?.ok && events.value.map((e) => [e.seq, e.summary, e.lane]),
+		).toEqual([
+			[1, "started", "x"],
+			[2, "claude claims KAB-2", undefined],
 		]);
 	});
 
