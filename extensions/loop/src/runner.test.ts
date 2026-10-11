@@ -111,6 +111,24 @@ describe("Runner resume", () => {
 		expect(ended.clock?.spentMs).toBeLessThan(120_000);
 	});
 
+	it("refuses to resume while another live run has its parent", async () => {
+		const dead = await orphaned("run-1");
+		RunStore.create(home, {
+			...dead,
+			id: "run-2",
+			pid: process.pid,
+			createdAt: new Date().toISOString(),
+		});
+
+		const resumed = await Runner.run("run-1", deps());
+
+		expect(!resumed.ok && resumed.error.message).toBe(
+			`Run run-1 cannot resume: ${dead.parentShortId} already has a live loop run, run-2; stop it first`,
+		);
+		const untouched = RunStore.readRaw(home, "run-1");
+		expect(untouched.ok && untouched.value.pid).toBe(dead.pid);
+	});
+
 	it("still halts once the time it was driven reaches the budget", async () => {
 		await orphaned("run-1", {
 			clock: { spentMs: 5 * 60_000, at: new Date().toISOString() },

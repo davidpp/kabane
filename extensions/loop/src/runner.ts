@@ -394,9 +394,29 @@ export namespace Runner {
 		}
 	};
 
+	// A run that resumes must still be its parent's only live run: another may have been started
+	// on it while this one lay dead, and two would claim the same subtasks.
+	const rival = (home: string, run: RunStore.Run): Result<void> => {
+		const runs = RunStore.list(home);
+		if (!runs.ok) return runs;
+		const other = runs.value.find(
+			(r) =>
+				r.id !== run.id &&
+				r.parentId === run.parentId &&
+				RunStore.isLive(r.status),
+		);
+		return other
+			? err(
+					new Error(
+						`Run ${run.id} cannot resume: ${run.parentShortId} already has a live loop run, ${other.id}; stop it first`,
+					),
+				)
+			: ok(undefined);
+	};
+
 	/**
 	 * Drive run `runId` in this process until it is over. A pending run starts; a run whose
-	 * runner died resumes; anything else is refused.
+	 * runner died resumes, unless another live run has its parent; anything else is refused.
 	 */
 	export const run = async (
 		runId: string,
@@ -413,6 +433,10 @@ export namespace Runner {
 					`Run ${runId} is already ${first.status}${first.status === "running" ? ` (pid ${first.pid})` : ""}`,
 				),
 			);
+		if (first.status !== "pending") {
+			const alone = rival(deps.home, first);
+			if (!alone.ok) return alone;
+		}
 		const log = RunStore.eventLog(deps.home, runId, deps.now);
 		if (!log.ok) return log;
 		const ctx: Ctx = {
