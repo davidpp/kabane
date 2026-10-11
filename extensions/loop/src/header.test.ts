@@ -75,6 +75,14 @@ describe("LoopHeader.meters", () => {
 		);
 		expect(time?.text).toBe("12m/120m");
 	});
+
+	it("a resumed run's time is its clock: what its runners spent, not the time since it started", () => {
+		const clock = { spentMs: 10 * 60_000, at: "2026-10-10T12:25:00.000Z" };
+		const [live] = LoopHeader.meters(run({ clock }), NOW);
+		expect(live?.text).toBe("15m/120m");
+		const [over] = LoopHeader.meters(run({ clock, status: "failed" }), NOW);
+		expect(over?.text).toBe("10m/120m");
+	});
 });
 
 describe("LoopHeader.cells", () => {

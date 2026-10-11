@@ -8,8 +8,7 @@ const budget = (input: LoopConfig.Input["budget"] = {}) => {
 	return parsed.data.budget;
 };
 
-const START = "2026-10-10T12:00:00.000Z";
-const at = (minutes: number) => new Date(Date.parse(START) + minutes * 60_000);
+const minutes = (n: number) => n * 60_000;
 
 describe("Budget.record", () => {
 	it("replaces occupancy and keeps a session's last cost when an update has none", () => {
@@ -63,10 +62,8 @@ describe("Budget.spent", () => {
 describe("Budget.check", () => {
 	it("halts on wall time", () => {
 		const b = budget({ wallMinutes: 30 });
-		expect(Budget.check(b, {}, { startedAt: START, now: at(29) })).toEqual({
-			ok: true,
-		});
-		const over = Budget.check(b, {}, { startedAt: START, now: at(30) });
+		expect(Budget.check(b, {}, minutes(29))).toEqual({ ok: true });
+		const over = Budget.check(b, {}, minutes(30));
 		expect(over.ok).toBe(false);
 		if (!over.ok) expect(over.reason).toBe("wall-time");
 	});
@@ -78,7 +75,7 @@ describe("Budget.check", () => {
 			cost: { amount: 5, currency: "USD" },
 		});
 		const unpriced = Budget.record({}, "a", { used: 1, size: 1 });
-		const clock = { startedAt: START, now: at(1) };
+		const clock = minutes(1);
 
 		expect(Budget.check(budget(), priced, clock)).toEqual({ ok: true });
 		expect(Budget.check(budget({ spend: 10 }), priced, clock)).toEqual({

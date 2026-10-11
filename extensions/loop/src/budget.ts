@@ -61,15 +61,15 @@ export namespace Budget {
 		| { ok: true }
 		| { ok: false; reason: "wall-time" | "spend"; detail: string };
 
-	export type Clock = { startedAt: string; now: Date };
-
-	/** Whether the run may go on: wall time always, spend once a harness has priced something. */
+	/**
+	 * Whether the run may go on after `elapsedMs` of wall time: wall time always, spend once a
+	 * harness has priced something.
+	 */
 	export const check = (
 		budget: LoopConfig.Config["budget"],
 		meter: Meter,
-		clock: Clock,
+		elapsedMs: number,
 	): Verdict => {
-		const elapsedMs = clock.now.getTime() - Date.parse(clock.startedAt);
 		const wallMs = budget.wallMinutes * 60_000;
 		if (elapsedMs >= wallMs)
 			return {

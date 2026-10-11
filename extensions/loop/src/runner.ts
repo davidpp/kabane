@@ -29,6 +29,8 @@ export namespace Runner {
 	const CANCEL_GRACE_MS = 10_000;
 	// Consecutive failed plan reads before the run gives up rather than spinning.
 	const PLAN_FAILURES = 3;
+	// How often the run's clock is saved: a runner that dies loses at most this much of it.
+	const CLOCK_SAVE_MS = 30_000;
 
 	const plural = (count: number, noun: string): string =>
 		`${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -62,7 +64,21 @@ export namespace Runner {
 			};
 		});
 
+	// Wall time spent so far, with the clock saved once it is older than CLOCK_SAVE_MS.
+	const clock = (ctx: Ctx, force = false): number => {
+		const now = ctx.now();
+		const spentMs = RunStore.wallMs(ctx.run, now);
+		const at = ctx.run.clock ? Date.parse(ctx.run.clock.at) : 0;
+		if (force || now.getTime() - at >= CLOCK_SAVE_MS)
+			RunState.save(ctx, {
+				...ctx.run,
+				clock: { spentMs, at: now.toISOString() },
+			});
+		return spentMs;
+	};
+
 	const finish = (ctx: Ctx, exit: Exit): RunStore.Run => {
+		clock(ctx, true);
 		RunState.save(ctx, {
 			...ctx.run,
 			status: exit.status,
@@ -183,10 +199,11 @@ export namespace Runner {
 		readInbox(ctx);
 		if (ctx.stopRequested)
 			return { status: "stopped", reason: "stop-requested" };
-		const verdict = Budget.check(ctx.run.config.budget, ctx.run.usage, {
-			startedAt: ctx.run.startedAt ?? ctx.run.createdAt,
-			now: ctx.now(),
-		});
+		const verdict = Budget.check(
+			ctx.run.config.budget,
+			ctx.run.usage,
+			clock(ctx),
+		);
 		if (!verdict.ok)
 			return {
 				status: "stopped",
@@ -338,12 +355,15 @@ export namespace Runner {
 
 	const boot = async (ctx: Ctx): Promise<void> => {
 		const resumed = ctx.run.startedAt !== undefined;
+		const now = ctx.now().toISOString();
 		RunState.save(ctx, {
 			...ctx.run,
 			status: "running",
 			exit: undefined,
 			pid: ctx.deps.pid,
-			startedAt: ctx.run.startedAt ?? ctx.now().toISOString(),
+			startedAt: ctx.run.startedAt ?? now,
+			// The clock goes on from what the last runner saved, not from when it died.
+			clock: { spentMs: ctx.run.clock?.spentMs ?? 0, at: now },
 		});
 		RunState.event(ctx, {
 			type: resumed ? "run_resume" : "run_start",

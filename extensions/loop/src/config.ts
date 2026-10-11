@@ -14,7 +14,10 @@ export namespace LoopConfig {
 	export const BudgetSchema = z.object({
 		/** Sessions running at once. */
 		concurrency: z.number().int().min(1).max(8).default(2),
-		/** The run halts once this much wall time has passed since it started. */
+		/**
+		 * The run halts once a runner has driven it for this much wall time, paused time included;
+		 * the time between a runner dying and the run's resume does not count.
+		 */
 		wallMinutes: z.number().positive().default(120),
 		/** Nudges, across the whole run, for a turn that ends with its subtask still open. */
 		continuations: z.number().int().min(0).default(3),

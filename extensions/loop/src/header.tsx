@@ -192,16 +192,10 @@ export namespace LoopHeader {
 
 	type Meter = { label: string; share: number; text: string };
 
-	const minutes = (run: RunStore.Run, now: Date): number => {
-		const from = Date.parse(run.startedAt ?? run.createdAt);
-		const to = run.endedAt ? Date.parse(run.endedAt) : now.getTime();
-		return Math.max(0, (to - from) / 60_000);
-	};
-
 	/** Each budget the run is held to, and the context its sessions fill, as a share of its limit. */
 	export const meters = (run: RunStore.Run, now: Date): Meter[] => {
 		const { budget } = run.config;
-		const elapsed = minutes(run, now);
+		const elapsed = RunStore.wallMs(run, now) / 60_000;
 		const spend = Budget.spent(run.usage, budget.currency);
 		const live = liveClaims(run).map((claim) => run.usage[claim.sessionId]);
 		const shown = (live.length > 0 ? live : Object.values(run.usage)).flatMap(
