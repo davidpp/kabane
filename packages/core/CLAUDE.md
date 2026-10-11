@@ -94,7 +94,7 @@ One primitive builds an issue's full brief as markdown. Sections in order, empty
 
 Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is `Planner.selectDurableActivities`: keeps `response`/`finding`/`verification`/`decision`/`handoff`, drops the rest plus all-but-latest ephemeral.
 
-**Questions and answers.** A `question` activity's body carries answerable metadata as a leading fenced `json` block (`schemas/question-body.ts`). `answerQuestion` writes a `decision` activity whose `context` is exactly `answers <questionActivityId>`. The session unblocks only once every question is answered. Re-answering supersedes, never erases.
+**Questions and answers.** A `question` activity's body carries answerable metadata as a leading fenced `json` block (`schemas/question-body.ts`). `Planner.answerQuestion(basePath, { questionId, answer })` writes a `decision` activity whose `context` is exactly `answers <questionId>` and whose body is the answer, in the same transaction as the lookup; it rejects an id that is not a `question` activity, a blank answer, and an ended session. The session leaves `awaiting_input` only once every question on it is answered. Re-answering appends another decision: the latest one is the answer in force and the earlier ones stay on the record, never erased. `answerQuestion` and `addActivity` share one transaction body (`appendActivity`), so both move the state machine the same way.
 
 ## Context registry, work logs, links
 

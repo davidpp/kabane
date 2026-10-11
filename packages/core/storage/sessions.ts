@@ -14,10 +14,14 @@ import type { Db } from "../db/port";
 import { err, type Result } from "../result";
 import { withDb } from "../runtime";
 
+import type { z } from "zod";
 import {
 	type AgentActivity,
 	type AgentActivityDraft,
 	AgentActivityDraftSchema,
+	type AnswerQuestionInput,
+	AnswerQuestionInputSchema,
+	answersContext,
 	type AgentSession,
 	type AgentSessionDraft,
 	AgentSessionDraftSchema,
@@ -81,6 +85,82 @@ type NeedsInputItem = {
 	task: Task | undefined;
 	/** The unanswered `question` activity this row represents. */
 	question: AgentActivity | undefined;
+};
+
+/**
+ * The body of every activity write, run inside the caller's transaction: guard
+ * the session, insert, then move the state machine. Throws to roll back.
+ *   - terminal (complete|error) → rejected, no revival of a closed session;
+ *   - `question` → awaiting_input (blocks on human);
+ *   - anything else on an awaiting_input or stale session → active once no
+ *     question is left unanswered, else it stays awaiting_input: a batch of N
+ *     questions stays blocked until every one has an answering decision.
+ */
+const appendActivity = (
+	db: Db,
+	a: z.output<typeof AgentActivityDraftSchema>,
+): AgentActivity => {
+	const now = new Date().toISOString();
+	const id = generateId();
+	const sessionRow = db
+		.query(`SELECT * FROM ${TABLES.agent_sessions} WHERE id = ?`)
+		.get(a.sessionId) as Record<string, unknown> | null;
+	if (!sessionRow) throw new Error(`Session not found: ${a.sessionId}`);
+	const currentState = sessionRow.state as string;
+
+	if (isTerminal(currentState)) {
+		throw new Error(
+			`Cannot add activity to a ${currentState} session (terminal): ${a.sessionId}`,
+		);
+	}
+
+	// Insert first so the unanswered-question check below counts this activity
+	// (an answering `decision` clears the block it closes).
+	db.run(
+		`INSERT INTO ${TABLES.agent_activities}
+       (id, session_id, type, ephemeral, severity, category, context, body, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		[
+			id,
+			a.sessionId,
+			a.type,
+			a.ephemeral ? 1 : 0,
+			a.severity ?? null,
+			a.category ?? null,
+			a.context ?? null,
+			a.body,
+			now,
+		],
+	);
+
+	let nextState = currentState;
+	if (a.type === "question") {
+		nextState = "awaiting_input";
+	} else if (currentState === "awaiting_input" || currentState === "stale") {
+		nextState =
+			countUnansweredQuestions(db, a.sessionId) === 0
+				? "active"
+				: "awaiting_input";
+	}
+
+	db.run(
+		`UPDATE ${TABLES.agent_sessions}
+     SET state = ?, last_activity_at = ?
+     WHERE id = ?`,
+		[nextState, now, a.sessionId],
+	);
+
+	return {
+		id,
+		sessionId: a.sessionId,
+		type: a.type,
+		ephemeral: a.ephemeral,
+		severity: a.severity,
+		category: a.category,
+		context: a.context,
+		body: a.body,
+		createdAt: now,
+	};
 };
 
 export namespace Planner {
@@ -251,13 +331,10 @@ export namespace Planner {
 	};
 
 	/**
-	 * Append an activity and drive the session state machine. Read + guard +
-	 * write run in ONE transaction (no TOCTOU), bumping session.last_activity_at:
-	 *   - terminal (complete|error) → REJECTED (no revival of a closed session);
-	 *   - `question` activity → awaiting_input (blocks on human);
-	 *   - any non-question activity on an awaiting_input session → active (answer);
-	 *   - `stale` is SOFT — any activity revives it: a `question` → awaiting_input,
-	 *     otherwise → active (a stale session is idle, not closed).
+	 * Append an activity and drive the session state machine (`appendActivity`).
+	 * Read + guard + write run in ONE transaction (no TOCTOU), bumping
+	 * session.last_activity_at. `stale` is SOFT: any activity revives it, a
+	 * `question` to awaiting_input, anything else to active.
 	 */
 	export const addActivity = async (
 		basePath: string,
@@ -266,83 +343,48 @@ export namespace Planner {
 		const parsed = AgentActivityDraftSchema.safeParse(draft);
 		if (!parsed.success) return err(new Error(parsed.error.message));
 
-		return withDb(basePath, (db) => {
-			const now = new Date().toISOString();
-			const id = generateId();
-			const a = parsed.data;
+		return withDb(basePath, (db) =>
+			db.transaction(() => appendActivity(db, parsed.data))(),
+		);
+	};
 
-			const runTxn = db.transaction(() => {
-				const sessionRow = db
-					.query(`SELECT * FROM ${TABLES.agent_sessions} WHERE id = ?`)
-					.get(a.sessionId) as Record<string, unknown> | null;
-				if (!sessionRow) throw new Error(`Session not found: ${a.sessionId}`);
-				const currentState = sessionRow.state as string;
+	/**
+	 * Answer one `question` activity: append a `decision` whose `context` is
+	 * exactly `answers <questionId>` and whose body is the answer, in the same
+	 * transaction as the lookup. The session leaves awaiting_input only once
+	 * every question on it has an answer. Answering again appends another
+	 * decision: the latest is the answer in force and the earlier ones stay on
+	 * the record. Rejects an id that is not a question activity, and a session
+	 * that has already ended.
+	 */
+	export const answerQuestion = async (
+		basePath: string,
+		input: AnswerQuestionInput,
+	): Promise<Result<AgentActivity>> => {
+		const parsed = AnswerQuestionInputSchema.safeParse(input);
+		if (!parsed.success) return err(new Error(parsed.error.message));
+		const { questionId, answer } = parsed.data;
 
-				// Terminal sessions are closed — no activity, no revival.
-				if (isTerminal(currentState)) {
+		return withDb(basePath, (db) =>
+			db.transaction(() => {
+				const question = db
+					.query(`SELECT * FROM ${TABLES.agent_activities} WHERE id = ?`)
+					.get(questionId) as Record<string, unknown> | null;
+				if (!question) throw new Error(`Question not found: ${questionId}`);
+				if (question.type !== "question") {
 					throw new Error(
-						`Cannot add activity to a ${currentState} session (terminal): ${a.sessionId}`,
+						`Activity ${questionId} is a ${String(question.type)}, not a question`,
 					);
 				}
-
-				// Insert first so the unanswered-question check below counts this
-				// activity (e.g. an answering `decision` clears the block it closes).
-				db.run(
-					`INSERT INTO ${TABLES.agent_activities}
-             (id, session_id, type, ephemeral, severity, category, context, body, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					[
-						id,
-						a.sessionId,
-						a.type,
-						a.ephemeral ? 1 : 0,
-						a.severity ?? null,
-						a.category ?? null,
-						a.context ?? null,
-						a.body,
-						now,
-					],
-				);
-
-				// A `question` blocks on input. A non-question activity on an
-				// awaiting_input OR stale session clears the block ONLY when no
-				// unanswered question activities remain — a batch of N questions stays
-				// awaiting_input until every one has an answering decision (the unit of
-				// "needs answering" is the unanswered QUESTION, not the session).
-				let nextState = currentState;
-				if (a.type === "question") {
-					nextState = "awaiting_input";
-				} else if (
-					currentState === "awaiting_input" ||
-					currentState === "stale"
-				) {
-					nextState =
-						countUnansweredQuestions(db, a.sessionId) === 0
-							? "active"
-							: "awaiting_input";
-				}
-
-				db.run(
-					`UPDATE ${TABLES.agent_sessions}
-           SET state = ?, last_activity_at = ?
-           WHERE id = ?`,
-					[nextState, now, a.sessionId],
-				);
-			});
-			runTxn();
-
-			return {
-				id,
-				sessionId: a.sessionId,
-				type: a.type,
-				ephemeral: a.ephemeral,
-				severity: a.severity,
-				category: a.category,
-				context: a.context,
-				body: a.body,
-				createdAt: now,
-			};
-		});
+				return appendActivity(db, {
+					sessionId: String(question.session_id),
+					type: "decision",
+					ephemeral: false,
+					context: answersContext(questionId),
+					body: answer,
+				});
+			})(),
+		);
 	};
 
 	/**

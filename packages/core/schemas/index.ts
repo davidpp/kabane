@@ -68,6 +68,8 @@ export {
 } from "./project";
 // Question-body convention (S4b — ask_question onto sessions)
 export {
+	type AnswerQuestionInput,
+	AnswerQuestionInputSchema,
 	answersContext,
 	formatQuestionBody,
 	isAnswerTo,

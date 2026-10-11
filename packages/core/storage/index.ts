@@ -95,6 +95,7 @@ export const Planner = {
 	updateSessionState: Sessions.updateSessionState,
 	endSession: Sessions.endSession,
 	addActivity: Sessions.addActivity,
+	answerQuestion: Sessions.answerQuestion,
 	getActivities: Sessions.getActivities,
 	querySessions: Sessions.querySessions,
 	getNeedsInput: Sessions.getNeedsInput,

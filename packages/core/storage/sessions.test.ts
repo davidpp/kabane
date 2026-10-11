@@ -5,7 +5,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import type { TaskDraft } from "../schemas";
-import { answersContext } from "../schemas";
+import { answersContext, isAnswerTo } from "../schemas";
 import { Planner } from "./index";
 import { SESSION_STALE_MS } from "./sessions";
 
@@ -531,6 +531,123 @@ describe("Planner — Agent Sessions", () => {
 
 		const s = await Planner.getSession(TEST_BASE, sessionId);
 		expect(s.ok && s.value?.state).toBe("complete");
+	});
+});
+
+describe("Planner.answerQuestion", () => {
+	beforeEach(async () => {
+		rmSync(TEST_BASE, { recursive: true, force: true });
+		mkdirSync(TEST_BASE, { recursive: true });
+		await Planner.init(TEST_BASE);
+	});
+
+	afterEach(() => {
+		rmSync(TEST_BASE, { recursive: true, force: true });
+	});
+
+	const ask = async (sessionId: string, body: string): Promise<string> => {
+		const asked = await Planner.addActivity(TEST_BASE, {
+			sessionId,
+			type: "question",
+			body,
+		});
+		if (!asked.ok) throw asked.error;
+		return asked.value.id;
+	};
+
+	const stateOf = async (sessionId: string): Promise<string | undefined> => {
+		const s = await Planner.getSession(TEST_BASE, sessionId);
+		return s.ok ? s.value?.state : undefined;
+	};
+
+	it("writes a decision whose context is exactly `answers <questionId>`", async () => {
+		const { sessionId } = await startOn();
+		const questionId = await ask(sessionId, "Redis or in-memory?");
+
+		const answered = await Planner.answerQuestion(TEST_BASE, {
+			questionId,
+			answer: "Redis",
+		});
+		expect(answered.ok).toBe(true);
+		if (!answered.ok) return;
+		expect(answered.value.type).toBe("decision");
+		expect(answered.value.sessionId).toBe(sessionId);
+		expect(answered.value.context).toBe(`answers ${questionId}`);
+		expect(answered.value.body).toBe("Redis");
+		expect(await stateOf(sessionId)).toBe("active");
+	});
+
+	it("leaves awaiting_input only once every question is answered", async () => {
+		const { sessionId } = await startOn();
+		const q1 = await ask(sessionId, "Q1?");
+		const q2 = await ask(sessionId, "Q2?");
+
+		await Planner.answerQuestion(TEST_BASE, { questionId: q1, answer: "a1" });
+		expect(await stateOf(sessionId)).toBe("awaiting_input");
+		const queue = await Planner.getNeedsInput(TEST_BASE);
+		expect(queue.ok && queue.value.map((row) => row.question?.id)).toEqual([
+			q2,
+		]);
+
+		await Planner.answerQuestion(TEST_BASE, { questionId: q2, answer: "a2" });
+		expect(await stateOf(sessionId)).toBe("active");
+	});
+
+	it("re-answering supersedes and keeps the earlier answer on the record", async () => {
+		const { sessionId } = await startOn();
+		const questionId = await ask(sessionId, "Which flow?");
+		await Planner.answerQuestion(TEST_BASE, { questionId, answer: "OAuth" });
+		await Planner.answerQuestion(TEST_BASE, { questionId, answer: "SAML" });
+
+		const activities = await Planner.getActivities(TEST_BASE, sessionId);
+		expect(activities.ok).toBe(true);
+		if (!activities.ok) return;
+		const answers = activities.value.filter((a) =>
+			isAnswerTo(a.context, questionId),
+		);
+		expect(answers.map((a) => a.body)).toEqual(["OAuth", "SAML"]);
+		expect(await stateOf(sessionId)).toBe("active");
+	});
+
+	it("rejects an id that is not a question, writing nothing", async () => {
+		const { sessionId } = await startOn();
+		const note = await Planner.addActivity(TEST_BASE, {
+			sessionId,
+			type: "progress",
+			body: "working",
+		});
+		if (!note.ok) throw note.error;
+
+		const wrongType = await Planner.answerQuestion(TEST_BASE, {
+			questionId: note.value.id,
+			answer: "yes",
+		});
+		expect(wrongType.ok).toBe(false);
+		const missing = await Planner.answerQuestion(TEST_BASE, {
+			questionId: "nope",
+			answer: "yes",
+		});
+		expect(missing.ok).toBe(false);
+		expect(countActivities(sessionId)).toBe(1);
+	});
+
+	it("rejects a blank answer and an answer on an ended session", async () => {
+		const { sessionId } = await startOn();
+		const questionId = await ask(sessionId, "Ship it?");
+
+		const blank = await Planner.answerQuestion(TEST_BASE, {
+			questionId,
+			answer: "  ",
+		});
+		expect(blank.ok).toBe(false);
+
+		await Planner.endSession(TEST_BASE, sessionId, { state: "error" });
+		const late = await Planner.answerQuestion(TEST_BASE, {
+			questionId,
+			answer: "yes",
+		});
+		expect(late.ok).toBe(false);
+		expect(countActivities(sessionId)).toBe(1);
 	});
 });
 

@@ -113,13 +113,24 @@ export function parseQuestionBody(body: string): ParsedQuestion {
  * Answer-provenance convention (S4b): a `decision` activity answers a `question`
  * activity when its `context` is EXACTLY `answers <question-activity-id>`. This
  * is the single source of truth for the "which question does this decision
- * answer?" link — used by every answer surface (answerQuestion tRPC, CLI, loop
+ * answer?" link — used by every answer surface (`Planner.answerQuestion`, loop
  * reconcile) and the storage state machine's unanswered-question check. Exact
  * match (not substring) so re-answers and multi-question batches stay unambiguous.
  */
 export function answersContext(questionActivityId: string): string {
 	return `answers ${questionActivityId}`;
 }
+
+/**
+ * Input to `Planner.answerQuestion`: the question activity being answered and the
+ * answer, which becomes the `decision` activity's body (a chosen option's label,
+ * or freeform text).
+ */
+export const AnswerQuestionInputSchema = z.object({
+	questionId: z.string().min(1),
+	answer: z.string().trim().min(1),
+});
+export type AnswerQuestionInput = z.input<typeof AnswerQuestionInputSchema>;
 
 /** True iff a decision activity's `context` answers the given question activity. */
 export function isAnswerTo(
