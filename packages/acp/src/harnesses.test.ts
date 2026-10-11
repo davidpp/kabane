@@ -86,7 +86,10 @@ describe("Harnesses.installedCli", () => {
 		expect(codex.ok && codex.value).toEqual({
 			CODEX_PATH: "/usr/local/bin/codex",
 		});
-		const gemini = Harnesses.installedCli("gemini", {}, on("gemini"));
+	});
+
+	it("needs no CLI on PATH for a harness without an adapter, whose command is the CLI", () => {
+		const gemini = Harnesses.installedCli("gemini", {}, () => null);
 		expect(gemini.ok && gemini.value).toEqual({});
 	});
 
