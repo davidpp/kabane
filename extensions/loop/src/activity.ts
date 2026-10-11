@@ -155,7 +155,24 @@ export namespace LoopActivity {
 	};
 
 	/**
-	 * The device's newest runs, read from `$KABANE_HOME/loops` on every call. A question the board
+	 * Every live run, and the newest of the others up to RECENT_RUNS in all, newest first: a
+	 * run still going never drops off the board for being old.
+	 */
+	const listed = (runs: readonly RunStore.Run[]): RunStore.Run[] => {
+		const shown = runs.filter((run) => !run.dismissedAt);
+		const live = shown.filter((run) => RunStore.isLive(run.status));
+		const recent = new Set(
+			shown
+				.filter((run) => !RunStore.isLive(run.status))
+				.slice(0, Math.max(0, RECENT_RUNS - live.length)),
+		);
+		return shown.filter(
+			(run) => RunStore.isLive(run.status) || recent.has(run),
+		);
+	};
+
+	/**
+	 * The device's runs, read from `$KABANE_HOME/loops` on every call. A question the board
 	 * answers for one of a run's sessions is noted in the run's inbox as answered by `actor`, the
 	 * board's, as `kabane loop answer` notes its own.
 	 */
@@ -171,14 +188,7 @@ export namespace LoopActivity {
 		// A run whose tab the human closed is not listed again; `kabane loop status` still shows it.
 		load: async () => {
 			const runs = RunStore.list(home);
-			return runs.ok
-				? ok(
-						runs.value
-							.filter((run) => !run.dismissedAt)
-							.slice(0, RECENT_RUNS)
-							.map(card),
-					)
-				: runs;
+			return runs.ok ? ok(listed(runs.value).map(card)) : runs;
 		},
 		card: async (id) => {
 			const run = RunStore.read(home, id);
