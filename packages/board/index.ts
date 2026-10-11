@@ -6,6 +6,8 @@ export { BoardContext } from "./src/context";
 export { BoardData } from "./src/data";
 // Exported for the CLI: `kabane open` walks the same app → browser → clipboard chain the `O` key does.
 export { Launcher } from "./src/launcher";
+// For a host with more than one contributor (the CLI's enabled extensions) behind the one port.
+export { Activity, Dispatchers } from "./src/merge";
 export type {
 	ActivityCard,
 	ActivityEvent,
