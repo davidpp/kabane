@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Gates } from "./gates";
@@ -53,6 +53,38 @@ describe("Gates.run", () => {
 		const [result] = await running;
 		expect(Date.now() - started).toBeLessThan(5_000);
 		expect(result).toMatchObject({ name: "slow", ok: false, exit: null });
+	});
+
+	it("a stopping run kills everything a compound gate started, not only its shell", async () => {
+		const stopping = new AbortController();
+		const marker = join(dir, "outlived");
+		const running = Gates.run(
+			{ compound: `sleep 1.5; touch ${marker}` },
+			dir,
+			{},
+			stopping.signal,
+		);
+		setTimeout(() => stopping.abort(), 100);
+		const started = Date.now();
+		const [result] = await running;
+		expect(Date.now() - started).toBeLessThan(1_000);
+		expect(result).toMatchObject({ ok: false, exit: null });
+		await Bun.sleep(2_000);
+		expect(existsSync(marker)).toBe(false);
+	});
+
+	it("a gate that finishes despite the stop keeps its real exit", async () => {
+		const stopping = new AbortController();
+		// It ignores SIGTERM and ends green well inside the grace before SIGKILL.
+		const running = Gates.run(
+			{ stubborn: "trap '' TERM; sleep 0.3; echo green" },
+			dir,
+			{},
+			stopping.signal,
+		);
+		setTimeout(() => stopping.abort(), 50);
+		const [result] = await running;
+		expect(result).toMatchObject({ ok: true, exit: 0, tail: "green" });
 	});
 });
 

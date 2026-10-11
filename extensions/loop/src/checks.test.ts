@@ -198,6 +198,28 @@ describe("Checks", () => {
 		expect(brief).toContain("expected 2, got 3");
 	});
 
+	it("a gate the run's stop kills does not reopen the subtask its session closed", async () => {
+		const parent = await add("parent");
+		const child = await add("child", {
+			parentTaskId: parent.id,
+			state: "done",
+		});
+		const ctx = ctxFor(runOn(parent, { slow: "sleep 5; echo done" }, false));
+		const subject = {
+			taskId: child.id,
+			label: child.shortId ?? "",
+			title: "child",
+		};
+		setTimeout(() => ctx.stopping.abort(), 100);
+		const pass = await Checks.gate(ctx, subject);
+		await Checks.record(ctx, pass, subject);
+
+		expect(pass.results).toMatchObject([{ ok: false, exit: null }]);
+		const task = await Planner.getTask(home, child.id);
+		expect(task.ok && task.value?.state).toBe("done");
+		expect(await refsOf(child.id)).toEqual(["gate:slow"]);
+	});
+
 	it("a run without a worktree commits nothing, and a checkpoint refuses the checkout", async () => {
 		const parent = await add("parent");
 		const ctx = ctxFor(runOn(parent, { ok: "true" }, false));

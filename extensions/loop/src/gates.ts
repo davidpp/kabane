@@ -4,7 +4,7 @@
 //
 // They run in order and stop at the first failure: what reopens the subtask is the first red gate,
 // and the later ones would only spend time on a tree already known to be wrong.
-import { tryCatch } from "@cabane/core";
+import { tryCatch, trySync } from "@cabane/core";
 import { z } from "zod";
 
 export namespace Gates {
@@ -12,7 +12,10 @@ export namespace Gates {
 		name: z.string(),
 		command: z.string(),
 		ok: z.boolean(),
-		/** The exit code; null when the command was killed (the run stopped) or never started. */
+		/**
+		 * The exit code; null when the run's stop killed the command, or it never started. Either
+		 * way it says nothing about the work, so a null exit reopens nothing.
+		 */
 		exit: z.number().int().nullable(),
 		ms: z.number().min(0),
 		/** The end of what it printed, stdout and stderr together: what the next brief quotes. */
@@ -46,6 +49,16 @@ export namespace Gates {
 			.join("\n")
 			.slice(-TAIL_CHARS);
 
+	// How long a stopped gate's processes get to exit on SIGTERM before they are killed outright.
+	const KILL_GRACE_MS = 1_000;
+
+	// The gate leads a process group of its own, so a signal reaches everything it started
+	// (`bun run check && bun test`, a test runner's workers), not only the shell. A group already
+	// gone is nothing to signal.
+	const signalGroup = (pid: number, signal: NodeJS.Signals): void => {
+		trySync(() => process.kill(-pid, signal));
+	};
+
 	const one = async (
 		name: string,
 		command: string,
@@ -62,13 +75,26 @@ export namespace Gates {
 				stdout: "pipe",
 				stderr: "ignore",
 				env: { ...process.env, ...env },
+				detached: true,
 			});
-			const kill = () => proc.kill();
+			let killed = false;
+			let escalate: ReturnType<typeof setTimeout> | undefined;
+			const kill = () => {
+				killed = true;
+				signalGroup(proc.pid, "SIGTERM");
+				escalate = setTimeout(
+					() => signalGroup(proc.pid, "SIGKILL"),
+					KILL_GRACE_MS,
+				);
+			};
 			signal.addEventListener("abort", kill, { once: true });
+			// Read to the end: every process in the group has let go of stdout, so none is left.
 			const output = await new Response(proc.stdout).text();
 			const exit = await proc.exited;
 			signal.removeEventListener("abort", kill);
-			return { output, exit: signal.aborted ? null : exit };
+			clearTimeout(escalate);
+			// A gate that finished before the stop reached it keeps its real exit.
+			return { output, exit: killed && proc.signalCode !== null ? null : exit };
 		});
 		const ms = Math.round(performance.now() - started);
 		if (!ran.ok)
