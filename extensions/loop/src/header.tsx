@@ -346,15 +346,38 @@ export namespace LoopHeader {
 		return `   ${done}/${work.length} done`;
 	};
 
+	// The first row: the parent, how much of its plan is done, and the run's state. The state is the
+	// fact that matters most, so in a narrow pane the parent's title gives way to it.
+	const headline = (
+		run: RunStore.Run,
+		plan: LoopPlan.Plan | null,
+		now: Date,
+		room: number,
+	): Part[] => {
+		const title = plan?.parent.title ?? "";
+		const rest: Part[] = [
+			{ text: doneCount(plan), tone: "muted" },
+			{ text: "   ", tone: "muted" },
+			state(run, plan, now),
+		];
+		const length = (parts: readonly Part[]): number =>
+			parts.reduce((sum, part) => sum + part.text.length, 0);
+		const full = `${run.parentShortId}  ${title}`;
+		const named = full.length + length(rest) <= room ? full : run.parentShortId;
+		return [{ text: named, tone: "text", bold: true }, ...rest];
+	};
+
 	const Header = ({
 		home,
 		basePath,
 		card,
+		width,
 		expanded,
 	}: {
 		home: string;
 		basePath: string;
 		card: ActivityCard;
+		width: number;
 		expanded: boolean;
 	}): ReactNode => {
 		const theme = useTheme();
@@ -379,19 +402,7 @@ export namespace LoopHeader {
 					paddingRight: 1,
 				}}
 			>
-				<Row
-					bg={bg}
-					parts={[
-						{
-							text: `${run.parentShortId}  ${plan?.parent.title ?? ""}`,
-							tone: "text",
-							bold: true,
-						},
-						{ text: doneCount(plan), tone: "muted" },
-						{ text: "   ", tone: "muted" },
-						state(run, plan, now),
-					]}
-				/>
+				<Row bg={bg} parts={headline(run, plan, now, width - 2)} />
 				<Row
 					bg={bg}
 					parts={[
@@ -411,8 +422,18 @@ export namespace LoopHeader {
 
 	/** The header for loop cards, reading each run from `home` and its plan from `basePath`. */
 	export const make = (home: string, basePath: string): CardHeader => {
-		const LoopTabHeader = ({ card, expanded }: CardHeaderProps): ReactNode => (
-			<Header home={home} basePath={basePath} card={card} expanded={expanded} />
+		const LoopTabHeader = ({
+			card,
+			width,
+			expanded,
+		}: CardHeaderProps): ReactNode => (
+			<Header
+				home={home}
+				basePath={basePath}
+				card={card}
+				width={width}
+				expanded={expanded}
+			/>
 		);
 		return LoopTabHeader;
 	};
