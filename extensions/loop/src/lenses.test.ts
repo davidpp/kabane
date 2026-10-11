@@ -224,7 +224,7 @@ describe("Runner lenses", () => {
 		]);
 		expect(
 			ended.value.claims.map((c) => [c.lens, c.lane, c.taskId, c.outcome]),
-		).toEqual([["functional", "claude:functional-lens", parent.id, "error"]]);
+		).toEqual([["functional", "functional-lens", parent.id, "error"]]);
 		const events = RunStore.readEvents(home, "run-1");
 		const types = events.ok ? events.value.map((e) => e.type) : [];
 		expect(types.indexOf("gate_passed")).toBeLessThan(types.indexOf("claim"));

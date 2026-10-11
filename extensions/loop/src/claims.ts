@@ -289,7 +289,8 @@ export namespace Claims {
 		// to themselves, so the assignee names who wrote it, not who the human picked to work it.
 		const harness = ctx.run.config.implementer;
 		const attempts = ctx.run.claims.filter((c) => c.taskId === task.id).length;
-		const lane = `${harness}:${label(task)}${attempts > 0 ? `#${attempts + 1}` : ""}`;
+		// Named by the subtask alone: every subtask runs on the run's one harness, which the header names.
+		const lane = `${label(task)}${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, task, harness, lane, true);
 		if (sessionId === undefined) return;
 		const retry = Gates.lastFailure(ctx.run.gateRuns, task.id);
@@ -316,7 +317,7 @@ export namespace Claims {
 		if (!prompt.ok) return prompt;
 		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;
 		const attempts = ctx.run.claims.filter((c) => c.lens === name).length;
-		const lane = `${harness}:${name}-lens${attempts > 0 ? `#${attempts + 1}` : ""}`;
+		const lane = `${name}-lens${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, plan.parent, harness, lane, false);
 		if (sessionId === undefined)
 			return err(new Error(`the ${name} lens's session did not start`));
