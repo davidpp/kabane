@@ -182,22 +182,73 @@ describe("actions", () => {
 		expect(BoardNav.reduceKey(acting(), shiftX).effect.type).toBe("none");
 	});
 
-	it("an action aimed at a lane, on a card with none yet, says so and is left out of the footer", () => {
-		const s = acting({ lanes: [] });
-		expect(press(s, "i").effect).toEqual({
-			type: "notice",
-			notice: { text: "no agents to inject yet", tone: "success" },
-		});
-		expect(CardTab.hints(s)).toEqual([]);
+	it("an action aimed at a lane, with no live lane to go to, says so and is left out of the footer", () => {
+		for (const s of [acting({ lanes: [] }), acting({ liveLanes: [] })]) {
+			expect(press(s, "i").effect).toEqual({
+				type: "notice",
+				notice: { text: "no agents to inject now", tone: "success" },
+			});
+			expect(CardTab.hints(s)).toEqual([]);
+		}
 	});
 
-	it("an action aimed at a lane asks for one first", () => {
-		const { state, effect } = press(acting(), "i");
-		expect(state.prompt.open).toBeNull();
-		expect(effect).toEqual({
+	it("on the all-lanes view, an action aimed at a lane goes to the only live one", () => {
+		const s = acting({ liveLanes: ["claude:JREP-3"] });
+		expect(CardTab.hints(s)).toEqual([{ key: "i", label: "inject" }]);
+		const opened = press(s, "i").state;
+		expect(opened.prompt.open).toEqual({
+			target: {
+				type: "act",
+				cardId: "loop:r1",
+				actionId: "inject",
+				lane: "claude:JREP-3",
+			},
+			title: "inject",
+			aim: "claude:JREP-3",
+			placeholder: "a prompt for this session",
+		});
+		expect(BoardPrompt.submit(opened, "use the LRU").effect).toMatchObject({
+			lane: "claude:JREP-3",
+		});
+	});
+
+	it("with several live lanes its prompt aims at the first, and tab walks the others", () => {
+		const s = acting({ liveLanes: ["claude:JREP-3", "claude:JREP-2"] });
+		const opened = press(s, "i").state;
+		expect(opened.prompt.open).toMatchObject({
+			aim: "claude:JREP-3",
+			aims: ["claude:JREP-3", "claude:JREP-2"],
+		});
+		const facts = { linked: new Set<string>(), events: false };
+		expect(BoardNav.keySituation(opened, facts).reaimable).toBe(true);
+		const next = press(opened, "tab").state;
+		expect(next.prompt.open?.aim).toBe("claude:JREP-2");
+		expect(BoardPrompt.submit(next, "say why").effect).toMatchObject({
+			lane: "claude:JREP-2",
+		});
+		const back = BoardNav.reduceKey(next, { name: "tab", shift: true });
+		expect(back.state.prompt.open?.aim).toBe("claude:JREP-3");
+		// The lane on screen wins, and leaves nothing to walk.
+		const onLane = press(s, "l", "i").state;
+		expect(onLane.prompt.open?.aim).toBe("claude:JREP-2");
+		expect(onLane.prompt.open?.aims).toBeUndefined();
+		expect(press(onLane, "tab").state).toBe(onLane);
+	});
+
+	it("without the host's live lanes, every lane is one, and one with no prompt asks for a lane first", () => {
+		expect(press(acting(), "i").state.prompt.open?.aims).toEqual([
+			"claude:JREP-2",
+			"claude:JREP-3",
+		]);
+		const bare = onTab([
+			card({
+				actions: [{ id: "nudge", key: "u", label: "nudge", lane: true }],
+			}),
+		]);
+		expect(press(bare, "u").effect).toEqual({
 			type: "notice",
 			notice: {
-				text: "inject goes to one of the agents · h/l picks it",
+				text: "nudge goes to one of the agents · h/l picks it",
 				tone: "success",
 			},
 		});

@@ -49,6 +49,10 @@ export type ActivityCard = {
 	lanes?: readonly string[];
 	// What the lanes are, for the first chip (`all agents · live`). "lanes" when absent.
 	laneNoun?: string;
+	// The lanes an action aimed at a lane can still go to, the one to aim at first leading (the most
+	// recently started, say). On the all-lanes view such an action goes to the only one, or opens its
+	// prompt on the first with `tab` walking the rest. Absent, every lane is taken as one.
+	liveLanes?: readonly string[];
 	// Keys the human can press on the card's tab, run through `ActivitySource.act`. The host lists
 	// what makes sense now (no `stop` on a card that is over).
 	actions?: readonly CardAction[];
@@ -59,8 +63,9 @@ export type ActivityCard = {
 export const STOP_ACTION = "stop";
 
 // One key on a card's tab. `input` is the placeholder of the prompt the board opens first (the
-// copilot's own input), whose text goes to `act`; `lane` says the action is aimed at one lane, so it
-// needs one on screen. A key the board answers on a card's tab is never offered.
+// copilot's own input), whose text goes to `act`; `lane` says the action is aimed at one lane: the
+// one on screen, else one of the card's `liveLanes`. A key the board answers on a card's tab is never
+// offered.
 export type CardAction = {
 	id: string;
 	key: string;

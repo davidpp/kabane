@@ -30,6 +30,7 @@ export namespace BoardTabs {
 		taskShortId?: string;
 		lanes?: readonly string[];
 		laneNoun?: string;
+		liveLanes?: readonly string[];
 		actions?: readonly CardAction[];
 	};
 
@@ -139,6 +140,7 @@ export namespace BoardTabs {
 		...(card.taskShortId ? { taskShortId: card.taskShortId } : {}),
 		...(card.lanes && card.lanes.length > 0 ? { lanes: card.lanes } : {}),
 		...(card.laneNoun ? { laneNoun: card.laneNoun } : {}),
+		...(card.liveLanes ? { liveLanes: card.liveLanes } : {}),
 		...(card.actions && card.actions.length > 0
 			? { actions: card.actions }
 			: {}),

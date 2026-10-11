@@ -48,6 +48,8 @@ export namespace Keymap {
 		lanes?: boolean;
 		/** The question on screen offers no answers to pick, so `enter` types one. */
 		freeform?: boolean;
+		/** The open prompt's action could go to another lane, which `tab` aims it at. */
+		reaimable?: boolean;
 		/** The card on screen has a header of its host's, which `e` expands. */
 		header?: boolean;
 		/** The `?` sheet is taller than the pane. */
@@ -489,6 +491,13 @@ export namespace Keymap {
 					routed: "textarea",
 				},
 				{ key: "esc", label: "cancel", tier: "footer", keys: ["escape"] },
+				{
+					key: "tab",
+					label: "send to another",
+					tier: "footer",
+					keys: ["tab", "shift+tab"],
+					when: (s) => s.reaimable === true,
+				},
 				{
 					key: "↑",
 					label: "previous",

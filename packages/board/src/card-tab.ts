@@ -94,19 +94,30 @@ export namespace CardTab {
 		effect: { type: "notice", notice: { text, tone: "success" } },
 	});
 
+	/** The lanes an action aimed at a lane can go to from the tab: the one on screen, else the live ones. */
+	const aimsOf = (tabs: BoardTabs.Tabs, id: string): readonly string[] => {
+		const { lane } = view(tabs, id);
+		if (lane !== null) return [lane];
+		return tabs.cards.get(id)?.liveLanes ?? lanesOf(tabs, id);
+	};
+
 	// One of the card's actions: straight to the host, or through the prompt when it takes text. One
-	// aimed at a lane needs one on screen.
+	// aimed at a lane goes to the lane on screen; on the all-lanes view, to the only live one, or
+	// through its prompt aimed at the first, `tab` walking the others.
 	const run = (state: State, id: string, action: CardAction): Step => {
 		const card = state.tabs.cards.get(id);
-		const lane = view(state.tabs, id).lane ?? undefined;
 		const noun = card?.laneNoun ?? "lanes";
-		if (action.lane && lanesOf(state.tabs, id).length === 0)
-			return notice(state, `no ${noun} to ${action.label} yet`);
-		if (action.lane && lane === undefined)
+		const aims = action.lane ? aimsOf(state.tabs, id) : [];
+		if (action.lane && aims.length === 0)
+			return notice(state, `no ${noun} to ${action.label} now`);
+		if (action.lane && aims.length > 1 && action.input === undefined)
 			return notice(
 				state,
 				`${action.label} goes to one of the ${noun} · h/l picks it`,
 			);
+		const lane = action.lane
+			? aims[0]
+			: (view(state.tabs, id).lane ?? undefined);
 		if (action.input !== undefined)
 			return BoardPrompt.open(state, {
 				target: {
@@ -117,6 +128,7 @@ export namespace CardTab {
 				},
 				title: action.label,
 				...(lane ? { aim: lane } : {}),
+				...(aims.length > 1 ? { aims } : {}),
 				placeholder: action.input,
 			});
 		return {
@@ -186,11 +198,11 @@ export namespace CardTab {
 	export const hints = (state: State): Keymap.Hint[] => {
 		const id = state.tabs.active;
 		if (id === null || BoardNav.keyContext(state) !== "cardTab") return [];
-		// An action aimed at a lane, on a card with none yet, has nothing to say in the footer.
-		const lanes = lanesOf(state.tabs, id).length;
+		// An action aimed at a lane, with none it can go to, has nothing to say in the footer.
+		const aimed = aimsOf(state.tabs, id).length > 0;
 		return actionsOf(state.tabs, id)
 			.filter((action) => action.id !== STOP_ACTION)
-			.filter((action) => !action.lane || lanes > 0)
+			.filter((action) => !action.lane || aimed)
 			.map((action) => ({ key: action.key, label: action.label }));
 	};
 

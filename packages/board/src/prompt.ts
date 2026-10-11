@@ -19,11 +19,15 @@ export namespace BoardPrompt {
 		| { type: "act"; cardId: string; actionId: string; lane?: string }
 		| { type: "answer"; questionId: string };
 
-	/** What the panel says it is for (`inject → claude:JREP-2`) and what the empty field invites. */
+	/**
+	 * What the panel says it is for (`message → JREP-2`) and what the empty field invites. `aims` are
+	 * the lanes an action opened from the all-lanes view could go to, which `tab` walks.
+	 */
 	type Open = {
 		target: Target;
 		title: string;
 		aim?: string;
+		aims?: readonly string[];
 		placeholder: string;
 	};
 
@@ -89,11 +93,27 @@ export namespace BoardPrompt {
 		};
 	};
 
+	// `tab` (`⇧tab` back): aim the action at the next of its lanes, wrapping, keeping what is typed.
+	const reaim = (state: State, delta: 1 | -1): Step => {
+		const opened = state.prompt.open;
+		const aims = opened?.aims ?? [];
+		if (opened === null || opened.target.type !== "act" || aims.length < 2)
+			return { state, effect: NOTHING };
+		const at = aims.indexOf(opened.target.lane ?? "");
+		const lane = aims[(at + delta + aims.length) % aims.length] ?? aims[0];
+		return {
+			state: withPrompt(state, {
+				open: { ...opened, target: { ...opened.target, lane }, aim: lane },
+			}),
+			effect: NOTHING,
+		};
+	};
+
 	/** The keys the prompt answers; every other one is the textarea's and does nothing here. */
 	export const reduceKey = (state: State, key: BoardNav.KeyInput): Step => {
 		if (key.name === "escape") return { state: close(state), effect: NOTHING };
-		if (!consumes(state, key) || key.name === "tab")
-			return { state, effect: NOTHING };
+		if (key.name === "tab") return reaim(state, key.shift ? -1 : 1);
+		if (!consumes(state, key)) return { state, effect: NOTHING };
 		return recall(state, key.name === "up" ? 1 : -1);
 	};
 

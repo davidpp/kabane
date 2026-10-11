@@ -1332,6 +1332,7 @@ export namespace BoardNav {
 				state.search.mode === "committed" ||
 				state.scoped,
 			history: recallable(state.prompt.open ? state.prompt : state.copilot),
+			reaimable: (state.prompt.open?.aims?.length ?? 0) > 1,
 			ready:
 				state.dispatch !== null &&
 				!state.dispatch.loading &&

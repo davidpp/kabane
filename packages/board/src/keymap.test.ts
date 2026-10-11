@@ -219,6 +219,28 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 				historyAt: 0,
 			},
 		}),
+		// A lane action opened from the all-lanes view, with two lanes `tab` walks.
+		state({
+			view: { type: "events", cardId: LOOP, fromView: "board" },
+			tabs: RUNNING,
+			prompt: {
+				open: {
+					target: {
+						type: "act",
+						cardId: LOOP,
+						actionId: "inject",
+						lane: "claude:JAKE-3",
+					},
+					title: "message",
+					aim: "claude:JAKE-3",
+					aims: ["claude:JAKE-3", "codex:JAKE-4"],
+					placeholder: "a message",
+				},
+				text: "",
+				history: [],
+				historyAt: 0,
+			},
+		}),
 	],
 	copilot: [
 		state({ focus: "copilot", copilot: copilot({ history: ["earlier"] }) }),

@@ -129,14 +129,17 @@ sheet lists them as `this card`. The board's own keys on a card's tab come first
 (`h/l`, `j/k`, `e`, `o`, `w`, `q`, the digits, the everywhere keys), and `x` is reserved for the
 action whose id is `STOP_ACTION` (`stop`), as it stops the copilot's turn on its transcript: `x` runs
 it while the card is in flight, and does nothing on a card that offers none. An action passes the
-lane on screen; one with `lane: true` is aimed at a single lane and asks for one (`h/l`) first.
+lane on screen. One with `lane: true` is aimed at a single lane: the one on screen, else, on the
+all-lanes view, one of the card's `liveLanes` (every lane when the host lists none). With one, it goes
+there; with several, its prompt opens aimed at the first and `tab`/`⇧tab` walk the others; with none
+the footer leaves it out. One with no prompt and several to choose from asks for a lane (`h/l`).
 
 An action with `input` opens the prompt: the copilot's own input (`PromptField`, the same textarea,
 bindings and `up` history as the copilot pane), in a raised panel above the copilot's row that says
-what it is for (`inject → claude:JREP-2`), with `input` as its placeholder. While it is open it has
+what it is for (`message → JREP-2`), with `input` as its placeholder. While it is open it has
 the keyboard: `enter` sends to `act` with the text, `⇧enter`/`ctrl+j` make a newline, paste works,
-`up` on an empty buffer recalls what was sent from it before, `esc` drops it, and a click on the
-board closes it.
+`up` on an empty buffer recalls what was sent from it before, `tab` aims it at another lane when it
+has several, `esc` drops it, and a click on the board closes it.
 
 #### Lanes on a card's tab
 
