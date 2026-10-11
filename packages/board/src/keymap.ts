@@ -42,6 +42,8 @@ export namespace Keymap {
 		back?: boolean;
 		/** The banner's question still waits, and offers answers to pick. */
 		unanswered?: boolean;
+		/** A question is pinned over the detail view, so the digits are its own. */
+		pinned?: boolean;
 		/** The `?` sheet is taller than the pane. */
 		scrollable?: boolean;
 		/** Setup found harnesses to tick. */
@@ -321,6 +323,7 @@ export namespace Keymap {
 					label: "go to a section",
 					tier: "help",
 					keys: ["1", "2", "3"],
+					when: (s) => s.pinned !== true,
 				},
 				{
 					key: "j/k",

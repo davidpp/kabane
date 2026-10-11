@@ -279,15 +279,19 @@ describe("a card's tab", () => {
 describe("the pinned banner", () => {
 	const pinned = (): BoardNav.BoardState => press(withLoop(), "!").state;
 
-	it("a digit answers with the answer it numbers; one past the answers is the detail's own tab key", () => {
+	it("a digit answers with the answer it numbers; one past the answers does nothing at all", () => {
 		expect(press(pinned(), "2").effect).toEqual({
 			type: "answerQuestion",
 			questionId: "q-solo",
 			answer: "Take",
 		});
-		const tab = press(pinned(), "3");
-		expect(tab.effect.type).toBe("none");
-		expect(tab.state.view).toMatchObject({ type: "detail", tab: "log" });
+		const s = pinned();
+		const past = press(s, "3");
+		expect(past.effect.type).toBe("none");
+		expect(past.state).toBe(s);
+		// h/l still walk the sections under the banner.
+		expect(press(s, "l").state.view).toMatchObject({ type: "detail" });
+		expect(press(s, "l").state).not.toBe(s);
 	});
 
 	it("b does nothing without a card to go back to", () => {
@@ -300,6 +304,7 @@ describe("the pinned banner", () => {
 		const view = answered.view;
 		expect(view.type === "detail" && view.banner?.answer).toBe("Pin");
 		expect(press(answered, "1").effect.type).toBe("none");
+		expect(press(answered, "2").state).toBe(answered);
 		// The poll takes it out of the queue; the banner stays up until the human leaves.
 		const polled = BoardTabs.withActivity(answered, [card()], [LOOP_Q]);
 		expect(polled.view).toMatchObject({ banner: { answer: "Pin" } });

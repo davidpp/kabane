@@ -305,8 +305,9 @@ export namespace BoardTabs {
 	};
 
 	/**
-	 * The banner over a detail view: a digit picks the answer it numbers (ahead of the detail's own
-	 * tab digits) and `b` goes back to the card's tab. Null for every other key.
+	 * The banner over a detail view: `b` goes back to the card's tab, and the digits are the banner's
+	 * alone while it is pinned. One picks the answer it numbers; one past the answers, or any once it
+	 * is answered, does nothing rather than switching the section under it. Null for every other key.
 	 */
 	export const reduceBannerKey = (
 		state: State,
@@ -319,11 +320,14 @@ export namespace BoardTabs {
 			state.tabs.open.includes(banner.cardId)
 		)
 			return { state: show(state, banner.cardId), effect: NOTHING };
-		if (isAnswered(state.tabs, banner) || key.ctrl || key.meta) return null;
+		if (key.ctrl || key.meta) return null;
 		const digit = Number.parseInt(key.name, 10);
-		const answer = digit >= 1 ? banner.question.choices[digit - 1] : undefined;
+		if (!(digit >= 1 && digit <= 9)) return null;
+		const answer = isAnswered(state.tabs, banner)
+			? undefined
+			: banner.question.choices[digit - 1];
 		return answer === undefined
-			? null
+			? { state, effect: NOTHING }
 			: {
 					state,
 					effect: {
@@ -382,6 +386,7 @@ export namespace BoardTabs {
 		closable: boolean;
 		back: boolean;
 		unanswered: boolean;
+		pinned: boolean;
 	} => {
 		const { tabs, view } = state;
 		const banner = view.type === "detail" ? view.banner : undefined;
@@ -395,6 +400,7 @@ export namespace BoardTabs {
 				banner !== undefined &&
 				!isAnswered(tabs, banner) &&
 				banner.question.choices.length > 0,
+			pinned: banner !== undefined,
 		};
 	};
 }

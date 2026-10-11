@@ -72,7 +72,8 @@ its sessions' questions.
 lands on that card's tab, which shows it under its header; `o` there opens the question's task. Any
 other question lands straight on its task. Either way the task's detail view opens with the
 question pinned over it as a banner, and a digit (or a click on an answer) answers it through
-`Planner.answerQuestion`, which writes the `decision` and unblocks the session. `b` on the banner
+`Planner.answerQuestion`, which writes the `decision` and unblocks the session. While the banner is
+pinned the digits are its alone: one past its answers does nothing (`h/l` still walk the sections). `b` on the banner
 goes back to the card's tab when the question came from one. An answered banner says what was
 answered and clears when you leave the view; an unanswered one stays pinned until it is answered.
 A question that offers no answers (freeform) is shown but has to be answered where it was asked.
