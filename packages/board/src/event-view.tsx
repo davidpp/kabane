@@ -437,7 +437,7 @@ const TitleRow = ({
 		card.taskShortId ??
 		(card.taskId ? (resolveShortId(card.taskId) ?? "—") : "—");
 	return (
-		<text>
+		<text style={{ flexShrink: 0 }}>
 			<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
 				{card.label}
 			</span>
@@ -491,7 +491,7 @@ const LaneStrip = ({
 	const theme = useTheme();
 	const on = lane === null ? 0 : lanes.indexOf(lane) + 1;
 	return (
-		<box style={{ flexDirection: "row", flexShrink: 0, marginTop: 1 }}>
+		<box style={{ flexDirection: "row", flexShrink: 0 }}>
 			{[allLabel, ...lanes].map((name, index) => {
 				const picked = index === on;
 				const fg = index === 0 ? theme.text : Theme.seriesOf(theme, index - 1);
