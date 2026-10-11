@@ -63,8 +63,10 @@ answered from the board, a finding filed. Mocked transcripts do not count.
    - **Plan source:** the parent issue, its children and their `blocks` links, re-read every tick.
      Agents may add and link subtasks mid-run, and that is a normal event.
    - **Dispatch:** `@cabane/acp`, one session per claim. Ready work is claimed continuously up to
-     a concurrency cap, with no lockstep waves. The harness is the subtask's assignee when it names
-     a known harness, else the run's configured implementer. The brief is `assembleContext` plus
+     a concurrency cap, with no lockstep waves. The harness is the run's implementer for every
+     subtask, and a claim sets the subtask's assignee to it: agents assign the issues they file to
+     themselves, so an assignee says who wrote the issue, not who the human chose to work it.
+     Splitting a run's subtasks across harnesses is deferred. The brief is `assembleContext` plus
      short run instructions, with `kabane mcp --scope` attached.
    - **Launch profile:** the loop runs the user's full harness, never the copilot's profile. The
      copilot pins `ANTHROPIC_MODEL=sonnet`, appends its own system prompt, sets `KABANE_SESSION`

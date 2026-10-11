@@ -164,3 +164,52 @@ describe("Claims.settleAll", () => {
 		}
 	});
 });
+
+describe("Claims.claim", () => {
+	it("works a subtask on the run's harness and makes it the assignee, whoever filed it", async () => {
+		const parent = await add("parent");
+		const child = await add("child", {
+			parentTaskId: parent.id,
+			assignee: "claude",
+		});
+		const config = LoopConfig.Schema.safeParse({ implementer: "codex" });
+		if (!config.success) throw config.error;
+		const run: RunStore.Run = {
+			version: 1,
+			id: "run-1",
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		};
+		const created = RunStore.create(home, run);
+		if (!created.ok) throw created.error;
+		const ctx = ctxFor(run);
+		// Every harness fails at once, so no real session starts: what is under test is who the
+		// claim gave the subtask to.
+		const fails = { command: "/usr/bin/false", args: [] };
+		ctx.deps = {
+			...ctx.deps,
+			overrides: { claude: fails, codex: fails, gemini: fails },
+		};
+		const plan = await LoopPlan.load(home, parent.id);
+		if (!plan.ok) throw plan.error;
+		const node = plan.value.nodes.find((n) => n.task.id === child.id);
+		if (!node) throw new Error("child is not in the plan");
+
+		await Claims.claim(ctx, node, plan.value);
+		await Promise.all([...ctx.live.values()].map((l) => l.settled));
+
+		expect(ctx.run.claims.map((c) => c.harness)).toEqual(["codex"]);
+		const task = await Planner.getTask(home, child.id);
+		expect(task.ok && task.value?.assignee).toBe("codex");
+	});
+});

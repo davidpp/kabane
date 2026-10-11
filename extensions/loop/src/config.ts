@@ -43,7 +43,7 @@ export namespace LoopConfig {
 		.regex(/^[a-z][a-z0-9-]*$/, "a lens name is one lowercase word");
 
 	export const Schema = z.object({
-		/** The harness for a subtask whose assignee does not name one. */
+		/** The harness every subtask runs on; a claim makes it the subtask's assignee. */
 		implementer: z.enum(Harnesses.IDS).default("claude"),
 		/** Model override for every harness that reads one (Claude); absent keeps the pin. */
 		model: z.string().min(1).optional(),

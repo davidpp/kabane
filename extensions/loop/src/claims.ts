@@ -14,7 +14,6 @@ import { Gates } from "./gates";
 import { Lenses } from "./lenses";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
-import { Scheduler } from "./scheduler";
 import { Stall } from "./stall";
 import { RunState } from "./state";
 import { RunStore } from "./store";
@@ -181,6 +180,7 @@ export namespace Claims {
 		const moved = takes
 			? await Planner.updateTask(ctx.deps.basePath, task.id, {
 					state: "in_progress",
+					assignee: harness,
 				})
 			: { ok: true as const };
 		if (!moved.ok)
@@ -285,7 +285,9 @@ export namespace Claims {
 		plan: LoopPlan.Plan,
 	): Promise<void> => {
 		const task = node.task;
-		const harness = Scheduler.harnessFor(node, ctx.run.config.implementer);
+		// The run's harness, whatever the subtask's assignee says: agents assign issues they file
+		// to themselves, so the assignee names who wrote it, not who the human picked to work it.
+		const harness = ctx.run.config.implementer;
 		const attempts = ctx.run.claims.filter((c) => c.taskId === task.id).length;
 		const lane = `${harness}:${label(task)}${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, task, harness, lane, true);

@@ -1,6 +1,5 @@
 // Claim decisions. Continuous, not in waves: every tick, each free slot under the concurrency cap
 // takes the next ready subtask, so one slow session never holds the others back. Pure.
-import { Harnesses } from "@cabane/acp";
 import type { TaskPriority } from "@cabane/core";
 import type { LoopPlan } from "./plan";
 
@@ -38,13 +37,4 @@ export namespace Scheduler {
 		slots: number,
 		first: readonly string[] = [],
 	): LoopPlan.Node[] => (slots > 0 ? order(ready, first).slice(0, slots) : []);
-
-	/** The subtask's assignee when it names a harness kabane can drive, else the implementer. */
-	export const harnessFor = (
-		node: LoopPlan.Node,
-		implementer: Harnesses.Id,
-	): Harnesses.Id => {
-		const assignee = node.task.assignee?.trim().toLowerCase();
-		return assignee && Harnesses.isId(assignee) ? assignee : implementer;
-	};
 }

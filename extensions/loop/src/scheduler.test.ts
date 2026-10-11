@@ -58,29 +58,3 @@ describe("Scheduler.pick", () => {
 		expect(titles(Scheduler.pick([c], 1))).toEqual(["c"]);
 	});
 });
-
-describe("Scheduler.harnessFor", () => {
-	it("uses the assignee when it names a known harness, else the implementer", async () => {
-		expect(
-			Scheduler.harnessFor(
-				await node({ title: "x", assignee: "codex" }),
-				"claude",
-			),
-		).toBe("codex");
-		expect(
-			Scheduler.harnessFor(
-				await node({ title: "y", assignee: "Gemini " }),
-				"claude",
-			),
-		).toBe("gemini");
-		expect(
-			Scheduler.harnessFor(
-				await node({ title: "z", assignee: "hermes" }),
-				"claude",
-			),
-		).toBe("claude");
-		expect(Scheduler.harnessFor(await node({ title: "w" }), "codex")).toBe(
-			"codex",
-		);
-	});
-});
