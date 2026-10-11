@@ -156,7 +156,9 @@ export namespace CardTab {
 		key: BoardNav.KeyInput,
 	): Step | null => {
 		if (key.ctrl || key.meta) return null;
-		switch (key.name) {
+		// A letter by what it types: OpenTUI names `X` as `x` with shift, which is not stop. A named
+		// key (`left`, `return`) by its name, its sequence being an escape code.
+		switch (key.name.length === 1 ? keyOf(key) : key.name) {
 			case "h":
 			case "left":
 				return stepLane(state, id, -1);
