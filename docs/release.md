@@ -117,6 +117,8 @@ private, with a source bin and `workspace:*` dependencies. `scripts/build.ts` ge
 `packages/cli/dist` containing:
 
 - `bin/kabane.js`: Bun bundle, workspace and pure-JS dependencies inlined, Bun shebang kept.
+  Every official extension under `extensions/` is inlined too; the build fails when one of
+  those directories is missing from the bundle, which means the CLI's list does not import it.
 - `templates/dispatch/`, repository README and LICENSE, and generated package.json.
 - Exactly pinned external `@opentui/core`, `@opentui/react` and `react`, taken from the
   board manifest. OpenTUI installs its platform-native optional dependency; React must not

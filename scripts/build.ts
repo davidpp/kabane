@@ -3,7 +3,8 @@
  * Builds the publishable `kabane` package into packages/cli/dist, the directory `npm pack` and
  * `npm publish` run in (docs/release.md):
  *
- *   bin/kabane.js         the CLI bundled for Bun, every `@cabane/*` workspace package inlined
+ *   bin/kabane.js         the CLI bundled for Bun, every `@cabane/*` workspace package inlined,
+ *                         each official extension under extensions/ among them
  *   templates/dispatch/   the copilot's dispatch skill template, read from disk at runtime
  *   package.json          generated from packages/cli/package.json, no workspace dependency left
  *   README.md, LICENSE    the repository's own
@@ -13,8 +14,15 @@
  * scope belong to other people, and a published `@cabane/*` dependency would install their code.
  */
 
-import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import {
+	cpSync,
+	existsSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const CLI = join(ROOT, "packages/cli");
@@ -80,6 +88,22 @@ const publishManifest = (): Manifest => {
 	};
 };
 
+// Every workspace member under extensions/ is an official extension, so the CLI's list has to
+// import it: one the bundle leaves out would be a directory nobody can enable.
+const checkExtensionsCarried = (bundled: readonly string[]): void => {
+	const dir = join(ROOT, "extensions");
+	if (!existsSync(dir)) return;
+	const files = bundled.map((input) => relative(ROOT, resolve(input)));
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		if (!entry.isDirectory()) continue;
+		const prefix = `extensions/${entry.name}/`;
+		if (!files.some((file) => file.startsWith(prefix)))
+			fail(
+				`${prefix} is not in the bundle; add it to the official list in packages/cli/src/extensions.ts`,
+			);
+	}
+};
+
 const bundle = async (): Promise<void> => {
 	const result = await Bun.build({
 		entrypoints: [join(CLI, "index.ts")],
@@ -89,11 +113,14 @@ const bundle = async (): Promise<void> => {
 		external: [...EXTERNAL],
 		// Without it the JSX compiles to the development runtime.
 		define: { "process.env.NODE_ENV": JSON.stringify("production") },
+		// Which source files went in, for the extension check below.
+		metafile: true,
 	});
 	if (!result.success) {
 		for (const log of result.logs) console.error(log);
 		fail("bun build failed");
 	}
+	checkExtensionsCarried(Object.keys(result.metafile?.inputs ?? {}));
 };
 
 export const build = async (): Promise<void> => {
