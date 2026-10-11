@@ -62,7 +62,8 @@ the in-flight states.
 #### Tabs and the questions waiting on you
 
 The top row is the tab bar. Tab 1 is the tracker (the board and every view pushed over it); then
-one tab per card with `tab: true`, in the order they appeared, labelled with the card's state glyph
+one tab per card with `tab: true`, a new one opening at the end, several at once oldest first by
+`startedAt`, labelled with the card's state glyph
 and its `taskShortId` (else its `label`). The tab is the card's event log. A finished card keeps its
 tab until `w` closes it, and a closed one does not come back: `w` also calls the source's optional
 `dismiss(id)`, so a host that remembers it stops listing the card across a relaunch (without
