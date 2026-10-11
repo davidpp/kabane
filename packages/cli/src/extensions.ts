@@ -27,18 +27,28 @@ type Lookup =
 	| { found: "disabled"; extension: string }
 	| { found: "none" };
 
+// Names already warned about, so a process that reads the config twice says it once.
+const warnedUnknown = new Set<string>();
+
 export namespace Extensions {
 	/**
 	 * The official extensions this home turns on. No config file is none on;
 	 * an unreadable one is the error every other command would report. A name
 	 * this build does not ship is skipped, so a config a newer kabane wrote
-	 * still opens.
+	 * still opens, with a warning on stderr since it may be a typo.
 	 */
 	export const enabled = (home: string): Result<string[]> => {
 		if (!existsSync(configPath(home))) return ok([]);
 		const config = loadConfig(home);
 		if (!config.ok) return config;
 		const named = config.value.extensions ?? [];
+		for (const name of named) {
+			if (Object.hasOwn(OFFICIAL, name) || warnedUnknown.has(name)) continue;
+			warnedUnknown.add(name);
+			console.error(
+				`kabane: ignoring "${name}" in "extensions" of ${configPath(home)}: this kabane ships ${Object.keys(OFFICIAL).join(", ")}`,
+			);
+		}
 		return ok(Object.keys(OFFICIAL).filter((name) => named.includes(name)));
 	};
 

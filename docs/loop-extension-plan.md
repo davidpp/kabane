@@ -26,7 +26,7 @@ answered from the board, a finding filed. Mocked transcripts do not count.
    imported lazily, so a plain `kabane list` loads no extension code. It still loads the board and
    ACP modules, as it already did. To print that hint, the CLI imports the disabled extensions
    too, but only when a command name is not found. Unknown names in `extensions` are ignored, so a
-   config written by a newer kabane still opens.
+   config written by a newer kabane still opens, with a warning on stderr since one may be a typo.
 3. **The contract is a plain object, in `@cabane/extension`.** `Extension = { name, commands?,
    board?(ctx) → { activity?, dispatcher?, headers? } }`.
    - **Where it lives:** `packages/extension`, which also holds the args parser and the `Outcome`
