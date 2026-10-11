@@ -68,7 +68,9 @@ tab until `w` closes it, and a closed one does not come back: `w` also calls the
 `dismiss(id)`, so a host that remembers it stops listing the card across a relaunch (without
 `dismiss`, it stays closed for this session only). `{` and `}` walk the
 tabs, wrapping; a click on a tab switches to it. Starting work does not switch tabs. Only the tab on
-screen animates its spinner; a running card on another tab is the still `●`.
+screen animates its spinner; a running card on another tab is the still `●`. A bar wider than the
+pane keeps the tracker, the tab on screen and every tab with a `?n`, then what fits of the rest, and
+counts the others in a `+n` cell.
 
 Questions are core's, never the host's: every unanswered `question` activity `Planner.getNeedsInput`
 returns, whoever asked it. A card says which are its own by listing the core `agent_session` ids

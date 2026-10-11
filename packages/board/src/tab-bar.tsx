@@ -4,7 +4,12 @@
 // tab's glyph is its card's state and its `?n` the questions its sessions are waiting on, so what is
 // blocked shows from any tab; the tracker's `?n` counts every question. Only the tab on screen
 // animates: a running card on another tab is the still echo (spinner.ts).
+//
+// A bar wider than the pane keeps the tracker, the tab on screen and every tab with a `?n`, then as
+// many of the rest as fit in tab order, and counts the others in a `+n` cell; `{` `}` still reach
+// them.
 import { TextAttributes } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
 import type { ActivityCard } from "./ports";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
@@ -71,6 +76,45 @@ const tabParts = (
 	];
 };
 
+type Tab = {
+	card: ActivityCard | null;
+	// Its place in the bar, which its number shows.
+	index: number;
+	onScreen: boolean;
+	waiting: number;
+	parts: Part[];
+};
+
+// A tab's columns: its parts, and the rule before every tab but the tracker.
+const widthOf = (tab: Tab): number =>
+	(tab.index > 0 ? 1 : 0) +
+	tab.parts.reduce((sum, part) => sum + part.text.length, 0);
+
+/** The tabs that fit in `room` columns, in tab order, and how many were left out. */
+const fitting = (
+	all: readonly Tab[],
+	room: number,
+): { shown: Tab[]; hidden: number } => {
+	const total = all.reduce((sum, tab) => sum + widthOf(tab), 0);
+	if (total <= room) return { shown: [...all], hidden: 0 };
+	const kept = new Set(
+		all.filter((tab) => tab.index === 0 || tab.onScreen || tab.waiting > 0),
+	);
+	// The `+n` cell, its rule included, at its widest.
+	let left =
+		room -
+		` +${all.length} `.length -
+		1 -
+		[...kept].reduce((sum, tab) => sum + widthOf(tab), 0);
+	for (const tab of all) {
+		if (kept.has(tab) || widthOf(tab) > left) continue;
+		kept.add(tab);
+		left -= widthOf(tab);
+	}
+	const shown = all.filter((tab) => kept.has(tab));
+	return { shown, hidden: all.length - shown.length };
+};
+
 export const TabBar = ({
 	tabs,
 	cards,
@@ -85,11 +129,28 @@ export const TabBar = ({
 	onSelect?: (id: string | null) => void;
 }): ReactNode => {
 	const theme = useTheme();
-	const all: (ActivityCard | null)[] = [
+	const { width } = useTerminalDimensions();
+	const all: Tab[] = [
 		null,
 		// A tab whose card the poll has not brought yet is skipped.
 		...tabs.open.flatMap((id) => cards.find((card) => card.id === id) ?? []),
-	];
+	].map((card, index) => {
+		const onScreen = (card?.id ?? null) === tabs.active;
+		const waiting = BoardTabs.waitingOn(tabs, card?.id ?? null);
+		return {
+			card,
+			index,
+			onScreen,
+			waiting,
+			parts: tabParts(index + 1, card, {
+				onScreen,
+				waiting,
+				spinnerFrame,
+				theme,
+			}),
+		};
+	});
+	const { shown, hidden } = fitting(all, width);
 	return (
 		<box
 			style={{
@@ -98,11 +159,9 @@ export const TabBar = ({
 				backgroundColor: theme.surface.raised,
 			}}
 		>
-			{all.map((card, index) => {
+			{shown.map(({ card, index, onScreen, parts }) => {
 				const id = card?.id ?? null;
-				const onScreen = id === tabs.active;
 				const bg = onScreen ? theme.surface.selected : theme.surface.raised;
-				const waiting = BoardTabs.waitingOn(tabs, id);
 				return (
 					// One cell per tab, so a click lands on the tab it means.
 					<text
@@ -113,12 +172,7 @@ export const TabBar = ({
 						style={{ flexShrink: 0 }}
 					>
 						{index > 0 ? <span fg={theme.faint}>│</span> : null}
-						{tabParts(index + 1, card, {
-							onScreen,
-							waiting,
-							spinnerFrame,
-							theme,
-						}).map((part, at) => (
+						{parts.map((part, at) => (
 							<span
 								// Index keys: a tab's parts are positional.
 								key={at}
@@ -132,6 +186,16 @@ export const TabBar = ({
 					</text>
 				);
 			})}
+			{hidden > 0 ? (
+				<text
+					bg={theme.surface.raised}
+					wrapMode="none"
+					style={{ flexShrink: 0 }}
+				>
+					<span fg={theme.faint}>│</span>
+					<span fg={theme.muted}>{` +${hidden} `}</span>
+				</text>
+			) : null}
 		</box>
 	);
 };
