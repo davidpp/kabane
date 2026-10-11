@@ -237,6 +237,37 @@ way:
 - Optional git worktree per run.
 - A checkpoint commit per passing gate, and `kabane loop rollback <runId> <sha>`.
 
+Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
+- **Config:** `gates: {name: command}` (one-word names, run in key order) and `worktree: bool`,
+  from `.kabane/loop.json` or `--gate name=command` (repeatable) and `--worktree`; gates merge
+  key by key like budgets. No gates: nothing runs, the run behaves as before.
+- **When gates run:** after an implementing session ends with its subtask `done`, while the
+  claim still holds the subtask, so nothing re-claims it mid-gate. They stop at the first red
+  gate. Stdout and stderr are read together; the last 40 lines are kept.
+- **A final pass the plan did not have:** a run whose work is done runs the gates once more
+  unless the last pass was green on the same tree fingerprint. Without it a subtask a human
+  closes, or a plan already done at `start`, would complete unchecked. A red final pass has
+  no subtask to reopen, so the run stops as `gates-red` for a human. `start` therefore accepts
+  a plan whose work is done when gates are configured: the run is then a check.
+- **On the tracker:** each pass is a work log entry with `gate:<name>` refs (label: `passed in
+  2s`, `failed (exit 1) in 300ms`) and `commit:<sha>` for a checkpoint; a red pass's note is
+  the failing tail. A red pass reopens the subtask to `next`, and the next claim's brief opens
+  with the gate, its exit and the tail. The final pass logs on the parent.
+- **Worktree:** `git worktree add -b kabane-loop/<runId> $KABANE_HOME/loops/<runId>/worktree
+  HEAD` at `start`, so uncommitted work in the checkout is not in it, and a project's
+  untracked settings (say, `.claude/settings.local.json`) are not either. Never removed.
+  `kabane loop status <runId>` prints it and its checkpoints.
+- **Checkpoints:** `git add -A` and a commit in the worktree after each green pass, with the
+  user's own git config and hooks (no `--no-verify`). Nothing to commit makes no checkpoint.
+  `Worktree.checkpoint` and `reset` refuse a directory that is not a linked worktree, so the
+  user's checkout cannot be committed to or reset even by mistake.
+- **Rollback:** a full sha or a unique prefix of one of the run's checkpoints, else refused.
+  Also refused while a claim is live (pause and let it finish, or stop). `reset --hard` plus
+  `clean -fd` (ignored files stay). The tracker is not rolled back. The `rollback` event is
+  written by the CLI for a finished run and through the inbox (`rolled_back`) for a live one,
+  so the runner stays the trace's one writer.
+- **Stall mark:** closed work, the tree fingerprint and the last pass's gate results.
+
 ### C3. Verifier lenses and findings
 - Lens prompt files, the shipped `functional` and `quality` lenses, and repo overrides.
 - Findings filed as tagged child issues.

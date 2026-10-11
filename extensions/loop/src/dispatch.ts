@@ -10,6 +10,7 @@ import { AcpClient, CopilotInstructions, Harnesses } from "@cabane/acp";
 import { ok, Planner, type Result, type Task, tryCatch } from "@cabane/core";
 import { Brief } from "./brief";
 import type { Budget } from "./budget";
+import type { Gates } from "./gates";
 import type { RunStore } from "./store";
 
 export namespace Dispatch {
@@ -30,6 +31,8 @@ export namespace Dispatch {
 		harness: Harnesses.Id;
 		sessionId: string;
 		lane: string;
+		/** The gate that failed after the subtask's last session, for this one's brief. */
+		retry?: Gates.Result;
 	};
 
 	export type Hooks = {
@@ -287,6 +290,45 @@ export namespace Dispatch {
 		};
 	};
 
+	/**
+	 * Launch the claim's harness on the loop's profile and open its session. `connected` hears of
+	 * the process as soon as it is up, so a session that fails to open still has it closed.
+	 */
+	const open = async (
+		claim: Claim,
+		env: Env,
+		sink: Sink,
+		on: {
+			permission: AcpClient.OnPermission;
+			connected: (connection: AcpClient.Connection) => void;
+		},
+	): Promise<Result<AcpClient.Session>> => {
+		const cli = Harnesses.installedCli(claim.harness);
+		if (!cli.ok) return cli;
+		const profile = loopProfile(env.runId, cli.value);
+		const launched = Harnesses.resolve(claim.harness, env.overrides, profile);
+		sink.emit("launch", describeLaunch(launched, cli.value));
+		const spawned = await AcpClient.spawn(claim.harness, env.cwd, {
+			onPermission: on.permission,
+			...(env.overrides ? { overrides: env.overrides } : {}),
+			profile,
+		});
+		if (!spawned.ok) return spawned;
+		on.connected(spawned.value);
+		const started = await AcpClient.newSession(spawned.value, {
+			cwd: env.cwd,
+			mcpServers: [mcpServer(env, claim.harness)],
+		});
+		if (!started.ok) return started;
+		// What the harness says it runs, which is the evidence the user's default was used.
+		const model = started.value.active.newSessionResponse.configOptions?.find(
+			(option) => option.category === "model" && option.type === "select",
+		);
+		if (model && model.type === "select")
+			sink.emit("model", String(model.currentValue));
+		return ok(started.value);
+	};
+
 	export const begin = (claim: Claim, env: Env, hooks: Hooks): Handle => {
 		const tag = {
 			lane: claim.lane,
@@ -297,6 +339,7 @@ export namespace Dispatch {
 			runId: env.runId,
 			parent: claim.parent,
 			task: claim.task,
+			...(claim.retry ? { retry: claim.retry } : {}),
 		};
 		let connection: AcpClient.Connection | null = null;
 		let session: AcpClient.Session | null = null;
@@ -326,34 +369,6 @@ export namespace Dispatch {
 			},
 		};
 
-		const open = async (): Promise<Result<AcpClient.Session>> => {
-			const cli = Harnesses.installedCli(claim.harness);
-			if (!cli.ok) return cli;
-			const profile = loopProfile(env.runId, cli.value);
-			const launched = Harnesses.resolve(claim.harness, env.overrides, profile);
-			sink.emit("launch", describeLaunch(launched, cli.value));
-			const spawned = await AcpClient.spawn(claim.harness, env.cwd, {
-				onPermission: (request) => hooks.permission(request, waiting.signal),
-				...(env.overrides ? { overrides: env.overrides } : {}),
-				profile,
-			});
-			if (!spawned.ok) return spawned;
-			connection = spawned.value;
-			const started = await AcpClient.newSession(spawned.value, {
-				cwd: env.cwd,
-				mcpServers: [mcpServer(env, claim.harness)],
-			});
-			if (!started.ok) return started;
-			session = started.value;
-			// What the harness says it runs, which is the evidence the user's default was used.
-			const model = started.value.active.newSessionResponse.configOptions?.find(
-				(option) => option.category === "model" && option.type === "select",
-			);
-			if (model && model.type === "select")
-				sink.emit("model", String(model.currentValue));
-			return ok(started.value);
-		};
-
 		const ended = (outcome: Outcome["outcome"], detail?: string): Outcome => ({
 			outcome,
 			...(detail ? { detail } : {}),
@@ -369,7 +384,13 @@ export namespace Dispatch {
 			);
 			if (!assembled.ok)
 				return ended("error", `brief: ${assembled.error.message}`);
-			const opened = await open();
+			const opened = await open(claim, env, sink, {
+				permission: (request) => hooks.permission(request, waiting.signal),
+				connected: (c) => {
+					connection = c;
+				},
+			});
+			if (opened.ok) session = opened.value;
 			if (!opened.ok) return ended("error", opened.error.message);
 			sink.emit("session_start", `${claim.harness} on ${label(claim.task)}`);
 			let text = Brief.opening(subject, assembled.value);

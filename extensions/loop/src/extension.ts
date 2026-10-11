@@ -2,10 +2,12 @@
 // entry point. The CLI has already wired the runtime (`openContext`) by the time `run` is called.
 import { resolve } from "node:path";
 import { Harnesses } from "@cabane/acp";
-import type { Result } from "@cabane/core";
+import { err, ok, type Result } from "@cabane/core";
 import {
 	type Extension,
 	failure,
+	flagBool,
+	flagList,
 	flagString,
 	type Outcome,
 	type ParsedArgs,
@@ -16,14 +18,15 @@ import { LoopActivity } from "./activity";
 import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
 import { LoopHeader } from "./header";
-import type { RunStore } from "./store";
+import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--wall-minutes <n>] [--continuations <n>] [--spend <amount>]
+const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--wall-minutes <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
        kabane loop pause|resume <runId>
        kabane loop skip|next <subtask>
+       kabane loop rollback <runId> <sha>
        kabane loop answer <questionId> <option>`;
 
 // The executable the runner and each session's MCP server run as: this process's own entry.
@@ -37,10 +40,28 @@ const number = (args: ParsedArgs, flag: string): number | undefined => {
 	return value === undefined ? undefined : Number(value);
 };
 
+// `--gate test="bun test"`, repeated: the name before the first `=`, the command after it.
+const gatesFrom = (args: ParsedArgs): Result<Record<string, string>> => {
+	const gates: Record<string, string> = {};
+	for (const given of flagList(args, "gate")) {
+		const at = given.indexOf("=");
+		if (at <= 0)
+			return err(
+				new Error(
+					`--gate takes <name>=<command>, not ${JSON.stringify(given)}`,
+				),
+			);
+		gates[given.slice(0, at).trim()] = given.slice(at + 1).trim();
+	}
+	return ok(gates);
+};
+
 // Flags become config overrides; LoopConfig validates them with the repo file.
-const configFrom = (args: ParsedArgs): LoopConfig.Input => {
+const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 	const implementer = flagString(args, "implementer");
 	const model = flagString(args, "model");
+	const gates = gatesFrom(args);
+	if (!gates.ok) return gates;
 	const budget = Object.fromEntries(
 		[
 			["concurrency", number(args, "concurrency")],
@@ -49,11 +70,13 @@ const configFrom = (args: ParsedArgs): LoopConfig.Input => {
 			["spend", number(args, "spend")],
 		].filter(([, value]) => value !== undefined),
 	);
-	return {
+	return ok({
 		...(implementer && Harnesses.isId(implementer) ? { implementer } : {}),
 		...(model ? { model } : {}),
 		budget,
-	};
+		gates: gates.value,
+		...(flagBool(args, "worktree") ? { worktree: true } : {}),
+	});
 };
 
 const line = (run: RunStore.Run): string =>
@@ -77,7 +100,16 @@ const question = (q: Loop.Waiting): string =>
 		`    kabane loop answer ${q.questionId} <option>`,
 	].join("\n");
 
-/** One run, and the questions its sessions are waiting on a human for. */
+// Where a run with a worktree works, and the checkpoints `rollback` takes.
+const worktree = (run: RunStore.Run): string[] =>
+	run.worktree
+		? [
+				`  worktree: ${run.worktree}`,
+				...RunStore.checkpoints(run).map((sha) => `    checkpoint ${sha}`),
+			]
+		: [];
+
+/** One run, its worktree, and the questions its sessions are waiting on a human for. */
 const statusOf = async (
 	deps: Pick<Loop.Deps, "home" | "basePath">,
 	runId: string,
@@ -88,7 +120,11 @@ const statusOf = async (
 	if (!waiting.ok) return failure(waiting.error);
 	return success(
 		{ ...run.value, questions: waiting.value },
-		[line(run.value), ...waiting.value.map(question)].join("\n"),
+		[
+			line(run.value),
+			...worktree(run.value),
+			...waiting.value.map(question),
+		].join("\n"),
 	);
 };
 
@@ -123,14 +159,28 @@ const start: Verb = async (args, deps, target) => {
 			`--implementer must be one of ${Harnesses.IDS.join(", ")}`,
 			USAGE,
 		);
+	const config = configFrom(args);
+	if (!config.ok) return usage(config.error.message, USAGE);
 	const dir = flagString(args, "dir");
 	return ran(
 		await Loop.start(deps, {
 			parent: target,
 			...(dir ? { dir } : {}),
-			config: configFrom(args),
+			config: config.value,
 		}),
 	);
+};
+
+const rollback: Verb = async (args, deps, target) => {
+	const sha = args.positionals[2];
+	if (!sha) return usage("rollback needs a run id and a checkpoint sha", USAGE);
+	const reset = Loop.rollback(deps, target, sha);
+	return reset.ok
+		? success(
+				reset.value,
+				`${reset.value.worktree} reset to ${reset.value.sha.slice(0, 12)}; the tracker is unchanged`,
+			)
+		: failure(reset.error);
 };
 
 const pause =
@@ -169,6 +219,7 @@ const VERBS: Record<string, { needs: string; run: Verb }> = {
 	resume: { needs: "a run id", run: pause("resume") },
 	skip: { needs: "a subtask", run: direct("skip") },
 	next: { needs: "a subtask", run: direct("next") },
+	rollback: { needs: "a run id", run: rollback },
 };
 
 const list = (deps: Deps): Outcome => {

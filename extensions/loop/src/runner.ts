@@ -6,13 +6,16 @@
 // claims it left open are closed as interrupted and their subtasks released.
 import { err, ok, type Result } from "@cabane/core";
 import { Budget } from "./budget";
+import { Checks } from "./checks";
 import { Claims } from "./claims";
+import { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 import { Stall } from "./stall";
 import { RunState } from "./state";
 import { Steering } from "./steering";
 import { Stop } from "./stop";
 import { RunStore } from "./store";
+import { Worktree } from "./worktree";
 
 export namespace Runner {
 	type Deps = RunState.Deps;
@@ -77,9 +80,10 @@ export namespace Runner {
 
 	/** Cancel what is live, give it time to stop, kill what will not, settle all of it. */
 	const halt = async (ctx: Ctx, exit: Exit): Promise<RunStore.Run> => {
+		ctx.stopping.abort();
 		const pending = [...ctx.live.values()];
 		for (const { handle } of pending) await handle.cancel();
-		const all = Promise.allSettled(pending.map((l) => l.handle.done));
+		const all = Promise.allSettled(pending.map((l) => l.settled));
 		await Promise.race([all, sleep(CANCEL_GRACE_MS)]);
 		for (const { handle } of pending) handle.close();
 		await Promise.race([all, sleep(CANCEL_GRACE_MS)]);
@@ -134,6 +138,9 @@ export namespace Runner {
 					deliver(ctx, entry);
 					break;
 				case "answered":
+					break;
+				case "rolled_back":
+					RunState.event(ctx, Worktree.rolledBack(entry.sha, entry.by));
 					break;
 				default: {
 					const applied = Steering.apply(steering, entry);
@@ -204,8 +211,8 @@ export namespace Runner {
 		}
 		state.planFailures = 0;
 		const plan = loaded.value;
-		if (Stop.evaluate(plan).done && ctx.live.size === 0)
-			return { status: "completed", reason: "plan-done" };
+		if (ctx.live.size === 0 && Stop.workDone(plan))
+			return finalChecks(ctx, plan);
 		const skipped = new Set(ctx.run.steering.skipped);
 		const ready = LoopPlan.frontier(
 			plan,
@@ -235,6 +242,59 @@ export namespace Runner {
 			};
 		reportWaiting(ctx, health, state.health);
 		return undefined;
+	};
+
+	/**
+	 * Run `body` while still hearing a stop: the inbox is read every tick meanwhile, and a stop
+	 * kills what `body` is running through `ctx.stopping`.
+	 */
+	const hearingStop = async <T>(
+		ctx: Ctx,
+		body: () => Promise<T>,
+	): Promise<T> => {
+		const timer = setInterval(() => {
+			readInbox(ctx);
+			if (ctx.stopRequested) ctx.stopping.abort();
+		}, ctx.deps.tickMs ?? TICK_MS);
+		try {
+			return await body();
+		} finally {
+			clearInterval(timer);
+		}
+	};
+
+	/**
+	 * The work is done and nothing is running: the run completes once its gates are green on the
+	 * tree as it is. Gates not green yet (none run since the last change) run once more, here; a red
+	 * pass with no subtask to reopen stops the run for a human. Undefined goes on ticking.
+	 */
+	const finalChecks = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+	): Promise<Exit | undefined> => {
+		const { gates } = ctx.run.config;
+		const tree = () => ctx.tree(RunStore.sessionDir(ctx.run));
+		if (
+			Stop.evaluate(plan, {
+				gatesGreen: Gates.green(gates, ctx.run.gateRuns, tree()),
+			}).done
+		)
+			return { status: "completed", reason: "plan-done" };
+		const label = ctx.run.parentShortId;
+		const pass = await hearingStop(ctx, () =>
+			Checks.gate(ctx, { label, title: plan.parent.title }),
+		);
+		await Checks.record(ctx, pass, { taskId: ctx.run.parentId, label });
+		if (ctx.stopRequested)
+			return { status: "stopped", reason: "stop-requested" };
+		const failed = pass.results.find((r) => !r.ok);
+		return failed
+			? {
+					status: "stopped",
+					reason: "gates-red",
+					detail: Gates.describe(failed),
+				}
+			: undefined;
 	};
 
 	const boot = async (ctx: Ctx): Promise<void> => {
@@ -308,9 +368,11 @@ export namespace Runner {
 			settled: [],
 			wake: () => {},
 			stopRequested: false,
+			stopping: new AbortController(),
 		};
 		deps.signal?.addEventListener("abort", () => {
 			ctx.stopRequested = true;
+			ctx.stopping.abort();
 			ctx.wake();
 		});
 		await boot(ctx);

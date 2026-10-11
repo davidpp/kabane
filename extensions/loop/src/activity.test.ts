@@ -44,6 +44,7 @@ const run = (overrides: Partial<RunStore.Run> = {}): RunStore.Run => {
 		continuationsUsed: 0,
 		inboxRead: 0,
 		steering: { paused: false, skipped: [], next: [] },
+		gateRuns: [],
 		...overrides,
 	};
 };

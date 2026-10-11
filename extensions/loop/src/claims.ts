@@ -1,10 +1,13 @@
 // A claim's life in the tracker: open a core session on the subtask, move it to in_progress,
-// log the session on it, dispatch; when the session ends, close the core session, put a
-// subtask the agent left in progress back in the ready pool, and take a progress mark for the
-// stall detector. A runner that died mid-claim leaves claims with no end; `recover` closes them.
+// log the session on it, dispatch; when the session ends with the subtask done, run the gates
+// while the claim still holds it; then close the core session, put a subtask the agent left in
+// progress back in the ready pool, record the gates (a red one reopens the subtask), and take a
+// progress mark for the stall detector. A runner that died mid-claim leaves claims with no end; `recover` closes them.
 import { Planner } from "@cabane/core";
 import { Budget } from "./budget";
+import { Checks } from "./checks";
 import { Dispatch } from "./dispatch";
+import { Gates } from "./gates";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Scheduler } from "./scheduler";
@@ -57,6 +60,7 @@ export namespace Claims {
 		Stall.mark(
 			LoopPlan.closedWork(plan),
 			ctx.tree(RunStore.sessionDir(ctx.run)),
+			Gates.signature(ctx.run.gateRuns.at(-1)),
 		);
 
 	/** Close the claims a runner that died left open. */
@@ -228,8 +232,16 @@ export namespace Claims {
 			summary: `${harness} claims ${label(task)}: ${task.title}`,
 		});
 		const model = ctx.run.config.model;
+		const retry = Gates.lastFailure(ctx.run.gateRuns, task.id);
 		const handle = Dispatch.begin(
-			{ parent: plan.parent, task, harness, sessionId, lane },
+			{
+				parent: plan.parent,
+				task,
+				harness,
+				sessionId,
+				lane,
+				...(retry ? { retry } : {}),
+			},
 			{
 				basePath: ctx.deps.basePath,
 				home: ctx.deps.home,
@@ -244,17 +256,46 @@ export namespace Claims {
 			},
 			hooks(ctx, sessionId, lane, label(task), harness),
 		);
-		ctx.live.set(task.id, { sessionId, handle });
-		void handle.done.then((outcome) => {
-			ctx.settled.push({ taskId: task.id, sessionId, outcome });
+		const settled = handle.done.then(async (outcome) => {
+			const gates = await gatesAfter(ctx, outcome, {
+				taskId: task.id,
+				label: label(task),
+				title: task.title,
+				lane,
+			});
+			ctx.settled.push({
+				taskId: task.id,
+				sessionId,
+				outcome,
+				...(gates ? { gates } : {}),
+			});
 			ctx.wake();
 		});
+		ctx.live.set(task.id, { sessionId, handle, settled });
+	};
+
+	// A session that closed its subtask as done is followed by the gates, while the claim still
+	// holds the subtask, so nothing claims it again before its gates have spoken.
+	const gatesAfter = async (
+		ctx: Ctx,
+		outcome: Dispatch.Outcome,
+		subject: Checks.Subject & { taskId: string },
+	) => {
+		if (
+			outcome.outcome !== "done" ||
+			!Gates.configured(ctx.run.config.gates) ||
+			ctx.stopping.signal.aborted
+		)
+			return undefined;
+		const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
+		if (!task.ok || task.value?.state !== "done") return undefined;
+		return Checks.gate(ctx, subject);
 	};
 
 	/** Close the books on one ended session; true when the run has stalled. */
 	export const settle = async (
 		ctx: Ctx,
-		{ taskId, sessionId, outcome }: RunState.Settled,
+		{ taskId, sessionId, outcome, gates }: RunState.Settled,
 	): Promise<boolean> => {
 		ctx.live.delete(taskId);
 		await closeSession(ctx, sessionId, outcome);
@@ -271,6 +312,12 @@ export namespace Claims {
 			session: sessionId,
 			summary: `${outcome.outcome}${outcome.detail ? `: ${outcome.detail}` : ""}`,
 		});
+		if (gates)
+			await Checks.record(ctx, gates, {
+				taskId,
+				label: ended?.shortId ?? taskId,
+				...(ended ? { lane: ended.lane } : {}),
+			});
 		const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
 		if (!plan.ok) return false;
 		const stall = Stall.observe(

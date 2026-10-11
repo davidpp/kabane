@@ -3,7 +3,9 @@
 // which is what lets a run resume after its runner dies.
 import type { Harnesses } from "@cabane/acp";
 import type { Dispatch } from "./dispatch";
+import type { Gates } from "./gates";
 import { RunStore } from "./store";
+import type { Worktree } from "./worktree";
 
 export namespace RunState {
 	export type Deps = {
@@ -19,18 +21,27 @@ export namespace RunState {
 		overrides?: Partial<Record<Harnesses.Id, Harnesses.Overrides>>;
 		/** Aborting it stops the run the way an inbox `stop` does. */
 		signal?: AbortSignal;
-		/** A fingerprint of the working tree, for the stall detector. Defaults to git. */
+		/** A fingerprint of the working tree, for the stall detector and the gates. Defaults to git. */
 		tree?: (cwd: string) => string;
+		/** How checkpoints run git. Defaults to the user's own git and config. */
+		git?: Worktree.Git;
 		now?: () => Date;
 		tickMs?: number;
 	};
 
-	type Live = { sessionId: string; handle: Dispatch.Handle };
+	type Live = {
+		sessionId: string;
+		handle: Dispatch.Handle;
+		/** Resolves once the session has ended and its gates, if any, have run. */
+		settled: Promise<void>;
+	};
 
 	export type Settled = {
 		taskId: string;
 		sessionId: string;
 		outcome: Dispatch.Outcome;
+		/** The gates its end ran: a session that closed its subtask, in a run with gates. */
+		gates?: Gates.Run;
 	};
 
 	export type Ctx = {
@@ -46,6 +57,8 @@ export namespace RunState {
 		/** Ends the runner's current wait early. */
 		wake: () => void;
 		stopRequested: boolean;
+		/** Aborted when the run halts: kills a gate still running. */
+		stopping: AbortController;
 	};
 
 	export const event = (ctx: Ctx, draft: RunStore.EventDraft): void => {

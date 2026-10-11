@@ -112,6 +112,8 @@ describe("Loop.start refusals", () => {
 					currency: "USD",
 				},
 				stallAfter: 1,
+				gates: {},
+				worktree: false,
 			},
 			status: "running",
 			pid: process.pid,
@@ -121,6 +123,7 @@ describe("Loop.start refusals", () => {
 			continuationsUsed: 0,
 			inboxRead: 0,
 			steering: { paused: false, skipped: [], next: [] },
+			gateRuns: [],
 		});
 		const started = await Loop.start(deps(), { parent: parent.id });
 		expect(started.ok).toBe(false);

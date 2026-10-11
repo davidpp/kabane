@@ -1,5 +1,5 @@
 // The loop's entry points, as plain functions over explicit dependencies. The extension wires
-// them to `kabane loop start|run|status|stop|pause|resume|skip|next|answer`; nothing here parses argv or reads the
+// them to `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer`; nothing here parses argv or reads the
 // environment for its own settings.
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
@@ -19,12 +19,14 @@ import {
 } from "@cabane/core";
 import { detectScope } from "@cabane/core/scope";
 import { LoopConfig } from "./config";
+import { Gates } from "./gates";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { Stop } from "./stop";
 import { RunStore } from "./store";
+import { Worktree } from "./worktree";
 
 export namespace Loop {
 	export type Deps = {
@@ -44,6 +46,8 @@ export namespace Loop {
 		now?: () => Date;
 		/** How long `start` waits for the runner to report that it is running. */
 		bootMs?: number;
+		/** How the run's worktree is made. Defaults to the user's own git. */
+		git?: Worktree.Git;
 	};
 
 	export type StartInput = {
@@ -152,16 +156,22 @@ export namespace Loop {
 		return err(new Error(detail));
 	};
 
-	// The parent must have open work and no live run already.
+	// The parent must have something for a run to do (open work, or checks to run on work that
+	// is done) and no live run already.
 	const checkParent = async (
 		deps: StartDeps,
 		plan: LoopPlan.Plan,
+		config: LoopConfig.Config,
 	): Promise<Result<void>> => {
 		const short = plan.parent.shortId ?? plan.parent.id;
 		if (!plan.nodes.some(LoopPlan.isWork))
 			return err(new Error(`${short} has no subtasks for a loop to run`));
-		if (Stop.evaluate(plan).done)
-			return err(new Error(`Every subtask of ${short} is already closed`));
+		if (Stop.workDone(plan) && !Gates.configured(config.gates))
+			return err(
+				new Error(
+					`Every subtask of ${short} is already closed and no gates are configured to check it`,
+				),
+			);
 		const runs = RunStore.list(deps.home);
 		if (!runs.ok) return runs;
 		const active = runs.value.find(
@@ -215,13 +225,13 @@ export namespace Loop {
 		if (!parentId.ok) return parentId;
 		const plan = await LoopPlan.load(deps.basePath, parentId.value);
 		if (!plan.ok) return plan;
-		const checked = await checkParent(deps, plan.value);
-		if (!checked.ok) return checked;
 		const parent = plan.value.parent;
 		const projectDir = await projectDirFor(deps, parent, input.dir);
 		if (!projectDir.ok) return projectDir;
 		const config = LoopConfig.resolve(projectDir.value, input.config);
 		if (!config.ok) return config;
+		const checked = await checkParent(deps, plan.value, config.value);
+		if (!checked.ok) return checked;
 		const now = (deps.now ?? (() => new Date()))();
 		const short = parent.shortId ?? parent.id;
 		const created = RunStore.create(deps.home, {
@@ -239,19 +249,44 @@ export namespace Loop {
 			continuationsUsed: 0,
 			inboxRead: 0,
 			steering: Steering.INITIAL,
+			gateRuns: [],
 		});
 		if (!created.ok) return created;
-		const spawned = spawnRunner(deps, created.value);
+		const prepared = config.value.worktree
+			? withWorktree(deps, created.value)
+			: created;
+		if (!prepared.ok) return prepared;
+		const spawned = spawnRunner(deps, prepared.value);
 		if (!spawned.ok) {
 			markFailed(
 				deps.home,
-				created.value,
+				prepared.value,
 				"runner-not-spawned",
 				spawned.error.message,
 			);
 			return spawned;
 		}
-		return awaitBoot(deps, created.value, spawned.value.exited);
+		return awaitBoot(deps, prepared.value, spawned.value.exited);
+	};
+
+	// The run's own worktree of the project's HEAD, beside its files. What is not committed in the
+	// project (work in progress) is not in it.
+	const withWorktree = (
+		deps: StartDeps,
+		run: RunStore.Run,
+	): Result<RunStore.Run> => {
+		const dir = Worktree.dirFor(RunStore.paths(deps.home, run.id).dir);
+		const added = Worktree.add(
+			run.projectDir,
+			dir,
+			Worktree.branchFor(run.id),
+			deps.git,
+		);
+		if (!added.ok) {
+			markFailed(deps.home, run, "worktree-not-created", added.error.message);
+			return added;
+		}
+		return RunStore.write(deps.home, { ...run, worktree: dir });
 	};
 
 	export type RunDeps = Deps & {
@@ -464,6 +499,56 @@ export namespace Loop {
 			task: short,
 		});
 		return asked.ok ? ok({ runId: run.id, task: short }) : asked;
+	};
+
+	export type RolledBack = { runId: string; sha: string; worktree: string };
+
+	/**
+	 * Reset run `runId`'s worktree to one of its checkpoints, named by its sha or a prefix of it.
+	 * Refused for a sha that is not one of the run's checkpoints, for a run with no worktree, and
+	 * while a session is working in it (pause the run and let them finish, or stop it). The
+	 * tracker is not rolled back: subtasks closed after the checkpoint stay closed.
+	 */
+	export const rollback = (
+		deps: Pick<Deps, "home"> & { actor: string; git?: Worktree.Git },
+		runId: string,
+		given: string,
+	): Result<RolledBack> => {
+		const read = RunStore.read(deps.home, runId);
+		if (!read.ok) return read;
+		const run = read.value;
+		if (run.worktree === undefined)
+			return err(
+				new Error(
+					`Run ${runId} has no worktree, so it has no checkpoints to roll back to`,
+				),
+			);
+		const sha = Worktree.match(RunStore.checkpoints(run), given);
+		if (!sha.ok) return sha;
+		const live = RunStore.isLive(run.status);
+		const working = run.claims.filter((c) => c.endedAt === undefined);
+		if (live && working.length > 0)
+			return err(
+				new Error(
+					`${working.map((c) => c.lane).join(", ")} still working in ${run.worktree}: pause the run and let them finish, or stop it`,
+				),
+			);
+		const reset = Worktree.reset(run.worktree, sha.value, deps.git);
+		if (!reset.ok) return reset;
+		const at = new Date().toISOString();
+		// The trace is the runner's to write while it is live; it puts the note there itself.
+		if (live)
+			RunStore.appendInbox(deps.home, runId, {
+				kind: "rolled_back",
+				sha: sha.value,
+				by: deps.actor,
+				at,
+			});
+		else {
+			const log = RunStore.eventLog(deps.home, runId);
+			if (log.ok) log.value.append(Worktree.rolledBack(sha.value, deps.actor));
+		}
+		return ok({ runId, sha: sha.value, worktree: run.worktree });
 	};
 
 	/**

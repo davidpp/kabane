@@ -66,6 +66,7 @@ const runOn = (
 		continuationsUsed: 0,
 		inboxRead: 0,
 		steering: Steering.INITIAL,
+		gateRuns: [],
 		...extra,
 	};
 	const created = RunStore.create(home, run);

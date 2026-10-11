@@ -1,10 +1,9 @@
 /** @jsxImportSource @opentui/react */
 // The loop tab's header: what the board draws above a run's stream, in place of its one-line title.
 // Three rows, in order of what matters: the run's state, its steps as a strip, its budgets as
-// meters. `e` adds the sessions and the plan. It shows only what the run has: today that is the
-// implement step (gates and lenses join the strip when their packages land), wall time, spend where a
-// harness priced its work, context occupancy (ACP reports occupancy, not a running token count) and
-// continuations.
+// meters. `e` adds the sessions and the plan. It shows only what the run has: the implement step and
+// the gates when it has some, wall time, spend where a harness priced its work, context occupancy (ACP
+// reports occupancy, not a running token count) and continuations.
 //
 // It reads the board's theme and nothing else of the board's: tones are the theme's roles, and a
 // session's color is the theme's series at its claim's place, the same as its lane chip and its
@@ -100,8 +99,31 @@ export namespace LoopHeader {
 			: { text: "● healthy · claiming ready work", tone: "done", bold: true };
 	};
 
-	/** The steps the run has, as a strip. Only implement today. */
-	const steps = (run: RunStore.Run): Part[] => {
+	// The gates' step: the last pass, by gate. Green ones are checked; the first red one is named.
+	const gateStep = (run: RunStore.Run): Part[] => {
+		const names = Object.keys(run.config.gates);
+		if (names.length === 0) return [];
+		const last = run.gateRuns.at(-1);
+		const failed = last?.results.find((r) => !r.ok);
+		const glyph: Part = !last
+			? { text: "○ ", tone: "muted" }
+			: last.ok
+				? { text: "✓ ", tone: "done" }
+				: { text: "✗ ", tone: "failed" };
+		const checkpoints = RunStore.checkpoints(run).length;
+		return [
+			{ text: "  ›  ", tone: "faint" },
+			glyph,
+			{ text: "gates", tone: "text", bold: failed !== undefined },
+			{
+				text: ` ${failed ? `${failed.name} red` : names.join("·")}${checkpoints > 0 ? ` · ${checkpoints} checkpoint${checkpoints === 1 ? "" : "s"}` : ""}`,
+				tone: failed ? "failed" : "muted",
+			},
+		];
+	};
+
+	/** The steps the run has, as a strip: implement, then the gates when it has some. */
+	export const steps = (run: RunStore.Run): Part[] => {
 		const glyph =
 			run.status === "completed"
 				? { text: "✓ ", tone: "done" as const }
@@ -117,6 +139,7 @@ export namespace LoopHeader {
 				text: ` ×${run.claims.length} session${run.claims.length === 1 ? "" : "s"}`,
 				tone: "muted",
 			},
+			...gateStep(run),
 		];
 	};
 

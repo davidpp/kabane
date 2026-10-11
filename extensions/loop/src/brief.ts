@@ -3,12 +3,14 @@
 // subtask is its own, and how it signals that it is finished. The kabane tool loop itself is the
 // MCP server's to describe, so it is not restated.
 import type { Task } from "@cabane/core";
+import type { Gates } from "./gates";
 
 export namespace Brief {
 	type Subject = {
 		runId: string;
 		parent: Task;
 		task: Task;
+		retry?: Gates.Result;
 	};
 
 	const label = (task: Task): string => task.shortId ?? task.id;
@@ -22,9 +24,20 @@ export namespace Brief {
 			"Finish each turn with at most three lines saying what you did.",
 		].join("\n\n");
 
-	/** The opening prompt: the run's instructions, then the issue's own brief. */
+	// Why the subtask is open again: the gate its last session's work failed, and how.
+	const retried = (task: Task, gate: Gates.Result): string =>
+		[
+			`${label(task)} was closed before, then reopened: the \`${gate.name}\` gate (\`${gate.command}\`) failed ${gate.exit === null ? "to finish" : `with exit ${gate.exit}`} on that work. Make it pass before you call kabane_done again. The end of its output:`,
+			`\`\`\`\n${gate.tail}\n\`\`\``,
+		].join("\n\n");
+
+	/** The opening prompt: the run's instructions, a failed gate to fix, then the issue's own brief. */
 	export const opening = (subject: Subject, assembled: string): string =>
-		`${instructions(subject)}\n\n---\n\n${assembled}`;
+		[
+			instructions(subject),
+			...(subject.retry ? [retried(subject.task, subject.retry)] : []),
+			assembled,
+		].join("\n\n---\n\n");
 
 	/** The nudge for a turn that ended with the subtask still open. */
 	export const continuation = (task: Task): string =>

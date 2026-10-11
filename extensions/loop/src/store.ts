@@ -23,6 +23,7 @@ import { err, ok, type Result, trySync } from "@cabane/core";
 import { z } from "zod";
 import { Budget } from "./budget";
 import { LoopConfig } from "./config";
+import { Gates } from "./gates";
 import { Stall } from "./stall";
 import { Steering } from "./steering";
 
@@ -94,6 +95,8 @@ export namespace RunStore {
 		inboxRead: z.number().int().min(0).default(0),
 		/** What the human said about claiming: paused, skipped, next. */
 		steering: Steering.StateSchema.default({}),
+		/** Every pass over the gates, oldest first; the last says whether they are green. */
+		gateRuns: z.array(Gates.RunSchema).default([]),
 		/** When the human closed the run's board tab: the board stops listing it. */
 		dismissedAt: z.string().optional(),
 	});
@@ -107,6 +110,10 @@ export namespace RunStore {
 		externalRef: string | undefined,
 	): string | undefined =>
 		externalRef?.startsWith("loop:") ? externalRef.slice(5) : undefined;
+
+	/** The checkpoints committed in the run's worktree, oldest first. */
+	export const checkpoints = (run: Run): string[] =>
+		run.gateRuns.flatMap((g) => (g.checkpoint ? [g.checkpoint] : []));
 
 	/** Where the run's sessions work: its worktree when it has one, else the project. */
 	export const sessionDir = (run: Run): string =>
@@ -145,6 +152,14 @@ export namespace RunStore {
 		z.object({
 			kind: z.literal("answered"),
 			questionId: z.string(),
+			by: z.string(),
+			at: z.string(),
+		}),
+		// `kabane loop rollback` reset the worktree of a live run; the runner puts it on the trace,
+		// which only it writes while the run is live.
+		z.object({
+			kind: z.literal("rolled_back"),
+			sha: z.string(),
 			by: z.string(),
 			at: z.string(),
 		}),

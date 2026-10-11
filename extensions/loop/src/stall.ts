@@ -1,7 +1,7 @@
 // Stall detection: no progress across N session ends. Pure: the runner takes a progress mark
 // after each session ends and asks whether it has stopped moving. A mark is any string that
-// changes when the run gets somewhere: which subtasks are closed, and the repository's tree.
-// Gates join the mark when they exist.
+// changes when the run gets somewhere: which subtasks are closed, the repository's tree, and
+// which gates passed last time.
 import { z } from "zod";
 
 export namespace Stall {
@@ -24,7 +24,10 @@ export namespace Stall {
 	export const stalled = (state: State, limit: number): boolean =>
 		state.unchanged >= limit;
 
-	/** The mark for a set of closed subtask ids and a fingerprint of the working tree. */
-	export const mark = (closedIds: readonly string[], tree: string): string =>
-		`${[...closedIds].sort().join(",")}|${tree}`;
+	/** The mark for closed subtask ids, a fingerprint of the working tree and the last gate results. */
+	export const mark = (
+		closedIds: readonly string[],
+		tree: string,
+		gates = "",
+	): string => `${[...closedIds].sort().join(",")}|${tree}|${gates}`;
 }
