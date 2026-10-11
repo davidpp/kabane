@@ -2,9 +2,10 @@
 // log the session on it, dispatch; when the session ends, close the core session, put a
 // subtask the agent left in progress back in the ready pool, and take a progress mark for the
 // stall detector. A runner that died mid-claim leaves claims with no end; `recover` closes them.
-import { err, Planner } from "@cabane/core";
+import { Planner } from "@cabane/core";
 import { Budget } from "./budget";
 import { Dispatch } from "./dispatch";
+import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Scheduler } from "./scheduler";
 import { Stall } from "./stall";
@@ -80,11 +81,22 @@ export namespace Claims {
 		}
 	};
 
+	/** Who the run's inbox says answered `questionId`; the latest note wins. */
+	const answeredBy = (ctx: Ctx, questionId: string): string | undefined => {
+		const inbox = RunStore.readInbox(ctx.deps.home, ctx.run.id, 0);
+		if (!inbox.ok) return undefined;
+		const note = inbox.value.entries.findLast(
+			(e) => e.kind === "answered" && e.questionId === questionId,
+		);
+		return note?.kind === "answered" ? note.by : undefined;
+	};
+
 	const hooks = (
 		ctx: Ctx,
 		sessionId: string,
 		lane: string,
 		shortId: string,
+		harness: string,
 	): Dispatch.Hooks => ({
 		event: (draft) => RunState.event(ctx, draft),
 		usage: (usage) =>
@@ -110,20 +122,28 @@ export namespace Claims {
 			});
 			return true;
 		},
-		// Questions and permissions reach a human with the steering package. Until then a
-		// request is declined, never answered on the human's behalf, and the decline is traced.
-		permission: async (request) => {
-			RunState.event(ctx, {
-				type: "permission",
-				lane,
-				session: sessionId,
-				task: shortId,
-				summary: `declined: ${request.title}`,
-			});
-			return err(
-				new Error("declined: the loop does not answer permission requests yet"),
-			);
-		},
+		// Relayed to the human as a question on this claim's session; the loop never answers.
+		// Other claims run on meanwhile, and the wait spends wall time, never the stall count.
+		permission: (request, signal) =>
+			Permission.relay(
+				{
+					basePath: ctx.deps.basePath,
+					sessionId,
+					harness,
+					origin: `The ${harness} session working on ${shortId} in loop ${ctx.run.id} is blocked on this tool call until it is answered.`,
+					signal,
+					emit: (draft) =>
+						RunState.event(ctx, {
+							...draft,
+							lane,
+							session: sessionId,
+							task: shortId,
+						}),
+					answeredBy: (questionId) => answeredBy(ctx, questionId),
+					now: ctx.now,
+				},
+				request,
+			),
 	});
 
 	// Open the core session and mark the subtask as taken; the session id, or undefined.
@@ -138,7 +158,7 @@ export namespace Claims {
 		const session = await Planner.startSession(ctx.deps.basePath, {
 			taskId: task.id,
 			agent: harness,
-			externalRef: `loop:${ctx.run.id}`,
+			externalRef: RunStore.sessionRef(ctx.run.id),
 		});
 		if (!session.ok) {
 			RunState.event(ctx, {
@@ -222,7 +242,7 @@ export namespace Claims {
 					...(model ? { model } : {}),
 				},
 			},
-			hooks(ctx, sessionId, lane, label(task)),
+			hooks(ctx, sessionId, lane, label(task), harness),
 		);
 		ctx.live.set(task.id, { sessionId, handle });
 		void handle.done.then((outcome) => {

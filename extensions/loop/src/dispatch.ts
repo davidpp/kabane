@@ -37,9 +37,14 @@ export namespace Dispatch {
 		usage: (usage: Budget.Usage) => void;
 		/** A turn ended with the subtask open. True spends one continuation and nudges. */
 		continueTurn: () => boolean;
-		/** The harness asks to run a tool. Resolves with an option id, or an error to decline. */
+		/**
+		 * The harness asks to run a tool. Resolves with the option id the human chose, or an
+		 * error once `signal` aborts (the claim was cancelled or closed), which the ACP client
+		 * sends as `cancelled`: never an answer of the loop's own.
+		 */
 		permission: (
 			request: AcpClient.PermissionRequest,
+			signal: AbortSignal,
 		) => Promise<Result<string>>;
 	};
 
@@ -80,6 +85,8 @@ export namespace Dispatch {
 	 * names one forwards it as an override), the installed CLI rather than the adapter's
 	 * bundled copy, and a marker of its own so the user's hooks can tell a loop session from a
 	 * board copilot. Its instructions ride the opening prompt, not a system prompt append.
+	 * It sets no permission mode, allow list or settings file: the user's own harness settings
+	 * decide what gets asked, and every request reaches the human (`permission.ts`).
 	 */
 	const loopProfile = (
 		runId: string,
@@ -207,6 +214,10 @@ export namespace Dispatch {
 		let session: AcpClient.Session | null = null;
 		let cancelled = false;
 		let lastMessage: string | undefined;
+		// Aborting it lets go of every permission request still waiting on a human. A claim that
+		// is cancelled, closed or over has nobody left to answer for, and the harness would
+		// otherwise sit on a request that never settles.
+		const waiting = new AbortController();
 
 		const sink: Sink = {
 			emit: (type, summary) => hooks.event({ ...tag, type, summary }),
@@ -233,7 +244,7 @@ export namespace Dispatch {
 			const launched = Harnesses.resolve(claim.harness, env.overrides, profile);
 			sink.emit("launch", describeLaunch(launched, cli.value));
 			const spawned = await AcpClient.spawn(claim.harness, env.cwd, {
-				onPermission: hooks.permission,
+				onPermission: (request) => hooks.permission(request, waiting.signal),
 				...(env.overrides ? { overrides: env.overrides } : {}),
 				profile,
 			});
@@ -299,16 +310,21 @@ export namespace Dispatch {
 				result.ok ? result.value : ended("error", result.error.message),
 			)
 			.finally(() => {
+				waiting.abort();
 				if (connection) AcpClient.close(connection);
 			});
 
 		return {
 			done,
+			// The waiting requests go first, as `cancelled`: the harness cannot finish a turn it
+			// is blocked inside.
 			cancel: async () => {
 				cancelled = true;
+				waiting.abort();
 				if (session) await AcpClient.cancel(session);
 			},
 			close: () => {
+				waiting.abort();
 				if (connection) AcpClient.close(connection);
 			},
 		};
