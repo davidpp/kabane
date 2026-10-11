@@ -66,6 +66,12 @@ export const ConfigSchema = z.object({
 	 * ends and which day is today. Absent is the system zone, which honours `TZ`.
 	 */
 	timezone: TimeZoneSchema.optional(),
+	/**
+	 * The official extensions this device turns on, by name (`["loop"]`). Absent
+	 * is none. Plain strings, so a name this build does not ship (one a newer
+	 * kabane wrote, or one since dropped) leaves the config readable.
+	 */
+	extensions: z.array(z.string().min(1)).optional(),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 

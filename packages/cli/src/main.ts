@@ -5,7 +5,9 @@
  * outcome's JSON instead of the human text.
  */
 
+import { err, ok, type Result } from "@cabane/core";
 import {
+	type Extension,
 	failure,
 	flagBool,
 	type Outcome,
@@ -32,6 +34,7 @@ import { update } from "./commands/update";
 import { upstream } from "./commands/upstream";
 import { resolveHome } from "./config";
 import { type Command, type Ctx, openContext } from "./context";
+import { Extensions } from "./extensions";
 import { openTui } from "./first-run";
 import { print } from "./output";
 
@@ -55,19 +58,74 @@ export const COMMANDS: Command[] = [
 	update,
 ];
 
-export const helpText = (): string =>
+/** The built-ins, then what the enabled extensions add. */
+export const helpText = (
+	fromExtensions: readonly Extension.Command[] = [],
+): string =>
 	[
 		"kabane — local-first tracker for humans and agent runtimes",
 		"",
 		"Usage: kabane <command> [args] [--json] [--as <actor-uri>]",
 		"       kabane --version",
 		"",
-		...COMMANDS.map((c) => `  ${c.name.padEnd(9)} ${c.summary}`),
+		...[...COMMANDS, ...fromExtensions].map(
+			(c) => `  ${c.name.padEnd(9)} ${c.summary}`,
+		),
 		"",
 		"KABANE_HOME (default ~/.kabane) holds config.json and kabane.db, unless config.json's db block points at another file.",
 	].join("\n");
 
 const HELP_USAGE = "kabane <command> [args]";
+
+const extensionCommands = async (
+	home: string,
+): Promise<Result<Extension.Command[]>> => {
+	const names = Extensions.enabled(home);
+	if (!names.ok) return names;
+	const loaded = await Extensions.loadAll(names.value);
+	return loaded.ok
+		? ok(loaded.value.flatMap((extension) => extension.commands ?? []))
+		: loaded;
+};
+
+/** Help lists the enabled extensions' commands, and still prints when one of them is broken. */
+const help = async (home: string, exitCode: 0 | 2): Promise<Outcome> => {
+	const extra = await extensionCommands(home);
+	const commands = [...COMMANDS, ...(extra.ok ? extra.value : [])];
+	return {
+		exitCode,
+		json: { commands: commands.map((c) => c.name) },
+		text: extra.ok
+			? helpText(extra.value)
+			: `${helpText()}\n\nExtensions unavailable: ${extra.error.message}`,
+	};
+};
+
+/**
+ * A built-in wins; otherwise an enabled extension's command, which is only
+ * imported now. The error is the outcome to print instead.
+ */
+const resolveCommand = async (
+	name: string,
+	home: string,
+): Promise<Result<Command, Outcome>> => {
+	const builtIn = COMMANDS.find((c) => c.name === name);
+	if (builtIn) return ok(builtIn);
+	const enabled = Extensions.enabled(home);
+	if (!enabled.ok) return err(failure(enabled.error));
+	const found = await Extensions.find(name, enabled.value);
+	if (!found.ok) return err(failure(found.error));
+	switch (found.value.found) {
+		case "enabled":
+			return ok(found.value.command);
+		case "disabled":
+			return err(
+				failure(Extensions.enableHint(name, found.value.extension, home)),
+			);
+		case "none":
+			return err(usage(`Unknown command: ${name}`, HELP_USAGE));
+	}
+};
 
 /** A context init and mcp can run with: no config file needed. */
 const bareCtx = (home: string, cwd: string): Ctx => ({
@@ -94,21 +152,17 @@ export const run = async (
 		return openTui(resolveHome(env), cwd);
 	if (name === "--version" || name === "-v")
 		return { exitCode: 0, json: { version }, text: version };
-	if (!name || name === "help" || name === "--help" || name === "-h") {
-		return {
-			exitCode: name ? 0 : 2,
-			json: { commands: COMMANDS.map((c) => c.name) },
-			text: helpText(),
-		};
-	}
-	const command = COMMANDS.find((c) => c.name === name);
-	if (!command) return usage(`Unknown command: ${name}`, HELP_USAGE);
+	const home = resolveHome(env);
+	if (!name || name === "help" || name === "--help" || name === "-h")
+		return help(home, name ? 0 : 2);
+	const resolved = await resolveCommand(name, home);
+	if (!resolved.ok) return resolved.error;
+	const command = resolved.value;
 
 	const args = parseArgs(rest);
 	if (flagBool(args, "help"))
 		return { exitCode: 0, json: { usage: command.usage }, text: command.usage };
 
-	const home = resolveHome(env);
 	if (command.standalone) return command.run(args, bareCtx(home, cwd));
 
 	const ctx = await openContext(home, cwd, args);

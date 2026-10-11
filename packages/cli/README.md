@@ -69,6 +69,14 @@ plain table names.
   the same idempotent one Jake runs at boot. Leave `sync` disabled in this
   shape: Jake already syncs that file as its own device, and `kabane sync`
   warns when `db.path` and sync are both set.
+- **extensions** (optional) turns official extensions on by name, e.g.
+  `"extensions": ["loop"]`; absent is none. An extension ships inside the
+  `kabane` package and adds commands, listed by `kabane help` once it is on,
+  and board activity and triggers. It is imported only when one of its
+  commands or the board runs, so `kabane list` never loads it. An off
+  extension's command prints the line to add here instead of running. A name
+  this version does not ship is ignored. The contract an extension implements
+  is `@cabane/extension`.
 
 ## Scope
 

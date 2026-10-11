@@ -1,13 +1,22 @@
 import { BoardCopilot, Harnesses } from "@cabane/acp";
-import { type BoardDeps, startBoard } from "@cabane/board";
+import {
+	Activity,
+	type ActivitySource,
+	type BoardDeps,
+	type Dispatcher,
+	Dispatchers,
+	startBoard,
+} from "@cabane/board";
 import { err, ok, type Result } from "@cabane/core";
 import {
+	type Extension,
 	failure,
 	flagString,
 	type ParsedArgs,
 	success,
 } from "@cabane/extension";
 import { type Command, type Ctx, resolveScope } from "../context";
+import { Extensions } from "../extensions";
 
 /**
  * The board's deps plus the copilot's teardown. The `Copilot` port carries no
@@ -54,10 +63,36 @@ const copilotOverrides = (ctx: Ctx): Harnesses.Overrides | undefined => {
 };
 
 /**
+ * The enabled extensions' board ports, each merged under its extension's name
+ * so ids route back to it. A port no extension fills stays absent, and the
+ * board keeps its no-op default for it.
+ */
+const extensionPorts = (
+	extensions: readonly Extension[],
+	ctx: Ctx,
+): Pick<BoardDeps, "activity" | "dispatcher"> => {
+	const activity: Record<string, ActivitySource> = {};
+	const dispatchers: Record<string, Dispatcher> = {};
+	for (const extension of extensions) {
+		const ports = extension.board?.(ctx);
+		if (ports?.activity) activity[extension.name] = ports.activity;
+		if (ports?.dispatcher) dispatchers[extension.name] = ports.dispatcher;
+	}
+	return {
+		...(Object.keys(activity).length > 0
+			? { activity: Activity.merge(activity) }
+			: {}),
+		...(Object.keys(dispatchers).length > 0
+			? { dispatcher: Dispatchers.merge(dispatchers) }
+			: {}),
+	};
+};
+
+/**
  * What the CLI hands the board: this device's home as the storage handle, the
- * activity and dispatcher ports at their no-op defaults (a host's business,
- * JCAB-14 is Jake's), the scope the CLI would have filtered on, and a copilot on
- * the chosen harness.
+ * activity and dispatcher ports the enabled extensions contribute (no-op
+ * defaults without any), the scope the CLI would have filtered on, and a
+ * copilot on the chosen harness.
  *
  * The scope is resolved here rather than passed through as a resolver, because
  * the copilot needs the same answer the board shows: the project directory as
@@ -70,10 +105,12 @@ export const boardDeps = async (
 	args: ParsedArgs,
 	ctx: Ctx,
 	harness: Harnesses.Id,
+	extensions: readonly Extension[] = [],
 ): Promise<BoardWiring> => {
 	const scope = await resolveScope(args, ctx);
 	const overrides = copilotOverrides(ctx);
 	return {
+		...extensionPorts(extensions, ctx),
 		cwd: ctx.cwd,
 		basePath: ctx.store,
 		// The board wants a URI and a label; the project root is the copilot's business.
@@ -101,7 +138,11 @@ export const board: Command = {
 			return failure("kabane board needs a terminal; use `kabane list` here");
 		const harness = copilotHarness(args, ctx);
 		if (!harness.ok) return failure(harness.error.message);
-		const deps = await boardDeps(args, ctx, harness.value);
+		const enabled = Extensions.enabled(ctx.home);
+		if (!enabled.ok) return failure(enabled.error);
+		const extensions = await Extensions.loadAll(enabled.value);
+		if (!extensions.ok) return failure(extensions.error);
+		const deps = await boardDeps(args, ctx, harness.value, extensions.value);
 		try {
 			await startBoard(deps);
 		} finally {
