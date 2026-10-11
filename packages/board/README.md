@@ -174,7 +174,9 @@ The trigger's `preview`, lines of toned parts (`{ text, tone?, bold? }`, the ton
 `muted`, `working` or `accent`), sits at the centre with the settings in a column beside it, or
 above them when the pane is under a hundred columns. A preview line too long for its room wraps:
 the part that overflows breaks at a space or a comma and carries on under the column it started
-at, so a list at the end of a line is read whole rather than cut.
+at, so a list at the end of a line is read whole rather than cut. On a pane too short for both, the
+preview keeps up to half the rows, its last line saying how many it leaves out, and the settings
+scroll to keep the row in hand on screen.
 
 ### `Copilot`
 

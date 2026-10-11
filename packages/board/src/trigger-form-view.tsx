@@ -4,9 +4,12 @@
 // cannot spare the width. A default's value is dimmed and a changed one is bright with a `•` after
 // it, so what this start does differently reads before what it does not. It draws the form's state
 // and reports clicks on its fields; trigger-form.ts owns every key and what a click does.
-import { TextAttributes } from "@opentui/core";
+//
+// A pane too short for all of it keeps the preview to its share of the rows, with a count of the
+// lines it leaves out, and scrolls the settings to keep the field in hand on screen.
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import {
@@ -30,6 +33,8 @@ const LABEL_COLS = 24;
 const VALUE_COLS = 10;
 const SIDE_BY_SIDE = 100;
 const MAX_WIDTH = 140;
+// The box's padding above and below, and the title with the gap under it.
+const CHROME_ROWS = 4;
 
 /** A form value as its row shows it: booleans as on and off, everything else as written. */
 const shown = (value: unknown): string =>
@@ -107,6 +112,8 @@ const segmentsOf = (line: PanelLine, theme: Theme.Tokens): Segments.Segment[] =>
 		...(part.bold ? { attributes: TextAttributes.BOLD } : {}),
 	}));
 
+const fieldId = (index: number): string => `form-field-${index}`;
+
 // One setting: `› label   ‹ value ›` for the field in hand, on the selected surface.
 const Field = ({
 	row,
@@ -130,7 +137,12 @@ const Field = ({
 			? row.label
 			: `${row.label.slice(0, Math.max(0, labelCols - 2))}…`;
 	return (
-		<text bg={style.bg} fg={theme.secondary} onMouseDown={onClick}>
+		<text
+			id={fieldId(row.index)}
+			bg={style.bg}
+			fg={theme.secondary}
+			onMouseDown={onClick}
+		>
 			<span fg={theme.accent}>{focused ? "› " : "  "}</span>
 			{label.padEnd(labelCols)}
 			<span
@@ -238,13 +250,25 @@ type Layout = {
 	side: boolean;
 	settingsCols: number;
 	previewRoom: number;
+	// How many of the preview's wrapped lines fit; the settings take the rest and scroll.
+	previewRows: number;
 	hints: boolean;
 };
 
+const bodyHeight = (
+	side: boolean,
+	preview: number,
+	settings: number,
+): number =>
+	side
+		? Math.max(preview, settings)
+		: preview + (preview > 0 ? 1 : 0) + settings;
+
 /**
  * Where everything goes in a `width` × `height` pane: side by side from SIDE_BY_SIDE columns, else
- * stacked, and the hint row only when it fits on one row (the board's footer under the form names
- * the same keys).
+ * stacked, and the hint row only when it fits on one row and the form has the rows to spare (the
+ * board's footer under the form names the same keys). Short of rows, the preview keeps up to half
+ * of them and the settings scroll in the rest.
  */
 const layoutOf = (
 	pane: { width: number; height: number },
@@ -258,22 +282,50 @@ const layoutOf = (
 	const previewRoom = (side ? inner - SETTINGS_COLS - 2 : inner) - 2;
 	const preview = previewRows(previewRoom);
 	const settings = rowsHeight(rows);
-	const body = side
-		? Math.max(preview, settings)
-		: preview + (preview > 0 ? 1 : 0) + settings;
-	const hints = Keymap.hintLine(HINTS).length <= inner;
-	// The padding above and below, the title and the gap under it, then the gap and the hints.
-	const boxHeight = Math.min(pane.height, body + 4 + (hints ? 2 : 0));
+	const whole = bodyHeight(side, preview, settings);
+	const hints =
+		Keymap.hintLine(HINTS).length <= inner &&
+		whole + CHROME_ROWS + 2 <= pane.height;
+	const room = Math.max(0, pane.height - CHROME_ROWS - (hints ? 2 : 0));
+	// Stacked, the gap under the preview comes out of the room too.
+	const shown =
+		whole <= room
+			? preview
+			: side
+				? Math.min(preview, room)
+				: Math.min(
+						preview,
+						Math.max(room - 1 - settings, Math.floor(room / 2)),
+					);
 	return {
 		boxWidth,
-		boxHeight,
+		boxHeight: Math.min(
+			pane.height,
+			bodyHeight(side, shown, settings) + CHROME_ROWS + (hints ? 2 : 0),
+		),
 		inner,
 		side,
 		settingsCols: side ? SETTINGS_COLS : inner,
 		previewRoom,
+		previewRows: shown,
 		hints,
 	};
 };
+
+// The preview held to `count` lines, its last saying how many it leaves out.
+const clipped = (
+	lines: Segments.Segment[][],
+	count: number,
+	theme: Theme.Tokens,
+): Segments.Segment[][] =>
+	lines.length <= count
+		? lines
+		: count <= 0
+			? []
+			: [
+					...lines.slice(0, count - 1),
+					[{ text: `… ${lines.length - count + 1} more`, fg: theme.muted }],
+				];
 
 // `start loop JREP-1  · 1 changed from the defaults`, held to one row.
 const titleOf = (
@@ -314,8 +366,17 @@ export const TriggerFormView = ({
 			Segments.wrap(segmentsOf(line, theme), room),
 		);
 	const layout = layoutOf(pane, rows, (room) => wrapped(room).length);
-	const preview = wrapped(layout.previewRoom);
+	const preview = clipped(
+		wrapped(layout.previewRoom),
+		layout.previewRows,
+		theme,
+	);
 	const changed = rows.filter((r) => r.kind === "field" && r.changed).length;
+	// The field in hand stays on screen when the settings scroll.
+	const settingsRef = useRef<ScrollBoxRenderable | null>(null);
+	useEffect(() => {
+		settingsRef.current?.scrollChildIntoView(fieldId(form.field));
+	}, [form.field]);
 	return (
 		<box
 			style={{
@@ -343,21 +404,24 @@ export const TriggerFormView = ({
 				{preview.length > 0 ? (
 					<Preview rows={preview} side={layout.side} />
 				) : null}
-				<box
+				<scrollbox
+					ref={settingsRef}
 					style={{
-						flexDirection: "column",
 						width: layout.settingsCols,
-						flexShrink: 0,
+						// Beside the preview it keeps its width; under it, it takes the rows left.
+						flexGrow: layout.side ? 0 : 1,
+						flexShrink: layout.side ? 0 : 1,
 						marginLeft: layout.side && preview.length > 0 ? 2 : 0,
 					}}
 				>
 					<Settings
 						rows={rows}
 						field={form.field}
-						cols={layout.settingsCols}
+						// The last column is the scrollbar's, when the settings scroll.
+						cols={layout.settingsCols - 1}
 						{...(onField ? { onField } : {})}
 					/>
-				</box>
+				</scrollbox>
 			</box>
 			{layout.hints ? (
 				<box style={{ marginTop: 1 }}>
