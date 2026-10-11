@@ -260,6 +260,9 @@ describe("actions", () => {
 			{ key: "i", label: "inject" },
 			{ key: "p", label: "pause" },
 		]);
+		// Only while the tab has the keys: under the prompt or the copilot they would be typed.
+		expect(CardTab.hints(press(s, "l", "i").state)).toEqual([]);
+		expect(CardTab.hints({ ...s, focus: "copilot" })).toEqual([]);
 		const facts = { linked: new Set<string>(), events: false };
 		expect(BoardNav.keySituation(s, facts).stoppable).toBe(true);
 		expect(

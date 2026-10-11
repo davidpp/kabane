@@ -12,7 +12,7 @@
 // and `x` is reserved for the host's `stop` action, as it stops the copilot's turn on its transcript.
 // An action with `input` opens the board's prompt (prompt.ts) and sends what was typed.
 import type { Keymap } from "./keymap";
-import type { BoardNav } from "./nav";
+import { BoardNav } from "./nav";
 import { type CardAction, STOP_ACTION } from "./ports";
 import { BoardPrompt } from "./prompt";
 import { BoardTabs } from "./tabs";
@@ -188,10 +188,14 @@ export namespace CardTab {
 			: { state, effect: NOTHING };
 	};
 
-	/** The footer's hints for the card on screen's own actions, `stop` left to the registry's `x`. */
+	/**
+	 * The footer's hints for the card on screen's own actions, `stop` left to the registry's `x`.
+	 * Only while the tab has the keys: under an open prompt or the copilot's focus they would be
+	 * typed into a textarea.
+	 */
 	export const hints = (state: State): Keymap.Hint[] => {
 		const id = state.tabs.active;
-		if (id === null || state.view.type !== "events") return [];
+		if (id === null || BoardNav.keyContext(state) !== "cardTab") return [];
 		// An action aimed at a lane, on a card with none yet, has nothing to say in the footer.
 		const lanes = lanesOf(state.tabs, id).length;
 		return actionsOf(state.tabs, id)
