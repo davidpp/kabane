@@ -165,6 +165,82 @@ describe("Claims.settleAll", () => {
 	});
 });
 
+describe("Claims.hooks", () => {
+	it("records a relayed permission request on the asking claim's lane, session and task", async () => {
+		const parent = await add("parent");
+		const child = await add("child", {
+			parentTaskId: parent.id,
+			state: "in_progress",
+		});
+		const sessionId = await sessionOn(child);
+		const claim = claimOf(child, sessionId);
+		const config = LoopConfig.Schema.safeParse({});
+		if (!config.success) throw config.error;
+		const run: RunStore.Run = {
+			version: 1,
+			id: "run-1",
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims: [claim],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		};
+		const created = RunStore.create(home, run);
+		if (!created.ok) throw created.error;
+		const hooks = Claims.hooks(
+			ctxFor(run),
+			sessionId,
+			claim.lane,
+			claim.shortId,
+			"claude",
+		);
+		const relayed = hooks.permission(
+			{
+				toolCallId: "toolu_01",
+				title: "bun install",
+				options: [
+					{ id: "allow", name: "Yes", kind: "allow_once" },
+					{ id: "reject", name: "No", kind: "reject_once" },
+				],
+			},
+			new AbortController().signal,
+		);
+		let questionId: string | undefined;
+		for (let i = 0; i < 200 && !questionId; i++) {
+			const needs = await Planner.getNeedsInput(home);
+			if (!needs.ok) throw needs.error;
+			questionId = needs.value.find((r) => r.session.id === sessionId)?.question
+				?.id;
+			if (!questionId) await Bun.sleep(5);
+		}
+		if (!questionId) throw new Error("no question appeared");
+		const answered = await Planner.answerQuestion(home, {
+			questionId,
+			answer: "Yes",
+		});
+		if (!answered.ok) throw answered.error;
+		const chosen = await relayed;
+		expect(chosen.ok && chosen.value).toBe("allow");
+
+		const events = RunStore.readEvents(home, run.id);
+		if (!events.ok) throw events.error;
+		const permission = events.value.filter((e) =>
+			e.type.startsWith("permission_"),
+		);
+		expect(permission.map((e) => [e.type, e.lane, e.session, e.task])).toEqual([
+			["permission_asked", claim.lane, sessionId, claim.shortId],
+			["permission_answered", claim.lane, sessionId, claim.shortId],
+		]);
+	});
+});
+
 describe("Claims.claim", () => {
 	it("works a subtask on the run's harness and makes it the assignee, whoever filed it", async () => {
 		const parent = await add("parent");

@@ -98,7 +98,12 @@ export namespace Claims {
 		return note?.kind === "answered" ? note.by : undefined;
 	};
 
-	const hooks = (
+	/**
+	 * What a claim's dispatch reports through. Everything it records about its session, a relayed
+	 * permission request included, carries the claim's lane, session and task, so it shows on that
+	 * agent's lane of the run's tab.
+	 */
+	export const hooks = (
 		ctx: Ctx,
 		sessionId: string,
 		lane: string,
