@@ -17,7 +17,9 @@ import { configPath, loadConfig } from "./config";
  * module, and `scripts/build.ts` fails when a directory under `extensions/` is
  * missing from this list.
  */
-const OFFICIAL: Readonly<Record<string, () => Promise<Extension>>> = {};
+const OFFICIAL: Readonly<Record<string, () => Promise<Extension>>> = {
+	loop: async () => (await import("@cabane/loop")).loop,
+};
 
 /** What an unknown command name turned out to be. */
 type Lookup =
