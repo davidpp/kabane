@@ -483,7 +483,7 @@ export const App = ({
 	// A banner's question answered: core writes the decision, the banner says what was answered until
 	// the human leaves, and the reload takes the question off every badge. The host hears it first, so
 	// one that keeps who answered has it before its work sees the answer; a failed note does not hold
-	// the answer back.
+	// the answer back. A failed write takes back the answer the digit set on the banner.
 	const answer = useCallback(
 		async (
 			s: BoardNav.BoardState,
@@ -493,10 +493,15 @@ export const App = ({
 			await shownSource.answering?.(questionId);
 			const res = await BoardData.answerQuestion(basePath, questionId, text);
 			setNotice(flash(res, `answered ${text}`));
-			if (res.ok)
-				setState((prev) =>
-					prev ? BoardTabs.withAnswered(prev, questionId, text) : prev,
-				);
+			setState((prev) =>
+				prev
+					? (res.ok ? BoardTabs.withAnswered : BoardTabs.withoutAnswer)(
+							prev,
+							questionId,
+							text,
+						)
+					: prev,
+			);
 			await reload(s);
 		},
 		[basePath, reload, shownSource],

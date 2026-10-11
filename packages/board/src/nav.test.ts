@@ -2679,6 +2679,26 @@ describe("a permission request the harness is blocked on", () => {
 		expect(r.state.search).toEqual({ mode: "typing", query: "au1" });
 	});
 
+	it("an open prompt keeps its keys: a digit is text, esc closes the prompt and not the question", () => {
+		const prompting = asked({
+			prompt: {
+				...BoardPrompt.CLOSED,
+				open: {
+					target: { type: "act", cardId: "loop", actionId: "inject" },
+					title: "inject",
+					placeholder: "",
+				},
+			},
+		});
+		const digit = BoardNav.reduceKey(prompting, char("1"));
+		expect(digit.effect.type).not.toBe("copilotAnswer");
+		expect(digit.state.copilot.permission).toEqual(request);
+		const esc = BoardNav.reduceKey(prompting, { name: "escape" });
+		expect(esc.effect.type).not.toBe("copilotAnswer");
+		expect(esc.state.copilot.permission).toEqual(request);
+		expect(esc.state.prompt.open).toBeNull();
+	});
+
 	it("a turn that stops takes the unanswered question with it", () => {
 		const stopped = BoardNav.withCopilotTurn(asked(), "error");
 		expect(stopped.copilot.permission).toBeNull();

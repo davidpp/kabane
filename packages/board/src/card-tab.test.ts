@@ -168,6 +168,20 @@ describe("actions", () => {
 		);
 	});
 
+	it("an uppercase key is its own: shift+x does not stop, and an action bound to X runs", () => {
+		// OpenTUI names a shifted letter by its lowercase with the shift flag.
+		const shiftX = { name: "x", sequence: "X", shift: true };
+		const s = onTab([
+			card({ actions: [STOP, { id: "export", key: "X", label: "export" }] }),
+		]);
+		expect(BoardNav.reduceKey(s, shiftX).effect).toEqual({
+			type: "act",
+			cardId: "loop:r1",
+			actionId: "export",
+		});
+		expect(BoardNav.reduceKey(acting(), shiftX).effect.type).toBe("none");
+	});
+
 	it("an action aimed at a lane, on a card with none yet, says so and is left out of the footer", () => {
 		const s = acting({ lanes: [] });
 		expect(press(s, "i").effect).toEqual({
@@ -260,6 +274,9 @@ describe("actions", () => {
 			{ key: "i", label: "inject" },
 			{ key: "p", label: "pause" },
 		]);
+		// Only while the tab has the keys: under the prompt or the copilot they would be typed.
+		expect(CardTab.hints(press(s, "l", "i").state)).toEqual([]);
+		expect(CardTab.hints({ ...s, focus: "copilot" })).toEqual([]);
 		const facts = { linked: new Set<string>(), events: false };
 		expect(BoardNav.keySituation(s, facts).stoppable).toBe(true);
 		expect(

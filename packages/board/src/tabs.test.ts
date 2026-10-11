@@ -110,6 +110,25 @@ describe("the tab bar follows the cards that ask for a tab", () => {
 		expect(s.view).toEqual({ type: "board" });
 	});
 
+	it("opens new tabs oldest first, at launch and mid-session alike, whatever order the host lists", () => {
+		const at = (id: string, minute: number): ActivityCard =>
+			card({ id, startedAt: `2026-10-10T00:0${minute}:00.000Z` });
+		// Activity lists newest first.
+		const launched = withLoop([at("loop:r3", 3), at("loop:r2", 2)]);
+		expect(launched.tabs.open).toEqual(["loop:r2", "loop:r3"]);
+		const polled = BoardTabs.withActivity(
+			launched,
+			[at("loop:r5", 5), at("loop:r4", 4), at("loop:r3", 3), at("loop:r2", 2)],
+			[],
+		);
+		expect(polled.tabs.open).toEqual([
+			"loop:r2",
+			"loop:r3",
+			"loop:r4",
+			"loop:r5",
+		]);
+	});
+
 	it("is the same state when a poll brings nothing new", () => {
 		const s = withLoop();
 		expect(BoardTabs.withActivity(s, [card()], [SOLO_Q, LOOP_Q])).toBe(s);
@@ -294,6 +313,20 @@ describe("the pinned banner", () => {
 		// h/l still walk the sections under the banner.
 		expect(press(s, "l").state.view).toMatchObject({ type: "detail" });
 		expect(press(s, "l").state).not.toBe(s);
+	});
+
+	it("answers on the keypress, so a second digit before the write lands answers nothing", () => {
+		const first = press(pinned(), "1");
+		expect(first.state.view).toMatchObject({ banner: { answer: "Pin" } });
+		expect(press(first.state, "2").effect.type).toBe("none");
+		// A failed write takes it back, and the digits answer again.
+		const failed = BoardTabs.withoutAnswer(first.state, "q-solo", "Pin");
+		expect(failed.view).toEqual({
+			type: "detail",
+			taskId: "t9",
+			banner: { question: SOLO_Q },
+		});
+		expect(press(failed, "2").effect).toMatchObject({ answer: "Take" });
 	});
 
 	it("b does nothing without a card to go back to", () => {

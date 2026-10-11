@@ -1122,9 +1122,14 @@ export namespace BoardNav {
 		// A harness blocked on a question is the most urgent thing on screen, so it takes the keys
 		// that answer it — a digit, `esc` — ahead of every view and of the copilot's own focus. That
 		// is the esc layering the board already has, one press one level: the newest, most local
-		// thing goes first, and here it is the thing something else is waiting on. Search-typing is
-		// the exception, where a digit is a query character. Every other key falls through.
-		if (state.copilot.permission && state.search.mode !== "typing") {
+		// thing goes first, and here it is the thing something else is waiting on. Search-typing and
+		// an open prompt are the exceptions: a digit is a character there, and the prompt's `esc`
+		// closes it. Every other key falls through.
+		if (
+			state.copilot.permission &&
+			state.search.mode !== "typing" &&
+			!state.prompt.open
+		) {
 			const answered = answerPermission(state, state.copilot.permission, key);
 			if (answered) return answered;
 		}

@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/react */
 import { expect, test } from "bun:test";
+import { act, type ReactNode, useEffect, useState } from "react";
 import type { TriggerDescriptor } from "./ports";
 import { pumpUntil, renderTest } from "./testing";
 import { TriggerForm } from "./trigger-form";
@@ -79,4 +80,135 @@ test("at forty columns the settings stack under the preview, and nothing is cut"
 	expect(frame).not.toContain("…");
 	expect(frame.replace(/\s+/g, "")).toContain("←JREP-2,JREP-3,JREP-5,JREP-6");
 	expect(frame).toMatch(/‹ 3 ›/);
+});
+
+// The loop's own form: eleven settings in four groups, under an eight-line plan.
+const LOOP: TriggerDescriptor = {
+	id: "start",
+	label: "start loop",
+	satisfiable: true,
+	inputs: Object.fromEntries(
+		[
+			["implementer", "Agents"],
+			["model", "Agents"],
+			["verifier", "Agents"],
+			["concurrent sessions", "Limits"],
+			["wall time (min)", "Limits"],
+			["continuations", "Limits"],
+			["spend", "Limits"],
+			["stall after (ends)", "Limits"],
+			["lens correctness", "Checks"],
+			["lens tests", "Checks"],
+			["own git worktree", "Workspace"],
+		].map(([label, group]) => [
+			label,
+			{ type: "number", required: false, default: 1, label, group },
+		]),
+	),
+	preview: [
+		[{ text: "Plan", bold: true }],
+		...[2, 3, 4, 5, 6, 7, 8].map((n) => [
+			{ text: ` ○ JREP-${n}  a subtask of the loop` },
+		]),
+	],
+};
+
+test("at 80×24 a stacked loop form keeps the focused field on screen as j walks down", async () => {
+	// The form opens on its first field and j moves it: the reducer's state, handed to the view.
+	const handle = { focus: (_field: number): void => {} };
+	const Walked = (): ReactNode => {
+		const [field, setField] = useState(0);
+		useEffect(() => {
+			handle.focus = setField;
+		}, []);
+		return (
+			<TriggerFormView
+				shortId="JREP-1"
+				form={{ ...TriggerForm.open(LOOP), field }}
+			/>
+		);
+	};
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Walked />,
+		{ width: 80, height: 24 },
+	);
+	try {
+		await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("› implementer"),
+		);
+		for (const [field, label] of [
+			[8, "› lens correctness"],
+			[10, "› own git worktree"],
+		] as const) {
+			act(() => handle.focus(field));
+			const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes(label),
+			);
+			expect(frame).toContain("start loop JREP-1");
+			expect(frame).toContain("Plan");
+		}
+	} finally {
+		destroy();
+	}
+});
+
+test("on a pane shorter still the plan keeps half the rows and says what it leaves out", async () => {
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<TriggerFormView shortId="JREP-1" form={TriggerForm.open(LOOP)} />,
+		{ width: 80, height: 16 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("› implementer"),
+		);
+		expect(frame).toContain("JREP-5  a subtask");
+		expect(frame).toContain("… 3 more");
+		expect(frame).not.toContain("JREP-6");
+	} finally {
+		destroy();
+	}
+});
+
+test("a group listed twice is titled twice, and an ungrouped input after a group is not under it", async () => {
+	const input = (group?: string) => ({
+		type: "number",
+		required: false,
+		default: 1,
+		...(group ? { group } : {}),
+	});
+	const form = TriggerForm.open({
+		id: "start",
+		label: "start loop",
+		satisfiable: true,
+		inputs: {
+			first: input("Agents"),
+			second: input("Limits"),
+			third: input("Agents"),
+			loose: input(),
+		},
+	});
+	const errors: unknown[] = [];
+	const original = console.error;
+	console.error = (...args: unknown[]) => errors.push(args);
+	try {
+		const { renderOnce, captureCharFrame, destroy } = await renderTest(
+			<TriggerFormView shortId="JREP-1" form={form} />,
+			{ width: 110, height: 24 },
+		);
+		try {
+			const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("loose"),
+			);
+			const lines = frame.split("\n").map((l) => l.trim());
+			expect(lines.filter((l) => l === "Agents")).toHaveLength(2);
+			const loose = lines.findIndex((l) => l.startsWith("loose"));
+			expect(lines[loose - 1]).toBe("");
+			expect(lines[loose - 2]).toMatch(/^third/);
+		} finally {
+			destroy();
+		}
+	} finally {
+		console.error = original;
+	}
+	expect(String(errors)).not.toContain("same key");
 });
