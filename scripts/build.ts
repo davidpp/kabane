@@ -123,7 +123,10 @@ const bundle = async (): Promise<void> => {
 		target: "bun",
 		external: [...EXTERNAL],
 		// Without it the JSX compiles to the development runtime.
-		define: { "process.env.NODE_ENV": JSON.stringify("production") },
+		define: {
+			"process.env.NODE_ENV": JSON.stringify("production"),
+			"process.env.KABANE_BUNDLED": JSON.stringify("1"),
+		},
 		// Which source files went in, for the extension check below.
 		metafile: true,
 	});

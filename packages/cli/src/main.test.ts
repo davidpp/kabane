@@ -5,17 +5,28 @@ import { join } from "node:path";
 import { version } from "../package.json";
 import { configPath, loadConfig, saveConfig } from "./config";
 import { run } from "./main";
+import { describeVersion } from "./version";
 
 describe("run", () => {
-	it("prints the package version for --version and -v", async () => {
+	it("prints the package version and, from a checkout, its commit", async () => {
+		const head = Bun.spawnSync(["git", "rev-parse", "HEAD"], {
+			cwd: import.meta.dir,
+		});
+		const commit = head.stdout.toString().trim();
 		for (const flag of ["--version", "-v"]) {
 			const outcome = await run([flag], {}, "/");
-			expect(outcome).toEqual({
-				exitCode: 0,
-				json: { version },
-				text: version,
+			expect(outcome.exitCode).toBe(0);
+			expect(outcome.json).toMatchObject({
+				version,
+				source: { commit: commit.slice(0, 7) },
 			});
+			expect(outcome.text).toStartWith(`${version} (source: `);
+			expect(outcome.text).toContain(`@${commit.slice(0, 7)}`);
 		}
+	});
+
+	it("prints the bare package version outside a git checkout", () => {
+		expect(describeVersion(tmpdir())).toEqual({ version, text: version });
 	});
 });
 

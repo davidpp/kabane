@@ -14,7 +14,6 @@ import {
 	parseArgs,
 	usage,
 } from "@cabane/extension";
-import { version } from "../package.json";
 import { add } from "./commands/add";
 import { board } from "./commands/board";
 import { comment } from "./commands/comment";
@@ -37,6 +36,7 @@ import { type Command, type Ctx, openContext } from "./context";
 import { Extensions } from "./extensions";
 import { openTui } from "./first-run";
 import { print } from "./output";
+import { describeVersion } from "./version";
 
 export const COMMANDS: Command[] = [
 	init,
@@ -150,8 +150,10 @@ export const run = async (
 	// pipe or an agent still gets help, as it always has.
 	if (!name && process.stdin.isTTY && process.stdout.isTTY)
 		return openTui(resolveHome(env), cwd);
-	if (name === "--version" || name === "-v")
-		return { exitCode: 0, json: { version }, text: version };
+	if (name === "--version" || name === "-v") {
+		const { text, ...json } = describeVersion();
+		return { exitCode: 0, json, text };
+	}
 	const home = resolveHome(env);
 	if (!name || name === "help" || name === "--help" || name === "-h")
 		return help(home, name ? 0 : 2);
