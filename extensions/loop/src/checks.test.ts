@@ -28,7 +28,7 @@ let root = "";
 let home = "";
 let repo = "";
 
-const git: Worktree.Git = (cwd, args) =>
+const git: Worktree.Git = async (cwd, args) =>
 	trySync(() => GitFixture.run(cwd, args));
 const head = (dir: string): string =>
 	GitFixture.run(dir, ["rev-parse", "HEAD"]).trim();
@@ -63,11 +63,11 @@ const add = async (
 };
 
 // A run on `parent` as `Loop.start` writes it, with a worktree of the fixture repo when asked.
-const runOn = (
+const runOn = async (
 	parent: Task,
 	gates: Record<string, string>,
 	worktree: boolean,
-): RunStore.Run => {
+): Promise<RunStore.Run> => {
 	const config = LoopConfig.Schema.safeParse({
 		gates,
 		worktree,
@@ -94,7 +94,7 @@ const runOn = (
 	if (!created.ok) throw created.error;
 	if (!worktree) return run;
 	const dir = Worktree.dirFor(RunStore.paths(home, run.id).dir);
-	const added = Worktree.add(repo, dir, Worktree.branchFor(run.id), git);
+	const added = await Worktree.add(repo, dir, Worktree.branchFor(run.id), git);
 	if (!added.ok) throw added.error;
 	const written = RunStore.write(home, { ...run, worktree: dir });
 	if (!written.ok) throw written.error;
@@ -113,7 +113,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 			git,
 		},
 		now: () => new Date(),
-		tree: () => "tree",
+		tree: async () => "tree",
 		log: log.value,
 		run,
 		live: new Map(),
@@ -138,7 +138,7 @@ describe("Checks", () => {
 			parentTaskId: parent.id,
 			state: "done",
 		});
-		const ctx = ctxFor(runOn(parent, { built: "test -f out.txt" }, true));
+		const ctx = ctxFor(await runOn(parent, { built: "test -f out.txt" }, true));
 		const worktree = ctx.run.worktree ?? "";
 		const before = head(repo);
 		writeFileSync(join(worktree, "out.txt"), "made by the session\n");
@@ -170,7 +170,11 @@ describe("Checks", () => {
 			state: "done",
 		});
 		const ctx = ctxFor(
-			runOn(parent, { test: "echo 'expected 2, got 3' >&2; exit 3" }, true),
+			await runOn(
+				parent,
+				{ test: "echo 'expected 2, got 3' >&2; exit 3" },
+				true,
+			),
 		);
 
 		const subject = {
@@ -198,9 +202,33 @@ describe("Checks", () => {
 		expect(brief).toContain("expected 2, got 3");
 	});
 
+	it("a gate the run's stop kills does not reopen the subtask its session closed", async () => {
+		const parent = await add("parent");
+		const child = await add("child", {
+			parentTaskId: parent.id,
+			state: "done",
+		});
+		const ctx = ctxFor(
+			await runOn(parent, { slow: "sleep 5; echo done" }, false),
+		);
+		const subject = {
+			taskId: child.id,
+			label: child.shortId ?? "",
+			title: "child",
+		};
+		setTimeout(() => ctx.stopping.abort(), 100);
+		const pass = await Checks.gate(ctx, subject);
+		await Checks.record(ctx, pass, subject);
+
+		expect(pass.results).toMatchObject([{ ok: false, exit: null }]);
+		const task = await Planner.getTask(home, child.id);
+		expect(task.ok && task.value?.state).toBe("done");
+		expect(await refsOf(child.id)).toEqual(["gate:slow"]);
+	});
+
 	it("a run without a worktree commits nothing, and a checkpoint refuses the checkout", async () => {
 		const parent = await add("parent");
-		const ctx = ctxFor(runOn(parent, { ok: "true" }, false));
+		const ctx = ctxFor(await runOn(parent, { ok: "true" }, false));
 		writeFileSync(join(repo, "wip.txt"), "the user's own work in progress\n");
 		const before = head(repo);
 
@@ -209,7 +237,7 @@ describe("Checks", () => {
 		expect(pass.checkpoint).toBeUndefined();
 		expect(head(repo)).toBe(before);
 
-		const forced = Worktree.checkpoint(repo, "should never land", git);
+		const forced = await Worktree.checkpoint(repo, "should never land", git);
 		expect(!forced.ok && forced.error.message).toContain(
 			"not a linked worktree",
 		);
@@ -220,7 +248,7 @@ describe("Checks", () => {
 		const parent = await add("parent");
 		// Fails if another pass holds the directory's lock while this one runs.
 		const exclusive = "mkdir .gate-lock || exit 9; sleep 0.2; rmdir .gate-lock";
-		const ctx = ctxFor(runOn(parent, { exclusive }, true));
+		const ctx = ctxFor(await runOn(parent, { exclusive }, true));
 		const [a, b] = await Promise.all([
 			Checks.gate(ctx, { label: "K-2", title: "a" }),
 			Checks.gate(ctx, { label: "K-3", title: "b" }),
@@ -235,7 +263,7 @@ describe("Loop.rollback", () => {
 
 	it("resets the worktree to one of the run's checkpoints and refuses any other sha", async () => {
 		const parent = await add("parent");
-		const ctx = ctxFor(runOn(parent, { ok: "true" }, true));
+		const ctx = ctxFor(await runOn(parent, { ok: "true" }, true));
 		const worktree = ctx.run.worktree ?? "";
 		writeFileSync(join(worktree, "a.txt"), "a\n");
 		const first = await Checks.gate(ctx, { label: "K", title: "first" });
@@ -244,7 +272,7 @@ describe("Loop.rollback", () => {
 		writeFileSync(join(worktree, "c.txt"), "not committed\n");
 		RunStore.write(home, { ...ctx.run, status: "completed" });
 
-		const stranger = Loop.rollback(
+		const stranger = await Loop.rollback(
 			{ home, actor: HUMAN, git },
 			"run-1",
 			head(repo),
@@ -255,7 +283,7 @@ describe("Loop.rollback", () => {
 		expect(existsSync(join(worktree, "b.txt"))).toBe(true);
 
 		const sha = first.checkpoint ?? "";
-		const reset = Loop.rollback(
+		const reset = await Loop.rollback(
 			{ home, actor: HUMAN, git },
 			"run-1",
 			sha.slice(0, 8),
@@ -271,7 +299,7 @@ describe("Loop.rollback", () => {
 
 	it("refuses while a session is working in the worktree", async () => {
 		const parent = await add("parent");
-		const ctx = ctxFor(runOn(parent, { ok: "true" }, true));
+		const ctx = ctxFor(await runOn(parent, { ok: "true" }, true));
 		writeFileSync(join(ctx.run.worktree ?? "", "a.txt"), "a\n");
 		const pass = await Checks.gate(ctx, { label: "K", title: "first" });
 		RunStore.write(home, {
@@ -290,7 +318,7 @@ describe("Loop.rollback", () => {
 				},
 			],
 		});
-		const refused = Loop.rollback(
+		const refused = await Loop.rollback(
 			{ home, actor: HUMAN, git },
 			"run-1",
 			pass.checkpoint ?? "",
@@ -305,7 +333,7 @@ describe("Runner final checks", () => {
 	const drive = async (gates: Record<string, string>) => {
 		const parent = await add("parent");
 		await add("child", { parentTaskId: parent.id, state: "done" });
-		const run = runOn(parent, gates, true);
+		const run = await runOn(parent, gates, true);
 		const ended = await Runner.run(run.id, {
 			home,
 			basePath: home,

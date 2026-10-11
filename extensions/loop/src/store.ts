@@ -80,8 +80,13 @@ export namespace RunStore {
 		scopeUri: z.string().optional(),
 		/** The directory the loop was started from: the project checkout it works on. */
 		projectDir: z.string(),
-		/** A worktree of `projectDir` the run works in instead, when one is enabled. */
+		/** A worktree of `projectDir`'s repository the run works in instead, when one is enabled. */
 		worktree: z.string().optional(),
+		/**
+		 * Where `projectDir` sits in its repository (`git rev-parse --show-prefix`, "" at the
+		 * top): the run works in the same folder of the worktree, not at its top.
+		 */
+		worktreePrefix: z.string().optional(),
 		config: LoopConfig.Schema,
 		status: StatusSchema,
 		exit: z
@@ -92,6 +97,13 @@ export namespace RunStore {
 		createdAt: z.string(),
 		startedAt: z.string().optional(),
 		endedAt: z.string().optional(),
+		/**
+		 * Wall time spent with a runner driving the run, as of `at`: what the wall-time budget
+		 * holds it to. Its runner saves it as it goes, so a run resumed after its runner died
+		 * is not charged for the hours nobody ran it. Paused time counts: a runner is alive
+		 * through it.
+		 */
+		clock: z.object({ spentMs: z.number().min(0), at: z.string() }).optional(),
 		claims: z.array(ClaimSchema).default([]),
 		usage: Budget.MeterSchema.default({}),
 		continuationsUsed: z.number().int().min(0).default(0),
@@ -120,9 +132,30 @@ export namespace RunStore {
 	export const checkpoints = (run: Run): string[] =>
 		run.gateRuns.flatMap((g) => (g.checkpoint ? [g.checkpoint] : []));
 
-	/** Where the run's sessions work: its worktree when it has one, else the project. */
+	/**
+	 * Wall time the run has spent as of `now`: its clock, plus the time since the clock was saved
+	 * while a runner is still counting. A run from before the clock counts from its start.
+	 */
+	export const wallMs = (run: Run, now: Date): number => {
+		if (run.clock === undefined) {
+			const from = Date.parse(run.startedAt ?? run.createdAt);
+			const to = run.endedAt ? Date.parse(run.endedAt) : now.getTime();
+			return Math.max(0, to - from);
+		}
+		const since = isLive(run.status)
+			? now.getTime() - Date.parse(run.clock.at)
+			: 0;
+		return run.clock.spentMs + Math.max(0, since);
+	};
+
+	/**
+	 * Where the run's sessions and gates work: the project's folder in the run's worktree when it
+	 * has one, else the project.
+	 */
 	export const sessionDir = (run: Run): string =>
-		run.worktree ?? run.projectDir;
+		run.worktree === undefined
+			? run.projectDir
+			: join(run.worktree, run.worktreePrefix ?? "");
 
 	export const EventSchema = z.object({
 		seq: z.number().int().positive(),
@@ -302,11 +335,18 @@ export namespace RunStore {
 		return ok(runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
 	};
 
+	const readText = (file: string): Result<string> =>
+		existsSync(file) ? trySync(() => readFileSync(file, "utf8")) : ok("");
+
+	const nonBlank = (text: string): string[] =>
+		text.split("\n").filter((line) => line.trim() !== "");
+
+	// The lines a writer has finished: a tail with no newline yet is an append still in progress,
+	// left for the next read rather than taken for a broken line and skipped for good.
 	const lines = (file: string): Result<string[]> => {
-		if (!existsSync(file)) return ok([]);
-		const text = trySync(() => readFileSync(file, "utf8"));
+		const text = readText(file);
 		if (!text.ok) return text;
-		return ok(text.value.split("\n").filter((line) => line.trim() !== ""));
+		return ok(nonBlank(text.value.slice(0, text.value.lastIndexOf("\n") + 1)));
 	};
 
 	const parseLine = <T>(schema: z.ZodType<T>, line: string): T | undefined => {
@@ -320,16 +360,21 @@ export namespace RunStore {
 		append: (event: EventDraft) => Result<Event>;
 	};
 
-	/** The runner's appender. Numbering resumes after whatever the file already holds. */
+	/**
+	 * The runner's appender. Numbering resumes after whatever the file already holds. A last line
+	 * with no newline is what a runner that died mid-append left: the first append ends it first,
+	 * so the new event starts a line of its own rather than being glued onto the torn one.
+	 */
 	export const eventLog = (
 		home: string,
 		runId: string,
 		now: () => Date = () => new Date(),
 	): Result<EventLog> => {
 		const file = paths(home, runId).events;
-		const existing = lines(file);
+		const existing = readText(file);
 		if (!existing.ok) return existing;
-		let seq = existing.value.length;
+		let seq = nonBlank(existing.value).length;
+		let torn = existing.value !== "" && !existing.value.endsWith("\n");
 		return ok({
 			append: (draft) => {
 				const event: Event = {
@@ -338,9 +383,10 @@ export namespace RunStore {
 					at: now().toISOString(),
 				};
 				const appended = trySync(() =>
-					appendFileSync(file, `${JSON.stringify(event)}\n`),
+					appendFileSync(file, `${torn ? "\n" : ""}${JSON.stringify(event)}\n`),
 				);
 				if (!appended.ok) return appended;
+				torn = false;
 				seq += 1;
 				return ok(event);
 			},

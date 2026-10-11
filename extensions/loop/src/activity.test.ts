@@ -112,6 +112,32 @@ describe("LoopActivity", () => {
 		expect(kept.ok && kept.value.dismissedAt).toBeString();
 	});
 
+	it("lists every live run, however many newer runs are over, and fills the rest with the newest", async () => {
+		const source = LoopActivity.source({ home, basePath: home, actor: ACTOR });
+		RunStore.create(
+			home,
+			run({
+				id: "old-live",
+				status: "running",
+				pid: process.pid,
+				exit: undefined,
+				createdAt: "2026-10-01T00:00:00.000Z",
+			}),
+		);
+		for (let day = 10; day <= 21; day++)
+			RunStore.create(
+				home,
+				run({ id: `over-${day}`, createdAt: `2026-10-${day}T00:00:00.000Z` }),
+			);
+
+		const loaded = await source.load();
+		const ids = loaded.ok ? loaded.value.map((c) => c.id) : [];
+		expect(ids).toHaveLength(10);
+		expect(ids.at(-1)).toBe("old-live");
+		expect(ids[0]).toBe("over-21");
+		expect(ids).not.toContain("over-12");
+	});
+
 	it("a live run offers stop, inject and steering; a finished one offers nothing", () => {
 		const live = LoopActivity.card(run({ status: "running", exit: undefined }));
 		expect(live.actions?.map((a) => [a.id, a.key])).toEqual([

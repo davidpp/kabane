@@ -60,10 +60,10 @@ export namespace Claims {
 			});
 	};
 
-	export const mark = (ctx: Ctx, plan: LoopPlan.Plan): string =>
+	export const mark = async (ctx: Ctx, plan: LoopPlan.Plan): Promise<string> =>
 		Stall.mark(
 			LoopPlan.closedWork(plan),
-			ctx.tree(RunStore.sessionDir(ctx.run)),
+			await ctx.tree(RunStore.sessionDir(ctx.run)),
 			Gates.signature(ctx.run.gateRuns.at(-1)),
 		);
 
@@ -382,9 +382,21 @@ export namespace Claims {
 		if (!plan.ok) return false;
 		const stall = Stall.observe(
 			ctx.run.stall ?? Stall.start(""),
-			mark(ctx, plan.value),
+			await mark(ctx, plan.value),
 		);
 		RunState.save(ctx, { ...ctx.run, stall });
 		return Stall.stalled(stall, ctx.run.config.stallAfter);
+	};
+
+	/**
+	 * Settle every session that has ended, then say whether the run has stalled. The whole batch
+	 * is settled first: one left out of it would be cancelled by the halt as if its harness had
+	 * not stopped, and lose its real outcome and its gates.
+	 */
+	export const settleAll = async (ctx: Ctx): Promise<boolean> => {
+		let stalled = false;
+		for (const s of ctx.settled.splice(0))
+			if (await settle(ctx, s)) stalled = true;
+		return stalled;
 	};
 }

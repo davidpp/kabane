@@ -157,7 +157,35 @@ type Verb = (args: ParsedArgs, deps: Deps, target: string) => Promise<Outcome>;
 const ran = (result: Result<RunStore.Run>): Outcome =>
 	result.ok ? success(result.value, line(result.value)) : failure(result.error);
 
+// `git worktree add` checks out what is committed, and nothing git ignores comes with it.
+const WORKTREE_NOTE =
+	"  note: the worktree has no ignored files (node_modules, build output): a gate that needs them installs them first, say `bun install && bun test`";
+
+// What `start` takes, and `--as` and `--scope`, which every command takes. A misspelt flag
+// (`--work-tree`) is refused rather than dropped, which would start a run the human did not ask for.
+const START_FLAGS: ReadonlySet<string> = new Set([
+	"dir",
+	"implementer",
+	"model",
+	"concurrency",
+	"wall-minutes",
+	"continuations",
+	"spend",
+	"gate",
+	"worktree",
+	"lens",
+	"verifier",
+	"as",
+	"scope",
+]);
+
 const start: Verb = async (args, deps, target) => {
+	const unknown = Object.keys(args.flags).filter((f) => !START_FLAGS.has(f));
+	if (unknown.length > 0)
+		return usage(
+			`Unknown loop start flag${unknown.length === 1 ? "" : "s"}: ${unknown.map((f) => `--${f}`).join(", ")}`,
+			USAGE,
+		);
 	for (const flag of ["implementer", "verifier"]) {
 		const harness = flagString(args, flag);
 		if (harness && !Harnesses.isId(harness))
@@ -169,19 +197,22 @@ const start: Verb = async (args, deps, target) => {
 	const config = configFrom(args);
 	if (!config.ok) return usage(config.error.message, USAGE);
 	const dir = flagString(args, "dir");
-	return ran(
-		await Loop.start(deps, {
-			parent: target,
-			...(dir ? { dir } : {}),
-			config: config.value,
-		}),
+	const started = await Loop.start(deps, {
+		parent: target,
+		...(dir ? { dir } : {}),
+		config: config.value,
+	});
+	if (!started.ok || started.value.worktree === undefined) return ran(started);
+	return success(
+		started.value,
+		[line(started.value), ...worktree(started.value), WORKTREE_NOTE].join("\n"),
 	);
 };
 
 const rollback: Verb = async (args, deps, target) => {
 	const sha = args.positionals[2];
 	if (!sha) return usage("rollback needs a run id and a checkpoint sha", USAGE);
-	const reset = Loop.rollback(deps, target, sha);
+	const reset = await Loop.rollback(deps, target, sha);
 	return reset.ok
 		? success(
 				reset.value,

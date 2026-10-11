@@ -7,23 +7,37 @@
 // refuse any directory that is not a linked worktree, so a run without one cannot reach them by
 // mistake.
 import { join } from "node:path";
-import { err, ok, type Result, trySync } from "@cabane/core";
+import { err, ok, type Result, tryCatch } from "@cabane/core";
 import type { RunStore } from "./store";
 
 export namespace Worktree {
 	/** `git -C <cwd> <args>`: its stdout, or an error carrying what git said. */
-	export type Git = (cwd: string, args: string[]) => Result<string>;
+	export type Git = (cwd: string, args: string[]) => Promise<Result<string>>;
 
-	const git: Git = (cwd, args) => {
-		const ran = trySync(() =>
-			Bun.spawnSync(["git", "-C", cwd, ...args], { stdin: "ignore" }),
-		);
+	/**
+	 * The user's own git. Asynchronous, because the runner calls it: a commit runs the user's
+	 * hooks, and a synchronous spawn would stall every session's stream and timer until they end.
+	 */
+	export const git: Git = async (cwd, args) => {
+		const ran = await tryCatch(async () => {
+			const proc = Bun.spawn(["git", "-C", cwd, ...args], {
+				stdin: "ignore",
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const [stdout, stderr, exit] = await Promise.all([
+				new Response(proc.stdout).text(),
+				new Response(proc.stderr).text(),
+				proc.exited,
+			]);
+			return { stdout, stderr, exit };
+		});
 		if (!ran.ok) return ran;
-		return ran.value.success
-			? ok(ran.value.stdout.toString())
+		return ran.value.exit === 0
+			? ok(ran.value.stdout)
 			: err(
 					new Error(
-						`git ${args.join(" ")} failed in ${cwd}: ${ran.value.stderr.toString().trim()}`,
+						`git ${args.join(" ")} failed in ${cwd}: ${ran.value.stderr.trim()}`,
 					),
 				);
 	};
@@ -34,13 +48,13 @@ export namespace Worktree {
 	export const branchFor = (runId: string): string => `kabane-loop/${runId}`;
 
 	/** A worktree of `projectDir`'s HEAD at `dir`, on a new branch `branch`. */
-	export const add = (
+	export const add = async (
 		projectDir: string,
 		dir: string,
 		branch: string,
 		run: Git = git,
-	): Result<void> => {
-		const added = run(projectDir, [
+	): Promise<Result<void>> => {
+		const added = await run(projectDir, [
 			"worktree",
 			"add",
 			"-q",
@@ -52,12 +66,25 @@ export namespace Worktree {
 		return added.ok ? ok(undefined) : added;
 	};
 
+	/** Where `dir` sits inside its repository, relative to the top: "" at the top. */
+	export const prefixOf = async (
+		dir: string,
+		run: Git = git,
+	): Promise<Result<string>> => {
+		const shown = await run(dir, ["rev-parse", "--show-prefix"]);
+		return shown.ok ? ok(shown.value.trim().replace(/\/$/, "")) : shown;
+	};
+
 	// A linked worktree's git dir is its own, under the main repository's common dir; the main
 	// checkout's is the common dir itself.
-	const linked = (dir: string, run: Git): Result<void> => {
-		const own = run(dir, ["rev-parse", "--path-format=absolute", "--git-dir"]);
+	const linked = async (dir: string, run: Git): Promise<Result<void>> => {
+		const own = await run(dir, [
+			"rev-parse",
+			"--path-format=absolute",
+			"--git-dir",
+		]);
 		if (!own.ok) return own;
-		const common = run(dir, [
+		const common = await run(dir, [
 			"rev-parse",
 			"--path-format=absolute",
 			"--git-common-dir",
@@ -74,21 +101,21 @@ export namespace Worktree {
 	 * Commit everything in the worktree at `dir` as a checkpoint: its sha, or undefined when there
 	 * was nothing to commit. The user's own git config and hooks apply, as to any commit of theirs.
 	 */
-	export const checkpoint = (
+	export const checkpoint = async (
 		dir: string,
 		message: string,
 		run: Git = git,
-	): Result<string | undefined> => {
-		const isLinked = linked(dir, run);
+	): Promise<Result<string | undefined>> => {
+		const isLinked = await linked(dir, run);
 		if (!isLinked.ok) return isLinked;
-		const added = run(dir, ["add", "-A"]);
+		const added = await run(dir, ["add", "-A"]);
 		if (!added.ok) return added;
-		const staged = run(dir, ["status", "--porcelain"]);
+		const staged = await run(dir, ["status", "--porcelain"]);
 		if (!staged.ok) return staged;
 		if (staged.value.trim() === "") return ok(undefined);
-		const committed = run(dir, ["commit", "-q", "-m", message]);
+		const committed = await run(dir, ["commit", "-q", "-m", message]);
 		if (!committed.ok) return committed;
-		const sha = run(dir, ["rev-parse", "HEAD"]);
+		const sha = await run(dir, ["rev-parse", "HEAD"]);
 		return sha.ok ? ok(sha.value.trim()) : sha;
 	};
 
@@ -118,16 +145,16 @@ export namespace Worktree {
 	 * Reset the worktree at `dir` to checkpoint `sha`: tracked files to the commit, and untracked
 	 * ones it did not have removed (ignored files are left alone).
 	 */
-	export const reset = (
+	export const reset = async (
 		dir: string,
 		sha: string,
 		run: Git = git,
-	): Result<void> => {
-		const isLinked = linked(dir, run);
+	): Promise<Result<void>> => {
+		const isLinked = await linked(dir, run);
 		if (!isLinked.ok) return isLinked;
-		const reset = run(dir, ["reset", "-q", "--hard", sha]);
+		const reset = await run(dir, ["reset", "-q", "--hard", sha]);
 		if (!reset.ok) return reset;
-		const cleaned = run(dir, ["clean", "-q", "-fd"]);
+		const cleaned = await run(dir, ["clean", "-q", "-fd"]);
 		return cleaned.ok ? ok(undefined) : cleaned;
 	};
 

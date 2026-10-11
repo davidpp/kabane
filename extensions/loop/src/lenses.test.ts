@@ -87,6 +87,11 @@ describe("Lenses.prompt", () => {
 		writeFileSync(join(Lenses.dir(repo), "security.md"), "# Security\n");
 		writeFileSync(join(Lenses.dir(repo), "quality.md"), "# Ours\n");
 		writeFileSync(join(Lenses.dir(repo), "notes.txt"), "not a lens\n");
+		writeFileSync(
+			join(Lenses.dir(repo), "security_review.md"),
+			"# Not a name\n",
+		);
+		writeFileSync(join(Lenses.dir(repo), "Perf.md"), "# Not a name\n");
 		expect(Lenses.offered(repo)).toEqual(["functional", "quality", "security"]);
 	});
 });

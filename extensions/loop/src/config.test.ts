@@ -75,4 +75,41 @@ describe("LoopConfig.resolve", () => {
 		expect(unknown.ok).toBe(false);
 		if (!unknown.ok) expect(unknown.error.message).toContain("loop.json");
 	});
+
+	const refusal = (overrides: LoopConfig.Overrides = {}): string => {
+		const config = LoopConfig.resolve(repo, overrides);
+		return config.ok ? "accepted" : config.error.message;
+	};
+
+	it("refuses gates or a budget that is not an object, rather than reading it as none", () => {
+		writeRepoFile(JSON.stringify({ gates: ["bun test"] }));
+		// What the CLI passes when no flag sets either.
+		expect(refusal({ budget: {}, gates: {} })).toContain(
+			"\n  gates: Expected object, received array",
+		);
+		writeRepoFile(JSON.stringify({ budget: 30 }));
+		expect(refusal()).toContain("\n  budget: Expected object, received number");
+		writeRepoFile("{}");
+		expect(refusal({ gates: "bun test" })).toContain(
+			"the given overrides:\n  gates: Expected object, received string",
+		);
+	});
+
+	it("refuses a key no setting has, one line per key, naming the file", () => {
+		writeRepoFile(
+			JSON.stringify({
+				workTree: true,
+				lens: ["quality"],
+				budget: { wallMinute: 5 },
+			}),
+		);
+		expect(refusal()).toBe(
+			[
+				`Invalid loop config in ${join(repo, LoopConfig.FILE)}:`,
+				"  budget.wallMinute: not a loop setting",
+				"  workTree: not a loop setting",
+				"  lens: not a loop setting",
+			].join("\n"),
+		);
+	});
 });

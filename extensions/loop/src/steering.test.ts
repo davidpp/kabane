@@ -214,7 +214,7 @@ describe("Runner inbox handling", () => {
 			pid: process.pid,
 			signal: controller.signal,
 			overrides: { claude: { command: "/nonexistent/harness" } },
-			tree: () => "tree",
+			tree: async () => "tree",
 			tickMs: 5,
 		});
 		const waited = async (): Promise<RunStore.Event[]> => {

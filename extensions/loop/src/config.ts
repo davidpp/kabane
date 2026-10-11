@@ -1,7 +1,9 @@
 // What a run is configured with: the harness that implements, its budgets, when it counts as
 // stalled, its gates, whether it works in a worktree, and the lenses that verify it. Layered:
 // defaults, then the repo's `.kabane/loop.json`, then what the caller passes (the trigger form or
-// flags); budgets and gates merge key by key. Keys no schema names yet pass through the file untouched and are stripped here.
+// flags); budgets and gates merge key by key. A key the schema does not name is refused, in the
+// file and in what the caller passes: a typo (`workTree`) silently dropped would run the agents
+// somewhere the human did not mean.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Harnesses } from "@cabane/acp";
@@ -14,7 +16,10 @@ export namespace LoopConfig {
 	export const BudgetSchema = z.object({
 		/** Sessions running at once. */
 		concurrency: z.number().int().min(1).max(8).default(2),
-		/** The run halts once this much wall time has passed since it started. */
+		/**
+		 * The run halts once a runner has driven it for this much wall time, paused time included;
+		 * the time between a runner dying and the run's resume does not count.
+		 */
 		wallMinutes: z.number().positive().default(120),
 		/** Nudges, across the whole run, for a turn that ends with its subtask still open. */
 		continuations: z.number().int().min(0).default(3),
@@ -33,7 +38,7 @@ export namespace LoopConfig {
 		.regex(/^[A-Za-z][A-Za-z0-9_.-]*$/, "a gate name is one word");
 
 	// A lens's name is its prompt's file name and a tag on its findings.
-	const LensNameSchema = z
+	export const LensNameSchema = z
 		.string()
 		.regex(/^[a-z][a-z0-9-]*$/, "a lens name is one lowercase word");
 
@@ -71,12 +76,37 @@ export namespace LoopConfig {
 	export type Config = z.output<typeof Schema>;
 	export type Input = z.input<typeof Schema>;
 
+	// What a human writes, refused when it names a key no setting has. Run files keep `Schema`,
+	// so a run written by a newer kabane still reads.
+	const StrictSchema = Schema.extend({
+		budget: BudgetSchema.strict().default({}),
+	}).strict();
+
 	const ObjectSchema = z.record(z.unknown());
 
-	const asObject = (value: unknown): Record<string, unknown> => {
-		const parsed = ObjectSchema.safeParse(value);
-		return parsed.success ? parsed.data : {};
+	// Two objects merge key by key; anything else is the override as given, for the schema to
+	// accept or refuse.
+	const merge = (base: unknown, over: unknown): unknown => {
+		if (over === undefined) return base;
+		const left = ObjectSchema.safeParse(base ?? {});
+		const right = ObjectSchema.safeParse(over);
+		return left.success && right.success
+			? { ...left.data, ...right.data }
+			: over;
 	};
+
+	/** One line per issue, `path: message`; an unknown key is its own line. */
+	const issues = (error: z.ZodError): string =>
+		error.issues
+			.flatMap((issue) =>
+				issue.code === "unrecognized_keys"
+					? issue.keys.map(
+							(key) => `${[...issue.path, key].join(".")}: not a loop setting`,
+						)
+					: [`${issue.path.join(".") || "(config)"}: ${issue.message}`],
+			)
+			.map((line) => `\n  ${line}`)
+			.join("");
 
 	const readFile = (repoDir: string): Result<Record<string, unknown>> => {
 		const path = join(repoDir, FILE);
@@ -97,26 +127,36 @@ export namespace LoopConfig {
 	 */
 	export type Overrides = Readonly<Record<string, unknown>>;
 
-	/** Defaults, then `<repoDir>/.kabane/loop.json`, then `overrides`, validated once. */
+	/**
+	 * Defaults, then `<repoDir>/.kabane/loop.json`, then `overrides`. The file is validated on its
+	 * own first, so an error in it names it; then the layers together.
+	 */
 	export const resolve = (
 		repoDir: string,
 		overrides: Overrides = {},
 	): Result<Config> => {
 		const file = readFile(repoDir);
 		if (!file.ok) return file;
+		const alone = StrictSchema.safeParse(file.value);
+		if (!alone.success)
+			return err(
+				new Error(
+					`Invalid loop config in ${join(repoDir, FILE)}:${issues(alone.error)}`,
+				),
+			);
 		const merged = {
 			...file.value,
 			...overrides,
-			budget: { ...asObject(file.value.budget), ...asObject(overrides.budget) },
-			gates: { ...asObject(file.value.gates), ...asObject(overrides.gates) },
+			budget: merge(file.value.budget, overrides.budget),
+			gates: merge(file.value.gates, overrides.gates),
 		};
-		const parsed = Schema.safeParse(merged);
+		const parsed = StrictSchema.safeParse(merged);
 		if (parsed.success) return ok(parsed.data);
 		const where = existsSync(join(repoDir, FILE))
 			? `${join(repoDir, FILE)} with the given overrides`
 			: "the given overrides";
 		return err(
-			new Error(`Invalid loop config in ${where}: ${parsed.error.message}`),
+			new Error(`Invalid loop config in ${where}:${issues(parsed.error)}`),
 		);
 	};
 }

@@ -1,14 +1,21 @@
 import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
+import { Planner, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope } from "@cabane/core/scope";
 import { Loop } from "./commands";
 import { Permission } from "./permission";
 import { RunStore } from "./store";
+import type { Worktree } from "./worktree";
 
 // `start`'s refusals, which all come before a runner is spawned. Starting a real runner is the
 // sandbox check, not a unit test.
@@ -129,6 +136,36 @@ describe("Loop.start refusals", () => {
 		const started = await Loop.start(deps(), { parent: parent.id });
 		expect(started.ok).toBe(false);
 		if (!started.ok) expect(started.error.message).toContain("live-run");
+	});
+});
+
+describe("Loop.start with a worktree", () => {
+	it("a worktree run started in a folder of the repository works in that folder of the worktree", async () => {
+		const scopeUri = await repoScope();
+		const parent = await add("parent", { scopeUri });
+		await add("child", { parentTaskId: parent.id, scopeUri });
+		const folder = join(repo, "packages", "foo");
+		mkdirSync(folder, { recursive: true });
+		writeFileSync(join(folder, "package.json"), "{}\n");
+		GitFixture.run(repo, ["add", "-A"]);
+		GitFixture.run(repo, ["commit", "-q", "-m", "foo"]);
+		const git: Worktree.Git = async (cwd, args) =>
+			trySync(() => GitFixture.run(cwd, args));
+
+		// Past the worktree: the run is written and only the (nonexistent) runner fails.
+		await Loop.start(
+			{ ...deps(), cwd: folder, git },
+			{ parent: parent.id, config: { worktree: true } },
+		);
+		const runs = RunStore.list(home);
+		const run = runs.ok ? runs.value[0] : undefined;
+		if (!run?.worktree) throw new Error("no worktree run was written");
+		expect(RunStore.sessionDir(run)).toBe(
+			join(run.worktree, "packages", "foo"),
+		);
+		expect(existsSync(join(RunStore.sessionDir(run), "package.json"))).toBe(
+			true,
+		);
 	});
 });
 

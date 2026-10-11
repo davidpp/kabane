@@ -83,7 +83,8 @@ export namespace Dispatch {
 		/**
 		 * Say something to the session: into the turn it is running, through ACP steering when the
 		 * harness supports it, else as its next prompt once the turn ends. Never fails; where the
-		 * text went is an `inject_delivered` or `inject_queued` event.
+		 * text went is an `inject_delivered` or `inject_queued` event, or a warning once the
+		 * session has ended, even while the claim still holds it for its gates.
 		 */
 		inject: (text: string) => Promise<void>;
 	};
@@ -434,6 +435,8 @@ export namespace Dispatch {
 		let connection: AcpClient.Connection | null = null;
 		let session: AcpClient.Session | null = null;
 		let cancelled = false;
+		// Set once the session is over: nothing is sent after that, so nothing more is queued.
+		let finished = false;
 		let lastMessage: string | undefined;
 		// Aborting it lets go of every permission request still waiting on a human. A claim that
 		// is cancelled, closed or over has nobody left to answer for, and the harness would
@@ -512,6 +515,7 @@ export namespace Dispatch {
 				result.ok ? result.value : ended("error", result.error.message),
 			)
 			.finally(() => {
+				finished = true;
 				waiting.abort();
 				if (connection) AcpClient.close(connection);
 				const lost = steering.pending();
@@ -535,7 +539,14 @@ export namespace Dispatch {
 				waiting.abort();
 				if (connection) AcpClient.close(connection);
 			},
-			inject: (text) => steering.inject(session, text),
+			inject: async (text) => {
+				if (finished)
+					return sink.emit(
+						"warning",
+						`inject for ${claim.lane} dropped: its session has ended`,
+					);
+				return steering.inject(session, text);
+			},
 		};
 	};
 }

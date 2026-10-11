@@ -127,6 +127,24 @@ describe("RunStore events and inbox", () => {
 		]);
 	});
 
+	it("a runner that died mid-append does not take the next runner's first event with it", () => {
+		RunStore.create(home, draft());
+		const first = RunStore.eventLog(home, "KAB-1-abc");
+		if (!first.ok) throw first.error;
+		first.value.append({ type: "run_start", summary: "a" });
+		appendFileSync(RunStore.paths(home, "KAB-1-abc").events, '{"seq":2,"at');
+		const second = RunStore.eventLog(home, "KAB-1-abc");
+		if (!second.ok) throw second.error;
+		second.value.append({ type: "run_resume", summary: "b" });
+		second.value.append({ type: "claim", summary: "c" });
+		const events = RunStore.readEvents(home, "KAB-1-abc");
+		expect(events.ok && events.value.map((e) => [e.seq, e.type])).toEqual([
+			[1, "run_start"],
+			[3, "run_resume"],
+			[4, "claim"],
+		]);
+	});
+
 	it("reads the inbox from a cursor and reports lines it cannot use", () => {
 		RunStore.create(home, draft());
 		RunStore.appendInbox(home, "KAB-1-abc", {
@@ -143,5 +161,25 @@ describe("RunStore events and inbox", () => {
 		expect(all.ok && all.value.next).toBe(2);
 		const rest = RunStore.readInbox(home, "KAB-1-abc", 2);
 		expect(rest.ok && rest.value.entries).toEqual([]);
+	});
+
+	it("leaves a line still being appended for the next read", () => {
+		RunStore.create(home, draft());
+		const inbox = RunStore.paths(home, "KAB-1-abc").inbox;
+		const line = JSON.stringify({
+			kind: "stop",
+			at: "2026-10-10T12:00:00.000Z",
+		});
+		appendFileSync(inbox, line.slice(0, 10));
+		const early = RunStore.readInbox(home, "KAB-1-abc", 0);
+		expect(early.ok && early.value).toEqual({
+			entries: [],
+			invalid: [],
+			next: 0,
+		});
+		appendFileSync(inbox, `${line.slice(10)}\n`);
+		const late = RunStore.readInbox(home, "KAB-1-abc", 0);
+		expect(late.ok && late.value.entries.map((e) => e.kind)).toEqual(["stop"]);
+		expect(late.ok && late.value.next).toBe(1);
 	});
 });
