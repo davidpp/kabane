@@ -3,8 +3,10 @@ import {
 	Activity,
 	type ActivitySource,
 	type BoardDeps,
+	type CardHeader,
 	type Dispatcher,
 	Dispatchers,
+	Headers,
 	startBoard,
 } from "@cabane/board";
 import { err, ok, type Result } from "@cabane/core";
@@ -70,13 +72,15 @@ const copilotOverrides = (ctx: Ctx): Harnesses.Overrides | undefined => {
 const extensionPorts = (
 	extensions: readonly Extension[],
 	ctx: Ctx,
-): Pick<BoardDeps, "activity" | "dispatcher"> => {
+): Pick<BoardDeps, "activity" | "dispatcher" | "headers"> => {
 	const activity: Record<string, ActivitySource> = {};
 	const dispatchers: Record<string, Dispatcher> = {};
+	const headers: Record<string, Readonly<Record<string, CardHeader>>> = {};
 	for (const extension of extensions) {
 		const ports = extension.board?.(ctx);
 		if (ports?.activity) activity[extension.name] = ports.activity;
 		if (ports?.dispatcher) dispatchers[extension.name] = ports.dispatcher;
+		if (ports?.headers) headers[extension.name] = ports.headers;
 	}
 	return {
 		...(Object.keys(activity).length > 0
@@ -84,6 +88,9 @@ const extensionPorts = (
 			: {}),
 		...(Object.keys(dispatchers).length > 0
 			? { dispatcher: Dispatchers.merge(dispatchers) }
+			: {}),
+		...(Object.keys(headers).length > 0
+			? { headers: Headers.merge(headers) }
 			: {}),
 	};
 };

@@ -4,6 +4,7 @@
 // three default to no-ops so the board runs standalone with no activity strip, a "no dispatcher
 // configured" hint on `a`, and a "no copilot configured" hint on `A`.
 import { ok, type Result } from "@cabane/core";
+import type { ReactNode } from "react";
 import type { BoardContext } from "./context";
 
 export type ActivityStatus =
@@ -67,6 +68,18 @@ export type CardAction = {
 	input?: string;
 	lane?: boolean;
 };
+
+// A host's own header for its cards, by card kind, drawn above the events on a card's tab in place
+// of the board's one-line title. Compact by default; `expanded` is the tab's `e`. The one seam that
+// takes a component rather than data, because a host's status is its own design: it renders inside
+// the board's tree and reads the board's colors through the exported `useTheme`.
+export type CardHeaderProps = {
+	card: ActivityCard;
+	// Columns the header may use.
+	width: number;
+	expanded: boolean;
+};
+export type CardHeader = (props: CardHeaderProps) => ReactNode;
 
 export type ActivityEvent = {
 	seq: number;

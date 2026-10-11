@@ -98,6 +98,26 @@ describe("lanes", () => {
 	});
 });
 
+describe("the header", () => {
+	it("e expands and folds it, per card, across a trip to the tracker", () => {
+		const s = onTab();
+		const expanded = (state: BoardNav.BoardState): boolean =>
+			CardTab.view(state.tabs, "loop:r1").expanded;
+		expect(expanded(s)).toBe(false);
+		expect(expanded(press(s, "e").state)).toBe(true);
+		expect(expanded(press(s, "e", "{", "}").state)).toBe(true);
+		expect(expanded(press(s, "e", "e").state)).toBe(false);
+	});
+
+	it("the footer offers e only when the host has a header for the card", () => {
+		const facts = { linked: new Set<string>(), events: false };
+		expect(BoardNav.keySituation(onTab(), facts).header).toBe(false);
+		expect(
+			BoardNav.keySituation(onTab(), { ...facts, header: true }).header,
+		).toBe(true);
+	});
+});
+
 describe("the event view's refreshed card", () => {
 	it("is the same state when nothing the keys read moved", () => {
 		const s = onTab();

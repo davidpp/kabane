@@ -15,12 +15,12 @@ export namespace BoardPrompt {
 	type Step = { state: State; effect: BoardNav.Effect };
 
 	/** What the text is for: a card's action, aimed at a lane or not, or a question's answer. */
-	export type Target =
+	type Target =
 		| { type: "act"; cardId: string; actionId: string; lane?: string }
 		| { type: "answer"; questionId: string };
 
 	/** What the panel says it is for (`inject → claude:JREP-2`) and what the empty field invites. */
-	export type Open = {
+	type Open = {
 		target: Target;
 		title: string;
 		aim?: string;

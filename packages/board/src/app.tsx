@@ -30,6 +30,7 @@ import { DispatchOverlay, HelpSheet } from "./overlay";
 import type {
 	ActivityCard,
 	ActivitySource,
+	CardHeader,
 	Copilot,
 	Dispatcher,
 } from "./ports";
@@ -51,6 +52,8 @@ export type AppProps = {
 	copilot?: Copilot;
 	// Absent → the board opens on all scopes.
 	resolveScope?: BoardData.ScopeResolver;
+	// A host's own header for its cards, by card kind. Absent → every card tab heads with its title.
+	headers?: Readonly<Record<string, CardHeader>>;
 };
 
 const POLL_INTERVAL_MS = 5000;
@@ -97,6 +100,7 @@ export const App = ({
 	dispatcher,
 	copilot,
 	resolveScope,
+	headers,
 }: AppProps): ReactNode => {
 	const renderer = useRenderer();
 	const theme = useTheme();
@@ -892,8 +896,14 @@ export const App = ({
 
 	// Which keys are live and what they can act on, once for the footer and the `?` sheet alike.
 	const openTaskId = state.view.type === "detail" ? state.view.taskId : null;
+	// The host's own header for the card whose tab is on screen, by its kind.
+	const activeKind = shownActivity.cards.find(
+		(c) => c.id === state.tabs.active,
+	)?.kind;
+	const cardHeader = activeKind ? headers?.[activeKind] : undefined;
 	const situation = BoardNav.keySituation(state, {
 		linked,
+		header: cardHeader !== undefined,
 		events:
 			openTaskId !== null &&
 			BoardActivity.cardsForTask(
@@ -999,6 +1009,8 @@ export const App = ({
 				lane={CardTab.view(tabs, cardId).lane}
 				onLane={(index) => dispatchMouse({ type: "lane", index })}
 				onCard={takeCard}
+				header={tabs.active === cardId ? cardHeader : undefined}
+				expanded={CardTab.view(tabs, cardId).expanded}
 				// On a card's own tab, the question its sessions wait on.
 				banner={<CardTabQuestion tabs={tabs} />}
 				keys={keys}

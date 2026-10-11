@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { err, ok } from "@cabane/core";
-import { Activity, Dispatchers } from "./merge";
+import { isValidElement } from "react";
+import { Activity, Dispatchers, Headers } from "./merge";
 import type {
 	ActivityCard,
 	ActivitySource,
+	CardHeader,
+	CardHeaderProps,
 	Dispatcher,
 	DispatchTarget,
 	TriggerDescriptor,
@@ -104,6 +107,27 @@ describe("Activity.merge", () => {
 		};
 		const loaded = await Activity.merge({ a, broken }).load();
 		expect(loaded.ok && loaded.value.map((c) => c.id)).toEqual(["a:1"]);
+	});
+});
+
+describe("Headers.merge", () => {
+	test("keys every contributor's headers by kind, each given its card under its own id", () => {
+		const seen: string[] = [];
+		const Loop: CardHeader = ({ card }) => {
+			seen.push(card.id);
+			return null;
+		};
+		const merged = Headers.merge({ loop: { loops: Loop } });
+		const element = merged.loops?.({
+			card: card("loop:r1", "2026-10-10T10:00:00.000Z"),
+			width: 40,
+			expanded: false,
+		});
+		expect(isValidElement(element)).toBe(true);
+		if (!isValidElement<CardHeaderProps>(element)) return;
+		expect(element.type).toBe(Loop);
+		expect(element.props.card.id).toBe("r1");
+		expect(Object.keys(merged)).toEqual(["loops"]);
 	});
 });
 

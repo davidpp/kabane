@@ -30,6 +30,7 @@ import {
 	type ActivityCard,
 	type ActivityEvent,
 	type ActivitySource,
+	type CardHeader,
 	type CopilotPermission,
 	isInFlight,
 	type PlanEntry,
@@ -193,12 +194,16 @@ export type EventViewProps = {
 	onLane?: (index: number) => void;
 	// Each refreshed card, so the keys see what its chips show (BoardTabs.withCard).
 	onCard?: (card: ActivityCard) => void;
+	// The host's own header for this card's kind, in place of the one-line title; `expanded` is the
+	// tab's `e`.
+	header?: CardHeader;
+	expanded?: boolean;
 };
 
 const TRANSCRIPT_KEYS: Keymap.Live = { context: "transcript", situation: {} };
 
 /** The events a lane shows: its own, plus the ones the host left on no lane. Null shows them all. */
-export const laneEvents = (
+const laneEvents = (
 	events: readonly ActivityEvent[],
 	lane: string | null,
 ): readonly ActivityEvent[] =>
@@ -285,6 +290,8 @@ export const EventView = ({
 	lane = null,
 	onLane,
 	onCard,
+	header: Header,
+	expanded = false,
 }: EventViewProps): ReactNode => {
 	const { card, events } = useCardEvents(cardId, source, initialCard, onCard);
 	const { width } = useTerminalDimensions();
@@ -305,7 +312,12 @@ export const EventView = ({
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<TitleRow card={card} resolveShortId={resolveShortId} />
+			{Header ? (
+				// Less the cell the scrollbar column keeps clear.
+				<Header card={card} width={width - 1} expanded={expanded} />
+			) : (
+				<TitleRow card={card} resolveShortId={resolveShortId} />
+			)}
 			{banner}
 			{plan.length > 0 ? (
 				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>

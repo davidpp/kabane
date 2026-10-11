@@ -4,7 +4,11 @@
  * so an extension importing the CLI would be a cycle.
  */
 
-import type { ActivitySource, Dispatcher } from "@cabane/board/ports";
+import type {
+	ActivitySource,
+	CardHeader,
+	Dispatcher,
+} from "@cabane/board/ports";
 import type { ParsedArgs } from "./args";
 import type { Outcome } from "./outcome";
 
@@ -38,11 +42,12 @@ export namespace Extension {
 
 	/**
 	 * What an extension adds to the board, merged with every other enabled
-	 * extension's. A per-kind `headers` port joins these once the board has a
-	 * `CardHeader` seam to receive it.
+	 * extension's. `headers` are its own card headers, by the card kind its
+	 * activity source names.
 	 */
 	export type BoardPorts = {
 		activity?: ActivitySource;
 		dispatcher?: Dispatcher;
+		headers?: Readonly<Record<string, CardHeader>>;
 	};
 }

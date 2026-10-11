@@ -23,7 +23,7 @@ export namespace BoardTabs {
 
 	// What the tab bar keeps of a card between polls: what `w`, `o`, `!` and the card's own keys
 	// route on.
-	export type TabCard = {
+	type TabCard = {
 		finished: boolean;
 		sessionIds: readonly string[];
 		taskId?: string;
@@ -34,8 +34,8 @@ export namespace BoardTabs {
 	};
 
 	// How a card's tab is being read, kept per card so a tab looks the same when the human comes
-	// back to it: the lane on screen (null is every lane).
-	export type CardView = { lane: string | null };
+	// back to it: the lane on screen (null is every lane), and whether its header is expanded (`e`).
+	export type CardView = { lane: string | null; expanded: boolean };
 
 	export type Tabs = {
 		// Card ids with a tab, in the order they opened.

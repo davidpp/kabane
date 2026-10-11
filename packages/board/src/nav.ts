@@ -1289,11 +1289,12 @@ export namespace BoardNav {
 	/**
 	 * The facts that decide which keys do something right now. `linked` and `events` come from the
 	 * host's data, which app.tsx holds and the reducer does not: the tasks pointing at an external
-	 * issue, and whether the open task has host activity to read.
+	 * issue, whether the open task has host activity to read, and whether the card on screen has a
+	 * header of its host's.
 	 */
 	export const keySituation = (
 		state: BoardState,
-		facts: { linked: ReadonlySet<string>; events: boolean },
+		facts: { linked: ReadonlySet<string>; events: boolean; header?: boolean },
 	): Keymap.Situation => {
 		const inHand =
 			state.view.type === "detail"
@@ -1304,6 +1305,7 @@ export namespace BoardNav {
 			selection: rowOf(visibleRows(state), state.selectedId) !== undefined,
 			linked: inHand !== undefined && facts.linked.has(inHand),
 			events: facts.events,
+			header: facts.header === true,
 			transcript: state.copilot.hasLog,
 			stoppable: turnStoppable(state) || card.stoppable,
 			clearable:

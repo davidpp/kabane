@@ -11,6 +11,7 @@ import type { BoardData } from "./data";
 import { ErrorBoundary } from "./error-boundary";
 import {
 	type ActivitySource,
+	type CardHeader,
 	type Copilot,
 	type Dispatcher,
 	noActivity,
@@ -30,6 +31,9 @@ export type BoardDeps = {
 	copilot?: Copilot;
 	// How cwd maps to a scope. Default: none, the board opens on all scopes.
 	resolveScope?: BoardData.ScopeResolver;
+	// A host's own header for its cards, by card kind. Default: none, every card tab heads with its
+	// one-line title.
+	headers?: Readonly<Record<string, CardHeader>>;
 };
 
 // Last-resort fallback if a render throws past App: show the error, offer `q` to quit. startBoard's
@@ -63,6 +67,7 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 						dispatcher={deps.dispatcher}
 						copilot={deps.copilot}
 						resolveScope={deps.resolveScope}
+						headers={deps.headers}
 					/>
 				</ErrorBoundary>
 			</ThemeProvider>,

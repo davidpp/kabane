@@ -48,6 +48,8 @@ export namespace Keymap {
 		lanes?: boolean;
 		/** The question on screen offers no answers to pick, so `enter` types one. */
 		freeform?: boolean;
+		/** The card on screen has a header of its host's, which `e` expands. */
+		header?: boolean;
 		/** The `?` sheet is taller than the pane. */
 		scrollable?: boolean;
 		/** Setup found harnesses to tick. */
@@ -406,6 +408,13 @@ export namespace Keymap {
 					tier: "footer",
 					keys: ["h", "l", "left", "right"],
 					when: (s) => s.lanes === true,
+				},
+				{
+					key: "e",
+					label: "more",
+					tier: "footer",
+					keys: ["e"],
+					when: (s) => s.header === true,
 				},
 				{
 					key: "j/k",

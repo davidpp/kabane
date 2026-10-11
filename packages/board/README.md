@@ -25,6 +25,7 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 | `dispatcher: Dispatcher` | no | `a` flashes `no dispatcher configured` in the footer |
 | `copilot: Copilot` | no | `A` flashes `no copilot configured` in the footer |
 | `resolveScope(cwd)` | no | the board opens on all scopes (the CLI passes `@cabane/core/scope` detection) |
+| `headers: Record<kind, CardHeader>` | no | every card tab heads with the board's one-line title |
 
 The host calls `Runtime.configure` before `startBoard`; the board never opens a database itself.
 
@@ -84,6 +85,21 @@ answered and clears when you leave the view; an unanswered one stays pinned unti
 A question that offers no answers (freeform) takes a typed one: `enter`, on its banner or on the
 card's tab that shows it, opens the board's prompt (below), and what is sent goes to
 `Planner.answerQuestion` as the answer.
+
+#### A card's header
+
+```ts
+type CardHeader = (props: { card: ActivityCard; width: number; expanded: boolean }) => ReactNode;
+```
+
+`headers`, by card kind, is the one seam that takes a component rather than data: a host's status
+is its own design. A card tab whose card's kind has one draws it above the lane chips in place of
+the board's one-line title (`loop · JREP-1 · running · 2m`). It is compact by default, and `e`
+expands it (per card, kept across tab switches; the footer offers `e more` only where there is a
+header). It renders inside the board's tree, so it reads the board's colors through the exported
+`useTheme` and picks a session's color with `Theme.seriesOf`, the same one its lane chip and its
+lines carry. `Headers.merge` keys several contributors' headers by kind and hands each its card under
+the id its own source minted.
 
 #### Card actions and the prompt
 

@@ -1,5 +1,6 @@
 // A host card's own tab, past what the tab bar decides (tabs.ts): which of its lanes is on screen,
-// the actions it offers, and a question it shows that takes a typed answer. Plain functions over the
+// whether its header is expanded, the actions it offers, and a question it shows that takes a typed
+// answer. Plain functions over the
 // board's state, like the rest of the key routing, so the keys and the mouse are tested without a
 // renderer.
 //
@@ -21,7 +22,7 @@ export namespace CardTab {
 	type Step = { state: State; effect: BoardNav.Effect };
 
 	const NOTHING: BoardNav.Effect = { type: "none" };
-	const UNREAD: BoardTabs.CardView = { lane: null };
+	const UNREAD: BoardTabs.CardView = { lane: null, expanded: false };
 
 	// Keys the board answers on a card's tab, whatever a host binds: an action under one is never
 	// offered. `x` is the stop action's alone.
@@ -36,7 +37,7 @@ export namespace CardTab {
 		"right",
 	]);
 
-	/** How the card's tab is being read: its lane on screen. */
+	/** How the card's tab is being read: its lane on screen and whether its header is expanded. */
 	export const view = (tabs: BoardTabs.Tabs, id: string): BoardTabs.CardView =>
 		tabs.views.get(id) ?? UNREAD;
 
@@ -44,20 +45,36 @@ export namespace CardTab {
 		tabs.cards.get(id)?.lanes ?? [];
 
 	/** The lane on screen as a chip index: 0 for every lane, else its place in the host's list + 1. */
-	export const laneIndex = (tabs: BoardTabs.Tabs, id: string): number => {
+	const laneIndex = (tabs: BoardTabs.Tabs, id: string): number => {
 		const { lane } = view(tabs, id);
 		return lane === null ? 0 : lanesOf(tabs, id).indexOf(lane) + 1;
 	};
 
-	const withLane = (state: State, id: string, index: number): State => {
-		const lane = lanesOf(state.tabs, id)[index - 1] ?? null;
-		if (lane === view(state.tabs, id).lane) return state;
+	const withView = (
+		state: State,
+		id: string,
+		patch: Partial<BoardTabs.CardView>,
+	): State => {
 		const views = new Map(state.tabs.views).set(id, {
 			...view(state.tabs, id),
-			lane,
+			...patch,
 		});
 		return { ...state, tabs: { ...state.tabs, views } };
 	};
+
+	const withLane = (state: State, id: string, index: number): State => {
+		const lane = lanesOf(state.tabs, id)[index - 1] ?? null;
+		return lane === view(state.tabs, id).lane
+			? state
+			: withView(state, id, { lane });
+	};
+
+	// `e`: the host's header, compact or in full. The board does not know whether the card's kind
+	// has a header; without one the toggle is kept and shows nothing.
+	const toggleHeader = (state: State, id: string): Step => ({
+		state: withView(state, id, { expanded: !view(state.tabs, id).expanded }),
+		effect: NOTHING,
+	});
 
 	// `h`/`l`: the previous or next lane, every lane included, wrapping both ways.
 	const stepLane = (state: State, id: string, delta: 1 | -1): Step | null => {
@@ -145,6 +162,8 @@ export namespace CardTab {
 				return stepLane(state, id, 1);
 			case "x":
 				return stop(state, id);
+			case "e":
+				return toggleHeader(state, id);
 			case "return":
 			case "enter":
 				return answer(state);
