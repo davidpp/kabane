@@ -60,17 +60,23 @@ export namespace LoopConfig {
 			: err(new Error(`${path}: expected a JSON object`));
 	};
 
+	/**
+	 * What a caller layers over the repo file (flags, the board's trigger form), shaped like `Input`
+	 * and validated with the file. A key set to undefined unsets what the file says.
+	 */
+	export type Overrides = Readonly<Record<string, unknown>>;
+
 	/** Defaults, then `<repoDir>/.kabane/loop.json`, then `overrides`, validated once. */
 	export const resolve = (
 		repoDir: string,
-		overrides: Input = {},
+		overrides: Overrides = {},
 	): Result<Config> => {
 		const file = readFile(repoDir);
 		if (!file.ok) return file;
 		const merged = {
 			...file.value,
 			...overrides,
-			budget: { ...asObject(file.value.budget), ...overrides.budget },
+			budget: { ...asObject(file.value.budget), ...asObject(overrides.budget) },
 		};
 		const parsed = Schema.safeParse(merged);
 		if (parsed.success) return ok(parsed.data);

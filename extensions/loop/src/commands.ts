@@ -53,7 +53,7 @@ export namespace Loop {
 		 * then be the parent issue's scope. Its `.kabane/loop.json` is layered into the config.
 		 */
 		dir?: string;
-		config?: LoopConfig.Input;
+		config?: LoopConfig.Overrides;
 	};
 
 	const RUNNER_ACTOR = "cabane://actor/agent/loop";
@@ -153,7 +153,7 @@ export namespace Loop {
 
 	// The parent must have open work and no live run already.
 	const checkParent = async (
-		deps: StartDeps,
+		deps: Pick<StartDeps, "home">,
 		plan: LoopPlan.Plan,
 	): Promise<Result<void>> => {
 		const short = plan.parent.shortId ?? plan.parent.id;
@@ -177,7 +177,7 @@ export namespace Loop {
 	 * caller saying so and is taken as given.
 	 */
 	const projectDirFor = async (
-		deps: StartDeps,
+		deps: Pick<StartDeps, "home" | "cwd">,
 		parent: Task,
 		dir: string | undefined,
 	): Promise<Result<string>> => {
@@ -201,26 +201,52 @@ export namespace Loop {
 		);
 	};
 
+	/** What a run would start with: the plan as it stands, the checkout, the resolved config. */
+	export type Prepared = {
+		plan: LoopPlan.Plan;
+		projectDir: string;
+		config: LoopConfig.Config;
+	};
+
 	/**
-	 * Write a run for `input.parent` and spawn its detached runner, then wait until the runner
-	 * says it is running. Refuses a parent with no open work, one that already has a live run,
-	 * and a directory that is not the parent's scope (unless `input.dir` names it).
+	 * Everything `start` checks and resolves before it writes a run, without writing one: what the
+	 * board's trigger shows before the human starts it. Refuses a parent with no open work, one
+	 * that already has a live run, and a directory that is not the parent's scope (unless
+	 * `input.dir` names it).
 	 */
-	export const start = async (
-		deps: StartDeps,
+	export const prepare = async (
+		deps: Pick<StartDeps, "home" | "basePath" | "cwd">,
 		input: StartInput,
-	): Promise<Result<RunStore.Run>> => {
+	): Promise<Result<Prepared>> => {
 		const parentId = await Planner.resolveTaskId(deps.basePath, input.parent);
 		if (!parentId.ok) return parentId;
 		const plan = await LoopPlan.load(deps.basePath, parentId.value);
 		if (!plan.ok) return plan;
 		const checked = await checkParent(deps, plan.value);
 		if (!checked.ok) return checked;
-		const parent = plan.value.parent;
-		const projectDir = await projectDirFor(deps, parent, input.dir);
+		const projectDir = await projectDirFor(deps, plan.value.parent, input.dir);
 		if (!projectDir.ok) return projectDir;
 		const config = LoopConfig.resolve(projectDir.value, input.config);
 		if (!config.ok) return config;
+		return ok({
+			plan: plan.value,
+			projectDir: projectDir.value,
+			config: config.value,
+		});
+	};
+
+	/**
+	 * Write a run for `input.parent` and spawn its detached runner, then wait until the runner
+	 * says it is running. Refuses what `prepare` refuses.
+	 */
+	export const start = async (
+		deps: StartDeps,
+		input: StartInput,
+	): Promise<Result<RunStore.Run>> => {
+		const prepared = await prepare(deps, input);
+		if (!prepared.ok) return prepared;
+		const { plan, projectDir, config } = prepared.value;
+		const parent = plan.parent;
 		const now = (deps.now ?? (() => new Date()))();
 		const short = parent.shortId ?? parent.id;
 		const created = RunStore.create(deps.home, {
@@ -229,8 +255,8 @@ export namespace Loop {
 			parentId: parent.id,
 			parentShortId: short,
 			...(parent.scopeUri ? { scopeUri: parent.scopeUri } : {}),
-			projectDir: projectDir.value,
-			config: config.value,
+			projectDir,
+			config,
 			status: "pending",
 			createdAt: now.toISOString(),
 			claims: [],
