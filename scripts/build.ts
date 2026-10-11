@@ -5,8 +5,10 @@
  *
  *   bin/kabane.js         the CLI bundled for Bun, every `@cabane/*` workspace package inlined,
  *                         each official extension under extensions/ among them
- *   templates/dispatch/   the copilot's dispatch skill template, read from disk at runtime
- *   templates/lenses/     the loop's shipped verifier lens prompts, read from disk at runtime
+ *   templates/<name>/     each packages/acp/templates/<name> (the copilot's dispatch skill) and
+ *                         extensions/<ext>/templates/<name> (the loop's lenses), read from disk
+ *                         at runtime as ../templates/<name> from bin/kabane.js; one namespace, so
+ *                         two sources of one name fail the build
  *   package.json          generated from packages/cli/package.json, no workspace dependency left
  *   README.md, LICENSE    the repository's own
  *
@@ -24,6 +26,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { err, ok, type Result } from "../packages/core/result";
 
 const ROOT = resolve(import.meta.dir, "..");
 const CLI = join(ROOT, "packages/cli");
@@ -89,15 +92,22 @@ const publishManifest = (): Manifest => {
 	};
 };
 
-// Every workspace member under extensions/ is an official extension, so the CLI's list has to
-// import it: one the bundle leaves out would be a directory nobody can enable.
+const EXTENSIONS = join(ROOT, "extensions");
+
+// Every workspace member under extensions/ is an official extension.
+const extensionNames = (): string[] =>
+	existsSync(EXTENSIONS)
+		? readdirSync(EXTENSIONS, { withFileTypes: true })
+				.filter((entry) => entry.isDirectory())
+				.map((entry) => entry.name)
+		: [];
+
+// The CLI's list has to import every extension: one the bundle leaves out would be a directory
+// nobody can enable.
 const checkExtensionsCarried = (bundled: readonly string[]): void => {
-	const dir = join(ROOT, "extensions");
-	if (!existsSync(dir)) return;
 	const files = bundled.map((input) => relative(ROOT, resolve(input)));
-	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
-		const prefix = `extensions/${entry.name}/`;
+	for (const name of extensionNames()) {
+		const prefix = `extensions/${name}/`;
 		if (!files.some((file) => file.startsWith(prefix)))
 			fail(
 				`${prefix} is not in the bundle; add it to the official list in packages/cli/src/extensions.ts`,
@@ -124,22 +134,44 @@ const bundle = async (): Promise<void> => {
 	checkExtensionsCarried(Object.keys(result.metafile?.inputs ?? {}));
 };
 
+/**
+ * Copies each `<root>/<name>` to `<into>/<name>`. Every bundled module resolves its templates as
+ * ../templates/<name> from bin/kabane.js (CopilotInstructions, the loop's Lenses), so the names
+ * share one directory: a name two roots both hold is an error, raised before anything is copied.
+ */
+export const copyTemplates = (
+	roots: readonly string[],
+	into: string,
+): Result<string[]> => {
+	const sources = new Map<string, string>();
+	for (const root of roots)
+		for (const name of readdirSync(root)) {
+			const taken = sources.get(name);
+			if (taken !== undefined)
+				return err(
+					new Error(
+						`templates/${name} comes from both ${taken} and ${root}; rename one of them`,
+					),
+				);
+			sources.set(name, root);
+		}
+	for (const [name, root] of sources)
+		cpSync(join(root, name), join(into, name), { recursive: true });
+	return ok([...sources.keys()]);
+};
+
+// The copilot's templates, then each extension's.
+const templateRoots = (): string[] =>
+	[
+		join(ROOT, "packages/acp/templates"),
+		...extensionNames().map((name) => join(EXTENSIONS, name, "templates")),
+	].filter((root) => existsSync(root));
+
 export const build = async (): Promise<void> => {
 	rmSync(DIST, { recursive: true, force: true });
 	await bundle();
-	// CopilotInstructions resolves the template as ../templates/dispatch from its own module, which
-	// in the bundle is bin/kabane.js.
-	cpSync(
-		join(ROOT, "packages/acp/templates/dispatch"),
-		join(DIST, "templates/dispatch"),
-		{ recursive: true },
-	);
-	// The loop's Lenses resolve their shipped prompts as ../templates/lenses the same way.
-	cpSync(
-		join(ROOT, "extensions/loop/templates/lenses"),
-		join(DIST, "templates/lenses"),
-		{ recursive: true },
-	);
+	const templates = copyTemplates(templateRoots(), join(DIST, "templates"));
+	if (!templates.ok) fail(templates.error.message);
 	cpSync(join(ROOT, "README.md"), join(DIST, "README.md"));
 	cpSync(join(ROOT, "LICENSE"), join(DIST, "LICENSE"));
 	writeFileSync(

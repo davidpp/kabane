@@ -78,21 +78,39 @@ describe("Harnesses.installedCli", () => {
 		name === bin ? `/usr/local/bin/${bin}` : null;
 
 	it("points each adapter at the installed CLI through the variable it reads", () => {
-		const claude = Harnesses.installedCli("claude", on("claude"));
+		const claude = Harnesses.installedCli("claude", {}, on("claude"));
 		expect(claude.ok && claude.value).toEqual({
 			CLAUDE_CODE_EXECUTABLE: "/usr/local/bin/claude",
 		});
-		const codex = Harnesses.installedCli("codex", on("codex"));
+		const codex = Harnesses.installedCli("codex", {}, on("codex"));
 		expect(codex.ok && codex.value).toEqual({
 			CODEX_PATH: "/usr/local/bin/codex",
 		});
-		const gemini = Harnesses.installedCli("gemini", on("gemini"));
+	});
+
+	it("needs no CLI on PATH for a harness without an adapter, whose command is the CLI", () => {
+		const gemini = Harnesses.installedCli("gemini", {}, () => null);
 		expect(gemini.ok && gemini.value).toEqual({});
 	});
 
 	it("fails, rather than falling back to a bundled copy, when the CLI is missing", () => {
-		const missing = Harnesses.installedCli("claude", () => null);
+		const missing = Harnesses.installedCli("claude", {}, () => null);
 		expect(missing.ok).toBe(false);
 		if (!missing.ok) expect(missing.error.message).toContain("claude");
+	});
+
+	it("leaves an executable the user already exported alone, installed or not", () => {
+		const claude = Harnesses.installedCli(
+			"claude",
+			{ CLAUDE_CODE_EXECUTABLE: "/opt/my-wrapper/claude" },
+			on("claude"),
+		);
+		expect(claude.ok && claude.value).toEqual({});
+		const codex = Harnesses.installedCli(
+			"codex",
+			{ CODEX_PATH: "/opt/codex-dev/codex" },
+			() => null,
+		);
+		expect(codex.ok && codex.value).toEqual({});
 	});
 });

@@ -75,7 +75,8 @@ plain table names.
   and board activity and triggers. It is imported only when one of its
   commands or the board runs, so `kabane list` never loads it. An off
   extension's command prints the line to add here instead of running. A name
-  this version does not ship is ignored. The contract an extension implements
+  this version does not ship is ignored, with a warning on stderr when a
+  command reads the list. The contract an extension implements
   is `@cabane/extension`.
 
 ## Scope

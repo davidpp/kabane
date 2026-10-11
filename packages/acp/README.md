@@ -31,8 +31,9 @@ imports the SDK.
   own settings, and `onPermission` hands every request to the caller, which never answers
   one for the human. `installedCli(id)` is the env
   that points an adapter at the CLI on PATH instead of the copy it bundles
-  (`CLAUDE_CODE_EXECUTABLE` for claude-agent-acp, `CODEX_PATH` for codex-acp), and an
-  error when that CLI is not installed. `AcpClient.spawn` takes the profile as
+  (`CLAUDE_CODE_EXECUTABLE` for claude-agent-acp, `CODEX_PATH` for codex-acp), nothing
+  when the user's environment already sets that variable or the harness has no adapter
+  (Gemini, whose launch command is the CLI), and an error when that CLI is not installed. `AcpClient.spawn` takes the profile as
   `profile`.
 - `Stdio` — the two adapters between `Bun.spawn` and the SDK's `ndJsonStream`:
   `stdinSink(FileSink)` wraps Bun's piped stdin as a `WritableStream`, and `jsonLines()` drops

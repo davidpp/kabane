@@ -16,7 +16,9 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
+	readFileSync,
 	rmSync,
+	writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -212,6 +214,26 @@ const checkCommands = (version: string): string => {
 		"--version, --help, init, add, list, concise pages/receipts/context chunks",
 	);
 	return created.id;
+};
+
+// The bundled loop extension, off and then turned on in this KABANE_HOME's config: its command
+// is found, its migrations run against the installed kabane.db, and it reads its own store.
+const checkLoopExtension = (): void => {
+	const off = run([BIN, "loop", "status"], REPO, isolated);
+	if (off.code !== 1 || !off.stderr.includes("loop extension, which is off"))
+		fail("kabane loop with the extension off printed no enable hint", off);
+	const path = join(KABANE_HOME, "config.json");
+	const config = z
+		.record(z.unknown())
+		.safeParse(JSON.parse(readFileSync(path, "utf8")));
+	if (!config.success) return fail(`${path} is not a JSON object`);
+	writeFileSync(path, JSON.stringify({ ...config.data, extensions: ["loop"] }));
+	if (!kabane("loop", "--help").stdout.includes("kabane loop status"))
+		fail("kabane loop --help printed no loop usage");
+	const status = kabane("loop", "status");
+	if (!status.stdout.includes("No loop runs"))
+		fail("kabane loop status on a fresh home", status);
+	pass("loop extension: off hint, then enabled --help and status");
 };
 
 const readReplies = async (
@@ -515,6 +537,7 @@ mkdirSync(REPO);
 runOk(["git", "init", "-q"], REPO, isolated);
 const contextId = checkCommands(version);
 await checkMcp(version, contextId);
+checkLoopExtension();
 if (artifactDir) {
 	const verified = verifyReleaseFiles(artifactDir);
 	if (!verified.ok) fail("retained artifact changed during installed smoke");

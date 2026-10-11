@@ -84,31 +84,35 @@ export namespace Harnesses {
 	// The CLI each adapter drives, and the variable that points the adapter at an installed
 	// copy instead of the one it bundles (claude-agent-acp: CLAUDE_CODE_EXECUTABLE, else the
 	// Agent SDK's bundled binary; codex-acp: CODEX_PATH, else its bundled @openai/codex).
-	// Gemini has no adapter: `gemini --acp` is the installed CLI already.
-	const CLI: Record<Id, { bin: string; env?: string }> = {
+	// Gemini has no adapter: `gemini --acp`, or the user's command override, is the CLI itself.
+	const CLI: Partial<Record<Id, { bin: string; env: string }>> = {
 		claude: { bin: "claude", env: "CLAUDE_CODE_EXECUTABLE" },
 		codex: { bin: "codex", env: "CODEX_PATH" },
-		gemini: { bin: "gemini" },
 	};
 
 	/**
 	 * The env that makes the adapter run the user's installed CLI, found on PATH, so its
 	 * version, login and settings are the user's own. An error when it is not installed:
-	 * falling back to a bundled copy would run a version the user never chose.
+	 * falling back to a bundled copy would run a version the user never chose. Nothing when
+	 * `env` (the one the session inherits) already sets the variable: the user chose that
+	 * copy, and the spawn merge would otherwise overwrite it. Nothing, and no PATH lookup, for
+	 * a harness without an adapter: its launch command is what runs, wherever it points.
 	 */
 	export const installedCli = (
 		id: Id,
+		env: Readonly<Record<string, string | undefined>> = process.env,
 		which: (bin: string) => string | null = Bun.which,
 	): Result<Record<string, string>> => {
 		const cli = CLI[id];
+		if (!cli || env[cli.env]) return ok({});
 		const path = which(cli.bin);
 		if (path === null)
 			return err(
 				new Error(
-					`${cli.bin} is not on PATH: install the ${id} CLI, or put it on PATH, so sessions run your own copy`,
+					`${cli.bin} is not on PATH: install the ${id} CLI, put it on PATH, or set ${cli.env} to your copy, so sessions run your own CLI`,
 				),
 			);
-		return ok(cli.env ? { [cli.env]: path } : {});
+		return ok({ [cli.env]: path });
 	};
 
 	// Only the Claude adapter reads `_meta.systemPrompt` on `session/new`; the others get
