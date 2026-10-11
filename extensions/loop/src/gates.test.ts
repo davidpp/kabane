@@ -73,6 +73,19 @@ describe("Gates.run", () => {
 		expect(existsSync(marker)).toBe(false);
 	});
 
+	it("a gate that traps the stop and exits red gives no verdict", async () => {
+		const stopping = new AbortController();
+		const running = Gates.run(
+			{ trapped: "trap 'exit 1' TERM; sleep 5 & wait" },
+			dir,
+			{},
+			stopping.signal,
+		);
+		setTimeout(() => stopping.abort(), 100);
+		const [result] = await running;
+		expect(result).toMatchObject({ ok: false, exit: null });
+	});
+
 	it("a gate that finishes despite the stop keeps its real exit", async () => {
 		const stopping = new AbortController();
 		// It ignores SIGTERM and ends green well inside the grace before SIGKILL.

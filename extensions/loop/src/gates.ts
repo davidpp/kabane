@@ -93,8 +93,9 @@ export namespace Gates {
 			const exit = await proc.exited;
 			signal.removeEventListener("abort", kill);
 			clearTimeout(escalate);
-			// A gate that finished before the stop reached it keeps its real exit.
-			return { output, exit: killed && proc.signalCode !== null ? null : exit };
+			// A gate that ends green despite the stop keeps its exit; any other end after a stop is
+			// the stop's doing, even when the gate traps SIGTERM and exits non-zero itself.
+			return { output, exit: killed && exit !== 0 ? null : exit };
 		});
 		const ms = Math.round(performance.now() - started);
 		if (!ran.ok)
