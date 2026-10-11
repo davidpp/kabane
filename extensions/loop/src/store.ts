@@ -327,7 +327,11 @@ export namespace RunStore {
 		append: (event: EventDraft) => Result<Event>;
 	};
 
-	/** The runner's appender. Numbering resumes after whatever the file already holds. */
+	/**
+	 * The runner's appender. Numbering resumes after whatever the file already holds. A last line
+	 * with no newline is what a runner that died mid-append left: the first append ends it first,
+	 * so the new event starts a line of its own rather than being glued onto the torn one.
+	 */
 	export const eventLog = (
 		home: string,
 		runId: string,
@@ -337,6 +341,7 @@ export namespace RunStore {
 		const existing = readText(file);
 		if (!existing.ok) return existing;
 		let seq = nonBlank(existing.value).length;
+		let torn = existing.value !== "" && !existing.value.endsWith("\n");
 		return ok({
 			append: (draft) => {
 				const event: Event = {
@@ -345,9 +350,10 @@ export namespace RunStore {
 					at: now().toISOString(),
 				};
 				const appended = trySync(() =>
-					appendFileSync(file, `${JSON.stringify(event)}\n`),
+					appendFileSync(file, `${torn ? "\n" : ""}${JSON.stringify(event)}\n`),
 				);
 				if (!appended.ok) return appended;
+				torn = false;
 				seq += 1;
 				return ok(event);
 			},
