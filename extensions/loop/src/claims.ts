@@ -387,4 +387,16 @@ export namespace Claims {
 		RunState.save(ctx, { ...ctx.run, stall });
 		return Stall.stalled(stall, ctx.run.config.stallAfter);
 	};
+
+	/**
+	 * Settle every session that has ended, then say whether the run has stalled. The whole batch
+	 * is settled first: one left out of it would be cancelled by the halt as if its harness had
+	 * not stopped, and lose its real outcome and its gates.
+	 */
+	export const settleAll = async (ctx: Ctx): Promise<boolean> => {
+		let stalled = false;
+		for (const s of ctx.settled.splice(0))
+			if (await settle(ctx, s)) stalled = true;
+		return stalled;
+	};
 }

@@ -88,7 +88,7 @@ export namespace Runner {
 		await Promise.race([all, sleep(CANCEL_GRACE_MS)]);
 		for (const { handle } of pending) handle.close();
 		await Promise.race([all, sleep(CANCEL_GRACE_MS)]);
-		for (const s of ctx.settled.splice(0)) await Claims.settle(ctx, s);
+		await Claims.settleAll(ctx);
 		for (const [sessionId, { taskId }] of ctx.live)
 			await Claims.settle(ctx, {
 				taskId,
@@ -365,14 +365,12 @@ export namespace Runner {
 			const exit = await tick(ctx, state);
 			if (exit) return halt(ctx, exit);
 			if (ctx.settled.length === 0) await nap(ctx, ctx.deps.tickMs ?? TICK_MS);
-			for (const s of ctx.settled.splice(0)) {
-				if (await Claims.settle(ctx, s))
-					return halt(ctx, {
-						status: "stopped",
-						reason: "stalled",
-						detail: `no progress across ${ctx.run.config.stallAfter} session ends`,
-					});
-			}
+			if (await Claims.settleAll(ctx))
+				return halt(ctx, {
+					status: "stopped",
+					reason: "stalled",
+					detail: `no progress across ${ctx.run.config.stallAfter} session ends`,
+				});
 		}
 	};
 
