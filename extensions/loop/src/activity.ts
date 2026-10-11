@@ -33,8 +33,10 @@ export namespace LoopActivity {
 	const plural = (count: number, noun: string): string =>
 		`${count} ${noun}${count === 1 ? "" : "s"}`;
 
-	// What the human can do to a live run from its tab: stop it, or say something to one session.
-	const ACTIONS: readonly CardAction[] = [
+	// What the human can do to a live run from its tab: stop it, say something to one session, and
+	// steer what it claims. `p` pauses a running run and resumes a paused one. None of these keys is
+	// one the board keeps for itself on a card's tab (card-tab.ts).
+	const actions = (run: RunStore.Run): readonly CardAction[] => [
 		{ id: STOP_ACTION, key: "x", label: "stop" },
 		{
 			id: "inject",
@@ -42,6 +44,21 @@ export namespace LoopActivity {
 			label: "inject",
 			input: "a prompt for this session · enter sends it",
 			lane: true,
+		},
+		run.steering.paused
+			? { id: "resume", key: "p", label: "resume" }
+			: { id: "pause", key: "p", label: "pause" },
+		{
+			id: "skip",
+			key: "s",
+			label: "skip",
+			input: "a subtask's short id · it is never claimed",
+		},
+		{
+			id: "next",
+			key: "n",
+			label: "next",
+			input: "a subtask's short id · claimed first once ready",
 		},
 	];
 
@@ -70,31 +87,59 @@ export namespace LoopActivity {
 		// One lane per claim, in claim order: claims only append, so a session keeps its color.
 		lanes: run.claims.map((claim) => claim.lane),
 		laneNoun: "agents",
-		...(RunStore.isLive(run.status) ? { actions: ACTIONS } : {}),
+		...(RunStore.isLive(run.status) ? { actions: actions(run) } : {}),
 	});
 
 	/**
 	 * Run an action through the run's inbox, which the runner reads every tick. `stop` is the
-	 * command's own (`kabane loop stop`), without waiting for the run to wind down; `inject` is
-	 * appended for the session behind the lane, and refused for a session that has ended.
+	 * command's own (`kabane loop stop`), without waiting for the run to wind down; `pause`,
+	 * `resume`, `skip` and `next` are the commands' own too; `inject` is appended for the session
+	 * behind the lane, and refused for a session that has ended.
 	 */
 	export const act = async (
-		home: string,
+		deps: { home: string; basePath: string },
 		runId: string,
 		actionId: string,
 		input: { text?: string; lane?: string },
 	): Promise<Result<string>> => {
+		const { home } = deps;
 		const run = RunStore.read(home, runId);
 		if (!run.ok) return run;
 		if (!RunStore.isLive(run.value.status))
 			return err(new Error(`${runId} is ${run.value.status}`));
-		if (actionId === STOP_ACTION) {
-			const stopped = await Loop.stop({ home, waitMs: 0 }, runId);
-			return stopped.ok ? ok(`stop requested for ${runId}`) : stopped;
+		switch (actionId) {
+			case STOP_ACTION: {
+				const stopped = await Loop.stop({ home, waitMs: 0 }, runId);
+				return stopped.ok ? ok(`stop requested for ${runId}`) : stopped;
+			}
+			case "pause":
+			case "resume": {
+				const asked = Loop.pause(deps, runId, actionId);
+				return asked.ok ? ok(`${actionId} requested for ${runId}`) : asked;
+			}
+			case "skip":
+			case "next": {
+				const task = input.text?.trim() ?? "";
+				if (task === "") return err(new Error(`${actionId} needs a subtask`));
+				const asked = await Loop.direct(deps, actionId, task, runId);
+				return asked.ok
+					? ok(`${actionId} ${asked.value.task} requested`)
+					: asked;
+			}
+			case "inject":
+				return inject(home, run.value, input);
+			default:
+				return err(new Error(`Unknown loop action: ${actionId}`));
 		}
-		if (actionId !== "inject")
-			return err(new Error(`Unknown loop action: ${actionId}`));
-		const claim = run.value.claims.find((c) => c.lane === input.lane);
+	};
+
+	const inject = (
+		home: string,
+		run: RunStore.Run,
+		input: { text?: string; lane?: string },
+	): Result<string> => {
+		const runId = run.id;
+		const claim = run.claims.find((c) => c.lane === input.lane);
 		if (!claim) return err(new Error(`No session on lane ${input.lane ?? ""}`));
 		if (claim.endedAt) return err(new Error(`${claim.lane} has ended`));
 		const text = input.text?.trim() ?? "";
@@ -110,7 +155,7 @@ export namespace LoopActivity {
 	};
 
 	/** The device's newest runs, read from `$KABANE_HOME/loops` on every call. */
-	export const source = (home: string): ActivitySource => ({
+	export const source = (home: string, basePath: string): ActivitySource => ({
 		// A run whose tab the human closed is not listed again; `kabane loop status` still shows it.
 		load: async () => {
 			const runs = RunStore.list(home);
@@ -141,7 +186,7 @@ export namespace LoopActivity {
 					)
 				: events;
 		},
-		act: (id, actionId, input) => act(home, id, actionId, input),
+		act: (id, actionId, input) => act({ home, basePath }, id, actionId, input),
 		dismiss: async (id) => {
 			const dismissed = RunStore.dismiss(home, id, new Date());
 			return dismissed.ok ? ok(undefined) : dismissed;

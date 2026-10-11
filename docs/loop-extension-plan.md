@@ -205,7 +205,7 @@ way:
 - Lanes, actions and the header live on a card's tab only; a card opened with `o` as a plain event
   view keeps the one-line title.
 - `inject` needs a live session to aim at, so it waits for a lane; a run that has claimed nothing
-  has no one to inject into. The runner reads `inject` inbox entries and drops them until C4.
+  has no one to inject into.
 - `stop` is the command's own (`Loop.stop` with no wait).
 
 ### B3. Board: trigger form
@@ -267,8 +267,30 @@ way:
     yet, so its `by` reads `unrecorded`. D can add the note.
 - Agent questions become core `question` activities the same way, and the session waits for
   `answerQuestion`.
-- The `inbox.jsonl` consumer handles `inject`, `pause`, `skip` and `next`, plus the matching CLI
-  commands.
+- **Steering:** done on branch `worktree-agent-aec5e4f6bb339d036`.
+  - **Inject:** the runner hands an `inject` entry to the live claim behind its session
+    (`Dispatch.Handle.inject`); one for a session that has ended is dropped with a warning.
+    While a turn runs and the harness advertised steering, the text goes through
+    `AcpClient.steer` (`_session/steering`) into that turn. Otherwise, or when the harness
+    reports the turn had ended, it is queued and sent as the session's next prompt once the
+    turn ends, ahead of any continuation, and spends none. Events: `inject_delivered`
+    (`data.via`: `steering`, `new_turn`, `prompt`) and `inject_queued` (`data.why`).
+  - **Checked against the adapters:** claude-agent-acp 0.76.0 and codex-acp 1.11.0 both
+    advertise `_meta.steering.supported` on `initialize` (seen on the real processes).
+    Claude honours `idleBehavior: promptRequired`: an idle steer on a real session returned
+    `promptRequired` and started nothing. Codex ignores the hint: an idle steer waits for the
+    previous prompt and starts a turn of its own, which `steer` reports as `new_turn`. The
+    loop steers only while its own turn runs, so that is a race at the turn's end, not the
+    common path. A steer into a running turn has not been watched on either harness yet
+    (paid; package E).
+  - **Pause, skip, next:** inbox kinds folded into `run.json`'s `steering` by
+    `Steering.apply`. Pause claims nothing and lets running sessions finish. A skipped
+    subtask leaves the frontier and stays open, so its dependents stay blocked and the run
+    reports `waiting on X (skipped)`. `next` puts a subtask ahead of priority order once it
+    is ready, and un-skips it. CLI: `kabane loop pause|resume <runId>`,
+    `kabane loop skip|next <subtask>` (the run is the live one on the subtask's parent). Card
+    actions: `p` pause/resume, `s` skip, `n` next (the latter two take a short id), next to
+    `x` and `i`.
 
 ### D. Loop on the board
 - `board(ctx)` receives the extension context, not the board's resolved scope. Add the scope to

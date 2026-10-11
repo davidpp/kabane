@@ -61,9 +61,17 @@ export namespace Dispatch {
 		cancel: () => Promise<void>;
 		/** Kill the harness process outright, for one that ignores `cancel`. */
 		close: () => void;
+		/**
+		 * Say something to the session: into the turn it is running, through ACP steering when the
+		 * harness supports it, else as its next prompt once the turn ends. Never fails; where the
+		 * text went is an `inject_delivered` or `inject_queued` event.
+		 */
+		inject: (text: string) => Promise<void>;
 	};
 
 	const label = (task: Task): string => task.shortId ?? task.id;
+
+	const firstLine = (text: string): string => text.split("\n")[0] ?? "";
 
 	const mcpServer = (
 		env: Env,
@@ -117,7 +125,11 @@ export namespace Dispatch {
 
 	/** Where one turn's updates go. */
 	type Sink = {
-		emit: (type: string, summary: string) => void;
+		emit: (
+			type: string,
+			summary: string,
+			data?: RunStore.EventDraft["data"],
+		) => void;
 		progress: (body: string) => Promise<void>;
 		usage: Hooks["usage"];
 		/** The agent's latest complete message. */
@@ -169,7 +181,7 @@ export namespace Dispatch {
 		text: string,
 		sink: Sink,
 	): Promise<Turn> => {
-		sink.emit("prompt", text.split("\n")[0] ?? "");
+		sink.emit("prompt", firstLine(text));
 		const titles = new Map<string, string>();
 		let prose: Prose | null = null;
 		const flush = () => {
@@ -199,6 +211,82 @@ export namespace Dispatch {
 		};
 	};
 
+	/** What a human says to a claim's session, and where it went. */
+	type Injector = {
+		inject: (session: AcpClient.Session | null, text: string) => Promise<void>;
+		/** One turn, marked as running so `inject` can steer into it. */
+		turn: (session: AcpClient.Session, text: string) => Promise<Turn>;
+		/** Everything injected and not delivered yet, as the next prompt. */
+		take: () => string | undefined;
+		pending: () => number;
+	};
+
+	/**
+	 * Into the running turn through ACP steering when the harness advertises it; otherwise, or
+	 * when no turn is running, queued as the session's next prompt.
+	 */
+	const injector = (harness: Harnesses.Id, sink: Sink): Injector => {
+		const queued: string[] = [];
+		let running = false;
+
+		const queue = (text: string, why: string): void => {
+			queued.push(text);
+			sink.emit("inject_queued", `${why}: ${firstLine(text)}`, { why });
+		};
+
+		return {
+			inject: async (session, text) => {
+				if (!session || !running)
+					return queue(text, "no turn running, so it is the next prompt");
+				if (!session.connection.steering)
+					return queue(
+						text,
+						`${harness} does not support ACP steering, so it is the prompt after this turn`,
+					);
+				const steered = await AcpClient.steer(session, [
+					{ type: "text", text },
+				]);
+				if (!steered.ok)
+					return queue(
+						text,
+						`steering failed (${steered.error.message}), so it is the prompt after this turn`,
+					);
+				if (steered.value === "prompt_required")
+					return queue(
+						text,
+						"the turn had just ended, so it is the next prompt",
+					);
+				const injected = steered.value === "injected";
+				sink.emit(
+					"inject_delivered",
+					`${injected ? "into the running turn" : "as a turn the harness started for it"}: ${firstLine(text)}`,
+					{ via: injected ? "steering" : "new_turn" },
+				);
+			},
+			turn: async (session, text) => {
+				running = true;
+				try {
+					return await runTurn(session, text, sink);
+				} finally {
+					running = false;
+				}
+			},
+			take: () => {
+				if (queued.length === 0) return undefined;
+				const text = queued.splice(0).join("\n\n");
+				sink.emit(
+					"inject_delivered",
+					`as the next prompt: ${firstLine(text)}`,
+					{
+						via: "prompt",
+					},
+				);
+				return text;
+			},
+			pending: () => queued.length,
+		};
+	};
+
 	export const begin = (claim: Claim, env: Env, hooks: Hooks): Handle => {
 		const tag = {
 			lane: claim.lane,
@@ -220,7 +308,8 @@ export namespace Dispatch {
 		const waiting = new AbortController();
 
 		const sink: Sink = {
-			emit: (type, summary) => hooks.event({ ...tag, type, summary }),
+			emit: (type, summary, data) =>
+				hooks.event({ ...tag, type, summary, ...(data ? { data } : {}) }),
 			progress: async (body) => {
 				const written = await Planner.addActivity(env.basePath, {
 					sessionId: claim.sessionId,
@@ -271,6 +360,8 @@ export namespace Dispatch {
 			...(lastMessage ? { summary: lastMessage } : {}),
 		});
 
+		const steering = injector(claim.harness, sink);
+
 		const drive = async (): Promise<Outcome> => {
 			const assembled = await Planner.assembleContext(
 				env.basePath,
@@ -284,10 +375,17 @@ export namespace Dispatch {
 			let text = Brief.opening(subject, assembled.value);
 			for (;;) {
 				if (cancelled) return ended("cancelled");
-				const result = await runTurn(opened.value, text, sink);
+				const result = await steering.turn(opened.value, text);
 				if (result.kind === "error") return ended("error", result.message);
 				if (cancelled || result.reason === "cancelled")
 					return ended("cancelled");
+				// What the human said comes before anything the run would say next, and spends no
+				// continuation: it is their turn, not a nudge.
+				const injected = steering.take();
+				if (injected !== undefined) {
+					text = injected;
+					continue;
+				}
 				const now = await Planner.getTask(env.basePath, claim.task.id);
 				if (!now.ok) return ended("error", now.error.message);
 				const task = now.value;
@@ -312,6 +410,12 @@ export namespace Dispatch {
 			.finally(() => {
 				waiting.abort();
 				if (connection) AcpClient.close(connection);
+				const lost = steering.pending();
+				if (lost > 0)
+					sink.emit(
+						"warning",
+						`${lost} injected prompt(s) not delivered: the session ended first`,
+					);
 			});
 
 		return {
@@ -327,6 +431,7 @@ export namespace Dispatch {
 				waiting.abort();
 				if (connection) AcpClient.close(connection);
 			},
+			inject: (text) => steering.inject(session, text),
 		};
 	};
 }

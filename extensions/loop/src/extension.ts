@@ -2,6 +2,7 @@
 // entry point. The CLI has already wired the runtime (`openContext`) by the time `run` is called.
 import { resolve } from "node:path";
 import { Harnesses } from "@cabane/acp";
+import type { Result } from "@cabane/core";
 import {
 	type Extension,
 	failure,
@@ -21,6 +22,8 @@ const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|c
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
+       kabane loop pause|resume <runId>
+       kabane loop skip|next <subtask>
        kabane loop answer <questionId> <option>`;
 
 // The executable the runner and each session's MCP server run as: this process's own entry.
@@ -107,6 +110,74 @@ const answer = async (
 		: failure(answered.error);
 };
 
+type Deps = Loop.Deps & { cwd: string; actor: string };
+type Verb = (args: ParsedArgs, deps: Deps, target: string) => Promise<Outcome>;
+
+const ran = (result: Result<RunStore.Run>): Outcome =>
+	result.ok ? success(result.value, line(result.value)) : failure(result.error);
+
+const start: Verb = async (args, deps, target) => {
+	const implementer = flagString(args, "implementer");
+	if (implementer && !Harnesses.isId(implementer))
+		return usage(
+			`--implementer must be one of ${Harnesses.IDS.join(", ")}`,
+			USAGE,
+		);
+	const dir = flagString(args, "dir");
+	return ran(
+		await Loop.start(deps, {
+			parent: target,
+			...(dir ? { dir } : {}),
+			config: configFrom(args),
+		}),
+	);
+};
+
+const pause =
+	(kind: "pause" | "resume"): Verb =>
+	async (_args, deps, target) => {
+		const asked = Loop.pause(deps, target, kind);
+		return asked.ok
+			? success(asked.value, `${kind} requested for ${target}`)
+			: failure(asked.error);
+	};
+
+const direct =
+	(kind: "skip" | "next"): Verb =>
+	async (_args, deps, target) => {
+		const asked = await Loop.direct(deps, kind, target);
+		return asked.ok
+			? success(
+					asked.value,
+					`${kind} ${asked.value.task} requested for ${asked.value.runId}`,
+				)
+			: failure(asked.error);
+	};
+
+// Each verb that takes a target, with what the target is for the usage line when it is missing.
+const VERBS: Record<string, { needs: string; run: Verb }> = {
+	start: { needs: "a parent issue", run: start },
+	run: {
+		needs: "a run id",
+		run: async (_a, deps, id) => ran(await Loop.run(deps, id)),
+	},
+	stop: {
+		needs: "a run id",
+		run: async (_a, deps, id) => ran(await Loop.stop(deps, id)),
+	},
+	pause: { needs: "a run id", run: pause("pause") },
+	resume: { needs: "a run id", run: pause("resume") },
+	skip: { needs: "a subtask", run: direct("skip") },
+	next: { needs: "a subtask", run: direct("next") },
+};
+
+const list = (deps: Deps): Outcome => {
+	const runs = Loop.list(deps);
+	return runs.ok
+		? success(runs.value, runs.value.map(line).join("\n") || "No loop runs")
+		: failure(runs.error);
+};
+
 const command: Extension.Command = {
 	name: "loop",
 	summary:
@@ -114,62 +185,24 @@ const command: Extension.Command = {
 	usage: USAGE,
 	run: async (args, ctx) => {
 		const [verb, target] = args.positionals;
-		const deps = {
+		const deps: Deps = {
 			home: ctx.home,
 			basePath: ctx.store,
 			kabaneBin: kabaneBin(),
+			cwd: ctx.cwd,
+			actor: ctx.actor,
 		};
-		const done = (
-			result: { ok: true; value: RunStore.Run } | { ok: false; error: Error },
-		) =>
-			result.ok
-				? success(result.value, line(result.value))
-				: failure(result.error);
-		switch (verb) {
-			case "start": {
-				if (!target) return usage("start needs a parent issue", USAGE);
-				const implementer = flagString(args, "implementer");
-				if (implementer && !Harnesses.isId(implementer))
-					return usage(
-						`--implementer must be one of ${Harnesses.IDS.join(", ")}`,
-						USAGE,
-					);
-				const dir = flagString(args, "dir");
-				return done(
-					await Loop.start(
-						{ ...deps, cwd: ctx.cwd },
-						{
-							parent: target,
-							...(dir ? { dir } : {}),
-							config: configFrom(args),
-						},
-					),
-				);
-			}
-			case "run":
-				if (!target) return usage("run needs a run id", USAGE);
-				return done(await Loop.run(deps, target));
-			case "stop":
-				if (!target) return usage("stop needs a run id", USAGE);
-				return done(await Loop.stop(deps, target));
-			case "answer":
-				return answer(args, { ...deps, actor: ctx.actor });
-			case "status": {
-				if (target) return statusOf(deps, target);
-				const runs = Loop.list(deps);
-				return runs.ok
-					? success(
-							runs.value,
-							runs.value.map(line).join("\n") || "No loop runs",
-						)
-					: failure(runs.error);
-			}
-			default:
-				return usage(
-					verb ? `Unknown loop command: ${verb}` : "Missing loop command",
-					USAGE,
-				);
-		}
+		if (verb === "answer") return answer(args, deps);
+		if (verb === "status") return target ? statusOf(deps, target) : list(deps);
+		const known = verb && Object.hasOwn(VERBS, verb) ? VERBS[verb] : undefined;
+		if (!known)
+			return usage(
+				verb ? `Unknown loop command: ${verb}` : "Missing loop command",
+				USAGE,
+			);
+		return target
+			? known.run(args, deps, target)
+			: usage(`${verb} needs ${known.needs}`, USAGE);
 	},
 };
 
@@ -178,7 +211,7 @@ export const loop: Extension = {
 	commands: [command],
 	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
 	board: (ctx) => ({
-		activity: LoopActivity.source(ctx.home),
+		activity: LoopActivity.source(ctx.home, ctx.store),
 		headers: { [LoopActivity.KIND]: LoopHeader.make(ctx.home, ctx.store) },
 	}),
 };

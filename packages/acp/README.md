@@ -41,6 +41,12 @@ imports the SDK.
   `initialize` (30 s cap, stderr attached on failure); `newSession(conn, { cwd, mcpServers,
   systemPromptAppend? })` opens a session with stdio MCP servers; `prompt(session, blocks)` is a
   lazy `AsyncIterable<Update>`; `cancel(session)`; `close(conn)` kills the process.
+  `steer(session, blocks)` puts text into the turn the session is running through the
+  `_session/steering` extension method, for a harness whose `initialize` advertised
+  `_meta.steering.supported` (`conn.steering`; both pinned adapters do, Gemini does not). It
+  asks an idle session to hand the text back (`idleBehavior: promptRequired`), so the result
+  says where the text went: `injected`, `prompt_required` (the caller sends it as a prompt),
+  or `new_turn` from an adapter that ignores the hint (codex-acp starts a turn of its own).
   `connect(harness, transport, options)` takes an SDK `Stream` or an in-process `AgentApp`,
   which is how the tests run without a subprocess.
 - `CopilotInstructions` — the instruction block, the `/` shortcut templates, and

@@ -8,9 +8,9 @@ import { err, ok, type Result } from "@cabane/core";
 import { Budget } from "./budget";
 import { Claims } from "./claims";
 import { LoopPlan } from "./plan";
-import { Scheduler } from "./scheduler";
 import { Stall } from "./stall";
 import { RunState } from "./state";
+import { Steering } from "./steering";
 import { Stop } from "./stop";
 import { RunStore } from "./store";
 
@@ -25,6 +25,9 @@ export namespace Runner {
 	const CANCEL_GRACE_MS = 10_000;
 	// Consecutive failed plan reads before the run gives up rather than spinning.
 	const PLAN_FAILURES = 3;
+
+	const plural = (count: number, noun: string): string =>
+		`${count} ${noun}${count === 1 ? "" : "s"}`;
 
 	const sleep = (ms: number) =>
 		new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -90,8 +93,25 @@ export namespace Runner {
 		return finish(ctx, exit);
 	};
 
-	// Steering (inject, pause, skip, next) is handled here once its package lands; today the
-	// inbox carries `stop`, and `answered` notes, which the permission relay reads for itself.
+	// Text for a session goes to it while it is live, and is dropped, saying so, once it is not.
+	const deliver = (
+		ctx: Ctx,
+		entry: Extract<RunStore.InboxEntry, { kind: "inject" }>,
+	): void => {
+		const live = [...ctx.live.values()].find(
+			(l) => l.sessionId === entry.session,
+		);
+		if (live) void live.handle.inject(entry.text);
+		else
+			RunState.event(ctx, {
+				type: "warning",
+				lane: entry.lane,
+				session: entry.session,
+				summary: `inject for ${entry.lane} dropped: its session has ended`,
+			});
+	};
+
+	// `answered` notes are the permission relay's to read, from the start of the inbox.
 	const readInbox = (ctx: Ctx): void => {
 		const inbox = RunStore.readInbox(
 			ctx.deps.home,
@@ -104,9 +124,31 @@ export namespace Runner {
 				type: "warning",
 				summary: `inbox line ignored: ${line}`,
 			});
-		if (inbox.value.entries.some((e) => e.kind === "stop"))
-			ctx.stopRequested = true;
-		RunState.save(ctx, { ...ctx.run, inboxRead: inbox.value.next });
+		let steering = ctx.run.steering;
+		for (const entry of inbox.value.entries) {
+			switch (entry.kind) {
+				case "stop":
+					ctx.stopRequested = true;
+					break;
+				case "inject":
+					deliver(ctx, entry);
+					break;
+				case "answered":
+					break;
+				default: {
+					const applied = Steering.apply(steering, entry);
+					steering = applied.state;
+					RunState.event(ctx, {
+						type: applied.type,
+						summary: applied.summary,
+						...(entry.kind === "skip" || entry.kind === "next"
+							? { task: entry.task }
+							: {}),
+					});
+				}
+			}
+		}
+		RunState.save(ctx, { ...ctx.run, steering, inboxRead: inbox.value.next });
 	};
 
 	// Say once why nothing moves, rather than on every tick.
@@ -115,8 +157,9 @@ export namespace Runner {
 		health: LoopPlan.Health,
 		last: { said: string },
 	): void => {
-		const said =
-			health.kind === "waiting"
+		const said = ctx.run.steering.paused
+			? `paused with ${plural(ctx.live.size, "session")} running`
+			: health.kind === "waiting"
 				? `waiting on ${health.on.join(", ") || "nothing claimable"}`
 				: "";
 		if (said !== "" && said !== last.said)
@@ -163,11 +206,27 @@ export namespace Runner {
 		const plan = loaded.value;
 		if (Stop.evaluate(plan).done && ctx.live.size === 0)
 			return { status: "completed", reason: "plan-done" };
-		const ready = LoopPlan.frontier(plan, new Set(ctx.live.keys()), ctx.now());
+		const skipped = new Set(ctx.run.steering.skipped);
+		const ready = LoopPlan.frontier(
+			plan,
+			new Set(ctx.live.keys()),
+			ctx.now(),
+			skipped,
+		);
 		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
-		for (const node of Scheduler.pick(ready, slots))
+		for (const node of Steering.pick(ctx.run.steering, ready, slots)) {
 			await Claims.claim(ctx, node, plan);
-		const health = LoopPlan.health(plan, new Set(ctx.live.keys()), ctx.now());
+			RunState.save(ctx, {
+				...ctx.run,
+				steering: Steering.claimed(ctx.run.steering, node.task.id),
+			});
+		}
+		const health = LoopPlan.health(
+			plan,
+			new Set(ctx.live.keys()),
+			ctx.now(),
+			skipped,
+		);
 		if (health.kind === "deadlocked")
 			return {
 				status: "stopped",

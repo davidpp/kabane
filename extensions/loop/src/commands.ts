@@ -1,5 +1,5 @@
 // The loop's entry points, as plain functions over explicit dependencies. The extension wires
-// them to `kabane loop start|run|status|stop|answer`; nothing here parses argv or reads the
+// them to `kabane loop start|run|status|stop|pause|resume|skip|next|answer`; nothing here parses argv or reads the
 // environment for its own settings.
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
@@ -22,6 +22,7 @@ import { LoopConfig } from "./config";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Runner } from "./runner";
+import { Steering } from "./steering";
 import { Stop } from "./stop";
 import { RunStore } from "./store";
 
@@ -237,6 +238,7 @@ export namespace Loop {
 			usage: {},
 			continuationsUsed: 0,
 			inboxRead: 0,
+			steering: Steering.INITIAL,
 		});
 		if (!created.ok) return created;
 		const spawned = spawnRunner(deps, created.value);
@@ -390,6 +392,78 @@ export namespace Loop {
 			runId,
 			task: row.task?.shortId ?? row.session.taskId,
 		});
+	};
+
+	const liveRun = (home: string, runId: string): Result<RunStore.Run> => {
+		const run = RunStore.read(home, runId);
+		if (!run.ok) return run;
+		return RunStore.isLive(run.value.status)
+			? run
+			: err(new Error(`Run ${runId} is ${run.value.status}`));
+	};
+
+	/** Stop or restart claiming on a live run; sessions already running finish either way. */
+	export const pause = (
+		deps: Pick<Deps, "home">,
+		runId: string,
+		kind: "pause" | "resume",
+	): Result<RunStore.Run> => {
+		const run = liveRun(deps.home, runId);
+		if (!run.ok) return run;
+		const asked = RunStore.appendInbox(deps.home, runId, {
+			kind,
+			at: new Date().toISOString(),
+		});
+		return asked.ok ? run : asked;
+	};
+
+	export type Directed = { runId: string; task: string };
+
+	/**
+	 * Never claim subtask `task` (`skip`), or claim it ahead of the rest once it is ready
+	 * (`next`), in the live run on its parent; `runId` names that run when the caller knows it.
+	 */
+	export const direct = async (
+		deps: Pick<Deps, "home" | "basePath">,
+		kind: "skip" | "next",
+		task: string,
+		runId?: string,
+	): Promise<Result<Directed>> => {
+		const id = await Planner.resolveTaskId(deps.basePath, task);
+		if (!id.ok) return id;
+		const found = await Planner.getTask(deps.basePath, id.value);
+		if (!found.ok) return found;
+		if (!found.value) return err(new Error(`No task ${task}`));
+		const subtask = found.value;
+		const short = subtask.shortId ?? subtask.id;
+		const runs = RunStore.list(deps.home);
+		if (!runs.ok) return runs;
+		const run = runs.value.find((r) =>
+			runId === undefined
+				? r.parentId === subtask.parentTaskId && RunStore.isLive(r.status)
+				: r.id === runId,
+		);
+		if (!run)
+			return err(
+				new Error(
+					runId === undefined
+						? `No live loop run is working on ${short}'s parent`
+						: `No loop run ${runId}`,
+				),
+			);
+		if (run.parentId !== subtask.parentTaskId)
+			return err(
+				new Error(`${short} is not a subtask of ${run.parentShortId}`),
+			);
+		const live = liveRun(deps.home, run.id);
+		if (!live.ok) return live;
+		const asked = RunStore.appendInbox(deps.home, run.id, {
+			kind,
+			at: new Date().toISOString(),
+			taskId: subtask.id,
+			task: short,
+		});
+		return asked.ok ? ok({ runId: run.id, task: short }) : asked;
 	};
 
 	/**

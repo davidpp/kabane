@@ -120,6 +120,7 @@ describe("Loop.start refusals", () => {
 			usage: {},
 			continuationsUsed: 0,
 			inboxRead: 0,
+			steering: { paused: false, skipped: [], next: [] },
 		});
 		const started = await Loop.start(deps(), { parent: parent.id });
 		expect(started.ok).toBe(false);

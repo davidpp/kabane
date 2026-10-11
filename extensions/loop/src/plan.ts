@@ -116,6 +116,8 @@ export namespace LoopPlan {
 		return task === undefined || isClosed(task);
 	};
 
+	const NOTHING: ReadonlySet<string> = new Set();
+
 	const deferred = (task: Task, now: Date): boolean =>
 		task.deferUntil !== undefined &&
 		Date.parse(task.deferUntil) > now.getTime();
@@ -123,12 +125,14 @@ export namespace LoopPlan {
 	/**
 	 * The ready frontier: open work in a claimable state (`inbox`, `next`), not deferred, not
 	 * already held by one of the run's live sessions, whose every blocker is closed. A subtask
-	 * someone moved to `in_progress`, `waiting` or `someday` is theirs, not the run's.
+	 * someone moved to `in_progress`, `waiting` or `someday` is theirs, not the run's, and one the
+	 * human skipped is never the run's.
 	 */
 	export const frontier = (
 		plan: Plan,
 		live: ReadonlySet<string>,
 		now: Date,
+		skipped: ReadonlySet<string> = NOTHING,
 	): Node[] => {
 		const tasks = byId(plan);
 		return plan.nodes.filter(
@@ -137,6 +141,7 @@ export namespace LoopPlan {
 				CLAIMABLE.has(n.task.state) &&
 				!deferred(n.task, now) &&
 				!live.has(n.task.id) &&
+				!skipped.has(n.task.id) &&
 				n.blockedBy.every((id) => resolved(tasks, id)),
 		);
 	};
@@ -181,15 +186,16 @@ export namespace LoopPlan {
 	/**
 	 * Why a run with open work and nothing claimable or live cannot move. A cycle among open work
 	 * never resolves by itself: deadlocked. Anything else is held by something outside the run
-	 * (a subtask someone parked or took, a deferred one, an open blocker outside the plan), and a
-	 * human or another agent can release it: waiting.
+	 * (a subtask someone parked or took, a deferred one, a skipped one, an open blocker outside the
+	 * plan), and a human or another agent can release it: waiting.
 	 */
 	export const health = (
 		plan: Plan,
 		live: ReadonlySet<string>,
 		now: Date,
+		skipped: ReadonlySet<string> = NOTHING,
 	): Health => {
-		if (live.size > 0 || frontier(plan, live, now).length > 0)
+		if (live.size > 0 || frontier(plan, live, now, skipped).length > 0)
 			return { kind: "moving" };
 		const loop = cycle(plan);
 		if (loop) {
@@ -206,7 +212,8 @@ export namespace LoopPlan {
 		const holders = new Set<string>();
 		for (const n of plan.nodes) {
 			if (!isWork(n) || isClosed(n.task)) continue;
-			if (!CLAIMABLE.has(n.task.state) || deferred(n.task, now))
+			if (skipped.has(n.task.id)) holders.add(`${label(n.task)} (skipped)`);
+			else if (!CLAIMABLE.has(n.task.state) || deferred(n.task, now))
 				holders.add(label(n.task));
 			for (const id of n.blockedBy) {
 				const blocker = plan.outside.get(id);

@@ -24,6 +24,7 @@ import { z } from "zod";
 import { Budget } from "./budget";
 import { LoopConfig } from "./config";
 import { Stall } from "./stall";
+import { Steering } from "./steering";
 
 export namespace RunStore {
 	export const STATUSES = [
@@ -91,6 +92,8 @@ export namespace RunStore {
 		stall: Stall.StateSchema.optional(),
 		/** Inbox lines already handled. */
 		inboxRead: z.number().int().min(0).default(0),
+		/** What the human said about claiming: paused, skipped, next. */
+		steering: Steering.StateSchema.default({}),
 		/** When the human closed the run's board tab: the board stops listing it. */
 		dismissedAt: z.string().optional(),
 	});
@@ -124,10 +127,11 @@ export namespace RunStore {
 	export type Event = z.infer<typeof EventSchema>;
 	export type EventDraft = Omit<Event, "seq" | "at">;
 
-	// Steering (pause, skip, next) joins this union with the package that consumes it. `inject` is
-	// written by the board today and delivered to its session by the runner once C4 lands.
+	// The runner reads every kind but `answered`, which the permission relay reads for itself.
 	export const InboxEntrySchema = z.discriminatedUnion("kind", [
 		z.object({ kind: z.literal("stop"), at: z.string() }),
+		...Steering.DirectiveSchemas,
+		// Text for one session: into its running turn, or its next prompt (`Dispatch.inject`).
 		z.object({
 			kind: z.literal("inject"),
 			at: z.string(),

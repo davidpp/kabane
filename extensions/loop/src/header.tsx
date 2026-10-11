@@ -69,8 +69,14 @@ export namespace LoopHeader {
 				break;
 		}
 		const live = new Set(liveClaims(run).map((claim) => claim.taskId));
+		if (run.steering.paused)
+			return {
+				text: `⏸ paused · ${live.size} session${live.size === 1 ? "" : "s"} finishing · p resumes`,
+				tone: "accent",
+				bold: true,
+			};
 		const health: LoopPlan.Health = plan
-			? LoopPlan.health(plan, live, now)
+			? LoopPlan.health(plan, live, now, new Set(run.steering.skipped))
 			: { kind: "moving" };
 		if (health.kind === "deadlocked")
 			return {

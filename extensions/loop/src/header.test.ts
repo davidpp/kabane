@@ -48,6 +48,7 @@ const run = (
 		},
 		continuationsUsed: 1,
 		inboxRead: 0,
+		steering: { paused: false, skipped: [], next: [] },
 		...over,
 	};
 };

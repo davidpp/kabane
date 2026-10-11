@@ -32,6 +32,7 @@ const draft = (overrides: Partial<RunStore.Run> = {}): RunStore.Run => ({
 	usage: {},
 	continuationsUsed: 0,
 	inboxRead: 0,
+	steering: { paused: false, skipped: [], next: [] },
 	...overrides,
 });
 
