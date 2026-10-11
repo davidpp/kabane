@@ -315,6 +315,20 @@ describe("the pinned banner", () => {
 		expect(press(s, "l").state).not.toBe(s);
 	});
 
+	it("answers on the keypress, so a second digit before the write lands answers nothing", () => {
+		const first = press(pinned(), "1");
+		expect(first.state.view).toMatchObject({ banner: { answer: "Pin" } });
+		expect(press(first.state, "2").effect.type).toBe("none");
+		// A failed write takes it back, and the digits answer again.
+		const failed = BoardTabs.withoutAnswer(first.state, "q-solo", "Pin");
+		expect(failed.view).toEqual({
+			type: "detail",
+			taskId: "t9",
+			banner: { question: SOLO_Q },
+		});
+		expect(press(failed, "2").effect).toMatchObject({ answer: "Take" });
+	});
+
 	it("b does nothing without a card to go back to", () => {
 		const s = pinned();
 		expect(press(s, "b").state).toBe(s);

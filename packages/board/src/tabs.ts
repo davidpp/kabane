@@ -380,23 +380,20 @@ export namespace BoardTabs {
 		const answer = isAnswered(state.tabs, banner)
 			? undefined
 			: banner.question.choices[digit - 1];
-		return answer === undefined
-			? { state, effect: NOTHING }
-			: {
-					state,
-					effect: {
-						type: "answerQuestion",
-						questionId: banner.question.questionActivityId,
-						answer,
-					},
-				};
+		if (answer === undefined) return { state, effect: NOTHING };
+		// Answered on the keypress, not when the write lands, so a second digit pressed before it
+		// does cannot answer again. A failed write takes it back (withoutAnswer).
+		const questionId = banner.question.questionActivityId;
+		return {
+			state: withAnswered(state, questionId, answer),
+			effect: { type: "answerQuestion", questionId, answer },
+		};
 	};
 
-	/** The banner's question was answered with `answer`: it stays up, saying so, until the human leaves. */
-	export const withAnswered = (
+	const withBanner = (
 		state: State,
 		questionId: string,
-		answer: string,
+		patch: (banner: Banner) => Banner,
 	): State => {
 		const { view } = state;
 		if (
@@ -404,8 +401,31 @@ export namespace BoardTabs {
 			view.banner?.question.questionActivityId !== questionId
 		)
 			return state;
-		return { ...state, view: { ...view, banner: { ...view.banner, answer } } };
+		return { ...state, view: { ...view, banner: patch(view.banner) } };
 	};
+
+	/** The banner's question was answered with `answer`: it stays up, saying so, until the human leaves. */
+	export const withAnswered = (
+		state: State,
+		questionId: string,
+		answer: string,
+	): State =>
+		withBanner(state, questionId, (banner) => ({ ...banner, answer }));
+
+	/** The write of `answer` failed: the banner takes digits again, unless it has since moved on. */
+	export const withoutAnswer = (
+		state: State,
+		questionId: string,
+		answer: string,
+	): State =>
+		withBanner(state, questionId, (banner) =>
+			banner.answer === answer
+				? {
+						question: banner.question,
+						...(banner.cardId ? { cardId: banner.cardId } : {}),
+					}
+				: banner,
+		);
 
 	/** A click on a tab (null is the tracker), or on the banner's `index`th answer. */
 	export const reduceMouse = (
