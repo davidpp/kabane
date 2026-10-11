@@ -13,12 +13,13 @@ import { RunStore } from "./store";
 const RECENT_RUNS = 10;
 
 export namespace LoopActivity {
-	// A run the human stopped did not finish its plan, so it reads as failed, with why beside it.
+	// A stopped run was halted on purpose (a human, a budget, a stall) and reads as stopped, not
+	// failed; why is its `error`.
 	const STATUS: Readonly<Record<RunStore.Status, ActivityStatus>> = {
 		pending: "pending",
 		running: "running",
 		completed: "completed",
-		stopped: "failed",
+		stopped: "stopped",
 		failed: "failed",
 	};
 
@@ -39,10 +40,10 @@ export namespace LoopActivity {
 		startedAt: run.startedAt ?? run.createdAt,
 		...(run.endedAt ? { finishedAt: run.endedAt } : {}),
 		detail: [plural(run.claims.length, "session")],
-		// The runner's own words for why it ended: `stopped: stalled (no progress across 3 session ends)`.
-		...(run.exit && STATUS[run.status] === "failed"
+		// The runner's own words for why it ended: `stalled (no progress across 3 session ends)`.
+		...(run.exit && run.status !== "completed"
 			? {
-					error: `${run.status}: ${run.exit.reason}${run.exit.detail ? ` (${run.exit.detail})` : ""}`,
+					error: `${run.exit.reason}${run.exit.detail ? ` (${run.exit.detail})` : ""}`,
 				}
 			: {}),
 		hasEvents: true,

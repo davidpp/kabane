@@ -52,7 +52,8 @@ export const cardStatusLine = (
 	return [`${glyph} ${card.label}`, ...card.detail].join(" · ");
 };
 
-// Status glyph for a card row: animated spinner for running/pending, • for completed, ✗ for failed.
+// Status glyph for a card row: animated spinner for running/pending, • for completed, ⏹ for stopped,
+// ✗ for failed.
 export const cardStatusGlyph = (
 	status: ActivityStatus,
 	spinnerFrame?: string,
@@ -65,6 +66,8 @@ export const cardStatusGlyph = (
 			return "⏸";
 		case "completed":
 			return "•";
+		case "stopped":
+			return "⏹";
 		case "failed":
 			return "✗";
 	}
@@ -85,6 +88,7 @@ const cardGlyphColor = (
 		case "failed":
 			return theme.failed;
 		case "paused":
+		case "stopped":
 			return theme.muted;
 	}
 };

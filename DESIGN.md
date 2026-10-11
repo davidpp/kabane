@@ -284,6 +284,7 @@ against every glyph already here.
 | `●` (badge) | in flight, echoed on a surface that does not own it | working |
 | `⠋` frozen | in flight, but the runner stopped reporting | muted |
 | `⏸` | paused | muted |
+| `⏹` | stopped on purpose before it finished (a human, a budget): over, not failed | muted |
 | `✓` `•` | done | done |
 | `○` | pending plan step | muted |
 | `✗` | failed | failed |

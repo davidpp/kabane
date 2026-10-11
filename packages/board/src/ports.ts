@@ -11,12 +11,15 @@ export type ActivityStatus =
 	| "running"
 	| "paused"
 	| "completed"
+	| "stopped"
 	| "failed";
 
 // One in-flight or recent unit of host work, projected for display. `kind` is what the header strip
 // counts it as (the host picks the word: "loops", "runs"); `label` is the short name on the row;
 // `detail` lines are joined with ` · ` after the label. A card may reference its task by ULID, by
 // shortId (when the host only knows the label), or not at all.
+// `stopped` is over, like `completed` and `failed`, but neither: the work was halted on purpose (a
+// human, a budget) before it finished. Why goes in `error`.
 export type ActivityCard = {
 	id: string;
 	kind: string;

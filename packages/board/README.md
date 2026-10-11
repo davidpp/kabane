@@ -42,7 +42,7 @@ interface ActivitySource {
 
 `load()` returns flat cards, newest first, already capped. A card carries `kind` (what the
 header strip counts it as — the host picks the word, `"loops"`, `"runs"`), `label`, `status`
-(`pending | running | paused | completed | failed`), an optional `taskId` or `taskShortId`, and
+(`pending | running | paused | completed | stopped | failed`; `stopped` is over but not failed: halted on purpose, why in `error`), an optional `taskId` or `taskShortId`, and
 `detail` lines joined with ` · ` after the label. The board renders:
 
 - a row badge for the first in-flight card of a task: `· ● loop · implement 3`, plus `· ● +n` for more

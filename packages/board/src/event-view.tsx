@@ -301,6 +301,13 @@ export const EventView = ({
 						<text fg={theme.failed}>failed: {card.error}</text>
 					</box>
 				) : null}
+				{card.status === "stopped" ? (
+					<box style={{ marginTop: 1 }}>
+						<text fg={theme.muted}>
+							{card.error ? `stopped: ${card.error}` : "stopped"}
+						</text>
+					</box>
+				) : null}
 			</scrollbox>
 			{permission ? (
 				<box

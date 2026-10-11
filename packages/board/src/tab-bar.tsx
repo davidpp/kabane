@@ -31,6 +31,8 @@ const glyphOf = (
 			return { text: "⏸", fg: theme.muted };
 		case "completed":
 			return { text: "✓", fg: theme.done };
+		case "stopped":
+			return { text: "⏹", fg: theme.muted };
 		case "failed":
 			return { text: "✗", fg: theme.failed };
 	}
