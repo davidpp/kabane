@@ -23,10 +23,20 @@ answered from the board, a finding filed. Mocked transcripts do not count.
    import `@cabane/core` and `@cabane/acp` directly.
 2. **Extensions are opt-in.** `config.json` gains `extensions: string[]`. A disabled extension's
    commands print how to enable it, and it contributes nothing to the board. Enabled extensions are
-   imported lazily, so a plain `kabane list` pays nothing.
-3. **The contract is a plain object.** `Extension = { name, commands?, board?(ctx) → { activity?,
-   dispatcher?, headers? } }`. The CLI keeps a static list of the official ones. The board receives
-   the merged ports through the existing `BoardDeps` and never imports an extension.
+   imported lazily, so a plain `kabane list` loads no extension code. It still loads the board and
+   ACP modules, as it already did. To print that hint, the CLI imports the disabled extensions
+   too, but only when a command name is not found. Unknown names in `extensions` are ignored, so a
+   config written by a newer kabane still opens.
+3. **The contract is a plain object, in `@cabane/extension`.** `Extension = { name, commands?,
+   board?(ctx) → { activity?, dispatcher?, headers? } }`.
+   - **Where it lives:** `packages/extension`, which also holds the args parser and the `Outcome`
+     constructors. An extension cannot import from `packages/cli` without a cycle.
+   - **Context:** `Extension.Ctx` is `{ home, store, cwd, actor }`; the CLI's `Ctx` adds `config`.
+   - **The official list** is `OFFICIAL` in `packages/cli/src/extensions.ts`, and the build fails
+     if a directory under `extensions/` is missing from the bundle.
+   - **The board** receives the merged ports through the existing `BoardDeps` and never imports an
+     extension. Merged trigger ids and card ids are both prefixed `<name>:`, so dispatch, `card()`
+     and `events()` route back to their extension.
 4. **Long-running work runs in its own process.** `kabane loop start` writes the run and spawns the
    detached `kabane loop run <runId>` from the same binary. Closing the board never stops a loop,
    and the board only observes it.
@@ -56,6 +66,18 @@ answered from the board, a finding filed. Mocked transcripts do not count.
      a concurrency cap, with no lockstep waves. The harness is the subtask's assignee when it names
      a known harness, else the run's configured implementer. The brief is `assembleContext` plus
      short run instructions, with `kabane mcp --scope` attached.
+   - **Launch profile:** the loop runs the user's full harness, never the copilot's profile. The
+     copilot pins `ANTHROPIC_MODEL=sonnet`, appends its own system prompt, sets `KABANE_SESSION`
+     and lets the claude adapter fall back to the Agent SDK's bundled binary. The loop instead:
+     - pins no model, unless the run config names one
+     - sets `CLAUDE_CODE_EXECUTABLE` to the installed `claude`, and fails if there is none
+     - adds no copilot prompt
+     - sets `KABANE_LOOP=1`
+
+     This goes through a generic profile argument to `Harnesses.resolve`.
+   - **Folder:** `run.json` records `projectDir`, the directory the loop was started from.
+     `start` refuses when that directory's detected scope is not the issue's `scopeUri`, unless
+     `--dir` is given. Sessions run in the run's worktree, else in `projectDir`.
    - **Gates:** named shell commands from config, run when an implementing session ends. The
      result goes to the work log. A failure reopens the subtask with the output in the next brief.
    - **Verifiers:** lenses, each a prompt file plus a harness, run once the plan is done. Findings
@@ -69,7 +91,10 @@ answered from the board, a finding filed. Mocked transcripts do not count.
    - **Health:** one stall detector (no gate or diff progress across N session ends) plus
      dependency-graph deadlock detection.
    - **Steering inbox:** `inject` goes to the target session as a new prompt; `pause`, `skip` and
-     `next` change what is claimed.
+     `next` change what is claimed. On a loop tab, `i` opens the copilot's own textarea, which
+     supports paste, multi-line input and history, aimed at the session in the selected lane.
+     How a prompt sent mid-turn behaves (queued, rejected or interrupting) is to be checked
+     against ACP.
    - **Checkpoints:** a commit per passing gate, in the run's worktree. Rollback is a reset to a
      checkpoint.
 
@@ -118,12 +143,14 @@ Each package merges on its own: `bun run check`, `typecheck` and `test` pass, th
 without the loop, and there is one concern per commit.
 
 ### A. Extension mechanism (CLI)
+Done on branch `worktree-agent-a02640e27e5096832` (`4a190e2..ae7d894`).
 - Add `"extensions/*"` to the root workspaces.
-- Add the `Extension` type and the official list in `packages/cli/src/extensions.ts`.
+- Add the `@cabane/extension` contract package, and the official list in
+  `packages/cli/src/extensions.ts`.
 - Add `extensions` to the config schema.
 - Command lookup falls through to enabled extensions' commands, and `helpText` lists them.
 - `boardDeps` merges the enabled extensions' ports. The board gains generic `Activity.merge` and
-  `Dispatchers.merge` helpers; trigger ids get a `<extension>:` prefix so they route back.
+  `Dispatchers.merge` helpers; trigger and card ids get a `<extension>:` prefix so they route back.
 - The build check confirms the bundle carries `extensions/*` and still names no `@cabane/*`
   dependency.
 - **Evidence:** in a sandbox, an empty `extensions/hello` with one command runs from the built
@@ -173,6 +200,9 @@ without the loop, and there is one concern per commit.
   core CLAUDE.md becomes true.
 - Unit tests cover the business logic only: the frontier, stall detection, the stop predicate and
   budget accounting.
+- Wiring, after A: add `loop` to `OFFICIAL`. Add `extensions` to the root `test`, `test:bun` and
+  `duplicates` scripts (jscpd errors on a missing directory, so A could not), and to knip if it
+  needs an entry.
 
 ### C2. Gates, worktree and checkpoints
 - Gate commands from config run when an implementing session ends; results go to the work log,
@@ -192,6 +222,8 @@ without the loop, and there is one concern per commit.
   commands.
 
 ### D. Loop on the board
+- `board(ctx)` receives the extension context, not the board's resolved scope. Add the scope to
+  that context if the loop's ports need it.
 - The loop's `ActivitySource` reads `run.json`, `events.jsonl` and the run's sessions; each run is
   a card with `tab: true`.
 - The `Dispatcher` offers the "start loop" trigger, with the form inputs from Decision 9 and the
