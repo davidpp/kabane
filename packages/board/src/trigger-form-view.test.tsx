@@ -80,3 +80,47 @@ test("at forty columns the settings stack under the preview, and nothing is cut"
 	expect(frame.replace(/\s+/g, "")).toContain("←JREP-2,JREP-3,JREP-5,JREP-6");
 	expect(frame).toMatch(/‹ 3 ›/);
 });
+
+test("a group listed twice is titled twice, and an ungrouped input after a group is not under it", async () => {
+	const input = (group?: string) => ({
+		type: "number",
+		required: false,
+		default: 1,
+		...(group ? { group } : {}),
+	});
+	const form = TriggerForm.open({
+		id: "start",
+		label: "start loop",
+		satisfiable: true,
+		inputs: {
+			first: input("Agents"),
+			second: input("Limits"),
+			third: input("Agents"),
+			loose: input(),
+		},
+	});
+	const errors: unknown[] = [];
+	const original = console.error;
+	console.error = (...args: unknown[]) => errors.push(args);
+	try {
+		const { renderOnce, captureCharFrame, destroy } = await renderTest(
+			<TriggerFormView shortId="JREP-1" form={form} />,
+			{ width: 110, height: 24 },
+		);
+		try {
+			const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("loose"),
+			);
+			const lines = frame.split("\n").map((l) => l.trim());
+			expect(lines.filter((l) => l === "Agents")).toHaveLength(2);
+			const loose = lines.findIndex((l) => l.startsWith("loose"));
+			expect(lines[loose - 1]).toBe("");
+			expect(lines[loose - 2]).toMatch(/^third/);
+		} finally {
+			destroy();
+		}
+	} finally {
+		console.error = original;
+	}
+	expect(String(errors)).not.toContain("same key");
+});

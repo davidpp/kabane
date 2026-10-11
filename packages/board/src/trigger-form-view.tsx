@@ -35,8 +35,10 @@ const MAX_WIDTH = 140;
 const shown = (value: unknown): string =>
 	value === true ? "on" : value === false ? "off" : String(value);
 
+// A group row starts a section: titled, or untitled for ungrouped inputs that follow a group, so
+// they do not read as the previous title's.
 type Row =
-	| { kind: "group"; title: string }
+	| { kind: "group"; title?: string }
 	| {
 			kind: "field";
 			index: number;
@@ -45,15 +47,20 @@ type Row =
 			changed: boolean;
 	  };
 
-/** The inputs as rows, in the host's order, with a title wherever the group changes. */
+/**
+ * The inputs as rows, in the host's order, with a section wherever the group changes: a title only
+ * spans consecutive inputs, so a group the host lists twice is titled twice.
+ */
 const formRows = (form: TriggerForm.Form): Row[] => {
 	const rows: Row[] = [];
 	let group: string | undefined;
 	Object.entries(form.trigger.inputs).forEach(([name, input], index) => {
-		if (input.group !== undefined && input.group !== group) {
-			group = input.group;
-			rows.push({ kind: "group", title: input.group });
-		}
+		if (index === 0 ? input.group !== undefined : input.group !== group)
+			rows.push({
+				kind: "group",
+				...(input.group === undefined ? {} : { title: input.group }),
+			});
+		group = input.group;
 		rows.push({
 			kind: "field",
 			index,
@@ -64,6 +71,17 @@ const formRows = (form: TriggerForm.Form): Row[] => {
 	});
 	return rows;
 };
+
+/** The rows' height: a field or a title is one row, and every section but the first a gap above. */
+const rowsHeight = (rows: readonly Row[]): number =>
+	rows.reduce(
+		(height, row, at) =>
+			height +
+			(row.kind === "field"
+				? 1
+				: (row.title === undefined ? 0 : 1) + (at === 0 ? 0 : 1)),
+		0,
+	);
 
 const toneFg = (tone: PanelTone | undefined, theme: Theme.Tokens): string => {
 	switch (tone) {
@@ -152,10 +170,13 @@ const Settings = ({
 		<>
 			{rows.map((row, at) =>
 				row.kind === "group" ? (
-					<box key={`g${row.title}`} style={{ marginTop: at === 0 ? 0 : 1 }}>
-						<text bg={bg} fg={theme.text} attributes={TextAttributes.BOLD}>
-							{row.title}
-						</text>
+					// Keyed by place: a host may list a group twice.
+					<box key={`g${at}`} style={{ marginTop: at === 0 ? 0 : 1 }}>
+						{row.title === undefined ? null : (
+							<text bg={bg} fg={theme.text} attributes={TextAttributes.BOLD}>
+								{row.title}
+							</text>
+						)}
 					</box>
 				) : (
 					<Field
@@ -236,8 +257,7 @@ const layoutOf = (
 	// The preview panel's own padding, and the gap to the settings beside it.
 	const previewRoom = (side ? inner - SETTINGS_COLS - 2 : inner) - 2;
 	const preview = previewRows(previewRoom);
-	const groups = rows.filter((r) => r.kind === "group").length;
-	const settings = rows.length + Math.max(0, groups - 1);
+	const settings = rowsHeight(rows);
 	const body = side
 		? Math.max(preview, settings)
 		: preview + (preview > 0 ? 1 : 0) + settings;
