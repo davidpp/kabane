@@ -322,9 +322,9 @@ against every glyph already here.
   `[copy]` affordance at its right, then the in-flight status line in the working hue, then
   the pinned facts, their key muted and their value secondary, so the title is the one bright
   line in the block.
-- **Tabs:** the active tab in Label weight on selected, the others secondary, an empty one
-  faint.
-- **Content column:** every tab's content starts one cell in, under the header's text.
+- **Sections** (`h/l`; never called tabs, which are the tab bar's): the active section in Label
+  weight on selected, the others secondary, an empty one faint.
+- **Content column:** every section's content starts one cell in, under the header's text.
 - **Comments:** one per comment, a raised author band (the actor URI's last segment, never
   the URI, bold for a human; the time muted), then the comment whole, on the terminal's own
   background like the brief. The band is the seam between comments.

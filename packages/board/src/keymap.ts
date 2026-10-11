@@ -309,7 +309,7 @@ export namespace Keymap {
 				},
 				{
 					key: "h/l",
-					label: "tabs",
+					label: "sections",
 					tier: "footer",
 					keys: ["h", "l", "left", "right"],
 				},
@@ -318,7 +318,7 @@ export namespace Keymap {
 				{ key: "m", label: "mark", tier: "footer", keys: ["m"] },
 				{
 					key: "1-3",
-					label: "go to a tab",
+					label: "go to a section",
 					tier: "help",
 					keys: ["1", "2", "3"],
 				},

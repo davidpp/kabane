@@ -141,7 +141,7 @@ test("Detail opens on the description, with the title once, the task at a glance
 		expect(frame).not.toContain("## ");
 		expect(frame).not.toContain("Description\n");
 		// Trimmed footer: app-specific keys + `? help`, none of the vim-obvious ones.
-		expect(frame).toContain("h/l tabs");
+		expect(frame).toContain("h/l sections");
 		expect(frame).toContain("? help");
 		expect(frame).not.toContain("j/k scroll");
 	} finally {
