@@ -10,6 +10,7 @@ import {
 	ok,
 	Planner,
 	type Result,
+	ScopeUri,
 	type Task,
 	tryCatch,
 	trySync,
@@ -184,8 +185,12 @@ export namespace Loop {
 			detectScope(projectDir, { home: deps.home, detectExtensions: false }),
 		);
 		if (!detected.ok) return detected;
+		// Same scope id, whatever extensions either side carries (`?package=`, `?branch=`),
+		// the way a scoped query matches the family.
+		const wanted = ScopeUri.getScopeId(parent.scopeUri);
 		const found = detected.value?.scopeUri;
-		if (found === parent.scopeUri) return ok(projectDir);
+		if (wanted.ok && detected.value?.scopeId === wanted.value)
+			return ok(projectDir);
 		return err(
 			new Error(
 				`${projectDir} is ${found ?? "not a project"}, not ${parent.shortId ?? parent.id}'s scope ${parent.scopeUri}: start the loop from that checkout, or pass --dir`,

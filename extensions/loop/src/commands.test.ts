@@ -78,6 +78,20 @@ describe("Loop.start refusals", () => {
 		expect(runs.ok && runs.value).toEqual([]);
 	});
 
+	it("matches the scope by id, whatever extensions the parent's scope carries", async () => {
+		const scopeUri = `${await repoScope()}?package=sandbox`;
+		const parent = await add("parent", { scopeUri });
+		await add("child", { parentTaskId: parent.id, scopeUri });
+		const started = await Loop.start(deps(), { parent: parent.id });
+		// Past the folder check: the run is written and only the (nonexistent) runner fails.
+		expect(started.ok).toBe(false);
+		if (!started.ok) expect(started.error.message).not.toContain("--dir");
+		const runs = RunStore.list(home);
+		expect(runs.ok && runs.value.map((r) => [r.status, r.projectDir])).toEqual([
+			["failed", repo],
+		]);
+	});
+
 	it("refuses a parent that already has a live run", async () => {
 		const scopeUri = await repoScope();
 		const parent = await add("parent", { scopeUri });
