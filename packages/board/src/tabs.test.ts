@@ -267,6 +267,17 @@ describe("a card's tab", () => {
 		}
 	});
 
+	it("shift+w is W, which does not close a finished card's tab", () => {
+		const finished = onTab(withLoop([card({ status: "failed" })]));
+		const shifted = BoardNav.reduceKey(finished, {
+			name: "w",
+			sequence: "W",
+			shift: true,
+		});
+		expect(shifted.effect.type).not.toBe("dismiss");
+		expect(shifted.state.tabs.open).toEqual(["loop:r1"]);
+	});
+
 	it("w closes a finished card's tab for good, and refuses a running one", () => {
 		const running = press(onTab(), "w");
 		expect(running.state.tabs.open).toEqual(["loop:r1"]);

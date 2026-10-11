@@ -327,7 +327,8 @@ export namespace BoardTabs {
 		id: string,
 		key: BoardNav.KeyInput,
 	): Step | null => {
-		switch (key.name) {
+		// A letter by what it types, as on CardTab: shift+w is `W`, not close.
+		switch (key.name.length === 1 ? (key.sequence ?? key.name) : key.name) {
 			case "escape":
 			case "q":
 				return { state: show(state, null), effect: NOTHING };
