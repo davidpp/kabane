@@ -1,4 +1,4 @@
-// The plan a run works through: the parent issue's children and the `blocks`/`blocked_by` links
+// The plan a run works through: the parent issue's children and the `blocks`/`blocked_by`/`follows` links
 // that order them, read from the tracker on every tick. Agents and humans may add, relink, close
 // or park subtasks while the run goes, so nothing here is cached; a changed plan is a normal
 // event, not an error.
@@ -53,7 +53,10 @@ export namespace LoopPlan {
 		const ids = links.flatMap((link) => {
 			if (link.type === "blocks" && link.targetId === taskId)
 				return [link.sourceId];
-			if (link.type === "blocked_by" && link.sourceId === taskId)
+			if (
+				(link.type === "blocked_by" || link.type === "follows") &&
+				link.sourceId === taskId
+			)
 				return [link.targetId];
 			return [];
 		});
@@ -124,7 +127,8 @@ export namespace LoopPlan {
 
 	/**
 	 * The ready frontier: open work in a claimable state (`inbox`, `next`), not deferred, not
-	 * already held by one of the run's live sessions, whose every blocker is closed. A subtask
+	 * already held by one of the run's live sessions, whose every blocker is closed and released
+	 * by its live claim (including gates). A subtask
 	 * someone moved to `in_progress`, `waiting` or `someday` is theirs, not the run's, and one the
 	 * human skipped is never the run's.
 	 */
@@ -142,7 +146,7 @@ export namespace LoopPlan {
 				!deferred(n.task, now) &&
 				!live.has(n.task.id) &&
 				!skipped.has(n.task.id) &&
-				n.blockedBy.every((id) => resolved(tasks, id)),
+				n.blockedBy.every((id) => !live.has(id) && resolved(tasks, id)),
 		);
 	};
 

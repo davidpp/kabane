@@ -72,6 +72,33 @@ describe("LoopPlan.frontier", () => {
 		]);
 	});
 
+	it("follows waits for its target, without blocking that target", async () => {
+		const parent = await add({ title: "parent" });
+		const a = await add({ title: "a", parentTaskId: parent });
+		const b = await add({ title: "b", parentTaskId: parent });
+		await link(b, "follows", a);
+
+		expect(titles(LoopPlan.frontier(await load(parent), NONE, NOW))).toEqual([
+			"a",
+		]);
+		await close(a);
+		expect(titles(LoopPlan.frontier(await load(parent), NONE, NOW))).toEqual([
+			"b",
+		]);
+	});
+
+	it("keeps dependents blocked while a closed prerequisite still has a live claim", async () => {
+		const parent = await add({ title: "parent" });
+		const a = await add({ title: "a", parentTaskId: parent });
+		const b = await add({ title: "b", parentTaskId: parent });
+		await link(a, "blocks", b);
+		await close(a);
+		const plan = await load(parent);
+
+		expect(LoopPlan.frontier(plan, new Set([a]), NOW)).toEqual([]);
+		expect(titles(LoopPlan.frontier(plan, NONE, NOW))).toEqual(["b"]);
+	});
+
 	it("re-reads the plan: a subtask added mid-run joins the frontier", async () => {
 		const parent = await add({ title: "parent" });
 		await add({ title: "a", parentTaskId: parent });
@@ -179,6 +206,19 @@ describe("LoopPlan.health", () => {
 				(t) => t.id === id,
 			)?.shortId ?? id;
 		expect(health.on.sort()).toEqual([short(parked), short(outside)].sort());
+	});
+
+	it("detects cycles formed by follows links", async () => {
+		const parent = await add({ title: "parent" });
+		const a = await add({ title: "a", parentTaskId: parent });
+		const b = await add({ title: "b", parentTaskId: parent });
+		await link(a, "follows", b);
+		await link(b, "follows", a);
+
+		expect(LoopPlan.frontier(await load(parent), NONE, NOW)).toEqual([]);
+		expect(LoopPlan.health(await load(parent), NONE, NOW).kind).toBe(
+			"deadlocked",
+		);
 	});
 
 	it("ignores a cycle once one of its members is closed", async () => {
