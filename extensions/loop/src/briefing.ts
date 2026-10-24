@@ -84,9 +84,12 @@ export namespace Briefing {
 			const blocker = tasks.get(id);
 			return blocker && !LoopPlan.isClosed(blocker) ? [label(blocker)] : [];
 		});
-		return waitingOn.length > 0
-			? { text: `← ${waitingOn.join(",")}`, tone: "muted" }
-			: { text: task.state.replace("_", " "), tone: "muted" };
+		const state = task.state.replace("_", " ");
+		const status = waitingOn.length > 0 ? `← ${waitingOn.join(",")}` : state;
+		return {
+			text: task.kind === "task" ? `human · ${status}` : status,
+			tone: "muted",
+		};
 	};
 
 	// One subtask's row: its glyph, id, title, and where it stands.

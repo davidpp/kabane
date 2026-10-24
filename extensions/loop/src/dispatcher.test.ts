@@ -55,6 +55,26 @@ describe("LoopDispatcher.triggers", () => {
 		});
 	});
 
+	it("keeps a human-only plan visible, waiting and not ready", async () => {
+		const parent = await add("parent");
+		const human = await add("human setup", {
+			kind: "task",
+			parentTaskId: parent.id,
+			assignee: "owner",
+		});
+		const offered = await LoopDispatcher.triggers(deps(), parent.id);
+		const [start] = offered.ok ? offered.value : [];
+		expect(start?.satisfiable).toBe(true);
+		const preview = (start?.preview ?? []).map((line) =>
+			line.map((p) => p.text).join(""),
+		);
+		expect(preview[0]).toBe("Plan  1 subtask · 0 links · 0 ready");
+		expect(preview.some((line) => line.includes("human · next"))).toBe(true);
+		expect(
+			preview.some((line) => line.includes(`waiting on ${human.shortId}`)),
+		).toBe(true);
+	});
+
 	it("offers start loop, unsatisfiable with start's own reason, from a folder that is not the scope", async () => {
 		const parent = await add("parent", { scopeUri: "jake://scope/elsewhere" });
 		await add("child", { parentTaskId: parent.id });

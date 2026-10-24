@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type LinkType, Planner, type Task } from "@cabane/core";
+import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
@@ -108,6 +109,94 @@ createInterface({ input: process.stdin }).on("line", async line => {
 `;
 
 describe("Runner scheduling", () => {
+	it("prepares a human-only plan, waits unchanged, then claims a newly unblocked issue", async () => {
+		const parent = await add("parent");
+		const human = await Planner.addTask(home, {
+			title: "human setup",
+			kind: "task",
+			state: "next",
+			assignee: "owner",
+			parentTaskId: parent.id,
+		});
+		if (!human.ok) throw human.error;
+		const prepared = await Loop.prepare(
+			{ ...deps(), cwd: home },
+			{
+				parent: parent.id,
+				config: { implementer: "gemini", budget: { continuations: 0 } },
+			},
+		);
+		if (!prepared.ok) throw prepared.error;
+		expect(prepared.value.plan.nodes.map((n) => n.task.id)).toEqual([
+			human.value.id,
+		]);
+		const run = createRun(parent, prepared.value.config);
+		const controller = new AbortController();
+		const agent = join(home, "agent.mjs");
+		writeFileSync(agent, AGENT);
+		const running = Runner.run(run.id, {
+			...deps(),
+			signal: controller.signal,
+			overrides: { gemini: { command: process.execPath, args: [agent] } },
+		});
+		try {
+			await until(() => {
+				const events = RunStore.readEvents(home, run.id);
+				return (
+					events.ok &&
+					events.value.some(
+						(e) =>
+							e.type === "waiting" &&
+							e.summary.includes(human.value.shortId ?? human.value.id),
+					)
+				);
+			});
+			expect(readRun().claims).toEqual([]);
+			const unchanged = await Planner.getTask(home, human.value.id);
+			expect(unchanged.ok && unchanged.value).toEqual(human.value);
+			const sessions = await Planner.querySessions(home, {
+				taskId: human.value.id,
+			});
+			expect(sessions.ok && sessions.value).toEqual([]);
+			const dependent = await add("dependent", parent.id);
+			await link(human.value, dependent, "blocks");
+			const independent = await add("independent checklist issue", parent.id);
+			const checklist = await Planner.updateTask(home, independent.id, {
+				description: "- [ ] implement\n- [ ] verify",
+			});
+			if (!checklist.ok) throw checklist.error;
+			// A fresh tick has run, yet only the independent ISSUE was claimed.
+			await until(() =>
+				existsSync(join(home, `${independent.shortId}.prompt`)),
+			);
+			expect(readRun().claims.map((c) => c.taskId)).toEqual([independent.id]);
+			const parked = await Planner.updateTask(home, independent.id, {
+				state: "waiting",
+			});
+			if (!parked.ok) throw parked.error;
+			const closed = await Planner.updateTask(home, human.value.id, {
+				state: "done",
+			});
+			if (!closed.ok) throw closed.error;
+			const addedHuman = await Planner.addTask(home, {
+				title: "new human work",
+				kind: "task",
+				state: "next",
+				parentTaskId: parent.id,
+			});
+			if (!addedHuman.ok) throw addedHuman.error;
+			await until(() => existsSync(join(home, `${dependent.shortId}.prompt`)));
+			expect(readRun().claims.map((c) => c.taskId)).toEqual([
+				independent.id,
+				dependent.id,
+			]);
+		} finally {
+			controller.abort();
+			const ended = await running;
+			expect(ended.ok).toBe(true);
+		}
+	});
+
 	for (const type of ["blocks", "blocked_by", "follows"] as const) {
 		for (const concurrency of [1, 2]) {
 			it(`${type}: fills only ${concurrency} slots with unblocked work`, async () => {

@@ -182,18 +182,22 @@ export namespace Claims {
 			return undefined;
 		}
 		const sessionId = session.value.id;
-		const moved = takes
-			? await Planner.updateTask(ctx.deps.basePath, task.id, {
-					state: "in_progress",
-					assignee: harness,
-				})
-			: { ok: true as const };
-		if (!moved.ok)
-			RunState.event(ctx, {
-				...tag,
-				type: "warning",
-				summary: `not moved to in_progress: ${moved.error.message}`,
+		if (takes) {
+			const moved = await Planner.updateTask(ctx.deps.basePath, task.id, {
+				state: "in_progress",
+				assignee: harness,
 			});
+			if (!moved.ok || !moved.value) {
+				const detail = moved.ok ? "the task was deleted" : moved.error.message;
+				RunState.event(ctx, {
+					...tag,
+					type: "warning",
+					summary: `not moved to in_progress: ${detail}`,
+				});
+				await closeSession(ctx, sessionId, { outcome: "error", detail });
+				return undefined;
+			}
+		}
 		const logged = await Planner.addWorkLog(ctx.deps.basePath, {
 			taskId: task.id,
 			refs: [{ uri: `session:${sessionId}`, label: `loop ${ctx.run.id}` }],
@@ -289,7 +293,24 @@ export namespace Claims {
 		node: LoopPlan.Node,
 		plan: LoopPlan.Plan,
 	): Promise<void> => {
-		const task = node.task;
+		// The plan is a snapshot. Respect tracker changes before acquiring it; this is not
+		// cross-process compare-and-swap ownership.
+		const current = await Planner.getTask(ctx.deps.basePath, node.task.id);
+		if (!current.ok) {
+			RunState.event(ctx, {
+				type: "warning",
+				summary: `claim not read: ${current.error.message}`,
+			});
+			return;
+		}
+		const task = current.value;
+		if (
+			!task ||
+			!LoopPlan.canClaim(task, ctx.now()) ||
+			task.parentTaskId !== plan.parent.id ||
+			!LoopPlan.isWork(LoopPlan.node(task, node.blockedBy))
+		)
+			return;
 		// The run's harness, whatever the subtask's assignee says: agents assign issues they file
 		// to themselves, so the assignee names who wrote it, not who the human picked to work it.
 		const harness = ctx.run.config.implementer;

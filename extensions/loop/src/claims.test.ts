@@ -242,6 +242,59 @@ describe("Claims.hooks", () => {
 });
 
 describe("Claims.claim", () => {
+	for (const change of [
+		{ kind: "task" },
+		{ state: "waiting" },
+		{ state: "someday" },
+		{ deferUntil: "2999-01-01T00:00:00.000Z" },
+		{ parentTaskId: null },
+	] as const) {
+		it(`does not acquire a stale candidate after ${JSON.stringify(change)}`, async () => {
+			const parent = await add("parent");
+			const child = await add("child", {
+				parentTaskId: parent.id,
+				assignee: "owner",
+			});
+			const config = LoopConfig.Schema.safeParse({});
+			if (!config.success) throw config.error;
+			const run: RunStore.Run = {
+				version: 1,
+				id: "run-1",
+				parentId: parent.id,
+				parentShortId: parent.shortId ?? parent.id,
+				projectDir: home,
+				config: config.data,
+				status: "running",
+				createdAt: new Date().toISOString(),
+				claims: [],
+				usage: {},
+				continuationsUsed: 0,
+				inboxRead: 0,
+				steering: Steering.INITIAL,
+				gateRuns: [],
+			};
+			const created = RunStore.create(home, run);
+			if (!created.ok) throw created.error;
+			const plan = await LoopPlan.load(home, parent.id);
+			if (!plan.ok) throw plan.error;
+			const node = plan.value.nodes[0];
+			if (!node) throw new Error("missing child");
+			const changed = await Planner.updateTask(home, child.id, change);
+			if (!changed.ok) throw changed.error;
+			const ctx = ctxFor(run);
+			ctx.deps = {
+				...ctx.deps,
+				overrides: { claude: { command: "/nonexistent/harness" } },
+			};
+			await Claims.claim(ctx, node, plan.value);
+			expect(ctx.run.claims).toEqual([]);
+			expect(ctx.live.size).toBe(0);
+			const after = await Planner.getTask(home, child.id);
+			expect(after.ok && after.value).toEqual(changed.value);
+			const sessions = await Planner.querySessions(home, { taskId: child.id });
+			expect(sessions.ok && sessions.value).toEqual([]);
+		});
+	}
 	it("works a subtask on the run's harness and makes it the assignee, whoever filed it", async () => {
 		const parent = await add("parent");
 		const child = await add("child", {
