@@ -42,7 +42,7 @@ export namespace LoopPlan {
 	const hasTag = (task: Task, tag: string): boolean =>
 		task.tags.some((t) => t.toLowerCase() === tag);
 
-	/** Whether the node is the run's to finish: every subtask, and the `p1` findings. */
+	/** Required to finish: human and agent subtasks, and the `p1` findings. */
 	export const isWork = (node: Node): boolean => !node.finding || node.p1;
 
 	/** The blockers a set of links gives `taskId`, both directions of the relation. */
@@ -125,8 +125,18 @@ export namespace LoopPlan {
 		task.deferUntil !== undefined &&
 		Date.parse(task.deferUntil) > now.getTime();
 
+	/** A live claim may only continue or release the agent work it still owns. */
+	export const isActive = (task: Task, harness: string): boolean =>
+		task.kind === "issue" &&
+		task.state === "in_progress" &&
+		task.assignee === harness;
+
+	/** Task-local eligibility; human work stays in the plan but is never dispatched. */
+	export const canClaim = (task: Task, now: Date): boolean =>
+		task.kind === "issue" && CLAIMABLE.has(task.state) && !deferred(task, now);
+
 	/**
-	 * The ready frontier: open work in a claimable state (`inbox`, `next`), not deferred, not
+	 * The ready frontier: open agent work in a claimable state (`inbox`, `next`), not deferred, not
 	 * already held by one of the run's live sessions, whose every blocker is closed and released
 	 * by its live claim (including gates). A subtask
 	 * someone moved to `in_progress`, `waiting` or `someday` is theirs, not the run's, and one the
@@ -142,8 +152,7 @@ export namespace LoopPlan {
 		return plan.nodes.filter(
 			(n) =>
 				isWork(n) &&
-				CLAIMABLE.has(n.task.state) &&
-				!deferred(n.task, now) &&
+				canClaim(n.task, now) &&
 				!live.has(n.task.id) &&
 				!skipped.has(n.task.id) &&
 				n.blockedBy.every((id) => !live.has(id) && resolved(tasks, id)),
@@ -217,8 +226,7 @@ export namespace LoopPlan {
 		for (const n of plan.nodes) {
 			if (!isWork(n) || isClosed(n.task)) continue;
 			if (skipped.has(n.task.id)) holders.add(`${label(n.task)} (skipped)`);
-			else if (!CLAIMABLE.has(n.task.state) || deferred(n.task, now))
-				holders.add(label(n.task));
+			else if (!canClaim(n.task, now)) holders.add(label(n.task));
 			for (const id of n.blockedBy) {
 				const blocker = plan.outside.get(id);
 				if (blocker && !resolved(tasks, id)) holders.add(label(blocker));

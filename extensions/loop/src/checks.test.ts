@@ -202,6 +202,54 @@ describe("Checks", () => {
 		expect(brief).toContain("expected 2, got 3");
 	});
 
+	for (const change of [
+		{ state: "waiting" },
+		{ state: "cancelled" },
+		{ kind: "task" },
+		{ assignee: "owner" },
+	] as const) {
+		it(`preserves ${JSON.stringify(change)} while a red gate runs`, async () => {
+			const parent = await add("parent");
+			const child = await add("child", {
+				parentTaskId: parent.id,
+				state: "done",
+				assignee: "claude",
+			});
+			const ctx = ctxFor(
+				await runOn(
+					parent,
+					{
+						test: "touch gate-started; while [ ! -e gate-release ]; do sleep 0.01; done; exit 1",
+					},
+					false,
+				),
+			);
+			const subject = {
+				taskId: child.id,
+				label: child.shortId ?? child.id,
+				title: child.title,
+				assignee: "claude",
+			};
+			const pending = Checks.gate(ctx, subject);
+			try {
+				for (let i = 0; i < 400 && !existsSync(join(repo, "gate-started")); i++)
+					await Bun.sleep(5);
+				expect(existsSync(join(repo, "gate-started"))).toBe(true);
+				const changed = await Planner.updateTask(home, child.id, change);
+				if (!changed.ok) throw changed.error;
+				writeFileSync(join(repo, "gate-release"), "");
+				const pass = await pending;
+				await Checks.record(ctx, pass, subject);
+				const after = await Planner.getTask(home, child.id);
+				expect(after.ok && after.value).toEqual(changed.value);
+				expect(await refsOf(child.id)).toEqual(["gate:test"]);
+			} finally {
+				writeFileSync(join(repo, "gate-release"), "");
+				await pending;
+			}
+		});
+	}
+
 	it("a gate the run's stop kills does not reopen the subtask its session closed", async () => {
 		const parent = await add("parent");
 		const child = await add("child", {

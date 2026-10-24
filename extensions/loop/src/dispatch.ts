@@ -1,6 +1,6 @@
 // One claim, driven over ACP: spawn the harness in the run's repository with `kabane mcp` as its
 // tool server, open it with its assembled brief, and run turns until it is over. An implementing
-// claim is over when its subtask is closed, a turn ends with it open and no continuation is left,
+// claim is over when its subtask is closed or yielded, active work exhausts its nudges,
 // or the run cancels it; a lens is over when its review turn ends. Every update goes out through
 // `hooks.event` tagged with the claim's lane and core session.
 //
@@ -19,6 +19,7 @@ import {
 import { Brief } from "./brief";
 import type { Budget } from "./budget";
 import type { Gates } from "./gates";
+import { LoopPlan } from "./plan";
 import type { RunStore } from "./store";
 
 export namespace Dispatch {
@@ -54,7 +55,7 @@ export namespace Dispatch {
 	export type Hooks = {
 		event: (event: RunStore.EventDraft) => void;
 		usage: (usage: Budget.Usage) => void;
-		/** A turn ended with the subtask open. True spends one continuation and nudges. */
+		/** A turn ended with active-owned work. True spends one continuation and nudges. */
 		continueTurn: () => boolean;
 		/**
 		 * The harness asks to run a tool. Resolves with the option id the human chose, or an
@@ -364,8 +365,8 @@ export namespace Dispatch {
 					detail: `the ${name} lens's turn ended (${reason})`,
 				};
 
-	// An implementing claim is over once its subtask is closed; else it is nudged while the run
-	// has continuations left.
+	// Only still-active, owned work can receive an automatic nudge. Tracker parking and
+	// handoff end this claim without spending the run's continuation budget.
 	const implemented = async (
 		claim: Claim,
 		env: Env,
@@ -388,6 +389,12 @@ export namespace Dispatch {
 				kind: "end",
 				outcome: "done",
 				detail: `${label(task)} is ${task.state}`,
+			};
+		if (!LoopPlan.isActive(task, claim.harness))
+			return {
+				kind: "end",
+				outcome: "incomplete",
+				detail: `${label(task)} yielded: ${task.kind}, ${task.state}, assignee ${task.assignee ?? "none"}`,
 			};
 		if (reason !== "end_turn" || !hooks.continueTurn())
 			return {

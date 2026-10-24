@@ -94,7 +94,7 @@ export namespace LoopHeader {
 		const unchanged = run.stall?.unchanged ?? 0;
 		return unchanged > 0
 			? {
-					text: `● no progress across ${unchanged} of ${run.config.stallAfter} session ends`,
+					text: `● no progress across ${unchanged} of ${run.config.stallAfter} attempts`,
 					tone: "accent",
 					bold: true,
 				}

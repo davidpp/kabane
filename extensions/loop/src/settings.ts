@@ -70,7 +70,7 @@ export namespace LoopSettings {
 			options: [1, 5, 10, 25, 50, 100],
 		},
 		stallAfter: {
-			label: "stall after (ends)",
+			label: "stall after (attempts)",
 			group: "Limits",
 			options: range(1, 6),
 		},

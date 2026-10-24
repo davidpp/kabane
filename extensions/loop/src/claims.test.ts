@@ -84,8 +84,16 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 describe("Claims.settleAll", () => {
 	it("settles the whole batch even when its first session trips the stall", async () => {
 		const parent = await add("parent");
-		const a = await add("a", { parentTaskId: parent.id, state: "in_progress" });
-		const b = await add("b", { parentTaskId: parent.id, state: "done" });
+		const a = await add("a", {
+			parentTaskId: parent.id,
+			state: "in_progress",
+			assignee: "claude",
+		});
+		const b = await add("b", {
+			parentTaskId: parent.id,
+			state: "done",
+			assignee: "claude",
+		});
 		const [sa, sb] = [await sessionOn(a), await sessionOn(b)];
 		// b's session closed it, and the gates its end ran came back red.
 		const red: Gates.Run = {
@@ -165,6 +173,77 @@ describe("Claims.settleAll", () => {
 	});
 });
 
+describe("Claims parking and ownership", () => {
+	for (const recover of [false, true]) {
+		for (const change of [
+			{ state: "waiting" },
+			{ state: "someday" },
+			{ kind: "task" },
+			{ assignee: "owner" },
+			{},
+		] as const) {
+			it(`${recover ? "recover" : "settle"} respects ${JSON.stringify(change)} without erasing earlier failed attempts`, async () => {
+				const parent = await add("parent");
+				const child = await add("child", {
+					parentTaskId: parent.id,
+					state: "in_progress",
+					assignee: "claude",
+				});
+				const sessionId = await sessionOn(child);
+				const config = LoopConfig.Schema.safeParse({ stallAfter: 2 });
+				if (!config.success) throw config.error;
+				const run: RunStore.Run = {
+					version: 1,
+					id: "run-1",
+					parentId: parent.id,
+					parentShortId: parent.shortId ?? parent.id,
+					projectDir: home,
+					config: config.data,
+					status: "running",
+					createdAt: new Date().toISOString(),
+					claims: [claimOf(child, sessionId)],
+					usage: {},
+					continuationsUsed: 0,
+					inboxRead: 0,
+					steering: Steering.INITIAL,
+					gateRuns: [],
+				};
+				const created = RunStore.create(home, run);
+				if (!created.ok) throw created.error;
+				const ctx = ctxFor(run);
+				const plan = await LoopPlan.load(home, parent.id);
+				if (!plan.ok) throw plan.error;
+				ctx.run.stall = {
+					mark: await Claims.mark(ctx, plan.value),
+					unchanged: 1,
+				};
+				const changed = await Planner.updateTask(home, child.id, change);
+				if (!changed.ok || !changed.value)
+					throw new Error("task update failed");
+				const active = Object.keys(change).length === 0;
+				if (recover) await Claims.recover(ctx);
+				else
+					expect(
+						await Claims.settle(ctx, {
+							taskId: child.id,
+							sessionId,
+							outcome: { outcome: "incomplete" },
+						}),
+					).toBe(active);
+				const after = await Planner.getTask(home, child.id);
+				if (!after.ok || !after.value) throw new Error("missing task");
+				expect(after.value.state).toBe(active ? "next" : changed.value.state);
+				expect(after.value.kind).toBe(changed.value.kind);
+				expect(after.value.assignee).toBe(changed.value.assignee);
+				expect(ctx.run.stall?.unchanged).toBe(active && !recover ? 2 : 1);
+				const session = await Planner.getSession(home, sessionId);
+				if (!session.ok || !session.value) throw new Error("missing session");
+				expect(session.value.state).not.toBe("active");
+			});
+		}
+	}
+});
+
 describe("Claims.hooks", () => {
 	it("records a relayed permission request on the asking claim's lane, session and task", async () => {
 		const parent = await add("parent");
@@ -242,6 +321,59 @@ describe("Claims.hooks", () => {
 });
 
 describe("Claims.claim", () => {
+	for (const change of [
+		{ kind: "task" },
+		{ state: "waiting" },
+		{ state: "someday" },
+		{ deferUntil: "2999-01-01T00:00:00.000Z" },
+		{ parentTaskId: null },
+	] as const) {
+		it(`does not acquire a stale candidate after ${JSON.stringify(change)}`, async () => {
+			const parent = await add("parent");
+			const child = await add("child", {
+				parentTaskId: parent.id,
+				assignee: "owner",
+			});
+			const config = LoopConfig.Schema.safeParse({});
+			if (!config.success) throw config.error;
+			const run: RunStore.Run = {
+				version: 1,
+				id: "run-1",
+				parentId: parent.id,
+				parentShortId: parent.shortId ?? parent.id,
+				projectDir: home,
+				config: config.data,
+				status: "running",
+				createdAt: new Date().toISOString(),
+				claims: [],
+				usage: {},
+				continuationsUsed: 0,
+				inboxRead: 0,
+				steering: Steering.INITIAL,
+				gateRuns: [],
+			};
+			const created = RunStore.create(home, run);
+			if (!created.ok) throw created.error;
+			const plan = await LoopPlan.load(home, parent.id);
+			if (!plan.ok) throw plan.error;
+			const node = plan.value.nodes[0];
+			if (!node) throw new Error("missing child");
+			const changed = await Planner.updateTask(home, child.id, change);
+			if (!changed.ok) throw changed.error;
+			const ctx = ctxFor(run);
+			ctx.deps = {
+				...ctx.deps,
+				overrides: { claude: { command: "/nonexistent/harness" } },
+			};
+			await Claims.claim(ctx, node, plan.value);
+			expect(ctx.run.claims).toEqual([]);
+			expect(ctx.live.size).toBe(0);
+			const after = await Planner.getTask(home, child.id);
+			expect(after.ok && after.value).toEqual(changed.value);
+			const sessions = await Planner.querySessions(home, { taskId: child.id });
+			expect(sessions.ok && sessions.value).toEqual([]);
+		});
+	}
 	it("works a subtask on the run's harness and makes it the assignee, whoever filed it", async () => {
 		const parent = await add("parent");
 		const child = await add("child", {

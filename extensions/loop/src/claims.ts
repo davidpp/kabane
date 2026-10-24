@@ -1,9 +1,9 @@
 // A claim's life in the tracker: open a core session on the subtask, move it to in_progress,
 // log the session on it, dispatch; when the session ends with the subtask done, run the gates
 // while the claim still holds it; then close the core session, put a subtask the agent left in
-// progress back in the ready pool, record the gates (a red one reopens the subtask), and take a
-// progress mark for the stall detector. A lens is a claim on the parent that leaves its state
-// alone and has no gates. A runner that died mid-claim leaves claims with no end; `recover`
+// progress and still owned back in the ready pool, record the gates, and take a progress mark
+// for the stall detector unless the tracker parked or handed off the work. A lens is a claim
+// on the parent that leaves its state alone and has no gates. A runner that died mid-claim leaves claims with no end; `recover`
 // closes them.
 import type { Harnesses } from "@cabane/acp";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
@@ -24,11 +24,16 @@ export namespace Claims {
 	const label = (task: { shortId?: string; id: string }): string =>
 		task.shortId ?? task.id;
 
-	// A subtask left in_progress by a claim that is over goes back to the ready pool. One the
-	// agent moved elsewhere (done, waiting) keeps the state it was given.
-	const release = async (ctx: Ctx, taskId: string): Promise<void> => {
+	// Return only this claim's still-active issue to the pool. Parking, human work and live
+	// ownership handoffs belong to the tracker, including when recovering a dead runner.
+	const release = async (
+		ctx: Ctx,
+		taskId: string,
+		harness: string,
+	): Promise<void> => {
 		const task = await Planner.getTask(ctx.deps.basePath, taskId);
-		if (!task.ok || task.value?.state !== "in_progress") return;
+		if (!task.ok || !task.value || !LoopPlan.isActive(task.value, harness))
+			return;
 		const reset = await Planner.updateTask(ctx.deps.basePath, taskId, {
 			state: "next",
 		});
@@ -72,7 +77,8 @@ export namespace Claims {
 		for (const claim of open) {
 			const detail = "the runner exited while this session was open";
 			await closeSession(ctx, claim.sessionId, { outcome: "error", detail });
-			if (claim.lens === undefined) await release(ctx, claim.taskId);
+			if (claim.lens === undefined)
+				await release(ctx, claim.taskId, claim.harness);
 			RunState.patchClaim(ctx, claim.sessionId, {
 				endedAt: ctx.now().toISOString(),
 				outcome: "interrupted",
@@ -182,18 +188,22 @@ export namespace Claims {
 			return undefined;
 		}
 		const sessionId = session.value.id;
-		const moved = takes
-			? await Planner.updateTask(ctx.deps.basePath, task.id, {
-					state: "in_progress",
-					assignee: harness,
-				})
-			: { ok: true as const };
-		if (!moved.ok)
-			RunState.event(ctx, {
-				...tag,
-				type: "warning",
-				summary: `not moved to in_progress: ${moved.error.message}`,
+		if (takes) {
+			const moved = await Planner.updateTask(ctx.deps.basePath, task.id, {
+				state: "in_progress",
+				assignee: harness,
 			});
+			if (!moved.ok || !moved.value) {
+				const detail = moved.ok ? "the task was deleted" : moved.error.message;
+				RunState.event(ctx, {
+					...tag,
+					type: "warning",
+					summary: `not moved to in_progress: ${detail}`,
+				});
+				await closeSession(ctx, sessionId, { outcome: "error", detail });
+				return undefined;
+			}
+		}
 		const logged = await Planner.addWorkLog(ctx.deps.basePath, {
 			taskId: task.id,
 			refs: [{ uri: `session:${sessionId}`, label: `loop ${ctx.run.id}` }],
@@ -289,7 +299,24 @@ export namespace Claims {
 		node: LoopPlan.Node,
 		plan: LoopPlan.Plan,
 	): Promise<void> => {
-		const task = node.task;
+		// The plan is a snapshot. Respect tracker changes before acquiring it; this is not
+		// cross-process compare-and-swap ownership.
+		const current = await Planner.getTask(ctx.deps.basePath, node.task.id);
+		if (!current.ok) {
+			RunState.event(ctx, {
+				type: "warning",
+				summary: `claim not read: ${current.error.message}`,
+			});
+			return;
+		}
+		const task = current.value;
+		if (
+			!task ||
+			!LoopPlan.canClaim(task, ctx.now()) ||
+			task.parentTaskId !== plan.parent.id ||
+			!LoopPlan.isWork(LoopPlan.node(task, node.blockedBy))
+		)
+			return;
 		// The run's harness, whatever the subtask's assignee says: agents assign issues they file
 		// to themselves, so the assignee names who wrote it, not who the human picked to work it.
 		const harness = ctx.run.config.implementer;
@@ -361,10 +388,10 @@ export namespace Claims {
 		{ taskId, sessionId, outcome, gates }: RunState.Settled,
 	): Promise<boolean> => {
 		ctx.live.delete(sessionId);
-		const lens =
-			ctx.run.claims.find((c) => c.sessionId === sessionId)?.lens !== undefined;
+		const claim = ctx.run.claims.find((c) => c.sessionId === sessionId);
+		const lens = claim?.lens !== undefined;
 		await closeSession(ctx, sessionId, outcome);
-		if (!lens) await release(ctx, taskId);
+		if (!lens && claim) await release(ctx, taskId, claim.harness);
 		RunState.patchClaim(ctx, sessionId, {
 			endedAt: ctx.now().toISOString(),
 			outcome: outcome.outcome,
@@ -381,6 +408,7 @@ export namespace Claims {
 			await Checks.record(ctx, gates, {
 				taskId,
 				label: ended?.shortId ?? taskId,
+				assignee: ended?.harness,
 				...(ended ? { lane: ended.lane } : {}),
 			});
 		// A lens runs once per run and files findings rather than closing work: its end is not a
@@ -388,6 +416,16 @@ export namespace Claims {
 		if (lens) return false;
 		const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
 		if (!plan.ok) return false;
+		const task = plan.value.nodes.find((n) => n.task.id === taskId)?.task;
+		// An intentional park/handoff is not a failed attempt. Do not increment OR reset the
+		// earlier attempts; independent work must still be able to move the run.
+		if (
+			task &&
+			!LoopPlan.isClosed(task) &&
+			!LoopPlan.canClaim(task, ctx.now()) &&
+			(!claim || !LoopPlan.isActive(task, claim.harness))
+		)
+			return false;
 		const stall = Stall.observe(
 			ctx.run.stall ?? Stall.start(""),
 			await mark(ctx, plan.value),

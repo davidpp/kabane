@@ -72,6 +72,48 @@ describe("LoopPlan.frontier", () => {
 		]);
 	});
 
+	it("keeps human work required but never claimable, including when added mid-run", async () => {
+		const parent = await add({ title: "parent" });
+		const human = await add({
+			title: "human",
+			kind: "task",
+			parentTaskId: parent,
+		});
+		const dependent = await add({ title: "dependent", parentTaskId: parent });
+		await link(human, "blocks", dependent);
+		let plan = await load(parent);
+		expect(LoopPlan.frontier(plan, NONE, NOW)).toEqual([]);
+		expect(LoopPlan.health(plan, NONE, NOW)).toEqual({
+			kind: "waiting",
+			on: [plan.nodes[0]?.task.shortId ?? human],
+		});
+		expect(Stop.workDone(plan)).toBe(false);
+		await close(human);
+		plan = await load(parent);
+		expect(titles(LoopPlan.frontier(plan, NONE, NOW))).toEqual(["dependent"]);
+		await close(dependent);
+		expect(Stop.workDone(await load(parent))).toBe(true);
+		await add({ title: "new human work", kind: "task", parentTaskId: parent });
+		plan = await load(parent);
+		expect(Stop.workDone(plan)).toBe(false);
+		expect(LoopPlan.frontier(plan, NONE, NOW)).toEqual([]);
+	});
+
+	it("retains human nodes in dependency cycles", async () => {
+		const parent = await add({ title: "parent" });
+		const human = await add({
+			title: "human",
+			kind: "task",
+			parentTaskId: parent,
+		});
+		const issue = await add({ title: "issue", parentTaskId: parent });
+		await link(human, "blocks", issue);
+		await link(issue, "blocks", human);
+		expect(LoopPlan.health(await load(parent), NONE, NOW).kind).toBe(
+			"deadlocked",
+		);
+	});
+
 	it("follows waits for its target, without blocking that target", async () => {
 		const parent = await add({ title: "parent" });
 		const a = await add({ title: "a", parentTaskId: parent });
