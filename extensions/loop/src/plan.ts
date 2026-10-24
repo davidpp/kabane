@@ -125,6 +125,12 @@ export namespace LoopPlan {
 		task.deferUntil !== undefined &&
 		Date.parse(task.deferUntil) > now.getTime();
 
+	/** A live claim may only continue or release the agent work it still owns. */
+	export const isActive = (task: Task, harness: string): boolean =>
+		task.kind === "issue" &&
+		task.state === "in_progress" &&
+		task.assignee === harness;
+
 	/** Task-local eligibility; human work stays in the plan but is never dispatched. */
 	export const canClaim = (task: Task, now: Date): boolean =>
 		task.kind === "issue" && CLAIMABLE.has(task.state) && !deferred(task, now);

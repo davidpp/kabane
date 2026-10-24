@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { Stall } from "./stall";
 
 describe("Stall", () => {
-	it("stalls after N session ends in a row with the same mark", () => {
+	it("stalls after N counted attempts in a row with the same mark", () => {
 		let state = Stall.start(Stall.mark([], "tree0"));
 		state = Stall.observe(state, Stall.mark([], "tree0"));
 		state = Stall.observe(state, Stall.mark([], "tree0"));

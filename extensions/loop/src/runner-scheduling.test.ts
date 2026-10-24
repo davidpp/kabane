@@ -2,10 +2,21 @@
 // scheduling batch; the scripted ACP subprocess holds turns open while gates are exercised.
 import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type LinkType, Planner, type Task } from "@cabane/core";
+import {
+	type LinkType,
+	Planner,
+	type Task,
+	type TaskUpdate,
+} from "@cabane/core";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Runner } from "./runner";
@@ -89,8 +100,18 @@ const link = async (a: Task, b: Task, type: LinkType): Promise<void> => {
 // No model or MCP server is reached. Marker files let the test drive each ACP turn's end.
 const AGENT = `
 import { createInterface } from "node:readline";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
+import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
 let cancelled = false;
+let task;
+const tool = async (name, args) => {
+ const definition = KABANE_TOOLS.find(t => t.name === name);
+ const result = await definition.handler(args, {
+  basePath: process.cwd(), actor: "cabane://actor/agent/gemini", scopeRequired: false
+ });
+ if (!result.ok) throw result.error;
+};
 const reply = (id, result) => console.log(JSON.stringify({ jsonrpc: "2.0", id, result }));
 createInterface({ input: process.stdin }).on("line", async line => {
  const message = JSON.parse(line);
@@ -99,10 +120,19 @@ createInterface({ input: process.stdin }).on("line", async line => {
  if (message.method === "session/cancel") cancelled = true;
  if (message.method === "session/prompt") {
   const text = message.params.prompt.filter(p => p.type === "text").map(p => p.text).join("\\n");
-  const task = /Your subtask is ([^.]+)\\./.exec(text)?.[1];
+  task ??= /Your subtask is ([^.]+)\\./.exec(text)?.[1];
   if (!task) process.exit(1);
-  writeFileSync(task + ".prompt", "");
+  writeFileSync(task + ".prompt", text);
+  appendFileSync(task + ".prompts", JSON.stringify(text) + "\\n");
   while (!cancelled && !existsSync(task + ".release")) await Bun.sleep(5);
+  if (!cancelled && existsSync(task + ".change.json")) {
+   const change = JSON.parse(readFileSync(task + ".change.json", "utf8"));
+   if (change.state === "waiting") {
+    if (!text.includes("kabane_edit") || !text.includes("waiting")) process.exit(2);
+    await tool("kabane_comment", { id: task, body: "Blocked on human input; explicitly set next when ready." });
+   }
+   await tool("kabane_edit", { id: task, ...change });
+  }
   reply(message.id, { stopReason: cancelled ? "cancelled" : "end_turn" });
  }
 });
@@ -195,6 +225,191 @@ describe("Runner scheduling", () => {
 			const ended = await running;
 			expect(ended.ok).toBe(true);
 		}
+	});
+
+	for (const change of [
+		{ state: "waiting" },
+		{ state: "someday" },
+		{ kind: "task" },
+		{ assignee: "owner" },
+	] satisfies TaskUpdate[]) {
+		it(`yields ${JSON.stringify(change)} without nudging, reclaiming or stalling siblings`, async () => {
+			const parent = await add("parent");
+			const a = await add("blocked", parent.id);
+			const b = await add("dependent", parent.id);
+			const sibling = await add("independent", parent.id);
+			await link(a, b, "blocks");
+			const run = createRun(parent, {
+				implementer: "gemini",
+				stallAfter: 1,
+				budget: { concurrency: 2, continuations: 3 },
+			});
+			const agent = join(home, "agent.mjs");
+			writeFileSync(agent, AGENT);
+			const controller = new AbortController();
+			const running = Runner.run(run.id, {
+				...deps(),
+				signal: controller.signal,
+				overrides: { gemini: { command: process.execPath, args: [agent] } },
+			});
+			try {
+				await until(
+					() =>
+						existsSync(join(home, `${a.shortId}.prompt`)) &&
+						existsSync(join(home, `${sibling.shortId}.prompt`)),
+				);
+				writeFileSync(
+					join(home, `${a.shortId}.change.json`),
+					JSON.stringify(change),
+				);
+				writeFileSync(join(home, `${a.shortId}.release`), "");
+				await until(() =>
+					readRun().claims.some(
+						(c) => c.taskId === a.id && c.endedAt !== undefined,
+					),
+				);
+				const witness = await add("later tick", parent.id);
+				await until(() => existsSync(join(home, `${witness.shortId}.prompt`)));
+				const snapshot = readRun();
+				expect(snapshot.status).toBe("running");
+				expect(snapshot.continuationsUsed).toBe(0);
+				expect(snapshot.stall?.unchanged).toBe(0);
+				expect(snapshot.claims.filter((c) => c.taskId === a.id)).toHaveLength(
+					1,
+				);
+				expect(snapshot.claims.some((c) => c.taskId === b.id)).toBe(false);
+				const current = await Planner.getTask(home, a.id);
+				expect(current.ok && current.value).toMatchObject(change);
+				const events = RunStore.readEvents(home, run.id);
+				expect(
+					events.ok && events.value.filter((e) => e.type === "continuation"),
+				).toEqual([]);
+				expect(
+					readFileSync(join(home, `${a.shortId}.prompts`), "utf8")
+						.trim()
+						.split("\n"),
+				).toHaveLength(1);
+				if (change.state === "waiting") {
+					// Free the witness slot, then explicitly ready a; ending a turn alone never completed it.
+					writeFileSync(
+						join(home, `${witness.shortId}.change.json`),
+						JSON.stringify({ state: "done" }),
+					);
+					writeFileSync(join(home, `${witness.shortId}.release`), "");
+					await until(() =>
+						readRun().claims.some(
+							(c) => c.taskId === witness.id && c.endedAt !== undefined,
+						),
+					);
+					writeFileSync(
+						join(home, `${a.shortId}.change.json`),
+						JSON.stringify({ state: "done" }),
+					);
+					const ready = await Planner.updateTask(home, a.id, { state: "next" });
+					if (!ready.ok) throw ready.error;
+					await until(() => existsSync(join(home, `${b.shortId}.prompt`)));
+					expect(
+						readRun().claims.filter((c) => c.taskId === a.id),
+					).toHaveLength(2);
+				}
+			} finally {
+				controller.abort();
+				const ended = await running;
+				expect(ended.ok).toBe(true);
+			}
+		});
+	}
+
+	it("delivers deliberately queued human steering even when the task parks", async () => {
+		const parent = await add("parent");
+		const a = await add("blocked", parent.id);
+		const run = createRun(parent, {
+			implementer: "gemini",
+			stallAfter: 1,
+			budget: { continuations: 3 },
+		});
+		const agent = join(home, "agent.mjs");
+		writeFileSync(agent, AGENT);
+		const controller = new AbortController();
+		const running = Runner.run(run.id, {
+			...deps(),
+			signal: controller.signal,
+			overrides: { gemini: { command: process.execPath, args: [agent] } },
+		});
+		try {
+			await until(() => existsSync(join(home, `${a.shortId}.prompt`)));
+			const claim = readRun().claims[0];
+			if (!claim) throw new Error("missing claim");
+			const text =
+				"Keep waiting: kabane_edit state waiting; kabane_comment the blocker.";
+			const sent = RunStore.appendInbox(home, run.id, {
+				kind: "inject",
+				at: new Date().toISOString(),
+				session: claim.sessionId,
+				lane: claim.lane,
+				text,
+			});
+			if (!sent.ok) throw sent.error;
+			await until(() => {
+				const events = RunStore.readEvents(home, run.id);
+				return (
+					events.ok && events.value.some((e) => e.type === "inject_queued")
+				);
+			});
+			writeFileSync(
+				join(home, `${a.shortId}.change.json`),
+				JSON.stringify({ state: "waiting" }),
+			);
+			writeFileSync(join(home, `${a.shortId}.release`), "");
+			await until(() => readRun().claims[0]?.endedAt !== undefined);
+			expect(readRun().continuationsUsed).toBe(0);
+			expect(readRun().status).toBe("running");
+			const prompts = readFileSync(join(home, `${a.shortId}.prompts`), "utf8")
+				.trim()
+				.split("\n")
+				.map((line) => String(JSON.parse(line)));
+			expect(prompts).toHaveLength(2);
+			expect(prompts[1]).toBe(text);
+			const task = await Planner.getTask(home, a.id);
+			expect(task.ok && task.value?.state).toBe("waiting");
+		} finally {
+			controller.abort();
+			await running;
+		}
+	});
+
+	it("still nudges active-owned work and does not invent a blocker when its budget runs out", async () => {
+		const parent = await add("parent");
+		const a = await add("active", parent.id);
+		const run = createRun(parent, {
+			implementer: "gemini",
+			stallAfter: 1,
+			budget: { continuations: 1 },
+		});
+		const agent = join(home, "agent.mjs");
+		writeFileSync(agent, AGENT);
+		writeFileSync(join(home, `${a.shortId}.release`), "");
+		const ended = await Runner.run(run.id, {
+			...deps(),
+			overrides: { gemini: { command: process.execPath, args: [agent] } },
+		});
+		if (!ended.ok) throw ended.error;
+		expect(ended.value.exit?.reason).toBe("stalled");
+		expect(ended.value.continuationsUsed).toBe(1);
+		expect(ended.value.claims).toHaveLength(1);
+		expect(ended.value.claims[0]?.outcome).toBe("incomplete");
+		const prompts = readFileSync(join(home, `${a.shortId}.prompts`), "utf8")
+			.trim()
+			.split("\n")
+			.map((line) => String(JSON.parse(line)));
+		expect(prompts).toHaveLength(2);
+		for (const prompt of prompts) {
+			expect(prompt).toContain("kabane_edit");
+			expect(prompt).toContain("waiting");
+			expect(prompt).toContain("kabane_comment");
+		}
+		const task = await Planner.getTask(home, a.id);
+		expect(task.ok && task.value?.state).toBe("next");
 	});
 
 	for (const type of ["blocks", "blocked_by", "follows"] as const) {

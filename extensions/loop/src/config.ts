@@ -21,7 +21,7 @@ export namespace LoopConfig {
 		 * the time between a runner dying and the run's resume does not count.
 		 */
 		wallMinutes: z.number().positive().default(120),
-		/** Nudges, across the whole run, for a turn that ends with its subtask still open. */
+		/** Automatic nudges across the run for turns ending with active-owned issue work. */
 		continuations: z.number().int().min(0).default(3),
 		/**
 		 * The run halts once the reported spend reaches this. Only harnesses that send
@@ -48,7 +48,7 @@ export namespace LoopConfig {
 		/** Model override for every harness that reads one (Claude); absent keeps the pin. */
 		model: z.string().min(1).optional(),
 		budget: BudgetSchema.default({}),
-		/** Session ends in a row with no progress before the run halts as stalled. */
+		/** Automatic attempts in a row without progress; parked/handoff session ends do not count. */
 		stallAfter: z.number().int().min(1).default(3),
 		/**
 		 * Named shell commands, run in this order in the session's directory when an implementing

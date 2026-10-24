@@ -61,6 +61,8 @@ answered from the board, a finding filed. Mocked transcripts do not count.
      the `sessionIds` it owns, which is how its tab counts its questions.
 7. **Engine shape follows the outer-loop research.** Composable steps, not four fixed phases:
    - **Plan source:** the parent issue, its children and their `blocks` links, re-read every tick.
+     Human tasks remain required work and dependency blockers, but only agent issues are dispatched.
+     A human-only plan waits for named tasks rather than completing early.
      Agents may add and link subtasks mid-run, and that is a normal event.
    - **Dispatch:** `@cabane/acp`, one session per claim. Ready work is claimed continuously up to
      a concurrency cap, with no lockstep waves. The harness is the run's implementer for every
@@ -92,7 +94,7 @@ answered from the board, a finding filed. Mocked transcripts do not count.
        unanswered.
      - Other claims keep running meanwhile.
      - The wait spends wall time, which is the user's budget. It never counts toward the stall
-       count, which counts session ends, not time.
+       count, which counts automatic attempts, not time or intentional parking.
    - **Folder:** `run.json` records `projectDir`, the directory the loop was started from.
      `start` refuses when that directory's detected scope is not the issue's `scopeUri`, unless
      `--dir` is given. Sessions run in the run's worktree, else in `projectDir`.
@@ -102,11 +104,18 @@ answered from the board, a finding filed. Mocked transcripts do not count.
      are child issues of the parent, tagged `finding` and `p1`/`p2`/`p3`. That keeps them
      trackable and fixable with existing tools; `kabane_comment` has no severity field.
    - **Stop condition:** all subtasks done, gates green, no open `p1` finding.
-   - **Continuations:** at most N nudges when a turn ends with the plan still open.
+   - **Continuations:** at most N automatic nudges across the run, only for still-active issues
+     owned by their implementing claim. Blocked agents set their issue to `waiting` with
+     `kabane_edit`, comment the blocker with `kabane_comment`, and end their turn. Waiting,
+     someday, human work and live ownership handoffs end the claim without automatic nudges
+     or counting against stall detection; earlier failed attempts are neither incremented nor
+     reset by parking. Explicitly set `next` to resume; closing a dependency does not unpark it.
+     Exhausting nudges alone does not establish a blocker or complete the issue. Normal automatic
+     retries (including red gates) remain separate from the nudge budget.
    - **Budgets:** wall time, concurrency and continuations are always enforced. Spend is enforced
      when the harness reports `usage_update.cost`. ACP reports context occupancy, not cumulative
      tokens, so the meter shows context use and does not enforce a token budget.
-   - **Health:** one stall detector (no gate or diff progress across N session ends) plus
+   - **Health:** one stall detector (no gate or diff progress across N automatic attempts) plus
      dependency-graph deadlock detection.
    - **Steering inbox:** `inject` goes to the target session as a new prompt; `pause`, `skip` and
      `next` change what is claimed. On a loop tab, `i` opens the copilot's own textarea, which

@@ -114,7 +114,7 @@ export namespace Checks {
 	export const record = async (
 		ctx: Ctx,
 		pass: Gates.Run,
-		target: { taskId: string; label: string; lane?: string },
+		target: { taskId: string; label: string; lane?: string; assignee?: string },
 	): Promise<void> => {
 		const { taskId } = target;
 		const failed = pass.results.find((r) => !r.ok);
@@ -147,6 +147,22 @@ export namespace Checks {
 			pass.taskId === undefined ||
 			failed === undefined ||
 			failed.exit === null
+		)
+			return;
+		// A human can park, cancel, retype or hand off the work while its gates run. A red
+		// result only reopens the done issue owned by the claim that requested those gates.
+		const current = await Planner.getTask(ctx.deps.basePath, taskId);
+		if (!current.ok) {
+			RunState.event(ctx, {
+				type: "warning",
+				summary: `not read after a red gate: ${current.error.message}`,
+			});
+			return;
+		}
+		if (
+			current.value?.kind !== "issue" ||
+			current.value.state !== "done" ||
+			current.value.assignee !== target.assignee
 		)
 			return;
 		const reopened = await Planner.updateTask(ctx.deps.basePath, taskId, {

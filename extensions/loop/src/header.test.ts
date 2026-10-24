@@ -107,11 +107,11 @@ describe("LoopHeader.state", () => {
 		});
 	});
 
-	it("a running run counts the session ends that moved nothing", () => {
+	it("a running run counts automatic attempts that moved nothing", () => {
 		expect(
 			LoopHeader.state(run({ stall: { mark: "m", unchanged: 2 } }), null, NOW)
 				.text,
-		).toBe("● no progress across 2 of 3 session ends");
+		).toBe("● no progress across 2 of 3 attempts");
 		expect(LoopHeader.state(run(), null, NOW).text).toBe("● running");
 	});
 

@@ -389,7 +389,7 @@ export namespace Runner {
 				return halt(ctx, {
 					status: "stopped",
 					reason: "stalled",
-					detail: `no progress across ${ctx.run.config.stallAfter} session ends`,
+					detail: `no progress across ${ctx.run.config.stallAfter} attempts`,
 				});
 		}
 	};
