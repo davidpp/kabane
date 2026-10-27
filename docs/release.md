@@ -67,8 +67,8 @@ bun run release:local publish
 Publication uses your local npm configuration/authentication, including interactive npm
 2FA prompts. It refuses a missing/unverified artifact, changed source/tool versions, moved
 remote tag, disabled immutability, conflicting assets or registry bytes. It creates the
-matching GitHub draft/assets, publishes the exact retained tarball once, verifies registry
-integrity/latest, then finalizes and verifies the immutable GitHub release. **It does not
+matching GitHub draft/assets, publishes the exact retained tarball once, waits up to five
+minutes for the registry to serve it with matching integrity/latest, then finalizes and verifies the immutable GitHub release. **It does not
 rerun gates, build or pack.** Local publication does not claim GitHub Actions OIDC provenance.
 
 GitHub's tag endpoint exposes **published** releases, not drafts. The publisher discovers

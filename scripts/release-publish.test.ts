@@ -159,10 +159,36 @@ test("unconfirmed publisher failure stops at a retained draft with no blind retr
 		fixture.writes.push("failed-publish");
 		return err(new Error("OIDC/permission failure"));
 	};
-	const result = await completeRelease(record, fixture.ops);
+	const result = await completeRelease(record, fixture.ops, {
+		attempts: 2,
+		intervalMs: 0,
+	});
 	expect(result.ok).toBe(false);
 	if (!result.ok) expect(result.error.message).toContain("unverified/partial");
 	expect(fixture.writes).toEqual(["draft", "failed-publish"]);
+});
+test("a publish the registry serves late is still confirmed and finalized", async () => {
+	const fixture = mockPublication();
+	let reads = 0;
+	const registry = fixture.ops.registry;
+	fixture.ops.publishArchive = async () => {
+		fixture.writes.push("publish-once");
+		return ok(undefined);
+	};
+	fixture.ops.registry = async () => {
+		if (fixture.writes.includes("publish-once") && ++reads === 4)
+			fixture.setRegistry({
+				existingIntegrity: record.integrity,
+				latest: record.version,
+			});
+		return registry();
+	};
+	const result = await completeRelease(record, fixture.ops, {
+		attempts: 5,
+		intervalMs: 0,
+	});
+	expect(result.ok).toBe(true);
+	expect(fixture.writes).toEqual(["draft", "publish-once", "finalize"]);
 });
 test("npm success followed by GitHub failure reports recoverable partial state", async () => {
 	const fixture = mockPublication();

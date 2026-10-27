@@ -42,10 +42,15 @@ export const compareVersion = (a: string, b: string): number => {
 	return 0;
 };
 
+/** How long to watch for a publish to appear: npm can take minutes to serve a new version. */
+export type RegistrySettle = { attempts: number; intervalMs: number };
+const REGISTRY_SETTLE: RegistrySettle = { attempts: 30, intervalMs: 10_000 };
+
 /** One exact archive, one publish attempt; recovery observes state rather than retrying writes. */
 export const completeRelease = async (
 	record: ReleaseManifest,
 	ops: PublishOperations,
+	settle = REGISTRY_SETTLE,
 ): Promise<Result<string>> => {
 	if (record.dirty || record.tag !== `v${record.version}`)
 		return failure(
@@ -123,8 +128,8 @@ export const completeRelease = async (
 		await ops.publishArchive(); // Its exit status cannot settle an ambiguous committed publish.
 	}
 	let confirmed: RegistryState | undefined;
-	for (let attempt = 0; attempt < 3; attempt++) {
-		if (attempt > 0) await Bun.sleep(1000);
+	for (let attempt = 0; attempt < settle.attempts; attempt++) {
+		if (attempt > 0) await Bun.sleep(settle.intervalMs);
 		const observed = await ops.registry();
 		if (
 			observed.ok &&
@@ -138,7 +143,7 @@ export const completeRelease = async (
 	}
 	if (!confirmed)
 		return failure(
-			"Publication state is unverified/partial; never blindly retry npm. Retain the original archive/draft and inspect registry state.",
+			`Publication state is unverified/partial: ${record.version} with the archive's integrity is not on the registry yet. Check \`npm view kabane@${record.version} dist.integrity\`. Once it matches the archive, rerunning publish only finalizes GitHub and never publishes again; while it is absent, inspect before any retry.`,
 		);
 	const stillTag = await ops.verifyTag();
 	if (!stillTag.ok)
