@@ -31,6 +31,9 @@ type Lookup =
 const warnedUnknown = new Set<string>();
 
 export namespace Extensions {
+	/** Every official extension this build ships, by the name `extensions` takes. */
+	export const names: readonly string[] = Object.keys(OFFICIAL);
+
 	/**
 	 * The official extensions this home turns on. No config file is none on;
 	 * an unreadable one is the error every other command would report. A name

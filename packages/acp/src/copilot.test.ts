@@ -131,6 +131,11 @@ const context = (
 	...over,
 });
 
+const SETUP = {
+	configPath: "/home/me/.kabane/config.json",
+	extensions: ["loop"],
+};
+
 // A copilot wired to an in-process agent instead of a spawned harness.
 const copilotOver = (
 	agent: AgentApp,
@@ -141,6 +146,7 @@ const copilotOver = (
 		scopeDir: "/repos/cabane",
 		scopeUri: "jake://scope/cabane",
 		kabaneBin: "/usr/local/bin/kabane",
+		setup: SETUP,
 		connect: (onPermission) =>
 			AcpClient.connect("claude", agent, { onPermission }),
 		...over,
@@ -202,7 +208,9 @@ describe("BoardCopilot", () => {
 					env: [],
 				},
 			],
-			_meta: { systemPrompt: { append: CopilotInstructions.SYSTEM_PROMPT } },
+			_meta: {
+				systemPrompt: { append: CopilotInstructions.systemPrompt(SETUP) },
+			},
 		});
 		copilot.close();
 	});
@@ -229,7 +237,9 @@ describe("BoardCopilot", () => {
 		);
 		await collect(copilot.run("now split the first one", context()));
 
-		expect(textOf(seen.prompts[0], 0)).toBe(CopilotInstructions.SYSTEM_PROMPT);
+		expect(textOf(seen.prompts[0], 0)).toBe(
+			CopilotInstructions.systemPrompt(SETUP),
+		);
 		const firstContext = textOf(seen.prompts[0], 1);
 		expect(firstContext).toContain("scope: jake://scope/cabane");
 		expect(firstContext).toContain("selected: JCAB-33 · Sweep the backlog");
@@ -493,7 +503,9 @@ describe("BoardCopilot", () => {
 		const updates = await collect(copilot.run("go", context()));
 		expect(updates).toHaveLength(1);
 		expect(updates[0]?.type).toBe("error");
-		expect(updates[0]?.summary).toBe("npx: command not found");
+		expect(updates[0]?.summary).toBe(
+			"npx: command not found · another harness: copilot.harness in /home/me/.kabane/config.json, or kabane board --copilot <harness>",
+		);
 		copilot.close();
 	});
 
@@ -510,6 +522,7 @@ describe("BoardCopilot", () => {
 			"check-plan",
 			"linear",
 			"github",
+			"setup",
 			"setup-dispatch",
 		]);
 		for (const shortcut of copilot.shortcuts()) {
