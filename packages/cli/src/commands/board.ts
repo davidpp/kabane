@@ -17,6 +17,7 @@ import {
 	type ParsedArgs,
 	success,
 } from "@cabane/extension";
+import { configPath } from "../config";
 import { type Command, type Ctx, resolveScope } from "../context";
 import { Extensions } from "../extensions";
 
@@ -131,6 +132,10 @@ export const boardDeps = async (
 			scopeDir: scope?.root ?? ctx.cwd,
 			...(scope ? { scopeUri: scope.scopeUri } : {}),
 			...(overrides ? { overrides } : {}),
+			setup: {
+				configPath: configPath(ctx.home),
+				extensions: Extensions.names,
+			},
 		}),
 	};
 };

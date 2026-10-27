@@ -21,7 +21,7 @@ export namespace Brief {
 			`You are one implementing session of kabane loop run ${runId}, which drives the subtasks of ${label(parent)} ("${parent.title}") to completion. Other sessions may be working on sibling subtasks in the same repository at the same time.`,
 			`Your subtask is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
 			`Use the kabane MCP tools for tracker state: kabane_log for what you changed (commits, files), kabane_comment for decisions and blockers. When the subtask is implemented and you have verified it, call kabane_done on ${label(task)}. That is how the run knows you are finished; ending your turn without it means the subtask is still open.`,
-			`If you find work outside your subtask, add it with kabane_add as a child of ${label(parent)} and link it with kabane_link instead of doing it. If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. The task stays parked until explicitly moved to state "next"; resolving a dependency alone does not unpark it.`,
+			`If you find work outside your subtask, add it with kabane_add as a child of ${label(parent)} with kind "issue", so the run can claim it, and link it with kabane_link instead of doing it. If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. The task stays parked until explicitly moved to state "next"; resolving a dependency alone does not unpark it.`,
 			"Finish each turn with at most three lines saying what you did.",
 		].join("\n\n");
 

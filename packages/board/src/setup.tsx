@@ -125,6 +125,10 @@ export const nextLines = (harness: string, shortId: string): string[] => [
 	`watch ${shortId} move on the board.`,
 ];
 
+/** Where the rest of the config is changed, so no one has to learn its JSON keys first. */
+const LATER_LINE =
+	"later: /setup in the copilot picks its harness or turns on the loop";
+
 /**
  * The welcome's wordmark, in opencode's block-glyph manner: each letter four cells of `█▀▄` over
  * three rows, and a row above for the `k`'s and the `b`'s ascenders. Three marks are not drawn as
@@ -330,6 +334,7 @@ export const SetupScreen = ({
 					<>
 						<Panel first>
 							<SavedLine path={phase.configPath} />
+							<text fg={theme.muted}>{LATER_LINE}</text>
 							<box style={{ flexDirection: "column", marginTop: 1 }}>
 								{phase.outcomes.map((outcome) => (
 									<OutcomeRow

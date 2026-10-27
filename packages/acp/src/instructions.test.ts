@@ -17,6 +17,8 @@ const SKILL_FILES = [
 	"references/specialists.md",
 ];
 
+const SETUP = { configPath: "/sandbox/home/config.json", extensions: ["loop"] };
+
 describe("CopilotInstructions.SHORTCUTS", () => {
 	it("every name is unique — the `/` palette resolves on it", () => {
 		const names = CopilotInstructions.SHORTCUTS.map((s) => s.name);
@@ -27,6 +29,11 @@ describe("CopilotInstructions.SHORTCUTS", () => {
 		const names = CopilotInstructions.SHORTCUTS.map((s) => s.name);
 		expect(names).toContain("linear");
 		expect(names).toContain("github");
+	});
+
+	it("offers setup", () => {
+		const names = CopilotInstructions.SHORTCUTS.map((s) => s.name);
+		expect(names).toContain("setup");
 	});
 
 	it("offers setup-dispatch", () => {
@@ -50,18 +57,24 @@ describe("CopilotInstructions.SKILLS", () => {
 	});
 
 	it("rides along with the identity block in the one prompt harnesses are sent", () => {
-		expect(CopilotInstructions.SYSTEM_PROMPT).toContain(
-			CopilotInstructions.BLOCK,
-		);
-		expect(CopilotInstructions.SYSTEM_PROMPT).toContain(
-			CopilotInstructions.SKILLS,
-		);
+		const prompt = CopilotInstructions.systemPrompt(SETUP);
+		expect(prompt).toContain(CopilotInstructions.BLOCK);
+		expect(prompt).toContain(CopilotInstructions.SKILLS);
+	});
+
+	it("names the resolved config path and the extensions this build ships", () => {
+		const prompt = CopilotInstructions.systemPrompt(SETUP);
+		expect(prompt).toContain("/sandbox/home/config.json");
+		expect(prompt).toContain("This build ships: loop.");
+		expect(prompt).not.toContain("~/.kabane");
 	});
 });
 
 describe("CopilotInstructions setting up a dispatch skill", () => {
-	it("the block allows the one write and names where it lands", () => {
-		expect(CopilotInstructions.BLOCK).toContain(".claude/skills/dispatch/");
+	it("the block allows the procedures' writes and the skill names where it lands", () => {
+		expect(CopilotInstructions.BLOCK).toContain(
+			"you may write the files the procedures below name and nowhere else",
+		);
 		expect(CopilotInstructions.SKILLS).toContain(".claude/skills/dispatch/");
 	});
 

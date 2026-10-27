@@ -32,6 +32,8 @@ export namespace BoardCopilot {
 		// script, which is what `kabane board` is.
 		kabaneBin?: string;
 		overrides?: Harnesses.Overrides;
+		// This device's config, which the copilot is told it may edit when asked to set kabane up.
+		setup: CopilotInstructions.Setup;
 		// How the harness is reached. Defaults to spawning it; tests pass an in-process transport,
 		// and it is the seam for a connection opened elsewhere.
 		connect?: Connector;
@@ -142,6 +144,8 @@ export namespace BoardCopilot {
 
 		// Lazy on purpose: no harness process exists until the human actually asks for something,
 		// so opening the board costs nothing.
+		const instructions = CopilotInstructions.systemPrompt(options.setup);
+
 		const start = async (): Promise<Result<AcpClient.Session>> => {
 			if (session) return ok(session);
 			const opened = await connect(onPermission);
@@ -152,7 +156,7 @@ export namespace BoardCopilot {
 				// Honoured by the Claude adapter only. Every harness gets the same text as the first
 				// prompt below, because an adapter that ignores `_meta` would otherwise run with no
 				// instructions at all.
-				systemPromptAppend: CopilotInstructions.SYSTEM_PROMPT,
+				systemPromptAppend: instructions,
 			});
 			if (!started.ok) {
 				AcpClient.close(opened.value);
@@ -220,12 +224,15 @@ export namespace BoardCopilot {
 		): AsyncIterable<CopilotUpdate> {
 			const started = await start();
 			if (!started.ok) {
-				yield update("error", started.error.message);
+				// The copilot cannot fix its own harness, so the way out is spelled here.
+				yield update(
+					"error",
+					`${started.error.message} · another harness: copilot.harness in ${options.setup.configPath}, or kabane board --copilot <harness>`,
+				);
 				return;
 			}
 			const blocks: AcpClient.PromptBlock[] = [];
-			if (!instructed)
-				blocks.push({ type: "text", text: CopilotInstructions.SYSTEM_PROMPT });
+			if (!instructed) blocks.push({ type: "text", text: instructions });
 			blocks.push({ type: "text", text: BoardContext.render(context) });
 			blocks.push({ type: "text", text: prompt });
 			const titles = new Map<string, string>();

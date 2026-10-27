@@ -3,11 +3,12 @@
 // tool loop is deliberately NOT restated here — the kabane MCP server sends SERVER_INSTRUCTIONS on
 // initialize, and a second description of one loop is a second thing to keep in sync.
 //
-// BLOCK is who the copilot is; SKILLS is a procedure it cannot infer. They are separate constants
-// joined into one SYSTEM_PROMPT, because a skill is the kind of text that grows and growing it
-// should not dilute the identity paragraph.
+// BLOCK is who the copilot is; SKILLS is a procedure it cannot infer; setup is the one procedure
+// that needs this device's config path. They are joined by systemPrompt, because a skill is the
+// kind of text that grows and growing it should not dilute the identity paragraph.
 import { fileURLToPath } from "node:url";
 import type { CopilotShortcut } from "@cabane/board/ports";
+import { Harnesses } from "./harnesses";
 
 export namespace CopilotInstructions {
 	// The actor every write of this session is stamped with. `authorTypeOf` in the MCP tools reads
@@ -17,7 +18,7 @@ export namespace CopilotInstructions {
 
 	export const BLOCK = `You are the issue-management copilot inside a kabane board. A human is looking at a kanban of issues and talking to you about what is on their screen. Your job is the tracker itself — triage, refinement, splitting, linking, re-parenting, sanity-checking a plan — not the code the issues describe.
 
-Write tracker state only through the kabane_* MCP tools, never by editing files: the board reads the same database and reloads as each of your writes lands. The one exception is a project's dispatch skill: asked to set one up, you may write under .claude/skills/dispatch/ in the project root and nowhere else, as the procedure below describes. The kabane server's own instructions, which you were given when you connected, describe the tool loop; follow them, and read kabane_context on an issue before you change it.
+Write tracker state only through the kabane_* MCP tools, never by editing files: the board reads the same database and reloads as each of your writes lands. The exceptions are a project's dispatch skill and kabane's own settings: asked to set either up, you may write the files the procedures below name and nowhere else. The kabane server's own instructions, which you were given when you connected, describe the tool loop; follow them, and read kabane_context on an issue before you change it.
 
 Prefer small, explained changes to sweeping ones. Keep ids and titles stable unless you are asked to change them. When you are unsure whether a change is wanted, leave a comment on the issue instead of editing it.
 
@@ -56,10 +57,33 @@ Write only under .claude/skills/dispatch/ in the project root: the rest of the p
 
 Finish by recording what you generated: a kabane_comment on the selected issue, or a kabane_add in this scope when nothing is selected, naming the files written, the gate commands and agents the skill uses, and any placeholder you had to fall back on.`;
 
+	/** What the setup procedure writes into: this device's config, and what this build can turn on. */
+	export type Setup = {
+		/** The resolved `KABANE_HOME/config.json`, never assumed to be `~/.kabane`. */
+		configPath: string;
+		/** The official extensions this build ships, by the name `extensions` takes. */
+		extensions: readonly string[];
+	};
+
+	// Without this the only way to pick the copilot's harness or turn on an extension is to know the
+	// JSON keys. The harness's own config is the human's, so it stays out of what may be written.
+	export const setup = ({ configPath, extensions }: Setup): string =>
+		`SETTING UP KABANE ON THIS MACHINE. Kabane's settings for this device are in ${configPath}. Asked to set kabane up, change the copilot's harness or model, or turn an extension on or off, read that file and change only these keys:
+- copilot.harness: ${Harnesses.IDS.join(", ")}, the harness this board's copilot talks to. It has to be installed and logged in on this machine.
+- copilot.model: a model name that harness accepts (Claude takes sonnet, opus or haiku). Remove the key to go back to the default.
+- copilot.command and copilot.args: only when the human runs the harness from somewhere else, such as a local build or a wrapper. Ask for the command; never guess one.
+- extensions: the official extensions turned on, as a list of names. This build ships: ${extensions.join(", ")}. The loop drives a parent issue's subtasks through agent sessions; with it on, \`a\` on an issue starts a run.
+Leave actor, deviceId, sync and db as they are: they are this device's identity and storage, and a wrong value loses or forks the tracker.
+
+A loop run's settings for this project go in .kabane/loop.json at the project root. The run form shows most of them; gates, which are named shell commands such as {"gates": {"test": "bun test"}}, are set only in that file. Take the gate commands from what the project's CLAUDE.md or AGENTS.md says its gate is.
+
+Never edit a harness's own configuration (Claude Code, Codex or Gemini settings, permission modes, MCP entries): the human set those up and kabane does not override them. Show each file as it will read after the change and write nothing without an explicit yes. A changed config.json takes effect the next time the board opens; say so when you finish.`;
+
 	// What every harness is actually given. Both of the places that send instructions — the session's
 	// systemPromptAppend and the first prompt's opening block — send this, so a harness that honours
 	// only one of the two still gets the whole thing.
-	export const SYSTEM_PROMPT = `${BLOCK}\n\n${SKILLS}`;
+	export const systemPrompt = (config: Setup): string =>
+		`${BLOCK}\n\n${SKILLS}\n\n${setup(config)}`;
 
 	// The `/name` expansions the prompt window offers. `template` is dropped into the input line for
 	// the human to read and edit before they send it, so each one is a single line of plain prose,
@@ -118,6 +142,12 @@ Finish by recording what you generated: a kabane_comment on the selected issue, 
 		},
 		// The one shortcut that writes a file, which is why the skill text carries its limits and this
 		// line only names the job.
+		{
+			name: "setup",
+			hint: "copilot harness, model, extensions",
+			template:
+				"Set kabane up on this machine: ask which harness and model the copilot should run and which extensions to turn on, then update kabane's config.json.",
+		},
 		{
 			name: "setup-dispatch",
 			hint: "write this project's dispatch skill",
