@@ -114,7 +114,6 @@ describe("Loop.start refusals", () => {
 				implementer: "claude",
 				budget: {
 					concurrency: 1,
-					wallMinutes: 1,
 					continuations: 0,
 					currency: "USD",
 				},

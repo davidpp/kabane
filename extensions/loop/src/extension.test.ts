@@ -43,6 +43,14 @@ describe("kabane loop start", () => {
 		);
 	});
 
+	it("refuses the removed wall-time flag", async () => {
+		const refused = await kabaneLoop("start", "K-1", "--wall-minutes", "120");
+		expect(refused.exitCode).toBe(2);
+		expect(refused.text).toStartWith(
+			"Error: Unknown loop start flag: --wall-minutes\n",
+		);
+	});
+
 	it("takes its own flags and the ones every command takes", async () => {
 		const started = await kabaneLoop(
 			"start",

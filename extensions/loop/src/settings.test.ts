@@ -16,7 +16,6 @@ describe("LoopSettings.inputs", () => {
 			"model",
 			"verifier",
 			"budget.concurrency",
-			"budget.wallMinutes",
 			"budget.continuations",
 			"budget.spend",
 			"stallAfter",
@@ -64,18 +63,18 @@ describe("LoopSettings.inputs", () => {
 
 	it("a configured value that is not among the steps joins them, in order", () => {
 		const inputs = LoopSettings.inputs(
-			config({ model: "claude-opus-4", budget: { wallMinutes: 90 } }),
+			config({ model: "claude-opus-4", budget: { continuations: 4 } }),
 		);
 		expect(inputs.model?.default).toBe("claude-opus-4");
 		expect(inputs.model?.options).toContain("claude-opus-4");
-		expect(inputs["budget.wallMinutes"]?.options).toEqual([
-			"15",
-			"30",
-			"60",
-			"90",
-			"120",
-			"240",
-			"480",
+		expect(inputs["budget.continuations"]?.options).toEqual([
+			"0",
+			"1",
+			"2",
+			"3",
+			"4",
+			"5",
+			"10",
 		]);
 	});
 });
@@ -101,7 +100,6 @@ describe("LoopSettings.overrides", () => {
 				model: undefined,
 				budget: {
 					concurrency: 3,
-					wallMinutes: 120,
 					continuations: 3,
 					spend: undefined,
 				},

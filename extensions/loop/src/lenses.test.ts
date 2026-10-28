@@ -188,7 +188,6 @@ describe("Runner lenses", () => {
 		const config = LoopConfig.Schema.safeParse({
 			gates: { ok: "true" },
 			lenses: ["functional"],
-			budget: { wallMinutes: 5 },
 		});
 		if (!config.success) throw config.error;
 		const created = RunStore.create(home, {

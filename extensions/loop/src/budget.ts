@@ -1,4 +1,4 @@
-// Budget accounting. Pure: the runner feeds it usage and the clock and acts on the verdict.
+// Budget accounting. Pure: the runner feeds it usage and acts on the verdict.
 //
 // ACP reports context occupancy (`used` of `size` tokens in the window now), not a running token
 // count, so the meter shows occupancy and no token budget is enforced. Cost, where a harness
@@ -59,24 +59,13 @@ export namespace Budget {
 
 	export type Verdict =
 		| { ok: true }
-		| { ok: false; reason: "wall-time" | "spend"; detail: string };
+		| { ok: false; reason: "spend"; detail: string };
 
-	/**
-	 * Whether the run may go on after `elapsedMs` of wall time: wall time always, spend once a
-	 * harness has priced something.
-	 */
+	/** Whether reported spend has reached the optional spend limit. */
 	export const check = (
 		budget: LoopConfig.Config["budget"],
 		meter: Meter,
-		elapsedMs: number,
 	): Verdict => {
-		const wallMs = budget.wallMinutes * 60_000;
-		if (elapsedMs >= wallMs)
-			return {
-				ok: false,
-				reason: "wall-time",
-				detail: `${budget.wallMinutes} min wall-time budget reached`,
-			};
 		if (budget.spend !== undefined) {
 			const { amount } = spent(meter, budget.currency);
 			if (amount >= budget.spend)

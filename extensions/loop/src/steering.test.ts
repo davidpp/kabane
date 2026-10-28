@@ -49,7 +49,7 @@ const runOn = (
 	extra: Partial<RunStore.Run> = {},
 ): RunStore.Run => {
 	const config = LoopConfig.Schema.safeParse({
-		budget: { concurrency: 1, wallMinutes: 5 },
+		budget: { concurrency: 1 },
 	});
 	if (!config.success) throw config.error;
 	const run: RunStore.Run = {

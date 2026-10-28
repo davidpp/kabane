@@ -16,11 +16,6 @@ export namespace LoopConfig {
 	export const BudgetSchema = z.object({
 		/** Sessions running at once. */
 		concurrency: z.number().int().min(1).max(8).default(2),
-		/**
-		 * The run halts once a runner has driven it for this much wall time, paused time included;
-		 * the time between a runner dying and the run's resume does not count.
-		 */
-		wallMinutes: z.number().positive().default(120),
 		/** Automatic nudges across the run for turns ending with active-owned issue work. */
 		continuations: z.number().int().min(0).default(3),
 		/**
@@ -82,6 +77,16 @@ export namespace LoopConfig {
 		budget: BudgetSchema.strict().default({}),
 	}).strict();
 
+	// Existing repo files may still contain the retired timer; it is not a runtime setting.
+	const FileSchema = StrictSchema.extend({
+		budget: BudgetSchema.extend({
+			wallMinutes: z.number().positive().optional(),
+		})
+			.strict()
+			.transform(({ wallMinutes: _wallMinutes, ...budget }) => budget)
+			.default({}),
+	});
+
 	const ObjectSchema = z.record(z.unknown());
 
 	// Two objects merge key by key; anything else is the override as given, for the schema to
@@ -137,7 +142,7 @@ export namespace LoopConfig {
 	): Result<Config> => {
 		const file = readFile(repoDir);
 		if (!file.ok) return file;
-		const alone = StrictSchema.safeParse(file.value);
+		const alone = FileSchema.safeParse(file.value);
 		if (!alone.success)
 			return err(
 				new Error(
@@ -147,7 +152,7 @@ export namespace LoopConfig {
 		const merged = {
 			...file.value,
 			...overrides,
-			budget: merge(file.value.budget, overrides.budget),
+			budget: merge(alone.data.budget, overrides.budget),
 			gates: merge(file.value.gates, overrides.gates),
 		};
 		const parsed = StrictSchema.safeParse(merged);

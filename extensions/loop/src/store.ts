@@ -97,13 +97,6 @@ export namespace RunStore {
 		createdAt: z.string(),
 		startedAt: z.string().optional(),
 		endedAt: z.string().optional(),
-		/**
-		 * Wall time spent with a runner driving the run, as of `at`: what the wall-time budget
-		 * holds it to. Its runner saves it as it goes, so a run resumed after its runner died
-		 * is not charged for the hours nobody ran it. Paused time counts: a runner is alive
-		 * through it.
-		 */
-		clock: z.object({ spentMs: z.number().min(0), at: z.string() }).optional(),
 		claims: z.array(ClaimSchema).default([]),
 		usage: Budget.MeterSchema.default({}),
 		continuationsUsed: z.number().int().min(0).default(0),
@@ -131,22 +124,6 @@ export namespace RunStore {
 	/** The checkpoints committed in the run's worktree, oldest first. */
 	export const checkpoints = (run: Run): string[] =>
 		run.gateRuns.flatMap((g) => (g.checkpoint ? [g.checkpoint] : []));
-
-	/**
-	 * Wall time the run has spent as of `now`: its clock, plus the time since the clock was saved
-	 * while a runner is still counting. A run from before the clock counts from its start.
-	 */
-	export const wallMs = (run: Run, now: Date): number => {
-		if (run.clock === undefined) {
-			const from = Date.parse(run.startedAt ?? run.createdAt);
-			const to = run.endedAt ? Date.parse(run.endedAt) : now.getTime();
-			return Math.max(0, to - from);
-		}
-		const since = isLive(run.status)
-			? now.getTime() - Date.parse(run.clock.at)
-			: 0;
-		return run.clock.spentMs + Math.max(0, since);
-	};
 
 	/**
 	 * Where the run's sessions and gates work: the project's folder in the run's worktree when it
