@@ -21,7 +21,7 @@ import { LoopDispatcher } from "./dispatcher";
 import { LoopHeader } from "./header";
 import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--wall-minutes <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree] [--lens <name>]... [--verifier claude|codex|gemini]
+const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree] [--lens <name>]... [--verifier claude|codex|gemini]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
@@ -68,7 +68,6 @@ const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 	const budget = Object.fromEntries(
 		[
 			["concurrency", number(args, "concurrency")],
-			["wallMinutes", number(args, "wall-minutes")],
 			["continuations", number(args, "continuations")],
 			["spend", number(args, "spend")],
 		].filter(([, value]) => value !== undefined),
@@ -168,7 +167,6 @@ const START_FLAGS: ReadonlySet<string> = new Set([
 	"implementer",
 	"model",
 	"concurrency",
-	"wall-minutes",
 	"continuations",
 	"spend",
 	"gate",

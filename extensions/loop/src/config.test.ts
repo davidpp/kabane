@@ -24,7 +24,6 @@ describe("LoopConfig.resolve", () => {
 			implementer: "claude",
 			budget: {
 				concurrency: 2,
-				wallMinutes: 120,
 				continuations: 3,
 				currency: "USD",
 			},
@@ -39,12 +38,12 @@ describe("LoopConfig.resolve", () => {
 		writeRepoFile(
 			JSON.stringify({
 				implementer: "codex",
-				budget: { concurrency: 4, wallMinutes: 30 },
+				budget: { concurrency: 4, continuations: 2 },
 				gates: { test: "bun test" },
 			}),
 		);
 		const config = LoopConfig.resolve(repo, {
-			budget: { wallMinutes: 5 },
+			budget: { continuations: 5 },
 			stallAfter: 2,
 			gates: { lint: "bun run check" },
 		});
@@ -53,8 +52,7 @@ describe("LoopConfig.resolve", () => {
 		expect(config.value.implementer).toBe("codex");
 		expect(config.value.budget).toEqual({
 			concurrency: 4,
-			wallMinutes: 5,
-			continuations: 3,
+			continuations: 5,
 			currency: "USD",
 		});
 		expect(config.value.stallAfter).toBe(2);
@@ -62,6 +60,29 @@ describe("LoopConfig.resolve", () => {
 			test: "bun test",
 			lint: "bun run check",
 		});
+	});
+
+	it("drops the retired timer from existing files and saved configs, but refuses new overrides", () => {
+		const legacy = { budget: { concurrency: 4, wallMinutes: 120 } };
+		writeRepoFile(JSON.stringify(legacy));
+		const resolved = LoopConfig.resolve(repo);
+		expect(resolved.ok).toBe(true);
+		if (resolved.ok) {
+			expect(resolved.value.budget.concurrency).toBe(4);
+			expect(resolved.value.budget).not.toHaveProperty("wallMinutes");
+		}
+		const saved = LoopConfig.Schema.safeParse(legacy);
+		expect(saved.success).toBe(true);
+		if (saved.success)
+			expect(saved.data.budget).not.toHaveProperty("wallMinutes");
+		const overridden = LoopConfig.resolve(repo, {
+			budget: { wallMinutes: 30 },
+		});
+		expect(overridden.ok).toBe(false);
+		if (!overridden.ok)
+			expect(overridden.error.message).toContain(
+				"budget.wallMinutes: not a loop setting",
+			);
 	});
 
 	it("names the repo file when it is not JSON or the result is invalid", () => {

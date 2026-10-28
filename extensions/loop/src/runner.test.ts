@@ -3,7 +3,7 @@
 // at no harness.
 import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner, type Task } from "@cabane/core";
@@ -45,7 +45,7 @@ const orphaned = async (
 ): Promise<RunStore.Run> => {
 	const parent = await add(`parent of ${id}`);
 	await add("child", parent.id);
-	const config = LoopConfig.Schema.safeParse({ budget: { wallMinutes: 5 } });
+	const config = LoopConfig.Schema.safeParse({});
 	if (!config.success) throw config.error;
 	const run: RunStore.Run = {
 		version: 1,
@@ -98,17 +98,25 @@ const resumeUntilWaiting = async (id: string): Promise<RunStore.Run> => {
 };
 
 describe("Runner resume", () => {
-	it("charges the wall-time budget for the time a runner drove the run, not the hours it lay dead", async () => {
-		await orphaned("run-1", {
-			clock: {
-				spentMs: 60_000,
-				at: new Date(Date.now() - 3 * HOUR).toISOString(),
-			},
-		});
+	it("keeps running beyond the former two-hour deadline until explicitly stopped", async () => {
+		const legacy = await orphaned("run-1");
+		writeFileSync(
+			RunStore.paths(home, legacy.id).run,
+			JSON.stringify({
+				...legacy,
+				config: {
+					...legacy.config,
+					budget: { ...legacy.config.budget, wallMinutes: 120 },
+				},
+				clock: { spentMs: 3 * HOUR, at: legacy.startedAt },
+			}),
+		);
 		const ended = await resumeUntilWaiting("run-1");
 		expect(ended.exit?.reason).toBe("stop-requested");
-		expect(ended.clock?.spentMs).toBeGreaterThanOrEqual(60_000);
-		expect(ended.clock?.spentMs).toBeLessThan(120_000);
+		const events = RunStore.readEvents(home, "run-1");
+		expect(events.ok && events.value.some((e) => e.type === "waiting")).toBe(
+			true,
+		);
 	});
 
 	it("refuses to resume while another live run has its parent", async () => {
@@ -127,13 +135,5 @@ describe("Runner resume", () => {
 		);
 		const untouched = RunStore.readRaw(home, "run-1");
 		expect(untouched.ok && untouched.value.pid).toBe(dead.pid);
-	});
-
-	it("still halts once the time it was driven reaches the budget", async () => {
-		await orphaned("run-1", {
-			clock: { spentMs: 5 * 60_000, at: new Date().toISOString() },
-		});
-		const ended = await Runner.run("run-1", deps());
-		expect(ended.ok && ended.value.exit?.reason).toBe("budget:wall-time");
 	});
 });

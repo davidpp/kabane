@@ -54,11 +54,6 @@ export namespace LoopSettings {
 			group: "Limits",
 			options: range(1, 8),
 		},
-		"budget.wallMinutes": {
-			label: "wall time (min)",
-			group: "Limits",
-			options: [15, 30, 60, 120, 240, 480],
-		},
 		"budget.continuations": {
 			label: "continuations",
 			group: "Limits",

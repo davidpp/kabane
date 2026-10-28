@@ -93,8 +93,8 @@ answered from the board, a finding filed. Mocked transcripts do not count.
      - A run that stops while a request waits sends it back to ACP as `cancelled`,
        unanswered.
      - Other claims keep running meanwhile.
-     - The wait spends wall time, which is the user's budget. It never counts toward the stall
-       count, which counts automatic attempts, not time or intentional parking.
+     - Waiting never counts toward the stall count, which counts automatic attempts, not time
+       or intentional parking.
    - **Folder:** `run.json` records `projectDir`, the directory the loop was started from.
      `start` refuses when that directory's detected scope is not the issue's `scopeUri`, unless
      `--dir` is given. Sessions run in the run's worktree, else in `projectDir`.
@@ -112,9 +112,11 @@ answered from the board, a finding filed. Mocked transcripts do not count.
      reset by parking. Explicitly set `next` to resume; closing a dependency does not unpark it.
      Exhausting nudges alone does not establish a blocker or complete the issue. Normal automatic
      retries (including red gates) remain separate from the nudge budget.
-   - **Budgets:** wall time, concurrency and continuations are always enforced. Spend is enforced
-     when the harness reports `usage_update.cost`. ACP reports context occupancy, not cumulative
-     tokens, so the meter shows context use and does not enforce a token budget.
+   - **Limits:** concurrency and continuations are enforced. An optional spend limit is enforced
+     when the harness reports `usage_update.cost`. There is no wall-time deadline; runs continue
+     until completion, an explicit stop, or a health/limit stop. Legacy repo `budget.wallMinutes`
+     settings are ignored; the CLI flag and board control are removed. ACP reports context
+     occupancy, not cumulative tokens, so the meter shows context use, not a token budget.
    - **Health:** one stall detector (no gate or diff progress across N automatic attempts) plus
      dependency-graph deadlock detection.
    - **Steering inbox:** `inject` goes to the target session as a new prompt; `pause`, `skip` and

@@ -2,7 +2,7 @@
 // The loop tab's header: what the board draws above a run's stream, in place of its one-line title.
 // Three rows, in order of what matters: the run's state, its steps as a strip, its budgets as
 // meters. `e` adds the sessions and the plan. It shows only what the run has: the implement step,
-// the gates and the lenses (with what they found) when it has some, wall time, spend where a
+// the gates and the lenses (with what they found) when it has some, spend where a
 // harness priced its work, context occupancy (ACP reports occupancy, not a running token count)
 // and continuations.
 //
@@ -193,9 +193,8 @@ export namespace LoopHeader {
 	type Meter = { label: string; share: number; text: string };
 
 	/** Each budget the run is held to, and the context its sessions fill, as a share of its limit. */
-	export const meters = (run: RunStore.Run, now: Date): Meter[] => {
+	export const meters = (run: RunStore.Run): Meter[] => {
 		const { budget } = run.config;
-		const elapsed = RunStore.wallMs(run, now) / 60_000;
 		const spend = Budget.spent(run.usage, budget.currency);
 		const live = liveClaims(run).map((claim) => run.usage[claim.sessionId]);
 		const shown = (live.length > 0 ? live : Object.values(run.usage)).flatMap(
@@ -203,11 +202,6 @@ export namespace LoopHeader {
 		);
 		const context = Math.max(0, ...shown);
 		return [
-			{
-				label: "time",
-				share: elapsed / budget.wallMinutes,
-				text: `${Math.round(elapsed)}m/${budget.wallMinutes}m`,
-			},
 			...(budget.spend !== undefined
 				? [
 						{
@@ -483,7 +477,7 @@ export namespace LoopHeader {
 						},
 					]}
 				/>
-				<MeterRow meters={meters(run, now)} bg={bg} />
+				<MeterRow meters={meters(run)} bg={bg} />
 				{expanded ? <Sessions run={run} bg={bg} /> : null}
 				{expanded && plan ? <PlanRows plan={plan} run={run} bg={bg} /> : null}
 			</box>

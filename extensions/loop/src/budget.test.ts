@@ -8,8 +8,6 @@ const budget = (input: LoopConfig.Input["budget"] = {}) => {
 	return parsed.data.budget;
 };
 
-const minutes = (n: number) => n * 60_000;
-
 describe("Budget.record", () => {
 	it("replaces occupancy and keeps a session's last cost when an update has none", () => {
 		let meter = Budget.record({}, "s1", {
@@ -60,14 +58,6 @@ describe("Budget.spent", () => {
 });
 
 describe("Budget.check", () => {
-	it("halts on wall time", () => {
-		const b = budget({ wallMinutes: 30 });
-		expect(Budget.check(b, {}, minutes(29))).toEqual({ ok: true });
-		const over = Budget.check(b, {}, minutes(30));
-		expect(over.ok).toBe(false);
-		if (!over.ok) expect(over.reason).toBe("wall-time");
-	});
-
 	it("halts on spend only when a spend budget is set and a cost was reported", () => {
 		const priced = Budget.record({}, "a", {
 			used: 1,
@@ -75,16 +65,15 @@ describe("Budget.check", () => {
 			cost: { amount: 5, currency: "USD" },
 		});
 		const unpriced = Budget.record({}, "a", { used: 1, size: 1 });
-		const clock = minutes(1);
 
-		expect(Budget.check(budget(), priced, clock)).toEqual({ ok: true });
-		expect(Budget.check(budget({ spend: 10 }), priced, clock)).toEqual({
+		expect(Budget.check(budget(), priced)).toEqual({ ok: true });
+		expect(Budget.check(budget({ spend: 10 }), priced)).toEqual({
 			ok: true,
 		});
-		expect(Budget.check(budget({ spend: 5 }), unpriced, clock)).toEqual({
+		expect(Budget.check(budget({ spend: 5 }), unpriced)).toEqual({
 			ok: true,
 		});
-		const over = Budget.check(budget({ spend: 5 }), priced, clock);
+		const over = Budget.check(budget({ spend: 5 }), priced);
 		expect(over.ok).toBe(false);
 		if (!over.ok) expect(over.reason).toBe("spend");
 	});

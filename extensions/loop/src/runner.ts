@@ -1,5 +1,5 @@
 // The runner: the one process that drives a run, `kabane loop run <runId>`, detached from
-// whoever started it. Every tick it reads the inbox, checks the budget, re-reads the plan,
+// whoever started it. Every tick it reads the inbox, checks spend, re-reads the plan,
 // checks the stop predicate and claims ready subtasks into free slots; between ticks it waits
 // for a session to end or the next tick, whichever comes first. Every state change is written
 // to run.json before the next step, so a runner that dies can be started again on the same run:
@@ -29,8 +29,6 @@ export namespace Runner {
 	const CANCEL_GRACE_MS = 10_000;
 	// Consecutive failed plan reads before the run gives up rather than spinning.
 	const PLAN_FAILURES = 3;
-	// How often the run's clock is saved: a runner that dies loses at most this much of it.
-	const CLOCK_SAVE_MS = 30_000;
 
 	const plural = (count: number, noun: string): string =>
 		`${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -64,21 +62,7 @@ export namespace Runner {
 			};
 		});
 
-	// Wall time spent so far, with the clock saved once it is older than CLOCK_SAVE_MS.
-	const clock = (ctx: Ctx, force = false): number => {
-		const now = ctx.now();
-		const spentMs = RunStore.wallMs(ctx.run, now);
-		const at = ctx.run.clock ? Date.parse(ctx.run.clock.at) : 0;
-		if (force || now.getTime() - at >= CLOCK_SAVE_MS)
-			RunState.save(ctx, {
-				...ctx.run,
-				clock: { spentMs, at: now.toISOString() },
-			});
-		return spentMs;
-	};
-
 	const finish = (ctx: Ctx, exit: Exit): RunStore.Run => {
-		clock(ctx, true);
 		RunState.save(ctx, {
 			...ctx.run,
 			status: exit.status,
@@ -99,9 +83,15 @@ export namespace Runner {
 	const halt = async (ctx: Ctx, exit: Exit): Promise<RunStore.Run> => {
 		ctx.stopping.abort();
 		const pending = [...ctx.live.values()];
-		for (const { handle } of pending) await handle.cancel();
+		// Cancellation itself can stall on a harness: start every request inside the grace period.
+		const cancelling = Promise.allSettled(
+			pending.map(async ({ handle, settled }) => {
+				await handle.cancel();
+				await settled;
+			}),
+		);
 		const all = Promise.allSettled(pending.map((l) => l.settled));
-		await Promise.race([all, sleep(CANCEL_GRACE_MS)]);
+		await Promise.race([cancelling, sleep(CANCEL_GRACE_MS)]);
 		for (const { handle } of pending) handle.close();
 		await Promise.race([all, sleep(CANCEL_GRACE_MS)]);
 		await Claims.settleAll(ctx);
@@ -199,11 +189,7 @@ export namespace Runner {
 		readInbox(ctx);
 		if (ctx.stopRequested)
 			return { status: "stopped", reason: "stop-requested" };
-		const verdict = Budget.check(
-			ctx.run.config.budget,
-			ctx.run.usage,
-			clock(ctx),
-		);
+		const verdict = Budget.check(ctx.run.config.budget, ctx.run.usage);
 		if (!verdict.ok)
 			return {
 				status: "stopped",
@@ -362,8 +348,6 @@ export namespace Runner {
 			exit: undefined,
 			pid: ctx.deps.pid,
 			startedAt: ctx.run.startedAt ?? now,
-			// The clock goes on from what the last runner saved, not from when it died.
-			clock: { spentMs: ctx.run.clock?.spentMs ?? 0, at: now },
 		});
 		RunState.event(ctx, {
 			type: resumed ? "run_resume" : "run_start",

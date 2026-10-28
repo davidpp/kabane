@@ -71,7 +71,6 @@ const runOn = async (
 	const config = LoopConfig.Schema.safeParse({
 		gates,
 		worktree,
-		budget: { wallMinutes: 5 },
 	});
 	if (!config.success) throw config.error;
 	const run: RunStore.Run = {

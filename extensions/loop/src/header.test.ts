@@ -55,33 +55,16 @@ const run = (
 };
 
 describe("LoopHeader.meters", () => {
-	it("time against the wall budget, context from the live sessions, continuations used", () => {
-		expect(LoopHeader.meters(run(), NOW)).toEqual([
-			{ label: "time", share: 0.25, text: "30m/120m" },
+	it("context from the live sessions and continuations used, without a time limit", () => {
+		expect(LoopHeader.meters(run())).toEqual([
 			{ label: "context", share: 0.25, text: "25%" },
 			{ label: "continuations", share: 1 / 3, text: "1/3" },
 		]);
 	});
 
 	it("spend only when the run has a spend budget, summed over every session", () => {
-		const [, spend] = LoopHeader.meters(run({}, { spend: 10 }), NOW);
+		const [spend] = LoopHeader.meters(run({}, { spend: 10 }));
 		expect(spend).toEqual({ label: "spend", share: 0.15, text: "1.50/10 USD" });
-	});
-
-	it("a finished run's time stops at its end", () => {
-		const [time] = LoopHeader.meters(
-			run({ status: "stopped", endedAt: "2026-10-10T12:12:00.000Z" }),
-			NOW,
-		);
-		expect(time?.text).toBe("12m/120m");
-	});
-
-	it("a resumed run's time is its clock: what its runners spent, not the time since it started", () => {
-		const clock = { spentMs: 10 * 60_000, at: "2026-10-10T12:25:00.000Z" };
-		const [live] = LoopHeader.meters(run({ clock }), NOW);
-		expect(live?.text).toBe("15m/120m");
-		const [over] = LoopHeader.meters(run({ clock, status: "failed" }), NOW);
-		expect(over?.text).toBe("10m/120m");
 	});
 });
 

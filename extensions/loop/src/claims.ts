@@ -141,7 +141,7 @@ export namespace Claims {
 			return true;
 		},
 		// Relayed to the human as a question on this claim's session; the loop never answers.
-		// Other claims run on meanwhile, and the wait spends wall time, never the stall count.
+		// Other claims run on meanwhile; waiting never advances the stall count.
 		permission: (request, signal) =>
 			Permission.relay(
 				{
