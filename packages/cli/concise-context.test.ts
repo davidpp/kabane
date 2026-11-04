@@ -39,7 +39,7 @@ describe("bounded context through actual CLI/stdio", () => {
 					}),
 				);
 				const tools = await client.listTools();
-				expect(tools.tools).toHaveLength(17);
+				expect(tools.tools).toHaveLength(19);
 				for (const field of ["responseFormat", "sections", "cursor"])
 					expect(
 						tools.tools.find((tool) => tool.name === "kabane_context")

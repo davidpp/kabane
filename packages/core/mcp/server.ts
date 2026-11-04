@@ -1,7 +1,8 @@
 /**
  * MCP server over the tool definitions.
  *
- * Two transports, one tool list. `serveStdio` blocks for a CLI process
+ * Two transports sharing core tools; the CLI can supply device-local tools.
+ * `serveStdio` blocks for a CLI process
  * (`kabane mcp`); `handleHttpRequest` is stateless Streamable HTTP for the hub:
  * a fresh server and transport per request, torn down after the response, so a
  * Durable Object never holds MCP session state and a request carries its own
@@ -99,17 +100,18 @@ export const createMcpServer = (
 	ctx: ToolContext,
 	info: McpServerInfo = {},
 	afterWrite?: AfterWrite,
+	toolDefs: readonly ToolDef[] = KABANE_TOOLS,
 ): Server => {
 	const server = new Server(
 		{ ...DEFAULT_INFO, ...info },
 		{ capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
 	);
-	const tools = KABANE_TOOLS.map(toSdkTool);
+	const tools = toolDefs.map(toSdkTool);
 
 	server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 
 	server.setRequestHandler(CallToolRequestSchema, async (request) => {
-		const tool = KABANE_TOOLS.find((t) => t.name === request.params.name);
+		const tool = toolDefs.find((t) => t.name === request.params.name);
 		if (!tool) {
 			return toCallResult(
 				err(new Error(`Unknown tool: ${request.params.name}`)),
@@ -132,8 +134,9 @@ export const createMcpServer = (
 export const serveStdio = async (
 	ctx: ToolContext,
 	info: McpServerInfo = {},
+	tools: readonly ToolDef[] = KABANE_TOOLS,
 ): Promise<void> => {
-	const server = createMcpServer(ctx, info);
+	const server = createMcpServer(ctx, info, undefined, tools);
 	const transport = new StdioServerTransport();
 	await server.connect(transport);
 	await new Promise<void>((resolve) => {

@@ -68,7 +68,7 @@ describe("concise actual entry points", () => {
 						}),
 					);
 					const discovery = await client.listTools();
-					expect(discovery.tools).toHaveLength(17);
+					expect(discovery.tools).toHaveLength(19);
 					for (const name of [
 						"kabane_list",
 						"kabane_search",

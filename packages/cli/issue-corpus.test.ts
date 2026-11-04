@@ -120,7 +120,7 @@ describe("retained issue corpus baseline", () => {
 					);
 					await client.connect(transport);
 					const discovery = await client.listTools();
-					expect(discovery.tools).toHaveLength(17);
+					expect(discovery.tools).toHaveLength(19);
 					let toolCalls = 0;
 					const call = async (name: string, args: Record<string, unknown>) => {
 						toolCalls++;

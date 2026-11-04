@@ -121,7 +121,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(result.instructions).toContain("kabane_scopeList");
 	});
 
-	it("lists the replicated-surface tools and no session tools", async () => {
+	it("lists replicated tools without session or local config tools", async () => {
 		const { body } = await rpc(HUMAN, "tools/list");
 		const names = (body.result as { tools: { name: string }[] }).tools.map(
 			(t) => t.name,
@@ -130,6 +130,12 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(names).toContain("kabane_context");
 		expect(names).toContain("kabane_scopeList");
 		expect(names.some((n) => n.toLowerCase().includes("session"))).toBe(false);
+		for (const name of ["kabane_configGet", "kabane_configSet"]) {
+			expect(names).not.toContain(name);
+			const rejected = await callTool(HUMAN, name, { key: "timezone" });
+			expect(rejected.isError).toBe(true);
+			expect(String(rejected.value)).toContain("Unknown tool");
+		}
 	});
 
 	it("requires a scope on writes at the hub", async () => {

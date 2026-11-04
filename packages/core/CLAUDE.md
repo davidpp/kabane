@@ -107,10 +107,12 @@ Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is
 
 ## MCP (`mcp/`)
 
-`KABANE_TOOLS` is the one tool list: name, description, zod input shape, `read` or
+`KABANE_TOOLS` is the shared tracker tool list: name, description, zod input shape, `read` or
 `write`, handler over `Planner` returning `Result`. Both servers build from it:
 `serveStdio` (the CLI's `kabane mcp`) and `handleHttpRequest` (the hub, stateless
-Streamable HTTP, fresh server per request). Only the replicated surface is exposed —
+Streamable HTTP, fresh server per request). The CLI adds device config tools from
+`packages/cli/src/config-tools.ts` to the stdio list; HTTP keeps only the shared
+replicated surface. The shared list exposes only replicated data —
 no session tools, because sessions do not sync and the hub would have nothing to
 answer with. A `ToolContext` carries `basePath`, the `actor`, an optional
 `defaultScope`, and `scopeRequired`: a device defaults scope from its directory, the
