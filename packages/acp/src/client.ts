@@ -22,6 +22,7 @@ import {
 	type SessionModeState,
 	type SessionUpdate,
 	type Stream,
+	type ToolCallContent,
 } from "@agentclientprotocol/sdk";
 import { err, ok, type Result, toError, tryCatch } from "@cabane/core";
 import { Harnesses } from "./harnesses";
@@ -31,19 +32,12 @@ export namespace AcpClient {
 	export type Update =
 		| { type: "text"; text: string }
 		| { type: "thought"; text: string }
-		| {
-				type: "tool_call";
-				id: string;
-				title: string;
-				kind?: string;
-				status?: string;
-		  }
-		| {
-				type: "tool_call_update";
-				id: string;
-				title?: string;
-				status?: string;
-		  }
+		// A tool call opening, then what changed about it. ACP sends only the fields that moved, and
+		// one it does send replaces the old value whole (`content` included): `ToolCalls.apply`
+		// folds them back into the call. `input` and `output` are the harness's raw arguments and
+		// result, in whatever shape it chose.
+		| ({ type: "tool_call"; id: string; title: string } & ToolFields)
+		| ({ type: "tool_call_update"; id: string; title?: string } & ToolFields)
 		| {
 				type: "plan";
 				entries: {
@@ -67,6 +61,20 @@ export namespace AcpClient {
 		| { type: "notice"; severity: string; text: string }
 		| { type: "stop"; reason: string }
 		| { type: "error"; message: string };
+
+	// What a tool call shows of itself: the text it returned, or a file it changed (`oldText` absent
+	// for a file it created). A terminal or an image has no text to show and is left out.
+	export type ToolContent =
+		| { type: "text"; text: string }
+		| { type: "diff"; path: string; oldText?: string; newText: string };
+
+	export type ToolFields = {
+		kind?: string;
+		status?: string;
+		content?: ToolContent[];
+		input?: unknown;
+		output?: unknown;
+	};
 
 	export type PromptBlock = { type: "text"; text: string };
 
@@ -1025,6 +1033,38 @@ export namespace AcpClient {
 		text: block.text,
 	});
 
+	// An empty `content` is kept: it is the harness clearing what the call showed, not saying nothing.
+	const toolContent = (content: ToolCallContent[]): ToolContent[] =>
+		content.flatMap((item): ToolContent[] => {
+			if (item.type === "diff")
+				return [
+					{
+						type: "diff",
+						path: item.path,
+						...(typeof item.oldText === "string"
+							? { oldText: item.oldText }
+							: {}),
+						newText: item.newText,
+					},
+				];
+			if (item.type === "content" && item.content.type === "text")
+				return [{ type: "text", text: item.content.text }];
+			return [];
+		});
+
+	const toolFields = (
+		update: Extract<
+			SessionUpdate,
+			{ sessionUpdate: "tool_call" | "tool_call_update" }
+		>,
+	): ToolFields => ({
+		...(update.kind ? { kind: update.kind } : {}),
+		...(update.status ? { status: update.status } : {}),
+		...(update.content ? { content: toolContent(update.content) } : {}),
+		...(update.rawInput !== undefined ? { input: update.rawInput } : {}),
+		...(update.rawOutput !== undefined ? { output: update.rawOutput } : {}),
+	});
+
 	export const toUpdate = (update: SessionUpdate): Update | null => {
 		switch (update.sessionUpdate) {
 			case "agent_message_chunk":
@@ -1040,15 +1080,14 @@ export namespace AcpClient {
 					type: "tool_call",
 					id: update.toolCallId,
 					title: update.title,
-					...(update.kind ? { kind: update.kind } : {}),
-					...(update.status ? { status: update.status } : {}),
+					...toolFields(update),
 				};
 			case "tool_call_update":
 				return {
 					type: "tool_call_update",
 					id: update.toolCallId,
 					...(update.title ? { title: update.title } : {}),
-					...(update.status ? { status: update.status } : {}),
+					...toolFields(update),
 				};
 			case "plan":
 				return {

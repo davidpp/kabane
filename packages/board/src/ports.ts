@@ -86,6 +86,21 @@ export type CardHeaderProps = {
 };
 export type CardHeader = (props: CardHeaderProps) => ReactNode;
 
+// One file a tool call changed, as the harness reported it: the whole text before (absent for a file
+// it created) and after. The board makes the patch.
+export type ActivityDiff = { path: string; oldText?: string; newText: string };
+
+// What a tool call was given and gave back, for its row opened. Text, already capped by the host:
+// the board shows the head of the input and the tail of the output, and never asks for more.
+export type ActivityToolDetail = {
+	// The harness's word for the call (ACP's `read`, `edit`, `search`, `execute`, `fetch`): a run
+	// of reads and searches folds into one row.
+	kind?: string;
+	input?: string;
+	output?: string;
+	diffs?: readonly ActivityDiff[];
+};
+
 export type ActivityEvent = {
 	seq: number;
 	at: string;
@@ -93,6 +108,12 @@ export type ActivityEvent = {
 	summary: string;
 	// Which of the card's `lanes` this event belongs to; absent, it shows under every lane.
 	lane?: string;
+	// The tool call this event belongs to, unique within its lane: a call and its end carry the same
+	// id and read as one row. Without one, an end pairs with the open call of the same summary.
+	callId?: string;
+	// The call as known when this event was written. A later event of the call replaces each field
+	// it carries.
+	detail?: ActivityToolDetail;
 };
 
 // The one event type the view draws as a rule rather than as a row: what was ASKED, which opens a

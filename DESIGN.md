@@ -295,7 +295,10 @@ against every glyph already here.
 | `○` | pending plan step | muted |
 | `✗` | failed | failed |
 | `?` | waiting on your answer | accent |
-| `⚙` `←` `▶` `·` `$` | transcript: tool call, tool result, phase, progress, cost | working, muted, working, muted, muted |
+| `⚙` `▶` `·` `$` | transcript: a tool call nothing said the end of, phase, progress, cost | muted, working, muted, muted |
+| spinner `✓` `✗` | transcript: a tool call running, ended, failed (its row recedes: a check is muted) | working, muted, failed |
+| `▸` `▾` | transcript: a run of reads and searches folded into one row, closed and open | muted |
+| `!` | transcript: a harness's notice; a warning in the accent, since the session is not running as asked | accent, failed, muted |
 
 ### Footer
 - **Style:** `{components.footer}`, one row padded to the full width so no content bleeds

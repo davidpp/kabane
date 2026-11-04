@@ -37,7 +37,7 @@ const SCROLL_RESERVED = 2;
 const CONTENT_INSET = 1;
 // Where prose stops however wide the pane: the terminal's own line, still a comfortable read, and as
 // wide as a code line is usually written. A narrower pane wraps inside it.
-const PROSE_MEASURE = 80;
+export const PROSE_MEASURE = 80;
 
 // The one-line status under the header for the task's first in-flight card:
 // `⠋ loop · implement · iteration 3 · $0.42` — the card's label then every detail line. When
@@ -170,7 +170,7 @@ export type DetailProps = {
 // Code, quotes and rules are set apart by a surface, never a line. OpenTUI draws a quote with a bar
 // down its left and a rule as a line, both refused by the No-Line Rule, and a code block with no
 // surface at all, so it read as prose.
-const blockOnSurface = (theme: Theme.Tokens): RenderNode => {
+export const blockOnSurface = (theme: Theme.Tokens): RenderNode => {
 	const render: RenderNode = (token, { defaultRender }) => {
 		switch (token.type) {
 			case "code":

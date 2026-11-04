@@ -12,3 +12,4 @@ export { BoardCopilot } from "./src/copilot";
 export { Harnesses } from "./src/harnesses";
 export { CopilotInstructions } from "./src/instructions";
 export { Stdio } from "./src/stdio";
+export { ToolCalls } from "./src/tool-calls";
