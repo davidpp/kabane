@@ -14,8 +14,10 @@ would find out.
 
 Severity:
 
-- **p1**: a promise is not kept, the main path errors, data is lost or corrupted, or a test
-  claims coverage it does not have. The work is not done until it is fixed.
+- **p1**: a promise is not kept (a constraint a brief states, such as "never write X" or
+  "validate every Y", is a promise too), the main path errors, data is lost, corrupted or
+  exposed to something that should not see it, or a test claims coverage it does not have. The
+  work is not done until it is fixed.
 - **p2**: an edge case or error path behaves badly, or a promise is kept only partly.
 - **p3**: something works but surprises a user: a confusing message, an inconsistent flag.
 

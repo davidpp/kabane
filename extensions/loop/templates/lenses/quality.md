@@ -14,8 +14,9 @@ repository's own rules and leaves the code easier to change, not harder.
 
 Severity:
 
-- **p1**: the change breaks a rule the repository states as non-negotiable, or hides a failure
-  a user will hit.
+- **p1**: the change breaks a rule the repository states as non-negotiable, hides a failure a
+  user will hit, or leaks a secret or credential (a token, a key, a password) to a log, an
+  output or a client that should not get it.
 - **p2**: it makes the code harder to change: duplication, a wrong abstraction, a misleading
   name, a missing test for new behaviour.
 - **p3**: a nit a reviewer would mention and not block on.
