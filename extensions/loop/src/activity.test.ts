@@ -72,7 +72,12 @@ describe("LoopActivity", () => {
 	});
 
 	it("reads the runs and their events off disk on every call", async () => {
-		const source = LoopActivity.source({ home, basePath: home, actor: ACTOR });
+		const source = LoopActivity.source({
+			home,
+			basePath: home,
+			actor: ACTOR,
+			kabaneBin: "/nonexistent/kabane",
+		});
 		expect(await source.load()).toEqual({ ok: true, value: [] });
 		RunStore.create(home, run({ status: "pending", exit: undefined }));
 		const log = RunStore.eventLog(home, "KAB-1-abc");
@@ -96,7 +101,12 @@ describe("LoopActivity", () => {
 	});
 
 	it("a dismissed run is not listed again, and a live one cannot be dismissed", async () => {
-		const source = LoopActivity.source({ home, basePath: home, actor: ACTOR });
+		const source = LoopActivity.source({
+			home,
+			basePath: home,
+			actor: ACTOR,
+			kabaneBin: "/nonexistent/kabane",
+		});
 		RunStore.create(home, run({ status: "running", pid: process.pid }));
 		const refused = await source.dismiss?.("KAB-1-abc");
 		expect(refused?.ok).toBe(false);
@@ -113,7 +123,12 @@ describe("LoopActivity", () => {
 	});
 
 	it("lists every live run, however many newer runs are over, and fills the rest with the newest", async () => {
-		const source = LoopActivity.source({ home, basePath: home, actor: ACTOR });
+		const source = LoopActivity.source({
+			home,
+			basePath: home,
+			actor: ACTOR,
+			kabaneBin: "/nonexistent/kabane",
+		});
 		RunStore.create(
 			home,
 			run({
@@ -138,7 +153,7 @@ describe("LoopActivity", () => {
 		expect(ids).not.toContain("over-12");
 	});
 
-	it("a live run offers stop, a message and steering; a finished one offers nothing", () => {
+	it("a live run offers stop, a message and steering; a finished one nothing but a restart once its runner died", () => {
 		const live = LoopActivity.card(run({ status: "running", exit: undefined }));
 		expect(live.actions?.map((a) => [a.id, a.key, a.label])).toEqual([
 			["stop", "x", "stop"],
@@ -156,6 +171,13 @@ describe("LoopActivity", () => {
 		);
 		expect(paused.actions?.find((a) => a.key === "p")?.id).toBe("resume");
 		expect(LoopActivity.card(run()).actions).toBeUndefined();
+		const dead = RunStore.effective(
+			run({ status: "running", exit: undefined, pid: 1 }),
+			() => false,
+		);
+		expect(
+			LoopActivity.card(dead).actions?.map((a) => [a.id, a.key, a.label]),
+		).toEqual([["restart", "r", "restart"]]);
 	});
 
 	it("a live run's message can reach the sessions still running, the newest first", () => {
@@ -187,7 +209,7 @@ describe("LoopActivity", () => {
 		});
 		RunStore.create(home, live);
 		const sent = await LoopActivity.act(
-			{ home, basePath: home },
+			{ home, basePath: home, kabaneBin: "/nonexistent/kabane" },
 			live.id,
 			"inject",
 			{
@@ -200,7 +222,7 @@ describe("LoopActivity", () => {
 			value: "message queued for claude:KAB-2#2",
 		});
 		const ended = await LoopActivity.act(
-			{ home, basePath: home },
+			{ home, basePath: home, kabaneBin: "/nonexistent/kabane" },
 			live.id,
 			"inject",
 			{
@@ -225,7 +247,7 @@ describe("LoopActivity", () => {
 		const live = run({ status: "running", exit: undefined, pid: process.pid });
 		RunStore.create(home, live);
 		const asked = await LoopActivity.act(
-			{ home, basePath: home },
+			{ home, basePath: home, kabaneBin: "/nonexistent/kabane" },
 			live.id,
 			"stop",
 			{},
@@ -237,7 +259,7 @@ describe("LoopActivity", () => {
 		]);
 		RunStore.write(home, run());
 		const over = await LoopActivity.act(
-			{ home, basePath: home },
+			{ home, basePath: home, kabaneBin: "/nonexistent/kabane" },
 			live.id,
 			"stop",
 			{},

@@ -25,7 +25,7 @@ const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|c
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
-       kabane loop pause|resume <runId>
+       kabane loop pause|resume <runId>      (resume also restarts a run whose runner died)
        kabane loop skip|next <subtask>
        kabane loop rollback <runId> <sha>
        kabane loop answer <questionId> <option>`;
@@ -113,6 +113,10 @@ const worktree = (run: RunStore.Run): string[] =>
 			]
 		: [];
 
+// A run whose runner died waits on a human to bring it back.
+const restart = (run: RunStore.Run): string[] =>
+	Loop.died(run) ? [`  restart: ${Loop.restartCommand(run.id)}`] : [];
+
 /** One run, its worktree, and the questions its sessions are waiting on a human for. */
 const statusOf = async (
 	deps: Pick<Loop.Deps, "home" | "basePath">,
@@ -126,6 +130,7 @@ const statusOf = async (
 		{ ...run.value, questions: waiting.value },
 		[
 			line(run.value),
+			...restart(run.value),
 			...worktree(run.value),
 			...waiting.value.map(question),
 		].join("\n"),
@@ -232,6 +237,17 @@ const pause =
 			: failure(asked.error);
 	};
 
+// `resume` unpauses a live run and restarts one whose runner died, detached as `start` runs it.
+const resume: Verb = async (args, deps, target) => {
+	const run = Loop.status(deps, target);
+	if (!run.ok || !Loop.died(run.value))
+		return pause("resume")(args, deps, target);
+	const restarted = await Loop.restart(deps, target);
+	return restarted.ok
+		? success(restarted.value, `restarted ${line(restarted.value)}`)
+		: failure(restarted.error);
+};
+
 const direct =
 	(kind: "skip" | "next"): Verb =>
 	async (_args, deps, target) => {
@@ -256,7 +272,7 @@ const VERBS: Record<string, { needs: string; run: Verb }> = {
 		run: async (_a, deps, id) => ran(await Loop.stop(deps, id)),
 	},
 	pause: { needs: "a run id", run: pause("pause") },
-	resume: { needs: "a run id", run: pause("resume") },
+	resume: { needs: "a run id", run: resume },
 	skip: { needs: "a subtask", run: direct("skip") },
 	next: { needs: "a subtask", run: direct("next") },
 	rollback: { needs: "a run id", run: rollback },
@@ -308,6 +324,7 @@ export const loop: Extension = {
 			home: ctx.home,
 			basePath: ctx.store,
 			actor: ctx.actor,
+			kabaneBin: kabaneBin(),
 		}),
 		dispatcher: LoopDispatcher.make({
 			home: ctx.home,

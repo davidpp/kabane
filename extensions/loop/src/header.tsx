@@ -19,6 +19,7 @@ import {
 import { TextAttributes } from "@opentui/core";
 import { type ReactNode, useEffect, useState } from "react";
 import { Budget } from "./budget";
+import { Loop } from "./commands";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
 import { RunStore } from "./store";
@@ -39,8 +40,11 @@ export namespace LoopHeader {
 
 	type Snapshot = { run: RunStore.Run; plan: LoopPlan.Plan | null };
 
+	// A claim left open by a runner that died holds no slot: nobody is working it.
 	const liveClaims = (run: RunStore.Run): RunStore.Claim[] =>
-		run.claims.filter((claim) => claim.endedAt === undefined);
+		RunStore.isLive(run.status)
+			? run.claims.filter((claim) => claim.endedAt === undefined)
+			: [];
 
 	const exitText = (run: RunStore.Run): string =>
 		run.exit
@@ -63,7 +67,11 @@ export namespace LoopHeader {
 					bold: true,
 				};
 			case "failed":
-				return { text: `✗ ${exitText(run)}`, tone: "failed", bold: true };
+				return {
+					text: `✗ ${exitText(run)}${Loop.died(run) ? " · r restarts" : ""}`,
+					tone: "failed",
+					bold: true,
+				};
 			case "pending":
 				return { text: "○ starting", tone: "muted", bold: true };
 			case "running":

@@ -1,6 +1,7 @@
 // The loop's entry points, as plain functions over explicit dependencies. The extension wires
 // them to `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer`; nothing here parses argv or reads the
-// environment for its own settings.
+// environment for its own settings. A run whose runner died is restarted (`restart`) where it
+// stopped, with its claims and its worktree.
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -90,6 +91,19 @@ export namespace Loop {
 		return text.ok ? text.value.slice(-LOG_TAIL).trim() : "";
 	};
 
+	/** Whether the run's runner died under it: what `restart` takes up again. */
+	export const died = (run: RunStore.Run): boolean =>
+		run.exit?.reason === "runner-died";
+
+	/** What a human runs to bring a run whose runner died back. */
+	export const restartCommand = (runId: string): string =>
+		`kabane loop resume ${runId}`;
+
+	const diedError = (run: RunStore.Run): Error =>
+		new Error(
+			`Run ${run.id}'s runner died: \`${restartCommand(run.id)}\` restarts it`,
+		);
+
 	const markFailed = (
 		home: string,
 		run: RunStore.Run,
@@ -103,9 +117,12 @@ export namespace Loop {
 			endedAt: new Date().toISOString(),
 		});
 
+	// What spawning a runner and waiting for it to boot take.
+	type SpawnDeps = Pick<StartDeps, "home" | "kabaneBin" | "runner" | "bootMs">;
+
 	/** Spawn the runner detached from this process, its output going to the run's log. */
 	const spawnRunner = (
-		deps: StartDeps,
+		deps: SpawnDeps,
 		run: RunStore.Run,
 	): Result<{ exited: () => number | null | undefined }> => {
 		const runId = run.id;
@@ -138,18 +155,24 @@ export namespace Loop {
 		return ok({ exited: () => exit });
 	};
 
+	// Until the runner reports, a pending run is pending and a restarted one still reads as its
+	// dead runner's. A restart whose runner exits before it reports is left as it was, dead and
+	// still restartable, rather than marked failed for good.
 	const awaitBoot = async (
-		deps: StartDeps,
+		deps: SpawnDeps,
 		run: RunStore.Run,
 		exited: () => number | null | undefined,
 	): Promise<Result<RunStore.Run>> => {
+		const booted = (now: RunStore.Run): boolean =>
+			now.status !== "pending" && !(died(now) && now.pid === run.pid);
 		const deadline = Date.now() + (deps.bootMs ?? BOOT_MS);
 		while (Date.now() < deadline) {
 			const now = RunStore.read(deps.home, run.id);
-			if (now.ok && now.value.status !== "pending") return now;
+			if (now.ok && booted(now.value)) return now;
 			if (exited() !== undefined) {
 				const detail = `the runner exited (${exited()}) before it started: ${logTail(deps.home, run.id)}`;
-				markFailed(deps.home, run, "runner-exited", detail);
+				if (run.status === "pending")
+					markFailed(deps.home, run, "runner-exited", detail);
 				return err(new Error(detail));
 			}
 			await sleep(POLL_MS);
@@ -157,6 +180,16 @@ export namespace Loop {
 		const detail = `the runner did not report within ${deps.bootMs ?? BOOT_MS} ms; see ${RunStore.paths(deps.home, run.id).log}`;
 		return err(new Error(detail));
 	};
+
+	const liveRunOn = (
+		runs: readonly RunStore.Run[],
+		parentId: string,
+		except?: string,
+	): RunStore.Run | undefined =>
+		runs.find(
+			(r) =>
+				r.id !== except && r.parentId === parentId && RunStore.isLive(r.status),
+		);
 
 	// The parent must have something for a run to do (open work, or checks to run on work that
 	// is done) and no live run already.
@@ -186,9 +219,7 @@ export namespace Loop {
 		}
 		const runs = RunStore.list(deps.home);
 		if (!runs.ok) return runs;
-		const active = runs.value.find(
-			(r) => r.parentId === plan.parent.id && RunStore.isLive(r.status),
-		);
+		const active = liveRunOn(runs.value, plan.parent.id);
 		return active
 			? err(new Error(`${short} already has a live loop run: ${active.id}`))
 			: ok(undefined);
@@ -350,6 +381,39 @@ export namespace Loop {
 			worktreePrefix: prefix.value,
 		};
 		return RunStore.write(deps.home, withDir);
+	};
+
+	/**
+	 * Start run `runId` again in a detached runner, after its runner died, and wait until the new
+	 * one reports: what `kabane loop resume` does to such a run. The runner (`Runner.run`) closes
+	 * the claims the dead one left open, releases their subtasks and goes on where it stopped.
+	 * Refused for any other run, and while another run on the same parent is live.
+	 */
+	export const restart = async (
+		deps: SpawnDeps,
+		runId: string,
+	): Promise<Result<RunStore.Run>> => {
+		const read = RunStore.read(deps.home, runId);
+		if (!read.ok) return read;
+		const dead = read.value;
+		if (!died(dead))
+			return err(
+				new Error(
+					`Run ${runId} is ${dead.status}: only a run whose runner died restarts`,
+				),
+			);
+		const runs = RunStore.list(deps.home);
+		if (!runs.ok) return runs;
+		const rival = liveRunOn(runs.value, dead.parentId, runId);
+		if (rival)
+			return err(
+				new Error(
+					`Run ${runId} cannot restart: ${dead.parentShortId} already has a live loop run, ${rival.id}; stop it first`,
+				),
+			);
+		const spawned = spawnRunner(deps, dead);
+		if (!spawned.ok) return spawned;
+		return awaitBoot(deps, dead, spawned.value.exited);
 	};
 
 	export type RunDeps = Deps & {
@@ -537,9 +601,12 @@ export namespace Loop {
 	const liveRun = (home: string, runId: string): Result<RunStore.Run> => {
 		const run = RunStore.read(home, runId);
 		if (!run.ok) return run;
-		return RunStore.isLive(run.value.status)
-			? run
-			: err(new Error(`Run ${runId} is ${run.value.status}`));
+		if (RunStore.isLive(run.value.status)) return run;
+		return err(
+			died(run.value)
+				? diedError(run.value)
+				: new Error(`Run ${runId} is ${run.value.status}`),
+		);
 	};
 
 	/** Stop or restart claiming on a live run; sessions already running finish either way. */
