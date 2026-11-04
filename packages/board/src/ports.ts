@@ -101,11 +101,18 @@ export type ActivityToolDetail = {
 	diffs?: readonly ActivityDiff[];
 };
 
+// How much a notice matters: the event view draws a warning in the accent and an error in the
+// failed hue, and information muted.
+export type NoticeSeverity = "info" | "warning" | "error";
+
 export type ActivityEvent = {
 	seq: number;
 	at: string;
 	type: string;
 	summary: string;
+	// A `notice` event's severity. Absent, a notice written as `<severity>: <text>` is read by its
+	// prefix, which is how the loop's runs on disk carry it.
+	severity?: NoticeSeverity;
 	// Which of the card's `lanes` this event belongs to; absent, it shows under every lane.
 	lane?: string;
 	// The tool call this event belongs to, unique within its lane: a call and its end carry the same
@@ -217,14 +224,15 @@ export type PlanEntryStatus = "pending" | "in_progress" | "completed";
 export type PlanEntry = { content: string; status: PlanEntryStatus };
 
 // The step kinds that advance a turn, each carrying the line the transcript shows: `text` is the
-// agent's prose, `thought` its reasoning, the tool pair its writes (a `tool_result` is what the
-// board reloads on), `mode` the harness mode that decides what the session asks, `error` and `done`
-// end the turn.
+// agent's prose, `thought` its reasoning, `tool_call` a tool call opening and `tool_result` or
+// `tool_failed` its end, `mode` the harness mode that decides what the session asks, `error` and
+// `done` end the turn.
 export type CopilotStep =
 	| "text"
 	| "thought"
 	| "tool_call"
 	| "tool_result"
+	| "tool_failed"
 	| "mode"
 	| "error"
 	| "done";
@@ -293,31 +301,65 @@ export type CopilotElicitationAnswer =
 // the harness taking one of those back unanswered (`id` names it): the board stops asking, and
 // `summary` is the line its transcript keeps.
 export type CopilotUpdate =
-	| { type: CopilotStep; summary: string; at: string }
+	// A tool call's steps carry its `callId`, so its opening and its end read as one row, and its
+	// `detail` as known then. `wrote` marks the end of a call that changed tracker state, which is
+	// what the board reloads on.
+	| {
+			type: CopilotStep;
+			summary: string;
+			at: string;
+			callId?: string;
+			detail?: ActivityToolDetail;
+			wrote?: boolean;
+	  }
 	| { type: "plan"; entries: readonly PlanEntry[]; at: string }
 	| { type: "permission"; request: CopilotPermission; at: string }
 	| { type: "elicitation"; request: CopilotElicitation; at: string }
 	| { type: "withdrawn"; id: string; summary: string; at: string }
 	// Something the harness wants the human to know that is not the agent's reply (a mode it fell
-	// back from, a model it swapped): a line of the turn's log that changes nothing else. The
-	// transcript records a warning as the event type `warning` and an info as `notice`; how each
-	// reads is the event view's glyph table.
+	// back from, a model it swapped): a line of the turn's log that changes nothing else, recorded as
+	// a `notice` event with its severity.
 	| {
 			type: "notice";
-			severity: CopilotNoticeSeverity;
+			severity: NoticeSeverity;
 			summary: string;
+			at: string;
+	  }
+	// How full the session's context window is, the latest reading replacing the last: STATE, for the
+	// footer. `cost` is the session's so far, only from a harness that reports one.
+	| ({ type: "usage"; at: string } & CopilotUsage)
+	// The harness's own `/` commands, the whole list each time it changes: STATE, like a plan. The
+	// `/` picker offers them after the host's shortcuts, labelled with `source` (the harness).
+	| {
+			type: "commands";
+			source: string;
+			commands: readonly CopilotCommand[];
 			at: string;
 	  };
 
-export type CopilotNoticeSeverity = "info" | "warning";
+// `used` of the window's `size` tokens are in context now.
+export type CopilotUsage = {
+	used: number;
+	size: number;
+	cost?: { amount: number; currency: string };
+};
 
 // A `/name` the prompt window expands client-side into `template`, so the human reads exactly what
 // will be sent before pressing enter. `hint` is the one-line description shown while picking.
 export type CopilotShortcut = { name: string; hint: string; template: string };
 
+// A `/name` the harness itself runs. Picking one puts `/name ` in the prompt, and the prompt goes to
+// the harness as written, since the command is the harness's. `hint` says what its input expects.
+export type CopilotCommand = {
+	name: string;
+	description: string;
+	hint?: string;
+};
+
 // The copilot the `A` prompt talks to. `run` streams one turn for a prompt with the board's context
-// attached; `cancel` stops the turn in flight; `shortcuts` lists the `/` expansions. The board never
-// learns which protocol or harness sits behind it.
+// attached; `cancel` stops the turn in flight; `shortcuts` lists the host's own `/` expansions, which
+// never change (the harness's commands arrive on the stream). The board never learns which protocol
+// or harness sits behind it.
 export interface Copilot {
 	run(
 		prompt: string,

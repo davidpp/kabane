@@ -99,15 +99,16 @@ What comes back, as the port's `CopilotUpdate`:
 | Harness update | Port update |
 |---|---|
 | `text`, `thought` | one `text` / `thought` per MESSAGE: ACP streams these as deltas, and a run of them is joined until something else happens |
-| `tool_call` | `tool_call` (plus `tool_result` when it already completed a write) |
-| `tool_call_update`, completed, on a `kabane_*` write tool | `tool_result` → the board reloads |
+| `tool_call` | `tool_call` with its `callId` and `ToolCalls.detail` (plus its end when it already completed or failed) |
+| `tool_call_update`, completed or failed | `tool_result` or `tool_failed`, with the call folded whole; marked `wrote` on a `kabane_*` write tool → the board reloads |
 | `plan` | `plan` → the pane and the transcript show the agent's todo, the footer counts it |
 | `session/request_permission` | `permission` → the board asks, and `answerPermission` unblocks the turn |
 | `elicitation/create` (form), through `onElicitation` | `elicitation` → the board shows the form, and `answerElicitation` unblocks the turn |
 | `$/cancel_request` on either of those, through the callback's `withdrawn` signal | `withdrawn` → the board stops asking; a late answer finds nothing |
 | `mode` (from `current_mode_update` or `config_option_update`) | `mode`, a transcript line naming where the harness moved the session |
-| `notice` | `notice`, `warning` for an ACP `warning` or `error` and `info` otherwise |
-| `usage` (from `usage_update`) | nothing: the copilot shows no meter; the loop extension reads it for its budget |
+| `notice` | `notice` with its `severity` (`info`, `warning` or `error`) as a field, the line naming the harness |
+| `usage` (from `usage_update`) | `usage` → every footer ends on `ctx 42%` (and the cost); the loop extension reads it for its budget |
+| `commands` (from `available_commands_update`) | `commands`, labelled with the harness → the `/` picker offers them after kabane's shortcuts; a prompt that runs one goes alone, as typed |
 | `stop`, `error` | `done`, `error` |
 
 A write is recognised by the tool call's **title**, never by its result: the two adapters
@@ -165,7 +166,7 @@ repeats the current mode are not.
 the human to know outside the agent's reply (a mode it fell back from, a model it swapped) as
 a `notice` session update rather than as a bold line in the agent's text. It reaches the caller
 as `{ type: "notice"; severity; text }`, with `text` the notice's title and description as one
-line. The loop records it as a `notice` run event; the copilot's mapping is in the table above.
+line and `severity` ACP's open-ended value read as `info`, `warning` or `error`. The loop records it as a `notice` run event; the copilot's mapping is in the table above.
 
 ## Updates
 
@@ -178,7 +179,8 @@ type Update =
   | { type: "plan"; entries: { content; status }[] }
   | { type: "usage"; used: number; size: number; cost?: { amount; currency } }
   | { type: "mode"; id: string }
-  | { type: "notice"; severity: string; text: string }
+  | { type: "notice"; severity: "info" | "warning" | "error"; text: string }
+  | { type: "commands"; commands: { name; description; hint? }[] }
   | { type: "stop"; reason: string }
   | { type: "error"; message: string };
 ```

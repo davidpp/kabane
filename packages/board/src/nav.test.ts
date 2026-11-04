@@ -57,6 +57,7 @@ const copilotState = (
 	turn: "idle",
 	hasLog: false,
 	shortcuts: [],
+	commands: [],
 	actor: null,
 	asks: [],
 	...over,
@@ -2318,6 +2319,63 @@ describe("copilot prompt (`A` / `:`)", () => {
 		const narrowed = BoardNav.withCopilotText(down2, "/tri");
 		expect(narrowed.copilot.paletteAt).toBe(0);
 		expect(BoardNav.selectedShortcut(narrowed)?.name).toBe("triage");
+	});
+
+	it("the harness's commands follow the shortcuts, expand to their own name and go as typed", () => {
+		const listed = BoardNav.withCopilotCommands(open().state, "claude", [
+			{ name: "compact", description: "Summarise the conversation" },
+			{ name: "triage", description: "the harness's own triage" },
+		]);
+		expect(
+			BoardNav.matchingShortcuts(
+				BoardNav.paletteEntries(listed.copilot),
+				"/",
+			).map((entry) => [entry.name, entry.source]),
+		).toEqual([
+			["triage", undefined],
+			["compact", "claude"],
+			["triage", "claude"],
+		]);
+		const typed = BoardNav.withCopilotText(listed, "/comp");
+		const tabbed = reduce(typed, { name: "tab" });
+		expect(tabbed.effect).toEqual({
+			type: "copilotSetText",
+			text: "/compact ",
+		});
+		// Expanded, the palette is closed, so enter sends the command as written.
+		const written = BoardNav.withCopilotText(
+			tabbed.state,
+			"/compact keep the plan",
+		);
+		expect(
+			BoardNav.submitCopilot(written, "/compact keep the plan").effect,
+		).toEqual({ type: "copilotPrompt", prompt: "/compact keep the plan" });
+		// A later list replaces the earlier one whole.
+		const relisted = BoardNav.withCopilotCommands(listed, "claude", [
+			{ name: "review", description: "Review a PR", hint: "pr number" },
+		]);
+		expect(relisted.copilot.commands).toEqual([
+			{
+				name: "review",
+				hint: "Review a PR · pr number",
+				template: "/review ",
+				source: "claude",
+			},
+		]);
+	});
+
+	it("t on an event view opens every tool row, and t again closes them", () => {
+		const events = state({
+			view: { type: "events", cardId: "copilot", fromView: "board" },
+		});
+		const opened = reduce(events, char("t"));
+		expect(opened.state.view).toMatchObject({ toolDetails: true });
+		expect(opened.effect.type).toBe("none");
+		expect(reduce(opened.state, char("t")).state.view).toMatchObject({
+			toolDetails: false,
+		});
+		// Nothing to open on the board itself.
+		expect(reduce(state(), char("t")).state.view).toEqual({ type: "board" });
 	});
 
 	it("with no palette open the arrows still belong to history", () => {

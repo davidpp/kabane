@@ -64,7 +64,10 @@ joined with ` · ` after the label. The board renders:
 
 `card` and `events` are optional. When a card has `hasEvents: true` and the source implements
 `events`, `o` in the detail view opens the event log, polled every second until the card leaves
-the in-flight states.
+the in-flight states. An event with a `callId` is a tool call's: a call and its end are one row,
+closed until clicked, that opens on its `detail` (input, output, diffs). `t` in the event log, a
+card's tab included, opens every tool row at once, the ones still to come too, and `t` again
+closes them all; a click still opens or closes one row against it.
 
 #### Tabs and the questions waiting on you
 
@@ -232,7 +235,12 @@ mirrors it — `BoardNav.copilotConsumes` names the keys the reducer takes back 
 to the next pane — and neither touches a running turn: `esc` is the back key in every other view
 and destroys nothing anywhere on the board. Typing `/` lists `shortcuts()` (`/triage`, `/refine`, …)
 as a palette; `tab`, or `enter` on the exact name, expands the `template` so what will be sent is
-read before it goes. `↑` on an empty buffer walks back through this session's prompts.
+read before it goes. Once the session is open the harness's own commands follow them, from its
+latest `commands` update (`{ type: "commands", source, commands }`, each `{ name, description,
+hint? }`), each hint led by the harness's name (`/compact  claude · …`). Picking one puts `/name `
+in the input, and the prompt goes to the harness as written, with no board context ahead of it,
+since the command is the harness's to run. The palette shows eight rows around the pick and says
+where it is in a longer list. `↑` on an empty buffer walks back through this session's prompts.
 
 The turn runs in the background and the board stays fully interactive. Submitting hands the
 keyboard back to the board, because the next thing after sending a command is watching it. The
@@ -240,11 +248,24 @@ pane's row shows `⠹ copilot · 2/5 · <last tool call>` while it runs — the 
 plan — `✓ copilot · <the agent's last line>` when it ends, `✗ copilot · <reason>` on an error or a
 cancel; the finished indicator stays until the next keypress, which also clears the `✦ ai` glyphs.
 
+A `usage` update (`used` of the window's `size` tokens, and the session's `cost` where the harness
+reports one) is the session's reading of its context window, kept across turns. Every footer ends
+on it, muted and right-aligned, as `ctx 42%` or `ctx 42% · $0.31` (`CopilotLog.usageLabel`,
+provided once through `FooterTrail`). It shows only where it fits whole beside the hints or the
+notice, so at forty columns it is the first thing to go, and before the first reading it is absent.
+
 Exactly one surface animates per fact: the pane owns the copilot, the tab on screen owns its card,
 and every echo of a running thing renders `●` rather than a frozen spinner frame (see `spinner.ts`). `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
-`mode`, `error`, `done`, and `notice` with a `severity` of `info` or `warning`); each `tool_result`
-reloads the board so the copilot's writes appear as they land. A notice is a line of the turn's
-transcript and changes nothing else: an info as the event type `notice`, a warning as `warning`. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
+`mode`, `error`, `done`, `notice` with a `severity` of `info`, `warning` or `error`, the `commands`
+list above, and `usage`). A tool call is a `tool_call` and then its end, `tool_result` or
+`tool_failed`, both carrying the call's `callId` and its `detail` (ACP's raw input, output and
+diffs, capped by `ToolCalls.detail`), so the transcript folds them into one row that opens on the
+real tool, its input and its diff, the way the loop's do. An end marked `wrote` (a call to one of
+kabane's write tools) reloads the board, so the copilot's writes appear as they land. A notice is a line of the turn's
+transcript and changes nothing else: a `notice` event carrying its `severity`, which the event view
+draws as `!` in the accent for a warning, in the failed hue for an error, and muted for information.
+The loop's notices carry theirs as a `<severity>: ` prefix and its own warnings as the event type
+`warning`, which read the same way. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
 rather than inviting a prompt, and `enter` flashes `a turn is running · o for its transcript, x
 there stops it` instead of dropping what was typed — the draft keeps until the turn ends.
 

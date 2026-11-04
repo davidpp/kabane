@@ -40,6 +40,7 @@ import {
 	type CardHeader,
 	type CopilotPermission,
 	isInFlight,
+	type NoticeSeverity,
 	type PlanEntry,
 	PROMPT_EVENT,
 } from "./ports";
@@ -141,7 +142,13 @@ const eventStyle = (
 		case "permission":
 			return { glyph: "?", glyphFg: theme.accent, textFg: theme.defaultFg };
 		case "notice":
-			return noticeStyle(event.summary, theme);
+			return noticeStyle(
+				event.severity ?? severityPrefix(event.summary),
+				theme,
+			);
+		// The loop's own warnings (a claim it could not take, a question it gave up on).
+		case "warning":
+			return noticeStyle("warning", theme);
 		case "error":
 			return { glyph: "✗", glyphFg: theme.failed, textFg: theme.failed };
 		case "metric":
@@ -151,14 +158,19 @@ const eventStyle = (
 	}
 };
 
-// What a harness wanted the human to know, which the loop writes as `<severity>: <text>`: a warning
-// in the accent, since it says the session is not running the way it was asked to; an error in the
-// failed hue; anything else muted.
+// A notice that carries no severity of its own: the loop writes its harness's as `<severity>: <text>`,
+// and its runs on disk keep them that way.
+const severityPrefix = (summary: string): NoticeSeverity => {
+	const prefix = /^(\w+):/.exec(summary)?.[1];
+	return prefix === "warning" || prefix === "error" ? prefix : "info";
+};
+
+// What a harness wanted the human to know: a warning in the accent, since it says the session is not
+// running the way it was asked to; an error in the failed hue; information muted.
 const noticeStyle = (
-	summary: string,
+	severity: NoticeSeverity,
 	theme: Theme.Tokens,
 ): { glyph: string; glyphFg: ColorInput; textFg: ColorInput } => {
-	const severity = /^(\w+):/.exec(summary)?.[1];
 	const fg =
 		severity === "warning"
 			? theme.accent
@@ -227,6 +239,9 @@ export type EventViewProps = {
 	// tab's `e`.
 	header?: CardHeader;
 	expanded?: boolean;
+	// The view's `t`: every tool row open, the ones still to come too. A click opens or closes one
+	// row against it, and pressing `t` again starts every row afresh.
+	toolDetails?: boolean;
 };
 
 const TRANSCRIPT_KEYS: Keymap.Live = { context: "transcript", situation: {} };
@@ -326,6 +341,7 @@ export const EventView = ({
 	onCard,
 	header: Header,
 	expanded = false,
+	toolDetails,
 }: EventViewProps): ReactNode => {
 	const { card, events } = useCardEvents(cardId, source, initialCard, onCard);
 	const { width } = useTerminalDimensions();
@@ -380,6 +396,7 @@ export const EventView = ({
 				scrollRef={scrollRef}
 				tabbed={tabbed}
 				spinnerFrame={spinnerFrame}
+				toolDetails={toolDetails}
 			/>
 			{permissions[0] ? (
 				<box
@@ -425,11 +442,13 @@ const Stream = ({
 	scrollRef,
 	tabbed,
 	spinnerFrame,
+	toolDetails,
 }: {
 	card: ActivityCard;
 	events: readonly ActivityEvent[];
 	lanes: readonly string[];
 	width: number;
+	toolDetails: boolean | undefined;
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	tabbed: boolean;
 	spinnerFrame: string;
@@ -437,7 +456,7 @@ const Stream = ({
 	const theme = useTheme();
 	const live = isInFlight(card);
 	const rows = useMemo(() => ToolRows.rows(events, live), [events, live]);
-	const { open, toggle } = useOpenRows(rows, scrollRef);
+	const { isOpen, toggle } = useOpenRows(rows, scrollRef, toolDetails === true);
 	const cols = lanes.length > 0 ? tagCols(lanes, width) : 0;
 	const tagRoom = cols > 0 ? cols + 1 : 0;
 	const promptRoom = Math.max(
@@ -460,7 +479,7 @@ const Stream = ({
 			call={call}
 			tag={tagOf(call.lane)}
 			indent={indent}
-			open={open.has(call.key)}
+			open={isOpen(call.key)}
 			onToggle={(header) => toggle(call.key, header)}
 			spinnerFrame={spinnerFrame}
 			room={bodyRoom - indent}
@@ -483,7 +502,7 @@ const Stream = ({
 							return callRow(row.call, 0);
 						case "group": {
 							const { group } = row;
-							const opened = open.has(group.key);
+							const opened = isOpen(group.key);
 							return (
 								<box
 									key={group.key}
@@ -529,19 +548,25 @@ const Stream = ({
 	);
 };
 
-// Which tool rows are open, by key. A click opens or closes the row under it. Its header keeps its
-// place on screen through the layout that follows (ScrollBox.anchor, as opencode's session view
+// Which tool rows are open, by key: every one while `allOpen` (the view's `t`), none otherwise, and
+// the rows a click flipped against that. A new `allOpen` forgets the clicks. A clicked header keeps
+// its place on screen through the layout that follows (ScrollBox.anchor, as opencode's session view
 // does), unless it is the last row while the stream follows its newest line: anchored there, what it
 // opens would go below the screen. A drag that selected text is not a click.
 const useOpenRows = (
 	rows: readonly ToolRows.Row[],
 	scrollRef: RefObject<ScrollBoxRenderable | null>,
+	allOpen: boolean,
 ): {
-	open: ReadonlySet<string>;
+	isOpen: (key: string) => boolean;
 	toggle: (key: string, header: Renderable | null) => void;
 } => {
 	const renderer = useRenderer();
-	const [open, setOpen] = useState<ReadonlySet<string>>(NOTHING_OPEN);
+	const [flipped, setFlipped] = useState<{
+		allOpen: boolean;
+		keys: ReadonlySet<string>;
+	}>({ allOpen, keys: NOTHING_OPEN });
+	const keys = flipped.allOpen === allOpen ? flipped.keys : NOTHING_OPEN;
 	const lastKey = rowKey(rows[rows.length - 1]);
 	const toggle = (key: string, header: Renderable | null): void => {
 		if (renderer.getSelection()?.getSelectedText()) return;
@@ -551,13 +576,13 @@ const useOpenRows = (
 			scroll.scrollTop >= scroll.scrollHeight - scroll.viewport.height;
 		if (scroll && header && !(key === lastKey && following))
 			scroll.afterLayout(scroll.anchor(header));
-		setOpen((prev) => {
-			const next = new Set(prev);
+		setFlipped((prev) => {
+			const next = new Set(prev.allOpen === allOpen ? prev.keys : NOTHING_OPEN);
 			if (!next.delete(key)) next.add(key);
-			return next;
+			return { allOpen, keys: next };
 		});
 	};
-	return { open, toggle };
+	return { isOpen: (key) => keys.has(key) !== allOpen, toggle };
 };
 
 const rowKey = (row: ToolRows.Row | undefined): string | undefined => {

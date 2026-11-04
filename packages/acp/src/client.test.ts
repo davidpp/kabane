@@ -476,6 +476,32 @@ describe("AcpClient.toUpdate", () => {
 		).toEqual({ type: "usage", used: 10, size: 100 });
 	});
 
+	it("maps the harness's command list to names, descriptions and input hints", () => {
+		expect(
+			AcpClient.toUpdate({
+				sessionUpdate: "available_commands_update",
+				availableCommands: [
+					{ name: "compact", description: "Summarise the conversation" },
+					{
+						name: "review",
+						description: "Review a pull request",
+						input: { hint: "pr number" },
+					},
+				],
+			}),
+		).toEqual({
+			type: "commands",
+			commands: [
+				{ name: "compact", description: "Summarise the conversation" },
+				{
+					name: "review",
+					description: "Review a pull request",
+					hint: "pr number",
+				},
+			],
+		});
+	});
+
 	it("reads a config option update as the mode its mode option holds, and nothing without one", () => {
 		expect(
 			AcpClient.toUpdate({
@@ -511,6 +537,23 @@ describe("AcpClient.toUpdate", () => {
 				title: "Context compacted",
 			}),
 		).toEqual({ type: "notice", severity: "info", text: "Context compacted" });
+	});
+
+	it("reads a notice's open-ended severity as info, warning or error", () => {
+		const severity = (value: string) => {
+			const update = AcpClient.toUpdate({
+				sessionUpdate: "notice",
+				severity: value,
+				title: "t",
+			});
+			return update?.type === "notice" ? update.severity : null;
+		};
+		expect(["error", "warning", "info", "debug"].map(severity)).toEqual([
+			"error",
+			"warning",
+			"info",
+			"info",
+		]);
 	});
 });
 

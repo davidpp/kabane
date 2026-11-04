@@ -9,7 +9,9 @@ import {
 	type ActivityCard,
 	type ActivityEvent,
 	type ActivitySource,
+	type CopilotStep,
 	type CopilotUpdate,
+	type CopilotUsage,
 	type PlanEntry,
 	PROMPT_EVENT,
 } from "./ports";
@@ -36,7 +38,13 @@ export namespace CopilotLog {
 	// The turn in hand and the few behind it. `current` is its own field rather than the last element
 	// of a list because there is ALWAYS one — a log exists only once a turn has started — and a
 	// current-turn-or-undefined would put a fallback in every reader of the pane and the footer.
-	export type Log = { past: readonly Turn[]; current: Turn };
+	// `usage` is the session's, not a turn's: the latest reading of its context window, null until the
+	// harness has sent one, and kept across turns.
+	export type Log = {
+		past: readonly Turn[];
+		current: Turn;
+		usage: CopilotUsage | null;
+	};
 
 	// How many turns the transcript keeps. Enough to re-read what you asked two questions ago, which
 	// is what asking a second one used to cost; not a history, and never written down.
@@ -50,6 +58,7 @@ export namespace CopilotLog {
 	// read as already-seen. Numbering at read time instead would shift under the cap.
 	export const start = (log: Log | null, prompt: string, at: string): Log => ({
 		past: log ? [...log.past, log.current].slice(-(TURN_CAP - 1)) : [],
+		usage: log?.usage ?? null,
 		current: {
 			prompt,
 			card: {
@@ -77,15 +86,12 @@ export namespace CopilotLog {
 		},
 	});
 
-	// Event-view types: the glyph table there knows `text`, `tool_use`, `tool_result`, `error`;
-	// `thought` falls to its blank, muted default, which is the dimmed rendering wanted for it.
-	// A notice is the event view's `warning` when it is one, a muted `notice` otherwise.
+	// Event-view types: a call opening is its `tool_use`, and its end `tool_result` or `tool_failed`,
+	// which ToolRows folds into one row with it. Every other step and a notice keep their own type:
+	// the glyph table draws `text`, `error` and a `notice` by its severity, and `thought` falls to
+	// its blank, muted default, which is the dimmed rendering wanted for it.
 	const eventType = (update: CopilotUpdate): string =>
-		update.type === "tool_call"
-			? "tool_use"
-			: update.type === "notice" && update.severity === "warning"
-				? "warning"
-				: update.type;
+		update.type === "tool_call" ? "tool_use" : update.type;
 
 	// How far the turn is through its own plan, for the one-line indicator. Absent without a plan:
 	// harnesses that never send one keep today's text rather than showing a hollow `0/0`.
@@ -108,8 +114,30 @@ export namespace CopilotLog {
 	const lastLine = (tail: readonly string[]): string =>
 		tail[tail.length - 1] ?? "";
 
+	// The updates that are a line of the transcript as they come: the steps and the notices.
+	type Line = Extract<CopilotUpdate, { type: CopilotStep | "notice" }>;
+
+	// One line as the event view reads it, with the tool call it belongs to and what was known of
+	// the call then, when it is one.
+	const record = (seq: number, update: Line): ActivityEvent => ({
+		seq,
+		at: update.at,
+		type: eventType(update),
+		summary: update.summary,
+		...(update.type === "notice" ? { severity: update.severity } : {}),
+		...(update.type !== "notice" && update.callId !== undefined
+			? { callId: update.callId }
+			: {}),
+		...(update.type !== "notice" && update.detail
+			? { detail: update.detail }
+			: {}),
+	});
+
 	const applyToTurn = (turn: Turn, update: CopilotUpdate): Turn => {
 		if (update.type === "plan") return { ...turn, plan: update.entries };
+		// The harness's command list is the `/` palette's, which the reducer holds, and its usage the
+		// log's: nothing in the turn changes.
+		if (update.type === "commands" || update.type === "usage") return turn;
 		// The pending choice is rendered from the reducer's copy, not from here; what the transcript
 		// keeps is the RECORD that it was asked, which outlives the answer and reads in the order it
 		// happened, between the tool call that provoked it and whatever followed. A form reads as
@@ -148,15 +176,7 @@ export namespace CopilotLog {
 		const events =
 			update.type === "done"
 				? turn.events
-				: [
-						...turn.events,
-						{
-							seq: lastSeq(turn) + 1,
-							at: update.at,
-							type: eventType(update),
-							summary: update.summary,
-						},
-					];
+				: [...turn.events, record(lastSeq(turn) + 1, update)];
 		switch (update.type) {
 			case "tool_call":
 				return { ...turn, events, activity: update.summary };
@@ -168,6 +188,7 @@ export namespace CopilotLog {
 				};
 			case "thought":
 			case "tool_result":
+			case "tool_failed":
 			case "mode":
 			case "notice":
 				return { ...turn, events };
@@ -192,10 +213,34 @@ export namespace CopilotLog {
 
 	// Every update belongs to the turn in flight; a finished one is never written to again (the
 	// reducer refuses a prompt while one runs, so there is only ever one).
-	export const apply = (log: Log, update: CopilotUpdate): Log => ({
-		...log,
-		current: applyToTurn(log.current, update),
-	});
+	export const apply = (log: Log, update: CopilotUpdate): Log =>
+		update.type === "usage"
+			? {
+					...log,
+					usage: {
+						used: update.used,
+						size: update.size,
+						...(update.cost ? { cost: update.cost } : {}),
+					},
+				}
+			: { ...log, current: applyToTurn(log.current, update) };
+
+	// The footer's reading of the session's context window, `ctx 42% · $0.31`. Null while nothing is
+	// known, which hides it.
+	export const usageLabel = (log: Log | null): string | null => {
+		const usage = log?.usage;
+		if (!usage || usage.size <= 0) return null;
+		const ctx = `ctx ${Math.round((usage.used / usage.size) * 100)}%`;
+		return usage.cost ? `${ctx} · ${money(usage.cost)}` : ctx;
+	};
+
+	const money = ({
+		amount,
+		currency,
+	}: NonNullable<CopilotUsage["cost"]>): string =>
+		currency === "USD"
+			? `$${amount.toFixed(2)}`
+			: `${amount.toFixed(2)} ${currency}`;
 
 	// Cancel from the board side: the turn ends as failed with a reason, no event appended.
 	export const cancelled = (log: Log, at: string): Log => ({

@@ -57,6 +57,31 @@ describe("barSegments", () => {
 		expect(line(22, "/auth▌")).toBe("/auth▌  ? help");
 	});
 
+	test("a trail sits at the right end when it fits whole, and drops before any hint", () => {
+		const board = [
+			{ key: "/", label: "search" },
+			{ key: "?", label: "help" },
+		];
+		const at40 = barSegments({ hints: board, trail: "ctx 42% · $0.31" }, 40, T);
+		const plain = Segments.plain(at40);
+		expect(plain).toHaveLength(40);
+		expect(plain.startsWith("/ search · ? help")).toBe(true);
+		expect(plain.endsWith("ctx 42% · $0.31")).toBe(true);
+		expect(at40.at(-1)?.fg).toBe(T.muted);
+		// The detail view's hints fill forty columns by themselves, so the reading goes.
+		const busy = barSegments({ hints, trail: "ctx 42%" }, 26, T);
+		expect(Segments.plain(busy)).toBe("d done · v review · ? help");
+		// A notice keeps its words over the reading too.
+		expect(
+			Segments.plain(
+				barSegments({ text: "a long notice", trail: "ctx 9%" }, 20, T),
+			),
+		).toBe("a long notice");
+		expect(
+			Segments.plain(barSegments({ text: "moved", trail: "ctx 9%" }, 20, T)),
+		).toBe("moved         ctx 9%");
+	});
+
 	test("a notice with no hints is cut at the end with an ellipsis, colors kept", () => {
 		const fitted = barSegments({ text: "a long notice", fg: T.done }, 8, T);
 		expect(Segments.plain(fitted)).toBe("a long …");

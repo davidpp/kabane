@@ -100,6 +100,17 @@ export namespace Keymap {
 
 	const selection = (s: Situation): boolean => s.selection === true;
 
+	/**
+	 * `t` on an event view: open or close every tool row at once, the keyboard's way to what a call
+	 * did. In the footer on the transcript; on a card's tab the host's actions have the footer.
+	 */
+	const TOOL_DETAILS: Binding = {
+		key: "t",
+		label: "tool details",
+		tier: "footer",
+		keys: ["t"],
+	};
+
 	/** `?` itself: last in every footer where the sheet opens. */
 	const HELP: Binding = {
 		key: "?",
@@ -388,6 +399,7 @@ export namespace Keymap {
 					keys: ["x"],
 					when: (s) => s.stoppable === true,
 				},
+				TOOL_DETAILS,
 				{ key: "esc q", label: "back", tier: "footer", keys: ["escape", "q"] },
 			],
 		},
@@ -434,6 +446,7 @@ export namespace Keymap {
 					tier: "help",
 					keys: ["j", "k", "down", "up"],
 				},
+				{ ...TOOL_DETAILS, tier: "help" },
 				{ key: "esc q", label: "tracker", tier: "help", keys: ["escape", "q"] },
 			],
 		},

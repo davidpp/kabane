@@ -17,6 +17,7 @@ import type { Keymap } from "./keymap";
 import type {
 	CopilotElicitation,
 	CopilotElicitationAnswer,
+	CopilotCommand,
 	CopilotPermission,
 	CopilotShortcut,
 	TriggerDescriptor,
@@ -67,6 +68,9 @@ export namespace BoardNav {
 				fromView: "board" | "detail";
 				fromTaskId?: string;
 				fromTab?: DetailModel.Tab;
+				// `t`: every tool row open, the ones still to come too; absent, every row closed. A
+				// click still opens or closes one row against it.
+				toolDetails?: boolean;
 		  };
 
 	/** The tab a detail view is on. */
@@ -140,6 +144,9 @@ export namespace BoardNav {
 		hasLog: boolean;
 		// From the host's `Copilot.shortcuts()`, set once by app.tsx; the `/` expansions.
 		shortcuts: readonly CopilotShortcut[];
+		// The harness's own `/` commands as its last `commands` update listed them, as palette rows.
+		// Empty until the session has opened and said.
+		commands: readonly PaletteEntry[];
 		// The actor uri the copilot's writes are stamped with, likewise set once. Null for a host
 		// copilot that names none.
 		actor: string | null;
@@ -369,6 +376,7 @@ export namespace BoardNav {
 		turn: "idle",
 		hasLog: false,
 		shortcuts: [],
+		commands: [],
 		actor: null,
 		asks: [],
 	};
@@ -495,11 +503,38 @@ export namespace BoardNav {
 		effect: NONE,
 	});
 
+	// The harness listed its commands again: the whole list replaces the last one, never merges.
+	export const withCopilotCommands = (
+		state: BoardState,
+		source: string,
+		commands: readonly CopilotCommand[],
+	): BoardState =>
+		withCopilot(state, {
+			commands: commands.map((command) => ({
+				name: command.name,
+				hint: command.hint
+					? `${command.description} · ${command.hint}`
+					: command.description,
+				template: `/${command.name} `,
+				source,
+			})),
+		});
+
+	// One row of the `/` palette: a host shortcut, which expands to its template, or a harness
+	// command (`source` names the harness), which expands to `/name ` and goes as typed.
+	export type PaletteEntry = CopilotShortcut & { source?: string };
+
+	// What the palette offers, the host's shortcuts first: they are the board's own repertoire, and
+	// the harness's list can run to dozens of commands and skills.
+	export const paletteEntries = (
+		copilot: Pick<CopilotState, "shortcuts" | "commands">,
+	): PaletteEntry[] => [...copilot.shortcuts, ...copilot.commands];
+
 	// The shortcut a `/name` prefix picks: the first whose name starts with what was typed.
 	export const matchingShortcuts = (
-		shortcuts: readonly CopilotShortcut[],
+		shortcuts: readonly PaletteEntry[],
 		text: string,
-	): CopilotShortcut[] =>
+	): PaletteEntry[] =>
 		text.startsWith("/")
 			? shortcuts.filter((s) => `/${s.name}`.startsWith(text))
 			: [];
@@ -532,7 +567,8 @@ export namespace BoardNav {
 		// Picking from the palette beats moving a cursor through the one line that opened it. The two
 		// uses cannot collide: a palette needs a leading `/`, history recall an empty buffer.
 		if (
-			matchingShortcuts(state.copilot.shortcuts, state.copilot.text).length > 0
+			matchingShortcuts(paletteEntries(state.copilot), state.copilot.text)
+				.length > 0
 		)
 			return true;
 		return state.copilot.text === "" && state.copilot.history.length > 0;
@@ -806,9 +842,9 @@ export namespace BoardNav {
 	// stored-and-trusted, because the list shrinks as more of the name is typed.
 	export const selectedShortcut = (
 		state: BoardState,
-	): CopilotShortcut | undefined => {
+	): PaletteEntry | undefined => {
 		const matches = matchingShortcuts(
-			state.copilot.shortcuts,
+			paletteEntries(state.copilot),
 			state.copilot.text,
 		);
 		return matches[clamp(state.copilot.paletteAt, 0, matches.length - 1)];
@@ -821,7 +857,7 @@ export namespace BoardNav {
 		delta: 1 | -1,
 	): { state: BoardState; effect: Effect } | null => {
 		const matches = matchingShortcuts(
-			state.copilot.shortcuts,
+			paletteEntries(state.copilot),
 			state.copilot.text,
 		);
 		if (matches.length === 0) return null;
@@ -1447,7 +1483,7 @@ export namespace BoardNav {
 		};
 	};
 
-	// Event view: j/k scroll, esc/q pop back to the previous view.
+	// Event view: j/k scroll, `t` opens or closes every tool row, esc/q pop back to the previous view.
 	const reduceEventsKey = (
 		state: BoardState,
 		key: KeyInput,
@@ -1472,6 +1508,14 @@ export namespace BoardNav {
 			case "k":
 			case "up":
 				return { state, effect: { type: "scroll", delta: -2 } };
+			case "t":
+				return {
+					state: {
+						...state,
+						view: { ...state.view, toolDetails: !state.view.toolDetails },
+					},
+					effect: NONE,
+				};
 			case "x":
 				// On the copilot's transcript, `x` stops the turn (host cards are read-only here).
 				return state.view.cardId === CopilotLog.CARD_ID &&
@@ -1511,8 +1555,10 @@ export namespace BoardNav {
 			return state.dispatch.form ? "dispatchForm" : "dispatch";
 		if (state.prompt.open) return "prompt";
 		if (state.focus === "copilot")
-			return matchingShortcuts(state.copilot.shortcuts, state.copilot.text)
-				.length > 0
+			return matchingShortcuts(
+				paletteEntries(state.copilot),
+				state.copilot.text,
+			).length > 0
 				? "palette"
 				: "copilot";
 		if (state.search.mode === "typing") return "search";

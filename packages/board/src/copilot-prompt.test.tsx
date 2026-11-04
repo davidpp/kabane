@@ -21,6 +21,7 @@ import {
 	contextChip,
 	harnessOf,
 	paletteNameCols,
+	paletteStart,
 	titleSegments,
 } from "./copilot-prompt";
 import { BoardNav } from "./nav";
@@ -388,6 +389,130 @@ describe("the A prompt against a scripted copilot", () => {
 		}
 	});
 
+	it("ends the footer on the session's context reading once the harness sends one, at forty columns", async () => {
+		const reading: Copilot = {
+			run: async function* () {
+				const at = new Date().toISOString();
+				yield { type: "usage", used: 84_000, size: 200_000, at };
+				yield { type: "text", summary: "Done.", at };
+				yield { type: "done", summary: "", at };
+			},
+			cancel: async () => {},
+			shortcuts: () => [],
+			answerPermission: () => {},
+			answerElicitation: () => {},
+		};
+		const setup = await renderTest(
+			<App
+				cwd={TEST_BASE}
+				basePath={TEST_BASE}
+				activity={noActivity}
+				copilot={reading}
+			/>,
+			{ width: 40, height: 24 },
+		);
+		const { renderOnce, captureCharFrame, mockInput, resize, destroy } = setup;
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		const footer = (frame: string): string =>
+			frame.trimEnd().split("\n").at(-1)?.trimEnd() ?? "";
+		const HINTS = "/ search · d done · v review · ? help";
+		try {
+			const before = await until((f) => f.includes("Wire the copilot"));
+			expect(footer(before)).toBe(HINTS);
+			mockInput.pressKey(":");
+			await until(panelOpen);
+			await mockInput.typeText("how full are you?");
+			mockInput.pressEnter();
+			await until((f) => f.includes("✓ copilot"));
+			// Forty columns are the board's hints already: the reading is what gives way.
+			const narrow = await until((f) => footer(f).startsWith("/ search"));
+			expect(footer(narrow)).toBe(HINTS);
+			resize(60, 24);
+			const wide = await until((f) => footer(f).includes("ctx"));
+			expect(footer(wide)).toMatch(/^\/ search · .* · \? help +ctx 42%$/);
+			expect(footer(wide)).toHaveLength(60);
+		} finally {
+			destroy();
+		}
+	});
+
+	it("reloads the board on the end of a call that wrote, not on every call that ended", async () => {
+		const added = await Planner.addTask(TEST_BASE, {
+			title: "Rename me",
+			kind: "issue",
+			state: "next",
+		});
+		if (!added.ok) throw added.error;
+		const id = added.value.id;
+		const at = (): string => new Date().toISOString();
+		const renaming = (wrote: boolean, title: string): Copilot => ({
+			run: async function* () {
+				const renamed = await Planner.updateTask(TEST_BASE, id, { title });
+				if (!renamed.ok) throw renamed.error;
+				yield {
+					type: "tool_call",
+					summary: "kabane_edit",
+					callId: "c1",
+					at: at(),
+				};
+				yield {
+					type: "tool_result",
+					summary: "kabane_edit",
+					callId: "c1",
+					at: at(),
+					...(wrote ? { wrote: true } : {}),
+				};
+				yield { type: "done", summary: "", at: at() };
+			},
+			cancel: async () => {},
+			shortcuts: () => [],
+			answerPermission: () => {},
+			answerElicitation: () => {},
+		});
+		// Mounts the board, waits for `shown`, and asks the copilot once.
+		const ask = async (copilot: Copilot, shown: string) => {
+			const setup = await renderTest(
+				<App
+					cwd={TEST_BASE}
+					basePath={TEST_BASE}
+					activity={noActivity}
+					copilot={copilot}
+				/>,
+				{ width: 120, height: 24 },
+			);
+			const until = (p: (f: string) => boolean) =>
+				pumpUntil(setup.renderOnce, setup.captureCharFrame, p);
+			await until((f) => f.includes(shown));
+			setup.mockInput.pressKey(":");
+			await until(panelOpen);
+			await setup.mockInput.typeText("rename it");
+			setup.mockInput.pressEnter();
+			await until((f) => f.includes("✓ copilot"));
+			return { ...setup, until };
+		};
+		// A call that ended without writing leaves the board as it was until the next poll.
+		const read = await ask(renaming(false, "Renamed quietly"), "Rename me");
+		try {
+			for (let pass = 0; pass < 10; pass++) {
+				await read.renderOnce();
+				await sleep(30);
+			}
+			expect(read.captureCharFrame()).toContain("Rename me");
+		} finally {
+			read.destroy();
+		}
+		const wrote = await ask(
+			renaming(true, "Renamed by the copilot"),
+			"Renamed quietly",
+		);
+		try {
+			await wrote.until((f) => f.includes("Renamed by the copilot"));
+		} finally {
+			wrote.destroy();
+		}
+	});
+
 	it("asking a second thing keeps the first: both turns in the transcript, each under the prompt that started it", async () => {
 		const seen: Seen = { prompts: [], contexts: [], cancels: 0 };
 		const setup = await renderTest(
@@ -589,6 +714,7 @@ const idle = (
 	turn: "idle",
 	hasLog: false,
 	shortcuts: [],
+	commands: [],
 	actor: null,
 	asks: [],
 	...over,
@@ -676,6 +802,54 @@ describe("the copilot pane's look", () => {
 		}
 	});
 
+	it("offers the harness's commands after the shortcuts, each led by the harness's name", async () => {
+		const copilot = BoardNav.withCopilotCommands(
+			BoardNav.init([], { scoped: false }),
+			"claude",
+			[{ name: "compact", description: "Summarise the conversation" }],
+		).copilot;
+		const { frame, destroy } = await mountPane(
+			{ ...copilot, text: "/", shortcuts: SHORTCUTS },
+			true,
+			60,
+		);
+		try {
+			const rows = frame.split("\n");
+			const at = (name: string) => rows.findIndex((r) => r.includes(name));
+			expect(at("/triage")).toBeLessThan(at("/compact"));
+			expect(frame).toMatch(/\/compact +claude · Summarise the conversation/);
+		} finally {
+			destroy();
+		}
+	});
+
+	it("shows eight of a long list around the pick, and says where it is in it", async () => {
+		const commands = Array.from({ length: 20 }, (_, i) => ({
+			name: `skill-${String(i).padStart(2, "0")}`,
+			description: `skill ${i}`,
+		}));
+		const copilot = BoardNav.withCopilotCommands(
+			BoardNav.init([], { scoped: false }),
+			"claude",
+			commands,
+		).copilot;
+		const { frame, destroy } = await mountPane(
+			{ ...copilot, text: "/", paletteAt: 12 },
+			true,
+			60,
+		);
+		try {
+			expect(frame).toContain("› /skill-12");
+			expect(frame).toContain("/skill-08");
+			expect(frame).toContain("/skill-15");
+			expect(frame).not.toContain("/skill-07");
+			expect(frame).not.toContain("/skill-16");
+			expect(frame).toContain("9–16 of 20");
+		} finally {
+			destroy();
+		}
+	});
+
 	it("collapsed, names its key in the text color and says the rest muted", async () => {
 		const { frame, spans, destroy } = await mountPane(idle(), false);
 		try {
@@ -725,8 +899,18 @@ describe("the pane's words", () => {
 	});
 
 	it("paletteNameCols leaves the gutter, the slash and a two-cell gap around the longest name", () => {
-		expect(paletteNameCols(SHORTCUTS)).toBe("setup-dispatch".length + 5);
-		expect(paletteNameCols([])).toBe(5);
+		expect(paletteNameCols(SHORTCUTS, 80)).toBe("setup-dispatch".length + 5);
+		expect(paletteNameCols([], 80)).toBe(5);
+		// A skill's long name stops at half the row.
+		const long = [{ name: "x".repeat(60), hint: "", template: "" }];
+		expect(paletteNameCols(long, 80)).toBe(40);
+	});
+
+	it("paletteStart keeps the pick in the middle of the window, and stops at either end", () => {
+		expect(paletteStart(5, 4, 8)).toBe(0);
+		expect(paletteStart(20, 0, 8)).toBe(0);
+		expect(paletteStart(20, 12, 8)).toBe(8);
+		expect(paletteStart(20, 19, 8)).toBe(12);
 	});
 
 	it("collapsedSegments puts a waiting question ahead of everything, its ? in the accent", () => {

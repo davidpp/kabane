@@ -60,6 +60,7 @@ const state = (
 		turn: "idle",
 		hasLog: false,
 		shortcuts: [],
+		commands: [],
 		actor: null,
 		asks: [],
 	},

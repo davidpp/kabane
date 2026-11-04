@@ -164,6 +164,7 @@ describe("the copilot pane with a form at the head of its queue", () => {
 		turn: "running",
 		hasLog: false,
 		shortcuts: [],
+		commands: [],
 		actor: "cabane://actor/agent/claude",
 		asks,
 	});

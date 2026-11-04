@@ -8,6 +8,7 @@ import {
 	methods,
 	type PlanEntry,
 	PROTOCOL_VERSION,
+	type ToolCallContent,
 	type ToolCallStatus,
 } from "@agentclientprotocol/sdk";
 import type { BoardContext } from "@cabane/board/context";
@@ -26,6 +27,8 @@ type ToolStep = {
 	id: string;
 	title?: string;
 	status?: ToolCallStatus;
+	rawInput?: unknown;
+	content?: ToolCallContent[];
 };
 
 type Seen = {
@@ -91,6 +94,10 @@ const scriptedAgent = (
 		move?: string;
 		// A notice the agent sends before anything else in the turn.
 		notice?: { severity: string; title: string; description?: string };
+		// The slash commands the agent lists before anything else in the turn.
+		commands?: { name: string; description: string }[];
+		// A reading of the context window the agent sends at the end of the turn.
+		usage?: { used: number; size: number };
 	} = {},
 ): AgentApp =>
 	agentApp({ name: "scripted" })
@@ -160,6 +167,11 @@ const scriptedAgent = (
 						withdrawing(),
 					),
 				);
+			if (options.commands)
+				await notify({
+					sessionUpdate: "available_commands_update",
+					availableCommands: options.commands,
+				});
 			if (options.notice)
 				await notify({ sessionUpdate: "notice", ...options.notice });
 			if (options.move)
@@ -190,22 +202,30 @@ const scriptedAgent = (
 				);
 			for (const entries of options.plans ?? [])
 				await notify({ sessionUpdate: "plan", entries });
-			for (const step of options.steps ?? [])
+			for (const step of options.steps ?? []) {
+				const fields = {
+					...(step.status ? { status: step.status } : {}),
+					...(step.rawInput !== undefined ? { rawInput: step.rawInput } : {}),
+					...(step.content ? { content: step.content } : {}),
+				};
 				await notify(
 					step.kind === "call"
 						? {
 								sessionUpdate: "tool_call",
 								toolCallId: step.id,
 								title: step.title ?? step.id,
-								...(step.status ? { status: step.status } : {}),
+								...fields,
 							}
 						: {
 								sessionUpdate: "tool_call_update",
 								toolCallId: step.id,
 								...(step.title ? { title: step.title } : {}),
-								...(step.status ? { status: step.status } : {}),
+								...fields,
 							},
 				);
+			}
+			if (options.usage)
+				await notify({ sessionUpdate: "usage_update", ...options.usage });
 			return { stopReason: "end_turn" };
 		});
 
@@ -384,12 +404,45 @@ describe("BoardCopilot", () => {
 				"mode",
 				"mode acceptEdits: claude opened in it, not in its manual mode (default), so kabane keeps it over auto",
 			],
-			[
-				"notice",
-				"claude warning: Auto mode unavailable: Using Accept edits instead.",
-			],
+			["notice", "claude: Auto mode unavailable: Using Accept edits instead."],
 		]);
 		expect(updates[1]).toMatchObject({ severity: "warning" });
+		copilot.close();
+	});
+
+	it("hands the board the harness's commands, and sends a prompt that runs one alone and as typed", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				commands: [{ name: "compact", description: "Summarise" }],
+			}),
+		);
+		const first = await collect(copilot.run("go", context()));
+		expect(first[0]).toMatchObject({
+			type: "commands",
+			source: "claude",
+			commands: [{ name: "compact", description: "Summarise" }],
+		});
+		await collect(copilot.run("/compact keep the plan", context()));
+		expect(seen.prompts[1]).toEqual([
+			{ type: "text", text: "/compact keep the plan" },
+		]);
+		// A slash the harness never listed is a prompt like any other, context and all.
+		await collect(copilot.run("/nope", context()));
+		expect(textOf(seen.prompts[2], 0)).toContain("scope: jake://scope/cabane");
+		expect(textOf(seen.prompts[2], 1)).toBe("/nope");
+		copilot.close();
+	});
+
+	it("hands the board the harness's reading of its context window", async () => {
+		const copilot = copilotOver(
+			scriptedAgent(fresh(), { usage: { used: 84_000, size: 200_000 } }),
+		);
+		const updates = await collect(copilot.run("go", context()));
+		expect(updates.find((u) => u.type === "usage")).toMatchObject({
+			used: 84_000,
+			size: 200_000,
+		});
 		copilot.close();
 	});
 
@@ -402,7 +455,7 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("a completed cabane write yields tool_result, a read does not", async () => {
+	it("every call that completes yields tool_result; only a cabane write is marked a write", async () => {
 		const seen = fresh();
 		const copilot = copilotOver(
 			scriptedAgent(seen, {
@@ -420,15 +473,63 @@ describe("BoardCopilot", () => {
 			}),
 		);
 		const updates = await collect(copilot.run("triage", context()));
-		expect(types(updates)).toEqual([
-			"tool_call",
-			"tool_call",
-			"tool_result",
-			"done",
+		expect(
+			updates.map((u) => [u.type, u.summary, "wrote" in u && u.wrote]),
+		).toEqual([
+			["tool_call", "kabane_context", false],
+			["tool_result", "kabane_context", false],
+			["tool_call", "kabane_edit", false],
+			["tool_result", "kabane_edit", true],
+			["done", "end_turn", false],
 		]);
-		expect(updates.find((u) => u.type === "tool_result")?.summary).toBe(
-			"kabane_edit",
+		copilot.close();
+	});
+
+	it("names a call's steps by its id, and its end carries the refined title, the input and the diff", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				steps: [
+					{ kind: "call", id: "t1", title: "Edit", status: "pending" },
+					{
+						kind: "update",
+						id: "t1",
+						title: "Edit src/a.ts",
+						rawInput: { file_path: "src/a.ts" },
+					},
+					{
+						kind: "update",
+						id: "t1",
+						status: "completed",
+						content: [
+							{
+								type: "diff",
+								path: "src/a.ts",
+								oldText: "a",
+								newText: "b",
+							},
+						],
+					},
+					{ kind: "call", id: "t2", title: "Bash", status: "pending" },
+					{ kind: "update", id: "t2", status: "failed" },
+				],
+			}),
 		);
+		const updates = await collect(copilot.run("edit it", context()));
+		expect(updates.slice(0, 4)).toMatchObject([
+			{ type: "tool_call", summary: "Edit", callId: "t1" },
+			{
+				type: "tool_result",
+				summary: "Edit src/a.ts",
+				callId: "t1",
+				detail: {
+					input: "file_path: src/a.ts",
+					diffs: [{ path: "src/a.ts", oldText: "a", newText: "b" }],
+				},
+			},
+			{ type: "tool_call", summary: "Bash", callId: "t2" },
+			{ type: "tool_failed", summary: "Bash", callId: "t2" },
+		]);
 		copilot.close();
 	});
 
@@ -469,11 +570,14 @@ describe("BoardCopilot", () => {
 			}),
 		);
 		const updates = await collect(copilot.run("link them", context()));
-		expect(types(updates)).toEqual([
-			"tool_call",
-			"tool_result",
-			"tool_call",
-			"done",
+		expect(
+			updates.map((u) => [u.type, "wrote" in u && u.wrote === true]),
+		).toEqual([
+			["tool_call", false],
+			["tool_result", true],
+			["tool_call", false],
+			["tool_result", false],
+			["done", false],
 		]);
 		copilot.close();
 	});

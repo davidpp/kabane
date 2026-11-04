@@ -298,7 +298,7 @@ against every glyph already here.
 | `⚙` `▶` `·` `$` | transcript: a tool call nothing said the end of, phase, progress, cost | muted, working, muted, muted |
 | spinner `✓` `✗` | transcript: a tool call running, ended, failed (its row recedes: a check is muted) | working, muted, failed |
 | `▸` `▾` | transcript: a run of reads and searches folded into one row, closed and open | muted |
-| `!` | transcript: a harness's notice; a warning in the accent, since the session is not running as asked | accent, failed, muted |
+| `!` | transcript: a harness's notice by its severity, or a loop's warning; a warning in the accent, since the session is not running as asked, an error in the failed hue, information muted | accent, failed, muted |
 
 ### Footer
 - **Style:** `{components.footer}`, one row padded to the full width so no content bleeds

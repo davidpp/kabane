@@ -126,19 +126,21 @@ describe("CopilotLog", () => {
 		expect(log.current.card.status).toBe("running");
 	});
 
-	it("a notice is a line of the log that changes nothing else, a warning one the event view's warning", async () => {
+	it("a notice is a notice event carrying its severity, and changes nothing else", async () => {
 		let log = started();
-		for (const severity of ["info", "warning"] as const)
+		for (const severity of ["info", "warning", "error"] as const)
 			log = CopilotLog.apply(log, {
 				type: "notice",
 				severity,
-				summary: `claude ${severity}: fell back`,
+				summary: `claude: ${severity}`,
 				at: T1,
 			});
-		expect(await transcript(log)).toEqual([
-			[1, "prompt", PROMPT],
-			[2, "notice", "claude info: fell back"],
-			[3, "warning", "claude warning: fell back"],
+		expect(
+			log.current.events.slice(1).map((e) => [e.type, e.severity, e.summary]),
+		).toEqual([
+			["notice", "info", "claude: info"],
+			["notice", "warning", "claude: warning"],
+			["notice", "error", "claude: error"],
 		]);
 		expect(log.current.card.status).toBe("running");
 		expect(log.current.tail).toEqual([]);
@@ -328,6 +330,73 @@ describe("CopilotLog", () => {
 		expect(merged.cards.map((c) => c.id)).toEqual(["copilot", "r1"]);
 		expect(merged.questionsByTaskId.get("t1")?.length).toBe(1);
 		expect(BoardActivity.anyRunning(merged)).toBe(true);
+	});
+
+	it("gives a call's events its id and its detail, so the event view folds them into one row", () => {
+		let log = started();
+		log = CopilotLog.apply(log, {
+			type: "tool_call",
+			summary: "Read",
+			callId: "c1",
+			at: T1,
+		});
+		log = CopilotLog.apply(log, {
+			type: "tool_failed",
+			summary: "Read src/a.ts",
+			callId: "c1",
+			detail: { kind: "read", input: "path: src/a.ts" },
+			at: T1,
+		});
+		expect(log.current.events.slice(1)).toEqual([
+			{ seq: 2, at: T1, type: "tool_use", summary: "Read", callId: "c1" },
+			{
+				seq: 3,
+				at: T1,
+				type: "tool_failed",
+				summary: "Read src/a.ts",
+				callId: "c1",
+				detail: { kind: "read", input: "path: src/a.ts" },
+			},
+		]);
+	});
+
+	it("keeps the latest usage reading for the session, across turns, out of the transcript", () => {
+		expect(CopilotLog.usageLabel(started())).toBeNull();
+		expect(CopilotLog.usageLabel(null)).toBeNull();
+		const read = CopilotLog.apply(started(), {
+			type: "usage",
+			used: 84_000,
+			size: 200_000,
+			at: T1,
+		});
+		expect(CopilotLog.usageLabel(read)).toBe("ctx 42%");
+		expect(read.current.events).toHaveLength(1);
+		const costed = CopilotLog.apply(read, {
+			type: "usage",
+			used: 100_000,
+			size: 200_000,
+			cost: { amount: 0.314, currency: "USD" },
+			at: T1,
+		});
+		expect(CopilotLog.usageLabel(costed)).toBe("ctx 50% · $0.31");
+		const next = CopilotLog.start(costed, "and again", T1);
+		expect(CopilotLog.usageLabel(next)).toBe("ctx 50% · $0.31");
+		const euros = CopilotLog.apply(next, {
+			type: "usage",
+			used: 1,
+			size: 4,
+			cost: { amount: 2, currency: "EUR" },
+			at: T1,
+		});
+		expect(CopilotLog.usageLabel(euros)).toBe("ctx 25% · 2.00 EUR");
+		// A window of no size says nothing rather than dividing by it.
+		const empty = CopilotLog.apply(next, {
+			type: "usage",
+			used: 0,
+			size: 0,
+			at: T1,
+		});
+		expect(CopilotLog.usageLabel(empty)).toBeNull();
 	});
 
 	it("source layers the copilot card over the host source and serves its events after a seq", async () => {
