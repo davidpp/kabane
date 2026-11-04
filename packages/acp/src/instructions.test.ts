@@ -86,6 +86,29 @@ describe("CopilotInstructions.SKILLS", () => {
 	});
 });
 
+describe("CopilotInstructions reading the project", () => {
+	it("reading the project is in scope; writing stays the tracker and the procedures' files", () => {
+		const prompt = CopilotInstructions.systemPrompt(SETUP);
+		expect(prompt).toContain("reading it is part of the job");
+		expect(prompt).toContain("name the real files, functions and commands");
+		expect(prompt).toContain(
+			"Reading the project does not make it yours to change",
+		);
+		expect(prompt).toContain("not changing the code the issues describe");
+	});
+
+	it("/refine and /split ground the brief in the code", () => {
+		for (const name of ["refine", "split"]) {
+			const shortcut = CopilotInstructions.SHORTCUTS.find(
+				(s) => s.name === name,
+			);
+			expect(shortcut?.template).toContain("read the code it concerns");
+			expect(shortcut?.template).toContain("files");
+			expect(shortcut?.template).toContain("verify");
+		}
+	});
+});
+
 describe("CopilotInstructions setting up a dispatch skill", () => {
 	it("the block allows the procedures' writes and the skill names where it lands", () => {
 		expect(CopilotInstructions.BLOCK).toContain(
