@@ -11,6 +11,7 @@
 // its header, any other on its task's detail view with the question pinned over the brief as a
 // banner. Either way a digit answers it in place, through `Planner.answerQuestion`.
 import type { BoardActivity } from "./activity";
+import { ElicitationForm } from "./elicitation-form";
 import type { BoardNav } from "./nav";
 import { type ActivityCard, type CardAction, isInFlight } from "./ports";
 import { BoardPrompt } from "./prompt";
@@ -56,6 +57,9 @@ export namespace BoardTabs {
 		// What this board answered a question still in the queue with, by question id: set on the
 		// keypress, taken back when the write fails, dropped once the poll no longer lists it.
 		answered: ReadonlyMap<string, string>;
+		// The answers toggled on a multi-select question not yet sent, by question id, as indexes
+		// into its choices in the order they were picked. Dropped with the question.
+		picked: ReadonlyMap<string, readonly number[]>;
 		// Each card tab's own reading state, by card id.
 		views: ReadonlyMap<string, CardView>;
 	};
@@ -78,6 +82,7 @@ export namespace BoardTabs {
 		cards: new Map(),
 		queue: [],
 		answered: new Map(),
+		picked: new Map(),
 		views: new Map(),
 	};
 
@@ -185,6 +190,9 @@ export namespace BoardTabs {
 			queue,
 			answered: new Map(
 				[...tabs.answered].filter(([questionId]) => waiting.has(questionId)),
+			),
+			picked: new Map(
+				[...tabs.picked].filter(([questionId]) => waiting.has(questionId)),
 			),
 		};
 		if (fingerprint(next) === fingerprint(tabs)) return state;
@@ -374,9 +382,50 @@ export namespace BoardTabs {
 		}
 	};
 
-	// A question still waiting that offers no answers to pick: it takes a typed one.
+	// A question still waiting that takes a typed answer: one that offers none to pick, or whose
+	// asker allows one besides its choices.
 	const freeform = (question: Question, settled: boolean): boolean =>
-		!settled && question.choices.length === 0;
+		!settled && (question.choices.length === 0 || question.allowFreeform);
+
+	/** The choices toggled on a multi-select question, by index, in the order they were picked. */
+	export const pickedOf = (tabs: Tabs, question: Question): readonly number[] =>
+		tabs.picked.get(question.questionActivityId) ?? [];
+
+	// A digit on a multi-select toggles the choice it numbers, sending nothing yet.
+	const toggle = (state: State, question: Question, index: number): Step => {
+		const picked = new Map(state.tabs.picked).set(
+			question.questionActivityId,
+			ElicitationForm.toggle(pickedOf(state.tabs, question), index),
+		);
+		return { state: withTabs(state, { picked }), effect: NOTHING };
+	};
+
+	// The answer the toggled choices send: their labels, comma-separated, in the order picked, as
+	// `kabane loop answer` takes them (`1, 3` or the labels).
+	const pickedAnswer = (
+		question: Question,
+		picked: readonly number[],
+	): string =>
+		picked
+			.flatMap((index) => {
+				const choice = question.choices[index];
+				return choice === undefined ? [] : [choice];
+			})
+			.join(", ");
+
+	// Answered on the keypress, not when the write lands, so a second key pressed before it does
+	// cannot answer again. A failed write takes it back (withoutAnswer).
+	const answerWith = (
+		state: State,
+		question: Question,
+		answer: string,
+	): Step => {
+		const questionId = question.questionActivityId;
+		return {
+			state: withAnswered(state, questionId, answer),
+			effect: { type: "answerQuestion", questionId, answer },
+		};
+	};
 
 	// A question a card's tab shows is settled once this board answered it; the poll then drops it.
 	const isSettled = (tabs: Tabs, question: Question): boolean =>
@@ -397,9 +446,10 @@ export namespace BoardTabs {
 		});
 
 	/**
-	 * The keys that answer the question in hand, on its banner or on its card's tab: `enter` types the
-	 * answer to one that offers none, and a digit picks the answer it numbers. One past the answers,
-	 * or any once it is settled, does nothing rather than reaching the view under it. Null for every
+	 * The keys that answer the question in hand, on its banner or on its card's tab. A digit picks the
+	 * answer it numbers, or on a multi-select toggles it; `enter` sends what a multi-select has
+	 * toggled, else types the answer to a question that takes a typed one. One past the answers, or
+	 * any once it is settled, does nothing rather than reaching the view under it. Null for every
 	 * other key.
 	 */
 	const answerKey = (
@@ -409,19 +459,19 @@ export namespace BoardTabs {
 		key: BoardNav.KeyInput,
 	): Step | null => {
 		if (key.ctrl || key.meta) return null;
-		if (key.name === "return" || key.name === "enter")
+		if (key.name === "return" || key.name === "enter") {
+			const picked = pickedOf(state.tabs, question);
+			if (!settled && question.multiSelect && picked.length > 0)
+				return answerWith(state, question, pickedAnswer(question, picked));
 			return freeform(question, settled) ? typeAnswer(state, question) : null;
+		}
 		const digit = digitOf(key);
 		if (digit === undefined) return null;
 		const answer = settled ? undefined : question.choices[digit - 1];
 		if (answer === undefined) return { state, effect: NOTHING };
-		// Answered on the keypress, not when the write lands, so a second digit pressed before it
-		// does cannot answer again. A failed write takes it back (withoutAnswer).
-		const questionId = question.questionActivityId;
-		return {
-			state: withAnswered(state, questionId, answer),
-			effect: { type: "answerQuestion", questionId, answer },
-		};
+		return question.multiSelect
+			? toggle(state, question, digit - 1)
+			: answerWith(state, question, answer);
 	};
 
 	/**

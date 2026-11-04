@@ -93,6 +93,8 @@ const QUESTION: BoardTabs.Question = {
 	questionActivityId: "q1",
 	question: "LRU or TTL?",
 	choices: ["LRU", "TTL"],
+	multiSelect: false,
+	allowFreeform: false,
 	agent: "claude",
 	askedAt: "2026-10-10T00:00:00.000Z",
 };
@@ -119,6 +121,8 @@ const FREEFORM: BoardTabs.Question = {
 	questionActivityId: "q2",
 	question: "What should the cache key be?",
 	choices: [],
+	multiSelect: false,
+	allowFreeform: true,
 };
 const RUNNING: BoardTabs.Tabs = {
 	...TABS,

@@ -99,9 +99,14 @@ one past its answers does nothing (`h/l` still walk the sections or lanes), and 
 never one (a terminal that reports shift+1 by its base key means `!`). `b` on the banner goes back
 to the card's tab when the question came from one. An answered banner says what was answered and
 clears when you leave the view; an unanswered one stays pinned until it is answered. A question
-that offers no answers (freeform) takes a typed one: `enter`, on its banner or on the card's tab
-that shows it, opens the board's prompt (below), and what is sent goes to
-`Planner.answerQuestion` as the answer. Every surface answers through the one `answerQuestion`
+that offers no answers (freeform), or whose asker allows a typed answer besides its answers
+(`allowFreeform` in the question body), takes a typed one: `enter`, on its banner or on the card's
+tab that shows it, opens the board's prompt (below), and what is sent goes to
+`Planner.answerQuestion` as the answer. On a multi-select question (`multiSelect`) the digits, or a
+click, toggle answers rather than sending one, and `enter` sends the toggled labels
+comma-separated in the order picked (`Gamma, Alpha`), the form `kabane loop answer` takes. A
+banner whose question left the queue without an answer from this board (answered elsewhere, or
+withdrawn by its asker) reads `closed`. Every surface answers through the one `answerQuestion`
 effect: marked answered on the keypress, so a second digit answers nothing, and taken back if the
 write fails.
 

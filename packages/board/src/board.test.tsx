@@ -363,6 +363,8 @@ const question = (taskId: string): BoardActivity.AwaitingQuestion => ({
 	question: "Which auth flow?",
 	taskShortId: "JAKE-1",
 	choices: [],
+	multiSelect: false,
+	allowFreeform: true,
 	agent: "claude",
 	askedAt: "2026-10-10T00:00:00.000Z",
 });

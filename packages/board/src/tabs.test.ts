@@ -65,6 +65,8 @@ const question = (
 	questionActivityId: "q-loop",
 	question: "Evict by LRU or by TTL?",
 	choices: ["LRU", "TTL"],
+	multiSelect: false,
+	allowFreeform: false,
 	agent: "claude",
 	askedAt: "2026-10-10T00:01:00.000Z",
 	...over,
@@ -79,6 +81,8 @@ const SOLO_Q = question({
 	questionActivityId: "q-solo",
 	question: "Pin 0.5.10 or take the minor?",
 	choices: ["Pin", "Take"],
+	multiSelect: false,
+	allowFreeform: false,
 	agent: "hermes",
 	askedAt: "2026-10-10T00:00:30.000Z",
 });
@@ -381,6 +385,8 @@ describe("a card's tab answers its question in place", () => {
 			questionActivityId: "q-loop-2",
 			question: "Keep the old index?",
 			choices: ["Keep", "Drop"],
+			multiSelect: false,
+			allowFreeform: false,
 			askedAt: "2026-10-10T00:02:00.000Z",
 		});
 		const s = onTab(withLoop([card()], [SOLO_Q, LOOP_Q, later]));
@@ -675,6 +681,8 @@ describe("a question that just appeared holds the digits until it has been read"
 			questionActivityId: "q-loop-2",
 			question: "Keep the old index?",
 			choices: ["Keep", "Drop"],
+			multiSelect: false,
+			allowFreeform: false,
 			askedAt: "2026-10-10T00:02:00.000Z",
 		});
 		const onTab = press(withLoop([card()], [LOOP_Q, later]), "}").state;

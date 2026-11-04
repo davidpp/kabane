@@ -353,6 +353,8 @@ describe("a question that offers no answers", () => {
 		questionActivityId: "q-free",
 		question: "What should the cache key be?",
 		choices: [],
+		multiSelect: false,
+		allowFreeform: true,
 		agent: "claude",
 		askedAt: "2026-10-10T00:01:00.000Z",
 	};
@@ -389,15 +391,103 @@ describe("a question that offers no answers", () => {
 		expect(BoardNav.keySituation(pinned, facts).freeform).toBe(true);
 	});
 
-	it("enter means nothing on a question with answers to pick", () => {
-		const s = press(
+	const picking = (allowFreeform: boolean): BoardNav.BoardState =>
+		press(
 			BoardTabs.withActivity(
 				BoardNav.init([], { scoped: false }),
 				[card({ sessionIds: ["s-loop"] })],
-				[{ ...asked, choices: ["path", "hash"] }],
+				[{ ...asked, choices: ["path", "hash"], allowFreeform }],
 			),
 			"}",
 		).state;
-		expect(press(s, "return").state.prompt.open).toBeNull();
+
+	it("enter means nothing on a question that takes only its answers", () => {
+		expect(press(picking(false), "return").state.prompt.open).toBeNull();
+	});
+
+	it("enter types an answer to one whose asker allows it besides its answers, which stay digits", () => {
+		const s = picking(true);
+		expect(press(s, "return").state.prompt.open?.target).toEqual({
+			type: "answer",
+			questionId: "q-free",
+		});
+		expect(press(s, "2").effect).toEqual({
+			type: "answerQuestion",
+			questionId: "q-free",
+			answer: "hash",
+		});
+	});
+});
+
+describe("a multi-select question", () => {
+	const asked: BoardTabs.Question = {
+		taskId: "t4",
+		taskShortId: "JREP-4",
+		sessionId: "s-loop",
+		questionActivityId: "q-multi",
+		question: "Which tags apply? (1 of 2)",
+		choices: ["Alpha", "Beta", "Gamma", "skip", "decline"],
+		multiSelect: true,
+		allowFreeform: false,
+		agent: "claude",
+		askedAt: "2026-10-10T00:01:00.000Z",
+	};
+	const onTab = (question = asked): BoardNav.BoardState =>
+		press(
+			BoardTabs.withActivity(
+				BoardNav.init([], { scoped: false }),
+				[card({ sessionIds: ["s-loop"] })],
+				[question],
+			),
+			"}",
+		).state;
+
+	it("digits toggle and send nothing; enter sends the picks as `kabane loop answer` reads them", () => {
+		let s = onTab();
+		for (const digit of ["3", "1", "2", "2"]) {
+			const r = press(s, digit);
+			expect(r.effect.type).toBe("none");
+			s = r.state;
+		}
+		expect(BoardTabs.pickedOf(s.tabs, asked)).toEqual([2, 0]);
+		const sent = press(s, "return");
+		expect(sent.effect).toEqual({
+			type: "answerQuestion",
+			questionId: "q-multi",
+			answer: "Gamma, Alpha",
+		});
+		// Settled on the keypress: neither a digit nor a second enter answers again.
+		expect(press(sent.state, "1").effect.type).toBe("none");
+		expect(press(sent.state, "return").effect.type).toBe("none");
+	});
+
+	it("enter with nothing picked sends nothing, and a reserved choice alone is still one pick", () => {
+		const s = onTab();
+		expect(press(s, "return").effect.type).toBe("none");
+		const declined = press(press(s, "5").state, "return");
+		expect(declined.effect).toMatchObject({ answer: "decline" });
+	});
+
+	it("enter on one that also takes a typed answer types it until something is picked", () => {
+		const s = onTab({ ...asked, allowFreeform: true });
+		expect(press(s, "return").state.prompt.open?.target).toEqual({
+			type: "answer",
+			questionId: "q-multi",
+		});
+		expect(press(press(s, "2").state, "return").effect).toMatchObject({
+			answer: "Beta",
+		});
+	});
+
+	it("a click toggles as its digit does, and the picks go with the question", () => {
+		const s = onTab();
+		const clicked = BoardNav.reduceMouse(s, { type: "answer", index: 1 }).state;
+		expect(BoardTabs.pickedOf(clicked.tabs, asked)).toEqual([1]);
+		const gone = BoardTabs.withActivity(
+			clicked,
+			[card({ sessionIds: ["s-loop"] })],
+			[],
+		);
+		expect(gone.tabs.picked.size).toBe(0);
 	});
 });

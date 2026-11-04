@@ -317,6 +317,8 @@ describe("CopilotLog", () => {
 				questionActivityId: "q",
 				question: "?",
 				choices: [],
+				multiSelect: false,
+				allowFreeform: true,
 				agent: "claude",
 				askedAt: "2026-10-10T00:00:00.000Z",
 			},

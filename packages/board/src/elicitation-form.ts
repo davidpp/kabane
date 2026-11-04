@@ -83,7 +83,7 @@ export namespace ElicitationForm {
 		key.name === char || key.sequence === char;
 
 	/** `index` toggled in or out of `picked`, which keeps the order things were picked in. */
-	const toggle = (
+	export const toggle = (
 		picked: readonly number[],
 		index: number,
 	): readonly number[] =>

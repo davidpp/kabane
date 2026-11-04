@@ -15,6 +15,10 @@ export namespace BoardActivity {
 		question: string;
 		/** The answers the asker offered, in order; empty for a freeform question. */
 		choices: readonly string[];
+		/** Any number of `choices` may be picked: toggled with digits, sent with `enter`. */
+		multiSelect: boolean;
+		/** A typed answer is taken as well as, or in place of, the choices. */
+		allowFreeform: boolean;
 		/** Who asks: the session's agent. */
 		agent: string;
 		askedAt: string;
@@ -79,6 +83,8 @@ export namespace BoardActivity {
 				questionActivityId: row.question.id,
 				question: parsed.question,
 				choices: parsed.choices,
+				multiSelect: parsed.multiSelect,
+				allowFreeform: parsed.allowFreeform,
 				agent: row.session.agent,
 				askedAt: row.question.createdAt,
 			});
