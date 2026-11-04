@@ -11,6 +11,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner, Runtime, TABLES } from "@cabane/core";
+import { configureTestRuntime } from "@cabane/core/testing";
 import { SqliteDb } from "./index";
 
 const DB_NAME = "smoke.db";
@@ -49,7 +50,10 @@ for (const tablePrefix of ["", "planner_"]) {
 			unwrap(await Planner.init(base));
 		});
 
+		// Every test file shares this process's Runtime. Left on smoke.db and a prefix, a later
+		// file's tracker would sit where a real child process (default runtime) cannot see it.
 		afterEach(() => {
+			configureTestRuntime();
 			rmSync(base, { recursive: true, force: true });
 		});
 
