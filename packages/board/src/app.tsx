@@ -475,7 +475,7 @@ export const App = ({
 									)
 								: prev,
 						);
-					if (update.type === "tool_result") {
+					if (update.type === "tool_result" && update.wrote) {
 						const current = stateRef.current;
 						if (current) void reload(current);
 					}

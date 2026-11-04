@@ -330,6 +330,34 @@ describe("CopilotLog", () => {
 		expect(BoardActivity.anyRunning(merged)).toBe(true);
 	});
 
+	it("gives a call's events its id and its detail, so the event view folds them into one row", () => {
+		let log = started();
+		log = CopilotLog.apply(log, {
+			type: "tool_call",
+			summary: "Read",
+			callId: "c1",
+			at: T1,
+		});
+		log = CopilotLog.apply(log, {
+			type: "tool_failed",
+			summary: "Read src/a.ts",
+			callId: "c1",
+			detail: { kind: "read", input: "path: src/a.ts" },
+			at: T1,
+		});
+		expect(log.current.events.slice(1)).toEqual([
+			{ seq: 2, at: T1, type: "tool_use", summary: "Read", callId: "c1" },
+			{
+				seq: 3,
+				at: T1,
+				type: "tool_failed",
+				summary: "Read src/a.ts",
+				callId: "c1",
+				detail: { kind: "read", input: "path: src/a.ts" },
+			},
+		]);
+	});
+
 	it("keeps the latest usage reading for the session, across turns, out of the transcript", () => {
 		expect(CopilotLog.usageLabel(started())).toBeNull();
 		expect(CopilotLog.usageLabel(null)).toBeNull();

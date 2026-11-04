@@ -8,6 +8,7 @@ import {
 	methods,
 	type PlanEntry,
 	PROTOCOL_VERSION,
+	type ToolCallContent,
 	type ToolCallStatus,
 } from "@agentclientprotocol/sdk";
 import type { BoardContext } from "@cabane/board/context";
@@ -26,6 +27,8 @@ type ToolStep = {
 	id: string;
 	title?: string;
 	status?: ToolCallStatus;
+	rawInput?: unknown;
+	content?: ToolCallContent[];
 };
 
 type Seen = {
@@ -199,22 +202,28 @@ const scriptedAgent = (
 				);
 			for (const entries of options.plans ?? [])
 				await notify({ sessionUpdate: "plan", entries });
-			for (const step of options.steps ?? [])
+			for (const step of options.steps ?? []) {
+				const fields = {
+					...(step.status ? { status: step.status } : {}),
+					...(step.rawInput !== undefined ? { rawInput: step.rawInput } : {}),
+					...(step.content ? { content: step.content } : {}),
+				};
 				await notify(
 					step.kind === "call"
 						? {
 								sessionUpdate: "tool_call",
 								toolCallId: step.id,
 								title: step.title ?? step.id,
-								...(step.status ? { status: step.status } : {}),
+								...fields,
 							}
 						: {
 								sessionUpdate: "tool_call_update",
 								toolCallId: step.id,
 								...(step.title ? { title: step.title } : {}),
-								...(step.status ? { status: step.status } : {}),
+								...fields,
 							},
 				);
+			}
 			if (options.usage)
 				await notify({ sessionUpdate: "usage_update", ...options.usage });
 			return { stopReason: "end_turn" };
@@ -449,7 +458,7 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("a completed cabane write yields tool_result, a read does not", async () => {
+	it("every call that completes yields tool_result; only a cabane write is marked a write", async () => {
 		const seen = fresh();
 		const copilot = copilotOver(
 			scriptedAgent(seen, {
@@ -467,15 +476,63 @@ describe("BoardCopilot", () => {
 			}),
 		);
 		const updates = await collect(copilot.run("triage", context()));
-		expect(types(updates)).toEqual([
-			"tool_call",
-			"tool_call",
-			"tool_result",
-			"done",
+		expect(
+			updates.map((u) => [u.type, u.summary, "wrote" in u && u.wrote]),
+		).toEqual([
+			["tool_call", "kabane_context", false],
+			["tool_result", "kabane_context", false],
+			["tool_call", "kabane_edit", false],
+			["tool_result", "kabane_edit", true],
+			["done", "end_turn", false],
 		]);
-		expect(updates.find((u) => u.type === "tool_result")?.summary).toBe(
-			"kabane_edit",
+		copilot.close();
+	});
+
+	it("names a call's steps by its id, and its end carries the refined title, the input and the diff", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				steps: [
+					{ kind: "call", id: "t1", title: "Edit", status: "pending" },
+					{
+						kind: "update",
+						id: "t1",
+						title: "Edit src/a.ts",
+						rawInput: { file_path: "src/a.ts" },
+					},
+					{
+						kind: "update",
+						id: "t1",
+						status: "completed",
+						content: [
+							{
+								type: "diff",
+								path: "src/a.ts",
+								oldText: "a",
+								newText: "b",
+							},
+						],
+					},
+					{ kind: "call", id: "t2", title: "Bash", status: "pending" },
+					{ kind: "update", id: "t2", status: "failed" },
+				],
+			}),
 		);
+		const updates = await collect(copilot.run("edit it", context()));
+		expect(updates.slice(0, 4)).toMatchObject([
+			{ type: "tool_call", summary: "Edit", callId: "t1" },
+			{
+				type: "tool_result",
+				summary: "Edit src/a.ts",
+				callId: "t1",
+				detail: {
+					input: "file_path: src/a.ts",
+					diffs: [{ path: "src/a.ts", oldText: "a", newText: "b" }],
+				},
+			},
+			{ type: "tool_call", summary: "Bash", callId: "t2" },
+			{ type: "tool_failed", summary: "Bash", callId: "t2" },
+		]);
 		copilot.close();
 	});
 
@@ -516,11 +573,14 @@ describe("BoardCopilot", () => {
 			}),
 		);
 		const updates = await collect(copilot.run("link them", context()));
-		expect(types(updates)).toEqual([
-			"tool_call",
-			"tool_result",
-			"tool_call",
-			"done",
+		expect(
+			updates.map((u) => [u.type, "wrote" in u && u.wrote === true]),
+		).toEqual([
+			["tool_call", false],
+			["tool_result", true],
+			["tool_call", false],
+			["tool_result", false],
+			["done", false],
 		]);
 		copilot.close();
 	});

@@ -2,8 +2,9 @@
 // server is `kabane mcp`, so everything the agent writes is stamped with this session's agent actor
 // and lands in the database the board is already reading. The board hands us what the human is
 // looking at as a `BoardContext`; we render it ahead of every prompt and map the harness's updates
-// back into the port's small union. Nothing here parses a tool RESULT: the adapters disagree on
-// where those land, so a write is recognised by the tool call's title and the board reloads.
+// back into the port's small union. Nothing here parses a tool RESULT for meaning: the adapters
+// disagree on where those land, so a write is recognised by the tool call's title and the board
+// reloads. What a call was given and gave back is only carried, as text, for its row opened.
 import { resolve } from "node:path";
 import { BoardContext } from "@cabane/board/context";
 import type {
@@ -19,6 +20,7 @@ import { AcpClient } from "./client";
 import type { Harnesses } from "./harnesses";
 import { CopilotInstructions } from "./instructions";
 import { Mailbox } from "./mailbox";
+import { ToolCalls } from "./tool-calls";
 
 export namespace BoardCopilot {
 	export type Options = {
@@ -80,10 +82,11 @@ export namespace BoardCopilot {
 	const namesWrite = (title: string): boolean =>
 		WRITE_TOOLS.some((tool) => title.includes(tool));
 
-	const isCompletedWrite = (
-		status: string | undefined,
-		title: string,
-	): boolean => status === "completed" && namesWrite(title);
+	// The step a call's status ends it with, if it ended.
+	const ENDS: Readonly<Record<string, CopilotStep>> = {
+		completed: "tool_result",
+		failed: "tool_failed",
+	};
 
 	// The two update kinds ACP streams as DELTAS rather than as whole values.
 	type Prose = Extract<AcpClient.Update, { type: "text" | "thought" }>;
@@ -278,28 +281,46 @@ export namespace BoardCopilot {
 			at: at(),
 		});
 
-		// One harness update becomes zero, one or two port updates: a tool call shows in the
-		// transcript AND, when it completed a write, tells the board to reload. Prose never reaches
-		// here — `run` buffers it — and the parameter type is what keeps that true.
+		// One step of the tool call `id`, under its title so far and with what it was given and gave
+		// back. An end that completed a write says so, which is what the board reloads on.
+		const toolStep = (
+			type: CopilotStep,
+			id: string,
+			call: ToolCalls.Call,
+		): CopilotUpdate => {
+			const detail = ToolCalls.detail(call);
+			return {
+				type,
+				summary: call.title,
+				at: at(),
+				callId: id,
+				...(Object.keys(detail).length > 0 ? { detail } : {}),
+				...(type === "tool_result" && namesWrite(call.title)
+					? { wrote: true }
+					: {}),
+			};
+		};
+
+		// One harness update becomes zero, one or two port updates: a call opening shows in the
+		// transcript, and the update that ends it (the opening itself, for a call done in one step)
+		// sends its end. The updates in between are folded into the call and land with the end, which
+		// carries it whole. Prose never reaches here — `run` buffers it — and the parameter type is
+		// what keeps that true.
 		const toUpdates = (
 			incoming: Exclude<AcpClient.Update, Prose>,
-			titles: Map<string, string>,
+			calls: Map<string, ToolCalls.Call>,
 		): CopilotUpdate[] => {
 			switch (incoming.type) {
-				case "tool_call": {
-					titles.set(incoming.id, incoming.title);
-					const out = [update("tool_call", incoming.title)];
-					if (isCompletedWrite(incoming.status, incoming.title))
-						out.push(update("tool_result", incoming.title));
-					return out;
-				}
+				case "tool_call":
 				case "tool_call_update": {
-					// The update carries a title only when it changed, so the call's own title stands in.
-					if (incoming.title) titles.set(incoming.id, incoming.title);
-					const title = titles.get(incoming.id) ?? "";
-					return isCompletedWrite(incoming.status, title)
-						? [update("tool_result", title)]
-						: [];
+					const call = ToolCalls.apply(calls, incoming);
+					const end = incoming.status ? ENDS[incoming.status] : undefined;
+					return [
+						...(incoming.type === "tool_call"
+							? [toolStep("tool_call", incoming.id, call)]
+							: []),
+						...(end ? [toolStep(end, incoming.id, call)] : []),
+					];
 				}
 				// State, not a step: the board replaces its copy and counts it, and nothing lands in
 				// the transcript.
@@ -390,7 +411,7 @@ export namespace BoardCopilot {
 			// the harness or they decide what it asks.
 			if (!instructed) yield update("mode", started.value.mode.note);
 			const { blocks, instructing } = compose(prompt, context);
-			const titles = new Map<string, string>();
+			const calls = new Map<string, ToolCalls.Call>();
 			let first = true;
 			// ACP streams prose as DELTAS: `agent_message_chunk` arrives mid-word, so one sentence is
 			// a dozen of them. Held as a run and emitted as ONE update when something else happens or
@@ -454,7 +475,7 @@ export namespace BoardCopilot {
 					// Whatever ended the run goes after it, so a tool call the prose introduced reads
 					// in the order it was said.
 					yield* flushed();
-					for (const mapped of toUpdates(incoming, titles)) yield mapped;
+					for (const mapped of toUpdates(incoming, calls)) yield mapped;
 				}
 			} finally {
 				// The board drops this generator mid-stream whenever a turn is cancelled or a new

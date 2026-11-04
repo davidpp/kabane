@@ -437,6 +437,82 @@ describe("the A prompt against a scripted copilot", () => {
 		}
 	});
 
+	it("reloads the board on the end of a call that wrote, not on every call that ended", async () => {
+		const added = await Planner.addTask(TEST_BASE, {
+			title: "Rename me",
+			kind: "issue",
+			state: "next",
+		});
+		if (!added.ok) throw added.error;
+		const id = added.value.id;
+		const at = (): string => new Date().toISOString();
+		const renaming = (wrote: boolean, title: string): Copilot => ({
+			run: async function* () {
+				const renamed = await Planner.updateTask(TEST_BASE, id, { title });
+				if (!renamed.ok) throw renamed.error;
+				yield {
+					type: "tool_call",
+					summary: "kabane_edit",
+					callId: "c1",
+					at: at(),
+				};
+				yield {
+					type: "tool_result",
+					summary: "kabane_edit",
+					callId: "c1",
+					at: at(),
+					...(wrote ? { wrote: true } : {}),
+				};
+				yield { type: "done", summary: "", at: at() };
+			},
+			cancel: async () => {},
+			shortcuts: () => [],
+			answerPermission: () => {},
+			answerElicitation: () => {},
+		});
+		// Mounts the board, waits for `shown`, and asks the copilot once.
+		const ask = async (copilot: Copilot, shown: string) => {
+			const setup = await renderTest(
+				<App
+					cwd={TEST_BASE}
+					basePath={TEST_BASE}
+					activity={noActivity}
+					copilot={copilot}
+				/>,
+				{ width: 120, height: 24 },
+			);
+			const until = (p: (f: string) => boolean) =>
+				pumpUntil(setup.renderOnce, setup.captureCharFrame, p);
+			await until((f) => f.includes(shown));
+			setup.mockInput.pressKey(":");
+			await until(panelOpen);
+			await setup.mockInput.typeText("rename it");
+			setup.mockInput.pressEnter();
+			await until((f) => f.includes("✓ copilot"));
+			return { ...setup, until };
+		};
+		// A call that ended without writing leaves the board as it was until the next poll.
+		const read = await ask(renaming(false, "Renamed quietly"), "Rename me");
+		try {
+			for (let pass = 0; pass < 10; pass++) {
+				await read.renderOnce();
+				await sleep(30);
+			}
+			expect(read.captureCharFrame()).toContain("Rename me");
+		} finally {
+			read.destroy();
+		}
+		const wrote = await ask(
+			renaming(true, "Renamed by the copilot"),
+			"Renamed quietly",
+		);
+		try {
+			await wrote.until((f) => f.includes("Renamed by the copilot"));
+		} finally {
+			wrote.destroy();
+		}
+	});
+
 	it("asking a second thing keeps the first: both turns in the transcript, each under the prompt that started it", async () => {
 		const seen: Seen = { prompts: [], contexts: [], cancels: 0 };
 		const setup = await renderTest(

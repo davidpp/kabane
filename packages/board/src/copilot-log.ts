@@ -9,6 +9,7 @@ import {
 	type ActivityCard,
 	type ActivityEvent,
 	type ActivitySource,
+	type CopilotStep,
 	type CopilotUpdate,
 	type CopilotUsage,
 	type PlanEntry,
@@ -85,9 +86,10 @@ export namespace CopilotLog {
 		},
 	});
 
-	// Event-view types: the glyph table there knows `text`, `tool_use`, `tool_result`, `error`;
-	// `thought` falls to its blank, muted default, which is the dimmed rendering wanted for it.
-	// A notice is the event view's `warning` when it is one, a muted `notice` otherwise.
+	// Event-view types: a call opening is its `tool_use`, and its end `tool_result` or `tool_failed`
+	// (ToolRows folds the pair into one row); the glyph table knows `text` and `error`, and `thought`
+	// falls to its blank, muted default, which is the dimmed rendering wanted for it. A notice is the
+	// event view's `warning` when it is one, a muted `notice` otherwise.
 	const eventType = (update: CopilotUpdate): string =>
 		update.type === "tool_call"
 			? "tool_use"
@@ -115,6 +117,24 @@ export namespace CopilotLog {
 
 	const lastLine = (tail: readonly string[]): string =>
 		tail[tail.length - 1] ?? "";
+
+	// The updates that are a line of the transcript as they come: the steps and the notices.
+	type Line = Extract<CopilotUpdate, { type: CopilotStep | "notice" }>;
+
+	// One line as the event view reads it, with the tool call it belongs to and what was known of
+	// the call then, when it is one.
+	const record = (seq: number, update: Line): ActivityEvent => ({
+		seq,
+		at: update.at,
+		type: eventType(update),
+		summary: update.summary,
+		...(update.type !== "notice" && update.callId !== undefined
+			? { callId: update.callId }
+			: {}),
+		...(update.type !== "notice" && update.detail
+			? { detail: update.detail }
+			: {}),
+	});
 
 	const applyToTurn = (turn: Turn, update: CopilotUpdate): Turn => {
 		if (update.type === "plan") return { ...turn, plan: update.entries };
@@ -159,15 +179,7 @@ export namespace CopilotLog {
 		const events =
 			update.type === "done"
 				? turn.events
-				: [
-						...turn.events,
-						{
-							seq: lastSeq(turn) + 1,
-							at: update.at,
-							type: eventType(update),
-							summary: update.summary,
-						},
-					];
+				: [...turn.events, record(lastSeq(turn) + 1, update)];
 		switch (update.type) {
 			case "tool_call":
 				return { ...turn, events, activity: update.summary };
@@ -179,6 +191,7 @@ export namespace CopilotLog {
 				};
 			case "thought":
 			case "tool_result":
+			case "tool_failed":
 			case "mode":
 			case "notice":
 				return { ...turn, events };

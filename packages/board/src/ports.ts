@@ -217,14 +217,15 @@ export type PlanEntryStatus = "pending" | "in_progress" | "completed";
 export type PlanEntry = { content: string; status: PlanEntryStatus };
 
 // The step kinds that advance a turn, each carrying the line the transcript shows: `text` is the
-// agent's prose, `thought` its reasoning, the tool pair its writes (a `tool_result` is what the
-// board reloads on), `mode` the harness mode that decides what the session asks, `error` and `done`
-// end the turn.
+// agent's prose, `thought` its reasoning, `tool_call` a tool call opening and `tool_result` or
+// `tool_failed` its end, `mode` the harness mode that decides what the session asks, `error` and
+// `done` end the turn.
 export type CopilotStep =
 	| "text"
 	| "thought"
 	| "tool_call"
 	| "tool_result"
+	| "tool_failed"
 	| "mode"
 	| "error"
 	| "done";
@@ -293,7 +294,17 @@ export type CopilotElicitationAnswer =
 // the harness taking one of those back unanswered (`id` names it): the board stops asking, and
 // `summary` is the line its transcript keeps.
 export type CopilotUpdate =
-	| { type: CopilotStep; summary: string; at: string }
+	// A tool call's steps carry its `callId`, so its opening and its end read as one row, and its
+	// `detail` as known then. `wrote` marks the end of a call that changed tracker state, which is
+	// what the board reloads on.
+	| {
+			type: CopilotStep;
+			summary: string;
+			at: string;
+			callId?: string;
+			detail?: ActivityToolDetail;
+			wrote?: boolean;
+	  }
 	| { type: "plan"; entries: readonly PlanEntry[]; at: string }
 	| { type: "permission"; request: CopilotPermission; at: string }
 	| { type: "elicitation"; request: CopilotElicitation; at: string }
