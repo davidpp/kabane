@@ -299,8 +299,9 @@ export type CopilotUpdate =
 	| { type: "elicitation"; request: CopilotElicitation; at: string }
 	| { type: "withdrawn"; id: string; summary: string; at: string }
 	// Something the harness wants the human to know that is not the agent's reply (a mode it fell
-	// back from, a model it swapped): a line of the turn's log that changes nothing else. A warning
-	// reads in the warning color, an info stays muted.
+	// back from, a model it swapped): a line of the turn's log that changes nothing else. The
+	// transcript records a warning as the event type `warning` and an info as `notice`; how each
+	// reads is the event view's glyph table.
 	| {
 			type: "notice";
 			severity: CopilotNoticeSeverity;
