@@ -60,8 +60,9 @@ export namespace Questions {
 
 	/**
 	 * The latest answer to each of `questionIds` that has one, as soon as one does; undefined when
-	 * `signal` aborts first. A failed read is reported once and retried: it is never taken as an
-	 * answer.
+	 * `signal` aborts first, or when one of them is closed as withdrawn with no answer, which
+	 * nobody is then left to give. A withdrawal is never taken as an answer, nor is a failed read,
+	 * which is reported once and retried.
 	 */
 	export const awaitAnswers = async (
 		deps: Pick<Deps, "basePath" | "sessionId" | "emit" | "pollMs">,
@@ -76,13 +77,17 @@ export namespace Questions {
 			);
 			if (activities.ok) {
 				const answers = new Map<string, AgentActivity>();
+				let withdrawn = false;
 				for (const id of questionIds) {
-					const answer = activities.value.findLast((a) =>
+					const closing = activities.value.filter((a) =>
 						isAnswerTo(a.context, id),
 					);
+					const answer = closing.findLast((a) => a.type !== "withdrawn");
 					if (answer) answers.set(id, answer);
+					else if (closing.length > 0) withdrawn = true;
 				}
 				if (answers.size > 0) return answers;
+				if (withdrawn) return undefined;
 			} else if (activities.error.message !== reported) {
 				reported = activities.error.message;
 				deps.emit({
@@ -136,13 +141,20 @@ export namespace Questions {
 		return session.ok && session.value?.endedAt !== undefined;
 	};
 
-	/** Why a question closed unanswered: the claim stopped, or the harness withdrew it. */
+	/**
+	 * Why a question closed unanswered: the claim stopped, the harness withdrew it (`withdrawn`),
+	 * or neither, when something outside this claim closed it (a surface that took the runner for
+	 * dead).
+	 */
 	export const closedBecause = (
 		deps: Pick<Deps, "signal" | "harness">,
+		withdrawn: AbortSignal,
 	): { stopped: boolean; why: string } =>
 		deps.signal.aborted
 			? { stopped: true, why: "withdrawn: the loop stopped this claim" }
-			: { stopped: false, why: `withdrawn by the harness (${deps.harness})` };
+			: withdrawn.aborted
+				? { stopped: false, why: `withdrawn by the harness (${deps.harness})` }
+				: { stopped: false, why: "withdrawn outside this claim" };
 
 	/** Both reasons to stop waiting on a human: the claim stopped, or the harness withdrew. */
 	export const either = (

@@ -8,6 +8,7 @@
 import type { ColorInput } from "@opentui/core";
 import type { ReactNode } from "react";
 import { ElicitationForm } from "./elicitation-form";
+import { FormField } from "./form-field";
 import type {
 	CopilotElicitation,
 	CopilotFormField,
@@ -211,7 +212,7 @@ export const ElicitationBlock = ({
 						// A new field is a new input: what was typed for the last one does not carry over.
 						key={`${request.id}#${draft.at}`}
 						focused={inHand}
-						placeholder={ElicitationForm.wants(field)}
+						placeholder={FormField.wants(field)}
 						placeholderColor={theme.secondary}
 						backgroundColor={fieldBg}
 						focusedBackgroundColor={fieldBg}

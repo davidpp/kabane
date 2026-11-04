@@ -24,6 +24,12 @@ import {
 	type Stream,
 	type ToolCallContent,
 } from "@agentclientprotocol/sdk";
+import type {
+	CopilotElicitationAnswer,
+	CopilotFormField,
+	CopilotFormOption,
+	CopilotFormValue,
+} from "@cabane/board/ports";
 import { err, ok, type Result, toError, tryCatch } from "@cabane/core";
 import { Harnesses } from "./harnesses";
 import { Stdio } from "./stdio";
@@ -104,44 +110,15 @@ export namespace AcpClient {
 		withdrawn: AbortSignal,
 	) => Promise<Result<string>>;
 
-	/** One option of a choice field: `value` is what the harness is answered with. */
-	export type ElicitationOption = {
-		value: string;
-		label: string;
-		description?: string;
-	};
+	// A form's parts are the board's: the board and the loop put the same form to a human, and read
+	// its answers the same way (`@cabane/board/form-field`).
+	export type ElicitationOption = CopilotFormOption;
 
 	/**
 	 * One field of a form, as the harness described it: `title` and `description` verbatim
 	 * (`title` falls back to the field's key). `choice` picks one option, `choices` any number.
 	 */
-	export type ElicitationField = {
-		key: string;
-		title: string;
-		description?: string;
-		required: boolean;
-	} & (
-		| {
-				type: "text";
-				minLength?: number;
-				maxLength?: number;
-				pattern?: string;
-		  }
-		| {
-				type: "number";
-				integer: boolean;
-				minimum?: number;
-				maximum?: number;
-		  }
-		| { type: "boolean" }
-		| { type: "choice"; options: ElicitationOption[] }
-		| {
-				type: "choices";
-				options: ElicitationOption[];
-				minItems?: number;
-				maxItems?: number;
-		  }
-	);
+	export type ElicitationField = CopilotFormField;
 
 	/** A form the harness asks the human to fill (ACP `elicitation/create`, form mode). */
 	export type ElicitationRequest = {
@@ -150,15 +127,14 @@ export namespace AcpClient {
 		toolCallId?: string;
 	};
 
-	export type ElicitationValue = string | number | boolean | string[];
+	export type ElicitationValue = CopilotFormValue;
 
 	/**
 	 * The human's answer. `content` holds only the fields they answered: an optional field left
 	 * empty is absent, never filled in for them.
 	 */
 	export type ElicitationAnswer =
-		| { action: "accept"; content: Record<string, ElicitationValue> }
-		| { action: "decline" }
+		| CopilotElicitationAnswer
 		| { action: "cancel" };
 
 	// An error answers "cancel", and so does a request the harness withdrew (`withdrawn`, as for
@@ -906,8 +882,24 @@ export namespace AcpClient {
 			onElicitation(request.value, signal),
 			signal,
 		);
-		return answer.ok && !signal.aborted ? answer.value : { action: "cancel" };
+		return answer.ok && !signal.aborted
+			? toResponse(answer.value)
+			: { action: "cancel" };
 	};
+
+	// ACP's content takes a mutable list for a multi-select.
+	const toResponse = (answer: ElicitationAnswer): CreateElicitationResponse =>
+		answer.action === "accept"
+			? {
+					action: "accept",
+					content: Object.fromEntries(
+						Object.entries(answer.content).map(([key, value]) => [
+							key,
+							typeof value === "object" ? [...value] : value,
+						]),
+					),
+				}
+			: answer;
 
 	const text = (value: string | null | undefined): string | undefined =>
 		value === null || value === undefined || value === "" ? undefined : value;

@@ -6,6 +6,7 @@ import {
 	type ActivitySource,
 	type ActivityStatus,
 	type CardAction,
+	type NoticeSeverity,
 	STOP_ACTION,
 } from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
@@ -193,6 +194,14 @@ export namespace LoopActivity {
 		);
 	};
 
+	const SEVERITIES: readonly NoticeSeverity[] = ["info", "warning", "error"];
+
+	// A notice's severity as the run's dispatch wrote it in the event's data; anything else is none,
+	// and the board falls back to the summary's `<severity>:` prefix.
+	const noticeSeverity = (
+		value: string | number | undefined,
+	): NoticeSeverity | undefined => SEVERITIES.find((s) => s === value);
+
 	/**
 	 * The device's runs, read from `$KABANE_HOME/loops` on every call. A question the board
 	 * answers for one of a run's sessions is noted in the run's inbox as answered by `actor`, the
@@ -225,15 +234,22 @@ export namespace LoopActivity {
 			return events.ok
 				? ok(
 						events.value.map(
-							({ seq, at, type, summary, lane, callId, detail }) => ({
-								seq,
-								at,
-								type,
-								summary,
-								...(lane ? { lane } : {}),
-								...(callId ? { callId } : {}),
-								...(detail ? { detail } : {}),
-							}),
+							({ seq, at, type, summary, lane, callId, detail, data }) => {
+								const severity =
+									type === "notice"
+										? noticeSeverity(data?.severity)
+										: undefined;
+								return {
+									seq,
+									at,
+									type,
+									summary,
+									...(severity ? { severity } : {}),
+									...(lane ? { lane } : {}),
+									...(callId ? { callId } : {}),
+									...(detail ? { detail } : {}),
+								};
+							},
 						),
 					)
 				: events;

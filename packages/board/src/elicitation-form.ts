@@ -7,6 +7,7 @@
 // with `enter`, which also leaves an optional field of any kind empty. `esc` declines the whole form
 // wherever it is. Nothing is ever filled in on the human's behalf: a field they leave empty is
 // absent from the answer.
+import { FormField } from "./form-field";
 import type {
 	CopilotElicitation,
 	CopilotElicitationAnswer,
@@ -131,71 +132,6 @@ export namespace ElicitationForm {
 		}
 	};
 
-	// ` from 1 to 5`, ` of at least 1`, or nothing, with what is counted after the bound.
-	const range = (low?: number, high?: number, unit = ""): string =>
-		low !== undefined && high !== undefined
-			? ` from ${low} to ${high}${unit}`
-			: low !== undefined
-				? ` of at least ${low}${unit}`
-				: high !== undefined
-					? ` of at most ${high}${unit}`
-					: "";
-
-	/** What the field in hand wants, said where it is asked and when an answer misses it. */
-	export const wants = (current: CopilotFormField): string => {
-		switch (current.type) {
-			case "number":
-				return `${current.integer ? "a whole number" : "a number"}${range(current.minimum, current.maximum)}`;
-			case "text":
-				return `text${range(current.minLength, current.maxLength, " characters")}`;
-			case "boolean":
-				return "y or n";
-			case "choice":
-				return `one of 1-${current.options.length}`;
-			case "choices":
-				return `any of 1-${current.options.length}${range(current.minItems, current.maxItems, " picked")}`;
-		}
-	};
-
-	const readNumber = (
-		current: Extract<CopilotFormField, { type: "number" }>,
-		given: string,
-	): CopilotFormValue | undefined => {
-		const value = Number(given);
-		if (!Number.isFinite(value)) return undefined;
-		if (current.integer && !Number.isInteger(value)) return undefined;
-		if (current.minimum !== undefined && value < current.minimum)
-			return undefined;
-		if (current.maximum !== undefined && value > current.maximum)
-			return undefined;
-		return value;
-	};
-
-	const readText = (
-		current: Extract<CopilotFormField, { type: "text" }>,
-		given: string,
-	): CopilotFormValue | undefined => {
-		if (current.minLength !== undefined && given.length < current.minLength)
-			return undefined;
-		if (current.maxLength !== undefined && given.length > current.maxLength)
-			return undefined;
-		// A pattern the harness wrote that is not one JavaScript reads accepts nothing rather than
-		// throwing: the human then sees what the field wants and can decline.
-		if (current.pattern !== undefined) {
-			const pattern = compile(current.pattern);
-			if (!pattern?.test(given)) return undefined;
-		}
-		return given;
-	};
-
-	const compile = (pattern: string): RegExp | undefined => {
-		try {
-			return new RegExp(pattern, "u");
-		} catch {
-			return undefined;
-		}
-	};
-
 	// The multi-select's picks, as the option values the harness is answered with.
 	const pickedValues = (
 		current: Extract<CopilotFormField, { type: "choices" }>,
@@ -230,16 +166,13 @@ export namespace ElicitationForm {
 		}
 		if (given === "")
 			return current.required
-				? refuse(draft, `required: ${wants(current)}`)
+				? refuse(draft, `required: ${FormField.wants(current)}`)
 				: advance(request, draft, undefined);
-		const value =
-			current.type === "number"
-				? readNumber(current, given)
-				: current.type === "text"
-					? readText(current, given)
-					: undefined;
-		return value === undefined
-			? refuse(draft, `"${given}" is not ${wants(current)}`)
-			: advance(request, draft, value);
+		if (current.type !== "number" && current.type !== "text")
+			return refuse(draft, `"${given}" is not ${FormField.wants(current)}`);
+		const value = FormField.read(current, given);
+		return value.ok
+			? advance(request, draft, value.value)
+			: refuse(draft, `"${given}" ${value.error.message}`);
 	};
 }

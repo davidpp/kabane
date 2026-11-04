@@ -183,18 +183,12 @@ describe("Elicitation.read", () => {
 			maximum: 9,
 		});
 		expect(Elicitation.read(count, "3")).toEqual({ kind: "value", value: 3 });
-		expect(Elicitation.read(count, "three")).toEqual({
-			kind: "invalid",
-			why: "is not a number",
-		});
-		expect(Elicitation.read(count, "2.5")).toEqual({
-			kind: "invalid",
-			why: "is not a whole number",
-		});
-		expect(Elicitation.read(count, "12")).toEqual({
-			kind: "invalid",
-			why: "is not from 1 to 9",
-		});
+		// The board's form refuses each of these the same way (`FormField.read`).
+		for (const given of ["three", "2.5", "12"])
+			expect(Elicitation.read(count, given)).toEqual({
+				kind: "invalid",
+				why: "is not a whole number from 1 to 9",
+			});
 		const ratio = field({
 			...named,
 			required: true,
@@ -208,13 +202,9 @@ describe("Elicitation.read", () => {
 	});
 
 	it("validates text against its length and pattern", () => {
-		const name = field({
-			...named,
-			required: true,
-			type: "text",
-			maxLength: 5,
-			pattern: "^[a-z]+$",
-		});
+		const text = (pattern: string) =>
+			field({ ...named, required: true, type: "text", maxLength: 5, pattern });
+		const name = text("^[a-z]+$");
 		expect(Elicitation.read(name, "abc")).toEqual({
 			kind: "value",
 			value: "abc",
@@ -223,6 +213,16 @@ describe("Elicitation.read", () => {
 		expect(Elicitation.read(name, "ABC")).toEqual({
 			kind: "invalid",
 			why: "does not match ^[a-z]+$",
+		});
+		// The pattern is read as Unicode, as the board reads it, and one that does not compile is
+		// the harness's to check: the answer is taken.
+		expect(Elicitation.read(text("^\\p{L}+$"), "été")).toEqual({
+			kind: "value",
+			value: "été",
+		});
+		expect(Elicitation.read(text("("), "ABC")).toEqual({
+			kind: "value",
+			value: "ABC",
 		});
 	});
 
@@ -250,6 +250,36 @@ describe("Elicitation.read", () => {
 		expect(Elicitation.read(tags, "1, 2, 3").kind).toBe("invalid");
 		expect(Elicitation.read(tags, "Alpha, Delta").kind).toBe("invalid");
 		expect(Elicitation.read(tags, "decline")).toEqual({ kind: "decline" });
+	});
+
+	it("keeps skip and decline out of a multi-select's choices, as words to type, and an option called decline reachable", () => {
+		const tags = field({
+			...named,
+			required: false,
+			type: "choices",
+			options: [
+				{ value: "a", label: "Alpha" },
+				{ value: "d", label: "Decline" },
+			],
+		});
+		const parsed = parseQuestionBody(
+			Elicitation.body("claude", ASK, tags, { index: 0, total: 1 }),
+		);
+		expect(parsed.choices).toEqual(["Alpha", "Decline"]);
+		expect(parsed.multiSelect).toBe(true);
+		// What the board sends once the human, with nothing picked, types a word instead.
+		expect(parsed.allowFreeform).toBe(true);
+		expect(parsed.question).toContain(
+			"Pick any of the choices, `skip` to leave it empty, or `decline` to decline the form.",
+		);
+		expect(Elicitation.read(tags, "skip")).toEqual({ kind: "skip" });
+		expect(Elicitation.read(tags, " DECLINE ")).toEqual({
+			kind: "value",
+			value: ["d"],
+		});
+		// No position past the options stands for a word the choices do not list.
+		expect(Elicitation.read(tags, "3").kind).toBe("invalid");
+		expect(Elicitation.read(tags, "Alpha, skip").kind).toBe("invalid");
 	});
 });
 
@@ -405,7 +435,7 @@ describe("Elicitation.relay", () => {
 		if (!second) throw new Error("missing question");
 		expect(second.id).not.toBe(first.id);
 		expect(parseQuestionBody(second.body).question).toContain(
-			'Asked again: "lots" is not a number.',
+			'Asked again: "lots" is not a whole number of at least 1.',
 		);
 		await answer(second.id, "4");
 		expect(await result).toEqual({
@@ -453,6 +483,32 @@ describe("Elicitation.relay", () => {
 			[["withdrawn", "withdrawn: the loop stopped this claim"]],
 		]);
 		expect(events.at(-1)?.type).toBe("elicitation_cancelled");
+	});
+
+	it("stops, cancelling the form, when something outside the claim withdraws one of its questions, and reads no field from it", async () => {
+		const sessionId = await session();
+		const { result, events } = relay(sessionId);
+		const [store] = await waiting(sessionId, 2);
+		if (!store) throw new Error("missing question");
+		const closed = await Planner.addActivity(base, {
+			sessionId,
+			type: "withdrawn",
+			context: `answers ${store.id}`,
+			body: "Redis",
+		});
+		if (!closed.ok) throw closed.error;
+		const relayed = await result;
+		expect(!relayed.ok && relayed.error.message).toBe(
+			"withdrawn outside this claim",
+		);
+		expect(await resolutions(sessionId)).toEqual([
+			[["withdrawn", "Redis"]],
+			[["withdrawn", "withdrawn outside this claim"]],
+		]);
+		expect(events.map((e) => e.type)).toEqual([
+			"elicitation_asked",
+			"elicitation_withdrawn",
+		]);
 	});
 
 	it("asks a form with no fields for a yes, and accepts it with nothing filled", async () => {

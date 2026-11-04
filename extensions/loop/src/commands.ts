@@ -27,6 +27,7 @@ import { Gates } from "./gates";
 import { Lenses } from "./lenses";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
+import { Questions } from "./questions";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { Stop } from "./stop";
@@ -601,37 +602,62 @@ export namespace Loop {
 	/**
 	 * Withdraw what the sessions of `run`, whose runner died, were asking. Their harnesses died with
 	 * the runner, so nobody is left to read an answer, and a restart closes those sessions and asks
-	 * again in new ones. Ending the sessions in core takes their questions off every surface's
-	 * needs-input queue, the board's included, and core refuses an answer on an ended session.
-	 * Returns the questions withdrawn, for `status` to show; nothing for a run whose runner is not
-	 * dead. Whichever surface first sees the death does this: the dead runner cannot.
+	 * again in new ones. Each question nothing answers is closed as `withdrawn` (`Questions.withdraw`)
+	 * and the session ended after it, since core takes no activity on an ended one. That closes the
+	 * question on every surface: the needs-input queue and the open questions a task's detail
+	 * shows, which reads ended sessions too. Returns the questions withdrawn, for `status` to show,
+	 * on this call or an earlier one; nothing for a run whose runner is not dead. Whichever surface
+	 * first sees the death does this: the dead runner cannot. A question that cannot be closed
+	 * leaves its session open, so the next call tries again.
 	 */
 	export const withdraw = async (
 		deps: Pick<Deps, "basePath">,
 		run: RunStore.Run,
 	): Promise<Result<Waiting[]>> => {
 		if (!died(run)) return ok([]);
+		const death = `the loop runner of ${run.id} died; \`${restartCommand(run.id)}\` restarts the run`;
+		const why = `withdrawn: ${death}, and its agent asks again`;
 		const withdrawn: Waiting[] = [];
 		for (const claim of run.claims) {
 			if (claim.endedAt !== undefined) continue;
-			const ended = await Planner.endSession(deps.basePath, claim.sessionId, {
+			const { sessionId } = claim;
+			const before = await Planner.getActivities(deps.basePath, sessionId);
+			if (!before.ok) return before;
+			const open = strandedBy(before.value, why);
+			const failed: string[] = [];
+			await Questions.withdraw(
+				{
+					basePath: deps.basePath,
+					sessionId,
+					emit: (warning) => failed.push(warning.summary),
+				},
+				open.map((q) => q.id),
+				why,
+			);
+			if (failed.length > 0) return err(new Error(failed.join("; ")));
+			const ended = await Planner.endSession(deps.basePath, sessionId, {
 				state: "error",
-				summary: `the loop runner of ${run.id} died; \`${restartCommand(run.id)}\` restarts the run`,
+				summary: death,
 			});
 			if (!ended.ok) return ended;
-			const activities = await Planner.getActivities(
-				deps.basePath,
-				claim.sessionId,
-			);
-			if (!activities.ok) return activities;
-			const answered = (q: AgentActivity) =>
-				activities.value.some((a) => isAnswerTo(a.context, q.id));
-			for (const q of activities.value)
-				if (q.type === "question" && !answered(q))
-					withdrawn.push(waitingOf(q, claim.shortId));
+			for (const q of open) withdrawn.push(waitingOf(q, claim.shortId));
 		}
 		return ok(withdrawn);
 	};
+
+	// The questions the runner's death leaves unanswered: nothing closes them yet, or only the
+	// withdrawal `why` an earlier call wrote for that death.
+	const strandedBy = (
+		activities: readonly AgentActivity[],
+		why: string,
+	): AgentActivity[] =>
+		activities.filter(
+			(q) =>
+				q.type === "question" &&
+				activities
+					.filter((a) => isAnswerTo(a.context, q.id))
+					.every((a) => a.type === "withdrawn" && a.body === why),
+		);
 
 	/** The run whose runner died while one of its sessions asked `questionId`, withdrawing it. */
 	const stranded = async (

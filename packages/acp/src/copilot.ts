@@ -9,7 +9,6 @@ import { resolve } from "node:path";
 import { BoardContext } from "@cabane/board/context";
 import type {
 	Copilot,
-	CopilotElicitationAnswer,
 	CopilotShortcut,
 	CopilotStep,
 	CopilotUpdate,
@@ -90,22 +89,6 @@ export namespace BoardCopilot {
 
 	// The two update kinds ACP streams as DELTAS rather than as whole values.
 	type Prose = Extract<AcpClient.Update, { type: "text" | "thought" }>;
-
-	// The board's answer as the client's: the same shape, with its read-only lists copied out.
-	const toAnswer = (
-		answer: CopilotElicitationAnswer,
-	): AcpClient.ElicitationAnswer =>
-		answer.action === "decline"
-			? answer
-			: {
-					action: "accept",
-					content: Object.fromEntries(
-						Object.entries(answer.content).map(([key, value]) => [
-							key,
-							typeof value === "object" ? [...value] : value,
-						]),
-					),
-				};
 
 	// Whether `prompt` opens with `/name` for one of the harness's commands.
 	const runsCommand = (
@@ -508,7 +491,7 @@ export namespace BoardCopilot {
 				const resolve = forms.get(id);
 				if (!resolve) return;
 				forms.delete(id);
-				resolve(ok(toAnswer(answer)));
+				resolve(ok(answer));
 			},
 			shortcuts: (): CopilotShortcut[] => [...CopilotInstructions.SHORTCUTS],
 			close: () => {
