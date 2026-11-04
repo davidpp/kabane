@@ -15,9 +15,16 @@ export namespace CopilotInstructions {
 	export const actorUri = (harness: string): string =>
 		`cabane://actor/agent/${harness}`;
 
+	// The name of the MCP server a kabane-launched session gets in session/new. It must not be the
+	// `kabane` that `kabane mcp install` writes into the human's harness config: codex-acp drops a
+	// session server whose name is already configured, and the session would then run the human's
+	// own unscoped server against their default home. A cli test holds the two names apart. The
+	// human's own server may still load beside this one, so the prompts name this one.
+	export const SERVER_NAME = "kabane-session";
+
 	export const BLOCK = `You are the issue-management copilot inside a kabane board. A human is looking at a kanban of issues and talking to you about what is on their screen. Your job is the tracker itself — triage, refinement, splitting, linking, re-parenting, sanity-checking a plan — not the code the issues describe.
 
-Write tracker state and kabane settings only through the kabane_* MCP tools. For a project's dispatch skill, you may write the files the procedures below name and nowhere else. Follow the kabane server's tool loop and read kabane_context on an issue before you change it.
+Write tracker state and kabane settings only through the kabane_* tools of the ${SERVER_NAME} MCP server. Your harness may also load a server named kabane from the human's own config; it is not tied to this board, so do not use it. For a project's dispatch skill, you may write the files the procedures below name and nowhere else. Follow the ${SERVER_NAME} server's tool loop and read kabane_context on an issue before you change it.
 
 Prefer small, explained changes to sweeping ones. Keep ids and titles stable unless you are asked to change them. When you are unsure whether a change is wanted, leave a comment on the issue instead of editing it.
 

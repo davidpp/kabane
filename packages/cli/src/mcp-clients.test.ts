@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Harnesses } from "@cabane/acp";
+import { CopilotInstructions, Harnesses } from "@cabane/acp";
 import { McpClients } from "./mcp-clients";
 
 const LAUNCHER = {
@@ -10,6 +10,12 @@ const LAUNCHER = {
 describe("McpClients", () => {
 	it("names the same harnesses as the ACP registry", () => {
 		expect([...McpClients.IDS]).toEqual([...Harnesses.IDS]);
+	});
+
+	// codex-acp drops a session server whose name the harness config already has, so a session
+	// server named like the installed one would be silently replaced by the human's own.
+	it("installs under a name no kabane-launched session uses", () => {
+		expect(McpClients.SERVER_NAME).not.toBe(CopilotInstructions.SERVER_NAME);
 	});
 
 	it("serves as the harness's own agent actor", () => {

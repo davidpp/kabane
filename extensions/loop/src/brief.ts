@@ -3,6 +3,7 @@
 // which subtask is its own, and how it signals that it is finished; a lens hears what it reviews
 // and how it files findings. The kabane tool loop itself is the
 // MCP server's to describe, so it is not restated.
+import { CopilotInstructions } from "@cabane/acp";
 import type { Task } from "@cabane/core";
 import type { Gates } from "./gates";
 
@@ -16,11 +17,15 @@ export namespace Brief {
 
 	const label = (task: Task): string => task.shortId ?? task.id;
 
+	// The session's own server is not the only kabane one it may see: the harness also loads the
+	// human's configured `kabane`, which is unscoped and may point at another home.
+	const SERVER = `Your kabane_* tools are the ones of the ${CopilotInstructions.SERVER_NAME} MCP server. A server named kabane from your harness's own config may also be loaded; it is not tied to this run, so do not use it.`;
+
 	const instructions = ({ runId, parent, task }: Subject): string =>
 		[
 			`You are one implementing session of kabane loop run ${runId}, which drives the subtasks of ${label(parent)} ("${parent.title}") to completion. Other sessions may be working on sibling subtasks in the same repository at the same time.`,
 			`Your subtask is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
-			`Use the kabane MCP tools for tracker state: kabane_log for what you changed (commits, files), kabane_comment for decisions and blockers. When the subtask is implemented and you have verified it, call kabane_done on ${label(task)}. That is how the run knows you are finished; ending your turn without it means the subtask is still open.`,
+			`${SERVER} Use them for tracker state: kabane_log for what you changed (commits, files), kabane_comment for decisions and blockers. When the subtask is implemented and you have verified it, call kabane_done on ${label(task)}. That is how the run knows you are finished; ending your turn without it means the subtask is still open.`,
 			`If you find work outside your subtask, add it with kabane_add as a child of ${label(parent)} with kind "issue", so the run can claim it, and link it with kabane_link instead of doing it. If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. The task stays parked until explicitly moved to state "next"; resolving a dependency alone does not unpark it.`,
 			"Finish each turn with at most three lines saying what you did.",
 		].join("\n\n");
@@ -61,7 +66,7 @@ export namespace Brief {
 	const filing = ({ runId, parent, lens, gates }: Lens): string =>
 		[
 			`You are the \`${lens}\` verifier of kabane loop run ${runId}, which drove the subtasks of ${label(parent)} ("${parent.title}") to completion. The plan is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: a finding is work for an implementing session.`,
-			`File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. A p1 keeps the run open until it is fixed, so file p1 only for what must be fixed before this work is done. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
+			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. A p1 keeps the run open until it is fixed, so file p1 only for what must be fixed before this work is done. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
 			"When everything is filed, end your turn with one line: how many findings you filed at each severity.",
 		].join("\n\n");
 

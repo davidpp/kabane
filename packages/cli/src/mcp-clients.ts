@@ -14,7 +14,7 @@ export namespace McpClients {
 	export const IDS = ["claude", "codex", "gemini"] as const;
 	export type Id = (typeof IDS)[number];
 
-	const SERVER_NAME = "kabane";
+	export const SERVER_NAME = "kabane";
 
 	/** How a harness spawns the server: an absolute command and its args. */
 	export type Launch = { command: string; args: string[] };
