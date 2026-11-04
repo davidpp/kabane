@@ -334,6 +334,43 @@ describe("log", () => {
 		expect(lines.some((l) => l.id === "q2")).toBe(false);
 	});
 
+	it("reads an answer as its question, the choice, and who made it when on record", () => {
+		const lines = DetailModel.log(
+			records({
+				sessions: [
+					{
+						session,
+						activities: [
+							activity({
+								id: "q1",
+								type: "question",
+								body: "Tabs or one scroll?",
+							}),
+							activity({
+								id: "d1",
+								type: "decision",
+								body: "tabs",
+								context: "answers q1",
+								author: "cabane://actor/human/ada",
+							}),
+							activity({
+								id: "d0",
+								type: "decision",
+								body: "Going with SQLite",
+							}),
+						],
+					},
+				],
+			}),
+		);
+		const byId = new Map(lines.map((l) => [l.id, l]));
+		expect(byId.get("d1")).toMatchObject({
+			kind: "decision",
+			text: "Tabs or one scroll? → tabs · ada",
+		});
+		expect(byId.get("d0")?.text).toBe("Going with SQLite");
+	});
+
 	it("takes its lines from a list of sources, so another source is one more item", () => {
 		const extra: DetailModel.LogSource = () => [
 			{

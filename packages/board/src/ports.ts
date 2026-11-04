@@ -119,9 +119,9 @@ export interface ActivitySource {
 	// across a relaunch. Optional: without it the tab stays closed for this session only.
 	dismiss?(id: string): Promise<Result<void>>;
 	// The human is answering the core session question `questionId` from the board, whoever asked
-	// it. Called just before the answer is written, so a host that keeps who answered (core records
-	// no author on an activity) has it on record by the time its work sees the decision; a host
-	// whose sessions did not ask it has nothing to do. A failure does not hold the answer back.
+	// it. Called just before the answer is written, so a host that keeps who answered of its own
+	// has it on record by the time its work sees the answer; a host whose sessions did not ask it
+	// has nothing to do. A failure does not hold the answer back.
 	// Optional.
 	answering?(questionId: string): Promise<Result<void>>;
 }

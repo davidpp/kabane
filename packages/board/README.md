@@ -81,7 +81,9 @@ its sessions' questions.
 `!` walks them all, oldest first, from any view; on the only question, already on screen, it says
 nothing else is waiting. A question one of a tabbed card's sessions asked lands on that card's tab,
 pinned under its header and answered there: a digit (or a click on an answer) answers it through
-`Planner.answerQuestion`, which writes the `decision` and unblocks the session. The tab shows its
+`Planner.answerQuestion`, which writes the answer and unblocks the session: a `decision`, naming
+the question, the choice and who made it, or an `answer` for a tool permission request, which is
+no decision and stays out of the brief. The tab shows its
 sessions' oldest question first, with `+n more` for the rest, and says what was answered until the
 next poll drops it and moves on to the next. `o` there opens the question's task for context, with
 the question pinned over it. Any other question lands straight on its task's detail view, pinned
@@ -96,9 +98,10 @@ that shows it, opens the board's prompt (below), and what is sent goes to
 effect: marked answered on the keypress, so a second digit answers nothing, and taken back if the
 write fails.
 
-Core records no author on an activity. Before it writes any answer, the board calls the source's
-optional `answering(questionId)`, so a host that keeps who answered (the loop notes the board's actor
-in its run's inbox) has it on record by the time its work sees the decision. The id is core's, so a
+Core records who answered on the answer itself (`author`). Before it writes any answer, the board
+also calls the source's optional `answering(questionId)`, so a host that keeps who answered of its
+own (the loop notes the board's actor in its run's inbox) has it on record by the time its work sees
+the answer. The id is core's, so a
 merged source hands it to every contributor, and a host whose sessions did not ask it does nothing. A
 failed note does not hold the answer back.
 
