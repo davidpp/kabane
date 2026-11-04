@@ -6,10 +6,13 @@
 // "i of n" so the board lists them as one group: the harness's message, then the field's title
 // and description verbatim. A choice is the field's options, several choices a multi-select, a
 // boolean Yes / No, text and numbers free text. An optional field also offers `skip`, which
-// leaves it out of the answer, and every field offers `decline`, which declines the form. The
+// leaves it out of the answer, and every field offers `decline`, which declines the form: among
+// the choices of a choice or a boolean, and as words to type on any other field, so a
+// multi-select's choices are its options alone and neither word is toggled beside one. The
 // form resolves once every question has an answer; an answer that does not fit its field is
-// asked again, with why, judged as the board's form judges it (`FormField`). A claim that stops, or a harness that withdraws the form, closes the
-// questions still open as withdrawn (`questions.ts`).
+// asked again, with why, judged as the board's form judges it (`FormField`). A claim that stops,
+// or a harness that withdraws the form, closes the questions still open as withdrawn
+// (`questions.ts`).
 import type { AcpClient } from "@cabane/acp";
 import { FormField } from "@cabane/board/form-field";
 import { err, formatQuestionBody, ok, type Result } from "@cabane/core";
@@ -48,27 +51,36 @@ export namespace Elicitation {
 		{ label: DECLINE },
 	];
 
-	const freeform = (field: Field): boolean =>
-		field.type === "text" || field.type === "number";
+	// Whether skip and decline are among the question's choices. On a multi-select they would be
+	// toggled beside its options, and `A, decline` reads as neither, so there, as on a free-text
+	// field, they are words the human types instead.
+	const listsReserved = (field: Field): boolean =>
+		field.type === "choice" || field.type === "boolean";
 
-	/** What the question offers to pick, in order: the field's own options, then skip and decline. */
+	// What the question offers to pick: the field's own options, then skip and decline if it
+	// lists them.
 	const choices = (field: Field): string[] =>
-		freeform(field)
-			? []
-			: [...optionChoices(field), ...reserved(field)].map((c) => c.label);
+		[
+			...optionChoices(field),
+			...(listsReserved(field) ? reserved(field) : []),
+		].map((c) => c.label);
 
-	// How to answer a free-text question, which has no choices to show it.
+	// How to answer a question whose choices do not list skip and decline.
 	const hint = (field: Field): string | undefined => {
-		if (!freeform(field)) return undefined;
+		if (listsReserved(field)) return undefined;
 		const what =
-			field.type === "number" ? FormField.wants(field) : "the answer";
+			field.type === "number"
+				? `Type ${FormField.wants(field)}`
+				: field.type === "choices"
+					? "Pick any of the choices"
+					: "Type the answer";
 		const skip = field.required ? "" : `, \`${SKIP}\` to leave it empty`;
-		return `Type ${what}${skip}, or \`${DECLINE}\` to decline the form.`;
+		return `${what}${skip}, or \`${DECLINE}\` to decline the form.`;
 	};
 
 	/**
 	 * The question for `field`, the `index`th of `total`: the harness's message, then the field's
-	 * title and description verbatim, then how to answer one that takes free text. `retry` says
+	 * title and description verbatim, then how to answer one whose choices do not say. `retry` says
 	 * why the last answer was asked again.
 	 */
 	export const body = (
@@ -92,7 +104,7 @@ export namespace Elicitation {
 		return formatQuestionBody(lines.join("\n"), {
 			choices: choices(field),
 			multiSelect: field.type === "choices",
-			allowFreeform: freeform(field),
+			allowFreeform: !listsReserved(field),
 			...(total > 1 ? { questionIndex: index, totalQuestions: total } : {}),
 		});
 	};
@@ -136,11 +148,20 @@ export namespace Elicitation {
 
 	const invalid = (why: string): Read => ({ kind: "invalid", why });
 
+	const action = (word: Choice): Read =>
+		word.label === SKIP ? { kind: "skip" } : { kind: "decline" };
+
+	// Skip or decline typed as a word, which is only ever the bare word.
+	const typedWord = (field: Field, given: string): Choice | undefined =>
+		reserved(field).find((c) => c.label === given.toLowerCase());
+
 	const readChoices = (
 		field: Extract<Field, { type: "choices" }>,
 		given: string,
 	): Read => {
 		const picked = chooseMany(optionChoices(field), given);
+		const word = picked ? undefined : typedWord(field, given);
+		if (word) return action(word);
 		if (!picked) return invalid("names something that is not an option");
 		const count = picked.length;
 		if (field.minItems !== undefined && count < field.minItems)
@@ -153,20 +174,15 @@ export namespace Elicitation {
 	/**
 	 * What the human's answer to `field` gives the harness. The field's own options are matched
 	 * before skip and decline, so an option that is itself called "decline" stays reachable; on a
-	 * free-text field, skip and decline are only ever the bare words.
+	 * field whose choices do not list them, skip and decline are only ever the bare words.
 	 */
 	export const read = (field: Field, answer: string): Read => {
 		const given = answer.trim();
-		const options = optionChoices(field);
-		const extra = reserved(field);
-		const chosen = freeform(field)
-			? extra.find((c) => c.label === given.toLowerCase())
-			: Permission.choose([...options, ...extra], given);
-		if (chosen && !options.includes(chosen))
-			return chosen.label === SKIP ? { kind: "skip" } : { kind: "decline" };
 		switch (field.type) {
 			case "text":
 			case "number": {
+				const word = typedWord(field, given);
+				if (word) return action(word);
 				const value = FormField.read(field, given);
 				return value.ok
 					? { kind: "value", value: value.value }
@@ -175,13 +191,27 @@ export namespace Elicitation {
 			case "choices":
 				return readChoices(field, given);
 			case "boolean":
-				return chosen
-					? { kind: "value", value: chosen.id === "true" }
-					: invalid("is neither Yes nor No");
-			case "choice":
-				return chosen
-					? { kind: "value", value: chosen.id ?? chosen.label }
-					: invalid("names none of its choices");
+			case "choice": {
+				const options = optionChoices(field);
+				const chosen = Permission.choose(
+					[...options, ...reserved(field)],
+					given,
+				);
+				if (chosen && !options.includes(chosen)) return action(chosen);
+				if (!chosen)
+					return invalid(
+						field.type === "boolean"
+							? "is neither Yes nor No"
+							: "names none of its choices",
+					);
+				return {
+					kind: "value",
+					value:
+						field.type === "boolean"
+							? chosen.id === "true"
+							: (chosen.id ?? chosen.label),
+				};
+			}
 		}
 	};
 

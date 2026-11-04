@@ -251,6 +251,36 @@ describe("Elicitation.read", () => {
 		expect(Elicitation.read(tags, "Alpha, Delta").kind).toBe("invalid");
 		expect(Elicitation.read(tags, "decline")).toEqual({ kind: "decline" });
 	});
+
+	it("keeps skip and decline out of a multi-select's choices, as words to type, and an option called decline reachable", () => {
+		const tags = field({
+			...named,
+			required: false,
+			type: "choices",
+			options: [
+				{ value: "a", label: "Alpha" },
+				{ value: "d", label: "Decline" },
+			],
+		});
+		const parsed = parseQuestionBody(
+			Elicitation.body("claude", ASK, tags, { index: 0, total: 1 }),
+		);
+		expect(parsed.choices).toEqual(["Alpha", "Decline"]);
+		expect(parsed.multiSelect).toBe(true);
+		// What the board sends once the human, with nothing picked, types a word instead.
+		expect(parsed.allowFreeform).toBe(true);
+		expect(parsed.question).toContain(
+			"Pick any of the choices, `skip` to leave it empty, or `decline` to decline the form.",
+		);
+		expect(Elicitation.read(tags, "skip")).toEqual({ kind: "skip" });
+		expect(Elicitation.read(tags, " DECLINE ")).toEqual({
+			kind: "value",
+			value: ["d"],
+		});
+		// No position past the options stands for a word the choices do not list.
+		expect(Elicitation.read(tags, "3").kind).toBe("invalid");
+		expect(Elicitation.read(tags, "Alpha, skip").kind).toBe("invalid");
+	});
 });
 
 const session = async (): Promise<string> => {
