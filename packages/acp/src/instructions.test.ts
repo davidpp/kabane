@@ -167,3 +167,21 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 			expect(template(path).toLowerCase()).not.toContain("jake");
 	});
 });
+
+describe("CopilotInstructions starting a loop run", () => {
+	it("starts one through the loop's own command, on an instruction, and waits for a yes on its own idea", () => {
+		const { SKILLS } = CopilotInstructions;
+		expect(SKILLS).toContain("`kabane loop start <id>`");
+		expect(SKILLS).toContain(
+			'When the human tells you to run an issue ("run JCAB-79 with codex"), that is the go-ahead',
+		);
+		expect(SKILLS).toContain(
+			"When a run is your own suggestion, name the issue and the harness and wait for a yes",
+		);
+	});
+
+	it("reports the run id and how to stop the run", () => {
+		expect(CopilotInstructions.SKILLS).toContain("report the run id");
+		expect(CopilotInstructions.SKILLS).toContain("`kabane loop stop <runId>`");
+	});
+});

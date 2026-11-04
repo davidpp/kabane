@@ -6,6 +6,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -588,5 +589,95 @@ describe("Claims.recover after a runner died during a subtask's pass", () => {
 		expect(GitFixture.run(worktree, ["status", "--porcelain"])).toBe("");
 		expect(state).toBe("done");
 		expect(await refsOf(child.id)).toContain(`commit:${head(worktree)}`);
+	});
+});
+
+describe("A single-issue run", () => {
+	// An implementer that works the one issue it is given and closes it, appending a line per
+	// attempt; the gate passes only from the second, so the red pass has to reopen the issue and
+	// the run has to claim it again. No model or MCP server is reached.
+	const IMPLEMENTER = `
+import { createInterface } from "node:readline";
+import { appendFileSync, writeFileSync } from "node:fs";
+import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+const [home, prompts] = process.argv.slice(2);
+const done = KABANE_TOOLS.find((t) => t.name === "kabane_done");
+const reply = (id, result) => console.log(JSON.stringify({ jsonrpc: "2.0", id, result }));
+createInterface({ input: process.stdin }).on("line", async (line) => {
+ const message = JSON.parse(line);
+ if (message.method === "initialize") reply(message.id, { protocolVersion: message.params.protocolVersion, agentCapabilities: {} });
+ if (message.method === "session/new") reply(message.id, { sessionId: "fixture" });
+ if (message.method !== "session/prompt") return;
+ const text = message.params.prompt.map((p) => p.text ?? "").join("\\n");
+ appendFileSync(prompts, JSON.stringify(text) + "\\n");
+ const task = /Your issue is ([^.]+)\\./.exec(text)?.[1];
+ if (!task) process.exit(1);
+ appendFileSync("attempts.txt", "attempt\\n");
+ const closed = await done.handler({ id: task }, { basePath: home, actor: "cabane://actor/agent/gemini", scopeRequired: false });
+ if (!closed.ok) process.exit(1);
+ reply(message.id, { stopReason: "end_turn" });
+});
+`;
+
+	it("claims the issue itself, reopens it on a red gate, and completes it in the worktree", async () => {
+		const issue = await add("lone");
+		const run = await runOn(
+			issue,
+			{ second: 'test "$(wc -l < attempts.txt)" -ge 2' },
+			true,
+			{ implementer: "gemini" },
+		);
+		const agent = join(root, "implementer.mjs");
+		const prompts = join(root, "prompts.jsonl");
+		writeFileSync(agent, IMPLEMENTER);
+		const ended = await Runner.run(run.id, {
+			home,
+			basePath: home,
+			kabaneBin: "/nonexistent/kabane",
+			pid: process.pid,
+			git,
+			overrides: {
+				gemini: { command: process.execPath, args: [agent, home, prompts] },
+			},
+			tickMs: 5,
+		});
+		if (!ended.ok) throw ended.error;
+
+		const label = issue.shortId ?? issue.id;
+		expect([ended.value.status, ended.value.exit?.reason]).toEqual([
+			"completed",
+			"plan-done",
+		]);
+		// The same task, claimed twice under the claim's own lanes: never as a parent.
+		expect(
+			ended.value.claims.map((c) => [c.taskId, c.lane, c.outcome]),
+		).toEqual([
+			[issue.id, label, "done"],
+			[issue.id, `${label}#2`, "done"],
+		]);
+		const events = RunStore.readEvents(home, run.id);
+		expect(
+			events.ok && events.value.filter((e) => e.type === "reopened").length,
+		).toBe(1);
+		const sent = readFileSync(prompts, "utf8")
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line) as string);
+		expect(sent).toHaveLength(2);
+		expect(sent[1]).toContain(`${label} was closed before, then reopened`);
+		for (const prompt of sent) expect(prompt).not.toContain("subtasks of");
+
+		const after = await Planner.getTask(home, issue.id);
+		expect(after.ok && [after.value?.state, after.value?.needsReview]).toEqual([
+			"done",
+			true,
+		]);
+		const worktree = ended.value.worktree ?? "";
+		expect(RunStore.checkpoints(ended.value)).toEqual([head(worktree)]);
+		const comments = await Planner.getComments(home, issue.id);
+		expect(comments.ok && comments.value.at(-1)?.content).toEndWith(
+			`Merge branch \`${Worktree.branchFor("run-1")}\` from the worktree \`${worktree}\`.`,
+		);
 	});
 });

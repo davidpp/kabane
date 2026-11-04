@@ -47,12 +47,42 @@ beforeEach(async () => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe("LoopDispatcher.triggers", () => {
-	it("offers nothing on an issue with no subtasks", async () => {
-		const lone = await add("lone");
-		expect(await LoopDispatcher.triggers(deps(), lone.id)).toEqual({
+	it("offers nothing on a human task with no subtasks", async () => {
+		const errand = await add("errand", { kind: "task" });
+		expect(await LoopDispatcher.triggers(deps(), errand.id)).toEqual({
 			ok: true,
 			value: [],
 		});
+	});
+
+	it("offers start loop on an issue with no subtasks, its one row as the plan", async () => {
+		const scope = await detectScope(repo, { home, detectExtensions: false });
+		const lone = await add("lone", { scopeUri: scope?.scopeUri });
+		const offered = await LoopDispatcher.triggers(deps(), lone.id);
+		const [start] = offered.ok ? offered.value : [];
+		expect(start?.satisfiable).toBe(true);
+		expect(start?.description).toBe(
+			"drive this issue to done through a coding harness, in a detached runner",
+		);
+		expect(start?.inputs.implementer).toBeDefined();
+		const preview = (start?.preview ?? []).map((line) =>
+			line.map((p) => p.text).join(""),
+		);
+		expect(preview[0]).toBe("Plan  1 issue · 0 links · 1 ready");
+		expect(preview.some((l) => l.includes(`${lone.shortId}  lone`))).toBe(true);
+		expect(preview.some((l) => l.startsWith("Critical path"))).toBe(false);
+	});
+
+	it("offers start loop on a held single issue, unsatisfiable with the reason", async () => {
+		const scope = await detectScope(repo, { home, detectExtensions: false });
+		const held = await add("held", {
+			scopeUri: scope?.scopeUri,
+			state: "in_progress",
+		});
+		const offered = await LoopDispatcher.triggers(deps(), held.id);
+		const [start] = offered.ok ? offered.value : [];
+		expect(start?.satisfiable).toBe(false);
+		expect(start?.hint).toContain("move it to next");
 	});
 
 	it("keeps a human-only plan visible, waiting and not ready", async () => {

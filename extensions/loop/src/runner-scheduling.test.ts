@@ -120,7 +120,7 @@ createInterface({ input: process.stdin }).on("line", async line => {
  if (message.method === "session/cancel") cancelled = true;
  if (message.method === "session/prompt") {
   const text = message.params.prompt.filter(p => p.type === "text").map(p => p.text).join("\\n");
-  task ??= /Your subtask is ([^.]+)\\./.exec(text)?.[1];
+  task ??= /Your (?:subtask|issue) is ([^.]+)\\./.exec(text)?.[1];
   if (!task) process.exit(1);
   writeFileSync(task + ".prompt", text);
   appendFileSync(task + ".prompts", JSON.stringify(text) + "\\n");
@@ -521,4 +521,39 @@ describe("Runner scheduling", () => {
 			}
 		});
 	}
+});
+
+describe("A single-issue run's claim", () => {
+	it("is the run's only claim on the issue, and a stop puts the issue back to next", async () => {
+		const issue = await add("lone");
+		const run = createRun(issue, { implementer: "gemini" });
+		const agent = join(home, "agent.mjs");
+		writeFileSync(agent, AGENT);
+		const controller = new AbortController();
+		const running = Runner.run(run.id, {
+			...deps(),
+			signal: controller.signal,
+			overrides: { gemini: { command: process.execPath, args: [agent] } },
+		});
+		await until(() => existsSync(join(home, `${issue.shortId}.prompt`)));
+		const during = await Planner.getTask(home, issue.id);
+		expect(during.ok && [during.value?.state, during.value?.assignee]).toEqual([
+			"in_progress",
+			"gemini",
+		]);
+		// Several ticks later, nothing else was claimed: the issue is live, so not ready again.
+		await Bun.sleep(50);
+		expect(readRun().claims.map((c) => c.taskId)).toEqual([issue.id]);
+		controller.abort();
+		const ended = await running;
+		if (!ended.ok) throw ended.error;
+		expect(ended.value.exit?.reason).toBe("stop-requested");
+		expect(ended.value.claims.map((c) => c.outcome)).toEqual(["cancelled"]);
+		const after = await Planner.getTask(home, issue.id);
+		expect(after.ok && after.value?.state).toBe("next");
+		const comments = await Planner.getComments(home, issue.id);
+		expect(comments.ok && comments.value.map((c) => c.content)).toEqual([
+			`Loop run run-1 stopped: stop-requested.\n\nNext: \`kabane loop start ${issue.shortId}\` starts a new run.`,
+		]);
+	});
 });

@@ -1,6 +1,7 @@
 // What a session is told. The issue's own brief comes from `assembleContext`; this adds only what
 // the run knows and the issue does not. An implementing session hears that it is one of several,
-// which subtask is its own, and how it signals that it is finished; a lens hears what it reviews
+// which subtask is its own, and how it signals that it is finished (on a single issue, that the
+// issue is the whole run); a lens hears what it reviews
 // and how it files findings; the fixer hears which findings are its own, in what order, and how
 // it settles each. The kabane tool loop itself is the MCP server's to describe, so it is not
 // restated.
@@ -41,14 +42,36 @@ export namespace Brief {
 	// human's configured `kabane`, which is unscoped and may point at another home.
 	const SERVER = `Your kabane_* tools are the ones of the ${CopilotInstructions.SERVER_NAME} MCP server. A server named kabane from your harness's own config may also be loaded; it is not tied to this run, so do not use it.`;
 
+	// How the session finishes, parks, and hands off what it should not do: the same for a subtask
+	// and a single issue, but for where outside work goes.
+	const finishing = (task: Task, outside: string, noun: string): string[] => [
+		`${SERVER} Use them for tracker state: kabane_log for what you changed (commits, files), kabane_comment for decisions and blockers. When the ${noun} is implemented and you have verified it, call kabane_done on ${label(task)}. That is how the run knows you are finished; ending your turn without it means the ${noun} is still open.`,
+		`If you find work outside your ${noun}, ${outside} If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. The task stays parked until explicitly moved to state "next"; resolving a dependency alone does not unpark it.`,
+		"Finish each turn with at most three lines saying what you did.",
+	];
+
 	const instructions = ({ runId, parent, task }: Subject): string =>
-		[
-			`You are one implementing session of kabane loop run ${runId}, which drives the subtasks of ${label(parent)} ("${parent.title}") to completion. Other sessions may be working on sibling subtasks in the same repository at the same time.`,
-			`Your subtask is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
-			`${SERVER} Use them for tracker state: kabane_log for what you changed (commits, files), kabane_comment for decisions and blockers. When the subtask is implemented and you have verified it, call kabane_done on ${label(task)}. That is how the run knows you are finished; ending your turn without it means the subtask is still open.`,
-			`If you find work outside your subtask, add it with kabane_add as a child of ${label(parent)} with kind "issue", so the run can claim it, and link it with kabane_link instead of doing it. If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. The task stays parked until explicitly moved to state "next"; resolving a dependency alone does not unpark it.`,
-			"Finish each turn with at most three lines saying what you did.",
-		].join("\n\n");
+		(task.id === parent.id
+			? [
+					`You are the implementing session of kabane loop run ${runId}, which drives the single issue ${label(task)} ("${task.title}") to completion.`,
+					`Your issue is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
+					// A child would make the issue a parent, whose subtasks the run then works instead.
+					...finishing(
+						task,
+						`add it with kabane_add with kind "issue" and link it to ${label(task)} with kabane_link instead of doing it. Do not make it a child of ${label(task)}: a human decides when it runs.`,
+						"issue",
+					),
+				]
+			: [
+					`You are one implementing session of kabane loop run ${runId}, which drives the subtasks of ${label(parent)} ("${parent.title}") to completion. Other sessions may be working on sibling subtasks in the same repository at the same time.`,
+					`Your subtask is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
+					...finishing(
+						task,
+						`add it with kabane_add as a child of ${label(parent)} with kind "issue", so the run can claim it, and link it with kabane_link instead of doing it.`,
+						"subtask",
+					),
+				]
+		).join("\n\n");
 
 	// Why the subtask is open again: the gate its last session's work failed, and how.
 	const retried = (task: Task, gate: Gates.Result): string =>
@@ -119,7 +142,7 @@ export namespace Brief {
 	// own lens cannot leave it out.
 	const filing = ({ runId, parent, lens, gates }: Lens): string =>
 		[
-			`You are the \`${lens}\` verifier of kabane loop run ${runId}, which drove the subtasks of ${label(parent)} ("${parent.title}") to completion. The plan is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`,
+			`You are the \`${lens}\` verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`,
 			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. The fixer takes every finding, most severe first, and a human reads the severities, so grade by the lens's definitions as written: a finding that meets the p1 definition is p1 even when the fix is small, and one that does not stays p2 or p3. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
 			"When everything is filed, end your turn with one line: how many findings you filed at each severity.",
 		].join("\n\n");
@@ -161,7 +184,7 @@ export namespace Brief {
 	): string =>
 		[
 			[
-				`You are the fixer session of kabane loop run ${runId}, which drove the subtasks of ${label(parent)} ("${parent.title}") to completion. Its verifier lenses reviewed the result and filed the findings below as child issues of ${label(parent)}. They are all yours, and no other session works in the repository meanwhile. Work through them in this order, most severe first:`,
+				`You are the fixer session of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"), whose work is done. Its verifier lenses reviewed the result and filed the findings below as child issues of ${label(parent)}. They are all yours, and no other session works in the repository meanwhile. Work through them in this order, most severe first:`,
 				findings.map(listed).join("\n"),
 				`For each finding: read its brief with kabane_context, fix it, verify the fix, log what you changed with kabane_log on it, then call kabane_done on it. Close only a finding you fixed. If a finding is wrong, already fixed, or outside ${label(parent)}'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open for a human. ${after(gates)}`,
 				`Do not file findings. If fixing one turns up other work, add it with kabane_add as a child of ${label(parent)} with kind "issue" instead of doing it.`,
@@ -175,7 +198,7 @@ export namespace Brief {
 	export const fixerContinuation = (left: readonly Task[]): string =>
 		`${left.map(label).join(", ")} ${left.length === 1 ? "is" : "are"} still open. Continue: fix each and call kabane_done on it, or say why it is left with kabane_comment and call kabane_edit on it with state "waiting".`;
 
-	/** The nudge for a turn that ended with the subtask still open. */
+	/** The nudge for a turn that ended with its subtask, or its single issue, still open. */
 	export const continuation = (task: Task): string =>
 		`${label(task)} is still open. Continue the work. If it is finished and verified, call kabane_done on ${label(task)}. If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. It stays parked until explicitly moved to state "next".`;
 }

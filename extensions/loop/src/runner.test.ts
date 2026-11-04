@@ -143,3 +143,48 @@ describe("Runner resume", () => {
 		expect(untouched.ok && untouched.value.pid).toBe(dead.pid);
 	});
 });
+
+describe("Runner resume on a single issue", () => {
+	it("releases the issue its dead runner's claim held, and does not take it as a parent", async () => {
+		const issue = await add("lone");
+		const held = await Planner.updateTask(home, issue.id, {
+			state: "in_progress",
+			assignee: "claude",
+		});
+		if (!held.ok) throw held.error;
+		const session = await Planner.startSession(home, {
+			taskId: issue.id,
+			agent: "claude",
+		});
+		if (!session.ok) throw session.error;
+		const dead = await orphaned("run-1");
+		const run: RunStore.Run = {
+			...dead,
+			parentId: issue.id,
+			parentShortId: issue.shortId ?? issue.id,
+			claims: [
+				{
+					taskId: issue.id,
+					shortId: issue.shortId ?? issue.id,
+					harness: "claude",
+					lane: issue.shortId ?? issue.id,
+					sessionId: session.value.id,
+					startedAt: new Date(Date.now() - HOUR).toISOString(),
+					continuations: 0,
+				},
+			],
+		};
+		const written = RunStore.write(home, run);
+		if (!written.ok) throw written.error;
+
+		const ended = await resumeUntilWaiting("run-1");
+
+		expect(ended.claims.map((c) => c.outcome)).toEqual(["interrupted"]);
+		const after = await Planner.getTask(home, issue.id);
+		expect(after.ok && after.value?.state).toBe("next");
+		const logs = await Planner.getWorkLogs(home, issue.id);
+		expect(
+			logs.ok && logs.value.flatMap((l) => l.refs.map((r) => r.uri)),
+		).not.toContain("loop:run-1");
+	});
+});

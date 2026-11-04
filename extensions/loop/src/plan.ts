@@ -1,5 +1,6 @@
 // The plan a run works through: the parent issue's children and the `blocks`/`blocked_by`/`follows` links
-// that order them, read from the tracker on every tick. Agents and humans may add, relink, close
+// that order them, read from the tracker on every tick. An issue with no work under it is its own
+// plan: its one work node is the issue itself, claimed, gated and settled as a subtask would be. Agents and humans may add, relink, close
 // or park subtasks while the run goes, so nothing here is cached; a changed plan is a normal
 // event, not an error.
 //
@@ -26,6 +27,7 @@ export namespace LoopPlan {
 	};
 
 	export type Plan = {
+		/** The run's target: the parent of the subtasks, or the single issue the plan is. */
 		parent: Task;
 		nodes: Node[];
 		/** Blockers that are not children of the parent, by id. */
@@ -109,6 +111,15 @@ export namespace LoopPlan {
 			if (!links.ok) return links;
 			nodes.push(node(task, blockersOf(task.id, links.value)));
 		}
+		// Work, even when it is itself a finding someone chose to run: it is what the run was started on.
+		if (parent.value.kind === "issue" && !nodes.some(isWork)) {
+			const links = await Planner.getLinksForTask(basePath, parentId);
+			if (!links.ok) return links;
+			nodes.unshift({
+				...node(parent.value, blockersOf(parentId, links.value)),
+				finding: false,
+			});
+		}
 		const inside = new Set(nodes.map((n) => n.task.id));
 		const outside = new Map<string, Task>();
 		for (const id of new Set(nodes.flatMap((n) => n.blockedBy))) {
@@ -120,6 +131,22 @@ export namespace LoopPlan {
 		}
 		return ok({ parent: parent.value, nodes, outside });
 	};
+
+	/**
+	 * Whether the plan is a single issue: the target is its own work node. Findings the lenses
+	 * filed under it do not make it a parent; a work child does, on the next read.
+	 */
+	export const single = (plan: Plan): boolean =>
+		plan.nodes.some((n) => n.task.id === plan.parent.id);
+
+	/**
+	 * Whether `task`, as the tracker holds it now, is still work of `plan`: a child that is not a
+	 * finding, or the target of a single-issue plan.
+	 */
+	export const isWorkOf = (plan: Plan, task: Task): boolean =>
+		task.id === plan.parent.id
+			? single(plan)
+			: task.parentTaskId === plan.parent.id && !hasTag(task, FINDING_TAG);
 
 	const byId = (plan: Plan): Map<string, Task> => {
 		const map = new Map(plan.outside);

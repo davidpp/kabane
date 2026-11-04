@@ -1,4 +1,4 @@
-// Starting a loop from the board: `a` on an issue with subtasks offers "start loop", whose form
+// Starting a loop from the board: `a` on an issue, or on a parent of issue subtasks, offers "start loop", whose form
 // holds the run's settings (LoopSettings) beside the plan it would start on (Briefing), and whose
 // `enter` is `kabane loop start` from the board's directory, with the same checks.
 import type {
@@ -16,19 +16,22 @@ import { LoopSettings } from "./settings";
 export namespace LoopDispatcher {
 	const START = "start";
 
-	const DESCRIPTION =
-		"drive the subtasks to done through coding harnesses, in a detached runner";
+	const description = (plan: LoopPlan.Plan): string =>
+		LoopPlan.single(plan)
+			? "drive this issue to done through a coding harness, in a detached runner"
+			: "drive the subtasks to done through coding harnesses, in a detached runner";
 
 	// What a run needs to start that a trigger cannot ask for: where it was started from.
 	type Deps = Pick<Loop.StartDeps, "home" | "basePath" | "kabaneBin" | "cwd">;
 
 	const trigger = (
+		plan: LoopPlan.Plan,
 		inputs: Record<string, TriggerInput>,
 		extra: Partial<TriggerDescriptor>,
 	): TriggerDescriptor => ({
 		id: START,
 		label: "start loop",
-		description: DESCRIPTION,
+		description: description(plan),
 		source: "loop",
 		inputs,
 		satisfiable: true,
@@ -49,9 +52,9 @@ export namespace LoopDispatcher {
 	};
 
 	/**
-	 * The loop's triggers on `taskId`: none unless it has subtasks for a run to work; "start loop",
-	 * with its form and the plan, when `Loop.start` would take it from here; otherwise the same
-	 * trigger, unsatisfiable, with `start`'s own reason as its hint.
+	 * The loop's triggers on `taskId`: none unless it has work for a run (subtasks, or itself as a
+	 * single issue); "start loop", with its form and the plan, when `Loop.start` would take it from
+	 * here; otherwise the same trigger, unsatisfiable, with `start`'s own reason as its hint.
 	 */
 	export const triggers = async (
 		deps: Deps,
@@ -64,19 +67,30 @@ export namespace LoopDispatcher {
 		const prepared = await Loop.prepare(deps, { parent: taskId });
 		if (!prepared.ok)
 			return ok([
-				trigger({}, { satisfiable: false, hint: prepared.error.message }),
+				trigger(
+					plan.value,
+					{},
+					{
+						satisfiable: false,
+						hint: prepared.error.message,
+					},
+				),
 			]);
 		const { projectDir, config } = prepared.value;
 		const risks = await lintOf(deps.basePath, taskId, projectDir);
 		return ok([
-			trigger(LoopSettings.inputs(config, Lenses.offered(projectDir)), {
-				preview: Briefing.preview(
-					prepared.value.plan,
-					config.gates,
-					risks,
-					now,
-				),
-			}),
+			trigger(
+				plan.value,
+				LoopSettings.inputs(config, Lenses.offered(projectDir)),
+				{
+					preview: Briefing.preview(
+						prepared.value.plan,
+						config.gates,
+						risks,
+						now,
+					),
+				},
+			),
 		]);
 	};
 

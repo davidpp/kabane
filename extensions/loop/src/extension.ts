@@ -21,7 +21,7 @@ import { LoopDispatcher } from "./dispatcher";
 import { LoopHeader } from "./header";
 import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini]
+const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
@@ -294,7 +294,7 @@ const direct =
 
 // Each verb that takes a target, with what the target is for the usage line when it is missing.
 const VERBS: Record<string, { needs: string; run: Verb }> = {
-	start: { needs: "a parent issue", run: start },
+	start: { needs: "an issue, or a parent issue", run: start },
 	run: {
 		needs: "a run id",
 		run: async (_a, deps, id) => ran(await Loop.run(deps, id)),
@@ -320,7 +320,7 @@ const list = (deps: Deps): Outcome => {
 const command: Extension.Command = {
 	name: "loop",
 	summary:
-		"Drive a parent issue's subtasks to completion through coding harnesses",
+		"Drive an issue, or a parent issue's subtasks, to completion through coding harnesses",
 	usage: USAGE,
 	run: async (args, ctx) => {
 		const [verb, target] = args.positionals;
@@ -350,7 +350,7 @@ export const loop: Extension = {
 	name: "loop",
 	commands: [command],
 	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
-	// `a` on an issue with subtasks starts one from the board's directory, as `loop start` would.
+	// `a` on an issue, alone or with subtasks, starts one from the board's directory, as `loop start` would.
 	board: (ctx) => ({
 		activity: LoopActivity.source({
 			home: ctx.home,

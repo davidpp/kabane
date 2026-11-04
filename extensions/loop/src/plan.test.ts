@@ -368,3 +368,67 @@ describe("Stop.evaluate", () => {
 		expect(Stop.evaluate(await load(parent), GREEN).done).toBe(false);
 	});
 });
+
+describe("LoopPlan.load on a single issue", () => {
+	it("makes an issue with no subtasks its own one work node, with its own blockers", async () => {
+		const issue = await add({ title: "lone" });
+		const blocker = await add({ title: "elsewhere" });
+		await link(blocker, "blocks", issue);
+		const plan = await load(issue);
+		expect(LoopPlan.single(plan)).toBe(true);
+		expect(plan.nodes.map((n) => [n.task.id, n.blockedBy])).toEqual([
+			[issue, [blocker]],
+		]);
+		expect([...plan.outside.keys()]).toEqual([blocker]);
+		expect(LoopPlan.frontier(plan, NONE, NOW)).toEqual([]);
+		await close(blocker);
+		expect(titles(LoopPlan.frontier(await load(issue), NONE, NOW))).toEqual([
+			"lone",
+		]);
+	});
+
+	it("stays single with findings under it, which stay the fixer's", async () => {
+		const issue = await add({ title: "lone", state: "done" });
+		await add({
+			title: "finding",
+			parentTaskId: issue,
+			tags: ["finding", "p2", "security"],
+		});
+		const plan = await load(issue);
+		expect(LoopPlan.single(plan)).toBe(true);
+		expect(titles(plan.nodes.filter(LoopPlan.isWork))).toEqual(["lone"]);
+		expect(titles(LoopPlan.fixable(plan, NOW))).toEqual(["finding"]);
+		expect(Stop.workDone(plan)).toBe(true);
+	});
+
+	it("runs a finding started on as work, not as a finding of its own", async () => {
+		const parent = await add({ title: "parent" });
+		const finding = await add({
+			title: "finding",
+			parentTaskId: parent,
+			tags: ["finding", "p1", "security"],
+		});
+		const plan = await load(finding);
+		expect(titles(LoopPlan.frontier(plan, NONE, NOW))).toEqual(["finding"]);
+		expect(LoopPlan.fixable(plan, NOW)).toEqual([]);
+	});
+
+	it("is a parent's plan once a work subtask is under it, and nothing for a human task alone", async () => {
+		const issue = await add({ title: "lone" });
+		await add({ title: "subtask", parentTaskId: issue });
+		const plan = await load(issue);
+		expect(LoopPlan.single(plan)).toBe(false);
+		expect(titles(plan.nodes)).toEqual(["subtask"]);
+		const task = await add({ title: "human", kind: "task" });
+		expect((await load(task)).nodes).toEqual([]);
+	});
+
+	it("holds the target as work only while the plan is single", async () => {
+		const issue = await add({ title: "lone" });
+		const single = await load(issue);
+		const target = single.parent;
+		expect(LoopPlan.isWorkOf(single, target)).toBe(true);
+		await add({ title: "subtask", parentTaskId: issue });
+		expect(LoopPlan.isWorkOf(await load(issue), target)).toBe(false);
+	});
+});

@@ -2,7 +2,8 @@
  * @cabane/loop
  *
  * The loop extension: drives a parent issue's subtasks to completion through ACP harnesses, one
- * core agent session per claimed subtask, from a detached runner process whose state lives in
+ * core agent session per claimed subtask, or a single issue with no subtasks as its own one work
+ * item, from a detached runner process whose state lives in
  * `$KABANE_HOME/loops/<runId>/`. Once the work is done, the project's gates and the verifier
  * lenses check it; a lens files findings as child issues. `Loop` holds the entry points the CLI
  * wires as `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer`; the rest
