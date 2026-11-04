@@ -36,21 +36,43 @@ const keyed = (
 		{ text: ` ${does}`, fg: theme.muted },
 	]);
 
-/** The keys that answer the field in hand, in the order the human reaches for them. */
+// The digits that name the options: `1-3`, or `1` alone. Past the ninth an option has no digit.
+const digits = (count: number): string =>
+	count > 1 ? `1-${Math.min(count, 9)}` : "1";
+
+/**
+ * The keys that answer the field in hand, in the order the human reaches for them, so the row's
+ * tail is what a narrow pane gives up (Segments.fit). `picked` is how many a multi-select has
+ * toggled, which its `enter` sends.
+ */
 export const answerKeys = (
 	field: CopilotFormField | undefined,
+	picked = 0,
 ): (readonly [string, string])[] => {
-	const skip = field && !field.required ? ([["enter", "skip"]] as const) : [];
 	const decline = ["esc", "decline"] as const;
+	const skip = (key: string) =>
+		field && !field.required ? ([[key, "skip"]] as const) : [];
 	switch (field?.type) {
 		case undefined:
 			return [["enter", "accept"], decline];
 		case "choice":
-			return [...skip, decline];
+			return [
+				["↑↓", "move"],
+				["enter", "pick"],
+				[digits(field.options.length), "pick"],
+				...skip("s"),
+				decline,
+			];
 		case "choices":
-			return [["enter", "confirm"], decline];
+			return [
+				["↑↓", "move"],
+				["space", "toggle"],
+				["enter", `send (${picked} picked)`],
+				...skip("s"),
+				decline,
+			];
 		case "boolean":
-			return [["y", "yes"], ["n", "no"], ...skip, decline];
+			return [["y", "yes"], ["n", "no"], ...skip("enter"), decline];
 		case "text":
 		case "number":
 			return [
@@ -250,7 +272,12 @@ export const ElicitationBlock = ({
 	const refusal = draft.error
 		? Segments.wrap([{ text: draft.error, fg: theme.failed }], width)
 		: [];
-	const keys = [Segments.fit(keyed(answerKeys(field), theme, textFg), width)];
+	const keys = [
+		Segments.fit(
+			keyed(answerKeys(field, draft.picked.length), theme, textFg),
+			width,
+		),
+	];
 	// The input is one row, outside the segment rows, so it is counted here.
 	const answerRows = (answers: readonly AnswerRow[]): number =>
 		answers.length + (typed ? 1 : 0) + refusal.length;

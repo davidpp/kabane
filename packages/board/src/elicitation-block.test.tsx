@@ -78,7 +78,7 @@ describe("ElicitationBlock", () => {
 			"  Shared, survives restarts",
 			"2 Memory",
 			"",
-			"enter skip · esc decline",
+			"↑↓ move · enter pick · 1-2 pick · s skip · esc decline",
 		]);
 		destroy();
 	});
@@ -102,7 +102,7 @@ describe("ElicitationBlock", () => {
 			"  checkpoint",
 			"3 Ask the human",
 			"",
-			"esc decline",
+			"↑↓ move · enter pick · 1-3 pick · esc d…",
 		]);
 		destroy();
 	});
@@ -160,7 +160,7 @@ describe("ElicitationBlock", () => {
 			"  Replay the turn from its last",
 			"  checkpoint",
 			"3 Ask the human",
-			"esc decline",
+			"↑↓ move · enter pick · 1-3 pick · esc d…",
 		]);
 		// Each description cut to its label's row.
 		expect((await at(10)).slice(4, 7)).toEqual([
@@ -233,7 +233,7 @@ describe("ElicitationBlock", () => {
 			"1 [ ] Alpha",
 			"2 [ ] Beta",
 			"3 [x] Gamma",
-			"enter confirm · esc decline",
+			"↑↓ move · space toggle · enter send (1 …",
 		]);
 		destroy();
 	});
@@ -273,6 +273,26 @@ describe("ElicitationBlock", () => {
 	});
 
 	it("answerKeys names what answers each kind of field", () => {
+		const store = STORE.fields[0];
+		const tags = TAGS.fields[0];
+		if (!store || !tags) throw new Error("the forms have their fields");
+		expect(answerKeys(store)).toEqual([
+			["↑↓", "move"],
+			["enter", "pick"],
+			["1-2", "pick"],
+			["s", "skip"],
+			["esc", "decline"],
+		]);
+		expect(answerKeys(tags, 2)).toEqual([
+			["↑↓", "move"],
+			["space", "toggle"],
+			["enter", "send (2 picked)"],
+			["esc", "decline"],
+		]);
+		expect(answerKeys({ ...tags, required: false })).toContainEqual([
+			"s",
+			"skip",
+		]);
 		expect(answerKeys(undefined)).toEqual([
 			["enter", "accept"],
 			["esc", "decline"],
@@ -404,7 +424,7 @@ describe("the copilot pane with a form at the head of its queue", () => {
 			"1 [ ] Alpha",
 			"2 [ ] Beta",
 			"3 [ ] Gamma",
-			"enter confirm · esc decline",
+			"↑↓ move · space toggle · enter send (0 picked) · esc decl…",
 		]);
 		destroy();
 	});

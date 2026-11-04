@@ -968,7 +968,7 @@ describe("the ask panel's height", () => {
 			" 1 Option 1",
 			"   Replay from the last checkpoint",
 		]);
-		expect(shown.at(-2)).toBe(" esc decline");
+		expect(shown.at(-2)).toBe(" ↑↓ move · enter pick · 1-5 pick · esc…");
 		expect(shown.at(-1)).toBe("");
 		// With the room, the same form keeps them.
 		expect((await panel(form(5), 60)).slice(5, 7)).toEqual(["", " 1 Option 1"]);
