@@ -134,6 +134,44 @@ describe("LoopActivity", () => {
 		]);
 	});
 
+	it("hands the board a notice's severity from the event's data, and only a notice's", async () => {
+		const source = LoopActivity.source({
+			home,
+			basePath: home,
+			actor: ACTOR,
+			kabaneBin: "/nonexistent/kabane",
+		});
+		RunStore.create(home, run({ status: "running", exit: undefined }));
+		const log = RunStore.eventLog(home, "KAB-1-abc");
+		if (!log.ok) throw log.error;
+		log.value.append({
+			type: "notice",
+			summary: "warning: not in the mode asked for",
+			data: { severity: "warning" },
+		});
+		log.value.append({
+			type: "notice",
+			summary: "loud: unknown",
+			data: { severity: "loud" },
+		});
+		log.value.append({ type: "notice", summary: "info: no data" });
+		log.value.append({
+			type: "warning",
+			summary: "not a notice",
+			data: { severity: "error" },
+		});
+
+		const events = await source.events?.("KAB-1-abc", 0);
+		expect(events?.ok && events.value.map((e) => [e.type, e.severity])).toEqual(
+			[
+				["notice", "warning"],
+				["notice", undefined],
+				["notice", undefined],
+				["warning", undefined],
+			],
+		);
+	});
+
 	it("withdraws what a run whose runner died was asking from the board's needs-input queue", async () => {
 		await Planner.init(home);
 		const task = await Planner.addTask(home, { title: "child", kind: "issue" });
