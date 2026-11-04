@@ -595,6 +595,153 @@ describe("AcpClient session modes", () => {
 	});
 });
 
+// An agent that keeps sessions by id across connections, as a harness keeps them on disk.
+const resumableAgent = (
+	seen: { resumed: unknown[]; prompts: unknown[] },
+	options: { advertise?: boolean; known?: string } = {},
+): AgentApp =>
+	agentApp({ name: "resumable" })
+		.onRequest(methods.agent.initialize, () => ({
+			protocolVersion: PROTOCOL_VERSION,
+			agentCapabilities: {
+				loadSession: true,
+				sessionCapabilities: options.advertise === false ? {} : { resume: {} },
+			},
+		}))
+		.onRequest(methods.agent.session.resume, (c) => {
+			seen.resumed.push(c.params);
+			if (c.params.sessionId !== (options.known ?? "s-old"))
+				throw new Error(`no session ${c.params.sessionId}`);
+			return {
+				modes: {
+					currentModeId: "default",
+					availableModes: CLAUDE_MODES.map((id) => ({ id, name: id })),
+				},
+			};
+		})
+		.onRequest(methods.agent.session.new, () => ({ sessionId: "s-new" }))
+		.onRequest(methods.agent.session.setMode, () => ({}))
+		.onRequest(methods.agent.session.prompt, async (c) => {
+			seen.prompts.push(c.params);
+			await c.client.notify(methods.client.session.update, {
+				sessionId: c.params.sessionId,
+				update: {
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "picking up" },
+				},
+			});
+			return { stopReason: "end_turn" };
+		});
+
+describe("AcpClient.resumeSession", () => {
+	const options = { cwd: "/tmp/scope", mcpServers: [] };
+
+	it("reopens a session by id and streams its turns, in the harness's auto mode", async () => {
+		const seen = { resumed: [] as unknown[], prompts: [] as unknown[] };
+		const conn = await AcpClient.connect("claude", resumableAgent(seen), {
+			onPermission: allow,
+		});
+		if (!conn.ok) throw conn.error;
+		expect(conn.value.resume).toBe(true);
+		const session = await AcpClient.resumeSession(conn.value, "s-old", options);
+		if (!session.ok) throw session.error;
+		expect(seen.resumed).toEqual([
+			{ sessionId: "s-old", cwd: "/tmp/scope", mcpServers: [] },
+		]);
+		expect(session.value.id).toBe("s-old");
+		expect(session.value.mode.current).toBe("auto");
+		for (const turn of ["continue", "and again"])
+			expect(
+				await collect(
+					AcpClient.prompt(session.value, [{ type: "text", text: turn }]),
+				),
+			).toEqual([
+				{ type: "text", text: "picking up" },
+				{ type: "stop", reason: "end_turn" },
+			]);
+		expect(seen.prompts).toEqual([
+			{ sessionId: "s-old", prompt: [{ type: "text", text: "continue" }] },
+			{ sessionId: "s-old", prompt: [{ type: "text", text: "and again" }] },
+		]);
+		AcpClient.close(conn.value);
+	});
+
+	it("is an error for a harness that does not advertise resume, without asking it", async () => {
+		const seen = { resumed: [] as unknown[], prompts: [] as unknown[] };
+		const conn = await AcpClient.connect(
+			"claude",
+			resumableAgent(seen, { advertise: false }),
+			{ onPermission: allow },
+		);
+		if (!conn.ok) throw conn.error;
+		expect(conn.value.resume).toBe(false);
+		const session = await AcpClient.resumeSession(conn.value, "s-old", options);
+		expect(session.ok).toBe(false);
+		expect(seen.resumed).toEqual([]);
+		AcpClient.close(conn.value);
+	});
+
+	it("is an error when the harness refuses the id", async () => {
+		const seen = { resumed: [] as unknown[], prompts: [] as unknown[] };
+		const conn = await AcpClient.connect("claude", resumableAgent(seen), {
+			onPermission: allow,
+		});
+		if (!conn.ok) throw conn.error;
+		const session = await AcpClient.resumeSession(
+			conn.value,
+			"s-gone",
+			options,
+		);
+		expect(session.ok).toBe(false);
+		AcpClient.close(conn.value);
+	});
+});
+
+describe("AcpClient.resumeOrStart", () => {
+	const options = { cwd: "/tmp/scope", mcpServers: [] };
+
+	const reopen = async (
+		agent: { advertise?: boolean; known?: string },
+		id: string,
+	) => {
+		const seen = { resumed: [] as unknown[], prompts: [] as unknown[] };
+		const conn = await AcpClient.connect(
+			"claude",
+			resumableAgent(seen, agent),
+			{
+				onPermission: allow,
+			},
+		);
+		if (!conn.ok) throw conn.error;
+		const reopened = await AcpClient.resumeOrStart(conn.value, id, options);
+		AcpClient.close(conn.value);
+		if (!reopened.ok) throw reopened.error;
+		return reopened.value;
+	};
+
+	it("resumes the session when the harness can", async () => {
+		const reopened = await reopen({}, "s-old");
+		expect(reopened.resumed).toBe(true);
+		expect(reopened.session.id).toBe("s-old");
+	});
+
+	it("starts a new session, saying why, when the harness does not advertise resume", async () => {
+		const reopened = await reopen({ advertise: false }, "s-old");
+		expect(reopened).toMatchObject({
+			resumed: false,
+			why: "claude does not advertise session/resume",
+		});
+		expect(reopened.session.id).toBe("s-new");
+	});
+
+	it("starts a new session, saying why, when the harness refuses the id", async () => {
+		const reopened = await reopen({}, "s-gone");
+		expect(reopened.resumed).toBe(false);
+		expect(reopened.session.id).toBe("s-new");
+		if (!reopened.resumed) expect(reopened.why).not.toBe("");
+	});
+});
+
 describe("AcpClient.planMode", () => {
 	const state = (currentModeId: string, ids = CLAUDE_MODES) => ({
 		currentModeId,
