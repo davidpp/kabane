@@ -24,6 +24,12 @@ const keysOf = (schema: z.ZodObject<z.ZodRawShape>, prefix = ""): Key[] =>
 
 const keys = keysOf(ConfigSchema);
 const identities = new Set(["actor", "deviceId", "sync.deviceId"]);
+// Groups an agent should leave to the human: a wrong value disconnects the device
+// or points it at another database. Writable here on purpose, since `kabane config`
+// is how the human changes them; the copilot is told to refuse any key flagged so.
+const protectedGroups = ["sync", "db"];
+const isProtected = (key: string): boolean =>
+	protectedGroups.some((group) => key === group || key.startsWith(`${group}.`));
 // Credentials: reads, and the echo of a write, say only whether one is set, so a
 // help question never puts the hub token or an Access secret in a model's context.
 const secrets = new Set(["sync.token", "sync.headers"]);
@@ -157,6 +163,7 @@ export namespace ConfigSettings {
 				value: redact(key, valueAt(config, key)) ?? null,
 				default: valueAt(stored, key) === undefined,
 				readOnly: identities.has(key),
+				protected: isProtected(key),
 				description,
 			})),
 		);

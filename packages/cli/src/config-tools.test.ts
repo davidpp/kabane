@@ -2,6 +2,7 @@ import { expect, it } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CopilotInstructions } from "@cabane/acp";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
@@ -76,9 +77,30 @@ it("manages device config through the real stdio MCP server", async () => {
 			tools.find((tool) => tool.name === "kabane_configSet")?.annotations
 				?.readOnlyHint,
 		).toBe(false);
-		expect(JSON.parse(await call("kabane_configGet", {}))).toEqual(
-			await cli("config", "list"),
+		const rows: Record<string, unknown>[] = JSON.parse(
+			await call("kabane_configGet", {}),
 		);
+		expect(rows).toEqual(
+			z.array(z.record(z.unknown())).parse(await cli("config", "list")),
+		);
+		// The copilot is told to leave alone any key these flags mark; they must be what the tool reports.
+		const flags = (flag: string) =>
+			rows.filter((row) => row[flag] === true).map((row) => row.key);
+		expect(CopilotInstructions.SKILLS).toContain(
+			"whose readOnly or protected flag is true",
+		);
+		for (const row of rows) {
+			expect(typeof row.readOnly).toBe("boolean");
+			expect(typeof row.protected).toBe("boolean");
+		}
+		expect(flags("readOnly")).toEqual(["actor", "deviceId", "sync.deviceId"]);
+		expect(flags("protected")).toEqual(
+			rows
+				.map((row) => String(row.key))
+				.filter((key) => /^(sync|db)(\.|$)/.test(key)),
+		);
+		expect(flags("protected")).toContain("sync.token");
+		expect(flags("protected")).toContain("db.path");
 		expect(await call("kabane_configGet", { key: "timezone" })).toBe("null");
 		for (const [key, value, expected] of [
 			["timezone", "UTC", "UTC"],
