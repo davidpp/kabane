@@ -14,7 +14,8 @@ import {
 import { type ReactNode, type RefObject, useRef } from "react";
 import { ElicitationForm } from "./elicitation-form";
 import { FormField } from "./form-field";
-import { ClickRow } from "./permission-block";
+import type { BoardNav } from "./nav";
+import { type ClickPart, ClickRow } from "./permission-block";
 import type {
 	CopilotElicitation,
 	CopilotFormField,
@@ -255,7 +256,25 @@ export type ElicitationBlockProps = {
 	// paths, so a click and a key can never disagree. Without them the form is only drawn.
 	onPick?: (index: number) => void;
 	onKey?: (name: string) => void;
+	// While the form does not have the keys, who has them and the key that hands them over
+	// (BoardNav.askReach): its keys row says that instead of keys that would go elsewhere, and a
+	// click on it presses that key.
+	reach?: BoardNav.AskReach;
+	onReach?: () => void;
 };
+
+// `esc to answer · the prompt has the keys`: the key first, so a narrow row keeps it.
+const reachSegments = (
+	reach: BoardNav.AskReach,
+	theme: Theme.Tokens,
+	textFg: ColorInput,
+): Segment[] => [
+	{ text: reach.key, fg: textFg },
+	{ text: " to answer", fg: theme.muted },
+	...(reach.holder
+		? [sep(theme), { text: `${reach.holder} has the keys`, fg: theme.muted }]
+		: []),
+];
 
 // The one-line input a text or number field is typed into, on the overlay surface.
 const TypedInput = ({
@@ -323,6 +342,8 @@ export const ElicitationBlock = ({
 	onSubmit,
 	onPick,
 	onKey,
+	reach,
+	onReach,
 }: ElicitationBlockProps): ReactNode => {
 	const theme = useTheme();
 	const inputRef = useRef<InputRenderable>(null);
@@ -354,6 +375,13 @@ export const ElicitationBlock = ({
 			return () => onSubmit(inputRef.current?.value ?? "");
 		return name && onKey ? () => onKey(name) : undefined;
 	};
+	const keyRow: ClickPart[] =
+		!inHand && reach
+			? [{ segments: reachSegments(reach, theme, textFg), onPress: onReach }]
+			: keyParts(pairs, theme, textFg).map((segments, index) => ({
+					segments,
+					onPress: press(pairs[index]?.[0] ?? ""),
+				}));
 	// The input is one row, outside the segment rows, so it is counted here.
 	const answerRows = (answers: readonly AnswerRow[]): number =>
 		answers.length + (typed ? 1 : 0) + refusal.length;
@@ -417,14 +445,7 @@ export const ElicitationBlock = ({
 			) : null}
 			{lines(refusal, "refusal")}
 			{gap("before keys")}
-			<ClickRow
-				parts={keyParts(pairs, theme, textFg).map((segments, index) => ({
-					segments,
-					onPress: press(pairs[index]?.[0] ?? ""),
-				}))}
-				width={width}
-				{...(bg ? { bg } : {})}
-			/>
+			<ClickRow parts={keyRow} width={width} {...(bg ? { bg } : {})} />
 		</>
 	);
 };

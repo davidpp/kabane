@@ -1073,7 +1073,7 @@ describe("the pane's words", () => {
 			null,
 			null,
 			T,
-			true,
+			{ key: "tab" },
 		);
 		expect(Segments.plain(line)).toBe(
 			"? copilot asks: kabane_edit · 1 more waiting · tab to answer",
@@ -1179,6 +1179,19 @@ describe("a click on the pane's ask", () => {
 		]);
 		expect(await clickOn(permission, "esc decline", { focused: true })).toEqual(
 			[{ type: "askKey", name: "escape" }],
+		);
+	});
+
+	it("a collapsed ask whose keys an open prompt holds names the prompt's way out, not keys it would eat", () => {
+		const line = collapsedSegments(
+			idle({ asks: [permission] }),
+			null,
+			null,
+			Theme.DARK,
+			{ key: "esc", holder: "the prompt" },
+		);
+		expect(Segments.plain(line)).toBe(
+			"? copilot asks: kabane_edit JREP-1 · esc to answer",
 		);
 	});
 

@@ -125,22 +125,24 @@ export const permissionSegments = (
 ];
 
 /**
- * The collapsed row while a session question on the view holds the answer keys
- * (BoardNav.copilotOutranked): what the copilot asks (a permission's title, a form's message), with
- * the key that reaches it in place of answer keys that would not reach it.
+ * The collapsed row while something else holds the answer keys (BoardNav.askReach): a session
+ * question on the view (BoardNav.copilotOutranked), an open prompt, a `/` query. What the copilot
+ * asks (a permission's title, a form's message), with the key that reaches it in place of answer
+ * keys that would not reach it.
  */
 export const outrankedSegments = (
 	asked: string,
 	theme: Theme.Tokens,
 	textFg: ColorInput,
 	waiting = 0,
+	key = "tab",
 ): Segments.Segment[] => [
 	{ text: "? ", fg: theme.accent },
 	{ text: "copilot asks: ", fg: theme.muted },
 	{ text: asked, fg: textFg },
 	...(waiting > 0 ? [{ text: waitingNote(waiting), fg: theme.muted }] : []),
 	{ text: " · ", fg: theme.muted },
-	{ text: "tab", fg: textFg },
+	{ text: key, fg: textFg },
 	{ text: " to answer", fg: theme.muted },
 ];
 

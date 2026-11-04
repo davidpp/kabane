@@ -1038,6 +1038,7 @@ export const App = ({
 			}
 			outranked={BoardNav.copilotOutranked(state)}
 			askInHand={BoardNav.askInHand(state)}
+			reach={BoardNav.askReach(state)}
 			textareaRef={inputRef}
 			onSubmit={submitCopilot}
 			onContentChange={mirrorCopilotText}

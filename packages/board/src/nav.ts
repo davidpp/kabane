@@ -626,6 +626,23 @@ export namespace BoardNav {
 		!state.prompt.open &&
 		!copilotOutranked(state);
 
+	/** Who has the keys the copilot's ask is waiting for, and the key that hands them over. */
+	export type AskReach = { key: string; holder?: string };
+
+	/**
+	 * How the copilot's oldest request gets the keys while it lacks them (askInHand), one press one
+	 * level: `esc` out of an open prompt, `enter` out of a `/` query being typed, `tab` to the copilot
+	 * past a question on the view. Undefined while it has them, or when nothing is asked. The ask
+	 * says this in place of answer keys that would go elsewhere.
+	 */
+	export const askReach = (state: BoardState): AskReach | undefined => {
+		if (state.copilot.asks.length === 0 || askInHand(state)) return undefined;
+		if (state.prompt.open) return { key: "esc", holder: "the prompt" };
+		if (state.search.mode === "typing")
+			return { key: "enter", holder: "search" };
+		return { key: "tab" };
+	};
+
 	/**
 	 * How long a question has to be the one a digit answers before a digit does. A key already on
 	 * its way when a question appears, or replaces the one being read, was aimed at what was there
@@ -760,6 +777,18 @@ export namespace BoardNav {
 			: null;
 	};
 
+	// What askReach's key does, from a click: the prompt closes, the query being typed is kept as
+	// `enter` keeps it, and otherwise the copilot takes the keys, which also opens its panel.
+	const reachAsk = (
+		state: BoardState,
+	): { state: BoardState; effect: Effect } => {
+		if (state.prompt.open)
+			return { state: BoardPrompt.close(state), effect: NONE };
+		if (state.search.mode === "typing")
+			return reduceSearchTyping(state, state.search.query, { name: "return" });
+		return { state: { ...state, focus: "copilot" }, effect: NONE };
+	};
+
 	const ASK_CLICKS: ReadonlySet<string> = new Set<AskClick["type"]>([
 		"askOption",
 		"askKey",
@@ -772,7 +801,8 @@ export namespace BoardNav {
 	 * A click on the ask at the head of the queue, through the reducers its keys take: an option is
 	 * its digit (past the ninth too), a hint is its key. A pointer aims at what is drawn, so it is not
 	 * held for ARM_MS, and it answers wherever the keys are. Outranked, the ask is not drawn but its
-	 * row, and any click on it hands it the keys, as `tab` does, rather than answering.
+	 * row, and any click on it hands it the keys, as `tab` does, rather than answering. A click on
+	 * what says how to reach it (askReach) is the key it names.
 	 */
 	const clickAsk = (
 		state: BoardState,
@@ -781,7 +811,8 @@ export namespace BoardNav {
 		const ask = state.copilot.asks[0];
 		const none = { state, effect: NONE };
 		if (!ask) return none;
-		if (click.type === "askReach" || copilotOutranked(state))
+		if (click.type === "askReach") return reachAsk(state);
+		if (copilotOutranked(state))
 			return { state: { ...state, focus: "copilot" }, effect: NONE };
 		if (click.type === "askKey")
 			return answerAsk(state, ask, { name: click.name }) ?? none;

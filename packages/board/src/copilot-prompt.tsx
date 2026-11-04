@@ -183,6 +183,9 @@ export type CopilotPaneProps = {
 	outranked?: boolean;
 	// The harness's oldest request has the keys (BoardNav.askInHand), so a form's input may take them.
 	askInHand?: boolean;
+	// While it does not, who has them and the key that hands them over (BoardNav.askReach), said in
+	// place of answer keys that would go elsewhere. Outranked with none given, it is `tab`.
+	reach?: BoardNav.AskReach;
 	textareaRef: RefObject<TextareaRenderable | null>;
 	onSubmit: () => void;
 	onContentChange: () => void;
@@ -201,6 +204,7 @@ export const CopilotPane = ({
 	detailShownElsewhere = false,
 	outranked = false,
 	askInHand = false,
+	reach: given,
 	textareaRef,
 	onSubmit,
 	onContentChange,
@@ -219,6 +223,8 @@ export const CopilotPane = ({
 	const plan = log?.current.plan ?? [];
 	const progress = plan.length > 0 ? planProgress(plan) : null;
 	const [asking, ...queued] = copilot.asks;
+	const reach = given ?? (outranked ? { key: "tab" } : undefined);
+	const onReach = onAsk && (() => onAsk({ type: "askReach" }));
 	const title = (): Segments.Segment[] =>
 		titleSegments(paneTitle(copilot, chip, log, progress), theme);
 
@@ -232,26 +238,27 @@ export const CopilotPane = ({
 				waiting={queued.length}
 				title={title()}
 				inHand={askInHand}
+				reach={reach}
 				onSubmit={onFormSubmit}
 				{...clicks(onAsk)}
+				onReach={onReach}
 			/>
 		);
 
 	// Nothing left to add: the transcript is showing all of it.
 	if (!focused && detailShownElsewhere) return null;
 
-	if (!focused) {
+	if (!focused)
 		return (
 			<CollapsedRow
 				copilot={copilot}
 				log={log}
 				spinnerFrame={spinnerFrame}
 				width={width}
-				outranked={outranked}
-				{...(onAsk ? { onReach: () => onAsk({ type: "askReach" }) } : {})}
+				reach={reach}
+				onReach={onReach}
 			/>
 		);
-	}
 
 	const matches = BoardNav.matchingShortcuts(
 		BoardNav.paletteEntries(copilot),
@@ -362,17 +369,21 @@ const FormPanel = ({
 	waiting,
 	title,
 	inHand,
+	reach,
 	onSubmit,
 	onPick,
 	onKey,
+	onReach,
 }: {
 	ask: Extract<BoardNav.CopilotAsk, { type: "elicitation" }>;
 	waiting: number;
 	title: Segments.Segment[];
 	inHand: boolean;
+	reach: BoardNav.AskReach | undefined;
 	onSubmit: (text: string) => void;
 	onPick?: (index: number) => void;
 	onKey?: (name: string) => void;
+	onReach?: () => void;
 }): ReactNode => {
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
@@ -399,9 +410,11 @@ const FormPanel = ({
 				rows={askPanelRows(height).max - 3}
 				bg={paneBg}
 				inHand={inHand}
+				reach={reach}
 				onSubmit={onSubmit}
 				onPick={onPick}
 				onKey={onKey}
+				onReach={onReach}
 			/>
 		</box>
 	);
@@ -493,15 +506,16 @@ const CollapsedRow = ({
 	log,
 	spinnerFrame,
 	width,
-	outranked,
+	reach,
 	onReach,
 }: {
 	copilot: BoardNav.CopilotState;
 	log: CopilotLog.Log | null;
 	spinnerFrame: string;
 	width: number;
-	outranked: boolean;
-	// A click on the row while it names an ask: the copilot takes the keys and opens it.
+	reach: BoardNav.AskReach | undefined;
+	// A click on the row while it names an ask: what holds the keys hands them over, or the copilot
+	// takes them and opens it.
 	onReach?: () => void;
 }): ReactNode => {
 	const status =
@@ -511,7 +525,7 @@ const CollapsedRow = ({
 	const theme = useTheme();
 	const paneBg = theme.surface.raised;
 	const line = Segments.fit(
-		collapsedSegments(copilot, log, status, theme, outranked),
+		collapsedSegments(copilot, log, status, theme, reach),
 		width,
 	);
 	const used = Segments.plain(line).length;
@@ -544,27 +558,28 @@ export const collapsedSegments = (
 	log: CopilotLog.Log | null,
 	status: CopilotLog.Footer | null,
 	theme: Theme.Tokens,
-	outranked = false,
+	reach?: BoardNav.AskReach,
 ): Segments.Segment[] => {
 	const [asking, ...queued] = copilot.asks;
+	if (asking && reach)
+		return outrankedSegments(
+			asking.type === "permission"
+				? asking.request.title
+				: asking.request.message,
+			theme,
+			theme.text,
+			queued.length,
+			reach.key,
+		);
 	if (asking?.type === "permission")
-		return outranked
-			? outrankedSegments(
-					asking.request.title,
-					theme,
-					theme.text,
-					queued.length,
-				)
-			: permissionSegments(asking.request, theme, theme.text, queued.length);
+		return permissionSegments(asking.request, theme, theme.text, queued.length);
 	if (asking)
-		return outranked
-			? outrankedSegments(
-					asking.request.message,
-					theme,
-					theme.text,
-					queued.length,
-				)
-			: elicitationSegments(asking.request, theme, theme.text, queued.length);
+		return elicitationSegments(
+			asking.request,
+			theme,
+			theme.text,
+			queued.length,
+		);
 	const transcript: Segments.Segment[] = log
 		? [
 				{ text: " · ", fg: theme.muted },

@@ -272,6 +272,32 @@ describe("ElicitationBlock", () => {
 		destroy();
 	});
 
+	it("without the keys it says who has them and how to reach it; with them, nothing extra", async () => {
+		const shown = async (inHand: boolean) => {
+			const { captureCharFrame, destroy } = await renderTest(
+				<box style={{ flexDirection: "column", width: 60 }}>
+					<ElicitationBlock
+						request={TAGS}
+						draft={ElicitationForm.start()}
+						width={60}
+						rows={24}
+						inHand={inHand}
+						reach={{ key: "esc", holder: "the prompt" }}
+						onSubmit={() => {}}
+					/>
+				</box>,
+				{ width: 60, height: 24 },
+			);
+			const frame = captureCharFrame();
+			destroy();
+			return lines(frame).at(-1);
+		};
+		expect(await shown(false)).toBe("esc to answer · the prompt has the keys");
+		expect(await shown(true)).toBe(
+			"↑↓ move · space toggle · enter send (0 picked) · esc decline",
+		);
+	});
+
 	it("a click on a typed field's enter hint sends what its input holds", async () => {
 		const sent: string[] = [];
 		const { mockInput, mockMouse, renderOnce, captureCharFrame, destroy } =

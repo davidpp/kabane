@@ -3091,6 +3091,10 @@ describe("a form the harness is blocked on", () => {
 		};
 		const pinned = asked({ view: { type: "detail", taskId: "a", banner } });
 		expect(BoardNav.copilotOutranked(pinned)).toBe(true);
+		expect(BoardNav.askReach(pinned)).toEqual({ key: "tab" });
+		expect(BoardNav.askReach(reduce(pinned, { name: "tab" }).state)).toBe(
+			undefined,
+		);
 		for (const action of [
 			{ type: "askOption", index: 0 },
 			{ type: "askKey", name: "escape" },
@@ -3155,6 +3159,44 @@ describe("a form the harness is blocked on", () => {
 		expect(reduce(prompting, char("1")).effect.type).not.toBe(
 			"copilotAnswerForm",
 		);
+	});
+
+	// Seen live: the form looked the same whether or not it had the keys, so its keys went to an
+	// open prompt, a `/` query or the question on the view, and the form seemed not to answer.
+	it("says who has its keys and which key hands them over, and that key (or a click on it) does", () => {
+		const prompting = asked({
+			prompt: {
+				...BoardPrompt.CLOSED,
+				open: {
+					target: { type: "act", cardId: "loop", actionId: "inject" },
+					title: "inject",
+					placeholder: "",
+				},
+			},
+		});
+		const searching = asked({ search: { mode: "typing", query: "ca" } });
+		expect(BoardNav.askReach(asked())).toBeUndefined();
+		expect(BoardNav.askReach(prompting)).toEqual({
+			key: "esc",
+			holder: "the prompt",
+		});
+		expect(BoardNav.askReach(searching)).toEqual({
+			key: "enter",
+			holder: "search",
+		});
+		for (const [held, key] of [
+			[prompting, { name: "escape" }],
+			[searching, { name: "return" }],
+		] as const) {
+			expect(BoardNav.askInHand(reduce(held, key).state)).toBe(true);
+			const clicked = BoardNav.reduceMouse(held, { type: "askReach" }).state;
+			expect(BoardNav.askInHand(clicked)).toBe(true);
+			expect(head(clicked)).toEqual(head(held));
+		}
+		// The query typed is kept, as enter keeps it.
+		expect(
+			BoardNav.reduceMouse(searching, { type: "askReach" }).state.search,
+		).toEqual({ mode: "committed", query: "ca" });
 	});
 
 	it("an enter that arrives after the form is gone sends nothing", () => {
