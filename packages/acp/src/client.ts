@@ -58,6 +58,9 @@ export namespace AcpClient {
 		// The harness moved the session to another of its modes: `current_mode_update`, or a
 		// `config_option_update` whose mode option says so.
 		| { type: "mode"; id: string }
+		// A `notice`: something the harness wants the human to know that is not the agent's reply
+		// (a mode it fell back from, a model it swapped). `text` is its title and detail as one line.
+		| { type: "notice"; severity: string; text: string }
 		| { type: "stop"; reason: string }
 		| { type: "error"; message: string };
 
@@ -283,7 +286,7 @@ export namespace AcpClient {
 		const handshake = await withTimeout(
 			raw.agent.request(methods.agent.initialize, {
 				protocolVersion: PROTOCOL_VERSION,
-				clientCapabilities: {},
+				clientCapabilities: { session: { notices: {} } },
 			}),
 			options.handshakeMs ?? DEFAULT_HANDSHAKE_MS,
 			`${harness}: no ACP initialize response`,
@@ -815,6 +818,14 @@ export namespace AcpClient {
 				const mode = modeOption(update.configOptions);
 				return mode ? { type: "mode", id: mode.current } : null;
 			}
+			case "notice":
+				return {
+					type: "notice",
+					severity: update.severity,
+					text: update.description
+						? `${update.title}: ${update.description}`
+						: update.title,
+				};
 			case "usage_update":
 				return {
 					type: "usage",

@@ -487,6 +487,28 @@ describe("AcpClient.toUpdate", () => {
 			}),
 		).toBeNull();
 	});
+
+	it("maps a notice to its severity and one line of title and detail", () => {
+		expect(
+			AcpClient.toUpdate({
+				sessionUpdate: "notice",
+				severity: "warning",
+				title: "Auto mode unavailable",
+				description: "The selected model does not support Auto mode.",
+			}),
+		).toEqual({
+			type: "notice",
+			severity: "warning",
+			text: "Auto mode unavailable: The selected model does not support Auto mode.",
+		});
+		expect(
+			AcpClient.toUpdate({
+				sessionUpdate: "notice",
+				severity: "info",
+				title: "Context compacted",
+			}),
+		).toEqual({ type: "notice", severity: "info", text: "Context compacted" });
+	});
 });
 
 // Claude's mode list as claude-agent-acp 0.99.1 advertises it on session/new.
@@ -710,12 +732,13 @@ describe("AcpClient session modes through a config option", () => {
 		setConfig: [] as unknown[],
 	});
 
-	it("switches through session/set_config_option and follows the option", async () => {
+	it("advertises notices, switches through session/set_config_option and follows the option", async () => {
 		const seen = fresh();
 		const { conn, session } = await openModed(
 			configAgent("default", seen),
 			"claude",
 		);
+		expect(seen.capabilities).toMatchObject([{ session: { notices: {} } }]);
 		expect(seen.setConfig).toEqual([{ configId: "mode", value: "auto" }]);
 		expect(seen.setMode).toEqual([]);
 		expect(session.mode).toEqual({
@@ -738,7 +761,7 @@ describe("AcpClient session modes through a config option", () => {
 		AcpClient.close(conn);
 	});
 
-	it("reports where the harness landed instead of auto", async () => {
+	it("reports where the harness landed instead of auto, and passes its notice on", async () => {
 		const { conn, session } = await openModed(
 			configAgent("default", fresh(), { noAuto: true }),
 			"claude",
@@ -747,6 +770,14 @@ describe("AcpClient session modes through a config option", () => {
 			current: "acceptEdits",
 			via: "config_option",
 			note: "mode acceptEdits: asked for claude's auto mode (auto) from default, and it chose acceptEdits",
+		});
+		const updates = await collect(
+			AcpClient.prompt(session, [{ type: "text", text: "go" }]),
+		);
+		expect(updates[0]).toEqual({
+			type: "notice",
+			severity: "warning",
+			text: "Auto mode unavailable: The selected model does not support Auto mode.",
 		});
 		AcpClient.close(conn);
 	});

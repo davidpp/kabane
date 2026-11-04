@@ -153,6 +153,14 @@ A `current_mode_update`, or a `config_option_update` whose mode option holds a m
 is not in, is a `mode` update; the echo of the switch `newSession` made and an update that
 repeats the current mode are not.
 
+## Notices
+
+`initialize` advertises `clientCapabilities.session.notices`, so a harness sends what it wants
+the human to know outside the agent's reply (a mode it fell back from, a model it swapped) as
+a `notice` session update rather than as a bold line in the agent's text. It reaches the caller
+as `{ type: "notice"; severity; text }`, with `text` the notice's title and description as one
+line. The copilot shows it as a step of the turn; the loop records it as a `notice` run event.
+
 ## Updates
 
 ```ts
@@ -164,6 +172,7 @@ type Update =
   | { type: "plan"; entries: { content; status }[] }
   | { type: "usage"; used: number; size: number; cost?: { amount; currency } }
   | { type: "mode"; id: string }
+  | { type: "notice"; severity: string; text: string }
   | { type: "stop"; reason: string }
   | { type: "error"; message: string };
 ```

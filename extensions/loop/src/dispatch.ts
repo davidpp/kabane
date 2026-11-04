@@ -199,6 +199,12 @@ export namespace Dispatch {
 					mode: update.id,
 				});
 				return undefined;
+			// What the harness wanted the human to know, such as why it is not in the mode asked for.
+			case "notice":
+				sink.emit("notice", `${update.severity}: ${update.text}`, {
+					severity: update.severity,
+				});
+				return undefined;
 			case "usage":
 				sink.usage({
 					used: update.used,

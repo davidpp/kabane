@@ -47,6 +47,8 @@ const scriptedAgent = (
 		// during each turn.
 		mode?: string;
 		move?: string;
+		// A notice the agent sends before anything else in the turn.
+		notice?: { severity: string; title: string; description?: string };
 	} = {},
 ): AgentApp =>
 	agentApp({ name: "scripted" })
@@ -62,10 +64,12 @@ const scriptedAgent = (
 					? {
 							modes: {
 								currentModeId: options.mode,
-								availableModes: ["default", "plan", "auto"].map((id) => ({
-									id,
-									name: id,
-								})),
+								availableModes: ["default", "acceptEdits", "plan", "auto"].map(
+									(id) => ({
+										id,
+										name: id,
+									}),
+								),
 							},
 						}
 					: {}),
@@ -93,6 +97,8 @@ const scriptedAgent = (
 				);
 				seen.permissions.push(answer.outcome);
 			}
+			if (options.notice)
+				await notify({ sessionUpdate: "notice", ...options.notice });
 			if (options.move)
 				await notify({
 					sessionUpdate: "current_mode_update",
@@ -297,6 +303,32 @@ describe("BoardCopilot", () => {
 		// Neither line again once the session is open and the harness stays put.
 		const second = await collectAll(copilot.run("again", context()));
 		expect(types(second)).toEqual(["text", "done"]);
+		copilot.close();
+	});
+
+	it("shows the harness's notice as a step of the turn, after the mode line", async () => {
+		const copilot = copilotOver(
+			scriptedAgent(fresh(), {
+				mode: "acceptEdits",
+				notice: {
+					severity: "warning",
+					title: "Auto mode unavailable",
+					description: "Using Accept edits instead.",
+				},
+				text: "ok",
+			}),
+		);
+		const updates = await collectAll(copilot.run("go", context()));
+		expect(updates.slice(0, 2).map((u) => [u.type, u.summary])).toEqual([
+			[
+				"mode",
+				"mode acceptEdits: claude opened in it, not in its manual mode (default), so kabane keeps it over auto",
+			],
+			[
+				"mode",
+				"claude warning: Auto mode unavailable: Using Accept edits instead.",
+			],
+		]);
 		copilot.close();
 	});
 
