@@ -208,3 +208,43 @@ describe("Parent state across a run", () => {
 			expect(await comments(parent.id)).toHaveLength(1);
 		});
 });
+
+describe("A single issue across a run", () => {
+	it("is not taken on start: its state is the claim's to change", async () => {
+		const issue = await add({ title: "lone" });
+		let during: Task | undefined;
+		const ended = await drive(issue, async () => {
+			during = await get(issue.id);
+		});
+		expect([during?.state, during?.version]).toEqual(["next", 1]);
+		const logs = await Planner.getWorkLogs(home, issue.id);
+		expect(logs.ok && logs.value).toEqual([]);
+		expect(ended.exit?.reason).toBe("stop-requested");
+		expect(await comments(issue.id)).toEqual([
+			`Loop run run-1 stopped: stop-requested.\n\nNext: \`kabane loop start ${issue.shortId}\` starts a new run.`,
+		]);
+	});
+
+	it("completes once its session closes it, flagged for the merge, with no subtask count", async () => {
+		const issue = await add({ title: "lone" });
+		const ended = await drive(issue, async () => {
+			const closed = await Planner.updateTask(home, issue.id, {
+				state: "done",
+			});
+			if (!closed.ok) throw closed.error;
+		});
+		expect(ended.exit?.reason).toBe("plan-done");
+		const after = await get(issue.id);
+		expect([after.state, after.needsReview]).toEqual(["done", true]);
+		expect(await comments(issue.id)).toEqual([
+			[
+				"Loop run run-1 completed (plan-done).",
+				"",
+				"- Findings fixed: none",
+				"- Findings left open for you: none",
+				"",
+				`The changes are in the working tree of \`${home}\`.`,
+			].join("\n"),
+		]);
+	});
+});

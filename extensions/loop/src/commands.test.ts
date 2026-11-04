@@ -79,11 +79,84 @@ const repoScope = async (): Promise<string> => {
 };
 
 describe("Loop.start refusals", () => {
-	it("refuses a parent with no subtasks", async () => {
-		const parent = await add("parent", { scopeUri: await repoScope() });
-		const started = await Loop.start(deps(), { parent: parent.id });
-		expect(started.ok).toBe(false);
-		if (!started.ok) expect(started.error.message).toContain("no subtasks");
+	it("refuses a human task with no subtasks: nothing in it is a loop's to run", async () => {
+		const task = await add("errand", {
+			kind: "task",
+			scopeUri: await repoScope(),
+		});
+		const started = await Loop.start(deps(), { parent: task.id });
+		expect(!started.ok && started.error.message).toBe(
+			`${task.shortId} is a task with no subtasks, so a loop has nothing to run: make it an issue, or give it issue subtasks`,
+		);
+	});
+
+	it("starts an issue with no subtasks as a single issue, up to the runner", async () => {
+		const issue = await add("lone", { scopeUri: await repoScope() });
+		const started = await Loop.start(deps(), { parent: issue.id });
+		// Past every refusal: the run is written on the issue and only the (nonexistent) runner fails.
+		expect(!started.ok && started.error.message).toContain("runner");
+		const runs = RunStore.list(home);
+		expect(runs.ok && runs.value.map((r) => [r.parentId, r.status])).toEqual([
+			[issue.id, "failed"],
+		]);
+	});
+
+	it("refuses a single issue someone holds or parked, which a run could only wait on", async () => {
+		const scopeUri = await repoScope();
+		const held = await add("held", { scopeUri, state: "in_progress" });
+		const later = await add("later", {
+			scopeUri,
+			deferUntil: "2999-01-01T00:00:00.000Z",
+		});
+		const heldStart = await Loop.start(deps(), { parent: held.id });
+		expect(!heldStart.ok && heldStart.error.message).toBe(
+			`${held.shortId} is in_progress, so a loop run could not claim it: move it to next to run it`,
+		);
+		const laterStart = await Loop.start(deps(), { parent: later.id });
+		expect(!laterStart.ok && laterStart.error.message).toContain(
+			`${later.shortId} is deferred until 2999-01-01`,
+		);
+		const runs = RunStore.list(home);
+		expect(runs.ok && runs.value).toEqual([]);
+	});
+
+	it("refuses a closed single issue with nothing to check, in its own words", async () => {
+		const issue = await add("shipped", {
+			scopeUri: await repoScope(),
+			state: "done",
+		});
+		const started = await Loop.start(deps(), {
+			parent: issue.id,
+			config: { gates: {} },
+		});
+		expect(!started.ok && started.error.message).toBe(
+			`${issue.shortId} is already done, no finding under it is open, and no gates or lenses are configured to check it`,
+		);
+	});
+
+	it("refuses a single issue that already has a live run", async () => {
+		const issue = await add("lone", { scopeUri: await repoScope() });
+		RunStore.create(home, {
+			version: 1,
+			id: "live-run",
+			parentId: issue.id,
+			parentShortId: issue.shortId ?? issue.id,
+			projectDir: repo,
+			config: CONFIG,
+			status: "running",
+			pid: process.pid,
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: { paused: false, skipped: [], next: [] },
+			gateRuns: [],
+		});
+		const started = await Loop.start(deps(), { parent: issue.id });
+		expect(!started.ok && started.error.message).toBe(
+			`${issue.shortId} already has a live loop run: live-run`,
+		);
 	});
 
 	it("refuses a directory that is not the parent's scope, and names --dir", async () => {

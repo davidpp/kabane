@@ -156,7 +156,8 @@ export namespace Briefing {
 
 	/**
 	 * The plan the run would start on: a row per subtask (findings are the fixer's, after the
-	 * lenses), the critical path, and the risks, the plan's own first and then core lint's.
+	 * lenses), or the single issue's one row, the critical path of subtasks, and the risks, the
+	 * plan's own first and then core lint's.
 	 */
 	export const preview = (
 		plan: LoopPlan.Plan,
@@ -174,28 +175,34 @@ export namespace Briefing {
 			TITLE_COLS,
 			Math.max(0, ...work.map((n) => n.task.title.length)),
 		);
+		const single = LoopPlan.single(plan);
 		const path = criticalPath(plan);
 		return [
 			[
 				{ text: "Plan", bold: true },
 				{
-					text: `  ${plural(work.length, "subtask")} · ${plural(links, "link")} · ${ready.size} ready`,
+					text: `  ${single ? "1 issue" : plural(work.length, "subtask")} · ${plural(links, "link")} · ${ready.size} ready`,
 					tone: "muted",
 				},
 			],
 			[],
 			...work.map((n) => row(n, ready, tasks, titleCols)),
-			[],
-			[
-				{ text: "Critical path  ", bold: true },
-				...(path.length === 0
-					? [{ text: "nothing open", tone: "muted" as const }]
-					: path.flatMap((id, i): PanelPart[] => [
-							...(i > 0 ? [{ text: " → ", tone: "muted" as const }] : []),
-							{ text: id },
-						])),
-				{ text: `   ${path.length} deep`, tone: "muted" },
-			],
+			// One issue is its own critical path.
+			...(single
+				? []
+				: [
+						[],
+						[
+							{ text: "Critical path  ", bold: true },
+							...(path.length === 0
+								? [{ text: "nothing open", tone: "muted" as const }]
+								: path.flatMap((id, i): PanelPart[] => [
+										...(i > 0 ? [{ text: " → ", tone: "muted" as const }] : []),
+										{ text: id },
+									])),
+							{ text: `   ${path.length} deep`, tone: "muted" },
+						] satisfies PanelLine,
+					]),
 			...gateLines(gates),
 			...riskLines([...planRisks(plan, now), ...lint]),
 		];

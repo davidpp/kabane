@@ -83,3 +83,48 @@ describe("Brief, after an interrupted attempt", () => {
 		expect(prompt).not.toContain("You are one implementing session");
 	});
 });
+
+describe("Brief on a single issue", () => {
+	const lone = task("P-9", "lone");
+	const single = { runId: "r1", parent: lone, task: lone };
+
+	it("tells the implementing session the issue is the whole run, with no subtasks or siblings", () => {
+		const [instructions] = Brief.opening(single, "ASSEMBLED").split(
+			"\n\n---\n\n",
+		);
+		expect(instructions).toStartWith(
+			'You are the implementing session of kabane loop run r1, which drives the single issue P-9 ("lone") to completion.',
+		);
+		expect(instructions).toContain("Your issue is P-9.");
+		expect(instructions).toContain(
+			"When the issue is implemented and you have verified it, call kabane_done on P-9.",
+		);
+		expect(instructions).toContain("Do not make it a child of P-9");
+		expect(instructions).not.toMatch(/subtask|sibling/);
+	});
+
+	it("speaks of the run's target, not its subtasks, to a lens and the fixer", () => {
+		const lens = Brief.lens(
+			{ ...single, lens: "security", prompt: "LENS", gates: [] },
+			"ASSEMBLED",
+		);
+		const fixer = Brief.fixer(
+			{ ...single, findings: [], gates: [] },
+			"ASSEMBLED",
+		);
+		expect(lens).toStartWith(
+			'You are the `security` verifier of kabane loop run r1 on P-9 ("lone"). Its work is done.',
+		);
+		expect(fixer).toStartWith(
+			'You are the fixer session of kabane loop run r1 on P-9 ("lone"), whose work is done.',
+		);
+		for (const brief of [lens, fixer])
+			expect(brief).not.toContain("subtasks of");
+	});
+
+	it("still tells a subtask's session it is one of several", () => {
+		expect(Brief.opening(subject, "ASSEMBLED")).toContain(
+			'which drives the subtasks of P-1 ("parent") to completion',
+		);
+	});
+});

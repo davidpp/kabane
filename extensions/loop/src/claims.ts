@@ -418,7 +418,10 @@ export namespace Claims {
 		ctx.live.set(sessionId, { taskId: task.id, handle, settled });
 	};
 
-	/** Claim one ready subtask: a core session, a dispatched ACP session, a live entry. */
+	/**
+	 * Claim one ready work node, a subtask or a single issue itself: a core session, a dispatched
+	 * ACP session, a live entry.
+	 */
 	export const claim = async (
 		ctx: Ctx,
 		node: LoopPlan.Node,
@@ -438,8 +441,7 @@ export namespace Claims {
 		if (
 			!task ||
 			!LoopPlan.canClaim(task, ctx.now()) ||
-			task.parentTaskId !== plan.parent.id ||
-			!LoopPlan.isWork(LoopPlan.node(task, node.blockedBy))
+			!LoopPlan.isWorkOf(plan, task)
 		)
 			return;
 		// The run's harness, whatever the subtask's assignee says: agents assign issues they file

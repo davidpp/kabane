@@ -57,7 +57,7 @@ export namespace Loop {
 	};
 
 	export type StartInput = {
-		/** The parent issue: id or short id. */
+		/** The parent issue, or a single issue with no subtasks: id or short id. */
 		parent: string;
 		/**
 		 * The project checkout to work on, relative to `cwd`. Absent, it is `cwd`, which must
@@ -197,25 +197,39 @@ export namespace Loop {
 	// The parent must have something for a run to do (open work, checks to run on work that is
 	// done, or open findings for the fixer), no live run already, and a last run whose runner did
 	// not die: that run still holds the subtasks it claimed, which a new run would wait on
-	// forever, and its worktree.
+	// forever, and its worktree. A single issue that is open must be one the run can claim: with
+	// no sibling to work meanwhile, a run on one someone holds would only wait.
 	const checkParent = async (
 		deps: Pick<StartDeps, "home">,
 		plan: LoopPlan.Plan,
 		config: LoopConfig.Config,
 		projectDir: string,
 	): Promise<Result<void>> => {
-		const short = plan.parent.shortId ?? plan.parent.id;
+		const { parent } = plan;
+		const short = parent.shortId ?? parent.id;
+		const now = new Date();
 		if (!plan.nodes.some(LoopPlan.isWork))
-			return err(new Error(`${short} has no subtasks for a loop to run`));
+			return err(
+				new Error(
+					`${short} is a ${parent.kind} with no subtasks, so a loop has nothing to run: make it an issue, or give it issue subtasks`,
+				),
+			);
+		const single = LoopPlan.single(plan);
+		if (single && !LoopPlan.isClosed(parent) && !LoopPlan.canClaim(parent, now))
+			return err(
+				new Error(
+					`${short} is ${parent.state === "next" || parent.state === "inbox" ? `deferred until ${parent.deferUntil}` : parent.state}, so a loop run could not claim it: move it to next to run it`,
+				),
+			);
 		if (
 			Stop.workDone(plan) &&
 			!Gates.configured(config.gates) &&
 			config.lenses.length === 0 &&
-			LoopPlan.fixable(plan, new Date()).length === 0
+			LoopPlan.fixable(plan, now).length === 0
 		)
 			return err(
 				new Error(
-					`Every subtask of ${short} is already closed, no finding under it is open, and no gates or lenses are configured to check it`,
+					`${single ? `${short} is already ${parent.state}` : `Every subtask of ${short} is already closed`}, no finding under it is open, and no gates or lenses are configured to check it`,
 				),
 			);
 		// A lens with no prompt would fail the run at its end; say so before it starts.
