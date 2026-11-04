@@ -19,6 +19,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import type { ActivityToolDetail } from "@cabane/board/ports";
 import { err, ok, type Result, trySync } from "@cabane/core";
 import { z } from "zod";
 import { Budget } from "./budget";
@@ -151,7 +152,9 @@ export namespace RunStore {
 			? run.projectDir
 			: join(run.worktree, run.worktreePrefix ?? "");
 
-	// The board's `ActivityToolDetail`, as a line of events.jsonl carries it.
+	// The board's `ActivityToolDetail`, as a line of events.jsonl carries it. `satisfies` refuses a
+	// field the two type differently; a field only one of them has still compiles, since every
+	// field is optional, so one the board adds is added here by hand.
 	const ToolDetailSchema = z.object({
 		kind: z.string().optional(),
 		input: z.string().optional(),
@@ -166,7 +169,7 @@ export namespace RunStore {
 			)
 			.readonly()
 			.optional(),
-	});
+	}) satisfies z.ZodType<ActivityToolDetail>;
 
 	export const EventSchema = z.object({
 		seq: z.number().int().positive(),
