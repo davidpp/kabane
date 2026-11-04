@@ -430,14 +430,11 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
     reports the turn had ended, it is queued and sent as the session's next prompt once the
     turn ends, ahead of any continuation, and spends none. Events: `inject_delivered`
     (`data.via`: `steering`, `new_turn`, `prompt`) and `inject_queued` (`data.why`).
-  - **Checked against the adapters:** claude-agent-acp 0.76.0 and codex-acp 1.11.0 both
-    advertise `_meta.steering.supported` on `initialize` (seen on the real processes).
-    Claude honours `idleBehavior: promptRequired`: an idle steer on a real session returned
-    `promptRequired` and started nothing. Codex ignores the hint: an idle steer waits for the
-    previous prompt and starts a turn of its own, which `steer` reports as `new_turn`. The
-    loop steers only while its own turn runs, so that is a race at the turn's end, not the
-    common path. A steer into a running turn has not been watched on either harness yet
-    (paid; package E).
+  - **Checked against the adapters:** claude-agent-acp 0.99.1 and codex-acp 2.5.0 both
+    advertise `_meta.steering.supported` on `initialize` and honour `idleBehavior:
+    promptRequired`: an idle steer on a real session of each returned `prompt_required` and
+    started nothing. `new_turn` remains for an adapter that ignores the hint. A steer into a
+    running turn has not been watched on either harness yet (paid; package E).
   - **Pause, skip, next:** inbox kinds folded into `run.json`'s `steering` by
     `Steering.apply`. Pause claims nothing and lets running sessions finish. A skipped
     subtask leaves the frontier and stays open, so its dependents stay blocked and the run

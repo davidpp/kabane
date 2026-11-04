@@ -31,7 +31,7 @@ bun add -g kabane           # `kabane` on PATH, in ~/.bun/bin
 kabane --version
 ```
 
-`bun add -g kabane@beta` installs the beta of the next major instead.
+`bun add -g kabane@beta` installs the current beta instead.
 
 `bunx kabane` runs it once without installing. Install it globally before you let setup
 wire your coding agents: their MCP entries point at the installed file.

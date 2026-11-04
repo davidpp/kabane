@@ -28,8 +28,8 @@ prints `command not found` instead, add `~/.bun/bin` to your PATH. Install globa
 setup registers coding agents: their MCP entries point at the installed file. To work on
 Kabane itself from source, use the [clone and `bun link` path](../README.md#install).
 
-To try the next major before it is stable, install the beta instead: `bun add -g kabane@beta`.
-A beta install updates along its channel ([beta installs](#beta-installs)).
+`bun add -g kabane@beta` installs the current beta, which updates along its own channel
+([beta installs](#beta-installs)).
 
 ## Run `kabane`
 
@@ -354,10 +354,12 @@ other-manager and unknown/missing-global-bin layouts refuse mutation with manual
 No internal-bin/PATH fallback or link repair is performed. This is not a claim that every
 Bun isolated layout is broken; unverified layouts are simply outside this updater's support.
 
-Selection is registry `latest`, stable only, within the installed major; `0.x` stays within
-its minor. A beta install follows its own channel ([beta installs](#beta-installs)). No historical fallback, prerelease/channel/force option, implicit downgrade or
-major/pre-1.0 minor jump. Crossing that boundary requires reviewing compatibility notes and
-choosing an explicit manual `bun add -g kabane@<version>`; do not overwrite a source link.
+A stable install selects registry `latest`, stable only, within the installed major; `0.x`
+stays within its minor. A beta install follows its own channel ([beta installs](#beta-installs)).
+The installed version picks the channel: no historical fallback, prerelease/channel/force
+option, implicit downgrade or major/pre-1.0 minor jump. Crossing that boundary requires
+reviewing compatibility notes and choosing an explicit manual `bun add -g kabane@<version>`;
+do not overwrite a source link.
 Check and current/no-op results do **not** validate installation eligibility. Update uses
 Bun's exact-target policy-enforcing dry-run before installation; exact requests honor release
 age but bypass Bun's range-resolution stability heuristic. Metadata/runtime caches may be
