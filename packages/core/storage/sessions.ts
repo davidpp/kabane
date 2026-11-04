@@ -12,7 +12,7 @@
 
 import type { Db } from "../db/port";
 import { err, type Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 
 import type { z } from "zod";
 import {
@@ -25,6 +25,7 @@ import {
 	type AgentSession,
 	type AgentSessionDraft,
 	AgentSessionDraftSchema,
+	parseQuestionBody,
 	type SessionQuery,
 	type Task,
 } from "../schemas";
@@ -53,9 +54,9 @@ const TERMINAL_STATES = new Set(["complete", "error"]);
 const isTerminal = (state: string): boolean => TERMINAL_STATES.has(state);
 
 /**
- * Count `question` activities on a session that have NO answering `decision`.
- * A decision answers a question when its `context` is exactly
- * `answers <question-activity-id>` (see schemas/question-body.ts → answersContext).
+ * Count `question` activities on a session that have NO answer. An activity
+ * answers a question when its `context` is exactly `answers <question-activity-id>`
+ * (see schemas/question-body.ts → answersContext), whatever its type.
  * The unit of "needs answering" is the unanswered QUESTION, not the session:
  * a batch of N questions stays blocked until every one has an answer.
  */
@@ -66,7 +67,7 @@ const countUnansweredQuestions = (db: Db, sessionId: string): number => {
        WHERE q.session_id = ? AND q.type = 'question'
          AND NOT EXISTS (
            SELECT 1 FROM ${TABLES.agent_activities} d
-           WHERE d.session_id = q.session_id AND d.type = 'decision'
+           WHERE d.session_id = q.session_id
              AND d.context = 'answers ' || q.id
          )`,
 		)
@@ -94,7 +95,7 @@ type NeedsInputItem = {
  *   - `question` → awaiting_input (blocks on human);
  *   - anything else on an awaiting_input or stale session → active once no
  *     question is left unanswered, else it stays awaiting_input: a batch of N
- *     questions stays blocked until every one has an answering decision.
+ *     questions stays blocked until every one has an answer.
  */
 const appendActivity = (
 	db: Db,
@@ -115,11 +116,11 @@ const appendActivity = (
 	}
 
 	// Insert first so the unanswered-question check below counts this activity
-	// (an answering `decision` clears the block it closes).
+	// (an answer clears the block it closes).
 	db.run(
 		`INSERT INTO ${TABLES.agent_activities}
-       (id, session_id, type, ephemeral, severity, category, context, body, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, session_id, type, ephemeral, severity, category, context, body, author, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[
 			id,
 			a.sessionId,
@@ -129,6 +130,7 @@ const appendActivity = (
 			a.category ?? null,
 			a.context ?? null,
 			a.body,
+			a.author ?? null,
 			now,
 		],
 	);
@@ -159,6 +161,7 @@ const appendActivity = (
 		category: a.category,
 		context: a.context,
 		body: a.body,
+		author: a.author,
 		createdAt: now,
 	};
 };
@@ -349,13 +352,17 @@ export namespace Planner {
 	};
 
 	/**
-	 * Answer one `question` activity: append a `decision` whose `context` is
+	 * Answer one `question` activity: append an activity whose `context` is
 	 * exactly `answers <questionId>` and whose body is the answer, in the same
-	 * transaction as the lookup. The session leaves awaiting_input only once
-	 * every question on it has an answer. Answering again appends another
-	 * decision: the latest is the answer in force and the earlier ones stay on
-	 * the record. Rejects an id that is not a question activity, and a session
-	 * that has already ended.
+	 * transaction as the lookup. A question that relays a tool permission
+	 * request (its body carries `permission`) gets an `answer`: approving a tool
+	 * call unblocks the session and is no decision. Any other question gets a
+	 * `decision`, the human's choice on the record. Either names the runtime
+	 * actor as its author, who answered. The session leaves
+	 * awaiting_input only once every question on it has an answer. Answering
+	 * again appends another: the latest is the answer in force and the earlier
+	 * ones stay on the record. Rejects an id that is not a question activity,
+	 * and a session that has already ended.
 	 */
 	export const answerQuestion = async (
 		basePath: string,
@@ -376,12 +383,14 @@ export namespace Planner {
 						`Activity ${questionId} is a ${String(question.type)}, not a question`,
 					);
 				}
+				const permission = parseQuestionBody(String(question.body)).permission;
 				return appendActivity(db, {
 					sessionId: String(question.session_id),
-					type: "decision",
+					type: permission ? "answer" : "decision",
 					ephemeral: false,
 					context: answersContext(questionId),
 					body: answer,
+					author: Runtime.actor(),
 				});
 			})(),
 		);
@@ -465,7 +474,7 @@ export namespace Planner {
 	/**
 	 * The blocked-on-human queue: ONE row per UNANSWERED `question` activity on an
 	 * awaiting_input session, joined to its session + task. A batch of N questions
-	 * surfaces N answerable rows (unanswered = a question with no `decision` whose
+	 * surfaces N answerable rows (unanswered = a question with no activity whose
 	 * context is `answers <question-id>`). Ordered by session recency, then the
 	 * questions' own order within a session.
 	 */
@@ -480,7 +489,7 @@ export namespace Planner {
            WHERE s.state = 'awaiting_input' AND q.type = 'question'
              AND NOT EXISTS (
                SELECT 1 FROM ${TABLES.agent_activities} d
-               WHERE d.session_id = q.session_id AND d.type = 'decision'
+               WHERE d.session_id = q.session_id
                  AND d.context = 'answers ' || q.id
              )
            ORDER BY s.last_activity_at DESC, q.created_at ASC, q.rowid ASC`,

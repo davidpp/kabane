@@ -15,7 +15,9 @@ import { join } from "node:path";
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
 import { physicalTable } from "../db/tables";
+import type { Result } from "../result";
 import { withDb as runWithDb } from "../runtime";
+import { answersContext, formatQuestionBody } from "../schemas";
 import { configureTestRuntime } from "../testing";
 import { columnExists, TABLES } from "./helpers";
 import { Planner } from "./index";
@@ -465,6 +467,142 @@ describe("Migration 5: end-of-UTC-day deadlines become the dates they meant", ()
 			expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
 		});
 	}
+});
+
+describe("Migration 6: relayed tool-permission answers stop being decisions", () => {
+	afterEach(() => {
+		configureTestRuntime();
+		rmSync(base, { recursive: true, force: true });
+	});
+
+	const relayed = (title: string, text = `claude asks to run: ${title}`) =>
+		formatQuestionBody(text, {
+			choices: ["Yes", "No"],
+			multiSelect: false,
+			allowFreeform: false,
+			permission: {
+				toolCallId: "toolu_01",
+				title,
+				options: [
+					{ id: "allow", label: "Yes", kind: "allow_once" },
+					{ id: "reject", label: "No", kind: "reject_once" },
+				],
+			},
+		});
+
+	const must = <T>(r: Result<T>): T => {
+		if (!r.ok) throw r.error;
+		return r.value;
+	};
+
+	it("deletes only the provable permission traffic, once", async () => {
+		base = freshBase("permission-decisions");
+		// A device on the build before this migration: versions 1 to 5.
+		await withDb((db) => {
+			const stamped = Migrate.run(db, Migrations.LIST.slice(0, 5));
+			if (!stamped.ok) throw stamped.error;
+		});
+		const task = must(await Planner.addTask(base, { title: "t" }));
+		const start = async () =>
+			must(
+				await Planner.startSession(base, { taskId: task.id, agent: "claude" }),
+			).id;
+		// Rows as the build before this migration stored them, without the
+		// columns later migrations add.
+		let seq = 0;
+		const add = async (
+			sessionId: string,
+			type: string,
+			body: string,
+			context?: string,
+		) => {
+			const id = `a${String(++seq).padStart(2, "0")}`;
+			await withDb((db) =>
+				db.run(
+					`INSERT INTO ${TABLES.agent_activities}
+					   (id, session_id, type, ephemeral, context, body, created_at)
+					 VALUES (?, ?, ?, 0, ?, ?, ?)`,
+					[id, sessionId, type, context ?? null, body, NOW],
+				),
+			);
+			return id;
+		};
+		// What `answerQuestion` wrote before this build, for every question.
+		const decide = (sessionId: string, questionId: string, body: string) =>
+			add(sessionId, "decision", body, answersContext(questionId));
+
+		const done = await start();
+		const approved = await add(done, "question", relayed("Write a.ts"));
+		const approval = await decide(done, approved, "Yes");
+		const asked = await add(
+			done,
+			"question",
+			formatQuestionBody("Plain text or markdown?", {
+				choices: ["Plain text", "Markdown"],
+				allowFreeform: false,
+			}),
+		);
+		const choice = await decide(done, asked, "Plain text");
+		// Shaped like a relayed request but carrying no `permission` block: not provable.
+		const lookalike = await add(
+			done,
+			"question",
+			formatQuestionBody("claude asks to run: bun install", {
+				choices: ["Yes", "No"],
+			}),
+		);
+		const lookalikeAnswer = await decide(done, lookalike, "Yes");
+		// A `permission` block under text the relay never wrote: not provable either.
+		const reworded = await add(
+			done,
+			"question",
+			relayed("Write b.ts", "Approve b.ts?"),
+		);
+		const rewordedAnswer = await decide(done, reworded, "Yes");
+		const deliberate = await add(done, "decision", "Going with SQLite");
+		must(await Planner.endSession(base, done, { state: "complete" }));
+
+		const stopped = await start();
+		const cancelled = await add(stopped, "question", relayed("Write c.ts"));
+		must(await Planner.endSession(base, stopped, { state: "error" }));
+
+		const live = await start();
+		const waiting = await add(live, "question", relayed("Write d.ts"));
+		must(await Planner.updateSessionState(base, live, "awaiting_input"));
+
+		const kept = [
+			asked,
+			choice,
+			lookalike,
+			lookalikeAnswer,
+			reworded,
+			rewordedAnswer,
+			deliberate,
+			waiting,
+		];
+		const ids = async () =>
+			withDb((db) =>
+				db
+					.query<{ id: string }, []>(
+						`SELECT id FROM ${TABLES.agent_activities}`,
+					)
+					.all()
+					.map((r) => r.id)
+					.sort(),
+			);
+		expect(await ids()).toEqual(
+			[...kept, approved, approval, cancelled].sort(),
+		);
+
+		await mustInit(base);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
+		expect(await ids()).toEqual([...kept].sort());
+		const session = must(await Planner.getSession(base, live));
+		expect(session?.state).toBe("awaiting_input");
+
+		await mustInit(base);
+		expect(await ids()).toEqual([...kept].sort());
+	});
 });
 
 describe("Migrations with Jake's table prefix", () => {

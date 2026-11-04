@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, trySync } from "@cabane/core";
+import { isAnswerTo, Planner, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope } from "@cabane/core/scope";
 import { Loop } from "./commands";
@@ -510,7 +510,7 @@ describe("Loop.answer", () => {
 		return { sessionId: session.value.id, questionId: question.value.id };
 	};
 
-	it("writes the chosen option's label as the decision and notes who answered", async () => {
+	it("writes the chosen option's label as the answer, no decision, and notes who answered", async () => {
 		const { sessionId, questionId } = await blocked("run-1");
 		const listed = await Loop.questions({ basePath: home }, "run-1");
 		expect(listed.ok && listed.value.map((q) => q.questionId)).toEqual([
@@ -524,9 +524,10 @@ describe("Loop.answer", () => {
 		);
 		expect(answered.ok && answered.value.answer).toBe("Reject");
 		const activities = await Planner.getActivities(home, sessionId);
-		const decision =
-			activities.ok && activities.value.find((a) => a.type === "decision");
-		expect(decision && decision.body).toBe("Reject");
+		const answer =
+			activities.ok &&
+			activities.value.find((a) => isAnswerTo(a.context, questionId));
+		expect(answer && [answer.type, answer.body]).toEqual(["answer", "Reject"]);
 		const inbox = RunStore.readInbox(home, "run-1", 0);
 		expect(inbox.ok && inbox.value.entries).toMatchObject([
 			{ kind: "answered", questionId, by: HUMAN },
@@ -579,7 +580,8 @@ describe("Loop.answer", () => {
 		expect(!noted.ok && noted.error.message).toContain("runner died");
 		const activities = await Planner.getActivities(home, sessionId);
 		expect(
-			activities.ok && activities.value.some((a) => a.type === "decision"),
+			activities.ok &&
+				activities.value.some((a) => isAnswerTo(a.context, questionId)),
 		).toBe(false);
 		// Off every surface's queue, and no longer answerable in core either.
 		const needs = await Planner.getNeedsInput(home);
@@ -605,7 +607,8 @@ describe("Loop.answer", () => {
 		expect(answered.ok).toBe(false);
 		const activities = await Planner.getActivities(home, sessionId);
 		expect(
-			activities.ok && activities.value.some((a) => a.type === "decision"),
+			activities.ok &&
+				activities.value.some((a) => isAnswerTo(a.context, questionId)),
 		).toBe(false);
 	});
 });

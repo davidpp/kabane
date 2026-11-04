@@ -624,9 +624,7 @@ export namespace Loop {
 			);
 			if (!activities.ok) return activities;
 			const answered = (q: AgentActivity) =>
-				activities.value.some(
-					(a) => a.type === "decision" && isAnswerTo(a.context, q.id),
-				);
+				activities.value.some((a) => isAnswerTo(a.context, q.id));
 			for (const q of activities.value)
 				if (q.type === "question" && !answered(q))
 					withdrawn.push(waitingOf(q, claim.shortId));
@@ -709,8 +707,8 @@ export namespace Loop {
 		);
 	};
 
-	// Core records no author on an activity, so who answered rides the run's inbox, noted before
-	// the answer so the runner finds it once it sees the decision.
+	// Who answered also rides the run's inbox, noted before the answer so the runner finds it
+	// once it sees the answer.
 	const note = (
 		deps: AnswerDeps,
 		runId: string,

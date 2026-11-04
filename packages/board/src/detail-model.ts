@@ -8,6 +8,7 @@
 // lists, so another tab or another kind of log entry is one more item, not a reshape.
 import {
 	type AgentActivity,
+	answeredQuestion,
 	isAnswerTo,
 	parseQuestionBody,
 	TASK_STATE_DISPLAY,
@@ -82,17 +83,15 @@ export namespace DetailModel {
 	const activitiesOf = (records: BoardData.DetailRecords): AgentActivity[] =>
 		records.sessions.flatMap((s) => s.activities);
 
-	// A session question is answered by a decision whose context is `answers <question-id>`.
+	// A session question is answered by an activity whose context is `answers <question-id>`.
 	const unansweredQuestions = (
 		activities: readonly AgentActivity[],
-	): AgentActivity[] => {
-		const decisions = activities.filter((a) => a.type === "decision");
-		return activities.filter(
+	): AgentActivity[] =>
+		activities.filter(
 			(a) =>
 				a.type === "question" &&
-				!decisions.some((d) => isAnswerTo(d.context, a.id)),
+				!activities.some((d) => isAnswerTo(d.context, a.id)),
 		);
-	};
 
 	// ── pinned ──────────────────────────────────────────────────────────────────────────────────
 
@@ -274,6 +273,19 @@ export namespace DetailModel {
 		}
 	};
 
+	// What one activity says on its line. An answer reads as its question, then the choice, then who
+	// made it when that is on record: `Plain text or markdown? → Plain text · ada`.
+	const activityText = (
+		a: AgentActivity,
+		activities: readonly AgentActivity[],
+	): string => {
+		if (a.type === "question") return parseQuestionBody(a.body).question;
+		const question = answeredQuestion(a.context, activities);
+		if (!question) return firstLine(a.body);
+		const by = a.author ? ` · ${actorName(a.author)}` : "";
+		return `${parseQuestionBody(question.body).question} → ${firstLine(a.body)}${by}`;
+	};
+
 	// Everything a session recorded, except a question still waiting: that one is pinned on top.
 	const activityLines = (records: BoardData.DetailRecords): LogLine[] => {
 		const activities = activitiesOf(records);
@@ -284,10 +296,7 @@ export namespace DetailModel {
 				id: a.id,
 				glyph: activityGlyph(a.type),
 				kind: a.severity ? `${a.type} ${a.severity}` : a.type,
-				text:
-					a.type === "question"
-						? parseQuestionBody(a.body).question
-						: firstLine(a.body),
+				text: activityText(a, activities),
 				at: a.createdAt,
 				failed: a.type === "error",
 			}));

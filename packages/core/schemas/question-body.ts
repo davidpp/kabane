@@ -135,9 +135,9 @@ export function parseQuestionBody(body: string): ParsedQuestion {
 }
 
 /**
- * Answer-provenance convention (S4b): a `decision` activity answers a `question`
- * activity when its `context` is EXACTLY `answers <question-activity-id>`. This
- * is the single source of truth for the "which question does this decision
+ * Answer-provenance convention (S4b): an activity answers a `question` activity
+ * when its `context` is EXACTLY `answers <question-activity-id>`, whatever its
+ * type. This is the single source of truth for the "which question does this
  * answer?" link — used by every answer surface (`Planner.answerQuestion`, loop
  * reconcile) and the storage state machine's unanswered-question check. Exact
  * match (not substring) so re-answers and multi-question batches stay unambiguous.
@@ -148,7 +148,7 @@ export function answersContext(questionActivityId: string): string {
 
 /**
  * Input to `Planner.answerQuestion`: the question activity being answered and the
- * answer, which becomes the `decision` activity's body (a chosen option's label,
+ * answer, which becomes the answering activity's body (a chosen option's label,
  * or freeform text).
  */
 export const AnswerQuestionInputSchema = z.object({
@@ -157,10 +157,20 @@ export const AnswerQuestionInputSchema = z.object({
 });
 export type AnswerQuestionInput = z.input<typeof AnswerQuestionInputSchema>;
 
-/** True iff a decision activity's `context` answers the given question activity. */
+/** True iff an activity's `context` answers the given question activity. */
 export function isAnswerTo(
 	context: string | undefined | null,
 	questionActivityId: string,
 ): boolean {
 	return context === answersContext(questionActivityId);
+}
+
+/** The question among `activities` that an activity with `context` answers, if any. */
+export function answeredQuestion<T extends { id: string; type: string }>(
+	context: string | undefined | null,
+	activities: readonly T[],
+): T | undefined {
+	return activities.find(
+		(a) => a.type === "question" && isAnswerTo(context, a.id),
+	);
 }

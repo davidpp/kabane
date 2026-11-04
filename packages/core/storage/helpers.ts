@@ -402,6 +402,7 @@ export const rowToAgentActivity = (
 	category: (row.category as string) || undefined,
 	context: (row.context as string) || undefined,
 	body: row.body as string,
+	author: (row.author as string) || undefined,
 	createdAt: row.created_at as string,
 });
 

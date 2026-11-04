@@ -323,7 +323,7 @@ test("Detail's log puts work logs and session activity on one line each, newest 
 		);
 		expect(frame).toContain("• commit 6f2a9c1 · landed the tabs");
 		expect(frame).toContain("✗ error the gate failed on biome");
-		expect(frame).toContain("· decision tabs");
+		expect(frame).toContain("· decision Tabs or one scroll? → tabs");
 		expect(frame).toContain("· question Tabs or one scroll?");
 		expect(frame).toContain("· progress read the brief");
 		// The open question is pinned above the tabs and nowhere else.

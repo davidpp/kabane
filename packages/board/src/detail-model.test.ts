@@ -119,6 +119,26 @@ describe("openQuestions", () => {
 		]);
 	});
 
+	it("takes an answer of any type as answering its question", () => {
+		const answered = records({
+			sessions: [
+				{
+					session,
+					activities: [
+						activity({ id: "q1", type: "question", body: "Edit a.ts?" }),
+						activity({
+							id: "a1",
+							type: "answer",
+							body: "Yes",
+							context: "answers q1",
+						}),
+					],
+				},
+			],
+		});
+		expect(DetailModel.openQuestions(answered)).toEqual([]);
+	});
+
 	it("adds the host's questions the records do not carry, once each", () => {
 		const open = DetailModel.openQuestions(askedTwice(), [
 			{
@@ -312,6 +332,43 @@ describe("log", () => {
 		expect(byId.get("e1")).toMatchObject({ glyph: "✗", failed: true });
 		expect(byId.get("q1")).toMatchObject({ text: "Tabs or one scroll?" });
 		expect(lines.some((l) => l.id === "q2")).toBe(false);
+	});
+
+	it("reads an answer as its question, the choice, and who made it when on record", () => {
+		const lines = DetailModel.log(
+			records({
+				sessions: [
+					{
+						session,
+						activities: [
+							activity({
+								id: "q1",
+								type: "question",
+								body: "Tabs or one scroll?",
+							}),
+							activity({
+								id: "d1",
+								type: "decision",
+								body: "tabs",
+								context: "answers q1",
+								author: "cabane://actor/human/ada",
+							}),
+							activity({
+								id: "d0",
+								type: "decision",
+								body: "Going with SQLite",
+							}),
+						],
+					},
+				],
+			}),
+		);
+		const byId = new Map(lines.map((l) => [l.id, l]));
+		expect(byId.get("d1")).toMatchObject({
+			kind: "decision",
+			text: "Tabs or one scroll? → tabs · ada",
+		});
+		expect(byId.get("d0")?.text).toBe("Going with SQLite");
 	});
 
 	it("takes its lines from a list of sources, so another source is one more item", () => {
