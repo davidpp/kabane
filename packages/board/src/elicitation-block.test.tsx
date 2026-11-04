@@ -1,13 +1,22 @@
 /** @jsxImportSource @opentui/react */
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { TextareaRenderable } from "@opentui/core";
 import { createRef } from "react";
+import { App } from "./app";
 import { CopilotPane } from "./copilot-prompt";
 import { answerKeys, ElicitationBlock } from "./elicitation-block";
 import { ElicitationForm } from "./elicitation-form";
 import type { BoardNav } from "./nav";
-import type { CopilotElicitation } from "./ports";
-import { renderTest } from "./testing";
+import {
+	type Copilot,
+	type CopilotElicitation,
+	type CopilotElicitationAnswer,
+	noActivity,
+} from "./ports";
+import { dropDb, freshDb } from "./test-db";
+import { pumpUntil, renderTest } from "./testing";
 
 const STORE: CopilotElicitation = {
 	id: "form-1",
@@ -203,5 +212,96 @@ describe("the copilot pane with a form at the head of its queue", () => {
 			"? copilot asks: Which tags apply? · tab to answer",
 		]);
 		destroy();
+	});
+});
+
+describe("a form's typed field in the running board", () => {
+	const BASE = join(tmpdir(), `cabane-board-form-${crypto.randomUUID()}`);
+	beforeAll(() => freshDb(BASE));
+	afterAll(() => dropDb(BASE));
+
+	const WORKERS: CopilotElicitation = {
+		id: "form-1",
+		message: "How many workers?",
+		fields: [
+			{
+				key: "n",
+				title: "Workers",
+				required: true,
+				type: "number",
+				integer: true,
+				minimum: 1,
+				maximum: 64,
+			},
+		],
+	};
+
+	// Holds the form back until `ask` is called, so the test can focus the pane first, and hands
+	// back the answer the board gives.
+	const formCopilot = () => {
+		let ask: () => void = () => {};
+		const asked = new Promise<void>((resolve) => {
+			ask = resolve;
+		});
+		let answer: (a: CopilotElicitationAnswer) => void = () => {};
+		const answered = new Promise<CopilotElicitationAnswer>((resolve) => {
+			answer = resolve;
+		});
+		const copilot: Copilot = {
+			run: async function* () {
+				const at = new Date().toISOString();
+				await asked;
+				yield { type: "elicitation", request: WORKERS, at };
+				await answered;
+				yield { type: "done", summary: "", at };
+			},
+			cancel: async () => {},
+			shortcuts: () => [],
+			answerPermission: () => {},
+			answerElicitation: (_id, given) => answer(given),
+		};
+		return { copilot, ask, answered };
+	};
+
+	it("takes digits as text while the copilot pane has the focus, refuses what the field does not take, and sends a number", async () => {
+		const { copilot, ask, answered } = formCopilot();
+		const { renderOnce, captureCharFrame, mockInput, destroy } =
+			await renderTest(
+				<App
+					cwd={BASE}
+					basePath={BASE}
+					activity={noActivity}
+					copilot={copilot}
+				/>,
+				{ width: 100, height: 20 },
+			);
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		try {
+			await until((f) => f.includes("tab to ask the copilot"));
+			mockInput.pressKey("A");
+			await until((f) => f.includes("ask about the selection"));
+			await mockInput.typeText("go");
+			mockInput.pressEnter();
+			await until((f) => f.includes("copilot · thinking"));
+			// Back in the pane before the form arrives: its digits must reach the form's input.
+			mockInput.pressKey("A");
+			await until((f) => f.includes("a turn is running"));
+			ask();
+			await until((f) => f.includes("How many workers?"));
+			await mockInput.typeText("99");
+			mockInput.pressEnter();
+			await until((f) => f.includes('"99" is not a whole number from 1 to 64'));
+			mockInput.pressBackspace();
+			mockInput.pressBackspace();
+			await mockInput.typeText("42");
+			mockInput.pressEnter();
+			expect(await answered).toEqual({
+				action: "accept",
+				content: { n: 42 },
+			});
+		} finally {
+			destroy();
+		}
 	});
 });

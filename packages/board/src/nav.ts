@@ -523,9 +523,11 @@ export namespace BoardNav {
 		if (state.focus !== "copilot") return false;
 		if (key.name === "escape" || key.name === "tab") return true;
 		// A blocked harness takes the digits too: the draft in the buffer cannot be sent while a
-		// turn runs anyway, so a `1` typed here is an answer, not a character. A form's input is
-		// mounted in place of the buffer, so nothing it types needs claiming here.
-		if (state.copilot.asks.length > 0 && optionIndex(key) !== null) return true;
+		// turn runs anyway, so a `1` typed here is an answer, not a character. Not while a form's
+		// typed field is in hand: its input, mounted in place of the buffer, takes them as text.
+		const head = state.copilot.asks[0];
+		if (head && askTarget(head) !== undefined && optionIndex(key) !== null)
+			return true;
 		if (key.name !== "up" && key.name !== "down") return false;
 		// Picking from the palette beats moving a cursor through the one line that opened it. The two
 		// uses cannot collide: a palette needs a leading `/`, history recall an empty buffer.

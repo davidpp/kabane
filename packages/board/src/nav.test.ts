@@ -2885,9 +2885,14 @@ describe("a form the harness is blocked on", () => {
 			expect(r.state).toEqual(BoardNav.sight(onText, 0));
 		}
 		// Nothing for the pane to claim: its input is mounted in place of the copilot's buffer.
+		for (const key of [char("j"), char("4")])
+			expect(
+				BoardNav.copilotConsumes({ ...onText, focus: "copilot" }, key),
+			).toBe(false);
+		// On a field the digits answer, the pane claims them, as for a permission.
 		expect(
-			BoardNav.copilotConsumes({ ...onText, focus: "copilot" }, char("j")),
-		).toBe(false);
+			BoardNav.copilotConsumes({ ...asked(), focus: "copilot" }, char("1")),
+		).toBe(true);
 		expect(BoardNav.digitTarget(onText)).toBeUndefined();
 	});
 
