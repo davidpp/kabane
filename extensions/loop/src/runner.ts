@@ -5,6 +5,8 @@
 // to run.json before the next step, so a runner that dies can be started again on the same run:
 // claims it left open are closed as interrupted and their subtasks released, once a subtask its
 // session had closed has had the gate pass (or checkpoint) the dead runner never finished.
+// Starting or resuming takes the parent into in_progress, and every end of the run is a comment
+// on it (`Parent`).
 import { err, ok, type Result } from "@cabane/core";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
@@ -12,6 +14,7 @@ import { Claims } from "./claims";
 import { Fixer } from "./fixer";
 import { Gates } from "./gates";
 import { Lenses } from "./lenses";
+import { Parent } from "./parent";
 import { LoopPlan } from "./plan";
 import { Stall } from "./stall";
 import { RunState } from "./state";
@@ -103,6 +106,7 @@ export namespace Runner {
 				sessionId,
 				outcome: { outcome: "cancelled", detail: "the harness did not stop" },
 			});
+		await Parent.report(ctx, exit);
 		return finish(ctx, exit);
 	};
 
@@ -414,6 +418,7 @@ export namespace Runner {
 			type: resumed ? "run_resume" : "run_start",
 			summary: `${resumed ? "resumed" : "started"} on ${ctx.run.parentShortId} in ${RunStore.sessionDir(ctx.run)} (pid ${ctx.deps.pid})`,
 		});
+		await Parent.take(ctx, resumed);
 		// Recovery may run a subtask's gates, which a stop must still be able to kill.
 		await hearingStop(ctx, () => Claims.recover(ctx));
 		if (ctx.run.stall === undefined) {

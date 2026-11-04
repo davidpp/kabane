@@ -225,7 +225,8 @@ describe("Runner fixer", () => {
 		expect(types.lastIndexOf("gate_passed")).toBeGreaterThan(
 			types.lastIndexOf("session_end"),
 		);
-		expect(await state(parent)).toBe("next");
+		// The run took the parent and leaves it for the human to close.
+		expect(await state(parent)).toBe("in_progress");
 	});
 
 	it("completes without a fixer when the lenses found nothing", async () => {
@@ -269,8 +270,8 @@ describe("Runner fixer", () => {
 		expect(prompt).toContain(`- ${label(edge)} · p2`);
 		expect(prompt).toContain(`- ${label(nit)} · p3`);
 		expect([await state(edge), await state(nit)]).toEqual(["done", "done"]);
-		// The parent is never the fixer's to release, on recovery or at its end.
-		expect(await state(parent)).toBe("next");
+		// The run took the parent; the fixer never releases it, on recovery or at its end.
+		expect(await state(parent)).toBe("in_progress");
 	});
 
 	// A parent an earlier run left with every subtask closed and its lenses' findings open: a
