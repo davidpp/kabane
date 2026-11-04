@@ -300,14 +300,19 @@ export namespace BoardCopilot {
 					return [
 						update("mode", `mode ${incoming.id}: moved there by the harness`),
 					];
-				// The board has no step of its own for a notice; `mode` is the one that reads as a plain
-				// line in the turn's log and changes nothing else.
+				// ACP's severity is open-ended; the board tells a warning from the rest, and an error the
+				// harness only notifies about (the turn carries on) is a warning to it.
 				case "notice":
 					return [
-						update(
-							"mode",
-							`${options.harness} ${incoming.severity}: ${incoming.text}`,
-						),
+						{
+							type: "notice",
+							severity:
+								incoming.severity === "warning" || incoming.severity === "error"
+									? "warning"
+									: "info",
+							summary: `${options.harness} ${incoming.severity}: ${incoming.text}`,
+							at: at(),
+						},
 					];
 				case "stop":
 					return [update("done", incoming.reason)];

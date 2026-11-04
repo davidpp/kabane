@@ -366,7 +366,7 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("shows the harness's notice as a step of the turn, after the mode line", async () => {
+	it("shows the harness's notice as a notice step of the turn, after the mode line", async () => {
 		const copilot = copilotOver(
 			scriptedAgent(fresh(), {
 				mode: "acceptEdits",
@@ -385,10 +385,11 @@ describe("BoardCopilot", () => {
 				"mode acceptEdits: claude opened in it, not in its manual mode (default), so kabane keeps it over auto",
 			],
 			[
-				"mode",
+				"notice",
 				"claude warning: Auto mode unavailable: Using Accept edits instead.",
 			],
 		]);
+		expect(updates[1]).toMatchObject({ severity: "warning" });
 		copilot.close();
 	});
 

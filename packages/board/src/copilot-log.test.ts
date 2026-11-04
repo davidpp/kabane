@@ -126,6 +126,24 @@ describe("CopilotLog", () => {
 		expect(log.current.card.status).toBe("running");
 	});
 
+	it("a notice is a line of the log that changes nothing else, a warning one the event view's warning", async () => {
+		let log = started();
+		for (const severity of ["info", "warning"] as const)
+			log = CopilotLog.apply(log, {
+				type: "notice",
+				severity,
+				summary: `claude ${severity}: fell back`,
+				at: T1,
+			});
+		expect(await transcript(log)).toEqual([
+			[1, "prompt", PROMPT],
+			[2, "notice", "claude info: fell back"],
+			[3, "warning", "claude warning: fell back"],
+		]);
+		expect(log.current.card.status).toBe("running");
+		expect(log.current.tail).toEqual([]);
+	});
+
 	it("done completes the card without an event; error fails it with the reason", async () => {
 		const done = CopilotLog.apply(started(), update("done", ""));
 		expect(done.current.card).toMatchObject({

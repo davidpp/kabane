@@ -297,7 +297,18 @@ export type CopilotUpdate =
 	| { type: "plan"; entries: readonly PlanEntry[]; at: string }
 	| { type: "permission"; request: CopilotPermission; at: string }
 	| { type: "elicitation"; request: CopilotElicitation; at: string }
-	| { type: "withdrawn"; id: string; summary: string; at: string };
+	| { type: "withdrawn"; id: string; summary: string; at: string }
+	// Something the harness wants the human to know that is not the agent's reply (a mode it fell
+	// back from, a model it swapped): a line of the turn's log that changes nothing else. A warning
+	// reads in the warning color, an info stays muted.
+	| {
+			type: "notice";
+			severity: CopilotNoticeSeverity;
+			summary: string;
+			at: string;
+	  };
+
+export type CopilotNoticeSeverity = "info" | "warning";
 
 // A `/name` the prompt window expands client-side into `template`, so the human reads exactly what
 // will be sent before pressing enter. `hint` is the one-line description shown while picking.
