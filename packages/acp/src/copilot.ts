@@ -123,7 +123,7 @@ export namespace BoardCopilot {
 		};
 
 		const mcpServer = (): AcpClient.StdioServer => ({
-			name: "kabane",
+			name: CopilotInstructions.SERVER_NAME,
 			command: options.kabaneBin ?? defaultBin(),
 			args: [
 				"mcp",

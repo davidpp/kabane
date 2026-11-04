@@ -196,7 +196,7 @@ describe("BoardCopilot", () => {
 			cwd: "/repos/cabane",
 			mcpServers: [
 				{
-					name: "kabane",
+					name: "kabane-session",
 					command: "/usr/local/bin/kabane",
 					args: [
 						"mcp",
