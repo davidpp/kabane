@@ -1,9 +1,11 @@
 /** @jsxImportSource @opentui/react */
 import { expect, test } from "bun:test";
+import { RGBA } from "@opentui/core";
 import type { ActivityCard } from "./ports";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
 import { BoardTabs } from "./tabs";
 import { pumpUntil, renderTest } from "./testing";
+import { Theme } from "./theme";
 
 const loop = (n: number): ActivityCard => ({
 	id: `loop:r${n}`,
@@ -143,6 +145,44 @@ test("a multi-select question shows what is toggled and that enter sends the pic
 	expect(frame).toContain(
 		"1 [ ] Alpha · 2 [x] Beta · 3 [ ] decline · enter send the picks",
 	);
+});
+
+test("a question's answers read as content: each key and its words in the text color, the separators muted", async () => {
+	const T = Theme.DARK;
+	const rgb = (hex: string): number[] => RGBA.fromHex(hex).toInts().slice(0, 3);
+	const card = loop(1);
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await renderTest(
+			<CardTabQuestion
+				tabs={{
+					...BoardTabs.NONE,
+					open: [card.id],
+					active: card.id,
+					cards: new Map([[card.id, { finished: false, sessionIds: ["s1"] }]]),
+					queue: [{ ...asked(2, ["Alpha", "Beta"]), multiSelect: true }],
+					picked: new Map([["q2", [1]]]),
+				}}
+				onAnswer={() => {}}
+			/>,
+			{ width: 80, height: 8 },
+		);
+	try {
+		await pumpUntil(renderOnce, captureCharFrame, (f) => f.includes("Beta"));
+		const spans = captureSpans().lines.flatMap((line) => line.spans);
+		const fgOf = (text: string) =>
+			spans
+				.find((span) => span.text.includes(text))
+				?.fg.toInts()
+				.slice(0, 3);
+		expect(fgOf("Alpha")).toEqual(rgb(T.text));
+		expect(fgOf("Beta")).toEqual(rgb(T.text));
+		expect(fgOf("1 ")).toEqual(rgb(T.text));
+		expect(fgOf(" · ")).toEqual(rgb(T.muted));
+		expect(fgOf("[x]")).toEqual(rgb(T.accent));
+		expect(fgOf("[ ]")).toEqual(rgb(T.muted));
+	} finally {
+		destroy();
+	}
 });
 
 test("a pinned question that left the queue without this board's answer reads as closed, not answered", async () => {

@@ -60,8 +60,8 @@ export const answerKeys = (
 	}
 };
 
-// `1 Redis`, or `1 [x] Redis` on a multi-select: the digit in the text color, the rest muted
-// unless picked.
+// `1 Redis`, or `1 [x] Redis` on a multi-select. The answer is what the human reads to decide, so the
+// digit and the label are both in the text color; only an unpicked box recedes.
 const optionSegments = (
 	option: CopilotFormOption,
 	index: number,
@@ -78,7 +78,7 @@ const optionSegments = (
 					fg: picked ? theme.accent : theme.muted,
 				},
 			]),
-	{ text: ` ${option.label}`, fg: picked ? textFg : theme.muted },
+	{ text: ` ${option.label}`, fg: textFg },
 ];
 
 /** The field's title, what it is for, where it sits in the form, and whether it may stay empty. */
@@ -91,7 +91,7 @@ const fieldSegments = (
 ): Segment[] => [
 	{ text: field.title, fg: textFg },
 	...(field.description
-		? [{ text: `: ${field.description}`, fg: theme.muted }]
+		? [{ text: `: ${field.description}`, fg: theme.secondary }]
 		: []),
 	...(request.fields.length > 1
 		? [
@@ -170,7 +170,7 @@ export const ElicitationBlock = ({
 								),
 							)}
 							{option.description ? (
-								<span fg={theme.muted}>{`  ${option.description}`}</span>
+								<span fg={theme.secondary}>{`  ${option.description}`}</span>
 							) : null}
 						</text>
 					))

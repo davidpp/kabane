@@ -279,8 +279,8 @@ const QuestionBanner = ({
 					{" type the answer"}
 				</text>
 			) : (
-				// Each answer its own cell, so a click lands on the one it means. A multi-select's
-				// cells say whether each is toggled.
+				// Each answer its own cell, so a click lands on the one it means: its key and its words in
+				// the text color, the separator muted. A multi-select's cells say whether each is toggled.
 				<box style={{ flexDirection: "row", flexShrink: 0, flexWrap: "wrap" }}>
 					{question.choices.map((choice, index) => (
 						<text
@@ -297,7 +297,7 @@ const QuestionBanner = ({
 									{picked.includes(index) ? "[x] " : "[ ] "}
 								</span>
 							) : null}
-							{choice}
+							<span fg={theme.text}>{choice}</span>
 						</text>
 					))}
 					{enterDoes ? (

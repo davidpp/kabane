@@ -2,7 +2,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TextareaRenderable } from "@opentui/core";
+import {
+	RGBA,
+	type TextareaRenderable,
+	type CapturedSpan,
+} from "@opentui/core";
 import { createRef } from "react";
 import { App } from "./app";
 import { CopilotPane } from "./copilot-prompt";
@@ -17,6 +21,7 @@ import {
 } from "./ports";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
+import { Theme } from "./theme";
 
 const STORE: CopilotElicitation = {
 	id: "form-1",
@@ -62,6 +67,7 @@ const mount = async (
 	request: CopilotElicitation,
 	draft: ElicitationForm.Draft,
 	width: number,
+	bg?: string,
 ) => {
 	const setup = await renderTest(
 		<box style={{ flexDirection: "column", width }}>
@@ -69,6 +75,7 @@ const mount = async (
 				request={request}
 				draft={draft}
 				width={width}
+				{...(bg ? { bg } : {})}
 				inHand
 				onSubmit={() => {}}
 			/>
@@ -76,7 +83,11 @@ const mount = async (
 		{ width, height: 12 },
 	);
 	await setup.renderOnce();
-	return { ...setup, frame: setup.captureCharFrame() };
+	return {
+		...setup,
+		frame: setup.captureCharFrame(),
+		spans: setup.captureSpans().lines.flatMap((line) => line.spans),
+	};
 };
 
 const lines = (frame: string): string[] =>
@@ -152,6 +163,75 @@ describe("ElicitationBlock", () => {
 			["n", "no"],
 			["esc", "decline"],
 		]);
+	});
+});
+
+// An ask's answers are what the human reads to decide: content, not chrome (DESIGN.md, Copilot pane).
+describe("a form's colors on the copilot's raised panel", () => {
+	const T = Theme.DARK;
+	const bg = T.surface.raised;
+	const ints = (color: RGBA): number[] => color.toInts().slice(0, 3);
+	const rgb = (hex: string): number[] => ints(RGBA.fromHex(hex));
+	const fgOf = (spans: readonly CapturedSpan[], text: string) => {
+		const span = spans.find((s) => s.text.includes(text));
+		return span && ints(span.fg);
+	};
+	const UNDESCRIBED: CopilotElicitation = {
+		...STORE,
+		fields: [
+			{
+				key: "question_0",
+				title: "Store",
+				required: true,
+				type: "choice",
+				options: [
+					{ value: "Redis", label: "Redis" },
+					{ value: "Memory", label: "Memory" },
+				],
+			},
+		],
+	};
+
+	it("described: keys and labels in the text color, each description secondary, the meta muted", async () => {
+		const { spans, destroy } = await mount(
+			STORE,
+			ElicitationForm.start(),
+			120,
+			bg,
+		);
+		expect(fgOf(spans, "Redis")).toEqual(rgb(T.text));
+		expect(fgOf(spans, "Memory")).toEqual(rgb(T.text));
+		expect(fgOf(spans, "Shared, survives restarts")).toEqual(rgb(T.secondary));
+		expect(fgOf(spans, "1 of 2")).toEqual(rgb(T.muted));
+		expect(fgOf(spans, "optional")).toEqual(rgb(T.muted));
+		destroy();
+	});
+
+	it("undescribed: the labels in the text color, the separators muted", async () => {
+		const { spans, destroy } = await mount(
+			UNDESCRIBED,
+			ElicitationForm.start(),
+			120,
+			bg,
+		);
+		expect(fgOf(spans, "Redis")).toEqual(rgb(T.text));
+		expect(fgOf(spans, "Memory")).toEqual(rgb(T.text));
+		expect(fgOf(spans, " · ")).toEqual(rgb(T.muted));
+		destroy();
+	});
+
+	it("a multi-select: every label in the text color, a toggled box in the accent and an open one muted", async () => {
+		const { spans, destroy } = await mount(
+			TAGS,
+			{ at: 0, values: {}, picked: [2] },
+			120,
+			bg,
+		);
+		for (const label of ["Alpha", "Beta", "Gamma"])
+			expect(fgOf(spans, label)).toEqual(rgb(T.text));
+		expect(fgOf(spans, "[x]")).toEqual(rgb(T.accent));
+		expect(fgOf(spans, "[ ]")).toEqual(rgb(T.muted));
+		destroy();
 	});
 });
 
