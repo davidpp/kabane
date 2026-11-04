@@ -374,6 +374,27 @@ describe("Planner — Agent Sessions", () => {
 		expect(s.ok && s.value?.state).toBe("active");
 	});
 
+	it("takes an answer by its context, whatever its type", async () => {
+		const { sessionId } = await startOn();
+		const q = await Planner.addActivity(TEST_BASE, {
+			sessionId,
+			type: "question",
+			body: "Run the tests?",
+		});
+		if (!q.ok) throw q.error;
+		await Planner.addActivity(TEST_BASE, {
+			sessionId,
+			type: "answer",
+			context: answersContext(q.value.id),
+			body: "Yes",
+		});
+
+		const s = await Planner.getSession(TEST_BASE, sessionId);
+		expect(s.ok && s.value?.state).toBe("active");
+		const queue = await Planner.getNeedsInput(TEST_BASE);
+		expect(queue.ok && queue.value.length).toBe(0);
+	});
+
 	it("batch: stays awaiting_input until every question is answered", async () => {
 		const { sessionId } = await startOn();
 

@@ -135,9 +135,9 @@ export function parseQuestionBody(body: string): ParsedQuestion {
 }
 
 /**
- * Answer-provenance convention (S4b): a `decision` activity answers a `question`
- * activity when its `context` is EXACTLY `answers <question-activity-id>`. This
- * is the single source of truth for the "which question does this decision
+ * Answer-provenance convention (S4b): an activity answers a `question` activity
+ * when its `context` is EXACTLY `answers <question-activity-id>`, whatever its
+ * type. This is the single source of truth for the "which question does this
  * answer?" link — used by every answer surface (`Planner.answerQuestion`, loop
  * reconcile) and the storage state machine's unanswered-question check. Exact
  * match (not substring) so re-answers and multi-question batches stay unambiguous.
@@ -157,7 +157,7 @@ export const AnswerQuestionInputSchema = z.object({
 });
 export type AnswerQuestionInput = z.input<typeof AnswerQuestionInputSchema>;
 
-/** True iff a decision activity's `context` answers the given question activity. */
+/** True iff an activity's `context` answers the given question activity. */
 export function isAnswerTo(
 	context: string | undefined | null,
 	questionActivityId: string,

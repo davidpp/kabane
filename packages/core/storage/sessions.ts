@@ -53,9 +53,9 @@ const TERMINAL_STATES = new Set(["complete", "error"]);
 const isTerminal = (state: string): boolean => TERMINAL_STATES.has(state);
 
 /**
- * Count `question` activities on a session that have NO answering `decision`.
- * A decision answers a question when its `context` is exactly
- * `answers <question-activity-id>` (see schemas/question-body.ts → answersContext).
+ * Count `question` activities on a session that have NO answer. An activity
+ * answers a question when its `context` is exactly `answers <question-activity-id>`
+ * (see schemas/question-body.ts → answersContext), whatever its type.
  * The unit of "needs answering" is the unanswered QUESTION, not the session:
  * a batch of N questions stays blocked until every one has an answer.
  */
@@ -66,7 +66,7 @@ const countUnansweredQuestions = (db: Db, sessionId: string): number => {
        WHERE q.session_id = ? AND q.type = 'question'
          AND NOT EXISTS (
            SELECT 1 FROM ${TABLES.agent_activities} d
-           WHERE d.session_id = q.session_id AND d.type = 'decision'
+           WHERE d.session_id = q.session_id
              AND d.context = 'answers ' || q.id
          )`,
 		)
@@ -94,7 +94,7 @@ type NeedsInputItem = {
  *   - `question` → awaiting_input (blocks on human);
  *   - anything else on an awaiting_input or stale session → active once no
  *     question is left unanswered, else it stays awaiting_input: a batch of N
- *     questions stays blocked until every one has an answering decision.
+ *     questions stays blocked until every one has an answer.
  */
 const appendActivity = (
 	db: Db,
@@ -115,7 +115,7 @@ const appendActivity = (
 	}
 
 	// Insert first so the unanswered-question check below counts this activity
-	// (an answering `decision` clears the block it closes).
+	// (an answer clears the block it closes).
 	db.run(
 		`INSERT INTO ${TABLES.agent_activities}
        (id, session_id, type, ephemeral, severity, category, context, body, created_at)
@@ -465,7 +465,7 @@ export namespace Planner {
 	/**
 	 * The blocked-on-human queue: ONE row per UNANSWERED `question` activity on an
 	 * awaiting_input session, joined to its session + task. A batch of N questions
-	 * surfaces N answerable rows (unanswered = a question with no `decision` whose
+	 * surfaces N answerable rows (unanswered = a question with no activity whose
 	 * context is `answers <question-id>`). Ordered by session recency, then the
 	 * questions' own order within a session.
 	 */
@@ -480,7 +480,7 @@ export namespace Planner {
            WHERE s.state = 'awaiting_input' AND q.type = 'question'
              AND NOT EXISTS (
                SELECT 1 FROM ${TABLES.agent_activities} d
-               WHERE d.session_id = q.session_id AND d.type = 'decision'
+               WHERE d.session_id = q.session_id
                  AND d.context = 'answers ' || q.id
              )
            ORDER BY s.last_activity_at DESC, q.created_at ASC, q.rowid ASC`,
