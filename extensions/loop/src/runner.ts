@@ -342,11 +342,13 @@ export namespace Runner {
 	const boot = async (ctx: Ctx): Promise<void> => {
 		const resumed = ctx.run.startedAt !== undefined;
 		const now = ctx.now().toISOString();
+		const pidStart = RunStore.processStart(ctx.deps.pid);
 		RunState.save(ctx, {
 			...ctx.run,
 			status: "running",
 			exit: undefined,
 			pid: ctx.deps.pid,
+			pidStart: pidStart.ok ? pidStart.value : undefined,
 			startedAt: ctx.run.startedAt ?? now,
 		});
 		RunState.event(ctx, {
