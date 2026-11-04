@@ -3,7 +3,8 @@
 // checks the stop predicate and claims ready subtasks into free slots; between ticks it waits
 // for a session to end or the next tick, whichever comes first. Every state change is written
 // to run.json before the next step, so a runner that dies can be started again on the same run:
-// claims it left open are closed as interrupted and their subtasks released.
+// claims it left open are closed as interrupted and their subtasks released, once a subtask its
+// session had closed has had the gate pass (or checkpoint) the dead runner never finished.
 import { err, ok, type Result } from "@cabane/core";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
@@ -355,7 +356,8 @@ export namespace Runner {
 			type: resumed ? "run_resume" : "run_start",
 			summary: `${resumed ? "resumed" : "started"} on ${ctx.run.parentShortId} in ${RunStore.sessionDir(ctx.run)} (pid ${ctx.deps.pid})`,
 		});
-		await Claims.recover(ctx);
+		// Recovery may run a subtask's gates, which a stop must still be able to kill.
+		await hearingStop(ctx, () => Claims.recover(ctx));
 		if (ctx.run.stall === undefined) {
 			const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
 			RunState.save(ctx, {
