@@ -90,6 +90,17 @@ describe("LoopHeader.state", () => {
 		});
 	});
 
+	it("a run whose runner died names the key that restarts it, and no other failed run does", () => {
+		const died = (reason: string) =>
+			LoopHeader.state(
+				run({ status: "failed", exit: { reason, detail: "pid 7" } }),
+				null,
+				NOW,
+			).text;
+		expect(died("runner-died")).toBe("✗ runner-died (pid 7) · r restarts");
+		expect(died("runner-exited")).toBe("✗ runner-exited (pid 7)");
+	});
+
 	it("a running run counts automatic attempts that moved nothing", () => {
 		expect(
 			LoopHeader.state(run({ stall: { mark: "m", unchanged: 2 } }), null, NOW)

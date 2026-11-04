@@ -62,6 +62,9 @@ export namespace LoopActivity {
 		},
 	];
 
+	// What the human can do to a run whose runner died: start it again (`Loop.restart`).
+	const RESTART: CardAction = { id: "restart", key: "r", label: "restart" };
+
 	// The lanes a message can still reach: the claims whose session has not ended, the most recently
 	// started first, which is where the board aims a message sent from the all-agents view.
 	const liveLanes = (run: RunStore.Run): string[] =>
@@ -97,22 +100,31 @@ export namespace LoopActivity {
 		laneNoun: "agents",
 		...(RunStore.isLive(run.status)
 			? { actions: actions(run), liveLanes: liveLanes(run) }
-			: {}),
+			: Loop.died(run)
+				? { actions: [RESTART] }
+				: {}),
 	});
+
+	type ActDeps = { home: string; basePath: string; kabaneBin: string };
 
 	/**
 	 * Run an action through the run's inbox, which the runner reads every tick. `stop` is the
 	 * command's own (`kabane loop stop`), without waiting for the run to wind down; `pause`,
 	 * `resume`, `skip` and `next` are the commands' own too; `inject` is appended for the session
-	 * behind the lane, and refused for a session that has ended.
+	 * behind the lane, and refused for a session that has ended. `restart`, on a run whose runner
+	 * died, is `Loop.restart`'s detached runner, as `kabane loop resume` starts it.
 	 */
 	export const act = async (
-		deps: { home: string; basePath: string },
+		deps: ActDeps,
 		runId: string,
 		actionId: string,
 		input: { text?: string; lane?: string },
 	): Promise<Result<string>> => {
 		const { home } = deps;
+		if (actionId === RESTART.id) {
+			const restarted = await Loop.restart(deps, runId);
+			return restarted.ok ? ok(`${runId} restarted`) : restarted;
+		}
 		const run = RunStore.read(home, runId);
 		if (!run.ok) return run;
 		if (!RunStore.isLive(run.value.status))
@@ -190,15 +202,19 @@ export namespace LoopActivity {
 		home,
 		basePath,
 		actor,
-	}: {
-		home: string;
-		basePath: string;
-		actor: string;
-	}): ActivitySource => ({
+		kabaneBin,
+	}: ActDeps & { actor: string }): ActivitySource => ({
 		// A run whose tab the human closed is not listed again; `kabane loop status` still shows it.
+		// What a run whose runner died was asking is withdrawn here, on the board's poll, so its
+		// needs-input queue stops offering an answer nobody would read. A withdrawal that fails is
+		// tried again on the next poll; `loop status` and `loop answer` say why.
 		load: async () => {
 			const runs = RunStore.list(home);
-			return runs.ok ? ok(listed(runs.value).map(card)) : runs;
+			if (!runs.ok) return runs;
+			for (const run of runs.value)
+				if (run.claims.some((c) => c.endedAt === undefined))
+					await Loop.withdraw({ basePath }, run);
+			return ok(listed(runs.value).map(card));
 		},
 		card: async (id) => {
 			const run = RunStore.read(home, id);
@@ -218,7 +234,8 @@ export namespace LoopActivity {
 					)
 				: events;
 		},
-		act: (id, actionId, input) => act({ home, basePath }, id, actionId, input),
+		act: (id, actionId, input) =>
+			act({ home, basePath, kabaneBin }, id, actionId, input),
 		dismiss: async (id) => {
 			const dismissed = RunStore.dismiss(home, id, new Date());
 			return dismissed.ok ? ok(undefined) : dismissed;

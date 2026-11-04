@@ -13,11 +13,13 @@ import { Planner, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope } from "@cabane/core/scope";
 import { Loop } from "./commands";
+import type { LoopConfig } from "./config";
 import { Permission } from "./permission";
 import { RunStore } from "./store";
 import type { Worktree } from "./worktree";
 
-// `start`'s refusals, which all come before a runner is spawned. Starting a real runner is the
+// `start`'s refusals, which all come before a runner is spawned, and `restart`, whose runner is
+// the real `Loop.run` on a run that claims nothing. Starting a run that reaches a harness is the
 // sandbox check, not a unit test.
 let root = "";
 let home = "";
@@ -31,6 +33,15 @@ const deps = () => ({
 	// Never reached: every case below is refused before the spawn.
 	runner: () => ["/nonexistent/runner"],
 });
+
+const CONFIG: LoopConfig.Config = {
+	implementer: "claude",
+	budget: { concurrency: 1, continuations: 0, currency: "USD" },
+	stallAfter: 1,
+	gates: {},
+	worktree: false,
+	lenses: [],
+};
 
 const add = async (title: string, extra: Record<string, unknown> = {}) => {
 	const created = await Planner.addTask(home, {
@@ -110,18 +121,7 @@ describe("Loop.start refusals", () => {
 			parentId: parent.id,
 			parentShortId: parent.shortId ?? parent.id,
 			projectDir: repo,
-			config: {
-				implementer: "claude",
-				budget: {
-					concurrency: 1,
-					continuations: 0,
-					currency: "USD",
-				},
-				stallAfter: 1,
-				gates: {},
-				worktree: false,
-				lenses: [],
-			},
+			config: CONFIG,
 			status: "running",
 			pid: process.pid,
 			createdAt: new Date().toISOString(),
@@ -196,6 +196,140 @@ describe("Loop.start with a worktree, from a folder HEAD lacks", () => {
 	});
 });
 
+// The runner `restart` spawns: the real `Loop.run` on this test's tracker, as `kabane loop run`
+// runs it, with no harness a claim could reach.
+const RUNNER = [
+	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
+	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
+	`const home = process.env.KABANE_HOME ?? "";`,
+	`const ran = await Loop.run({ home, basePath: home, kabaneBin: "/nonexistent/kabane", overrides: { claude: { command: "/nonexistent/harness" } } }, process.argv[1] ?? "");`,
+	`process.exit(ran.ok ? 0 : 1);`,
+].join("\n");
+
+// A pid that existed and is gone: the exited child of a real spawn.
+const deadPid = (): number => Bun.spawnSync(["true"]).pid;
+
+// A paused run whose runner died while its claim on `child` was open: restarted, it claims
+// nothing, so no harness is reached.
+const orphaned = async (id: string) => {
+	const parent = await add("parent");
+	const child = await add("child", {
+		parentTaskId: parent.id,
+		state: "in_progress",
+		assignee: "claude",
+	});
+	const session = await Planner.startSession(home, {
+		taskId: child.id,
+		agent: "claude",
+		externalRef: RunStore.sessionRef(id),
+	});
+	if (!session.ok) throw session.error;
+	const created = RunStore.create(home, {
+		version: 1,
+		id,
+		parentId: parent.id,
+		parentShortId: parent.shortId ?? parent.id,
+		projectDir: repo,
+		config: CONFIG,
+		status: "running",
+		pid: deadPid(),
+		createdAt: new Date().toISOString(),
+		startedAt: new Date().toISOString(),
+		claims: [
+			{
+				taskId: child.id,
+				shortId: child.shortId ?? child.id,
+				harness: "claude",
+				lane: "claude:child",
+				sessionId: session.value.id,
+				startedAt: new Date().toISOString(),
+				continuations: 0,
+			},
+		],
+		usage: {},
+		continuationsUsed: 0,
+		inboxRead: 0,
+		steering: { paused: true, skipped: [], next: [] },
+		gateRuns: [],
+	});
+	if (!created.ok) throw created.error;
+	return { run: created.value, parent, child, sessionId: session.value.id };
+};
+
+describe("Loop.start on a parent whose last run lost its runner", () => {
+	it("refuses, naming the run and the command that restarts it, and writes no run", async () => {
+		const { run, child } = await orphaned("dead-run");
+		const started = await Loop.start(deps(), { parent: run.parentId });
+		expect(!started.ok && started.error.message).toContain(
+			`kabane loop resume ${run.id}`,
+		);
+		const runs = RunStore.list(home);
+		expect(runs.ok && runs.value.map((r) => r.id)).toEqual([run.id]);
+		const held = await Planner.getTask(home, child.id);
+		expect(held.ok && held.value?.state).toBe("in_progress");
+	});
+
+	it("starts once the run that died is over", async () => {
+		const { run } = await orphaned("dead-run");
+		RunStore.write(home, {
+			...run,
+			status: "stopped",
+			exit: { reason: "stop-requested" },
+		});
+		const started = await Loop.start(deps(), { parent: run.parentId });
+		// Past the checks: the run is written and only the (nonexistent) runner fails.
+		expect(!started.ok && started.error.message).not.toContain(run.id);
+		const runs = RunStore.list(home);
+		expect(runs.ok && runs.value).toHaveLength(2);
+	});
+});
+
+describe("Loop.restart", () => {
+	it("brings a run whose runner died back in a detached runner, which releases the claim it left open", async () => {
+		const { run, child } = await orphaned("dead-run");
+		const restarted = await Loop.restart(
+			{ ...deps(), runner: (id) => [process.execPath, "-e", RUNNER, id] },
+			run.id,
+		);
+		const pid = restarted.ok ? restarted.value.pid : undefined;
+		try {
+			expect(restarted.ok && restarted.value.status).toBe("running");
+			expect(pid).not.toBe(run.pid);
+			// Once the runner has wound down, everything it did on the way is on record.
+			const stopped = await Loop.stop({ home, waitMs: 15_000 }, run.id);
+			expect(stopped.ok && stopped.value.status).toBe("stopped");
+			const events = RunStore.readEvents(home, run.id);
+			expect(events.ok && events.value.map((e) => e.type)).toContain(
+				"run_resume",
+			);
+			expect(stopped.ok && stopped.value.claims[0]?.outcome).toBe(
+				"interrupted",
+			);
+			const released = await Planner.getTask(home, child.id);
+			expect(released.ok && released.value?.state).toBe("next");
+		} finally {
+			if (pid !== undefined && RunStore.pidAlive(pid)) process.kill(pid);
+		}
+	}, 30_000);
+
+	it("refuses a run whose runner is not dead, and one whose parent has another live run", async () => {
+		const { run } = await orphaned("dead-run");
+		const live = RunStore.create(home, {
+			...run,
+			id: "live-run",
+			pid: process.pid,
+			claims: [],
+		});
+		if (!live.ok) throw live.error;
+		const alive = await Loop.restart(deps(), "live-run");
+		expect(!alive.ok && alive.error.message).toContain(
+			"only a run whose runner died",
+		);
+		const rival = await Loop.restart(deps(), run.id);
+		expect(!rival.ok && rival.error.message).toContain("live-run");
+	});
+});
+
 describe("Loop.answer", () => {
 	const HUMAN = "cabane://actor/human/david";
 
@@ -264,6 +398,49 @@ describe("Loop.answer", () => {
 		const inbox = RunStore.readInbox(home, "run-1", 0);
 		expect(inbox.ok && inbox.value.entries).toMatchObject([
 			{ kind: "answered", questionId, by: HUMAN },
+		]);
+	});
+
+	it("refuses a question whose runner died, withdraws it from core's queue, and lists it as withdrawn", async () => {
+		const deps = { home, basePath: home, actor: HUMAN };
+		const { run, sessionId } = await orphaned("dead-run");
+		const asked = await Planner.addActivity(home, {
+			sessionId,
+			type: "question",
+			body: Permission.body("claude", {
+				toolCallId: "toolu_02",
+				title: "Fetch example.com",
+				options: [
+					{ id: "allow", name: "Allow", kind: "allow_once" },
+					{ id: "reject", name: "Reject", kind: "reject_once" },
+				],
+			}),
+		});
+		if (!asked.ok) throw asked.error;
+		const questionId = asked.value.id;
+
+		const answered = await Loop.answer(deps, questionId, "2");
+		expect(!answered.ok && answered.error.message).toContain("runner died");
+		expect(!answered.ok && answered.error.message).toContain(
+			`kabane loop resume ${run.id}`,
+		);
+		const noted = await Loop.answering(deps, questionId);
+		expect(!noted.ok && noted.error.message).toContain("runner died");
+		const activities = await Planner.getActivities(home, sessionId);
+		expect(
+			activities.ok && activities.value.some((a) => a.type === "decision"),
+		).toBe(false);
+		// Off every surface's queue, and no longer answerable in core either.
+		const needs = await Planner.getNeedsInput(home);
+		expect(needs.ok && needs.value).toEqual([]);
+		const direct = await Planner.answerQuestion(home, {
+			questionId,
+			answer: "Reject",
+		});
+		expect(direct.ok).toBe(false);
+		const withdrawn = await Loop.withdraw(deps, RunStore.effective(run));
+		expect(withdrawn.ok && withdrawn.value.map((q) => q.questionId)).toEqual([
+			questionId,
 		]);
 	});
 
