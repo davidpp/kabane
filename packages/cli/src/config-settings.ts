@@ -1,6 +1,11 @@
 import { err, ok, type Result, trySync } from "@cabane/core";
 import { z } from "zod";
-import { ConfigSchema, loadConfigDocument, saveConfig } from "./config";
+import {
+	ConfigSchema,
+	isPlainObject,
+	loadConfigDocument,
+	saveConfig,
+} from "./config";
 import { Extensions } from "./extensions";
 
 const unwrap = (schema: z.ZodTypeAny): z.ZodTypeAny => {
@@ -35,12 +40,9 @@ const isProtected = (key: string): boolean =>
 const secrets = new Set(["sync.token", "sync.headers"]);
 const REDACTED = "<set>";
 
-const object = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 const valueAt = (value: unknown, key: string): unknown => {
 	for (const part of key.split(".")) {
-		if (!object(value) || !Object.hasOwn(value, part)) return undefined;
+		if (!isPlainObject(value) || !Object.hasOwn(value, part)) return undefined;
 		value = value[part];
 	}
 	return value;
@@ -50,7 +52,7 @@ const valueAt = (value: unknown, key: string): unknown => {
 const redact = (key: string, value: unknown): unknown => {
 	if (value === undefined) return undefined;
 	if (secrets.has(key)) return REDACTED;
-	if (!object(value)) return value;
+	if (!isPlainObject(value)) return value;
 	return Object.fromEntries(
 		Object.entries(value).map(([name, inner]) => [
 			name,
@@ -96,7 +98,7 @@ const editStored = (
 	let parent = stored;
 	for (const part of parts) {
 		const child = parent[part];
-		if (object(child)) parent = child;
+		if (isPlainObject(child)) parent = child;
 		else {
 			// Do not create an absent group and activate its defaults on unset.
 			if (value === undefined) return false;

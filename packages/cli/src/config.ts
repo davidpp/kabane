@@ -165,7 +165,9 @@ export const defaultActor = (): string =>
 export const defaultDeviceId = (): string =>
 	hostname().split(".")[0] ?? "device";
 
-const isConfigObject = (value: unknown): value is Record<string, unknown> =>
+export const isPlainObject = (
+	value: unknown,
+): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Keep the stored document alongside resolved defaults so edits retain unknown keys. */
@@ -182,7 +184,7 @@ export const loadConfigDocument = (
 	const raw = trySync((): unknown => JSON.parse(readFileSync(path, "utf8")));
 	if (!raw.ok) return err(toError(raw.error));
 	const parsed = ConfigSchema.safeParse(raw.value);
-	if (!parsed.success || !isConfigObject(raw.value)) {
+	if (!parsed.success || !isPlainObject(raw.value)) {
 		return err(
 			new Error(
 				`Invalid config at ${path}: ${!parsed.success ? parsed.error.message : "expected an object"}`,
