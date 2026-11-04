@@ -7,6 +7,7 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ReactNode } from "react";
 import { App } from "./app";
+import { Clipboard } from "./clipboard";
 import type { BoardData } from "./data";
 import { ErrorBoundary } from "./error-boundary";
 import {
@@ -78,6 +79,8 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 			renderer.on("destroy", resolve);
 		});
 	} finally {
+		// The terminal first: a clipboard that is slow to shut down must not hold it.
 		await closeRenderer(renderer);
+		await Clipboard.release(renderer);
 	}
 };
