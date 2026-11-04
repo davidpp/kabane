@@ -29,7 +29,7 @@ export namespace Checks {
 	): Promise<string | undefined> => {
 		const dir = ctx.run.worktree;
 		if (dir === undefined) return undefined;
-		const message = `kabane loop ${ctx.run.id}: ${subject.label} ${subject.title}\n\nGates passed: ${results.map((r) => r.name).join(", ")}.`;
+		const message = `kabane loop ${ctx.run.id}: ${subject.label} ${subject.title}\n\n${results.length > 0 ? `Gates passed: ${results.map((r) => r.name).join(", ")}.` : "No gates configured."}`;
 		const made = await Worktree.checkpoint(dir, message, ctx.deps.git);
 		const tag = subject.lane ? { lane: subject.lane } : {};
 		if (!made.ok) {
@@ -78,7 +78,9 @@ export namespace Checks {
 			...tag,
 			type: "gates",
 			task: subject.label,
-			summary: `gates for ${subject.label}: ${Object.keys(gates).join(", ")}`,
+			summary: Gates.configured(gates)
+				? `gates for ${subject.label}: ${Object.keys(gates).join(", ")}`
+				: `no gates configured for ${subject.label}; checkpointing it`,
 		});
 		const results = await Gates.run(
 			gates,

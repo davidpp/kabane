@@ -370,7 +370,9 @@ export namespace Claims {
 	};
 
 	// A session that closed its subtask as done is followed by the gates, while the claim still
-	// holds the subtask, so nothing claims it again before its gates have spoken.
+	// holds the subtask, so nothing claims it again before its gates have spoken. A worktree run
+	// with no gates still takes the pass: it is what commits the subtask's checkpoint, and without
+	// one the work stays uncommitted for as long as the agent never commits it itself.
 	const gatesAfter = async (
 		ctx: Ctx,
 		outcome: Dispatch.Outcome,
@@ -378,7 +380,7 @@ export namespace Claims {
 	) => {
 		if (
 			outcome.outcome !== "done" ||
-			!Gates.configured(ctx.run.config.gates) ||
+			!(Gates.configured(ctx.run.config.gates) || ctx.run.worktree) ||
 			ctx.stopping.signal.aborted
 		)
 			return undefined;

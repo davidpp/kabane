@@ -53,8 +53,9 @@ export namespace LoopConfig {
 		gates: z.record(GateNameSchema, z.string().min(1)).default({}),
 		/**
 		 * Work in a `git worktree` of the project made for the run, never removed by it, and
-		 * commit a checkpoint there after every green gate. Off: sessions work in the project
-		 * checkout itself and nothing is committed.
+		 * commit a checkpoint there after every green gate, or after every finished subtask when
+		 * no gates are configured. Off: sessions work in the project checkout itself and nothing
+		 * is committed.
 		 */
 		worktree: z.boolean().default(false),
 		/**
