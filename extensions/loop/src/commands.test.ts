@@ -578,11 +578,21 @@ describe("Loop.answer", () => {
 		);
 		const noted = await Loop.answering(deps, questionId);
 		expect(!noted.ok && noted.error.message).toContain("runner died");
-		const activities = await Planner.getActivities(home, sessionId);
-		expect(
-			activities.ok &&
-				activities.value.some((a) => isAnswerTo(a.context, questionId)),
-		).toBe(false);
+		// Closed as withdrawn, not answered: a task's detail, which reads ended sessions too, no
+		// longer pins it.
+		const closing = async () => {
+			const activities = await Planner.getActivities(home, sessionId);
+			if (!activities.ok) throw activities.error;
+			return activities.value
+				.filter((a) => isAnswerTo(a.context, questionId))
+				.map((a) => [a.type, a.body]);
+		};
+		expect(await closing()).toEqual([
+			[
+				"withdrawn",
+				`withdrawn: the loop runner of ${run.id} died; \`kabane loop resume ${run.id}\` restarts the run, and its agent asks again`,
+			],
+		]);
 		// Off every surface's queue, and no longer answerable in core either.
 		const needs = await Planner.getNeedsInput(home);
 		expect(needs.ok && needs.value).toEqual([]);
@@ -591,10 +601,58 @@ describe("Loop.answer", () => {
 			answer: "Reject",
 		});
 		expect(direct.ok).toBe(false);
+		// Asked again, it still lists what the death withdrew, and writes nothing more.
 		const withdrawn = await Loop.withdraw(deps, RunStore.effective(run));
 		expect(withdrawn.ok && withdrawn.value.map((q) => q.questionId)).toEqual([
 			questionId,
 		]);
+		expect(await closing()).toHaveLength(1);
+	});
+
+	it("withdraws only what a dead run's sessions left unanswered, and lists only that", async () => {
+		const { run, sessionId } = await orphaned("dead-run");
+		const ask = async (body: string) => {
+			const asked = await Planner.addActivity(home, {
+				sessionId,
+				type: "question",
+				body,
+			});
+			if (!asked.ok) throw asked.error;
+			return asked.value.id;
+		};
+		const answered = await ask("Which store?");
+		const harnessWithdrew = await ask("Run the migration?");
+		const open = await ask("Which port?");
+		const human = await Planner.answerQuestion(home, {
+			questionId: answered,
+			answer: "Redis",
+		});
+		if (!human.ok) throw human.error;
+		const harness = await Planner.addActivity(home, {
+			sessionId,
+			type: "withdrawn",
+			context: `answers ${harnessWithdrew}`,
+			body: "withdrawn by the harness (claude)",
+		});
+		if (!harness.ok) throw harness.error;
+
+		const withdrawn = await Loop.withdraw(deps(), RunStore.effective(run));
+		expect(withdrawn.ok && withdrawn.value.map((q) => q.questionId)).toEqual([
+			open,
+		]);
+		const activities = await Planner.getActivities(home, sessionId);
+		if (!activities.ok) throw activities.error;
+		const closedBy = (id: string) =>
+			activities.value
+				.filter((a) => isAnswerTo(a.context, id))
+				.map((a) => a.type);
+		expect([answered, harnessWithdrew, open].map(closedBy)).toEqual([
+			["decision"],
+			["withdrawn"],
+			["withdrawn"],
+		]);
+		const ended = await Planner.getSession(home, sessionId);
+		expect(ended.ok && ended.value?.state).toBe("error");
 	});
 
 	it("refuses an answer that is none of the harness's options, and answers nothing", async () => {
