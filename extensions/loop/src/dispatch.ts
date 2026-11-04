@@ -99,7 +99,7 @@ export namespace Dispatch {
 		env: Env,
 		harness: Harnesses.Id,
 	): AcpClient.StdioServer => ({
-		name: "kabane",
+		name: CopilotInstructions.SERVER_NAME,
 		command: env.kabaneBin,
 		args: [
 			"mcp",
