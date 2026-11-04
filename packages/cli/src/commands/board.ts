@@ -133,6 +133,7 @@ export const boardDeps = async (
 			scopeDir: scope?.root ?? ctx.cwd,
 			...(scope ? { scopeUri: scope.scopeUri } : {}),
 			...(overrides ? { overrides } : {}),
+			home: ctx.home,
 			setup: {
 				configPath: configPath(ctx.home),
 				extensions: Extensions.names,

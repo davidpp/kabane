@@ -31,6 +31,9 @@ export namespace BoardCopilot {
 		// The `kabane` executable the MCP server runs as. Defaults to this process's own entry
 		// script, which is what `kabane board` is.
 		kabaneBin?: string;
+		// The board's KABANE_HOME, set on the MCP server explicitly: Codex starts a stdio server
+		// with only a short allow list of the environment, so an inherited one never arrives.
+		home: string;
 		overrides?: Harnesses.Overrides;
 		// This device's config, which the copilot is told it may edit when asked to set kabane up.
 		setup: CopilotInstructions.Setup;
@@ -131,7 +134,7 @@ export namespace BoardCopilot {
 				"--as",
 				actor,
 			],
-			env: {},
+			env: { KABANE_HOME: options.home },
 		});
 
 		const connect: Connector =

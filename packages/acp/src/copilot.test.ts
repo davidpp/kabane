@@ -146,6 +146,7 @@ const copilotOver = (
 		scopeDir: "/repos/cabane",
 		scopeUri: "jake://scope/cabane",
 		kabaneBin: "/usr/local/bin/kabane",
+		home: "/home/me/.kabane",
 		setup: SETUP,
 		connect: (onPermission) =>
 			AcpClient.connect("claude", agent, { onPermission }),
@@ -205,7 +206,7 @@ describe("BoardCopilot", () => {
 						"--as",
 						"cabane://actor/agent/claude",
 					],
-					env: [],
+					env: [{ name: "KABANE_HOME", value: "/home/me/.kabane" }],
 				},
 			],
 			_meta: {
