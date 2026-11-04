@@ -968,7 +968,7 @@ describe("the ask panel's height", () => {
 			" 1 Option 1",
 			"   Replay from the last checkpoint",
 		]);
-		expect(shown.at(-2)).toBe(" esc decline");
+		expect(shown.at(-2)).toBe(" ↑↓ move · enter pick · 1-5 pick · esc…");
 		expect(shown.at(-1)).toBe("");
 		// With the room, the same form keeps them.
 		expect((await panel(form(5), 60)).slice(5, 7)).toEqual(["", " 1 Option 1"]);
@@ -1073,7 +1073,7 @@ describe("the pane's words", () => {
 			null,
 			null,
 			T,
-			true,
+			{ key: "tab" },
 		);
 		expect(Segments.plain(line)).toBe(
 			"? copilot asks: kabane_edit · 1 more waiting · tab to answer",
@@ -1081,5 +1081,123 @@ describe("the pane's words", () => {
 		expect(line[0]?.fg).toBe(T.accent);
 		expect(line.find((part) => part.text === "tab")?.fg).toBe(T.text);
 		expect(line.some((part) => part.text === "1")).toBe(false);
+	});
+});
+
+// Clicks the pane's ask hands to app.tsx, which routes them through BoardNav.reduceMouse.
+describe("a click on the pane's ask", () => {
+	const TAGS: CopilotElicitation = {
+		id: "form-2",
+		message: "Which tags apply?",
+		fields: [
+			{
+				key: "tags",
+				title: "Tags",
+				required: false,
+				type: "choices",
+				options: [
+					{ value: "a", label: "Alpha" },
+					{ value: "b", label: "Beta" },
+				],
+			},
+		],
+	};
+	const form: BoardNav.CopilotAsk = {
+		type: "elicitation",
+		request: TAGS,
+		draft: ElicitationForm.start(),
+	};
+	const permission: BoardNav.CopilotAsk = {
+		type: "permission",
+		request: {
+			id: "p1",
+			title: "kabane_edit JREP-1",
+			options: [
+				{ id: "once", label: "Allow once" },
+				{ id: "no", label: "Reject" },
+			],
+		},
+	};
+
+	// Click the first cell of `text` on screen and say what the pane was handed.
+	const clickOn = async (
+		ask: BoardNav.CopilotAsk,
+		text: string,
+		{ focused = false, outranked = false } = {},
+	): Promise<BoardNav.AskClick[]> => {
+		const clicked: BoardNav.AskClick[] = [];
+		const { captureCharFrame, mockMouse, destroy } = await renderTest(
+			<CopilotPane
+				copilot={idle({ asks: [ask], actor: "cabane://actor/agent/claude" })}
+				chip="JALL-1"
+				focused={focused}
+				log={null}
+				spinnerFrame="⠋"
+				outranked={outranked}
+				askInHand={!outranked}
+				textareaRef={createRef<TextareaRenderable>()}
+				onSubmit={() => {}}
+				onContentChange={() => {}}
+				onAsk={(click) => clicked.push(click)}
+			/>,
+			{ width: 80, height: 24 },
+		);
+		try {
+			const rows = captureCharFrame().split("\n");
+			const y = rows.findIndex((row) => row.includes(text));
+			expect(y).toBeGreaterThanOrEqual(0);
+			await mockMouse.click(rows[y]?.indexOf(text) ?? 0, y);
+			return clicked;
+		} finally {
+			destroy();
+		}
+	};
+
+	it("a form's option is its index, and its hints are their keys", async () => {
+		expect(await clickOn(form, "2 [ ] Beta")).toEqual([
+			{ type: "askOption", index: 1 },
+		]);
+		expect(await clickOn(form, "space toggle")).toEqual([
+			{ type: "askKey", name: "space" },
+		]);
+		expect(await clickOn(form, "enter send")).toEqual([
+			{ type: "askKey", name: "return" },
+		]);
+		expect(await clickOn(form, "s skip")).toEqual([
+			{ type: "askKey", name: "s" },
+		]);
+		expect(await clickOn(form, "esc decline")).toEqual([
+			{ type: "askKey", name: "escape" },
+		]);
+		// `↑↓` names two keys, so it presses neither: the options are what is clicked.
+		expect(await clickOn(form, "↑↓ move")).toEqual([]);
+	});
+
+	it("a permission's option in the focused pane is its index, and esc decline is esc", async () => {
+		expect(await clickOn(permission, "2 Reject", { focused: true })).toEqual([
+			{ type: "askOption", index: 1 },
+		]);
+		expect(await clickOn(permission, "esc decline", { focused: true })).toEqual(
+			[{ type: "askKey", name: "escape" }],
+		);
+	});
+
+	it("a collapsed ask whose keys an open prompt holds names the prompt's way out, not keys it would eat", () => {
+		const line = collapsedSegments(
+			idle({ asks: [permission] }),
+			null,
+			null,
+			Theme.DARK,
+			{ key: "esc", holder: "the prompt" },
+		);
+		expect(Segments.plain(line)).toBe(
+			"? copilot asks: kabane_edit JREP-1 · esc to answer",
+		);
+	});
+
+	it("the collapsed row naming an outranked ask reaches it", async () => {
+		expect(await clickOn(form, "tab to answer", { outranked: true })).toEqual([
+			{ type: "askReach" },
+		]);
 	});
 });

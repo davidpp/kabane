@@ -35,23 +35,80 @@ export const permissionLine = (
 ): string =>
 	`? ${request.title}${waitingNote(waiting)} · ${optionsLine(request)} · esc decline`;
 
-// How to answer: each option's key and label in the text color, since the label is what the human
-// decides by, and the separators and `esc`'s label muted as the footer's are. The `?` before the
-// title is the request, and the only part in the accent: the options are answers, not asks.
-const answerSegments = (
+// How to answer, a part an answer so each can be clicked: each option's key and label in the text
+// color, since the label is what the human decides by, and the separators and `esc`'s label muted
+// as the footer's are. The `?` before the title is the request, and the only part in the accent:
+// the options are answers, not asks.
+const answerParts = (
 	request: CopilotPermission,
 	theme: Theme.Tokens,
 	textFg: ColorInput,
-): Segments.Segment[] => [
-	...request.options.flatMap((option, index) => [
+): Segments.Segment[][] => [
+	...request.options.map((option, index) => [
 		...(index > 0 ? [{ text: " · ", fg: theme.muted }] : []),
 		{ text: `${index + 1}`, fg: textFg },
 		{ text: ` ${option.label}`, fg: textFg },
 	]),
-	{ text: " · ", fg: theme.muted },
-	{ text: "esc", fg: textFg },
-	{ text: " decline", fg: theme.muted },
+	[
+		{ text: " · ", fg: theme.muted },
+		{ text: "esc", fg: textFg },
+		{ text: " decline", fg: theme.muted },
+	],
 ];
+
+const answerSegments = (
+	request: CopilotPermission,
+	theme: Theme.Tokens,
+	textFg: ColorInput,
+): Segments.Segment[] => answerParts(request, theme, textFg).flat();
+
+/** A part of a ClickRow, and what a click on it does. */
+export type ClickPart = { segments: Segments.Segment[]; onPress?: () => void };
+
+/**
+ * One row of parts fitted as one line (Segments.fit), each part its own cell so a click lands on
+ * the one it means. A narrow row loses its tail as any row does, and a part cut to nothing is gone.
+ */
+export const ClickRow = ({
+	parts,
+	width,
+	bg,
+}: {
+	parts: readonly ClickPart[];
+	width: number;
+	bg?: string;
+}): ReactNode => {
+	const owner = parts.flatMap((part, index) => part.segments.map(() => index));
+	const fitted = Segments.fit(
+		parts.flatMap((part) => part.segments),
+		width,
+	);
+	return (
+		<box
+			style={{
+				flexDirection: "row",
+				flexShrink: 0,
+				height: 1,
+				...(bg ? { backgroundColor: bg } : {}),
+			}}
+		>
+			{parts.map((part, index) => {
+				const segments = fitted.filter((_, at) => owner[at] === index);
+				return segments.length > 0 ? (
+					<text
+						// Index keys: a row's parts are positional.
+						key={index}
+						bg={bg}
+						onMouseDown={part.onPress}
+						style={{ flexShrink: 0 }}
+					>
+						{Segments.spans(segments)}
+					</text>
+				) : null;
+			})}
+		</box>
+	);
+};
 
 /** `permissionLine` in its colors: the collapsed pane's one row, and the same words as the block. */
 export const permissionSegments = (
@@ -68,22 +125,24 @@ export const permissionSegments = (
 ];
 
 /**
- * The collapsed row while a session question on the view holds the answer keys
- * (BoardNav.copilotOutranked): what the copilot asks (a permission's title, a form's message), with
- * the key that reaches it in place of answer keys that would not reach it.
+ * The collapsed row while something else holds the answer keys (BoardNav.askReach): a session
+ * question on the view (BoardNav.copilotOutranked), an open prompt, a `/` query. What the copilot
+ * asks (a permission's title, a form's message), with the key that reaches it in place of answer
+ * keys that would not reach it.
  */
 export const outrankedSegments = (
 	asked: string,
 	theme: Theme.Tokens,
 	textFg: ColorInput,
 	waiting = 0,
+	key = "tab",
 ): Segments.Segment[] => [
 	{ text: "? ", fg: theme.accent },
 	{ text: "copilot asks: ", fg: theme.muted },
 	{ text: asked, fg: textFg },
 	...(waiting > 0 ? [{ text: waitingNote(waiting), fg: theme.muted }] : []),
 	{ text: " · ", fg: theme.muted },
-	{ text: "tab", fg: textFg },
+	{ text: key, fg: textFg },
 	{ text: " to answer", fg: theme.muted },
 ];
 
@@ -95,6 +154,10 @@ export type PermissionBlockProps = {
 	width: number;
 	// The surface's background, so a row inside a panel paints its whole width like its neighbours.
 	bg?: string;
+	// A click on option `index`, and on `esc decline` (the key router's `escape`): the keys' own
+	// paths, so a click and a key can never disagree. Without them the answers are only drawn.
+	onPick?: (index: number) => void;
+	onKey?: (name: string) => void;
 };
 
 export const PermissionBlock = ({
@@ -102,6 +165,8 @@ export const PermissionBlock = ({
 	waiting = 0,
 	width,
 	bg,
+	onPick,
+	onKey,
 }: PermissionBlockProps): ReactNode => {
 	const theme = useTheme();
 	// On a painted surface the text takes the surface's foreground; off one, the terminal's own.
@@ -113,11 +178,17 @@ export const PermissionBlock = ({
 				? <span fg={textFg}>{fit(request.title, width - 2 - note.length)}</span>
 				{note ? <span fg={theme.muted}>{note}</span> : null}
 			</text>
-			<text bg={bg}>
-				{Segments.spans(
-					Segments.fit(answerSegments(request, theme, textFg), width),
-				)}
-			</text>
+			<ClickRow
+				parts={answerParts(request, theme, textFg).map((segments, index) => ({
+					segments,
+					onPress:
+						index < request.options.length
+							? onPick && (() => onPick(index))
+							: onKey && (() => onKey("escape")),
+				}))}
+				width={width}
+				{...(bg ? { bg } : {})}
+			/>
 		</>
 	);
 };

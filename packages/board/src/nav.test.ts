@@ -2748,6 +2748,21 @@ describe("a permission request the harness is blocked on", () => {
 		).toMatchObject({ type: "copilotAnswer", optionId: "reject" });
 	});
 
+	it("a click on an option is its digit, and one on esc decline is esc", () => {
+		expect(
+			BoardNav.reduceMouse(asked(), { type: "askOption", index: 1 }),
+		).toEqual(reduce(asked(), char("2")));
+		expect(
+			BoardNav.reduceMouse(asked(), { type: "askKey", name: "escape" }).effect,
+		).toEqual({ type: "copilotAnswer", id: "t0", optionId: null });
+	});
+
+	it("a click on the collapsed row naming it opens it: the copilot takes the keys", () => {
+		const r = BoardNav.reduceMouse(asked(), { type: "askReach" });
+		expect(r.state.focus).toBe("copilot");
+		expect(requests(r.state)).toEqual([request]);
+	});
+
 	it("a turn that stops takes the unanswered question with it", () => {
 		const stopped = BoardNav.withCopilotTurn(asked(), "error");
 		expect(requests(stopped)).toEqual([]);
@@ -2960,6 +2975,139 @@ describe("a form the harness is blocked on", () => {
 		expect(head(r.state)).toMatchObject({ draft: { at: 0 } });
 	});
 
+	it("the arrows move its cursor ahead of the board, and j/k still move the board under it", () => {
+		const two = state({
+			sections: sections({
+				next: [row(task({ id: "a" })), row(task({ id: "b" }))],
+			}),
+			selectedId: "a",
+			copilot: copilotState({ turn: "running" }),
+		});
+		const s = BoardNav.withCopilotElicitation(two, form);
+		const down = reduce(s, { name: "down" }).state;
+		expect(head(down)).toMatchObject({ draft: { at: 0, cursor: 1 } });
+		expect(down.selectedId).toBe("a");
+		expect(reduce(down, char("j")).state.selectedId).toBe("b");
+		const picked = reduce(down, { name: "return" });
+		expect(head(picked.state)).toMatchObject({
+			draft: { at: 1, values: { question_0: "Memory" } },
+		});
+	});
+
+	it("an enter already on its way when the form appears picks nothing: it is held like a digit", () => {
+		const arrived = BoardNav.sight(asked(), 5000);
+		const early = BoardNav.reduceKey(arrived, { name: "return" }, 5200);
+		expect(early.effect).toMatchObject({ type: "notice" });
+		expect(head(early.state)).toMatchObject({ draft: { at: 0 } });
+		// The cursor's keys settle nothing, so they move it at once.
+		expect(
+			head(BoardNav.reduceKey(arrived, { name: "down" }, 5200).state),
+		).toMatchObject({ draft: { cursor: 1 } });
+		expect(
+			head(
+				BoardNav.reduceKey(arrived, { name: "return" }, 5000 + BoardNav.ARM_MS)
+					.state,
+			),
+		).toMatchObject({ draft: { at: 1, values: { question_0: "Redis" } } });
+	});
+
+	it("a multi-select toggles with space and sends with enter, from the copilot's focus too", () => {
+		const tags: CopilotElicitation = {
+			id: "form-2",
+			message: "Which tags?",
+			fields: [
+				{
+					key: "tags",
+					title: "Tags",
+					required: true,
+					type: "choices",
+					options: [
+						{ value: "a", label: "Alpha" },
+						{ value: "b", label: "Beta" },
+					],
+				},
+			],
+		};
+		const s = BoardNav.withCopilotElicitation(
+			state({ focus: "copilot", copilot: copilotState({ turn: "running" }) }),
+			tags,
+		);
+		const toggled = [
+			{ name: "down" },
+			{ name: "space", sequence: " " },
+			{ name: "up" },
+			{ name: "space", sequence: " " },
+		].reduce((acc, key) => reduce(acc, key).state, s);
+		expect(reduce(toggled, { name: "return" }).effect).toEqual({
+			type: "copilotAnswerForm",
+			id: "form-2",
+			answer: { action: "accept", content: { tags: ["b", "a"] } },
+		});
+	});
+
+	it("s skips an optional choice and moves on to the next field", () => {
+		expect(head(reduce(asked(), char("s")).state)).toMatchObject({
+			draft: { at: 1, values: {} },
+		});
+	});
+
+	it("a click on an option or a hint is the key's own step, and leaves the keys where they were", () => {
+		const s = BoardNav.sight({ ...asked(), focus: "copilot" }, 0);
+		const click = (action: BoardNav.MouseAction) =>
+			BoardNav.reduceMouse(s, action);
+		expect(click({ type: "askOption", index: 1 })).toEqual(
+			reduce(s, char("2")),
+		);
+		expect(click({ type: "askKey", name: "s" })).toEqual(reduce(s, char("s")));
+		expect(click({ type: "askKey", name: "escape" })).toEqual(
+			reduce(s, { name: "escape" }),
+		);
+		expect(click({ type: "askOption", index: 1 }).state.focus).toBe("copilot");
+		// A click is aimed at what is drawn: no ARM_MS for it.
+		const arrived = BoardNav.sight(asked(), 5000);
+		expect(
+			head(
+				BoardNav.reduceMouse(arrived, { type: "askOption", index: 0 }).state,
+			),
+		).toMatchObject({ draft: { at: 1, values: { question_0: "Redis" } } });
+		// An option past the list answers nothing.
+		expect(click({ type: "askOption", index: 5 }).state).toBe(s);
+	});
+
+	it("outranked by a question pinned on the view, a click on it hands it the keys and answers nothing", () => {
+		const banner = {
+			question: {
+				taskId: "a",
+				taskShortId: "JAKE-1",
+				sessionId: "s",
+				questionActivityId: "q",
+				question: "Ship it?",
+				choices: ["Yes", "No"],
+				multiSelect: false,
+				allowFreeform: false,
+				agent: "claude",
+				askedAt: "2026-10-10T00:00:00.000Z",
+			},
+		};
+		const pinned = asked({ view: { type: "detail", taskId: "a", banner } });
+		expect(BoardNav.copilotOutranked(pinned)).toBe(true);
+		expect(BoardNav.askReach(pinned)).toEqual({ key: "tab" });
+		expect(BoardNav.askReach(reduce(pinned, { name: "tab" }).state)).toBe(
+			undefined,
+		);
+		for (const action of [
+			{ type: "askOption", index: 0 },
+			{ type: "askKey", name: "escape" },
+			{ type: "askReach" },
+		] as const) {
+			const r = BoardNav.reduceMouse(pinned, action);
+			expect(r.effect.type).toBe("none");
+			expect(r.state.focus).toBe("copilot");
+			expect(head(r.state)).toEqual(head(pinned));
+			expect(BoardNav.askInHand(r.state)).toBe(true);
+		}
+	});
+
 	it("each field is a question of its own: a digit already on its way does not answer the next", () => {
 		const store = form.fields[0];
 		if (!store) throw new Error("the form has a choice");
@@ -3011,6 +3159,44 @@ describe("a form the harness is blocked on", () => {
 		expect(reduce(prompting, char("1")).effect.type).not.toBe(
 			"copilotAnswerForm",
 		);
+	});
+
+	// Seen live: the form looked the same whether or not it had the keys, so its keys went to an
+	// open prompt, a `/` query or the question on the view, and the form seemed not to answer.
+	it("says who has its keys and which key hands them over, and that key (or a click on it) does", () => {
+		const prompting = asked({
+			prompt: {
+				...BoardPrompt.CLOSED,
+				open: {
+					target: { type: "act", cardId: "loop", actionId: "inject" },
+					title: "inject",
+					placeholder: "",
+				},
+			},
+		});
+		const searching = asked({ search: { mode: "typing", query: "ca" } });
+		expect(BoardNav.askReach(asked())).toBeUndefined();
+		expect(BoardNav.askReach(prompting)).toEqual({
+			key: "esc",
+			holder: "the prompt",
+		});
+		expect(BoardNav.askReach(searching)).toEqual({
+			key: "enter",
+			holder: "search",
+		});
+		for (const [held, key] of [
+			[prompting, { name: "escape" }],
+			[searching, { name: "return" }],
+		] as const) {
+			expect(BoardNav.askInHand(reduce(held, key).state)).toBe(true);
+			const clicked = BoardNav.reduceMouse(held, { type: "askReach" }).state;
+			expect(BoardNav.askInHand(clicked)).toBe(true);
+			expect(head(clicked)).toEqual(head(held));
+		}
+		// The query typed is kept, as enter keeps it.
+		expect(
+			BoardNav.reduceMouse(searching, { type: "askReach" }).state.search,
+		).toEqual({ mode: "committed", query: "ca" });
 	});
 
 	it("an enter that arrives after the form is gone sends nothing", () => {

@@ -139,10 +139,12 @@ const OnBoard = ({
 const form = (
 	request: CopilotElicitation,
 	draft: Partial<ElicitationForm.Draft> = {},
+	pane: Partial<PaneProps> = {},
 ): ReactNode => (
 	<OnBoard
 		pane={
 			<Pane
+				{...pane}
 				copilot={Fixtures.copilot({
 					turn: "running",
 					actor: CLAUDE,
@@ -244,6 +246,25 @@ export const STORIES: readonly Story[] = [
 		width: 80,
 		height: 30,
 		render: () => form(Fixtures.TAGS, { picked: [1] }),
+	},
+	{
+		name: "form-multi-cursor",
+		about: "a multi-select with its cursor moved down past a toggled option",
+		width: 80,
+		height: 30,
+		render: () => form(Fixtures.TAGS, { picked: [0], cursor: 2 }),
+	},
+	{
+		name: "form-not-in-hand",
+		about: "a form while an open prompt holds the keys, saying how to reach it",
+		width: 80,
+		height: 30,
+		render: () =>
+			form(
+				Fixtures.TAGS,
+				{},
+				{ askInHand: false, reach: { key: "esc", holder: "the prompt" } },
+			),
 	},
 	{
 		name: "form-text",

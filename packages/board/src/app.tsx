@@ -1038,10 +1038,12 @@ export const App = ({
 			}
 			outranked={BoardNav.copilotOutranked(state)}
 			askInHand={BoardNav.askInHand(state)}
+			reach={BoardNav.askReach(state)}
 			textareaRef={inputRef}
 			onSubmit={submitCopilot}
 			onContentChange={mirrorCopilotText}
 			onFormSubmit={submitForm}
+			onAsk={dispatchMouse}
 		/>
 	);
 	// A prompt a card's tab or a banner opened sits where the copilot's panel would, above its row.

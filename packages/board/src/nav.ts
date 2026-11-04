@@ -327,7 +327,18 @@ export namespace BoardNav {
 		// A lane chip on a card's tab (0 is every lane).
 		| { type: "lane"; index: number }
 		// A field of the trigger form, by its place in the trigger's inputs.
-		| { type: "formField"; index: number };
+		| { type: "formField"; index: number }
+		| AskClick;
+
+	/**
+	 * A click on the copilot's ask: its `index`th answer, the key a hint names (as the key router
+	 * reads it: `return`, `space`, `s`, `escape`), or the row that names an ask the keys cannot reach,
+	 * which hands it them.
+	 */
+	export type AskClick =
+		| { type: "askOption"; index: number }
+		| { type: "askKey"; name: string }
+		| { type: "askReach" };
 
 	const NONE: Effect = { type: "none" };
 	const SEARCH_OFF: SearchState = { mode: "off" };
@@ -574,6 +585,20 @@ export namespace BoardNav {
 		return state.copilot.text === "" && state.copilot.history.length > 0;
 	};
 
+	// Whether a key gives an answer rather than moving through one: a digit anywhere, and on the
+	// copilot's form in hand every key it takes but the cursor's and `esc`, which settle nothing.
+	const answers = (state: BoardState, key: KeyInput): boolean => {
+		if (optionIndex(key) !== null) return true;
+		const head = state.copilot.asks[0];
+		if (
+			head?.type !== "elicitation" ||
+			!askInHand(state) ||
+			["escape", "up", "down"].includes(key.name)
+		)
+			return false;
+		return ElicitationForm.reduceKey(head.request, head.draft, key) !== null;
+	};
+
 	// Which numbered choice a key names, 1-based, or null for a key that names none.
 	const optionIndex = (key: KeyInput): number | null => {
 		if (key.ctrl || key.meta) return null;
@@ -600,6 +625,23 @@ export namespace BoardNav {
 		state.search.mode !== "typing" &&
 		!state.prompt.open &&
 		!copilotOutranked(state);
+
+	/** Who has the keys the copilot's ask is waiting for, and the key that hands them over. */
+	export type AskReach = { key: string; holder?: string };
+
+	/**
+	 * How the copilot's oldest request gets the keys while it lacks them (askInHand), one press one
+	 * level: `esc` out of an open prompt, `enter` out of a `/` query being typed, `tab` to the copilot
+	 * past a question on the view. Undefined while it has them, or when nothing is asked. The ask
+	 * says this in place of answer keys that would go elsewhere.
+	 */
+	export const askReach = (state: BoardState): AskReach | undefined => {
+		if (state.copilot.asks.length === 0 || askInHand(state)) return undefined;
+		if (state.prompt.open) return { key: "esc", holder: "the prompt" };
+		if (state.search.mode === "typing")
+			return { key: "enter", holder: "search" };
+		return { key: "tab" };
+	};
 
 	/**
 	 * How long a question has to be the one a digit answers before a digit does. A key already on
@@ -665,16 +707,28 @@ export namespace BoardNav {
 		request: CopilotPermission,
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } | null => {
-		const answered = (
-			optionId: string | null,
-		): { state: BoardState; effect: Effect } => ({
-			state: withoutAsk(state, request.id),
-			effect: { type: "copilotAnswer", id: request.id, optionId },
-		});
-		if (key.name === "escape") return answered(null);
+		if (key.name === "escape") return permissionAnswered(state, request, null);
 		const index = optionIndex(key);
-		const option = index === null ? undefined : request.options[index - 1];
-		return option ? answered(option.id) : null;
+		return index === null ? null : pickPermission(state, request, index - 1);
+	};
+
+	const permissionAnswered = (
+		state: BoardState,
+		request: CopilotPermission,
+		optionId: string | null,
+	): { state: BoardState; effect: Effect } => ({
+		state: withoutAsk(state, request.id),
+		effect: { type: "copilotAnswer", id: request.id, optionId },
+	});
+
+	// The permission's option at `index`, as its digit or a click names it.
+	const pickPermission = (
+		state: BoardState,
+		request: CopilotPermission,
+		index: number,
+	): { state: BoardState; effect: Effect } | null => {
+		const option = request.options[index];
+		return option ? permissionAnswered(state, request, option.id) : null;
 	};
 
 	// A form's step: its draft moved on in the queue, or its answer sent and the form gone.
@@ -721,6 +775,56 @@ export namespace BoardNav {
 		return ElicitationForm.typed(ElicitationForm.field(ask.request, ask.draft))
 			? { state, effect: NONE }
 			: null;
+	};
+
+	// What askReach's key does, from a click: the prompt closes, the query being typed is kept as
+	// `enter` keeps it, and otherwise the copilot takes the keys, which also opens its panel.
+	const reachAsk = (
+		state: BoardState,
+	): { state: BoardState; effect: Effect } => {
+		if (state.prompt.open)
+			return { state: BoardPrompt.close(state), effect: NONE };
+		if (state.search.mode === "typing")
+			return reduceSearchTyping(state, state.search.query, { name: "return" });
+		return { state: { ...state, focus: "copilot" }, effect: NONE };
+	};
+
+	const ASK_CLICKS: ReadonlySet<string> = new Set<AskClick["type"]>([
+		"askOption",
+		"askKey",
+		"askReach",
+	]);
+	const isAskClick = (action: MouseAction): action is AskClick =>
+		ASK_CLICKS.has(action.type);
+
+	/**
+	 * A click on the ask at the head of the queue, through the reducers its keys take: an option is
+	 * its digit (past the ninth too), a hint is its key. A pointer aims at what is drawn, so it is not
+	 * held for ARM_MS, and it answers wherever the keys are. Outranked, the ask is not drawn but its
+	 * row, and any click on it hands it the keys, as `tab` does, rather than answering. A click on
+	 * what says how to reach it (askReach) is the key it names.
+	 */
+	const clickAsk = (
+		state: BoardState,
+		click: AskClick,
+	): { state: BoardState; effect: Effect } => {
+		const ask = state.copilot.asks[0];
+		const none = { state, effect: NONE };
+		if (!ask) return none;
+		if (click.type === "askReach") return reachAsk(state);
+		if (copilotOutranked(state))
+			return { state: { ...state, focus: "copilot" }, effect: NONE };
+		if (click.type === "askKey")
+			return answerAsk(state, ask, { name: click.name }) ?? none;
+		const step =
+			ask.type === "permission"
+				? pickPermission(state, ask.request, click.index)
+				: formStep(
+						state,
+						ask,
+						ElicitationForm.pick(ask.request, ask.draft, click.index),
+					);
+		return step ?? none;
 	};
 
 	/**
@@ -1361,10 +1465,11 @@ export namespace BoardNav {
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
 		// A digit answers only a question that has been on screen long enough to read: one that just
 		// appeared, or just replaced the one in hand, holds the key and says so rather than taking an
-		// answer the human never saw. Search-typing and an open prompt take a digit as a character.
-		// A shifted digit is no answer (`!` on some terminals), so it passes.
+		// answer the human never saw. So does every other key that answers a form (`enter` picks the
+		// cursor's option). Search-typing and an open prompt take a digit as a character. A shifted
+		// digit is no answer (`!` on some terminals), so it passes.
 		if (
-			optionIndex(key) !== null &&
+			answers(state, key) &&
 			!key.shift &&
 			state.search.mode !== "typing" &&
 			!state.prompt.open &&
@@ -1381,12 +1486,12 @@ export namespace BoardNav {
 				},
 			};
 		// A harness blocked on a question is the most urgent thing on screen, so it takes the keys
-		// that answer it — a digit, `esc` — ahead of every view and of the copilot's own focus. That
-		// is the esc layering the board already has, one press one level: the newest, most local
-		// thing goes first, and here it is the thing something else is waiting on. Search-typing and
-		// an open prompt are the exceptions: a digit is a character there, and the prompt's `esc`
-		// closes it, and so is a session question the view has in hand (copilotOutranked). Every
-		// other key falls through.
+		// that answer it — a digit, `esc`, a form's cursor — ahead of every view and of the copilot's
+		// own focus. That is the esc layering the board already has, one press one level: the newest,
+		// most local thing goes first, and here it is the thing something else is waiting on.
+		// Search-typing and an open prompt are the exceptions: a digit is a character there, and the
+		// prompt's `esc` closes it, and so is a session question the view has in hand
+		// (copilotOutranked). Every other key falls through.
 		if (askInHand(state)) {
 			const asking = state.copilot.asks[0];
 			const answered = asking ? answerAsk(state, asking, key) : null;
@@ -1753,6 +1858,8 @@ export namespace BoardNav {
 			return TriggerForm.click(incoming, action.index);
 		if (incoming.help || incoming.dispatch)
 			return { state: incoming, effect: NONE };
+		// Answering the copilot is not working on the board: the keys stay where they were.
+		if (isAskClick(action)) return clickAsk(incoming, action);
 		// A click is the human saying they are working on the board now: the copilot loses focus and an
 		// open prompt closes.
 		const state: BoardState = BoardPrompt.close(
