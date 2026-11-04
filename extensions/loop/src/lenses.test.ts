@@ -145,9 +145,11 @@ describe("Brief.lens", () => {
 				parent,
 				lens: "quality",
 				prompt: "# Quality lens\n",
+				gates: ["check", "test"],
 			},
 			"the parent's own brief",
 		);
+		expect(brief).toContain("Its gates (`check`, `test`) pass");
 		expect(brief).toContain("kabane_add");
 		expect(brief).toContain(`parentTaskId "${parent.shortId}"`);
 		expect(brief).toContain('tags ["finding", "<severity>", "quality"]');
@@ -155,6 +157,16 @@ describe("Brief.lens", () => {
 		expect(brief.indexOf("# Quality lens")).toBeLessThan(
 			brief.indexOf("the parent's own brief"),
 		);
+	});
+
+	it("never claims gates passed in a run that has none", async () => {
+		const parent = await add("Ship the cache");
+		const brief = Brief.lens(
+			{ runId: "run-1", parent, lens: "functional", prompt: "", gates: [] },
+			"",
+		);
+		expect(brief).not.toContain("gates pass");
+		expect(brief).toContain("No gates are configured for this run");
 	});
 });
 

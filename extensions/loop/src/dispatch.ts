@@ -40,7 +40,8 @@ export namespace Dispatch {
 	 */
 	export type Work =
 		| { kind: "implement"; retry?: Gates.Result }
-		| { kind: "lens"; name: string; prompt: string };
+		// `gates`: the run's gate names, so the brief says what has checked the work and what has not.
+		| { kind: "lens"; name: string; prompt: string; gates: readonly string[] };
 
 	type Claim = {
 		parent: Task;
@@ -423,7 +424,12 @@ export namespace Dispatch {
 		return ok(
 			work.kind === "lens"
 				? Brief.lens(
-						{ ...subject, lens: work.name, prompt: work.prompt },
+						{
+							...subject,
+							lens: work.name,
+							prompt: work.prompt,
+							gates: work.gates,
+						},
 						assembled.value,
 					)
 				: Brief.opening(

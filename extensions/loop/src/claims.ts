@@ -358,7 +358,12 @@ export namespace Claims {
 			harness,
 			lane,
 			sessionId,
-			work: { kind: "lens", name, prompt: prompt.value },
+			work: {
+				kind: "lens",
+				name,
+				prompt: prompt.value,
+				gates: Object.keys(ctx.run.config.gates),
+			},
 			summary: `${harness} reviews ${label(plan.parent)} through the ${name} lens`,
 		});
 		return ok(undefined);
