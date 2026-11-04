@@ -51,6 +51,11 @@ describe("CopilotInstructions.SHORTCUTS", () => {
 });
 
 describe("CopilotInstructions.SKILLS", () => {
+	it("names the config tools used to discover and change settings", () => {
+		expect(CopilotInstructions.SKILLS).toContain("kabane_configGet");
+		expect(CopilotInstructions.SKILLS).toContain("kabane_configSet");
+	});
+
 	it("names the tool the substance goes through and the tool the link goes through", () => {
 		expect(CopilotInstructions.SKILLS).toContain("kabane_edit");
 		expect(CopilotInstructions.SKILLS).toContain("kabane_upstream_link");
