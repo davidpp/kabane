@@ -836,7 +836,7 @@ export const startSetup = async (deps: SetupDeps): Promise<boolean> => {
 	try {
 		const theme = await Theme.detect(renderer);
 		createRoot(renderer).render(
-			<ThemeProvider value={theme}>
+			<ThemeProvider initial={theme}>
 				<ErrorBoundary fallback={(error) => <SetupCrash error={error} />}>
 					<SetupScreen
 						{...deps}

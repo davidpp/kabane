@@ -29,6 +29,13 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 
 The host calls `Runtime.configure` before `startBoard`; the board never opens a database itself.
 
+The board takes its colours from the terminal: before the first frame it asks for the foreground,
+background and ANSI palette, and derives its surfaces and grays from them (`src/theme.ts`; a
+terminal that does not answer gets DESIGN.md's dark or light ramp). It keeps following the
+terminal while open. When the terminal reports a light/dark switch (DEC 2031) or a new palette,
+`ThemeProvider` re-derives the tokens and every surface recolours, markdown included, without a
+restart.
+
 ## Ports
 
 ### `ActivitySource`
@@ -311,4 +318,4 @@ renderer that captures character frames; nothing needs a real TTY. Storage tests
 directory. Key-driven flows (the `A` prompt against a scripted copilot) go through the test renderer's
 `mockInput`; a lone escape must be rendered through before the next key, or the parser reads the
 pair as Alt+key. Not covered here and left to a manual run: a real terminal's keyboard, mouse,
-the clipboard writers, and OSC 52 through a terminal multiplexer.
+the clipboard writers, OSC 52 through a terminal multiplexer, and a real light/dark switch.

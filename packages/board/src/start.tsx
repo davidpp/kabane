@@ -57,10 +57,10 @@ const CrashScreen = ({ error }: { error: Error }): ReactNode => {
 export const startBoard = async (deps: BoardDeps): Promise<void> => {
 	const renderer = await createCliRenderer({ exitOnCtrlC: true });
 	try {
-		// Once, before the first frame: every surface below reads its colours from this.
+		// Before the first frame, so it opens in the terminal's colours; the provider follows them.
 		const theme = await Theme.detect(renderer);
 		createRoot(renderer).render(
-			<ThemeProvider value={theme}>
+			<ThemeProvider initial={theme}>
 				<ErrorBoundary fallback={(error) => <CrashScreen error={error} />}>
 					<App
 						cwd={deps.cwd}

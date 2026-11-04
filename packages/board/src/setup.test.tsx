@@ -85,7 +85,7 @@ const mount = async (
 		quit: 0,
 	};
 	const setup = await renderTest(
-		<ThemeProvider value={theme}>
+		<ThemeProvider initial={theme}>
 			<SetupScreen
 				defaults={defaults}
 				save={async (plan) => {
