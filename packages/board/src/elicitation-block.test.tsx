@@ -19,49 +19,12 @@ import {
 	type CopilotElicitationAnswer,
 	noActivity,
 } from "./ports";
+import { Fixtures } from "./stories/fixtures";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";
 
-const STORE: CopilotElicitation = {
-	id: "form-1",
-	message: "Which store should the cache use for the session tokens?",
-	fields: [
-		{
-			key: "question_0",
-			title: "Store",
-			required: false,
-			type: "choice",
-			options: [
-				{
-					value: "Redis",
-					label: "Redis",
-					description: "Shared, survives restarts",
-				},
-				{ value: "Memory", label: "Memory" },
-			],
-		},
-		{ key: "question_0_custom", title: "Other", required: false, type: "text" },
-	],
-};
-
-const TAGS: CopilotElicitation = {
-	id: "form-2",
-	message: "Which tags apply?",
-	fields: [
-		{
-			key: "tags",
-			title: "Tags",
-			required: true,
-			type: "choices",
-			options: [
-				{ value: "a", label: "Alpha" },
-				{ value: "b", label: "Beta" },
-				{ value: "c", label: "Gamma" },
-			],
-		},
-	],
-};
+const { STORE, TAGS, DELIVERY } = Fixtures;
 
 const mount = async (
 	request: CopilotElicitation,
@@ -102,33 +65,6 @@ const rowsOf = (frame: string): string[] => {
 	const rows = frame.split("\n").map((line) => line.trimEnd());
 	while (rows.at(-1) === "") rows.pop();
 	return rows;
-};
-
-const DELIVERY: CopilotElicitation = {
-	id: "form-3",
-	message:
-		"Which delivery contract should the runner hold to when a harness drops its session?",
-	fields: [
-		{
-			key: "delivery",
-			title: "Delivery",
-			required: true,
-			type: "choice",
-			options: [
-				{
-					value: "most",
-					label: "At most once",
-					description: "Drop the turn and report it failed",
-				},
-				{
-					value: "least",
-					label: "At least once",
-					description: "Replay the turn from its last checkpoint",
-				},
-				{ value: "ask", label: "Ask the human" },
-			],
-		},
-	],
 };
 
 describe("ElicitationBlock", () => {
