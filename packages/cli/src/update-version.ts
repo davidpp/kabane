@@ -29,6 +29,10 @@ export const ChannelVersionSchema = z
 
 export const isPrerelease = (version: string): boolean => version.includes("-");
 
+/** The `X.Y.Z` of a version, its prerelease dropped. */
+export const versionCore = (version: string): string =>
+	version.split("-")[0] ?? "";
+
 /** The npm dist-tag a channel version is published on and read from. */
 export const channelOf = (version: string): "latest" | "beta" =>
 	isPrerelease(version) ? "beta" : "latest";

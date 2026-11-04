@@ -8,6 +8,7 @@ import {
 	ChannelVersionSchema,
 	compareVersions,
 	isPrerelease,
+	versionCore,
 } from "./update-version";
 
 const ManifestSchema = z.object({
@@ -112,8 +113,6 @@ const globalDirectories = (
 	}
 };
 
-const core = (version: string): string => version.split("-")[0] ?? "";
-
 /** Whether Bun's registration specifier (`X.Y.Z`, `^X.Y.Z` or `~X.Y.Z`, any of them a beta) admits the installed version, as npm ranges do. */
 const registeredVersion = (specifier: string, version: string): boolean => {
 	const match = /^(\^|~)?(.+)$/.exec(specifier);
@@ -124,11 +123,11 @@ const registeredVersion = (specifier: string, version: string): boolean => {
 	// A range admits a prerelease only of the release its own prerelease bound names.
 	if (
 		compareVersions(version, base) < 0 ||
-		(isPrerelease(version) && core(version) !== core(base))
+		(isPrerelease(version) && versionCore(version) !== versionCore(base))
 	)
 		return false;
-	const [baseMajor, baseMinor] = core(base).split("."),
-		[major, minor] = core(version).split(".");
+	const [baseMajor, baseMinor] = versionCore(base).split("."),
+		[major, minor] = versionCore(version).split(".");
 	return (
 		baseMajor === major &&
 		!((match[1] === "~" || baseMajor === "0") && baseMinor !== minor)

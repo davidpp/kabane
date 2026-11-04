@@ -10,6 +10,7 @@ import {
 	compareVersions,
 	isPrerelease,
 	SemverSchema,
+	versionCore,
 } from "../update-version";
 
 const MetadataSchema = z.object({
@@ -128,9 +129,6 @@ const readCandidate = async (
 			);
 };
 
-const core = (version: string): string[] =>
-	(version.split("-")[0] ?? "").split(".");
-
 const runUpdate = async (
 	args: ParsedArgs,
 	host: UpdateHost,
@@ -198,16 +196,14 @@ const runUpdate = async (
 			0,
 			details,
 		);
-	const currentParts = core(runningVersion),
-		targetParts = core(target);
+	const currentParts = versionCore(runningVersion).split("."),
+		targetParts = versionCore(target).split(".");
 	if (
 		compareVersions(target, runningVersion) < 0 ||
 		currentParts[0] !== targetParts[0] ||
 		(currentParts[0] === "0" && currentParts[1] !== targetParts[1]) ||
-		compareVersions(
-			core(Bun.version).join("."),
-			candidate.engines.bun.slice(2),
-		) < 0
+		compareVersions(versionCore(Bun.version), candidate.engines.bun.slice(2)) <
+			0
 	)
 		return reply(
 			"manual_only",
