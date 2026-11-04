@@ -69,6 +69,11 @@ export const WELCOME: readonly (readonly string[])[] = [
 		"made it.",
 	],
 	["not a team tracker: linear and github", "stay the team record."],
+	[
+		"on the board, press A for the copilot:",
+		'ask "how do I…" or change settings.',
+		"or use kabane config in a terminal.",
+	],
 	["one screen of setup: your name and", "which agents get kabane."],
 ];
 

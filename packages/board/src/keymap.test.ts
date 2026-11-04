@@ -415,6 +415,13 @@ describe("Keymap.sheet", () => {
 	test("the view's keys under its name, then the everywhere group, each binding once", () => {
 		for (const id of SHEET_CONTEXTS) {
 			const groups = Keymap.sheet(id);
+			expect(groups.find((g) => g.title === "everywhere")?.rows).toContainEqual(
+				{
+					key: "A :",
+					label: "copilot: config & help",
+					available: true,
+				},
+			);
 			expect(groups.map((g) => g.title)).toEqual([
 				Keymap.CONTEXTS[id].name,
 				"everywhere",

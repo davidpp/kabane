@@ -131,7 +131,12 @@ export namespace Keymap {
 			keys: ["{", "}"],
 			when: (s) => s.tabs === true,
 		},
-		{ key: "A :", label: "ask the copilot", tier: "help", keys: ["A", ":"] },
+		{
+			key: "A :",
+			label: "copilot: config & help",
+			tier: "help",
+			keys: ["A", ":"],
+		},
 		{
 			key: "tab ⇧tab",
 			label: "next · previous pane",
