@@ -338,7 +338,9 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
   gates (a resumed one picks up a half-fixed tree); the gates, and a worktree's checkpoint,
   run once it has ended. One interrupted by a dead runner runs again on what is still open;
   one that errors stops the run as `fixer-failed`. Findings it left do not keep the run open:
-  the run completes saying how many are left for a human.
+  the run completes saying how many are left for a human. A run started on a parent whose
+  subtasks are all closed goes straight to the fixer when no lens is configured, so
+  `kabane loop start <parent>` is how a human has an earlier run's findings fixed.
 
 ### C4. Questions, permissions and steering
 - **Permissions:** done on branch `worktree-agent-a74b0c0ae0b7397eb`. Every request goes to the

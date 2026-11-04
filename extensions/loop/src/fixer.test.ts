@@ -7,6 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner, type Task, type TaskDraft } from "@cabane/core";
+import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Fixer } from "./fixer";
 import { Runner } from "./runner";
@@ -270,5 +271,40 @@ describe("Runner fixer", () => {
 		expect([await state(edge), await state(nit)]).toEqual(["done", "done"]);
 		// The parent is never the fixer's to release, on recovery or at its end.
 		expect(await state(parent)).toBe("next");
+	});
+
+	// A parent an earlier run left with every subtask closed and its lenses' findings open: a
+	// plain `kabane loop start` on it is a run whose fixer takes them, with no lens configured to
+	// review again first.
+	it("starts a new run on a done parent with open findings, straight to the fixer", async () => {
+		const parent = await add({ title: "parent" });
+		const subtask = await add({
+			title: "subtask",
+			parentTaskId: parent.id,
+			state: "done",
+		});
+		const deps = { home, basePath: home, cwd: home };
+		const input = { parent: label(parent), dir: "." };
+		const nothing = await Loop.prepare(deps, input);
+		expect(!nothing.ok && nothing.error.message).toContain(
+			"no finding under it is open",
+		);
+		const { edge, broken } = await findings(parent);
+		const prepared = await Loop.prepare(deps, {
+			...input,
+			config: { implementer: "gemini" },
+		});
+		if (!prepared.ok) throw prepared.error;
+		expect(prepared.value.config.lenses).toEqual([]);
+		createRun(parent, { config: prepared.value.config, claims: [] });
+
+		const ended = await run();
+
+		expect(ended.status).toBe("completed");
+		expect(ended.claims.map((c) => [c.lane, c.outcome])).toEqual([
+			["fixer", "done"],
+		]);
+		expect([await state(broken), await state(edge)]).toEqual(["done", "done"]);
+		expect(await state(subtask)).toBe("done");
 	});
 });

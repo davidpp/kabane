@@ -192,9 +192,10 @@ export namespace Loop {
 				r.id !== except && r.parentId === parentId && RunStore.isLive(r.status),
 		);
 
-	// The parent must have something for a run to do (open work, or checks to run on work that
-	// is done), no live run already, and a last run whose runner did not die: that run still
-	// holds the subtasks it claimed, which a new run would wait on forever, and its worktree.
+	// The parent must have something for a run to do (open work, checks to run on work that is
+	// done, or open findings for the fixer), no live run already, and a last run whose runner did
+	// not die: that run still holds the subtasks it claimed, which a new run would wait on
+	// forever, and its worktree.
 	const checkParent = async (
 		deps: Pick<StartDeps, "home">,
 		plan: LoopPlan.Plan,
@@ -207,11 +208,12 @@ export namespace Loop {
 		if (
 			Stop.workDone(plan) &&
 			!Gates.configured(config.gates) &&
-			config.lenses.length === 0
+			config.lenses.length === 0 &&
+			LoopPlan.fixable(plan, new Date()).length === 0
 		)
 			return err(
 				new Error(
-					`Every subtask of ${short} is already closed and no gates or lenses are configured to check it`,
+					`Every subtask of ${short} is already closed, no finding under it is open, and no gates or lenses are configured to check it`,
 				),
 			);
 		// A lens with no prompt would fail the run at its end; say so before it starts.
