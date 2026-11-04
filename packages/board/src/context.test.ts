@@ -61,7 +61,7 @@ const state = (
 		hasLog: false,
 		shortcuts: [],
 		actor: null,
-		permission: null,
+		permissions: [],
 	},
 	undo: [],
 	prompt: BoardPrompt.CLOSED,

@@ -46,7 +46,7 @@ const copilot = (
 	hasLog: false,
 	shortcuts: [],
 	actor: null,
-	permission: null,
+	permissions: [],
 	...over,
 });
 

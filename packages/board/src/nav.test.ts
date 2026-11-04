@@ -50,7 +50,7 @@ const copilotState = (
 	hasLog: false,
 	shortcuts: [],
 	actor: null,
-	permission: null,
+	permissions: [],
 	...over,
 });
 
@@ -2615,7 +2615,7 @@ describe("a permission request the harness is blocked on", () => {
 		state({
 			sections: sections({ next: [row(task({ id: "a" }))] }),
 			selectedId: "a",
-			copilot: copilotState({ turn: "running", permission: request }),
+			copilot: copilotState({ turn: "running", permissions: [request] }),
 			...over,
 		});
 
@@ -2626,7 +2626,7 @@ describe("a permission request the harness is blocked on", () => {
 			id: "t0",
 			optionId: "reject",
 		});
-		expect(r.state.copilot.permission).toBeNull();
+		expect(r.state.copilot.permissions).toEqual([]);
 	});
 
 	it("esc declines", () => {
@@ -2636,7 +2636,7 @@ describe("a permission request the harness is blocked on", () => {
 			id: "t0",
 			optionId: null,
 		});
-		expect(r.state.copilot.permission).toBeNull();
+		expect(r.state.copilot.permissions).toEqual([]);
 	});
 
 	it("answers from the copilot pane and the transcript too — the question outranks the view", () => {
@@ -2659,7 +2659,7 @@ describe("a permission request the harness is blocked on", () => {
 	it("a digit past the last option answers nothing, and the key routes as it always does", () => {
 		const r = BoardNav.reduceKey(asked(), char("3"));
 		expect(r.effect.type).toBe("none");
-		expect(r.state.copilot.permission).toEqual(request);
+		expect(r.state.copilot.permissions).toEqual([request]);
 	});
 
 	it("leaves every other key alone: x on the transcript still cancels the waiting turn", () => {
@@ -2669,7 +2669,7 @@ describe("a permission request the harness is blocked on", () => {
 		);
 		expect(r.effect).toEqual({ type: "copilotCancel" });
 		// The board never answers on the human's behalf, cancelling included.
-		expect(r.state.copilot.permission).toEqual(request);
+		expect(r.state.copilot.permissions).toEqual([request]);
 	});
 
 	it("a digit stays a query character while a search is being typed", () => {
@@ -2692,16 +2692,57 @@ describe("a permission request the harness is blocked on", () => {
 		});
 		const digit = BoardNav.reduceKey(prompting, char("1"));
 		expect(digit.effect.type).not.toBe("copilotAnswer");
-		expect(digit.state.copilot.permission).toEqual(request);
+		expect(digit.state.copilot.permissions).toEqual([request]);
 		const esc = BoardNav.reduceKey(prompting, { name: "escape" });
 		expect(esc.effect.type).not.toBe("copilotAnswer");
-		expect(esc.state.copilot.permission).toEqual(request);
+		expect(esc.state.copilot.permissions).toEqual([request]);
 		expect(esc.state.prompt.open).toBeNull();
 	});
 
 	it("a turn that stops takes the unanswered question with it", () => {
 		const stopped = BoardNav.withCopilotTurn(asked(), "error");
-		expect(stopped.copilot.permission).toBeNull();
+		expect(stopped.copilot.permissions).toEqual([]);
+	});
+
+	// A harness running tools in parallel asks for each before hearing back on any.
+	describe("several at once", () => {
+		const second: CopilotPermission = {
+			...request,
+			id: "t1",
+			title: "web_search",
+		};
+		const both = () => BoardNav.withCopilotPermission(asked(), second);
+
+		it("queues behind the first instead of replacing it", () => {
+			expect(both().copilot.permissions).toEqual([request, second]);
+		});
+
+		it("answers them in the order asked, each leaving only itself", () => {
+			const first = BoardNav.reduceKey(both(), char("1"));
+			expect(first.effect).toEqual({
+				type: "copilotAnswer",
+				id: "t0",
+				optionId: "allow",
+			});
+			expect(first.state.copilot.permissions).toEqual([second]);
+			const next = BoardNav.reduceKey(first.state, { name: "escape" });
+			expect(next.effect).toEqual({
+				type: "copilotAnswer",
+				id: "t1",
+				optionId: null,
+			});
+			expect(next.state.copilot.permissions).toEqual([]);
+		});
+
+		it("does not queue the same request twice", () => {
+			const again = BoardNav.withCopilotPermission(both(), request);
+			expect(again.copilot.permissions).toEqual([request, second]);
+		});
+
+		it("a turn that stops takes every one of them with it", () => {
+			const stopped = BoardNav.withCopilotTurn(both(), "error");
+			expect(stopped.copilot.permissions).toEqual([]);
+		});
 	});
 });
 
