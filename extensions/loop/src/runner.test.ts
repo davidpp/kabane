@@ -113,6 +113,12 @@ describe("Runner resume", () => {
 		);
 		const ended = await resumeUntilWaiting("run-1");
 		expect(ended.exit?.reason).toBe("stop-requested");
+		// The resumed runner's identity replaces the dead one's: its pid and when it started.
+		const start = RunStore.processStart(process.pid);
+		expect([ended.pid, ended.pidStart]).toEqual([
+			process.pid,
+			start.ok ? start.value : "unreadable",
+		]);
 		const events = RunStore.readEvents(home, "run-1");
 		expect(events.ok && events.value.some((e) => e.type === "waiting")).toBe(
 			true,

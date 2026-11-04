@@ -1,10 +1,10 @@
 // A claim's life in the tracker: open a core session on the subtask, move it to in_progress,
 // log the session on it, dispatch; when the session ends with the subtask done, run the gates
 // while the claim still holds it; then close the core session, put a subtask the agent left in
-// progress and still owned back in the ready pool, record the gates, and take a progress mark
-// for the stall detector unless the tracker parked or handed off the work. A lens is a claim
-// on the parent that leaves its state alone and has no gates. A runner that died mid-claim leaves claims with no end; `recover`
-// closes them.
+// progress and still owned back in the ready pool, record the gates, end the claim, and take a
+// progress mark for the stall detector unless the tracker parked or handed off the work. A lens
+// is a claim on the parent that leaves its state alone and has no gates. A runner that died
+// mid-claim leaves claims with no end; `recover` closes them, finishing a done subtask's gates.
 import type { Harnesses } from "@cabane/acp";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
 import { Budget } from "./budget";
@@ -71,14 +71,33 @@ export namespace Claims {
 			Gates.signature(ctx.run.gateRuns.at(-1)),
 		);
 
-	/** Close the claims a runner that died left open. */
+	// A subtask's pass is recorded before its claim ends (`settle`), so an open claim on a done
+	// subtask is one whose runner died between the session closing it and that record: record the
+	// pass it already ran, or run the one it never finished.
+	const finishPass = async (ctx: Ctx, claim: RunStore.Claim): Promise<void> => {
+		const subject = {
+			taskId: claim.taskId,
+			label: claim.shortId,
+			lane: claim.lane,
+		};
+		const pass =
+			ctx.run.gateRuns.findLast(
+				(r) => r.taskId === claim.taskId && r.at >= claim.startedAt,
+			) ?? (await gatesAfter(ctx, subject));
+		if (pass)
+			await Checks.record(ctx, pass, { ...subject, assignee: claim.harness });
+	};
+
+	/** Close the claims a runner that died left open, finishing the pass a subtask's was owed. */
 	export const recover = async (ctx: Ctx): Promise<void> => {
 		const open = ctx.run.claims.filter((c) => c.endedAt === undefined);
 		for (const claim of open) {
 			const detail = "the runner exited while this session was open";
 			await closeSession(ctx, claim.sessionId, { outcome: "error", detail });
-			if (claim.lens === undefined)
+			if (claim.lens === undefined) {
+				await finishPass(ctx, claim);
 				await release(ctx, claim.taskId, claim.harness);
+			}
 			RunState.patchClaim(ctx, claim.sessionId, {
 				endedAt: ctx.now().toISOString(),
 				outcome: "interrupted",
@@ -275,13 +294,8 @@ export namespace Claims {
 		);
 		const settled = handle.done.then(async (outcome) => {
 			const gates =
-				work.kind === "implement"
-					? await gatesAfter(ctx, outcome, {
-							taskId: task.id,
-							label: label(task),
-							title: task.title,
-							lane,
-						})
+				work.kind === "implement" && outcome.outcome === "done"
+					? await gatesAfter(ctx, { taskId: task.id, label: label(task), lane })
 					: undefined;
 			ctx.settled.push({
 				taskId: task.id,
@@ -376,18 +390,16 @@ export namespace Claims {
 	// one the work stays uncommitted for as long as the agent never commits it itself.
 	const gatesAfter = async (
 		ctx: Ctx,
-		outcome: Dispatch.Outcome,
-		subject: Checks.Subject & { taskId: string },
+		subject: Omit<Checks.Subject, "title"> & { taskId: string },
 	) => {
 		if (
-			outcome.outcome !== "done" ||
 			!(Gates.configured(ctx.run.config.gates) || ctx.run.worktree) ||
 			ctx.stopping.signal.aborted
 		)
 			return undefined;
 		const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
 		if (!task.ok || task.value?.state !== "done") return undefined;
-		return Checks.gate(ctx, subject);
+		return Checks.gate(ctx, { ...subject, title: task.value.title });
 	};
 
 	/** Close the books on one ended session; true when the run has stalled. */
@@ -400,6 +412,15 @@ export namespace Claims {
 		const lens = claim?.lens !== undefined;
 		await closeSession(ctx, sessionId, outcome);
 		if (!lens && claim) await release(ctx, taskId, claim.harness);
+		// Recorded while the claim is still open: a runner that dies before the record leaves an
+		// open claim, and `recover` records the pass then.
+		if (gates)
+			await Checks.record(ctx, gates, {
+				taskId,
+				label: claim?.shortId ?? taskId,
+				assignee: claim?.harness,
+				...(claim ? { lane: claim.lane } : {}),
+			});
 		RunState.patchClaim(ctx, sessionId, {
 			endedAt: ctx.now().toISOString(),
 			outcome: outcome.outcome,
@@ -412,13 +433,6 @@ export namespace Claims {
 			session: sessionId,
 			summary: `${outcome.outcome}${outcome.detail ? `: ${outcome.detail}` : ""}`,
 		});
-		if (gates)
-			await Checks.record(ctx, gates, {
-				taskId,
-				label: ended?.shortId ?? taskId,
-				assignee: ended?.harness,
-				...(ended ? { lane: ended.lane } : {}),
-			});
 		// A lens runs once per run and files findings rather than closing work: its end is not a
 		// step the stall detector should count.
 		if (lens) return false;

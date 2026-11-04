@@ -15,6 +15,7 @@ import { Planner, type Task, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { Brief } from "./brief";
 import { Checks } from "./checks";
+import { Claims } from "./claims";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Gates } from "./gates";
@@ -474,5 +475,112 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		expect(
 			GitFixture.run(worktree, ["show", "--name-only", "--format=%b", "HEAD"]),
 		).toContain("No gates configured.");
+	});
+});
+
+describe("Claims.recover after a runner died during a subtask's pass", () => {
+	const red = (taskId: string, at: string): Gates.Run => ({
+		at,
+		taskId,
+		results: [
+			{
+				name: "test",
+				command: "exit 1",
+				ok: false,
+				exit: 1,
+				ms: 5,
+				tail: "1 failed",
+			},
+		],
+		ok: false,
+		tree: "tree",
+	});
+
+	// What a runner killed after the session closed its subtask leaves: the claim still open on a
+	// done subtask, the work in the run's directory, and the passes it had saved.
+	const recoverOrphan = async (
+		gates: Record<string, string>,
+		worktree: boolean,
+		saved: (taskId: string, startedAt: string) => Gates.Run[] = () => [],
+	) => {
+		const parent = await add("parent");
+		const child = await add("child", {
+			parentTaskId: parent.id,
+			state: "done",
+			assignee: "claude",
+		});
+		const session = await Planner.startSession(home, {
+			taskId: child.id,
+			agent: "claude",
+			externalRef: RunStore.sessionRef("run-1"),
+		});
+		if (!session.ok) throw session.error;
+		const startedAt = new Date().toISOString();
+		const run = await runOn(parent, gates, worktree);
+		writeFileSync(join(RunStore.sessionDir(run), "feature.txt"), "made\n");
+		const ctx = ctxFor({
+			...run,
+			status: "running",
+			claims: [
+				{
+					taskId: child.id,
+					shortId: child.shortId ?? child.id,
+					harness: "claude",
+					lane: child.shortId ?? child.id,
+					sessionId: session.value.id,
+					startedAt,
+					continuations: 0,
+				},
+			],
+			gateRuns: saved(child.id, startedAt),
+		});
+		await Claims.recover(ctx);
+		const after = await Planner.getTask(home, child.id);
+		return { ctx, child, state: after.ok ? after.value?.state : undefined };
+	};
+
+	it("runs the gates it never finished, and a red one reopens the subtask", async () => {
+		const { ctx, child, state } = await recoverOrphan(
+			{ test: "exit 1" },
+			false,
+		);
+		expect(ctx.run.gateRuns.map((r) => [r.taskId, r.ok])).toEqual([
+			[child.id, false],
+		]);
+		expect(state).toBe("next");
+		expect(await refsOf(child.id)).toContain("gate:test");
+		expect(ctx.run.claims[0]?.outcome).toBe("interrupted");
+	});
+
+	it("records a pass it ran but never recorded, without running it again", async () => {
+		const { ctx, child, state } = await recoverOrphan(
+			{ test: "touch ran-again; exit 1" },
+			false,
+			(taskId, startedAt) => [red(taskId, startedAt)],
+		);
+		expect(ctx.run.gateRuns).toHaveLength(1);
+		expect(existsSync(join(repo, "ran-again"))).toBe(false);
+		expect(state).toBe("next");
+		expect(await refsOf(child.id)).toContain("gate:test");
+	});
+
+	it("leaves an earlier claim's pass alone and runs this one's", async () => {
+		const { ctx, state } = await recoverOrphan(
+			{ test: "true" },
+			false,
+			(taskId) => [red(taskId, "2026-01-01T00:00:00.000Z")],
+		);
+		expect(ctx.run.gateRuns.map((r) => r.ok)).toEqual([false, true]);
+		expect(state).toBe("done");
+	});
+
+	it("commits the subtask's checkpoint in a worktree run without gates", async () => {
+		const { ctx, child, state } = await recoverOrphan({}, true);
+		const worktree = ctx.run.worktree ?? "";
+		expect(RunStore.checkpoints(ctx.run)).toEqual([head(worktree)]);
+		expect(ctx.run.gateRuns.map((r) => r.taskId)).toEqual([child.id]);
+		expect(GitFixture.run(worktree, ["status", "--porcelain"])).toBe("");
+		expect(state).toBe("done");
+		expect(await refsOf(child.id)).toContain(`commit:${head(worktree)}`);
 	});
 });

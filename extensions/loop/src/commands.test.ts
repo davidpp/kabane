@@ -308,7 +308,7 @@ describe("Loop.restart", () => {
 			const released = await Planner.getTask(home, child.id);
 			expect(released.ok && released.value?.state).toBe("next");
 		} finally {
-			if (pid !== undefined && RunStore.pidAlive(pid)) process.kill(pid);
+			if (pid !== undefined && RunStore.runnerAlive(pid)) process.kill(pid);
 		}
 	}, 30_000);
 
@@ -456,5 +456,38 @@ describe("Loop.answer", () => {
 		expect(
 			activities.ok && activities.value.some((a) => a.type === "decision"),
 		).toBe(false);
+	});
+});
+
+describe("Loop.stop", () => {
+	it("returns a run whose pid now belongs to another process as over, without waiting", async () => {
+		// This process stands in for a later one handed the dead runner's pid.
+		RunStore.create(home, {
+			version: 1,
+			id: "recycled-run",
+			parentId: "01PARENT",
+			parentShortId: "KAB-1",
+			projectDir: repo,
+			config: {
+				implementer: "claude",
+				budget: { concurrency: 1, continuations: 0, currency: "USD" },
+				stallAfter: 1,
+				gates: {},
+				worktree: false,
+				lenses: [],
+			},
+			status: "running",
+			pid: process.pid,
+			pidStart: "the dead runner's start",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: { paused: false, skipped: [], next: [] },
+			gateRuns: [],
+		});
+		const stopped = await Loop.stop({ home, waitMs: 60_000 }, "recycled-run");
+		expect(stopped.ok && stopped.value.exit?.reason).toBe("runner-died");
 	});
 });

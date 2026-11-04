@@ -101,6 +101,28 @@ describe("RunStore liveness", () => {
 		expect(RunStore.effective(draft()).status).toBe("pending");
 	});
 
+	it("reads a run whose pid now belongs to another process as failed", () => {
+		const start = RunStore.processStart(process.pid);
+		if (!start.ok || start.value === undefined)
+			throw new Error("this process has no start time");
+		// This process stands in for a later one handed the dead runner's pid.
+		const recycled = draft({
+			status: "running",
+			pid: process.pid,
+			pidStart: `${start.value} (an earlier process)`,
+		});
+		expect(RunStore.effective(recycled).exit?.reason).toBe("runner-died");
+		const same = { ...recycled, pidStart: start.value };
+		expect(RunStore.effective(same).status).toBe("running");
+	});
+
+	it("knows no start time for a pid that is gone", () => {
+		expect(RunStore.processStart(deadPid())).toEqual({
+			ok: true,
+			value: undefined,
+		});
+	});
+
 	it("never rewrites a finished run, whatever its pid", () => {
 		const done = draft({ status: "completed", pid: deadPid() });
 		expect(RunStore.effective(done)).toEqual(done);

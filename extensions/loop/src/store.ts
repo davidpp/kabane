@@ -94,6 +94,11 @@ export namespace RunStore {
 			.optional(),
 		/** The runner process; written by the runner itself when it boots. */
 		pid: z.number().int().positive().optional(),
+		/**
+		 * When the runner process started (`processStart`), written beside its pid: a pid alone may
+		 * name a later process after the runner died. Absent in a run.json written before it existed.
+		 */
+		pidStart: z.string().optional(),
 		createdAt: z.string(),
 		startedAt: z.string().optional(),
 		endedAt: z.string().optional(),
@@ -245,22 +250,76 @@ export namespace RunStore {
 	};
 
 	/** Whether a process with this pid exists. EPERM means it does, owned by someone else. */
-	export const pidAlive = (pid: number): boolean => {
+	const pidAlive = (pid: number): boolean => {
 		const probed = trySync(() => process.kill(pid, 0));
 		if (probed.ok) return true;
 		return "code" in probed.error && probed.error.code === "EPERM";
 	};
 
+	const LINUX_STARTTIME = 19; // field 22 of /proc/<pid>/stat, counted after the `(comm)` field
+
+	// Linux: clock ticks after boot, which no wall-clock step moves, qualified by the boot.
+	const procStart = (pid: number): Result<string | undefined> => {
+		if (!existsSync(`/proc/${pid}`)) return ok(undefined);
+		const read = trySync(() => ({
+			boot: readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim(),
+			stat: readFileSync(`/proc/${pid}/stat`, "utf8"),
+		}));
+		if (!read.ok) return read;
+		const ticks = read.value.stat
+			.slice(read.value.stat.lastIndexOf(")") + 2)
+			.split(" ")[LINUX_STARTTIME];
+		return ticks
+			? ok(`${read.value.boot}:${ticks}`)
+			: err(new Error(`/proc/${pid}/stat has no start time`));
+	};
+
+	// Elsewhere: `ps`, pinned to one locale and zone so every reader prints the same text.
+	const psStart = (pid: number): Result<string | undefined> => {
+		const ps = trySync(() =>
+			Bun.spawnSync(["ps", "-o", "lstart=", "-p", String(pid)], {
+				env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+				stderr: "ignore",
+			}),
+		);
+		if (!ps.ok) return ps;
+		const start = ps.value.stdout.toString().trim();
+		if (start !== "") return ok(start);
+		// `ps` exits 1 for a pid it does not list; anything else is `ps` failing.
+		return ps.value.exitCode === 1
+			? ok(undefined)
+			: err(new Error(`ps exited ${ps.value.exitCode} for pid ${pid}`));
+	};
+
 	/**
-	 * What the run is, as opposed to what it last said: a live status whose runner pid is
-	 * gone is `failed`. A pending run with no pid yet is left pending; its runner may still
-	 * be booting.
+	 * When process `pid` started, as an opaque marker that only compares for equality: undefined
+	 * when no such process exists, an error when it cannot be told.
+	 */
+	export const processStart = (pid: number): Result<string | undefined> =>
+		process.platform === "linux" ? procStart(pid) : psStart(pid);
+
+	/**
+	 * Whether the runner that recorded `pid` and `start` is still that process. A start that
+	 * cannot be read, or was never recorded, leaves the pid alone to answer: never calling a
+	 * live runner dead matters more, since a run read as dead may be resumed by a second runner.
+	 */
+	export const runnerAlive = (pid: number, start?: string): boolean => {
+		if (!pidAlive(pid)) return false;
+		if (start === undefined) return true;
+		const now = processStart(pid);
+		return !now.ok || now.value === start;
+	};
+
+	/**
+	 * What the run is, as opposed to what it last said: a live status whose runner is gone, its
+	 * pid exited or now another process's, is `failed`. A pending run with no pid yet is left
+	 * pending; its runner may still be booting.
 	 */
 	export const effective = (
 		run: Run,
-		alive: (pid: number) => boolean = pidAlive,
+		alive: (pid: number, start?: string) => boolean = runnerAlive,
 	): Run =>
-		isLive(run.status) && run.pid !== undefined && !alive(run.pid)
+		isLive(run.status) && run.pid !== undefined && !alive(run.pid, run.pidStart)
 			? {
 					...run,
 					status: "failed",
@@ -274,7 +333,7 @@ export namespace RunStore {
 	export const read = (
 		home: string,
 		runId: string,
-		alive: (pid: number) => boolean = pidAlive,
+		alive: (pid: number, start?: string) => boolean = runnerAlive,
 	): Result<Run> => {
 		const raw = readRaw(home, runId);
 		return raw.ok ? ok(effective(raw.value, alive)) : raw;
@@ -289,7 +348,7 @@ export namespace RunStore {
 		home: string,
 		runId: string,
 		now: Date,
-		alive: (pid: number) => boolean = pidAlive,
+		alive: (pid: number, start?: string) => boolean = runnerAlive,
 	): Result<Run> => {
 		const raw = readRaw(home, runId);
 		if (!raw.ok) return raw;
