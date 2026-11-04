@@ -496,7 +496,7 @@ const sourceOf = (
 	events: async (_id, afterSeq) => ok(events.filter((e) => e.seq > afterSeq)),
 });
 
-const mountCalls = async (width: number, height = 24) => {
+const mountCalls = async (width: number, height = 24, toolDetails = false) => {
 	const setup = await renderTest(
 		<EventView
 			cardId="run-1"
@@ -504,6 +504,7 @@ const mountCalls = async (width: number, height = 24) => {
 			source={sourceOf(loopCard, calls)}
 			resolveShortId={() => undefined}
 			scrollRef={createRef<ScrollBoxRenderable>()}
+			toolDetails={toolDetails}
 		/>,
 		{ width, height },
 	);
@@ -582,6 +583,25 @@ describe("tool calls in the transcript", () => {
 			await mockMouse.click(4, rowOf(opened, "python3 - <<'EOF'…"));
 			const closed = await until((f) => !f.includes("trace 30"));
 			expect(closed).toContain("✗ `python3");
+		} finally {
+			destroy();
+		}
+	});
+
+	it("opens every tool row, a group's calls too, while toolDetails holds, and a click still closes one", async () => {
+		const { mockMouse, renderOnce, captureCharFrame, destroy } =
+			await mountCalls(60, 80, true);
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		try {
+			const opened = await until(
+				(f) => f.includes("trace 30") && f.includes("src/pane.tsx:3: wrap"),
+			);
+			expect(opened).toContain("▾ explored · 1 read, 1 search");
+			expect(opened).toContain("export const Pane = () => null;");
+			await mockMouse.click(4, rowOf(opened, "python3 - <<'EOF'…"));
+			const closed = await until((f) => !f.includes("trace 30"));
+			expect(closed).toContain("src/pane.tsx:3: wrap");
 		} finally {
 			destroy();
 		}

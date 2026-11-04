@@ -2364,6 +2364,20 @@ describe("copilot prompt (`A` / `:`)", () => {
 		]);
 	});
 
+	it("t on an event view opens every tool row, and t again closes them", () => {
+		const events = state({
+			view: { type: "events", cardId: "copilot", fromView: "board" },
+		});
+		const opened = reduce(events, char("t"));
+		expect(opened.state.view).toMatchObject({ toolDetails: true });
+		expect(opened.effect.type).toBe("none");
+		expect(reduce(opened.state, char("t")).state.view).toMatchObject({
+			toolDetails: false,
+		});
+		// Nothing to open on the board itself.
+		expect(reduce(state(), char("t")).state.view).toEqual({ type: "board" });
+	});
+
 	it("with no palette open the arrows still belong to history", () => {
 		const sent = BoardNav.submitCopilot(open().state, "first");
 		const focused = reduce(

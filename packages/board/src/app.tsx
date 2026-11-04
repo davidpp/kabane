@@ -1111,6 +1111,7 @@ export const App = ({
 				onCard={takeCard}
 				header={tabs.active === cardId ? cardHeader : undefined}
 				expanded={CardTab.view(tabs, cardId).expanded}
+				toolDetails={state.view.toolDetails ?? false}
 				// On a card's own tab, the question its sessions wait on, answered in place.
 				banner={
 					<CardTabQuestion

@@ -64,7 +64,10 @@ joined with ` · ` after the label. The board renders:
 
 `card` and `events` are optional. When a card has `hasEvents: true` and the source implements
 `events`, `o` in the detail view opens the event log, polled every second until the card leaves
-the in-flight states.
+the in-flight states. An event with a `callId` is a tool call's: a call and its end are one row,
+closed until clicked, that opens on its `detail` (input, output, diffs). `t` in the event log, a
+card's tab included, opens every tool row at once, the ones still to come too, and `t` again
+closes them all; a click still opens or closes one row against it.
 
 #### Tabs and the questions waiting on you
 

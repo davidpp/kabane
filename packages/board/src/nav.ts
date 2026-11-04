@@ -68,6 +68,9 @@ export namespace BoardNav {
 				fromView: "board" | "detail";
 				fromTaskId?: string;
 				fromTab?: DetailModel.Tab;
+				// `t`: every tool row open, the ones still to come too; absent, every row closed. A
+				// click still opens or closes one row against it.
+				toolDetails?: boolean;
 		  };
 
 	/** The tab a detail view is on. */
@@ -1480,7 +1483,7 @@ export namespace BoardNav {
 		};
 	};
 
-	// Event view: j/k scroll, esc/q pop back to the previous view.
+	// Event view: j/k scroll, `t` opens or closes every tool row, esc/q pop back to the previous view.
 	const reduceEventsKey = (
 		state: BoardState,
 		key: KeyInput,
@@ -1505,6 +1508,14 @@ export namespace BoardNav {
 			case "k":
 			case "up":
 				return { state, effect: { type: "scroll", delta: -2 } };
+			case "t":
+				return {
+					state: {
+						...state,
+						view: { ...state.view, toolDetails: !state.view.toolDetails },
+					},
+					effect: NONE,
+				};
 			case "x":
 				// On the copilot's transcript, `x` stops the turn (host cards are read-only here).
 				return state.view.cardId === CopilotLog.CARD_ID &&
