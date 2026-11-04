@@ -13,6 +13,7 @@ import {
 	ndJsonStream,
 	PROTOCOL_VERSION,
 	type RequestPermissionRequest,
+	type SessionModeState,
 	type SessionUpdate,
 	type Stream,
 } from "@agentclientprotocol/sdk";
@@ -52,6 +53,8 @@ export namespace AcpClient {
 				size: number;
 				cost?: { amount: number; currency: string };
 		  }
+		// The harness moved the session to another of its modes (`current_mode_update`).
+		| { type: "mode"; id: string }
 		| { type: "stop"; reason: string }
 		| { type: "error"; message: string };
 
@@ -94,6 +97,14 @@ export namespace AcpClient {
 		id: string;
 		turn: TurnState;
 		active: ActiveSession;
+		mode: SessionMode;
+	};
+
+	export type SessionMode = {
+		/** The mode the session runs in, by the harness's id; absent when it advertises none. */
+		current?: string;
+		/** What was selected, or why nothing was, as one line for the session's log. */
+		note: string;
 	};
 
 	// `dispatched` is whether the agent has seen the current turn: cancelling before that
@@ -121,6 +132,8 @@ export namespace AcpClient {
 		// Applied only where the harness reads it (Claude); callers send the portable copy
 		// as the first prompt themselves.
 		systemPromptAppend?: string;
+		// The harness's own auto mode when absent.
+		mode?: Harnesses.Mode;
 	};
 
 	const DEFAULT_HANDSHAKE_MS = 30_000;
@@ -318,12 +331,80 @@ export namespace AcpClient {
 				.start(),
 		);
 		if (!started.ok) return err(withStderr(started.error, connection));
+		const active = started.value;
 		return ok({
 			connection,
-			id: started.value.sessionId,
-			active: started.value,
+			id: active.sessionId,
+			active,
 			turn: { active: false, dispatched: false, cancelled: false },
+			mode: await selectMode(
+				connection,
+				active,
+				planMode(connection.harness, options.mode ?? "auto", active.modes),
+			),
 		});
+	};
+
+	type ModePlan = { switchTo: string; from: string } | SessionMode;
+
+	/**
+	 * What to do with the modes a session opened in. Only the harness's own auto mode is ever
+	 * selected, and only from its manual mode: any other starting mode is one the user's harness
+	 * settings chose, and kabane does not override it. A harness with no auto mode stays put.
+	 */
+	export const planMode = (
+		harness: Harnesses.Id,
+		wanted: Harnesses.Mode,
+		state: SessionModeState | null | undefined,
+	): ModePlan => {
+		if (!state) return { note: `${harness} advertises no session modes` };
+		const current = state.currentModeId;
+		if (wanted === "default")
+			return { current, note: `${current}: auto mode is off` };
+		const ids = Harnesses.modes(harness);
+		if (!ids)
+			return {
+				current,
+				note: `${current}: kabane knows no auto mode for ${harness}`,
+			};
+		if (current === ids.auto)
+			return { current, note: `${current}, ${harness}'s auto mode` };
+		if (current !== ids.manual)
+			return {
+				current,
+				note: `${current}, from your ${harness} settings, kept over auto`,
+			};
+		if (!state.availableModes.some((mode) => mode.id === ids.auto))
+			return {
+				current,
+				note: `${current}: ${harness} does not advertise its auto mode (${ids.auto})`,
+			};
+		return { switchTo: ids.auto, from: current };
+	};
+
+	// A refused switch leaves the session where it opened rather than failing it: the harness
+	// still asks for whatever it would, and every request still reaches the human.
+	const selectMode = async (
+		connection: Connection,
+		active: ActiveSession,
+		plan: ModePlan,
+	): Promise<SessionMode> => {
+		if (!("switchTo" in plan)) return plan;
+		const set = await tryCatch(() =>
+			connection.agent.request(methods.agent.session.setMode, {
+				sessionId: active.sessionId,
+				modeId: plan.switchTo,
+			}),
+		);
+		return set.ok
+			? {
+					current: plan.switchTo,
+					note: `${plan.switchTo}, ${connection.harness}'s auto mode (was ${plan.from})`,
+				}
+			: {
+					current: plan.from,
+					note: `${plan.from}: switching to ${plan.switchTo} failed: ${toError(set.error).message}`,
+				};
 	};
 
 	// Lazy: nothing is sent until the caller starts iterating, which is what makes
@@ -357,6 +438,14 @@ export namespace AcpClient {
 					return;
 				}
 				const update = toUpdate(next.value.update);
+				if (update?.type === "mode") {
+					// The switch `newSession` made is echoed back; only a move of the harness's own is news.
+					if (update.id === session.mode.current) continue;
+					session.mode = {
+						current: update.id,
+						note: `${update.id}, moved there by ${session.connection.harness}`,
+					};
+				}
 				if (update) yield update;
 			}
 		} finally {
@@ -447,6 +536,8 @@ export namespace AcpClient {
 						status: e.status,
 					})),
 				};
+			case "current_mode_update":
+				return { type: "mode", id: update.currentModeId };
 			case "usage_update":
 				return {
 					type: "usage",

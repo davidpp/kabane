@@ -473,3 +473,168 @@ describe("AcpClient.toUpdate", () => {
 		).toEqual({ type: "usage", used: 10, size: 100 });
 	});
 });
+
+// Claude's mode list as claude-agent-acp 0.76.0 advertises it on session/new.
+const CLAUDE_MODES = [
+	"default",
+	"acceptEdits",
+	"plan",
+	"auto",
+	"bypassPermissions",
+];
+
+// An agent with session modes: opens in `current`, records every session/set_mode, and during a
+// prompt echoes the mode it was switched to, then moves itself to `plan`.
+const modedAgent = (
+	current: string,
+	seen: { setMode: string[] },
+	options: { refuse?: boolean; ids?: string[] } = {},
+): AgentApp => {
+	let mode = current;
+	return agentApp({ name: "moded" })
+		.onRequest(methods.agent.initialize, () => ({
+			protocolVersion: PROTOCOL_VERSION,
+			agentCapabilities: { loadSession: false },
+		}))
+		.onRequest(methods.agent.session.new, () => ({
+			sessionId: "s-1",
+			modes: {
+				currentModeId: current,
+				availableModes: (options.ids ?? CLAUDE_MODES).map((id) => ({
+					id,
+					name: id,
+				})),
+			},
+		}))
+		.onRequest(methods.agent.session.setMode, (c) => {
+			seen.setMode.push(c.params.modeId);
+			if (options.refuse) throw new Error("not allowed on this plan");
+			mode = c.params.modeId;
+			return {};
+		})
+		.onRequest(methods.agent.session.prompt, async (c) => {
+			for (const currentModeId of [mode, "plan"])
+				await c.client.notify(methods.client.session.update, {
+					sessionId: c.params.sessionId,
+					update: { sessionUpdate: "current_mode_update", currentModeId },
+				});
+			return { stopReason: "end_turn" };
+		});
+};
+
+const openModed = async (
+	agent: AgentApp,
+	harness: "claude" | "codex" | "gemini",
+	mode?: "auto" | "default",
+) => {
+	const conn = await AcpClient.connect(harness, agent, { onPermission: allow });
+	if (!conn.ok) throw conn.error;
+	const session = await AcpClient.newSession(conn.value, {
+		cwd: "/tmp/scope",
+		mcpServers: [],
+		...(mode ? { mode } : {}),
+	});
+	if (!session.ok) throw session.error;
+	return { conn: conn.value, session: session.value };
+};
+
+describe("AcpClient session modes", () => {
+	it("switches a session that opened in the manual mode to the harness's auto mode by default", async () => {
+		const seen = { setMode: [] as string[] };
+		const { conn, session } = await openModed(
+			modedAgent("default", seen),
+			"claude",
+		);
+		expect(seen.setMode).toEqual(["auto"]);
+		expect(session.mode).toEqual({
+			current: "auto",
+			note: "auto, claude's auto mode (was default)",
+		});
+		// The echo of that switch is not news; the harness's own move to plan is.
+		const updates = await collect(
+			AcpClient.prompt(session, [{ type: "text", text: "go" }]),
+		);
+		expect(updates).toEqual([
+			{ type: "mode", id: "plan" },
+			{ type: "stop", reason: "end_turn" },
+		]);
+		expect(session.mode.current).toBe("plan");
+		AcpClient.close(conn);
+	});
+
+	it("selects nothing when the mode is default", async () => {
+		const seen = { setMode: [] as string[] };
+		const { conn, session } = await openModed(
+			modedAgent("default", seen),
+			"claude",
+			"default",
+		);
+		expect(seen.setMode).toEqual([]);
+		expect(session.mode).toEqual({
+			current: "default",
+			note: "default: auto mode is off",
+		});
+		AcpClient.close(conn);
+	});
+
+	it("keeps a refused switch on the mode the session opened in, without failing it", async () => {
+		const seen = { setMode: [] as string[] };
+		const { conn, session } = await openModed(
+			modedAgent("read-only", seen, {
+				refuse: true,
+				ids: ["read-only", "agent", "agent-full-access"],
+			}),
+			"codex",
+		);
+		expect(seen.setMode).toEqual(["agent"]);
+		expect(session.mode.current).toBe("read-only");
+		expect(session.mode.note).toStartWith(
+			"read-only: switching to agent failed: ",
+		);
+		AcpClient.close(conn);
+	});
+});
+
+describe("AcpClient.planMode", () => {
+	const state = (currentModeId: string, ids = CLAUDE_MODES) => ({
+		currentModeId,
+		availableModes: ids.map((id) => ({ id, name: id })),
+	});
+
+	it("leaves a mode the user's own settings chose", () => {
+		expect(
+			AcpClient.planMode("claude", "auto", state("bypassPermissions")),
+		).toEqual({
+			current: "bypassPermissions",
+			note: "bypassPermissions, from your claude settings, kept over auto",
+		});
+	});
+
+	it("does nothing for a session already in auto mode", () => {
+		expect(
+			AcpClient.planMode(
+				"codex",
+				"auto",
+				state("agent", ["read-only", "agent", "agent-full-access"]),
+			),
+		).toEqual({ current: "agent", note: "agent, codex's auto mode" });
+	});
+
+	it("says so when the harness has no known auto mode, does not advertise it, or has no modes", () => {
+		expect(
+			AcpClient.planMode("gemini", "auto", state("default", ["default"])),
+		).toEqual({
+			current: "default",
+			note: "default: kabane knows no auto mode for gemini",
+		});
+		expect(
+			AcpClient.planMode("claude", "auto", state("default", ["default"])),
+		).toEqual({
+			current: "default",
+			note: "default: claude does not advertise its auto mode (auto)",
+		});
+		expect(AcpClient.planMode("claude", "auto", undefined)).toEqual({
+			note: "claude advertises no session modes",
+		});
+	});
+});

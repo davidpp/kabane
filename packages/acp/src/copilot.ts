@@ -211,8 +211,9 @@ export namespace BoardCopilot {
 				// the transcript.
 				case "plan":
 					return [plan(incoming.entries)];
-				// The board's copilot shows no meter.
+				// The board's copilot shows no meter, and no mode yet.
 				case "usage":
+				case "mode":
 					return [];
 				case "stop":
 					return [update("done", incoming.reason)];

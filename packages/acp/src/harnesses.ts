@@ -26,7 +26,13 @@ export namespace Harnesses {
 		// Only Claude has the pair: the other two adapters' variables are not documented here,
 		// and guessing one would pin a model silently wrong.
 		model?: { env: string; pinned: string };
+		// The ACP session modes the adapter advertises on `session/new`: the one that asks
+		// before every change (`manual`) and the harness's own auto mode, where the harness
+		// decides which tool calls need a human. Ids as each pinned adapter sends them.
+		modes?: Modes;
 	};
+
+	export type Modes = { manual: string; auto: string };
 
 	const REGISTRY: Record<Id, Entry> = {
 		claude: {
@@ -36,13 +42,28 @@ export namespace Harnesses {
 			// aliases as well as full ids. The alias is the point: it tracks whatever Sonnet is
 			// current instead of pinning a version that ages out of the list.
 			model: { env: "ANTHROPIC_MODEL", pinned: "sonnet" },
+			// `auto` is "Claude handles permission decisions"; `bypassPermissions` is another mode.
+			modes: { manual: "default", auto: "auto" },
 		},
 		codex: {
 			command: "npx",
 			args: ["-y", "@agentclientprotocol/codex-acp@1.11.0"],
+			// `agent` is "Approve for me": it asks only for actions it detects as unsafe.
+			modes: { manual: "read-only", auto: "agent" },
 		},
+		// No auto mode is named for Gemini, so its sessions stay on whatever it starts in.
 		gemini: { command: "gemini", args: ["--acp"] },
 	};
+
+	/**
+	 * The mode a session is asked to start in. `auto` is the harness's own auto mode, selected
+	 * when the session opens in its manual one; `default` selects nothing, so the session runs in
+	 * whatever mode the harness and the user's settings start it in.
+	 */
+	export const MODES = ["auto", "default"] as const;
+	export type Mode = (typeof MODES)[number];
+
+	export const modes = (id: Id): Modes | undefined => REGISTRY[id].modes;
 
 	// Lets the user's harness hooks tell a board session from an interactive one.
 	export const SESSION_ENV = { KABANE_SESSION: "1" };

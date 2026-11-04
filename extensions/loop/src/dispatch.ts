@@ -184,6 +184,9 @@ export namespace Dispatch {
 					update.entries.map((e) => `[${e.status}] ${e.content}`).join("; "),
 				);
 				return undefined;
+			case "mode":
+				sink.emit("mode", update.id);
+				return undefined;
 			case "usage":
 				sink.usage({
 					used: update.used,

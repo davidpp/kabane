@@ -26,10 +26,10 @@ imports the SDK.
   adapter that reads `_meta.systemPrompt` on `session/new`. All of that is the
   copilot's profile, `COPILOT`, and the default: `resolve`'s third argument is a
   `Profile` (`pinModel`, `env`) for another launcher, such as the loop, which runs the
-  user's own default model under its own env marker. A profile has no permission mode,
-  allow list or settings file: what a harness asks before running a tool is the user's
-  own settings, and `onPermission` hands every request to the caller, which never answers
-  one for the human. `installedCli(id)` is the env
+  user's own default model under its own env marker. A profile has no allow list or
+  settings file, and `onPermission` hands every request to the caller, which never answers
+  one for the human. `modes(id)` names the adapter's manual and auto session modes (see
+  Session modes). `installedCli(id)` is the env
   that points an adapter at the CLI on PATH instead of the copy it bundles
   (`CLAUDE_CODE_EXECUTABLE` for claude-agent-acp, `CODEX_PATH` for codex-acp), nothing
   when the user's environment already sets that variable or the harness has no adapter
@@ -40,7 +40,8 @@ imports the SDK.
   the log lines harnesses interleave with JSON-RPC on stdout.
 - `AcpClient` — `spawn(harness, cwd, { onPermission })` starts the process and runs
   `initialize` (30 s cap, stderr attached on failure); `newSession(conn, { cwd, mcpServers,
-  systemPromptAppend? })` opens a session with stdio MCP servers; `prompt(session, blocks)` is a
+  systemPromptAppend?, mode? })` opens a session with stdio MCP servers in the mode
+  `session.mode` reports; `prompt(session, blocks)` is a
   lazy `AsyncIterable<Update>`; `cancel(session)`; `close(conn)` kills the process.
   `steer(session, blocks)` puts text into the turn the session is running through the
   `_session/steering` extension method, for a harness whose `initialize` advertised
@@ -119,8 +120,28 @@ arrives on its own JSON-RPC call and the agent is blocked on the answer, so no f
 update can come until it has one. `run` drains the mailbox and the stream together, taking
 whichever settles first.
 
-In practice the harness runs under the human's own permission mode, so a permissive one
-(`--permission-mode auto`) never asks at all.
+## Session modes
+
+A session starts in the harness's own auto mode, where the harness decides which tool calls
+need a human, instead of asking before every read and edit. It is selected through ACP:
+`newSession` reads `modes` off `session/new` and sends `session/set_mode` with the adapter's
+auto id. The ids, as the pinned adapters advertise them:
+
+| Harness | Manual | Auto | Others |
+| --- | --- | --- | --- |
+| claude-agent-acp 0.76.0 | `default` | `auto` ("Claude handles permission decisions") | `acceptEdits`, `plan`, `bypassPermissions` |
+| codex-acp 1.11.0 | `read-only` | `agent` ("Approve for me") | `agent-full-access` |
+| gemini | not named | not named | |
+
+The switch happens only from the manual mode: a session that opens in any other mode got it
+from the user's own harness settings, and keeps it. Gemini has no auto id here, so it stays
+on whatever it starts in. A harness that does not advertise the id, or refuses the switch,
+stays where it opened; none of these fails the session, and `session.mode.note` says which
+happened. `mode: "default"` selects nothing. A mode is the harness's own policy, not
+kabane's: whatever it still asks reaches `onPermission` as before.
+
+A `current_mode_update` the harness sends later is a `mode` update, except the echo of the
+switch `newSession` made.
 
 ## Updates
 
@@ -131,6 +152,7 @@ type Update =
   | { type: "tool_call"; id; title; kind?; status? }
   | { type: "tool_call_update"; id; title?; status? }
   | { type: "plan"; entries: { content; status }[] }
+  | { type: "mode"; id: string }
   | { type: "stop"; reason: string }
   | { type: "error"; message: string };
 ```
@@ -139,8 +161,8 @@ Every turn ends with exactly one `stop` or one `error`.
 
 ## Rules
 
-- Harness defaults are inherited whole: no `fs` or `terminal` capability is advertised, no
-  permission policy is applied. A `session/request_permission` goes to the caller's
+- Harness defaults are inherited whole, apart from the move from manual to the harness's own
+  auto mode: no `fs` or `terminal` capability is advertised, no permission policy is applied. A `session/request_permission` goes to the caller's
   `onPermission`; a failed callback answers `cancelled`. Nothing is ever auto-answered — kabane
   has no permission policy of its own and does not want one.
 - Cancel before the agent has seen the turn (the iterator was not started yet) never sends
@@ -150,6 +172,7 @@ Every turn ends with exactly one `stop` or one `error`.
 ## Verify
 
 ```bash
-bun test packages/acp                       # in-process agent, no npx
+bun test packages/acp                       # in-process agent; client.harness.test.ts opens a
+                                            # real session (no prompt) per installed CLI
 bun run packages/acp/scripts/smoke.ts claude  # real adapter; needs a logged-in claude
 ```
