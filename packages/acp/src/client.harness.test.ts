@@ -1,5 +1,6 @@
-// The session modes against the real pinned adapters, over the user's installed CLI: initialize
-// and session/new only, so nothing is prompted and nothing is spent. A harness whose CLI is not
+// The session modes against the real pinned adapters, over the user's installed CLI: initialize,
+// session/new and the mode switch only, so nothing is prompted and nothing is spent. Both pinned
+// adapters send a mode config option, so both must take that path rather than session/set_mode. A harness whose CLI is not
 // on PATH is skipped, with the reason in the test's name.
 import { describe, expect, it } from "bun:test";
 import { err } from "@cabane/core";
@@ -14,7 +15,7 @@ describe("AcpClient session modes on the real adapters", () => {
 		const cli = Harnesses.installedCli(harness);
 		const ids = Harnesses.modes(harness);
 		const name = cli.ok
-			? `${harness} opens in its auto mode (${ids?.auto})`
+			? `${harness} opens in its auto mode (${ids?.auto}) through its mode config option`
 			: `${harness} opens in its auto mode (skipped: ${cli.error.message})`;
 		it.skipIf(!cli.ok)(
 			name,
@@ -42,6 +43,8 @@ describe("AcpClient session modes on the real adapters", () => {
 							? ids?.auto
 							: opened?.currentModeId;
 					expect(session.value.mode.current).toBe(expected);
+					expect(session.value.mode.via).toBe("config_option");
+					console.info(`${harness}: ${session.value.mode.note}`);
 				} finally {
 					AcpClient.close(conn.value);
 					await conn.value.closed;

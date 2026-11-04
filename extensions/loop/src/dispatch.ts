@@ -363,7 +363,9 @@ export namespace Dispatch {
 		sink.emit(
 			"mode",
 			mode.note,
-			mode.current ? { mode: mode.current } : undefined,
+			mode.current
+				? { mode: mode.current, ...(mode.via ? { via: mode.via } : {}) }
+				: undefined,
 		);
 		return ok(started.value);
 	};
