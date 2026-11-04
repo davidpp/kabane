@@ -188,6 +188,8 @@ export type CopilotPaneProps = {
 	onContentChange: () => void;
 	// `enter` in a form's input, with what it holds.
 	onFormSubmit?: (text: string) => void;
+	// A click on the ask: an answer, a hint, or the collapsed row naming it.
+	onAsk?: (click: BoardNav.AskClick) => void;
 };
 
 export const CopilotPane = ({
@@ -203,6 +205,7 @@ export const CopilotPane = ({
 	onSubmit,
 	onContentChange,
 	onFormSubmit = () => {},
+	onAsk,
 }: CopilotPaneProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
@@ -230,6 +233,7 @@ export const CopilotPane = ({
 				title={title()}
 				inHand={askInHand}
 				onSubmit={onFormSubmit}
+				{...clicks(onAsk)}
 			/>
 		);
 
@@ -244,6 +248,7 @@ export const CopilotPane = ({
 				spinnerFrame={spinnerFrame}
 				width={width}
 				outranked={outranked}
+				{...(onAsk ? { onReach: () => onAsk({ type: "askReach" }) } : {})}
 			/>
 		);
 	}
@@ -282,6 +287,7 @@ export const CopilotPane = ({
 						waiting={queued.length}
 						width={inner}
 						bg={paneBg}
+						{...clicks(onAsk)}
 					/>
 				) : null}
 				{showPlan ? (
@@ -339,6 +345,17 @@ const paneTitle = (
 		: null,
 });
 
+// An ask block's click props, from the pane's one handler: none when it has none.
+const clicks = (
+	onAsk: ((click: BoardNav.AskClick) => void) | undefined,
+): { onPick?: (index: number) => void; onKey?: (name: string) => void } =>
+	onAsk
+		? {
+				onPick: (index) => onAsk({ type: "askOption", index }),
+				onKey: (name) => onAsk({ type: "askKey", name }),
+			}
+		: {};
+
 // The panel a form opens: the pane's title row over the form, and nothing to type a prompt into.
 const FormPanel = ({
 	ask,
@@ -346,12 +363,16 @@ const FormPanel = ({
 	title,
 	inHand,
 	onSubmit,
+	onPick,
+	onKey,
 }: {
 	ask: Extract<BoardNav.CopilotAsk, { type: "elicitation" }>;
 	waiting: number;
 	title: Segments.Segment[];
 	inHand: boolean;
 	onSubmit: (text: string) => void;
+	onPick?: (index: number) => void;
+	onKey?: (name: string) => void;
 }): ReactNode => {
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
@@ -379,6 +400,8 @@ const FormPanel = ({
 				bg={paneBg}
 				inHand={inHand}
 				onSubmit={onSubmit}
+				onPick={onPick}
+				onKey={onKey}
 			/>
 		</box>
 	);
@@ -471,12 +494,15 @@ const CollapsedRow = ({
 	spinnerFrame,
 	width,
 	outranked,
+	onReach,
 }: {
 	copilot: BoardNav.CopilotState;
 	log: CopilotLog.Log | null;
 	spinnerFrame: string;
 	width: number;
 	outranked: boolean;
+	// A click on the row while it names an ask: the copilot takes the keys and opens it.
+	onReach?: () => void;
 }): ReactNode => {
 	const status =
 		copilot.turn === "idle" || !log
@@ -491,7 +517,10 @@ const CollapsedRow = ({
 	const used = Segments.plain(line).length;
 	return (
 		<box style={{ flexShrink: 0, height: 1, backgroundColor: paneBg }}>
-			<text bg={paneBg}>
+			<text
+				bg={paneBg}
+				onMouseDown={copilot.asks.length > 0 ? onReach : undefined}
+			>
 				{Segments.spans(line)}
 				{" ".repeat(Math.max(0, width - used))}
 			</text>

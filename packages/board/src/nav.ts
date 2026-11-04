@@ -327,7 +327,18 @@ export namespace BoardNav {
 		// A lane chip on a card's tab (0 is every lane).
 		| { type: "lane"; index: number }
 		// A field of the trigger form, by its place in the trigger's inputs.
-		| { type: "formField"; index: number };
+		| { type: "formField"; index: number }
+		| AskClick;
+
+	/**
+	 * A click on the copilot's ask: its `index`th answer, the key a hint names (as the key router
+	 * reads it: `return`, `space`, `s`, `escape`), or the row that names an ask the keys cannot reach,
+	 * which hands it them.
+	 */
+	export type AskClick =
+		| { type: "askOption"; index: number }
+		| { type: "askKey"; name: string }
+		| { type: "askReach" };
 
 	const NONE: Effect = { type: "none" };
 	const SEARCH_OFF: SearchState = { mode: "off" };
@@ -679,16 +690,28 @@ export namespace BoardNav {
 		request: CopilotPermission,
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } | null => {
-		const answered = (
-			optionId: string | null,
-		): { state: BoardState; effect: Effect } => ({
-			state: withoutAsk(state, request.id),
-			effect: { type: "copilotAnswer", id: request.id, optionId },
-		});
-		if (key.name === "escape") return answered(null);
+		if (key.name === "escape") return permissionAnswered(state, request, null);
 		const index = optionIndex(key);
-		const option = index === null ? undefined : request.options[index - 1];
-		return option ? answered(option.id) : null;
+		return index === null ? null : pickPermission(state, request, index - 1);
+	};
+
+	const permissionAnswered = (
+		state: BoardState,
+		request: CopilotPermission,
+		optionId: string | null,
+	): { state: BoardState; effect: Effect } => ({
+		state: withoutAsk(state, request.id),
+		effect: { type: "copilotAnswer", id: request.id, optionId },
+	});
+
+	// The permission's option at `index`, as its digit or a click names it.
+	const pickPermission = (
+		state: BoardState,
+		request: CopilotPermission,
+		index: number,
+	): { state: BoardState; effect: Effect } | null => {
+		const option = request.options[index];
+		return option ? permissionAnswered(state, request, option.id) : null;
 	};
 
 	// A form's step: its draft moved on in the queue, or its answer sent and the form gone.
@@ -735,6 +758,42 @@ export namespace BoardNav {
 		return ElicitationForm.typed(ElicitationForm.field(ask.request, ask.draft))
 			? { state, effect: NONE }
 			: null;
+	};
+
+	const ASK_CLICKS: ReadonlySet<string> = new Set<AskClick["type"]>([
+		"askOption",
+		"askKey",
+		"askReach",
+	]);
+	const isAskClick = (action: MouseAction): action is AskClick =>
+		ASK_CLICKS.has(action.type);
+
+	/**
+	 * A click on the ask at the head of the queue, through the reducers its keys take: an option is
+	 * its digit (past the ninth too), a hint is its key. A pointer aims at what is drawn, so it is not
+	 * held for ARM_MS, and it answers wherever the keys are. Outranked, the ask is not drawn but its
+	 * row, and any click on it hands it the keys, as `tab` does, rather than answering.
+	 */
+	const clickAsk = (
+		state: BoardState,
+		click: AskClick,
+	): { state: BoardState; effect: Effect } => {
+		const ask = state.copilot.asks[0];
+		const none = { state, effect: NONE };
+		if (!ask) return none;
+		if (click.type === "askReach" || copilotOutranked(state))
+			return { state: { ...state, focus: "copilot" }, effect: NONE };
+		if (click.type === "askKey")
+			return answerAsk(state, ask, { name: click.name }) ?? none;
+		const step =
+			ask.type === "permission"
+				? pickPermission(state, ask.request, click.index)
+				: formStep(
+						state,
+						ask,
+						ElicitationForm.pick(ask.request, ask.draft, click.index),
+					);
+		return step ?? none;
 	};
 
 	/**
@@ -1768,6 +1827,8 @@ export namespace BoardNav {
 			return TriggerForm.click(incoming, action.index);
 		if (incoming.help || incoming.dispatch)
 			return { state: incoming, effect: NONE };
+		// Answering the copilot is not working on the board: the keys stay where they were.
+		if (isAskClick(action)) return clickAsk(incoming, action);
 		// A click is the human saying they are working on the board now: the copilot loses focus and an
 		// open prompt closes.
 		const state: BoardState = BoardPrompt.close(

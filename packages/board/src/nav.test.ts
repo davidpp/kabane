@@ -2748,6 +2748,21 @@ describe("a permission request the harness is blocked on", () => {
 		).toMatchObject({ type: "copilotAnswer", optionId: "reject" });
 	});
 
+	it("a click on an option is its digit, and one on esc decline is esc", () => {
+		expect(
+			BoardNav.reduceMouse(asked(), { type: "askOption", index: 1 }),
+		).toEqual(reduce(asked(), char("2")));
+		expect(
+			BoardNav.reduceMouse(asked(), { type: "askKey", name: "escape" }).effect,
+		).toEqual({ type: "copilotAnswer", id: "t0", optionId: null });
+	});
+
+	it("a click on the collapsed row naming it opens it: the copilot takes the keys", () => {
+		const r = BoardNav.reduceMouse(asked(), { type: "askReach" });
+		expect(r.state.focus).toBe("copilot");
+		expect(requests(r.state)).toEqual([request]);
+	});
+
 	it("a turn that stops takes the unanswered question with it", () => {
 		const stopped = BoardNav.withCopilotTurn(asked(), "error");
 		expect(requests(stopped)).toEqual([]);
@@ -3034,6 +3049,59 @@ describe("a form the harness is blocked on", () => {
 		expect(head(reduce(asked(), char("s")).state)).toMatchObject({
 			draft: { at: 1, values: {} },
 		});
+	});
+
+	it("a click on an option or a hint is the key's own step, and leaves the keys where they were", () => {
+		const s = BoardNav.sight({ ...asked(), focus: "copilot" }, 0);
+		const click = (action: BoardNav.MouseAction) =>
+			BoardNav.reduceMouse(s, action);
+		expect(click({ type: "askOption", index: 1 })).toEqual(
+			reduce(s, char("2")),
+		);
+		expect(click({ type: "askKey", name: "s" })).toEqual(reduce(s, char("s")));
+		expect(click({ type: "askKey", name: "escape" })).toEqual(
+			reduce(s, { name: "escape" }),
+		);
+		expect(click({ type: "askOption", index: 1 }).state.focus).toBe("copilot");
+		// A click is aimed at what is drawn: no ARM_MS for it.
+		const arrived = BoardNav.sight(asked(), 5000);
+		expect(
+			head(
+				BoardNav.reduceMouse(arrived, { type: "askOption", index: 0 }).state,
+			),
+		).toMatchObject({ draft: { at: 1, values: { question_0: "Redis" } } });
+		// An option past the list answers nothing.
+		expect(click({ type: "askOption", index: 5 }).state).toBe(s);
+	});
+
+	it("outranked by a question pinned on the view, a click on it hands it the keys and answers nothing", () => {
+		const banner = {
+			question: {
+				taskId: "a",
+				taskShortId: "JAKE-1",
+				sessionId: "s",
+				questionActivityId: "q",
+				question: "Ship it?",
+				choices: ["Yes", "No"],
+				multiSelect: false,
+				allowFreeform: false,
+				agent: "claude",
+				askedAt: "2026-10-10T00:00:00.000Z",
+			},
+		};
+		const pinned = asked({ view: { type: "detail", taskId: "a", banner } });
+		expect(BoardNav.copilotOutranked(pinned)).toBe(true);
+		for (const action of [
+			{ type: "askOption", index: 0 },
+			{ type: "askKey", name: "escape" },
+			{ type: "askReach" },
+		] as const) {
+			const r = BoardNav.reduceMouse(pinned, action);
+			expect(r.effect.type).toBe("none");
+			expect(r.state.focus).toBe("copilot");
+			expect(head(r.state)).toEqual(head(pinned));
+			expect(BoardNav.askInHand(r.state)).toBe(true);
+		}
 	});
 
 	it("each field is a question of its own: a digit already on its way does not answer the next", () => {

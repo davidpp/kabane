@@ -272,6 +272,34 @@ describe("ElicitationBlock", () => {
 		destroy();
 	});
 
+	it("a click on a typed field's enter hint sends what its input holds", async () => {
+		const sent: string[] = [];
+		const { mockInput, mockMouse, renderOnce, captureCharFrame, destroy } =
+			await renderTest(
+				<box style={{ flexDirection: "column", width: 60 }}>
+					<ElicitationBlock
+						request={STORE}
+						draft={{ ...ElicitationForm.start(), at: 1 }}
+						width={60}
+						rows={24}
+						inHand
+						onSubmit={(text) => sent.push(text)}
+					/>
+				</box>,
+				{ width: 60, height: 24 },
+			);
+		try {
+			await mockInput.typeText("Postgres");
+			await renderOnce();
+			const rows = captureCharFrame().split("\n");
+			const y = rows.findIndex((row) => row.startsWith("enter send"));
+			await mockMouse.click(0, y);
+			expect(sent).toEqual(["Postgres"]);
+		} finally {
+			destroy();
+		}
+	});
+
 	it("answerKeys names what answers each kind of field", () => {
 		const store = STORE.fields[0];
 		const tags = TAGS.fields[0];

@@ -2,13 +2,19 @@
 // The harness stopped to ask the human to fill in a form, and is blocked until it hears back. The
 // permission block's visual language, a field at a time: the harness's message verbatim, then the
 // field in hand with how to answer it. Choices are numbered as a permission's options are, one a
-// row, the cursor's on the selected surface; a multi-select shows what is toggled; text and numbers are typed into a one-line input, the one
-// thing here that takes the keyboard as text. The keys themselves are nav.ts's
-// (elicitation-form.ts); this only draws the draft.
-import { type ColorInput, TextAttributes } from "@opentui/core";
-import type { ReactNode } from "react";
+// row, the cursor's on the selected surface; a multi-select shows what is toggled; text and numbers
+// are typed into a one-line input, the one thing here that takes the keyboard as text. The keys
+// themselves are nav.ts's (elicitation-form.ts); this only draws the draft, and hands a click on
+// an option or a hint to the same reducers.
+import {
+	type ColorInput,
+	type InputRenderable,
+	TextAttributes,
+} from "@opentui/core";
+import { type ReactNode, type RefObject, useRef } from "react";
 import { ElicitationForm } from "./elicitation-form";
 import { FormField } from "./form-field";
+import { ClickRow } from "./permission-block";
 import type {
 	CopilotElicitation,
 	CopilotFormField,
@@ -24,17 +30,29 @@ const sep = (theme: Theme.Tokens): Segment => ({
 	fg: theme.muted,
 });
 
-// A key in the text color and what it does muted, as the footer and the permission block read.
-const keyed = (
+// A key in the text color and what it does muted, as the footer and the permission block read: a
+// part a key, so each can be clicked.
+const keyParts = (
 	pairs: readonly (readonly [string, string])[],
 	theme: Theme.Tokens,
 	textFg: ColorInput,
-): Segment[] =>
-	pairs.flatMap(([key, does], index) => [
+): Segment[][] =>
+	pairs.map(([key, does], index) => [
 		...(index > 0 ? [sep(theme)] : []),
 		{ text: key, fg: textFg },
 		{ text: ` ${does}`, fg: theme.muted },
 	]);
+
+// The key a clicked hint presses, by the name the key router reads. A hint for a set of keys
+// (`↑↓`, `1-3`) presses none: its options are what is clicked.
+const HINT_KEY: Readonly<Record<string, string>> = {
+	enter: "return",
+	esc: "escape",
+	space: "space",
+	s: "s",
+	y: "y",
+	n: "n",
+};
 
 // The digits that name the options: `1-3`, or `1` alone. Past the ninth an option has no digit.
 const digits = (count: number): string =>
@@ -231,8 +249,61 @@ export type ElicitationBlockProps = {
 	bg?: string;
 	// Whether the form has the keys (BoardNav.askInHand): its input is focused only then.
 	inHand: boolean;
-	// `enter` in the input, with what it holds.
+	// `enter` in the input, with what it holds; a click on the `enter` hint of a typed field too.
 	onSubmit: (text: string) => void;
+	// A click on option `index`, and on a hint's key (the key router's name for it): the keys' own
+	// paths, so a click and a key can never disagree. Without them the form is only drawn.
+	onPick?: (index: number) => void;
+	onKey?: (name: string) => void;
+};
+
+// The one-line input a text or number field is typed into, on the overlay surface.
+const TypedInput = ({
+	field,
+	inputRef,
+	inHand,
+	onSubmit,
+}: {
+	field: CopilotFormField;
+	inputRef: RefObject<InputRenderable | null>;
+	inHand: boolean;
+	onSubmit: (text: string) => void;
+}): ReactNode => {
+	const theme = useTheme();
+	const fieldBg = theme.surface.overlay;
+	return (
+		<box
+			style={{
+				flexDirection: "row",
+				flexShrink: 0,
+				height: 1,
+				backgroundColor: fieldBg,
+				paddingLeft: 1,
+				paddingRight: 1,
+			}}
+		>
+			<text bg={fieldBg} fg={theme.muted}>
+				▸{" "}
+			</text>
+			<input
+				ref={inputRef}
+				focused={inHand}
+				placeholder={FormField.wants(field)}
+				placeholderColor={theme.secondary}
+				backgroundColor={fieldBg}
+				focusedBackgroundColor={fieldBg}
+				textColor={theme.text}
+				focusedTextColor={theme.text}
+				cursorColor={theme.accent}
+				// The input's `enter` carries its value; the prop's type also admits a textarea's
+				// event, which an input never sends.
+				onSubmit={(value: unknown) =>
+					onSubmit(typeof value === "string" ? value : "")
+				}
+				style={{ flexGrow: 1 }}
+			/>
+		</box>
+	);
 };
 
 /**
@@ -250,13 +321,15 @@ export const ElicitationBlock = ({
 	bg,
 	inHand,
 	onSubmit,
+	onPick,
+	onKey,
 }: ElicitationBlockProps): ReactNode => {
 	const theme = useTheme();
+	const inputRef = useRef<InputRenderable>(null);
 	const textFg = bg ? theme.text : theme.defaultFg;
 	const field = ElicitationForm.field(request, draft);
 	const cursor = ElicitationForm.cursorOf(draft);
 	const typed = ElicitationForm.typed(field);
-	const fieldBg = theme.surface.overlay;
 
 	const asked = [
 		...messageRows(request, waiting, width, theme, textFg),
@@ -272,19 +345,23 @@ export const ElicitationBlock = ({
 	const refusal = draft.error
 		? Segments.wrap([{ text: draft.error, fg: theme.failed }], width)
 		: [];
-	const keys = [
-		Segments.fit(
-			keyed(answerKeys(field, draft.picked.length), theme, textFg),
-			width,
-		),
-	];
+	const pairs = answerKeys(field, draft.picked.length);
+	// What the keys row presses on a click: a typed field's `enter` sends what its input holds, which
+	// only the input knows; every other hint is its key.
+	const press = (key: string): (() => void) | undefined => {
+		const name = HINT_KEY[key];
+		if (name === "return" && typed)
+			return () => onSubmit(inputRef.current?.value ?? "");
+		return name && onKey ? () => onKey(name) : undefined;
+	};
 	// The input is one row, outside the segment rows, so it is counted here.
 	const answerRows = (answers: readonly AnswerRow[]): number =>
 		answers.length + (typed ? 1 : 0) + refusal.length;
 	const heightOf = (fit: Fit): number => {
 		const answered = answerRows(answersOf(fit.notes));
 		const gaps = fit.gaps ? (answered > 0 ? 2 : 1) : 0;
-		return asked.length + answered + keys.length + gaps;
+		// The keys take one row.
+		return asked.length + answered + 1 + gaps;
 	};
 	const fit = FITS.find((each) => heightOf(each) <= rows) ?? TIGHTEST;
 	const answers = answersOf(fit.notes);
@@ -310,6 +387,7 @@ export const ElicitationBlock = ({
 				// Index keys: a block's rows are positional, and the same row can repeat.
 				key={`answer${index}`}
 				bg={selected ? theme.surface.selected : bg}
+				onMouseDown={onPick && (() => onPick(option))}
 			>
 				{Segments.spans(
 					selected
@@ -328,42 +406,25 @@ export const ElicitationBlock = ({
 			{answerRows(answers) > 0 ? gap("before answers") : null}
 			{answerLines}
 			{typed && field ? (
-				<box
-					style={{
-						flexDirection: "row",
-						flexShrink: 0,
-						height: 1,
-						backgroundColor: fieldBg,
-						paddingLeft: 1,
-						paddingRight: 1,
-					}}
-				>
-					<text bg={fieldBg} fg={theme.muted}>
-						▸{" "}
-					</text>
-					<input
-						// A new field is a new input: what was typed for the last one does not carry over.
-						key={`${request.id}#${draft.at}`}
-						focused={inHand}
-						placeholder={FormField.wants(field)}
-						placeholderColor={theme.secondary}
-						backgroundColor={fieldBg}
-						focusedBackgroundColor={fieldBg}
-						textColor={theme.text}
-						focusedTextColor={theme.text}
-						cursorColor={theme.accent}
-						// The input's `enter` carries its value; the prop's type also admits a textarea's
-						// event, which an input never sends.
-						onSubmit={(value: unknown) =>
-							onSubmit(typeof value === "string" ? value : "")
-						}
-						style={{ flexGrow: 1 }}
-					/>
-				</box>
+				<TypedInput
+					// A new field is a new input: what was typed for the last one does not carry over.
+					key={`${request.id}#${draft.at}`}
+					field={field}
+					inputRef={inputRef}
+					inHand={inHand}
+					onSubmit={onSubmit}
+				/>
 			) : null}
 			{lines(refusal, "refusal")}
 			{gap("before keys")}
-			{lines(keys, "keys")}
+			<ClickRow
+				parts={keyParts(pairs, theme, textFg).map((segments, index) => ({
+					segments,
+					onPress: press(pairs[index]?.[0] ?? ""),
+				}))}
+				width={width}
+				{...(bg ? { bg } : {})}
+			/>
 		</>
 	);
 };
@@ -384,5 +445,5 @@ export const elicitationSegments = (
 		? [{ text: ` · ${waiting} more waiting`, fg: theme.muted }]
 		: []),
 	sep(theme),
-	...keyed([["esc", "decline"]], theme, textFg),
+	...keyParts([["esc", "decline"]], theme, textFg).flat(),
 ];
