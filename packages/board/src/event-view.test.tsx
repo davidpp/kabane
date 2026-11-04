@@ -13,7 +13,7 @@ import {
 	TextAttributes,
 } from "@opentui/core";
 import { act, createRef, useEffect, useState } from "react";
-import { EventView, promptLines, toolParts } from "./event-view";
+import { EventView, promptLines } from "./event-view";
 import type {
 	ActivityCard,
 	ActivityEvent,
@@ -353,22 +353,5 @@ describe("promptLines", () => {
 		expect(promptLines("a b c d e f g h", 3, 2)).toEqual(["a b", "c …"]);
 		expect(promptLines("aa bb cc dd", 6, 1)).toEqual(["aa bb…"]);
 		expect(promptLines("", 10, 3)).toEqual([""]);
-	});
-});
-
-describe("toolParts", () => {
-	it("splits a tool from what it was called on, and leaves a quoted command whole", () => {
-		expect(toolParts("Read src/app.tsx")).toEqual({
-			name: "Read",
-			args: "src/app.tsx",
-		});
-		expect(toolParts("mcp__kabane__kabane_list")).toEqual({
-			name: "mcp__kabane__kabane_list",
-			args: "",
-		});
-		expect(toolParts("`git status --short`")).toEqual({
-			name: "`git status --short`",
-			args: "",
-		});
 	});
 });

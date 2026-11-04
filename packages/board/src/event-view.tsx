@@ -38,6 +38,7 @@ import {
 } from "./ports";
 import { useSpinnerFrame } from "./spinner";
 import { Theme, useTheme } from "./theme";
+import { ToolRows } from "./tool-rows";
 
 const POLL_MS = 1000;
 // The transcript has the whole screen where the copilot panel has a dozen rows, so its pinned block
@@ -95,16 +96,6 @@ export const promptLines = (
 	kept[max - 1] =
 		last.length < room ? `${last}…` : `${last.slice(0, room - 1)}…`;
 	return kept;
-};
-
-// A harness names a call `Read src/app.tsx` or `mcp__kabane__kabane_list`: the tool, then what it was
-// called on. Split there, so the tool reads in the text color and its arguments as an aside. A title
-// that does not open on a tool-shaped word (a quoted shell command) stays whole.
-export const toolParts = (summary: string): { name: string; args: string } => {
-	const match = /^([A-Za-z][\w.:-]*)\s+(.+)$/s.exec(summary.trim());
-	return match
-		? { name: match[1] ?? summary, args: match[2] ?? "" }
-		: { name: summary.trim(), args: "" };
 };
 
 // Per-event-type glyph and text colors. Types are host-defined strings; the common ones get a glyph,
@@ -587,7 +578,7 @@ const EventRow = ({
 	const { glyph, glyphFg, textFg } = eventStyle(event.type, theme);
 	const tool =
 		event.type === "tool_use" || event.type === "tool_call"
-			? toolParts(event.summary)
+			? ToolRows.toolParts(event.summary)
 			: null;
 	return (
 		<box style={{ flexDirection: "row", flexShrink: 0 }}>
