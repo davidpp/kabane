@@ -16,6 +16,7 @@ import { createRef } from "react";
 import { App } from "./app";
 import type { BoardContext } from "./context";
 import {
+	askPanelRows,
 	CopilotPane,
 	collapsedSegments,
 	contextChip,
@@ -24,8 +25,14 @@ import {
 	paletteStart,
 	titleSegments,
 } from "./copilot-prompt";
+import { ElicitationForm } from "./elicitation-form";
 import { BoardNav } from "./nav";
-import type { Copilot, CopilotStep, CopilotUpdate } from "./ports";
+import type {
+	Copilot,
+	CopilotElicitation,
+	CopilotStep,
+	CopilotUpdate,
+} from "./ports";
 import { noActivity } from "./ports";
 import { Segments } from "./segments";
 import { dropDb, freshDb } from "./test-db";
@@ -861,6 +868,121 @@ describe("the copilot pane's look", () => {
 		} finally {
 			destroy();
 		}
+	});
+});
+
+// An ask is the one thing waiting on the human: its panel holds a third of the terminal (at least
+// 12 rows), grows with the ask to half, and has a blank row above its title and below its last row.
+describe("the ask panel's height", () => {
+	const form = (options: number): BoardNav.CopilotAsk => {
+		const request: CopilotElicitation = {
+			id: "form-h",
+			message: "Which delivery contract should the runner hold to?",
+			fields: [
+				{
+					key: "delivery",
+					title: "Delivery",
+					required: true,
+					type: "choice",
+					options: Array.from({ length: options }, (_, i) => ({
+						value: `o${i}`,
+						label: `Option ${i + 1}`,
+						description: "Replay from the last checkpoint",
+					})),
+				},
+			],
+		};
+		return { type: "elicitation", request, draft: ElicitationForm.start() };
+	};
+	const permission: BoardNav.CopilotAsk = {
+		type: "permission",
+		request: {
+			id: "p1",
+			title: "kabane_edit JREP-1",
+			options: [
+				{ id: "once", label: "Allow once" },
+				{ id: "no", label: "Reject" },
+			],
+		},
+	};
+
+	// The panel's rows, told from the terminal's own background under it, and its text.
+	const panel = async (
+		ask: BoardNav.CopilotAsk,
+		height: number,
+		width = 40,
+	): Promise<string[]> => {
+		const { captureCharFrame, captureSpans, destroy } = await renderTest(
+			<CopilotPane
+				copilot={idle({ asks: [ask], actor: "cabane://actor/agent/claude" })}
+				chip="JALL-1"
+				focused={ask.type === "permission"}
+				log={null}
+				spinnerFrame="⠋"
+				askInHand
+				textareaRef={createRef<TextareaRenderable>()}
+				onSubmit={() => {}}
+				onContentChange={() => {}}
+			/>,
+			{ width, height },
+		);
+		try {
+			const lines = captureSpans().lines;
+			const under = lines.at(-1)?.spans[0]?.bg.toInts().join();
+			const text = captureCharFrame().split("\n");
+			return lines.flatMap((line, at) =>
+				line.spans[0]?.bg.toInts().join() === under
+					? []
+					: [(text[at] ?? "").trimEnd()],
+			);
+		} finally {
+			destroy();
+		}
+	};
+
+	it("is a third of the terminal, never under 12 rows, and half on a short one", () => {
+		expect(askPanelRows(60)).toEqual({ min: 20, max: 30 });
+		expect(askPanelRows(36)).toEqual({ min: 12, max: 18 });
+		expect(askPanelRows(20)).toEqual({ min: 10, max: 10 });
+	});
+
+	it("a short form holds the minimum, top-aligned under a blank row", async () => {
+		for (const [height, rows] of [
+			[60, 20],
+			[24, 12],
+		] as const) {
+			const shown = await panel(form(1), height);
+			expect(shown).toHaveLength(rows);
+			expect(shown[0]).toBe("");
+			expect(shown[1]).toBe(" copilot · claude · JALL-1");
+			expect(shown[2]).toBe(" ? Which delivery contract should the");
+		}
+	});
+
+	it("a longer form grows past the minimum and fits itself under half, keys and the blank row under them kept", async () => {
+		// Five described options want 19 rows with their blank rows: over 36's cap of 18, so the
+		// form gives the blank rows up and takes 17.
+		const shown = await panel(form(5), 36);
+		expect(shown).toHaveLength(17);
+		expect(shown.slice(5, 7)).toEqual([
+			" 1 Option 1",
+			"   Replay from the last checkpoint",
+		]);
+		expect(shown.at(-2)).toBe(" esc decline");
+		expect(shown.at(-1)).toBe("");
+		// With the room, the same form keeps them.
+		expect((await panel(form(5), 60)).slice(5, 7)).toEqual(["", " 1 Option 1"]);
+	});
+
+	it("a focused pane's permission ask holds the same minimum, with its input under the ask", async () => {
+		const shown = await panel(permission, 36);
+		expect(shown).toHaveLength(12);
+		expect(shown.slice(0, 4)).toEqual([
+			"",
+			" copilot · claude · JALL-1",
+			" ? kabane_edit JREP-1",
+			" 1 Allow once · 2 Reject · esc decline",
+		]);
 	});
 });
 

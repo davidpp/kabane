@@ -150,7 +150,7 @@ requests and three status hues for states.
 - **Text** (`{colors.text}`): the same foreground made explicit, for a cell on a painted surface.
   The Selection Rule needs it; it is the terminal's reported foreground when there is one.
 - **Secondary** (`{colors.text-secondary}`): one step down from the foreground. A normal-priority
-  id.
+  id, and an answer's description in an ask.
 - **Muted** (`{colors.text-muted}`): chrome. Meta, counts, footer key labels, a linked-issue
   glyph, a paused or stale card.
 - **Faint** (`{colors.text-faint}`): what cannot be acted on right now (an unsatisfiable
@@ -328,9 +328,11 @@ against every glyph already here.
 
 ### Question banner
 - **Style:** `{components.question-banner}`, raised, pinned over the detail view it asks about
-  (or under a card tab's header).
+  (or under a card tab's header), with a blank row of its own surface above and below, as the
+  copilot's ask panel has, and no minimum height.
 - **Content:** `waiting on you` in the accent and bold, then who asks about which task, muted;
-  the question with an accent `?`; the numbered answers, each key in the text color. Once
+  the question with an accent `?`; the numbered answers, each key and its words in the text
+  color and the `·` between them muted (the Answer Rule, under Copilot pane). Once
   answered: `✓ answered` in the done hue and the answer after `→`. The detail view under it
   does not repeat the question.
 
@@ -362,6 +364,25 @@ against every glyph already here.
 - **The repertoire:** the `/` list shows each skill name in default fg with its description
   muted. This is the part of kabane that repeats, and it should read like a tidy set of
   tools.
+- **An ask:** a harness's form or permission request opens the pane into a panel that holds a
+  third of the terminal, never under 12 rows, and grows with the ask up to half, its content at
+  the top and a blank row above its title and below its last row. An ask is the one thing in the
+  pane waiting on the human, so it earns the space; the half keeps the board in view behind it,
+  and on a short terminal the half wins over the minimum. The collapsed pane still says an ask
+  in one row.
+- **A form's layout:** three groups a blank row apart: what is asked (the message under its `?`,
+  wrapped under its own first column, then the field in hand as a Label with its count and
+  `optional` muted), the answers, and the keys. A described answer takes a row for its label and
+  its note on the rows under it, indented to the label's column, never run on after the label.
+  Undescribed answers share one `·` row and break between two answers, never through one. Held
+  under the half, a form gives up its blank rows first, then each note's tail (cut to its label's
+  row), then the notes.
+
+**The Answer Rule.** An ask's answers are content: the human reads them to decide. On the form,
+the permission ask and the question banner, each answer's key and label are in the text color
+and its description is secondary; only chrome is muted (the `·` separators, `1 of 2`,
+`optional`, a key hint's label, `n more waiting`). A multi-select's toggled `[x]` is the accent
+and an open `[ ]` muted. The one-row collapsed forms follow the same colors.
 
 ### Prompt
 - **What:** the copilot's own input, opened for something else: a card's action that takes

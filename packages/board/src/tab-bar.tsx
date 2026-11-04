@@ -253,6 +253,9 @@ const QuestionBanner = ({
 				flexDirection: "column",
 				flexShrink: 0,
 				backgroundColor: bg,
+				// A blank row above and below, as the copilot's ask panel has: a surface, not a strip.
+				paddingTop: 1,
+				paddingBottom: 1,
 				paddingLeft: 1,
 				paddingRight: 1,
 			}}
@@ -279,8 +282,8 @@ const QuestionBanner = ({
 					{" type the answer"}
 				</text>
 			) : (
-				// Each answer its own cell, so a click lands on the one it means. A multi-select's
-				// cells say whether each is toggled.
+				// Each answer its own cell, so a click lands on the one it means: its key and its words in
+				// the text color, the separator muted. A multi-select's cells say whether each is toggled.
 				<box style={{ flexDirection: "row", flexShrink: 0, flexWrap: "wrap" }}>
 					{question.choices.map((choice, index) => (
 						<text
@@ -297,7 +300,7 @@ const QuestionBanner = ({
 									{picked.includes(index) ? "[x] " : "[ ] "}
 								</span>
 							) : null}
-							{choice}
+							<span fg={theme.text}>{choice}</span>
 						</text>
 					))}
 					{enterDoes ? (

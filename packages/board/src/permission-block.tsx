@@ -35,8 +35,9 @@ export const permissionLine = (
 ): string =>
 	`? ${request.title}${waitingNote(waiting)} · ${optionsLine(request)} · esc decline`;
 
-// How to answer, in the footer's manner: each key in the text color, what it does muted. The `?`
-// before the title is the request, and the only part in the accent: the options are keys, not asks.
+// How to answer: each option's key and label in the text color, since the label is what the human
+// decides by, and the separators and `esc`'s label muted as the footer's are. The `?` before the
+// title is the request, and the only part in the accent: the options are answers, not asks.
 const answerSegments = (
 	request: CopilotPermission,
 	theme: Theme.Tokens,
@@ -45,7 +46,7 @@ const answerSegments = (
 	...request.options.flatMap((option, index) => [
 		...(index > 0 ? [{ text: " · ", fg: theme.muted }] : []),
 		{ text: `${index + 1}`, fg: textFg },
-		{ text: ` ${option.label}`, fg: theme.muted },
+		{ text: ` ${option.label}`, fg: textFg },
 	]),
 	{ text: " · ", fg: theme.muted },
 	{ text: "esc", fg: textFg },

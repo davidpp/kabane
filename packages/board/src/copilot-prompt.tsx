@@ -127,6 +127,34 @@ const MAX_PLAN_ROWS = 6;
 const MAX_TAIL_ROWS = 3;
 const MAX_PALETTE_ROWS = 8;
 
+// An ask is the one thing in the pane waiting on the human, so its panel earns the space: a third
+// of the terminal and never under ASK_MIN_ROWS, growing with what it asks up to half, so the board
+// stays in view behind it. On a short terminal the half wins and the minimum gives way.
+const ASK_MIN_ROWS = 12;
+
+/**
+ * The rows the panel holding an ask takes on a terminal `termRows` tall, its padding included. The
+ * cap is not a clip: a form fits itself under it (ElicitationBlock's `rows`), and one that cannot
+ * even at its tightest takes the rows it needs rather than drawing its rows over each other.
+ */
+export const askPanelRows = (
+	termRows: number,
+): { min: number; max: number } => {
+	const max = Math.floor(termRows / 2);
+	return {
+		min: Math.min(max, Math.max(ASK_MIN_ROWS, Math.ceil(termRows / 3))),
+		max,
+	};
+};
+
+// The ask panel's surface: a blank row above its title and below its last row, so it reads as a
+// panel and not as a strip on the bottom edge, its content at the top of the height it holds.
+const askPanelStyle = (termRows: number) => ({
+	paddingTop: 1,
+	paddingBottom: 1,
+	minHeight: askPanelRows(termRows).min,
+});
+
 /**
  * The first of the `rows` palette entries on screen out of `count`: the window keeps the pick in
  * its middle, and stops at either end of the list.
@@ -236,21 +264,23 @@ export const CopilotPane = ({
 	const showTail =
 		!showChoice && !showPalette && !detailShownElsewhere && tail.length > 0;
 
+	const asksPermission = showChoice && asking?.type === "permission";
 	return (
 		<box
 			style={{
 				flexShrink: 0,
 				flexDirection: "column",
 				backgroundColor: paneBg,
+				...(asksPermission ? askPanelStyle(height) : {}),
 			}}
 		>
 			<box style={{ flexDirection: "column", paddingLeft: 1, paddingRight: 1 }}>
 				<text bg={paneBg}>{Segments.spans(Segments.fit(title(), inner))}</text>
-				{showChoice && asking?.type === "permission" ? (
+				{asksPermission ? (
 					<PermissionBlock
 						request={asking.request}
 						waiting={queued.length}
-						width={inner - 4}
+						width={inner}
 						bg={paneBg}
 					/>
 				) : null}
@@ -323,7 +353,7 @@ const FormPanel = ({
 	inHand: boolean;
 	onSubmit: (text: string) => void;
 }): ReactNode => {
-	const { width } = useTerminalDimensions();
+	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	const paneBg = theme.surface.raised;
 	const inner = width - 2;
@@ -335,6 +365,7 @@ const FormPanel = ({
 				backgroundColor: paneBg,
 				paddingLeft: 1,
 				paddingRight: 1,
+				...askPanelStyle(height),
 			}}
 		>
 			<text bg={paneBg}>{Segments.spans(Segments.fit(title, inner))}</text>
@@ -342,7 +373,9 @@ const FormPanel = ({
 				request={ask.request}
 				draft={ask.draft}
 				waiting={waiting}
-				width={inner - 4}
+				width={inner}
+				// Inside the cap, less the padding and the title row.
+				rows={askPanelRows(height).max - 3}
 				bg={paneBg}
 				inHand={inHand}
 				onSubmit={onSubmit}

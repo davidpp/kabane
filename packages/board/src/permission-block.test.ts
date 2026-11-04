@@ -15,7 +15,7 @@ const request = {
 };
 
 describe("permissionSegments", () => {
-	it("reads as permissionLine, with the request in the accent and the answers as keys", () => {
+	it("reads as permissionLine, with the request in the accent and the answers as content", () => {
 		const line = permissionSegments(request, T, T.text);
 		expect(Segments.plain(line)).toBe(permissionLine(request));
 		expect(
@@ -23,7 +23,8 @@ describe("permissionSegments", () => {
 		).toEqual(["? "]);
 		for (const key of ["1", "2", "esc"])
 			expect(line.find((part) => part.text === key)?.fg).toBe(T.text);
-		expect(line.find((part) => part.text === " Allow once")?.fg).toBe(T.muted);
+		expect(line.find((part) => part.text === " Allow once")?.fg).toBe(T.text);
+		expect(line.find((part) => part.text === " decline")?.fg).toBe(T.muted);
 	});
 
 	it("names how many more are queued behind it, muted, right after the title", () => {

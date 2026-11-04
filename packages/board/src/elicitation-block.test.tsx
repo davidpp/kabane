@@ -2,7 +2,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TextareaRenderable } from "@opentui/core";
+import {
+	RGBA,
+	type TextareaRenderable,
+	type CapturedSpan,
+} from "@opentui/core";
 import { createRef } from "react";
 import { App } from "./app";
 import { CopilotPane } from "./copilot-prompt";
@@ -17,6 +21,7 @@ import {
 } from "./ports";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
+import { Theme } from "./theme";
 
 const STORE: CopilotElicitation = {
 	id: "form-1",
@@ -62,6 +67,7 @@ const mount = async (
 	request: CopilotElicitation,
 	draft: ElicitationForm.Draft,
 	width: number,
+	{ bg, rows = 24 }: { bg?: string; rows?: number } = {},
 ) => {
 	const setup = await renderTest(
 		<box style={{ flexDirection: "column", width }}>
@@ -69,14 +75,20 @@ const mount = async (
 				request={request}
 				draft={draft}
 				width={width}
+				rows={rows}
+				{...(bg ? { bg } : {})}
 				inHand
 				onSubmit={() => {}}
 			/>
 		</box>,
-		{ width, height: 12 },
+		{ width, height: 24 },
 	);
 	await setup.renderOnce();
-	return { ...setup, frame: setup.captureCharFrame() };
+	return {
+		...setup,
+		frame: setup.captureCharFrame(),
+		spans: setup.captureSpans().lines.flatMap((line) => line.spans),
+	};
 };
 
 const lines = (frame: string): string[] =>
@@ -85,25 +97,173 @@ const lines = (frame: string): string[] =>
 		.map((line) => line.trim())
 		.filter((line) => line !== "");
 
+// The block's rows as drawn, its indents and blank rows kept, the empty screen under it dropped.
+const rowsOf = (frame: string): string[] => {
+	const rows = frame.split("\n").map((line) => line.trimEnd());
+	while (rows.at(-1) === "") rows.pop();
+	return rows;
+};
+
+const DELIVERY: CopilotElicitation = {
+	id: "form-3",
+	message:
+		"Which delivery contract should the runner hold to when a harness drops its session?",
+	fields: [
+		{
+			key: "delivery",
+			title: "Delivery",
+			required: true,
+			type: "choice",
+			options: [
+				{
+					value: "most",
+					label: "At most once",
+					description: "Drop the turn and report it failed",
+				},
+				{
+					value: "least",
+					label: "At least once",
+					description: "Replay the turn from its last checkpoint",
+				},
+				{ value: "ask", label: "Ask the human" },
+			],
+		},
+	],
+};
+
 describe("ElicitationBlock", () => {
-	it("at 120 columns: the message verbatim, the field, one option a row once one explains itself", async () => {
+	it("at 120 columns: the message, the field, and each description on its own row under its label", async () => {
 		const { frame, destroy } = await mount(STORE, ElicitationForm.start(), 120);
-		expect(lines(frame)).toEqual([
+		expect(rowsOf(frame)).toEqual([
 			"? Which store should the cache use for the session tokens?",
 			"Store · 1 of 2 · optional",
-			"1 Redis  Shared, survives restarts",
+			"",
+			"1 Redis",
+			"  Shared, survives restarts",
 			"2 Memory",
+			"",
 			"enter skip · esc decline",
 		]);
 		destroy();
 	});
 
-	it("at 40 columns the message wraps rather than losing its tail", async () => {
-		const { frame, destroy } = await mount(STORE, ElicitationForm.start(), 40);
-		const shown = lines(frame);
-		expect(shown.join(" ")).toContain("session tokens?");
-		expect(shown.every((line) => line.length <= 40)).toBe(true);
-		expect(shown.at(-1)).toBe("enter skip · esc decline");
+	it("at 40 columns the message and the descriptions wrap by word under their own column", async () => {
+		const { frame, destroy } = await mount(
+			DELIVERY,
+			ElicitationForm.start(),
+			40,
+		);
+		expect(rowsOf(frame)).toEqual([
+			"? Which delivery contract should the",
+			"  runner hold to when a harness drops",
+			"  its session?",
+			"Delivery",
+			"",
+			"1 At most once",
+			"  Drop the turn and report it failed",
+			"2 At least once",
+			"  Replay the turn from its last",
+			"  checkpoint",
+			"3 Ask the human",
+			"",
+			"esc decline",
+		]);
+		destroy();
+	});
+
+	it("a multi-select's descriptions start at its labels' column, past the box", async () => {
+		const { frame, destroy } = await mount(
+			{
+				...TAGS,
+				fields: [
+					{
+						key: "tags",
+						title: "Tags",
+						required: true,
+						type: "choices",
+						options: [
+							{ value: "a", label: "Alpha", description: "the first" },
+							{ value: "b", label: "Beta" },
+						],
+					},
+				],
+			},
+			{ at: 0, values: {}, picked: [0] },
+			40,
+		);
+		expect(rowsOf(frame).slice(3, 6)).toEqual([
+			"1 [x] Alpha",
+			"      the first",
+			"2 [ ] Beta",
+		]);
+		destroy();
+	});
+
+	it("held to fewer rows, it gives up the blank rows, then each description's tail, then the descriptions", async () => {
+		const at = async (rows: number) => {
+			const { frame, destroy } = await mount(
+				DELIVERY,
+				ElicitationForm.start(),
+				40,
+				{ rows },
+			);
+			destroy();
+			return rowsOf(frame);
+		};
+		// Whole, with its blank rows: 13 rows.
+		expect(await at(13)).toHaveLength(13);
+		// No blank rows.
+		expect(await at(12)).toEqual([
+			"? Which delivery contract should the",
+			"  runner hold to when a harness drops",
+			"  its session?",
+			"Delivery",
+			"1 At most once",
+			"  Drop the turn and report it failed",
+			"2 At least once",
+			"  Replay the turn from its last",
+			"  checkpoint",
+			"3 Ask the human",
+			"esc decline",
+		]);
+		// Each description cut to its label's row.
+		expect((await at(10)).slice(4, 7)).toEqual([
+			"1 At most once  Drop the turn and repor…",
+			"2 At least once  Replay the turn from i…",
+			"3 Ask the human",
+		]);
+		// The labels alone, as many to a row as fit whole.
+		expect((await at(7)).slice(4)).toEqual([
+			"1 At most once · 2 At least once",
+			"3 Ask the human",
+			"esc decline",
+		]);
+	});
+
+	it("undescribed options too many for one row break between two options, never through one", async () => {
+		const { frame, destroy } = await mount(
+			{
+				...TAGS,
+				fields: [
+					{
+						key: "pick",
+						title: "Pick",
+						required: true,
+						type: "choice",
+						options: ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"].map(
+							(label) => ({ value: label, label }),
+						),
+					},
+				],
+			},
+			ElicitationForm.start(),
+			30,
+		);
+		expect(rowsOf(frame).slice(3, 6)).toEqual([
+			"1 Alpha · 2 Beta · 3 Gamma",
+			"4 Delta · 5 Epsilon",
+			"",
+		]);
 		destroy();
 	});
 
@@ -113,11 +273,13 @@ describe("ElicitationBlock", () => {
 			{ at: 1, values: { question_0: "Redis" }, picked: [], error: "nope" },
 			120,
 		);
-		expect(lines(frame)).toEqual([
+		expect(rowsOf(frame)).toEqual([
 			"? Which store should the cache use for the session tokens?",
 			"Other · 2 of 2 · optional",
-			"▸ text",
+			"",
+			" ▸ text",
 			"nope",
+			"",
 			"enter send, empty skips · esc decline",
 		]);
 		destroy();
@@ -152,6 +314,75 @@ describe("ElicitationBlock", () => {
 			["n", "no"],
 			["esc", "decline"],
 		]);
+	});
+});
+
+// An ask's answers are what the human reads to decide: content, not chrome (DESIGN.md, Copilot pane).
+describe("a form's colors on the copilot's raised panel", () => {
+	const T = Theme.DARK;
+	const bg = T.surface.raised;
+	const ints = (color: RGBA): number[] => color.toInts().slice(0, 3);
+	const rgb = (hex: string): number[] => ints(RGBA.fromHex(hex));
+	const fgOf = (spans: readonly CapturedSpan[], text: string) => {
+		const span = spans.find((s) => s.text.includes(text));
+		return span && ints(span.fg);
+	};
+	const UNDESCRIBED: CopilotElicitation = {
+		...STORE,
+		fields: [
+			{
+				key: "question_0",
+				title: "Store",
+				required: true,
+				type: "choice",
+				options: [
+					{ value: "Redis", label: "Redis" },
+					{ value: "Memory", label: "Memory" },
+				],
+			},
+		],
+	};
+
+	it("described: keys and labels in the text color, each description secondary, the meta muted", async () => {
+		const { spans, destroy } = await mount(
+			STORE,
+			ElicitationForm.start(),
+			120,
+			{ bg },
+		);
+		expect(fgOf(spans, "Redis")).toEqual(rgb(T.text));
+		expect(fgOf(spans, "Memory")).toEqual(rgb(T.text));
+		expect(fgOf(spans, "Shared, survives restarts")).toEqual(rgb(T.secondary));
+		expect(fgOf(spans, "1 of 2")).toEqual(rgb(T.muted));
+		expect(fgOf(spans, "optional")).toEqual(rgb(T.muted));
+		destroy();
+	});
+
+	it("undescribed: the labels in the text color, the separators muted", async () => {
+		const { spans, destroy } = await mount(
+			UNDESCRIBED,
+			ElicitationForm.start(),
+			120,
+			{ bg },
+		);
+		expect(fgOf(spans, "Redis")).toEqual(rgb(T.text));
+		expect(fgOf(spans, "Memory")).toEqual(rgb(T.text));
+		expect(fgOf(spans, " · ")).toEqual(rgb(T.muted));
+		destroy();
+	});
+
+	it("a multi-select: every label in the text color, a toggled box in the accent and an open one muted", async () => {
+		const { spans, destroy } = await mount(
+			TAGS,
+			{ at: 0, values: {}, picked: [2] },
+			120,
+			{ bg },
+		);
+		for (const label of ["Alpha", "Beta", "Gamma"])
+			expect(fgOf(spans, label)).toEqual(rgb(T.text));
+		expect(fgOf(spans, "[x]")).toEqual(rgb(T.accent));
+		expect(fgOf(spans, "[ ]")).toEqual(rgb(T.muted));
+		destroy();
 	});
 });
 
