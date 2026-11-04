@@ -37,17 +37,24 @@ const reply = (
 	text,
 });
 
-const readTag = async (
-	tag: Tag,
+const DistTagsSchema = z.object({
+	latest: SemverSchema,
+	beta: SemverSchema.optional(),
+});
+
+/** `bun info <spec> --json`, parsed; a failure is the reply to give. */
+const readRegistry = async <T>(
+	spec: string[],
+	schema: z.ZodType<T, z.ZodTypeDef, unknown>,
 	globalDir: string,
 	host: UpdateHost,
-): Promise<Result<Metadata, Outcome>> => {
-	const metadata = await runUpdateProcess(
-		[host.bun, "info", `kabane@${tag}`, "--json"],
+): Promise<Result<T, Outcome>> => {
+	const read = await runUpdateProcess(
+		[host.bun, "info", ...spec, "--json"],
 		globalDir,
 		host.env,
 	);
-	if (!metadata.ok || metadata.value.code !== 0)
+	if (!read.ok || read.value.code !== 0)
 		return err(
 			reply(
 				"error",
@@ -56,7 +63,7 @@ const readTag = async (
 			),
 		);
 	try {
-		const parsed = MetadataSchema.safeParse(JSON.parse(metadata.value.stdout));
+		const parsed = schema.safeParse(JSON.parse(read.value.stdout));
 		return parsed.success
 			? ok(parsed.data)
 			: err(
@@ -82,20 +89,43 @@ const readCandidate = async (
 	globalDir: string,
 	host: UpdateHost,
 ): Promise<Result<{ tag: Tag; metadata: Metadata }, Outcome>> => {
-	const latest = await readTag("latest", globalDir, host);
-	if (!latest.ok || !isPrerelease(runningVersion))
+	if (!isPrerelease(runningVersion)) {
+		const latest = await readRegistry(
+			["kabane@latest"],
+			MetadataSchema,
+			globalDir,
+			host,
+		);
 		return latest.ok ? ok({ tag: "latest", metadata: latest.value }) : latest;
-	// Bun answers a dist-tag the package lacks with latest, so no beta tag reads as latest.
-	const beta = await readTag("beta", globalDir, host);
-	if (!beta.ok) return beta;
-	for (const read of [latest.value, beta.value])
-		if (!SemverSchema.safeParse(read.version).success)
-			return err(
-				reply("error", "Invalid registry version; no update attempted.", 1),
+	}
+	// The tags themselves, not `kabane@beta`: Bun resolves a tag the package lacks to some
+	// other version, or to none when every version is a prerelease.
+	const tags = await readRegistry(
+		["kabane", "dist-tags"],
+		DistTagsSchema,
+		globalDir,
+		host,
+	);
+	if (!tags.ok) return tags;
+	const { latest, beta } = tags.value;
+	const tag: Tag =
+		beta !== undefined && compareVersions(beta, latest) > 0 ? "beta" : "latest";
+	const metadata = await readRegistry(
+		[`kabane@${tag}`],
+		MetadataSchema,
+		globalDir,
+		host,
+	);
+	if (!metadata.ok) return metadata;
+	return metadata.value.version === tags.value[tag]
+		? ok({ tag, metadata: metadata.value })
+		: err(
+				reply(
+					"error",
+					"Registry dist-tags changed during the check; retry. No update attempted.",
+					1,
+				),
 			);
-	return compareVersions(beta.value.version, latest.value.version) > 0
-		? ok({ tag: "beta", metadata: beta.value })
-		: ok({ tag: "latest", metadata: latest.value });
 };
 
 const core = (version: string): string[] =>

@@ -375,9 +375,14 @@ test("a beta install follows the higher of beta and latest, up to the stable rel
 		expect(printed.value.stdout.trim()).toBe(BETA);
 		const tracker = updateSnapshot(fixture.tracker);
 		for (const [tags, expected] of [
-			// Bun reads a missing beta tag as latest; an older latest is not a downgrade offer.
+			// No beta tag, and an older latest is not a downgrade offer.
 			[{ latest: "0.1.0" }, { status: "current" }],
 			[{ latest: "0.1.0", beta: BETA }, { status: "current" }],
+			// Every version a prerelease and no beta tag: Bun cannot resolve `kabane@beta` here.
+			[
+				{ latest: NEXT_BETA },
+				{ status: "candidate", candidateVersion: NEXT_BETA },
+			],
 			[
 				{ latest: "0.1.0", beta: NEXT_BETA },
 				{ status: "candidate", candidateVersion: NEXT_BETA },
