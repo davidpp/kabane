@@ -78,6 +78,16 @@ export namespace Dispatch {
 			withdrawn: AbortSignal,
 			stopped: AbortSignal,
 		) => Promise<Result<string>>;
+		/**
+		 * The harness asks the human to fill a form (AskUserQuestion, an MCP server's form). The
+		 * answer, or an error on the same terms as `permission`, which the ACP client sends as
+		 * `cancel`: never a form the loop filled itself.
+		 */
+		elicitation: (
+			request: AcpClient.ElicitationRequest,
+			withdrawn: AbortSignal,
+			stopped: AbortSignal,
+		) => Promise<Result<AcpClient.ElicitationAnswer>>;
 	};
 
 	export type Outcome = {
@@ -128,7 +138,8 @@ export namespace Dispatch {
 	 * board copilot. Its instructions ride the opening prompt, not a system prompt append.
 	 * It sets no allow list or settings file. The session opens in the harness's own auto mode
 	 * (`AcpClient.newSession`), the harness decides what still gets asked, and every request
-	 * reaches the human (`permission.ts`).
+	 * reaches the human (`permission.ts`), as does every form it asks them to fill
+	 * (`elicitation.ts`).
 	 */
 	const loopProfile = (
 		runId: string,
@@ -343,6 +354,7 @@ export namespace Dispatch {
 		sink: Sink,
 		on: {
 			permission: AcpClient.OnPermission;
+			elicitation: AcpClient.OnElicitation;
 			connected: (connection: AcpClient.Connection) => void;
 		},
 	): Promise<Result<Opened>> => {
@@ -353,6 +365,7 @@ export namespace Dispatch {
 		sink.emit("launch", describeLaunch(launched, cli.value));
 		const spawned = await AcpClient.spawn(claim.harness, env.cwd, {
 			onPermission: on.permission,
+			onElicitation: on.elicitation,
 			...(env.overrides ? { overrides: env.overrides } : {}),
 			profile,
 		});
@@ -599,7 +612,7 @@ export namespace Dispatch {
 		// Set once the session is over: nothing is sent after that, so nothing more is queued.
 		let finished = false;
 		let lastMessage: string | undefined;
-		// Aborting it lets go of every permission request still waiting on a human. A claim that
+		// Aborting it lets go of every permission request and form still waiting on a human. A claim that
 		// is cancelled, closed or over has nobody left to answer for, and the harness would
 		// otherwise sit on a request that never settles.
 		const waiting = new AbortController();
@@ -637,6 +650,8 @@ export namespace Dispatch {
 			const opened = await open(claim, env, sink, {
 				permission: (request, withdrawn) =>
 					hooks.permission(request, withdrawn, waiting.signal),
+				elicitation: (request, withdrawn) =>
+					hooks.elicitation(request, withdrawn, waiting.signal),
 				connected: (c) => {
 					connection = c;
 				},

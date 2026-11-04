@@ -51,6 +51,7 @@ describe("Dispatch.Handle.inject", () => {
 				usage: () => {},
 				continueTurn: () => false,
 				permission: async () => err(new Error("no harness runs in this test")),
+				elicitation: async () => err(new Error("no harness runs in this test")),
 			},
 		);
 		const outcome = await handle.done;

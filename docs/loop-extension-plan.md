@@ -398,6 +398,30 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
     the board's actor when one of its sessions asked.
 - Agent questions become core `question` activities the same way, and the session waits for
   `answerQuestion`.
+- **Forms (JCAB-59):** the loop passes `onElicitation`, so the ACP client advertises form
+  elicitation and the harness can ask (claude-agent-acp turns AskUserQuestion off without it,
+  codex-acp its `request_user_input`). `extensions/loop/src/elicitation.ts` relays a form the
+  way `permission.ts` relays a request, and fills nothing itself.
+  - **Questions:** one per field, all asked at once on the claim's session and numbered "i of
+    n" (`questionIndex`/`totalQuestions` too), so the board lists them together. Each carries
+    the harness's message, then the field's title and description verbatim. A choice field's
+    options are its `choices`, a multi-select is `multiSelect`, a boolean is Yes / No, text and
+    numbers are free text. An optional field also offers `skip`, which leaves it out of the
+    answer; every field offers `decline`. On a free-text field those are the bare words.
+  - **The wait:** the form resolves once every question has an answer: `accept` with the
+    fields answered (option values, numbers as numbers, booleans as booleans), or `decline`
+    the moment any field is declined, the others then closed as withdrawn. An answer that
+    does not fit its field (not a number, out of range, not an option, failing its pattern)
+    is asked again, saying why. Answers are `decision`s, the human's choice on the record.
+  - **Stop and withdrawal:** as for permissions: the ACP client answers `cancel`, and the
+    open questions close as withdrawn.
+  - **Events:** `elicitation_asked`, then `elicitation_answered` (`action`, the fields
+    answered, who, wait), `elicitation_cancelled` or `elicitation_withdrawn`.
+  - **CLI:** `kabane loop answer <questionId> <answer>` takes a multi-select as
+    comma-separated options (`1, 3` or labels).
+  - AskUserQuestion's companion "Other" box (`question_<n>_custom`) is its own optional
+    free-text question: kabane cannot tell it from any other text field without the AIR-only
+    markers, so it is relayed as the adapter describes it.
 - **Steering:** done on branch `worktree-agent-aec5e4f6bb339d036`.
   - **Inject:** the runner hands an `inject` entry to the live claim behind its session
     (`Dispatch.Handle.inject`); one for a session that has ended is dropped with a warning.
