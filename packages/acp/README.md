@@ -124,9 +124,13 @@ whichever settles first.
 ## Session modes
 
 A session starts in the harness's own auto mode, where the harness decides which tool calls
-need a human, instead of asking before every read and edit. It is selected through ACP:
-`newSession` reads `modes` off `session/new` and sends `session/set_mode` with the adapter's
-auto id. The ids, as the pinned adapters advertise them:
+need a human, instead of asking before every read and edit. It is selected through ACP. The
+spec has Session Config Options supersede Session Modes, so `newSession` (and `resumeSession`)
+looks first for a `category: "mode"` select option on `session/new` and switches it with
+`session/set_config_option`; only a harness that sends `modes` alone gets `session/set_mode`.
+Both pinned adapters send the option (claude-agent-acp mirrors its modes into one with id
+`mode`); Gemini sends modes only. `session.mode.via` says which path the session took
+(`config_option` or `set_mode`). The ids, as the pinned adapters advertise them:
 
 | Harness | Manual | Auto | Others |
 | --- | --- | --- | --- |
@@ -135,14 +139,27 @@ auto id. The ids, as the pinned adapters advertise them:
 | gemini | not named | not named | |
 
 The switch happens only from the manual mode: a session that opens in any other mode got it
-from the user's own harness settings, and keeps it. Gemini has no auto id here, so it stays
-on whatever it starts in. A harness that does not advertise the id, or refuses the switch,
-stays where it opened; none of these fails the session, and `session.mode.note` says which
-happened. `mode: "default"` selects nothing. A mode is the harness's own policy, not
-kabane's: whatever it still asks reaches `onPermission` as before.
+from the user's own harness settings or from the harness itself, and keeps it. The note does
+not guess which: Claude opens in `acceptEdits` when the settings ask for `auto` on a model
+without it, and says so in a notice. Gemini has no auto id here, so it stays on whatever it
+starts in. A harness that does not advertise the id, or refuses the switch, stays where it
+opened; none of these fails the session, and `session.mode.note` says which happened. A
+config option answers with where the session landed, which is not always auto: Claude on a
+model without auto lands on `acceptEdits`, the note says so, and the harness's own notice
+gives the reason in the first turn. `mode: "default"` selects nothing. A mode is the
+harness's own policy, not kabane's: whatever it still asks reaches `onPermission` as before.
 
-A `current_mode_update` the harness sends later is a `mode` update, except the echo of the
-switch `newSession` made.
+A `current_mode_update`, or a `config_option_update` whose mode option holds a mode the session
+is not in, is a `mode` update; the echo of the switch `newSession` made and an update that
+repeats the current mode are not.
+
+## Notices
+
+`initialize` advertises `clientCapabilities.session.notices`, so a harness sends what it wants
+the human to know outside the agent's reply (a mode it fell back from, a model it swapped) as
+a `notice` session update rather than as a bold line in the agent's text. It reaches the caller
+as `{ type: "notice"; severity; text }`, with `text` the notice's title and description as one
+line. The copilot shows it as a step of the turn; the loop records it as a `notice` run event.
 
 ## Updates
 
@@ -153,7 +170,9 @@ type Update =
   | { type: "tool_call"; id; title; kind?; status? }
   | { type: "tool_call_update"; id; title?; status? }
   | { type: "plan"; entries: { content; status }[] }
+  | { type: "usage"; used: number; size: number; cost?: { amount; currency } }
   | { type: "mode"; id: string }
+  | { type: "notice"; severity: string; text: string }
   | { type: "stop"; reason: string }
   | { type: "error"; message: string };
 ```

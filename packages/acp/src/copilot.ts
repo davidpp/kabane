@@ -221,6 +221,15 @@ export namespace BoardCopilot {
 					return [
 						update("mode", `mode ${incoming.id}: moved there by the harness`),
 					];
+				// The board has no step of its own for a notice; `mode` is the one that reads as a plain
+				// line in the turn's log and changes nothing else.
+				case "notice":
+					return [
+						update(
+							"mode",
+							`${options.harness} ${incoming.severity}: ${incoming.text}`,
+						),
+					];
 				case "stop":
 					return [update("done", incoming.reason)];
 				case "error":
