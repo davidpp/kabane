@@ -306,7 +306,7 @@ export namespace AcpClient {
 			: undefined;
 
 	// The steering extension's advert, a sibling of `agentCapabilities` on initialize. Both pinned
-	// adapters send it (claude-agent-acp 0.76.0, codex-acp 1.11.0); Gemini's does not.
+	// adapters send it (claude-agent-acp 0.99.1, codex-acp 2.5.0); Gemini's does not.
 	const advertisesSteering = (meta: unknown): boolean =>
 		field(field(meta, "steering"), "supported") === true;
 
@@ -326,8 +326,9 @@ export namespace AcpClient {
 	/**
 	 * Put text into the session's running turn through the `_session/steering` extension method.
 	 * An idle session is asked to hand the text back (`idleBehavior: promptRequired`) rather than
-	 * start a turn that no `prompt` is reading; an adapter that ignores the hint (codex-acp) and
-	 * starts one says so as `new_turn`. An error for a harness that does not advertise steering.
+	 * start a turn that no `prompt` is reading; both pinned adapters honour it, and one that
+	 * ignores the hint and starts a turn says so as `new_turn`. An error for a harness that does
+	 * not advertise steering.
 	 */
 	export const steer = async (
 		session: Session,

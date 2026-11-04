@@ -12,8 +12,8 @@ imports the SDK.
 ## Pieces
 
 - `Harnesses` — registry of launch commands with pinned adapter versions
-  (`claude` → `npx -y @agentclientprotocol/claude-agent-acp@0.76.0`,
-  `codex` → `npx -y @agentclientprotocol/codex-acp@1.11.0`, `gemini` → `gemini --acp`).
+  (`claude` → `npx -y @agentclientprotocol/claude-agent-acp@0.99.1`,
+  `codex` → `npx -y @agentclientprotocol/codex-acp@2.5.0`, `gemini` → `gemini --acp`).
   `resolve(id, overrides?)` returns `{ command, args, env }`; the env always carries
   `KABANE_SESSION=1` so user hooks can tell a board session from an interactive one,
   and for Claude `ANTHROPIC_MODEL=sonnet` — a board turn is triage against a planner,
@@ -21,8 +21,8 @@ imports the SDK.
   the human's own `settings.json`. `overrides.model` replaces it with any name the
   harness takes (`opus`, a full id) and rides through a `command` override, the model
   being a property of the harness rather than of how it is launched. The other two
-  adapters get none: their variables are not documented here, and a guess would pin a
-  model silently wrong. `acceptsSystemPrompt(id)` is true only for Claude, the one
+  get none: Gemini reads `GEMINI_MODEL` but nothing pins it yet, and codex-acp reads no
+  model variable. `acceptsSystemPrompt(id)` is true only for Claude, the one
   adapter that reads `_meta.systemPrompt` on `session/new`. All of that is the
   copilot's profile, `COPILOT`, and the default: `resolve`'s third argument is a
   `Profile` (`pinModel`, `env`) for another launcher, such as the loop, which runs the
@@ -48,7 +48,8 @@ imports the SDK.
   `_meta.steering.supported` (`conn.steering`; both pinned adapters do, Gemini does not). It
   asks an idle session to hand the text back (`idleBehavior: promptRequired`), so the result
   says where the text went: `injected`, `prompt_required` (the caller sends it as a prompt),
-  or `new_turn` from an adapter that ignores the hint (codex-acp starts a turn of its own).
+  or `new_turn` from an adapter that ignores the hint and starts a turn of its own (both
+  pinned adapters honour it).
   `connect(harness, transport, options)` takes an SDK `Stream` or an in-process `AgentApp`,
   which is how the tests run without a subprocess.
 - `CopilotInstructions` — the instruction block, the `/` shortcut templates, and
@@ -129,8 +130,8 @@ auto id. The ids, as the pinned adapters advertise them:
 
 | Harness | Manual | Auto | Others |
 | --- | --- | --- | --- |
-| claude-agent-acp 0.76.0 | `default` | `auto` ("Claude handles permission decisions") | `acceptEdits`, `plan`, `bypassPermissions` |
-| codex-acp 1.11.0 | `read-only` | `agent` ("Approve for me") | `agent-full-access` |
+| claude-agent-acp 0.99.1 | `default` ("Manual") | `auto` ("Claude handles permission decisions") | `acceptEdits`, `plan`, `bypassPermissions` |
+| codex-acp 2.5.0 | `read-only` (a read-only sandbox) | `agent` ("Auto review"), where a session opens | `workspace-write`, `agent-full-access` |
 | gemini | not named | not named | |
 
 The switch happens only from the manual mode: a session that opens in any other mode got it
