@@ -2,7 +2,15 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { runUpdateProcess } from "../packages/cli/src/update-process";
+import {
+	type ProcessReply,
+	runUpdateProcess,
+} from "../packages/cli/src/update-process";
+import {
+	ChannelVersionSchema,
+	channelOf,
+	compareVersions,
+} from "../packages/cli/src/update-version";
 import { err, ok, type Result } from "../packages/core/result";
 import {
 	readArtifactFile,
@@ -13,12 +21,15 @@ import {
 import { discoverGitHubRelease, type GitHubRelease } from "./release-github";
 import { runReleaseInteractive } from "./release-process";
 
+/** `beta` is read for a beta release only; a stable release leaves it null. */
 export type RegistryState = {
 	existingIntegrity: string | null;
 	latest: string | null;
+	beta: string | null;
 };
 export type ReleaseState = {
 	draft: boolean;
+	prerelease: boolean;
 	immutable: boolean;
 	assetsMatch: boolean;
 	assetsComplete: boolean;
@@ -32,21 +43,36 @@ export type PublishOperations = {
 	finalizeDraft: () => Promise<Result<void>>;
 };
 const failure = (message: string): Result<never> => err(new Error(message));
-export const compareVersion = (a: string, b: string): number => {
-	const aa = a.split(".").map(Number),
-		bb = b.split(".").map(Number);
-	for (const i of [0, 1, 2]) {
-		const difference = (aa[i] ?? 0) - (bb[i] ?? 0);
-		if (difference) return difference;
-	}
-	return 0;
+
+/** What a release's channel asks of the npm dist-tags and of its GitHub release. */
+const releaseChannel = (version: string) => {
+	const beta = channelOf(version) === "beta";
+	return {
+		beta,
+		/** Newer than npm latest and, for a beta, npm beta. */
+		advances: (state: RegistryState): boolean =>
+			[state.latest, beta ? state.beta : null].every(
+				(tagged) => tagged === null || compareVersions(version, tagged) > 0,
+			),
+		/** The tag the channel publishes on is at or past this version. */
+		reached: (state: RegistryState): boolean => {
+			const tagged = beta ? state.beta : state.latest;
+			return tagged !== null && compareVersions(tagged, version) >= 0;
+		},
+		marked: (state: NonNullable<ReleaseState>): boolean =>
+			!beta || state.prerelease,
+	};
 };
 
 /** How long to watch for a publish to appear: npm can take minutes to serve a new version. */
 export type RegistrySettle = { attempts: number; intervalMs: number };
 const REGISTRY_SETTLE: RegistrySettle = { attempts: 30, intervalMs: 10_000 };
 
-/** One exact archive, one publish attempt; recovery observes state rather than retrying writes. */
+/**
+ * One exact archive, one publish attempt; recovery observes state rather than retrying writes.
+ * A stable release moves npm `latest`. A beta moves npm `beta` and leaves `latest` as it found it,
+ * and its GitHub release is a prerelease.
+ */
 export const completeRelease = async (
 	record: ReleaseManifest,
 	ops: PublishOperations,
@@ -56,6 +82,7 @@ export const completeRelease = async (
 		return failure(
 			"Artifact is nonpromotable (dirty source or missing/mismatched tag).",
 		);
+	const { beta, advances, reached, marked } = releaseChannel(record.version);
 	const tag = await ops.verifyTag();
 	if (!tag.ok) return tag;
 	const registry = await ops.registry(),
@@ -76,26 +103,21 @@ export const completeRelease = async (
 	if (release.value && !release.value.draft)
 		return registry.value.existingIntegrity === record.integrity &&
 			release.value.immutable &&
-			release.value.assetsComplete
+			release.value.assetsComplete &&
+			marked(release.value)
 			? ok("Verified already complete; no writes performed.")
 			: failure(
 					"Published release is inconsistent or not immutable; investigate manually.",
 				);
-	if (
-		registry.value.existingIntegrity === null &&
-		registry.value.latest !== null &&
-		compareVersion(record.version, registry.value.latest) <= 0
-	)
+	if (registry.value.existingIntegrity === null && !advances(registry.value))
 		return failure(
-			"New stable version must advance latest; no implicit downgrade.",
+			beta
+				? "New beta must advance npm latest and beta; no implicit downgrade."
+				: "New stable version must advance latest; no implicit downgrade.",
 		);
-	if (
-		registry.value.existingIntegrity !== null &&
-		(registry.value.latest === null ||
-			compareVersion(registry.value.latest, record.version) < 0)
-	)
+	if (registry.value.existingIntegrity !== null && !reached(registry.value))
 		return failure(
-			"Existing npm version lacks the expected stable tag state; review dist-tags manually.",
+			`Existing npm version lacks the expected ${beta ? "beta" : "stable"} tag state; review dist-tags manually.`,
 		);
 	const draft = await ops.prepareDraft();
 	if (!draft.ok)
@@ -119,8 +141,7 @@ export const completeRelease = async (
 		if (
 			!fresh.ok ||
 			fresh.value.existingIntegrity !== null ||
-			(fresh.value.latest !== null &&
-				compareVersion(record.version, fresh.value.latest) <= 0)
+			!advances(fresh.value)
 		)
 			return failure(
 				"Registry changed before publish; stop and inspect without retrying writes.",
@@ -134,8 +155,8 @@ export const completeRelease = async (
 		if (
 			observed.ok &&
 			observed.value.existingIntegrity === record.integrity &&
-			observed.value.latest !== null &&
-			compareVersion(observed.value.latest, record.version) >= 0
+			reached(observed.value) &&
+			(!beta || observed.value.latest === registry.value.latest)
 		) {
 			confirmed = observed.value;
 			break;
@@ -143,7 +164,7 @@ export const completeRelease = async (
 	}
 	if (!confirmed)
 		return failure(
-			`Publication state is unverified/partial: ${record.version} with the archive's integrity is not on the registry yet. Check \`npm view kabane@${record.version} dist.integrity\`. Once it matches the archive, rerunning publish only finalizes GitHub and never publishes again; while it is absent, inspect before any retry.`,
+			`Publication state is unverified/partial: ${record.version} with the archive's integrity is not on the registry${beta ? " under the beta tag with latest unchanged" : ""} yet. Check \`npm view kabane@${record.version} dist.integrity\`${beta ? " and `npm view kabane dist-tags`" : ""}. Once it matches the archive, rerunning publish only finalizes GitHub and never publishes again; while it is absent, inspect before any retry.`,
 		);
 	const stillTag = await ops.verifyTag();
 	if (!stillTag.ok)
@@ -161,8 +182,13 @@ export const completeRelease = async (
 		!final.value.draft &&
 		final.value.immutable &&
 		final.value.assetsMatch &&
-		final.value.assetsComplete
-		? ok("Verified npm publication and immutable GitHub release.")
+		final.value.assetsComplete &&
+		marked(final.value)
+		? ok(
+				beta
+					? "Verified npm beta publication and immutable GitHub prerelease."
+					: "Verified npm publication and immutable GitHub release.",
+			)
 		: failure(
 				"npm is verified; final GitHub immutability/assets remain unverified. Inspect partial state manually.",
 			);
@@ -199,10 +225,26 @@ export const authorizePublication = (
 };
 
 const ROOT = resolve(import.meta.dir, "..");
+/** A dist-tag lookup that was not made is null, as is a tag the package lacks: npm prints nothing. */
+const parseDistTag = (
+	reply: Result<ProcessReply> | null,
+): Result<string | null> => {
+	if (!reply) return ok(null);
+	if (!reply.ok || reply.value.code !== 0)
+		return failure("Registry lookup failed; absence is not proven.");
+	const text = reply.value.stdout.trim();
+	if (!text) return ok(null);
+	try {
+		const parsed = ChannelVersionSchema.safeParse(JSON.parse(text));
+		return parsed.success ? ok(parsed.data) : failure("Invalid registry beta.");
+	} catch {
+		return failure("Invalid registry JSON.");
+	}
+};
 const Stable = z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
 const NpmRecord = z.object({
 	name: z.literal("kabane"),
-	version: Stable,
+	version: ChannelVersionSchema,
 	gitHead: z.string().optional(),
 	dist: z.object({ integrity: z.string() }),
 });
@@ -216,6 +258,7 @@ const publishVerifiedRelease = async (
 	const verified = verifyReleaseFiles(directory);
 	if (!verified.ok) return verified;
 	const record = verified.value;
+	const channel = channelOf(record.version);
 	if (mode === "oidc") {
 		const allowed = authorizePublication(record, originalEnv);
 		if (!allowed.ok) return allowed;
@@ -374,21 +417,41 @@ const publishVerifiedRelease = async (
 					work,
 					15_000,
 				);
+				// Only a beta release reads its own tag.
+				const beta =
+					channel === "beta"
+						? await call(
+								[
+									"npm",
+									"view",
+									"kabane",
+									"dist-tags.beta",
+									"--json",
+									"--registry",
+									"https://registry.npmjs.org/",
+								],
+								work,
+								15_000,
+							)
+						: null;
 				if (!version.ok || !latest.ok || latest.value.code !== 0)
 					return failure("Registry lookup failed; absence is not proven.");
+				const betaTag = parseDistTag(beta);
+				if (!betaTag.ok) return betaTag;
 				try {
 					const latestVersion = Stable.safeParse(
 						JSON.parse(latest.value.stdout),
 					);
 					if (!latestVersion.success)
 						return failure("Invalid stable registry latest.");
+					const tags = { latest: latestVersion.data, beta: betaTag.value };
 					const raw: unknown = JSON.parse(version.value.stdout);
 					if (version.value.code !== 0) {
 						const missing = z
 							.object({ error: z.object({ code: z.literal("E404") }) })
 							.safeParse(raw);
 						return missing.success
-							? ok({ existingIntegrity: null, latest: latestVersion.data })
+							? ok({ existingIntegrity: null, ...tags })
 							: failure("Registry error is not proven version absence.");
 					}
 					const parsed = NpmRecord.safeParse(raw);
@@ -400,7 +463,7 @@ const publishVerifiedRelease = async (
 						return failure("Registry version/source identity mismatch.");
 					return ok({
 						existingIntegrity: parsed.data.dist.integrity,
-						latest: latestVersion.data,
+						...tags,
 					});
 				} catch {
 					return failure("Invalid registry JSON.");
@@ -414,6 +477,7 @@ const publishVerifiedRelease = async (
 				return matches.ok
 					? ok({
 							draft: state.value.draft,
+							prerelease: state.value.prerelease === true,
 							immutable: state.value.immutable === true,
 							assetsMatch: matches.value,
 							assetsComplete: state.value.assets.length === assets.length,
@@ -453,6 +517,7 @@ const publishVerifiedRelease = async (
 						"davidpp/kabane",
 						"--verify-tag",
 						"--draft",
+						...(channel === "beta" ? ["--prerelease"] : []),
 						"--target",
 						record.commit,
 						"--title",
@@ -475,7 +540,7 @@ const publishVerifiedRelease = async (
 					"--access",
 					"public",
 					"--tag",
-					"latest",
+					channel,
 					"--ignore-scripts",
 					"--registry",
 					"https://registry.npmjs.org/",
@@ -503,9 +568,14 @@ const publishVerifiedRelease = async (
 					"--repo",
 					"davidpp/kabane",
 					"--draft=false",
-					latest.value.latest === record.version
-						? "--latest"
-						: "--latest=false",
+					// A beta is never GitHub's latest release, whatever npm latest holds.
+					...(channel === "beta"
+						? ["--prerelease", "--latest=false"]
+						: [
+								latest.value.latest === record.version
+									? "--latest"
+									: "--latest=false",
+							]),
 				]);
 				return result.ok && result.value.code === 0
 					? ok(undefined)

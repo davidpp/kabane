@@ -17,6 +17,7 @@ test("semantic bumps reset lower components and reject unsafe versions/overflow"
 	for (const version of [
 		"01.2.3",
 		"1.2.3-beta",
+		"1.2.3-beta.0",
 		"../escape",
 		"1.2.9007199254740992",
 	])

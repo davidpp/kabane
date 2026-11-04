@@ -8,6 +8,11 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import {
+	ChannelVersionSchema,
+	channelOf,
+	compareVersions,
+} from "../packages/cli/src/update-version";
 import { err, ok, type Result } from "../packages/core/result";
 import { prepareRelease } from "./release";
 import {
@@ -19,7 +24,7 @@ import {
 	queryRelease as query,
 	runReleaseInteractive,
 } from "./release-process";
-import { compareVersion, publishLocalRelease } from "./release-publish";
+import { publishLocalRelease } from "./release-publish";
 import {
 	SemanticBumpSchema,
 	StableReleaseVersionSchema as StableVersionSchema,
@@ -27,7 +32,7 @@ import {
 } from "./release-version";
 
 const ROOT = resolve(import.meta.dir, "..");
-export const LOCAL_RELEASE_HELP = `Usage: bun run release:local prepare|publish [--bump auto|major|minor|patch | --version X.Y.Z] [--notes-file path] [--source-root path]
+export const LOCAL_RELEASE_HELP = `Usage: bun run release:local prepare|publish [--bump auto|major|minor|patch | --version X.Y.Z[-beta.N]] [--notes-file path] [--source-root path]
 
 prepare: require clean main, commit the version/lock, run the gates, build/pack once,
          smoke and retain .releases/X.Y.Z, enable GitHub release immutability,
@@ -40,6 +45,8 @@ prepare defaults to auto: inspect Conventional Commits since npm latest's tag/gi
 Breaking -> major (minor during 0.x), feat -> minor, fix/perf -> patch.
 Maintenance-only or unclear history requires an explicit --bump. --bump major is
 an explicit decision to enter stable 1.0.0 during initial development.
+--version X.Y.Z-beta.N is the only way to a beta: it publishes on npm beta, newer
+than npm latest and beta, as a GitHub prerelease, and never moves npm latest.
 publish and repeated prepare reuse .releases/current.json, never bump again.
 Run npm login between phases if needed. Only prepare accepts --notes-file.
 Only publish accepts --source-root: use fixed tooling with an original clean source
@@ -49,7 +56,7 @@ Human-run only; agents must not execute these release operations.`;
 const LocalReleaseArgsSchema = z
 	.object({
 		mode: z.enum(["prepare", "publish"]),
-		version: StableVersionSchema.optional(),
+		version: ChannelVersionSchema.optional(),
 		bump: z.enum(["auto", ...SemanticBumpSchema.options]).optional(),
 		notesFile: z.string().min(1).optional(),
 		sourceRoot: z.string().min(1).optional(),
@@ -97,14 +104,14 @@ const Source = z
 	.object({
 		name: z.literal("kabane"),
 		private: z.literal(true),
-		version: StableVersionSchema,
+		version: ChannelVersionSchema,
 	})
 	.passthrough();
 const Immutable = z.object({ enabled: z.boolean() });
 const fail = (message: string): Result<never> => err(new Error(message));
 const ReleaseChoiceSchema = z
 	.object({
-		version: StableVersionSchema,
+		version: ChannelVersionSchema,
 		selector: z.enum(["auto", ...SemanticBumpSchema.options, "version"]),
 		commit: z.string().regex(/^[a-f0-9]{40}$/),
 		state: z.enum(["preparing", "prepared", "published"]),
@@ -356,6 +363,50 @@ const verifyExistingTag = async (
 	return ok(tagged.value !== "");
 };
 
+/** Newer than npm latest and, for a beta, npm beta; never older than the source. */
+const newerThanPublished = async (
+	version: string,
+	sourceVersion: string,
+	root: string,
+	env: NodeJS.ProcessEnv,
+): Promise<Result<void>> => {
+	const distTag = (tag: "latest" | "beta") =>
+		query(
+			[
+				"npm",
+				"view",
+				"kabane",
+				`dist-tags.${tag}`,
+				"--json",
+				"--registry",
+				"https://registry.npmjs.org/",
+			],
+			root,
+			env,
+		);
+	const latest = await distTag("latest");
+	if (!latest.ok) return latest;
+	const beta = channelOf(version) === "beta";
+	// An absent dist-tag prints nothing.
+	const previousBeta = beta ? await distTag("beta") : ok("");
+	if (!previousBeta.ok) return previousBeta;
+	const floors = [
+		StableVersionSchema.safeParse(JSON.parse(latest.value)),
+		...(previousBeta.value
+			? [ChannelVersionSchema.safeParse(JSON.parse(previousBeta.value))]
+			: []),
+	];
+	return floors.some(
+		(floor) => !floor.success || compareVersions(version, floor.data) <= 0,
+	) || compareVersions(version, sourceVersion) < 0
+		? fail(
+				beta
+					? "Select a beta newer than npm latest and npm beta and not older than the source. No version fallback/downgrade."
+					: "Select a stable version newer than npm latest and not older than the source. No version fallback/downgrade.",
+			)
+		: ok(undefined);
+};
+
 type PreparedSource = { commit: string; tagged: boolean; notes?: string };
 
 const prepareSource = async (
@@ -368,29 +419,13 @@ const prepareSource = async (
 		JSON.parse(readFileSync(join(root, "packages/cli/package.json"), "utf8")),
 	);
 	if (!source.success) return fail("Invalid source CLI manifest.");
-	const latest = await query(
-		[
-			"npm",
-			"view",
-			"kabane",
-			"dist-tags.latest",
-			"--json",
-			"--registry",
-			"https://registry.npmjs.org/",
-		],
+	const newer = await newerThanPublished(
+		args.version,
+		source.data.version,
 		root,
 		env,
 	);
-	if (!latest.ok) return latest;
-	const published = StableVersionSchema.safeParse(JSON.parse(latest.value));
-	if (
-		!published.success ||
-		compareVersion(args.version, published.data) <= 0 ||
-		compareVersion(args.version, source.data.version) < 0
-	)
-		return fail(
-			"Select a stable version newer than npm latest and not older than the source. No version fallback/downgrade.",
-		);
+	if (!newer.ok) return newer;
 	let notes: string | undefined;
 	if (args.notesFile) {
 		if (existsSync(directory))
