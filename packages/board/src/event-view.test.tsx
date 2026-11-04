@@ -20,6 +20,7 @@ import type {
 	ActivitySource,
 	PlanEntry,
 } from "./ports";
+import { SPINNER_FRAMES } from "./spinner";
 import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";
 
@@ -532,12 +533,14 @@ describe("tool calls in the transcript", () => {
 				expect(rows).toContain("✗ `python3 - <<'EOF'… · 13s");
 				expect(frame).not.toContain("import sys");
 				expect(frame).not.toContain("trace 30");
-				// Still running: the spinner, in the working hue.
+				// Still running: a spinner frame, whichever the clock is on, in the working hue.
 				const spans = captureSpans().lines.flatMap((line) => line.spans);
 				const edit =
 					rows.find((row) => row.includes("Edit src/pane.tsx")) ?? "";
-				expect(edit.startsWith("⠋ Edit")).toBe(true);
-				const spinner = spanWith(spans, "⠋");
+				const frameGlyph = edit.slice(0, 1);
+				expect(SPINNER_FRAMES.some((f) => f === frameGlyph)).toBe(true);
+				expect(edit.slice(1)).toStartWith(" Edit");
+				const spinner = spanWith(spans, frameGlyph);
 				expect(spinner && ints(spinner.fg)).toEqual(rgb(Theme.DARK.working));
 				const failed = spanWith(spans, "✗");
 				expect(failed && ints(failed.fg)).toEqual(rgb(Theme.DARK.failed));
