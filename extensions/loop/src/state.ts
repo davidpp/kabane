@@ -19,6 +19,8 @@ export namespace RunState {
 		pid: number;
 		/** Launch overrides per harness (a local adapter build, a model). */
 		overrides?: Partial<Record<Harnesses.Id, Harnesses.Overrides>>;
+		/** The mode every session starts in; the harness's own auto mode when absent. */
+		mode?: Harnesses.Mode;
 		/** Aborting it stops the run the way an inbox `stop` does. */
 		signal?: AbortSignal;
 		/** A fingerprint of the working tree, for the stall detector and the gates. Defaults to git. */

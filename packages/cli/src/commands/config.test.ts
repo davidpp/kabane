@@ -105,6 +105,8 @@ describe("config through the real CLI", () => {
 				"copilot.command",
 				"copilot.args",
 				"copilot.model",
+				"harness",
+				"harness.mode",
 				"timezone",
 				"extensions",
 			].sort(),

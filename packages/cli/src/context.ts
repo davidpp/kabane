@@ -16,6 +16,7 @@ import {
 	type Config,
 	type DatabaseLocation,
 	databaseLocation,
+	harnessMode,
 	loadConfig,
 } from "./config";
 
@@ -64,6 +65,7 @@ export const openContext = async (
 		cwd,
 		config: config.value,
 		actor,
+		harnessMode: harnessMode(config.value),
 	});
 };
 

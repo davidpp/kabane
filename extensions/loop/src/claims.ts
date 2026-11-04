@@ -265,6 +265,7 @@ export namespace Claims {
 				cwd: RunStore.sessionDir(ctx.run),
 				runId: ctx.run.id,
 				...(ctx.run.scopeUri ? { scopeUri: ctx.run.scopeUri } : {}),
+				...(ctx.deps.mode ? { mode: ctx.deps.mode } : {}),
 				overrides: {
 					...ctx.deps.overrides?.[harness],
 					...(model ? { model } : {}),

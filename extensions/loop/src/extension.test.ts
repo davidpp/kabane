@@ -25,6 +25,7 @@ const kabaneLoop = (...argv: string[]) => {
 		store: home,
 		cwd: home,
 		actor: "cabane://actor/human/test",
+		harnessMode: "auto",
 	});
 };
 

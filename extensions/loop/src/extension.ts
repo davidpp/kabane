@@ -150,7 +150,11 @@ const answer = async (
 		: failure(answered.error);
 };
 
-type Deps = Loop.Deps & { cwd: string; actor: string };
+type Deps = Loop.Deps & {
+	cwd: string;
+	actor: string;
+	mode: Harnesses.Mode;
+};
 type Verb = (args: ParsedArgs, deps: Deps, target: string) => Promise<Outcome>;
 
 const ran = (result: Result<RunStore.Run>): Outcome =>
@@ -278,6 +282,7 @@ const command: Extension.Command = {
 			kabaneBin: kabaneBin(),
 			cwd: ctx.cwd,
 			actor: ctx.actor,
+			mode: ctx.harnessMode,
 		};
 		if (verb === "answer") return answer(args, deps);
 		if (verb === "status") return target ? statusOf(deps, target) : list(deps);

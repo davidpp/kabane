@@ -32,6 +32,8 @@ export namespace Dispatch {
 		scopeUri?: string;
 		runId: string;
 		overrides?: Harnesses.Overrides;
+		/** The mode the session starts in; the harness's own auto mode when absent. */
+		mode?: Harnesses.Mode;
 	};
 
 	/**
@@ -343,6 +345,7 @@ export namespace Dispatch {
 		const started = await AcpClient.newSession(spawned.value, {
 			cwd: env.cwd,
 			mcpServers: [mcpServer(env, claim.harness)],
+			...(env.mode ? { mode: env.mode } : {}),
 		});
 		if (!started.ok) return started;
 		// What the harness says it runs, which is the evidence the user's default was used.

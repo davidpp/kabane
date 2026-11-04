@@ -81,8 +81,9 @@ answered from the board, a finding filed. Mocked transcripts do not count.
      This goes through a generic profile argument to `Harnesses.resolve`.
    - **Thin wrapper:** Kabane adds no security and no policy the user did not configure, and
      it overrides none of their settings. The loop forces no permission mode (`acceptEdits`,
-     bypass, …), injects no allow rules or settings file, and pins no model. The user's own
-     Claude Code or Codex settings decide what gets asked.
+     bypass, …), injects no allow rules or settings file, and pins no model. A session that
+     opens in the harness's manual mode is moved to the harness's own auto mode (JCAB-29;
+     `harness.mode` in the device config turns it off). The harness decides what gets asked.
    - **Permissions:** whatever the harness would prompt in an interactive session reaches the
      human through the tracker, unchanged. The loop never approves or declines a request
      itself.

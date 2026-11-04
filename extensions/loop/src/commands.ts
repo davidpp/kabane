@@ -354,6 +354,8 @@ export namespace Loop {
 
 	export type RunDeps = Deps & {
 		overrides?: Partial<Record<Harnesses.Id, Harnesses.Overrides>>;
+		/** The device config's `harness.mode`. */
+		mode?: Harnesses.Mode;
 	};
 
 	/**

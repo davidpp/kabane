@@ -134,6 +134,7 @@ export const boardDeps = async (
 			...(scope ? { scopeUri: scope.scopeUri } : {}),
 			...(overrides ? { overrides } : {}),
 			home: ctx.home,
+			mode: ctx.harnessMode,
 			setup: {
 				configPath: configPath(ctx.home),
 				extensions: Extensions.names,

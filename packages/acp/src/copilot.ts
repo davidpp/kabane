@@ -35,6 +35,8 @@ export namespace BoardCopilot {
 		// with only a short allow list of the environment, so an inherited one never arrives.
 		home: string;
 		overrides?: Harnesses.Overrides;
+		// The mode the session starts in; the harness's own auto mode when absent.
+		mode?: Harnesses.Mode;
 		// This device's config, which the copilot is told it may edit when asked to set kabane up.
 		setup: CopilotInstructions.Setup;
 		// How the harness is reached. Defaults to spawning it; tests pass an in-process transport,
@@ -160,6 +162,7 @@ export namespace BoardCopilot {
 				// prompt below, because an adapter that ignores `_meta` would otherwise run with no
 				// instructions at all.
 				systemPromptAppend: instructions,
+				...(options.mode ? { mode: options.mode } : {}),
 			});
 			if (!started.ok) {
 				AcpClient.close(opened.value);

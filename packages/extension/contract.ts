@@ -29,6 +29,11 @@ export namespace Extension {
 		cwd: string;
 		/** The actor for this invocation: `--as`, else the configured one. */
 		actor: string;
+		/**
+		 * The mode harness sessions start in (`harness.mode` in the device config):
+		 * `auto` is the harness's own auto mode, `default` selects none.
+		 */
+		harnessMode: "auto" | "default";
 	};
 
 	export type Command<C extends Ctx = Ctx> = {
