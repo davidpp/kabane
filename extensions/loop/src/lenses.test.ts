@@ -239,8 +239,9 @@ describe("Runner lenses", () => {
 		const events = RunStore.readEvents(home, "run-1");
 		const types = events.ok ? events.value.map((e) => e.type) : [];
 		expect(types.indexOf("gate_passed")).toBeLessThan(types.indexOf("claim"));
+		// The run took the parent; the lens that failed leaves it as the run left it.
 		const after = await Planner.getTask(home, parent.id);
-		expect(after.ok && after.value?.state).toBe("next");
+		expect(after.ok && after.value?.state).toBe("in_progress");
 	});
 
 	it("start refuses a lens with no prompt before anything runs", async () => {

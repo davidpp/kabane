@@ -406,9 +406,15 @@ describe("Runner final checks", () => {
 		expect(ended.claims).toEqual([]);
 		expect(RunStore.checkpoints(ended)).toEqual([head(ended.worktree ?? "")]);
 		expect(await refsOf(ended.parentId)).toEqual([
+			"loop:run-1",
 			"gate:stamp",
 			`commit:${head(ended.worktree ?? "")}`,
 		]);
+		// The summary on the parent names the branch to merge.
+		const comments = await Planner.getComments(home, ended.parentId);
+		expect(comments.ok && comments.value.at(-1)?.content).toEndWith(
+			`Merge branch \`${Worktree.branchFor("run-1")}\` from the worktree \`${ended.worktree}\`, then close ${ended.parentShortId}.`,
+		);
 	});
 
 	it("stops for a human when the gates are red and no subtask is left to reopen", async () => {
