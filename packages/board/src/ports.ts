@@ -307,6 +307,14 @@ export type CopilotUpdate =
 			severity: CopilotNoticeSeverity;
 			summary: string;
 			at: string;
+	  }
+	// The harness's own `/` commands, the whole list each time it changes: STATE, like a plan. The
+	// `/` picker offers them after the host's shortcuts, labelled with `source` (the harness).
+	| {
+			type: "commands";
+			source: string;
+			commands: readonly CopilotCommand[];
+			at: string;
 	  };
 
 export type CopilotNoticeSeverity = "info" | "warning";
@@ -315,9 +323,18 @@ export type CopilotNoticeSeverity = "info" | "warning";
 // will be sent before pressing enter. `hint` is the one-line description shown while picking.
 export type CopilotShortcut = { name: string; hint: string; template: string };
 
+// A `/name` the harness itself runs. Picking one puts `/name ` in the prompt, and the prompt goes to
+// the harness as written, since the command is the harness's. `hint` says what its input expects.
+export type CopilotCommand = {
+	name: string;
+	description: string;
+	hint?: string;
+};
+
 // The copilot the `A` prompt talks to. `run` streams one turn for a prompt with the board's context
-// attached; `cancel` stops the turn in flight; `shortcuts` lists the `/` expansions. The board never
-// learns which protocol or harness sits behind it.
+// attached; `cancel` stops the turn in flight; `shortcuts` lists the host's own `/` expansions, which
+// never change (the harness's commands arrive on the stream). The board never learns which protocol
+// or harness sits behind it.
 export interface Copilot {
 	run(
 		prompt: string,

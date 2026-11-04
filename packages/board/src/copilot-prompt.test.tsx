@@ -21,6 +21,7 @@ import {
 	contextChip,
 	harnessOf,
 	paletteNameCols,
+	paletteStart,
 	titleSegments,
 } from "./copilot-prompt";
 import { BoardNav } from "./nav";
@@ -589,6 +590,7 @@ const idle = (
 	turn: "idle",
 	hasLog: false,
 	shortcuts: [],
+	commands: [],
 	actor: null,
 	asks: [],
 	...over,
@@ -676,6 +678,54 @@ describe("the copilot pane's look", () => {
 		}
 	});
 
+	it("offers the harness's commands after the shortcuts, each led by the harness's name", async () => {
+		const copilot = BoardNav.withCopilotCommands(
+			BoardNav.init([], { scoped: false }),
+			"claude",
+			[{ name: "compact", description: "Summarise the conversation" }],
+		).copilot;
+		const { frame, destroy } = await mountPane(
+			{ ...copilot, text: "/", shortcuts: SHORTCUTS },
+			true,
+			60,
+		);
+		try {
+			const rows = frame.split("\n");
+			const at = (name: string) => rows.findIndex((r) => r.includes(name));
+			expect(at("/triage")).toBeLessThan(at("/compact"));
+			expect(frame).toMatch(/\/compact +claude · Summarise the conversation/);
+		} finally {
+			destroy();
+		}
+	});
+
+	it("shows eight of a long list around the pick, and says where it is in it", async () => {
+		const commands = Array.from({ length: 20 }, (_, i) => ({
+			name: `skill-${String(i).padStart(2, "0")}`,
+			description: `skill ${i}`,
+		}));
+		const copilot = BoardNav.withCopilotCommands(
+			BoardNav.init([], { scoped: false }),
+			"claude",
+			commands,
+		).copilot;
+		const { frame, destroy } = await mountPane(
+			{ ...copilot, text: "/", paletteAt: 12 },
+			true,
+			60,
+		);
+		try {
+			expect(frame).toContain("› /skill-12");
+			expect(frame).toContain("/skill-08");
+			expect(frame).toContain("/skill-15");
+			expect(frame).not.toContain("/skill-07");
+			expect(frame).not.toContain("/skill-16");
+			expect(frame).toContain("9–16 of 20");
+		} finally {
+			destroy();
+		}
+	});
+
 	it("collapsed, names its key in the text color and says the rest muted", async () => {
 		const { frame, spans, destroy } = await mountPane(idle(), false);
 		try {
@@ -725,8 +775,18 @@ describe("the pane's words", () => {
 	});
 
 	it("paletteNameCols leaves the gutter, the slash and a two-cell gap around the longest name", () => {
-		expect(paletteNameCols(SHORTCUTS)).toBe("setup-dispatch".length + 5);
-		expect(paletteNameCols([])).toBe(5);
+		expect(paletteNameCols(SHORTCUTS, 80)).toBe("setup-dispatch".length + 5);
+		expect(paletteNameCols([], 80)).toBe(5);
+		// A skill's long name stops at half the row.
+		const long = [{ name: "x".repeat(60), hint: "", template: "" }];
+		expect(paletteNameCols(long, 80)).toBe(40);
+	});
+
+	it("paletteStart keeps the pick in the middle of the window, and stops at either end", () => {
+		expect(paletteStart(5, 4, 8)).toBe(0);
+		expect(paletteStart(20, 0, 8)).toBe(0);
+		expect(paletteStart(20, 12, 8)).toBe(8);
+		expect(paletteStart(20, 19, 8)).toBe(12);
 	});
 
 	it("collapsedSegments puts a waiting question ahead of everything, its ? in the accent", () => {

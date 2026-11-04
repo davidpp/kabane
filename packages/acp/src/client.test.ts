@@ -476,6 +476,32 @@ describe("AcpClient.toUpdate", () => {
 		).toEqual({ type: "usage", used: 10, size: 100 });
 	});
 
+	it("maps the harness's command list to names, descriptions and input hints", () => {
+		expect(
+			AcpClient.toUpdate({
+				sessionUpdate: "available_commands_update",
+				availableCommands: [
+					{ name: "compact", description: "Summarise the conversation" },
+					{
+						name: "review",
+						description: "Review a pull request",
+						input: { hint: "pr number" },
+					},
+				],
+			}),
+		).toEqual({
+			type: "commands",
+			commands: [
+				{ name: "compact", description: "Summarise the conversation" },
+				{
+					name: "review",
+					description: "Review a pull request",
+					hint: "pr number",
+				},
+			],
+		});
+	});
+
 	it("reads a config option update as the mode its mode option holds, and nothing without one", () => {
 		expect(
 			AcpClient.toUpdate({

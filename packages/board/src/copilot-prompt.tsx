@@ -29,7 +29,7 @@ import {
 	permissionSegments,
 } from "./permission-block";
 import { PlanBlock } from "./plan-block";
-import type { CopilotShortcut, PlanEntry } from "./ports";
+import type { PlanEntry } from "./ports";
 import { fieldRows, PromptField } from "./prompt-field";
 import { Segments } from "./segments";
 import { type Theme, useTheme } from "./theme";
@@ -110,14 +110,32 @@ export const titleSegments = (
 
 // The palette's name column, sized to the longest name on offer: `› /setup-dispatch` must never run
 // into its own expansion. The gutter, the slash and a two-cell gap are the chrome around the name.
+// A harness's skills can be named at length, so the column stops at half the row and a name past
+// it is cut, leaving the hint its room.
 export const paletteNameCols = (
-	shortcuts: readonly CopilotShortcut[],
+	entries: readonly BoardNav.PaletteEntry[],
+	width: number,
 ): number =>
-	Math.max(0, ...shortcuts.map((shortcut) => shortcut.name.length)) + 5;
+	Math.min(
+		Math.max(0, ...entries.map((entry) => entry.name.length)) + 5,
+		Math.max(12, Math.floor(width / 2)),
+	);
 
-// How many rows the plan and the agent's last lines may take above the input.
+// How many rows the plan, the agent's last lines and the palette may take above the input. The
+// harness's commands and skills can run to dozens, and the board has to stay in view behind them.
 const MAX_PLAN_ROWS = 6;
 const MAX_TAIL_ROWS = 3;
+const MAX_PALETTE_ROWS = 8;
+
+/**
+ * The first of the `rows` palette entries on screen out of `count`: the window keeps the pick in
+ * its middle, and stops at either end of the list.
+ */
+export const paletteStart = (
+	count: number,
+	picked: number,
+	rows: number,
+): number => Math.max(0, Math.min(picked - Math.floor(rows / 2), count - rows));
 
 export type CopilotPaneProps = {
 	copilot: BoardNav.CopilotState;
@@ -202,12 +220,9 @@ export const CopilotPane = ({
 		);
 	}
 
-	const matches = BoardNav.matchingShortcuts(copilot.shortcuts, copilot.text);
-	// Clamped here as well as in the reducer: the list shrinks as the name is typed, and a render
-	// between the two would otherwise point past the end of it.
-	const selected = Math.min(
-		Math.max(copilot.paletteAt, 0),
-		Math.max(0, matches.length - 1),
+	const matches = BoardNav.matchingShortcuts(
+		BoardNav.paletteEntries(copilot),
+		copilot.text,
 	);
 	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
 	// A blocked harness outranks everything else the panel could say: the turn is not going anywhere
@@ -220,7 +235,6 @@ export const CopilotPane = ({
 		!showChoice && !showPalette && !detailShownElsewhere && plan.length > 0;
 	const showTail =
 		!showChoice && !showPalette && !detailShownElsewhere && tail.length > 0;
-	const nameCols = paletteNameCols(matches);
 
 	return (
 		<box
@@ -257,17 +271,13 @@ export const CopilotPane = ({
 							</text>
 						))
 					: null}
-				{showPalette
-					? matches.map((shortcut, index) => (
-							<PaletteRow
-								key={shortcut.name}
-								shortcut={shortcut}
-								picked={index === selected}
-								nameCols={nameCols}
-								width={inner}
-							/>
-						))
-					: null}
+				{showPalette ? (
+					<Palette
+						entries={matches}
+						paletteAt={copilot.paletteAt}
+						width={inner}
+					/>
+				) : null}
 			</box>
 			<PromptField
 				textareaRef={textareaRef}
@@ -344,25 +354,73 @@ const FormPanel = ({
 const planProgress = (plan: readonly PlanEntry[]): string =>
 	`${plan.filter((entry) => entry.status === "completed").length}/${plan.length}`;
 
-// One `/` shortcut: its name in the text color and its expansion muted, so the list reads as the
-// repertoire it is. ↑/↓ move the pick, which paints the selected surface across the whole row (the
+// The palette's window on what matches: the rows around the pick, and where they sit in a list
+// longer than the window.
+const Palette = ({
+	entries,
+	paletteAt,
+	width,
+}: {
+	entries: readonly BoardNav.PaletteEntry[];
+	paletteAt: number;
+	width: number;
+}): ReactNode => {
+	const theme = useTheme();
+	// Clamped here as well as in the reducer: the list shrinks as the name is typed, and a render
+	// between the two would otherwise point past the end of it.
+	const selected = Math.min(
+		Math.max(paletteAt, 0),
+		Math.max(0, entries.length - 1),
+	);
+	const nameCols = paletteNameCols(entries, width);
+	const from = paletteStart(entries.length, selected, MAX_PALETTE_ROWS);
+	const shown = entries.slice(from, from + MAX_PALETTE_ROWS);
+	return (
+		<>
+			{shown.map((entry, index) => (
+				<PaletteRow
+					key={`${entry.source ?? ""}/${entry.name}`}
+					entry={entry}
+					picked={from + index === selected}
+					nameCols={nameCols}
+					width={width}
+				/>
+			))}
+			{shown.length < entries.length ? (
+				<text bg={theme.surface.raised} fg={theme.muted}>
+					{`  ${from + 1}–${from + shown.length} of ${entries.length}`}
+				</text>
+			) : null}
+		</>
+	);
+};
+
+// One `/` entry: its name in the text color and its expansion muted, so the list reads as the
+// repertoire it is; a harness command leads its hint with the harness's name, since the board does
+// not run it. ↑/↓ move the pick, which paints the selected surface across the whole row (the
 // Selection Rule); the `›` gutter says which one enter and tab will take. Not the input's `▸`:
 // stacked directly above it, the same glyph made the picked row read as another prompt.
 const PaletteRow = ({
-	shortcut,
+	entry,
 	picked,
 	nameCols,
 	width,
 }: {
-	shortcut: CopilotShortcut;
+	entry: BoardNav.PaletteEntry;
 	picked: boolean;
 	nameCols: number;
 	width: number;
 }): ReactNode => {
 	const theme = useTheme();
 	const bg = picked ? theme.surface.selected : theme.surface.raised;
-	const name = `${picked ? "› " : "  "}/${shortcut.name}`.padEnd(nameCols);
-	const hint = fit(shortcut.hint, Math.max(0, width - nameCols));
+	const name =
+		`${picked ? "› " : "  "}${fit(`/${entry.name}`, nameCols - 4)}`.padEnd(
+			nameCols,
+		);
+	const hint = fit(
+		entry.source ? `${entry.source} · ${entry.hint}` : entry.hint,
+		Math.max(0, width - nameCols),
+	);
 	return (
 		<text bg={bg}>
 			<span fg={picked ? theme.accent : theme.muted}>{name.slice(0, 2)}</span>

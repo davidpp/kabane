@@ -59,6 +59,9 @@ export namespace AcpClient {
 		// A `notice`: something the harness wants the human to know that is not the agent's reply
 		// (a mode it fell back from, a model it swapped). `text` is its title and detail as one line.
 		| { type: "notice"; severity: string; text: string }
+		// The harness's own slash commands, the whole list every time it changes
+		// (`available_commands_update`). `hint` is what a command's input expects, when it takes one.
+		| { type: "commands"; commands: Command[] }
 		| { type: "stop"; reason: string }
 		| { type: "error"; message: string };
 
@@ -75,6 +78,8 @@ export namespace AcpClient {
 		input?: unknown;
 		output?: unknown;
 	};
+
+	export type Command = { name: string; description: string; hint?: string };
 
 	export type PromptBlock = { type: "text"; text: string };
 
@@ -1125,6 +1130,15 @@ export namespace AcpClient {
 								},
 							}
 						: {}),
+				};
+			case "available_commands_update":
+				return {
+					type: "commands",
+					commands: update.availableCommands.map((command) => ({
+						name: command.name,
+						description: command.description,
+						...(command.input?.hint ? { hint: command.input.hint } : {}),
+					})),
 				};
 			default:
 				return null;

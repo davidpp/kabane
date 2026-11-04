@@ -464,6 +464,16 @@ export const App = ({
 							prev ? BoardNav.withCopilotWithdrawn(prev, update.id) : prev,
 						);
 					}
+					if (update.type === "commands")
+						setState((prev) =>
+							prev
+								? BoardNav.withCopilotCommands(
+										prev,
+										update.source,
+										update.commands,
+									)
+								: prev,
+						);
 					if (update.type === "tool_result") {
 						const current = stateRef.current;
 						if (current) void reload(current);

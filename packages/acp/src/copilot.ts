@@ -104,6 +104,15 @@ export namespace BoardCopilot {
 					),
 				};
 
+	// Whether `prompt` opens with `/name` for one of the harness's commands.
+	const runsCommand = (
+		prompt: string,
+		commands: readonly AcpClient.Command[],
+	): boolean => {
+		const name = /^\/(\S+)/.exec(prompt.trimStart())?.[1];
+		return name !== undefined && commands.some((c) => c.name === name);
+	};
+
 	const defaultBin = (): string => {
 		const entry = process.argv[1];
 		return entry ? resolve(entry) : "kabane";
@@ -128,6 +137,9 @@ export namespace BoardCopilot {
 		>();
 		// A form carries no id of its own (its tool call id is optional), so it is numbered here.
 		let formsAsked = 0;
+		// The harness's slash commands as it last listed them, so a prompt that runs one goes to it
+		// as written.
+		let commands: readonly AcpClient.Command[] = [];
 
 		// Never answers by itself: it puts the question on the stream and waits. A request nobody
 		// answers keeps the turn waiting for as long as the human leaves it, which is what `cancel`
@@ -302,6 +314,16 @@ export namespace BoardCopilot {
 					];
 				// ACP's severity is open-ended; the board tells a warning from the rest, and an error the
 				// harness only notifies about (the turn carries on) is a warning to it.
+				case "commands":
+					commands = incoming.commands;
+					return [
+						{
+							type: "commands",
+							source: options.harness,
+							commands: incoming.commands,
+							at: at(),
+						},
+					];
 				case "notice":
 					return [
 						{
@@ -321,6 +343,28 @@ export namespace BoardCopilot {
 			}
 		};
 
+		// What one prompt goes to the harness as, and whether it carries the instruction block. A
+		// harness reads a slash command off the start of the prompt's first block, so one of its own
+		// goes alone and as written: no instructions, no board context ahead of it.
+		const compose = (
+			prompt: string,
+			context: BoardContext.Context,
+		): { blocks: AcpClient.PromptBlock[]; instructing: boolean } => {
+			const asked = { type: "text" as const, text: prompt };
+			if (runsCommand(prompt, commands))
+				return { blocks: [asked], instructing: false };
+			const shown = {
+				type: "text" as const,
+				text: BoardContext.render(context),
+			};
+			return instructed
+				? { blocks: [shown, asked], instructing: false }
+				: {
+						blocks: [{ type: "text", text: instructions }, shown, asked],
+						instructing: true,
+					};
+		};
+
 		const run = async function* (
 			prompt: string,
 			context: BoardContext.Context,
@@ -337,10 +381,7 @@ export namespace BoardCopilot {
 			// The session's first turn opens on the mode it runs in, so the human can tell whether
 			// the harness or they decide what it asks.
 			if (!instructed) yield update("mode", started.value.mode.note);
-			const blocks: AcpClient.PromptBlock[] = [];
-			if (!instructed) blocks.push({ type: "text", text: instructions });
-			blocks.push({ type: "text", text: BoardContext.render(context) });
-			blocks.push({ type: "text", text: prompt });
+			const { blocks, instructing } = compose(prompt, context);
 			const titles = new Map<string, string>();
 			let first = true;
 			// ACP streams prose as DELTAS: `agent_message_chunk` arrives mid-word, so one sentence is
@@ -390,9 +431,9 @@ export namespace BoardCopilot {
 					// instruction block it carried has to ride the next one.
 					if (first) {
 						first = false;
-						instructed ||= !(
-							incoming.type === "stop" && incoming.reason === "cancelled"
-						);
+						instructed ||=
+							instructing &&
+							!(incoming.type === "stop" && incoming.reason === "cancelled");
 					}
 					if (incoming.type === "text" || incoming.type === "thought") {
 						// A thought does not continue a message, or the other way round.

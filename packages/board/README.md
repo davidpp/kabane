@@ -232,7 +232,12 @@ mirrors it — `BoardNav.copilotConsumes` names the keys the reducer takes back 
 to the next pane — and neither touches a running turn: `esc` is the back key in every other view
 and destroys nothing anywhere on the board. Typing `/` lists `shortcuts()` (`/triage`, `/refine`, …)
 as a palette; `tab`, or `enter` on the exact name, expands the `template` so what will be sent is
-read before it goes. `↑` on an empty buffer walks back through this session's prompts.
+read before it goes. Once the session is open the harness's own commands follow them, from its
+latest `commands` update (`{ type: "commands", source, commands }`, each `{ name, description,
+hint? }`), each hint led by the harness's name (`/compact  claude · …`). Picking one puts `/name `
+in the input, and the prompt goes to the harness as written, with no board context ahead of it,
+since the command is the harness's to run. The palette shows eight rows around the pick and says
+where it is in a longer list. `↑` on an empty buffer walks back through this session's prompts.
 
 The turn runs in the background and the board stays fully interactive. Submitting hands the
 keyboard back to the board, because the next thing after sending a command is watching it. The
@@ -242,7 +247,8 @@ cancel; the finished indicator stays until the next keypress, which also clears 
 
 Exactly one surface animates per fact: the pane owns the copilot, the tab on screen owns its card,
 and every echo of a running thing renders `●` rather than a frozen spinner frame (see `spinner.ts`). `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
-`mode`, `error`, `done`, and `notice` with a `severity` of `info` or `warning`); each `tool_result`
+`mode`, `error`, `done`, `notice` with a `severity` of `info` or `warning`, and the `commands`
+list above); each `tool_result`
 reloads the board so the copilot's writes appear as they land. A notice is a line of the turn's
 transcript and changes nothing else: an info as the event type `notice`, a warning as `warning`. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
 rather than inviting a prompt, and `enter` flashes `a turn is running · o for its transcript, x

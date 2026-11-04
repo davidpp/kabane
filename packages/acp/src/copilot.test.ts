@@ -91,6 +91,8 @@ const scriptedAgent = (
 		move?: string;
 		// A notice the agent sends before anything else in the turn.
 		notice?: { severity: string; title: string; description?: string };
+		// The slash commands the agent lists before anything else in the turn.
+		commands?: { name: string; description: string }[];
 	} = {},
 ): AgentApp =>
 	agentApp({ name: "scripted" })
@@ -160,6 +162,11 @@ const scriptedAgent = (
 						withdrawing(),
 					),
 				);
+			if (options.commands)
+				await notify({
+					sessionUpdate: "available_commands_update",
+					availableCommands: options.commands,
+				});
 			if (options.notice)
 				await notify({ sessionUpdate: "notice", ...options.notice });
 			if (options.move)
@@ -390,6 +397,30 @@ describe("BoardCopilot", () => {
 			],
 		]);
 		expect(updates[1]).toMatchObject({ severity: "warning" });
+		copilot.close();
+	});
+
+	it("hands the board the harness's commands, and sends a prompt that runs one alone and as typed", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				commands: [{ name: "compact", description: "Summarise" }],
+			}),
+		);
+		const first = await collect(copilot.run("go", context()));
+		expect(first[0]).toMatchObject({
+			type: "commands",
+			source: "claude",
+			commands: [{ name: "compact", description: "Summarise" }],
+		});
+		await collect(copilot.run("/compact keep the plan", context()));
+		expect(seen.prompts[1]).toEqual([
+			{ type: "text", text: "/compact keep the plan" },
+		]);
+		// A slash the harness never listed is a prompt like any other, context and all.
+		await collect(copilot.run("/nope", context()));
+		expect(textOf(seen.prompts[2], 0)).toContain("scope: jake://scope/cabane");
+		expect(textOf(seen.prompts[2], 1)).toBe("/nope");
 		copilot.close();
 	});
 

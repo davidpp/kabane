@@ -110,6 +110,9 @@ export namespace CopilotLog {
 
 	const applyToTurn = (turn: Turn, update: CopilotUpdate): Turn => {
 		if (update.type === "plan") return { ...turn, plan: update.entries };
+		// The harness's command list is the `/` palette's, which the reducer holds; nothing in the
+		// turn changes.
+		if (update.type === "commands") return turn;
 		// The pending choice is rendered from the reducer's copy, not from here; what the transcript
 		// keeps is the RECORD that it was asked, which outlives the answer and reads in the order it
 		// happened, between the tool call that provoked it and whatever followed. A form reads as
