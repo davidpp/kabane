@@ -24,54 +24,71 @@ import { MARKER_DIR, SCOPE_FILE } from "@cabane/core/scope";
 import { z } from "zod";
 
 const DbConfigSchema = z.object({
-	/** SQLite file to open instead of `KABANE_HOME/kabane.db`; `~` expands. */
-	path: z.string().min(1).optional(),
-	/** Table-name prefix inside that file (`planner_` for a Jake database). */
-	tablePrefix: z.string().optional(),
+	path: z
+		.string()
+		.min(1)
+		.optional()
+		.describe("SQLite file instead of KABANE_HOME/kabane.db; ~ expands."),
+	tablePrefix: z
+		.string()
+		.optional()
+		.describe("Table-name prefix (planner_ for a Jake database)."),
 });
 export type DbConfig = z.infer<typeof DbConfigSchema>;
 
 const CopilotConfigSchema = z.object({
-	/**
-	 * Which harness the board's `A` prompt talks to. A plain string rather than
-	 * an enum: the list of harnesses lives in `@cabane/acp`, and importing it
-	 * here would put an ACP SDK load on the startup of every other command.
-	 * `kabane board` validates the value against the registry.
-	 */
-	harness: z.string().min(1).default("claude"),
-	/** Launch the harness with this command instead of the pinned adapter. */
-	command: z.string().min(1).optional(),
-	/** Arguments for `command`. The pinned adapter's own are not kept. */
-	args: z.array(z.string()).optional(),
-	/**
-	 * Model the harness runs as, in whatever names it accepts (`sonnet`,
-	 * `opus`, a full id). Absent takes the harness's own pin — Sonnet for
-	 * Claude, because a board turn is triage against a planner. Harnesses
-	 * whose model variable the registry does not name ignore this.
-	 */
-	model: z.string().min(1).optional(),
+	// The registry is validated by board; importing ACP here slows every command.
+	harness: z
+		.string()
+		.min(1)
+		.default("claude")
+		.describe("Harness for the board's A prompt; defaults to claude."),
+	command: z
+		.string()
+		.min(1)
+		.optional()
+		.describe("Launch command overriding the pinned harness adapter."),
+	args: z
+		.array(z.string())
+		.optional()
+		.describe(
+			"Arguments for the custom command, replacing the adapter's arguments.",
+		),
+	model: z
+		.string()
+		.min(1)
+		.optional()
+		.describe(
+			"Harness model name; absent uses its pinned model when supported.",
+		),
 });
 
 export const ConfigSchema = z.object({
-	/** Actor URI stamped on what this device writes. */
-	actor: z.string().min(1),
-	/** Seeds the sync device identity on first arming; write-once afterwards. */
-	deviceId: z.string().min(1),
-	sync: SyncConfigSchema.default({}),
-	db: DbConfigSchema.optional(),
-	/** The board copilot. Absent is the default harness with its pinned adapter. */
-	copilot: CopilotConfigSchema.optional(),
-	/**
-	 * The owner's IANA timezone (`America/Montreal`): when a date deadline's day
-	 * ends and which day is today. Absent is the system zone, which honours `TZ`.
-	 */
-	timezone: TimeZoneSchema.optional(),
-	/**
-	 * The official extensions this device turns on, by name (`["loop"]`). Absent
-	 * is none. Plain strings, so a name this build does not ship (one a newer
-	 * kabane wrote, or one since dropped) leaves the config readable.
-	 */
-	extensions: z.array(z.string().min(1)).optional(),
+	actor: z
+		.string()
+		.min(1)
+		.describe("Actor URI stamped on this device's writes (read-only)."),
+	deviceId: z
+		.string()
+		.min(1)
+		.describe("Initial sync device identity (read-only, write-once)."),
+	sync: SyncConfigSchema.default({}).describe(
+		"Multi-device replication settings; edit dotted keys.",
+	),
+	db: DbConfigSchema.optional().describe(
+		"Alternate SQLite location and table prefix; edit dotted keys.",
+	),
+	copilot: CopilotConfigSchema.optional().describe(
+		"Board copilot settings; absent uses the default harness and pinned adapter.",
+	),
+	timezone: TimeZoneSchema.optional().describe(
+		"Owner's IANA timezone for deadlines and today; absent uses the system zone (TZ).",
+	),
+	// Strings allow newer or removed extensions to leave the config readable.
+	extensions: z
+		.array(z.string().min(1))
+		.optional()
+		.describe("Enabled official extension names; absent enables none."),
 });
 export type Config = z.infer<typeof ConfigSchema>;
 
@@ -123,23 +140,46 @@ export const defaultActor = (): string =>
 export const defaultDeviceId = (): string =>
 	hostname().split(".")[0] ?? "device";
 
-export const loadConfig = (home: string): Result<Config> => {
+const isConfigObject = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Keep the stored document alongside resolved defaults so edits retain unknown keys. */
+export const loadConfigDocument = (
+	home: string,
+): Result<{
+	stored: Record<string, unknown>;
+	config: Config;
+}> => {
 	const path = configPath(home);
 	if (!existsSync(path)) {
 		return err(new Error(`No config at ${path}. Run \`kabane init\` first.`));
 	}
-	const raw = trySync(() => JSON.parse(readFileSync(path, "utf8")));
+	const raw = trySync((): unknown => JSON.parse(readFileSync(path, "utf8")));
 	if (!raw.ok) return err(toError(raw.error));
 	const parsed = ConfigSchema.safeParse(raw.value);
-	return parsed.success
-		? ok(parsed.data)
-		: err(new Error(`Invalid config at ${path}: ${parsed.error.message}`));
+	if (!parsed.success || !isConfigObject(raw.value)) {
+		return err(
+			new Error(
+				`Invalid config at ${path}: ${!parsed.success ? parsed.error.message : "expected an object"}`,
+			),
+		);
+	}
+	return ok({ stored: raw.value, config: parsed.data });
 };
 
-export const saveConfig = (home: string, config: Config): Result<string> => {
+export const loadConfig = (home: string): Result<Config> => {
+	const document = loadConfigDocument(home);
+	return document.ok ? ok(document.value.config) : document;
+};
+
+export const saveConfig = (home: string, config: unknown): Result<string> => {
 	const path = configPath(home);
+	const parsed = ConfigSchema.safeParse(config);
+	if (!parsed.success)
+		return err(new Error(`Invalid config at ${path}: ${parsed.error.message}`));
 	const written = trySync(() => {
 		mkdirSync(home, { recursive: true });
+		// Write the input, not parsed.data: defaults stay absent and unknown keys survive.
 		writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
 		return path;
 	});

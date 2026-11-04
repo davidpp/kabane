@@ -79,6 +79,42 @@ plain table names.
   command reads the list. The contract an extension implements
   is `@cabane/extension`.
 
+### Managing config from the CLI
+
+```bash
+kabane config                         # every schema key, value/default and description
+kabane config list --json
+kabane config get copilot.model        # dotted paths; one value
+kabane config set copilot.model opus
+kabane config set sync.enabled false   # booleans are true or false
+kabane config set sync.batchBytes 262144
+kabane config set extensions loop      # comma-separated names; "" clears the array
+kabane config set copilot.args -- '--model,sonnet'
+kabane config set sync.headers '{"CF-Access-Client-Id":"id","CF-Access-Client-Secret":"secret"}'
+kabane config unset copilot.model      # remove the override
+kabane config path                     # resolved config.json location
+```
+
+Every operation supports `--json`. `list` returns rows with `key`, `value`,
+`default` (no stored override), `readOnly` and `description`. `get` returns the
+resolved value, or JSON `null` / human `default` when absent; `path` returns a
+string. `set` returns `{key, value}` and `unset` returns `{key, unset: true}`.
+Values, including configured credentials, are shown as stored.
+
+Strings are literal; numbers and booleans use JSON syntax. Arrays take trimmed
+comma-separated values, with an empty string meaning an empty array.
+`sync.headers` takes a JSON object of string values. Put `--` before a value
+starting with `--`. Object groups (`sync`, `db`, `copilot`) can be read; edit
+or unset their dotted keys individually. `actor`, `deviceId` and `sync.deviceId`
+are read-only, including for `unset`.
+
+Writes validate the entire config before touching the file and retain unknown
+fields, including those inside groups. Unsetting removes an override so the
+schema or runtime default applies. Enabling an unshipped extension preserves
+its name and prints the extension loader's warning on stderr. These operations
+never open SQLite or connect to sync. Except for `path`, they require an existing
+config and point to `kabane init` when none exists.
+
 ## Scope
 
 `scopeUri` is the context a task is filed under. Storage never resolves it; the
@@ -113,6 +149,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | Command | Flags |
 |---|---|
 | `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--db-path <file>` `--table-prefix <prefix>` (open another database, e.g. Jake's `~/.jake/jake.db` with `planner_`) `--scope <uri>` (writes `./.kabane/scope`) `--force` |
+| `config [list\|get <key>\|set <key> <value>\|unset <key>\|path]` | `--json` — inspect or edit device config without opening the database |
 | `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD\|<ISO time>` (a date is due by the end of that day in your timezone; a time without `Z` or an offset is your local time) `--format concise\|full` |
 | `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` `--format concise\|full` `--cursor <cursor>` |
 | `show <id>` | task, links, comments, work log; `--json` also carries `updatedBy` (actor URI of the last writer) and `version` |

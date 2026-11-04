@@ -17,6 +17,7 @@ import {
 import { add } from "./commands/add";
 import { board } from "./commands/board";
 import { comment } from "./commands/comment";
+import { config } from "./commands/config";
 import { context } from "./commands/context";
 import { done } from "./commands/done";
 import { edit } from "./commands/edit";
@@ -40,6 +41,7 @@ import { describeVersion } from "./version";
 
 export const COMMANDS: Command[] = [
 	init,
+	config,
 	add,
 	list,
 	show,
