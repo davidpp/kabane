@@ -285,16 +285,19 @@ export namespace Elicitation {
 		return err(error);
 	};
 
-	const stoppedWaiting = async <T>(form: Form): Promise<Result<T>> => {
+	const stoppedWaiting = async <T>(
+		form: Form,
+		withdrawn: AbortSignal,
+	): Promise<Result<T>> => {
 		const { deps, request } = form;
-		const closed = Questions.closedBecause(deps);
+		const closed = Questions.closedBecause(deps, withdrawn);
 		await close(form, closed.why);
 		const after = Questions.seconds(waited(form));
 		deps.emit({
 			type: closed.stopped ? "elicitation_cancelled" : "elicitation_withdrawn",
 			summary: closed.stopped
 				? `${request.message}: the run stopped after ${after} waiting on a human; the form is cancelled, not answered`
-				: `${request.message}: ${deps.harness} withdrew the form after ${after}; its questions are closed, not answered`,
+				: `${request.message}: ${closed.why} after ${after}; its questions are closed, not answered`,
 			data: details(form),
 		});
 		return err(new Error(closed.why));
@@ -362,7 +365,7 @@ export namespace Elicitation {
 				[...form.open.keys()],
 				waiting,
 			);
-			if (!answers) return stoppedWaiting(form);
+			if (!answers) return stoppedWaiting(form, withdrawn);
 			for (const [questionId, answer] of answers) {
 				const field = form.open.get(questionId);
 				if (!field) continue;

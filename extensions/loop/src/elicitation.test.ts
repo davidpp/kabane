@@ -485,6 +485,32 @@ describe("Elicitation.relay", () => {
 		expect(events.at(-1)?.type).toBe("elicitation_cancelled");
 	});
 
+	it("stops, cancelling the form, when something outside the claim withdraws one of its questions, and reads no field from it", async () => {
+		const sessionId = await session();
+		const { result, events } = relay(sessionId);
+		const [store] = await waiting(sessionId, 2);
+		if (!store) throw new Error("missing question");
+		const closed = await Planner.addActivity(base, {
+			sessionId,
+			type: "withdrawn",
+			context: `answers ${store.id}`,
+			body: "Redis",
+		});
+		if (!closed.ok) throw closed.error;
+		const relayed = await result;
+		expect(!relayed.ok && relayed.error.message).toBe(
+			"withdrawn outside this claim",
+		);
+		expect(await resolutions(sessionId)).toEqual([
+			[["withdrawn", "Redis"]],
+			[["withdrawn", "withdrawn outside this claim"]],
+		]);
+		expect(events.map((e) => e.type)).toEqual([
+			"elicitation_asked",
+			"elicitation_withdrawn",
+		]);
+	});
+
 	it("asks a form with no fields for a yes, and accepts it with nothing filled", async () => {
 		const sessionId = await session();
 		const { result } = relay(sessionId, {

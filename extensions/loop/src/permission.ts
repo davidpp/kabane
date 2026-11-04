@@ -104,7 +104,7 @@ export namespace Permission {
 			)?.get(questionId);
 			const waitedMs = deps.now().getTime() - askedAt;
 			if (!answer) {
-				const closed = Questions.closedBecause(deps);
+				const closed = Questions.closedBecause(deps, withdrawn);
 				await Questions.withdraw(deps, [questionId], closed.why);
 				deps.emit(
 					closed.stopped
@@ -115,7 +115,7 @@ export namespace Permission {
 							}
 						: {
 								type: "permission_withdrawn",
-								summary: `${request.title}: ${deps.harness} withdrew the request after ${Questions.seconds(waitedMs)}; its question is closed, not answered`,
+								summary: `${request.title}: ${closed.why} after ${Questions.seconds(waitedMs)}; its question is closed, not answered`,
 								data: { questionId, toolCallId: request.toolCallId, waitedMs },
 							},
 				);
