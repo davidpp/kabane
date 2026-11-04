@@ -2958,6 +2958,21 @@ describe("a form the harness is blocked on", () => {
 		});
 	});
 
+	it("withdrawn by the harness, it leaves the queue wherever it is, and its keys answer nothing", () => {
+		const both = BoardNav.withCopilotPermission(asked(), permission);
+		const gone = BoardNav.withCopilotWithdrawn(both, "form-1");
+		expect(requests(gone)).toEqual([permission]);
+		// The digit pressed in the instant after goes to what is on screen now, never the form.
+		expect(reduce(gone, char("1")).effect).toMatchObject({
+			type: "copilotAnswer",
+			id: "t0",
+		});
+		const none = BoardNav.withCopilotWithdrawn(gone, "t0");
+		expect(none.copilot.asks).toEqual([]);
+		expect(reduce(none, char("1")).effect.type).not.toMatch(/^copilotAnswer/);
+		expect(BoardNav.withCopilotWithdrawn(none, "t0")).toBe(none);
+	});
+
 	it("a turn that stops takes the unanswered form with it", () => {
 		expect(BoardNav.withCopilotTurn(asked(), "error").copilot.asks).toEqual([]);
 	});

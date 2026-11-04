@@ -289,12 +289,15 @@ export type CopilotElicitationAnswer =
 // One streamed update of a copilot turn: a step, the turn's plan, or a question the human has to
 // answer. A plan is STATE, not a step — the harness re-sends the whole list every time an entry
 // moves, so it replaces rather than appends. A permission or a form is neither: it is a turn
-// stopped dead until someone answers it, and the board is the only thing that may.
+// stopped dead until someone answers it, and the board is the only thing that may. `withdrawn` is
+// the harness taking one of those back unanswered (`id` names it): the board stops asking, and
+// `summary` is the line its transcript keeps.
 export type CopilotUpdate =
 	| { type: CopilotStep; summary: string; at: string }
 	| { type: "plan"; entries: readonly PlanEntry[]; at: string }
 	| { type: "permission"; request: CopilotPermission; at: string }
-	| { type: "elicitation"; request: CopilotElicitation; at: string };
+	| { type: "elicitation"; request: CopilotElicitation; at: string }
+	| { type: "withdrawn"; id: string; summary: string; at: string };
 
 // A `/name` the prompt window expands client-side into `template`, so the human reads exactly what
 // will be sent before pressing enter. `hint` is the one-line description shown while picking.

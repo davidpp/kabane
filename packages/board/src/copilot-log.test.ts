@@ -99,6 +99,33 @@ describe("CopilotLog", () => {
 		expect(log.current.card.status).toBe("running");
 	});
 
+	it("keeps the record that the harness asked, and that it took the question back", async () => {
+		let log = started();
+		log = CopilotLog.apply(log, {
+			type: "permission",
+			request: { id: "t0", title: "kabane_edit", options: [] },
+			at: T1,
+		});
+		log = CopilotLog.apply(log, {
+			type: "elicitation",
+			request: { id: "form-1", message: "Which store?", fields: [] },
+			at: T1,
+		});
+		log = CopilotLog.apply(log, {
+			type: "withdrawn",
+			id: "form-1",
+			summary: "withdrawn by the harness: Which store?",
+			at: T1,
+		});
+		expect(await transcript(log)).toEqual([
+			[1, "prompt", PROMPT],
+			[2, "permission", "permission: kabane_edit"],
+			[3, "permission", "asks: Which store?"],
+			[4, "withdrawn", "withdrawn by the harness: Which store?"],
+		]);
+		expect(log.current.card.status).toBe("running");
+	});
+
 	it("done completes the card without an event; error fails it with the reason", async () => {
 		const done = CopilotLog.apply(started(), update("done", ""));
 		expect(done.current.card).toMatchObject({

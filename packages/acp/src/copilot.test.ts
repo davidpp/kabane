@@ -78,6 +78,9 @@ const scriptedAgent = (
 		permission?: boolean;
 		// A form the agent puts to the client before the steps.
 		form?: (sessionId: string) => CreateElicitationRequest;
+		// The agent takes its permission request or form back (`$/cancel_request`) after this many
+		// ms, before anyone answers.
+		withdrawAfter?: number;
 		text?: string;
 		plans?: PlanEntry[][];
 		// Prose deltas and tool calls in order, to exercise the chunk buffering.
@@ -125,6 +128,15 @@ const scriptedAgent = (
 					sessionId: c.params.sessionId,
 					update,
 				});
+			// What the agent's request is cancelled by, when it withdraws it.
+			const withdrawing = ():
+				| { cancellationSignal: AbortSignal }
+				| undefined => {
+				if (options.withdrawAfter === undefined) return undefined;
+				const controller = new AbortController();
+				setTimeout(() => controller.abort(), options.withdrawAfter);
+				return { cancellationSignal: controller.signal };
+			};
 			if (options.permission) {
 				const answer = await c.client.request(
 					methods.client.session.requestPermission,
@@ -136,6 +148,7 @@ const scriptedAgent = (
 							{ optionId: "reject", name: "Reject", kind: "reject_once" },
 						],
 					},
+					withdrawing(),
 				);
 				seen.permissions.push(answer.outcome);
 			}
@@ -144,6 +157,7 @@ const scriptedAgent = (
 					await c.client.request(
 						methods.client.elicitation.create,
 						options.form(c.params.sessionId),
+						withdrawing(),
 					),
 				);
 			if (options.notice)
@@ -717,6 +731,77 @@ describe("BoardCopilot", () => {
 				content: { question_0: "Redis" },
 			});
 		expect(seen.forms).toEqual([{ action: "cancel" }]);
+		copilot.close();
+	});
+
+	it("a permission the harness withdraws reaches the board as withdrawn, and a late answer is dropped", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				permission: true,
+				withdrawAfter: 10,
+				text: "moved on",
+			}),
+		);
+		let asked: CopilotPermission | undefined;
+		const updates = await answering(copilot, (request) => {
+			asked = request;
+		});
+		if (asked) copilot.answerPermission(asked.id, "allow");
+		expect(types(updates)).toEqual(["permission", "withdrawn", "text", "done"]);
+		expect(updates[1]).toMatchObject({
+			id: "t0",
+			summary: "withdrawn by the harness: kabane_edit",
+		});
+		expect(seen.permissions).toEqual([{ outcome: "cancelled" }]);
+		copilot.close();
+	});
+
+	it("a form the harness withdraws reaches the board as withdrawn, by the id the board knows it by", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				form: ASK_USER_QUESTION,
+				withdrawAfter: 10,
+				text: "moved on",
+			}),
+		);
+		let asked: CopilotElicitation | undefined;
+		const updates = await filling(copilot, (request) => {
+			asked = request;
+		});
+		if (asked)
+			copilot.answerElicitation(asked.id, {
+				action: "accept",
+				content: { question_0: "Redis" },
+			});
+		expect(types(updates)).toEqual([
+			"elicitation",
+			"withdrawn",
+			"text",
+			"done",
+		]);
+		expect(updates[1]).toMatchObject({
+			id: asked?.id,
+			summary: "withdrawn by the harness: Which store should the cache use?",
+		});
+		expect(seen.forms).toEqual([{ action: "cancel" }]);
+		copilot.close();
+	});
+
+	it("a request the board let go of first is not reported withdrawn when the harness takes it back", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				permission: true,
+				withdrawAfter: 30,
+				text: "moved on",
+			}),
+		);
+		const updates = await answering(copilot, (request) =>
+			copilot.answerPermission(request.id, "allow"),
+		);
+		expect(types(updates)).toEqual(["permission", "text", "done"]);
 		copilot.close();
 	});
 

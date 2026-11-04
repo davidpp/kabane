@@ -125,6 +125,21 @@ export namespace CopilotLog {
 					},
 				],
 			};
+		// The record of a question the harness took back, in the order it happened; the block that
+		// asked it is gone from the reducer's copy.
+		if (update.type === "withdrawn")
+			return {
+				...turn,
+				events: [
+					...turn.events,
+					{
+						seq: lastSeq(turn) + 1,
+						at: update.at,
+						type: "withdrawn",
+						summary: update.summary,
+					},
+				],
+			};
 		const events =
 			update.type === "done"
 				? turn.events

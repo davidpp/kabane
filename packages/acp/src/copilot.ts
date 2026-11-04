@@ -132,7 +132,13 @@ export namespace BoardCopilot {
 		// Never answers by itself: it puts the question on the stream and waits. A request nobody
 		// answers keeps the turn waiting for as long as the human leaves it, which is what `cancel`
 		// is for — a board that guessed here would be deciding on their behalf.
-		const onPermission: AcpClient.OnPermission = (request) => {
+		const onPermission: AcpClient.OnPermission = (request, withdrawn) => {
+			whenWithdrawn(
+				withdrawn,
+				() => blocked.delete(request.toolCallId),
+				request.toolCallId,
+				request.title,
+			);
 			outbox.push({
 				type: "permission",
 				request: {
@@ -150,9 +156,35 @@ export namespace BoardCopilot {
 			);
 		};
 
+		// The harness took a request back (`$/cancel_request`) before anyone answered it. The client has
+		// already told it `cancelled`; what is left is to stop asking the human, so it leaves the
+		// waiting map, where a late answer then finds nothing, and the board is told. One the human
+		// answered, or a cancel or close let go of first, is no longer waiting: `release` is false and
+		// nothing is said.
+		const whenWithdrawn = (
+			signal: AbortSignal,
+			release: () => boolean,
+			id: string,
+			asked: string,
+		): void =>
+			signal.addEventListener(
+				"abort",
+				() => {
+					if (!release()) return;
+					outbox.push({
+						type: "withdrawn",
+						id,
+						summary: `withdrawn by the harness: ${asked}`,
+						at: at(),
+					});
+				},
+				{ once: true },
+			);
+
 		// The same for a form: on the stream, and nothing filled in on the human's behalf.
-		const onElicitation: AcpClient.OnElicitation = (request) => {
+		const onElicitation: AcpClient.OnElicitation = (request, withdrawn) => {
 			const id = `form-${++formsAsked}`;
+			whenWithdrawn(withdrawn, () => forms.delete(id), id, request.message);
 			outbox.push({
 				type: "elicitation",
 				request: { id, message: request.message, fields: request.fields },

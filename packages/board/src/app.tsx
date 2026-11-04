@@ -437,6 +437,16 @@ export const App = ({
 								? BoardNav.withCopilotElicitation(prev, update.request)
 								: prev,
 						);
+					// Taken back unanswered: the block goes, and when it was the one on screen the
+					// footer says why it went. A key already on its way answers nothing, since the
+					// copilot no longer holds the request.
+					if (update.type === "withdrawn") {
+						if (stateRef.current?.copilot.asks[0]?.request.id === update.id)
+							setNotice({ text: update.summary, tone: "error" });
+						setState((prev) =>
+							prev ? BoardNav.withCopilotWithdrawn(prev, update.id) : prev,
+						);
+					}
 					if (update.type === "tool_result") {
 						const current = stateRef.current;
 						if (current) void reload(current);

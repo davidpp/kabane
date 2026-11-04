@@ -276,6 +276,12 @@ asked; while a session question on the view outranks the copilot, the pane's row
 in hand, so typing never moves the board under it; each field arms the digits afresh, so a key
 already on its way when one field moves on does not answer the next.
 
+A harness can take a permission or a form back before anyone answers it (ACP's
+`$/cancel_request`). The copilot yields `{ type: "withdrawn", id, summary }`: the request leaves
+the queue wherever it was in it, its block goes, the transcript keeps `withdrawn by the harness:
+…` where the question was, and the footer says so when it was the one on screen. A key pressed in
+the instant before the redraw answers nothing, because the copilot no longer holds the request.
+
 Rows the copilot changed during the turn carry `✦ ai` before the title: the reload after each of
 its writes brings the fresh `updatedBy`/`updatedAt`, and `BoardNav.copilotTouched` keeps the ones
 stamped with `actor` since the turn opened. The glyphs go the way the finished-turn indicator

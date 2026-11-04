@@ -409,6 +409,16 @@ export namespace BoardNav {
 		permission: CopilotPermission,
 	): BoardState => withAsk(state, { type: "permission", request: permission });
 
+	// The harness took a request back unanswered: it leaves the queue wherever it was in it, so its
+	// block goes and its keys answer nothing. The same state when it is not queued (answered first).
+	export const withCopilotWithdrawn = (
+		state: BoardState,
+		id: string,
+	): BoardState =>
+		state.copilot.asks.some((queued) => queued.request.id === id)
+			? withoutAsk(state, id)
+			: state;
+
 	// A form, from its first field with nothing filled in.
 	export const withCopilotElicitation = (
 		state: BoardState,
