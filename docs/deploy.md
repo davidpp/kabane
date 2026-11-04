@@ -567,8 +567,8 @@ you, and its writes go through `kabane mcp` into this device's database, stamped
 
 | `copilot.harness` | Needs | What the board launches |
 |---|---|---|
-| `claude` (default) | `claude` on PATH, logged in (`claude` once) | `npx -y @agentclientprotocol/claude-agent-acp@0.76.0` |
-| `codex` | `codex` on PATH, `codex login` | `npx -y @agentclientprotocol/codex-acp@1.11.0` |
+| `claude` (default) | `claude` on PATH, logged in (`claude` once) | `npx -y @agentclientprotocol/claude-agent-acp@0.99.1` |
+| `codex` | `codex` on PATH, `codex login` | `npx -y @agentclientprotocol/codex-acp@2.5.0` |
 | `gemini` | `gemini` on PATH, logged in (`gemini` once) | `gemini --acp` |
 
 Adapter versions are pinned so every device behaves the same. The block in

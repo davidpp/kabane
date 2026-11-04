@@ -23,8 +23,8 @@ export namespace Harnesses {
 		// triage and small edits against a planner, not the reasoning the frontier models are
 		// for, so the default is the cheap one rather than whatever the human left in their
 		// own settings — a config `model` overrides it with any name the harness accepts.
-		// Only Claude has the pair: the other two adapters' variables are not documented here,
-		// and guessing one would pin a model silently wrong.
+		// Only Claude has the pair: Gemini reads `GEMINI_MODEL` but no pin is chosen for it,
+		// and codex-acp reads no model variable at all.
 		model?: { env: string; pinned: string };
 		// The ACP session modes the adapter advertises on `session/new`: the one that asks
 		// before every change (`manual`) and the harness's own auto mode, where the harness
@@ -37,21 +37,27 @@ export namespace Harnesses {
 	const REGISTRY: Record<Id, Entry> = {
 		claude: {
 			command: "npx",
-			args: ["-y", "@agentclientprotocol/claude-agent-acp@0.76.0"],
+			args: ["-y", "@agentclientprotocol/claude-agent-acp@0.99.1"],
 			// The adapter reads ANTHROPIC_MODEL ahead of settings.json, and takes the picker's
 			// aliases as well as full ids. The alias is the point: it tracks whatever Sonnet is
 			// current instead of pinning a version that ages out of the list.
 			model: { env: "ANTHROPIC_MODEL", pinned: "sonnet" },
-			// `auto` is "Claude handles permission decisions"; `bypassPermissions` is another mode.
+			// Advertised: `default` ("Manual", always ask), `acceptEdits`, `plan`, `auto` ("Claude
+			// handles permission decisions") and `bypassPermissions`, which kabane never selects.
 			modes: { manual: "default", auto: "auto" },
 		},
 		codex: {
 			command: "npx",
-			args: ["-y", "@agentclientprotocol/codex-acp@1.11.0"],
-			// `agent` is "Approve for me": it asks only for actions it detects as unsafe.
+			// 2.5.0 declares @openai/codex ^0.165, but CODEX_PATH runs the user's own CLI instead,
+			// and it was checked live against an older one (codex-cli 0.163.0).
+			args: ["-y", "@agentclientprotocol/codex-acp@2.5.0"],
+			// Advertised: `read-only` (a read-only sandbox that asks before every edit),
+			// `workspace-write`, `agent` ("Auto review": asks only for actions it detects as
+			// unsafe, and the mode a session opens in) and `agent-full-access`, never selected.
 			modes: { manual: "read-only", auto: "agent" },
 		},
-		// No auto mode is named for Gemini, so its sessions stay on whatever it starts in.
+		// Gemini's modes are `default`, `autoEdit`, `yolo` and `plan`; none is "the harness
+		// decides", so no auto mode is named and its sessions stay on whatever they start in.
 		gemini: { command: "gemini", args: ["--acp"] },
 	};
 

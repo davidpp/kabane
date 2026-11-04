@@ -377,7 +377,7 @@ describe("AcpClient", () => {
 		close: () => {},
 		launch: {
 			command: "npx",
-			args: ["-y", "@agentclientprotocol/claude-agent-acp@0.76.0"],
+			args: ["-y", "@agentclientprotocol/claude-agent-acp@0.99.1"],
 			env: {},
 		},
 	});
@@ -394,14 +394,14 @@ describe("AcpClient", () => {
 			mute(),
 			{ onPermission: allow, handshakeMs: 20 },
 			deadNpx(
-				"npm error code ETARGET\nnpm error notarget No matching version found for @agentclientprotocol/claude-agent-acp@0.76.0 with a date before 2026-09-07",
+				"npm error code ETARGET\nnpm error notarget No matching version found for @agentclientprotocol/claude-agent-acp@0.99.1 with a date before 2026-09-07",
 			),
 		);
 		expect(conn.ok).toBe(false);
 		if (conn.ok) return;
 		const lines = conn.error.message.split("\n");
 		expect(lines[0]).toBe(
-			"claude adapter 0.76.0 could not be installed by npx",
+			"claude adapter 0.99.1 could not be installed by npx",
 		);
 		// The date-before shape is npm reporting a release-age guard, so the hint is true here.
 		expect(lines[1]).toContain("hides recent publishes");
@@ -423,7 +423,7 @@ describe("AcpClient", () => {
 		if (conn.ok) return;
 		const lines = conn.error.message.split("\n");
 		expect(lines[0]).toBe(
-			"claude adapter 0.76.0 could not be installed by npx",
+			"claude adapter 0.99.1 could not be installed by npx",
 		);
 		expect(conn.error.message).not.toContain("hides recent publishes");
 	});
@@ -474,7 +474,7 @@ describe("AcpClient.toUpdate", () => {
 	});
 });
 
-// Claude's mode list as claude-agent-acp 0.76.0 advertises it on session/new.
+// Claude's mode list as claude-agent-acp 0.99.1 advertises it on session/new.
 const CLAUDE_MODES = [
 	"default",
 	"acceptEdits",
