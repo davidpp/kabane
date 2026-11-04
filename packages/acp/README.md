@@ -51,7 +51,9 @@ imports the SDK.
   or `new_turn` from an adapter that ignores the hint and starts a turn of its own (both
   pinned adapters honour it).
   `connect(harness, transport, options)` takes an SDK `Stream` or an in-process `AgentApp`,
-  which is how the tests run without a subprocess.
+  which is how the tests run without a subprocess. `options.onElicitation`, passed only by a
+  launcher with a human to ask, is what makes the client advertise form elicitation (see
+  Rules); `toElicitationRequest` is the form-to-fields mapping it applies.
 - `CopilotInstructions` — the instruction block, the `/` shortcut templates, and
   `actorUri(harness)`, the `cabane://actor/agent/<harness>` every write of a session is
   stamped with. `DISPATCH_TEMPLATE` is the absolute path of `templates/dispatch/`, the generic
@@ -185,6 +187,17 @@ Every turn ends with exactly one `stop` or one `error`.
   auto mode: no `fs` or `terminal` capability is advertised, no permission policy is applied. A `session/request_permission` goes to the caller's
   `onPermission`; a failed callback answers `cancelled`. Nothing is ever auto-answered — kabane
   has no permission policy of its own and does not want one.
+- A harness form (`elicitation/create`, form mode) goes to `onElicitation` as an
+  `ElicitationRequest`: the message, then each field with its title and description verbatim,
+  as `text`, `number`, `boolean`, `choice` (one option) or `choices` (several). The answer is
+  `accept` with the fields the human answered, `decline` or `cancel`; a failed callback answers
+  `cancel`. `elicitation: { form: {} }` is advertised only when a handler is passed: without
+  it claude-agent-acp turns AskUserQuestion off and codex-acp its `request_user_input` forms,
+  which is right for a launcher nobody watches. URL elicitation is never advertised, and a
+  form that requires a field of a type kabane cannot ask is answered `cancel` unasked.
+- Both callbacks get an `AbortSignal` that aborts when the harness withdraws the request
+  (`$/cancel_request`) or the connection closes. The request is then answered `cancelled` /
+  `cancel` at once, whatever the callback does after, so the caller can close what it asked.
 - Cancel before the agent has seen the turn (the iterator was not started yet) never sends
   `session/cancel`; the turn stops as `cancelled` locally.
 - Every SDK call that can reject comes back as a `Result` or an `error` update.

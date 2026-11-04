@@ -2,7 +2,10 @@
 import { describe, expect, it } from "bun:test";
 import {
 	type AgentApp,
+	type AgentContext,
 	agent as agentApp,
+	type CreateElicitationRequest,
+	type InitializeRequest,
 	methods,
 	PROTOCOL_VERSION,
 } from "@agentclientprotocol/sdk";
@@ -1054,5 +1057,377 @@ describe("AcpClient.planMode", () => {
 		expect(AcpClient.planMode("claude", "auto", undefined)).toEqual({
 			note: "no session mode: claude advertises none",
 		});
+	});
+});
+
+// An agent whose one turn asks the client something through `ask` and says what came back.
+const askingAgent = (
+	initialized: InitializeRequest[],
+	ask: (client: AgentContext, sessionId: string) => Promise<string>,
+): AgentApp =>
+	agentApp({ name: "asking" })
+		.onRequest(methods.agent.initialize, (c) => {
+			initialized.push(c.params);
+			return { protocolVersion: PROTOCOL_VERSION, agentCapabilities: {} };
+		})
+		.onRequest(methods.agent.session.new, () => ({ sessionId: "s-1" }))
+		.onRequest(methods.agent.session.prompt, async (c) => {
+			const said = await ask(c.client, c.params.sessionId);
+			await c.client.notify(methods.client.session.update, {
+				sessionId: c.params.sessionId,
+				update: {
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: said },
+				},
+			});
+			return { stopReason: "end_turn" };
+		});
+
+// The two fields claude-agent-acp 0.99.1 sends for one AskUserQuestion question: the choice,
+// then its optional "Other" box. Nothing is required.
+const ASK_USER_QUESTION = (sessionId: string): CreateElicitationRequest => ({
+	mode: "form",
+	sessionId,
+	toolCallId: "toolu_ask",
+	message: "Which store should the cache use?",
+	requestedSchema: {
+		type: "object",
+		properties: {
+			question_0: {
+				type: "string",
+				title: "Store",
+				oneOf: [
+					{
+						const: "Redis",
+						title: "Redis",
+						description: "Shared, survives restarts",
+					},
+					{ const: "Memory", title: "Memory" },
+				],
+			},
+			question_0_custom: {
+				type: "string",
+				title: "Other",
+				description:
+					"Type your own answer, or add a note to the option you chose above (optional).",
+			},
+		},
+	},
+});
+
+const elicit =
+	(request: (sessionId: string) => CreateElicitationRequest) =>
+	async (client: AgentContext, sessionId: string): Promise<string> =>
+		JSON.stringify(
+			await client.request(
+				methods.client.elicitation.create,
+				request(sessionId),
+			),
+		);
+
+const turnText = async (session: AcpClient.Session): Promise<string> =>
+	(await collect(AcpClient.prompt(session, [{ type: "text", text: "go" }])))
+		.flatMap((u) => (u.type === "text" ? [u.text] : []))
+		.join("");
+
+const openWith = async (agent: AgentApp, options: AcpClient.ConnectOptions) => {
+	const conn = await AcpClient.connect("claude", agent, options);
+	if (!conn.ok) throw conn.error;
+	const session = await AcpClient.newSession(conn.value, {
+		cwd: "/tmp/scope",
+		mcpServers: [],
+	});
+	if (!session.ok) throw session.error;
+	return { conn: conn.value, session: session.value };
+};
+
+describe("AcpClient elicitation", () => {
+	it("advertises form elicitation only to a launcher that passes a handler, and never URL", async () => {
+		const initialized: InitializeRequest[] = [];
+		const ask = async () => "";
+		const without = await openWith(askingAgent(initialized, ask), {
+			onPermission: allow,
+		});
+		const withHandler = await openWith(askingAgent(initialized, ask), {
+			onPermission: allow,
+			onElicitation: async () => ok({ action: "decline" }),
+		});
+		// The agent side parses in ACP's defaults for the other keys; only this one is kabane's.
+		expect(initialized.map((i) => i.clientCapabilities?.elicitation)).toEqual([
+			undefined,
+			{ form: {} },
+		]);
+		AcpClient.close(without.conn);
+		AcpClient.close(withHandler.conn);
+	});
+
+	it("hands the handler the form verbatim and the harness the human's answer", async () => {
+		const asked: AcpClient.ElicitationRequest[] = [];
+		const { conn, session } = await openWith(
+			askingAgent([], elicit(ASK_USER_QUESTION)),
+			{
+				onPermission: allow,
+				onElicitation: async (request) => {
+					asked.push(request);
+					return ok({ action: "accept", content: { question_0: "Redis" } });
+				},
+			},
+		);
+		expect(await turnText(session)).toBe(
+			JSON.stringify({ action: "accept", content: { question_0: "Redis" } }),
+		);
+		expect(asked).toEqual([
+			{
+				message: "Which store should the cache use?",
+				toolCallId: "toolu_ask",
+				fields: [
+					{
+						key: "question_0",
+						title: "Store",
+						required: false,
+						type: "choice",
+						options: [
+							{
+								value: "Redis",
+								label: "Redis",
+								description: "Shared, survives restarts",
+							},
+							{ value: "Memory", label: "Memory" },
+						],
+					},
+					{
+						key: "question_0_custom",
+						title: "Other",
+						description:
+							"Type your own answer, or add a note to the option you chose above (optional).",
+						required: false,
+						type: "text",
+					},
+				],
+			},
+		]);
+		AcpClient.close(conn);
+	});
+
+	it("a failed handler answers cancel, and a URL request is cancelled without asking", async () => {
+		let calls = 0;
+		const options: AcpClient.ConnectOptions = {
+			onPermission: allow,
+			onElicitation: async () => {
+				calls += 1;
+				return err(new Error("nobody to ask"));
+			},
+		};
+		const failed = await openWith(
+			askingAgent([], elicit(ASK_USER_QUESTION)),
+			options,
+		);
+		expect(await turnText(failed.session)).toBe(
+			JSON.stringify({ action: "cancel" }),
+		);
+		const url = await openWith(
+			askingAgent(
+				[],
+				elicit((sessionId) => ({
+					mode: "url",
+					sessionId,
+					elicitationId: "e-1",
+					url: "https://example.com/oauth",
+					message: "Sign in",
+				})),
+			),
+			options,
+		);
+		expect(await turnText(url.session)).toBe(
+			JSON.stringify({ action: "cancel" }),
+		);
+		expect(calls).toBe(1);
+		AcpClient.close(failed.conn);
+		AcpClient.close(url.conn);
+	});
+});
+
+describe("AcpClient.toElicitationRequest", () => {
+	const form = (
+		properties: Record<string, unknown>,
+		required: string[] = [],
+	): CreateElicitationRequest =>
+		({
+			mode: "form",
+			sessionId: "s-1",
+			message: "Settings",
+			requestedSchema: { type: "object", properties, required },
+		}) as CreateElicitationRequest;
+
+	it("maps every field type ACP defines, with its bounds and whether it is required", () => {
+		const mapped = AcpClient.toElicitationRequest(
+			form(
+				{
+					name: {
+						type: "string",
+						minLength: 1,
+						maxLength: 20,
+						pattern: "^[a-z]+$",
+					},
+					tier: { type: "string", enum: ["free", "pro"] },
+					count: {
+						type: "integer",
+						minimum: 1,
+						maximum: 9,
+						description: "How many",
+					},
+					ratio: { type: "number" },
+					confirm: { type: "boolean", title: "Confirm?" },
+					tags: {
+						type: "array",
+						minItems: 1,
+						items: {
+							anyOf: [
+								{ const: "a", title: "Alpha" },
+								{ const: "b", title: "Beta" },
+							],
+						},
+					},
+					plain: { type: "array", items: { type: "string", enum: ["x", "y"] } },
+				},
+				["name", "count"],
+			),
+		);
+		expect(mapped.ok && mapped.value.fields).toEqual([
+			{
+				key: "name",
+				title: "name",
+				required: true,
+				type: "text",
+				minLength: 1,
+				maxLength: 20,
+				pattern: "^[a-z]+$",
+			},
+			{
+				key: "tier",
+				title: "tier",
+				required: false,
+				type: "choice",
+				options: [
+					{ value: "free", label: "free" },
+					{ value: "pro", label: "pro" },
+				],
+			},
+			{
+				key: "count",
+				title: "count",
+				description: "How many",
+				required: true,
+				type: "number",
+				integer: true,
+				minimum: 1,
+				maximum: 9,
+			},
+			{
+				key: "ratio",
+				title: "ratio",
+				required: false,
+				type: "number",
+				integer: false,
+			},
+			{ key: "confirm", title: "Confirm?", required: false, type: "boolean" },
+			{
+				key: "tags",
+				title: "tags",
+				required: false,
+				type: "choices",
+				minItems: 1,
+				options: [
+					{ value: "a", label: "Alpha" },
+					{ value: "b", label: "Beta" },
+				],
+			},
+			{
+				key: "plain",
+				title: "plain",
+				required: false,
+				type: "choices",
+				options: [
+					{ value: "x", label: "x" },
+					{ value: "y", label: "y" },
+				],
+			},
+		]);
+	});
+
+	it("leaves out an optional field of a type it cannot ask, and refuses a form that requires one", () => {
+		const custom = { _vendor: { type: "_color" }, note: { type: "string" } };
+		const optional = AcpClient.toElicitationRequest(form(custom));
+		expect(optional.ok && optional.value.fields.map((f) => f.key)).toEqual([
+			"note",
+		]);
+		const required = AcpClient.toElicitationRequest(form(custom, ["_vendor"]));
+		expect(required.ok).toBe(false);
+	});
+});
+
+describe("AcpClient withdrawn requests", () => {
+	// The harness asks, then takes the request back (`$/cancel_request`) before anyone answers.
+	const withdrawing =
+		<P>(
+			method:
+				| typeof methods.client.session.requestPermission
+				| typeof methods.client.elicitation.create,
+			params: (sessionId: string) => P,
+		) =>
+		async (client: AgentContext, sessionId: string): Promise<string> => {
+			const controller = new AbortController();
+			const answer = client.request(method, params(sessionId) as never, {
+				cancellationSignal: controller.signal,
+			});
+			await Bun.sleep(10);
+			controller.abort();
+			return JSON.stringify(await answer);
+		};
+
+	it("answers a withdrawn permission request cancelled and tells the handler it was withdrawn", async () => {
+		let withdrawn: AbortSignal | undefined;
+		const { conn, session } = await openWith(
+			askingAgent(
+				[],
+				withdrawing(methods.client.session.requestPermission, (sessionId) => ({
+					sessionId,
+					toolCall: { toolCallId: "t1", title: "rm -rf build" },
+					options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
+				})),
+			),
+			{
+				onPermission: (_request, signal) => {
+					withdrawn = signal;
+					// A handler that never answers: the client still lets the harness go.
+					return new Promise(() => {});
+				},
+			},
+		);
+		expect(await turnText(session)).toBe(
+			JSON.stringify({ outcome: { outcome: "cancelled" } }),
+		);
+		expect(withdrawn?.aborted).toBe(true);
+		AcpClient.close(conn);
+	});
+
+	it("answers a withdrawn form cancel and tells the handler it was withdrawn", async () => {
+		let withdrawn: AbortSignal | undefined;
+		const { conn, session } = await openWith(
+			askingAgent(
+				[],
+				withdrawing(methods.client.elicitation.create, ASK_USER_QUESTION),
+			),
+			{
+				onPermission: allow,
+				onElicitation: (_request, signal) => {
+					withdrawn = signal;
+					return new Promise(() => {});
+				},
+			},
+		);
+		expect(await turnText(session)).toBe(JSON.stringify({ action: "cancel" }));
+		expect(withdrawn?.aborted).toBe(true);
+		AcpClient.close(conn);
 	});
 });
