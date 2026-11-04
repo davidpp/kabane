@@ -102,6 +102,38 @@ describe("LoopActivity", () => {
 		]);
 	});
 
+	it("hands the board a tool call's id and detail as events.jsonl holds them", async () => {
+		const source = LoopActivity.source({
+			home,
+			basePath: home,
+			actor: ACTOR,
+			kabaneBin: "/nonexistent/kabane",
+		});
+		RunStore.create(home, run({ status: "running", exit: undefined }));
+		const log = RunStore.eventLog(home, "KAB-1-abc");
+		if (!log.ok) throw log.error;
+		const detail = {
+			kind: "edit",
+			input: "file_path: a.ts",
+			diffs: [{ path: "a.ts", oldText: "a\n", newText: "b\n" }],
+		};
+		log.value.append({ type: "tool_call", summary: "Edit a.ts", callId: "t1" });
+		log.value.append({
+			type: "tool_completed",
+			summary: "Edit a.ts",
+			callId: "t1",
+			detail,
+		});
+
+		const events = await source.events?.("KAB-1-abc", 0);
+		expect(
+			events?.ok && events.value.map((e) => [e.type, e.callId, e.detail]),
+		).toEqual([
+			["tool_call", "t1", undefined],
+			["tool_completed", "t1", detail],
+		]);
+	});
+
 	it("withdraws what a run whose runner died was asking from the board's needs-input queue", async () => {
 		await Planner.init(home);
 		const task = await Planner.addTask(home, { title: "child", kind: "issue" });

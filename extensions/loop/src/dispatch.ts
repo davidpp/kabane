@@ -8,7 +8,12 @@
 // The core session itself is opened and closed by the runner, which owns the claim; this module
 // only writes into it (an ephemeral progress row per tool call, so a card can show what the agent
 // is doing now).
-import { AcpClient, CopilotInstructions, Harnesses } from "@cabane/acp";
+import {
+	AcpClient,
+	CopilotInstructions,
+	Harnesses,
+	ToolCalls,
+} from "@cabane/acp";
 import {
 	err,
 	ok,
@@ -175,6 +180,8 @@ export namespace Dispatch {
 			summary: string,
 			data?: RunStore.EventDraft["data"],
 		) => void;
+		/** One event of a tool call: its id and what it was given and gave back so far. */
+		tool: (type: string, id: string, call: ToolCalls.Call) => void;
 		progress: (body: string) => Promise<void>;
 		usage: Hooks["usage"];
 		/** The agent's latest complete message. */
@@ -184,23 +191,24 @@ export namespace Dispatch {
 	// One non-prose update: the turn's end when it is one, else undefined after recording it.
 	const forward = async (
 		update: Exclude<AcpClient.Update, Prose>,
-		titles: Map<string, string>,
+		calls: Map<string, ToolCalls.Call>,
 		sink: Sink,
 	): Promise<Turn | undefined> => {
 		switch (update.type) {
-			case "tool_call":
-				titles.set(update.id, update.title);
-				sink.emit("tool_call", update.title);
-				await sink.progress(update.title);
+			case "tool_call": {
+				const call = ToolCalls.apply(calls, update);
+				sink.tool("tool_call", update.id, call);
+				await sink.progress(call.title);
 				return undefined;
-			case "tool_call_update":
-				if (update.title) titles.set(update.id, update.title);
+			}
+			// The updates in between (a refined title, the input once complete) are folded into the
+			// call and land with its end, which carries the call whole.
+			case "tool_call_update": {
+				const call = ToolCalls.apply(calls, update);
 				if (update.status === "completed" || update.status === "failed")
-					sink.emit(
-						`tool_${update.status}`,
-						titles.get(update.id) ?? update.id,
-					);
+					sink.tool(`tool_${update.status}`, update.id, call);
 				return undefined;
+			}
 			case "plan":
 				sink.emit(
 					"plan",
@@ -238,7 +246,7 @@ export namespace Dispatch {
 		sink: Sink,
 	): Promise<Turn> => {
 		sink.emit("prompt", firstLine(text));
-		const titles = new Map<string, string>();
+		const calls = new Map<string, ToolCalls.Call>();
 		let prose: Prose | null = null;
 		const flush = () => {
 			if (!prose) return;
@@ -257,7 +265,7 @@ export namespace Dispatch {
 				continue;
 			}
 			flush();
-			const end = await forward(update, titles, sink);
+			const end = await forward(update, calls, sink);
 			if (end) return end;
 		}
 		flush();
@@ -600,6 +608,20 @@ export namespace Dispatch {
 		}
 	};
 
+	const toolEvent = (
+		type: string,
+		id: string,
+		call: ToolCalls.Call,
+	): RunStore.EventDraft => {
+		const detail = ToolCalls.detail(call);
+		return {
+			type,
+			summary: call.title,
+			callId: id,
+			...(Object.keys(detail).length > 0 ? { detail } : {}),
+		};
+	};
+
 	export const begin = (claim: Claim, env: Env, hooks: Hooks): Handle => {
 		const tag = {
 			lane: claim.lane,
@@ -620,6 +642,8 @@ export namespace Dispatch {
 		const sink: Sink = {
 			emit: (type, summary, data) =>
 				hooks.event({ ...tag, type, summary, ...(data ? { data } : {}) }),
+			tool: (type, id, call) =>
+				hooks.event({ ...tag, ...toolEvent(type, id, call) }),
 			progress: async (body) => {
 				const written = await Planner.addActivity(env.basePath, {
 					sessionId: claim.sessionId,

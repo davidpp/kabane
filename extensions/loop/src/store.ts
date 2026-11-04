@@ -151,6 +151,23 @@ export namespace RunStore {
 			? run.projectDir
 			: join(run.worktree, run.worktreePrefix ?? "");
 
+	// The board's `ActivityToolDetail`, as a line of events.jsonl carries it.
+	const ToolDetailSchema = z.object({
+		kind: z.string().optional(),
+		input: z.string().optional(),
+		output: z.string().optional(),
+		diffs: z
+			.array(
+				z.object({
+					path: z.string(),
+					oldText: z.string().optional(),
+					newText: z.string(),
+				}),
+			)
+			.readonly()
+			.optional(),
+	});
+
 	export const EventSchema = z.object({
 		seq: z.number().int().positive(),
 		at: z.string(),
@@ -162,6 +179,10 @@ export namespace RunStore {
 		task: z.string().optional(),
 		/** Machine-readable fields behind the summary, for an event that has some. */
 		data: z.record(z.union([z.string(), z.number()])).optional(),
+		/** The harness's tool call id: a call and its end share it. */
+		callId: z.string().optional(),
+		/** The tool call as known when the event was written, capped (`ToolCalls.detail`). */
+		detail: ToolDetailSchema.optional(),
 	});
 	export type Event = z.infer<typeof EventSchema>;
 	export type EventDraft = Omit<Event, "seq" | "at">;

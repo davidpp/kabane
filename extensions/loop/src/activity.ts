@@ -224,13 +224,17 @@ export namespace LoopActivity {
 			const events = RunStore.readEvents(home, id, afterSeq);
 			return events.ok
 				? ok(
-						events.value.map(({ seq, at, type, summary, lane }) => ({
-							seq,
-							at,
-							type,
-							summary,
-							...(lane ? { lane } : {}),
-						})),
+						events.value.map(
+							({ seq, at, type, summary, lane, callId, detail }) => ({
+								seq,
+								at,
+								type,
+								summary,
+								...(lane ? { lane } : {}),
+								...(callId ? { callId } : {}),
+								...(detail ? { detail } : {}),
+							}),
+						),
 					)
 				: events;
 		},
