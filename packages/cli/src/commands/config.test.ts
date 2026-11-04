@@ -249,6 +249,7 @@ describe("config through the real CLI", () => {
 			["sync.headers", '{"header":12}'],
 			["timezone", "Mars/Olympus"],
 			["copilot.model", ""],
+			["copilot.harness", "nosuch"],
 			["extensions", "loop,,bad"],
 			["unknown", "value"],
 			["sync.unknown", "value"],

@@ -1,3 +1,4 @@
+import { Harnesses } from "@cabane/acp/harnesses";
 import { err, ok, type Result, trySync } from "@cabane/core";
 import { z } from "zod";
 import {
@@ -132,6 +133,18 @@ const writeSetting = (
 		);
 	const parsed = input !== undefined ? parseValue(entry, input) : ok(undefined);
 	if (!parsed.ok) return parsed;
+	// The schema keeps any string so a config from a newer kabane still loads; a new value must
+	// be one this build can launch, or `kabane board` refuses to open.
+	if (
+		entry.key === "copilot.harness" &&
+		typeof parsed.value === "string" &&
+		!Harnesses.isId(parsed.value)
+	)
+		return err(
+			new Error(
+				`Unknown copilot harness "${parsed.value}"; one of ${Harnesses.IDS.join(", ")}`,
+			),
+		);
 	if (editStored(stored, entry.key, parsed.value)) {
 		const saved = saveConfig(home, stored);
 		if (!saved.ok) return saved;

@@ -38,8 +38,9 @@ const DbConfigSchema = z.object({
 export type DbConfig = z.infer<typeof DbConfigSchema>;
 
 const CopilotConfigSchema = z.object({
-	// A plain string, not an enum: the harness list lives in @cabane/acp, and importing it here
-	// would load the ACP SDK on every command. `kabane board` checks the value against it.
+	// A plain string, not an enum, so a config naming a harness a newer kabane added still loads.
+	// `config set` and `kabane board` check it against @cabane/acp/harnesses, which is ID-only:
+	// the package root would load the ACP SDK on every command.
 	harness: z
 		.string()
 		.min(1)

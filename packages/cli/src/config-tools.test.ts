@@ -179,6 +179,7 @@ it("manages device config through the real stdio MCP server", async () => {
 			{ key: "sync.enabled", value: "yes" },
 			{ key: "sync.batchBytes", value: "0" },
 			{ key: "timezone", value: "Mars/Olympus" },
+			{ key: "copilot.harness", value: "nosuch" },
 			{ key: "sync", unset: true },
 			{ key: "unknown", value: "value" },
 			{ key: "timezone" },
