@@ -19,21 +19,41 @@ import { version as sourceVersion } from "../package.json";
 import { runUpdateProcess } from "./update-process";
 
 export const UPDATE_SOURCE = sourceVersion;
-export const UPDATE_TARGET = sourceVersion
-	.split(".")
-	.map((part, index) => (index === 2 ? Number(part) + 1 : part))
-	.join(".");
+/** The next release on the source's own channel: the next patch, or the next beta.N. */
+export const UPDATE_TARGET = sourceVersion.replace(
+	/\d+$/,
+	(last) => `${Number(last) + 1}`,
+);
 const ROOT = resolve(import.meta.dir, "../../..");
+type FixtureOptions = {
+	isolated?: boolean;
+	age?: number;
+	young?: boolean;
+	failScript?: boolean;
+	removeBin?: boolean;
+	configured?: boolean;
+	/** The version `archive` carries, installed first; the target is what the registry offers. */
+	source?: string;
+	target?: string;
+};
+/** A target install script that fails, or that removes the global bin it installed. */
+const targetScripts = (options: FixtureOptions) =>
+	options.failScript
+		? { scripts: { postinstall: "bun -e 'process.exit(7)'" } }
+		: options.removeBin
+			? {
+					scripts: {
+						postinstall: `bun -e 'require("node:fs").rmSync(process.env.BUN_INSTALL + "/bin/kabane", {force:true})'`,
+					},
+				}
+			: {};
 export const createUpdateFixture = async (
 	archive: string,
-	options: {
-		isolated?: boolean;
-		age?: number;
-		young?: boolean;
-		failScript?: boolean;
-		removeBin?: boolean;
-		configured?: boolean;
-	} = {},
+	{
+		source = UPDATE_SOURCE,
+		target = UPDATE_TARGET,
+		...options
+	}: FixtureOptions = {},
 ) => {
 	const work = mkdtempSync(join(tmpdir(), "kabane-update-test-"));
 	const home = join(work, "home"),
@@ -57,19 +77,11 @@ export const createUpdateFixture = async (
 	mkdirSync(join(targetDir, "bin"), { recursive: true });
 	const targetManifest = {
 		name: "kabane",
-		version: UPDATE_TARGET,
+		version: target,
 		type: "module",
 		bin: { kabane: "bin/kabane.js" },
 		engines: { bun: ">=1.4.0" },
-		...(options.failScript
-			? { scripts: { postinstall: "bun -e 'process.exit(7)'" } }
-			: options.removeBin
-				? {
-						scripts: {
-							postinstall: `bun -e 'require("node:fs").rmSync(process.env.BUN_INSTALL + "/bin/kabane", {force:true})'`,
-						},
-					}
-				: {}),
+		...targetScripts(options),
 	};
 	writeFileSync(
 		join(targetDir, "package.json"),
@@ -77,7 +89,7 @@ export const createUpdateFixture = async (
 	);
 	writeFileSync(
 		join(targetDir, "bin/kabane.js"),
-		`#!/usr/bin/env bun\nconsole.log(${JSON.stringify(UPDATE_TARGET)});\n`,
+		`#!/usr/bin/env bun\nconsole.log(${JSON.stringify(target)});\n`,
 		{ mode: 0o755 },
 	);
 	const targetTar = join(work, "target.tgz");
@@ -87,8 +99,8 @@ export const createUpdateFixture = async (
 	if (packed.exitCode !== 0)
 		return { ok: false as const, error: "fixture tar failed" };
 	const tarballs = {
-		[UPDATE_SOURCE]: readFileSync(archive),
-		[UPDATE_TARGET]: readFileSync(targetTar),
+		[source]: readFileSync(archive),
+		[target]: readFileSync(targetTar),
 	};
 	const requests: string[] = [];
 	let metadata: unknown;
@@ -99,44 +111,42 @@ export const createUpdateFixture = async (
 			const path = new URL(request.url).pathname;
 			requests.push(path);
 			if (path === "/kabane") return Response.json(metadata);
-			if (path === `/kabane/-/kabane-${UPDATE_SOURCE}.tgz`)
-				return new Response(tarballs[UPDATE_SOURCE]);
-			if (path === `/kabane/-/kabane-${UPDATE_TARGET}.tgz`)
-				return new Response(tarballs[UPDATE_TARGET]);
+			if (path === `/kabane/-/kabane-${source}.tgz`)
+				return new Response(tarballs[source]);
+			if (path === `/kabane/-/kabane-${target}.tgz`)
+				return new Response(tarballs[target]);
 			return new Response("unconfigured fixture request", { status: 404 });
 		},
 	});
 	const registry = `http://127.0.0.1:${server.port}`;
+	/** A tag naming the source serves its archive, any other version the target's. */
+	const entry = (version: string, engine = ">=1.4.0") => {
+		const file = version === source ? source : target;
+		return {
+			...(version === source
+				? { name: "kabane", version, bin: { kabane: "bin/kabane.js" } }
+				: { ...targetManifest, version }),
+			engines: { bun: engine },
+			// External imports use read-only repo modules in this controlled manager fixture;
+			// the release smoke separately verifies an unmodified registry dependency install.
+			dist: {
+				tarball: `${registry}/kabane/-/kabane-${file}.tgz`,
+				integrity: `sha512-${createHash("sha512")
+					.update(tarballs[file] ?? Buffer.alloc(0))
+					.digest("base64")}`,
+			},
+		};
+	};
 	metadata = {
 		name: "kabane",
-		"dist-tags": { latest: UPDATE_TARGET },
+		"dist-tags": { latest: target },
 		time: {
-			[UPDATE_SOURCE]: "2020-01-01T00:00:00Z",
-			[UPDATE_TARGET]: options.young
+			[source]: "2020-01-01T00:00:00Z",
+			[target]: options.young
 				? new Date().toISOString()
 				: "2020-01-01T00:00:00Z",
 		},
-		versions: Object.fromEntries(
-			Object.entries(tarballs).map(([version, bytes]) => [
-				version,
-				{
-					...(version === UPDATE_TARGET
-						? targetManifest
-						: {
-								name: "kabane",
-								version,
-								bin: { kabane: "bin/kabane.js" },
-								engines: { bun: ">=1.4.0" },
-							}),
-					// External imports use read-only repo modules in this controlled manager fixture;
-					// the release smoke separately verifies an unmodified registry dependency install.
-					dist: {
-						tarball: `${registry}/kabane/-/kabane-${version}.tgz`,
-						integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}`,
-					},
-				},
-			]),
-		),
+		versions: { [source]: entry(source), [target]: entry(target) },
 	};
 	writeFileSync(
 		join(home, ".bunfig.toml"),
@@ -168,7 +178,7 @@ export const createUpdateFixture = async (
 		env.BUN_INSTALL_BIN = binDir;
 	}
 	const initial = await runUpdateProcess(
-		[process.execPath, "add", "--global", "--exact", `kabane@${UPDATE_SOURCE}`],
+		[process.execPath, "add", "--global", "--exact", `kabane@${source}`],
 		home,
 		env,
 	);
@@ -181,12 +191,12 @@ export const createUpdateFixture = async (
 		};
 	}
 	for (const name of ["@opentui/core", "@opentui/react", "react"]) {
-		const source = realpathSync(
+		const linked = realpathSync(
 			join(ROOT, "packages/board/node_modules", name),
 		);
 		const dest = join(globalDir, "node_modules", name);
 		mkdirSync(dirname(dest), { recursive: true });
-		if (!existsSync(dest)) symlinkSync(source, dest, "dir");
+		if (!existsSync(dest)) symlinkSync(linked, dest, "dir");
 	}
 	const bin = join(binDir, "kabane");
 	const packageBin = join(globalDir, "node_modules/kabane/bin/kabane.js");
@@ -206,23 +216,19 @@ export const createUpdateFixture = async (
 		void server.stop(true);
 		rmSync(work, { recursive: true, force: true });
 	};
-	const setLatest = (version: string, engine = ">=1.4.0"): void => {
+	const setDistTags = (
+		tags: Record<string, string>,
+		engine = ">=1.4.0",
+	): void => {
 		metadata = {
 			name: "kabane",
-			"dist-tags": { latest: version },
-			versions: {
-				[version]: {
-					...targetManifest,
+			"dist-tags": tags,
+			versions: Object.fromEntries(
+				[...new Set(Object.values(tags))].map((version) => [
 					version,
-					engines: { bun: engine },
-					dist: {
-						tarball: `${registry}/kabane/-/kabane-${UPDATE_TARGET}.tgz`,
-						integrity: `sha512-${createHash("sha512")
-							.update(tarballs[UPDATE_TARGET] ?? Buffer.alloc(0))
-							.digest("base64")}`,
-					},
-				},
-			},
+					entry(version, engine),
+				]),
+			),
 		};
 	};
 	return {
@@ -239,7 +245,7 @@ export const createUpdateFixture = async (
 		requests,
 		run,
 		close,
-		setLatest,
+		setDistTags,
 		stopRegistry: (): void => {
 			void server.stop(true);
 		},

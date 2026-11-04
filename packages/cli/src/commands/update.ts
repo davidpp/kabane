@@ -1,13 +1,16 @@
+import { err, ok, type Result } from "@cabane/core";
 import { type Outcome, type ParsedArgs, usage } from "@cabane/extension";
 import { z } from "zod";
 import { version } from "../../package.json";
 import type { Command } from "../context";
-import {
-	inspectRegistryInstall,
-	StableVersionSchema,
-	type UpdateHost,
-} from "../update-install";
+import { inspectRegistryInstall, type UpdateHost } from "../update-install";
 import { runUpdateProcess } from "../update-process";
+import {
+	ChannelVersionSchema,
+	compareVersions,
+	isPrerelease,
+	SemverSchema,
+} from "../update-version";
 
 const MetadataSchema = z.object({
 	name: z.literal("kabane"),
@@ -19,6 +22,8 @@ const MetadataSchema = z.object({
 		integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+=*$/),
 	}),
 });
+type Metadata = z.infer<typeof MetadataSchema>;
+type Tag = "latest" | "beta";
 const POLICY = "unknown";
 const USAGE = "kabane update [--check] [--json]";
 const reply = (
@@ -31,15 +36,70 @@ const reply = (
 	json: { status, eligibility: POLICY, ...details },
 	text,
 });
-const compare = (a: string, b: string): number => {
-	const left = a.split(".").map(Number),
-		right = b.split(".").map(Number);
-	for (const index of [0, 1, 2]) {
-		const difference = (left[index] ?? 0) - (right[index] ?? 0);
-		if (difference) return difference;
+
+const readTag = async (
+	tag: Tag,
+	globalDir: string,
+	host: UpdateHost,
+): Promise<Result<Metadata, Outcome>> => {
+	const metadata = await runUpdateProcess(
+		[host.bun, "info", `kabane@${tag}`, "--json"],
+		globalDir,
+		host.env,
+	);
+	if (!metadata.ok || metadata.value.code !== 0)
+		return err(
+			reply(
+				"error",
+				"Could not check registry metadata within its limits; inspect Bun registry/proxy settings and retry manually.",
+				1,
+			),
+		);
+	try {
+		const parsed = MetadataSchema.safeParse(JSON.parse(metadata.value.stdout));
+		return parsed.success
+			? ok(parsed.data)
+			: err(
+					reply(
+						"error",
+						"Invalid or unsupported registry metadata; no update attempted.",
+						1,
+					),
+				);
+	} catch {
+		return err(
+			reply("error", "Invalid registry JSON; no update attempted.", 1),
+		);
 	}
-	return 0;
 };
+
+/**
+ * A stable install follows `latest` alone. A prerelease install follows the higher of `beta`
+ * and `latest`, so a beta user reaches the stable release it precedes.
+ */
+const readCandidate = async (
+	runningVersion: string,
+	globalDir: string,
+	host: UpdateHost,
+): Promise<Result<{ tag: Tag; metadata: Metadata }, Outcome>> => {
+	const latest = await readTag("latest", globalDir, host);
+	if (!latest.ok || !isPrerelease(runningVersion))
+		return latest.ok ? ok({ tag: "latest", metadata: latest.value }) : latest;
+	// Bun answers a dist-tag the package lacks with latest, so no beta tag reads as latest.
+	const beta = await readTag("beta", globalDir, host);
+	if (!beta.ok) return beta;
+	for (const read of [latest.value, beta.value])
+		if (!SemverSchema.safeParse(read.version).success)
+			return err(
+				reply("error", "Invalid registry version; no update attempted.", 1),
+			);
+	return compareVersions(beta.value.version, latest.value.version) > 0
+		? ok({ tag: "beta", metadata: beta.value })
+		: ok({ tag: "latest", metadata: latest.value });
+};
+
+const core = (version: string): string[] =>
+	(version.split("-")[0] ?? "").split(".");
 
 const runUpdate = async (
 	args: ParsedArgs,
@@ -65,76 +125,63 @@ const runUpdate = async (
 			"Running binary and installed manifest disagree; inspect your installation manually. No update attempted.",
 			1,
 		);
-	const metadata = await runUpdateProcess(
-		[host.bun, "info", "kabane@latest", "--json"],
+	const read = await readCandidate(
+		runningVersion,
 		install.value.globalDir,
-		host.env,
+		host,
 	);
-	if (!metadata.ok || metadata.value.code !== 0)
-		return reply(
-			"error",
-			"Could not check registry metadata within its limits; inspect Bun registry/proxy settings and retry manually.",
-			1,
-		);
-	let candidate: z.infer<typeof MetadataSchema>;
-	try {
-		const parsed = MetadataSchema.safeParse(JSON.parse(metadata.value.stdout));
-		if (!parsed.success)
-			return reply(
-				"error",
-				"Invalid or unsupported registry metadata; no update attempted.",
-				1,
-			);
-		candidate = parsed.data;
-	} catch {
-		return reply("error", "Invalid registry JSON; no update attempted.", 1);
-	}
+	if (!read.ok) return read.error;
+	const { tag, metadata: candidate } = read.value;
+	const prerelease = isPrerelease(runningVersion);
 	const target = candidate.version;
 	const details = {
 		installedVersion: runningVersion,
 		candidateVersion: target,
 	};
-	if (!StableVersionSchema.safeParse(target).success) {
-		const [base, prerelease] = target.split("-");
-		if (
-			!base ||
-			!prerelease ||
-			!StableVersionSchema.safeParse(base).success ||
-			!/^[0-9A-Za-z]+(?:\.[0-9A-Za-z-]+)*$/.test(target.slice(base.length + 1))
-		)
-			return reply(
-				"error",
-				"Invalid registry version; no update attempted.",
-				1,
-			);
+	if (!SemverSchema.safeParse(target).success)
+		return reply("error", "Invalid registry version; no update attempted.", 1);
+	if (
+		prerelease
+			? !ChannelVersionSchema.safeParse(target).success
+			: isPrerelease(target)
+	)
 		return reply(
 			"manual_only",
-			"Registry latest is a prerelease. Review compatibility and choose a manual installation; no prerelease/channel override is performed. Eligibility is policy-unverified.",
+			prerelease
+				? `Registry ${tag} ${target} is a prerelease outside the beta channel. Review compatibility and choose a manual installation; no channel override is performed. Eligibility is policy-unverified.`
+				: "Registry latest is a prerelease. Review compatibility and choose a manual installation; no prerelease/channel override is performed. Eligibility is policy-unverified.",
 			args.flags.check ? 0 : 1,
 			{ installedVersion: runningVersion },
 		);
-	}
-	if (
-		!/^https?:\/\//.test(candidate.dist.tarball) ||
-		target.split(".").some((part) => !Number.isSafeInteger(Number(part)))
-	)
+	if (!/^https?:\/\//.test(candidate.dist.tarball))
 		return reply(
 			"error",
 			"Invalid registry version or tarball; no update attempted.",
 			1,
 			details,
 		);
-	const currentParts = runningVersion.split("."),
-		targetParts = target.split(".");
+	// Nothing on either tag is newer than a beta that precedes them all; that is current, not a downgrade.
+	if (prerelease && compareVersions(target, runningVersion) <= 0)
+		return reply(
+			"current",
+			`No release on registry latest or beta is newer than installed ${runningVersion}. Installation eligibility remains policy-unverified (metadata only).`,
+			0,
+			details,
+		);
+	const currentParts = core(runningVersion),
+		targetParts = core(target);
 	if (
-		compare(target, runningVersion) < 0 ||
+		compareVersions(target, runningVersion) < 0 ||
 		currentParts[0] !== targetParts[0] ||
 		(currentParts[0] === "0" && currentParts[1] !== targetParts[1]) ||
-		compare(Bun.version, candidate.engines.bun.slice(2)) < 0
+		compareVersions(
+			core(Bun.version).join("."),
+			candidate.engines.bun.slice(2),
+		) < 0
 	)
 		return reply(
 			"manual_only",
-			`Latest stable ${target} is outside the supported update policy or Bun engine. Read compatibility notes and choose a manual installation; no downgrade/channel override is performed. Eligibility is policy-unverified.`,
+			`${prerelease ? `Registry ${tag}` : "Latest stable"} ${target} is outside the supported update policy or Bun engine. Read compatibility notes and choose a manual installation; no downgrade/channel override is performed. Eligibility is policy-unverified.`,
 			args.flags.check ? 0 : 1,
 			details,
 		);
@@ -148,7 +195,7 @@ const runUpdate = async (
 	if (args.flags.check)
 		return reply(
 			"candidate",
-			`Stable candidate ${target} (installed ${runningVersion}); installation eligibility is unknown/policy-unverified. Explicit update will check Bun policy.`,
+			`${isPrerelease(target) ? "Beta" : "Stable"} candidate ${target} (installed ${runningVersion}); installation eligibility is unknown/policy-unverified. Explicit update will check Bun policy.`,
 			0,
 			details,
 		);
@@ -242,7 +289,7 @@ const runUpdate = async (
 export const update: Command = {
 	name: "update",
 	summary:
-		"check a stable candidate or explicitly update a verified Bun registry install",
+		"check a candidate on the installed channel or explicitly update a verified Bun registry install",
 	usage: USAGE,
 	standalone: true,
 	run: (args) =>
