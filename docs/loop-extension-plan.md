@@ -145,6 +145,13 @@ answered from the board, a finding filed. Mocked transcripts do not count.
    - `inbox.jsonl`: steering, append-only.
 
    Readers treat a dead pid as `failed`. No migration and no sync.
+
+   `kabane loop resume <runId>` restarts a run whose runner died. The claims it left open close
+   as `interrupted`, and the claim that takes the same work over (a subtask, a lens, the fixer)
+   continues it: the harness session the claim recorded (`acpSessionId`) is reopened through
+   ACP `session/resume`, which both pinned adapters advertise, and told only that its last turn
+   was cut. When the harness cannot resume it, a new session's brief says what the interrupted
+   attempt left: its work-log entries, its commits and `git status`.
 9. **Config** comes from the trigger form or flags, layered over a repo file `.kabane/loop.json`
    (gates, lenses, harnesses, budgets). Lens prompts ship with the extension and can be overridden
    by `.kabane/loop/lenses/<name>.md`.

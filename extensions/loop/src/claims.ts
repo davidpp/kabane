@@ -5,9 +5,12 @@
 // progress mark for the stall detector unless the tracker parked or handed off the work. A lens
 // is a claim on the parent that leaves its state alone and has no gates; so is the fixer, whose
 // gates the runner runs once it has ended. A runner that died mid-claim leaves claims with no
-// end; `recover` closes them, finishing a done subtask's gates.
+// end; `recover` closes them, finishing a done subtask's gates, and the claim that takes the work
+// over continues the interrupted one: its harness session resumed where the harness can, told what
+// that attempt left either way.
 import type { Harnesses } from "@cabane/acp";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
+import type { Brief } from "./brief";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
 import { Dispatch } from "./dispatch";
@@ -19,6 +22,7 @@ import { LoopPlan } from "./plan";
 import { Stall } from "./stall";
 import { RunState } from "./state";
 import { RunStore } from "./store";
+import { Worktree } from "./worktree";
 
 export namespace Claims {
 	type Ctx = RunState.Ctx;
@@ -142,6 +146,8 @@ export namespace Claims {
 		harness: string,
 	): Dispatch.Hooks => ({
 		event: (draft) => RunState.event(ctx, draft),
+		opened: (acpSessionId) =>
+			RunState.patchClaim(ctx, sessionId, { acpSessionId }),
 		usage: (usage) =>
 			RunState.save(ctx, {
 				...ctx.run,
@@ -244,6 +250,56 @@ export namespace Claims {
 		return sessionId;
 	};
 
+	const git = (ctx: Ctx, args: string[]): Promise<string> =>
+		(ctx.deps.git ?? Worktree.git)(RunStore.sessionDir(ctx.run), args).then(
+			(out) => (out.ok ? out.value.trim() : ""),
+		);
+
+	// Its task's work-log entries since it started, but for the loop's own record of its session.
+	const loggedSince = async (
+		ctx: Ctx,
+		attempt: RunStore.Claim,
+	): Promise<string[]> => {
+		const logs = await Planner.getWorkLogs(ctx.deps.basePath, attempt.taskId);
+		if (!logs.ok) return [];
+		const own = `session:${attempt.sessionId}`;
+		return logs.value
+			.filter((log) => log.createdAt >= attempt.startedAt)
+			.map((log) => ({
+				...log,
+				refs: log.refs.filter((ref) => ref.uri !== own),
+			}))
+			.filter((log) => log.refs.length > 0)
+			.map(
+				(log) =>
+					`${log.refs.map((r) => (r.label ? `${r.uri} (${r.label})` : r.uri)).join(", ")}${log.note ? `: ${log.note}` : ""}`,
+			);
+	};
+
+	/**
+	 * The attempt a new claim takes over when the last one on the same work (`previous`) was
+	 * interrupted, as the tracker and the tree show it now; undefined for any other.
+	 */
+	export const interruption = async (
+		ctx: Ctx,
+		previous: RunStore.Claim | undefined,
+	): Promise<Brief.Interrupted | undefined> => {
+		if (previous?.outcome !== "interrupted") return undefined;
+		const [logged, commits, status] = await Promise.all([
+			loggedSince(ctx, previous),
+			git(ctx, ["log", "--oneline", `--since=${previous.startedAt}`]),
+			git(ctx, ["status", "--short"]),
+		]);
+		return {
+			lane: previous.lane,
+			startedAt: previous.startedAt,
+			...(previous.acpSessionId ? { acpSessionId: previous.acpSessionId } : {}),
+			logged,
+			commits,
+			status,
+		};
+	};
+
 	type Started = {
 		task: Task;
 		harness: Harnesses.Id;
@@ -252,11 +308,13 @@ export namespace Claims {
 		work: Dispatch.Work;
 		/** What the trace says about it. */
 		summary: string;
+		/** The claim before it on the same work, when that one was interrupted. */
+		interrupted?: Brief.Interrupted;
 	};
 
 	// Record the claim, dispatch its session and hold it live until it has settled.
 	const launch = (ctx: Ctx, plan: LoopPlan.Plan, started: Started): void => {
-		const { task, harness, lane, sessionId, work } = started;
+		const { task, harness, lane, sessionId, work, interrupted } = started;
 		RunState.save(ctx, {
 			...ctx.run,
 			claims: [
@@ -283,7 +341,15 @@ export namespace Claims {
 		});
 		const model = ctx.run.config.model;
 		const handle = Dispatch.begin(
-			{ parent: plan.parent, task, harness, sessionId, lane, work },
+			{
+				parent: plan.parent,
+				task,
+				harness,
+				sessionId,
+				lane,
+				work,
+				...(interrupted ? { interrupted } : {}),
+			},
 			{
 				basePath: ctx.deps.basePath,
 				home: ctx.deps.home,
@@ -342,12 +408,16 @@ export namespace Claims {
 		// The run's harness, whatever the subtask's assignee says: agents assign issues they file
 		// to themselves, so the assignee names who wrote it, not who the human picked to work it.
 		const harness = ctx.run.config.implementer;
-		const attempts = ctx.run.claims.filter((c) => c.taskId === task.id).length;
+		const earlier = ctx.run.claims.filter(
+			(c) => c.taskId === task.id && !onParent(c),
+		);
+		const attempts = earlier.length;
 		// Named by the subtask alone: every subtask runs on the run's one harness, which the header names.
 		const lane = `${label(task)}${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, task, harness, lane, true);
 		if (sessionId === undefined) return;
 		const retry = Gates.lastFailure(ctx.run.gateRuns, task.id);
+		const interrupted = await interruption(ctx, earlier.at(-1));
 		launch(ctx, plan, {
 			task,
 			harness,
@@ -355,6 +425,7 @@ export namespace Claims {
 			sessionId,
 			work: { kind: "implement", ...(retry ? { retry } : {}) },
 			summary: `${harness} claims ${label(task)}: ${task.title}`,
+			...(interrupted ? { interrupted } : {}),
 		});
 	};
 
@@ -370,12 +441,15 @@ export namespace Claims {
 		const prompt = Lenses.prompt(ctx.run.projectDir, name);
 		if (!prompt.ok) return prompt;
 		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;
-		const attempts = ctx.run.claims.filter((c) => c.lens === name).length;
+		const earlier = ctx.run.claims.filter((c) => c.lens === name);
+		const attempts = earlier.length;
 		const lane = `${name}-lens${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, plan.parent, harness, lane, false);
 		if (sessionId === undefined)
 			return err(new Error(`the ${name} lens's session did not start`));
+		const interrupted = await interruption(ctx, earlier.at(-1));
 		launch(ctx, plan, {
+			...(interrupted ? { interrupted } : {}),
 			task: plan.parent,
 			harness,
 			lane,
@@ -401,12 +475,15 @@ export namespace Claims {
 		plan: LoopPlan.Plan,
 	): Promise<Result<void>> => {
 		const harness = ctx.run.config.implementer;
-		const attempts = ctx.run.claims.filter((c) => c.fixer === true).length;
+		const earlier = ctx.run.claims.filter((c) => c.fixer === true);
+		const attempts = earlier.length;
 		const lane = `${Fixer.LANE}${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, plan.parent, harness, lane, false);
 		if (sessionId === undefined)
 			return err(new Error("the fixer's session did not start"));
+		const interrupted = await interruption(ctx, earlier.at(-1));
 		launch(ctx, plan, {
+			...(interrupted ? { interrupted } : {}),
 			task: plan.parent,
 			harness,
 			lane,
