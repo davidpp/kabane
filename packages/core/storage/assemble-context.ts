@@ -18,7 +18,9 @@ import { CONTEXT_SECTIONS, type ContextSection } from "../context-output";
 import { traced } from "../observability";
 import { err, ok, type Result } from "../result";
 import {
+	type AgentActivity,
 	type AgentSession,
+	answeredQuestion,
 	type AssembleContextOpts,
 	AssembleContextOptsSchema,
 	type ResolvedAssembleContextOpts,
@@ -28,6 +30,7 @@ import {
 	type TaskLink,
 	type TaskWorkLog,
 	type UpstreamLink,
+	parseQuestionBody,
 } from "../schemas";
 import { Planner as PlannerComments } from "./comments";
 import { Planner as PlannerContextRefs } from "./context-refs";
@@ -279,6 +282,26 @@ const lastAiCommentEntries = (comments: TaskComment[]): DiscussionEntry[] =>
 		.map(commentEntry);
 
 /**
+ * One durable activity as a Discussion entry. A decision that answers a
+ * question reads as the question, then the choice, under who made it.
+ */
+const activityEntry = (
+	s: AgentSession,
+	a: AgentActivity,
+	activities: readonly AgentActivity[],
+): DiscussionEntry => {
+	const tag = a.severity ? `${a.type}/${a.severity}` : a.type;
+	const question = answeredQuestion(a.context, activities);
+	const body = question
+		? `${parseQuestionBody(question.body).question}\n→ ${a.body}`
+		: a.body;
+	return {
+		createdAt: a.createdAt,
+		line: `**${a.author ?? s.agent}** (${tag}, ${a.createdAt}):\n${body}`,
+	};
+};
+
+/**
  * Durable session activities across every session, as Discussion entries.
  * A per-session activity fetch that fails degrades to no activities for that
  * session (never fails the call).
@@ -299,13 +322,9 @@ const sessionActivityEntries = async (
 				);
 			const activities = r.ok ? r.value : [];
 			return ok(
-				SelectDurable.selectDurableActivities(activities).map((a) => {
-					const tag = a.severity ? `${a.type}/${a.severity}` : a.type;
-					return {
-						createdAt: a.createdAt,
-						line: `**${s.agent}** (${tag}, ${a.createdAt}):\n${a.body}`,
-					};
-				}),
+				SelectDurable.selectDurableActivities(activities).map((a) =>
+					activityEntry(s, a, activities),
+				),
 			);
 		}),
 	);

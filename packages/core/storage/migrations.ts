@@ -278,6 +278,18 @@ export namespace Migrations {
 			name: "drop-permission-decisions",
 			up: RelayedPermissions.drop,
 		},
+		{
+			// A decision answering a question names who chose (JCAB-26). Activities
+			// written before have no author on record and read as the session's.
+			// Guarded: a pre-release database re-runs the whole list from 1.
+			name: "activity-author",
+			up: (db) => {
+				if (!columnExists(db, TABLES.agent_activities, "author"))
+					db.run(
+						`ALTER TABLE ${TABLES.agent_activities} ADD COLUMN author TEXT`,
+					);
+			},
+		},
 	];
 
 	/**

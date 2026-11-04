@@ -170,6 +170,13 @@ export const AgentActivitySchema = z.object({
 	/** Activity body (the message) */
 	body: z.string(),
 
+	/**
+	 * Who wrote it, when that is on record: the actor URI that answered a
+	 * question (`Planner.answerQuestion`). Absent on everything else, the
+	 * session's agent being the author there.
+	 */
+	author: z.string().optional(),
+
 	/** When the activity was recorded (ISO timestamp) */
 	createdAt: z.string(),
 });

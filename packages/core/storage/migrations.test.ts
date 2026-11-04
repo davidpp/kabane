@@ -507,14 +507,26 @@ describe("Migration 6: relayed tool-permission answers stop being decisions", ()
 			must(
 				await Planner.startSession(base, { taskId: task.id, agent: "claude" }),
 			).id;
+		// Rows as the build before this migration stored them, without the
+		// columns later migrations add.
+		let seq = 0;
 		const add = async (
 			sessionId: string,
 			type: string,
 			body: string,
 			context?: string,
-		) =>
-			must(await Planner.addActivity(base, { sessionId, type, body, context }))
-				.id;
+		) => {
+			const id = `a${String(++seq).padStart(2, "0")}`;
+			await withDb((db) =>
+				db.run(
+					`INSERT INTO ${TABLES.agent_activities}
+					   (id, session_id, type, ephemeral, context, body, created_at)
+					 VALUES (?, ?, ?, 0, ?, ?, ?)`,
+					[id, sessionId, type, context ?? null, body, NOW],
+				),
+			);
+			return id;
+		};
 		// What `answerQuestion` wrote before this build, for every question.
 		const decide = (sessionId: string, questionId: string, body: string) =>
 			add(sessionId, "decision", body, answersContext(questionId));
@@ -556,6 +568,7 @@ describe("Migration 6: relayed tool-permission answers stop being decisions", ()
 
 		const live = await start();
 		const waiting = await add(live, "question", relayed("Write d.ts"));
+		must(await Planner.updateSessionState(base, live, "awaiting_input"));
 
 		const kept = [
 			asked,

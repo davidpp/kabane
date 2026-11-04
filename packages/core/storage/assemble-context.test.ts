@@ -1,9 +1,9 @@
-import "../testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { configureTestRuntime } from "../testing";
 
-import type { TaskDraft } from "../schemas";
+import { formatQuestionBody, type TaskDraft } from "../schemas";
 import { Planner } from "./index";
 
 const TEST_BASE = join(import.meta.dir, ".test-data-assemble-context");
@@ -374,6 +374,67 @@ describe("Planner — assembleContext", () => {
 		expect(md).toContain("claude");
 		// progress is not durable → excluded
 		expect(md).not.toContain("PROGRESS_NOISE");
+	});
+
+	it("lists a human's choice as a decision with its question and author, and no tool approval", async () => {
+		const id = await createTask({ title: "Answered", kind: "issue" });
+		const started = await Planner.startSession(TEST_BASE, {
+			taskId: id,
+			agent: "claude",
+		});
+		if (!started.ok) throw started.error;
+		const sessionId = started.value.id;
+		const ask = async (body: string): Promise<string> => {
+			const q = await Planner.addActivity(TEST_BASE, {
+				sessionId,
+				type: "question",
+				body,
+			});
+			if (!q.ok) throw q.error;
+			return q.value.id;
+		};
+		const approval = await ask(
+			formatQuestionBody("claude asks to run: Write a.ts", {
+				choices: ["Yes", "No"],
+				allowFreeform: false,
+				permission: {
+					toolCallId: "toolu_01",
+					title: "Write a.ts",
+					options: [
+						{ id: "allow", label: "Yes", kind: "allow_once" },
+						{ id: "reject", label: "No", kind: "reject_once" },
+					],
+				},
+			}),
+		);
+		const real = await ask(
+			formatQuestionBody("Plain text or markdown?", {
+				choices: ["Plain text", "Markdown"],
+				allowFreeform: false,
+			}),
+		);
+		configureTestRuntime("", { actor: () => "cabane://actor/human/ada" });
+		try {
+			for (const [questionId, answer] of [
+				[approval, "Yes"],
+				[real, "Markdown"],
+			] as const) {
+				const answered = await Planner.answerQuestion(TEST_BASE, {
+					questionId,
+					answer,
+				});
+				if (!answered.ok) throw answered.error;
+			}
+		} finally {
+			configureTestRuntime();
+		}
+
+		const md = await assemble(id);
+		expect(md).toMatch(
+			/\*\*cabane:\/\/actor\/human\/ada\*\* \(decision, [^)]+\):\nPlain text or markdown\?\n→ Markdown/,
+		);
+		expect(md).not.toContain("asks to run");
+		expect(md.match(/\(decision,/g)?.length).toBe(1);
 	});
 
 	it("session path keeps ALL human comments merged with durable activities", async () => {

@@ -70,6 +70,7 @@ export {
 export {
 	type AnswerQuestionInput,
 	AnswerQuestionInputSchema,
+	answeredQuestion,
 	answersContext,
 	formatQuestionBody,
 	isAnswerTo,

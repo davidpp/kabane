@@ -179,8 +179,8 @@ export namespace RunStore {
 			lane: z.string(),
 			text: z.string(),
 		}),
-		// Who answered one of the run's questions. The answer itself is the core `decision`; core
-		// records no author on activities, so the answering surface notes its actor here.
+		// Who answered one of the run's questions, noted by the answering surface. The answer
+		// itself is the core activity answering it.
 		z.object({
 			kind: z.literal("answered"),
 			questionId: z.string(),

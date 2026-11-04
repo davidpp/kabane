@@ -12,7 +12,7 @@
 
 import type { Db } from "../db/port";
 import { err, type Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 
 import type { z } from "zod";
 import {
@@ -119,8 +119,8 @@ const appendActivity = (
 	// (an answer clears the block it closes).
 	db.run(
 		`INSERT INTO ${TABLES.agent_activities}
-       (id, session_id, type, ephemeral, severity, category, context, body, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, session_id, type, ephemeral, severity, category, context, body, author, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[
 			id,
 			a.sessionId,
@@ -130,6 +130,7 @@ const appendActivity = (
 			a.category ?? null,
 			a.context ?? null,
 			a.body,
+			a.author ?? null,
 			now,
 		],
 	);
@@ -160,6 +161,7 @@ const appendActivity = (
 		category: a.category,
 		context: a.context,
 		body: a.body,
+		author: a.author,
 		createdAt: now,
 	};
 };
@@ -355,7 +357,8 @@ export namespace Planner {
 	 * transaction as the lookup. A question that relays a tool permission
 	 * request (its body carries `permission`) gets an `answer`: approving a tool
 	 * call unblocks the session and is no decision. Any other question gets a
-	 * `decision`, the human's choice on the record. The session leaves
+	 * `decision`, the human's choice on the record. Either names the runtime
+	 * actor as its author, who answered. The session leaves
 	 * awaiting_input only once every question on it has an answer. Answering
 	 * again appends another: the latest is the answer in force and the earlier
 	 * ones stay on the record. Rejects an id that is not a question activity,
@@ -387,6 +390,7 @@ export namespace Planner {
 					ephemeral: false,
 					context: answersContext(questionId),
 					body: answer,
+					author: Runtime.actor(),
 				});
 			})(),
 		);

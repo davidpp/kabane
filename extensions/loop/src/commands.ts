@@ -707,8 +707,8 @@ export namespace Loop {
 		);
 	};
 
-	// Core records no author on an activity, so who answered rides the run's inbox, noted before
-	// the answer so the runner finds it once it sees the decision.
+	// Who answered also rides the run's inbox, noted before the answer so the runner finds it
+	// once it sees the answer.
 	const note = (
 		deps: AnswerDeps,
 		runId: string,

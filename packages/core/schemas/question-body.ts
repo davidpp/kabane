@@ -164,3 +164,13 @@ export function isAnswerTo(
 ): boolean {
 	return context === answersContext(questionActivityId);
 }
+
+/** The question among `activities` that an activity with `context` answers, if any. */
+export function answeredQuestion<T extends { id: string; type: string }>(
+	context: string | undefined | null,
+	activities: readonly T[],
+): T | undefined {
+	return activities.find(
+		(a) => a.type === "question" && isAnswerTo(context, a.id),
+	);
+}
