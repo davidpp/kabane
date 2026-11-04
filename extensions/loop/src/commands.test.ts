@@ -256,6 +256,34 @@ const orphaned = async (id: string) => {
 	return { run: created.value, parent, child, sessionId: session.value.id };
 };
 
+describe("Loop.start on a parent whose last run lost its runner", () => {
+	it("refuses, naming the run and the command that restarts it, and writes no run", async () => {
+		const { run, child } = await orphaned("dead-run");
+		const started = await Loop.start(deps(), { parent: run.parentId });
+		expect(!started.ok && started.error.message).toContain(
+			`kabane loop resume ${run.id}`,
+		);
+		const runs = RunStore.list(home);
+		expect(runs.ok && runs.value.map((r) => r.id)).toEqual([run.id]);
+		const held = await Planner.getTask(home, child.id);
+		expect(held.ok && held.value?.state).toBe("in_progress");
+	});
+
+	it("starts once the run that died is over", async () => {
+		const { run } = await orphaned("dead-run");
+		RunStore.write(home, {
+			...run,
+			status: "stopped",
+			exit: { reason: "stop-requested" },
+		});
+		const started = await Loop.start(deps(), { parent: run.parentId });
+		// Past the checks: the run is written and only the (nonexistent) runner fails.
+		expect(!started.ok && started.error.message).not.toContain(run.id);
+		const runs = RunStore.list(home);
+		expect(runs.ok && runs.value).toHaveLength(2);
+	});
+});
+
 describe("Loop.restart", () => {
 	it("brings a run whose runner died back in a detached runner, which releases the claim it left open", async () => {
 		const { run, child } = await orphaned("dead-run");

@@ -192,7 +192,8 @@ export namespace Loop {
 		);
 
 	// The parent must have something for a run to do (open work, or checks to run on work that
-	// is done) and no live run already.
+	// is done), no live run already, and a last run whose runner did not die: that run still
+	// holds the subtasks it claimed, which a new run would wait on forever, and its worktree.
 	const checkParent = async (
 		deps: Pick<StartDeps, "home">,
 		plan: LoopPlan.Plan,
@@ -220,8 +221,18 @@ export namespace Loop {
 		const runs = RunStore.list(deps.home);
 		if (!runs.ok) return runs;
 		const active = liveRunOn(runs.value, plan.parent.id);
-		return active
-			? err(new Error(`${short} already has a live loop run: ${active.id}`))
+		if (active)
+			return err(
+				new Error(`${short} already has a live loop run: ${active.id}`),
+			);
+		// Newest first: the parent's last run.
+		const last = runs.value.find((r) => r.parentId === plan.parent.id);
+		return last && died(last)
+			? err(
+					new Error(
+						`${short}'s last loop run ${last.id} lost its runner: \`${restartCommand(last.id)}\` restarts it with its claims and worktree, and \`kabane loop stop ${last.id}\` after that abandons it`,
+					),
+				)
 			: ok(undefined);
 	};
 
