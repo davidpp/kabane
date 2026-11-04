@@ -12,7 +12,7 @@ import {
 	type ScrollBoxRenderable,
 	TextAttributes,
 } from "@opentui/core";
-import { createRef } from "react";
+import { act, createRef, useEffect, useState } from "react";
 import { EventView, promptLines, toolParts } from "./event-view";
 import type {
 	ActivityCard,
@@ -126,6 +126,56 @@ describe("EventView", () => {
 			// Nothing between the header and the first event.
 			expect(frame).not.toContain("○");
 			expect(frame.indexOf("scout ·")).toBeLessThan(frame.indexOf("line 01"));
+		} finally {
+			destroy();
+		}
+	});
+
+	it("polls a card again once the board's poll sees it in flight again", async () => {
+		const { finishedAt: _over, ...running } = hostCard;
+		let current: ActivityCard = { ...hostCard, status: "failed" };
+		let shown: ActivityEvent[] = [
+			{ seq: 1, at: T0, type: "text", summary: "before it died" },
+		];
+		const restartable: ActivitySource = {
+			load: async () => ok([current]),
+			card: async () => ok(current),
+			events: async (_id, afterSeq) =>
+				ok(shown.filter((e) => e.seq > afterSeq)),
+		};
+		const handle = { relaunch: (_card: ActivityCard): void => {} };
+		const Polled = () => {
+			const [card, setCard] = useState(current);
+			useEffect(() => {
+				handle.relaunch = setCard;
+			}, []);
+			return (
+				<EventView
+					cardId="r1"
+					initialCard={card}
+					source={restartable}
+					resolveShortId={() => undefined}
+					scrollRef={createRef<ScrollBoxRenderable>()}
+				/>
+			);
+		};
+		const { renderOnce, captureCharFrame, destroy } = await renderTest(
+			<Polled />,
+			{ width: 80, height: 16 },
+		);
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		try {
+			await until((f) => f.includes("before it died"));
+			// The host restarts the work, and the board's own poll hands the view the running card.
+			current = { ...running, status: "running" };
+			shown = [
+				...shown,
+				{ seq: 2, at: T0, type: "text", summary: "after the restart" },
+			];
+			act(() => handle.relaunch(current));
+			const frame = await until((f) => f.includes("after the restart"));
+			expect(frame).toContain("before it died");
 		} finally {
 			destroy();
 		}

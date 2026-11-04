@@ -221,7 +221,10 @@ const tagCols = (lanes: readonly string[], width: number): number =>
 
 type Tag = { text: string; fg: string };
 
-/** Polls the card and its events: every second while it is in flight, once when it is over. */
+/**
+ * Polls the card and its events: every second while it is in flight, once when it is over. A card
+ * the board's own poll sees in flight again (a host restarted its work) is polled again.
+ */
 const useCardEvents = (
 	cardId: string,
 	source: ActivitySource,
@@ -236,6 +239,7 @@ const useCardEvents = (
 	const onCardRef = useRef(onCard);
 	onCardRef.current = onCard;
 	const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const relaunched = initialCard !== undefined && isInFlight(initialCard);
 	useEffect(() => {
 		let cancelled = false;
 		const poll = async (): Promise<void> => {
@@ -270,7 +274,8 @@ const useCardEvents = (
 			cancelled = true;
 			if (timerRef.current) clearInterval(timerRef.current);
 		};
-	}, [cardId, source]);
+		// `relaunched` only restarts the poll, which reads the card from the source itself.
+	}, [cardId, source, relaunched]);
 	return { card, events };
 };
 
