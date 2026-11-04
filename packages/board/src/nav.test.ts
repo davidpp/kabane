@@ -54,27 +54,39 @@ const copilotState = (
 	...over,
 });
 
-const state = (
-	over: Partial<BoardNav.BoardState> = {},
-): BoardNav.BoardState => ({
-	sections: [],
-	selectedId: null,
-	expanded: new Set<string>(),
-	kind: "all",
-	status: "open",
-	scoped: false,
-	view: { type: "board" },
-	search: { mode: "off" },
-	dispatch: null,
-	help: false,
-	focus: "board",
-	tabs: BoardTabs.NONE,
-	marked: new Set<string>(),
-	copilot: copilotState(),
-	undo: [],
-	prompt: BoardPrompt.CLOSED,
-	...over,
-});
+// Sighted at 0 (BoardNav.sight), as app.tsx would after rendering it.
+const state = (over: Partial<BoardNav.BoardState> = {}): BoardNav.BoardState =>
+	BoardNav.sight(
+		{
+			sections: [],
+			selectedId: null,
+			expanded: new Set<string>(),
+			kind: "all",
+			status: "open",
+			scoped: false,
+			view: { type: "board" },
+			search: { mode: "off" },
+			dispatch: null,
+			help: false,
+			focus: "board",
+			tabs: BoardTabs.NONE,
+			marked: new Set<string>(),
+			copilot: copilotState(),
+			undo: [],
+			prompt: BoardPrompt.CLOSED,
+			sighted: { target: undefined, since: 0 },
+			...over,
+		},
+		0,
+	);
+
+// A key pressed once whatever the state shows has been on screen long enough to read
+// (BoardNav.ARM_MS): the tests about the arming itself call BoardNav.reduceKey with their own clock.
+const reduce = (
+	s: BoardNav.BoardState,
+	key: BoardNav.KeyInput,
+): { state: BoardNav.BoardState; effect: BoardNav.Effect } =>
+	BoardNav.reduceKey(BoardNav.sight(s, 0), key, BoardNav.ARM_MS);
 
 // Feed a printable char the way OpenTUI does: name + raw sequence.
 const char = (c: string): { name: string; sequence: string } => ({
@@ -84,7 +96,7 @@ const char = (c: string): { name: string; sequence: string } => ({
 
 // Type a whole query one keystroke at a time through the reducer.
 const typeQuery = (s: BoardNav.BoardState, text: string): BoardNav.BoardState =>
-	[...text].reduce((acc, c) => BoardNav.reduceKey(acc, char(c)).state, s);
+	[...text].reduce((acc, c) => reduce(acc, char(c)).state, s);
 
 describe("BoardNav.visibleRows", () => {
 	it("flattens sections into rows, revealing children only under expanded parents", () => {
@@ -122,12 +134,10 @@ describe("BoardNav.reduceKey", () => {
 				}),
 				selectedId: "a",
 			});
-			const down = BoardNav.reduceKey(s, { name: "j" });
+			const down = reduce(s, { name: "j" });
 			expect(down.state.selectedId).toBe("b");
 			expect(down.effect.type).toBe("none");
-			expect(
-				BoardNav.reduceKey(down.state, { name: "k" }).state.selectedId,
-			).toBe("a");
+			expect(reduce(down.state, { name: "k" }).state.selectedId).toBe("a");
 		});
 
 		it("k clamps at the first row and j clamps at the last", () => {
@@ -137,11 +147,9 @@ describe("BoardNav.reduceKey", () => {
 				}),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "k" }).state.selectedId).toBe("a");
+			expect(reduce(s, { name: "k" }).state.selectedId).toBe("a");
 			const last = state({ ...s, selectedId: "b" });
-			expect(BoardNav.reduceKey(last, { name: "j" }).state.selectedId).toBe(
-				"b",
-			);
+			expect(reduce(last, { name: "j" }).state.selectedId).toBe("b");
 		});
 
 		it("arrow keys mirror j/k", () => {
@@ -151,9 +159,7 @@ describe("BoardNav.reduceKey", () => {
 				}),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "down" }).state.selectedId).toBe(
-				"b",
-			);
+			expect(reduce(s, { name: "down" }).state.selectedId).toBe("b");
 		});
 	});
 
@@ -168,16 +174,16 @@ describe("BoardNav.reduceKey", () => {
 			});
 
 		it("space expands a collapsed parent and collapses an expanded one", () => {
-			const expanded = BoardNav.reduceKey(withTree(), { name: "space" });
+			const expanded = reduce(withTree(), { name: "space" });
 			expect([...expanded.state.expanded]).toEqual(["p"]);
-			const collapsed = BoardNav.reduceKey(expanded.state, { name: "space" });
+			const collapsed = reduce(expanded.state, { name: "space" });
 			expect([...collapsed.state.expanded]).toEqual([]);
 		});
 
 		it("l expands the selected parent (no-op when already expanded)", () => {
-			const expanded = BoardNav.reduceKey(withTree(), { name: "l" });
+			const expanded = reduce(withTree(), { name: "l" });
 			expect([...expanded.state.expanded]).toEqual(["p"]);
-			const again = BoardNav.reduceKey(expanded.state, { name: "l" });
+			const again = reduce(expanded.state, { name: "l" });
 			expect(again.state).toBe(expanded.state);
 		});
 
@@ -186,19 +192,19 @@ describe("BoardNav.reduceKey", () => {
 				sections: sections({ next: [row(task({ id: "a" }))] }),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "space" }).state).toBe(s);
+			expect(reduce(s, { name: "space" }).state).toBe(s);
 		});
 
 		it("h on an expanded parent collapses it", () => {
 			const s = withTree({ expanded: new Set(["p"]) });
-			const collapsed = BoardNav.reduceKey(s, { name: "h" });
+			const collapsed = reduce(s, { name: "h" });
 			expect([...collapsed.state.expanded]).toEqual([]);
 			expect(collapsed.state.selectedId).toBe("p");
 		});
 
 		it("h on a child jumps selection to its parent", () => {
 			const s = withTree({ expanded: new Set(["p"]), selectedId: "c" });
-			const jumped = BoardNav.reduceKey(s, { name: "h" });
+			const jumped = reduce(s, { name: "h" });
 			expect(jumped.state.selectedId).toBe("p");
 			// The parent stays expanded — h on a child only moves selection.
 			expect([...jumped.state.expanded]).toEqual(["p"]);
@@ -208,17 +214,13 @@ describe("BoardNav.reduceKey", () => {
 	describe("kind filter", () => {
 		it("i cycles all -> issue -> task -> all and asks for a reload", () => {
 			const all = state({ kind: "all" });
-			const issue = BoardNav.reduceKey(all, { name: "i" });
+			const issue = reduce(all, { name: "i" });
 			expect(issue.state.kind).toBe("issue");
 			expect(issue.effect.type).toBe("reload");
-			expect(BoardNav.reduceKey(issue.state, { name: "i" }).state.kind).toBe(
-				"task",
-			);
+			expect(reduce(issue.state, { name: "i" }).state.kind).toBe("task");
 			expect(
-				BoardNav.reduceKey(
-					BoardNav.reduceKey(issue.state, { name: "i" }).state,
-					{ name: "i" },
-				).state.kind,
+				reduce(reduce(issue.state, { name: "i" }).state, { name: "i" }).state
+					.kind,
 			).toBe("all");
 		});
 	});
@@ -226,7 +228,7 @@ describe("BoardNav.reduceKey", () => {
 	describe("scope escape", () => {
 		it("esc widens a scoped board to all scopes and reloads", () => {
 			const scoped = state({ scoped: true });
-			const { state: next, effect } = BoardNav.reduceKey(scoped, {
+			const { state: next, effect } = reduce(scoped, {
 				name: "escape",
 			});
 			expect(next.scoped).toBe(false);
@@ -235,7 +237,7 @@ describe("BoardNav.reduceKey", () => {
 
 		it("esc is a no-op once already at all scopes", () => {
 			const wide = state({ scoped: false });
-			const { state: next, effect } = BoardNav.reduceKey(wide, {
+			const { state: next, effect } = reduce(wide, {
 				name: "escape",
 			});
 			expect(next).toBe(wide);
@@ -249,7 +251,7 @@ describe("BoardNav.reduceKey", () => {
 				sections: sections({ inbox: [row(task({ id: "a", state: "inbox" }))] }),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "]" }).effect).toEqual({
+			expect(reduce(s, { name: "]" }).effect).toEqual({
 				type: "setState",
 				id: "a",
 				state: "next",
@@ -262,7 +264,7 @@ describe("BoardNav.reduceKey", () => {
 				sections: sections({ next: [row(task({ id: "a", state: "next" }))] }),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "[" }).effect).toEqual({
+			expect(reduce(s, { name: "[" }).effect).toEqual({
 				type: "setState",
 				id: "a",
 				state: "inbox",
@@ -275,7 +277,7 @@ describe("BoardNav.reduceKey", () => {
 				sections: sections({ done: [row(task({ id: "a", state: "done" }))] }),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "]" }).effect.type).toBe("none");
+			expect(reduce(s, { name: "]" }).effect.type).toBe("none");
 		});
 
 		it("d emits markDone for the selected row", () => {
@@ -283,7 +285,7 @@ describe("BoardNav.reduceKey", () => {
 				sections: sections({ next: [row(task({ id: "a" }))] }),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "d" }).effect).toEqual({
+			expect(reduce(s, { name: "d" }).effect).toEqual({
 				type: "markDone",
 				id: "a",
 				notice: "JAKE-1 done",
@@ -292,12 +294,12 @@ describe("BoardNav.reduceKey", () => {
 
 		it("mutation keys are no-ops when nothing is selected", () => {
 			const s = state();
-			expect(BoardNav.reduceKey(s, { name: "]" }).effect.type).toBe("none");
-			expect(BoardNav.reduceKey(s, { name: "d" }).effect.type).toBe("none");
-			expect(BoardNav.reduceKey(s, { name: "x" }).effect.type).toBe("none");
-			expect(BoardNav.reduceKey(s, { name: "n" }).effect.type).toBe("none");
-			expect(BoardNav.reduceKey(s, { name: "s" }).effect.type).toBe("none");
-			expect(BoardNav.reduceKey(s, { name: "v" }).effect.type).toBe("none");
+			expect(reduce(s, { name: "]" }).effect.type).toBe("none");
+			expect(reduce(s, { name: "d" }).effect.type).toBe("none");
+			expect(reduce(s, { name: "x" }).effect.type).toBe("none");
+			expect(reduce(s, { name: "n" }).effect.type).toBe("none");
+			expect(reduce(s, { name: "s" }).effect.type).toBe("none");
+			expect(reduce(s, { name: "v" }).effect.type).toBe("none");
 		});
 
 		it("n/s/x jump the selected task directly to next/someday/cancelled", () => {
@@ -305,19 +307,19 @@ describe("BoardNav.reduceKey", () => {
 				sections: sections({ inbox: [row(task({ id: "a", state: "inbox" }))] }),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "n" }).effect).toEqual({
+			expect(reduce(s, { name: "n" }).effect).toEqual({
 				type: "setState",
 				id: "a",
 				state: "next",
 				notice: "JAKE-1 → next",
 			});
-			expect(BoardNav.reduceKey(s, { name: "s" }).effect).toEqual({
+			expect(reduce(s, { name: "s" }).effect).toEqual({
 				type: "setState",
 				id: "a",
 				state: "someday",
 				notice: "JAKE-1 → someday",
 			});
-			expect(BoardNav.reduceKey(s, { name: "x" }).effect).toEqual({
+			expect(reduce(s, { name: "x" }).effect).toEqual({
 				type: "setState",
 				id: "a",
 				state: "cancelled",
@@ -332,7 +334,7 @@ describe("BoardNav.reduceKey", () => {
 				}),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(flagged, { name: "v" }).effect).toEqual({
+			expect(reduce(flagged, { name: "v" }).effect).toEqual({
 				type: "markReviewed",
 				id: "a",
 				notice: "JAKE-1 reviewed",
@@ -344,7 +346,7 @@ describe("BoardNav.reduceKey", () => {
 				}),
 				selectedId: "a",
 			});
-			const { effect } = BoardNav.reduceKey(clean, { name: "v" });
+			const { effect } = reduce(clean, { name: "v" });
 			expect(effect).toEqual({
 				type: "notice",
 				notice: { text: "JAKE-1: no review flag", tone: "success" },
@@ -358,20 +360,18 @@ describe("BoardNav.reduceKey", () => {
 				sections: sections({ next: [row(task({ id: "a" }))] }),
 				selectedId: "a",
 			});
-			const { state: next, effect } = BoardNav.reduceKey(s, { name: "y" });
+			const { state: next, effect } = reduce(s, { name: "y" });
 			expect(effect).toEqual({ type: "copy", id: "a" });
 			expect(next.view).toEqual({ type: "board" });
 		});
 
 		it("y on the board is a no-op when nothing is selected", () => {
-			expect(BoardNav.reduceKey(state(), { name: "y" }).effect.type).toBe(
-				"none",
-			);
+			expect(reduce(state(), { name: "y" }).effect.type).toBe("none");
 		});
 
 		it("y in the detail view emits copy for the open task", () => {
 			const s = state({ view: { type: "detail", taskId: "a" } });
-			expect(BoardNav.reduceKey(s, { name: "y" }).effect).toEqual({
+			expect(reduce(s, { name: "y" }).effect).toEqual({
 				type: "copy",
 				id: "a",
 			});
@@ -386,7 +386,7 @@ describe("BoardNav.reduceKey", () => {
 			});
 
 		it("O on the board emits openLink for the selected row without opening detail", () => {
-			const { state: next, effect } = BoardNav.reduceKey(board(), {
+			const { state: next, effect } = reduce(board(), {
 				name: "O",
 			});
 			expect(effect).toEqual({ type: "openLink", id: "a" });
@@ -394,9 +394,10 @@ describe("BoardNav.reduceKey", () => {
 		});
 
 		it("matches the raw sequence too, since parsers disagree on shifted keys", () => {
-			expect(
-				BoardNav.reduceKey(board(), { name: "o", sequence: "O" }).effect,
-			).toEqual({ type: "openLink", id: "a" });
+			expect(reduce(board(), { name: "o", sequence: "O" }).effect).toEqual({
+				type: "openLink",
+				id: "a",
+			});
 		});
 
 		it("O in the detail view acts on the open task, not the selection", () => {
@@ -405,29 +406,27 @@ describe("BoardNav.reduceKey", () => {
 				selectedId: "a",
 				view: { type: "detail", taskId: "b" },
 			});
-			expect(BoardNav.reduceKey(s, { name: "O" }).effect).toEqual({
+			expect(reduce(s, { name: "O" }).effect).toEqual({
 				type: "openLink",
 				id: "b",
 			});
 		});
 
 		it("is a no-op when nothing is selected", () => {
-			expect(BoardNav.reduceKey(state(), { name: "O" }).effect.type).toBe(
-				"none",
-			);
+			expect(reduce(state(), { name: "O" }).effect.type).toBe("none");
 		});
 
 		it("lowercase o still opens the event log, not the issue", () => {
 			const s = state({ view: { type: "detail", taskId: "a" } });
-			expect(BoardNav.reduceKey(s, { name: "o" }).effect).toEqual({
+			expect(reduce(s, { name: "o" }).effect).toEqual({
 				type: "openEvents",
 				taskId: "a",
 			});
 		});
 
 		it("is a query character while a search is being typed", () => {
-			const typing = BoardNav.reduceKey(board(), { name: "/" }).state;
-			const { state: next, effect } = BoardNav.reduceKey(typing, {
+			const typing = reduce(board(), { name: "/" }).state;
+			const { state: next, effect } = reduce(typing, {
 				name: "O",
 				sequence: "O",
 			});
@@ -438,17 +437,13 @@ describe("BoardNav.reduceKey", () => {
 
 	describe("lifecycle keys", () => {
 		it("q quits and r reloads", () => {
-			expect(BoardNav.reduceKey(state(), { name: "q" }).effect.type).toBe(
-				"quit",
-			);
-			expect(BoardNav.reduceKey(state(), { name: "r" }).effect.type).toBe(
-				"reload",
-			);
+			expect(reduce(state(), { name: "q" }).effect.type).toBe("quit");
+			expect(reduce(state(), { name: "r" }).effect.type).toBe("reload");
 		});
 
 		it("unknown keys return the same state reference", () => {
 			const s = state();
-			expect(BoardNav.reduceKey(s, { name: "z" }).state).toBe(s);
+			expect(reduce(s, { name: "z" }).state).toBe(s);
 		});
 	});
 
@@ -471,10 +466,7 @@ describe("BoardNav.reduceKey", () => {
 			});
 
 		it("/ enters typing mode with an empty query", () => {
-			const { state: next, effect } = BoardNav.reduceKey(
-				searchable(),
-				char("/"),
-			);
+			const { state: next, effect } = reduce(searchable(), char("/"));
 			expect(next.search).toEqual({ mode: "typing", query: "" });
 			expect(effect.type).toBe("none");
 			// Empty query = no filter yet; the full list stays visible.
@@ -482,7 +474,7 @@ describe("BoardNav.reduceKey", () => {
 		});
 
 		it("printable chars append to the query and filter rows live", () => {
-			const typing = BoardNav.reduceKey(searchable(), char("/")).state;
+			const typing = reduce(searchable(), char("/")).state;
 			const typed = typeQuery(typing, "auth");
 			expect(typed.search).toEqual({ mode: "typing", query: "auth" });
 			expect(BoardNav.visibleRows(typed).map((r) => r.task.id)).toEqual([
@@ -491,7 +483,7 @@ describe("BoardNav.reduceKey", () => {
 		});
 
 		it("matches are case-insensitive over title and shortId", () => {
-			const typing = BoardNav.reduceKey(searchable(), char("/")).state;
+			const typing = reduce(searchable(), char("/")).state;
 			expect(
 				BoardNav.visibleRows(typeQuery(typing, "AUTH")).map((r) => r.task.id),
 			).toEqual(["auth"]);
@@ -503,87 +495,77 @@ describe("BoardNav.reduceKey", () => {
 		});
 
 		it("board bindings are inert while typing — q filters, it does not quit", () => {
-			const typing = BoardNav.reduceKey(searchable(), char("/")).state;
-			const { state: next, effect } = BoardNav.reduceKey(typing, char("q"));
+			const typing = reduce(searchable(), char("/")).state;
+			const { state: next, effect } = reduce(typing, char("q"));
 			expect(effect.type).toBe("none");
 			expect(next.search).toEqual({ mode: "typing", query: "q" });
 			// d likewise: appended, no markDone effect.
-			expect(BoardNav.reduceKey(typing, char("d")).effect.type).toBe("none");
+			expect(reduce(typing, char("d")).effect.type).toBe("none");
 		});
 
 		it("non-printable keys are inert while typing (same state reference)", () => {
-			const typing = BoardNav.reduceKey(searchable(), char("/")).state;
+			const typing = reduce(searchable(), char("/")).state;
+			expect(reduce(typing, { name: "up", sequence: "\u001b[A" }).state).toBe(
+				typing,
+			);
 			expect(
-				BoardNav.reduceKey(typing, { name: "up", sequence: "\u001b[A" }).state,
-			).toBe(typing);
-			expect(
-				BoardNav.reduceKey(typing, { name: "c", sequence: "c", ctrl: true })
-					.state,
+				reduce(typing, { name: "c", sequence: "c", ctrl: true }).state,
 			).toBe(typing);
 		});
 
 		it("backspace deletes the last char; deleting to empty restores the full list", () => {
-			const typed = typeQuery(
-				BoardNav.reduceKey(searchable(), char("/")).state,
-				"au",
-			);
-			const one = BoardNav.reduceKey(typed, { name: "backspace" }).state;
+			const typed = typeQuery(reduce(searchable(), char("/")).state, "au");
+			const one = reduce(typed, { name: "backspace" }).state;
 			expect(one.search).toEqual({ mode: "typing", query: "a" });
-			const empty = BoardNav.reduceKey(one, { name: "backspace" }).state;
+			const empty = reduce(one, { name: "backspace" }).state;
 			expect(empty.search).toEqual({ mode: "typing", query: "" });
 			expect(BoardNav.visibleRows(empty)).toHaveLength(2);
 		});
 
 		it("enter commits the filter; keys work again over the filtered list", () => {
-			const typed = typeQuery(
-				BoardNav.reduceKey(searchable(), char("/")).state,
-				"auth",
-			);
-			const committed = BoardNav.reduceKey(typed, { name: "return" }).state;
+			const typed = typeQuery(reduce(searchable(), char("/")).state, "auth");
+			const committed = reduce(typed, { name: "return" }).state;
 			expect(committed.search).toEqual({ mode: "committed", query: "auth" });
 			expect(BoardNav.visibleRows(committed).map((r) => r.task.id)).toEqual([
 				"auth",
 			]);
 			// Normal bindings are live again: d marks the filtered row done.
-			expect(BoardNav.reduceKey(committed, char("d")).effect).toMatchObject({
+			expect(reduce(committed, char("d")).effect).toMatchObject({
 				type: "markDone",
 				id: "auth",
 			});
 		});
 
 		it("enter with an empty query clears the search (same as esc)", () => {
-			const typing = BoardNav.reduceKey(searchable(), char("/")).state;
-			const { state: next } = BoardNav.reduceKey(typing, { name: "return" });
+			const typing = reduce(searchable(), char("/")).state;
+			const { state: next } = reduce(typing, { name: "return" });
 			expect(next.search).toEqual({ mode: "off" });
 		});
 
 		it("esc while typing cancels input AND clears the query", () => {
-			const typed = typeQuery(
-				BoardNav.reduceKey(searchable(), char("/")).state,
-				"auth",
-			);
-			const { state: next } = BoardNav.reduceKey(typed, { name: "escape" });
+			const typed = typeQuery(reduce(searchable(), char("/")).state, "auth");
+			const { state: next } = reduce(typed, { name: "escape" });
 			expect(next.search).toEqual({ mode: "off" });
 			expect(BoardNav.visibleRows(next)).toHaveLength(2);
 		});
 
 		it("esc layers: committed filter clears first, scope widens on the next press", () => {
 			const typed = typeQuery(
-				BoardNav.reduceKey(searchable({ scoped: true }), char("/")).state,
+				reduce(searchable({ scoped: true }), char("/")).state,
 				"auth",
 			);
-			const committed = BoardNav.reduceKey(typed, { name: "return" }).state;
-			const cleared = BoardNav.reduceKey(committed, { name: "escape" });
+			const committed = reduce(typed, { name: "return" }).state;
+			const cleared = reduce(committed, { name: "escape" });
 			expect(cleared.state.search).toEqual({ mode: "off" });
 			expect(cleared.state.scoped).toBe(true);
 			expect(cleared.effect.type).toBe("none");
-			const widened = BoardNav.reduceKey(cleared.state, { name: "escape" });
+			const widened = reduce(cleared.state, { name: "escape" });
 			expect(widened.state.scoped).toBe(false);
 			expect(widened.effect.type).toBe("reload");
 		});
 
 		it("selection re-anchors to the first match when narrowing hides it, stays put otherwise", () => {
-			const typing = BoardNav.reduceKey(
+			const typing = reduce(
 				searchable({ selectedId: "board" }),
 				char("/"),
 			).state;
@@ -611,7 +593,7 @@ describe("BoardNav.reduceKey", () => {
 				sections: sections({ next: [row(parent, [hit, miss])] }),
 				selectedId: "p",
 			});
-			const typed = typeQuery(BoardNav.reduceKey(s, char("/")).state, "auth");
+			const typed = typeQuery(reduce(s, char("/")).state, "auth");
 			const rows = BoardNav.visibleRows(typed);
 			// Parent forced open, only the matching child shown.
 			expect(rows.map((r) => r.task.id)).toEqual(["p", "c1"]);
@@ -630,7 +612,7 @@ describe("BoardNav.reduceKey", () => {
 				sections: sections({ next: [row(parent, [child])] }),
 				selectedId: "p",
 			});
-			const typed = typeQuery(BoardNav.reduceKey(s, char("/")).state, "auth");
+			const typed = typeQuery(reduce(s, char("/")).state, "auth");
 			expect(BoardNav.visibleRows(typed).map((r) => r.task.id)).toEqual(["p"]);
 			// With the parent in the expanded set, its children ride along.
 			const open = { ...typed, expanded: new Set(["p"]) };
@@ -641,23 +623,17 @@ describe("BoardNav.reduceKey", () => {
 		});
 
 		it("zero matches yields an empty visible list and esc still escapes", () => {
-			const typed = typeQuery(
-				BoardNav.reduceKey(searchable(), char("/")).state,
-				"zzz",
-			);
+			const typed = typeQuery(reduce(searchable(), char("/")).state, "zzz");
 			expect(BoardNav.visibleRows(typed)).toHaveLength(0);
 			expect(typed.selectedId).toBeNull();
-			const { state: next } = BoardNav.reduceKey(typed, { name: "escape" });
+			const { state: next } = reduce(typed, { name: "escape" });
 			expect(next.search).toEqual({ mode: "off" });
 			expect(next.selectedId).toBe("auth");
 		});
 
 		it("a committed filter survives a sections reload (poll/mutation)", () => {
-			const typed = typeQuery(
-				BoardNav.reduceKey(searchable(), char("/")).state,
-				"auth",
-			);
-			const committed = BoardNav.reduceKey(typed, { name: "return" }).state;
+			const typed = typeQuery(reduce(searchable(), char("/")).state, "auth");
+			const committed = reduce(typed, { name: "return" }).state;
 			const reloaded = BoardNav.withSections(
 				committed,
 				sections({ next: [row(auth), row(board)] }),
@@ -670,7 +646,7 @@ describe("BoardNav.reduceKey", () => {
 
 		it("/ is board-view-only — the detail view ignores it", () => {
 			const detail = searchable({ view: { type: "detail", taskId: "auth" } });
-			const { state: next } = BoardNav.reduceKey(detail, char("/"));
+			const { state: next } = reduce(detail, char("/"));
 			expect(next.search).toEqual({ mode: "off" });
 		});
 	});
@@ -681,14 +657,14 @@ describe("BoardNav.reduceKey", () => {
 				sections: sections({ next: [row(task({ id: "a" }))] }),
 				selectedId: "a",
 			});
-			const { state: next, effect } = BoardNav.reduceKey(s, { name: "return" });
+			const { state: next, effect } = reduce(s, { name: "return" });
 			expect(next.view).toEqual({ type: "detail", taskId: "a" });
 			expect(effect.type).toBe("none");
 		});
 
 		it("enter is a no-op when nothing is selected", () => {
 			const s = state();
-			expect(BoardNav.reduceKey(s, { name: "return" }).state.view).toEqual({
+			expect(reduce(s, { name: "return" }).state.view).toEqual({
 				type: "board",
 			});
 		});
@@ -698,19 +674,19 @@ describe("BoardNav.reduceKey", () => {
 				scoped: true,
 				view: { type: "detail", taskId: "a" },
 			});
-			const back = BoardNav.reduceKey(detail, { name: "escape" });
+			const back = reduce(detail, { name: "escape" });
 			expect(back.state.view).toEqual({ type: "board" });
 			expect(back.state.scoped).toBe(true);
 			expect(back.effect.type).toBe("none");
 
-			const widened = BoardNav.reduceKey(back.state, { name: "escape" });
+			const widened = reduce(back.state, { name: "escape" });
 			expect(widened.state.scoped).toBe(false);
 			expect(widened.effect.type).toBe("reload");
 		});
 
 		it("q from the detail view returns to the board instead of quitting", () => {
 			const detail = state({ view: { type: "detail", taskId: "a" } });
-			const { state: next, effect } = BoardNav.reduceKey(detail, { name: "q" });
+			const { state: next, effect } = reduce(detail, { name: "q" });
 			expect(next.view).toEqual({ type: "board" });
 			expect(effect.type).toBe("none");
 		});
@@ -721,12 +697,10 @@ describe("BoardNav.reduceKey", () => {
 				selectedId: "a",
 				view: { type: "detail", taskId: "a" },
 			});
-			const down = BoardNav.reduceKey(detail, { name: "j" });
+			const down = reduce(detail, { name: "j" });
 			expect(down.effect.type).toBe("scroll");
 			expect(down.state.selectedId).toBe("a");
-			expect(BoardNav.reduceKey(detail, { name: "k" }).effect.type).toBe(
-				"scroll",
-			);
+			expect(reduce(detail, { name: "k" }).effect.type).toBe("scroll");
 		});
 	});
 });
@@ -742,17 +716,17 @@ describe("status keys in the detail view target the open task", () => {
 	});
 
 	it("n/s/x jump the open task's state (not the selected row)", () => {
-		expect(BoardNav.reduceKey(open, { name: "n" }).effect).toMatchObject({
+		expect(reduce(open, { name: "n" }).effect).toMatchObject({
 			type: "setState",
 			id: "b",
 			state: "next",
 		});
-		expect(BoardNav.reduceKey(open, { name: "s" }).effect).toMatchObject({
+		expect(reduce(open, { name: "s" }).effect).toMatchObject({
 			type: "setState",
 			id: "b",
 			state: "someday",
 		});
-		expect(BoardNav.reduceKey(open, { name: "x" }).effect).toMatchObject({
+		expect(reduce(open, { name: "x" }).effect).toMatchObject({
 			type: "setState",
 			id: "b",
 			state: "cancelled",
@@ -760,12 +734,12 @@ describe("status keys in the detail view target the open task", () => {
 	});
 
 	it("v reviews the open task when flagged, no-ops with a flash otherwise", () => {
-		expect(BoardNav.reduceKey(open, { name: "v" }).effect).toMatchObject({
+		expect(reduce(open, { name: "v" }).effect).toMatchObject({
 			type: "markReviewed",
 			id: "b",
 		});
 		const clean = { ...open, view: { type: "detail" as const, taskId: "a" } };
-		expect(BoardNav.reduceKey(clean, { name: "v" }).effect).toMatchObject({
+		expect(reduce(clean, { name: "v" }).effect).toMatchObject({
 			type: "notice",
 			notice: { tone: "success" },
 		});
@@ -1014,12 +988,12 @@ describe("dispatch overlay", () => {
 	// `a` opens the overlay loading; the host answers through withTriggers.
 	const open = (over: Partial<BoardNav.BoardState> = {}) =>
 		BoardNav.withTriggers(
-			BoardNav.reduceKey(boardWith(over), { name: "a" }).state,
+			reduce(boardWith(over), { name: "a" }).state,
 			TRIGGERS,
 		);
 
 	it("`a` on the board opens the overlay loading on the selected row and asks the host for triggers", () => {
-		const { state: next, effect } = BoardNav.reduceKey(boardWith(), {
+		const { state: next, effect } = reduce(boardWith(), {
 			name: "a",
 		});
 		expect(next.dispatch).toEqual(LOADING);
@@ -1028,14 +1002,14 @@ describe("dispatch overlay", () => {
 
 	it("`a` with nothing selected is a no-op", () => {
 		const empty = state();
-		const { state: next, effect } = BoardNav.reduceKey(empty, { name: "a" });
+		const { state: next, effect } = reduce(empty, { name: "a" });
 		expect(next.dispatch).toBeNull();
 		expect(effect.type).toBe("none");
 	});
 
 	it("`a` in the detail view opens the overlay on the OPEN task", () => {
 		const s = boardWith({ view: { type: "detail", taskId: "a" } });
-		const { state: next, effect } = BoardNav.reduceKey(s, { name: "a" });
+		const { state: next, effect } = reduce(s, { name: "a" });
 		expect(next.dispatch).toEqual(LOADING);
 		expect(effect).toEqual({ type: "loadTriggers", taskId: "a" });
 		expect(next.view).toEqual({ type: "detail", taskId: "a" });
@@ -1054,41 +1028,41 @@ describe("dispatch overlay", () => {
 	});
 
 	it("while loading, only esc does anything", () => {
-		const loading = BoardNav.reduceKey(boardWith(), { name: "a" }).state;
+		const loading = reduce(boardWith(), { name: "a" }).state;
 		for (const name of ["j", "k", "return", "q", "1"]) {
-			const { state: next, effect } = BoardNav.reduceKey(loading, { name });
+			const { state: next, effect } = reduce(loading, { name });
 			expect(effect.type).toBe("none");
 			expect(next.dispatch).toEqual(LOADING);
 		}
-		const { state: closed } = BoardNav.reduceKey(loading, { name: "escape" });
+		const { state: closed } = reduce(loading, { name: "escape" });
 		expect(closed.dispatch).toBeNull();
 	});
 
 	it("j/k move the selection, clamped to the trigger list", () => {
 		let s = open();
-		s = BoardNav.reduceKey(s, { name: "j" }).state;
-		s = BoardNav.reduceKey(s, { name: "j" }).state;
+		s = reduce(s, { name: "j" }).state;
+		s = reduce(s, { name: "j" }).state;
 		expect(s.dispatch?.selected).toBe(2);
-		s = BoardNav.reduceKey(s, { name: "j" }).state;
-		s = BoardNav.reduceKey(s, { name: "j" }).state;
-		s = BoardNav.reduceKey(s, { name: "j" }).state;
+		s = reduce(s, { name: "j" }).state;
+		s = reduce(s, { name: "j" }).state;
+		s = reduce(s, { name: "j" }).state;
 		expect(s.dispatch?.selected).toBe(4);
-		s = BoardNav.reduceKey(s, { name: "k" }).state;
+		s = reduce(s, { name: "k" }).state;
 		expect(s.dispatch?.selected).toBe(3);
 	});
 
 	it("digits jump straight to a trigger; out-of-range digits are inert", () => {
-		const s = BoardNav.reduceKey(open(), char("4")).state;
+		const s = reduce(open(), char("4")).state;
 		expect(s.dispatch?.selected).toBe(3);
-		const s5 = BoardNav.reduceKey(open(), char("5")).state;
+		const s5 = reduce(open(), char("5")).state;
 		expect(s5.dispatch?.selected).toBe(4);
-		const s9 = BoardNav.reduceKey(open(), char("9")).state;
+		const s9 = reduce(open(), char("9")).state;
 		expect(s9.dispatch?.selected).toBe(0);
 	});
 
 	it("enter closes the overlay and emits the dispatch effect for the selected trigger", () => {
-		const third = BoardNav.reduceKey(open(), char("3")).state;
-		const { state: next, effect } = BoardNav.reduceKey(third, {
+		const third = reduce(open(), char("3")).state;
+		const { state: next, effect } = reduce(third, {
 			name: "return",
 		});
 		expect(next.dispatch).toBeNull();
@@ -1100,8 +1074,8 @@ describe("dispatch overlay", () => {
 	});
 
 	it("enter on an unsatisfiable trigger keeps the overlay and flashes its hint", () => {
-		const fifth = BoardNav.reduceKey(open(), char("5")).state;
-		const { state: next, effect } = BoardNav.reduceKey(fifth, {
+		const fifth = reduce(open(), char("5")).state;
+		const { state: next, effect } = reduce(fifth, {
 			name: "return",
 		});
 		expect(next.dispatch).toEqual(fifth.dispatch);
@@ -1116,16 +1090,16 @@ describe("dispatch overlay", () => {
 
 	it("enter with an empty trigger list is inert", () => {
 		const s = BoardNav.withTriggers(
-			BoardNav.reduceKey(boardWith(), { name: "a" }).state,
+			reduce(boardWith(), { name: "a" }).state,
 			[],
 		);
-		const { state: next, effect } = BoardNav.reduceKey(s, { name: "return" });
+		const { state: next, effect } = reduce(s, { name: "return" });
 		expect(effect.type).toBe("none");
 		expect(next.dispatch).toEqual(s.dispatch);
 	});
 
 	it("esc closes without an effect", () => {
-		const { state: next, effect } = BoardNav.reduceKey(open(), {
+		const { state: next, effect } = reduce(open(), {
 			name: "escape",
 		});
 		expect(next.dispatch).toBeNull();
@@ -1135,7 +1109,7 @@ describe("dispatch overlay", () => {
 	it("board keys are inert while the overlay is open", () => {
 		const s = open();
 		for (const name of ["q", "d", "x", "n", "s", "y", "space", "/"]) {
-			const { state: next, effect } = BoardNav.reduceKey(s, { name });
+			const { state: next, effect } = reduce(s, { name });
 			expect(effect.type).toBe("none");
 			expect(next.dispatch).toEqual(s.dispatch);
 			expect(next.selectedId).toBe("a");
@@ -1165,13 +1139,13 @@ describe("help overlay", () => {
 	const helpKey = { name: "?", sequence: "?" };
 
 	it("`?` on the board opens the help overlay", () => {
-		const { state: next, effect } = BoardNav.reduceKey(boardWith(), helpKey);
+		const { state: next, effect } = reduce(boardWith(), helpKey);
 		expect(next.help).toBe(true);
 		expect(effect.type).toBe("none");
 	});
 
 	it("`?` matched by sequence alone (undefined-ish name) still opens", () => {
-		const { state: next } = BoardNav.reduceKey(boardWith(), {
+		const { state: next } = reduce(boardWith(), {
 			name: "",
 			sequence: "?",
 		});
@@ -1180,28 +1154,28 @@ describe("help overlay", () => {
 
 	it("`?` in the detail view opens the overlay and keeps the view", () => {
 		const s = state({ view: { type: "detail", taskId: "a" } });
-		const { state: next } = BoardNav.reduceKey(s, helpKey);
+		const { state: next } = reduce(s, helpKey);
 		expect(next.help).toBe(true);
 		expect(next.view).toEqual({ type: "detail", taskId: "a" });
 	});
 
 	it("`?`, esc, and q each close it", () => {
-		const open = BoardNav.reduceKey(boardWith(), helpKey).state;
+		const open = reduce(boardWith(), helpKey).state;
 		for (const key of [helpKey, { name: "escape" }, { name: "q" }]) {
-			const { state: next } = BoardNav.reduceKey(open, key);
+			const { state: next } = reduce(open, key);
 			expect(next.help).toBe(false);
 		}
 	});
 
 	it("j/k scroll the sheet, and move nothing on the board under it", () => {
-		const open = BoardNav.reduceKey(boardWith(), helpKey).state;
+		const open = reduce(boardWith(), helpKey).state;
 		for (const [name, delta] of [
 			["j", 2],
 			["down", 2],
 			["k", -2],
 			["up", -2],
 		] as const) {
-			const { state: next, effect } = BoardNav.reduceKey(open, { name });
+			const { state: next, effect } = reduce(open, { name });
 			expect(effect).toEqual({ type: "helpScroll", delta });
 			expect(next.help).toBe(true);
 			expect(next.selectedId).toBe("a");
@@ -1209,9 +1183,9 @@ describe("help overlay", () => {
 	});
 
 	it("all other keys are inert while open — d/a/x change nothing and emit nothing", () => {
-		const open = BoardNav.reduceKey(boardWith(), helpKey).state;
+		const open = reduce(boardWith(), helpKey).state;
 		for (const name of ["d", "a", "x", "/", "space", "return"]) {
-			const { state: next, effect } = BoardNav.reduceKey(open, { name });
+			const { state: next, effect } = reduce(open, { name });
 			expect(effect.type).toBe("none");
 			expect(next.help).toBe(true);
 			expect(next.selectedId).toBe("a");
@@ -1221,13 +1195,13 @@ describe("help overlay", () => {
 
 	it("`?` while search-typing appends to the query instead of opening help", () => {
 		const typing = state({ search: { mode: "typing", query: "wh" } });
-		const { state: next } = BoardNav.reduceKey(typing, helpKey);
+		const { state: next } = reduce(typing, helpKey);
 		expect(next.help).toBe(false);
 		expect(next.search).toEqual({ mode: "typing", query: "wh?" });
 	});
 
 	it("mouse actions are inert while open", () => {
-		const open = BoardNav.reduceKey(boardWith(), helpKey).state;
+		const open = reduce(boardWith(), helpKey).state;
 		const { state: next, effect } = BoardNav.reduceMouse(open, {
 			type: "select",
 			row: 0,
@@ -1420,7 +1394,7 @@ describe("the focus ring", () => {
 		const ring = (
 			from: BoardNav.BoardState,
 			key: { name: string; shift?: boolean },
-		) => BoardNav.reduceKey(from, key).state;
+		) => reduce(from, key).state;
 		let s = boardWith();
 		s = ring(s, { name: "tab" });
 		expect(s.focus).toBe("copilot");
@@ -1441,9 +1415,7 @@ describe("the focus ring", () => {
 			},
 		]) {
 			const s = boardWith({ view });
-			expect(BoardNav.reduceKey(s, { name: "tab" }).state.focus).toBe(
-				"copilot",
-			);
+			expect(reduce(s, { name: "tab" }).state.focus).toBe("copilot");
 		}
 	});
 });
@@ -1465,11 +1437,11 @@ describe("event view navigation", () => {
 
 	it("j/k emit scroll effects", () => {
 		const s = runView();
-		expect(BoardNav.reduceKey(s, { name: "j" }).effect).toEqual({
+		expect(reduce(s, { name: "j" }).effect).toEqual({
 			type: "scroll",
 			delta: 2,
 		});
-		expect(BoardNav.reduceKey(s, { name: "k" }).effect).toEqual({
+		expect(reduce(s, { name: "k" }).effect).toEqual({
 			type: "scroll",
 			delta: -2,
 		});
@@ -1477,13 +1449,13 @@ describe("event view navigation", () => {
 
 	it("esc from events opened from board returns to board", () => {
 		const s = runView();
-		const { state: next } = BoardNav.reduceKey(s, { name: "escape" });
+		const { state: next } = reduce(s, { name: "escape" });
 		expect(next.view).toEqual({ type: "board" });
 	});
 
 	it("q from events opened from board returns to board", () => {
 		const s = runView();
-		const { state: next } = BoardNav.reduceKey(s, { name: "q" });
+		const { state: next } = reduce(s, { name: "q" });
 		expect(next.view).toEqual({ type: "board" });
 	});
 
@@ -1496,7 +1468,7 @@ describe("event view navigation", () => {
 				fromTaskId: "a",
 			},
 		});
-		const { state: next } = BoardNav.reduceKey(s, { name: "escape" });
+		const { state: next } = reduce(s, { name: "escape" });
 		expect(next.view).toEqual({ type: "detail", taskId: "a" });
 	});
 
@@ -1504,14 +1476,14 @@ describe("event view navigation", () => {
 		const s = runView({
 			view: { type: "events", cardId: "r1", fromView: "detail" },
 		});
-		const { state: next } = BoardNav.reduceKey(s, { name: "escape" });
+		const { state: next } = reduce(s, { name: "escape" });
 		expect(next.view).toEqual({ type: "board" });
 	});
 
 	it("unknown keys are no-ops in run detail", () => {
 		const s = runView();
 		for (const name of ["d", "x", "n", "s", "a", "space"]) {
-			const { state: next, effect } = BoardNav.reduceKey(s, { name });
+			const { state: next, effect } = reduce(s, { name });
 			expect(effect.type).toBe("none");
 			expect(next.view).toEqual(s.view);
 		}
@@ -1552,17 +1524,17 @@ describe("done is search-only", () => {
 
 	it("j/k never reach done rows without a query", () => {
 		const s = both();
-		const down = BoardNav.reduceKey(s, { name: "j" });
+		const down = reduce(s, { name: "j" });
 		expect(down.state.selectedId).toBe("a");
 	});
 
 	it("selection on a done match re-anchors when the query clears", () => {
 		let s = both();
-		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = reduce(s, { name: "/" }).state;
 		s = typeQuery(s, "shipped");
 		expect(BoardNav.visibleRows(s).map((r) => r.task.id)).toEqual(["dn"]);
 		s = { ...s, selectedId: "dn" };
-		const { state: cleared } = BoardNav.reduceKey(s, { name: "escape" });
+		const { state: cleared } = reduce(s, { name: "escape" });
 		expect(cleared.selectedId).toBe("a");
 	});
 });
@@ -1586,7 +1558,7 @@ describe("undo (ctrl-z)", () => {
 				sections: sections({ inbox: [row(task({ id: "a", state: "inbox" }))] }),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "]" }).state.undo).toEqual([
+			expect(reduce(s, { name: "]" }).state.undo).toEqual([
 				{
 					id: "a",
 					shortId: "JAKE-1",
@@ -1601,7 +1573,7 @@ describe("undo (ctrl-z)", () => {
 				sections: sections({ next: [row(task({ id: "a", state: "next" }))] }),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "[" }).state.undo).toEqual([
+			expect(reduce(s, { name: "[" }).state.undo).toEqual([
 				{
 					id: "a",
 					shortId: "JAKE-1",
@@ -1617,7 +1589,7 @@ describe("undo (ctrl-z)", () => {
 				selectedId: "a",
 			});
 			for (const name of ["n", "s", "x"]) {
-				expect(BoardNav.reduceKey(s, { name }).state.undo).toEqual([
+				expect(reduce(s, { name }).state.undo).toEqual([
 					{
 						id: "a",
 						shortId: "JAKE-1",
@@ -1633,7 +1605,7 @@ describe("undo (ctrl-z)", () => {
 				sections: sections({ next: [row(task({ id: "a", state: "next" }))] }),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "d" }).state.undo).toEqual([
+			expect(reduce(s, { name: "d" }).state.undo).toEqual([
 				{
 					id: "a",
 					shortId: "JAKE-1",
@@ -1650,7 +1622,7 @@ describe("undo (ctrl-z)", () => {
 				}),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(clean, { name: "v" }).state.undo).toEqual([
+			expect(reduce(clean, { name: "v" }).state.undo).toEqual([
 				{
 					id: "a",
 					shortId: "JAKE-1",
@@ -1673,9 +1645,7 @@ describe("undo (ctrl-z)", () => {
 				}),
 				selectedId: "a",
 			});
-			expect(
-				BoardNav.reduceKey(withVerification, { name: "v" }).state.undo,
-			).toEqual([
+			expect(reduce(withVerification, { name: "v" }).state.undo).toEqual([
 				{
 					id: "a",
 					shortId: "JAKE-1",
@@ -1692,7 +1662,7 @@ describe("undo (ctrl-z)", () => {
 				}),
 				selectedId: "a",
 			});
-			expect(BoardNav.reduceKey(s, { name: "v" }).state.undo).toHaveLength(0);
+			expect(reduce(s, { name: "v" }).state.undo).toHaveLength(0);
 		});
 	});
 
@@ -1706,7 +1676,7 @@ describe("undo (ctrl-z)", () => {
 			});
 
 		it("pops the top entry and emits applyUndo with its patch + notice", () => {
-			const { state: next, effect } = BoardNav.reduceKey(seeded(), ctrlZ);
+			const { state: next, effect } = reduce(seeded(), ctrlZ);
 			expect(effect).toEqual({
 				type: "applyUndo",
 				id: "a",
@@ -1717,7 +1687,7 @@ describe("undo (ctrl-z)", () => {
 		});
 
 		it("matches the raw SUB control sequence too", () => {
-			const { effect } = BoardNav.reduceKey(seeded(), {
+			const { effect } = reduce(seeded(), {
 				name: "",
 				sequence: "\x1a",
 				ctrl: true,
@@ -1727,13 +1697,13 @@ describe("undo (ctrl-z)", () => {
 
 		it("works from the detail view (routes across views)", () => {
 			const s = seeded({ view: { type: "detail", taskId: "a" } });
-			const { effect } = BoardNav.reduceKey(s, ctrlZ);
+			const { effect } = reduce(s, ctrlZ);
 			expect(effect).toMatchObject({ type: "applyUndo", id: "a" });
 		});
 
 		it("empty stack flashes 'nothing to undo', stack unchanged", () => {
 			const s = seeded({ undo: [] });
-			const { state: next, effect } = BoardNav.reduceKey(s, ctrlZ);
+			const { state: next, effect } = reduce(s, ctrlZ);
 			expect(effect).toEqual({
 				type: "notice",
 				notice: { text: "nothing to undo", tone: "success" },
@@ -1743,7 +1713,7 @@ describe("undo (ctrl-z)", () => {
 
 		it("is inert while search-typing (query untouched, no applyUndo)", () => {
 			const s = seeded({ search: { mode: "typing", query: "au" } });
-			const { state: next, effect } = BoardNav.reduceKey(s, ctrlZ);
+			const { state: next, effect } = reduce(s, ctrlZ);
 			expect(effect.type).toBe("none");
 			expect(next.search).toEqual({ mode: "typing", query: "au" });
 			expect(next.undo).toHaveLength(1);
@@ -1751,7 +1721,7 @@ describe("undo (ctrl-z)", () => {
 
 		it("is inert while the help overlay is open", () => {
 			const s = seeded({ help: true });
-			const { state: next, effect } = BoardNav.reduceKey(s, ctrlZ);
+			const { state: next, effect } = reduce(s, ctrlZ);
 			expect(effect.type).toBe("none");
 			expect(next.undo).toHaveLength(1);
 		});
@@ -1760,7 +1730,7 @@ describe("undo (ctrl-z)", () => {
 			const s = seeded({
 				dispatch: { taskId: "a", triggers: [], selected: 0, loading: false },
 			});
-			const { state: next, effect } = BoardNav.reduceKey(s, ctrlZ);
+			const { state: next, effect } = reduce(s, ctrlZ);
 			expect(effect.type).toBe("none");
 			expect(next.undo).toHaveLength(1);
 		});
@@ -1772,19 +1742,19 @@ describe("undo (ctrl-z)", () => {
 					entry({ patch: { state: "next" }, label: "second" }),
 				],
 			});
-			const one = BoardNav.reduceKey(s, ctrlZ);
+			const one = reduce(s, ctrlZ);
 			expect(one.effect).toMatchObject({
 				type: "applyUndo",
 				notice: "undo: second",
 			});
 			expect(one.state.undo).toHaveLength(1);
-			const two = BoardNav.reduceKey(one.state, ctrlZ);
+			const two = reduce(one.state, ctrlZ);
 			expect(two.effect).toMatchObject({
 				type: "applyUndo",
 				notice: "undo: first",
 			});
 			expect(two.state.undo).toHaveLength(0);
-			const three = BoardNav.reduceKey(two.state, ctrlZ);
+			const three = reduce(two.state, ctrlZ);
 			expect(three.effect).toEqual({
 				type: "notice",
 				notice: { text: "nothing to undo", tone: "success" },
@@ -1801,7 +1771,7 @@ describe("undo (ctrl-z)", () => {
 			selectedId: "a",
 			undo: seededStack,
 		});
-		const next = BoardNav.reduceKey(s, { name: "]" }).state;
+		const next = reduce(s, { name: "]" }).state;
 		expect(next.undo).toHaveLength(20);
 		// Oldest (X0) dropped; newest is the JAKE-1 push.
 		expect(next.undo[0]?.shortId).toBe("X1");
@@ -1862,7 +1832,7 @@ describe("non-fatal poll failure invariants", () => {
 			sections: sections({ next: [row(t1)] }),
 			selectedId: "t1",
 		});
-		const { effect } = BoardNav.reduceKey(s, { name: "r" });
+		const { effect } = reduce(s, { name: "r" });
 		expect(effect.type).toBe("reload");
 	});
 });
@@ -1875,7 +1845,7 @@ describe("o key in the detail view emits openEvents effect", () => {
 			selectedId: "t1",
 			view: { type: "detail", taskId: "t1" },
 		});
-		const { effect } = BoardNav.reduceKey(s, { name: "o" });
+		const { effect } = reduce(s, { name: "o" });
 		expect(effect.type).toBe("openEvents");
 		if (effect.type === "openEvents") {
 			expect(effect.taskId).toBe("t1");
@@ -1889,7 +1859,7 @@ describe("o key in the detail view emits openEvents effect", () => {
 			selectedId: "t1",
 			view: { type: "board" },
 		});
-		const { effect } = BoardNav.reduceKey(s, { name: "o" });
+		const { effect } = reduce(s, { name: "o" });
 		expect(effect.type).toBe("none");
 	});
 });
@@ -1954,14 +1924,14 @@ describe("status filter", () => {
 
 	it("f cycles open -> done -> review -> open WITHOUT a reload", () => {
 		const s = board();
-		const done = BoardNav.reduceKey(s, { name: "f" });
+		const done = reduce(s, { name: "f" });
 		expect(done.state.status).toBe("done");
 		// The whole point of the view-level design: the rows are already in hand.
 		expect(done.effect.type).toBe("none");
-		const review = BoardNav.reduceKey(done.state, { name: "f" });
+		const review = reduce(done.state, { name: "f" });
 		expect(review.state.status).toBe("review");
 		expect(review.effect.type).toBe("none");
-		const back = BoardNav.reduceKey(review.state, { name: "f" });
+		const back = reduce(review.state, { name: "f" });
 		expect(back.state.status).toBe("open");
 		expect(back.effect.type).toBe("none");
 	});
@@ -1984,7 +1954,7 @@ describe("status filter", () => {
 	});
 
 	it("done shows BOTH archive sections with no query typed, and nothing else", () => {
-		const s = BoardNav.reduceKey(board(), { name: "f" }).state;
+		const s = reduce(board(), { name: "f" }).state;
 		const groups = BoardNav.visibleSections(
 			s.sections,
 			s.expanded,
@@ -1998,7 +1968,7 @@ describe("status filter", () => {
 
 	it("a query from open still reaches the archive — 'did X land?' needs no filter change", () => {
 		let s = board();
-		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = reduce(s, { name: "/" }).state;
 		s = typeQuery(s, "shipped");
 		// Both done rows surface even though the status is open.
 		expect(ids(s)).toEqual(["df", "dp"]);
@@ -2035,15 +2005,12 @@ describe("status filter", () => {
 
 	it("f re-anchors selection when the change hides the selected row", () => {
 		// `a` is open and unflagged, so `done` hides it: selection falls to the first surviving row.
-		const done = BoardNav.reduceKey(board({ selectedId: "a" }), { name: "f" });
+		const done = reduce(board({ selectedId: "a" }), { name: "f" });
 		expect(done.state.selectedId).toBe("df");
 		// And back the other way: `df` is done, so `open` hides it.
-		const back = BoardNav.reduceKey(
-			board({ status: "review", selectedId: "df" }),
-			{
-				name: "f",
-			},
-		);
+		const back = reduce(board({ status: "review", selectedId: "df" }), {
+			name: "f",
+		});
 		expect(back.state.status).toBe("open");
 		expect(back.state.selectedId).toBe("a");
 	});
@@ -2051,14 +2018,14 @@ describe("status filter", () => {
 	it("f keeps the selected row when it survives the change", () => {
 		// `df` is done AND flagged, so it is on screen under both statuses.
 		const s = board({ status: "done", selectedId: "df" });
-		const review = BoardNav.reduceKey(s, { name: "f" });
+		const review = reduce(s, { name: "f" });
 		expect(review.state.status).toBe("review");
 		expect(review.state.selectedId).toBe("df");
 	});
 
 	it("a query narrows WITHIN the active status rather than replacing it", () => {
 		let s = board({ status: "review" });
-		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = reduce(s, { name: "/" }).state;
 		s = typeQuery(s, "shipped");
 		// "shipped" matches both done rows; the review status keeps only the flagged one.
 		expect(ids(s)).toEqual(["df"]);
@@ -2066,7 +2033,7 @@ describe("status filter", () => {
 
 	it("a query under status done never reaches the open sections", () => {
 		let s = board({ status: "done" });
-		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = reduce(s, { name: "/" }).state;
 		s = typeQuery(s, "work");
 		// "open work" matches, but it lives in `next` — out of this status.
 		expect(ids(s)).toEqual([]);
@@ -2092,20 +2059,20 @@ describe("status filter", () => {
 
 	it("esc leaves the status alone — its layering stays search then scope", () => {
 		let s = board({ status: "review", scoped: true });
-		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = reduce(s, { name: "/" }).state;
 		s = typeQuery(s, "agent");
-		s = BoardNav.reduceKey(s, { name: "return" }).state;
-		const cleared = BoardNav.reduceKey(s, { name: "escape" });
+		s = reduce(s, { name: "return" }).state;
+		const cleared = reduce(s, { name: "escape" });
 		expect(cleared.state.search.mode).toBe("off");
 		expect(cleared.state.status).toBe("review");
-		const widened = BoardNav.reduceKey(cleared.state, { name: "escape" });
+		const widened = reduce(cleared.state, { name: "escape" });
 		expect(widened.state.scoped).toBe(false);
 		expect(widened.state.status).toBe("review");
 	});
 
 	it("f is inert while a search query is being typed", () => {
 		let s = board();
-		s = BoardNav.reduceKey(s, { name: "/" }).state;
+		s = reduce(s, { name: "/" }).state;
 		s = typeQuery(s, "f");
 		expect(s.status).toBe("open");
 		expect(BoardNav.activeQuery(s.search)).toBe("f");
@@ -2122,17 +2089,17 @@ describe("marks (`m`)", () => {
 		});
 
 	it("m toggles the selected row in and out of the working set, with no effect", () => {
-		const on = BoardNav.reduceKey(two(), { name: "m" });
+		const on = reduce(two(), { name: "m" });
 		expect([...on.state.marked]).toEqual(["a"]);
 		expect(on.effect.type).toBe("none");
-		const off = BoardNav.reduceKey(on.state, { name: "m" });
+		const off = reduce(on.state, { name: "m" });
 		expect(off.state.marked.size).toBe(0);
 	});
 
 	it("marks keep their order: oldest first", () => {
-		const a = BoardNav.reduceKey(two(), { name: "m" }).state;
-		const onB = BoardNav.reduceKey(a, { name: "j" }).state;
-		const both = BoardNav.reduceKey(onB, { name: "m" }).state;
+		const a = reduce(two(), { name: "m" }).state;
+		const onB = reduce(a, { name: "j" }).state;
+		const both = reduce(onB, { name: "m" }).state;
 		expect([...both.marked]).toEqual(["a", "b"]);
 	});
 
@@ -2141,13 +2108,13 @@ describe("marks (`m`)", () => {
 			...two(),
 			view: { type: "detail", taskId: "b" },
 		});
-		const marked = BoardNav.reduceKey(s, { name: "m" }).state;
+		const marked = reduce(s, { name: "m" }).state;
 		expect([...marked.marked]).toEqual(["b"]);
 	});
 
 	it("m with nothing selected is inert", () => {
 		const s = state({ ...two(), selectedId: null });
-		const r = BoardNav.reduceKey(s, { name: "m" });
+		const r = reduce(s, { name: "m" });
 		expect(r.state).toBe(s);
 	});
 
@@ -2158,14 +2125,14 @@ describe("marks (`m`)", () => {
 			search: { mode: "committed", query: "a" },
 			scoped: true,
 		});
-		const first = BoardNav.reduceKey(s, { name: "escape" });
+		const first = reduce(s, { name: "escape" });
 		expect(first.state.marked.size).toBe(0);
 		expect(first.state.search.mode).toBe("committed");
 		expect(first.effect.type).toBe("none");
-		const second = BoardNav.reduceKey(first.state, { name: "escape" });
+		const second = reduce(first.state, { name: "escape" });
 		expect(second.state.search.mode).toBe("off");
 		expect(second.state.scoped).toBe(true);
-		const third = BoardNav.reduceKey(second.state, { name: "escape" });
+		const third = reduce(second.state, { name: "escape" });
 		expect(third.state.scoped).toBe(false);
 		expect(third.effect.type).toBe("reload");
 	});
@@ -2203,8 +2170,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 			copilot: copilotState({ shortcuts: [triage] }),
 			...over,
 		});
-	const open = (s: BoardNav.BoardState = ready()) =>
-		BoardNav.reduceKey(s, char("A"));
+	const open = (s: BoardNav.BoardState = ready()) => reduce(s, char("A"));
 
 	it("A focuses the copilot and asks app.tsx to confirm one exists", () => {
 		const r = open();
@@ -2213,7 +2179,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 	});
 
 	it(": focuses it too, and so does A in the detail view", () => {
-		expect(BoardNav.reduceKey(ready(), char(":")).state.focus).toBe("copilot");
+		expect(reduce(ready(), char(":")).state.focus).toBe("copilot");
 		const detail = ready({ view: { type: "detail", taskId: "a" } });
 		expect(open(detail).state.focus).toBe("copilot");
 	});
@@ -2223,7 +2189,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 		// Every printable key, backspace included, belongs to the textarea: the reducer is inert and
 		// says so through copilotConsumes, which is what app.tsx preventDefaults on.
 		for (const key of [char("d"), char("q"), { name: "backspace" }]) {
-			expect(BoardNav.reduceKey(focused, key).state).toBe(focused);
+			expect(reduce(focused, key).state).toBe(focused);
 			expect(BoardNav.copilotConsumes(focused, key)).toBe(false);
 		}
 		// The keys it does take away from the textarea.
@@ -2236,15 +2202,13 @@ describe("copilot prompt (`A` / `:`)", () => {
 
 	it("esc returns to the board and the buffer survives the trip", () => {
 		const typed = BoardNav.withCopilotText(open().state, "hi there");
-		const left = BoardNav.reduceKey(typed, { name: "escape" });
+		const left = reduce(typed, { name: "escape" });
 		expect(left.state.focus).toBe("board");
 		expect(left.effect.type).toBe("none");
 		expect(left.state.copilot.turn).toBe("idle");
 		// Tab away to mark rows, come back to what you were writing.
 		expect(left.state.copilot.text).toBe("hi there");
-		expect(BoardNav.reduceKey(left.state, char("A")).state.copilot.text).toBe(
-			"hi there",
-		);
+		expect(reduce(left.state, char("A")).state.copilot.text).toBe("hi there");
 	});
 
 	it("submit sends, clears the buffer, records history and hands the board back", () => {
@@ -2290,7 +2254,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 			[],
 		);
 		// Expanding pushes the whole value at the textarea rather than editing state's copy.
-		const tabbed = BoardNav.reduceKey(slash, { name: "tab" });
+		const tabbed = reduce(slash, { name: "tab" });
 		expect(tabbed.effect).toEqual({
 			type: "copilotSetText",
 			text: triage.template,
@@ -2323,17 +2287,17 @@ describe("copilot prompt (`A` / `:`)", () => {
 		// All three match, so the arrows belong to the palette rather than the textarea's cursor.
 		expect(BoardNav.copilotConsumes(typed, { name: "down" })).toBe(true);
 		expect(BoardNav.selectedShortcut(typed)?.name).toBe("triage");
-		const down = BoardNav.reduceKey(typed, { name: "down" }).state;
+		const down = reduce(typed, { name: "down" }).state;
 		expect(BoardNav.selectedShortcut(down)?.name).toBe("trim");
-		const down2 = BoardNav.reduceKey(down, { name: "down" }).state;
+		const down2 = reduce(down, { name: "down" }).state;
 		expect(BoardNav.selectedShortcut(down2)?.name).toBe("track");
 		// Clamped at the end.
-		const stuck = BoardNav.reduceKey(down2, { name: "down" }).state;
+		const stuck = reduce(down2, { name: "down" }).state;
 		expect(BoardNav.selectedShortcut(stuck)?.name).toBe("track");
-		const up = BoardNav.reduceKey(stuck, { name: "up" }).state;
+		const up = reduce(stuck, { name: "up" }).state;
 		expect(BoardNav.selectedShortcut(up)?.name).toBe("trim");
 		// tab takes the selection, not the first match.
-		expect(BoardNav.reduceKey(up, { name: "tab" }).effect).toEqual({
+		expect(reduce(up, { name: "tab" }).effect).toEqual({
 			type: "copilotSetText",
 			text: "Trim it.",
 		});
@@ -2350,13 +2314,13 @@ describe("copilot prompt (`A` / `:`)", () => {
 
 	it("with no palette open the arrows still belong to history", () => {
 		const sent = BoardNav.submitCopilot(open().state, "first");
-		const focused = BoardNav.reduceKey(
+		const focused = reduce(
 			BoardNav.withCopilotTurn(sent.state, "idle"),
 			char("A"),
 		).state;
 		// Empty buffer, so nothing matches and recall keeps the keys.
 		expect(BoardNav.copilotConsumes(focused, { name: "up" })).toBe(true);
-		expect(BoardNav.reduceKey(focused, { name: "up" }).effect).toEqual({
+		expect(reduce(focused, { name: "up" }).effect).toEqual({
 			type: "copilotSetText",
 			text: "first",
 		});
@@ -2367,7 +2331,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 
 	it("tab with nothing to complete hands the ring its turn", () => {
 		const typed = BoardNav.withCopilotText(open().state, "not a slash");
-		const r = BoardNav.reduceKey(typed, { name: "tab" });
+		const r = reduce(typed, { name: "tab" });
 		expect(r.state.focus).toBe("board");
 		expect(r.state.copilot.text).toBe("not a slash");
 	});
@@ -2375,13 +2339,10 @@ describe("copilot prompt (`A` / `:`)", () => {
 	it("up walks back through this session's prompts, down walks out again", () => {
 		const sent = BoardNav.submitCopilot(open().state, "first");
 		const again = BoardNav.submitCopilot(
-			BoardNav.reduceKey(
-				BoardNav.withCopilotTurn(sent.state, "idle"),
-				char("A"),
-			).state,
+			reduce(BoardNav.withCopilotTurn(sent.state, "idle"), char("A")).state,
 			"second",
 		);
-		const focused = BoardNav.reduceKey(
+		const focused = reduce(
 			BoardNav.withCopilotTurn(again.state, "idle"),
 			char("A"),
 		).state;
@@ -2390,16 +2351,16 @@ describe("copilot prompt (`A` / `:`)", () => {
 		expect(BoardNav.copilotConsumes(focused, { name: "up" })).toBe(true);
 		const busy = BoardNav.withCopilotText(focused, "half a thought");
 		expect(BoardNav.copilotConsumes(busy, { name: "up" })).toBe(false);
-		const one = BoardNav.reduceKey(focused, { name: "up" });
+		const one = reduce(focused, { name: "up" });
 		expect(one.effect).toEqual({ type: "copilotSetText", text: "second" });
-		const two = BoardNav.reduceKey(one.state, { name: "up" });
+		const two = reduce(one.state, { name: "up" });
 		expect(two.effect).toEqual({ type: "copilotSetText", text: "first" });
 		// Past the oldest it stays put.
-		const stuck = BoardNav.reduceKey(two.state, { name: "up" });
+		const stuck = reduce(two.state, { name: "up" });
 		expect(stuck.state.copilot.text).toBe("first");
-		const back = BoardNav.reduceKey(two.state, { name: "down" });
+		const back = reduce(two.state, { name: "down" });
 		expect(back.effect).toEqual({ type: "copilotSetText", text: "second" });
-		const out = BoardNav.reduceKey(back.state, { name: "down" });
+		const out = reduce(back.state, { name: "down" });
 		expect(out.effect).toEqual({ type: "copilotSetText", text: "" });
 	});
 
@@ -2411,11 +2372,11 @@ describe("copilot prompt (`A` / `:`)", () => {
 		).state;
 		// esc is the back key everywhere else on the board and destroys nothing anywhere; it used to
 		// cancel here, which made tabbing in to look at a turn and tabbing back out kill it.
-		const esc = BoardNav.reduceKey(running, { name: "escape" });
+		const esc = reduce(running, { name: "escape" });
 		expect(esc.effect.type).toBe("none");
 		expect(esc.state.focus).toBe("board");
 		expect(esc.state.copilot.turn).toBe("running");
-		const tabbed = BoardNav.reduceKey(running, { name: "tab" });
+		const tabbed = reduce(running, { name: "tab" });
 		expect(tabbed.state.focus).toBe("board");
 		expect(tabbed.effect.type).toBe("none");
 		expect(tabbed.state.copilot.turn).toBe("running");
@@ -2425,11 +2386,11 @@ describe("copilot prompt (`A` / `:`)", () => {
 		const done = BoardNav.withCopilotTurn(ready(), "done");
 		expect(done.copilot.turn).toBe("done");
 		expect(BoardNav.withCopilotTurn(done, "done")).toBe(done);
-		const r = BoardNav.reduceKey(done, char("m"));
+		const r = reduce(done, char("m"));
 		expect(r.state.copilot.turn).toBe("idle");
 		expect([...r.state.marked]).toEqual(["a"]);
 		const err = BoardNav.withCopilotTurn(ready(), "error");
-		expect(BoardNav.reduceKey(err, char("j")).state.copilot.turn).toBe("idle");
+		expect(reduce(err, char("j")).state.copilot.turn).toBe("idle");
 	});
 
 	it("a query character while searching does not dismiss the indicator", () => {
@@ -2437,18 +2398,18 @@ describe("copilot prompt (`A` / `:`)", () => {
 			ready({ search: { mode: "typing", query: "" } }),
 			"done",
 		);
-		const r = BoardNav.reduceKey(s, char("a"));
+		const r = reduce(s, char("a"));
 		expect(r.state.copilot.turn).toBe("done");
 		expect(r.state.search).toEqual({ mode: "typing", query: "a" });
 	});
 
 	it("o opens the copilot's transcript whenever there is one, from the board and the detail view", () => {
-		const idle = BoardNav.reduceKey(ready(), char("o"));
+		const idle = reduce(ready(), char("o"));
 		expect(idle.state.view.type).toBe("board");
 		const running = ready({
 			copilot: copilotState({ turn: "running", hasLog: true }),
 		});
-		const fromBoard = BoardNav.reduceKey(running, char("o"));
+		const fromBoard = reduce(running, char("o"));
 		expect(fromBoard.state.view).toEqual({
 			type: "events",
 			cardId: "copilot",
@@ -2459,7 +2420,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 			ready({ view: { type: "detail", taskId: "a" } }),
 			"done",
 		);
-		const fromDetail = BoardNav.reduceKey(done, char("o"));
+		const fromDetail = reduce(done, char("o"));
 		expect(fromDetail.state.view).toEqual({
 			type: "events",
 			cardId: "copilot",
@@ -2469,7 +2430,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 		// `o` is the one key that keeps the finished indicator up.
 		expect(fromDetail.state.copilot.turn).toBe("done");
 		// Back where it came from.
-		const back = BoardNav.reduceKey(fromDetail.state, { name: "escape" });
+		const back = reduce(fromDetail.state, { name: "escape" });
 		expect(back.state.view).toEqual({ type: "detail", taskId: "a" });
 		// The INDICATOR clears on the next keypress; the log behind it does not. Guarding `o` on the
 		// indicator made the session's turns unreachable the moment anything else was pressed —
@@ -2477,7 +2438,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 		const settled = ready({
 			copilot: copilotState({ turn: "idle", hasLog: true }),
 		});
-		expect(BoardNav.reduceKey(settled, char("o")).state.view).toEqual({
+		expect(reduce(settled, char("o")).state.view).toEqual({
 			type: "events",
 			cardId: "copilot",
 			fromView: "board",
@@ -2486,7 +2447,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 	});
 
 	it("o in the detail view with no turn still opens the task's own events", () => {
-		const r = BoardNav.reduceKey(
+		const r = reduce(
 			ready({ view: { type: "detail", taskId: "a" } }),
 			char("o"),
 		);
@@ -2498,16 +2459,16 @@ describe("copilot prompt (`A` / `:`)", () => {
 			view: { type: "events", cardId: "copilot", fromView: "board" },
 			copilot: copilotState({ turn: "running" }),
 		});
-		expect(BoardNav.reduceKey(onCopilot, char("x")).effect).toEqual({
+		expect(reduce(onCopilot, char("x")).effect).toEqual({
 			type: "copilotCancel",
 		});
 		const finished = BoardNav.withCopilotTurn(onCopilot, "done");
-		expect(BoardNav.reduceKey(finished, char("x")).effect.type).toBe("none");
+		expect(reduce(finished, char("x")).effect.type).toBe("none");
 		const onHost = ready({
 			view: { type: "events", cardId: "r1", fromView: "board" },
 			copilot: copilotState({ turn: "running" }),
 		});
-		expect(BoardNav.reduceKey(onHost, char("x")).effect.type).toBe("none");
+		expect(reduce(onHost, char("x")).effect.type).toBe("none");
 	});
 
 	it("a click on the board brings focus with it — the copilot is not a modal", () => {
@@ -2575,17 +2536,14 @@ describe("the copilot's fingerprint on the rows it changed (`✦ ai`)", () => {
 		const written = task({ id: "agent", updatedBy: ACTOR, updatedAt: after });
 		const done = board("done", [written]);
 		expect(BoardNav.copilotTouched(done, TURN_START).size).toBe(1);
-		const next = BoardNav.reduceKey(done, char("j")).state;
+		const next = reduce(done, char("j")).state;
 		expect(next.copilot.turn).toBe("idle");
 		expect(BoardNav.copilotTouched(next, TURN_START).size).toBe(0);
 	});
 
 	it("keeps the glyphs through a running turn: a keypress is not an acknowledgement yet", () => {
 		const written = task({ id: "agent", updatedBy: ACTOR, updatedAt: after });
-		const next = BoardNav.reduceKey(
-			board("running", [written]),
-			char("j"),
-		).state;
+		const next = reduce(board("running", [written]), char("j")).state;
 		expect(BoardNav.copilotTouched(next, TURN_START).size).toBe(1);
 	});
 
@@ -2620,7 +2578,7 @@ describe("a permission request the harness is blocked on", () => {
 		});
 
 	it("a digit answers with the option it numbers, and the question is gone", () => {
-		const r = BoardNav.reduceKey(asked(), char("2"));
+		const r = reduce(asked(), char("2"));
 		expect(r.effect).toEqual({
 			type: "copilotAnswer",
 			id: "t0",
@@ -2630,7 +2588,7 @@ describe("a permission request the harness is blocked on", () => {
 	});
 
 	it("esc declines", () => {
-		const r = BoardNav.reduceKey(asked(), { name: "escape" });
+		const r = reduce(asked(), { name: "escape" });
 		expect(r.effect).toEqual({
 			type: "copilotAnswer",
 			id: "t0",
@@ -2640,9 +2598,9 @@ describe("a permission request the harness is blocked on", () => {
 	});
 
 	it("answers from the copilot pane and the transcript too — the question outranks the view", () => {
-		const fromPane = BoardNav.reduceKey(asked({ focus: "copilot" }), char("1"));
+		const fromPane = reduce(asked({ focus: "copilot" }), char("1"));
 		expect(fromPane.effect).toMatchObject({ optionId: "allow" });
-		const fromTranscript = BoardNav.reduceKey(
+		const fromTranscript = reduce(
 			asked({ view: { type: "events", cardId: "copilot", fromView: "board" } }),
 			char("1"),
 		);
@@ -2652,18 +2610,18 @@ describe("a permission request the harness is blocked on", () => {
 	it("the pane gives up the digits while one is pending, and takes them back after", () => {
 		const pending = asked({ focus: "copilot" });
 		expect(BoardNav.copilotConsumes(pending, char("1"))).toBe(true);
-		const answered = BoardNav.reduceKey(pending, char("1")).state;
+		const answered = reduce(pending, char("1")).state;
 		expect(BoardNav.copilotConsumes(answered, char("1"))).toBe(false);
 	});
 
 	it("a digit past the last option answers nothing, and the key routes as it always does", () => {
-		const r = BoardNav.reduceKey(asked(), char("3"));
+		const r = reduce(asked(), char("3"));
 		expect(r.effect.type).toBe("none");
 		expect(r.state.copilot.permissions).toEqual([request]);
 	});
 
 	it("leaves every other key alone: x on the transcript still cancels the waiting turn", () => {
-		const r = BoardNav.reduceKey(
+		const r = reduce(
 			asked({ view: { type: "events", cardId: "copilot", fromView: "board" } }),
 			char("x"),
 		);
@@ -2674,7 +2632,7 @@ describe("a permission request the harness is blocked on", () => {
 
 	it("a digit stays a query character while a search is being typed", () => {
 		const typing = asked({ search: { mode: "typing", query: "au" } });
-		const r = BoardNav.reduceKey(typing, char("1"));
+		const r = reduce(typing, char("1"));
 		expect(r.effect.type).toBe("none");
 		expect(r.state.search).toEqual({ mode: "typing", query: "au1" });
 	});
@@ -2690,13 +2648,35 @@ describe("a permission request the harness is blocked on", () => {
 				},
 			},
 		});
-		const digit = BoardNav.reduceKey(prompting, char("1"));
+		const digit = reduce(prompting, char("1"));
 		expect(digit.effect.type).not.toBe("copilotAnswer");
 		expect(digit.state.copilot.permissions).toEqual([request]);
-		const esc = BoardNav.reduceKey(prompting, { name: "escape" });
+		const esc = reduce(prompting, { name: "escape" });
 		expect(esc.effect.type).not.toBe("copilotAnswer");
 		expect(esc.state.copilot.permissions).toEqual([request]);
 		expect(esc.state.prompt.open).toBeNull();
+	});
+
+	it("one arriving holds a digit inside its window, unless the digit is a query character", () => {
+		const idle = state({ copilot: copilotState({ turn: "running" }) });
+		const arrived = BoardNav.sight(
+			BoardNav.withCopilotPermission(idle, request),
+			5000,
+		);
+		const blind = BoardNav.reduceKey(arrived, char("2"), 5200);
+		expect(blind.effect).toMatchObject({ type: "notice" });
+		expect(blind.state.copilot.permissions).toEqual([request]);
+		const typing = {
+			...arrived,
+			search: { mode: "typing", query: "" },
+		} as const;
+		expect(BoardNav.reduceKey(typing, char("2"), 5200).state.search).toEqual({
+			mode: "typing",
+			query: "2",
+		});
+		expect(
+			BoardNav.reduceKey(arrived, char("2"), 5000 + BoardNav.ARM_MS).effect,
+		).toMatchObject({ type: "copilotAnswer", optionId: "reject" });
 	});
 
 	it("a turn that stops takes the unanswered question with it", () => {
@@ -2718,14 +2698,14 @@ describe("a permission request the harness is blocked on", () => {
 		});
 
 		it("answers them in the order asked, each leaving only itself", () => {
-			const first = BoardNav.reduceKey(both(), char("1"));
+			const first = reduce(both(), char("1"));
 			expect(first.effect).toEqual({
 				type: "copilotAnswer",
 				id: "t0",
 				optionId: "allow",
 			});
 			expect(first.state.copilot.permissions).toEqual([second]);
-			const next = BoardNav.reduceKey(first.state, { name: "escape" });
+			const next = reduce(first.state, { name: "escape" });
 			expect(next.effect).toEqual({
 				type: "copilotAnswer",
 				id: "t1",
@@ -2737,6 +2717,18 @@ describe("a permission request the harness is blocked on", () => {
 		it("does not queue the same request twice", () => {
 			const again = BoardNav.withCopilotPermission(both(), request);
 			expect(again.copilot.permissions).toEqual([request, second]);
+		});
+
+		it("the next one up holds a second digit pressed before it has been read", () => {
+			const first = BoardNav.reduceKey(both(), char("1"), BoardNav.ARM_MS);
+			const next = BoardNav.sight(first.state, 1000);
+			expect(BoardNav.digitTarget(next)).toBe("t1");
+			const blind = BoardNav.reduceKey(next, char("1"), 1100);
+			expect(blind.effect).toMatchObject({ type: "notice" });
+			expect(blind.state.copilot.permissions).toEqual([second]);
+			expect(
+				BoardNav.reduceKey(next, char("1"), 1000 + BoardNav.ARM_MS).effect,
+			).toEqual({ type: "copilotAnswer", id: "t1", optionId: "allow" });
 		});
 
 		it("a turn that stops takes every one of them with it", () => {
@@ -2755,23 +2747,19 @@ describe("detail tabs", () => {
 	});
 
 	it("a digit jumps to its tab, and one past the last does nothing", () => {
-		expect(
-			BoardNav.detailTab(
-				BoardNav.reduceKey(detail(), { name: "3" }).state.view,
-			),
-		).toBe("log");
-		expect(
-			BoardNav.detailTab(
-				BoardNav.reduceKey(detail(), { name: "2" }).state.view,
-			),
-		).toBe("comments");
+		expect(BoardNav.detailTab(reduce(detail(), { name: "3" }).state.view)).toBe(
+			"log",
+		);
+		expect(BoardNav.detailTab(reduce(detail(), { name: "2" }).state.view)).toBe(
+			"comments",
+		);
 		const s = detail("log");
-		expect(BoardNav.reduceKey(s, { name: "4" }).state).toBe(s);
+		expect(reduce(s, { name: "4" }).state).toBe(s);
 	});
 
 	it("h/l and the arrows step through the tabs and wrap at either end", () => {
 		const step = (s: BoardNav.BoardState, name: string) =>
-			BoardNav.detailTab(BoardNav.reduceKey(s, { name }).state.view);
+			BoardNav.detailTab(reduce(s, { name }).state.view);
 		expect(step(detail(), "l")).toBe("comments");
 		expect(step(detail(), "right")).toBe("comments");
 		expect(step(detail(), "h")).toBe("log");
@@ -2781,7 +2769,7 @@ describe("detail tabs", () => {
 
 	it("the tab already in view hands back the same state, so nothing re-renders", () => {
 		const s = detail("comments");
-		expect(BoardNav.reduceKey(s, { name: "2" }).state).toBe(s);
+		expect(reduce(s, { name: "2" }).state).toBe(s);
 	});
 
 	it("a click on a tab selects it, and does nothing off the detail view", () => {
@@ -2801,9 +2789,9 @@ describe("detail tabs", () => {
 			view: { type: "detail", taskId: "a", tab: "comments" },
 			copilot: copilotState({ turn: "running", hasLog: true }),
 		});
-		const opened = BoardNav.reduceKey(s, { name: "o" }).state;
+		const opened = reduce(s, { name: "o" }).state;
 		expect(opened.view.type).toBe("events");
-		const back = BoardNav.reduceKey(opened, { name: "escape" }).state;
+		const back = reduce(opened, { name: "escape" }).state;
 		expect(back.view).toEqual({ type: "detail", taskId: "a", tab: "comments" });
 	});
 });

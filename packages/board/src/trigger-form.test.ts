@@ -50,7 +50,7 @@ const keys = (
 		state,
 		effect: { type: "none" },
 	};
-	for (const name of names) step = BoardNav.reduceKey(step.state, { name });
+	for (const name of names) step = BoardNav.reduceKey(step.state, { name }, 0);
 	return step;
 };
 

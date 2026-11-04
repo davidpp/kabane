@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatQuestionBody, isAnswerTo, ok, Planner } from "@cabane/core";
 import { App } from "./app";
+import { BoardNav } from "./nav";
 import type { ActivityCard, ActivitySource } from "./ports";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
@@ -52,7 +53,7 @@ beforeAll(async () => {
 
 afterAll(() => dropDb(BASE));
 
-it("! lands on the card's tab and a digit there answers the question in core", async () => {
+it("! lands on the card's tab and a digit there answers the question in core, once it has been read", async () => {
 	const card: ActivityCard = {
 		id: "run-1",
 		kind: "loops",
@@ -74,8 +75,9 @@ it("! lands on the card's tab and a digit there answers the question in core", a
 			return ok(undefined);
 		},
 	};
+	let now = 0;
 	const { renderOnce, captureCharFrame, mockInput, destroy } = await renderTest(
-		<App cwd={BASE} basePath={BASE} activity={source} />,
+		<App cwd={BASE} basePath={BASE} activity={source} clock={() => now} />,
 		{ width: 100, height: 24 },
 	);
 	const until = (p: (f: string) => boolean) =>
@@ -86,6 +88,11 @@ it("! lands on the card's tab and a digit there answers the question in core", a
 		const onTab = await until((f) => f.includes("waiting on you"));
 		expect(onTab).toContain("1 Yes · 2 No");
 		expect(onTab).toContain("1-9 answer");
+		// Landed this instant: a digit pressed now was not aimed at a question read on screen.
+		mockInput.pressKey("1");
+		await until((f) => f.includes("just asked"));
+		expect(noted).toEqual([]);
+		now += BoardNav.ARM_MS;
 		mockInput.pressKey("1");
 		await until((f) => f.includes("answered Yes"));
 		const activities = await Planner.getActivities(BASE, sessionId);
