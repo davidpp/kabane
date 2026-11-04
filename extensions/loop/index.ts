@@ -9,8 +9,10 @@
  * is exported for the board's view of a run.
  *
  * The loop is a thin wrapper over the user's own harness. It adds no security or policy the user
- * did not configure and overrides none of their settings: no permission mode, no allow list or
- * settings file, no model unless the run names one. When the harness asks permission, the request
+ * did not configure: no allow list or settings file, no model unless the run names one. A session
+ * that opens in the harness's manual mode is moved to the harness's own auto mode, unless the
+ * device config turns that off; any other mode the user's settings chose is kept. When the
+ * harness asks permission, the request
  * becomes a question on the asking session, answered by the human from the board or with
  * `kabane loop answer`. The loop never approves or declines one itself; a run that stops while
  * one waits cancels it unanswered.

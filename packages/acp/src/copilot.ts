@@ -35,6 +35,8 @@ export namespace BoardCopilot {
 		// with only a short allow list of the environment, so an inherited one never arrives.
 		home: string;
 		overrides?: Harnesses.Overrides;
+		// The mode the session starts in; the harness's own auto mode when absent.
+		mode?: Harnesses.Mode;
 		// This device's config, which the copilot is told it may edit when asked to set kabane up.
 		setup: CopilotInstructions.Setup;
 		// How the harness is reached. Defaults to spawning it; tests pass an in-process transport,
@@ -160,6 +162,7 @@ export namespace BoardCopilot {
 				// prompt below, because an adapter that ignores `_meta` would otherwise run with no
 				// instructions at all.
 				systemPromptAppend: instructions,
+				...(options.mode ? { mode: options.mode } : {}),
 			});
 			if (!started.ok) {
 				AcpClient.close(opened.value);
@@ -214,6 +217,10 @@ export namespace BoardCopilot {
 				// The board's copilot shows no meter.
 				case "usage":
 					return [];
+				case "mode":
+					return [
+						update("mode", `mode ${incoming.id}: moved there by the harness`),
+					];
 				case "stop":
 					return [update("done", incoming.reason)];
 				case "error":
@@ -234,6 +241,9 @@ export namespace BoardCopilot {
 				);
 				return;
 			}
+			// The session's first turn opens on the mode it runs in, so the human can tell whether
+			// the harness or they decide what it asks.
+			if (!instructed) yield update("mode", started.value.mode.note);
 			const blocks: AcpClient.PromptBlock[] = [];
 			if (!instructed) blocks.push({ type: "text", text: instructions });
 			blocks.push({ type: "text", text: BoardContext.render(context) });

@@ -144,6 +144,7 @@ export namespace CopilotLog {
 				};
 			case "thought":
 			case "tool_result":
+			case "mode":
 				return { ...turn, events };
 			case "error":
 				return {

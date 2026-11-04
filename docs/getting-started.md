@@ -167,10 +167,12 @@ The copilot has three requirements of its own. Setup does not check any of them:
   `npx`. If that turn fails with an npm resolution error, check `~/.npmrc` for
   `min-release-age`. That setting hides recently published packages, including pinned
   versions. `NPM_CONFIG_USERCONFIG=/dev/null kabane board` bypasses it for one run.
-- **A permission mode that does not ask first.** The session inherits your harness
-  settings, including its permission mode. The board cannot answer a permission prompt
-  yet, so a harness in an ask-first mode has those requests declined, and the transcript
-  says so.
+- **Nothing, for the permission mode.** A session that opens in the harness's manual,
+  ask-first mode is moved to the harness's own auto mode (Claude Code `auto`, Codex
+  `agent`), where the harness decides which tool calls need you; any other mode your
+  harness settings chose is kept. Whatever the harness still asks shows in the transcript
+  for you to answer. `"harness": { "mode": "default" }` in `~/.kabane/config.json` turns
+  this off.
 
 More detail is in [`deploy.md`](deploy.md) part 4.7.
 

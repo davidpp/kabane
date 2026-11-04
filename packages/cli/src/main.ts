@@ -140,6 +140,7 @@ const bareCtx = (home: string, cwd: string): Ctx => ({
 		sync: { enabled: false, batchBytes: 262144 },
 	},
 	actor: "",
+	harnessMode: "auto",
 });
 
 export const run = async (

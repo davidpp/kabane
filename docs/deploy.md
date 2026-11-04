@@ -587,12 +587,15 @@ the pinned adapter's own arguments are not kept.
 
 What the harness brings and what kabane adds:
 
-- **Inherited from your own harness config**: the model, the permission mode, hooks, skills,
-  and the `CLAUDE.md` / `AGENTS.md` of the project — the session's cwd is the scope's
+- **Inherited from your own harness config**: the model, hooks, skills, and the
+  `CLAUDE.md` / `AGENTS.md` of the project — the session's cwd is the scope's
   project root, or the directory the board was opened from when `--scope` named a scope
-  that has no checkout here. Kabane configures none of it and sandboxes nothing. A harness in an
-  ask-first permission mode is the one case to watch: the board cannot answer a permission
-  request yet, so it declines it and says so in the transcript.
+  that has no checkout here. Kabane configures none of it and sandboxes nothing.
+- **The session mode**: a session that opens in the harness's manual mode is moved to
+  the harness's own auto mode through ACP `session/set_mode` (Claude Code `auto`, Codex
+  `agent`); any other mode your harness settings chose is kept, and Gemini stays on its
+  own. The transcript's first line says which. What the harness still asks reaches you
+  unchanged. `"harness": { "mode": "default" }` in `config.json` turns it off.
 - **Added by kabane**: `KABANE_SESSION=1` in the harness environment, so your own hooks can
   tell a board session from an interactive one; one instruction block naming the job; and
   one MCP server, `kabane mcp --scope <uri> --as cabane://actor/agent/<harness>`.

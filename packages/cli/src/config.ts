@@ -21,6 +21,7 @@ import {
 	trySync,
 } from "@cabane/core";
 import { MARKER_DIR, SCOPE_FILE } from "@cabane/core/scope";
+import type { Extension } from "@cabane/extension";
 import { z } from "zod";
 
 const DbConfigSchema = z.object({
@@ -63,6 +64,23 @@ const CopilotConfigSchema = z.object({
 		),
 });
 
+const HarnessConfigSchema = z.object({
+	/**
+	 * The mode every harness session (the copilot, loop implementers and
+	 * lenses) starts in. `auto` moves a session that opens in the harness's
+	 * manual mode to the harness's own auto mode, where the harness decides
+	 * which tool calls need a human; `default` leaves the mode the harness and
+	 * your own settings start it in. Literal values for the same reason as
+	 * `copilot.harness`; `@cabane/acp` names them `Harnesses.MODES`.
+	 */
+	mode: z
+		.enum(["auto", "default"])
+		.optional()
+		.describe(
+			"auto (default) starts sessions in the harness's own auto mode; default keeps the harness's own start mode.",
+		),
+});
+
 export const ConfigSchema = z.object({
 	actor: z
 		.string()
@@ -81,6 +99,9 @@ export const ConfigSchema = z.object({
 	copilot: CopilotConfigSchema.optional().describe(
 		"Board copilot settings; absent uses the default harness and pinned adapter.",
 	),
+	harness: HarnessConfigSchema.optional().describe(
+		"Every harness session's mode; absent is auto (the harness's own auto mode).",
+	),
 	timezone: TimeZoneSchema.optional().describe(
 		"Owner's IANA timezone for deadlines and today; absent uses the system zone (TZ).",
 	),
@@ -91,6 +112,10 @@ export const ConfigSchema = z.object({
 		.describe("Enabled official extension names; absent enables none."),
 });
 export type Config = z.infer<typeof ConfigSchema>;
+
+export const harnessMode = (
+	config: Pick<Config, "harness">,
+): Extension.Ctx["harnessMode"] => config.harness?.mode ?? "auto";
 
 export type DatabaseLocation = {
 	/** The base path core receives; the provider joins `dbName` onto it. */
