@@ -197,12 +197,14 @@ export type PlanEntry = { content: string; status: PlanEntryStatus };
 
 // The step kinds that advance a turn, each carrying the line the transcript shows: `text` is the
 // agent's prose, `thought` its reasoning, the tool pair its writes (a `tool_result` is what the
-// board reloads on), `error` and `done` end the turn.
+// board reloads on), `mode` the harness mode that decides what the session asks, `error` and `done`
+// end the turn.
 export type CopilotStep =
 	| "text"
 	| "thought"
 	| "tool_call"
 	| "tool_result"
+	| "mode"
 	| "error"
 	| "done";
 

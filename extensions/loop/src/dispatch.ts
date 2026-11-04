@@ -188,7 +188,7 @@ export namespace Dispatch {
 				);
 				return undefined;
 			case "mode":
-				sink.emit("mode", `${update.id}, moved there by the harness`, {
+				sink.emit("mode", `mode ${update.id}: moved there by the harness`, {
 					mode: update.id,
 				});
 				return undefined;

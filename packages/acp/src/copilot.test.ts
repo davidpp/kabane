@@ -43,6 +43,10 @@ const scriptedAgent = (
 		plans?: PlanEntry[][];
 		// Prose deltas and tool calls in order, to exercise the chunk buffering.
 		script?: ({ chunk: "text" | "thought"; text: string } | { tool: string })[];
+		// Claude's session modes, opening in this one; `move` is a mode the agent moves itself to
+		// during each turn.
+		mode?: string;
+		move?: string;
 	} = {},
 ): AgentApp =>
 	agentApp({ name: "scripted" })
@@ -52,8 +56,22 @@ const scriptedAgent = (
 		}))
 		.onRequest(methods.agent.session.new, (c) => {
 			seen.newSession.push(c.params);
-			return { sessionId: "s-1" };
+			return {
+				sessionId: "s-1",
+				...(options.mode
+					? {
+							modes: {
+								currentModeId: options.mode,
+								availableModes: ["default", "plan", "auto"].map((id) => ({
+									id,
+									name: id,
+								})),
+							},
+						}
+					: {}),
+			};
 		})
+		.onRequest(methods.agent.session.setMode, () => ({}))
 		.onRequest(methods.agent.session.prompt, async (c) => {
 			seen.prompts.push(c.params.prompt);
 			const notify = (update: Parameters<typeof AcpClient.toUpdate>[0]) =>
@@ -75,6 +93,11 @@ const scriptedAgent = (
 				);
 				seen.permissions.push(answer.outcome);
 			}
+			if (options.move)
+				await notify({
+					sessionUpdate: "current_mode_update",
+					currentModeId: options.move,
+				});
 			if (options.text)
 				await notify({
 					sessionUpdate: "agent_message_chunk",
@@ -153,11 +176,18 @@ const copilotOver = (
 		...over,
 	});
 
-const collect = async (updates: AsyncIterable<{ type: string }>) => {
+const collectAll = async (updates: AsyncIterable<{ type: string }>) => {
 	const out: { type: string; summary?: string }[] = [];
 	for await (const u of updates) out.push(u);
 	return out;
 };
+
+// A session's first turn opens on its mode line; the tests of the turn's own stream skip it.
+const opening = <T extends { type: string }>(updates: T[]): T[] =>
+	updates[0]?.type === "mode" ? updates.slice(1) : updates;
+
+const collect = async (updates: AsyncIterable<{ type: string }>) =>
+	opening(await collectAll(updates));
 
 const types = (updates: { type: string }[]): string[] =>
 	updates.map((u) => u.type);
@@ -252,6 +282,30 @@ describe("BoardCopilot", () => {
 		// Second turn: context block, then the prompt. No instructions.
 		expect(textOf(seen.prompts[1], 0)).toContain("scope: jake://scope/cabane");
 		expect(textOf(seen.prompts[1], 1)).toBe("now split the first one");
+		copilot.close();
+	});
+
+	it("opens the session's first turn on the mode it runs in, and shows the harness's own moves", async () => {
+		const copilot = copilotOver(
+			scriptedAgent(fresh(), { mode: "default", move: "plan", text: "ok" }),
+		);
+		const first = await collectAll(copilot.run("go", context()));
+		expect(first.slice(0, 2).map((u) => [u.type, u.summary])).toEqual([
+			["mode", "mode auto: claude's auto mode, switched from default"],
+			["mode", "mode plan: moved there by the harness"],
+		]);
+		// Neither line again once the session is open and the harness stays put.
+		const second = await collectAll(copilot.run("again", context()));
+		expect(types(second)).toEqual(["text", "done"]);
+		copilot.close();
+	});
+
+	it("leaves the mode alone when the config turns auto mode off", async () => {
+		const copilot = copilotOver(scriptedAgent(fresh(), { mode: "default" }), {
+			mode: "default",
+		});
+		const updates = await collectAll(copilot.run("go", context()));
+		expect(updates[0]?.summary).toBe("mode default: auto mode is off");
 		copilot.close();
 	});
 
@@ -428,7 +482,7 @@ describe("BoardCopilot", () => {
 			updates.push(update);
 			if (update.type === "permission") await answer(update.request);
 		}
-		return updates;
+		return opening(updates);
 	};
 
 	it("carries a permission request to the board and lets it pick an option", async () => {

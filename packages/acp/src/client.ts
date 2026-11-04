@@ -357,27 +357,27 @@ export namespace AcpClient {
 		wanted: Harnesses.Mode,
 		state: SessionModeState | null | undefined,
 	): ModePlan => {
-		if (!state) return { note: `${harness} advertises no session modes` };
+		if (!state) return { note: `no session mode: ${harness} advertises none` };
 		const current = state.currentModeId;
 		if (wanted === "default")
-			return { current, note: `${current}: auto mode is off` };
+			return { current, note: `mode ${current}: auto mode is off` };
 		const ids = Harnesses.modes(harness);
 		if (!ids)
 			return {
 				current,
-				note: `${current}: kabane knows no auto mode for ${harness}`,
+				note: `mode ${current}: kabane knows no auto mode for ${harness}`,
 			};
 		if (current === ids.auto)
-			return { current, note: `${current}, ${harness}'s auto mode` };
+			return { current, note: `mode ${current}: ${harness}'s auto mode` };
 		if (current !== ids.manual)
 			return {
 				current,
-				note: `${current}, from your ${harness} settings, kept over auto`,
+				note: `mode ${current}: from your ${harness} settings, kept over auto`,
 			};
 		if (!state.availableModes.some((mode) => mode.id === ids.auto))
 			return {
 				current,
-				note: `${current}: ${harness} does not advertise its auto mode (${ids.auto})`,
+				note: `mode ${current}: ${harness} does not advertise its auto mode (${ids.auto})`,
 			};
 		return { switchTo: ids.auto, from: current };
 	};
@@ -399,11 +399,11 @@ export namespace AcpClient {
 		return set.ok
 			? {
 					current: plan.switchTo,
-					note: `${plan.switchTo}, ${connection.harness}'s auto mode (was ${plan.from})`,
+					note: `mode ${plan.switchTo}: ${connection.harness}'s auto mode, switched from ${plan.from}`,
 				}
 			: {
 					current: plan.from,
-					note: `${plan.from}: switching to ${plan.switchTo} failed: ${toError(set.error).message}`,
+					note: `mode ${plan.from}: switching to ${plan.switchTo} failed: ${toError(set.error).message}`,
 				};
 	};
 
@@ -443,7 +443,7 @@ export namespace AcpClient {
 					if (update.id === session.mode.current) continue;
 					session.mode = {
 						current: update.id,
-						note: `${update.id}, moved there by ${session.connection.harness}`,
+						note: `mode ${update.id}: moved there by ${session.connection.harness}`,
 					};
 				}
 				if (update) yield update;

@@ -548,7 +548,7 @@ describe("AcpClient session modes", () => {
 		expect(seen.setMode).toEqual(["auto"]);
 		expect(session.mode).toEqual({
 			current: "auto",
-			note: "auto, claude's auto mode (was default)",
+			note: "mode auto: claude's auto mode, switched from default",
 		});
 		// The echo of that switch is not news; the harness's own move to plan is.
 		const updates = await collect(
@@ -572,7 +572,7 @@ describe("AcpClient session modes", () => {
 		expect(seen.setMode).toEqual([]);
 		expect(session.mode).toEqual({
 			current: "default",
-			note: "default: auto mode is off",
+			note: "mode default: auto mode is off",
 		});
 		AcpClient.close(conn);
 	});
@@ -589,7 +589,7 @@ describe("AcpClient session modes", () => {
 		expect(seen.setMode).toEqual(["agent"]);
 		expect(session.mode.current).toBe("read-only");
 		expect(session.mode.note).toStartWith(
-			"read-only: switching to agent failed: ",
+			"mode read-only: switching to agent failed: ",
 		);
 		AcpClient.close(conn);
 	});
@@ -606,7 +606,7 @@ describe("AcpClient.planMode", () => {
 			AcpClient.planMode("claude", "auto", state("bypassPermissions")),
 		).toEqual({
 			current: "bypassPermissions",
-			note: "bypassPermissions, from your claude settings, kept over auto",
+			note: "mode bypassPermissions: from your claude settings, kept over auto",
 		});
 	});
 
@@ -617,7 +617,7 @@ describe("AcpClient.planMode", () => {
 				"auto",
 				state("agent", ["read-only", "agent", "agent-full-access"]),
 			),
-		).toEqual({ current: "agent", note: "agent, codex's auto mode" });
+		).toEqual({ current: "agent", note: "mode agent: codex's auto mode" });
 	});
 
 	it("says so when the harness has no known auto mode, does not advertise it, or has no modes", () => {
@@ -625,16 +625,16 @@ describe("AcpClient.planMode", () => {
 			AcpClient.planMode("gemini", "auto", state("default", ["default"])),
 		).toEqual({
 			current: "default",
-			note: "default: kabane knows no auto mode for gemini",
+			note: "mode default: kabane knows no auto mode for gemini",
 		});
 		expect(
 			AcpClient.planMode("claude", "auto", state("default", ["default"])),
 		).toEqual({
 			current: "default",
-			note: "default: claude does not advertise its auto mode (auto)",
+			note: "mode default: claude does not advertise its auto mode (auto)",
 		});
 		expect(AcpClient.planMode("claude", "auto", undefined)).toEqual({
-			note: "claude advertises no session modes",
+			note: "no session mode: claude advertises none",
 		});
 	});
 });

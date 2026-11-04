@@ -214,10 +214,13 @@ export namespace BoardCopilot {
 				// the transcript.
 				case "plan":
 					return [plan(incoming.entries)];
-				// The board's copilot shows no meter, and no mode yet.
+				// The board's copilot shows no meter.
 				case "usage":
-				case "mode":
 					return [];
+				case "mode":
+					return [
+						update("mode", `mode ${incoming.id}: moved there by the harness`),
+					];
 				case "stop":
 					return [update("done", incoming.reason)];
 				case "error":
@@ -238,6 +241,9 @@ export namespace BoardCopilot {
 				);
 				return;
 			}
+			// The session's first turn opens on the mode it runs in, so the human can tell whether
+			// the harness or they decide what it asks.
+			if (!instructed) yield update("mode", started.value.mode.note);
 			const blocks: AcpClient.PromptBlock[] = [];
 			if (!instructed) blocks.push({ type: "text", text: instructions });
 			blocks.push({ type: "text", text: BoardContext.render(context) });
