@@ -33,7 +33,7 @@ describe("LoopSettings.inputs", () => {
 		});
 		expect(inputs.worktree).toMatchObject({
 			type: "boolean",
-			default: false,
+			default: true,
 			group: "Workspace",
 		});
 		expect(inputs["lenses.quality"]).toMatchObject({

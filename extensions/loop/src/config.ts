@@ -52,12 +52,14 @@ export namespace LoopConfig {
 		 */
 		gates: z.record(GateNameSchema, z.string().min(1)).default({}),
 		/**
-		 * Work in a `git worktree` of the project made for the run, never removed by it, and
-		 * commit a checkpoint there after every green gate, or after every finished subtask when
-		 * no gates are configured. Off: sessions work in the project checkout itself and nothing
-		 * is committed.
+		 * Work in a `git worktree` of the project, never removed by the loop, and commit a
+		 * checkpoint there after every green gate, or after every finished subtask when no gates
+		 * are configured: the parent's last run's worktree when its branch is not merged into the
+		 * project's HEAD, else a fresh one of HEAD. A project that is not a git repository is
+		 * worked in place. Off: sessions work in the project checkout itself and nothing is
+		 * committed.
 		 */
-		worktree: z.boolean().default(false),
+		worktree: z.boolean().default(true),
 		/**
 		 * Verifier lenses, each its own session once the plan is done and the gates are green,
 		 * filing findings as tagged child issues of the parent. A lens is a prompt file: shipped
