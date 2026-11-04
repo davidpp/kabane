@@ -45,15 +45,20 @@ export namespace Extensions {
 		const config = loadConfig(home);
 		if (!config.ok) return config;
 		const named = config.value.extensions ?? [];
-		for (const name of named) {
-			if (Object.hasOwn(OFFICIAL, name) || warnedUnknown.has(name)) continue;
+		for (const name of unshipped(named)) {
+			if (warnedUnknown.has(name)) continue;
 			warnedUnknown.add(name);
-			console.error(
-				`kabane: ignoring "${name}" in "extensions" of ${configPath(home)}: this kabane ships ${Object.keys(OFFICIAL).join(", ")}`,
-			);
+			console.error(ignoredWarning(name, home));
 		}
 		return ok(Object.keys(OFFICIAL).filter((name) => named.includes(name)));
 	};
+
+	/** The names in an `extensions` list that this build does not ship, so would load nothing. */
+	export const unshipped = (named: readonly string[]): string[] =>
+		named.filter((name) => !Object.hasOwn(OFFICIAL, name));
+
+	export const ignoredWarning = (name: string, home: string): string =>
+		`kabane: ignoring "${name}" in "extensions" of ${configPath(home)}: this kabane ships ${names.join(", ")}`;
 
 	const load = async (name: string): Promise<Result<Extension>> => {
 		const loader = OFFICIAL[name];

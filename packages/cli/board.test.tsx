@@ -120,6 +120,15 @@ describe("kabane board", () => {
 			expect(unknown.error.message).toBe(
 				'Unknown copilot harness "hermes"; one of claude, codex, gemini',
 			);
+		const stored = copilotHarness(parseArgs([]), {
+			...ctx,
+			config: { ...ctx.config, copilot: { harness: "hermes" } },
+		});
+		expect(stored.ok).toBe(false);
+		if (!stored.ok)
+			expect(stored.error.message).toContain(
+				"kabane config unset copilot.harness",
+			);
 	});
 
 	// The pin lives at the project root; a command run from a package below it

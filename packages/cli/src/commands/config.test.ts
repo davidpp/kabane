@@ -144,9 +144,9 @@ describe("config through the real CLI", () => {
 			["copilot.args", "--model, custom", ["--model", "custom"]],
 			["sync.enabled", "true", true],
 			["sync.batchBytes", "4096", 4096],
-			["sync.token", "false", "false"],
+			["sync.token", "false", "<set>"],
 			["sync.url", "https://example.invalid", "https://example.invalid"],
-			["sync.headers", '{"X-Test":"value"}', { "X-Test": "value" }],
+			["sync.headers", '{"X-Test":"value"}', "<set>"],
 			[
 				"db.path",
 				"/nonexistent/kabane-test/db.sqlite",
@@ -163,7 +163,7 @@ describe("config through the real CLI", () => {
 		}
 		expect(JSON.parse(read())).toMatchObject({
 			...future,
-			sync: future,
+			sync: { ...future, token: "false", headers: { "X-Test": "value" } },
 			db: future,
 			copilot: future,
 		});
@@ -249,6 +249,7 @@ describe("config through the real CLI", () => {
 			["sync.headers", '{"header":12}'],
 			["timezone", "Mars/Olympus"],
 			["copilot.model", ""],
+			["copilot.harness", "nosuch"],
 			["extensions", "loop,,bad"],
 			["unknown", "value"],
 			["sync.unknown", "value"],
@@ -260,6 +261,31 @@ describe("config through the real CLI", () => {
 			expect((await run("config", "unset", key)).code).toBe(1);
 		expect((await run("config", "get", "sync.unknown")).code).toBe(1);
 		expect(read()).toBe(before);
+	});
+
+	it("reports schema failures as messages, not Zod issue JSON", async () => {
+		write(initial);
+		for (const [key, value, expected] of [
+			[
+				"timezone",
+				"Mars/Base",
+				"Error: Invalid value for timezone: not a timezone this runtime knows (use an IANA name such as America/Montreal)",
+			],
+			["sync.headers", '{"a":1}', "Error: Invalid value for sync.headers: a: "],
+			["sync.batchBytes", "-5", "Error: Invalid value for sync.batchBytes: "],
+		] as const) {
+			const result = await run("config", "set", key, value);
+			expect(result.code).toBe(1);
+			expect(result.err.split("\n")).toHaveLength(1);
+			expect(result.err.startsWith(expected)).toBe(true);
+			expect(result.err).not.toContain('"code"');
+		}
+		writeFileSync(path(), '{"actor":');
+		for (const args of [["list"], ["set", "timezone", "UTC"]]) {
+			const result = await run("config", ...args);
+			expect(result.code).toBe(1);
+			expect(result.err).toContain(`Invalid config at ${path()}: `);
+		}
 	});
 
 	it("rejects malformed and invalid existing config without overwriting it", async () => {
@@ -286,6 +312,7 @@ describe("config through the real CLI", () => {
 		expect(JSON.parse(changed.out)).toEqual({
 			key: "extensions",
 			value: ["loop", "unshipped"],
+			ignored: ["unshipped"],
 		});
 		expect(changed.err).toBe(
 			`kabane: ignoring "unshipped" in "extensions" of ${path()}: this kabane ships loop`,
@@ -306,5 +333,9 @@ describe("config through the real CLI", () => {
 			["--typo"],
 		])
 			expect((await run("config", ...args, "--json")).code).toBe(2);
+		const dashed = await run("config", "set", "copilot.args", "--foo,bar");
+		expect(dashed.code).toBe(2);
+		expect(dashed.err).toContain("Unknown config option --foo,bar");
+		expect(dashed.err).toContain("kabane config set <key> -- <value>");
 	});
 });

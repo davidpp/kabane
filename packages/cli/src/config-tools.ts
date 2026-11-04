@@ -1,13 +1,14 @@
 import { err, ok, type ToolDef } from "@cabane/core";
 import { z } from "zod";
 import { ConfigSettings } from "./config-settings";
+import { Extensions } from "./extensions";
 
 /** Bound to KABANE_HOME, which can differ from the tracker's database path. */
 export const configTools = (home: string): ToolDef[] => [
 	{
 		name: "kabane_configGet",
 		description:
-			"Read this device's config. Omit key to list all keys, values, defaults, descriptions and read-only flags. Local only; settings are not synced to the hub.",
+			"Read this device's config. Omit key to list all keys, values, defaults, descriptions, readOnly and protected flags. Secrets (sync.token, sync.headers) read as <set> when set. Local only; settings are not synced to the hub.",
 		input: { key: z.string().min(1).optional() },
 		kind: "read",
 		handler: async ({ key }) => {
@@ -41,13 +42,13 @@ export const configTools = (home: string): ToolDef[] => [
 					new Error("Supply a key and either value or unset:true, not both."),
 				);
 			const result = ConfigSettings.set(home, key, value);
-			return result.ok
-				? ok({
-						...result.value,
-						restartRequired: true,
-						note: "Saved to this device. Restart running board and MCP processes to apply the change; a board already open will not load newly enabled extensions.",
-					})
-				: result;
+			if (!result.ok) return result;
+			const { ignored } = result.value;
+			return ok({
+				...result.value,
+				restartRequired: true,
+				note: `Saved to this device. Restart running board and MCP processes to apply the change; a board already open will not load newly enabled extensions.${ignored ? ` This build does not ship ${ignored.join(", ")}, so ${ignored.length > 1 ? "they load" : "it loads"} nothing; it ships ${Extensions.names.join(", ")}.` : ""}`,
+			});
 		},
 	},
 ];

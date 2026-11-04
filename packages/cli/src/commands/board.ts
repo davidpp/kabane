@@ -38,15 +38,17 @@ export const copilotHarness = (
 	args: ParsedArgs,
 	ctx: Ctx,
 ): Result<Harnesses.Id> => {
-	const named =
-		flagString(args, "copilot") ?? ctx.config.copilot?.harness ?? "claude";
-	return Harnesses.isId(named)
-		? ok(named)
-		: err(
-				new Error(
-					`Unknown copilot harness "${named}"; one of ${Harnesses.IDS.join(", ")}`,
-				),
-			);
+	const flag = flagString(args, "copilot");
+	const named = flag ?? ctx.config.copilot?.harness ?? "claude";
+	if (Harnesses.isId(named)) return ok(named);
+	const unknown = `Unknown copilot harness "${named}"; one of ${Harnesses.IDS.join(", ")}`;
+	return err(
+		new Error(
+			flag === undefined
+				? `${unknown}. Fix it with \`kabane config set copilot.harness <name>\`, \`kabane config unset copilot.harness\` for claude, or pass --copilot <name>.`
+				: unknown,
+		),
+	);
 };
 
 const copilotOverrides = (ctx: Ctx): Harnesses.Overrides | undefined => {

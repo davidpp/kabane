@@ -29,13 +29,16 @@ export const SyncConfigSchema = z.object({
 		.string()
 		.optional()
 		.describe("Device identity for first arming only (read-only, write-once)."),
+	// How a device passes the edge in front of the hub (CF-Access-Client-Id / -Secret), kept
+	// apart from the log's own bearer `token`.
 	headers: z
 		.record(z.string())
 		.optional()
 		.describe(
 			"Extra push/pull headers, including Cloudflare Access service-token credentials.",
 		),
-	// 256 KB fits below the DO's 2 MB bound-parameter cap.
+	// 256 KB sits comfortably inside every limit in the path; the DO's 2 MB bound-parameter cap is
+	// the tight one.
 	batchBytes: z
 		.number()
 		.finite()
