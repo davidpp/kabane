@@ -2,23 +2,13 @@
 import { expect, test } from "bun:test";
 import { RGBA } from "@opentui/core";
 import type { ActivityCard } from "./ports";
+import { Fixtures } from "./stories/fixtures";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
 import { BoardTabs } from "./tabs";
 import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";
 
-const loop = (n: number): ActivityCard => ({
-	id: `loop:r${n}`,
-	kind: "loops",
-	label: "loop",
-	status: "completed",
-	taskShortId: `JREP-${n}`,
-	startedAt: `2026-10-10T00:0${n}:00.000Z`,
-	detail: [],
-	hasEvents: true,
-	tab: true,
-	sessionIds: [`s${n}`],
-});
+const { loop, question: asked } = Fixtures;
 
 const frameOf = async (
 	tabs: BoardTabs.Tabs,
@@ -75,19 +65,6 @@ test("a bar too wide for the pane keeps the tracker, the tab on screen and the o
 	const wide = (await frameOf(tabs, cards, 120)).split("\n")[0] ?? "";
 	expect(wide).toContain("JREP-4");
 	expect(wide).not.toMatch(/\+\d /);
-});
-
-const asked = (n: number, choices: string[]): BoardTabs.Question => ({
-	taskId: `t${n}`,
-	taskShortId: `JREP-${n}`,
-	sessionId: "s1",
-	questionActivityId: `q${n}`,
-	question: `Install dependencies ${n}?`,
-	choices,
-	multiSelect: false,
-	allowFreeform: choices.length === 0,
-	agent: "claude",
-	askedAt: `2026-10-10T00:0${n}:00.000Z`,
 });
 
 const questionFrame = async (tabs: BoardTabs.Tabs): Promise<string> => {
