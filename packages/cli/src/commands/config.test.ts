@@ -286,6 +286,7 @@ describe("config through the real CLI", () => {
 		expect(JSON.parse(changed.out)).toEqual({
 			key: "extensions",
 			value: ["loop", "unshipped"],
+			ignored: ["unshipped"],
 		});
 		expect(changed.err).toBe(
 			`kabane: ignoring "unshipped" in "extensions" of ${path()}: this kabane ships loop`,

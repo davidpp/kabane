@@ -2,6 +2,7 @@ import { failure, success, usage } from "@cabane/extension";
 import { configPath } from "../config";
 import { ConfigSettings } from "../config-settings";
 import type { Command } from "../context";
+import { Extensions } from "../extensions";
 
 const display = (value: unknown): string =>
 	value === undefined
@@ -55,8 +56,9 @@ export const config: Command = {
 				: failure(value.error);
 		}
 		const changed = ConfigSettings.set(ctx.home, key, input);
-		return changed.ok
-			? success(changed.value, `${key} = ${display(changed.value.value)}`)
-			: failure(changed.error);
+		if (!changed.ok) return failure(changed.error);
+		for (const name of changed.value.ignored ?? [])
+			console.error(Extensions.ignoredWarning(name, ctx.home));
+		return success(changed.value, `${key} = ${display(changed.value.value)}`);
 	},
 };

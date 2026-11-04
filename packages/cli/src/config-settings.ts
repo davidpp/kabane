@@ -128,16 +128,23 @@ const writeSetting = (
 		const saved = saveConfig(home, stored);
 		if (!saved.ok) return saved;
 	}
-	if (entry.key === "extensions" && input !== undefined)
-		Extensions.enabled(home);
-	return ok(
-		input === undefined
-			? { key: entry.key, unset: true }
-			: { key: entry.key, value: redact(entry.key, parsed.value) },
-	);
+	if (input === undefined) return ok({ key: entry.key, unset: true });
+	const change = { key: entry.key, value: redact(entry.key, parsed.value) };
+	// Saved anyway, since a newer kabane may ship the name, but it loads nothing here.
+	const ignored =
+		entry.key === "extensions" && Array.isArray(parsed.value)
+			? Extensions.unshipped(parsed.value)
+			: [];
+	return ok(ignored.length > 0 ? { ...change, ignored } : change);
 };
 
-type ConfigChange = { key: string; value?: unknown; unset?: true };
+type ConfigChange = {
+	key: string;
+	value?: unknown;
+	unset?: true;
+	/** Extension names saved that this build does not ship. */
+	ignored?: string[];
+};
 
 export namespace ConfigSettings {
 	export const list = (home: string) => {

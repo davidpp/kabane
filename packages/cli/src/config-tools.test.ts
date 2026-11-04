@@ -102,6 +102,15 @@ it("manages device config through the real stdio MCP server", async () => {
 			expect(await cli("config", "get", key)).toEqual(expected);
 		}
 		expect(existsSync(join(dbDir, "config.json"))).toBe(false);
+		const typo = JSON.parse(
+			await call("kabane_configSet", { key: "extensions", value: "loop,lopo" }),
+		);
+		expect(typo).toMatchObject({
+			key: "extensions",
+			value: ["loop", "lopo"],
+			ignored: ["lopo"],
+		});
+		expect(typo.note).toContain("does not ship lopo");
 		const secret = "hub-bearer-secret";
 		const accessSecret = "access-client-secret";
 		for (const [key, value] of [

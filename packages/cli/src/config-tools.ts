@@ -1,6 +1,7 @@
 import { err, ok, type ToolDef } from "@cabane/core";
 import { z } from "zod";
 import { ConfigSettings } from "./config-settings";
+import { Extensions } from "./extensions";
 
 /** Bound to KABANE_HOME, which can differ from the tracker's database path. */
 export const configTools = (home: string): ToolDef[] => [
@@ -41,13 +42,13 @@ export const configTools = (home: string): ToolDef[] => [
 					new Error("Supply a key and either value or unset:true, not both."),
 				);
 			const result = ConfigSettings.set(home, key, value);
-			return result.ok
-				? ok({
-						...result.value,
-						restartRequired: true,
-						note: "Saved to this device. Restart running board and MCP processes to apply the change; a board already open will not load newly enabled extensions.",
-					})
-				: result;
+			if (!result.ok) return result;
+			const { ignored } = result.value;
+			return ok({
+				...result.value,
+				restartRequired: true,
+				note: `Saved to this device. Restart running board and MCP processes to apply the change; a board already open will not load newly enabled extensions.${ignored ? ` This build does not ship ${ignored.join(", ")}, so ${ignored.length > 1 ? "they load" : "it loads"} nothing; it ships ${Extensions.names.join(", ")}.` : ""}`,
+			});
 		},
 	},
 ];
