@@ -67,6 +67,17 @@ describe("CopilotInstructions.SKILLS", () => {
 		expect(prompt).toContain(CopilotInstructions.SKILLS);
 	});
 
+	it("a config change the human named is applied; one the copilot suggests waits for a yes", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"When the human names the setting and its value",
+		);
+		expect(CopilotInstructions.SKILLS).toContain(
+			"When the change is your own suggestion",
+		);
+		const setup = CopilotInstructions.SHORTCUTS.find((s) => s.name === "setup");
+		expect(setup?.template).not.toMatch(/confirm/i);
+	});
+
 	it("names the resolved config path and the extensions this build ships", () => {
 		const prompt = CopilotInstructions.systemPrompt(SETUP);
 		expect(prompt).toContain("/sandbox/home/config.json");
@@ -100,6 +111,24 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 		]).map(([placeholder]) => placeholder);
 		expect(used.length).toBeGreaterThan(0);
 		for (const placeholder of used) expect(documented).toContain(placeholder);
+	});
+
+	it("/setup-dispatch is the go-ahead to write a new skill; only an existing one waits for a yes", () => {
+		const shortcut = CopilotInstructions.SHORTCUTS.find(
+			(s) => s.name === "setup-dispatch",
+		);
+		expect(shortcut?.template).toContain("write .claude/skills/dispatch/");
+		expect(shortcut?.template).not.toMatch(/confirm|propose|before writing/i);
+		expect(CopilotInstructions.BLOCK).toContain(
+			"A shortcut or a direct instruction is the go-ahead for exactly what it asks",
+		);
+		expect(CopilotInstructions.SKILLS).toContain(
+			"write the files without asking, then show the content of each one",
+		);
+		expect(CopilotInstructions.SKILLS).toContain(
+			"If it already exists, show the diff and write nothing without an explicit yes",
+		);
+		expect(CopilotInstructions.SKILLS).not.toContain("before writing it");
 	});
 
 	it("the template tracks work through kabane and nothing else", () => {
