@@ -102,6 +102,39 @@ it("manages device config through the real stdio MCP server", async () => {
 			expect(await cli("config", "get", key)).toEqual(expected);
 		}
 		expect(existsSync(join(dbDir, "config.json"))).toBe(false);
+		const secret = "hub-bearer-secret";
+		const accessSecret = "access-client-secret";
+		for (const [key, value] of [
+			["sync.token", secret],
+			[
+				"sync.headers",
+				JSON.stringify({ "CF-Access-Client-Secret": accessSecret }),
+			],
+		] as const) {
+			expect(
+				JSON.parse(await call("kabane_configSet", { key, value })),
+			).toMatchObject({ key, value: "<set>" });
+			expect(await call("kabane_configGet", { key })).toBe("<set>");
+		}
+		expect(JSON.parse(read()).sync).toMatchObject({
+			token: secret,
+			headers: { "CF-Access-Client-Secret": accessSecret },
+		});
+		const reads = [
+			await call("kabane_configGet", {}),
+			await call("kabane_configGet", { key: "sync" }),
+			JSON.stringify(await cli("config", "list")),
+			JSON.stringify(await cli("config", "get", "sync")),
+		];
+		for (const text of reads) {
+			expect(text).not.toContain(secret);
+			expect(text).not.toContain(accessSecret);
+		}
+		expect(JSON.parse(reads[1] ?? "")).toMatchObject({
+			token: "<set>",
+			headers: "<set>",
+			enabled: true,
+		});
 		const before = read();
 		for (const key of ["actor", "deviceId", "sync.deviceId"]) {
 			for (const change of [{ value: "changed" }, { unset: true }]) {

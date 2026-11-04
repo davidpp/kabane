@@ -24,6 +24,10 @@ const keysOf = (schema: z.ZodObject<z.ZodRawShape>, prefix = ""): Key[] =>
 
 const keys = keysOf(ConfigSchema);
 const identities = new Set(["actor", "deviceId", "sync.deviceId"]);
+// Credentials: reads, and the echo of a write, say only whether one is set, so a
+// help question never puts the hub token or an Access secret in a model's context.
+const secrets = new Set(["sync.token", "sync.headers"]);
+const REDACTED = "<set>";
 
 const object = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
@@ -34,6 +38,19 @@ const valueAt = (value: unknown, key: string): unknown => {
 		value = value[part];
 	}
 	return value;
+};
+
+/** Hides secret keys, and the secrets nested in a group's value. */
+const redact = (key: string, value: unknown): unknown => {
+	if (value === undefined) return undefined;
+	if (secrets.has(key)) return REDACTED;
+	if (!object(value)) return value;
+	return Object.fromEntries(
+		Object.entries(value).map(([name, inner]) => [
+			name,
+			redact(`${key}.${name}`, inner),
+		]),
+	);
 };
 
 const parseValue = (entry: Key, text: string): Result<unknown> => {
@@ -116,7 +133,7 @@ const writeSetting = (
 	return ok(
 		input === undefined
 			? { key: entry.key, unset: true }
-			: { key: entry.key, value: parsed.value },
+			: { key: entry.key, value: redact(entry.key, parsed.value) },
 	);
 };
 
@@ -130,7 +147,7 @@ export namespace ConfigSettings {
 		return ok(
 			keys.map(({ key, description }) => ({
 				key,
-				value: valueAt(config, key) ?? null,
+				value: redact(key, valueAt(config, key)) ?? null,
 				default: valueAt(stored, key) === undefined,
 				readOnly: identities.has(key),
 				description,
@@ -153,7 +170,9 @@ export namespace ConfigSettings {
 		const entry = find(key);
 		if (!entry.ok) return entry;
 		const loaded = loadConfigDocument(home);
-		return loaded.ok ? ok(valueAt(loaded.value.config, key)) : loaded;
+		return loaded.ok
+			? ok(redact(key, valueAt(loaded.value.config, key)))
+			: loaded;
 	};
 
 	export const set = (

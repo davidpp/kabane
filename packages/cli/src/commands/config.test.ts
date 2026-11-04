@@ -144,9 +144,9 @@ describe("config through the real CLI", () => {
 			["copilot.args", "--model, custom", ["--model", "custom"]],
 			["sync.enabled", "true", true],
 			["sync.batchBytes", "4096", 4096],
-			["sync.token", "false", "false"],
+			["sync.token", "false", "<set>"],
 			["sync.url", "https://example.invalid", "https://example.invalid"],
-			["sync.headers", '{"X-Test":"value"}', { "X-Test": "value" }],
+			["sync.headers", '{"X-Test":"value"}', "<set>"],
 			[
 				"db.path",
 				"/nonexistent/kabane-test/db.sqlite",
@@ -163,7 +163,7 @@ describe("config through the real CLI", () => {
 		}
 		expect(JSON.parse(read())).toMatchObject({
 			...future,
-			sync: future,
+			sync: { ...future, token: "false", headers: { "X-Test": "value" } },
 			db: future,
 			copilot: future,
 		});
