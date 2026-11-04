@@ -90,7 +90,8 @@ export namespace AcpClient {
 		// The harness advertised `sessionCapabilities.resume` on initialize, so `resumeSession`
 		// can reopen one of its sessions by id.
 		resume: boolean;
-		// Updates for the sessions `resumeSession` reopened, by session id.
+		// Updates for the sessions `resumeSession` reopened, by session id. Not dead weight: SDK
+		// 2.x still attaches only `session/new` sessions (`attachSession` is private).
 		resumed: Map<string, UpdateQueue>;
 		// Resolves once the transport is gone; for a spawned harness, with its exit code.
 		closed: Promise<number | null>;
