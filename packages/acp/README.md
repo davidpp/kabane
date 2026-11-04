@@ -103,6 +103,10 @@ What comes back, as the port's `CopilotUpdate`:
 | `tool_call_update`, completed, on a `kabane_*` write tool | `tool_result` → the board reloads |
 | `plan` | `plan` → the pane and the transcript show the agent's todo, the footer counts it |
 | `session/request_permission` | `permission` → the board asks, and `answerPermission` unblocks the turn |
+| `elicitation/create` (form), through `onElicitation` | `elicitation` → the board shows the form, and `answerElicitation` unblocks the turn |
+| `$/cancel_request` on either of those, through the callback's `withdrawn` signal | `withdrawn` → the board stops asking; a late answer finds nothing |
+| `mode` (from `current_mode_update` or `config_option_update`) | `mode`, a transcript line naming where the harness moved the session |
+| `notice` | `notice`, `warning` for an ACP `warning` or `error` and `info` otherwise |
 | `usage` (from `usage_update`) | nothing: the copilot shows no meter; the loop extension reads it for its budget |
 | `stop`, `error` | `done`, `error` |
 
@@ -161,7 +165,7 @@ repeats the current mode are not.
 the human to know outside the agent's reply (a mode it fell back from, a model it swapped) as
 a `notice` session update rather than as a bold line in the agent's text. It reaches the caller
 as `{ type: "notice"; severity; text }`, with `text` the notice's title and description as one
-line. The copilot shows it as a step of the turn; the loop records it as a `notice` run event.
+line. The loop records it as a `notice` run event; the copilot's mapping is in the table above.
 
 ## Updates
 
@@ -169,8 +173,8 @@ line. The copilot shows it as a step of the turn; the loop records it as a `noti
 type Update =
   | { type: "text"; text: string }
   | { type: "thought"; text: string }
-  | { type: "tool_call"; id; title; kind?; status? }
-  | { type: "tool_call_update"; id; title?; status? }
+  | { type: "tool_call"; id; title; kind?; status?; content?; input?; output? }
+  | { type: "tool_call_update"; id; title?; kind?; status?; content?; input?; output? }
   | { type: "plan"; entries: { content; status }[] }
   | { type: "usage"; used: number; size: number; cost?: { amount; currency } }
   | { type: "mode"; id: string }
@@ -178,6 +182,12 @@ type Update =
   | { type: "stop"; reason: string }
   | { type: "error"; message: string };
 ```
+
+A `tool_call_update` carries only the fields that moved, and one it carries replaces the old
+value whole; `ToolCalls.apply` folds them back into the call. `content` is what the call shows:
+`{ type: "text"; text }` or `{ type: "diff"; path; oldText?; newText }` (`oldText` absent for a
+created file), with terminals and images left out. `input` and `output` are the harness's raw
+arguments and result, in whatever shape it chose.
 
 Every turn ends with exactly one `stop` or one `error`.
 
