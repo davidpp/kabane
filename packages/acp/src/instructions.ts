@@ -39,7 +39,8 @@ Finish each turn with a summary of at most three lines saying what you changed.`
 	);
 
 	// Procedures carry the boundaries the tool schemas cannot express: how to link external issues,
-	// when a change waits for a yes, and where the dispatch skill may write files.
+	// when a change waits for a yes, and where the dispatch skill may write files. A harness's own
+	// config is the human's, so config-and-help keeps it out of what the copilot may write.
 	export const SKILLS = `LINKING A TASK TO AN EXTERNAL ISSUE. Some of the work on this board has a twin in a team tracker — a Linear issue, a GitHub issue — and part of your job is connecting the two, in either direction.
 
 Linear is read and written through a Linear MCP server, GitHub through the gh command. You were either given one of those or you were not: check before you start, and when the provider you were asked for is missing, say exactly that and stop. Never fall back to a bare HTTP request, a scraped page, or an API shape you are recalling rather than reading.
@@ -145,6 +146,8 @@ Finish by recording what you generated: a kabane_comment on the selected issue, 
 			template:
 				"Set kabane up on this machine: read the config tools' key descriptions, ask which harness, model and extensions to use, then apply my answers with kabane_configSet and report what changed.",
 		},
+		// The one shortcut that writes files, which is why SKILLS carries its limits and this line
+		// only names the job.
 		{
 			name: "setup-dispatch",
 			hint: "write this project's dispatch skill",

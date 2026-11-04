@@ -38,7 +38,8 @@ const DbConfigSchema = z.object({
 export type DbConfig = z.infer<typeof DbConfigSchema>;
 
 const CopilotConfigSchema = z.object({
-	// The registry is validated by board; importing ACP here slows every command.
+	// A plain string, not an enum: the harness list lives in @cabane/acp, and importing it here
+	// would load the ACP SDK on every command. `kabane board` checks the value against it.
 	harness: z
 		.string()
 		.min(1)
@@ -55,6 +56,8 @@ const CopilotConfigSchema = z.object({
 		.describe(
 			"Arguments for the custom command, replacing the adapter's arguments.",
 		),
+	// The harness's own pin is Sonnet for Claude, because a board turn is triage against a planner.
+	// Harnesses whose model variable the registry does not name ignore this.
 	model: z
 		.string()
 		.min(1)
