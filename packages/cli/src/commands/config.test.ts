@@ -9,6 +9,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// Each case spawns real `kabane config` processes, about 300 ms apiece on a CI runner, so the
+// longer cases run past bun's 5 s default.
 describe("config through the real CLI", () => {
 	let home = "";
 	const path = () => join(home, "config.json");
@@ -68,7 +70,7 @@ describe("config through the real CLI", () => {
 			);
 		}
 		expect(existsSync(path())).toBe(false);
-	});
+	}, 30_000);
 
 	it("lists all keys and descriptions after init, and reads scalar, group and default values", async () => {
 		expect(
@@ -122,7 +124,7 @@ describe("config through the real CLI", () => {
 		});
 		expect(await get("timezone")).toBeNull();
 		expect((await run("config", "get", "timezone")).out).toBe("default");
-	});
+	}, 30_000);
 
 	it("sets typed values without opening SQLite and preserves unknown fields at every level", async () => {
 		const future = {
@@ -137,6 +139,7 @@ describe("config through the real CLI", () => {
 			db: { ...future },
 			copilot: { ...future },
 		});
+		const expected: Record<string, unknown> = {};
 		for (const [key, input, value] of [
 			["copilot.model", "opus", "opus"],
 			["copilot.harness", "codex", "codex"],
@@ -159,8 +162,19 @@ describe("config through the real CLI", () => {
 			const result = await run("config", "set", key, "--", input, "--json");
 			expect(result.code).toBe(0);
 			expect(JSON.parse(result.out)).toEqual({ key, value });
-			expect(await get(key)).toEqual(value);
+			expected[key] = value;
 		}
+		// One listing reads every value back through get's own lookup and redaction.
+		const listed = await run("config", "list", "--json");
+		expect(listed.code).toBe(0);
+		const rows: { key: string; value: unknown }[] = JSON.parse(listed.out);
+		expect(
+			Object.fromEntries(
+				rows
+					.filter((row) => Object.hasOwn(expected, row.key))
+					.map((row) => [row.key, row.value]),
+			),
+		).toEqual(expected);
 		expect(JSON.parse(read())).toMatchObject({
 			...future,
 			sync: { ...future, token: "false", headers: { "X-Test": "value" } },
@@ -168,7 +182,7 @@ describe("config through the real CLI", () => {
 			copilot: future,
 		});
 		expect(existsSync(join(home, "kabane.db"))).toBe(false);
-	});
+	}, 30_000);
 
 	it("unsets overrides without persisting defaults or removing unknown siblings", async () => {
 		write({
@@ -200,7 +214,7 @@ describe("config through the real CLI", () => {
 			"extensions = []",
 		);
 		expect(await get("extensions")).toEqual([]);
-	});
+	}, 30_000);
 
 	it("creates missing groups for dotted writes and leaves absent overrides untouched", async () => {
 		write(initial);
@@ -215,7 +229,7 @@ describe("config through the real CLI", () => {
 			sync: { enabled: false },
 		});
 		expect(await get("copilot.harness")).toBe("claude");
-	});
+	}, 30_000);
 
 	it("refuses identity changes, group replacement, unknown paths and invalid types without touching the file", async () => {
 		write({ ...initial, sync: { deviceId: "armed" } });
@@ -261,7 +275,7 @@ describe("config through the real CLI", () => {
 			expect((await run("config", "unset", key)).code).toBe(1);
 		expect((await run("config", "get", "sync.unknown")).code).toBe(1);
 		expect(read()).toBe(before);
-	});
+	}, 30_000);
 
 	it("reports schema failures as messages, not Zod issue JSON", async () => {
 		write(initial);
@@ -286,7 +300,7 @@ describe("config through the real CLI", () => {
 			expect(result.code).toBe(1);
 			expect(result.err).toContain(`Invalid config at ${path()}: `);
 		}
-	});
+	}, 30_000);
 
 	it("rejects malformed and invalid existing config without overwriting it", async () => {
 		for (const content of [
@@ -297,7 +311,7 @@ describe("config through the real CLI", () => {
 			expect((await run("config", "set", "timezone", "UTC")).code).toBe(1);
 			expect(read()).toBe(content);
 		}
-	});
+	}, 30_000);
 
 	it("uses the loader's warning for unshipped extension names while keeping JSON stdout valid", async () => {
 		write(initial);
@@ -318,7 +332,7 @@ describe("config through the real CLI", () => {
 			`kabane: ignoring "unshipped" in "extensions" of ${path()}: this kabane ships loop`,
 		);
 		expect((await run("help")).err).toBe(changed.err);
-	});
+	}, 30_000);
 
 	it("reports usage errors for missing, extra and misspelled arguments", async () => {
 		write(initial);
@@ -337,5 +351,5 @@ describe("config through the real CLI", () => {
 		expect(dashed.code).toBe(2);
 		expect(dashed.err).toContain("Unknown config option --foo,bar");
 		expect(dashed.err).toContain("kabane config set <key> -- <value>");
-	});
+	}, 30_000);
 });
