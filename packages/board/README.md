@@ -288,6 +288,17 @@ the queue wherever it was in it, its block goes, the transcript keeps `withdrawn
 …` where the question was, and the footer says so when it was the one on screen. A key pressed in
 the instant before the redraw answers nothing, because the copilot no longer holds the request.
 
+The board also tells the terminal when it is waiting on you, through OSC 7501
+(`renderer.setProgramStatus`, `src/program-status.ts`). One root record for the board: `blocked`
+(kind `permission` or `question`, none when they differ, message `N need input`) while a copilot
+permission or form, or any session question the board lists, waits on the human; else `working`
+while a copilot turn or a host card runs; else cleared. Under it, one record per card with
+something pending (the copilot's turn, a host card running or waiting on one of its sessions'
+questions), by the card's id, hashed when the protocol would not take it. Everything is derived
+from board state in one pure function and written only when it changes, and the root is cleared,
+taking every record under it, once the renderer has let go of the terminal on exit. A terminal that
+does not implement the protocol ignores all of it.
+
 Rows the copilot changed during the turn carry `✦ ai` before the title: the reload after each of
 its writes brings the fresh `updatedBy`/`updatedAt`, and `BoardNav.copilotTouched` keeps the ones
 stamped with `actor` since the turn opened. The glyphs go the way the finished-turn indicator

@@ -34,6 +34,7 @@ import type {
 	Copilot,
 	Dispatcher,
 } from "./ports";
+import { ProgramStatus } from "./program-status";
 import { BoardPrompt } from "./prompt";
 import { PromptPanel } from "./prompt-field";
 import { useSpinnerFrame } from "./spinner";
@@ -169,6 +170,22 @@ export const App = ({
 	// renders (a paste into the prompt or the search box) each see the previous key's result.
 	const stateRef = useRef<BoardNav.BoardState | null>(null);
 	stateRef.current = state;
+	// The terminal hears when the board waits on the human, or works: derived from what the board
+	// holds, and written only when it changes.
+	const copilotAsks = state?.copilot.asks;
+	const copilotTurn = state?.copilot.turn;
+	const questionQueue = state?.tabs.queue;
+	const programStatus = useMemo(
+		() =>
+			ProgramStatus.reports({
+				copilot: { asks: copilotAsks ?? [], turn: copilotTurn ?? "idle" },
+				questions: questionQueue ?? [],
+				cards: activity.cards,
+			}),
+		[copilotAsks, copilotTurn, questionQueue, activity.cards],
+	);
+	ProgramStatus.useProgramStatus(programStatus);
+
 	// Every committed state is on screen: note what the digits answer from now on, so a question
 	// that just appeared does not take a key already on its way (BoardNav.sight).
 	useEffect(() => {

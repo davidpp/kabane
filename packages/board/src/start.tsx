@@ -17,6 +17,7 @@ import {
 	type Dispatcher,
 	noActivity,
 } from "./ports";
+import { ProgramStatus } from "./program-status";
 import { closeRenderer } from "./teardown";
 import { Theme, ThemeProvider, useTheme } from "./theme";
 
@@ -81,6 +82,9 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 	} finally {
 		// The terminal first: a clipboard that is slow to shut down must not hold it.
 		await closeRenderer(renderer);
+		// Every quit path destroys the renderer first, after which it reports nothing, so the board's
+		// status records are cleared here, straight to the terminal it has just let go of.
+		if (process.stdout.isTTY) process.stdout.write(ProgramStatus.CLEAR_ALL);
 		await Clipboard.release(renderer);
 	}
 };

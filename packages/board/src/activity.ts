@@ -19,6 +19,8 @@ export namespace BoardActivity {
 		multiSelect: boolean;
 		/** A typed answer is taken as well as, or in place of, the choices. */
 		allowFreeform: boolean;
+		/** The question relays a harness's permission request rather than asking one of its own. */
+		permission?: boolean;
 		/** Who asks: the session's agent. */
 		agent: string;
 		askedAt: string;
@@ -85,6 +87,7 @@ export namespace BoardActivity {
 				choices: parsed.choices,
 				multiSelect: parsed.multiSelect,
 				allowFreeform: parsed.allowFreeform,
+				...(parsed.permission ? { permission: true } : {}),
 				agent: row.session.agent,
 				askedAt: row.question.createdAt,
 			});
