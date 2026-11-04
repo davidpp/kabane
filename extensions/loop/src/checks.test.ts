@@ -67,10 +67,12 @@ const runOn = async (
 	parent: Task,
 	gates: Record<string, string>,
 	worktree: boolean,
+	extra: LoopConfig.Input = {},
 ): Promise<RunStore.Run> => {
 	const config = LoopConfig.Schema.safeParse({
 		gates,
 		worktree,
+		...extra,
 	});
 	if (!config.success) throw config.error;
 	const run: RunStore.Run = {
@@ -415,5 +417,62 @@ describe("Runner final checks", () => {
 			"gates-red",
 		]);
 		expect(RunStore.checkpoints(ended)).toEqual([]);
+	});
+});
+
+describe("A worktree run without gates", () => {
+	// An implementer that does the work and closes its subtask, and never commits: the checkpoint
+	// has to come from the run. No model or MCP server is reached; the tracker is written directly.
+	const IMPLEMENTER = `
+import { createInterface } from "node:readline";
+import { writeFileSync } from "node:fs";
+import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+const [home] = process.argv.slice(2);
+const done = KABANE_TOOLS.find((t) => t.name === "kabane_done");
+const reply = (id, result) => console.log(JSON.stringify({ jsonrpc: "2.0", id, result }));
+createInterface({ input: process.stdin }).on("line", async (line) => {
+ const message = JSON.parse(line);
+ if (message.method === "initialize") reply(message.id, { protocolVersion: message.params.protocolVersion, agentCapabilities: {} });
+ if (message.method === "session/new") reply(message.id, { sessionId: "fixture" });
+ if (message.method !== "session/prompt") return;
+ const text = message.params.prompt.map((p) => p.text ?? "").join("\\n");
+ const task = /Your subtask is ([^.]+)\\./.exec(text)?.[1];
+ writeFileSync("feature.txt", "made by " + task + "\\n");
+ const closed = await done.handler({ id: task }, { basePath: home, actor: "cabane://actor/agent/gemini", scopeRequired: false });
+ if (!closed.ok) process.exit(1);
+ reply(message.id, { stopReason: "end_turn" });
+});
+`;
+
+	it("commits each finished subtask as a checkpoint in the worktree", async () => {
+		const parent = await add("parent");
+		await add("child", { parentTaskId: parent.id });
+		// gemini, as in runner-scheduling.test.ts: the claude profile needs a claude on PATH, and CI
+		// has none.
+		const run = await runOn(parent, {}, true, { implementer: "gemini" });
+		const agent = join(root, "implementer.mjs");
+		writeFileSync(agent, IMPLEMENTER);
+		const ended = await Runner.run(run.id, {
+			home,
+			basePath: home,
+			kabaneBin: "/nonexistent/kabane",
+			pid: process.pid,
+			git,
+			overrides: { gemini: { command: process.execPath, args: [agent, home] } },
+			tickMs: 5,
+		});
+		if (!ended.ok) throw ended.error;
+
+		const worktree = ended.value.worktree ?? "";
+		expect([ended.value.status, ended.value.exit?.reason]).toEqual([
+			"completed",
+			"plan-done",
+		]);
+		expect(RunStore.checkpoints(ended.value)).toEqual([head(worktree)]);
+		expect(GitFixture.run(worktree, ["status", "--porcelain"])).toBe("");
+		expect(
+			GitFixture.run(worktree, ["show", "--name-only", "--format=%b", "HEAD"]),
+		).toContain("No gates configured.");
 	});
 });
