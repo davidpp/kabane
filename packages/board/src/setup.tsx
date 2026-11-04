@@ -23,6 +23,7 @@ import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { SetupPlan } from "./setup-plan";
 import { useSpinnerFrame } from "./spinner";
+import { closeRenderer } from "./teardown";
 import { Theme, ThemeProvider, useTheme } from "./theme";
 
 const INPUT_WIDTH = 24;
@@ -827,6 +828,7 @@ const CheckRow = ({
 /**
  * Run the setup screen on its own renderer. Resolves true when the config was written and the
  * human asked for the board, false when they left — esc or ctrl-c before confirming writes nothing.
+ * It resolves only once that renderer has closed, so the board's can take stdin straight after.
  */
 export const startSetup = async (deps: SetupDeps): Promise<boolean> => {
 	const renderer = await createCliRenderer({ exitOnCtrlC: true });
@@ -851,7 +853,7 @@ export const startSetup = async (deps: SetupDeps): Promise<boolean> => {
 			renderer.on("destroy", resolve);
 		});
 	} finally {
-		if (!renderer.isDestroyed) renderer.destroy();
+		await closeRenderer(renderer);
 	}
 	return completed;
 };

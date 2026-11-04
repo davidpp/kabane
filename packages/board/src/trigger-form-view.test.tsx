@@ -161,6 +161,7 @@ test("on a pane shorter still the plan keeps half the rows and says what it leav
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("› implementer"),
 		);
+		expect(frame).toContain("start loop JREP-1");
 		expect(frame).toContain("JREP-5  a subtask");
 		expect(frame).toContain("… 3 more");
 		expect(frame).not.toContain("JREP-6");

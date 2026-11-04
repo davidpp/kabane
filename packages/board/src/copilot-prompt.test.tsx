@@ -372,9 +372,12 @@ describe("the A prompt against a scripted copilot", () => {
 			const frame = await until((f) => f.includes("✓ copilot"));
 			expect(frame).toContain("✓ copilot · Moved it to someday.");
 			expect(seen.prompts).toEqual(["is this still real?"]);
-			// `o` still opens the finished transcript; it shows the completed footer of the card.
+			// `o` still opens the finished transcript; it shows the completed footer of the card. The
+			// header paints before the events land, so the wait is on both.
 			mockInput.pressKey("o");
-			const transcript = await until((f) => f.includes("completed ·"));
+			const transcript = await until(
+				(f) => f.includes("completed ·") && f.includes("← ok"),
+			);
 			expect(transcript).toContain("Moved it to someday.");
 			expect(transcript).toContain("← ok");
 		} finally {

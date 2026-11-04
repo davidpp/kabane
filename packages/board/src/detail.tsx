@@ -27,7 +27,7 @@ import type { BoardNav } from "./nav";
 import type { ActivityCard, ActivityStatus } from "./ports";
 import { Segments } from "./segments";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
-import { Theme, useTheme } from "./theme";
+import { type Theme, useMarkdownStyle, useTheme } from "./theme";
 
 // Columns the header block's padding takes, and those the scrollbox's bar and a safety margin hold
 // back, so a cut row is cut to the room it really has and never wraps.
@@ -195,11 +195,11 @@ type RenderNode = NonNullable<MarkdownOptions["renderNode"]>;
 // A fresh painted box around the block, not a restyle of it: a code block's own `bg` paints only
 // under its glyphs, and OpenTUI resets it when the content changes in place, while a block it did
 // not make is rebuilt through here instead. The block's margins move out to the box, or the gap
-// under it would be a strip of panel; OpenTUI sets the bottom one and gives it no getter, so it is
-// read off the layout node.
+// under it would be a strip of panel. `marginBottom` is write-only, so the bottom one is read
+// through Yoga's getter.
 const codePanel = (block: Renderable | null, bg: string): Renderable | null => {
 	if (!block) return null;
-	const gap = block.getLayoutNode().getMargin(Yoga.Edge.Bottom).value;
+	const gap = block.getMargin(Yoga.Edge.Bottom).value;
 	const panel = new BoxRenderable(block.ctx, {
 		width: "100%",
 		flexShrink: 0,
@@ -231,6 +231,7 @@ const unlined = (block: Renderable | null, bg?: string): Renderable | null => {
 // stops at the measure.
 const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 	const theme = useTheme();
+	const markdownStyle = useMarkdownStyle();
 	// Stable per theme: a new renderNode has OpenTUI rebuild every block.
 	const renderNode = useMemo(() => blockOnSurface(theme), [theme]);
 	return (
@@ -244,7 +245,7 @@ const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 			>
 				<markdown
 					content={content}
-					syntaxStyle={Theme.markdownStyle(theme)}
+					syntaxStyle={markdownStyle}
 					fg={theme.defaultFg}
 					renderNode={renderNode}
 					tableOptions={TABLE}

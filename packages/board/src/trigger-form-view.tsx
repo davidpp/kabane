@@ -391,7 +391,8 @@ export const TriggerFormView = ({
 				padding: 1,
 			}}
 		>
-			<text bg={bg}>
+			{/* The title and the hints keep their rows; the settings scroll in what is left. */}
+			<text bg={bg} style={{ flexShrink: 0 }}>
 				{Segments.spans(titleOf(form, shortId, changed, layout, theme))}
 			</text>
 			<box
@@ -424,7 +425,7 @@ export const TriggerFormView = ({
 				</scrollbox>
 			</box>
 			{layout.hints ? (
-				<box style={{ marginTop: 1 }}>
+				<box style={{ marginTop: 1, flexShrink: 0 }}>
 					<HintRow hints={HINTS} />
 				</box>
 			) : null}

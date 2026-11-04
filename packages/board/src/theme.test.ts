@@ -1,9 +1,11 @@
 // The theme against what a terminal can report: a near-black and a near-white background derive
 // surfaces and grays close to DESIGN.md's ramps, an unanswered query falls back to them, and no
 // component file carries a hex literal of its own.
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { CliRenderer } from "@opentui/core";
+import { createTestRenderer } from "@opentui/core/testing";
 import { Theme } from "./theme";
 
 const channels = (hex: string): number[] =>
@@ -153,6 +155,19 @@ describe("ink", () => {
 });
 
 describe("markdownStyle", () => {
+	let renderer: CliRenderer;
+	let other: CliRenderer;
+	beforeAll(async () => {
+		({ renderer } = await createTestRenderer({ width: 1, height: 1 }));
+		({ renderer: other } = await createTestRenderer({ width: 1, height: 1 }));
+	});
+	afterAll(async () => {
+		for (const r of [renderer, other]) {
+			r.destroy();
+			await r.closed.catch(() => {});
+		}
+	});
+
 	const hexOf = (
 		fg: { toInts: () => number[] } | undefined,
 	): string | undefined =>
@@ -166,7 +181,7 @@ describe("markdownStyle", () => {
 	// OpenTUI falls back from a missing scope to its first segment only (`markup`), so a scope left
 	// out is a scope drawn as plain text.
 	test("names every scope OpenTUI emits: each heading level, strong, code on the overlay step", () => {
-		const style = Theme.markdownStyle(Theme.DARK);
+		const style = Theme.markdownStyle(renderer, Theme.DARK);
 		for (const level of [1, 2, 3, 4, 5, 6]) {
 			const heading = style.getStyle(`markup.heading.${level}`);
 			expect({ level, fg: hexOf(heading?.fg), bold: heading?.bold }).toEqual({
@@ -184,13 +199,25 @@ describe("markdownStyle", () => {
 		);
 	});
 
-	test("one style per theme, however many renders ask", () => {
-		expect(Theme.markdownStyle(Theme.DARK)).toBe(
-			Theme.markdownStyle(Theme.DARK),
-		);
-		expect(Theme.markdownStyle(Theme.LIGHT)).not.toBe(
-			Theme.markdownStyle(Theme.DARK),
-		);
+	test("one style per renderer and theme, however many renders ask", () => {
+		const dark = Theme.markdownStyle(renderer, Theme.DARK);
+		expect(Theme.markdownStyle(renderer, Theme.DARK)).toBe(dark);
+		expect(Theme.markdownStyle(renderer, Theme.LIGHT)).not.toBe(dark);
+		// Another renderer's scene owns its own handle, though the tokens are the same object.
+		expect(Theme.markdownStyle(other, Theme.DARK)).not.toBe(dark);
+	});
+
+	test("a theme change frees the old theme's style once the renderer is idle, and keeps the new", async () => {
+		const dark = Theme.markdownStyle(renderer, Theme.DARK);
+		const light = Theme.markdownStyle(renderer, Theme.LIGHT);
+		const elsewhere = Theme.markdownStyle(other, Theme.DARK);
+		Theme.retireMarkdownStyles(renderer, Theme.LIGHT);
+		await renderer.idle();
+		expect(() => dark.getStyle("markup.strong")).toThrow();
+		expect(light.getStyle("markup.strong")?.bold).toBe(true);
+		expect(elsewhere.getStyle("markup.strong")?.bold).toBe(true);
+		expect(Theme.markdownStyle(renderer, Theme.LIGHT)).toBe(light);
+		expect(Theme.markdownStyle(renderer, Theme.DARK)).not.toBe(dark);
 	});
 });
 

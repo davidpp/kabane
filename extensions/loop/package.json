@@ -20,8 +20,8 @@
 		"@cabane/board": "workspace:*",
 		"@cabane/core": "workspace:*",
 		"@cabane/extension": "workspace:*",
-		"@opentui/core": "0.5.10",
-		"@opentui/react": "0.5.10",
+		"@opentui/core": "0.8.0",
+		"@opentui/react": "0.8.0",
 		"react": "19.2.3",
 		"zod": "3.25.76"
 	},

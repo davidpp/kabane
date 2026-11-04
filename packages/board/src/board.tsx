@@ -630,7 +630,7 @@ export const Board = ({
 	);
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<text fg={theme.defaultFg}>
+			<text fg={theme.defaultFg} style={{ flexShrink: 0 }}>
 				<span attributes={TextAttributes.BOLD}>
 					{`kabane · ${scopeLabel ?? "all scopes"}`.toLowerCase()}
 				</span>

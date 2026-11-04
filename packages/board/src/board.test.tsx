@@ -101,6 +101,35 @@ test("Board renders a section header and a row's shortId, title, and kind", asyn
 	}
 });
 
+// A list that asks for every row it has must not squeeze the header out: OpenTUI's later releases
+// stop drawing a node shrunk to no rows.
+test("Board keeps its header line when the list outgrows the screen", async () => {
+	const rows = Array.from({ length: 40 }, (_, i) => ({
+		task: task({
+			id: `01H0000000000000000000${String(i).padStart(4, "0")}`,
+			shortId: `JAKE-${i + 1}`,
+		}),
+		children: [],
+	}));
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={[section("next", rows)]}
+			expanded={new Set()}
+			selectedId={null}
+			scopeLabel="acme/widget"
+		/>,
+		{ width: 80, height: 10 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JAKE-1 "),
+		);
+		expect(frame.split("\n")[0]).toContain("kabane · acme/widget");
+	} finally {
+		destroy();
+	}
+});
+
 test("Board expands a parent's subtasks under it with a caret, indented and showing their own state", async () => {
 	const parent = task({ id: "p", shortId: "JAKE-1", title: "parent task" });
 	const child = task({
