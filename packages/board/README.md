@@ -29,6 +29,13 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 
 The host calls `Runtime.configure` before `startBoard`; the board never opens a database itself.
 
+The board takes its colours from the terminal: before the first frame it asks for the foreground,
+background and ANSI palette, and derives its surfaces and grays from them (`src/theme.ts`; a
+terminal that does not answer gets DESIGN.md's dark or light ramp). It keeps following the
+terminal while open. When the terminal reports a light/dark switch (DEC 2031) or a new palette,
+`ThemeProvider` re-derives the tokens and every surface recolours, markdown included, without a
+restart.
+
 ## Ports
 
 ### `ActivitySource`
@@ -280,9 +287,16 @@ row is not a trade this board makes — it is read in a narrow split beside an e
 
 `O` opens it (`o` is the event log: lowercase looks inward at this task, uppercase outward at the
 team's). The chain is the desktop app's scheme, then the web URL, then the clipboard — the last
-leg is what keeps the key useful over ssh, where there is no opener and `Clipboard.write` falls
-through to OSC 52. With several links the first opens; the detail brief lists them all. The footer
-offers `O` only while the row under the cursor has somewhere to go.
+leg is what keeps the key useful over ssh, where there is no opener. With several links the first
+opens; the detail brief lists them all. The footer offers `O` only while the row under the cursor
+has somewhere to go.
+
+Every copy (`y`, and that last leg) goes through OpenTUI's clipboard (`src/clipboard.ts`). On a
+local session it writes the machine's own pasteboard, and sends OSC 52 only when there is none. On
+a remote one (ssh) it sends only OSC 52, so the text lands in the human's own terminal and the
+remote machine's pasteboard is never written. The footer flashes what happened, or
+`copy not supported by this terminal`. `kabane open` has no renderer, so its copy is the host's
+pasteboard or nothing.
 
 Nothing here creates a link: that is `kabane upstream link`, or the copilot, which can read the
 external issue and write what matters into the task's own description. `Launcher` (`src/launcher.ts`)
@@ -311,4 +325,5 @@ renderer that captures character frames; nothing needs a real TTY. Storage tests
 directory. Key-driven flows (the `A` prompt against a scripted copilot) go through the test renderer's
 `mockInput`; a lone escape must be rendered through before the next key, or the parser reads the
 pair as Alt+key. Not covered here and left to a manual run: a real terminal's keyboard, mouse,
-the clipboard writers, and OSC 52 through a terminal multiplexer.
+the host's pasteboard, OSC 52 reaching a real terminal (over ssh or through a multiplexer), and a
+real light/dark switch.

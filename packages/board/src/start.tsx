@@ -7,6 +7,7 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ReactNode } from "react";
 import { App } from "./app";
+import { Clipboard } from "./clipboard";
 import type { BoardData } from "./data";
 import { ErrorBoundary } from "./error-boundary";
 import {
@@ -56,10 +57,10 @@ const CrashScreen = ({ error }: { error: Error }): ReactNode => {
 export const startBoard = async (deps: BoardDeps): Promise<void> => {
 	const renderer = await createCliRenderer({ exitOnCtrlC: true });
 	try {
-		// Once, before the first frame: every surface below reads its colours from this.
+		// Before the first frame, so it opens in the terminal's colours; the provider follows them.
 		const theme = await Theme.detect(renderer);
 		createRoot(renderer).render(
-			<ThemeProvider value={theme}>
+			<ThemeProvider initial={theme}>
 				<ErrorBoundary fallback={(error) => <CrashScreen error={error} />}>
 					<App
 						cwd={deps.cwd}
@@ -78,6 +79,8 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 			renderer.on("destroy", resolve);
 		});
 	} finally {
+		// The terminal first: a clipboard that is slow to shut down must not hold it.
 		await closeRenderer(renderer);
+		await Clipboard.release(renderer);
 	}
 };

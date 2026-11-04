@@ -1,83 +1,101 @@
-// System clipboard writer for the board's copy-brief action. Adapted from zact-v2's ui-otui clipboard
-// (native OS command first, OSC 52 escape as the fallback that survives ssh/tmux). Both writers are
-// injectable so tests never shell out or touch a real renderer.
-import { spawn } from "node:child_process";
-import { platform } from "node:os";
+// The board's copy, through OpenTUI's clipboard. `best-available` writes the host's own pasteboard
+// on a local session, falling back to OSC 52 when the host has none, and on a remote one sends only
+// OSC 52: the copy lands in the human's terminal and never in the remote machine's pasteboard.
 import { err, ok, type Result } from "@cabane/core";
+import {
+	type ClipboardService,
+	type ClipboardWriteResult,
+	createClipboard,
+	createHostClipboard,
+	createRendererClipboardAdapter,
+	type RendererClipboardBoundary,
+} from "@opentui/core";
 
 export namespace Clipboard {
-	type WriteMethod = "native" | "osc52";
+	/** Where the copy went: the host's pasteboard, or an OSC 52 escape to the terminal. */
+	type Method = "host" | "terminal";
 
-	// The OpenTUI renderer exposes both of these; injected as a narrow interface so the copy path can
-	// be tested without a live renderer.
-	export type Osc52Writer = {
-		isOsc52Supported: () => boolean;
-		copyToClipboardOSC52: (text: string) => boolean;
+	// OpenTUI refuses NUL and unpaired surrogates before it tries any destination. Neither belongs
+	// in a pasteboard, so NUL is dropped and a lone surrogate replaced instead of failing the copy.
+	const pasteable = (text: string): string =>
+		text.replaceAll("\0", "").toWellFormed();
+
+	// `writeText` rejects on a disposed service or text it refuses.
+	const failed = (cause: unknown): Result<never> =>
+		err(
+			new Error(
+				`copy failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+			),
+		);
+
+	/** What the footer says about what OpenTUI reported. */
+	export const outcome = (result: ClipboardWriteResult): Result<Method> => {
+		if (result.host.status === "written") return ok("host");
+		// OSC 52 has no acknowledgement: `attempted` is as sure as a terminal copy gets.
+		if (result.terminal.status === "attempted") return ok("terminal");
+		if (result.host.status === "failed") return failed(result.host.error);
+		if (result.host.status === "timed-out")
+			return err(new Error("copy timed out"));
+		if (result.terminal.status === "local-failure")
+			return err(new Error("copy failed: could not write to the terminal"));
+		return err(new Error("copy not supported by this terminal"));
 	};
 
-	// Writes to the OS clipboard, resolving true on success. Injectable so tests skip the subprocess.
-	export type NativeWriter = (text: string) => Promise<boolean>;
+	// One service per renderer, made on the first copy, so a board that never copies starts no
+	// native clipboard. `release` disposes it.
+	const services = new WeakMap<RendererClipboardBoundary, ClipboardService>();
 
-	type Command = { command: string; args: readonly string[] };
-
-	const runCommand = (
-		{ command, args }: Command,
-		input: string,
-	): Promise<boolean> =>
-		new Promise((resolve) => {
-			const child = spawn(command, [...args], {
-				stdio: ["pipe", "ignore", "ignore"],
-			});
-			child.on("error", () => resolve(false));
-			child.on("close", (code) => resolve(code === 0));
-			child.stdin.end(input);
+	const serviceFor = (
+		renderer: RendererClipboardBoundary,
+	): ClipboardService => {
+		const existing = services.get(renderer);
+		if (existing) return existing;
+		const service = createClipboard({
+			host: createHostClipboard(),
+			terminal: createRendererClipboardAdapter(renderer),
 		});
-
-	// The OS clipboard commands to try in order, per platform (Wayland before X11 on linux).
-	export const nativeCommands = (
-		os: NodeJS.Platform = platform(),
-		env: NodeJS.ProcessEnv = process.env,
-	): readonly Command[] => {
-		if (os === "darwin") return [{ command: "pbcopy", args: [] }];
-		if (os === "win32")
-			return [
-				{
-					command: "powershell.exe",
-					args: [
-						"-NonInteractive",
-						"-NoProfile",
-						"-Command",
-						"[Console]::InputEncoding = [System.Text.Encoding]::UTF8; Set-Clipboard -Value ([Console]::In.ReadToEnd())",
-					],
-				},
-			];
-		if (os !== "linux") return [];
-		const commands: Command[] = [];
-		if (env.WAYLAND_DISPLAY) commands.push({ command: "wl-copy", args: [] });
-		commands.push({ command: "xclip", args: ["-selection", "clipboard"] });
-		commands.push({ command: "xsel", args: ["--clipboard", "--input"] });
-		return commands;
+		services.set(renderer, service);
+		return service;
 	};
 
-	const writeNative: NativeWriter = async (text) => {
-		for (const command of nativeCommands()) {
-			if (await runCommand(command, text)) return true;
-		}
-		return false;
-	};
-
-	// Try the native OS clipboard first, then the OSC 52 escape (works over ssh/tmux where no local
-	// clipboard command exists). Returns which method won, or an error naming why nothing stuck.
+	/** Copy `text` from the board drawn by `renderer`. */
 	export const write = async (
+		renderer: RendererClipboardBoundary,
 		text: string,
-		deps: { osc52?: Osc52Writer; native?: NativeWriter } = {},
-	): Promise<Result<WriteMethod>> => {
-		if (text.length === 0) return err(new Error("nothing to copy"));
-		const native = deps.native ?? writeNative;
-		if (await native(text)) return ok("native");
-		const osc52 = deps.osc52;
-		if (osc52?.isOsc52Supported() && osc52.copyToClipboardOSC52(text))
-			return ok("osc52");
-		return err(new Error("clipboard unavailable"));
+	): Promise<Result<Method>> => {
+		const clean = pasteable(text);
+		if (clean.length === 0) return err(new Error("nothing to copy"));
+		return serviceFor(renderer)
+			.writeText(clean, { destination: "best-available" })
+			.then(outcome, failed);
+	};
+
+	/**
+	 * Copy `text` with no renderer, as the CLI's `kabane open` does. There is no terminal to send
+	 * OSC 52 to, so this is the host's pasteboard or nothing; a headless host reports unsupported.
+	 */
+	export const writeHost = async (text: string): Promise<Result<"host">> => {
+		const clean = pasteable(text);
+		if (clean.length === 0) return err(new Error("nothing to copy"));
+		const host = createHostClipboard();
+		const result = await host
+			.writeText(clean)
+			.then((written): Result<"host"> => {
+				if (written.status === "written") return ok("host");
+				if (written.status === "failed") return failed(written.error);
+				return err(new Error(`copy ${written.status} on this host`));
+			}, failed);
+		await host.dispose();
+		return result;
+	};
+
+	/** Dispose the clipboard `renderer` copied through, if it ever did. */
+	export const release = async (
+		renderer: RendererClipboardBoundary,
+	): Promise<void> => {
+		const service = services.get(renderer);
+		if (!service) return;
+		services.delete(renderer);
+		await service.dispose();
 	};
 }

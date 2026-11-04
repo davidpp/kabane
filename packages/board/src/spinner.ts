@@ -1,8 +1,10 @@
 // Braille spinner frames (opencode's set) — same glyph class as the box-drawing chars already on the
-// board, not emoji. The hook stays mounted for stable React hook ordering but only schedules its
-// interval while `active` — the leaked-idle-timer gotcha from zact-v2's spinner: a screen full of
-// finished rows must not each keep an 80ms timer alive.
-import { useEffect, useState } from "react";
+// board, not emoji. Every spinner ticks on the renderer's one animation clock and reads its frame
+// from the clock's time, so two spinners on screen turn together and in step. The hook stays mounted
+// for stable React hook ordering but subscribes only while `active`: a board with nothing running
+// schedules no tick at all.
+import { useAnimationTick } from "@opentui/react";
+import { useState } from "react";
 
 export const SPINNER_FRAMES = [
 	"⠋",
@@ -17,6 +19,7 @@ export const SPINNER_FRAMES = [
 	"⠏",
 ] as const;
 const SPINNER_INTERVAL_MS = 80;
+const SPINNER_FPS = 1000 / SPINNER_INTERVAL_MS;
 
 // A frozen spinner frame, for a running card whose host stopped updating it. Reading as a stuck
 // spinner is the point there: the thing really has stopped moving.
@@ -30,13 +33,9 @@ export const RUNNING_ECHO = "●";
 
 export const useSpinnerFrame = (active: boolean): string => {
 	const [frame, setFrame] = useState(0);
-	useEffect(() => {
-		if (!active) return;
-		const timer = setInterval(
-			() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length),
-			SPINNER_INTERVAL_MS,
-		);
-		return () => clearInterval(timer);
-	}, [active]);
+	// A tick may run up to half an interval early to share a frame, so the slot is the nearest one.
+	useAnimationTick(active ? SPINNER_FPS : undefined, (_delta, _ticks, time) =>
+		setFrame(Math.round(time / SPINNER_INTERVAL_MS) % SPINNER_FRAMES.length),
+	);
 	return SPINNER_FRAMES[frame] ?? SPINNER_IDLE;
 };

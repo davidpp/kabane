@@ -1,5 +1,5 @@
-// Hands a linked issue's URI to the host OS. Structurally a sibling of Clipboard: one native command
-// per platform, spawned, with the runner injectable so tests never shell out. It lives here and not in
+// Hands a linked issue's URI to the host OS: one native command per platform, spawned, with the
+// runner injectable so tests never shell out. It lives here and not in
 // @cabane/core because core also runs on Cloudflare Workers, where `node:child_process` has no meaning;
 // the CLI already depends on this package, so both callers reach it from one place.
 import { spawn } from "node:child_process";
@@ -68,8 +68,9 @@ export namespace Launcher {
 	/**
 	 * Try the desktop app, then the web URL, then the clipboard. The first two
 	 * fail the same way — no handler registered, or no opener on this host — and
-	 * the third is what makes the action still useful over ssh, where
-	 * `Clipboard.write` falls through to its OSC 52 escape.
+	 * the third is what makes the action still useful over ssh, where the
+	 * board's copier sends OSC 52 to the human's terminal. With no renderer
+	 * (the CLI) the default copier has only the host's pasteboard.
 	 */
 	export const open = async (
 		target: Target,
@@ -82,7 +83,8 @@ export namespace Launcher {
 		if (await run(target.url)) return ok("browser");
 
 		const copy =
-			deps.copy ?? (async (text: string) => (await Clipboard.write(text)).ok);
+			deps.copy ??
+			(async (text: string) => (await Clipboard.writeHost(text)).ok);
 		if (await copy(target.url)) return ok("clipboard");
 
 		return err(new Error(`could not open ${label(target)}`));

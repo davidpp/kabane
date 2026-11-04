@@ -1,75 +1,104 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
+import type { ClipboardWriteResult } from "@opentui/core";
+import {
+	createTestRenderer,
+	setRendererCapabilities,
+	type TestRendererSetup,
+} from "@opentui/core/testing";
 import { Clipboard } from "./clipboard";
 
-describe("Clipboard.write", () => {
-	it("writes via the native writer and reports the native method", async () => {
-		let captured = "";
-		const native: Clipboard.NativeWriter = async (text) => {
-			captured = text;
-			return true;
-		};
-		const result = await Clipboard.write("the brief", { native });
-		expect(result.ok).toBe(true);
-		if (result.ok) expect(result.value).toBe("native");
-		expect(captured).toBe("the brief");
+const NOT_ATTEMPTED = {
+	status: "not-attempted",
+	capability: "unknown",
+} as const;
+
+describe("Clipboard.outcome", () => {
+	it("reports the host when the pasteboard took it", () => {
+		expect(
+			Clipboard.outcome({
+				host: { status: "written" },
+				terminal: NOT_ATTEMPTED,
+			}),
+		).toEqual({ ok: true, value: "host" });
 	});
 
-	it("falls back to OSC 52 when the native writer fails", async () => {
-		let osc52Text = "";
-		const native: Clipboard.NativeWriter = async () => false;
-		const osc52: Clipboard.Osc52Writer = {
-			isOsc52Supported: () => true,
-			copyToClipboardOSC52: (text) => {
-				osc52Text = text;
-				return true;
-			},
+	it("reports the terminal once OSC 52 went out", () => {
+		const result: ClipboardWriteResult = {
+			host: { status: "unsupported" },
+			terminal: { status: "attempted", capability: "unknown" },
 		};
-		const result = await Clipboard.write("via escape", { native, osc52 });
-		expect(result.ok).toBe(true);
-		if (result.ok) expect(result.value).toBe("osc52");
-		expect(osc52Text).toBe("via escape");
+		expect(Clipboard.outcome(result)).toEqual({ ok: true, value: "terminal" });
 	});
 
-	it("errors when neither native nor OSC 52 can write", async () => {
-		const native: Clipboard.NativeWriter = async () => false;
-		const osc52: Clipboard.Osc52Writer = {
-			isOsc52Supported: () => false,
-			copyToClipboardOSC52: () => false,
-		};
-		const result = await Clipboard.write("nowhere", { native, osc52 });
+	it("names a terminal that refuses OSC 52", () => {
+		const result = Clipboard.outcome({
+			host: { status: "not-attempted" },
+			terminal: { status: "not-attempted", capability: "unsupported" },
+		});
 		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.error.message).toBe("clipboard unavailable");
+		if (!result.ok)
+			expect(result.error.message).toBe("copy not supported by this terminal");
 	});
 
-	it("errors on empty text without invoking any writer", async () => {
-		let called = false;
-		const native: Clipboard.NativeWriter = async () => {
-			called = true;
-			return true;
-		};
-		const result = await Clipboard.write("", { native });
+	it("carries the host's own reason when it failed and nothing else stuck", () => {
+		const result = Clipboard.outcome({
+			host: { status: "failed", error: new Error("no display") },
+			terminal: { status: "local-failure", capability: "unknown" },
+		});
 		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.error.message).toBe("nothing to copy");
-		expect(called).toBe(false);
+		if (!result.ok)
+			expect(result.error.message).toBe("copy failed: no display");
 	});
 });
 
-describe("Clipboard.nativeCommands", () => {
-	it("uses pbcopy on darwin", () => {
-		expect(Clipboard.nativeCommands("darwin")).toEqual([
-			{ command: "pbcopy", args: [] },
-		]);
+// Remote, so `best-available` never reaches the host: a test run leaves this machine's pasteboard alone.
+describe("Clipboard.write on a remote session", () => {
+	let setup: TestRendererSetup | null = null;
+
+	afterEach(async () => {
+		if (!setup) return;
+		await Clipboard.release(setup.renderer);
+		await setup.dispose();
+		setup = null;
 	});
 
-	it("prefers wl-copy on wayland linux, then falls back to xclip/xsel", () => {
-		const cmds = Clipboard.nativeCommands("linux", {
-			WAYLAND_DISPLAY: "wayland-0",
-		} as NodeJS.ProcessEnv);
-		expect(cmds.map((c) => c.command)).toEqual(["wl-copy", "xclip", "xsel"]);
+	const remoteRenderer = async (
+		osc52: "supported" | "unsupported",
+	): Promise<{ renderer: TestRendererSetup["renderer"]; sent: string[] }> => {
+		setup = await createTestRenderer({ width: 20, height: 4 });
+		const { renderer } = setup;
+		setRendererCapabilities(renderer, { remote: true, osc52_support: osc52 });
+		// A test renderer's native session has no terminal phase to write OSC 52 in (it throws
+		// InvalidPhase), so the escape itself is recorded here; the bytes are checked live in a pty.
+		const sent: string[] = [];
+		renderer.copyToClipboardOSC52 = (text) => {
+			sent.push(text);
+			return true;
+		};
+		return { renderer, sent };
+	};
+
+	it("sends OSC 52 only, with NUL dropped", async () => {
+		const { renderer, sent } = await remoteRenderer("supported");
+		const result = await Clipboard.write(renderer, "the\0 brief");
+		expect(result).toEqual({ ok: true, value: "terminal" });
+		expect(sent).toEqual(["the brief"]);
 	});
 
-	it("omits wl-copy without a wayland display", () => {
-		const cmds = Clipboard.nativeCommands("linux", {} as NodeJS.ProcessEnv);
-		expect(cmds.map((c) => c.command)).toEqual(["xclip", "xsel"]);
+	it("says so when the terminal cannot take OSC 52", async () => {
+		const { renderer, sent } = await remoteRenderer("unsupported");
+		const result = await Clipboard.write(renderer, "the brief");
+		expect(result.ok).toBe(false);
+		if (!result.ok)
+			expect(result.error.message).toBe("copy not supported by this terminal");
+		expect(sent).toEqual([]);
+	});
+
+	it("errors on nothing to copy without reaching the terminal", async () => {
+		const { renderer, sent } = await remoteRenderer("supported");
+		const result = await Clipboard.write(renderer, "\0");
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.message).toBe("nothing to copy");
+		expect(sent).toEqual([]);
 	});
 });

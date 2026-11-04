@@ -1,12 +1,20 @@
+/** @jsxImportSource @opentui/react */
 // The theme against what a terminal can report: a near-black and a near-white background derive
-// surfaces and grays close to DESIGN.md's ramps, an unanswered query falls back to them, and no
-// component file carries a hex literal of its own.
+// surfaces and grays close to DESIGN.md's ramps, an unanswered query falls back to them, the open
+// screen follows a switch, and no component file carries a hex literal of its own.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CliRenderer } from "@opentui/core";
+import {
+	type CliRenderer,
+	CliRenderEvents,
+	type RGBA,
+	type TerminalColors,
+} from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
-import { Theme } from "./theme";
+import type { ReactNode } from "react";
+import { pumpUntil, renderTest } from "./testing";
+import { Theme, ThemeProvider, useMarkdownStyle, useTheme } from "./theme";
 
 const channels = (hex: string): number[] =>
 	[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
@@ -111,6 +119,15 @@ describe("derive", () => {
 		expect(
 			Theme.derive({ foreground: null, background: "not a color" }, null),
 		).toBe(Theme.DARK);
+	});
+
+	test("the same colors derive the same object, so a repeated report re-renders nothing", () => {
+		const report = { foreground: "#E6EDF3", background: "#0d1117" };
+		const tokens = Theme.derive(report, null);
+		expect(Theme.derive({ ...report }, "light")).toBe(tokens);
+		expect(Theme.derive({ ...report, background: "#0d1118" }, null)).not.toBe(
+			tokens,
+		);
 	});
 
 	test("a background with no foreground takes the ramp's text for its polarity", () => {
@@ -218,6 +235,124 @@ describe("markdownStyle", () => {
 		expect(elsewhere.getStyle("markup.strong")?.bold).toBe(true);
 		expect(Theme.markdownStyle(renderer, Theme.LIGHT)).toBe(light);
 		expect(Theme.markdownStyle(renderer, Theme.DARK)).not.toBe(dark);
+	});
+});
+
+describe("ThemeProvider", () => {
+	// What a light terminal answers: OSC 10/11 for the defaults, OSC 4 for the ANSI slots.
+	const LIGHT_TERMINAL: TerminalColors = {
+		palette: [
+			"#000000",
+			"#cc0000",
+			"#00aa00",
+			"#aa7700",
+			"#0000cc",
+			"#990099",
+			"#007777",
+			"#cccccc",
+		],
+		defaultForeground: "#24292f",
+		defaultBackground: "#ffffff",
+		cursorColor: null,
+		mouseForeground: null,
+		mouseBackground: null,
+		tekForeground: null,
+		tekBackground: null,
+		highlightBackground: null,
+		highlightForeground: null,
+	};
+
+	const hex = (rgba: RGBA): string =>
+		`#${rgba
+			.toInts()
+			.slice(0, 3)
+			.map((c) => c.toString(16).padStart(2, "0"))
+			.join("")}`;
+
+	const Probe = (): ReactNode => {
+		const theme = useTheme();
+		return (
+			<box style={{ flexDirection: "column" }}>
+				<text fg={theme.text}>{`mode ${theme.mode}`}</text>
+				<markdown content="# Heading" syntaxStyle={useMarkdownStyle()} />
+			</box>
+		);
+	};
+
+	const mount = () =>
+		renderTest(
+			<ThemeProvider initial={Theme.DARK}>
+				<Probe />
+			</ThemeProvider>,
+			{ width: 30, height: 4 },
+		);
+
+	const fgOf = (
+		setup: Awaited<ReturnType<typeof mount>>,
+		text: string,
+	): string | undefined => {
+		const span = setup
+			.captureSpans()
+			.lines.flatMap((line) => line.spans)
+			.find((s) => s.text.includes(text));
+		return span && hex(span.fg);
+	};
+
+	const headingTurns = (
+		setup: Awaited<ReturnType<typeof mount>>,
+		color: string,
+	): Promise<string> =>
+		pumpUntil(
+			setup.renderOnce,
+			() => fgOf(setup, "Heading") ?? "",
+			(fg) => fg === color,
+		);
+
+	test("re-derives on a palette event, and the markdown follows", async () => {
+		const setup = await mount();
+		try {
+			await pumpUntil(setup.renderOnce, setup.captureCharFrame, (f) =>
+				f.includes("Heading"),
+			);
+			expect(fgOf(setup, "Heading")).toBe(Theme.DARK.ink.heading);
+
+			setup.renderer.emit(CliRenderEvents.PALETTE, LIGHT_TERMINAL);
+			await pumpUntil(setup.renderOnce, setup.captureCharFrame, (f) =>
+				f.includes("mode light"),
+			);
+			const light = Theme.derive(
+				{
+					foreground: LIGHT_TERMINAL.defaultForeground,
+					background: LIGHT_TERMINAL.defaultBackground,
+					palette: LIGHT_TERMINAL.palette,
+				},
+				null,
+			);
+			expect(fgOf(setup, "mode light")).toBe(light.text);
+			// The terminal's own magenta, a frame behind the text: the markdown restyles on its next draw.
+			await headingTurns(setup, "#990099");
+		} finally {
+			setup.destroy();
+		}
+	});
+
+	// A test renderer answers no palette query, which is what a terminal that reports a switch but
+	// not its colors looks like.
+	test("a light/dark switch from a terminal that reports no colors lands on that mode's ramp", async () => {
+		const setup = await mount();
+		try {
+			await pumpUntil(setup.renderOnce, setup.captureCharFrame, (f) =>
+				f.includes("mode dark"),
+			);
+			setup.renderer.emit(CliRenderEvents.THEME_MODE, "light");
+			await pumpUntil(setup.renderOnce, setup.captureCharFrame, (f) =>
+				f.includes("mode light"),
+			);
+			expect(fgOf(setup, "mode light")).toBe(Theme.LIGHT.text);
+			await headingTurns(setup, Theme.LIGHT.ink.heading);
+		} finally {
+			setup.destroy();
+		}
 	});
 });
 

@@ -2,9 +2,11 @@
 // hues are fixed, because they carry meaning (a request, work in flight, done, failed). The neutrals
 // and the painted surfaces derive from the terminal's own foreground and background when the
 // terminal reports them, so the board sits on herdr's pane, or on any theme, with no tint of its
-// own. When the terminal says nothing, DESIGN.md's fixed dark or light ramp stands in.
+// own. When the terminal says nothing, DESIGN.md's fixed dark or light ramp stands in. The open
+// screen follows the terminal: a light/dark switch or a new palette re-derives the tokens live.
 import {
 	type CliRenderer,
+	CliRenderEvents,
 	RGBA,
 	type StyleDefinitionInput,
 	SyntaxStyle,
@@ -12,7 +14,14 @@ import {
 	type ThemeMode,
 } from "@opentui/core";
 import { useRenderer } from "@opentui/react";
-import { createContext, useContext, useEffect } from "react";
+import {
+	createContext,
+	createElement,
+	type ReactNode,
+	useContext,
+	useEffect,
+	useState,
+} from "react";
 
 export namespace Theme {
 	export type Tokens = {
@@ -173,11 +182,17 @@ export namespace Theme {
 		};
 	};
 
+	// Every theme derived this session, by the colors it came from. A board sees a handful at most.
+	const derived = new Map<string, Tokens>();
+
 	/**
 	 * The tokens for what the terminal reported. With a background, surfaces and neutrals derive from
 	 * it (and from the reported foreground, else the ramp's text for that polarity), and the ink is
 	 * the terminal's own ANSI slot where it named one. Without a background there is nothing to derive
 	 * from: the fixed ramp for `mode`, and the dark ramp when that is unknown too.
+	 *
+	 * The same colors always derive the same object, as the ramps already are: a repeated report then
+	 * re-renders nothing and keeps its markdown style, which is cached by tokens.
 	 */
 	export const derive = (
 		reported: Reported | null,
@@ -190,8 +205,14 @@ export namespace Theme {
 			parseHex(reported?.foreground ?? null) ??
 			parseHex(ramp(detected).text) ??
 			bg;
+		const ink = inkOf(reported?.palette, ramp(detected).ink);
+		const key = [toHex(bg), toHex(fg), ink.heading, ink.code, ink.link].join(
+			" ",
+		);
+		const known = derived.get(key);
+		if (known) return known;
 		const steps = TEXT_STEPS[detected];
-		return {
+		const tokens: Tokens = {
 			mode: detected,
 			...HUES,
 			defaultFg: DEFAULT_FG,
@@ -204,34 +225,60 @@ export namespace Theme {
 				overlay: toHex(mix(bg, fg, SURFACE_STEPS.overlay)),
 				selected: toHex(mix(bg, fg, SURFACE_STEPS.selected)),
 			},
-			ink: inkOf(reported?.palette, ramp(detected).ink),
+			ink,
 			series: ramp(detected).series,
 		};
+		derived.set(key, tokens);
+		return tokens;
 	};
 
 	// Long enough for a terminal that answers, short enough that one which never answers costs a
 	// blink before the first frame.
 	const PALETTE_TIMEOUT_MS = 300;
 
-	/**
-	 * Ask the terminal for its colors once, before the first render. A terminal (or a multiplexer)
-	 * that does not answer is not an error: it gets a fixed ramp.
-	 */
-	export const detect = async (renderer: CliRenderer): Promise<Tokens> => {
-		const colors: TerminalColors | null = await renderer
+	const reportedOf = (colors: TerminalColors): Reported => ({
+		foreground: colors.defaultForeground,
+		background: colors.defaultBackground,
+		palette: colors.palette,
+	});
+
+	// A terminal (or a multiplexer) that does not answer is not an error: it gets a fixed ramp.
+	const ask = (renderer: CliRenderer): Promise<Reported | null> =>
+		renderer
 			.getPalette({ timeout: PALETTE_TIMEOUT_MS })
-			.then(
-				(result) => result,
-				() => null,
-			);
-		return derive(
-			colors && {
-				foreground: colors.defaultForeground,
-				background: colors.defaultBackground,
-				palette: colors.palette,
-			},
-			renderer.themeMode,
-		);
+			.then(reportedOf, () => null);
+
+	/** Ask the terminal for its colors once, before the first render. */
+	export const detect = async (renderer: CliRenderer): Promise<Tokens> =>
+		derive(await ask(renderer), renderer.themeMode);
+
+	/**
+	 * Follow the terminal's colors from now on, handing every re-derived theme to `onChange`, until
+	 * the returned function is called. Listening to `palette` is also what has OpenTUI query the
+	 * colors again when the terminal reports a light/dark switch (DEC 2031); a terminal that answers
+	 * delivers them there. The switch itself asks once more, so one that never answers still lands
+	 * on the ramp for its new mode; one that does derives the same tokens twice, and gets the same
+	 * object.
+	 */
+	export const follow = (
+		renderer: CliRenderer,
+		onChange: (tokens: Tokens) => void,
+	): (() => void) => {
+		let following = true;
+		const onPalette = (colors: TerminalColors): void =>
+			onChange(derive(reportedOf(colors), renderer.themeMode));
+		const onMode = (mode: ThemeMode): void => {
+			void ask(renderer).then((reported) => {
+				if (following) onChange(derive(reported, mode));
+			});
+		};
+		renderer.on(CliRenderEvents.PALETTE, onPalette);
+		renderer.on(CliRenderEvents.THEME_MODE, onMode);
+		return () => {
+			following = false;
+			renderer.off(CliRenderEvents.PALETTE, onPalette);
+			renderer.off(CliRenderEvents.THEME_MODE, onMode);
+		};
 	};
 
 	// A SyntaxStyle is a native handle owned by one renderer's scene, and a scene must not draw with
@@ -314,7 +361,23 @@ export namespace Theme {
 // Render-only tests mount without a provider and get the dark ramp: the board as it always looked.
 const ThemeContext = createContext<Theme.Tokens>(Theme.DARK);
 
-export const ThemeProvider = ThemeContext.Provider;
+/**
+ * The theme for everything inside, starting from `initial` (what `Theme.detect` found before the
+ * first frame) and following the terminal from then on: flip the system between light and dark and
+ * the open screen recolours, markdown included, since `useMarkdownStyle` rebuilds on new tokens.
+ */
+export const ThemeProvider = ({
+	initial,
+	children,
+}: {
+	initial: Theme.Tokens;
+	children: ReactNode;
+}): ReactNode => {
+	const renderer = useRenderer();
+	const [tokens, setTokens] = useState(initial);
+	useEffect(() => Theme.follow(renderer, setTokens), [renderer]);
+	return createElement(ThemeContext.Provider, { value: tokens }, children);
+};
 
 export const useTheme = (): Theme.Tokens => useContext(ThemeContext);
 

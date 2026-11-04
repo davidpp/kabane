@@ -281,7 +281,7 @@ export const App = ({
 				setNotice({ text: brief.error.message, tone: "error" });
 				return;
 			}
-			const wrote = await Clipboard.write(brief.value, { osc52: renderer });
+			const wrote = await Clipboard.write(renderer, brief.value);
 			setNotice(
 				wrote.ok
 					? { text: "copied brief to clipboard", tone: "success" }
@@ -312,8 +312,7 @@ export const App = ({
 				url: link.url,
 			};
 			const opened = await Launcher.open(target, {
-				copy: async (text) =>
-					(await Clipboard.write(text, { osc52: renderer })).ok,
+				copy: async (text) => (await Clipboard.write(renderer, text)).ok,
 			});
 			const name = Launcher.label(target);
 			if (!opened.ok) {
