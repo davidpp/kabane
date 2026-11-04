@@ -47,6 +47,7 @@ describe("Dispatch.Handle.inject", () => {
 			},
 			{
 				event: (e) => events.push(e),
+				opened: () => {},
 				usage: () => {},
 				continueTurn: () => false,
 				permission: async () => err(new Error("no harness runs in this test")),

@@ -56,10 +56,14 @@ export namespace Dispatch {
 		sessionId: string;
 		lane: string;
 		work: Work;
+		/** The attempt a dead runner cut short, which this claim continues. */
+		interrupted?: Brief.Interrupted;
 	};
 
 	export type Hooks = {
 		event: (event: RunStore.EventDraft) => void;
+		/** The harness session is open: its id, kept so a runner that dies can resume it. */
+		opened: (acpSessionId: string) => void;
 		usage: (usage: Budget.Usage) => void;
 		/** A turn ended with active-owned work. True spends one continuation and nudges. */
 		continueTurn: () => boolean;
@@ -321,8 +325,9 @@ export namespace Dispatch {
 	};
 
 	/**
-	 * Launch the claim's harness on the loop's profile and open its session. `connected` hears of
-	 * the process as soon as it is up, so a session that fails to open still has it closed.
+	 * Launch the claim's harness on the loop's profile and open its session, resuming an
+	 * interrupted one where it can. `connected` hears of the process as soon as it is up, so a
+	 * session that fails to open still has it closed.
 	 */
 	const open = async (
 		claim: Claim,
@@ -332,7 +337,7 @@ export namespace Dispatch {
 			permission: AcpClient.OnPermission;
 			connected: (connection: AcpClient.Connection) => void;
 		},
-	): Promise<Result<AcpClient.Session>> => {
+	): Promise<Result<Opened>> => {
 		const cli = Harnesses.installedCli(claim.harness);
 		if (!cli.ok) return cli;
 		const profile = loopProfile(env.runId, cli.value);
@@ -345,26 +350,63 @@ export namespace Dispatch {
 		});
 		if (!spawned.ok) return spawned;
 		on.connected(spawned.value);
-		const started = await AcpClient.newSession(spawned.value, {
-			cwd: env.cwd,
-			mcpServers: [mcpServer(env, claim.harness)],
-			...(env.mode ? { mode: env.mode } : {}),
-		});
+		const started = await reopen(claim, env, spawned.value, sink);
 		if (!started.ok) return started;
 		// What the harness says it runs, which is the evidence the user's default was used.
-		const model = started.value.active.newSessionResponse.configOptions?.find(
+		const model = started.value.session.configOptions.find(
 			(option) => option.category === "model" && option.type === "select",
 		);
 		if (model && model.type === "select")
 			sink.emit("model", String(model.currentValue));
 		// Which mode decides what gets asked: the harness's auto mode, or why not.
-		const { mode } = started.value;
+		const { mode } = started.value.session;
 		sink.emit(
 			"mode",
 			mode.note,
 			mode.current ? { mode: mode.current } : undefined,
 		);
 		return ok(started.value);
+	};
+
+	type Opened = { session: AcpClient.Session; resumed: boolean };
+
+	/**
+	 * The interrupted attempt's own harness session, resumed, when it recorded one and the harness
+	 * can resume it; else a new session.
+	 */
+	const reopen = async (
+		claim: Claim,
+		env: Env,
+		connection: AcpClient.Connection,
+		sink: Sink,
+	): Promise<Result<Opened>> => {
+		const options = {
+			cwd: env.cwd,
+			mcpServers: [mcpServer(env, claim.harness)],
+			...(env.mode ? { mode: env.mode } : {}),
+		};
+		const previous = claim.interrupted;
+		if (previous?.acpSessionId === undefined) {
+			if (previous)
+				sink.emit(
+					"warning",
+					`${previous.lane} recorded no ${claim.harness} session to resume: a new session takes over`,
+				);
+			const started = await AcpClient.newSession(connection, options);
+			return started.ok
+				? ok({ session: started.value, resumed: false })
+				: started;
+		}
+		const id = previous.acpSessionId;
+		const reopened = await AcpClient.resumeOrStart(connection, id, options);
+		if (!reopened.ok) return reopened;
+		sink.emit(
+			reopened.value.resumed ? "session_resumed" : "warning",
+			reopened.value.resumed
+				? `${claim.harness} session ${id} of ${previous.lane}, resumed`
+				: `${claim.harness} session ${id} of ${previous.lane} not resumed (${reopened.value.why}): a new session takes over`,
+		);
+		return ok(reopened.value);
 	};
 
 	type Next =
@@ -476,7 +518,10 @@ export namespace Dispatch {
 		return { kind: "prompt", prompt: Brief.fixerContinuation(left.value) };
 	};
 
-	/** The claim's first prompt: its task's assembled brief, under the lens's or the run's words. */
+	/**
+	 * The claim's first prompt in a new session: its task's assembled brief, under the lens's or the
+	 * run's words and what an interrupted attempt before it left.
+	 */
 	const opening = async (claim: Claim, env: Env): Promise<Result<string>> => {
 		const assembled = await Planner.assembleContext(
 			env.basePath,
@@ -488,6 +533,7 @@ export namespace Dispatch {
 			runId: env.runId,
 			parent: claim.parent,
 			task: claim.task,
+			...(claim.interrupted ? { interrupted: claim.interrupted } : {}),
 		};
 		const { work } = claim;
 		switch (work.kind) {
@@ -585,12 +631,18 @@ export namespace Dispatch {
 				},
 			});
 			if (!opened.ok) return ended("error", opened.error.message);
-			session = opened.value;
+			const current = opened.value.session;
+			session = current;
+			hooks.opened(current.id);
 			sink.emit("session_start", started(claim));
-			let text = first.value;
+			// A resumed session has its brief already; it hears only that its last turn was cut.
+			let text =
+				opened.value.resumed && claim.interrupted
+					? Brief.resumed(claim.interrupted)
+					: first.value;
 			for (;;) {
 				if (cancelled) return ended("cancelled");
-				const result = await steering.turn(opened.value, text);
+				const result = await steering.turn(current, text);
 				if (result.kind === "error") return ended("error", result.message);
 				if (cancelled || result.reason === "cancelled")
 					return ended("cancelled");

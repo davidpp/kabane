@@ -2,7 +2,7 @@
 // gate results a settle records.
 import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner, type Task } from "@cabane/core";
@@ -419,5 +419,119 @@ describe("Claims.claim", () => {
 		expect(ctx.run.claims.map((c) => c.harness)).toEqual(["codex"]);
 		const task = await Planner.getTask(home, child.id);
 		expect(task.ok && task.value?.assignee).toBe("codex");
+	});
+});
+
+describe("Claims.interruption", () => {
+	// A real repository: one commit from before the attempt, one it made, and a file it left.
+	const repo = (): string => {
+		const dir = join(home, "project");
+		mkdirSync(dir);
+		const git = (args: string[], date?: string) => {
+			const ran = Bun.spawnSync(
+				[
+					"git",
+					"-C",
+					dir,
+					"-c",
+					"user.name=t",
+					"-c",
+					"user.email=t@example.com",
+					"-c",
+					"commit.gpgsign=false",
+					"-c",
+					"core.hooksPath=/dev/null",
+					...args,
+				],
+				{
+					env: {
+						...process.env,
+						...(date ? { GIT_COMMITTER_DATE: date } : {}),
+					},
+				},
+			);
+			if (ran.exitCode !== 0) throw new Error(ran.stderr.toString());
+		};
+		git(["init", "-q"]);
+		git(
+			["commit", "-q", "--allow-empty", "-m", "before"],
+			"2020-01-01T00:00:00Z",
+		);
+		git(["commit", "-q", "--allow-empty", "-m", "during"]);
+		writeFileSync(join(dir, "hello.txt"), "hi\n");
+		return dir;
+	};
+
+	const runOn = (parent: Task, claims: RunStore.Claim[]) => {
+		const config = LoopConfig.Schema.safeParse({});
+		if (!config.success) throw config.error;
+		return ctxFor({
+			version: 1,
+			id: "run-1",
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: repo(),
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims,
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		});
+	};
+
+	const log = async (taskId: string, uri: string, note?: string) => {
+		const logged = await Planner.addWorkLog(home, {
+			taskId,
+			refs: [{ uri, label: "wip" }],
+			...(note ? { note } : {}),
+		});
+		if (!logged.ok) throw logged.error;
+	};
+
+	it("is what an interrupted attempt left: its own logs, its commits and the tree", async () => {
+		const parent = await add("parent");
+		const child = await add("child", { parentTaskId: parent.id });
+		await log(child.id, "file:older.txt");
+		await Bun.sleep(5);
+		const sessionId = await sessionOn(child);
+		const previous: RunStore.Claim = {
+			...claimOf(child, sessionId),
+			acpSessionId: "acp-1",
+			endedAt: new Date().toISOString(),
+			outcome: "interrupted",
+		};
+		await Bun.sleep(5);
+		// The loop's own record of the session is not the attempt's work.
+		await log(child.id, `session:${sessionId}`);
+		await log(child.id, "file:hello.txt", "started on it");
+		const ctx = runOn(parent, [previous]);
+
+		const interrupted = await Claims.interruption(ctx, previous);
+
+		expect(interrupted).toMatchObject({
+			lane: previous.lane,
+			startedAt: previous.startedAt,
+			acpSessionId: "acp-1",
+			logged: ["file:hello.txt (wip): started on it"],
+			status: "?? hello.txt",
+		});
+		expect(interrupted?.commits).toMatch(/^[0-9a-f]+ during$/);
+	});
+
+	it("is nothing after an attempt that ended on its own, or when there was none", async () => {
+		const parent = await add("parent");
+		const child = await add("child", { parentTaskId: parent.id });
+		const ended: RunStore.Claim = {
+			...claimOf(child, await sessionOn(child)),
+			endedAt: new Date().toISOString(),
+			outcome: "error",
+		};
+		const ctx = runOn(parent, [ended]);
+		expect(await Claims.interruption(ctx, ended)).toBeUndefined();
+		expect(await Claims.interruption(ctx, undefined)).toBeUndefined();
 	});
 });

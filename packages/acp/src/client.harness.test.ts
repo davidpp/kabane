@@ -34,7 +34,7 @@ describe("AcpClient session modes on the real adapters", () => {
 						mcpServers: [],
 					});
 					if (!session.ok) throw session.error;
-					const opened = session.value.active.modes;
+					const opened = session.value.modes;
 					expect(opened?.availableModes.map((m) => m.id)).toContain(ids?.auto);
 					// A mode the user's own settings chose other than the manual one is kept.
 					const expected =

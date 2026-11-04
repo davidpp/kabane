@@ -61,6 +61,8 @@ export namespace RunStore {
 		lane: z.string(),
 		/** The core `agent_session` this claim's ACP session is mirrored into. */
 		sessionId: z.string(),
+		/** The harness's own ACP session id, once it opened: what a resumed run reopens. */
+		acpSessionId: z.string().optional(),
 		startedAt: z.string(),
 		endedAt: z.string().optional(),
 		outcome: z.enum(OUTCOMES).optional(),

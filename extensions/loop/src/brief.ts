@@ -15,6 +15,24 @@ export namespace Brief {
 		parent: Task;
 		task: Task;
 		retry?: Gates.Result;
+		interrupted?: Interrupted;
+	};
+
+	/**
+	 * An attempt the runner's death cut short, as the tracker and the tree show it now: what the
+	 * attempt that takes over is told, so it continues rather than restarts.
+	 */
+	export type Interrupted = {
+		lane: string;
+		startedAt: string;
+		/** The harness session it ran in; absent on a claim recorded before it was kept. */
+		acpSessionId?: string;
+		/** Its task's work-log entries since it started, one line each. */
+		logged: readonly string[];
+		/** `git log --oneline` since it started; empty when it made no commit. */
+		commits: string;
+		/** `git status --short` now; empty when the tree is clean. */
+		status: string;
 	};
 
 	const label = (task: Task): string => task.shortId ?? task.id;
@@ -39,11 +57,44 @@ export namespace Brief {
 			`\`\`\`\n${gate.tail}\n\`\`\``,
 		].join("\n\n");
 
-	/** The opening prompt: the run's instructions, a failed gate to fix, then the issue's own brief. */
+	const fence = (text: string): string => `\`\`\`\n${text.trimEnd()}\n\`\`\``;
+
+	const left = (attempt: Interrupted): string =>
+		[
+			attempt.logged.length > 0
+				? `What it logged in the tracker:\n${attempt.logged.map((line) => `- ${line}`).join("\n")}`
+				: "It logged nothing in the tracker.",
+			attempt.commits
+				? `Commits since it started:\n${fence(attempt.commits)}`
+				: "It made no commit.",
+			attempt.status
+				? `Uncommitted changes in the tree now (\`git status --short\`):\n${fence(attempt.status)}`
+				: "The tree has no uncommitted changes.",
+		].join("\n\n");
+
+	// For a new session taking over: the conversation is gone, the work may not be.
+	const takeover = (attempt: Interrupted): string =>
+		[
+			`This work was started before, by attempt ${attempt.lane} (from ${attempt.startedAt}), which was interrupted: the kabane loop runner exited while its session was open, and that session could not be resumed. Its work may already be in the tree. Continue from what it left rather than starting over: look at what is there before you redo anything, and do not file or log again what it already did.`,
+			left(attempt),
+		].join("\n\n");
+
+	/** The first prompt of an interrupted session its harness resumed: its last turn was cut short. */
+	export const resumed = (attempt: Interrupted): string =>
+		[
+			`The kabane loop runner exited while your last turn was running, and has restarted. This is the same session, resumed, so your instructions and everything said so far still hold. That turn was cut short: its last tool call may not have finished, and if it shows as rejected or cancelled, the restart cut it, nobody refused it. Check the state below, then continue where you left off, retrying that call if it is still needed.`,
+			left(attempt),
+		].join("\n\n");
+
+	/**
+	 * The opening prompt: the run's instructions, a failed gate to fix, the attempt it takes over,
+	 * then the issue's own brief.
+	 */
 	export const opening = (subject: Subject, assembled: string): string =>
 		[
 			instructions(subject),
 			...(subject.retry ? [retried(subject.task, subject.retry)] : []),
+			...(subject.interrupted ? [takeover(subject.interrupted)] : []),
 			assembled,
 		].join("\n\n---\n\n");
 
@@ -53,6 +104,7 @@ export namespace Brief {
 		lens: string;
 		prompt: string;
 		gates: readonly string[];
+		interrupted?: Interrupted;
 	};
 
 	// What has checked the work before the lens sees it. A run with no gates has run nothing, and
@@ -72,9 +124,14 @@ export namespace Brief {
 			"When everything is filed, end your turn with one line: how many findings you filed at each severity.",
 		].join("\n\n");
 
-	/** A lens's prompt: how to file, the lens itself, then the parent's own brief. */
+	/** A lens's prompt: how to file, the review it takes over, the lens itself, then the parent's own brief. */
 	export const lens = (subject: Lens, assembled: string): string =>
-		[filing(subject), subject.prompt.trim(), assembled].join("\n\n---\n\n");
+		[
+			filing(subject),
+			...(subject.interrupted ? [takeover(subject.interrupted)] : []),
+			subject.prompt.trim(),
+			assembled,
+		].join("\n\n---\n\n");
 
 	type Fixer = {
 		runId: string;
@@ -82,6 +139,7 @@ export namespace Brief {
 		/** In the order to work them. */
 		findings: readonly Task[];
 		gates: readonly string[];
+		interrupted?: Interrupted;
 	};
 
 	const listed = (finding: Task): string =>
@@ -93,9 +151,12 @@ export namespace Brief {
 			? `When you end, the run's gates (${gates.map((g) => `\`${g}\``).join(", ")}) run on the result: leave them passing.`
 			: "No gates are configured for this run, so nothing runs the project's checks on your result: run the relevant ones yourself before you close a finding.";
 
-	/** The fixer's prompt: its findings and how to settle each, then the parent's own brief. */
+	/**
+	 * The fixer's prompt: its findings and how to settle each, the attempt it takes over, then the
+	 * parent's own brief.
+	 */
 	export const fixer = (
-		{ runId, parent, findings, gates }: Fixer,
+		{ runId, parent, findings, gates, interrupted }: Fixer,
 		assembled: string,
 	): string =>
 		[
@@ -106,6 +167,7 @@ export namespace Brief {
 				`Do not file findings. If fixing one turns up other work, add it with kabane_add as a child of ${label(parent)} with kind "issue" instead of doing it.`,
 				"When every finding is closed or waiting, end your turn with one line per finding: fixed, or why it was left.",
 			].join("\n\n"),
+			...(interrupted ? [takeover(interrupted)] : []),
 			assembled,
 		].join("\n\n---\n\n");
 

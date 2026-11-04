@@ -3,6 +3,7 @@
 // file, and every SDK call that can reject comes back as a Result.
 import {
 	type ActiveSession,
+	type ActiveSessionMessage,
 	type AgentApp,
 	type ClientConnection,
 	type ClientContext,
@@ -13,6 +14,7 @@ import {
 	ndJsonStream,
 	PROTOCOL_VERSION,
 	type RequestPermissionRequest,
+	type SessionConfigOption,
 	type SessionModeState,
 	type SessionUpdate,
 	type Stream,
@@ -85,6 +87,11 @@ export namespace AcpClient {
 		// The harness advertised `_session/steering` (`_meta.steering.supported` on initialize),
 		// so `steer` can put text into a turn while it runs.
 		steering: boolean;
+		// The harness advertised `sessionCapabilities.resume` on initialize, so `resumeSession`
+		// can reopen one of its sessions by id.
+		resume: boolean;
+		// Updates for the sessions `resumeSession` reopened, by session id.
+		resumed: Map<string, UpdateQueue>;
 		// Resolves once the transport is gone; for a spawned harness, with its exit code.
 		closed: Promise<number | null>;
 		// What the harness wrote to stderr so far, for error reporting only.
@@ -96,8 +103,21 @@ export namespace AcpClient {
 		connection: Connection;
 		id: string;
 		turn: TurnState;
-		active: ActiveSession;
+		active: Turns;
 		mode: SessionMode;
+		/** The modes the harness advertised on opening, before any switch. */
+		modes: SessionModeState | null | undefined;
+		/** The session's config options as the harness sent them on opening (its model among them). */
+		configOptions: SessionConfigOption[];
+	};
+
+	/**
+	 * What a session's turns run through: the SDK's `ActiveSession` for one `newSession` opened,
+	 * or `resumedTurns` for one `resumeSession` reopened, since the SDK routes updates only to the
+	 * sessions it opened with `session/new`.
+	 */
+	type Turns = Pick<ActiveSession, "nextUpdate"> & {
+		prompt: (blocks: ContentBlock[]) => Promise<unknown>;
 	};
 
 	export type SessionMode = {
@@ -124,6 +144,13 @@ export namespace AcpClient {
 		overrides?: Harnesses.Overrides;
 		// The board copilot's profile when absent.
 		profile?: Harnesses.Profile;
+	};
+
+	export type ResumeOptions = {
+		cwd: string;
+		mcpServers: StdioServer[];
+		// The harness's own auto mode when absent.
+		mode?: Harnesses.Mode;
 	};
 
 	export type NewSessionOptions = {
@@ -218,10 +245,18 @@ export namespace AcpClient {
 		options: ConnectOptions,
 		process: Process = NO_PROCESS,
 	): Promise<Result<Connection>> => {
-		const app = clientApp({ name: "kabane" }).onRequest(
-			methods.client.session.requestPermission,
-			async (c) => answerPermission(options.onPermission, c.params),
-		);
+		const resumed = new Map<string, UpdateQueue>();
+		const app = clientApp({ name: "kabane" })
+			.onRequest(methods.client.session.requestPermission, async (c) =>
+				answerPermission(options.onPermission, c.params),
+			)
+			.onNotification(methods.client.session.update, (c) => {
+				resumed.get(c.params.sessionId)?.push({
+					kind: "session_update",
+					notification: c.params,
+					update: c.params.update,
+				});
+			});
 		// Identical branches: `connect` is overloaded per transport and needs the narrowing.
 		const opened = await tryCatch(async () =>
 			isAgentApp(transport) ? app.connect(transport) : app.connect(transport),
@@ -232,6 +267,8 @@ export namespace AcpClient {
 			harness,
 			agent: raw.agent,
 			steering: false,
+			resume: false,
+			resumed,
 			closed: process.closed,
 			stderr: process.stderr,
 			close: () => {
@@ -252,6 +289,13 @@ export namespace AcpClient {
 			return err(await startFailure(handshake.error, connection, process));
 		}
 		connection.steering = advertisesSteering(handshake.value._meta);
+		connection.resume = Boolean(
+			handshake.value.agentCapabilities?.sessionCapabilities?.resume,
+		);
+		void raw.closed.then(() => {
+			for (const queue of resumed.values())
+				queue.close(new Error("ACP connection closed"));
+		});
 		return ok(connection);
 	};
 
@@ -339,11 +383,159 @@ export namespace AcpClient {
 			turn: { active: false, dispatched: false, cancelled: false },
 			mode: await selectMode(
 				connection,
-				active,
+				active.sessionId,
 				planMode(connection.harness, options.mode ?? "auto", active.modes),
 			),
+			modes: active.modes,
+			configOptions: active.newSessionResponse.configOptions ?? [],
 		});
 	};
+
+	/**
+	 * Reopen session `id` through `session/resume`, which restores its conversation without
+	 * replaying it. An error for a harness that does not advertise resume, or when it refuses
+	 * (an id it no longer has).
+	 */
+	export const resumeSession = async (
+		connection: Connection,
+		id: string,
+		options: ResumeOptions,
+	): Promise<Result<Session>> => {
+		if (!connection.resume)
+			return err(
+				new Error(`${connection.harness} does not advertise session/resume`),
+			);
+		// Listening before the request: the harness may send updates while it answers.
+		const queue = updateQueue();
+		connection.resumed.set(id, queue);
+		const resumed = await tryCatch(() =>
+			connection.agent.request(methods.agent.session.resume, {
+				sessionId: id,
+				cwd: options.cwd,
+				mcpServers: options.mcpServers.map(toMcpServer),
+			}),
+		);
+		if (!resumed.ok) {
+			connection.resumed.delete(id);
+			return err(withStderr(resumed.error, connection));
+		}
+		return ok({
+			connection,
+			id,
+			active: resumedTurns(connection, id, queue),
+			turn: { active: false, dispatched: false, cancelled: false },
+			mode: await selectMode(
+				connection,
+				id,
+				planMode(
+					connection.harness,
+					options.mode ?? "auto",
+					resumed.value.modes,
+				),
+			),
+			modes: resumed.value.modes,
+			configOptions: resumed.value.configOptions ?? [],
+		});
+	};
+
+	export type Reopened =
+		| { session: Session; resumed: true }
+		/** `why`: what kept session `id` from being resumed. */
+		| { session: Session; resumed: false; why: string };
+
+	/**
+	 * Session `id` resumed where the harness can; else, or when it refuses the id, a new session
+	 * that says why. An error only when no session opens at all.
+	 */
+	export const resumeOrStart = async (
+		connection: Connection,
+		id: string,
+		options: ResumeOptions,
+	): Promise<Result<Reopened>> => {
+		const resumed = await resumeSession(connection, id, options);
+		if (resumed.ok) return ok({ session: resumed.value, resumed: true });
+		const started = await newSession(connection, options);
+		return started.ok
+			? ok({
+					session: started.value,
+					resumed: false,
+					// The harness's refusal, not the stderr `withStderr` puts above it.
+					why: resumed.error.message.split("\n").at(-1) ?? "",
+				})
+			: started;
+	};
+
+	/** A resumed session's updates in arrival order, each read once. */
+	type UpdateQueue = {
+		push: (message: ActiveSessionMessage) => void;
+		/** The next read rejects with `error`; the ones after it read on. */
+		reject: (error: Error) => void;
+		/** Every read from now on rejects with `error`. */
+		close: (error: Error) => void;
+		next: () => Promise<ActiveSessionMessage>;
+	};
+
+	type Settle = {
+		resolve: (message: ActiveSessionMessage) => void;
+		reject: (error: Error) => void;
+	};
+
+	const updateQueue = (): UpdateQueue => {
+		const items: (ActiveSessionMessage | Error)[] = [];
+		const readers: Settle[] = [];
+		let closed: Error | undefined;
+		const deliver = (item: ActiveSessionMessage | Error): void => {
+			const reader = readers.shift();
+			if (!reader) {
+				items.push(item);
+				return;
+			}
+			if (item instanceof Error) reader.reject(item);
+			else reader.resolve(item);
+		};
+		return {
+			push: deliver,
+			reject: deliver,
+			close: (error) => {
+				closed = error;
+				for (const reader of readers.splice(0)) reader.reject(error);
+			},
+			next: () =>
+				new Promise((resolve, reject) => {
+					const item = items.shift();
+					if (item instanceof Error) reject(item);
+					else if (item) resolve(item);
+					else if (closed) reject(closed);
+					else readers.push({ resolve, reject });
+				}),
+		};
+	};
+
+	// What `ActiveSession.prompt` does, over the session's own queue: the turn's end is queued as
+	// its `stop` message, behind every update the harness sent during it.
+	const resumedTurns = (
+		connection: Connection,
+		sessionId: string,
+		queue: UpdateQueue,
+	): Turns => ({
+		prompt: (blocks) => {
+			const sent = connection.agent.request(methods.agent.session.prompt, {
+				sessionId,
+				prompt: blocks,
+			});
+			sent.then(
+				(response) =>
+					queue.push({
+						kind: "stop",
+						response,
+						stopReason: response.stopReason,
+					}),
+				(error: unknown) => queue.reject(toError(error)),
+			);
+			return sent;
+		},
+		nextUpdate: queue.next,
+	});
 
 	type ModePlan = { switchTo: string; from: string } | SessionMode;
 
@@ -386,13 +578,13 @@ export namespace AcpClient {
 	// still asks for whatever it would, and every request still reaches the human.
 	const selectMode = async (
 		connection: Connection,
-		active: ActiveSession,
+		sessionId: string,
 		plan: ModePlan,
 	): Promise<SessionMode> => {
 		if (!("switchTo" in plan)) return plan;
 		const set = await tryCatch(() =>
 			connection.agent.request(methods.agent.session.setMode, {
-				sessionId: active.sessionId,
+				sessionId,
 				modeId: plan.switchTo,
 			}),
 		);
