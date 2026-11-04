@@ -20,6 +20,7 @@ import type { ReactNode, RefObject } from "react";
 import type { BoardContext } from "./context";
 import { CopilotLog } from "./copilot-log";
 import { elapsed } from "./elapsed";
+import { ElicitationBlock, elicitationSegments } from "./elicitation-block";
 import { copilotIndicatorFg } from "./footer";
 import { BoardNav } from "./nav";
 import {
@@ -134,9 +135,13 @@ export type CopilotPaneProps = {
 	// A session question on the view holds the answer keys (BoardNav.copilotOutranked): the row
 	// names the copilot's request and how to reach it instead of offering keys that go elsewhere.
 	outranked?: boolean;
+	// The harness's oldest request has the keys (BoardNav.askInHand), so a form's input may take them.
+	askInHand?: boolean;
 	textareaRef: RefObject<TextareaRenderable | null>;
 	onSubmit: () => void;
 	onContentChange: () => void;
+	// `enter` in a form's input, with what it holds.
+	onFormSubmit?: (text: string) => void;
 };
 
 export const CopilotPane = ({
@@ -147,9 +152,11 @@ export const CopilotPane = ({
 	spinnerFrame,
 	detailShownElsewhere = false,
 	outranked = false,
+	askInHand = false,
 	textareaRef,
 	onSubmit,
 	onContentChange,
+	onFormSubmit = () => {},
 }: CopilotPaneProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
@@ -162,6 +169,23 @@ export const CopilotPane = ({
 	const running = copilot.turn === "running";
 	const plan = log?.current.plan ?? [];
 	const progress = plan.length > 0 ? planProgress(plan) : null;
+	const [asking, ...queued] = copilot.asks;
+	const title = (): Segments.Segment[] =>
+		titleSegments(paneTitle(copilot, chip, log, progress), theme);
+
+	// A form is the one request no other surface draws: it opens the panel, focused or not, over the
+	// transcript too, in place of the input it would otherwise compete with for the keys. Outranked,
+	// the one row names it and the key that reaches it.
+	if (asking?.type === "elicitation" && !outranked)
+		return (
+			<FormPanel
+				ask={asking}
+				waiting={queued.length}
+				title={title()}
+				inHand={askInHand}
+				onSubmit={onFormSubmit}
+			/>
+		);
 
 	// Nothing left to add: the transcript is showing all of it.
 	if (!focused && detailShownElsewhere) return null;
@@ -188,7 +212,6 @@ export const CopilotPane = ({
 	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
 	// A blocked harness outranks everything else the panel could say: the turn is not going anywhere
 	// until it is answered, so the plan and the palette wait.
-	const [asking, ...queued] = copilot.permissions;
 	const showChoice = asking !== undefined && !detailShownElsewhere;
 	// A shortcut palette replaces the plan while one is being picked: both at once is noise, and the
 	// human typing `/` is not watching the todo.
@@ -197,18 +220,6 @@ export const CopilotPane = ({
 		!showChoice && !showPalette && !detailShownElsewhere && plan.length > 0;
 	const showTail =
 		!showChoice && !showPalette && !detailShownElsewhere && tail.length > 0;
-	const title = titleSegments(
-		{
-			harness: harnessOf(copilot.actor),
-			chip,
-			progress,
-			state: turnState(copilot.turn),
-			elapsed: log
-				? elapsed(log.current.card.startedAt, log.current.card.finishedAt)
-				: null,
-		},
-		theme,
-	);
 	const nameCols = paletteNameCols(matches);
 
 	return (
@@ -220,10 +231,10 @@ export const CopilotPane = ({
 			}}
 		>
 			<box style={{ flexDirection: "column", paddingLeft: 1, paddingRight: 1 }}>
-				<text bg={paneBg}>{Segments.spans(Segments.fit(title, inner))}</text>
-				{showChoice && asking ? (
+				<text bg={paneBg}>{Segments.spans(Segments.fit(title(), inner))}</text>
+				{showChoice && asking?.type === "permission" ? (
 					<PermissionBlock
-						request={asking}
+						request={asking.request}
 						waiting={queued.length}
 						width={inner - 4}
 						bg={paneBg}
@@ -267,6 +278,64 @@ export const CopilotPane = ({
 				rows={fieldRows(copilot.text, height)}
 				onSubmit={onSubmit}
 				onContentChange={onContentChange}
+			/>
+		</box>
+	);
+};
+
+// What the panel's title row says about the turn in hand.
+const paneTitle = (
+	copilot: BoardNav.CopilotState,
+	chip: string,
+	log: CopilotLog.Log | null,
+	progress: string | null,
+): Parameters<typeof titleSegments>[0] => ({
+	harness: harnessOf(copilot.actor),
+	chip,
+	progress,
+	state: turnState(copilot.turn),
+	elapsed: log
+		? elapsed(log.current.card.startedAt, log.current.card.finishedAt)
+		: null,
+});
+
+// The panel a form opens: the pane's title row over the form, and nothing to type a prompt into.
+const FormPanel = ({
+	ask,
+	waiting,
+	title,
+	inHand,
+	onSubmit,
+}: {
+	ask: Extract<BoardNav.CopilotAsk, { type: "elicitation" }>;
+	waiting: number;
+	title: Segments.Segment[];
+	inHand: boolean;
+	onSubmit: (text: string) => void;
+}): ReactNode => {
+	const { width } = useTerminalDimensions();
+	const theme = useTheme();
+	const paneBg = theme.surface.raised;
+	const inner = width - 2;
+	return (
+		<box
+			style={{
+				flexShrink: 0,
+				flexDirection: "column",
+				backgroundColor: paneBg,
+				paddingLeft: 1,
+				paddingRight: 1,
+			}}
+		>
+			<text bg={paneBg}>{Segments.spans(Segments.fit(title, inner))}</text>
+			<ElicitationBlock
+				request={ask.request}
+				draft={ask.draft}
+				waiting={waiting}
+				width={inner - 4}
+				bg={paneBg}
+				inHand={inHand}
+				onSubmit={onSubmit}
 			/>
 		</box>
 	);
@@ -357,14 +426,25 @@ export const collapsedSegments = (
 	theme: Theme.Tokens,
 	outranked = false,
 ): Segments.Segment[] => {
-	const [asking, ...queued] = copilot.permissions;
+	const [asking, ...queued] = copilot.asks;
+	if (asking?.type === "permission")
+		return outranked
+			? outrankedSegments(
+					asking.request.title,
+					theme,
+					theme.text,
+					queued.length,
+				)
+			: permissionSegments(asking.request, theme, theme.text, queued.length);
 	if (asking)
-		return (outranked ? outrankedSegments : permissionSegments)(
-			asking,
-			theme,
-			theme.text,
-			queued.length,
-		);
+		return outranked
+			? outrankedSegments(
+					asking.request.message,
+					theme,
+					theme.text,
+					queued.length,
+				)
+			: elicitationSegments(asking.request, theme, theme.text, queued.length);
 	const transcript: Segments.Segment[] = log
 		? [
 				{ text: " · ", fg: theme.muted },

@@ -46,7 +46,7 @@ export namespace Keymap {
 		pinned?: boolean;
 		/** The card on screen has lanes to walk. */
 		lanes?: boolean;
-		/** The question on screen offers no answers to pick, so `enter` types one. */
+		/** The question on screen takes a typed answer (it offers none to pick, or allows one), so `enter` types it. */
 		freeform?: boolean;
 		/** The open prompt's action could go to another lane, which `tab` aims it at. */
 		reaimable?: boolean;

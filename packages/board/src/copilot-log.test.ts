@@ -99,6 +99,51 @@ describe("CopilotLog", () => {
 		expect(log.current.card.status).toBe("running");
 	});
 
+	it("keeps the record that the harness asked, and that it took the question back", async () => {
+		let log = started();
+		log = CopilotLog.apply(log, {
+			type: "permission",
+			request: { id: "t0", title: "kabane_edit", options: [] },
+			at: T1,
+		});
+		log = CopilotLog.apply(log, {
+			type: "elicitation",
+			request: { id: "form-1", message: "Which store?", fields: [] },
+			at: T1,
+		});
+		log = CopilotLog.apply(log, {
+			type: "withdrawn",
+			id: "form-1",
+			summary: "withdrawn by the harness: Which store?",
+			at: T1,
+		});
+		expect(await transcript(log)).toEqual([
+			[1, "prompt", PROMPT],
+			[2, "permission", "permission: kabane_edit"],
+			[3, "permission", "asks: Which store?"],
+			[4, "withdrawn", "withdrawn by the harness: Which store?"],
+		]);
+		expect(log.current.card.status).toBe("running");
+	});
+
+	it("a notice is a line of the log that changes nothing else, a warning one the event view's warning", async () => {
+		let log = started();
+		for (const severity of ["info", "warning"] as const)
+			log = CopilotLog.apply(log, {
+				type: "notice",
+				severity,
+				summary: `claude ${severity}: fell back`,
+				at: T1,
+			});
+		expect(await transcript(log)).toEqual([
+			[1, "prompt", PROMPT],
+			[2, "notice", "claude info: fell back"],
+			[3, "warning", "claude warning: fell back"],
+		]);
+		expect(log.current.card.status).toBe("running");
+		expect(log.current.tail).toEqual([]);
+	});
+
 	it("done completes the card without an event; error fails it with the reason", async () => {
 		const done = CopilotLog.apply(started(), update("done", ""));
 		expect(done.current.card).toMatchObject({
@@ -272,6 +317,8 @@ describe("CopilotLog", () => {
 				questionActivityId: "q",
 				question: "?",
 				choices: [],
+				multiSelect: false,
+				allowFreeform: true,
 				agent: "claude",
 				askedAt: "2026-10-10T00:00:00.000Z",
 			},

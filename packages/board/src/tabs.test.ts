@@ -6,6 +6,10 @@ import { BoardNav } from "./nav";
 import type { ActivityCard, CopilotPermission } from "./ports";
 import { BoardTabs } from "./tabs";
 
+// What the copilot is blocked on, in queue order.
+const requests = (s: BoardNav.BoardState) =>
+	s.copilot.asks.map((ask) => ask.request);
+
 const task = (id: string, shortId: string): Task => ({
 	id,
 	shortId,
@@ -61,6 +65,8 @@ const question = (
 	questionActivityId: "q-loop",
 	question: "Evict by LRU or by TTL?",
 	choices: ["LRU", "TTL"],
+	multiSelect: false,
+	allowFreeform: false,
 	agent: "claude",
 	askedAt: "2026-10-10T00:01:00.000Z",
 	...over,
@@ -75,6 +81,8 @@ const SOLO_Q = question({
 	questionActivityId: "q-solo",
 	question: "Pin 0.5.10 or take the minor?",
 	choices: ["Pin", "Take"],
+	multiSelect: false,
+	allowFreeform: false,
 	agent: "hermes",
 	askedAt: "2026-10-10T00:00:30.000Z",
 });
@@ -377,6 +385,8 @@ describe("a card's tab answers its question in place", () => {
 			questionActivityId: "q-loop-2",
 			question: "Keep the old index?",
 			choices: ["Keep", "Drop"],
+			multiSelect: false,
+			allowFreeform: false,
 			askedAt: "2026-10-10T00:02:00.000Z",
 		});
 		const s = onTab(withLoop([card()], [SOLO_Q, LOOP_Q, later]));
@@ -548,18 +558,18 @@ describe("a session question and the copilot's request pending together", () => 
 			questionId: "q-loop",
 			answer: "TTL",
 		});
-		expect(state.copilot.permissions).toEqual([request]);
+		expect(requests(state)).toEqual([request]);
 		// Settled but still on screen: a second digit answers nothing, the copilot included.
 		const again = press(state, "1");
 		expect(again.effect.type).toBe("none");
-		expect(again.state.copilot.permissions).toEqual([request]);
+		expect(requests(again.state)).toEqual([request]);
 	});
 
 	it("on the card's tab esc goes to the tracker and declines nothing", () => {
 		const { state, effect } = press(onTab(), "escape");
 		expect(effect.type).toBe("none");
 		expect(state.tabs.active).toBeNull();
-		expect(state.copilot.permissions).toEqual([request]);
+		expect(requests(state)).toEqual([request]);
 	});
 
 	it("under a pinned banner a digit answers the banner's question", () => {
@@ -569,7 +579,7 @@ describe("a session question and the copilot's request pending together", () => 
 			questionId: "q-solo",
 			answer: "Pin",
 		});
-		expect(state.copilot.permissions).toEqual([request]);
+		expect(requests(state)).toEqual([request]);
 	});
 
 	it("tab reaches the copilot, whose request then takes the digit, and the loop's still waits", () => {
@@ -654,7 +664,7 @@ describe("a question that just appeared holds the digits until it has been read"
 			questionId: "q-loop",
 			answer: "LRU",
 		});
-		expect(read.state.copilot.permissions).toEqual([request]);
+		expect(requests(read.state)).toEqual([request]);
 	});
 
 	it("a key that lands before any render sighted the new question is held, however late", () => {
@@ -671,6 +681,8 @@ describe("a question that just appeared holds the digits until it has been read"
 			questionActivityId: "q-loop-2",
 			question: "Keep the old index?",
 			choices: ["Keep", "Drop"],
+			multiSelect: false,
+			allowFreeform: false,
 			askedAt: "2026-10-10T00:02:00.000Z",
 		});
 		const onTab = press(withLoop([card()], [LOOP_Q, later]), "}").state;

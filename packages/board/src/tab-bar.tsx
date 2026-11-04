@@ -207,6 +207,8 @@ type QuestionBannerProps = {
 	// Settled, and with what when this board answered it.
 	answered: boolean;
 	answer?: string;
+	// On a multi-select, the choices toggled so far, by index.
+	picked?: readonly number[];
 	// Where `b` goes: the tabbed card the question is from, as its tab reads (`loop JREP-1`).
 	back?: string;
 	// On a card's tab, how many more of its questions wait behind this one.
@@ -225,6 +227,7 @@ const QuestionBanner = ({
 	taskShortId,
 	answered,
 	answer,
+	picked = [],
 	back,
 	more = 0,
 	onAnswer,
@@ -232,6 +235,18 @@ const QuestionBanner = ({
 	const theme = useTheme();
 	const bg = theme.surface.raised;
 	const freeform = question.choices.length === 0;
+	// Settled without an answer from this board: answered elsewhere, or withdrawn by its asker. The
+	// board cannot tell which, so it says only that the question is closed.
+	const closed = answered && answer === undefined;
+	// What `enter` does beside the choices: sends a multi-select's picks, types an answer the asker
+	// allows besides them.
+	const enterDoes = question.multiSelect
+		? question.allowFreeform
+			? "send the picks, or type an answer"
+			: "send the picks"
+		: question.allowFreeform
+			? "type an answer"
+			: null;
 	return (
 		<box
 			style={{
@@ -244,10 +259,10 @@ const QuestionBanner = ({
 		>
 			<text bg={bg} fg={theme.muted}>
 				<span
-					fg={answered ? theme.done : theme.accent}
+					fg={closed ? theme.muted : answered ? theme.done : theme.accent}
 					attributes={TextAttributes.BOLD}
 				>
-					{answered ? "✓ answered" : "waiting on you"}
+					{closed ? "closed" : answered ? "✓ answered" : "waiting on you"}
 				</span>
 				{` · ${question.agent} asks about ${taskShortId}`}
 				{more > 0 ? <span fg={theme.accent}>{` · +${more} more`}</span> : null}
@@ -264,8 +279,9 @@ const QuestionBanner = ({
 					{" type the answer"}
 				</text>
 			) : (
-				// Each answer its own cell, so a click lands on the one it means.
-				<box style={{ flexDirection: "row", flexShrink: 0 }}>
+				// Each answer its own cell, so a click lands on the one it means. A multi-select's
+				// cells say whether each is toggled.
+				<box style={{ flexDirection: "row", flexShrink: 0, flexWrap: "wrap" }}>
 					{question.choices.map((choice, index) => (
 						<text
 							key={choice}
@@ -276,9 +292,21 @@ const QuestionBanner = ({
 						>
 							{index > 0 ? " · " : ""}
 							<span fg={theme.text}>{`${index + 1} `}</span>
+							{question.multiSelect ? (
+								<span fg={picked.includes(index) ? theme.accent : theme.muted}>
+									{picked.includes(index) ? "[x] " : "[ ] "}
+								</span>
+							) : null}
 							{choice}
 						</text>
 					))}
+					{enterDoes ? (
+						<text bg={bg} fg={theme.muted} style={{ flexShrink: 0 }}>
+							{" · "}
+							<span fg={theme.text}>enter</span>
+							{` ${enterDoes}`}
+						</text>
+					) : null}
 				</box>
 			)}
 			{back ? (
@@ -316,6 +344,7 @@ export const CardTabQuestion = ({
 				taskShortId={asked.taskShortId}
 				answered={answer !== undefined}
 				{...(answer !== undefined ? { answer } : {})}
+				picked={BoardTabs.pickedOf(tabs, asked)}
 				more={BoardTabs.moreOnCard(tabs)}
 				onAnswer={onAnswer}
 			/>
@@ -345,6 +374,7 @@ export const PinnedQuestion = ({
 			taskShortId={banner.question.taskShortId}
 			answered={BoardTabs.isAnswered(tabs, banner)}
 			answer={banner.answer}
+			picked={BoardTabs.pickedOf(tabs, banner.question)}
 			back={from ? `${cardName(from)}'s tab` : undefined}
 			onAnswer={onAnswer}
 		/>

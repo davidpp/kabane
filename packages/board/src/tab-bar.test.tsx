@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 import { expect, test } from "bun:test";
 import type { ActivityCard } from "./ports";
-import { CardTabQuestion, TabBar } from "./tab-bar";
+import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
 import { BoardTabs } from "./tabs";
 import { pumpUntil, renderTest } from "./testing";
 
@@ -56,6 +56,8 @@ test("a bar too wide for the pane keeps the tracker, the tab on screen and the o
 				questionActivityId: "q2",
 				question: "LRU or TTL?",
 				choices: ["LRU", "TTL"],
+				multiSelect: false,
+				allowFreeform: false,
 				agent: "claude",
 				askedAt: "2026-10-10T00:10:00.000Z",
 			},
@@ -80,6 +82,8 @@ const asked = (n: number, choices: string[]): BoardTabs.Question => ({
 	questionActivityId: `q${n}`,
 	question: `Install dependencies ${n}?`,
 	choices,
+	multiSelect: false,
+	allowFreeform: choices.length === 0,
 	agent: "claude",
 	askedAt: `2026-10-10T00:0${n}:00.000Z`,
 });
@@ -120,4 +124,46 @@ test("a card's tab pins its oldest question answerable, counts the rest, and say
 	expect(answered).toContain("✓ answered");
 	expect(answered).toContain("→ No");
 	expect(answered).not.toContain("1 Yes");
+});
+
+test("a multi-select question shows what is toggled and that enter sends the picks", async () => {
+	const card = loop(1);
+	const question = {
+		...asked(2, ["Alpha", "Beta", "decline"]),
+		multiSelect: true,
+	};
+	const frame = await questionFrame({
+		...BoardTabs.NONE,
+		open: [card.id],
+		active: card.id,
+		cards: new Map([[card.id, { finished: false, sessionIds: ["s1"] }]]),
+		queue: [question],
+		picked: new Map([["q2", [1]]]),
+	});
+	expect(frame).toContain(
+		"1 [ ] Alpha · 2 [x] Beta · 3 [ ] decline · enter send the picks",
+	);
+});
+
+test("a pinned question that left the queue without this board's answer reads as closed, not answered", async () => {
+	const question = asked(2, ["Yes", "No"]);
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<PinnedQuestion
+			tabs={BoardTabs.NONE}
+			banner={{ question }}
+			cards={[]}
+			onAnswer={() => {}}
+		/>,
+		{ width: 80, height: 6 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("asks about"),
+		);
+		expect(frame).toContain("closed · claude asks about JREP-2");
+		expect(frame).not.toContain("✓ answered");
+		expect(frame).not.toContain("1 Yes");
+	} finally {
+		destroy();
+	}
 });

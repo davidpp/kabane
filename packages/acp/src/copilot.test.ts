@@ -4,13 +4,18 @@ import { describe, expect, it } from "bun:test";
 import {
 	type AgentApp,
 	agent as agentApp,
+	type CreateElicitationRequest,
 	methods,
 	type PlanEntry,
 	PROTOCOL_VERSION,
 	type ToolCallStatus,
 } from "@agentclientprotocol/sdk";
 import type { BoardContext } from "@cabane/board/context";
-import type { CopilotPermission, CopilotUpdate } from "@cabane/board/ports";
+import type {
+	CopilotElicitation,
+	CopilotPermission,
+	CopilotUpdate,
+} from "@cabane/board/ports";
 import { err } from "@cabane/core";
 import { AcpClient } from "./client";
 import { BoardCopilot } from "./copilot";
@@ -24,13 +29,45 @@ type ToolStep = {
 };
 
 type Seen = {
+	initialize: unknown[];
 	newSession: unknown[];
 	prompts: unknown[];
 	// The outcome each permission request came back with, as the agent saw it.
 	permissions: unknown[];
+	// The answer each form came back with, as the agent saw it.
+	forms: unknown[];
 };
 
-const fresh = (): Seen => ({ newSession: [], prompts: [], permissions: [] });
+const fresh = (): Seen => ({
+	initialize: [],
+	newSession: [],
+	prompts: [],
+	permissions: [],
+	forms: [],
+});
+
+// What claude-agent-acp sends for one AskUserQuestion question: the choice, then its optional
+// "Other" box.
+const ASK_USER_QUESTION = (sessionId: string): CreateElicitationRequest => ({
+	mode: "form",
+	sessionId,
+	toolCallId: "toolu_ask",
+	message: "Which store should the cache use?",
+	requestedSchema: {
+		type: "object",
+		properties: {
+			question_0: {
+				type: "string",
+				title: "Store",
+				oneOf: [
+					{ const: "Redis", title: "Redis" },
+					{ const: "Memory", title: "Memory" },
+				],
+			},
+			question_0_custom: { type: "string", title: "Other" },
+		},
+	},
+});
 
 // An agent that runs a scripted list of tool steps, then stops. `permission` makes it ask once
 // before the steps, so the decline path is observable.
@@ -39,6 +76,11 @@ const scriptedAgent = (
 	options: {
 		steps?: ToolStep[];
 		permission?: boolean;
+		// A form the agent puts to the client before the steps.
+		form?: (sessionId: string) => CreateElicitationRequest;
+		// The agent takes its permission request or form back (`$/cancel_request`) after this many
+		// ms, before anyone answers.
+		withdrawAfter?: number;
 		text?: string;
 		plans?: PlanEntry[][];
 		// Prose deltas and tool calls in order, to exercise the chunk buffering.
@@ -52,10 +94,13 @@ const scriptedAgent = (
 	} = {},
 ): AgentApp =>
 	agentApp({ name: "scripted" })
-		.onRequest(methods.agent.initialize, () => ({
-			protocolVersion: PROTOCOL_VERSION,
-			agentCapabilities: { loadSession: false },
-		}))
+		.onRequest(methods.agent.initialize, (c) => {
+			seen.initialize.push(c.params);
+			return {
+				protocolVersion: PROTOCOL_VERSION,
+				agentCapabilities: { loadSession: false },
+			};
+		})
 		.onRequest(methods.agent.session.new, (c) => {
 			seen.newSession.push(c.params);
 			return {
@@ -83,6 +128,15 @@ const scriptedAgent = (
 					sessionId: c.params.sessionId,
 					update,
 				});
+			// What the agent's request is cancelled by, when it withdraws it.
+			const withdrawing = ():
+				| { cancellationSignal: AbortSignal }
+				| undefined => {
+				if (options.withdrawAfter === undefined) return undefined;
+				const controller = new AbortController();
+				setTimeout(() => controller.abort(), options.withdrawAfter);
+				return { cancellationSignal: controller.signal };
+			};
 			if (options.permission) {
 				const answer = await c.client.request(
 					methods.client.session.requestPermission,
@@ -94,9 +148,18 @@ const scriptedAgent = (
 							{ optionId: "reject", name: "Reject", kind: "reject_once" },
 						],
 					},
+					withdrawing(),
 				);
 				seen.permissions.push(answer.outcome);
 			}
+			if (options.form)
+				seen.forms.push(
+					await c.client.request(
+						methods.client.elicitation.create,
+						options.form(c.params.sessionId),
+						withdrawing(),
+					),
+				);
 			if (options.notice)
 				await notify({ sessionUpdate: "notice", ...options.notice });
 			if (options.move)
@@ -177,8 +240,7 @@ const copilotOver = (
 		kabaneBin: "/usr/local/bin/kabane",
 		home: "/home/me/.kabane",
 		setup: SETUP,
-		connect: (onPermission) =>
-			AcpClient.connect("claude", agent, { onPermission }),
+		connect: (handlers) => AcpClient.connect("claude", agent, handlers),
 		...over,
 	});
 
@@ -211,11 +273,9 @@ describe("BoardCopilot", () => {
 		const seen = fresh();
 		let connects = 0;
 		const copilot = copilotOver(scriptedAgent(seen), {
-			connect: (onPermission) => {
+			connect: (handlers) => {
 				connects += 1;
-				return AcpClient.connect("claude", scriptedAgent(seen), {
-					onPermission,
-				});
+				return AcpClient.connect("claude", scriptedAgent(seen), handlers);
 			},
 		});
 		expect(connects).toBe(0);
@@ -306,7 +366,7 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("shows the harness's notice as a step of the turn, after the mode line", async () => {
+	it("shows the harness's notice as a notice step of the turn, after the mode line", async () => {
 		const copilot = copilotOver(
 			scriptedAgent(fresh(), {
 				mode: "acceptEdits",
@@ -325,10 +385,11 @@ describe("BoardCopilot", () => {
 				"mode acceptEdits: claude opened in it, not in its manual mode (default), so kabane keeps it over auto",
 			],
 			[
-				"mode",
+				"notice",
 				"claude warning: Auto mode unavailable: Using Accept edits instead.",
 			],
 		]);
+		expect(updates[1]).toMatchObject({ severity: "warning" });
 		copilot.close();
 	});
 
@@ -580,6 +641,168 @@ describe("BoardCopilot", () => {
 		expect(seen.permissions).toEqual([
 			{ outcome: "selected", optionId: "allow" },
 		]);
+		copilot.close();
+	});
+
+	// A form blocks the turn the same way, so it is answered from inside the loop as well.
+	const filling = async (
+		copilot: BoardCopilot.Handle,
+		answer: (request: CopilotElicitation) => void | Promise<void>,
+	): Promise<CopilotUpdate[]> => {
+		const updates: CopilotUpdate[] = [];
+		for await (const update of copilot.run("ask me", context())) {
+			updates.push(update);
+			if (update.type === "elicitation") await answer(update.request);
+		}
+		return opening(updates);
+	};
+
+	it("advertises forms, carries one to the board verbatim and gives the harness the human's answer", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, { form: ASK_USER_QUESTION, text: "Redis it is" }),
+		);
+		const updates = await filling(copilot, (request) =>
+			copilot.answerElicitation(request.id, {
+				action: "accept",
+				content: { question_0: "Redis" },
+			}),
+		);
+		expect(seen.initialize).toMatchObject([
+			{ clientCapabilities: { elicitation: { form: {} } } },
+		]);
+		expect(types(updates)).toEqual(["elicitation", "text", "done"]);
+		expect(updates[0]).toMatchObject({
+			request: {
+				message: "Which store should the cache use?",
+				fields: [
+					{
+						key: "question_0",
+						title: "Store",
+						type: "choice",
+						options: [
+							{ value: "Redis", label: "Redis" },
+							{ value: "Memory", label: "Memory" },
+						],
+					},
+					{ key: "question_0_custom", title: "Other", type: "text" },
+				],
+			},
+		});
+		expect(seen.forms).toEqual([
+			{ action: "accept", content: { question_0: "Redis" } },
+		]);
+		copilot.close();
+	});
+
+	it("a declined form reaches the harness as declined, and a multi-select as a list", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, { form: ASK_USER_QUESTION, text: "ok" }),
+		);
+		await filling(copilot, (request) =>
+			copilot.answerElicitation(request.id, { action: "decline" }),
+		);
+		await filling(copilot, (request) =>
+			copilot.answerElicitation(request.id, {
+				action: "accept",
+				content: { picks: ["a", "b"] as readonly string[] },
+			}),
+		);
+		expect(seen.forms).toEqual([
+			{ action: "decline" },
+			{ action: "accept", content: { picks: ["a", "b"] } },
+		]);
+		copilot.close();
+	});
+
+	it("cancel lets go of a form nobody filled in, and nothing answers it twice", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, { form: ASK_USER_QUESTION, text: "ok" }),
+		);
+		let asked: CopilotElicitation | undefined;
+		await filling(copilot, async (request) => {
+			asked = request;
+			await copilot.cancel();
+		});
+		if (asked)
+			copilot.answerElicitation(asked.id, {
+				action: "accept",
+				content: { question_0: "Redis" },
+			});
+		expect(seen.forms).toEqual([{ action: "cancel" }]);
+		copilot.close();
+	});
+
+	it("a permission the harness withdraws reaches the board as withdrawn, and a late answer is dropped", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				permission: true,
+				withdrawAfter: 10,
+				text: "moved on",
+			}),
+		);
+		let asked: CopilotPermission | undefined;
+		const updates = await answering(copilot, (request) => {
+			asked = request;
+		});
+		if (asked) copilot.answerPermission(asked.id, "allow");
+		expect(types(updates)).toEqual(["permission", "withdrawn", "text", "done"]);
+		expect(updates[1]).toMatchObject({
+			id: "t0",
+			summary: "withdrawn by the harness: kabane_edit",
+		});
+		expect(seen.permissions).toEqual([{ outcome: "cancelled" }]);
+		copilot.close();
+	});
+
+	it("a form the harness withdraws reaches the board as withdrawn, by the id the board knows it by", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				form: ASK_USER_QUESTION,
+				withdrawAfter: 10,
+				text: "moved on",
+			}),
+		);
+		let asked: CopilotElicitation | undefined;
+		const updates = await filling(copilot, (request) => {
+			asked = request;
+		});
+		if (asked)
+			copilot.answerElicitation(asked.id, {
+				action: "accept",
+				content: { question_0: "Redis" },
+			});
+		expect(types(updates)).toEqual([
+			"elicitation",
+			"withdrawn",
+			"text",
+			"done",
+		]);
+		expect(updates[1]).toMatchObject({
+			id: asked?.id,
+			summary: "withdrawn by the harness: Which store should the cache use?",
+		});
+		expect(seen.forms).toEqual([{ action: "cancel" }]);
+		copilot.close();
+	});
+
+	it("a request the board let go of first is not reported withdrawn when the harness takes it back", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				permission: true,
+				withdrawAfter: 30,
+				text: "moved on",
+			}),
+		);
+		const updates = await answering(copilot, (request) =>
+			copilot.answerPermission(request.id, "allow"),
+		);
+		expect(types(updates)).toEqual(["permission", "text", "done"]);
 		copilot.close();
 	});
 

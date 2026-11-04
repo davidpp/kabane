@@ -79,8 +79,13 @@ export namespace CopilotLog {
 
 	// Event-view types: the glyph table there knows `text`, `tool_use`, `tool_result`, `error`;
 	// `thought` falls to its blank, muted default, which is the dimmed rendering wanted for it.
-	const eventType = (type: CopilotUpdate["type"]): string =>
-		type === "tool_call" ? "tool_use" : type;
+	// A notice is the event view's `warning` when it is one, a muted `notice` otherwise.
+	const eventType = (update: CopilotUpdate): string =>
+		update.type === "tool_call"
+			? "tool_use"
+			: update.type === "notice" && update.severity === "warning"
+				? "warning"
+				: update.type;
 
 	// How far the turn is through its own plan, for the one-line indicator. Absent without a plan:
 	// harnesses that never send one keep today's text rather than showing a hollow `0/0`.
@@ -107,8 +112,9 @@ export namespace CopilotLog {
 		if (update.type === "plan") return { ...turn, plan: update.entries };
 		// The pending choice is rendered from the reducer's copy, not from here; what the transcript
 		// keeps is the RECORD that it was asked, which outlives the answer and reads in the order it
-		// happened, between the tool call that provoked it and whatever followed.
-		if (update.type === "permission")
+		// happened, between the tool call that provoked it and whatever followed. A form reads as
+		// the same kind of row: the event view's `?` is a question, whatever shape its answer takes.
+		if (update.type === "permission" || update.type === "elicitation")
 			return {
 				...turn,
 				events: [
@@ -117,7 +123,25 @@ export namespace CopilotLog {
 						seq: lastSeq(turn) + 1,
 						at: update.at,
 						type: "permission",
-						summary: `permission: ${update.request.title}`,
+						summary:
+							update.type === "permission"
+								? `permission: ${update.request.title}`
+								: `asks: ${update.request.message}`,
+					},
+				],
+			};
+		// The record of a question the harness took back, in the order it happened; the block that
+		// asked it is gone from the reducer's copy.
+		if (update.type === "withdrawn")
+			return {
+				...turn,
+				events: [
+					...turn.events,
+					{
+						seq: lastSeq(turn) + 1,
+						at: update.at,
+						type: "withdrawn",
+						summary: update.summary,
 					},
 				],
 			};
@@ -129,7 +153,7 @@ export namespace CopilotLog {
 						{
 							seq: lastSeq(turn) + 1,
 							at: update.at,
-							type: eventType(update.type),
+							type: eventType(update),
 							summary: update.summary,
 						},
 					];
@@ -145,6 +169,7 @@ export namespace CopilotLog {
 			case "thought":
 			case "tool_result":
 			case "mode":
+			case "notice":
 				return { ...turn, events };
 			case "error":
 				return {

@@ -99,9 +99,14 @@ one past its answers does nothing (`h/l` still walk the sections or lanes), and 
 never one (a terminal that reports shift+1 by its base key means `!`). `b` on the banner goes back
 to the card's tab when the question came from one. An answered banner says what was answered and
 clears when you leave the view; an unanswered one stays pinned until it is answered. A question
-that offers no answers (freeform) takes a typed one: `enter`, on its banner or on the card's tab
-that shows it, opens the board's prompt (below), and what is sent goes to
-`Planner.answerQuestion` as the answer. Every surface answers through the one `answerQuestion`
+that offers no answers (freeform), or whose asker allows a typed answer besides its answers
+(`allowFreeform` in the question body), takes a typed one: `enter`, on its banner or on the card's
+tab that shows it, opens the board's prompt (below), and what is sent goes to
+`Planner.answerQuestion` as the answer. On a multi-select question (`multiSelect`) the digits, or a
+click, toggle answers rather than sending one, and `enter` sends the toggled labels
+comma-separated in the order picked (`Gamma, Alpha`), the form `kabane loop answer` takes. A
+banner whose question left the queue without an answer from this board (answered elsewhere, or
+withdrawn by its asker) reads `closed`. Every surface answers through the one `answerQuestion`
 effect: marked answered on the keypress, so a second digit answers nothing, and taken back if the
 write fails.
 
@@ -208,6 +213,7 @@ interface Copilot {
   cancel(): Promise<void>;
   shortcuts(): CopilotShortcut[];
   answerPermission(id: string, optionId: string | null): void;
+  answerElicitation(id: string, answer: CopilotElicitationAnswer): void;
   readonly actor?: string;
 }
 ```
@@ -236,8 +242,9 @@ cancel; the finished indicator stays until the next keypress, which also clears 
 
 Exactly one surface animates per fact: the pane owns the copilot, the tab on screen owns its card,
 and every echo of a running thing renders `●` rather than a frozen spinner frame (see `spinner.ts`). `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
-`error`, `done`); each `tool_result` reloads the board so the copilot's writes appear as they
-land. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
+`mode`, `error`, `done`, and `notice` with a `severity` of `info` or `warning`); each `tool_result`
+reloads the board so the copilot's writes appear as they land. A notice is a line of the turn's
+transcript and changes nothing else: an info as the event type `notice`, a warning as `warning`. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
 rather than inviting a prompt, and `enter` flashes `a turn is running · o for its transcript, x
 there stops it` instead of dropping what was typed — the draft keeps until the turn ends.
 
@@ -257,6 +264,40 @@ something is waiting. A digit picks the option it numbers, `esc` declines, and b
 `answerPermission` ahead of whatever view is on screen. The board never answers by itself and there
 is no timeout: a question left alone keeps the turn waiting, and `x` on the transcript still
 cancels it.
+
+A harness that asks the human to fill in a form (Claude's AskUserQuestion, codex's
+`request_user_input`) yields an `elicitation` update: the harness's `message` verbatim and its
+`fields`, each `text`, `number`, `boolean`, `choice` or `choices` (a multi-select), with a title,
+an optional description and whether it is required. It opens the copilot panel, focused or not
+and over the transcript too, in place of the input, and is filled in one field at a time
+(`elicitation-form.ts`): a digit picks a choice, digits toggle a multi-select and `enter` confirms
+it, `y`/`n` answer a boolean, and text or a number is typed into a one-line input and sent with
+`enter`. `enter` leaves an optional field empty, and an empty field is absent from the answer,
+never filled in. An answer the field does not take (a number out of its bounds, too long a text) is
+refused with why, and the field asked again. `esc` declines the whole form from any field. Once the
+last field is answered the board calls `answerElicitation(id, { action: "accept", content })`, or
+`{ action: "decline" }`. Permissions and forms share one queue, answered in the order the harness
+asked; while a session question on the view outranks the copilot, the pane's row names the form and
+`tab` to reach it. A form's typed field keeps every key but `esc` from the board while its input is
+in hand, so typing never moves the board under it; each field arms the digits afresh, so a key
+already on its way when one field moves on does not answer the next.
+
+A harness can take a permission or a form back before anyone answers it (ACP's
+`$/cancel_request`). The copilot yields `{ type: "withdrawn", id, summary }`: the request leaves
+the queue wherever it was in it, its block goes, the transcript keeps `withdrawn by the harness:
+…` where the question was, and the footer says so when it was the one on screen. A key pressed in
+the instant before the redraw answers nothing, because the copilot no longer holds the request.
+
+The board also tells the terminal when it is waiting on you, through OSC 7501
+(`renderer.setProgramStatus`, `src/program-status.ts`). One root record for the board: `blocked`
+(kind `permission` or `question`, none when they differ, message `N need input`) while a copilot
+permission or form, or any session question the board lists, waits on the human; else `working`
+while a copilot turn or a host card runs; else cleared. Under it, one record per card with
+something pending (the copilot's turn, a host card running or waiting on one of its sessions'
+questions), by the card's id, hashed when the protocol would not take it. Everything is derived
+from board state in one pure function and written only when it changes, and the root is cleared,
+taking every record under it, once the renderer has let go of the terminal on exit. A terminal that
+does not implement the protocol ignores all of it.
 
 Rows the copilot changed during the turn carry `✦ ai` before the title: the reload after each of
 its writes brings the fresh `updatedBy`/`updatedAt`, and `BoardNav.copilotTouched` keeps the ones

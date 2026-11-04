@@ -34,6 +34,7 @@ import type {
 	Copilot,
 	Dispatcher,
 } from "./ports";
+import { ProgramStatus } from "./program-status";
 import { BoardPrompt } from "./prompt";
 import { PromptPanel } from "./prompt-field";
 import { useSpinnerFrame } from "./spinner";
@@ -169,6 +170,22 @@ export const App = ({
 	// renders (a paste into the prompt or the search box) each see the previous key's result.
 	const stateRef = useRef<BoardNav.BoardState | null>(null);
 	stateRef.current = state;
+	// The terminal hears when the board waits on the human, or works: derived from what the board
+	// holds, and written only when it changes.
+	const copilotAsks = state?.copilot.asks;
+	const copilotTurn = state?.copilot.turn;
+	const questionQueue = state?.tabs.queue;
+	const programStatus = useMemo(
+		() =>
+			ProgramStatus.reports({
+				copilot: { asks: copilotAsks ?? [], turn: copilotTurn ?? "idle" },
+				questions: questionQueue ?? [],
+				cards: activity.cards,
+			}),
+		[copilotAsks, copilotTurn, questionQueue, activity.cards],
+	);
+	ProgramStatus.useProgramStatus(programStatus);
+
 	// Every committed state is on screen: note what the digits answer from now on, so a question
 	// that just appeared does not take a key already on its way (BoardNav.sight).
 	useEffect(() => {
@@ -431,6 +448,22 @@ export const App = ({
 								? BoardNav.withCopilotPermission(prev, update.request)
 								: prev,
 						);
+					if (update.type === "elicitation")
+						setState((prev) =>
+							prev
+								? BoardNav.withCopilotElicitation(prev, update.request)
+								: prev,
+						);
+					// Taken back unanswered: the block goes, and when it was the one on screen the
+					// footer says why it went. A key already on its way answers nothing, since the
+					// copilot no longer holds the request.
+					if (update.type === "withdrawn") {
+						if (stateRef.current?.copilot.asks[0]?.request.id === update.id)
+							setNotice({ text: update.summary, tone: "error" });
+						setState((prev) =>
+							prev ? BoardNav.withCopilotWithdrawn(prev, update.id) : prev,
+						);
+					}
 					if (update.type === "tool_result") {
 						const current = stateRef.current;
 						if (current) void reload(current);
@@ -645,6 +678,9 @@ export const App = ({
 				case "copilotAnswer":
 					copilot?.answerPermission(effect.id, effect.optionId);
 					return;
+				case "copilotAnswerForm":
+					copilot?.answerElicitation(effect.id, effect.answer);
+					return;
 				case "copilotSetText":
 				case "promptSetText":
 					(effect.type === "copilotSetText"
@@ -747,6 +783,19 @@ export const App = ({
 		setState(next);
 		runEffect(next, effect);
 	}, [runEffect]);
+
+	// `enter` in a form's input: the reducer reads the field and moves the form on, or sends it.
+	const submitForm = useCallback(
+		(text: string): void => {
+			const current = stateRef.current;
+			if (!current) return;
+			const { state: next, effect } = BoardNav.submitForm(current, text);
+			stateRef.current = next;
+			setState(next);
+			runEffect(next, effect);
+		},
+		[runEffect],
+	);
 
 	// Mirror the buffer into the reducer so `/` matching sees what the human sees.
 	const mirrorCopilotText = useCallback((): void => {
@@ -977,9 +1026,11 @@ export const App = ({
 				state.view.type === "events" && state.view.cardId === CopilotLog.CARD_ID
 			}
 			outranked={BoardNav.copilotOutranked(state)}
+			askInHand={BoardNav.askInHand(state)}
 			textareaRef={inputRef}
 			onSubmit={submitCopilot}
 			onContentChange={mirrorCopilotText}
+			onFormSubmit={submitForm}
 		/>
 	);
 	// A prompt a card's tab or a banner opened sits where the copilot's panel would, above its row.
@@ -1030,8 +1081,15 @@ export const App = ({
 				plan={
 					cardId === CopilotLog.CARD_ID ? copilotLog?.current.plan : undefined
 				}
+				// The transcript draws a permission at the head of the queue; a form there is the
+				// pane's to draw, since it takes the keys.
 				permissions={
-					cardId === CopilotLog.CARD_ID ? state.copilot.permissions : undefined
+					cardId === CopilotLog.CARD_ID &&
+					state.copilot.asks[0]?.type === "permission"
+						? state.copilot.asks.flatMap((ask) =>
+								ask.type === "permission" ? [ask.request] : [],
+							)
+						: undefined
 				}
 				tabbed={tabs.active === cardId}
 				lane={CardTab.view(tabs, cardId).lane}

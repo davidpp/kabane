@@ -3,9 +3,17 @@ import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { BoardData } from "./data";
 import type { DetailModel } from "./detail-model";
 import { BoardNav } from "./nav";
-import type { CopilotPermission, TriggerDescriptor } from "./ports";
+import type {
+	CopilotElicitation,
+	CopilotPermission,
+	TriggerDescriptor,
+} from "./ports";
 import { BoardPrompt } from "./prompt";
 import { BoardTabs } from "./tabs";
+
+// What the copilot is blocked on, in queue order.
+const requests = (s: BoardNav.BoardState) =>
+	s.copilot.asks.map((ask) => ask.request);
 
 const task = (over: Partial<Task> = {}): Task => ({
 	id: "01H000000000000000000000AA",
@@ -50,7 +58,7 @@ const copilotState = (
 	hasLog: false,
 	shortcuts: [],
 	actor: null,
-	permissions: [],
+	asks: [],
 	...over,
 });
 
@@ -2573,7 +2581,10 @@ describe("a permission request the harness is blocked on", () => {
 		state({
 			sections: sections({ next: [row(task({ id: "a" }))] }),
 			selectedId: "a",
-			copilot: copilotState({ turn: "running", permissions: [request] }),
+			copilot: copilotState({
+				turn: "running",
+				asks: [{ type: "permission", request }],
+			}),
 			...over,
 		});
 
@@ -2584,7 +2595,7 @@ describe("a permission request the harness is blocked on", () => {
 			id: "t0",
 			optionId: "reject",
 		});
-		expect(r.state.copilot.permissions).toEqual([]);
+		expect(requests(r.state)).toEqual([]);
 	});
 
 	it("esc declines", () => {
@@ -2594,7 +2605,7 @@ describe("a permission request the harness is blocked on", () => {
 			id: "t0",
 			optionId: null,
 		});
-		expect(r.state.copilot.permissions).toEqual([]);
+		expect(requests(r.state)).toEqual([]);
 	});
 
 	it("answers from the copilot pane and the transcript too — the question outranks the view", () => {
@@ -2617,7 +2628,7 @@ describe("a permission request the harness is blocked on", () => {
 	it("a digit past the last option answers nothing, and the key routes as it always does", () => {
 		const r = reduce(asked(), char("3"));
 		expect(r.effect.type).toBe("none");
-		expect(r.state.copilot.permissions).toEqual([request]);
+		expect(requests(r.state)).toEqual([request]);
 	});
 
 	it("leaves every other key alone: x on the transcript still cancels the waiting turn", () => {
@@ -2627,7 +2638,7 @@ describe("a permission request the harness is blocked on", () => {
 		);
 		expect(r.effect).toEqual({ type: "copilotCancel" });
 		// The board never answers on the human's behalf, cancelling included.
-		expect(r.state.copilot.permissions).toEqual([request]);
+		expect(requests(r.state)).toEqual([request]);
 	});
 
 	it("a digit stays a query character while a search is being typed", () => {
@@ -2650,10 +2661,10 @@ describe("a permission request the harness is blocked on", () => {
 		});
 		const digit = reduce(prompting, char("1"));
 		expect(digit.effect.type).not.toBe("copilotAnswer");
-		expect(digit.state.copilot.permissions).toEqual([request]);
+		expect(requests(digit.state)).toEqual([request]);
 		const esc = reduce(prompting, { name: "escape" });
 		expect(esc.effect.type).not.toBe("copilotAnswer");
-		expect(esc.state.copilot.permissions).toEqual([request]);
+		expect(requests(esc.state)).toEqual([request]);
 		expect(esc.state.prompt.open).toBeNull();
 	});
 
@@ -2665,7 +2676,7 @@ describe("a permission request the harness is blocked on", () => {
 		);
 		const blind = BoardNav.reduceKey(arrived, char("2"), 5200);
 		expect(blind.effect).toMatchObject({ type: "notice" });
-		expect(blind.state.copilot.permissions).toEqual([request]);
+		expect(requests(blind.state)).toEqual([request]);
 		const typing = {
 			...arrived,
 			search: { mode: "typing", query: "" },
@@ -2681,7 +2692,7 @@ describe("a permission request the harness is blocked on", () => {
 
 	it("a turn that stops takes the unanswered question with it", () => {
 		const stopped = BoardNav.withCopilotTurn(asked(), "error");
-		expect(stopped.copilot.permissions).toEqual([]);
+		expect(requests(stopped)).toEqual([]);
 	});
 
 	// A harness running tools in parallel asks for each before hearing back on any.
@@ -2694,7 +2705,7 @@ describe("a permission request the harness is blocked on", () => {
 		const both = () => BoardNav.withCopilotPermission(asked(), second);
 
 		it("queues behind the first instead of replacing it", () => {
-			expect(both().copilot.permissions).toEqual([request, second]);
+			expect(requests(both())).toEqual([request, second]);
 		});
 
 		it("answers them in the order asked, each leaving only itself", () => {
@@ -2704,19 +2715,19 @@ describe("a permission request the harness is blocked on", () => {
 				id: "t0",
 				optionId: "allow",
 			});
-			expect(first.state.copilot.permissions).toEqual([second]);
+			expect(requests(first.state)).toEqual([second]);
 			const next = reduce(first.state, { name: "escape" });
 			expect(next.effect).toEqual({
 				type: "copilotAnswer",
 				id: "t1",
 				optionId: null,
 			});
-			expect(next.state.copilot.permissions).toEqual([]);
+			expect(requests(next.state)).toEqual([]);
 		});
 
 		it("does not queue the same request twice", () => {
 			const again = BoardNav.withCopilotPermission(both(), request);
-			expect(again.copilot.permissions).toEqual([request, second]);
+			expect(requests(again)).toEqual([request, second]);
 		});
 
 		it("the next one up holds a second digit pressed before it has been read", () => {
@@ -2725,7 +2736,7 @@ describe("a permission request the harness is blocked on", () => {
 			expect(BoardNav.digitTarget(next)).toBe("t1");
 			const blind = BoardNav.reduceKey(next, char("1"), 1100);
 			expect(blind.effect).toMatchObject({ type: "notice" });
-			expect(blind.state.copilot.permissions).toEqual([second]);
+			expect(requests(blind.state)).toEqual([second]);
 			expect(
 				BoardNav.reduceKey(next, char("1"), 1000 + BoardNav.ARM_MS).effect,
 			).toEqual({ type: "copilotAnswer", id: "t1", optionId: "allow" });
@@ -2733,7 +2744,7 @@ describe("a permission request the harness is blocked on", () => {
 
 		it("a turn that stops takes every one of them with it", () => {
 			const stopped = BoardNav.withCopilotTurn(both(), "error");
-			expect(stopped.copilot.permissions).toEqual([]);
+			expect(requests(stopped)).toEqual([]);
 		});
 	});
 });
@@ -2793,5 +2804,181 @@ describe("detail tabs", () => {
 		expect(opened.view.type).toBe("events");
 		const back = reduce(opened, { name: "escape" }).state;
 		expect(back.view).toEqual({ type: "detail", taskId: "a", tab: "comments" });
+	});
+});
+
+describe("a form the harness is blocked on", () => {
+	const form: CopilotElicitation = {
+		id: "form-1",
+		message: "Which store should the cache use?",
+		fields: [
+			{
+				key: "question_0",
+				title: "Store",
+				required: false,
+				type: "choice",
+				options: [
+					{ value: "Redis", label: "Redis" },
+					{ value: "Memory", label: "Memory" },
+				],
+			},
+			{
+				key: "question_0_custom",
+				title: "Other",
+				required: false,
+				type: "text",
+			},
+		],
+	};
+	const permission: CopilotPermission = {
+		id: "t0",
+		title: "kabane_edit",
+		options: [{ id: "allow", label: "Allow" }],
+	};
+	const asked = (over: Partial<BoardNav.BoardState> = {}) =>
+		BoardNav.withCopilotElicitation(
+			state({
+				sections: sections({ next: [row(task({ id: "a" }))] }),
+				selectedId: "a",
+				copilot: copilotState({ turn: "running" }),
+				...over,
+			}),
+			form,
+		);
+	const head = (s: BoardNav.BoardState) => s.copilot.asks[0];
+
+	it("a digit answers the field in hand and moves to the next, sending nothing yet", () => {
+		const r = reduce(asked(), char("1"));
+		expect(r.effect.type).toBe("none");
+		expect(head(r.state)).toMatchObject({
+			type: "elicitation",
+			draft: { at: 1, values: { question_0: "Redis" } },
+		});
+	});
+
+	it("the input's enter on the last field sends the whole form and takes it off the queue", () => {
+		const picked = reduce(asked(), char("2")).state;
+		const sent = BoardNav.submitForm(picked, "");
+		expect(sent.effect).toEqual({
+			type: "copilotAnswerForm",
+			id: "form-1",
+			answer: { action: "accept", content: { question_0: "Memory" } },
+		});
+		expect(sent.state.copilot.asks).toEqual([]);
+	});
+
+	it("esc declines it from any field", () => {
+		const onText = reduce(asked(), char("1")).state;
+		for (const s of [asked(), onText])
+			expect(reduce(s, { name: "escape" }).effect).toEqual({
+				type: "copilotAnswerForm",
+				id: "form-1",
+				answer: { action: "decline" },
+			});
+	});
+
+	it("a typed field keeps every key from the board under it, so typing never moves the board", () => {
+		const onText = reduce(asked(), char("1")).state;
+		for (const key of [char("j"), char("q"), char("1"), char("A")]) {
+			const r = reduce(onText, key);
+			expect(r.effect.type).toBe("none");
+			expect(r.state).toEqual(BoardNav.sight(onText, 0));
+		}
+		// Nothing for the pane to claim: its input is mounted in place of the copilot's buffer.
+		for (const key of [char("j"), char("4")])
+			expect(
+				BoardNav.copilotConsumes({ ...onText, focus: "copilot" }, key),
+			).toBe(false);
+		// On a field the digits answer, the pane claims them, as for a permission.
+		expect(
+			BoardNav.copilotConsumes({ ...asked(), focus: "copilot" }, char("1")),
+		).toBe(true);
+		expect(BoardNav.digitTarget(onText)).toBeUndefined();
+	});
+
+	it("a choice field leaves other keys to the board, as a permission does", () => {
+		const r = reduce(asked(), char("j"));
+		expect(r.effect.type).toBe("none");
+		expect(head(r.state)).toMatchObject({ draft: { at: 0 } });
+	});
+
+	it("each field is a question of its own: a digit already on its way does not answer the next", () => {
+		const store = form.fields[0];
+		if (!store) throw new Error("the form has a choice");
+		const twice: CopilotElicitation = { ...form, fields: [store, store] };
+		const s = BoardNav.sight(
+			BoardNav.withCopilotElicitation(
+				state({ copilot: copilotState({ turn: "running" }) }),
+				twice,
+			),
+			0,
+		);
+		expect(BoardNav.digitTarget(s)).toBe("form-1#0");
+		const first = BoardNav.reduceKey(s, char("1"), BoardNav.ARM_MS);
+		const moved = BoardNav.sight(first.state, 1000);
+		expect(BoardNav.digitTarget(moved)).toBe("form-1#1");
+		expect(BoardNav.reduceKey(moved, char("1"), 1100).effect).toMatchObject({
+			type: "notice",
+		});
+	});
+
+	it("queues with permissions in the order the harness asked, either kind answered in turn", () => {
+		const both = BoardNav.withCopilotElicitation(
+			BoardNav.withCopilotPermission(
+				state({ copilot: copilotState({ turn: "running" }) }),
+				permission,
+			),
+			form,
+		);
+		expect(requests(both)).toEqual([permission, form]);
+		const allowed = reduce(both, char("1"));
+		expect(allowed.effect).toMatchObject({ type: "copilotAnswer", id: "t0" });
+		expect(requests(allowed.state)).toEqual([form]);
+		expect(BoardNav.withCopilotElicitation(both, form)).toBe(both);
+	});
+
+	it("an open prompt or a session question in hand keeps the form from the keys", () => {
+		const prompting = asked({
+			prompt: {
+				...BoardPrompt.CLOSED,
+				open: {
+					target: { type: "act", cardId: "loop", actionId: "inject" },
+					title: "inject",
+					placeholder: "",
+				},
+			},
+		});
+		expect(BoardNav.askInHand(prompting)).toBe(false);
+		expect(BoardNav.askInHand(asked())).toBe(true);
+		expect(reduce(prompting, char("1")).effect.type).not.toBe(
+			"copilotAnswerForm",
+		);
+	});
+
+	it("an enter that arrives after the form is gone sends nothing", () => {
+		const gone = reduce(asked(), { name: "escape" }).state;
+		expect(BoardNav.submitForm(gone, "late")).toEqual({
+			state: gone,
+			effect: { type: "none" },
+		});
+	});
+
+	it("withdrawn by the harness, it leaves the queue wherever it is, and its keys answer nothing", () => {
+		const both = BoardNav.withCopilotPermission(asked(), permission);
+		const gone = BoardNav.withCopilotWithdrawn(both, "form-1");
+		expect(requests(gone)).toEqual([permission]);
+		// The digit pressed in the instant after goes to what is on screen now, never the form.
+		expect(reduce(gone, char("1")).effect).toMatchObject({
+			type: "copilotAnswer",
+			id: "t0",
+		});
+		const none = BoardNav.withCopilotWithdrawn(gone, "t0");
+		expect(none.copilot.asks).toEqual([]);
+		expect(reduce(none, char("1")).effect.type).not.toMatch(/^copilotAnswer/);
+		expect(BoardNav.withCopilotWithdrawn(none, "t0")).toBe(none);
+	});
+
+	it("a turn that stops takes the unanswered form with it", () => {
+		expect(BoardNav.withCopilotTurn(asked(), "error").copilot.asks).toEqual([]);
 	});
 });

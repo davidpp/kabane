@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { BoardContext } from "@cabane/board/context";
 import type {
 	Copilot,
+	CopilotElicitationAnswer,
 	CopilotShortcut,
 	CopilotStep,
 	CopilotUpdate,
@@ -44,8 +45,15 @@ export namespace BoardCopilot {
 		connect?: Connector;
 	};
 
+	// The two callbacks the human answers through. Passing `onElicitation` is what advertises forms,
+	// so a connector hands both to the client as they are.
+	export type Handlers = Pick<
+		AcpClient.ConnectOptions,
+		"onPermission" | "onElicitation"
+	>;
+
 	export type Connector = (
-		onPermission: AcpClient.OnPermission,
+		handlers: Handlers,
 	) => Promise<Result<AcpClient.Connection>>;
 
 	// The port, plus the teardown a port of three methods has no business carrying: the board's
@@ -80,6 +88,22 @@ export namespace BoardCopilot {
 	// The two update kinds ACP streams as DELTAS rather than as whole values.
 	type Prose = Extract<AcpClient.Update, { type: "text" | "thought" }>;
 
+	// The board's answer as the client's: the same shape, with its read-only lists copied out.
+	const toAnswer = (
+		answer: CopilotElicitationAnswer,
+	): AcpClient.ElicitationAnswer =>
+		answer.action === "decline"
+			? answer
+			: {
+					action: "accept",
+					content: Object.fromEntries(
+						Object.entries(answer.content).map(([key, value]) => [
+							key,
+							typeof value === "object" ? [...value] : value,
+						]),
+					),
+				};
+
 	const defaultBin = (): string => {
 		const entry = process.argv[1];
 		return entry ? resolve(entry) : "kabane";
@@ -91,17 +115,30 @@ export namespace BoardCopilot {
 		let session: AcpClient.Session | null = null;
 		// The instruction block rides the first prompt of the session and only that one.
 		let instructed = false;
-		// Updates that do not come off the harness's stream — today only permission requests, which
-		// arrive on their own call while that stream is necessarily quiet.
+		// Updates that do not come off the harness's stream — the permission requests and forms,
+		// which arrive on their own call while that stream is necessarily quiet.
 		const outbox = Mailbox.create<CopilotUpdate>();
-		// Requests the harness is blocked on, by tool call id, each holding the resolver of the
-		// promise the ACP callback is awaiting. Answering one is what lets the turn continue.
+		// Requests the harness is blocked on — permissions by tool call id, forms by the id given
+		// them here — each holding the resolver of the promise the ACP callback is awaiting.
+		// Answering one is what lets the turn continue.
 		const blocked = new Map<string, (answer: Result<string>) => void>();
+		const forms = new Map<
+			string,
+			(answer: Result<AcpClient.ElicitationAnswer>) => void
+		>();
+		// A form carries no id of its own (its tool call id is optional), so it is numbered here.
+		let formsAsked = 0;
 
 		// Never answers by itself: it puts the question on the stream and waits. A request nobody
 		// answers keeps the turn waiting for as long as the human leaves it, which is what `cancel`
 		// is for — a board that guessed here would be deciding on their behalf.
-		const onPermission: AcpClient.OnPermission = (request) => {
+		const onPermission: AcpClient.OnPermission = (request, withdrawn) => {
+			whenWithdrawn(
+				withdrawn,
+				() => blocked.delete(request.toolCallId),
+				request.toolCallId,
+				request.title,
+			);
 			outbox.push({
 				type: "permission",
 				request: {
@@ -119,12 +156,54 @@ export namespace BoardCopilot {
 			);
 		};
 
-		// Let go of every outstanding question with a decline. A cancelled or closed session has
-		// nobody left to answer, and the harness would otherwise sit on a promise that never settles.
+		// The harness took a request back (`$/cancel_request`) before anyone answered it. The client has
+		// already told it `cancelled`; what is left is to stop asking the human, so it leaves the
+		// waiting map, where a late answer then finds nothing, and the board is told. One the human
+		// answered, or a cancel or close let go of first, is no longer waiting: `release` is false and
+		// nothing is said.
+		const whenWithdrawn = (
+			signal: AbortSignal,
+			release: () => boolean,
+			id: string,
+			asked: string,
+		): void =>
+			signal.addEventListener(
+				"abort",
+				() => {
+					if (!release()) return;
+					outbox.push({
+						type: "withdrawn",
+						id,
+						summary: `withdrawn by the harness: ${asked}`,
+						at: at(),
+					});
+				},
+				{ once: true },
+			);
+
+		// The same for a form: on the stream, and nothing filled in on the human's behalf.
+		const onElicitation: AcpClient.OnElicitation = (request, withdrawn) => {
+			const id = `form-${++formsAsked}`;
+			whenWithdrawn(withdrawn, () => forms.delete(id), id, request.message);
+			outbox.push({
+				type: "elicitation",
+				request: { id, message: request.message, fields: request.fields },
+				at: at(),
+			});
+			return new Promise<Result<AcpClient.ElicitationAnswer>>((resolve) =>
+				forms.set(id, resolve),
+			);
+		};
+
+		// Let go of every outstanding question: a permission declined, a form cancelled. A cancelled
+		// or closed session has nobody left to answer, and the harness would otherwise sit on a
+		// promise that never settles.
 		const unblockAll = (): void => {
-			for (const resolve of blocked.values())
-				resolve(err(new Error("cancelled")));
+			const cancelled = err(new Error("cancelled"));
+			for (const resolve of blocked.values()) resolve(cancelled);
+			for (const resolve of forms.values()) resolve(cancelled);
 			blocked.clear();
+			forms.clear();
 		};
 
 		const mcpServer = (): AcpClient.StdioServer => ({
@@ -141,9 +220,9 @@ export namespace BoardCopilot {
 
 		const connect: Connector =
 			options.connect ??
-			((permission) =>
+			((handlers) =>
 				AcpClient.spawn(options.harness, options.scopeDir, {
-					onPermission: permission,
+					...handlers,
 					...(options.overrides ? { overrides: options.overrides } : {}),
 				}));
 
@@ -153,7 +232,7 @@ export namespace BoardCopilot {
 
 		const start = async (): Promise<Result<AcpClient.Session>> => {
 			if (session) return ok(session);
-			const opened = await connect(onPermission);
+			const opened = await connect({ onPermission, onElicitation });
 			if (!opened.ok) return opened;
 			const started = await AcpClient.newSession(opened.value, {
 				cwd: options.scopeDir,
@@ -221,14 +300,19 @@ export namespace BoardCopilot {
 					return [
 						update("mode", `mode ${incoming.id}: moved there by the harness`),
 					];
-				// The board has no step of its own for a notice; `mode` is the one that reads as a plain
-				// line in the turn's log and changes nothing else.
+				// ACP's severity is open-ended; the board tells a warning from the rest, and an error the
+				// harness only notifies about (the turn carries on) is a warning to it.
 				case "notice":
 					return [
-						update(
-							"mode",
-							`${options.harness} ${incoming.severity}: ${incoming.text}`,
-						),
+						{
+							type: "notice",
+							severity:
+								incoming.severity === "warning" || incoming.severity === "error"
+									? "warning"
+									: "info",
+							summary: `${options.harness} ${incoming.severity}: ${incoming.text}`,
+							at: at(),
+						},
 					];
 				case "stop":
 					return [update("done", incoming.reason)];
@@ -353,6 +437,12 @@ export namespace BoardCopilot {
 				if (!resolve) return;
 				blocked.delete(id);
 				resolve(optionId === null ? err(new Error("declined")) : ok(optionId));
+			},
+			answerElicitation: (id, answer) => {
+				const resolve = forms.get(id);
+				if (!resolve) return;
+				forms.delete(id);
+				resolve(ok(toAnswer(answer)));
 			},
 			shortcuts: (): CopilotShortcut[] => [...CopilotInstructions.SHORTCUTS],
 			close: () => {

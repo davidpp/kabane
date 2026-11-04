@@ -241,14 +241,75 @@ export type CopilotPermission = {
 	options: readonly CopilotPermissionOption[];
 };
 
+// One option of a choice field: `value` is what the harness is answered with, `label` what the human
+// reads.
+export type CopilotFormOption = {
+	value: string;
+	label: string;
+	description?: string;
+};
+
+// One field of a harness's form, as the harness described it: `title` and `description` verbatim.
+// `choice` picks one option, `choices` any number of them.
+export type CopilotFormField = {
+	key: string;
+	title: string;
+	description?: string;
+	required: boolean;
+} & (
+	| { type: "text"; minLength?: number; maxLength?: number; pattern?: string }
+	| { type: "number"; integer: boolean; minimum?: number; maximum?: number }
+	| { type: "boolean" }
+	| { type: "choice"; options: readonly CopilotFormOption[] }
+	| {
+			type: "choices";
+			options: readonly CopilotFormOption[];
+			minItems?: number;
+			maxItems?: number;
+	  }
+);
+
+// The harness stopped mid-turn to ask the human to fill a form (AskUserQuestion, a
+// `request_user_input`), and is BLOCKED until it hears back. `id` is unique within the session;
+// `answerElicitation` names it to answer. A form with no fields asks only for a yes.
+export type CopilotElicitation = {
+	id: string;
+	message: string;
+	fields: readonly CopilotFormField[];
+};
+
+export type CopilotFormValue = string | number | boolean | readonly string[];
+
+// The human's answer to a form. `content` holds only the fields they answered: an optional field
+// left empty is absent, never filled in for them.
+export type CopilotElicitationAnswer =
+	| { action: "accept"; content: Readonly<Record<string, CopilotFormValue>> }
+	| { action: "decline" };
+
 // One streamed update of a copilot turn: a step, the turn's plan, or a question the human has to
 // answer. A plan is STATE, not a step — the harness re-sends the whole list every time an entry
-// moves, so it replaces rather than appends. A permission is neither: it is a turn stopped dead
-// until someone answers it, and the board is the only thing that may.
+// moves, so it replaces rather than appends. A permission or a form is neither: it is a turn
+// stopped dead until someone answers it, and the board is the only thing that may. `withdrawn` is
+// the harness taking one of those back unanswered (`id` names it): the board stops asking, and
+// `summary` is the line its transcript keeps.
 export type CopilotUpdate =
 	| { type: CopilotStep; summary: string; at: string }
 	| { type: "plan"; entries: readonly PlanEntry[]; at: string }
-	| { type: "permission"; request: CopilotPermission; at: string };
+	| { type: "permission"; request: CopilotPermission; at: string }
+	| { type: "elicitation"; request: CopilotElicitation; at: string }
+	| { type: "withdrawn"; id: string; summary: string; at: string }
+	// Something the harness wants the human to know that is not the agent's reply (a mode it fell
+	// back from, a model it swapped): a line of the turn's log that changes nothing else. The
+	// transcript records a warning as the event type `warning` and an info as `notice`; how each
+	// reads is the event view's glyph table.
+	| {
+			type: "notice";
+			severity: CopilotNoticeSeverity;
+			summary: string;
+			at: string;
+	  };
+
+export type CopilotNoticeSeverity = "info" | "warning";
 
 // A `/name` the prompt window expands client-side into `template`, so the human reads exactly what
 // will be sent before pressing enter. `hint` is the one-line description shown while picking.
@@ -269,6 +330,8 @@ export interface Copilot {
 	// left to hear it. A request the human never answers simply keeps the turn waiting, which
 	// `cancel` is the way out of.
 	answerPermission(id: string, optionId: string | null): void;
+	// Answer an `elicitation` update, the same way: accepted with what was filled in, or declined.
+	answerElicitation(id: string, answer: CopilotElicitationAnswer): void;
 	// The actor uri this copilot's writes are stamped with, so the board can tell the rows it just
 	// changed from the ones the human or another agent did. Absent for a copilot that writes nothing
 	// through the tracker — no row then ever matches, which is the truth.
@@ -297,6 +360,7 @@ export const noCopilot: Copilot = {
 	cancel: async () => {},
 	shortcuts: () => [],
 	answerPermission: () => {},
+	answerElicitation: () => {},
 };
 
 export const isInFlight = (card: ActivityCard): boolean =>

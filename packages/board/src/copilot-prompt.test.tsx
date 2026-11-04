@@ -111,6 +111,7 @@ const scriptedCopilot = (gate: Promise<void>, seen: Seen): Copilot => ({
 		},
 	],
 	answerPermission: () => {},
+	answerElicitation: () => {},
 });
 
 // A copilot whose turn stops on a question and waits — the board has to put it on screen and
@@ -146,6 +147,7 @@ const askingCopilot = (answers: (string | null)[]): Copilot => {
 		cancel: async () => {},
 		shortcuts: () => [],
 		answerPermission: (_id, optionId) => respond?.(optionId),
+		answerElicitation: () => {},
 	};
 };
 
@@ -186,6 +188,7 @@ const parallelCopilot = (answers: Map<string, string | null>): Copilot => {
 		cancel: async () => {},
 		shortcuts: () => [],
 		answerPermission: (id, optionId) => pending.get(id)?.(optionId),
+		answerElicitation: () => {},
 	};
 };
 
@@ -587,7 +590,7 @@ const idle = (
 	hasLog: false,
 	shortcuts: [],
 	actor: null,
-	permissions: [],
+	asks: [],
 	...over,
 });
 
@@ -736,7 +739,7 @@ describe("the pane's words", () => {
 			],
 		};
 		const line = collapsedSegments(
-			idle({ permissions: [permission] }),
+			idle({ asks: [{ type: "permission", request: permission }] }),
 			null,
 			null,
 			T,
@@ -755,7 +758,12 @@ describe("the pane's words", () => {
 			options: [{ id: "allow", label: "Allow" }],
 		};
 		const line = collapsedSegments(
-			idle({ permissions: [permission, { ...permission, id: "p2" }] }),
+			idle({
+				asks: [
+					{ type: "permission", request: permission },
+					{ type: "permission", request: { ...permission, id: "p2" } },
+				],
+			}),
 			null,
 			null,
 			T,

@@ -188,6 +188,8 @@ test("Detail pins a waiting question above the tabs, with no answer hint for a c
 			question: "Which auth flow should the CLI use?",
 			taskShortId: "JAKE-1",
 			choices: [],
+			multiSelect: false,
+			allowFreeform: true,
 			agent: "claude",
 			askedAt: "2026-10-10T00:00:00.000Z",
 		},
