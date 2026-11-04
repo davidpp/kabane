@@ -244,14 +244,15 @@ describe("the transcript's look", () => {
 		}
 	});
 
-	it("gives the glyphs the hues and the tool's arguments the aside", async () => {
+	it("gives the glyphs the hues, and a tool call recedes with its arguments as the aside", async () => {
 		const { captureSpans, destroy } = await mountTurn(80);
 		try {
 			const spans = captureSpans().lines.flatMap((line) => line.spans);
+			// The copilot records no end for a read, so nothing says how it went.
 			const gear = spanWith(spans, "⚙");
-			expect(gear && ints(gear.fg)).toEqual(rgb(Theme.DARK.working));
+			expect(gear && ints(gear.fg)).toEqual(rgb(Theme.DARK.muted));
 			const name = spanWith(spans, "Read");
-			expect(name?.fg.intent).toBe("default");
+			expect(name && ints(name.fg)).toEqual(rgb(Theme.DARK.secondary));
 			const args = spanWith(spans, "src/app.tsx");
 			expect(args && ints(args.fg)).toEqual(rgb(Theme.DARK.muted));
 			expect((args?.attributes ?? 0) & TextAttributes.ITALIC).toBeTruthy();
@@ -353,5 +354,293 @@ describe("promptLines", () => {
 		expect(promptLines("a b c d e f g h", 3, 2)).toEqual(["a b", "c …"]);
 		expect(promptLines("aa bb cc dd", 6, 1)).toEqual(["aa bb…"]);
 		expect(promptLines("", 10, 3)).toEqual([""]);
+	});
+});
+
+const AT = (ms: number): string => new Date(Date.parse(T0) + ms).toISOString();
+
+const loopCard: ActivityCard = {
+	id: "run-1",
+	kind: "loops",
+	label: "loop",
+	status: "running",
+	startedAt: T0,
+	detail: [],
+	hasEvents: true,
+};
+
+const HEREDOC = "`python3 - <<'EOF'\nimport sys\nprint(sys.argv)\nEOF`";
+
+// A loop session's turn as events.jsonl holds it: each call opened, then ended with its detail.
+const calls: ActivityEvent[] = [
+	{ seq: 1, at: T0, type: "prompt", summary: "implement JREP-2" },
+	{
+		seq: 2,
+		at: T0,
+		type: "tool_call",
+		summary: "Read src/pane.tsx",
+		callId: "r1",
+		detail: { kind: "read" },
+	},
+	{
+		seq: 3,
+		at: AT(300),
+		type: "tool_completed",
+		summary: "Read src/pane.tsx",
+		callId: "r1",
+		detail: { kind: "read", output: "export const Pane = () => null;" },
+	},
+	{
+		seq: 4,
+		at: AT(300),
+		type: "tool_call",
+		summary: "grep -rn wrap src",
+		callId: "g1",
+		detail: { kind: "search" },
+	},
+	{
+		seq: 5,
+		at: AT(900),
+		type: "tool_completed",
+		summary: "grep -rn wrap src",
+		callId: "g1",
+		detail: { kind: "search", output: "src/pane.tsx:3: wrap" },
+	},
+	{ seq: 6, at: AT(900), type: "text", summary: "Found where the pane wraps." },
+	{
+		seq: 7,
+		at: AT(900),
+		type: "tool_call",
+		summary: HEREDOC,
+		callId: "b1",
+		detail: { kind: "execute" },
+	},
+	{
+		seq: 8,
+		at: AT(13_900),
+		type: "tool_failed",
+		summary: HEREDOC,
+		callId: "b1",
+		detail: {
+			kind: "execute",
+			input: "command: python3 - <<'EOF'\nimport sys\nprint(sys.argv)\nEOF",
+			output: Array.from({ length: 30 }, (_, i) => `trace ${i + 1}`).join("\n"),
+		},
+	},
+	{
+		seq: 9,
+		at: AT(14_000),
+		type: "notice",
+		summary: "warning: Auto mode unavailable",
+	},
+	{
+		seq: 10,
+		at: AT(14_000),
+		type: "tool_call",
+		summary: "Edit src/pane.tsx",
+		callId: "e1",
+		detail: { kind: "edit" },
+	},
+];
+
+const sourceOf = (
+	card: ActivityCard,
+	events: readonly ActivityEvent[],
+): ActivitySource => ({
+	load: async () => ok([card]),
+	card: async () => ok(card),
+	events: async (_id, afterSeq) => ok(events.filter((e) => e.seq > afterSeq)),
+});
+
+const mountCalls = async (
+	width: number,
+	height = 24,
+	events: readonly ActivityEvent[] = calls,
+	ready = "Edit src/pane.tsx",
+	scrollRef = createRef<ScrollBoxRenderable>(),
+) => {
+	const setup = await renderTest(
+		<EventView
+			cardId="run-1"
+			initialCard={loopCard}
+			source={sourceOf(loopCard, events)}
+			resolveShortId={() => undefined}
+			scrollRef={scrollRef}
+		/>,
+		{ width, height },
+	);
+	const frame = await pumpUntil(setup.renderOnce, setup.captureCharFrame, (f) =>
+		f.includes(ready),
+	);
+	return { ...setup, frame, scrollRef };
+};
+
+const rowOf = (frame: string, text: string): number =>
+	frame.split("\n").findIndex((row) => row.includes(text));
+
+describe("tool calls in the transcript", () => {
+	for (const width of [40, 120])
+		it(`are one closed row each at ${width} columns, a read and a search one row for both`, async () => {
+			const { frame, captureSpans, destroy } = await mountCalls(width);
+			try {
+				const rows = frame.split("\n").map((row) => row.trimEnd());
+				expect(rows).toContain("▸ explored · 1 read, 1 search");
+				expect(frame).not.toContain("Read src/pane.tsx");
+				// A heredoc keeps to its first line, and the call's end is on its row, not one of its own.
+				expect(rows).toContain("✗ `python3 - <<'EOF'… · 13s");
+				expect(frame).not.toContain("import sys");
+				expect(frame).not.toContain("trace 30");
+				// Still running: the spinner, in the working hue.
+				const spans = captureSpans().lines.flatMap((line) => line.spans);
+				const edit =
+					rows.find((row) => row.includes("Edit src/pane.tsx")) ?? "";
+				expect(edit.startsWith("⠋ Edit")).toBe(true);
+				const spinner = spanWith(spans, "⠋");
+				expect(spinner && ints(spinner.fg)).toEqual(rgb(Theme.DARK.working));
+				const failed = spanWith(spans, "✗");
+				expect(failed && ints(failed.fg)).toEqual(rgb(Theme.DARK.failed));
+				// The agent's words keep the terminal's foreground, above the tool rows' secondary.
+				const said = spanWith(spans, "Found where");
+				expect(said?.fg.intent).toBe("default");
+				// A harness's warning: its own glyph, in the accent.
+				const notice = spanWith(spans, "!");
+				expect(notice && ints(notice.fg)).toEqual(rgb(Theme.DARK.accent));
+			} finally {
+				destroy();
+			}
+		});
+
+	it("opens a call on a click, its input's head and its output's tail on the raised surface, and closes it again", async () => {
+		const {
+			frame,
+			mockMouse,
+			renderOnce,
+			captureCharFrame,
+			captureSpans,
+			destroy,
+		} = await mountCalls(40, 40);
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		try {
+			await mockMouse.click(4, rowOf(frame, "python3"));
+			const opened = await until((f) => f.includes("trace 30"));
+			expect(opened).toContain("import sys");
+			expect(opened).toContain("(21 earlier lines)");
+			expect(opened).not.toContain("trace 21\n");
+			const spans = captureSpans().lines.flatMap((line) => line.spans);
+			const trace = spanWith(spans, "trace 30");
+			expect(trace && ints(trace.bg)).toEqual(rgb(Theme.DARK.surface.raised));
+			expect(trace && ints(trace.fg)).toEqual(rgb(Theme.DARK.failed));
+
+			// Past the window in which a second click is a double click, which selects a word.
+			await Bun.sleep(600);
+			await mockMouse.click(4, rowOf(opened, "python3 - <<'EOF'…"));
+			const closed = await until((f) => !f.includes("trace 30"));
+			expect(closed).toContain("✗ `python3");
+		} finally {
+			destroy();
+		}
+	});
+
+	it("opens a group on a click to the calls in it, each of which opens again", async () => {
+		const { frame, mockMouse, renderOnce, captureCharFrame, destroy } =
+			await mountCalls(40, 40);
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		try {
+			await mockMouse.click(4, rowOf(frame, "explored"));
+			const opened = await until((f) => f.includes("Read src/pane.tsx"));
+			const rows = opened.split("\n").map((row) => row.trimEnd());
+			expect(rows).toContain("▾ explored · 1 read, 1 search");
+			expect(rows).toContain("  ✓ Read src/pane.tsx · 0.3s");
+			expect(rows).toContain("  ✓ grep -rn wrap src · 0.6s");
+			await mockMouse.click(6, rowOf(opened, "grep -rn"));
+			const read = await until((f) => f.includes("src/pane.tsx:3: wrap"));
+			expect(read).toContain("Found where the pane wraps.");
+		} finally {
+			destroy();
+		}
+	});
+
+	it("keeps an opened row on its screen row while the stream follows its newest line", async () => {
+		// On a card's tab the stream is pinned to its bottom: what a row opens would scroll the row
+		// itself up and away from the click, but for the anchor.
+		const said = (from: number, count: number): ActivityEvent[] =>
+			Array.from({ length: count }, (_, i) => ({
+				seq: from + i,
+				at: T0,
+				type: "text",
+				summary: `said ${from + i}`,
+			}));
+		const failed = calls[7];
+		if (!failed) throw new Error("the fixture lost its failed call");
+		const events: ActivityEvent[] = [
+			...said(1, 20),
+			{ seq: 21, at: T0, type: "tool_call", summary: HEREDOC, callId: "b1" },
+			{ ...failed, seq: 22 },
+			...said(23, 4),
+		];
+		const setup = await renderTest(
+			<EventView
+				cardId="run-1"
+				initialCard={loopCard}
+				source={sourceOf(loopCard, events)}
+				resolveShortId={() => undefined}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				tabbed
+			/>,
+			{ width: 40, height: 16 },
+		);
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(setup.renderOnce, setup.captureCharFrame, p);
+		try {
+			const before = await until((f) => f.includes("said 26"));
+			const y = rowOf(before, "python3");
+			expect(y).toBeGreaterThan(2);
+			await setup.mockMouse.click(4, y);
+			const after = await until((f) => f.includes("import sys"));
+			expect(rowOf(after, "python3 - <<'EOF'…")).toBe(y);
+			// What it opened pushed the newer lines down, out of view, rather than the row up.
+			expect(after).not.toContain("said 26");
+		} finally {
+			setup.destroy();
+		}
+	});
+
+	it("does not anchor the last row while the stream follows it, so what it opens comes into view", async () => {
+		const setup = await renderTest(
+			<EventView
+				cardId="run-1"
+				initialCard={loopCard}
+				source={sourceOf(loopCard, calls.slice(0, 8))}
+				resolveShortId={() => undefined}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				tabbed
+			/>,
+			{ width: 40, height: 12 },
+		);
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(setup.renderOnce, setup.captureCharFrame, p);
+		try {
+			const before = await until((f) => f.includes("python3"));
+			await setup.mockMouse.click(4, rowOf(before, "python3"));
+			const after = await until((f) => f.includes("trace 30"));
+			expect(after).toContain("trace 30");
+		} finally {
+			setup.destroy();
+		}
+	});
+
+	it("does not open a row when the mouse let go of a selection over it", async () => {
+		const { frame, mockMouse, renderOnce, captureCharFrame, destroy } =
+			await mountCalls(40, 40);
+		try {
+			const y = rowOf(frame, "python3");
+			await mockMouse.drag(2, y, 20, y);
+			for (let pass = 0; pass < 5; pass++) await renderOnce();
+			expect(captureCharFrame()).not.toContain("import sys");
+		} finally {
+			destroy();
+		}
 	});
 });

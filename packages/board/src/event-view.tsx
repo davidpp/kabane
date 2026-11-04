@@ -5,18 +5,21 @@
 //
 // Two things are not rows: a plan, which heads the view pinned outside the scrollbox, and a `prompt`
 // event, which is what was ASKED and so opens the turn that answers it as a block of its own, on the
-// raised surface (opencode's user-message block, without its bar: DESIGN.md's No-Line Rule).
+// raised surface (opencode's user-message block, without its bar: DESIGN.md's No-Line Rule). And a
+// tool call is one row however many events it took, closed until clicked (ToolRows folds them).
 
 import {
 	type ColorInput,
+	type Renderable,
 	type ScrollBoxRenderable,
 	TextAttributes,
 } from "@opentui/core";
-import { useTerminalDimensions } from "@opentui/react";
+import { useRenderer, useTerminalDimensions } from "@opentui/react";
 import {
 	type ReactNode,
 	type RefObject,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -56,6 +59,16 @@ const NO_PERMISSIONS: readonly CopilotPermission[] = [];
 // and it is held to a few rows so a long pasted prompt heads its turn rather than burying it.
 const PROMPT_CHROME_COLS = 4;
 const MAX_PROMPT_ROWS = 3;
+
+// An opened call: its panel starts under the row's text, past the glyph, and is held to a few rows of
+// input and a few more of output. Its chrome is that inset, the panel's padding and the scrollbar.
+const BODY_INSET = 2;
+const BODY_CHROME_COLS = BODY_INSET + 3;
+const INPUT_ROWS = 6;
+const OUTPUT_ROWS = 10;
+// A group's calls sit under its label once it is opened.
+const GROUP_INDENT = 2;
+const NOTHING_OPEN: ReadonlySet<string> = new Set();
 
 const fit = (text: string, room: number): string =>
 	text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
@@ -102,31 +115,24 @@ export const promptLines = (
 // the rest a blank. The glyph carries the hue (DESIGN.md's glyph table): work that ran is the working
 // hue, a question the accent, a failure the failed hue, the rest muted. The agent's own words carry
 // no hue: they read on the terminal's foreground, dark or light; its thoughts are dimmed under them.
-// An ACP host names a call `tool_call` and its end `tool_completed`/`tool_failed`, which read as the
-// copilot's `tool_use`/`tool_result` and as an error.
+// Tool calls are not here: they are rows of their own (ToolCallRow).
 const eventStyle = (
-	type: string,
+	event: ActivityEvent,
 	theme: Theme.Tokens,
 ): { glyph: string; glyphFg: ColorInput; textFg: ColorInput } => {
-	switch (type) {
+	switch (event.type) {
 		case "text":
 			return { glyph: " ", glyphFg: theme.defaultFg, textFg: theme.defaultFg };
 		case "thought":
 			return { glyph: " ", glyphFg: theme.muted, textFg: theme.muted };
-		case "tool_use":
-		case "tool_call":
-			return { glyph: "⚙", glyphFg: theme.working, textFg: theme.defaultFg };
-		case "tool_result":
-		case "tool_completed":
-			return { glyph: "←", glyphFg: theme.muted, textFg: theme.muted };
-		case "tool_failed":
-			return { glyph: "✗", glyphFg: theme.failed, textFg: theme.muted };
 		case "phase":
 			return { glyph: "▶", glyphFg: theme.working, textFg: theme.defaultFg };
 		case "progress":
 			return { glyph: "·", glyphFg: theme.muted, textFg: theme.muted };
 		case "permission":
 			return { glyph: "?", glyphFg: theme.accent, textFg: theme.defaultFg };
+		case "notice":
+			return noticeStyle(event.summary, theme);
 		case "error":
 			return { glyph: "✗", glyphFg: theme.failed, textFg: theme.failed };
 		case "metric":
@@ -134,6 +140,27 @@ const eventStyle = (
 		default:
 			return { glyph: " ", glyphFg: theme.muted, textFg: theme.muted };
 	}
+};
+
+// What a harness wanted the human to know, which the loop writes as `<severity>: <text>`: a warning
+// in the accent, since it says the session is not running the way it was asked to; an error in the
+// failed hue; anything else muted.
+const noticeStyle = (
+	summary: string,
+	theme: Theme.Tokens,
+): { glyph: string; glyphFg: ColorInput; textFg: ColorInput } => {
+	const severity = /^(\w+):/.exec(summary)?.[1];
+	const fg =
+		severity === "warning"
+			? theme.accent
+			: severity === "error"
+				? theme.failed
+				: theme.muted;
+	return {
+		glyph: "!",
+		glyphFg: fg,
+		textFg: fg === theme.muted ? theme.muted : theme.defaultFg,
+	};
 };
 
 // Status color for the header.
@@ -343,6 +370,7 @@ export const EventView = ({
 				width={width}
 				scrollRef={scrollRef}
 				tabbed={tabbed}
+				spinnerFrame={spinnerFrame}
 			/>
 			{permissions[0] ? (
 				<box
@@ -378,7 +406,8 @@ export const EventView = ({
 
 // The events, and how the card ended. A card's tab is a live stream: pinned to the newest line until
 // the human scrolls up, and pinned again once back down. On the all-lanes stream each line carries
-// its lane's tag in the lane's series color, the same one its chip has.
+// its lane's tag in the lane's series color, the same one its chip has. Tool calls are one row each,
+// closed until clicked, and a run of reads and searches one row for the lot (ToolRows).
 const Stream = ({
 	card,
 	events,
@@ -386,6 +415,7 @@ const Stream = ({
 	width,
 	scrollRef,
 	tabbed,
+	spinnerFrame,
 }: {
 	card: ActivityCard;
 	events: readonly ActivityEvent[];
@@ -393,20 +423,40 @@ const Stream = ({
 	width: number;
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	tabbed: boolean;
+	spinnerFrame: string;
 }): ReactNode => {
 	const theme = useTheme();
+	const live = isInFlight(card);
+	const rows = useMemo(() => ToolRows.rows(events, live), [events, live]);
+	const { open, toggle } = useOpenRows(rows, scrollRef);
 	const cols = lanes.length > 0 ? tagCols(lanes, width) : 0;
+	const tagRoom = cols > 0 ? cols + 1 : 0;
 	const promptRoom = Math.max(
 		MIN_ENTRY_COLS,
-		width - PROMPT_CHROME_COLS - (cols > 0 ? cols + 1 : 0),
+		width - PROMPT_CHROME_COLS - tagRoom,
 	);
-	const tagOf = (event: ActivityEvent): Tag | undefined => {
-		if (cols === 0 || event.lane === undefined) return undefined;
+	// What an opened call's text may use: the row less its tag, its glyph, the panel's padding and the
+	// scrollbar.
+	const bodyRoom = Math.max(MIN_ENTRY_COLS, width - tagRoom - BODY_CHROME_COLS);
+	const tagOf = (lane: string | undefined): Tag | undefined => {
+		if (cols === 0 || lane === undefined) return undefined;
 		return {
-			text: fit(event.lane, cols).padEnd(cols),
-			fg: Theme.seriesOf(theme, Math.max(0, lanes.indexOf(event.lane))),
+			text: fit(lane, cols).padEnd(cols),
+			fg: Theme.seriesOf(theme, Math.max(0, lanes.indexOf(lane))),
 		};
 	};
+	const callRow = (call: ToolRows.Call, indent: number): ReactNode => (
+		<ToolCallRow
+			key={call.key}
+			call={call}
+			tag={tagOf(call.lane)}
+			indent={indent}
+			open={open.has(call.key)}
+			onToggle={(header) => toggle(call.key, header)}
+			spinnerFrame={spinnerFrame}
+			room={bodyRoom - indent}
+		/>
+	);
 	return (
 		<scrollbox
 			ref={scrollRef}
@@ -414,25 +464,101 @@ const Stream = ({
 			stickyStart="bottom"
 			style={{ flexGrow: 1, marginTop: 1 }}
 		>
-			{events.length === 0 ? (
+			{rows.length === 0 ? (
 				<text fg={theme.muted}>no events yet</text>
 			) : (
-				events.map((event, index) =>
-					event.type === PROMPT_EVENT ? (
-						<PromptBlock
-							key={event.seq}
-							lines={promptLines(event.summary, promptRoom, MAX_PROMPT_ROWS)}
-							first={index === 0}
-							tag={tagOf(event)}
-						/>
-					) : (
-						<EventRow key={event.seq} event={event} tag={tagOf(event)} />
-					),
-				)
+				rows.map((row, index) => {
+					switch (row.type) {
+						case "call":
+							return callRow(row.call, 0);
+						case "group": {
+							const { group } = row;
+							const opened = open.has(group.key);
+							return (
+								<box
+									key={group.key}
+									style={{ flexDirection: "column", flexShrink: 0 }}
+								>
+									<ToolGroupRow
+										group={group}
+										tag={tagOf(group.lane)}
+										open={opened}
+										onToggle={(header) => toggle(group.key, header)}
+										spinnerFrame={spinnerFrame}
+									/>
+									{opened
+										? group.calls.map((call) => callRow(call, GROUP_INDENT))
+										: null}
+								</box>
+							);
+						}
+						case "event":
+							return row.event.type === PROMPT_EVENT ? (
+								<PromptBlock
+									key={row.event.seq}
+									lines={promptLines(
+										row.event.summary,
+										promptRoom,
+										MAX_PROMPT_ROWS,
+									)}
+									first={index === 0}
+									tag={tagOf(row.event.lane)}
+								/>
+							) : (
+								<EventRow
+									key={row.event.seq}
+									event={row.event}
+									tag={tagOf(row.event.lane)}
+								/>
+							);
+					}
+				})
 			)}
 			<Ending card={card} />
 		</scrollbox>
 	);
+};
+
+// Which tool rows are open, by key. A click opens or closes the row under it. Its header keeps its
+// place on screen through the layout that follows (ScrollBox.anchor, as opencode's session view
+// does), unless it is the last row while the stream follows its newest line: anchored there, what it
+// opens would go below the screen. A drag that selected text is not a click.
+const useOpenRows = (
+	rows: readonly ToolRows.Row[],
+	scrollRef: RefObject<ScrollBoxRenderable | null>,
+): {
+	open: ReadonlySet<string>;
+	toggle: (key: string, header: Renderable | null) => void;
+} => {
+	const renderer = useRenderer();
+	const [open, setOpen] = useState<ReadonlySet<string>>(NOTHING_OPEN);
+	const lastKey = rowKey(rows[rows.length - 1]);
+	const toggle = (key: string, header: Renderable | null): void => {
+		if (renderer.getSelection()?.getSelectedText()) return;
+		const scroll = scrollRef.current;
+		const following =
+			scroll !== null &&
+			scroll.scrollTop >= scroll.scrollHeight - scroll.viewport.height;
+		if (scroll && header && !(key === lastKey && following))
+			scroll.afterLayout(scroll.anchor(header));
+		setOpen((prev) => {
+			const next = new Set(prev);
+			if (!next.delete(key)) next.add(key);
+			return next;
+		});
+	};
+	return { open, toggle };
+};
+
+const rowKey = (row: ToolRows.Row | undefined): string | undefined => {
+	switch (row?.type) {
+		case "call":
+			return row.call.key;
+		case "group":
+			return row.group.key;
+		default:
+			return undefined;
+	}
 };
 
 // The board's own one-line header for a card: its label, its task, its status and how long it ran.
@@ -575,11 +701,7 @@ const EventRow = ({
 	tag?: Tag;
 }): ReactNode => {
 	const theme = useTheme();
-	const { glyph, glyphFg, textFg } = eventStyle(event.type, theme);
-	const tool =
-		event.type === "tool_use" || event.type === "tool_call"
-			? ToolRows.toolParts(event.summary)
-			: null;
+	const { glyph, glyphFg, textFg } = eventStyle(event, theme);
 	return (
 		<box style={{ flexDirection: "row", flexShrink: 0 }}>
 			{tag ? (
@@ -595,19 +717,211 @@ const EventRow = ({
 				attributes={event.type === "thought" ? TextAttributes.ITALIC : 0}
 				style={{ flexGrow: 1, flexShrink: 1 }}
 			>
-				{tool ? (
-					<>
-						{tool.name}
-						{tool.args ? (
-							<span fg={theme.muted} attributes={TextAttributes.ITALIC}>
-								{` ${tool.args}`}
-							</span>
-						) : null}
-					</>
-				) : (
-					event.summary
-				)}
+				{event.summary}
 			</text>
+		</box>
+	);
+};
+
+// A call's glyph says how it went: the spinner while it runs, a muted check once it ended, the
+// failed hue when it failed, the tool glyph when nothing said. Tool rows recede under the agent's
+// words: a check is muted, and only a failure keeps its hue.
+const callGlyph = (
+	status: ToolRows.Call["status"],
+	spinnerFrame: string,
+	theme: Theme.Tokens,
+): { glyph: string; fg: ColorInput } => {
+	switch (status) {
+		case "running":
+			return { glyph: spinnerFrame, fg: theme.working };
+		case "completed":
+			return { glyph: "✓", fg: theme.muted };
+		case "failed":
+			return { glyph: "✗", fg: theme.failed };
+		case "unknown":
+			return { glyph: "⚙", fg: theme.muted };
+	}
+};
+
+// The one line a call is while closed: its glyph, the tool, the first line of what it was called on
+// as an aside cut to the row, and how long it took. opencode's InlineToolRow
+// (routes/session/message-parts.tsx): a fixed glyph cell, the label, the status after it.
+const ToolCallRow = ({
+	call,
+	tag,
+	indent,
+	open,
+	onToggle,
+	spinnerFrame,
+	room,
+}: {
+	call: ToolRows.Call;
+	tag?: Tag;
+	indent: number;
+	open: boolean;
+	onToggle: (header: Renderable | null) => void;
+	spinnerFrame: string;
+	room: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const { glyph, fg } = callGlyph(call.status, spinnerFrame, theme);
+	const { name, args } = ToolRows.toolParts(call.summary);
+	const took = ToolRows.duration(call);
+	const body = open ? <ToolBody call={call} room={room} /> : null;
+	return (
+		<box style={{ flexDirection: "column", flexShrink: 0 }}>
+			<box
+				style={{ flexDirection: "row", flexShrink: 0, paddingLeft: indent }}
+				onMouseUp={(event) => onToggle(event.currentTarget)}
+			>
+				{tag ? (
+					<text fg={tag.fg} style={{ flexShrink: 0 }}>
+						{`${tag.text} `}
+					</text>
+				) : null}
+				<text fg={fg} style={{ flexShrink: 0 }}>
+					{`${glyph} `}
+				</text>
+				<text
+					fg={call.status === "failed" ? theme.failed : theme.secondary}
+					wrapMode="none"
+					truncate
+					style={{ flexShrink: 1, minWidth: 0 }}
+				>
+					{name}
+					{args ? (
+						<span fg={theme.muted} attributes={TextAttributes.ITALIC}>
+							{` ${args}`}
+						</span>
+					) : null}
+				</text>
+				{took ? (
+					<text fg={theme.muted} style={{ flexShrink: 0 }}>
+						{` · ${took}`}
+					</text>
+				) : null}
+			</box>
+			{body}
+		</box>
+	);
+};
+
+// A run of reads and searches as one row: the spinner while one runs, then the caret that says it
+// opens. opencode's exploring group (routes/session/group-view.tsx), its `✱`/`→` swapped for the
+// board's own caret (DESIGN.md: `▸`/`▾` mark expandability).
+const ToolGroupRow = ({
+	group,
+	tag,
+	open,
+	onToggle,
+	spinnerFrame,
+}: {
+	group: ToolRows.Group;
+	tag?: Tag;
+	open: boolean;
+	onToggle: (header: Renderable | null) => void;
+	spinnerFrame: string;
+}): ReactNode => {
+	const theme = useTheme();
+	const running = ToolRows.groupStatus(group) === "running";
+	return (
+		<box
+			style={{ flexDirection: "row", flexShrink: 0 }}
+			onMouseUp={(event) => onToggle(event.currentTarget)}
+		>
+			{tag ? (
+				<text fg={tag.fg} style={{ flexShrink: 0 }}>
+					{`${tag.text} `}
+				</text>
+			) : null}
+			<text
+				fg={running ? theme.working : theme.muted}
+				style={{ flexShrink: 0 }}
+			>
+				{`${running ? spinnerFrame : open ? "▾" : "▸"} `}
+			</text>
+			<text
+				fg={theme.secondary}
+				wrapMode="none"
+				truncate
+				style={{ flexShrink: 1, minWidth: 0 }}
+			>
+				{ToolRows.groupLabel(group)}
+			</text>
+		</box>
+	);
+};
+
+// An opened call, on the raised surface under its row: the head of its input (else the whole title,
+// when the row cut it), and the tail of its output, each held to a few rows. A failed call's output is its
+// error, in the failed hue.
+const ToolBody = ({
+	call,
+	room,
+}: {
+	call: ToolRows.Call;
+	room: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const bg = theme.surface.raised;
+	const title = call.summary.trim();
+	const sections = [
+		...(!call.detail.input && (title.includes("\n") || title.length > room)
+			? [
+					{
+						text: ToolRows.head(title, INPUT_ROWS, INPUT_ROWS * room),
+						fg: theme.text,
+					},
+				]
+			: []),
+		...(call.detail.input
+			? [
+					{
+						text: ToolRows.head(
+							call.detail.input,
+							INPUT_ROWS,
+							INPUT_ROWS * room,
+						),
+						fg: theme.text,
+					},
+				]
+			: []),
+		...(call.detail.output
+			? [
+					{
+						text: ToolRows.tail(
+							call.detail.output,
+							OUTPUT_ROWS,
+							OUTPUT_ROWS * room,
+						),
+						fg: call.status === "failed" ? theme.failed : theme.secondary,
+					},
+				]
+			: []),
+	];
+	return (
+		<box
+			style={{
+				flexDirection: "column",
+				flexShrink: 0,
+				marginLeft: BODY_INSET,
+				backgroundColor: bg,
+				paddingLeft: 1,
+				paddingRight: 1,
+			}}
+		>
+			{sections.length === 0 ? (
+				<text bg={bg} fg={theme.muted}>
+					nothing more to show
+				</text>
+			) : (
+				sections.map((section, index) => (
+					// Index keys: the sections are positional and never reorder.
+					<text key={index} bg={bg} fg={section.fg} wrapMode="word">
+						{section.text}
+					</text>
+				))
+			)}
 		</box>
 	);
 };

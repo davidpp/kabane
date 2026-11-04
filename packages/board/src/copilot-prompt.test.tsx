@@ -376,10 +376,10 @@ describe("the A prompt against a scripted copilot", () => {
 			// header paints before the events land, so the wait is on both.
 			mockInput.pressKey("o");
 			const transcript = await until(
-				(f) => f.includes("completed ·") && f.includes("← ok"),
+				(f) => f.includes("completed ·") && f.includes("✓ ok"),
 			);
 			expect(transcript).toContain("Moved it to someday.");
-			expect(transcript).toContain("← ok");
+			expect(transcript).toContain("✓ ok");
 		} finally {
 			destroy();
 		}

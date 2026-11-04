@@ -23,7 +23,7 @@ export namespace ToolRows {
 		detail: ActivityToolDetail;
 	};
 
-	type Group = { key: string; lane?: string; calls: readonly Call[] };
+	export type Group = { key: string; lane?: string; calls: readonly Call[] };
 
 	export type Row =
 		| { type: "event"; event: ActivityEvent }
@@ -168,7 +168,7 @@ export namespace ToolRows {
 		fetch: "fetches",
 	};
 
-	const groupStatus = (group: Group): Status =>
+	export const groupStatus = (group: Group): Status =>
 		group.calls.some((call) => call.status === "running")
 			? "running"
 			: group.calls.some((call) => call.status === "failed")
