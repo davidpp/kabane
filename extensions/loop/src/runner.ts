@@ -9,6 +9,7 @@ import { err, ok, type Result } from "@cabane/core";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
 import { Claims } from "./claims";
+import { Fixer } from "./fixer";
 import { Gates } from "./gates";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
@@ -267,37 +268,73 @@ export namespace Runner {
 	};
 
 	/**
-	 * The work is done and nothing is running: the run completes once its gates are green on the
-	 * tree as it is and every lens has reviewed it. Gates come first, so a lens reviews work that
-	 * passes them. Undefined goes on ticking.
+	 * Whether the result as it is has been checked: the gates are green on it and, in a run with a
+	 * worktree, a pass has checkpointed it (a pass is how a worktree run commits, gates or none).
+	 */
+	const checked = async (ctx: Ctx): Promise<boolean> => {
+		const tree = await ctx.tree(RunStore.sessionDir(ctx.run));
+		return (
+			Gates.green(ctx.run.config.gates, ctx.run.gateRuns, tree) &&
+			(ctx.run.worktree === undefined || ctx.run.gateRuns.at(-1)?.tree === tree)
+		);
+	};
+
+	/**
+	 * The work is done and nothing is running. The phases that follow, each once: the gates on the
+	 * result, the lenses on work that passes them, the fixer on what the lenses found, and the gates
+	 * once more on what the fixer changed. The run completes when all of it has happened. The fixer
+	 * does not wait for the gates: the lenses saw them green, and a fixer resumed after its runner
+	 * died picks up a half-fixed tree. Undefined goes on ticking.
 	 */
 	const finalChecks = async (
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
 	): Promise<Exit | undefined> => {
-		const { gates, lenses } = ctx.run.config;
-		const gatesGreen = Gates.green(
-			gates,
-			ctx.run.gateRuns,
-			await ctx.tree(RunStore.sessionDir(ctx.run)),
+		const gatesGreen = await checked(ctx);
+		const reviewed = Lenses.status(ctx.run.config.lenses, ctx.run.claims);
+		const lensesDone = Lenses.finished(reviewed);
+		const fixer = Fixer.status(ctx.run.claims);
+		const findings = LoopPlan.fixable(
+			plan,
+			ctx.now(),
+			new Set(ctx.run.steering.skipped),
 		);
-		const reviewed = Lenses.status(lenses, ctx.run.claims);
-		const checks = { gatesGreen, lensesDone: Lenses.finished(reviewed) };
-		if (Stop.evaluate(plan, checks).done)
-			return { status: "completed", reason: "plan-done" };
-		if (!gatesGreen) return finalGates(ctx, plan);
-		const failed = reviewed.failed[0];
-		if (failed)
+		const fixerDone =
+			fixer.kind === "ended" ||
+			(fixer.kind === "unstarted" && findings.length === 0);
+		if (Stop.evaluate(plan, { gatesGreen, lensesDone, fixerDone }).done) {
+			const { open } = LoopPlan.findings(plan);
+			return {
+				status: "completed",
+				reason: "plan-done",
+				...(open > 0
+					? { detail: `${plural(open, "finding")} left open for a human` }
+					: {}),
+			};
+		}
+		if (!lensesDone) {
+			if (!gatesGreen) return finalGates(ctx, plan);
+			const failed = reviewed.failed[0];
+			if (failed)
+				return {
+					status: "stopped",
+					reason: "lens-failed",
+					detail: `${failed.name}: ${failed.detail}`,
+				};
+			return startLenses(ctx, plan, reviewed.pending);
+		}
+		if (fixer.kind === "failed")
 			return {
 				status: "stopped",
-				reason: "lens-failed",
-				detail: `${failed.name}: ${failed.detail}`,
+				reason: "fixer-failed",
+				detail: fixer.detail,
 			};
-		return startLenses(ctx, plan, reviewed.pending);
+		if (!fixerDone) return startFixer(ctx, plan, findings);
+		return finalGates(ctx, plan);
 	};
 
 	// Lenses take free slots like any claim, and none while the run is paused. Their findings are
-	// children of the parent, so an open `p1` is claimed as work on the next tick.
+	// children of the parent, for the fixer once every lens has reviewed.
 	const startLenses = async (
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
@@ -315,6 +352,27 @@ export namespace Runner {
 				};
 		}
 		return undefined;
+	};
+
+	// One session takes every finding the run may claim, most severe first. Not while paused.
+	const startFixer = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+		findings: readonly LoopPlan.Node[],
+	): Promise<Exit | undefined> => {
+		if (ctx.run.steering.paused) return undefined;
+		const started = await Claims.fixer(
+			ctx,
+			findings.map((n) => n.task),
+			plan,
+		);
+		return started.ok
+			? undefined
+			: {
+					status: "stopped",
+					reason: "fixer-failed",
+					detail: started.error.message,
+				};
 	};
 
 	// Gates not green on the tree as it is (none run since the last change) run once more; a red

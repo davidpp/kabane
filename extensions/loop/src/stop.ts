@@ -1,51 +1,40 @@
-// The stop predicate: a run is done when every subtask is closed, no `p1` finding is open, the
-// gates are green and every lens has reviewed the work. Pure over a plan the caller just read and
-// what it knows of its checks; the runner runs the gates, then the lenses, once the work is done.
+// The stop predicate: a run is done when every subtask is closed, every lens has reviewed the
+// work, the fixer has taken what they found, and the gates are green on the result. Pure over a
+// plan the caller just read and what it knows of its checks; the runner runs the gates, then the
+// lenses, then the fixer, once the work is done. Findings left open do not keep a run going: the
+// fixer had its pass at them, and what it left is for a human.
 import { LoopPlan } from "./plan";
 
 export namespace Stop {
-	/** What the run knows of its checks: green with no gates, done with no lenses. */
-	type Checks = { gatesGreen: boolean; lensesDone: boolean };
+	/**
+	 * What the run knows of its checks: green with no gates, done with no lenses, and the fixer
+	 * done once its session ended or when there was nothing for it to take.
+	 */
+	type Checks = {
+		gatesGreen: boolean;
+		lensesDone: boolean;
+		fixerDone: boolean;
+	};
 
 	type Verdict =
 		| { done: true }
-		| {
-				done: false;
-				openSubtasks: number;
-				openP1: number;
-				gatesGreen: boolean;
-				lensesDone: boolean;
-		  };
+		| ({ done: false; openSubtasks: number } & Checks);
 
-	const open = (plan: LoopPlan.Plan): { subtasks: number; p1: number } => {
-		let subtasks = 0;
-		let p1 = 0;
-		for (const n of plan.nodes) {
-			if (LoopPlan.isClosed(n.task)) continue;
-			if (!n.finding) subtasks += 1;
-			else if (n.p1) p1 += 1;
-		}
-		return { subtasks, p1 };
-	};
+	const openSubtasks = (plan: LoopPlan.Plan): number =>
+		plan.nodes.filter((n) => LoopPlan.isWork(n) && !LoopPlan.isClosed(n.task))
+			.length;
 
-	/** Whether the plan's work is done: every subtask closed and no open `p1` finding. */
-	export const workDone = (plan: LoopPlan.Plan): boolean => {
-		const left = open(plan);
-		return left.subtasks === 0 && left.p1 === 0;
-	};
+	/** Whether the plan's work is done: every subtask closed. */
+	export const workDone = (plan: LoopPlan.Plan): boolean =>
+		openSubtasks(plan) === 0;
 
 	export const evaluate = (plan: LoopPlan.Plan, checks: Checks): Verdict => {
-		const left = open(plan);
-		return left.subtasks === 0 &&
-			left.p1 === 0 &&
+		const left = openSubtasks(plan);
+		return left === 0 &&
 			checks.gatesGreen &&
-			checks.lensesDone
+			checks.lensesDone &&
+			checks.fixerDone
 			? { done: true }
-			: {
-					done: false,
-					openSubtasks: left.subtasks,
-					openP1: left.p1,
-					...checks,
-				};
+			: { done: false, openSubtasks: left, ...checks };
 	};
 }

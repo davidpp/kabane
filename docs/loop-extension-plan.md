@@ -104,7 +104,8 @@ answered from the board, a finding filed. Mocked transcripts do not count.
    - **Verifiers:** lenses, each a prompt file plus a harness, run once the plan is done. Findings
      are child issues of the parent, tagged `finding` and `p1`/`p2`/`p3`. That keeps them
      trackable and fixable with existing tools; `kabane_comment` has no severity field.
-   - **Stop condition:** all subtasks done, gates green, no open `p1` finding.
+   - **Stop condition:** all subtasks done, every lens has reviewed, the fixer has had its pass
+     at the open findings, and the gates are green on the result (JCAB-47, C3).
    - **Continuations:** at most N automatic nudges across the run, only for still-active issues
      owned by their implementing claim. Blocked agents set their issue to `waiting` with
      `kabane_edit`, comment the blocker with `kabane_comment`, and end their turn. Waiting,
@@ -304,7 +305,7 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
 ### C3. Verifier lenses and findings
 - Lens prompt files, the shipped `functional` and `quality` lenses, and repo overrides.
 - Findings filed as tagged child issues.
-- A `p1` keeps the run open and reopens work.
+- One fixer session takes every open finding after the lenses (JCAB-47, below).
 
 Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
 - **Config:** `lenses: string[]` (none by default, so a run with no lenses completes on its
@@ -319,15 +320,25 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
   is. Lenses take free slots like claims, none while paused. Each is a claim on the parent
   (`lens` on the claim, lane `<harness>:<name>-lens`) that leaves the parent's state alone,
   runs no gates, and counts toward no stall. One turn: its end is the review's end.
-- **One round:** a lens runs once per run, which the plan did not say. A `p1` it files is
-  claimed like any subtask, and once it is closed and the gates are green the run completes
+- **One round:** a lens runs once per run, which the plan did not say. Once every lens has
+  reviewed, the fixer has one pass at what they filed and the run completes on green gates
   without a second review. Repeating lenses after every fix has no natural bound short of the
   budgets.
 - **Failure:** a lens that ends without finishing (error, cancelled, a stop reason other than
   `end_turn`) stops the run as `lens-failed`, rather than completing unreviewed; one
   interrupted by a runner that died runs again on resume.
-- **Stop:** `Stop.evaluate(plan, {gatesGreen, lensesDone})`. Header: a lens step after the
-  gates, with the findings count and open `p1`s from the plan.
+- **Stop:** `Stop.evaluate(plan, {gatesGreen, lensesDone, fixerDone})`. Header: a lens step
+  after the gates, with the findings count and how many are open, then a fixer step.
+- **Fixer (JCAB-47):** findings are never claimed one by one. Once every lens has finished, one
+  session on the implementer (`fixer` on the claim, lane `fixer`) gets every claimable open
+  finding under the parent, p1 → p2 → p3, read structurally (children tagged `finding`). It
+  closes each one it fixes and comments and parks (`waiting`) one it judges wrong or out of
+  scope. Its session is over when none of its findings is still claimable or its own; a turn
+  that ends with some left spends a continuation like any claim. It does not wait for the
+  gates (a resumed one picks up a half-fixed tree); the gates, and a worktree's checkpoint,
+  run once it has ended. One interrupted by a dead runner runs again on what is still open;
+  one that errors stops the run as `fixer-failed`. Findings it left do not keep the run open:
+  the run completes saying how many are left for a human.
 
 ### C4. Questions, permissions and steering
 - **Permissions:** done on branch `worktree-agent-a74b0c0ae0b7397eb`. Every request goes to the

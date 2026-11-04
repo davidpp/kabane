@@ -3,8 +3,9 @@
 // or park subtasks while the run goes, so nothing here is cached; a changed plan is a normal
 // event, not an error.
 //
-// Findings are children tagged `finding`. An open `p1` finding is work (it keeps the run open and
-// gets claimed like any subtask); `p2` and `p3` findings are on the record and are not claimed.
+// Findings are children tagged `finding`, which the lenses file. They are not work the scheduler
+// claims: once the lenses have reviewed, one fixer session takes every open finding, most severe
+// first. Severity (`p1`, `p2`, `p3`) orders that work and is reported; it does not decide it.
 import {
 	err,
 	ok,
@@ -21,7 +22,7 @@ export namespace LoopPlan {
 		/** Ids of the tasks that must close before this one can be claimed, children or not. */
 		blockedBy: string[];
 		finding: boolean;
-		p1: boolean;
+		severity: Severity | undefined;
 	};
 
 	export type Plan = {
@@ -32,7 +33,9 @@ export namespace LoopPlan {
 	};
 
 	export const FINDING_TAG = "finding";
-	export const P1_TAG = "p1";
+	/** Most severe first. */
+	export const SEVERITIES = ["p1", "p2", "p3"] as const;
+	export type Severity = (typeof SEVERITIES)[number];
 
 	const CLAIMABLE: ReadonlySet<TaskState> = new Set(["inbox", "next"]);
 
@@ -42,8 +45,18 @@ export namespace LoopPlan {
 	const hasTag = (task: Task, tag: string): boolean =>
 		task.tags.some((t) => t.toLowerCase() === tag);
 
-	/** Required to finish: human and agent subtasks, and the `p1` findings. */
-	export const isWork = (node: Node): boolean => !node.finding || node.p1;
+	/** What the scheduler claims and the plan needs closed: every child but the findings. */
+	export const isWork = (node: Node): boolean => !node.finding;
+
+	export const severityOf = (task: Task): Severity | undefined =>
+		SEVERITIES.find((s) => hasTag(task, s));
+
+	/** The lens that filed a finding: its tags other than `finding` and the severity. */
+	export const lensOf = (task: Task): string | undefined =>
+		task.tags.find((t) => {
+			const tag = t.toLowerCase();
+			return tag !== FINDING_TAG && !SEVERITIES.some((s) => s === tag);
+		});
 
 	/** The blockers a set of links gives `taskId`, both directions of the relation. */
 	export const blockersOf = (
@@ -67,7 +80,7 @@ export namespace LoopPlan {
 		task,
 		blockedBy,
 		finding: hasTag(task, FINDING_TAG),
-		p1: hasTag(task, P1_TAG),
+		severity: severityOf(task),
 	});
 
 	// A parent with more children than this is not a loop's plan; it is a backlog.
@@ -235,18 +248,39 @@ export namespace LoopPlan {
 		return { kind: "waiting", on: [...holders] };
 	};
 
-	/** Closed work ids, for the stall detector's progress mark. */
-	export const closedWork = (plan: Plan): string[] =>
-		plan.nodes
-			.filter((n) => isWork(n) && isClosed(n.task))
-			.map((n) => n.task.id);
+	/**
+	 * Closed children ids, for the stall detector's progress mark: a finding the fixer closes is
+	 * progress as much as a subtask is.
+	 */
+	export const closed = (plan: Plan): string[] =>
+		plan.nodes.filter((n) => isClosed(n.task)).map((n) => n.task.id);
 
-	/** What the lenses filed: every finding, and the open `p1`s among them. */
-	export const findings = (plan: Plan): { total: number; openP1: number } => {
+	const rank = (node: Node): number =>
+		node.severity === undefined
+			? SEVERITIES.length
+			: SEVERITIES.indexOf(node.severity);
+
+	/**
+	 * The findings the fixer takes, most severe first, then oldest first: every open one the run
+	 * may claim. One a human parked, deferred, took or skipped is theirs, as a subtask would be.
+	 */
+	export const fixable = (
+		plan: Plan,
+		now: Date,
+		skipped: ReadonlySet<string> = NOTHING,
+	): Node[] =>
+		plan.nodes
+			.filter(
+				(n) => n.finding && canClaim(n.task, now) && !skipped.has(n.task.id),
+			)
+			.sort((a, b) => rank(a) - rank(b));
+
+	/** What the lenses filed: every finding, and how many are still open. */
+	export const findings = (plan: Plan): { total: number; open: number } => {
 		const found = plan.nodes.filter((n) => n.finding);
 		return {
 			total: found.length,
-			openP1: found.filter((n) => n.p1 && !isClosed(n.task)).length,
+			open: found.filter((n) => !isClosed(n.task)).length,
 		};
 	};
 }

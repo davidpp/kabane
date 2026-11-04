@@ -50,6 +50,66 @@ beforeEach(async () => {
 
 afterEach(() => rmSync(base, { recursive: true, force: true }));
 
+describe("LoopPlan.fixable", () => {
+	it("takes every claimable finding of any severity, most severe first, and never as subtask work", async () => {
+		const parent = await add({ title: "parent" });
+		await add({ title: "subtask", parentTaskId: parent, state: "done" });
+		await add({
+			title: "nit",
+			parentTaskId: parent,
+			tags: ["finding", "p3", "quality"],
+		});
+		await add({
+			title: "unrated",
+			parentTaskId: parent,
+			tags: ["finding"],
+		});
+		await add({
+			title: "edge",
+			parentTaskId: parent,
+			tags: ["finding", "p2", "functional"],
+		});
+		await add({
+			title: "broken",
+			parentTaskId: parent,
+			tags: ["finding", "P1", "functional"],
+		});
+		await add({
+			title: "parked",
+			parentTaskId: parent,
+			state: "waiting",
+			tags: ["finding", "p1"],
+		});
+		const skipped = await add({
+			title: "skipped",
+			parentTaskId: parent,
+			tags: ["finding", "p1"],
+		});
+		const fixed = await add({
+			title: "fixed",
+			parentTaskId: parent,
+			tags: ["finding", "p1"],
+		});
+		await close(fixed);
+		const plan = await load(parent);
+
+		expect(titles(LoopPlan.fixable(plan, NOW, new Set([skipped])))).toEqual([
+			"broken",
+			"edge",
+			"nit",
+			"unrated",
+		]);
+		expect(LoopPlan.frontier(plan, NONE, NOW)).toEqual([]);
+		expect(Stop.workDone(plan)).toBe(true);
+		expect(LoopPlan.findings(plan)).toEqual({ total: 7, open: 6 });
+		const broken = plan.nodes.find((n) => n.task.title === "broken");
+		expect(broken && [broken.severity, LoopPlan.lensOf(broken.task)]).toEqual([
+			"p1",
+			"functional",
+		]);
+	});
+});
+
 describe("LoopPlan.frontier", () => {
 	it("follows blocks and blocked_by links in both directions", async () => {
 		const parent = await add({ title: "parent" });
@@ -154,7 +214,7 @@ describe("LoopPlan.frontier", () => {
 		]);
 	});
 
-	it("leaves out live claims, parked or taken subtasks, deferred ones and p2 findings", async () => {
+	it("leaves out live claims, parked or taken subtasks, deferred ones and findings of any severity", async () => {
 		const parent = await add({ title: "parent" });
 		const live = await add({ title: "live", parentTaskId: parent });
 		await add({ title: "waiting", parentTaskId: parent, state: "waiting" });
@@ -179,7 +239,6 @@ describe("LoopPlan.frontier", () => {
 
 		const plan = await load(parent);
 		expect(titles(LoopPlan.frontier(plan, new Set([live]), NOW))).toEqual([
-			"blocking finding",
 			"inbox",
 		]);
 	});
@@ -275,60 +334,30 @@ describe("LoopPlan.health", () => {
 });
 
 describe("Stop.evaluate", () => {
-	const GREEN = { gatesGreen: true, lensesDone: true };
+	const GREEN = { gatesGreen: true, lensesDone: true, fixerDone: true };
 
-	it("is done only when every subtask is closed and no p1 finding is open", async () => {
+	it("is done when every subtask is closed and every check has run, findings open or not", async () => {
 		const parent = await add({ title: "parent" });
 		const a = await add({ title: "a", parentTaskId: parent });
 		await add({
-			title: "minor",
-			parentTaskId: parent,
-			tags: ["finding", "p3"],
-		});
-		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({
-			done: false,
-			openSubtasks: 1,
-			openP1: 0,
-			gatesGreen: true,
-			lensesDone: true,
-		});
-
-		await close(a);
-		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({ done: true });
-
-		const p1 = await add({
 			title: "broken",
 			parentTaskId: parent,
 			tags: ["finding", "P1"],
 		});
 		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({
 			done: false,
-			openSubtasks: 0,
-			openP1: 1,
-			gatesGreen: true,
-			lensesDone: true,
+			openSubtasks: 1,
+			...GREEN,
 		});
-		await close(p1);
-		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({ done: true });
-		// The work is done, but red gates keep the run going.
+
+		await close(a);
+		// The fixer had its pass: what it left open is for a human, not a reason to keep going.
 		expect(Stop.workDone(await load(parent))).toBe(true);
-		expect(
-			Stop.evaluate(await load(parent), {
-				gatesGreen: false,
-				lensesDone: true,
-			}),
-		).toEqual({
-			done: false,
-			openSubtasks: 0,
-			openP1: 0,
-			gatesGreen: false,
-			lensesDone: true,
-		});
-		// Green gates, but a lens has not reviewed the work yet.
-		expect(
-			Stop.evaluate(await load(parent), { gatesGreen: true, lensesDone: false })
-				.done,
-		).toBe(false);
+		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({ done: true });
+		for (const check of ["gatesGreen", "lensesDone", "fixerDone"] as const)
+			expect(
+				Stop.evaluate(await load(parent), { ...GREEN, [check]: false }),
+			).toEqual({ done: false, openSubtasks: 0, ...GREEN, [check]: false });
 	});
 
 	it("counts a cancelled subtask as closed and a parked one as open", async () => {

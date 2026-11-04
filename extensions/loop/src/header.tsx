@@ -2,7 +2,8 @@
 // The loop tab's header: what the board draws above a run's stream, in place of its one-line title.
 // Three rows, in order of what matters: the run's state, its steps as a strip, its budgets as
 // meters. `e` adds the sessions and the plan. It shows only what the run has: the implement step,
-// the gates and the lenses (with what they found) when it has some, spend where a
+// the gates and the lenses (with what they found) when it has some, the fixer once it has
+// started, spend where a
 // harness priced its work, context occupancy (ACP reports occupancy, not a running token count)
 // and continuations.
 //
@@ -20,6 +21,7 @@ import { TextAttributes } from "@opentui/core";
 import { type ReactNode, useEffect, useState } from "react";
 import { Budget } from "./budget";
 import { Loop } from "./commands";
+import { Fixer } from "./fixer";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
 import { RunStore } from "./store";
@@ -132,8 +134,8 @@ export namespace LoopHeader {
 		];
 	};
 
-	// The lenses' step, and the debrief's count of what they filed: findings, and the open `p1`s
-	// that keep the run going.
+	// The lenses' step, and the debrief's count of what they filed: findings, and how many are
+	// still open.
 	const lensStep = (run: RunStore.Run, plan: LoopPlan.Plan | null): Part[] => {
 		const { lenses } = run.config;
 		if (lenses.length === 0) return [];
@@ -158,25 +160,53 @@ export namespace LoopHeader {
 							text: ` · ${found.total} finding${found.total === 1 ? "" : "s"}`,
 							tone: "muted" as const,
 						},
-						...(found.openP1 > 0
-							? [
-									{
-										text: ` · ${found.openP1} p1 open`,
-										tone: "accent" as const,
-									},
-								]
+						...(found.open > 0
+							? [{ text: ` · ${found.open} open`, tone: "accent" as const }]
 							: []),
 					]
 				: []),
 		];
 	};
 
-	/** The steps the run has, as a strip: implement, then its gates and its lenses when it has some. */
+	// The fixer's step, once it has a session: its state and how many findings are closed.
+	const fixerStep = (run: RunStore.Run, plan: LoopPlan.Plan | null): Part[] => {
+		if (!run.claims.some((claim) => claim.fixer === true)) return [];
+		const status = Fixer.status(run.claims);
+		const glyph: Part =
+			status.kind === "failed"
+				? { text: "✗ ", tone: "failed" }
+				: status.kind === "running"
+					? { text: "● ", tone: "working" }
+					: status.kind === "ended"
+						? { text: "✓ ", tone: "done" }
+						: { text: "○ ", tone: "muted" };
+		const found = plan ? LoopPlan.findings(plan) : undefined;
+		return [
+			{ text: "  ›  ", tone: "faint" },
+			glyph,
+			{ text: "fixer", tone: "text", bold: status.kind === "running" },
+			...(found
+				? [
+						{
+							text: ` ${found.total - found.open}/${found.total} closed`,
+							tone: "muted" as const,
+						},
+					]
+				: []),
+		];
+	};
+
+	/**
+	 * The steps the run has, as a strip: implement, then its gates and its lenses when it has some,
+	 * then the fixer once it has started.
+	 */
 	export const steps = (
 		run: RunStore.Run,
 		plan: LoopPlan.Plan | null,
 	): Part[] => {
-		const implementing = run.claims.filter((claim) => claim.lens === undefined);
+		const implementing = run.claims.filter(
+			(claim) => claim.lens === undefined && claim.fixer !== true,
+		);
 		const working = implementing.some((claim) => claim.endedAt === undefined);
 		const glyph =
 			run.status === "completed"
@@ -195,6 +225,7 @@ export namespace LoopHeader {
 			},
 			...gateStep(run),
 			...lensStep(run, plan),
+			...fixerStep(run, plan),
 		];
 	};
 

@@ -50,8 +50,8 @@ export namespace RunStore {
 	] as const;
 
 	/**
-	 * One subtask claimed by one session, or one lens run on the parent. A subtask claimed twice
-	 * has two claims.
+	 * One subtask claimed by one session, or one lens or the fixer run on the parent. A subtask
+	 * claimed twice has two claims.
 	 */
 	export const ClaimSchema = z.object({
 		taskId: z.string(),
@@ -68,6 +68,8 @@ export namespace RunStore {
 		continuations: z.number().int().min(0).default(0),
 		/** The verifier lens this session ran, on the parent; absent for an implementing one. */
 		lens: z.string().optional(),
+		/** The fixer session after the lenses, on the parent; absent for any other. */
+		fixer: z.literal(true).optional(),
 	});
 	export type Claim = z.infer<typeof ClaimSchema>;
 
