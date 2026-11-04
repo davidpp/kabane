@@ -89,6 +89,14 @@ export namespace RunStore {
 		 * top): the run works in the same folder of the worktree, not at its top.
 		 */
 		worktreePrefix: z.string().optional(),
+		/**
+		 * The parent's earlier run whose worktree this run went on in, and the branch checked out
+		 * there, which was not merged into the project's HEAD when this run started. Absent for a
+		 * worktree made for this run.
+		 */
+		worktreeReused: z
+			.object({ runId: z.string(), branch: z.string() })
+			.optional(),
 		config: LoopConfig.Schema,
 		status: StatusSchema,
 		exit: z

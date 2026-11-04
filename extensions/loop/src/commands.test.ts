@@ -16,7 +16,7 @@ import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
 import { Permission } from "./permission";
 import { RunStore } from "./store";
-import type { Worktree } from "./worktree";
+import { Worktree } from "./worktree";
 
 // `start`'s refusals, which all come before a runner is spawned, and `restart`, whose runner is
 // the real `Loop.run` on a run that claims nothing. Starting a run that reaches a harness is the
@@ -25,6 +25,10 @@ let root = "";
 let home = "";
 let repo = "";
 
+// The fixture's git, so the machine's hooks never run on a worktree a start adds.
+const fixtureGit: Worktree.Git = async (cwd, args) =>
+	trySync(() => GitFixture.run(cwd, args));
+
 const deps = () => ({
 	home,
 	basePath: home,
@@ -32,6 +36,7 @@ const deps = () => ({
 	cwd: repo,
 	// Never reached: every case below is refused before the spawn.
 	runner: () => ["/nonexistent/runner"],
+	git: fixtureGit,
 });
 
 const CONFIG: LoopConfig.Config = {
@@ -193,6 +198,152 @@ describe("Loop.start with a worktree, from a folder HEAD lacks", () => {
 		expect(branches.trim()).toBe("");
 		const worktrees = GitFixture.run(repo, ["worktree", "list"]);
 		expect(worktrees.trim().split("\n")).toHaveLength(1);
+	});
+});
+
+describe("Loop.start's worktree", () => {
+	let tick = 0;
+	// Each start a millisecond apart, so run ids and their newest-first order are distinct.
+	const startOn = async (
+		parentId: string,
+		config: LoopConfig.Overrides = {},
+		cwd = repo,
+	): Promise<RunStore.Run> => {
+		tick += 1;
+		const at = new Date(Date.UTC(2026, 10, 4, 12, 0, 0, tick));
+		// Past the worktree: the run is written and only the (nonexistent) runner fails.
+		await Loop.start(
+			{ ...deps(), cwd, now: () => at },
+			{ parent: parentId, config },
+		);
+		const runs = RunStore.list(home);
+		const run = runs.ok ? runs.value[0] : undefined;
+		if (!run) throw new Error("no run was written");
+		expect(run.exit?.reason).not.toBe("worktree-not-created");
+		return run;
+	};
+
+	const parentWithChild = async () => {
+		const scopeUri = await repoScope();
+		const parent = await add("parent", { scopeUri });
+		await add("child", { parentTaskId: parent.id, scopeUri });
+		return parent;
+	};
+
+	// What a session leaves in the run's worktree: a checkpoint on its branch.
+	const commitIn = (dir: string, file: string) => {
+		writeFileSync(join(dir, file), `${file}\n`);
+		GitFixture.run(dir, ["add", "-A"]);
+		GitFixture.run(dir, ["commit", "-q", "-m", file]);
+	};
+
+	const placementEvent = (run: RunStore.Run) => {
+		const events = RunStore.readEvents(home, run.id);
+		return events.ok
+			? events.value.find((e) => e.type === "workspace")
+			: undefined;
+	};
+
+	const worktreeCount = () =>
+		GitFixture.run(repo, ["worktree", "list"]).trim().split("\n").length;
+
+	it("is on by default: a new worktree of HEAD on the run's own branch", async () => {
+		const parent = await parentWithChild();
+		const run = await startOn(parent.id);
+		expect(run.config.worktree).toBe(true);
+		expect(run.worktree).toBe(
+			Worktree.dirFor(RunStore.paths(home, run.id).dir),
+		);
+		expect(run.worktreeReused).toBeUndefined();
+		expect(
+			GitFixture.run(run.worktree ?? "", ["branch", "--show-current"]).trim(),
+		).toBe(Worktree.branchFor(run.id));
+		expect(placementEvent(run)?.summary).toContain("new, on branch");
+	});
+
+	it("turned off, works in the checkout itself", async () => {
+		const parent = await parentWithChild();
+		const run = await startOn(parent.id, { worktree: false });
+		expect(run.worktree).toBeUndefined();
+		expect(RunStore.sessionDir(run)).toBe(repo);
+		expect(worktreeCount()).toBe(1);
+		expect(placementEvent(run)).toBeUndefined();
+	});
+
+	it("works in place in a directory that is not a git repository, and says so", async () => {
+		const plain = join(root, "plain");
+		mkdirSync(plain);
+		const parent = await add("parent");
+		await add("child", { parentTaskId: parent.id });
+		const run = await startOn(parent.id, {}, plain);
+		expect(run.config.worktree).toBe(true);
+		expect(run.worktree).toBeUndefined();
+		expect(RunStore.sessionDir(run)).toBe(plain);
+		expect(Loop.placement(run)).toContain("not a git repository");
+		expect(placementEvent(run)?.summary).toBe(Loop.placement(run));
+	});
+
+	it("goes on in the parent's last worktree while its branch is not merged into HEAD", async () => {
+		const parent = await parentWithChild();
+		const first = await startOn(parent.id);
+		commitIn(first.worktree ?? "", "first.txt");
+		const second = await startOn(parent.id);
+		expect(second.worktree).toBe(first.worktree);
+		expect(second.worktreeReused).toEqual({
+			runId: first.id,
+			branch: Worktree.branchFor(first.id),
+		});
+		expect(placementEvent(second)?.data).toMatchObject({
+			reusedFrom: first.id,
+			branch: Worktree.branchFor(first.id),
+		});
+		// A third run takes over the same worktree from the second.
+		const third = await startOn(parent.id);
+		expect(third.worktree).toBe(first.worktree);
+		expect(third.worktreeReused?.runId).toBe(second.id);
+		expect(worktreeCount()).toBe(2);
+	});
+
+	it("makes a new worktree once the last one's branch is merged", async () => {
+		const parent = await parentWithChild();
+		const first = await startOn(parent.id);
+		commitIn(first.worktree ?? "", "first.txt");
+		GitFixture.run(repo, ["merge", "-q", Worktree.branchFor(first.id)]);
+		const second = await startOn(parent.id);
+		expect(second.worktreeReused).toBeUndefined();
+		expect(second.worktree).toBe(
+			Worktree.dirFor(RunStore.paths(home, second.id).dir),
+		);
+		expect(existsSync(join(second.worktree ?? "", "first.txt"))).toBe(true);
+	});
+
+	it("makes a new worktree when the last one was removed", async () => {
+		const parent = await parentWithChild();
+		const first = await startOn(parent.id);
+		commitIn(first.worktree ?? "", "first.txt");
+		GitFixture.run(repo, ["worktree", "remove", first.worktree ?? ""]);
+		const second = await startOn(parent.id);
+		expect(second.worktreeReused).toBeUndefined();
+		expect(second.worktree).not.toBe(first.worktree);
+	});
+
+	it("never takes over a worktree a live run is working in", async () => {
+		const parent = await parentWithChild();
+		const first = await startOn(parent.id);
+		commitIn(first.worktree ?? "", "first.txt");
+		const other = await add("other parent");
+		RunStore.create(home, {
+			...first,
+			id: "live-elsewhere",
+			parentId: other.id,
+			status: "running",
+			pid: process.pid,
+			exit: undefined,
+			createdAt: new Date(0).toISOString(),
+		});
+		const second = await startOn(parent.id);
+		expect(second.worktreeReused).toBeUndefined();
+		expect(second.worktree).not.toBe(first.worktree);
 	});
 });
 

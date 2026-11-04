@@ -21,7 +21,7 @@ import { LoopDispatcher } from "./dispatcher";
 import { LoopHeader } from "./header";
 import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree] [--lens <name>]... [--verifier claude|codex|gemini]
+const USAGE = `kabane loop start <parent> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
@@ -57,6 +57,13 @@ const gatesFrom = (args: ParsedArgs): Result<Record<string, string>> => {
 	return ok(gates);
 };
 
+// A run has a worktree unless the repo file or `--no-worktree` turns it off; `--worktree` turns it
+// back on over a file that turns it off.
+const worktreeFrom = (args: ParsedArgs): { worktree?: boolean } => {
+	if (flagBool(args, "no-worktree")) return { worktree: false };
+	return flagBool(args, "worktree") ? { worktree: true } : {};
+};
+
 // Flags become config overrides; LoopConfig validates them with the repo file.
 const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 	const implementer = flagString(args, "implementer");
@@ -77,7 +84,7 @@ const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 		...(model ? { model } : {}),
 		budget,
 		gates: gates.value,
-		...(flagBool(args, "worktree") ? { worktree: true } : {}),
+		...worktreeFrom(args),
 		...(lenses.length > 0 ? { lenses } : {}),
 		...(verifier && Harnesses.isId(verifier) ? { verifier } : {}),
 	});
@@ -108,7 +115,7 @@ const question = (q: Loop.Waiting): string =>
 const worktree = (run: RunStore.Run): string[] =>
 	run.worktree
 		? [
-				`  worktree: ${run.worktree}`,
+				`  worktree: ${run.worktree}${run.worktreeReused ? ` (run ${run.worktreeReused.runId}'s, branch ${run.worktreeReused.branch})` : ""}`,
 				...RunStore.checkpoints(run).map((sha) => `    checkpoint ${sha}`),
 			]
 		: [];
@@ -175,7 +182,7 @@ const ran = (result: Result<RunStore.Run>): Outcome =>
 
 // `git worktree add` checks out what is committed, and nothing git ignores comes with it.
 const WORKTREE_NOTE =
-	"  note: the worktree has no ignored files (node_modules, build output): a gate that needs them installs them first, say `bun install && bun test`";
+	"  note: a new worktree has no ignored files (node_modules, build output): a gate that needs them installs them first, say `bun install && bun test`";
 
 // What `start` takes, and `--as` and `--scope`, which every command takes. A misspelt flag
 // (`--work-tree`) is refused rather than dropped, which would start a run the human did not ask for.
@@ -188,6 +195,7 @@ const START_FLAGS: ReadonlySet<string> = new Set([
 	"spend",
 	"gate",
 	"worktree",
+	"no-worktree",
 	"lens",
 	"verifier",
 	"as",
@@ -209,6 +217,15 @@ const start: Verb = async (args, deps, target) => {
 				USAGE,
 			);
 	}
+	// A switch followed by a stray word takes it as a value and would read as not given.
+	for (const flag of ["worktree", "no-worktree"])
+		if (flag in args.flags && !flagBool(args, flag))
+			return usage(
+				`--${flag} takes no value, not ${JSON.stringify(args.flags[flag])}`,
+				USAGE,
+			);
+	if (flagBool(args, "worktree") && flagBool(args, "no-worktree"))
+		return usage("Give one of --worktree and --no-worktree", USAGE);
 	const config = configFrom(args);
 	if (!config.ok) return usage(config.error.message, USAGE);
 	const dir = flagString(args, "dir");
@@ -217,10 +234,17 @@ const start: Verb = async (args, deps, target) => {
 		...(dir ? { dir } : {}),
 		config: config.value,
 	});
-	if (!started.ok || started.value.worktree === undefined) return ran(started);
+	if (!started.ok) return ran(started);
+	const placed = Loop.placement(started.value);
+	const isNew =
+		started.value.worktree !== undefined && !started.value.worktreeReused;
 	return success(
 		started.value,
-		[line(started.value), ...worktree(started.value), WORKTREE_NOTE].join("\n"),
+		[
+			line(started.value),
+			...(placed ? [`  ${placed}`] : []),
+			...(isNew ? [WORKTREE_NOTE] : []),
+		].join("\n"),
 	);
 };
 

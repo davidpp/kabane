@@ -265,7 +265,7 @@ Done on branch `worktree-agent-ae0c8bf171811033c` (on top of `9e8facc`). Found o
 
 Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
 - **Config:** `gates: {name: command}` (one-word names, run in key order) and `worktree: bool`,
-  from `.kabane/loop.json` or `--gate name=command` (repeatable) and `--worktree`; gates merge
+  from `.kabane/loop.json` or `--gate name=command` (repeatable) and `--worktree`/`--no-worktree`; gates merge
   key by key like budgets. No gates: nothing runs, the run behaves as before.
 - **When gates run:** after an implementing session ends with its subtask `done`, while the
   claim still holds the subtask, so nothing re-claims it mid-gate. They stop at the first red
@@ -283,10 +283,24 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
   HEAD` at `start`, so uncommitted work in the checkout is not in it, and a project's
   untracked settings (say, `.claude/settings.local.json`) are not either. Never removed.
   `kabane loop status <runId>` prints it and its checkpoints.
+  - **On by default (JCAB-52):** a run with the worktree off once ran its fixer's `git switch -c`
+    in the maintainer's own checkout, the one their global `kabane` runs from. `worktree`
+    now defaults to `true`; `--no-worktree`, `"worktree": false` in `.kabane/loop.json` or the
+    board form's toggle turn it off, and `--worktree` turns it back on over the file. A
+    project that is not a git repository (no `.git` in it or above it) is worked in place,
+    and the start output and a `workspace` event say so.
+  - **Reused while unmerged:** when the parent's last run has a worktree that is still one of
+    the repository's worktrees, no live run works in it, and its branch is not merged into
+    the project's HEAD (`git for-each-ref --merged HEAD`), the new run goes on in it, on that
+    branch, so follow-up work such as the fixer's builds on what is not merged yet.
+    `run.json` records `worktreeReused: {runId, branch}`, and the `workspace` event carries
+    both. A merged branch (one with no commit past HEAD counts), a removed worktree, or a
+    last run without one gets a fresh worktree. A last run whose runner died is still refused
+    at `start`: it is restarted, not taken over.
   - **Ignored files do not come with it:** no `node_modules`, no build output. A gate that
     needs them installs them itself (`"test": "bun install && bun test"`), or the first pass
-    fails in a fresh worktree. The loop adds no setup step of its own; `loop start --worktree`
-    prints a one-line reminder.
+    fails in a fresh worktree. The loop adds no setup step of its own; `loop start` prints a
+    one-line reminder when it makes a new worktree.
   - **Started in a folder of the repository:** the worktree is still the whole repository, and
     `run.json` records the folder's place in it (`worktreePrefix`, from `git rev-parse
     --show-prefix`). Sessions and gates run in that folder of the worktree, the folder the loop

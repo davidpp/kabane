@@ -4,7 +4,7 @@
 // stopped, with its claims and its worktree.
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { Harnesses } from "@cabane/acp";
 import {
 	err,
@@ -345,6 +345,7 @@ export namespace Loop {
 			? await withWorktree(deps, created.value)
 			: created;
 		if (!run.ok) return run;
+		tellPlacement(deps.home, run.value);
 		const spawned = spawnRunner(deps, run.value);
 		if (!spawned.ok) {
 			markFailed(
@@ -358,19 +359,110 @@ export namespace Loop {
 		return awaitBoot(deps, run.value, spawned.value.exited);
 	};
 
-	// The run's own worktree of the project's HEAD, beside its files. What is not committed in the
-	// project (work in progress) is not in it. A loop started in a folder of the repository works
-	// in that folder of the worktree.
+	/**
+	 * Where a run works, as `start` says it on the run's trace and the CLI prints it; undefined
+	 * for a run told to work in place.
+	 */
+	export const placement = (run: RunStore.Run): string | undefined => {
+		if (run.worktreeReused)
+			return `worktree ${run.worktree}, run ${run.worktreeReused.runId}'s: its branch ${run.worktreeReused.branch} is not merged into HEAD, so this run goes on with it`;
+		if (run.worktree)
+			return `worktree ${run.worktree}, new, on branch ${Worktree.branchFor(run.id)} from HEAD`;
+		return run.config.worktree
+			? `in place in ${run.projectDir}: it is not a git repository, so the run has no worktree`
+			: undefined;
+	};
+
+	// Before the runner is spawned, so the trace's one writer is still `start`.
+	const tellPlacement = (home: string, run: RunStore.Run): void => {
+		const summary = placement(run);
+		const log = RunStore.eventLog(home, run.id);
+		if (summary === undefined || !log.ok) return;
+		log.value.append({
+			type: "workspace",
+			summary,
+			data: {
+				dir: RunStore.sessionDir(run),
+				...(run.worktreeReused
+					? {
+							reusedFrom: run.worktreeReused.runId,
+							branch: run.worktreeReused.branch,
+						}
+					: {}),
+			},
+		});
+	};
+
+	// The parent's last run's worktree, when the new run should go on in it: still one of the
+	// repository's worktrees, no live run working in it, and its branch not merged into HEAD, so
+	// what was done there is not in a fresh worktree of HEAD. `checkParent` has refused a parent
+	// whose last run is live or lost its runner: that run is restarted, not taken over.
+	const reusable = async (
+		deps: StartDeps,
+		run: RunStore.Run,
+	): Promise<
+		Result<{ dir: string; from: { runId: string; branch: string } } | undefined>
+	> => {
+		const runs = RunStore.list(deps.home);
+		if (!runs.ok) return runs;
+		const others = runs.value.filter((r) => r.id !== run.id);
+		// Newest first: the parent's last run.
+		const last = others.find((r) => r.parentId === run.parentId);
+		const dir = last?.worktree;
+		if (
+			last === undefined ||
+			dir === undefined ||
+			others.some((r) => r.worktree === dir && RunStore.isLive(r.status))
+		)
+			return ok(undefined);
+		const branch = await Worktree.branchOf(run.projectDir, dir, deps.git);
+		if (!branch.ok) return branch;
+		if (branch.value === undefined) return ok(undefined);
+		const merged = await Worktree.merged(
+			run.projectDir,
+			branch.value,
+			deps.git,
+		);
+		if (!merged.ok) return merged;
+		return ok(
+			merged.value
+				? undefined
+				: { dir, from: { runId: last.id, branch: branch.value } },
+		);
+	};
+
+	// The run's worktree, beside its files: the parent's last run's when its branch is not merged
+	// (`reusable`), else a new one of the project's HEAD, in which what is not committed in the
+	// project (work in progress) is not. A loop started in a folder of the repository works in
+	// that folder of the worktree. A project that is not a git repository is worked in place.
 	const withWorktree = async (
 		deps: StartDeps,
 		run: RunStore.Run,
 	): Promise<Result<RunStore.Run>> => {
+		if (!Worktree.inRepo(run.projectDir)) return ok(run);
 		const failed = (error: Error): Result<RunStore.Run> => {
 			markFailed(deps.home, run, "worktree-not-created", error.message);
 			return err(error);
 		};
 		const prefix = await Worktree.prefixOf(run.projectDir, deps.git);
 		if (!prefix.ok) return failed(prefix.error);
+		const reused = await reusable(deps, run);
+		if (!reused.ok) return failed(reused.error);
+		if (reused.value) {
+			const { dir, from } = reused.value;
+			if (!existsSync(join(dir, prefix.value)))
+				return failed(
+					new Error(
+						`${prefix.value} is not in run ${from.runId}'s worktree ${dir}, which this run would go on in: start from where that run was started, or with --no-worktree`,
+					),
+				);
+			return RunStore.write(deps.home, {
+				...run,
+				worktree: dir,
+				worktreePrefix: prefix.value,
+				worktreeReused: from,
+			});
+		}
 		const dir = Worktree.dirFor(RunStore.paths(deps.home, run.id).dir);
 		// Checked before the worktree is added, so a refusal leaves no worktree or branch behind.
 		if (
@@ -379,7 +471,7 @@ export namespace Loop {
 		)
 			return failed(
 				new Error(
-					`${prefix.value} is not committed, so a worktree of HEAD would not have it: commit it, or start without --worktree`,
+					`${prefix.value} is not committed, so a worktree of HEAD would not have it: commit it, or start with --no-worktree`,
 				),
 			);
 		const added = await Worktree.add(

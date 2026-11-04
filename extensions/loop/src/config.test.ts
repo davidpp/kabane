@@ -29,7 +29,7 @@ describe("LoopConfig.resolve", () => {
 			},
 			stallAfter: 3,
 			gates: {},
-			worktree: false,
+			worktree: true,
 			lenses: [],
 		});
 	});

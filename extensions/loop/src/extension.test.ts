@@ -52,6 +52,25 @@ describe("kabane loop start", () => {
 		);
 	});
 
+	it("refuses --no-worktree with a value, which would otherwise start a worktree run", async () => {
+		const refused = await kabaneLoop("start", "K-1", "--no-worktree", "yes");
+		expect(refused.exitCode).toBe(2);
+		expect(refused.text).toStartWith(
+			'Error: --no-worktree takes no value, not "yes"\n',
+		);
+	});
+
+	it("refuses --worktree and --no-worktree together", async () => {
+		const refused = await kabaneLoop(
+			"start",
+			"K-1",
+			"--worktree",
+			"--no-worktree",
+		);
+		expect(refused.exitCode).toBe(2);
+		expect(refused.text).toContain("Give one of --worktree and --no-worktree");
+	});
+
 	it("takes its own flags and the ones every command takes", async () => {
 		const started = await kabaneLoop(
 			"start",

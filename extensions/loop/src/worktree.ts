@@ -1,13 +1,15 @@
-// A run's own git worktree, and the checkpoints committed in it. Opt-in per run: `git worktree
-// add` on a branch of its own beside the run's files, recorded in run.json, never removed by the
-// loop. A checkpoint is a commit of everything in the worktree after a green gate; a rollback
-// resets the worktree to one of them.
+// A run's git worktree, and the checkpoints committed in it. On unless the run opts out: `git
+// worktree add` on a branch of its own beside the run's files, or the worktree of the parent's
+// last run when its branch is not merged yet, recorded in run.json, never removed by the loop. A
+// checkpoint is a commit of everything in the worktree after a green gate; a rollback resets the
+// worktree to one of them.
 //
 // Nothing here commits into, or resets, the user's own checkout: `checkpoint` and `rollback`
 // refuse any directory that is not a linked worktree, so a run without one cannot reach them by
 // mistake.
-import { join } from "node:path";
-import { err, ok, type Result, tryCatch } from "@cabane/core";
+import { existsSync, realpathSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
 import type { RunStore } from "./store";
 
 export namespace Worktree {
@@ -64,6 +66,62 @@ export namespace Worktree {
 			"HEAD",
 		]);
 		return added.ok ? ok(undefined) : added;
+	};
+
+	/**
+	 * Whether `dir` is in a git repository: a `.git` (a directory, or a linked worktree's file) in
+	 * it or above it. Read off the filesystem rather than git's error text, which is localized.
+	 */
+	export const inRepo = (dir: string): boolean => {
+		for (let at = resolve(dir); ; at = dirname(at)) {
+			if (existsSync(join(at, ".git"))) return true;
+			if (dirname(at) === at) return false;
+		}
+	};
+
+	const real = (path: string): string | undefined => {
+		const found = trySync(() => realpathSync(path));
+		return found.ok ? found.value : undefined;
+	};
+
+	const BRANCH = "branch refs/heads/";
+
+	/**
+	 * The branch checked out in `dir` when it is one of `projectDir`'s repository's worktrees and
+	 * still on disk; undefined when it was removed or deleted, or its HEAD is detached.
+	 */
+	export const branchOf = async (
+		projectDir: string,
+		dir: string,
+		run: Git = git,
+	): Promise<Result<string | undefined>> => {
+		const wanted = real(dir);
+		if (wanted === undefined) return ok(undefined);
+		const listed = await run(projectDir, ["worktree", "list", "--porcelain"]);
+		if (!listed.ok) return listed;
+		for (const entry of listed.value.split("\n\n")) {
+			const lines = entry.split("\n");
+			const path = lines.find((l) => l.startsWith("worktree "))?.slice(9);
+			if (path === undefined || real(path) !== wanted) continue;
+			return ok(lines.find((l) => l.startsWith(BRANCH))?.slice(BRANCH.length));
+		}
+		return ok(undefined);
+	};
+
+	/** Whether `branch`'s tip is in `projectDir`'s HEAD: merged, or never moved past it. */
+	export const merged = async (
+		projectDir: string,
+		branch: string,
+		run: Git = git,
+	): Promise<Result<boolean>> => {
+		const found = await run(projectDir, [
+			"for-each-ref",
+			"--merged",
+			"HEAD",
+			"--format=%(refname)",
+			`refs/heads/${branch}`,
+		]);
+		return found.ok ? ok(found.value.trim() !== "") : found;
 	};
 
 	/** Where `dir` sits inside its repository, relative to the top: "" at the top. */
