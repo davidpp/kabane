@@ -174,6 +174,16 @@ export const isPlainObject = (
 ): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** Zod's messages without its issue JSON, the path first where there is one. */
+export const describeIssues = (error: z.ZodError): string =>
+	error.issues
+		.map((issue) =>
+			issue.path.length > 0
+				? `${issue.path.join(".")}: ${issue.message}`
+				: issue.message,
+		)
+		.join("; ");
+
 /** Keep the stored document alongside resolved defaults so edits retain unknown keys. */
 export const loadConfigDocument = (
 	home: string,
@@ -186,12 +196,15 @@ export const loadConfigDocument = (
 		return err(new Error(`No config at ${path}. Run \`kabane init\` first.`));
 	}
 	const raw = trySync((): unknown => JSON.parse(readFileSync(path, "utf8")));
-	if (!raw.ok) return err(toError(raw.error));
+	if (!raw.ok)
+		return err(
+			new Error(`Invalid config at ${path}: ${toError(raw.error).message}`),
+		);
 	const parsed = ConfigSchema.safeParse(raw.value);
 	if (!parsed.success || !isPlainObject(raw.value)) {
 		return err(
 			new Error(
-				`Invalid config at ${path}: ${!parsed.success ? parsed.error.message : "expected an object"}`,
+				`Invalid config at ${path}: ${!parsed.success ? describeIssues(parsed.error) : "expected an object"}`,
 			),
 		);
 	}
@@ -207,7 +220,9 @@ export const saveConfig = (home: string, config: unknown): Result<string> => {
 	const path = configPath(home);
 	const parsed = ConfigSchema.safeParse(config);
 	if (!parsed.success)
-		return err(new Error(`Invalid config at ${path}: ${parsed.error.message}`));
+		return err(
+			new Error(`Invalid config at ${path}: ${describeIssues(parsed.error)}`),
+		);
 	const written = trySync(() => {
 		mkdirSync(home, { recursive: true });
 		// Write the input, not parsed.data: defaults stay absent and unknown keys survive.

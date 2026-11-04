@@ -263,6 +263,31 @@ describe("config through the real CLI", () => {
 		expect(read()).toBe(before);
 	});
 
+	it("reports schema failures as messages, not Zod issue JSON", async () => {
+		write(initial);
+		for (const [key, value, expected] of [
+			[
+				"timezone",
+				"Mars/Base",
+				"Error: Invalid value for timezone: not a timezone this runtime knows (use an IANA name such as America/Montreal)",
+			],
+			["sync.headers", '{"a":1}', "Error: Invalid value for sync.headers: a: "],
+			["sync.batchBytes", "-5", "Error: Invalid value for sync.batchBytes: "],
+		] as const) {
+			const result = await run("config", "set", key, value);
+			expect(result.code).toBe(1);
+			expect(result.err.split("\n")).toHaveLength(1);
+			expect(result.err.startsWith(expected)).toBe(true);
+			expect(result.err).not.toContain('"code"');
+		}
+		writeFileSync(path(), '{"actor":');
+		for (const args of [["list"], ["set", "timezone", "UTC"]]) {
+			const result = await run("config", ...args);
+			expect(result.code).toBe(1);
+			expect(result.err).toContain(`Invalid config at ${path()}: `);
+		}
+	});
+
 	it("rejects malformed and invalid existing config without overwriting it", async () => {
 		for (const content of [
 			'{"actor":',
@@ -308,5 +333,9 @@ describe("config through the real CLI", () => {
 			["--typo"],
 		])
 			expect((await run("config", ...args, "--json")).code).toBe(2);
+		const dashed = await run("config", "set", "copilot.args", "--foo,bar");
+		expect(dashed.code).toBe(2);
+		expect(dashed.err).toContain("Unknown config option --foo,bar");
+		expect(dashed.err).toContain("kabane config set <key> -- <value>");
 	});
 });

@@ -3,6 +3,7 @@ import { err, ok, type Result, trySync } from "@cabane/core";
 import { z } from "zod";
 import {
 	ConfigSchema,
+	describeIssues,
 	isPlainObject,
 	loadConfigDocument,
 	saveConfig,
@@ -84,7 +85,11 @@ const parseValue = (entry: Key, text: string): Result<unknown> => {
 	const parsed = entry.schema.safeParse(value);
 	return parsed.success
 		? ok(parsed.data)
-		: err(new Error(`Invalid value for ${entry.key}: ${parsed.error.message}`));
+		: err(
+				new Error(
+					`Invalid value for ${entry.key}: ${describeIssues(parsed.error)}`,
+				),
+			);
 };
 
 /** Returns false when an unset has no stored parent, so it need not write. */

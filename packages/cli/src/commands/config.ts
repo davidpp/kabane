@@ -22,17 +22,19 @@ export const config: Command = {
 		const count = { list: 1, path: 1, get: 2, set: 3, unset: 2 };
 		if (!Object.hasOwn(count, sub))
 			return usage(`Unknown config subcommand: ${sub}`, config.usage);
+		// Before the count: a value beginning with -- parses as a flag and leaves a positional short.
+		const [flag] = Object.keys(args.flags);
+		if (flag !== undefined)
+			return usage(
+				`Unknown config option --${flag}; for a value beginning with --, put -- before it: kabane config set <key> -- <value>`,
+				config.usage,
+			);
 		const expected = count[sub as keyof typeof count];
 		if (
 			args.positionals.length !== expected &&
 			!(sub === "list" && args.positionals.length === 0)
 		)
 			return usage(`Wrong arguments for config ${sub}`, config.usage);
-		if (Object.keys(args.flags).length > 0)
-			return usage(
-				"Unknown config option; use -- before a value beginning with --",
-				config.usage,
-			);
 		if (sub === "path")
 			return success(configPath(ctx.home), configPath(ctx.home));
 		if (sub === "list") {
