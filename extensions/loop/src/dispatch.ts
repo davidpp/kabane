@@ -115,8 +115,9 @@ export namespace Dispatch {
 	 * names one forwards it as an override), the installed CLI rather than the adapter's
 	 * bundled copy, and a marker of its own so the user's hooks can tell a loop session from a
 	 * board copilot. Its instructions ride the opening prompt, not a system prompt append.
-	 * It sets no permission mode, allow list or settings file: the user's own harness settings
-	 * decide what gets asked, and every request reaches the human (`permission.ts`).
+	 * It sets no allow list or settings file. The session opens in the harness's own auto mode
+	 * (`AcpClient.newSession`), the harness decides what still gets asked, and every request
+	 * reaches the human (`permission.ts`).
 	 */
 	const loopProfile = (
 		runId: string,
@@ -185,7 +186,9 @@ export namespace Dispatch {
 				);
 				return undefined;
 			case "mode":
-				sink.emit("mode", update.id);
+				sink.emit("mode", `${update.id}, moved there by the harness`, {
+					mode: update.id,
+				});
 				return undefined;
 			case "usage":
 				sink.usage({
@@ -348,6 +351,13 @@ export namespace Dispatch {
 		);
 		if (model && model.type === "select")
 			sink.emit("model", String(model.currentValue));
+		// Which mode decides what gets asked: the harness's auto mode, or why not.
+		const { mode } = started.value;
+		sink.emit(
+			"mode",
+			mode.note,
+			mode.current ? { mode: mode.current } : undefined,
+		);
 		return ok(started.value);
 	};
 
