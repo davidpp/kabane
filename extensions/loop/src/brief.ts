@@ -40,14 +40,27 @@ export namespace Brief {
 			assembled,
 		].join("\n\n---\n\n");
 
-	type Lens = { runId: string; parent: Task; lens: string; prompt: string };
+	type Lens = {
+		runId: string;
+		parent: Task;
+		lens: string;
+		prompt: string;
+		gates: readonly string[];
+	};
+
+	// What has checked the work before the lens sees it. A run with no gates has run nothing, and
+	// saying otherwise would have the lens skip the very checks nobody made.
+	const checked = (gates: readonly string[]): string =>
+		gates.length > 0
+			? `Its gates (${gates.map((g) => `\`${g}\``).join(", ")}) pass on the tree you are reviewing.`
+			: "No gates are configured for this run, so nothing has run the project's checks on the result: do not assume they pass.";
 
 	// How a lens reports: findings are child issues of the parent, through kabane MCP, tagged so
 	// the run reads them back structurally. It is the run's part of every lens, so a repository's
 	// own lens cannot leave it out.
-	const filing = ({ runId, parent, lens }: Lens): string =>
+	const filing = ({ runId, parent, lens, gates }: Lens): string =>
 		[
-			`You are the \`${lens}\` verifier of kabane loop run ${runId}, which drove the subtasks of ${label(parent)} ("${parent.title}") to completion. The plan is done and the project's gates pass. Review the result through the lens below and file what you find. Do not change files and do not fix anything: a finding is work for an implementing session.`,
+			`You are the \`${lens}\` verifier of kabane loop run ${runId}, which drove the subtasks of ${label(parent)} ("${parent.title}") to completion. The plan is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: a finding is work for an implementing session.`,
 			`File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. A p1 keeps the run open until it is fixed, so file p1 only for what must be fixed before this work is done. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
 			"When everything is filed, end your turn with one line: how many findings you filed at each severity.",
 		].join("\n\n");
