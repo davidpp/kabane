@@ -111,6 +111,7 @@ const scriptedCopilot = (gate: Promise<void>, seen: Seen): Copilot => ({
 		},
 	],
 	answerPermission: () => {},
+	answerElicitation: () => {},
 });
 
 // A copilot whose turn stops on a question and waits — the board has to put it on screen and
@@ -146,6 +147,7 @@ const askingCopilot = (answers: (string | null)[]): Copilot => {
 		cancel: async () => {},
 		shortcuts: () => [],
 		answerPermission: (_id, optionId) => respond?.(optionId),
+		answerElicitation: () => {},
 	};
 };
 
@@ -186,6 +188,7 @@ const parallelCopilot = (answers: Map<string, string | null>): Copilot => {
 		cancel: async () => {},
 		shortcuts: () => [],
 		answerPermission: (id, optionId) => pending.get(id)?.(optionId),
+		answerElicitation: () => {},
 	};
 };
 

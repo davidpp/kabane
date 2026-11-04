@@ -107,8 +107,9 @@ export namespace CopilotLog {
 		if (update.type === "plan") return { ...turn, plan: update.entries };
 		// The pending choice is rendered from the reducer's copy, not from here; what the transcript
 		// keeps is the RECORD that it was asked, which outlives the answer and reads in the order it
-		// happened, between the tool call that provoked it and whatever followed.
-		if (update.type === "permission")
+		// happened, between the tool call that provoked it and whatever followed. A form reads as
+		// the same kind of row: the event view's `?` is a question, whatever shape its answer takes.
+		if (update.type === "permission" || update.type === "elicitation")
 			return {
 				...turn,
 				events: [
@@ -117,7 +118,10 @@ export namespace CopilotLog {
 						seq: lastSeq(turn) + 1,
 						at: update.at,
 						type: "permission",
-						summary: `permission: ${update.request.title}`,
+						summary:
+							update.type === "permission"
+								? `permission: ${update.request.title}`
+								: `asks: ${update.request.message}`,
 					},
 				],
 			};
