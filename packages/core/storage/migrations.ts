@@ -28,6 +28,7 @@ import type { Db } from "../db/port";
 import { applySchema } from "../db/schema";
 import { physicalTable } from "../db/tables";
 import type { Result } from "../result";
+import { parseQuestionBody } from "../schemas";
 import { columnExists, TABLES } from "./helpers";
 import { Oplog } from "./oplog";
 
@@ -157,6 +158,57 @@ const END_OF_UTC_DAY = [
 	"T23:59:00Z",
 ] as const;
 
+/**
+ * The tool permission requests a loop relayed as questions before JCAB-26, whose
+ * answers were written as decisions. A question counts only when that is
+ * certain: its body carries the `permission` block, and its text is exactly
+ * what the loop's relay wrote, `<harness> asks to run: <the block's title>`.
+ */
+namespace RelayedPermissions {
+	const ASKS = " asks to run: ";
+
+	const isRelayed = (body: string): boolean => {
+		const parsed = parseQuestionBody(body);
+		if (!parsed.permission) return false;
+		const harness = parsed.question.split(ASKS, 1)[0] ?? "";
+		return (
+			/^\S+$/.test(harness) &&
+			parsed.question === `${harness}${ASKS}${parsed.permission.title}`.trim()
+		);
+	};
+
+	/**
+	 * Delete the decisions answering a relayed permission request, and the
+	 * request itself once it is answered or its session has ended: left behind,
+	 * it would read as a question still waiting on a human. One waiting on a
+	 * live session stays, since a runner may still be polling for its answer.
+	 * Sessions do not replicate, so nothing here enters the oplog.
+	 */
+	export const drop = (db: Db): void => {
+		const questions = db
+			.query<
+				{ id: string; session_id: string; body: string; state: string },
+				[]
+			>(
+				`SELECT q.id, q.session_id, q.body, s.state
+				   FROM ${TABLES.agent_activities} q
+				   JOIN ${TABLES.agent_sessions} s ON s.id = q.session_id
+				  WHERE q.type = 'question' AND q.body LIKE '%"permission":%'`,
+			)
+			.all()
+			.filter((q) => isRelayed(q.body));
+		for (const q of questions) {
+			const answers = db.run(
+				`DELETE FROM ${TABLES.agent_activities}
+				  WHERE session_id = ? AND type = 'decision' AND context = ?`,
+				[q.session_id, `answers ${q.id}`],
+			);
+			if (answers.changes > 0 || q.state === "complete" || q.state === "error")
+				db.run(`DELETE FROM ${TABLES.agent_activities} WHERE id = ?`, [q.id]);
+		}
+	};
+}
+
 /** Drop a retired table; its indexes and triggers go with it. */
 const dropTable = (db: Db, logical: string): void => {
 	db.run(`DROP TABLE IF EXISTS ${physicalTable(logical)}`);
@@ -217,6 +269,14 @@ export namespace Migrations {
 					   AND substr(deadline, 11) IN (${END_OF_UTC_DAY.map((tail) => `'${tail}'`).join(", ")})`,
 				);
 			},
+		},
+		{
+			// Approving a tool call is no decision (JCAB-26): `answerQuestion` now
+			// answers a relayed permission request with an `answer`. The ones it
+			// answered with a decision before go, with their requests, so a task's
+			// decisions are the choices a human made.
+			name: "drop-permission-decisions",
+			up: RelayedPermissions.drop,
 		},
 	];
 

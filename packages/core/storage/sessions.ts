@@ -25,6 +25,7 @@ import {
 	type AgentSession,
 	type AgentSessionDraft,
 	AgentSessionDraftSchema,
+	parseQuestionBody,
 	type SessionQuery,
 	type Task,
 } from "../schemas";
@@ -349,13 +350,16 @@ export namespace Planner {
 	};
 
 	/**
-	 * Answer one `question` activity: append a `decision` whose `context` is
+	 * Answer one `question` activity: append an activity whose `context` is
 	 * exactly `answers <questionId>` and whose body is the answer, in the same
-	 * transaction as the lookup. The session leaves awaiting_input only once
-	 * every question on it has an answer. Answering again appends another
-	 * decision: the latest is the answer in force and the earlier ones stay on
-	 * the record. Rejects an id that is not a question activity, and a session
-	 * that has already ended.
+	 * transaction as the lookup. A question that relays a tool permission
+	 * request (its body carries `permission`) gets an `answer`: approving a tool
+	 * call unblocks the session and is no decision. Any other question gets a
+	 * `decision`, the human's choice on the record. The session leaves
+	 * awaiting_input only once every question on it has an answer. Answering
+	 * again appends another: the latest is the answer in force and the earlier
+	 * ones stay on the record. Rejects an id that is not a question activity,
+	 * and a session that has already ended.
 	 */
 	export const answerQuestion = async (
 		basePath: string,
@@ -376,9 +380,10 @@ export namespace Planner {
 						`Activity ${questionId} is a ${String(question.type)}, not a question`,
 					);
 				}
+				const permission = parseQuestionBody(String(question.body)).permission;
 				return appendActivity(db, {
 					sessionId: String(question.session_id),
-					type: "decision",
+					type: permission ? "answer" : "decision",
 					ephemeral: false,
 					context: answersContext(questionId),
 					body: answer,

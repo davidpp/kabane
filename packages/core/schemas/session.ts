@@ -53,7 +53,10 @@ export const SessionStateSchema = z.string().min(1);
 /**
  * Well-known activity types. NOT enforced — `type` stays a plain string.
  * `question` drives a session to awaiting_input; any other type on an
- * awaiting_input session flips it back to active (the answer).
+ * awaiting_input session flips it back to active once no question is left
+ * unanswered. A question's answer is a `decision` (a human's choice, on the
+ * record), or an `answer` when the question relays a tool permission request,
+ * which unblocks the session and is no decision.
  */
 export const ACTIVITY_TYPES = [
 	"progress",
@@ -65,6 +68,7 @@ export const ACTIVITY_TYPES = [
 	"response",
 	"error",
 	"question",
+	"answer",
 ] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 

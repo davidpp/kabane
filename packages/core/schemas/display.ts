@@ -131,4 +131,5 @@ export const AGENT_ACTIVITY_TYPE_DISPLAY = {
 	response: { label: "Response", color: "text-green-400" },
 	error: { label: "Error", color: "text-red-400" },
 	question: { label: "Question", color: "text-purple-400" },
+	answer: { label: "Answer", color: "text-gray-400" },
 } satisfies Record<(typeof ACTIVITY_TYPES)[number], DisplayConfig>;

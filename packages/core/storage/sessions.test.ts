@@ -5,7 +5,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import type { TaskDraft } from "../schemas";
-import { answersContext, isAnswerTo } from "../schemas";
+import { answersContext, formatQuestionBody, isAnswerTo } from "../schemas";
 import { Planner } from "./index";
 import { SESSION_STALE_MS } from "./sessions";
 
@@ -616,6 +616,39 @@ describe("Planner.answerQuestion", () => {
 		expect(answered.value.context).toBe(`answers ${questionId}`);
 		expect(answered.value.body).toBe("Redis");
 		expect(await stateOf(sessionId)).toBe("active");
+	});
+
+	it("answers a relayed tool permission request with an `answer`, never a decision", async () => {
+		const { sessionId } = await startOn();
+		const questionId = await ask(
+			sessionId,
+			formatQuestionBody("claude asks to run: Write a.ts", {
+				choices: ["Yes", "No"],
+				allowFreeform: false,
+				permission: {
+					toolCallId: "toolu_01",
+					title: "Write a.ts",
+					options: [
+						{ id: "allow", label: "Yes", kind: "allow_once" },
+						{ id: "reject", label: "No", kind: "reject_once" },
+					],
+				},
+			}),
+		);
+
+		const answered = await Planner.answerQuestion(TEST_BASE, {
+			questionId,
+			answer: "Yes",
+		});
+		if (!answered.ok) throw answered.error;
+		expect(answered.value.type).toBe("answer");
+		expect(answered.value.context).toBe(`answers ${questionId}`);
+		expect(await stateOf(sessionId)).toBe("active");
+		const activities = await Planner.getActivities(TEST_BASE, sessionId);
+		if (!activities.ok) throw activities.error;
+		expect(
+			Planner.selectDurableActivities(activities.value).map((a) => a.id),
+		).toEqual([]);
 	});
 
 	it("leaves awaiting_input only once every question is answered", async () => {

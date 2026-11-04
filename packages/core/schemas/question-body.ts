@@ -148,7 +148,7 @@ export function answersContext(questionActivityId: string): string {
 
 /**
  * Input to `Planner.answerQuestion`: the question activity being answered and the
- * answer, which becomes the `decision` activity's body (a chosen option's label,
+ * answer, which becomes the answering activity's body (a chosen option's label,
  * or freeform text).
  */
 export const AnswerQuestionInputSchema = z.object({
