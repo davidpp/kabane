@@ -8,16 +8,11 @@
 // boolean Yes / No, text and numbers free text. An optional field also offers `skip`, which
 // leaves it out of the answer, and every field offers `decline`, which declines the form. The
 // form resolves once every question has an answer; an answer that does not fit its field is
-// asked again, with why. A claim that stops, or a harness that withdraws the form, closes the
+// asked again, with why, judged as the board's form judges it (`FormField`). A claim that stops, or a harness that withdraws the form, closes the
 // questions still open as withdrawn (`questions.ts`).
 import type { AcpClient } from "@cabane/acp";
-import {
-	err,
-	formatQuestionBody,
-	ok,
-	type Result,
-	trySync,
-} from "@cabane/core";
+import { FormField } from "@cabane/board/form-field";
+import { err, formatQuestionBody, ok, type Result } from "@cabane/core";
 import { Permission } from "./permission";
 import { Questions } from "./questions";
 
@@ -62,22 +57,11 @@ export namespace Elicitation {
 			? []
 			: [...optionChoices(field), ...reserved(field)].map((c) => c.label);
 
-	const range = (low?: number, high?: number): string =>
-		low !== undefined && high !== undefined
-			? ` from ${low} to ${high}`
-			: low !== undefined
-				? ` of at least ${low}`
-				: high !== undefined
-					? ` of at most ${high}`
-					: "";
-
 	// How to answer a free-text question, which has no choices to show it.
 	const hint = (field: Field): string | undefined => {
 		if (!freeform(field)) return undefined;
 		const what =
-			field.type === "number"
-				? `${field.integer ? "a whole number" : "a number"}${range(field.minimum, field.maximum)}`
-				: "the answer";
+			field.type === "number" ? FormField.wants(field) : "the answer";
 		const skip = field.required ? "" : `, \`${SKIP}\` to leave it empty`;
 		return `Type ${what}${skip}, or \`${DECLINE}\` to decline the form.`;
 	};
@@ -152,39 +136,6 @@ export namespace Elicitation {
 
 	const invalid = (why: string): Read => ({ kind: "invalid", why });
 
-	const readText = (
-		field: Extract<Field, { type: "text" }>,
-		given: string,
-	): Read => {
-		if (field.minLength !== undefined && given.length < field.minLength)
-			return invalid(`is shorter than ${field.minLength} characters`);
-		if (field.maxLength !== undefined && given.length > field.maxLength)
-			return invalid(`is longer than ${field.maxLength} characters`);
-		// A pattern this runtime cannot compile is left to the harness to check.
-		const { pattern } = field;
-		const compiled =
-			pattern === undefined ? undefined : trySync(() => new RegExp(pattern));
-		if (compiled?.ok && !compiled.value.test(given))
-			return invalid(`does not match ${pattern}`);
-		return { kind: "value", value: given };
-	};
-
-	const readNumber = (
-		field: Extract<Field, { type: "number" }>,
-		given: string,
-	): Read => {
-		const value = given === "" ? Number.NaN : Number(given);
-		if (!Number.isFinite(value)) return invalid("is not a number");
-		if (field.integer && !Number.isInteger(value))
-			return invalid("is not a whole number");
-		if (
-			(field.minimum !== undefined && value < field.minimum) ||
-			(field.maximum !== undefined && value > field.maximum)
-		)
-			return invalid(`is not${range(field.minimum, field.maximum)}`);
-		return { kind: "value", value };
-	};
-
 	const readChoices = (
 		field: Extract<Field, { type: "choices" }>,
 		given: string,
@@ -215,9 +166,12 @@ export namespace Elicitation {
 			return chosen.label === SKIP ? { kind: "skip" } : { kind: "decline" };
 		switch (field.type) {
 			case "text":
-				return readText(field, given);
-			case "number":
-				return readNumber(field, given);
+			case "number": {
+				const value = FormField.read(field, given);
+				return value.ok
+					? { kind: "value", value: value.value }
+					: invalid(value.error.message);
+			}
 			case "choices":
 				return readChoices(field, given);
 			case "boolean":

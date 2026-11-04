@@ -167,7 +167,7 @@ describe("ElicitationForm", () => {
 		});
 	});
 
-	it("text keeps to its length and pattern; a pattern JavaScript cannot read accepts nothing", () => {
+	it("text keeps to its length and pattern; a pattern that does not compile is left to the harness", () => {
 		const SLUG: CopilotFormField = {
 			key: "slug",
 			title: "Slug",
@@ -187,8 +187,8 @@ describe("ElicitationForm", () => {
 			draft: { error: expect.stringContaining('"Cache"') },
 		});
 		const broken = form({ ...SLUG, pattern: "(" });
-		expect(run(broken, [{ send: "cache" }])).toMatchObject({
-			draft: { error: expect.any(String) },
+		expect(run(broken, [{ send: "cache" }])).toEqual({
+			answer: { action: "accept", content: { slug: "cache" } },
 		});
 	});
 

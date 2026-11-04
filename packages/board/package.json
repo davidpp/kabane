@@ -10,7 +10,8 @@
 	"exports": {
 		".": "./index.ts",
 		"./context": "./src/context.ts",
-		"./ports": "./src/ports.ts"
+		"./ports": "./src/ports.ts",
+		"./form-field": "./src/form-field.ts"
 	},
 	"scripts": {
 		"test": "bun test",

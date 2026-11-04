@@ -183,18 +183,12 @@ describe("Elicitation.read", () => {
 			maximum: 9,
 		});
 		expect(Elicitation.read(count, "3")).toEqual({ kind: "value", value: 3 });
-		expect(Elicitation.read(count, "three")).toEqual({
-			kind: "invalid",
-			why: "is not a number",
-		});
-		expect(Elicitation.read(count, "2.5")).toEqual({
-			kind: "invalid",
-			why: "is not a whole number",
-		});
-		expect(Elicitation.read(count, "12")).toEqual({
-			kind: "invalid",
-			why: "is not from 1 to 9",
-		});
+		// The board's form refuses each of these the same way (`FormField.read`).
+		for (const given of ["three", "2.5", "12"])
+			expect(Elicitation.read(count, given)).toEqual({
+				kind: "invalid",
+				why: "is not a whole number from 1 to 9",
+			});
 		const ratio = field({
 			...named,
 			required: true,
@@ -208,13 +202,9 @@ describe("Elicitation.read", () => {
 	});
 
 	it("validates text against its length and pattern", () => {
-		const name = field({
-			...named,
-			required: true,
-			type: "text",
-			maxLength: 5,
-			pattern: "^[a-z]+$",
-		});
+		const text = (pattern: string) =>
+			field({ ...named, required: true, type: "text", maxLength: 5, pattern });
+		const name = text("^[a-z]+$");
 		expect(Elicitation.read(name, "abc")).toEqual({
 			kind: "value",
 			value: "abc",
@@ -223,6 +213,16 @@ describe("Elicitation.read", () => {
 		expect(Elicitation.read(name, "ABC")).toEqual({
 			kind: "invalid",
 			why: "does not match ^[a-z]+$",
+		});
+		// The pattern is read as Unicode, as the board reads it, and one that does not compile is
+		// the harness's to check: the answer is taken.
+		expect(Elicitation.read(text("^\\p{L}+$"), "été")).toEqual({
+			kind: "value",
+			value: "été",
+		});
+		expect(Elicitation.read(text("("), "ABC")).toEqual({
+			kind: "value",
+			value: "ABC",
 		});
 	});
 
@@ -405,7 +405,7 @@ describe("Elicitation.relay", () => {
 		if (!second) throw new Error("missing question");
 		expect(second.id).not.toBe(first.id);
 		expect(parseQuestionBody(second.body).question).toContain(
-			'Asked again: "lots" is not a number.',
+			'Asked again: "lots" is not a whole number of at least 1.',
 		);
 		await answer(second.id, "4");
 		expect(await result).toEqual({
