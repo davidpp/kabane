@@ -323,7 +323,7 @@ const FormPanel = ({
 	inHand: boolean;
 	onSubmit: (text: string) => void;
 }): ReactNode => {
-	const { width } = useTerminalDimensions();
+	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	const paneBg = theme.surface.raised;
 	const inner = width - 2;
@@ -342,7 +342,9 @@ const FormPanel = ({
 				request={ask.request}
 				draft={ask.draft}
 				waiting={waiting}
-				width={inner - 4}
+				width={inner}
+				// Half the terminal, less the title row, so the board stays in view behind the form.
+				rows={Math.floor(height / 2) - 1}
 				bg={paneBg}
 				inHand={inHand}
 				onSubmit={onSubmit}
