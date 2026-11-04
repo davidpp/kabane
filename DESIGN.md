@@ -372,17 +372,40 @@ against every glyph already here.
   in one row.
 - **A form's layout:** three groups a blank row apart: what is asked (the message under its `?`,
   wrapped under its own first column, then the field in hand as a Label with its count and
-  `optional` muted), the answers, and the keys. A described answer takes a row for its label and
-  its note on the rows under it, indented to the label's column, never run on after the label.
-  Undescribed answers share one `·` row and break between two answers, never through one. Held
-  under the half, a form gives up its blank rows first, then each note's tail (cut to its label's
-  row), then the notes.
+  `optional` muted), the answers, and the keys. Each answer takes a row of its own, because the
+  cursor is a row: a described one has its note on the rows under its label, indented to the
+  label's column, never run on after the label. Held under the half, a form gives up its blank
+  rows first, then each note's tail (cut to its label's row); it never gives up an answer's row,
+  and takes the rows it needs rather than draw over itself.
+- **A form's cursor:** a choice or multi-select has a cursor on one answer, starting on the
+  first, its rows (the note's too) under the Selection Rule across the panel's width. `↑↓` move
+  it; `j/k` do not, because the form takes its keys ahead of every view and those two keep
+  moving the board and scrolling the transcript under it. On a choice `enter` picks the cursor's
+  answer, on a multi-select `space` toggles it and `enter` sends; a digit names an answer
+  directly and moves the cursor there; `s` skips an optional one. A key that answers is held
+  for the first 800ms a field is on screen, as a digit is, since a stray `enter` now picks.
+- **A form's keys row:** says how to answer, most important first so a narrow row cuts the
+  tail: `↑↓ move · enter pick · 1-N pick · s skip · esc decline` on a choice,
+  `↑↓ move · space toggle · enter send (k picked) · s skip · esc decline` on a multi-select,
+  `s skip` only on an optional field.
+- **An ask by mouse:** a click on an answer does what its digit does, on a hint what its key
+  does (a typed field's `enter` sends what its input holds); the focused pane's permission
+  answers are clickable the same way. A click goes through the reducers the keys take, is not
+  held like a key, and leaves the keys where they were. A hint that names a set of keys (`↑↓`,
+  `1-N`) is not a button: its answers are.
+- **An ask without the keys:** an open prompt, a `/` query being typed or a question on the view
+  can hold the keys while an ask is on screen. The ask then says so in place of keys that would
+  go elsewhere, the key first: `esc to answer · the prompt has the keys` on the form,
+  `? copilot asks: … · tab to answer` on the collapsed row. A click on it presses that key; on
+  an outranked ask's row any click hands the copilot the keys rather than answering. With the
+  keys in hand nothing extra shows.
 
 **The Answer Rule.** An ask's answers are content: the human reads them to decide. On the form,
 the permission ask and the question banner, each answer's key and label are in the text color
 and its description is secondary; only chrome is muted (the `·` separators, `1 of 2`,
 `optional`, a key hint's label, `n more waiting`). A multi-select's toggled `[x]` is the accent
-and an open `[ ]` muted. The one-row collapsed forms follow the same colors.
+and an open `[ ]` muted. The cursor's answer keeps those colors on the selected surface. The
+one-row collapsed forms follow the same colors.
 
 ### Prompt
 - **What:** the copilot's own input, opened for something else: a card's action that takes
