@@ -24,7 +24,9 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { blockOnSurface, PROSE_MEASURE } from "./detail";
 import { elapsed } from "./elapsed";
+import { ErrorBoundary } from "./error-boundary";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
@@ -720,13 +722,45 @@ const EventRow = ({
 			<text fg={glyphFg} style={{ flexShrink: 0 }}>
 				{`${glyph} `}
 			</text>
-			<text
-				fg={textFg}
-				attributes={event.type === "thought" ? TextAttributes.ITALIC : 0}
-				style={{ flexGrow: 1, flexShrink: 1 }}
-			>
-				{event.summary}
-			</text>
+			{event.type === "text" ? (
+				<AgentText text={event.summary} />
+			) : (
+				<text
+					fg={textFg}
+					attributes={event.type === "thought" ? TextAttributes.ITALIC : 0}
+					style={{ flexGrow: 1, flexShrink: 1 }}
+				>
+					{event.summary}
+				</text>
+			)}
+		</box>
+	);
+};
+
+// What the agent said, rendered as the markdown it is written in, the way the brief is: code and
+// quotes on a surface, prose on the terminal's foreground stopping at the measure. Not `streaming`:
+// both hosts write a message once it is whole, so there is no trailing block still arriving. A parse
+// that throws falls back to the text as it came.
+const AgentText = ({ text }: { text: string }): ReactNode => {
+	const theme = useTheme();
+	const syntaxStyle = useMarkdownStyle();
+	const renderNode = useMemo(() => blockOnSurface(theme), [theme]);
+	const fallback = (
+		<text fg={theme.defaultFg} style={{ flexGrow: 1, flexShrink: 1 }}>
+			{text}
+		</text>
+	);
+	return (
+		<box style={{ flexGrow: 1, flexShrink: 1, minWidth: 0 }}>
+			<ErrorBoundary fallback={fallback}>
+				<markdown
+					content={text.trim()}
+					syntaxStyle={syntaxStyle}
+					fg={theme.defaultFg}
+					renderNode={renderNode}
+					style={{ maxWidth: PROSE_MEASURE }}
+				/>
+			</ErrorBoundary>
 		</box>
 	);
 };

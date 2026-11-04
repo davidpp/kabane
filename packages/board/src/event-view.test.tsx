@@ -223,8 +223,11 @@ const mountTurn = async (width: number) => {
 		/>,
 		{ width, height: 24 },
 	);
-	const frame = await pumpUntil(setup.renderOnce, setup.captureCharFrame, (f) =>
-		f.includes("harness exited"),
+	// The agent's markdown lays out a frame after the plain rows around it.
+	const frame = await pumpUntil(
+		setup.renderOnce,
+		setup.captureCharFrame,
+		(f) => f.includes("harness exited") && f.includes("Split it in"),
 	);
 	return { ...setup, frame };
 };
@@ -277,6 +280,46 @@ describe("the transcript's look", () => {
 			expect(next.trim().length).toBeGreaterThan(0);
 		} finally {
 			destroy();
+		}
+	});
+
+	it("renders what the agent said as markdown, its code on the raised surface, at forty columns", async () => {
+		const said: ActivityEvent[] = [
+			{
+				seq: 1,
+				at: T0,
+				type: "text",
+				summary: "Run `bun test` **first**, then:\n\n```sh\nbun run check\n```",
+			},
+		];
+		const setup = await renderTest(
+			<EventView
+				cardId="copilot"
+				initialCard={copilotCard}
+				source={sourceOf(copilotCard, said)}
+				resolveShortId={() => undefined}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>,
+			{ width: 40, height: 16 },
+		);
+		try {
+			const frame = await pumpUntil(
+				setup.renderOnce,
+				setup.captureCharFrame,
+				(f) => f.includes("bun run check") && f.includes("first"),
+			);
+			expect(frame).not.toContain("**");
+			expect(frame).not.toContain("```");
+			const spans = setup.captureSpans().lines.flatMap((line) => line.spans);
+			const inline = spanWith(spans, "bun test");
+			expect(inline && ints(inline.fg)).toEqual(rgb(Theme.DARK.ink.code));
+			const block = spanWith(spans, "bun run check");
+			expect(block && ints(block.bg)).toEqual(rgb(Theme.DARK.surface.raised));
+			// Under the glyph's column, as the plain rows are.
+			const row = frame.split("\n").find((r) => r.includes("Run")) ?? "";
+			expect(row.startsWith("  Run")).toBe(true);
+		} finally {
+			setup.destroy();
 		}
 	});
 
@@ -452,27 +495,26 @@ const sourceOf = (
 	events: async (_id, afterSeq) => ok(events.filter((e) => e.seq > afterSeq)),
 });
 
-const mountCalls = async (
-	width: number,
-	height = 24,
-	events: readonly ActivityEvent[] = calls,
-	ready = "Edit src/pane.tsx",
-	scrollRef = createRef<ScrollBoxRenderable>(),
-) => {
+const mountCalls = async (width: number, height = 24) => {
 	const setup = await renderTest(
 		<EventView
 			cardId="run-1"
 			initialCard={loopCard}
-			source={sourceOf(loopCard, events)}
+			source={sourceOf(loopCard, calls)}
 			resolveShortId={() => undefined}
-			scrollRef={scrollRef}
+			scrollRef={createRef<ScrollBoxRenderable>()}
 		/>,
 		{ width, height },
 	);
-	const frame = await pumpUntil(setup.renderOnce, setup.captureCharFrame, (f) =>
-		f.includes(ready),
+	// The last row, and the agent's markdown, which lays out a frame after the plain rows.
+	const frame = await pumpUntil(
+		setup.renderOnce,
+		setup.captureCharFrame,
+		(f) =>
+			f.includes("Edit src/pane.tsx") &&
+			f.includes("Found where the pane wraps."),
 	);
-	return { ...setup, frame, scrollRef };
+	return { ...setup, frame };
 };
 
 const rowOf = (frame: string, text: string): number =>
