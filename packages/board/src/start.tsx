@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/react */
-// Renderer lifecycle for the board. Owns the renderer: create it, mount the App, and always destroy
+// Renderer lifecycle for the board. Owns the renderer: create it, mount the App, and always close
 // it (try/finally) so a crash still restores the terminal. The host has already called
 // `Runtime.configure` with a Db provider; the board only needs the base path that provider reads.
 
@@ -16,6 +16,7 @@ import {
 	type Dispatcher,
 	noActivity,
 } from "./ports";
+import { closeRenderer } from "./teardown";
 import { Theme, ThemeProvider, useTheme } from "./theme";
 
 export type BoardDeps = {
@@ -77,6 +78,6 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 			renderer.on("destroy", resolve);
 		});
 	} finally {
-		if (!renderer.isDestroyed) renderer.destroy();
+		await closeRenderer(renderer);
 	}
 };
