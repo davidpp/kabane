@@ -23,7 +23,7 @@ import {
 	paletteNameCols,
 	titleSegments,
 } from "./copilot-prompt";
-import type { BoardNav } from "./nav";
+import { BoardNav } from "./nav";
 import type { Copilot, CopilotStep, CopilotUpdate } from "./ports";
 import { noActivity } from "./ports";
 import { Segments } from "./segments";
@@ -444,14 +444,17 @@ describe("a harness blocked on a permission request", () => {
 	});
 
 	// Send a prompt and stop at the choice. The pane's one row is the whole answer to "where does a
-	// board with no transcript open learn that something is waiting on it".
+	// board with no transcript open learn that something is waiting on it". Every reading of its
+	// clock is a full arming window after the last, so each key lands on a screen already read.
 	const ask = async (answers: (string | null)[]) => {
+		let now = 0;
 		const setup = await renderTest(
 			<App
 				cwd={PERMISSION_BASE}
 				basePath={PERMISSION_BASE}
 				activity={noActivity}
 				copilot={askingCopilot(answers)}
+				clock={() => (now += BoardNav.ARM_MS)}
 			/>,
 			{ width: 120, height: 24 },
 		);
@@ -497,12 +500,14 @@ describe("a harness blocked on a permission request", () => {
 
 	it("two at once: the first asks with the second counted, and answering it brings up the second", async () => {
 		const answers = new Map<string, string | null>();
+		let now = 0;
 		const setup = await renderTest(
 			<App
 				cwd={PERMISSION_BASE}
 				basePath={PERMISSION_BASE}
 				activity={noActivity}
 				copilot={parallelCopilot(answers)}
+				clock={() => now}
 			/>,
 			{ width: 120, height: 24 },
 		);
@@ -519,10 +524,17 @@ describe("a harness blocked on a permission request", () => {
 				f.includes("? search opentui · 1 more waiting · 1 Allow"),
 			);
 
+			now += BoardNav.ARM_MS;
 			mockInput.pressKey("1");
 			const next = await until((f) => f.includes("? search acp sdk · 1 Allow"));
 			expect(next).not.toContain("more waiting");
 
+			// The second came up under a key already on its way: it holds the key and says so.
+			mockInput.pressKey("2");
+			const held = await until((f) => f.includes("just asked"));
+			expect(held).toContain("? search acp sdk · 1 Allow");
+
+			now += BoardNav.ARM_MS;
 			mockInput.pressKey("2");
 			await until((f) => f.includes("Both searches answered."));
 			expect([...answers]).toEqual([

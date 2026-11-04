@@ -55,6 +55,9 @@ export type AppProps = {
 	resolveScope?: BoardData.ScopeResolver;
 	// A host's own header for its cards, by card kind. Absent → every card tab heads with its title.
 	headers?: Readonly<Record<string, CardHeader>>;
+	// Milliseconds, for how long a question has been on screen before a digit answers it
+	// (BoardNav.ARM_MS). Absent → Date.now.
+	clock?: () => number;
 };
 
 const POLL_INTERVAL_MS = 5000;
@@ -111,6 +114,7 @@ export const App = ({
 	copilot,
 	resolveScope,
 	headers,
+	clock = Date.now,
 }: AppProps): ReactNode => {
 	const renderer = useRenderer();
 	const theme = useTheme();
@@ -165,6 +169,11 @@ export const App = ({
 	// renders (a paste into the prompt or the search box) each see the previous key's result.
 	const stateRef = useRef<BoardNav.BoardState | null>(null);
 	stateRef.current = state;
+	// Every committed state is on screen: note what the digits answer from now on, so a question
+	// that just appeared does not take a key already on its way (BoardNav.sight).
+	useEffect(() => {
+		setState((prev) => (prev ? BoardNav.sight(prev, clock()) : prev));
+	}, [state, clock]);
 	const scopeRef = useRef<BoardData.ScopeInfo | null>(null);
 	scopeRef.current = scope;
 	const activityRef = useRef<BoardActivity.ActivityMap>(shownActivity);
@@ -720,7 +729,7 @@ export const App = ({
 			BoardPrompt.consumes(current, key)
 		)
 			key.preventDefault();
-		const { state: next, effect } = BoardNav.reduceKey(current, key);
+		const { state: next, effect } = BoardNav.reduceKey(current, key, clock());
 		if (next !== current) {
 			stateRef.current = next;
 			setState(next);

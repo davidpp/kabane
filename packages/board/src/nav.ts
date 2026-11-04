@@ -216,7 +216,12 @@ export namespace BoardNav {
 		// its reverse patch a harmless no-op (the field is already at the prior value). Preserved across
 		// every reload (withSections/withSearchResults spread it through). No redo.
 		undo: readonly UndoEntry[];
+		// What a digit answered as of the last render and since when (sight): how the keys tell a
+		// question the human has had time to read from one that appeared under a key already on its way.
+		sighted: Sighting;
 	};
+
+	type Sighting = { target: string | undefined; since: number };
 
 	// A single rendered line: a top-level task (depth 0) or one of its subtasks (depth 1). `hasChildren`
 	// and `expanded` drive the tree caret; `parentId` lets `h` on a child jump to its parent.
@@ -507,6 +512,46 @@ export namespace BoardNav {
 	 */
 	export const copilotOutranked = (state: BoardState): boolean =>
 		state.focus !== "copilot" && BoardTabs.inHand(state) !== undefined;
+
+	/**
+	 * How long a question has to be the one a digit answers before a digit does. A key already on
+	 * its way when a question appears, or replaces the one being read, was aimed at what was there
+	 * before; this is long enough to cover that and short enough not to be waited on.
+	 */
+	export const ARM_MS = 800;
+
+	/**
+	 * The id of what a digit answers right now: the copilot's oldest request unless the view's
+	 * question outranks it, else that question. Undefined while the digits answer nothing — the
+	 * copilot's focused textarea takes them as text.
+	 */
+	export const digitTarget = (state: BoardState): string | undefined => {
+		const asking = state.copilot.permissions[0];
+		if (asking && !copilotOutranked(state)) return asking.id;
+		if (state.focus === "copilot") return undefined;
+		return BoardTabs.inHand(state)?.question.questionActivityId;
+	};
+
+	/**
+	 * After a render: note what the digits answer now, and from when if it changed. app.tsx runs it
+	 * on every committed state; the same state when nothing moved, so it re-renders nothing.
+	 */
+	export const sight = (state: BoardState, now: number): BoardState => {
+		const target = digitTarget(state);
+		return target === state.sighted.target
+			? state
+			: { ...state, sighted: { target, since: now } };
+	};
+
+	// Whether a digit pressed at `now` may answer: what it would answer has been on screen, as the
+	// last render left it, for ARM_MS. A target no render has sighted yet is not armed.
+	const armed = (state: BoardState, now: number): boolean => {
+		const target = digitTarget(state);
+		return (
+			target === undefined ||
+			(target === state.sighted.target && now - state.sighted.since >= ARM_MS)
+		);
+	};
 
 	// The keys that answer a blocked harness: a digit picks its option, `esc` declines. Null for
 	// everything else, which then routes as it always does — so `x` on the transcript still cancels
@@ -1039,6 +1084,7 @@ export namespace BoardNav {
 			copilot: COPILOT_IDLE,
 			prompt: BoardPrompt.CLOSED,
 			undo: [],
+			sighted: { target: undefined, since: 0 },
 		};
 		return { ...base, selectedId: firstId(visibleRows(base)) };
 	};
@@ -1134,14 +1180,38 @@ export namespace BoardNav {
 	// swallows `esc`/`q` to pop back to the board, so neither falls through to the board's
 	// scope-widen / quit. Unknown keys return the same state reference so the caller can skip a
 	// re-render.
+	//
+	// `now` is when the key arrived, on the same clock `sight` stamps renders with.
 	export const reduceKey = (
 		state: BoardState,
 		key: KeyInput,
+		now: number,
 	): { state: BoardState; effect: Effect } => {
 		if (state.help) return reduceHelpKey(state, key);
 		if (state.dispatch?.form)
 			return TriggerForm.reduceKey(state, state.dispatch.form, key);
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
+		// A digit answers only a question that has been on screen long enough to read: one that just
+		// appeared, or just replaced the one in hand, holds the key and says so rather than taking an
+		// answer the human never saw. Search-typing and an open prompt take a digit as a character.
+		// A shifted digit is no answer (`!` on some terminals), so it passes.
+		if (
+			optionIndex(key) !== null &&
+			!key.shift &&
+			state.search.mode !== "typing" &&
+			!state.prompt.open &&
+			!armed(state, now)
+		)
+			return {
+				state,
+				effect: {
+					type: "notice",
+					notice: {
+						text: "just asked · read it, then press again",
+						tone: "success",
+					},
+				},
+			};
 		// A harness blocked on a question is the most urgent thing on screen, so it takes the keys
 		// that answer it — a digit, `esc` — ahead of every view and of the copilot's own focus. That
 		// is the esc layering the board already has, one press one level: the newest, most local
@@ -1170,7 +1240,7 @@ export namespace BoardNav {
 			key.name !== "o" &&
 			state.search.mode !== "typing"
 		)
-			return reduceKey(withCopilotTurn(state, "idle"), key);
+			return reduceKey(withCopilotTurn(state, "idle"), key, now);
 		// ctrl-z routes across every view (board + detail), after the modals own the keyboard and before
 		// view routing. Inert while a `/` query is being typed (ctrl isn't a printable query char anyway).
 		if (isUndoKey(key) && state.search.mode !== "typing")

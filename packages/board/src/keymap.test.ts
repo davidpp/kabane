@@ -80,6 +80,7 @@ const state = (
 	copilot: copilot(),
 	undo: [],
 	prompt: BoardPrompt.CLOSED,
+	sighted: { target: undefined, since: 0 },
 	...over,
 });
 
@@ -282,9 +283,15 @@ const keyInput = (name: string): BoardNav.KeyInput => {
 };
 
 // "Does something": the reducer changed the state or asked app.tsx for an effect.
+// Pressed once the screen has been up long enough to read (BoardNav.ARM_MS).
 const acts = (s: BoardNav.BoardState, key: BoardNav.KeyInput): boolean => {
-	const { state: next, effect } = BoardNav.reduceKey(s, key);
-	return effect.type !== "none" || !Bun.deepEquals(next, s);
+	const seen = BoardNav.sight(s, 0);
+	const { state: next, effect } = BoardNav.reduceKey(
+		seen,
+		key,
+		BoardNav.ARM_MS,
+	);
+	return effect.type !== "none" || !Bun.deepEquals(next, seen);
 };
 
 const SHEET_CONTEXTS = (

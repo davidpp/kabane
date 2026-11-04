@@ -89,7 +89,16 @@ const press = (
 		state,
 		effect: { type: "none" },
 	};
-	for (const name of names) step = BoardNav.reduceKey(step.state, key(name));
+	// Each key pressed once the last one's screen has been up long enough to read (BoardNav.ARM_MS),
+	// and that screen sighted after it, as app.tsx does on every render.
+	for (const name of names) {
+		const next = BoardNav.reduceKey(
+			BoardNav.sight(step.state, 0),
+			key(name),
+			BoardNav.ARM_MS,
+		);
+		step = { ...next, state: BoardNav.sight(next.state, 0) };
+	}
 	return step;
 };
 
@@ -269,11 +278,11 @@ describe("a card's tab", () => {
 
 	it("shift+w is W, which does not close a finished card's tab", () => {
 		const finished = onTab(withLoop([card({ status: "failed" })]));
-		const shifted = BoardNav.reduceKey(finished, {
-			name: "w",
-			sequence: "W",
-			shift: true,
-		});
+		const shifted = BoardNav.reduceKey(
+			finished,
+			{ name: "w", sequence: "W", shift: true },
+			0,
+		);
 		expect(shifted.effect.type).not.toBe("dismiss");
 		expect(shifted.state.tabs.open).toEqual(["loop:r1"]);
 	});
@@ -341,16 +350,19 @@ describe("a card's tab answers its question in place", () => {
 	});
 
 	it("a shifted digit is not a digit: shift+1 reported by its base key never answers", () => {
-		const shifted = BoardNav.reduceKey(onTab(), {
-			name: "1",
-			sequence: "1",
-			shift: true,
-		});
+		const shifted = BoardNav.reduceKey(
+			onTab(),
+			{ name: "1", sequence: "1", shift: true },
+			BoardNav.ARM_MS,
+		);
 		expect(shifted.effect.type).not.toBe("answerQuestion");
 		const pinned = press(withLoop(), "!").state;
 		expect(
-			BoardNav.reduceKey(pinned, { name: "1", sequence: "1", shift: true })
-				.effect.type,
+			BoardNav.reduceKey(
+				pinned,
+				{ name: "1", sequence: "1", shift: true },
+				BoardNav.ARM_MS,
+			).effect.type,
 		).not.toBe("answerQuestion");
 	});
 
@@ -590,6 +602,117 @@ describe("a session question and the copilot's request pending together", () => 
 		// A card's tab with no question of its own is the same.
 		const quiet = press(asking(withLoop([card()], [SOLO_Q])), "}").state;
 		expect(press(quiet, "2").effect).toMatchObject({ optionId: "reject" });
+	});
+});
+
+// Seen live: a loop question landing on the tab took the `1` the human pressed at the copilot's
+// row, approving a call nobody had read. A digit answers only what has been on screen ARM_MS.
+describe("a question that just appeared holds the digits until it has been read", () => {
+	const request: CopilotPermission = {
+		id: "c1",
+		title: "web_search",
+		options: [
+			{ id: "allow", label: "Allow" },
+			{ id: "reject", label: "Reject" },
+		],
+	};
+	const HELD: BoardNav.Effect = {
+		type: "notice",
+		notice: { text: "just asked · read it, then press again", tone: "success" },
+	};
+	const one = key("1");
+	// The loop's tab with no question of its own, the copilot asking, sighted at t=0.
+	const copilotAsking = (): BoardNav.BoardState =>
+		BoardNav.sight(
+			press(
+				BoardNav.withCopilotPermission(
+					BoardNav.withCopilotTurn(withLoop([card()], [SOLO_Q]), "running"),
+					request,
+				),
+				"}",
+			).state,
+			0,
+		);
+	// The poll brings the loop's question at T, and the render after it sights it.
+	const T = 10_000;
+	const arrived = (): BoardNav.BoardState =>
+		BoardNav.sight(
+			BoardTabs.withActivity(copilotAsking(), [card()], [SOLO_Q, LOOP_Q]),
+			T,
+		);
+
+	it("a loop question arriving while the copilot asks takes no digit inside the window, then does", () => {
+		expect(BoardNav.digitTarget(copilotAsking())).toBe("c1");
+		const s = arrived();
+		expect(BoardNav.digitTarget(s)).toBe("q-loop");
+		const blind = BoardNav.reduceKey(s, one, T + 100);
+		expect(blind.effect).toEqual(HELD);
+		expect(blind.state).toBe(s);
+		const read = BoardNav.reduceKey(s, one, T + BoardNav.ARM_MS);
+		expect(read.effect).toEqual({
+			type: "answerQuestion",
+			questionId: "q-loop",
+			answer: "LRU",
+		});
+		expect(read.state.copilot.permissions).toEqual([request]);
+	});
+
+	it("a key that lands before any render sighted the new question is held, however late", () => {
+		const unsighted = BoardTabs.withActivity(
+			copilotAsking(),
+			[card()],
+			[SOLO_Q, LOOP_Q],
+		);
+		expect(BoardNav.reduceKey(unsighted, one, T * 10).effect).toEqual(HELD);
+	});
+
+	it("a question that replaces the one in hand starts its own window", () => {
+		const later = question({
+			questionActivityId: "q-loop-2",
+			question: "Keep the old index?",
+			choices: ["Keep", "Drop"],
+			askedAt: "2026-10-10T00:02:00.000Z",
+		});
+		const onTab = press(withLoop([card()], [LOOP_Q, later]), "}").state;
+		const answered = press(onTab, "1").state;
+		const replaced = BoardNav.sight(
+			BoardTabs.withActivity(answered, [card()], [later]),
+			T,
+		);
+		expect(BoardNav.digitTarget(replaced)).toBe("q-loop-2");
+		expect(BoardNav.reduceKey(replaced, one, T + 500).effect).toEqual(HELD);
+		expect(
+			BoardNav.reduceKey(replaced, one, T + BoardNav.ARM_MS).effect,
+		).toEqual({
+			type: "answerQuestion",
+			questionId: "q-loop-2",
+			answer: "Keep",
+		});
+	});
+
+	it("the copilot's request taking the digits back from a question that left starts a window too", () => {
+		const gone = BoardNav.sight(
+			BoardTabs.withActivity(arrived(), [card()], [SOLO_Q]),
+			2 * T,
+		);
+		expect(BoardNav.digitTarget(gone)).toBe("c1");
+		expect(BoardNav.reduceKey(gone, one, 2 * T + 1).effect).toEqual(HELD);
+		expect(
+			BoardNav.reduceKey(gone, one, 2 * T + BoardNav.ARM_MS).effect,
+		).toMatchObject({ type: "copilotAnswer", optionId: "allow" });
+	});
+
+	it("a click on an answer is aimed at what is on screen, so it is not held", () => {
+		expect(
+			BoardNav.reduceMouse(arrived(), { type: "answer", index: 1 }).effect,
+		).toMatchObject({ type: "answerQuestion", answer: "TTL" });
+	});
+
+	it("only digits are held: other keys route as ever inside the window", () => {
+		expect(BoardNav.reduceKey(arrived(), key("j"), T).effect).toEqual({
+			type: "scroll",
+			delta: 2,
+		});
 	});
 });
 

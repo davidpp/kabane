@@ -32,7 +32,16 @@ const press = (
 		state,
 		effect: { type: "none" },
 	};
-	for (const name of names) step = BoardNav.reduceKey(step.state, key(name));
+	// Each key pressed once the last one's screen has been up long enough to read (BoardNav.ARM_MS),
+	// and that screen sighted after it, as app.tsx does on every render.
+	for (const name of names) {
+		const next = BoardNav.reduceKey(
+			BoardNav.sight(step.state, 0),
+			key(name),
+			BoardNav.ARM_MS,
+		);
+		step = { ...next, state: BoardNav.sight(next.state, 0) };
+	}
 	return step;
 };
 
@@ -174,12 +183,12 @@ describe("actions", () => {
 		const s = onTab([
 			card({ actions: [STOP, { id: "export", key: "X", label: "export" }] }),
 		]);
-		expect(BoardNav.reduceKey(s, shiftX).effect).toEqual({
+		expect(BoardNav.reduceKey(s, shiftX, 0).effect).toEqual({
 			type: "act",
 			cardId: "loop:r1",
 			actionId: "export",
 		});
-		expect(BoardNav.reduceKey(acting(), shiftX).effect.type).toBe("none");
+		expect(BoardNav.reduceKey(acting(), shiftX, 0).effect.type).toBe("none");
 	});
 
 	it("an action aimed at a lane, with no live lane to go to, says so and is left out of the footer", () => {
@@ -226,7 +235,7 @@ describe("actions", () => {
 		expect(BoardPrompt.submit(next, "say why").effect).toMatchObject({
 			lane: "claude:JREP-2",
 		});
-		const back = BoardNav.reduceKey(next, { name: "tab", shift: true });
+		const back = BoardNav.reduceKey(next, { name: "tab", shift: true }, 0);
 		expect(back.state.prompt.open?.aim).toBe("claude:JREP-3");
 		// The lane on screen wins, and leaves nothing to walk.
 		const onLane = press(s, "l", "i").state;
