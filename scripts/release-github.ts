@@ -6,6 +6,7 @@ const Release = z.object({
 	id: z.number().int().positive().safe(),
 	tag_name: z.string(),
 	draft: z.boolean(),
+	prerelease: z.boolean().optional(),
 	immutable: z.boolean().optional(),
 	assets: z.array(z.object({ name: z.string() })),
 });

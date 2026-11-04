@@ -22,7 +22,35 @@ import {
 import { runUpdateProcess } from "../update-process";
 
 const WORK = mkdtempSync(join(tmpdir(), "kabane-update-archive-"));
-let archive = "";
+const BETA = `${Number(UPDATE_SOURCE.split(".")[0]) + 1}.0.0-beta.0`,
+	NEXT_BETA = BETA.replace(/0$/, "1"),
+	BETA_RELEASE = BETA.replace(/-.*/, "");
+let archive = "",
+	betaArchive = "";
+/**
+ * The packed CLI at another version: its manifest and the one version literal the bundle inlines
+ * from it. The shared dist is built once, so a second build at a beta version is not an option.
+ */
+const repack = (from: string, version: string): string => {
+	const dir = join(WORK, `repack-${version}`);
+	mkdirSync(dir);
+	expect(Bun.spawnSync(["tar", "-xzf", from, "-C", dir]).exitCode).toBe(0);
+	const manifest = join(dir, "package/package.json"),
+		bundle = join(dir, "package/bin/kabane.js");
+	writeFileSync(
+		manifest,
+		JSON.stringify({ ...JSON.parse(readFileSync(manifest, "utf8")), version }),
+	);
+	const text = readFileSync(bundle, "utf8"),
+		literal = JSON.stringify(UPDATE_SOURCE);
+	expect(text.split(literal)).toHaveLength(2);
+	writeFileSync(bundle, text.replace(literal, JSON.stringify(version)));
+	const out = join(WORK, `kabane-${version}.tgz`);
+	expect(
+		Bun.spawnSync(["tar", "-czf", out, "package"], { cwd: dir }).exitCode,
+	).toBe(0);
+	return out;
+};
 beforeAll(async () => {
 	const built = Bun.spawnSync([process.execPath, "scripts/build.ts"], {
 		cwd: ROOT,
@@ -38,6 +66,7 @@ beforeAll(async () => {
 		.safeParse(JSON.parse(packed.stdout.toString()));
 	if (!parsed.success || !parsed.data[0]) return;
 	archive = join(WORK, parsed.data[0].filename);
+	betaArchive = repack(archive, BETA);
 }, 30_000);
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));
 
@@ -239,7 +268,7 @@ test("metadata current/manual policies/malformed/offline never mutate installati
 		if (!fixture.ok) return expect(fixture.error).toBe("");
 		try {
 			if (!version || !engine || !status) continue;
-			fixture.setLatest(version, engine);
+			fixture.setDistTags({ latest: version }, engine);
 			const before = updateSnapshot(fixture.install),
 				tracker = updateSnapshot(fixture.tracker),
 				home = updateSnapshot(fixture.home);
@@ -330,6 +359,96 @@ test("invalid arguments dispatch standalone without tracker or metadata access",
 		expect(reply.value.code).toBe(2);
 		expect(fixture.requests).toEqual([]);
 		expect(updateSnapshot(fixture.tracker)).toEqual(before);
+	} finally {
+		fixture.close();
+	}
+}, 30_000);
+
+test("a beta install follows the higher of beta and latest, up to the stable release it precedes", async () => {
+	const fixture = await createUpdateFixture(betaArchive, {
+		source: BETA,
+		target: NEXT_BETA,
+	});
+	if (!fixture.ok) return expect(fixture.error).toBe("");
+	try {
+		const printed = await fixture.run(["--version"]);
+		expect(printed.value.stdout.trim()).toBe(BETA);
+		const tracker = updateSnapshot(fixture.tracker);
+		for (const [tags, expected] of [
+			// No beta tag, and an older latest is not a downgrade offer.
+			[{ latest: "0.1.0" }, { status: "current" }],
+			[{ latest: "0.1.0", beta: BETA }, { status: "current" }],
+			// Every version a prerelease and no beta tag: Bun cannot resolve `kabane@beta` here.
+			[
+				{ latest: NEXT_BETA },
+				{ status: "candidate", candidateVersion: NEXT_BETA },
+			],
+			[
+				{ latest: "0.1.0", beta: NEXT_BETA },
+				{ status: "candidate", candidateVersion: NEXT_BETA },
+			],
+			[
+				{ latest: BETA_RELEASE, beta: BETA },
+				{ status: "candidate", candidateVersion: BETA_RELEASE },
+			],
+			[
+				{ latest: "0.1.0", beta: `${BETA_RELEASE}-rc.1` },
+				{ status: "manual_only" },
+			],
+		] as const) {
+			fixture.setDistTags(tags);
+			const before = updateSnapshot(fixture.install);
+			const checked = await fixture.run(["update", "--check", "--json"]);
+			expect(checked.value.code).toBe(0);
+			expect(JSON.parse(checked.value.stdout)).toMatchObject({
+				...expected,
+				eligibility: "unknown",
+			});
+			expect(updateSnapshot(fixture.install)).toEqual(before);
+		}
+		fixture.setDistTags({ latest: "0.1.0", beta: NEXT_BETA });
+		const changed = await fixture.run(["update", "--json"]);
+		expect(changed.value.code).toBe(0);
+		expect(JSON.parse(changed.value.stdout)).toMatchObject({
+			status: "updated",
+			candidateVersion: NEXT_BETA,
+		});
+		const after = await runUpdateProcess(
+			[process.execPath, fixture.bin, "--version"],
+			fixture.home,
+			fixture.env,
+		);
+		expect(after.ok && after.value.stdout.trim()).toBe(NEXT_BETA);
+		expect(updateSnapshot(fixture.tracker)).toEqual(tracker);
+	} finally {
+		fixture.close();
+	}
+}, 30_000);
+
+test("the documented `bun add -g kabane@beta` registration is a supported install", async () => {
+	const fixture = await createUpdateFixture(betaArchive, {
+		source: BETA,
+		target: NEXT_BETA,
+	});
+	if (!fixture.ok) return expect(fixture.error).toBe("");
+	try {
+		fixture.setDistTags({ latest: "0.1.0", beta: BETA });
+		// --no-cache: Bun would otherwise resolve the tag from the manifest it cached at the first install.
+		const installed = await runUpdateProcess(
+			[process.execPath, "add", "--global", "--no-cache", "kabane@beta"],
+			fixture.home,
+			fixture.env,
+		);
+		expect(installed.ok && installed.value.code).toBe(0);
+		expect(
+			JSON.parse(readFileSync(join(fixture.globalDir, "package.json"), "utf8")),
+		).toEqual({ dependencies: { kabane: `^${BETA}` } });
+		const checked = await fixture.run(["update", "--check", "--json"]);
+		expect(checked.value.code).toBe(0);
+		expect(JSON.parse(checked.value.stdout)).toMatchObject({
+			status: "current",
+			installedVersion: BETA,
+		});
 	} finally {
 		fixture.close();
 	}

@@ -33,6 +33,10 @@ const State = z.object({
 	writes: z.array(z.string()),
 	failFinalize: z.boolean(),
 	version: z.string(),
+	latest: z.string(),
+	beta: z.string(),
+	prerelease: z.boolean(),
+	latestFlag: z.string(),
 	baseline: z.string(),
 	listingMode: z.enum([
 		"normal",
@@ -66,7 +70,8 @@ if (tool === "npm") {
     if (!state.authenticated) process.exit(1);
     console.log("fixture-maintainer");
   } else if (args[0] === "view") {
-    if (args[2] === "dist-tags.latest") console.log(JSON.stringify(state.published ? state.version : "0.1.0"));
+    if (args[2] === "dist-tags.latest") console.log(JSON.stringify(state.latest));
+    else if (args[2] === "dist-tags.beta") { if (state.beta) console.log(JSON.stringify(state.beta)); }
     else if (args[1] === "kabane@0.1.0") console.log(JSON.stringify({ name: "kabane", version: "0.1.0", ...(state.baseline ? { gitHead: state.baseline } : {}) }));
     else if (!state.published || args[1] !== "kabane@" + state.version) { console.log(JSON.stringify({ error: { code: "E404" } })); process.exit(1); }
     else console.log(JSON.stringify({ name: "kabane", version: state.version, dist: { integrity: state.integrity } }));
@@ -74,6 +79,9 @@ if (tool === "npm") {
     if (!state.authenticated || !args.includes("--ignore-scripts") || args[1] !== join(directory, "kabane-" + selectedVersion + ".tgz")) process.exit(1);
     if (process.env.NPM_CONFIG_USERCONFIG !== join(root, ".test-state/home/.npmrc")) process.exit(1);
     if (!readFileSync(process.env.NPM_CONFIG_USERCONFIG, "utf8").includes("fixture-config-preserved")) process.exit(1);
+    if (at("--tag") === "latest") state.latest = selectedVersion;
+    else if (at("--tag") === "beta") state.beta = selectedVersion;
+    else process.exit(1);
     state.writes.push("publish"); state.published = true; state.version = selectedVersion; state.integrity = record().integrity; save();
     console.log("Published controlled fixture archive");
   } else process.exit(1);
@@ -83,7 +91,7 @@ if (tool === "npm") {
     else console.log(JSON.stringify({ enabled: state.immutable }));
   } else if (args[0] === "api" && args.includes("--include")) {
     const endpoint = at("--include");
-    const release = { id: 1, tag_name: "v" + state.version, draft: state.draft, immutable: !state.draft && state.immutable, assets: state.assets.map(name => ({ name })) };
+    const release = { id: 1, tag_name: "v" + state.version, draft: state.draft, prerelease: state.prerelease, immutable: !state.draft && state.immutable, assets: state.assets.map(name => ({ name })) };
     const send = (body, link = "") => console.log("HTTP/2.0 200 OK\\n" + (link ? "Link: " + link + "\\n" : "") + "\\n" + JSON.stringify(body));
     if (endpoint.includes("/releases/tags/")) {
       if (!state.release || state.draft) { console.log("HTTP/2.0 404 Not Found\\n\\n{}"); process.exit(1); }
@@ -103,10 +111,12 @@ if (tool === "npm") {
     if (state.release || !args.includes("--verify-tag") || !args.includes("--draft")) process.exit(1);
     const store = join(root, ".test-state/assets"); mkdirSync(store, { recursive: true });
     for (const file of args.slice(3, args.indexOf("--repo"))) { copyFileSync(file, join(store, basename(file))); state.assets.push(basename(file)); }
-    state.version = selectedVersion; state.release = true; state.draft = true; state.writes.push("draft"); save();
+    state.version = selectedVersion; state.release = true; state.draft = true; state.prerelease = args.includes("--prerelease"); state.writes.push("draft"); save();
   } else if (args[0] === "release" && args[1] === "download") copyFileSync(join(root, ".test-state/assets", at("--pattern")), join(at("--dir"), at("--pattern")));
   else if (args[0] === "release" && args[1] === "edit") {
     if (state.failFinalize) process.exit(1);
+    if (args.includes("--prerelease")) state.prerelease = true;
+    state.latestFlag = args.find(value => value.startsWith("--latest")) ?? "";
     state.draft = false; state.writes.push("finalize"); save();
   } else process.exit(1);
 } else process.exit(1);
@@ -149,6 +159,10 @@ const createFixture = () => {
 		writes: [],
 		failFinalize: false,
 		version: "0.1.1",
+		latest: "0.1.0",
+		beta: "",
+		prerelease: false,
+		latestFlag: "",
 		baseline: "",
 		listingMode: "normal",
 	};
@@ -184,6 +198,7 @@ const createFixture = () => {
 		"scripts/release-artifact.ts",
 		"scripts/release.ts",
 		"packages/cli/src/update-process.ts",
+		"packages/cli/src/update-version.ts",
 		"packages/core/result.ts",
 	]) {
 		mkdirSync(dirname(join(root, file)), { recursive: true });
@@ -604,6 +619,8 @@ test("dirty/wrong repository and invalid CLI refuse before release writes", asyn
 		["publish", "--version", "0.1.1", "--notes-file", "x"],
 		["prepare", "--version", "../escape"],
 		["prepare", "--version", "0.1.1-beta"],
+		["prepare", "--version", "0.1.1-rc.0"],
+		["prepare", "--version", "0.1.1-beta.01"],
 		["prepare", "--version", "0.1.99999999999999999"],
 	])
 		expect(parseLocalReleaseArgs(input).ok).toBe(false);
@@ -657,7 +674,7 @@ test("existing tag/latest conflicts, missing preparation and CI mode fail withou
 	expect(tagged.git("status", "--porcelain")).toBe("");
 	expect(tagged.state().writes).toEqual([]);
 	const published = createFixture();
-	published.change({ published: true });
+	published.change({ published: true, latest: "0.1.1" });
 	const duplicate = await published.run("prepare");
 	expect(duplicate.ok && duplicate.value.code).toBe(1);
 	expect(published.state().writes).toEqual([]);
@@ -702,4 +719,62 @@ test("stale source, conflicting remote assets and an existing local lock never a
 	expect(
 		fixture.state().writes.filter((write) => write === "publish"),
 	).toHaveLength(1);
+}, 30_000);
+
+test("an explicit beta publishes on npm beta as a GitHub prerelease; auto still bases stable on npm latest", async () => {
+	expect(
+		parseLocalReleaseArgs(["prepare", "--version", "0.2.0-beta.0"]).ok,
+	).toBe(true);
+	const fixture = createFixture();
+	fixture.git("commit", "--allow-empty", "-m", "feat(cli): add command");
+	const prepared = await fixture.command(
+		"prepare",
+		"--version",
+		"0.2.0-beta.0",
+	);
+	if (prepared.value.code !== 0) console.log(prepared.value.stdout);
+	expect(prepared.value.code).toBe(0);
+	expect(fixture.git("rev-parse", "v0.2.0-beta.0^{commit}")).toBe(
+		fixture.git("rev-parse", "HEAD"),
+	);
+	expect(
+		existsSync(
+			join(fixture.root, ".releases/0.2.0-beta.0/kabane-0.2.0-beta.0.tgz"),
+		),
+	).toBe(true);
+	fixture.change({ authenticated: true });
+	expect((await fixture.command("publish")).value.code).toBe(0);
+	expect(fixture.state()).toMatchObject({
+		latest: "0.1.0",
+		beta: "0.2.0-beta.0",
+		prerelease: true,
+		latestFlag: "--latest=false",
+		writes: ["enable-immutable", "draft", "publish", "finalize"],
+	});
+	expect((await fixture.command("publish")).value.code).toBe(0);
+	// A beta never repeats or goes backwards.
+	for (const version of ["0.2.0-beta.0", "0.1.1-beta.0"])
+		expect(
+			(await fixture.command("prepare", "--version", version)).value.code,
+		).toBe(1);
+	// The next release is a new GitHub record; npm keeps both dist-tags.
+	fixture.change({
+		published: false,
+		integrity: "",
+		release: false,
+		draft: false,
+		prerelease: false,
+		assets: [],
+	});
+	expect((await fixture.command("prepare")).value.code).toBe(0);
+	expect(
+		existsSync(join(fixture.root, ".releases/0.2.0/verified.sha256")),
+	).toBe(true);
+	expect((await fixture.command("publish")).value.code).toBe(0);
+	expect(fixture.state()).toMatchObject({
+		latest: "0.2.0",
+		beta: "0.2.0-beta.0",
+		prerelease: false,
+		latestFlag: "--latest",
+	});
 }, 30_000);

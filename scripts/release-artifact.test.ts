@@ -150,6 +150,28 @@ test("release-file byte round trip and source/tag/version/checksum mismatches", 
 	};
 	write(record);
 	expect(verifyReleaseFiles(dir).ok).toBe(true);
+	const beta = {
+		...record,
+		version: "1.2.3-beta.0",
+		tag: "v1.2.3-beta.0",
+		filename: "kabane-1.2.3-beta.0.tgz",
+	};
+	write(beta);
+	expect(verifyReleaseFiles(dir).ok).toBe(true);
+	rmSync(join(dir, beta.filename));
+	for (const bad of [
+		{ ...beta, tag: "v1.2.3" },
+		{
+			...beta,
+			version: "1.2.3-rc.0",
+			tag: "v1.2.3-rc.0",
+			filename: "kabane-1.2.3-rc.0.tgz",
+		},
+	]) {
+		write(bad);
+		expect(verifyReleaseFiles(dir).ok).toBe(false);
+		rmSync(join(dir, bad.filename));
+	}
 	for (const bad of [
 		{ ...record, tag: "v1.2.4" },
 		{ ...record, filename: "kabane-1.2.4.tgz" },

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish after protected-environment approval (existing stable tag ref only)"
+        description: "Publish after protected-environment approval (existing vX.Y.Z or vX.Y.Z-beta.N tag ref only)"
         type: boolean
         default: false
       notes:

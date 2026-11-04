@@ -10,16 +10,22 @@ import { join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { runUpdateProcess } from "../packages/cli/src/update-process";
+import { ChannelVersionSchema } from "../packages/cli/src/update-version";
 import { err, ok, type Result } from "../packages/core/result";
 
+/** An exact stable pin: the tools and externals a release records. */
 export const ReleaseVersionSchema = z
 	.string()
 	.max(64)
 	.regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+/** The archive `npm pack` names for a stable or beta kabane. */
+export const ReleaseFilenameSchema = z
+	.string()
+	.regex(/^kabane-\d+\.\d+\.\d+(?:-beta\.\d+)?\.tgz$/);
 export const PublishManifestSchema = z
 	.object({
 		name: z.literal("kabane"),
-		version: ReleaseVersionSchema,
+		version: ChannelVersionSchema,
 		private: z.literal(false).optional(),
 		type: z.literal("module"),
 		bin: z.object({ kabane: z.literal("bin/kabane.js") }),
@@ -39,14 +45,14 @@ export const PublishManifestSchema = z
 	.passthrough();
 export const ReleaseManifestSchema = z
 	.object({
-		version: ReleaseVersionSchema,
+		version: ChannelVersionSchema,
 		commit: z.string().regex(/^[a-f0-9]{40}$/),
 		tag: z
 			.string()
-			.regex(/^v\d+\.\d+\.\d+$/)
+			.regex(/^v\d+\.\d+\.\d+(?:-beta\.\d+)?$/)
 			.nullable(),
 		dirty: z.boolean(),
-		filename: z.string().regex(/^kabane-\d+\.\d+\.\d+\.tgz$/),
+		filename: ReleaseFilenameSchema,
 		sha256: z.string().regex(/^[a-f0-9]{64}$/),
 		integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+=*$/),
 		notesSha256: z.string().regex(/^[a-f0-9]{64}$/),

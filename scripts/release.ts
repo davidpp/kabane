@@ -7,6 +7,7 @@ import { err, ok, type Result } from "../packages/core/result";
 import {
 	inspectArchive,
 	integrity,
+	ReleaseFilenameSchema,
 	ReleaseManifestSchema,
 	sha256,
 	verifyReleaseFiles,
@@ -69,9 +70,7 @@ export const prepareRelease = async (
 		);
 		if (!packed.ok) return packed;
 		const pack = z
-			.array(
-				z.object({ filename: z.string().regex(/^kabane-\d+\.\d+\.\d+\.tgz$/) }),
-			)
+			.array(z.object({ filename: ReleaseFilenameSchema }))
 			.length(1)
 			.safeParse(JSON.parse(packed.value));
 		const first = pack.success ? pack.data[0] : undefined;

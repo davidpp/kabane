@@ -31,6 +31,8 @@ bun add -g kabane           # `kabane` on PATH, in ~/.bun/bin
 kabane --version
 ```
 
+`bun add -g kabane@beta` installs the beta of the next major instead.
+
 `bunx kabane` runs it once without installing. Install it globally before you let setup
 wire your coding agents: their MCP entries point at the installed file.
 
@@ -43,12 +45,13 @@ cd packages/cli && bun link                      # `kabane` on PATH, pointing at
 ```
 
 For a human-run local release, use `bun run release:local prepare` to infer and bump the
-version (or select `--bump patch|minor|major`), then authenticate to npm and resume with
-`bun run release:local publish`. Publication reuses the selected version and original bytes.
+version (or select `--bump patch|minor|major`, or `--version X.Y.Z-beta.N` for a beta on npm
+`beta`), then authenticate to npm and resume with `bun run release:local publish`. Publication reuses the selected version and original bytes.
 See [`docs/release.md`](docs/release.md) for retained artifacts, recovery and the optional Actions route.
 For a positively verified hoisted Bun global registry install, `kabane update --check`
-reports a stable candidate (installation policy is unverified), and `kabane update`
-explicitly checks Bun policy and verifies an exact installation. Updates stay within
+reports a candidate (installation policy is unverified), and `kabane update`
+explicitly checks Bun policy and verifies an exact installation. A stable install follows
+npm `latest`; a beta install takes the higher of `beta` and `latest`. Updates stay within
 major, or minor for `0.x`; source links, local tarballs and unknown/missing-bin layouts
 refuse replacement. No startup check, tracker DB open or automatic MCP rewiring is added.
 See [updating and data compatibility](docs/getting-started.md#updating).

@@ -4,17 +4,15 @@ import { isAbsolute, join, resolve } from "node:path";
 import { err, ok, type Result } from "@cabane/core";
 import { z } from "zod";
 import { runUpdateProcess } from "./update-process";
+import {
+	ChannelVersionSchema,
+	compareVersions,
+	isPrerelease,
+} from "./update-version";
 
-export const StableVersionSchema = z
-	.string()
-	.max(64)
-	.regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/)
-	.refine((version) =>
-		version.split(".").every((part) => Number.isSafeInteger(Number(part))),
-	);
 const ManifestSchema = z.object({
 	name: z.literal("kabane"),
-	version: StableVersionSchema,
+	version: ChannelVersionSchema,
 	private: z.literal(false).optional(),
 	bin: z.object({ kabane: z.literal("bin/kabane.js") }),
 });
@@ -114,34 +112,27 @@ const globalDirectories = (
 	}
 };
 
+const core = (version: string): string => version.split("-")[0] ?? "";
+
+/** Whether Bun's registration specifier (`X.Y.Z`, `^X.Y.Z` or `~X.Y.Z`, any of them a beta) admits the installed version, as npm ranges do. */
 const registeredVersion = (specifier: string, version: string): boolean => {
-	const match =
-		/^(\^|~)?((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/.exec(specifier);
-	if (!match) return false;
-	const base = match[2];
-	if (!base) return false;
+	const match = /^(\^|~)?(.+)$/.exec(specifier);
+	const base = match?.[2];
+	if (!match || !base || !ChannelVersionSchema.safeParse(base).success)
+		return false;
 	if (!match[1]) return base === version;
-	const a = base.split(".").map(Number),
-		b = version.split(".").map(Number);
+	// A range admits a prerelease only of the release its own prerelease bound names.
 	if (
-		a.some((part) => !Number.isSafeInteger(part)) ||
-		b.some((part) => !Number.isSafeInteger(part))
+		compareVersions(version, base) < 0 ||
+		(isPrerelease(version) && core(version) !== core(base))
 	)
 		return false;
-	if (a[0] !== b[0] || ((match[1] === "~" || a[0] === 0) && a[1] !== b[1]))
-		return false;
-	const aMinor = a[1],
-		bMinor = b[1],
-		aPatch = a[2],
-		bPatch = b[2];
-	if (
-		aMinor === undefined ||
-		bMinor === undefined ||
-		aPatch === undefined ||
-		bPatch === undefined
-	)
-		return false;
-	return bMinor > aMinor || (bMinor === aMinor && bPatch >= aPatch);
+	const [baseMajor, baseMinor] = core(base).split("."),
+		[major, minor] = core(version).split(".");
+	return (
+		baseMajor === major &&
+		!((match[1] === "~" || baseMajor === "0") && baseMinor !== minor)
+	);
 };
 
 /** No metadata network request is made until bin, registration and registry lock agree. */
