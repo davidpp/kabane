@@ -6,11 +6,13 @@
 import {
 	type CliRenderer,
 	RGBA,
+	type StyleDefinitionInput,
 	SyntaxStyle,
 	type TerminalColors,
 	type ThemeMode,
 } from "@opentui/core";
-import { createContext, useContext } from "react";
+import { useRenderer } from "@opentui/react";
+import { createContext, useContext, useEffect } from "react";
 
 export namespace Theme {
 	export type Tokens = {
@@ -232,8 +234,10 @@ export namespace Theme {
 		);
 	};
 
-	// SyntaxStyle allocates a native FFI handle: one per theme for the process, never one per render.
-	const markdownStyles = new WeakMap<Tokens, SyntaxStyle>();
+	// A SyntaxStyle is a native handle owned by one renderer's scene, and a scene must not draw with
+	// another's: so one style per renderer and theme, never one per render. DARK and LIGHT are
+	// module singletons every test renderer shares, which is why the renderer is the outer key.
+	const markdownStyles = new WeakMap<CliRenderer, Map<Tokens, SyntaxStyle>>();
 
 	/**
 	 * The markdown styles for a brief or a comment. Prose stays on the terminal's own foreground; the
@@ -242,11 +246,19 @@ export namespace Theme {
 	 * OpenTUI emits is named: a missing one falls back to its first segment, `markup`, which has no
 	 * style, so `markup.heading.3` would read as plain text.
 	 */
-	export const markdownStyle = (tokens: Tokens): SyntaxStyle => {
-		const cached = markdownStyles.get(tokens);
+	export const markdownStyle = (
+		renderer: CliRenderer,
+		tokens: Tokens,
+	): SyntaxStyle => {
+		let byTokens = markdownStyles.get(renderer);
+		if (!byTokens) {
+			byTokens = new Map();
+			markdownStyles.set(renderer, byTokens);
+		}
+		const cached = byTokens.get(tokens);
 		if (cached) return cached;
 		const heading = { fg: tokens.ink.heading, bold: true };
-		const style = SyntaxStyle.fromStyles({
+		const definitions: Record<string, StyleDefinitionInput> = {
 			default: { fg: tokens.defaultFg },
 			"markup.heading.1": { ...heading, underline: true },
 			"markup.heading.2": heading,
@@ -270,9 +282,32 @@ export namespace Theme {
 			"punctuation.special": { fg: tokens.faint },
 			// What OpenTUI draws a table's lines in, when a table keeps any.
 			conceal: { fg: tokens.faint },
-		});
-		markdownStyles.set(tokens, style);
+		};
+		const style = SyntaxStyle.fromStyles(definitions, renderer.nativeScene);
+		byTokens.set(tokens, style);
 		return style;
+	};
+
+	/**
+	 * Free every markdown style `renderer` holds for a theme other than `current`. Call it once every
+	 * reader has committed `current`: the frame in flight may still draw with the old handle, so the
+	 * free waits for the renderer to go idle.
+	 */
+	export const retireMarkdownStyles = (
+		renderer: CliRenderer,
+		current: Tokens,
+	): void => {
+		const styles = markdownStyles.get(renderer);
+		if (!styles) return;
+		const stale = [...styles].filter(([tokens]) => tokens !== current);
+		if (stale.length === 0) return;
+		for (const [tokens] of stale) styles.delete(tokens);
+		// `idle()` settles on `closed` once the renderer is destroyed, and that can reject; a style on
+		// a disposed scene frees nothing either way.
+		const free = () => {
+			for (const [, style] of stale) style.destroy();
+		};
+		void renderer.idle().then(free, free);
 	};
 }
 
@@ -282,3 +317,17 @@ const ThemeContext = createContext<Theme.Tokens>(Theme.DARK);
 export const ThemeProvider = ThemeContext.Provider;
 
 export const useTheme = (): Theme.Tokens => useContext(ThemeContext);
+
+/**
+ * The markdown style for the theme in context, on this component's renderer. After a commit that
+ * changed the theme, the styles for the old one are freed.
+ */
+export const useMarkdownStyle = (): SyntaxStyle => {
+	const renderer = useRenderer();
+	const tokens = useTheme();
+	useEffect(
+		() => Theme.retireMarkdownStyles(renderer, tokens),
+		[renderer, tokens],
+	);
+	return Theme.markdownStyle(renderer, tokens);
+};

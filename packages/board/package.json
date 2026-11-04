@@ -19,8 +19,8 @@
 	},
 	"dependencies": {
 		"@cabane/core": "workspace:*",
-		"@opentui/core": "0.5.10",
-		"@opentui/react": "0.5.10",
+		"@opentui/core": "0.8.0",
+		"@opentui/react": "0.8.0",
 		"react": "19.2.3"
 	},
 	"devDependencies": {
