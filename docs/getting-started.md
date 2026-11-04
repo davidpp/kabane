@@ -28,6 +28,9 @@ prints `command not found` instead, add `~/.bun/bin` to your PATH. Install globa
 setup registers coding agents: their MCP entries point at the installed file. To work on
 Kabane itself from source, use the [clone and `bun link` path](../README.md#install).
 
+To try the next major before it is stable, install the beta instead: `bun add -g kabane@beta`.
+A beta install updates along its channel ([beta installs](#beta-installs)).
+
 ## Run `kabane`
 
 Run `kabane` from inside a project you want to track. The first run opens on one card
@@ -352,7 +355,7 @@ No internal-bin/PATH fallback or link repair is performed. This is not a claim t
 Bun isolated layout is broken; unverified layouts are simply outside this updater's support.
 
 Selection is registry `latest`, stable only, within the installed major; `0.x` stays within
-its minor. No historical fallback, prerelease/channel/force option, implicit downgrade or
+its minor. A beta install follows its own channel ([beta installs](#beta-installs)). No historical fallback, prerelease/channel/force option, implicit downgrade or
 major/pre-1.0 minor jump. Crossing that boundary requires reviewing compatibility notes and
 choosing an explicit manual `bun add -g kabane@<version>`; do not overwrite a source link.
 Check and current/no-op results do **not** validate installation eligibility. Update uses
@@ -380,6 +383,17 @@ Restart running board/MCP sessions after a verified update. Source-pinned harnes
 still point at source and need deliberate manual rewiring if desired. If you separately
 upgrade Bun through mise/asdf, existing harness entries can still point at the old Bun;
 review and explicitly run `kabane mcp install --force` when you want to re-point them.
+
+### Beta installs
+
+A `kabane@beta` install runs a `X.Y.Z-beta.N` version. `kabane update` reads both registry
+`beta` and `latest` and takes the higher by SemVer precedence, so `1.0.0-beta.0` moves to
+`1.0.0-beta.1` and then to `1.0.0` when it ships; from there it follows `latest` like any
+stable install. When neither tag is newer than the installed beta, the reply is **current**.
+The same major boundary, Bun engine check, policy preflight and verified exact install apply,
+and nothing older than the installed version is installed. A prerelease on either tag other
+than `beta.N` is refused with manual guidance. A stable install never reads `beta`; to move
+one onto the beta, install it explicitly with `bun add -g kabane@beta`.
 
 ## Starting over
 

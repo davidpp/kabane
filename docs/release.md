@@ -110,6 +110,38 @@ The `.releases/` directory is deliberately retained, not automatically cleaned u
 four original public assets for recovery; remove local artifacts only after a verified
 successful release and an intentional retention decision.
 
+## Beta releases
+
+A beta is `X.Y.Z-beta.N` (`N` a non-negative integer; no other prerelease identifier) on npm
+dist-tag `beta`. Only an explicit `--version` selects one. Auto and `--bump` never produce a
+prerelease and keep reading npm `latest` as their baseline, so a beta never becomes the base
+of a stable selection.
+
+```bash
+bun run release:local prepare --version 1.0.0-beta.0 --notes-file <reviewed notes>
+npm login
+bun run release:local publish
+```
+
+Everything above applies, with these differences. The version must be newer by SemVer
+precedence than npm `latest` and any npm `beta` (`1.0.0-beta.10` follows `1.0.0-beta.9`),
+and not older than the source. Tag, archive and retained directory keep the
+`v<version>`/`kabane-<version>.tgz`/`.releases/<version>/` naming. Publication runs
+`npm publish --tag beta`, never `latest`; readback requires the archive's integrity, `beta`
+at or past this version and `latest` exactly as it was before publishing. The GitHub draft
+is created with `--prerelease` and finalized with `--prerelease --latest=false`; final
+verification also requires the prerelease flag, and immutability, asset and byte checks are
+unchanged. Afterwards `npm view kabane dist-tags` shows `beta: 1.0.0-beta.0` beside the
+unchanged `latest`, and the GitHub release is marked Pre-release.
+
+The next beta is a fresh `prepare --version 1.0.0-beta.1`. Promote to stable with a fresh
+`prepare --version 1.0.0` (auto never selects 1.0.0 during 0.x); it publishes on `latest`
+like any stable release. `beta` keeps naming the last beta, so `bun add -g kabane@beta`
+installs that older beta until another ships, while an installed beta's `kabane update`
+already prefers the newer `latest`. Never move npm dist-tags by hand: the publisher reads
+them as release state. The Actions route runs the same scripts on the existing
+`v<version>` beta tag.
+
 ## Package and version
 
 `packages/cli/package.json` is the only release version. Its development manifest stays
@@ -174,7 +206,8 @@ git push origin v<version>
 
 The workflow never creates or pushes a missing tag. Package version, tag suffix, peeled
 remote tag commit, checkout HEAD, event source SHA and installed CLI/MCP identity must
-agree. Publishing a stable version must advance npm `latest` rather than downgrade it.
+agree. Publishing a stable version must advance npm `latest` rather than downgrade it; a
+beta must advance both `latest` and `beta` ([beta releases](#beta-releases)).
 An already published name/version cannot be replaced, even after npm unpublish.
 
 ## Verification without publishing
