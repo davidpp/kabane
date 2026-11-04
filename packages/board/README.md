@@ -208,6 +208,7 @@ interface Copilot {
   cancel(): Promise<void>;
   shortcuts(): CopilotShortcut[];
   answerPermission(id: string, optionId: string | null): void;
+  answerElicitation(id: string, answer: CopilotElicitationAnswer): void;
   readonly actor?: string;
 }
 ```
@@ -257,6 +258,23 @@ something is waiting. A digit picks the option it numbers, `esc` declines, and b
 `answerPermission` ahead of whatever view is on screen. The board never answers by itself and there
 is no timeout: a question left alone keeps the turn waiting, and `x` on the transcript still
 cancels it.
+
+A harness that asks the human to fill in a form (Claude's AskUserQuestion, codex's
+`request_user_input`) yields an `elicitation` update: the harness's `message` verbatim and its
+`fields`, each `text`, `number`, `boolean`, `choice` or `choices` (a multi-select), with a title,
+an optional description and whether it is required. It opens the copilot panel, focused or not
+and over the transcript too, in place of the input, and is filled in one field at a time
+(`elicitation-form.ts`): a digit picks a choice, digits toggle a multi-select and `enter` confirms
+it, `y`/`n` answer a boolean, and text or a number is typed into a one-line input and sent with
+`enter`. `enter` leaves an optional field empty, and an empty field is absent from the answer,
+never filled in. An answer the field does not take (a number out of its bounds, too long a text) is
+refused with why, and the field asked again. `esc` declines the whole form from any field. Once the
+last field is answered the board calls `answerElicitation(id, { action: "accept", content })`, or
+`{ action: "decline" }`. Permissions and forms share one queue, answered in the order the harness
+asked; while a session question on the view outranks the copilot, the pane's row names the form and
+`tab` to reach it. A form's typed field keeps every key but `esc` from the board while its input is
+in hand, so typing never moves the board under it; each field arms the digits afresh, so a key
+already on its way when one field moves on does not answer the next.
 
 Rows the copilot changed during the turn carry `✦ ai` before the title: the reload after each of
 its writes brings the fresh `updatedBy`/`updatedAt`, and `BoardNav.copilotTouched` keeps the ones

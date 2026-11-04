@@ -590,7 +590,7 @@ const idle = (
 	hasLog: false,
 	shortcuts: [],
 	actor: null,
-	permissions: [],
+	asks: [],
 	...over,
 });
 
@@ -739,7 +739,7 @@ describe("the pane's words", () => {
 			],
 		};
 		const line = collapsedSegments(
-			idle({ permissions: [permission] }),
+			idle({ asks: [{ type: "permission", request: permission }] }),
 			null,
 			null,
 			T,
@@ -758,7 +758,12 @@ describe("the pane's words", () => {
 			options: [{ id: "allow", label: "Allow" }],
 		};
 		const line = collapsedSegments(
-			idle({ permissions: [permission, { ...permission, id: "p2" }] }),
+			idle({
+				asks: [
+					{ type: "permission", request: permission },
+					{ type: "permission", request: { ...permission, id: "p2" } },
+				],
+			}),
 			null,
 			null,
 			T,

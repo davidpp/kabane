@@ -431,6 +431,12 @@ export const App = ({
 								? BoardNav.withCopilotPermission(prev, update.request)
 								: prev,
 						);
+					if (update.type === "elicitation")
+						setState((prev) =>
+							prev
+								? BoardNav.withCopilotElicitation(prev, update.request)
+								: prev,
+						);
 					if (update.type === "tool_result") {
 						const current = stateRef.current;
 						if (current) void reload(current);
@@ -645,6 +651,9 @@ export const App = ({
 				case "copilotAnswer":
 					copilot?.answerPermission(effect.id, effect.optionId);
 					return;
+				case "copilotAnswerForm":
+					copilot?.answerElicitation(effect.id, effect.answer);
+					return;
 				case "copilotSetText":
 				case "promptSetText":
 					(effect.type === "copilotSetText"
@@ -747,6 +756,19 @@ export const App = ({
 		setState(next);
 		runEffect(next, effect);
 	}, [runEffect]);
+
+	// `enter` in a form's input: the reducer reads the field and moves the form on, or sends it.
+	const submitForm = useCallback(
+		(text: string): void => {
+			const current = stateRef.current;
+			if (!current) return;
+			const { state: next, effect } = BoardNav.submitForm(current, text);
+			stateRef.current = next;
+			setState(next);
+			runEffect(next, effect);
+		},
+		[runEffect],
+	);
 
 	// Mirror the buffer into the reducer so `/` matching sees what the human sees.
 	const mirrorCopilotText = useCallback((): void => {
@@ -977,9 +999,11 @@ export const App = ({
 				state.view.type === "events" && state.view.cardId === CopilotLog.CARD_ID
 			}
 			outranked={BoardNav.copilotOutranked(state)}
+			askInHand={BoardNav.askInHand(state)}
 			textareaRef={inputRef}
 			onSubmit={submitCopilot}
 			onContentChange={mirrorCopilotText}
+			onFormSubmit={submitForm}
 		/>
 	);
 	// A prompt a card's tab or a banner opened sits where the copilot's panel would, above its row.
@@ -1030,8 +1054,15 @@ export const App = ({
 				plan={
 					cardId === CopilotLog.CARD_ID ? copilotLog?.current.plan : undefined
 				}
+				// The transcript draws a permission at the head of the queue; a form there is the
+				// pane's to draw, since it takes the keys.
 				permissions={
-					cardId === CopilotLog.CARD_ID ? state.copilot.permissions : undefined
+					cardId === CopilotLog.CARD_ID &&
+					state.copilot.asks[0]?.type === "permission"
+						? state.copilot.asks.flatMap((ask) =>
+								ask.type === "permission" ? [ask.request] : [],
+							)
+						: undefined
 				}
 				tabbed={tabs.active === cardId}
 				lane={CardTab.view(tabs, cardId).lane}
