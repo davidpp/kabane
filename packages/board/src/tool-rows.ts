@@ -5,7 +5,8 @@
 // The caps follow opencode's util/collapse-tool-output.ts: a head cut by lines and by characters
 // ending in `…`, and an output's tail kept behind an `(N earlier lines)` label, since a command's
 // output says how it went at its end.
-import type { ActivityEvent, ActivityToolDetail } from "./ports";
+import { formatPatch, OMIT_HEADERS, structuredPatch } from "diff";
+import type { ActivityDiff, ActivityEvent, ActivityToolDetail } from "./ports";
 
 export namespace ToolRows {
 	// `unknown` is a call nothing said the end of: a host that records only some ends, or a card that
@@ -249,5 +250,51 @@ export namespace ToolRows {
 		const shown = lines.slice(-keep).join("\n");
 		const room = Math.max(1, maxChars - label.length - 1);
 		return `${label}\n${shown.length > room ? shown.slice(shown.length - room) : shown}`;
+	};
+
+	/**
+	 * A changed file as the unified patch OpenTUI's `<diff>` draws, held to `maxLines` of its hunks:
+	 * hunks are kept whole while they fit, the one that does not is cut with its counts made true
+	 * again, and `cut` says how many lines were left out. Unchanged, the patch is empty.
+	 */
+	export const patch = (
+		diff: ActivityDiff,
+		maxLines: number,
+	): { patch: string; cut: number } => {
+		const whole = structuredPatch(
+			diff.path,
+			diff.path,
+			diff.oldText ?? "",
+			diff.newText,
+			undefined,
+			undefined,
+			{ context: 3 },
+		);
+		let room = maxLines;
+		let cut = 0;
+		const hunks = whole.hunks.flatMap((hunk) => {
+			if (room <= 0) {
+				cut += hunk.lines.length;
+				return [];
+			}
+			if (hunk.lines.length <= room) {
+				room -= hunk.lines.length;
+				return [hunk];
+			}
+			const lines = hunk.lines.slice(0, room);
+			cut += hunk.lines.length - lines.length;
+			room = 0;
+			return [
+				{
+					...hunk,
+					lines,
+					oldLines: lines.filter((l) => l[0] === " " || l[0] === "-").length,
+					newLines: lines.filter((l) => l[0] === " " || l[0] === "+").length,
+				},
+			];
+		});
+		return hunks.length === 0
+			? { patch: "", cut }
+			: { patch: formatPatch({ ...whole, hunks }, OMIT_HEADERS), cut };
 	};
 }

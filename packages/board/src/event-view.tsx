@@ -10,6 +10,7 @@
 
 import {
 	type ColorInput,
+	RGBA,
 	type Renderable,
 	type ScrollBoxRenderable,
 	TextAttributes,
@@ -31,6 +32,7 @@ import { PermissionBlock } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import {
 	type ActivityCard,
+	type ActivityDiff,
 	type ActivityEvent,
 	type ActivitySource,
 	type CardHeader,
@@ -40,7 +42,7 @@ import {
 	PROMPT_EVENT,
 } from "./ports";
 import { useSpinnerFrame } from "./spinner";
-import { Theme, useTheme } from "./theme";
+import { Theme, useMarkdownStyle, useTheme } from "./theme";
 import { ToolRows } from "./tool-rows";
 
 const POLL_MS = 1000;
@@ -66,6 +68,11 @@ const BODY_INSET = 2;
 const BODY_CHROME_COLS = BODY_INSET + 3;
 const INPUT_ROWS = 6;
 const OUTPUT_ROWS = 10;
+// A diff gets more: it is what an edit was for. Its added and removed rows take this much of their
+// hue over the panel. Split side by side only where each side still has room.
+const DIFF_ROWS = 24;
+const DIFF_TINT = 0.18;
+const SPLIT_MIN_COLS = 120;
 // A group's calls sit under its label once it is opened.
 const GROUP_INDENT = 2;
 const NOTHING_OPEN: ReadonlySet<string> = new Set();
@@ -455,6 +462,7 @@ const Stream = ({
 			onToggle={(header) => toggle(call.key, header)}
 			spinnerFrame={spinnerFrame}
 			room={bodyRoom - indent}
+			split={width > SPLIT_MIN_COLS}
 		/>
 	);
 	return (
@@ -754,6 +762,7 @@ const ToolCallRow = ({
 	onToggle,
 	spinnerFrame,
 	room,
+	split,
 }: {
 	call: ToolRows.Call;
 	tag?: Tag;
@@ -762,12 +771,13 @@ const ToolCallRow = ({
 	onToggle: (header: Renderable | null) => void;
 	spinnerFrame: string;
 	room: number;
+	split: boolean;
 }): ReactNode => {
 	const theme = useTheme();
 	const { glyph, fg } = callGlyph(call.status, spinnerFrame, theme);
 	const { name, args } = ToolRows.toolParts(call.summary);
 	const took = ToolRows.duration(call);
-	const body = open ? <ToolBody call={call} room={room} /> : null;
+	const body = open ? <ToolBody call={call} room={room} split={split} /> : null;
 	return (
 		<box style={{ flexDirection: "column", flexShrink: 0 }}>
 			<box
@@ -852,53 +862,28 @@ const ToolGroupRow = ({
 	);
 };
 
-// An opened call, on the raised surface under its row: the head of its input (else the whole title,
-// when the row cut it), and the tail of its output, each held to a few rows. A failed call's output is its
-// error, in the failed hue.
+// An opened call, on the raised surface under its row: what it changed as a diff, else the head of
+// its input (or the whole title, when the row cut it), then the tail of its output, each held to a
+// few rows. A failed call's output is its error, in the failed hue.
 const ToolBody = ({
 	call,
 	room,
+	split,
 }: {
 	call: ToolRows.Call;
 	room: number;
+	split: boolean;
 }): ReactNode => {
 	const theme = useTheme();
 	const bg = theme.surface.raised;
 	const title = call.summary.trim();
-	const sections = [
-		...(!call.detail.input && (title.includes("\n") || title.length > room)
-			? [
-					{
-						text: ToolRows.head(title, INPUT_ROWS, INPUT_ROWS * room),
-						fg: theme.text,
-					},
-				]
-			: []),
-		...(call.detail.input
-			? [
-					{
-						text: ToolRows.head(
-							call.detail.input,
-							INPUT_ROWS,
-							INPUT_ROWS * room,
-						),
-						fg: theme.text,
-					},
-				]
-			: []),
-		...(call.detail.output
-			? [
-					{
-						text: ToolRows.tail(
-							call.detail.output,
-							OUTPUT_ROWS,
-							OUTPUT_ROWS * room,
-						),
-						fg: call.status === "failed" ? theme.failed : theme.secondary,
-					},
-				]
-			: []),
-	];
+	const diffs = call.detail.diffs ?? [];
+	const input =
+		diffs.length > 0
+			? undefined
+			: (call.detail.input ??
+				(title.includes("\n") || title.length > room ? title : undefined));
+	const output = call.detail.output;
 	return (
 		<box
 			style={{
@@ -910,18 +895,120 @@ const ToolBody = ({
 				paddingRight: 1,
 			}}
 		>
-			{sections.length === 0 ? (
+			{input ? (
+				<text bg={bg} fg={theme.text} wrapMode="word">
+					{ToolRows.head(input, INPUT_ROWS, INPUT_ROWS * room)}
+				</text>
+			) : null}
+			{diffs.map((diff, index) => (
+				// Index keys: a call's diffs are positional and never reorder.
+				<FileDiff
+					key={index}
+					diff={diff}
+					named={diffs.length > 1}
+					split={split}
+				/>
+			))}
+			{output ? (
+				<text
+					bg={bg}
+					fg={call.status === "failed" ? theme.failed : theme.secondary}
+					wrapMode="word"
+				>
+					{ToolRows.tail(output, OUTPUT_ROWS, OUTPUT_ROWS * room)}
+				</text>
+			) : null}
+			{!input && diffs.length === 0 && !output ? (
 				<text bg={bg} fg={theme.muted}>
 					nothing more to show
 				</text>
+			) : null}
+		</box>
+	);
+};
+
+// A hue laid over the panel it sits on, for the rows a diff added or removed: the terminal cannot
+// blend, so the mix is done here.
+const tint = (hue: string, ground: string, amount: number): RGBA => {
+	const over = RGBA.fromHex(hue);
+	const under = RGBA.fromHex(ground);
+	return RGBA.fromValues(
+		under.r + (over.r - under.r) * amount,
+		under.g + (over.g - under.g) * amount,
+		under.b + (over.b - under.b) * amount,
+		1,
+	);
+};
+
+// One file a call changed, through OpenTUI's DiffRenderable, the way opencode's
+// component/patch-diff.tsx draws an edit: unified, or split side by side on a wide screen, with line
+// numbers in a gutter wide enough for the last one. Held to DIFF_ROWS lines of its hunks.
+const FileDiff = ({
+	diff,
+	named,
+	split,
+}: {
+	diff: ActivityDiff;
+	named: boolean;
+	split: boolean;
+}): ReactNode => {
+	const theme = useTheme();
+	const syntaxStyle = useMarkdownStyle();
+	const bg = theme.surface.raised;
+	const { patch, cut } = useMemo(() => ToolRows.patch(diff, DIFF_ROWS), [diff]);
+	const colors = useMemo(
+		() => ({
+			added: tint(theme.done, bg, DIFF_TINT),
+			removed: tint(theme.failed, bg, DIFF_TINT),
+		}),
+		[theme, bg],
+	);
+	const last = Math.max(
+		1,
+		...[
+			...patch.matchAll(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm),
+		].flatMap((match) => [
+			Number(match[1]) + Number(match[2] ?? 1) - 1,
+			Number(match[3]) + Number(match[4] ?? 1) - 1,
+		]),
+	);
+	return (
+		<box style={{ flexDirection: "column", flexShrink: 0 }}>
+			{named ? (
+				<text bg={bg} fg={theme.muted} wrapMode="none" truncate>
+					{diff.path}
+				</text>
+			) : null}
+			{patch === "" ? (
+				<text bg={bg} fg={theme.muted}>
+					no change
+				</text>
 			) : (
-				sections.map((section, index) => (
-					// Index keys: the sections are positional and never reorder.
-					<text key={index} bg={bg} fg={section.fg} wrapMode="word">
-						{section.text}
-					</text>
-				))
+				<diff
+					diff={patch}
+					view={split ? "split" : "unified"}
+					syntaxStyle={syntaxStyle}
+					showLineNumbers
+					wrapMode="word"
+					fg={theme.text}
+					contextBg={bg}
+					addedBg={colors.added}
+					removedBg={colors.removed}
+					addedSignColor={theme.done}
+					removedSignColor={theme.failed}
+					lineNumberFg={theme.muted}
+					lineNumberBg={bg}
+					addedLineNumberBg={colors.added}
+					removedLineNumberBg={colors.removed}
+					gutter={{ paddingLeft: 0, minDigits: String(last).length }}
+					style={{ width: "100%", flexShrink: 0 }}
+				/>
 			)}
+			{cut > 0 ? (
+				<text bg={bg} fg={theme.muted}>
+					{`(${cut} more ${cut === 1 ? "line" : "lines"})`}
+				</text>
+			) : null}
 		</box>
 	);
 };

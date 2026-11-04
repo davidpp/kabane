@@ -644,3 +644,95 @@ describe("tool calls in the transcript", () => {
 		}
 	});
 });
+
+describe("an edit's diff", () => {
+	const old = `${Array.from({ length: 40 }, (_, i) => `const line${i} = ${i};`).join("\n")}\n`;
+	const edit: ActivityEvent[] = [
+		{
+			seq: 1,
+			at: T0,
+			type: "tool_call",
+			summary: "Edit src/a.ts",
+			callId: "e1",
+			detail: { kind: "edit" },
+		},
+		{
+			seq: 2,
+			at: AT(200),
+			type: "tool_completed",
+			summary: "Edit src/a.ts",
+			callId: "e1",
+			detail: {
+				kind: "edit",
+				input: "old_string: const line2 = 2;",
+				output: "The file has been updated.",
+				diffs: [
+					{
+						path: "/repo/src/a.ts",
+						oldText: old,
+						newText: old.replace("line2 = 2;", "line2 = 22;"),
+					},
+				],
+			},
+		},
+		{ seq: 3, at: AT(200), type: "text", summary: "Changed it." },
+	];
+
+	const openEdit = async (width: number) => {
+		const setup = await renderTest(
+			<EventView
+				cardId="run-1"
+				initialCard={loopCard}
+				source={sourceOf(loopCard, edit)}
+				resolveShortId={() => undefined}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>,
+			{ width, height: 30 },
+		);
+		const closed = await pumpUntil(
+			setup.renderOnce,
+			setup.captureCharFrame,
+			(f) => f.includes("Changed it."),
+		);
+		await setup.mockMouse.click(4, rowOf(closed, "Edit src/a.ts"));
+		const opened = await pumpUntil(
+			setup.renderOnce,
+			setup.captureCharFrame,
+			(f) => f.includes("line2 = 22;"),
+		);
+		return { ...setup, opened };
+	};
+
+	it("shows in place of the edit's input at 40 columns, one side under the other", async () => {
+		const { opened, captureSpans, destroy } = await openEdit(40);
+		try {
+			const rows = opened.split("\n");
+			const removed = rows.findIndex((row) =>
+				row.includes("- const line2 = 2;"),
+			);
+			const added = rows.findIndex((row) =>
+				row.includes("+ const line2 = 22;"),
+			);
+			expect(removed).toBeGreaterThan(-1);
+			expect(added).toBe(removed + 1);
+			expect(opened).not.toContain("old_string");
+			expect(opened).toContain("The file has been updated.");
+			const spans = captureSpans().lines.flatMap((line) => line.spans);
+			const plus = spanWith(spans, "+");
+			expect(plus && ints(plus.fg)).toEqual(rgb(Theme.DARK.done));
+		} finally {
+			destroy();
+		}
+	});
+
+	it("goes side by side once the screen is wider than 120 columns", async () => {
+		const { opened, destroy } = await openEdit(160);
+		try {
+			const row =
+				opened.split("\n").find((r) => r.includes("const line2 = 2;")) ?? "";
+			expect(row).toContain("const line2 = 22;");
+		} finally {
+			destroy();
+		}
+	});
+});

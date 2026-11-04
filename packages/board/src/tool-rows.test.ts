@@ -205,3 +205,46 @@ describe("ToolRows.head and tail", () => {
 		expect(ToolRows.tail("x".repeat(20), 4, 6)).toBe("…xxxxx");
 	});
 });
+
+describe("ToolRows.patch", () => {
+	const file = (count: number) =>
+		`${Array.from({ length: count }, (_, i) => `line ${i}`).join("\n")}\n`;
+
+	it("makes a unified patch of a changed file, a created one all additions", () => {
+		const old = file(40);
+		const changed = old.replace("line 2\n", "LINE 2\n");
+		expect(
+			ToolRows.patch({ path: "a.ts", oldText: old, newText: changed }, 50),
+		).toEqual({
+			patch:
+				"@@ -1,6 +1,6 @@\n line 0\n line 1\n-line 2\n+LINE 2\n line 3\n line 4\n line 5\n",
+			cut: 0,
+		});
+		expect(ToolRows.patch({ path: "n.md", newText: "hi\n" }, 50)).toEqual({
+			patch: "@@ -0,0 +1,1 @@\n+hi\n",
+			cut: 0,
+		});
+		expect(
+			ToolRows.patch({ path: "a.ts", oldText: old, newText: old }, 50),
+		).toEqual({
+			patch: "",
+			cut: 0,
+		});
+	});
+
+	it("holds a big patch to its lines, cutting the hunk that overflows with its counts made true", () => {
+		const old = file(40);
+		const changed = old
+			.replace("line 2\n", "LINE 2\n")
+			.replace("line 30\n", "LINE 30\n");
+		const { patch, cut } = ToolRows.patch(
+			{ path: "a.ts", oldText: old, newText: changed },
+			11,
+		);
+		expect(cut).toBe(4);
+		expect(patch.split("\n").filter((l) => l.startsWith("@@"))).toEqual([
+			"@@ -1,6 +1,6 @@",
+			"@@ -28,4 +28,3 @@",
+		]);
+	});
+});
