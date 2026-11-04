@@ -82,17 +82,15 @@ export namespace DetailModel {
 	const activitiesOf = (records: BoardData.DetailRecords): AgentActivity[] =>
 		records.sessions.flatMap((s) => s.activities);
 
-	// A session question is answered by a decision whose context is `answers <question-id>`.
+	// A session question is answered by an activity whose context is `answers <question-id>`.
 	const unansweredQuestions = (
 		activities: readonly AgentActivity[],
-	): AgentActivity[] => {
-		const decisions = activities.filter((a) => a.type === "decision");
-		return activities.filter(
+	): AgentActivity[] =>
+		activities.filter(
 			(a) =>
 				a.type === "question" &&
-				!decisions.some((d) => isAnswerTo(d.context, a.id)),
+				!activities.some((d) => isAnswerTo(d.context, a.id)),
 		);
-	};
 
 	// ── pinned ──────────────────────────────────────────────────────────────────────────────────
 

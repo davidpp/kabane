@@ -119,6 +119,26 @@ describe("openQuestions", () => {
 		]);
 	});
 
+	it("takes an answer of any type as answering its question", () => {
+		const answered = records({
+			sessions: [
+				{
+					session,
+					activities: [
+						activity({ id: "q1", type: "question", body: "Edit a.ts?" }),
+						activity({
+							id: "a1",
+							type: "answer",
+							body: "Yes",
+							context: "answers q1",
+						}),
+					],
+				},
+			],
+		});
+		expect(DetailModel.openQuestions(answered)).toEqual([]);
+	});
+
 	it("adds the host's questions the records do not carry, once each", () => {
 		const open = DetailModel.openQuestions(askedTwice(), [
 			{
