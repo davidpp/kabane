@@ -10,6 +10,7 @@ import {
 	err,
 	ok,
 	type AgentActivity,
+	isAnswerTo,
 	type ParsedQuestion,
 	Planner,
 	parseQuestionBody,
@@ -476,6 +477,16 @@ export namespace Loop {
 		choices: string[];
 	};
 
+	const waitingOf = (question: AgentActivity, task: string): Waiting => {
+		const parsed = parseQuestionBody(question.body);
+		return {
+			questionId: question.id,
+			task,
+			question: parsed.question,
+			choices: parsed.choices,
+		};
+	};
+
 	/** The questions run `runId`'s sessions are waiting on a human for, from core. */
 	export const questions = async (
 		deps: Pick<Deps, "basePath">,
@@ -484,21 +495,71 @@ export namespace Loop {
 		const needs = await Planner.getNeedsInput(deps.basePath);
 		if (!needs.ok) return needs;
 		return ok(
-			needs.value.flatMap(({ session, task, question }) => {
-				if (!question || session.externalRef !== RunStore.sessionRef(runId))
-					return [];
-				const parsed = parseQuestionBody(question.body);
-				return [
-					{
-						questionId: question.id,
-						task: task?.shortId ?? session.taskId,
-						question: parsed.question,
-						choices: parsed.choices,
-					},
-				];
-			}),
+			needs.value.flatMap(({ session, task, question }) =>
+				question && session.externalRef === RunStore.sessionRef(runId)
+					? [waitingOf(question, task?.shortId ?? session.taskId)]
+					: [],
+			),
 		);
 	};
+
+	/**
+	 * Withdraw what the sessions of `run`, whose runner died, were asking. Their harnesses died with
+	 * the runner, so nobody is left to read an answer, and a restart closes those sessions and asks
+	 * again in new ones. Ending the sessions in core takes their questions off every surface's
+	 * needs-input queue, the board's included, and core refuses an answer on an ended session.
+	 * Returns the questions withdrawn, for `status` to show; nothing for a run whose runner is not
+	 * dead. Whichever surface first sees the death does this: the dead runner cannot.
+	 */
+	export const withdraw = async (
+		deps: Pick<Deps, "basePath">,
+		run: RunStore.Run,
+	): Promise<Result<Waiting[]>> => {
+		if (!died(run)) return ok([]);
+		const withdrawn: Waiting[] = [];
+		for (const claim of run.claims) {
+			if (claim.endedAt !== undefined) continue;
+			const ended = await Planner.endSession(deps.basePath, claim.sessionId, {
+				state: "error",
+				summary: `the loop runner of ${run.id} died; \`${restartCommand(run.id)}\` restarts the run`,
+			});
+			if (!ended.ok) return ended;
+			const activities = await Planner.getActivities(
+				deps.basePath,
+				claim.sessionId,
+			);
+			if (!activities.ok) return activities;
+			const answered = (q: AgentActivity) =>
+				activities.value.some(
+					(a) => a.type === "decision" && isAnswerTo(a.context, q.id),
+				);
+			for (const q of activities.value)
+				if (q.type === "question" && !answered(q))
+					withdrawn.push(waitingOf(q, claim.shortId));
+		}
+		return ok(withdrawn);
+	};
+
+	/** The run whose runner died while one of its sessions asked `questionId`, withdrawing it. */
+	const stranded = async (
+		deps: Pick<Deps, "home" | "basePath">,
+		questionId: string,
+	): Promise<Result<RunStore.Run | undefined>> => {
+		const runs = RunStore.list(deps.home);
+		if (!runs.ok) return runs;
+		for (const run of runs.value.filter(died)) {
+			const withdrawn = await withdraw(deps, run);
+			if (!withdrawn.ok) return withdrawn;
+			if (withdrawn.value.some((q) => q.questionId === questionId))
+				return ok(run);
+		}
+		return ok(undefined);
+	};
+
+	const strandedError = (run: RunStore.Run, questionId: string): Error =>
+		new Error(
+			`Question ${questionId} was asked in run ${run.id}, whose runner died, so nobody is left to read an answer: \`${restartCommand(run.id)}\` restarts the run, and its agent asks again`,
+		);
 
 	// The decision's body for `given`: the label of the option it names. A permission question
 	// takes only the harness's options; another question also takes free text when it allows it.
@@ -571,11 +632,15 @@ export namespace Loop {
 	/**
 	 * Note that `deps.actor` is answering `questionId`, when a loop session waits on it: what the
 	 * board does before it writes an answer of its own. Any other question is not the loop's to note.
+	 * A question of a run whose runner died is withdrawn and refused, as `answer` refuses it.
 	 */
 	export const answering = async (
 		deps: AnswerDeps,
 		questionId: string,
 	): Promise<Result<void>> => {
+		const dead = await stranded(deps, questionId);
+		if (!dead.ok) return dead;
+		if (dead.value) return err(strandedError(dead.value, questionId));
 		const found = await waiting(deps.basePath, questionId);
 		if (!found.ok) return found;
 		return found.value
@@ -588,6 +653,9 @@ export namespace Loop {
 		questionId: string,
 		given: string,
 	): Promise<Result<Answered>> => {
+		const dead = await stranded(deps, questionId);
+		if (!dead.ok) return dead;
+		if (dead.value) return err(strandedError(dead.value, questionId));
 		const found = await waiting(deps.basePath, questionId);
 		if (!found.ok) return found;
 		if (!found.value)

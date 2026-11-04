@@ -1,7 +1,9 @@
+import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Planner } from "@cabane/core";
 import { LoopActivity } from "./activity";
 import { LoopConfig } from "./config";
 import { RunStore } from "./store";
@@ -98,6 +100,47 @@ describe("LoopActivity", () => {
 			[1, "started", "x"],
 			[2, "claude claims KAB-2", undefined],
 		]);
+	});
+
+	it("withdraws what a run whose runner died was asking from the board's needs-input queue", async () => {
+		await Planner.init(home);
+		const task = await Planner.addTask(home, { title: "child", kind: "issue" });
+		if (!task.ok) throw task.error;
+		const session = await Planner.startSession(home, {
+			taskId: task.value.id,
+			agent: "claude",
+			externalRef: RunStore.sessionRef("KAB-1-abc"),
+		});
+		if (!session.ok) throw session.error;
+		await Planner.addActivity(home, {
+			sessionId: session.value.id,
+			type: "question",
+			body: "Fetch example.com?",
+		});
+		RunStore.create(
+			home,
+			run({
+				status: "running",
+				exit: undefined,
+				pid: Bun.spawnSync(["true"]).pid,
+				claims: [claim(session.value.id, "claude:KAB-2")],
+			}),
+		);
+		const before = await Planner.getNeedsInput(home);
+		expect(before.ok && before.value).toHaveLength(1);
+
+		const source = LoopActivity.source({
+			home,
+			basePath: home,
+			actor: ACTOR,
+			kabaneBin: "/nonexistent/kabane",
+		});
+		const loaded = await source.load();
+		expect(loaded.ok && loaded.value.map((c) => c.error)).toEqual([
+			expect.stringContaining("runner-died"),
+		]);
+		const after = await Planner.getNeedsInput(home);
+		expect(after.ok && after.value).toEqual([]);
 	});
 
 	it("a dismissed run is not listed again, and a live one cannot be dismissed", async () => {

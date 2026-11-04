@@ -401,6 +401,49 @@ describe("Loop.answer", () => {
 		]);
 	});
 
+	it("refuses a question whose runner died, withdraws it from core's queue, and lists it as withdrawn", async () => {
+		const deps = { home, basePath: home, actor: HUMAN };
+		const { run, sessionId } = await orphaned("dead-run");
+		const asked = await Planner.addActivity(home, {
+			sessionId,
+			type: "question",
+			body: Permission.body("claude", {
+				toolCallId: "toolu_02",
+				title: "Fetch example.com",
+				options: [
+					{ id: "allow", name: "Allow", kind: "allow_once" },
+					{ id: "reject", name: "Reject", kind: "reject_once" },
+				],
+			}),
+		});
+		if (!asked.ok) throw asked.error;
+		const questionId = asked.value.id;
+
+		const answered = await Loop.answer(deps, questionId, "2");
+		expect(!answered.ok && answered.error.message).toContain("runner died");
+		expect(!answered.ok && answered.error.message).toContain(
+			`kabane loop resume ${run.id}`,
+		);
+		const noted = await Loop.answering(deps, questionId);
+		expect(!noted.ok && noted.error.message).toContain("runner died");
+		const activities = await Planner.getActivities(home, sessionId);
+		expect(
+			activities.ok && activities.value.some((a) => a.type === "decision"),
+		).toBe(false);
+		// Off every surface's queue, and no longer answerable in core either.
+		const needs = await Planner.getNeedsInput(home);
+		expect(needs.ok && needs.value).toEqual([]);
+		const direct = await Planner.answerQuestion(home, {
+			questionId,
+			answer: "Reject",
+		});
+		expect(direct.ok).toBe(false);
+		const withdrawn = await Loop.withdraw(deps, RunStore.effective(run));
+		expect(withdrawn.ok && withdrawn.value.map((q) => q.questionId)).toEqual([
+			questionId,
+		]);
+	});
+
 	it("refuses an answer that is none of the harness's options, and answers nothing", async () => {
 		const { sessionId, questionId } = await blocked("run-1");
 		const answered = await Loop.answer(

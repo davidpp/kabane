@@ -113,6 +113,10 @@ const worktree = (run: RunStore.Run): string[] =>
 			]
 		: [];
 
+// A question the run's dead runner left: shown, with no answer to give.
+const withdrawn = (q: Loop.Waiting): string =>
+	`  withdrawn, its runner died: ${q.task} ${q.question} (the restarted run asks again)`;
+
 // A run whose runner died waits on a human to bring it back.
 const restart = (run: RunStore.Run): string[] =>
 	Loop.died(run) ? [`  restart: ${Loop.restartCommand(run.id)}`] : [];
@@ -124,14 +128,18 @@ const statusOf = async (
 ): Promise<Outcome> => {
 	const run = Loop.status(deps, runId);
 	if (!run.ok) return failure(run.error);
+	// Before the waiting ones: a dead run's are withdrawn, and no longer wait.
+	const gone = await Loop.withdraw(deps, run.value);
+	if (!gone.ok) return failure(gone.error);
 	const waiting = await Loop.questions(deps, runId);
 	if (!waiting.ok) return failure(waiting.error);
 	return success(
-		{ ...run.value, questions: waiting.value },
+		{ ...run.value, questions: waiting.value, withdrawn: gone.value },
 		[
 			line(run.value),
 			...restart(run.value),
 			...worktree(run.value),
+			...gone.value.map(withdrawn),
 			...waiting.value.map(question),
 		].join("\n"),
 	);

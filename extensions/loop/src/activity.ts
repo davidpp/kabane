@@ -205,9 +205,16 @@ export namespace LoopActivity {
 		kabaneBin,
 	}: ActDeps & { actor: string }): ActivitySource => ({
 		// A run whose tab the human closed is not listed again; `kabane loop status` still shows it.
+		// What a run whose runner died was asking is withdrawn here, on the board's poll, so its
+		// needs-input queue stops offering an answer nobody would read. A withdrawal that fails is
+		// tried again on the next poll; `loop status` and `loop answer` say why.
 		load: async () => {
 			const runs = RunStore.list(home);
-			return runs.ok ? ok(listed(runs.value).map(card)) : runs;
+			if (!runs.ok) return runs;
+			for (const run of runs.value)
+				if (run.claims.some((c) => c.endedAt === undefined))
+					await Loop.withdraw({ basePath }, run);
+			return ok(listed(runs.value).map(card));
 		},
 		card: async (id) => {
 			const run = RunStore.read(home, id);
