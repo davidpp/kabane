@@ -305,9 +305,17 @@ export namespace BoardCopilot {
 				// the transcript.
 				case "plan":
 					return [plan(incoming.entries)];
-				// The board's copilot shows no meter.
+				// State too: the footer's reading of the context window.
 				case "usage":
-					return [];
+					return [
+						{
+							type: "usage",
+							used: incoming.used,
+							size: incoming.size,
+							...(incoming.cost ? { cost: incoming.cost } : {}),
+							at: at(),
+						},
+					];
 				case "mode":
 					return [
 						update("mode", `mode ${incoming.id}: moved there by the harness`),

@@ -389,6 +389,54 @@ describe("the A prompt against a scripted copilot", () => {
 		}
 	});
 
+	it("ends the footer on the session's context reading once the harness sends one, at forty columns", async () => {
+		const reading: Copilot = {
+			run: async function* () {
+				const at = new Date().toISOString();
+				yield { type: "usage", used: 84_000, size: 200_000, at };
+				yield { type: "text", summary: "Done.", at };
+				yield { type: "done", summary: "", at };
+			},
+			cancel: async () => {},
+			shortcuts: () => [],
+			answerPermission: () => {},
+			answerElicitation: () => {},
+		};
+		const setup = await renderTest(
+			<App
+				cwd={TEST_BASE}
+				basePath={TEST_BASE}
+				activity={noActivity}
+				copilot={reading}
+			/>,
+			{ width: 40, height: 24 },
+		);
+		const { renderOnce, captureCharFrame, mockInput, resize, destroy } = setup;
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		const footer = (frame: string): string =>
+			frame.trimEnd().split("\n").at(-1)?.trimEnd() ?? "";
+		const HINTS = "/ search · d done · v review · ? help";
+		try {
+			const before = await until((f) => f.includes("Wire the copilot"));
+			expect(footer(before)).toBe(HINTS);
+			mockInput.pressKey(":");
+			await until(panelOpen);
+			await mockInput.typeText("how full are you?");
+			mockInput.pressEnter();
+			await until((f) => f.includes("✓ copilot"));
+			// Forty columns are the board's hints already: the reading is what gives way.
+			const narrow = await until((f) => footer(f).startsWith("/ search"));
+			expect(footer(narrow)).toBe(HINTS);
+			resize(60, 24);
+			const wide = await until((f) => footer(f).includes("ctx"));
+			expect(footer(wide)).toMatch(/^\/ search · .* · \? help +ctx 42%$/);
+			expect(footer(wide)).toHaveLength(60);
+		} finally {
+			destroy();
+		}
+	});
+
 	it("asking a second thing keeps the first: both turns in the transcript, each under the prompt that started it", async () => {
 		const seen: Seen = { prompts: [], contexts: [], cancels: 0 };
 		const setup = await renderTest(

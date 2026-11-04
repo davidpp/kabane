@@ -308,6 +308,9 @@ export type CopilotUpdate =
 			summary: string;
 			at: string;
 	  }
+	// How full the session's context window is, the latest reading replacing the last: STATE, for the
+	// footer. `cost` is the session's so far, only from a harness that reports one.
+	| ({ type: "usage"; at: string } & CopilotUsage)
 	// The harness's own `/` commands, the whole list each time it changes: STATE, like a plan. The
 	// `/` picker offers them after the host's shortcuts, labelled with `source` (the harness).
 	| {
@@ -318,6 +321,13 @@ export type CopilotUpdate =
 	  };
 
 export type CopilotNoticeSeverity = "info" | "warning";
+
+// `used` of the window's `size` tokens are in context now.
+export type CopilotUsage = {
+	used: number;
+	size: number;
+	cost?: { amount: number; currency: string };
+};
 
 // A `/name` the prompt window expands client-side into `template`, so the human reads exactly what
 // will be sent before pressing enter. `hint` is the one-line description shown while picking.

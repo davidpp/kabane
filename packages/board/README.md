@@ -245,10 +245,16 @@ pane's row shows `⠹ copilot · 2/5 · <last tool call>` while it runs — the 
 plan — `✓ copilot · <the agent's last line>` when it ends, `✗ copilot · <reason>` on an error or a
 cancel; the finished indicator stays until the next keypress, which also clears the `✦ ai` glyphs.
 
+A `usage` update (`used` of the window's `size` tokens, and the session's `cost` where the harness
+reports one) is the session's reading of its context window, kept across turns. Every footer ends
+on it, muted and right-aligned, as `ctx 42%` or `ctx 42% · $0.31` (`CopilotLog.usageLabel`,
+provided once through `FooterTrail`). It shows only where it fits whole beside the hints or the
+notice, so at forty columns it is the first thing to go, and before the first reading it is absent.
+
 Exactly one surface animates per fact: the pane owns the copilot, the tab on screen owns its card,
 and every echo of a running thing renders `●` rather than a frozen spinner frame (see `spinner.ts`). `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
-`mode`, `error`, `done`, `notice` with a `severity` of `info` or `warning`, and the `commands`
-list above); each `tool_result`
+`mode`, `error`, `done`, `notice` with a `severity` of `info` or `warning`, the `commands`
+list above, and `usage`); each `tool_result`
 reloads the board so the copilot's writes appear as they land. A notice is a line of the turn's
 transcript and changes nothing else: an info as the event type `notice`, a warning as `warning`. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
 rather than inviting a prompt, and `enter` flashes `a turn is running · o for its transcript, x

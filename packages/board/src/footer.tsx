@@ -6,7 +6,7 @@
 // interleaved on one row) — a padded, backgrounded row can't be bled into. zIndex breaks paint-order
 // ties in the footer's favor.
 import { useTerminalDimensions } from "@opentui/react";
-import type { ReactNode } from "react";
+import { createContext, type ReactNode, useContext } from "react";
 import type { CopilotLog } from "./copilot-log";
 import { Keymap } from "./keymap";
 import { Segments } from "./segments";
@@ -42,18 +42,50 @@ export const hintSegments = (
 // Between a lead (the query being typed, a search summary) and the hints after it.
 const LEAD_GAP = "  ";
 
+// The least room between what the bar says and its trail.
+const TRAIL_GAP = 2;
+
+/**
+ * What every footer under it shows at its right end: the copilot session's context reading
+ * (`ctx 42%`), provided once by app.tsx rather than passed through each view, none of which has a
+ * say in it. Null shows nothing.
+ */
+export const FooterTrail = createContext<string | null>(null);
+
+// The trail at the right end when it fits beside everything else, which it never displaces: a
+// hint or a notice is worth more than the reading.
+const withTrail = (
+	segments: Segments.Segment[],
+	trail: string | undefined,
+	width: number,
+	theme: Theme.Tokens,
+): Segments.Segment[] => {
+	const used = Segments.plain(segments).length;
+	if (!trail || used + TRAIL_GAP + trail.length > width) return segments;
+	return [
+		...segments,
+		{ text: " ".repeat(width - used - trail.length), fg: theme.muted },
+		{ text: trail, fg: theme.muted },
+	];
+};
+
 /**
  * The bar's parts for `width` columns. A lead keeps its words and gives way to nothing; hints after it
  * fit whole, dropping from the end with `? help` kept (Keymap.fitHints), so a hint is never cut
  * mid-word. A plain line with no hints is cut at the end with `…`, as a notice always was.
  */
 export const barSegments = (
-	{ text, fg, lead, leadFg, hints }: StatusBarProps,
+	{ text, fg, lead, leadFg, hints, trail }: StatusBarProps,
 	width: number,
 	theme: Theme.Tokens,
 ): Segments.Segment[] => {
 	if (!hints)
-		return Segments.fit([{ text: text ?? "", fg: fg ?? theme.text }], width);
+		return withTrail(
+			Segments.fit([{ text: text ?? "", fg: fg ?? theme.text }], width),
+			trail,
+			width,
+			theme,
+		);
 	const head: Segments.Segment[] = lead
 		? [{ text: lead, fg: leadFg ?? theme.text }]
 		: [];
@@ -61,7 +93,12 @@ export const barSegments = (
 	const fitted = Keymap.fitHints(hints, room);
 	const gap: Segments.Segment[] =
 		lead && fitted.length > 0 ? [{ text: LEAD_GAP, fg: theme.muted }] : [];
-	return Segments.fit([...head, ...gap, ...hintSegments(fitted, theme)], width);
+	return withTrail(
+		Segments.fit([...head, ...gap, ...hintSegments(fitted, theme)], width),
+		trail,
+		width,
+		theme,
+	);
 };
 
 export type StatusBarProps = {
@@ -73,15 +110,22 @@ export type StatusBarProps = {
 	// What the bar says before its hints: the live query, a search summary.
 	lead?: string;
 	leadFg?: string;
+	// Muted, at the right end, only where it fits whole beside the rest. FooterTrail's when absent.
+	trail?: string;
 };
 
 export const StatusBar = (props: StatusBarProps): ReactNode => {
 	const { width } = useTerminalDimensions();
 	const theme = useTheme();
+	const trail = useContext(FooterTrail);
 	// The bar sits on the raised surface: one step up from the terminal's own background, visible
 	// as a bar, quiet as chrome. Text without a colour of its own takes the surface's foreground.
 	const bg = theme.surface.raised;
-	const segments = barSegments(props, width, theme);
+	const segments = barSegments(
+		{ ...(trail ? { trail } : {}), ...props },
+		width,
+		theme,
+	);
 	const used = Segments.plain(segments).length;
 	return (
 		<box

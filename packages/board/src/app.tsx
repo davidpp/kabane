@@ -24,6 +24,7 @@ import { CopilotPane, contextChip } from "./copilot-prompt";
 import { BoardData } from "./data";
 import { Detail } from "./detail";
 import { EventView } from "./event-view";
+import { FooterTrail } from "./footer";
 import { Launcher } from "./launcher";
 import { BoardNav } from "./nav";
 import { HelpSheet } from "./overlay";
@@ -1061,19 +1062,22 @@ export const App = ({
 			{copilotPane}
 		</>
 	);
-	// Every view sits under the tab bar; the overlays float over whichever view is on screen.
+	// Every view sits under the tab bar; the overlays float over whichever view is on screen. Every
+	// footer in it ends on the copilot session's context reading, when there is one.
 	const { tabs } = state;
 	const framed = (view: ReactNode): ReactNode => (
-		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<TabBar
-				tabs={tabs}
-				cards={shownActivity.cards}
-				spinnerFrame={spinnerFrame}
-				onSelect={(id) => dispatchMouse({ type: "tab", id })}
-			/>
-			<box style={{ flexDirection: "column", flexGrow: 1 }}>{view}</box>
-			{overlay}
-		</box>
+		<FooterTrail.Provider value={CopilotLog.usageLabel(copilotLog)}>
+			<box style={{ flexDirection: "column", flexGrow: 1 }}>
+				<TabBar
+					tabs={tabs}
+					cards={shownActivity.cards}
+					spinnerFrame={spinnerFrame}
+					onSelect={(id) => dispatchMouse({ type: "tab", id })}
+				/>
+				<box style={{ flexDirection: "column", flexGrow: 1 }}>{view}</box>
+				{overlay}
+			</box>
+		</FooterTrail.Provider>
 	);
 
 	if (state.view.type === "events") {

@@ -330,6 +330,45 @@ describe("CopilotLog", () => {
 		expect(BoardActivity.anyRunning(merged)).toBe(true);
 	});
 
+	it("keeps the latest usage reading for the session, across turns, out of the transcript", () => {
+		expect(CopilotLog.usageLabel(started())).toBeNull();
+		expect(CopilotLog.usageLabel(null)).toBeNull();
+		const read = CopilotLog.apply(started(), {
+			type: "usage",
+			used: 84_000,
+			size: 200_000,
+			at: T1,
+		});
+		expect(CopilotLog.usageLabel(read)).toBe("ctx 42%");
+		expect(read.current.events).toHaveLength(1);
+		const costed = CopilotLog.apply(read, {
+			type: "usage",
+			used: 100_000,
+			size: 200_000,
+			cost: { amount: 0.314, currency: "USD" },
+			at: T1,
+		});
+		expect(CopilotLog.usageLabel(costed)).toBe("ctx 50% · $0.31");
+		const next = CopilotLog.start(costed, "and again", T1);
+		expect(CopilotLog.usageLabel(next)).toBe("ctx 50% · $0.31");
+		const euros = CopilotLog.apply(next, {
+			type: "usage",
+			used: 1,
+			size: 4,
+			cost: { amount: 2, currency: "EUR" },
+			at: T1,
+		});
+		expect(CopilotLog.usageLabel(euros)).toBe("ctx 25% · 2.00 EUR");
+		// A window of no size says nothing rather than dividing by it.
+		const empty = CopilotLog.apply(next, {
+			type: "usage",
+			used: 0,
+			size: 0,
+			at: T1,
+		});
+		expect(CopilotLog.usageLabel(empty)).toBeNull();
+	});
+
 	it("source layers the copilot card over the host source and serves its events after a seq", async () => {
 		const hostSource: ActivitySource = {
 			load: async () => ok([hostCard()]),

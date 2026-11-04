@@ -10,6 +10,7 @@ import {
 	type ActivityEvent,
 	type ActivitySource,
 	type CopilotUpdate,
+	type CopilotUsage,
 	type PlanEntry,
 	PROMPT_EVENT,
 } from "./ports";
@@ -36,7 +37,13 @@ export namespace CopilotLog {
 	// The turn in hand and the few behind it. `current` is its own field rather than the last element
 	// of a list because there is ALWAYS one — a log exists only once a turn has started — and a
 	// current-turn-or-undefined would put a fallback in every reader of the pane and the footer.
-	export type Log = { past: readonly Turn[]; current: Turn };
+	// `usage` is the session's, not a turn's: the latest reading of its context window, null until the
+	// harness has sent one, and kept across turns.
+	export type Log = {
+		past: readonly Turn[];
+		current: Turn;
+		usage: CopilotUsage | null;
+	};
 
 	// How many turns the transcript keeps. Enough to re-read what you asked two questions ago, which
 	// is what asking a second one used to cost; not a history, and never written down.
@@ -50,6 +57,7 @@ export namespace CopilotLog {
 	// read as already-seen. Numbering at read time instead would shift under the cap.
 	export const start = (log: Log | null, prompt: string, at: string): Log => ({
 		past: log ? [...log.past, log.current].slice(-(TURN_CAP - 1)) : [],
+		usage: log?.usage ?? null,
 		current: {
 			prompt,
 			card: {
@@ -110,9 +118,9 @@ export namespace CopilotLog {
 
 	const applyToTurn = (turn: Turn, update: CopilotUpdate): Turn => {
 		if (update.type === "plan") return { ...turn, plan: update.entries };
-		// The harness's command list is the `/` palette's, which the reducer holds; nothing in the
-		// turn changes.
-		if (update.type === "commands") return turn;
+		// The harness's command list is the `/` palette's, which the reducer holds, and its usage the
+		// log's: nothing in the turn changes.
+		if (update.type === "commands" || update.type === "usage") return turn;
 		// The pending choice is rendered from the reducer's copy, not from here; what the transcript
 		// keeps is the RECORD that it was asked, which outlives the answer and reads in the order it
 		// happened, between the tool call that provoked it and whatever followed. A form reads as
@@ -195,10 +203,34 @@ export namespace CopilotLog {
 
 	// Every update belongs to the turn in flight; a finished one is never written to again (the
 	// reducer refuses a prompt while one runs, so there is only ever one).
-	export const apply = (log: Log, update: CopilotUpdate): Log => ({
-		...log,
-		current: applyToTurn(log.current, update),
-	});
+	export const apply = (log: Log, update: CopilotUpdate): Log =>
+		update.type === "usage"
+			? {
+					...log,
+					usage: {
+						used: update.used,
+						size: update.size,
+						...(update.cost ? { cost: update.cost } : {}),
+					},
+				}
+			: { ...log, current: applyToTurn(log.current, update) };
+
+	// The footer's reading of the session's context window, `ctx 42% · $0.31`. Null while nothing is
+	// known, which hides it.
+	export const usageLabel = (log: Log | null): string | null => {
+		const usage = log?.usage;
+		if (!usage || usage.size <= 0) return null;
+		const ctx = `ctx ${Math.round((usage.used / usage.size) * 100)}%`;
+		return usage.cost ? `${ctx} · ${money(usage.cost)}` : ctx;
+	};
+
+	const money = ({
+		amount,
+		currency,
+	}: NonNullable<CopilotUsage["cost"]>): string =>
+		currency === "USD"
+			? `$${amount.toFixed(2)}`
+			: `${amount.toFixed(2)} ${currency}`;
 
 	// Cancel from the board side: the turn ends as failed with a reason, no event appended.
 	export const cancelled = (log: Log, at: string): Log => ({

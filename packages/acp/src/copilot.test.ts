@@ -93,6 +93,8 @@ const scriptedAgent = (
 		notice?: { severity: string; title: string; description?: string };
 		// The slash commands the agent lists before anything else in the turn.
 		commands?: { name: string; description: string }[];
+		// A reading of the context window the agent sends at the end of the turn.
+		usage?: { used: number; size: number };
 	} = {},
 ): AgentApp =>
 	agentApp({ name: "scripted" })
@@ -213,6 +215,8 @@ const scriptedAgent = (
 								...(step.status ? { status: step.status } : {}),
 							},
 				);
+			if (options.usage)
+				await notify({ sessionUpdate: "usage_update", ...options.usage });
 			return { stopReason: "end_turn" };
 		});
 
@@ -421,6 +425,18 @@ describe("BoardCopilot", () => {
 		await collect(copilot.run("/nope", context()));
 		expect(textOf(seen.prompts[2], 0)).toContain("scope: jake://scope/cabane");
 		expect(textOf(seen.prompts[2], 1)).toBe("/nope");
+		copilot.close();
+	});
+
+	it("hands the board the harness's reading of its context window", async () => {
+		const copilot = copilotOver(
+			scriptedAgent(fresh(), { usage: { used: 84_000, size: 200_000 } }),
+		);
+		const updates = await collect(copilot.run("go", context()));
+		expect(updates.find((u) => u.type === "usage")).toMatchObject({
+			used: 84_000,
+			size: 200_000,
+		});
 		copilot.close();
 	});
 
