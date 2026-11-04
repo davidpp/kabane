@@ -14,11 +14,13 @@ import type { Brief } from "./brief";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
 import { Dispatch } from "./dispatch";
+import { Elicitation } from "./elicitation";
 import { Fixer } from "./fixer";
 import { Gates } from "./gates";
 import { Lenses } from "./lenses";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
+import type { Questions } from "./questions";
 import { Stall } from "./stall";
 import { RunState } from "./state";
 import { RunStore } from "./store";
@@ -133,10 +135,40 @@ export namespace Claims {
 		return note?.kind === "answered" ? note.by : undefined;
 	};
 
+	type Asker = {
+		sessionId: string;
+		lane: string;
+		shortId: string;
+		harness: string;
+		/** What the session waits on, for the question's context. */
+		blockedOn: string;
+	};
+
+	const relayDeps = (
+		ctx: Ctx,
+		stopped: AbortSignal,
+		asker: Asker,
+	): Questions.Deps => ({
+		basePath: ctx.deps.basePath,
+		sessionId: asker.sessionId,
+		harness: asker.harness,
+		origin: `The ${asker.harness} session working on ${asker.shortId} in loop ${ctx.run.id} is blocked on this ${asker.blockedOn} until it is answered.`,
+		signal: stopped,
+		emit: (draft) =>
+			RunState.event(ctx, {
+				...draft,
+				lane: asker.lane,
+				session: asker.sessionId,
+				task: asker.shortId,
+			}),
+		answeredBy: (questionId) => answeredBy(ctx, questionId),
+		now: ctx.now,
+	});
+
 	/**
 	 * What a claim's dispatch reports through. Everything it records about its session, a relayed
-	 * permission request included, carries the claim's lane, session and task, so it shows on that
-	 * agent's lane of the run's tab.
+	 * permission request or form included, carries the claim's lane, session and task, so it
+	 * shows on that agent's lane of the run's tab.
 	 */
 	export const hooks = (
 		ctx: Ctx,
@@ -173,25 +205,30 @@ export namespace Claims {
 		},
 		// Relayed to the human as a question on this claim's session; the loop never answers.
 		// Other claims run on meanwhile; waiting never advances the stall count.
-		permission: (request, signal) =>
+		permission: (request, withdrawn, stopped) =>
 			Permission.relay(
-				{
-					basePath: ctx.deps.basePath,
+				relayDeps(ctx, stopped, {
 					sessionId,
+					lane,
+					shortId,
 					harness,
-					origin: `The ${harness} session working on ${shortId} in loop ${ctx.run.id} is blocked on this tool call until it is answered.`,
-					signal,
-					emit: (draft) =>
-						RunState.event(ctx, {
-							...draft,
-							lane,
-							session: sessionId,
-							task: shortId,
-						}),
-					answeredBy: (questionId) => answeredBy(ctx, questionId),
-					now: ctx.now,
-				},
+					blockedOn: "tool call",
+				}),
 				request,
+				withdrawn,
+			),
+		// A form: one question per field, on the same terms.
+		elicitation: (request, withdrawn, stopped) =>
+			Elicitation.relay(
+				relayDeps(ctx, stopped, {
+					sessionId,
+					lane,
+					shortId,
+					harness,
+					blockedOn: "form",
+				}),
+				request,
+				withdrawn,
 			),
 	});
 

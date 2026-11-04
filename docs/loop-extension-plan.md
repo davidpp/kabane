@@ -91,8 +91,8 @@ answered from the board, a finding filed. Mocked transcripts do not count.
        verbatim.
      - The human answers from the board or with `kabane loop answer`, and the harness gets
        the option id they picked.
-     - A run that stops while a request waits sends it back to ACP as `cancelled`,
-       unanswered.
+     - A run that stops while a request waits, or a harness that withdraws it, sends it back
+       to ACP as `cancelled`, unanswered, and closes its question as withdrawn.
      - Other claims keep running meanwhile.
      - Waiting never counts toward the stall count, which counts automatic attempts, not time
        or intentional parking.
@@ -378,8 +378,17 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
   - **Stop:** `Dispatch` aborts every waiting relay on `cancel`, on `close` and when the claim
     ends. The ACP client then answers `cancelled`. The claim settles as `cancelled`, and its
     core session ends as `error`, which takes it off `getNeedsInput`.
-  - **Events:** `permission_asked`, then `permission_answered` (option id, kind, who, wait)
-    or `permission_cancelled`. Each carries the details in `data`.
+  - **Withdrawn (JCAB-59):** a harness that takes its request back (`$/cancel_request`, as
+    Claude does when its turn is cancelled) aborts the request's own signal; the ACP client
+    answers `cancelled` at once. On a stop or a withdrawal the relay closes its question with a
+    `withdrawn` activity (`extensions/loop/src/questions.ts`): it carries `answers
+    <questionId>`, so the badge and `getNeedsInput` clear even while the session runs on, its
+    body says why (`withdrawn by the harness (claude)`, `withdrawn: the loop stopped this
+    claim`), and it is no answer and no decision, so the brief stays clean. A question the
+    human answered just before is left with its answer.
+  - **Events:** `permission_asked`, then `permission_answered` (option id, kind, who, wait),
+    `permission_cancelled` (the claim stopped) or `permission_withdrawn` (the harness withdrew).
+    Each carries the details in `data`.
   - **CLI:** `kabane loop answer <questionId> <option>` calls `answerQuestion` with the
     option's label. `kabane loop status <runId>` lists the run's open questions.
   - **Who answered:** core records no author on an activity, and adding one is a migration,
@@ -389,6 +398,30 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
     the board's actor when one of its sessions asked.
 - Agent questions become core `question` activities the same way, and the session waits for
   `answerQuestion`.
+- **Forms (JCAB-59):** the loop passes `onElicitation`, so the ACP client advertises form
+  elicitation and the harness can ask (claude-agent-acp turns AskUserQuestion off without it,
+  codex-acp its `request_user_input`). `extensions/loop/src/elicitation.ts` relays a form the
+  way `permission.ts` relays a request, and fills nothing itself.
+  - **Questions:** one per field, all asked at once on the claim's session and numbered "i of
+    n" (`questionIndex`/`totalQuestions` too), so the board lists them together. Each carries
+    the harness's message, then the field's title and description verbatim. A choice field's
+    options are its `choices`, a multi-select is `multiSelect`, a boolean is Yes / No, text and
+    numbers are free text. An optional field also offers `skip`, which leaves it out of the
+    answer; every field offers `decline`. On a free-text field those are the bare words.
+  - **The wait:** the form resolves once every question has an answer: `accept` with the
+    fields answered (option values, numbers as numbers, booleans as booleans), or `decline`
+    the moment any field is declined, the others then closed as withdrawn. An answer that
+    does not fit its field (not a number, out of range, not an option, failing its pattern)
+    is asked again, saying why. Answers are `decision`s, the human's choice on the record.
+  - **Stop and withdrawal:** as for permissions: the ACP client answers `cancel`, and the
+    open questions close as withdrawn.
+  - **Events:** `elicitation_asked`, then `elicitation_answered` (`action`, the fields
+    answered, who, wait), `elicitation_cancelled` or `elicitation_withdrawn`.
+  - **CLI:** `kabane loop answer <questionId> <answer>` takes a multi-select as
+    comma-separated options (`1, 3` or labels).
+  - AskUserQuestion's companion "Other" box (`question_<n>_custom`) is its own optional
+    free-text question: kabane cannot tell it from any other text field without the AIR-only
+    markers, so it is relayed as the adapter describes it.
 - **Steering:** done on branch `worktree-agent-aec5e4f6bb339d036`.
   - **Inject:** the runner hands an `inject` entry to the live claim behind its session
     (`Dispatch.Handle.inject`); one for a session that has ended is dropped with a warning.

@@ -132,4 +132,5 @@ export const AGENT_ACTIVITY_TYPE_DISPLAY = {
 	error: { label: "Error", color: "text-red-400" },
 	question: { label: "Question", color: "text-purple-400" },
 	answer: { label: "Answer", color: "text-gray-400" },
+	withdrawn: { label: "Withdrawn", color: "text-gray-500" },
 } satisfies Record<(typeof ACTIVITY_TYPES)[number], DisplayConfig>;

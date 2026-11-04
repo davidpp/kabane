@@ -48,12 +48,16 @@ const session = async (): Promise<string> => {
 type Relayed = {
 	result: Promise<Result<string>>;
 	events: Omit<RunStore.EventDraft, "lane" | "session" | "task">[];
+	/** The claim's own stop. */
 	controller: AbortController;
+	/** The harness taking its request back. */
+	harness: AbortController;
 };
 
 const relay = (sessionId: string, by?: string): Relayed => {
 	const events: Relayed["events"] = [];
 	const controller = new AbortController();
+	const harness = new AbortController();
 	const result = Permission.relay(
 		{
 			basePath: base,
@@ -67,8 +71,9 @@ const relay = (sessionId: string, by?: string): Relayed => {
 			pollMs: 5,
 		},
 		REQUEST,
+		harness.signal,
 	);
-	return { result, events, controller };
+	return { result, events, controller, harness };
 };
 
 // The question the relay put on the session, once it is there.
@@ -190,7 +195,16 @@ describe("Permission.relay", () => {
 		);
 	});
 
-	it("on stop, cancels the request unanswered, and the ended session no longer needs input", async () => {
+	// What closes `questionId`, as type and body: never an answer or a decision of the loop's own.
+	const closing = async (sessionId: string, questionId: string) => {
+		const activities = await Planner.getActivities(base, sessionId);
+		if (!activities.ok) throw activities.error;
+		return activities.value
+			.filter((a) => isAnswerTo(a.context, questionId))
+			.map((a) => [a.type, a.body]);
+	};
+
+	it("on stop, cancels the request unanswered and closes its question as withdrawn", async () => {
 		const sessionId = await session();
 		const { result, events, controller } = relay(sessionId);
 		const question = await pending(sessionId);
@@ -202,11 +216,9 @@ describe("Permission.relay", () => {
 			"permission_asked",
 			"permission_cancelled",
 		]);
-		const activities = await Planner.getActivities(base, sessionId);
-		expect(
-			activities.ok &&
-				activities.value.some((a) => isAnswerTo(a.context, question.id)),
-		).toBe(false);
+		expect(await closing(sessionId, question.id)).toEqual([
+			["withdrawn", "withdrawn: the loop stopped this claim"],
+		]);
 
 		// What the runner's settle does with a cancelled claim.
 		const ended = await Planner.endSession(base, sessionId, { state: "error" });
@@ -215,5 +227,57 @@ describe("Permission.relay", () => {
 		expect(
 			needs.ok && needs.value.some((r) => r.question?.id === question.id),
 		).toBe(false);
+	});
+
+	it("closes the question when the harness withdraws the request, while the session runs on", async () => {
+		const sessionId = await session();
+		const { result, events, harness } = relay(sessionId);
+		const question = await pending(sessionId);
+
+		harness.abort();
+		const outcome = await result;
+		expect(outcome.ok).toBe(false);
+		expect(events.map((e) => e.type)).toEqual([
+			"permission_asked",
+			"permission_withdrawn",
+		]);
+		expect(await closing(sessionId, question.id)).toEqual([
+			["withdrawn", "withdrawn by the harness (claude)"],
+		]);
+		// The badge clears on the session that is still running, and the brief keeps no decision.
+		const needs = await Planner.getNeedsInput(base);
+		expect(needs.ok && needs.value).toEqual([]);
+		const waiting = await Planner.getSession(base, sessionId);
+		expect(waiting.ok && waiting.value?.state).toBe("active");
+		const durable = await Planner.getActivities(base, sessionId);
+		if (!durable.ok) throw durable.error;
+		expect(Planner.selectDurableActivities(durable.value)).toEqual([]);
+	});
+
+	it("keeps the answer a human gave just before the harness withdrew", async () => {
+		const sessionId = await session();
+		const events: Relayed["events"] = [];
+		const harness = new AbortController();
+		const question = Permission.relay(
+			{
+				basePath: base,
+				sessionId,
+				harness: "claude",
+				origin: "test",
+				signal: new AbortController().signal,
+				emit: (e) => events.push(e),
+				answeredBy: () => undefined,
+				now: () => new Date(),
+				// Slow enough that the answer lands between two polls.
+				pollMs: 10_000,
+			},
+			REQUEST,
+			harness.signal,
+		);
+		const asked = await pending(sessionId);
+		await answer(asked.id, "Allow");
+		harness.abort();
+		expect((await question).ok).toBe(false);
+		expect(await closing(sessionId, asked.id)).toEqual([["answer", "Allow"]]);
 	});
 });

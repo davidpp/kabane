@@ -8,8 +8,12 @@ import {
 	type ClientConnection,
 	type ClientContext,
 	type ContentBlock,
+	CreateElicitationRequest,
+	type CreateElicitationResponse,
 	client as clientApp,
+	ElicitationPropertySchema,
 	type McpServer,
+	MultiSelectItems,
 	methods,
 	ndJsonStream,
 	PROTOCOL_VERSION,
@@ -73,10 +77,77 @@ export namespace AcpClient {
 	};
 
 	// Resolves with the chosen option id. An error answers "cancelled": the client never
-	// picks an option on the human's behalf.
+	// picks an option on the human's behalf. `withdrawn` aborts when the harness takes the
+	// request back (`$/cancel_request`) or the connection closes; the request is then answered
+	// "cancelled" whatever the handler does after.
 	export type OnPermission = (
 		request: PermissionRequest,
+		withdrawn: AbortSignal,
 	) => Promise<Result<string>>;
+
+	/** One option of a choice field: `value` is what the harness is answered with. */
+	export type ElicitationOption = {
+		value: string;
+		label: string;
+		description?: string;
+	};
+
+	/**
+	 * One field of a form, as the harness described it: `title` and `description` verbatim
+	 * (`title` falls back to the field's key). `choice` picks one option, `choices` any number.
+	 */
+	export type ElicitationField = {
+		key: string;
+		title: string;
+		description?: string;
+		required: boolean;
+	} & (
+		| {
+				type: "text";
+				minLength?: number;
+				maxLength?: number;
+				pattern?: string;
+		  }
+		| {
+				type: "number";
+				integer: boolean;
+				minimum?: number;
+				maximum?: number;
+		  }
+		| { type: "boolean" }
+		| { type: "choice"; options: ElicitationOption[] }
+		| {
+				type: "choices";
+				options: ElicitationOption[];
+				minItems?: number;
+				maxItems?: number;
+		  }
+	);
+
+	/** A form the harness asks the human to fill (ACP `elicitation/create`, form mode). */
+	export type ElicitationRequest = {
+		message: string;
+		fields: ElicitationField[];
+		toolCallId?: string;
+	};
+
+	export type ElicitationValue = string | number | boolean | string[];
+
+	/**
+	 * The human's answer. `content` holds only the fields they answered: an optional field left
+	 * empty is absent, never filled in for them.
+	 */
+	export type ElicitationAnswer =
+		| { action: "accept"; content: Record<string, ElicitationValue> }
+		| { action: "decline" }
+		| { action: "cancel" };
+
+	// An error answers "cancel", and so does a request the harness withdrew (`withdrawn`, as for
+	// `OnPermission`): the client never accepts a form on the human's behalf.
+	export type OnElicitation = (
+		request: ElicitationRequest,
+		withdrawn: AbortSignal,
+	) => Promise<Result<ElicitationAnswer>>;
 
 	export type StdioServer = {
 		name: string;
@@ -144,6 +215,10 @@ export namespace AcpClient {
 
 	export type ConnectOptions = {
 		onPermission: OnPermission;
+		// Passed only by a launcher with a human to put forms to: the client then advertises
+		// form elicitation, without which claude-agent-acp turns AskUserQuestion off and codex-acp
+		// its `request_user_input` forms. URL elicitation is never advertised.
+		onElicitation?: OnElicitation;
 		handshakeMs?: number;
 	};
 
@@ -253,9 +328,10 @@ export namespace AcpClient {
 		process: Process = NO_PROCESS,
 	): Promise<Result<Connection>> => {
 		const resumed = new Map<string, UpdateQueue>();
-		const app = clientApp({ name: "kabane" })
+		const { onElicitation } = options;
+		const base = clientApp({ name: "kabane" })
 			.onRequest(methods.client.session.requestPermission, async (c) =>
-				answerPermission(options.onPermission, c.params),
+				answerPermission(options.onPermission, c.params, c.signal),
 			)
 			.onNotification(methods.client.session.update, (c) => {
 				resumed.get(c.params.sessionId)?.push({
@@ -264,6 +340,11 @@ export namespace AcpClient {
 					update: c.params.update,
 				});
 			});
+		const app = onElicitation
+			? base.onRequest(methods.client.elicitation.create, async (c) =>
+					answerElicitation(onElicitation, c.params, c.signal),
+				)
+			: base;
 		// Identical branches: `connect` is overloaded per transport and needs the narrowing.
 		const opened = await tryCatch(async () =>
 			isAgentApp(transport) ? app.connect(transport) : app.connect(transport),
@@ -286,7 +367,9 @@ export namespace AcpClient {
 		const handshake = await withTimeout(
 			raw.agent.request(methods.agent.initialize, {
 				protocolVersion: PROTOCOL_VERSION,
-				clientCapabilities: { session: { notices: {} } },
+				clientCapabilities: onElicitation
+					? { session: { notices: {} }, elicitation: { form: {} } }
+					: { session: { notices: {} } },
 			}),
 			options.handshakeMs ?? DEFAULT_HANDSHAKE_MS,
 			`${harness}: no ACP initialize response`,
@@ -748,22 +831,186 @@ export namespace AcpClient {
 	const isAgentApp = (transport: Stream | AgentApp): transport is AgentApp =>
 		!("readable" in transport);
 
+	const WITHDRAWN = new Error("withdrawn by the harness");
+
+	// The handler's answer, or an error as soon as `signal` aborts: a withdrawn request is
+	// answered at once, even by a handler that never looks at its signal.
+	const unlessWithdrawn = <T>(
+		answer: Promise<Result<T>>,
+		signal: AbortSignal,
+	): Promise<Result<T>> => {
+		if (signal.aborted) return Promise.resolve(err(WITHDRAWN));
+		let stop = () => {};
+		const withdrawn = new Promise<Result<T>>((resolve) => {
+			stop = () => resolve(err(WITHDRAWN));
+			signal.addEventListener("abort", stop, { once: true });
+		});
+		const settled = tryCatch(() => answer).then((r) => (r.ok ? r.value : r));
+		return Promise.race([settled, withdrawn]).finally(() =>
+			signal.removeEventListener("abort", stop),
+		);
+	};
+
 	const answerPermission = async (
 		onPermission: OnPermission,
 		params: RequestPermissionRequest,
+		signal: AbortSignal,
 	) => {
-		const answer = await onPermission({
-			toolCallId: params.toolCall.toolCallId,
-			title: params.toolCall.title ?? params.toolCall.toolCallId,
-			options: params.options.map((o) => ({
-				id: o.optionId,
-				name: o.name,
-				kind: o.kind,
-			})),
-		});
-		return answer.ok
+		const answer = await unlessWithdrawn(
+			onPermission(
+				{
+					toolCallId: params.toolCall.toolCallId,
+					title: params.toolCall.title ?? params.toolCall.toolCallId,
+					options: params.options.map((o) => ({
+						id: o.optionId,
+						name: o.name,
+						kind: o.kind,
+					})),
+				},
+				signal,
+			),
+			signal,
+		);
+		return answer.ok && !signal.aborted
 			? { outcome: { outcome: "selected" as const, optionId: answer.value } }
 			: { outcome: { outcome: "cancelled" as const } };
+	};
+
+	const answerElicitation = async (
+		onElicitation: OnElicitation,
+		params: CreateElicitationRequest,
+		signal: AbortSignal,
+	): Promise<CreateElicitationResponse> => {
+		const request = toElicitationRequest(params);
+		if (!request.ok) return { action: "cancel" };
+		const answer = await unlessWithdrawn(
+			onElicitation(request.value, signal),
+			signal,
+		);
+		return answer.ok && !signal.aborted ? answer.value : { action: "cancel" };
+	};
+
+	const text = (value: string | null | undefined): string | undefined =>
+		value === null || value === undefined || value === "" ? undefined : value;
+
+	// Absent and null mean the same in ACP: no bound.
+	const bound = (value: number | null | undefined): number | undefined =>
+		value ?? undefined;
+
+	const optionsOf = (
+		options: { const: string; title: string; description?: string | null }[],
+	): ElicitationOption[] =>
+		options.map((o) => {
+			const description = text(o.description);
+			return {
+				value: o.const,
+				label: o.title,
+				...(description ? { description } : {}),
+			};
+		});
+
+	const untitled = (values: string[]): ElicitationOption[] =>
+		values.map((value) => ({ value, label: value }));
+
+	type Shape = ElicitationField extends infer F
+		? F extends ElicitationField
+			? Omit<F, "key" | "title" | "description" | "required">
+			: never
+		: never;
+
+	// What kabane can put to a human, or undefined for a property type it cannot.
+	const shapeOf = (property: ElicitationPropertySchema): Shape | undefined => {
+		if (ElicitationPropertySchema.isString(property)) {
+			if (property.oneOf && property.oneOf.length > 0)
+				return { type: "choice", options: optionsOf(property.oneOf) };
+			if (property.enum && property.enum.length > 0)
+				return { type: "choice", options: untitled(property.enum) };
+			return {
+				type: "text",
+				minLength: bound(property.minLength),
+				maxLength: bound(property.maxLength),
+				pattern: text(property.pattern),
+			};
+		}
+		const integer = ElicitationPropertySchema.isInteger(property);
+		if (integer || ElicitationPropertySchema.isNumber(property))
+			return {
+				type: "number",
+				integer,
+				minimum: bound(property.minimum),
+				maximum: bound(property.maximum),
+			};
+		if (ElicitationPropertySchema.isBoolean(property))
+			return { type: "boolean" };
+		if (ElicitationPropertySchema.isArray(property)) {
+			const { items } = property;
+			const options = MultiSelectItems.isTitled(items)
+				? optionsOf(items.anyOf)
+				: MultiSelectItems.isString(items)
+					? untitled(items.enum)
+					: [];
+			if (options.length === 0) return undefined;
+			return {
+				type: "choices",
+				options,
+				minItems: bound(property.minItems),
+				maxItems: bound(property.maxItems),
+			};
+		}
+		return undefined;
+	};
+
+	// Every known property type carries an optional title and description; a custom one may not.
+	const described = (property: ElicitationPropertySchema, key: string) => {
+		const title = field(property, "title");
+		const description = field(property, "description");
+		return {
+			title: typeof title === "string" && title !== "" ? title : key,
+			...(typeof description === "string" && description !== ""
+				? { description }
+				: {}),
+		};
+	};
+
+	/**
+	 * A form request as kabane's own `ElicitationRequest`: every field, in the harness's order,
+	 * with its title and description verbatim. An error for a URL or unknown mode, and for a form
+	 * with a required field of a type kabane cannot put to a human; an optional one is left out,
+	 * as a human who left it empty would.
+	 */
+	export const toElicitationRequest = (
+		params: CreateElicitationRequest,
+	): Result<ElicitationRequest> => {
+		if (!CreateElicitationRequest.isForm(params))
+			return err(new Error(`unsupported elicitation mode: ${params.mode}`));
+		const schema = params.requestedSchema;
+		const required = new Set(schema.required ?? []);
+		const fields: ElicitationField[] = [];
+		for (const [key, property] of Object.entries(schema.properties ?? {})) {
+			const shape = shapeOf(property);
+			if (!shape) {
+				if (required.has(key))
+					return err(
+						new Error(
+							`required field ${key} has a type kabane cannot ask: ${property.type}`,
+						),
+					);
+				continue;
+			}
+			fields.push({
+				key,
+				...described(property, key),
+				required: required.has(key),
+				...shape,
+			});
+		}
+		const toolCallId =
+			"toolCallId" in params ? text(params.toolCallId) : undefined;
+		return ok({
+			message: params.message,
+			fields,
+			...(toolCallId ? { toolCallId } : {}),
+		});
 	};
 
 	const toMcpServer = (server: StdioServer): McpServer => ({

@@ -22,6 +22,7 @@ import {
 } from "@cabane/core";
 import { detectScope } from "@cabane/core/scope";
 import { LoopConfig } from "./config";
+import { Elicitation } from "./elicitation";
 import { Gates } from "./gates";
 import { Lenses } from "./lenses";
 import { Permission } from "./permission";
@@ -653,8 +654,9 @@ export namespace Loop {
 			`Question ${questionId} was asked in run ${run.id}, whose runner died, so nobody is left to read an answer: \`${restartCommand(run.id)}\` restarts the run, and its agent asks again`,
 		);
 
-	// The decision's body for `given`: the label of the option it names. A permission question
-	// takes only the harness's options; another question also takes free text when it allows it.
+	// The decision's body for `given`: the label of the option it names, or for a multi-select
+	// the labels of the ones it names, comma-separated. A permission question takes only the
+	// harness's options; another question also takes free text when it allows it.
 	const answerText = (
 		question: ParsedQuestion,
 		given: string,
@@ -662,8 +664,11 @@ export namespace Loop {
 		const options =
 			question.permission?.options ??
 			question.choices.map((label) => ({ label }));
-		const chosen = Permission.choose(options, given);
-		if (chosen) return ok(chosen.label);
+		const chosen = question.multiSelect
+			? Elicitation.chooseMany(options, given)
+			: [Permission.choose(options, given)].filter((o) => o !== undefined);
+		if (chosen && chosen.length > 0)
+			return ok(chosen.map((o) => o.label).join(", "));
 		if (!question.permission && question.allowFreeform) return ok(given);
 		const listed = options.map((o, i) => `${i + 1}. ${o.label}`).join(", ");
 		return err(
