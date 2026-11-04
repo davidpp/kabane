@@ -187,20 +187,30 @@ test("a question's answers read as content: each key and its words in the text c
 
 test("a pinned question that left the queue without this board's answer reads as closed, not answered", async () => {
 	const question = asked(2, ["Yes", "No"]);
-	const { renderOnce, captureCharFrame, destroy } = await renderTest(
-		<PinnedQuestion
-			tabs={BoardTabs.NONE}
-			banner={{ question }}
-			cards={[]}
-			onAnswer={() => {}}
-		/>,
-		{ width: 80, height: 6 },
-	);
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await renderTest(
+			<PinnedQuestion
+				tabs={BoardTabs.NONE}
+				banner={{ question }}
+				cards={[]}
+				onAnswer={() => {}}
+			/>,
+			{ width: 80, height: 6 },
+		);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("asks about"),
 		);
 		expect(frame).toContain("closed · claude asks about JREP-2");
+		// A blank row of the banner's own surface above and below, as the copilot's ask panel has.
+		const rows = frame.split("\n").map((row) => row.trim());
+		const raised = RGBA.fromHex(Theme.DARK.surface.raised).toInts().join();
+		const surfaceOf = (at: number) =>
+			captureSpans().lines[at]?.spans[0]?.bg.toInts().join();
+		expect([rows[0], rows[3]]).toEqual(["", ""]);
+		expect([surfaceOf(0), surfaceOf(3)]).toEqual([raised, raised]);
+		expect(surfaceOf(4)).not.toBe(raised);
+		expect(rows[1]).toStartWith("closed");
 		expect(frame).not.toContain("✓ answered");
 		expect(frame).not.toContain("1 Yes");
 	} finally {

@@ -253,6 +253,9 @@ const QuestionBanner = ({
 				flexDirection: "column",
 				flexShrink: 0,
 				backgroundColor: bg,
+				// A blank row above and below, as the copilot's ask panel has: a surface, not a strip.
+				paddingTop: 1,
+				paddingBottom: 1,
 				paddingLeft: 1,
 				paddingRight: 1,
 			}}
