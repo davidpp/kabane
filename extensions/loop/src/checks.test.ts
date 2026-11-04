@@ -67,10 +67,12 @@ const runOn = async (
 	parent: Task,
 	gates: Record<string, string>,
 	worktree: boolean,
+	extra: LoopConfig.Input = {},
 ): Promise<RunStore.Run> => {
 	const config = LoopConfig.Schema.safeParse({
 		gates,
 		worktree,
+		...extra,
 	});
 	if (!config.success) throw config.error;
 	const run: RunStore.Run = {
@@ -437,7 +439,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
  const text = message.params.prompt.map((p) => p.text ?? "").join("\\n");
  const task = /Your subtask is ([^.]+)\\./.exec(text)?.[1];
  writeFileSync("feature.txt", "made by " + task + "\\n");
- const closed = await done.handler({ id: task }, { basePath: home, actor: "cabane://actor/agent/claude", scopeRequired: false });
+ const closed = await done.handler({ id: task }, { basePath: home, actor: "cabane://actor/agent/gemini", scopeRequired: false });
  if (!closed.ok) process.exit(1);
  reply(message.id, { stopReason: "end_turn" });
 });
@@ -446,7 +448,9 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 	it("commits each finished subtask as a checkpoint in the worktree", async () => {
 		const parent = await add("parent");
 		await add("child", { parentTaskId: parent.id });
-		const run = await runOn(parent, {}, true);
+		// gemini, as in runner-scheduling.test.ts: the claude profile needs a claude on PATH, and CI
+		// has none.
+		const run = await runOn(parent, {}, true, { implementer: "gemini" });
 		const agent = join(root, "implementer.mjs");
 		writeFileSync(agent, IMPLEMENTER);
 		const ended = await Runner.run(run.id, {
@@ -455,7 +459,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			git,
-			overrides: { claude: { command: process.execPath, args: [agent, home] } },
+			overrides: { gemini: { command: process.execPath, args: [agent, home] } },
 			tickMs: 5,
 		});
 		if (!ended.ok) throw ended.error;
