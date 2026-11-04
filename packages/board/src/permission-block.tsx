@@ -22,10 +22,18 @@ const optionsLine = (request: CopilotPermission): string =>
 		.map((option, index) => `${index + 1} ${option.label}`)
 		.join(" · ");
 
+// The questions queued behind the one on screen, said after its title: a harness running tools in
+// parallel asks for each before hearing back on any, and the human should know the next is coming.
+const waitingNote = (waiting: number): string =>
+	waiting > 0 ? ` · ${waiting} more waiting` : "";
+
 // The whole request on ONE row, for the collapsed pane: what is being asked, then how to answer.
 // Exported pure so the copy is assertable without a renderer.
-export const permissionLine = (request: CopilotPermission): string =>
-	`? ${request.title} · ${optionsLine(request)} · esc decline`;
+export const permissionLine = (
+	request: CopilotPermission,
+	waiting = 0,
+): string =>
+	`? ${request.title}${waitingNote(waiting)} · ${optionsLine(request)} · esc decline`;
 
 // How to answer, in the footer's manner: each key in the text color, what it does muted. The `?`
 // before the title is the request, and the only part in the accent: the options are keys, not asks.
@@ -49,15 +57,39 @@ export const permissionSegments = (
 	request: CopilotPermission,
 	theme: Theme.Tokens,
 	textFg: ColorInput,
+	waiting = 0,
 ): Segments.Segment[] => [
 	{ text: "? ", fg: theme.accent },
 	{ text: request.title, fg: textFg },
+	...(waiting > 0 ? [{ text: waitingNote(waiting), fg: theme.muted }] : []),
 	{ text: " · ", fg: theme.muted },
 	...answerSegments(request, theme, textFg),
 ];
 
+/**
+ * The collapsed row while a session question on the view holds the answer keys
+ * (BoardNav.copilotOutranked): the request named as the copilot's, with the key that reaches it in
+ * place of answer keys that would not reach it.
+ */
+export const outrankedSegments = (
+	request: CopilotPermission,
+	theme: Theme.Tokens,
+	textFg: ColorInput,
+	waiting = 0,
+): Segments.Segment[] => [
+	{ text: "? ", fg: theme.accent },
+	{ text: "copilot asks: ", fg: theme.muted },
+	{ text: request.title, fg: textFg },
+	...(waiting > 0 ? [{ text: waitingNote(waiting), fg: theme.muted }] : []),
+	{ text: " · ", fg: theme.muted },
+	{ text: "tab", fg: textFg },
+	{ text: " to answer", fg: theme.muted },
+];
+
 export type PermissionBlockProps = {
 	request: CopilotPermission;
+	// How many more requests are queued behind this one.
+	waiting?: number;
 	// Columns the text may take, chrome already subtracted by the caller.
 	width: number;
 	// The surface's background, so a row inside a panel paints its whole width like its neighbours.
@@ -66,16 +98,19 @@ export type PermissionBlockProps = {
 
 export const PermissionBlock = ({
 	request,
+	waiting = 0,
 	width,
 	bg,
 }: PermissionBlockProps): ReactNode => {
 	const theme = useTheme();
 	// On a painted surface the text takes the surface's foreground; off one, the terminal's own.
 	const textFg = bg ? theme.text : theme.defaultFg;
+	const note = waitingNote(waiting);
 	return (
 		<>
 			<text bg={bg} fg={theme.accent}>
-				? <span fg={textFg}>{fit(request.title, width - 2)}</span>
+				? <span fg={textFg}>{fit(request.title, width - 2 - note.length)}</span>
+				{note ? <span fg={theme.muted}>{note}</span> : null}
 			</text>
 			<text bg={bg}>
 				{Segments.spans(

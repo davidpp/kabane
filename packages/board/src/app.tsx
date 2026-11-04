@@ -968,6 +968,7 @@ export const App = ({
 			detailShownElsewhere={
 				state.view.type === "events" && state.view.cardId === CopilotLog.CARD_ID
 			}
+			outranked={BoardNav.copilotOutranked(state)}
 			textareaRef={inputRef}
 			onSubmit={submitCopilot}
 			onContentChange={mirrorCopilotText}
@@ -1021,8 +1022,8 @@ export const App = ({
 				plan={
 					cardId === CopilotLog.CARD_ID ? copilotLog?.current.plan : undefined
 				}
-				permission={
-					cardId === CopilotLog.CARD_ID ? state.copilot.permission : undefined
+				permissions={
+					cardId === CopilotLog.CARD_ID ? state.copilot.permissions : undefined
 				}
 				tabbed={tabs.active === cardId}
 				lane={CardTab.view(tabs, cardId).lane}

@@ -22,7 +22,11 @@ import { CopilotLog } from "./copilot-log";
 import { elapsed } from "./elapsed";
 import { copilotIndicatorFg } from "./footer";
 import { BoardNav } from "./nav";
-import { PermissionBlock, permissionSegments } from "./permission-block";
+import {
+	outrankedSegments,
+	PermissionBlock,
+	permissionSegments,
+} from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import type { CopilotShortcut, PlanEntry } from "./ports";
 import { fieldRows, PromptField } from "./prompt-field";
@@ -127,6 +131,9 @@ export type CopilotPaneProps = {
 	// the copilot's own card, which pins the same plan and heads with the same status. The pane then
 	// contributes nothing but its input: no status row, no plan, no second thing animating.
 	detailShownElsewhere?: boolean;
+	// A session question on the view holds the answer keys (BoardNav.copilotOutranked): the row
+	// names the copilot's request and how to reach it instead of offering keys that go elsewhere.
+	outranked?: boolean;
 	textareaRef: RefObject<TextareaRenderable | null>;
 	onSubmit: () => void;
 	onContentChange: () => void;
@@ -139,6 +146,7 @@ export const CopilotPane = ({
 	log,
 	spinnerFrame,
 	detailShownElsewhere = false,
+	outranked = false,
 	textareaRef,
 	onSubmit,
 	onContentChange,
@@ -165,6 +173,7 @@ export const CopilotPane = ({
 				log={log}
 				spinnerFrame={spinnerFrame}
 				width={width}
+				outranked={outranked}
 			/>
 		);
 	}
@@ -179,7 +188,8 @@ export const CopilotPane = ({
 	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
 	// A blocked harness outranks everything else the panel could say: the turn is not going anywhere
 	// until it is answered, so the plan and the palette wait.
-	const showChoice = copilot.permission !== null && !detailShownElsewhere;
+	const [asking, ...queued] = copilot.permissions;
+	const showChoice = asking !== undefined && !detailShownElsewhere;
 	// A shortcut palette replaces the plan while one is being picked: both at once is noise, and the
 	// human typing `/` is not watching the todo.
 	const showPalette = !showChoice && matches.length > 0;
@@ -211,9 +221,10 @@ export const CopilotPane = ({
 		>
 			<box style={{ flexDirection: "column", paddingLeft: 1, paddingRight: 1 }}>
 				<text bg={paneBg}>{Segments.spans(Segments.fit(title, inner))}</text>
-				{showChoice && copilot.permission ? (
+				{showChoice && asking ? (
 					<PermissionBlock
-						request={copilot.permission}
+						request={asking}
+						waiting={queued.length}
 						width={inner - 4}
 						bg={paneBg}
 					/>
@@ -299,11 +310,13 @@ const CollapsedRow = ({
 	log,
 	spinnerFrame,
 	width,
+	outranked,
 }: {
 	copilot: BoardNav.CopilotState;
 	log: CopilotLog.Log | null;
 	spinnerFrame: string;
 	width: number;
+	outranked: boolean;
 }): ReactNode => {
 	const status =
 		copilot.turn === "idle" || !log
@@ -312,7 +325,7 @@ const CollapsedRow = ({
 	const theme = useTheme();
 	const paneBg = theme.surface.raised;
 	const line = Segments.fit(
-		collapsedSegments(copilot, log, status, theme),
+		collapsedSegments(copilot, log, status, theme, outranked),
 		width,
 	);
 	const used = Segments.plain(line).length;
@@ -342,9 +355,16 @@ export const collapsedSegments = (
 	log: CopilotLog.Log | null,
 	status: CopilotLog.Footer | null,
 	theme: Theme.Tokens,
+	outranked = false,
 ): Segments.Segment[] => {
-	if (copilot.permission)
-		return permissionSegments(copilot.permission, theme, theme.text);
+	const [asking, ...queued] = copilot.permissions;
+	if (asking)
+		return (outranked ? outrankedSegments : permissionSegments)(
+			asking,
+			theme,
+			theme.text,
+			queued.length,
+		);
 	const transcript: Segments.Segment[] = log
 		? [
 				{ text: " · ", fg: theme.muted },

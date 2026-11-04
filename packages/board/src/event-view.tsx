@@ -49,6 +49,7 @@ const RESERVED_COLS = 3;
 const MIN_ENTRY_COLS = 20;
 
 const NO_PLAN: readonly PlanEntry[] = [];
+const NO_PERMISSIONS: readonly CopilotPermission[] = [];
 
 // The prompt block: its padding either side, the scrollbar and a cell to spare come out of the row,
 // and it is held to a few rows so a long pasted prompt heads its turn rather than burying it.
@@ -176,7 +177,8 @@ export type EventViewProps = {
 	// The question the copilot's harness is blocked on, drawn between the events and the footer —
 	// outside the scrollbox, so reading back through the turn never scrolls the thing being asked
 	// off screen, and where the eye already goes for what to press.
-	permission?: CopilotPermission | null;
+	// Oldest first: the head is the one asked, the rest are counted beneath it.
+	permissions?: readonly CopilotPermission[];
 	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation):
 	// `x` is hinted only on the copilot's transcript while its turn runs. Optional so render-only
 	// tests get the transcript's own keys.
@@ -287,7 +289,7 @@ export const EventView = ({
 	scrollRef,
 	notice,
 	plan = NO_PLAN,
-	permission,
+	permissions = NO_PERMISSIONS,
 	keys = TRANSCRIPT_KEYS,
 	banner,
 	pane,
@@ -351,7 +353,7 @@ export const EventView = ({
 				scrollRef={scrollRef}
 				tabbed={tabbed}
 			/>
-			{permission ? (
+			{permissions[0] ? (
 				<box
 					style={{
 						flexDirection: "column",
@@ -363,7 +365,8 @@ export const EventView = ({
 					}}
 				>
 					<PermissionBlock
-						request={permission}
+						request={permissions[0]}
+						waiting={permissions.length - 1}
 						width={contentWidth}
 						bg={theme.surface.raised}
 					/>

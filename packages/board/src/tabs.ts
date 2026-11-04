@@ -525,6 +525,30 @@ export namespace BoardTabs {
 			: { state, effect: NOTHING };
 	};
 
+	/**
+	 * The question on screen and whether it is settled: the banner's, else the card tab's. While
+	 * there is one, its keys are the answer keys, settled or not (answerKey).
+	 */
+	export const inHand = (
+		state: State,
+	): { question: Question; settled: boolean } | undefined => {
+		const { tabs, view } = state;
+		if (view.type === "detail")
+			return view.banner
+				? {
+						question: view.banner.question,
+						settled: isAnswered(tabs, view.banner),
+					}
+				: undefined;
+		const shown =
+			view.type === "events" && tabs.active !== null
+				? cardQuestion(tabs)
+				: undefined;
+		return shown
+			? { question: shown, settled: isSettled(tabs, shown) }
+			: undefined;
+	};
+
 	/** Facts the footer's `when`s read. */
 	export const situation = (
 		state: State,
@@ -539,16 +563,7 @@ export namespace BoardTabs {
 	} => {
 		const { tabs, view } = state;
 		const banner = view.type === "detail" ? view.banner : undefined;
-		const shown =
-			view.type === "events" && tabs.active !== null
-				? cardQuestion(tabs)
-				: undefined;
-		// The question in hand and whether it is settled: the banner's, else the card tab's.
-		const asked = banner
-			? { question: banner.question, settled: isAnswered(tabs, banner) }
-			: shown
-				? { question: shown, settled: isSettled(tabs, shown) }
-				: undefined;
+		const asked = inHand(state);
 		return {
 			freeform: asked !== undefined && freeform(asked.question, asked.settled),
 			waiting: tabs.queue.length > 0,

@@ -149,6 +149,46 @@ const askingCopilot = (answers: (string | null)[]): Copilot => {
 	};
 };
 
+// A copilot that asks two questions before hearing back on either, the way a harness running
+// tools in parallel does, and finishes only once both are answered.
+const parallelCopilot = (answers: Map<string, string | null>): Copilot => {
+	const pending = new Map<string, (optionId: string | null) => void>();
+	const ask = (id: string) =>
+		new Promise<string | null>((resolve) => pending.set(id, resolve));
+	const request = (id: string, title: string) => ({
+		type: "permission" as const,
+		request: {
+			id,
+			title,
+			options: [
+				{ id: "allow", label: "Allow" },
+				{ id: "reject", label: "Reject" },
+			],
+		},
+		at: new Date().toISOString(),
+	});
+	return {
+		run: async function* () {
+			const first = ask("s1");
+			const second = ask("s2");
+			yield request("s1", "search opentui");
+			yield request("s2", "search acp sdk");
+			const [a, b] = await Promise.all([first, second]);
+			answers.set("s1", a);
+			answers.set("s2", b);
+			yield {
+				type: "text",
+				summary: "Both searches answered.",
+				at: new Date().toISOString(),
+			};
+			yield { type: "done", summary: "", at: new Date().toISOString() };
+		},
+		cancel: async () => {},
+		shortcuts: () => [],
+		answerPermission: (id, optionId) => pending.get(id)?.(optionId),
+	};
+};
+
 describe("the A prompt against a scripted copilot", () => {
 	beforeAll(async () => {
 		await freshDb(TEST_BASE);
@@ -455,6 +495,45 @@ describe("a harness blocked on a permission request", () => {
 		}
 	});
 
+	it("two at once: the first asks with the second counted, and answering it brings up the second", async () => {
+		const answers = new Map<string, string | null>();
+		const setup = await renderTest(
+			<App
+				cwd={PERMISSION_BASE}
+				basePath={PERMISSION_BASE}
+				activity={noActivity}
+				copilot={parallelCopilot(answers)}
+			/>,
+			{ width: 120, height: 24 },
+		);
+		const { renderOnce, captureCharFrame, mockInput, destroy } = setup;
+		const until = (p: (f: string) => boolean) =>
+			pumpUntil(renderOnce, captureCharFrame, p);
+		try {
+			await until((f) => f.includes("Wire the copilot"));
+			mockInput.pressKey(":");
+			await until(panelOpen);
+			await mockInput.typeText("plan it");
+			mockInput.pressEnter();
+			await until((f) =>
+				f.includes("? search opentui · 1 more waiting · 1 Allow"),
+			);
+
+			mockInput.pressKey("1");
+			const next = await until((f) => f.includes("? search acp sdk · 1 Allow"));
+			expect(next).not.toContain("more waiting");
+
+			mockInput.pressKey("2");
+			await until((f) => f.includes("Both searches answered."));
+			expect([...answers]).toEqual([
+				["s1", "allow"],
+				["s2", "reject"],
+			]);
+		} finally {
+			destroy();
+		}
+	});
+
 	it("esc declines, and nothing else ever answers for the human", async () => {
 		const answers: (string | null)[] = [];
 		const { until, mockInput, renderOnce, destroy } = await ask(answers);
@@ -493,7 +572,7 @@ const idle = (
 	hasLog: false,
 	shortcuts: [],
 	actor: null,
-	permission: null,
+	permissions: [],
 	...over,
 });
 
@@ -641,11 +720,37 @@ describe("the pane's words", () => {
 				{ id: "reject", label: "Reject" },
 			],
 		};
-		const line = collapsedSegments(idle({ permission }), null, null, T);
+		const line = collapsedSegments(
+			idle({ permissions: [permission] }),
+			null,
+			null,
+			T,
+		);
 		expect(Segments.plain(line)).toBe(
 			"? kabane_edit · 1 Allow · 2 Reject · esc decline",
 		);
 		expect(line[0]?.fg).toBe(T.accent);
 		expect(line.find((part) => part.text === "1")?.fg).toBe(T.text);
+	});
+
+	it("collapsedSegments, outranked by a question on the view, names the copilot and offers tab, not the digits", () => {
+		const permission = {
+			id: "p1",
+			title: "kabane_edit",
+			options: [{ id: "allow", label: "Allow" }],
+		};
+		const line = collapsedSegments(
+			idle({ permissions: [permission, { ...permission, id: "p2" }] }),
+			null,
+			null,
+			T,
+			true,
+		);
+		expect(Segments.plain(line)).toBe(
+			"? copilot asks: kabane_edit · 1 more waiting · tab to answer",
+		);
+		expect(line[0]?.fg).toBe(T.accent);
+		expect(line.find((part) => part.text === "tab")?.fg).toBe(T.text);
+		expect(line.some((part) => part.text === "1")).toBe(false);
 	});
 });
