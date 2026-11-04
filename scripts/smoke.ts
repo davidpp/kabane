@@ -26,7 +26,11 @@ import { z } from "zod";
 import { ContextPageSchema } from "../packages/core/context-output";
 import { TaskCommentSchema, TaskWorkLogSchema } from "../packages/core/schemas";
 import { build, DIST } from "./build";
-import { inspectArchive, verifyReleaseFiles } from "./release-artifact";
+import {
+	inspectArchive,
+	ReleaseFilenameSchema,
+	verifyReleaseFiles,
+} from "./release-artifact";
 
 const ROOT = resolve(import.meta.dir, "..");
 const WORK = mkdtempSync(join(tmpdir(), "kabane-smoke-"));
@@ -89,7 +93,7 @@ const pack = (): string => {
 	const parsed = z
 		.array(
 			z.object({
-				filename: z.string().regex(/^kabane-\d+\.\d+\.\d+\.tgz$/),
+				filename: ReleaseFilenameSchema,
 				size: z.number().int().positive(),
 			}),
 		)
