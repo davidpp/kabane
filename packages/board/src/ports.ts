@@ -101,11 +101,18 @@ export type ActivityToolDetail = {
 	diffs?: readonly ActivityDiff[];
 };
 
+// How much a notice matters: the event view draws a warning in the accent and an error in the
+// failed hue, and information muted.
+export type NoticeSeverity = "info" | "warning" | "error";
+
 export type ActivityEvent = {
 	seq: number;
 	at: string;
 	type: string;
 	summary: string;
+	// A `notice` event's severity. Absent, a notice written as `<severity>: <text>` is read by its
+	// prefix, which is how the loop's runs on disk carry it.
+	severity?: NoticeSeverity;
 	// Which of the card's `lanes` this event belongs to; absent, it shows under every lane.
 	lane?: string;
 	// The tool call this event belongs to, unique within its lane: a call and its end carry the same
@@ -310,12 +317,11 @@ export type CopilotUpdate =
 	| { type: "elicitation"; request: CopilotElicitation; at: string }
 	| { type: "withdrawn"; id: string; summary: string; at: string }
 	// Something the harness wants the human to know that is not the agent's reply (a mode it fell
-	// back from, a model it swapped): a line of the turn's log that changes nothing else. The
-	// transcript records a warning as the event type `warning` and an info as `notice`; how each
-	// reads is the event view's glyph table.
+	// back from, a model it swapped): a line of the turn's log that changes nothing else, recorded as
+	// a `notice` event with its severity.
 	| {
 			type: "notice";
-			severity: CopilotNoticeSeverity;
+			severity: NoticeSeverity;
 			summary: string;
 			at: string;
 	  }
@@ -330,8 +336,6 @@ export type CopilotUpdate =
 			commands: readonly CopilotCommand[];
 			at: string;
 	  };
-
-export type CopilotNoticeSeverity = "info" | "warning";
 
 // `used` of the window's `size` tokens are in context now.
 export type CopilotUsage = {

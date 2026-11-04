@@ -710,6 +710,65 @@ describe("tool calls in the transcript", () => {
 	});
 });
 
+describe("a notice in the transcript", () => {
+	it("draws a warning in the accent and an error in the failed hue, by its severity or the loop's prefix", async () => {
+		const notices: ActivityEvent[] = [
+			{
+				seq: 1,
+				at: T0,
+				type: "notice",
+				severity: "warning",
+				summary: "claude: fell back",
+			},
+			{
+				seq: 2,
+				at: T0,
+				type: "notice",
+				severity: "error",
+				summary: "claude: lost it",
+			},
+			{
+				seq: 3,
+				at: T0,
+				type: "notice",
+				severity: "info",
+				summary: "claude: compacted",
+			},
+			{ seq: 4, at: T0, type: "warning", summary: "could not claim JREP-2" },
+			{ seq: 5, at: T0, type: "notice", summary: "error: from a stored run" },
+		];
+		const setup = await renderTest(
+			<EventView
+				cardId="run-1"
+				initialCard={loopCard}
+				source={sourceOf(loopCard, notices)}
+				resolveShortId={() => undefined}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>,
+			{ width: 60, height: 16 },
+		);
+		try {
+			await pumpUntil(setup.renderOnce, setup.captureCharFrame, (f) =>
+				f.includes("from a stored run"),
+			);
+			const glyphOn = (text: string): number[] | undefined => {
+				const line = setup
+					.captureSpans()
+					.lines.find((l) => l.spans.some((span) => span.text.includes(text)));
+				const glyph = line?.spans.find((span) => span.text.includes("!"));
+				return glyph && ints(glyph.fg);
+			};
+			expect(glyphOn("fell back")).toEqual(rgb(Theme.DARK.accent));
+			expect(glyphOn("lost it")).toEqual(rgb(Theme.DARK.failed));
+			expect(glyphOn("compacted")).toEqual(rgb(Theme.DARK.muted));
+			expect(glyphOn("could not claim")).toEqual(rgb(Theme.DARK.accent));
+			expect(glyphOn("from a stored run")).toEqual(rgb(Theme.DARK.failed));
+		} finally {
+			setup.destroy();
+		}
+	});
+});
+
 describe("an edit's diff", () => {
 	const old = `${Array.from({ length: 40 }, (_, i) => `const line${i} = ${i};`).join("\n")}\n`;
 	const edit: ActivityEvent[] = [

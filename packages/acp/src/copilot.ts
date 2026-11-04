@@ -341,8 +341,7 @@ export namespace BoardCopilot {
 					return [
 						update("mode", `mode ${incoming.id}: moved there by the harness`),
 					];
-				// ACP's severity is open-ended; the board tells a warning from the rest, and an error the
-				// harness only notifies about (the turn carries on) is a warning to it.
+				// The severity rides beside the line, which says only whose notice it is.
 				case "commands":
 					commands = incoming.commands;
 					return [
@@ -357,11 +356,8 @@ export namespace BoardCopilot {
 					return [
 						{
 							type: "notice",
-							severity:
-								incoming.severity === "warning" || incoming.severity === "error"
-									? "warning"
-									: "info",
-							summary: `${options.harness} ${incoming.severity}: ${incoming.text}`,
+							severity: incoming.severity,
+							summary: `${options.harness}: ${incoming.text}`,
 							at: at(),
 						},
 					];

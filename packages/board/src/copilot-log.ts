@@ -86,16 +86,12 @@ export namespace CopilotLog {
 		},
 	});
 
-	// Event-view types: a call opening is its `tool_use`, and its end `tool_result` or `tool_failed`
-	// (ToolRows folds the pair into one row); the glyph table knows `text` and `error`, and `thought`
-	// falls to its blank, muted default, which is the dimmed rendering wanted for it. A notice is the
-	// event view's `warning` when it is one, a muted `notice` otherwise.
+	// Event-view types: a call opening is its `tool_use`, and its end `tool_result` or `tool_failed`,
+	// which ToolRows folds into one row with it. Every other step and a notice keep their own type:
+	// the glyph table draws `text`, `error` and a `notice` by its severity, and `thought` falls to
+	// its blank, muted default, which is the dimmed rendering wanted for it.
 	const eventType = (update: CopilotUpdate): string =>
-		update.type === "tool_call"
-			? "tool_use"
-			: update.type === "notice" && update.severity === "warning"
-				? "warning"
-				: update.type;
+		update.type === "tool_call" ? "tool_use" : update.type;
 
 	// How far the turn is through its own plan, for the one-line indicator. Absent without a plan:
 	// harnesses that never send one keep today's text rather than showing a hollow `0/0`.
@@ -128,6 +124,7 @@ export namespace CopilotLog {
 		at: update.at,
 		type: eventType(update),
 		summary: update.summary,
+		...(update.type === "notice" ? { severity: update.severity } : {}),
 		...(update.type !== "notice" && update.callId !== undefined
 			? { callId: update.callId }
 			: {}),

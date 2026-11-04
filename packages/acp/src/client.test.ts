@@ -538,6 +538,23 @@ describe("AcpClient.toUpdate", () => {
 			}),
 		).toEqual({ type: "notice", severity: "info", text: "Context compacted" });
 	});
+
+	it("reads a notice's open-ended severity as info, warning or error", () => {
+		const severity = (value: string) => {
+			const update = AcpClient.toUpdate({
+				sessionUpdate: "notice",
+				severity: value,
+				title: "t",
+			});
+			return update?.type === "notice" ? update.severity : null;
+		};
+		expect(["error", "warning", "info", "debug"].map(severity)).toEqual([
+			"error",
+			"warning",
+			"info",
+			"info",
+		]);
+	});
 });
 
 // Claude's mode list as claude-agent-acp 0.99.1 advertises it on session/new.

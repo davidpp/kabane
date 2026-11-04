@@ -256,13 +256,16 @@ notice, so at forty columns it is the first thing to go, and before the first re
 
 Exactly one surface animates per fact: the pane owns the copilot, the tab on screen owns its card,
 and every echo of a running thing renders `●` rather than a frozen spinner frame (see `spinner.ts`). `run` yields `CopilotUpdate`s (`text`, `thought`, `tool_call`, `tool_result`,
-`mode`, `error`, `done`, `notice` with a `severity` of `info` or `warning`, the `commands`
+`mode`, `error`, `done`, `notice` with a `severity` of `info`, `warning` or `error`, the `commands`
 list above, and `usage`). A tool call is a `tool_call` and then its end, `tool_result` or
 `tool_failed`, both carrying the call's `callId` and its `detail` (ACP's raw input, output and
 diffs, capped by `ToolCalls.detail`), so the transcript folds them into one row that opens on the
 real tool, its input and its diff, the way the loop's do. An end marked `wrote` (a call to one of
 kabane's write tools) reloads the board, so the copilot's writes appear as they land. A notice is a line of the turn's
-transcript and changes nothing else: an info as the event type `notice`, a warning as `warning`. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
+transcript and changes nothing else: a `notice` event carrying its `severity`, which the event view
+draws as `!` in the accent for a warning, in the failed hue for an error, and muted for information.
+The loop's notices carry theirs as a `<severity>: ` prefix and its own warnings as the event type
+`warning`, which read the same way. One turn at a time: while one runs the input reads `a turn is running · send when it ends`
 rather than inviting a prompt, and `enter` flashes `a turn is running · o for its transcript, x
 there stops it` instead of dropping what was typed — the draft keeps until the turn ends.
 

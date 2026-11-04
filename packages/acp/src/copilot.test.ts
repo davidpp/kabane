@@ -404,10 +404,7 @@ describe("BoardCopilot", () => {
 				"mode",
 				"mode acceptEdits: claude opened in it, not in its manual mode (default), so kabane keeps it over auto",
 			],
-			[
-				"notice",
-				"claude warning: Auto mode unavailable: Using Accept edits instead.",
-			],
+			["notice", "claude: Auto mode unavailable: Using Accept edits instead."],
 		]);
 		expect(updates[1]).toMatchObject({ severity: "warning" });
 		copilot.close();

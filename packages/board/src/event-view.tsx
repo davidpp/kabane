@@ -40,6 +40,7 @@ import {
 	type CardHeader,
 	type CopilotPermission,
 	isInFlight,
+	type NoticeSeverity,
 	type PlanEntry,
 	PROMPT_EVENT,
 } from "./ports";
@@ -141,7 +142,13 @@ const eventStyle = (
 		case "permission":
 			return { glyph: "?", glyphFg: theme.accent, textFg: theme.defaultFg };
 		case "notice":
-			return noticeStyle(event.summary, theme);
+			return noticeStyle(
+				event.severity ?? severityPrefix(event.summary),
+				theme,
+			);
+		// The loop's own warnings (a claim it could not take, a question it gave up on).
+		case "warning":
+			return noticeStyle("warning", theme);
 		case "error":
 			return { glyph: "✗", glyphFg: theme.failed, textFg: theme.failed };
 		case "metric":
@@ -151,14 +158,19 @@ const eventStyle = (
 	}
 };
 
-// What a harness wanted the human to know, which the loop writes as `<severity>: <text>`: a warning
-// in the accent, since it says the session is not running the way it was asked to; an error in the
-// failed hue; anything else muted.
+// A notice that carries no severity of its own: the loop writes its harness's as `<severity>: <text>`,
+// and its runs on disk keep them that way.
+const severityPrefix = (summary: string): NoticeSeverity => {
+	const prefix = /^(\w+):/.exec(summary)?.[1];
+	return prefix === "warning" || prefix === "error" ? prefix : "info";
+};
+
+// What a harness wanted the human to know: a warning in the accent, since it says the session is not
+// running the way it was asked to; an error in the failed hue; information muted.
 const noticeStyle = (
-	summary: string,
+	severity: NoticeSeverity,
 	theme: Theme.Tokens,
 ): { glyph: string; glyphFg: ColorInput; textFg: ColorInput } => {
-	const severity = /^(\w+):/.exec(summary)?.[1];
 	const fg =
 		severity === "warning"
 			? theme.accent
