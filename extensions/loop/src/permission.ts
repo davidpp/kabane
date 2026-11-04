@@ -4,7 +4,7 @@
 //
 // The request becomes a `question` activity on the asking claim's core session, carrying the
 // harness's options verbatim, which moves the session to `awaiting_input` and onto
-// `getNeedsInput` (the board's `!` and banner). The relay then waits for the `decision`
+// `getNeedsInput` (the board's `!` and banner). The relay then waits for the answer
 // `Planner.answerQuestion` writes, maps it back to the harness's option id, and answers the
 // harness with it. A run that stops while it waits cancels the request through ACP instead.
 import type { AcpClient } from "@cabane/acp";
@@ -94,7 +94,7 @@ export namespace Permission {
 		});
 
 	/**
-	 * The latest `decision` answering `questionId`, once there is one; undefined when `signal`
+	 * The latest activity answering `questionId`, once there is one; undefined when `signal`
 	 * aborts first. A failed read is reported once and retried: it is never taken as an answer.
 	 */
 	const awaitAnswer = async (
@@ -108,8 +108,8 @@ export namespace Permission {
 				deps.sessionId,
 			);
 			if (activities.ok) {
-				const answer = activities.value.findLast(
-					(a) => a.type === "decision" && isAnswerTo(a.context, questionId),
+				const answer = activities.value.findLast((a) =>
+					isAnswerTo(a.context, questionId),
 				);
 				if (answer) return answer;
 			} else if (activities.error.message !== reported) {

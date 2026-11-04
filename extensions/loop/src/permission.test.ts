@@ -4,7 +4,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AcpClient } from "@cabane/acp";
-import { parseQuestionBody, Planner, type Result } from "@cabane/core";
+import {
+	answersContext,
+	isAnswerTo,
+	parseQuestionBody,
+	Planner,
+	type Result,
+} from "@cabane/core";
 import { Permission } from "./permission";
 import type { RunStore } from "./store";
 
@@ -149,6 +155,21 @@ describe("Permission.relay", () => {
 		expect(after.ok && after.value).toEqual([]);
 	});
 
+	it("takes the answer its question names, whatever the answer's type", async () => {
+		const sessionId = await session();
+		const { result } = relay(sessionId);
+		const question = await pending(sessionId);
+		const answered = await Planner.addActivity(base, {
+			sessionId,
+			type: "answer",
+			context: answersContext(question.id),
+			body: "Reject",
+		});
+		if (!answered.ok) throw answered.error;
+		const chosen = await result;
+		expect(chosen.ok && chosen.value).toBe("reject");
+	});
+
 	it("asks again when the answer names no option, rather than guessing", async () => {
 		const sessionId = await session();
 		const { result, events } = relay(sessionId);
@@ -183,7 +204,8 @@ describe("Permission.relay", () => {
 		]);
 		const activities = await Planner.getActivities(base, sessionId);
 		expect(
-			activities.ok && activities.value.some((a) => a.type === "decision"),
+			activities.ok &&
+				activities.value.some((a) => isAnswerTo(a.context, question.id)),
 		).toBe(false);
 
 		// What the runner's settle does with a cancelled claim.
