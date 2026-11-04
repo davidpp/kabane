@@ -1,11 +1,12 @@
-import { serveStdio } from "@cabane/core";
+import { KABANE_TOOLS, serveStdio } from "@cabane/core";
 import { failure, success } from "@cabane/extension";
 import { version } from "../../package.json";
+import { configTools } from "../config-tools";
 import { type Command, openContext, resolveScopeUri } from "../context";
 import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
 
 /**
- * Serve this device's tracker over MCP on stdio. Same tool list as the hub;
+ * Serve this device's tracker and local config over MCP on stdio;
  * here a write may omit `scopeUri` and fall back to the scope of the directory
  * the server was started in, because a device has a working directory and the
  * hub does not.
@@ -34,6 +35,7 @@ export const mcp: Command = {
 				scopeRequired: false,
 			},
 			{ name: "kabane", version },
+			[...KABANE_TOOLS, ...configTools(bare.home)],
 		);
 		return success({ served: true }, "");
 	},

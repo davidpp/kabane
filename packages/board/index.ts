@@ -4,6 +4,8 @@ export { App, type AppProps } from "./src/app";
 export { Board, type BoardProps } from "./src/board";
 export { BoardContext } from "./src/context";
 export { BoardData } from "./src/data";
+// The CLI's board help reads the same key descriptions as the on-screen help sheet.
+export { Keymap } from "./src/keymap";
 // Exported for the CLI: `kabane open` walks the same app → browser → clipboard chain the `O` key does.
 export { Launcher } from "./src/launcher";
 // For a host with more than one contributor (the CLI's enabled extensions) behind the one port.

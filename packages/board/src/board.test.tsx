@@ -652,6 +652,7 @@ test("the ? sheet lists the view's own keys under its name, then the ones that w
 				).length,
 			}).toEqual({ label: binding.label, rows: 1 });
 		expect(frame).not.toContain("fold subtasks");
+		expect(frame).toMatch(/A : +copilot: config & help/);
 		// Short enough for the pane, so the sheet's own row only says how to close it.
 		expect(frame).toContain("? esc close");
 		expect(frame).not.toContain("j/k scroll ·");

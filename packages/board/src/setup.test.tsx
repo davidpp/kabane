@@ -177,6 +177,12 @@ describe("SetupScreen at 120 and 40 columns", () => {
 			try {
 				const frame = await until((f) => f.includes(WELCOME_LEAD));
 				expectWhole(frame, WELCOME_LINES);
+				expectWhole(frame, [
+					"on the board, press A for the copilot:",
+					'ask "how do I…" or change settings.',
+					"or use kabane config in a terminal.",
+					"enter set up · esc quit",
+				]);
 			} finally {
 				destroy();
 			}

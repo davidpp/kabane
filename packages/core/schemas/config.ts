@@ -16,30 +16,31 @@ import { z } from "zod";
  * the remote treat this machine as new and hand back its own ops.
  */
 export const SyncConfigSchema = z.object({
-	/** Master switch. Off means no surface ever opens a connection. */
-	enabled: z.boolean().default(false),
-
-	/** Worker base URL, e.g. https://planner-sync.<subdomain>.workers.dev */
-	url: z.string().optional(),
-
-	/** Bearer secret. Matches the Worker's SYNC_TOKEN. */
-	token: z.string().optional(),
-
-	/** Device identity for the first arming only (see above). */
-	deviceId: z.string().optional(),
-
-	/**
-	 * Extra request headers sent with every push and pull. This is how a device
-	 * passes the edge in front of the hub: Cloudflare Access service-token
-	 * credentials (`CF-Access-Client-Id` / `CF-Access-Client-Secret`) travel
-	 * here, separate from the log's own bearer `token`.
-	 */
-	headers: z.record(z.string()).optional(),
-
-	/**
-	 * Push chunk ceiling in bytes. 256 KB sits comfortably inside every limit in
-	 * the path — the DO's 2 MB bound-parameter cap is the tight one.
-	 */
-	batchBytes: z.number().positive().default(262144),
+	enabled: z
+		.boolean()
+		.default(false)
+		.describe("Master sync switch; off means no surface opens a connection."),
+	url: z.string().optional().describe("Sync Worker's base URL."),
+	token: z
+		.string()
+		.optional()
+		.describe("Bearer secret matching the Worker's SYNC_TOKEN."),
+	deviceId: z
+		.string()
+		.optional()
+		.describe("Device identity for first arming only (read-only, write-once)."),
+	headers: z
+		.record(z.string())
+		.optional()
+		.describe(
+			"Extra push/pull headers, including Cloudflare Access service-token credentials.",
+		),
+	// 256 KB fits below the DO's 2 MB bound-parameter cap.
+	batchBytes: z
+		.number()
+		.finite()
+		.positive()
+		.default(262144)
+		.describe("Push chunk ceiling in bytes; defaults to 262144."),
 });
 export type SyncConfig = z.infer<typeof SyncConfigSchema>;
