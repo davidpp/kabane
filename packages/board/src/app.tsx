@@ -968,6 +968,7 @@ export const App = ({
 			detailShownElsewhere={
 				state.view.type === "events" && state.view.cardId === CopilotLog.CARD_ID
 			}
+			outranked={BoardNav.copilotOutranked(state)}
 			textareaRef={inputRef}
 			onSubmit={submitCopilot}
 			onContentChange={mirrorCopilotText}

@@ -66,6 +66,26 @@ export const permissionSegments = (
 	...answerSegments(request, theme, textFg),
 ];
 
+/**
+ * The collapsed row while a session question on the view holds the answer keys
+ * (BoardNav.copilotOutranked): the request named as the copilot's, with the key that reaches it in
+ * place of answer keys that would not reach it.
+ */
+export const outrankedSegments = (
+	request: CopilotPermission,
+	theme: Theme.Tokens,
+	textFg: ColorInput,
+	waiting = 0,
+): Segments.Segment[] => [
+	{ text: "? ", fg: theme.accent },
+	{ text: "copilot asks: ", fg: theme.muted },
+	{ text: request.title, fg: textFg },
+	...(waiting > 0 ? [{ text: waitingNote(waiting), fg: theme.muted }] : []),
+	{ text: " · ", fg: theme.muted },
+	{ text: "tab", fg: textFg },
+	{ text: " to answer", fg: theme.muted },
+];
+
 export type PermissionBlockProps = {
 	request: CopilotPermission;
 	// How many more requests are queued behind this one.

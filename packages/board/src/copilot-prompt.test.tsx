@@ -732,4 +732,25 @@ describe("the pane's words", () => {
 		expect(line[0]?.fg).toBe(T.accent);
 		expect(line.find((part) => part.text === "1")?.fg).toBe(T.text);
 	});
+
+	it("collapsedSegments, outranked by a question on the view, names the copilot and offers tab, not the digits", () => {
+		const permission = {
+			id: "p1",
+			title: "kabane_edit",
+			options: [{ id: "allow", label: "Allow" }],
+		};
+		const line = collapsedSegments(
+			idle({ permissions: [permission, { ...permission, id: "p2" }] }),
+			null,
+			null,
+			T,
+			true,
+		);
+		expect(Segments.plain(line)).toBe(
+			"? copilot asks: kabane_edit · 1 more waiting · tab to answer",
+		);
+		expect(line[0]?.fg).toBe(T.accent);
+		expect(line.find((part) => part.text === "tab")?.fg).toBe(T.text);
+		expect(line.some((part) => part.text === "1")).toBe(false);
+	});
 });

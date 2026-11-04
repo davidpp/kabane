@@ -3,7 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { BoardNav } from "./nav";
-import type { ActivityCard } from "./ports";
+import type { ActivityCard, CopilotPermission } from "./ports";
 import { BoardTabs } from "./tabs";
 
 const task = (id: string, shortId: string): Task => ({
@@ -505,6 +505,91 @@ describe("the mouse", () => {
 			BoardNav.reduceMouse(withLoop(), { type: "answer", index: 0 }).effect
 				.type,
 		).toBe("none");
+	});
+});
+
+// Seen live: with a loop question on its tab and the copilot blocked at the same time, the `1`
+// pressed under the loop's question answered the copilot, which was checked first.
+describe("a session question and the copilot's request pending together", () => {
+	const request: CopilotPermission = {
+		id: "c1",
+		title: "web_search",
+		options: [
+			{ id: "allow", label: "Allow" },
+			{ id: "reject", label: "Reject" },
+		],
+	};
+	const asking = (s: BoardNav.BoardState): BoardNav.BoardState =>
+		BoardNav.withCopilotPermission(
+			BoardNav.withCopilotTurn(s, "running"),
+			request,
+		);
+	const onTab = () => press(asking(withLoop()), "}").state;
+	const pinned = () => press(asking(withLoop()), "!").state;
+
+	it("on the card's tab a digit answers the loop's question, and the copilot's waits", () => {
+		const s = onTab();
+		expect(BoardNav.copilotOutranked(s)).toBe(true);
+		const { state, effect } = press(s, "2");
+		expect(effect).toEqual({
+			type: "answerQuestion",
+			questionId: "q-loop",
+			answer: "TTL",
+		});
+		expect(state.copilot.permissions).toEqual([request]);
+		// Settled but still on screen: a second digit answers nothing, the copilot included.
+		const again = press(state, "1");
+		expect(again.effect.type).toBe("none");
+		expect(again.state.copilot.permissions).toEqual([request]);
+	});
+
+	it("on the card's tab esc goes to the tracker and declines nothing", () => {
+		const { state, effect } = press(onTab(), "escape");
+		expect(effect.type).toBe("none");
+		expect(state.tabs.active).toBeNull();
+		expect(state.copilot.permissions).toEqual([request]);
+	});
+
+	it("under a pinned banner a digit answers the banner's question", () => {
+		const { state, effect } = press(pinned(), "1");
+		expect(effect).toEqual({
+			type: "answerQuestion",
+			questionId: "q-solo",
+			answer: "Pin",
+		});
+		expect(state.copilot.permissions).toEqual([request]);
+	});
+
+	it("tab reaches the copilot, whose request then takes the digit, and the loop's still waits", () => {
+		const focused = press(onTab(), "tab").state;
+		expect(focused.focus).toBe("copilot");
+		expect(BoardNav.copilotOutranked(focused)).toBe(false);
+		const { state, effect } = press(focused, "1");
+		expect(effect).toEqual({
+			type: "copilotAnswer",
+			id: "c1",
+			optionId: "allow",
+		});
+		expect(state.tabs.answered.size).toBe(0);
+		// Back on the tab, the loop's question takes its digits as before.
+		const back = press(state, "tab", "2");
+		expect(back.effect).toMatchObject({
+			type: "answerQuestion",
+			questionId: "q-loop",
+		});
+	});
+
+	it("with no question in hand the copilot's request has the digits, whatever the queue holds", () => {
+		const tracker = asking(withLoop());
+		expect(BoardNav.copilotOutranked(tracker)).toBe(false);
+		expect(press(tracker, "1").effect).toEqual({
+			type: "copilotAnswer",
+			id: "c1",
+			optionId: "allow",
+		});
+		// A card's tab with no question of its own is the same.
+		const quiet = press(asking(withLoop([card()], [SOLO_Q])), "}").state;
+		expect(press(quiet, "2").effect).toMatchObject({ optionId: "reject" });
 	});
 });
 

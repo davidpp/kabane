@@ -498,6 +498,16 @@ export namespace BoardNav {
 		return digit >= 1 && digit <= 9 ? digit : null;
 	};
 
+	/**
+	 * Whether the copilot's request waits behind a session question the view has in hand — a pinned
+	 * banner or a card tab's, settled or not. Both ask with the same digits, and a digit must answer
+	 * the one being read, not whichever the router checks first. So the view's question keeps its
+	 * keys while it is on screen, and the copilot's row names its request and how to reach it: focus
+	 * the copilot, whose panel then asks it and takes the digits.
+	 */
+	export const copilotOutranked = (state: BoardState): boolean =>
+		state.focus !== "copilot" && BoardTabs.inHand(state) !== undefined;
+
 	// The keys that answer a blocked harness: a digit picks its option, `esc` declines. Null for
 	// everything else, which then routes as it always does — so `x` on the transcript still cancels
 	// the turn, the way out when the human means to answer neither.
@@ -1137,9 +1147,15 @@ export namespace BoardNav {
 		// is the esc layering the board already has, one press one level: the newest, most local
 		// thing goes first, and here it is the thing something else is waiting on. Search-typing and
 		// an open prompt are the exceptions: a digit is a character there, and the prompt's `esc`
-		// closes it. Every other key falls through.
+		// closes it, and so is a session question the view has in hand (copilotOutranked). Every
+		// other key falls through.
 		const asking = state.copilot.permissions[0];
-		if (asking && state.search.mode !== "typing" && !state.prompt.open) {
+		if (
+			asking &&
+			state.search.mode !== "typing" &&
+			!state.prompt.open &&
+			!copilotOutranked(state)
+		) {
 			const answered = answerPermission(state, asking, key);
 			if (answered) return answered;
 		}
