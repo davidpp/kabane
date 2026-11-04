@@ -66,7 +66,7 @@ export namespace Brief {
 	const filing = ({ runId, parent, lens, gates }: Lens): string =>
 		[
 			`You are the \`${lens}\` verifier of kabane loop run ${runId}, which drove the subtasks of ${label(parent)} ("${parent.title}") to completion. The plan is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: a finding is work for an implementing session.`,
-			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. A p1 keeps the run open until it is fixed, so file p1 only for what must be fixed before this work is done. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
+			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. A p1 keeps the run open and is claimed as work until it is fixed. Grade by the lens's definitions as written: a finding that meets the p1 definition is p1 even when the fix is small, and one that does not stays p2 or p3. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
 			"When everything is filed, end your turn with one line: how many findings you filed at each severity.",
 		].join("\n\n");
 
