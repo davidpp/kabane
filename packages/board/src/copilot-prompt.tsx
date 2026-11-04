@@ -179,7 +179,8 @@ export const CopilotPane = ({
 	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
 	// A blocked harness outranks everything else the panel could say: the turn is not going anywhere
 	// until it is answered, so the plan and the palette wait.
-	const showChoice = copilot.permission !== null && !detailShownElsewhere;
+	const [asking, ...queued] = copilot.permissions;
+	const showChoice = asking !== undefined && !detailShownElsewhere;
 	// A shortcut palette replaces the plan while one is being picked: both at once is noise, and the
 	// human typing `/` is not watching the todo.
 	const showPalette = !showChoice && matches.length > 0;
@@ -211,9 +212,10 @@ export const CopilotPane = ({
 		>
 			<box style={{ flexDirection: "column", paddingLeft: 1, paddingRight: 1 }}>
 				<text bg={paneBg}>{Segments.spans(Segments.fit(title, inner))}</text>
-				{showChoice && copilot.permission ? (
+				{showChoice && asking ? (
 					<PermissionBlock
-						request={copilot.permission}
+						request={asking}
+						waiting={queued.length}
 						width={inner - 4}
 						bg={paneBg}
 					/>
@@ -343,8 +345,9 @@ export const collapsedSegments = (
 	status: CopilotLog.Footer | null,
 	theme: Theme.Tokens,
 ): Segments.Segment[] => {
-	if (copilot.permission)
-		return permissionSegments(copilot.permission, theme, theme.text);
+	const [asking, ...queued] = copilot.permissions;
+	if (asking)
+		return permissionSegments(asking, theme, theme.text, queued.length);
 	const transcript: Segments.Segment[] = log
 		? [
 				{ text: " · ", fg: theme.muted },

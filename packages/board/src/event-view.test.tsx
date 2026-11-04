@@ -287,11 +287,13 @@ describe("the transcript's look", () => {
 				source={turnSource}
 				resolveShortId={() => undefined}
 				scrollRef={createRef<ScrollBoxRenderable>()}
-				permission={{
-					id: "p1",
-					title: "kabane_edit JREP-1",
-					options: [{ id: "once", label: "Allow once" }],
-				}}
+				permissions={[
+					{
+						id: "p1",
+						title: "kabane_edit JREP-1",
+						options: [{ id: "once", label: "Allow once" }],
+					},
+				]}
 			/>,
 			{ width: 40, height: 24 },
 		);
