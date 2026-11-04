@@ -135,7 +135,7 @@ describe("ElicitationBlock", () => {
 		destroy();
 	});
 
-	it("held to fewer rows, it gives up the blank rows, then each description's tail, then the descriptions", async () => {
+	it("held to fewer rows, it gives up the blank rows, then each description's tail", async () => {
 		const at = async (rows: number) => {
 			const { frame, destroy } = await mount(
 				DELIVERY,
@@ -168,15 +168,12 @@ describe("ElicitationBlock", () => {
 			"2 At least once  Replay the turn from i…",
 			"3 Ask the human",
 		]);
-		// The labels alone, as many to a row as fit whole.
-		expect((await at(7)).slice(4)).toEqual([
-			"1 At most once · 2 At least once",
-			"3 Ask the human",
-			"esc decline",
-		]);
+		// Tighter than that, it takes the rows it needs rather than draw over itself: each option
+		// keeps a row of its own, because the cursor is a row.
+		expect(await at(7)).toEqual(await at(10));
 	});
 
-	it("undescribed options too many for one row break between two options, never through one", async () => {
+	it("undescribed options take a row each, as described ones do", async () => {
 		const { frame, destroy } = await mount(
 			{
 				...TAGS,
@@ -195,9 +192,12 @@ describe("ElicitationBlock", () => {
 			ElicitationForm.start(),
 			30,
 		);
-		expect(rowsOf(frame).slice(3, 6)).toEqual([
-			"1 Alpha · 2 Beta · 3 Gamma",
-			"4 Delta · 5 Epsilon",
+		expect(rowsOf(frame).slice(3, 9)).toEqual([
+			"1 Alpha",
+			"2 Beta",
+			"3 Gamma",
+			"4 Delta",
+			"5 Epsilon",
 			"",
 		]);
 		destroy();
@@ -221,21 +221,55 @@ describe("ElicitationBlock", () => {
 		destroy();
 	});
 
-	it("a multi-select shows what is toggled, on one row when it fits", async () => {
-		for (const width of [40, 120]) {
-			const { frame, destroy } = await mount(
-				TAGS,
-				{ at: 0, values: {}, picked: [2] },
-				width,
-			);
-			expect(lines(frame)).toEqual([
-				"? Which tags apply?",
-				"Tags",
-				"1 [ ] Alpha · 2 [ ] Beta · 3 [x] Gamma",
-				"enter confirm · esc decline",
-			]);
-			destroy();
-		}
+	it("a multi-select shows what is toggled", async () => {
+		const { frame, destroy } = await mount(
+			TAGS,
+			{ at: 0, values: {}, picked: [2] },
+			40,
+		);
+		expect(lines(frame)).toEqual([
+			"? Which tags apply?",
+			"Tags",
+			"1 [ ] Alpha",
+			"2 [ ] Beta",
+			"3 [x] Gamma",
+			"enter confirm · esc decline",
+		]);
+		destroy();
+	});
+
+	it("the cursor's option is on the selected surface across the row, its note's rows too", async () => {
+		const T = Theme.DARK;
+		const bg = T.surface.raised;
+		const { frame, captureSpans, destroy } = await mount(
+			DELIVERY,
+			{ ...ElicitationForm.start(), cursor: 1 },
+			40,
+			{ bg },
+		);
+		const rgb = (hex: string): string =>
+			RGBA.fromHex(hex).toInts().slice(0, 3).join();
+		// Every cell of a row painted, as the Selection Rule wants: the row's backgrounds and how
+		// many columns they cover.
+		const painted = (y: number): { bgs: string[]; cols: number } => {
+			const spans = captureSpans().lines[y]?.spans ?? [];
+			return {
+				bgs: [...new Set(spans.map((s) => s.bg.toInts().slice(0, 3).join()))],
+				cols: spans.reduce((n, s) => n + s.text.length, 0),
+			};
+		};
+		const rows = rowsOf(frame);
+		const at = rows.indexOf("2 At least once");
+		expect(rows.slice(at, at + 3)).toEqual([
+			"2 At least once",
+			"  Replay the turn from its last",
+			"  checkpoint",
+		]);
+		for (const y of [at, at + 1, at + 2])
+			expect(painted(y)).toEqual({ bgs: [rgb(T.surface.selected)], cols: 40 });
+		for (const y of [at - 2, at - 1, at + 3])
+			expect(painted(y).bgs).not.toContain(rgb(T.surface.selected));
+		destroy();
 	});
 
 	it("answerKeys names what answers each kind of field", () => {
@@ -294,7 +328,7 @@ describe("a form's colors on the copilot's raised panel", () => {
 		destroy();
 	});
 
-	it("undescribed: the labels in the text color, the separators muted", async () => {
+	it("undescribed: the labels in the text color", async () => {
 		const { spans, destroy } = await mount(
 			UNDESCRIBED,
 			ElicitationForm.start(),
@@ -303,7 +337,6 @@ describe("a form's colors on the copilot's raised panel", () => {
 		);
 		expect(fgOf(spans, "Redis")).toEqual(rgb(T.text));
 		expect(fgOf(spans, "Memory")).toEqual(rgb(T.text));
-		expect(fgOf(spans, " · ")).toEqual(rgb(T.muted));
 		destroy();
 	});
 
@@ -368,7 +401,9 @@ describe("the copilot pane with a form at the head of its queue", () => {
 			"copilot · claude · JALL-1 · running",
 			"? Which tags apply?",
 			"Tags",
-			"1 [ ] Alpha · 2 [ ] Beta · 3 [ ] Gamma",
+			"1 [ ] Alpha",
+			"2 [ ] Beta",
+			"3 [ ] Gamma",
 			"enter confirm · esc decline",
 		]);
 		destroy();

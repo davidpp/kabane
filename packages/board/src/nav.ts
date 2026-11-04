@@ -574,6 +574,20 @@ export namespace BoardNav {
 		return state.copilot.text === "" && state.copilot.history.length > 0;
 	};
 
+	// Whether a key gives an answer rather than moving through one: a digit anywhere, and on the
+	// copilot's form in hand every key it takes but the cursor's and `esc`, which settle nothing.
+	const answers = (state: BoardState, key: KeyInput): boolean => {
+		if (optionIndex(key) !== null) return true;
+		const head = state.copilot.asks[0];
+		if (
+			head?.type !== "elicitation" ||
+			!askInHand(state) ||
+			["escape", "up", "down"].includes(key.name)
+		)
+			return false;
+		return ElicitationForm.reduceKey(head.request, head.draft, key) !== null;
+	};
+
 	// Which numbered choice a key names, 1-based, or null for a key that names none.
 	const optionIndex = (key: KeyInput): number | null => {
 		if (key.ctrl || key.meta) return null;
@@ -1361,10 +1375,11 @@ export namespace BoardNav {
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
 		// A digit answers only a question that has been on screen long enough to read: one that just
 		// appeared, or just replaced the one in hand, holds the key and says so rather than taking an
-		// answer the human never saw. Search-typing and an open prompt take a digit as a character.
-		// A shifted digit is no answer (`!` on some terminals), so it passes.
+		// answer the human never saw. So does every other key that answers a form (`enter` picks the
+		// cursor's option). Search-typing and an open prompt take a digit as a character. A shifted
+		// digit is no answer (`!` on some terminals), so it passes.
 		if (
-			optionIndex(key) !== null &&
+			answers(state, key) &&
 			!key.shift &&
 			state.search.mode !== "typing" &&
 			!state.prompt.open &&
@@ -1381,12 +1396,12 @@ export namespace BoardNav {
 				},
 			};
 		// A harness blocked on a question is the most urgent thing on screen, so it takes the keys
-		// that answer it — a digit, `esc` — ahead of every view and of the copilot's own focus. That
-		// is the esc layering the board already has, one press one level: the newest, most local
-		// thing goes first, and here it is the thing something else is waiting on. Search-typing and
-		// an open prompt are the exceptions: a digit is a character there, and the prompt's `esc`
-		// closes it, and so is a session question the view has in hand (copilotOutranked). Every
-		// other key falls through.
+		// that answer it — a digit, `esc`, a form's cursor — ahead of every view and of the copilot's
+		// own focus. That is the esc layering the board already has, one press one level: the newest,
+		// most local thing goes first, and here it is the thing something else is waiting on.
+		// Search-typing and an open prompt are the exceptions: a digit is a character there, and the
+		// prompt's `esc` closes it, and so is a session question the view has in hand
+		// (copilotOutranked). Every other key falls through.
 		if (askInHand(state)) {
 			const asking = state.copilot.asks[0];
 			const answered = asking ? answerAsk(state, asking, key) : null;

@@ -2,11 +2,15 @@
 // functions over the form and the human's draft, so every key and every refusal is tested without a
 // renderer; nav.ts routes the keys here and the elicitation block draws the draft.
 //
-// A choice takes a digit, as a permission does. A multi-select toggles with digits and confirms
-// with `enter`. A boolean takes `y`/`n`. Text and numbers are typed into the block's input and sent
-// with `enter`, which also leaves an optional field of any kind empty. `esc` declines the whole form
-// wherever it is. Nothing is ever filled in on the human's behalf: a field they leave empty is
-// absent from the answer.
+// A choice or a multi-select has a cursor over its options, starting on the first, moved with
+// `up`/`down`: `enter` picks the cursor's option on a choice, `space` toggles it on a multi-select,
+// whose `enter` sends what is toggled. A digit names an option directly, as on a permission, and
+// moves the cursor to it. `s` leaves an optional one empty. Not `j`/`k`: the form takes its keys
+// ahead of every view, and those two go on moving the board and scrolling the transcript under it.
+// A boolean takes `y`/`n`, `enter` leaving an optional one empty. Text and numbers are typed into the
+// block's input and sent with `enter`, which also leaves an optional one empty. `esc` declines the
+// whole form wherever it is. Nothing is ever filled in on the human's behalf: a field they leave
+// empty is absent from the answer.
 import { FormField } from "./form-field";
 import type {
 	CopilotElicitation,
@@ -23,6 +27,9 @@ export namespace ElicitationForm {
 		values: Readonly<Record<string, CopilotFormValue>>;
 		// The options toggled on the multi-select in hand, by index, in the order they were picked.
 		picked: readonly number[];
+		// The option the cursor is on, on the choice or multi-select in hand, by index. Absent reads as
+		// the first, where every field starts.
+		cursor?: number;
 		// Why the last answer to the field in hand was refused; the field is asked again.
 		error?: string;
 	};
@@ -32,6 +39,7 @@ export namespace ElicitationForm {
 		sequence?: string;
 		ctrl?: boolean;
 		meta?: boolean;
+		shift?: boolean;
 	};
 
 	// What a key or a send did: moved the draft on, or finished the form. A key the form does not
@@ -48,6 +56,9 @@ export namespace ElicitationForm {
 		request: CopilotElicitation,
 		draft: Draft,
 	): CopilotFormField | undefined => request.fields[draft.at];
+
+	/** The option the cursor is on. */
+	export const cursorOf = (draft: Draft): number => draft.cursor ?? 0;
 
 	/** Whether the field in hand is typed into the input rather than answered by keys. */
 	export const typed = (field: CopilotFormField | undefined): boolean =>
@@ -92,6 +103,68 @@ export namespace ElicitationForm {
 			? picked.filter((p) => p !== index)
 			: [...picked, index];
 
+	type Options = Extract<CopilotFormField, { type: "choice" | "choices" }>;
+
+	/**
+	 * Option `index` of the choice or multi-select in hand, as its digit or a click names it: a choice
+	 * is answered with it, a multi-select toggles it, and the cursor moves to it. Null for a field
+	 * with no options, or an index past them.
+	 */
+	export const pick = (
+		request: CopilotElicitation,
+		draft: Draft,
+		index: number,
+	): Step => {
+		const current = field(request, draft);
+		if (current?.type !== "choice" && current?.type !== "choices") return null;
+		const option = current.options[index];
+		if (!option) return null;
+		if (current.type === "choice") return advance(request, draft, option.value);
+		const picked = toggle(draft.picked, index);
+		if (current.maxItems !== undefined && picked.length > current.maxItems)
+			return refuse(
+				{ ...draft, cursor: index },
+				`pick at most ${current.maxItems}`,
+			);
+		return {
+			draft: { at: draft.at, values: draft.values, picked, cursor: index },
+		};
+	};
+
+	// The cursor `delta` options on, held at either end rather than wrapping.
+	const move = (current: Options, draft: Draft, delta: 1 | -1): Step => ({
+		draft: {
+			...draft,
+			cursor: Math.max(
+				0,
+				Math.min(cursorOf(draft) + delta, current.options.length - 1),
+			),
+		},
+	});
+
+	const isEnter = (key: Key): boolean =>
+		key.name === "return" || key.name === "enter";
+
+	// The keys of a field answered from its options.
+	const reduceOptionKey = (
+		request: CopilotElicitation,
+		draft: Draft,
+		current: Options,
+		key: Key,
+	): Step => {
+		const digit = digitOf(key);
+		if (digit !== undefined) return pick(request, draft, digit - 1);
+		if (key.name === "up") return move(current, draft, -1);
+		if (key.name === "down") return move(current, draft, 1);
+		if (isChar(key, "s") && !key.shift)
+			return current.required ? null : advance(request, draft, undefined);
+		if (current.type === "choice")
+			return isEnter(key) ? pick(request, draft, cursorOf(draft)) : null;
+		if (key.name === "space" || isChar(key, " "))
+			return pick(request, draft, cursorOf(draft));
+		return isEnter(key) ? submit(request, draft, "") : null;
+	};
+
 	/**
 	 * A key on the form in hand. `esc` declines anywhere; a typed field answers nothing else here,
 	 * because its input takes the keys and `enter` arrives through `submit`.
@@ -105,31 +178,13 @@ export namespace ElicitationForm {
 		if (key.name === "escape") return { answer: DECLINE };
 		const current = field(request, draft);
 		if (typed(current)) return null;
-		if (key.name === "return" || key.name === "enter")
-			return submit(request, draft, "");
-		if (!current) return null;
-		switch (current.type) {
-			case "boolean":
-				if (isChar(key, "y")) return advance(request, draft, true);
-				if (isChar(key, "n")) return advance(request, draft, false);
-				return null;
-			case "choice": {
-				const digit = digitOf(key);
-				const option =
-					digit === undefined ? undefined : current.options[digit - 1];
-				return option ? advance(request, draft, option.value) : null;
-			}
-			case "choices": {
-				const digit = digitOf(key);
-				if (digit === undefined || digit > current.options.length) return null;
-				const picked = toggle(draft.picked, digit - 1);
-				if (current.maxItems !== undefined && picked.length > current.maxItems)
-					return refuse(draft, `pick at most ${current.maxItems}`);
-				return { draft: { at: draft.at, values: draft.values, picked } };
-			}
-			default:
-				return null;
-		}
+		if (current?.type === "choice" || current?.type === "choices")
+			return reduceOptionKey(request, draft, current, key);
+		if (isEnter(key)) return submit(request, draft, "");
+		if (current?.type !== "boolean") return null;
+		if (isChar(key, "y")) return advance(request, draft, true);
+		if (isChar(key, "n")) return advance(request, draft, false);
+		return null;
 	};
 
 	// The multi-select's picks, as the option values the harness is answered with.

@@ -50,8 +50,8 @@ describe("ElicitationForm", () => {
 		});
 	});
 
-	it("an optional choice can be skipped with enter, and the typed answer carries", () => {
-		expect(run(STORE, [{ key: "return" }, { send: " Postgres " }])).toEqual({
+	it("an optional choice can be skipped with s, and the typed answer carries", () => {
+		expect(run(STORE, [{ key: "s" }, { send: " Postgres " }])).toEqual({
 			answer: { action: "accept", content: { question_0_custom: "Postgres" } },
 		});
 	});
@@ -108,7 +108,13 @@ describe("ElicitationForm", () => {
 		it("refuses more than it allows, and a required one confirmed empty", () => {
 			const over = run(tags, [{ key: "1" }, { key: "2" }, { key: "3" }]);
 			expect(over).toEqual({
-				draft: { at: 0, values: {}, picked: [0, 1], error: "pick at most 2" },
+				draft: {
+					at: 0,
+					values: {},
+					picked: [0, 1],
+					cursor: 2,
+					error: "pick at most 2",
+				},
 			});
 			expect(run(tags, [{ key: "return" }])).toMatchObject({
 				draft: { error: "pick at least 1" },
@@ -120,6 +126,102 @@ describe("ElicitationForm", () => {
 			expect(run(optional, [{ key: "return" }])).toEqual({
 				answer: { action: "accept", content: {} },
 			});
+		});
+
+		it("space toggles the cursor's option and enter sends, the cursor held at either end", () => {
+			expect(
+				run(tags, [
+					{ key: "down" },
+					{ key: "space" },
+					{ key: "down" },
+					{ key: "down" },
+					{ key: "space" },
+					{ key: "up" },
+					{ key: "up" },
+					{ key: "up" },
+					{ key: "space" },
+					{ key: "space" },
+					{ key: "return" },
+				]),
+			).toEqual({
+				answer: { action: "accept", content: { tags: ["b", "c"] } },
+			});
+		});
+
+		it("a digit toggles its option and takes the cursor there, so space then toggles it back", () => {
+			expect(run(tags, [{ key: "3" }])).toEqual({
+				draft: { at: 0, values: {}, picked: [2], cursor: 2 },
+			});
+			expect(run(tags, [{ key: "3" }, { key: "space" }])).toMatchObject({
+				draft: { picked: [], cursor: 2 },
+			});
+		});
+
+		it("s skips an optional one, toggles and all, and is no key on a required one", () => {
+			const optional = form({ ...TAGS, required: false });
+			expect(run(optional, [{ key: "1" }, { key: "s" }])).toEqual({
+				answer: { action: "accept", content: {} },
+			});
+			expect(run(tags, [{ key: "s" }])).toBeNull();
+		});
+	});
+
+	describe("a choice's cursor", () => {
+		it("starts on the first option, and enter picks the option it is on", () => {
+			expect(ElicitationForm.cursorOf(ElicitationForm.start())).toBe(0);
+			expect(run(STORE, [{ key: "return" }, { send: "" }])).toEqual({
+				answer: { action: "accept", content: { question_0: "Redis" } },
+			});
+			expect(
+				run(STORE, [{ key: "down" }, { key: "return" }, { send: "" }]),
+			).toEqual({
+				answer: { action: "accept", content: { question_0: "Memory" } },
+			});
+		});
+
+		it("is held at either end, and each field starts it again on its first option", () => {
+			expect(run(STORE, [{ key: "up" }])).toEqual({
+				draft: { at: 0, values: {}, picked: [], cursor: 0 },
+			});
+			expect(run(STORE, [{ key: "down" }, { key: "down" }])).toMatchObject({
+				draft: { cursor: 1 },
+			});
+			const twice = form(
+				...STORE.fields.slice(0, 1),
+				...STORE.fields.slice(0, 1),
+			);
+			expect(run(twice, [{ key: "down" }, { key: "return" }])).toEqual({
+				draft: { at: 1, values: { question_0: "Memory" }, picked: [] },
+			});
+		});
+
+		it("a digit still picks directly, wherever the cursor is; space and j/k are no keys here", () => {
+			expect(run(STORE, [{ key: "down" }, { key: "1" }, { send: "" }])).toEqual(
+				{
+					answer: { action: "accept", content: { question_0: "Redis" } },
+				},
+			);
+			for (const name of ["space", "j", "k"])
+				expect(run(STORE, [{ key: name }])).toBeNull();
+		});
+
+		it("pick answers by index as a click does, past the ninth option too", () => {
+			const many = form({
+				key: "n",
+				title: "N",
+				required: true,
+				type: "choice",
+				options: Array.from({ length: 12 }, (_, i) => ({
+					value: `v${i}`,
+					label: `L${i}`,
+				})),
+			});
+			expect(ElicitationForm.pick(many, ElicitationForm.start(), 10)).toEqual({
+				answer: { action: "accept", content: { n: "v10" } },
+			});
+			expect(
+				ElicitationForm.pick(many, ElicitationForm.start(), 12),
+			).toBeNull();
 		});
 	});
 

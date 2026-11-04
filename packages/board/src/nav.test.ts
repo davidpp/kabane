@@ -2960,6 +2960,82 @@ describe("a form the harness is blocked on", () => {
 		expect(head(r.state)).toMatchObject({ draft: { at: 0 } });
 	});
 
+	it("the arrows move its cursor ahead of the board, and j/k still move the board under it", () => {
+		const two = state({
+			sections: sections({
+				next: [row(task({ id: "a" })), row(task({ id: "b" }))],
+			}),
+			selectedId: "a",
+			copilot: copilotState({ turn: "running" }),
+		});
+		const s = BoardNav.withCopilotElicitation(two, form);
+		const down = reduce(s, { name: "down" }).state;
+		expect(head(down)).toMatchObject({ draft: { at: 0, cursor: 1 } });
+		expect(down.selectedId).toBe("a");
+		expect(reduce(down, char("j")).state.selectedId).toBe("b");
+		const picked = reduce(down, { name: "return" });
+		expect(head(picked.state)).toMatchObject({
+			draft: { at: 1, values: { question_0: "Memory" } },
+		});
+	});
+
+	it("an enter already on its way when the form appears picks nothing: it is held like a digit", () => {
+		const arrived = BoardNav.sight(asked(), 5000);
+		const early = BoardNav.reduceKey(arrived, { name: "return" }, 5200);
+		expect(early.effect).toMatchObject({ type: "notice" });
+		expect(head(early.state)).toMatchObject({ draft: { at: 0 } });
+		// The cursor's keys settle nothing, so they move it at once.
+		expect(
+			head(BoardNav.reduceKey(arrived, { name: "down" }, 5200).state),
+		).toMatchObject({ draft: { cursor: 1 } });
+		expect(
+			head(
+				BoardNav.reduceKey(arrived, { name: "return" }, 5000 + BoardNav.ARM_MS)
+					.state,
+			),
+		).toMatchObject({ draft: { at: 1, values: { question_0: "Redis" } } });
+	});
+
+	it("a multi-select toggles with space and sends with enter, from the copilot's focus too", () => {
+		const tags: CopilotElicitation = {
+			id: "form-2",
+			message: "Which tags?",
+			fields: [
+				{
+					key: "tags",
+					title: "Tags",
+					required: true,
+					type: "choices",
+					options: [
+						{ value: "a", label: "Alpha" },
+						{ value: "b", label: "Beta" },
+					],
+				},
+			],
+		};
+		const s = BoardNav.withCopilotElicitation(
+			state({ focus: "copilot", copilot: copilotState({ turn: "running" }) }),
+			tags,
+		);
+		const toggled = [
+			{ name: "down" },
+			{ name: "space", sequence: " " },
+			{ name: "up" },
+			{ name: "space", sequence: " " },
+		].reduce((acc, key) => reduce(acc, key).state, s);
+		expect(reduce(toggled, { name: "return" }).effect).toEqual({
+			type: "copilotAnswerForm",
+			id: "form-2",
+			answer: { action: "accept", content: { tags: ["b", "a"] } },
+		});
+	});
+
+	it("s skips an optional choice and moves on to the next field", () => {
+		expect(head(reduce(asked(), char("s")).state)).toMatchObject({
+			draft: { at: 1, values: {} },
+		});
+	});
+
 	it("each field is a question of its own: a digit already on its way does not answer the next", () => {
 		const store = form.fields[0];
 		if (!store) throw new Error("the form has a choice");

@@ -1,8 +1,8 @@
 /** @jsxImportSource @opentui/react */
 // The harness stopped to ask the human to fill in a form, and is blocked until it hears back. The
 // permission block's visual language, a field at a time: the harness's message verbatim, then the
-// field in hand with how to answer it. Choices are numbered as a permission's options are; a
-// multi-select shows what is toggled; text and numbers are typed into a one-line input, the one
+// field in hand with how to answer it. Choices are numbered as a permission's options are, one a
+// row, the cursor's on the selected surface; a multi-select shows what is toggled; text and numbers are typed into a one-line input, the one
 // thing here that takes the keyboard as text. The keys themselves are nav.ts's
 // (elicitation-form.ts); this only draws the draft.
 import { type ColorInput, TextAttributes } from "@opentui/core";
@@ -104,23 +104,68 @@ const fieldSegments = (
 		: [sep(theme), { text: "optional", fg: theme.muted }]),
 ];
 
-const optionsOf = (
-	field: CopilotFormField | undefined,
-): readonly CopilotFormOption[] =>
-	field?.type === "choice" || field?.type === "choices" ? field.options : [];
-
 // The rows an answer list takes, given how much of its options' descriptions it can show: each
-// description whole on its own lines under its label, cut to the label's row, or left out.
-type Notes = "whole" | "inline" | "none";
+// description whole on its own lines under its label, or cut to the label's row. Never fewer than a
+// row an option, because the cursor is a row; so a description is never left out, since its cut
+// tail costs no row.
+type Notes = "whole" | "inline";
+
+// One row of the answer list, and the option it belongs to: the cursor's option paints every one of
+// its rows, its note's included.
+type AnswerRow = { line: Segment[]; option: number };
+
+// The answer list at `notes`, a row an option at least. The cursor's option is drawn under the
+// Selection Rule, an explicit foreground on every cell, so its labels take the text color off a
+// painted surface too.
+const answerList = (
+	field: CopilotFormField | undefined,
+	draft: ElicitationForm.Draft,
+	{ notes, width }: { notes: Notes; width: number },
+	theme: Theme.Tokens,
+	textFg: ColorInput,
+): AnswerRow[] => {
+	if (field?.type !== "choice" && field?.type !== "choices") return [];
+	const cursor = ElicitationForm.cursorOf(draft);
+	return field.options.flatMap((option, index) => {
+		const label = optionSegments(
+			option,
+			index,
+			field.type === "choices" ? draft.picked.includes(index) : undefined,
+			theme,
+			index === cursor ? theme.text : textFg,
+		);
+		const note = option.description;
+		const indent = Segments.plain(label).length - option.label.length;
+		const lines = !note
+			? Segments.wrap(label, width)
+			: notes === "inline"
+				? [
+						Segments.fit(
+							[...label, { text: `  ${note}`, fg: theme.secondary }],
+							width,
+						),
+					]
+				: [
+						...Segments.wrap(label, width),
+						...Segments.wrap(
+							[
+								{ text: " ".repeat(indent), fg: theme.secondary },
+								{ text: note, fg: theme.secondary },
+							],
+							width,
+						),
+					];
+		return lines.map((line) => ({ line, option: index }));
+	});
+};
 
 // What the block gives up, in order, to stay inside its rows: the blank rows between its groups
-// first, since content outranks rhythm, then each description's tail, then the descriptions.
+// first, since content outranks rhythm, then each description's tail.
 type Fit = { gaps: boolean; notes: Notes };
-const TIGHTEST: Fit = { gaps: false, notes: "none" };
+const TIGHTEST: Fit = { gaps: false, notes: "inline" };
 const FITS: readonly Fit[] = [
 	{ gaps: true, notes: "whole" },
 	{ gaps: false, notes: "whole" },
-	{ gaps: false, notes: "inline" },
 	TIGHTEST,
 ];
 
@@ -150,28 +195,6 @@ const messageRows = (
 			),
 		);
 
-// Options a row at a time, as many to a row as fit whole behind a `·`: one row when they fit, and a
-// row break between two options rather than a cut through one.
-const flowRows = (
-	items: readonly Segment[][],
-	width: number,
-	theme: Theme.Tokens,
-): Segment[][] => {
-	const rows: Segment[][] = [];
-	let row: Segment[] = [];
-	for (const item of items) {
-		const joined = row.length > 0 ? [...row, sep(theme), ...item] : item;
-		if (Segments.plain(joined).length <= width || row.length === 0)
-			row = joined;
-		else {
-			rows.push(row);
-			row = item;
-		}
-	}
-	if (row.length > 0) rows.push(row);
-	return rows.map((parts) => Segments.fit(parts, width));
-};
-
 export type ElicitationBlockProps = {
 	request: CopilotElicitation;
 	draft: ElicitationForm.Draft;
@@ -180,7 +203,7 @@ export type ElicitationBlockProps = {
 	// Columns the text may take, chrome already subtracted by the caller.
 	width: number;
 	// The most rows the block may take. It gives up its blank rows, then the tails of its options'
-	// descriptions, then the descriptions, to stay inside them (FITS).
+	// descriptions, to stay inside them (FITS).
 	rows: number;
 	// The surface's background, so a row inside a panel paints its whole width like its neighbours.
 	bg?: string;
@@ -192,8 +215,9 @@ export type ElicitationBlockProps = {
 
 /**
  * Three groups a blank row apart: what is asked (the message and the field in hand), the answers
- * (the options, or the input and why it refused), and the keys. A described option takes a row for
- * its label and its description on the rows under it, indented to the label's column.
+ * (the options, or the input and why it refused), and the keys. Each option takes a row, the
+ * cursor's under the Selection Rule; a described one has its description on the rows under its
+ * label, indented to the label's column.
  */
 export const ElicitationBlock = ({
 	request,
@@ -208,10 +232,7 @@ export const ElicitationBlock = ({
 	const theme = useTheme();
 	const textFg = bg ? theme.text : theme.defaultFg;
 	const field = ElicitationForm.field(request, draft);
-	const options = optionsOf(field);
-	const multi = field?.type === "choices";
-	// One option a row once any of them explains itself: the explanation is what the human picks by.
-	const listed = options.some((option) => option.description);
+	const cursor = ElicitationForm.cursorOf(draft);
 	const typed = ElicitationForm.typed(field);
 	const fieldBg = theme.surface.overlay;
 
@@ -224,46 +245,14 @@ export const ElicitationBlock = ({
 				)
 			: []),
 	];
-	const labelOf = (option: CopilotFormOption, index: number): Segment[] =>
-		optionSegments(
-			option,
-			index,
-			multi ? draft.picked.includes(index) : undefined,
-			theme,
-			textFg,
-		);
-	const answersOf = (notes: Notes): Segment[][] =>
-		listed && notes !== "none"
-			? options.flatMap((option, index) => {
-					const label = labelOf(option, index);
-					const note = option.description;
-					if (!note) return Segments.wrap(label, width);
-					if (notes === "inline")
-						return [
-							Segments.fit(
-								[...label, { text: `  ${note}`, fg: theme.secondary }],
-								width,
-							),
-						];
-					const indent = Segments.plain(label).length - option.label.length;
-					return [
-						...Segments.wrap(label, width),
-						...Segments.wrap(
-							[
-								{ text: " ".repeat(indent), fg: theme.secondary },
-								{ text: note, fg: theme.secondary },
-							],
-							width,
-						),
-					];
-				})
-			: flowRows(options.map(labelOf), width, theme);
+	const answersOf = (notes: Notes): AnswerRow[] =>
+		answerList(field, draft, { notes, width }, theme, textFg);
 	const refusal = draft.error
 		? Segments.wrap([{ text: draft.error, fg: theme.failed }], width)
 		: [];
 	const keys = [Segments.fit(keyed(answerKeys(field), theme, textFg), width)];
 	// The input is one row, outside the segment rows, so it is counted here.
-	const answerRows = (answers: Segment[][]): number =>
+	const answerRows = (answers: readonly AnswerRow[]): number =>
 		answers.length + (typed ? 1 : 0) + refusal.length;
 	const heightOf = (fit: Fit): number => {
 		const answered = answerRows(answersOf(fit.notes));
@@ -285,11 +274,32 @@ export const ElicitationBlock = ({
 				{Segments.spans(line)}
 			</text>
 		));
+	// The cursor's rows padded to the width, so the selected surface spans the row and not the words.
+	const answerLines = answers.map(({ line, option }, index) => {
+		const selected = option === cursor;
+		const used = Segments.plain(line).length;
+		return (
+			<text
+				// Index keys: a block's rows are positional, and the same row can repeat.
+				key={`answer${index}`}
+				bg={selected ? theme.surface.selected : bg}
+			>
+				{Segments.spans(
+					selected
+						? [
+								...line,
+								{ text: " ".repeat(Math.max(0, width - used)), fg: theme.text },
+							]
+						: line,
+				)}
+			</text>
+		);
+	});
 	return (
 		<>
 			{lines(asked, "asked")}
 			{answerRows(answers) > 0 ? gap("before answers") : null}
-			{lines(answers, "answer")}
+			{answerLines}
 			{typed && field ? (
 				<box
 					style={{
