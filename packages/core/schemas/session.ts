@@ -56,7 +56,11 @@ export const SessionStateSchema = z.string().min(1);
  * awaiting_input session flips it back to active once no question is left
  * unanswered. A question's answer is a `decision` (a human's choice, on the
  * record), or an `answer` when the question relays a tool permission request,
- * which unblocks the session and is no decision.
+ * which unblocks the session and is no decision. A `withdrawn` activity closes
+ * a question nobody is left to answer (the harness took its request back, or
+ * the run stopped waiting): it carries the question's `answers` context, so
+ * every needs-input queue lets go of it, and its body says why. It is no
+ * answer and no decision, and stays out of the durable fold.
  */
 export const ACTIVITY_TYPES = [
 	"progress",
@@ -69,6 +73,7 @@ export const ACTIVITY_TYPES = [
 	"error",
 	"question",
 	"answer",
+	"withdrawn",
 ] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 

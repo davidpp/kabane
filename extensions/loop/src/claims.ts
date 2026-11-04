@@ -173,14 +173,14 @@ export namespace Claims {
 		},
 		// Relayed to the human as a question on this claim's session; the loop never answers.
 		// Other claims run on meanwhile; waiting never advances the stall count.
-		permission: (request, signal) =>
+		permission: (request, withdrawn, stopped) =>
 			Permission.relay(
 				{
 					basePath: ctx.deps.basePath,
 					sessionId,
 					harness,
 					origin: `The ${harness} session working on ${shortId} in loop ${ctx.run.id} is blocked on this tool call until it is answered.`,
-					signal,
+					signal: stopped,
 					emit: (draft) =>
 						RunState.event(ctx, {
 							...draft,
@@ -192,6 +192,7 @@ export namespace Claims {
 					now: ctx.now,
 				},
 				request,
+				withdrawn,
 			),
 	});
 

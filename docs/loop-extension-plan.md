@@ -91,8 +91,8 @@ answered from the board, a finding filed. Mocked transcripts do not count.
        verbatim.
      - The human answers from the board or with `kabane loop answer`, and the harness gets
        the option id they picked.
-     - A run that stops while a request waits sends it back to ACP as `cancelled`,
-       unanswered.
+     - A run that stops while a request waits, or a harness that withdraws it, sends it back
+       to ACP as `cancelled`, unanswered, and closes its question as withdrawn.
      - Other claims keep running meanwhile.
      - Waiting never counts toward the stall count, which counts automatic attempts, not time
        or intentional parking.
@@ -378,8 +378,17 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
   - **Stop:** `Dispatch` aborts every waiting relay on `cancel`, on `close` and when the claim
     ends. The ACP client then answers `cancelled`. The claim settles as `cancelled`, and its
     core session ends as `error`, which takes it off `getNeedsInput`.
-  - **Events:** `permission_asked`, then `permission_answered` (option id, kind, who, wait)
-    or `permission_cancelled`. Each carries the details in `data`.
+  - **Withdrawn (JCAB-59):** a harness that takes its request back (`$/cancel_request`, as
+    Claude does when its turn is cancelled) aborts the request's own signal; the ACP client
+    answers `cancelled` at once. On a stop or a withdrawal the relay closes its question with a
+    `withdrawn` activity (`extensions/loop/src/questions.ts`): it carries `answers
+    <questionId>`, so the badge and `getNeedsInput` clear even while the session runs on, its
+    body says why (`withdrawn by the harness (claude)`, `withdrawn: the loop stopped this
+    claim`), and it is no answer and no decision, so the brief stays clean. A question the
+    human answered just before is left with its answer.
+  - **Events:** `permission_asked`, then `permission_answered` (option id, kind, who, wait),
+    `permission_cancelled` (the claim stopped) or `permission_withdrawn` (the harness withdrew).
+    Each carries the details in `data`.
   - **CLI:** `kabane loop answer <questionId> <option>` calls `answerQuestion` with the
     option's label. `kabane loop status <runId>` lists the run's open questions.
   - **Who answered:** core records no author on an activity, and adding one is a migration,

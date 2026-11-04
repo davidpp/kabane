@@ -290,6 +290,7 @@ describe("Claims.hooks", () => {
 				],
 			},
 			new AbortController().signal,
+			new AbortController().signal,
 		);
 		let questionId: string | undefined;
 		for (let i = 0; i < 200 && !questionId; i++) {

@@ -69,12 +69,14 @@ export namespace Dispatch {
 		continueTurn: () => boolean;
 		/**
 		 * The harness asks to run a tool. Resolves with the option id the human chose, or an
-		 * error once `signal` aborts (the claim was cancelled or closed), which the ACP client
-		 * sends as `cancelled`: never an answer of the loop's own.
+		 * error once `withdrawn` aborts (the harness took the request back) or `stopped` does (the
+		 * claim was cancelled or closed), which the ACP client sends as `cancelled`: never an
+		 * answer of the loop's own.
 		 */
 		permission: (
 			request: AcpClient.PermissionRequest,
-			signal: AbortSignal,
+			withdrawn: AbortSignal,
+			stopped: AbortSignal,
 		) => Promise<Result<string>>;
 	};
 
@@ -633,7 +635,8 @@ export namespace Dispatch {
 			const first = await opening(claim, env);
 			if (!first.ok) return ended("error", first.error.message);
 			const opened = await open(claim, env, sink, {
-				permission: (request) => hooks.permission(request, waiting.signal),
+				permission: (request, withdrawn) =>
+					hooks.permission(request, withdrawn, waiting.signal),
 				connected: (c) => {
 					connection = c;
 				},
