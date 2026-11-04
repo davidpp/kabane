@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 import { expect, test } from "bun:test";
-import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import type { Task } from "@cabane/core";
 import { type CapturedSpan, type RGBA, TextAttributes } from "@opentui/core";
 import { BoardActivity } from "./activity";
 import {
@@ -28,8 +28,11 @@ import {
 	sheetLineWidth,
 } from "./overlay";
 import type { ActivityCard, TriggerDescriptor } from "./ports";
+import { Fixtures } from "./stories/fixtures";
 import { renderTest } from "./testing";
 import { Theme } from "./theme";
+
+const { task, section } = Fixtures;
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
@@ -48,30 +51,6 @@ const pumpUntil = async (
 	}
 	return frame;
 };
-
-const task = (over: Partial<Task> = {}): Task => ({
-	id: "01H000000000000000000000AA",
-	shortId: "JAKE-42",
-	title: "Wire the board",
-	kind: "issue",
-	state: "next",
-	priority: "high",
-	provenance: { source: "human", discoveredAt: new Date().toISOString() },
-	needsReview: false,
-	tags: [],
-	createdAt: new Date().toISOString(),
-	updatedAt: new Date().toISOString(),
-	...over,
-});
-
-const section = (
-	state: BoardData.SectionState,
-	rows: BoardData.BoardRow[],
-): BoardData.BoardSection => ({
-	state,
-	label: TASK_STATE_DISPLAY[state].label,
-	rows,
-});
 
 const fixture: BoardData.BoardSection[] = [
 	section("next", [{ task: task(), children: [] }]),

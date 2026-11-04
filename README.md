@@ -170,6 +170,7 @@ bun run sandbox                # first-run setup, then the board, on a throwaway
 bun run sandbox list           # any kabane command, inside the sandbox's git repo
 bun run sandbox --fresh        # start over
 bun run sandbox --harnesses    # also let setup install into harness configs under the sandbox
+bun run sandbox --scripted board  # the board, its copilot on a scripted agent instead of a harness
 ```
 
 The sandbox is its own `KABANE_HOME` plus a seeded git repo in the system temp directory,
@@ -177,6 +178,22 @@ one per checkout. By default setup finds no agents, so nothing is registered in 
 Claude Code, Codex or Gemini config. `--harnesses` gives the harnesses a sandbox HOME, so
 the install step runs for real, but a harness may not be logged in there: try the copilot
 without it.
+
+`--scripted` points the sandbox's copilot at `packages/acp/scripts/scripted-agent.ts`, an
+ACP agent that needs no login and answers on cue. Open the copilot with `tab` and send
+`ask form`, `ask multi`, `ask text` or `ask permission` to get each kind of ask, then answer
+it and read what the agent received. `plan`, `tools` and `long` stream a plan, tool calls
+and a long reply; anything else is echoed. The next run without the flag puts the copilot
+back on a real harness.
+
+To look at one surface without running anything, the gallery draws each of the board's
+states from made-up props (`packages/board/src/stories`):
+
+```bash
+bun run gallery                           # a TUI: j/k the story, t the theme, w the width
+bun run gallery --list                    # the stories
+bun run gallery --print form-described    # one story's frame as text; --ansi for its colors
+```
 
 ## License
 
