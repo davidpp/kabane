@@ -1,11 +1,13 @@
 // What a session is told. The issue's own brief comes from `assembleContext`; this adds only what
 // the run knows and the issue does not. An implementing session hears that it is one of several,
 // which subtask is its own, and how it signals that it is finished; a lens hears what it reviews
-// and how it files findings. The kabane tool loop itself is the
-// MCP server's to describe, so it is not restated.
+// and how it files findings; the fixer hears which findings are its own, in what order, and how
+// it settles each. The kabane tool loop itself is the MCP server's to describe, so it is not
+// restated.
 import { CopilotInstructions } from "@cabane/acp";
 import type { Task } from "@cabane/core";
 import type { Gates } from "./gates";
+import { LoopPlan } from "./plan";
 
 export namespace Brief {
 	type Subject = {
@@ -65,14 +67,51 @@ export namespace Brief {
 	// own lens cannot leave it out.
 	const filing = ({ runId, parent, lens, gates }: Lens): string =>
 		[
-			`You are the \`${lens}\` verifier of kabane loop run ${runId}, which drove the subtasks of ${label(parent)} ("${parent.title}") to completion. The plan is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: a finding is work for an implementing session.`,
-			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. A p1 keeps the run open until it is fixed, so file p1 only for what must be fixed before this work is done. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
+			`You are the \`${lens}\` verifier of kabane loop run ${runId}, which drove the subtasks of ${label(parent)} ("${parent.title}") to completion. The plan is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`,
+			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. The fixer takes every finding, most severe first, and a human reads the severities, so grade by the lens's definitions as written: a finding that meets the p1 definition is p1 even when the fix is small, and one that does not stays p2 or p3. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
 			"When everything is filed, end your turn with one line: how many findings you filed at each severity.",
 		].join("\n\n");
 
 	/** A lens's prompt: how to file, the lens itself, then the parent's own brief. */
 	export const lens = (subject: Lens, assembled: string): string =>
 		[filing(subject), subject.prompt.trim(), assembled].join("\n\n---\n\n");
+
+	type Fixer = {
+		runId: string;
+		parent: Task;
+		/** In the order to work them. */
+		findings: readonly Task[];
+		gates: readonly string[];
+	};
+
+	const listed = (finding: Task): string =>
+		`- ${label(finding)} · ${LoopPlan.severityOf(finding) ?? "unrated"} · ${LoopPlan.lensOf(finding) ?? "no lens"} · ${finding.title}`;
+
+	// What runs on the fixer's result once it ends: the gates, or nothing.
+	const after = (gates: readonly string[]): string =>
+		gates.length > 0
+			? `When you end, the run's gates (${gates.map((g) => `\`${g}\``).join(", ")}) run on the result: leave them passing.`
+			: "No gates are configured for this run, so nothing runs the project's checks on your result: run the relevant ones yourself before you close a finding.";
+
+	/** The fixer's prompt: its findings and how to settle each, then the parent's own brief. */
+	export const fixer = (
+		{ runId, parent, findings, gates }: Fixer,
+		assembled: string,
+	): string =>
+		[
+			[
+				`You are the fixer session of kabane loop run ${runId}, which drove the subtasks of ${label(parent)} ("${parent.title}") to completion. Its verifier lenses reviewed the result and filed the findings below as child issues of ${label(parent)}. They are all yours, and no other session works in the repository meanwhile. Work through them in this order, most severe first:`,
+				findings.map(listed).join("\n"),
+				`For each finding: read its brief with kabane_context, fix it, verify the fix, log what you changed with kabane_log on it, then call kabane_done on it. Close only a finding you fixed. If a finding is wrong, already fixed, or outside ${label(parent)}'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open for a human. ${after(gates)}`,
+				`Do not file findings. If fixing one turns up other work, add it with kabane_add as a child of ${label(parent)} with kind "issue" instead of doing it.`,
+				"When every finding is closed or waiting, end your turn with one line per finding: fixed, or why it was left.",
+			].join("\n\n"),
+			assembled,
+		].join("\n\n---\n\n");
+
+	/** The nudge for a fixer turn that ended with findings it has not settled. */
+	export const fixerContinuation = (left: readonly Task[]): string =>
+		`${left.map(label).join(", ")} ${left.length === 1 ? "is" : "are"} still open. Continue: fix each and call kabane_done on it, or say why it is left with kabane_comment and call kabane_edit on it with state "waiting".`;
 
 	/** The nudge for a turn that ended with the subtask still open. */
 	export const continuation = (task: Task): string =>

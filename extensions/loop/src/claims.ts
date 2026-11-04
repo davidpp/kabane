@@ -3,13 +3,15 @@
 // while the claim still holds it; then close the core session, put a subtask the agent left in
 // progress and still owned back in the ready pool, record the gates, end the claim, and take a
 // progress mark for the stall detector unless the tracker parked or handed off the work. A lens
-// is a claim on the parent that leaves its state alone and has no gates. A runner that died
-// mid-claim leaves claims with no end; `recover` closes them, finishing a done subtask's gates.
+// is a claim on the parent that leaves its state alone and has no gates; so is the fixer, whose
+// gates the runner runs once it has ended. A runner that died mid-claim leaves claims with no
+// end; `recover` closes them, finishing a done subtask's gates.
 import type { Harnesses } from "@cabane/acp";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
 import { Dispatch } from "./dispatch";
+import { Fixer } from "./fixer";
 import { Gates } from "./gates";
 import { Lenses } from "./lenses";
 import { Permission } from "./permission";
@@ -64,9 +66,13 @@ export namespace Claims {
 			});
 	};
 
+	// A lens and the fixer hold the parent without taking it: its state is never theirs to release.
+	const onParent = (claim: RunStore.Claim): boolean =>
+		claim.lens !== undefined || claim.fixer === true;
+
 	export const mark = async (ctx: Ctx, plan: LoopPlan.Plan): Promise<string> =>
 		Stall.mark(
-			LoopPlan.closedWork(plan),
+			LoopPlan.closed(plan),
 			await ctx.tree(RunStore.sessionDir(ctx.run)),
 			Gates.signature(ctx.run.gateRuns.at(-1)),
 		);
@@ -94,7 +100,7 @@ export namespace Claims {
 		for (const claim of open) {
 			const detail = "the runner exited while this session was open";
 			await closeSession(ctx, claim.sessionId, { outcome: "error", detail });
-			if (claim.lens === undefined) {
+			if (!onParent(claim)) {
 				await finishPass(ctx, claim);
 				await release(ctx, claim.taskId, claim.harness);
 			}
@@ -264,6 +270,7 @@ export namespace Claims {
 					startedAt: ctx.now().toISOString(),
 					continuations: 0,
 					...(work.kind === "lens" ? { lens: work.name } : {}),
+					...(work.kind === "fix" ? { fixer: true as const } : {}),
 				},
 			],
 		});
@@ -384,6 +391,36 @@ export namespace Claims {
 		return ok(undefined);
 	};
 
+	/**
+	 * Run the fixer on the parent, on the run's implementer, over `findings` in the order given.
+	 * An error when its session cannot start.
+	 */
+	export const fixer = async (
+		ctx: Ctx,
+		findings: readonly Task[],
+		plan: LoopPlan.Plan,
+	): Promise<Result<void>> => {
+		const harness = ctx.run.config.implementer;
+		const attempts = ctx.run.claims.filter((c) => c.fixer === true).length;
+		const lane = `${Fixer.LANE}${attempts > 0 ? `#${attempts + 1}` : ""}`;
+		const sessionId = await open(ctx, plan.parent, harness, lane, false);
+		if (sessionId === undefined)
+			return err(new Error("the fixer's session did not start"));
+		launch(ctx, plan, {
+			task: plan.parent,
+			harness,
+			lane,
+			sessionId,
+			work: {
+				kind: "fix",
+				findings,
+				gates: Object.keys(ctx.run.config.gates),
+			},
+			summary: `${harness} fixes ${findings.map(label).join(", ")}`,
+		});
+		return ok(undefined);
+	};
+
 	// A session that closed its subtask as done is followed by the gates, while the claim still
 	// holds the subtask, so nothing claims it again before its gates have spoken. A worktree run
 	// with no gates still takes the pass: it is what commits the subtask's checkpoint, and without
@@ -411,7 +448,7 @@ export namespace Claims {
 		const claim = ctx.run.claims.find((c) => c.sessionId === sessionId);
 		const lens = claim?.lens !== undefined;
 		await closeSession(ctx, sessionId, outcome);
-		if (!lens && claim) await release(ctx, taskId, claim.harness);
+		if (claim && !onParent(claim)) await release(ctx, taskId, claim.harness);
 		// Recorded while the claim is still open: a runner that dies before the record leaves an
 		// open claim, and `recover` records the pass then.
 		if (gates)

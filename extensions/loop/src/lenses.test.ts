@@ -171,7 +171,7 @@ describe("Brief.lens", () => {
 });
 
 describe("LoopPlan.findings", () => {
-	it("counts what the lenses filed and the p1s still open", async () => {
+	it("counts what the lenses filed and how many are still open", async () => {
 		const parent = await add("parent");
 		await add("done work", { parentTaskId: parent.id, state: "done" });
 		await add("broken", {
@@ -185,7 +185,7 @@ describe("LoopPlan.findings", () => {
 		const plan = await LoopPlan.load(home, parent.id);
 		expect(plan.ok && LoopPlan.findings(plan.value)).toEqual({
 			total: 2,
-			openP1: 1,
+			open: 2,
 		});
 	});
 });

@@ -1,7 +1,8 @@
 // One claim, driven over ACP: spawn the harness in the run's repository with `kabane mcp` as its
 // tool server, open it with its assembled brief, and run turns until it is over. An implementing
 // claim is over when its subtask is closed or yielded, active work exhausts its nudges,
-// or the run cancels it; a lens is over when its review turn ends. Every update goes out through
+// or the run cancels it; a lens is over when its review turn ends; the fixer is over when none of
+// its findings is still waiting on it, or its nudges run out. Every update goes out through
 // `hooks.event` tagged with the claim's lane and core session.
 //
 // The core session itself is opened and closed by the runner, which owns the claim; this module
@@ -38,16 +39,18 @@ export namespace Dispatch {
 
 	/**
 	 * What the session is for: implementing its subtask (with the gate that failed after the
-	 * subtask's last session, for its brief), or reviewing the parent through a lens.
+	 * subtask's last session, for its brief), reviewing the parent through a lens, or fixing the
+	 * findings the lenses filed, in the order given.
 	 */
 	export type Work =
 		| { kind: "implement"; retry?: Gates.Result }
 		// `gates`: the run's gate names, so the brief says what has checked the work and what has not.
-		| { kind: "lens"; name: string; prompt: string; gates: readonly string[] };
+		| { kind: "lens"; name: string; prompt: string; gates: readonly string[] }
+		| { kind: "fix"; findings: readonly Task[]; gates: readonly string[] };
 
 	type Claim = {
 		parent: Task;
-		/** The subtask it implements, or the parent a lens reviews. */
+		/** The subtask it implements, or the parent a lens or the fixer works on. */
 		task: Task;
 		harness: Harnesses.Id;
 		sessionId: string;
@@ -423,6 +426,56 @@ export namespace Dispatch {
 		return { kind: "prompt", prompt: Brief.continuation(task) };
 	};
 
+	// The fixer's findings it has yet to settle: still claimable, or taken by its own harness. One
+	// it closed, or parked for a human with a comment, is settled; so is one a human took.
+	const unsettled = async (
+		findings: readonly Task[],
+		env: Env,
+		harness: string,
+	): Promise<Result<Task[]>> => {
+		const left: Task[] = [];
+		for (const finding of findings) {
+			const now = await Planner.getTask(env.basePath, finding.id);
+			if (!now.ok) return now;
+			const task = now.value;
+			if (
+				task &&
+				(LoopPlan.canClaim(task, new Date()) ||
+					LoopPlan.isActive(task, harness))
+			)
+				left.push(task);
+		}
+		return ok(left);
+	};
+
+	const fixed = async (
+		claim: Claim,
+		findings: readonly Task[],
+		env: Env,
+		hooks: Hooks,
+		sink: Sink,
+		reason: string,
+	): Promise<Next> => {
+		const left = await unsettled(findings, env, claim.harness);
+		if (!left.ok)
+			return { kind: "end", outcome: "error", detail: left.error.message };
+		if (left.value.length === 0)
+			return {
+				kind: "end",
+				outcome: "done",
+				detail: `settled all ${findings.length} finding${findings.length === 1 ? "" : "s"}`,
+			};
+		const open = left.value.map(label).join(", ");
+		if (reason !== "end_turn" || !hooks.continueTurn())
+			return {
+				kind: "end",
+				outcome: "incomplete",
+				detail: `turn ended (${reason}) with ${open} still open`,
+			};
+		sink.emit("continuation", `${open} still open: nudged`);
+		return { kind: "prompt", prompt: Brief.fixerContinuation(left.value) };
+	};
+
 	/** The claim's first prompt: its task's assembled brief, under the lens's or the run's words. */
 	const opening = async (claim: Claim, env: Env): Promise<Result<string>> => {
 		const assembled = await Planner.assembleContext(
@@ -437,9 +490,10 @@ export namespace Dispatch {
 			task: claim.task,
 		};
 		const { work } = claim;
-		return ok(
-			work.kind === "lens"
-				? Brief.lens(
+		switch (work.kind) {
+			case "lens":
+				return ok(
+					Brief.lens(
 						{
 							...subject,
 							lens: work.name,
@@ -447,12 +501,34 @@ export namespace Dispatch {
 							gates: work.gates,
 						},
 						assembled.value,
-					)
-				: Brief.opening(
+					),
+				);
+			case "fix":
+				return ok(
+					Brief.fixer(
+						{ ...subject, findings: work.findings, gates: work.gates },
+						assembled.value,
+					),
+				);
+			case "implement":
+				return ok(
+					Brief.opening(
 						{ ...subject, ...(work.retry ? { retry: work.retry } : {}) },
 						assembled.value,
 					),
-		);
+				);
+		}
+	};
+
+	const started = ({ harness, task, work }: Claim): string => {
+		switch (work.kind) {
+			case "lens":
+				return `${harness} reviews ${label(task)} through the ${work.name} lens`;
+			case "fix":
+				return `${harness} fixes ${work.findings.length} finding${work.findings.length === 1 ? "" : "s"} of ${label(task)}`;
+			case "implement":
+				return `${harness} on ${label(task)}`;
+		}
 	};
 
 	export const begin = (claim: Claim, env: Env, hooks: Hooks): Handle => {
@@ -510,12 +586,7 @@ export namespace Dispatch {
 			});
 			if (!opened.ok) return ended("error", opened.error.message);
 			session = opened.value;
-			sink.emit(
-				"session_start",
-				claim.work.kind === "lens"
-					? `${claim.harness} reviews ${label(claim.task)} through the ${claim.work.name} lens`
-					: `${claim.harness} on ${label(claim.task)}`,
-			);
+			sink.emit("session_start", started(claim));
 			let text = first.value;
 			for (;;) {
 				if (cancelled) return ended("cancelled");
@@ -530,10 +601,20 @@ export namespace Dispatch {
 					text = injected;
 					continue;
 				}
+				const { work } = claim;
 				const next =
-					claim.work.kind === "lens"
-						? reviewed(claim.work.name, result.reason)
-						: await implemented(claim, env, hooks, sink, result.reason);
+					work.kind === "lens"
+						? reviewed(work.name, result.reason)
+						: work.kind === "fix"
+							? await fixed(
+									claim,
+									work.findings,
+									env,
+									hooks,
+									sink,
+									result.reason,
+								)
+							: await implemented(claim, env, hooks, sink, result.reason);
 				if (next.kind === "end") return ended(next.outcome, next.detail);
 				text = next.prompt;
 			}
