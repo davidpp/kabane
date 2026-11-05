@@ -649,6 +649,24 @@ describe("a row with an op parked", () => {
 });
 
 describe("a parked op that fails to replay", () => {
+	it("lists at most ten failures and counts them all", async () => {
+		const alpha = await createDevice("alpha", [notes()]);
+		const beta = await createDevice("beta", []);
+		const task = await addTask(alpha, "parent");
+		for (let i = 0; i < 11; i++)
+			await writeNote(alpha, { taskId: task, body: "refused" });
+		await push(alpha);
+		expect((await pull(beta)).parked).toBe(11);
+
+		const upgraded = { ...beta, modules: [notes()] };
+		await boot(upgraded);
+		await as(upgraded, refuse);
+		expect((await pull(upgraded)).replayFailed).toBe(11);
+		const reported = await status(upgraded);
+		expect(reported.parkedFailures).toBe(11);
+		expect(reported.parkedFailed).toHaveLength(10);
+	});
+
 	/** Stands in for a constraint this database holds and alpha's does not. */
 	const refuse = (db: Db) =>
 		db.run(
@@ -665,8 +683,9 @@ describe("a parked op that fails to replay", () => {
 		const fine = await writeNote(alpha, { taskId: task, body: "fine" });
 		const refused = await writeNote(alpha, { taskId: task, body: "refused" });
 		await editNote(alpha, refused, "refused, then edited");
+		const after = await writeNote(alpha, { taskId: task, body: "after it" });
 		await push(alpha);
-		expect((await pull(beta)).parked).toBe(3);
+		expect((await pull(beta)).parked).toBe(4);
 
 		const upgraded = { ...beta, modules: [notes()] };
 		await boot(upgraded);
@@ -675,10 +694,13 @@ describe("a parked op that fails to replay", () => {
 		await push(alpha);
 
 		const first = await pull(upgraded);
-		expect(first.replayed).toBe(1);
+		// The unrelated note after the refused one still applies in that pass.
+		expect(first.replayed).toBe(2);
 		expect(first.replayFailed).toBe(1);
 		expect(await titles(upgraded)).toEqual(["core keeps coming", "parent"]);
-		expect((await notesOn(upgraded)).map((row) => row.id)).toEqual([fine]);
+		expect((await notesOn(upgraded)).map((row) => row.id)).toEqual(
+			[fine, after].sort(),
+		);
 
 		const reported = await status(upgraded);
 		// The failed insert, and the edit of its row waiting behind it.
@@ -716,6 +738,65 @@ describe("a parked op that fails to replay", () => {
 	});
 });
 
+describe("a parked delete replayed before the rest of its row", () => {
+	it("still drops an older update of the row that replays on a later pass", async () => {
+		const gamma = await createDevice("gamma", [notes([CREATE_NOTES])]);
+		const alpha = await createDevice("alpha", [
+			notes([CREATE_NOTES, PIN_NOTES]),
+		]);
+		const beta = await createDevice("beta", []);
+
+		const task = await addTask(gamma, "parent");
+		const note = await writeNote(gamma, { taskId: task, body: "v1" });
+		await push(gamma);
+		await pull(alpha);
+
+		// Alpha edits on version 2 but pushes only after gamma, on version 1,
+		// has deleted the note: the log holds the delete, then the older edit.
+		await editNote(alpha, note, "edited before the delete");
+		await Bun.sleep(5);
+		await deleteNote(gamma, note);
+		await push(gamma);
+		await push(alpha);
+		await pull(alpha);
+		expect(await notesOn(alpha)).toEqual([]);
+
+		// A version-2 device reading both in one pass drops the edit.
+		const delta = await createDevice("delta", [
+			notes([CREATE_NOTES, PIN_NOTES]),
+		]);
+		const together = await pull(delta);
+		expect(together.skipped.deleted).toBe(1);
+		expect(await notesOn(delta)).toEqual([]);
+
+		// Beta has no module: create, delete and edit all park.
+		expect((await pull(beta)).parked).toBe(3);
+
+		// Version 1 replays the create and the delete; the edit waits for 2.
+		const v1 = { ...beta, modules: [notes([CREATE_NOTES])] };
+		await boot(v1);
+		expect((await pull(v1)).replayed).toBe(2);
+		expect(await notesOn(v1)).toEqual([]);
+		expect((await status(v1)).parkedOps).toEqual({ notes: 1 });
+
+		const v2 = { ...beta, modules: [notes([CREATE_NOTES, PIN_NOTES])] };
+		await boot(v2);
+		const replay = await pull(v2);
+		expect(replay.replayed).toBe(1);
+		expect(replay.skipped.deleted).toBe(1);
+		expect(await notesOn(v2)).toEqual([]);
+		expect((await status(v2)).parkedOps).toEqual({});
+		const evidence = await as(v2, (db) =>
+			db
+				.query<{ n: number }, []>(
+					`SELECT COUNT(*) AS n FROM ${TABLES.sync_parked_deletes}`,
+				)
+				.get(),
+		);
+		expect(evidence?.n).toBe(0);
+	});
+});
+
 // ============================================================
 // A database from before the seam
 // ============================================================
@@ -729,6 +810,7 @@ describe("a database from before data modules", () => {
 		// module columns on the oplog, and no record of the migration that adds them.
 		await as(beta, (db) => {
 			db.run(`DROP TABLE ${TABLES.sync_parked}`);
+			db.run(`DROP TABLE ${TABLES.sync_parked_deletes}`);
 			db.run(`ALTER TABLE ${TABLES.sync_oplog} DROP COLUMN module`);
 			db.run(`ALTER TABLE ${TABLES.sync_oplog} DROP COLUMN module_schema`);
 			db.run(

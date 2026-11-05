@@ -787,6 +787,47 @@ const unpark = (row: ParkedRow): RelayOp | undefined => {
 };
 
 /**
+ * The deletes earlier replays applied for rows that still have ops parked,
+ * keyed like a pass's own delete evidence. A row's replay can span passes (an
+ * op behind the delete waited for a newer version of its module), and this is
+ * what lets the later pass drop an update older than that delete, exactly as
+ * one pass over both would.
+ */
+const replayedDeletes = (db: Db): Map<string, string> =>
+	new Map(
+		db
+			.query<{ tbl: string; row_id: string; deleted_at: string }, []>(
+				`SELECT tbl, row_id, deleted_at FROM ${TABLES.sync_parked_deletes}`,
+			)
+			.all()
+			.map((row) => [deleteKey(row.tbl, row.row_id), row.deleted_at]),
+	);
+
+/**
+ * Keep this replay's deletes for the rows that still have ops parked, and let
+ * go of the evidence for rows that have none left.
+ */
+const rememberDeletes = (db: Db, ops: readonly SyncOp[]): void => {
+	for (const op of ops) {
+		if (op.op !== "delete") continue;
+		db.run(
+			`INSERT INTO ${TABLES.sync_parked_deletes} (tbl, row_id, deleted_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(tbl, row_id) DO UPDATE
+          SET deleted_at = MAX(deleted_at, excluded.deleted_at)`,
+			[op.tbl, op.rowId, op.capturedAt],
+		);
+	}
+	db.run(
+		`DELETE FROM ${TABLES.sync_parked_deletes}
+      WHERE NOT EXISTS (
+        SELECT 1 FROM ${TABLES.sync_parked} p
+         WHERE p.tbl = ${TABLES.sync_parked_deletes}.tbl
+           AND p.row_id = ${TABLES.sync_parked_deletes}.row_id)`,
+	);
+};
+
+/**
  * Apply the parked ops whose module is here now, in log order, through the
  * same pass a pulled page takes, and let them go. The watermark stays where it
  * is: these ops are behind it already. One that no longer parses is counted
@@ -796,7 +837,6 @@ const replayRows = (
 	db: Db,
 	ready: readonly ParkedRow[],
 	state: DeviceState,
-	deletedAt?: Map<string, string>,
 ): ApplyReport => {
 	// Out of the table before they apply, or each would find itself parked
 	// ahead of the next op for its row and park that one again.
@@ -806,7 +846,9 @@ const replayRows = (
 	const ops = ready.map(unpark);
 	const parsed = ops.filter((op): op is RelayOp => op !== undefined);
 	const now = new Date().toISOString();
+	const deletedAt = replayedDeletes(db);
 	const counts = applyOps(db, parsed, state.deviceId, now, deletedAt);
+	rememberDeletes(db, parsed);
 	counts.skipped["malformed-payload"] += ops.length - parsed.length;
 	return {
 		received: 0,
@@ -852,8 +894,10 @@ const withSyncState = <T>(
 /**
  * The replay that failed as a whole, again one op per transaction, so the op
  * that raises is found and set aside (`recordFailure`) and every other one
- * still applies. Later ops for a failed op's row stay parked behind it. Only
- * the slow path: a replay that applies whole takes one transaction.
+ * still applies. Later ops for a failed op's row stay parked behind it, and
+ * each transaction keeps its deletes as `replayRows` does, so an interrupted
+ * run loses no delete evidence. Only the slow path: a replay that applies
+ * whole takes one transaction.
  */
 const replayIsolated = async (
 	basePath: string,
@@ -866,13 +910,12 @@ const replayIsolated = async (
 	const { state, ready } = listed.value;
 
 	let total = Apply.emptyReport(state.lastAppliedSeq);
-	const deletedAt = new Map<string, string>();
 	const failedRows = new Set<string>();
 	for (const row of ready) {
 		const key = deleteKey(row.tbl, row.row_id);
 		if (failedRows.has(key)) continue;
 		const one = await withSyncState(basePath, (db) =>
-			replayRows(db, [row], state, deletedAt),
+			replayRows(db, [row], state),
 		);
 		if (one.ok) {
 			total = Apply.mergeReports(total, one.value);

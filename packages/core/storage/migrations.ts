@@ -321,6 +321,20 @@ export namespace Migrations {
 					`CREATE INDEX IF NOT EXISTS ${TABLES.sync_parked}_module_idx
 					   ON ${TABLES.sync_parked}(module, server_seq)`,
 				);
+				// The delete a replay applied for a row whose later ops are still
+				// parked. Sync keeps no tombstones and a pull's delete evidence lasts
+				// one page, but a row's replay can span passes: without this, an
+				// older update replayed after its module upgrades would bring back a
+				// row an earlier pass deleted. Cleared once nothing for the row is
+				// parked.
+				db.run(
+					`CREATE TABLE IF NOT EXISTS ${TABLES.sync_parked_deletes} (
+					   tbl TEXT NOT NULL,
+					   row_id TEXT NOT NULL,
+					   deleted_at TEXT NOT NULL,
+					   PRIMARY KEY (tbl, row_id)
+					 )`,
+				);
 				// An op whose row already has one parked parks behind it.
 				db.run(
 					`CREATE INDEX IF NOT EXISTS ${TABLES.sync_parked}_row_idx
