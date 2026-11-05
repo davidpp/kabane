@@ -7,6 +7,15 @@ export namespace Exec {
 	/** One tool, `<tool> <args>` in `cwd`: its stdout, or an error carrying what it said. */
 	export type Tool = (cwd: string, args: string[]) => Promise<Result<string>>;
 
+	// An argument as an error shows it: a pull request's body is no part of what went wrong.
+	const ARG_CHARS = 60;
+	const shown = (arg: string): string => {
+		const line = arg.split("\n")[0] ?? "";
+		return line.length > ARG_CHARS || line !== arg
+			? `${line.slice(0, ARG_CHARS)}…`
+			: arg;
+	};
+
 	/** `command` on the user's PATH, with their environment and config. */
 	export const tool =
 		(command: string): Tool =>
@@ -30,7 +39,7 @@ export namespace Exec {
 				? ok(ran.value.stdout)
 				: err(
 						new Error(
-							`${command} ${args.join(" ")} failed in ${cwd}: ${ran.value.stderr.trim()}`,
+							`${command} ${args.map(shown).join(" ")} failed in ${cwd}: ${ran.value.stderr.trim()}`,
 						),
 					);
 		};
