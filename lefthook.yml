@@ -8,7 +8,7 @@ pre-commit:
 
     - name: lint
       glob: "*.{ts,tsx}"
-      run: bunx oxlint {staged_files} && bunx oxlint --type-aware --config .oxlintrc.typed.json {staged_files}
+      run: bunx oxlint --deny-warnings {staged_files} && bunx oxlint --type-aware --deny-warnings --config .oxlintrc.typed.json {staged_files}
 
     - name: typecheck
       glob: "*.{ts,tsx,d.ts,d.mts,d.cts}"

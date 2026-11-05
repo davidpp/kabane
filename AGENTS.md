@@ -50,9 +50,9 @@ vitest files it cannot execute. `bun run fix` applies oxlint's fixes and oxfmt.
 Lefthook runs oxfmt on staged files, both oxlint passes on staged `.ts`/`.tsx`, and
 `typecheck` when `.ts` files are staged.
 
-`bun run lint` fails on any new warning: the type-aware pass denies warnings, and the plain
-pass caps them with `--max-warnings` at today's count (JCAB-15 is clearing them). The cap
-only goes down. A change that removes warnings lowers it in `package.json`; nothing raises it.
+Both oxlint passes deny warnings, in `bun run lint` and in lefthook: a warning fails the
+commit and the gate. Fix the cause; never relax a threshold, disable a rule, or add a
+suppression to get past one.
 
 ## Validating a UI change
 

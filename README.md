@@ -163,8 +163,8 @@ bun run test        # bun packages, then the Worker suite under vitest
 files, both oxlint passes on staged `.ts`/`.tsx`, and `typecheck` when `.ts`
 files are staged, on every commit.
 
-`bun run lint` fails on any new oxlint warning. The plain pass still caps existing
-warnings with `--max-warnings` in `package.json`; that cap only goes down.
+Both oxlint passes deny warnings, in `bun run lint` and in lefthook, so a warning fails
+the commit and the gate.
 
 ## Try a change without touching your own device
 
