@@ -104,9 +104,11 @@ export namespace Loop {
 		return text.ok ? text.value.slice(-LOG_TAIL).trim() : "";
 	};
 
-	/** Whether the run's runner died under it: what `restart` takes up again. */
-	export const died = (run: RunStore.Run): boolean =>
-		run.exit?.reason === "runner-died";
+	/**
+	 * Whether the run's runner died under it, or stopped at boot on a landing it could not undo:
+	 * what `restart` takes up again.
+	 */
+	export const died = (run: RunStore.Run): boolean => RunStore.restartable(run);
 
 	/** What a human runs to bring a run whose runner died back. */
 	export const restartCommand = (runId: string): string =>

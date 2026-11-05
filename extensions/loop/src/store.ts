@@ -192,6 +192,21 @@ export namespace RunStore {
 	export const branchOf = (run: Run): string =>
 		run.worktreeReused?.branch ?? run.branch ?? `kabane-loop/${run.id}`;
 
+	/**
+	 * The exit of a runner that stopped at boot on a landing an earlier runner died in and it
+	 * could not undo: the run waits, its worktree untouched, until the human fixes the worktree and
+	 * restarts it.
+	 */
+	export const LANDING_UNRECOVERED = "landing-unrecovered";
+
+	/**
+	 * Whether a runner left the run for a restart to take up: it died under it, or stopped at boot
+	 * on a landing it could not undo. Its claims and worktree are still the run's.
+	 */
+	export const restartable = (run: Run): boolean =>
+		run.exit?.reason === "runner-died" ||
+		run.exit?.reason === LANDING_UNRECOVERED;
+
 	/** The checkpoints committed in the run's worktree, oldest first. */
 	export const checkpoints = (run: Run): string[] =>
 		run.gateRuns.flatMap((g) => (g.checkpoint ? [g.checkpoint] : []));

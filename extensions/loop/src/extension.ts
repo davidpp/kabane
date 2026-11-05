@@ -133,7 +133,20 @@ const worktree = (run: RunStore.Run): string[] =>
 		: [];
 
 // How the run's branch landed, and the command that tries again when it did not.
-const landing = (run: RunStore.Run): string[] => {
+const landing = (run: RunStore.Run): string[] => [
+	...interrupted(run),
+	...landed(run),
+];
+
+// A landing a runner died in that is not undone yet keeps everything off the worktree.
+const interrupted = (run: RunStore.Run): string[] =>
+	run.landingFrom && run.worktree
+		? [
+				`  interrupted landing not undone: put branch ${RunStore.branchOf(run)} in ${run.worktree} back at ${run.landingFrom.slice(0, 12)} (remove a lock file git left there if it says so), then ${Loop.died(run) ? Loop.restartCommand(run.id) : Parent.landCommand(run.id)}`,
+			]
+		: [];
+
+const landed = (run: RunStore.Run): string[] => {
 	if (!run.landing) return [];
 	return run.landing.ok
 		? [`  landed: ${run.landing.summary}`]

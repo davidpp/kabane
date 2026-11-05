@@ -133,6 +133,40 @@ describe("kabane loop status, after a landing", () => {
 	});
 });
 
+describe("kabane loop status, after a landing its runner died in", () => {
+	it("says the landing is not undone, what to put back, and the command that goes on", async () => {
+		const config = LoopConfig.Schema.safeParse({ land: "pr" });
+		if (!config.success) throw config.error;
+		const created = RunStore.create(home, {
+			version: 1,
+			id: "run-1",
+			parentId: "01PARENT",
+			parentShortId: "K-1",
+			projectDir: home,
+			worktree: "/tmp/run-1/worktree",
+			branch: "k-1-fix",
+			config: config.data,
+			status: "failed",
+			exit: { reason: RunStore.LANDING_UNRECOVERED },
+			landingFrom: "0123456789abcdef0123",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		});
+		if (!created.ok) throw created.error;
+
+		const shown = await kabaneLoop("status", "run-1");
+
+		expect(shown.text).toContain(
+			"  interrupted landing not undone: put branch k-1-fix in /tmp/run-1/worktree back at 0123456789ab (remove a lock file git left there if it says so), then kabane loop resume run-1",
+		);
+	});
+});
+
 describe("kabane loop prune", () => {
 	it("says so when no run has a worktree left to remove", async () => {
 		const pruned = await kabaneLoop("prune");

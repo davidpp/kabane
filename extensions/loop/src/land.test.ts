@@ -770,7 +770,114 @@ describe("Loop.land", () => {
 	});
 });
 
+// A run whose runner died while its landing's rebase stood stopped on a conflict.
+const diedMidRebase = async (parent: Task) => {
+	const child = await Planner.addTask(home, {
+		title: "the work",
+		kind: "issue",
+		state: "done",
+		parentTaskId: parent.id,
+	});
+	if (!child.ok) throw child.error;
+	const run = await completedRun(parent, { gates: { test: "true" } });
+	const dir = run.worktree ?? "";
+	commit(dir, "README.md", "# ours\n");
+	const before = head(dir);
+	baseMoves("README.md", "# theirs\n");
+	GitFixture.run(dir, ["fetch", "-q", "origin", "main"]);
+	expect(() => GitFixture.run(dir, ["rebase", "-q", "FETCH_HEAD"])).toThrow();
+	const died = RunStore.write(home, {
+		...run,
+		status: "running",
+		pid: Bun.spawnSync(["true"]).pid,
+		startedAt: new Date().toISOString(),
+		landingFrom: before,
+	});
+	if (!died.ok) throw died.error;
+	return { run: died.value, dir, before };
+};
+
+// The index lock a git killed mid-command leaves in the worktree's own git directory.
+const staleIndexLock = (dir: string): string => {
+	const lock = join(
+		GitFixture.run(dir, [
+			"rev-parse",
+			"--path-format=absolute",
+			"--git-dir",
+		]).trim(),
+		"index.lock",
+	);
+	writeFileSync(lock, "");
+	return lock;
+};
+
+const runnerDeps = () => ({
+	home,
+	basePath: home,
+	kabaneBin: "/nonexistent/kabane",
+	pid: process.pid,
+	git,
+	gh,
+	tickMs: 10,
+});
+
 describe("a landing whose runner died", () => {
+	it("stops the resumed run untouched while it cannot be undone, and goes on once it can", async () => {
+		const parent = await parentIssue();
+		const { run, dir, before } = await diedMidRebase(parent);
+		const lock = staleIndexLock(dir);
+
+		const waiting = await Runner.run(run.id, runnerDeps());
+
+		if (!waiting.ok) throw waiting.error;
+		expect(waiting.value).toMatchObject({
+			status: "failed",
+			exit: { reason: RunStore.LANDING_UNRECOVERED },
+			landingFrom: before,
+		});
+		expect(waiting.value.exit?.detail).toContain(
+			`put branch ${BRANCH} in ${dir} back at ${before.slice(0, 12)} by hand`,
+		);
+		expect(waiting.value.exit?.detail).toContain(
+			`\`kabane loop resume ${run.id}\``,
+		);
+		// No gate ran and nothing was committed on the interrupted tree, and no landing was tried.
+		expect(waiting.value.gateRuns).toEqual([]);
+		expect(waiting.value.landing).toBeUndefined();
+		expect(Loop.died(waiting.value)).toBe(true);
+		const comments = await Planner.getComments(home, parent.id);
+		expect(comments.ok && comments.value.at(-1)?.content).toContain(
+			`\`kabane loop resume ${run.id}\``,
+		);
+
+		rmSync(lock);
+		const resumed = await Runner.run(run.id, runnerDeps());
+
+		if (!resumed.ok) throw resumed.error;
+		expect(resumed.value.status).toBe("completed");
+		expect(resumed.value.landingFrom).toBeUndefined();
+		expect(head(dir)).toBe(before);
+	});
+
+	it("is not landed over by hand while it cannot be undone, and keeps the tip to put back", async () => {
+		const parent = await parentIssue();
+		const { run, dir, before } = await diedMidRebase(parent);
+		staleIndexLock(dir);
+		const ctx = ctxFor(run);
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain("could not be undone");
+		expect(ctx.run.landingFrom).toBe(before);
+		const saved = RunStore.read(home, run.id);
+		expect(saved.ok && saved.value.landingFrom).toBe(before);
+		expect(
+			GitFixture.run(remote, ["for-each-ref", "refs/heads"]).trim().split("\n"),
+		).toHaveLength(1);
+		expect(ghCalls).toEqual([]);
+	});
+
 	it("is undone when the run resumes, before its gates run again on the tree", async () => {
 		const parent = await parentIssue();
 		const child = await Planner.addTask(home, {

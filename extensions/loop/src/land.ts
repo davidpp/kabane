@@ -302,7 +302,12 @@ export namespace Land {
 					keep,
 				),
 			);
-		RunState.save(ctx, { ...ctx.run, pushed: tip.value });
+		// Pushed, the rebased branch is the one the remote has: nothing is left to put back.
+		RunState.save(ctx, {
+			...ctx.run,
+			pushed: tip.value,
+			landingFrom: undefined,
+		});
 		if (stopping(ctx))
 			return err(
 				notLanded(
@@ -353,19 +358,42 @@ export namespace Land {
 				);
 	};
 
-	const record = (
+	// Whether a landing that did not land left the branch as the run left it: on its branch, at
+	// the tip it was at before the landing rebased it.
+	const putBackAt = async (ctx: Ctx, tip: string): Promise<boolean> => {
+		const dir = ctx.run.worktree;
+		if (dir === undefined) return true;
+		const git = ctx.deps.git ?? Worktree.git;
+		const on = await git(dir, ["symbolic-ref", "-q", "--short", "HEAD"]);
+		const at = await revParse(git, dir, "HEAD");
+		return (
+			on.ok &&
+			on.value.trim() === RunStore.branchOf(ctx.run) &&
+			at.ok &&
+			at.value === tip
+		);
+	};
+
+	/**
+	 * Record what the landing did. The tip it started from is dropped once the branch is landed, or
+	 * is back at that tip; a branch left anywhere else keeps it, for `recover` to put back.
+	 */
+	const record = async (
 		ctx: Ctx,
 		outcome: Outcome,
 		pr?: string,
-	): RunStore.Landing => {
+	): Promise<RunStore.Landing> => {
 		const landing: RunStore.Landing = {
 			at: ctx.now().toISOString(),
 			...outcome,
 		};
+		const from = ctx.run.landingFrom;
+		const settled =
+			from === undefined || outcome.ok || (await putBackAt(ctx, from));
 		RunState.save(ctx, {
 			...ctx.run,
 			landing,
-			landingFrom: undefined,
+			...(settled ? { landingFrom: undefined } : {}),
 			...(pr ? { pr } : {}),
 		});
 		RunState.event(ctx, {
@@ -381,19 +409,24 @@ export namespace Land {
 	 * branch to the tip it was at before the landing, so nothing (a gate pass, a checkpoint, a
 	 * session) works on a half-replayed tree. Nothing to do when no landing was under way.
 	 */
-	export const recover = async (ctx: Ctx): Promise<void> => {
+	export const recover = async (ctx: Ctx): Promise<Result<void>> => {
 		const tip = ctx.run.landingFrom;
 		const dir = ctx.run.worktree;
-		if (tip === undefined || dir === undefined) return;
+		if (tip === undefined || dir === undefined) return ok(undefined);
 		const branch = RunStore.branchOf(ctx.run);
-		const reset = await Worktree.restore(dir, branch, tip, ctx.deps.git);
+		const restored = await Worktree.restore(dir, branch, tip, ctx.deps.git);
+		if (!restored.ok) {
+			// landingFrom stays: nothing goes on in the worktree until it is put back.
+			const why = `the landing an earlier runner died in could not be undone (${restored.error.message}): put branch ${branch} in ${dir} back at ${short(tip)} by hand, removing a lock file git left there if it says so`;
+			RunState.event(ctx, { type: "warning", summary: why });
+			return err(new Error(why));
+		}
 		RunState.save(ctx, { ...ctx.run, landingFrom: undefined });
 		RunState.event(ctx, {
-			type: reset.ok ? "landing_recovered" : "warning",
-			summary: reset.ok
-				? `the landing the last runner died in is undone: branch ${branch} is back at ${short(tip)}`
-				: `the landing the last runner died in could not be undone, put branch ${branch} back at ${tip} by hand: ${reset.error.message}`,
+			type: "landing_recovered",
+			summary: `the landing the last runner died in is undone: branch ${branch} is back at ${short(tip)}`,
 		});
+		return ok(undefined);
 	};
 
 	/**
@@ -404,7 +437,8 @@ export namespace Land {
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
 	): Promise<RunStore.Landing> => {
-		await recover(ctx);
+		const undone = await recover(ctx);
+		if (!undone.ok) return record(ctx, notLanded(undone.error.message));
 		const placed = await onBase(ctx, plan.parent);
 		if (!placed.ok) return record(ctx, placed.error);
 		const pr = await toPr(ctx, plan, placed.value);

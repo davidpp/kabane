@@ -167,6 +167,8 @@ export namespace Parent {
 			return `${start} with a larger budget starts a new run.`;
 		if (reason === "deadlocked")
 			return `Break the blocking cycle between the subtasks, then ${start}.`;
+		if (reason === RunStore.LANDING_UNRECOVERED)
+			return `Put the worktree back as ${status} says, then \`kabane loop resume ${run.id}\`.`;
 		if (reason === "gates-red")
 			return `Fix what the gate reports (or reopen ${single ? run.parentShortId : "the subtask it belongs to"}), then ${start}.`;
 		return `${status} shows the run's trace; ${start} starts a new run once the cause is fixed.`;

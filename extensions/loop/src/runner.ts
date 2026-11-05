@@ -440,7 +440,8 @@ export namespace Runner {
 			: undefined;
 	};
 
-	const boot = async (ctx: Ctx): Promise<void> => {
+	/** Undefined once the run is ready to go on; the exit when it must wait for a human first. */
+	const boot = async (ctx: Ctx): Promise<Exit | undefined> => {
 		const resumed = ctx.run.startedAt !== undefined;
 		const now = ctx.now().toISOString();
 		const pidStart = RunStore.processStart(ctx.deps.pid);
@@ -456,14 +457,21 @@ export namespace Runner {
 			type: resumed ? "run_resume" : "run_start",
 			summary: `${resumed ? "resumed" : "started"} on ${ctx.run.parentShortId} in ${RunStore.sessionDir(ctx.run)} (pid ${ctx.deps.pid})`,
 		});
+		// A landing the dead runner left half done is undone first: the gates recovery may run, and
+		// the sessions after it, would otherwise work on a half-replayed tree. One that cannot be
+		// undone stops the run here, before anything else touches the worktree.
+		const undone = await Land.recover(ctx);
+		if (!undone.ok)
+			return {
+				status: "failed",
+				reason: RunStore.LANDING_UNRECOVERED,
+				detail: `${undone.error.message}, then \`kabane loop resume ${ctx.run.id}\``,
+			};
 		// A run that has worked its target itself leaves taking it to `reshape`, after recovery: the
 		// issue's state is its claim's until then (a pass owed on it, a release), and one a human
 		// set meanwhile is theirs.
 		if (RunStore.onTarget(ctx.run).length === 0)
 			await Parent.take(ctx, `loop run ${resumed ? "resumed" : "started"}`);
-		// A landing the dead runner left half done is undone first: the gates recovery may run, and
-		// the sessions after it, would otherwise work on a half-replayed tree.
-		await Land.recover(ctx);
 		// Recovery may run a subtask's gates, which a stop must still be able to kill.
 		await hearingStop(ctx, () => Claims.recover(ctx));
 		if (ctx.run.stall === undefined) {
@@ -473,6 +481,7 @@ export namespace Runner {
 				stall: Stall.start(plan.ok ? await Claims.mark(ctx, plan.value) : ""),
 			});
 		}
+		return undefined;
 	};
 
 	const loop = async (ctx: Ctx): Promise<RunStore.Run> => {
@@ -521,8 +530,7 @@ export namespace Runner {
 		const read = RunStore.read(deps.home, runId);
 		if (!read.ok) return read;
 		const first = read.value;
-		const resumable =
-			first.status === "pending" || first.exit?.reason === "runner-died";
+		const resumable = first.status === "pending" || RunStore.restartable(first);
 		if (!resumable)
 			return err(
 				new Error(
@@ -541,7 +549,7 @@ export namespace Runner {
 			ctx.stopping.abort();
 			ctx.wake();
 		});
-		await boot(ctx);
-		return ok(await loop(ctx));
+		const waits = await boot(ctx);
+		return ok(waits ? await halt(ctx, waits) : await loop(ctx));
 	};
 }
