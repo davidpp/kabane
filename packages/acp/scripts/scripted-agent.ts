@@ -80,7 +80,7 @@ const FORMS: Record<
 	"ask form": (sessionId) => ({
 		mode: "form",
 		sessionId,
-		toolCallId: "ask-form",
+		toolCallId: crypto.randomUUID(),
 		message:
 			"Which delivery contract should the runner hold to when a harness drops its session?",
 		requestedSchema: {
@@ -110,7 +110,7 @@ const FORMS: Record<
 	"ask multi": (sessionId) => ({
 		mode: "form",
 		sessionId,
-		toolCallId: "ask-multi",
+		toolCallId: crypto.randomUUID(),
 		message: "Which checks should the gate run before a merge?",
 		requestedSchema: {
 			type: "object",
@@ -142,7 +142,7 @@ const FORMS: Record<
 	"ask text": (sessionId) => ({
 		mode: "form",
 		sessionId,
-		toolCallId: "ask-text",
+		toolCallId: crypto.randomUUID(),
 		message: "What should the new scope be called?",
 		requestedSchema: {
 			type: "object",
@@ -180,7 +180,8 @@ const received = (answer: CreateElicitationResponse): string => {
 };
 
 const askPermission = async (ctx: Context) => {
-	const toolCallId = "edit-1";
+	// ACP call ids are unique across the session, including repeated scripted turns.
+	const toolCallId = crypto.randomUUID();
 	await notify(ctx, {
 		sessionUpdate: "tool_call",
 		toolCallId,
@@ -265,8 +266,8 @@ const TOOLS = [
 ] as const;
 
 const runTools = async (ctx: Context): Promise<boolean> => {
-	for (const [index, tool] of TOOLS.entries()) {
-		const toolCallId = `tool-${index + 1}`;
+	for (const tool of TOOLS) {
+		const toolCallId = crypto.randomUUID();
 		await notify(ctx, {
 			sessionUpdate: "tool_call",
 			toolCallId,
