@@ -71,8 +71,8 @@ const neighborRef = (id: string, neighbors: Map<string, Task>): string => {
 };
 
 /**
- * Position: parent · blockers (w/ states) · blocks · subtask states.
- * Blocking semantics mirror the loop's readiness logic (briefing/dag.ts):
+ * This task's dependencies and dependents. Blocking semantics mirror the loop's readiness logic
+ * (briefing/dag.ts):
  * - blocks:     source blocks target → target depends on source
  * - blocked_by: source blocked_by target → source depends on target
  * - follows:    source follows target → source depends on target
@@ -100,6 +100,7 @@ const positionDependencies = (taskId: string, links: TaskLink[]) => {
 	return { blockerIds, blocksIds };
 };
 
+/** Position: parent · blockers (w/ states) · blocks · subtask states. */
 const positionSection = async (
 	jakePath: string,
 	task: Task,
