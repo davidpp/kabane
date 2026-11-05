@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
 	cpSync,
 	existsSync,
@@ -81,7 +81,13 @@ const packTarget = (work: string, target: string, options: FixtureOptions) => {
 	return packed.exitCode === 0 ? { manifest, tarball } : null;
 };
 
-/** A local registry serving the source and target tarballs and whatever metadata a test sets. */
+/**
+ * A local registry serving the source and target tarballs and whatever metadata a test sets.
+ * Any local process may connect to a loopback listener (a port-watching dashboard probes each
+ * new one with `GET /`), so the registry lives under a per-fixture path prefix and `requests`
+ * records only paths below it: requests from clients this fixture configured. The bunfig
+ * registry ends in `/`, or Bun resolves package paths past the prefix.
+ */
 const startRegistry = (
 	{ source, target }: { source: string; target: string },
 	tarballs: Record<string, Buffer<ArrayBuffer>>,
@@ -89,12 +95,16 @@ const startRegistry = (
 	young: boolean,
 ) => {
 	const requests: string[] = [];
+	const prefix = `/${randomUUID()}`;
 	let metadata: unknown;
 	const server = Bun.serve({
 		hostname: "127.0.0.1",
 		port: 0,
 		fetch(request) {
-			const path = new URL(request.url).pathname;
+			const full = new URL(request.url).pathname;
+			if (!full.startsWith(`${prefix}/`))
+				return new Response("not this fixture's registry", { status: 404 });
+			const path = full.slice(prefix.length);
 			requests.push(path);
 			if (path === "/kabane") return Response.json(metadata);
 			if (path === `/kabane/-/kabane-${source}.tgz`)
@@ -104,7 +114,7 @@ const startRegistry = (
 			return new Response("unconfigured fixture request", { status: 404 });
 		},
 	});
-	const url = `http://127.0.0.1:${server.port}`;
+	const url = `http://127.0.0.1:${server.port}${prefix}`;
 	/** A tag naming the source serves its archive, any other version the target's. */
 	const entry = (version: string, engine = ">=1.4.0") => {
 		const file = version === source ? source : target;
@@ -225,7 +235,7 @@ export const createUpdateFixture = async (
 	);
 	writeFileSync(
 		join(home, ".bunfig.toml"),
-		`[install]\nregistry = "${registry.url}"\nminimumReleaseAge = ${options.age ?? 0}\nlinker = "${options.isolated ? "isolated" : "hoisted"}"\n${options.configured ? `globalDir = "${globalDir}"\nglobalBinDir = "${binDir}"\n` : ""}`,
+		`[install]\nregistry = "${registry.url}/"\nminimumReleaseAge = ${options.age ?? 0}\nlinker = "${options.isolated ? "isolated" : "hoisted"}"\n${options.configured ? `globalDir = "${globalDir}"\nglobalBinDir = "${binDir}"\n` : ""}`,
 	);
 	const env = fixtureEnv(
 		work,
