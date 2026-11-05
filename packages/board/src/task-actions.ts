@@ -1,9 +1,11 @@
-// What the board does to the task in hand: writes its state, copies its brief, opens its linked
-// issue. Each says how it went in the footer, never silent.
+// What the board does to the task in hand: writes its state, answers its decisions, copies its brief,
+// opens its linked issue. Each says how it went in the footer, never silent.
 import { useRenderer } from "@opentui/react";
 import { useCallback } from "react";
+import type { BoardStore } from "./board-store";
 import { Clipboard } from "./clipboard";
 import { BoardData } from "./data";
+import { BoardDecisions } from "./decisions";
 import { Launcher } from "./launcher";
 import { BoardNav } from "./nav";
 import { flash, type Outcome, type SetNotice } from "./notice";
@@ -15,6 +17,7 @@ const TASK_EFFECTS = [
 	"applyUndo",
 	"copy",
 	"openLink",
+	"answerDecision",
 ] as const;
 export type TaskEffect = Extract<
 	BoardNav.Effect,
@@ -42,13 +45,53 @@ const writeOf = (
 	}
 };
 
+// A decision answered on the detail view, as `kabane_answer` answers it. The reload brings the
+// issue's records back without it, and the issue in its new section when the last one moved it to
+// `next`; a failed write puts the decision back in front of the human.
+const useDecide = (
+	basePath: string,
+	{ update }: Pick<BoardStore, "update">,
+	setNotice: SetNotice,
+	reload: (s: BoardNav.BoardState) => Promise<void>,
+) =>
+	useCallback(
+		async (
+			next: BoardNav.BoardState,
+			effect: Extract<TaskEffect, { type: "answerDecision" }>,
+		): Promise<void> => {
+			const res = await BoardData.answerDecision(basePath, {
+				question: effect.questionId,
+				answer: effect.answer,
+				reasoning: effect.reasoning,
+			});
+			if (!res.ok) {
+				update((prev) => BoardDecisions.withFailed(prev, effect.questionId));
+				setNotice({ text: res.error.message, tone: "error" });
+				return;
+			}
+			// The handle names the issue before its ordinal (`JREP-7:2`), a ULID where it has no short id.
+			const issue = effect.handle.replace(/:\d+$/, "");
+			setNotice({
+				text: res.value.moved
+					? `${effect.handle} answered · ${issue} → next`
+					: `${effect.handle} answered`,
+				tone: "success",
+			});
+			await reload(next);
+		},
+		[basePath, setNotice, reload, update],
+	);
+
 /** The runner for the task effects; `next` is the post-reduce state a reload merges into. */
 export const useTaskActions = ({
 	basePath,
+	store,
 	setNotice,
 	reload,
 }: {
 	basePath: string;
+	// A decision whose write failed is asked again.
+	store: Pick<BoardStore, "update">;
 	setNotice: SetNotice;
 	reload: (s: BoardNav.BoardState) => Promise<void>;
 }): ((next: BoardNav.BoardState, effect: TaskEffect) => void) => {
@@ -129,6 +172,8 @@ export const useTaskActions = ({
 		[basePath, renderer, setNotice],
 	);
 
+	const decide = useDecide(basePath, store, setNotice, reload);
+
 	return useCallback(
 		(next: BoardNav.BoardState, effect: TaskEffect): void => {
 			switch (effect.type) {
@@ -148,8 +193,11 @@ export const useTaskActions = ({
 					return;
 				case "openLink":
 					void openLink(effect.id);
+					return;
+				case "answerDecision":
+					void decide(next, effect);
 			}
 		},
-		[basePath, write, copy, openLink],
+		[basePath, write, copy, openLink, decide],
 	);
 };

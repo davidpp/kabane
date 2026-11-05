@@ -20,6 +20,7 @@ import type { ReactNode, RefObject } from "react";
 import { BoardActivity } from "./activity";
 import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
+import { BoardDecisions } from "./decisions";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
@@ -182,16 +183,22 @@ export const activityStrip = (
 // shared spinner frame.
 export const anyActivityRunning = BoardActivity.anyRunning;
 
-// The header part for the filters in force: ` · kind: issue · status: done`, "" unfiltered (quiet by
-// default, as the marked count is).
+// The header part for the filters in force: ` · kind: issue · status: done · decisions`, ""
+// unfiltered (quiet by default, as the marked count is).
 export const headerFilters = (
 	kind: BoardNav.KindFilter,
 	status: BoardNav.StatusFilter,
+	decisionsOnly = false,
 ): string =>
 	[
 		kind === "all" ? "" : ` · kind: ${kind}`,
 		status === "open" ? "" : ` · status: ${status}`,
+		decisionsOnly ? " · decisions" : "",
 	].join("");
+
+// The badge for a row's open decisions, `?` and their count as the tab bar counts questions: ` · ?2`.
+const decisionBadge = (count: number): string =>
+	count > 0 ? ` · ?${count}` : "";
 
 // The header part for the working set: ` · 3 marked`, "" when nothing is marked (quiet by default).
 export const markedLabel = (count: number): string =>
@@ -262,6 +269,7 @@ const rowLabels = (
 		columns,
 		activity,
 		parentShortId,
+		decisions,
 	}: {
 		marked: boolean;
 		linked: boolean;
@@ -269,6 +277,7 @@ const rowLabels = (
 		columns: { mark: boolean; link: boolean };
 		activity?: BoardActivity.ActivityMap;
 		parentShortId?: string;
+		decisions: number;
 	},
 ) => {
 	const task = row.task;
@@ -289,6 +298,7 @@ const rowLabels = (
 		badge: cards[0] ? cardBadge(cards[0], RUNNING_ECHO) : null,
 		more: moreBadge(cards.length - 1, RUNNING_ECHO),
 		input: activity?.questionsByTaskId.has(task.id) ? " · ? input" : "",
+		decisions: decisionBadge(decisions),
 	};
 };
 
@@ -305,8 +315,11 @@ const Row = ({
 	onSelect,
 	onToggle,
 	parentShortId,
+	decisions,
 }: {
 	row: BoardNav.VisibleRow;
+	// Open decisions on this task.
+	decisions: number;
 	marked: boolean;
 	// The gutter columns every visible row holds this frame (heldColumns).
 	columns: { mark: boolean; link: boolean };
@@ -331,15 +344,27 @@ const Row = ({
 		theme,
 		touched,
 	);
-	const { caret, shortId, mark, link, ai, meta, review, badge, more, input } =
-		rowLabels(row, {
-			marked,
-			linked,
-			touched,
-			columns,
-			activity,
-			parentShortId,
-		});
+	const {
+		caret,
+		shortId,
+		mark,
+		link,
+		ai,
+		meta,
+		review,
+		badge,
+		more,
+		input,
+		decisions: asked,
+	} = rowLabels(row, {
+		marked,
+		linked,
+		touched,
+		columns,
+		activity,
+		parentShortId,
+		decisions,
+	});
 	// Everything else on the row counts against the title, so a badged row still never wraps.
 	const fixed = [
 		caret,
@@ -353,6 +378,7 @@ const Row = ({
 		badge?.text ?? "",
 		more,
 		input,
+		asked,
 	].join("").length;
 	const title = truncate(
 		task.title,
@@ -400,6 +426,7 @@ const Row = ({
 				) : null}
 				{more ? <span fg={theme.working}>{more}</span> : null}
 				{input ? <span fg={theme.accent}>{input}</span> : null}
+				{asked ? <span fg={theme.accent}>{asked}</span> : null}
 			</text>
 		</box>
 	);
@@ -418,7 +445,10 @@ const Section = ({
 	onSelect,
 	onToggle,
 	parentIds,
+	questions,
 }: {
+	// Open decisions by task id.
+	questions: ReadonlyMap<string, number>;
 	marked: ReadonlySet<string>;
 	touched: ReadonlySet<string>;
 	linked: ReadonlySet<string>;
@@ -462,6 +492,7 @@ const Section = ({
 					activity={activity}
 					onSelect={onSelect}
 					onToggle={onToggle}
+					decisions={questions.get(row.task.id) ?? 0}
 					parentShortId={
 						row.task.parentTaskId
 							? parentIds.get(row.task.parentTaskId)
@@ -604,6 +635,9 @@ export type BoardProps = {
 	// The `f` status filter. Optional so render-only tests without it keep working, and defaulted to
 	// the value that renders the board exactly as it always has.
 	status?: BoardNav.StatusFilter;
+	// The open decisions by task id, badged on the rows, and whether `u` shows only their tasks
+	// (BoardDecisions). Optional for the same reason; absent means none.
+	decisions?: BoardDecisions.Decisions;
 	// The `m` working set. Optional for the same reason; absent means nothing marked.
 	marked?: ReadonlySet<string>;
 	// Rows the copilot changed in the turn in hand (BoardNav.copilotTouched), glyphed until the next
@@ -640,6 +674,7 @@ export const Board = ({
 	scopeLabel,
 	kind = "all",
 	status = "open",
+	decisions = BoardDecisions.NONE,
 	marked = NO_MARKS,
 	touched = NO_MARKS,
 	linked = NO_MARKS,
@@ -668,17 +703,22 @@ export const Board = ({
 	// Quiet by default: `all` kinds and `open` are what the board shows unfiltered, and this header
 	// <text> does no truncation (unlike StatusBar), so an always-on filter part would spend a narrow
 	// frame's columns saying that nothing is filtered.
-	const filters = headerFilters(kind, status);
+	const filters = headerFilters(kind, status, decisions.only);
 	const markedPart = markedLabel(marked.size);
 	// The SAME flatten the reducer uses for j/k, mouse addressing, and scroll-into-view — filter
 	// included — so the running rowIndex below is in lockstep with BoardNav.visibleRows.
-	const groups = BoardNav.visibleSections(sections, expanded, search, status);
+	const groups = BoardNav.visibleSections(
+		sections,
+		expanded,
+		search,
+		status,
+		BoardDecisions.filter(decisions),
+	);
 	const parentIds = shortIdIndex(sections);
 	const matchCount = groups.reduce((n, group) => n + group.rows.length, 0);
 	// Any filter can empty the list, and an empty scrollbox reads as a broken board — say "no
-	// matches" for a status or a kind that found nothing just as for a query that did.
-	const filtering =
-		BoardNav.activeQuery(search) !== "" || status !== "open" || kind !== "all";
+	// matches" for a status, a kind or `u` that found nothing just as for a query that did.
+	const filtering = filters !== "" || BoardNav.activeQuery(search) !== "";
 	const columns = heldColumns(
 		groups.flatMap((group) => group.rows),
 		marked,
@@ -717,6 +757,7 @@ export const Board = ({
 							onSelect={onSelect}
 							onToggle={onToggle}
 							parentIds={parentIds}
+							questions={decisions.counts}
 						/>
 					))
 				)}

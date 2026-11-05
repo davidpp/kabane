@@ -78,6 +78,7 @@ const records = (
 	upstream: [],
 	subtasks: [],
 	contextRefs: [],
+	questions: [],
 	...over,
 });
 

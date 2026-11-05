@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
+import { BoardDecisions } from "./decisions";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { BoardPrompt } from "./prompt";
@@ -79,6 +80,7 @@ const state = (
 	tabs: BoardTabs.NONE,
 	marked: new Set<string>(),
 	announcement: null,
+	decisions: BoardDecisions.NONE,
 	copilot: copilot(),
 	undo: [],
 	prompt: BoardPrompt.CLOSED,

@@ -3,8 +3,9 @@
 // view never reads the agent brief (assembleContext); `y` still copies that.
 //
 // Pinned above the tabs: the task at a glance, where it sits (its subtasks counted there), and any
-// question waiting on a human. Then one tab each for the description (with the subtasks and the
-// curated context under it), the comments and the agent log. The tabs and the log's sources are
+// question waiting on a human, a session's or an open decision (BoardDecisions asks those). Then one
+// tab each for the description (with the decisions already made, the subtasks and the curated
+// context under it), the comments and the agent log. The tabs and the log's sources are
 // lists, so another tab or another kind of log entry is one more item, not a reshape.
 import {
 	type AgentActivity,
@@ -17,6 +18,7 @@ import {
 	type TaskContextRef,
 	type WorkRef,
 } from "@cabane/core";
+import { parseDecisionBody } from "@cabane/questions";
 import type { BoardActivity } from "./activity";
 import type { BoardData } from "./data";
 
@@ -58,6 +60,18 @@ export namespace DetailModel {
 		done: boolean;
 		cancelled: boolean;
 		state?: string;
+	};
+
+	/**
+	 * A decision already made, as the brief reads it: `question → answer (who, reasoning)`. Open
+	 * ones are asked above the tabs instead, and withdrawn ones are not shown.
+	 */
+	export type DecisionLine = {
+		id: string;
+		question: string;
+		answer: string;
+		by: string;
+		reasoning?: string;
 	};
 
 	/** One curated input: its kind, its label, and the ref it points at. Identity, never content. */
@@ -218,6 +232,18 @@ export namespace DetailModel {
 			};
 		});
 
+	/** The decisions made on the task, in the order they were asked. */
+	export const decisions = (records: BoardData.DetailRecords): DecisionLine[] =>
+		records.questions
+			.filter((q) => q.status === "answered")
+			.map((q) => ({
+				id: q.id,
+				question: parseDecisionBody(q.body).question,
+				answer: q.answer ?? "",
+				by: actorName(q.answered_by ?? "unknown"),
+				reasoning: q.reasoning?.trim() || undefined,
+			}));
+
 	/** The curated context, in the order it was added. */
 	export const contextRefs = (
 		records: BoardData.DetailRecords,
@@ -346,6 +372,7 @@ export namespace DetailModel {
 		const logged = (records ? log(records).length : 0) + liveCards;
 		const described =
 			Boolean(records?.task.description?.trim()) ||
+			(records ? decisions(records).length : 0) > 0 ||
 			(records?.subtasks.length ?? 0) > 0 ||
 			(records?.contextRefs.length ?? 0) > 0;
 		return [

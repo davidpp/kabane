@@ -62,13 +62,14 @@ const digits = (count: number): string =>
 /**
  * The keys that answer the field in hand, in the order the human reaches for them, so the row's
  * tail is what a narrow pane gives up (Segments.fit). `picked` is how many a multi-select has
- * toggled, which its `enter` sends.
+ * toggled, which its `enter` sends; `escape` is what `esc` does, which declines a harness's form.
  */
 export const answerKeys = (
 	field: CopilotFormField | undefined,
 	picked = 0,
+	escape = "decline",
 ): (readonly [string, string])[] => {
-	const decline = ["esc", "decline"] as const;
+	const decline = ["esc", escape] as const;
 	const skip = (key: string) =>
 		field && !field.required ? ([[key, "skip"]] as const) : [];
 	switch (field?.type) {
@@ -248,6 +249,8 @@ export type ElicitationBlockProps = {
 	rows: number;
 	// The surface's background, so a row inside a panel paints its whole width like its neighbours.
 	bg?: string;
+	// What `esc` does here, when it does not decline the form (a decision on the detail view).
+	escape?: string;
 	// Whether the form has the keys (BoardNav.askInHand): its input is focused only then.
 	inHand: boolean;
 	// `enter` in the input, with what it holds; a click on the `enter` hint of a typed field too.
@@ -338,6 +341,7 @@ export const ElicitationBlock = ({
 	width,
 	rows,
 	bg,
+	escape,
 	inHand,
 	onSubmit,
 	onPick,
@@ -366,7 +370,7 @@ export const ElicitationBlock = ({
 	const refusal = draft.error
 		? Segments.wrap([{ text: draft.error, fg: theme.failed }], width)
 		: [];
-	const pairs = answerKeys(field, draft.picked.length);
+	const pairs = answerKeys(field, draft.picked.length, escape);
 	// What the keys row presses on a click: a typed field's `enter` sends what its input holds, which
 	// only the input knows; every other hint is its key.
 	const press = (key: string): (() => void) | undefined => {

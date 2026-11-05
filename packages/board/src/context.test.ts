@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { BoardContext } from "./context";
 import { BoardData } from "./data";
+import { BoardDecisions } from "./decisions";
 import type { BoardNav } from "./nav";
 import { BoardPrompt } from "./prompt";
 import { BoardTabs } from "./tabs";
@@ -53,6 +54,7 @@ const state = (
 	tabs: BoardTabs.NONE,
 	marked: new Set(["a", "m"]),
 	announcement: null,
+	decisions: BoardDecisions.NONE,
 	copilot: {
 		text: "",
 		paletteAt: 0,

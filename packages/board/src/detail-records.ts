@@ -1,10 +1,12 @@
 // The records the open detail view shows (BoardData.taskDetail), fetched when it opens or its task
 // changes. A different task opens on its loading line; the same task refetches in place, so a
-// v/x/n/s on it keeps its tab and its scroll.
+// v/x/n/s on it keeps its tab and its scroll. The task's open decisions go on into the board's state,
+// where the keys that answer them are reduced (BoardDecisions.withOpen).
 import type { Result } from "@cabane/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BoardStore } from "./board-store";
 import { BoardData } from "./data";
+import { BoardDecisions } from "./decisions";
 import { BoardNav } from "./nav";
 
 export type DetailRecords = {
@@ -16,7 +18,7 @@ export type DetailRecords = {
 
 export const useDetailRecords = (
 	basePath: string,
-	{ state, ref }: Pick<BoardStore, "state" | "ref">,
+	{ state, ref, update }: Pick<BoardStore, "state" | "ref" | "update">,
 ): DetailRecords => {
 	const [records, setRecords] = useState<
 		Result<BoardData.DetailRecords> | undefined
@@ -32,8 +34,12 @@ export const useDetailRecords = (
 			loadedId.current = taskId;
 			stamp.current = next.ok ? BoardData.recordsStamp(next.value) : null;
 			setRecords(next);
+			if (next.ok)
+				update((prev) =>
+					BoardDecisions.withOpen(prev, taskId, next.value.questions),
+				);
 		},
-		[],
+		[update],
 	);
 
 	// A comment, work log or session activity lands without touching the task row, so the open
@@ -60,6 +66,7 @@ export const useDetailRecords = (
 			loadedId.current = null;
 			stamp.current = null;
 			setRecords(undefined);
+			update((prev) => BoardDecisions.withOpen(prev, null));
 		}
 		if (!taskId) return;
 		let cancelled = false;
@@ -71,7 +78,7 @@ export const useDetailRecords = (
 		return () => {
 			cancelled = true;
 		};
-	}, [basePath, taskId, task?.updatedAt, show]);
+	}, [basePath, taskId, task?.updatedAt, show, update]);
 
 	return { records, refresh };
 };

@@ -1,6 +1,11 @@
 // Made-up props the render tests and the gallery's stories share, so a component is drawn from the
 // same data in both: what a test pins is what David looks at.
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import {
+	type DecisionMeta,
+	formatDecisionBody,
+	type QuestionView,
+} from "@cabane/questions";
 import type { BoardData } from "../data";
 import type { BoardNav } from "../nav";
 import type { ActivityCard, CopilotElicitation } from "../ports";
@@ -179,6 +184,59 @@ export namespace Fixtures {
 		hasEvents: true,
 		tab: true,
 		sessionIds: [`s${n}`],
+	});
+
+	/**
+	 * A decision an agent filed on `on`, its `n`th: open unless `over` answers it. `meta` is what
+	 * `kabane_ask` records beside the question (choices, recommended, multi-select, freeform).
+	 */
+	export const decision = (
+		on: Task,
+		n: number,
+		question: string,
+		meta: DecisionMeta,
+		over: Partial<QuestionView> = {},
+	): QuestionView => ({
+		id: `01H00000000000000000000Q${n}0`,
+		task_id: on.id,
+		status: "open",
+		asked_by: "cabane://actor/agent/claude",
+		answered_by: null,
+		answered_at: null,
+		created_at: "2026-10-10T00:00:00.000Z",
+		updated_at: "2026-10-10T00:00:00.000Z",
+		updated_by: "cabane://actor/agent/claude",
+		version: 1,
+		visibility: "shared",
+		body: formatDecisionBody(question, meta),
+		why: null,
+		answer: null,
+		reasoning: null,
+		handle: `${on.shortId ?? on.id}:${n}`,
+		ordinal: n,
+		title: on.title,
+		priority: on.priority,
+		state: on.state,
+		short_id: on.shortId ?? on.id,
+		...over,
+	});
+
+	/** A task's detail records with nothing on them but `over`. */
+	export const records = (
+		on: Task,
+		over: Partial<BoardData.DetailRecords> = {},
+	): BoardData.DetailRecords => ({
+		task: on,
+		comments: [],
+		workLogs: [],
+		sessions: [],
+		links: [],
+		neighbors: [],
+		upstream: [],
+		subtasks: [],
+		contextRefs: [],
+		questions: [],
+		...over,
 	});
 
 	/** A session's question about JREP-`n`; no choices makes it a freeform one. */

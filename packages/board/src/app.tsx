@@ -123,7 +123,7 @@ export const App = ({
 	ProgramStatus.useBoardStatus(store.state, activity.cards);
 
 	const { refs, runEffect: runScreenEffect } = useScreenRefs(store.state);
-	const runTaskEffect = useTaskActions({ basePath, setNotice, reload });
+	const runTaskEffect = useTaskActions({ basePath, store, setNotice, reload });
 	const runDispatchEffect = useHostDispatch({
 		basePath,
 		dispatcher,

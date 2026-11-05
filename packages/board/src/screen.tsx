@@ -19,6 +19,8 @@ import { BoardContext } from "./context";
 import { CopilotLog } from "./copilot-log";
 import { CopilotPane, contextChip } from "./copilot-prompt";
 import type { BoardData } from "./data";
+import { DecisionPanel, DecisionsWaiting } from "./decision-panel";
+import { BoardDecisions } from "./decisions";
 import { Detail } from "./detail";
 import { EventView } from "./event-view";
 import { FooterTrail } from "./footer";
@@ -318,6 +320,33 @@ const EventsScreen = ({
 	);
 };
 
+// The decision the detail view asks under its header, or, while a session's question pinned over the
+// view has the keys, the row that says decisions wait.
+const DecisionSlot = ({
+	state,
+	input,
+}: Pick<ViewProps, "state" | "input">): ReactNode => {
+	const asked = BoardDecisions.shown(state);
+	if (!asked) {
+		const count = BoardDecisions.waiting(state);
+		return count > 0 ? <DecisionsWaiting count={count} /> : null;
+	}
+	return (
+		<DecisionPanel
+			// One block per decision, and a fresh one once `esc` starts it over: a new one opens on its
+			// first field, its input empty.
+			key={`${asked.decision.id}#${String(asked.started)}`}
+			asked={asked}
+			inHand={BoardDecisions.keysInHand(state)}
+			reach={BoardDecisions.reach(state)}
+			onSubmit={input.submitDecision}
+			onPick={(index) => input.dispatchMouse({ type: "decisionOption", index })}
+			onKey={(name) => input.dispatchMouse({ type: "decisionKey", name })}
+			onReach={() => input.dispatchMouse({ type: "decisionReach" })}
+		/>
+	);
+};
+
 // A task's detail, under the question pinned over it.
 const DetailScreen = ({
 	state,
@@ -358,6 +387,7 @@ const DetailScreen = ({
 				linked={linked.has(taskId)}
 				keys={keys}
 				onCopy={() => input.dispatchMouse({ type: "copy" })}
+				decision={<DecisionSlot state={state} input={input} />}
 			/>
 		</>
 	);
@@ -385,6 +415,7 @@ const BoardScreen = ({
 		scopeLabel={state.scoped && scope ? scope.label : "all scopes"}
 		kind={state.kind}
 		status={state.status}
+		decisions={state.decisions}
 		marked={state.marked}
 		// The reload after each of the copilot's writes is what puts the fresh `updatedBy`
 		// and `updatedAt` in hand; the reducer decides which of them the glyph is for.
