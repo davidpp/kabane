@@ -11,6 +11,7 @@ import {
 	Planner,
 	type Result,
 	Runtime,
+	scopeClause,
 	type SqlValue,
 	TABLES,
 	withDb,
@@ -42,8 +43,9 @@ const selectQuestions = (
 		params.push(filter.taskId);
 	}
 	if (filter.scopeUri !== undefined) {
-		where.push("t.scope_uri = ?");
-		params.push(filter.scopeUri);
+		const scope = scopeClause(filter.scopeUri, "t.scope_uri");
+		where.push(scope.sql);
+		params.push(...scope.params);
 	}
 	if (filter.status === "open") where.push("q.status = 'open'");
 	return db

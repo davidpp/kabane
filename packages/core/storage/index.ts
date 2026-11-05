@@ -104,3 +104,5 @@ export const Planner = {
 } as const;
 
 export { normalizeScopeUri } from "./helpers";
+
+export { scopeClause } from "./task-selection";

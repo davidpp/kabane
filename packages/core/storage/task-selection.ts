@@ -20,7 +20,7 @@ export type TodayOptions = {
 };
 export type TodayBucket = "overdue" | "dueToday" | "next";
 
-const scopeClause = (scope: string, column: string): TaskSelection => {
+export const scopeClause = (scope: string, column: string): TaskSelection => {
 	const family = buildScopeFamilyMatch(scope);
 	return family
 		? {
