@@ -1,0 +1,8 @@
+{
+	"gates": {
+		"install": "bun install --frozen-lockfile",
+		"check": "bun run check",
+		"typecheck": "bun run typecheck",
+		"test": "bun run test"
+	}
+}
