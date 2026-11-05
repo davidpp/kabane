@@ -5,7 +5,8 @@
 // worktree for the parent's next run, which pushes review fixes to it; one closed without merging
 // keeps it for the human, and the next run starts a fresh one. A worktree that is done is removed
 // with its branch when the parent's next run starts, or by `kabane loop prune`. Only a worktree the
-// loop made, under KABANE_HOME/loops, is ever removed, and never one a live run works in.
+// loop made, under KABANE_HOME/loops, is ever removed, and never one a live run works in or a
+// landing by hand holds (`Worktree.lock`).
 import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { err, ok, type Result } from "@cabane/core";
@@ -156,7 +157,18 @@ export namespace Prune {
 			if (dir === undefined || seen.has(dir)) continue;
 			seen.add(dir);
 			if (busy.has(dir) || !existsSync(dir)) continue;
-			const judged = await one(deps, run, dir);
+			const held = Worktree.lock(dir, "kabane loop prune");
+			if (!held.ok) {
+				pruned.push({
+					runId: run.id,
+					dir,
+					branch: "",
+					removed: false,
+					why: held.error.message,
+				});
+				continue;
+			}
+			const judged = await one(deps, run, dir).finally(held.value);
 			if (!judged.ok)
 				pruned.push({
 					runId: run.id,

@@ -247,15 +247,33 @@ export namespace Loop {
 			const prompt = Lenses.prompt(projectDir, name);
 			if (!prompt.ok) return prompt;
 		}
-		const runs = RunStore.list(deps.home);
+		return checkRuns(deps.home, plan.parent.id, short, config.worktree);
+	};
+
+	// No live run on the parent, a last run whose runner did not die, and, for a run that might go
+	// on in it, a last worktree no landing by hand holds.
+	const checkRuns = (
+		home: string,
+		parentId: string,
+		short: string,
+		worktree: boolean,
+	): Result<void> => {
+		const runs = RunStore.list(home);
 		if (!runs.ok) return runs;
-		const active = liveRunOn(runs.value, plan.parent.id);
+		const active = liveRunOn(runs.value, parentId);
 		if (active)
 			return err(
 				new Error(`${short} already has a live loop run: ${active.id}`),
 			);
 		// Newest first: the parent's last run.
-		const last = runs.value.find((r) => r.parentId === plan.parent.id);
+		const last = runs.value.find((r) => r.parentId === parentId);
+		const busy = last?.worktree ? Worktree.lockedBy(last.worktree) : undefined;
+		if (worktree && busy)
+			return err(
+				new Error(
+					`${short}'s last loop run's worktree is in use by ${busy}; start again once it is done`,
+				),
+			);
 		return last && died(last)
 			? err(
 					new Error(
@@ -494,6 +512,30 @@ export namespace Loop {
 			markFailed(deps.home, run, "worktree-not-created", error.message);
 			return err(error);
 		};
+		// The last run's worktree is held while this run decides whether it goes on in it, and
+		// until it is written down as this run's, so a landing by hand never runs beside it.
+		const runs = RunStore.list(deps.home);
+		if (!runs.ok) return failed(runs.error);
+		const lastDir = runs.value.find(
+			(r) => r.id !== run.id && r.parentId === run.parentId,
+		)?.worktree;
+		const held = lastDir
+			? Worktree.lock(lastDir, `kabane loop start ${run.parentShortId}`)
+			: ok(() => {});
+		if (!held.ok) return failed(held.error);
+		try {
+			return await placeWorktree(deps, run, title, failed);
+		} finally {
+			held.value();
+		}
+	};
+
+	const placeWorktree = async (
+		deps: StartDeps,
+		run: RunStore.Run,
+		title: string,
+		failed: (error: Error) => Result<RunStore.Run>,
+	): Promise<Result<RunStore.Run>> => {
 		const prefix = await Worktree.prefixOf(run.projectDir, deps.git);
 		if (!prefix.ok) return failed(prefix.error);
 		const reused = await reusable(deps, run);
@@ -583,6 +625,13 @@ export namespace Loop {
 					`Run ${runId} cannot restart: ${dead.parentShortId} already has a live loop run, ${rival.id}; stop it first`,
 				),
 			);
+		const busy = dead.worktree ? Worktree.lockedBy(dead.worktree) : undefined;
+		if (busy)
+			return err(
+				new Error(
+					`Run ${runId} cannot restart: its worktree is in use by ${busy}; try again once it is done`,
+				),
+			);
 		const spawned = spawnRunner(deps, dead);
 		if (!spawned.ok) return spawned;
 		return awaitBoot(deps, dead, spawned.value.exited);
@@ -645,14 +694,50 @@ export namespace Loop {
 					`Run ${runId} worked in ${run.projectDir} itself, so it has no branch of its own to land`,
 				),
 			);
-		const plan = await LoopPlan.load(deps.basePath, run.parentId);
-		if (!plan.ok) return plan;
-		const log = RunStore.eventLog(deps.home, runId);
-		if (!log.ok) return log;
-		const ctx = RunState.make({ ...deps, pid: process.pid }, run, log.value);
-		await Land.land(ctx, plan.value);
-		await Parent.landed(ctx);
-		return ok(ctx.run);
+		const dir = run.worktree;
+		// The worktree is this landing's alone until it is over: no start goes on in it and no
+		// prune removes it meanwhile.
+		const held = Worktree.lock(dir, Parent.landCommand(runId));
+		if (!held.ok) return held;
+		try {
+			const owned = ownWorktree(deps.home, run, dir);
+			if (!owned.ok) return owned;
+			const plan = await LoopPlan.load(deps.basePath, run.parentId);
+			if (!plan.ok) return plan;
+			const log = RunStore.eventLog(deps.home, runId);
+			if (!log.ok) return log;
+			const ctx = RunState.make({ ...deps, pid: process.pid }, run, log.value);
+			await Land.land(ctx, plan.value);
+			await Parent.landed(ctx);
+			return ok(ctx.run);
+		} finally {
+			held.value();
+		}
+	};
+
+	// Whether `run` still owns its worktree `dir`: no live run works in it, and no later run went on
+	// in it, whose unfinished work landing this one would rebase and publish.
+	const ownWorktree = (
+		home: string,
+		run: RunStore.Run,
+		dir: string,
+	): Result<void> => {
+		const runs = RunStore.list(home);
+		if (!runs.ok) return runs;
+		const other = runs.value.find(
+			(r) =>
+				r.id !== run.id &&
+				r.worktree === dir &&
+				(RunStore.isLive(r.status) || r.createdAt > run.createdAt),
+		);
+		if (other === undefined) return ok(undefined);
+		return err(
+			new Error(
+				RunStore.isLive(other.status)
+					? `Run ${run.id} cannot land: run ${other.id} is working in its worktree ${dir}; land once that run is over`
+					: `Run ${run.id} cannot land: run ${other.id} went on in its worktree ${dir} after it; land ${other.id} instead`,
+			),
+		);
 	};
 
 	/**

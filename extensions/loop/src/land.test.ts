@@ -643,6 +643,74 @@ describe("Loop.land", () => {
 		expect(remoteTip()).toBe(head(run.worktree ?? ""));
 	});
 
+	it("refuses a run whose worktree a later run works in, or went on in, and changes nothing", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent);
+		const dir = run.worktree ?? "";
+		const tip = head(dir);
+		baseMoves("teammate.txt");
+		const later = {
+			...run,
+			id: "run-2",
+			createdAt: new Date(Date.parse(run.createdAt) + 1000).toISOString(),
+			worktreeReused: { runId: run.id, branch: BRANCH },
+			status: "running" as const,
+			pid: process.pid,
+			exit: undefined,
+		};
+		const live = RunStore.create(home, later);
+		if (!live.ok) throw live.error;
+
+		const whileLive = await Loop.land(landDeps(), run.id);
+		expect(!whileLive.ok && whileLive.error.message).toBe(
+			`Run run-1 cannot land: run run-2 is working in its worktree ${dir}; land once that run is over`,
+		);
+		const over = RunStore.write(home, {
+			...later,
+			status: "completed",
+			pid: undefined,
+		});
+		if (!over.ok) throw over.error;
+		const afterIt = await Loop.land(landDeps(), run.id);
+		expect(!afterIt.ok && afterIt.error.message).toContain(
+			"run run-2 went on in its worktree",
+		);
+		expect(afterIt.ok || afterIt.error.message).toContain("land run-2 instead");
+		expect(head(dir)).toBe(tip);
+		expect(
+			GitFixture.run(remote, ["for-each-ref", "refs/heads"]).trim().split("\n"),
+		).toHaveLength(1);
+		expect(ghCalls).toEqual([]);
+	});
+
+	it("refuses while another live process holds the worktree, and takes over a lock a dead one left", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent);
+		const lock = `${run.worktree}.lock`;
+		writeFileSync(
+			lock,
+			JSON.stringify({ pid: process.pid, for: "kabane loop land run-0" }),
+		);
+
+		const held = await Loop.land(landDeps(), run.id);
+		expect(!held.ok && held.error.message).toContain(
+			"is in use by kabane loop land run-0",
+		);
+		expect(ghCalls).toEqual([]);
+
+		writeFileSync(
+			lock,
+			JSON.stringify({
+				pid: Bun.spawnSync(["true"]).pid,
+				for: "kabane loop land run-0",
+			}),
+		);
+		const taken = await Loop.land(landDeps(), run.id);
+		expect(taken.ok && taken.value.landing?.ok).toBe(true);
+		// Released once the landing is over.
+		expect(existsSync(lock)).toBe(false);
+	});
+
 	it("refuses a run that is not completed, and one with no worktree of its own", async () => {
 		const parent = await parentIssue();
 		const run = await completedRun(parent);

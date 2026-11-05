@@ -212,6 +212,37 @@ describe("a parent's next run, after a run that opened a pull request", () => {
 	});
 });
 
+describe("a worktree a landing by hand holds", () => {
+	it("is neither gone on in by a start nor removed by a prune until the landing is over", async () => {
+		const parent = await parentWithChild();
+		const first = await startOn(parent.id);
+		landed(first);
+		const lock = `${first.worktree}.lock`;
+		writeFileSync(
+			lock,
+			JSON.stringify({ pid: process.pid, for: "kabane loop land run-0" }),
+		);
+
+		const refused = await Loop.start(deps(), { parent: parent.id });
+		expect(!refused.ok && refused.error.message).toContain(
+			"last loop run's worktree is in use by kabane loop land run-0",
+		);
+		// Refused before a run is written, so the next start still finds the worktree's run last.
+		const runs = RunStore.list(home);
+		expect(runs.ok && runs.value.map((r) => r.id)).toEqual([first.id]);
+		const pruned = await Loop.prune({ home, git, gh });
+		expect(pruned.ok && pruned.value).toMatchObject([
+			{ removed: false, why: expect.stringContaining("is in use by") },
+		]);
+		expect(existsSync(first.worktree ?? "")).toBe(true);
+		expect(ghCalls).toEqual([]);
+
+		rmSync(lock);
+		const second = await startOn(parent.id);
+		expect(second.worktree).toBe(first.worktree);
+	});
+});
+
 describe("Loop.prune", () => {
 	it("removes the worktrees whose work is merged, with their branches, and keeps the rest", async () => {
 		const merging = await parentWithChild();
