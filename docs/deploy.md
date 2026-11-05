@@ -701,6 +701,13 @@ So a release that adds a migration goes out in this order:
 A device that updates before the hub is safe too: the hub's cloud device and every older
 device stop at that device's first op until they update.
 
+Data modules such as `@cabane/questions` carry their own schema versions. A device without
+the module, or with an older module schema, parks those ops and continues pulling core data.
+`kabane sync status --json` reports `parkedOps` counts by module; `parkedFailed` and
+`parkedFailures` identify replay failures. Install/register the matching module version,
+then sync again to replay the parked ops. Builds from before the module seam skip these
+ops as `unknown-table`; upgrade those devices before using questions.
+
 Migration 5 (calendar-date deadlines) rewrites every deadline stored as the end of a UTC day
 (`…T23:59:59.999Z`, `…T23:59:00Z` and the like) as the date it meant, on each database as it
 boots; deadlines with a real time are left alone. Set `KABANE_TIMEZONE` on the hub (1.5) in
