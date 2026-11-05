@@ -14,6 +14,7 @@ import type {
 } from "../schemas";
 import { ProjectDraftSchema } from "../schemas";
 import {
+	stateFilter,
 	buildScopeFamilyMatch,
 	derivePrefix,
 	generateId,
@@ -259,12 +260,10 @@ export namespace Planner {
 			const conditions: string[] = [];
 			const params: (string | number | null)[] = [];
 
-			if (query.states && query.states.length > 0) {
-				conditions.push(`state IN (${query.states.map(() => "?").join(", ")})`);
-				params.push(...query.states);
-			} else if (query.state) {
-				conditions.push("state = ?");
-				params.push(query.state);
+			const state = stateFilter(query);
+			if (state) {
+				conditions.push(state.sql);
+				params.push(...state.params);
 			}
 
 			if (!query.includeClosed) {

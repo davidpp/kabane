@@ -3,7 +3,7 @@ import type { Db, SqlValue } from "../db/port";
 import { Runtime } from "../runtime";
 import type { Task, TaskQuery } from "../schemas";
 import { DeadlineSql } from "./deadline-sql";
-import { buildScopeFamilyMatch, TABLES } from "./helpers";
+import { stateFilter, buildScopeFamilyMatch, TABLES } from "./helpers";
 
 export type TaskSelection = { sql: string; params: SqlValue[] };
 export type SearchOptions = {
@@ -57,12 +57,10 @@ export const selectTaskQuery = (
 ): TaskSelection => {
 	const conditions: string[] = [];
 	const params: SqlValue[] = [];
-	if (query.states && query.states.length > 0) {
-		conditions.push(`state IN (${query.states.map(() => "?").join(", ")})`);
-		params.push(...query.states);
-	} else if (query.state) {
-		conditions.push("state = ?");
-		params.push(query.state);
+	const state = stateFilter(query);
+	if (state) {
+		conditions.push(state.sql);
+		params.push(...state.params);
 	}
 	if (!query.includeClosed)
 		conditions.push("state NOT IN ('done', 'cancelled')");
