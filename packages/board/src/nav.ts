@@ -11,6 +11,7 @@ import {
 import { CardTab } from "./card-tab";
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
+import { BoardDecisions } from "./decisions";
 import { DetailModel } from "./detail-model";
 import { ElicitationForm } from "./elicitation-form";
 import type { Keymap } from "./keymap";
@@ -230,6 +231,9 @@ export namespace BoardNav {
 		marked: ReadonlySet<string>;
 		// The host's one line over the board's footer (Announcer), until `esc` dismisses it.
 		announcement: string | null;
+		// The decisions agents filed on issues: counted on the rows, filtered by `u`, asked on the
+		// detail view (decisions.ts).
+		decisions: BoardDecisions.Decisions;
 		copilot: CopilotState;
 		// A prompt opened over a card's tab or a question's banner (prompt.ts): the copilot's input,
 		// typed for a card's action or a question's answer instead.
@@ -285,6 +289,14 @@ export namespace BoardNav {
 		| { type: "loadTriggers"; taskId: string }
 		// A session question answered from its banner: core writes the decision.
 		| { type: "answerQuestion"; questionId: string; answer: string }
+		// A decision answered on its issue's detail (BoardDecisions): `Questions.answer` writes it.
+		| {
+				type: "answerDecision";
+				questionId: string;
+				handle: string;
+				answer: string;
+				reasoning?: string;
+		  }
 		// `w` closed a finished card's tab: the host forgets the card (ActivitySource.dismiss).
 		| { type: "dismiss"; cardId: string }
 		// One of a card's actions, with the prompt's text and the lane on screen when it has them.
@@ -341,7 +353,8 @@ export namespace BoardNav {
 		| { type: "lane"; index: number }
 		// A field of the trigger form, by its place in the trigger's inputs.
 		| { type: "formField"; index: number }
-		| AskClick;
+		| AskClick
+		| BoardDecisions.Click;
 
 	/**
 	 * A click on the copilot's ask: its `index`th answer, the key a hint names (as the key router
@@ -647,6 +660,7 @@ export namespace BoardNav {
 	// copilot's form in hand every key it takes but the cursor's and `esc`, which settle nothing.
 	const answers = (state: BoardState, key: KeyInput): boolean => {
 		if (optionIndex(key) !== null) return true;
+		if (BoardDecisions.answers(state, key)) return true;
 		const head = state.copilot.asks[0];
 		if (
 			head?.type !== "elicitation" ||
@@ -665,14 +679,17 @@ export namespace BoardNav {
 	};
 
 	/**
-	 * Whether the copilot's request waits behind a session question the view has in hand — a pinned
-	 * banner or a card tab's, settled or not. Both ask with the same digits, and a digit must answer
-	 * the one being read, not whichever the router checks first. So the view's question keeps its
+	 * Whether the copilot's request waits behind a question the view has in hand — a pinned banner
+	 * or a card tab's, settled or not, or a decision on the detail view (BoardDecisions). Both ask
+	 * with the same digits, and a digit must answer the one being read, not whichever the router
+	 * checks first. So the view's question keeps its
 	 * keys while it is on screen, and the copilot's row names its request and how to reach it: focus
 	 * the copilot, whose panel then asks it and takes the digits.
 	 */
 	export const copilotOutranked = (state: BoardState): boolean =>
-		state.focus !== "copilot" && BoardTabs.inHand(state) !== undefined;
+		state.focus !== "copilot" &&
+		(BoardTabs.inHand(state) !== undefined ||
+			BoardDecisions.shown(state) !== undefined);
 
 	/**
 	 * Whether the harness's oldest request has the answer keys now: it is not outranked, and no `/`
@@ -717,7 +734,10 @@ export namespace BoardNav {
 		const asking = state.copilot.asks[0];
 		if (asking && !copilotOutranked(state)) return askTarget(asking);
 		if (state.focus === "copilot") return undefined;
-		return BoardTabs.inHand(state)?.question.questionActivityId;
+		return (
+			BoardTabs.inHand(state)?.question.questionActivityId ??
+			BoardDecisions.target(state)
+		);
 	};
 
 	/**
@@ -1110,6 +1130,8 @@ export namespace BoardNav {
 		expanded: ReadonlySet<string>,
 		search: SearchState,
 		status: StatusFilter = "open",
+		// `u`'s counts, while it is on: only tasks with an open decision.
+		decisions?: ReadonlyMap<string, number>,
 	): SectionRows[] => {
 		const query = activeQuery(search);
 		// Both filters fold into ONE row predicate so the two compose: `/` narrows within the active
@@ -1117,10 +1139,11 @@ export namespace BoardNav {
 		// just as a query does, so it takes the same tree filter (keep a flagged child's parent
 		// visible, forced open).
 		const matches =
-			query !== "" || status === "review"
+			query !== "" || status === "review" || decisions !== undefined
 				? (task: Task): boolean =>
 						taskInStatus(task, status) &&
-						(query === "" || matchesQuery(task, query))
+						(query === "" || matchesQuery(task, query)) &&
+						(decisions === undefined || (decisions.get(task.id) ?? 0) > 0)
 				: null;
 		return sections.flatMap((section) => {
 			if (!sectionInStatus(section.state, status, query)) return [];
@@ -1178,6 +1201,7 @@ export namespace BoardNav {
 			state.expanded,
 			state.search,
 			state.status,
+			BoardDecisions.filter(state.decisions),
 		).flatMap((group) => group.rows);
 
 	const rowOf = (
@@ -1420,6 +1444,7 @@ export namespace BoardNav {
 			tabs: BoardTabs.NONE,
 			marked: new Set<string>(),
 			announcement: null,
+			decisions: BoardDecisions.NONE,
 			copilot: COPILOT_IDLE,
 			prompt: BoardPrompt.CLOSED,
 			undo: [],
@@ -1432,12 +1457,14 @@ export namespace BoardNav {
 	// parents expanded across the reload. If the selected task vanished (a state move out of the visible
 	// sections, or a drop past the done cap), re-anchor to the nearest surviving row by its old position
 	// rather than the top. Stale expanded ids are harmless (visibleRows ignores parents that no longer
-	// exist).
+	// exist). The poll's open-decision counts land in the same pass when it read them: under `u` they
+	// decide which rows are visible, so the selection is reconciled against both at once.
 	export const withSections = (
 		state: BoardState,
 		sections: BoardData.BoardSection[],
+		counts?: ReadonlyMap<string, number>,
 	): BoardState => {
-		const next = { ...state, sections };
+		const next = BoardDecisions.withCounts({ ...state, sections }, counts);
 		const oldRows = visibleRows(state);
 		const newRows = visibleRows(next);
 		if (state.selectedId && rowOf(newRows, state.selectedId)) {
@@ -1550,6 +1577,10 @@ export namespace BoardNav {
 		if (state.focus === "copilot") return reduceCopilotKey(state, key);
 		if (clearsTurnIndicator(state, key))
 			return reduceKey(withCopilotTurn(state, "idle"), key, now);
+		// A decision on the detail view takes the keys its form answers ahead of every view's, and
+		// all of them while its input is typed into, the `?` and `{}` of the everywhere keys included.
+		const deciding = BoardDecisions.reduceKey(state, key);
+		if (deciding) return deciding;
 		// ctrl-z routes across every view (board + detail), after the modals own the keyboard and before
 		// view routing. Inert while a `/` query is being typed (ctrl isn't a printable query char anyway).
 		if (isUndoKey(key) && state.search.mode !== "typing")
@@ -1740,7 +1771,8 @@ export namespace BoardNav {
 		if (state.search.mode === "typing") return "search";
 		if (state.view.type === "events")
 			return state.tabs.active === null ? "transcript" : "cardTab";
-		if (state.view.type === "detail") return "detail";
+		if (state.view.type === "detail")
+			return BoardDecisions.typing(state) ? "decisionText" : "detail";
 		return state.search.mode === "committed" ? "searchResults" : "board";
 	};
 
@@ -1775,8 +1807,11 @@ export namespace BoardNav {
 			clearable:
 				state.marked.size > 0 ||
 				state.search.mode === "committed" ||
+				state.decisions.only ||
 				state.announcement !== null ||
 				state.scoped,
+			decisions: BoardDecisions.listed(state),
+			deciding: BoardDecisions.keysInHand(state),
 			history: recallable(state.prompt.open ? state.prompt : state.copilot),
 			reaimable: (state.prompt.open?.aims?.length ?? 0) > 1,
 			ready:
@@ -1945,6 +1980,14 @@ export namespace BoardNav {
 		if (action.type === "tab" || action.type === "answer")
 			return BoardTabs.reduceMouse(state, action);
 		if (action.type === "lane") return CardTab.reduceLane(state, action.index);
+		// A hint the decision hands on goes where its key would: `esc back` to the view's `esc`.
+		if (action.type === "decisionKey")
+			return (
+				BoardDecisions.click(state, action) ??
+				reduceViewKey(state, { name: action.name })
+			);
+		if (action.type === "decisionOption" || action.type === "decisionReach")
+			return BoardDecisions.click(state, action) ?? { state, effect: NONE };
 		return state.view.type === "board"
 			? clickRow(state, action)
 			: { state, effect: NONE };
@@ -2161,6 +2204,12 @@ export namespace BoardNav {
 			// window) and every row already carries needsReview, so `f` filters rows in hand.
 			case "f":
 				return withStatus(state, nextStatus(state.status));
+			// Like `f`, filters rows in hand: every poll already counts the open decisions.
+			case "u":
+				return {
+					state: withSelection(BoardDecisions.toggle(state), state.selectedId),
+					effect: NONE,
+				};
 			case "/":
 				// Enter search-input mode with a fresh query (vim idiom — `/` always starts over).
 				return {
@@ -2182,8 +2231,8 @@ export namespace BoardNav {
 	};
 
 	// Esc layering on the board, one esc one level: marks clear first (the most recent, most local
-	// thing the human added), then a committed filter, then the host's announcement, then scope
-	// widens. Marks therefore never survive into a widened list they were not picked from, and
+	// thing the human added), then a committed search, then the decisions filter, then the host's
+	// announcement, then scope widens. Marks therefore never survive into a widened list they were not picked from, and
 	// dismissing the announcement never widens the scope too. (Typing-mode esc never reaches here;
 	// reduceSearchTyping owns it.)
 	const clearOneLevel = (
@@ -2192,6 +2241,11 @@ export namespace BoardNav {
 		if (state.marked.size > 0)
 			return { state: { ...state, marked: NO_MARKS }, effect: NONE };
 		if (state.search.mode === "committed") return withSearch(state, SEARCH_OFF);
+		if (state.decisions.only)
+			return {
+				state: withSelection(BoardDecisions.clear(state), state.selectedId),
+				effect: NONE,
+			};
 		if (state.announcement !== null)
 			return { state: { ...state, announcement: null }, effect: NONE };
 		return state.scoped

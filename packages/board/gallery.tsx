@@ -50,9 +50,10 @@ const capture = async (
 	try {
 		// testRender mounts inside act(), and leaves React warning about every update after it: the
 		// effects of the first commit (a measured size) land outside one. A story is a picture, not
-		// a test, so they are let commit on their own and drawn on a second pass.
+		// a test, so they are let commit on their own and drawn on a second pass. Markdown (a brief on
+		// the detail view) lays out a few frames later still, so the pass waits for it.
 		Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", false);
-		await Bun.sleep(20);
+		await Bun.sleep(200);
 		await setup.renderOnce();
 		return {
 			text: setup.captureCharFrame(),

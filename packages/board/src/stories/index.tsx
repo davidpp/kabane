@@ -3,11 +3,17 @@
 // at. No story-authoring layer: a story is the JSX a render test would mount. A copilot surface is
 // shown in its place on the board, because its height is the terminal's business (a third of it for
 // an ask) and reads wrong on its own.
-import type { TextareaRenderable } from "@opentui/core";
+import { ok } from "@cabane/core";
+import type { QuestionView } from "@cabane/questions";
+import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { createRef, type ReactNode } from "react";
 import { Board } from "../board";
 import { CopilotLog } from "../copilot-log";
 import { CopilotPane, type CopilotPaneProps } from "../copilot-prompt";
+import { DecisionForm } from "../decision-form";
+import { DecisionPanel } from "../decision-panel";
+import { BoardDecisions } from "../decisions";
+import { Detail } from "../detail";
 import { ElicitationForm } from "../elicitation-form";
 import type { BoardNav } from "../nav";
 import type { CopilotElicitation } from "../ports";
@@ -197,6 +203,68 @@ const planLog = (): CopilotLog.Log => {
 
 const question = Fixtures.question(2, ["Yes", "No"]);
 
+// An issue an agent left waiting on two decisions: a single choice it recommends one of, then a
+// multi-select that also takes a typed answer.
+const WAITING = task({
+	id: "w1",
+	shortId: "JREP-7",
+	title: "Cache the session tokens",
+	state: "waiting",
+	description:
+		"Tokens expire on every restart; keep them somewhere that survives one.",
+});
+const STORE_DECISION = Fixtures.decision(
+	WAITING,
+	1,
+	"Which store should hold the session tokens?",
+	{
+		choices: ["SQLite", "Redis", "Memory"],
+		recommended: "SQLite",
+		allowFreeform: false,
+	},
+	{ why: "Local first: the board has to work without a network." },
+);
+const CHECKS_DECISION = Fixtures.decision(
+	WAITING,
+	2,
+	"Which checks should gate a merge?",
+	{
+		choices: ["Lint", "Types", "Tests"],
+		multiSelect: true,
+		allowFreeform: true,
+	},
+);
+
+// The issue's detail as the app lays it out, the decision on screen under its header.
+const onDetail = (
+	questions: QuestionView[],
+	asked?: BoardDecisions.Shown,
+): ReactNode => (
+	<Detail
+		taskId={WAITING.id}
+		task={WAITING}
+		records={ok(Fixtures.records(WAITING, { questions }))}
+		scrollRef={createRef<ScrollBoxRenderable>()}
+		keys={{ context: "detail", situation: { deciding: asked !== undefined } }}
+		decision={
+			asked ? (
+				<DecisionPanel asked={asked} inHand onSubmit={() => {}} />
+			) : undefined
+		}
+	/>
+);
+
+const asking = (
+	row: QuestionView,
+	draft: Partial<ElicitationForm.Draft> = {},
+	waiting = 0,
+): BoardDecisions.Shown => ({
+	decision: DecisionForm.of(row),
+	draft: { ...ElicitationForm.start(), ...draft },
+	started: false,
+	waiting,
+});
+
 export const STORIES: readonly Story[] = [
 	{
 		name: "board",
@@ -353,6 +421,76 @@ export const STORIES: readonly Story[] = [
 				/>
 			);
 		},
+	},
+	{
+		name: "question-open",
+		about:
+			"an agent's decision on its issue's detail: a single choice, one recommended",
+		width: 80,
+		height: 30,
+		render: () =>
+			onDetail(
+				[STORE_DECISION, CHECKS_DECISION],
+				asking(STORE_DECISION, {}, 1),
+			),
+	},
+	{
+		name: "question-multi",
+		about: "a multi-select decision with an Other box behind it, two toggled",
+		width: 80,
+		height: 30,
+		render: () =>
+			onDetail([CHECKS_DECISION], asking(CHECKS_DECISION, { picked: [0, 2] })),
+	},
+	{
+		name: "question-answered",
+		about:
+			"the decisions made, read in the description as the brief reads them",
+		width: 80,
+		height: 16,
+		render: () =>
+			onDetail([
+				{
+					...STORE_DECISION,
+					status: "answered",
+					answer: "SQLite",
+					answered_by: "cabane://actor/human/david",
+					reasoning: "the hub syncs it anyway",
+				},
+				{
+					...CHECKS_DECISION,
+					status: "answered",
+					answer: "Lint, Tests",
+					answered_by: "cabane://actor/human/david",
+				},
+			]),
+	},
+	{
+		name: "board-decisions-filter",
+		about: "`u` on: only the issues with an open decision, each with its count",
+		width: 80,
+		height: 14,
+		render: () => (
+			<Board
+				sections={SECTIONS}
+				expanded={new Set()}
+				selectedId="n1"
+				scopeLabel="acme/widget"
+				decisions={{
+					...BoardDecisions.NONE,
+					only: true,
+					counts: new Map([
+						["n1a", 1],
+						["n2", 2],
+					]),
+				}}
+				keys={{
+					context: "board",
+					situation: { selection: true, decisions: true, clearable: true },
+				}}
+				pane={<Pane copilot={Fixtures.copilot({ actor: CLAUDE })} />}
+			/>
+		),
 	},
 	{
 		name: "banner-answered",

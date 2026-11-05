@@ -9,6 +9,7 @@ import {
 	ok,
 	Planner,
 	type Result,
+	Runtime,
 	TASK_STATE_DISPLAY,
 	type Task,
 	type TaskComment,
@@ -19,6 +20,12 @@ import {
 	type TaskWorkLog,
 	type UpstreamLink,
 } from "@cabane/core";
+import {
+	type AnswerInput,
+	Questions,
+	type QuestionView,
+	questionsModule,
+} from "@cabane/questions";
 
 export namespace BoardData {
 	// Sections rendered top-to-bottom (linear-tui grouped-list order) — every one of the seven states,
@@ -239,7 +246,46 @@ export namespace BoardData {
 		subtasks: Task[];
 		// The curated input context (PRD, ADR, research…), as identities: label, kind and ref.
 		contextRefs: TaskContextRef[];
+		// The decisions agents filed on it (`kabane_ask`), every status, oldest first.
+		questions: QuestionView[];
 	};
+
+	// The questions module's table exists only where the host registered the module (the CLI does).
+	// A host that did not has no decisions to show, which is not a failed read.
+	const asksQuestions = (): boolean =>
+		Runtime.modules().some((module) => module.name === questionsModule.name);
+
+	const taskQuestions = async (
+		basePath: string,
+		id: string,
+	): Promise<Result<QuestionView[]>> =>
+		asksQuestions() ? Questions.list(basePath, { id, status: "all" }) : ok([]);
+
+	/**
+	 * Open decisions by task id, across the whole tracker: the rows' badges and `u`'s filter. A
+	 * board's rows are a window on it, so a count for a task not loaded is never read.
+	 */
+	export const openQuestionCounts = async (
+		basePath: string,
+	): Promise<Result<Map<string, number>>> => {
+		if (!asksQuestions()) return ok(new Map());
+		const open = await Questions.list(basePath, { status: "open" });
+		if (!open.ok) return open;
+		const counts = new Map<string, number>();
+		for (const row of open.value)
+			counts.set(row.task_id, (counts.get(row.task_id) ?? 0) + 1);
+		return ok(counts);
+	};
+
+	/**
+	 * A decision answered on its issue's detail, as `kabane_answer` answers it: the last one closed
+	 * moves a waiting issue to `next`, and `moved` says so.
+	 */
+	export const answerDecision = async (
+		basePath: string,
+		input: AnswerInput,
+	): Promise<Result<{ question: QuestionView; moved: boolean }>> =>
+		Questions.answer(basePath, input);
 
 	// A parent with more subtasks than this is a plan, and the view names the first ones only.
 	const SUBTASK_LIMIT = 200;
@@ -280,6 +326,7 @@ export namespace BoardData {
 			upstream,
 			subtasks,
 			contextRefs,
+			questions,
 		] = await Promise.all([
 			Planner.getComments(basePath, id),
 			Planner.getWorkLogs(basePath, id),
@@ -295,6 +342,7 @@ export namespace BoardData {
 				limit: SUBTASK_LIMIT,
 			}),
 			Planner.getContextRefs(basePath, task.value.id),
+			taskQuestions(basePath, task.value.id),
 		]);
 		if (!comments.ok) return comments;
 		if (!workLogs.ok) return workLogs;
@@ -303,6 +351,7 @@ export namespace BoardData {
 		if (!upstream.ok) return upstream;
 		if (!subtasks.ok) return subtasks;
 		if (!contextRefs.ok) return contextRefs;
+		if (!questions.ok) return questions;
 		const perSession: SessionRecords[] = [];
 		for (const session of sessions.value) {
 			const records = await sessionRecords(basePath, session);
@@ -324,6 +373,7 @@ export namespace BoardData {
 			upstream: upstream.value,
 			subtasks: subtasks.value,
 			contextRefs: contextRefs.value,
+			questions: questions.value,
 		});
 	};
 
@@ -334,6 +384,7 @@ export namespace BoardData {
 		sessions: readonly AgentSession[];
 		links: readonly TaskLink[];
 		upstream: readonly UpstreamLink[];
+		questions: readonly QuestionView[];
 	};
 
 	const latest = (stamps: readonly string[]): string =>
@@ -355,6 +406,7 @@ export namespace BoardData {
 				.sort()
 				.join(",")}`,
 			`u${parts.upstream.length}@${latest(parts.upstream.map((u) => u.updatedAt))}`,
+			`q${parts.questions.length}@${latest(parts.questions.map((q) => q.updated_at))}`,
 		].join("|");
 
 	/** The stamp of records already loaded, to compare the next `detailStamp` against. */
@@ -365,6 +417,7 @@ export namespace BoardData {
 			sessions: records.sessions.map((s) => s.session),
 			links: records.links,
 			upstream: records.upstream,
+			questions: records.questions,
 		});
 
 	/**
@@ -376,18 +429,21 @@ export namespace BoardData {
 		basePath: string,
 		id: string,
 	): Promise<Result<string>> => {
-		const [comments, workLogs, sessions, links, upstream] = await Promise.all([
-			Planner.getComments(basePath, id),
-			Planner.getWorkLogs(basePath, id),
-			Planner.querySessions(basePath, { taskId: id }),
-			Planner.getLinksForTask(basePath, id),
-			Planner.getUpstreamLinksForTask(basePath, id),
-		]);
+		const [comments, workLogs, sessions, links, upstream, questions] =
+			await Promise.all([
+				Planner.getComments(basePath, id),
+				Planner.getWorkLogs(basePath, id),
+				Planner.querySessions(basePath, { taskId: id }),
+				Planner.getLinksForTask(basePath, id),
+				Planner.getUpstreamLinksForTask(basePath, id),
+				taskQuestions(basePath, id),
+			]);
 		if (!comments.ok) return comments;
 		if (!workLogs.ok) return workLogs;
 		if (!sessions.ok) return sessions;
 		if (!links.ok) return links;
 		if (!upstream.ok) return upstream;
+		if (!questions.ok) return questions;
 		return ok(
 			stampOf({
 				comments: comments.value,
@@ -395,6 +451,7 @@ export namespace BoardData {
 				sessions: sessions.value,
 				links: links.value,
 				upstream: upstream.value,
+				questions: questions.value,
 			}),
 		);
 	};

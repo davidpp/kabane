@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardActivity } from "./activity";
 import type { BoardStore } from "./board-store";
 import { BoardData } from "./data";
+import { BoardDecisions } from "./decisions";
 import { BoardNav } from "./nav";
 import type { SetNotice } from "./notice";
 import type { ActivitySource, Copilot } from "./ports";
@@ -81,9 +82,10 @@ export const useBoardFeed = ({
 	// When a query is active, re-fire the FTS search after the reload so tier-2 results stay merged.
 	const reload = useCallback(
 		async (s: BoardNav.BoardState): Promise<void> => {
-			const [result, act] = await Promise.all([
+			const [result, act, counts] = await Promise.all([
 				BoardData.loadBoard(basePath, filtersFor(s)),
 				BoardActivity.loadActivity(basePath, activitySource),
+				BoardData.openQuestionCounts(basePath),
 			]);
 			if (!result.ok) {
 				// Non-fatal: keep last-good state, surface as a transient notice.
@@ -92,7 +94,9 @@ export const useBoardFeed = ({
 			}
 			// Clear any previous poll-error notice on success.
 			setNotice((prev) => (prev?.tone === "error" ? null : prev));
-			update((prev) => BoardNav.withSections(prev, result.value));
+			// A failed count keeps the last-good badges, as the activity map does.
+			const fresh = counts.ok ? counts.value : undefined;
+			update((prev) => BoardNav.withSections(prev, result.value, fresh));
 			if (act.ok) setActivity(act.value);
 			const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
 			if (links.ok) setLinked(links.value);
@@ -120,9 +124,10 @@ export const useBoardFeed = ({
 			const filters: BoardData.BoardFilters = detected
 				? { scopeUri: detected.scopeUri }
 				: {};
-			const [result, act] = await Promise.all([
+			const [result, act, counts] = await Promise.all([
 				BoardData.loadBoard(basePath, filters),
 				BoardActivity.loadActivity(basePath, activitySource),
+				BoardData.openQuestionCounts(basePath),
 			]);
 			if (cancelled) return;
 			setScope(detected);
@@ -131,17 +136,16 @@ export const useBoardFeed = ({
 				const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
 				if (!cancelled && links.ok) setLinked(links.value);
 			}
-			if (result.ok)
-				set(
-					BoardNav.withCopilotPort(
-						BoardNav.init(result.value, { scoped: Boolean(detected) }),
-						{
-							shortcuts: copilot?.shortcuts() ?? [],
-							actor: copilot?.actor ?? null,
-						},
-					),
+			if (result.ok) {
+				const first = BoardNav.withCopilotPort(
+					BoardNav.init(result.value, { scoped: Boolean(detected) }),
+					{
+						shortcuts: copilot?.shortcuts() ?? [],
+						actor: copilot?.actor ?? null,
+					},
 				);
-			else setError(result.error.message);
+				set(counts.ok ? BoardDecisions.withCounts(first, counts.value) : first);
+			} else setError(result.error.message);
 		})();
 		return () => {
 			cancelled = true;

@@ -5,6 +5,7 @@
 import { useKeyboard, useRenderer } from "@opentui/react";
 import { useCallback } from "react";
 import type { BoardStore } from "./board-store";
+import { BoardDecisions } from "./decisions";
 import { BoardNav } from "./nav";
 import { BoardPrompt } from "./prompt";
 import type { ScreenRefs } from "./screen";
@@ -20,6 +21,8 @@ export type BoardInput = {
 	submitCopilot: () => void;
 	// `enter` in a form's input: the reducer reads the field and moves the form on, or sends it.
 	submitForm: (text: string) => void;
+	// The same for a decision's input on the detail view.
+	submitDecision: (text: string) => void;
 	// Mirror the buffer into the reducer so `/` matching sees what the human sees.
 	mirrorCopilotText: () => void;
 	// The same two for a prompt a card's tab or a banner opened.
@@ -98,6 +101,10 @@ export const useBoardInput = ({
 		(text: string): void => commit((s) => BoardNav.submitForm(s, text)),
 		[commit],
 	);
+	const submitDecision = useCallback(
+		(text: string): void => commit((s) => BoardDecisions.submit(s, text)),
+		[commit],
+	);
 	const mirrorCopilotText = useCallback((): void => {
 		const text = inputRef.current?.plainText ?? "";
 		update((prev) => BoardNav.withCopilotText(prev, text));
@@ -116,6 +123,7 @@ export const useBoardInput = ({
 		dispatchMouse,
 		submitCopilot,
 		submitForm,
+		submitDecision,
 		mirrorCopilotText,
 		submitPrompt,
 		mirrorPromptText,

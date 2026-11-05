@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { BoardData } from "./data";
+import { BoardDecisions } from "./decisions";
 import type { DetailModel } from "./detail-model";
 import { BoardNav } from "./nav";
 import type {
@@ -85,6 +86,7 @@ const state = (over: Partial<BoardNav.BoardState> = {}): BoardNav.BoardState =>
 			tabs: BoardTabs.NONE,
 			marked: new Set<string>(),
 			announcement: null,
+			decisions: BoardDecisions.NONE,
 			copilot: copilotState(),
 			undo: [],
 			prompt: BoardPrompt.CLOSED,

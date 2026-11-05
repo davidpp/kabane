@@ -26,8 +26,12 @@ export namespace Keymap {
 		transcript?: boolean;
 		/** The transcript on screen is the copilot's, and its turn is running. */
 		stoppable?: boolean;
-		/** `esc` on the board has something to clear: marks, a committed search, a narrowed scope. */
+		/** `esc` on the board has something to clear: marks, a committed search, a filter, a narrowed scope. */
 		clearable?: boolean;
+		/** An issue on the board has an open decision, or `u` is showing only those. */
+		decisions?: boolean;
+		/** A decision on the detail view has the keys its form names, the digits among them. */
+		deciding?: boolean;
 		/** The copilot's buffer is empty and there are prompts to recall. */
 		history?: boolean;
 		/** The dispatch picker has triggers to move through. */
@@ -77,6 +81,7 @@ export namespace Keymap {
 		| "search"
 		| "searchResults"
 		| "detail"
+		| "decisionText"
 		| "transcript"
 		| "cardTab"
 		| "copilot"
@@ -197,6 +202,14 @@ export namespace Keymap {
 			name: "board",
 			sheet: true,
 			bindings: [
+				// What waits on the human leads, as `!` does: the issues agents filed decisions on.
+				{
+					key: "u",
+					label: "decisions",
+					tier: "footer",
+					keys: ["u"],
+					when: (s) => s.decisions === true,
+				},
 				OPEN_LINK,
 				{ key: "/", label: "search", tier: "footer", keys: ["/"] },
 				{
@@ -362,7 +375,7 @@ export namespace Keymap {
 					label: "go to a section",
 					tier: "help",
 					keys: ["1", "2", "3"],
-					when: (s) => s.pinned !== true,
+					when: (s) => s.pinned !== true && s.deciding !== true,
 				},
 				{
 					key: "j/k",
@@ -380,6 +393,23 @@ export namespace Keymap {
 					tier: "help",
 					keys: ["escape", "q"],
 				},
+			],
+		},
+		// A decision's text field on the detail view, while it has the keys: every key but these is
+		// typed into it, so the detail's own hints would only type their letter.
+		decisionText: {
+			name: "decision",
+			sheet: false,
+			bindings: [
+				{
+					key: "enter",
+					label: "send",
+					tier: "footer",
+					keys: [],
+					routed: "textarea",
+				},
+				{ key: "esc", label: "start over", tier: "footer", keys: ["escape"] },
+				{ key: "tab", label: "next pane", tier: "footer", keys: ["tab"] },
 			],
 		},
 		transcript: {

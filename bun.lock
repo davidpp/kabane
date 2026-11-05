@@ -53,6 +53,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@cabane/core": "workspace:*",
+        "@cabane/questions": "workspace:*",
         "@opentui/core": "0.8.0",
         "@opentui/react": "0.8.0",
         "diff": "9.0.0",

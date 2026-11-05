@@ -162,6 +162,8 @@ export type DetailProps = {
 	onCopy?: () => void;
 	// The question pinned in a banner over this view, which the view then does not repeat.
 	pinned?: string;
+	// The decision asked under the header (DecisionPanel), or the row saying decisions wait.
+	decision?: ReactNode;
 	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation).
 	// Optional so render-only tests fall back to what the view knows itself.
 	keys?: Keymap.Live;
@@ -275,6 +277,7 @@ export const Detail = ({
 	linked = false,
 	onCopy,
 	pinned,
+	decision,
 	keys,
 }: DetailProps): ReactNode => {
 	const theme = useTheme();
@@ -318,6 +321,7 @@ export const Detail = ({
 					))}
 				</box>
 			) : null}
+			{decision}
 			<TabBarRow summaries={summaries} active={tab} room={room} onTab={onTab} />
 			{/* Keyed by tab, so a switch opens the new tab at its top rather than at the old scroll. */}
 			<scrollbox
@@ -566,9 +570,15 @@ const TabContent = ({
 	switch (tab) {
 		case "description": {
 			const description = records.task.description?.trim();
+			const decisions = DetailModel.decisions(records);
 			const subtasks = DetailModel.subtasks(records);
 			const context = DetailModel.contextRefs(records);
-			if (!description && subtasks.length === 0 && context.length === 0)
+			if (
+				!description &&
+				decisions.length === 0 &&
+				subtasks.length === 0 &&
+				context.length === 0
+			)
 				return (
 					<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
 						no description
@@ -577,8 +587,18 @@ const TabContent = ({
 			return (
 				<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
 					{description ? <MarkdownBody content={description} /> : null}
+					{decisions.length > 0 ? (
+						<Section title="decisions" first={!description}>
+							{decisions.map((line) => (
+								<DecisionRow key={line.id} line={line} />
+							))}
+						</Section>
+					) : null}
 					{subtasks.length > 0 ? (
-						<Section title="subtasks" first={!description}>
+						<Section
+							title="subtasks"
+							first={!description && decisions.length === 0}
+						>
 							{subtasks.map((line) => (
 								<SubtaskRow key={line.id} line={line} room={room} />
 							))}
@@ -587,7 +607,9 @@ const TabContent = ({
 					{context.length > 0 ? (
 						<Section
 							title="context"
-							first={!description && subtasks.length === 0}
+							first={
+								!description && decisions.length === 0 && subtasks.length === 0
+							}
 						>
 							{context.map((line) => (
 								<ContextRow key={line.id} line={line} room={room} />
@@ -696,6 +718,24 @@ const SubtaskRow = ({
 				</text>
 			) : null}
 		</box>
+	);
+};
+
+// One decision made: the question, the answer after `→` in the text color, who made it and why muted.
+// Wrapped rather than cut, inside the prose measure: the answer is what the row is read for.
+const DecisionRow = ({
+	line,
+}: {
+	line: DetailModel.DecisionLine;
+}): ReactNode => {
+	const theme = useTheme();
+	const why = line.reasoning ? `, ${line.reasoning}` : "";
+	return (
+		<text fg={theme.defaultFg} style={{ maxWidth: PROSE_MEASURE }}>
+			{line.question}
+			<span fg={theme.text}>{` → ${line.answer}`}</span>
+			<span fg={theme.muted}>{` (${line.by}${why})`}</span>
+		</text>
 	);
 };
 

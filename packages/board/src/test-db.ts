@@ -1,10 +1,15 @@
-// Test wiring for board tests: the bun:sqlite provider with plain table names, plus a fresh base
-// directory per test. Importing this module configures the runtime once for the process.
+// Test wiring for board tests: the bun:sqlite provider with plain table names and the questions
+// module the CLI registers, plus a fresh base directory per test. Importing this module configures
+// the runtime once for the process.
 import { mkdirSync, rmSync } from "node:fs";
 import { Planner, Runtime } from "@cabane/core";
+import { questionsModule } from "@cabane/questions";
 import { SqliteDb } from "@cabane/sqlite";
 
-Runtime.configure({ provider: SqliteDb.provider() });
+Runtime.configure({
+	provider: SqliteDb.provider(),
+	modules: [questionsModule],
+});
 
 // Wipe and re-create `base`, then apply the schema. Call from beforeEach.
 export const freshDb = async (base: string): Promise<void> => {
