@@ -537,3 +537,23 @@ it("rolls the close back when withdrawing its questions fails", async () => {
 	).toHaveLength(2);
 	expect(await count()).toBe(before);
 });
+
+it("notifies a close only after its withdrawals commit", async () => {
+	const seen: string[] = [];
+	configureTestRuntime("planner_", {
+		modules: [questionsModule],
+		notifier: async (type, payload) => {
+			if (type !== "planner.task.updated") return;
+			const id = (payload as { id: string }).id;
+			// A separate connection must already see the closed task and its withdrawal.
+			const task = unwrap(await Planner.getTask(base, id));
+			const rows = unwrap(await Questions.list(base, { id }));
+			seen.push(`${task?.state}:${rows.map((row) => row.status).join(",")}`);
+		},
+	});
+	const task = await issue();
+	await ask(task.id);
+	seen.length = 0;
+	unwrap(await Planner.updateTask(base, task.id, { state: "done" }));
+	expect(seen).toEqual(["done:withdrawn,withdrawn"]);
+});
