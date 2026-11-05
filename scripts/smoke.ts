@@ -131,6 +131,41 @@ const kabane = (...args: string[]): Ran =>
 	runOk([BIN, ...args], REPO, isolated);
 
 const SMOKE_CONTEXT_BODY = "SMOKE_BODY_MUST_NOT_ECHO 🧭\n".repeat(1000);
+const checkCliContext = (taskId: string): void => {
+	let markdown = "";
+	let cursor: string | undefined;
+	do {
+		const text = kabane(
+			"context",
+			taskId,
+			"--format",
+			"concise",
+			"--sections",
+			"description,discussion",
+			"--no-deref",
+			...(cursor ? ["--cursor", cursor] : []),
+		).stdout;
+		const context = ContextPageSchema.safeParse(JSON.parse(text));
+		if (!context.success || Buffer.byteLength(text) > 16384)
+			return fail("installed concise CLI context shape/budget");
+		if (context.data.offset !== markdown.length)
+			return fail("installed concise CLI context offset");
+		markdown += context.data.markdown;
+		cursor = context.data.nextCursor;
+		if (
+			!cursor &&
+			(!context.data.completeness.descriptionComplete ||
+				!context.data.completeness.humanSteeringComplete)
+		)
+			return fail("installed concise CLI context completeness");
+	} while (cursor);
+	if (
+		!markdown.includes(SMOKE_CONTEXT_BODY) ||
+		!markdown.includes("SMOKE_HUMAN_STEERING")
+	)
+		return fail("installed concise CLI context reconstruction");
+};
+
 const checkCommands = (version: string): string => {
 	const printed = kabane("--version").stdout.trim();
 	if (printed !== version)
@@ -182,38 +217,7 @@ const checkCommands = (version: string): string => {
 	)
 		return fail("installed concise receipt missing identity");
 	kabane("comment", created.id, "SMOKE_HUMAN_STEERING");
-	let markdown = "";
-	let cursor: string | undefined;
-	do {
-		const text = kabane(
-			"context",
-			created.id,
-			"--format",
-			"concise",
-			"--sections",
-			"description,discussion",
-			"--no-deref",
-			...(cursor ? ["--cursor", cursor] : []),
-		).stdout;
-		const context = ContextPageSchema.safeParse(JSON.parse(text));
-		if (!context.success || Buffer.byteLength(text) > 16384)
-			return fail("installed concise CLI context shape/budget");
-		if (context.data.offset !== markdown.length)
-			return fail("installed concise CLI context offset");
-		markdown += context.data.markdown;
-		cursor = context.data.nextCursor;
-		if (
-			!cursor &&
-			(!context.data.completeness.descriptionComplete ||
-				!context.data.completeness.humanSteeringComplete)
-		)
-			return fail("installed concise CLI context completeness");
-	} while (cursor);
-	if (
-		!markdown.includes(SMOKE_CONTEXT_BODY) ||
-		!markdown.includes("SMOKE_HUMAN_STEERING")
-	)
-		return fail("installed concise CLI context reconstruction");
+	checkCliContext(created.id);
 	pass(
 		"--version, --help, init, add, list, concise pages/receipts/context chunks",
 	);
@@ -425,6 +429,26 @@ const checkMcpWrites = (replies: SmokeReply[], taskId: string): void => {
 	);
 };
 
+const checkMcpContext = (
+	contextReply: SmokeReply | undefined,
+	taskId: string,
+): void => {
+	const contextText = contextReply?.result?.content?.[0]?.text ?? "";
+	const context = ContextPageSchema.safeParse(
+		JSON.parse(contextText || "null"),
+	);
+	if (
+		contextReply?.result?.isError ||
+		!context.success ||
+		Buffer.byteLength(contextText) > 16384 ||
+		context.data.taskId !== taskId ||
+		!context.data.nextCursor ||
+		context.data.completeness.descriptionComplete ||
+		context.data.completeness.humanSteeringComplete
+	)
+		fail("installed concise MCP context shape/budget/partial completeness");
+};
+
 // A harness closes the server's stdin when it goes away; the server must exit then, not linger.
 const checkMcp = async (version: string, taskId: string): Promise<void> => {
 	const proc = Bun.spawn([BIN, "mcp"], {
@@ -477,21 +501,10 @@ const checkMcp = async (version: string, taskId: string): Promise<void> => {
 	const info = replies.find((reply) => reply.id === 1)?.result?.serverInfo;
 	checkMcpDiscovery(replies.find((reply) => reply.id === 2));
 	checkMcpPage(replies.find((reply) => reply.id === 3));
-	const contextReply = replies.find((reply) => reply.id === 4);
-	const contextText = contextReply?.result?.content?.[0]?.text ?? "";
-	const context = ContextPageSchema.safeParse(
-		JSON.parse(contextText || "null"),
+	checkMcpContext(
+		replies.find((reply) => reply.id === 4),
+		taskId,
 	);
-	if (
-		contextReply?.result?.isError ||
-		!context.success ||
-		Buffer.byteLength(contextText) > 16384 ||
-		context.data.taskId !== taskId ||
-		!context.data.nextCursor ||
-		context.data.completeness.descriptionComplete ||
-		context.data.completeness.humanSteeringComplete
-	)
-		fail("installed concise MCP context shape/budget/partial completeness");
 	if (info?.name !== "kabane" || info.version !== version)
 		fail(
 			`kabane mcp answered initialize with ${lines.join("\n") || "nothing"}`,

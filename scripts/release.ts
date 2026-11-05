@@ -26,6 +26,38 @@ const command = async (argv: string[], cwd = ROOT): Promise<Result<string>> => {
 			);
 };
 
+const verifySource = async (
+	root: string,
+	ref?: string,
+	expectedCommit?: string,
+) => {
+	const source = z
+		.object({ name: z.literal("kabane"), version: z.string() })
+		.safeParse(
+			JSON.parse(readFileSync(join(root, "packages/cli/package.json"), "utf8")),
+		);
+	if (!source.success) return err(new Error("Invalid source CLI manifest."));
+	const commit = await command(["git", "rev-parse", "HEAD"], root);
+	const status = await command(["git", "status", "--porcelain"], root);
+	const npm = await command(["npm", "--version"], root);
+	if (!commit.ok || !status.ok || !npm.ok)
+		return err(new Error("Could not establish source/tool identity."));
+	if (expectedCommit && commit.value !== expectedCommit)
+		return err(new Error("Checkout/event commit mismatch."));
+	const tag = ref?.startsWith("refs/tags/")
+		? ref.slice("refs/tags/".length)
+		: null;
+	if (tag !== null && tag !== `v${source.data.version}`)
+		return err(new Error("Tag/source version mismatch."));
+	return ok({
+		version: source.data.version,
+		commit: commit.value,
+		dirty: status.value !== "",
+		npm: npm.value,
+		tag,
+	});
+};
+
 export const prepareRelease = async (
 	output: string,
 	ref?: string,
@@ -34,26 +66,9 @@ export const prepareRelease = async (
 	root = ROOT,
 ): Promise<Result<string>> => {
 	try {
-		const source = z
-			.object({ name: z.literal("kabane"), version: z.string() })
-			.safeParse(
-				JSON.parse(
-					readFileSync(join(root, "packages/cli/package.json"), "utf8"),
-				),
-			);
-		if (!source.success) return err(new Error("Invalid source CLI manifest."));
-		const commit = await command(["git", "rev-parse", "HEAD"], root);
-		const status = await command(["git", "status", "--porcelain"], root);
-		const npm = await command(["npm", "--version"], root);
-		if (!commit.ok || !status.ok || !npm.ok)
-			return err(new Error("Could not establish source/tool identity."));
-		if (expectedCommit && commit.value !== expectedCommit)
-			return err(new Error("Checkout/event commit mismatch."));
-		const tag = ref?.startsWith("refs/tags/")
-			? ref.slice("refs/tags/".length)
-			: null;
-		if (tag !== null && tag !== `v${source.data.version}`)
-			return err(new Error("Tag/source version mismatch."));
+		const source = await verifySource(root, ref, expectedCommit);
+		if (!source.ok) return source;
+		const { version, commit, dirty, npm, tag } = source.value;
 		const built = await command([process.execPath, "scripts/build.ts"], root);
 		if (!built.ok) return built;
 		mkdirSync(output);
@@ -81,28 +96,28 @@ export const prepareRelease = async (
 			join(output, "inspection"),
 			[root, homedir()],
 		);
-		if (!inspected.ok || inspected.value.version !== source.data.version)
+		if (!inspected.ok || inspected.value.version !== version)
 			return err(
 				new Error("Packed/source version or artifact inspection failed."),
 			);
 		const bytes = readFileSync(archive);
 		const body =
 			notes?.trim() ||
-			`# kabane ${source.data.version}\n\nSource commit: ${commit.value}\n\nReview compatibility, consistent database backups, restart/rewiring instructions and the manual terminal smoke before publishing.\n`;
+			`# kabane ${version}\n\nSource commit: ${commit}\n\nReview compatibility, consistent database backups, restart/rewiring instructions and the manual terminal smoke before publishing.\n`;
 		if (Buffer.byteLength(body) > 32_768)
 			return err(new Error("Release notes exceed 32KiB."));
 		const noteBytes = Buffer.from(`${body}\n`);
 		const manifest = ReleaseManifestSchema.safeParse({
-			version: source.data.version,
-			commit: commit.value,
+			version,
+			commit,
 			tag,
-			dirty: status.value !== "",
+			dirty,
 			filename: first.filename,
 			sha256: sha256(bytes),
 			integrity: integrity(bytes),
 			notesSha256: sha256(noteBytes),
 			bun: Bun.version,
-			npm: npm.value,
+			npm,
 		});
 		if (!manifest.success)
 			return err(new Error("Invalid release identity/tool metadata."));

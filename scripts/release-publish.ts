@@ -68,57 +68,46 @@ const releaseChannel = (version: string) => {
 export type RegistrySettle = { attempts: number; intervalMs: number };
 const REGISTRY_SETTLE: RegistrySettle = { attempts: 30, intervalMs: 10_000 };
 
-/**
- * One exact archive, one publish attempt; recovery observes state rather than retrying writes.
- * A stable release moves npm `latest`. A beta moves npm `beta` and leaves `latest` as it found it,
- * and its GitHub release is a prerelease.
- */
-export const completeRelease = async (
+const verifyPublicationState = (
 	record: ReleaseManifest,
-	ops: PublishOperations,
-	settle = REGISTRY_SETTLE,
-): Promise<Result<string>> => {
-	if (record.dirty || record.tag !== `v${record.version}`)
-		return failure(
-			"Artifact is nonpromotable (dirty source or missing/mismatched tag).",
-		);
+	registry: RegistryState,
+	release: ReleaseState,
+): Result<string | null> => {
 	const { beta, advances, reached, marked } = releaseChannel(record.version);
-	const tag = await ops.verifyTag();
-	if (!tag.ok) return tag;
-	const registry = await ops.registry(),
-		release = await ops.release();
-	if (!registry.ok || !release.ok)
-		return failure(
-			"Cannot establish registry/release state; no publish attempted.",
-		);
 	if (
-		registry.value.existingIntegrity !== null &&
-		registry.value.existingIntegrity !== record.integrity
+		registry.existingIntegrity !== null &&
+		registry.existingIntegrity !== record.integrity
 	)
 		return failure(
 			"Existing npm version has different bytes; never replace or republish it.",
 		);
-	if (release.value && !release.value.assetsMatch)
+	if (release && !release.assetsMatch)
 		return failure("Existing release assets conflict; no overwrite attempted.");
-	if (release.value && !release.value.draft)
-		return registry.value.existingIntegrity === record.integrity &&
-			release.value.immutable &&
-			release.value.assetsComplete &&
-			marked(release.value)
+	if (release && !release.draft)
+		return registry.existingIntegrity === record.integrity &&
+			release.immutable &&
+			release.assetsComplete &&
+			marked(release)
 			? ok("Verified already complete; no writes performed.")
 			: failure(
 					"Published release is inconsistent or not immutable; investigate manually.",
 				);
-	if (registry.value.existingIntegrity === null && !advances(registry.value))
+	if (registry.existingIntegrity === null && !advances(registry))
 		return failure(
 			beta
 				? "New beta must advance npm latest and beta; no implicit downgrade."
 				: "New stable version must advance latest; no implicit downgrade.",
 		);
-	if (registry.value.existingIntegrity !== null && !reached(registry.value))
+	if (registry.existingIntegrity !== null && !reached(registry))
 		return failure(
 			`Existing npm version lacks the expected ${beta ? "beta" : "stable"} tag state; review dist-tags manually.`,
 		);
+	return ok(null);
+};
+
+const prepareVerifiedDraft = async (
+	ops: PublishOperations,
+): Promise<Result<void>> => {
 	const draft = await ops.prepareDraft();
 	if (!draft.ok)
 		return failure(
@@ -134,20 +123,16 @@ export const completeRelease = async (
 		return failure(
 			"Draft assets are not fully verified; no publish attempted.",
 		);
-	const before = await ops.verifyTag();
-	if (!before.ok) return before;
-	if (registry.value.existingIntegrity === null) {
-		const fresh = await ops.registry();
-		if (
-			!fresh.ok ||
-			fresh.value.existingIntegrity !== null ||
-			!advances(fresh.value)
-		)
-			return failure(
-				"Registry changed before publish; stop and inspect without retrying writes.",
-			);
-		await ops.publishArchive(); // Its exit status cannot settle an ambiguous committed publish.
-	}
+	return ok(undefined);
+};
+
+const confirmPublication = async (
+	record: ReleaseManifest,
+	ops: PublishOperations,
+	registry: RegistryState,
+	settle: RegistrySettle,
+): Promise<Result<void>> => {
+	const { beta, reached } = releaseChannel(record.version);
 	let confirmed: RegistryState | undefined;
 	for (let attempt = 0; attempt < settle.attempts; attempt++) {
 		if (attempt > 0) await Bun.sleep(settle.intervalMs);
@@ -156,7 +141,7 @@ export const completeRelease = async (
 			observed.ok &&
 			observed.value.existingIntegrity === record.integrity &&
 			reached(observed.value) &&
-			(!beta || observed.value.latest === registry.value.latest)
+			(!beta || observed.value.latest === registry.latest)
 		) {
 			confirmed = observed.value;
 			break;
@@ -166,6 +151,14 @@ export const completeRelease = async (
 		return failure(
 			`Publication state is unverified/partial: ${record.version} with the archive's integrity is not on the registry${beta ? " under the beta tag with latest unchanged" : ""} yet. Check \`npm view kabane@${record.version} dist.integrity\`${beta ? " and `npm view kabane dist-tags`" : ""}. Once it matches the archive, rerunning publish only finalizes GitHub and never publishes again; while it is absent, inspect before any retry.`,
 		);
+	return ok(undefined);
+};
+
+const finalizeVerifiedRelease = async (
+	record: ReleaseManifest,
+	ops: PublishOperations,
+): Promise<Result<string>> => {
+	const { beta, marked } = releaseChannel(record.version);
 	const stillTag = await ops.verifyTag();
 	if (!stillTag.ok)
 		return failure(
@@ -192,6 +185,58 @@ export const completeRelease = async (
 		: failure(
 				"npm is verified; final GitHub immutability/assets remain unverified. Inspect partial state manually.",
 			);
+};
+
+/**
+ * One exact archive, one publish attempt; recovery observes state rather than retrying writes.
+ * A stable release moves npm `latest`. A beta moves npm `beta` and leaves `latest` as it found it,
+ * and its GitHub release is a prerelease.
+ */
+export const completeRelease = async (
+	record: ReleaseManifest,
+	ops: PublishOperations,
+	settle = REGISTRY_SETTLE,
+): Promise<Result<string>> => {
+	if (record.dirty || record.tag !== `v${record.version}`)
+		return failure(
+			"Artifact is nonpromotable (dirty source or missing/mismatched tag).",
+		);
+	const { advances } = releaseChannel(record.version);
+	const tag = await ops.verifyTag();
+	if (!tag.ok) return tag;
+	const registry = await ops.registry(),
+		release = await ops.release();
+	if (!registry.ok || !release.ok)
+		return failure(
+			"Cannot establish registry/release state; no publish attempted.",
+		);
+	const state = verifyPublicationState(record, registry.value, release.value);
+	if (!state.ok) return state;
+	if (state.value !== null) return ok(state.value);
+	const draft = await prepareVerifiedDraft(ops);
+	if (!draft.ok) return draft;
+	const before = await ops.verifyTag();
+	if (!before.ok) return before;
+	if (registry.value.existingIntegrity === null) {
+		const fresh = await ops.registry();
+		if (
+			!fresh.ok ||
+			fresh.value.existingIntegrity !== null ||
+			!advances(fresh.value)
+		)
+			return failure(
+				"Registry changed before publish; stop and inspect without retrying writes.",
+			);
+		await ops.publishArchive(); // Its exit status cannot settle an ambiguous committed publish.
+	}
+	const confirmed = await confirmPublication(
+		record,
+		ops,
+		registry.value,
+		settle,
+	);
+	if (!confirmed.ok) return confirmed;
+	return finalizeVerifiedRelease(record, ops);
 };
 
 export const authorizePublication = (
@@ -248,6 +293,312 @@ const NpmRecord = z.object({
 	gitHead: z.string().optional(),
 	dist: z.object({ integrity: z.string() }),
 });
+type Publication = {
+	record: ReleaseManifest;
+	directory: string;
+	work: string;
+	env: NodeJS.ProcessEnv;
+	mode: "oidc" | "local";
+	call: (
+		argv: string[],
+		cwd?: string,
+		timeout?: number,
+	) => Promise<Result<ProcessReply>>;
+	assets: string[];
+	expected: Map<string, string>;
+	api: () => Promise<Result<GitHubRelease | null>>;
+};
+
+const verifyPublicationTag = async (
+	publication: Publication,
+): Promise<Result<void>> => {
+	const { record, directory, assets, expected, call } = publication;
+	const current = verifyReleaseFiles(directory);
+	if (!current.ok) return current;
+	for (const name of assets) {
+		const bytes = readArtifactFile(join(directory, name));
+		if (!bytes.ok || sha256(bytes.value) !== expected.get(name))
+			return failure("Artifact assets changed before irreversible operation.");
+	}
+	const head = await call(["git", "rev-parse", "HEAD"]),
+		dirty = await call(["git", "status", "--porcelain"]);
+	const remote = await call([
+		"git",
+		"ls-remote",
+		"--tags",
+		"origin",
+		`refs/tags/${record.tag}`,
+		`refs/tags/${record.tag}^{}`,
+	]);
+	if (
+		!head.ok ||
+		!dirty.ok ||
+		!remote.ok ||
+		head.value.code !== 0 ||
+		dirty.value.code !== 0 ||
+		remote.value.code !== 0 ||
+		head.value.stdout.trim() !== record.commit ||
+		dirty.value.stdout.trim() !== ""
+	)
+		return failure("Source checkout/tag state cannot be verified.");
+	const refs = new Map(
+		remote.value.stdout
+			.trim()
+			.split("\n")
+			.map((line) => {
+				const [sha, ref] = line.split("\t");
+				return [ref ?? "", sha ?? ""];
+			}),
+	);
+	return refs.has(`refs/tags/${record.tag}`) &&
+		(refs.get(`refs/tags/${record.tag}^{}`) ??
+			refs.get(`refs/tags/${record.tag}`)) === record.commit
+		? ok(undefined)
+		: failure(
+				"Existing remote tag is absent or points at another commit; never create/push it.",
+			);
+};
+
+const readRegistryState = async (
+	publication: Publication,
+): Promise<Result<RegistryState>> => {
+	const { record, work, call } = publication;
+	const channel = channelOf(record.version);
+	const version = await call(
+		[
+			"npm",
+			"view",
+			`kabane@${record.version}`,
+			"--json",
+			"--registry",
+			"https://registry.npmjs.org/",
+		],
+		work,
+		15_000,
+	);
+	const latest = await call(
+		[
+			"npm",
+			"view",
+			"kabane",
+			"dist-tags.latest",
+			"--json",
+			"--registry",
+			"https://registry.npmjs.org/",
+		],
+		work,
+		15_000,
+	);
+	// Only a beta release reads its own tag.
+	const beta =
+		channel === "beta"
+			? await call(
+					[
+						"npm",
+						"view",
+						"kabane",
+						"dist-tags.beta",
+						"--json",
+						"--registry",
+						"https://registry.npmjs.org/",
+					],
+					work,
+					15_000,
+				)
+			: null;
+	if (!version.ok || !latest.ok || latest.value.code !== 0)
+		return failure("Registry lookup failed; absence is not proven.");
+	const betaTag = parseDistTag(beta);
+	if (!betaTag.ok) return betaTag;
+	try {
+		const latestVersion = Stable.safeParse(JSON.parse(latest.value.stdout));
+		if (!latestVersion.success)
+			return failure("Invalid stable registry latest.");
+		const tags = { latest: latestVersion.data, beta: betaTag.value };
+		const raw: unknown = JSON.parse(version.value.stdout);
+		if (version.value.code !== 0) {
+			const missing = z
+				.object({ error: z.object({ code: z.literal("E404") }) })
+				.safeParse(raw);
+			return missing.success
+				? ok({ existingIntegrity: null, ...tags })
+				: failure("Registry error is not proven version absence.");
+		}
+		const parsed = NpmRecord.safeParse(raw);
+		if (
+			!parsed.success ||
+			parsed.data.version !== record.version ||
+			(parsed.data.gitHead && parsed.data.gitHead !== record.commit)
+		)
+			return failure("Registry version/source identity mismatch.");
+		return ok({
+			existingIntegrity: parsed.data.dist.integrity,
+			...tags,
+		});
+	} catch {
+		return failure("Invalid registry JSON.");
+	}
+};
+
+const readReleaseState = async (
+	publication: Publication,
+): Promise<Result<ReleaseState>> => {
+	const { api, assets } = publication;
+	const state = await api();
+	if (!state.ok) return state;
+	if (state.value === null) return ok(null);
+	const matches = await releaseAssetsMatch(publication, state.value);
+	return matches.ok
+		? ok({
+				draft: state.value.draft,
+				prerelease: state.value.prerelease === true,
+				immutable: state.value.immutable === true,
+				assetsMatch: matches.value,
+				assetsComplete: state.value.assets.length === assets.length,
+			})
+		: matches;
+};
+
+const prepareReleaseDraft = async (
+	publication: Publication,
+): Promise<Result<void>> => {
+	const { record, directory, assets, api, call } = publication;
+	const channel = channelOf(record.version);
+	const existing = await api();
+	if (!existing.ok) return existing;
+	let argv: string[];
+	if (existing.value) {
+		const matches = await releaseAssetsMatch(publication, existing.value);
+		if (!matches.ok || !matches.value || !existing.value.draft)
+			return failure("Conflicting existing draft.");
+		const names = new Set(existing.value.assets.map((asset) => asset.name));
+		const missing = assets.filter((name) => !names.has(name));
+		if (!missing.length) return ok(undefined);
+		argv = [
+			"gh",
+			"release",
+			"upload",
+			record.tag ?? "",
+			...missing.map((name) => join(directory, name)),
+			"--repo",
+			"davidpp/kabane",
+		];
+	} else
+		argv = [
+			"gh",
+			"release",
+			"create",
+			record.tag ?? "",
+			...assets.map((name) => join(directory, name)),
+			"--repo",
+			"davidpp/kabane",
+			"--verify-tag",
+			"--draft",
+			...(channel === "beta" ? ["--prerelease"] : []),
+			"--target",
+			record.commit,
+			"--title",
+			`kabane ${record.version}`,
+			"--notes-file",
+			join(directory, "release-notes.md"),
+		];
+	const prepared = await call(argv);
+	return prepared.ok && prepared.value.code === 0
+		? ok(undefined)
+		: failure(
+				"Draft preparation failed; no overwrite/clobber or tag creation allowed.",
+			);
+};
+
+const publishReleaseArchive = async (
+	publication: Publication,
+): Promise<Result<void>> => {
+	const { record, directory, mode, work, env, call } = publication;
+	const channel = channelOf(record.version);
+	const argv = [
+		"npm",
+		"publish",
+		join(directory, record.filename),
+		"--access",
+		"public",
+		"--tag",
+		channel,
+		"--ignore-scripts",
+		"--registry",
+		"https://registry.npmjs.org/",
+	];
+	if (mode === "local") return runReleaseInteractive(argv, work, env);
+	const result = await call(argv, work);
+	return result.ok && result.value.code === 0
+		? ok(undefined)
+		: failure("npm publish failed or timed out; inspect committed state.");
+};
+
+const finalizeReleaseDraft = async (
+	publication: Publication,
+): Promise<Result<void>> => {
+	const { record, call } = publication;
+	const channel = channelOf(record.version);
+	const latest = await readRegistryState(publication);
+	if (!latest.ok || !latest.value.latest)
+		return failure("Stable tag state cannot be verified before finalization.");
+	const result = await call([
+		"gh",
+		"release",
+		"edit",
+		record.tag ?? "",
+		"--repo",
+		"davidpp/kabane",
+		"--draft=false",
+		// A beta is never GitHub's latest release, whatever npm latest holds.
+		...(channel === "beta"
+			? ["--prerelease", "--latest=false"]
+			: [
+					latest.value.latest === record.version
+						? "--latest"
+						: "--latest=false",
+				]),
+	]);
+	return result.ok && result.value.code === 0
+		? ok(undefined)
+		: failure("GitHub finalization failed.");
+};
+
+const releaseAssetsMatch = async (
+	publication: Publication,
+	state: GitHubRelease,
+): Promise<Result<boolean>> => {
+	const { record, expected, call, work, assets } = publication;
+	if (
+		state.tag_name !== record.tag ||
+		new Set(state.assets.map((asset) => asset.name)).size !==
+			state.assets.length ||
+		state.assets.some((asset) => !expected.has(asset.name))
+	)
+		return ok(false);
+	for (const asset of state.assets) {
+		const downloaded = await call([
+			"gh",
+			"release",
+			"download",
+			record.tag ?? "",
+			"--repo",
+			"davidpp/kabane",
+			"--pattern",
+			asset.name,
+			"--dir",
+			work,
+			"--clobber",
+		]);
+		if (!downloaded.ok || downloaded.value.code !== 0)
+			return failure("Could not verify existing release asset bytes.");
+		const bytes = readArtifactFile(join(work, asset.name));
+		if (!bytes.ok) return bytes;
+		if (sha256(bytes.value) !== expected.get(asset.name)) return ok(false);
+	}
+	return ok(state.draft || state.assets.length === assets.length);
+};
+
 /** CI uses OIDC-only configuration; the explicit local command keeps human npm credentials. */
 const publishVerifiedRelease = async (
 	directory: string,
@@ -258,7 +609,6 @@ const publishVerifiedRelease = async (
 	const verified = verifyReleaseFiles(directory);
 	if (!verified.ok) return verified;
 	const record = verified.value;
-	const channel = channelOf(record.version);
 	if (mode === "oidc") {
 		const allowed = authorizePublication(record, originalEnv);
 		if (!allowed.ok) return allowed;
@@ -300,38 +650,6 @@ const publishVerifiedRelease = async (
 			discoverGitHubRelease(record.tag, (endpoint) =>
 				call(["gh", "api", "--include", endpoint], sourceRoot, 30_000),
 			);
-		const assetMatches = async (
-			state: GitHubRelease,
-		): Promise<Result<boolean>> => {
-			if (
-				state.tag_name !== record.tag ||
-				new Set(state.assets.map((asset) => asset.name)).size !==
-					state.assets.length ||
-				state.assets.some((asset) => !expected.has(asset.name))
-			)
-				return ok(false);
-			for (const asset of state.assets) {
-				const downloaded = await call([
-					"gh",
-					"release",
-					"download",
-					record.tag ?? "",
-					"--repo",
-					"davidpp/kabane",
-					"--pattern",
-					asset.name,
-					"--dir",
-					work ?? "",
-					"--clobber",
-				]);
-				if (!downloaded.ok || downloaded.value.code !== 0)
-					return failure("Could not verify existing release asset bytes.");
-				const bytes = readArtifactFile(join(work ?? "", asset.name));
-				if (!bytes.ok) return bytes;
-				if (sha256(bytes.value) !== expected.get(asset.name)) return ok(false);
-			}
-			return ok(state.draft || state.assets.length === assets.length);
-		};
 		const npmVersion = await call(["npm", "--version"], work);
 		if (
 			!npmVersion.ok ||
@@ -342,245 +660,24 @@ const publishVerifiedRelease = async (
 			return failure(
 				"Publisher/producer tool versions differ; no publication attempted.",
 			);
+		const publication: Publication = {
+			record,
+			directory,
+			work,
+			env,
+			mode,
+			call,
+			assets,
+			expected,
+			api,
+		};
 		const ops: PublishOperations = {
-			verifyTag: async () => {
-				const current = verifyReleaseFiles(directory);
-				if (!current.ok) return current;
-				for (const name of assets) {
-					const bytes = readArtifactFile(join(directory, name));
-					if (!bytes.ok || sha256(bytes.value) !== expected.get(name))
-						return failure(
-							"Artifact assets changed before irreversible operation.",
-						);
-				}
-				const head = await call(["git", "rev-parse", "HEAD"]),
-					dirty = await call(["git", "status", "--porcelain"]);
-				const remote = await call([
-					"git",
-					"ls-remote",
-					"--tags",
-					"origin",
-					`refs/tags/${record.tag}`,
-					`refs/tags/${record.tag}^{}`,
-				]);
-				if (
-					!head.ok ||
-					!dirty.ok ||
-					!remote.ok ||
-					head.value.code !== 0 ||
-					dirty.value.code !== 0 ||
-					remote.value.code !== 0 ||
-					head.value.stdout.trim() !== record.commit ||
-					dirty.value.stdout.trim() !== ""
-				)
-					return failure("Source checkout/tag state cannot be verified.");
-				const refs = new Map(
-					remote.value.stdout
-						.trim()
-						.split("\n")
-						.map((line) => {
-							const [sha, ref] = line.split("\t");
-							return [ref ?? "", sha ?? ""];
-						}),
-				);
-				return refs.has(`refs/tags/${record.tag}`) &&
-					(refs.get(`refs/tags/${record.tag}^{}`) ??
-						refs.get(`refs/tags/${record.tag}`)) === record.commit
-					? ok(undefined)
-					: failure(
-							"Existing remote tag is absent or points at another commit; never create/push it.",
-						);
-			},
-			registry: async () => {
-				const version = await call(
-					[
-						"npm",
-						"view",
-						`kabane@${record.version}`,
-						"--json",
-						"--registry",
-						"https://registry.npmjs.org/",
-					],
-					work,
-					15_000,
-				);
-				const latest = await call(
-					[
-						"npm",
-						"view",
-						"kabane",
-						"dist-tags.latest",
-						"--json",
-						"--registry",
-						"https://registry.npmjs.org/",
-					],
-					work,
-					15_000,
-				);
-				// Only a beta release reads its own tag.
-				const beta =
-					channel === "beta"
-						? await call(
-								[
-									"npm",
-									"view",
-									"kabane",
-									"dist-tags.beta",
-									"--json",
-									"--registry",
-									"https://registry.npmjs.org/",
-								],
-								work,
-								15_000,
-							)
-						: null;
-				if (!version.ok || !latest.ok || latest.value.code !== 0)
-					return failure("Registry lookup failed; absence is not proven.");
-				const betaTag = parseDistTag(beta);
-				if (!betaTag.ok) return betaTag;
-				try {
-					const latestVersion = Stable.safeParse(
-						JSON.parse(latest.value.stdout),
-					);
-					if (!latestVersion.success)
-						return failure("Invalid stable registry latest.");
-					const tags = { latest: latestVersion.data, beta: betaTag.value };
-					const raw: unknown = JSON.parse(version.value.stdout);
-					if (version.value.code !== 0) {
-						const missing = z
-							.object({ error: z.object({ code: z.literal("E404") }) })
-							.safeParse(raw);
-						return missing.success
-							? ok({ existingIntegrity: null, ...tags })
-							: failure("Registry error is not proven version absence.");
-					}
-					const parsed = NpmRecord.safeParse(raw);
-					if (
-						!parsed.success ||
-						parsed.data.version !== record.version ||
-						(parsed.data.gitHead && parsed.data.gitHead !== record.commit)
-					)
-						return failure("Registry version/source identity mismatch.");
-					return ok({
-						existingIntegrity: parsed.data.dist.integrity,
-						...tags,
-					});
-				} catch {
-					return failure("Invalid registry JSON.");
-				}
-			},
-			release: async () => {
-				const state = await api();
-				if (!state.ok) return state;
-				if (state.value === null) return ok(null);
-				const matches = await assetMatches(state.value);
-				return matches.ok
-					? ok({
-							draft: state.value.draft,
-							prerelease: state.value.prerelease === true,
-							immutable: state.value.immutable === true,
-							assetsMatch: matches.value,
-							assetsComplete: state.value.assets.length === assets.length,
-						})
-					: matches;
-			},
-			prepareDraft: async () => {
-				const existing = await api();
-				if (!existing.ok) return existing;
-				let argv: string[];
-				if (existing.value) {
-					const matches = await assetMatches(existing.value);
-					if (!matches.ok || !matches.value || !existing.value.draft)
-						return failure("Conflicting existing draft.");
-					const names = new Set(
-						existing.value.assets.map((asset) => asset.name),
-					);
-					const missing = assets.filter((name) => !names.has(name));
-					if (!missing.length) return ok(undefined);
-					argv = [
-						"gh",
-						"release",
-						"upload",
-						record.tag ?? "",
-						...missing.map((name) => join(directory, name)),
-						"--repo",
-						"davidpp/kabane",
-					];
-				} else
-					argv = [
-						"gh",
-						"release",
-						"create",
-						record.tag ?? "",
-						...assets.map((name) => join(directory, name)),
-						"--repo",
-						"davidpp/kabane",
-						"--verify-tag",
-						"--draft",
-						...(channel === "beta" ? ["--prerelease"] : []),
-						"--target",
-						record.commit,
-						"--title",
-						`kabane ${record.version}`,
-						"--notes-file",
-						join(directory, "release-notes.md"),
-					];
-				const prepared = await call(argv);
-				return prepared.ok && prepared.value.code === 0
-					? ok(undefined)
-					: failure(
-							"Draft preparation failed; no overwrite/clobber or tag creation allowed.",
-						);
-			},
-			publishArchive: async () => {
-				const argv = [
-					"npm",
-					"publish",
-					join(directory, record.filename),
-					"--access",
-					"public",
-					"--tag",
-					channel,
-					"--ignore-scripts",
-					"--registry",
-					"https://registry.npmjs.org/",
-				];
-				if (mode === "local")
-					return runReleaseInteractive(argv, work ?? ROOT, env);
-				const result = await call(argv, work);
-				return result.ok && result.value.code === 0
-					? ok(undefined)
-					: failure(
-							"npm publish failed or timed out; inspect committed state.",
-						);
-			},
-			finalizeDraft: async () => {
-				const latest = await ops.registry();
-				if (!latest.ok || !latest.value.latest)
-					return failure(
-						"Stable tag state cannot be verified before finalization.",
-					);
-				const result = await call([
-					"gh",
-					"release",
-					"edit",
-					record.tag ?? "",
-					"--repo",
-					"davidpp/kabane",
-					"--draft=false",
-					// A beta is never GitHub's latest release, whatever npm latest holds.
-					...(channel === "beta"
-						? ["--prerelease", "--latest=false"]
-						: [
-								latest.value.latest === record.version
-									? "--latest"
-									: "--latest=false",
-							]),
-				]);
-				return result.ok && result.value.code === 0
-					? ok(undefined)
-					: failure("GitHub finalization failed.");
-			},
+			verifyTag: () => verifyPublicationTag(publication),
+			registry: () => readRegistryState(publication),
+			release: () => readReleaseState(publication),
+			prepareDraft: () => prepareReleaseDraft(publication),
+			publishArchive: () => publishReleaseArchive(publication),
+			finalizeDraft: () => finalizeReleaseDraft(publication),
 		};
 		return await completeRelease(record, ops);
 	} catch {

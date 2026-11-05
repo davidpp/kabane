@@ -79,6 +79,75 @@ export const readArtifactFile = (
 	}
 };
 
+const verifyTarHeaders = (bytes: Buffer): Result<void> => {
+	// Bound expansion before an external extractor can write files. The package uses
+	// ordinary ustar files/directories, not sparse/PAX/link extensions.
+	const tar = gunzipSync(bytes, { maxOutputLength: 33_554_432 });
+	for (let offset = 0; offset + 512 <= tar.length;) {
+		const header = tar.subarray(offset, offset + 512);
+		if (header.every((byte) => byte === 0)) break;
+		const type = header[156];
+		const sizeText = header
+			.subarray(124, 136)
+			.toString("ascii")
+			.replace(/\0.*$/, "")
+			.trim();
+		if (![0, 48, 53].includes(type ?? -1) || !/^[0-7]+$/.test(sizeText))
+			return err(new Error("Unsupported archive extension or size encoding."));
+		const size = Number.parseInt(sizeText, 8);
+		if (size > 16_777_216 || offset + 512 + size > tar.length)
+			return err(new Error("Oversized or truncated archive member."));
+		offset += 512 + Math.ceil(size / 512) * 512;
+	}
+	return ok(undefined);
+};
+
+const inspectExtractedPackage = (
+	unpacked: string,
+	forbiddenPaths: string[],
+): Result<z.infer<typeof PublishManifestSchema>> => {
+	const files = readdirSync(join(unpacked, "package"), {
+		recursive: true,
+		withFileTypes: true,
+	})
+		.filter((file) => file.isFile())
+		.map((file) => join(file.parentPath, file.name));
+	let total = 0;
+	for (const file of files) {
+		const content = readArtifactFile(file);
+		if (!content.ok) return content;
+		total += content.value.byteLength;
+		if (
+			total > 33_554_432 ||
+			file.endsWith(".map") ||
+			forbiddenPaths.some(
+				(path) => path && content.value.toString().includes(path),
+			)
+		)
+			return err(
+				new Error(
+					"Archive exceeds bounds or contains a source map/machine path.",
+				),
+			);
+	}
+	const raw = readArtifactFile(join(unpacked, "package/package.json"), 65_536);
+	if (!raw.ok) return raw;
+	if (raw.value.toString().includes("@cabane/"))
+		return err(
+			new Error("Published manifest names a private workspace package."),
+		);
+	const parsed = PublishManifestSchema.safeParse(
+		JSON.parse(raw.value.toString()),
+	);
+	return parsed.success
+		? ok(parsed.data)
+		: err(
+				new Error(
+					"Invalid published manifest (identity/bin/engine/exact externals).",
+				),
+			);
+};
+
 /** Validate members and types before tar gets permission to extract anything. */
 export const inspectArchive = async (
 	tarball: string,
@@ -88,27 +157,8 @@ export const inspectArchive = async (
 	const bytes = readArtifactFile(tarball);
 	if (!bytes.ok) return bytes;
 	try {
-		// Bound expansion before an external extractor can write files. The package uses
-		// ordinary ustar files/directories, not sparse/PAX/link extensions.
-		const tar = gunzipSync(bytes.value, { maxOutputLength: 33_554_432 });
-		for (let offset = 0; offset + 512 <= tar.length;) {
-			const header = tar.subarray(offset, offset + 512);
-			if (header.every((byte) => byte === 0)) break;
-			const type = header[156];
-			const sizeText = header
-				.subarray(124, 136)
-				.toString("ascii")
-				.replace(/\0.*$/, "")
-				.trim();
-			if (![0, 48, 53].includes(type ?? -1) || !/^[0-7]+$/.test(sizeText))
-				return err(
-					new Error("Unsupported archive extension or size encoding."),
-				);
-			const size = Number.parseInt(sizeText, 8);
-			if (size > 16_777_216 || offset + 512 + size > tar.length)
-				return err(new Error("Oversized or truncated archive member."));
-			offset += 512 + Math.ceil(size / 512) * 512;
-		}
+		const headers = verifyTarHeaders(bytes.value);
+		if (!headers.ok) return headers;
 		const cwd = resolve(unpacked, "..");
 		const names = await runUpdateProcess(
 			["tar", "-tzf", tarball],
@@ -161,49 +211,7 @@ export const inspectArchive = async (
 		);
 		if (!extracted.ok || extracted.value.code !== 0)
 			return err(new Error("Archive extraction failed."));
-		const files = readdirSync(join(unpacked, "package"), {
-			recursive: true,
-			withFileTypes: true,
-		})
-			.filter((file) => file.isFile())
-			.map((file) => join(file.parentPath, file.name));
-		let total = 0;
-		for (const file of files) {
-			const content = readArtifactFile(file);
-			if (!content.ok) return content;
-			total += content.value.byteLength;
-			if (
-				total > 33_554_432 ||
-				file.endsWith(".map") ||
-				forbiddenPaths.some(
-					(path) => path && content.value.toString().includes(path),
-				)
-			)
-				return err(
-					new Error(
-						"Archive exceeds bounds or contains a source map/machine path.",
-					),
-				);
-		}
-		const raw = readArtifactFile(
-			join(unpacked, "package/package.json"),
-			65_536,
-		);
-		if (!raw.ok) return raw;
-		if (raw.value.toString().includes("@cabane/"))
-			return err(
-				new Error("Published manifest names a private workspace package."),
-			);
-		const parsed = PublishManifestSchema.safeParse(
-			JSON.parse(raw.value.toString()),
-		);
-		return parsed.success
-			? ok(parsed.data)
-			: err(
-					new Error(
-						"Invalid published manifest (identity/bin/engine/exact externals).",
-					),
-				);
+		return inspectExtractedPackage(unpacked, forbiddenPaths);
 	} catch {
 		return err(new Error("Invalid archive or published manifest."));
 	}

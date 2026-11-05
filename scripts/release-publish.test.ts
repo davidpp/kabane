@@ -332,3 +332,44 @@ test("a beta readback that moved latest, or a release not marked prerelease, is 
 	expect((await completeRelease(beta, unmarked.ops)).ok).toBe(false);
 	expect(unmarked.writes).toEqual(["draft", "publish-once", "finalize"]);
 });
+
+test("tag rechecks stop before publishing or finalizing with the original diagnostics", async () => {
+	for (const failedCheck of [2, 3]) {
+		const fixture = mockPublication();
+		let checks = 0;
+		fixture.ops.verifyTag = async () =>
+			++checks === failedCheck ? err(new Error("tag changed")) : ok(undefined);
+		const result = await completeRelease(record, fixture.ops);
+		expect(result.ok).toBe(false);
+		if (!result.ok)
+			expect(result.error.message).toBe(
+				failedCheck === 2
+					? "tag changed"
+					: "npm may be published but tag identity changed; stop before GitHub completion.",
+			);
+		expect(fixture.writes).toEqual(
+			failedCheck === 2 ? ["draft"] : ["draft", "publish-once"],
+		);
+	}
+});
+
+test("a registry change after verified draft preparation stops before publication", async () => {
+	const fixture = mockPublication();
+	const prepare = fixture.ops.prepareDraft;
+	fixture.ops.prepareDraft = async () => {
+		const result = await prepare();
+		fixture.setRegistry({
+			existingIntegrity: record.integrity,
+			latest: record.version,
+			beta: null,
+		});
+		return result;
+	};
+	const result = await completeRelease(record, fixture.ops);
+	expect(result.ok).toBe(false);
+	if (!result.ok)
+		expect(result.error.message).toBe(
+			"Registry changed before publish; stop and inspect without retrying writes.",
+		);
+	expect(fixture.writes).toEqual(["draft"]);
+});
