@@ -554,6 +554,31 @@ export namespace Claims {
 		return Checks.gate(ctx, { ...subject, title: task.value.title });
 	};
 
+	const observeStall = async (
+		ctx: Ctx,
+		taskId: string,
+		claim: RunStore.Claim | undefined,
+	): Promise<boolean> => {
+		const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
+		if (!plan.ok) return false;
+		const task = plan.value.nodes.find((n) => n.task.id === taskId)?.task;
+		// An intentional park/handoff is not a failed attempt. Do not increment OR reset the
+		// earlier attempts; independent work must still be able to move the run.
+		if (
+			task &&
+			!LoopPlan.isClosed(task) &&
+			!LoopPlan.canClaim(task, ctx.now()) &&
+			(!claim || !LoopPlan.isActive(task, claim.harness))
+		)
+			return false;
+		const stall = Stall.observe(
+			ctx.run.stall ?? Stall.start(""),
+			await mark(ctx, plan.value),
+		);
+		RunState.save(ctx, { ...ctx.run, stall });
+		return Stall.stalled(stall, ctx.run.config.stallAfter);
+	};
+
 	/** Close the books on one ended session; true when the run has stalled. */
 	export const settle = async (
 		ctx: Ctx,
@@ -588,24 +613,7 @@ export namespace Claims {
 		// A lens runs once per run and files findings rather than closing work: its end is not a
 		// step the stall detector should count.
 		if (lens) return false;
-		const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
-		if (!plan.ok) return false;
-		const task = plan.value.nodes.find((n) => n.task.id === taskId)?.task;
-		// An intentional park/handoff is not a failed attempt. Do not increment OR reset the
-		// earlier attempts; independent work must still be able to move the run.
-		if (
-			task &&
-			!LoopPlan.isClosed(task) &&
-			!LoopPlan.canClaim(task, ctx.now()) &&
-			(!claim || !LoopPlan.isActive(task, claim.harness))
-		)
-			return false;
-		const stall = Stall.observe(
-			ctx.run.stall ?? Stall.start(""),
-			await mark(ctx, plan.value),
-		);
-		RunState.save(ctx, { ...ctx.run, stall });
-		return Stall.stalled(stall, ctx.run.config.stallAfter);
+		return observeStall(ctx, taskId, claim);
 	};
 
 	/**
