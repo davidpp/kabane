@@ -5,14 +5,16 @@
 // Every field becomes one question on the claim's core session, asked together and numbered
 // "i of n" so the board lists them as one group: the harness's message, then the field's title
 // and description verbatim. A choice is the field's options, several choices a multi-select, a
-// boolean Yes / No, text and numbers free text. An optional field also offers `skip`, which
-// leaves it out of the answer, and every field offers `decline`, which declines the form: among
-// the choices of a choice or a boolean, and as words to type on any other field, so a
-// multi-select's choices are its options alone and neither word is toggled beside one. The
-// form resolves once every question has an answer; an answer that does not fit its field is
-// asked again, with why, judged as the board's form judges it (`FormField`). A claim that stops,
-// or a harness that withdraws the form, closes the questions still open as withdrawn
-// (`questions.ts`).
+// boolean Yes / No, text and numbers free text. An optional free-text field that follows an
+// optional choice is not asked apart: it is that choice's "Other" box (AskUserQuestion sends one
+// after every question), so the choice question takes a typed answer instead of a pick and fills
+// the box with it. An optional field also offers `skip`, which leaves it out of the answer, and
+// every field offers `decline`, which declines the form: among the choices of a choice or a
+// boolean, and as words to type on any other field, so a multi-select's choices are its options
+// alone and neither word is toggled beside one. The form resolves once every question has an
+// answer; an answer that does not fit its field is asked again, with why, judged as the board's
+// form judges it (`FormField`). A claim that stops, or a harness that withdraws the form, closes
+// the questions still open as withdrawn (`questions.ts`).
 import type { AcpClient } from "@cabane/acp";
 import { FormField } from "@cabane/board/form-field";
 import { err, formatQuestionBody, ok, type Result } from "@cabane/core";
@@ -30,6 +32,33 @@ export namespace Elicitation {
 	const ACCEPT = "accept";
 
 	type Choice = { label: string; id?: string };
+
+	type Text = Extract<Field, { type: "text" }>;
+
+	/**
+	 * One question put to the human: a field, and the free-text field folded into it as the answer
+	 * to type instead of a pick, when it has one.
+	 */
+	export type Question = { field: Field; other?: Text };
+
+	// An optional choice followed by an optional free-text field, which is its "Other" box: asked
+	// apart, the human answers one question twice, and the box they skip reads as a choice they
+	// made. A required choice keeps its box apart: a typed answer would leave the choice empty.
+	const otherBox = (field: Field, next: Field | undefined): Text | undefined =>
+		(field.type === "choice" || field.type === "choices") &&
+		!field.required &&
+		next?.type === "text" &&
+		!next.required
+			? next
+			: undefined;
+
+	/** The questions `fields` are asked as, in their order. */
+	export const questions = (fields: readonly Field[]): Question[] =>
+		fields.reduce<Question[]>((asked, field, i) => {
+			if (asked.some((q) => q.other === field)) return asked;
+			const other = otherBox(field, fields[i + 1]);
+			return [...asked, other ? { field, other } : { field }];
+		}, []);
 
 	const optionChoices = (field: Field): Choice[] => {
 		switch (field.type) {
@@ -65,31 +94,34 @@ export namespace Elicitation {
 			...(listsReserved(field) ? reserved(field) : []),
 		].map((c) => c.label);
 
-	// How to answer a question whose choices do not list skip and decline.
-	const hint = (field: Field): string | undefined => {
-		if (listsReserved(field)) return undefined;
+	// How to answer a question whose choices do not say it all: one that takes a typed answer
+	// beside them, or does not list skip and decline.
+	const hint = ({ field, other }: Question): string | undefined => {
+		if (listsReserved(field))
+			return other ? "Pick one, or type your own answer." : undefined;
 		const what =
 			field.type === "number"
 				? `Type ${FormField.wants(field)}`
 				: field.type === "choices"
-					? "Pick any of the choices"
+					? `Pick any of the choices${other ? ", type your own answer" : ""}`
 					: "Type the answer";
 		const skip = field.required ? "" : `, \`${SKIP}\` to leave it empty`;
 		return `${what}${skip}, or \`${DECLINE}\` to decline the form.`;
 	};
 
 	/**
-	 * The question for `field`, the `index`th of `total`: the harness's message, then the field's
+	 * The body of `question`, the `index`th of `total`: the harness's message, then the field's
 	 * title and description verbatim, then how to answer one whose choices do not say. `retry` says
 	 * why the last answer was asked again.
 	 */
 	export const body = (
 		harness: string,
 		request: AcpClient.ElicitationRequest,
-		field: Field,
+		question: Question,
 		position: { index: number; total: number },
 		retry?: string,
 	): string => {
+		const { field } = question;
 		const { index, total } = position;
 		const of = total > 1 ? ` (${index + 1} of ${total})` : "";
 		const described = field.description
@@ -98,13 +130,13 @@ export namespace Elicitation {
 		const lines = [
 			`${harness} asks: ${request.message}`,
 			`${described}${of}`,
-			hint(field),
+			hint(question),
 			retry,
 		].filter((line): line is string => line !== undefined);
 		return formatQuestionBody(lines.join("\n"), {
 			choices: choices(field),
 			multiSelect: field.type === "choices",
-			allowFreeform: !listsReserved(field),
+			allowFreeform: !listsReserved(field) || question.other !== undefined,
 			...(total > 1 ? { questionIndex: index, totalQuestions: total } : {}),
 		});
 	};
@@ -215,22 +247,47 @@ export namespace Elicitation {
 		}
 	};
 
-	// A form with no fields asks only for a yes: one question, accept or decline.
-	const confirm: Field = {
-		key: "",
-		title: "",
-		required: true,
-		type: "choice",
-		options: [{ value: ACCEPT, label: ACCEPT }],
+	type Given =
+		| Exclude<Read, { kind: "value" }>
+		| { kind: "value"; key: string; value: AcpClient.ElicitationValue };
+
+	/**
+	 * What the human's answer to `question` fills: its field, or the free-text field folded into
+	 * it when the answer is none of the field's own.
+	 */
+	export const answer = (question: Question, given: string): Given => {
+		const { field, other } = question;
+		const own = read(field, given);
+		if (own.kind === "value")
+			return { kind: "value", key: field.key, value: own.value };
+		if (own.kind !== "invalid" || !other) return own;
+		const typed = FormField.read(other, given);
+		return typed.ok
+			? { kind: "value", key: other.key, value: typed.value }
+			: {
+					kind: "invalid",
+					why: `${own.why}, and as your own answer ${typed.error.message}`,
+				};
 	};
 
-	/** One form being relayed: its fields, the questions still open and every one asked. */
+	// A form with no fields asks only for a yes: one question, accept or decline.
+	const confirm: Question = {
+		field: {
+			key: "",
+			title: "",
+			required: true,
+			type: "choice",
+			options: [{ value: ACCEPT, label: ACCEPT }],
+		},
+	};
+
+	/** One form being relayed: its questions, the ones still open and every one asked. */
 	type Form = {
 		deps: Questions.Deps;
 		request: AcpClient.ElicitationRequest;
-		fields: Field[];
-		/** The field each open question asks, by question id. */
-		open: Map<string, Field>;
+		questions: Question[];
+		/** What each open question asks, by question id. */
+		open: Map<string, Question>;
 		asked: string[];
 		askedAt: number;
 		/** Who answered, as the answering surfaces noted it. */
@@ -249,23 +306,23 @@ export namespace Elicitation {
 
 	const ask = async (
 		form: Form,
-		field: Field,
+		question: Question,
 		retry?: string,
 	): Promise<Result<void>> => {
-		const { deps, request, fields } = form;
+		const { deps, request, questions } = form;
 		const text =
-			field === confirm
+			question === confirm
 				? confirmBody(deps.harness, request)
 				: body(
 						deps.harness,
 						request,
-						field,
-						{ index: fields.indexOf(field), total: fields.length },
+						question,
+						{ index: questions.indexOf(question), total: questions.length },
 						retry,
 					);
 		const asked = await Questions.ask(deps, text);
 		if (!asked.ok) return asked;
-		form.open.set(asked.value.id, field);
+		form.open.set(asked.value.id, question);
 		form.asked.push(asked.value.id);
 		return ok(undefined);
 	};
@@ -341,17 +398,18 @@ export namespace Elicitation {
 		const form: Form = {
 			deps,
 			request,
-			fields: request.fields.length > 0 ? request.fields : [confirm],
+			questions:
+				request.fields.length > 0 ? questions(request.fields) : [confirm],
 			open: new Map(),
 			asked: [],
 			askedAt: deps.now().getTime(),
 			by: new Set(),
 		};
-		for (const field of form.fields) {
-			const asked = await ask(form, field);
+		for (const question of form.questions) {
+			const asked = await ask(form, question);
 			if (!asked.ok) return notRelayed(form, asked.error);
 		}
-		const total = form.fields.length;
+		const total = form.questions.length;
 		deps.emit({
 			type: "elicitation_asked",
 			summary: `${request.message} (${total} question${total === 1 ? "" : "s"}: ${form.asked.join(", ")})`,
@@ -366,12 +424,12 @@ export namespace Elicitation {
 				waiting,
 			);
 			if (!answers) return stoppedWaiting(form, withdrawn);
-			for (const [questionId, answer] of answers) {
-				const field = form.open.get(questionId);
-				if (!field) continue;
+			for (const [questionId, reply] of answers) {
+				const question = form.open.get(questionId);
+				if (!question) continue;
 				form.open.delete(questionId);
 				form.by.add(deps.answeredBy(questionId) ?? "unrecorded");
-				const given = read(field, answer.body);
+				const given = answer(question, reply.body);
 				if (given.kind === "decline") {
 					await close(
 						form,
@@ -379,17 +437,17 @@ export namespace Elicitation {
 					);
 					return answered(form, { action: "decline" });
 				}
-				if (given.kind === "value" && field !== confirm)
-					content[field.key] = given.value;
+				if (given.kind === "value" && question !== confirm)
+					content[given.key] = given.value;
 				if (given.kind !== "invalid") continue;
 				deps.emit({
 					type: "warning",
-					summary: `answer "${answer.body}" to question ${questionId} ${given.why}; asked again`,
+					summary: `answer "${reply.body}" to question ${questionId} ${given.why}; asked again`,
 				});
 				const again = await ask(
 					form,
-					field,
-					`Asked again: "${answer.body}" ${given.why}.`,
+					question,
+					`Asked again: "${reply.body}" ${given.why}.`,
 				);
 				if (!again.ok) return notRelayed(form, again.error);
 			}

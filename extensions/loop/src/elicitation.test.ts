@@ -54,6 +54,51 @@ const ASK: AcpClient.ElicitationRequest = {
 	],
 };
 
+// Two AskUserQuestion questions in one form: each field carries its question as its description,
+// and each is followed by its own "Other" box.
+const otherBox = (
+	index: number,
+	multi: boolean,
+): AcpClient.ElicitationField => ({
+	key: `question_${index}_custom`,
+	title: "Other",
+	description: multi
+		? "Type your own answer to add to your selection above (optional)."
+		: "Type your own answer, or add a note to the option you chose above (optional).",
+	required: false,
+	type: "text",
+});
+const ASK_TWO: AcpClient.ElicitationRequest = {
+	message: "Please answer the following questions.",
+	toolCallId: "toolu_ask_two",
+	fields: [
+		{
+			key: "question_0",
+			title: "Store",
+			description: "Which store should the cache use?",
+			required: false,
+			type: "choice",
+			options: [
+				{ value: "Redis", label: "Redis" },
+				{ value: "Memory", label: "Memory" },
+			],
+		},
+		otherBox(0, false),
+		{
+			key: "question_1",
+			title: "Checks",
+			description: "Which checks should the gate run?",
+			required: false,
+			type: "choices",
+			options: [
+				{ value: "lint", label: "Lint" },
+				{ value: "types", label: "Types" },
+			],
+		},
+		otherBox(1, true),
+	],
+};
+
 // A field named F, of whatever shape the test gives it.
 const named = { key: "f", title: "F" };
 const field = (f: AcpClient.ElicitationField): AcpClient.ElicitationField => f;
@@ -64,27 +109,110 @@ const fieldsOf = (request: AcpClient.ElicitationRequest) => {
 	return [first, second] as const;
 };
 
+const asked = (request: AcpClient.ElicitationRequest) => {
+	const [first, ...rest] = Elicitation.questions(request.fields);
+	if (!first) throw new Error("the form asks nothing");
+	return [first, ...rest] as const;
+};
+
+describe("Elicitation.questions", () => {
+	it("folds each AskUserQuestion Other box into the choice before it", () => {
+		const keys = Elicitation.questions(ASK_TWO.fields).map((q) => [
+			q.field.key,
+			q.other?.key,
+		]);
+		expect(keys).toEqual([
+			["question_0", "question_0_custom"],
+			["question_1", "question_1_custom"],
+		]);
+	});
+
+	it("keeps a free-text field apart when it does not follow an optional choice, or is required", () => {
+		const choice = field({
+			...named,
+			required: false,
+			type: "choice",
+			options: [{ value: "a", label: "A" }],
+		});
+		const note = field({
+			key: "n",
+			title: "Note",
+			required: false,
+			type: "text",
+		});
+		const apart = (...fields: AcpClient.ElicitationField[]) =>
+			Elicitation.questions(fields).map((q) => [q.field.key, q.other?.key]);
+		// codex's request_user_input: its choice is required, so a typed answer would leave it empty.
+		expect(apart({ ...choice, required: true }, note)).toEqual([
+			["f", undefined],
+			["n", undefined],
+		]);
+		expect(apart(choice, { ...note, required: true })).toEqual([
+			["f", undefined],
+			["n", undefined],
+		]);
+		expect(apart(note, choice)).toEqual([
+			["n", undefined],
+			["f", undefined],
+		]);
+		expect(
+			apart(field({ ...named, required: false, type: "boolean" }), note),
+		).toEqual([
+			["f", undefined],
+			["n", undefined],
+		]);
+	});
+});
+
 describe("Elicitation.body", () => {
-	it("asks a choice field with the harness's message, its title, its options, skip and decline", () => {
+	it("asks a choice and its Other box as one question that also takes a typed answer", () => {
+		const [store, ...rest] = asked(ASK);
+		expect(rest).toEqual([]);
 		const parsed = parseQuestionBody(
-			Elicitation.body("claude", ASK, fieldsOf(ASK)[0], {
-				index: 0,
-				total: 2,
-			}),
+			Elicitation.body("claude", ASK, store, { index: 0, total: 1 }),
+		);
+		expect(parsed.question).toBe(
+			"claude asks: Which store should the cache use?\nStore\nPick one, or type your own answer.",
+		);
+		expect(parsed.choices).toEqual(["Redis", "Memory", "skip", "decline"]);
+		expect(parsed.multiSelect).toBe(false);
+		expect(parsed.allowFreeform).toBe(true);
+		expect(parsed.questionIndex).toBeUndefined();
+	});
+
+	it("numbers the questions of a form, and says a multi-select takes a typed answer too", () => {
+		const [, checks] = asked(ASK_TWO);
+		if (!checks) throw new Error("missing question");
+		const parsed = parseQuestionBody(
+			Elicitation.body("claude", ASK_TWO, checks, { index: 1, total: 2 }),
+		);
+		expect(parsed.question).toBe(
+			[
+				"claude asks: Please answer the following questions.",
+				"Checks: Which checks should the gate run? (2 of 2)",
+				"Pick any of the choices, type your own answer, `skip` to leave it empty, or `decline` to decline the form.",
+			].join("\n"),
+		);
+		expect(parsed.choices).toEqual(["Lint", "Types"]);
+		expect([parsed.questionIndex, parsed.totalQuestions]).toEqual([1, 2]);
+	});
+
+	it("asks a choice with no Other box from its options alone", () => {
+		const [store] = fieldsOf(ASK);
+		const parsed = parseQuestionBody(
+			Elicitation.body("claude", ASK, { field: store }, { index: 0, total: 2 }),
 		);
 		expect(parsed.question).toBe(
 			"claude asks: Which store should the cache use?\nStore (1 of 2)",
 		);
 		expect(parsed.choices).toEqual(["Redis", "Memory", "skip", "decline"]);
-		expect(parsed.multiSelect).toBe(false);
 		expect(parsed.allowFreeform).toBe(false);
-		expect([parsed.questionIndex, parsed.totalQuestions]).toEqual([0, 2]);
 	});
 
 	it("asks a text field as free text, its description verbatim, saying how to skip or decline", () => {
 		const [, other] = fieldsOf(ASK);
 		const parsed = parseQuestionBody(
-			Elicitation.body("claude", ASK, other, { index: 1, total: 2 }),
+			Elicitation.body("claude", ASK, { field: other }, { index: 1, total: 2 }),
 		);
 		expect(parsed.question).toBe(
 			[
@@ -102,7 +230,7 @@ describe("Elicitation.body", () => {
 			Elicitation.body(
 				"codex",
 				{ message: "Codex needs your input to continue.", fields: [] },
-				field({ ...named, required: true, type: "boolean" }),
+				{ field: field({ ...named, required: true, type: "boolean" }) },
 				{ index: 0, total: 1 },
 			),
 		);
@@ -263,7 +391,7 @@ describe("Elicitation.read", () => {
 			],
 		});
 		const parsed = parseQuestionBody(
-			Elicitation.body("claude", ASK, tags, { index: 0, total: 1 }),
+			Elicitation.body("claude", ASK, { field: tags }, { index: 0, total: 1 }),
 		);
 		expect(parsed.choices).toEqual(["Alpha", "Decline"]);
 		expect(parsed.multiSelect).toBe(true);
@@ -280,6 +408,61 @@ describe("Elicitation.read", () => {
 		// No position past the options stands for a word the choices do not list.
 		expect(Elicitation.read(tags, "3").kind).toBe("invalid");
 		expect(Elicitation.read(tags, "Alpha, skip").kind).toBe("invalid");
+	});
+});
+
+describe("Elicitation.answer", () => {
+	it("fills the choice with a pick, and its Other box with anything else", () => {
+		const [store] = asked(ASK);
+		expect(Elicitation.answer(store, "1")).toEqual({
+			kind: "value",
+			key: "question_0",
+			value: "Redis",
+		});
+		expect(Elicitation.answer(store, " Valkey ")).toEqual({
+			kind: "value",
+			key: "question_0_custom",
+			value: "Valkey",
+		});
+		expect(Elicitation.answer(store, "skip")).toEqual({ kind: "skip" });
+		expect(Elicitation.answer(store, "decline")).toEqual({ kind: "decline" });
+	});
+
+	it("reads a multi-select's picks, and a typed answer into its Other box", () => {
+		const [, checks] = asked(ASK_TWO);
+		if (!checks) throw new Error("missing question");
+		expect(Elicitation.answer(checks, "Lint, 2")).toEqual({
+			kind: "value",
+			key: "question_1",
+			value: ["lint", "types"],
+		});
+		expect(Elicitation.answer(checks, "Fuzzing")).toEqual({
+			kind: "value",
+			key: "question_1_custom",
+			value: "Fuzzing",
+		});
+	});
+
+	it("asks again when a typed answer fits neither the choice nor its Other box", () => {
+		const [store] = fieldsOf(ASK);
+		const capped: Elicitation.Question = {
+			field: store,
+			other: {
+				key: "question_0_custom",
+				title: "Other",
+				required: false,
+				type: "text",
+				maxLength: 3,
+			},
+		};
+		expect(Elicitation.answer(capped, "Valkey")).toEqual({
+			kind: "invalid",
+			why: "names none of its choices, and as your own answer is not text of at most 3 characters",
+		});
+		expect(Elicitation.answer({ field: store }, "Valkey")).toEqual({
+			kind: "invalid",
+			why: "names none of its choices",
+		});
 	});
 });
 
@@ -365,17 +548,20 @@ const resolutions = async (sessionId: string) => {
 };
 
 describe("Elicitation.relay", () => {
-	it("asks every field at once and accepts with the fields the human answered", async () => {
+	it("asks every question at once and accepts with the fields the human answered", async () => {
 		const sessionId = await session();
-		const { result, events } = relay(sessionId);
-		const [store, other] = await waiting(sessionId, 2);
-		if (!store || !other) throw new Error("missing questions");
+		const { result, events } = relay(sessionId, ASK_TWO);
+		const [store, checks] = await waiting(sessionId, 2);
+		if (!store || !checks) throw new Error("missing questions");
 
 		await answer(store.id, "1");
-		await answer(other.id, "skip");
+		await answer(checks.id, "Fuzzing");
 		expect(await result).toEqual({
 			ok: true,
-			value: { action: "accept", content: { question_0: "Redis" } },
+			value: {
+				action: "accept",
+				content: { question_0: "Redis", question_1_custom: "Fuzzing" },
+			},
 		});
 		expect(events.map((e) => e.type)).toEqual([
 			"elicitation_asked",
@@ -383,17 +569,30 @@ describe("Elicitation.relay", () => {
 		]);
 		expect(events.at(-1)?.data).toMatchObject({
 			action: "accept",
-			fields: "question_0",
+			fields: "question_0,question_1_custom",
 			by: "cabane://actor/human/david",
-			toolCallId: "toolu_ask",
+			toolCallId: "toolu_ask_two",
 		});
 		const needs = await Planner.getNeedsInput(base);
 		expect(needs.ok && needs.value).toEqual([]);
 	});
 
+	it("asks one AskUserQuestion question once, Other box and all, and a skip fills nothing", async () => {
+		const sessionId = await session();
+		const { result } = relay(sessionId);
+		const [store] = await waiting(sessionId, 1);
+		if (!store) throw new Error("missing question");
+		await answer(store.id, "skip");
+		expect(await result).toEqual({
+			ok: true,
+			value: { action: "accept", content: {} },
+		});
+		expect(await resolutions(sessionId)).toHaveLength(1);
+	});
+
 	it("declines the form when any field is declined, and closes the rest unanswered", async () => {
 		const sessionId = await session();
-		const { result, events } = relay(sessionId);
+		const { result, events } = relay(sessionId, ASK_TWO);
 		const [store] = await waiting(sessionId, 2);
 		if (!store) throw new Error("missing question");
 
@@ -451,7 +650,7 @@ describe("Elicitation.relay", () => {
 
 	it("closes every open question as withdrawn when the harness withdraws the form", async () => {
 		const sessionId = await session();
-		const { result, events, harness } = relay(sessionId);
+		const { result, events, harness } = relay(sessionId, ASK_TWO);
 		const [store] = await waiting(sessionId, 2);
 		if (!store) throw new Error("missing question");
 		await answer(store.id, "Memory");
@@ -474,7 +673,7 @@ describe("Elicitation.relay", () => {
 
 	it("closes its questions as withdrawn when the claim stops", async () => {
 		const sessionId = await session();
-		const { result, events, stop } = relay(sessionId);
+		const { result, events, stop } = relay(sessionId, ASK_TWO);
 		await waiting(sessionId, 2);
 		stop.abort();
 		expect((await result).ok).toBe(false);
@@ -487,7 +686,7 @@ describe("Elicitation.relay", () => {
 
 	it("stops, cancelling the form, when something outside the claim withdraws one of its questions, and reads no field from it", async () => {
 		const sessionId = await session();
-		const { result, events } = relay(sessionId);
+		const { result, events } = relay(sessionId, ASK_TWO);
 		const [store] = await waiting(sessionId, 2);
 		if (!store) throw new Error("missing question");
 		const closed = await Planner.addActivity(base, {
