@@ -60,6 +60,9 @@ export namespace LoopConfig {
 		.string()
 		.regex(/^[a-z][a-z0-9-]*$/, "a lens name is one lowercase word");
 
+	/** How a completed run's branch lands. */
+	export const LAND = ["none", "pr"] as const;
+
 	export const Schema = z.object({
 		/** The harness every subtask runs on; a claim makes it the subtask's assignee. */
 		implementer: z
@@ -128,6 +131,16 @@ export namespace LoopConfig {
 			.enum(Harnesses.IDS)
 			.optional()
 			.describe("Harness every lens runs on; absent, the implementer."),
+		/**
+		 * What a completed run does with its worktree's branch: `none` leaves it there, `pr` pushes
+		 * it and opens a pull request with the user's own git and gh.
+		 */
+		land: z
+			.enum(LAND)
+			.default("none")
+			.describe(
+				"What a completed run does with its branch: none leaves it in its worktree, pr pushes it and opens a pull request; defaults to none.",
+			),
 	});
 
 	export type Config = z.output<typeof Schema>;

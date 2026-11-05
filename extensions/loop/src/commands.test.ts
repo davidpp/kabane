@@ -49,6 +49,7 @@ const CONFIG: LoopConfig.Config = {
 	gates: {},
 	worktree: false,
 	lenses: [],
+	land: "none",
 };
 
 const add = async (title: string, extra: Record<string, unknown> = {}) => {
@@ -763,6 +764,7 @@ describe("Loop.stop", () => {
 				gates: {},
 				worktree: false,
 				lenses: [],
+				land: "none",
 			},
 			status: "running",
 			pid: process.pid,

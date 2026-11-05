@@ -21,7 +21,7 @@ import { LoopDispatcher } from "./dispatcher";
 import { LoopHeader } from "./header";
 import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini]
+const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini] [--land none|pr]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
@@ -64,12 +64,16 @@ const worktreeFrom = (args: ParsedArgs): { worktree?: boolean } => {
 	return flagBool(args, "worktree") ? { worktree: true } : {};
 };
 
+const isLand = (value: string): value is LoopConfig.Config["land"] =>
+	(LoopConfig.LAND as readonly string[]).includes(value);
+
 // Flags become the caller's layer, validated with the layers below it.
 const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 	const implementer = flagString(args, "implementer");
 	const verifier = flagString(args, "verifier");
 	const model = flagString(args, "model");
 	const lenses = flagList(args, "lens");
+	const land = flagString(args, "land");
 	const gates = gatesFrom(args);
 	if (!gates.ok) return gates;
 	const budget = Object.fromEntries(
@@ -87,6 +91,7 @@ const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 		...worktreeFrom(args),
 		...(lenses.length > 0 ? { lenses } : {}),
 		...(verifier && Harnesses.isId(verifier) ? { verifier } : {}),
+		...(land && isLand(land) ? { land } : {}),
 	});
 };
 
@@ -202,6 +207,7 @@ const START_FLAGS: ReadonlySet<string> = new Set([
 	"no-worktree",
 	"lens",
 	"verifier",
+	"land",
 	"as",
 	"scope",
 ]);
@@ -221,6 +227,9 @@ const start: Verb = async (args, deps, target) => {
 				USAGE,
 			);
 	}
+	const land = flagString(args, "land");
+	if (land !== undefined && !isLand(land))
+		return usage(`--land must be one of ${LoopConfig.LAND.join(", ")}`, USAGE);
 	// A switch followed by a stray word takes it as a value and would read as not given.
 	for (const flag of ["worktree", "no-worktree"])
 		if (flag in args.flags && !flagBool(args, flag))

@@ -76,11 +76,19 @@ describe("kabane loop start", () => {
 		expect(refused.text).toContain("Give one of --worktree and --no-worktree");
 	});
 
+	it("refuses a --land mode it does not have", async () => {
+		const refused = await kabaneLoop("start", "K-1", "--land", "merge");
+		expect(refused.exitCode).toBe(2);
+		expect(refused.text).toStartWith("Error: --land must be one of none, pr\n");
+	});
+
 	it("takes its own flags and the ones every command takes", async () => {
 		const started = await kabaneLoop(
 			"start",
 			"K-404",
 			"--worktree",
+			"--land",
+			"pr",
 			"--as",
 			"cabane://actor/human/test",
 		);
