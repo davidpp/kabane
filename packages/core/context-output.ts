@@ -37,7 +37,7 @@ export const ContextPageOptionsSchema = AssembleContextOptsSchema.extend({
 			if (unknown.length)
 				ctx.addIssue({
 					code: z.ZodIssueCode.custom,
-					message: `Unknown context sections: ${unknown.join(", ")}. Valid sections: ${valid.join(", ")}`,
+					message: `Valid sections: ${valid.join(", ")}. Unknown sections (excerpt): ${unknown.join(", ").slice(0, 80)}`,
 				});
 		})
 		.default(registeredContextSections),

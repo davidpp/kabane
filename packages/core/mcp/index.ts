@@ -3,8 +3,8 @@ export {
 	createMcpServer,
 	handleHttpRequest,
 	type McpServerInfo,
-	serveStdio,
 	registeredTools,
+	serveStdio,
 } from "./server";
 export {
 	authorTypeOf,

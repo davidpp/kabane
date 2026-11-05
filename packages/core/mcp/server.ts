@@ -29,6 +29,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { CONTEXT_SECTIONS, registeredContextSections } from "../context-output";
 import { err, ok, type Result } from "../result";
 import { Runtime } from "../runtime";
 import {
@@ -48,12 +49,29 @@ const DEFAULT_INFO = { name: "kabane", version: "0.1.0" };
 /** Called after a write tool succeeds; the hub pushes to the log here. */
 export type AfterWrite = (tool: ToolDef) => void;
 
-const toSdkTool = (tool: ToolDef): Tool => ({
+const toSdkTool = (
+	tool: ToolDef,
+	sections: z.ZodEnum<[string, ...string[]]>,
+): Tool => ({
 	name: tool.name,
 	description: tool.description,
-	inputSchema: zodToJsonSchema(z.object(tool.input), {
-		$refStrategy: "none",
-	}) as Tool["inputSchema"],
+	inputSchema: zodToJsonSchema(
+		z.object(
+			tool.name === "kabane_context"
+				? {
+						...tool.input,
+						sections: z
+							.array(sections)
+							.max(100)
+							.default(sections.options)
+							.optional(),
+					}
+				: tool.input,
+		),
+		{
+			$refStrategy: "none",
+		},
+	) as Tool["inputSchema"],
 	annotations: { readOnlyHint: tool.kind === "read" },
 });
 
@@ -89,7 +107,11 @@ const callTool = async (
 ): Promise<Result<unknown>> => {
 	const parsed = z.object(tool.input).safeParse(rawArgs ?? {});
 	if (!parsed.success) {
-		return err(new Error(`Invalid arguments: ${parsed.error.message}`));
+		return err(
+			new Error(
+				`Invalid arguments: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
+			),
+		);
 	}
 	const result = await tool.handler(parsed.data, ctx);
 	if (result.ok && tool.kind === "write") afterWrite?.(tool);
@@ -131,7 +153,11 @@ export const createMcpServer = (
 			].join("\n\n"),
 		},
 	);
-	const tools = toolDefs.map(toSdkTool);
+	const sections = z.enum([
+		CONTEXT_SECTIONS[0],
+		...registeredContextSections().slice(1),
+	]);
+	const tools = toolDefs.map((tool) => toSdkTool(tool, sections));
 
 	server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 
@@ -193,7 +219,8 @@ export const handleHttpRequest = async (
 	afterWrite?: AfterWrite,
 ): Promise<Response> => {
 	const created = createMcpServer(ctx, info, afterWrite);
-	if (!created.ok) return new Response(created.error.message, { status: 500 });
+	if (!created.ok)
+		return Response.json({ error: created.error.message }, { status: 500 });
 	const server = created.value;
 	const transport = new WebStandardStreamableHTTPServerTransport({
 		sessionIdGenerator: undefined,

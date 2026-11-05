@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { CONTEXT_BYTES, ContextPageSchema } from "../context-output";
+import {
+	CONTEXT_BYTES,
+	CONTEXT_SECTIONS,
+	ContextPageSchema,
+} from "../context-output";
 import type { KabaneModule } from "../module";
 import { err, ok, type Result } from "../result";
 import { Planner } from "../storage";
@@ -143,11 +147,13 @@ it("lists and calls registered module tools and advertises their instructions", 
 			arguments: {
 				id: task.id,
 				responseFormat: "concise",
-				sections: ["missing.section"],
+				sections: ["missing.section".repeat(1000)],
 			},
 		});
 		expect(invalid.isError).toBe(true);
-		expect(JSON.stringify(invalid.content)).toContain("decisions.answers");
+		expect(JSON.stringify(invalid.content)).toContain(
+			"Valid sections: metadata, description, decisions.answers, upstream, position, context, priorWork, discussion",
+		);
 		expect(client.getInstructions()).toBe(
 			`${SERVER_INSTRUCTIONS}\n\n${module.instructions}`,
 		);
@@ -168,7 +174,10 @@ it("refuses colliding module tools before serving either transport", async () =>
 		new Request("https://example.test/mcp", { method: "POST" }),
 	);
 	expect(response.status).toBe(500);
-	expect(await response.text()).toContain(core.name);
+	expect(response.headers.get("content-type")).toContain("application/json");
+	expect(await response.json()).toEqual({
+		error: `Duplicate MCP tool name: ${core.name}. Rename the module or host tool.`,
+	});
 });
 
 it("includes module sections by default and reports canonical selection and omissions", async () => {
@@ -296,4 +305,149 @@ it("paginates module sections within 16KiB and invalidates changed module conten
 	});
 	expect(stale.ok).toBe(false);
 	if (!stale.ok) expect(stale.error.message).toContain("Stale context cursor");
+});
+
+it("advertises core and registered section enums for each server", async () => {
+	for (const modules of [[], [module]]) {
+		configureTestRuntime("", { modules });
+		const server = unwrap(createMcpServer(context()));
+		const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+		const client = new Client({ name: "schema-test", version: "1" });
+		await server.connect(serverSide);
+		await client.connect(clientSide);
+		try {
+			const tool = (await client.listTools()).tools.find(
+				(item) => item.name === "kabane_context",
+			);
+			expect(tool?.inputSchema.properties?.sections).toEqual({
+				type: "array",
+				items: {
+					type: "string",
+					enum: modules.length
+						? [
+								"metadata",
+								"description",
+								"decisions.answers",
+								...CONTEXT_SECTIONS.slice(2),
+							]
+						: [...CONTEXT_SECTIONS],
+				},
+				maxItems: 100,
+				default: modules.length
+					? [
+							"metadata",
+							"description",
+							"decisions.answers",
+							...CONTEXT_SECTIONS.slice(2),
+						]
+					: [...CONTEXT_SECTIONS],
+			});
+		} finally {
+			await client.close();
+		}
+	}
+});
+
+it("degrades thrown module renders in full reads and refuses strict reads", async () => {
+	const task = unwrap(
+		await Planner.addTask(base, { title: "Throwing module" }),
+	);
+	configureTestRuntime("", {
+		modules: [
+			{
+				name: "broken",
+				contextSections: [
+					{
+						name: "broken.section",
+						after: "description",
+						render: async () => {
+							throw new Error("render threw");
+						},
+					},
+				],
+			},
+		],
+	});
+	expect(unwrap(await Planner.assembleContext(base, task.id))).toContain(
+		"Throwing module",
+	);
+	const strict = await Planner.getContextPage(base, task.id, {
+		sections: ["broken.section"],
+	});
+	expect(strict.ok).toBe(false);
+	if (!strict.ok)
+		expect(strict.error.message).toBe(
+			"Cannot read context broken.section; retry the bounded read.",
+		);
+});
+
+it("renders modules sharing an anchor in registration order", async () => {
+	const task = unwrap(
+		await Planner.addTask(base, {
+			title: "Ordered modules",
+			description: "Anchor",
+		}),
+	);
+	const modules: KabaneModule[] = ["first", "second"].map((name) => ({
+		name,
+		contextSections: [
+			{
+				name: `${name}.section`,
+				after: "description",
+				render: async () => ok(`## ${name}`),
+			},
+		],
+	}));
+	for (const order of [modules, [...modules].reverse()]) {
+		configureTestRuntime("", { modules: order });
+		const expected = order.map((item) => `## ${item.name}`).join("\n\n");
+		expect(unwrap(await Planner.assembleContext(base, task.id))).toContain(
+			`Anchor\n\n${expected}`,
+		);
+		const bounded = unwrap(
+			await Planner.getContextPage(base, task.id, {
+				sections: ["second.section", "first.section"],
+			}),
+		);
+		expect(bounded.markdown).toBe(expected);
+	}
+});
+
+it("serves module tools and instructions over Streamable HTTP", async () => {
+	const request = async (
+		method: string,
+		params: Record<string, unknown> = {},
+	) => {
+		const response = await handleHttpRequest(
+			context(),
+			new Request("https://example.test/mcp", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					accept: "application/json, text/event-stream",
+				},
+				body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+			}),
+		);
+		expect(response.status).toBe(200);
+		return response.json();
+	};
+	expect(
+		await request("initialize", {
+			protocolVersion: "2025-03-26",
+			capabilities: {},
+			clientInfo: { name: "http-test", version: "1" },
+		}),
+	).toMatchObject({
+		result: {
+			instructions: `${SERVER_INSTRUCTIONS}\n\n${module.instructions}`,
+		},
+	});
+	expect(await request("tools/list")).toMatchObject({
+		result: {
+			tools: expect.arrayContaining([
+				expect.objectContaining({ name: "decisions_read" }),
+			]),
+		},
+	});
 });

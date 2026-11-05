@@ -69,6 +69,7 @@ export {
 	handleHttpRequest,
 	KABANE_TOOLS,
 	type McpServerInfo,
+	registeredTools,
 	SERVER_INSTRUCTIONS,
 	serveStdio,
 	type ToolContext,
@@ -141,4 +142,3 @@ export type {
 } from "./sync/transport";
 
 export type { KabaneModule, ModuleContextSection } from "./module";
-export { registeredTools } from "./mcp";
