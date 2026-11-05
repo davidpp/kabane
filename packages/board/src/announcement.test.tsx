@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 // The host's announcement on the real board over a real tracker: asked for once the board is up,
-// drawn over the footer, and gone after `esc`.
+// drawn over the footer, and gone after `esc` or a click.
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -63,6 +63,32 @@ it("the board asks its announcer once its first board frame is on screen, shows 
 		expect(dismissed).toContain("Ship it");
 		expect(onScreenWhenAsked).toHaveLength(1);
 		expect(onScreenWhenAsked[0]).toContain("Ship it");
+	} finally {
+		destroy();
+	}
+});
+
+it("a click on the announcement dismisses it, as its esc hint says", async () => {
+	const announcer: Announcer = { announce: async () => ok(LINE) };
+	const { renderOnce, captureCharFrame, mockMouse, destroy } = await renderTest(
+		<App
+			cwd={BASE}
+			basePath={BASE}
+			activity={noActivity}
+			announcer={announcer}
+			resolveScope={async () => null}
+		/>,
+		{ width: 80, height: 16 },
+	);
+	const until = (p: (f: string) => boolean) =>
+		pumpUntil(renderOnce, captureCharFrame, p);
+	try {
+		const shown = await until((f) => f.includes(LINE));
+		const rows = shown.split("\n");
+		const y = rows.findIndex((r) => r.includes(LINE));
+		await mockMouse.click(rows[y]?.indexOf("kabane") ?? 0, y);
+		const dismissed = await until((f) => !f.includes(LINE));
+		expect(dismissed).toContain("Ship it");
 	} finally {
 		destroy();
 	}

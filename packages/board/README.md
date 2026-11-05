@@ -415,7 +415,8 @@ is exported so the CLI's `kabane open` walks the same chain.
 working set. Marked rows carry a `●` before the title and the header counts them (`· 3 marked`).
 Marks survive every reload; `esc` on the board clears them first, then a committed search, then
 the decisions filter (`u`), then dismisses the host's announcement, then widens the scope, one
-level per press.
+level per press. A click on the announcement dismisses it too, and leaves the keys where
+they were.
 
 `BoardContext` (`src/context.ts`) turns what the human is looking at into one value for a
 copilot: scope, view, the selected task's section, the kind and status filters and any query,
