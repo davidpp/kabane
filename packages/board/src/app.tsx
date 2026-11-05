@@ -16,6 +16,7 @@ import {
 } from "react";
 import { BoardActivity } from "./activity";
 import { anyActivityRunning, Board } from "./board";
+import { useBoardStore } from "./board-store";
 import { CardTab } from "./card-tab";
 import { Clipboard } from "./clipboard";
 import { BoardContext } from "./context";
@@ -27,6 +28,7 @@ import { EventView } from "./event-view";
 import { FooterTrail } from "./footer";
 import { Launcher } from "./launcher";
 import { BoardNav } from "./nav";
+import { flash, useNotice } from "./notice";
 import { HelpSheet } from "./overlay";
 import type {
 	ActivityCard,
@@ -63,22 +65,8 @@ export type AppProps = {
 };
 
 const POLL_INTERVAL_MS = 5000;
-// How long the footer flash stays before clearing.
-const NOTICE_MS = 1500;
-// Undoable mutations hold their flash longer so the ⌃z hint has time to register.
-const UNDO_HINT_MS = 4000;
 // Stable identity so a board with nothing linked doesn't re-render on it.
 const EMPTY_LINKS: ReadonlySet<string> = new Set<string>();
-
-// Turn a mutation Result into the footer flash: the reducer's composed text on success, the raw error
-// message on failure. Structural on Result<T> so it works for every BoardData mutation.
-const flash = (
-	res: { ok: true } | { ok: false; error: { message: string } },
-	text: string,
-): BoardNav.Notice =>
-	res.ok
-		? { text, tone: "success" }
-		: { text: res.error.message, tone: "error" };
 
 const shortIdOf = (task: Task | undefined, id: string): string =>
 	task?.shortId ?? id.slice(0, 8);
@@ -112,7 +100,12 @@ export const App = ({
 }: AppProps): ReactNode => {
 	const renderer = useRenderer();
 	const theme = useTheme();
-	const [state, setState] = useState<BoardNav.BoardState | null>(null);
+	const {
+		state,
+		ref: stateRef,
+		set: setState,
+		update: updateState,
+	} = useBoardStore();
 	const [scope, setScope] = useState<BoardData.ScopeInfo | null>(null);
 	// In-flight host cards + awaiting-input questions, refreshed by the same poll as the board data. A
 	// failed activity read keeps the previous map — the board is a glance surface, badges degrade quietly.
@@ -123,9 +116,7 @@ export const App = ({
 	// activity map does: a failed read keeps the last-good set rather than un-glyphing every row.
 	const [linked, setLinked] = useState<ReadonlySet<string>>(EMPTY_LINKS);
 	const [error, setError] = useState<string | null>(null);
-	// Transient footer flash, auto-cleared after NOTICE_MS. Never silent — copies, state moves, review,
-	// and cancel all surface a notice; failures show the error, successes a confirmation.
-	const [notice, setNotice] = useState<BoardNav.Notice | null>(null);
+	const [notice, setNotice] = useNotice();
 	// The records the open detail view shows (BoardData.taskDetail): null while none is open or it
 	// loads, cleared on view change.
 	const [detailRecords, setDetailRecords] =
@@ -139,12 +130,15 @@ export const App = ({
 	// polls, and the stream runner writes it between renders.
 	const [copilotLog, setCopilotLog] = useState<CopilotLog.Log | null>(null);
 	const copilotLogRef = useRef<CopilotLog.Log | null>(null);
-	const publishLog = useCallback((log: CopilotLog.Log): void => {
-		copilotLogRef.current = log;
-		setCopilotLog(log);
-		// The reducer holds no log, but `o` routes on whether one exists — so it gets the one bit.
-		setState((prev) => (prev ? BoardNav.withCopilotLog(prev, true) : prev));
-	}, []);
+	const publishLog = useCallback(
+		(log: CopilotLog.Log): void => {
+			copilotLogRef.current = log;
+			setCopilotLog(log);
+			// The reducer holds no log, but `o` routes on whether one exists — so it gets the one bit.
+			updateState((prev) => BoardNav.withCopilotLog(prev, true));
+		},
+		[updateState],
+	);
 	// Which turn the stream runner is on; a cancel or a new prompt moves it so a stale stream's late
 	// updates are dropped rather than written over the next turn's log.
 	const turnRef = useRef(0);
@@ -159,10 +153,6 @@ export const App = ({
 	);
 
 	// Refs mirror state for the keyboard/poll callbacks, which capture once but must read the latest.
-	// The key and mouse dispatchers also write it as soon as they reduce, so keys that land between
-	// renders (a paste into the prompt or the search box) each see the previous key's result.
-	const stateRef = useRef<BoardNav.BoardState | null>(null);
-	stateRef.current = state;
 	// The terminal hears when the board waits on the human, or works: derived from what the board
 	// holds, and written only when it changes.
 	const copilotAsks = state?.copilot.asks;
@@ -182,8 +172,8 @@ export const App = ({
 	// Every committed state is on screen: note what the digits answer from now on, so a question
 	// that just appeared does not take a key already on its way (BoardNav.sight).
 	useEffect(() => {
-		setState((prev) => (prev ? BoardNav.sight(prev, clock()) : prev));
-	}, [state, clock]);
+		updateState((prev) => BoardNav.sight(prev, clock()));
+	}, [state, clock, updateState]);
 	const scopeRef = useRef<BoardData.ScopeInfo | null>(null);
 	scopeRef.current = scope;
 	const activityRef = useRef<BoardActivity.ActivityMap>(shownActivity);
@@ -220,11 +210,11 @@ export const App = ({
 				filtersFor(s),
 			);
 			if (!result.ok) return;
-			setState((prev) =>
-				prev ? BoardNav.withSearchResults(prev, query, result.value) : prev,
+			updateState((prev) =>
+				BoardNav.withSearchResults(prev, query, result.value),
 			);
 		},
-		[basePath, filtersFor],
+		[basePath, filtersFor, updateState],
 	);
 
 	// Store the records of the open detail view and the stamp they carry.
@@ -252,7 +242,7 @@ export const App = ({
 			if (open?.type !== "detail" || open.taskId !== taskId) return;
 			if (records.ok) showDetail(taskId, records);
 		},
-		[basePath, showDetail],
+		[basePath, showDetail, stateRef],
 	);
 
 	// Reload columns using the filters implied by `s`, then merge them in preserving selection.
@@ -270,16 +260,22 @@ export const App = ({
 			}
 			// Clear any previous poll-error notice on success.
 			setNotice((prev) => (prev?.tone === "error" ? null : prev));
-			setState((prev) =>
-				prev ? BoardNav.withSections(prev, result.value) : prev,
-			);
+			updateState((prev) => BoardNav.withSections(prev, result.value));
 			if (act.ok) setActivity(act.value);
 			const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
 			if (links.ok) setLinked(links.value);
 			if (BoardNav.activeQuery(s.search)) void fireFts(s);
 			if (s.view.type === "detail") void refreshDetail(s.view.taskId);
 		},
-		[basePath, filtersFor, fireFts, activitySource, refreshDetail],
+		[
+			basePath,
+			filtersFor,
+			fireFts,
+			activitySource,
+			refreshDetail,
+			updateState,
+			setNotice,
+		],
 	);
 
 	// Copy a task's exact assembled brief to the system clipboard, flashing the outcome in the footer.
@@ -298,7 +294,7 @@ export const App = ({
 					: { text: wrote.error.message, tone: "error" },
 			);
 		},
-		[basePath, renderer],
+		[basePath, renderer, setNotice],
 	);
 
 	// `O`: hand the task's linked issue to the OS. Several links open the first — the picker a rare
@@ -335,7 +331,7 @@ export const App = ({
 					: { text: `opening ${name} in ${link.provider}`, tone: "success" },
 			);
 		},
-		[basePath, renderer],
+		[basePath, renderer, setNotice],
 	);
 
 	// Ask the host what it can start on this task; merge the answer into the open overlay. Without a
@@ -343,21 +339,19 @@ export const App = ({
 	const loadTriggers = useCallback(
 		async (taskId: string): Promise<void> => {
 			if (!dispatcher) {
-				setState((prev) => (prev ? { ...prev, dispatch: null } : prev));
+				updateState((prev) => ({ ...prev, dispatch: null }));
 				setNotice(noDispatcher(copilot));
 				return;
 			}
 			const result = await dispatcher.triggers(taskId);
 			if (!result.ok) {
-				setState((prev) => (prev ? { ...prev, dispatch: null } : prev));
+				updateState((prev) => ({ ...prev, dispatch: null }));
 				setNotice({ text: result.error.message, tone: "error" });
 				return;
 			}
-			setState((prev) =>
-				prev ? BoardNav.withTriggers(prev, result.value) : prev,
-			);
+			updateState((prev) => BoardNav.withTriggers(prev, result.value));
 		},
-		[dispatcher, copilot],
+		[dispatcher, copilot, updateState, setNotice],
 	);
 
 	// Run a confirmed dispatch: assemble the brief, hand the host the target, and flash the outcome.
@@ -394,7 +388,7 @@ export const App = ({
 			const current = stateRef.current;
 			if (current) void reload(current);
 		},
-		[dispatcher, copilot, basePath, reload],
+		[dispatcher, copilot, basePath, reload, stateRef, setNotice],
 	);
 
 	// One copilot turn: assemble the context, stream the run into the log, reload the board on each
@@ -404,9 +398,7 @@ export const App = ({
 	const runCopilot = useCallback(
 		async (s: BoardNav.BoardState, prompt: string): Promise<void> => {
 			const endTurn = (turn: BoardNav.CopilotTurn): void =>
-				setState((prev) =>
-					prev ? BoardNav.withCopilotTurn(prev, turn) : prev,
-				);
+				updateState((prev) => BoardNav.withCopilotTurn(prev, turn));
 			const now = (): string => new Date().toISOString();
 			if (!copilot) {
 				setNotice(NO_COPILOT);
@@ -436,16 +428,12 @@ export const App = ({
 					// The harness is blocked from here until the human presses something; the board
 					// only puts the question on screen and carries on rendering.
 					if (update.type === "permission")
-						setState((prev) =>
-							prev
-								? BoardNav.withCopilotPermission(prev, update.request)
-								: prev,
+						updateState((prev) =>
+							BoardNav.withCopilotPermission(prev, update.request),
 						);
 					if (update.type === "elicitation")
-						setState((prev) =>
-							prev
-								? BoardNav.withCopilotElicitation(prev, update.request)
-								: prev,
+						updateState((prev) =>
+							BoardNav.withCopilotElicitation(prev, update.request),
 						);
 					// Taken back unanswered: the block goes, and when it was the one on screen the
 					// footer says why it went. A key already on its way answers nothing, since the
@@ -453,19 +441,17 @@ export const App = ({
 					if (update.type === "withdrawn") {
 						if (stateRef.current?.copilot.asks[0]?.request.id === update.id)
 							setNotice({ text: update.summary, tone: "error" });
-						setState((prev) =>
-							prev ? BoardNav.withCopilotWithdrawn(prev, update.id) : prev,
+						updateState((prev) =>
+							BoardNav.withCopilotWithdrawn(prev, update.id),
 						);
 					}
 					if (update.type === "commands")
-						setState((prev) =>
-							prev
-								? BoardNav.withCopilotCommands(
-										prev,
-										update.source,
-										update.commands,
-									)
-								: prev,
+						updateState((prev) =>
+							BoardNav.withCopilotCommands(
+								prev,
+								update.source,
+								update.commands,
+							),
 						);
 					if (update.type === "tool_result" && update.wrote) {
 						const current = stateRef.current;
@@ -484,7 +470,7 @@ export const App = ({
 				if (turnRef.current === turn) fail(errorMessage(e));
 			}
 		},
-		[copilot, basePath, reload, publishLog],
+		[copilot, basePath, reload, publishLog, setNotice, stateRef, updateState],
 	);
 
 	// Stop the turn in flight: tell the copilot, drop its remaining updates, close the card.
@@ -494,8 +480,8 @@ export const App = ({
 		const log = copilotLogRef.current;
 		if (log && log.current.card.status === "running")
 			publishLog(CopilotLog.cancelled(log, new Date().toISOString()));
-		setState((prev) => (prev ? BoardNav.withCopilotTurn(prev, "error") : prev));
-	}, [copilot, publishLog]);
+		updateState((prev) => BoardNav.withCopilotTurn(prev, "error"));
+	}, [copilot, publishLog, updateState]);
 
 	// `o` in the detail view: the task's first in-flight card with events, else its most recent one.
 	// A card with a tab of its own opens as that tab, so one card never shows in two places.
@@ -530,7 +516,7 @@ export const App = ({
 				},
 			});
 		},
-		[],
+		[setNotice, setState],
 	);
 
 	// A banner's question answered: core writes the decision, the banner says what was answered until
@@ -546,18 +532,16 @@ export const App = ({
 			await shownSource.answering?.(questionId);
 			const res = await BoardData.answerQuestion(basePath, questionId, text);
 			setNotice(flash(res, `answered ${text}`));
-			setState((prev) =>
-				prev
-					? (res.ok ? BoardTabs.withAnswered : BoardTabs.withoutAnswer)(
-							prev,
-							questionId,
-							text,
-						)
-					: prev,
+			updateState((prev) =>
+				(res.ok ? BoardTabs.withAnswered : BoardTabs.withoutAnswer)(
+					prev,
+					questionId,
+					text,
+				),
 			);
 			await reload(s);
 		},
-		[basePath, reload, shownSource],
+		[basePath, reload, shownSource, updateState, setNotice],
 	);
 
 	// `w` closed a finished card's tab: the host forgets it, so a relaunch does not bring it back. The
@@ -567,7 +551,7 @@ export const App = ({
 			const res = await shownSource.dismiss?.(cardId);
 			if (res && !res.ok) setNotice({ text: res.error.message, tone: "error" });
 		},
-		[shownSource],
+		[shownSource, setNotice],
 	);
 
 	// One of a card's actions: the host runs it and says what happened, and the reload shows it.
@@ -592,7 +576,7 @@ export const App = ({
 			);
 			await reload(s);
 		},
-		[shownSource, reload],
+		[shownSource, reload, setNotice],
 	);
 
 	// The single effect runner, shared by the keyboard and mouse dispatchers so both interaction paths
@@ -668,7 +652,7 @@ export const App = ({
 				case "copilotOpen":
 					// Focus moved optimistically; without a copilot it goes straight back with the flash.
 					if (!copilot) {
-						setState((prev) => (prev ? { ...prev, focus: "board" } : prev));
+						updateState((prev) => ({ ...prev, focus: "board" }));
 						setNotice(NO_COPILOT);
 					}
 					return;
@@ -722,6 +706,8 @@ export const App = ({
 			dismissCard,
 			runAct,
 			openEvents,
+			setNotice,
+			updateState,
 		],
 	);
 
@@ -733,12 +719,11 @@ export const App = ({
 			if (!current) return;
 			const { state: next, effect } = BoardNav.reduceMouse(current, action);
 			if (next !== current) {
-				stateRef.current = next;
 				setState(next);
 			}
 			runEffect(next, effect);
 		},
-		[runEffect],
+		[runEffect, stateRef, setState],
 	);
 
 	// Track a retry counter so the initial-load effect can be re-triggered by `r` from the error screen.
@@ -769,7 +754,6 @@ export const App = ({
 			key.preventDefault();
 		const { state: next, effect } = BoardNav.reduceKey(current, key, clock());
 		if (next !== current) {
-			stateRef.current = next;
 			setState(next);
 		}
 		runEffect(next, effect);
@@ -782,10 +766,9 @@ export const App = ({
 		if (!current) return;
 		const text = inputRef.current?.plainText ?? "";
 		const { state: next, effect } = BoardNav.submitCopilot(current, text);
-		stateRef.current = next;
 		setState(next);
 		runEffect(next, effect);
-	}, [runEffect]);
+	}, [runEffect, stateRef, setState]);
 
 	// `enter` in a form's input: the reducer reads the field and moves the form on, or sends it.
 	const submitForm = useCallback(
@@ -793,18 +776,17 @@ export const App = ({
 			const current = stateRef.current;
 			if (!current) return;
 			const { state: next, effect } = BoardNav.submitForm(current, text);
-			stateRef.current = next;
 			setState(next);
 			runEffect(next, effect);
 		},
-		[runEffect],
+		[runEffect, stateRef, setState],
 	);
 
 	// Mirror the buffer into the reducer so `/` matching sees what the human sees.
 	const mirrorCopilotText = useCallback((): void => {
 		const text = inputRef.current?.plainText ?? "";
-		setState((prev) => (prev ? BoardNav.withCopilotText(prev, text) : prev));
-	}, []);
+		updateState((prev) => BoardNav.withCopilotText(prev, text));
+	}, [updateState]);
 
 	// The same two for a prompt a card's tab or a banner opened.
 	const submitPrompt = useCallback((): void => {
@@ -812,14 +794,13 @@ export const App = ({
 		if (!current) return;
 		const text = promptRef.current?.plainText ?? "";
 		const { state: next, effect } = BoardPrompt.submit(current, text);
-		stateRef.current = next;
 		setState(next);
 		runEffect(next, effect);
-	}, [runEffect]);
+	}, [runEffect, stateRef, setState]);
 	const mirrorPromptText = useCallback((): void => {
 		const text = promptRef.current?.plainText ?? "";
-		setState((prev) => (prev ? BoardPrompt.withText(prev, text) : prev));
-	}, []);
+		updateState((prev) => BoardPrompt.withText(prev, text));
+	}, [updateState]);
 
 	// Initial load: detect scope, then build the first state scoped to the project (if any).
 	// retryCount is in deps so `r` from the error screen re-triggers this effect.
@@ -857,7 +838,15 @@ export const App = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [cwd, basePath, resolveScope, activitySource, copilot, retryCount]);
+	}, [
+		cwd,
+		basePath,
+		resolveScope,
+		activitySource,
+		copilot,
+		retryCount,
+		setState,
+	]);
 
 	// 5s background poll — reloads with whatever filters are currently active.
 	useEffect(() => {
@@ -866,7 +855,7 @@ export const App = ({
 			if (current) void reload(current);
 		}, POLL_INTERVAL_MS);
 		return () => clearInterval(timer);
-	}, [reload]);
+	}, [reload, stateRef]);
 
 	// Tier-2 FTS: debounced 200ms while typing, immediate on commit. Fires on every search query
 	// change so FTS results merge into the board alongside the instant client-side tier-1 filter.
@@ -882,19 +871,7 @@ export const App = ({
 			if (latest) void fireFts(latest);
 		}, delay);
 		return () => clearTimeout(timer);
-	}, [searchQuery, searchMode, fireFts]);
-
-	// Clear the copy flash after NOTICE_MS (undoable mutations linger UNDO_HINT_MS so the ⌃z hint has
-	// time to register). setNotice always makes a fresh object, so a repeat copy re-runs this and
-	// restarts the timer.
-	useEffect(() => {
-		if (!notice) return;
-		const timer = setTimeout(
-			() => setNotice(null),
-			notice.undoable ? UNDO_HINT_MS : NOTICE_MS,
-		);
-		return () => clearTimeout(timer);
-	}, [notice]);
+	}, [searchQuery, searchMode, fireFts, stateRef]);
 
 	// Keep the selected row on-screen: whenever selection changes (j/k, mouse), scroll the minimum
 	// distance to reveal it. Each row box carries id `row-<taskId>`, which scrollChildIntoView resolves.
@@ -930,31 +907,35 @@ export const App = ({
 	// The tab bar follows the cards that ask for a tab, and the attention queue follows the tracker's
 	// unanswered questions, both on every activity load.
 	useEffect(() => {
-		setState((prev) =>
-			prev
-				? BoardTabs.withActivity(
-						prev,
-						shownActivity.cards,
-						BoardActivity.questions(shownActivity),
-					)
-				: prev,
+		updateState((prev) =>
+			BoardTabs.withActivity(
+				prev,
+				shownActivity.cards,
+				BoardActivity.questions(shownActivity),
+			),
 		);
-	}, [shownActivity]);
+	}, [shownActivity, updateState]);
 
 	const spinnerFrame = useSpinnerFrame(anyActivityRunning(shownActivity));
 
 	// The event view on a card's tab refreshes its card every second; the keys read the same card.
-	const takeCard = useCallback((card: ActivityCard): void => {
-		setState((prev) => (prev ? BoardTabs.withCard(prev, card) : prev));
-	}, []);
+	const takeCard = useCallback(
+		(card: ActivityCard): void => {
+			updateState((prev) => BoardTabs.withCard(prev, card));
+		},
+		[updateState],
+	);
 
 	// Resolve task ULID → shortId from loaded sections (for the event view's header).
-	const resolveShortId = useCallback((taskId: string): string | undefined => {
-		const task = stateRef.current
-			? BoardNav.taskById(stateRef.current, taskId)
-			: undefined;
-		return task ? shortIdOf(task, task.id) : undefined;
-	}, []);
+	const resolveShortId = useCallback(
+		(taskId: string): string | undefined => {
+			const task = stateRef.current
+				? BoardNav.taskById(stateRef.current, taskId)
+				: undefined;
+			return task ? shortIdOf(task, task.id) : undefined;
+		},
+		[stateRef],
+	);
 
 	if (error)
 		return (
