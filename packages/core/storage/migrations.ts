@@ -27,7 +27,8 @@ import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
 import { applySchema } from "../db/schema";
 import { physicalTable } from "../db/tables";
-import type { Result } from "../result";
+import { type KabaneModule, Modules } from "../module";
+import { err, ok, type Result } from "../result";
 import { parseQuestionBody } from "../schemas";
 import { columnExists, TABLES } from "./helpers";
 import { Oplog } from "./oplog";
@@ -290,6 +291,32 @@ export namespace Migrations {
 					);
 			},
 		},
+		{
+			// Ops for a data module this device has not registered, or for a newer
+			// version of one it has (`module.ts`), wait here untouched instead of
+			// being skipped, and apply once the module registers or migrates.
+			// Machine-local: never captured, never replicated. `op` is the op as
+			// pulled, JSON; `server_seq` is its place in the log, the replay order.
+			name: "sync-parked",
+			up: (db) => {
+				db.run(
+					`CREATE TABLE IF NOT EXISTS ${TABLES.sync_parked} (
+					   op_id TEXT PRIMARY KEY,
+					   server_seq INTEGER NOT NULL,
+					   module TEXT NOT NULL,
+					   module_schema INTEGER NOT NULL,
+					   tbl TEXT NOT NULL,
+					   row_id TEXT NOT NULL,
+					   op TEXT NOT NULL,
+					   parked_at TEXT NOT NULL
+					 )`,
+				);
+				db.run(
+					`CREATE INDEX IF NOT EXISTS ${TABLES.sync_parked}_module_idx
+					   ON ${TABLES.sync_parked}(module, server_seq)`,
+				);
+			},
+		},
 	];
 
 	/**
@@ -301,4 +328,28 @@ export namespace Migrations {
 	/** Bring `db` up to `SCHEMA_VERSION`, or say which migration failed. */
 	export const apply = (db: Db): Result<Migrate.Report> =>
 		Migrate.run(db, LIST);
+
+	/**
+	 * Bring each registered module up to its own list, in registration order,
+	 * after core. Each records its versions in its own table, so a module
+	 * migrating never moves `SCHEMA_VERSION`, and a database a newer build of a
+	 * module migrated is refused for that module the way core refuses its own.
+	 */
+	export const applyModules = (
+		db: Db,
+		modules: readonly KabaneModule[],
+	): Result<void> => {
+		for (const module of modules) {
+			const migrations = module.migrations ?? [];
+			if (migrations.length === 0) continue;
+			const ran = Migrate.run(
+				db,
+				migrations,
+				Modules.versionTable(module.name),
+			);
+			if (!ran.ok)
+				return err(new Error(`module "${module.name}": ${ran.error.message}`));
+		}
+		return ok(undefined);
+	};
 }

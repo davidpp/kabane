@@ -16,14 +16,15 @@
  */
 
 import type { Db } from "../db/port";
+import { Modules } from "../module";
 import { traced } from "../observability";
 import { err, ok, type Result } from "../result";
 import { withDb } from "../runtime";
 
-import type { SyncStatus } from "../schemas";
+import type { SyncOp, SyncStatus } from "../schemas";
 import { TABLES } from "../storage/helpers";
 import { Migrations } from "../storage/migrations";
-import { Oplog } from "../storage/oplog";
+import { type DrainedOp, Oplog } from "../storage/oplog";
 import { Apply, type ApplyReport } from "./apply";
 import type { PullPage, RelayOp, SyncTransport } from "./transport";
 
@@ -113,13 +114,18 @@ const pendingOps = (db: Db): number =>
 		.get()?.count ?? 0;
 
 /**
- * The first op this build cannot store: one pushed by a kabane with a newer
- * schema. Applying it would drop the columns this build lacks (apply writes only
- * the columns it knows) or skip a table it has never heard of, and the watermark
- * would move past it for good.
+ * The first core op this build cannot store: one pushed by a kabane with a
+ * newer schema. Applying it would drop the columns this build lacks (apply
+ * writes only the columns it knows) or skip a table it has never heard of, and
+ * the watermark would move past it for good. A data module's op never stops
+ * the pull: apply parks the ones this device cannot read yet.
  */
 const firstNewerOp = (ops: readonly RelayOp[]): RelayOp | undefined =>
-	ops.find((op) => (op.schema ?? BASELINE_SCHEMA) > Migrations.SCHEMA_VERSION);
+	ops.find(
+		(op) =>
+			op.module === undefined &&
+			(op.schema ?? BASELINE_SCHEMA) > Migrations.SCHEMA_VERSION,
+	);
 
 /** The part of a page before `op`, with the watermark stopping just short of it. */
 const pageBefore = (page: PullPage, op: RelayOp): PullPage => ({
@@ -132,6 +138,32 @@ const schemaAhead = (op: RelayOp): Error =>
 	new Error(
 		`the sync log holds a change from a newer kabane (schema ${op.schema}; this device runs schema ${Migrations.SCHEMA_VERSION}). Update kabane on this device and sync again: the pull stopped before that change, at server seq ${op.serverSeq}, and skipped nothing.`,
 	);
+
+/** Parked ops per module name. */
+const parkedOps = (db: Db): Record<string, number> =>
+	Object.fromEntries(
+		db
+			.query<{ module: string; count: number }, []>(
+				`SELECT module, COUNT(*) AS count FROM ${TABLES.sync_parked}
+          GROUP BY module ORDER BY module`,
+			)
+			.all()
+			.map((row) => [row.module, row.count]),
+	);
+
+/**
+ * An op as it goes on the wire: core's schema version on every op, so an older
+ * device knows to stop, and on a module table's op the module's name and
+ * version, so a device without that module knows to park it.
+ */
+const outgoing = ({ seq: _seq, ...op }: DrainedOp): SyncOp => {
+	const tag = Modules.tagFor(op.tbl);
+	return {
+		...op,
+		schema: Migrations.SCHEMA_VERSION,
+		...(tag === undefined ? {} : { module: tag }),
+	};
+};
 
 const renamedShortIds = (db: Db): number =>
 	db
@@ -167,14 +199,8 @@ const pushImpl = async (
 		const ops = drained.value;
 		if (ops.length === 0) break;
 
-		// The local `seq` is meaningless to the log — strip it at the seam. The
-		// schema version goes on instead, so an older device knows to stop.
-		const ack = await transport.push(
-			ops.map(({ seq: _seq, ...op }) => ({
-				...op,
-				schema: Migrations.SCHEMA_VERSION,
-			})),
-		);
+		// The local `seq` is meaningless to the log — strip it at the seam.
+		const ack = await transport.push(ops.map(outgoing));
 		if (!ack.ok) return ack;
 
 		const last = ops[ops.length - 1];
@@ -211,7 +237,15 @@ const pullImpl = async (
 	if (!state.ok) return state;
 	if (state.value === undefined) return err(notInitialized());
 
-	let total = Apply.emptyReport(state.value.lastAppliedSeq);
+	// Ops parked for a module that has registered or migrated since apply
+	// first, in log order, before anything newer lands on top of them.
+	const replayed = await Apply.replayParked(basePath);
+	if (!replayed.ok) return replayed;
+
+	let total = Apply.mergeReports(
+		Apply.emptyReport(state.value.lastAppliedSeq),
+		replayed.value,
+	);
 	let batches = 0;
 
 	for (let batch = 0; batch < maxBatches; batch++) {
@@ -270,6 +304,7 @@ const statusImpl = async (basePath: string): Promise<Result<SyncStatus>> =>
 				renamedShortIds: 0,
 				quarantinedOps: 0,
 				quarantined: [],
+				parkedOps: {},
 			});
 		}
 
@@ -290,6 +325,7 @@ const statusImpl = async (basePath: string): Promise<Result<SyncStatus>> =>
 			renamedShortIds: renamedShortIds(db),
 			quarantinedOps: quarantinedOps.value,
 			quarantined: quarantined.value,
+			parkedOps: parkedOps(db),
 		});
 	});
 
@@ -313,6 +349,8 @@ export namespace Sync {
 			"sync.received": result.received,
 			"sync.applied": result.applied,
 			"sync.renamed": result.renamed,
+			"sync.parked": result.parked,
+			"sync.replayed": result.replayed,
 			"sync.batches": result.batches,
 		}),
 	});

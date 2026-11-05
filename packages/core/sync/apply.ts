@@ -42,6 +42,13 @@
  * `task_work_log` and `task_links`. Selecting a subset would silently feed it a
  * missing clock and turn LWW into first-writer-wins.
  *
+ * PARK, DON'T SKIP, A MODULE'S OP THIS DEVICE CANNOT READ. An op tagged with a
+ * data module that is not registered here, or with a newer version of one that
+ * is, goes into `sync_parked` untouched, in the same transaction that moves the
+ * watermark past it. `replayParked` applies it through this same pass once the
+ * module is here. Skipping it would move the watermark past rows this device
+ * could never fetch again.
+ *
  * SKIPS ARE COUNTED, NEVER SWALLOWED. `Resolve` is total by design so one
  * malformed op cannot wedge `last_applied_seq` forever, which only works if the
  * caller can see what it dropped. Every reason in `SKIP_REASONS` is reported,
@@ -49,10 +56,16 @@
  */
 
 import type { Db } from "../db/port";
-import type { Result } from "../result";
+import { Modules } from "../module";
+import { type Result, trySync } from "../result";
 import { atomic } from "../runtime";
 
-import { SYNC_TABLES, type SyncTable } from "../schemas";
+import {
+	SYNC_TABLES,
+	type SyncOp,
+	SyncOpSchema,
+	type SyncTable,
+} from "../schemas";
 import { TABLES } from "../storage/helpers";
 import { Oplog, physicalTableFor } from "../storage/oplog";
 import {
@@ -127,7 +140,6 @@ type BindValue = string | number | null;
 
 /** Per-table facts read once per pass. */
 type TableMeta = {
-	table: SyncTable;
 	physical: string;
 	/** Live column list, so a column a newer device sent is dropped, not fatal. */
 	columns: string[];
@@ -147,6 +159,13 @@ export type ApplyReport = {
 	clearedRefs: number;
 	/** Ops not applied, by reason. Zero-filled from `SKIP_REASONS`. */
 	skipped: Record<SkipReason, number>;
+	/**
+	 * Ops set aside for a data module this device lacks or runs an older
+	 * version of (`sync_parked`). Not lost: they apply once it has it.
+	 */
+	parked: number;
+	/** Parked ops whose module is now here, applied this pass in log order. */
+	replayed: number;
 	/** The `last_applied_seq` this pass advanced to. */
 	throughSeq: number;
 };
@@ -161,8 +180,8 @@ const isSyncTable = (tbl: string): tbl is SyncTable =>
 const asString = (value: unknown): string | undefined =>
 	typeof value === "string" && value !== "" ? value : undefined;
 
-const tableMeta = (db: Db, table: SyncTable): TableMeta => ({
-	table,
+/** A module table resolves by `family` alone: no natural key, no `short_id`. */
+const tableMeta = (db: Db, table: string): TableMeta => ({
 	physical: physicalTableFor(table),
 	columns: db
 		.query<{ name: string }, []>(
@@ -170,9 +189,20 @@ const tableMeta = (db: Db, table: SyncTable): TableMeta => ({
 		)
 		.all()
 		.map((column) => column.name),
-	naturalKey: NATURAL_KEY[table],
-	hasShortId: SHORT_ID_TABLES.includes(table),
+	naturalKey: isSyncTable(table) ? NATURAL_KEY[table] : undefined,
+	hasShortId: isSyncTable(table) && SHORT_ID_TABLES.includes(table),
 });
+
+/** The FK parents to check before resolving: core's list, or a module table's task. */
+const parentsOf = (
+	table: string,
+	rule: { childOfTasks: boolean },
+): readonly ParentRef[] => {
+	if (isSyncTable(table)) return PARENTS[table];
+	return rule.childOfTasks
+		? [{ column: "task_id", table: TABLES.tasks, onDelete: "cascade" }]
+		: [];
+};
 
 /**
  * JSON row snapshots only ever hold scalars, because `json_object` reads column
@@ -430,7 +460,7 @@ const zeroSkips = (): Record<SkipReason, number> =>
 	>;
 
 /** Every `short_id` anywhere in the batch, whatever its table or fate. */
-const collectLabels = (ops: readonly RelayOp[]): string[] => {
+const collectLabels = (ops: readonly SyncOp[]): string[] => {
 	const labels: string[] = [];
 	for (const op of ops) {
 		const label =
@@ -444,13 +474,17 @@ const collectLabels = (ops: readonly RelayOp[]): string[] => {
 const deleteKey = (tbl: string, rowId: string): string => `${tbl} ${rowId}`;
 
 type Prepared = {
-	op: RelayOp;
+	op: SyncOp;
 	/** Every FK parent present, after `set-null` columns were cleared. */
 	parentPresent: boolean;
 	cleared: number;
 };
 
-const prepareParents = (db: Db, table: SyncTable, op: RelayOp): Prepared => {
+const prepareParents = (
+	db: Db,
+	parents: readonly ParentRef[],
+	op: SyncOp,
+): Prepared => {
 	if (op.payload === undefined) {
 		return { op, parentPresent: true, cleared: 0 };
 	}
@@ -459,7 +493,7 @@ const prepareParents = (db: Db, table: SyncTable, op: RelayOp): Prepared => {
 	let parentPresent = true;
 	let cleared = 0;
 
-	for (const parent of PARENTS[table]) {
+	for (const parent of parents) {
 		const value = asString(payload[parent.column]);
 		if (value === undefined) continue;
 		if (rowExists(db, parent.table, value)) continue;
@@ -497,88 +531,169 @@ const reserveBatchLabels = (db: Db, labels: readonly string[], now: string) => {
 	}
 };
 
+/** What one pass over a list of ops did, before the page's own numbers. */
+type Counts = Pick<
+	ApplyReport,
+	"applied" | "renamed" | "clearedRefs" | "skipped" | "parked"
+>;
+
+/** State one pass carries from op to op. */
+type Pass = {
+	db: Db;
+	localDeviceId: string;
+	now: string;
+	batchLabels: readonly string[];
+	deletedAt: Map<string, string>;
+	metas: Map<string, TableMeta>;
+	counts: Counts;
+};
+
+/**
+ * The module tag of an op this device cannot apply yet: its module is not
+ * registered here, or is registered at an older version than the op's.
+ */
+const parkingTag = (op: SyncOp): SyncOp["module"] => {
+	const tag = op.module;
+	if (tag === undefined) return undefined;
+	const here = Modules.named(tag.name);
+	return here === undefined || tag.schema > Modules.schemaOf(here)
+		? tag
+		: undefined;
+};
+
+/** Set an op aside untouched. Idempotent on `op_id`, so a re-pull parks it once. */
+const park = (pass: Pass, op: RelayOp, tag: NonNullable<SyncOp["module"]>) => {
+	const { serverSeq, ...raw } = op;
+	pass.db.run(
+		`INSERT INTO ${TABLES.sync_parked}
+       (op_id, server_seq, module, module_schema, tbl, row_id, op, parked_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(op_id) DO NOTHING`,
+		[
+			op.opId,
+			serverSeq,
+			tag.name,
+			tag.schema,
+			op.tbl,
+			op.rowId,
+			JSON.stringify(raw),
+			pass.now,
+		],
+	);
+	pass.counts.parked++;
+};
+
+const execute = (
+	pass: Pass,
+	meta: TableMeta,
+	decision: ResolveDecision,
+	local: Row | undefined,
+) => {
+	const { db, counts } = pass;
+	switch (decision.kind) {
+		case "skip":
+			counts.skipped[decision.reason]++;
+			break;
+		case "delete":
+			deleteRow(db, meta.physical, decision.rowId);
+			counts.applied++;
+			break;
+		case "apply":
+			if (decision.dropRowId !== undefined) {
+				deleteRow(db, meta.physical, decision.dropRowId);
+			}
+			writeRow(db, meta, decision.rowId, withVersion(decision.row, local));
+			counts.applied++;
+			break;
+		case "rename":
+			executeRename(db, meta, decision, pass.batchLabels, pass.now);
+			counts.applied++;
+			counts.renamed++;
+			break;
+	}
+};
+
+const applyOne = (pass: Pass, op: RelayOp) => {
+	const { db, counts } = pass;
+	const tag = parkingTag(op);
+	if (tag !== undefined) return park(pass, op, tag);
+
+	const rule = Resolve.rule(op.tbl);
+	if (rule === undefined) {
+		counts.skipped["unknown-table"]++;
+		return;
+	}
+
+	const meta = pass.metas.get(op.tbl) ?? tableMeta(db, op.tbl);
+	pass.metas.set(op.tbl, meta);
+
+	const prepared = prepareParents(db, parentsOf(op.tbl, rule), op);
+	counts.clearedRefs += prepared.cleared;
+
+	// Before the resolver, and for every table: a dangling FK is the one
+	// failure that takes the whole batch down with it. Deletes carry no
+	// payload and no FK, so only writes can land here.
+	if (!prepared.parentPresent) {
+		counts.skipped["orphan-parent"]++;
+		return;
+	}
+
+	const payload = prepared.op.payload;
+	const localById = selectRow(db, meta.physical, "id = ?", [op.rowId]);
+	const localByKey = byNaturalKey(db, meta, payload);
+	const decision = Resolve.decide(prepared.op, {
+		byId: localById,
+		byNaturalKey: localByKey,
+		byShortId: byShortId(db, meta, payload),
+		parentPresent: prepared.parentPresent,
+		deletedAt: pass.deletedAt.get(deleteKey(op.tbl, op.rowId)),
+		localDeviceId: pass.localDeviceId,
+	});
+
+	// Every delete seen counts as evidence the row was deleted, applied or
+	// not: a later insert of it from a third device must still lose.
+	if (op.op === "delete") {
+		pass.deletedAt.set(deleteKey(op.tbl, op.rowId), op.capturedAt);
+	}
+
+	execute(pass, meta, decision, localById ?? localByKey);
+};
+
+/** Apply `ops` in the order given, parking what this device cannot read yet. */
+const applyOps = (
+	db: Db,
+	ops: readonly RelayOp[],
+	localDeviceId: string,
+	now: string,
+): Counts => {
+	const pass: Pass = {
+		db,
+		localDeviceId,
+		now,
+		batchLabels: collectLabels(ops),
+		deletedAt: new Map(),
+		metas: new Map(),
+		counts: {
+			applied: 0,
+			renamed: 0,
+			clearedRefs: 0,
+			skipped: zeroSkips(),
+			parked: 0,
+		},
+	};
+	for (const op of ops) applyOne(pass, op);
+	reserveBatchLabels(db, pass.batchLabels, now);
+	return pass.counts;
+};
+
 const applyOrdered = (
 	db: Db,
 	page: PullPage,
 	localDeviceId: string,
 ): ApplyReport => {
 	const ordered = [...page.ops].sort((a, b) => a.serverSeq - b.serverSeq);
-	const batchLabels = collectLabels(ordered);
 	const now = new Date().toISOString();
-
-	const skipped = zeroSkips();
-	const deletedAt = new Map<string, string>();
-	const metas = new Map<SyncTable, TableMeta>();
-	let applied = 0;
-	let renamed = 0;
-	let clearedRefs = 0;
-
-	for (const op of ordered) {
-		if (!isSyncTable(op.tbl)) {
-			skipped["unknown-table"]++;
-			continue;
-		}
-		const table = op.tbl;
-
-		const meta = metas.get(table) ?? tableMeta(db, table);
-		metas.set(table, meta);
-
-		const prepared = prepareParents(db, table, op);
-		clearedRefs += prepared.cleared;
-
-		// Before the resolver, and for every table: a dangling FK is the one
-		// failure that takes the whole batch down with it. Deletes carry no
-		// payload and no FK, so only writes can land here.
-		if (!prepared.parentPresent) {
-			skipped["orphan-parent"]++;
-			continue;
-		}
-
-		const payload = prepared.op.payload;
-		const localById = selectRow(db, meta.physical, "id = ?", [op.rowId]);
-		const localByKey = byNaturalKey(db, meta, payload);
-		const decision = Resolve.decide(prepared.op, {
-			byId: localById,
-			byNaturalKey: localByKey,
-			byShortId: byShortId(db, meta, payload),
-			parentPresent: prepared.parentPresent,
-			deletedAt: deletedAt.get(deleteKey(op.tbl, op.rowId)),
-			localDeviceId,
-		});
-
-		// Every delete seen counts as evidence the row was deleted, applied or
-		// not: a later insert of it from a third device must still lose.
-		if (op.op === "delete") {
-			deletedAt.set(deleteKey(op.tbl, op.rowId), op.capturedAt);
-		}
-
-		switch (decision.kind) {
-			case "skip":
-				skipped[decision.reason]++;
-				break;
-			case "delete":
-				deleteRow(db, meta.physical, decision.rowId);
-				applied++;
-				break;
-			case "apply": {
-				if (decision.dropRowId !== undefined) {
-					deleteRow(db, meta.physical, decision.dropRowId);
-				}
-				const local = localById ?? localByKey;
-				const row = withVersion(decision.row, local);
-				writeRow(db, meta, decision.rowId, row);
-				applied++;
-				break;
-			}
-			case "rename":
-				executeRename(db, meta, decision, batchLabels, now);
-				applied++;
-				renamed++;
-				break;
-		}
-	}
-
-	reserveBatchLabels(db, batchLabels, now);
+	const counts = applyOps(db, ordered, localDeviceId, now);
 
 	db.run(
 		`UPDATE ${TABLES.sync_state}
@@ -589,18 +704,79 @@ const applyOrdered = (
 
 	return {
 		received: page.ops.length,
-		applied,
-		renamed,
-		clearedRefs,
-		skipped,
+		...counts,
+		replayed: 0,
 		throughSeq: page.throughSeq,
 	};
 };
 
-const applyBatchImpl = async (
+type ParkedRow = { op_id: string; server_seq: number; op: string };
+
+/**
+ * Parked ops a registered module can read now, oldest first. With no module
+ * registered (the hub today) nothing can be, and the table is not read.
+ */
+const readyToReplay = (db: Db): ParkedRow[] => {
+	const modules = Modules.list();
+	if (modules.length === 0) return [];
+	const readable = modules
+		.map(() => "(module = ? AND module_schema <= ?)")
+		.join(" OR ");
+	const params = modules.flatMap((module) => [
+		module.name,
+		Modules.schemaOf(module),
+	]);
+	return db
+		.query<ParkedRow, (string | number)[]>(
+			`SELECT op_id, server_seq, op FROM ${TABLES.sync_parked}
+        WHERE ${readable}
+        ORDER BY server_seq ASC`,
+		)
+		.all(...params);
+};
+
+/** The op as it was pulled, or undefined when the stored JSON no longer parses. */
+const unpark = (row: ParkedRow): RelayOp | undefined => {
+	const decoded = trySync((): unknown => JSON.parse(row.op));
+	if (!decoded.ok) return undefined;
+	const parsed = SyncOpSchema.safeParse(decoded.value);
+	return parsed.success
+		? { ...parsed.data, serverSeq: row.server_seq }
+		: undefined;
+};
+
+/**
+ * Apply the parked ops whose module is here now, in log order, through the
+ * same pass a pulled page takes, and let them go. The watermark stays where it
+ * is: these ops are behind it already. One that no longer parses is counted
+ * as `malformed-payload` and let go too, or it would be read on every pass.
+ */
+const replayOrdered = (
+	db: Db,
+	localDeviceId: string,
+	throughSeq: number,
+): ApplyReport => {
+	const ready = readyToReplay(db);
+	const ops = ready.map(unpark);
+	const readable = ops.filter((op): op is RelayOp => op !== undefined);
+	const counts = applyOps(
+		db,
+		readable,
+		localDeviceId,
+		new Date().toISOString(),
+	);
+	counts.skipped["malformed-payload"] += ops.length - readable.length;
+	for (const row of ready) {
+		db.run(`DELETE FROM ${TABLES.sync_parked} WHERE op_id = ?`, [row.op_id]);
+	}
+	return { received: 0, ...counts, replayed: ready.length, throughSeq };
+};
+
+/** Run `fn` atomically with this device's sync state, which must exist. */
+const withSyncState = <T>(
 	basePath: string,
-	page: PullPage,
-): Promise<Result<ApplyReport>> =>
+	fn: (db: Db, state: { deviceId: string; lastAppliedSeq: number }) => T,
+): Promise<Result<T>> =>
 	// Throwing is how `atomic` is told to ROLLBACK; it converts the throw into
 	// an `err`, so nothing escapes as an exception.
 	atomic(basePath, (db) => {
@@ -611,7 +787,7 @@ const applyBatchImpl = async (
 				"Cannot apply sync ops: this device has no sync state. Call Oplog.initDevice first.",
 			);
 		}
-		return applyOrdered(db, page, state.value.deviceId);
+		return fn(db, state.value);
 	});
 
 // ============================================================
@@ -625,12 +801,32 @@ export namespace Apply {
 	 * Ordered by `serverSeq`, one transaction, never captured (rows are written
 	 * directly, below the capture step), and `last_applied_seq` advanced inside
 	 * the same transaction so a crash can never leave the watermark ahead of the
-	 * rows.
+	 * rows. An op for a data module this device lacks, or runs an older version
+	 * of, is parked in the same transaction instead of resolved.
 	 *
 	 * Idempotent: re-applying the same page resolves to `already-present` /
 	 * `not-newer` / `already-absent` skips and writes nothing new.
 	 */
-	export const applyBatch = applyBatchImpl;
+	export const applyBatch = (
+		basePath: string,
+		page: PullPage,
+	): Promise<Result<ApplyReport>> =>
+		withSyncState(basePath, (db, state) =>
+			applyOrdered(db, page, state.deviceId),
+		);
+
+	/**
+	 * Apply, atomically, every parked op a registered module can now read: its
+	 * module registered since, or migrated to the op's version. A sync pass
+	 * calls this before it pulls. Idempotent like `applyBatch`: a replayed op a
+	 * re-pull already applied resolves as `already-present` or `not-newer`.
+	 */
+	export const replayParked = (
+		basePath: string,
+	): Promise<Result<ApplyReport>> =>
+		withSyncState(basePath, (db, state) =>
+			replayOrdered(db, state.deviceId, state.lastAppliedSeq),
+		);
 
 	/** An empty report, for callers aggregating across pages. */
 	export const emptyReport = (throughSeq: number): ApplyReport => ({
@@ -639,6 +835,8 @@ export namespace Apply {
 		renamed: 0,
 		clearedRefs: 0,
 		skipped: zeroSkips(),
+		parked: 0,
+		replayed: 0,
 		throughSeq,
 	});
 
@@ -657,6 +855,8 @@ export namespace Apply {
 				into.skipped[reason] + next.skipped[reason],
 			]),
 		) as Record<SkipReason, number>,
+		parked: into.parked + next.parked,
+		replayed: into.replayed + next.replayed,
 		throughSeq: Math.max(into.throughSeq, next.throughSeq),
 	});
 }
