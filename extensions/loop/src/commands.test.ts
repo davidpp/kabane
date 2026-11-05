@@ -338,6 +338,28 @@ describe("Loop.start's worktree", () => {
 		expect(placementEvent(run)?.summary).toContain("new, on branch");
 	});
 
+	it("records the branch and commit it was made from, and a run going on in it keeps them", async () => {
+		const parent = await parentWithChild();
+		const sha = GitFixture.run(repo, ["rev-parse", "HEAD"]).trim();
+		const first = await startOn(parent.id);
+		expect(first.base).toEqual({ branch: "main", sha });
+		commitIn(first.worktree ?? "", "first.txt");
+		// The project moves on meanwhile; the work in the worktree still started from `sha`.
+		GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "later"]);
+		const second = await startOn(parent.id);
+		expect(second.worktreeReused?.runId).toBe(first.id);
+		expect(second.base).toEqual({ branch: "main", sha });
+	});
+
+	it("records no base branch for a project on a detached HEAD", async () => {
+		const parent = await parentWithChild();
+		GitFixture.run(repo, ["checkout", "-q", "--detach"]);
+		const run = await startOn(parent.id);
+		expect(run.base).toEqual({
+			sha: GitFixture.run(repo, ["rev-parse", "HEAD"]).trim(),
+		});
+	});
+
 	it("turned off, works in the checkout itself", async () => {
 		const parent = await parentWithChild();
 		const run = await startOn(parent.id, { worktree: false });

@@ -124,6 +124,21 @@ export namespace Worktree {
 		return found.ok ? ok(found.value.trim() !== "") : found;
 	};
 
+	/** A checkout's HEAD: its commit, and its branch unless HEAD is detached. */
+	export type Head = { branch?: string; sha: string };
+
+	export const head = async (
+		dir: string,
+		run: Git = git,
+	): Promise<Result<Head>> => {
+		const sha = await run(dir, ["rev-parse", "HEAD"]);
+		if (!sha.ok) return sha;
+		// Exits 1, quietly, on a detached HEAD.
+		const branch = await run(dir, ["symbolic-ref", "-q", "--short", "HEAD"]);
+		const name = branch.ok ? branch.value.trim() : "";
+		return ok({ ...(name ? { branch: name } : {}), sha: sha.value.trim() });
+	};
+
 	/** Where `dir` sits inside its repository, relative to the top: "" at the top. */
 	export const prefixOf = async (
 		dir: string,

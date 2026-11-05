@@ -428,7 +428,14 @@ export namespace Loop {
 		deps: StartDeps,
 		run: RunStore.Run,
 	): Promise<
-		Result<{ dir: string; from: { runId: string; branch: string } } | undefined>
+		Result<
+			| {
+					dir: string;
+					from: { runId: string; branch: string };
+					base?: Worktree.Head;
+			  }
+			| undefined
+		>
 	> => {
 		const runs = RunStore.list(deps.home);
 		if (!runs.ok) return runs;
@@ -454,7 +461,11 @@ export namespace Loop {
 		return ok(
 			merged.value
 				? undefined
-				: { dir, from: { runId: last.id, branch: branch.value } },
+				: {
+						dir,
+						from: { runId: last.id, branch: branch.value },
+						...(last.base ? { base: last.base } : {}),
+					},
 		);
 	};
 
@@ -475,6 +486,11 @@ export namespace Loop {
 		if (!prefix.ok) return failed(prefix.error);
 		const reused = await reusable(deps, run);
 		if (!reused.ok) return failed(reused.error);
+		// What the run lands onto: the project's HEAD now, or the base of the worktree it goes on in.
+		const base = reused.value?.base
+			? ok(reused.value.base)
+			: await Worktree.head(run.projectDir, deps.git);
+		if (!base.ok) return failed(base.error);
 		if (reused.value) {
 			const { dir, from } = reused.value;
 			if (!existsSync(join(dir, prefix.value)))
@@ -488,6 +504,7 @@ export namespace Loop {
 				worktree: dir,
 				worktreePrefix: prefix.value,
 				worktreeReused: from,
+				base: base.value,
 			});
 		}
 		const dir = Worktree.dirFor(RunStore.paths(deps.home, run.id).dir);
@@ -512,6 +529,7 @@ export namespace Loop {
 			...run,
 			worktree: dir,
 			worktreePrefix: prefix.value,
+			base: base.value,
 		};
 		return RunStore.write(deps.home, withDir);
 	};

@@ -100,6 +100,14 @@ export namespace RunStore {
 		worktreeReused: z
 			.object({ runId: z.string(), branch: z.string() })
 			.optional(),
+		/**
+		 * The project's branch and commit the run's worktree was made from, or for a worktree it
+		 * went on in, the base of the run that made it: what landing the run rebases onto and opens
+		 * its pull request against. No branch when the project's HEAD was detached.
+		 */
+		base: z
+			.object({ branch: z.string().optional(), sha: z.string() })
+			.optional(),
 		config: LoopConfig.Schema,
 		status: StatusSchema,
 		exit: z
