@@ -5,10 +5,10 @@
 // stored is the host's business: it hands `port` the documents, and this merges and validates them.
 //
 // Objects merge key by key and anything else is replaced, so a record of gates gains a gate per
-// layer while a list of lenses is whatever the highest layer that names it says. A key set to null
-// (or undefined, from code) unsets what the layers below it say.
+// layer while a list of lenses is whatever the highest layer that names it says. A key set to null (or undefined, from
+// code) unsets what the layers below it say; it must still name a setting.
 import { err, ok, type Result } from "@cabane/core";
-import type { z } from "zod";
+import { z } from "zod";
 
 export namespace Settings {
 	export type Layer = "default" | "user" | "project" | "scope" | "caller";
@@ -76,6 +76,48 @@ export namespace Settings {
 			.map((line) => `\n  ${line}`)
 			.join("");
 
+	/** The schema under its optional, default and effect wrappers: what a value of it holds. */
+	export const unwrap = (schema: z.ZodTypeAny): z.ZodTypeAny => {
+		if (schema instanceof z.ZodOptional) return unwrap(schema.unwrap());
+		if (schema instanceof z.ZodDefault) return unwrap(schema.removeDefault());
+		if (schema instanceof z.ZodEffects) return unwrap(schema.innerType());
+		return schema;
+	};
+
+	/**
+	 * The unsets in `value` that name no setting: a key a strict object does not have, or one its
+	 * record's key schema refuses. The value check never sees them, since pruning removes them.
+	 */
+	const unsetIssues = (
+		namespace: string,
+		schema: z.ZodTypeAny,
+		value: unknown,
+		path: readonly string[] = [],
+	): string[] => {
+		const inner = unwrap(schema);
+		if (!isObject(value)) return [];
+		return Object.entries(value).flatMap(([key, child]) => {
+			const at = [...path, key].join(".");
+			if (inner instanceof z.ZodRecord) {
+				const named = inner.keySchema.safeParse(key);
+				if (!named.success)
+					return unsets(child)
+						? named.error.issues.map(
+								(issue: z.ZodIssue) => `${at}: ${issue.message}`,
+							)
+						: [];
+				return unsetIssues(namespace, inner.valueSchema, child, [...path, key]);
+			}
+			if (!(inner instanceof z.ZodObject)) return [];
+			const field: z.ZodTypeAny | undefined = inner.shape[key];
+			if (field !== undefined)
+				return unsetIssues(namespace, field, child, [...path, key]);
+			return unsets(child) && inner._def.unknownKeys === "strict"
+				? [`${at}: not a ${namespace} setting`]
+				: [];
+		});
+	};
+
 	/** One layer on its own, so an error names the layer it is in. */
 	export const validate = (
 		namespace: string,
@@ -86,9 +128,12 @@ export namespace Settings {
 		if (!isObject(source.value))
 			return err(new Error(`${invalid} expected a JSON object`));
 		const parsed = schema.safeParse(prune(source.value));
-		return parsed.success
-			? ok(undefined)
-			: err(new Error(`${invalid}${issues(namespace, parsed.error)}`));
+		const found =
+			(parsed.success ? "" : issues(namespace, parsed.error)) +
+			unsetIssues(namespace, schema, source.value)
+				.map((line) => `\n  ${line}`)
+				.join("");
+		return found === "" ? ok(undefined) : err(new Error(`${invalid}${found}`));
 	};
 
 	// Origins by path, a NUL between segments: a record key (a gate name) may hold a dot.

@@ -15,12 +15,7 @@ import { ConfigLayers } from "./config-layers";
 import { projectAt } from "./context";
 import { Extensions } from "./extensions";
 
-const unwrap = (schema: z.ZodTypeAny): z.ZodTypeAny => {
-	if (schema instanceof z.ZodOptional) return unwrap(schema.unwrap());
-	if (schema instanceof z.ZodDefault) return unwrap(schema.removeDefault());
-	if (schema instanceof z.ZodEffects) return unwrap(schema.innerType());
-	return schema;
-};
+const { unwrap } = Settings;
 
 type Key = {
 	key: string;

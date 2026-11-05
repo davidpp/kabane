@@ -114,6 +114,21 @@ describe("LoopConfig.SettingsSchema", () => {
 				"  lens: not a loop setting",
 			].join("\n"),
 		);
+		// An unset names a setting too: a typo set to null is still a typo.
+		expect(
+			refusal({
+				workTree: null,
+				budget: { wallMinute: null },
+				gates: { "two words": null },
+			}),
+		).toBe(
+			[
+				`Invalid loop settings in ${PROJECT}:`,
+				"  workTree: not a loop setting",
+				"  budget.wallMinute: not a loop setting",
+				"  gates.two words: a gate name is one word",
+			].join("\n"),
+		);
 		// A device key is not a loop setting either, so a checked-in file cannot reach the hub.
 		expect(refusal({ sync: { url: "https://elsewhere" } })).toBe(
 			`Invalid loop settings in ${PROJECT}:\n  sync: not a loop setting`,

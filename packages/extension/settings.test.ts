@@ -10,6 +10,12 @@ const Schema = z
 			.strict()
 			.default({}),
 		named: z.record(z.string()).default({}),
+		gates: z
+			.record(
+				z.string().regex(/^[a-z]+$/, "a gate name is one word"),
+				z.string(),
+			)
+			.default({ test: "bun test" }),
 		list: z.array(z.string()).default([]),
 	})
 	.strict();
@@ -33,6 +39,7 @@ describe("Settings.resolve", () => {
 			mode: "a",
 			limits: { count: 2, cap: 9 },
 			named: { a: "3", b: "2" },
+			gates: { test: "bun test" },
 			list: ["y", "z"],
 		});
 	});
@@ -55,6 +62,7 @@ describe("Settings.resolve", () => {
 			mode: "default",
 			"limits.count": "user",
 			"named.a": "scope",
+			"gates.test": "default",
 			list: "default",
 		});
 	});
@@ -72,6 +80,29 @@ describe("Settings.resolve", () => {
 			resolved.ok &&
 				resolved.value.origins.find(({ path }) => path[0] === "mode")?.origin,
 		).toEqual({ layer: "default" });
+	});
+
+	it("refuses an unset that names no setting, or a key its record refuses", () => {
+		const refused = resolve(
+			source("project", {
+				mood: null,
+				limits: { capp: null },
+				gates: { "two words": null },
+			}),
+		);
+		expect(!refused.ok && refused.error.message).toBe(
+			[
+				"Invalid demo settings in the project file:",
+				"  mood: not a demo setting",
+				"  limits.capp: not a demo setting",
+				"  gates.two words: a gate name is one word",
+			].join("\n"),
+		);
+		// From code, undefined is an unset too.
+		const caller = resolve(source("caller", { mood: undefined }));
+		expect(!caller.ok && caller.error.message).toContain(
+			"mood: not a demo setting",
+		);
 	});
 
 	it("validates each layer alone first, so the error names the layer it is in", () => {
