@@ -347,6 +347,44 @@ It can also:
 
 The copilot manages the tracker and setup; the loop's coding sessions make the code changes.
 
+## Decisions agents file
+
+An agent that needs a human's call on an issue files it with `kabane_ask` (`@cabane/questions`):
+the question, its choices, the one it recommends and why, and the issue goes to `waiting`. The
+board reads these through `Questions.list` when the host registered the questions module (the CLI
+does; a host that did not shows none). They are not the `!` queue, which stays the live sessions'
+own questions: a decision waits for whenever the human gets to it.
+
+Each row with open decisions counts them in the accent, `· ?2`. `u` narrows the board to those
+issues (a subtask's parent stays as its heading), the header says `· decisions`, and `u` again or
+`esc` (above) takes it off. The footer offers `u decisions` while any loaded issue has one.
+
+An issue's detail asks its open decisions under the header, one at a time and oldest first, with
+`n more waiting` while others queue behind. It is the copilot's form (above), not a second one: a
+decision is a single choice or a multi-select over its choices, the recommended one marked `★`,
+then an `Other` box when the agent takes a typed answer (the whole answer when it offered no
+choices), then an optional reasoning line, with `why` under the question. The keys are the
+form's: a digit or `enter` picks, `space` toggles and `enter` sends a multi-select, `s` leaves
+the choices for the Other box, and `enter` in a text field sends it, empty to skip. On a single
+choice a typed Other is the answer; on a multi-select it joins the picks. The answer goes to
+`Questions.answer`, judged by `validateAnswer` as `kabane_answer` judges it; one that cannot be
+read (nothing picked, nothing typed) is refused with why and asked again from its first field.
+
+While a decision is on screen it has the keys it names, ahead of the view's: the digits answer it
+rather than switching sections, and `↑↓` move its cursor. Every other key works as before (`h/l`,
+`j/k`, `v`, `q`). A decision that opens on a text field waits for `enter` before its input takes
+the keys, so opening such an issue does not type into it; once a decision is under way, its text
+fields take every key but `tab`. `esc` starts a decision under way over, and on an untouched one
+goes back to the board. It outranks the copilot's own ask the way a pinned session question does:
+the copilot's row says `tab to answer`, and while the copilot has the keys the decision says `esc
+to answer · the copilot has the keys`. A session question pinned over the view comes first, with
+one row saying how many decisions wait behind it.
+
+Once answered, the footer says `JREP-7:1 answered`, and `· JREP-7 → next` when it was the last
+and moved the issue on. The description tab lists the decisions made, as the brief reads them:
+`question → answer (who, reasoning)`. Withdrawn ones are not shown. A click on an answer or a
+key hint does what its key does.
+
 ## Linked issues
 
 A task can point at one issue in an external tracker. The row says only that it does, with a gray
@@ -376,7 +414,8 @@ is exported so the CLI's `kabane open` walks the same chain.
 `m` toggles the row under the cursor (or the open task in the detail view) in and out of a
 working set. Marked rows carry a `●` before the title and the header counts them (`· 3 marked`).
 Marks survive every reload; `esc` on the board clears them first, then a committed search, then
-widens the scope, one level per press.
+the decisions filter (`u`), then dismisses the host's announcement, then widens the scope, one
+level per press.
 
 `BoardContext` (`src/context.ts`) turns what the human is looking at into one value for a
 copilot: scope, view, the selected task's section, the kind and status filters and any query,
