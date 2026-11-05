@@ -18,6 +18,7 @@ const SKILL_FILES = [
 ];
 
 const SETUP = { configPath: "/sandbox/home/config.json", extensions: ["loop"] };
+const BIN = "/sandbox/checkout/packages/cli/index.ts";
 
 describe("CopilotInstructions.SHORTCUTS", () => {
 	it("every name is unique — the `/` palette resolves on it", () => {
@@ -62,7 +63,7 @@ describe("CopilotInstructions.SKILLS", () => {
 	});
 
 	it("rides along with the identity block in the one prompt harnesses are sent", () => {
-		const prompt = CopilotInstructions.systemPrompt(SETUP);
+		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN);
 		expect(prompt).toContain(CopilotInstructions.BLOCK);
 		expect(prompt).toContain(CopilotInstructions.SKILLS);
 	});
@@ -79,7 +80,7 @@ describe("CopilotInstructions.SKILLS", () => {
 	});
 
 	it("names the resolved config path and the extensions this build ships", () => {
-		const prompt = CopilotInstructions.systemPrompt(SETUP);
+		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN);
 		expect(prompt).toContain("/sandbox/home/config.json");
 		expect(prompt).toContain("This build ships: loop.");
 		expect(prompt).not.toContain("~/.kabane");
@@ -88,7 +89,7 @@ describe("CopilotInstructions.SKILLS", () => {
 
 describe("CopilotInstructions reading the project", () => {
 	it("reading the project is in scope; writing stays the tracker and the procedures' files", () => {
-		const prompt = CopilotInstructions.systemPrompt(SETUP);
+		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN);
 		expect(prompt).toContain("reading it is part of the job");
 		expect(prompt).toContain("name the real files, functions and commands");
 		expect(prompt).toContain(
@@ -178,6 +179,34 @@ describe("CopilotInstructions starting a loop run", () => {
 		expect(SKILLS).toContain(
 			"When a run is your own suggestion, name the issue and the harness and wait for a yes",
 		);
+	});
+
+	it("runs kabane as the board's own bin, not one found on PATH", () => {
+		const setup = CopilotInstructions.setup(SETUP, BIN);
+		expect(setup).toContain(`This board runs kabane as \`${BIN}\``);
+		expect(setup).toContain(`\`${BIN} loop start <id>\``);
+		expect(setup).toContain("never as a kabane found on PATH");
+		expect(CopilotInstructions.SKILLS).toContain(
+			"as the kabane command KABANE ON THIS MACHINE names",
+		);
+	});
+
+	it("quotes a bin the shell would split or expand", () => {
+		expect(
+			CopilotInstructions.setup(SETUP, "/Users/me/My Code/index.ts"),
+		).toContain("`'/Users/me/My Code/index.ts' loop start <id>`");
+		expect(
+			CopilotInstructions.setup(SETUP, "/Users/me/it's $HOME/index.ts"),
+		).toContain(`\`'/Users/me/it'\\''s $HOME/index.ts' loop start <id>\``);
+	});
+
+	it("says a single issue runs too, and that `a` opens the run form on any issue", () => {
+		const { SKILLS } = CopilotInstructions;
+		expect(SKILLS).toContain(
+			"loop drives an issue, or a parent issue's subtasks, to done",
+		);
+		expect(SKILLS).toContain("`a` on an issue opens its run form");
+		expect(SKILLS).not.toContain("on a parent with subtasks");
 	});
 
 	it("reports the run id and how to stop the run", () => {

@@ -1,6 +1,7 @@
 // The copilot against the SDK's in-process agent: what reaches the harness on session/new and on
 // each prompt, and what the board gets back. No subprocess, no npx, same wire as client.test.ts.
 import { describe, expect, it } from "bun:test";
+import { resolve } from "node:path";
 import {
 	type AgentApp,
 	agent as agentApp,
@@ -248,6 +249,8 @@ const SETUP = {
 	extensions: ["loop"],
 };
 
+const BIN = "/usr/local/bin/kabane";
+
 // A copilot wired to an in-process agent instead of a spawned harness.
 const copilotOver = (
 	agent: AgentApp,
@@ -257,7 +260,7 @@ const copilotOver = (
 		harness: "claude",
 		scopeDir: "/repos/cabane",
 		scopeUri: "jake://scope/cabane",
-		kabaneBin: "/usr/local/bin/kabane",
+		kabaneBin: BIN,
 		home: "/home/me/.kabane",
 		setup: SETUP,
 		connect: (handlers) => AcpClient.connect("claude", agent, handlers),
@@ -326,9 +329,36 @@ describe("BoardCopilot", () => {
 				},
 			],
 			_meta: {
-				systemPrompt: { append: CopilotInstructions.systemPrompt(SETUP) },
+				systemPrompt: { append: CopilotInstructions.systemPrompt(SETUP, BIN) },
 			},
 		});
+		copilot.close();
+	});
+
+	it("tells the copilot's shell to run the bin its MCP server runs, quoted when the path needs it", async () => {
+		const seen = fresh();
+		const bin = "/Users/me/My Code/kabane/packages/cli/index.ts";
+		const copilot = copilotOver(scriptedAgent(seen), { kabaneBin: bin });
+		await collect(copilot.run("go", context()));
+		const server = (seen.newSession[0] as { mcpServers: { command: string }[] })
+			.mcpServers[0];
+		expect(server?.command).toBe(bin);
+		expect(textOf(seen.prompts[0], 0)).toContain(
+			`\`'${bin}' loop start <id>\``,
+		);
+		copilot.close();
+	});
+
+	it("defaults the shell's bin to the MCP server's when none is given", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(scriptedAgent(seen), { kabaneBin: undefined });
+		await collect(copilot.run("go", context()));
+		const server = (seen.newSession[0] as { mcpServers: { command: string }[] })
+			.mcpServers[0];
+		expect(server?.command).toBe(resolve(process.argv[1] ?? ""));
+		expect(textOf(seen.prompts[0], 0)).toContain(
+			`${server?.command} loop start <id>`,
+		);
 		copilot.close();
 	});
 
@@ -355,7 +385,7 @@ describe("BoardCopilot", () => {
 		await collect(copilot.run("now split the first one", context()));
 
 		expect(textOf(seen.prompts[0], 0)).toBe(
-			CopilotInstructions.systemPrompt(SETUP),
+			CopilotInstructions.systemPrompt(SETUP, BIN),
 		);
 		const firstContext = textOf(seen.prompts[0], 1);
 		expect(firstContext).toContain("scope: jake://scope/cabane");
