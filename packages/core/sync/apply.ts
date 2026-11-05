@@ -746,7 +746,6 @@ type ParkedRow = {
 	tbl: string;
 	row_id: string;
 	op: string;
-	failed_schema: number | null;
 };
 
 /**
@@ -760,7 +759,7 @@ const readyToReplay = (db: Db): ParkedRow[] => {
 	if (modules.length === 0) return [];
 	const rows = db
 		.query<ParkedRow, string[]>(
-			`SELECT op_id, server_seq, module, module_schema, tbl, row_id, op, failed_schema
+			`SELECT op_id, server_seq, module, module_schema, tbl, row_id, op
          FROM ${TABLES.sync_parked}
         WHERE module IN (${modules.map(() => "?").join(", ")})
         ORDER BY server_seq ASC`,
@@ -771,17 +770,10 @@ const readyToReplay = (db: Db): ParkedRow[] => {
 	return rows.filter((row) => {
 		const key = deleteKey(row.tbl, row.row_id);
 		if (blocked.has(key)) return false;
-		if (readable(row.module, row.module_schema) && retryable(row)) return true;
+		if (readable(row.module, row.module_schema)) return true;
 		blocked.add(key);
 		return false;
 	});
-};
-
-/** A failed replay is retried once its module is past the version it failed at. */
-const retryable = (row: ParkedRow): boolean => {
-	if (row.failed_schema === null) return true;
-	const here = Modules.named(row.module);
-	return here !== undefined && Modules.schemaOf(here) > row.failed_schema;
 };
 
 /** The op as it was pulled, or undefined when the stored JSON no longer parses. */
@@ -825,19 +817,15 @@ const replayRows = (
 	};
 };
 
-/** Leave the op parked, saying why and at which version of its module. */
+/**
+ * Leave the op parked, saying why, as of this attempt. It is tried again on
+ * every pass: a lock timeout must not strand its row, and one that keeps
+ * failing costs a small transaction per pass.
+ */
 const recordFailure = (db: Db, row: ParkedRow, error: Error): void => {
-	const here = Modules.named(row.module);
 	db.run(
-		`UPDATE ${TABLES.sync_parked}
-        SET failed_schema = ?, error = ?, failed_at = ?
-      WHERE op_id = ?`,
-		[
-			here === undefined ? row.module_schema : Modules.schemaOf(here),
-			error.message,
-			new Date().toISOString(),
-			row.op_id,
-		],
+		`UPDATE ${TABLES.sync_parked} SET error = ?, failed_at = ? WHERE op_id = ?`,
+		[error.message, new Date().toISOString(), row.op_id],
 	);
 };
 

@@ -126,17 +126,17 @@ export type QuarantinedOp = z.infer<typeof QuarantinedOpSchema>;
 
 /**
  * A parked op whose replay failed. It stays parked, with every later op for
- * its row behind it, and is retried once its module migrates past the version
- * it failed at. Like a quarantined op, recorded so the stall is visible: the
- * rest of sync goes on.
+ * its row behind it, and is tried again on every pass. Like a quarantined op,
+ * recorded so the stall is visible: the rest of sync goes on.
  */
 export const ParkedFailureSchema = z.object({
 	opId: z.string(),
 	module: z.string(),
 	tbl: z.string(),
 	rowId: z.string(),
-	/** What applying it raised, verbatim. */
+	/** What applying it raised the last time, verbatim. */
 	error: z.string(),
+	/** When it last failed. */
 	failedAt: z.string(),
 });
 export type ParkedFailure = z.infer<typeof ParkedFailureSchema>;

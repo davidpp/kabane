@@ -649,111 +649,68 @@ describe("a row with an op parked", () => {
 });
 
 describe("a parked op that fails to replay", () => {
-	/** The notes table with a `title` column, declared as `ddl`. */
-	const titled = (
-		ddl: string,
-		later: readonly Migrate.Migration[] = [],
-	): KabaneModule => ({
-		...notes(),
-		migrations: [
-			{
-				name: "create-task-notes",
-				up: (db) =>
-					db.run(
-						`CREATE TABLE IF NOT EXISTS ${notesTable()} (
-						   id TEXT PRIMARY KEY,
-						   task_id TEXT NOT NULL REFERENCES ${TABLES.tasks}(id) ON DELETE CASCADE,
-						   body TEXT NOT NULL,
-						   title ${ddl},
-						   updated_at TEXT NOT NULL,
-						   updated_by TEXT,
-						   version INTEGER NOT NULL DEFAULT 1,
-						   visibility TEXT NOT NULL DEFAULT 'shared'
-						 )`,
-					),
-			},
-			...later,
-		],
-	});
+	/** Stands in for a constraint this database holds and alpha's does not. */
+	const refuse = (db: Db) =>
+		db.run(
+			`CREATE TRIGGER refuse_note BEFORE INSERT ON ${notesTable()}
+			 WHEN NEW.body = 'refused'
+			 BEGIN SELECT RAISE(ABORT, 'refused by this database'); END`,
+		);
 
-	/** Version 2 of the NOT NULL build: the table rebuilt with `title` optional. */
-	const RELAX_TITLE: Migrate.Migration = {
-		name: "relax-title",
-		up: (db) => {
-			const notes = notesTable();
-			db.run(
-				`CREATE TABLE ${notes}_relaxed (
-				   id TEXT PRIMARY KEY,
-				   task_id TEXT NOT NULL REFERENCES ${TABLES.tasks}(id) ON DELETE CASCADE,
-				   body TEXT NOT NULL,
-				   title TEXT,
-				   updated_at TEXT NOT NULL,
-				   updated_by TEXT,
-				   version INTEGER NOT NULL DEFAULT 1,
-				   visibility TEXT NOT NULL DEFAULT 'shared'
-				 )`,
-			);
-			db.run(`INSERT INTO ${notes}_relaxed SELECT * FROM ${notes}`);
-			db.run(`DROP TABLE ${notes}`);
-			db.run(`ALTER TABLE ${notes}_relaxed RENAME TO ${notes}`);
-		},
-	};
-
-	it("is set aside and reported, the other ops and core keep flowing, and it retries after an upgrade", async () => {
-		const alpha = await createDevice("alpha", [titled("TEXT")]);
+	it("is set aside and reported while core flows, retried every pass, and applies with the ops behind it once it can", async () => {
+		const alpha = await createDevice("alpha", [notes()]);
 		const beta = await createDevice("beta", []);
 
 		const task = await addTask(alpha, "parent");
-		const titledNote = ulid();
-		await as(alpha, (db) => {
-			db.run(
-				`INSERT INTO ${notesTable()} (id, task_id, body, title, updated_at)
-				 VALUES (?, ?, 'has a title', 'T', ?)`,
-				[titledNote, task, new Date().toISOString()],
-			);
-			Oplog.afterWrite(db, NOTES, "insert", titledNote);
-		});
-		const untitled = await writeNote(alpha, { taskId: task, body: "no title" });
+		const fine = await writeNote(alpha, { taskId: task, body: "fine" });
+		const refused = await writeNote(alpha, { taskId: task, body: "refused" });
+		await editNote(alpha, refused, "refused, then edited");
 		await push(alpha);
-		expect((await pull(beta)).parked).toBe(2);
+		expect((await pull(beta)).parked).toBe(3);
 
-		// Beta registers a build whose title is required: alpha's untitled note
-		// can never apply there.
-		const strict = { ...beta, modules: [titled("TEXT NOT NULL")] };
-		await boot(strict);
+		const upgraded = { ...beta, modules: [notes()] };
+		await boot(upgraded);
+		await as(upgraded, refuse);
 		await addTask(alpha, "core keeps coming");
 		await push(alpha);
 
-		const replay = await pull(strict);
-		expect(replay.replayFailed).toBe(1);
-		expect(replay.replayed).toBe(1);
-		expect(await titles(strict)).toEqual(["core keeps coming", "parent"]);
-		expect((await notesOn(strict)).map((row) => row.id)).toEqual([titledNote]);
+		const first = await pull(upgraded);
+		expect(first.replayed).toBe(1);
+		expect(first.replayFailed).toBe(1);
+		expect(await titles(upgraded)).toEqual(["core keeps coming", "parent"]);
+		expect((await notesOn(upgraded)).map((row) => row.id)).toEqual([fine]);
 
-		const reported = await status(strict);
-		expect(reported.parkedOps).toEqual({ notes: 1 });
+		const reported = await status(upgraded);
+		// The failed insert, and the edit of its row waiting behind it.
+		expect(reported.parkedOps).toEqual({ notes: 2 });
 		expect(reported.parkedFailures).toBe(1);
 		expect(reported.parkedFailed[0]).toMatchObject({
 			module: "notes",
 			tbl: NOTES,
-			rowId: untitled,
+			rowId: refused,
 		});
-		expect(reported.parkedFailed[0]?.error).toContain("NOT NULL");
+		expect(reported.parkedFailed[0]?.error).toContain(
+			"refused by this database",
+		);
+		const firstFailedAt = reported.parkedFailed[0]?.failedAt ?? "";
 
-		// Not retried on the same version.
-		const again = await pull(strict);
-		expect(again.replayed + again.replayFailed).toBe(0);
+		// Tried again on the next pass: still fails, still reported, newly stamped.
+		await Bun.sleep(5);
+		const second = await pull(upgraded);
+		expect(second.replayFailed).toBe(1);
+		expect(second.replayed).toBe(0);
+		const still = await status(upgraded);
+		expect(still.parkedFailures).toBe(1);
+		expect(still.parkedOps).toEqual({ notes: 2 });
+		expect((still.parkedFailed[0]?.failedAt ?? "") > firstFailedAt).toBe(true);
 
-		const relaxed = {
-			...beta,
-			modules: [titled("TEXT NOT NULL", [RELAX_TITLE])],
-		};
-		await boot(relaxed);
-		const retried = await pull(relaxed);
-		expect(retried.replayed).toBe(1);
-		expect(retried.replayFailed).toBe(0);
-		expect(await notesOn(relaxed)).toEqual(await notesOn(alpha));
-		const cleared = await status(relaxed);
+		// The constraint goes: the op applies, and the edit behind it after it.
+		await as(upgraded, (db) => db.run("DROP TRIGGER refuse_note"));
+		const third = await pull(upgraded);
+		expect(third.replayed).toBe(2);
+		expect(third.replayFailed).toBe(0);
+		expect(await notesOn(upgraded)).toEqual(await notesOn(alpha));
+		const cleared = await status(upgraded);
 		expect(cleared.parkedOps).toEqual({});
 		expect(cleared.parkedFailures).toBe(0);
 	});

@@ -299,8 +299,8 @@ export namespace Migrations {
 			// being skipped, and apply once the module registers or migrates.
 			// Machine-local: never captured, never replicated. `op` is the op as
 			// pulled, JSON; `server_seq` is its place in the log, the replay order.
-			// A replay that failed records why and at which module version, and is
-			// retried only once the module is past that version.
+			// A replay that failed records why and when; it is tried again on every
+			// pass, with its row's later ops behind it.
 			name: "sync-parked",
 			up: (db) => {
 				db.run(
@@ -313,7 +313,6 @@ export namespace Migrations {
 					   row_id TEXT NOT NULL,
 					   op TEXT NOT NULL,
 					   parked_at TEXT NOT NULL,
-					   failed_schema INTEGER,
 					   error TEXT,
 					   failed_at TEXT
 					 )`,
