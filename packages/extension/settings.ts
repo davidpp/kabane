@@ -110,8 +110,9 @@ export namespace Settings {
 	};
 
 	/**
-	 * The unsets in `value` that name no setting: a key a strict object does not have, or one its
-	 * record's key schema refuses. The value check never sees them, since pruning removes them.
+	 * The unsets in `value` that name no setting: a key a strict object does not have (inherited
+	 * names such as `constructor` included), or one its record's key schema refuses. The value
+	 * check never sees them, since pruning removes them.
 	 */
 	const unsetIssues = (
 		namespace: string,
@@ -134,7 +135,8 @@ export namespace Settings {
 				return unsetIssues(namespace, inner.valueSchema, child, [...path, key]);
 			}
 			if (!(inner instanceof z.ZodObject)) return [];
-			const field: z.ZodTypeAny | undefined = inner.shape[key];
+			const shape: Record<string, z.ZodTypeAny> = inner.shape;
+			const field = Object.hasOwn(shape, key) ? shape[key] : undefined;
 			if (field !== undefined)
 				return unsetIssues(namespace, field, child, [...path, key]);
 			return unsets(child) && inner._def.unknownKeys === "strict"

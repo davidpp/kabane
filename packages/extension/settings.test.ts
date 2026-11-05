@@ -118,6 +118,22 @@ describe("Settings.resolve", () => {
 				"  gates.two words: a gate name is one word",
 			].join("\n"),
 		);
+		// A name an object inherits is not one of its settings.
+		const inherited = resolve(
+			source("user", {
+				constructor: null,
+				toString: null,
+				limits: { hasOwnProperty: null },
+			}),
+		);
+		expect(!inherited.ok && inherited.error.message).toBe(
+			[
+				"Invalid demo settings in the user file:",
+				"  constructor: not a demo setting",
+				"  toString: not a demo setting",
+				"  limits.hasOwnProperty: not a demo setting",
+			].join("\n"),
+		);
 		// From code, undefined is an unset too.
 		const caller = resolve(source("caller", { mood: undefined }));
 		expect(!caller.ok && caller.error.message).toContain(
