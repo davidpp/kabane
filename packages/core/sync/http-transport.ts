@@ -239,6 +239,88 @@ const reconstitute = (op: {
 // HttpTransport Namespace
 // ============================================================
 
+const createRequests = (config: HttpTransportConfig) => {
+	const doFetch = config.fetchImpl ?? (globalThis.fetch as FetchLike);
+	const pause = config.sleep ?? sleepMs;
+	const maxAttempts = config.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+
+	const request = async (
+		route: "push" | "pull",
+		body: unknown,
+	): Promise<Result<unknown, Failure>> => {
+		const sent = await tryCatch(() =>
+			doFetch(routeUrl(config.url, route), {
+				method: "POST",
+				headers: {
+					...config.headers,
+					Authorization: `Bearer ${config.token}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(body),
+			}),
+		);
+		if (!sent.ok) {
+			// No response at all: DNS, refused connection, timeout. Never a refusal.
+			return err({ error: sent.error });
+		}
+
+		const response = sent.value;
+		if (!response.ok) {
+			const detail = await response.text().catch(() => "");
+			return err({
+				error: new Error(
+					`planner-sync ${route} failed with ${response.status}: ${detail}`,
+				),
+				status: response.status,
+			});
+		}
+
+		const decoded = await tryCatch(() => response.json() as Promise<unknown>);
+		return decoded.ok
+			? ok(decoded.value)
+			: err({ error: decoded.error, status: response.status });
+	};
+
+	/**
+	 * POST one chunk, retrying the identical body on failure.
+	 *
+	 * Retries reuse each op's own `opId`, which is what makes them safe: the
+	 * server's `ON CONFLICT(op_id) DO NOTHING` turns a re-send of an already
+	 * committed batch into duplicates rather than a second insert. So a lost
+	 * ack costs a duplicate count, never a doubled row.
+	 */
+	const sendOnce = async (ops: SyncOp[]): Promise<Result<PushAck, Failure>> => {
+		let last: Failure = { error: new Error("planner-sync push: no attempt") };
+
+		for (let attempt = 0; attempt < maxAttempts; attempt++) {
+			if (attempt > 0) await pause(backoffMs(attempt - 1));
+
+			const response = await request("push", {
+				deviceId: config.deviceId,
+				name: config.name,
+				ops,
+			});
+			if (!response.ok) {
+				last = response.error;
+				continue;
+			}
+
+			const ack = PushAckSchema.safeParse(response.value);
+			if (ack.success) return ok(ack.data);
+
+			last = {
+				error: new Error(
+					`planner-sync push returned an unreadable ack: ${ack.error.message}`,
+				),
+			};
+		}
+
+		return err(last);
+	};
+
+	return { request, sendOnce };
+};
+
 export namespace HttpTransport {
 	/**
 	 * A transport for one device against one Worker.
@@ -253,86 +335,8 @@ export namespace HttpTransport {
 		basePath: string,
 		config: HttpTransportConfig,
 	): SyncTransport => {
-		const doFetch = config.fetchImpl ?? (globalThis.fetch as FetchLike);
-		const pause = config.sleep ?? sleepMs;
+		const { request, sendOnce } = createRequests(config);
 		const batchBytes = config.batchBytes ?? DEFAULT_BATCH_BYTES;
-		const maxAttempts = config.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-
-		const request = async (
-			route: "push" | "pull",
-			body: unknown,
-		): Promise<Result<unknown, Failure>> => {
-			const sent = await tryCatch(() =>
-				doFetch(routeUrl(config.url, route), {
-					method: "POST",
-					headers: {
-						...config.headers,
-						Authorization: `Bearer ${config.token}`,
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify(body),
-				}),
-			);
-			if (!sent.ok) {
-				// No response at all: DNS, refused connection, timeout. Never a refusal.
-				return err({ error: sent.error });
-			}
-
-			const response = sent.value;
-			if (!response.ok) {
-				const detail = await response.text().catch(() => "");
-				return err({
-					error: new Error(
-						`planner-sync ${route} failed with ${response.status}: ${detail}`,
-					),
-					status: response.status,
-				});
-			}
-
-			const decoded = await tryCatch(() => response.json() as Promise<unknown>);
-			return decoded.ok
-				? ok(decoded.value)
-				: err({ error: decoded.error, status: response.status });
-		};
-
-		/**
-		 * POST one chunk, retrying the identical body on failure.
-		 *
-		 * Retries reuse each op's own `opId`, which is what makes them safe: the
-		 * server's `ON CONFLICT(op_id) DO NOTHING` turns a re-send of an already
-		 * committed batch into duplicates rather than a second insert. So a lost
-		 * ack costs a duplicate count, never a doubled row.
-		 */
-		const sendOnce = async (
-			ops: SyncOp[],
-		): Promise<Result<PushAck, Failure>> => {
-			let last: Failure = { error: new Error("planner-sync push: no attempt") };
-
-			for (let attempt = 0; attempt < maxAttempts; attempt++) {
-				if (attempt > 0) await pause(backoffMs(attempt - 1));
-
-				const response = await request("push", {
-					deviceId: config.deviceId,
-					name: config.name,
-					ops,
-				});
-				if (!response.ok) {
-					last = response.error;
-					continue;
-				}
-
-				const ack = PushAckSchema.safeParse(response.value);
-				if (ack.success) return ok(ack.data);
-
-				last = {
-					error: new Error(
-						`planner-sync push returned an unreadable ack: ${ack.error.message}`,
-					),
-				};
-			}
-
-			return err(last);
-		};
 
 		/** Record an op nobody will ever accept, and report it as skipped. */
 		const quarantine = async (

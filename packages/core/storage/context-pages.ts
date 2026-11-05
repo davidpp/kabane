@@ -123,6 +123,21 @@ const packContextPage = ({
 			);
 };
 
+const joinContextSections = (
+	rendered: { section: ContextSection; markdown: string | null }[],
+) => {
+	let markdown = "";
+	const ends = new Map<ContextSection, number>();
+	for (const item of rendered) {
+		if (item.markdown !== null) {
+			if (markdown.length) markdown += "\n\n";
+			markdown += item.markdown;
+			ends.set(item.section, markdown.length);
+		} else ends.set(item.section, 0);
+	}
+	return { markdown, ends };
+};
+
 export namespace Planner {
 	/** Rebuild/hash selected rendered content per call: no held snapshot or server session. */
 	export const getContextPage = async (
@@ -169,15 +184,7 @@ export namespace Planner {
 			true,
 		);
 		if (!rendered.ok) return rendered;
-		let markdown = "";
-		const ends = new Map<ContextSection, number>();
-		for (const item of rendered.value) {
-			if (item.markdown !== null) {
-				if (markdown.length) markdown += "\n\n";
-				markdown += item.markdown;
-				ends.set(item.section, markdown.length);
-			} else ends.set(item.section, 0);
-		}
+		const { markdown, ends } = joinContextSections(rendered.value);
 		const revision = await digest(JSON.stringify(markdown));
 		if (!revision.ok)
 			return err(

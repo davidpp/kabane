@@ -71,12 +71,36 @@ const neighborRef = (id: string, neighbors: Map<string, Task>): string => {
 };
 
 /**
- * Position: parent · blockers (w/ states) · blocks · subtask states.
- * Blocking semantics mirror the loop's readiness logic (briefing/dag.ts):
+ * This task's dependencies and dependents. Blocking semantics mirror the loop's readiness logic
+ * (briefing/dag.ts):
  * - blocks:     source blocks target → target depends on source
  * - blocked_by: source blocked_by target → source depends on target
  * - follows:    source follows target → source depends on target
  */
+const positionDependencies = (taskId: string, links: TaskLink[]) => {
+	const blockerIds = new Set<string>();
+	const blocksIds = new Set<string>();
+	for (const link of links) {
+		// What this task is blocked by (its dependencies).
+		if (link.type === "blocks" && link.targetId === taskId)
+			blockerIds.add(link.sourceId);
+		if (link.type === "blocked_by" && link.sourceId === taskId)
+			blockerIds.add(link.targetId);
+		if (link.type === "follows" && link.sourceId === taskId)
+			blockerIds.add(link.targetId);
+		// What this task blocks (its dependents).
+		if (link.type === "blocks" && link.sourceId === taskId)
+			blocksIds.add(link.targetId);
+		if (link.type === "blocked_by" && link.targetId === taskId)
+			blocksIds.add(link.sourceId);
+		if (link.type === "follows" && link.targetId === taskId)
+			blocksIds.add(link.sourceId);
+	}
+
+	return { blockerIds, blocksIds };
+};
+
+/** Position: parent · blockers (w/ states) · blocks · subtask states. */
 const positionSection = async (
 	jakePath: string,
 	task: Task,
@@ -84,24 +108,7 @@ const positionSection = async (
 	subtasks: Task[],
 	{ includeSubtasks, strict }: { includeSubtasks: boolean; strict: boolean },
 ): Promise<Result<string | null>> => {
-	const blockerIds = new Set<string>();
-	const blocksIds = new Set<string>();
-	for (const link of links) {
-		// What this task is blocked by (its dependencies).
-		if (link.type === "blocks" && link.targetId === task.id)
-			blockerIds.add(link.sourceId);
-		if (link.type === "blocked_by" && link.sourceId === task.id)
-			blockerIds.add(link.targetId);
-		if (link.type === "follows" && link.sourceId === task.id)
-			blockerIds.add(link.targetId);
-		// What this task blocks (its dependents).
-		if (link.type === "blocks" && link.sourceId === task.id)
-			blocksIds.add(link.targetId);
-		if (link.type === "blocked_by" && link.targetId === task.id)
-			blocksIds.add(link.sourceId);
-		if (link.type === "follows" && link.targetId === task.id)
-			blocksIds.add(link.sourceId);
-	}
+	const { blockerIds, blocksIds } = positionDependencies(task.id, links);
 
 	const neighborIds = new Set<string>([...blockerIds, ...blocksIds]);
 	if (task.parentTaskId) neighborIds.add(task.parentTaskId);

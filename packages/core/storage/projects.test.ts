@@ -20,6 +20,51 @@ describe("Planner — Projects", () => {
 		rmSync(TEST_BASE, { recursive: true, force: true });
 	});
 
+	it("task and project state lists override singular filters; empty lists fall back", async () => {
+		for (const state of ["active", "done"] as const) {
+			const added = await Planner.addProject(TEST_BASE, {
+				title: state,
+				state,
+			});
+			if (!added.ok) throw added.error;
+		}
+		for (const state of ["next", "done"] as const) {
+			const added = await Planner.addTask(TEST_BASE, { title: state, state });
+			if (!added.ok) throw added.error;
+		}
+		const queries = [
+			() =>
+				Planner.queryProjects(TEST_BASE, {
+					states: ["done"],
+					state: "active",
+					includeClosed: true,
+				}),
+			() =>
+				Planner.queryProjects(TEST_BASE, {
+					states: [],
+					state: "done",
+					includeClosed: true,
+				}),
+			() =>
+				Planner.queryTasks(TEST_BASE, {
+					states: ["done"],
+					state: "next",
+					includeClosed: true,
+				}),
+			() =>
+				Planner.queryTasks(TEST_BASE, {
+					states: [],
+					state: "done",
+					includeClosed: true,
+				}),
+		];
+		for (const query of queries) {
+			const selected = await query();
+			if (!selected.ok) throw selected.error;
+			expect(selected.value.map((item) => item.state)).toEqual(["done"]);
+		}
+	});
+
 	// ----------------------------------------------------------
 	// CRUD
 	// ----------------------------------------------------------
