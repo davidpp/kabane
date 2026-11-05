@@ -70,6 +70,7 @@ export {
 	type AfterWrite,
 	authorTypeOf,
 	createMcpServer,
+	defineTool,
 	handleHttpRequest,
 	KABANE_TOOLS,
 	type McpServerInfo,
@@ -87,6 +88,7 @@ export {
 	serializedBytes,
 } from "./task-output";
 export { PageOptionsSchema, type TaskPage } from "./storage/task-pages";
+export { fingerprintText } from "./storage/read-fingerprint";
 export {
 	err,
 	flatMap,

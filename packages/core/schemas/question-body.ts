@@ -76,6 +76,8 @@ export type ParsedQuestion = {
 	defaultAnswer?: string;
 	skipAnswer?: string;
 	permission?: PermissionRequestMeta;
+	/** The fence's JSON before `QuestionMetaSchema` drops the keys it does not know, for a module's own keys. */
+	rawMeta?: unknown;
 };
 
 const JSON_FENCE = /^```json\n([\s\S]*?)\n```\n?/;
@@ -113,15 +115,14 @@ export function parseQuestionBody(body: string): ParsedQuestion {
 	const json = match?.[1];
 	if (!match || json === undefined) return defaults;
 
-	const parsed = QuestionMetaSchema.safeParse(
-		((): unknown => {
-			try {
-				return JSON.parse(json);
-			} catch {
-				return undefined;
-			}
-		})(),
-	);
+	const rawMeta = ((): unknown => {
+		try {
+			return JSON.parse(json);
+		} catch {
+			return undefined;
+		}
+	})();
+	const parsed = QuestionMetaSchema.safeParse(rawMeta);
 	if (!parsed.success) return defaults;
 
 	const meta = parsed.data;
@@ -135,6 +136,7 @@ export function parseQuestionBody(body: string): ParsedQuestion {
 		defaultAnswer: meta.defaultAnswer,
 		skipAnswer: meta.skipAnswer,
 		permission: meta.permission,
+		rawMeta,
 	};
 }
 

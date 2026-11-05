@@ -1,15 +1,11 @@
-import { ok, err, type ToolDef } from "@cabane/core";
-import type { z } from "zod";
+import { defineTool, err, ok, type ToolDef } from "@cabane/core";
 import { singleLine } from "./markdown";
 import { ListSchema, questionPage } from "./page";
 import { AnswerSchema, AskSchema } from "./schema";
 import { Questions } from "./storage";
 
-const define = <Shape extends z.ZodRawShape>(tool: ToolDef<Shape>): ToolDef =>
-	tool as unknown as ToolDef;
-
 export const questionTools: readonly ToolDef[] = [
-	define({
+	defineTool({
 		name: "kabane_ask",
 		kind: "write",
 		description:
@@ -22,7 +18,7 @@ export const questionTools: readonly ToolDef[] = [
 				: rows;
 		},
 	}),
-	define({
+	defineTool({
 		name: "kabane_questions",
 		kind: "read",
 		description:
@@ -42,7 +38,7 @@ export const questionTools: readonly ToolDef[] = [
 			return questionPage(ctx.basePath, { ...args, scopeUri });
 		},
 	}),
-	define({
+	defineTool({
 		name: "kabane_answer",
 		kind: "write",
 		description:
