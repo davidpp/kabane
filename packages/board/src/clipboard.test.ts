@@ -102,3 +102,123 @@ describe("Clipboard.write on a remote session", () => {
 		expect(sent).toEqual([]);
 	});
 });
+
+// Real subprocess stdout and macOS PTYs; no replacement terminal or host implementation.
+describe("Clipboard.stdoutAdapter", () => {
+	const remoteKeys = [
+		"SSH_CONNECTION",
+		"SSH_CLIENT",
+		"SSH_TTY",
+		"MOSH_CONNECTION",
+	];
+	const run = async (body: string, remote?: string, pty = false) => {
+		const env = { ...process.env };
+		for (const key of remoteKeys) delete env[key];
+		if (remote) env[remote] = "";
+		const source = `import { Clipboard } from ${JSON.stringify(`${import.meta.dir}/clipboard.ts`)};
+			import { createClipboard, createHostClipboard } from "@opentui/core";
+			const adapter = Clipboard.stdoutAdapter();
+			${body}`;
+		const command = [process.execPath, "-e", source];
+		const child = Bun.spawn(
+			pty ? ["/usr/bin/script", "-q", "/dev/null", ...command] : command,
+			{
+				cwd: import.meta.dir,
+				env,
+				stdin: "ignore",
+				stdout: "pipe",
+				stderr: "pipe",
+			},
+		);
+		const [stdout, stderr, code] = await Promise.all([
+			new Response(child.stdout).text(),
+			new Response(child.stderr).text(),
+			child.exited,
+		]);
+		expect(code).toBe(0);
+		expect(stderr).toBe("");
+		return stdout;
+	};
+
+	it("detects every remote marker, including an empty one, and skips piped stdout", async () => {
+		expect(Clipboard.stdoutAdapter().remote).toBe(
+			remoteKeys.some((key) => process.env[key] !== undefined),
+		);
+		for (const remote of [undefined, ...remoteKeys]) {
+			const stdout = await run(
+				`console.log(JSON.stringify({remote: adapter.remote, write: adapter.writeText("brief", "clipboard"), clear: adapter.clear("primary")}));`,
+				remote,
+			);
+			expect(JSON.parse(stdout)).toEqual({
+				remote: remote !== undefined,
+				write: NOT_ATTEMPTED,
+				clear: NOT_ATTEMPTED,
+			});
+		}
+	});
+
+	it.skipIf(process.platform !== "darwin")(
+		"writes and clears both selections on local and remote TTYs",
+		async () => {
+			for (const remote of [undefined, ...remoteKeys]) {
+				const stdout = await run(
+					`
+				for (const selection of ["clipboard", "primary"]) {
+					console.log(JSON.stringify(adapter.writeText("café 🏠", selection)));
+					console.log(JSON.stringify(adapter.clear(selection)));
+				}`,
+					remote,
+					true,
+				);
+				for (const target of ["c", "p"]) {
+					expect(stdout).toContain(
+						`\x1b]52;${target};${Buffer.from("café 🏠").toString("base64")}\x1b\\`,
+					);
+					expect(stdout).toContain(`\x1b]52;${target};\x1b\\`);
+				}
+				expect(stdout.match(/"status":"attempted"/g)).toHaveLength(4);
+			}
+		},
+	);
+
+	it.skipIf(process.platform !== "darwin")(
+		"falls back locally when the real host does not support the selection",
+		async () => {
+			// macOS has no host primary selection: exercise fallback without changing the host pasteboard.
+			const stdout = await run(
+				`
+			const service = createClipboard({host: createHostClipboard(), terminal: adapter});
+			try {
+				console.log(JSON.stringify(await service.writeText("brief", {destination: "best-available", selection: "primary"})));
+			} finally { await service.dispose(); }
+		`,
+				undefined,
+				true,
+			);
+			expect(stdout).toContain('"host":{"status":"unsupported"}');
+			expect(stdout).toContain('"status":"attempted"');
+			expect(stdout).toContain("\x1b]52;p;YnJpZWY=\x1b\\");
+		},
+	);
+
+	it.skipIf(process.platform !== "darwin")(
+		"writeCli sanitizes text and refuses empty copies",
+		async () => {
+			const stdout = await run(
+				`
+			console.log(JSON.stringify(await Clipboard.writeCli("a\\0\\ud800")));
+			const empty = await Clipboard.writeCli("\\0");
+			console.log(empty.ok ? "unexpected success" : empty.error.message);
+		`,
+				"SSH_TTY",
+				true,
+			);
+			expect(stdout).toContain(
+				`\x1b]52;c;${Buffer.from("a�").toString("base64")}\x1b\\`,
+			);
+			expect(stdout).toContain('"value":"terminal"');
+			expect(stdout).toContain("nothing to copy");
+			expect(stdout.split("\x1b]52;")).toHaveLength(2);
+		},
+	);
+});

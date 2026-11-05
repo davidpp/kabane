@@ -69,8 +69,8 @@ export namespace Launcher {
 	 * Try the desktop app, then the web URL, then the clipboard. The first two
 	 * fail the same way — no handler registered, or no opener on this host — and
 	 * the third is what makes the action still useful over ssh, where the
-	 * board's copier sends OSC 52 to the human's terminal. With no renderer
-	 * (the CLI) the default copier has only the host's pasteboard.
+	 * board's copier sends OSC 52 to the human's terminal. The CLI uses the
+	 * same routing as the board, with stdout as its terminal.
 	 */
 	export const open = async (
 		target: Target,
@@ -83,8 +83,7 @@ export namespace Launcher {
 		if (await run(target.url)) return ok("browser");
 
 		const copy =
-			deps.copy ??
-			(async (text: string) => (await Clipboard.writeHost(text)).ok);
+			deps.copy ?? (async (text) => (await Clipboard.writeCli(text)).ok);
 		if (await copy(target.url)) return ok("clipboard");
 
 		return err(new Error(`could not open ${label(target)}`));
