@@ -39,7 +39,7 @@ it("labels multi-select and choices-only questions without labeling freeform cho
 			choices: [...meta.choices],
 		});
 		expect(questionMarkdown({ ...row, body }).split("\n")[0]).toBe(
-			`JCAB-1:1 Pick${suffix}`,
+			`JCAB-1:1 Pick${suffix} id:question`,
 		);
 	}
 });

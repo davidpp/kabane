@@ -12,22 +12,24 @@ export const questionMarkdown = (row: QuestionView, brief = false): string => {
 			? ""
 			: " (choices only)";
 	const title = `${singleLine(row.handle)} ${singleLine(question.question)}${mode}`;
+	// A handle can shift after sync; the ULID at the end of the question's line never does.
+	const id = ` id:${row.id}`;
 	const reasoning = row.reasoning ? singleLine(row.reasoning) : "";
 	if (row.status === "answered") {
 		const author = singleLine(row.answeredBy ?? "unknown");
 		const answer = singleLine(row.answer ?? "");
 		return brief
-			? `${title} → ${answer} (${author}${reasoning ? `, ${reasoning}` : ""})`
-			: `${title}\n→ ${answer} (${author})${reasoning ? `: ${reasoning}` : ""}`;
+			? `${title} → ${answer} (${author}${reasoning ? `, ${reasoning}` : ""})${id}`
+			: `${title}${id}\n→ ${answer} (${author})${reasoning ? `: ${reasoning}` : ""}`;
 	}
 	if (row.status === "withdrawn")
-		return `${title}\nWithdrawn${reasoning ? `: ${reasoning}` : ""}`;
+		return `${title}${id}\nWithdrawn${reasoning ? `: ${reasoning}` : ""}`;
 	const choices = question.choices.map(
 		(label) =>
 			`- ${singleLine(label)}${label === question.recommended ? " ★" : ""}`,
 	);
 	return [
-		title,
+		`${title}${id}`,
 		...choices,
 		...(row.why ? [`why: ${singleLine(row.why)}`] : []),
 	].join("\n");

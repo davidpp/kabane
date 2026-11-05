@@ -42,7 +42,7 @@ it("lists questions as the MCP tool prints them, by scope or issue, and pages te
 		Planner.addTask(home, { title, kind: "issue", scopeUri }).then(unwrap);
 	const store = await issue("Pick a store", "github:acme/app");
 	const other = await issue("Elsewhere", "github:acme/other");
-	unwrap(
+	const [which, name] = unwrap(
 		await Questions.ask(home, {
 			id: store.id,
 			questions: [
@@ -67,14 +67,16 @@ it("lists questions as the MCP tool prints them, by scope or issue, and pages te
 	const scoped = await kabane(["questions", "--scope", "github:acme/app"]);
 	expect(scoped.exitCode).toBe(0);
 	expect(scoped.text).toBe(
-		`## ${store.shortId} Pick a store · normal · waiting\n\n${store.shortId}:1 Which store? (choices only)\n- SQLite\n- Remote`,
+		`## ${store.shortId} Pick a store · normal · waiting\n\n${store.shortId}:1 Which store? (choices only) id:${which?.id}\n- SQLite\n- Remote`,
 	);
 	expect(page(scoped).items.map((q) => q.handle)).toEqual([
 		`${store.shortId}:1`,
 	]);
 
 	const all = await kabane(["questions", store.shortId ?? store.id, "--all"]);
-	expect(all.text).toContain(`${store.shortId}:2 Name it\n→ kabane`);
+	expect(all.text).toContain(
+		`${store.shortId}:2 Name it id:${name?.id}\n→ kabane`,
+	);
 	expect(all.text).not.toContain("Elsewhere");
 
 	// Two pages, both outputs from one cursor: nothing repeated, nothing skipped.

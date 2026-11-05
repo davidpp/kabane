@@ -36,7 +36,7 @@ it("answers through the module, refuses an unknown choice, and hands the issue b
 		await Planner.addTask(home, { title: "Decide", kind: "issue" }),
 	);
 	const id = task.shortId ?? task.id;
-	unwrap(
+	const [store, drop] = unwrap(
 		await Questions.ask(home, {
 			id: task.id,
 			questions: [
@@ -63,7 +63,7 @@ it("answers through the module, refuses an unknown choice, and hands the issue b
 	]);
 	expect(first.exitCode).toBe(0);
 	expect(first.text).toBe(
-		`${id}:1 Which store? (choices only)\n→ SQLite (cabane://actor/human/other): Offline first`,
+		`${id}:1 Which store? (choices only) id:${store?.id}\n→ SQLite (cabane://actor/human/other): Offline first`,
 	);
 	expect(first.text).not.toContain("moved to next");
 
@@ -81,7 +81,7 @@ it("answers through the module, refuses an unknown choice, and hands the issue b
 	]);
 	expect(withdrawn.exitCode).toBe(0);
 	expect(withdrawn.text).toBe(
-		`${id}:2 Drop this?\nWithdrawn: Obsolete\n\n${id} moved to next`,
+		`${id}:2 Drop this? id:${drop?.id}\nWithdrawn: Obsolete\n\n${id} moved to next`,
 	);
 	expect(withdrawn.json).toMatchObject({
 		moved: true,
