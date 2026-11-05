@@ -129,8 +129,8 @@ export namespace Land {
 		const label = ctx.run.parentShortId;
 		const pass = await Checks.gate(ctx, { label, title: parent.title });
 		await Checks.record(ctx, pass, { taskId: ctx.run.parentId, label });
-		const failed = pass.results.find((r) => !r.ok);
-		if (failed === undefined)
+		// Every gate passed, not only none failed: a stop skips the gates still to run.
+		if (pass.ok && !stopping(ctx))
 			return ok({
 				dir,
 				remote,
@@ -139,13 +139,33 @@ export namespace Land {
 				rebased: moved,
 				said: `Rebased onto ${target}${Gates.configured(ctx.run.config.gates) ? ", gates green again" : ""}`,
 			});
-		const reset = await Worktree.reset(dir, from.value, git);
+		const failed = pass.results.find((r) => !r.ok);
+		const why =
+			failed && !stopping(ctx)
+				? `the gate ${Gates.describe(failed)}`
+				: "the run was stopped before its gates passed again";
 		return err(
 			notLanded(
-				`after rebasing onto ${target}, the gate ${Gates.describe(failed)}; ${reset.ok ? `the branch is back at ${short(from.value)}, as the run left it` : `the branch could not be put back at ${short(from.value)}: ${reset.error.message}`}`,
+				`after rebasing onto ${target}, ${why}; ${await putBack(ctx, dir, from.value)}`,
 				{ rebased: moved },
 			),
 		);
+	};
+
+	/** Whether the run is stopping: nothing more goes out, and a gate pass is not complete. */
+	const stopping = (ctx: Ctx): boolean =>
+		ctx.stopRequested || ctx.stopping.signal.aborted;
+
+	// The branch back at the tip the run left it at, after a rebase that is not landing.
+	const putBack = async (
+		ctx: Ctx,
+		dir: string,
+		tip: string,
+	): Promise<string> => {
+		const reset = await Worktree.reset(dir, tip, ctx.deps.git ?? Worktree.git);
+		return reset.ok
+			? `the branch is back at ${short(tip)}, as the run left it`
+			: `the branch could not be put back at ${short(tip)}: ${reset.error.message}`;
 	};
 
 	/** `gh <args>` in `cwd`: GitHub's CLI, which opens and reads the run's pull request. */
@@ -260,6 +280,13 @@ export namespace Land {
 		const ref = `refs/heads/${branch}`;
 		const tip = await revParse(git, dir, ref);
 		if (!tip.ok) return err(notLanded(tip.error.message, keep));
+		if (stopping(ctx))
+			return err(
+				notLanded(
+					`the run was stopped before the push${rebased ? `; ${await putBack(ctx, dir, rebased.from)}` : ""}`,
+					keep,
+				),
+			);
 		const pushed = await git(dir, [
 			"push",
 			"-q",
@@ -275,6 +302,13 @@ export namespace Land {
 				),
 			);
 		RunState.save(ctx, { ...ctx.run, pushed: tip.value });
+		if (stopping(ctx))
+			return err(
+				notLanded(
+					`the run was stopped once branch ${branch} was pushed, before a pull request was opened`,
+					keep,
+				),
+			);
 		const open = await openPr(run, dir, branch);
 		if (open !== undefined) return ok(open);
 		const created = await run(dir, [

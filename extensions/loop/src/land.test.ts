@@ -282,6 +282,53 @@ describe("Land.land onto the base", () => {
 		expect(ghCalls).toEqual([]);
 	});
 
+	it("does not push when the run is stopped while it fetches, and puts the rebased branch back", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { gates: { test: "true" } }));
+		const dir = ctx.run.worktree ?? "";
+		const before = head(dir);
+		baseMoves("teammate.txt");
+		// The stop arrives while git fetches, as `kabane loop stop` aborts a landing runner.
+		ctx.deps.git = async (cwd, args) => {
+			if (args[0] === "fetch") {
+				ctx.stopRequested = true;
+				ctx.stopping.abort();
+			}
+			return git(cwd, args);
+		};
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain(
+			"the run was stopped before its gates passed again",
+		);
+		expect(head(dir)).toBe(before);
+		expect(
+			GitFixture.run(remote, ["for-each-ref", "refs/heads"]).trim().split("\n"),
+		).toHaveLength(1);
+		expect(ghCalls).toEqual([]);
+	});
+
+	it("opens no pull request when the run is stopped while it pushes", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent));
+		ctx.deps.git = async (cwd, args) => {
+			const ran = await git(cwd, args);
+			if (args[0] === "push") ctx.stopping.abort();
+			return ran;
+		};
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain(
+			"stopped once branch jcab-1-make-the-thing was pushed, before a pull request was opened",
+		);
+		expect(ctx.run.pushed).toBe(remoteTip());
+		expect(ghCalls).toEqual([]);
+	});
+
 	it("does not land a run that started from a detached HEAD", async () => {
 		const parent = await parentIssue();
 		const run = await completedRun(parent);
