@@ -6,14 +6,7 @@
 import type { Task } from "@cabane/core";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useKeyboard, useRenderer } from "@opentui/react";
-import {
-	type ReactNode,
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import { BoardActivity } from "./activity";
 import { anyActivityRunning, Board } from "./board";
 import { useBoardFeed } from "./board-feed";
@@ -23,6 +16,7 @@ import { Clipboard } from "./clipboard";
 import { BoardContext } from "./context";
 import { CopilotLog } from "./copilot-log";
 import { CopilotPane, contextChip } from "./copilot-prompt";
+import { NO_COPILOT, useCopilotSession } from "./copilot-session";
 import { BoardData } from "./data";
 import { Detail } from "./detail";
 import { useDetailRecords } from "./detail-records";
@@ -69,11 +63,6 @@ export type AppProps = {
 const shortIdOf = (task: Task | undefined, id: string): string =>
 	task?.shortId ?? id.slice(0, 8);
 
-const NO_COPILOT: BoardNav.Notice = {
-	text: "no copilot configured",
-	tone: "error",
-};
-
 // Without a dispatcher no extension is on. A copilot that can set kabane up is the way to turn one
 // on without knowing the config's keys.
 const noDispatcher = (copilot: Copilot | undefined): BoardNav.Notice => ({
@@ -82,9 +71,6 @@ const noDispatcher = (copilot: Copilot | undefined): BoardNav.Notice => ({
 		: "no dispatcher configured",
 	tone: "error",
 });
-
-const errorMessage = (e: unknown): string =>
-	e instanceof Error ? e.message : String(e);
 
 export const App = ({
 	cwd,
@@ -116,31 +102,27 @@ export const App = ({
 			setNotice,
 			refreshDetail,
 		});
-	// This session's copilot turns, the current one at the head: its card, its plan and its transcript.
-	// Held in a ref as well because the composed ActivitySource below reads it while the event view
-	// polls, and the stream runner writes it between renders.
-	const [copilotLog, setCopilotLog] = useState<CopilotLog.Log | null>(null);
-	const copilotLogRef = useRef<CopilotLog.Log | null>(null);
-	const publishLog = useCallback(
-		(log: CopilotLog.Log): void => {
-			copilotLogRef.current = log;
-			setCopilotLog(log);
-			// The reducer holds no log, but `o` routes on whether one exists — so it gets the one bit.
-			updateState((prev) => BoardNav.withCopilotLog(prev, true));
-		},
-		[updateState],
-	);
-	// Which turn the stream runner is on; a cancel or a new prompt moves it so a stale stream's late
-	// updates are dropped rather than written over the next turn's log.
-	const turnRef = useRef(0);
+	const {
+		log: copilotLog,
+		current: currentLog,
+		run: runCopilot,
+		cancel: cancelCopilot,
+	} = useCopilotSession({
+		copilot,
+		basePath,
+		store,
+		scopeRef,
+		reload,
+		setNotice,
+	});
 	// Host cards plus the copilot's, for every surface that lists activity.
 	const shownActivity = useMemo(
 		() => CopilotLog.withActivity(activity, copilotLog),
 		[activity, copilotLog],
 	);
 	const shownSource = useMemo(
-		() => CopilotLog.source(activitySource, () => copilotLogRef.current),
-		[activitySource],
+		() => CopilotLog.source(activitySource, currentLog),
+		[activitySource, currentLog],
 	);
 
 	// The terminal hears when the board waits on the human, or works: derived from what the board
@@ -291,107 +273,6 @@ export const App = ({
 		},
 		[dispatcher, copilot, basePath, reload, stateRef, setNotice],
 	);
-
-	// One copilot turn: assemble the context, stream the run into the log, reload the board on each
-	// completed write, and hand the reducer the turn's end. The stream is the one place the port can
-	// throw at us (an AsyncIterable has no Result), so the boundary catches and ends the turn as an
-	// error rather than letting it reach React.
-	const runCopilot = useCallback(
-		async (s: BoardNav.BoardState, prompt: string): Promise<void> => {
-			const endTurn = (turn: BoardNav.CopilotTurn): void =>
-				updateState((prev) => BoardNav.withCopilotTurn(prev, turn));
-			const now = (): string => new Date().toISOString();
-			if (!copilot) {
-				setNotice(NO_COPILOT);
-				endTurn("idle");
-				return;
-			}
-			const turn = ++turnRef.current;
-			// Behind this turn, the ones before it: the prompt is what opens a new one in the log.
-			let log = CopilotLog.start(copilotLogRef.current, prompt, now());
-			publishLog(log);
-			const fail = (summary: string): void => {
-				log = CopilotLog.apply(log, { type: "error", summary, at: now() });
-				publishLog(log);
-				endTurn("error");
-			};
-			const context = await BoardContext.load(basePath, s, scopeRef.current);
-			if (turnRef.current !== turn) return;
-			if (!context.ok) {
-				fail(context.error.message);
-				return;
-			}
-			try {
-				for await (const update of copilot.run(prompt, context.value)) {
-					if (turnRef.current !== turn) return;
-					log = CopilotLog.apply(log, update);
-					publishLog(log);
-					// The harness is blocked from here until the human presses something; the board
-					// only puts the question on screen and carries on rendering.
-					if (update.type === "permission")
-						updateState((prev) =>
-							BoardNav.withCopilotPermission(prev, update.request),
-						);
-					if (update.type === "elicitation")
-						updateState((prev) =>
-							BoardNav.withCopilotElicitation(prev, update.request),
-						);
-					// Taken back unanswered: the block goes, and when it was the one on screen the
-					// footer says why it went. A key already on its way answers nothing, since the
-					// copilot no longer holds the request.
-					if (update.type === "withdrawn") {
-						if (stateRef.current?.copilot.asks[0]?.request.id === update.id)
-							setNotice({ text: update.summary, tone: "error" });
-						updateState((prev) =>
-							BoardNav.withCopilotWithdrawn(prev, update.id),
-						);
-					}
-					if (update.type === "commands")
-						updateState((prev) =>
-							BoardNav.withCopilotCommands(
-								prev,
-								update.source,
-								update.commands,
-							),
-						);
-					if (update.type === "tool_result" && update.wrote) {
-						const current = stateRef.current;
-						if (current) void reload(current);
-					}
-					if (update.type === "done") endTurn("done");
-					if (update.type === "error") endTurn("error");
-				}
-				// A stream that ends without saying so still ended.
-				if (log.current.card.status === "running") {
-					log = CopilotLog.apply(log, { type: "done", summary: "", at: now() });
-					publishLog(log);
-					endTurn("done");
-				}
-			} catch (e) {
-				if (turnRef.current === turn) fail(errorMessage(e));
-			}
-		},
-		[
-			copilot,
-			basePath,
-			reload,
-			publishLog,
-			setNotice,
-			stateRef,
-			updateState,
-			scopeRef,
-		],
-	);
-
-	// Stop the turn in flight: tell the copilot, drop its remaining updates, close the card.
-	const cancelCopilot = useCallback((): void => {
-		turnRef.current++;
-		void copilot?.cancel();
-		const log = copilotLogRef.current;
-		if (log && log.current.card.status === "running")
-			publishLog(CopilotLog.cancelled(log, new Date().toISOString()));
-		updateState((prev) => BoardNav.withCopilotTurn(prev, "error"));
-	}, [copilot, publishLog, updateState]);
 
 	// `o` in the detail view: the task's first in-flight card with events, else its most recent one.
 	// A card with a tab of its own opens as that tab, so one card never shows in two places.
