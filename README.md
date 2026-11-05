@@ -23,8 +23,19 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 
 ## Install
 
-Kabane runs on [Bun](https://bun.sh) 1.4 or later, which has to be installed first: the
-package is a Bun program, not a Node one.
+Choose a standalone binary from the [GitHub release assets](https://github.com/davidpp/kabane/releases)
+for macOS (`darwin-arm64`, `darwin-x64`) or Linux (`linux-x64`, `linux-arm64`). Download its
+`kabane-<os>-<arch>.tar.gz` and `SHA256SUMS` from the same release. Verify the archive with
+`sha256sum --check --ignore-missing SHA256SUMS` on Linux, or
+`shasum -a 256 --check --ignore-missing SHA256SUMS` on macOS, then extract with
+`tar -xzf kabane-<os>-<arch>.tar.gz`. Keep the whole extracted `kabane/` directory together:
+`templates/` must stay beside the executable. Put that directory on PATH or symlink its
+`kabane` executable into a directory already on PATH. Run `kabane --version` to check.
+The binary includes Bun; git is still used for project scopes, and coding harness adapters
+still need their own runtime (currently Node/npx). Windows and notarization are not provided.
+Until binary self-update ships, replace the complete directory with a verified newer download.
+
+Alternatively, install the npm package with [Bun](https://bun.sh) 1.4 or later (not Node):
 
 ```bash
 bun add -g kabane           # `kabane` on PATH, in ~/.bun/bin

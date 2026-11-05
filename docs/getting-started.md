@@ -18,6 +18,15 @@ why some internal names still use it.
 
 ## Install
 
+**Install a standalone binary.** Download the matching `kabane-<os>-<arch>.tar.gz` and
+`SHA256SUMS` from one [GitHub release](https://github.com/davidpp/kabane/releases), verify
+and extract it following [the README](../README.md#install), and add the extracted directory
+to PATH. macOS arm64/x64 and Linux arm64/x64 are supported; Linux x64 uses Bun's baseline
+CPU target. Keep `templates/` beside the executable. This option does not require the Bun
+prerequisite above; git and your chosen harness's runtime requirements still apply.
+
+Or install the npm package with Bun:
+
 ```bash
 bun add -g kabane
 kabane --help | head -1
