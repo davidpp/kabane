@@ -251,9 +251,31 @@ export const buildScopeFamilyMatch = (
 	};
 };
 
+/** A nonempty state list takes precedence over the singular filter. */
+export const stateFilter = (query: {
+	states?: string[];
+	state?: string;
+}): { sql: string; params: string[] } | undefined => {
+	if (query.states && query.states.length > 0)
+		return {
+			sql: `state IN (${query.states.map(() => "?").join(", ")})`,
+			params: [...query.states],
+		};
+	if (query.state) return { sql: "state = ?", params: [query.state] };
+	return undefined;
+};
+
 // ============================================================
 // Row Converters
 // ============================================================
+
+const rowToProvenance = (row: Record<string, unknown>): Task["provenance"] => ({
+	source: row.source as Task["provenance"]["source"],
+	sourceId: (row.source_id as string) || undefined,
+	sourceUrl: (row.source_url as string) || undefined,
+	discoveredAt: row.discovered_at as string,
+	discoveredBy: (row.discovered_by as string) || undefined,
+});
 
 export const rowToTask = (row: Record<string, unknown>): Task => ({
 	id: row.id as string,
@@ -268,13 +290,7 @@ export const rowToTask = (row: Record<string, unknown>): Task => ({
 	deadline: (row.deadline as string) || undefined,
 	deferUntil: (row.defer_until as string) || undefined,
 	completedAt: (row.completed_at as string) || undefined,
-	provenance: {
-		source: row.source as Task["provenance"]["source"],
-		sourceId: (row.source_id as string) || undefined,
-		sourceUrl: (row.source_url as string) || undefined,
-		discoveredAt: row.discovered_at as string,
-		discoveredBy: (row.discovered_by as string) || undefined,
-	},
+	provenance: rowToProvenance(row),
 	confidence: row.confidence != null ? (row.confidence as number) : undefined,
 	assignee: (row.assignee as string) || undefined,
 	parentTaskId: (row.parent_task_id as string) || undefined,
