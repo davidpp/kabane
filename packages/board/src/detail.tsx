@@ -279,17 +279,7 @@ export const Detail = ({
 }: DetailProps): ReactNode => {
 	const theme = useTheme();
 	const { width: room } = useTerminalDimensions();
-	const headerRoom = Math.max(0, room - HEADER_PADDING);
-	const contentRoom = Math.max(0, room - SCROLL_RESERVED - CONTENT_INSET);
 	const loaded = records?.ok ? records.value : undefined;
-	const task = freshTask ?? loaded?.task;
-
-	const shortId = task?.shortId ?? taskId.slice(0, 8);
-	const header = [shortId, task?.title].filter(Boolean).join(" · ");
-	const headline = cards?.find(
-		(c) =>
-			c.status === "running" || c.status === "pending" || c.status === "paused",
-	);
 	const open = DetailModel.openQuestions(loaded, questions, pinned);
 	const summaries = DetailModel.tabs(loaded, cards?.length ?? 0);
 	const live: Keymap.Live = keys ?? {
@@ -303,55 +293,15 @@ export const Detail = ({
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			{/* The header block: the task, what is running on it and where it sits, one tonal step
-			    up, the way opencode sets a message apart — a surface, never a rule. Painted, so every
-			    cell names its fg. */}
-			<box
-				style={{
-					flexDirection: "column",
-					flexShrink: 0,
-					backgroundColor: theme.surface.raised,
-					paddingLeft: 1,
-					paddingRight: 1,
-				}}
-			>
-				<box style={{ flexDirection: "row" }}>
-					<text
-						fg={theme.text}
-						attributes={TextAttributes.BOLD}
-						style={{ flexGrow: 1 }}
-					>
-						{header}
-					</text>
-					<text
-						fg={notice?.tone === "success" ? theme.done : theme.muted}
-						onMouseDown={onCopy}
-						style={{ marginLeft: 1, flexShrink: 0 }}
-					>
-						[copy]
-					</text>
-				</box>
-				{task ? (
-					<SummaryLine parts={DetailModel.summary(task)} room={headerRoom} />
-				) : null}
-				{/* Boxed, not a bare <text>: a bare text sibling after the header row-box paints over row 0. */}
-				{headline ? (
-					<box style={{ flexDirection: "row", flexShrink: 0 }}>
-						<text fg={headline.stale ? theme.muted : theme.working}>
-							{cardStatusLine(headline, spinnerFrame)}
-						</text>
-					</box>
-				) : null}
-				{loaded
-					? DetailModel.position(loaded).map((line) => (
-							<MetaRow
-								key={`${line.key} ${line.value}`}
-								line={line}
-								room={headerRoom}
-							/>
-						))
-					: null}
-			</box>
+			<DetailHeader
+				taskId={taskId}
+				task={freshTask ?? loaded?.task}
+				loaded={loaded}
+				cards={cards}
+				spinnerFrame={spinnerFrame}
+				copied={notice?.tone === "success"}
+				onCopy={onCopy}
+			/>
 			{open.length > 0 ? (
 				<box
 					style={{
@@ -375,23 +325,12 @@ export const Detail = ({
 				ref={scrollRef}
 				style={{ flexGrow: 1, marginTop: 1 }}
 			>
-				{records === undefined ? (
-					<text fg={theme.muted} style={{ marginLeft: CONTENT_INSET }}>
-						loading
-					</text>
-				) : !records.ok ? (
-					<text fg={theme.failed} style={{ marginLeft: CONTENT_INSET }}>
-						{records.error.message}
-					</text>
-				) : (
-					<TabContent
-						tab={tab}
-						records={records.value}
-						cards={cards ?? []}
-						spinnerFrame={spinnerFrame}
-						room={contentRoom}
-					/>
-				)}
+				<TabBody
+					tab={tab}
+					records={records}
+					cards={cards ?? []}
+					spinnerFrame={spinnerFrame}
+				/>
 			</scrollbox>
 			{pane}
 			{notice ? (
@@ -402,6 +341,120 @@ export const Detail = ({
 			) : (
 				<StatusBar hints={hints} />
 			)}
+		</box>
+	);
+};
+
+// The tab in view: a loading line until its records are in, and the read's error when it failed.
+const TabBody = ({
+	tab,
+	records,
+	cards,
+	spinnerFrame,
+}: {
+	tab: DetailModel.Tab;
+	records: Result<BoardData.DetailRecords> | undefined;
+	cards: ActivityCard[];
+	spinnerFrame: string | undefined;
+}): ReactNode => {
+	const theme = useTheme();
+	const { width: room } = useTerminalDimensions();
+	if (records === undefined)
+		return (
+			<text fg={theme.muted} style={{ marginLeft: CONTENT_INSET }}>
+				loading
+			</text>
+		);
+	if (!records.ok)
+		return (
+			<text fg={theme.failed} style={{ marginLeft: CONTENT_INSET }}>
+				{records.error.message}
+			</text>
+		);
+	return (
+		<TabContent
+			tab={tab}
+			records={records.value}
+			cards={cards}
+			spinnerFrame={spinnerFrame}
+			room={Math.max(0, room - SCROLL_RESERVED - CONTENT_INSET)}
+		/>
+	);
+};
+
+// The header block: the task, what is running on it and where it sits, one tonal step up, the way
+// opencode sets a message apart — a surface, never a rule. Painted, so every cell names its fg.
+const DetailHeader = ({
+	taskId,
+	task,
+	loaded,
+	cards,
+	spinnerFrame,
+	copied,
+	onCopy,
+}: Pick<
+	DetailProps,
+	"taskId" | "task" | "cards" | "spinnerFrame" | "onCopy"
+> & {
+	loaded: BoardData.DetailRecords | undefined;
+	// A notice that just succeeded lights `[copy]`, the copy it most often confirms.
+	copied: boolean;
+}): ReactNode => {
+	const theme = useTheme();
+	const { width: room } = useTerminalDimensions();
+	const headerRoom = Math.max(0, room - HEADER_PADDING);
+	const shortId = task?.shortId ?? taskId.slice(0, 8);
+	const header = [shortId, task?.title].filter(Boolean).join(" · ");
+	const headline = cards?.find(
+		(c) =>
+			c.status === "running" || c.status === "pending" || c.status === "paused",
+	);
+	return (
+		<box
+			style={{
+				flexDirection: "column",
+				flexShrink: 0,
+				backgroundColor: theme.surface.raised,
+				paddingLeft: 1,
+				paddingRight: 1,
+			}}
+		>
+			<box style={{ flexDirection: "row" }}>
+				<text
+					fg={theme.text}
+					attributes={TextAttributes.BOLD}
+					style={{ flexGrow: 1 }}
+				>
+					{header}
+				</text>
+				<text
+					fg={copied ? theme.done : theme.muted}
+					onMouseDown={onCopy}
+					style={{ marginLeft: 1, flexShrink: 0 }}
+				>
+					[copy]
+				</text>
+			</box>
+			{task ? (
+				<SummaryLine parts={DetailModel.summary(task)} room={headerRoom} />
+			) : null}
+			{/* Boxed, not a bare <text>: a bare text sibling after the header row-box paints over row 0. */}
+			{headline ? (
+				<box style={{ flexDirection: "row", flexShrink: 0 }}>
+					<text fg={headline.stale ? theme.muted : theme.working}>
+						{cardStatusLine(headline, spinnerFrame)}
+					</text>
+				</box>
+			) : null}
+			{loaded
+				? DetailModel.position(loaded).map((line) => (
+						<MetaRow
+							key={`${line.key} ${line.value}`}
+							line={line}
+							room={headerRoom}
+						/>
+					))
+				: null}
 		</box>
 	);
 };
