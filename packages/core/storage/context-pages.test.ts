@@ -1,9 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+} from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SqliteDb } from "@cabane/sqlite";
 import { z } from "zod";
-import { createCorpusTracker } from "../../cli/issue-corpus-harness";
+import { createCorpusTemplate } from "../../cli/issue-corpus-harness";
 import {
 	CONTEXT_BYTES,
 	type ContextPage,
@@ -17,19 +25,26 @@ import { serializedBytes } from "../task-output";
 import { configureTestRuntime } from "../testing";
 import { Planner } from "./index";
 
-let tracker: Extract<
-	Awaited<ReturnType<typeof createCorpusTracker>>,
+type Template = Extract<
+	Awaited<ReturnType<typeof createCorpusTemplate>>,
 	{ ok: true }
 >["value"];
+let template: Template | undefined;
+let tracker: ReturnType<Template["clone"]>;
 let id: string;
-beforeEach(async () => {
-	const seeded = await createCorpusTracker({ synthetic: true });
+// Every case mutates its tracker, so each gets its own copy of one seeded corpus.
+beforeAll(async () => {
+	const seeded = await createCorpusTemplate({ synthetic: true });
 	expect(seeded.ok).toBe(true);
-	if (!seeded.ok) return;
-	tracker = seeded.value;
+	if (seeded.ok) template = seeded.value;
+}, 30_000);
+afterAll(() => template?.close());
+beforeEach(() => {
+	if (!template) return;
+	tracker = template.clone();
 	id = tracker.ids[24] ?? "";
 	configureTestRuntime();
-}, 30_000);
+});
 afterEach(() => {
 	tracker?.close();
 	configureTestRuntime();
