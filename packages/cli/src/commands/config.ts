@@ -29,8 +29,9 @@ const leafText = (leaf: {
 		? "default"
 		: `${display(leaf.value)} (${leaf.from === undefined ? leaf.layer : `${leaf.layer}: ${leaf.from}`})`;
 
-// What `--layer` may name, and `--scope`, which names whose user settings to read or write.
-const FLAGS: ReadonlySet<string> = new Set(["layer", "scope"]);
+// `--layer`, the layer a write targets; `--scope`, whose user settings to read or write; and
+// `--layers`, which has `get` name the layer of every leaf instead of printing the bare value.
+const FLAGS: ReadonlySet<string> = new Set(["layer", "scope", "layers"]);
 const COUNT = { list: 1, path: 1, get: 2, set: 3, unset: 2 };
 
 type Request = {
@@ -39,15 +40,17 @@ type Request = {
 	input?: string;
 	target: ConfigSettings.Target;
 	scope?: string;
+	layers: boolean;
 };
 
 const USAGE = [
-	"kabane config [list|get <key>|set <key> <value>|unset <key>|path] [--layer user|scope|project] [--scope <scope>] [--json]",
+	"kabane config [list|get <key> [--layers]|set <key> <value>|unset <key>|path] [--layer user|scope|project] [--scope <scope>] [--json]",
 	"",
 	"A setting resolves lowest first: its default, your config (user), the project's",
 	".kabane/<namespace>.json (project), your settings for the project's scope (scope), then",
 	"a command's own flags. set and unset write the user layer unless --layer names another;",
 	"scope is the project here, or --scope. Device keys (sync, db, identities) are user only.",
+	"get --layers prints every leaf under the key with the layer it came from.",
 ].join("\n");
 
 const isSub = (sub: string): sub is Request["sub"] => Object.hasOwn(COUNT, sub);
@@ -75,6 +78,12 @@ const requestOf = (args: ParsedArgs): Result<Request, Outcome> => {
 	const scope = flagString(args, "scope");
 	if ("layer" in args.flags && sub !== "set" && sub !== "unset")
 		return err(usage("--layer applies to set and unset", USAGE));
+	if ("layers" in args.flags && sub !== "get")
+		return err(usage("--layers applies to get", USAGE));
+	if ("layers" in args.flags && args.flags.layers !== true)
+		return err(
+			usage("--layers takes no value: kabane config get <key> --layers", USAGE),
+		);
 	if ("scope" in args.flags && scope === undefined)
 		return err(usage("--scope takes a scope URI or id", USAGE));
 	// --scope alone names the layer a write goes to.
@@ -86,6 +95,7 @@ const requestOf = (args: ParsedArgs): Result<Request, Outcome> => {
 	return ok({
 		sub,
 		target,
+		layers: args.flags.layers === true,
 		...(key === undefined ? {} : { key }),
 		...(input === undefined ? {} : { input }),
 		...(scope === undefined ? {} : { scope }),
@@ -106,10 +116,17 @@ const list = async (home: string, where: ConfigSettings.Where) => {
 	);
 };
 
-// A leaf is its value and layer; a group, a line per leaf under it.
-const get = async (home: string, where: ConfigSettings.Where, key: string) => {
+// The bare value, as `get` always printed it; with --layers, a leaf's value and layer, or a line
+// per leaf under a group.
+const get = async (
+	home: string,
+	where: ConfigSettings.Where,
+	key: string,
+	layers: boolean,
+) => {
 	const got = await ConfigSettings.get(home, where, key);
 	if (!got.ok) return failure(got.error);
+	if (!layers) return success(got.value.value, display(got.value.value));
 	const leaves = Object.entries(got.value.leaves);
 	const [only] = leaves;
 	return success(
@@ -129,14 +146,14 @@ export const config: Command = {
 	run: async (args, ctx) => {
 		const request = requestOf(args);
 		if (!request.ok) return request.error;
-		const { sub, key, input, target, scope } = request.value;
+		const { sub, key, input, target, scope, layers } = request.value;
 		if (sub === "path")
 			return success(configPath(ctx.home), configPath(ctx.home));
 		const where = await ConfigSettings.locate(ctx.home, ctx.cwd, scope);
 		if (!where.ok) return failure(where.error);
 		if (sub === "list") return list(ctx.home, where.value);
 		if (key === undefined) return usage(`Missing config key`, USAGE);
-		if (sub === "get") return get(ctx.home, where.value, key);
+		if (sub === "get") return get(ctx.home, where.value, key, layers);
 		const changed = await ConfigSettings.set(
 			ctx.home,
 			where.value,
@@ -149,7 +166,7 @@ export const config: Command = {
 			console.error(Extensions.ignoredWarning(name, ctx.home));
 		return success(
 			changed.value,
-			`${key} = ${display(changed.value.value)} (${target})`,
+			`${key} = ${display(changed.value.value)}${target === "user" ? "" : ` (${target})`}`,
 		);
 	},
 };

@@ -48,17 +48,23 @@ it("manages device config through the real stdio MCP server", async () => {
 		expect(result.data.isError ?? false).toBe(error);
 		return result.data.content.map((part) => part.text).join("\n");
 	};
-	// kabane_configGet and `config get` with a key: the effective value beside its leaves' layers.
+	// With a key, kabane_configGet and `config get` give the bare value, as they always have; with
+	// layers, the value beside every leaf's layer.
 	const valueOf = async (key: string): Promise<unknown> => {
-		const got = z
+		const layered = z
 			.object({
 				key: z.literal(key),
 				value: z.unknown(),
 				leaves: z.record(z.unknown()),
 			})
-			.parse(JSON.parse(await call("kabane_configGet", { key })));
-		expect(await cli("config", "get", key)).toEqual(got);
-		return got.value;
+			.parse(JSON.parse(await call("kabane_configGet", { key, layers: true })));
+		expect(await cli("config", "get", key, "--layers")).toEqual(layered);
+		expect(await cli("config", "get", key)).toEqual(layered.value);
+		const bare = await call("kabane_configGet", { key });
+		expect(typeof layered.value === "string" ? bare : JSON.parse(bare)).toEqual(
+			layered.value,
+		);
+		return layered.value;
 	};
 	try {
 		await cli(
@@ -194,7 +200,7 @@ it("manages device config through the real stdio MCP server", async () => {
 			expect(text).not.toContain(secret);
 			expect(text).not.toContain(accessSecret);
 		}
-		expect(JSON.parse(reads[1] ?? "").value).toMatchObject({
+		expect(JSON.parse(reads[1] ?? "")).toMatchObject({
 			token: "<set>",
 			headers: "<set>",
 			enabled: true,

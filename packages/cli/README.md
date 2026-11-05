@@ -115,8 +115,8 @@ or scope can redirect the database or the hub.
 ```bash
 kabane config                         # every key, its value and layer, and its description
 kabane config list --json
-kabane config get copilot.model        # dotted paths; the value and the layer it came from
-kabane config get loop.gates           # a group: a line per leaf, each with its layer
+kabane config get copilot.model        # dotted paths; one value
+kabane config get loop.gates --layers  # every leaf under the key, each with the layer it came from
 kabane config set copilot.model opus
 kabane config set sync.enabled false   # booleans are true or false
 kabane config set sync.batchBytes 262144
@@ -137,9 +137,9 @@ another; `--scope` alone writes that scope's layer.
 
 Every operation supports `--json`. `list` returns rows with `key`, `value`,
 `default` (no layer sets it), `layer` and `from` (the file or scope it came from), `readOnly`,
-`protected` and `description`. `get` returns `{key, value, leaves}`, where `leaves` maps every
-dotted key under `key` to its `value`, `layer` and `from`; an absent value is JSON `null` /
-human `default`. `path` returns a string. `set` returns `{key, layer, value}` and `unset`
+`protected` and `description`. `get` returns the resolved value, or JSON `null` / human
+`default` when absent; with `--layers` it returns `{key, value, leaves}`, where `leaves` maps
+every dotted key under `key` to its `value`, `layer` and `from`, and prints a line per leaf. `path` returns a string. `set` returns `{key, layer, value}` and `unset`
 returns `{key, layer, unset: true}`. `sync.token` and `sync.headers` read as `<set>`.
 
 Strings are literal; numbers and booleans use JSON syntax. Arrays take trimmed

@@ -14,13 +14,22 @@ export const configTools = (
 	{
 		name: "kabane_configGet",
 		description:
-			"Read this device's config and settings, as they resolve for this server's project: default, then user (config.json), project (the repo's .kabane/<namespace>.json), then scope (the user's settings for this project's scope). Omit key to list all keys, values, the layer each comes from, defaults, descriptions, readOnly and protected flags. With a key, the effective value and every leaf under it with its layer. Secrets (sync.token, sync.headers) read as <set> when set. Local only; settings are not synced to the hub.",
-		input: { key: z.string().min(1).optional() },
+			"Read this device's config and settings, as they resolve for this server's project: default, then user (config.json), project (the repo's .kabane/<namespace>.json), then scope (the user's settings for this project's scope). Omit key to list all keys, values, the layer each comes from (layer, from), defaults, descriptions, readOnly and protected flags. With a key, its effective value; add layers:true for {key, value, leaves}, every leaf under the key with its value and layer. Secrets (sync.token, sync.headers) read as <set> when set. Local only; settings are not synced to the hub.",
+		input: {
+			key: z.string().min(1).optional(),
+			layers: z
+				.boolean()
+				.optional()
+				.describe(
+					"With a key, also name the layer every leaf under it came from.",
+				),
+		},
 		kind: "read",
-		handler: async ({ key }) => {
-			return typeof key === "string"
-				? ConfigSettings.get(home, where, key)
-				: ConfigSettings.list(home, where);
+		handler: async ({ key, layers }) => {
+			if (typeof key !== "string") return ConfigSettings.list(home, where);
+			const result = await ConfigSettings.get(home, where, key);
+			if (!result.ok || layers === true) return result;
+			return ok(result.value.value);
 		},
 	},
 	{

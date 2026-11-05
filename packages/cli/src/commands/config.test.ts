@@ -69,7 +69,8 @@ const withHome =
 				get: async (key) => {
 					const result = await run("config", "get", key, "--json");
 					expect(result.code).toBe(0);
-					return JSON.parse(result.out).value;
+					// The bare value, as before the layers: `--layers` asks for the envelope.
+					return JSON.parse(result.out);
 				},
 				repo,
 				inRepo: (...args) => runAt(repo, args),
@@ -281,7 +282,7 @@ describe.concurrent("config through the real CLI", () => {
 			expect(await get("copilot.model")).toBeNull();
 			expect(await get("copilot.harness")).toBe("claude");
 			expect((await run("config", "set", "extensions", "")).out).toBe(
-				"extensions = [] (user)",
+				"extensions = []",
 			);
 			expect(await get("extensions")).toEqual([]);
 		}),
@@ -448,7 +449,7 @@ describe.concurrent("config through the real CLI", () => {
 			const leaves = async (key: string) =>
 				Object.fromEntries(
 					Object.entries(
-						(await json("config", "get", key)).leaves as Record<
+						(await json("config", "get", key, "--layers")).leaves as Record<
 							string,
 							{ value: unknown; layer: string }
 						>,
@@ -484,13 +485,20 @@ describe.concurrent("config through the real CLI", () => {
 				"loop.gates.test": ["bun test", "scope"],
 				"loop.gates.lint": ["npm run lint", "project"],
 			});
+			// Without --layers, get prints the effective value alone, as it always has.
+			expect(await json("config", "get", "loop.gates")).toEqual({
+				test: "bun test",
+				lint: "npm run lint",
+			});
 			expect(await leaves("loop.stallAfter")).toEqual({
 				"loop.stallAfter": [2, "project"],
 			});
 			expect(await leaves("loop.worktree")).toEqual({
 				"loop.worktree": [true, "default"],
 			});
-			expect((await inRepo("config", "get", "loop.gates.test")).out).toBe(
+			expect(
+				(await inRepo("config", "get", "loop.gates.test", "--layers")).out,
+			).toBe(
 				`bun test (scope: your settings for scope ${scopeId} in ${path()})`,
 			);
 			// The rows say the same, and outside the repo there is only the user's layer.
@@ -575,6 +583,9 @@ describe.concurrent("config through the real CLI", () => {
 				["path", "extra"],
 				["get", "timezone", "extra"],
 				["--typo"],
+				["get", "timezone", "--layer", "user"],
+				["set", "timezone", "UTC", "--layers"],
+				["get", "timezone", "--layers=yes"],
 			])
 				expect((await run("config", ...args, "--json")).code).toBe(2);
 			const dashed = await run("config", "set", "copilot.args", "--foo,bar");
