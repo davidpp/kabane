@@ -16,7 +16,12 @@ import type { Task, TaskComment, TaskWorkLog } from "../schemas";
 import { Planner } from "../storage";
 import { configureTestRuntime } from "../testing";
 import { createMcpServer } from "./server";
-import { KABANE_TOOLS, type ToolContext, type ToolDef } from "./tools";
+import {
+	humanActorOf,
+	KABANE_TOOLS,
+	type ToolContext,
+	type ToolDef,
+} from "./tools";
 
 const unwrap = <T>(result: Result<T>): T => {
 	if (!result.ok) throw result.error;
@@ -469,6 +474,36 @@ describe("cabane tools", () => {
 
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.message).toContain("never-linked");
+	});
+});
+
+describe("humanActorOf", () => {
+	const ctx = (actor: string, humanActor?: string): ToolContext => ({
+		basePath: "unused",
+		actor,
+		humanActor,
+		scopeRequired: false,
+	});
+
+	it("credits the configured human before an --as agent, and a human actor as its own", () => {
+		expect(
+			humanActorOf(
+				ctx("cabane://actor/agent/claude", "cabane://actor/human/david"),
+			),
+		).toBe("cabane://actor/human/david");
+		expect(humanActorOf(ctx("cabane://actor/human/david"))).toBe(
+			"cabane://actor/human/david",
+		);
+	});
+
+	it("invents no human for an agent, an unknown actor or an agent configured as the device's", () => {
+		expect(humanActorOf(ctx("cabane://actor/agent/claude"))).toBeUndefined();
+		expect(humanActorOf(ctx("cabane://actor/unknown"))).toBeUndefined();
+		expect(
+			humanActorOf(
+				ctx("cabane://actor/agent/claude", "cabane://actor/agent/hermes"),
+			),
+		).toBeUndefined();
 	});
 });
 

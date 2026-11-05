@@ -39,6 +39,8 @@ export const mcp: Command = {
 			{
 				basePath: ctx.value.store,
 				actor: ctx.value.actor,
+				// The configured actor, which `--as` never changes: who a relayed answer credits.
+				humanActor: ctx.value.config.actor,
 				defaultScope,
 				scopeRequired: false,
 			},

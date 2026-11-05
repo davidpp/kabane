@@ -9,6 +9,7 @@ export {
 export {
 	authorTypeOf,
 	define as defineTool,
+	humanActorOf,
 	KABANE_TOOLS,
 	SERVER_INSTRUCTIONS,
 	type ToolContext,

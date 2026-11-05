@@ -72,6 +72,7 @@ export {
 	createMcpServer,
 	defineTool,
 	handleHttpRequest,
+	humanActorOf,
 	KABANE_TOOLS,
 	type McpServerInfo,
 	registeredTools,

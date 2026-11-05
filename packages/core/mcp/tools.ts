@@ -43,6 +43,12 @@ export type ToolContext = {
 	basePath: string;
 	/** Actor URI stamped as author on comments, work logs and context refs. */
 	actor: string;
+	/**
+	 * The human this connection relays for: the device's configured human
+	 * actor, before any `--as`. Read it through `humanActorOf`, which also
+	 * takes a human `actor` (the hub's Access identity) as its own.
+	 */
+	humanActor?: string;
 	/** Applied when a write omits `scopeUri`. */
 	defaultScope?: string;
 	/** Refuse writes with no scope (the hub). */
@@ -66,6 +72,18 @@ export type ToolDef<Shape extends z.ZodRawShape = z.ZodRawShape> = {
 /** Human actor URIs comment as `human`; agent actor URIs as `ai`. */
 export const authorTypeOf = (actor: string): "human" | "ai" =>
 	actor.startsWith("cabane://actor/agent/") ? "ai" : "human";
+
+const HUMAN_ACTOR_PREFIX = "cabane://actor/human/";
+
+/**
+ * The human actor a connection can credit with a reply it relays: `humanActor`,
+ * else `actor` itself, whichever is a `cabane://actor/human/` URI first; none
+ * when neither is, so an agent or an unknown actor is never passed off as one.
+ */
+export const humanActorOf = (ctx: ToolContext): string | undefined =>
+	[ctx.humanActor, ctx.actor].find((actor) =>
+		actor?.startsWith(HUMAN_ACTOR_PREFIX),
+	);
 
 /** A tool with its own input shape, widened to the `ToolDef` a list of tools holds. */
 export const define = <Shape extends z.ZodRawShape>(
