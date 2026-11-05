@@ -22,7 +22,10 @@ export namespace LoopDispatcher {
 			: "drive the subtasks to done through coding harnesses, in a detached runner";
 
 	// What a run needs to start that a trigger cannot ask for: where it was started from.
-	type Deps = Pick<Loop.StartDeps, "home" | "basePath" | "kabaneBin" | "cwd">;
+	type Deps = Pick<
+		Loop.StartDeps,
+		"home" | "basePath" | "kabaneBin" | "cwd" | "settings"
+	>;
 
 	const trigger = (
 		plan: LoopPlan.Plan,

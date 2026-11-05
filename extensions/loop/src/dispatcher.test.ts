@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
+import { ok, Planner } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope } from "@cabane/core/scope";
+import { Settings } from "@cabane/extension";
 import { LoopDispatcher } from "./dispatcher";
 
 let root = "";
@@ -20,6 +21,8 @@ const deps = () => ({
 	basePath: home,
 	kabaneBin: "/nonexistent",
 	cwd: repo,
+	// No stored layers: the form's values over the defaults, through the real resolver.
+	settings: Settings.port(async () => ok([])),
 });
 
 const add = async (title: string, extra: Record<string, unknown> = {}) => {

@@ -82,12 +82,12 @@ describe("Briefing.preview", () => {
 		).map(text);
 		const at = lines.findIndex((l) => l.startsWith("Gates"));
 		expect(lines.slice(at, at + 3)).toEqual([
-			"Gates  2  set in .kabane/loop.json or with --gate",
+			"Gates  2  set with kabane config set loop.gates.<name> or --gate",
 			" test       bun test",
 			" typecheck  bun run typecheck",
 		]);
 		expect(Briefing.preview(DIAMOND, {}, [], NOW).map(text)).toContain(
-			"Gates  none  set in .kabane/loop.json or with --gate",
+			"Gates  none  set with kabane config set loop.gates.<name> or --gate",
 		);
 	});
 
