@@ -72,15 +72,15 @@ const copilotOverrides = (ctx: Ctx): Harnesses.Overrides | undefined => {
  * so ids route back to it. A port no extension fills stays absent, and the
  * board keeps its no-op default for it.
  */
-const extensionPorts = (
+const extensionPorts = async (
 	extensions: readonly Extension[],
 	ctx: Ctx,
-): Pick<BoardDeps, "activity" | "dispatcher" | "headers"> => {
+): Promise<Pick<BoardDeps, "activity" | "dispatcher" | "headers">> => {
 	const activity: Record<string, ActivitySource> = {};
 	const dispatchers: Record<string, Dispatcher> = {};
 	const headers: Record<string, Readonly<Record<string, CardHeader>>> = {};
 	for (const extension of extensions) {
-		const ports = extension.board?.(ctx);
+		const ports = await extension.board?.(ctx);
 		if (ports?.activity) activity[extension.name] = ports.activity;
 		if (ports?.dispatcher) dispatchers[extension.name] = ports.dispatcher;
 		if (ports?.headers) headers[extension.name] = ports.headers;
@@ -120,7 +120,7 @@ export const boardDeps = async (
 	const scope = await resolveScope(args, ctx);
 	const overrides = copilotOverrides(ctx);
 	return {
-		...extensionPorts(extensions, ctx),
+		...(await extensionPorts(extensions, ctx)),
 		cwd: ctx.cwd,
 		basePath: ctx.store,
 		// The board wants a URI and a label; the project root is the copilot's business.

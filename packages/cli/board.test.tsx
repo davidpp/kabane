@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { App, noActivity } from "@cabane/board";
 import { Planner } from "@cabane/core";
 import { parseArgs } from "@cabane/extension";
+import { loop } from "@cabane/loop";
 import { testRender } from "@opentui/react/test-utils";
 import { boardDeps, copilotHarness } from "./src/commands/board-runtime";
 import { saveConfig } from "./src/config";
@@ -48,6 +49,17 @@ describe("kabane board", () => {
 
 	afterAll(() => {
 		rmSync(home, { recursive: true, force: true });
+	});
+
+	it("awaits the loop's board ports before merging them", async () => {
+		const deps = await boardDeps(parseArgs([]), ctx, "claude", [loop]);
+		try {
+			expect(deps.activity).toBeDefined();
+			expect(deps.dispatcher).toBeDefined();
+			expect(deps.headers?.loops).toBeFunction();
+		} finally {
+			deps.copilot.close();
+		}
 	});
 
 	it("scopes the board the way list does", async () => {

@@ -24,7 +24,7 @@ export type Extension = {
 	 */
 	settings?: z.ZodTypeAny;
 	commands?: readonly Extension.Command[];
-	board?: (ctx: Extension.Ctx) => Extension.BoardPorts;
+	board?: (ctx: Extension.Ctx) => Promise<Extension.BoardPorts>;
 };
 
 export namespace Extension {
