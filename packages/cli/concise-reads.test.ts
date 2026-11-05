@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
+import { questionsModule } from "@cabane/questions";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
@@ -69,7 +70,9 @@ describe.concurrent("concise actual entry points", () => {
 						}),
 					);
 					const discovery = await client.listTools();
-					expect(discovery.tools).toHaveLength(19);
+					expect(discovery.tools).toHaveLength(
+						19 + (questionsModule.tools?.length ?? 0),
+					);
 					for (const name of [
 						"kabane_list",
 						"kabane_search",
