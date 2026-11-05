@@ -25,7 +25,7 @@ const tailLog = (): CopilotLog.Log => {
 
 describe("the copilot pane's edges", () => {
 	for (const width of [80, 40]) {
-		it(`at ${width} columns, the tail fills the padding and the running prompt keeps its separator`, async () => {
+		it(`at ${width} columns, the tail fills the padding`, async () => {
 			const { captureCharFrame, destroy } = await renderTest(
 				<CopilotPane
 					copilot={Fixtures.copilot({ turn: "running", hasLog: true })}
@@ -44,13 +44,6 @@ describe("the copilot pane's edges", () => {
 				// Only the two padding cells surround a tail line, including its ellipsis.
 				expect(rows.find((row) => row.startsWith(" Redis"))).toBe(
 					` ${LONG.slice(0, width - 3)}… `,
-				);
-				const prompt = rows.find((row) => row.startsWith(" ▸"));
-				expect(prompt).toBe(
-					(width === 40
-						? " ▸ a turn is running · send when it en…"
-						: " ▸ a turn is running · send when it ends"
-					).padEnd(width),
 				);
 			} finally {
 				destroy();

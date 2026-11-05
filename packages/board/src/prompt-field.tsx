@@ -114,7 +114,7 @@ export const PromptField = ({
 				paddingRight: 1,
 			}}
 		>
-			<text bg={fieldBg} fg={theme.muted}>
+			<text bg={fieldBg} fg={theme.muted} flexShrink={0}>
 				▸{" "}
 			</text>
 			<textarea
@@ -133,7 +133,7 @@ export const PromptField = ({
 				wrapMode="word"
 				onSubmit={onSubmit}
 				onContentChange={onContentChange}
-				style={{ flexGrow: 1, height: rows }}
+				style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, height: rows }}
 			/>
 		</box>
 	);
