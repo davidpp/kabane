@@ -1,5 +1,5 @@
 // The loop's entry points, as plain functions over explicit dependencies. The extension wires
-// them to `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer`; nothing here parses argv or reads the
+// them to `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer|prune`; nothing here parses argv or reads the
 // environment for its own settings. A run whose runner died is restarted (`restart`) where it
 // stopped, with its claims and its worktree.
 import { spawn } from "node:child_process";
@@ -25,9 +25,11 @@ import type { Settings } from "@cabane/extension";
 import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
 import { Gates } from "./gates";
+import type { Land } from "./land";
 import { Lenses } from "./lenses";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
+import { Prune } from "./prune";
 import { Questions } from "./questions";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
@@ -55,6 +57,8 @@ export namespace Loop {
 		bootMs?: number;
 		/** How the run's worktree is made. Defaults to the user's own git. */
 		git?: Worktree.Git;
+		/** How a last run's pull request is looked up. Defaults to the user's own gh. */
+		gh?: Land.Gh;
 		/** Where a run's settings resolve through their layers: the extension context's port. */
 		settings: Settings.Port;
 	};
@@ -421,9 +425,11 @@ export namespace Loop {
 	};
 
 	// The parent's last run's worktree, when the new run should go on in it: still one of the
-	// repository's worktrees, no live run working in it, and its branch not merged into HEAD, so
-	// what was done there is not in a fresh worktree of HEAD. `checkParent` has refused a parent
-	// whose last run is live or lost its runner: that run is restarted, not taken over.
+	// repository's worktrees, no live run working in it, and its work not merged (`Prune.verdict`),
+	// so what was done there is not in a fresh worktree of HEAD. The new run takes over its pull
+	// request with it. A worktree whose work is merged is removed, with its branch. `checkParent`
+	// has refused a parent whose last run is live or lost its runner: that run is restarted, not
+	// taken over.
 	const reusable = async (
 		deps: StartDeps,
 		run: RunStore.Run,
@@ -433,6 +439,7 @@ export namespace Loop {
 					dir: string;
 					from: { runId: string; branch: string };
 					base?: Worktree.Head;
+					pr?: string;
 			  }
 			| undefined
 		>
@@ -452,21 +459,20 @@ export namespace Loop {
 		const branch = await Worktree.branchOf(run.projectDir, dir, deps.git);
 		if (!branch.ok) return branch;
 		if (branch.value === undefined) return ok(undefined);
-		const merged = await Worktree.merged(
-			run.projectDir,
-			branch.value,
-			deps.git,
-		);
-		if (!merged.ok) return merged;
-		return ok(
-			merged.value
-				? undefined
-				: {
-						dir,
-						from: { runId: last.id, branch: branch.value },
-						...(last.base ? { base: last.base } : {}),
-					},
-		);
+		const said = await Prune.verdict(deps, last, branch.value);
+		if (!said.ok) return said;
+		if (said.value.kind === "merged") {
+			// A worktree that cannot be removed (changes left in it) stays; the run starts afresh.
+			await Prune.remove(deps, last, dir, branch.value, said.value);
+			return ok(undefined);
+		}
+		if (said.value.kind === "kept") return ok(undefined);
+		return ok({
+			dir,
+			from: { runId: last.id, branch: branch.value },
+			...(last.base ? { base: last.base } : {}),
+			...(last.pr ? { pr: last.pr } : {}),
+		});
 	};
 
 	// The run's worktree, beside its files: the parent's last run's when its branch is not merged
@@ -505,6 +511,7 @@ export namespace Loop {
 				worktreePrefix: prefix.value,
 				worktreeReused: from,
 				base: base.value,
+				...(reused.value.pr ? { pr: reused.value.pr } : {}),
 			});
 		}
 		const dir = Worktree.dirFor(RunStore.paths(deps.home, run.id).dir);
@@ -597,6 +604,14 @@ export namespace Loop {
 			process.off("SIGINT", onSignal);
 		}
 	};
+
+	/**
+	 * Remove every run worktree on this device whose work is merged, with its branch: what
+	 * `kabane loop prune` does. A pull request's state is GitHub's to say (`Prune`).
+	 */
+	export const prune = (
+		deps: Pick<StartDeps, "home" | "git" | "gh">,
+	): Promise<Result<Prune.Pruned[]>> => Prune.prune(deps);
 
 	/** One run as it is now: a run whose runner is gone reads as failed. */
 	export const status = (

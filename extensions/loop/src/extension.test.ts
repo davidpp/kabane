@@ -98,6 +98,14 @@ describe("kabane loop start", () => {
 	});
 });
 
+describe("kabane loop prune", () => {
+	it("says so when no run has a worktree left to remove", async () => {
+		const pruned = await kabaneLoop("prune");
+		expect(pruned.exitCode).toBe(0);
+		expect(pruned.text).toBe("No run worktrees left");
+	});
+});
+
 describe("kabane loop status", () => {
 	it("lines a form question's later lines up under its first, with its choices", async () => {
 		const issue = await Planner.addTask(home, {

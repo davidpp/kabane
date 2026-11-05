@@ -28,7 +28,8 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop pause|resume <runId>      (resume also restarts a run whose runner died)
        kabane loop skip|next <subtask|issue>
        kabane loop rollback <runId> <sha>
-       kabane loop answer <questionId> <option>`;
+       kabane loop answer <questionId> <option>
+       kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)`;
 
 // The executable the runner and each session's MCP server run as: this process's own entry.
 const kabaneBin = (): string => {
@@ -329,6 +330,16 @@ const VERBS: Record<string, { needs: string; run: Verb }> = {
 	rollback: { needs: "a run id", run: rollback },
 };
 
+const prune = async (deps: Deps): Promise<Outcome> => {
+	const pruned = await Loop.prune(deps);
+	if (!pruned.ok) return failure(pruned.error);
+	const lines = pruned.value.map(
+		(p) =>
+			`${p.removed ? "removed" : "kept"} ${p.dir}${p.branch ? ` (branch ${p.branch})` : ""}: ${p.why}`,
+	);
+	return success(pruned.value, lines.join("\n") || "No run worktrees left");
+};
+
 const list = (deps: Deps): Outcome => {
 	const runs = Loop.list(deps);
 	return runs.ok
@@ -354,6 +365,7 @@ const command: Extension.Command = {
 		};
 		if (verb === "answer") return answer(args, deps);
 		if (verb === "status") return target ? statusOf(deps, target) : list(deps);
+		if (verb === "prune") return prune(deps);
 		const known = verb && Object.hasOwn(VERBS, verb) ? VERBS[verb] : undefined;
 		if (!known)
 			return usage(

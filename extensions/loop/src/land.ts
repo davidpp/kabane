@@ -156,6 +156,36 @@ export namespace Land {
 		return pr.success && pr.data.state === "OPEN" ? pr.data.url : undefined;
 	};
 
+	const StateSchema = z.object({
+		state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+		headRefOid: z.string(),
+	});
+
+	/** Where a pull request stands on GitHub, and the commit its branch was at. */
+	type PrState = z.infer<typeof StateSchema>;
+
+	/** Ask gh where pull request `url` stands. */
+	export const prState = async (
+		run: Gh | undefined,
+		cwd: string,
+		url: string,
+	): Promise<Result<PrState>> => {
+		const viewed = await (run ?? gh)(cwd, [
+			"pr",
+			"view",
+			url,
+			"--json",
+			"state,headRefOid",
+		]);
+		if (!viewed.ok) return viewed;
+		const json = trySync((): unknown => JSON.parse(viewed.value));
+		if (!json.ok) return json;
+		const parsed = StateSchema.safeParse(json.value);
+		return parsed.success
+			? ok(parsed.data)
+			: err(new Error(`gh pr view ${url} said: ${viewed.value.trim()}`));
+	};
+
 	const lines = (items: readonly string[], none: string): string =>
 		items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : none;
 

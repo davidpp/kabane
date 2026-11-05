@@ -1,8 +1,8 @@
 // A run's git worktree, and the checkpoints committed in it. On unless the run opts out: `git
 // worktree add` on a branch of its own beside the run's files, or the worktree of the parent's
-// last run when its branch is not merged yet, recorded in run.json, never removed by the loop. A
-// checkpoint is a commit of everything in the worktree after a green gate; a rollback resets the
-// worktree to one of them.
+// last run when its work is not merged yet, recorded in run.json. Once its work is merged it is
+// removed, with its branch (`Prune`). A checkpoint is a commit of everything in the worktree
+// after a green gate; a rollback resets the worktree to one of them.
 //
 // Nothing here commits into, or resets, the user's own checkout: `checkpoint` and `rollback`
 // refuse any directory that is not a linked worktree, so a run without one cannot reach them by
@@ -242,6 +242,30 @@ export namespace Worktree {
 				? new Error(`conflicts in ${files.join(", ")}`)
 				: rebased.error,
 		);
+	};
+
+	/**
+	 * Remove the worktree at `dir` and delete its branch: a run's worktree whose work is merged.
+	 * `git worktree remove` refuses a worktree with changes not committed, which is left as it is.
+	 * A branch merged into HEAD is deleted as git deletes a merged branch; one `squashed` into the
+	 * base by its pull request is not merged as git sees it, and is deleted regardless.
+	 */
+	export const remove = async (
+		projectDir: string,
+		dir: string,
+		branch: string,
+		squashed: boolean,
+		run: Git = git,
+	): Promise<Result<void>> => {
+		const removed = await run(projectDir, ["worktree", "remove", dir]);
+		if (!removed.ok) return removed;
+		const deleted = await run(projectDir, [
+			"branch",
+			"-q",
+			squashed ? "-D" : "-d",
+			branch,
+		]);
+		return deleted.ok ? ok(undefined) : deleted;
 	};
 
 	/** The trace's line for a rollback. */
