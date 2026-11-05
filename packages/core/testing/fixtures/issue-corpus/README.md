@@ -117,5 +117,5 @@ brief content (including the synthetic oversize brief on both transports). The C
 lists the detected scope; legacy MCP lists all scopes, deliberately including the
 synthetic unscoped row. Measurement logs record actual UTF-8 bytes, JS UTF-16
 characters and calls, not tokens. Source v2 baseline: public MCP list 48,418 bytes;
-public+synthetic list 536,776 bytes (limit 200). Runtime IDs/timestamps are not
+public+synthetic list 196,776 bytes (limit 200). Runtime IDs/timestamps are not
 whole-output snapshots. Efficient modes and their regressions belong to B/C.
