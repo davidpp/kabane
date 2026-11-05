@@ -38,7 +38,7 @@ const PLACEHOLDER = "ask about the selection · / for shortcuts";
 // One turn at a time, so while one runs `submitCopilot` refuses to send and flashes instead. The
 // input must not go on inviting what it cannot do — and the draft IS kept, so this says when it
 // will go rather than that it is lost.
-const RUNNING_PLACEHOLDER = "a turn is running · send when it ends";
+const RUNNING_HINT = "a turn is running · send when it ends";
 
 // The chip text: the selected task, the working-set size, the section — whichever apply, in that
 // order. Exported pure so the copy is assertable without a renderer.
@@ -311,7 +311,7 @@ export const CopilotPane = ({
 					? tail.map((line, index) => (
 							// Index keys: a positional window on the last few lines, not a list of things — row N is its only identity, and the same line can legitimately repeat.
 							<text key={index} bg={paneBg} fg={theme.muted}>
-								{fit(line, inner - 2)}
+								{fit(line, inner)}
 							</text>
 						))
 					: null}
@@ -328,7 +328,8 @@ export const CopilotPane = ({
 				// The textarea unmounts with the panel, so the mirror seeds the new one: a draft
 				// survives tabbing to the board to mark rows and tabbing back.
 				initialValue={copilot.text}
-				placeholder={running ? RUNNING_PLACEHOLDER : PLACEHOLDER}
+				// The field's padding leaves inner columns, less its `▸ ` prefix.
+				placeholder={running ? fit(RUNNING_HINT, inner - 2) : PLACEHOLDER}
 				rows={fieldRows(copilot.text, height)}
 				onSubmit={onSubmit}
 				onContentChange={onContentChange}
