@@ -340,11 +340,11 @@ export namespace Migrations {
 		modules: readonly KabaneModule[],
 	): Result<void> => {
 		for (const module of modules) {
-			const migrations = module.migrations ?? [];
-			if (migrations.length === 0) continue;
+			// Run for an empty list too: a database a build of this module with
+			// migrations has opened must still be refused by one without.
 			const ran = Migrate.run(
 				db,
-				migrations,
+				module.migrations ?? [],
 				Modules.versionTable(module.name),
 			);
 			if (!ran.ok)

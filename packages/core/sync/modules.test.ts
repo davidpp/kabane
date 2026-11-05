@@ -364,6 +364,18 @@ describe("a module's migrations", () => {
 		expect(init.ok ? "" : init.error.message).toContain('module "notes"');
 		expect(init.ok ? "" : init.error.message).toContain("update kabane");
 	});
+
+	it("refuse it from a build of the module with no migrations at all", async () => {
+		const alpha = await createDevice("alpha", [notes([CREATE_NOTES])]);
+		for (const bare of [
+			notes([]),
+			{ name: "notes", syncTables: notes().syncTables },
+		]) {
+			register([bare]);
+			const init = await Planner.init(alpha.base);
+			expect(init.ok ? "" : init.error.message).toContain('module "notes"');
+		}
+	});
 });
 
 describe("capturing a module table", () => {
