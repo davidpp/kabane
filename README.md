@@ -17,6 +17,7 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 | `packages/sqlite` | `@cabane/sqlite` | Bun | Db adapter over `bun:sqlite` |
 | `packages/acp` | `@cabane/acp` | Bun | Agent Client Protocol client: harness registry, session runner, the board's copilot |
 | `packages/extension` | `@cabane/extension` | Bun | the extension contract, and the argument parsing and outcomes every command is written with |
+| `packages/questions` | `@cabane/questions` | Bun + Workers | data module: the decisions agents ask a human on an issue (`kabane_ask`, `kabane_questions`, `kabane_answer`), replicated like tasks |
 | `packages/cli` | `kabane` | Bun | the device command line |
 | `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource, Dispatcher and Copilot ports |
 | `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP |
@@ -139,8 +140,8 @@ logged in on this machine ([`docs/deploy.md`](docs/deploy.md) part 4.7).
 (state, priority, kind, assignee), what is running on it, its parent, how many subtasks it
 has and how many are done, what blocks it and what it blocks, the issue it links to, and any
 question an agent is waiting on. Under it, three tabs, one at a time: the description, with
-the subtasks (done or open, and an open one's state) and the curated context refs (kind,
-label, ref) under it; the comments (whole, newest first); and the log (work logs with short
+the decisions made on the issue, the subtasks (done or open, and an open one's state) and the
+curated context refs (kind, label, ref) under it; the comments (whole, newest first); and the log (work logs with short
 shas and session activity, one line each). `1`-`3` jump to a tab,
 `h`/`l` step through them, and a click picks one. The view draws the task's records, not the
 agent brief; `y` still copies the brief for pasting into a chat.

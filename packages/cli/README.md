@@ -256,7 +256,9 @@ Same tools as a hub at `https://<your-domain>/mcp`: `kabane_scopeList`,
 `kabane_add`, `kabane_get`, `kabane_list`, `kabane_search`, `kabane_today`,
 `kabane_context`, `kabane_edit`, `kabane_done`, `kabane_link`,
 `kabane_comment`, `kabane_log`, `kabane_contextAdd`, `kabane_contextList`,
-`kabane_contextRemove`. The one difference: here a write may omit `scopeUri`
+`kabane_contextRemove`, `kabane_upstream_link`, `kabane_upstream_unlink`, and the
+questions module's `kabane_ask`, `kabane_questions`, `kabane_answer`. A client's
+`tools/list` is the authority, with each tool's parameters. The one difference: here a write may omit `scopeUri`
 and take the directory default; at the hub it is required. Stdout is the wire,
 so the command prints nothing of its own.
 
