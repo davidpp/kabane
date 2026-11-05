@@ -1,9 +1,9 @@
 // The run's parent in the tracker. A run that starts or resumes takes the parent into
 // in_progress, and nothing in the run takes it out: merging the run's work is the human's step,
-// so a completed run flags the parent for review and the human closes it. A run whose landing
+// so a completed run flags the parent for review. A run whose landing
 // opened a pull request also moves it to waiting, on that review, and records the pull request as
-// its upstream twin; a later run on the parent takes it from waiting again. Every end of a run is
-// a comment on the parent saying how it ended and what to do next. A state a human gave the
+// its upstream twin; start and prune reconcile it when they observe that PR merged or closed.
+// Every end of a run comments on the parent saying how it ended and what to do next. A state a human gave the
 // parent during the run is theirs: the end of the run only comments on it.
 //
 // A single-issue run's target is its own work node, so its state is the claim's: taking it here
@@ -11,7 +11,14 @@
 // while its work waits to be merged. One a human gives a work child during the run is a parent
 // from then on: once its own session has ended, the run takes it as it takes any parent, and the
 // end of the run says it changed shape.
-import { authorTypeOf, Planner, Runtime, type Task } from "@cabane/core";
+import {
+	authorTypeOf,
+	ok,
+	Planner,
+	Runtime,
+	type Result,
+	type Task,
+} from "@cabane/core";
 import { LoopPlan } from "./plan";
 import { RunState } from "./state";
 import { RunStore } from "./store";
@@ -254,6 +261,41 @@ export namespace Parent {
 		});
 		if (!flagged.ok)
 			warn(ctx, `parent not flagged for review: ${flagged.error.message}`);
+	};
+
+	/** Reconcile only a parent still waiting for review of this run's upstream PR. */
+	export const reconcile = async (
+		basePath: string,
+		run: RunStore.Run,
+		state: "OPEN" | "CLOSED" | "MERGED",
+	): Promise<Result<void>> => {
+		if (!run.pr || state === "OPEN") return ok(undefined);
+		const parent = await Planner.getTask(basePath, run.parentId);
+		if (!parent.ok) return parent;
+		if (parent.value?.state !== "waiting" || !parent.value.needsReview)
+			return ok(undefined);
+		const links = await Planner.getUpstreamLinksForTask(basePath, run.parentId);
+		if (!links.ok) return links;
+		if (
+			!links.value.some(
+				(link) => link.provider === "github" && link.url === run.pr,
+			)
+		)
+			return ok(undefined);
+		const merged = state === "MERGED";
+		const actor = Runtime.actor();
+		const commented = await Planner.addComment(basePath, {
+			taskId: run.parentId,
+			author: actor,
+			authorType: authorTypeOf(actor),
+			content: `Pull request ${run.pr} ${merged ? "merged" : "was closed without merging"}; ${run.parentShortId} moves from waiting to ${merged ? "done" : "next"}.`,
+		});
+		if (!commented.ok) return commented;
+		const moved = await Planner.updateTask(basePath, run.parentId, {
+			state: merged ? "done" : "next",
+			needsReview: false,
+		});
+		return moved.ok ? ok(undefined) : moved;
 	};
 
 	/**

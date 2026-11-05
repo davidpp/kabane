@@ -79,7 +79,7 @@ const deps = () => ({
 	settings: Settings.port(async () => ok([])),
 });
 
-const parentWithChild = async (): Promise<Task> => {
+const parentWithChild = async (single = false): Promise<Task> => {
 	const scope = await detectScope(repo, { home, detectExtensions: false });
 	if (!scope) throw new Error("the fixture repo has no scope");
 	const add = async (title: string, extra: Record<string, unknown> = {}) => {
@@ -94,7 +94,7 @@ const parentWithChild = async (): Promise<Task> => {
 		return created.value;
 	};
 	const parent = await add("parent");
-	await add("child", { parentTaskId: parent.id });
+	if (!single) await add("child", { parentTaskId: parent.id });
 	return parent;
 };
 
@@ -118,6 +118,32 @@ const landed = (run: RunStore.Run, pr = PR): string => {
 	const written = RunStore.write(home, { ...run, pr, pushed: head(dir) });
 	if (!written.ok) throw written.error;
 	return head(dir);
+};
+
+// The tracker state left by a successful PR landing.
+const waitingOn = async (parent: Task, pr = PR): Promise<void> => {
+	const moved = await Planner.updateTask(home, parent.id, {
+		state: "waiting",
+		needsReview: true,
+	});
+	if (!moved.ok) throw moved.error;
+	const linked = await Planner.upsertUpstreamLink(home, {
+		taskId: parent.id,
+		provider: "github",
+		externalId: pr,
+		url: pr,
+		title: parent.title,
+	});
+	if (!linked.ok) throw linked.error;
+};
+
+const expectParent = async (
+	parent: Task,
+	state: Task["state"],
+	needsReview: boolean,
+): Promise<void> => {
+	const task = await Planner.getTask(home, parent.id);
+	expect(task.ok && task.value).toMatchObject({ state, needsReview });
 };
 
 // The pull request squash-merged on the remote, as GitHub merges one, and pulled into the checkout.
@@ -234,7 +260,7 @@ describe("a worktree a landing by hand holds", () => {
 		// Refused before a run is written, so the next start still finds the worktree's run last.
 		const runs = RunStore.list(home);
 		expect(runs.ok && runs.value.map((r) => r.id)).toEqual([first.id]);
-		const pruned = await Loop.prune({ home, git, gh });
+		const pruned = await Loop.prune({ home, basePath: home, git, gh });
 		expect(pruned.ok && pruned.value).toMatchObject([
 			{ removed: false, why: expect.stringContaining("is in use by") },
 		]);
@@ -269,7 +295,7 @@ describe("Loop.prune", () => {
 			return said ? ok(JSON.stringify(said)) : err(new Error("not found"));
 		};
 
-		const pruned = await Loop.prune({ home, git, gh: ghByPr });
+		const pruned = await Loop.prune({ home, basePath: home, git, gh: ghByPr });
 
 		if (!pruned.ok) throw pruned.error;
 		const by = new Map(pruned.value.map((p) => [p.runId, p]));
@@ -295,7 +321,7 @@ describe("Loop.prune", () => {
 		const run = await startOn(parent.id);
 		writeFileSync(join(run.worktree ?? "", "draft.txt"), "unsaved\n");
 
-		const pruned = await Loop.prune({ home, git, gh });
+		const pruned = await Loop.prune({ home, basePath: home, git, gh });
 
 		if (!pruned.ok) throw pruned.error;
 		expect(pruned.value).toMatchObject([{ runId: run.id, removed: false }]);
@@ -311,11 +337,128 @@ describe("Loop.prune", () => {
 		const written = RunStore.write(home, { ...run, worktree: mine });
 		if (!written.ok) throw written.error;
 
-		const pruned = await Loop.prune({ home, git, gh });
+		const pruned = await Loop.prune({ home, basePath: home, git, gh });
 
 		if (!pruned.ok) throw pruned.error;
 		expect(pruned.value).toMatchObject([{ runId: run.id, removed: false }]);
 		expect(pruned.value[0]?.why).toContain("not a worktree the loop made");
 		expect(existsSync(mine)).toBe(true);
+	});
+});
+
+describe("the parent waiting on its pull request", () => {
+	for (const command of ["start", "prune"] as const)
+		for (const state of ["MERGED", "CLOSED"] as const)
+			it(`${command} reconciles a ${state} PR and comments only once`, async () => {
+				const parent = await parentWithChild();
+				const run = await startOn(parent.id);
+				const tip = landed(run);
+				await waitingOn(parent);
+				if (state === "MERGED") squashMerge(run.branch ?? "");
+				prSays = { state, headRefOid: tip };
+				if (command === "start") await startOn(parent.id);
+				else await Loop.prune(deps());
+				await expectParent(parent, state === "MERGED" ? "done" : "next", false);
+				const comments = await Planner.getComments(home, parent.id);
+				expect(comments.ok && comments.value.map((c) => c.content)).toEqual([
+					`Pull request ${PR} ${state === "MERGED" ? "merged" : "was closed without merging"}; ${parent.shortId} moves from waiting to ${state === "MERGED" ? "done" : "next"}.`,
+				]);
+				expect(ghCalls).toEqual([
+					["pr", "view", PR, "--json", "state,headRefOid"],
+				]);
+				await Loop.prune(deps());
+				const again = await Planner.getComments(home, parent.id);
+				expect(again.ok && again.value).toHaveLength(1);
+			});
+
+	for (const condition of [
+		"open",
+		"unavailable",
+		"malformed",
+		"human-moved",
+		"other-pr",
+		"locked",
+	] as const)
+		it(`preserves the parent when ${condition}`, async () => {
+			const parent = await parentWithChild();
+			const run = await startOn(parent.id);
+			const tip = landed(run);
+			await waitingOn(parent, condition === "other-pr" ? `${PR}0` : PR);
+			prSays =
+				condition === "unavailable"
+					? undefined
+					: {
+							state:
+								condition === "open"
+									? "OPEN"
+									: condition === "malformed"
+										? "unknown"
+										: "CLOSED",
+							headRefOid: tip,
+						};
+			if (condition === "human-moved")
+				await Planner.updateTask(home, parent.id, { state: "someday" });
+			const held =
+				condition === "locked"
+					? Worktree.lock(run.worktree ?? "", "test landing")
+					: undefined;
+			if (held && !held.ok) throw held.error;
+			try {
+				await Loop.prune(deps());
+				await expectParent(
+					parent,
+					condition === "human-moved" ? "someday" : "waiting",
+					true,
+				);
+				const comments = await Planner.getComments(home, parent.id);
+				expect(comments.ok && comments.value).toEqual([]);
+				if (condition === "locked") expect(ghCalls).toEqual([]);
+			} finally {
+				if (held?.ok) held.value();
+			}
+		});
+
+	it("does not settle a newer PR from an older retained worktree", async () => {
+		const parent = await parentWithChild();
+		const first = await startOn(parent.id);
+		prSays = { state: "CLOSED", headRefOid: landed(first) };
+		await waitingOn(parent);
+		const second = await startOn(parent.id);
+		const newer = `${PR}0`;
+		const tip = landed(second, newer);
+		await waitingOn(parent, newer);
+		const ghByPr: Land.Gh = async (_cwd, args) =>
+			ok(
+				JSON.stringify({
+					state: args[2] === newer ? "OPEN" : "CLOSED",
+					headRefOid: tip,
+				}),
+			);
+		await Loop.prune({ ...deps(), gh: ghByPr });
+		await expectParent(parent, "waiting", true);
+	});
+
+	it("settles the PR even when later commits keep its worktree", async () => {
+		const parent = await parentWithChild();
+		const run = await startOn(parent.id);
+		const tip = landed(run);
+		await waitingOn(parent);
+		squashMerge(run.branch ?? "");
+		commit(run.worktree ?? "", "after-merge.txt");
+		prSays = { state: "MERGED", headRefOid: tip };
+		await Loop.prune(deps());
+		await expectParent(parent, "done", false);
+		expect(existsSync(run.worktree ?? "")).toBe(true);
+	});
+
+	it("releases a single issue for another run after prune observes its closed PR", async () => {
+		const parent = await parentWithChild(true);
+		const run = await startOn(parent.id);
+		prSays = { state: "CLOSED", headRefOid: landed(run) };
+		await waitingOn(parent);
+		await Loop.prune(deps());
+		await expectParent(parent, "next", false);
+		const second = await startOn(parent.id);
+		expect(second.id).not.toBe(run.id);
 	});
 });
