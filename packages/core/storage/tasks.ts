@@ -402,11 +402,12 @@ export namespace Planner {
 			if (updates.state !== undefined) {
 				sets.push("state = ?");
 				params.push(updates.state);
-				// Set completed_at when transitioning to done
-				if (updates.state === "done") {
-					sets.push("completed_at = ?");
-					params.push(now);
-				}
+				sets.push("completed_at = ?");
+				params.push(
+					updates.state === "done" || updates.state === "cancelled"
+						? now
+						: null,
+				);
 			}
 			if (updates.priority !== undefined) {
 				sets.push("priority = ?");
