@@ -7,6 +7,7 @@ import {
 	readFileSync,
 	readlinkSync,
 	realpathSync,
+	renameSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -107,7 +108,7 @@ let release: Release = { tags: TAGS, archive: "", sums: "" };
 const requests: string[] = [];
 const server = Bun.serve({
 	port: 0,
-	fetch: (request) => {
+	fetch: (request): Response => {
 		const path = new URL(request.url).pathname;
 		// Only kabane's own: another local tool may probe any open port.
 		if (request.headers.get("user-agent")?.startsWith("kabane/"))
@@ -170,17 +171,20 @@ const update = (
 			env: { PATH: "/usr/bin:/bin", ...env },
 			compiled: true,
 			target: TARGET,
-			...over,
 			source: {
 				registry: server.url.origin,
 				releases: `${server.url.origin}/download`,
 			},
+			...over,
 		},
 		version,
 	);
 
 const leftovers = (directory: string): string[] =>
-	readdirSync(directory).filter((name) => name.startsWith(".kabane-update-"));
+	readdirSync(directory).filter(
+		(name) =>
+			name.startsWith(".kabane-update-") || name.startsWith("templates."),
+	);
 
 test("--check reads the dist-tags alone and changes nothing", async () => {
 	serve(repacked);
@@ -234,6 +238,11 @@ test("update replaces the real executable behind a symlink, and its templates, w
 		"kept\n",
 	);
 	expect(leftovers(installed.directory)).toEqual([]);
+	expect(readdirSync(installed.directory).sort()).toEqual([
+		"README.md",
+		"kabane",
+		"templates",
+	]);
 }, 60_000);
 
 test("an archive that does not match SHA256SUMS is refused and the install stays as it was", async () => {
@@ -325,3 +334,165 @@ test("a target with no published binary reports the candidate and replaces nothi
 	expect(UpdateBinary.target("win32", "x64")).toBeUndefined();
 	expect(UpdateBinary.target("linux", "arm64")).toBe("linux-arm64");
 }, 30_000);
+
+/** An install directory and a staged release beside it, for the swap alone. */
+const staging = () => {
+	const base = mkdtempSync(join(WORK, "swap-"));
+	const directory = join(base, "kabane");
+	const staged = join(base, "staged");
+	for (const [root, label] of [
+		[directory, "old"],
+		[staged, "new"],
+	] as const) {
+		mkdirSync(join(root, "templates"), { recursive: true });
+		writeFileSync(join(root, "templates/which.md"), label);
+	}
+	const executable = join(directory, "kabane");
+	writeFileSync(executable, "old executable");
+	writeFileSync(join(staged, "kabane"), "new executable");
+	const swap = {
+		executable,
+		staged,
+		installedVersion: "1.0.0",
+		version: "1.0.1",
+	};
+	/** The filesystem's rename, except into the paths `failing` names. */
+	const move =
+		(...failing: string[]) =>
+		(from: string, to: string): boolean => {
+			if (failing.includes(to)) return false;
+			renameSync(from, to);
+			return true;
+		};
+	const read = (path: string): string =>
+		existsSync(path) ? readFileSync(path, "utf8") : "(missing)";
+	const state = () => ({
+		executable: read(executable),
+		templates: read(join(directory, "templates/which.md")),
+		entries: readdirSync(directory).sort(),
+	});
+	/** The `mv` commands a failure names, run in a shell as the human would. */
+	const follow = (text: string) => {
+		const commands = text.slice(text.indexOf("with: ") + "with: ".length);
+		expect(run(["sh", "-c", commands]).exitCode).toBe(0);
+	};
+	return { swap, directory, staged, move, state, follow };
+};
+
+test("a swap that succeeds removes the previous templates; one that fails at the executable puts them back", () => {
+	const ok = staging();
+	expect(UpdateBinary.swap(ok.swap).ok).toBe(true);
+	expect(ok.state()).toEqual({
+		executable: "new executable",
+		templates: "new",
+		entries: ["kabane", "templates"],
+	});
+
+	const failing = staging();
+	const failed = UpdateBinary.swap(
+		failing.swap,
+		failing.move(failing.swap.executable),
+	);
+	expect(failed).toEqual({
+		ok: false,
+		error: {
+			text: `Could not rename the new release into ${failing.directory}; nothing was replaced.`,
+		},
+	});
+	expect(failing.state()).toEqual({
+		executable: "old executable",
+		templates: "old",
+		entries: ["kabane", "templates"],
+	});
+});
+
+test("a rollback that fails names the mv commands that restore the previous install", () => {
+	// The executable's rename fails, then moving the new templates back out does too.
+	const stuck = staging();
+	const templates = join(stuck.directory, "templates");
+	const previous = join(stuck.directory, "templates.prev-1.0.0");
+	const failedDir = join(stuck.directory, "templates.failed-1.0.1");
+	const stuckResult = UpdateBinary.swap(
+		stuck.swap,
+		stuck.move(stuck.swap.executable, join(stuck.staged, "templates")),
+	);
+	expect(stuckResult.ok).toBe(false);
+	if (stuckResult.ok) return;
+	expect(stuckResult.error.partial).toBe(true);
+	expect(stuckResult.error.text).toBe(
+		`Could not replace ${stuck.swap.executable}, nor move the new templates out. ${stuck.swap.executable} is still 1.0.0; restore its templates with: mv '${templates}' '${failedDir}' && mv '${previous}' '${templates}'`,
+	);
+	expect(stuck.state()).toEqual({
+		executable: "old executable",
+		templates: "new",
+		entries: ["kabane", "templates", "templates.prev-1.0.0"],
+	});
+	stuck.follow(stuckResult.error.text);
+	expect(stuck.state()).toMatchObject({
+		executable: "old executable",
+		templates: "old",
+	});
+
+	// The executable's rename fails, the new templates move out, the old ones do not move back.
+	const halfway = staging();
+	const halfwayTemplates = join(halfway.directory, "templates");
+	const halfwayPrevious = join(halfway.directory, "templates.prev-1.0.0");
+	let tries = 0;
+	const halfwayResult = UpdateBinary.swap(halfway.swap, (from, to) => {
+		if (to === halfway.swap.executable) return false;
+		if (to === halfwayTemplates && ++tries > 1) return false;
+		renameSync(from, to);
+		return true;
+	});
+	expect(halfwayResult.ok).toBe(false);
+	if (halfwayResult.ok) return;
+	expect(halfwayResult.error).toEqual({
+		text: `Could not replace ${halfway.swap.executable}, nor put the old templates back. ${halfway.swap.executable} is still 1.0.0; restore its templates with: mv '${halfwayPrevious}' '${halfwayTemplates}'`,
+		partial: true,
+	});
+	expect(halfway.state()).toEqual({
+		executable: "old executable",
+		templates: "(missing)",
+		entries: ["kabane", "templates.prev-1.0.0"],
+	});
+	halfway.follow(halfwayResult.error.text);
+	expect(halfway.state()).toMatchObject({
+		executable: "old executable",
+		templates: "old",
+	});
+
+	// The new templates never move in, and the old ones do not move back.
+	const early = staging();
+	const earlyTemplates = join(early.directory, "templates");
+	const earlyResult = UpdateBinary.swap(early.swap, (from, to) => {
+		if (to === earlyTemplates) return false;
+		renameSync(from, to);
+		return true;
+	});
+	expect(earlyResult.ok).toBe(false);
+	if (earlyResult.ok) return;
+	expect(earlyResult.error.partial).toBe(true);
+	expect(earlyResult.error.text).toContain(
+		"Could not rename the new templates into place, nor put the old templates back.",
+	);
+	early.follow(earlyResult.error.text);
+	expect(early.state()).toEqual({
+		executable: "old executable",
+		templates: "old",
+		entries: ["kabane", "templates"],
+	});
+});
+
+test("templates left from an earlier update stop the swap before anything moves", () => {
+	const left = staging();
+	mkdirSync(join(left.directory, "templates.prev-1.0.0"));
+	const refused = UpdateBinary.swap(left.swap);
+	expect(refused.ok ? "" : refused.error.text).toContain(
+		"is left from an earlier update",
+	);
+	expect(left.state()).toEqual({
+		executable: "old executable",
+		templates: "old",
+		entries: ["kabane", "templates", "templates.prev-1.0.0"],
+	});
+});

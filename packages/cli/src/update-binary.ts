@@ -99,7 +99,7 @@ export namespace UpdateBinary {
 		executable: string;
 		/** The release to install; its executable must print exactly this. */
 		version: string;
-		/** The running release, for the user agent. */
+		/** The running release: the user agent, and the name the old templates wait under. */
 		runningVersion: string;
 		target: string;
 		source: Source;
@@ -172,35 +172,64 @@ export namespace UpdateBinary {
 	const rename = (from: string, to: string): boolean =>
 		trySync(() => renameSync(from, to)).ok;
 
+	type Swap = {
+		/** The real path of the executable being replaced. */
+		executable: string;
+		/** The staged release: its `kabane` executable and `templates/`. */
+		staged: string;
+		installedVersion: string;
+		version: string;
+	};
+
 	/**
-	 * `templates/` and then the executable renamed into place, each swap undone if the next one
-	 * fails. Every rename stays inside the install directory, so each one is atomic; only the
-	 * moment between moving the old `templates/` aside and the new one in has neither.
+	 * Templates first and the executable last, so every step leaves a runnable executable: at
+	 * worst the old one beside the new templates, which are text. The old `templates/` waits in
+	 * `templates.prev-<installed>` until the executable's rename, which is atomic and leaves the
+	 * old executable in place when it fails, has succeeded; only then is it removed. A failure
+	 * puts the old templates back, and a failure to do that names the `mv`s that would. The new
+	 * templates go back to the staging directory, which is removed afterwards.
+	 * `move` is the filesystem's rename unless a test passes one that fails.
 	 */
-	const swap = (
-		executable: string,
-		staged: string,
-		aside: string,
+	export const swap = (
+		{ executable, staged, installedVersion, version }: Swap,
+		move: (from: string, to: string) => boolean = rename,
 	): Result<void, Failure> => {
-		const templates = join(dirname(executable), "templates");
+		const directory = dirname(executable);
+		const templates = join(directory, "templates");
+		const previous = join(directory, `templates.prev-${installedVersion}`);
 		const stagedTemplates = join(staged, "templates");
-		const nothing = `Could not rename the new release into ${dirname(executable)}; nothing was replaced.`;
-		if (!rename(templates, aside)) return err({ text: nothing });
-		if (!rename(stagedTemplates, templates))
-			return rename(aside, templates)
-				? err({ text: nothing })
-				: err({
-						text: `Could not rename the new templates into place, nor the old ones back from ${aside}; move them back to ${templates} by hand.`,
-						partial: true,
-					});
-		if (rename(join(staged, "kabane"), executable)) return ok(undefined);
-		return rename(templates, stagedTemplates) && rename(aside, templates)
-			? err({ text: nothing })
-			: err({
-					text: `Could not replace ${executable}, nor restore the old templates from ${aside}; move them back to ${templates} by hand.`,
+		const nothing = `Could not rename the new release into ${directory}; nothing was replaced.`;
+		if (trySync(() => lstatSync(previous)).ok)
+			return err({
+				text: `${previous} is left from an earlier update; remove it once ${templates} is complete. Nothing was replaced.`,
+			});
+		/** The old templates back where they were, or the commands that would put them back. */
+		const restore = (failure: string): Result<void, Failure> => {
+			const failed = join(directory, `templates.failed-${version}`);
+			const placed = trySync(() => lstatSync(templates)).ok;
+			if (placed && !move(templates, stagedTemplates))
+				return err({
+					text: `${failure}, nor move the new templates out. ${executable} is still ${installedVersion}; restore its templates with: mv ${quote(templates)} ${quote(failed)} && mv ${quote(previous)} ${quote(templates)}`,
 					partial: true,
 				});
+			if (!move(previous, templates))
+				return err({
+					text: `${failure}, nor put the old templates back. ${executable} is still ${installedVersion}; restore its templates with: mv ${quote(previous)} ${quote(templates)}`,
+					partial: true,
+				});
+			return err({ text: nothing });
+		};
+		if (!move(templates, previous)) return err({ text: nothing });
+		if (!move(stagedTemplates, templates))
+			return restore("Could not rename the new templates into place");
+		if (!move(join(staged, "kabane"), executable))
+			return restore(`Could not replace ${executable}`);
+		trySync(() => rmSync(previous, { recursive: true, force: true }));
+		return ok(undefined);
 	};
+
+	/** A path quoted for a POSIX shell. */
+	const quote = (path: string): string => `'${path.replaceAll("'", "'\\''")}'`;
 
 	/** Download, checksum, extraction and version check, all inside `work`; nothing outside it changes. */
 	const stage = async (
@@ -293,21 +322,17 @@ export namespace UpdateBinary {
 			return err({
 				text: `Cannot write in ${directory}, so kabane update cannot replace ${executable}. Nothing was replaced.`,
 			});
-		// A swap that failed halfway leaves the old templates in the work directory; keep it then.
-		let keep = false;
 		try {
 			const staged = await stage(work.value, replacement);
 			if (!staged.ok) return staged;
-			const swapped = swap(
+			return swap({
 				executable,
-				staged.value,
-				join(work.value, "templates-old"),
-			);
-			keep = !swapped.ok && swapped.error.partial === true;
-			return swapped;
+				staged: staged.value,
+				installedVersion: replacement.runningVersion,
+				version: replacement.version,
+			});
 		} finally {
-			if (!keep)
-				trySync(() => rmSync(work.value, { recursive: true, force: true }));
+			trySync(() => rmSync(work.value, { recursive: true, force: true }));
 		}
 	};
 }
