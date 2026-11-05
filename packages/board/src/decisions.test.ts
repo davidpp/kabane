@@ -3,6 +3,7 @@
 import { describe, expect, it } from "bun:test";
 import type { QuestionView } from "@cabane/questions";
 import { BoardDecisions } from "./decisions";
+import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import type { CopilotPermission } from "./ports";
 import { Fixtures } from "./stories/fixtures";
@@ -220,6 +221,20 @@ describe("a decision on the detail view", () => {
 		const over = BoardNav.reduceMouse(started, esc).state;
 		expect(over.view.type).toBe("detail");
 		expect(asking(over)?.field).toBe("Answer");
+	});
+
+	it("gives the footer only the keys a text field leaves while it has them", () => {
+		const facts = { linked: new Set<string>(), events: false };
+		const footer = (s: BoardNav.BoardState) =>
+			Keymap.footer(
+				BoardNav.keyContext(s),
+				BoardNav.keySituation(s, facts),
+			).map((hint) => hint.key);
+		const reasoning = press(detail([STORE]), "1").state;
+		expect(BoardNav.keyContext(reasoning)).toBe("decisionText");
+		expect(footer(reasoning)).toEqual(["enter", "esc", "tab"]);
+		// On the choices, the view's own hints are back.
+		expect(footer(detail([STORE]))).toContain("h/l");
 	});
 
 	it("leaves a typed first field the view's keys until enter asks for it, then keeps them", () => {

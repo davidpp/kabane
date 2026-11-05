@@ -10,6 +10,7 @@ import { BoardDecisions } from "./decisions";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { BoardPrompt } from "./prompt";
+import { Fixtures } from "./stories/fixtures";
 import { BoardTabs } from "./tabs";
 import { TriggerForm } from "./trigger-form";
 
@@ -282,6 +283,18 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 		}),
 	),
 	help: [state({ help: true })],
+	// A decision on JAKE-2 with no choices, its answer asked for with `enter`: its input has the keys.
+	decisionText: [
+		BoardNav.reduceKey(
+			BoardDecisions.withOpen(
+				state({ view: { type: "detail", taskId: "p" } }),
+				"p",
+				[Fixtures.decision(task({ id: "p" }), 1, "What is it called?", {})],
+			),
+			{ name: "return" },
+			0,
+		).state,
+	],
 };
 
 const keyInput = (name: string): BoardNav.KeyInput => {

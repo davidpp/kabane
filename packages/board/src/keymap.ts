@@ -81,6 +81,7 @@ export namespace Keymap {
 		| "search"
 		| "searchResults"
 		| "detail"
+		| "decisionText"
 		| "transcript"
 		| "cardTab"
 		| "copilot"
@@ -392,6 +393,23 @@ export namespace Keymap {
 					tier: "help",
 					keys: ["escape", "q"],
 				},
+			],
+		},
+		// A decision's text field on the detail view, while it has the keys: every key but these is
+		// typed into it, so the detail's own hints would only type their letter.
+		decisionText: {
+			name: "decision",
+			sheet: false,
+			bindings: [
+				{
+					key: "enter",
+					label: "send",
+					tier: "footer",
+					keys: [],
+					routed: "textarea",
+				},
+				{ key: "esc", label: "start over", tier: "footer", keys: ["escape"] },
+				{ key: "tab", label: "next pane", tier: "footer", keys: ["tab"] },
 			],
 		},
 		transcript: {

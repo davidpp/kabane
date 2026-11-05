@@ -1771,7 +1771,8 @@ export namespace BoardNav {
 		if (state.search.mode === "typing") return "search";
 		if (state.view.type === "events")
 			return state.tabs.active === null ? "transcript" : "cardTab";
-		if (state.view.type === "detail") return "detail";
+		if (state.view.type === "detail")
+			return BoardDecisions.typing(state) ? "decisionText" : "detail";
 		return state.search.mode === "committed" ? "searchResults" : "board";
 	};
 

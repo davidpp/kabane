@@ -193,6 +193,12 @@ export namespace BoardDecisions {
 		return asked !== undefined && (!typed(asked) || live(asked));
 	};
 
+	/** Whether the decision on screen's text field has the keys, every one but `esc` and `tab`. */
+	export const typing = (state: State): boolean => {
+		const asked = inHand(state);
+		return asked !== undefined && typed(asked) && live(asked);
+	};
+
 	/**
 	 * Who has the keys the decision on screen waits for, and the key that hands them over, while it
 	 * lacks them; its block says so in place of keys that would go elsewhere.
