@@ -522,14 +522,13 @@ export namespace Dispatch {
 	};
 
 	const fixed = async (
-		claim: Claim,
-		findings: readonly Task[],
+		{ harness, findings }: { harness: Harnesses.Id; findings: readonly Task[] },
 		env: Env,
 		hooks: Hooks,
 		sink: Sink,
 		reason: string,
 	): Promise<Next> => {
-		const left = await unsettled(findings, env, claim.harness);
+		const left = await unsettled(findings, env, harness);
 		if (!left.ok)
 			return { kind: "end", outcome: "error", detail: left.error.message };
 		if (left.value.length === 0)
@@ -547,6 +546,30 @@ export namespace Dispatch {
 			};
 		sink.emit("continuation", `${open} still open: nudged`);
 		return { kind: "prompt", prompt: Brief.fixerContinuation(left.value) };
+	};
+
+	const afterTurn = async (
+		claim: Claim,
+		env: Env,
+		hooks: Hooks,
+		sink: Sink,
+		reason: string,
+	): Promise<Next> => {
+		const { work } = claim;
+		switch (work.kind) {
+			case "lens":
+				return reviewed(work.name, reason);
+			case "fix":
+				return fixed(
+					{ harness: claim.harness, findings: work.findings },
+					env,
+					hooks,
+					sink,
+					reason,
+				);
+			case "implement":
+				return implemented(claim, env, hooks, sink, reason);
+		}
 	};
 
 	/**
@@ -703,20 +726,7 @@ export namespace Dispatch {
 					text = injected;
 					continue;
 				}
-				const { work } = claim;
-				const next =
-					work.kind === "lens"
-						? reviewed(work.name, result.reason)
-						: work.kind === "fix"
-							? await fixed(
-									claim,
-									work.findings,
-									env,
-									hooks,
-									sink,
-									result.reason,
-								)
-							: await implemented(claim, env, hooks, sink, result.reason);
+				const next = await afterTurn(claim, env, hooks, sink, result.reason);
 				if (next.kind === "end") return ended(next.outcome, next.detail);
 				text = next.prompt;
 			}
