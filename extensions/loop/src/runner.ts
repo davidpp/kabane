@@ -6,13 +6,15 @@
 // claims it left open are closed as interrupted and their subtasks released, once a subtask its
 // session had closed has had the gate pass (or checkpoint) the dead runner never finished.
 // Starting or resuming takes the parent into in_progress, and every end of the run is a comment
-// on it (`Parent`). A single issue that gains a work child mid-run is a parent from then on.
+// on it (`Parent`). A run that completes lands its branch when its `land` setting says so
+// (`Land`). A single issue that gains a work child mid-run is a parent from then on.
 import { err, ok, type Result, type Task } from "@cabane/core";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
 import { Claims } from "./claims";
 import { Fixer } from "./fixer";
 import { Gates } from "./gates";
+import { Land } from "./land";
 import { Lenses } from "./lenses";
 import { Parent } from "./parent";
 import { LoopPlan } from "./plan";
@@ -354,6 +356,12 @@ export namespace Runner {
 			fixer.kind === "ended" ||
 			(fixer.kind === "unstarted" && findings.length === 0);
 		if (Stop.evaluate(plan, { gatesGreen, lensesDone, fixerDone }).done) {
+			// A landing that fails still completes the run: the work is done and checked.
+			if (ctx.run.config.land === "pr") {
+				await hearingStop(ctx, () => Land.land(ctx, plan.parent));
+				if (ctx.stopRequested)
+					return { status: "stopped", reason: "stop-requested" };
+			}
 			const { open } = LoopPlan.findings(plan);
 			return {
 				status: "completed",

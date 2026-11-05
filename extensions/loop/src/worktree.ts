@@ -239,6 +239,35 @@ export namespace Worktree {
 		return cleaned.ok ? ok(undefined) : cleaned;
 	};
 
+	/**
+	 * Rebase the worktree at `dir` onto commit `onto`. A rebase that stops on a conflict is
+	 * aborted, so the branch is left as it was, and the error names the files that conflicted.
+	 */
+	export const rebase = async (
+		dir: string,
+		onto: string,
+		run: Git = git,
+	): Promise<Result<void>> => {
+		const isLinked = await linked(dir, run);
+		if (!isLinked.ok) return isLinked;
+		const rebased = await run(dir, ["rebase", "-q", onto]);
+		if (rebased.ok) return ok(undefined);
+		const conflicted = await run(dir, [
+			"diff",
+			"--name-only",
+			"--diff-filter=U",
+		]);
+		await run(dir, ["rebase", "--abort"]);
+		const files = conflicted.ok
+			? conflicted.value.split("\n").filter((f) => f.trim() !== "")
+			: [];
+		return err(
+			files.length > 0
+				? new Error(`conflicts in ${files.join(", ")}`)
+				: rebased.error,
+		);
+	};
+
 	/** The trace's line for a rollback. */
 	export const rolledBack = (sha: string, by: string): RunStore.EventDraft => ({
 		type: "rollback",

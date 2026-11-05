@@ -76,6 +76,18 @@ export namespace RunStore {
 	});
 	export type Claim = z.infer<typeof ClaimSchema>;
 
+	/** What landing the run's branch did: the run's `land` setting, or `kabane loop land`. */
+	export const LandingSchema = z.object({
+		at: z.string(),
+		/** Whether the branch landed as asked; false says why not in `summary`. */
+		ok: z.boolean(),
+		/** What happened, in a sentence: on the trace, the parent's comment and `loop status`. */
+		summary: z.string(),
+		/** The branch's tip before and after its rebase onto the base, when the rebase moved it. */
+		rebased: z.object({ from: z.string(), to: z.string() }).optional(),
+	});
+	export type Landing = z.infer<typeof LandingSchema>;
+
 	export const RunSchema = z.object({
 		version: z.literal(1),
 		id: z.string(),
@@ -133,6 +145,8 @@ export namespace RunStore {
 		steering: Steering.StateSchema.default({}),
 		/** Every pass over the gates, oldest first; the last says whether they are green. */
 		gateRuns: z.array(Gates.RunSchema).default([]),
+		/** The last landing of the run's branch, when it was landed. */
+		landing: LandingSchema.optional(),
 		/** When the human closed the run's board tab: the board stops listing it. */
 		dismissedAt: z.string().optional(),
 	});
