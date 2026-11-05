@@ -259,7 +259,8 @@ for default and renders white on white (JJAK-1017).
 ### Strips (rows)
 - **Notation, left to right:** caret (`▸` / `▾`, expandability only), short id, two spaces,
   mark column, link column, transient `✦ ai`, title, muted meta, then badges (`· review`,
-  the in-flight badge, `+N`, `· ? input`).
+  the in-flight badge, `+N`, `· ? input` for a live session's question, `· ?N` for the
+  decisions an agent filed, both in the accent).
 - **Held columns:** the mark and link columns keep their width on the rows without a glyph,
   so one vertical scan answers "which of these", but only while at least one visible strip
   uses the column; a board with nothing marked or linked gives those cells to the titles.

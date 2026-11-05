@@ -156,6 +156,12 @@ than the pane. A key that does nothing right now (no row selected, no linked iss
 - `!` goes to the next question waiting on you, oldest first. It opens the question's task
   with the question pinned over it, and a digit answers it. From a run's tab, `o` does the
   same for the question that run's agents asked, and `b` goes back to the run.
+- Decisions an agent filed on an issue (`kabane_ask`) wait for whenever you get to them. Each
+  issue's row counts its open ones (`?2`), and `u` shows only the issues that have one (`esc`
+  shows the rest again). An issue's detail asks them one at a time under its header: pick a
+  choice with a digit (`★` marks the one the agent recommends), or `↑↓` and `enter`; on a
+  multi-select `space` toggles and `enter` sends; then type an Other answer or a reason, or
+  press `enter` to skip. Answering the last one moves the issue back to next.
 
 The copilot is `A` (or `:`). It opens a one-line prompt at the bottom of the board and
 hands a coding harness what you are looking at: the scope, the selected task, and anything
