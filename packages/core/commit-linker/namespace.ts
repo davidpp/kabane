@@ -99,6 +99,77 @@ async function getFullCommitMessage(
 	}
 }
 
+async function linkCommitTask(
+	basePath: string,
+	commit: GitCommit,
+	fullMessage: string,
+	taskIdStr: string,
+	result: ScanResult,
+): Promise<void> {
+	try {
+		// Resolve short ID to full ULID
+		const resolveResult = await Planner.resolveTaskId(basePath, taskIdStr);
+		if (!resolveResult.ok) {
+			// Task doesn't exist, skip
+			return;
+		}
+		const taskId = resolveResult.value;
+
+		// Check if already linked via work log
+		const workLogsResult = await Planner.getWorkLogs(basePath, taskId);
+		if (!workLogsResult.ok) {
+			result.errors.push(
+				`Failed to get work logs for ${taskIdStr}: ${workLogsResult.error.message}`,
+			);
+			return;
+		}
+
+		const commitUri = `commit:${commit.sha}`;
+		const alreadyLinked = workLogsResult.value.some((log) =>
+			log.refs.some((r) => r.uri === commitUri),
+		);
+
+		if (alreadyLinked) return;
+		// Add work log entry
+		const addResult = await Planner.addWorkLog(basePath, {
+			taskId,
+			refs: [{ uri: commitUri, label: commit.message.slice(0, 80) }],
+			note: `Commit by ${commit.author}`,
+			addedBy: "commit-linker",
+			addedByType: "ai",
+		});
+
+		if (addResult.ok) {
+			result.linked++;
+		} else {
+			result.errors.push(
+				`Failed to link commit ${commit.sha} to ${taskIdStr}: ${addResult.error.message}`,
+			);
+		}
+
+		// Check for "closes" keyword - transition to done
+		if (hasCloseKeyword(fullMessage, taskIdStr)) {
+			const taskResult = await Planner.getTask(basePath, taskId);
+			if (
+				taskResult.ok &&
+				taskResult.value &&
+				taskResult.value.state !== "done"
+			) {
+				const updateResult = await Planner.updateTask(basePath, taskId, {
+					state: "done",
+				});
+				if (updateResult.ok) {
+					result.closed++;
+				}
+			}
+		}
+	} catch (e) {
+		result.errors.push(
+			`Error processing ${taskIdStr} in commit ${commit.sha}: ${e}`,
+		);
+	}
+}
+
 export namespace CommitLinker {
 	/**
 	 * Scan recent commits for task IDs and link them to planner issues.
@@ -152,74 +223,13 @@ export namespace CommitLinker {
 				const taskIds = parseAllTaskIds(fullMessage);
 
 				for (const taskIdStr of taskIds) {
-					try {
-						// Resolve short ID to full ULID
-						const resolveResult = await Planner.resolveTaskId(
-							basePath,
-							taskIdStr,
-						);
-						if (!resolveResult.ok) {
-							// Task doesn't exist, skip
-							continue;
-						}
-						const taskId = resolveResult.value;
-
-						// Check if already linked via work log
-						const workLogsResult = await Planner.getWorkLogs(basePath, taskId);
-						if (!workLogsResult.ok) {
-							result.errors.push(
-								`Failed to get work logs for ${taskIdStr}: ${workLogsResult.error.message}`,
-							);
-							continue;
-						}
-
-						const commitUri = `commit:${commit.sha}`;
-						const alreadyLinked = workLogsResult.value.some((log) =>
-							log.refs.some((r) => r.uri === commitUri),
-						);
-
-						if (!alreadyLinked) {
-							// Add work log entry
-							const addResult = await Planner.addWorkLog(basePath, {
-								taskId,
-								refs: [{ uri: commitUri, label: commit.message.slice(0, 80) }],
-								note: `Commit by ${commit.author}`,
-								addedBy: "commit-linker",
-								addedByType: "ai",
-							});
-
-							if (addResult.ok) {
-								result.linked++;
-							} else {
-								result.errors.push(
-									`Failed to link commit ${commit.sha} to ${taskIdStr}: ${addResult.error.message}`,
-								);
-							}
-
-							// Check for "closes" keyword - transition to done
-							if (hasCloseKeyword(fullMessage, taskIdStr)) {
-								const taskResult = await Planner.getTask(basePath, taskId);
-								if (
-									taskResult.ok &&
-									taskResult.value &&
-									taskResult.value.state !== "done"
-								) {
-									const updateResult = await Planner.updateTask(
-										basePath,
-										taskId,
-										{ state: "done" },
-									);
-									if (updateResult.ok) {
-										result.closed++;
-									}
-								}
-							}
-						}
-					} catch (e) {
-						result.errors.push(
-							`Error processing ${taskIdStr} in commit ${commit.sha}: ${e}`,
-						);
-					}
+					await linkCommitTask(
+						basePath,
+						commit,
+						fullMessage,
+						taskIdStr,
+						result,
+					);
 				}
 			}
 
