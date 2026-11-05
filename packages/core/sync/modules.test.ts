@@ -124,6 +124,16 @@ const editNote = (device: Device, id: string, body: string): Promise<void> =>
 		Oplog.afterWrite(db, NOTES, "update", id);
 	});
 
+const deleteNote = (device: Device, id: string): Promise<void> =>
+	as(device, (db) => {
+		const row = db
+			.query<Row, [string]>(`SELECT * FROM ${notesTable()} WHERE id = ?`)
+			.get(id);
+		if (row === null) throw new Error(`no note ${id}`);
+		db.run(`DELETE FROM ${notesTable()} WHERE id = ?`, [id]);
+		Oplog.afterDelete(db, [{ tbl: NOTES, row }]);
+	});
+
 // ============================================================
 // Harness
 // ============================================================
@@ -594,6 +604,46 @@ describe("a device on an older version of the module", () => {
 			pinned: 1,
 		});
 		expect(rows).toEqual(await notesOn(alpha));
+		expect((await status(migrated)).parkedOps).toEqual({});
+	});
+});
+
+describe("a row with an op parked", () => {
+	it("parks every later op for that row behind it, so a delete still lands last", async () => {
+		const gamma = await createDevice("gamma", [notes([CREATE_NOTES])]);
+		const alpha = await createDevice("alpha", [
+			notes([CREATE_NOTES, PIN_NOTES]),
+		]);
+		const beta = await createDevice("beta", [notes([CREATE_NOTES])]);
+
+		const task = await addTask(gamma, "parent");
+		const note = await writeNote(gamma, { taskId: task, body: "v1" });
+		await push(gamma);
+		await pull(alpha);
+		await pull(beta);
+
+		// Alpha edits on version 2; gamma, still on 1, deletes afterwards.
+		await editNote(alpha, note, "edited on v2");
+		await push(alpha);
+		await Bun.sleep(5);
+		await deleteNote(gamma, note);
+		await push(gamma);
+		await pull(alpha);
+		expect(await notesOn(alpha)).toEqual([]);
+
+		// Beta can read the delete but not the edit before it: both wait.
+		const pulled = await pull(beta);
+		expect(pulled.parked).toBe(2);
+		expect(await notesOn(beta)).toHaveLength(1);
+
+		// Still on version 1, a second pass replays neither.
+		expect((await pull(beta)).replayed).toBe(0);
+
+		const migrated = { ...beta, modules: [notes([CREATE_NOTES, PIN_NOTES])] };
+		await boot(migrated);
+		const replay = await pull(migrated);
+		expect(replay.replayed).toBe(2);
+		expect(await notesOn(migrated)).toEqual([]);
 		expect((await status(migrated)).parkedOps).toEqual({});
 	});
 });

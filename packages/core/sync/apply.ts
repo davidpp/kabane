@@ -45,9 +45,10 @@
  * PARK, DON'T SKIP, A MODULE'S OP THIS DEVICE CANNOT READ. An op tagged with a
  * data module that is not registered here, or with a newer version of one that
  * is, goes into `sync_parked` untouched, in the same transaction that moves the
- * watermark past it. `replayParked` applies it through this same pass once the
- * module is here. Skipping it would move the watermark past rows this device
- * could never fetch again.
+ * watermark past it, and so does every later op for the same row, readable or
+ * not, so the row's history replays in log order. `replayParked` applies them
+ * through this same pass once the module is here. Skipping them would move the
+ * watermark past rows this device could never fetch again.
  *
  * SKIPS ARE COUNTED, NEVER SWALLOWED. `Resolve` is total by design so one
  * malformed op cannot wedge `last_applied_seq` forever, which only works if the
@@ -546,15 +547,32 @@ type Pass = {
 	counts: Counts;
 };
 
+/** Whether this build can read an op tagged `module` at `schema`. */
+const readable = (module: string, schema: number): boolean => {
+	const here = Modules.named(module);
+	return here !== undefined && schema <= Modules.schemaOf(here);
+};
+
+/** Whether an earlier op for this row waits in `sync_parked`. */
+const parkedBefore = (db: Db, op: RelayOp): boolean =>
+	db
+		.query<{ one: number }, [string, string, number]>(
+			`SELECT 1 AS one FROM ${TABLES.sync_parked}
+        WHERE tbl = ? AND row_id = ? AND server_seq < ? LIMIT 1`,
+		)
+		.get(op.tbl, op.rowId, op.serverSeq) !== null;
+
 /**
- * The module tag of an op this device cannot apply yet: its module is not
- * registered here, or is registered at an older version than the op's.
+ * The module tag of an op this device must not apply yet: its module is not
+ * registered here, or is registered at an older version than the op's, or an
+ * earlier op for the same row is parked. That last case keeps a row's history
+ * in log order: a newer-version update parked ahead of a delete this build
+ * could read would otherwise be replayed after it and bring the row back.
  */
-const parkingTag = (op: SyncOp): SyncOp["module"] => {
+const parkingTag = (db: Db, op: RelayOp): SyncOp["module"] => {
 	const tag = op.module;
 	if (tag === undefined) return undefined;
-	const here = Modules.named(tag.name);
-	return here === undefined || tag.schema > Modules.schemaOf(here)
+	return !readable(tag.name, tag.schema) || parkedBefore(db, op)
 		? tag
 		: undefined;
 };
@@ -613,7 +631,7 @@ const execute = (
 
 const applyOne = (pass: Pass, op: RelayOp) => {
 	const { db, counts } = pass;
-	const tag = parkingTag(op);
+	const tag = parkingTag(db, op);
 	if (tag !== undefined) return park(pass, op, tag);
 
 	const rule = Resolve.rule(op.tbl);
@@ -708,29 +726,42 @@ const applyOrdered = (
 	};
 };
 
-type ParkedRow = { op_id: string; server_seq: number; op: string };
+type ParkedRow = {
+	op_id: string;
+	server_seq: number;
+	module: string;
+	module_schema: number;
+	tbl: string;
+	row_id: string;
+	op: string;
+};
 
 /**
- * Parked ops a registered module can read now, oldest first. With no module
- * registered (the hub today) nothing can be, and the table is not read.
+ * Parked ops a registered module can read now, oldest first, each row's taken
+ * only up to its first op still unreadable: what follows it waits behind it,
+ * as it did when it was parked. With no module registered (the hub today)
+ * nothing can be ready, and the table is not read.
  */
 const readyToReplay = (db: Db): ParkedRow[] => {
 	const modules = Modules.list();
 	if (modules.length === 0) return [];
-	const readable = modules
-		.map(() => "(module = ? AND module_schema <= ?)")
-		.join(" OR ");
-	const params = modules.flatMap((module) => [
-		module.name,
-		Modules.schemaOf(module),
-	]);
-	return db
-		.query<ParkedRow, (string | number)[]>(
-			`SELECT op_id, server_seq, op FROM ${TABLES.sync_parked}
-        WHERE ${readable}
+	const rows = db
+		.query<ParkedRow, string[]>(
+			`SELECT op_id, server_seq, module, module_schema, tbl, row_id, op
+         FROM ${TABLES.sync_parked}
+        WHERE module IN (${modules.map(() => "?").join(", ")})
         ORDER BY server_seq ASC`,
 		)
-		.all(...params);
+		.all(...modules.map((module) => module.name));
+
+	const blocked = new Set<string>();
+	return rows.filter((row) => {
+		const key = deleteKey(row.tbl, row.row_id);
+		if (blocked.has(key)) return false;
+		if (readable(row.module, row.module_schema)) return true;
+		blocked.add(key);
+		return false;
+	});
 };
 
 /** The op as it was pulled, or undefined when the stored JSON no longer parses. */
@@ -755,18 +786,15 @@ const replayOrdered = (
 	throughSeq: number,
 ): ApplyReport => {
 	const ready = readyToReplay(db);
-	const ops = ready.map(unpark);
-	const readable = ops.filter((op): op is RelayOp => op !== undefined);
-	const counts = applyOps(
-		db,
-		readable,
-		localDeviceId,
-		new Date().toISOString(),
-	);
-	counts.skipped["malformed-payload"] += ops.length - readable.length;
+	// Out of the table before they apply, or each would find itself parked
+	// ahead of the next op for its row and park that one again.
 	for (const row of ready) {
 		db.run(`DELETE FROM ${TABLES.sync_parked} WHERE op_id = ?`, [row.op_id]);
 	}
+	const ops = ready.map(unpark);
+	const parsed = ops.filter((op): op is RelayOp => op !== undefined);
+	const counts = applyOps(db, parsed, localDeviceId, new Date().toISOString());
+	counts.skipped["malformed-payload"] += ops.length - parsed.length;
 	return { received: 0, ...counts, replayed: ready.length, throughSeq };
 };
 

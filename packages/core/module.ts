@@ -33,7 +33,9 @@ import type { SyncFamily } from "./sync/resolve";
  * never enters the oplog). Every write ends with `Oplog.afterWrite`, every
  * delete snapshots first and ends with `Oplog.afterDelete`, exactly as core's
  * storage does. Core cannot check any of that from here, so a test in the
- * module has to.
+ * module has to. The one FK core knows about is `childOfTasks`: a reference
+ * from one module table to another is not checked before apply, so an op whose
+ * parent row is still parked would fail its whole pull.
  */
 export type ModuleSyncTable = {
 	/**

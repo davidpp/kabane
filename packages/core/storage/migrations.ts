@@ -317,6 +317,11 @@ export namespace Migrations {
 					`CREATE INDEX IF NOT EXISTS ${TABLES.sync_parked}_module_idx
 					   ON ${TABLES.sync_parked}(module, server_seq)`,
 				);
+				// An op whose row already has one parked parks behind it.
+				db.run(
+					`CREATE INDEX IF NOT EXISTS ${TABLES.sync_parked}_row_idx
+					   ON ${TABLES.sync_parked}(tbl, row_id, server_seq)`,
+				);
 				// A module table's op is tagged when it is captured, not when it is
 				// pushed: the module may not be registered by then, and an untagged
 				// op is dropped as `unknown-table` by every device without it.
