@@ -17,7 +17,8 @@ const toolResult = z.object({
 });
 const fullContext = z.object({ markdown: z.string() });
 
-describe("bounded context through actual CLI/stdio", () => {
+// Each case owns its tracker and its stdio server, so the two layouts run side by side.
+describe.concurrent("bounded context through actual CLI/stdio", () => {
 	for (const prefixed of [false, true])
 		it(`recovers retained steering and full briefs with identical compact chunks (${prefixed})`, async () => {
 			const seeded = await createCorpusTracker({ prefixed, synthetic: true });
