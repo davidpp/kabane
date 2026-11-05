@@ -405,12 +405,10 @@ export namespace Planner {
 			if (updates.state !== undefined) {
 				sets.push("state = ?");
 				params.push(updates.state);
-				sets.push("completed_at = ?");
-				params.push(
-					updates.state === "done" || updates.state === "cancelled"
-						? now
-						: null,
+				sets.push(
+					"completed_at = CASE WHEN ? IN ('done', 'cancelled') THEN CASE WHEN state IN ('done', 'cancelled') AND completed_at IS NOT NULL THEN completed_at ELSE ? END ELSE NULL END",
 				);
+				params.push(updates.state, now);
 			}
 			if (updates.priority !== undefined) {
 				sets.push("priority = ?");

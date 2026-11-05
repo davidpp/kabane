@@ -59,6 +59,30 @@ describe("task completion timestamps", () => {
 	}
 
 	for (const closed of ["done", "cancelled"] as const) {
+		for (const nextClosed of ["done", "cancelled"] as const) {
+			it(`${closed} → ${nextClosed} preserves the first completion timestamp`, async () => {
+				const base = await createDevice("source");
+				const added = await Planner.addTask(base, { title: "Close twice" });
+				if (!added.ok) throw added.error;
+				const first = "2026-01-01T00:00:00.000Z";
+				setSystemTime(new Date(first));
+				expect(
+					(await Planner.updateTask(base, added.value.id, { state: closed }))
+						.ok,
+				).toBe(true);
+				setSystemTime(new Date("2026-01-08T00:00:00.000Z"));
+				const updated = await Planner.updateTask(base, added.value.id, {
+					state: nextClosed,
+				});
+				if (!updated.ok) throw updated.error;
+				expect(updated.value?.completedAt).toBe(first);
+				const stored = await Planner.getTask(base, added.value.id);
+				if (!stored.ok) throw stored.error;
+				expect(stored.value?.state).toBe(nextClosed);
+				expect(stored.value?.completedAt).toBe(first);
+			});
+		}
+
 		for (const open of [
 			"inbox",
 			"next",
