@@ -144,7 +144,7 @@ act?(id: string, actionId: string, input: { text?: string; lane?: string }): Pro
 A card may list `actions` (`{ id, key, label, input?, lane? }`) the human can press on its tab; the
 source's `act` runs them and resolves to the footer notice. The footer leads with them, and the `?`
 sheet lists them as `this card`. The board's own keys on a card's tab come first and cannot be taken
-(`h/l`, `j/k`, `e`, `o`, `w`, `q`, the digits, the everywhere keys), and `x` is reserved for the
+(`h/l`, `j/k`, `e`, `o`, `w`, `q`, `t`, the digits, the everywhere keys), and `x` is reserved for the
 action whose id is `STOP_ACTION` (`stop`), as it stops the copilot's turn on its transcript: `x` runs
 it while the card is in flight, and does nothing on a card that offers none. An action passes the
 lane on screen. One with `lane: true` is aimed at a single lane: the one on screen, else, on the
