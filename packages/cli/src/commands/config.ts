@@ -55,6 +55,21 @@ const USAGE = [
 
 const isSub = (sub: string): sub is Request["sub"] => Object.hasOwn(COUNT, sub);
 
+/** What is wrong with how `--layer`, `--layers` and `--scope` are given to `sub`, if anything. */
+const flagMisuse = (
+	args: ParsedArgs,
+	sub: Request["sub"],
+): string | undefined => {
+	if ("layer" in args.flags && sub !== "set" && sub !== "unset")
+		return "--layer applies to set and unset";
+	if ("layers" in args.flags && sub !== "get") return "--layers applies to get";
+	if ("layers" in args.flags && args.flags.layers !== true)
+		return "--layers takes no value: kabane config get <key> --layers";
+	if ("scope" in args.flags && flagString(args, "scope") === undefined)
+		return "--scope takes a scope URI or id";
+	return undefined;
+};
+
 /** The subcommand, its arguments and the layer it targets, or the usage error to print. */
 const requestOf = (args: ParsedArgs): Result<Request, Outcome> => {
 	const [sub = "list", key, input] = args.positionals;
@@ -74,25 +89,17 @@ const requestOf = (args: ParsedArgs): Result<Request, Outcome> => {
 		!(sub === "list" && args.positionals.length === 0)
 	)
 		return err(usage(`Wrong arguments for config ${sub}`, USAGE));
-	const layer = flagString(args, "layer");
+	const misused = flagMisuse(args, sub);
+	if (misused !== undefined) return err(usage(misused, USAGE));
 	const scope = flagString(args, "scope");
-	if ("layer" in args.flags && sub !== "set" && sub !== "unset")
-		return err(usage("--layer applies to set and unset", USAGE));
-	// A bare --layer would otherwise fall back to user and change every project's setting.
-	if ("layer" in args.flags && layer === undefined)
-		return err(
-			usage(`--layer takes one of ${ConfigSettings.TARGETS.join(", ")}`, USAGE),
-		);
-	if ("layers" in args.flags && sub !== "get")
-		return err(usage("--layers applies to get", USAGE));
-	if ("layers" in args.flags && args.flags.layers !== true)
-		return err(
-			usage("--layers takes no value: kabane config get <key> --layers", USAGE),
-		);
-	if ("scope" in args.flags && scope === undefined)
-		return err(usage("--scope takes a scope URI or id", USAGE));
-	// --scope alone names the layer a write goes to.
-	const target = layer ?? (scope === undefined ? "user" : "scope");
+	// --scope alone names the layer a write goes to. A bare --layer names none, rather than
+	// falling back to user and changing the setting for every project.
+	const target =
+		"layer" in args.flags
+			? (flagString(args, "layer") ?? "")
+			: scope === undefined
+				? "user"
+				: "scope";
 	if (!ConfigSettings.isTarget(target))
 		return err(
 			usage(`--layer takes one of ${ConfigSettings.TARGETS.join(", ")}`, USAGE),
