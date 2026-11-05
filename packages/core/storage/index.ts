@@ -39,6 +39,7 @@ export const Planner = {
 	getTasks: Tasks.getTasks,
 	findDuplicatesBySourceId: Tasks.findDuplicatesBySourceId,
 	updateTask: Tasks.updateTask,
+	updateTaskIn: Tasks.updateTaskIn,
 	updateTaskReceipt: TaskReceipts.updateTaskReceipt,
 	deleteTask: Tasks.deleteTask,
 	queryTasks: Tasks.queryTasks,
@@ -103,3 +104,5 @@ export const Planner = {
 } as const;
 
 export { normalizeScopeUri } from "./helpers";
+
+export { scopeClause } from "./task-selection";

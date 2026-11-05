@@ -2,6 +2,7 @@
  * Planner Storage — Tasks & ID Resolution
  */
 
+import type { Db } from "../db/port";
 import { Events, PLANNER_EVENTS } from "../events";
 import { err, ok, type Result } from "../result";
 import { Runtime, withDb } from "../runtime";
@@ -43,6 +44,9 @@ const taskFieldUpdates = (updates: TaskUpdate) =>
 		["assignee", updates.assignee],
 		["parent_task_id", updates.parentTaskId],
 		["project_id", updates.projectId],
+		["source", updates.provenance?.source],
+		["source_id", updates.provenance?.sourceId],
+		["source_url", updates.provenance?.sourceUrl],
 	] as const;
 
 const provenanceValues = (provenance: TaskDraft["provenance"], now: string) => [
@@ -394,11 +398,12 @@ export namespace Planner {
 		});
 	};
 
-	export const updateTask = async (
-		basePath: string,
+	/** Update through the caller's transaction; emit TASK_UPDATED only after it commits. */
+	export const updateTaskIn = (
+		db: Db,
 		id: string,
 		updates: TaskUpdate,
-	): Promise<Result<Task | null>> => {
+	): Result<Task | null> => {
 		const parseResult = TaskUpdateSchema.safeParse(updates);
 		if (!parseResult.success) {
 			return err(new Error(`Invalid updates: ${parseResult.error.message}`));
@@ -413,90 +418,85 @@ export namespace Planner {
 		const prefixResult = derivePrefix(scopeUri);
 		if (!prefixResult.ok) return prefixResult;
 
-		const updateResult = await withDb(basePath, (db) => {
-			const now = new Date().toISOString();
-			const sets: string[] = [
-				"updated_at = ?",
-				"version = version + 1",
-				"updated_by = ?",
-			];
-			const params: (string | number | null)[] = [now, Runtime.actor()];
+		const now = new Date().toISOString();
+		const sets: string[] = [
+			"updated_at = ?",
+			"version = version + 1",
+			"updated_by = ?",
+		];
+		const params: (string | number | null)[] = [now, Runtime.actor()];
 
-			for (const [column, value] of taskFieldUpdates(updates)) {
-				if (value !== undefined) {
-					sets.push(`${column} = ?`);
-					params.push(value);
-				}
+		for (const [column, value] of taskFieldUpdates(updates)) {
+			if (value !== undefined) {
+				sets.push(`${column} = ?`);
+				params.push(value);
 			}
+		}
 
-			if (updates.state !== undefined) {
-				sets.push("state = ?");
-				params.push(updates.state);
-				sets.push(
-					"completed_at = CASE WHEN ? IN ('done', 'cancelled') THEN CASE WHEN state IN ('done', 'cancelled') AND completed_at IS NOT NULL THEN completed_at ELSE ? END ELSE NULL END",
-				);
-				params.push(updates.state, now);
-			}
-
-			if (updates.scopeUri !== undefined) {
-				sets.push("scope_uri = ?");
-				params.push(scopeUri ?? null);
-				// Regenerate shortId when scope changes (J + 3-char ID like JDES-123)
-				const newShortId = generateShortId(db, prefixResult.value, scopeUri);
-				sets.push("short_id = ?");
-				params.push(newShortId);
-			}
-			if (updates.scopeRefs !== undefined) {
-				sets.push("scope_refs = ?");
-				params.push(JSON.stringify(updates.scopeRefs));
-			}
-
-			if (updates.tags !== undefined) {
-				sets.push("tags = ?");
-				params.push(JSON.stringify(updates.tags));
-			}
-
-			if (updates.needsReview !== undefined) {
-				sets.push("needs_review = ?");
-				params.push(updates.needsReview ? 1 : 0);
-			}
-			if (updates.verification !== undefined) {
-				sets.push("verification = ?");
-				params.push(JSON.stringify(updates.verification));
-			}
-			if (updates.provenance !== undefined) {
-				if (updates.provenance.source !== undefined) {
-					sets.push("source = ?");
-					params.push(updates.provenance.source);
-				}
-				if (updates.provenance.sourceId !== undefined) {
-					sets.push("source_id = ?");
-					params.push(updates.provenance.sourceId ?? null);
-				}
-				if (updates.provenance.sourceUrl !== undefined) {
-					sets.push("source_url = ?");
-					params.push(updates.provenance.sourceUrl ?? null);
-				}
-			}
-
-			params.push(id);
-
-			db.run(
-				`UPDATE ${TABLES.tasks} SET ${sets.join(", ")} WHERE id = ?`,
-				params,
+		if (updates.state !== undefined) {
+			sets.push("state = ?");
+			params.push(updates.state);
+			sets.push(
+				"completed_at = CASE WHEN ? IN ('done', 'cancelled') THEN CASE WHEN state IN ('done', 'cancelled') AND completed_at IS NOT NULL THEN completed_at ELSE ? END ELSE NULL END",
 			);
-			Oplog.afterWrite(db, "tasks", "update", id);
-		});
+			params.push(updates.state, now);
+		}
 
-		if (!updateResult.ok) return updateResult;
+		if (updates.scopeUri !== undefined) {
+			sets.push("scope_uri = ?");
+			params.push(scopeUri ?? null);
+			// Regenerate shortId when scope changes (J + 3-char ID like JDES-123)
+			const newShortId = generateShortId(db, prefixResult.value, scopeUri);
+			sets.push("short_id = ?");
+			params.push(newShortId);
+		}
+		if (updates.scopeRefs !== undefined) {
+			sets.push("scope_refs = ?");
+			params.push(JSON.stringify(updates.scopeRefs));
+		}
 
-		const result = await getTask(basePath, id);
+		if (updates.tags !== undefined) {
+			sets.push("tags = ?");
+			params.push(JSON.stringify(updates.tags));
+		}
 
-		// Emit event for SSE subscribers
+		if (updates.needsReview !== undefined) {
+			sets.push("needs_review = ?");
+			params.push(updates.needsReview ? 1 : 0);
+		}
+		if (updates.verification !== undefined) {
+			sets.push("verification = ?");
+			params.push(JSON.stringify(updates.verification));
+		}
+
+		params.push(id);
+
+		db.run(
+			`UPDATE ${TABLES.tasks} SET ${sets.join(", ")} WHERE id = ?`,
+			params,
+		);
+		Oplog.afterWrite(db, "tasks", "update", id);
+		const row = db
+			.query<Record<string, unknown>>(
+				`SELECT * FROM ${TABLES.tasks} WHERE id = ?`,
+			)
+			.get(id);
+		return ok(row ? rowToTask(row) : null);
+	};
+
+	export const updateTask = async (
+		basePath: string,
+		id: string,
+		updates: TaskUpdate,
+	): Promise<Result<Task | null>> => {
+		const written = await withDb(basePath, (db) =>
+			updateTaskIn(db, id, updates),
+		);
+		if (!written.ok) return written;
+		const result = written.value;
 		if (result.ok && result.value) {
 			await Events.emit(PLANNER_EVENTS.TASK_UPDATED, result.value);
 		}
-
 		return result;
 	};
 

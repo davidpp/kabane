@@ -4,6 +4,7 @@
 		".": {
 			"entry": ["scripts/*.ts"]
 		},
+		"packages/questions": {},
 		"packages/acp": {
 			"entry": ["scripts/*.ts"]
 		},

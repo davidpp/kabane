@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { CONTEXT_SECTIONS, ContextPageSchema } from "@cabane/core";
+import { questionsModule } from "@cabane/questions";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
@@ -40,7 +41,9 @@ describe.concurrent("bounded context through actual CLI/stdio", () => {
 					}),
 				);
 				const tools = await client.listTools();
-				expect(tools.tools).toHaveLength(19);
+				expect(tools.tools).toHaveLength(
+					19 + (questionsModule.tools?.length ?? 0),
+				);
 				for (const field of ["responseFormat", "sections", "cursor"])
 					expect(
 						tools.tools.find((tool) => tool.name === "kabane_context")

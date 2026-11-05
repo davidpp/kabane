@@ -77,6 +77,7 @@
         "@cabane/core": "workspace:*",
         "@cabane/extension": "workspace:*",
         "@cabane/loop": "workspace:*",
+        "@cabane/questions": "workspace:*",
         "@cabane/sqlite": "workspace:*",
         "zod": "3.25.76",
       },
@@ -117,6 +118,21 @@
         "typescript": "5.9.3",
       },
     },
+    "packages/questions": {
+      "name": "@cabane/questions",
+      "version": "0.1.0",
+      "dependencies": {
+        "@cabane/core": "workspace:*",
+        "ulid": "3.0.2",
+        "zod": "3.25.76",
+      },
+      "devDependencies": {
+        "@cabane/sqlite": "workspace:*",
+        "@modelcontextprotocol/sdk": "1.30.0",
+        "@types/bun": "1.4.0",
+        "typescript": "5.9.3",
+      },
+    },
     "packages/sqlite": {
       "name": "@cabane/sqlite",
       "version": "0.1.0",
@@ -133,6 +149,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@cabane/core": "workspace:*",
+        "@cabane/questions": "workspace:*",
         "jose": "6.2.10",
         "zod": "3.25.76",
       },
@@ -158,6 +175,8 @@
     "@cabane/extension": ["@cabane/extension@workspace:packages/extension"],
 
     "@cabane/loop": ["@cabane/loop@workspace:extensions/loop"],
+
+    "@cabane/questions": ["@cabane/questions@workspace:packages/questions"],
 
     "@cabane/sqlite": ["@cabane/sqlite@workspace:packages/sqlite"],
 

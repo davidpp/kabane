@@ -52,6 +52,7 @@ const callTool = async (
 	token: string,
 	name: string,
 	args: Record<string, unknown> = {},
+	raw = false,
 ): Promise<{ isError: boolean; value: unknown }> => {
 	const { status, body } = await rpc(token, "tools/call", {
 		name,
@@ -65,7 +66,7 @@ const callTool = async (
 	const text = result.content[0]?.text ?? "";
 	return {
 		isError: result.isError === true,
-		value: result.isError ? text : JSON.parse(text),
+		value: result.isError || raw ? text : JSON.parse(text),
 	};
 };
 
@@ -129,6 +130,8 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(names).toContain("kabane_add");
 		expect(names).toContain("kabane_context");
 		expect(names).toContain("kabane_scopeList");
+		for (const name of ["kabane_ask", "kabane_questions", "kabane_answer"])
+			expect(names).toContain(name);
 		expect(names.some((n) => n.toLowerCase().includes("session"))).toBe(false);
 		for (const name of ["kabane_configGet", "kabane_configSet"]) {
 			expect(names).not.toContain(name);
@@ -136,6 +139,49 @@ describe("hub MCP over Streamable HTTP", () => {
 			expect(rejected.isError).toBe(true);
 			expect(String(rejected.value)).toContain("Unknown tool");
 		}
+	});
+
+	it("answers the last question and resumes the issue through the DO transaction", async () => {
+		const created = await callTool(HERMES, "kabane_add", {
+			title: "Hub decision",
+			kind: "issue",
+			state: "next",
+			scopeUri: "questions",
+		});
+		expect(created.isError).toBe(false);
+		const issue = created.value as TaskLike;
+		const asked = await callTool(
+			HERMES,
+			"kabane_ask",
+			{
+				id: issue.id,
+				questions: [
+					{
+						question: "Which store?",
+						choices: ["SQLite", "Remote"],
+						recommended: "sqlite",
+					},
+				],
+			},
+			true,
+		);
+		expect(asked.isError).toBe(false);
+		expect(asked.value).toBe(`${issue.shortId}:1`);
+		const waiting = await callTool(HUMAN, "kabane_get", { id: issue.id });
+		expect(waiting.value).toMatchObject({ state: "waiting" });
+		const answered = await callTool(
+			HUMAN,
+			"kabane_answer",
+			{ question: `${issue.shortId}:1`, answer: "sqlite" },
+			true,
+		);
+		expect(answered.isError).toBe(false);
+		expect(answered.value).toContain("Issue moved to next.");
+		const resumed = await callTool(HUMAN, "kabane_get", { id: issue.id });
+		expect(resumed.value).toMatchObject({
+			state: "next",
+			updatedBy: "cabane://actor/human/david",
+		});
 	});
 
 	it("requires a scope on writes at the hub", async () => {

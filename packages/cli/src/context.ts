@@ -17,6 +17,7 @@ import {
 	type ParsedArgs,
 	Settings,
 } from "@cabane/extension";
+import { questionsModule } from "@cabane/questions";
 import { SqliteDb } from "@cabane/sqlite";
 import {
 	type Config,
@@ -46,7 +47,7 @@ export const configureRuntime = (
 ): Result<void> => {
 	const zone = config.timezone;
 	return Runtime.configure({
-		modules: [],
+		modules: [questionsModule],
 		provider: SqliteDb.provider({ dbName: location.dbName }),
 		tablePrefix: location.tablePrefix,
 		actor: () => actor,
