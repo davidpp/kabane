@@ -461,6 +461,9 @@ export namespace Runner {
 		// set meanwhile is theirs.
 		if (RunStore.onTarget(ctx.run).length === 0)
 			await Parent.take(ctx, `loop run ${resumed ? "resumed" : "started"}`);
+		// A landing the dead runner left half done is undone first: the gates recovery may run, and
+		// the sessions after it, would otherwise work on a half-replayed tree.
+		await Land.recover(ctx);
 		// Recovery may run a subtask's gates, which a stop must still be able to kill.
 		await hearingStop(ctx, () => Claims.recover(ctx));
 		if (ctx.run.stall === undefined) {

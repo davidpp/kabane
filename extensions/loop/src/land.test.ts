@@ -669,3 +669,60 @@ describe("Loop.land", () => {
 		expect(ghCalls).toEqual([]);
 	});
 });
+
+describe("a landing whose runner died", () => {
+	it("is undone when the run resumes, before its gates run again on the tree", async () => {
+		const parent = await parentIssue();
+		const child = await Planner.addTask(home, {
+			title: "the work",
+			kind: "issue",
+			state: "done",
+			parentTaskId: parent.id,
+		});
+		if (!child.ok) throw child.error;
+		const run = await completedRun(parent, { gates: { test: "true" } });
+		const dir = run.worktree ?? "";
+		commit(dir, "README.md", "# ours\n");
+		const before = head(dir);
+		baseMoves("README.md", "# theirs\n");
+		// The landing's rebase stops on the conflict, and its runner dies there.
+		GitFixture.run(dir, ["fetch", "-q", "origin", "main"]);
+		expect(() => GitFixture.run(dir, ["rebase", "-q", "FETCH_HEAD"])).toThrow();
+		const died = RunStore.write(home, {
+			...run,
+			status: "running",
+			pid: Bun.spawnSync(["true"]).pid,
+			startedAt: new Date().toISOString(),
+			landingFrom: before,
+		});
+		if (!died.ok) throw died.error;
+
+		const ran = await Runner.run(run.id, {
+			home,
+			basePath: home,
+			kabaneBin: "/nonexistent/kabane",
+			pid: process.pid,
+			git,
+			gh,
+			tickMs: 10,
+		});
+
+		if (!ran.ok) throw ran.error;
+		// Back on the branch at the tip the run left, no rebase left in progress, and no gate
+		// checkpoint committed on the half-replayed tree.
+		expect(
+			GitFixture.run(dir, ["symbolic-ref", "--short", "HEAD"]).trim(),
+		).toBe(BRANCH);
+		expect(head(dir)).toBe(before);
+		expect(GitFixture.run(dir, ["status", "--porcelain"]).trim()).toBe("");
+		expect(ran.value.landingFrom).toBeUndefined();
+		expect(RunStore.checkpoints(ran.value)).toEqual([]);
+		const events = RunStore.readEvents(home, run.id);
+		expect(events.ok && events.value.map((e) => e.type)).toContain(
+			"landing_recovered",
+		);
+		// The resumed run lands again; the conflict stops that landing, as it would have.
+		expect(ran.value.status).toBe("completed");
+		expect(ran.value.landing?.summary).toContain("conflicts in README.md");
+	});
+});

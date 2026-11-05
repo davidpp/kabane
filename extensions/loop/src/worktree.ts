@@ -297,6 +297,24 @@ export namespace Worktree {
 	};
 
 	/**
+	 * Put the worktree at `dir` back on `branch` at commit `tip`: a rebase left stopped is
+	 * aborted, the branch checked out again, and reset there as `reset` resets.
+	 */
+	export const restore = async (
+		dir: string,
+		branch: string,
+		tip: string,
+		run: Git = git,
+	): Promise<Result<void>> => {
+		const isLinked = await linked(dir, run);
+		if (!isLinked.ok) return isLinked;
+		// Fails, harmlessly, when no rebase is in progress.
+		await run(dir, ["rebase", "--abort"]);
+		const back = await run(dir, ["checkout", "-q", "-f", branch]);
+		return back.ok ? reset(dir, tip, run) : back;
+	};
+
+	/**
 	 * Remove the worktree at `dir` and delete its branch: a run's worktree whose work is merged.
 	 * `git worktree remove` refuses a worktree with changes not committed, which is left as it is.
 	 * A branch merged into HEAD is deleted as git deletes a merged branch; one `squashed` into the

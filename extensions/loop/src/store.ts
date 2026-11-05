@@ -149,6 +149,12 @@ export namespace RunStore {
 		gateRuns: z.array(Gates.RunSchema).default([]),
 		/** The last landing of the run's branch, when it was landed. */
 		landing: LandingSchema.optional(),
+		/**
+		 * A landing under way: the tip the run's branch was at before it rebased. Written before the
+		 * rebase and dropped once the landing is recorded, so a runner that died meanwhile leaves it
+		 * for the next to put the branch back with (`Land.recover`).
+		 */
+		landingFrom: z.string().optional(),
 		/** The pull request the run's branch has, once a landing opened it or found it open. */
 		pr: z.string().optional(),
 		/**

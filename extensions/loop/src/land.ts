@@ -116,6 +116,7 @@ export namespace Land {
 				branch,
 				said: `The branch is on ${target}`,
 			});
+		RunState.save(ctx, { ...ctx.run, landingFrom: from.value });
 		const rebased = await Worktree.rebase(dir, onto.value, git);
 		if (!rebased.ok)
 			return err(
@@ -353,13 +354,38 @@ export namespace Land {
 			at: ctx.now().toISOString(),
 			...outcome,
 		};
-		RunState.save(ctx, { ...ctx.run, landing, ...(pr ? { pr } : {}) });
+		RunState.save(ctx, {
+			...ctx.run,
+			landing,
+			landingFrom: undefined,
+			...(pr ? { pr } : {}),
+		});
 		RunState.event(ctx, {
 			type: landing.ok ? "landed" : "warning",
 			summary: landing.summary,
 			...(pr ? { data: { pr } } : {}),
 		});
 		return landing;
+	};
+
+	/**
+	 * Put back a landing a runner died in: abort a rebase it left stopped, and reset the run's
+	 * branch to the tip it was at before the landing, so nothing (a gate pass, a checkpoint, a
+	 * session) works on a half-replayed tree. Nothing to do when no landing was under way.
+	 */
+	export const recover = async (ctx: Ctx): Promise<void> => {
+		const tip = ctx.run.landingFrom;
+		const dir = ctx.run.worktree;
+		if (tip === undefined || dir === undefined) return;
+		const branch = RunStore.branchOf(ctx.run);
+		const reset = await Worktree.restore(dir, branch, tip, ctx.deps.git);
+		RunState.save(ctx, { ...ctx.run, landingFrom: undefined });
+		RunState.event(ctx, {
+			type: reset.ok ? "landing_recovered" : "warning",
+			summary: reset.ok
+				? `the landing the last runner died in is undone: branch ${branch} is back at ${short(tip)}`
+				: `the landing the last runner died in could not be undone, put branch ${branch} back at ${tip} by hand: ${reset.error.message}`,
+		});
 	};
 
 	/**
@@ -370,6 +396,7 @@ export namespace Land {
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
 	): Promise<RunStore.Landing> => {
+		await recover(ctx);
 		const placed = await onBase(ctx, plan.parent);
 		if (!placed.ok) return record(ctx, placed.error);
 		const pr = await toPr(ctx, plan, placed.value);
