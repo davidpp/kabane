@@ -59,8 +59,8 @@ const gh: Land.Gh = async (_cwd, args) => {
 const BRANCH = "jcab-1-make-the-thing";
 const remoteTip = (): string =>
 	GitFixture.run(remote, ["rev-parse", `refs/heads/${BRANCH}`]).trim();
-const head = (dir: string): string =>
-	GitFixture.run(dir, ["rev-parse", "HEAD"]).trim();
+const head = (dir: string, rev = "HEAD"): string =>
+	GitFixture.run(dir, ["rev-parse", rev]).trim();
 
 const commit = (dir: string, file: string, text = `${file}\n`): void => {
 	writeFileSync(join(dir, file), text);
@@ -337,6 +337,7 @@ describe("Land.land to a pull request", () => {
 		expect(landing.ok).toBe(true);
 		expect(landing.summary).toContain(`pull request ${PR_URL} is open`);
 		expect(remoteTip()).toBe(head(ctx.run.worktree ?? ""));
+		expect(ctx.run.pushed).toBe(remoteTip());
 		expect(ctx.run.pr).toBe(PR_URL);
 		const saved = RunStore.read(home, ctx.run.id);
 		expect(saved.ok && saved.value.pr).toBe(PR_URL);
@@ -389,14 +390,39 @@ describe("Land.land to a pull request", () => {
 		commit(teammate, "reviewer.txt");
 		GitFixture.run(teammate, ["push", "-q", "origin", BRANCH]);
 		const theirs = remoteTip();
-		// The run's work goes on without it: its last push is all it knows of the branch.
+		const ours = ctx.run.pushed;
+		// The run's work goes on without it, and a fetch in the user's checkout, which shares the
+		// worktree's refs, moves the remote-tracking branch onto the reviewer's commit: a lease on
+		// that ref would now let the push through.
 		commit(ctx.run.worktree ?? "", "review-fix.txt");
+		GitFixture.run(repo, ["fetch", "-q", "origin"]);
+		expect(head(repo, `refs/remotes/origin/${BRANCH}`)).toBe(theirs);
 
 		const again = await landed(ctx);
 
 		expect(again.ok).toBe(false);
 		expect(again.summary).toContain("git push");
+		expect(again.summary).toContain(
+			`the run last pushed ${ours?.slice(0, 12)}`,
+		);
 		expect(remoteTip()).toBe(theirs);
+		expect(ctx.run.pushed).toBe(ours);
+	});
+
+	it("does not overwrite a branch of the same name it never pushed", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent));
+		GitFixture.run(teammate, ["checkout", "-q", "-b", BRANCH]);
+		commit(teammate, "someone-else.txt");
+		GitFixture.run(teammate, ["push", "-q", "origin", BRANCH]);
+		const theirs = remoteTip();
+		GitFixture.run(repo, ["fetch", "-q", "origin"]);
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(remoteTip()).toBe(theirs);
+		expect(ghCalls).toEqual([]);
 	});
 
 	it("reports a push that fails, and opens no pull request", async () => {

@@ -252,17 +252,29 @@ export namespace Land {
 		const run = ctx.deps.gh ?? gh;
 		const { dir, remote, base, branch, rebased } = placed;
 		const keep = rebased ? { rebased } : {};
-		// A later run on the parent rebases the branch a pull request already has: a lease, so a
-		// push never overwrites a commit someone else pushed to it. Only the run's own branch.
+		// A later run on the parent rebases the branch a pull request already has, so the push
+		// forces, leased on the commit the run last pushed there, or on no branch there at all.
+		// The lease names that commit rather than the remote-tracking ref, which any fetch in the
+		// repository moves: a commit someone else pushed is refused, never overwritten. Only the
+		// run's own branch is pushed.
 		const ref = `refs/heads/${branch}`;
+		const tip = await revParse(git, dir, ref);
+		if (!tip.ok) return err(notLanded(tip.error.message, keep));
 		const pushed = await git(dir, [
 			"push",
 			"-q",
-			"--force-with-lease",
+			`--force-with-lease=${ref}:${ctx.run.pushed ?? ""}`,
 			remote,
 			`${ref}:${ref}`,
 		]);
-		if (!pushed.ok) return err(notLanded(pushed.error.message, keep));
+		if (!pushed.ok)
+			return err(
+				notLanded(
+					`${pushed.error.message}${ctx.run.pushed ? ` (the run last pushed ${short(ctx.run.pushed)} there)` : ""}`,
+					keep,
+				),
+			);
+		RunState.save(ctx, { ...ctx.run, pushed: tip.value });
 		const open = await openPr(run, dir, branch);
 		if (open !== undefined) return ok(open);
 		const created = await run(dir, [

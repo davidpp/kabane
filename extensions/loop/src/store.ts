@@ -151,6 +151,12 @@ export namespace RunStore {
 		landing: LandingSchema.optional(),
 		/** The pull request the run's branch has, once a landing opened it or found it open. */
 		pr: z.string().optional(),
+		/**
+		 * The commit the run's branch is at on the remote, as a landing last pushed it: what the
+		 * next push expects to find there, and refuses to overwrite anything else. Absent, the
+		 * branch must not be on the remote yet.
+		 */
+		pushed: z.string().optional(),
 		/** When the human closed the run's board tab: the board stops listing it. */
 		dismissedAt: z.string().optional(),
 	});

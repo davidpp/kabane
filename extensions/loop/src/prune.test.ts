@@ -115,7 +115,7 @@ const landed = (run: RunStore.Run, pr = PR): string => {
 	const dir = run.worktree ?? "";
 	commit(dir, `${run.id}.txt`);
 	GitFixture.run(dir, ["push", "-q", "origin", "HEAD"]);
-	const written = RunStore.write(home, { ...run, pr });
+	const written = RunStore.write(home, { ...run, pr, pushed: head(dir) });
 	if (!written.ok) throw written.error;
 	return head(dir);
 };
@@ -135,13 +135,16 @@ describe("a parent's next run, after a run that opened a pull request", () => {
 	it("goes on in the worktree while the pull request is open, and takes the pull request over", async () => {
 		const parent = await parentWithChild();
 		const first = await startOn(parent.id);
-		prSays = { state: "OPEN", headRefOid: landed(first) };
+		const tip = landed(first);
+		prSays = { state: "OPEN", headRefOid: tip };
 
 		const second = await startOn(parent.id);
 
 		expect(second.worktree).toBe(first.worktree);
 		expect(second.worktreeReused?.runId).toBe(first.id);
 		expect(second.pr).toBe(PR);
+		// What its push leases on: the commit the first run pushed.
+		expect(second.pushed).toBe(tip);
 		expect(Loop.placement(second)).toContain(
 			`its pull request ${PR} is not merged, so this run goes on with it`,
 		);

@@ -442,6 +442,7 @@ export namespace Loop {
 					from: { runId: string; branch: string };
 					base?: Worktree.Head;
 					pr?: string;
+					pushed?: string;
 			  }
 			| undefined
 		>
@@ -474,6 +475,7 @@ export namespace Loop {
 			from: { runId: last.id, branch: branch.value },
 			...(last.base ? { base: last.base } : {}),
 			...(last.pr ? { pr: last.pr } : {}),
+			...(last.pushed ? { pushed: last.pushed } : {}),
 		});
 	};
 
@@ -516,6 +518,7 @@ export namespace Loop {
 				worktreeReused: from,
 				base: base.value,
 				...(reused.value.pr ? { pr: reused.value.pr } : {}),
+				...(reused.value.pushed ? { pushed: reused.value.pushed } : {}),
 			});
 		}
 		const dir = Worktree.dirFor(RunStore.paths(deps.home, run.id).dir);
