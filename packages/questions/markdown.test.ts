@@ -29,6 +29,10 @@ it("labels multi-select and choices-only questions without labeling freeform cho
 	for (const [meta, suffix] of [
 		[
 			{ choices: ["A"], multiSelect: true, allowFreeform: false },
+			" (multi-select, choices only)",
+		],
+		[
+			{ choices: ["A"], multiSelect: true, allowFreeform: true },
 			" (multi-select)",
 		],
 		[{ choices: ["A"], allowFreeform: false }, " (choices only)"],

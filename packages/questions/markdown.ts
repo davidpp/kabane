@@ -6,11 +6,11 @@ export const singleLine = (text: string): string =>
 
 export const questionMarkdown = (row: QuestionView, brief = false): string => {
 	const question = parseDecisionBody(row.body);
-	const mode = question.multiSelect
-		? " (multi-select)"
-		: question.allowFreeform
-			? ""
-			: " (choices only)";
+	const modes = [
+		...(question.multiSelect ? ["multi-select"] : []),
+		...(question.allowFreeform ? [] : ["choices only"]),
+	];
+	const mode = modes.length ? ` (${modes.join(", ")})` : "";
 	const title = `${singleLine(row.handle)} ${singleLine(question.question)}${mode}`;
 	// A handle can shift after sync; the ULID at the end of the question's line never does.
 	const id = ` id:${row.id}`;

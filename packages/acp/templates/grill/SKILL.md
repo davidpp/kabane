@@ -28,8 +28,9 @@ high, normal, low), and keep the listed order within a priority.
 For each question:
 
 1. Restate it in one line, with its handle.
-2. Give the choices, the recommended one and why. `(choices only)` refuses any other answer;
-   `(multi-select)` takes several, comma-separated.
+2. Give the choices, the recommended one and why. `choices only` refuses any other answer;
+   `multi-select` takes several, comma-separated. A question can be both:
+   `(multi-select, choices only)`.
 3. Check what you can yourself first: read the file, the issue (`kabane_context`) or the command
    the question points at, and say what you found when it sharpens or changes the recommendation.
    Do not ask the human what the code can answer.
