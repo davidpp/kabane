@@ -2,8 +2,10 @@
 //
 // ACP reports context occupancy (`used` of `size` tokens in the window now), not a running token
 // count, so the meter shows occupancy and no token budget is enforced. Cost, where a harness
-// reports it, is cumulative per session, so a session's latest figure replaces its earlier ones
-// and the run's spend is the sum over sessions.
+// reports it, is cumulative per harness session, so a claim's latest figure replaces its earlier
+// ones. A harness session resumed by a later claim (a gate retry, a runner restart) goes on from
+// the total it had, so the claims that share one count its spend once, and the run's spend is the
+// sum over harness sessions.
 import { z } from "zod";
 import type { LoopConfig } from "./config";
 
@@ -40,19 +42,46 @@ export namespace Budget {
 	};
 
 	export type Spend = {
-		/** Sum of the latest cost of every session that reported one in `currency`. */
+		/** Sum of the latest cost of every harness session that reported one in `currency`. */
 		amount: number;
-		/** Sessions whose spend is unknown: no cost reported, or in another currency. */
+		/** Claims whose spend is unknown: no cost reported, or in another currency. */
 		unpriced: number;
 	};
 
-	export const spent = (meter: Meter, currency: string): Spend => {
+	/** The harness session each claim's core session ran in, in claim order. */
+	type Sessions = readonly { sessionId: string; acpSessionId?: string }[];
+
+	/**
+	 * What the run has spent. A core session no claim names, or one whose claim recorded no
+	 * harness session, is a harness session of its own. Within one harness session, each claim
+	 * adds what the total grew by since the claim before it; a total lower than the one before
+	 * can only be a count the harness started again, and adds whole.
+	 */
+	export const spent = (
+		meter: Meter,
+		currency: string,
+		sessions: Sessions,
+	): Spend => {
+		const harness = new Map(
+			sessions.map((s) => [s.sessionId, s.acpSessionId ?? s.sessionId]),
+		);
+		const ordered = [
+			...new Set([...harness.keys(), ...Object.keys(meter)]),
+		].filter((id) => meter[id] !== undefined);
+		const last = new Map<string, number>();
 		let amount = 0;
 		let unpriced = 0;
-		for (const usage of Object.values(meter)) {
-			if (usage.cost && usage.cost.currency === currency)
-				amount += usage.cost.amount;
-			else unpriced += 1;
+		for (const sessionId of ordered) {
+			const usage = meter[sessionId];
+			if (!usage?.cost || usage.cost.currency !== currency) {
+				unpriced += 1;
+				continue;
+			}
+			const key = harness.get(sessionId) ?? sessionId;
+			const before = last.get(key) ?? 0;
+			const total = usage.cost.amount;
+			amount += total >= before ? total - before : total;
+			last.set(key, total);
 		}
 		return { amount, unpriced };
 	};
@@ -65,9 +94,10 @@ export namespace Budget {
 	export const check = (
 		budget: LoopConfig.Config["budget"],
 		meter: Meter,
+		sessions: Sessions,
 	): Verdict => {
 		if (budget.spend !== undefined) {
-			const { amount } = spent(meter, budget.currency);
+			const { amount } = spent(meter, budget.currency, sessions);
 			if (amount >= budget.spend)
 				return {
 					ok: false,

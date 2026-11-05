@@ -85,6 +85,41 @@ describe("Brief, after an interrupted attempt", () => {
 	});
 });
 
+describe("Brief after a red gate", () => {
+	const gate = {
+		name: "check",
+		command: "grep -q fixed out.txt",
+		ok: false,
+		exit: 1,
+		ms: 3,
+		tail: "no match",
+	};
+
+	it("tells the resumed session only which gate failed, how, and to close again", () => {
+		const prompt = Brief.retriedInSession(subject.task, gate);
+		expect(prompt.split("\n")[0]).toBe(
+			"After you called kabane_done on P-2, the runner ran the gates and the `check` gate (`grep -q fixed out.txt`) failed with exit 1, so P-2 is open again. This is the same session, resumed, so your instructions, the brief and what you did so far still hold. The end of the gate's output:",
+		);
+		expect(prompt).toContain("```\nno match\n```");
+		expect(prompt).toEndWith(
+			"Make it pass, then call kabane_done on P-2 again.",
+		);
+		expect(prompt).not.toContain("You are one implementing session");
+	});
+
+	it("gives a new session the failure inside the full brief", () => {
+		const sections = Brief.opening(
+			{ ...subject, retry: gate },
+			"ASSEMBLED",
+		).split("\n\n---\n\n");
+		expect(sections[0]).toStartWith("You are one implementing session");
+		expect(sections[1]).toStartWith(
+			"P-2 was closed before, then reopened: the `check` gate (`grep -q fixed out.txt`) failed with exit 1 on that work.",
+		);
+		expect(sections[2]).toBe("ASSEMBLED");
+	});
+});
+
 describe("Brief on a single issue", () => {
 	const lone = task("P-9", "lone");
 	const single = { runId: "r1", parent: lone, task: lone, gates: [] };

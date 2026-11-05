@@ -229,7 +229,11 @@ export namespace Runner {
 		readInbox(ctx);
 		if (ctx.stopRequested)
 			return { status: "stopped", reason: "stop-requested" };
-		const verdict = Budget.check(ctx.run.config.budget, ctx.run.usage);
+		const verdict = Budget.check(
+			ctx.run.config.budget,
+			ctx.run.usage,
+			ctx.run.claims,
+		);
 		if (!verdict.ok)
 			return {
 				status: "stopped",

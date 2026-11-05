@@ -7,7 +7,9 @@
 // gates the runner runs once it has ended. A runner that died mid-claim leaves claims with no
 // end; `recover` closes them, finishing a done subtask's gates, and the claim that takes the work
 // over continues the interrupted one: its harness session resumed where the harness can, told what
-// that attempt left either way.
+// that attempt left either way. A subtask its own red gate reopened is claimed again in the session
+// that closed it, while `Retry` says that session has room, and in a new one told the gate's output
+// otherwise.
 import type { Harnesses } from "@cabane/acp";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
 import type { Brief } from "./brief";
@@ -21,6 +23,7 @@ import { Lenses } from "./lenses";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import type { Questions } from "./questions";
+import { Retry } from "./retry";
 import { Stall } from "./stall";
 import { RunState } from "./state";
 import { RunStore } from "./store";
@@ -346,11 +349,14 @@ export namespace Claims {
 		summary: string;
 		/** The claim before it on the same work, when that one was interrupted. */
 		interrupted?: Brief.Interrupted;
+		/** The attempt whose session a gate retry continues. */
+		resumes?: Retry.Resume;
 	};
 
 	// Record the claim, dispatch its session and hold it live until it has settled.
 	const launch = (ctx: Ctx, plan: LoopPlan.Plan, started: Started): void => {
-		const { task, harness, lane, sessionId, work, interrupted } = started;
+		const { task, harness, lane, sessionId, work, interrupted, resumes } =
+			started;
 		RunState.save(ctx, {
 			...ctx.run,
 			claims: [
@@ -385,6 +391,7 @@ export namespace Claims {
 				lane,
 				work,
 				...(interrupted ? { interrupted } : {}),
+				...(resumes ? { resumes } : {}),
 			},
 			{
 				basePath: ctx.deps.basePath,
@@ -454,8 +461,13 @@ export namespace Claims {
 		const lane = `${label(task)}${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, task, harness, lane, true);
 		if (sessionId === undefined) return;
+		const previous = earlier.at(-1);
 		const retry = Gates.lastFailure(ctx.run.gateRuns, task.id);
-		const interrupted = await interruption(ctx, earlier.at(-1));
+		const interrupted = await interruption(ctx, previous);
+		const retryIn =
+			retry && previous
+				? Retry.session(previous, harness, ctx.run.usage)
+				: undefined;
 		launch(ctx, plan, {
 			task,
 			harness,
@@ -468,7 +480,17 @@ export namespace Claims {
 			},
 			summary: `${harness} claims ${label(task)}: ${task.title}`,
 			...(interrupted ? { interrupted } : {}),
+			...(retryIn?.resume ? { resumes: retryIn } : {}),
 		});
+		// Whether the harness resumes it is the dispatch's to say; why it was not tried is the run's.
+		if (retryIn && !retryIn.resume)
+			RunState.event(ctx, {
+				type: "warning",
+				lane,
+				session: sessionId,
+				task: label(task),
+				summary: `${retryIn.lane}'s session not resumed for a gate retry (${retryIn.why}): a new session gets the full brief`,
+			});
 	};
 
 	/**

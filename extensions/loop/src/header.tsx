@@ -234,7 +234,7 @@ export namespace LoopHeader {
 	/** Each budget the run is held to, and the context its sessions fill, as a share of its limit. */
 	export const meters = (run: RunStore.Run): Meter[] => {
 		const { budget } = run.config;
-		const spend = Budget.spent(run.usage, budget.currency);
+		const spend = Budget.spent(run.usage, budget.currency, run.claims);
 		const live = liveClaims(run).map((claim) => run.usage[claim.sessionId]);
 		const shown = (live.length > 0 ? live : Object.values(run.usage)).flatMap(
 			(usage) => (usage ? [Budget.occupancy(usage)] : []),
