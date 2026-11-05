@@ -30,7 +30,7 @@ import { ErrorBoundary } from "./error-boundary";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
-import { PermissionBlock } from "./permission-block";
+import { clicks, PermissionBlock } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import {
 	type ActivityCard,
@@ -412,8 +412,7 @@ export const EventView = ({
 					}}
 				>
 					<PermissionBlock
-						onPick={onAsk && ((index) => onAsk({ type: "askOption", index }))}
-						onKey={onAsk && ((name) => onAsk({ type: "askKey", name }))}
+						{...clicks(onAsk)}
 						request={permissions[0]}
 						waiting={permissions.length - 1}
 						width={contentWidth}
