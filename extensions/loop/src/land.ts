@@ -262,7 +262,7 @@ export namespace Land {
 			),
 			"",
 			"---",
-			`Opened by kabane loop run \`${run.id}\`. ${run.parentShortId} waits on this review in the tracker: merging is yours, and closing ${run.parentShortId} after.`,
+			`Opened by kabane loop run \`${run.id}\`. ${run.parentShortId} waits on this review in the tracker: merging is yours. The next \`kabane loop start\` or \`kabane loop prune\` that sees this pull request merged moves ${run.parentShortId} to done, or back to next if it was closed unmerged.`,
 		].join("\n");
 	};
 
