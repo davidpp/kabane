@@ -5,6 +5,7 @@
  *
  *   bin/kabane.js         the CLI bundled for Bun, every `@cabane/*` workspace package inlined,
  *                         each official extension under extensions/ among them
+ *   bin/chunk-<hash>.js  lazy command modules and shared code
  *   templates/<name>/     each packages/acp/templates/<name> (the copilot's dispatch skill) and
  *                         extensions/<ext>/templates/<name> (the loop's lenses), read from disk
  *                         at runtime as ../templates/<name> from bin/kabane.js; one namespace, so
@@ -119,7 +120,8 @@ const bundle = async (): Promise<void> => {
 	const result = await Bun.build({
 		entrypoints: [join(CLI, "index.ts")],
 		outdir: join(DIST, "bin"),
-		naming: "kabane.js",
+		naming: { entry: "kabane.js", chunk: "chunk-[hash].js" },
+		splitting: true,
 		target: "bun",
 		external: [...EXTERNAL],
 		// Without it the JSX compiles to the development runtime.
