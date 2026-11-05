@@ -113,6 +113,14 @@ const server = Bun.serve({
 		// Only kabane's own: another local tool may probe any open port.
 		if (request.headers.get("user-agent")?.startsWith("kabane/"))
 			requests.push(path);
+		// The same assets one redirect away, at a name http may reach (127.0.0.1) and one it may not
+		// (0.0.0.0, still this machine, so a redirect that was followed would be answered).
+		const hop = /^\/(loopback|elsewhere)(\/.*)$/.exec(path);
+		if (hop)
+			return Response.redirect(
+				`http://${hop[1] === "loopback" ? "127.0.0.1" : "0.0.0.0"}:${server.port}/download${hop[2]}`,
+				302,
+			);
 		if (path === "/-/package/kabane/dist-tags")
 			return Response.json(release.tags);
 		if (path === `/download/v${NEXT}/SHA256SUMS`)
@@ -334,6 +342,74 @@ test("a target with no published binary reports the candidate and replaces nothi
 	expect(UpdateBinary.target("win32", "x64")).toBeUndefined();
 	expect(UpdateBinary.target("linux", "arm64")).toBe("linux-arm64");
 }, 30_000);
+
+test("releases are read over https, or http from loopback, wherever the redirects lead", async () => {
+	const { secure } = UpdateBinary;
+	for (const url of [
+		"https://registry.npmjs.org",
+		"https://mirror.example/kabane",
+		"http://127.0.0.1:8080",
+		"http://[::1]:8080/download",
+		"http://localhost:8080",
+	])
+		expect(secure(url)).toBe(true);
+	for (const url of [
+		"http://registry.npmjs.org",
+		"http://0.0.0.0:8080",
+		"http://127.0.0.2:8080",
+		"http://localhost.example",
+		"ftp://mirror.example",
+		"file:///tmp/kabane",
+		"not a url",
+	])
+		expect(secure(url)).toBe(false);
+
+	serve(repacked);
+	const installed = install("opt/kabane");
+	const before = updateSnapshot(installed.base);
+	const plain = await update(
+		[],
+		installed.link,
+		{ HOME: installed.home },
+		{
+			source: {
+				registry: "http://registry.npmjs.org",
+				releases: `${server.url.origin}/download`,
+			},
+		},
+	);
+	expect(plain).toMatchObject({ exitCode: 1, json: { status: "error" } });
+	expect(plain.text).toContain("https only");
+	const elsewhere = await update(
+		[],
+		installed.link,
+		{ HOME: installed.home },
+		{
+			source: {
+				registry: server.url.origin,
+				releases: `${server.url.origin}/elsewhere`,
+			},
+		},
+	);
+	expect(elsewhere).toMatchObject({ exitCode: 1, json: { status: "error" } });
+	expect(elsewhere.text).toContain(`refusing http://0.0.0.0:${server.port}/`);
+	expect(updateSnapshot(installed.base)).toEqual(before);
+	expect(leftovers(installed.directory)).toEqual([]);
+
+	const loopback = await update(
+		[],
+		installed.link,
+		{ HOME: installed.home },
+		{
+			source: {
+				registry: server.url.origin,
+				releases: `${server.url.origin}/loopback`,
+			},
+		},
+	);
+	expect(loopback).toMatchObject({ exitCode: 0, json: { status: "updated" } });
+	expect(sha256(installed.executable)).toBe(sha256(nextExecutable));
+}, 60_000);
 
 /** An install directory and a staged release beside it, for the swap alone. */
 const staging = () => {

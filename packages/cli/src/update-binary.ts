@@ -3,7 +3,7 @@
  * `latest` and `beta` dist-tags name the release, read over `fetch` because a binary has no Bun to
  * run `bun info` with; the GitHub release of that tag carries `kabane-<os>-<arch>.tar.gz` and the
  * `SHA256SUMS` that covers it. `KABANE_UPDATE_REGISTRY` and `KABANE_UPDATE_RELEASES` point both
- * somewhere else, such as a mirror.
+ * somewhere else, such as a mirror, over https; plain http only reaches this machine's loopback.
  */
 
 import { createHash } from "node:crypto";
@@ -49,16 +49,54 @@ export namespace UpdateBinary {
 		return TARGETS.includes(name) ? name : undefined;
 	};
 
+	const LOOPBACK = new Set(["127.0.0.1", "[::1]", "localhost"]);
+
+	/** Whether `url` is https, or http to this machine's loopback, where nobody else is on the path. */
+	export const secure = (url: string): boolean => {
+		const parsed = trySync(() => new URL(url));
+		return (
+			parsed.ok &&
+			(parsed.value.protocol === "https:" ||
+				(parsed.value.protocol === "http:" &&
+					LOOPBACK.has(parsed.value.hostname)))
+		);
+	};
+
+	const insecure = (url: string): Error =>
+		new Error(
+			`refusing ${url}: releases are read over https only (http only from 127.0.0.1, ::1 or localhost); check KABANE_UPDATE_REGISTRY and KABANE_UPDATE_RELEASES`,
+		);
+
+	/**
+	 * A GET of `url` that only `secure` URLs answer: the one asked for and the one its redirects
+	 * end at, refused before any of the body is read.
+	 */
+	const get = async (
+		url: string,
+		runningVersion: string,
+		timeoutMs: number,
+	): Promise<Result<Response>> => {
+		if (!secure(url)) return err(insecure(url));
+		const response = await tryCatch(() =>
+			fetch(url, {
+				headers: { "user-agent": `kabane/${runningVersion}` },
+				signal: AbortSignal.timeout(timeoutMs),
+			}),
+		);
+		if (!response.ok || secure(response.value.url)) return response;
+		await response.value.body?.cancel().catch(() => {});
+		return err(insecure(response.value.url));
+	};
+
 	export const fetchTags = async (
 		registry: string,
 		version: string,
 		timeoutMs: number,
 	): Promise<Result<DistTags>> => {
-		const response = await tryCatch(() =>
-			fetch(`${registry}/-/package/kabane/dist-tags`, {
-				headers: { "user-agent": `kabane/${version}` },
-				signal: AbortSignal.timeout(timeoutMs),
-			}),
+		const response = await get(
+			`${registry}/-/package/kabane/dist-tags`,
+			version,
+			timeoutMs,
 		);
 		if (!response.ok) return response;
 		if (!response.value.ok)
@@ -117,13 +155,9 @@ export namespace UpdateBinary {
 		timeoutMs: number,
 		runningVersion: string,
 	): Promise<Result<string, string>> => {
-		const response = await tryCatch(() =>
-			fetch(url, {
-				headers: { "user-agent": `kabane/${runningVersion}` },
-				signal: AbortSignal.timeout(timeoutMs),
-			}),
-		);
-		if (!response.ok) return err(`Could not download ${url}`);
+		const response = await get(url, runningVersion, timeoutMs);
+		if (!response.ok)
+			return err(`Could not download ${url}: ${response.error.message}`);
 		const { body, status } = response.value;
 		if (!response.value.ok || !body)
 			return err(`Could not download ${url} (HTTP ${status})`);
