@@ -15,7 +15,7 @@ import { CardTab } from "./card-tab";
 import { BoardContext } from "./context";
 import { CopilotLog } from "./copilot-log";
 import { CopilotPane, contextChip } from "./copilot-prompt";
-import { NO_COPILOT, useCopilotSession } from "./copilot-session";
+import { isCopilotEffect, useCopilotSession } from "./copilot-session";
 import type { BoardData } from "./data";
 import { Detail } from "./detail";
 import { useDetailRecords } from "./detail-records";
@@ -29,7 +29,7 @@ import type { ActivitySource, CardHeader, Copilot, Dispatcher } from "./ports";
 import { ProgramStatus } from "./program-status";
 import { BoardPrompt } from "./prompt";
 import { PromptPanel } from "./prompt-field";
-import { useRunActivity } from "./run-activity";
+import { isActivityEffect, useRunActivity } from "./run-activity";
 import { useSpinnerFrame } from "./spinner";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
 import { isTaskEffect, useTaskActions } from "./task-actions";
@@ -90,8 +90,7 @@ export const App = ({
 	const {
 		log: copilotLog,
 		current: currentLog,
-		run: runCopilot,
-		cancel: cancelCopilot,
+		runEffect: runCopilotEffect,
 	} = useCopilotSession({
 		copilot,
 		basePath,
@@ -103,11 +102,8 @@ export const App = ({
 	const {
 		shown: shownActivity,
 		source: shownSource,
-		answer,
-		dismiss: dismissCard,
-		act: runAct,
-		openEvents,
 		takeCard,
+		runEffect: runActivityEffect,
 	} = useRunActivity({
 		basePath,
 		activity,
@@ -164,6 +160,8 @@ export const App = ({
 		(next: BoardNav.BoardState, effect: BoardNav.Effect): void => {
 			if (isTaskEffect(effect)) return runTaskEffect(next, effect);
 			if (isDispatchEffect(effect)) return runDispatchEffect(next, effect);
+			if (isCopilotEffect(effect)) return runCopilotEffect(next, effect);
+			if (isActivityEffect(effect)) return runActivityEffect(next, effect);
 			switch (effect.type) {
 				case "quit":
 					renderer.destroy();
@@ -180,46 +178,12 @@ export const App = ({
 				case "notice":
 					setNotice(effect.notice);
 					return;
-				case "copilotOpen":
-					// Focus moved optimistically; without a copilot it goes straight back with the flash.
-					if (!copilot) {
-						updateState((prev) => ({ ...prev, focus: "board" }));
-						setNotice(NO_COPILOT);
-					}
-					return;
-				case "copilotPrompt":
-					void runCopilot(next, effect.prompt);
-					return;
-				case "copilotCancel":
-					cancelCopilot();
-					return;
-				case "copilotAnswer":
-					copilot?.answerPermission(effect.id, effect.optionId);
-					return;
-				case "copilotAnswerForm":
-					copilot?.answerElicitation(effect.id, effect.answer);
-					return;
 				case "copilotSetText":
 				case "promptSetText":
 					(effect.type === "copilotSetText"
 						? inputRef
 						: promptRef
 					).current?.setText(effect.text);
-					return;
-				case "answerQuestion":
-					void answer(next, effect.questionId, effect.answer);
-					return;
-				case "dismiss":
-					void dismissCard(effect.cardId);
-					return;
-				case "act":
-					void runAct(next, effect);
-					return;
-				case "openEvents":
-					openEvents(next, effect.taskId);
-					break;
-				case "none":
-					break;
 			}
 		},
 		[
@@ -227,15 +191,9 @@ export const App = ({
 			reload,
 			runTaskEffect,
 			runDispatchEffect,
-			copilot,
-			runCopilot,
-			cancelCopilot,
-			answer,
-			dismissCard,
-			runAct,
-			openEvents,
+			runCopilotEffect,
+			runActivityEffect,
 			setNotice,
-			updateState,
 		],
 	);
 

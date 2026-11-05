@@ -20,6 +20,7 @@ import type {
 	CopilotCommand,
 	CopilotPermission,
 	CopilotShortcut,
+	CopilotUpdate,
 	TriggerDescriptor,
 } from "./ports";
 import { BoardPrompt } from "./prompt";
@@ -524,6 +525,27 @@ export namespace BoardNav {
 		effect: NONE,
 	});
 
+	// `o` in the detail view, on the task's card with events (app.tsx picks it from the host's
+	// activity): its tab when it has one, so one card never shows in two places, else the event view,
+	// back to this detail tab on `esc`.
+	export const withTaskEvents = (
+		state: BoardState,
+		taskId: string,
+		cardId: string,
+	): BoardState =>
+		state.tabs.open.includes(cardId)
+			? BoardTabs.reduceMouse(state, { type: "tab", id: cardId }).state
+			: {
+					...state,
+					view: {
+						type: "events",
+						cardId,
+						fromView: "detail",
+						fromTaskId: taskId,
+						fromTab: detailTab(state.view),
+					},
+				};
+
 	// The harness listed its commands again: the whole list replaces the last one, never merges.
 	export const withCopilotCommands = (
 		state: BoardState,
@@ -540,6 +562,30 @@ export namespace BoardNav {
 				source,
 			})),
 		});
+
+	// What a streamed update does to the board's state beyond the log: an ask joins the queue, a
+	// withdrawn one leaves it, the harness's commands replace its last list, and the turn's end
+	// reaches the footer's indicator. The same state for every other update.
+	export const withCopilotUpdate = (
+		state: BoardState,
+		update: CopilotUpdate,
+	): BoardState => {
+		switch (update.type) {
+			case "permission":
+				return withCopilotPermission(state, update.request);
+			case "elicitation":
+				return withCopilotElicitation(state, update.request);
+			case "withdrawn":
+				return withCopilotWithdrawn(state, update.id);
+			case "commands":
+				return withCopilotCommands(state, update.source, update.commands);
+			case "done":
+			case "error":
+				return withCopilotTurn(state, update.type);
+			default:
+				return state;
+		}
+	};
 
 	// One row of the `/` palette: a host shortcut, which expands to its template, or a harness
 	// command (`source` names the harness), which expands to `/name ` and goes as typed.

@@ -1,34 +1,37 @@
 // The work running on the board's tasks, as every surface that lists it sees it: the host's cards
 // plus the copilot's own, the questions they wait on, and what the human does to them (answers a
 // question, runs a card's action, closes its tab, opens its events).
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { BoardActivity } from "./activity";
 import type { BoardStore } from "./board-store";
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
 import { BoardNav } from "./nav";
-import { flash, type SetNotice } from "./notice";
+import { flash, reported, type SetNotice } from "./notice";
 import type { ActivityCard, ActivitySource } from "./ports";
 import { BoardTabs } from "./tabs";
+
+const ACTIVITY_EFFECTS = [
+	"answerQuestion",
+	"act",
+	"dismiss",
+	"openEvents",
+] as const;
+export type ActivityEffect = Extract<
+	BoardNav.Effect,
+	{ type: (typeof ACTIVITY_EFFECTS)[number] }
+>;
+export const isActivityEffect = BoardNav.effectsOf(ACTIVITY_EFFECTS);
 
 export type RunActivity = {
 	// Host cards plus the copilot's, for every surface that lists activity.
 	shown: BoardActivity.ActivityMap;
 	// The host's source with the copilot's card composed in.
 	source: ActivitySource;
-	answer: (
-		s: BoardNav.BoardState,
-		questionId: string,
-		text: string,
-	) => Promise<void>;
-	dismiss: (cardId: string) => Promise<void>;
-	act: (
-		s: BoardNav.BoardState,
-		effect: Extract<BoardNav.Effect, { type: "act" }>,
-	) => Promise<void>;
-	openEvents: (s: BoardNav.BoardState, taskId: string) => void;
 	// The event view on a card's tab refreshes its card every second; the keys read the same card.
 	takeCard: (card: ActivityCard) => void;
+	// `next` is the post-reduce state a reload merges into.
+	runEffect: (next: BoardNav.BoardState, effect: ActivityEffect) => void;
 };
 
 export const useRunActivity = ({
@@ -56,8 +59,6 @@ export const useRunActivity = ({
 		() => CopilotLog.withActivity(activity, copilotLog),
 		[activity, copilotLog],
 	);
-	const shownRef = useRef<BoardActivity.ActivityMap>(shown);
-	shownRef.current = shown;
 	const source = useMemo(
 		() => CopilotLog.source(activitySource, currentLog),
 		[activitySource, currentLog],
@@ -71,12 +72,11 @@ export const useRunActivity = ({
 		);
 	}, [shown, update]);
 
-	// `o` in the detail view: the task's card with events (BoardActivity.eventsCard). A card with a tab
-	// of its own opens as that tab, so one card never shows in two places.
+	// `o` in the detail view: the task's card with events (BoardActivity.eventsCard).
 	const openEvents = useCallback(
 		(s: BoardNav.BoardState, taskId: string): void => {
 			const target = BoardActivity.eventsCard(
-				shownRef.current,
+				shown,
 				taskId,
 				BoardNav.taskById(s, taskId)?.shortId,
 			);
@@ -84,22 +84,9 @@ export const useRunActivity = ({
 				setNotice({ text: "no events", tone: "success" });
 				return;
 			}
-			if (s.tabs.open.includes(target.id)) {
-				set(BoardTabs.reduceMouse(s, { type: "tab", id: target.id }).state);
-				return;
-			}
-			set({
-				...s,
-				view: {
-					type: "events",
-					cardId: target.id,
-					fromView: "detail",
-					fromTaskId: taskId,
-					fromTab: BoardNav.detailTab(s.view),
-				},
-			});
+			set(BoardNav.withTaskEvents(s, taskId, target.id));
 		},
-		[setNotice, set],
+		[shown, setNotice, set],
 	);
 
 	// A banner's question answered: core writes the decision, the banner says what was answered until
@@ -141,7 +128,7 @@ export const useRunActivity = ({
 	const act = useCallback(
 		async (
 			s: BoardNav.BoardState,
-			effect: Extract<BoardNav.Effect, { type: "act" }>,
+			effect: Extract<ActivityEffect, { type: "act" }>,
 		): Promise<void> => {
 			const { cardId, actionId, text, lane } = effect;
 			const res = source.act
@@ -153,9 +140,7 @@ export const useRunActivity = ({
 			setNotice(
 				res === null
 					? { text: "this card takes no actions", tone: "error" }
-					: res.ok
-						? { text: res.value, tone: "success" }
-						: { text: res.error.message, tone: "error" },
+					: reported(res),
 			);
 			await reload(s);
 		},
@@ -168,5 +153,24 @@ export const useRunActivity = ({
 		[update],
 	);
 
-	return { shown, source, answer, dismiss, act, openEvents, takeCard };
+	const runEffect = useCallback(
+		(next: BoardNav.BoardState, effect: ActivityEffect): void => {
+			switch (effect.type) {
+				case "answerQuestion":
+					void answer(next, effect.questionId, effect.answer);
+					return;
+				case "act":
+					void act(next, effect);
+					return;
+				case "dismiss":
+					void dismiss(effect.cardId);
+					return;
+				case "openEvents":
+					openEvents(next, effect.taskId);
+			}
+		},
+		[answer, act, dismiss, openEvents],
+	);
+
+	return { shown, source, takeCard, runEffect };
 };

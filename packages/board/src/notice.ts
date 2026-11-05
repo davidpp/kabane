@@ -35,3 +35,11 @@ export const flash = (res: Outcome, text: string): BoardNav.Notice =>
 	res.ok
 		? { text, tone: "success" }
 		: { text: res.error.message, tone: "error" };
+
+/** A host's report as the flash: its own words on success, the error message on failure. */
+export const reported = (
+	res: { ok: true; value: string } | { ok: false; error: { message: string } },
+): BoardNav.Notice =>
+	res.ok
+		? { text: res.value, tone: "success" }
+		: { text: res.error.message, tone: "error" };

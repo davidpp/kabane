@@ -6,7 +6,7 @@ import { useCallback } from "react";
 import type { BoardStore } from "./board-store";
 import { BoardData } from "./data";
 import { BoardNav } from "./nav";
-import type { SetNotice } from "./notice";
+import { reported, type SetNotice } from "./notice";
 import type { Copilot, Dispatcher } from "./ports";
 
 const DISPATCH_EFFECTS = ["loadTriggers", "dispatch"] as const;
@@ -88,11 +88,7 @@ export const useHostDispatch = ({
 				{ id, shortId, title: task?.title ?? "", brief: brief.value },
 				inputs,
 			);
-			setNotice(
-				res.ok
-					? { text: res.value, tone: "success" }
-					: { text: res.error.message, tone: "error" },
-			);
+			setNotice(reported(res));
 			// Refresh activity so a newly started card shows up.
 			const current = ref.current;
 			if (current) void reload(current);
