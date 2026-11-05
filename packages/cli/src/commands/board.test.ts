@@ -2,7 +2,7 @@ import { expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Keymap } from "@cabane/board";
+import { Keymap } from "@cabane/board/keymap";
 
 // The copilot's config-and-help procedure reads the board's keymap from here.
 it("prints the board's keymap in `kabane board --help`", async () => {

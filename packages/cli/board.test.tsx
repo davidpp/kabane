@@ -13,7 +13,7 @@ import { App, noActivity } from "@cabane/board";
 import { Planner } from "@cabane/core";
 import { parseArgs } from "@cabane/extension";
 import { testRender } from "@opentui/react/test-utils";
-import { boardDeps, copilotHarness } from "./src/commands/board";
+import { boardDeps, copilotHarness } from "./src/commands/board-runtime";
 import { saveConfig } from "./src/config";
 import { type Ctx, openContext, resolveScope } from "./src/context";
 

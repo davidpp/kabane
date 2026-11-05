@@ -9,6 +9,7 @@
 	"types": "index.ts",
 	"exports": {
 		".": "./index.ts",
+		"./keymap": "./src/keymap.ts",
 		"./context": "./src/context.ts",
 		"./ports": "./src/ports.ts",
 		"./form-field": "./src/form-field.ts"
