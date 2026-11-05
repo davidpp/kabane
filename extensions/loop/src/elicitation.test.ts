@@ -443,6 +443,21 @@ describe("Elicitation.answer", () => {
 		});
 	});
 
+	it("asks again when picks break a multi-select's limits, rather than taking them as typed text", () => {
+		const [, checks] = asked(ASK_TWO);
+		if (checks?.field.type !== "choices") throw new Error("missing question");
+		const capped = { ...checks, field: { ...checks.field, maxItems: 1 } };
+		expect(Elicitation.answer(capped, "1, 2")).toEqual({
+			kind: "invalid",
+			why: "picks 2, more than 1",
+		});
+		expect(Elicitation.answer(capped, "Lint, Fuzzing")).toEqual({
+			kind: "value",
+			key: "question_1_custom",
+			value: "Lint, Fuzzing",
+		});
+	});
+
 	it("asks again when a typed answer fits neither the choice nor its Other box", () => {
 		const [store] = fieldsOf(ASK);
 		const capped: Elicitation.Question = {
@@ -462,6 +477,7 @@ describe("Elicitation.answer", () => {
 		expect(Elicitation.answer({ field: store }, "Valkey")).toEqual({
 			kind: "invalid",
 			why: "names none of its choices",
+			unmatched: true,
 		});
 	});
 });

@@ -176,9 +176,15 @@ export namespace Elicitation {
 		| { kind: "value"; value: AcpClient.ElicitationValue }
 		| { kind: "skip" }
 		| { kind: "decline" }
-		| { kind: "invalid"; why: string };
+		/** `unmatched` when the answer names none of the field's options, rather than breaking a limit. */
+		| { kind: "invalid"; why: string; unmatched?: true };
 
 	const invalid = (why: string): Read => ({ kind: "invalid", why });
+	const unmatched = (why: string): Read => ({
+		kind: "invalid",
+		why,
+		unmatched: true,
+	});
 
 	const action = (word: Choice): Read =>
 		word.label === SKIP ? { kind: "skip" } : { kind: "decline" };
@@ -194,7 +200,7 @@ export namespace Elicitation {
 		const picked = chooseMany(optionChoices(field), given);
 		const word = picked ? undefined : typedWord(field, given);
 		if (word) return action(word);
-		if (!picked) return invalid("names something that is not an option");
+		if (!picked) return unmatched("names something that is not an option");
 		const count = picked.length;
 		if (field.minItems !== undefined && count < field.minItems)
 			return invalid(`picks ${count}, fewer than ${field.minItems}`);
@@ -231,7 +237,7 @@ export namespace Elicitation {
 				);
 				if (chosen && !options.includes(chosen)) return action(chosen);
 				if (!chosen)
-					return invalid(
+					return unmatched(
 						field.type === "boolean"
 							? "is neither Yes nor No"
 							: "names none of its choices",
@@ -253,14 +259,15 @@ export namespace Elicitation {
 
 	/**
 	 * What the human's answer to `question` fills: its field, or the free-text field folded into
-	 * it when the answer is none of the field's own.
+	 * it when the answer names none of the field's options. Picks that break the field's limits are
+	 * the field's answer, asked again, and never typed text.
 	 */
 	export const answer = (question: Question, given: string): Given => {
 		const { field, other } = question;
 		const own = read(field, given);
 		if (own.kind === "value")
 			return { kind: "value", key: field.key, value: own.value };
-		if (own.kind !== "invalid" || !other) return own;
+		if (own.kind !== "invalid" || !own.unmatched || !other) return own;
 		const typed = FormField.read(other, given);
 		return typed.ok
 			? { kind: "value", key: other.key, value: typed.value }
