@@ -27,6 +27,7 @@ const attempt: Brief.Interrupted = {
 
 const subject = {
 	runId: "r1",
+	gates: [],
 	parent: task("P-1", "parent"),
 	task: task("P-2", "child"),
 };
@@ -86,7 +87,7 @@ describe("Brief, after an interrupted attempt", () => {
 
 describe("Brief on a single issue", () => {
 	const lone = task("P-9", "lone");
-	const single = { runId: "r1", parent: lone, task: lone };
+	const single = { runId: "r1", parent: lone, task: lone, gates: [] };
 
 	it("tells the implementing session the issue is the whole run, with no subtasks or siblings", () => {
 		const [instructions] = Brief.opening(single, "ASSEMBLED").split(
@@ -127,4 +128,40 @@ describe("Brief on a single issue", () => {
 			'which drives the subtasks of P-1 ("parent") to completion',
 		);
 	});
+});
+
+describe("Brief implementing checks", () => {
+	for (const noun of ["issue", "subtask"]) {
+		const target = {
+			...subject,
+			task: noun === "issue" ? subject.parent : subject.task,
+		};
+
+		it(`names the runner's ordered gates for a ${noun}`, () => {
+			const brief = Brief.opening(
+				{ ...target, gates: ["typecheck", "lint"] },
+				"ASSEMBLED",
+			);
+			expect(brief).toContain(
+				`When you call kabane_done, the runner runs the gates (\`typecheck\`, \`lint\`) in that order on the tree outside your session; a failing gate reopens the ${noun} with its output.`,
+			);
+			expect(brief).toContain("Run the checks your change needs");
+			expect(brief).toContain(
+				"if a check fails only because the environment forbids something (a denied process or a blocked network call)",
+			);
+			expect(brief).toContain(
+				`explain it with kabane_comment and leave it to the gates without parking the ${noun}`,
+			);
+			expect(brief).not.toContain("No gates are configured");
+		});
+
+		it(`requires the project's checks for a ${noun} without gates`, () => {
+			const brief = Brief.opening(target, "ASSEMBLED");
+			expect(brief).toContain(
+				"No gates are configured for this run, so nothing runs the project's checks on your result after your session: run the project's checks yourself before you call kabane_done.",
+			);
+			expect(brief).not.toContain("leave it to the gates");
+			expect(brief).not.toContain("the runner runs the gates");
+		});
+	}
 });
