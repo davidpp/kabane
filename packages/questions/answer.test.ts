@@ -56,3 +56,15 @@ it("rejects unreachable recommendations and ambiguous or unanswerable choices", 
 			AskQuestionSchema.safeParse({ question: "Which?", ...value }).success,
 		).toBe(false);
 });
+
+it("defaults choices to strict answers but keeps explicit freeform and text-only questions", () => {
+	for (const [input, freeform] of [
+		[{ question: "Pick", choices: ["Alpha"] }, false],
+		[{ question: "Pick", choices: ["Alpha"], allowFreeform: true }, true],
+		[{ question: "Tell me" }, true],
+	] as const) {
+		const parsed = AskQuestionSchema.safeParse(input);
+		expect(parsed.success).toBe(true);
+		if (parsed.success) expect(parsed.data.allowFreeform).toBe(freeform);
+	}
+});

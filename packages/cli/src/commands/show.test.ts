@@ -74,7 +74,7 @@ it("shows registered decisions through the real CLI entry and consumes multiple 
 	expect(shown.exitCode).toBe(0);
 	expect(shown.text).toContain("Keep ordinary detail");
 	expect(shown.text).toContain(
-		"Which store? → SQLite (cabane://actor/human/test, Local)",
+		"Which store? (choices only) → SQLite (cabane://actor/human/test, Local)",
 	);
 	expect(shown.text).not.toContain("Withdraw this");
 	expect(shown.text).toContain("Long decision 7:");

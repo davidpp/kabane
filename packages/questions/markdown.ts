@@ -1,24 +1,35 @@
 import { parseDecisionBody } from "./body";
 import type { QuestionView } from "./schema";
 
+export const singleLine = (text: string): string =>
+	text.replace(/\s*[\r\n]+\s*/g, " ");
+
 export const questionMarkdown = (row: QuestionView, brief = false): string => {
 	const question = parseDecisionBody(row.body);
-	const title = `${row.handle} ${question.question}`;
+	const mode = question.multiSelect
+		? " (multi-select)"
+		: question.allowFreeform
+			? ""
+			: " (choices only)";
+	const title = `${singleLine(row.handle)} ${singleLine(question.question)}${mode}`;
+	const reasoning = row.reasoning ? singleLine(row.reasoning) : "";
 	if (row.status === "answered") {
-		const author = row.answered_by ?? "unknown";
+		const author = singleLine(row.answered_by ?? "unknown");
+		const answer = singleLine(row.answer ?? "");
 		return brief
-			? `${title} → ${row.answer} (${author}${row.reasoning ? `, ${row.reasoning}` : ""})`
-			: `${title}\n→ ${row.answer} (${author})${row.reasoning ? `: ${row.reasoning}` : ""}`;
+			? `${title} → ${answer} (${author}${reasoning ? `, ${reasoning}` : ""})`
+			: `${title}\n→ ${answer} (${author})${reasoning ? `: ${reasoning}` : ""}`;
 	}
 	if (row.status === "withdrawn")
-		return `${title}\nWithdrawn${row.reasoning ? `: ${row.reasoning}` : ""}`;
+		return `${title}\nWithdrawn${reasoning ? `: ${reasoning}` : ""}`;
 	const choices = question.choices.map(
-		(label) => `- ${label}${label === question.recommended ? " ★" : ""}`,
+		(label) =>
+			`- ${singleLine(label)}${label === question.recommended ? " ★" : ""}`,
 	);
 	return [
 		title,
 		...choices,
-		...(row.why ? [`why: ${row.why.replace(/\s*\n\s*/g, " ")}`] : []),
+		...(row.why ? [`why: ${singleLine(row.why)}`] : []),
 	].join("\n");
 };
 
@@ -31,7 +42,7 @@ export const questionsMarkdown = (
 	for (const row of rows) {
 		if (row.task_id !== taskId) {
 			lines.push(
-				`## ${row.short_id ?? row.task_id} ${row.title} · ${row.priority} · ${row.state}`,
+				`## ${singleLine(row.short_id ?? row.task_id)} ${singleLine(row.title)} · ${singleLine(row.priority)} · ${singleLine(row.state)}`,
 			);
 			taskId = row.task_id;
 		}

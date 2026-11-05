@@ -22,7 +22,7 @@ export const AskQuestionSchema = z
 			});
 		if (
 			value.recommended !== undefined &&
-			!value.choices?.includes(value.recommended)
+			!labels.includes(value.recommended.toLowerCase())
 		)
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
@@ -41,7 +41,14 @@ export const AskQuestionSchema = z
 				code: z.ZodIssueCode.custom,
 				message: "Multi-select choice labels cannot contain commas.",
 			});
-	});
+	})
+	.transform((value) => ({
+		...value,
+		allowFreeform: value.allowFreeform ?? value.choices === undefined,
+		recommended: value.choices?.find(
+			(choice) => choice.toLowerCase() === value.recommended?.toLowerCase(),
+		),
+	}));
 export const AskSchema = z.object({
 	id: z.string().min(1),
 	questions: z.array(AskQuestionSchema).min(1).max(10),

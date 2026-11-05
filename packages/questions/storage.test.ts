@@ -161,7 +161,7 @@ it("renders selected brief decisions and omits withdrawals", async () => {
 	);
 	const brief = unwrap(await Planner.assembleContext(base, task.id));
 	expect(brief).toContain(
-		"Which store? → SQLite (cabane://actor/human/test, Local)",
+		"Which store? (choices only) → SQLite (cabane://actor/human/test, Local)",
 	);
 	expect(brief).not.toContain("Which name?");
 });
@@ -406,4 +406,61 @@ it("matches base and qualified scope filters against the same family as kabane_l
 		expect(page).toContain("Branch");
 		expect(page).not.toContain("Outside");
 	}
+});
+
+it("does not rewrite a waiting issue and refuses closed issues until reopened", async () => {
+	const task = await issue();
+	unwrap(await Planner.updateTask(base, task.id, { state: "waiting" }));
+	const before = unwrap(await Planner.getTask(base, task.id));
+	await ask(task.id);
+	expect(unwrap(await Planner.getTask(base, task.id))).toEqual(before);
+	for (const state of ["done", "cancelled"] as const) {
+		const closed = await issue(state);
+		unwrap(await Planner.updateTask(base, closed.id, { state }));
+		for (const waiting of [true, false]) {
+			const refused = await Questions.ask(base, {
+				id: closed.id,
+				waiting,
+				questions: [{ question: "Reopen?" }],
+			});
+			expect(refused.ok).toBe(false);
+			if (!refused.ok)
+				expect(refused.error.message).toContain("reopen it first");
+		}
+		expect(unwrap(await Questions.list(base, { id: closed.id }))).toHaveLength(
+			0,
+		);
+		expect(unwrap(await Planner.getTask(base, closed.id))?.state).toBe(state);
+		unwrap(await Planner.updateTask(base, closed.id, { state: "next" }));
+		expect(
+			(
+				await Questions.ask(base, {
+					id: closed.id,
+					questions: [{ question: "Now?" }],
+				})
+			).ok,
+		).toBe(true);
+	}
+});
+
+it("stores canonical recommendations and refuses mistyped choices by default", async () => {
+	const task = await issue();
+	const rows = unwrap(
+		await Questions.ask(base, {
+			id: task.id,
+			questions: [
+				{ question: "Pick", choices: ["Alpha", "Beta"], recommended: "aLPHa" },
+			],
+		}),
+	);
+	const row = rows[0];
+	if (!row) throw new Error("Missing question");
+	expect(row.body).toContain('"recommended":"Alpha"');
+	expect(row.body).toContain('"allowFreeform":false');
+	expect(
+		(await Questions.answer(base, { question: row.id, answer: "Alhpa" })).ok,
+	).toBe(false);
+	expect(
+		(await Questions.answer(base, { question: row.id, answer: "alpha" })).ok,
+	).toBe(true);
 });

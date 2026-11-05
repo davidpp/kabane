@@ -115,12 +115,16 @@ export namespace Questions {
 		if (!resolved.ok) return resolved;
 		const written = await atomic(basePath, (db) => {
 			const task = db
-				.query<{ kind: string; visibility: string }>(
-					`SELECT kind, visibility FROM ${TABLES.tasks} WHERE id = ?`,
+				.query<{ kind: string; visibility: string; state: string }>(
+					`SELECT kind, visibility, state FROM ${TABLES.tasks} WHERE id = ?`,
 				)
 				.get(resolved.value);
 			if (!task || task.kind !== "issue")
 				throw new Error(`Questions require an issue: ${input.id}`);
+			if (task.state === "done" || task.state === "cancelled")
+				throw new Error(
+					`Cannot ask questions on a ${task.state} issue; reopen it first.`,
+				);
 			const now = new Date().toISOString();
 			const ids: string[] = [];
 			for (const { question, why, ...meta } of parsed.data.questions) {
@@ -143,7 +147,7 @@ export namespace Questions {
 				ids.push(id);
 			}
 			let changedTask: Task | null = null;
-			if (parsed.data.waiting) {
+			if (parsed.data.waiting && task.state !== "waiting") {
 				const moved = Planner.updateTaskIn(db, resolved.value, {
 					state: "waiting",
 				});
