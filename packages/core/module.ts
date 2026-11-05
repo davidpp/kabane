@@ -19,6 +19,7 @@
  */
 
 import type { Migrate } from "./db/migrate";
+import type { Db } from "./db/port";
 import { LOGICAL_TABLES, physicalTable } from "./db/tables";
 import { CORE_TOOL_NAMES } from "./mcp/tool-names";
 import type { ToolDef } from "./mcp/tools";
@@ -28,7 +29,7 @@ import {
 	type ContextSection,
 	type ResolvedAssembleContextOpts,
 } from "./schemas/assemble-context";
-import type { Task } from "./schemas/task";
+import type { Task, TaskState } from "./schemas/task";
 import type { SyncFamily } from "./sync/resolve";
 
 /**
@@ -98,6 +99,20 @@ export type KabaneModule = {
 	tools?: readonly ToolDef[];
 	/** Appended to the MCP server instructions, one paragraph. */
 	instructions?: string;
+	/**
+	 * Called inside the transaction of every local change to a task's state
+	 * (`Planner.updateTaskIn`), after the task row is written and captured, with
+	 * the task as it now is. A write here captures through the oplog like any
+	 * module write. Ops applied by sync never call it: the device that changed
+	 * the state already captured what the hook wrote. An `err` rolls the state
+	 * change back with everything else in its transaction.
+	 */
+	onTaskStateChange?: (
+		db: Db,
+		task: Task,
+		from: TaskState,
+		to: TaskState,
+	) => Result<void>;
 };
 
 /** A registered module's table, with the module that owns it. */
@@ -228,6 +243,20 @@ export namespace Modules {
 		registered.flatMap((module) =>
 			(module.syncTables ?? []).map((spec) => ({ module, spec })),
 		);
+
+	/** Run every registered module's `onTaskStateChange`, stopping at the first `err`. */
+	export const taskStateChanged = (
+		db: Db,
+		task: Task,
+		from: TaskState,
+		to: TaskState,
+	): Result<void> => {
+		for (const module of registered) {
+			const result = module.onTaskStateChange?.(db, task, from, to);
+			if (result !== undefined && !result.ok) return result;
+		}
+		return ok(undefined);
+	};
 
 	/** The registered module table called `logical`, if any. */
 	export const table = (logical: string): ModuleTableRef | undefined =>
