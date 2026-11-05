@@ -78,6 +78,7 @@ const state = (
 	focus: "board",
 	tabs: BoardTabs.NONE,
 	marked: new Set<string>(),
+	announcement: null,
 	copilot: copilot(),
 	undo: [],
 	prompt: BoardPrompt.CLOSED,

@@ -1,8 +1,8 @@
-// The three seams a host plugs into the board. The board never learns what a "loop" or a "recipe"
-// is: the host projects whatever it runs into flat activity cards, offers whatever it can start on a
-// task as trigger descriptors, and answers the `A` prompt with a copilot that streams updates. All
-// three default to no-ops so the board runs standalone with no activity strip, a "no dispatcher
-// configured" hint on `a`, and a "no copilot configured" hint on `A`.
+// The seams a host plugs into the board. The board never learns what a "loop" or a "recipe" is: the
+// host projects whatever it runs into flat activity cards, offers whatever it can start on a task as
+// trigger descriptors, answers the `A` prompt with a copilot that streams updates, and may have one
+// line to announce. All default to no-ops so the board runs standalone with no activity strip, a "no
+// dispatcher configured" hint on `a`, a "no copilot configured" hint on `A`, and nothing announced.
 import { ok, type Result } from "@cabane/core";
 import type { ReactNode } from "react";
 import type { BoardContext } from "./context";
@@ -380,6 +380,13 @@ export interface Copilot {
 	readonly actor?: string;
 }
 
+// One line the host wants read once the board is up (a newer release, say). The board asks once,
+// after its first frame, and shows the line over the board's footer until `esc` dismisses it. Null
+// is nothing to say, and so is a failure: an announcement is never worth an error on screen.
+export interface Announcer {
+	announce(): Promise<Result<string | null>>;
+}
+
 export const noActivity: ActivitySource = {
 	load: async () => ok([]),
 };
@@ -403,6 +410,10 @@ export const noCopilot: Copilot = {
 	shortcuts: () => [],
 	answerPermission: () => {},
 	answerElicitation: () => {},
+};
+
+export const noAnnouncer: Announcer = {
+	announce: async () => ok(null),
 };
 
 export const isInFlight = (card: ActivityCard): boolean =>

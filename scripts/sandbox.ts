@@ -23,6 +23,10 @@
  *
  * Without `--harnesses`, KABANE_HARNESSES is set empty and setup finds no agents: the harness
  * configs live under the real HOME, and a sandbox must never register itself there.
+ *
+ * A sandbox config that leaves `updates.check` unsaid gets it false, so a sandbox never asks npm
+ * for a release. To see the board's release notice, set it true in the sandbox and run with
+ * KABANE_BUNDLED=1, because a run from a checkout never shows one.
  */
 
 import {
@@ -127,6 +131,26 @@ const applyScripted = async (
 	writeFileSync(CONFIG, `${JSON.stringify(config, null, 2)}\n`);
 };
 
+/** `updates.check` false unless the sandbox's config says otherwise; no config yet is left alone. */
+const quietUpdates = (): void => {
+	if (!existsSync(CONFIG)) return;
+	const config: Record<string, unknown> = JSON.parse(
+		readFileSync(CONFIG, "utf8"),
+	);
+	const updates = config.updates;
+	const said =
+		typeof updates === "object" &&
+		updates !== null &&
+		"check" in updates &&
+		updates.check !== undefined;
+	if (said) return;
+	config.updates = {
+		...(typeof updates === "object" ? updates : {}),
+		check: false,
+	};
+	writeFileSync(CONFIG, `${JSON.stringify(config, null, 2)}\n`);
+};
+
 const { own, rest } = splitArgs(process.argv.slice(2));
 if (own.has("--fresh")) rmSync(SANDBOX, { recursive: true, force: true });
 seedRepo();
@@ -136,6 +160,7 @@ if (own.has("--harnesses"))
 
 const env = sandboxEnv(own.has("--harnesses"));
 await applyScripted(own.has("--scripted"), env);
+quietUpdates();
 
 console.error(
 	`sandbox: ${REPO} · harness installs ${own.has("--harnesses") ? "into the sandbox HOME" : "off"} · copilot ${own.has("--scripted") ? "scripted" : "real"}`,

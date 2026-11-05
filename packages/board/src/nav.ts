@@ -228,6 +228,8 @@ export namespace BoardNav {
 		// the copilot's context drops the OLDEST mark first when its brief budget runs out). Survives
 		// every reload; `esc` clears it before it clears anything else.
 		marked: ReadonlySet<string>;
+		// The host's one line over the board's footer (Announcer), until `esc` dismisses it.
+		announcement: string | null;
 		copilot: CopilotState;
 		// A prompt opened over a card's tab or a question's banner (prompt.ts): the copilot's input,
 		// typed for a card's action or a question's answer instead.
@@ -1417,6 +1419,7 @@ export namespace BoardNav {
 			focus: "board",
 			tabs: BoardTabs.NONE,
 			marked: new Set<string>(),
+			announcement: null,
 			copilot: COPILOT_IDLE,
 			prompt: BoardPrompt.CLOSED,
 			undo: [],
@@ -1772,6 +1775,7 @@ export namespace BoardNav {
 			clearable:
 				state.marked.size > 0 ||
 				state.search.mode === "committed" ||
+				state.announcement !== null ||
 				state.scoped,
 			history: recallable(state.prompt.open ? state.prompt : state.copilot),
 			reaimable: (state.prompt.open?.aims?.length ?? 0) > 1,
@@ -2178,8 +2182,9 @@ export namespace BoardNav {
 	};
 
 	// Esc layering on the board, one esc one level: marks clear first (the most recent, most local
-	// thing the human added), then a committed filter, then scope widens. Marks therefore never
-	// survive into a widened list they were not picked from. (Typing-mode esc never reaches here;
+	// thing the human added), then a committed filter, then the host's announcement, then scope
+	// widens. Marks therefore never survive into a widened list they were not picked from, and
+	// dismissing the announcement never widens the scope too. (Typing-mode esc never reaches here;
 	// reduceSearchTyping owns it.)
 	const clearOneLevel = (
 		state: BoardState,
@@ -2187,6 +2192,8 @@ export namespace BoardNav {
 		if (state.marked.size > 0)
 			return { state: { ...state, marked: NO_MARKS }, effect: NONE };
 		if (state.search.mode === "committed") return withSearch(state, SEARCH_OFF);
+		if (state.announcement !== null)
+			return { state: { ...state, announcement: null }, effect: NONE };
 		return state.scoped
 			? { state: { ...state, scoped: false }, effect: { type: "reload" } }
 			: { state, effect: NONE };

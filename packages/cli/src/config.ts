@@ -85,6 +85,15 @@ const HarnessConfigSchema = z.object({
 		),
 });
 
+const UpdatesConfigSchema = z.object({
+	check: z
+		.boolean()
+		.optional()
+		.describe(
+			"Whether the board says when a newer kabane release is out (npm, checked daily); absent is true.",
+		),
+});
+
 export const ConfigSchema = z.object({
 	actor: z
 		.string()
@@ -105,6 +114,9 @@ export const ConfigSchema = z.object({
 	),
 	harness: HarnessConfigSchema.optional().describe(
 		"Every harness session's mode; absent is auto (the harness's own auto mode).",
+	),
+	updates: UpdatesConfigSchema.optional().describe(
+		"Release notices on the board; absent checks for one.",
 	),
 	timezone: TimeZoneSchema.optional().describe(
 		"Owner's IANA timezone for deadlines and today; absent uses the system zone (TZ).",

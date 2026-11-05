@@ -10,11 +10,14 @@ import {
 } from "../update-install";
 import { runUpdateProcess } from "../update-process";
 import {
-	ChannelVersionSchema,
 	compareVersions,
+	DistTagsSchema,
+	followedTag,
 	isPrerelease,
+	onChannel,
 	SemverSchema,
 	versionCore,
+	withinVersionPolicy,
 } from "../update-version";
 
 const MetadataSchema = z.object({
@@ -40,11 +43,6 @@ const reply = (
 	exitCode,
 	json: { status, eligibility: POLICY, ...details },
 	text,
-});
-
-const DistTagsSchema = z.object({
-	latest: SemverSchema,
-	beta: SemverSchema.optional(),
 });
 
 /** `bun info <spec> --json`, parsed; a failure is the reply to give. */
@@ -85,10 +83,7 @@ const readRegistry = async <T>(
 	}
 };
 
-/**
- * A stable install follows `latest` alone. A prerelease install follows the higher of `beta`
- * and `latest`, so a beta user reaches the stable release it precedes.
- */
+/** The release on the tag the install follows (`followedTag`), with its metadata. */
 const readCandidate = async (
 	runningVersion: string,
 	globalDir: string,
@@ -112,9 +107,7 @@ const readCandidate = async (
 		host,
 	);
 	if (!tags.ok) return tags;
-	const { latest, beta } = tags.value;
-	const tag: Tag =
-		beta !== undefined && compareVersions(beta, latest) > 0 ? "beta" : "latest";
+	const tag = followedTag(runningVersion, tags.value);
 	const metadata = await readRegistry(
 		[`kabane@${tag}`],
 		MetadataSchema,
@@ -135,24 +128,14 @@ const readCandidate = async (
 
 type Details = { installedVersion: string; candidateVersion: string };
 
-/**
- * Same major as the installed release, and the same minor below 1.0; not a downgrade; and a Bun
- * the candidate's engine range admits.
- */
+/** The version policy (`withinVersionPolicy`), and a Bun the candidate's engine range admits. */
 const withinUpdatePolicy = (
 	target: string,
 	runningVersion: string,
 	engine: string,
-): boolean => {
-	const currentParts = versionCore(runningVersion).split("."),
-		targetParts = versionCore(target).split(".");
-	return !(
-		compareVersions(target, runningVersion) < 0 ||
-		currentParts[0] !== targetParts[0] ||
-		(currentParts[0] === "0" && currentParts[1] !== targetParts[1]) ||
-		compareVersions(versionCore(Bun.version), engine.slice(2)) < 0
-	);
-};
+): boolean =>
+	withinVersionPolicy(target, runningVersion) &&
+	compareVersions(versionCore(Bun.version), engine.slice(2)) >= 0;
 
 /**
  * The reply a candidate ends the command with before anything is installed: the channel and the
@@ -169,11 +152,7 @@ const verdict = (
 	const manualExit = check ? 0 : 1;
 	if (!SemverSchema.safeParse(target).success)
 		return reply("error", "Invalid registry version; no update attempted.", 1);
-	if (
-		prerelease
-			? !ChannelVersionSchema.safeParse(target).success
-			: isPrerelease(target)
-	)
+	if (!onChannel(target, runningVersion))
 		return reply(
 			"manual_only",
 			prerelease
