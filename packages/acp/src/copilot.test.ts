@@ -349,17 +349,20 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("defaults the shell's bin to the MCP server's when none is given", async () => {
-		const seen = fresh();
-		const copilot = copilotOver(scriptedAgent(seen), { kabaneBin: undefined });
-		await collect(copilot.run("go", context()));
-		const server = (seen.newSession[0] as { mcpServers: { command: string }[] })
-			.mcpServers[0];
-		expect(server?.command).toBe(resolve(process.argv[1] ?? ""));
-		expect(textOf(seen.prompts[0], 0)).toContain(
-			`'${server?.command}' loop start <id>`,
-		);
-		copilot.close();
+	it("defaults the shell's bin to the MCP server's when none is given, or an empty one", async () => {
+		for (const kabaneBin of [undefined, ""]) {
+			const seen = fresh();
+			const copilot = copilotOver(scriptedAgent(seen), { kabaneBin });
+			await collect(copilot.run("go", context()));
+			const server = (
+				seen.newSession[0] as { mcpServers: { command: string }[] }
+			).mcpServers[0];
+			expect(server?.command).toBe(resolve(process.argv[1] ?? ""));
+			expect(textOf(seen.prompts[0], 0)).toContain(
+				`'${server?.command}' loop start <id>`,
+			);
+			copilot.close();
+		}
 	});
 
 	it("omits --scope when the board is open on every scope", async () => {

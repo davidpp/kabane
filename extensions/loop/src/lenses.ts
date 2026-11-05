@@ -4,17 +4,15 @@
 // how they ended, is read off its claims, so a runner that resumes knows where it was.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { err, type Result, trySync } from "@cabane/core";
+import { Self } from "@cabane/core/self";
 import { LoopConfig } from "./config";
 import type { RunStore } from "./store";
 
 export namespace Lenses {
-	// `../templates/lenses` from this module: the extension's own directory in the workspace, and
-	// `templates/lenses` beside `bin/` in the published package, where the build copies it.
-	const SHIPPED_DIR = fileURLToPath(
-		new URL("../templates/lenses", import.meta.url),
-	);
+	// The extension's own `templates/lenses` in the workspace, and `templates/lenses` beside `bin/`
+	// in the published package or beside a compiled binary, where the builds copy it.
+	const SHIPPED_DIR = Self.templates("lenses", import.meta.url);
 	const SHIPPED = ["functional", "quality"] as const;
 
 	/** Where a repository keeps its own lenses. */
