@@ -98,6 +98,35 @@ export namespace Segments {
 		return rows;
 	};
 
+	/**
+	 * Items (a list of answers, each its own parts) as rows of `room` columns, as many to a row as
+	 * fit whole behind `sep`: one row when they all fit, and a row break between two items rather
+	 * than a cut through one. Each row is its items in order, `sep` leading all but the first; an
+	 * item wider than a row has one to itself, for its host to `fit`.
+	 */
+	export const flow = (
+		items: readonly (readonly Segment[])[],
+		room: number,
+		sep: Segment,
+	): Segment[][][] => {
+		const rows: Segment[][][] = [];
+		let row: Segment[][] = [];
+		let used = 0;
+		for (const item of items) {
+			const behind = [sep, ...item];
+			if (row.length > 0 && used + plain(behind).length <= room) {
+				row.push(behind);
+				used += plain(behind).length;
+				continue;
+			}
+			if (row.length > 0) rows.push(row);
+			row = [[...item]];
+			used = plain(item).length;
+		}
+		if (row.length > 0) rows.push(row);
+		return rows;
+	};
+
 	/** The parts as spans, inside a `<text>` that owns the row and its background. */
 	export const spans = (segments: readonly Segment[]): ReactNode[] =>
 		segments.map((segment, index) => (

@@ -35,22 +35,25 @@ export const permissionLine = (
 ): string =>
 	`? ${request.title}${waitingNote(waiting)} · ${optionsLine(request)} · esc decline`;
 
+const sep = (theme: Theme.Tokens): Segments.Segment => ({
+	text: " · ",
+	fg: theme.muted,
+});
+
 // How to answer, a part an answer so each can be clicked: each option's key and label in the text
-// color, since the label is what the human decides by, and the separators and `esc`'s label muted
-// as the footer's are. The `?` before the title is the request, and the only part in the accent:
-// the options are answers, not asks.
+// color, since the label is what the human decides by, and `esc`'s label muted as the footer's is.
+// The `?` before the title is the request, and the only part in the accent: the options are
+// answers, not asks. The separators between them are the row's (Segments.flow).
 const answerParts = (
 	request: CopilotPermission,
 	theme: Theme.Tokens,
 	textFg: ColorInput,
 ): Segments.Segment[][] => [
 	...request.options.map((option, index) => [
-		...(index > 0 ? [{ text: " · ", fg: theme.muted }] : []),
 		{ text: `${index + 1}`, fg: textFg },
 		{ text: ` ${option.label}`, fg: textFg },
 	]),
 	[
-		{ text: " · ", fg: theme.muted },
 		{ text: "esc", fg: textFg },
 		{ text: " decline", fg: theme.muted },
 	],
@@ -60,7 +63,10 @@ const answerSegments = (
 	request: CopilotPermission,
 	theme: Theme.Tokens,
 	textFg: ColorInput,
-): Segments.Segment[] => answerParts(request, theme, textFg).flat();
+): Segments.Segment[] =>
+	answerParts(request, theme, textFg).flatMap((part, index) =>
+		index > 0 ? [sep(theme), ...part] : part,
+	);
 
 /** A part of a ClickRow, and what a click on it does. */
 export type ClickPart = { segments: Segments.Segment[]; onPress?: () => void };
@@ -120,7 +126,7 @@ export const permissionSegments = (
 	{ text: "? ", fg: theme.accent },
 	{ text: request.title, fg: textFg },
 	...(waiting > 0 ? [{ text: waitingNote(waiting), fg: theme.muted }] : []),
-	{ text: " · ", fg: theme.muted },
+	sep(theme),
 	...answerSegments(request, theme, textFg),
 ];
 
@@ -141,7 +147,7 @@ export const outrankedSegments = (
 	{ text: "copilot asks: ", fg: theme.muted },
 	{ text: asked, fg: textFg },
 	...(waiting > 0 ? [{ text: waitingNote(waiting), fg: theme.muted }] : []),
-	{ text: " · ", fg: theme.muted },
+	sep(theme),
 	{ text: key, fg: textFg },
 	{ text: " to answer", fg: theme.muted },
 ];
@@ -172,23 +178,37 @@ export const PermissionBlock = ({
 	// On a painted surface the text takes the surface's foreground; off one, the terminal's own.
 	const textFg = bg ? theme.text : theme.defaultFg;
 	const note = waitingNote(waiting);
+	const press = (index: number): (() => void) | undefined =>
+		index < request.options.length
+			? onPick && (() => onPick(index))
+			: onKey && (() => onKey("escape"));
+	// The answers on one row when they fit, else broken between two of them, so a narrow surface
+	// still shows every answer rather than losing the last ones (Reject among them) to a cut.
+	const rows = Segments.flow(
+		answerParts(request, theme, textFg),
+		width,
+		sep(theme),
+	);
+	const firstOf = (row: number): number =>
+		rows.slice(0, row).reduce((count, each) => count + each.length, 0);
 	return (
 		<>
 			<text bg={bg} fg={theme.accent}>
 				? <span fg={textFg}>{fit(request.title, width - 2 - note.length)}</span>
 				{note ? <span fg={theme.muted}>{note}</span> : null}
 			</text>
-			<ClickRow
-				parts={answerParts(request, theme, textFg).map((segments, index) => ({
-					segments,
-					onPress:
-						index < request.options.length
-							? onPick && (() => onPick(index))
-							: onKey && (() => onKey("escape")),
-				}))}
-				width={width}
-				{...(bg ? { bg } : {})}
-			/>
+			{rows.map((parts, row) => (
+				<ClickRow
+					// Index keys: the rows are positional.
+					key={row}
+					parts={parts.map((segments, at) => ({
+						segments,
+						onPress: press(firstOf(row) + at),
+					}))}
+					width={width}
+					{...(bg ? { bg } : {})}
+				/>
+			))}
 		</>
 	);
 };

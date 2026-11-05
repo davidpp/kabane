@@ -46,3 +46,49 @@ describe("Segments.wrap", () => {
 		]);
 	});
 });
+
+describe("Segments.flow", () => {
+	const sep = seg(" · ", "#888");
+	const items = [
+		"1 Allow once",
+		"2 Allow always",
+		"3 Reject",
+		"esc decline",
+	].map((text) => [seg(text)]);
+	const flowed = (room: number): string[] =>
+		Segments.flow(items, room, sep).map((row) => Segments.plain(row.flat()));
+
+	test("items that fit stay on one row, a separator between each", () => {
+		expect(flowed(80)).toEqual([
+			"1 Allow once · 2 Allow always · 3 Reject · esc decline",
+		]);
+	});
+
+	test("a row breaks between two items, never through one, and drops the separator it breaks at", () => {
+		expect(flowed(40)).toEqual([
+			"1 Allow once · 2 Allow always · 3 Reject",
+			"esc decline",
+		]);
+		expect(flowed(20)).toEqual([
+			"1 Allow once",
+			"2 Allow always",
+			"3 Reject",
+			"esc decline",
+		]);
+	});
+
+	test("an item wider than a row has it to itself, whole, for its host to cut", () => {
+		expect(flowed(10)).toEqual([
+			"1 Allow once",
+			"2 Allow always",
+			"3 Reject",
+			"esc decline",
+		]);
+	});
+
+	test("the separator is the row's, ahead of every item but its first", () => {
+		const rows = Segments.flow(items, 40, sep);
+		expect(rows[0]?.map((item) => item[0])).toEqual([items[0]?.[0], sep, sep]);
+		expect(rows[1]?.[0]).toEqual(items[3]);
+	});
+});
