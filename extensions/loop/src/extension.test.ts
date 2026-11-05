@@ -76,17 +76,102 @@ describe("kabane loop start", () => {
 		expect(refused.text).toContain("Give one of --worktree and --no-worktree");
 	});
 
+	it("refuses a --land mode it does not have", async () => {
+		const refused = await kabaneLoop("start", "K-1", "--land", "merge");
+		expect(refused.exitCode).toBe(2);
+		expect(refused.text).toStartWith("Error: --land must be one of none, pr\n");
+	});
+
 	it("takes its own flags and the ones every command takes", async () => {
 		const started = await kabaneLoop(
 			"start",
 			"K-404",
 			"--worktree",
+			"--land",
+			"pr",
 			"--as",
 			"cabane://actor/human/test",
 		);
 		// Past the flags: the parent is what is missing.
 		expect(started.exitCode).toBe(1);
 		expect(started.text).not.toContain("Unknown loop start flag");
+	});
+});
+
+describe("kabane loop status, after a landing", () => {
+	it("says why a branch did not land, and the command that tries again", async () => {
+		const config = LoopConfig.Schema.safeParse({ land: "pr" });
+		if (!config.success) throw config.error;
+		const created = RunStore.create(home, {
+			version: 1,
+			id: "run-1",
+			parentId: "01PARENT",
+			parentShortId: "K-1",
+			projectDir: home,
+			config: config.data,
+			status: "completed",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+			landing: {
+				at: new Date().toISOString(),
+				ok: false,
+				summary: "Not landed: git push failed.",
+			},
+		});
+		if (!created.ok) throw created.error;
+
+		const shown = await kabaneLoop("status", "run-1");
+
+		expect(shown.text).toContain(
+			"\n  Not landed: git push failed.\n  land again: kabane loop land run-1",
+		);
+	});
+});
+
+describe("kabane loop status, after a landing its runner died in", () => {
+	it("says the landing is not undone, what to put back, and the command that goes on", async () => {
+		const config = LoopConfig.Schema.safeParse({ land: "pr" });
+		if (!config.success) throw config.error;
+		const created = RunStore.create(home, {
+			version: 1,
+			id: "run-1",
+			parentId: "01PARENT",
+			parentShortId: "K-1",
+			projectDir: home,
+			worktree: "/tmp/run-1/worktree",
+			branch: "k-1-fix",
+			config: config.data,
+			status: "failed",
+			exit: { reason: RunStore.LANDING_UNRECOVERED },
+			landingFrom: "0123456789abcdef0123",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		});
+		if (!created.ok) throw created.error;
+
+		const shown = await kabaneLoop("status", "run-1");
+
+		expect(shown.text).toContain(
+			"  interrupted landing not undone: put branch k-1-fix in /tmp/run-1/worktree back at 0123456789ab (remove a lock file git left there if it says so), then kabane loop resume run-1",
+		);
+	});
+});
+
+describe("kabane loop prune", () => {
+	it("says so when no run has a worktree left to remove", async () => {
+		const pruned = await kabaneLoop("prune");
+		expect(pruned.exitCode).toBe(0);
+		expect(pruned.text).toBe("No run worktrees left");
 	});
 });
 

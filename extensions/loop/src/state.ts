@@ -4,8 +4,9 @@
 import type { Harnesses } from "@cabane/acp";
 import type { Dispatch } from "./dispatch";
 import type { Gates } from "./gates";
+import type { Land } from "./land";
 import { RunStore } from "./store";
-import type { Worktree } from "./worktree";
+import { Worktree } from "./worktree";
 
 export namespace RunState {
 	export type Deps = {
@@ -27,6 +28,8 @@ export namespace RunState {
 		tree?: (cwd: string) => Promise<string>;
 		/** How checkpoints run git. Defaults to the user's own git and config. */
 		git?: Worktree.Git;
+		/** How landing reaches GitHub. Defaults to the user's own gh, signed in as they are. */
+		gh?: Land.Gh;
 		now?: () => Date;
 		tickMs?: number;
 	};
@@ -65,6 +68,45 @@ export namespace RunState {
 		/** The gate pass running or last run; the next one waits for it. */
 		gating: Promise<unknown>;
 	};
+
+	const git = async (cwd: string, args: string[]): Promise<string> => {
+		const out = await Worktree.git(cwd, args);
+		return out.ok ? out.value : "";
+	};
+
+	/** HEAD, the status and the diff, hashed: changes whenever an agent changes a file. */
+	const gitTree = async (cwd: string): Promise<string> =>
+		Bun.hash(
+			(
+				await Promise.all([
+					git(cwd, ["rev-parse", "HEAD"]),
+					git(cwd, ["status", "--porcelain"]),
+					git(cwd, ["diff"]),
+				])
+			).join("\0"),
+		).toString(36);
+
+	/**
+	 * What driving `run` in this process starts from, nothing live yet: the runner's, or a command's
+	 * working on a run that is over (`kabane loop land`).
+	 */
+	export const make = (
+		deps: Deps,
+		run: RunStore.Run,
+		log: RunStore.EventLog,
+	): Ctx => ({
+		deps,
+		now: deps.now ?? (() => new Date()),
+		tree: deps.tree ?? gitTree,
+		log,
+		run,
+		live: new Map(),
+		settled: [],
+		wake: () => {},
+		stopRequested: false,
+		stopping: new AbortController(),
+		gating: Promise.resolve(),
+	});
 
 	/** The tasks live claims hold: what the frontier leaves out. */
 	export const liveTasks = (ctx: Ctx): Set<string> =>

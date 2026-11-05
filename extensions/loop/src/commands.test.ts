@@ -49,6 +49,7 @@ const CONFIG: LoopConfig.Config = {
 	gates: {},
 	worktree: false,
 	lenses: [],
+	land: "none",
 };
 
 const add = async (title: string, extra: Record<string, unknown> = {}) => {
@@ -266,12 +267,8 @@ describe("Loop.start with a worktree, from a folder HEAD lacks", () => {
 		);
 		expect(started.ok).toBe(false);
 		if (!started.ok) expect(started.error.message).toContain("not committed");
-		const branches = GitFixture.run(repo, [
-			"branch",
-			"--list",
-			"kabane-loop/*",
-		]);
-		expect(branches.trim()).toBe("");
+		const branches = GitFixture.run(repo, ["branch", "--list"]);
+		expect(branches.trim()).toBe("* main");
 		const worktrees = GitFixture.run(repo, ["worktree", "list"]);
 		expect(worktrees.trim().split("\n")).toHaveLength(1);
 	});
@@ -333,8 +330,33 @@ describe("Loop.start's worktree", () => {
 		expect(run.worktreeReused).toBeUndefined();
 		expect(
 			GitFixture.run(run.worktree ?? "", ["branch", "--show-current"]).trim(),
-		).toBe(Worktree.branchFor(run.id));
-		expect(placementEvent(run)?.summary).toContain("new, on branch");
+		).toBe(`${parent.shortId?.toLowerCase()}-parent`);
+		expect(run.branch).toBe(`${parent.shortId?.toLowerCase()}-parent`);
+		expect(placementEvent(run)?.summary).toContain(
+			`new, on branch ${run.branch} from main`,
+		);
+	});
+
+	it("records the branch and commit it was made from, and a run going on in it keeps them", async () => {
+		const parent = await parentWithChild();
+		const sha = GitFixture.run(repo, ["rev-parse", "HEAD"]).trim();
+		const first = await startOn(parent.id);
+		expect(first.base).toEqual({ branch: "main", sha });
+		commitIn(first.worktree ?? "", "first.txt");
+		// The project moves on meanwhile; the work in the worktree still started from `sha`.
+		GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "later"]);
+		const second = await startOn(parent.id);
+		expect(second.worktreeReused?.runId).toBe(first.id);
+		expect(second.base).toEqual({ branch: "main", sha });
+	});
+
+	it("records no base branch for a project on a detached HEAD", async () => {
+		const parent = await parentWithChild();
+		GitFixture.run(repo, ["checkout", "-q", "--detach"]);
+		const run = await startOn(parent.id);
+		expect(run.base).toEqual({
+			sha: GitFixture.run(repo, ["rev-parse", "HEAD"]).trim(),
+		});
 	});
 
 	it("turned off, works in the checkout itself", async () => {
@@ -367,11 +389,11 @@ describe("Loop.start's worktree", () => {
 		expect(second.worktree).toBe(first.worktree);
 		expect(second.worktreeReused).toEqual({
 			runId: first.id,
-			branch: Worktree.branchFor(first.id),
+			branch: first.branch ?? "",
 		});
 		expect(placementEvent(second)?.data).toMatchObject({
 			reusedFrom: first.id,
-			branch: Worktree.branchFor(first.id),
+			branch: first.branch ?? "",
 		});
 		// A third run takes over the same worktree from the second.
 		const third = await startOn(parent.id);
@@ -384,7 +406,7 @@ describe("Loop.start's worktree", () => {
 		const parent = await parentWithChild();
 		const first = await startOn(parent.id);
 		commitIn(first.worktree ?? "", "first.txt");
-		GitFixture.run(repo, ["merge", "-q", Worktree.branchFor(first.id)]);
+		GitFixture.run(repo, ["merge", "-q", first.branch ?? ""]);
 		const second = await startOn(parent.id);
 		expect(second.worktreeReused).toBeUndefined();
 		expect(second.worktree).toBe(
@@ -763,6 +785,7 @@ describe("Loop.stop", () => {
 				gates: {},
 				worktree: false,
 				lenses: [],
+				land: "none",
 			},
 			status: "running",
 			pid: process.pid,

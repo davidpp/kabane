@@ -97,7 +97,7 @@ const runOn = async (
 	if (!created.ok) throw created.error;
 	if (!worktree) return run;
 	const dir = Worktree.dirFor(RunStore.paths(home, run.id).dir);
-	const added = await Worktree.add(repo, dir, Worktree.branchFor(run.id), git);
+	const added = await Worktree.add(repo, dir, "kabane-loop/run-1", git);
 	if (!added.ok) throw added.error;
 	const written = RunStore.write(home, { ...run, worktree: dir });
 	if (!written.ok) throw written.error;
@@ -420,7 +420,7 @@ describe("Runner final checks", () => {
 		// The summary on the parent names the branch to merge.
 		const comments = await Planner.getComments(home, ended.parentId);
 		expect(comments.ok && comments.value.at(-1)?.content).toEndWith(
-			`Merge branch \`${Worktree.branchFor("run-1")}\` from the worktree \`${ended.worktree}\`, then close ${ended.parentShortId}.`,
+			`Merge branch \`kabane-loop/run-1\` from the worktree \`${ended.worktree}\`, then close ${ended.parentShortId}.`,
 		);
 	});
 
@@ -683,7 +683,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		expect(RunStore.checkpoints(ended.value)).toEqual([head(worktree)]);
 		const comments = await Planner.getComments(home, issue.id);
 		expect(comments.ok && comments.value.at(-1)?.content).toEndWith(
-			`Merge branch \`${Worktree.branchFor("run-1")}\` from the worktree \`${worktree}\`.`,
+			`Merge branch \`kabane-loop/run-1\` from the worktree \`${worktree}\`.`,
 		);
 	});
 });

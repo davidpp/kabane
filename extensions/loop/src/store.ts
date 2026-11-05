@@ -76,6 +76,18 @@ export namespace RunStore {
 	});
 	export type Claim = z.infer<typeof ClaimSchema>;
 
+	/** What landing the run's branch did: the run's `land` setting, or `kabane loop land`. */
+	export const LandingSchema = z.object({
+		at: z.string(),
+		/** Whether the branch landed as asked; false says why not in `summary`. */
+		ok: z.boolean(),
+		/** What happened, in a sentence: on the trace, the parent's comment and `loop status`. */
+		summary: z.string(),
+		/** The branch's tip before and after its rebase onto the base, when the rebase moved it. */
+		rebased: z.object({ from: z.string(), to: z.string() }).optional(),
+	});
+	export type Landing = z.infer<typeof LandingSchema>;
+
 	export const RunSchema = z.object({
 		version: z.literal(1),
 		id: z.string(),
@@ -99,6 +111,16 @@ export namespace RunStore {
 		 */
 		worktreeReused: z
 			.object({ runId: z.string(), branch: z.string() })
+			.optional(),
+		/** The branch the run made its worktree on; absent for a worktree it went on in. */
+		branch: z.string().optional(),
+		/**
+		 * The project's branch and commit the run's worktree was made from, or for a worktree it
+		 * went on in, the base of the run that made it: what landing the run rebases onto and opens
+		 * its pull request against. No branch when the project's HEAD was detached.
+		 */
+		base: z
+			.object({ branch: z.string().optional(), sha: z.string() })
 			.optional(),
 		config: LoopConfig.Schema,
 		status: StatusSchema,
@@ -125,6 +147,22 @@ export namespace RunStore {
 		steering: Steering.StateSchema.default({}),
 		/** Every pass over the gates, oldest first; the last says whether they are green. */
 		gateRuns: z.array(Gates.RunSchema).default([]),
+		/** The last landing of the run's branch, when it was landed. */
+		landing: LandingSchema.optional(),
+		/**
+		 * A landing under way: the tip the run's branch was at before it rebased. Written before the
+		 * rebase and dropped once the landing is recorded, so a runner that died meanwhile leaves it
+		 * for the next to put the branch back with (`Land.recover`).
+		 */
+		landingFrom: z.string().optional(),
+		/** The pull request the run's branch has, once a landing opened it or found it open. */
+		pr: z.string().optional(),
+		/**
+		 * The commit the run's branch is at on the remote, as a landing last pushed it: what the
+		 * next push expects to find there, and refuses to overwrite anything else. Absent, the
+		 * branch must not be on the remote yet.
+		 */
+		pushed: z.string().optional(),
 		/** When the human closed the run's board tab: the board stops listing it. */
 		dismissedAt: z.string().optional(),
 	});
@@ -146,6 +184,28 @@ export namespace RunStore {
 	/** The claims that took the run's target itself, as the work of a single-issue run. */
 	export const onTarget = (run: Run): Claim[] =>
 		run.claims.filter((c) => c.taskId === run.parentId && !reviews(c));
+
+	/**
+	 * The branch the run's worktree is on as the run left it: the one it made, the one of the
+	 * worktree it went on in, or for a run written before runs recorded it, the one named after it.
+	 */
+	export const branchOf = (run: Run): string =>
+		run.worktreeReused?.branch ?? run.branch ?? `kabane-loop/${run.id}`;
+
+	/**
+	 * The exit of a runner that stopped at boot on a landing an earlier runner died in and it
+	 * could not undo: the run waits, its worktree untouched, until the human fixes the worktree and
+	 * restarts it.
+	 */
+	export const LANDING_UNRECOVERED = "landing-unrecovered";
+
+	/**
+	 * Whether a runner left the run for a restart to take up: it died under it, or stopped at boot
+	 * on a landing it could not undo. Its claims and worktree are still the run's.
+	 */
+	export const restartable = (run: Run): boolean =>
+		run.exit?.reason === "runner-died" ||
+		run.exit?.reason === LANDING_UNRECOVERED;
 
 	/** The checkpoints committed in the run's worktree, oldest first. */
 	export const checkpoints = (run: Run): string[] =>

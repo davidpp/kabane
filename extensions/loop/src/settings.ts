@@ -72,6 +72,7 @@ export namespace LoopSettings {
 		// Unset, the lenses run on the implementer's harness.
 		verifier: { label: "verifier", group: "Agents", none: "implementer" },
 		worktree: { label: "own git worktree", group: "Workspace" },
+		land: { label: "land the branch", group: "Workspace" },
 	};
 
 	// The form's sections, in this order whatever order the schema has its fields in; a group no

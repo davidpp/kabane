@@ -5,8 +5,10 @@
  * core agent session per claimed subtask, or a single issue with no subtasks as its own one work
  * item, from a detached runner process whose state lives in
  * `$KABANE_HOME/loops/<runId>/`. Once the work is done, the project's gates and the verifier
- * lenses check it; a lens files findings as child issues. `Loop` holds the entry points the CLI
- * wires as `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer`; the rest
+ * lenses check it; a lens files findings as child issues. A completed run whose `land` setting is
+ * `pr` rebases its branch onto its base, pushes it and opens a pull request with the user's own
+ * git and gh. `Loop` holds the entry points the CLI
+ * wires as `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer|land|prune`; the rest
  * is exported for the board's view of a run.
  *
  * The loop is a thin wrapper over the user's own harness. It adds no security or policy the user

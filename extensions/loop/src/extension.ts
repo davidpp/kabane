@@ -19,16 +19,19 @@ import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
 import { LoopHeader } from "./header";
+import { Parent } from "./parent";
 import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini]
+const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini] [--land none|pr]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
        kabane loop pause|resume <runId>      (resume also restarts a run whose runner died)
        kabane loop skip|next <subtask|issue>
        kabane loop rollback <runId> <sha>
-       kabane loop answer <questionId> <option>`;
+       kabane loop answer <questionId> <option>
+       kabane loop land <runId>              (pushes a completed run's branch and opens its pull request)
+       kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)`;
 
 // The executable the runner and each session's MCP server run as: this process's own entry.
 const kabaneBin = (): string => {
@@ -64,12 +67,16 @@ const worktreeFrom = (args: ParsedArgs): { worktree?: boolean } => {
 	return flagBool(args, "worktree") ? { worktree: true } : {};
 };
 
+const isLand = (value: string): value is LoopConfig.Config["land"] =>
+	(LoopConfig.LAND as readonly string[]).includes(value);
+
 // Flags become the caller's layer, validated with the layers below it.
 const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 	const implementer = flagString(args, "implementer");
 	const verifier = flagString(args, "verifier");
 	const model = flagString(args, "model");
 	const lenses = flagList(args, "lens");
+	const land = flagString(args, "land");
 	const gates = gatesFrom(args);
 	if (!gates.ok) return gates;
 	const budget = Object.fromEntries(
@@ -87,6 +94,7 @@ const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 		...worktreeFrom(args),
 		...(lenses.length > 0 ? { lenses } : {}),
 		...(verifier && Harnesses.isId(verifier) ? { verifier } : {}),
+		...(land && isLand(land) ? { land } : {}),
 	});
 };
 
@@ -124,6 +132,30 @@ const worktree = (run: RunStore.Run): string[] =>
 			]
 		: [];
 
+// How the run's branch landed, and the command that tries again when it did not.
+const landing = (run: RunStore.Run): string[] => [
+	...interrupted(run),
+	...landed(run),
+];
+
+// A landing a runner died in that is not undone yet keeps everything off the worktree.
+const interrupted = (run: RunStore.Run): string[] =>
+	run.landingFrom && run.worktree
+		? [
+				`  interrupted landing not undone: put branch ${RunStore.branchOf(run)} in ${run.worktree} back at ${run.landingFrom.slice(0, 12)} (remove a lock file git left there if it says so), then ${Loop.died(run) ? Loop.restartCommand(run.id) : Parent.landCommand(run.id)}`,
+			]
+		: [];
+
+const landed = (run: RunStore.Run): string[] => {
+	if (!run.landing) return [];
+	return run.landing.ok
+		? [`  landed: ${run.landing.summary}`]
+		: [
+				`  ${run.landing.summary}`,
+				`  land again: ${Parent.landCommand(run.id)}`,
+			];
+};
+
 // A question the run's dead runner left: shown, with no answer to give.
 const withdrawn = (q: Loop.Waiting): string =>
 	`  withdrawn, its runner died: ${q.task} ${indented(q.question)} (the restarted run asks again)`;
@@ -150,6 +182,7 @@ const statusOf = async (
 			line(run.value),
 			...restart(run.value),
 			...worktree(run.value),
+			...landing(run.value),
 			...gone.value.map(withdrawn),
 			...waiting.value.map(question),
 		].join("\n"),
@@ -202,6 +235,7 @@ const START_FLAGS: ReadonlySet<string> = new Set([
 	"no-worktree",
 	"lens",
 	"verifier",
+	"land",
 	"as",
 	"scope",
 ]);
@@ -221,6 +255,9 @@ const start: Verb = async (args, deps, target) => {
 				USAGE,
 			);
 	}
+	const land = flagString(args, "land");
+	if (land !== undefined && !isLand(land))
+		return usage(`--land must be one of ${LoopConfig.LAND.join(", ")}`, USAGE);
 	// A switch followed by a stray word takes it as a value and would read as not given.
 	for (const flag of ["worktree", "no-worktree"])
 		if (flag in args.flags && !flagBool(args, flag))
@@ -318,6 +355,26 @@ const VERBS: Record<string, { needs: string; run: Verb }> = {
 		run: direct("next"),
 	},
 	rollback: { needs: "a run id", run: rollback },
+	land: {
+		needs: "a run id",
+		run: async (_a, deps, id) => {
+			const landed = await Loop.land(deps, id);
+			if (!landed.ok) return failure(landed.error);
+			return landed.value.landing?.ok
+				? success(landed.value, landed.value.landing.summary)
+				: failure(new Error(landed.value.landing?.summary ?? "Not landed"));
+		},
+	},
+};
+
+const prune = async (deps: Deps): Promise<Outcome> => {
+	const pruned = await Loop.prune(deps);
+	if (!pruned.ok) return failure(pruned.error);
+	const lines = pruned.value.map(
+		(p) =>
+			`${p.removed ? "removed" : "kept"} ${p.dir}${p.branch ? ` (branch ${p.branch})` : ""}: ${p.why}`,
+	);
+	return success(pruned.value, lines.join("\n") || "No run worktrees left");
 };
 
 const list = (deps: Deps): Outcome => {
@@ -345,6 +402,7 @@ const command: Extension.Command = {
 		};
 		if (verb === "answer") return answer(args, deps);
 		if (verb === "status") return target ? statusOf(deps, target) : list(deps);
+		if (verb === "prune") return prune(deps);
 		const known = verb && Object.hasOwn(VERBS, verb) ? VERBS[verb] : undefined;
 		if (!known)
 			return usage(

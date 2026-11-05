@@ -1,53 +1,101 @@
 // A run's git worktree, and the checkpoints committed in it. On unless the run opts out: `git
 // worktree add` on a branch of its own beside the run's files, or the worktree of the parent's
-// last run when its branch is not merged yet, recorded in run.json, never removed by the loop. A
-// checkpoint is a commit of everything in the worktree after a green gate; a rollback resets the
-// worktree to one of them.
+// last run when its work is not merged yet, recorded in run.json. Once its work is merged it is
+// removed, with its branch (`Prune`). A checkpoint is a commit of everything in the worktree
+// after a green gate; a rollback resets the worktree to one of them.
 //
 // Nothing here commits into, or resets, the user's own checkout: `checkpoint` and `rollback`
 // refuse any directory that is not a linked worktree, so a run without one cannot reach them by
 // mistake.
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
+import { err, ok, type Result, trySync } from "@cabane/core";
+import { Exec } from "./exec";
+import { FileLock } from "./lock";
 import type { RunStore } from "./store";
 
 export namespace Worktree {
-	/** `git -C <cwd> <args>`: its stdout, or an error carrying what git said. */
-	export type Git = (cwd: string, args: string[]) => Promise<Result<string>>;
+	/** `git <args>` in `cwd`: its stdout, or an error carrying what git said. */
+	export type Git = Exec.Tool;
+
+	/** The user's own git. */
+	export const git: Git = Exec.tool("git");
+
+	const lockFile = (dir: string): string => `${dir}.lock`;
+
+	/** What holds the lock on the worktree at `dir`, while it is held. */
+	export const lockedBy = (dir: string): string | undefined =>
+		FileLock.heldFor(lockFile(dir));
 
 	/**
-	 * The user's own git. Asynchronous, because the runner calls it: a commit runs the user's
-	 * hooks, and a synchronous spawn would stall every session's stream and timer until they end.
+	 * Take the lock on the worktree at `dir` for `what`, for as long as one thing changes it that
+	 * is not a live run (a live run's status already keeps the others out): `<dir>.lock`, a
+	 * `FileLock`. Refused while another live process holds it; one a process that is gone left is
+	 * taken over. Returns its release.
 	 */
-	export const git: Git = async (cwd, args) => {
-		const ran = await tryCatch(async () => {
-			const proc = Bun.spawn(["git", "-C", cwd, ...args], {
-				stdin: "ignore",
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-			const [stdout, stderr, exit] = await Promise.all([
-				new Response(proc.stdout).text(),
-				new Response(proc.stderr).text(),
-				proc.exited,
-			]);
-			return { stdout, stderr, exit };
-		});
-		if (!ran.ok) return ran;
-		return ran.value.exit === 0
-			? ok(ran.value.stdout)
-			: err(
-					new Error(
-						`git ${args.join(" ")} failed in ${cwd}: ${ran.value.stderr.trim()}`,
-					),
-				);
+	export const lock = (dir: string, what: string): Result<() => void> => {
+		const taken = FileLock.take(lockFile(dir), what);
+		return taken.ok
+			? taken
+			: err(new Error(`the worktree ${dir} is ${taken.error.message}`));
 	};
 
 	/** Where run `runId`'s worktree goes: inside the run's own directory. */
 	export const dirFor = (runDir: string): string => join(runDir, "worktree");
 
-	export const branchFor = (runId: string): string => `kabane-loop/${runId}`;
+	// Long enough for a few words of the title, short enough to read in a branch list.
+	const BRANCH_CHARS = 48;
+
+	/**
+	 * The branch a run makes for issue `shortId` titled `title`, named as a person would name it:
+	 * `jcab-81-` and the title's first words, lowercase ASCII.
+	 */
+	export const branchFor = (shortId: string, title: string): string => {
+		const words = title
+			// Accents come off their letters (é is e) rather than splitting the word.
+			.normalize("NFKD")
+			.replace(/\p{M}/gu, "")
+			.toLowerCase()
+			.split(/[^a-z0-9]+/)
+			.filter((w) => w !== "");
+		let name = shortId.toLowerCase().replace(/[^a-z0-9-]/g, "");
+		for (const word of words) {
+			if (name.length + 1 + word.length > BRANCH_CHARS) break;
+			name = name === "" ? word : `${name}-${word}`;
+		}
+		return name === "" ? "kabane-loop" : name;
+	};
+
+	// `refs/heads/<name>` and `refs/remotes/<remote>/<name>`, as `<name>`.
+	const BRANCH_REF = /^refs\/(?:heads|remotes\/[^/]+)\/(.+)$/;
+
+	/**
+	 * `branch`, or the first of `branch-2`, `branch-3`… that names no branch of `projectDir`'s
+	 * repository yet, local or on a remote it knows: an earlier run on the same issue, a pull
+	 * request closed without merging, keeps its own.
+	 */
+	export const unused = async (
+		projectDir: string,
+		branch: string,
+		run: Git = git,
+	): Promise<Result<string>> => {
+		const listed = await run(projectDir, [
+			"for-each-ref",
+			"--format=%(refname)",
+			"refs/heads",
+			"refs/remotes",
+		]);
+		if (!listed.ok) return listed;
+		const taken = new Set(
+			listed.value.split("\n").flatMap((ref) => {
+				const name = BRANCH_REF.exec(ref.trim())?.[1];
+				return name ? [name] : [];
+			}),
+		);
+		let name = branch;
+		for (let n = 2; taken.has(name); n++) name = `${branch}-${n}`;
+		return ok(name);
+	};
 
 	/** A worktree of `projectDir`'s HEAD at `dir`, on a new branch `branch`. */
 	export const add = async (
@@ -122,6 +170,21 @@ export namespace Worktree {
 			`refs/heads/${branch}`,
 		]);
 		return found.ok ? ok(found.value.trim() !== "") : found;
+	};
+
+	/** A checkout's HEAD: its commit, and its branch unless HEAD is detached. */
+	export type Head = { branch?: string; sha: string };
+
+	export const head = async (
+		dir: string,
+		run: Git = git,
+	): Promise<Result<Head>> => {
+		const sha = await run(dir, ["rev-parse", "HEAD"]);
+		if (!sha.ok) return sha;
+		// Exits 1, quietly, on a detached HEAD.
+		const branch = await run(dir, ["symbolic-ref", "-q", "--short", "HEAD"]);
+		const name = branch.ok ? branch.value.trim() : "";
+		return ok({ ...(name ? { branch: name } : {}), sha: sha.value.trim() });
 	};
 
 	/** Where `dir` sits inside its repository, relative to the top: "" at the top. */
@@ -222,6 +285,77 @@ export namespace Worktree {
 		if (!reset.ok) return reset;
 		const cleaned = await run(dir, ["clean", "-q", "-fd"]);
 		return cleaned.ok ? ok(undefined) : cleaned;
+	};
+
+	/**
+	 * Rebase the worktree at `dir` onto commit `onto`. A rebase that stops on a conflict is
+	 * aborted, so the branch is left as it was, and the error names the files that conflicted.
+	 */
+	export const rebase = async (
+		dir: string,
+		onto: string,
+		run: Git = git,
+	): Promise<Result<void>> => {
+		const isLinked = await linked(dir, run);
+		if (!isLinked.ok) return isLinked;
+		const rebased = await run(dir, ["rebase", "-q", onto]);
+		if (rebased.ok) return ok(undefined);
+		const conflicted = await run(dir, [
+			"diff",
+			"--name-only",
+			"--diff-filter=U",
+		]);
+		await run(dir, ["rebase", "--abort"]);
+		const files = conflicted.ok
+			? conflicted.value.split("\n").filter((f) => f.trim() !== "")
+			: [];
+		return err(
+			files.length > 0
+				? new Error(`conflicts in ${files.join(", ")}`)
+				: rebased.error,
+		);
+	};
+
+	/**
+	 * Put the worktree at `dir` back on `branch` at commit `tip`: a rebase left stopped is
+	 * aborted, the branch checked out again, and reset there as `reset` resets.
+	 */
+	export const restore = async (
+		dir: string,
+		branch: string,
+		tip: string,
+		run: Git = git,
+	): Promise<Result<void>> => {
+		const isLinked = await linked(dir, run);
+		if (!isLinked.ok) return isLinked;
+		// Fails, harmlessly, when no rebase is in progress.
+		await run(dir, ["rebase", "--abort"]);
+		const back = await run(dir, ["checkout", "-q", "-f", branch]);
+		return back.ok ? reset(dir, tip, run) : back;
+	};
+
+	/**
+	 * Remove the worktree at `dir` and delete its branch: a run's worktree whose work is merged.
+	 * `git worktree remove` refuses a worktree with changes not committed, which is left as it is.
+	 * A branch merged into HEAD is deleted as git deletes a merged branch; one `squashed` into the
+	 * base by its pull request is not merged as git sees it, and is deleted regardless.
+	 */
+	export const remove = async (
+		projectDir: string,
+		dir: string,
+		branch: string,
+		squashed: boolean,
+		run: Git = git,
+	): Promise<Result<void>> => {
+		const removed = await run(projectDir, ["worktree", "remove", dir]);
+		if (!removed.ok) return removed;
+		const deleted = await run(projectDir, [
+			"branch",
+			"-q",
+			squashed ? "-D" : "-d",
+			branch,
+		]);
+		return deleted.ok ? ok(undefined) : deleted;
 	};
 
 	/** The trace's line for a rollback. */

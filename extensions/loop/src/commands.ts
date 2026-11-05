@@ -1,5 +1,5 @@
 // The loop's entry points, as plain functions over explicit dependencies. The extension wires
-// them to `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer`; nothing here parses argv or reads the
+// them to `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer|land|prune`; nothing here parses argv or reads the
 // environment for its own settings. A run whose runner died is restarted (`restart`) where it
 // stopped, with its claims and its worktree.
 import { spawn } from "node:child_process";
@@ -25,11 +25,15 @@ import type { Settings } from "@cabane/extension";
 import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
 import { Gates } from "./gates";
+import { Land } from "./land";
 import { Lenses } from "./lenses";
+import { Parent } from "./parent";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
+import { Prune } from "./prune";
 import { Questions } from "./questions";
 import { Runner } from "./runner";
+import { RunState } from "./state";
 import { Steering } from "./steering";
 import { Stop } from "./stop";
 import { RunStore } from "./store";
@@ -55,6 +59,8 @@ export namespace Loop {
 		bootMs?: number;
 		/** How the run's worktree is made. Defaults to the user's own git. */
 		git?: Worktree.Git;
+		/** How a last run's pull request is looked up. Defaults to the user's own gh. */
+		gh?: Land.Gh;
 		/** Where a run's settings resolve through their layers: the extension context's port. */
 		settings: Settings.Port;
 	};
@@ -98,9 +104,11 @@ export namespace Loop {
 		return text.ok ? text.value.slice(-LOG_TAIL).trim() : "";
 	};
 
-	/** Whether the run's runner died under it: what `restart` takes up again. */
-	export const died = (run: RunStore.Run): boolean =>
-		run.exit?.reason === "runner-died";
+	/**
+	 * Whether the run's runner died under it, or stopped at boot on a landing it could not undo:
+	 * what `restart` takes up again.
+	 */
+	export const died = (run: RunStore.Run): boolean => RunStore.restartable(run);
 
 	/** What a human runs to bring a run whose runner died back. */
 	export const restartCommand = (runId: string): string =>
@@ -241,15 +249,33 @@ export namespace Loop {
 			const prompt = Lenses.prompt(projectDir, name);
 			if (!prompt.ok) return prompt;
 		}
-		const runs = RunStore.list(deps.home);
+		return checkRuns(deps.home, plan.parent.id, short, config.worktree);
+	};
+
+	// No live run on the parent, a last run whose runner did not die, and, for a run that might go
+	// on in it, a last worktree no landing by hand holds.
+	const checkRuns = (
+		home: string,
+		parentId: string,
+		short: string,
+		worktree: boolean,
+	): Result<void> => {
+		const runs = RunStore.list(home);
 		if (!runs.ok) return runs;
-		const active = liveRunOn(runs.value, plan.parent.id);
+		const active = liveRunOn(runs.value, parentId);
 		if (active)
 			return err(
 				new Error(`${short} already has a live loop run: ${active.id}`),
 			);
 		// Newest first: the parent's last run.
-		const last = runs.value.find((r) => r.parentId === plan.parent.id);
+		const last = runs.value.find((r) => r.parentId === parentId);
+		const busy = last?.worktree ? Worktree.lockedBy(last.worktree) : undefined;
+		if (worktree && busy)
+			return err(
+				new Error(
+					`${short}'s last loop run's worktree is in use by ${busy}; start again once it is done`,
+				),
+			);
 		return last && died(last)
 			? err(
 					new Error(
@@ -369,7 +395,7 @@ export namespace Loop {
 		});
 		if (!created.ok) return created;
 		const run = config.worktree
-			? await withWorktree(deps, created.value)
+			? await withWorktree(deps, created.value, parent.title)
 			: created;
 		if (!run.ok) return run;
 		tellPlacement(deps.home, run.value);
@@ -392,9 +418,9 @@ export namespace Loop {
 	 */
 	export const placement = (run: RunStore.Run): string | undefined => {
 		if (run.worktreeReused)
-			return `worktree ${run.worktree}, run ${run.worktreeReused.runId}'s: its branch ${run.worktreeReused.branch} is not merged into HEAD, so this run goes on with it`;
+			return `worktree ${run.worktree}, run ${run.worktreeReused.runId}'s: ${run.pr ? `its pull request ${run.pr} is not merged` : `its branch ${run.worktreeReused.branch} is not merged into HEAD`}, so this run goes on with it`;
 		if (run.worktree)
-			return `worktree ${run.worktree}, new, on branch ${Worktree.branchFor(run.id)} from HEAD`;
+			return `worktree ${run.worktree}, new, on branch ${RunStore.branchOf(run)} from ${run.base?.branch ?? "HEAD"}`;
 		return run.config.worktree
 			? `in place in ${run.projectDir}: it is not a git repository, so the run has no worktree`
 			: undefined;
@@ -421,14 +447,25 @@ export namespace Loop {
 	};
 
 	// The parent's last run's worktree, when the new run should go on in it: still one of the
-	// repository's worktrees, no live run working in it, and its branch not merged into HEAD, so
-	// what was done there is not in a fresh worktree of HEAD. `checkParent` has refused a parent
-	// whose last run is live or lost its runner: that run is restarted, not taken over.
+	// repository's worktrees, no live run working in it, and its work not merged (`Prune.verdict`),
+	// so what was done there is not in a fresh worktree of HEAD. The new run takes over its pull
+	// request with it. A worktree whose work is merged is removed, with its branch. `checkParent`
+	// has refused a parent whose last run is live or lost its runner: that run is restarted, not
+	// taken over.
 	const reusable = async (
 		deps: StartDeps,
 		run: RunStore.Run,
 	): Promise<
-		Result<{ dir: string; from: { runId: string; branch: string } } | undefined>
+		Result<
+			| {
+					dir: string;
+					from: { runId: string; branch: string };
+					base?: Worktree.Head;
+					pr?: string;
+					pushed?: string;
+			  }
+			| undefined
+		>
 	> => {
 		const runs = RunStore.list(deps.home);
 		if (!runs.ok) return runs;
@@ -445,36 +482,71 @@ export namespace Loop {
 		const branch = await Worktree.branchOf(run.projectDir, dir, deps.git);
 		if (!branch.ok) return branch;
 		if (branch.value === undefined) return ok(undefined);
-		const merged = await Worktree.merged(
-			run.projectDir,
-			branch.value,
-			deps.git,
-		);
-		if (!merged.ok) return merged;
-		return ok(
-			merged.value
-				? undefined
-				: { dir, from: { runId: last.id, branch: branch.value } },
-		);
+		const said = await Prune.verdict(deps, last, branch.value);
+		if (!said.ok) return said;
+		if (said.value.kind === "merged") {
+			// A worktree that cannot be removed (changes left in it) stays; the run starts afresh.
+			await Prune.remove(deps, last, dir, branch.value, said.value);
+			return ok(undefined);
+		}
+		if (said.value.kind === "kept") return ok(undefined);
+		return ok({
+			dir,
+			from: { runId: last.id, branch: branch.value },
+			...(last.base ? { base: last.base } : {}),
+			...(last.pr ? { pr: last.pr } : {}),
+			...(last.pushed ? { pushed: last.pushed } : {}),
+		});
 	};
 
-	// The run's worktree, beside its files: the parent's last run's when its branch is not merged
+	// The run's worktree, beside its files: the parent's last run's when its work is not merged
 	// (`reusable`), else a new one of the project's HEAD, in which what is not committed in the
-	// project (work in progress) is not. A loop started in a folder of the repository works in
-	// that folder of the worktree. A project that is not a git repository is worked in place.
+	// project (work in progress) is not, on a branch named for the parent. A loop started in a
+	// folder of the repository works in that folder of the worktree. A project that is not a git
+	// repository is worked in place.
 	const withWorktree = async (
 		deps: StartDeps,
 		run: RunStore.Run,
+		title: string,
 	): Promise<Result<RunStore.Run>> => {
 		if (!Worktree.inRepo(run.projectDir)) return ok(run);
 		const failed = (error: Error): Result<RunStore.Run> => {
 			markFailed(deps.home, run, "worktree-not-created", error.message);
 			return err(error);
 		};
+		// The last run's worktree is held while this run decides whether it goes on in it, and
+		// until it is written down as this run's, so a landing by hand never runs beside it.
+		const runs = RunStore.list(deps.home);
+		if (!runs.ok) return failed(runs.error);
+		const lastDir = runs.value.find(
+			(r) => r.id !== run.id && r.parentId === run.parentId,
+		)?.worktree;
+		const held = lastDir
+			? Worktree.lock(lastDir, `kabane loop start ${run.parentShortId}`)
+			: ok(() => {});
+		if (!held.ok) return failed(held.error);
+		try {
+			return await placeWorktree(deps, run, title, failed);
+		} finally {
+			held.value();
+		}
+	};
+
+	const placeWorktree = async (
+		deps: StartDeps,
+		run: RunStore.Run,
+		title: string,
+		failed: (error: Error) => Result<RunStore.Run>,
+	): Promise<Result<RunStore.Run>> => {
 		const prefix = await Worktree.prefixOf(run.projectDir, deps.git);
 		if (!prefix.ok) return failed(prefix.error);
 		const reused = await reusable(deps, run);
 		if (!reused.ok) return failed(reused.error);
+		// What the run lands onto: the project's HEAD now, or the base of the worktree it goes on in.
+		const base = reused.value?.base
+			? ok(reused.value.base)
+			: await Worktree.head(run.projectDir, deps.git);
+		if (!base.ok) return failed(base.error);
 		if (reused.value) {
 			const { dir, from } = reused.value;
 			if (!existsSync(join(dir, prefix.value)))
@@ -488,6 +560,9 @@ export namespace Loop {
 				worktree: dir,
 				worktreePrefix: prefix.value,
 				worktreeReused: from,
+				base: base.value,
+				...(reused.value.pr ? { pr: reused.value.pr } : {}),
+				...(reused.value.pushed ? { pushed: reused.value.pushed } : {}),
 			});
 		}
 		const dir = Worktree.dirFor(RunStore.paths(deps.home, run.id).dir);
@@ -501,17 +576,25 @@ export namespace Loop {
 					`${prefix.value} is not committed, so a worktree of HEAD would not have it: commit it, or start with --no-worktree`,
 				),
 			);
+		const branch = await Worktree.unused(
+			run.projectDir,
+			Worktree.branchFor(run.parentShortId, title),
+			deps.git,
+		);
+		if (!branch.ok) return failed(branch.error);
 		const added = await Worktree.add(
 			run.projectDir,
 			dir,
-			Worktree.branchFor(run.id),
+			branch.value,
 			deps.git,
 		);
 		if (!added.ok) return failed(added.error);
 		const withDir: RunStore.Run = {
 			...run,
 			worktree: dir,
+			branch: branch.value,
 			worktreePrefix: prefix.value,
+			base: base.value,
 		};
 		return RunStore.write(deps.home, withDir);
 	};
@@ -542,6 +625,13 @@ export namespace Loop {
 			return err(
 				new Error(
 					`Run ${runId} cannot restart: ${dead.parentShortId} already has a live loop run, ${rival.id}; stop it first`,
+				),
+			);
+		const busy = dead.worktree ? Worktree.lockedBy(dead.worktree) : undefined;
+		if (busy)
+			return err(
+				new Error(
+					`Run ${runId} cannot restart: its worktree is in use by ${busy}; try again once it is done`,
 				),
 			);
 		const spawned = spawnRunner(deps, dead);
@@ -579,6 +669,86 @@ export namespace Loop {
 			process.off("SIGINT", onSignal);
 		}
 	};
+
+	/**
+	 * Land completed run `runId`'s branch as `land: pr` does at the end of a run: onto the latest
+	 * of its base, gated again when that moved it, pushed, with a pull request open. What
+	 * `kabane loop land` does, for a run whose landing failed or one that does not land itself.
+	 * The landing is commented on the parent, which waits on the pull request it opened. Refused
+	 * for a run that is not completed, or has no worktree.
+	 */
+	export const land = async (
+		deps: Deps & Pick<StartDeps, "git" | "gh">,
+		runId: string,
+	): Promise<Result<RunStore.Run>> => {
+		const read = RunStore.read(deps.home, runId);
+		if (!read.ok) return read;
+		const run = read.value;
+		if (run.status !== "completed")
+			return err(
+				new Error(
+					`Run ${runId} is ${run.status}: only a completed run, whose work its gates passed, lands`,
+				),
+			);
+		if (run.worktree === undefined)
+			return err(
+				new Error(
+					`Run ${runId} worked in ${run.projectDir} itself, so it has no branch of its own to land`,
+				),
+			);
+		const dir = run.worktree;
+		// The worktree is this landing's alone until it is over: no start goes on in it and no
+		// prune removes it meanwhile.
+		const held = Worktree.lock(dir, Parent.landCommand(runId));
+		if (!held.ok) return held;
+		try {
+			const owned = ownWorktree(deps.home, run, dir);
+			if (!owned.ok) return owned;
+			const plan = await LoopPlan.load(deps.basePath, run.parentId);
+			if (!plan.ok) return plan;
+			const log = RunStore.eventLog(deps.home, runId);
+			if (!log.ok) return log;
+			const ctx = RunState.make({ ...deps, pid: process.pid }, run, log.value);
+			await Land.land(ctx, plan.value);
+			await Parent.landed(ctx);
+			return ok(ctx.run);
+		} finally {
+			held.value();
+		}
+	};
+
+	// Whether `run` still owns its worktree `dir`: no live run works in it, and no later run went on
+	// in it, whose unfinished work landing this one would rebase and publish.
+	const ownWorktree = (
+		home: string,
+		run: RunStore.Run,
+		dir: string,
+	): Result<void> => {
+		const runs = RunStore.list(home);
+		if (!runs.ok) return runs;
+		const other = runs.value.find(
+			(r) =>
+				r.id !== run.id &&
+				r.worktree === dir &&
+				(RunStore.isLive(r.status) || r.createdAt > run.createdAt),
+		);
+		if (other === undefined) return ok(undefined);
+		return err(
+			new Error(
+				RunStore.isLive(other.status)
+					? `Run ${run.id} cannot land: run ${other.id} is working in its worktree ${dir}; land once that run is over`
+					: `Run ${run.id} cannot land: run ${other.id} went on in its worktree ${dir} after it; land ${other.id} instead`,
+			),
+		);
+	};
+
+	/**
+	 * Remove every run worktree on this device whose work is merged, with its branch: what
+	 * `kabane loop prune` does. A pull request's state is GitHub's to say (`Prune`).
+	 */
+	export const prune = (
+		deps: Pick<StartDeps, "home" | "git" | "gh">,
+	): Promise<Result<Prune.Pruned[]>> => Prune.prune(deps);
 
 	/** One run as it is now: a run whose runner is gone reads as failed. */
 	export const status = (

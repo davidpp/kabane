@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ok, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { Worktree } from "./worktree";
 
@@ -61,5 +62,38 @@ describe("Worktree.checkpoint", () => {
 		);
 		// A second of hook is twenty ticks; a synchronous spawn allows none.
 		expect(ticks).toBeGreaterThanOrEqual(10);
+	});
+});
+
+describe("Worktree.branchFor", () => {
+	it("names the branch for the issue and the first words of its title", () => {
+		expect(
+			Worktree.branchFor(
+				"JCAB-91",
+				"A completed loop run lands its branch as the project says: open a PR, or leave it",
+			),
+		).toBe("jcab-91-a-completed-loop-run-lands-its-branch-as");
+		expect(Worktree.branchFor("JCAB-7", "Café: déjà vu!")).toBe(
+			"jcab-7-cafe-deja-vu",
+		);
+	});
+});
+
+describe("Worktree.unused", () => {
+	it("numbers a name a branch already has, locally or on a remote", async () => {
+		const git: Worktree.Git = async (cwd, args) =>
+			trySync(() => GitFixture.run(cwd, args));
+		expect(await Worktree.unused(repo, "jcab-1-fix", git)).toEqual(
+			ok("jcab-1-fix"),
+		);
+		GitFixture.run(repo, ["branch", "jcab-1-fix"]);
+		GitFixture.run(repo, [
+			"update-ref",
+			"refs/remotes/origin/jcab-1-fix-2",
+			"HEAD",
+		]);
+		expect(await Worktree.unused(repo, "jcab-1-fix", git)).toEqual(
+			ok("jcab-1-fix-3"),
+		);
 	});
 });

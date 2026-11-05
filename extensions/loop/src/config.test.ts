@@ -41,6 +41,7 @@ describe("LoopConfig.SettingsSchema", () => {
 			gates: {},
 			worktree: true,
 			lenses: [],
+			land: "none",
 		});
 	});
 
@@ -55,6 +56,7 @@ describe("LoopConfig.SettingsSchema", () => {
 				budget: { continuations: 5 },
 				stallAfter: 2,
 				gates: { lint: "bun run check" },
+				land: "pr",
 			},
 		);
 		expect(config.ok).toBe(true);
@@ -66,6 +68,7 @@ describe("LoopConfig.SettingsSchema", () => {
 			currency: "USD",
 		});
 		expect(config.value.value.stallAfter).toBe(2);
+		expect(config.value.value.land).toBe("pr");
 		expect(config.value.value.gates).toEqual({
 			test: "bun test",
 			lint: "bun run check",
