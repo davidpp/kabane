@@ -6,8 +6,8 @@
 // claims it left open are closed as interrupted and their subtasks released, once a subtask its
 // session had closed has had the gate pass (or checkpoint) the dead runner never finished.
 // Starting or resuming takes the parent into in_progress, and every end of the run is a comment
-// on it (`Parent`).
-import { err, ok, type Result } from "@cabane/core";
+// on it (`Parent`). A single issue that gains a work child mid-run is a parent from then on.
+import { err, ok, type Result, type Task } from "@cabane/core";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
 import { Claims } from "./claims";
@@ -185,7 +185,53 @@ export namespace Runner {
 		last.said = said;
 	};
 
-	type TickState = { planFailures: number; health: { said: string } };
+	type TickState = {
+		planFailures: number;
+		health: { said: string };
+		/** Whether this runner has seen its single issue become a parent, and taken it as one. */
+		reshaped?: "seen" | "taken";
+	};
+
+	// The states the end of its own session leaves a single issue in: released, or closed.
+	const LEFT_BY_CLAIM: readonly Task["state"][] = ["next", "done"];
+
+	/**
+	 * A single issue a human gave a work child during the run is a parent from then on, and the
+	 * run works its subtasks as it would have from the start: the tracker is the plan. The session
+	 * already on the issue itself is left to finish, since cancelling it would throw away its work,
+	 * and its subtasks wait for it, so two sessions never make the same change in one tree. Once it
+	 * has ended the issue is taken as a parent is. True while that session holds the subtasks back.
+	 */
+	const reshape = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+		state: TickState,
+	): Promise<boolean> => {
+		if (LoopPlan.single(plan)) return false;
+		const own = RunStore.onTarget(ctx.run);
+		if (own.length === 0) return false;
+		const holding = own.some((c) => c.endedAt === undefined);
+		const short = ctx.run.parentShortId;
+		if (state.reshaped === undefined) {
+			const added = plan.nodes
+				.filter(LoopPlan.isWork)
+				.map((n) => n.task.shortId ?? n.task.id);
+			RunState.event(ctx, {
+				type: "reshaped",
+				summary: `${short} has subtasks now (${added.join(", ")}): the run works them as its plan${holding ? `, once the session on ${short} itself ends` : ""}`,
+			});
+			state.reshaped = "seen";
+		}
+		if (!holding && state.reshaped === "seen") {
+			await Parent.take(
+				ctx,
+				"subtasks added: loop run works them",
+				LEFT_BY_CLAIM,
+			);
+			state.reshaped = "taken";
+		}
+		return holding;
+	};
 
 	/** One pass: the exit when the run is over, else undefined after claiming. */
 	const tick = async (
@@ -219,15 +265,13 @@ export namespace Runner {
 		}
 		state.planFailures = 0;
 		const plan = loaded.value;
+		const holding = await reshape(ctx, plan, state);
 		if (ctx.live.size === 0 && Stop.workDone(plan))
 			return finalChecks(ctx, plan);
 		const skipped = new Set(ctx.run.steering.skipped);
-		const ready = LoopPlan.frontier(
-			plan,
-			RunState.liveTasks(ctx),
-			ctx.now(),
-			skipped,
-		);
+		const ready = holding
+			? []
+			: LoopPlan.frontier(plan, RunState.liveTasks(ctx), ctx.now(), skipped);
 		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
 		for (const node of Steering.pick(ctx.run.steering, ready, slots)) {
 			await Claims.claim(ctx, node, plan);
@@ -418,7 +462,7 @@ export namespace Runner {
 			type: resumed ? "run_resume" : "run_start",
 			summary: `${resumed ? "resumed" : "started"} on ${ctx.run.parentShortId} in ${RunStore.sessionDir(ctx.run)} (pid ${ctx.deps.pid})`,
 		});
-		await Parent.take(ctx, resumed);
+		await Parent.take(ctx, `loop run ${resumed ? "resumed" : "started"}`);
 		// Recovery may run a subtask's gates, which a stop must still be able to kill.
 		await hearingStop(ctx, () => Claims.recover(ctx));
 		if (ctx.run.stall === undefined) {

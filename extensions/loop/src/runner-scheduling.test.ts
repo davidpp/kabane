@@ -557,3 +557,81 @@ describe("A single-issue run's claim", () => {
 		]);
 	});
 });
+
+describe("A single issue given a subtask during its run", () => {
+	it("becomes a parent once its own session ends, and the run ends saying so", async () => {
+		const issue = await add("lone");
+		const run = createRun(issue, { implementer: "gemini" });
+		const agent = join(home, "agent.mjs");
+		writeFileSync(agent, AGENT);
+		const controller = new AbortController();
+		const running = Runner.run(run.id, {
+			...deps(),
+			signal: controller.signal,
+			overrides: { gemini: { command: process.execPath, args: [agent] } },
+		});
+		const release = (task: Task, change: TaskUpdate) => {
+			writeFileSync(
+				join(home, `${task.shortId}.change.json`),
+				JSON.stringify(change),
+			);
+			writeFileSync(join(home, `${task.shortId}.release`), "");
+		};
+		try {
+			await until(() => existsSync(join(home, `${issue.shortId}.prompt`)));
+			const child = await add("split off", issue.id);
+			await until(() => {
+				const events = RunStore.readEvents(home, run.id);
+				return events.ok && events.value.some((e) => e.type === "reshaped");
+			});
+			// A free slot, a ready child, and still no claim: the session on the issue holds it back.
+			await Bun.sleep(50);
+			expect(readRun().claims.map((c) => c.taskId)).toEqual([issue.id]);
+
+			release(issue, { state: "done" });
+			await until(() => existsSync(join(home, `${child.shortId}.prompt`)));
+			const taken = await Planner.getTask(home, issue.id);
+			expect(taken.ok && taken.value?.state).toBe("in_progress");
+			const prompt = readFileSync(
+				join(home, `${child.shortId}.prompt`),
+				"utf8",
+			);
+			expect(prompt).toContain(`Your subtask is ${child.shortId}.`);
+
+			release(child, { state: "done" });
+			const ended = await running;
+			if (!ended.ok) throw ended.error;
+			expect(ended.value.exit?.reason).toBe("plan-done");
+			const events = RunStore.readEvents(home, run.id);
+			expect(
+				events.ok &&
+					events.value
+						.filter((e) => e.type === "reshaped")
+						.map((e) => e.summary),
+			).toEqual([
+				`${issue.shortId} has subtasks now (${child.shortId}): the run works them as its plan, once the session on ${issue.shortId} itself ends`,
+			]);
+			const after = await Planner.getTask(home, issue.id);
+			expect(
+				after.ok && [after.value?.state, after.value?.needsReview],
+			).toEqual(["in_progress", true]);
+			const comments = await Planner.getComments(home, issue.id);
+			expect(comments.ok && comments.value.map((c) => c.content)).toEqual([
+				[
+					"Loop run run-1 completed (plan-done).",
+					"",
+					`${issue.shortId} was a single issue when the run started. Subtasks were added under it during the run (${child.shortId}), so from then on the run treated it as their parent, and they waited for the session on ${issue.shortId} itself to end.`,
+					"",
+					"- Subtasks done: 1 of 1",
+					"- Findings fixed: none",
+					"- Findings left open for you: none",
+					"",
+					`The changes are in the working tree of \`${home}\`.`,
+				].join("\n"),
+			]);
+		} finally {
+			controller.abort();
+			await running;
+		}
+	});
+});

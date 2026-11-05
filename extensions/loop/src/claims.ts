@@ -73,8 +73,7 @@ export namespace Claims {
 	};
 
 	// A lens and the fixer hold the parent without taking it: its state is never theirs to release.
-	const onParent = (claim: RunStore.Claim): boolean =>
-		claim.lens !== undefined || claim.fixer === true;
+	const onParent = RunStore.reviews;
 
 	export const mark = async (ctx: Ctx, plan: LoopPlan.Plan): Promise<string> =>
 		Stall.mark(

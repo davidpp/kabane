@@ -6,11 +6,13 @@
 //
 // A single-issue run's target is its own work node, so its state is the claim's: taking it here
 // would leave nothing to claim. Its session closes it, and the completed run flags it for review
-// while its work waits to be merged.
+// while its work waits to be merged. One a human gives a work child during the run is a parent
+// from then on: once its own session has ended, the run takes it as it takes any parent, and the
+// end of the run says it changed shape.
 import { authorTypeOf, Planner, Runtime, type Task } from "@cabane/core";
 import { LoopPlan } from "./plan";
 import { RunState } from "./state";
-import type { RunStore } from "./store";
+import { RunStore } from "./store";
 import { Worktree } from "./worktree";
 
 export namespace Parent {
@@ -39,18 +41,21 @@ export namespace Parent {
 	};
 
 	/**
-	 * Move the parent to in_progress, logging the run on it, when it is not there already and is
-	 * not the single issue the run claims.
+	 * Move the parent to in_progress from one of `from`, logging `why` on it, unless it is the
+	 * single issue the run claims.
 	 */
-	export const take = async (ctx: Ctx, resumed: boolean): Promise<void> => {
+	export const take = async (
+		ctx: Ctx,
+		why: string,
+		from: readonly Task["state"][] = TAKEN_FROM,
+	): Promise<void> => {
 		const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
 		if (!plan.ok) {
 			warn(ctx, `parent not read: ${plan.error.message}`);
 			return;
 		}
 		const { parent } = plan.value;
-		if (LoopPlan.single(plan.value) || !TAKEN_FROM.includes(parent.state))
-			return;
+		if (LoopPlan.single(plan.value) || !from.includes(parent.state)) return;
 		const moved = await Planner.updateTask(ctx.deps.basePath, parent.id, {
 			state: "in_progress",
 		});
@@ -60,12 +65,7 @@ export namespace Parent {
 		}
 		const logged = await Planner.addWorkLog(ctx.deps.basePath, {
 			taskId: parent.id,
-			refs: [
-				{
-					uri: `loop:${ctx.run.id}`,
-					label: `loop run ${resumed ? "resumed" : "started"}`,
-				},
-			],
+			refs: [{ uri: `loop:${ctx.run.id}`, label: why }],
 			note: `${parent.state} → in_progress`,
 			addedBy: `loop:${ctx.run.id}`,
 			addedByType: "ai",
@@ -78,6 +78,18 @@ export namespace Parent {
 
 	const list = (tasks: readonly Task[]): string =>
 		tasks.length === 0 ? "none" : tasks.map(label).join(", ");
+
+	// What the end of the run says when it started on a single issue that is a parent now.
+	const reshaped = (ctx: Ctx, plan: LoopPlan.Plan): string[] => {
+		if (LoopPlan.single(plan) || RunStore.onTarget(ctx.run).length === 0)
+			return [];
+		const short = ctx.run.parentShortId;
+		const work = plan.nodes.filter(LoopPlan.isWork).map((n) => n.task);
+		return [
+			"",
+			`${short} was a single issue when the run started. Subtasks were added under it during the run (${list(work)}), so from then on the run treated it as their parent, and they waited for the session on ${short} itself to end.`,
+		];
+	};
 
 	// Where the run's work is: the worktree's branch, which git names (a run may work on a branch
 	// it did not create), or the project checkout itself. A single issue its session closed has
@@ -111,6 +123,7 @@ export namespace Parent {
 		const done = (t: Task) => t.state === "done";
 		return [
 			head,
+			...reshaped(ctx, plan),
 			"",
 			...(single
 				? []
@@ -141,11 +154,16 @@ export namespace Parent {
 		return `${status} shows the run's trace; ${start} starts a new run once the cause is fixed.`;
 	};
 
-	const stopped = (ctx: Ctx, exit: Exit, single: boolean): string =>
+	const stopped = (
+		ctx: Ctx,
+		exit: Exit,
+		plan: LoopPlan.Plan | undefined,
+	): string =>
 		[
 			`Loop run ${ctx.run.id} ${exit.status}: ${exit.reason}${exit.detail ? ` (${exit.detail})` : ""}.`,
+			...(plan ? reshaped(ctx, plan) : []),
 			"",
-			`Next: ${nextStep(ctx.run, exit.reason, single)}`,
+			`Next: ${nextStep(ctx.run, exit.reason, plan !== undefined && LoopPlan.single(plan))}`,
 		].join("\n");
 
 	// A single issue its session closed is flagged as a parent left in progress is: its work is
@@ -165,7 +183,7 @@ export namespace Parent {
 		const body =
 			exit.status === "completed"
 				? await completed(ctx, exit, plan)
-				: stopped(ctx, exit, single);
+				: stopped(ctx, exit, plan);
 		const actor = Runtime.actor();
 		const commented = await Planner.addComment(ctx.deps.basePath, {
 			taskId: ctx.run.parentId,
