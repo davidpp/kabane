@@ -3,7 +3,7 @@
 // interaction through ONE useKeyboard handler that delegates to BoardNav.reduceKey (the pure key
 // router) and runs the effect it returns. A 5s poll keeps the board fresh; selection survives every
 // reload by task id. The board starts scoped to the detected project — `esc` widens to all scopes.
-import type { Result, Task } from "@cabane/core";
+import type { Task } from "@cabane/core";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useKeyboard, useRenderer } from "@opentui/react";
 import {
@@ -24,6 +24,7 @@ import { CopilotLog } from "./copilot-log";
 import { CopilotPane, contextChip } from "./copilot-prompt";
 import { BoardData } from "./data";
 import { Detail } from "./detail";
+import { useDetailRecords } from "./detail-records";
 import { EventView } from "./event-view";
 import { FooterTrail } from "./footer";
 import { Launcher } from "./launcher";
@@ -117,14 +118,10 @@ export const App = ({
 	const [linked, setLinked] = useState<ReadonlySet<string>>(EMPTY_LINKS);
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useNotice();
-	// The records the open detail view shows (BoardData.taskDetail): null while none is open or it
-	// loads, cleared on view change.
-	const [detailRecords, setDetailRecords] =
-		useState<Result<BoardData.DetailRecords> | null>(null);
-	// Which task those records are for, and their stamp (BoardData.recordsStamp): the poll compares a
-	// fresh stamp against it and reloads the records only when something landed.
-	const detailLoadedId = useRef<string | null>(null);
-	const detailStamp = useRef<string | null>(null);
+	const { records: detailRecords, refresh: refreshDetail } = useDetailRecords(
+		basePath,
+		{ state, ref: stateRef },
+	);
 	// This session's copilot turns, the current one at the head: its card, its plan and its transcript.
 	// Held in a ref as well because the composed ActivitySource below reads it while the event view
 	// polls, and the stream runner writes it between renders.
@@ -215,34 +212,6 @@ export const App = ({
 			);
 		},
 		[basePath, filtersFor, updateState],
-	);
-
-	// Store the records of the open detail view and the stamp they carry.
-	const showDetail = useCallback(
-		(taskId: string, records: Result<BoardData.DetailRecords>): void => {
-			detailLoadedId.current = taskId;
-			detailStamp.current = records.ok
-				? BoardData.recordsStamp(records.value)
-				: null;
-			setDetailRecords(records);
-		},
-		[],
-	);
-
-	// A comment, work log or session activity lands without touching the task row, so the open
-	// detail view checks the cheap stamp on every poll and reloads its records only when it moved.
-	// The records are replaced in place, never cleared, so the view keeps its tab and its scroll.
-	// A failed read keeps what is on screen: the board's own poll already reports a broken store.
-	const refreshDetail = useCallback(
-		async (taskId: string): Promise<void> => {
-			const stamp = await BoardData.detailStamp(basePath, taskId);
-			if (!stamp.ok || stamp.value === detailStamp.current) return;
-			const records = await BoardData.taskDetail(basePath, taskId);
-			const open = stateRef.current?.view;
-			if (open?.type !== "detail" || open.taskId !== taskId) return;
-			if (records.ok) showDetail(taskId, records);
-		},
-		[basePath, showDetail, stateRef],
 	);
 
 	// Reload columns using the filters implied by `s`, then merge them in preserving selection.
@@ -880,30 +849,6 @@ export const App = ({
 		if (selectedId) listRef.current?.scrollChildIntoView(`row-${selectedId}`);
 	}, [selectedId]);
 
-	// Fetch the detail view's records when it opens or the task changes. A different task opens on
-	// its loading line; the same task refetches in place, so a v/x/n/s on it keeps tab and scroll.
-	const detailTaskId = state?.view.type === "detail" ? state.view.taskId : null;
-	const detailTask =
-		detailTaskId && state ? BoardNav.taskById(state, detailTaskId) : undefined;
-	// detailTask?.updatedAt is an intentional trigger — a v/x/n/s mutation on the open task re-fetches the records without changing taskId.
-	useEffect(() => {
-		if (detailLoadedId.current !== detailTaskId) {
-			detailLoadedId.current = null;
-			detailStamp.current = null;
-			setDetailRecords(null);
-		}
-		if (!detailTaskId) return;
-		let cancelled = false;
-		void (async () => {
-			const result = await BoardData.taskDetail(basePath, detailTaskId);
-			if (cancelled) return;
-			showDetail(detailTaskId, result);
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [basePath, detailTaskId, detailTask?.updatedAt, showDetail]);
-
 	// The tab bar follows the cards that ask for a tab, and the attention queue follows the tracker's
 	// unanswered questions, both on every activity load.
 	useEffect(() => {
@@ -1114,7 +1059,7 @@ export const App = ({
 				<Detail
 					taskId={taskId}
 					task={task}
-					records={detailRecords ?? undefined}
+					records={detailRecords}
 					cards={taskCards.length > 0 ? taskCards : undefined}
 					questions={shownActivity.questionsByTaskId.get(taskId)}
 					pinned={banner?.question.questionActivityId}
