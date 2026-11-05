@@ -4,6 +4,7 @@ import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -609,7 +610,7 @@ describe("A single issue given a subtask during its run", () => {
 						.filter((e) => e.type === "reshaped")
 						.map((e) => e.summary),
 			).toEqual([
-				`${issue.shortId} has subtasks now (${child.shortId}): the run works them as its plan, once the session on ${issue.shortId} itself ends`,
+				`${issue.shortId} has subtasks now (${child.shortId}): the run works them as its plan, once every session on ${issue.shortId} itself has ended`,
 			]);
 			const after = await Planner.getTask(home, issue.id);
 			expect(
@@ -620,7 +621,7 @@ describe("A single issue given a subtask during its run", () => {
 				[
 					"Loop run run-1 completed (plan-done).",
 					"",
-					`${issue.shortId} was a single issue when the run started. Subtasks were added under it during the run (${child.shortId}), so from then on the run treated it as their parent, and they waited for the session on ${issue.shortId} itself to end.`,
+					`${issue.shortId} was a single issue when the run started. Subtasks were added under it during the run (${child.shortId}), so from then on the run treated it as their parent, and they waited for every session on ${issue.shortId} itself to end.`,
 					"",
 					"- Subtasks done: 1 of 1",
 					"- Findings fixed: none",
@@ -629,6 +630,56 @@ describe("A single issue given a subtask during its run", () => {
 					`The changes are in the working tree of \`${home}\`.`,
 				].join("\n"),
 			]);
+		} finally {
+			controller.abort();
+			await running;
+		}
+	});
+});
+
+describe("A single issue given a subtask while a lens reviews it", () => {
+	it("holds the subtask until the lens session on the issue has ended", async () => {
+		const issue = await add("lone");
+		mkdirSync(join(home, ".kabane", "loop", "lenses"), { recursive: true });
+		writeFileSync(join(home, ".kabane", "loop", "lenses", "look.md"), "Look.");
+		const run = createRun(issue, { implementer: "gemini", lenses: ["look"] });
+		const agent = join(home, "agent.mjs");
+		// The lens names itself in its brief rather than a subtask: its marker files go by its name.
+		writeFileSync(
+			agent,
+			AGENT.replace(
+				"/Your (?:subtask|issue) is ([^.]+)\\./.exec(text)?.[1];",
+				"/Your (?:subtask|issue) is ([^.]+)\\./.exec(text)?.[1] ?? /You are the `([^`]+)` verifier/.exec(text)?.[1];",
+			),
+		);
+		const controller = new AbortController();
+		const running = Runner.run(run.id, {
+			...deps(),
+			signal: controller.signal,
+			overrides: { gemini: { command: process.execPath, args: [agent] } },
+		});
+		try {
+			await until(() => existsSync(join(home, `${issue.shortId}.prompt`)));
+			writeFileSync(
+				join(home, `${issue.shortId}.change.json`),
+				JSON.stringify({ state: "done" }),
+			);
+			writeFileSync(join(home, `${issue.shortId}.release`), "");
+			await until(() => existsSync(join(home, "look.prompt")));
+			const child = await add("split off", issue.id);
+			await until(() => {
+				const events = RunStore.readEvents(home, run.id);
+				return events.ok && events.value.some((e) => e.type === "reshaped");
+			});
+			// A free slot and a ready child, and still no claim: the lens on the issue holds it back.
+			await Bun.sleep(50);
+			expect(readRun().claims.map((c) => [c.taskId, c.lens])).toEqual([
+				[issue.id, undefined],
+				[issue.id, "look"],
+			]);
+
+			writeFileSync(join(home, "look.release"), "");
+			await until(() => existsSync(join(home, `${child.shortId}.prompt`)));
 		} finally {
 			controller.abort();
 			await running;

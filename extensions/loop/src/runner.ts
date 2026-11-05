@@ -197,10 +197,11 @@ export namespace Runner {
 
 	/**
 	 * A single issue a human gave a work child during the run is a parent from then on, and the
-	 * run works its subtasks as it would have from the start: the tracker is the plan. The session
-	 * already on the issue itself is left to finish, since cancelling it would throw away its work,
-	 * and its subtasks wait for it, so two sessions never make the same change in one tree. Once it
-	 * has ended the issue is taken as a parent is. True while that session holds the subtasks back.
+	 * run works its subtasks as it would have from the start: the tracker is the plan. Any session
+	 * already on the issue itself (its implementer, a lens, the fixer) is left to finish, since
+	 * cancelling it would throw away its work, and the subtasks wait for it, so two sessions never
+	 * work in one tree on the same change. Once every one has ended the issue is taken as a parent
+	 * is. True while a session on the issue holds the subtasks back.
 	 */
 	const reshape = async (
 		ctx: Ctx,
@@ -210,7 +211,9 @@ export namespace Runner {
 		if (LoopPlan.single(plan)) return false;
 		const own = RunStore.onTarget(ctx.run);
 		if (own.length === 0) return false;
-		const holding = own.some((c) => c.endedAt === undefined);
+		const holding = ctx.run.claims.some(
+			(c) => c.taskId === ctx.run.parentId && c.endedAt === undefined,
+		);
 		const short = ctx.run.parentShortId;
 		if (state.reshaped === undefined) {
 			const added = plan.nodes
@@ -218,7 +221,7 @@ export namespace Runner {
 				.map((n) => n.task.shortId ?? n.task.id);
 			RunState.event(ctx, {
 				type: "reshaped",
-				summary: `${short} has subtasks now (${added.join(", ")}): the run works them as its plan${holding ? `, once the session on ${short} itself ends` : ""}`,
+				summary: `${short} has subtasks now (${added.join(", ")}): the run works them as its plan${holding ? `, once every session on ${short} itself has ended` : ""}`,
 			});
 			state.reshaped = "seen";
 		}

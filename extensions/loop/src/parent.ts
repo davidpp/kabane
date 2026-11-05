@@ -87,7 +87,7 @@ export namespace Parent {
 		const work = plan.nodes.filter(LoopPlan.isWork).map((n) => n.task);
 		return [
 			"",
-			`${short} was a single issue when the run started. Subtasks were added under it during the run (${list(work)}), so from then on the run treated it as their parent, and they waited for the session on ${short} itself to end.`,
+			`${short} was a single issue when the run started. Subtasks were added under it during the run (${list(work)}), so from then on the run treated it as their parent, and they waited for every session on ${short} itself to end.`,
 		];
 	};
 
