@@ -492,7 +492,7 @@ describe("cabane MCP server over an in-memory transport", () => {
 			actor: "cabane://actor/human/david",
 			scopeRequired: true,
 		};
-		const server = createMcpServer(ctx, {}, afterWrite);
+		const server = unwrap(createMcpServer(ctx, {}, afterWrite));
 		const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
 		await server.connect(serverSide);
 		const client = new Client({ name: "test", version: "0" });

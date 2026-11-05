@@ -139,3 +139,6 @@ export type {
 	RelayOp,
 	SyncTransport,
 } from "./sync/transport";
+
+export type { KabaneModule, ModuleContextSection } from "./module";
+export { registeredTools } from "./mcp";

@@ -1,11 +1,10 @@
 import { z } from "zod";
 import {
 	CONTEXT_BYTES,
-	CONTEXT_SECTIONS,
+	registeredContextSections,
 	ContextPageOptionsSchema,
 	type ContextPage,
 	type ContextPageOptions,
-	type ContextSection,
 } from "../context-output";
 import { err, ok, type Result } from "../result";
 import { serializedBytes } from "../task-output";
@@ -64,11 +63,11 @@ const packContextPage = ({
 	binding: string;
 	offset: number;
 	markdown: string;
-	sections: ContextSection[];
-	ends: Map<ContextSection, number>;
+	sections: string[];
+	ends: Map<string, number>;
 }): Result<ContextPage> => {
 	const envelope = (end: number): ContextPage => {
-		const complete = (section: ContextSection) => {
+		const complete = (section: string) => {
 			const sectionEnd = ends.get(section);
 			return sectionEnd !== undefined && sectionEnd <= end;
 		};
@@ -79,7 +78,7 @@ const packContextPage = ({
 				humanSteeringComplete: complete("discussion"),
 				completedSections: sections.filter(complete),
 				remainingSections: sections.filter((section) => !complete(section)),
-				omittedSections: CONTEXT_SECTIONS.filter(
+				omittedSections: registeredContextSections().filter(
 					(section) => !sections.includes(section),
 				),
 			},
@@ -128,10 +127,10 @@ const packContextPage = ({
 };
 
 const joinContextSections = (
-	rendered: { section: ContextSection; markdown: string | null }[],
+	rendered: { section: string; markdown: string | null }[],
 ) => {
 	let markdown = "";
-	const ends = new Map<ContextSection, number>();
+	const ends = new Map<string, number>();
 	for (const item of rendered) {
 		if (item.markdown !== null) {
 			if (markdown.length) markdown += "\n\n";
@@ -152,14 +151,11 @@ export namespace Planner {
 		const parsed = ContextPageOptionsSchema.safeParse(options);
 		if (!parsed.success)
 			return err(
-				new Error(
-					`Invalid concise context options: ${parsed.error.message.slice(0, 200)}`,
-				),
+				new Error(`Invalid concise context options: ${parsed.error.message}`),
 			);
 		const { sections: requested, cursor: cursorText, ...opts } = parsed.data;
-		const sections = CONTEXT_SECTIONS.filter((section) =>
-			requested.includes(section),
-		);
+		const valid = registeredContextSections();
+		const sections = valid.filter((section) => requested.includes(section));
 		const cursor = decodeCursor(cursorText);
 		if (!cursor.ok) return cursor;
 		const id = await Tasks.resolveTaskId(basePath, taskIdInput);

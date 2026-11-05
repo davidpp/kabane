@@ -112,15 +112,26 @@ Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is
 ## MCP (`mcp/`)
 
 `KABANE_TOOLS` is the shared tracker tool list: name, description, zod input shape, `read` or
-`write`, handler over `Planner` returning `Result`. Both servers build from it:
+`write`, handler over `Planner` returning `Result`. Both servers use
+`registeredTools()` to compose it with every registered module's `tools`:
 `serveStdio` (the CLI's `kabane mcp`) and `handleHttpRequest` (the hub, stateless
 Streamable HTTP, fresh server per request). The CLI adds device config tools from
-`packages/cli/src/config-tools.ts` to the stdio list; HTTP keeps only the shared
-replicated surface. The shared list exposes only replicated data —
+`packages/cli/src/config-tools.ts` to the stdio list; HTTP keeps the shared core
+and module surface. Each host registers
+`modules` once through `Runtime.configure`; module `instructions` paragraphs are
+appended to `SERVER_INSTRUCTIONS`. `createMcpServer` returns `Result<Server>` and
+refuses duplicate tool names before serving. The shared list exposes only replicated data —
 no session tools, because sessions do not sync and the hub would have nothing to
 answer with. A `ToolContext` carries `basePath`, the `actor`, an optional
 `defaultScope`, and `scopeRequired`: a device defaults scope from its directory, the
 hub demands it and points at `kabane_scopeList`.
+
+Modules can contribute `contextSections`, keyed as `<module>.<key>` and anchored
+`after` a core section. Full and concise briefs include these by default. Concise
+`sections` accepts registered names, rejects unknown names with the valid list,
+and preserves canonical order. Module content shares the 16KiB pagination budget
+and cursor checks; failed module reads are omitted in full briefs and fail selected
+concise reads.
 
 The low-level SDK `Server` is used deliberately: `McpServer.registerTool` infers
 over each zod shape and, fed a generic `ZodRawShape`, tsc recurses until it gives up

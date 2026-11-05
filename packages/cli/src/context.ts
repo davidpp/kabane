@@ -46,6 +46,7 @@ export const configureRuntime = (
 ): void => {
 	const zone = config.timezone;
 	Runtime.configure({
+		modules: [],
 		provider: SqliteDb.provider({ dbName: location.dbName }),
 		tablePrefix: location.tablePrefix,
 		actor: () => actor,

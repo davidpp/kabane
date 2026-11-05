@@ -4,6 +4,7 @@ export {
 	handleHttpRequest,
 	type McpServerInfo,
 	serveStdio,
+	registeredTools,
 } from "./server";
 export {
 	authorTypeOf,

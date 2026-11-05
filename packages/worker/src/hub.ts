@@ -82,6 +82,7 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 		super(ctx, env);
 		const zone = hubTimezone(env.KABANE_TIMEZONE);
 		Runtime.configure({
+			modules: [],
 			provider: DoDb.provider(ctx.storage),
 			actor: () => actorStore.getStore() ?? ANONYMOUS_ACTOR,
 			timezone: () => (zone.ok ? zone.value : "UTC"),

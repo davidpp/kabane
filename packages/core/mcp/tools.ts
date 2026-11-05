@@ -622,7 +622,7 @@ Parameters:
 - deref: Inline file: refs within existing caps when the host can read them (default true)
 - includeSubtasks: Include all children in the subtask roll-up (default true)
 - responseFormat: concise or full; omission preserves full
-- sections: Concise only; subset of metadata, description, upstream, position, context, priorWork, discussion (default all). Canonical order, duplicates ignored; omitted sections explicitly named.
+- sections: Concise only; subset of metadata, description, upstream, position, context, priorWork, discussion and registered module section names (<module>.<key>); default all. Canonical order, duplicates ignored; omitted sections explicitly named.
 - cursor: Concise only; pass nextCursor with the same id/options. Concatenate markdown chunks by offset to recover exact selected text. Relevant content changes invalidate continuation; restart without cursor.`,
 	input: {
 		id: z.string().min(1),
