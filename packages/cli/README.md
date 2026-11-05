@@ -79,41 +79,82 @@ plain table names.
   command reads the list. The contract an extension implements
   is `@cabane/extension`.
 
+### Settings layers
+
+An extension's settings (today the loop's, under `loop`) resolve through layers, lowest first,
+key by key:
+
+1. the schema's defaults;
+2. **user**: the namespace's key in `config.json`, for every project;
+3. **project**: `<repo>/.kabane/<namespace>.json`, checked in with the repo (`.kabane/loop.json`);
+4. **scope**: your settings for one project, in `config.json` under `scopes`, keyed by the scope
+   id the repo detects, so they hold in every checkout and worktree of it and put no file in a
+   repo you do not own;
+5. the command's own flags, or the board's run form.
+
+```json
+{
+  "actor": "cabane://actor/human/alex",
+  "deviceId": "mbp",
+  "loop": { "stallAfter": 4 },
+  "scopes": {
+    "github.com/acme/app": { "loop": { "gates": { "test": "npm test" }, "worktree": false } }
+  }
+}
+```
+
+Objects merge key by key, so each layer can add a gate; lists and scalars are replaced by the
+higher layer. `null` in a layer unsets what the layers under it say. Every layer is validated on
+its own first, so an error names the file, or "your settings for scope X", it is in; a key no
+setting has is refused in every layer. Device keys (`actor`, `deviceId`, `sync`, `db`,
+`copilot`, `harness`, `timezone`, `extensions`) live in your `config.json` only: no project file
+or scope can redirect the database or the hub.
+
 ### Managing config from the CLI
 
 ```bash
-kabane config                         # every schema key, value/default and description
+kabane config                         # every key, its value and layer, and its description
 kabane config list --json
-kabane config get copilot.model        # dotted paths; one value
+kabane config get copilot.model        # dotted paths; the value and the layer it came from
+kabane config get loop.gates           # a group: a line per leaf, each with its layer
 kabane config set copilot.model opus
 kabane config set sync.enabled false   # booleans are true or false
 kabane config set sync.batchBytes 262144
 kabane config set extensions loop      # comma-separated names; "" clears the array
 kabane config set copilot.args -- '--model,sonnet'
 kabane config set sync.headers '{"CF-Access-Client-Id":"id","CF-Access-Client-Secret":"secret"}'
-kabane config unset copilot.model      # remove the override
+kabane config set loop.gates.test 'bun test' --layer scope    # this repo's scope, no file in it
+kabane config set loop.lenses quality --layer project         # the repo's .kabane/loop.json
+kabane config set loop.model haiku --scope github.com/acme/app  # a named scope, from anywhere
+kabane config unset copilot.model      # remove the key from the layer
 kabane config path                     # resolved config.json location
 ```
 
+Reads resolve for the project the command runs in: its `.kabane/` files when run from the
+project's root (what `kabane loop start` reads from there), and your settings for its scope, or
+for `--scope <uri or id>`. Writes go to the user layer unless `--layer user|scope|project` names
+another; `--scope` alone writes that scope's layer.
+
 Every operation supports `--json`. `list` returns rows with `key`, `value`,
-`default` (no stored override), `readOnly` and `description`. `get` returns the
-resolved value, or JSON `null` / human `default` when absent; `path` returns a
-string. `set` returns `{key, value}` and `unset` returns `{key, unset: true}`.
-Values, including configured credentials, are shown as stored.
+`default` (no layer sets it), `layer` and `from` (the file or scope it came from), `readOnly`,
+`protected` and `description`. `get` returns `{key, value, leaves}`, where `leaves` maps every
+dotted key under `key` to its `value`, `layer` and `from`; an absent value is JSON `null` /
+human `default`. `path` returns a string. `set` returns `{key, layer, value}` and `unset`
+returns `{key, layer, unset: true}`. `sync.token` and `sync.headers` read as `<set>`.
 
 Strings are literal; numbers and booleans use JSON syntax. Arrays take trimmed
 comma-separated values, with an empty string meaning an empty array.
-`sync.headers` takes a JSON object of string values. Put `--` before a value
-starting with `--`. Object groups (`sync`, `db`, `copilot`) can be read; edit
-or unset their dotted keys individually. `actor`, `deviceId` and `sync.deviceId`
-are read-only, including for `unset`.
+`sync.headers` and `loop.gates` take a JSON object of string values; one gate is its own key,
+`loop.gates.<name>`. Put `--` before a value starting with `--`. Object groups (`sync`, `db`,
+`copilot`, `loop`, `loop.budget`) can be read; edit or unset their dotted keys individually.
+`actor`, `deviceId` and `sync.deviceId` are read-only, including for `unset`.
 
-Writes validate the entire config before touching the file and retain unknown
-fields, including those inside groups. Unsetting removes an override so the
-schema or runtime default applies. Enabling an unshipped extension preserves
-its name and prints the extension loader's warning on stderr. These operations
-never open SQLite or connect to sync. Except for `path`, they require an existing
-config and point to `kabane init` when none exists.
+Writes validate the entire config, or the whole namespace block they land in, before touching
+the file, and retain unknown device fields, including those inside groups. A project file keeps
+its indentation. Unsetting removes the key from that layer so a lower layer, or the default,
+applies. Enabling an unshipped extension preserves its name and prints the extension loader's
+warning on stderr. These operations never open SQLite or connect to sync. Except for `path`,
+they require an existing config and point to `kabane init` when none exists.
 
 ## Scope
 
