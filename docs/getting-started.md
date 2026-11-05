@@ -287,6 +287,22 @@ a silent UTC.
 
 ## Updating
 
+### Hearing about a release
+
+The board says when a release your install would update to is out: a line over its footer,
+`kabane <version> is out · run kabane update`, until `esc` dismisses it. It is the release
+`kabane update --check` would name, on your channel and within your major (minor for `0.x`).
+The board reads npm's `latest` and `beta` dist-tags at most once a day, after its first
+frame, and keeps them in `KABANE_HOME/update-check.json`. Bun's registry and proxy settings
+do not apply to that read. When the registry cannot be reached, nothing is shown and the board
+carries on. Only the board checks: `kabane mcp`, a piped command and every other command never
+do, and a run from a source checkout never shows the line. The check installs nothing. To turn
+it off:
+
+```bash
+kabane config set updates.check false
+```
+
 ### One-time upgrade from 0.1.0
 
 Version 0.1.0 predates `kabane update`. For an existing **Bun global registry install**, stop
@@ -367,8 +383,9 @@ maintained; preflight can download/extract into external package-manager cache. 
 integrity, registry/proxy settings or user config are weakened. A configured Bun dry-run
 requests no installation and is conservatively refused by explicit update.
 
-No tracker config/DB is opened, migrated or deleted by check/update, and no startup/MCP
-network check or automatic harness rewiring is added. A manager failure, timeout, missing bin
+No tracker config/DB is opened, migrated or deleted by check/update, and no harness entry
+is rewired. `kabane mcp` makes no network check; the board's release notice is the only
+check that runs on its own ([hearing about a release](#hearing-about-a-release)). A manager failure, timeout, missing bin
 or mismatched installed version is nonzero and may have changed the executable partially;
 inspect the installation manually, without automatic rollback/repair.
 
