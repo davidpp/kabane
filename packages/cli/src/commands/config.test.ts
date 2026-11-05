@@ -159,6 +159,7 @@ describe.concurrent("config through the real CLI", () => {
 					// The loop's settings, whether or not the extension is enabled.
 					"loop",
 					"loop.implementer",
+					"loop.land",
 					"loop.model",
 					"loop.budget",
 					"loop.budget.concurrency",
