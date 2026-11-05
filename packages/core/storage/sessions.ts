@@ -356,9 +356,9 @@ export namespace Planner {
 	 * exactly `answers <questionId>` and whose body is the answer, in the same
 	 * transaction as the lookup. A question that relays a tool permission
 	 * request (its body carries `permission`) gets an `answer`: approving a tool
-	 * call unblocks the session and is no decision. An answer matching the question’s
-	 * skipAnswer also gets an answer, preserving the skip word for its consumer.
-	 * Any other question gets a
+	 * call unblocks the session and is no decision. So does a reply that matches
+	 * the question's `skipAnswer`: skipping is not a choice, and the skip word is
+	 * kept as the body for the asker to read. Any other question gets a
 	 * `decision`, the human's choice on the record. Either names the runtime
 	 * actor as its author, who answered. The session leaves
 	 * awaiting_input only once every question on it has an answer. Answering
