@@ -7,8 +7,9 @@
 
 import { existsSync } from "node:fs";
 import { err, ok, type Result, tryCatch } from "@cabane/core";
-import type { Extension } from "@cabane/extension";
-import { configPath, loadConfig } from "./config";
+import type { Extension, Settings } from "@cabane/extension";
+import { ConfigSchema, configPath, loadConfig } from "./config";
+import { ConfigLayers } from "./config-layers";
 
 /**
  * By the name `config.json` enables each with, as
@@ -88,6 +89,49 @@ export namespace Extensions {
 			extensions.push(loaded.value);
 		}
 		return ok(extensions);
+	};
+
+	// The top-level keys a namespace may not take: device config, and the per-scope block.
+	const RESERVED: ReadonlySet<string> = new Set([
+		...Object.keys(ConfigSchema.shape),
+		ConfigLayers.SCOPES,
+	]);
+
+	/**
+	 * The settings namespaces `extensions` declare. Refuses a namespace named like a device key,
+	 * which would let a project file reach `sync` or `db`, and one whose schema refuses an empty
+	 * layer, since every layer is partial.
+	 */
+	export const namespacesOf = (
+		extensions: readonly Extension[],
+	): Result<Settings.Namespace[]> => {
+		const found: Settings.Namespace[] = [];
+		for (const { name, settings } of extensions) {
+			if (settings === undefined) continue;
+			if (RESERVED.has(name))
+				return err(
+					new Error(
+						`Extension ${name}'s settings would take the device config key "${name}"`,
+					),
+				);
+			if (!settings.safeParse({}).success)
+				return err(
+					new Error(
+						`Extension ${name}'s settings need a default or optional for every key`,
+					),
+				);
+			found.push({ name, schema: settings });
+		}
+		return ok(found);
+	};
+
+	/**
+	 * Every shipped extension's settings namespace, enabled or not, so its settings can be set
+	 * before it is turned on. Loads every extension: only the config surface asks.
+	 */
+	export const namespaces = async (): Promise<Result<Settings.Namespace[]>> => {
+		const all = await loadAll(names);
+		return all.ok ? namespacesOf(all.value) : all;
 	};
 
 	const commandOf = (

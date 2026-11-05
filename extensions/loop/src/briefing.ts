@@ -122,7 +122,7 @@ export namespace Briefing {
 	};
 
 	// The gates the run will hold each subtask to, in order. The form cannot edit a named command,
-	// so they are read here and set in the repo's file or with `--gate`.
+	// so they are read here and set through the settings layers or with `--gate`.
 	const gateLines = (gates: Readonly<Record<string, string>>): PanelLine[] => {
 		const named = Object.entries(gates);
 		const width = Math.max(0, ...named.map(([name]) => name.length));
@@ -131,7 +131,7 @@ export namespace Briefing {
 			[
 				{ text: `Gates  ${named.length || "none"}`, bold: true },
 				{
-					text: `  set in .kabane/loop.json or with --gate`,
+					text: `  set with kabane config set loop.gates.<name> or --gate`,
 					tone: "muted",
 				},
 			],

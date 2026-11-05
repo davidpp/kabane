@@ -1,26 +1,36 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, it } from "bun:test";
+import { Settings } from "@cabane/extension";
 import { LoopConfig } from "./config";
 
-let repo = "";
+// The loop's settings schema through the resolver every namespace shares. Where each layer is
+// stored is the CLI's (config-layers.test.ts); this is what the loop accepts in one.
+const PROJECT = "/repo/.kabane/loop.json";
 
-beforeEach(() => {
-	repo = mkdtempSync(join(tmpdir(), "loop-config-"));
-});
+const resolve = (
+	project: unknown,
+	overrides?: Readonly<Record<string, unknown>>,
+) =>
+	Settings.resolve(LoopConfig.NAMESPACE, LoopConfig.SettingsSchema, [
+		...(project === undefined
+			? []
+			: [{ layer: "project" as const, label: PROJECT, value: project }]),
+		...(overrides
+			? [{ layer: "caller" as const, label: Settings.CALLER, value: overrides }]
+			: []),
+	]);
 
-afterEach(() => rmSync(repo, { recursive: true, force: true }));
-
-const writeRepoFile = (content: string) => {
-	mkdirSync(join(repo, ".kabane"), { recursive: true });
-	writeFileSync(join(repo, LoopConfig.FILE), content);
+const refusal = (
+	project: unknown,
+	overrides?: Readonly<Record<string, unknown>>,
+): string => {
+	const resolved = resolve(project, overrides);
+	return resolved.ok ? "accepted" : resolved.error.message;
 };
 
-describe("LoopConfig.resolve", () => {
-	it("is the defaults with no repo file and no overrides", () => {
-		const config = LoopConfig.resolve(repo);
-		expect(config.ok && config.value).toEqual({
+describe("LoopConfig.SettingsSchema", () => {
+	it("is the defaults with no layer", () => {
+		const config = resolve(undefined);
+		expect(config.ok && config.value.value).toEqual({
 			implementer: "claude",
 			budget: {
 				concurrency: 2,
@@ -34,103 +44,106 @@ describe("LoopConfig.resolve", () => {
 		});
 	});
 
-	it("layers overrides over the repo file key by key, budget included", () => {
-		writeRepoFile(
-			JSON.stringify({
+	it("layers overrides over the project file key by key, budget and gates included", () => {
+		const config = resolve(
+			{
 				implementer: "codex",
 				budget: { concurrency: 4, continuations: 2 },
 				gates: { test: "bun test" },
-			}),
+			},
+			{
+				budget: { continuations: 5 },
+				stallAfter: 2,
+				gates: { lint: "bun run check" },
+			},
 		);
-		const config = LoopConfig.resolve(repo, {
-			budget: { continuations: 5 },
-			stallAfter: 2,
-			gates: { lint: "bun run check" },
-		});
 		expect(config.ok).toBe(true);
 		if (!config.ok) return;
-		expect(config.value.implementer).toBe("codex");
-		expect(config.value.budget).toEqual({
+		expect(config.value.value.implementer).toBe("codex");
+		expect(config.value.value.budget).toEqual({
 			concurrency: 4,
 			continuations: 5,
 			currency: "USD",
 		});
-		expect(config.value.stallAfter).toBe(2);
-		expect(config.value.gates).toEqual({
+		expect(config.value.value.stallAfter).toBe(2);
+		expect(config.value.value.gates).toEqual({
 			test: "bun test",
 			lint: "bun run check",
 		});
 	});
 
-	it("drops the retired timer from existing files and saved configs, but refuses new overrides", () => {
+	it("drops the retired timer from existing files and saved runs", () => {
 		const legacy = { budget: { concurrency: 4, wallMinutes: 120 } };
-		writeRepoFile(JSON.stringify(legacy));
-		const resolved = LoopConfig.resolve(repo);
+		const resolved = resolve(legacy);
 		expect(resolved.ok).toBe(true);
 		if (resolved.ok) {
-			expect(resolved.value.budget.concurrency).toBe(4);
-			expect(resolved.value.budget).not.toHaveProperty("wallMinutes");
+			expect(resolved.value.value.budget.concurrency).toBe(4);
+			expect(resolved.value.value.budget).not.toHaveProperty("wallMinutes");
 		}
 		const saved = LoopConfig.Schema.safeParse(legacy);
 		expect(saved.success).toBe(true);
 		if (saved.success)
 			expect(saved.data.budget).not.toHaveProperty("wallMinutes");
-		const overridden = LoopConfig.resolve(repo, {
-			budget: { wallMinutes: 30 },
-		});
-		expect(overridden.ok).toBe(false);
-		if (!overridden.ok)
-			expect(overridden.error.message).toContain(
-				"budget.wallMinutes: not a loop setting",
+		// An unset of it loads too, from a file (null) or from code (undefined).
+		for (const unset of [null, undefined]) {
+			const cleared = resolve(
+				{ budget: { concurrency: 4, wallMinutes: unset } },
+				{ budget: { wallMinutes: unset } },
 			);
+			expect(cleared.ok && cleared.value.value.budget).toEqual({
+				concurrency: 4,
+				continuations: 3,
+				currency: "USD",
+			});
+		}
 	});
-
-	it("names the repo file when it is not JSON or the result is invalid", () => {
-		writeRepoFile("{ nope");
-		const broken = LoopConfig.resolve(repo);
-		expect(broken.ok).toBe(false);
-		if (!broken.ok) expect(broken.error.message).toContain("loop.json");
-
-		writeRepoFile(JSON.stringify({ implementer: "hermes" }));
-		const unknown = LoopConfig.resolve(repo);
-		expect(unknown.ok).toBe(false);
-		if (!unknown.ok) expect(unknown.error.message).toContain("loop.json");
-	});
-
-	const refusal = (overrides: LoopConfig.Overrides = {}): string => {
-		const config = LoopConfig.resolve(repo, overrides);
-		return config.ok ? "accepted" : config.error.message;
-	};
 
 	it("refuses gates or a budget that is not an object, rather than reading it as none", () => {
-		writeRepoFile(JSON.stringify({ gates: ["bun test"] }));
 		// What the CLI passes when no flag sets either.
-		expect(refusal({ budget: {}, gates: {} })).toContain(
-			"\n  gates: Expected object, received array",
+		expect(
+			refusal({ gates: ["bun test"] }, { budget: {}, gates: {} }),
+		).toContain("\n  gates: Expected object, received array");
+		expect(refusal({ budget: 30 })).toContain(
+			"\n  budget: Expected object, received number",
 		);
-		writeRepoFile(JSON.stringify({ budget: 30 }));
-		expect(refusal()).toContain("\n  budget: Expected object, received number");
-		writeRepoFile("{}");
-		expect(refusal({ gates: "bun test" })).toContain(
-			"the given overrides:\n  gates: Expected object, received string",
+		expect(refusal({}, { gates: "bun test" })).toContain(
+			`${Settings.CALLER}:\n  gates: Expected object, received string`,
 		);
 	});
 
-	it("refuses a key no setting has, one line per key, naming the file", () => {
-		writeRepoFile(
-			JSON.stringify({
+	it("refuses a key no setting has, one line per key, naming the layer", () => {
+		expect(
+			refusal({
 				workTree: true,
 				lens: ["quality"],
 				budget: { wallMinute: 5 },
 			}),
-		);
-		expect(refusal()).toBe(
+		).toBe(
 			[
-				`Invalid loop config in ${join(repo, LoopConfig.FILE)}:`,
+				`Invalid loop settings in ${PROJECT}:`,
 				"  budget.wallMinute: not a loop setting",
 				"  workTree: not a loop setting",
 				"  lens: not a loop setting",
 			].join("\n"),
+		);
+		// An unset names a setting too: a typo set to null is still a typo.
+		expect(
+			refusal({
+				workTree: null,
+				budget: { wallMinute: null },
+				gates: { "two words": null },
+			}),
+		).toBe(
+			[
+				`Invalid loop settings in ${PROJECT}:`,
+				"  workTree: not a loop setting",
+				"  budget.wallMinute: not a loop setting",
+				"  gates.two words: a gate name is one word",
+			].join("\n"),
+		);
+		// A device key is not a loop setting either, so a checked-in file cannot reach the hub.
+		expect(refusal({ sync: { url: "https://elsewhere" } })).toBe(
+			`Invalid loop settings in ${PROJECT}:\n  sync: not a loop setting`,
 		);
 	});
 });

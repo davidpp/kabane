@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -8,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { GitFixture } from "@cabane/core/git-fixture";
 
 const initial = { actor: "cabane://actor/human/tester", deviceId: "test" };
 
@@ -23,16 +25,27 @@ const withHome =
 				...args: string[]
 			) => Promise<{ out: string; err: string; code: number }>;
 			get: (key: string) => Promise<unknown>;
+			/** A real git checkout beside the home, with no `.kabane/` until a case writes one. */
+			repo: string;
+			inRepo: (
+				...args: string[]
+			) => Promise<{ out: string; err: string; code: number }>;
 		}) => Promise<void>,
 	) =>
 	async () => {
-		const home = mkdtempSync(join(tmpdir(), "kabane-config-"));
+		const root = mkdtempSync(join(tmpdir(), "kabane-config-"));
+		const home = join(root, "home");
+		const repo = join(root, "repo");
+		mkdirSync(home);
+		mkdirSync(repo);
+		GitFixture.run(repo, ["init", "-q"]);
+		GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
 		const path = () => join(home, "config.json");
-		const run = async (...args: string[]) => {
+		const runAt = async (cwd: string, args: string[]) => {
 			const proc = Bun.spawn(
 				[process.execPath, join(import.meta.dir, "../../index.ts"), ...args],
 				{
-					cwd: home,
+					cwd,
 					env: { ...process.env, KABANE_HOME: home },
 					stdout: "pipe",
 					stderr: "pipe",
@@ -45,6 +58,7 @@ const withHome =
 			]);
 			return { out: out.trim(), err: err.trim(), code };
 		};
+		const run = (...args: string[]) => runAt(home, args);
 		try {
 			await body({
 				home,
@@ -55,11 +69,14 @@ const withHome =
 				get: async (key) => {
 					const result = await run("config", "get", key, "--json");
 					expect(result.code).toBe(0);
+					// The bare value, as before the layers: `--layers` asks for the envelope.
 					return JSON.parse(result.out);
 				},
+				repo,
+				inRepo: (...args) => runAt(repo, args),
 			});
 		} finally {
-			rmSync(home, { recursive: true, force: true });
+			rmSync(root, { recursive: true, force: true });
 		}
 	};
 
@@ -139,6 +156,20 @@ describe.concurrent("config through the real CLI", () => {
 					"harness.mode",
 					"timezone",
 					"extensions",
+					// The loop's settings, whether or not the extension is enabled.
+					"loop",
+					"loop.implementer",
+					"loop.model",
+					"loop.budget",
+					"loop.budget.concurrency",
+					"loop.budget.continuations",
+					"loop.budget.spend",
+					"loop.budget.currency",
+					"loop.stallAfter",
+					"loop.gates",
+					"loop.worktree",
+					"loop.lenses",
+					"loop.verifier",
 				].sort(),
 			);
 			for (const row of rows) expect(row.description.length).toBeGreaterThan(0);
@@ -193,7 +224,7 @@ describe.concurrent("config through the real CLI", () => {
 			] as const) {
 				const result = await run("config", "set", key, "--", input, "--json");
 				expect(result.code).toBe(0);
-				expect(JSON.parse(result.out)).toEqual({ key, value });
+				expect(JSON.parse(result.out)).toEqual({ key, layer: "user", value });
 				expected[key] = value;
 			}
 			// One listing reads every value back through get's own lookup and redaction.
@@ -235,7 +266,11 @@ describe.concurrent("config through the real CLI", () => {
 			]) {
 				const result = await run("config", "unset", key, "--json");
 				expect(result.code).toBe(0);
-				expect(JSON.parse(result.out)).toEqual({ key, unset: true });
+				expect(JSON.parse(result.out)).toEqual({
+					key,
+					layer: "user",
+					unset: true,
+				});
 			}
 			expect(JSON.parse(read())).toEqual({
 				...initial,
@@ -389,6 +424,7 @@ describe.concurrent("config through the real CLI", () => {
 			expect(changed.code).toBe(0);
 			expect(JSON.parse(changed.out)).toEqual({
 				key: "extensions",
+				layer: "user",
 				value: ["loop", "unshipped"],
 				ignored: ["unshipped"],
 			});
@@ -396,6 +432,140 @@ describe.concurrent("config through the real CLI", () => {
 				`kabane: ignoring "unshipped" in "extensions" of ${path()}: this kabane ships loop`,
 			);
 			expect((await run("help")).err).toBe(changed.err);
+		}),
+		30_000,
+	);
+
+	it(
+		"resolves settings through the user, project and scope layers and names each value's layer",
+		withHome(async ({ path, read, write, repo, inRepo }) => {
+			write(initial);
+			const json = async (...args: string[]) => {
+				const result = await inRepo(...args, "--json");
+				expect(result.err).toBe("");
+				expect(result.code).toBe(0);
+				return JSON.parse(result.out);
+			};
+			const leaves = async (key: string) =>
+				Object.fromEntries(
+					Object.entries(
+						(await json("config", "get", key, "--layers")).leaves as Record<
+							string,
+							{ value: unknown; layer: string }
+						>,
+					).map(([name, leaf]) => [name, [leaf.value, leaf.layer]]),
+				);
+			// The user's settings for this repo's scope, with no file in the repo.
+			expect(
+				await json(
+					"config",
+					"set",
+					"loop.gates.test",
+					"bun test",
+					"--layer",
+					"scope",
+				),
+			).toEqual({ key: "loop.gates.test", layer: "scope", value: "bun test" });
+			expect(existsSync(join(repo, ".kabane", "loop.json"))).toBe(false);
+			const [scopeId] = Object.keys(JSON.parse(read()).scopes);
+			expect(JSON.parse(read()).scopes).toEqual({
+				[String(scopeId)]: { loop: { gates: { test: "bun test" } } },
+			});
+			expect(await json("config", "set", "loop.stallAfter", "5")).toEqual({
+				key: "loop.stallAfter",
+				layer: "user",
+				value: 5,
+			});
+			// A checked-in file under it: the scope's value wins where both say something.
+			writeFileSync(
+				join(repo, ".kabane", "loop.json"),
+				'{\n\t"gates": { "test": "npm test", "lint": "npm run lint" },\n\t"stallAfter": 2\n}\n',
+			);
+			expect(await leaves("loop.gates")).toEqual({
+				"loop.gates.test": ["bun test", "scope"],
+				"loop.gates.lint": ["npm run lint", "project"],
+			});
+			// Without --layers, get prints the effective value alone, as it always has.
+			expect(await json("config", "get", "loop.gates")).toEqual({
+				test: "bun test",
+				lint: "npm run lint",
+			});
+			expect(await leaves("loop.stallAfter")).toEqual({
+				"loop.stallAfter": [2, "project"],
+			});
+			expect(await leaves("loop.worktree")).toEqual({
+				"loop.worktree": [true, "default"],
+			});
+			expect(
+				(await inRepo("config", "get", "loop.gates.test", "--layers")).out,
+			).toBe(
+				`bun test (scope: your settings for scope ${scopeId} in ${path()})`,
+			);
+			// The rows say the same, and outside the repo there is only the user's layer.
+			const rows: { key: string; value: unknown; layer: string }[] = await json(
+				"config",
+				"list",
+			);
+			expect(rows.find((row) => row.key === "loop.gates")).toMatchObject({
+				value: { test: "bun test", lint: "npm run lint" },
+				layer: "scope",
+			});
+			// A null in a higher layer unsets what the lower ones say.
+			const stored = JSON.parse(read());
+			stored.scopes[String(scopeId)].loop.gates.lint = null;
+			write(stored);
+			expect(await leaves("loop.gates")).toEqual({
+				"loop.gates.test": ["bun test", "scope"],
+			});
+			// A project write lands in the checked-in file and keeps its indentation.
+			await json(
+				"config",
+				"set",
+				"loop.lenses",
+				"quality",
+				"--layer",
+				"project",
+			);
+			expect(readFileSync(join(repo, ".kabane", "loop.json"), "utf8")).toBe(
+				'{\n\t"gates": {\n\t\t"test": "npm test",\n\t\t"lint": "npm run lint"\n\t},\n\t"stallAfter": 2,\n\t"lenses": [\n\t\t"quality"\n\t]\n}\n',
+			);
+			// Device keys are the user's only: no project file or scope may move the hub or the database.
+			for (const layer of ["project", "scope"]) {
+				const refused = await inRepo(
+					"config",
+					"set",
+					"sync.url",
+					"https://elsewhere.invalid",
+					"--layer",
+					layer,
+				);
+				expect(refused.code).toBe(1);
+				expect(refused.err).toContain(`it has no ${layer} layer`);
+			}
+			writeFileSync(
+				join(repo, ".kabane", "loop.json"),
+				JSON.stringify({ sync: { url: "https://elsewhere.invalid" } }),
+			);
+			const redirected = await inRepo("config", "get", "loop.gates");
+			expect(redirected.code).toBe(1);
+			// The CLI's cwd is the real path, which on macOS is /private/var for /var.
+			expect(redirected.err).toMatch(
+				/Invalid loop settings in \S*\/repo\/\.kabane\/loop\.json:\n {2}sync: not a loop setting$/,
+			);
+			// --scope names the scope from anywhere, and writes its layer.
+			expect(
+				await json(
+					"config",
+					"set",
+					"loop.model",
+					"haiku",
+					"--scope",
+					"elsewhere",
+				),
+			).toEqual({ key: "loop.model", layer: "scope", value: "haiku" });
+			expect(JSON.parse(read()).scopes.elsewhere).toEqual({
+				loop: { model: "haiku" },
+			});
 		}),
 		30_000,
 	);
@@ -413,6 +583,12 @@ describe.concurrent("config through the real CLI", () => {
 				["path", "extra"],
 				["get", "timezone", "extra"],
 				["--typo"],
+				// A bare --layer would otherwise write the user's layer, for every project.
+				["set", "timezone", "UTC", "--layer"],
+				["unset", "timezone", "--layer"],
+				["get", "timezone", "--layer", "user"],
+				["set", "timezone", "UTC", "--layers"],
+				["get", "timezone", "--layers=yes"],
 			])
 				expect((await run("config", ...args, "--json")).code).toBe(2);
 			const dashed = await run("config", "set", "copilot.args", "--foo,bar");

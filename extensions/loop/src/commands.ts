@@ -21,6 +21,7 @@ import {
 	trySync,
 } from "@cabane/core";
 import { detectScope } from "@cabane/core/scope";
+import type { Settings } from "@cabane/extension";
 import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
 import { Gates } from "./gates";
@@ -54,6 +55,8 @@ export namespace Loop {
 		bootMs?: number;
 		/** How the run's worktree is made. Defaults to the user's own git. */
 		git?: Worktree.Git;
+		/** Where a run's settings resolve through their layers: the extension context's port. */
+		settings: Settings.Port;
 	};
 
 	export type StartInput = {
@@ -61,7 +64,8 @@ export namespace Loop {
 		parent: string;
 		/**
 		 * The project checkout to work on, relative to `cwd`. Absent, it is `cwd`, which must
-		 * then be the parent issue's scope. Its `.kabane/loop.json` is layered into the config.
+		 * then be the parent issue's scope. The settings resolve for it: its `.kabane/loop.json`,
+		 * and the user's settings for its scope.
 		 */
 		dir?: string;
 		config?: LoopConfig.Overrides;
@@ -299,7 +303,7 @@ export namespace Loop {
 	 * with no prompt, and a parent that already has a live run.
 	 */
 	export const prepare = async (
-		deps: Pick<StartDeps, "home" | "basePath" | "cwd">,
+		deps: Pick<StartDeps, "home" | "basePath" | "cwd" | "settings">,
 		input: StartInput,
 	): Promise<Result<Prepared>> => {
 		const parentId = await Planner.resolveTaskId(deps.basePath, input.parent);
@@ -308,7 +312,14 @@ export namespace Loop {
 		if (!plan.ok) return plan;
 		const projectDir = await projectDirFor(deps, plan.value.parent, input.dir);
 		if (!projectDir.ok) return projectDir;
-		const config = LoopConfig.resolve(projectDir.value, input.config);
+		const config = await deps.settings(
+			LoopConfig.NAMESPACE,
+			LoopConfig.SettingsSchema,
+			{
+				projectDir: projectDir.value,
+				...(input.config ? { overrides: input.config } : {}),
+			},
+		);
 		if (!config.ok) return config;
 		// Whether there is anything to do depends on the config: checks can run on done work.
 		const checked = await checkParent(

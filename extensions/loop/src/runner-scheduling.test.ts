@@ -14,10 +14,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type LinkType,
+	ok,
 	Planner,
 	type Task,
 	type TaskUpdate,
 } from "@cabane/core";
+import { Settings } from "@cabane/extension";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Runner } from "./runner";
@@ -74,6 +76,7 @@ const deps = () => ({
 	overrides: { gemini: { command: "/nonexistent/harness" } },
 	tree: async () => "tree",
 	tickMs: 5,
+	settings: Settings.port(async () => ok([])),
 });
 
 const readRun = (): RunStore.Run => {

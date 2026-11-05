@@ -9,9 +9,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isAnswerTo, Planner, trySync } from "@cabane/core";
+import { isAnswerTo, ok, Planner, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope } from "@cabane/core/scope";
+import { Settings } from "@cabane/extension";
 import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
 import { Permission } from "./permission";
@@ -37,6 +38,8 @@ const deps = () => ({
 	// Never reached: every case below is refused before the spawn.
 	runner: () => ["/nonexistent/runner"],
 	git: fixtureGit,
+	// No stored layers: the caller's config over the defaults, through the real resolver.
+	settings: Settings.port(async () => ok([])),
 });
 
 const CONFIG: LoopConfig.Config = {

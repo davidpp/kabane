@@ -9,12 +9,20 @@ import type {
 	CardHeader,
 	Dispatcher,
 } from "@cabane/board/ports";
+import type { z } from "zod";
 import type { ParsedArgs } from "./args";
 import type { Outcome } from "./outcome";
+import type { Settings } from "./settings";
 
 export type Extension = {
 	/** What `config.json`'s `extensions` enables it by, and its trigger-id prefix on the board. */
 	name: string;
+	/**
+	 * The schema of its settings namespace, which takes its name: what `<name>` in config.json,
+	 * a project's `.kabane/<name>.json`, and the user's settings for a scope hold. Every layer is
+	 * partial, so every key has a default or is optional; a strict schema refuses a typo.
+	 */
+	settings?: z.ZodTypeAny;
 	commands?: readonly Extension.Command[];
 	board?: (ctx: Extension.Ctx) => Extension.BoardPorts;
 };
@@ -34,6 +42,8 @@ export namespace Extension {
 		 * `auto` is the harness's own auto mode, `default` selects none.
 		 */
 		harnessMode: "auto" | "default";
+		/** Resolves a settings namespace through every layer, for the project at a directory. */
+		settings: Settings.Port;
 	};
 
 	export type Command<C extends Ctx = Ctx> = {

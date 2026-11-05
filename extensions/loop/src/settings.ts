@@ -7,8 +7,8 @@
 // the values `h/l` steps through. A field with no look still shows, under its path and an `Other`
 // group (or its parent object's name), stepping through its enum, by one for a number, or on and
 // off. The lenses, a list of names, get a toggle each over the lenses the project can run. A field
-// the form cannot hold (free text with no options, a record) is left to the repo's
-// `.kabane/loop.json` and flags: the gates, named shell commands, which the preview lists read-only.
+// the form cannot hold (free text with no options, a record) is left to the settings layers
+// (`kabane config`) and flags: the gates, named shell commands, which the preview lists read-only.
 import type { TriggerInput } from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
 import { z } from "zod";
@@ -252,7 +252,7 @@ export namespace LoopSettings {
 	};
 
 	// A form value as the config holds it: an option's text back to a number, the unset option to
-	// absent (undefined, so it unsets what the repo file says too).
+	// absent (undefined, so it unsets what the layers below say too).
 	const fromForm = (field: Field, value: unknown): Result<unknown> => {
 		if (field.optional && value === (lookOf(field).none ?? NONE))
 			return ok(undefined);
@@ -263,7 +263,7 @@ export namespace LoopSettings {
 			: err(new Error(`${nameOf(field)} is not a number: ${String(value)}`));
 	};
 
-	/** The form's values as config overrides, for `Loop.start` to layer over the repo file. */
+	/** The form's values as the caller's layer, for `Loop.start` to put over the stored settings. */
 	export const overrides = (
 		values: Readonly<Record<string, unknown>>,
 	): Result<LoopConfig.Overrides> => {
@@ -274,7 +274,7 @@ export namespace LoopSettings {
 			if (!value.ok) return value;
 			setAt(out, field.path, value.value);
 		}
-		// The lens toggles become the list, in the form's order; without any, the file's list stands.
+		// The lens toggles become the list, in the form's order; without any, the stored list stands.
 		const toggles = Object.entries(values).filter(([name]) =>
 			name.startsWith(LENS_PREFIX),
 		);

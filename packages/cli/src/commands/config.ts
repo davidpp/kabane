@@ -1,66 +1,184 @@
-import { failure, success, usage } from "@cabane/extension";
+import { err, ok, type Result } from "@cabane/core";
+import {
+	failure,
+	flagString,
+	type Outcome,
+	type ParsedArgs,
+	success,
+	usage,
+} from "@cabane/extension";
 import { configPath } from "../config";
 import { ConfigSettings } from "../config-settings";
 import type { Command } from "../context";
 import { Extensions } from "../extensions";
 
 const display = (value: unknown): string =>
-	value === undefined
+	value === undefined || value === null
 		? "default"
 		: typeof value === "string"
 			? value
 			: JSON.stringify(value);
 
+// A leaf's value and the layer it came from: `bun test (scope: your settings for scope …)`.
+const leafText = (leaf: {
+	value: unknown;
+	layer: string;
+	from?: string;
+}): string =>
+	leaf.value === null
+		? "default"
+		: `${display(leaf.value)} (${leaf.from === undefined ? leaf.layer : `${leaf.layer}: ${leaf.from}`})`;
+
+// `--layer`, the layer a write targets; `--scope`, whose user settings to read or write; and
+// `--layers`, which has `get` name the layer of every leaf instead of printing the bare value.
+const FLAGS: ReadonlySet<string> = new Set(["layer", "scope", "layers"]);
+const COUNT = { list: 1, path: 1, get: 2, set: 3, unset: 2 };
+
+type Request = {
+	sub: keyof typeof COUNT;
+	key?: string;
+	input?: string;
+	target: ConfigSettings.Target;
+	scope?: string;
+	layers: boolean;
+};
+
+const USAGE = [
+	"kabane config [list|get <key> [--layers]|set <key> <value>|unset <key>|path] [--layer user|scope|project] [--scope <scope>] [--json]",
+	"",
+	"A setting resolves lowest first: its default, your config (user), the project's",
+	".kabane/<namespace>.json (project), your settings for the project's scope (scope), then",
+	"a command's own flags. set and unset write the user layer unless --layer names another;",
+	"scope is the project here, or --scope. Device keys (sync, db, identities) are user only.",
+	"get --layers prints every leaf under the key with the layer it came from.",
+].join("\n");
+
+const isSub = (sub: string): sub is Request["sub"] => Object.hasOwn(COUNT, sub);
+
+/** What is wrong with how `--layer`, `--layers` and `--scope` are given to `sub`, if anything. */
+const flagMisuse = (
+	args: ParsedArgs,
+	sub: Request["sub"],
+): string | undefined => {
+	if ("layer" in args.flags && sub !== "set" && sub !== "unset")
+		return "--layer applies to set and unset";
+	if ("layers" in args.flags && sub !== "get") return "--layers applies to get";
+	if ("layers" in args.flags && args.flags.layers !== true)
+		return "--layers takes no value: kabane config get <key> --layers";
+	if ("scope" in args.flags && flagString(args, "scope") === undefined)
+		return "--scope takes a scope URI or id";
+	return undefined;
+};
+
+/** The subcommand, its arguments and the layer it targets, or the usage error to print. */
+const requestOf = (args: ParsedArgs): Result<Request, Outcome> => {
+	const [sub = "list", key, input] = args.positionals;
+	if (!isSub(sub))
+		return err(usage(`Unknown config subcommand: ${sub}`, USAGE));
+	// Before the count: a value beginning with -- parses as a flag and leaves a positional short.
+	const flag = Object.keys(args.flags).find((name) => !FLAGS.has(name));
+	if (flag !== undefined)
+		return err(
+			usage(
+				`Unknown config option --${flag}; for a value beginning with --, put -- before it: kabane config set <key> -- <value>`,
+				USAGE,
+			),
+		);
+	if (
+		args.positionals.length !== COUNT[sub] &&
+		!(sub === "list" && args.positionals.length === 0)
+	)
+		return err(usage(`Wrong arguments for config ${sub}`, USAGE));
+	const misused = flagMisuse(args, sub);
+	if (misused !== undefined) return err(usage(misused, USAGE));
+	const scope = flagString(args, "scope");
+	// --scope alone names the layer a write goes to. A bare --layer names none, rather than
+	// falling back to user and changing the setting for every project.
+	const target =
+		"layer" in args.flags
+			? (flagString(args, "layer") ?? "")
+			: scope === undefined
+				? "user"
+				: "scope";
+	if (!ConfigSettings.isTarget(target))
+		return err(
+			usage(`--layer takes one of ${ConfigSettings.TARGETS.join(", ")}`, USAGE),
+		);
+	return ok({
+		sub,
+		target,
+		layers: args.flags.layers === true,
+		...(key === undefined ? {} : { key }),
+		...(input === undefined ? {} : { input }),
+		...(scope === undefined ? {} : { scope }),
+	});
+};
+
+const list = async (home: string, where: ConfigSettings.Where) => {
+	const listed = await ConfigSettings.list(home, where);
+	if (!listed.ok) return failure(listed.error);
+	return success(
+		listed.value,
+		listed.value
+			.map(
+				(row) =>
+					`${row.key} = ${row.default ? "default" : `${display(row.value)} (${row.layer})`} — ${row.description}`,
+			)
+			.join("\n"),
+	);
+};
+
+// The bare value, as `get` always printed it; with --layers, a leaf's value and layer, or a line
+// per leaf under a group.
+const get = async (
+	home: string,
+	where: ConfigSettings.Where,
+	key: string,
+	layers: boolean,
+) => {
+	const got = await ConfigSettings.get(home, where, key);
+	if (!got.ok) return failure(got.error);
+	if (!layers) return success(got.value.value, display(got.value.value));
+	const leaves = Object.entries(got.value.leaves);
+	const [only] = leaves;
+	return success(
+		got.value,
+		leaves.length === 1 && only?.[0] === key
+			? leafText(only[1])
+			: leaves.map(([name, leaf]) => `${name} = ${leafText(leaf)}`).join("\n"),
+	);
+};
+
 export const config: Command = {
 	name: "config",
-	summary: "List, get, set or unset device config; show its path",
-	usage:
-		"kabane config [list|get <key>|set <key> <value>|unset <key>|path] [--json]",
+	summary:
+		"List, get, set or unset config and settings, with the layer each comes from; show its path",
+	usage: USAGE,
 	standalone: true,
 	run: async (args, ctx) => {
-		const [sub = "list", key, input] = args.positionals;
-		const count = { list: 1, path: 1, get: 2, set: 3, unset: 2 };
-		if (!Object.hasOwn(count, sub))
-			return usage(`Unknown config subcommand: ${sub}`, config.usage);
-		// Before the count: a value beginning with -- parses as a flag and leaves a positional short.
-		const [flag] = Object.keys(args.flags);
-		if (flag !== undefined)
-			return usage(
-				`Unknown config option --${flag}; for a value beginning with --, put -- before it: kabane config set <key> -- <value>`,
-				config.usage,
-			);
-		const expected = count[sub as keyof typeof count];
-		if (
-			args.positionals.length !== expected &&
-			!(sub === "list" && args.positionals.length === 0)
-		)
-			return usage(`Wrong arguments for config ${sub}`, config.usage);
+		const request = requestOf(args);
+		if (!request.ok) return request.error;
+		const { sub, key, input, target, scope, layers } = request.value;
 		if (sub === "path")
 			return success(configPath(ctx.home), configPath(ctx.home));
-		if (sub === "list") {
-			const listed = ConfigSettings.list(ctx.home);
-			if (!listed.ok) return failure(listed.error);
-			return success(
-				listed.value,
-				listed.value
-					.map(
-						(row) =>
-							`${row.key} = ${row.default ? "default" : display(row.value)} — ${row.description}`,
-					)
-					.join("\n"),
-			);
-		}
-		if (key === undefined) return usage(`Missing config key`, config.usage);
-		if (sub === "get") {
-			const value = ConfigSettings.get(ctx.home, key);
-			return value.ok
-				? success(value.value ?? null, display(value.value))
-				: failure(value.error);
-		}
-		const changed = ConfigSettings.set(ctx.home, key, input);
+		const where = await ConfigSettings.locate(ctx.home, ctx.cwd, scope);
+		if (!where.ok) return failure(where.error);
+		if (sub === "list") return list(ctx.home, where.value);
+		if (key === undefined) return usage(`Missing config key`, USAGE);
+		if (sub === "get") return get(ctx.home, where.value, key, layers);
+		const changed = await ConfigSettings.set(
+			ctx.home,
+			where.value,
+			key,
+			sub === "set" ? input : undefined,
+			target,
+		);
 		if (!changed.ok) return failure(changed.error);
 		for (const name of changed.value.ignored ?? [])
 			console.error(Extensions.ignoredWarning(name, ctx.home));
-		return success(changed.value, `${key} = ${display(changed.value.value)}`);
+		return success(
+			changed.value,
+			`${key} = ${display(changed.value.value)}${target === "user" ? "" : ` (${target})`}`,
+		);
 	},
 };

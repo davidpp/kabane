@@ -16,7 +16,7 @@ import {
 } from "@cabane/extension";
 import { LoopActivity } from "./activity";
 import { Loop } from "./commands";
-import type { LoopConfig } from "./config";
+import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
 import { LoopHeader } from "./header";
 import { RunStore } from "./store";
@@ -57,14 +57,14 @@ const gatesFrom = (args: ParsedArgs): Result<Record<string, string>> => {
 	return ok(gates);
 };
 
-// A run has a worktree unless the repo file or `--no-worktree` turns it off; `--worktree` turns it
-// back on over a file that turns it off.
+// A run has a worktree unless a settings layer or `--no-worktree` turns it off; `--worktree` turns
+// it back on over a layer that turns it off.
 const worktreeFrom = (args: ParsedArgs): { worktree?: boolean } => {
 	if (flagBool(args, "no-worktree")) return { worktree: false };
 	return flagBool(args, "worktree") ? { worktree: true } : {};
 };
 
-// Flags become config overrides; LoopConfig validates them with the repo file.
+// Flags become the caller's layer, validated with the layers below it.
 const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 	const implementer = flagString(args, "implementer");
 	const verifier = flagString(args, "verifier");
@@ -174,11 +174,11 @@ const answer = async (
 		: failure(answered.error);
 };
 
-type Deps = Loop.Deps & {
-	cwd: string;
-	actor: string;
-	mode: Harnesses.Mode;
-};
+type Deps = Loop.Deps &
+	Pick<Loop.StartDeps, "cwd" | "settings"> & {
+		actor: string;
+		mode: Harnesses.Mode;
+	};
 type Verb = (args: ParsedArgs, deps: Deps, target: string) => Promise<Outcome>;
 
 const ran = (result: Result<RunStore.Run>): Outcome =>
@@ -341,6 +341,7 @@ const command: Extension.Command = {
 			cwd: ctx.cwd,
 			actor: ctx.actor,
 			mode: ctx.harnessMode,
+			settings: ctx.settings,
 		};
 		if (verb === "answer") return answer(args, deps);
 		if (verb === "status") return target ? statusOf(deps, target) : list(deps);
@@ -357,7 +358,8 @@ const command: Extension.Command = {
 };
 
 export const loop: Extension = {
-	name: "loop",
+	name: LoopConfig.NAMESPACE,
+	settings: LoopConfig.SettingsSchema,
 	commands: [command],
 	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
 	// `a` on an issue, alone or with subtasks, starts one from the board's directory, as `loop start` would.
@@ -373,6 +375,7 @@ export const loop: Extension = {
 			basePath: ctx.store,
 			kabaneBin: kabaneBin(),
 			cwd: ctx.cwd,
+			settings: ctx.settings,
 		}),
 		headers: { [LoopActivity.KIND]: LoopHeader.make(ctx.home, ctx.store) },
 	}),

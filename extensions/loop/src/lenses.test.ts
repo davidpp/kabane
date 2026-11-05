@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task } from "@cabane/core";
+import { ok, Planner, type Task } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
+import { Settings } from "@cabane/extension";
 import { Brief } from "./brief";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
@@ -253,6 +254,7 @@ describe("Runner lenses", () => {
 				basePath: home,
 				kabaneBin: "/nonexistent/kabane",
 				cwd: repo,
+				settings: Settings.port(async () => ok([])),
 				runner: () => ["/nonexistent/runner"],
 			},
 			{ parent: parent.id, dir: ".", config: { lenses: ["perf"] } },

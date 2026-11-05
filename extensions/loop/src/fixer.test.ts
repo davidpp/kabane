@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task, type TaskDraft } from "@cabane/core";
+import { ok, Planner, type Task, type TaskDraft } from "@cabane/core";
+import { Settings } from "@cabane/extension";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Fixer } from "./fixer";
@@ -284,7 +285,12 @@ describe("Runner fixer", () => {
 			parentTaskId: parent.id,
 			state: "done",
 		});
-		const deps = { home, basePath: home, cwd: home };
+		const deps = {
+			home,
+			basePath: home,
+			cwd: home,
+			settings: Settings.port(async () => ok([])),
+		};
 		const input = { parent: label(parent), dir: "." };
 		const nothing = await Loop.prepare(deps, input);
 		expect(!nothing.ok && nothing.error.message).toContain(

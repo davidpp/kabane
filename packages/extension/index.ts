@@ -16,3 +16,4 @@ export {
 	success,
 	usage,
 } from "./outcome";
+export { Settings } from "./settings";

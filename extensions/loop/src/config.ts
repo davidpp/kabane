@@ -1,30 +1,53 @@
 // What a run is configured with: the harness that implements, its budgets, when it counts as
-// stalled, its gates, whether it works in a worktree, and the lenses that verify it. Layered:
-// defaults, then the repo's `.kabane/loop.json`, then what the caller passes (the trigger form or
-// flags); budgets and gates merge key by key. A key the schema does not name is refused, in the
-// file and in what the caller passes: a typo (`workTree`) silently dropped would run the agents
-// somewhere the human did not mean.
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+// stalled, its gates, whether it works in a worktree, and the lenses that verify it. The settings
+// port (`Extension.Ctx.settings`) resolves it through every layer: defaults, the user's config,
+// the repo's `.kabane/loop.json`, the user's settings for the repo's scope, then what the caller
+// passes (the trigger form or flags). A key the schema does not name is refused in every layer: a
+// typo (`workTree`) silently dropped would run the agents somewhere the human did not mean.
 import { Harnesses } from "@cabane/acp";
-import { err, ok, type Result, trySync } from "@cabane/core";
 import { z } from "zod";
 
 export namespace LoopConfig {
-	export const FILE = join(".kabane", "loop.json");
+	/** The settings namespace: the extension's name, `loop` in config.json, `.kabane/loop.json`. */
+	export const NAMESPACE = "loop";
 
 	export const BudgetSchema = z.object({
 		/** Sessions running at once. */
-		concurrency: z.number().int().min(1).max(8).default(2),
+		concurrency: z
+			.number()
+			.int()
+			.min(1)
+			.max(8)
+			.default(2)
+			.describe("Loop sessions running at once, 1 to 8; defaults to 2."),
 		/** Automatic nudges across the run for turns ending with active-owned issue work. */
-		continuations: z.number().int().min(0).default(3),
+		continuations: z
+			.number()
+			.int()
+			.min(0)
+			.default(3)
+			.describe(
+				"Automatic nudges across a run for turns that end with work still owned; defaults to 3.",
+			),
 		/**
 		 * The run halts once the reported spend reaches this. Only harnesses that send
 		 * `usage_update.cost` are counted, so it is a floor on the real spend, not a cap on it.
 		 */
-		spend: z.number().positive().optional(),
+		spend: z
+			.number()
+			.positive()
+			.optional()
+			.describe(
+				"A run halts once its reported spend reaches this; only harnesses that report cost count.",
+			),
 		/** The currency `spend` is in; costs reported in another currency are not counted. */
-		currency: z.string().min(1).default("USD"),
+		currency: z
+			.string()
+			.min(1)
+			.default("USD")
+			.describe(
+				"The currency of spend; costs in another currency are not counted.",
+			),
 	});
 
 	// A gate's name is the `gate:<name>` ref on a work log, so it is one word.
@@ -39,18 +62,41 @@ export namespace LoopConfig {
 
 	export const Schema = z.object({
 		/** The harness every subtask runs on; a claim makes it the subtask's assignee. */
-		implementer: z.enum(Harnesses.IDS).default("claude"),
+		implementer: z
+			.enum(Harnesses.IDS)
+			.default("claude")
+			.describe("Harness every subtask runs on; defaults to claude."),
 		/** Model override for every harness that reads one (Claude); absent keeps the pin. */
-		model: z.string().min(1).optional(),
-		budget: BudgetSchema.default({}),
+		model: z
+			.string()
+			.min(1)
+			.optional()
+			.describe(
+				"Model for harnesses that read one (Claude); absent keeps the pin.",
+			),
+		budget: BudgetSchema.default({}).describe(
+			"A run's limits; edit dotted keys.",
+		),
 		/** Automatic attempts in a row without progress; parked/handoff session ends do not count. */
-		stallAfter: z.number().int().min(1).default(3),
+		stallAfter: z
+			.number()
+			.int()
+			.min(1)
+			.default(3)
+			.describe(
+				"Automatic attempts in a row without progress before a subtask stalls; defaults to 3.",
+			),
 		/**
 		 * Named shell commands, run in this order in the session's directory when an implementing
 		 * session ends with its subtask done, and once more before the run completes. The first
 		 * that fails reopens the subtask. None configured: nothing runs and nothing is reopened.
 		 */
-		gates: z.record(GateNameSchema, z.string().min(1)).default({}),
+		gates: z
+			.record(GateNameSchema, z.string().min(1))
+			.default({})
+			.describe(
+				"Named shell commands run in order after each finished subtask and before a run completes; one gate is its own key (loop.gates.test).",
+			),
 		/**
 		 * Work in a `git worktree` of the project, never removed by the loop, and commit a
 		 * checkpoint there after every green gate, or after every finished subtask when no gates
@@ -59,112 +105,59 @@ export namespace LoopConfig {
 		 * worked in place. Off: sessions work in the project checkout itself and nothing is
 		 * committed.
 		 */
-		worktree: z.boolean().default(true),
+		worktree: z
+			.boolean()
+			.default(true)
+			.describe(
+				"Work in a git worktree of the project, committing a checkpoint after each green gate; defaults to true.",
+			),
 		/**
 		 * Verifier lenses, each its own session once the plan is done and the gates are green,
 		 * filing findings as tagged child issues of the parent. A lens is a prompt file: shipped
 		 * (`functional`, `quality`) or the repo's `.kabane/loop/lenses/<name>.md`. None: no
 		 * verification, and the run completes on its gates.
 		 */
-		lenses: z.array(LensNameSchema).default([]),
+		lenses: z
+			.array(LensNameSchema)
+			.default([])
+			.describe(
+				"Verifier lenses run once the gates are green: functional, quality, or the repo's .kabane/loop/lenses/<name>.md.",
+			),
 		/** The harness every lens runs on; absent, the implementer. */
-		verifier: z.enum(Harnesses.IDS).optional(),
+		verifier: z
+			.enum(Harnesses.IDS)
+			.optional()
+			.describe("Harness every lens runs on; absent, the implementer."),
 	});
 
 	export type Config = z.output<typeof Schema>;
 	export type Input = z.input<typeof Schema>;
 
-	// What a human writes, refused when it names a key no setting has. Run files keep `Schema`,
-	// so a run written by a newer kabane still reads.
-	const StrictSchema = Schema.extend({
-		budget: BudgetSchema.strict().default({}),
-	}).strict();
-
-	// Existing repo files may still contain the retired timer; it is not a runtime setting.
-	const FileSchema = StrictSchema.extend({
-		budget: BudgetSchema.extend({
-			wallMinutes: z.number().positive().optional(),
-		})
-			.strict()
-			.transform(({ wallMinutes: _wallMinutes, ...budget }) => budget)
-			.default({}),
-	});
-
-	const ObjectSchema = z.record(z.unknown());
-
-	// Two objects merge key by key; anything else is the override as given, for the schema to
-	// accept or refuse.
-	const merge = (base: unknown, over: unknown): unknown => {
-		if (over === undefined) return base;
-		const left = ObjectSchema.safeParse(base ?? {});
-		const right = ObjectSchema.safeParse(over);
-		return left.success && right.success
-			? { ...left.data, ...right.data }
-			: over;
+	// Existing files may still hold the retired timer; it is not a runtime setting, so it is dropped
+	// before the strict schema sees it, and no listing of the settings shows it.
+	const withoutTimer = (budget: unknown): unknown => {
+		const parsed = z.record(z.unknown()).safeParse(budget);
+		if (!parsed.success) return budget;
+		const { wallMinutes: _wallMinutes, ...rest } = parsed.data;
+		return rest;
 	};
 
-	/** One line per issue, `path: message`; an unknown key is its own line. */
-	const issues = (error: z.ZodError): string =>
-		error.issues
-			.flatMap((issue) =>
-				issue.code === "unrecognized_keys"
-					? issue.keys.map(
-							(key) => `${[...issue.path, key].join(".")}: not a loop setting`,
-						)
-					: [`${issue.path.join(".") || "(config)"}: ${issue.message}`],
-			)
-			.map((line) => `\n  ${line}`)
-			.join("");
-
-	const readFile = (repoDir: string): Result<Record<string, unknown>> => {
-		const path = join(repoDir, FILE);
-		if (!existsSync(path)) return ok({});
-		const text = trySync(() => readFileSync(path, "utf8"));
-		if (!text.ok) return text;
-		const json = trySync((): unknown => JSON.parse(text.value));
-		if (!json.ok) return err(new Error(`${path}: ${json.error.message}`));
-		const object = ObjectSchema.safeParse(json.value);
-		return object.success
-			? ok(object.data)
-			: err(new Error(`${path}: expected a JSON object`));
-	};
+	// What a human writes, in any layer, refused when it names a key no setting has. Run files keep
+	// `Schema`, so a run written by a newer kabane still reads.
+	export const SettingsSchema = Schema.extend({
+		budget: z
+			.preprocess(withoutTimer, BudgetSchema.strict())
+			.default({})
+			.describe("A run's limits; edit dotted keys."),
+	})
+		.strict()
+		.describe(
+			"The loop extension's settings for a run; edit dotted keys. Flags on kabane loop start and the board's run form override them.",
+		);
 
 	/**
-	 * What a caller layers over the repo file (flags, the board's trigger form), shaped like `Input`
-	 * and validated with the file. A key set to undefined unsets what the file says.
+	 * What a caller layers over the stored settings (flags, the board's trigger form), shaped like
+	 * `Input`. A key set to undefined unsets what the layers below say.
 	 */
 	export type Overrides = Readonly<Record<string, unknown>>;
-
-	/**
-	 * Defaults, then `<repoDir>/.kabane/loop.json`, then `overrides`. The file is validated on its
-	 * own first, so an error in it names it; then the layers together.
-	 */
-	export const resolve = (
-		repoDir: string,
-		overrides: Overrides = {},
-	): Result<Config> => {
-		const file = readFile(repoDir);
-		if (!file.ok) return file;
-		const alone = FileSchema.safeParse(file.value);
-		if (!alone.success)
-			return err(
-				new Error(
-					`Invalid loop config in ${join(repoDir, FILE)}:${issues(alone.error)}`,
-				),
-			);
-		const merged = {
-			...file.value,
-			...overrides,
-			budget: merge(alone.data.budget, overrides.budget),
-			gates: merge(file.value.gates, overrides.gates),
-		};
-		const parsed = StrictSchema.safeParse(merged);
-		if (parsed.success) return ok(parsed.data);
-		const where = existsSync(join(repoDir, FILE))
-			? `${join(repoDir, FILE)} with the given overrides`
-			: "the given overrides";
-		return err(
-			new Error(`Invalid loop config in ${where}:${issues(parsed.error)}`),
-		);
-	};
 }

@@ -57,6 +57,12 @@ describe("CopilotInstructions.SKILLS", () => {
 		expect(CopilotInstructions.SKILLS).toContain("kabane_configSet");
 	});
 
+	it("writes the human's settings for a project to their scope, never to the checked-in file", () => {
+		expect(CopilotInstructions.SKILLS).toContain("layer: scope");
+		expect(CopilotInstructions.SKILLS).toContain("Never pass layer: project");
+		expect(CopilotInstructions.SKILLS).not.toContain("supplies the rest");
+	});
+
 	it("names the tool the substance goes through and the tool the link goes through", () => {
 		expect(CopilotInstructions.SKILLS).toContain("kabane_edit");
 		expect(CopilotInstructions.SKILLS).toContain("kabane_upstream_link");
