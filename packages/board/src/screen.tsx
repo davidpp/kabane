@@ -397,5 +397,6 @@ const BoardScreen = ({
 		notice={notice}
 		focus={state.focus}
 		pane={pane}
+		announcement={state.announcement}
 	/>
 );

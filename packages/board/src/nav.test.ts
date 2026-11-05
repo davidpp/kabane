@@ -84,6 +84,7 @@ const state = (over: Partial<BoardNav.BoardState> = {}): BoardNav.BoardState =>
 			focus: "board",
 			tabs: BoardTabs.NONE,
 			marked: new Set<string>(),
+			announcement: null,
 			copilot: copilotState(),
 			undo: [],
 			prompt: BoardPrompt.CLOSED,
@@ -2177,6 +2178,30 @@ describe("marks (`m`)", () => {
 		const third = reduce(second.state, { name: "escape" });
 		expect(third.state.scoped).toBe(false);
 		expect(third.effect.type).toBe("reload");
+	});
+
+	it("esc dismisses the host's announcement after a search, and before it widens scope", () => {
+		const s = state({
+			...two(),
+			search: { mode: "committed", query: "a" },
+			announcement: "kabane 9.9.9 is out",
+			scoped: true,
+		});
+		expect(
+			BoardNav.keySituation(state({ announcement: "x" }), {
+				linked: new Set(),
+				events: false,
+			}).clearable,
+		).toBe(true);
+		const first = reduce(s, { name: "escape" });
+		expect(first.state.search.mode).toBe("off");
+		expect(first.state.announcement).toBe("kabane 9.9.9 is out");
+		const second = reduce(first.state, { name: "escape" });
+		expect(second.state.announcement).toBeNull();
+		expect(second.state.scoped).toBe(true);
+		expect(second.effect.type).toBe("none");
+		const reloaded = BoardNav.withSections(first.state, s.sections);
+		expect(reloaded.announcement).toBe("kabane 9.9.9 is out");
 	});
 
 	it("marks survive a reload and a search merge", () => {

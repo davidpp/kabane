@@ -6,6 +6,7 @@
 // router (board-input), whose reducer output runs through `runEffect` below, and draws Screen.
 import { useRenderer } from "@opentui/react";
 import { type ReactNode, useCallback } from "react";
+import { useAnnouncement } from "./announcement";
 import { useBoardFeed } from "./board-feed";
 import { useBoardInput } from "./board-input";
 import { useBoardStore } from "./board-store";
@@ -15,7 +16,14 @@ import { useDetailRecords } from "./detail-records";
 import { isDispatchEffect, useHostDispatch } from "./host-dispatch";
 import type { BoardNav } from "./nav";
 import { useNotice } from "./notice";
-import type { ActivitySource, CardHeader, Copilot, Dispatcher } from "./ports";
+import {
+	type ActivitySource,
+	type Announcer,
+	type CardHeader,
+	type Copilot,
+	type Dispatcher,
+	noAnnouncer,
+} from "./ports";
 import { ProgramStatus } from "./program-status";
 import { isActivityEffect, useRunActivity } from "./run-activity";
 import { isScreenEffect, Screen, useScreenRefs } from "./screen";
@@ -35,6 +43,8 @@ export type AppProps = {
 	resolveScope?: BoardData.ScopeResolver;
 	// A host's own header for its cards, by card kind. Absent → every card tab heads with its title.
 	headers?: Readonly<Record<string, CardHeader>>;
+	// Absent → nothing is announced.
+	announcer?: Announcer;
 	// Milliseconds, for how long a question has been on screen before a digit answers it
 	// (BoardNav.ARM_MS). Absent → Date.now.
 	clock?: () => number;
@@ -61,6 +71,7 @@ export const App = ({
 	copilot,
 	resolveScope,
 	headers,
+	announcer = noAnnouncer,
 	clock = Date.now,
 }: AppProps): ReactNode => {
 	const renderer = useRenderer();
@@ -105,6 +116,8 @@ export const App = ({
 		setNotice,
 		reload,
 	});
+
+	useAnnouncement(announcer, store);
 
 	// The terminal hears when the board waits on the human, or works.
 	ProgramStatus.useBoardStatus(store.state, activity.cards);

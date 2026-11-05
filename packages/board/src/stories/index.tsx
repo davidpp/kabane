@@ -122,9 +122,11 @@ const Pane = (props: PaneProps): ReactNode => (
 const OnBoard = ({
 	pane,
 	focus = "board",
+	announcement,
 }: {
 	pane: ReactNode;
 	focus?: BoardNav.Focus;
+	announcement?: string;
 }): ReactNode => (
 	<Board
 		sections={SECTIONS}
@@ -133,6 +135,7 @@ const OnBoard = ({
 		scopeLabel="acme/widget"
 		focus={focus}
 		pane={pane}
+		announcement={announcement}
 	/>
 );
 
@@ -202,6 +205,18 @@ export const STORIES: readonly Story[] = [
 		height: 20,
 		render: () => (
 			<OnBoard pane={<Pane copilot={Fixtures.copilot({ actor: CLAUDE })} />} />
+		),
+	},
+	{
+		name: "update-notice",
+		about: "the host's announcement, a newer release, over the copilot's row",
+		width: 80,
+		height: 16,
+		render: () => (
+			<OnBoard
+				announcement="kabane 1.0.0 is out · run kabane update"
+				pane={<Pane copilot={Fixtures.copilot({ actor: CLAUDE })} />}
+			/>
 		),
 	},
 	{

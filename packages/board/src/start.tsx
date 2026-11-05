@@ -12,6 +12,7 @@ import type { BoardData } from "./data";
 import { ErrorBoundary } from "./error-boundary";
 import {
 	type ActivitySource,
+	type Announcer,
 	type CardHeader,
 	type Copilot,
 	type Dispatcher,
@@ -37,6 +38,8 @@ export type BoardDeps = {
 	// A host's own header for its cards, by card kind. Default: none, every card tab heads with its
 	// one-line title.
 	headers?: Readonly<Record<string, CardHeader>>;
+	// One line to show over the board's footer once it is up. Default: none, nothing announced.
+	announcer?: Announcer;
 };
 
 // Last-resort fallback if a render throws past App: show the error, offer `q` to quit. startBoard's
@@ -71,6 +74,7 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 						copilot={deps.copilot}
 						resolveScope={deps.resolveScope}
 						headers={deps.headers}
+						announcer={deps.announcer}
 					/>
 				</ErrorBoundary>
 			</ThemeProvider>,

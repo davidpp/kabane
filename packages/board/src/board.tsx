@@ -24,6 +24,7 @@ import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import type { ActivityCard } from "./ports";
+import { Segments } from "./segments";
 import { RUNNING_ECHO, SPINNER_IDLE, useSpinnerFrame } from "./spinner";
 import { type Theme, useTheme } from "./theme";
 
@@ -505,6 +506,21 @@ const EmptyBoard = (): ReactNode => {
 	);
 };
 
+// The host's announcement, in the accent so it reads as news rather than chrome, and how to put it
+// away. One row, cut at the width rather than wrapped, over the copilot's surface and the footer.
+const Announcement = ({ text }: { text: string }): ReactNode => {
+	const { width } = useTerminalDimensions();
+	const theme = useTheme();
+	const segments = Segments.fit(
+		[
+			{ text, fg: theme.accent },
+			{ text: " · esc dismiss", fg: theme.muted },
+		],
+		width,
+	);
+	return <text style={{ flexShrink: 0 }}>{Segments.spans(segments)}</text>;
+};
+
 const SEARCH_OFF: BoardNav.SearchState = { mode: "off" };
 const NO_MARKS: ReadonlySet<string> = new Set<string>();
 
@@ -611,6 +627,8 @@ export type BoardProps = {
 	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation).
 	// Optional so render-only tests fall back to what the board knows itself.
 	keys?: Keymap.Live;
+	// The host's one line (Announcer), drawn over the pane and the footer until `esc` dismisses it.
+	announcement?: string | null;
 };
 
 export const Board = ({
@@ -632,6 +650,7 @@ export const Board = ({
 	focus = "board",
 	pane,
 	keys,
+	announcement,
 }: BoardProps): ReactNode => {
 	const { width } = useTerminalDimensions();
 	const theme = useTheme();
@@ -702,6 +721,7 @@ export const Board = ({
 					))
 				)}
 			</scrollbox>
+			{announcement ? <Announcement text={announcement} /> : null}
 			{pane}
 			<Footer
 				notice={notice}

@@ -52,6 +52,7 @@ const state = (
 	focus: "board",
 	tabs: BoardTabs.NONE,
 	marked: new Set(["a", "m"]),
+	announcement: null,
 	copilot: {
 		text: "",
 		paletteAt: 0,
