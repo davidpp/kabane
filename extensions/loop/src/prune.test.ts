@@ -220,7 +220,11 @@ describe("a worktree a landing by hand holds", () => {
 		const lock = `${first.worktree}.lock`;
 		writeFileSync(
 			lock,
-			JSON.stringify({ pid: process.pid, for: "kabane loop land run-0" }),
+			JSON.stringify({
+				pid: process.pid,
+				for: "kabane loop land run-0",
+				token: "other",
+			}),
 		);
 
 		const refused = await Loop.start(deps(), { parent: parent.id });

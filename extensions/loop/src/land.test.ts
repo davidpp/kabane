@@ -721,7 +721,11 @@ describe("Loop.land", () => {
 		const lock = `${run.worktree}.lock`;
 		writeFileSync(
 			lock,
-			JSON.stringify({ pid: process.pid, for: "kabane loop land run-0" }),
+			JSON.stringify({
+				pid: process.pid,
+				for: "kabane loop land run-0",
+				token: "other",
+			}),
 		);
 
 		const held = await Loop.land(landDeps(), run.id);
@@ -735,6 +739,7 @@ describe("Loop.land", () => {
 			JSON.stringify({
 				pid: Bun.spawnSync(["true"]).pid,
 				for: "kabane loop land run-0",
+				token: "dead",
 			}),
 		);
 		const taken = await Loop.land(landDeps(), run.id);

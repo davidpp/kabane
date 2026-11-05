@@ -7,18 +7,12 @@
 // Nothing here commits into, or resets, the user's own checkout: `checkpoint` and `rollback`
 // refuse any directory that is not a linked worktree, so a run without one cannot reach them by
 // mistake.
-import {
-	existsSync,
-	readFileSync,
-	realpathSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { err, ok, type Result, trySync } from "@cabane/core";
-import { z } from "zod";
 import { Exec } from "./exec";
-import { RunStore } from "./store";
+import { FileLock } from "./lock";
+import type { RunStore } from "./store";
 
 export namespace Worktree {
 	/** `git <args>` in `cwd`: its stdout, or an error carrying what git said. */
@@ -27,58 +21,23 @@ export namespace Worktree {
 	/** The user's own git. */
 	export const git: Git = Exec.tool("git");
 
-	const LockSchema = z.object({
-		pid: z.number().int(),
-		start: z.string().optional(),
-		/** What holds it, for the refusal: `kabane loop land <runId>`, a start, a prune. */
-		for: z.string(),
-	});
-
 	const lockFile = (dir: string): string => `${dir}.lock`;
 
-	// The holder of `dir`'s lock while its process lives; a lock a process that is gone left
-	// holds nothing.
-	const holder = (dir: string): z.infer<typeof LockSchema> | undefined => {
-		const text = trySync(() => readFileSync(lockFile(dir), "utf8"));
-		const json = text.ok
-			? trySync((): unknown => JSON.parse(text.value))
-			: text;
-		const held = LockSchema.safeParse(json.ok ? json.value : undefined);
-		return held.success && RunStore.runnerAlive(held.data.pid, held.data.start)
-			? held.data
-			: undefined;
-	};
-
 	/** What holds the lock on the worktree at `dir`, while it is held. */
-	export const lockedBy = (dir: string): string | undefined => holder(dir)?.for;
+	export const lockedBy = (dir: string): string | undefined =>
+		FileLock.heldFor(lockFile(dir));
 
 	/**
 	 * Take the lock on the worktree at `dir` for `what`, for as long as one thing changes it that
-	 * is not a live run (a live run's status already keeps the others out): a file beside it made
-	 * exclusively, naming this process. Refused while another live process holds it; one a process
-	 * that is gone left is taken over. Returns its release.
+	 * is not a live run (a live run's status already keeps the others out): `<dir>.lock`, a
+	 * `FileLock`. Refused while another live process holds it; one a process that is gone left is
+	 * taken over. Returns its release.
 	 */
 	export const lock = (dir: string, what: string): Result<() => void> => {
-		const file = lockFile(dir);
-		const started = RunStore.processStart(process.pid);
-		const mine = JSON.stringify({
-			pid: process.pid,
-			...(started.ok && started.value ? { start: started.value } : {}),
-			for: what,
-		});
-		for (let attempt = 0; attempt < 2; attempt++) {
-			const made = trySync(() => writeFileSync(file, mine, { flag: "wx" }));
-			if (made.ok) return ok(() => trySync(() => unlinkSync(file)));
-			const held = holder(dir);
-			if (held)
-				return err(
-					new Error(
-						`the worktree ${dir} is in use by ${held.for} (pid ${held.pid}): try again once it is done`,
-					),
-				);
-			trySync(() => unlinkSync(file));
-		}
-		return err(new Error(`the worktree ${dir} could not be locked: ${file}`));
+		const taken = FileLock.take(lockFile(dir), what);
+		return taken.ok
+			? taken
+			: err(new Error(`the worktree ${dir} is ${taken.error.message}`));
 	};
 
 	/** Where run `runId`'s worktree goes: inside the run's own directory. */
