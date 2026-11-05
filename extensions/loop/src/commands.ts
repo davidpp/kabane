@@ -842,9 +842,40 @@ export namespace Loop {
 
 	export type Directed = { runId: string; task: string };
 
+	// Whether `task` is in `run`'s plan for a human to steer: a child of its target, or the target
+	// itself while the run works it as a single issue. A parent is never claimed, so skipping it
+	// would steer nothing.
+	const steerable = async (
+		basePath: string,
+		run: RunStore.Run,
+		task: Task,
+		short: string,
+	): Promise<Result<void>> => {
+		if (task.parentTaskId === run.parentId) return ok(undefined);
+		const plan = await LoopPlan.load(basePath, run.parentId);
+		if (!plan.ok) return plan;
+		const single = LoopPlan.single(plan.value);
+		if (task.id === run.parentId)
+			return single
+				? ok(undefined)
+				: err(
+						new Error(
+							`${short} is the parent run ${run.id} works the subtasks of: skip or next one of them`,
+						),
+					);
+		return err(
+			new Error(
+				single
+					? `${short} is not ${run.parentShortId}, the single issue run ${run.id} works`
+					: `${short} is not a subtask of ${run.parentShortId}`,
+			),
+		);
+	};
+
 	/**
-	 * Never claim subtask `task` (`skip`), or claim it ahead of the rest once it is ready
-	 * (`next`), in the live run on its parent; `runId` names that run when the caller knows it.
+	 * Never claim `task` (`skip`), or claim it ahead of the rest once it is ready (`next`), in the
+	 * live run whose plan it is in: the run on its parent, else a run on the task itself as a
+	 * single issue. `runId` names that run when the caller knows it.
 	 */
 	export const direct = async (
 		deps: Pick<Deps, "home" | "basePath">,
@@ -857,33 +888,33 @@ export namespace Loop {
 		const found = await Planner.getTask(deps.basePath, id.value);
 		if (!found.ok) return found;
 		if (!found.value) return err(new Error(`No task ${task}`));
-		const subtask = found.value;
-		const short = subtask.shortId ?? subtask.id;
+		const target = found.value;
+		const short = target.shortId ?? target.id;
 		const runs = RunStore.list(deps.home);
 		if (!runs.ok) return runs;
-		const run = runs.value.find((r) =>
+		const onParent = target.parentTaskId
+			? liveRunOn(runs.value, target.parentTaskId)
+			: undefined;
+		const run =
 			runId === undefined
-				? r.parentId === subtask.parentTaskId && RunStore.isLive(r.status)
-				: r.id === runId,
-		);
+				? (onParent ?? liveRunOn(runs.value, target.id))
+				: runs.value.find((r) => r.id === runId);
 		if (!run)
 			return err(
 				new Error(
 					runId === undefined
-						? `No live loop run is working on ${short}'s parent`
+						? `No live loop run is working on ${short}${target.parentTaskId ? " or its parent" : ""}`
 						: `No loop run ${runId}`,
 				),
 			);
-		if (run.parentId !== subtask.parentTaskId)
-			return err(
-				new Error(`${short} is not a subtask of ${run.parentShortId}`),
-			);
+		const inPlan = await steerable(deps.basePath, run, target, short);
+		if (!inPlan.ok) return inPlan;
 		const live = liveRun(deps.home, run.id);
 		if (!live.ok) return live;
 		const asked = RunStore.appendInbox(deps.home, run.id, {
 			kind,
 			at: new Date().toISOString(),
-			taskId: subtask.id,
+			taskId: target.id,
 			task: short,
 		});
 		return asked.ok ? ok({ runId: run.id, task: short }) : asked;

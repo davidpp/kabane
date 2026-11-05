@@ -139,6 +139,14 @@ export namespace RunStore {
 	): string | undefined =>
 		externalRef?.startsWith("loop:") ? externalRef.slice(5) : undefined;
 
+	/** A lens or the fixer: a session that holds the parent without taking it. */
+	export const reviews = (claim: Claim): boolean =>
+		claim.lens !== undefined || claim.fixer === true;
+
+	/** The claims that took the run's target itself, as the work of a single-issue run. */
+	export const onTarget = (run: Run): Claim[] =>
+		run.claims.filter((c) => c.taskId === run.parentId && !reviews(c));
+
 	/** The checkpoints committed in the run's worktree, oldest first. */
 	export const checkpoints = (run: Run): string[] =>
 		run.gateRuns.flatMap((g) => (g.checkpoint ? [g.checkpoint] : []));

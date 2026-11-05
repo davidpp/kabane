@@ -26,7 +26,7 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop status [<runId>]
        kabane loop stop <runId>
        kabane loop pause|resume <runId>      (resume also restarts a run whose runner died)
-       kabane loop skip|next <subtask>
+       kabane loop skip|next <subtask|issue>
        kabane loop rollback <runId> <sha>
        kabane loop answer <questionId> <option>`;
 
@@ -103,10 +103,14 @@ const line = (run: RunStore.Run): string =>
 		.filter((part) => part !== "")
 		.join("  ");
 
+// A question's text under its first line: a form's question runs over several lines (the
+// harness's message, the field, how to answer), and the later ones line up with its choices.
+const indented = (text: string): string => text.split("\n").join("\n    ");
+
 // A question waiting on a human, with what `kabane loop answer` takes for it.
 const question = (q: Loop.Waiting): string =>
 	[
-		`  waiting on you: ${q.task} ${q.question}`,
+		`  waiting on you: ${q.task} ${indented(q.question)}`,
 		...q.choices.map((choice, i) => `    ${i + 1}. ${choice}`),
 		`    kabane loop answer ${q.questionId} <option>`,
 	].join("\n");
@@ -122,7 +126,7 @@ const worktree = (run: RunStore.Run): string[] =>
 
 // A question the run's dead runner left: shown, with no answer to give.
 const withdrawn = (q: Loop.Waiting): string =>
-	`  withdrawn, its runner died: ${q.task} ${q.question} (the restarted run asks again)`;
+	`  withdrawn, its runner died: ${q.task} ${indented(q.question)} (the restarted run asks again)`;
 
 // A run whose runner died waits on a human to bring it back.
 const restart = (run: RunStore.Run): string[] =>
@@ -305,8 +309,14 @@ const VERBS: Record<string, { needs: string; run: Verb }> = {
 	},
 	pause: { needs: "a run id", run: pause("pause") },
 	resume: { needs: "a run id", run: resume },
-	skip: { needs: "a subtask", run: direct("skip") },
-	next: { needs: "a subtask", run: direct("next") },
+	skip: {
+		needs: "a subtask, or the issue of a single-issue run",
+		run: direct("skip"),
+	},
+	next: {
+		needs: "a subtask, or the issue of a single-issue run",
+		run: direct("next"),
+	},
 	rollback: { needs: "a run id", run: rollback },
 };
 

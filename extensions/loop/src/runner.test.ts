@@ -188,3 +188,67 @@ describe("Runner resume on a single issue", () => {
 		).not.toContain("loop:run-1");
 	});
 });
+
+describe("Runner resume on a single issue that has become a parent", () => {
+	// The issue, a child a human added under it, and the dead run's claim on the issue itself.
+	const reshaped = async (
+		state: Task["state"],
+		claim: Partial<RunStore.Claim>,
+		extra: Partial<RunStore.Run> = {},
+	): Promise<Task> => {
+		const issue = await add("lone");
+		const set = await Planner.updateTask(home, issue.id, {
+			state,
+			assignee: "claude",
+		});
+		if (!set.ok) throw set.error;
+		await add("split off", issue.id);
+		const session = await Planner.startSession(home, {
+			taskId: issue.id,
+			agent: "claude",
+		});
+		if (!session.ok) throw session.error;
+		const dead = await orphaned("run-1");
+		const written = RunStore.write(home, {
+			...dead,
+			parentId: issue.id,
+			parentShortId: issue.shortId ?? issue.id,
+			claims: [
+				{
+					taskId: issue.id,
+					shortId: issue.shortId ?? issue.id,
+					harness: "claude",
+					lane: issue.shortId ?? issue.id,
+					sessionId: session.value.id,
+					startedAt: new Date(Date.now() - HOUR).toISOString(),
+					continuations: 0,
+					...claim,
+				},
+			],
+			...extra,
+		});
+		if (!written.ok) throw written.error;
+		return issue;
+	};
+
+	it("leaves a state a human gave the issue", async () => {
+		const ended = new Date(Date.now() - HOUR / 2).toISOString();
+		const issue = await reshaped("waiting", {
+			endedAt: ended,
+			outcome: "done",
+		});
+		await resumeUntilWaiting("run-1");
+		const after = await Planner.getTask(home, issue.id);
+		expect(after.ok && after.value?.state).toBe("waiting");
+	});
+
+	it("finishes the gate pass its dead session owed before taking it as a parent", async () => {
+		const config = LoopConfig.Schema.safeParse({ gates: { ok: "true" } });
+		if (!config.success) throw config.error;
+		const issue = await reshaped("done", {}, { config: config.data });
+		const resumed = await resumeUntilWaiting("run-1");
+		expect(resumed.gateRuns.map((g) => g.taskId)).toEqual([issue.id]);
+		const after = await Planner.getTask(home, issue.id);
+		expect(after.ok && after.value?.state).toBe("in_progress");
+	});
+});
