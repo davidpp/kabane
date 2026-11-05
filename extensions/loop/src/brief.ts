@@ -15,6 +15,7 @@ export namespace Brief {
 		runId: string;
 		parent: Task;
 		task: Task;
+		gates: readonly string[];
 		retry?: Gates.Result;
 		interrupted?: Interrupted;
 	};
@@ -42,15 +43,29 @@ export namespace Brief {
 	// human's configured `kabane`, which is unscoped and may point at another home.
 	const SERVER = `Your kabane_* tools are the ones of the ${CopilotInstructions.SERVER_NAME} MCP server. A server named kabane from your harness's own config may also be loaded; it is not tied to this run, so do not use it.`;
 
+	const implementingChecks = (
+		gates: readonly string[],
+		noun: string,
+	): string =>
+		gates.length > 0
+			? `When you call kabane_done, the runner runs the gates (${gates.map((g) => `\`${g}\``).join(", ")}) in that order on the tree outside your session; a failing gate reopens the ${noun} with its output. Run the checks your change needs; if a check fails only because the environment forbids something (a denied process or a blocked network call), explain it with kabane_comment and leave it to the gates without parking the ${noun}.`
+			: "No gates are configured for this run, so nothing runs the project's checks on your result after your session: run the project's checks yourself before you call kabane_done.";
+
 	// How the session finishes, parks, and hands off what it should not do: the same for a subtask
 	// and a single issue, but for where outside work goes.
-	const finishing = (task: Task, outside: string, noun: string): string[] => [
+	const finishing = (
+		task: Task,
+		outside: string,
+		noun: string,
+		gates: readonly string[],
+	): string[] => [
 		`${SERVER} Use them for tracker state: kabane_log for what you changed (commits, files), kabane_comment for decisions and blockers. When the ${noun} is implemented and you have verified it, call kabane_done on ${label(task)}. That is how the run knows you are finished; ending your turn without it means the ${noun} is still open.`,
 		`If you find work outside your ${noun}, ${outside} If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. The task stays parked until explicitly moved to state "next"; resolving a dependency alone does not unpark it.`,
+		implementingChecks(gates, noun),
 		"Finish each turn with at most three lines saying what you did.",
 	];
 
-	const instructions = ({ runId, parent, task }: Subject): string =>
+	const instructions = ({ runId, parent, task, gates }: Subject): string =>
 		(task.id === parent.id
 			? [
 					`You are the implementing session of kabane loop run ${runId}, which drives the single issue ${label(task)} ("${task.title}") to completion.`,
@@ -60,6 +75,7 @@ export namespace Brief {
 						task,
 						`add it with kabane_add with kind "issue" and link it to ${label(task)} with kabane_link instead of doing it. Do not make it a child of ${label(task)}: a human decides when it runs.`,
 						"issue",
+						gates,
 					),
 				]
 			: [
@@ -69,6 +85,7 @@ export namespace Brief {
 						task,
 						`add it with kabane_add as a child of ${label(parent)} with kind "issue", so the run can claim it, and link it with kabane_link instead of doing it.`,
 						"subtask",
+						gates,
 					),
 				]
 		).join("\n\n");
