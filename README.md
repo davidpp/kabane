@@ -70,8 +70,8 @@ the old install as it was. For a positively verified hoisted Bun global registry
 `kabane update` explicitly checks Bun policy and verifies an exact installation. A stable
 install follows npm `latest`; a beta install takes the higher of `beta` and `latest`. Updates
 stay within major, or minor for `0.x`; source links, local tarballs and unknown/missing-bin
-layouts refuse replacement. The board shows `kabane <version> is out · run kabane update`
-when that candidate exists. It reads npm's dist-tags at most once a day and installs nothing;
+layouts refuse replacement. The board shows `kabane <version> is out` when that candidate
+exists, with what your install runs to take it: `kabane update`, or `mise up kabane`. It reads npm's dist-tags at most once a day and installs nothing;
 `kabane config set updates.check false` turns it off. `kabane mcp` and other commands never
 check, and `kabane update` opens no tracker DB and rewires no MCP entry.
 See [updating and data compatibility](docs/getting-started.md#updating).

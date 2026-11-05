@@ -4,16 +4,20 @@
  * `kabane update` would take: the install's channel and version policy, from update-version.ts.
  * Over `fetch` rather than `bun info`, so an install without Bun can read it too, which also means
  * Bun's registry and proxy settings do not apply. Every failure says nothing: a notice is never
- * worth an error on screen.
+ * worth an error on screen. The hint is the install's own: `kabane update`, `mise up kabane`, or
+ * a manual update where `kabane update` would refuse.
  */
 
+import { realpathSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Announcer } from "@cabane/board";
-import { ok, type Result, tryCatch } from "@cabane/core";
+import { ok, type Result, tryCatch, trySync } from "@cabane/core";
+import { Self } from "@cabane/core/self";
 import { z } from "zod";
 import { version } from "../package.json";
 import { UpdateBinary } from "./update-binary";
+import { inspectRegistryInstall } from "./update-install";
 import {
 	compareVersions,
 	type DistTags,
@@ -109,19 +113,65 @@ export namespace UpdateNotice {
 		return candidate(version, fetched.value);
 	};
 
-	const line = (release: string): string =>
-		`kabane ${release} is out · run kabane update`;
+	/** How this install takes a release, as `kabane update` would judge it. */
+	type Install = "binary" | "mise" | "bun" | "manual";
+
+	/** What the process says about itself; tests pass their own. */
+	type Host = {
+		compiled: boolean;
+		/** The running kabane: the binary, or the entry script. */
+		executable: string;
+		bun: string;
+		env: NodeJS.ProcessEnv;
+	};
+
+	const HOST: Host = {
+		compiled: Self.compiled(),
+		executable: Self.executable(),
+		bun: process.execPath,
+		env: process.env,
+	};
+
+	/**
+	 * A binary replaces itself unless mise owns it; a Bun install updates when `kabane update`
+	 * verifies its layout, which spawns `bun pm bin -g`, so it is asked only once a release is out.
+	 */
+	export const install = async (host: Host = HOST): Promise<Install> => {
+		if (host.compiled) {
+			const real = trySync(() => realpathSync(host.executable));
+			return real.ok && UpdateBinary.miseOwned(real.value, host.env)
+				? "mise"
+				: "binary";
+		}
+		const registry = await inspectRegistryInstall({
+			bin: host.executable,
+			bun: host.bun,
+			env: host.env,
+		});
+		return registry.ok ? "bun" : "manual";
+	};
+
+	const HINTS: Record<Install, string> = {
+		binary: "run kabane update",
+		bun: "run kabane update",
+		mise: "run mise up kabane",
+		manual: "update it the way you installed it",
+	};
+
+	export const line = (release: string, from: Install): string =>
+		`kabane ${release} is out · ${HINTS[from]}`;
 
 	/**
 	 * The board's announcer for this device. Only the published bundle hears of a release: a run
 	 * from source is ahead of the release its package.json names, and `kabane update` does not
-	 * replace it. That is the build's flag, not a look at git, so nothing here spawns a process.
+	 * replace it. That is the build's flag, not a look at git. The line ends with what this install
+	 * runs to take the release (`install`).
 	 */
 	export const announcer = (home: string): Announcer => ({
 		announce: async () => {
 			if (!bundled) return ok(null);
 			const release = await check({ home, version });
-			return ok(release === undefined ? null : line(release));
+			return ok(release === undefined ? null : line(release, await install()));
 		},
 	});
 }
