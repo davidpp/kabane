@@ -16,7 +16,34 @@ permissions:
   contents: read
 
 jobs:
+  native-binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, target: darwin-arm64 }
+          - { os: macos-15-intel, target: darwin-x64 }
+          - { os: ubuntu-24.04, target: linux-x64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Compile once with the native OpenTUI dependency and retain archive
+        run: bun scripts/build-binary.ts "${{ matrix.target }}" "$RUNNER_TEMP/native"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/native/*.tar.gz
+            ${{ runner.temp }}/native/*.json
+
   prepare:
+    needs: native-binaries
     runs-on: ubuntu-24.04
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
@@ -42,6 +69,12 @@ jobs:
         env:
           RELEASE_PUBLISH: ${{ inputs.publish }}
           RELEASE_NOTES: ${{ inputs.notes }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: native-*
+          path: ${{ runner.temp }}/native
+      - name: Verify producer identities and assemble original bytes with one checksum list
+        run: bun scripts/release-binaries.ts "$RUNNER_TEMP/release" "$RUNNER_TEMP/native"
       - id: upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -49,6 +82,7 @@ jobs:
           if-no-files-found: error
           path: |
             ${{ runner.temp }}/release/*.tgz
+            ${{ runner.temp }}/release/*.tar.gz
             ${{ runner.temp }}/release/manifest.json
             ${{ runner.temp }}/release/SHA256SUMS
             ${{ runner.temp }}/release/release-notes.md
@@ -58,7 +92,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        include:
+          - { os: ubuntu-24.04, target: linux-x64 }
+          - { os: macos-15, target: darwin-arm64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -79,6 +115,11 @@ jobs:
       - run: bun scripts/release.ts verify "$RUNNER_TEMP/release"
       - name: Install and drive exactly the downloaded archive (no build or pack)
         run: bun scripts/smoke.ts --artifact-dir "$RUNNER_TEMP/release"
+      - name: Drive the retained standalone binary without Bun on PATH
+        run: |
+          mkdir "$RUNNER_TEMP/standalone"
+          tar -xzf "$RUNNER_TEMP/release/kabane-${{ matrix.target }}.tar.gz" -C "$RUNNER_TEMP/standalone"
+          bun scripts/smoke.ts --binary "$RUNNER_TEMP/standalone/kabane/kabane"
 
   publish:
     if: inputs.publish && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'davidpp/kabane'

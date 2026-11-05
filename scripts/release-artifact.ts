@@ -43,6 +43,25 @@ export const PublishManifestSchema = z
 			.strict(),
 	})
 	.passthrough();
+export const BinaryTargetSchema = z.enum([
+	"darwin-arm64",
+	"darwin-x64",
+	"linux-x64",
+	"linux-arm64",
+]);
+export const BinaryArtifactSchema = z
+	.object({
+		target: BinaryTargetSchema,
+		filename: z.string(),
+		sha256: z.string().regex(/^[a-f0-9]{64}$/),
+	})
+	.strict()
+	.refine((value) => value.filename === `kabane-${value.target}.tar.gz`);
+export const releaseChecksums = (record: ReleaseManifest): string =>
+	`${record.sha256}  ${record.filename}\n` +
+	(record.binaries ?? [])
+		.map((binary) => `${binary.sha256}  ${binary.filename}\n`)
+		.join("");
 export const ReleaseManifestSchema = z
 	.object({
 		version: ChannelVersionSchema,
@@ -55,6 +74,11 @@ export const ReleaseManifestSchema = z
 		filename: ReleaseFilenameSchema,
 		sha256: z.string().regex(/^[a-f0-9]{64}$/),
 		integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+=*$/),
+		binaries: z
+			.array(BinaryArtifactSchema)
+			.length(4)
+			.refine((items) => new Set(items.map((item) => item.target)).size === 4)
+			.optional(),
 		notesSha256: z.string().regex(/^[a-f0-9]{64}$/),
 		bun: ReleaseVersionSchema,
 		npm: ReleaseVersionSchema,
@@ -255,9 +279,17 @@ export const verifyReleaseFiles = (
 			sha256(archive.value) !== record.sha256 ||
 			integrity(archive.value) !== record.integrity ||
 			sha256(notes.value) !== record.notesSha256 ||
-			checksum.value.toString() !== `${record.sha256}  ${record.filename}\n`
+			checksum.value.toString() !== releaseChecksums(record)
 		)
 			return err(new Error("Release archive/checksum/notes hash mismatch."));
+		for (const binary of record.binaries ?? []) {
+			const bytes = readArtifactFile(
+				join(directory, binary.filename),
+				268_435_456,
+			);
+			if (!bytes.ok || sha256(bytes.value) !== binary.sha256)
+				return err(new Error(`Binary checksum mismatch: ${binary.filename}`));
+		}
 		return ok(record);
 	} catch {
 		return err(new Error("Could not verify release files."));

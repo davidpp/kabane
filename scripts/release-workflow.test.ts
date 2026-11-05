@@ -37,7 +37,12 @@ const Workflow = z.object({
 		.strict(),
 	permissions: z.object({ contents: z.literal("read") }).strict(),
 	jobs: z
-		.object({ prepare: Job, "installed-smoke": Job, publish: Job })
+		.object({
+			"native-binaries": Job,
+			prepare: Job,
+			"installed-smoke": Job,
+			publish: Job,
+		})
 		.strict(),
 });
 test("release workflow default is nonpublishing, exact-artifact and permission-separated", () => {
@@ -50,7 +55,7 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 	if (!parsed.success) return;
 	const { prepare, publish } = parsed.data.jobs,
 		smoke = parsed.data.jobs["installed-smoke"];
-	for (const job of [prepare, smoke]) {
+	for (const job of [parsed.data.jobs["native-binaries"], prepare, smoke]) {
 		expect(job.permissions).toBeUndefined();
 		const runs = job.steps.map((step) => step.run ?? "").join("\n");
 		expect(runs).not.toMatch(
@@ -100,11 +105,58 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 		RELEASE_PUBLISH: "${{ inputs.publish }}",
 		RELEASE_SETUP_CONFIRMED: "${{ vars.RELEASE_SETUP_CONFIRMED }}",
 	});
-	for (const job of [prepare, smoke, publish])
+	for (const job of [
+		parsed.data.jobs["native-binaries"],
+		prepare,
+		smoke,
+		publish,
+	])
 		for (const step of job.steps) {
 			if (step.uses) expect(step.uses).toMatch(/^[\w-]+\/[\w-]+@[a-f0-9]{40}$/);
 			expect(step.env?.NODE_AUTH_TOKEN).toBeUndefined();
 		}
 	expect(raw).toContain('node-version: "24.21.0"');
 	expect(raw).toContain("npm@12.2.0");
+});
+
+test("native matrix retains four archives and smoke consumes the assembled bytes", () => {
+	const parsed = Workflow.safeParse(
+		Bun.YAML.parse(
+			readFileSync(
+				join(import.meta.dir, "../.github/workflows/release.yml"),
+				"utf8",
+			),
+		),
+	);
+	expect(parsed.success).toBe(true);
+	if (!parsed.success) return;
+	const native = parsed.data.jobs["native-binaries"];
+	expect(native.strategy).toEqual({
+		"fail-fast": false,
+		matrix: {
+			include: [
+				{ os: "macos-15", target: "darwin-arm64" },
+				{ os: "macos-15-intel", target: "darwin-x64" },
+				{ os: "ubuntu-24.04", target: "linux-x64" },
+				{ os: "ubuntu-24.04-arm", target: "linux-arm64" },
+			],
+		},
+	});
+	expect(
+		native.steps.filter((step) => step.run?.includes("build-binary.ts")),
+	).toHaveLength(1);
+	const { prepare } = parsed.data.jobs;
+	expect(prepare.needs).toBe("native-binaries");
+	expect(
+		prepare.steps.some((step) => step.run?.includes("release-binaries.ts")),
+	).toBe(true);
+	const upload = prepare.steps.find((step) =>
+		step.uses?.startsWith("actions/upload-artifact@"),
+	);
+	expect(upload?.with?.path).toContain("release/*.tar.gz");
+	expect(
+		parsed.data.jobs["installed-smoke"].steps.some((step) =>
+			step.run?.includes("smoke.ts --binary"),
+		),
+	).toBe(true);
 });

@@ -316,7 +316,7 @@ const verifyPublicationTag = async (
 	const current = verifyReleaseFiles(directory);
 	if (!current.ok) return current;
 	for (const name of assets) {
-		const bytes = readArtifactFile(join(directory, name));
+		const bytes = readArtifactFile(join(directory, name), 268_435_456);
 		if (!bytes.ok || sha256(bytes.value) !== expected.get(name))
 			return failure("Artifact assets changed before irreversible operation.");
 	}
@@ -592,7 +592,7 @@ const releaseAssetsMatch = async (
 		]);
 		if (!downloaded.ok || downloaded.value.code !== 0)
 			return failure("Could not verify existing release asset bytes.");
-		const bytes = readArtifactFile(join(work, asset.name));
+		const bytes = readArtifactFile(join(work, asset.name), 268_435_456);
 		if (!bytes.ok) return bytes;
 		if (sha256(bytes.value) !== expected.get(asset.name)) return ok(false);
 	}
@@ -636,13 +636,14 @@ const publishVerifiedRelease = async (
 			runUpdateProcess(argv, cwd, env, timeout);
 		const assets = [
 			record.filename,
+			...(record.binaries ?? []).map((binary) => binary.filename),
 			"manifest.json",
 			"SHA256SUMS",
 			"release-notes.md",
 		];
 		const expected = new Map<string, string>();
 		for (const name of assets) {
-			const bytes = readArtifactFile(join(directory, name));
+			const bytes = readArtifactFile(join(directory, name), 268_435_456);
 			if (!bytes.ok) return bytes;
 			expected.set(name, sha256(bytes.value));
 		}

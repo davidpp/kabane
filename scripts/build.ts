@@ -166,7 +166,7 @@ export const copyTemplates = (
 };
 
 // The copilot's templates, then each extension's.
-const templateRoots = (): string[] =>
+export const templateRoots = (): string[] =>
 	[
 		join(ROOT, "packages/acp/templates"),
 		...extensionNames().map((name) => join(EXTENSIONS, name, "templates")),
