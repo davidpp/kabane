@@ -100,10 +100,14 @@ const packContextPage = ({
 			retrieval: RETRIEVAL,
 		};
 	};
-	const final = envelope(markdown.length);
-	if (serializedBytes(final) <= CONTEXT_BYTES) return ok(final);
+	// Serialized UTF-8 costs at least one byte per UTF-16 code unit.
+	// Only measure the remainder when it could fit in a single page.
+	if (markdown.length - offset <= CONTEXT_BYTES) {
+		const final = envelope(markdown.length);
+		if (serializedBytes(final) <= CONTEXT_BYTES) return ok(final);
+	}
 	let low = offset + 1;
-	let high = markdown.length - 1;
+	let high = Math.min(markdown.length - 1, offset + CONTEXT_BYTES);
 	let page: ContextPage | undefined;
 	while (low <= high) {
 		const middle = Math.floor((low + high) / 2);
@@ -121,6 +125,21 @@ const packContextPage = ({
 					"Concise context identity/envelope cannot fit the 16KiB byte budget. Use responseFormat: full or --format full; no mutation occurred.",
 				),
 			);
+};
+
+const joinContextSections = (
+	rendered: { section: ContextSection; markdown: string | null }[],
+) => {
+	let markdown = "";
+	const ends = new Map<ContextSection, number>();
+	for (const item of rendered) {
+		if (item.markdown !== null) {
+			if (markdown.length) markdown += "\n\n";
+			markdown += item.markdown;
+			ends.set(item.section, markdown.length);
+		} else ends.set(item.section, 0);
+	}
+	return { markdown, ends };
 };
 
 export namespace Planner {
@@ -169,15 +188,7 @@ export namespace Planner {
 			true,
 		);
 		if (!rendered.ok) return rendered;
-		let markdown = "";
-		const ends = new Map<ContextSection, number>();
-		for (const item of rendered.value) {
-			if (item.markdown !== null) {
-				if (markdown.length) markdown += "\n\n";
-				markdown += item.markdown;
-				ends.set(item.section, markdown.length);
-			} else ends.set(item.section, 0);
-		}
+		const { markdown, ends } = joinContextSections(rendered.value);
 		const revision = await digest(JSON.stringify(markdown));
 		if (!revision.ok)
 			return err(

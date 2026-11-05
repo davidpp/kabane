@@ -115,6 +115,7 @@ const ReleaseChoiceSchema = z
 		selector: z.enum(["auto", ...SemanticBumpSchema.options, "version"]),
 		commit: z.string().regex(/^[a-f0-9]{40}$/),
 		state: z.enum(["preparing", "prepared", "published"]),
+		immutableEnableAccepted: z.literal(true).optional(),
 	})
 	.strict();
 type ReleaseChoice = z.infer<typeof ReleaseChoiceSchema>;
@@ -252,33 +253,72 @@ const sourceState = async (
 	return query(["git", "rev-parse", "HEAD"], root, env);
 };
 
-const immutable = async (
+const readImmutability = async (
 	root: string,
 	env: NodeJS.ProcessEnv,
-	enable: boolean,
-): Promise<Result<void>> => {
+): Promise<Result<boolean>> => {
 	const result = await query(
 		["gh", "api", "repos/davidpp/kabane/immutable-releases"],
 		root,
 		env,
 	);
 	if (!result.ok) return result;
-	const parsed = Immutable.safeParse(JSON.parse(result.value));
-	if (!parsed.success)
-		return fail(
-			"Invalid GitHub immutability response; no publication authorized.",
-		);
-	if (parsed.data.enabled) return ok(undefined);
-	if (!enable)
-		return fail(
-			"GitHub release immutability is disabled; run prepare to enable it before publication.",
-		);
-	const enabled = await query(
-		["gh", "api", "--method", "PUT", "repos/davidpp/kabane/immutable-releases"],
-		root,
-		env,
+	try {
+		const parsed = Immutable.safeParse(JSON.parse(result.value));
+		if (parsed.success) return ok(parsed.data.enabled);
+	} catch {
+		// Malformed JSON is not a delayed setting value.
+	}
+	return fail(
+		"Invalid GitHub immutability response; no publication authorized.",
 	);
-	return enabled.ok ? immutable(root, env, false) : enabled;
+};
+
+const immutable = async (
+	root: string,
+	env: NodeJS.ProcessEnv,
+	choice: ReleaseChoice | undefined,
+	wait: (milliseconds: number) => Promise<void>,
+): Promise<Result<void>> => {
+	const preparationFailure = (reason: string) =>
+		fail(
+			`Release preparation incomplete: ${reason} Original source and verified archive retained; confirm the setting in GitHub read-only with gh api repos/davidpp/kabane/immutable-releases, then rerun prepare with the same source and bytes. No publication authorized.`,
+		);
+	if (!choice?.immutableEnableAccepted) {
+		const initial = await readImmutability(root, env);
+		if (!initial.ok)
+			return choice ? preparationFailure(initial.error.message) : initial;
+		if (initial.value) return ok(undefined);
+		if (!choice)
+			return fail(
+				"GitHub release immutability is disabled; run prepare to enable it before publication.",
+			);
+		const enabled = await query(
+			[
+				"gh",
+				"api",
+				"--method",
+				"PUT",
+				"repos/davidpp/kabane/immutable-releases",
+			],
+			root,
+			env,
+		);
+		if (!enabled.ok) return preparationFailure(enabled.error.message);
+		choice.immutableEnableAccepted = true;
+		const saved = saveReleaseChoice(root, choice);
+		if (!saved.ok) return preparationFailure(saved.error.message);
+	}
+	// Only valid false readbacks can be retried, never the accepted setting write.
+	for (let attempt = 0; attempt < 5; attempt++) {
+		if (attempt > 0) await wait(1_000);
+		const readback = await readImmutability(root, env);
+		if (!readback.ok) return preparationFailure(readback.error.message);
+		if (readback.value) return ok(undefined);
+	}
+	return preparationFailure(
+		"GitHub accepted the enable request, but enabled=true was not observed in five readbacks.",
+	);
 };
 
 const verifyArtifactSource = (
@@ -548,16 +588,18 @@ const prepare = async (
 	args: SelectedReleaseArgs,
 	root: string,
 	env: NodeJS.ProcessEnv,
-	directory: string,
 	choice: ReleaseChoice,
+	wait: (milliseconds: number) => Promise<void>,
 ): Promise<Result<string>> => {
+	const directory = join(root, ".releases", choice.version);
 	const source = await prepareSource(args, root, env, directory);
 	if (!source.ok) return source;
-	const saved = saveReleaseChoice(root, {
+	choice = {
 		...choice,
 		commit: source.value.commit,
 		state: "preparing",
-	});
+	};
+	const saved = saveReleaseChoice(root, choice);
 	if (!saved.ok) return saved;
 	const archive = await prepareArchive(
 		args.version,
@@ -567,7 +609,7 @@ const prepare = async (
 		directory,
 	);
 	if (!archive.ok) return archive;
-	const setting = await immutable(root, env, true);
+	const setting = await immutable(root, env, choice, wait);
 	if (!setting.ok) return setting;
 	const tag = `v${args.version}`;
 	if (!source.value.tagged) {
@@ -606,6 +648,9 @@ export const runLocalRelease = async (
 	args: LocalReleaseArgs,
 	root = ROOT,
 	env: NodeJS.ProcessEnv = process.env,
+	wait: (milliseconds: number) => Promise<void> = async (milliseconds) => {
+		await Bun.sleep(milliseconds);
+	},
 ): Promise<Result<string>> => {
 	const validated = LocalReleaseArgsSchema.safeParse(args);
 	if (!validated.success) return fail(LOCAL_RELEASE_HELP);
@@ -644,18 +689,18 @@ export const runLocalRelease = async (
 				{ ...args, version: choice.version },
 				root,
 				env,
-				directory,
 				choice,
+				wait,
 			);
 		const proven = verifiedPreparation(directory, choice.version, head.value);
 		if (!proven.ok) return proven;
 		const selectedArchive = saveReleaseChoice(root, {
 			...choice,
 			commit: head.value,
-			state: choice.state === "published" ? "published" : "prepared",
+			state: choice.state,
 		});
 		if (!selectedArchive.ok) return selectedArchive;
-		const setting = await immutable(root, env, false);
+		const setting = await immutable(root, env, undefined, wait);
 		if (!setting.ok) return setting;
 		const authenticated = await query(
 			["npm", "whoami", "--registry", "https://registry.npmjs.org/"],

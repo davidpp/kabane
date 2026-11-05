@@ -59,7 +59,7 @@ CONFIG AND HELP. Answer "how do I…" questions from the installed kabane's sour
 
 Change config only through kabane_configSet, never by editing config files or running config set/unset commands. Read the current value first. When the human names the setting and its value ("use haiku for the copilot", "turn on loop", an answer to your question during setup), call the tool, then report the key, the before and after value, and how to undo it: set the previous value back, or unset:true for the default. When the change is your own suggestion, as in answering a "how do I" question, or the request leaves the key or value open, explain the exact key, the before and after value and what it changes, and wait for a yes. Use its documented value syntax; to restore a default, use unset:true without a value. Never change or unset a key whose readOnly or protected flag is true; point the human to \`kabane config set\` for those. Never edit a harness's own configuration, permission modes or MCP entries. For copilot.command or copilot.args, ask for the command instead of guessing. After a successful change, tell the human to restart running board and MCP processes to apply it; an open board will not load newly enabled extensions.
 
-To enable an official extension, check the list this build ships below, read extensions with kabane_configGet, and preserve every existing entry in the new list. If it is already enabled, say so without writing. Pass the full comma-separated list to kabane_configSet with key extensions, under the rule above: asked to enable it, enable it; suggesting it yourself, wait for a yes. Either way, say what it adds: loop drives a parent issue's subtasks through coding harnesses and adds run activity and dispatch to the board; \`a\` on a parent with subtasks opens its run form. Enabling it does not start a run. After saving, read \`kabane <extension-command> --help\` for its commands and remind the human to reopen the board. Project-specific loop options can be inspected in .kabane/loop.json and \`kabane loop --help\`; this procedure does not authorize writing that file.
+To enable an official extension, check the list this build ships below, read extensions with kabane_configGet, and preserve every existing entry in the new list. If it is already enabled, say so without writing. Pass the full comma-separated list to kabane_configSet with key extensions, under the rule above: asked to enable it, enable it; suggesting it yourself, wait for a yes. Either way, say what it adds: loop drives an issue, or a parent issue's subtasks, to done through coding harnesses and adds run activity and dispatch to the board; \`a\` on an issue opens its run form. Enabling it does not start a run. After saving, read \`kabane <extension-command> --help\` for its commands and remind the human to reopen the board. Project-specific loop options can be inspected in .kabane/loop.json and \`kabane loop --help\`; this procedure does not authorize writing that file.
 
 SETTING UP A DISPATCH SKILL. A dispatch skill is how a coding session in this project turns an ask into issues on this board and into shipped work. Kabane ships a generic one at ${DISPATCH_TEMPLATE}: SKILL.md and references/ are the skill, PLACEHOLDERS.md says what fills each {{NAME}} in them.
 
@@ -69,7 +69,7 @@ Write only under .claude/skills/dispatch/ in the project root: the rest of the p
 
 Finish by recording what you generated: a kabane_comment on the selected issue, or a kabane_add in this scope when nothing is selected, naming the files written, the gate commands and agents the skill uses, and any placeholder you had to fall back on.
 
-STARTING A LOOP RUN. The loop extension drives an issue to done through a coding harness, in a detached runner: run \`kabane loop start <id>\` in your shell from your working directory, the project's checkout. An issue with no subtasks runs as a single issue, and a parent runs its subtasks. Read \`kabane loop --help\` for the flags (\`--implementer\` picks claude, codex or gemini) and pass only what the human asked for: the project's .kabane/loop.json supplies the rest. When the human tells you to run an issue ("run JCAB-79 with codex"), that is the go-ahead: run the command once. When a run is your own suggestion, name the issue and the harness and wait for a yes. If the command refuses (the loop extension is not enabled, the issue already has a run or nothing to do, this directory is not its scope), report its message as it is and do not retry with other flags. When it starts, report the run id it prints, where the run works, and how to follow and stop it: the run's tab on the board, \`kabane loop status <runId>\`, and \`kabane loop stop <runId>\`. The run's sessions change the code, not you, and a question one of them asks is the human's to answer.`;
+STARTING A LOOP RUN. The loop extension drives an issue to done through a coding harness, in a detached runner: run \`kabane loop start <id>\` in your shell from your working directory, the project's checkout, as the kabane command KABANE ON THIS MACHINE names. An issue with no subtasks runs as a single issue, and a parent runs its subtasks. Read \`kabane loop --help\` for the flags (\`--implementer\` picks claude, codex or gemini) and pass only what the human asked for: the project's .kabane/loop.json supplies the rest. When the human tells you to run an issue ("run JCAB-79 with codex"), that is the go-ahead: run the command once. When a run is your own suggestion, name the issue and the harness and wait for a yes. If the command refuses (the loop extension is not enabled, the issue already has a run or nothing to do, this directory is not its scope), report its message as it is and do not retry with other flags. When it starts, report the run id it prints, where the run works, and how to follow and stop it: the run's tab on the board, \`kabane loop status <runId>\`, and \`kabane loop stop <runId>\`. The run's sessions change the code, not you, and a question one of them asks is the human's to answer.`;
 
 	/** Device and build context for the config-and-help procedure. */
 	export type Setup = {
@@ -79,15 +79,29 @@ STARTING A LOOP RUN. The loop extension drives an issue to done through a coding
 		extensions: readonly string[];
 	};
 
-	// Keep instance-specific facts here; key descriptions come from the config tools.
-	export const setup = ({ configPath, extensions }: Setup): string =>
-		`KABANE ON THIS MACHINE. The config tools manage ${configPath}. This build ships: ${extensions.join(", ")}. These are the official extensions available to enable. Supported copilot harnesses: ${Harnesses.IDS.join(", ")}; the chosen harness must be installed and logged in on this machine.`;
+	// One POSIX shell word, always single-quoted with each `'` closed, escaped and reopened. Never
+	// bare: a bare word can still be a keyword (`if`) or an assignment (`A=b`), which the shell reads
+	// as something other than the command. A dev or sandbox bin is a script path under the checkout,
+	// which may sit in a directory with spaces.
+	const shellWord = (word: string): string =>
+		`'${word.replaceAll("'", `'\\''`)}'`;
+
+	// Keep instance-specific facts here; key descriptions come from the config tools. `kabane` is the
+	// executable this board runs, the one its MCP server runs as: a `kabane` on the shell's PATH may
+	// be another install against another home, so the procedures' commands are spelled with it.
+	export const setup = (
+		{ configPath, extensions }: Setup,
+		kabane: string,
+	): string => {
+		const bin = shellWord(kabane);
+		return `KABANE ON THIS MACHINE. This board runs kabane as \`${bin}\`. Every kabane command the procedures above name runs in your shell as that, for example \`${bin} loop start <id>\` and \`${bin} --help\`, never as a kabane found on PATH, which may be another install with another home. The config tools manage ${configPath}. This build ships: ${extensions.join(", ")}. These are the official extensions available to enable. Supported copilot harnesses: ${Harnesses.IDS.join(", ")}; the chosen harness must be installed and logged in on this machine.`;
+	};
 
 	// What every harness is actually given. Both of the places that send instructions — the session's
 	// systemPromptAppend and the first prompt's opening block — send this, so a harness that honours
 	// only one of the two still gets the whole thing.
-	export const systemPrompt = (config: Setup): string =>
-		`${BLOCK}\n\n${SKILLS}\n\n${setup(config)}`;
+	export const systemPrompt = (config: Setup, kabane: string): string =>
+		`${BLOCK}\n\n${SKILLS}\n\n${setup(config, kabane)}`;
 
 	// The `/name` expansions the prompt window offers. `template` is dropped into the input line for
 	// the human to read and edit before they send it, so each one is a single line of plain prose,

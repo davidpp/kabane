@@ -376,7 +376,7 @@ describe("Planner — assembleContext", () => {
 		expect(md).not.toContain("PROGRESS_NOISE");
 	});
 
-	it("lists a human's choice as a decision with its question and author, and no tool approval", async () => {
+	it("lists a human's choice as a decision with its question and author, and no tool approval or skipped question", async () => {
 		const id = await createTask({ title: "Answered", kind: "issue" });
 		const started = await Planner.startSession(TEST_BASE, {
 			taskId: id,
@@ -407,9 +407,13 @@ describe("Planner — assembleContext", () => {
 				},
 			}),
 		);
+		const skipped = await ask(
+			formatQuestionBody("Any optional notes?", { skipAnswer: "skip" }),
+		);
 		const real = await ask(
 			formatQuestionBody("Plain text or markdown?", {
 				choices: ["Plain text", "Markdown"],
+				skipAnswer: "skip",
 				allowFreeform: false,
 			}),
 		);
@@ -417,6 +421,7 @@ describe("Planner — assembleContext", () => {
 		try {
 			for (const [questionId, answer] of [
 				[approval, "Yes"],
+				[skipped, "skip"],
 				[real, "Markdown"],
 			] as const) {
 				const answered = await Planner.answerQuestion(TEST_BASE, {
@@ -434,6 +439,8 @@ describe("Planner — assembleContext", () => {
 			/\*\*cabane:\/\/actor\/human\/ada\*\* \(decision, [^)]+\):\nPlain text or markdown\?\n→ Markdown/,
 		);
 		expect(md).not.toContain("asks to run");
+		expect(md).not.toContain("Any optional notes?");
+		expect(md).not.toContain("→ skip");
 		expect(md.match(/\(decision,/g)?.length).toBe(1);
 	});
 

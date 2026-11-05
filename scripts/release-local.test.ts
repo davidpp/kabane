@@ -24,6 +24,9 @@ const ROOT = resolve(import.meta.dir, ".."),
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));
 const State = z.object({
 	immutable: z.boolean(),
+	readbacks: z.number(),
+	delayedReads: z.number(),
+	readbackFailure: z.enum(["none", "access", "schema", "json"]),
 	authenticated: z.boolean(),
 	published: z.boolean(),
 	integrity: z.string(),
@@ -88,7 +91,15 @@ if (tool === "npm") {
 } else if (tool === "gh") {
   if (args[0] === "api" && args.some(value => value.endsWith("/immutable-releases"))) {
     if (args.includes("PUT")) { state.immutable = true; state.writes.push("enable-immutable"); save(); }
-    else console.log(JSON.stringify({ enabled: state.immutable }));
+    else {
+      if (state.immutable) {
+        state.readbacks++; save();
+        if (state.readbackFailure === "access") process.exit(1);
+        if (state.readbackFailure === "schema") { console.log('{"enabled":"true"}'); process.exit(0); }
+        if (state.readbackFailure === "json") { console.log('invalid'); process.exit(0); }
+      }
+      console.log(JSON.stringify({ enabled: state.immutable && state.readbacks > state.delayedReads }));
+    }
   } else if (args[0] === "api" && args.includes("--include")) {
     const endpoint = at("--include");
     const release = { id: 1, tag_name: "v" + state.version, draft: state.draft, prerelease: state.prerelease, immutable: !state.draft && state.immutable, assets: state.assets.map(name => ({ name })) };
@@ -142,7 +153,7 @@ const result = Bun.spawnSync([process.execPath, "-e", 'console.log("fixture inst
 process.exit(result.exitCode);`;
 
 let sequence = 0;
-const createFixture = () => {
+const createFixture = (injectWait = false) => {
 	const root = join(WORK, String(sequence++)),
 		remote = join(root, ".test-state/remote.git"),
 		home = join(root, ".test-state/home");
@@ -150,6 +161,9 @@ const createFixture = () => {
 	const statePath = join(root, ".test-state/state.json");
 	const initial: z.infer<typeof State> = {
 		immutable: false,
+		readbacks: 0,
+		delayedReads: 0,
+		readbackFailure: "none",
 		authenticated: false,
 		published: false,
 		integrity: "",
@@ -182,7 +196,9 @@ const createFixture = () => {
 			private: true,
 			workspaces: ["packages/cli"],
 			scripts: {
-				"release:local": "bun scripts/release-local.ts",
+				"release:local": injectWait
+					? "bun scripts/fixture-local.ts"
+					: "bun scripts/release-local.ts",
 				check: "bun scripts/fixture-stage.ts check",
 				typecheck: "bun scripts/fixture-stage.ts typecheck",
 				test: "bun scripts/fixture-stage.ts test",
@@ -204,6 +220,17 @@ const createFixture = () => {
 		mkdirSync(dirname(join(root, file)), { recursive: true });
 		copyFileSync(join(ROOT, file), join(root, file));
 	}
+	writeFileSync(
+		join(root, "scripts/fixture-local.ts"),
+		`import { parseLocalReleaseArgs, runLocalRelease } from "./release-local";
+import { appendFileSync } from "node:fs";
+const args = parseLocalReleaseArgs(process.argv.slice(2));
+const result = args.ok ? await runLocalRelease(args.value, process.cwd(), process.env, async milliseconds => {
+  appendFileSync(".test-state/waits", milliseconds + "\\n");
+}) : args;
+console.log(result.ok ? result.value : result.error.message);
+process.exitCode = result.ok ? 0 : 1;`,
+	);
 	writeFileSync(join(root, "scripts/build.ts"), fixtureBuild);
 	writeFileSync(join(root, "scripts/smoke.ts"), fixtureSmoke);
 	writeFileSync(
@@ -776,4 +803,74 @@ test.concurrent("an explicit beta publishes on npm beta as a GitHub prerelease; 
 		prerelease: false,
 		latestFlag: "--latest",
 	});
+}, 60_000);
+
+for (const failure of ["none", "access", "schema", "json"] as const)
+	test.concurrent(`immutability readback fails closed on ${failure} and retains the preparation phase`, async () => {
+		const fixture = createFixture(true);
+		fixture.change({ delayedReads: 100, readbackFailure: failure });
+		const failed = await fixture.run("prepare");
+		expect(failed.value.code).toBe(1);
+		expect(failed.value.stdout).toContain("Release preparation incomplete");
+		expect(failed.value.stdout).toContain("same source and bytes");
+		expect(fixture.state().readbacks).toBe(failure === "none" ? 5 : 1);
+		if (failure === "none")
+			expect(
+				readFileSync(join(fixture.root, ".test-state/waits"), "utf8"),
+			).toBe("1000\n".repeat(4));
+		else
+			expect(existsSync(join(fixture.root, ".test-state/waits"))).toBe(false);
+		expect(fixture.state().writes).toEqual(["enable-immutable"]);
+		const choice = () =>
+			JSON.parse(
+				readFileSync(join(fixture.root, ".releases/current.json"), "utf8"),
+			);
+		expect(choice().state).toBe("preparing");
+		expect(fixture.git("tag", "--list", "v0.1.1")).toBe("");
+		expect(fixture.git("ls-remote", "origin", "refs/tags/v0.1.1")).toBe("");
+		const archive = readFileSync(join(fixture.directory, "kabane-0.1.1.tgz"));
+		const proof = readFileSync(join(fixture.directory, "verified.sha256"));
+		const head = fixture.git("rev-parse", "HEAD"),
+			events = fixture.events();
+		expect((await fixture.run("publish")).value.code).toBe(1);
+		expect(choice().state).toBe("preparing");
+		if (failure === "none") {
+			const resumed = await fixture.run("prepare");
+			expect(resumed.value.code).toBe(1);
+			expect(fixture.state().writes).toEqual(["enable-immutable"]);
+			expect(resumed.value.stdout).toContain(
+				"gh api repos/davidpp/kabane/immutable-releases",
+			);
+			expect(choice().state).toBe("preparing");
+			expect(fixture.git("tag", "--list", "v0.1.1")).toBe("");
+			expect(fixture.git("ls-remote", "origin", "refs/tags/v0.1.1")).toBe("");
+		}
+		expect(choice().immutableEnableAccepted).toBe(true);
+		fixture.change({ delayedReads: 0, readbackFailure: "none" });
+		expect((await fixture.run("prepare")).value.code).toBe(0);
+		expect(choice().state).toBe("prepared");
+		expect(choice().immutableEnableAccepted).toBe(true);
+		expect(fixture.git("rev-parse", "HEAD")).toBe(head);
+		expect(fixture.events()).toBe(events);
+		expect(readFileSync(join(fixture.directory, "kabane-0.1.1.tgz"))).toEqual(
+			archive,
+		);
+		expect(readFileSync(join(fixture.directory, "verified.sha256"))).toEqual(
+			proof,
+		);
+		expect(fixture.state().writes).toEqual(["enable-immutable"]);
+	}, 60_000);
+
+test.concurrent("accepted enable polls only false readbacks until true before completing preparation", async () => {
+	const fixture = createFixture(true);
+	fixture.change({ delayedReads: 2 });
+	expect((await fixture.run("prepare")).value.code).toBe(0);
+	expect(fixture.state().readbacks).toBe(3);
+	expect(readFileSync(join(fixture.root, ".test-state/waits"), "utf8")).toBe(
+		"1000\n1000\n",
+	);
+	expect(fixture.state().writes).toEqual(["enable-immutable"]);
+	expect(fixture.git("rev-parse", "v0.1.1^{commit}")).toBe(
+		fixture.git("rev-parse", "HEAD"),
+	);
 }, 60_000);

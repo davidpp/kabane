@@ -1,4 +1,4 @@
-// The board's copy, through OpenTUI's clipboard. `best-available` writes the host's own pasteboard
+// Board and CLI copy, through OpenTUI's clipboard. `best-available` writes the host's own pasteboard
 // on a local session, falling back to OSC 52 when the host has none, and on a remote one sends only
 // OSC 52: the copy lands in the human's terminal and never in the remote machine's pasteboard.
 import { err, ok, type Result } from "@cabane/core";
@@ -9,6 +9,7 @@ import {
 	createHostClipboard,
 	createRendererClipboardAdapter,
 	type RendererClipboardBoundary,
+	type TerminalClipboardAdapter,
 } from "@opentui/core";
 
 export namespace Clipboard {
@@ -70,23 +71,53 @@ export namespace Clipboard {
 			.then(outcome, failed);
 	};
 
-	/**
-	 * Copy `text` with no renderer, as the CLI's `kabane open` does. There is no terminal to send
-	 * OSC 52 to, so this is the host's pasteboard or nothing; a headless host reports unsupported.
-	 */
-	export const writeHost = async (text: string): Promise<Result<"host">> => {
+	/** A renderer-free terminal adapter for CLI stdout. */
+	export const stdoutAdapter = (): TerminalClipboardAdapter => {
+		const writeText: TerminalClipboardAdapter["writeText"] = (
+			text,
+			selection,
+		) => {
+			if (!process.stdout.isTTY)
+				return { status: "not-attempted", capability: "unknown" };
+			try {
+				// OpenTUI's encoder is native and has no standalone export. OSC 52 has no
+				// acknowledgement: attempted means queued on stdout, not confirmed pasted.
+				const target = selection === "primary" ? "p" : "c";
+				const encoded = Buffer.from(text).toString("base64");
+				process.stdout.write(`\x1b]52;${target};${encoded}\x1b\\`);
+				return { status: "attempted", capability: "unknown" };
+			} catch {
+				return { status: "local-failure", capability: "unknown" };
+			}
+		};
+		return {
+			// Match OpenTUI's native remote-session detection without creating a renderer.
+			remote: [
+				"SSH_CONNECTION",
+				"SSH_CLIENT",
+				"SSH_TTY",
+				"MOSH_CONNECTION",
+			].some((key) => process.env[key] !== undefined),
+			writeText,
+			clear: (selection) => writeText("", selection),
+		};
+	};
+
+	/** Copy without a renderer, using the board's routing with stdout as the terminal. */
+	export const writeCli = async (text: string): Promise<Result<Method>> => {
 		const clean = pasteable(text);
 		if (clean.length === 0) return err(new Error("nothing to copy"));
-		const host = createHostClipboard();
-		const result = await host
-			.writeText(clean)
-			.then((written): Result<"host"> => {
-				if (written.status === "written") return ok("host");
-				if (written.status === "failed") return failed(written.error);
-				return err(new Error(`copy ${written.status} on this host`));
-			}, failed);
-		await host.dispose();
-		return result;
+		const service = createClipboard({
+			host: createHostClipboard(),
+			terminal: stdoutAdapter(),
+		});
+		try {
+			return await service
+				.writeText(clean, { destination: "best-available" })
+				.then(outcome, failed);
+		} finally {
+			await service.dispose();
+		}
 	};
 
 	/** Dispose the clipboard `renderer` copied through, if it ever did. */

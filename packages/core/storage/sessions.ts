@@ -356,7 +356,9 @@ export namespace Planner {
 	 * exactly `answers <questionId>` and whose body is the answer, in the same
 	 * transaction as the lookup. A question that relays a tool permission
 	 * request (its body carries `permission`) gets an `answer`: approving a tool
-	 * call unblocks the session and is no decision. Any other question gets a
+	 * call unblocks the session and is no decision. So does a reply that matches
+	 * the question's `skipAnswer`: skipping is not a choice, and the skip word is
+	 * kept as the body for the asker to read. Any other question gets a
 	 * `decision`, the human's choice on the record. Either names the runtime
 	 * actor as its author, who answered. The session leaves
 	 * awaiting_input only once every question on it has an answer. Answering
@@ -383,10 +385,11 @@ export namespace Planner {
 						`Activity ${questionId} is a ${String(question.type)}, not a question`,
 					);
 				}
-				const permission = parseQuestionBody(String(question.body)).permission;
+				const meta = parseQuestionBody(String(question.body));
+				const skipped = meta.skipAnswer?.toLowerCase() === answer.toLowerCase();
 				return appendActivity(db, {
 					sessionId: String(question.session_id),
-					type: permission ? "answer" : "decision",
+					type: meta.permission || skipped ? "answer" : "decision",
 					ephemeral: false,
 					context: answersContext(questionId),
 					body: answer,
