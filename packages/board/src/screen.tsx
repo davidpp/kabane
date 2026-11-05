@@ -2,7 +2,7 @@
 // What the board puts on screen for a state: the tab bar over the view in hand (the board, a task's
 // detail, a card's events), the copilot's pane and any open prompt under the view, and the overlays
 // floating over whichever view is on screen. Every key and click goes back through BoardInput.
-import type { Result, Task } from "@cabane/core";
+import type { Result } from "@cabane/core";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import {
 	type ReactNode,
@@ -124,9 +124,6 @@ type ViewProps = ScreenProps & {
 	pane: ReactNode;
 };
 
-const shortIdOf = (task: Task | undefined, id: string): string =>
-	task?.shortId ?? id.slice(0, 8);
-
 export const Screen = (props: ScreenProps): ReactNode => {
 	const { state, activity, headers, linked } = props;
 	const spinnerFrame = useSpinnerFrame(anyActivityRunning(activity));
@@ -201,7 +198,7 @@ const Overlay = ({ state, keys, refs, input }: ViewProps): ReactNode => {
 	const { taskId } = state.dispatch;
 	return (
 		<DispatchLayer
-			shortId={shortIdOf(BoardNav.taskById(state, taskId), taskId)}
+			shortId={BoardNav.shortIdOf(BoardNav.taskById(state, taskId), taskId)}
 			overlay={state.dispatch}
 			onField={(index) => input.dispatchMouse({ type: "formField", index })}
 		/>
@@ -278,7 +275,7 @@ const EventsScreen = ({
 	// Resolve task ULID → shortId from loaded sections (for the event view's header).
 	const resolveShortId = (taskId: string): string | undefined => {
 		const task = BoardNav.taskById(state, taskId);
-		return task ? shortIdOf(task, task.id) : undefined;
+		return task ? BoardNav.shortIdOf(task, task.id) : undefined;
 	};
 	return (
 		<EventView

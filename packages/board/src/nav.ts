@@ -1186,7 +1186,11 @@ export namespace BoardNav {
 	const firstId = (rows: VisibleRow[]): string | null =>
 		rows[0]?.task.id ?? null;
 
-	const shortId = (task: Task): string => task.shortId ?? task.id.slice(0, 8);
+	// A task's shortId, or its id's head when it has none or is not loaded.
+	export const shortIdOf = (task: Task | undefined, id: string): string =>
+		task?.shortId ?? id.slice(0, 8);
+
+	const shortId = (task: Task): string => shortIdOf(task, task.id);
 
 	// Find a task anywhere in the board (top-level or subtask) by id — the detail view's action target,
 	// which may be a subtask and isn't addressable by the board's selection.

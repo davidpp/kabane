@@ -1,7 +1,6 @@
 // Handing a task to the host's Dispatcher: the triggers it can start on the task, listed into the
 // dispatch overlay, and the one the human confirms. Never silent — success flashes the host's notice,
 // failure the error message.
-import type { Task } from "@cabane/core";
 import { useCallback } from "react";
 import type { BoardStore } from "./board-store";
 import { BoardData } from "./data";
@@ -15,9 +14,6 @@ export type DispatchEffect = Extract<
 	{ type: (typeof DISPATCH_EFFECTS)[number] }
 >;
 export const isDispatchEffect = BoardNav.effectsOf(DISPATCH_EFFECTS);
-
-const shortIdOf = (task: Task | undefined, id: string): string =>
-	task?.shortId ?? id.slice(0, 8);
 
 // Without a dispatcher no extension is on. A copilot that can set kabane up is the way to turn one
 // on without knowing the config's keys.
@@ -77,7 +73,7 @@ export const useHostDispatch = ({
 				return;
 			}
 			const task = BoardNav.taskById(s, id);
-			const shortId = shortIdOf(task, id);
+			const shortId = BoardNav.shortIdOf(task, id);
 			const brief = await BoardData.taskBrief(basePath, id);
 			if (!brief.ok) {
 				setNotice({ text: brief.error.message, tone: "error" });
