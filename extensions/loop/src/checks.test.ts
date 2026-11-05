@@ -197,7 +197,13 @@ describe("Checks", () => {
 
 		const retry = Gates.lastFailure(ctx.run.gateRuns, child.id);
 		const brief = Brief.opening(
-			{ runId: "run-1", parent, task: child, ...(retry ? { retry } : {}) },
+			{
+				runId: "run-1",
+				parent,
+				task: child,
+				gates: Object.keys(ctx.run.config.gates),
+				...(retry ? { retry } : {}),
+			},
 			"the issue's own brief",
 		);
 		expect(brief).toContain("reopened: the `test` gate");

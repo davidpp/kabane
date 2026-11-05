@@ -48,8 +48,8 @@ export namespace Dispatch {
 	 * findings the lenses filed, in the order given.
 	 */
 	export type Work =
-		| { kind: "implement"; retry?: Gates.Result }
 		// `gates`: the run's gate names, so the brief says what has checked the work and what has not.
+		| { kind: "implement"; gates: readonly string[]; retry?: Gates.Result }
 		| { kind: "lens"; name: string; prompt: string; gates: readonly string[] }
 		| { kind: "fix"; findings: readonly Task[]; gates: readonly string[] };
 
@@ -613,7 +613,11 @@ export namespace Dispatch {
 			case "implement":
 				return ok(
 					Brief.opening(
-						{ ...subject, ...(work.retry ? { retry: work.retry } : {}) },
+						{
+							...subject,
+							gates: work.gates,
+							...(work.retry ? { retry: work.retry } : {}),
+						},
 						assembled.value,
 					),
 				);

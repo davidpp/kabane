@@ -461,7 +461,11 @@ export namespace Claims {
 			harness,
 			lane,
 			sessionId,
-			work: { kind: "implement", ...(retry ? { retry } : {}) },
+			work: {
+				kind: "implement",
+				gates: Object.keys(ctx.run.config.gates),
+				...(retry ? { retry } : {}),
+			},
 			summary: `${harness} claims ${label(task)}: ${task.title}`,
 			...(interrupted ? { interrupted } : {}),
 		});
