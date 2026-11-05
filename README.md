@@ -46,7 +46,8 @@ on [GitHub Releases](https://github.com/davidpp/kabane/releases), for macOS (`da
 `kabane` executable into a directory already on PATH. Run `kabane --version` to check.
 The binary includes Bun; git is still used for project scopes, and coding harness adapters
 still need their own runtime (currently Node/npx). Windows and notarization are not provided.
-Until binary self-update ships, replace the complete directory with a verified newer download.
+`kabane update` replaces the executable and `templates/` in place with a verified newer
+release; a binary under a mise installs directory is left to `mise up kabane`.
 
 To work on kabane itself, run it from a clone instead:
 
@@ -60,13 +61,17 @@ For a human-run local release, use `bun run release:local prepare` to infer and 
 version (or select `--bump patch|minor|major`, or `--version X.Y.Z-beta.N` for a beta on npm
 `beta`), then authenticate to npm and resume with `bun run release:local publish`. Publication reuses the selected version and original bytes.
 See [`docs/release.md`](docs/release.md) for retained artifacts, recovery and the optional Actions route.
-For a positively verified hoisted Bun global registry install, `kabane update --check`
-reports a candidate (installation policy is unverified), and `kabane update`
-explicitly checks Bun policy and verifies an exact installation. A stable install follows
-npm `latest`; a beta install takes the higher of `beta` and `latest`. Updates stay within
-major, or minor for `0.x`; source links, local tarballs and unknown/missing-bin layouts
-refuse replacement. The board shows `kabane <version> is out · run kabane update` when that
-candidate exists. It reads npm's dist-tags at most once a day and installs nothing;
+For a standalone binary, `kabane update --check` reports a candidate from npm's dist-tags,
+and `kabane update` downloads that release's archive for your platform, verifies it against
+its `SHA256SUMS`, checks that the new executable prints the candidate version, then renames it
+and `templates/` over the real executable (symlinks followed); any failure before that leaves
+the old install as it was. For a positively verified hoisted Bun global registry install,
+`kabane update --check` reports a candidate (installation policy is unverified), and
+`kabane update` explicitly checks Bun policy and verifies an exact installation. A stable
+install follows npm `latest`; a beta install takes the higher of `beta` and `latest`. Updates
+stay within major, or minor for `0.x`; source links, local tarballs and unknown/missing-bin
+layouts refuse replacement. The board shows `kabane <version> is out` when that candidate
+exists, with what your install runs to take it: `kabane update`, or `mise up kabane`. It reads npm's dist-tags at most once a day and installs nothing;
 `kabane config set updates.check false` turns it off. `kabane mcp` and other commands never
 check, and `kabane update` opens no tracker DB and rewires no MCP entry.
 See [updating and data compatibility](docs/getting-started.md#updating).

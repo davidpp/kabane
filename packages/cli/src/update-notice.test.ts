@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeEach, expect, test } from "bun:test";
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -140,4 +141,42 @@ test("a registry slower than the timeout, or not there at all, says nothing", as
 		await UpdateNotice.check({ home, version: "1.0.0", registry: origin }),
 	).toBeUndefined();
 	expect(existsSync(cacheFile())).toBe(false);
+});
+
+test("the line names what this install runs to take the release", async () => {
+	const { install, line } = UpdateNotice;
+	const mise = join(home, "mise/installs/kabane/1.0.0/kabane");
+	const opt = join(home, "opt/kabane");
+	for (const dir of [mise, opt]) {
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "kabane"), "");
+	}
+	const binary = (executable: string) =>
+		install({
+			compiled: true,
+			executable,
+			bun: process.execPath,
+			env: { HOME: home, MISE_DATA_DIR: join(home, "mise") },
+		});
+	expect(await binary(join(mise, "kabane"))).toBe("mise");
+	expect(await binary(join(opt, "kabane"))).toBe("binary");
+	// A script outside any verified Bun global layout: kabane update would refuse it.
+	expect(
+		await install({
+			compiled: false,
+			executable: join(opt, "kabane"),
+			bun: process.execPath,
+			env: { HOME: home },
+		}),
+	).toBe("manual");
+	expect(line("1.2.0", "binary")).toBe(
+		"kabane 1.2.0 is out · run kabane update",
+	);
+	expect(line("1.2.0", "bun")).toBe("kabane 1.2.0 is out · run kabane update");
+	expect(line("1.2.0", "mise")).toBe(
+		"kabane 1.2.0 is out · run mise up kabane",
+	);
+	expect(line("1.2.0", "manual")).toBe(
+		"kabane 1.2.0 is out · update it the way you installed it",
+	);
 });
