@@ -321,9 +321,6 @@ export const SetupScreen = ({
 		}
 	});
 
-	const labelOf = (id: string): string =>
-		defaults.harnesses.find((h) => h.id === id)?.label ?? id;
-
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			{/* The welcome's wordmark is its title; every later phase says where it is. */}
@@ -337,24 +334,7 @@ export const SetupScreen = ({
 				{phase.kind === "welcome" ? (
 					<WelcomeCard />
 				) : phase.kind === "done" ? (
-					<>
-						<Panel first>
-							<SavedLine path={phase.configPath} />
-							<text fg={theme.muted}>{LATER_LINE}</text>
-							<box style={{ flexDirection: "column", marginTop: 1 }}>
-								{phase.outcomes.map((outcome) => (
-									<OutcomeRow
-										key={outcome.id}
-										outcome={outcome}
-										label={labelOf(outcome.id)}
-									/>
-								))}
-							</box>
-						</Panel>
-						{phase.firstIssue ? (
-							<FirstIssuePanel filed={phase.firstIssue} />
-						) : null}
-					</>
+					<DoneCard done={phase} defaults={defaults} />
 				) : (
 					<SetupForm
 						defaults={defaults}
@@ -362,26 +342,83 @@ export const SetupScreen = ({
 						onName={(name) => update({ ...current.current, name })}
 					/>
 				)}
-				{/* The enter panel turns into the progress line while enter's work runs, so nothing jumps. */}
-				{phase.kind === "form" ? (
-					<EnterPanel
-						configPath={defaults.configPath}
-						agents={form.checked.length}
-						firstAgent={SetupPlan.firstAgent(form, defaults)}
-					/>
-				) : phase.kind === "working" ? (
-					<Panel>
-						<text fg={theme.working}>{`${spinnerFrame} ${phase.step}`}</text>
-					</Panel>
-				) : null}
-				{phase.kind === "form" && phase.error ? (
-					<text fg={theme.failed} style={{ marginTop: 1 }}>
-						{phase.error}
-					</text>
-				) : null}
+				<ConfirmPanel
+					phase={phase}
+					form={form}
+					defaults={defaults}
+					spinnerFrame={spinnerFrame}
+				/>
 			</box>
 			<StatusBar hints={footerFor(phase, defaults)} />
 		</box>
+	);
+};
+
+// What setup wrote and installed, and the first issue it filed.
+const DoneCard = ({
+	done,
+	defaults,
+}: {
+	done: Extract<Phase, { kind: "done" }>;
+	defaults: SetupPlan.Defaults;
+}): ReactNode => {
+	const theme = useTheme();
+	const labelOf = (id: string): string =>
+		defaults.harnesses.find((h) => h.id === id)?.label ?? id;
+	return (
+		<>
+			<Panel first>
+				<SavedLine path={done.configPath} />
+				<text fg={theme.muted}>{LATER_LINE}</text>
+				<box style={{ flexDirection: "column", marginTop: 1 }}>
+					{done.outcomes.map((outcome) => (
+						<OutcomeRow
+							key={outcome.id}
+							outcome={outcome}
+							label={labelOf(outcome.id)}
+						/>
+					))}
+				</box>
+			</Panel>
+			{done.firstIssue ? <FirstIssuePanel filed={done.firstIssue} /> : null}
+		</>
+	);
+};
+
+// Under the form: the enter panel, which turns into the progress line while enter's work runs, so
+// nothing jumps, and the error that sent the human back to the form.
+const ConfirmPanel = ({
+	phase,
+	form,
+	defaults,
+	spinnerFrame,
+}: {
+	phase: Phase;
+	form: SetupPlan.Form;
+	defaults: SetupPlan.Defaults;
+	spinnerFrame: string;
+}): ReactNode => {
+	const theme = useTheme();
+	if (phase.kind === "working")
+		return (
+			<Panel>
+				<text fg={theme.working}>{`${spinnerFrame} ${phase.step}`}</text>
+			</Panel>
+		);
+	if (phase.kind !== "form") return null;
+	return (
+		<>
+			<EnterPanel
+				configPath={defaults.configPath}
+				agents={form.checked.length}
+				firstAgent={SetupPlan.firstAgent(form, defaults)}
+			/>
+			{phase.error ? (
+				<text fg={theme.failed} style={{ marginTop: 1 }}>
+					{phase.error}
+				</text>
+			) : null}
+		</>
 	);
 };
 
