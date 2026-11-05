@@ -30,6 +30,78 @@ import {
 	selectTodayBucket,
 } from "./task-selection";
 
+const taskFieldUpdates = (updates: TaskUpdate) =>
+	[
+		["title", updates.title],
+		["description", updates.description],
+		["kind", updates.kind],
+		["priority", updates.priority],
+		["deadline", updates.deadline],
+		["defer_until", updates.deferUntil],
+		["context", updates.context],
+		["confidence", updates.confidence],
+		["assignee", updates.assignee],
+		["parent_task_id", updates.parentTaskId],
+		["project_id", updates.projectId],
+	] as const;
+
+const provenanceValues = (provenance: TaskDraft["provenance"], now: string) => [
+	provenance?.source ?? "human",
+	provenance?.sourceId ?? null,
+	provenance?.sourceUrl ?? null,
+	provenance?.discoveredAt ?? now,
+	provenance?.discoveredBy ?? null,
+];
+
+const taskFromDraft = (
+	draft: TaskDraft,
+	scopeUri: string | undefined,
+	{
+		id,
+		shortId,
+		now,
+		completedAt,
+	}: { id: string; shortId: string; now: string; completedAt: string | null },
+): Task => {
+	return {
+		id,
+		shortId,
+		title: draft.title,
+		description: draft.description,
+		kind: draft.kind ?? "task",
+		state: draft.state ?? "inbox",
+		priority: draft.priority ?? "normal",
+		scopeUri,
+		scopeRefs: draft.scopeRefs,
+		deadline: draft.deadline,
+		deferUntil: draft.deferUntil,
+		completedAt: completedAt ?? undefined,
+		provenance: {
+			source: draft.provenance?.source ?? "human",
+			sourceId: draft.provenance?.sourceId,
+			sourceUrl: draft.provenance?.sourceUrl,
+			discoveredAt: draft.provenance?.discoveredAt ?? now,
+			discoveredBy: draft.provenance?.discoveredBy,
+		},
+		confidence: draft.confidence,
+		assignee: draft.assignee,
+		parentTaskId: draft.parentTaskId,
+		projectId: draft.projectId,
+		needsReview: draft.needsReview ?? false,
+		reviewedAt: undefined,
+		reviewedBy: undefined,
+		verification: draft.verification
+			? { status: "pending" as const, ...draft.verification }
+			: undefined,
+		tags: draft.tags ?? [],
+		context: draft.context,
+		updatedBy: Runtime.actor(),
+		version: 1,
+		createdAt: now,
+		updatedAt: now,
+	};
+};
+
 export namespace Planner {
 	// ----------------------------------------------------------
 	// ID Resolution
@@ -166,11 +238,7 @@ export namespace Planner {
 					draft.scopeRefs ? JSON.stringify(draft.scopeRefs) : null,
 					draft.deadline ?? null,
 					draft.deferUntil ?? null,
-					draft.provenance?.source ?? "human",
-					draft.provenance?.sourceId ?? null,
-					draft.provenance?.sourceUrl ?? null,
-					draft.provenance?.discoveredAt ?? now,
-					draft.provenance?.discoveredBy ?? null,
+					...provenanceValues(draft.provenance, now),
 					draft.confidence ?? null,
 					draft.assignee ?? null,
 					draft.parentTaskId ?? null,
@@ -189,43 +257,7 @@ export namespace Planner {
 			);
 			Oplog.afterWrite(db, "tasks", "insert", id);
 
-			return {
-				id,
-				shortId,
-				title: draft.title,
-				description: draft.description,
-				kind: draft.kind ?? "task",
-				state: draft.state ?? "inbox",
-				priority: draft.priority ?? "normal",
-				scopeUri,
-				scopeRefs: draft.scopeRefs,
-				deadline: draft.deadline,
-				deferUntil: draft.deferUntil,
-				completedAt: completedAt ?? undefined,
-				provenance: {
-					source: draft.provenance?.source ?? "human",
-					sourceId: draft.provenance?.sourceId,
-					sourceUrl: draft.provenance?.sourceUrl,
-					discoveredAt: draft.provenance?.discoveredAt ?? now,
-					discoveredBy: draft.provenance?.discoveredBy,
-				},
-				confidence: draft.confidence,
-				assignee: draft.assignee,
-				parentTaskId: draft.parentTaskId,
-				projectId: draft.projectId,
-				needsReview: draft.needsReview ?? false,
-				reviewedAt: undefined,
-				reviewedBy: undefined,
-				verification: draft.verification
-					? { status: "pending" as const, ...draft.verification }
-					: undefined,
-				tags: draft.tags ?? [],
-				context: draft.context,
-				updatedBy: Runtime.actor(),
-				version: 1,
-				createdAt: now,
-				updatedAt: now,
-			};
+			return taskFromDraft(draft, scopeUri, { id, shortId, now, completedAt });
 		});
 
 		// Emit event for SSE subscribers
@@ -390,18 +422,13 @@ export namespace Planner {
 			];
 			const params: (string | number | null)[] = [now, Runtime.actor()];
 
-			if (updates.title !== undefined) {
-				sets.push("title = ?");
-				params.push(updates.title);
+			for (const [column, value] of taskFieldUpdates(updates)) {
+				if (value !== undefined) {
+					sets.push(`${column} = ?`);
+					params.push(value);
+				}
 			}
-			if (updates.description !== undefined) {
-				sets.push("description = ?");
-				params.push(updates.description);
-			}
-			if (updates.kind !== undefined) {
-				sets.push("kind = ?");
-				params.push(updates.kind);
-			}
+
 			if (updates.state !== undefined) {
 				sets.push("state = ?");
 				params.push(updates.state);
@@ -410,10 +437,7 @@ export namespace Planner {
 				);
 				params.push(updates.state, now);
 			}
-			if (updates.priority !== undefined) {
-				sets.push("priority = ?");
-				params.push(updates.priority);
-			}
+
 			if (updates.scopeUri !== undefined) {
 				sets.push("scope_uri = ?");
 				params.push(scopeUri ?? null);
@@ -426,38 +450,12 @@ export namespace Planner {
 				sets.push("scope_refs = ?");
 				params.push(JSON.stringify(updates.scopeRefs));
 			}
-			if (updates.deadline !== undefined) {
-				sets.push("deadline = ?");
-				params.push(updates.deadline);
-			}
-			if (updates.deferUntil !== undefined) {
-				sets.push("defer_until = ?");
-				params.push(updates.deferUntil);
-			}
+
 			if (updates.tags !== undefined) {
 				sets.push("tags = ?");
 				params.push(JSON.stringify(updates.tags));
 			}
-			if (updates.context !== undefined) {
-				sets.push("context = ?");
-				params.push(updates.context);
-			}
-			if (updates.confidence !== undefined) {
-				sets.push("confidence = ?");
-				params.push(updates.confidence);
-			}
-			if (updates.assignee !== undefined) {
-				sets.push("assignee = ?");
-				params.push(updates.assignee);
-			}
-			if (updates.parentTaskId !== undefined) {
-				sets.push("parent_task_id = ?");
-				params.push(updates.parentTaskId);
-			}
-			if (updates.projectId !== undefined) {
-				sets.push("project_id = ?");
-				params.push(updates.projectId);
-			}
+
 			if (updates.needsReview !== undefined) {
 				sets.push("needs_review = ?");
 				params.push(updates.needsReview ? 1 : 0);
