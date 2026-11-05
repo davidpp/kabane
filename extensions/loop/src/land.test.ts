@@ -338,6 +338,23 @@ describe("Land.land onto the base", () => {
 		expect(ghCalls).toEqual([]);
 	});
 
+	it("opens no pull request when the run is stopped while gh looks one up", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent));
+		ctx.deps.gh = async (cwd, args) => {
+			const said = await gh(cwd, args);
+			if (args[1] === "view") ctx.stopping.abort();
+			return said;
+		};
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain("before a pull request was opened");
+		expect(ghCalls).toEqual([["pr", "view", BRANCH, "--json", "url,state"]]);
+		expect(ctx.run.pr).toBeUndefined();
+	});
+
 	it("does not land a run that started from a detached HEAD", async () => {
 		const parent = await parentIssue();
 		const run = await completedRun(parent);

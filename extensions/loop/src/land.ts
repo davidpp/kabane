@@ -312,6 +312,14 @@ export namespace Land {
 			);
 		const open = await openPr(run, dir, branch);
 		if (open !== undefined) return ok(open);
+		// A stop that came while gh looked the pull request up opens none.
+		if (stopping(ctx))
+			return err(
+				notLanded(
+					`the run was stopped once branch ${branch} was pushed, before a pull request was opened`,
+					keep,
+				),
+			);
 		const created = await run(dir, [
 			"pr",
 			"create",
