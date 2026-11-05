@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import { configPath } from "./config";
 import { Extensions } from "./extensions";
 
@@ -54,5 +55,31 @@ describe("Extensions.enabled", () => {
 		} finally {
 			stderr.mockRestore();
 		}
+	});
+});
+
+describe("Extensions.namespaces", () => {
+	it("is every shipped extension's settings, enabled or not", async () => {
+		const found = await Extensions.namespaces();
+		expect(found.ok && found.value.map((n) => n.name)).toEqual(["loop"]);
+	});
+
+	it("refuses a namespace that would take a device key or the scopes block", () => {
+		const settings = z.object({}).strict();
+		for (const name of ["sync", "db", "actor", "deviceId", "scopes"]) {
+			const refused = Extensions.namespacesOf([{ name, settings }]);
+			expect(!refused.ok && refused.error.message).toContain(
+				`would take the device config key "${name}"`,
+			);
+		}
+	});
+
+	it("refuses a schema an empty layer does not satisfy", () => {
+		const refused = Extensions.namespacesOf([
+			{ name: "strict", settings: z.object({ needed: z.string() }) },
+		]);
+		expect(!refused.ok && refused.error.message).toContain(
+			"need a default or optional for every key",
+		);
 	});
 });

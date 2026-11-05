@@ -48,6 +48,18 @@ it("manages device config through the real stdio MCP server", async () => {
 		expect(result.data.isError ?? false).toBe(error);
 		return result.data.content.map((part) => part.text).join("\n");
 	};
+	// kabane_configGet and `config get` with a key: the effective value beside its leaves' layers.
+	const valueOf = async (key: string): Promise<unknown> => {
+		const got = z
+			.object({
+				key: z.literal(key),
+				value: z.unknown(),
+				leaves: z.record(z.unknown()),
+			})
+			.parse(JSON.parse(await call("kabane_configGet", { key })));
+		expect(await cli("config", "get", key)).toEqual(got);
+		return got.value;
+	};
 	try {
 		await cli(
 			"init",
@@ -101,7 +113,7 @@ it("manages device config through the real stdio MCP server", async () => {
 		);
 		expect(flags("protected")).toContain("sync.token");
 		expect(flags("protected")).toContain("db.path");
-		expect(await call("kabane_configGet", { key: "timezone" })).toBe("null");
+		expect(await valueOf("timezone")).toBeNull();
 		for (const [key, value, expected] of [
 			["timezone", "UTC", "UTC"],
 			["sync.enabled", "true", true],
@@ -117,13 +129,34 @@ it("manages device config through the real stdio MCP server", async () => {
 				restartRequired: true,
 			});
 			expect(changed.note).toContain("Restart running board and MCP");
-			const got = await call("kabane_configGet", { key });
-			expect(typeof expected === "string" ? got : JSON.parse(got)).toEqual(
-				expected,
-			);
-			expect(await cli("config", "get", key)).toEqual(expected);
+			expect(await valueOf(key)).toEqual(expected);
 		}
 		expect(existsSync(join(dbDir, "config.json"))).toBe(false);
+		// A namespace key takes a layer; the server started outside any project has no scope.
+		expect(
+			JSON.parse(
+				await call("kabane_configSet", {
+					key: "loop.model",
+					value: "haiku",
+					layer: "user",
+				}),
+			),
+		).toMatchObject({ key: "loop.model", layer: "user", value: "haiku" });
+		expect(JSON.parse(read()).loop).toEqual({ model: "haiku" });
+		expect(
+			await call(
+				"kabane_configSet",
+				{ key: "loop.model", value: "opus", layer: "scope" },
+				true,
+			),
+		).toContain("No scope here");
+		expect(
+			await call(
+				"kabane_configSet",
+				{ key: "timezone", value: "UTC", layer: "project" },
+				true,
+			),
+		).toContain("it has no project layer");
 		const typo = JSON.parse(
 			await call("kabane_configSet", { key: "extensions", value: "loop,lopo" }),
 		);
@@ -145,7 +178,7 @@ it("manages device config through the real stdio MCP server", async () => {
 			expect(
 				JSON.parse(await call("kabane_configSet", { key, value })),
 			).toMatchObject({ key, value: "<set>" });
-			expect(await call("kabane_configGet", { key })).toBe("<set>");
+			expect(await valueOf(key)).toBe("<set>");
 		}
 		expect(JSON.parse(read()).sync).toMatchObject({
 			token: secret,
@@ -161,7 +194,7 @@ it("manages device config through the real stdio MCP server", async () => {
 			expect(text).not.toContain(secret);
 			expect(text).not.toContain(accessSecret);
 		}
-		expect(JSON.parse(reads[1] ?? "")).toMatchObject({
+		expect(JSON.parse(reads[1] ?? "").value).toMatchObject({
 			token: "<set>",
 			headers: "<set>",
 			enabled: true,
@@ -197,15 +230,11 @@ it("manages device config through the real stdio MCP server", async () => {
 				JSON.parse(await call("kabane_configSet", { key, unset: true })),
 			).toMatchObject({ key, unset: true, restartRequired: true });
 		}
-		expect(await call("kabane_configGet", { key: "sync.enabled" })).toBe(
-			"false",
-		);
-		expect(await call("kabane_configGet", { key: "extensions" })).toBe("null");
+		expect(await valueOf("sync.enabled")).toBe(false);
+		expect(await valueOf("extensions")).toBeNull();
 		// Long-lived MCP reads pick up later CLI edits instead of a startup snapshot.
 		await cli("config", "set", "timezone", "America/Toronto");
-		expect(await call("kabane_configGet", { key: "timezone" })).toBe(
-			"America/Toronto",
-		);
+		expect(await valueOf("timezone")).toBe("America/Toronto");
 	} finally {
 		await client.close();
 		rmSync(home, { recursive: true, force: true });

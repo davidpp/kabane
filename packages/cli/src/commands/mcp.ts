@@ -1,6 +1,7 @@
 import { KABANE_TOOLS, serveStdio } from "@cabane/core";
 import { failure, success } from "@cabane/extension";
 import { version } from "../../package.json";
+import { ConfigSettings } from "../config-settings";
 import { configTools } from "../config-tools";
 import { type Command, openContext, resolveScopeUri } from "../context";
 import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
@@ -27,15 +28,22 @@ export const mcp: Command = {
 		if (args.positionals[0] === "install") return mcpInstall(args);
 		const ctx = await openContext(bare.home, bare.cwd, args);
 		if (!ctx.ok) return failure(ctx.error);
+		const defaultScope = await resolveScopeUri(args, ctx.value);
+		const where = await ConfigSettings.locate(
+			bare.home,
+			bare.cwd,
+			defaultScope,
+		);
+		if (!where.ok) return failure(where.error);
 		await serveStdio(
 			{
 				basePath: ctx.value.store,
 				actor: ctx.value.actor,
-				defaultScope: await resolveScopeUri(args, ctx.value),
+				defaultScope,
 				scopeRequired: false,
 			},
 			{ name: "kabane", version },
-			[...KABANE_TOOLS, ...configTools(bare.home)],
+			[...KABANE_TOOLS, ...configTools(bare.home, where.value)],
 		);
 		return success({ served: true }, "");
 	},
