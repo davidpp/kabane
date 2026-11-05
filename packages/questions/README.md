@@ -20,7 +20,7 @@ CLI and the hub register it; a host that does not has no decisions, which is not
   grill, the copilot) sets `relayed: true`: the answer is credited to the human (`answered_by`)
   and the write to the agent (`updated_by`). It is refused when the connection knows no human:
   `kabane mcp` relays for the device's configured actor, whatever `--as` says, and the hub for
-  the Access identity when that is a human.
+  the Access identity when Access authenticated a human, never for a service token.
 
 Closing an issue (`done` or `cancelled`, from any surface) withdraws its open questions with
 the reasoning "issue closed", in the same transaction. Reopening it restores none of them.

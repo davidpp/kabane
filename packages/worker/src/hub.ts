@@ -42,7 +42,12 @@ import {
 import { questionsModule } from "@cabane/questions";
 import { DoDb } from "./db-do";
 import { LogTransport } from "./log-transport";
-import { ACTOR_HEADER, HUB_DEVICE_ID, SHARED_LOG } from "./names";
+import {
+	ACTOR_HEADER,
+	HUB_DEVICE_ID,
+	PRINCIPAL_HEADER,
+	SHARED_LOG,
+} from "./names";
 
 /** The `basePath` the core is handed. Opaque to the DO adapter. */
 export const HUB_BASE = "hub";
@@ -121,6 +126,9 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 		const toolCtx: ToolContext = {
 			basePath: HUB_BASE,
 			actor,
+			// Only a human Access authenticated is credited with relayed replies.
+			humanActor:
+				request.headers.get(PRINCIPAL_HEADER) === "human" ? actor : undefined,
 			scopeRequired: true,
 		};
 		return actorStore.run(actor, () =>

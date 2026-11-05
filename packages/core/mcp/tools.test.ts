@@ -485,20 +485,18 @@ describe("humanActorOf", () => {
 		scopeRequired: false,
 	});
 
-	it("credits the configured human before an --as agent, and a human actor as its own", () => {
+	it("credits the human the host names, whoever the actor is", () => {
 		expect(
 			humanActorOf(
 				ctx("cabane://actor/agent/claude", "cabane://actor/human/david"),
 			),
 		).toBe("cabane://actor/human/david");
-		expect(humanActorOf(ctx("cabane://actor/human/david"))).toBe(
-			"cabane://actor/human/david",
-		);
 	});
 
-	it("invents no human for an agent, an unknown actor or an agent configured as the device's", () => {
+	it("never takes the actor for the human, nor an agent the host configured", () => {
+		// A human-looking actor may be a service token's mapping: only the host knows.
+		expect(humanActorOf(ctx("cabane://actor/human/david"))).toBeUndefined();
 		expect(humanActorOf(ctx("cabane://actor/agent/claude"))).toBeUndefined();
-		expect(humanActorOf(ctx("cabane://actor/unknown"))).toBeUndefined();
 		expect(
 			humanActorOf(
 				ctx("cabane://actor/agent/claude", "cabane://actor/agent/hermes"),

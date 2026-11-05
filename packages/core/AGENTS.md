@@ -124,11 +124,12 @@ refuses duplicate tool names before serving. The shared list exposes only replic
 no session tools, because sessions do not sync and the hub would have nothing to
 answer with. A `ToolContext` carries `basePath`, the `actor`, an optional
 `defaultScope`, and `scopeRequired`: a device defaults scope from its directory, the
-hub demands it and points at `kabane_scopeList`. It may also carry `humanActor`, the
-device's configured actor before any `--as`, which `kabane mcp` passes; a tool that
-credits the human with a reply an agent relays reads `humanActorOf(ctx)`, which takes a
-human `actor` (the hub's Access identity) as its own and never names an agent or an
-unknown actor.
+hub demands it and points at `kabane_scopeList`. It may also carry `humanActor`, the human
+the connection relays for: `kabane mcp` passes the device's configured actor before any
+`--as`, and the hub passes its Access identity only when Access authenticated a human,
+never a service token. A tool that credits the human with a reply an agent relays reads
+`humanActorOf(ctx)`, which returns `humanActor` only when it is a
+`cabane://actor/human/` URI and never infers one from `actor`.
 
 Modules can contribute `contextSections`, keyed as `<module>.<key>` and anchored
 `after` a core section. Full and concise briefs include these by default. Concise

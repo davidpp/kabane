@@ -44,9 +44,10 @@ export type ToolContext = {
 	/** Actor URI stamped as author on comments, work logs and context refs. */
 	actor: string;
 	/**
-	 * The human this connection relays for: the device's configured human
-	 * actor, before any `--as`. Read it through `humanActorOf`, which also
-	 * takes a human `actor` (the hub's Access identity) as its own.
+	 * The human this connection relays for, set by the host that knows one:
+	 * the device's configured actor before any `--as`, or the hub's Access
+	 * identity when Access authenticated a human (never a service token). Read
+	 * it through `humanActorOf`; `actor` alone is never taken for one.
 	 */
 	humanActor?: string;
 	/** Applied when a write omits `scopeUri`. */
@@ -76,14 +77,13 @@ export const authorTypeOf = (actor: string): "human" | "ai" =>
 const HUMAN_ACTOR_PREFIX = "cabane://actor/human/";
 
 /**
- * The human actor a connection can credit with a reply it relays: `humanActor`,
- * else `actor` itself, whichever is a `cabane://actor/human/` URI first; none
- * when neither is, so an agent or an unknown actor is never passed off as one.
+ * The human actor a connection can credit with a reply it relays: the host's
+ * `humanActor` when it is a `cabane://actor/human/` URI, else none, so a
+ * configured agent is never passed off as the human. `actor` is not consulted:
+ * its URI alone does not say whether a human or a service authenticated.
  */
 export const humanActorOf = (ctx: ToolContext): string | undefined =>
-	[ctx.humanActor, ctx.actor].find((actor) =>
-		actor?.startsWith(HUMAN_ACTOR_PREFIX),
-	);
+	ctx.humanActor?.startsWith(HUMAN_ACTOR_PREFIX) ? ctx.humanActor : undefined;
 
 /** A tool with its own input shape, widened to the `ToolDef` a list of tools holds. */
 export const define = <Shape extends z.ZodRawShape>(
