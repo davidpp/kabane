@@ -5,7 +5,6 @@
 // back into the port's small union. Nothing here parses a tool RESULT for meaning: the adapters
 // disagree on where those land, so a write is recognised by the tool call's title and the board
 // reloads. What a call was given and gave back is only carried, as text, for its row opened.
-import { resolve } from "node:path";
 import { BoardContext } from "@cabane/board/context";
 import type {
 	Copilot,
@@ -15,6 +14,7 @@ import type {
 	PlanEntry,
 } from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
+import { Self } from "@cabane/core/self";
 import { AcpClient } from "./client";
 import type { Harnesses } from "./harnesses";
 import { CopilotInstructions } from "./instructions";
@@ -31,7 +31,7 @@ export namespace BoardCopilot {
 		// writes take the scope of `scopeDir` the way any CLI command there would.
 		scopeUri?: string;
 		// The `kabane` executable the MCP server runs as, and the one the instructions tell the
-		// copilot's shell to run. Defaults to this process's own entry script, which is what
+		// copilot's shell to run. Defaults to this process's own executable, which is what
 		// `kabane board` is.
 		kabaneBin?: string;
 		// The board's KABANE_HOME, set on the MCP server explicitly: Codex starts a stdio server
@@ -101,11 +101,8 @@ export namespace BoardCopilot {
 	};
 
 	// The executable both the MCP server and the copilot's shell run kabane as.
-	const kabaneBin = (options: Options): string => {
-		if (options.kabaneBin) return options.kabaneBin;
-		const entry = process.argv[1];
-		return entry ? resolve(entry) : "kabane";
-	};
+	const kabaneBin = (options: Options): string =>
+		options.kabaneBin ?? Self.executable();
 
 	// The session's only tool server. `--as` is what stamps every write it makes with this
 	// session's actor.

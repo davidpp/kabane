@@ -1,8 +1,8 @@
 // The loop as an official extension: one `kabane loop` command whose first positional picks the
 // entry point. The CLI has already wired the runtime (`openContext`) by the time `run` is called.
-import { resolve } from "node:path";
 import { Harnesses } from "@cabane/acp";
 import { err, ok, type Result } from "@cabane/core";
+import { Self } from "@cabane/core/self";
 import {
 	type Extension,
 	failure,
@@ -32,11 +32,8 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop land <runId>              (pushes a completed run's branch and opens its pull request)
        kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)`;
 
-// The executable the runner and each session's MCP server run as: this process's own entry.
-const kabaneBin = (): string => {
-	const entry = process.argv[1];
-	return entry ? resolve(entry) : "kabane";
-};
+// The executable the runner and each session's MCP server run as: this process's own.
+const kabaneBin = Self.executable;
 
 const number = (args: ParsedArgs, flag: string): number | undefined => {
 	const value = flagString(args, flag);

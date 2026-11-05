@@ -1,3 +1,4 @@
+import { Self } from "@cabane/core/self";
 import {
 	flagBool,
 	flagList,
@@ -51,14 +52,12 @@ export namespace McpInstall {
 	};
 
 	/**
-	 * Absolute bun, then this very script. A harness spawns its servers with
-	 * its own PATH, which often lacks ~/.bun/bin, and the bin's
+	 * This kabane with nothing looked up on PATH: absolute bun and this very
+	 * script, or a compiled binary alone. A harness spawns its servers with its
+	 * own PATH, which often lacks ~/.bun/bin, and the bin's
 	 * `#!/usr/bin/env bun` shebang would need bun on that PATH too.
 	 */
-	export const launcher = (): McpClients.Launch => ({
-		command: process.execPath,
-		args: [Bun.main],
-	});
+	export const launcher = (): McpClients.Launch => Self.launch();
 
 	/** Whether `KABANE_HARNESSES` narrows detection, so finding none is a setting, not a fact. */
 	export const narrowed = (env: NodeJS.ProcessEnv = process.env): boolean =>

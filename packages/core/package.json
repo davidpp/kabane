@@ -11,6 +11,7 @@
 		".": "./index.ts",
 		"./schemas": "./schemas/index.ts",
 		"./scope": "./scope/detect.ts",
+		"./self": "./self.ts",
 		"./git-fixture": "./scope/git-fixture.ts",
 		"./testing": "./testing.ts"
 	},

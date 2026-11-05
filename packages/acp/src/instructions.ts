@@ -5,8 +5,8 @@
 //
 // BLOCK is who the copilot is; SKILLS holds procedures; setup supplies this device's context.
 // They are joined by systemPrompt, because procedures grow without diluting the identity paragraph.
-import { fileURLToPath } from "node:url";
 import type { CopilotShortcut } from "@cabane/board/ports";
+import { Self } from "@cabane/core/self";
 import { Harnesses } from "./harnesses";
 
 export namespace CopilotInstructions {
@@ -34,11 +34,10 @@ Every prompt is preceded by a fenced code block tagged kabane-board holding what
 
 Finish each turn with a summary of at most three lines saying what you changed.`;
 
-	// The dispatch template ships beside this package and is read in place, so the path is resolved
-	// from this module rather than from the board's cwd, which is the project the skill is for.
-	export const DISPATCH_TEMPLATE = fileURLToPath(
-		new URL("../templates/dispatch", import.meta.url),
-	);
+	// The dispatch template ships beside this package, or beside a compiled binary, and is read in
+	// place, so the path is resolved from this module rather than from the board's cwd, which is the
+	// project the skill is for.
+	export const DISPATCH_TEMPLATE = Self.templates("dispatch", import.meta.url);
 
 	// Procedures carry the boundaries the tool schemas cannot express: how to link external issues,
 	// when a change waits for a yes, and where the dispatch skill may write files. A harness's own
