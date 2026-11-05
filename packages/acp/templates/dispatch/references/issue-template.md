@@ -25,7 +25,8 @@ widening the change in good faith.
 
 **Decisions.** The decisions this issue relies on, when they are recorded in the description.
 If they are recorded elsewhere, attach them with `kabane_contextAdd` instead of copying them
-here.
+here. A decision still open is not written here as options: once the issue is filed, ask it on
+the issue with `kabane_ask`.
 
 **Verify.** The concrete steps and what to observe, under the testing constraints in
 {{INSTRUCTIONS_FILE}}. List the checks nothing can script (keys, GUIs, a deploy) as manual
