@@ -171,6 +171,9 @@ export const withDb = <T>(
  * Run `fn` inside one write transaction, so a multi-step apply either lands
  * whole or not at all. `fn` may await between statements — this is why it is
  * BEGIN/COMMIT by hand rather than `db.transaction`, which is synchronous.
+ * A synchronous `fn` commits before control returns to the event loop: a
+ * write lock held across an await leaves any other connection in the process
+ * spinning in SQLite's busy handler on the one thread that would release it.
  * A provider that cannot issue BEGIN (Durable Object SQLite) supplies its own
  * `atomic`.
  */
@@ -179,15 +182,23 @@ export const atomic = <T>(
 	fn: (db: Db) => T | Promise<T>,
 ): Promise<Result<T>> => {
 	if (ports.provider.atomic) return ports.provider.atomic(basePath, fn);
-	return ports.provider.withDb(basePath, async (db) => {
+	return ports.provider.withDb(basePath, (db) => {
 		db.run("BEGIN IMMEDIATE");
-		try {
-			const value = await fn(db);
+		const committed = (value: T): T => {
 			db.run("COMMIT");
 			return value;
-		} catch (e) {
+		};
+		const rolledBack = (e: unknown): never => {
 			db.run("ROLLBACK");
 			throw e;
+		};
+		try {
+			const value = fn(db);
+			return value instanceof Promise
+				? value.then(committed).catch(rolledBack)
+				: committed(value);
+		} catch (e) {
+			return rolledBack(e);
 		}
 	});
 };
