@@ -4,8 +4,9 @@
 
 import type { Db } from "../db/port";
 import { Events, PLANNER_EVENTS } from "../events";
+import { Modules } from "../module";
 import { err, ok, type Result } from "../result";
-import { Runtime, withDb } from "../runtime";
+import { atomic, Runtime, withDb } from "../runtime";
 import {
 	type Task,
 	type TaskDraft,
@@ -398,7 +399,11 @@ export namespace Planner {
 		});
 	};
 
-	/** Update through the caller's transaction; emit TASK_UPDATED only after it commits. */
+	/**
+	 * Update through the caller's transaction; emit TASK_UPDATED only after it
+	 * commits. A state change runs every module's `onTaskStateChange` here, so
+	 * an `err` leaves a partial write behind unless the caller rolls it back.
+	 */
 	export const updateTaskIn = (
 		db: Db,
 		id: string,
@@ -471,6 +476,14 @@ export namespace Planner {
 
 		params.push(id);
 
+		const from =
+			updates.state === undefined
+				? undefined
+				: db
+						.query<{ state: Task["state"] }>(
+							`SELECT state FROM ${TABLES.tasks} WHERE id = ?`,
+						)
+						.get(id)?.state;
 		db.run(
 			`UPDATE ${TABLES.tasks} SET ${sets.join(", ")} WHERE id = ?`,
 			params,
@@ -481,7 +494,13 @@ export namespace Planner {
 				`SELECT * FROM ${TABLES.tasks} WHERE id = ?`,
 			)
 			.get(id);
-		return ok(row ? rowToTask(row) : null);
+		if (!row) return ok(null);
+		const task = rowToTask(row);
+		if (from !== undefined && from !== task.state) {
+			const hooked = Modules.taskStateChanged(db, task, from, task.state);
+			if (!hooked.ok) return hooked;
+		}
+		return ok(task);
 	};
 
 	export const updateTask = async (
@@ -489,11 +508,12 @@ export namespace Planner {
 		id: string,
 		updates: TaskUpdate,
 	): Promise<Result<Task | null>> => {
-		const written = await withDb(basePath, (db) =>
-			updateTaskIn(db, id, updates),
-		);
-		if (!written.ok) return written;
-		const result = written.value;
+		// One transaction, so a module hook's err rolls the state change back.
+		const result = await atomic(basePath, (db) => {
+			const updated = updateTaskIn(db, id, updates);
+			if (!updated.ok) throw updated.error;
+			return updated.value;
+		});
 		if (result.ok && result.value) {
 			await Events.emit(PLANNER_EVENTS.TASK_UPDATED, result.value);
 		}

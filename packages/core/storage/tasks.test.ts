@@ -179,3 +179,29 @@ describe("updateTaskIn", () => {
 		expect(stored.value).toEqual(result.value);
 	});
 });
+
+describe("updateTask under concurrency", () => {
+	it("lets overlapping updates in one process commit without waiting out the busy timeout", async () => {
+		const base = await createDevice("concurrent");
+		const added = await Promise.all(
+			["one", "two", "three"].map((title) => Planner.addTask(base, { title })),
+		);
+		const ids = added.map((task) => {
+			if (!task.ok) throw task.error;
+			return task.value.id;
+		});
+		const started = performance.now();
+		const updated = await Promise.all(
+			ids.map((id) => Planner.updateTask(base, id, { state: "done" })),
+		);
+		// A transaction held across an await would park every other connection
+		// in the process in SQLite's 5s busy handler, on the one thread that has
+		// to commit it.
+		expect(performance.now() - started).toBeLessThan(1000);
+		expect(updated.map((task) => task.ok && task.value?.state)).toEqual([
+			"done",
+			"done",
+			"done",
+		]);
+	}, 15000);
+});

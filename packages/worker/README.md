@@ -29,7 +29,7 @@ someone the Worker knows (`src/access.ts`):
 
 | Assertion carries | Admitted when | Actor stamped on writes |
 |---|---|---|
-| `common_name` (a service token) | its client id is a key in `SERVICE_ACTORS` | the mapped URI, e.g. `cabane://actor/agent/hermes` |
+| `common_name` (a service token) | its client id is a key in `SERVICE_ACTORS`, and no entry maps to a human actor | the mapped URI, e.g. `cabane://actor/agent/hermes` |
 | `email` (a human) | it equals `HUMAN_EMAIL` | `cabane://actor/human/<local part>` |
 
 Anything else is `401`, before any stub is obtained. Empty `HUMAN_EMAIL` and

@@ -16,7 +16,12 @@ import type { Task, TaskComment, TaskWorkLog } from "../schemas";
 import { Planner } from "../storage";
 import { configureTestRuntime } from "../testing";
 import { createMcpServer } from "./server";
-import { KABANE_TOOLS, type ToolContext, type ToolDef } from "./tools";
+import {
+	humanActorOf,
+	KABANE_TOOLS,
+	type ToolContext,
+	type ToolDef,
+} from "./tools";
 
 const unwrap = <T>(result: Result<T>): T => {
 	if (!result.ok) throw result.error;
@@ -469,6 +474,34 @@ describe("cabane tools", () => {
 
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.error.message).toContain("never-linked");
+	});
+});
+
+describe("humanActorOf", () => {
+	const ctx = (actor: string, humanActor?: string): ToolContext => ({
+		basePath: "unused",
+		actor,
+		humanActor,
+		scopeRequired: false,
+	});
+
+	it("credits the human the host names, whoever the actor is", () => {
+		expect(
+			humanActorOf(
+				ctx("cabane://actor/agent/claude", "cabane://actor/human/david"),
+			),
+		).toBe("cabane://actor/human/david");
+	});
+
+	it("never takes the actor for the human, nor an agent the host configured", () => {
+		// A human-looking actor may be a service token's mapping: only the host knows.
+		expect(humanActorOf(ctx("cabane://actor/human/david"))).toBeUndefined();
+		expect(humanActorOf(ctx("cabane://actor/agent/claude"))).toBeUndefined();
+		expect(
+			humanActorOf(
+				ctx("cabane://actor/agent/claude", "cabane://actor/agent/hermes"),
+			),
+		).toBeUndefined();
 	});
 });
 

@@ -85,7 +85,61 @@ const selectQuestions = (
 		}));
 };
 
+/** Answer or withdraw one question, and capture it. */
+const close = (
+	db: Db,
+	id: string,
+	closing: {
+		status: "answered" | "withdrawn";
+		answer: string | null;
+		reasoning: string | null;
+		by: string;
+	},
+): void => {
+	const now = new Date().toISOString();
+	db.run(
+		`UPDATE ${questionsTable()} SET status = ?, answer = ?, reasoning = ?, answered_by = ?, answered_at = ?, updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?`,
+		[
+			closing.status,
+			closing.answer,
+			closing.reasoning,
+			closing.by,
+			now,
+			now,
+			Runtime.actor(),
+			id,
+		],
+	);
+	Oplog.afterWrite(db, QUESTIONS_TABLE, "update", id);
+};
+
 export namespace Questions {
+	/** The reason recorded on each question a closed issue withdraws. */
+	export const CLOSED_REASON = "issue closed";
+
+	/**
+	 * The module's `onTaskStateChange`: closing an issue (done or cancelled)
+	 * withdraws its open questions, in the closing transaction. Reopening
+	 * restores none of them.
+	 */
+	export const withdrawOnClose = (db: Db, task: Task): Result<void> => {
+		if (task.state !== "done" && task.state !== "cancelled")
+			return ok(undefined);
+		const open = db
+			.query<{ id: string }>(
+				`SELECT id FROM ${questionsTable()} WHERE task_id = ? AND status = 'open' ORDER BY id`,
+			)
+			.all(task.id);
+		for (const { id } of open)
+			close(db, id, {
+				status: "withdrawn",
+				answer: null,
+				reasoning: CLOSED_REASON,
+				by: Runtime.actor(),
+			});
+		return ok(undefined);
+	};
+
 	export const list = async (
 		basePath: string,
 		filter: { id?: string; scopeUri?: string; status?: "open" | "all" } = {},
@@ -211,21 +265,12 @@ export namespace Questions {
 						parsed.data.answer ?? "",
 					);
 			if (!answer.ok) throw answer.error;
-			const now = new Date().toISOString();
-			db.run(
-				`UPDATE ${questionsTable()} SET status = ?, answer = ?, reasoning = ?, answered_by = ?, answered_at = ?, updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?`,
-				[
-					parsed.data.withdraw ? "withdrawn" : "answered",
-					answer.value,
-					parsed.data.reasoning ?? null,
-					actor,
-					now,
-					now,
-					Runtime.actor(),
-					question.id,
-				],
-			);
-			Oplog.afterWrite(db, QUESTIONS_TABLE, "update", question.id);
+			close(db, question.id, {
+				status: parsed.data.withdraw ? "withdrawn" : "answered",
+				answer: answer.value,
+				reasoning: parsed.data.reasoning ?? null,
+				by: actor,
+			});
 			let changedTask: Task | null = null;
 			const open = db
 				.query<{ id: string }>(

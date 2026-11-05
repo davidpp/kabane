@@ -22,7 +22,7 @@ import type { Result } from "@cabane/core";
 import { err, ok } from "@cabane/core";
 import { Access, type Principal } from "./access";
 import { Auth } from "./auth";
-import { ACTOR_HEADER, HUB_NAME, SHARED_LOG } from "./names";
+import { ACTOR_HEADER, HUB_NAME, PRINCIPAL_HEADER, SHARED_LOG } from "./names";
 import { PullRequestSchema, PushRequestSchema } from "./wire";
 
 const fail = (status: number, message: string): Response =>
@@ -66,8 +66,8 @@ const serveLog = async (
 };
 
 /**
- * Forward to the hub with the verified actor. The header is SET, not appended:
- * whatever a client put there is discarded.
+ * Forward to the hub with the verified actor and principal kind. The headers
+ * are SET, not appended: whatever a client put there is discarded.
  */
 const serveMcp = async (
 	request: Request,
@@ -77,6 +77,7 @@ const serveMcp = async (
 	if (request.method !== "POST") return fail(405, "method not allowed");
 	const headers = new Headers(request.headers);
 	headers.set(ACTOR_HEADER, principal.actor);
+	headers.set(PRINCIPAL_HEADER, principal.kind);
 	const forwarded = new Request(request, { headers });
 	return env.CABANE_HUB.getByName(HUB_NAME).fetch(forwarded);
 };

@@ -84,6 +84,25 @@ describe("Access.principal", () => {
 		expect(p.ok).toBe(false);
 		if (!p.ok) expect(p.error.message).toContain("SERVICE_ACTORS");
 	});
+
+	it("refuses SERVICE_ACTORS mapping a service to a human actor, which could relay answers as the human", () => {
+		const p = Access.principal(
+			app({ common_name: "hermes-client-id.access" }),
+			{
+				...ENV,
+				SERVICE_ACTORS: JSON.stringify({
+					"hermes-client-id.access": "cabane://actor/agent/hermes",
+					"spoof-client-id.access": "cabane://actor/human/david",
+				}),
+			},
+		);
+		expect(p).toEqual({
+			ok: false,
+			error: new Error(
+				'SERVICE_ACTORS maps service "spoof-client-id.access" to the human actor cabane://actor/human/david; map a service token to an agent actor (cabane://actor/agent/<name>)',
+			),
+		});
+	});
 });
 
 describe("Access.authenticate (dev verifier)", () => {

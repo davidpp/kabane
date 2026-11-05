@@ -25,6 +25,7 @@ import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
 import { physicalTable } from "../db/tables";
 import type { KabaneModule } from "../module";
+import { err, ok } from "../result";
 import { Runtime, withDb as runWithDb } from "../runtime";
 import { TABLES } from "../storage/helpers";
 import { Planner } from "../storage/index";
@@ -497,6 +498,116 @@ describe("capturing a module table", () => {
 			undefined,
 			{ name: "notes", schema: 1 },
 		]);
+	});
+});
+
+// ============================================================
+// Task-state hook
+// ============================================================
+
+/** Notes whose hook records every state change and leaves a captured note of it. */
+const hooked = (calls: string[], refusal?: string): KabaneModule => ({
+	...notes(),
+	onTaskStateChange: (db, task, from, to) => {
+		const stored = db
+			.query<{ state: string }, [string]>(
+				`SELECT state FROM ${TABLES.tasks} WHERE id = ?`,
+			)
+			.get(task.id)?.state;
+		calls.push(`${from}->${to} (stored ${stored})`);
+		if (refusal !== undefined) return err(new Error(refusal));
+		const id = ulid();
+		db.run(
+			`INSERT INTO ${notesTable()} (id, task_id, body, updated_at) VALUES (?, ?, ?, ?)`,
+			[id, task.id, `${from}->${to}`, new Date().toISOString()],
+		);
+		Oplog.afterWrite(db, NOTES, "insert", id);
+		return ok(undefined);
+	},
+});
+
+const setState = async (
+	device: Device,
+	id: string,
+	state: "inbox" | "done" | "next",
+) => {
+	register(device.modules);
+	return Planner.updateTask(device.base, id, { state });
+};
+
+const oplogTables = (device: Device): Promise<string[]> =>
+	as(device, (db) =>
+		db
+			.query<{ tbl: string }, []>(
+				`SELECT tbl FROM ${TABLES.sync_oplog} ORDER BY seq`,
+			)
+			.all()
+			.map((row) => row.tbl),
+	);
+
+describe("a module's task-state hook", () => {
+	it("runs in the state change's transaction, only when the state moves, and captures what it writes", async () => {
+		const calls: string[] = [];
+		const alpha = await createDevice("alpha", [hooked(calls)]);
+		const task = await addTask(alpha, "parent");
+		register(alpha.modules);
+		const retitled = await Planner.updateTask(alpha.base, task, {
+			title: "renamed",
+		});
+		if (!retitled.ok) throw retitled.error;
+		const same = await setState(alpha, task, "inbox");
+		if (!same.ok) throw same.error;
+		expect(calls).toEqual([]);
+
+		const closed = await setState(alpha, task, "done");
+		if (!closed.ok) throw closed.error;
+		expect(calls).toEqual(["inbox->done (stored done)"]);
+		expect((await notesOn(alpha)).map((row) => row.body)).toEqual([
+			"inbox->done",
+		]);
+		expect((await oplogTables(alpha)).slice(-2)).toEqual(["tasks", NOTES]);
+	});
+
+	it("rolls the state change and its capture back when it errs", async () => {
+		const calls: string[] = [];
+		const alpha = await createDevice("alpha", [
+			hooked(calls, "the hook refused"),
+		]);
+		const task = await addTask(alpha, "parent");
+		const before = await oplogTables(alpha);
+
+		const closed = await setState(alpha, task, "done");
+		expect(closed.ok).toBe(false);
+		if (!closed.ok) expect(closed.error.message).toBe("the hook refused");
+		expect(calls).toEqual(["inbox->done (stored done)"]);
+		register(alpha.modules);
+		const stored = await Planner.getTask(alpha.base, task);
+		if (!stored.ok) throw stored.error;
+		expect(stored.value?.state).toBe("inbox");
+		expect(await oplogTables(alpha)).toEqual(before);
+	});
+
+	it("is never called when sync applies a state change", async () => {
+		const alphaCalls: string[] = [];
+		const betaCalls: string[] = [];
+		const alpha = await createDevice("alpha", [hooked(alphaCalls)]);
+		const beta = await createDevice("beta", [hooked(betaCalls)]);
+		const task = await addTask(alpha, "shared");
+		await push(alpha);
+		await pull(beta);
+
+		const closed = await setState(alpha, task, "done");
+		if (!closed.ok) throw closed.error;
+		await push(alpha);
+		await pull(beta);
+
+		expect(alphaCalls).toEqual(["inbox->done (stored done)"]);
+		expect(betaCalls).toEqual([]);
+		register(beta.modules);
+		const received = await Planner.getTask(beta.base, task);
+		if (!received.ok) throw received.error;
+		expect(received.value?.state).toBe("done");
+		expect(await notesOn(beta)).toEqual(await notesOn(alpha));
 	});
 });
 

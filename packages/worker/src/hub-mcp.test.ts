@@ -13,7 +13,7 @@
 
 import { env, runDurableObjectAlarm, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { HUB_NAME } from "./names";
+import { ACTOR_HEADER, HUB_NAME, PRINCIPAL_HEADER } from "./names";
 import { HERMES, HUMAN, withAccess } from "./test-access";
 import type { PullPage, PushAck } from "./wire";
 
@@ -184,6 +184,82 @@ describe("hub MCP over Streamable HTTP", () => {
 			state: "next",
 			updatedBy: "cabane://actor/human/david",
 		});
+	});
+
+	it("credits a relayed answer to the Access human, and refuses a service principal relaying", async () => {
+		const created = await callTool(HERMES, "kabane_add", {
+			title: "Hub relay",
+			kind: "issue",
+			state: "next",
+			scopeUri: "questions",
+		});
+		const issue = created.value as TaskLike;
+		await callTool(
+			HERMES,
+			"kabane_ask",
+			{
+				id: issue.id,
+				questions: [{ question: "First?" }, { question: "Second?" }],
+			},
+			true,
+		);
+		const relay = (token: string, ordinal: number) =>
+			callTool(
+				token,
+				"kabane_answer",
+				{
+					question: `${issue.shortId}:${ordinal}`,
+					answer: "yes",
+					relayed: true,
+				},
+				true,
+			);
+
+		const service = await relay(HERMES, 1);
+		expect(service.isError).toBe(true);
+		expect(String(service.value)).toContain(
+			"relayed: true needs the human this connection relays for, and cabane://actor/agent/hermes has none configured",
+		);
+
+		// A human-looking actor the edge did not authenticate as a human, as a
+		// service mapped to one would arrive: the hub credits no one.
+		const spoofed = await env.CABANE_HUB.getByName(HUB_NAME).fetch(
+			new Request("https://cabane.test/mcp", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json, text/event-stream",
+					[ACTOR_HEADER]: "cabane://actor/human/david",
+					[PRINCIPAL_HEADER]: "service",
+				},
+				body: JSON.stringify({
+					jsonrpc: "2.0",
+					id: nextId++,
+					method: "tools/call",
+					params: {
+						name: "kabane_answer",
+						arguments: {
+							question: `${issue.shortId}:1`,
+							answer: "yes",
+							relayed: true,
+						},
+					},
+				}),
+			}),
+		);
+		const refused = (await spoofed.json()) as JsonRpc;
+		expect(refused.result?.isError).toBe(true);
+
+		expect((await relay(HUMAN, 1)).isError).toBe(false);
+		const decisions = await callTool(
+			HUMAN,
+			"kabane_questions",
+			{ id: issue.id, status: "all" },
+			true,
+		);
+		expect(String(decisions.value)).toContain(
+			"→ yes (cabane://actor/human/david)",
+		);
 	});
 
 	it("requires a scope on writes at the hub", async () => {

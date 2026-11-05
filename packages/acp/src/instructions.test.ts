@@ -229,6 +229,17 @@ describe("CopilotInstructions grilling the human", () => {
 		);
 	});
 
+	it("records the human's reply as relayed, so the decision is credited to them", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"Record a choice with kabane_answer and relayed: true",
+		);
+		expect(CopilotInstructions.SKILLS).toContain(
+			"withdraw: true, relayed: true and their reason",
+		);
+		expect(skill()).toContain("answer and `relayed: true`");
+		expect(skill()).toContain("`withdraw: true`, `relayed: true`");
+	});
+
 	it("never answers for the human, the recommendation included", () => {
 		expect(CopilotInstructions.SKILLS).toContain(
 			"Only the human answers: never record an answer they did not give, the recommended one included",

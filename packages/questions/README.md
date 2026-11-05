@@ -16,7 +16,14 @@ CLI and the hub register it; a host that does not has no decisions, which is not
   `nextCursor` line when there is more.
 - `kabane_answer` answers one by handle or ULID, or withdraws it with `withdraw: true` and
   `reasoning`. Choices match ignoring case. Answering the last open question moves a `waiting`
-  issue to `next` in the same transaction.
+  issue to `next` in the same transaction. An agent recording a reply the human gave it (the
+  grill, the copilot) sets `relayed: true`: the answer is credited to the human (`answered_by`)
+  and the write to the agent (`updated_by`). It is refused when the connection knows no human:
+  `kabane mcp` relays for the device's configured actor, whatever `--as` says, and the hub for
+  the Access identity when Access authenticated a human, never for a service token.
+
+Closing an issue (`done` or `cancelled`, from any surface) withdraws its open questions with
+the reasoning "issue closed", in the same transaction. Reopening it restores none of them.
 
 A question reads as its handle, its text, its mode, and its id:
 

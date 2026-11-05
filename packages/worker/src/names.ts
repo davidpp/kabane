@@ -20,3 +20,10 @@ export const HUB_DEVICE_ID = "cloud";
  * through the edge, which overwrites whatever a client sent.
  */
 export const ACTOR_HEADER = "X-Cabane-Actor";
+
+/**
+ * The kind of principal Access authenticated, `human` or `service`, set and
+ * trusted the same way as `ACTOR_HEADER`. Only a human is credited with the
+ * replies an agent relays.
+ */
+export const PRINCIPAL_HEADER = "X-Cabane-Principal";
