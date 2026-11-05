@@ -1,11 +1,13 @@
 /** @jsxImportSource @opentui/react */
 // An agent's decisions answered on the board against a real tracker: `u` narrows the board to the
-// issue waiting on them, its detail asks them one at a time with the copilot form's keys, and the
+// issues waiting on them, a detail asks them one at a time with the copilot form's keys, and the
 // last answer hands the issue back to `next` through `Questions.answer`, as `kabane_answer` would.
+// Back on the narrowed board the next issue is in hand; a typed answer started over is gone, and one
+// whose write fails is asked again.
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
+import { Planner, withDb } from "@cabane/core";
 import { Questions } from "@cabane/questions";
 import { App } from "./app";
 import { BoardNav } from "./nav";
@@ -17,6 +19,7 @@ const BASE = join(tmpdir(), `cabane-board-decisions-${crypto.randomUUID()}`);
 const AGENT = "cabane://actor/agent/claude";
 
 let issueId = "";
+let scopeId = "";
 
 beforeAll(async () => {
 	await freshDb(BASE);
@@ -26,6 +29,23 @@ beforeAll(async () => {
 		state: "next",
 	});
 	if (!other.ok) throw other.error;
+	// Filed before the first, so it lists under it in the waiting section (newest first).
+	const scope = await Planner.addTask(BASE, {
+		title: "Name the scope",
+		kind: "issue",
+		state: "in_progress",
+	});
+	if (!scope.ok) throw scope.error;
+	scopeId = scope.value.id;
+	const named = await Questions.ask(
+		BASE,
+		{
+			id: scopeId,
+			questions: [{ question: "What should the scope be called?" }],
+		},
+		AGENT,
+	);
+	if (!named.ok) throw named.error;
 	const issue = await Planner.addTask(BASE, {
 		title: "Cache the session tokens",
 		kind: "issue",
@@ -85,7 +105,10 @@ it("u finds the issue, its detail asks both decisions, and the last answer moves
 		expect(asked).toContain("1 SQLite ★");
 		expect(asked).toContain("1 more waiting");
 		mockInput.pressKey("1");
-		await read((f) => f.includes("Reasoning"));
+		const reasoning = await read((f) => f.includes("Reasoning"));
+		// Every key but esc and tab is typed into the field: the footer offers no other.
+		expect(reasoning).not.toContain("h/l sections");
+		expect(reasoning).toContain("enter send · esc start over · tab next pane");
 		await mockInput.typeText("local first");
 		mockInput.pressEnter();
 		await read((f) => f.includes("Which checks gate a merge?"));
@@ -108,6 +131,42 @@ it("u finds the issue, its detail asks both decisions, and the last answer moves
 			["SQLite", "local first"],
 			["Lint, Tests", null],
 		]);
+
+		// Its last decision answered, the issue leaves the narrowed board, and the one still waiting
+		// is in hand: enter opens it.
+		mockInput.pressEscape();
+		const back = await until(
+			(f) => f.includes("· decisions") && !f.includes("[copy]"),
+		);
+		expect(back).not.toContain("Cache the session tokens");
+		mockInput.pressEnter();
+		await read((f) => f.includes("What should the scope be called?"));
+		expect(captureCharFrame()).toContain("enter to answer");
+
+		// Started over, what was typed goes with it.
+		// The input takes the keys once a render has focused it.
+		mockInput.pressEnter();
+		await until((f) => f.includes("esc start over"));
+		await mockInput.typeText("draft name");
+		await until((f) => f.includes("draft name"));
+		mockInput.pressEscape();
+		const over = await until((f) => f.includes("enter to answer"));
+		expect(over).not.toContain("draft name");
+
+		// The question went away under the board (another device): the write fails, and the
+		// decision is asked again.
+		mockInput.pressEnter();
+		await until((f) => f.includes("esc start over"));
+		await mockInput.typeText("kabane");
+		mockInput.pressEnter();
+		await read((f) => f.includes("Reasoning · 2 of 2"));
+		await withDb(BASE, (db) =>
+			db.run("DELETE FROM task_questions WHERE task_id = ?", [scopeId]),
+		);
+		mockInput.pressEnter();
+		const failed = await until((f) => f.includes("No question found"));
+		expect(failed).toContain("What should the scope be called?");
+		expect(failed).toContain("enter to answer");
 	} finally {
 		destroy();
 	}
