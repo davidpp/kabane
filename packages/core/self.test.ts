@@ -28,6 +28,17 @@ describe("Self.compiled", () => {
 			expect(Self.compiled({ ...BINARY, moduleUrl })).toBe(true);
 	});
 
+	it("is false for a user path that holds those names past its root", () => {
+		for (const moduleUrl of [
+			"file:///home/me/~BUN-project/node_modules/kabane/bin/kabane.js",
+			"file:///home/me/%7EBUN/node_modules/kabane/bin/kabane.js",
+			"file:///home/me/$bunfs/root/kabane.js",
+			"file:///C:/Users/me/~BUN/root/kabane.js",
+			"file:///$bunfs-old/root/kabane.js",
+		])
+			expect(Self.compiled({ ...SCRIPT, moduleUrl })).toBe(false);
+	});
+
 	it("is false for a script on disk, and for this test run", () => {
 		expect(Self.compiled(SCRIPT)).toBe(false);
 		expect(Self.compiled()).toBe(false);

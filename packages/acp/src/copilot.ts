@@ -102,7 +102,7 @@ export namespace BoardCopilot {
 
 	// The executable both the MCP server and the copilot's shell run kabane as.
 	const kabaneBin = (options: Options): string =>
-		options.kabaneBin ?? Self.executable();
+		options.kabaneBin || Self.executable();
 
 	// The session's only tool server. `--as` is what stamps every write it makes with this
 	// session's actor.

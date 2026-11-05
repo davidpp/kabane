@@ -6,6 +6,7 @@
 // does not have.
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { trySync } from "./result";
 
 export namespace Self {
 	/** What the process says about itself. Tests pass their own. */
@@ -29,13 +30,21 @@ export namespace Self {
 		entry: process.argv[1],
 	};
 
-	// The embedded filesystem's root as Bun names it: `/$bunfs/` on Unix, `B:/~BUN/` on Windows, and
-	// that one percent-encoded in a URL. The same test Pi's coding agent uses.
-	const EMBEDDED = /\$bunfs|~BUN|%7EBUN/;
+	// The embedded filesystem's root as Bun names it, from the start of a file URL's decoded path:
+	// `/$bunfs/root/` on Unix, `B:/~BUN/root/` on Windows. Anchored, because a directory of the
+	// user's own may hold either string further along.
+	const EMBEDDED_ROOT = /^\/(?:\$bunfs|B:\/~BUN)\/root\//;
+
+	// A `file:` URL's path, percent-decoded (`%7EBUN`); left encoded if it does not decode.
+	const pathOf = (url: string): string => {
+		const path = url.startsWith("file://") ? url.slice("file://".length) : url;
+		const decoded = trySync(() => decodeURIComponent(path));
+		return decoded.ok ? decoded.value : path;
+	};
 
 	/** Whether this is a standalone binary from `bun build --compile`. */
 	export const compiled = (host: Host = HOST): boolean =>
-		EMBEDDED.test(host.moduleUrl);
+		EMBEDDED_ROOT.test(pathOf(host.moduleUrl));
 
 	/**
 	 * An executable path that runs kabane with no interpreter in front of it: the binary, or the
