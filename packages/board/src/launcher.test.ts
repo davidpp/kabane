@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Launcher } from "./launcher";
 
 const LINEAR: Launcher.Target = {
@@ -118,4 +121,77 @@ describe("open", () => {
 			"https://github.com/acme/web/issues/42",
 		);
 	});
+});
+
+describe("CLI clipboard on a remote terminal", () => {
+	// macOS script allocates a real PTY; no desktop opener is reachable on the empty PATH.
+	test.skipIf(process.platform !== "darwin")(
+		"copies through a PTY but never a pipe",
+		async () => {
+			const directory = mkdtempSync(join(tmpdir(), "kabane-launcher-"));
+			const cli = `${import.meta.dir}/../../cli/index.ts`;
+			const isolated = {
+				...process.env,
+				KABANE_HOME: join(directory, ".kabane"),
+				KABANE_HARNESSES: "",
+			};
+			const run = async (
+				args: string[],
+				env: NodeJS.ProcessEnv = isolated,
+				pty = false,
+			) => {
+				const command = [process.execPath, cli, ...args];
+				const child = Bun.spawn(
+					pty ? ["/usr/bin/script", "-q", "/dev/null", ...command] : command,
+					{
+						env,
+						cwd: directory,
+						stdin: "ignore",
+						stdout: "pipe",
+						stderr: "pipe",
+					},
+				);
+				const [stdout, stderr, code] = await Promise.all([
+					new Response(child.stdout).text(),
+					new Response(child.stderr).text(),
+					child.exited,
+				]);
+				return { stdout, stderr, code };
+			};
+			try {
+				expect((await run(["init"])).code).toBe(0);
+				const added = await run(["add", "OSC 52 launcher test"]);
+				expect(added.code).toBe(0);
+				const id = added.stdout.match(/\b[A-Z]+-\d+\b/)?.[0];
+				expect(id).toBeDefined();
+				if (!id) return;
+				expect((await run(["upstream", "link", id, GITHUB.url])).code).toBe(0);
+
+				const env: NodeJS.ProcessEnv = { ...isolated, PATH: "/nonexistent" };
+				const remoteKeys = [
+					"SSH_CONNECTION",
+					"SSH_CLIENT",
+					"SSH_TTY",
+					"MOSH_CONNECTION",
+				];
+				for (const key of remoteKeys) delete env[key];
+				for (const key of remoteKeys) {
+					const remote = { ...env, [key]: "test-remote" };
+					const terminal = await run(["open", id], remote, true);
+					expect(terminal.code).toBe(0);
+					expect(terminal.stdout).toContain(
+						`\x1b]52;c;${Buffer.from(GITHUB.url).toString("base64")}\x1b\\`,
+					);
+					expect(terminal.stdout).toContain("copied");
+					const pipe = await run(["open", id], remote);
+					expect(pipe.code).not.toBe(0);
+					expect(pipe.stdout).not.toContain("\x1b]52;");
+					expect(pipe.stderr).toContain("could not open");
+				}
+			} finally {
+				rmSync(directory, { recursive: true, force: true });
+			}
+		},
+		30_000,
+	);
 });

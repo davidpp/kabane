@@ -65,12 +65,36 @@ export namespace Launcher {
 			child.on("close", (code) => resolve(code === 0));
 		});
 
+	const copyFromCli: Copier = async (text) => {
+		// Match OpenTUI's native remote-session detection, without creating a renderer.
+		const remote = [
+			"SSH_CONNECTION",
+			"SSH_CLIENT",
+			"SSH_TTY",
+			"MOSH_CONNECTION",
+		].some((key) => process.env[key] !== undefined);
+		if (!remote) return (await Clipboard.writeHost(text)).ok;
+		if (!process.stdout.isTTY) return false;
+
+		// OpenTUI's encoder is native and has no standalone export. OSC 52 has no
+		// acknowledgement; success means the escape reached stdout, not that it was pasted.
+		const encoded = Buffer.from(
+			text.replaceAll("\0", "").toWellFormed(),
+		).toString("base64");
+		if (!encoded) return false;
+		return new Promise((resolve) => {
+			process.stdout.write(`\x1b]52;c;${encoded}\x1b\\`, (error) =>
+				resolve(!error),
+			);
+		});
+	};
+
 	/**
 	 * Try the desktop app, then the web URL, then the clipboard. The first two
 	 * fail the same way — no handler registered, or no opener on this host — and
 	 * the third is what makes the action still useful over ssh, where the
-	 * board's copier sends OSC 52 to the human's terminal. With no renderer
-	 * (the CLI) the default copier has only the host's pasteboard.
+	 * board's copier sends OSC 52 to the human's terminal. The CLI sends the
+	 * same escape to a remote TTY, or uses the host pasteboard locally.
 	 */
 	export const open = async (
 		target: Target,
@@ -82,9 +106,7 @@ export namespace Launcher {
 		if (app && (await run(app))) return ok("app");
 		if (await run(target.url)) return ok("browser");
 
-		const copy =
-			deps.copy ??
-			(async (text: string) => (await Clipboard.writeHost(text)).ok);
+		const copy = deps.copy ?? copyFromCli;
 		if (await copy(target.url)) return ok("clipboard");
 
 		return err(new Error(`could not open ${label(target)}`));
