@@ -23,7 +23,7 @@ const COPILOT_EFFECTS = [
 	"copilotAnswer",
 	"copilotAnswerForm",
 ] as const;
-export type CopilotEffect = Extract<
+type CopilotEffect = Extract<
 	BoardNav.Effect,
 	{ type: (typeof COPILOT_EFFECTS)[number] }
 >;

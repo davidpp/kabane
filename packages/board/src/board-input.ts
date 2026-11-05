@@ -2,12 +2,12 @@
 // reduceMouse, the copilot's and the form's submits, BoardPrompt.submit), with the effect each returns
 // handed to the one runner app.tsx composes, so every interaction path executes the reducer's output
 // the same way. The board has ONE useKeyboard handler, and this is it.
-import type { TextareaRenderable } from "@opentui/core";
 import { useKeyboard, useRenderer } from "@opentui/react";
-import { type RefObject, useCallback } from "react";
+import { useCallback } from "react";
 import type { BoardStore } from "./board-store";
 import { BoardNav } from "./nav";
 import { BoardPrompt } from "./prompt";
+import type { ScreenRefs } from "./screen";
 
 type Reduced = { state: BoardNav.BoardState; effect: BoardNav.Effect };
 
@@ -33,8 +33,7 @@ export const useBoardInput = ({
 	error,
 	retry,
 	runEffect,
-	inputRef,
-	promptRef,
+	refs: { input: inputRef, prompt: promptRef },
 }: {
 	store: Pick<BoardStore, "ref" | "set" | "update">;
 	clock: () => number;
@@ -44,8 +43,7 @@ export const useBoardInput = ({
 	runEffect: (next: BoardNav.BoardState, effect: BoardNav.Effect) => void;
 	// The copilot's input, and the same input opened as a prompt. Each OWNS its text, read here on
 	// submit and mirrored on every change.
-	inputRef: RefObject<TextareaRenderable | null>;
-	promptRef: RefObject<TextareaRenderable | null>;
+	refs: Pick<ScreenRefs, "input" | "prompt">;
 }): BoardInput => {
 	const renderer = useRenderer();
 

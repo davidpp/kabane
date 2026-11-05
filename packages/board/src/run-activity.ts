@@ -17,7 +17,7 @@ const ACTIVITY_EFFECTS = [
 	"dismiss",
 	"openEvents",
 ] as const;
-export type ActivityEffect = Extract<
+type ActivityEffect = Extract<
 	BoardNav.Effect,
 	{ type: (typeof ACTIVITY_EFFECTS)[number] }
 >;

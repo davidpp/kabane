@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { trySync } from "@cabane/core";
 import type { ProgramStatus as Report, ProgramStatusKind } from "@opentui/core";
 import { useRenderer } from "@opentui/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { BoardActivity } from "./activity";
 import type { BoardNav } from "./nav";
 import type { ActivityCard } from "./ports";
@@ -215,7 +215,7 @@ export namespace ProgramStatus {
 	 * queue (it is shutting down, its output is full) or refused is not remembered as sent, so the
 	 * next change tries it again.
 	 */
-	export const useProgramStatus = (next: ReadonlyMap<string, Report>): void => {
+	const useProgramStatus = (next: ReadonlyMap<string, Report>): void => {
 		const renderer = useRenderer();
 		const sent = useRef(new Map<string, string>());
 		useEffect(() => {
@@ -226,5 +226,28 @@ export namespace ProgramStatus {
 				else sent.current.set(key, JSON.stringify(report));
 			}
 		}, [renderer, next]);
+	};
+
+	/**
+	 * The board's reports, from what it holds: the copilot's asks and turn, the session questions in
+	 * the tab bar's queue, and the host's cards. Recomputed only when one of them moves.
+	 */
+	export const useBoardStatus = (
+		state: BoardNav.BoardState | null,
+		cards: readonly ActivityCard[],
+	): void => {
+		const asks = state?.copilot.asks;
+		const turn = state?.copilot.turn;
+		const queue = state?.tabs.queue;
+		const next = useMemo(
+			() =>
+				reports({
+					copilot: { asks: asks ?? [], turn: turn ?? "idle" },
+					questions: queue ?? [],
+					cards,
+				}),
+			[asks, turn, queue, cards],
+		);
+		useProgramStatus(next);
 	};
 }

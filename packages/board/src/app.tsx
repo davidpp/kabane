@@ -1,40 +1,26 @@
 /** @jsxImportSource @opentui/react */
-// Top-level board screen: loads planner data, holds board + selection state, and drives every
-// interaction through ONE useKeyboard handler that delegates to BoardNav.reduceKey (the pure key
-// router) and runs the effect it returns. A 5s poll keeps the board fresh; selection survives every
-// reload by task id. The board starts scoped to the detected project — `esc` widens to all scopes.
-import type { Task } from "@cabane/core";
-import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
+// The board's composition root. Each part of the board is a hook that owns its state and the effects
+// it runs: the reducer's state (board-store), what the board reads (board-feed), the open detail
+// view's records, the copilot's turns, the work running on the board's tasks, the writes to a task
+// and its dispatch to the host, and the screen's renderables. App wires them to the ONE key and click
+// router (board-input), whose reducer output runs through `runEffect` below, and draws Screen.
 import { useRenderer } from "@opentui/react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
-import { BoardActivity } from "./activity";
-import { anyActivityRunning, Board } from "./board";
+import { type ReactNode, useCallback } from "react";
 import { useBoardFeed } from "./board-feed";
 import { useBoardInput } from "./board-input";
 import { useBoardStore } from "./board-store";
-import { CardTab } from "./card-tab";
-import { BoardContext } from "./context";
-import { CopilotLog } from "./copilot-log";
-import { CopilotPane, contextChip } from "./copilot-prompt";
 import { isCopilotEffect, useCopilotSession } from "./copilot-session";
 import type { BoardData } from "./data";
-import { Detail } from "./detail";
 import { useDetailRecords } from "./detail-records";
-import { EventView } from "./event-view";
-import { FooterTrail } from "./footer";
 import { isDispatchEffect, useHostDispatch } from "./host-dispatch";
-import { BoardNav } from "./nav";
+import type { BoardNav } from "./nav";
 import { useNotice } from "./notice";
-import { HelpSheet } from "./overlay";
 import type { ActivitySource, CardHeader, Copilot, Dispatcher } from "./ports";
 import { ProgramStatus } from "./program-status";
-import { PromptPanel } from "./prompt-field";
 import { isActivityEffect, useRunActivity } from "./run-activity";
-import { useSpinnerFrame } from "./spinner";
-import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
+import { isScreenEffect, Screen, useScreenRefs } from "./screen";
 import { isTaskEffect, useTaskActions } from "./task-actions";
 import { useTheme } from "./theme";
-import { DispatchLayer } from "./trigger-form-view";
 
 export type AppProps = {
 	cwd: string;
@@ -54,8 +40,18 @@ export type AppProps = {
 	clock?: () => number;
 };
 
-const shortIdOf = (task: Task | undefined, id: string): string =>
-	task?.shortId ?? id.slice(0, 8);
+// Before the first load lands, or when it failed: the keys are useBoardInput's `r` and `q`.
+const Loading = ({ error }: { error: string | null }): ReactNode => {
+	const theme = useTheme();
+	if (!error) return <text fg={theme.defaultFg}>Loading…</text>;
+	return (
+		<text fg={theme.failed}>
+			Failed to load board: {error}
+			{"\n"}
+			<text fg={theme.muted}>press r to retry · q to quit</text>
+		</text>
+	);
+};
 
 export const App = ({
 	cwd,
@@ -68,14 +64,9 @@ export const App = ({
 	clock = Date.now,
 }: AppProps): ReactNode => {
 	const renderer = useRenderer();
-	const theme = useTheme();
 	const store = useBoardStore(clock);
-	const { state, ref: stateRef } = store;
 	const [notice, setNotice] = useNotice();
-	const { records: detailRecords, refresh: refreshDetail } = useDetailRecords(
-		basePath,
-		store,
-	);
+	const detail = useDetailRecords(basePath, store);
 	const { scope, scopeRef, activity, linked, error, retry, reload } =
 		useBoardFeed({
 			cwd,
@@ -85,7 +76,7 @@ export const App = ({
 			copilot,
 			store,
 			setNotice,
-			refreshDetail,
+			refreshDetail: detail.refresh,
 		});
 	const {
 		log: copilotLog,
@@ -115,35 +106,10 @@ export const App = ({
 		reload,
 	});
 
-	// The terminal hears when the board waits on the human, or works: derived from what the board
-	// holds, and written only when it changes.
-	const copilotAsks = state?.copilot.asks;
-	const copilotTurn = state?.copilot.turn;
-	const questionQueue = state?.tabs.queue;
-	const programStatus = useMemo(
-		() =>
-			ProgramStatus.reports({
-				copilot: { asks: copilotAsks ?? [], turn: copilotTurn ?? "idle" },
-				questions: questionQueue ?? [],
-				cards: activity.cards,
-			}),
-		[copilotAsks, copilotTurn, questionQueue, activity.cards],
-	);
-	ProgramStatus.useProgramStatus(programStatus);
+	// The terminal hears when the board waits on the human, or works.
+	ProgramStatus.useBoardStatus(store.state, activity.cards);
 
-	// The detail view's scrollbox lives inside <Detail>; app.tsx holds the ref so the `scroll` effect
-	// can drive it and every key stays in the one useKeyboard handler.
-	const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-	// The board list's scrollbox; app.tsx keeps the selected row in view as j/k move it off-screen.
-	const listRef = useRef<ScrollBoxRenderable | null>(null);
-	// The `?` sheet's scrollbox, which j/k move while it is open (`helpScroll`).
-	const helpRef = useRef<ScrollBoxRenderable | null>(null);
-	// The copilot's input. It OWNS its text; the reducer only ever pushes a whole new value at it
-	// (a shortcut expansion, a recalled prompt, the clear after a send) through `copilotSetText`.
-	const inputRef = useRef<TextareaRenderable | null>(null);
-	// The same input, opened as a prompt for a card's action or a typed answer.
-	const promptRef = useRef<TextareaRenderable | null>(null);
-
+	const { refs, runEffect: runScreenEffect } = useScreenRefs(store.state);
 	const runTaskEffect = useTaskActions({ basePath, setNotice, reload });
 	const runDispatchEffect = useHostDispatch({
 		basePath,
@@ -162,6 +128,7 @@ export const App = ({
 			if (isDispatchEffect(effect)) return runDispatchEffect(next, effect);
 			if (isCopilotEffect(effect)) return runCopilotEffect(next, effect);
 			if (isActivityEffect(effect)) return runActivityEffect(next, effect);
+			if (isScreenEffect(effect)) return runScreenEffect(effect);
 			switch (effect.type) {
 				case "quit":
 					renderer.destroy();
@@ -169,21 +136,8 @@ export const App = ({
 				case "reload":
 					void reload(next);
 					return;
-				case "scroll":
-					scrollRef.current?.scrollBy(effect.delta);
-					return;
-				case "helpScroll":
-					helpRef.current?.scrollBy(effect.delta);
-					return;
 				case "notice":
 					setNotice(effect.notice);
-					return;
-				case "copilotSetText":
-				case "promptSetText":
-					(effect.type === "copilotSetText"
-						? inputRef
-						: promptRef
-					).current?.setText(effect.text);
 			}
 		},
 		[
@@ -193,268 +147,36 @@ export const App = ({
 			runDispatchEffect,
 			runCopilotEffect,
 			runActivityEffect,
+			runScreenEffect,
 			setNotice,
 		],
 	);
 
-	const {
-		dispatchMouse,
-		submitCopilot,
-		submitForm,
-		mirrorCopilotText,
-		submitPrompt,
-		mirrorPromptText,
-	} = useBoardInput({
+	const input = useBoardInput({
 		store,
 		clock,
 		error,
 		retry,
 		runEffect,
-		inputRef,
-		promptRef,
+		refs,
 	});
 
-	// Keep the selected row on-screen: whenever selection changes (j/k, mouse), scroll the minimum
-	// distance to reveal it. Each row box carries id `row-<taskId>`, which scrollChildIntoView resolves.
-	const selectedId = state?.view.type === "board" ? state.selectedId : null;
-	useEffect(() => {
-		if (selectedId) listRef.current?.scrollChildIntoView(`row-${selectedId}`);
-	}, [selectedId]);
+	if (error || !store.state) return <Loading error={error} />;
 
-	const spinnerFrame = useSpinnerFrame(anyActivityRunning(shownActivity));
-
-	// Resolve task ULID → shortId from loaded sections (for the event view's header).
-	const resolveShortId = useCallback(
-		(taskId: string): string | undefined => {
-			const task = stateRef.current
-				? BoardNav.taskById(stateRef.current, taskId)
-				: undefined;
-			return task ? shortIdOf(task, task.id) : undefined;
-		},
-		[stateRef],
-	);
-
-	if (error)
-		return (
-			<text fg={theme.failed}>
-				Failed to load board: {error}
-				{"\n"}
-				<text fg={theme.muted}>press r to retry · q to quit</text>
-			</text>
-		);
-	if (!state) return <text fg={theme.defaultFg}>Loading…</text>;
-
-	// Which keys are live and what they can act on, once for the footer and the `?` sheet alike.
-	const openTaskId = state.view.type === "detail" ? state.view.taskId : null;
-	// The host's own header for the card whose tab is on screen, by its kind.
-	const activeKind = shownActivity.cards.find(
-		(c) => c.id === state.tabs.active,
-	)?.kind;
-	const cardHeader = activeKind ? headers?.[activeKind] : undefined;
-	const situation = BoardNav.keySituation(state, {
-		linked,
-		header: cardHeader !== undefined,
-		events:
-			openTaskId !== null &&
-			BoardActivity.eventsCard(
-				shownActivity,
-				openTaskId,
-				BoardNav.taskById(state, openTaskId)?.shortId,
-			) !== undefined,
-	});
-	const keys = {
-		context: BoardNav.keyContext(state),
-		situation,
-		host: CardTab.hints(state),
-	};
-	// The dispatch overlay floats over WHICHEVER view it opened on (it's a separate state field, not a
-	// view), so both branches render inside the same full-screen wrapper it absolutely positions against.
-	// The `?` sheet is the same kind of thing, anchored at the bottom instead of centred.
-	const overlay = state.help ? (
-		<HelpSheet
-			context={BoardNav.sheetContext(state)}
-			situation={situation}
-			scrollRef={helpRef}
-			host={keys.host}
-		/>
-	) : state.dispatch ? (
-		<DispatchLayer
-			shortId={shortIdOf(
-				BoardNav.taskById(state, state.dispatch.taskId),
-				state.dispatch.taskId,
-			)}
-			overlay={state.dispatch}
-			onField={(index) => dispatchMouse({ type: "formField", index })}
-		/>
-	) : null;
-	// The pane is always mounted — one row unfocused, the panel when focused — so the copilot is a
-	// place on screen rather than something that appears when summoned.
-	const copilotPane = (
-		<CopilotPane
-			copilot={state.copilot}
-			// Briefs are fetched on submit; the chip only needs the ids the state already holds.
-			chip={contextChip(BoardContext.project(state, scope, new Map()))}
-			focused={state.focus === "copilot"}
-			log={copilotLog}
-			spinnerFrame={spinnerFrame}
-			detailShownElsewhere={
-				state.view.type === "events" && state.view.cardId === CopilotLog.CARD_ID
-			}
-			outranked={BoardNav.copilotOutranked(state)}
-			askInHand={BoardNav.askInHand(state)}
-			reach={BoardNav.askReach(state)}
-			textareaRef={inputRef}
-			onSubmit={submitCopilot}
-			onContentChange={mirrorCopilotText}
-			onFormSubmit={submitForm}
-			onAsk={dispatchMouse}
-		/>
-	);
-	// A prompt a card's tab or a banner opened sits where the copilot's panel would, above its row.
-	const opened = state.prompt.open;
-	const pane = (
-		<>
-			{opened ? (
-				<PromptPanel
-					title={opened.title}
-					aim={opened.aim}
-					placeholder={opened.placeholder}
-					text={state.prompt.text}
-					textareaRef={promptRef}
-					onSubmit={submitPrompt}
-					onContentChange={mirrorPromptText}
-				/>
-			) : null}
-			{copilotPane}
-		</>
-	);
-	// Every view sits under the tab bar; the overlays float over whichever view is on screen. Every
-	// footer in it ends on the copilot session's context reading, when there is one.
-	const { tabs } = state;
-	const framed = (view: ReactNode): ReactNode => (
-		<FooterTrail.Provider value={CopilotLog.usageLabel(copilotLog)}>
-			<box style={{ flexDirection: "column", flexGrow: 1 }}>
-				<TabBar
-					tabs={tabs}
-					cards={shownActivity.cards}
-					spinnerFrame={spinnerFrame}
-					onSelect={(id) => dispatchMouse({ type: "tab", id })}
-				/>
-				<box style={{ flexDirection: "column", flexGrow: 1 }}>{view}</box>
-				{overlay}
-			</box>
-		</FooterTrail.Provider>
-	);
-
-	if (state.view.type === "events") {
-		const { cardId } = state.view;
-		return framed(
-			<EventView
-				// One view per card: switching tabs remounts it on the other card's events.
-				key={cardId}
-				cardId={cardId}
-				initialCard={shownActivity.cards.find((c) => c.id === cardId)}
-				source={shownSource}
-				resolveShortId={resolveShortId}
-				scrollRef={scrollRef}
-				notice={notice}
-				plan={
-					cardId === CopilotLog.CARD_ID ? copilotLog?.current.plan : undefined
-				}
-				// The transcript draws a permission at the head of the queue; a form there is the
-				// pane's to draw, since it takes the keys.
-				permissions={
-					cardId === CopilotLog.CARD_ID &&
-					state.copilot.asks[0]?.type === "permission"
-						? state.copilot.asks.flatMap((ask) =>
-								ask.type === "permission" ? [ask.request] : [],
-							)
-						: undefined
-				}
-				onAsk={dispatchMouse}
-				tabbed={tabs.active === cardId}
-				lane={CardTab.view(tabs, cardId).lane}
-				onLane={(index) => dispatchMouse({ type: "lane", index })}
-				onCard={takeCard}
-				header={tabs.active === cardId ? cardHeader : undefined}
-				expanded={CardTab.view(tabs, cardId).expanded}
-				toolDetails={state.view.toolDetails ?? false}
-				// On a card's own tab, the question its sessions wait on, answered in place.
-				banner={
-					<CardTabQuestion
-						tabs={tabs}
-						onAnswer={(index) => dispatchMouse({ type: "answer", index })}
-					/>
-				}
-				keys={keys}
-				pane={pane}
-			/>,
-		);
-	}
-
-	if (state.view.type === "detail") {
-		const { taskId, banner } = state.view;
-		const task = BoardNav.taskById(state, taskId);
-		const taskCards = BoardActivity.cardsForTask(
-			shownActivity,
-			taskId,
-			task?.shortId,
-		);
-		return framed(
-			<>
-				<PinnedQuestion
-					tabs={tabs}
-					banner={banner}
-					cards={shownActivity.cards}
-					onAnswer={(index) => dispatchMouse({ type: "answer", index })}
-				/>
-				<Detail
-					taskId={taskId}
-					task={task}
-					records={detailRecords}
-					cards={taskCards.length > 0 ? taskCards : undefined}
-					questions={shownActivity.questionsByTaskId.get(taskId)}
-					pinned={banner?.question.questionActivityId}
-					tab={BoardNav.detailTab(state.view)}
-					onTab={(tab) => dispatchMouse({ type: "detailTab", tab })}
-					scrollRef={scrollRef}
-					notice={notice}
-					focus={state.focus}
-					pane={pane}
-					linked={linked.has(taskId)}
-					keys={keys}
-					onCopy={() => dispatchMouse({ type: "copy" })}
-				/>
-			</>,
-		);
-	}
-
-	const scopeLabel = state.scoped && scope ? scope.label : "all scopes";
-	return framed(
-		<Board
-			sections={state.sections}
-			expanded={state.expanded}
-			selectedId={state.selectedId}
-			search={state.search}
-			activity={shownActivity}
-			scopeLabel={scopeLabel}
-			kind={state.kind}
-			status={state.status}
-			marked={state.marked}
-			// The reload after each of the copilot's writes is what puts the fresh `updatedBy`
-			// and `updatedAt` in hand; the reducer decides which of them the glyph is for.
-			touched={BoardNav.copilotTouched(
-				state,
-				copilotLog?.current.card.startedAt,
-			)}
-			linked={linked}
-			keys={keys}
-			scrollRef={listRef}
-			onSelect={(row) => dispatchMouse({ type: "select", row })}
-			onToggle={(row) => dispatchMouse({ type: "toggleExpand", row })}
+	return (
+		<Screen
+			state={store.state}
+			scope={scope}
 			notice={notice}
-			focus={state.focus}
-			pane={pane}
-		/>,
+			linked={linked}
+			headers={headers}
+			log={copilotLog}
+			activity={shownActivity}
+			source={shownSource}
+			records={detail.records}
+			refs={refs}
+			input={input}
+			onCard={takeCard}
+		/>
 	);
 };
