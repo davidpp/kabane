@@ -373,7 +373,7 @@ export namespace Loop {
 		});
 		if (!created.ok) return created;
 		const run = config.worktree
-			? await withWorktree(deps, created.value)
+			? await withWorktree(deps, created.value, parent.title)
 			: created;
 		if (!run.ok) return run;
 		tellPlacement(deps.home, run.value);
@@ -395,10 +395,11 @@ export namespace Loop {
 	 * for a run told to work in place.
 	 */
 	export const placement = (run: RunStore.Run): string | undefined => {
+		// A run written before runs recorded their branch named it after itself.
 		if (run.worktreeReused)
 			return `worktree ${run.worktree}, run ${run.worktreeReused.runId}'s: its branch ${run.worktreeReused.branch} is not merged into HEAD, so this run goes on with it`;
 		if (run.worktree)
-			return `worktree ${run.worktree}, new, on branch ${Worktree.branchFor(run.id)} from HEAD`;
+			return `worktree ${run.worktree}, new, on branch ${run.branch ?? `kabane-loop/${run.id}`} from ${run.base?.branch ?? "HEAD"}`;
 		return run.config.worktree
 			? `in place in ${run.projectDir}: it is not a git repository, so the run has no worktree`
 			: undefined;
@@ -475,13 +476,14 @@ export namespace Loop {
 		});
 	};
 
-	// The run's worktree, beside its files: the parent's last run's when its branch is not merged
+	// The run's worktree, beside its files: the parent's last run's when its work is not merged
 	// (`reusable`), else a new one of the project's HEAD, in which what is not committed in the
-	// project (work in progress) is not. A loop started in a folder of the repository works in
+	// project (work in progress) is not, on a branch named for the parent. A loop started in a folder of the repository works in
 	// that folder of the worktree. A project that is not a git repository is worked in place.
 	const withWorktree = async (
 		deps: StartDeps,
 		run: RunStore.Run,
+		title: string,
 	): Promise<Result<RunStore.Run>> => {
 		if (!Worktree.inRepo(run.projectDir)) return ok(run);
 		const failed = (error: Error): Result<RunStore.Run> => {
@@ -525,16 +527,23 @@ export namespace Loop {
 					`${prefix.value} is not committed, so a worktree of HEAD would not have it: commit it, or start with --no-worktree`,
 				),
 			);
+		const branch = await Worktree.unused(
+			run.projectDir,
+			Worktree.branchFor(run.parentShortId, title),
+			deps.git,
+		);
+		if (!branch.ok) return failed(branch.error);
 		const added = await Worktree.add(
 			run.projectDir,
 			dir,
-			Worktree.branchFor(run.id),
+			branch.value,
 			deps.git,
 		);
 		if (!added.ok) return failed(added.error);
 		const withDir: RunStore.Run = {
 			...run,
 			worktree: dir,
+			branch: branch.value,
 			worktreePrefix: prefix.value,
 			base: base.value,
 		};

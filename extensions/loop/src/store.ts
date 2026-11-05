@@ -112,6 +112,8 @@ export namespace RunStore {
 		worktreeReused: z
 			.object({ runId: z.string(), branch: z.string() })
 			.optional(),
+		/** The branch the run made its worktree on; absent for a worktree it went on in. */
+		branch: z.string().optional(),
 		/**
 		 * The project's branch and commit the run's worktree was made from, or for a worktree it
 		 * went on in, the base of the run that made it: what landing the run rebases onto and opens

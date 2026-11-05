@@ -149,7 +149,7 @@ describe("a parent's next run, after a run that opened a pull request", () => {
 		const parent = await parentWithChild();
 		const first = await startOn(parent.id);
 		const tip = landed(first);
-		const branch = Worktree.branchFor(first.id);
+		const branch = first.branch ?? "";
 		squashMerge(branch);
 		// git alone calls a squash-merged branch unmerged.
 		const merged = await Worktree.merged(repo, branch, git);
@@ -173,7 +173,7 @@ describe("a parent's next run, after a run that opened a pull request", () => {
 		const parent = await parentWithChild();
 		const first = await startOn(parent.id);
 		const tip = landed(first);
-		squashMerge(Worktree.branchFor(first.id));
+		squashMerge(first.branch ?? "");
 		commit(first.worktree ?? "", "after-merge.txt");
 		prSays = { state: "MERGED", headRefOid: tip };
 
@@ -191,7 +191,7 @@ describe("a parent's next run, after a run that opened a pull request", () => {
 
 		expect(second.worktree).not.toBe(first.worktree);
 		expect(existsSync(first.worktree ?? "")).toBe(true);
-		expect(branchExists(Worktree.branchFor(first.id))).toBe(true);
+		expect(branchExists(first.branch ?? "")).toBe(true);
 	});
 
 	it("asks git when gh cannot say, and goes on in a branch git calls unmerged", async () => {
@@ -219,10 +219,10 @@ describe("Loop.prune", () => {
 			[PR, { state: "MERGED", headRefOid: landed(squashed) }],
 			[openPr, { state: "OPEN", headRefOid: landed(reviewed, openPr) }],
 		]);
-		squashMerge(Worktree.branchFor(squashed.id));
+		squashMerge(squashed.branch ?? "");
 		// A run with no pull request, merged into the checkout as git sees it.
 		commit(plain.worktree ?? "", "plain.txt");
-		GitFixture.run(repo, ["merge", "-q", Worktree.branchFor(plain.id)]);
+		GitFixture.run(repo, ["merge", "-q", plain.branch ?? ""]);
 		const ghByPr: Land.Gh = async (_cwd, args) => {
 			const said = answers.get(args[2] ?? "");
 			return said ? ok(JSON.stringify(said)) : err(new Error("not found"));
@@ -235,7 +235,7 @@ describe("Loop.prune", () => {
 		expect(by.get(squashed.id)).toMatchObject({ removed: true });
 		expect(by.get(plain.id)).toMatchObject({
 			removed: true,
-			why: `branch ${Worktree.branchFor(plain.id)} is merged into HEAD`,
+			why: `branch ${plain.branch ?? ""} is merged into HEAD`,
 		});
 		expect(by.get(reviewed.id)).toMatchObject({
 			removed: false,
@@ -244,9 +244,9 @@ describe("Loop.prune", () => {
 		expect(existsSync(squashed.worktree ?? "")).toBe(false);
 		expect(existsSync(plain.worktree ?? "")).toBe(false);
 		expect(existsSync(reviewed.worktree ?? "")).toBe(true);
-		expect(branchExists(Worktree.branchFor(squashed.id))).toBe(false);
-		expect(branchExists(Worktree.branchFor(plain.id))).toBe(false);
-		expect(branchExists(Worktree.branchFor(reviewed.id))).toBe(true);
+		expect(branchExists(squashed.branch ?? "")).toBe(false);
+		expect(branchExists(plain.branch ?? "")).toBe(false);
+		expect(branchExists(reviewed.branch ?? "")).toBe(true);
 	});
 
 	it("keeps a merged worktree with changes not committed, saying git's reason", async () => {

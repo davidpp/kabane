@@ -23,7 +23,59 @@ export namespace Worktree {
 	/** Where run `runId`'s worktree goes: inside the run's own directory. */
 	export const dirFor = (runDir: string): string => join(runDir, "worktree");
 
-	export const branchFor = (runId: string): string => `kabane-loop/${runId}`;
+	// Long enough for a few words of the title, short enough to read in a branch list.
+	const BRANCH_CHARS = 48;
+
+	/**
+	 * The branch a run makes for issue `shortId` titled `title`, named as a person would name it:
+	 * `jcab-81-` and the title's first words, lowercase ASCII.
+	 */
+	export const branchFor = (shortId: string, title: string): string => {
+		const words = title
+			// Accents come off their letters (é is e) rather than splitting the word.
+			.normalize("NFKD")
+			.replace(/\p{M}/gu, "")
+			.toLowerCase()
+			.split(/[^a-z0-9]+/)
+			.filter((w) => w !== "");
+		let name = shortId.toLowerCase().replace(/[^a-z0-9-]/g, "");
+		for (const word of words) {
+			if (name.length + 1 + word.length > BRANCH_CHARS) break;
+			name = name === "" ? word : `${name}-${word}`;
+		}
+		return name === "" ? "kabane-loop" : name;
+	};
+
+	// `refs/heads/<name>` and `refs/remotes/<remote>/<name>`, as `<name>`.
+	const BRANCH_REF = /^refs\/(?:heads|remotes\/[^/]+)\/(.+)$/;
+
+	/**
+	 * `branch`, or the first of `branch-2`, `branch-3`… that names no branch of `projectDir`'s
+	 * repository yet, local or on a remote it knows: an earlier run on the same issue, a pull
+	 * request closed without merging, keeps its own.
+	 */
+	export const unused = async (
+		projectDir: string,
+		branch: string,
+		run: Git = git,
+	): Promise<Result<string>> => {
+		const listed = await run(projectDir, [
+			"for-each-ref",
+			"--format=%(refname)",
+			"refs/heads",
+			"refs/remotes",
+		]);
+		if (!listed.ok) return listed;
+		const taken = new Set(
+			listed.value.split("\n").flatMap((ref) => {
+				const name = BRANCH_REF.exec(ref.trim())?.[1];
+				return name ? [name] : [];
+			}),
+		);
+		let name = branch;
+		for (let n = 2; taken.has(name); n++) name = `${branch}-${n}`;
+		return ok(name);
+	};
 
 	/** A worktree of `projectDir`'s HEAD at `dir`, on a new branch `branch`. */
 	export const add = async (
