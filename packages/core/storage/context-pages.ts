@@ -100,10 +100,14 @@ const packContextPage = ({
 			retrieval: RETRIEVAL,
 		};
 	};
-	const final = envelope(markdown.length);
-	if (serializedBytes(final) <= CONTEXT_BYTES) return ok(final);
+	// Serialized UTF-8 costs at least one byte per UTF-16 code unit.
+	// Only measure the remainder when it could fit in a single page.
+	if (markdown.length - offset <= CONTEXT_BYTES) {
+		const final = envelope(markdown.length);
+		if (serializedBytes(final) <= CONTEXT_BYTES) return ok(final);
+	}
 	let low = offset + 1;
-	let high = markdown.length - 1;
+	let high = Math.min(markdown.length - 1, offset + CONTEXT_BYTES);
 	let page: ContextPage | undefined;
 	while (low <= high) {
 		const middle = Math.floor((low + high) / 2);

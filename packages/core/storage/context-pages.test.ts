@@ -81,6 +81,43 @@ const collect = async (
 };
 
 describe("bounded selected context", () => {
+	it("keeps an exact-budget final page whole without a continuation envelope", async () => {
+		const task = await Planner.addTask(tracker.home, {
+			title: "Exact page budget",
+			description: "x",
+		});
+		expect(task.ok).toBe(true);
+		if (!task.ok) return;
+		const options: ContextPageOptions = { sections: ["description"] };
+		const initial = await Planner.getContextPage(
+			tracker.home,
+			task.value.id,
+			options,
+		);
+		expect(initial.ok).toBe(true);
+		if (!initial.ok) return;
+		const description = "x".repeat(
+			CONTEXT_BYTES - serializedBytes(initial.value) + 1,
+		);
+		for (const suffix of ["", '🧭漢é"\\\n\t']) {
+			expect(
+				(
+					await Planner.updateTask(tracker.home, task.value.id, {
+						description: description + suffix,
+					})
+				).ok,
+			).toBe(true);
+			const result = await collect(task.value.id, options);
+			expect(result.ok).toBe(true);
+			if (!result.ok) return;
+			expect(result.value.markdown).toBe(
+				`## Description\n\n${description}${suffix}`,
+			);
+			expect(result.value.pages).toHaveLength(suffix ? 2 : 1);
+			if (!suffix)
+				expect(serializedBytes(result.value.pages[0])).toBe(CONTEXT_BYTES);
+		}
+	});
 	it("reconstructs every fixture description and human comment, giant items and complete legacy markdown", async () => {
 		for (const taskId of [...tracker.ids.slice(0, 24), id]) {
 			const full = await Planner.assembleContext(tracker.home, taskId, {
