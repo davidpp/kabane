@@ -1134,7 +1134,7 @@ export namespace BoardNav {
 
 	// Find a task anywhere in the board (top-level or subtask) by id — the detail view's action target,
 	// which may be a subtask and isn't addressable by the board's selection.
-	const taskById = (state: BoardState, id: string): Task | undefined => {
+	export const taskById = (state: BoardState, id: string): Task | undefined => {
 		for (const section of state.sections) {
 			for (const { task, children } of section.rows) {
 				if (task.id === id) return task;

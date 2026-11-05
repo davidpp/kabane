@@ -80,14 +80,6 @@ const flash = (
 		? { text, tone: "success" }
 		: { text: res.error.message, tone: "error" };
 
-// Find a task anywhere in the loaded sections (top-level or subtask) — the detail view's and the
-// dispatch overlay's lookup, both of which may target a subtask the selection can't address.
-const findTask = (state: BoardNav.BoardState, id: string): Task | undefined =>
-	state.sections
-		.flatMap((section) => section.rows)
-		.flatMap((row) => [row.task, ...row.children])
-		.find((t) => t.id === id);
-
 const shortIdOf = (task: Task | undefined, id: string): string =>
 	task?.shortId ?? id.slice(0, 8);
 
@@ -381,7 +373,7 @@ export const App = ({
 				setNotice(noDispatcher(copilot));
 				return;
 			}
-			const task = findTask(s, id);
+			const task = BoardNav.taskById(s, id);
 			const shortId = shortIdOf(task, id);
 			const brief = await BoardData.taskBrief(basePath, id);
 			if (!brief.ok) {
@@ -512,7 +504,7 @@ export const App = ({
 			const cards = BoardActivity.cardsForTask(
 				activityRef.current,
 				taskId,
-				findTask(s, taskId)?.shortId,
+				BoardNav.taskById(s, taskId)?.shortId,
 			).filter((c) => c.hasEvents);
 			const target =
 				cards.find((c) => c.status === "running" || c.status === "pending") ??
@@ -915,7 +907,7 @@ export const App = ({
 	// its loading line; the same task refetches in place, so a v/x/n/s on it keeps tab and scroll.
 	const detailTaskId = state?.view.type === "detail" ? state.view.taskId : null;
 	const detailTask =
-		detailTaskId && state ? findTask(state, detailTaskId) : undefined;
+		detailTaskId && state ? BoardNav.taskById(state, detailTaskId) : undefined;
 	// detailTask?.updatedAt is an intentional trigger — a v/x/n/s mutation on the open task re-fetches the records without changing taskId.
 	useEffect(() => {
 		if (detailLoadedId.current !== detailTaskId) {
@@ -958,16 +950,10 @@ export const App = ({
 
 	// Resolve task ULID → shortId from loaded sections (for the event view's header).
 	const resolveShortId = useCallback((taskId: string): string | undefined => {
-		const s = stateRef.current;
-		if (!s) return undefined;
-		for (const section of s.sections) {
-			for (const { task, children } of section.rows) {
-				if (task.id === taskId) return task.shortId ?? task.id.slice(0, 8);
-				for (const child of children)
-					if (child.id === taskId) return child.shortId ?? child.id.slice(0, 8);
-			}
-		}
-		return undefined;
+		const task = stateRef.current
+			? BoardNav.taskById(stateRef.current, taskId)
+			: undefined;
+		return task ? shortIdOf(task, task.id) : undefined;
 	}, []);
 
 	if (error)
@@ -995,7 +981,7 @@ export const App = ({
 			BoardActivity.cardsForTask(
 				shownActivity,
 				openTaskId,
-				findTask(state, openTaskId)?.shortId,
+				BoardNav.taskById(state, openTaskId)?.shortId,
 			).some((c) => c.hasEvents),
 	});
 	const keys = {
@@ -1016,7 +1002,7 @@ export const App = ({
 	) : state.dispatch ? (
 		<DispatchLayer
 			shortId={shortIdOf(
-				findTask(state, state.dispatch.taskId),
+				BoardNav.taskById(state, state.dispatch.taskId),
 				state.dispatch.taskId,
 			)}
 			overlay={state.dispatch}
@@ -1130,7 +1116,7 @@ export const App = ({
 
 	if (state.view.type === "detail") {
 		const { taskId, banner } = state.view;
-		const task = findTask(state, taskId);
+		const task = BoardNav.taskById(state, taskId);
 		const taskCards = BoardActivity.cardsForTask(
 			shownActivity,
 			taskId,
