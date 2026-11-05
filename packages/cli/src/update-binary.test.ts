@@ -411,6 +411,130 @@ test("releases are read over https, or http from loopback, wherever the redirect
 	expect(sha256(installed.executable)).toBe(sha256(nextExecutable));
 }, 60_000);
 
+/** A ustar header for `name`, as tar writes one; `type` is its typeflag. */
+const header = (name: string, type: string, size = 0, link = ""): Buffer => {
+	const block = Buffer.alloc(512);
+	block.write(name, 0, 100, "latin1");
+	block.write("0000755\0", 100);
+	block.write("0000000\0", 108);
+	block.write("0000000\0", 116);
+	block.write(`${size.toString(8).padStart(11, "0")}\0`, 124);
+	block.write("00000000000\0", 136);
+	block.write("        ", 148);
+	block.write(type, 156);
+	block.write(link, 157, 100, "latin1");
+	block.write("ustar\0", 257);
+	block.write("00", 263);
+	const sum = block.reduce((total, byte) => total + byte, 0);
+	block.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148);
+	return block;
+};
+type Member = {
+	name: string;
+	type?: string;
+	data?: string;
+	size?: number;
+	link?: string;
+};
+const RELEASE: Member[] = [
+	{ name: "kabane/", type: "5" },
+	{ name: "kabane/kabane", data: "#!/bin/sh\n" },
+	{ name: "kabane/templates/", type: "5" },
+];
+/** A gzipped tarball of `members`, written by hand so it can hold what no release would. */
+const tarball = (label: string, members: Member[]): string => {
+	const blocks = members.flatMap(
+		({ name, type = "0", data = "", size, link }) => {
+			const bytes = Buffer.from(data);
+			const padded = Buffer.alloc(Math.ceil(bytes.length / 512) * 512);
+			bytes.copy(padded);
+			return [header(name, type, size ?? bytes.length, link), padded];
+		},
+	);
+	const file = join(WORK, `hostile-${label}.tar.gz`);
+	writeFileSync(
+		file,
+		Bun.gzipSync(Buffer.concat([...blocks, Buffer.alloc(1024)])),
+	);
+	return file;
+};
+
+test("an archive is listed before extraction and refused for any member a release would not carry", async () => {
+	const { inspectArchive } = UpdateBinary;
+	expect(await inspectArchive(tarball("release", RELEASE))).toEqual({
+		ok: true,
+		value: undefined,
+	});
+	expect((await inspectArchive(built)).ok).toBe(true);
+	const refused = async (label: string, extra: Member[], reason: string) => {
+		const inspected = await inspectArchive(
+			tarball(label, [...RELEASE, ...extra]),
+		);
+		expect(inspected.ok ? "accepted" : inspected.error).toContain(reason);
+	};
+	await refused(
+		"symlink",
+		[{ name: "kabane/templates/x", type: "2", link: "/etc" }],
+		'type "2"',
+	);
+	await refused(
+		"hardlink",
+		[{ name: "kabane/templates/x", type: "1", link: "kabane/kabane" }],
+		'type "1"',
+	);
+	await refused(
+		"character-device",
+		[{ name: "kabane/tty", type: "3" }],
+		'type "3"',
+	);
+	await refused(
+		"block-device",
+		[{ name: "kabane/disk", type: "4" }],
+		'type "4"',
+	);
+	await refused("fifo", [{ name: "kabane/pipe", type: "6" }], 'type "6"');
+	await refused("pax", [{ name: "kabane/PaxHeader", type: "x" }], 'type "x"');
+	await refused("absolute", [{ name: "/kabane/kabane" }], "outside kabane/");
+	await refused("parent", [{ name: "kabane/../escaped" }], "outside kabane/");
+	await refused("dot", [{ name: "./kabane/kabane" }], "outside kabane/");
+	await refused("outside", [{ name: "elsewhere/kabane" }], "outside kabane/");
+	await refused(
+		"members",
+		Array.from({ length: 2000 }, (_, index) => ({
+			name: `kabane/templates/${index}`,
+		})),
+		"more than 2000 members",
+	);
+	// A size declared past the cap is refused from its header, before any of it is expanded.
+	await refused(
+		"expanded",
+		[{ name: "kabane/huge", size: 600 * 1024 * 1024 }],
+		"expands to more than",
+	);
+	writeFileSync(join(WORK, "not-gzip.tar.gz"), "plain text");
+	const garbage = await inspectArchive(join(WORK, "not-gzip.tar.gz"));
+	expect(garbage.ok ? "accepted" : garbage.error).toContain(
+		"not a readable gzipped tar",
+	);
+});
+
+test("a hash-verified archive with a symlink in it is refused before extraction", async () => {
+	const hostile = tarball("served-symlink", [
+		...RELEASE,
+		{ name: "kabane/templates/dispatch", type: "2", link: "/" },
+	]);
+	serve(hostile);
+	const installed = install("opt/kabane");
+	const before = updateSnapshot(installed.base);
+	const refused = await update([], installed.link, { HOME: installed.home });
+	expect(refused).toMatchObject({ exitCode: 1, json: { status: "error" } });
+	expect(refused.text).toContain(
+		`Refusing ${FILE}: kabane/templates/dispatch is not a regular file`,
+	);
+	expect(updateSnapshot(installed.base)).toEqual(before);
+	expect(leftovers(installed.directory)).toEqual([]);
+}, 30_000);
+
 /** An install directory and a staged release beside it, for the swap alone. */
 const staging = () => {
 	const base = mkdtempSync(join(WORK, "swap-"));

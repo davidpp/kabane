@@ -203,6 +203,127 @@ export namespace UpdateBinary {
 		return stat.ok && stat.value.isFile();
 	};
 
+	/** At most this many members, expanding to at most this many bytes: a release is ~600 files, ~80 MB. */
+	const MEMBER_LIMIT = 2000;
+	const EXPANDED_LIMIT = 536_870_912;
+	const BLOCK = 512;
+
+	/** A NUL-terminated ustar header field. */
+	const field = (block: Uint8Array, start: number, length: number): string => {
+		const raw = block.subarray(start, start + length);
+		const end = raw.indexOf(0);
+		return Buffer.from(raw.subarray(0, end === -1 ? length : end)).toString(
+			"latin1",
+		);
+	};
+
+	/** The size a ustar header declares, or undefined when it is not plain octal. */
+	const declaredSize = (block: Uint8Array): number | undefined => {
+		const octal = field(block, 124, 12).trim();
+		return /^[0-7]{1,11}$/.test(octal) ? Number.parseInt(octal, 8) : undefined;
+	};
+
+	/**
+	 * Why ustar header `block` is not a member a release may carry: only regular files and
+	 * directories, by a relative path under `kabane/` with no `.` or `..` segment.
+	 */
+	const memberProblem = (block: Uint8Array): string | undefined => {
+		const prefix = field(block, 345, 155);
+		const name = prefix
+			? `${prefix}/${field(block, 0, 100)}`
+			: field(block, 0, 100);
+		if (!field(block, 257, 6).startsWith("ustar"))
+			return `${name} is not a ustar member`;
+		const type = field(block, 156, 1);
+		if (type !== "" && type !== "0" && type !== "5")
+			return `${name} is not a regular file or directory (type ${JSON.stringify(type)})`;
+		const segments = name.replace(/\/$/, "").split("/");
+		if (
+			name.startsWith("/") ||
+			segments[0] !== "kabane" ||
+			segments.some(
+				(segment) => segment === "" || segment === "." || segment === "..",
+			)
+		)
+			return `${name} is outside kabane/`;
+		return declaredSize(block) === undefined
+			? `${name} has no plain size`
+			: undefined;
+	};
+
+	/**
+	 * Every member of gzipped tar `archive` checked by its header before anything is extracted
+	 * (`memberProblem`), with the member count and the expanded bytes capped. Read here rather
+	 * than from `tar -tv`, whose listing differs between bsdtar and GNU tar.
+	 */
+	export const inspectArchive = async (
+		archive: string,
+	): Promise<Result<void, string>> => {
+		const reader = Bun.file(archive)
+			.stream()
+			.pipeThrough(new DecompressionStream("gzip"))
+			.getReader();
+		let pending = new Uint8Array(0);
+		let skip = 0,
+			members = 0,
+			expanded = 0,
+			ended = false;
+		/** The next problem in `pending`, consuming whole headers and the data they declare. */
+		const consume = (): string | undefined => {
+			for (;;) {
+				if (skip > 0) {
+					const skipped = Math.min(skip, pending.length);
+					pending = pending.subarray(skipped);
+					skip -= skipped;
+					if (skip > 0) return undefined;
+				}
+				if (ended || pending.length < BLOCK) return undefined;
+				const block = pending.subarray(0, BLOCK);
+				pending = pending.subarray(BLOCK);
+				if (block.every((byte) => byte === 0)) {
+					ended = true;
+					return undefined;
+				}
+				const problem = memberProblem(block);
+				if (problem) return problem;
+				if (++members > MEMBER_LIMIT)
+					return `more than ${MEMBER_LIMIT} members`;
+				const size = declaredSize(block) ?? 0;
+				skip = Math.ceil(size / BLOCK) * BLOCK;
+				expanded += BLOCK + skip;
+				if (expanded > EXPANDED_LIMIT)
+					return `it expands to more than ${EXPANDED_LIMIT} bytes`;
+			}
+		};
+		const read = await tryCatch(async () => {
+			try {
+				for (;;) {
+					const chunk = await reader.read();
+					if (chunk.done) return undefined;
+					// Past the end marker nothing is extracted, but it still has to be decompressed.
+					if (ended) {
+						expanded += chunk.value.byteLength;
+						if (expanded > EXPANDED_LIMIT)
+							return `it expands to more than ${EXPANDED_LIMIT} bytes`;
+						continue;
+					}
+					const joined = new Uint8Array(
+						pending.length + chunk.value.byteLength,
+					);
+					joined.set(pending);
+					joined.set(chunk.value, pending.length);
+					pending = joined;
+					const problem = consume();
+					if (problem) return problem;
+				}
+			} finally {
+				await reader.cancel().catch(() => {});
+			}
+		});
+		if (!read.ok) return err("it is not a readable gzipped tar");
+		return read.value === undefined ? ok(undefined) : err(read.value);
+	};
+
 	const rename = (from: string, to: string): boolean =>
 		trySync(() => renameSync(from, to)).ok;
 
@@ -301,6 +422,11 @@ export namespace UpdateBinary {
 		if (expected !== actual.value)
 			return err({
 				text: `Checksum mismatch: ${filename} hashes to ${actual.value}, SHA256SUMS says ${expected}. ${unchanged}`,
+			});
+		const inspected = await inspectArchive(archive);
+		if (!inspected.ok)
+			return err({
+				text: `Refusing ${filename}: ${inspected.error}. ${unchanged}`,
 			});
 		const unpacked = join(work, "archive");
 		const made = trySync(() => mkdirSync(unpacked));
