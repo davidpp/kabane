@@ -5,7 +5,7 @@ The rules this repository holds itself to. Each one is true of the code today; a
 ## Research. Then build.
 
 1.  Understand — restate the task; name assumptions.
-2.  Read — the relevant package and its `CLAUDE.md`, not the whole repo.
+2.  Read — the relevant package and its `AGENTS.md`, not the whole repo.
 3.  Prior art — search for the canonical helper, schema, or port before adding one.
 4.  Flag unknowns — surface ambiguities and decisions BEFORE code.
 
