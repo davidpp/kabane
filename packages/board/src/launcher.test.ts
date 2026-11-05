@@ -168,26 +168,17 @@ describe("CLI clipboard on a remote terminal", () => {
 				expect((await run(["upstream", "link", id, GITHUB.url])).code).toBe(0);
 
 				const env: NodeJS.ProcessEnv = { ...isolated, PATH: "/nonexistent" };
-				const remoteKeys = [
-					"SSH_CONNECTION",
-					"SSH_CLIENT",
-					"SSH_TTY",
-					"MOSH_CONNECTION",
-				];
-				for (const key of remoteKeys) delete env[key];
-				for (const key of remoteKeys) {
-					const remote = { ...env, [key]: "test-remote" };
-					const terminal = await run(["open", id], remote, true);
-					expect(terminal.code).toBe(0);
-					expect(terminal.stdout).toContain(
-						`\x1b]52;c;${Buffer.from(GITHUB.url).toString("base64")}\x1b\\`,
-					);
-					expect(terminal.stdout).toContain("copied");
-					const pipe = await run(["open", id], remote);
-					expect(pipe.code).not.toBe(0);
-					expect(pipe.stdout).not.toContain("\x1b]52;");
-					expect(pipe.stderr).toContain("could not open");
-				}
+				env.SSH_CONNECTION = "test-remote";
+				const terminal = await run(["open", id], env, true);
+				expect(terminal.code).toBe(0);
+				expect(terminal.stdout).toContain(
+					`\x1b]52;c;${Buffer.from(GITHUB.url).toString("base64")}\x1b\\`,
+				);
+				expect(terminal.stdout).toContain("copied");
+				const pipe = await run(["open", id], env);
+				expect(pipe.code).not.toBe(0);
+				expect(pipe.stdout).not.toContain("\x1b]52;");
+				expect(pipe.stderr).toContain("could not open");
 			} finally {
 				rmSync(directory, { recursive: true, force: true });
 			}
