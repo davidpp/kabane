@@ -465,7 +465,11 @@ export namespace Runner {
 			type: resumed ? "run_resume" : "run_start",
 			summary: `${resumed ? "resumed" : "started"} on ${ctx.run.parentShortId} in ${RunStore.sessionDir(ctx.run)} (pid ${ctx.deps.pid})`,
 		});
-		await Parent.take(ctx, `loop run ${resumed ? "resumed" : "started"}`);
+		// A run that has worked its target itself leaves taking it to `reshape`, after recovery: the
+		// issue's state is its claim's until then (a pass owed on it, a release), and one a human
+		// set meanwhile is theirs.
+		if (RunStore.onTarget(ctx.run).length === 0)
+			await Parent.take(ctx, `loop run ${resumed ? "resumed" : "started"}`);
 		// Recovery may run a subtask's gates, which a stop must still be able to kill.
 		await hearingStop(ctx, () => Claims.recover(ctx));
 		if (ctx.run.stall === undefined) {
