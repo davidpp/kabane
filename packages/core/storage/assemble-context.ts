@@ -14,7 +14,11 @@
  * section is omitted entirely. A bare reminder returns just its description.
  */
 
-import { registeredContextSections } from "../context-output";
+import {
+	registeredContextSections,
+	ContextSectionSchema,
+	type ContextSection,
+} from "../context-output";
 import type { ModuleContextSection } from "../module";
 import { traced } from "../observability";
 import { err, ok, type Result } from "../result";
@@ -408,7 +412,7 @@ const renderModuleSection = async (
 };
 
 const renderCoreSection = async (
-	section: string,
+	section: ContextSection,
 	basePath: string,
 	task: Task,
 	opts: ResolvedAssembleContextOpts,
@@ -491,11 +495,6 @@ const renderCoreSection = async (
 			);
 		}
 	}
-	return err(
-		new Error(
-			`Unknown context section: ${section}. Valid sections: ${registeredContextSections().join(", ")}`,
-		),
-	);
 };
 
 /** Shared renderer: full reads degrade; bounded reads require selected sources. */
@@ -515,6 +514,7 @@ export const readContextSections = async (
 		const rendered = await Promise.all(
 			sections.map(async (section) => {
 				const contribution = registeredModules.get(section);
+				const core = ContextSectionSchema.safeParse(section);
 				return {
 					section,
 					result: contribution
@@ -525,7 +525,13 @@ export const readContextSections = async (
 								opts,
 								strict,
 							)
-						: await renderCoreSection(section, basePath, task, opts, strict),
+						: core.success
+							? await renderCoreSection(core.data, basePath, task, opts, strict)
+							: err(
+									new Error(
+										`Valid sections: ${registeredContextSections().join(", ")}. Unknown section (excerpt): ${section.slice(0, 80)}`,
+									),
+								),
 				};
 			}),
 		);
