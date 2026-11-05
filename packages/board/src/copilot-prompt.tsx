@@ -311,7 +311,7 @@ export const CopilotPane = ({
 					? tail.map((line, index) => (
 							// Index keys: a positional window on the last few lines, not a list of things — row N is its only identity, and the same line can legitimately repeat.
 							<text key={index} bg={paneBg} fg={theme.muted}>
-								{fit(line, inner - 2)}
+								{fit(line, inner)}
 							</text>
 						))
 					: null}
