@@ -206,10 +206,11 @@ rm -rf .binary-check
 ```
 
 The build requires a new output directory and refuses replacement. Smoke creates its isolated
-home/repo under the checkout, removes it on success and prints its retained location on failure.
+home/repo under the system temporary directory (honoring `TMPDIR`), removes it on success
+and prints its retained location on failure.
 A human must dispatch `publish: false` to prove all runner builds and retained transfer, then
-check first-run setup/board in a real terminal. After the compiled self-launch change lands,
-manually verify MCP installation, copilot and loop template/self-launch behavior in disposable
+check first-run setup/board in a real terminal. Manually verify MCP installation, copilot
+and loop template/self-launch behavior in disposable
 homes. No live release, npm/OIDC or notarization claim follows from local binary smoke.
 
 ## Human-owned Actions setup (optional; before workflow publishing)
@@ -309,8 +310,8 @@ notes. Do not dispatch a branch and substitute a different checkout ref. The wor
 1. Frozen install and full gates on Linux; build/pack one release archive, inspect and
    upload that immutable Actions artifact identity.
 2. Linux x64 and macOS arm64 jobs download **the same artifact ID**, independently verify
-   hashes, and install/drive CLI+MCP from that archive without another build/pack. The standalone matrix also builds macOS x64 and Linux arm64; interactive-board
-   checks remain manual.
+   hashes, and install/drive CLI+MCP from that archive without another build/pack. The standalone
+   matrix also builds macOS x64 and Linux arm64; interactive-board checks remain manual.
 3. The `npm-release` job waits for the configured human approval. Download **this run's
    archive** and perform the real-terminal board check before approving; a prior dry-run
    archive is not necessarily byte-identical to this run's archive.
