@@ -83,3 +83,42 @@ describe("Extensions.namespaces", () => {
 		);
 	});
 });
+
+// A fresh process keeps earlier board tests from hiding an eager TUI import.
+describe("extension board imports", () => {
+	for (const argv of [
+		["help"],
+		[],
+		["loop", "status"],
+		["config", "get", "actor"],
+		["unknown-command"],
+	]) {
+		it(`keeps OpenTUI out of ${argv.join(" ") || "bare non-TTY kabane"}`, async () => {
+			const home = makeHome({ extensions: ["loop"] });
+			const source = `
+				import { run } from ${JSON.stringify(join(import.meta.dir, "main.ts"))};
+				const outcome = await run(${JSON.stringify(argv)});
+				console.log(JSON.stringify({
+					code: outcome.exitCode,
+					opentui: Object.keys(require.cache).filter(path => path.includes("@opentui")),
+				}));
+			`;
+			const proc = Bun.spawn([process.execPath, "-e", source], {
+				cwd: home,
+				env: { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" },
+				stdin: "ignore",
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const [out, code] = await Promise.all([
+				new Response(proc.stdout).text(),
+				proc.exited,
+			]);
+			expect(code).toBe(0);
+			expect(JSON.parse(out)).toEqual({
+				code: argv.length === 0 || argv[0] === "unknown-command" ? 2 : 0,
+				opentui: [],
+			});
+		});
+	}
+});

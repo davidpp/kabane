@@ -18,7 +18,6 @@ import { LoopActivity } from "./activity";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
-import { LoopHeader } from "./header";
 import { Parent } from "./parent";
 import { RunStore } from "./store";
 
@@ -421,20 +420,23 @@ export const loop: Extension = {
 	commands: [command],
 	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
 	// `a` on an issue, alone or with subtasks, starts one from the board's directory, as `loop start` would.
-	board: (ctx) => ({
-		activity: LoopActivity.source({
-			home: ctx.home,
-			basePath: ctx.store,
-			actor: ctx.actor,
-			kabaneBin: kabaneBin(),
-		}),
-		dispatcher: LoopDispatcher.make({
-			home: ctx.home,
-			basePath: ctx.store,
-			kabaneBin: kabaneBin(),
-			cwd: ctx.cwd,
-			settings: ctx.settings,
-		}),
-		headers: { [LoopActivity.KIND]: LoopHeader.make(ctx.home, ctx.store) },
-	}),
+	board: async (ctx) => {
+		const LoopHeader = (await import("./header")).LoopHeader;
+		return {
+			activity: LoopActivity.source({
+				home: ctx.home,
+				basePath: ctx.store,
+				actor: ctx.actor,
+				kabaneBin: kabaneBin(),
+			}),
+			dispatcher: LoopDispatcher.make({
+				home: ctx.home,
+				basePath: ctx.store,
+				kabaneBin: kabaneBin(),
+				cwd: ctx.cwd,
+				settings: ctx.settings,
+			}),
+			headers: { [LoopActivity.KIND]: LoopHeader.make(ctx.home, ctx.store) },
+		};
+	},
 };
