@@ -124,6 +124,7 @@ const completedRun = async (
 		projectDir: repo,
 		worktree: dir,
 		worktreePrefix: "",
+		branch: BRANCH,
 		base: { branch: "main", sha: head(repo) },
 		config: parsed.data,
 		status: "running",
@@ -257,6 +258,28 @@ describe("Land.land onto the base", () => {
 		expect(landing.summary).toContain(`back at ${before.slice(0, 12)}`);
 		expect(landing.rebased?.from).toBe(before);
 		expect(head(dir)).toBe(before);
+	});
+
+	it("changes and publishes nothing when the worktree is on a branch that is not the run's", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent));
+		const dir = ctx.run.worktree ?? "";
+		GitFixture.run(dir, ["switch", "-q", "-c", "elsewhere"]);
+		commit(dir, "elsewhere.txt");
+		const before = head(dir);
+		baseMoves("teammate.txt");
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain(
+			`the worktree is on branch elsewhere, not the run's branch ${BRANCH}; nothing was changed`,
+		);
+		expect(head(dir)).toBe(before);
+		expect(
+			GitFixture.run(remote, ["for-each-ref", "refs/heads"]).trim().split("\n"),
+		).toHaveLength(1);
+		expect(ghCalls).toEqual([]);
 	});
 
 	it("does not land a run that started from a detached HEAD", async () => {

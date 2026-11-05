@@ -173,6 +173,13 @@ export namespace RunStore {
 	export const onTarget = (run: Run): Claim[] =>
 		run.claims.filter((c) => c.taskId === run.parentId && !reviews(c));
 
+	/**
+	 * The branch the run's worktree is on as the run left it: the one it made, the one of the
+	 * worktree it went on in, or for a run written before runs recorded it, the one named after it.
+	 */
+	export const branchOf = (run: Run): string =>
+		run.worktreeReused?.branch ?? run.branch ?? `kabane-loop/${run.id}`;
+
 	/** The checkpoints committed in the run's worktree, oldest first. */
 	export const checkpoints = (run: Run): string[] =>
 		run.gateRuns.flatMap((g) => (g.checkpoint ? [g.checkpoint] : []));

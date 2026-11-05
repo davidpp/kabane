@@ -12,7 +12,7 @@ import { Exec } from "./exec";
 import { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 import { RunState } from "./state";
-import type { RunStore } from "./store";
+import { RunStore } from "./store";
 import { Worktree } from "./worktree";
 
 export namespace Land {
@@ -57,6 +57,8 @@ export namespace Land {
 		dir: string;
 		remote: string;
 		base: string;
+		/** The run's own branch, the one checked out in its worktree. */
+		branch: string;
 		rebased?: RunStore.Landing["rebased"];
 		/** How the branch got onto the base, for the summary. */
 		said: string;
@@ -81,6 +83,17 @@ export namespace Land {
 				),
 			);
 		const git = ctx.deps.git ?? Worktree.git;
+		// Before anything changes: a session that switched branches must not have another branch
+		// rebased or published in the run's name.
+		const branch = RunStore.branchOf(ctx.run);
+		const named = await git(dir, ["symbolic-ref", "-q", "--short", "HEAD"]);
+		const on = named.ok ? named.value.trim() : "";
+		if (on !== branch)
+			return err(
+				notLanded(
+					`the worktree is on ${on === "" ? "a detached HEAD" : `branch ${on}`}, not the run's branch ${branch}; nothing was changed`,
+				),
+			);
 		const remote = await remoteOf(git, dir, base);
 		const fetched = await git(dir, ["fetch", "-q", remote, base]);
 		if (!fetched.ok) return err(notLanded(fetched.error.message));
@@ -96,7 +109,13 @@ export namespace Land {
 			from.value,
 		]);
 		if (contained.ok)
-			return ok({ dir, remote, base, said: `The branch is on ${target}` });
+			return ok({
+				dir,
+				remote,
+				base,
+				branch,
+				said: `The branch is on ${target}`,
+			});
 		const rebased = await Worktree.rebase(dir, onto.value, git);
 		if (!rebased.ok)
 			return err(
@@ -116,6 +135,7 @@ export namespace Land {
 				dir,
 				remote,
 				base,
+				branch,
 				rebased: moved,
 				said: `Rebased onto ${target}${Gates.configured(ctx.run.config.gates) ? ", gates green again" : ""}`,
 			});
@@ -230,22 +250,17 @@ export namespace Land {
 	): Promise<Result<string, Outcome>> => {
 		const git = ctx.deps.git ?? Worktree.git;
 		const run = ctx.deps.gh ?? gh;
-		const { dir, remote, base, rebased } = placed;
+		const { dir, remote, base, branch, rebased } = placed;
 		const keep = rebased ? { rebased } : {};
-		const named = await git(dir, ["symbolic-ref", "--short", "HEAD"]);
-		if (!named.ok)
-			return err(
-				notLanded(`the worktree is on no branch: ${named.error.message}`, keep),
-			);
-		const branch = named.value.trim();
 		// A later run on the parent rebases the branch a pull request already has: a lease, so a
-		// push never overwrites a commit someone else pushed to it.
+		// push never overwrites a commit someone else pushed to it. Only the run's own branch.
+		const ref = `refs/heads/${branch}`;
 		const pushed = await git(dir, [
 			"push",
 			"-q",
 			"--force-with-lease",
 			remote,
-			branch,
+			`${ref}:${ref}`,
 		]);
 		if (!pushed.ok) return err(notLanded(pushed.error.message, keep));
 		const open = await openPr(run, dir, branch);

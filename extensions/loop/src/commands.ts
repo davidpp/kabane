@@ -399,9 +399,8 @@ export namespace Loop {
 	export const placement = (run: RunStore.Run): string | undefined => {
 		if (run.worktreeReused)
 			return `worktree ${run.worktree}, run ${run.worktreeReused.runId}'s: ${run.pr ? `its pull request ${run.pr} is not merged` : `its branch ${run.worktreeReused.branch} is not merged into HEAD`}, so this run goes on with it`;
-		// A run written before runs recorded their branch named it after itself.
 		if (run.worktree)
-			return `worktree ${run.worktree}, new, on branch ${run.branch ?? `kabane-loop/${run.id}`} from ${run.base?.branch ?? "HEAD"}`;
+			return `worktree ${run.worktree}, new, on branch ${RunStore.branchOf(run)} from ${run.base?.branch ?? "HEAD"}`;
 		return run.config.worktree
 			? `in place in ${run.projectDir}: it is not a git repository, so the run has no worktree`
 			: undefined;
