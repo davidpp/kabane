@@ -8,14 +8,13 @@ const NOTICE_MS = 1500;
 // Undoable mutations hold their flash longer so the ⌃z hint has time to register.
 const UNDO_HINT_MS = 4000;
 
+export type SetNotice = Dispatch<SetStateAction<BoardNav.Notice | null>>;
+
 /**
  * The flash on screen, cleared after NOTICE_MS (UNDO_HINT_MS for an undoable one). A set always makes
  * a fresh object, so a repeat copy restarts the timer.
  */
-export const useNotice = (): [
-	BoardNav.Notice | null,
-	Dispatch<SetStateAction<BoardNav.Notice | null>>,
-] => {
+export const useNotice = (): [BoardNav.Notice | null, SetNotice] => {
 	const [notice, setNotice] = useState<BoardNav.Notice | null>(null);
 	useEffect(() => {
 		if (!notice) return;

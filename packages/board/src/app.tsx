@@ -16,6 +16,7 @@ import {
 } from "react";
 import { BoardActivity } from "./activity";
 import { anyActivityRunning, Board } from "./board";
+import { useBoardFeed } from "./board-feed";
 import { useBoardStore } from "./board-store";
 import { CardTab } from "./card-tab";
 import { Clipboard } from "./clipboard";
@@ -65,10 +66,6 @@ export type AppProps = {
 	clock?: () => number;
 };
 
-const POLL_INTERVAL_MS = 5000;
-// Stable identity so a board with nothing linked doesn't re-render on it.
-const EMPTY_LINKS: ReadonlySet<string> = new Set<string>();
-
 const shortIdOf = (task: Task | undefined, id: string): string =>
 	task?.shortId ?? id.slice(0, 8);
 
@@ -101,27 +98,24 @@ export const App = ({
 }: AppProps): ReactNode => {
 	const renderer = useRenderer();
 	const theme = useTheme();
-	const {
-		state,
-		ref: stateRef,
-		set: setState,
-		update: updateState,
-	} = useBoardStore();
-	const [scope, setScope] = useState<BoardData.ScopeInfo | null>(null);
-	// In-flight host cards + awaiting-input questions, refreshed by the same poll as the board data. A
-	// failed activity read keeps the previous map — the board is a glance surface, badges degrade quietly.
-	const [activity, setActivity] = useState<BoardActivity.ActivityMap>(
-		BoardActivity.emptyActivity(),
-	);
-	// Task ids pointing at an external issue, refreshed by the same poll. Degrades the same way the
-	// activity map does: a failed read keeps the last-good set rather than un-glyphing every row.
-	const [linked, setLinked] = useState<ReadonlySet<string>>(EMPTY_LINKS);
-	const [error, setError] = useState<string | null>(null);
+	const store = useBoardStore();
+	const { state, ref: stateRef, set: setState, update: updateState } = store;
 	const [notice, setNotice] = useNotice();
 	const { records: detailRecords, refresh: refreshDetail } = useDetailRecords(
 		basePath,
-		{ state, ref: stateRef },
+		store,
 	);
+	const { scope, scopeRef, activity, linked, error, retry, reload } =
+		useBoardFeed({
+			cwd,
+			basePath,
+			activitySource,
+			resolveScope,
+			copilot,
+			store,
+			setNotice,
+			refreshDetail,
+		});
 	// This session's copilot turns, the current one at the head: its card, its plan and its transcript.
 	// Held in a ref as well because the composed ActivitySource below reads it while the event view
 	// polls, and the stream runner writes it between renders.
@@ -149,7 +143,6 @@ export const App = ({
 		[activitySource],
 	);
 
-	// Refs mirror state for the keyboard/poll callbacks, which capture once but must read the latest.
 	// The terminal hears when the board waits on the human, or works: derived from what the board
 	// holds, and written only when it changes.
 	const copilotAsks = state?.copilot.asks;
@@ -171,8 +164,6 @@ export const App = ({
 	useEffect(() => {
 		updateState((prev) => BoardNav.sight(prev, clock()));
 	}, [state, clock, updateState]);
-	const scopeRef = useRef<BoardData.ScopeInfo | null>(null);
-	scopeRef.current = scope;
 	const activityRef = useRef<BoardActivity.ActivityMap>(shownActivity);
 	activityRef.current = shownActivity;
 	// The detail view's scrollbox lives inside <Detail>; app.tsx holds the ref so the `scroll` effect
@@ -187,65 +178,6 @@ export const App = ({
 	const inputRef = useRef<TextareaRenderable | null>(null);
 	// The same input, opened as a prompt for a card's action or a typed answer.
 	const promptRef = useRef<TextareaRenderable | null>(null);
-
-	const filtersFor = useCallback(
-		(s: BoardNav.BoardState): BoardData.BoardFilters => ({
-			kind: s.kind === "all" ? undefined : s.kind,
-			scopeUri: s.scoped ? scopeRef.current?.scopeUri : undefined,
-		}),
-		[],
-	);
-
-	// Fire the FTS tier-2 search and merge results into the current state.
-	const fireFts = useCallback(
-		async (s: BoardNav.BoardState): Promise<void> => {
-			const query = BoardNav.activeQuery(s.search);
-			if (!query) return;
-			const result = await BoardData.searchBoard(
-				basePath,
-				query,
-				filtersFor(s),
-			);
-			if (!result.ok) return;
-			updateState((prev) =>
-				BoardNav.withSearchResults(prev, query, result.value),
-			);
-		},
-		[basePath, filtersFor, updateState],
-	);
-
-	// Reload columns using the filters implied by `s`, then merge them in preserving selection.
-	// When a query is active, re-fire the FTS search after the reload so tier-2 results stay merged.
-	const reload = useCallback(
-		async (s: BoardNav.BoardState): Promise<void> => {
-			const [result, act] = await Promise.all([
-				BoardData.loadBoard(basePath, filtersFor(s)),
-				BoardActivity.loadActivity(basePath, activitySource),
-			]);
-			if (!result.ok) {
-				// Non-fatal: keep last-good state, surface as a transient notice.
-				setNotice({ text: result.error.message, tone: "error" });
-				return;
-			}
-			// Clear any previous poll-error notice on success.
-			setNotice((prev) => (prev?.tone === "error" ? null : prev));
-			updateState((prev) => BoardNav.withSections(prev, result.value));
-			if (act.ok) setActivity(act.value);
-			const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
-			if (links.ok) setLinked(links.value);
-			if (BoardNav.activeQuery(s.search)) void fireFts(s);
-			if (s.view.type === "detail") void refreshDetail(s.view.taskId);
-		},
-		[
-			basePath,
-			filtersFor,
-			fireFts,
-			activitySource,
-			refreshDetail,
-			updateState,
-			setNotice,
-		],
-	);
 
 	// Copy a task's exact assembled brief to the system clipboard, flashing the outcome in the footer.
 	// Uses the raw BoardData.taskBrief string (what David pastes to agents), not the rendered markdown.
@@ -439,7 +371,16 @@ export const App = ({
 				if (turnRef.current === turn) fail(errorMessage(e));
 			}
 		},
-		[copilot, basePath, reload, publishLog, setNotice, stateRef, updateState],
+		[
+			copilot,
+			basePath,
+			reload,
+			publishLog,
+			setNotice,
+			stateRef,
+			updateState,
+			scopeRef,
+		],
 	);
 
 	// Stop the turn in flight: tell the copilot, drop its remaining updates, close the card.
@@ -695,16 +636,11 @@ export const App = ({
 		[runEffect, stateRef, setState],
 	);
 
-	// Track a retry counter so the initial-load effect can be re-triggered by `r` from the error screen.
-	const [retryCount, setRetryCount] = useState(0);
-
 	useKeyboard((key) => {
 		// Error screen: `r` retries the initial load, `q` quits.
 		if (error) {
-			if (key.name === "r") {
-				setError(null);
-				setRetryCount((c) => c + 1);
-			} else if (key.name === "q") {
+			if (key.name === "r") retry();
+			else if (key.name === "q") {
 				renderer.destroy();
 			}
 			return;
@@ -770,77 +706,6 @@ export const App = ({
 		const text = promptRef.current?.plainText ?? "";
 		updateState((prev) => BoardPrompt.withText(prev, text));
 	}, [updateState]);
-
-	// Initial load: detect scope, then build the first state scoped to the project (if any).
-	// retryCount is in deps so `r` from the error screen re-triggers this effect.
-	useEffect(() => {
-		void retryCount;
-		let cancelled = false;
-		void (async () => {
-			const detected = resolveScope ? await resolveScope(cwd) : null;
-			const filters: BoardData.BoardFilters = detected
-				? { scopeUri: detected.scopeUri }
-				: {};
-			const [result, act] = await Promise.all([
-				BoardData.loadBoard(basePath, filters),
-				BoardActivity.loadActivity(basePath, activitySource),
-			]);
-			if (cancelled) return;
-			setScope(detected);
-			if (act.ok) setActivity(act.value);
-			if (result.ok) {
-				const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
-				if (!cancelled && links.ok) setLinked(links.value);
-			}
-			if (result.ok)
-				setState(
-					BoardNav.withCopilotPort(
-						BoardNav.init(result.value, { scoped: Boolean(detected) }),
-						{
-							shortcuts: copilot?.shortcuts() ?? [],
-							actor: copilot?.actor ?? null,
-						},
-					),
-				);
-			else setError(result.error.message);
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [
-		cwd,
-		basePath,
-		resolveScope,
-		activitySource,
-		copilot,
-		retryCount,
-		setState,
-	]);
-
-	// 5s background poll — reloads with whatever filters are currently active.
-	useEffect(() => {
-		const timer = setInterval(() => {
-			const current = stateRef.current;
-			if (current) void reload(current);
-		}, POLL_INTERVAL_MS);
-		return () => clearInterval(timer);
-	}, [reload, stateRef]);
-
-	// Tier-2 FTS: debounced 200ms while typing, immediate on commit. Fires on every search query
-	// change so FTS results merge into the board alongside the instant client-side tier-1 filter.
-	const searchQuery = state?.search.mode !== "off" ? state?.search.query : null;
-	const searchMode = state?.search.mode ?? "off";
-	useEffect(() => {
-		const current = stateRef.current;
-		if (!current || searchMode === "off" || !searchQuery) return;
-		// Committed queries fire immediately (user pressed enter).
-		const delay = searchMode === "committed" ? 0 : 200;
-		const timer = setTimeout(() => {
-			const latest = stateRef.current;
-			if (latest) void fireFts(latest);
-		}, delay);
-		return () => clearTimeout(timer);
-	}, [searchQuery, searchMode, fireFts, stateRef]);
 
 	// Keep the selected row on-screen: whenever selection changes (j/k, mouse), scroll the minimum
 	// distance to reveal it. Each row box carries id `row-<taskId>`, which scrollChildIntoView resolves.
