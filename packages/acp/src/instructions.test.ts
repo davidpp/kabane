@@ -173,6 +173,21 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 		for (const path of SKILL_FILES)
 			expect(template(path).toLowerCase()).not.toContain("jake");
 	});
+
+	it("a wave's open decisions are asked on its parent and grilled by the grill skill, not by its own interview", () => {
+		const skill = template("SKILL.md");
+		expect(skill).toContain(
+			"file the wave's parent issue first and ask those\ndecisions on it the same way, with `kabane_ask`",
+		);
+		expect(skill).toContain("(the grill skill, on the parent's id)");
+		expect(skill).toContain("`kabane answer`, and stop there");
+		expect(skill).toContain("Do not do this for inline or one-issue work");
+		expect(skill).toContain("`questions.decisions` section");
+		expect(skill).not.toMatch(/\brounds?\b|offer (to|a) grill/i);
+		expect(template("references/issue-template.md")).toContain(
+			"A question answered on the parent is the exception",
+		);
+	});
 });
 
 describe("CopilotInstructions grilling the human", () => {

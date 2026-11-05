@@ -40,13 +40,17 @@ one call. That leaves the issue `waiting`, and answering its last question moves
 Comment only what the questions do not carry, such as evidence or a link.
 
 A wave-sized ask sometimes still has open design decisions: a behaviour nobody has specified, or
-a trade-off with two reasonable answers. If so, offer to grill it before filing anything. Do not
-offer a grill for inline or one-issue work, because there the questions cost more than the
-answers save. A grill runs in rounds. Each round asks every question that can be answered now,
-each with your recommended answer. Look up anything the code or docs can answer rather than
-asking the user. Go ahead once the user confirms. The confirmed answers become the decisions
-record (below). A decision that was already asked as a question with `kabane_ask` also gets its
-confirmed answer recorded with `kabane_answer`.
+a trade-off with two reasonable answers. If so, file the wave's parent issue first and ask those
+decisions on it the same way, with `kabane_ask`, before filing anything else. Look up anything
+the code or docs can answer rather than asking it. Then tell the user they can be grilled on
+them now (the grill skill, on the parent's id) or answer them later on the board or with
+`kabane answer`, and stop there. Do not do this for inline or one-issue work, because there the
+questions cost more than the answers save.
+
+Go ahead once the parent's last question is answered or withdrawn, which moves it back to
+`next`. The answers are the decisions record: `kabane_context` on the parent shows them in its
+`questions.decisions` section. A child's brief does not carry its parent's decisions, so copy
+one into an issue's Decisions paragraph only where that issue needs it.
 
 ## Investigate, then write the issues
 
