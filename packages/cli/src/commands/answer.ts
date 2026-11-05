@@ -6,27 +6,27 @@ export const answer: Command = {
 	name: "answer",
 	summary: "Answer a question by handle (JCAB-12:1), or withdraw it",
 	usage:
-		'kabane answer <handle> <answer…> [--why "<text>"] | kabane answer <handle> --withdraw --why "<text>"',
+		'kabane answer <handle> <answer…> [--reason "<text>"] | kabane answer <handle> --withdraw --reason "<text>"',
 	run: async (args, ctx) => {
 		const [handle, ...rest] = args.positionals;
 		const text = rest.join(" ").trim();
-		const { withdraw: withdrawFlag, why: whyFlag } = args.flags;
+		const { withdraw: withdrawFlag, reason: reasonFlag } = args.flags;
 		// A value after --withdraw is a mistyped answer or reason, not a flag argument.
 		if (withdrawFlag !== undefined && withdrawFlag !== true)
 			return usage(
-				"--withdraw takes no value; give the reason with --why",
+				"--withdraw takes no value; give the reason with --reason",
 				answer.usage,
 			);
-		if (whyFlag !== undefined && flagString(args, "why") === undefined)
-			return usage("--why needs a reason", answer.usage);
+		if (reasonFlag !== undefined && flagString(args, "reason") === undefined)
+			return usage("--reason needs text", answer.usage);
 		const withdraw = withdrawFlag === true;
-		const reasoning = flagString(args, "why");
+		const reasoning = flagString(args, "reason");
 		if (!handle) return usage("Question handle required", answer.usage);
 		if (withdraw ? text || !reasoning : !text)
 			return usage(
 				withdraw
-					? "--withdraw takes --why and no answer"
-					: "An answer, or --withdraw --why, is required",
+					? "--withdraw takes --reason and no answer"
+					: "An answer, or --withdraw --reason, is required",
 				answer.usage,
 			);
 

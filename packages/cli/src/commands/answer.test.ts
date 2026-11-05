@@ -56,7 +56,7 @@ it("answers through the module, refuses an unknown choice, and hands the issue b
 		"answer",
 		`${id}:1`,
 		"sqlite",
-		"--why",
+		"--reason",
 		"Offline first",
 		"--as",
 		"cabane://actor/human/other",
@@ -76,7 +76,7 @@ it("answers through the module, refuses an unknown choice, and hands the issue b
 		"answer",
 		`${id}:2`,
 		"--withdraw",
-		"--why",
+		"--reason",
 		"Obsolete",
 	]);
 	expect(withdrawn.exitCode).toBe(0);
