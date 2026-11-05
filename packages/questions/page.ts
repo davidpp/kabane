@@ -48,11 +48,21 @@ const decode = (text?: string): Result<Cursor | undefined> => {
 	return err(new Error("Invalid questions cursor; restart without cursor."));
 };
 
-/** Markdown is the payload; the final cursor line is passed back unchanged. */
-export const questionPage = async (
+/** One page of question rows: the rows shown, and the cursor to the rest when there is more. */
+export type QuestionRowPage = { rows: QuestionView[]; nextCursor?: string };
+
+/** The page's markdown, the final cursor line passed back unchanged. */
+export const questionPageMarkdown = (page: QuestionRowPage): string =>
+	page.rows.length
+		? questionsMarkdown(page.rows) +
+			(page.nextCursor ? `\n\nnextCursor: ${page.nextCursor}` : "")
+		: "No questions found.";
+
+/** The one paging path: cursor validation, filter binding and the 16KiB bound of its markdown. */
+export const questionRowPage = async (
 	basePath: string,
 	input: z.input<typeof ListSchema>,
-): Promise<Result<string>> => {
+): Promise<Result<QuestionRowPage>> => {
 	const parsed = ListSchema.safeParse(input);
 	if (!parsed.success)
 		return err(new Error(`Invalid questions query: ${parsed.error.message}`));
@@ -103,34 +113,44 @@ export const questionPage = async (
 	);
 };
 
+/** Markdown is the payload; the final cursor line is passed back unchanged. */
+export const questionPage = async (
+	basePath: string,
+	input: z.input<typeof ListSchema>,
+): Promise<Result<string>> => {
+	const page = await questionRowPage(basePath, input);
+	return page.ok ? ok(questionPageMarkdown(page.value)) : page;
+};
+
 const packPage = (
 	rows: QuestionView[],
 	limit: number,
 	offset: number,
 	binding: string,
 	fingerprint: string,
-): Result<string> => {
-	if (!rows.length) return ok("No questions found.");
-	const render = (count: number): string => {
+): Result<QuestionRowPage> => {
+	if (!rows.length) return ok({ rows: [] });
+	const slice = (count: number): QuestionRowPage => {
 		const after = offset + count;
-		const next =
-			after < rows.length
-				? JSON.stringify({
-						v: 1,
-						binding: binding,
-						fingerprint: fingerprint,
-						offset: after,
-					})
-				: undefined;
-		return (
-			questionsMarkdown(rows.slice(offset, after)) +
-			(next ? `\n\nnextCursor: ${next}` : "")
-		);
+		return {
+			rows: rows.slice(offset, after),
+			...(after < rows.length
+				? {
+						nextCursor: JSON.stringify({
+							v: 1,
+							binding,
+							fingerprint,
+							offset: after,
+						}),
+					}
+				: {}),
+		};
 	};
 	let count = Math.min(limit, rows.length - offset);
 	while (count > 0) {
-		const markdown = render(count);
-		if (serializedBytes(markdown) <= 16 * 1024) return ok(markdown);
+		const page = slice(count);
+		if (serializedBytes(questionPageMarkdown(page)) <= 16 * 1024)
+			return ok(page);
 		count--;
 	}
 	return err(
