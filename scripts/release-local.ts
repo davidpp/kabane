@@ -115,6 +115,7 @@ const ReleaseChoiceSchema = z
 		selector: z.enum(["auto", ...SemanticBumpSchema.options, "version"]),
 		commit: z.string().regex(/^[a-f0-9]{40}$/),
 		state: z.enum(["preparing", "prepared", "published"]),
+		immutableEnableAccepted: z.literal(true).optional(),
 	})
 	.strict();
 type ReleaseChoice = z.infer<typeof ReleaseChoiceSchema>;
@@ -276,27 +277,38 @@ const readImmutability = async (
 const immutable = async (
 	root: string,
 	env: NodeJS.ProcessEnv,
-	enable: boolean,
+	choice: ReleaseChoice | undefined,
 	wait: (milliseconds: number) => Promise<void>,
 ): Promise<Result<void>> => {
 	const preparationFailure = (reason: string) =>
 		fail(
-			`Release preparation incomplete: ${reason} Original source and verified archive retained; inspect GitHub access/settings, then rerun prepare with the same source and bytes. No publication authorized.`,
+			`Release preparation incomplete: ${reason} Original source and verified archive retained; confirm the setting in GitHub read-only with gh api repos/davidpp/kabane/immutable-releases, then rerun prepare with the same source and bytes. No publication authorized.`,
 		);
-	const initial = await readImmutability(root, env);
-	if (!initial.ok)
-		return enable ? preparationFailure(initial.error.message) : initial;
-	if (initial.value) return ok(undefined);
-	if (!enable)
-		return fail(
-			"GitHub release immutability is disabled; run prepare to enable it before publication.",
+	if (!choice?.immutableEnableAccepted) {
+		const initial = await readImmutability(root, env);
+		if (!initial.ok)
+			return choice ? preparationFailure(initial.error.message) : initial;
+		if (initial.value) return ok(undefined);
+		if (!choice)
+			return fail(
+				"GitHub release immutability is disabled; run prepare to enable it before publication.",
+			);
+		const enabled = await query(
+			[
+				"gh",
+				"api",
+				"--method",
+				"PUT",
+				"repos/davidpp/kabane/immutable-releases",
+			],
+			root,
+			env,
 		);
-	const enabled = await query(
-		["gh", "api", "--method", "PUT", "repos/davidpp/kabane/immutable-releases"],
-		root,
-		env,
-	);
-	if (!enabled.ok) return preparationFailure(enabled.error.message);
+		if (!enabled.ok) return preparationFailure(enabled.error.message);
+		choice.immutableEnableAccepted = true;
+		const saved = saveReleaseChoice(root, choice);
+		if (!saved.ok) return preparationFailure(saved.error.message);
+	}
 	// Only valid false readbacks can be retried, never the accepted setting write.
 	for (let attempt = 0; attempt < 5; attempt++) {
 		if (attempt > 0) await wait(1_000);
@@ -582,11 +594,12 @@ const prepare = async (
 	const directory = join(root, ".releases", choice.version);
 	const source = await prepareSource(args, root, env, directory);
 	if (!source.ok) return source;
-	const saved = saveReleaseChoice(root, {
+	choice = {
 		...choice,
 		commit: source.value.commit,
 		state: "preparing",
-	});
+	};
+	const saved = saveReleaseChoice(root, choice);
 	if (!saved.ok) return saved;
 	const archive = await prepareArchive(
 		args.version,
@@ -596,7 +609,7 @@ const prepare = async (
 		directory,
 	);
 	if (!archive.ok) return archive;
-	const setting = await immutable(root, env, true, wait);
+	const setting = await immutable(root, env, choice, wait);
 	if (!setting.ok) return setting;
 	const tag = `v${args.version}`;
 	if (!source.value.tagged) {
@@ -687,7 +700,7 @@ export const runLocalRelease = async (
 			state: choice.state,
 		});
 		if (!selectedArchive.ok) return selectedArchive;
-		const setting = await immutable(root, env, false, wait);
+		const setting = await immutable(root, env, undefined, wait);
 		if (!setting.ok) return setting;
 		const authenticated = await query(
 			["npm", "whoami", "--registry", "https://registry.npmjs.org/"],

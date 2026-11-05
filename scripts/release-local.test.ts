@@ -834,9 +834,22 @@ for (const failure of ["none", "access", "schema", "json"] as const)
 			events = fixture.events();
 		expect((await fixture.run("publish")).value.code).toBe(1);
 		expect(choice().state).toBe("preparing");
+		if (failure === "none") {
+			const resumed = await fixture.run("prepare");
+			expect(resumed.value.code).toBe(1);
+			expect(fixture.state().writes).toEqual(["enable-immutable"]);
+			expect(resumed.value.stdout).toContain(
+				"gh api repos/davidpp/kabane/immutable-releases",
+			);
+			expect(choice().state).toBe("preparing");
+			expect(fixture.git("tag", "--list", "v0.1.1")).toBe("");
+			expect(fixture.git("ls-remote", "origin", "refs/tags/v0.1.1")).toBe("");
+		}
+		expect(choice().immutableEnableAccepted).toBe(true);
 		fixture.change({ delayedReads: 0, readbackFailure: "none" });
 		expect((await fixture.run("prepare")).value.code).toBe(0);
 		expect(choice().state).toBe("prepared");
+		expect(choice().immutableEnableAccepted).toBe(true);
 		expect(fixture.git("rev-parse", "HEAD")).toBe(head);
 		expect(fixture.events()).toBe(events);
 		expect(readFileSync(join(fixture.directory, "kabane-0.1.1.tgz"))).toEqual(
