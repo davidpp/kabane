@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner, type Result } from "@cabane/core";
+import type { Outcome } from "@cabane/extension";
 import { type QuestionView, Questions } from "@cabane/questions";
 import { run } from "../main";
 
@@ -28,8 +29,14 @@ const device = async () => {
 	expect(init.exitCode).toBe(0);
 	return { home, kabane: (argv: string[]) => run(argv, env, home) };
 };
+const page = (outcome: Outcome) =>
+	outcome.json as {
+		items: QuestionView[];
+		hasMore: boolean;
+		nextCursor?: string;
+	};
 
-it("lists open questions as the MCP tool prints them, by scope or issue, with --all and --json", async () => {
+it("lists questions as the MCP tool prints them, by scope or issue, and pages text and --json with one cursor", async () => {
 	const { home, kabane } = await device();
 	const issue = (title: string, scopeUri: string) =>
 		Planner.addTask(home, { title, kind: "issue", scopeUri }).then(unwrap);
@@ -62,7 +69,7 @@ it("lists open questions as the MCP tool prints them, by scope or issue, with --
 	expect(scoped.text).toBe(
 		`## ${store.shortId} Pick a store · normal · waiting\n\n${store.shortId}:1 Which store? (choices only)\n- SQLite\n- Remote`,
 	);
-	expect((scoped.json as QuestionView[]).map((q) => q.handle)).toEqual([
+	expect(page(scoped).items.map((q) => q.handle)).toEqual([
 		`${store.shortId}:1`,
 	]);
 
@@ -70,15 +77,41 @@ it("lists open questions as the MCP tool prints them, by scope or issue, with --
 	expect(all.text).toContain(`${store.shortId}:2 Name it\n→ kabane`);
 	expect(all.text).not.toContain("Elsewhere");
 
-	const everywhere = await kabane(["questions", "--limit", "1"]);
-	expect(everywhere.text).toContain("nextCursor: ");
-	expect(everywhere.json as QuestionView[]).toHaveLength(1);
-	const cursor = everywhere.text.split("nextCursor: ")[1] ?? "";
-	const next = await kabane(["questions", "--limit", "1", "--cursor", cursor]);
-	expect(next.text).toContain("Elsewhere?");
+	// Two pages, both outputs from one cursor: nothing repeated, nothing skipped.
+	const first = await kabane(["questions", "--all", "--limit", "2"]);
+	const cursor = page(first).nextCursor ?? "";
+	expect(page(first).hasMore).toBe(true);
+	expect(first.text.endsWith(`\n\nnextCursor: ${cursor}`)).toBe(true);
+	const second = await kabane([
+		"questions",
+		"--all",
+		"--limit",
+		"2",
+		"--cursor",
+		cursor,
+	]);
+	expect(second.text).toContain("Elsewhere?");
+	expect(page(second)).toMatchObject({ hasMore: false });
+	expect(page(second).nextCursor).toBeUndefined();
+	expect(
+		[...page(first).items, ...page(second).items].map((q) => q.handle),
+	).toEqual([`${store.shortId}:1`, `${store.shortId}:2`, `${other.shortId}:1`]);
+
+	const mismatched = await kabane([
+		"questions",
+		"--limit",
+		"2",
+		"--cursor",
+		cursor,
+	]);
+	expect(mismatched.exitCode).toBe(1);
+	expect(mismatched.json).toEqual({
+		error:
+			"Mismatched questions cursor: repeat the same issue, scope and status, or restart without cursor.",
+	});
 
 	const none = await kabane(["questions", "--scope", "github:acme/none"]);
 	expect(none.text).toBe("No questions found.");
-	expect(none.json).toEqual([]);
+	expect(none.json).toEqual({ items: [], hasMore: false });
 	expect((await kabane(["questions", "--limit", "0"])).exitCode).toBe(2);
 });

@@ -202,7 +202,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `upstream unlink <id> [key]` | drop the link; the key is only needed when a task has more than one |
 | `open <id>` | launch the task's linked issue: the desktop app when its scheme is registered, else the browser, else the URL lands on the clipboard |
 | `comment <id> "<text>"` | `--as <actor>` |
-| `questions [<id>]` | `--all` (include answered and withdrawn) `--scope <uri>` `--limit <n>` `--cursor <cursor>` — open questions for the directory's scope or one issue, as `kabane_questions` prints them; `--json` is the question records, capped by `--limit` |
+| `questions [<id>]` | `--all` (include answered and withdrawn) `--scope <uri>` `--limit <n>` `--cursor <cursor>` — open questions for the directory's scope or one issue, a bounded page as `kabane_questions` prints it; `--json` is the same page as `{ items, hasMore, nextCursor }`. Pass `nextCursor` back as `--cursor` with the same filters, in either output |
 | `answer <handle> <answer…>` | `--why <text>`; or `--withdraw --why <text>` — answer `JCAB-12:1` (a choice ignoring case, a comma list for multi-select); an unknown choice exits 1 listing the valid ones. The last answer moves a waiting issue to next |
 | `log <id>` | `--ref <type:value>` (repeatable) `--commit <sha>` `--branch <name>` `--pr <owner/repo#n>` `--url` `--session` `--file` `--note` |
 | `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,upstream,position,context,priorWork,discussion` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise |
