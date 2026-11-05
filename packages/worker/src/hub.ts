@@ -81,7 +81,8 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 	constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
 		super(ctx, env);
 		const zone = hubTimezone(env.KABANE_TIMEZONE);
-		Runtime.configure({
+		const configured = Runtime.configure({
+			modules: [],
 			provider: DoDb.provider(ctx.storage),
 			actor: () => actorStore.getStore() ?? ANONYMOUS_ACTOR,
 			timezone: () => (zone.ok ? zone.value : "UTC"),
@@ -91,6 +92,7 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 		this.booted = new Promise<Result<void>>((resolve) => {
 			void ctx.blockConcurrencyWhile(async () => {
 				if (!zone.ok) return resolve(zone);
+				if (!configured.ok) return resolve(configured);
 				const initialized = await Planner.init(HUB_BASE);
 				if (!initialized.ok) return resolve(initialized);
 				const armed = await SyncDevice.arm(HUB_BASE, HUB_DEVICE_ID);

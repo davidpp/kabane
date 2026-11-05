@@ -115,7 +115,12 @@ export const init: Command = {
 		const saved = saveConfig(ctx.home, built.value);
 		if (!saved.ok) return failure(saved.error);
 		const location = databaseLocation(ctx.home, built.value);
-		configureRuntime(built.value, built.value.actor, location);
+		const configured = configureRuntime(
+			built.value,
+			built.value.actor,
+			location,
+		);
+		if (!configured.ok) return failure(configured.error);
 		const initialized = await Planner.init(location.basePath);
 		if (!initialized.ok) return failure(initialized.error);
 

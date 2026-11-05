@@ -43,7 +43,10 @@ export const context: Command = {
 			});
 			if (!parsed.success)
 				return usage(
-					`Invalid concise context options: ${parsed.error.message.slice(0, 200)}`,
+					`Invalid concise context options: ${parsed.error.issues
+						.map((issue) => issue.message)
+						.join("; ")
+						.slice(0, 200)}`,
 					context.usage,
 				);
 			const page = await Planner.getContextPage(ctx.store, input, parsed.data);

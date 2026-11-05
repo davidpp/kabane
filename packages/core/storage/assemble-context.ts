@@ -14,9 +14,15 @@
  * section is omitted entirely. A bare reminder returns just its description.
  */
 
-import { CONTEXT_SECTIONS, type ContextSection } from "../context-output";
+import {
+	registeredContextSections,
+	ContextSectionSchema,
+	type ContextSection,
+} from "../context-output";
+import type { ModuleContextSection } from "../module";
 import { traced } from "../observability";
 import { err, ok, type Result } from "../result";
+import { Runtime } from "../runtime";
 import {
 	type AgentActivity,
 	type AgentSession,
@@ -368,7 +374,10 @@ const discussionSection = (
 	return `## Discussion\n\n${merged.map((e) => e.line).join("\n\n")}`;
 };
 
-type RenderedSection = { section: ContextSection; markdown: string | null };
+type RenderedSection = {
+	section: string;
+	markdown: string | null;
+};
 
 const sourceRows = <T>(
 	result: Result<T[]>,
@@ -381,101 +390,150 @@ const sourceRows = <T>(
 			? err(new Error(`Cannot read context ${source}; retry the bounded read.`))
 			: ok([]);
 
+const renderModuleSection = async (
+	section: ModuleContextSection,
+	basePath: string,
+	task: Task,
+	opts: ResolvedAssembleContextOpts,
+	strict: boolean,
+): Promise<Result<string | null>> => {
+	try {
+		const result = await section.render(basePath, task, opts);
+		return result.ok || strict ? result : ok(null);
+	} catch {
+		return strict
+			? err(
+					new Error(
+						`Cannot read context ${section.name}; retry the bounded read.`,
+					),
+				)
+			: ok(null);
+	}
+};
+
+const renderCoreSection = async (
+	section: ContextSection,
+	basePath: string,
+	task: Task,
+	opts: ResolvedAssembleContextOpts,
+	strict: boolean,
+): Promise<Result<string | null>> => {
+	switch (section) {
+		case "metadata":
+			return ok(
+				`# ${task.shortId ?? task.id}: ${task.title}\n\n${metadataLine(task)}`,
+			);
+		case "description":
+			return ok(descriptionSection(task));
+		case "upstream": {
+			const links = sourceRows(
+				await PlannerUpstreamLinks.getUpstreamLinksForTask(basePath, task.id),
+				"upstream",
+				strict,
+			);
+			return links.ok ? ok(upstreamSection(links.value)) : links;
+		}
+		case "position": {
+			const [linksR, subtasksR] = await Promise.all([
+				PlannerTaskLinks.getLinksForTask(basePath, task.id),
+				opts.includeSubtasks
+					? PlannerTasks.queryTasks(basePath, {
+							parentTaskId: task.id,
+							includeClosed: true,
+							includeDeferred: true,
+							limit: Number.MAX_SAFE_INTEGER,
+						})
+					: Promise.resolve(ok([] as Task[])),
+			]);
+			const links = sourceRows(linksR, "position links", strict);
+			if (!links.ok) return links;
+			const subtasks = sourceRows(subtasksR, "position subtasks", strict);
+			if (!subtasks.ok) return subtasks;
+			return positionSection(basePath, task, links.value, subtasks.value, {
+				includeSubtasks: opts.includeSubtasks,
+				strict,
+			});
+		}
+		case "context": {
+			const refs = sourceRows(
+				await PlannerContextRefs.getContextRefs(basePath, task.id),
+				"references",
+				strict,
+			);
+			return refs.ok
+				? ok(await contextSection(refs.value, opts, strict))
+				: refs;
+		}
+		case "priorWork": {
+			const logs = sourceRows(
+				await PlannerWorkLogs.getWorkLogs(basePath, task.id),
+				"prior work",
+				strict,
+			);
+			return logs.ok ? ok(priorWorkSection(logs.value)) : logs;
+		}
+		case "discussion": {
+			const [commentsR, sessionsR] = await Promise.all([
+				PlannerComments.getComments(basePath, task.id),
+				PlannerSessions.querySessions(basePath, { taskId: task.id }),
+			]);
+			const comments = sourceRows(commentsR, "discussion comments", strict);
+			if (!comments.ok) return comments;
+			const sessions = sourceRows(sessionsR, "discussion sessions", strict);
+			if (!sessions.ok) return sessions;
+			const machine =
+				sessions.value.length > 0
+					? await sessionActivityEntries(basePath, sessions.value, strict)
+					: ok(lastAiCommentEntries(comments.value));
+			if (!machine.ok) return machine;
+			return ok(
+				discussionSection(
+					humanCommentEntries(comments.value),
+					machine.value,
+					opts,
+				),
+			);
+		}
+	}
+};
+
 /** Shared renderer: full reads degrade; bounded reads require selected sources. */
 export const readContextSections = async (
 	basePath: string,
 	task: Task,
 	opts: ResolvedAssembleContextOpts,
-	sections: readonly ContextSection[],
+	sections: readonly string[],
 	strict: boolean,
 ): Promise<Result<RenderedSection[]>> => {
-	const render = async (
-		section: ContextSection,
-	): Promise<Result<string | null>> => {
-		switch (section) {
-			case "metadata":
-				return ok(
-					`# ${task.shortId ?? task.id}: ${task.title}\n\n${metadataLine(task)}`,
-				);
-			case "description":
-				return ok(descriptionSection(task));
-			case "upstream": {
-				const links = sourceRows(
-					await PlannerUpstreamLinks.getUpstreamLinksForTask(basePath, task.id),
-					"upstream",
-					strict,
-				);
-				return links.ok ? ok(upstreamSection(links.value)) : links;
-			}
-			case "position": {
-				const [linksR, subtasksR] = await Promise.all([
-					PlannerTaskLinks.getLinksForTask(basePath, task.id),
-					opts.includeSubtasks
-						? PlannerTasks.queryTasks(basePath, {
-								parentTaskId: task.id,
-								includeClosed: true,
-								includeDeferred: true,
-								limit: Number.MAX_SAFE_INTEGER,
-							})
-						: Promise.resolve(ok([] as Task[])),
-				]);
-				const links = sourceRows(linksR, "position links", strict);
-				if (!links.ok) return links;
-				const subtasks = sourceRows(subtasksR, "position subtasks", strict);
-				if (!subtasks.ok) return subtasks;
-				return positionSection(basePath, task, links.value, subtasks.value, {
-					includeSubtasks: opts.includeSubtasks,
-					strict,
-				});
-			}
-			case "context": {
-				const refs = sourceRows(
-					await PlannerContextRefs.getContextRefs(basePath, task.id),
-					"references",
-					strict,
-				);
-				return refs.ok
-					? ok(await contextSection(refs.value, opts, strict))
-					: refs;
-			}
-			case "priorWork": {
-				const logs = sourceRows(
-					await PlannerWorkLogs.getWorkLogs(basePath, task.id),
-					"prior work",
-					strict,
-				);
-				return logs.ok ? ok(priorWorkSection(logs.value)) : logs;
-			}
-			case "discussion": {
-				const [commentsR, sessionsR] = await Promise.all([
-					PlannerComments.getComments(basePath, task.id),
-					PlannerSessions.querySessions(basePath, { taskId: task.id }),
-				]);
-				const comments = sourceRows(commentsR, "discussion comments", strict);
-				if (!comments.ok) return comments;
-				const sessions = sourceRows(sessionsR, "discussion sessions", strict);
-				if (!sessions.ok) return sessions;
-				const machine =
-					sessions.value.length > 0
-						? await sessionActivityEntries(basePath, sessions.value, strict)
-						: ok(lastAiCommentEntries(comments.value));
-				if (!machine.ok) return machine;
-				return ok(
-					discussionSection(
-						humanCommentEntries(comments.value),
-						machine.value,
-						opts,
-					),
-				);
-			}
-		}
-	};
+	const registeredModules = new Map(
+		Runtime.modules()
+			.flatMap((module) => module.contextSections ?? [])
+			.map((section) => [section.name, section]),
+	);
 	try {
 		const rendered = await Promise.all(
-			sections.map(async (section) => ({
-				section,
-				result: await render(section),
-			})),
+			sections.map(async (section) => {
+				const contribution = registeredModules.get(section);
+				const core = ContextSectionSchema.safeParse(section);
+				return {
+					section,
+					result: contribution
+						? await renderModuleSection(
+								contribution,
+								basePath,
+								task,
+								opts,
+								strict,
+							)
+						: core.success
+							? await renderCoreSection(core.data, basePath, task, opts, strict)
+							: err(
+									new Error(
+										`Valid sections: ${registeredContextSections().join(", ")}. Unknown section (excerpt): ${section.slice(0, 80)}`,
+									),
+								),
+				};
+			}),
 		);
 		const output: RenderedSection[] = [];
 		for (const { section, result } of rendered) {
@@ -534,7 +592,7 @@ export namespace Planner {
 					jakePath,
 					task,
 					o,
-					CONTEXT_SECTIONS,
+					registeredContextSections(),
 					false,
 				);
 				if (!sections.ok) return sections;

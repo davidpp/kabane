@@ -20,7 +20,15 @@
 
 import type { Migrate } from "./db/migrate";
 import { LOGICAL_TABLES, physicalTable } from "./db/tables";
+import { CORE_TOOL_NAMES } from "./mcp/tool-names";
+import type { ToolDef } from "./mcp/tools";
 import { err, ok, type Result } from "./result";
+import {
+	CONTEXT_SECTIONS,
+	type ContextSection,
+	type ResolvedAssembleContextOpts,
+} from "./schemas/assemble-context";
+import type { Task } from "./schemas/task";
 import type { SyncFamily } from "./sync/resolve";
 
 /**
@@ -63,6 +71,19 @@ export type ModuleSyncTable = {
 	childOfTasks: boolean;
 };
 
+export type ModuleContextSection = {
+	/** Namespaced section key: <module>.<key>. */
+	name: string;
+	/** Core section it renders after. */
+	after: ContextSection;
+	/** null omits an empty section. */
+	render: (
+		basePath: string,
+		task: Task,
+		opts: ResolvedAssembleContextOpts,
+	) => Promise<Result<string | null>>;
+};
+
 export type KabaneModule = {
 	/** Namespace: keys the module's migration versions, op tags and parked ops. [a-z][a-z0-9-]* */
 	name: string;
@@ -73,6 +94,10 @@ export type KabaneModule = {
 	migrations?: readonly Migrate.Migration[];
 	/** Tables whose rows replicate. A table's ops go out tagged with this module. */
 	syncTables?: readonly ModuleSyncTable[];
+	contextSections?: readonly ModuleContextSection[];
+	tools?: readonly ToolDef[];
+	/** Appended to the MCP server instructions, one paragraph. */
+	instructions?: string;
 };
 
 /** A registered module's table, with the module that owns it. */
@@ -114,6 +139,34 @@ const tableProblem = (
 	return undefined;
 };
 
+const readSurfaceProblem = (
+	modules: readonly KabaneModule[],
+): string | undefined => {
+	const sections: Claims = new Map(
+		CONTEXT_SECTIONS.map((name) => [name, "a core section"]),
+	);
+	const tools: Claims = new Map(
+		Object.values(CORE_TOOL_NAMES).map((name) => [name, "a core tool"]),
+	);
+	for (const module of modules) {
+		for (const section of module.contextSections ?? []) {
+			const owner = sections.get(section.name);
+			if (owner !== undefined)
+				return `module "${module.name}" section "${section.name}": the name is already ${owner}; pick another`;
+			if (!section.name.startsWith(`${module.name}.`))
+				return `module "${module.name}" section "${section.name}": the name must start with "${module.name}."`;
+			sections.set(section.name, `a section of module "${module.name}"`);
+		}
+		for (const tool of module.tools ?? []) {
+			const owner = tools.get(tool.name);
+			if (owner !== undefined)
+				return `module "${module.name}" tool "${tool.name}": the name is already ${owner}; pick another`;
+			tools.set(tool.name, `a tool of module "${module.name}"`);
+		}
+	}
+	return undefined;
+};
+
 /** The first thing wrong with `modules`, in one line, or undefined. */
 const problemWith = (modules: readonly KabaneModule[]): string | undefined => {
 	const claimed: Claims = new Map(
@@ -136,14 +189,15 @@ const problemWith = (modules: readonly KabaneModule[]): string | undefined => {
 			claimed.set(spec.table, `a table of module "${module.name}"`);
 		}
 	}
-	return undefined;
+	return readSurfaceProblem(modules);
 };
 
 /**
  * Validate and register `modules`, replacing the previous set. Refuses two
  * modules with one name, a table core, another module or a module's migration
  * table already has, a natural-key family and a `row-lww` table without a
- * clock, and registers nothing when it refuses.
+ * clock. Also refuses section namespace/uniqueness violations and tool-name
+ * collisions. Registers nothing when it refuses.
  */
 export const setModules = (modules: readonly KabaneModule[]): Result<void> => {
 	const problem = problemWith(modules);

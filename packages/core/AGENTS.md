@@ -34,7 +34,7 @@ await Planner.init(basePath);
 - **Table names** (`db/tables.ts`): `TABLES.x` are getters over a runtime prefix. Never capture `TABLES.x` into a module-level constant — it evaluates at import, before configuration. `physicalTable(logical)` and `tablePrefix()` exist for names built in code (triggers, indexes).
 - **Schema** (`db/schema.ts`): one DDL with logical names, `prefixSql` rewrites CREATE TABLE / INDEX / REFERENCES / ON, `generateFtsSql` builds the FTS5 tables and triggers. `prefixSql` does NOT rewrite CREATE TRIGGER, which is why capture triggers are built in `storage/oplog.ts` from physical names.
 - **Migrations** (`db/migrate.ts` runner, `storage/migrations.ts` list): numbered and append-only, version = index + 1, recorded in `schema_migrations` (behind the prefix), each applied once in its own transaction. `Planner.init` is `Migrations.apply`. To change the schema, append a migration (any SQL over `TABLES.x`, backfills and rebuilds included); never edit a shipped one and never edit `SCHEMA_SQL`, which is migration 1, the release baseline. Migration 1 also carries `PreRelease.upgrade`, the old column-guarded steps, for databases created before the runner; delete it once every database created before the runner is stamped. `Migrations.SCHEMA_VERSION` rides on every pushed op, and a pull stops before an op from a newer core schema. A registered data module's migrations run after core's, in registration order, against its own version table (`schema_migrations_<name>`, a dash becoming an underscore); a module migrating never moves `SCHEMA_VERSION`, and a database a newer build of a module migrated is refused for that module.
-- **Data modules** (`module.ts`): a `KabaneModule` is a `name`, its own append-only `migrations`, and the `syncTables` it replicates, each with a resolver `family` (`row-lww` or `append-only`), an optional LWW `clock` column, and `childOfTasks` (its `task_id` references `tasks(id) ON DELETE CASCADE`). A host registers modules with `Runtime.configure({ modules })` and reads them with `Runtime.modules()`; configure refuses two modules with one name and a table core or another module already has. The resolver, apply, capture, `Oplog.cascadeOf` and backfill consult core's records first, then the registry. A module table's rows carry `updated_by`, `version` and `visibility` like core's, and its storage captures like core's (`Oplog.afterWrite` / `Oplog.afterDelete`); capturing a table no registered module declares is refused.
+- **Data modules** (`module.ts`): a `KabaneModule` is a `name`, its own append-only `migrations`, and the `syncTables` it replicates, each with a resolver `family` (`row-lww` or `append-only`), an optional LWW `clock` column, and `childOfTasks` (its `task_id` references `tasks(id) ON DELETE CASCADE`). Modules may also supply `contextSections` (namespaced brief renderers), `tools` (MCP tools), and `instructions` (an MCP instructions paragraph). A host checks the `Result` from `Runtime.configure({ modules })` and reads registrations with `Runtime.modules()`. Configure rejects duplicate module/table names, sections outside `<module>.` or colliding with core/registered sections, and tools colliding with core/registered tools; a refusal leaves the previous runtime unchanged. The resolver, apply, capture, `Oplog.cascadeOf` and backfill consult core's records first, then the registry. A module table's rows carry `updated_by`, `version` and `visibility` like core's, and its storage captures like core's (`Oplog.afterWrite` / `Oplog.afterDelete`); capturing a table no registered module declares is refused.
 - **Ports with no-op defaults:** `traced()` (`observability.ts`) delegates to the configured `Tracer`; `Events.emit` to the `Notifier`; `Runtime.scopeResolver()` is a host hook no core code calls (Jake keys its session defaults with it); `SyncDevice.settings()` to `SyncSettingsSource`.
 
 Tests import `./testing`, which configures the bun:sqlite provider with plain names. The smoke test in `packages/sqlite/smoke.test.ts` runs the same flow under `""` and `"planner_"`.
@@ -112,15 +112,26 @@ Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is
 ## MCP (`mcp/`)
 
 `KABANE_TOOLS` is the shared tracker tool list: name, description, zod input shape, `read` or
-`write`, handler over `Planner` returning `Result`. Both servers build from it:
+`write`, handler over `Planner` returning `Result`. Both servers use
+`registeredTools()` to compose it with every registered module's `tools`:
 `serveStdio` (the CLI's `kabane mcp`) and `handleHttpRequest` (the hub, stateless
 Streamable HTTP, fresh server per request). The CLI adds device config tools from
-`packages/cli/src/config-tools.ts` to the stdio list; HTTP keeps only the shared
-replicated surface. The shared list exposes only replicated data —
+`packages/cli/src/config-tools.ts` to the stdio list; HTTP keeps the shared core
+and module surface. Each host registers
+`modules` once through `Runtime.configure`; module `instructions` paragraphs are
+appended to `SERVER_INSTRUCTIONS`. `createMcpServer` returns `Result<Server>` and
+refuses duplicate tool names before serving. The shared list exposes only replicated data —
 no session tools, because sessions do not sync and the hub would have nothing to
 answer with. A `ToolContext` carries `basePath`, the `actor`, an optional
 `defaultScope`, and `scopeRequired`: a device defaults scope from its directory, the
 hub demands it and points at `kabane_scopeList`.
+
+Modules can contribute `contextSections`, keyed as `<module>.<key>` and anchored
+`after` a core section. Full and concise briefs include these by default. Concise
+`sections` accepts registered names, rejects unknown names with the valid list,
+and preserves canonical order. Module content shares the 16KiB pagination budget
+and cursor checks; failed module reads are omitted in full briefs and fail selected
+concise reads.
 
 The low-level SDK `Server` is used deliberately: `McpServer.registerTool` infers
 over each zod shape and, fed a generic `ZodRawShape`, tsc recurses until it gives up

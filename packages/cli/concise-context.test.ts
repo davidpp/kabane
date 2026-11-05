@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { ContextPageSchema } from "@cabane/core";
+import { CONTEXT_SECTIONS, ContextPageSchema } from "@cabane/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
@@ -251,6 +251,26 @@ describe.concurrent("bounded context through actual CLI/stdio", () => {
 						true,
 					),
 				).toContain("Invalid");
+				const longUnknown = "unknown".repeat(1000);
+				const invalidSection = await tracker.run(
+					"context",
+					id,
+					"--format",
+					"concise",
+					"--sections",
+					longUnknown,
+				);
+				expect(invalidSection.code).toBe(2);
+				expect(invalidSection.stderr).toContain(
+					`Valid sections: ${CONTEXT_SECTIONS.join(", ")}`,
+				);
+				expect(invalidSection.stderr).not.toContain(longUnknown);
+				expect(
+					await call(
+						{ id, responseFormat: "concise", sections: [longUnknown] },
+						true,
+					),
+				).toContain(`Valid sections: ${CONTEXT_SECTIONS.join(", ")}`);
 				// External comment writes don't bump task.version, but must stale discussion.
 				const db = new Database(join(tracker.home, "kabane.db"));
 				try {

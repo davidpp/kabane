@@ -1,4 +1,4 @@
-import { KABANE_TOOLS, serveStdio } from "@cabane/core";
+import { registeredTools, serveStdio } from "@cabane/core";
 import { failure, success } from "@cabane/extension";
 import { version } from "../../package.json";
 import { ConfigSettings } from "../config-settings";
@@ -35,7 +35,7 @@ export const mcp: Command = {
 			defaultScope,
 		);
 		if (!where.ok) return failure(where.error);
-		await serveStdio(
+		const served = await serveStdio(
 			{
 				basePath: ctx.value.store,
 				actor: ctx.value.actor,
@@ -43,8 +43,9 @@ export const mcp: Command = {
 				scopeRequired: false,
 			},
 			{ name: "kabane", version },
-			[...KABANE_TOOLS, ...configTools(bare.home, where.value)],
+			[...registeredTools(), ...configTools(bare.home, where.value)],
 		);
+		if (!served.ok) return failure(served.error);
 		return success({ served: true }, "");
 	},
 };

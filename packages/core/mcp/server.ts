@@ -29,7 +29,9 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { err, type Result } from "../result";
+import { CONTEXT_SECTIONS, registeredContextSections } from "../context-output";
+import { err, ok, type Result } from "../result";
+import { Runtime } from "../runtime";
 import {
 	KABANE_TOOLS,
 	SERVER_INSTRUCTIONS,
@@ -47,12 +49,29 @@ const DEFAULT_INFO = { name: "kabane", version: "0.1.0" };
 /** Called after a write tool succeeds; the hub pushes to the log here. */
 export type AfterWrite = (tool: ToolDef) => void;
 
-const toSdkTool = (tool: ToolDef): Tool => ({
+const toSdkTool = (
+	tool: ToolDef,
+	sections: z.ZodEnum<[string, ...string[]]>,
+): Tool => ({
 	name: tool.name,
 	description: tool.description,
-	inputSchema: zodToJsonSchema(z.object(tool.input), {
-		$refStrategy: "none",
-	}) as Tool["inputSchema"],
+	inputSchema: zodToJsonSchema(
+		z.object(
+			tool.name === "kabane_context"
+				? {
+						...tool.input,
+						sections: z
+							.array(sections)
+							.max(100)
+							.default(sections.options)
+							.optional(),
+					}
+				: tool.input,
+		),
+		{
+			$refStrategy: "none",
+		},
+	) as Tool["inputSchema"],
 	annotations: { readOnlyHint: tool.kind === "read" },
 });
 
@@ -88,25 +107,57 @@ const callTool = async (
 ): Promise<Result<unknown>> => {
 	const parsed = z.object(tool.input).safeParse(rawArgs ?? {});
 	if (!parsed.success) {
-		return err(new Error(`Invalid arguments: ${parsed.error.message}`));
+		return err(
+			new Error(
+				`Invalid arguments: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
+			),
+		);
 	}
 	const result = await tool.handler(parsed.data, ctx);
 	if (result.ok && tool.kind === "write") afterWrite?.(tool);
 	return result;
 };
 
-/** A server with every tool registered against `ctx`. */
+/** Shared tracker and registered module tools, resolved after host configuration. */
+export const registeredTools = (): readonly ToolDef[] => [
+	...KABANE_TOOLS,
+	...Runtime.modules().flatMap((module) => module.tools ?? []),
+];
+
+/** A server with every tool registered against `ctx`; duplicate names are refused. */
 export const createMcpServer = (
 	ctx: ToolContext,
 	info: McpServerInfo = {},
 	afterWrite?: AfterWrite,
-	toolDefs: readonly ToolDef[] = KABANE_TOOLS,
-): Server => {
+	toolDefs: readonly ToolDef[] = registeredTools(),
+): Result<Server> => {
+	const names = new Set<string>();
+	for (const tool of toolDefs) {
+		if (names.has(tool.name))
+			return err(
+				new Error(
+					`Duplicate MCP tool name: ${tool.name}. Rename the module or host tool.`,
+				),
+			);
+		names.add(tool.name);
+	}
 	const server = new Server(
 		{ ...DEFAULT_INFO, ...info },
-		{ capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
+		{
+			capabilities: { tools: {} },
+			instructions: [
+				SERVER_INSTRUCTIONS,
+				...Runtime.modules().flatMap((module) =>
+					module.instructions ? [module.instructions] : [],
+				),
+			].join("\n\n"),
+		},
 	);
-	const tools = toolDefs.map(toSdkTool);
+	const sections = z.enum([
+		CONTEXT_SECTIONS[0],
+		...registeredContextSections().slice(1),
+	]);
+	const tools = toolDefs.map((tool) => toSdkTool(tool, sections));
 
 	server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 
@@ -124,7 +175,7 @@ export const createMcpServer = (
 		);
 	});
 
-	return server;
+	return ok(server);
 };
 
 /**
@@ -134,9 +185,11 @@ export const createMcpServer = (
 export const serveStdio = async (
 	ctx: ToolContext,
 	info: McpServerInfo = {},
-	tools: readonly ToolDef[] = KABANE_TOOLS,
-): Promise<void> => {
-	const server = createMcpServer(ctx, info, undefined, tools);
+	tools: readonly ToolDef[] = registeredTools(),
+): Promise<Result<void>> => {
+	const created = createMcpServer(ctx, info, undefined, tools);
+	if (!created.ok) return created;
+	const server = created.value;
 	const transport = new StdioServerTransport();
 	await server.connect(transport);
 	await new Promise<void>((resolve) => {
@@ -151,6 +204,7 @@ export const serveStdio = async (
 			});
 		}
 	});
+	return ok(undefined);
 };
 
 /**
@@ -164,7 +218,10 @@ export const handleHttpRequest = async (
 	info: McpServerInfo = {},
 	afterWrite?: AfterWrite,
 ): Promise<Response> => {
-	const server = createMcpServer(ctx, info, afterWrite);
+	const created = createMcpServer(ctx, info, afterWrite);
+	if (!created.ok)
+		return Response.json({ error: created.error.message }, { status: 500 });
+	const server = created.value;
 	const transport = new WebStandardStreamableHTTPServerTransport({
 		sessionIdGenerator: undefined,
 		enableJsonResponse: true,

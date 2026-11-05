@@ -3,6 +3,7 @@ export {
 	createMcpServer,
 	handleHttpRequest,
 	type McpServerInfo,
+	registeredTools,
 	serveStdio,
 } from "./server";
 export {
