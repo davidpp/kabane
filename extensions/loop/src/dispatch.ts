@@ -26,6 +26,7 @@ import { Brief } from "./brief";
 import type { Budget } from "./budget";
 import type { Gates } from "./gates";
 import { LoopPlan } from "./plan";
+import type { Retry } from "./retry";
 import type { RunStore } from "./store";
 
 export namespace Dispatch {
@@ -63,6 +64,8 @@ export namespace Dispatch {
 		work: Work;
 		/** The attempt a dead runner cut short, which this claim continues. */
 		interrupted?: Brief.Interrupted;
+		/** The attempt whose session this gate retry continues, its harness willing. */
+		resumes?: Retry.Resume;
 	};
 
 	export type Hooks = {
@@ -352,8 +355,8 @@ export namespace Dispatch {
 	};
 
 	/**
-	 * Launch the claim's harness on the loop's profile and open its session, resuming an
-	 * interrupted one where it can. `connected` hears of the process as soon as it is up, so a
+	 * Launch the claim's harness on the loop's profile and open its session, resuming the one it
+	 * continues where it can. `connected` hears of the process as soon as it is up, so a
 	 * session that fails to open still has it closed.
 	 */
 	const open = async (
@@ -401,9 +404,38 @@ export namespace Dispatch {
 
 	type Opened = { session: AcpClient.Session; resumed: boolean };
 
+	type Reopen = {
+		/** The attempt whose session is resumed, and that session. */
+		lane: string;
+		acpSessionId: string;
+		/** Why it is resumed, for the trace: empty for an interrupted attempt. */
+		purpose: string;
+		/** What happens instead when it is not. */
+		instead: string;
+	};
+
+	// Session `acpSessionId` resumed, else a new session; the trace says which, and why.
+	const resume = async (
+		claim: Claim,
+		connection: AcpClient.Connection,
+		options: AcpClient.ResumeOptions,
+		sink: Sink,
+		{ lane, acpSessionId: id, purpose, instead }: Reopen,
+	): Promise<Result<Opened>> => {
+		const reopened = await AcpClient.resumeOrStart(connection, id, options);
+		if (!reopened.ok) return reopened;
+		sink.emit(
+			reopened.value.resumed ? "session_resumed" : "warning",
+			reopened.value.resumed
+				? `${claim.harness} session ${id} of ${lane}, resumed${purpose}`
+				: `${claim.harness} session ${id} of ${lane} not resumed${purpose} (${reopened.value.why}): ${instead}`,
+		);
+		return ok(reopened.value);
+	};
+
 	/**
-	 * The interrupted attempt's own harness session, resumed, when it recorded one and the harness
-	 * can resume it; else a new session.
+	 * The harness session of the attempt this claim continues, resumed where the harness can: an
+	 * interrupted attempt's, or the one a gate retry continues. Else a new session.
 	 */
 	const reopen = async (
 		claim: Claim,
@@ -417,27 +449,37 @@ export namespace Dispatch {
 			...(env.mode ? { mode: env.mode } : {}),
 		};
 		const previous = claim.interrupted;
-		if (previous?.acpSessionId === undefined) {
-			if (previous)
-				sink.emit(
-					"warning",
-					`${previous.lane} recorded no ${claim.harness} session to resume: a new session takes over`,
-				);
-			const started = await AcpClient.newSession(connection, options);
-			return started.ok
-				? ok({ session: started.value, resumed: false })
-				: started;
-		}
-		const id = previous.acpSessionId;
-		const reopened = await AcpClient.resumeOrStart(connection, id, options);
-		if (!reopened.ok) return reopened;
-		sink.emit(
-			reopened.value.resumed ? "session_resumed" : "warning",
-			reopened.value.resumed
-				? `${claim.harness} session ${id} of ${previous.lane}, resumed`
-				: `${claim.harness} session ${id} of ${previous.lane} not resumed (${reopened.value.why}): a new session takes over`,
-		);
-		return ok(reopened.value);
+		if (previous?.acpSessionId !== undefined)
+			return resume(claim, connection, options, sink, {
+				lane: previous.lane,
+				acpSessionId: previous.acpSessionId,
+				purpose: "",
+				instead: "a new session takes over",
+			});
+		if (previous)
+			sink.emit(
+				"warning",
+				`${previous.lane} recorded no ${claim.harness} session to resume: a new session takes over`,
+			);
+		else if (claim.resumes)
+			return resume(claim, connection, options, sink, {
+				...claim.resumes,
+				purpose: " for a gate retry",
+				instead: "a new session gets the full brief",
+			});
+		const started = await AcpClient.newSession(connection, options);
+		return started.ok
+			? ok({ session: started.value, resumed: false })
+			: started;
+	};
+
+	// What a resumed session hears first: it has its brief already, so only why it is prompted again.
+	const resumedPrompt = (claim: Claim): string | undefined => {
+		if (claim.interrupted) return Brief.resumed(claim.interrupted);
+		const { work } = claim;
+		return work.kind === "implement" && work.retry
+			? Brief.retriedInSession(claim.task, work.retry)
+			: undefined;
 	};
 
 	type Next =
@@ -712,11 +754,9 @@ export namespace Dispatch {
 			session = current;
 			hooks.opened(current.id);
 			sink.emit("session_start", started(claim));
-			// A resumed session has its brief already; it hears only that its last turn was cut.
 			let text =
-				opened.value.resumed && claim.interrupted
-					? Brief.resumed(claim.interrupted)
-					: first.value;
+				(opened.value.resumed ? resumedPrompt(claim) : undefined) ??
+				first.value;
 			for (;;) {
 				if (cancelled) return ended("cancelled");
 				const result = await steering.turn(current, text);

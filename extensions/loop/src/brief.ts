@@ -90,11 +90,25 @@ export namespace Brief {
 				]
 		).join("\n\n");
 
+	const failed = (gate: Gates.Result): string =>
+		`the \`${gate.name}\` gate (\`${gate.command}\`) failed ${gate.exit === null ? "to finish" : `with exit ${gate.exit}`}`;
+
 	// Why the subtask is open again: the gate its last session's work failed, and how.
 	const retried = (task: Task, gate: Gates.Result): string =>
 		[
-			`${label(task)} was closed before, then reopened: the \`${gate.name}\` gate (\`${gate.command}\`) failed ${gate.exit === null ? "to finish" : `with exit ${gate.exit}`} on that work. Make it pass before you call kabane_done again. The end of its output:`,
+			`${label(task)} was closed before, then reopened: ${failed(gate)} on that work. Make it pass before you call kabane_done again. The end of its output:`,
 			`\`\`\`\n${gate.tail}\n\`\`\``,
+		].join("\n\n");
+
+	/**
+	 * The first prompt of the session that closed `task`, resumed because a gate failed on its work:
+	 * the conversation and its brief still hold, so it hears only the failure.
+	 */
+	export const retriedInSession = (task: Task, gate: Gates.Result): string =>
+		[
+			`After you called kabane_done on ${label(task)}, the runner ran the gates and ${failed(gate)}, so ${label(task)} is open again. This is the same session, resumed, so your instructions, the brief and what you did so far still hold. The end of the gate's output:`,
+			`\`\`\`\n${gate.tail}\n\`\`\``,
+			`Make it pass, then call kabane_done on ${label(task)} again.`,
 		].join("\n\n");
 
 	const fence = (text: string): string => `\`\`\`\n${text.trimEnd()}\n\`\`\``;
