@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { err, ok, Planner, type Task, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
+import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Land } from "./land";
 import { LoopPlan } from "./plan";
@@ -481,5 +482,94 @@ describe("a run with land: pr, through the real runner", () => {
 		const said = comments.ok ? (comments.value.at(-1)?.content ?? "") : "";
 		expect(said).toContain("Not landed: git fetch");
 		expect(said).toContain(`Merge branch \`${BRANCH}\``);
+	});
+});
+
+describe("Loop.land", () => {
+	const landDeps = () => ({
+		home,
+		basePath: home,
+		kabaneBin: "/nonexistent/kabane",
+		git,
+		gh,
+	});
+
+	const completed = async (
+		parent: Task,
+		config: LoopConfig.Input = {},
+	): Promise<RunStore.Run> => {
+		const run = await completedRun(parent, config);
+		const written = RunStore.write(home, {
+			...run,
+			status: "completed",
+			exit: { reason: "plan-done" },
+		});
+		if (!written.ok) throw written.error;
+		return written.value;
+	};
+
+	it("lands a run whose landing failed once the cause is fixed, and its parent waits on the pull request", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent);
+		ghFails = "gh: To get started with GitHub CLI, please run: gh auth login";
+		const first = await Loop.land(landDeps(), run.id);
+		expect(first.ok && first.value.landing?.ok).toBe(false);
+		ghFails = undefined;
+
+		const again = await Loop.land(landDeps(), run.id);
+
+		if (!again.ok) throw again.error;
+		expect(again.value).toMatchObject({ pr: PR_URL, landing: { ok: true } });
+		const saved = RunStore.read(home, run.id);
+		expect(saved.ok && saved.value.pr).toBe(PR_URL);
+		const after = await Planner.getTask(home, parent.id);
+		expect(after.ok && after.value).toMatchObject({
+			state: "waiting",
+			needsReview: true,
+		});
+		const comments = await Planner.getComments(home, parent.id);
+		const said = comments.ok ? comments.value.map((c) => c.content) : [];
+		expect(said[0]).toContain("gh auth login");
+		expect(said[0]).toContain("`kabane loop land run-1` tries again");
+		expect(said[1]).toStartWith("`kabane loop land run-1`:");
+		expect(said[1]).toContain(`pull request ${PR_URL} is open`);
+		const links = await Planner.getUpstreamLinksForTask(home, parent.id);
+		expect(links.ok && links.value.map((l) => l.url)).toEqual([PR_URL]);
+	});
+
+	it("lands a run whose setting does not land it, by hand", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent, { land: "none" });
+
+		const landed = await Loop.land(landDeps(), run.id);
+
+		expect(landed.ok && landed.value.landing?.ok).toBe(true);
+		expect(remoteTip()).toBe(head(run.worktree ?? ""));
+	});
+
+	it("refuses a run that is not completed, and one with no worktree of its own", async () => {
+		const parent = await parentIssue();
+		const run = await completedRun(parent);
+		const stopped = RunStore.write(home, {
+			...run,
+			status: "stopped",
+			exit: { reason: "gates-red" },
+		});
+		if (!stopped.ok) throw stopped.error;
+		const refused = await Loop.land(landDeps(), run.id);
+		expect(!refused.ok && refused.error.message).toBe(
+			"Run run-1 is stopped: only a completed run, whose work its gates passed, lands",
+		);
+		const inPlace = RunStore.write(home, {
+			...run,
+			status: "completed",
+			worktree: undefined,
+		});
+		if (!inPlace.ok) throw inPlace.error;
+		const none = await Loop.land(landDeps(), run.id);
+		expect(!none.ok && none.error.message).toContain(
+			"no branch of its own to land",
+		);
+		expect(ghCalls).toEqual([]);
 	});
 });

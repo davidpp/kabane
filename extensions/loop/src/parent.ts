@@ -114,13 +114,19 @@ export namespace Parent {
 
 	// Where the work went: the pull request a landing opened, else the branch to merge by hand, with
 	// why the landing did not get it there when one was tried.
-	const landed = async (ctx: Ctx, single: boolean): Promise<string> => {
+	const destination = async (ctx: Ctx, single: boolean): Promise<string> => {
 		const { landing, pr } = ctx.run;
 		if (landing?.ok && pr)
 			return `${landing.summary} ${ctx.run.parentShortId} waits on its review.`;
 		const merge = await where(ctx, single);
-		return landing ? `${landing.summary}\n\n${merge}` : merge;
+		return landing
+			? `${landing.summary} \`${landCommand(ctx.run.id)}\` tries again once that is fixed.\n\n${merge}`
+			: merge;
 	};
+
+	/** What a human runs to land a completed run's branch, or to try again. */
+	export const landCommand = (runId: string): string =>
+		`kabane loop land ${runId}`;
 
 	const completed = async (
 		ctx: Ctx,
@@ -128,7 +134,7 @@ export namespace Parent {
 		plan: LoopPlan.Plan | undefined,
 	): Promise<string> => {
 		const head = `Loop run ${ctx.run.id} completed (${exit.reason}).`;
-		if (!plan) return `${head}\n\n${await landed(ctx, false)}`;
+		if (!plan) return `${head}\n\n${await destination(ctx, false)}`;
 		const single = LoopPlan.single(plan);
 		const work = plan.nodes.filter(LoopPlan.isWork).map((n) => n.task);
 		const found = plan.nodes.filter((n) => n.finding).map((n) => n.task);
@@ -143,7 +149,7 @@ export namespace Parent {
 			`- Findings fixed: ${list(found.filter(done))}`,
 			`- Findings left open for you: ${list(found.filter((t) => !LoopPlan.isClosed(t)))}`,
 			"",
-			await landed(ctx, single),
+			await destination(ctx, single),
 		].join("\n");
 	};
 
@@ -203,6 +209,18 @@ export namespace Parent {
 			warn(ctx, `pull request not linked: ${linked.error.message}`);
 	};
 
+	const comment = async (ctx: Ctx, body: string): Promise<void> => {
+		const actor = Runtime.actor();
+		const commented = await Planner.addComment(ctx.deps.basePath, {
+			taskId: ctx.run.parentId,
+			author: actor,
+			authorType: authorTypeOf(actor),
+			content: body,
+		});
+		if (!commented.ok)
+			warn(ctx, `parent not commented: ${commented.error.message}`);
+	};
+
 	/**
 	 * Comment the run's end on the parent. A completed run whose parent is still in_progress (or,
 	 * for a single issue, done by its session) also flags it for review, and moves it to waiting
@@ -217,16 +235,13 @@ export namespace Parent {
 			exit.status === "completed"
 				? await completed(ctx, exit, plan)
 				: stopped(ctx, exit, plan);
-		const actor = Runtime.actor();
-		const commented = await Planner.addComment(ctx.deps.basePath, {
-			taskId: ctx.run.parentId,
-			author: actor,
-			authorType: authorTypeOf(actor),
-			content: body,
-		});
-		if (!commented.ok)
-			warn(ctx, `parent not commented: ${commented.error.message}`);
-		if (exit.status !== "completed") return;
+		await comment(ctx, body);
+		if (exit.status === "completed") await review(ctx, single);
+	};
+
+	// A completed run's parent waits on the human: flagged for review, and waiting on its pull
+	// request once there is one, which is its upstream twin.
+	const review = async (ctx: Ctx, single: boolean): Promise<void> => {
 		const parent = await read(ctx);
 		if (!parent) return;
 		await twin(ctx, parent);
@@ -237,5 +252,19 @@ export namespace Parent {
 		});
 		if (!flagged.ok)
 			warn(ctx, `parent not flagged for review: ${flagged.error.message}`);
+	};
+
+	/**
+	 * Comment a landing of a run that was over on the parent (`kabane loop land`), and when it
+	 * opened a pull request, leave the parent waiting on it as a completed run's landing does.
+	 */
+	export const landed = async (ctx: Ctx): Promise<void> => {
+		const loaded = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
+		const single = loaded.ok && LoopPlan.single(loaded.value);
+		await comment(
+			ctx,
+			`\`${landCommand(ctx.run.id)}\`:\n\n${await destination(ctx, single)}`,
+		);
+		await review(ctx, single);
 	};
 }

@@ -98,6 +98,41 @@ describe("kabane loop start", () => {
 	});
 });
 
+describe("kabane loop status, after a landing", () => {
+	it("says why a branch did not land, and the command that tries again", async () => {
+		const config = LoopConfig.Schema.safeParse({ land: "pr" });
+		if (!config.success) throw config.error;
+		const created = RunStore.create(home, {
+			version: 1,
+			id: "run-1",
+			parentId: "01PARENT",
+			parentShortId: "K-1",
+			projectDir: home,
+			config: config.data,
+			status: "completed",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+			landing: {
+				at: new Date().toISOString(),
+				ok: false,
+				summary: "Not landed: git push failed.",
+			},
+		});
+		if (!created.ok) throw created.error;
+
+		const shown = await kabaneLoop("status", "run-1");
+
+		expect(shown.text).toContain(
+			"\n  Not landed: git push failed.\n  land again: kabane loop land run-1",
+		);
+	});
+});
+
 describe("kabane loop prune", () => {
 	it("says so when no run has a worktree left to remove", async () => {
 		const pruned = await kabaneLoop("prune");

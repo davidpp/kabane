@@ -43,23 +43,6 @@ export namespace Runner {
 	const sleep = (ms: number) =>
 		new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-	const git = async (cwd: string, args: string[]): Promise<string> => {
-		const out = await Worktree.git(cwd, args);
-		return out.ok ? out.value : "";
-	};
-
-	/** HEAD, the status and the diff, hashed: changes whenever an agent changes a file. */
-	const gitTree = async (cwd: string): Promise<string> =>
-		Bun.hash(
-			(
-				await Promise.all([
-					git(cwd, ["rev-parse", "HEAD"]),
-					git(cwd, ["status", "--porcelain"]),
-					git(cwd, ["diff"]),
-				])
-			).join("\0"),
-		).toString(36);
-
 	const nap = (ctx: Ctx, ms: number): Promise<void> =>
 		new Promise((resolve) => {
 			const timer = setTimeout(resolve, ms);
@@ -549,19 +532,7 @@ export namespace Runner {
 		}
 		const log = RunStore.eventLog(deps.home, runId, deps.now);
 		if (!log.ok) return log;
-		const ctx: Ctx = {
-			deps,
-			now: deps.now ?? (() => new Date()),
-			tree: deps.tree ?? gitTree,
-			log: log.value,
-			run: first,
-			live: new Map(),
-			settled: [],
-			wake: () => {},
-			stopRequested: false,
-			stopping: new AbortController(),
-			gating: Promise.resolve(),
-		};
+		const ctx = RunState.make(deps, first, log.value);
 		deps.signal?.addEventListener("abort", () => {
 			ctx.stopRequested = true;
 			ctx.stopping.abort();

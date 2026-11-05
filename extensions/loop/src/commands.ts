@@ -1,5 +1,5 @@
 // The loop's entry points, as plain functions over explicit dependencies. The extension wires
-// them to `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer|prune`; nothing here parses argv or reads the
+// them to `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer|land|prune`; nothing here parses argv or reads the
 // environment for its own settings. A run whose runner died is restarted (`restart`) where it
 // stopped, with its claims and its worktree.
 import { spawn } from "node:child_process";
@@ -25,13 +25,15 @@ import type { Settings } from "@cabane/extension";
 import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
 import { Gates } from "./gates";
-import type { Land } from "./land";
+import { Land } from "./land";
 import { Lenses } from "./lenses";
+import { Parent } from "./parent";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Prune } from "./prune";
 import { Questions } from "./questions";
 import { Runner } from "./runner";
+import { RunState } from "./state";
 import { Steering } from "./steering";
 import { Stop } from "./stop";
 import { RunStore } from "./store";
@@ -612,6 +614,42 @@ export namespace Loop {
 			process.off("SIGTERM", onSignal);
 			process.off("SIGINT", onSignal);
 		}
+	};
+
+	/**
+	 * Land completed run `runId`'s branch as `land: pr` does at the end of a run: onto the latest
+	 * of its base, gated again when that moved it, pushed, with a pull request open. What
+	 * `kabane loop land` does, for a run whose landing failed or one that does not land itself.
+	 * The landing is commented on the parent, which waits on the pull request it opened. Refused
+	 * for a run that is not completed, or has no worktree.
+	 */
+	export const land = async (
+		deps: Deps & Pick<StartDeps, "git" | "gh">,
+		runId: string,
+	): Promise<Result<RunStore.Run>> => {
+		const read = RunStore.read(deps.home, runId);
+		if (!read.ok) return read;
+		const run = read.value;
+		if (run.status !== "completed")
+			return err(
+				new Error(
+					`Run ${runId} is ${run.status}: only a completed run, whose work its gates passed, lands`,
+				),
+			);
+		if (run.worktree === undefined)
+			return err(
+				new Error(
+					`Run ${runId} worked in ${run.projectDir} itself, so it has no branch of its own to land`,
+				),
+			);
+		const plan = await LoopPlan.load(deps.basePath, run.parentId);
+		if (!plan.ok) return plan;
+		const log = RunStore.eventLog(deps.home, runId);
+		if (!log.ok) return log;
+		const ctx = RunState.make({ ...deps, pid: process.pid }, run, log.value);
+		await Land.land(ctx, plan.value);
+		await Parent.landed(ctx);
+		return ok(ctx.run);
 	};
 
 	/**

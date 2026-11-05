@@ -19,6 +19,7 @@ import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
 import { LoopHeader } from "./header";
+import { Parent } from "./parent";
 import { RunStore } from "./store";
 
 const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini] [--land none|pr]
@@ -29,6 +30,7 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop skip|next <subtask|issue>
        kabane loop rollback <runId> <sha>
        kabane loop answer <questionId> <option>
+       kabane loop land <runId>              (pushes a completed run's branch and opens its pull request)
        kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)`;
 
 // The executable the runner and each session's MCP server run as: this process's own entry.
@@ -130,6 +132,17 @@ const worktree = (run: RunStore.Run): string[] =>
 			]
 		: [];
 
+// How the run's branch landed, and the command that tries again when it did not.
+const landing = (run: RunStore.Run): string[] => {
+	if (!run.landing) return [];
+	return run.landing.ok
+		? [`  landed: ${run.landing.summary}`]
+		: [
+				`  ${run.landing.summary}`,
+				`  land again: ${Parent.landCommand(run.id)}`,
+			];
+};
+
 // A question the run's dead runner left: shown, with no answer to give.
 const withdrawn = (q: Loop.Waiting): string =>
 	`  withdrawn, its runner died: ${q.task} ${indented(q.question)} (the restarted run asks again)`;
@@ -156,6 +169,7 @@ const statusOf = async (
 			line(run.value),
 			...restart(run.value),
 			...worktree(run.value),
+			...landing(run.value),
 			...gone.value.map(withdrawn),
 			...waiting.value.map(question),
 		].join("\n"),
@@ -328,6 +342,16 @@ const VERBS: Record<string, { needs: string; run: Verb }> = {
 		run: direct("next"),
 	},
 	rollback: { needs: "a run id", run: rollback },
+	land: {
+		needs: "a run id",
+		run: async (_a, deps, id) => {
+			const landed = await Loop.land(deps, id);
+			if (!landed.ok) return failure(landed.error);
+			return landed.value.landing?.ok
+				? success(landed.value, landed.value.landing.summary)
+				: failure(new Error(landed.value.landing?.summary ?? "Not landed"));
+		},
+	},
 };
 
 const prune = async (deps: Deps): Promise<Outcome> => {
