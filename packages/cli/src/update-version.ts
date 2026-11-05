@@ -77,3 +77,44 @@ export const compareVersions = (a: string, b: string): number => {
 	}
 	return 0;
 };
+
+/** The registry's `latest` and `beta` dist-tags; any other tag is dropped. */
+export const DistTagsSchema = z.object({
+	latest: SemverSchema,
+	beta: SemverSchema.optional(),
+});
+export type DistTags = z.infer<typeof DistTagsSchema>;
+
+/**
+ * The dist-tag an install follows. A stable install follows `latest` alone. A prerelease install
+ * follows the higher of `beta` and `latest`, so a beta user reaches the stable release it precedes.
+ */
+export const followedTag = (
+	runningVersion: string,
+	tags: DistTags,
+): "latest" | "beta" =>
+	isPrerelease(runningVersion) &&
+	tags.beta !== undefined &&
+	compareVersions(tags.beta, tags.latest) > 0
+		? "beta"
+		: "latest";
+
+/** A stable install takes only stable releases; a beta install takes stable or `X.Y.Z-beta.N`. */
+export const onChannel = (target: string, runningVersion: string): boolean =>
+	isPrerelease(runningVersion)
+		? ChannelVersionSchema.safeParse(target).success
+		: !isPrerelease(target);
+
+/** Not a downgrade, the same major as the install, and the same minor below 1.0. */
+export const withinVersionPolicy = (
+	target: string,
+	runningVersion: string,
+): boolean => {
+	const [major, minor] = versionCore(runningVersion).split("."),
+		[targetMajor, targetMinor] = versionCore(target).split(".");
+	return !(
+		compareVersions(target, runningVersion) < 0 ||
+		major !== targetMajor ||
+		(major === "0" && minor !== targetMinor)
+	);
+};
