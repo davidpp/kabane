@@ -363,21 +363,31 @@ describe("kabane cli", () => {
 	});
 
 	it("exit-code contract", async () => {
-		expect((await run("bogus")).code).toBe(2);
-		expect((await run("upstream")).code).toBe(2);
-		expect((await run("open")).code).toBe(1);
-		expect((await run("show")).code).toBe(2);
-		expect((await run("edit", issueId)).code).toBe(2);
-		// A due date the CLI cannot read is a usage error, not a silently dropped deadline.
-		expect((await run("add", "Undated", "--due", "friday")).code).toBe(2);
-		expect((await run("edit", issueId, "--due", "2026-02-30")).code).toBe(2);
-		expect((await run("link", taskId, issueId)).code).toBe(2);
-		expect((await run("show", "NOPE-999")).code).toBe(1);
-		// The test runner is not a TTY, which is the one way board fails.
-		expect((await run("board")).code).toBe(1);
-		expect((await run("help")).code).toBe(0);
-		expect((await run()).code).toBe(2);
-		expect((await run("add", "--help")).code).toBe(0);
+		const expected: { argv: string[]; code: number }[] = [
+			{ argv: ["bogus"], code: 2 },
+			{ argv: ["upstream"], code: 2 },
+			{ argv: ["open"], code: 1 },
+			{ argv: ["show"], code: 2 },
+			{ argv: ["edit", issueId], code: 2 },
+			// A due date the CLI cannot read is a usage error, not a silently dropped deadline.
+			{ argv: ["add", "Undated", "--due", "friday"], code: 2 },
+			{ argv: ["edit", issueId, "--due", "2026-02-30"], code: 2 },
+			{ argv: ["link", taskId, issueId], code: 2 },
+			{ argv: ["show", "NOPE-999"], code: 1 },
+			// The test runner is not a TTY, which is the one way board fails.
+			{ argv: ["board"], code: 1 },
+			{ argv: ["help"], code: 0 },
+			{ argv: [], code: 2 },
+			{ argv: ["add", "--help"], code: 0 },
+		];
+		// None of these writes, so the processes run side by side.
+		const actual = await Promise.all(
+			expected.map(async ({ argv }) => ({
+				argv,
+				code: (await run(...argv)).code,
+			})),
+		);
+		expect(actual).toEqual(expected);
 	});
 
 	it("db block opens another file with a prefix; two homes share it; the default stays separate", async () => {
