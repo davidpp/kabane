@@ -2,6 +2,7 @@
 // actions and the prompt they open, and a question it shows that takes a typed answer.
 import { describe, expect, it } from "bun:test";
 import { CardTab } from "./card-tab";
+import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import type { ActivityCard, CardAction } from "./ports";
 import { BoardPrompt } from "./prompt";
@@ -320,12 +321,19 @@ describe("actions", () => {
 	});
 
 	it("the footer names the card's own keys, never one the board keeps", () => {
+		const reserved = [
+			...Keymap.CONTEXTS.cardTab.bindings,
+			...Keymap.CONTEXTS.transcript.bindings,
+			...Keymap.EVERYWHERE,
+		]
+			.flatMap((binding) => binding.keys)
+			.filter((name) => !name.includes("+"));
 		const s = onTab([
 			card({
 				actions: [
 					STOP,
 					INJECT,
-					{ id: "jump", key: "j", label: "jump" },
+					...reserved.map((key) => ({ id: `host-${key}`, key, label: "host" })),
 					{ id: "pause", key: "p", label: "pause" },
 				],
 			}),
@@ -334,6 +342,13 @@ describe("actions", () => {
 			{ key: "i", label: "inject" },
 			{ key: "p", label: "pause" },
 		]);
+		for (const name of reserved)
+			expect(press(s, name).effect).not.toMatchObject({
+				type: "act",
+				actionId: `host-${name}`,
+			});
+		expect(press(s, "t").state.view).toMatchObject({ toolDetails: true });
+		expect(press(s, "t", "t").state.view).toMatchObject({ toolDetails: false });
 		// Only while the tab has the keys: under the prompt or the copilot they would be typed.
 		expect(CardTab.hints(press(s, "l", "i").state)).toEqual([]);
 		expect(CardTab.hints({ ...s, focus: "copilot" })).toEqual([]);
