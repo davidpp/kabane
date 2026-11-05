@@ -202,6 +202,18 @@ describe("CopilotInstructions grilling the human", () => {
 		expect(skill()).toContain("nextCursor");
 	});
 
+	it("re-reads the issue before recording, because a handle can shift under sync", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"Just before recording, re-read that issue with kabane_questions and its id",
+		);
+		expect(skill()).toContain(
+			"re-read that issue (`kabane_questions` with its `id`)",
+		);
+		expect(skill()).toContain(
+			"same question text, use the handle that does and tell the human what moved",
+		);
+	});
+
 	it("never answers for the human, the recommendation included", () => {
 		expect(CopilotInstructions.SKILLS).toContain(
 			"Only the human answers: never record an answer they did not give, the recommended one included",

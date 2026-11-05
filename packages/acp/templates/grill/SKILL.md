@@ -36,7 +36,9 @@ For each question:
 4. Ask this one question and wait. Where the harness offers a choice prompt (Claude Code's
    AskUserQuestion) you may use it; plain text works everywhere.
 
-Then act on the reply:
+Then act on the reply. A handle can shift when sync brings in an earlier question, so just before
+recording, re-read that issue (`kabane_questions` with its `id`): if the handle no longer shows the
+same question text, use the handle that does and tell the human what moved.
 
 - **A choice, or a free answer the question allows:** `kabane_answer` with the handle and the
   answer, and the human's own words as `reasoning` when they gave a reason.
