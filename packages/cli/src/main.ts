@@ -15,6 +15,7 @@ import {
 	usage,
 } from "@cabane/extension";
 import { add } from "./commands/add";
+import { answer } from "./commands/answer";
 import { board } from "./commands/board";
 import { comment } from "./commands/comment";
 import { config } from "./commands/config";
@@ -53,6 +54,7 @@ export const COMMANDS: Command[] = [
 	open,
 	comment,
 	questions,
+	answer,
 	log,
 	context,
 	sync,
