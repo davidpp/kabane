@@ -145,7 +145,7 @@ const packPage = (
 	}
 	return err(
 		new Error(
-			`Question ${rows[offset]?.handle} exceeds the 16KiB page budget; read its issue with kabane_context, sections: ["questions.decisions"].`,
+			`Question ${rows[offset]?.handle} exceeds the 16KiB page budget; read its issue with kabane_context, responseFormat: "concise", sections: ["questions.decisions"].`,
 		),
 	);
 };

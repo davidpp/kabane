@@ -197,3 +197,39 @@ it("prints kabane_questions pages byte for byte: markdown, then the cursor line"
 		await client.close();
 	}
 });
+
+it("refuses a question over the page budget with a kabane_context hint that works as written", async () => {
+	const task = unwrap(
+		await Planner.addTask(base, { title: "Oversize", kind: "issue" }),
+	);
+	unwrap(
+		await Questions.ask(base, {
+			id: task.id,
+			questions: [{ question: "é".repeat(8000), why: "è".repeat(8000) }],
+		}),
+	);
+	const client = await connect(false);
+	try {
+		const page = await client.callTool({
+			name: "kabane_questions",
+			arguments: { id: task.id },
+		});
+		expect(page.isError).toBe(true);
+		const hint = (page.content as { text: string }[])[0]?.text ?? "";
+		expect(hint).toContain(
+			'kabane_context, responseFormat: "concise", sections: ["questions.decisions"]',
+		);
+		const brief = await client.callTool({
+			name: "kabane_context",
+			arguments: {
+				id: task.id,
+				responseFormat: "concise",
+				sections: ["questions.decisions"],
+			},
+		});
+		expect(brief.isError).not.toBe(true);
+		expect(JSON.stringify(brief.content)).toContain("## Decisions");
+	} finally {
+		await client.close();
+	}
+});
