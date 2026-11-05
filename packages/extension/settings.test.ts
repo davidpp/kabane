@@ -82,6 +82,26 @@ describe("Settings.resolve", () => {
 		).toEqual({ layer: "default" });
 	});
 
+	it("merges a layer into a defaulted record, and a null removes a default entry", () => {
+		const added = resolve(
+			source("project", { gates: { lint: "bun run lint" } }),
+		);
+		expect(added.ok && added.value.value.gates).toEqual({
+			test: "bun test",
+			lint: "bun run lint",
+		});
+		expect(
+			added.ok &&
+				Object.fromEntries(
+					added.value.origins
+						.filter(({ path }) => path[0] === "gates")
+						.map(({ path, origin }) => [path.join("."), origin.layer]),
+				),
+		).toEqual({ "gates.test": "default", "gates.lint": "project" });
+		const removed = resolve(source("scope", { gates: { test: null } }));
+		expect(removed.ok && removed.value.value.gates).toEqual({});
+	});
+
 	it("refuses an unset that names no setting, or a key its record refuses", () => {
 		const refused = resolve(
 			source("project", {

@@ -4,8 +4,9 @@
 // settings for the project's scope, then the caller (flags, the board's form). Where each layer is
 // stored is the host's business: it hands `port` the documents, and this merges and validates them.
 //
-// Objects merge key by key and anything else is replaced, so a record of gates gains a gate per
-// layer while a list of lenses is whatever the highest layer that names it says. A key set to null (or undefined, from
+// The schema's defaults are the lowest layer. Objects merge key by key and anything else is
+// replaced, so a record of gates gains a gate per layer, defaulted ones included, while a list of
+// lenses is whatever the highest layer that names it says. A key set to null (or undefined, from
 // code) unsets what the layers below it say; it must still name a setting.
 import { err, ok, type Result } from "@cabane/core";
 import { z } from "zod";
@@ -183,7 +184,7 @@ export namespace Settings {
 			: [{ path, origin: origins.get(keyOf(path)) ?? { layer: "default" } }];
 
 	/**
-	 * `sources`, lowest first, over the schema's defaults. Each is validated on its own first, so an
+	 * `sources`, lowest first, over the schema's defaults as the lowest layer. Each is validated on its own first, so an
 	 * error names it; then the merge, whose error names every layer in it.
 	 */
 	export const resolve = <S extends z.ZodTypeAny>(
@@ -196,7 +197,16 @@ export namespace Settings {
 			if (!alone.ok) return alone;
 		}
 		const origins: Origins = new Map();
-		let merged: unknown = {};
+		// A schema that needs keys has no defaults to put under the layers: the device config, one
+		// whole document, which its own parse defaults.
+		const defaults = schema.safeParse({});
+		let merged = merge(
+			{},
+			defaults.success ? defaults.data : {},
+			{ layer: "default" },
+			[],
+			origins,
+		);
 		for (const { layer, label, value } of sources)
 			merged = merge(merged, value, { layer, label }, [], origins);
 		const parsed = schema.safeParse(merged);
