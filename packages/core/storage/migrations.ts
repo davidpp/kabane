@@ -292,6 +292,8 @@ export namespace Migrations {
 			},
 		},
 		{
+			// Not shipped yet when it gained the oplog columns below, so it was
+			// extended rather than followed by a ninth migration.
 			// Ops for a data module this device has not registered, or for a newer
 			// version of one it has (`module.ts`), wait here untouched instead of
 			// being skipped, and apply once the module registers or migrates.
@@ -315,6 +317,19 @@ export namespace Migrations {
 					`CREATE INDEX IF NOT EXISTS ${TABLES.sync_parked}_module_idx
 					   ON ${TABLES.sync_parked}(module, server_seq)`,
 				);
+				// A module table's op is tagged when it is captured, not when it is
+				// pushed: the module may not be registered by then, and an untagged
+				// op is dropped as `unknown-table` by every device without it.
+				// Guarded: a pre-release database re-runs the whole list from 1.
+				for (const [column, type] of [
+					["module", "TEXT"],
+					["module_schema", "INTEGER"],
+				] as const) {
+					if (!columnExists(db, TABLES.sync_oplog, column))
+						db.run(
+							`ALTER TABLE ${TABLES.sync_oplog} ADD COLUMN ${column} ${type}`,
+						);
+				}
 			},
 		},
 	];

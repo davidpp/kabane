@@ -16,7 +16,6 @@
  */
 
 import type { Db } from "../db/port";
-import { Modules } from "../module";
 import { traced } from "../observability";
 import { err, ok, type Result } from "../result";
 import { withDb } from "../runtime";
@@ -153,17 +152,14 @@ const parkedOps = (db: Db): Record<string, number> =>
 
 /**
  * An op as it goes on the wire: core's schema version on every op, so an older
- * device knows to stop, and on a module table's op the module's name and
- * version, so a device without that module knows to park it.
+ * device knows to stop. A module table's op already carries its module tag,
+ * set at capture (`Oplog.snapshotOp`), so a device without that module parks
+ * it whatever this build has registered now.
  */
-const outgoing = ({ seq: _seq, ...op }: DrainedOp): SyncOp => {
-	const tag = Modules.tagFor(op.tbl);
-	return {
-		...op,
-		schema: Migrations.SCHEMA_VERSION,
-		...(tag === undefined ? {} : { module: tag }),
-	};
-};
+const outgoing = ({ seq: _seq, ...op }: DrainedOp): SyncOp => ({
+	...op,
+	schema: Migrations.SCHEMA_VERSION,
+});
 
 const renamedShortIds = (db: Db): number =>
 	db

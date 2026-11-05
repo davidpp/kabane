@@ -394,6 +394,22 @@ describe("capturing a module table", () => {
 		expect(ops.find((op) => op.tbl === "tasks")?.module).toBeUndefined();
 	});
 
+	it("keeps the tag on an op pushed after a restart without the module, so others still park it", async () => {
+		const alpha = await createDevice("alpha", [notes()]);
+		const beta = await createDevice("beta", []);
+		const task = await addTask(alpha, "parent");
+		await writeNote(alpha, { taskId: task, body: "captured with the module" });
+
+		// Alpha restarts on a build that no longer registers the module, then pushes.
+		await push({ ...alpha, modules: [] });
+		const note = LocalRelay.ops(relay).find((op) => op.tbl === NOTES);
+		expect(note?.module).toEqual({ name: "notes", schema: 1 });
+
+		const pulled = await pull(beta);
+		expect(pulled.skipped["unknown-table"]).toBe(0);
+		expect(pulled.parked).toBe(1);
+	});
+
 	it("refuses a table no registered module declares", async () => {
 		const alpha = await createDevice("alpha", [notes()]);
 		const task = await addTask(alpha, "parent");
@@ -456,6 +472,13 @@ describe("capturing a module table", () => {
 				.map((row) => row.op_id),
 		);
 		expect(ids).toEqual([`bf:tasks:${task}:v1`, `bf:${NOTES}:${note}:v1`]);
+
+		// Tagged as it was backfilled, so a push without the module keeps it.
+		await push({ ...alpha, modules: [] });
+		expect(LocalRelay.ops(relay).map((op) => op.module)).toEqual([
+			undefined,
+			{ name: "notes", schema: 1 },
+		]);
 	});
 });
 
@@ -583,15 +606,17 @@ describe("a database from before data modules", () => {
 	it("opens, gains the parked-ops table, and syncs unchanged", async () => {
 		const alpha = await createDevice("alpha", []);
 		const beta = await createDevice("beta", []);
-		// Beta as the release before this one left it: no parked-ops table and
-		// no record of the migration that makes it.
+		await addTask(beta, "already here");
+		// Beta as the release before this one left it: no parked-ops table, no
+		// module columns on the oplog, and no record of the migration that adds them.
 		await as(beta, (db) => {
 			db.run(`DROP TABLE ${TABLES.sync_parked}`);
+			db.run(`ALTER TABLE ${TABLES.sync_oplog} DROP COLUMN module`);
+			db.run(`ALTER TABLE ${TABLES.sync_oplog} DROP COLUMN module_schema`);
 			db.run(
 				`DELETE FROM ${TABLES.schema_migrations} WHERE name = 'sync-parked'`,
 			);
 		});
-		await addTask(beta, "already here");
 
 		await boot(beta);
 		expect(await tableExists(beta, TABLES.sync_parked)).toBe(true);

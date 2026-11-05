@@ -116,6 +116,8 @@ type OplogRow = {
 	row_updated_at: string | null;
 	payload: string | null;
 	captured_at: string;
+	module: string | null;
+	module_schema: number | null;
 };
 
 type QuarantineRow = {
@@ -191,6 +193,10 @@ const toDrainedOp = (row: OplogRow): Result<DrainedOp> => {
 		updatedBy: asString(payload.value?.updated_by),
 		version: asNumber(payload.value?.version),
 		capturedAt: row.captured_at,
+		module:
+			row.module === null
+				? undefined
+				: { name: row.module, schema: row.module_schema ?? 0 },
 	});
 	if (!parsed.success) {
 		return err(
@@ -263,9 +269,11 @@ const cascadeOfTask = (db: Db, taskId: string): Cascade => {
 
 export namespace Oplog {
 	/**
-	 * Row snapshot → op. Pure: no database, no clock, no randomness beyond the
+	 * Row snapshot → op. No database, no clock, no randomness beyond the
 	 * caller-supplied id. The one place the wire shape of a captured row is
-	 * decided, shared by live capture and by backfill.
+	 * decided, shared by live capture and by backfill. A registered module's
+	 * table gets the module's tag now, from the registry this build was
+	 * configured with, and keeps it through drain and push.
 	 */
 	export const snapshotOp = (args: {
 		deviceId: string;
@@ -276,6 +284,7 @@ export namespace Oplog {
 		opId?: string;
 	}): SyncOp => {
 		const isDelete = args.op === "delete";
+		const tag = Modules.tagFor(args.tbl);
 		return {
 			opId: args.opId ?? randomOpId(),
 			deviceId: args.deviceId,
@@ -287,6 +296,7 @@ export namespace Oplog {
 			updatedBy: isDelete ? undefined : asString(args.row.updated_by),
 			version: isDelete ? undefined : asNumber(args.row.version),
 			capturedAt: args.capturedAt,
+			...(tag === undefined ? {} : { module: tag }),
 		};
 	};
 
@@ -299,8 +309,8 @@ export namespace Oplog {
 			() =>
 				db.run(
 					`INSERT OR IGNORE INTO ${TABLES.sync_oplog}
-             (op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             (op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at, module, module_schema)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					[
 						op.opId,
 						op.deviceId,
@@ -310,6 +320,8 @@ export namespace Oplog {
 						op.rowUpdatedAt ?? null,
 						op.payload === undefined ? null : JSON.stringify(op.payload),
 						op.capturedAt,
+						op.module?.name ?? null,
+						op.module?.schema ?? null,
 					],
 				).changes > 0,
 		);
@@ -485,7 +497,7 @@ export namespace Oplog {
 		const rows = trySync(() =>
 			db
 				.query<OplogRow, [number]>(
-					`SELECT seq, op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at
+					`SELECT seq, op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at, module, module_schema
              FROM ${TABLES.sync_oplog}
             WHERE seq > (SELECT last_pushed_seq FROM ${TABLES.sync_state} WHERE id = '${LOCAL_STATE_ID}')
             ORDER BY seq ASC
