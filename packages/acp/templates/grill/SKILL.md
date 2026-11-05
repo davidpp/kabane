@@ -41,14 +41,17 @@ Then act on the reply. A handle can shift when sync brings in an earlier questio
 recording, re-read that issue (`kabane_questions` with its `id`): if the handle no longer shows the
 same question text, use the handle that does and tell the human what moved.
 
-- **A choice, or a free answer the question allows:** `kabane_answer` with the handle and the
-  answer, and the human's own words as `reasoning` when they gave a reason.
+- **A choice, or a free answer the question allows:** `kabane_answer` with the handle, the
+  answer and `relayed: true`, and the human's own words as `reasoning` when they gave a reason.
 - **Pushback or a question back:** discuss it, then ask again. Record nothing until they decide.
 - **"skip":** leave it open and move to the next one.
-- **"withdraw":** `kabane_answer` with `withdraw: true` and the human's reason as `reasoning`; ask
-  for the reason if they gave none.
+- **"withdraw":** `kabane_answer` with `withdraw: true`, `relayed: true` and the human's reason
+  as `reasoning`; ask for the reason if they gave none.
 
-If `kabane_answer` refuses, say why and ask again. When its result says the issue moved to next,
+`relayed: true` credits the decision to the human, not to you: it is their reply, and you are
+recording it. If `kabane_answer` refuses it because the connection knows no human, say so and
+ask whether to record the answer under your own name instead. If it refuses for any other
+reason, say why and ask again. When its result says the issue moved to next,
 say so: that was its last open question, and its agent can pick it up again.
 
 Only the human answers. Never record an answer they did not give, the recommended one included,
