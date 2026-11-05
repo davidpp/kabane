@@ -19,14 +19,8 @@ export const formatDecisionBody = (
 
 export const parseDecisionBody = (body: string): ParsedDecision => {
 	const parsed = parseQuestionBody(body);
-	const json = body.match(/^```json\n([\s\S]*?)\n```\n?/)?.[1];
-	if (json === undefined) return parsed;
-	try {
-		const meta = DecisionMetaSchema.safeParse(JSON.parse(json));
-		return meta.success
-			? { ...parsed, recommended: meta.data.recommended }
-			: parsed;
-	} catch {
-		return parsed;
-	}
+	const meta = DecisionMetaSchema.safeParse(parsed.rawMeta);
+	return meta.success
+		? { ...parsed, recommended: meta.data.recommended }
+		: parsed;
 };

@@ -8,6 +8,7 @@ export {
 } from "./server";
 export {
 	authorTypeOf,
+	define as defineTool,
 	KABANE_TOOLS,
 	SERVER_INSTRUCTIONS,
 	type ToolContext,

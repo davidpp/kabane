@@ -18,7 +18,7 @@ export {
 	AskQuestionSchema,
 	type AskInput,
 	type AnswerInput,
-	type Question,
+	type QuestionStatus,
 	type QuestionView,
 } from "./schema";
 export { Questions } from "./storage";

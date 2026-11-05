@@ -166,7 +166,9 @@ describe("hub MCP over Streamable HTTP", () => {
 			true,
 		);
 		expect(asked.isError).toBe(false);
-		expect(asked.value).toBe(`${issue.shortId}:1`);
+		expect(String(asked.value)).toMatch(
+			new RegExp(`^${issue.shortId}:1 id:[0-9A-Z]{26}$`),
+		);
 		const waiting = await callTool(HUMAN, "kabane_get", { id: issue.id });
 		expect(waiting.value).toMatchObject({ state: "waiting" });
 		const answered = await callTool(

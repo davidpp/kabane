@@ -129,7 +129,7 @@ it("u finds the issue, its detail asks both decisions, and the last answer moves
 		if (!rows.ok) throw rows.error;
 		expect(rows.value.map((row) => [row.answer, row.reasoning])).toEqual([
 			["SQLite", "local first"],
-			["Lint, Tests", null],
+			["Lint, Tests", undefined],
 		]);
 
 		// Its last decision answered, the issue leaves the narrowed board, and the one still waiting

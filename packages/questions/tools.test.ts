@@ -96,7 +96,7 @@ it("honors default scope and requires a scope or issue on the hub", async () => 
 	}
 });
 
-it("rejects invalid MCP inputs and records the connected answer author", async () => {
+it("rejects invalid MCP inputs, answers by the id kabane_ask returns, and records the connected answer author", async () => {
 	const task = unwrap(
 		await Planner.addTask(base, { title: "Tool validation", kind: "issue" }),
 	);
@@ -127,6 +127,9 @@ it("rejects invalid MCP inputs and records the connected answer author", async (
 			},
 		});
 		expect(created.isError).not.toBe(true);
+		const [line] = (created.content as { text: string }[]).map((c) => c.text);
+		const id = line?.match(/^\S+:1 id:(\S+)$/)?.[1];
+		expect(id).toBeDefined();
 		expect(
 			(
 				await client.callTool({
@@ -137,14 +140,15 @@ it("rejects invalid MCP inputs and records the connected answer author", async (
 		).toBe(true);
 		const answer = await client.callTool({
 			name: "kabane_answer",
-			arguments: { question: `${task.shortId}:1`, answer: "b" },
+			arguments: { question: id, answer: "b" },
 		});
 		expect(answer.isError).not.toBe(true);
 		const row = unwrap(await Questions.list(base, { id: task.id }))[0];
 		expect(row).toMatchObject({
+			id,
 			answer: "B",
-			asked_by: "cabane://actor/agent/test",
-			answered_by: "cabane://actor/agent/test",
+			askedBy: "cabane://actor/agent/test",
+			answeredBy: "cabane://actor/agent/test",
 		});
 	} finally {
 		await client.close();
@@ -155,7 +159,7 @@ it("prints kabane_questions pages byte for byte: markdown, then the cursor line"
 	const task = unwrap(
 		await Planner.addTask(base, { title: "Paged", kind: "issue" }),
 	);
-	unwrap(
+	const [one, two] = unwrap(
 		await Questions.ask(base, {
 			id: task.id,
 			questions: [
@@ -183,12 +187,48 @@ it("prints kabane_questions pages byte for byte: markdown, then the cursor line"
 		const cursor = first.split("\n\nnextCursor: ")[1] ?? "";
 		expect(JSON.parse(cursor)).toMatchObject({ v: 1, offset: 1 });
 		expect(first).toBe(
-			`## ${task.shortId} Paged · normal · waiting\n\n${task.shortId}:1 First? (choices only)\n- A\n- B ★\nwhy: B is local\n\nnextCursor: ${cursor}`,
+			`## ${task.shortId} Paged · normal · waiting\n\n${task.shortId}:1 First? (choices only) id:${one?.id}\n- A\n- B ★\nwhy: B is local\n\nnextCursor: ${cursor}`,
 		);
 		expect(await text({ id: task.id, limit: 1, cursor })).toBe(
-			`## ${task.shortId} Paged · normal · waiting\n\n${task.shortId}:2 Second?`,
+			`## ${task.shortId} Paged · normal · waiting\n\n${task.shortId}:2 Second? id:${two?.id}`,
 		);
 		expect(await text({ scopeUri: "nowhere" })).toBe("No questions found.");
+	} finally {
+		await client.close();
+	}
+});
+
+it("refuses a question over the page budget with a kabane_context hint that works as written", async () => {
+	const task = unwrap(
+		await Planner.addTask(base, { title: "Oversize", kind: "issue" }),
+	);
+	unwrap(
+		await Questions.ask(base, {
+			id: task.id,
+			questions: [{ question: "é".repeat(8000), why: "è".repeat(8000) }],
+		}),
+	);
+	const client = await connect(false);
+	try {
+		const page = await client.callTool({
+			name: "kabane_questions",
+			arguments: { id: task.id },
+		});
+		expect(page.isError).toBe(true);
+		const hint = (page.content as { text: string }[])[0]?.text ?? "";
+		expect(hint).toContain(
+			'kabane_context, responseFormat: "concise", sections: ["questions.decisions"]',
+		);
+		const brief = await client.callTool({
+			name: "kabane_context",
+			arguments: {
+				id: task.id,
+				responseFormat: "concise",
+				sections: ["questions.decisions"],
+			},
+		});
+		expect(brief.isError).not.toBe(true);
+		expect(JSON.stringify(brief.content)).toContain("## Decisions");
 	} finally {
 		await client.close();
 	}

@@ -67,6 +67,11 @@ export type ToolDef<Shape extends z.ZodRawShape = z.ZodRawShape> = {
 export const authorTypeOf = (actor: string): "human" | "ai" =>
 	actor.startsWith("cabane://actor/agent/") ? "ai" : "human";
 
+/** A tool with its own input shape, widened to the `ToolDef` a list of tools holds. */
+export const define = <Shape extends z.ZodRawShape>(
+	def: ToolDef<Shape>,
+): ToolDef<z.ZodRawShape> => def as unknown as ToolDef<z.ZodRawShape>;
+
 // ============================================================
 // Private helpers
 // ============================================================
@@ -75,10 +80,6 @@ const SCOPE_HINT =
 	'Workspace/repo/client scope: a bare id ("jake") or a full URI ("jake://scope/jake"). The context boundary, not a project.';
 
 const ID_HINT = "Task id: the short label (JCAB-12) or the ULID.";
-
-const define = <Shape extends z.ZodRawShape>(
-	def: ToolDef<Shape>,
-): ToolDef<z.ZodRawShape> => def as unknown as ToolDef<z.ZodRawShape>;
 
 const resolveScope = (
 	given: string | undefined,

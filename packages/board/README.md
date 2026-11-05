@@ -381,7 +381,7 @@ to answer · the copilot has the keys`. A session question pinned over the view 
 one row saying how many decisions wait behind it.
 
 Once answered, the footer says `JREP-7:1 answered`, and `· JREP-7 → next` when it was the last
-and moved the issue on. The description tab lists the decisions made, as the brief reads them:
+and moved the issue on. The description tab lists the decisions made, like the brief:
 `question → answer (who, reasoning)`. Withdrawn ones are not shown. A click on an answer or a
 key hint does what its key does.
 

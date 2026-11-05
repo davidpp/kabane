@@ -7,9 +7,7 @@ import { Fixtures } from "./stories/fixtures";
 
 const ON = Fixtures.task({ id: "t1", shortId: "JREP-7" });
 const decision = (meta: DecisionMeta, why?: string) =>
-	DecisionForm.of(
-		Fixtures.decision(ON, 1, "Which store?", meta, { why: why ?? null }),
-	);
+	DecisionForm.of(Fixtures.decision(ON, 1, "Which store?", meta, { why }));
 
 const fieldsOf = (meta: DecisionMeta) =>
 	decision(meta).request.fields.map((f) => ({

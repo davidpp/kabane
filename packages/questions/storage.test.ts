@@ -67,7 +67,7 @@ it("migrates prefixed tables, assigns stable ordinals and captures every write",
 	expect(reanswer.question).toMatchObject({
 		answer: "Remote",
 		version: 3,
-		answered_by: "cabane://actor/human/test",
+		answeredBy: "cabane://actor/human/test",
 	});
 	expect(
 		unwrap(await Questions.list(base, { id: task.id, status: "open" })).map(
@@ -373,7 +373,7 @@ it("rolls back the answer and oplog if the task move fails, and notifies only af
 	if (!failed.ok) expect(failed.error.message).toContain("resume refused");
 	expect(unwrap(await Questions.list(base))[0]).toMatchObject({
 		status: "open",
-		answer: null,
+		answer: undefined,
 		version: 1,
 	});
 	expect(unwrap(await Planner.getTask(base, task.id))?.state).toBe("waiting");
@@ -397,7 +397,7 @@ it("matches base and qualified scope filters against the same family as kabane_l
 	for (const scopeUri of ["family", "jake://scope/family?branch=review"]) {
 		const tasks = unwrap(await Planner.queryTasks(base, { scopeUri }));
 		const rows = unwrap(await Questions.list(base, { scopeUri }));
-		expect([...new Set(rows.map((row) => row.task_id))].sort()).toEqual(
+		expect([...new Set(rows.map((row) => row.taskId))].sort()).toEqual(
 			tasks.map((task) => task.id).sort(),
 		);
 		expect(rows).toHaveLength(4);

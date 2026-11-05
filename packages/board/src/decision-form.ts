@@ -22,12 +22,8 @@ import type {
 } from "./ports";
 
 export namespace DecisionForm {
-	export type Decision = {
-		/** The question's ULID, which `Questions.answer` takes and the form's id carries. */
-		id: string;
-		/** `JCAB-12:1`, what the notice and the brief call it. */
-		handle: string;
-		askedBy: string;
+	/** `id` is the ULID `Questions.answer` takes and the form's id carries; `handle` what the notice calls it. */
+	export type Decision = Pick<QuestionView, "id" | "handle" | "askedBy"> & {
 		meta: ParsedDecision;
 		request: CopilotElicitation;
 	};
@@ -88,15 +84,16 @@ export namespace DecisionForm {
 
 	/** The question as a form: what is asked, why under it, then its fields. */
 	export const of = (row: QuestionView): Decision => {
-		const meta = parseDecisionBody(row.body);
+		const { id, handle, askedBy, body } = row;
+		const meta = parseDecisionBody(body);
 		const why = row.why?.trim();
 		return {
-			id: row.id,
-			handle: row.handle,
-			askedBy: row.asked_by,
+			id,
+			handle,
+			askedBy,
 			meta,
 			request: {
-				id: row.id,
+				id,
 				message: why ? `${meta.question}\nwhy: ${why}` : meta.question,
 				fields: fieldsOf(meta),
 			},

@@ -193,7 +193,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `config [list\|get <key>\|set <key> <value>\|unset <key>\|path]` | `--json` — inspect or edit device config without opening the database |
 | `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD\|<ISO time>` (a date is due by the end of that day in your timezone; a time without `Z` or an offset is your local time) `--format concise\|full` |
 | `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` `--format concise\|full` `--cursor <cursor>` |
-| `show <id>` | task, links, comments, work log; `--json` also carries `updatedBy` (actor URI of the last writer) and `version` |
+| `show <id>` | task, links, comments, work log, then each module's section (the decisions); `--json` also carries `updatedBy` (actor URI of the last writer), `version`, and `sections`, each module section's markdown by name (`questions.decisions`) |
 | `edit <id>` | `--title` `--description` `--state` `--priority` `--kind` `--assignee <who>\|none` `--scope` `--parent <id>\|none` `--tags` `--due` `--format concise\|full` |
 | `done <id>` | `--format concise\|full` |
 | `search <query>` | `--state` `--scope` `--limit` `--format concise\|full` `--cursor <cursor>` |
@@ -203,9 +203,9 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `open <id>` | launch the task's linked issue: the desktop app when its scheme is registered, else the browser, else the URL lands on the clipboard |
 | `comment <id> "<text>"` | `--as <actor>` |
 | `questions [<id>]` | `--all` (include answered and withdrawn) `--scope <uri>` `--limit <n>` `--cursor <cursor>` — open questions for the directory's scope or one issue, a bounded page as `kabane_questions` prints it; `--json` is the same page as `{ items, hasMore, nextCursor }`. Pass `nextCursor` back as `--cursor` with the same filters, in either output |
-| `answer <handle> <answer…>` | `--why <text>`; or `--withdraw --why <text>` — answer `JCAB-12:1` (a choice ignoring case, a comma list for multi-select); an unknown choice exits 1 listing the valid ones. The last answer moves a waiting issue to next |
+| `answer <handle> <answer…>` | `--reason <text>` (why you chose it); or `--withdraw --reason <text>` — answer `JCAB-12:1` (a choice ignoring case, a comma list for multi-select); an unknown choice exits 1 listing the valid ones. The last answer moves a waiting issue to next |
 | `log <id>` | `--ref <type:value>` (repeatable) `--commit <sha>` `--branch <name>` `--pr <owner/repo#n>` `--url` `--session` `--file` `--note` |
-| `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,upstream,position,context,priorWork,discussion` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise |
+| `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,upstream,position,context,priorWork,discussion,questions.decisions` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise. Core's sections, then each registered module's (`questions.decisions`, the issue's decisions) |
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
 | `update` | `--check` `--json` — metadata-only stable candidate (policy-unverified), or explicit verified update of a supported hoisted Bun global registry install; no tracker initialization |
 | `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
@@ -256,7 +256,9 @@ Same tools as a hub at `https://<your-domain>/mcp`: `kabane_scopeList`,
 `kabane_add`, `kabane_get`, `kabane_list`, `kabane_search`, `kabane_today`,
 `kabane_context`, `kabane_edit`, `kabane_done`, `kabane_link`,
 `kabane_comment`, `kabane_log`, `kabane_contextAdd`, `kabane_contextList`,
-`kabane_contextRemove`. The one difference: here a write may omit `scopeUri`
+`kabane_contextRemove`, `kabane_upstream_link`, `kabane_upstream_unlink`, and the
+questions module's `kabane_ask`, `kabane_questions`, `kabane_answer`. A client's
+`tools/list` is the authority, with each tool's parameters. The one difference: here a write may omit `scopeUri`
 and take the directory default; at the hub it is required. Stdout is the wire,
 so the command prints nothing of its own.
 

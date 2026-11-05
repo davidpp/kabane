@@ -1,32 +1,28 @@
-import { ok, err, type ToolDef } from "@cabane/core";
-import type { z } from "zod";
+import { defineTool, err, ok, type ToolDef } from "@cabane/core";
 import { singleLine } from "./markdown";
 import { ListSchema, questionPage } from "./page";
 import { AnswerSchema, AskSchema } from "./schema";
 import { Questions } from "./storage";
 
-const define = <Shape extends z.ZodRawShape>(tool: ToolDef<Shape>): ToolDef =>
-	tool as unknown as ToolDef;
-
 export const questionTools: readonly ToolDef[] = [
-	define({
+	defineTool({
 		name: "kabane_ask",
 		kind: "write",
 		description:
-			"File 1–10 human decisions on an issue (short id or ULID). Supply choices, a recommended choice label, and why. When choices are supplied, allowFreeform defaults to false; set it to true to accept other answers. waiting defaults to true and moves the issue to waiting. Returns question handles in ULID order.",
+			"File 1–10 human decisions on an issue (short id or ULID). Supply choices, a recommended choice label, and why. When choices are supplied, allowFreeform defaults to false; set it to true to accept other answers. waiting defaults to true and moves the issue to waiting. Returns one line per question in ULID order: its handle, then id:<ULID>.",
 		input: AskSchema.shape,
 		handler: async (args, ctx) => {
 			const rows = await Questions.ask(ctx.basePath, args, ctx.actor);
 			return rows.ok
-				? ok(rows.value.map((row) => row.handle).join("\n"))
+				? ok(rows.value.map((row) => `${row.handle} id:${row.id}`).join("\n"))
 				: rows;
 		},
 	}),
-	define({
+	defineTool({
 		name: "kabane_questions",
 		kind: "read",
 		description:
-			"Read decisions grouped by issue. Supply id for one issue, or scopeUri (defaults to the current scope; required on the hub). status defaults to open; all includes answered and withdrawn. Default limit 20, maximum 100, bounded to 16KiB. Pass nextCursor unchanged as cursor with the same filters; relevant writes invalidate it. A handle number can shift after sync brings in an earlier question from another device; pass the question ULID when you need stability.",
+			"Read decisions grouped by issue. Supply id for one issue, or scopeUri (defaults to the current scope; required on the hub). status defaults to open; all includes answered and withdrawn. Default limit 20, maximum 100, bounded to 16KiB. Pass nextCursor unchanged as cursor with the same filters; relevant writes invalidate it. A handle number can shift after sync brings in an earlier question from another device; each question's line ends with id:<ULID>, which never does.",
 		input: ListSchema.shape,
 		handler: (args, ctx) => {
 			const scopeUri =
@@ -42,11 +38,11 @@ export const questionTools: readonly ToolDef[] = [
 			return questionPage(ctx.basePath, { ...args, scopeUri });
 		},
 	}),
-	define({
+	defineTool({
 		name: "kabane_answer",
 		kind: "write",
 		description:
-			"Answer a question by handle (JCAB-12:1) or ULID. Choices match ignoring case; multi-select uses a comma list; free text requires allowFreeform. Re-answering overwrites. Alternatively supply withdraw: true and reasoning, without answer. Closing the last open question moves a waiting issue to next atomically; the result says whether it moved. A handle number can shift after sync brings in an earlier question from another device; pass the question ULID when you need stability.",
+			"Answer a question by handle (JCAB-12:1) or ULID. Choices match ignoring case; multi-select uses a comma list; free text requires allowFreeform. Re-answering overwrites. Alternatively supply withdraw: true and reasoning, without answer. Closing the last open question moves a waiting issue to next atomically; the result says whether it moved. A handle number can shift after sync brings in an earlier question from another device; pass the ULID from the question's id: when you need stability.",
 		input: AnswerSchema.innerType().shape,
 		handler: async (args, ctx) => {
 			const result = await Questions.answer(ctx.basePath, args, ctx.actor);

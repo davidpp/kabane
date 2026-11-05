@@ -8,27 +8,33 @@ import {
 	formatWorkLogs,
 } from "../output";
 
-/** Use core's selected-section renderer and consume every bounded chunk. */
-const moduleMarkdown = async (
+/**
+ * Each registered module section's markdown by name, the empty ones left out: core's
+ * selected-section renderer, one section at a time, every bounded chunk consumed.
+ */
+const moduleSections = async (
 	basePath: string,
 	id: string,
-): Promise<Result<string>> => {
-	const sections = Runtime.modules().flatMap((module) =>
+): Promise<Result<Record<string, string>>> => {
+	const names = Runtime.modules().flatMap((module) =>
 		(module.contextSections ?? []).map((section) => section.name),
 	);
-	if (!sections.length) return ok("");
-	let markdown = "";
-	let cursor: string | undefined;
-	do {
-		const page = await Planner.getContextPage(basePath, id, {
-			sections,
-			cursor,
-		});
-		if (!page.ok) return page;
-		markdown += page.value.markdown;
-		cursor = page.value.nextCursor;
-	} while (cursor !== undefined);
-	return ok(markdown);
+	const sections: Record<string, string> = {};
+	for (const name of names) {
+		let markdown = "";
+		let cursor: string | undefined;
+		do {
+			const page = await Planner.getContextPage(basePath, id, {
+				sections: [name],
+				cursor,
+			});
+			if (!page.ok) return page;
+			markdown += page.value.markdown;
+			cursor = page.value.nextCursor;
+		} while (cursor !== undefined);
+		if (markdown) sections[name] = markdown;
+	}
+	return ok(sections);
 };
 
 export const show: Command = {
@@ -48,7 +54,7 @@ export const show: Command = {
 			Planner.getLinksForTask(ctx.store, id),
 			Planner.getComments(ctx.store, id),
 			Planner.getWorkLogs(ctx.store, id),
-			moduleMarkdown(ctx.store, id),
+			moduleSections(ctx.store, id),
 		]);
 		if (!links.ok) return failure(links.error);
 		if (!comments.ok) return failure(comments.error);
@@ -63,7 +69,8 @@ export const show: Command = {
 		if (logs.value.length > 0)
 			sections.push(`\nWork log:\n${formatWorkLogs(logs.value)}`);
 
-		if (modules.value) sections.push(`\n${modules.value}`);
+		for (const markdown of Object.values(modules.value))
+			sections.push(`\n${markdown}`);
 
 		return success(
 			{
@@ -71,6 +78,7 @@ export const show: Command = {
 				links: links.value,
 				comments: comments.value,
 				workLogs: logs.value,
+				sections: modules.value,
 			},
 			sections.join("\n"),
 		);

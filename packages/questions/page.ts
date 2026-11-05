@@ -1,12 +1,12 @@
 import {
 	err,
+	fingerprintText as digest,
 	normalizeScopeUri,
 	ok,
 	PageOptionsSchema,
 	Planner,
 	type Result,
 	serializedBytes,
-	tryCatch,
 } from "@cabane/core";
 import { z } from "zod";
 import { questionsMarkdown } from "./markdown";
@@ -27,16 +27,6 @@ const CursorSchema = z
 	})
 	.strict();
 type Cursor = z.infer<typeof CursorSchema>;
-const digest = (text: string): Promise<Result<string>> =>
-	tryCatch(async () => {
-		const hash = await crypto.subtle.digest(
-			"SHA-256",
-			new TextEncoder().encode(text),
-		);
-		return Array.from(new Uint8Array(hash), (byte) =>
-			byte.toString(16).padStart(2, "0"),
-		).join("");
-	});
 const decode = (text?: string): Result<Cursor | undefined> => {
 	if (text === undefined) return ok(undefined);
 	try {
@@ -155,7 +145,7 @@ const packPage = (
 	}
 	return err(
 		new Error(
-			`Question ${rows[offset]?.handle} exceeds the 16KiB page budget; read its issue with kabane_context, sections: ["questions.decisions"].`,
+			`Question ${rows[offset]?.handle} exceeds the 16KiB page budget; read its issue with kabane_context, responseFormat: "concise", sections: ["questions.decisions"].`,
 		),
 	);
 };

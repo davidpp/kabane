@@ -240,7 +240,7 @@ export namespace DetailModel {
 				id: q.id,
 				question: parseDecisionBody(q.body).question,
 				answer: q.answer ?? "",
-				by: actorName(q.answered_by ?? "unknown"),
+				by: actorName(q.answeredBy ?? "unknown"),
 				reasoning: q.reasoning?.trim() || undefined,
 			}));
 

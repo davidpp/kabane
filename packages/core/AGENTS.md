@@ -89,7 +89,7 @@ Core sync set: `tasks`, `task_links`, `task_comments`, `task_work_log`, `project
 
 ## `assembleContext` — THE agent read entrypoint
 
-One primitive builds an issue's full brief as markdown. Sections in order, empty ones omitted: title + metadata, description (never truncated), position (parent, blockers, blocks, subtask states), context (registry refs, `file:` deref'd inline with caps), prior work (work-log refs), discussion (all human comments merged with the durable machine signal). Caps: `perRefCap` 8KB, `totalRefCap` 24KB, `maxTimelineEntries` 20.
+One primitive builds an issue's full brief as markdown. Sections in order, empty ones omitted: title + metadata, description (never truncated), position (parent, blockers, blocks, subtask states), context (registry refs, `file:` deref'd inline with caps), prior work (work-log refs), discussion (all human comments merged with the durable machine signal), then each registered module's `contextSections` after the core section they anchor to (`questions.decisions` after discussion). Caps: `perRefCap` 8KB, `totalRefCap` 24KB, `maxTimelineEntries` 20.
 
 ## Agent sessions
 

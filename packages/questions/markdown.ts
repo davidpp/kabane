@@ -6,28 +6,30 @@ export const singleLine = (text: string): string =>
 
 export const questionMarkdown = (row: QuestionView, brief = false): string => {
 	const question = parseDecisionBody(row.body);
-	const mode = question.multiSelect
-		? " (multi-select)"
-		: question.allowFreeform
-			? ""
-			: " (choices only)";
+	const modes = [
+		...(question.multiSelect ? ["multi-select"] : []),
+		...(question.allowFreeform ? [] : ["choices only"]),
+	];
+	const mode = modes.length ? ` (${modes.join(", ")})` : "";
 	const title = `${singleLine(row.handle)} ${singleLine(question.question)}${mode}`;
+	// A handle can shift after sync; the ULID at the end of the question's line never does.
+	const id = ` id:${row.id}`;
 	const reasoning = row.reasoning ? singleLine(row.reasoning) : "";
 	if (row.status === "answered") {
-		const author = singleLine(row.answered_by ?? "unknown");
+		const author = singleLine(row.answeredBy ?? "unknown");
 		const answer = singleLine(row.answer ?? "");
 		return brief
-			? `${title} → ${answer} (${author}${reasoning ? `, ${reasoning}` : ""})`
-			: `${title}\n→ ${answer} (${author})${reasoning ? `: ${reasoning}` : ""}`;
+			? `${title} → ${answer} (${author}${reasoning ? `, ${reasoning}` : ""})${id}`
+			: `${title}${id}\n→ ${answer} (${author})${reasoning ? `: ${reasoning}` : ""}`;
 	}
 	if (row.status === "withdrawn")
-		return `${title}\nWithdrawn${reasoning ? `: ${reasoning}` : ""}`;
+		return `${title}${id}\nWithdrawn${reasoning ? `: ${reasoning}` : ""}`;
 	const choices = question.choices.map(
 		(label) =>
 			`- ${singleLine(label)}${label === question.recommended ? " ★" : ""}`,
 	);
 	return [
-		title,
+		`${title}${id}`,
 		...choices,
 		...(row.why ? [`why: ${singleLine(row.why)}`] : []),
 	].join("\n");
@@ -40,11 +42,11 @@ export const questionsMarkdown = (
 	const lines: string[] = [];
 	let taskId: string | undefined;
 	for (const row of rows) {
-		if (row.task_id !== taskId) {
+		if (row.taskId !== taskId) {
 			lines.push(
-				`## ${singleLine(row.short_id ?? row.task_id)} ${singleLine(row.title)} · ${singleLine(row.priority)} · ${singleLine(row.state)}`,
+				`## ${singleLine(row.shortId ?? row.taskId)} ${singleLine(row.title)} · ${singleLine(row.priority)} · ${singleLine(row.state)}`,
 			);
-			taskId = row.task_id;
+			taskId = row.taskId;
 		}
 		lines.push(questionMarkdown(row, brief));
 	}
