@@ -1528,7 +1528,7 @@ export namespace BoardNav {
 			return TriggerForm.reduceKey(state, state.dispatch.form, key);
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
 		if (answersUnread(state, key, now))
-			return { state, effect: { type: "notice", notice: JUST_ASKED } };
+			return { state, effect: { type: "notice", notice: justAsked() } };
 		// A harness blocked on a question is the most urgent thing on screen, so it takes the keys
 		// that answer it — a digit, `esc`, a form's cursor — ahead of every view and of the copilot's
 		// own focus. That is the esc layering the board already has, one press one level: the newest,
@@ -1574,10 +1574,12 @@ export namespace BoardNav {
 		!state.prompt.open &&
 		!armed(state, now);
 
-	const JUST_ASKED: Notice = {
+	// A fresh object each time: the footer restarts its timer only when the notice it holds changes,
+	// so a second blocked press must not hand it the same object.
+	const justAsked = (): Notice => ({
 		text: "just asked · read it, then press again",
 		tone: "success",
-	};
+	});
 
 	// A finished turn's footer indicator stays up until the next keypress — except `o`, which is the
 	// key that opens it, and the search box, where a keypress is a query character.
