@@ -39,6 +39,7 @@ import {
 	TABLES,
 	type ToolContext,
 } from "@cabane/core";
+import { questionsModule } from "@cabane/questions";
 import { DoDb } from "./db-do";
 import { LogTransport } from "./log-transport";
 import { ACTOR_HEADER, HUB_DEVICE_ID, SHARED_LOG } from "./names";
@@ -82,7 +83,7 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 		super(ctx, env);
 		const zone = hubTimezone(env.KABANE_TIMEZONE);
 		const configured = Runtime.configure({
-			modules: [],
+			modules: [questionsModule],
 			provider: DoDb.provider(ctx.storage),
 			actor: () => actorStore.getStore() ?? ANONYMOUS_ACTOR,
 			timezone: () => (zone.ok ? zone.value : "UTC"),

@@ -41,6 +41,7 @@
 		"@cabane/acp": "workspace:*",
 		"@cabane/board": "workspace:*",
 		"@cabane/core": "workspace:*",
+		"@cabane/questions": "workspace:*",
 		"@cabane/extension": "workspace:*",
 		"@cabane/loop": "workspace:*",
 		"@cabane/sqlite": "workspace:*",
