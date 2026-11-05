@@ -301,7 +301,8 @@ export const CopilotPane = ({
 					<PlanBlock
 						plan={plan}
 						spinnerFrame={spinnerFrame}
-						width={inner - 4}
+						// An entry's text, less the glyph and the space before it.
+						width={inner - 2}
 						maxRows={MAX_PLAN_ROWS}
 						bg={paneBg}
 					/>
