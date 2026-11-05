@@ -26,7 +26,7 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop status [<runId>]
        kabane loop stop <runId>
        kabane loop pause|resume <runId>      (resume also restarts a run whose runner died)
-       kabane loop skip|next <subtask>
+       kabane loop skip|next <subtask|issue>
        kabane loop rollback <runId> <sha>
        kabane loop answer <questionId> <option>`;
 
@@ -305,8 +305,14 @@ const VERBS: Record<string, { needs: string; run: Verb }> = {
 	},
 	pause: { needs: "a run id", run: pause("pause") },
 	resume: { needs: "a run id", run: resume },
-	skip: { needs: "a subtask", run: direct("skip") },
-	next: { needs: "a subtask", run: direct("next") },
+	skip: {
+		needs: "a subtask, or the issue of a single-issue run",
+		run: direct("skip"),
+	},
+	next: {
+		needs: "a subtask, or the issue of a single-issue run",
+		run: direct("next"),
+	},
 	rollback: { needs: "a run id", run: rollback },
 };
 

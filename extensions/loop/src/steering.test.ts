@@ -184,6 +184,36 @@ describe("Loop.pause and Loop.direct", () => {
 		]);
 	});
 
+	it("steer a single issue in the run on it, and name the issue when no run has it", async () => {
+		const issue = await add({ title: "issue" });
+		const short = issue.shortId ?? issue.id;
+		const deps = { home, basePath: home };
+		const none = await Loop.direct(deps, "skip", short);
+		expect(!none.ok && none.error.message).toBe(
+			`No live loop run is working on ${short}`,
+		);
+
+		runOn(issue, { status: "running", pid: process.pid });
+		const skipped = await Loop.direct(deps, "skip", short);
+		expect(skipped.ok && skipped.value).toEqual({
+			runId: "run-1",
+			task: short,
+		});
+		expect((await Loop.direct(deps, "next", short, "run-1")).ok).toBe(true);
+		const stray = await add({ title: "elsewhere" });
+		const refused = await Loop.direct(deps, "skip", stray.id, "run-1");
+		expect(!refused.ok && refused.error.message).toBe(
+			`${stray.shortId} is not ${short}, the single issue run run-1 works`,
+		);
+
+		// Once a child makes it a parent, the run works the child and the issue is not claimed.
+		await add({ title: "child", parentTaskId: issue.id });
+		const parent = await Loop.direct(deps, "skip", short);
+		expect(!parent.ok && parent.error.message).toBe(
+			`${short} is the parent run run-1 works the subtasks of: skip or next one of them`,
+		);
+	});
+
 	it("refuse a run that is over", async () => {
 		const parent = await add({ title: "parent" });
 		runOn(parent, { status: "completed" });

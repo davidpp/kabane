@@ -53,13 +53,13 @@ export namespace LoopActivity {
 			id: "skip",
 			key: "s",
 			label: "skip",
-			input: "a subtask's short id · it is never claimed",
+			input: "a subtask's short id, or the issue's · it is never claimed",
 		},
 		{
 			id: "next",
 			key: "n",
 			label: "next",
-			input: "a subtask's short id · claimed first once ready",
+			input: "a subtask's short id, or the issue's · claimed first once ready",
 		},
 	];
 
@@ -143,7 +143,12 @@ export namespace LoopActivity {
 			case "skip":
 			case "next": {
 				const task = input.text?.trim() ?? "";
-				if (task === "") return err(new Error(`${actionId} needs a subtask`));
+				if (task === "")
+					return err(
+						new Error(
+							`${actionId} needs a subtask, or the issue of a single-issue run`,
+						),
+					);
 				const asked = await Loop.direct(deps, actionId, task, runId);
 				return asked.ok
 					? ok(`${actionId} ${asked.value.task} requested`)
