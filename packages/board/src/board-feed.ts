@@ -94,11 +94,9 @@ export const useBoardFeed = ({
 			}
 			// Clear any previous poll-error notice on success.
 			setNotice((prev) => (prev?.tone === "error" ? null : prev));
-			update((prev) => {
-				const next = BoardNav.withSections(prev, result.value);
-				// A failed count keeps the last-good badges, as the activity map does.
-				return counts.ok ? BoardDecisions.withCounts(next, counts.value) : next;
-			});
+			// A failed count keeps the last-good badges, as the activity map does.
+			const fresh = counts.ok ? counts.value : undefined;
+			update((prev) => BoardNav.withSections(prev, result.value, fresh));
 			if (act.ok) setActivity(act.value);
 			const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
 			if (links.ok) setLinked(links.value);

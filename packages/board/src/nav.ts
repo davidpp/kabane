@@ -1457,12 +1457,14 @@ export namespace BoardNav {
 	// parents expanded across the reload. If the selected task vanished (a state move out of the visible
 	// sections, or a drop past the done cap), re-anchor to the nearest surviving row by its old position
 	// rather than the top. Stale expanded ids are harmless (visibleRows ignores parents that no longer
-	// exist).
+	// exist). The poll's open-decision counts land in the same pass when it read them: under `u` they
+	// decide which rows are visible, so the selection is reconciled against both at once.
 	export const withSections = (
 		state: BoardState,
 		sections: BoardData.BoardSection[],
+		counts?: ReadonlyMap<string, number>,
 	): BoardState => {
-		const next = { ...state, sections };
+		const next = BoardDecisions.withCounts({ ...state, sections }, counts);
 		const oldRows = visibleRows(state);
 		const newRows = visibleRows(next);
 		if (state.selectedId && rowOf(newRows, state.selectedId)) {

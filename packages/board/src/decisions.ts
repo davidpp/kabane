@@ -60,10 +60,11 @@ export namespace BoardDecisions {
 
 	// ── the board ───────────────────────────────────────────────────────────────────────────────
 
+	/** The poll's counts; the same state when it read none. */
 	export const withCounts = (
 		state: State,
-		counts: ReadonlyMap<string, number>,
-	): State => patch(state, { counts });
+		counts: ReadonlyMap<string, number> | undefined,
+	): State => (counts ? patch(state, { counts }) : state);
 
 	/** The counts the list narrows to while `u` is on, else undefined. */
 	export const filter = ({

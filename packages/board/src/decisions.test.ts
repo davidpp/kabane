@@ -95,6 +95,24 @@ describe("u: the issues waiting on a decision", () => {
 		]);
 	});
 
+	it("keeps a visible row selected when a reload drops the selected issue's last decision", () => {
+		const on = { ...press(board(), "u").state, selectedId: "w" };
+		// The poll after its last answer: its section moved, and its count is gone.
+		const moved = [
+			section("next", [
+				{ task: PARENT, children: [CHILD] },
+				{ task: OTHER, children: [] },
+				{ task: { ...WAITING, state: "next" }, children: [] },
+			]),
+		];
+		const next = BoardNav.withSections(on, moved, new Map([["c", 1]]));
+		expect(rowIds(next)).toEqual(["JREP-1", "JREP-2"]);
+		expect(BoardNav.visibleRows(next).map((r) => r.task.id)).toContain(
+			next.selectedId ?? "",
+		);
+		expect(press(next, "return").state.view.type).toBe("detail");
+	});
+
 	it("is cleared by esc after the marks and a committed search, before the announcement and the scope", () => {
 		let s: BoardNav.BoardState = {
 			...press(board(), "u").state,
