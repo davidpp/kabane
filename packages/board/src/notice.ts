@@ -27,14 +27,11 @@ export const useNotice = (): [BoardNav.Notice | null, SetNotice] => {
 	return [notice, setNotice];
 };
 
-/**
- * A mutation's outcome as the flash: the reducer's composed text on success, the raw error message on
- * failure. Structural on Result<T> so it works for every BoardData mutation.
- */
-export const flash = (
-	res: { ok: true } | { ok: false; error: { message: string } },
-	text: string,
-): BoardNav.Notice =>
+/** A mutation's outcome, structural on Result<T> so it fits every BoardData mutation. */
+export type Outcome = { ok: true } | { ok: false; error: { message: string } };
+
+/** The flash for an outcome: the reducer's composed text on success, the raw error message on failure. */
+export const flash = (res: Outcome, text: string): BoardNav.Notice =>
 	res.ok
 		? { text, tone: "success" }
 		: { text: res.error.message, tone: "error" };

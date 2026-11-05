@@ -312,6 +312,16 @@ export namespace BoardNav {
 				answer: CopilotElicitationAnswer;
 		  };
 
+	/**
+	 * A guard for the effects of `types`, for the part of app.tsx that runs them. Typed from the same
+	 * list it checks, so what it admits is exactly what its runner is typed to take.
+	 */
+	export const effectsOf = <T extends Effect["type"]>(types: readonly T[]) => {
+		const owned: ReadonlySet<string> = new Set(types);
+		return (effect: Effect): effect is Extract<Effect, { type: T }> =>
+			owned.has(effect.type);
+	};
+
 	// Mouse actions routed through the SAME pure reducer as keys, so selection stays single-sourced.
 	// Rows are addressed by their VISIBLE index (see visibleRows) — the wheel no longer moves selection
 	// (the scrollbox scrolls the viewport natively), so there is no scroll action here.

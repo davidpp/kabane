@@ -12,19 +12,18 @@ import { anyActivityRunning, Board } from "./board";
 import { useBoardFeed } from "./board-feed";
 import { useBoardStore } from "./board-store";
 import { CardTab } from "./card-tab";
-import { Clipboard } from "./clipboard";
 import { BoardContext } from "./context";
 import { CopilotLog } from "./copilot-log";
 import { CopilotPane, contextChip } from "./copilot-prompt";
 import { NO_COPILOT, useCopilotSession } from "./copilot-session";
-import { BoardData } from "./data";
+import type { BoardData } from "./data";
 import { Detail } from "./detail";
 import { useDetailRecords } from "./detail-records";
 import { EventView } from "./event-view";
 import { FooterTrail } from "./footer";
-import { Launcher } from "./launcher";
+import { isDispatchEffect, useHostDispatch } from "./host-dispatch";
 import { BoardNav } from "./nav";
-import { flash, useNotice } from "./notice";
+import { useNotice } from "./notice";
 import { HelpSheet } from "./overlay";
 import type { ActivitySource, CardHeader, Copilot, Dispatcher } from "./ports";
 import { ProgramStatus } from "./program-status";
@@ -33,6 +32,7 @@ import { PromptPanel } from "./prompt-field";
 import { useRunActivity } from "./run-activity";
 import { useSpinnerFrame } from "./spinner";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
+import { isTaskEffect, useTaskActions } from "./task-actions";
 import { useTheme } from "./theme";
 import { DispatchLayer } from "./trigger-form-view";
 
@@ -56,15 +56,6 @@ export type AppProps = {
 
 const shortIdOf = (task: Task | undefined, id: string): string =>
 	task?.shortId ?? id.slice(0, 8);
-
-// Without a dispatcher no extension is on. A copilot that can set kabane up is the way to turn one
-// on without knowing the config's keys.
-const noDispatcher = (copilot: Copilot | undefined): BoardNav.Notice => ({
-	text: copilot?.shortcuts().some((s) => s.name === "setup")
-		? "no extension dispatches here · /setup in the copilot turns on the loop"
-		: "no dispatcher configured",
-	tone: "error",
-});
 
 export const App = ({
 	cwd,
@@ -157,123 +148,22 @@ export const App = ({
 	// The same input, opened as a prompt for a card's action or a typed answer.
 	const promptRef = useRef<TextareaRenderable | null>(null);
 
-	// Copy a task's exact assembled brief to the system clipboard, flashing the outcome in the footer.
-	// Uses the raw BoardData.taskBrief string (what David pastes to agents), not the rendered markdown.
-	const runCopy = useCallback(
-		async (id: string): Promise<void> => {
-			const brief = await BoardData.taskBrief(basePath, id);
-			if (!brief.ok) {
-				setNotice({ text: brief.error.message, tone: "error" });
-				return;
-			}
-			const wrote = await Clipboard.write(renderer, brief.value);
-			setNotice(
-				wrote.ok
-					? { text: "copied brief to clipboard", tone: "success" }
-					: { text: wrote.error.message, tone: "error" },
-			);
-		},
-		[basePath, renderer, setNotice],
-	);
-
-	// `O`: hand the task's linked issue to the OS. Several links open the first — the picker a rare
-	// case would want costs a modal on the common one, and the detail brief lists them all anyway.
-	// The clipboard leg of the chain gets this renderer so it can reach OSC 52 over ssh.
-	const runOpenLink = useCallback(
-		async (id: string): Promise<void> => {
-			const links = await BoardData.taskLinks(basePath, id);
-			if (!links.ok) {
-				setNotice({ text: links.error.message, tone: "error" });
-				return;
-			}
-			const link = links.value[0];
-			if (!link) {
-				setNotice({ text: "no linked issue", tone: "error" });
-				return;
-			}
-			const target = {
-				provider: link.provider,
-				identifier: link.identifier,
-				url: link.url,
-			};
-			const opened = await Launcher.open(target, {
-				copy: async (text) => (await Clipboard.write(renderer, text)).ok,
-			});
-			const name = Launcher.label(target);
-			if (!opened.ok) {
-				setNotice({ text: opened.error.message, tone: "error" });
-				return;
-			}
-			setNotice(
-				opened.value === "clipboard"
-					? { text: `no opener · ${name} copied`, tone: "success" }
-					: { text: `opening ${name} in ${link.provider}`, tone: "success" },
-			);
-		},
-		[basePath, renderer, setNotice],
-	);
-
-	// Ask the host what it can start on this task; merge the answer into the open overlay. Without a
-	// dispatcher the overlay closes and the footer says so — never silent.
-	const loadTriggers = useCallback(
-		async (taskId: string): Promise<void> => {
-			if (!dispatcher) {
-				updateState((prev) => ({ ...prev, dispatch: null }));
-				setNotice(noDispatcher(copilot));
-				return;
-			}
-			const result = await dispatcher.triggers(taskId);
-			if (!result.ok) {
-				updateState((prev) => ({ ...prev, dispatch: null }));
-				setNotice({ text: result.error.message, tone: "error" });
-				return;
-			}
-			updateState((prev) => BoardNav.withTriggers(prev, result.value));
-		},
-		[dispatcher, copilot, updateState, setNotice],
-	);
-
-	// Run a confirmed dispatch: assemble the brief, hand the host the target, and flash the outcome.
-	// Never silent — success flashes the host's notice, failure the error message.
-	const runDispatch = useCallback(
-		async (
-			s: BoardNav.BoardState,
-			triggerId: string,
-			id: string,
-			inputs?: Readonly<Record<string, unknown>>,
-		): Promise<void> => {
-			if (!dispatcher) {
-				setNotice(noDispatcher(copilot));
-				return;
-			}
-			const task = BoardNav.taskById(s, id);
-			const shortId = shortIdOf(task, id);
-			const brief = await BoardData.taskBrief(basePath, id);
-			if (!brief.ok) {
-				setNotice({ text: brief.error.message, tone: "error" });
-				return;
-			}
-			const res = await dispatcher.dispatch(
-				triggerId,
-				{ id, shortId, title: task?.title ?? "", brief: brief.value },
-				inputs,
-			);
-			setNotice(
-				res.ok
-					? { text: res.value, tone: "success" }
-					: { text: res.error.message, tone: "error" },
-			);
-			// Refresh activity so a newly started card shows up.
-			const current = stateRef.current;
-			if (current) void reload(current);
-		},
-		[dispatcher, copilot, basePath, reload, stateRef, setNotice],
-	);
+	const runTaskEffect = useTaskActions({ basePath, setNotice, reload });
+	const runDispatchEffect = useHostDispatch({
+		basePath,
+		dispatcher,
+		copilot,
+		store,
+		setNotice,
+		reload,
+	});
 
 	// The single effect runner, shared by the keyboard and mouse dispatchers so both interaction paths
 	// execute the reducer's output the same way. `next` is the post-reduce state a reload merges into.
 	const runEffect = useCallback(
 		(next: BoardNav.BoardState, effect: BoardNav.Effect): void => {
+			if (isTaskEffect(effect)) return runTaskEffect(next, effect);
+			if (isDispatchEffect(effect)) return runDispatchEffect(next, effect);
 			switch (effect.type) {
 				case "quit":
 					renderer.destroy();
@@ -281,64 +171,14 @@ export const App = ({
 				case "reload":
 					void reload(next);
 					return;
-				case "setState":
-					void (async () => {
-						const res = await BoardData.setTaskState(
-							basePath,
-							effect.id,
-							effect.state,
-						);
-						setNotice({ ...flash(res, effect.notice), undoable: res.ok });
-						await reload(next);
-					})();
-					return;
-				case "markDone":
-					void (async () => {
-						const res = await BoardData.markDone(basePath, effect.id);
-						setNotice({ ...flash(res, effect.notice), undoable: res.ok });
-						await reload(next);
-					})();
-					return;
-				case "markReviewed":
-					void (async () => {
-						const res = await BoardData.markReviewed(basePath, effect.id);
-						setNotice({ ...flash(res, effect.notice), undoable: res.ok });
-						await reload(next);
-					})();
-					return;
-				case "applyUndo":
-					// The reverse patch (not itself undoable — no redo). Mirrors the mutation cases: apply,
-					// flash the outcome, reload so the board reflects the walked-back state.
-					void (async () => {
-						const res = await BoardData.applyUndo(
-							basePath,
-							effect.id,
-							effect.patch,
-						);
-						setNotice(flash(res, effect.notice));
-						await reload(next);
-					})();
-					return;
 				case "scroll":
 					scrollRef.current?.scrollBy(effect.delta);
 					return;
 				case "helpScroll":
 					helpRef.current?.scrollBy(effect.delta);
 					return;
-				case "copy":
-					void runCopy(effect.id);
-					return;
-				case "openLink":
-					void runOpenLink(effect.id);
-					return;
 				case "notice":
 					setNotice(effect.notice);
-					return;
-				case "dispatch":
-					void runDispatch(next, effect.triggerId, effect.id, effect.inputs);
-					return;
-				case "loadTriggers":
-					void loadTriggers(effect.taskId);
 					return;
 				case "copilotOpen":
 					// Focus moved optimistically; without a copilot it goes straight back with the flash.
@@ -385,11 +225,8 @@ export const App = ({
 		[
 			renderer,
 			reload,
-			basePath,
-			runCopy,
-			runOpenLink,
-			runDispatch,
-			loadTriggers,
+			runTaskEffect,
+			runDispatchEffect,
 			copilot,
 			runCopilot,
 			cancelCopilot,
