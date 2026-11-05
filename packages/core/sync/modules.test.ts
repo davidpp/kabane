@@ -648,6 +648,117 @@ describe("a row with an op parked", () => {
 	});
 });
 
+describe("a parked op that fails to replay", () => {
+	/** The notes table with a `title` column, declared as `ddl`. */
+	const titled = (
+		ddl: string,
+		later: readonly Migrate.Migration[] = [],
+	): KabaneModule => ({
+		...notes(),
+		migrations: [
+			{
+				name: "create-task-notes",
+				up: (db) =>
+					db.run(
+						`CREATE TABLE IF NOT EXISTS ${notesTable()} (
+						   id TEXT PRIMARY KEY,
+						   task_id TEXT NOT NULL REFERENCES ${TABLES.tasks}(id) ON DELETE CASCADE,
+						   body TEXT NOT NULL,
+						   title ${ddl},
+						   updated_at TEXT NOT NULL,
+						   updated_by TEXT,
+						   version INTEGER NOT NULL DEFAULT 1,
+						   visibility TEXT NOT NULL DEFAULT 'shared'
+						 )`,
+					),
+			},
+			...later,
+		],
+	});
+
+	/** Version 2 of the NOT NULL build: the table rebuilt with `title` optional. */
+	const RELAX_TITLE: Migrate.Migration = {
+		name: "relax-title",
+		up: (db) => {
+			const notes = notesTable();
+			db.run(
+				`CREATE TABLE ${notes}_relaxed (
+				   id TEXT PRIMARY KEY,
+				   task_id TEXT NOT NULL REFERENCES ${TABLES.tasks}(id) ON DELETE CASCADE,
+				   body TEXT NOT NULL,
+				   title TEXT,
+				   updated_at TEXT NOT NULL,
+				   updated_by TEXT,
+				   version INTEGER NOT NULL DEFAULT 1,
+				   visibility TEXT NOT NULL DEFAULT 'shared'
+				 )`,
+			);
+			db.run(`INSERT INTO ${notes}_relaxed SELECT * FROM ${notes}`);
+			db.run(`DROP TABLE ${notes}`);
+			db.run(`ALTER TABLE ${notes}_relaxed RENAME TO ${notes}`);
+		},
+	};
+
+	it("is set aside and reported, the other ops and core keep flowing, and it retries after an upgrade", async () => {
+		const alpha = await createDevice("alpha", [titled("TEXT")]);
+		const beta = await createDevice("beta", []);
+
+		const task = await addTask(alpha, "parent");
+		const titledNote = ulid();
+		await as(alpha, (db) => {
+			db.run(
+				`INSERT INTO ${notesTable()} (id, task_id, body, title, updated_at)
+				 VALUES (?, ?, 'has a title', 'T', ?)`,
+				[titledNote, task, new Date().toISOString()],
+			);
+			Oplog.afterWrite(db, NOTES, "insert", titledNote);
+		});
+		const untitled = await writeNote(alpha, { taskId: task, body: "no title" });
+		await push(alpha);
+		expect((await pull(beta)).parked).toBe(2);
+
+		// Beta registers a build whose title is required: alpha's untitled note
+		// can never apply there.
+		const strict = { ...beta, modules: [titled("TEXT NOT NULL")] };
+		await boot(strict);
+		await addTask(alpha, "core keeps coming");
+		await push(alpha);
+
+		const replay = await pull(strict);
+		expect(replay.replayFailed).toBe(1);
+		expect(replay.replayed).toBe(1);
+		expect(await titles(strict)).toEqual(["core keeps coming", "parent"]);
+		expect((await notesOn(strict)).map((row) => row.id)).toEqual([titledNote]);
+
+		const reported = await status(strict);
+		expect(reported.parkedOps).toEqual({ notes: 1 });
+		expect(reported.parkedFailures).toBe(1);
+		expect(reported.parkedFailed[0]).toMatchObject({
+			module: "notes",
+			tbl: NOTES,
+			rowId: untitled,
+		});
+		expect(reported.parkedFailed[0]?.error).toContain("NOT NULL");
+
+		// Not retried on the same version.
+		const again = await pull(strict);
+		expect(again.replayed + again.replayFailed).toBe(0);
+
+		const relaxed = {
+			...beta,
+			modules: [titled("TEXT NOT NULL", [RELAX_TITLE])],
+		};
+		await boot(relaxed);
+		const retried = await pull(relaxed);
+		expect(retried.replayed).toBe(1);
+		expect(retried.replayFailed).toBe(0);
+		expect(await notesOn(relaxed)).toEqual(await notesOn(alpha));
+		const cleared = await status(relaxed);
+		expect(cleared.parkedOps).toEqual({});
+		expect(cleared.parkedFailures).toBe(0);
+	});
+});
+
 // ============================================================
 // A database from before the seam
 // ============================================================

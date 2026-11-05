@@ -20,7 +20,7 @@ import { traced } from "../observability";
 import { err, ok, type Result } from "../result";
 import { withDb } from "../runtime";
 
-import type { SyncOp, SyncStatus } from "../schemas";
+import type { ParkedFailure, SyncOp, SyncStatus } from "../schemas";
 import { TABLES } from "../storage/helpers";
 import { Migrations } from "../storage/migrations";
 import { type DrainedOp, Oplog } from "../storage/oplog";
@@ -44,8 +44,9 @@ const DEFAULT_MAX_BATCHES = 100;
 const BASELINE_SCHEMA = 1;
 
 /**
- * Quarantined ops listed in `status`. The count beside them is the true total —
- * this bounds an MCP tool's output when something has gone badly wrong.
+ * Quarantined ops, and parked ops whose replay failed, listed in `status`. The
+ * count beside each is the true total — this bounds an MCP tool's output when
+ * something has gone badly wrong.
  */
 const QUARANTINE_DETAIL_LIMIT = 10;
 
@@ -149,6 +150,42 @@ const parkedOps = (db: Db): Record<string, number> =>
 			.all()
 			.map((row) => [row.module, row.count]),
 	);
+
+const parkedFailures = (db: Db): number =>
+	db
+		.query<{ count: number }, []>(
+			`SELECT COUNT(*) AS count FROM ${TABLES.sync_parked} WHERE error IS NOT NULL`,
+		)
+		.get()?.count ?? 0;
+
+/** Parked ops whose replay failed, newest first. */
+const parkedFailed = (db: Db, limit: number): ParkedFailure[] =>
+	db
+		.query<
+			{
+				op_id: string;
+				module: string;
+				tbl: string;
+				row_id: string;
+				error: string;
+				failed_at: string;
+			},
+			[number]
+		>(
+			`SELECT op_id, module, tbl, row_id, error, failed_at FROM ${TABLES.sync_parked}
+        WHERE error IS NOT NULL
+        ORDER BY failed_at DESC, op_id DESC
+        LIMIT ?`,
+		)
+		.all(limit)
+		.map((row) => ({
+			opId: row.op_id,
+			module: row.module,
+			tbl: row.tbl,
+			rowId: row.row_id,
+			error: row.error,
+			failedAt: row.failed_at,
+		}));
 
 /**
  * An op as it goes on the wire: core's schema version on every op, so an older
@@ -301,6 +338,8 @@ const statusImpl = async (basePath: string): Promise<Result<SyncStatus>> =>
 				quarantinedOps: 0,
 				quarantined: [],
 				parkedOps: {},
+				parkedFailures: 0,
+				parkedFailed: [],
 			});
 		}
 
@@ -322,6 +361,8 @@ const statusImpl = async (basePath: string): Promise<Result<SyncStatus>> =>
 			quarantinedOps: quarantinedOps.value,
 			quarantined: quarantined.value,
 			parkedOps: parkedOps(db),
+			parkedFailures: parkedFailures(db),
+			parkedFailed: parkedFailed(db, QUARANTINE_DETAIL_LIMIT),
 		});
 	});
 
@@ -347,6 +388,7 @@ export namespace Sync {
 			"sync.renamed": result.renamed,
 			"sync.parked": result.parked,
 			"sync.replayed": result.replayed,
+			"sync.replay_failed": result.replayFailed,
 			"sync.batches": result.batches,
 		}),
 	});

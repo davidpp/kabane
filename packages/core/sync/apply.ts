@@ -47,8 +47,9 @@
  * is, goes into `sync_parked` untouched, in the same transaction that moves the
  * watermark past it, and so does every later op for the same row, readable or
  * not, so the row's history replays in log order. `replayParked` applies them
- * through this same pass once the module is here. Skipping them would move the
- * watermark past rows this device could never fetch again.
+ * through this same pass once the module is here; one that raises there is set
+ * aside with its error rather than failing the pull. Skipping them would move
+ * the watermark past rows this device could never fetch again.
  *
  * SKIPS ARE COUNTED, NEVER SWALLOWED. `Resolve` is total by design so one
  * malformed op cannot wedge `last_applied_seq` forever, which only works if the
@@ -58,7 +59,7 @@
 
 import type { Db } from "../db/port";
 import { Modules } from "../module";
-import { type Result, trySync } from "../result";
+import { ok, type Result, trySync } from "../result";
 import { atomic } from "../runtime";
 
 import {
@@ -165,6 +166,11 @@ export type ApplyReport = {
 	parked: number;
 	/** Parked ops whose module is now here, applied this pass in log order. */
 	replayed: number;
+	/**
+	 * Parked ops whose replay raised. Each stays parked, its failure recorded
+	 * (`SyncStatus.parkedFailed`), and the rest of the pass goes on.
+	 */
+	replayFailed: number;
 	/** The `last_applied_seq` this pass advanced to. */
 	throughSeq: number;
 };
@@ -675,19 +681,24 @@ const applyOne = (pass: Pass, op: RelayOp) => {
 	execute(pass, meta, decision, localById ?? localByKey);
 };
 
-/** Apply `ops` in the order given, parking what this device cannot read yet. */
+/**
+ * Apply `ops` in the order given, parking what this device cannot read yet.
+ * `deletedAt` is the pass's delete evidence, shared when one pass spans
+ * several transactions.
+ */
 const applyOps = (
 	db: Db,
 	ops: readonly RelayOp[],
 	localDeviceId: string,
 	now: string,
+	deletedAt: Map<string, string> = new Map(),
 ): Counts => {
 	const pass: Pass = {
 		db,
 		localDeviceId,
 		now,
 		batchLabels: collectLabels(ops),
-		deletedAt: new Map(),
+		deletedAt,
 		metas: new Map(),
 		counts: {
 			applied: 0,
@@ -722,6 +733,7 @@ const applyOrdered = (
 		received: page.ops.length,
 		...counts,
 		replayed: 0,
+		replayFailed: 0,
 		throughSeq: page.throughSeq,
 	};
 };
@@ -734,6 +746,7 @@ type ParkedRow = {
 	tbl: string;
 	row_id: string;
 	op: string;
+	failed_schema: number | null;
 };
 
 /**
@@ -747,7 +760,7 @@ const readyToReplay = (db: Db): ParkedRow[] => {
 	if (modules.length === 0) return [];
 	const rows = db
 		.query<ParkedRow, string[]>(
-			`SELECT op_id, server_seq, module, module_schema, tbl, row_id, op
+			`SELECT op_id, server_seq, module, module_schema, tbl, row_id, op, failed_schema
          FROM ${TABLES.sync_parked}
         WHERE module IN (${modules.map(() => "?").join(", ")})
         ORDER BY server_seq ASC`,
@@ -758,10 +771,17 @@ const readyToReplay = (db: Db): ParkedRow[] => {
 	return rows.filter((row) => {
 		const key = deleteKey(row.tbl, row.row_id);
 		if (blocked.has(key)) return false;
-		if (readable(row.module, row.module_schema)) return true;
+		if (readable(row.module, row.module_schema) && retryable(row)) return true;
 		blocked.add(key);
 		return false;
 	});
+};
+
+/** A failed replay is retried once its module is past the version it failed at. */
+const retryable = (row: ParkedRow): boolean => {
+	if (row.failed_schema === null) return true;
+	const here = Modules.named(row.module);
+	return here !== undefined && Modules.schemaOf(here) > row.failed_schema;
 };
 
 /** The op as it was pulled, or undefined when the stored JSON no longer parses. */
@@ -780,12 +800,12 @@ const unpark = (row: ParkedRow): RelayOp | undefined => {
  * is: these ops are behind it already. One that no longer parses is counted
  * as `malformed-payload` and let go too, or it would be read on every pass.
  */
-const replayOrdered = (
+const replayRows = (
 	db: Db,
-	localDeviceId: string,
-	throughSeq: number,
+	ready: readonly ParkedRow[],
+	state: DeviceState,
+	deletedAt?: Map<string, string>,
 ): ApplyReport => {
-	const ready = readyToReplay(db);
 	// Out of the table before they apply, or each would find itself parked
 	// ahead of the next op for its row and park that one again.
 	for (const row of ready) {
@@ -793,15 +813,40 @@ const replayOrdered = (
 	}
 	const ops = ready.map(unpark);
 	const parsed = ops.filter((op): op is RelayOp => op !== undefined);
-	const counts = applyOps(db, parsed, localDeviceId, new Date().toISOString());
+	const now = new Date().toISOString();
+	const counts = applyOps(db, parsed, state.deviceId, now, deletedAt);
 	counts.skipped["malformed-payload"] += ops.length - parsed.length;
-	return { received: 0, ...counts, replayed: ready.length, throughSeq };
+	return {
+		received: 0,
+		...counts,
+		replayed: ready.length,
+		replayFailed: 0,
+		throughSeq: state.lastAppliedSeq,
+	};
 };
+
+/** Leave the op parked, saying why and at which version of its module. */
+const recordFailure = (db: Db, row: ParkedRow, error: Error): void => {
+	const here = Modules.named(row.module);
+	db.run(
+		`UPDATE ${TABLES.sync_parked}
+        SET failed_schema = ?, error = ?, failed_at = ?
+      WHERE op_id = ?`,
+		[
+			here === undefined ? row.module_schema : Modules.schemaOf(here),
+			error.message,
+			new Date().toISOString(),
+			row.op_id,
+		],
+	);
+};
+
+type DeviceState = { deviceId: string; lastAppliedSeq: number };
 
 /** Run `fn` atomically with this device's sync state, which must exist. */
 const withSyncState = <T>(
 	basePath: string,
-	fn: (db: Db, state: { deviceId: string; lastAppliedSeq: number }) => T,
+	fn: (db: Db, state: DeviceState) => T,
 ): Promise<Result<T>> =>
 	// Throwing is how `atomic` is told to ROLLBACK; it converts the throw into
 	// an `err`, so nothing escapes as an exception.
@@ -815,6 +860,45 @@ const withSyncState = <T>(
 		}
 		return fn(db, state.value);
 	});
+
+/**
+ * The replay that failed as a whole, again one op per transaction, so the op
+ * that raises is found and set aside (`recordFailure`) and every other one
+ * still applies. Later ops for a failed op's row stay parked behind it. Only
+ * the slow path: a replay that applies whole takes one transaction.
+ */
+const replayIsolated = async (
+	basePath: string,
+): Promise<Result<ApplyReport>> => {
+	const listed = await withSyncState(basePath, (db, state) => ({
+		state,
+		ready: readyToReplay(db),
+	}));
+	if (!listed.ok) return listed;
+	const { state, ready } = listed.value;
+
+	let total = Apply.emptyReport(state.lastAppliedSeq);
+	const deletedAt = new Map<string, string>();
+	const failedRows = new Set<string>();
+	for (const row of ready) {
+		const key = deleteKey(row.tbl, row.row_id);
+		if (failedRows.has(key)) continue;
+		const one = await withSyncState(basePath, (db) =>
+			replayRows(db, [row], state, deletedAt),
+		);
+		if (one.ok) {
+			total = Apply.mergeReports(total, one.value);
+			continue;
+		}
+		failedRows.add(key);
+		const recorded = await withSyncState(basePath, (db) =>
+			recordFailure(db, row, one.error),
+		);
+		if (!recorded.ok) return recorded;
+		total = { ...total, replayFailed: total.replayFailed + 1 };
+	}
+	return ok(total);
+};
 
 // ============================================================
 // Apply Namespace
@@ -847,12 +931,14 @@ export namespace Apply {
 	 * calls this before it pulls. Idempotent like `applyBatch`: a replayed op a
 	 * re-pull already applied resolves as `already-present` or `not-newer`.
 	 */
-	export const replayParked = (
+	export const replayParked = async (
 		basePath: string,
-	): Promise<Result<ApplyReport>> =>
-		withSyncState(basePath, (db, state) =>
-			replayOrdered(db, state.deviceId, state.lastAppliedSeq),
+	): Promise<Result<ApplyReport>> => {
+		const whole = await withSyncState(basePath, (db, state) =>
+			replayRows(db, readyToReplay(db), state),
 		);
+		return whole.ok ? whole : replayIsolated(basePath);
+	};
 
 	/** An empty report, for callers aggregating across pages. */
 	export const emptyReport = (throughSeq: number): ApplyReport => ({
@@ -863,6 +949,7 @@ export namespace Apply {
 		skipped: zeroSkips(),
 		parked: 0,
 		replayed: 0,
+		replayFailed: 0,
 		throughSeq,
 	});
 
@@ -883,6 +970,7 @@ export namespace Apply {
 		) as Record<SkipReason, number>,
 		parked: into.parked + next.parked,
 		replayed: into.replayed + next.replayed,
+		replayFailed: into.replayFailed + next.replayFailed,
 		throughSeq: Math.max(into.throughSeq, next.throughSeq),
 	});
 }

@@ -125,6 +125,23 @@ export const QuarantinedOpSchema = z.object({
 export type QuarantinedOp = z.infer<typeof QuarantinedOpSchema>;
 
 /**
+ * A parked op whose replay failed. It stays parked, with every later op for
+ * its row behind it, and is retried once its module migrates past the version
+ * it failed at. Like a quarantined op, recorded so the stall is visible: the
+ * rest of sync goes on.
+ */
+export const ParkedFailureSchema = z.object({
+	opId: z.string(),
+	module: z.string(),
+	tbl: z.string(),
+	rowId: z.string(),
+	/** What applying it raised, verbatim. */
+	error: z.string(),
+	failedAt: z.string(),
+});
+export type ParkedFailure = z.infer<typeof ParkedFailureSchema>;
+
+/**
  * Replication health, as surfaced to humans and agents. `pendingOps` is the
  * useful number: it says how far this machine is behind.
  */
@@ -165,5 +182,11 @@ export const SyncStatusSchema = z.object({
 	 * apply on the first sync pass after the module registers or migrates.
 	 */
 	parkedOps: z.record(z.number()),
+
+	/** Parked ops whose replay failed, counted in `parkedOps` too. Normally 0. */
+	parkedFailures: z.number(),
+
+	/** The most recent of them, newest first. Capped like `quarantined`. */
+	parkedFailed: z.array(ParkedFailureSchema),
 });
 export type SyncStatus = z.infer<typeof SyncStatusSchema>;
