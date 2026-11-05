@@ -357,7 +357,7 @@ describe("BoardCopilot", () => {
 			.mcpServers[0];
 		expect(server?.command).toBe(resolve(process.argv[1] ?? ""));
 		expect(textOf(seen.prompts[0], 0)).toContain(
-			`${server?.command} loop start <id>`,
+			`'${server?.command}' loop start <id>`,
 		);
 		copilot.close();
 	});

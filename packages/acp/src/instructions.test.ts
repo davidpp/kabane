@@ -183,8 +183,8 @@ describe("CopilotInstructions starting a loop run", () => {
 
 	it("runs kabane as the board's own bin, not one found on PATH", () => {
 		const setup = CopilotInstructions.setup(SETUP, BIN);
-		expect(setup).toContain(`This board runs kabane as \`${BIN}\``);
-		expect(setup).toContain(`\`${BIN} loop start <id>\``);
+		expect(setup).toContain(`This board runs kabane as \`'${BIN}'\``);
+		expect(setup).toContain(`\`'${BIN}' loop start <id>\``);
 		expect(setup).toContain("never as a kabane found on PATH");
 		expect(CopilotInstructions.SKILLS).toContain(
 			"as the kabane command KABANE ON THIS MACHINE names",
@@ -198,6 +198,15 @@ describe("CopilotInstructions starting a loop run", () => {
 		expect(
 			CopilotInstructions.setup(SETUP, "/Users/me/it's $HOME/index.ts"),
 		).toContain(`\`'/Users/me/it'\\''s $HOME/index.ts' loop start <id>\``);
+	});
+
+	it("quotes a bin the shell would read as a keyword or an assignment", () => {
+		expect(CopilotInstructions.setup(SETUP, "if")).toContain(
+			"`'if' loop start <id>`",
+		);
+		expect(CopilotInstructions.setup(SETUP, "KABANE_BIN=x")).toContain(
+			"`'KABANE_BIN=x' loop start <id>`",
+		);
 	});
 
 	it("says a single issue runs too, and that `a` opens the run form on any issue", () => {

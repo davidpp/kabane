@@ -79,11 +79,12 @@ STARTING A LOOP RUN. The loop extension drives an issue to done through a coding
 		extensions: readonly string[];
 	};
 
-	// One POSIX shell word: bare when nothing in it is special, else single-quoted with each `'`
-	// closed, escaped and reopened. A dev or sandbox bin is a script path under the checkout, which
-	// may sit in a directory with spaces.
+	// One POSIX shell word, always single-quoted with each `'` closed, escaped and reopened. Never
+	// bare: a bare word can still be a keyword (`if`) or an assignment (`A=b`), which the shell reads
+	// as something other than the command. A dev or sandbox bin is a script path under the checkout,
+	// which may sit in a directory with spaces.
 	const shellWord = (word: string): string =>
-		/^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
+		`'${word.replaceAll("'", `'\\''`)}'`;
 
 	// Keep instance-specific facts here; key descriptions come from the config tools. `kabane` is the
 	// executable this board runs, the one its MCP server runs as: a `kabane` on the shell's PATH may
