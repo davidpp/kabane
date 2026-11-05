@@ -464,3 +464,76 @@ it("stores canonical recommendations and refuses mistyped choices by default", a
 		(await Questions.answer(base, { question: row.id, answer: "alpha" })).ok,
 	).toBe(true);
 });
+
+const questionOps = async () =>
+	unwrap(
+		await withDb(base, (db) =>
+			db
+				.query<{ n: number }>(
+					"SELECT COUNT(*) n FROM planner_sync_oplog WHERE tbl = 'task_questions'",
+				)
+				.get(),
+		),
+	)?.n;
+
+it("closing an issue withdraws its open questions as issue closed, keeps answers, and reopening restores none", async () => {
+	for (const state of ["done", "cancelled"] as const) {
+		const task = await issue(state);
+		await ask(task.id);
+		unwrap(
+			await Questions.answer(base, {
+				question: `${task.shortId}:1`,
+				answer: "SQLite",
+			}),
+		);
+		const before = await questionOps();
+		unwrap(await Planner.updateTask(base, task.id, { state }));
+		const closed = unwrap(await Questions.list(base, { id: task.id }));
+		expect(
+			closed.map((row) => [row.status, row.answer, row.reasoning]),
+		).toEqual([
+			["answered", "SQLite", undefined],
+			["withdrawn", undefined, Questions.CLOSED_REASON],
+		]);
+		expect(closed[1]).toMatchObject({
+			answeredBy: "cabane://actor/human/test",
+			version: 2,
+		});
+		expect(await questionOps()).toBe((before ?? 0) + 1);
+
+		unwrap(await Planner.updateTask(base, task.id, { state: "next" }));
+		expect(
+			unwrap(await Questions.list(base, { id: task.id, status: "open" })),
+		).toEqual([]);
+		expect(unwrap(await Planner.getTask(base, task.id))?.state).toBe("next");
+	}
+});
+
+it("rolls the close back when withdrawing its questions fails", async () => {
+	const task = await issue();
+	await ask(task.id);
+	unwrap(
+		await withDb(base, (db) =>
+			db.run(
+				"CREATE TRIGGER refuse_withdraw BEFORE UPDATE OF status ON planner_task_questions WHEN NEW.status = 'withdrawn' BEGIN SELECT RAISE(ABORT, 'withdraw refused'); END",
+			),
+		),
+	);
+	const count = async () =>
+		unwrap(
+			await withDb(base, (db) =>
+				db
+					.query<{ n: number }>("SELECT COUNT(*) n FROM planner_sync_oplog")
+					.get(),
+			),
+		)?.n;
+	const before = await count();
+	const closed = await Planner.updateTask(base, task.id, { state: "done" });
+	expect(closed.ok).toBe(false);
+	if (!closed.ok) expect(closed.error.message).toContain("withdraw refused");
+	expect(unwrap(await Planner.getTask(base, task.id))?.state).toBe("waiting");
+	expect(
+		unwrap(await Questions.list(base, { id: task.id, status: "open" })),
+	).toHaveLength(2);
+	expect(await count()).toBe(before);
+});

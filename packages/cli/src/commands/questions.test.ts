@@ -117,3 +117,28 @@ it("lists questions as the MCP tool prints them, by scope or issue, and pages te
 	expect(none.json).toEqual({ items: [], hasMore: false });
 	expect((await kabane(["questions", "--limit", "0"])).exitCode).toBe(2);
 });
+
+it("kabane done withdraws the issue's open questions, and reopening leaves them withdrawn", async () => {
+	const { home, kabane } = await device();
+	const task = unwrap(
+		await Planner.addTask(home, { title: "Ship it", kind: "issue" }),
+	);
+	unwrap(
+		await Questions.ask(home, {
+			id: task.id,
+			questions: [{ question: "Before shipping?" }],
+		}),
+	);
+	expect((await kabane(["done", task.shortId ?? task.id])).exitCode).toBe(0);
+	expect((await kabane(["questions", task.shortId ?? task.id])).text).toBe(
+		"No questions found.",
+	);
+	expect(
+		(await kabane(["edit", task.shortId ?? task.id, "--state", "next"]))
+			.exitCode,
+	).toBe(0);
+	const all = await kabane(["questions", task.shortId ?? task.id, "--all"]);
+	expect(page(all).items.map((q) => [q.status, q.reasoning])).toEqual([
+		["withdrawn", "issue closed"],
+	]);
+});

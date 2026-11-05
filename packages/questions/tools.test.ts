@@ -233,3 +233,43 @@ it("refuses a question over the page budget with a kabane_context hint that work
 		await client.close();
 	}
 });
+
+it("withdraws open questions when kabane_done or kabane_edit closes the issue", async () => {
+	const client = await connect(false);
+	try {
+		for (const [name, extra] of [
+			["kabane_done", {}],
+			["kabane_edit", { state: "cancelled" }],
+		] as const) {
+			const task = unwrap(
+				await Planner.addTask(base, { title: name, kind: "issue" }),
+			);
+			unwrap(
+				await Questions.ask(base, {
+					id: task.id,
+					questions: [{ question: "Still needed?" }],
+				}),
+			);
+			const closed = await client.callTool({
+				name,
+				arguments: { id: task.id, ...extra },
+			});
+			expect(closed.isError).not.toBe(true);
+			const open = await client.callTool({
+				name: "kabane_questions",
+				arguments: { id: task.id },
+			});
+			expect((open.content as { text: string }[])[0]?.text).toBe(
+				"No questions found.",
+			);
+			expect(
+				unwrap(await Questions.list(base, { id: task.id }))[0],
+			).toMatchObject({
+				status: "withdrawn",
+				reasoning: Questions.CLOSED_REASON,
+			});
+		}
+	} finally {
+		await client.close();
+	}
+});

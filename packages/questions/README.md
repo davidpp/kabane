@@ -18,6 +18,9 @@ CLI and the hub register it; a host that does not has no decisions, which is not
   `reasoning`. Choices match ignoring case. Answering the last open question moves a `waiting`
   issue to `next` in the same transaction.
 
+Closing an issue (`done` or `cancelled`, from any surface) withdraws its open questions with
+the reasoning "issue closed", in the same transaction. Reopening it restores none of them.
+
 A question reads as its handle, its text, its mode, and its id:
 
 ```

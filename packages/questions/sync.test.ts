@@ -124,3 +124,49 @@ it("converges concurrent re-answers on two real SQLite devices", async () => {
 	expect(betaRows[0]?.version).toBe(3);
 	expect(["Alpha", "Beta"]).toContain(betaRows[0]?.answer ?? "");
 });
+
+it("replicates a close's withdrawals, and the receiving device withdraws nothing itself", async () => {
+	const relay = LocalRelay.create();
+	const alpha = await device("alpha", true);
+	const a = LocalRelay.transportFor(relay, "alpha");
+	const task = unwrap(
+		await Planner.addTask(alpha, { title: "Close remotely", kind: "issue" }),
+	);
+	unwrap(
+		await Questions.ask(alpha, {
+			id: task.id,
+			questions: [{ question: "Which?" }],
+		}),
+	);
+	unwrap(await Sync.push(alpha, a));
+	const beta = await device("beta", true);
+	const b = LocalRelay.transportFor(relay, "beta");
+	unwrap(await Sync.pull(beta, b));
+
+	register(true, "alpha");
+	unwrap(await Planner.updateTask(alpha, task.id, { state: "done" }));
+	unwrap(await Sync.push(alpha, a));
+	register(true, "beta");
+	unwrap(await Sync.pull(beta, b));
+
+	const rows = unwrap(await Questions.list(beta, { id: task.id }));
+	expect(rows[0]).toMatchObject({
+		status: "withdrawn",
+		reasoning: Questions.CLOSED_REASON,
+		answeredBy: "cabane://actor/human/alpha",
+	});
+	register(true, "alpha");
+	expect(unwrap(await Questions.list(alpha, { id: task.id }))).toEqual(rows);
+	// Beta captured nothing: had its hook run on apply, it would hold its own withdrawal.
+	register(true, "beta");
+	const captured = unwrap(
+		await withDb(beta, (db) =>
+			db
+				.query<{ n: number }>(
+					"SELECT COUNT(*) n FROM sync_oplog WHERE tbl = 'task_questions'",
+				)
+				.get(),
+		),
+	);
+	expect(captured?.n).toBe(0);
+});
