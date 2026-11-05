@@ -159,7 +159,8 @@ Set `ACCESS_AUD` to the tag from 1.3, `HUMAN_EMAIL` to the address in the Allow 
 `SERVICE_ACTORS` to a one-line JSON map of client IDs to actor URIs, and
 `KABANE_TIMEZONE` to your IANA timezone, e.g. `America/Toronto`. For example, the map's
 shape is `{"<claude-code client id>.access":"cabane://actor/agent/claude"}`; add the other
-clients from 1.4 the same way. Source these values in your environment and run
+clients from 1.4 the same way. Map each to an agent actor: a map naming a
+`cabane://actor/human/` URI admits no service token at all. Source these values in your environment and run
 `bun run deploy` again from the clone root.
 
 `wrangler.jsonc` keeps empty placeholders for the Access vars. Deploying with raw

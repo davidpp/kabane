@@ -51,7 +51,23 @@ type AccessEnv = Pick<
 	| "ACCESS_DEV_UNVERIFIED"
 >;
 
-const ServiceActorsSchema = z.record(z.string().min(1));
+const HUMAN_ACTOR_PREFIX = "cabane://actor/human/";
+
+/**
+ * Client id → actor URI. A service is never a human: the hub credits a human
+ * actor with the replies an agent relays, so a service mapped to one could
+ * answer as the human.
+ */
+const ServiceActorsSchema = z
+	.record(z.string().min(1))
+	.superRefine((services, ctx) => {
+		for (const [id, actor] of Object.entries(services))
+			if (actor.startsWith(HUMAN_ACTOR_PREFIX))
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: `SERVICE_ACTORS maps service "${id}" to the human actor ${actor}; map a service token to an agent actor (cabane://actor/agent/<name>)`,
+				});
+	});
 
 const jwksByDomain = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
@@ -103,13 +119,19 @@ export namespace Access {
 		if (claims.type !== "app") return err(unauthorized("not an app token"));
 
 		if (claims.common_name !== undefined) {
-			const parsed = ServiceActorsSchema.safeParse(
-				trySync(() => JSON.parse(env.SERVICE_ACTORS || "{}")).ok
-					? JSON.parse(env.SERVICE_ACTORS || "{}")
-					: undefined,
+			const json = trySync((): unknown =>
+				JSON.parse(env.SERVICE_ACTORS || "{}"),
 			);
+			if (!json.ok) return err(new Error("SERVICE_ACTORS is not valid JSON"));
+			const parsed = ServiceActorsSchema.safeParse(json.value);
 			if (!parsed.success)
-				return err(new Error("SERVICE_ACTORS is not valid JSON"));
+				return err(
+					new Error(
+						parsed.error.issues[0]?.code === z.ZodIssueCode.custom
+							? parsed.error.issues[0].message
+							: "SERVICE_ACTORS must map each service client id to an actor URI",
+					),
+				);
 			const actor = parsed.data[claims.common_name];
 			if (!actor) return err(unauthorized("unknown service identity"));
 			return ok({ kind: "service", subject: claims.common_name, actor });
