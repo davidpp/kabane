@@ -101,32 +101,30 @@ const SHORT_ID_TABLES: readonly SyncTable[] = ["tasks", "projects"];
  */
 type ParentRef = {
 	column: string;
-	table: string;
+	/**
+	 * Logical, resolved through `TABLES` at use: this map is built at import,
+	 * before the host sets the table prefix.
+	 */
+	table: "tasks" | "projects";
 	onDelete: "cascade" | "set-null";
 };
 
 const PARENTS: Record<SyncTable, readonly ParentRef[]> = {
 	tasks: [
-		{ column: "parent_task_id", table: TABLES.tasks, onDelete: "cascade" },
-		{ column: "project_id", table: TABLES.projects, onDelete: "set-null" },
+		{ column: "parent_task_id", table: "tasks", onDelete: "cascade" },
+		{ column: "project_id", table: "projects", onDelete: "set-null" },
 	],
 	projects: [],
 	task_links: [
-		{ column: "source_id", table: TABLES.tasks, onDelete: "cascade" },
-		{ column: "target_id", table: TABLES.tasks, onDelete: "cascade" },
+		{ column: "source_id", table: "tasks", onDelete: "cascade" },
+		{ column: "target_id", table: "tasks", onDelete: "cascade" },
 	],
-	task_comments: [
-		{ column: "task_id", table: TABLES.tasks, onDelete: "cascade" },
-	],
-	task_work_log: [
-		{ column: "task_id", table: TABLES.tasks, onDelete: "cascade" },
-	],
+	task_comments: [{ column: "task_id", table: "tasks", onDelete: "cascade" }],
+	task_work_log: [{ column: "task_id", table: "tasks", onDelete: "cascade" }],
 	task_context_refs: [
-		{ column: "task_id", table: TABLES.tasks, onDelete: "cascade" },
+		{ column: "task_id", table: "tasks", onDelete: "cascade" },
 	],
-	upstream_links: [
-		{ column: "task_id", table: TABLES.tasks, onDelete: "cascade" },
-	],
+	upstream_links: [{ column: "task_id", table: "tasks", onDelete: "cascade" }],
 };
 
 // ============================================================
@@ -200,7 +198,7 @@ const parentsOf = (
 ): readonly ParentRef[] => {
 	if (isSyncTable(table)) return PARENTS[table];
 	return rule.childOfTasks
-		? [{ column: "task_id", table: TABLES.tasks, onDelete: "cascade" }]
+		? [{ column: "task_id", table: "tasks", onDelete: "cascade" }]
 		: [];
 };
 
@@ -496,7 +494,7 @@ const prepareParents = (
 	for (const parent of parents) {
 		const value = asString(payload[parent.column]);
 		if (value === undefined) continue;
-		if (rowExists(db, parent.table, value)) continue;
+		if (rowExists(db, TABLES[parent.table], value)) continue;
 
 		if (parent.onDelete === "set-null") {
 			payload = { ...payload, [parent.column]: null };
