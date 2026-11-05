@@ -292,6 +292,35 @@ describe("registering modules", () => {
 		expect(refused([keyed])).toContain("needs a natural key");
 	});
 
+	it("refuses a table named like a module's migration table, whichever module registers first", () => {
+		const squatter: KabaneModule = {
+			name: "squatter",
+			syncTables: [
+				{
+					table: "schema_migrations_notes",
+					family: "append-only",
+					childOfTasks: false,
+				},
+			],
+		};
+		expect(refused([squatter, notes()])).toContain(
+			'the migration table of module "notes"',
+		);
+		expect(refused([notes(), squatter])).toContain(
+			'the migration table of module "notes"',
+		);
+	});
+
+	it("refuses a row-lww table without a clock, which could never converge", () => {
+		const clockless: KabaneModule = {
+			name: "clockless",
+			syncTables: [
+				{ table: "clockless_rows", family: "row-lww", childOfTasks: false },
+			],
+		};
+		expect(refused([clockless])).toContain('"row-lww" needs a clock column');
+	});
+
 	it("changes nothing when it refuses", () => {
 		register([notes()]);
 		expect(refused([notes(), notes()])).not.toBe("");

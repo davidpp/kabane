@@ -47,7 +47,11 @@ export type ModuleSyncTable = {
 	 * contract does not carry yet, so registration refuses them.
 	 */
 	family: SyncFamily;
-	/** LWW clock column. Absent: the op's capture time is the clock. */
+	/**
+	 * LWW clock column, required for `row-lww`: without one the local row has
+	 * nothing to compare and the devices never converge. For `append-only`,
+	 * absent means the op's capture time.
+	 */
 	clock?: string;
 	/**
 	 * The row's `task_id` references `tasks(id) ON DELETE CASCADE`. An op whose
@@ -81,38 +85,53 @@ const RESOLVABLE: readonly SyncFamily[] = ["row-lww", "append-only"];
 
 let registered: readonly KabaneModule[] = [];
 
+/** Logical name of the table recording `name`'s migration versions. */
+const versionTableName = (name: string): string =>
+	`schema_migrations_${name.replaceAll("-", "_")}`;
+
+/** Table name → what already holds it, worded for an error message. */
+type Claims = Map<string, string>;
+
 const tableProblem = (
 	module: KabaneModule,
 	spec: ModuleSyncTable,
-	claimed: Map<string, string>,
+	claimed: Claims,
 ): string | undefined => {
 	const where = `module "${module.name}" table "${spec.table}"`;
 	if (!TABLE_NAME.test(spec.table))
 		return `${where}: a table name is lowercase letters, digits and underscores, starting with a letter`;
 	const owner = claimed.get(spec.table);
 	if (owner !== undefined)
-		return `${where}: the name is already ${owner === "core" ? "a core table" : `a table of module "${owner}"`}; pick another`;
+		return `${where}: the name is already ${owner}; pick another`;
 	if (!RESOLVABLE.includes(spec.family))
 		return `${where}: family "${spec.family}" needs a natural key the module contract does not declare; use ${RESOLVABLE.join(" or ")}`;
+	// Without a clock the local row has none to compare, every incoming write
+	// wins, and two devices editing one row end up holding each other's value.
+	if (spec.family === "row-lww" && spec.clock === undefined)
+		return `${where}: family "row-lww" needs a clock column (its updated_at, say) to compare writes by`;
 	return undefined;
 };
 
 /** The first thing wrong with `modules`, in one line, or undefined. */
 const problemWith = (modules: readonly KabaneModule[]): string | undefined => {
-	const names = new Set<string>();
-	const claimed = new Map<string, string>(
-		Object.values(LOGICAL_TABLES).map((table) => [table, "core"]),
+	const claimed: Claims = new Map(
+		Object.values(LOGICAL_TABLES).map((table) => [table, "a core table"]),
 	);
+	// Every module's migration table is reserved before any table is checked,
+	// so no module can declare one, its own or a later module's.
 	for (const module of modules) {
 		if (!MODULE_NAME.test(module.name))
 			return `module name "${module.name}" must be lowercase letters, digits and dashes, starting with a letter`;
-		if (names.has(module.name))
+		const versions = versionTableName(module.name);
+		if (claimed.has(versions))
 			return `two modules are named "${module.name}"; register each once`;
-		names.add(module.name);
+		claimed.set(versions, `the migration table of module "${module.name}"`);
+	}
+	for (const module of modules) {
 		for (const spec of module.syncTables ?? []) {
 			const problem = tableProblem(module, spec, claimed);
 			if (problem !== undefined) return problem;
-			claimed.set(spec.table, module.name);
+			claimed.set(spec.table, `a table of module "${module.name}"`);
 		}
 	}
 	return undefined;
@@ -120,8 +139,9 @@ const problemWith = (modules: readonly KabaneModule[]): string | undefined => {
 
 /**
  * Validate and register `modules`, replacing the previous set. Refuses two
- * modules with one name and a table another module or core already has, and
- * registers nothing when it refuses.
+ * modules with one name, a table core, another module or a module's migration
+ * table already has, a natural-key family and a `row-lww` table without a
+ * clock, and registers nothing when it refuses.
  */
 export const setModules = (modules: readonly KabaneModule[]): Result<void> => {
 	const problem = problemWith(modules);
@@ -171,5 +191,5 @@ export namespace Modules {
 	 * cannot hold underscores, so two names never share a table.
 	 */
 	export const versionTable = (name: string): string =>
-		physicalTable(`schema_migrations_${name.replaceAll("-", "_")}`);
+		physicalTable(versionTableName(name));
 }
