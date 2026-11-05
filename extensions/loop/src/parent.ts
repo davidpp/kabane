@@ -1,6 +1,8 @@
 // The run's parent in the tracker. A run that starts or resumes takes the parent into
 // in_progress, and nothing in the run takes it out: merging the run's work is the human's step,
-// so a completed run flags the parent for review and the human closes it. Every end of a run is
+// so a completed run flags the parent for review and the human closes it. A run whose landing
+// opened a pull request also moves it to waiting, on that review, and records the pull request as
+// its upstream twin; a later run on the parent takes it from waiting again. Every end of a run is
 // a comment on the parent saying how it ended and what to do next. A state a human gave the
 // parent during the run is theirs: the end of the run only comments on it.
 //
@@ -110,13 +112,23 @@ export namespace Parent {
 			: `${merge}, then close ${ctx.run.parentShortId}.`;
 	};
 
+	// Where the work went: the pull request a landing opened, else the branch to merge by hand, with
+	// why the landing did not get it there when one was tried.
+	const landed = async (ctx: Ctx, single: boolean): Promise<string> => {
+		const { landing, pr } = ctx.run;
+		if (landing?.ok && pr)
+			return `${landing.summary} ${ctx.run.parentShortId} waits on its review.`;
+		const merge = await where(ctx, single);
+		return landing ? `${landing.summary}\n\n${merge}` : merge;
+	};
+
 	const completed = async (
 		ctx: Ctx,
 		exit: Exit,
 		plan: LoopPlan.Plan | undefined,
 	): Promise<string> => {
 		const head = `Loop run ${ctx.run.id} completed (${exit.reason}).`;
-		if (!plan) return `${head}\n\n${await where(ctx, false)}`;
+		if (!plan) return `${head}\n\n${await landed(ctx, false)}`;
 		const single = LoopPlan.single(plan);
 		const work = plan.nodes.filter(LoopPlan.isWork).map((n) => n.task);
 		const found = plan.nodes.filter((n) => n.finding).map((n) => n.task);
@@ -131,7 +143,7 @@ export namespace Parent {
 			`- Findings fixed: ${list(found.filter(done))}`,
 			`- Findings left open for you: ${list(found.filter((t) => !LoopPlan.isClosed(t)))}`,
 			"",
-			await where(ctx, single),
+			await landed(ctx, single),
 		].join("\n");
 	};
 
@@ -171,10 +183,31 @@ export namespace Parent {
 	const flaggable = (parent: Task, single: boolean): boolean =>
 		parent.state === "in_progress" || (single && parent.state === "done");
 
+	// `https://github.com/<owner>/<repo>/pull/<n>`, as `<owner>/<repo>#<n>`.
+	const PR_PATH = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
+
+	/** Record the run's pull request as the parent's upstream twin. */
+	const twin = async (ctx: Ctx, parent: Task): Promise<void> => {
+		const { pr } = ctx.run;
+		if (!ctx.run.landing?.ok || pr === undefined) return;
+		const path = URL.canParse(pr) ? PR_PATH.exec(new URL(pr).pathname) : null;
+		const linked = await Planner.upsertUpstreamLink(ctx.deps.basePath, {
+			taskId: parent.id,
+			provider: "github",
+			externalId: pr,
+			...(path ? { identifier: `${path[1]}/${path[2]}#${path[3]}` } : {}),
+			url: pr,
+			title: parent.title,
+		});
+		if (!linked.ok)
+			warn(ctx, `pull request not linked: ${linked.error.message}`);
+	};
+
 	/**
 	 * Comment the run's end on the parent. A completed run whose parent is still in_progress (or,
-	 * for a single issue, done by its session) also flags it for review; one a human moved during
-	 * the run keeps the state they gave it.
+	 * for a single issue, done by its session) also flags it for review, and moves it to waiting
+	 * when its landing opened a pull request; one a human moved during the run keeps the state they
+	 * gave it. A pull request is the parent's upstream twin either way.
 	 */
 	export const report = async (ctx: Ctx, exit: Exit): Promise<void> => {
 		const loaded = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
@@ -195,9 +228,12 @@ export namespace Parent {
 			warn(ctx, `parent not commented: ${commented.error.message}`);
 		if (exit.status !== "completed") return;
 		const parent = await read(ctx);
-		if (!parent || !flaggable(parent, single)) return;
+		if (!parent) return;
+		await twin(ctx, parent);
+		if (!flaggable(parent, single)) return;
 		const flagged = await Planner.updateTask(ctx.deps.basePath, parent.id, {
 			needsReview: true,
+			...(ctx.run.landing?.ok && ctx.run.pr ? { state: "waiting" } : {}),
 		});
 		if (!flagged.ok)
 			warn(ctx, `parent not flagged for review: ${flagged.error.message}`);

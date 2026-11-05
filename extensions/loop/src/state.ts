@@ -4,6 +4,7 @@
 import type { Harnesses } from "@cabane/acp";
 import type { Dispatch } from "./dispatch";
 import type { Gates } from "./gates";
+import type { Land } from "./land";
 import { RunStore } from "./store";
 import type { Worktree } from "./worktree";
 
@@ -27,6 +28,8 @@ export namespace RunState {
 		tree?: (cwd: string) => Promise<string>;
 		/** How checkpoints run git. Defaults to the user's own git and config. */
 		git?: Worktree.Git;
+		/** How landing reaches GitHub. Defaults to the user's own gh, signed in as they are. */
+		gh?: Land.Gh;
 		now?: () => Date;
 		tickMs?: number;
 	};

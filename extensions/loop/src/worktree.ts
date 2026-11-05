@@ -9,40 +9,16 @@
 // mistake.
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
+import { err, ok, type Result, trySync } from "@cabane/core";
+import { Exec } from "./exec";
 import type { RunStore } from "./store";
 
 export namespace Worktree {
-	/** `git -C <cwd> <args>`: its stdout, or an error carrying what git said. */
-	export type Git = (cwd: string, args: string[]) => Promise<Result<string>>;
+	/** `git <args>` in `cwd`: its stdout, or an error carrying what git said. */
+	export type Git = Exec.Tool;
 
-	/**
-	 * The user's own git. Asynchronous, because the runner calls it: a commit runs the user's
-	 * hooks, and a synchronous spawn would stall every session's stream and timer until they end.
-	 */
-	export const git: Git = async (cwd, args) => {
-		const ran = await tryCatch(async () => {
-			const proc = Bun.spawn(["git", "-C", cwd, ...args], {
-				stdin: "ignore",
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-			const [stdout, stderr, exit] = await Promise.all([
-				new Response(proc.stdout).text(),
-				new Response(proc.stderr).text(),
-				proc.exited,
-			]);
-			return { stdout, stderr, exit };
-		});
-		if (!ran.ok) return ran;
-		return ran.value.exit === 0
-			? ok(ran.value.stdout)
-			: err(
-					new Error(
-						`git ${args.join(" ")} failed in ${cwd}: ${ran.value.stderr.trim()}`,
-					),
-				);
-	};
+	/** The user's own git. */
+	export const git: Git = Exec.tool("git");
 
 	/** Where run `runId`'s worktree goes: inside the run's own directory. */
 	export const dirFor = (runDir: string): string => join(runDir, "worktree");

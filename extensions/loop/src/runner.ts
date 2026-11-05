@@ -358,7 +358,7 @@ export namespace Runner {
 		if (Stop.evaluate(plan, { gatesGreen, lensesDone, fixerDone }).done) {
 			// A landing that fails still completes the run: the work is done and checked.
 			if (ctx.run.config.land === "pr") {
-				await hearingStop(ctx, () => Land.land(ctx, plan.parent));
+				await hearingStop(ctx, () => Land.land(ctx, plan));
 				if (ctx.stopRequested)
 					return { status: "stopped", reason: "stop-requested" };
 			}

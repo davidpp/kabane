@@ -1,12 +1,16 @@
 // Landing a completed run's branch, as its `land` setting says: in the run's worktree, fetch the
-// branch the run started from and rebase onto its latest commit, and gate the result again when
-// the rebase moved anything. The user's own git does all of it, with their own credentials and
-// config. The outcome is run.json's `landing`. A landing that fails leaves the run completed: the
-// work is done and its gates were green, only getting it onto the base is left, and the branch
-// stays as the run left it.
-import { err, ok, type Result, type Task } from "@cabane/core";
+// branch the run started from and rebase onto its latest commit, gate the result again when the
+// rebase moved anything, push the branch and open a pull request against the base, or push to the
+// one already open for it. The user's own git and gh do all of it, with their own credentials and
+// config; the loop adds none. The outcome is run.json's `landing`, and the pull request its `pr`.
+// A landing that fails leaves the run completed: the work is done and its gates were green, only
+// getting it onto the base is left, and the branch stays as the run left it.
+import { err, ok, type Result, type Task, trySync } from "@cabane/core";
+import { z } from "zod";
 import { Checks } from "./checks";
+import { Exec } from "./exec";
 import { Gates } from "./gates";
+import { LoopPlan } from "./plan";
 import { RunState } from "./state";
 import type { RunStore } from "./store";
 import { Worktree } from "./worktree";
@@ -124,28 +128,170 @@ export namespace Land {
 		);
 	};
 
-	/** Land the run's branch onto its base, and record what happened on the run and its trace. */
-	export const land = async (
+	/** `gh <args>` in `cwd`: GitHub's CLI, which opens and reads the run's pull request. */
+	export type Gh = Exec.Tool;
+
+	/** The user's own gh, signed in as they signed it in. */
+	const gh: Gh = Exec.tool("gh");
+
+	const PrSchema = z.object({ url: z.string(), state: z.string() });
+
+	// The pull request already open for `branch`, when there is one: a later run on the parent
+	// going on in the same worktree pushes to it rather than opening another.
+	const openPr = async (
+		run: Gh,
+		dir: string,
+		branch: string,
+	): Promise<string | undefined> => {
+		const viewed = await run(dir, [
+			"pr",
+			"view",
+			branch,
+			"--json",
+			"url,state",
+		]);
+		if (!viewed.ok) return undefined;
+		const json = trySync((): unknown => JSON.parse(viewed.value));
+		const pr = PrSchema.safeParse(json.ok ? json.value : undefined);
+		return pr.success && pr.data.state === "OPEN" ? pr.data.url : undefined;
+	};
+
+	const lines = (items: readonly string[], none: string): string =>
+		items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : none;
+
+	/**
+	 * The pull request's body: the parent's brief, the gates' last results, and what the lenses
+	 * found, each finding with where it stands.
+	 */
+	const body = (run: RunStore.Run, plan: LoopPlan.Plan): string => {
+		const gates = run.gateRuns.at(-1)?.results ?? [];
+		const findings = plan.nodes
+			.filter((n) => n.finding)
+			.map(({ task }) => {
+				const tags = [LoopPlan.severityOf(task), LoopPlan.lensOf(task)].filter(
+					(t) => t !== undefined,
+				);
+				return `${task.shortId ?? task.id}${tags.length > 0 ? ` (${tags.join(", ")})` : ""}: ${task.title} [${task.state}]`;
+			});
+		return [
+			plan.parent.description?.trim() || plan.parent.title,
+			"",
+			"## Gates",
+			"",
+			lines(gates.map(Gates.describe), "No gates configured."),
+			"",
+			"## Lens findings",
+			"",
+			lines(
+				findings,
+				run.config.lenses.length > 0 ? "None." : "No lenses configured.",
+			),
+			"",
+			"---",
+			`Opened by kabane loop run \`${run.id}\`. ${run.parentShortId} waits on this review in the tracker: merging is yours, and closing ${run.parentShortId} after.`,
+		].join("\n");
+	};
+
+	// Push the branch to the base's remote and open its pull request, or find the one already open.
+	const toPr = async (
 		ctx: Ctx,
-		parent: Task,
-	): Promise<RunStore.Landing> => {
-		const placed = await onBase(ctx, parent);
-		const outcome: Outcome = placed.ok
-			? {
-					ok: true,
-					summary: `${placed.value.said}.`,
-					...(placed.value.rebased ? { rebased: placed.value.rebased } : {}),
-				}
-			: placed.error;
+		plan: LoopPlan.Plan,
+		placed: OnBase,
+	): Promise<Result<string, Outcome>> => {
+		const git = ctx.deps.git ?? Worktree.git;
+		const run = ctx.deps.gh ?? gh;
+		const { dir, remote, base, rebased } = placed;
+		const keep = rebased ? { rebased } : {};
+		const named = await git(dir, ["symbolic-ref", "--short", "HEAD"]);
+		if (!named.ok)
+			return err(
+				notLanded(`the worktree is on no branch: ${named.error.message}`, keep),
+			);
+		const branch = named.value.trim();
+		// A later run on the parent rebases the branch a pull request already has: a lease, so a
+		// push never overwrites a commit someone else pushed to it.
+		const pushed = await git(dir, [
+			"push",
+			"-q",
+			"--force-with-lease",
+			remote,
+			branch,
+		]);
+		if (!pushed.ok) return err(notLanded(pushed.error.message, keep));
+		const open = await openPr(run, dir, branch);
+		if (open !== undefined) return ok(open);
+		const created = await run(dir, [
+			"pr",
+			"create",
+			"--base",
+			base,
+			"--head",
+			branch,
+			"--title",
+			plan.parent.title,
+			"--body",
+			body(ctx.run, plan),
+		]);
+		if (!created.ok)
+			return err(
+				notLanded(
+					`branch ${branch} is pushed, but no pull request was opened: ${created.error.message}`,
+					keep,
+				),
+			);
+		const url = created.value
+			.split("\n")
+			.map((l) => l.trim())
+			.findLast((l) => l.startsWith("https://"));
+		return url
+			? ok(url)
+			: err(
+					notLanded(
+						`gh pr create printed no pull request URL: ${created.value.trim()}`,
+						keep,
+					),
+				);
+	};
+
+	const record = (
+		ctx: Ctx,
+		outcome: Outcome,
+		pr?: string,
+	): RunStore.Landing => {
 		const landing: RunStore.Landing = {
 			at: ctx.now().toISOString(),
 			...outcome,
 		};
-		RunState.save(ctx, { ...ctx.run, landing });
+		RunState.save(ctx, { ...ctx.run, landing, ...(pr ? { pr } : {}) });
 		RunState.event(ctx, {
 			type: landing.ok ? "landed" : "warning",
 			summary: landing.summary,
+			...(pr ? { data: { pr } } : {}),
 		});
 		return landing;
+	};
+
+	/**
+	 * Land the run's branch: onto its base, pushed, with a pull request open. What happened is
+	 * recorded on the run, the pull request's URL with it, and on its trace.
+	 */
+	export const land = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+	): Promise<RunStore.Landing> => {
+		const placed = await onBase(ctx, plan.parent);
+		if (!placed.ok) return record(ctx, placed.error);
+		const pr = await toPr(ctx, plan, placed.value);
+		if (!pr.ok) return record(ctx, pr.error);
+		const { said, rebased } = placed.value;
+		return record(
+			ctx,
+			{
+				ok: true,
+				summary: `${said}; pull request ${pr.value} is open.`,
+				...(rebased ? { rebased } : {}),
+			},
+			pr.value,
+		);
 	};
 }

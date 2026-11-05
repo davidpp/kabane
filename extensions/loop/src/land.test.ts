@@ -1,6 +1,8 @@
 // Landing a run's branch with real git: the project's remote is a bare repository on disk, so
 // fetch, rebase and push are git's own, and a teammate's clone of it moves the base meanwhile.
-// Only git's config is the fixture's (an identity, no signing), as in every test.
+// Only git's config is the fixture's (an identity, no signing), as in every test. GitHub is the
+// one thing not real: `gh` goes through the runner's port, here a recorder that answers as gh
+// does, so no test reaches a GitHub repository.
 import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
@@ -12,10 +14,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task, trySync } from "@cabane/core";
+import { err, ok, Planner, type Task, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { LoopConfig } from "./config";
 import { Land } from "./land";
+import { LoopPlan } from "./plan";
+import { Runner } from "./runner";
 import type { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
@@ -29,6 +33,31 @@ let teammate = "";
 
 const git: Worktree.Git = async (cwd, args) =>
 	trySync(() => GitFixture.run(cwd, args));
+
+const PR_URL = "https://github.com/acme/widget/pull/7";
+
+// What each test's gh was asked, and how it answers: `pr view` finds no pull request until one
+// is open, as gh does for a branch that has none, and `pr create` prints the new one's URL.
+let ghCalls: string[][] = [];
+let openPr: string | undefined;
+let ghFails: string | undefined;
+const gh: Land.Gh = async (_cwd, args) => {
+	ghCalls.push(args);
+	if (ghFails) return err(new Error(ghFails));
+	if (args[0] === "pr" && args[1] === "view")
+		return openPr
+			? ok(JSON.stringify({ url: openPr, state: "OPEN" }))
+			: err(new Error(`no pull requests found for branch "${args[2]}"`));
+	if (args[0] === "pr" && args[1] === "create") {
+		openPr = PR_URL;
+		return ok(`Creating pull request\n${PR_URL}\n`);
+	}
+	return err(new Error(`unexpected gh ${args.join(" ")}`));
+};
+
+const BRANCH = "jcab-1-make-the-thing";
+const remoteTip = (): string =>
+	GitFixture.run(remote, ["rev-parse", `refs/heads/${BRANCH}`]).trim();
 const head = (dir: string): string =>
 	GitFixture.run(dir, ["rev-parse", "HEAD"]).trim();
 
@@ -57,6 +86,9 @@ beforeEach(async () => {
 	commit(repo, "README.md", "# fixture\n");
 	GitFixture.run(repo, ["push", "-q", "-u", "origin", "main"]);
 	GitFixture.run(root, ["clone", "-q", remote, teammate]);
+	ghCalls = [];
+	openPr = undefined;
+	ghFails = undefined;
 	await Planner.init(home);
 });
 
@@ -104,7 +136,7 @@ const completedRun = async (
 	};
 	const created = RunStore.create(home, run);
 	if (!created.ok) throw created.error;
-	const added = await Worktree.add(repo, dir, "jcab-1-make-the-thing", git);
+	const added = await Worktree.add(repo, dir, BRANCH, git);
 	if (!added.ok) throw added.error;
 	commit(dir, "work.txt");
 	return run;
@@ -120,6 +152,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			git,
+			gh,
 		},
 		now: () => new Date(),
 		tree: async (cwd) => head(cwd),
@@ -134,6 +167,12 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 	};
 };
 
+const landed = async (ctx: RunState.Ctx): Promise<RunStore.Landing> => {
+	const plan = await LoopPlan.load(home, ctx.run.parentId);
+	if (!plan.ok) throw plan.error;
+	return Land.land(ctx, plan.value);
+};
+
 describe("Land.land onto the base", () => {
 	it("leaves a branch already on the base's latest commit as it is, and runs no gate", async () => {
 		const parent = await parentIssue();
@@ -142,7 +181,7 @@ describe("Land.land onto the base", () => {
 		);
 		const tip = head(ctx.run.worktree ?? "");
 
-		const landing = await Land.land(ctx, parent);
+		const landing = await landed(ctx);
 
 		expect(landing.ok).toBe(true);
 		expect(landing.summary).toContain("The branch is on origin/main");
@@ -165,7 +204,7 @@ describe("Land.land onto the base", () => {
 		const checkout = head(repo);
 		baseMoves("teammate.txt");
 
-		const landing = await Land.land(ctx, parent);
+		const landing = await landed(ctx);
 
 		expect(landing.ok).toBe(true);
 		expect(landing.summary).toContain("Rebased onto origin/main");
@@ -187,7 +226,7 @@ describe("Land.land onto the base", () => {
 		const before = head(dir);
 		baseMoves("README.md", "# theirs\n");
 
-		const landing = await Land.land(ctx, parent);
+		const landing = await landed(ctx);
 
 		expect(landing.ok).toBe(false);
 		expect(landing.summary).toContain("conflicts in README.md");
@@ -210,7 +249,7 @@ describe("Land.land onto the base", () => {
 		const before = head(dir);
 		baseMoves("teammate.txt");
 
-		const landing = await Land.land(ctx, parent);
+		const landing = await landed(ctx);
 
 		expect(landing.ok).toBe(false);
 		expect(landing.summary).toContain("the gate alone failed (exit 1)");
@@ -224,9 +263,223 @@ describe("Land.land onto the base", () => {
 		const run = await completedRun(parent);
 		const ctx = ctxFor({ ...run, base: { sha: run.base?.sha ?? "" } });
 
-		const landing = await Land.land(ctx, parent);
+		const landing = await landed(ctx);
 
 		expect(landing).toMatchObject({ ok: false });
 		expect(landing.summary).toContain("detached HEAD");
+	});
+});
+
+describe("Land.land to a pull request", () => {
+	it("pushes the branch to the base's remote and opens a pull request against the base", async () => {
+		const parent = await parentIssue();
+		const finding = await Planner.addTask(home, {
+			title: "Name the flag",
+			kind: "issue",
+			state: "done",
+			parentTaskId: parent.id,
+			tags: ["finding", "p2", "quality"],
+		});
+		if (!finding.ok) throw finding.error;
+		const ctx = ctxFor(
+			await completedRun(parent, {
+				gates: { test: "true" },
+				lenses: ["quality"],
+			}),
+		);
+		ctx.run = {
+			...ctx.run,
+			gateRuns: [
+				{
+					at: new Date().toISOString(),
+					results: [
+						{
+							name: "test",
+							command: "true",
+							ok: true,
+							exit: 0,
+							ms: 1200,
+							tail: "",
+						},
+					],
+					ok: true,
+					tree: "tree",
+				},
+			],
+		};
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(true);
+		expect(landing.summary).toContain(`pull request ${PR_URL} is open`);
+		expect(remoteTip()).toBe(head(ctx.run.worktree ?? ""));
+		expect(ctx.run.pr).toBe(PR_URL);
+		const saved = RunStore.read(home, ctx.run.id);
+		expect(saved.ok && saved.value.pr).toBe(PR_URL);
+		const [view, create] = ghCalls;
+		expect(view).toEqual(["pr", "view", BRANCH, "--json", "url,state"]);
+		expect(create?.slice(0, 8)).toEqual([
+			"pr",
+			"create",
+			"--base",
+			"main",
+			"--head",
+			BRANCH,
+			"--title",
+			"Make the thing",
+		]);
+		const body = create?.[9] ?? "";
+		expect(body).toStartWith("The brief.\n\n## Gates\n\n- test passed in");
+		expect(body).toContain(
+			`## Lens findings\n\n- ${finding.value.shortId} (p2, quality): Name the flag [done]`,
+		);
+		expect(body).toContain("kabane loop run `run-1`");
+	});
+
+	it("pushes a branch rebased again to the pull request already open for it, opening none", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent));
+		expect((await landed(ctx)).ok).toBe(true);
+		const first = remoteTip();
+		// A later run's work, on a base that moved meanwhile: the branch's history is rewritten.
+		commit(ctx.run.worktree ?? "", "review-fix.txt");
+		baseMoves("teammate.txt");
+		ghCalls = [];
+
+		const again = await landed(ctx);
+
+		expect(again.ok).toBe(true);
+		expect(again.rebased).toBeDefined();
+		expect(remoteTip()).toBe(head(ctx.run.worktree ?? ""));
+		expect(remoteTip()).not.toBe(first);
+		expect(ghCalls).toEqual([["pr", "view", BRANCH, "--json", "url,state"]]);
+	});
+
+	it("does not overwrite a commit someone else pushed to the branch", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent));
+		expect((await landed(ctx)).ok).toBe(true);
+		// A reviewer pushes a commit of their own to the pull request's branch.
+		GitFixture.run(teammate, ["fetch", "-q", "origin", BRANCH]);
+		GitFixture.run(teammate, ["checkout", "-q", "-b", BRANCH, "FETCH_HEAD"]);
+		commit(teammate, "reviewer.txt");
+		GitFixture.run(teammate, ["push", "-q", "origin", BRANCH]);
+		const theirs = remoteTip();
+		// The run's work goes on without it: its last push is all it knows of the branch.
+		commit(ctx.run.worktree ?? "", "review-fix.txt");
+
+		const again = await landed(ctx);
+
+		expect(again.ok).toBe(false);
+		expect(again.summary).toContain("git push");
+		expect(remoteTip()).toBe(theirs);
+	});
+
+	it("reports a push that fails, and opens no pull request", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent));
+		rmSync(remote, { recursive: true, force: true });
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toStartWith("Not landed: git fetch");
+		expect(ghCalls).toEqual([]);
+		expect(ctx.run.pr).toBeUndefined();
+	});
+
+	it("reports a gh that fails once the branch is pushed", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent));
+		ghFails = "gh: To get started with GitHub CLI, please run: gh auth login";
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain(
+			`branch ${BRANCH} is pushed, but no pull request was opened: gh: To get started`,
+		);
+		expect(remoteTip()).toBe(head(ctx.run.worktree ?? ""));
+		expect(ctx.run.pr).toBeUndefined();
+	});
+});
+
+describe("a run with land: pr, through the real runner", () => {
+	it("completes on its gates, lands its branch, and leaves its parent waiting on the pull request", async () => {
+		const parent = await parentIssue();
+		const child = await Planner.addTask(home, {
+			title: "the work",
+			kind: "issue",
+			state: "done",
+			parentTaskId: parent.id,
+		});
+		if (!child.ok) throw child.error;
+		const run = await completedRun(parent, { gates: { test: "true" } });
+		const pending = RunStore.write(home, { ...run, status: "pending" });
+		if (!pending.ok) throw pending.error;
+		baseMoves("teammate.txt");
+
+		const ran = await Runner.run(run.id, {
+			home,
+			basePath: home,
+			kabaneBin: "/nonexistent/kabane",
+			pid: process.pid,
+			git,
+			gh,
+			tickMs: 10,
+		});
+
+		if (!ran.ok) throw ran.error;
+		expect(ran.value).toMatchObject({ status: "completed", pr: PR_URL });
+		expect(ran.value.landing?.rebased).toBeDefined();
+		expect(remoteTip()).toBe(head(run.worktree ?? ""));
+		const after = await Planner.getTask(home, parent.id);
+		expect(after.ok && after.value).toMatchObject({
+			state: "waiting",
+			needsReview: true,
+		});
+		const comments = await Planner.getComments(home, parent.id);
+		expect(comments.ok && comments.value.at(-1)?.content).toContain(
+			`pull request ${PR_URL} is open. ${parent.shortId} waits on its review.`,
+		);
+		const links = await Planner.getUpstreamLinksForTask(home, parent.id);
+		expect(links.ok && links.value).toMatchObject([
+			{ provider: "github", identifier: "acme/widget#7", url: PR_URL },
+		]);
+	});
+
+	it("completes with the landing's failure on its parent when the push fails", async () => {
+		const parent = await parentIssue();
+		const child = await Planner.addTask(home, {
+			title: "the work",
+			kind: "issue",
+			state: "done",
+			parentTaskId: parent.id,
+		});
+		if (!child.ok) throw child.error;
+		const run = await completedRun(parent, { gates: { test: "true" } });
+		const pending = RunStore.write(home, { ...run, status: "pending" });
+		if (!pending.ok) throw pending.error;
+		rmSync(remote, { recursive: true, force: true });
+
+		const ran = await Runner.run(run.id, {
+			home,
+			basePath: home,
+			kabaneBin: "/nonexistent/kabane",
+			pid: process.pid,
+			git,
+			gh,
+			tickMs: 10,
+		});
+
+		if (!ran.ok) throw ran.error;
+		expect(ran.value.status).toBe("completed");
+		expect(ran.value.landing?.ok).toBe(false);
+		const after = await Planner.getTask(home, parent.id);
+		expect(after.ok && after.value?.state).toBe("in_progress");
+		const comments = await Planner.getComments(home, parent.id);
+		const said = comments.ok ? (comments.value.at(-1)?.content ?? "") : "";
+		expect(said).toContain("Not landed: git fetch");
+		expect(said).toContain(`Merge branch \`${BRANCH}\``);
 	});
 });

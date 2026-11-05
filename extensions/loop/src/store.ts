@@ -147,6 +147,8 @@ export namespace RunStore {
 		gateRuns: z.array(Gates.RunSchema).default([]),
 		/** The last landing of the run's branch, when it was landed. */
 		landing: LandingSchema.optional(),
+		/** The pull request the run's branch has, once a landing opened it or found it open. */
+		pr: z.string().optional(),
 		/** When the human closed the run's board tab: the board stops listing it. */
 		dismissedAt: z.string().optional(),
 	});
