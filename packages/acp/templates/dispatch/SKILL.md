@@ -34,8 +34,10 @@ Pick one of these three before doing anything else, and say which one in a line:
 If you are unsure, choose the smaller option. A wave's coordination has to pay for itself.
 
 When the ask is really a question or a trade-off, answer it with evidence and stop there. If
-work follows from the answer, file it in `next` without dispatching it, and say which decision
-it is waiting on.
+work follows from the answer, file it without dispatching it, and ask the open decision on it
+with `kabane_ask`: the choices, your recommendation and why, one question per decision, all in
+one call. That leaves the issue `waiting`, and answering its last question moves it to `next`.
+Comment only what the questions do not carry, such as evidence or a link.
 
 A wave-sized ask sometimes still has open design decisions: a behaviour nobody has specified, or
 a trade-off with two reasonable answers. If so, offer to grill it before filing anything. Do not
@@ -43,7 +45,8 @@ offer a grill for inline or one-issue work, because there the questions cost mor
 answers save. A grill runs in rounds. Each round asks every question that can be answered now,
 each with your recommended answer. Look up anything the code or docs can answer rather than
 asking the user. Go ahead once the user confirms. The confirmed answers become the decisions
-record (below).
+record (below). A decision that was already asked as a question with `kabane_ask` also gets its
+confirmed answer recorded with `kabane_answer`.
 
 ## Investigate, then write the issues
 

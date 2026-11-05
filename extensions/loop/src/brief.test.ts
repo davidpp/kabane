@@ -200,3 +200,48 @@ describe("Brief implementing checks", () => {
 		});
 	}
 });
+
+describe("Brief on a decision that is the human's", () => {
+	const asked =
+		"with kabane_ask: the choices, your recommendation and why, one question per decision and all of them in one call";
+	const parked =
+		"That parks it as waiting until the human answers. Comment only what the questions do not carry, such as evidence or a link.";
+
+	it("has an implementing session ask a design fork on its own issue instead of guessing", () => {
+		for (const target of [subject.task, subject.parent]) {
+			const [instructions] = Brief.opening(
+				{ ...subject, task: target },
+				"ASSEMBLED",
+			).split("\n\n---\n\n");
+			expect(instructions).toContain(
+				`If the work reaches a design choice the brief does not settle, do not guess: file the decision on ${target.id} ${asked}. ${parked} Then end your turn.`,
+			);
+		}
+	});
+
+	it("has a lens file a trade-off finding, then ask its options on it", () => {
+		const lens = Brief.lens(
+			{ ...subject, lens: "security", prompt: "LENS", gates: [] },
+			"ASSEMBLED",
+		);
+		expect(lens).toContain(
+			`When the fix is a trade-off the human must choose, file the finding all the same, then file the decision on it ${asked}. ${parked} The fixer leaves a waiting finding to the human.`,
+		);
+	});
+
+	it("has the fixer ask a finding that needs the human's call, and only comment one that is wrong", () => {
+		const fixer = Brief.fixer(
+			{ ...subject, findings: [], gates: [] },
+			"ASSEMBLED",
+		);
+		expect(fixer).toContain(
+			'If a finding is wrong, already fixed, or outside P-1\'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open for a human.',
+		);
+		expect(fixer).toContain(
+			`If fixing a finding needs a call that is the human's (two reasonable fixes, or a change to what P-1 asked for), do not change code for it either: file the decision on it ${asked}. ${parked}`,
+		);
+		expect(Brief.fixerContinuation([subject.task])).toEndWith(
+			"or file the decision it needs with kabane_ask.",
+		);
+	});
+});

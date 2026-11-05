@@ -43,6 +43,13 @@ export namespace Brief {
 	// human's configured `kabane`, which is unscoped and may point at another home.
 	const SERVER = `Your kabane_* tools are the ones of the ${CopilotInstructions.SERVER_NAME} MCP server. A server named kabane from your harness's own config may also be loaded; it is not tied to this run, so do not use it.`;
 
+	// How a session hands a decision to the human: as questions on the issue, which kabane_context
+	// shows with their choices and answers, rather than options written into its prose.
+	const asking = (on: string): string =>
+		`file the decision on ${on} with kabane_ask: the choices, your recommendation and why, one question per decision and all of them in one call`;
+	const PARKED =
+		"That parks it as waiting until the human answers. Comment only what the questions do not carry, such as evidence or a link.";
+
 	const implementingChecks = (
 		gates: readonly string[],
 		noun: string,
@@ -61,6 +68,7 @@ export namespace Brief {
 	): string[] => [
 		`${SERVER} Use them for tracker state: kabane_log for what you changed (commits, files), kabane_comment for decisions and blockers. When the ${noun} is implemented and you have verified it, call kabane_done on ${label(task)}. That is how the run knows you are finished; ending your turn without it means the ${noun} is still open.`,
 		`If you find work outside your ${noun}, ${outside} If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. The task stays parked until explicitly moved to state "next"; resolving a dependency alone does not unpark it.`,
+		`If the work reaches a design choice the brief does not settle, do not guess: ${asking(label(task))}. ${PARKED} Then end your turn.`,
 		implementingChecks(gates, noun),
 		"Finish each turn with at most three lines saying what you did.",
 	];
@@ -175,6 +183,7 @@ export namespace Brief {
 		[
 			`You are the \`${lens}\` verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`,
 			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. The fixer takes every finding, most severe first, and a human reads the severities, so grade by the lens's definitions as written: a finding that meets the p1 definition is p1 even when the fix is small, and one that does not stays p2 or p3. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
+			`When the fix is a trade-off the human must choose, file the finding all the same, then ${asking("it")}. ${PARKED} The fixer leaves a waiting finding to the human.`,
 			"When everything is filed, end your turn with one line: how many findings you filed at each severity.",
 		].join("\n\n");
 
@@ -217,7 +226,7 @@ export namespace Brief {
 			[
 				`You are the fixer session of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"), whose work is done. Its verifier lenses reviewed the result and filed the findings below as child issues of ${label(parent)}. They are all yours, and no other session works in the repository meanwhile. Work through them in this order, most severe first:`,
 				findings.map(listed).join("\n"),
-				`For each finding: read its brief with kabane_context, fix it, verify the fix, log what you changed with kabane_log on it, then call kabane_done on it. Close only a finding you fixed. If a finding is wrong, already fixed, or outside ${label(parent)}'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open for a human. ${after(gates)}`,
+				`For each finding: read its brief with kabane_context, fix it, verify the fix, log what you changed with kabane_log on it, then call kabane_done on it. Close only a finding you fixed. If a finding is wrong, already fixed, or outside ${label(parent)}'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open for a human. If fixing a finding needs a call that is the human's (two reasonable fixes, or a change to what ${label(parent)} asked for), do not change code for it either: ${asking("it")}. ${PARKED} ${after(gates)}`,
 				`Do not file findings. If fixing one turns up other work, add it with kabane_add as a child of ${label(parent)} with kind "issue" instead of doing it.`,
 				"When every finding is closed or waiting, end your turn with one line per finding: fixed, or why it was left.",
 			].join("\n\n"),
@@ -227,7 +236,7 @@ export namespace Brief {
 
 	/** The nudge for a fixer turn that ended with findings it has not settled. */
 	export const fixerContinuation = (left: readonly Task[]): string =>
-		`${left.map(label).join(", ")} ${left.length === 1 ? "is" : "are"} still open. Continue: fix each and call kabane_done on it, or say why it is left with kabane_comment and call kabane_edit on it with state "waiting".`;
+		`${left.map(label).join(", ")} ${left.length === 1 ? "is" : "are"} still open. Continue: fix each and call kabane_done on it, say why it is left with kabane_comment and call kabane_edit on it with state "waiting", or file the decision it needs with kabane_ask.`;
 
 	/** The nudge for a turn that ended with its subtask, or its single issue, still open. */
 	export const continuation = (task: Task): string =>
