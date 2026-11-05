@@ -24,7 +24,7 @@ import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";
 
-const { STORE, TAGS, DELIVERY } = Fixtures;
+const { STORE, UNDESCRIBED, TAGS, DELIVERY } = Fixtures;
 
 const mount = async (
 	request: CopilotElicitation,
@@ -371,21 +371,6 @@ describe("a form's colors on the copilot's raised panel", () => {
 		const span = spans.find((s) => s.text.includes(text));
 		return span && ints(span.fg);
 	};
-	const UNDESCRIBED: CopilotElicitation = {
-		...STORE,
-		fields: [
-			{
-				key: "question_0",
-				title: "Store",
-				required: true,
-				type: "choice",
-				options: [
-					{ value: "Redis", label: "Redis" },
-					{ value: "Memory", label: "Memory" },
-				],
-			},
-		],
-	};
 
 	it("described: keys and labels in the text color, each description secondary, the meta muted", async () => {
 		const { spans, destroy } = await mount(
@@ -430,18 +415,6 @@ describe("a form's colors on the copilot's raised panel", () => {
 });
 
 describe("the copilot pane with a form at the head of its queue", () => {
-	const copilot = (asks: BoardNav.CopilotAsk[]): BoardNav.CopilotState => ({
-		text: "",
-		paletteAt: 0,
-		history: [],
-		historyAt: 0,
-		turn: "running",
-		hasLog: false,
-		shortcuts: [],
-		commands: [],
-		actor: "cabane://actor/agent/claude",
-		asks,
-	});
 	const ask: BoardNav.CopilotAsk = {
 		type: "elicitation",
 		request: TAGS,
@@ -451,7 +424,11 @@ describe("the copilot pane with a form at the head of its queue", () => {
 	const pane = async (outranked: boolean, detailShownElsewhere: boolean) => {
 		const setup = await renderTest(
 			<CopilotPane
-				copilot={copilot([ask])}
+				copilot={Fixtures.copilot({
+					turn: "running",
+					actor: "cabane://actor/agent/claude",
+					asks: [ask],
+				})}
 				chip="JALL-1"
 				focused={false}
 				log={null}
