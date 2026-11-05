@@ -136,6 +136,8 @@ export namespace Planner {
 
 		const result = await withDb(basePath, (db) => {
 			const now = new Date().toISOString();
+			const completedAt =
+				draft.state === "done" || draft.state === "cancelled" ? now : null;
 			const id = generateId();
 			const shortId = generateShortId(db, prefixResult.value, scopeUri);
 
@@ -150,8 +152,8 @@ export namespace Planner {
           verification,
           tags, context,
           updated_by,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          created_at, updated_at, completed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					id,
 					shortId,
@@ -182,6 +184,7 @@ export namespace Planner {
 					Runtime.actor(),
 					now,
 					now,
+					completedAt,
 				],
 			);
 			Oplog.afterWrite(db, "tasks", "insert", id);
@@ -198,7 +201,7 @@ export namespace Planner {
 				scopeRefs: draft.scopeRefs,
 				deadline: draft.deadline,
 				deferUntil: draft.deferUntil,
-				completedAt: undefined,
+				completedAt: completedAt ?? undefined,
 				provenance: {
 					source: draft.provenance?.source ?? "human",
 					sourceId: draft.provenance?.sourceId,
@@ -402,11 +405,10 @@ export namespace Planner {
 			if (updates.state !== undefined) {
 				sets.push("state = ?");
 				params.push(updates.state);
-				// Set completed_at when transitioning to done
-				if (updates.state === "done") {
-					sets.push("completed_at = ?");
-					params.push(now);
-				}
+				sets.push(
+					"completed_at = CASE WHEN ? IN ('done', 'cancelled') THEN CASE WHEN state IN ('done', 'cancelled') AND completed_at IS NOT NULL THEN completed_at ELSE ? END ELSE NULL END",
+				);
+				params.push(updates.state, now);
 			}
 			if (updates.priority !== undefined) {
 				sets.push("priority = ?");
