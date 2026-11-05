@@ -143,3 +143,39 @@ describe("task completion timestamps", () => {
 		}
 	}
 });
+
+describe("updateTaskIn", () => {
+	it("validates before writing and returns the row from the caller's transaction", async () => {
+		const base = await createDevice("transaction");
+		const added = await Planner.addTask(base, {
+			title: "Before",
+			scopeUri: "before",
+		});
+		if (!added.ok) throw added.error;
+		const result = await withDb(base, (db) =>
+			db.transaction(() => {
+				const invalid = Planner.updateTaskIn(db, added.value.id, {
+					scopeUri: "jake://scope/",
+				});
+				expect(invalid.ok).toBe(false);
+				const changed = Planner.updateTaskIn(db, added.value.id, {
+					title: "After",
+					state: "waiting",
+					scopeUri: "after",
+				});
+				if (!changed.ok) throw changed.error;
+				expect(changed.value).toMatchObject({
+					title: "After",
+					state: "waiting",
+					scopeUri: "jake://scope/after",
+					version: 2,
+				});
+				return changed.value;
+			})(),
+		);
+		if (!result.ok) throw result.error;
+		const stored = await Planner.getTask(base, added.value.id);
+		if (!stored.ok) throw stored.error;
+		expect(stored.value).toEqual(result.value);
+	});
+});
