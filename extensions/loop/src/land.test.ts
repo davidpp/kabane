@@ -6,6 +6,7 @@
 import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
+	chmodSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -73,6 +74,14 @@ const baseMoves = (file: string, text?: string): void => {
 	GitFixture.run(teammate, ["pull", "-q", "--ff-only"]);
 	commit(teammate, file, text);
 	GitFixture.run(teammate, ["push", "-q", "origin", "main"]);
+};
+
+// The remote refuses every push from here on, as a protected or full repository does; fetching
+// from it still works.
+const remoteRefuses = (): void => {
+	const hook = join(remote, "hooks", "pre-receive");
+	writeFileSync(hook, "#!/bin/sh\necho 'pushes are closed' >&2\nexit 1\n");
+	chmodSync(hook, 0o755);
 };
 
 beforeEach(async () => {
@@ -475,14 +484,19 @@ describe("Land.land to a pull request", () => {
 	it("reports a push that fails, and opens no pull request", async () => {
 		const parent = await parentIssue();
 		const ctx = ctxFor(await completedRun(parent));
-		rmSync(remote, { recursive: true, force: true });
+		remoteRefuses();
 
 		const landing = await landed(ctx);
 
 		expect(landing.ok).toBe(false);
-		expect(landing.summary).toStartWith("Not landed: git fetch");
+		expect(landing.summary).toStartWith("Not landed: git push");
+		expect(landing.summary).toContain("pre-receive hook declined");
+		expect(
+			GitFixture.run(remote, ["for-each-ref", "refs/heads"]).trim().split("\n"),
+		).toHaveLength(1);
 		expect(ghCalls).toEqual([]);
 		expect(ctx.run.pr).toBeUndefined();
+		expect(ctx.run.pushed).toBeUndefined();
 	});
 
 	it("reports a gh that fails once the branch is pushed", async () => {
@@ -557,7 +571,7 @@ describe("a run with land: pr, through the real runner", () => {
 		const run = await completedRun(parent, { gates: { test: "true" } });
 		const pending = RunStore.write(home, { ...run, status: "pending" });
 		if (!pending.ok) throw pending.error;
-		rmSync(remote, { recursive: true, force: true });
+		remoteRefuses();
 
 		const ran = await Runner.run(run.id, {
 			home,
@@ -576,7 +590,8 @@ describe("a run with land: pr, through the real runner", () => {
 		expect(after.ok && after.value?.state).toBe("in_progress");
 		const comments = await Planner.getComments(home, parent.id);
 		const said = comments.ok ? (comments.value.at(-1)?.content ?? "") : "";
-		expect(said).toContain("Not landed: git fetch");
+		expect(said).toContain("Not landed: git push");
+		expect(said).toContain("pre-receive hook declined");
 		expect(said).toContain(`Merge branch \`${BRANCH}\``);
 	});
 });
