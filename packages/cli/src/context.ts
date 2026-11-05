@@ -43,9 +43,9 @@ export const configureRuntime = (
 	config: Config,
 	actor: string,
 	location: DatabaseLocation,
-): void => {
+): Result<void> => {
 	const zone = config.timezone;
-	Runtime.configure({
+	return Runtime.configure({
 		modules: [],
 		provider: SqliteDb.provider({ dbName: location.dbName }),
 		tablePrefix: location.tablePrefix,
@@ -66,7 +66,8 @@ export const openContext = async (
 	if (!config.ok) return config;
 	const actor = flagString(args, "as") ?? config.value.actor;
 	const location = databaseLocation(home, config.value);
-	configureRuntime(config.value, actor, location);
+	const configured = configureRuntime(config.value, actor, location);
+	if (!configured.ok) return configured;
 	const initialized = await Planner.init(location.basePath);
 	if (!initialized.ok) return initialized;
 	return ok({
