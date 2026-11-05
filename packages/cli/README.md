@@ -193,7 +193,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `config [list\|get <key>\|set <key> <value>\|unset <key>\|path]` | `--json` — inspect or edit device config without opening the database |
 | `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD\|<ISO time>` (a date is due by the end of that day in your timezone; a time without `Z` or an offset is your local time) `--format concise\|full` |
 | `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` `--format concise\|full` `--cursor <cursor>` |
-| `show <id>` | task, links, comments, work log; `--json` also carries `updatedBy` (actor URI of the last writer) and `version` |
+| `show <id>` | task, links, comments, work log, then each module's section (the decisions); `--json` also carries `updatedBy` (actor URI of the last writer), `version`, and `sections`, each module section's markdown by name (`questions.decisions`) |
 | `edit <id>` | `--title` `--description` `--state` `--priority` `--kind` `--assignee <who>\|none` `--scope` `--parent <id>\|none` `--tags` `--due` `--format concise\|full` |
 | `done <id>` | `--format concise\|full` |
 | `search <query>` | `--state` `--scope` `--limit` `--format concise\|full` `--cursor <cursor>` |

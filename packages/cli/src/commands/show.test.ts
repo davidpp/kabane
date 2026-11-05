@@ -39,6 +39,7 @@ it("shows registered decisions through the real CLI entry and consumes multiple 
 	const plain = await run(["show", task.id], env, home);
 	expect(plain.exitCode).toBe(0);
 	expect(plain.text).not.toContain("## Decisions");
+	expect(plain.json).toMatchObject({ sections: {} });
 	unwrap(
 		await Questions.ask(home, {
 			id: task.id,
@@ -79,4 +80,8 @@ it("shows registered decisions through the real CLI entry and consumes multiple 
 	expect(shown.text).not.toContain("Withdraw this");
 	expect(shown.text).toContain("Long decision 7:");
 	expect(shown.text.match(/## Decisions/g)).toHaveLength(1);
+	const sections = (shown.json as { sections: Record<string, string> })
+		.sections;
+	expect(Object.keys(sections)).toEqual(["questions.decisions"]);
+	expect(shown.text).toContain(sections["questions.decisions"] ?? "missing");
 });
