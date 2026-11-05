@@ -6,19 +6,28 @@
  * home unless `config.db.path` points elsewhere.
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ok, Planner, type Result, Runtime } from "@cabane/core";
+import { ok, Planner, type Result, Runtime, tryCatch } from "@cabane/core";
 import { detectScope, type ProjectScope } from "@cabane/core/scope";
-import { type Extension, flagString, type ParsedArgs } from "@cabane/extension";
+import {
+	type Extension,
+	flagString,
+	type ParsedArgs,
+	Settings,
+} from "@cabane/extension";
 import { SqliteDb } from "@cabane/sqlite";
 import {
 	type Config,
+	configPath,
 	type DatabaseLocation,
 	databaseLocation,
 	harnessMode,
 	loadConfig,
+	loadConfigDocument,
 } from "./config";
+import { ConfigLayers } from "./config-layers";
 
 /** An extension's context plus the device config, which only built-in commands read. */
 export type Ctx = Extension.Ctx & { config: Config };
@@ -66,6 +75,7 @@ export const openContext = async (
 		config: config.value,
 		actor,
 		harnessMode: harnessMode(config.value),
+		settings: settingsPort(home),
 	});
 };
 
@@ -108,6 +118,40 @@ export const detectProject = (
 	home: string,
 ): Promise<ProjectScope | null> =>
 	detectScope(cwd, { home, legacyPin: jakeProjectPin });
+
+/**
+ * The project at `dir` without the extensions a filter ignores: its root, and the scope id that
+ * keys the user's settings for it. Null outside one.
+ */
+export const projectAt = (
+	dir: string,
+	home: string,
+): Promise<Result<ProjectScope | null>> =>
+	tryCatch(() =>
+		detectScope(dir, {
+			home,
+			legacyPin: jakeProjectPin,
+			detectExtensions: false,
+		}),
+	);
+
+/**
+ * Settings through every layer for an extension. It reads `config.json` when it resolves, so a
+ * context without a config (a standalone command's) still has the user's layers once there is one.
+ */
+export const settingsPort = (home: string): Settings.Port =>
+	Settings.port(async (namespace, projectDir) => {
+		const document = existsSync(configPath(home))
+			? loadConfigDocument(home)
+			: ok(undefined);
+		if (!document.ok) return document;
+		const project = await projectAt(projectDir, home);
+		if (!project.ok) return project;
+		return ConfigLayers.sources(home, document.value?.stored, namespace, {
+			projectDir,
+			...(project.value ? { scopeId: project.value.scopeId } : {}),
+		});
+	});
 
 /**
  * `--scope` wins; otherwise the working directory decides, so a command run

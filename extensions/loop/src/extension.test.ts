@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
-import { parseArgs } from "@cabane/extension";
+import { ok, Planner } from "@cabane/core";
+import { parseArgs, Settings } from "@cabane/extension";
 import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
 import { loop } from "./extension";
@@ -30,6 +30,7 @@ const kabaneLoop = (...argv: string[]) => {
 		cwd: home,
 		actor: "cabane://actor/human/test",
 		harnessMode: "auto",
+		settings: Settings.port(async () => ok([])),
 	});
 };
 

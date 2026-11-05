@@ -33,7 +33,7 @@ import { sync } from "./commands/sync";
 import { update } from "./commands/update";
 import { upstream } from "./commands/upstream";
 import { resolveHome } from "./config";
-import { type Command, type Ctx, openContext } from "./context";
+import { type Command, type Ctx, openContext, settingsPort } from "./context";
 import { Extensions } from "./extensions";
 import { openTui } from "./first-run";
 import { print } from "./output";
@@ -141,6 +141,7 @@ const bareCtx = (home: string, cwd: string): Ctx => ({
 	},
 	actor: "",
 	harnessMode: "auto",
+	settings: settingsPort(home),
 });
 
 export const run = async (
