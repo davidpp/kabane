@@ -335,7 +335,9 @@ It reads the project's code, docs and history to ground briefs in real files and
 It can also:
 
 - Pull a Linear or GitHub issue into a local brief, or file a team issue from one and link it back
-  (`/linear`, `/github`). The harness needs a Linear MCP server or `gh` access, respectively.
+  (`/linear`, `/github`). The harness needs a Linear MCP server or `gh` access, respectively; a
+  missing one is reported rather than worked around. Kabane holds no provider credentials and
+  makes no network call of its own.
 - Explain commands and board keys, change Kabane settings, or enable an official extension
   (`/setup`). Restart the board after settings change; enabling loop does not start a run.
 - Create a dispatch skill tailored to the project's conventions (`/setup-dispatch`), showing
