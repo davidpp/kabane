@@ -202,6 +202,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `upstream unlink <id> [key]` | drop the link; the key is only needed when a task has more than one |
 | `open <id>` | launch the task's linked issue: the desktop app when its scheme is registered, else the browser, else the URL lands on the clipboard |
 | `comment <id> "<text>"` | `--as <actor>` |
+| `questions [<id>]` | `--all` (include answered and withdrawn) `--scope <uri>` `--limit <n>` `--cursor <cursor>` — open questions for the directory's scope or one issue, as `kabane_questions` prints them; `--json` is the question records, capped by `--limit` |
 | `log <id>` | `--ref <type:value>` (repeatable) `--commit <sha>` `--branch <name>` `--pr <owner/repo#n>` `--url` `--session` `--file` `--note` |
 | `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,upstream,position,context,priorWork,discussion` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise |
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |

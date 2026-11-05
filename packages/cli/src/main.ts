@@ -27,6 +27,7 @@ import { list } from "./commands/list";
 import { log } from "./commands/log";
 import { mcp } from "./commands/mcp";
 import { open } from "./commands/open";
+import { questions } from "./commands/questions";
 import { search } from "./commands/search";
 import { show } from "./commands/show";
 import { sync } from "./commands/sync";
@@ -51,6 +52,7 @@ export const COMMANDS: Command[] = [
 	upstream,
 	open,
 	comment,
+	questions,
 	log,
 	context,
 	sync,
