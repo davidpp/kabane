@@ -308,7 +308,7 @@ a silent UTC.
 ### Hearing about a release
 
 The board says when a release your install would update to is out: a line over its footer,
-`kabane <version> is out · run kabane update`, until `esc` dismisses it. A binary mise
+`kabane <version> is out · run kabane update`, until `esc` or a click on it dismisses it. A binary mise
 installed says `run mise up kabane` instead, and an install `kabane update` would refuse says
 `update it the way you installed it`. It is the release
 `kabane update --check` would name, on your channel and within your major (minor for `0.x`).

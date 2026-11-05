@@ -192,7 +192,8 @@ byte verification, no-overwrite and immutable finalization checks. It never rebu
 The local release command still produces npm-only releases; use Actions for all-platform
 binary releases. Older npm-only retained manifests remain valid for partial-release recovery.
 Do not add binaries to an already published immutable release or replace retained bytes.
-Binary self-update, an installer, Homebrew and a mise registry entry are separate work.
+Binary self-update is `kabane update` ([standalone binaries](getting-started.md#standalone-binaries));
+an installer, Homebrew and a mise registry entry are separate work.
 
 Local host verification (no publishing):
 
@@ -212,6 +213,22 @@ A human must dispatch `publish: false` to prove all runner builds and retained t
 check first-run setup/board in a real terminal. Manually verify MCP installation, copilot
 and loop template/self-launch behavior in disposable
 homes. No live release, npm/OIDC or notarization claim follows from local binary smoke.
+
+To rehearse a binary update before a release exists, build an older and a newer binary
+(the newer from a checkout whose CLI version is bumped), install the older one, and serve
+the newer as a release from this machine. Two variables point the binary there instead of
+npm and GitHub:
+
+- `KABANE_UPDATE_REGISTRY` answers `GET <registry>/-/package/kabane/dist-tags` with
+  `{ "latest": …, "beta": … }`.
+- `KABANE_UPDATE_RELEASES` answers `GET <releases>/v<version>/SHA256SUMS` and
+  `<releases>/v<version>/kabane-<os>-<arch>.tar.gz`.
+
+Both must be `https:`, or `http:` to `127.0.0.1`, `::1` or `localhost`, including after
+redirects. Run the older binary with an isolated `HOME`/`KABANE_HOME`: `kabane update
+--check`, then `kabane update`, then `kabane --version`. Serve a corrupted `SHA256SUMS` once
+to see it refuse with the old install untouched. The first real GitHub update after a
+release, which follows the download redirect, stays a human check.
 
 ## Human-owned Actions setup (optional; before workflow publishing)
 

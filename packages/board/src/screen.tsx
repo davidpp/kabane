@@ -429,5 +429,6 @@ const BoardScreen = ({
 		focus={state.focus}
 		pane={pane}
 		announcement={state.announcement}
+		onDismissAnnouncement={() => input.dispatchMouse({ type: "announcement" })}
 	/>
 );

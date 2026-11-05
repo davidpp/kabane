@@ -539,7 +539,14 @@ const EmptyBoard = (): ReactNode => {
 
 // The host's announcement, in the accent so it reads as news rather than chrome, and how to put it
 // away. One row, cut at the width rather than wrapped, over the copilot's surface and the footer.
-const Announcement = ({ text }: { text: string }): ReactNode => {
+// A click anywhere on it does what its `esc dismiss` says.
+const Announcement = ({
+	text,
+	onDismiss,
+}: {
+	text: string;
+	onDismiss?: () => void;
+}): ReactNode => {
 	const { width } = useTerminalDimensions();
 	const theme = useTheme();
 	const segments = Segments.fit(
@@ -549,7 +556,11 @@ const Announcement = ({ text }: { text: string }): ReactNode => {
 		],
 		width,
 	);
-	return <text style={{ flexShrink: 0 }}>{Segments.spans(segments)}</text>;
+	return (
+		<text style={{ flexShrink: 0 }} onMouseDown={onDismiss}>
+			{Segments.spans(segments)}
+		</text>
+	);
 };
 
 const SEARCH_OFF: BoardNav.SearchState = { mode: "off" };
@@ -661,8 +672,10 @@ export type BoardProps = {
 	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation).
 	// Optional so render-only tests fall back to what the board knows itself.
 	keys?: Keymap.Live;
-	// The host's one line (Announcer), drawn over the pane and the footer until `esc` dismisses it.
+	// The host's one line (Announcer), drawn over the pane and the footer until `esc` or a click
+	// dismisses it.
 	announcement?: string | null;
+	onDismissAnnouncement?: () => void;
 };
 
 export const Board = ({
@@ -686,6 +699,7 @@ export const Board = ({
 	pane,
 	keys,
 	announcement,
+	onDismissAnnouncement,
 }: BoardProps): ReactNode => {
 	const { width } = useTerminalDimensions();
 	const theme = useTheme();
@@ -762,7 +776,9 @@ export const Board = ({
 					))
 				)}
 			</scrollbox>
-			{announcement ? <Announcement text={announcement} /> : null}
+			{announcement ? (
+				<Announcement text={announcement} onDismiss={onDismissAnnouncement} />
+			) : null}
 			{pane}
 			<Footer
 				notice={notice}

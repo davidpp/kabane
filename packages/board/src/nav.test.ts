@@ -2206,6 +2206,14 @@ describe("marks (`m`)", () => {
 		expect(reloaded.announcement).toBe("kabane 9.9.9 is out");
 	});
 
+	it("a click on the announcement dismisses it and leaves the copilot its focus", () => {
+		const s = state({ announcement: "kabane 9.9.9 is out", focus: "copilot" });
+		const clicked = BoardNav.reduceMouse(s, { type: "announcement" });
+		expect(clicked.state.announcement).toBeNull();
+		expect(clicked.state.focus).toBe("copilot");
+		expect(clicked.effect.type).toBe("none");
+	});
+
 	it("marks survive a reload and a search merge", () => {
 		const s = state({ ...two(), marked: new Set(["a", "b"]) });
 		const reloaded = BoardNav.withSections(

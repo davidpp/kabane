@@ -353,6 +353,8 @@ export namespace BoardNav {
 		| { type: "lane"; index: number }
 		// A field of the trigger form, by its place in the trigger's inputs.
 		| { type: "formField"; index: number }
+		// The host's announcement, which a click puts away as `esc` does.
+		| { type: "announcement" }
 		| AskClick
 		| BoardDecisions.Click;
 
@@ -1965,6 +1967,9 @@ export namespace BoardNav {
 			return TriggerForm.click(incoming, action.index);
 		if (incoming.help || incoming.dispatch)
 			return { state: incoming, effect: NONE };
+		// Putting the announcement away is not choosing a pane: focus and an open prompt stay put.
+		if (action.type === "announcement")
+			return { state: { ...incoming, announcement: null }, effect: NONE };
 		// Answering the copilot is not working on the board: the keys stay where they were.
 		if (isAskClick(action)) return clickAsk(incoming, action);
 		// A click is the human saying they are working on the board now: the copilot loses focus and an
