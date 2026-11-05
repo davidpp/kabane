@@ -330,15 +330,22 @@ The port is protocol-free on purpose: `@cabane/acp` implements it over an ACP ha
 test can implement it with a scripted async generator. `noCopilot` is an explicit no-op whose
 every turn ends with `no copilot configured`.
 
-What the ACP copilot knows beyond the tracker itself is one procedure: linking a task to its twin
-in a team tracker, in either direction. `/linear` and `/github` expand to the inbound form, and the
-skill text behind them (`CopilotInstructions.SKILLS`) carries both. It is injected with the identity
-block rather than living in each repo's `.claude/skills`, so the two work in every scope the board
-opens against with nothing to install. Pulling one in puts what matters into the task's OWN
-description and only identity on the link; pushing one out files the team-facing version and links
-it back. Provider access belongs to the harness — a Linear MCP server, `gh` on `PATH` — and a
-missing one is reported rather than worked around: kabane holds no provider credentials and makes
-no network call of its own.
+Ask the ACP copilot to triage issues, refine briefs, split work, find duplicates or check a plan.
+It reads the project's code, docs and history to ground briefs in real files and commands.
+It can also:
+
+- Pull a Linear or GitHub issue into a local brief, or file a team issue from one and link it back
+  (`/linear`, `/github`). The harness needs a Linear MCP server or `gh` access, respectively; a
+  missing one is reported rather than worked around. Kabane holds no provider credentials and
+  makes no network call of its own.
+- Explain commands and board keys, change Kabane settings, or enable an official extension
+  (`/setup`). Restart the board after settings change; enabling loop does not start a run.
+- Create a dispatch skill tailored to the project's conventions (`/setup-dispatch`), showing
+  what it wrote and asking before replacing an existing skill.
+- Start a loop run when asked, such as “run this issue with codex”, with the loop extension
+  enabled. A run handles a single issue or a parent's subtasks; follow it in its board tab.
+
+The copilot manages the tracker and setup; the loop's coding sessions make the code changes.
 
 ## Linked issues
 
