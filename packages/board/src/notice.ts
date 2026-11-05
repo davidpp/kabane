@@ -1,0 +1,45 @@
+// The footer's transient flash. Never silent: copies, state moves, review and cancel all surface a
+// notice, failures the error and successes a confirmation.
+import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+import type { BoardNav } from "./nav";
+
+// How long the flash stays before clearing.
+const NOTICE_MS = 1500;
+// Undoable mutations hold their flash longer so the ⌃z hint has time to register.
+const UNDO_HINT_MS = 4000;
+
+export type SetNotice = Dispatch<SetStateAction<BoardNav.Notice | null>>;
+
+/**
+ * The flash on screen, cleared after NOTICE_MS (UNDO_HINT_MS for an undoable one). A set always makes
+ * a fresh object, so a repeat copy restarts the timer.
+ */
+export const useNotice = (): [BoardNav.Notice | null, SetNotice] => {
+	const [notice, setNotice] = useState<BoardNav.Notice | null>(null);
+	useEffect(() => {
+		if (!notice) return;
+		const timer = setTimeout(
+			() => setNotice(null),
+			notice.undoable ? UNDO_HINT_MS : NOTICE_MS,
+		);
+		return () => clearTimeout(timer);
+	}, [notice]);
+	return [notice, setNotice];
+};
+
+/** A mutation's outcome, structural on Result<T> so it fits every BoardData mutation. */
+export type Outcome = { ok: true } | { ok: false; error: { message: string } };
+
+/** The flash for an outcome: the reducer's composed text on success, the raw error message on failure. */
+export const flash = (res: Outcome, text: string): BoardNav.Notice =>
+	res.ok
+		? { text, tone: "success" }
+		: { text: res.error.message, tone: "error" };
+
+/** A host's report as the flash: its own words on success, the error message on failure. */
+export const reported = (
+	res: { ok: true; value: string } | { ok: false; error: { message: string } },
+): BoardNav.Notice =>
+	res.ok
+		? { text: res.value, tone: "success" }
+		: { text: res.error.message, tone: "error" };

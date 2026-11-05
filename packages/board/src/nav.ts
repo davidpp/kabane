@@ -20,6 +20,7 @@ import type {
 	CopilotCommand,
 	CopilotPermission,
 	CopilotShortcut,
+	CopilotUpdate,
 	TriggerDescriptor,
 } from "./ports";
 import { BoardPrompt } from "./prompt";
@@ -312,6 +313,16 @@ export namespace BoardNav {
 				answer: CopilotElicitationAnswer;
 		  };
 
+	/**
+	 * A guard for the effects of `types`, for the part of app.tsx that runs them. Typed from the same
+	 * list it checks, so what it admits is exactly what its runner is typed to take.
+	 */
+	export const effectsOf = <T extends Effect["type"]>(types: readonly T[]) => {
+		const owned: ReadonlySet<string> = new Set(types);
+		return (effect: Effect): effect is Extract<Effect, { type: T }> =>
+			owned.has(effect.type);
+	};
+
 	// Mouse actions routed through the SAME pure reducer as keys, so selection stays single-sourced.
 	// Rows are addressed by their VISIBLE index (see visibleRows) — the wheel no longer moves selection
 	// (the scrollbox scrolls the viewport natively), so there is no scroll action here.
@@ -514,6 +525,27 @@ export namespace BoardNav {
 		effect: NONE,
 	});
 
+	// `o` in the detail view, on the task's card with events (app.tsx picks it from the host's
+	// activity): its tab when it has one, so one card never shows in two places, else the event view,
+	// back to this detail tab on `esc`.
+	export const withTaskEvents = (
+		state: BoardState,
+		taskId: string,
+		cardId: string,
+	): BoardState =>
+		state.tabs.open.includes(cardId)
+			? BoardTabs.reduceMouse(state, { type: "tab", id: cardId }).state
+			: {
+					...state,
+					view: {
+						type: "events",
+						cardId,
+						fromView: "detail",
+						fromTaskId: taskId,
+						fromTab: detailTab(state.view),
+					},
+				};
+
 	// The harness listed its commands again: the whole list replaces the last one, never merges.
 	export const withCopilotCommands = (
 		state: BoardState,
@@ -530,6 +562,30 @@ export namespace BoardNav {
 				source,
 			})),
 		});
+
+	// What a streamed update does to the board's state beyond the log: an ask joins the queue, a
+	// withdrawn one leaves it, the harness's commands replace its last list, and the turn's end
+	// reaches the footer's indicator. The same state for every other update.
+	export const withCopilotUpdate = (
+		state: BoardState,
+		update: CopilotUpdate,
+	): BoardState => {
+		switch (update.type) {
+			case "permission":
+				return withCopilotPermission(state, update.request);
+			case "elicitation":
+				return withCopilotElicitation(state, update.request);
+			case "withdrawn":
+				return withCopilotWithdrawn(state, update.id);
+			case "commands":
+				return withCopilotCommands(state, update.source, update.commands);
+			case "done":
+			case "error":
+				return withCopilotTurn(state, update.type);
+			default:
+				return state;
+		}
+	};
 
 	// One row of the `/` palette: a host shortcut, which expands to its template, or a harness
 	// command (`source` names the harness), which expands to `/name ` and goes as typed.
@@ -1055,59 +1111,64 @@ export namespace BoardNav {
 	): SectionRows[] => {
 		const query = activeQuery(search);
 		// Both filters fold into ONE row predicate so the two compose: `/` narrows within the active
-		// status rather than replacing it.
-		const matches = (task: Task): boolean =>
-			taskInStatus(task, status) && (query === "" || matchesQuery(task, query));
-		// Whether anything is narrowing the list — `review` filters rows just as a query does, so it
-		// takes the same tree-filter branch below (keep a flagged child's parent visible, forced open).
-		const narrowing = query !== "" || status === "review";
-		const groups: SectionRows[] = [];
-		for (const section of sections) {
-			if (!sectionInStatus(section.state, status, query)) continue;
-			const rows: VisibleRow[] = [];
-			const pushChild = (child: Task, parentId: string): void => {
-				rows.push({
-					task: child,
-					depth: 1,
-					parentId,
-					hasChildren: false,
-					expanded: false,
-				});
-			};
-			for (const { task, children } of section.rows) {
-				const hasChildren = children.length > 0;
-				if (!narrowing) {
-					const isExpanded = hasChildren && expanded.has(task.id);
-					rows.push({
-						task,
-						depth: 0,
-						parentId: null,
-						hasChildren,
-						expanded: isExpanded,
-					});
-					if (isExpanded)
-						for (const child of children) pushChild(child, task.id);
-					continue;
-				}
-				const parentMatch = matches(task);
-				const visibleChildren =
-					parentMatch && expanded.has(task.id)
-						? children
-						: children.filter(matches);
-				if (!parentMatch && visibleChildren.length === 0) continue;
-				rows.push({
-					task,
-					depth: 0,
-					parentId: null,
-					hasChildren,
-					expanded: visibleChildren.length > 0,
-				});
-				for (const child of visibleChildren) pushChild(child, task.id);
-			}
-			if (rows.length > 0) groups.push({ section, rows });
-		}
-		return groups;
+		// status rather than replacing it. Null while nothing narrows the list — `review` filters rows
+		// just as a query does, so it takes the same tree filter (keep a flagged child's parent
+		// visible, forced open).
+		const matches =
+			query !== "" || status === "review"
+				? (task: Task): boolean =>
+						taskInStatus(task, status) &&
+						(query === "" || matchesQuery(task, query))
+				: null;
+		return sections.flatMap((section) => {
+			if (!sectionInStatus(section.state, status, query)) return [];
+			const rows = section.rows.flatMap((row) =>
+				treeRows(row, expanded, matches),
+			);
+			return rows.length > 0 ? [{ section, rows }] : [];
+		});
 	};
+
+	// One top-level task's rows, as visibleSections describes: unfiltered, its subtasks while it is
+	// expanded; narrowed, nothing when neither it nor a subtask matches.
+	const treeRows = (
+		{ task, children }: BoardData.BoardRow,
+		expanded: ReadonlySet<string>,
+		matches: ((task: Task) => boolean) | null,
+	): VisibleRow[] => {
+		if (!matches)
+			return parentRows(task, children, expanded.has(task.id) ? children : []);
+		const parentMatch = matches(task);
+		const shown =
+			parentMatch && expanded.has(task.id)
+				? children
+				: children.filter(matches);
+		return parentMatch || shown.length > 0
+			? parentRows(task, children, shown)
+			: [];
+	};
+
+	// A top-level row and the subtasks `shown` under it, its caret open while any are.
+	const parentRows = (
+		task: Task,
+		children: readonly Task[],
+		shown: readonly Task[],
+	): VisibleRow[] => [
+		{
+			task,
+			depth: 0,
+			parentId: null,
+			hasChildren: children.length > 0,
+			expanded: shown.length > 0,
+		},
+		...shown.map((child): VisibleRow => ({
+			task: child,
+			depth: 1,
+			parentId: task.id,
+			hasChildren: false,
+			expanded: false,
+		})),
+	];
 
 	export const visibleRows = (state: BoardState): VisibleRow[] =>
 		visibleSections(
@@ -1125,11 +1186,15 @@ export namespace BoardNav {
 	const firstId = (rows: VisibleRow[]): string | null =>
 		rows[0]?.task.id ?? null;
 
-	const shortId = (task: Task): string => task.shortId ?? task.id.slice(0, 8);
+	// A task's shortId, or its id's head when it has none or is not loaded.
+	export const shortIdOf = (task: Task | undefined, id: string): string =>
+		task?.shortId ?? id.slice(0, 8);
+
+	const shortId = (task: Task): string => shortIdOf(task, task.id);
 
 	// Find a task anywhere in the board (top-level or subtask) by id — the detail view's action target,
 	// which may be a subtask and isn't addressable by the board's selection.
-	const taskById = (state: BoardState, id: string): Task | undefined => {
+	export const taskById = (state: BoardState, id: string): Task | undefined => {
 		for (const section of state.sections) {
 			for (const { task, children } of section.rows) {
 				if (task.id === id) return task;
@@ -1256,21 +1321,20 @@ export namespace BoardNav {
 	// `]`). Progression order is independent of the section display order.
 	const shiftState = (
 		state: BoardState,
+		task: Task,
 		delta: number,
 	): { state: BoardState; effect: Effect } => {
-		const row = rowOf(visibleRows(state), state.selectedId);
-		if (!row) return { state, effect: NONE };
 		const progression: readonly TaskState[] = BoardData.STATE_PROGRESSION;
-		const current = progression.indexOf(row.task.state);
+		const current = progression.indexOf(task.state);
 		const target = BoardData.STATE_PROGRESSION[current + delta];
 		if (current < 0 || !target) return { state, effect: NONE };
 		return {
-			state: withUndo(state, stateUndoEntry(row.task)),
+			state: withUndo(state, stateUndoEntry(task)),
 			effect: {
 				type: "setState",
-				id: row.task.id,
+				id: task.id,
 				state: target,
-				notice: `${shortId(row.task)} → ${target}`,
+				notice: `${shortId(task)} → ${target}`,
 			},
 		};
 	};
@@ -1463,28 +1527,8 @@ export namespace BoardNav {
 		if (state.dispatch?.form)
 			return TriggerForm.reduceKey(state, state.dispatch.form, key);
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
-		// A digit answers only a question that has been on screen long enough to read: one that just
-		// appeared, or just replaced the one in hand, holds the key and says so rather than taking an
-		// answer the human never saw. So does every other key that answers a form (`enter` picks the
-		// cursor's option). Search-typing and an open prompt take a digit as a character. A shifted
-		// digit is no answer (`!` on some terminals), so it passes.
-		if (
-			answers(state, key) &&
-			!key.shift &&
-			state.search.mode !== "typing" &&
-			!state.prompt.open &&
-			!armed(state, now)
-		)
-			return {
-				state,
-				effect: {
-					type: "notice",
-					notice: {
-						text: "just asked · read it, then press again",
-						tone: "success",
-					},
-				},
-			};
+		if (answersUnread(state, key, now))
+			return { state, effect: { type: "notice", notice: justAsked() } };
 		// A harness blocked on a question is the most urgent thing on screen, so it takes the keys
 		// that answer it — a digit, `esc`, a form's cursor — ahead of every view and of the copilot's
 		// own focus. That is the esc layering the board already has, one press one level: the newest,
@@ -1501,13 +1545,7 @@ export namespace BoardNav {
 		// An open prompt has the keyboard the same way, its textarea taking what it does not.
 		if (state.prompt.open) return BoardPrompt.reduceKey(state, key);
 		if (state.focus === "copilot") return reduceCopilotKey(state, key);
-		// A finished turn's footer indicator stays up until the next keypress — except `o`, which is
-		// the key that opens it, and the search box, where a keypress is a query character.
-		if (
-			(state.copilot.turn === "done" || state.copilot.turn === "error") &&
-			key.name !== "o" &&
-			state.search.mode !== "typing"
-		)
+		if (clearsTurnIndicator(state, key))
 			return reduceKey(withCopilotTurn(state, "idle"), key, now);
 		// ctrl-z routes across every view (board + detail), after the modals own the keyboard and before
 		// view routing. Inert while a `/` query is being typed (ctrl isn't a printable query char anyway).
@@ -1519,6 +1557,36 @@ export namespace BoardNav {
 			state.search.mode === "typing" ? null : reduceEverywhereKey(state, key);
 		return everywhere ?? reduceViewKey(state, key);
 	};
+
+	// A digit answers only a question that has been on screen long enough to read: one that just
+	// appeared, or just replaced the one in hand, holds the key and says so rather than taking an
+	// answer the human never saw. So does every other key that answers a form (`enter` picks the
+	// cursor's option). Search-typing and an open prompt take a digit as a character. A shifted
+	// digit is no answer (`!` on some terminals), so it passes.
+	const answersUnread = (
+		state: BoardState,
+		key: KeyInput,
+		now: number,
+	): boolean =>
+		answers(state, key) &&
+		!key.shift &&
+		state.search.mode !== "typing" &&
+		!state.prompt.open &&
+		!armed(state, now);
+
+	// A fresh object each time: the footer restarts its timer only when the notice it holds changes,
+	// so a second blocked press must not hand it the same object.
+	const justAsked = (): Notice => ({
+		text: "just asked · read it, then press again",
+		tone: "success",
+	});
+
+	// A finished turn's footer indicator stays up until the next keypress — except `o`, which is the
+	// key that opens it, and the search box, where a keypress is a query character.
+	const clearsTurnIndicator = (state: BoardState, key: KeyInput): boolean =>
+		(state.copilot.turn === "done" || state.copilot.turn === "error") &&
+		key.name !== "o" &&
+		state.search.mode !== "typing";
 
 	// The keys that mean the same in every view: which pane has the keyboard, and which tab is on
 	// screen, are not a property of what is on screen. Null for every other key.
@@ -1873,7 +1941,16 @@ export namespace BoardNav {
 		if (action.type === "tab" || action.type === "answer")
 			return BoardTabs.reduceMouse(state, action);
 		if (action.type === "lane") return CardTab.reduceLane(state, action.index);
-		if (state.view.type !== "board") return { state, effect: NONE };
+		return state.view.type === "board"
+			? clickRow(state, action)
+			: { state, effect: NONE };
+	};
+
+	// A click on the board's list, on the row at its visible index.
+	const clickRow = (
+		state: BoardState,
+		action: Extract<MouseAction, { type: "select" | "toggleExpand" }>,
+	): { state: BoardState; effect: Effect } => {
 		const rows = visibleRows(state);
 		const row = rows[action.row];
 		if (!row) return { state, effect: NONE };
@@ -1920,15 +1997,15 @@ export namespace BoardNav {
 			: { state: { ...state, view: { ...state.view, tab } }, effect: NONE };
 
 	// Detail view: `esc`/`q` pop back to the board (never widen scope or quit); j/k/up/down scroll the
-	// tab in view; a digit picks a tab and `h`/`l` (or left/right) step through them; `y` copies the
-	// open task's brief; the status keys (`v`/`x`/`n`/`s`) act on the OPEN task (not the board's
-	// selection) and the view refreshes after the mutation; everything else is a no-op.
+	// tab in view; a digit picks a tab and `h`/`l` (or left/right) step through them; the keys for the
+	// task in hand act on the OPEN task (not the board's selection), and the view refreshes after a
+	// mutation; everything else is a no-op.
 	const reduceDetailKey = (
 		state: BoardState,
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } => {
 		if (state.view.type !== "detail") return { state, effect: NONE };
-		const target = taskById(state, state.view.taskId);
+		const { taskId } = state.view;
 		const digitTab = DetailModel.tabAt(Number.parseInt(key.name, 10));
 		if (digitTab) return withDetailTab(state, digitTab);
 		switch (key.name) {
@@ -1953,30 +2030,48 @@ export namespace BoardNav {
 			case "k":
 			case "up":
 				return { state, effect: { type: "scroll", delta: -SCROLL_STEP } };
-			case "y":
-				return { state, effect: { type: "copy", id: state.view.taskId } };
-			case "m":
-				return toggleMark(state, state.view.taskId);
 			case "o":
 				// The copilot's transcript wins while its indicator is up; otherwise the task's events.
 				return state.copilot.turn === "idle"
-					? {
-							state,
-							effect: { type: "openEvents", taskId: state.view.taskId },
-						}
+					? { state, effect: { type: "openEvents", taskId } }
 					: openCopilotEvents(state);
-			case "a":
-				return openDispatch(state, state.view.taskId);
-			case "v":
-				return reviewTask(state, target);
-			case "x":
-				return jumpState(state, target, "cancelled", "cancelled");
-			case "n":
-				return jumpState(state, target, "next", "→ next");
-			case "s":
-				return jumpState(state, target, "someday", "→ someday");
 			default:
-				return { state, effect: NONE };
+				return (
+					reduceInHandKey(state, taskId, taskById(state, taskId), key) ?? {
+						state,
+						effect: NONE,
+					}
+				);
+		}
+	};
+
+	// The keys for the task in hand, the open one in the detail view and the selected row on the board:
+	// `y` copies its brief, `m` marks it, `a` opens the dispatch overlay on it, and the status keys
+	// (`v`/`x`/`n`/`s`) act on it. `task` is undefined while the open task is not loaded, which leaves
+	// the status keys nothing to act on. Null for every other key.
+	const reduceInHandKey = (
+		state: BoardState,
+		id: string,
+		task: Task | undefined,
+		key: KeyInput,
+	): { state: BoardState; effect: Effect } | null => {
+		switch (key.name) {
+			case "y":
+				return { state, effect: { type: "copy", id } };
+			case "m":
+				return toggleMark(state, id);
+			case "a":
+				return openDispatch(state, id);
+			case "v":
+				return reviewTask(state, task);
+			case "x":
+				return jumpState(state, task, "cancelled", "cancelled");
+			case "n":
+				return jumpState(state, task, "next", "→ next");
+			case "s":
+				return jumpState(state, task, "someday", "→ someday");
+			default:
+				return null;
 		}
 	};
 
@@ -2048,40 +2143,11 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		if (state.search.mode === "typing")
 			return reduceSearchTyping(state, state.search.query, key);
-		// After the typing branch (there `?` is a query character), before the name switch (shifted
-		// keys have parser-dependent names — isHelpKey matches the sequence too).
 		switch (key.name) {
 			case "q":
 				return { state, effect: { type: "quit" } };
 			case "r":
 				return { state, effect: { type: "reload" } };
-			case "k":
-			case "up":
-				return move(state, -1);
-			case "j":
-			case "down":
-				return move(state, 1);
-			case "space":
-				return toggleSelected(state);
-			case "l":
-			case "right":
-				return expandSelected(state);
-			case "h":
-			case "left":
-				return collapseSelected(state);
-			case "return":
-			case "enter": {
-				const row = rowOf(visibleRows(state), state.selectedId);
-				return row
-					? {
-							state: {
-								...state,
-								view: { type: "detail", taskId: row.task.id },
-							},
-							effect: NONE,
-						}
-					: { state, effect: NONE };
-			}
 			case "i":
 				return {
 					state: { ...state, kind: nextKind(state.kind) },
@@ -2098,22 +2164,7 @@ export namespace BoardNav {
 					effect: NONE,
 				};
 			case "escape":
-				// Esc layering, one esc one level: marks clear first (the most recent, most local thing
-				// the human added), then a committed filter, then scope widens. Marks therefore never
-				// survive into a widened list they were not picked from. (Typing-mode esc never reaches
-				// here; reduceSearchTyping owns it.)
-				if (state.marked.size > 0)
-					return { state: { ...state, marked: NO_MARKS }, effect: NONE };
-				if (state.search.mode === "committed")
-					return withSearch(state, SEARCH_OFF);
-				return state.scoped
-					? { state: { ...state, scoped: false }, effect: { type: "reload" } }
-					: { state, effect: NONE };
-			case "m":
-				return toggleMark(
-					state,
-					rowOf(visibleRows(state), state.selectedId)?.task.id,
-				);
+				return clearOneLevel(state);
 			case "o":
 				// The board has no per-task events; `o` here is the copilot's transcript, when there is
 				// one. Guarded on the LOG, not the turn: the indicator clears on the next keypress, and
@@ -2121,62 +2172,84 @@ export namespace BoardNav {
 				return state.copilot.hasLog
 					? openCopilotEvents(state)
 					: { state, effect: NONE };
-			case "[":
-				return shiftState(state, -1);
-			case "]":
-				return shiftState(state, 1);
-			case "d": {
-				const row = rowOf(visibleRows(state), state.selectedId);
-				if (!row) return { state, effect: NONE };
+			default:
+				return reduceTreeKey(state, key) ?? reduceRowKey(state, key);
+		}
+	};
+
+	// Esc layering on the board, one esc one level: marks clear first (the most recent, most local
+	// thing the human added), then a committed filter, then scope widens. Marks therefore never
+	// survive into a widened list they were not picked from. (Typing-mode esc never reaches here;
+	// reduceSearchTyping owns it.)
+	const clearOneLevel = (
+		state: BoardState,
+	): { state: BoardState; effect: Effect } => {
+		if (state.marked.size > 0)
+			return { state: { ...state, marked: NO_MARKS }, effect: NONE };
+		if (state.search.mode === "committed") return withSearch(state, SEARCH_OFF);
+		return state.scoped
+			? { state: { ...state, scoped: false }, effect: { type: "reload" } }
+			: { state, effect: NONE };
+	};
+
+	// j/k move the selection; space, `l` and `h` open and close the selected parent. Null for every
+	// other key.
+	const reduceTreeKey = (
+		state: BoardState,
+		key: KeyInput,
+	): { state: BoardState; effect: Effect } | null => {
+		switch (key.name) {
+			case "k":
+			case "up":
+				return move(state, -1);
+			case "j":
+			case "down":
+				return move(state, 1);
+			case "space":
+				return toggleSelected(state);
+			case "l":
+			case "right":
+				return expandSelected(state);
+			case "h":
+			case "left":
+				return collapseSelected(state);
+			default:
+				return null;
+		}
+	};
+
+	// The selected row's keys: `enter` opens it, `d` marks it done, `[`/`]` step its state, and the
+	// keys for the task in hand. With nothing selected, none of them does anything.
+	const reduceRowKey = (
+		state: BoardState,
+		key: KeyInput,
+	): { state: BoardState; effect: Effect } => {
+		const task = rowOf(visibleRows(state), state.selectedId)?.task;
+		if (!task) return { state, effect: NONE };
+		switch (key.name) {
+			case "return":
+			case "enter":
 				return {
-					state: withUndo(state, stateUndoEntry(row.task)),
+					state: { ...state, view: { type: "detail", taskId: task.id } },
+					effect: NONE,
+				};
+			case "d":
+				return {
+					state: withUndo(state, stateUndoEntry(task)),
 					effect: {
 						type: "markDone",
-						id: row.task.id,
-						notice: `${shortId(row.task)} done`,
+						id: task.id,
+						notice: `${shortId(task)} done`,
 					},
 				};
-			}
-			case "v":
-				return reviewTask(
-					state,
-					rowOf(visibleRows(state), state.selectedId)?.task,
-				);
-			case "x":
-				return jumpState(
-					state,
-					rowOf(visibleRows(state), state.selectedId)?.task,
-					"cancelled",
-					"cancelled",
-				);
-			case "n":
-				return jumpState(
-					state,
-					rowOf(visibleRows(state), state.selectedId)?.task,
-					"next",
-					"→ next",
-				);
-			case "s":
-				return jumpState(
-					state,
-					rowOf(visibleRows(state), state.selectedId)?.task,
-					"someday",
-					"→ someday",
-				);
-			case "y": {
-				// Fast dispatch path: copy the selected row's brief WITHOUT opening detail.
-				const row = rowOf(visibleRows(state), state.selectedId);
-				return row
-					? { state, effect: { type: "copy", id: row.task.id } }
-					: { state, effect: NONE };
-			}
-			case "a": {
-				// Open the dispatch overlay on the selected row (no-op with nothing selected).
-				const row = rowOf(visibleRows(state), state.selectedId);
-				return row ? openDispatch(state, row.task.id) : { state, effect: NONE };
-			}
+			case "[":
+				return shiftState(state, task, -1);
+			case "]":
+				return shiftState(state, task, 1);
 			default:
-				return { state, effect: NONE };
+				return (
+					reduceInHandKey(state, task.id, task, key) ?? { state, effect: NONE }
+				);
 		}
 	};
 }

@@ -106,6 +106,45 @@ describe("BoardActivity.inFlightForTask / cardsForTask (pure)", () => {
 		expect(BoardActivity.cardsForTask(activity, "nope")).toEqual([]);
 	});
 
+	it("eventsCard takes the first in-flight card with events, else the most recent one", () => {
+		const cards = [
+			card({
+				id: "done-events",
+				taskId: "t1",
+				status: "completed",
+				hasEvents: true,
+			}),
+			card({ id: "live-quiet", taskId: "t1" }),
+			card({
+				id: "paused-events",
+				taskId: "t1",
+				status: "paused",
+				hasEvents: true,
+			}),
+			card({
+				id: "pending-events",
+				taskId: "t1",
+				status: "pending",
+				hasEvents: true,
+			}),
+		];
+		expect(
+			BoardActivity.eventsCard(BoardActivity.indexCards(cards), "t1")?.id,
+		).toBe("pending-events");
+		expect(
+			BoardActivity.eventsCard(
+				BoardActivity.indexCards(cards.slice(0, 3)),
+				"t1",
+			)?.id,
+		).toBe("paused-events");
+		expect(
+			BoardActivity.eventsCard(
+				BoardActivity.indexCards(cards.slice(1, 2)),
+				"t1",
+			),
+		).toBeUndefined();
+	});
+
 	it("anyRunning is true only for a live running or pending card", () => {
 		expect(BoardActivity.anyRunning(activity)).toBe(true);
 		expect(

@@ -249,6 +249,48 @@ export const rowMeta = (
 	return ` · ${task.kind}${parent}`;
 };
 
+const ID_GAP = "  ";
+
+// The parts of a row's line around its title, in the order it draws them.
+const rowLabels = (
+	row: BoardNav.VisibleRow,
+	{
+		marked,
+		linked,
+		touched,
+		columns,
+		activity,
+		parentShortId,
+	}: {
+		marked: boolean;
+		linked: boolean;
+		touched: boolean;
+		columns: { mark: boolean; link: boolean };
+		activity?: BoardActivity.ActivityMap;
+		parentShortId?: string;
+	},
+) => {
+	const task = row.task;
+	const shortId = task.shortId ?? task.id.slice(0, 8);
+	// In-flight badges: cards match by task id or shortId, questions by task id.
+	const cards = activity
+		? BoardActivity.inFlightForTask(activity, task.id, shortId)
+		: [];
+	return {
+		caret: caretFor(row),
+		shortId,
+		mark: columns.mark ? (marked ? MARK_GLYPH : MARK_BLANK) : "",
+		link: columns.link ? (linked ? LINK_GLYPH : LINK_BLANK) : "",
+		ai: touched ? AI_GLYPH : "",
+		meta: rowMeta(row, parentShortId),
+		review: task.needsReview ? " · review" : "",
+		// Row badges echo the header strip, which animates the same cards.
+		badge: cards[0] ? cardBadge(cards[0], RUNNING_ECHO) : null,
+		more: moreBadge(cards.length - 1, RUNNING_ECHO),
+		input: activity?.questionsByTaskId.has(task.id) ? " · ? input" : "",
+	};
+};
+
 const Row = ({
 	row,
 	rowIndex,
@@ -288,34 +330,29 @@ const Row = ({
 		theme,
 		touched,
 	);
-	const shortId = task.shortId ?? task.id.slice(0, 8);
-	const caret = caretFor(row);
-	const meta = rowMeta(row, parentShortId);
-	const review = task.needsReview ? " · review" : "";
-	// In-flight badges: cards match by task id or shortId, questions by task id.
-	const cards = activity
-		? BoardActivity.inFlightForTask(activity, task.id, shortId)
-		: [];
-	// Row badges echo the header strip, which animates the same cards.
-	const badge = cards[0] ? cardBadge(cards[0], RUNNING_ECHO) : null;
-	const more = moreBadge(cards.length - 1, RUNNING_ECHO);
-	const input = activity?.questionsByTaskId.has(task.id) ? " · ? input" : "";
-	const mark = columns.mark ? (marked ? MARK_GLYPH : MARK_BLANK) : "";
-	const link = columns.link ? (linked ? LINK_GLYPH : LINK_BLANK) : "";
-	const ai = touched ? AI_GLYPH : "";
-	// Badge widths count against the title so a badged row still never wraps.
-	const fixed =
-		caret.length +
-		shortId.length +
-		2 +
-		mark.length +
-		link.length +
-		ai.length +
-		meta.length +
-		review.length +
-		(badge?.text.length ?? 0) +
-		more.length +
-		input.length;
+	const { caret, shortId, mark, link, ai, meta, review, badge, more, input } =
+		rowLabels(row, {
+			marked,
+			linked,
+			touched,
+			columns,
+			activity,
+			parentShortId,
+		});
+	// Everything else on the row counts against the title, so a badged row still never wraps.
+	const fixed = [
+		caret,
+		shortId,
+		ID_GAP,
+		mark,
+		link,
+		ai,
+		meta,
+		review,
+		badge?.text ?? "",
+		more,
+		input,
+	].join("").length;
 	const title = truncate(
 		task.title,
 		Math.max(MIN_TITLE_WIDTH, available - fixed),
@@ -346,7 +383,7 @@ const Row = ({
 			</text>
 			<text bg={style.bg} fg={style.titleFg}>
 				<span fg={style.idFg}>{shortId}</span>
-				{"  "}
+				{ID_GAP}
 				<span fg={marked ? theme.accent : style.titleFg}>{mark}</span>
 				{/* Chrome, not accent: a linked issue is a fact about the row, not a request for action. */}
 				<span fg={theme.muted}>{link}</span>
@@ -354,7 +391,7 @@ const Row = ({
 				{ai ? <span fg={style.titleFg}>{ai}</span> : null}
 				{title}
 				<span fg={style.metaFg}>{meta}</span>
-				{task.needsReview ? <span fg={theme.accent}> · review</span> : null}
+				{review ? <span fg={theme.accent}>{review}</span> : null}
 				{badge ? (
 					<span fg={badge.muted ? theme.muted : theme.working}>
 						{badge.text}

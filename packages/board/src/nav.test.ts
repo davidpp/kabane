@@ -1877,6 +1877,35 @@ describe("o key in the detail view emits openEvents effect", () => {
 	});
 });
 
+describe("BoardNav.withTaskEvents", () => {
+	const t1 = task({ id: "t1" });
+	const detail = state({
+		sections: sections({ next: [row(t1)] }),
+		selectedId: "t1",
+		view: { type: "detail", taskId: "t1", tab: "log" },
+	});
+
+	it("opens the card's events, back to the detail tab it came from", () => {
+		expect(BoardNav.withTaskEvents(detail, "t1", "run-1").view).toEqual({
+			type: "events",
+			cardId: "run-1",
+			fromView: "detail",
+			fromTaskId: "t1",
+			fromTab: "log",
+		});
+	});
+
+	it("opens a card that has a tab as that tab", () => {
+		const tabbed = {
+			...detail,
+			tabs: { ...detail.tabs, open: ["run-1"] },
+		};
+		expect(BoardNav.withTaskEvents(tabbed, "t1", "run-1")).toEqual(
+			BoardTabs.reduceMouse(tabbed, { type: "tab", id: "run-1" }).state,
+		);
+	});
+});
+
 describe("status filter", () => {
 	const openTask = task({ id: "a", shortId: "JAKE-1", title: "open work" });
 	const flagged = task({
@@ -2627,6 +2656,52 @@ describe("the copilot's fingerprint on the rows it changed (`✦ ai`)", () => {
 		expect(
 			BoardNav.copilotTouched(board("running", [written]), undefined).size,
 		).toBe(0);
+	});
+});
+
+describe("BoardNav.withCopilotUpdate", () => {
+	const request: CopilotPermission = {
+		id: "p1",
+		title: "kabane_edit",
+		options: [{ id: "allow", label: "Allow" }],
+	};
+	const running = state({ copilot: copilotState({ turn: "running" }) });
+
+	it("queues an ask and drops it when the harness takes it back", () => {
+		const asked = BoardNav.withCopilotUpdate(running, {
+			type: "permission",
+			request,
+			at: AT,
+		});
+		expect(requests(asked)).toEqual([request]);
+		expect(
+			requests(
+				BoardNav.withCopilotUpdate(asked, {
+					type: "withdrawn",
+					id: "p1",
+					summary: "timed out",
+					at: AT,
+				}),
+			),
+		).toEqual([]);
+	});
+
+	it("ends the turn on done and on error", () => {
+		for (const type of ["done", "error"] as const)
+			expect(
+				BoardNav.withCopilotUpdate(running, { type, summary: "", at: AT })
+					.copilot.turn,
+			).toBe(type);
+	});
+
+	it("leaves the state alone for what only the log records", () => {
+		expect(
+			BoardNav.withCopilotUpdate(running, {
+				type: "text",
+				summary: "thinking",
+				at: AT,
+			}),
+		).toBe(running);
 	});
 });
 
