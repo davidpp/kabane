@@ -36,7 +36,7 @@ jobs:
         run: bun scripts/build-binary.ts "${{ matrix.target }}" "$RUNNER_TEMP/native"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: native-${{ matrix.target }}
+          name: native-${{ matrix.target }}-${{ github.run_attempt }}
           if-no-files-found: error
           path: |
             ${{ runner.temp }}/native/*.tar.gz
@@ -71,7 +71,8 @@ jobs:
           RELEASE_NOTES: ${{ inputs.notes }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: native-*
+          pattern: native-*-${{ github.run_attempt }}
+          merge-multiple: true
           path: ${{ runner.temp }}/native
       - name: Verify producer identities and assemble original bytes with one checksum list
         run: bun scripts/release-binaries.ts "$RUNNER_TEMP/release" "$RUNNER_TEMP/native"

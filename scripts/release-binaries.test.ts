@@ -46,7 +46,7 @@ const artifacts = () => {
 	writeFileSync(join(directory, "manifest.json"), JSON.stringify(record));
 	writeFileSync(join(directory, "SHA256SUMS"), releaseChecksums(record));
 	for (const target of BinaryTargetSchema.options) {
-		const dir = join(producers, `native-${target}`);
+		const dir = producers;
 		mkdirSync(dir, { recursive: true });
 		const filename = `kabane-${target}.tar.gz`,
 			bytes = Buffer.from(target);
@@ -78,7 +78,7 @@ test("assembly retains bytes, hashes every archive, rejects corruption and repla
 	).toHaveLength(5);
 	for (const binary of verified.value.binaries ?? [])
 		expect(readFileSync(join(directory, binary.filename))).toEqual(
-			readFileSync(join(producers, `native-${binary.target}`, binary.filename)),
+			readFileSync(join(producers, binary.filename)),
 		);
 	expect(attachBinaries(directory, producers).ok).toBe(false);
 	writeFileSync(join(directory, "kabane-linux-x64.tar.gz"), "changed");
@@ -95,7 +95,7 @@ for (const mutation of [
 ])
 	test(`assembly refuses ${mutation} mismatch before changing npm manifest`, () => {
 		const { directory, producers, record } = artifacts();
-		const native = join(producers, "native-linux-arm64");
+		const native = producers;
 		const metadata = join(native, "linux-arm64.json");
 		if (mutation === "missing") rmSync(metadata);
 		else if (mutation === "bytes")

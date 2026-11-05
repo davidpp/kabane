@@ -145,7 +145,21 @@ test("native matrix retains four archives and smoke consumes the assembled bytes
 	expect(
 		native.steps.filter((step) => step.run?.includes("build-binary.ts")),
 	).toHaveLength(1);
+	expect(
+		native.steps.find((step) =>
+			step.uses?.startsWith("actions/upload-artifact@"),
+		)?.with?.name,
+	).toBe("native-${{ matrix.target }}-${{ github.run_attempt }}");
 	const { prepare } = parsed.data.jobs;
+	expect(
+		prepare.steps.find((step) =>
+			step.uses?.startsWith("actions/download-artifact@"),
+		)?.with,
+	).toMatchObject({
+		pattern: "native-*-${{ github.run_attempt }}",
+		"merge-multiple": true,
+	});
+
 	expect(prepare.needs).toBe("native-binaries");
 	expect(
 		prepare.steps.some((step) => step.run?.includes("release-binaries.ts")),

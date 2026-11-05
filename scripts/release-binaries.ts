@@ -40,10 +40,7 @@ export const attachBinaries = (
 			);
 		const binaries: z.infer<typeof BinaryArtifactSchema>[] = [];
 		for (const target of BinaryTargetSchema.options) {
-			const raw = readArtifactFile(
-				join(producers, `native-${target}`, `${target}.json`),
-				65_536,
-			);
+			const raw = readArtifactFile(join(producers, `${target}.json`), 65_536);
 			if (!raw.ok) return raw;
 			const parsed = ProducerSchema.safeParse(JSON.parse(raw.value.toString()));
 			if (!parsed.success)
@@ -63,7 +60,7 @@ export const attachBinaries = (
 			)
 				return err(new Error(`Binary source/version/tool mismatch: ${target}`));
 			const bytes = readArtifactFile(
-				join(producers, `native-${target}`, source.filename),
+				join(producers, source.filename),
 				268_435_456,
 			);
 			if (!bytes.ok || sha256(bytes.value) !== source.sha256)
@@ -72,7 +69,7 @@ export const attachBinaries = (
 		}
 		for (const binary of binaries)
 			cpSync(
-				join(producers, `native-${binary.target}`, binary.filename),
+				join(producers, binary.filename),
 				join(directory, binary.filename),
 				{ errorOnExist: true, force: false },
 			);

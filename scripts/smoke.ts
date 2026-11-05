@@ -20,7 +20,7 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { ContextPageSchema } from "../packages/core/context-output";
@@ -34,7 +34,7 @@ import {
 
 const binaryMode = process.argv[2] === "--binary";
 const ROOT = resolve(import.meta.dir, "..");
-const WORK = mkdtempSync(join(ROOT, ".kabane-smoke-"));
+const WORK = mkdtempSync(join(tmpdir(), "kabane-smoke-"));
 const HOME = join(WORK, "home");
 const BUN_INSTALL = join(WORK, "bun");
 const KABANE_HOME = join(WORK, "kabane");

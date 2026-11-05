@@ -6,11 +6,12 @@ import {
 	rmSync,
 	statSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { buildBinary, binaryFilename } from "./build-binary";
 import { BinaryTargetSchema, sha256 } from "./release-artifact";
 
-const work = mkdtempSync(join(resolve(import.meta.dir, ".."), ".binary-test-"));
+const work = mkdtempSync(join(tmpdir(), "kabane-binary-test-"));
 afterAll(() => rmSync(work, { recursive: true, force: true }));
 
 test("public target filenames omit the x64 compiler baseline suffix", () => {
