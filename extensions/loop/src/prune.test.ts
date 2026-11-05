@@ -142,6 +142,9 @@ describe("a parent's next run, after a run that opened a pull request", () => {
 		expect(second.worktree).toBe(first.worktree);
 		expect(second.worktreeReused?.runId).toBe(first.id);
 		expect(second.pr).toBe(PR);
+		expect(Loop.placement(second)).toContain(
+			`its pull request ${PR} is not merged, so this run goes on with it`,
+		);
 		expect(ghCalls).toEqual([["pr", "view", PR, "--json", "state,headRefOid"]]);
 	});
 

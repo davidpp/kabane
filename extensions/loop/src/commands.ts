@@ -397,9 +397,9 @@ export namespace Loop {
 	 * for a run told to work in place.
 	 */
 	export const placement = (run: RunStore.Run): string | undefined => {
-		// A run written before runs recorded their branch named it after itself.
 		if (run.worktreeReused)
-			return `worktree ${run.worktree}, run ${run.worktreeReused.runId}'s: its branch ${run.worktreeReused.branch} is not merged into HEAD, so this run goes on with it`;
+			return `worktree ${run.worktree}, run ${run.worktreeReused.runId}'s: ${run.pr ? `its pull request ${run.pr} is not merged` : `its branch ${run.worktreeReused.branch} is not merged into HEAD`}, so this run goes on with it`;
+		// A run written before runs recorded their branch named it after itself.
 		if (run.worktree)
 			return `worktree ${run.worktree}, new, on branch ${run.branch ?? `kabane-loop/${run.id}`} from ${run.base?.branch ?? "HEAD"}`;
 		return run.config.worktree
@@ -480,8 +480,9 @@ export namespace Loop {
 
 	// The run's worktree, beside its files: the parent's last run's when its work is not merged
 	// (`reusable`), else a new one of the project's HEAD, in which what is not committed in the
-	// project (work in progress) is not, on a branch named for the parent. A loop started in a folder of the repository works in
-	// that folder of the worktree. A project that is not a git repository is worked in place.
+	// project (work in progress) is not, on a branch named for the parent. A loop started in a
+	// folder of the repository works in that folder of the worktree. A project that is not a git
+	// repository is worked in place.
 	const withWorktree = async (
 		deps: StartDeps,
 		run: RunStore.Run,
