@@ -35,6 +35,7 @@ import type {
 } from "./ports";
 import { noActivity } from "./ports";
 import { Segments } from "./segments";
+import { Fixtures } from "./stories/fixtures";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";
@@ -715,22 +716,6 @@ const spanWith = (
 	text: string,
 ): CapturedSpan | undefined => spans.find((span) => span.text.includes(text));
 
-const idle = (
-	over: Partial<BoardNav.CopilotState> = {},
-): BoardNav.CopilotState => ({
-	text: "",
-	paletteAt: 0,
-	history: [],
-	historyAt: 0,
-	turn: "idle",
-	hasLog: false,
-	shortcuts: [],
-	commands: [],
-	actor: null,
-	asks: [],
-	...over,
-});
-
 const SHORTCUTS = [
 	{ name: "triage", hint: "keep, someday or next", template: "Triage." },
 	{
@@ -769,7 +754,7 @@ const mountPane = async (
 describe("the copilot pane's look", () => {
 	it("is a raised panel with no frame, titled as a Label, the harness in the text color, over a field one step up", async () => {
 		const { frame, spans, destroy } = await mountPane(
-			idle({ actor: "cabane://actor/agent/claude" }),
+			Fixtures.copilot({ actor: "cabane://actor/agent/claude" }),
 			true,
 		);
 		try {
@@ -796,7 +781,7 @@ describe("the copilot pane's look", () => {
 
 	it("sizes the palette's names so the longest never runs into its hint, and paints the pick", async () => {
 		const { frame, spans, destroy } = await mountPane(
-			idle({ text: "/", shortcuts: SHORTCUTS, paletteAt: 1 }),
+			Fixtures.copilot({ text: "/", shortcuts: SHORTCUTS, paletteAt: 1 }),
 			true,
 		);
 		try {
@@ -862,7 +847,10 @@ describe("the copilot pane's look", () => {
 	});
 
 	it("collapsed, names its key in the text color and says the rest muted", async () => {
-		const { frame, spans, destroy } = await mountPane(idle(), false);
+		const { frame, spans, destroy } = await mountPane(
+			Fixtures.copilot(),
+			false,
+		);
 		try {
 			expect(frame).toContain("▸ tab to ask the copilot");
 			const key = spans.find((span) => span.text === "tab");
@@ -918,7 +906,10 @@ describe("the ask panel's height", () => {
 	): Promise<string[]> => {
 		const { captureCharFrame, captureSpans, destroy } = await renderTest(
 			<CopilotPane
-				copilot={idle({ asks: [ask], actor: "cabane://actor/agent/claude" })}
+				copilot={Fixtures.copilot({
+					asks: [ask],
+					actor: "cabane://actor/agent/claude",
+				})}
 				chip="JALL-1"
 				focused={ask.type === "permission"}
 				log={null}
@@ -1049,7 +1040,7 @@ describe("the pane's words", () => {
 			],
 		};
 		const line = collapsedSegments(
-			idle({ asks: [{ type: "permission", request: permission }] }),
+			Fixtures.copilot({ asks: [{ type: "permission", request: permission }] }),
 			null,
 			null,
 			T,
@@ -1068,7 +1059,7 @@ describe("the pane's words", () => {
 			options: [{ id: "allow", label: "Allow" }],
 		};
 		const line = collapsedSegments(
-			idle({
+			Fixtures.copilot({
 				asks: [
 					{ type: "permission", request: permission },
 					{ type: "permission", request: { ...permission, id: "p2" } },
@@ -1132,7 +1123,10 @@ describe("a click on the pane's ask", () => {
 		const clicked: BoardNav.AskClick[] = [];
 		const { captureCharFrame, mockMouse, destroy } = await renderTest(
 			<CopilotPane
-				copilot={idle({ asks: [ask], actor: "cabane://actor/agent/claude" })}
+				copilot={Fixtures.copilot({
+					asks: [ask],
+					actor: "cabane://actor/agent/claude",
+				})}
 				chip="JALL-1"
 				focused={focused}
 				log={null}
@@ -1188,7 +1182,7 @@ describe("a click on the pane's ask", () => {
 
 	it("a collapsed ask whose keys an open prompt holds names the prompt's way out, not keys it would eat", () => {
 		const line = collapsedSegments(
-			idle({ asks: [permission] }),
+			Fixtures.copilot({ asks: [permission] }),
 			null,
 			null,
 			Theme.DARK,

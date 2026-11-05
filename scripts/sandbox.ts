@@ -97,7 +97,8 @@ const kabane = (args: string[], env: NodeJS.ProcessEnv) =>
 
 // The copilot's launch command, through the config key a user would set for their own wrapper. The
 // harness stays claude: its id only names the actor and the session's instructions, and the
-// scripted agent ignores both.
+// scripted agent ignores both. The pane's title says claude for the same reason, so the agent's
+// first reply names itself rather than adding a test-only id to the harness registry.
 const SCRIPTED_COPILOT = {
 	harness: "claude",
 	command: process.execPath,

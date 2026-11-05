@@ -17,7 +17,9 @@
  *   long            a long reply, streamed in chunks
  *   anything else   echoed back
  *
- * After an ask is answered it says what it received, so a flow is checkable end to end.
+ * After an ask is answered it says what it received, so a flow is checkable end to end. Its first
+ * reply in a session opens by saying what it is, since the pane's title names the harness id the
+ * sandbox launches it under, claude, and that alone reads as a real harness answering.
  */
 import {
 	agent,
@@ -302,8 +304,16 @@ const runLong = async (ctx: Context): Promise<boolean> => {
 	return false;
 };
 
+const INTRO =
+	"Scripted agent (packages/acp/scripts/scripted-agent.ts), not claude: the sandbox runs it under claude's harness id.\n\n";
+const introduced = new Set<string>();
+
 // One turn: whether it ended on a cancel.
 const turn = async (ctx: Context, text: string): Promise<boolean> => {
+	if (!introduced.has(ctx.sessionId)) {
+		introduced.add(ctx.sessionId);
+		await say(ctx, INTRO);
+	}
 	const keyword = keywordOf(text);
 	switch (keyword) {
 		case "ask form":
