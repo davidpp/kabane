@@ -48,7 +48,8 @@ const toolResultSchema = z.object({
 	content: z.array(z.object({ type: z.literal("text"), text: z.string() })),
 });
 
-describe("concise actual entry points", () => {
+// Each case owns its tracker and its stdio server, so the four variants run side by side.
+describe.concurrent("concise actual entry points", () => {
 	for (const prefixed of [false, true])
 		for (const synthetic of [false, true])
 			it(`CLI/stdio parity, lossless pages and legacy compatibility (${prefixed}/${synthetic})`, async () => {

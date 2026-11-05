@@ -1,4 +1,11 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+	cpSync,
+	mkdtempSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { err, ok } from "@cabane/core";
@@ -10,17 +17,12 @@ export const payloadMetrics = (text: string) => ({
 	calls: 1,
 });
 
-/** Owns the home/database lifecycle; no caller-supplied tracker paths. */
-export const createCorpusTracker = async (
-	options: { prefixed?: boolean; synthetic?: boolean } = {},
-) => {
-	const root = mkdtempSync(join(tmpdir(), "kabane-corpus-"));
+type Variant = { prefixed?: boolean; synthetic?: boolean };
+
+const tracker = (root: string, ids: string[]) => {
 	const home = join(root, "tracker");
 	const cwd = join(root, "project");
 	const env = { ...process.env, HOME: join(root, "home"), KABANE_HOME: home };
-	mkdirSync(join(cwd, ".kabane"), { recursive: true });
-	mkdirSync(env.HOME, { recursive: true });
-	writeFileSync(join(cwd, ".kabane", "scope"), "corpus\n");
 	const close = () => rmSync(root, { recursive: true, force: true });
 	const run = async (...args: string[]) => {
 		const proc = Bun.spawn([process.execPath, CLI_BIN, ...args], {
@@ -36,6 +38,16 @@ export const createCorpusTracker = async (
 		]);
 		return { out, stderr, code };
 	};
+	return { root, home, cwd, env, run, close, ids };
+};
+
+/** Owns the home/database lifecycle; no caller-supplied tracker paths. */
+export const createCorpusTracker = async (options: Variant = {}) => {
+	const root = mkdtempSync(join(tmpdir(), "kabane-corpus-"));
+	const { home, cwd, env, run, close } = tracker(root, []);
+	mkdirSync(join(cwd, ".kabane"), { recursive: true });
+	mkdirSync(env.HOME, { recursive: true });
+	writeFileSync(join(cwd, ".kabane", "scope"), "corpus\n");
 	const initArgs = options.prefixed
 		? ["--db-path", join(home, "kabane.db"), "--table-prefix", "fixture_"]
 		: [];
@@ -78,5 +90,30 @@ export const createCorpusTracker = async (
 		close();
 		return err(new Error("Seeder returned invalid task IDs"));
 	}
-	return ok({ root, home, cwd, env, run, close, ids });
+	return ok(tracker(root, ids));
+};
+
+/**
+ * Seeds one tracker and hands out byte copies of it, for files that need a fresh
+ * corpus per case: seeding costs about a second, a copy a few milliseconds. Copies
+ * share task IDs. File refs in the seeded rows keep naming the template's reference
+ * files, which no test writes, so `close()` the template only after its copies.
+ */
+export const createCorpusTemplate = async (options: Variant = {}) => {
+	const seeded = await createCorpusTracker(options);
+	if (!seeded.ok) return seeded;
+	const template = seeded.value;
+	const clone = () => {
+		const root = mkdtempSync(join(tmpdir(), "kabane-corpus-"));
+		cpSync(template.root, root, { recursive: true });
+		const copy = tracker(root, template.ids);
+		// A prefixed config names its database by absolute path.
+		const config = join(copy.home, "config.json");
+		writeFileSync(
+			config,
+			readFileSync(config, "utf8").replaceAll(template.root, root),
+		);
+		return copy;
+	};
+	return ok({ clone, close: template.close });
 };

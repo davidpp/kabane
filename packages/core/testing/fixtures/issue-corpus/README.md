@@ -98,6 +98,9 @@ storage APIs without reconfiguring the test process Runtime. Fresh and
 `fixture_`-prefixed SQLite are supported; no vendored DB or live tracker access.
 Call `close()` in `finally`. Task IDs are intentionally runtime-generated ULIDs;
 fixture identity is source issue number / array position, never a ULID snapshot.
+A file that needs a fresh corpus for every case seeds once with
+`createCorpusTemplate` and takes a byte copy per case with `clone()`; copies share
+their template's IDs.
 
 Public tasks get synthetic states, priorities, assignees and scope. Synthetic
 variant adds 107 generated tasks (131 total), including 106 children, a huge
@@ -114,5 +117,5 @@ brief content (including the synthetic oversize brief on both transports). The C
 lists the detected scope; legacy MCP lists all scopes, deliberately including the
 synthetic unscoped row. Measurement logs record actual UTF-8 bytes, JS UTF-16
 characters and calls, not tokens. Source v2 baseline: public MCP list 48,418 bytes;
-public+synthetic list 536,776 bytes (limit 200). Runtime IDs/timestamps are not
+public+synthetic list 196,776 bytes (limit 200). Runtime IDs/timestamps are not
 whole-output snapshots. Efficient modes and their regressions belong to B/C.

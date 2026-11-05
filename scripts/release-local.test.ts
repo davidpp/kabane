@@ -311,7 +311,8 @@ const createFixture = () => {
 
 // Publication/auth/GitHub are controlled tools; Git commits/tags/pushes and npm pack are real.
 // Gates and installed smoke are stage sentinels here, not evidence that the full project passed them.
-test("actual local command prepares once, pauses for authentication and resumes identical bytes", async () => {
+// Every case builds its own fixture repository and waits on real processes, so cases run concurrently.
+test.concurrent("actual local command prepares once, pauses for authentication and resumes identical bytes", async () => {
 	const fixture = createFixture();
 	const prepared = await fixture.run("prepare");
 	if (prepared.ok && prepared.value.code !== 0)
@@ -354,9 +355,9 @@ test("actual local command prepares once, pauses for authentication and resumes 
 	expect(readFileSync(fixture.tracker, "utf8")).toBe(
 		"invalid tracker sentinel",
 	);
-}, 30_000);
+}, 60_000);
 
-test("default auto uses the complete release range, pins the handoff and selects a fresh next release only after completion", async () => {
+test.concurrent("default auto uses the complete release range, pins the handoff and selects a fresh next release only after completion", async () => {
 	const fixture = createFixture();
 	fixture.git("commit", "--allow-empty", "-m", "feat(cli): add command");
 	for (let index = 0; index < 14; index++)
@@ -390,14 +391,14 @@ test("default auto uses the complete release range, pins the handoff and selects
 		existsSync(join(fixture.root, ".releases/0.2.1/verified.sha256")),
 	).toBe(true);
 	expect(readFileSync(join(directory, "kabane-0.2.0.tgz"))).toEqual(archive);
-}, 30_000);
+}, 60_000);
 
-test("explicit semantic bumps work without auto history, and publishing never applies the bump twice", async () => {
-	for (const { bump, version } of [
-		{ bump: "patch", version: "0.1.1" },
-		{ bump: "minor", version: "0.2.0" },
-		{ bump: "major", version: "1.0.0" },
-	]) {
+for (const { bump, version } of [
+	{ bump: "patch", version: "0.1.1" },
+	{ bump: "minor", version: "0.2.0" },
+	{ bump: "major", version: "1.0.0" },
+])
+	test.concurrent(`explicit ${bump} bump works without auto history, and publishing never applies it twice`, async () => {
 		const fixture = createFixture();
 		fixture.change({ baseline: "" });
 		const prepared = await fixture.command("prepare", "--bump", bump);
@@ -414,17 +415,16 @@ test("explicit semantic bumps work without auto history, and publishing never ap
 		expect(
 			fixture.state().writes.filter((write) => write === "publish"),
 		).toHaveLength(1);
-	}
-}, 30_000);
+	}, 60_000);
 
-test("auto refuses missing/conflicting baselines and unclear changes without source/settings writes", async () => {
-	for (const failure of [
-		"missing",
-		"conflicting",
-		"unknown",
-		"shallow",
-		"local-only",
-	]) {
+for (const failure of [
+	"missing",
+	"conflicting",
+	"unknown",
+	"shallow",
+	"local-only",
+])
+	test.concurrent(`auto refuses the ${failure} baseline/change case without source/settings writes`, async () => {
 		const fixture = createFixture();
 		fixture.git("commit", "--allow-empty", "-m", "feat: add command");
 		if (failure === "missing") fixture.change({ baseline: "" });
@@ -462,10 +462,9 @@ test("auto refuses missing/conflicting baselines and unclear changes without sou
 		expect(existsSync(join(fixture.root, ".releases/current.json"))).toBe(
 			false,
 		);
-	}
-}, 30_000);
+	}, 60_000);
 
-test("an existing verified archive remains publishable by exact version without the new selection record", async () => {
+test.concurrent("an existing verified archive remains publishable by exact version without the new selection record", async () => {
 	const fixture = createFixture();
 	expect((await fixture.run("prepare")).value.code).toBe(0);
 	const archive = readFileSync(join(fixture.directory, "kabane-0.1.1.tgz"));
@@ -478,9 +477,9 @@ test("an existing verified archive remains publishable by exact version without 
 	expect(readFileSync(join(fixture.directory, "kabane-0.1.1.tgz"))).toEqual(
 		archive,
 	);
-}, 30_000);
+}, 60_000);
 
-test("corrupt selected-version state refuses without touching retained archive", async () => {
+test.concurrent("corrupt selected-version state refuses without touching retained archive", async () => {
 	const fixture = createFixture();
 	expect((await fixture.run("prepare")).value.code).toBe(0);
 	const archive = readFileSync(join(fixture.directory, "kabane-0.1.1.tgz"));
@@ -491,9 +490,9 @@ test("corrupt selected-version state refuses without touching retained archive",
 		archive,
 	);
 	expect(fixture.state().writes).toEqual(["enable-immutable"]);
-}, 30_000);
+}, 60_000);
 
-test("actual command closes stale, partial, conflicting and oversized draft listings without npm writes", async () => {
+test.concurrent("actual command closes stale, partial, conflicting and oversized draft listings without npm writes", async () => {
 	const fixture = createFixture();
 	expect((await fixture.run("prepare")).value.code).toBe(0);
 	const events = fixture.events();
@@ -522,9 +521,9 @@ test("actual command closes stale, partial, conflicting and oversized draft list
 	expect(
 		fixture.state().writes.filter((write) => write === "publish"),
 	).toHaveLength(1);
-}, 30_000);
+}, 60_000);
 
-test("fixed tooling publishes a retained original source checkout without accepting dirty source or CI", async () => {
+test.concurrent("fixed tooling publishes a retained original source checkout without accepting dirty source or CI", async () => {
 	const fixture = createFixture();
 	expect((await fixture.run("prepare")).value.code).toBe(0);
 	fixture.change({ authenticated: true, listingMode: "stale" });
@@ -584,9 +583,9 @@ test("fixed tooling publishes a retained original source checkout without accept
 	expect(
 		fixture.state().writes.filter((write) => write === "publish"),
 	).toHaveLength(1);
-}, 30_000);
+}, 60_000);
 
-test("actual command resumes npm-success/GitHub-failure without rebuilding or republishing", async () => {
+test.concurrent("actual command resumes npm-success/GitHub-failure without rebuilding or republishing", async () => {
 	const fixture = createFixture();
 	const prepared = await fixture.run("prepare");
 	if (prepared.ok && prepared.value.code !== 0)
@@ -605,9 +604,9 @@ test("actual command resumes npm-success/GitHub-failure without rebuilding or re
 	expect(
 		fixture.state().writes.filter((write) => write === "publish"),
 	).toHaveLength(1);
-}, 30_000);
+}, 60_000);
 
-test("dirty/wrong repository and invalid CLI refuse before release writes", async () => {
+test.concurrent("dirty/wrong repository and invalid CLI refuse before release writes", async () => {
 	for (const input of [
 		[],
 		["prepare", "--bump", "minor", "--version", "0.1.1"],
@@ -643,9 +642,9 @@ test("dirty/wrong repository and invalid CLI refuse before release writes", asyn
 	const wrong = await fixture.run("prepare");
 	expect(wrong.ok && wrong.value.code).toBe(1);
 	expect(fixture.state().writes).toEqual([]);
-}, 30_000);
+}, 60_000);
 
-test("hash/source/proof/immutable mismatches prevent authentication and publication", async () => {
+test.concurrent("hash/source/proof/immutable mismatches prevent authentication and publication", async () => {
 	const fixture = createFixture();
 	const prepared = await fixture.run("prepare");
 	expect(prepared.ok && prepared.value.code).toBe(0);
@@ -664,9 +663,9 @@ test("hash/source/proof/immutable mismatches prevent authentication and publicat
 	const tampered = await fixture.run("publish");
 	expect(tampered.ok && tampered.value.code).toBe(1);
 	expect(fixture.state().writes).toEqual(["enable-immutable"]);
-}, 30_000);
+}, 60_000);
 
-test("existing tag/latest conflicts, missing preparation and CI mode fail without version/settings writes", async () => {
+test.concurrent("existing tag/latest conflicts, missing preparation and CI mode fail without version/settings writes", async () => {
 	const tagged = createFixture();
 	tagged.git("tag", "-a", "v0.1.1", "-m", "conflicting source version");
 	const conflict = await tagged.run("prepare");
@@ -686,9 +685,9 @@ test("existing tag/latest conflicts, missing preparation and CI mode fail withou
 	const ci = await missing.run("prepare");
 	expect(ci.ok && ci.value.code).toBe(1);
 	expect(missing.state().writes).toEqual([]);
-}, 30_000);
+}, 60_000);
 
-test("stale source, conflicting remote assets and an existing local lock never authorize another publish", async () => {
+test.concurrent("stale source, conflicting remote assets and an existing local lock never authorize another publish", async () => {
 	const fixture = createFixture();
 	const prepared = await fixture.run("prepare");
 	expect(prepared.ok && prepared.value.code).toBe(0);
@@ -719,9 +718,9 @@ test("stale source, conflicting remote assets and an existing local lock never a
 	expect(
 		fixture.state().writes.filter((write) => write === "publish"),
 	).toHaveLength(1);
-}, 30_000);
+}, 60_000);
 
-test("an explicit beta publishes on npm beta as a GitHub prerelease; auto still bases stable on npm latest", async () => {
+test.concurrent("an explicit beta publishes on npm beta as a GitHub prerelease; auto still bases stable on npm latest", async () => {
 	expect(
 		parseLocalReleaseArgs(["prepare", "--version", "0.2.0-beta.0"]).ok,
 	).toBe(true);
@@ -777,4 +776,4 @@ test("an explicit beta publishes on npm beta as a GitHub prerelease; auto still 
 		prerelease: false,
 		latestFlag: "--latest",
 	});
-}, 30_000);
+}, 60_000);

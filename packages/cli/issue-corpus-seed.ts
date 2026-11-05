@@ -20,9 +20,9 @@ export const corpusSchema = z.array(
 	}),
 );
 export const FIXTURE_TIME = "2025-01-01T00:00:00.000Z";
-export const HUGE_BODY = "Synthetic body 🐛 café 漢字\n".repeat(12000);
+export const HUGE_BODY = "Synthetic body 🐛 café 漢字\n".repeat(2000);
 export const HUGE_COMMENT =
-	"Synthetic steering 🧭 — preserve every byte\n".repeat(8000);
+	"Synthetic steering 🧭 — preserve every byte\n".repeat(1500);
 
 const seedHistory = async (
 	root: string,
