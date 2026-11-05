@@ -84,6 +84,18 @@ describe("LoopConfig.SettingsSchema", () => {
 		expect(saved.success).toBe(true);
 		if (saved.success)
 			expect(saved.data.budget).not.toHaveProperty("wallMinutes");
+		// An unset of it loads too, from a file (null) or from code (undefined).
+		for (const unset of [null, undefined]) {
+			const cleared = resolve(
+				{ budget: { concurrency: 4, wallMinutes: unset } },
+				{ budget: { wallMinutes: unset } },
+			);
+			expect(cleared.ok && cleared.value.value.budget).toEqual({
+				concurrency: 4,
+				continuations: 3,
+				currency: "USD",
+			});
+		}
 	});
 
 	it("refuses gates or a budget that is not an object, rather than reading it as none", () => {

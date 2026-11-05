@@ -85,6 +85,30 @@ export namespace Settings {
 		return schema;
 	};
 
+	// Its issues are the value check's to report; here only the value it leaves matters.
+	const QUIET: z.RefinementCtx = { addIssue: () => undefined, path: [] };
+
+	/**
+	 * `schema` under its wrappers, and `value` as its preprocessing leaves it: a preprocess is how a
+	 * schema normalises what it still accepts (the loop drops a retired key), so an unset of such a
+	 * key is checked after it, as a value of it is.
+	 */
+	const unwrapWith = (
+		schema: z.ZodTypeAny,
+		value: unknown,
+	): { inner: z.ZodTypeAny; value: unknown } => {
+		if (schema instanceof z.ZodOptional || schema instanceof z.ZodDefault)
+			return unwrapWith(schema._def.innerType, value);
+		if (schema instanceof z.ZodEffects) {
+			const { effect } = schema._def;
+			return unwrapWith(
+				schema.innerType(),
+				effect.type === "preprocess" ? effect.transform(value, QUIET) : value,
+			);
+		}
+		return { inner: schema, value };
+	};
+
 	/**
 	 * The unsets in `value` that name no setting: a key a strict object does not have, or one its
 	 * record's key schema refuses. The value check never sees them, since pruning removes them.
@@ -92,10 +116,10 @@ export namespace Settings {
 	const unsetIssues = (
 		namespace: string,
 		schema: z.ZodTypeAny,
-		value: unknown,
+		given: unknown,
 		path: readonly string[] = [],
 	): string[] => {
-		const inner = unwrap(schema);
+		const { inner, value } = unwrapWith(schema, given);
 		if (!isObject(value)) return [];
 		return Object.entries(value).flatMap(([key, child]) => {
 			const at = [...path, key].join(".");
