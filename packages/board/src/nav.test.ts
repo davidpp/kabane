@@ -2761,6 +2761,29 @@ describe("a permission request the harness is blocked on", () => {
 		).toEqual({ type: "copilotAnswer", id: "t0", optionId: null });
 	});
 
+	it("transcript clicks answer or decline without moving focus or closing the transcript", () => {
+		const transcript = asked({
+			view: { type: "events", cardId: "copilot", fromView: "board" },
+		});
+		for (const [action, optionId] of [
+			[{ type: "askOption", index: 1 }, "reject"],
+			[{ type: "askKey", name: "escape" }, null],
+		] as const) {
+			const result = BoardNav.reduceMouse(transcript, action);
+			expect(result.effect).toEqual({
+				type: "copilotAnswer",
+				id: "t0",
+				optionId,
+			});
+			expect(requests(result.state)).toEqual([]);
+			expect(result.state.view).toEqual(transcript.view);
+			expect(result.state.focus).toBe(transcript.focus);
+			expect(
+				BoardNav.reduceMouse({ ...transcript, help: true }, action).effect.type,
+			).toBe("none");
+		}
+	});
+
 	it("a click on the collapsed row naming it opens it: the copilot takes the keys", () => {
 		const r = BoardNav.reduceMouse(asked(), { type: "askReach" });
 		expect(r.state.focus).toBe("copilot");

@@ -2,7 +2,7 @@
 // The `A` flow end to end against a scripted copilot: the window and its chip, the running
 // indicator while the board stays interactive (and the header strip leaving it alone), the live transcript
 // in the event view with `x stop the turn`, the `✓` flash on completion, and the keypress that dismisses it.
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner } from "@cabane/core";
@@ -162,7 +162,13 @@ const askingCopilot = (answers: (string | null)[]): Copilot => {
 
 // A copilot that asks two questions before hearing back on either, the way a harness running
 // tools in parallel does, and finishes only once both are answered.
-const parallelCopilot = (answers: Map<string, string | null>): Copilot => {
+const parallelCopilot = (
+	answers: Map<string, string | null>,
+	options = [
+		{ id: "allow", label: "Allow" },
+		{ id: "reject", label: "Reject" },
+	],
+): Copilot => {
 	const pending = new Map<string, (optionId: string | null) => void>();
 	const ask = (id: string) =>
 		new Promise<string | null>((resolve) => pending.set(id, resolve));
@@ -171,10 +177,7 @@ const parallelCopilot = (answers: Map<string, string | null>): Copilot => {
 		request: {
 			id,
 			title,
-			options: [
-				{ id: "allow", label: "Allow" },
-				{ id: "reject", label: "Reject" },
-			],
+			options,
 		},
 		at: new Date().toISOString(),
 	});
@@ -640,6 +643,81 @@ describe("a harness blocked on a permission request", () => {
 			destroy();
 		}
 	});
+
+	it.each([40, 120])(
+		"transcript clicks answer queued permissions at %i columns",
+		async (width) => {
+			if (Fixtures.PERMISSION.type !== "permission")
+				throw new Error("Expected the shared permission fixture");
+			const answers = new Map<string, string | null>();
+			const copilot = parallelCopilot(
+				answers,
+				Fixtures.PERMISSION.request.options.map((option) => ({
+					...option,
+					id: option.label === "Reject" ? "reject" : option.id,
+				})),
+			);
+			const answerPermission = spyOn(copilot, "answerPermission");
+			let now = 0;
+			const { renderOnce, captureCharFrame, mockInput, mockMouse, destroy } =
+				await renderTest(
+					<App
+						cwd={PERMISSION_BASE}
+						basePath={PERMISSION_BASE}
+						activity={noActivity}
+						copilot={copilot}
+						clock={() => (now += BoardNav.ARM_MS)}
+					/>,
+					{ width, height: 24 },
+				);
+			const until = (p: (f: string) => boolean) =>
+				pumpUntil(renderOnce, captureCharFrame, p);
+			const click = async (frame: string, text: string) => {
+				const rows = frame.split("\n");
+				const y = rows.findIndex((row) => row.includes(text));
+				expect(y).toBeGreaterThanOrEqual(0);
+				await mockMouse.click(rows[y]?.indexOf(text) ?? 0, y);
+			};
+			try {
+				await until((f) => f.includes("Wire the copilot"));
+				mockInput.pressKey(":");
+				await until(panelOpen);
+				await mockInput.typeText("plan it");
+				mockInput.pressEnter();
+				await until((f) => f.includes("1 more waiting"));
+				mockInput.pressKey("o");
+				const transcript = await until(
+					(f) =>
+						f.includes("? permission: search opentui") &&
+						f.includes("3 Reject"),
+				);
+				const rows = transcript.split("\n");
+				const allowRow = rows.findIndex((row) => row.includes("1 Allow once"));
+				const rejectRow = rows.findIndex((row) => row.includes("3 Reject"));
+				expect(allowRow).toBeGreaterThanOrEqual(0);
+				if (width === 40) expect(rejectRow).toBeGreaterThan(allowRow);
+				else expect(rejectRow).toBe(allowRow);
+				await click(transcript, "3 Reject");
+				const next = await until(
+					(f) => f.includes("? search acp sdk") && !f.includes("more waiting"),
+				);
+				expect(answerPermission).toHaveBeenCalledTimes(1);
+				expect(answerPermission).toHaveBeenNthCalledWith(1, "s1", "reject");
+				await click(next, "esc decline");
+				const done = await until((f) => f.includes("Both searches answered."));
+				expect(answerPermission).toHaveBeenCalledTimes(2);
+				expect(answerPermission).toHaveBeenNthCalledWith(2, "s2", null);
+				expect([...answers]).toEqual([
+					["s1", "reject"],
+					["s2", null],
+				]);
+				expect(done).not.toContain("esc decline");
+			} finally {
+				destroy();
+				answerPermission.mockRestore();
+			}
+		},
+	);
 
 	it("two at once: the first asks with the second counted, and answering it brings up the second", async () => {
 		const answers = new Map<string, string | null>();

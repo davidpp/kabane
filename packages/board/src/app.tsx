@@ -1107,6 +1107,7 @@ export const App = ({
 							)
 						: undefined
 				}
+				onAsk={dispatchMouse}
 				tabbed={tabs.active === cardId}
 				lane={CardTab.view(tabs, cardId).lane}
 				onLane={(index) => dispatchMouse({ type: "lane", index })}

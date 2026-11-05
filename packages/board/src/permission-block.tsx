@@ -9,6 +9,7 @@
 // the turn behind it still has to be cancellable.
 import type { ColorInput } from "@opentui/core";
 import type { ReactNode } from "react";
+import type { BoardNav } from "./nav";
 import type { CopilotPermission } from "./ports";
 import { Segments } from "./segments";
 import { type Theme, useTheme } from "./theme";
@@ -165,6 +166,17 @@ export type PermissionBlockProps = {
 	onPick?: (index: number) => void;
 	onKey?: (name: string) => void;
 };
+
+// An ask block's click props, from the surface's one handler: none when it has none.
+export const clicks = (
+	onAsk: ((click: BoardNav.AskClick) => void) | undefined,
+): { onPick?: (index: number) => void; onKey?: (name: string) => void } =>
+	onAsk
+		? {
+				onPick: (index) => onAsk({ type: "askOption", index }),
+				onKey: (name) => onAsk({ type: "askKey", name }),
+			}
+		: {};
 
 export const PermissionBlock = ({
 	request,

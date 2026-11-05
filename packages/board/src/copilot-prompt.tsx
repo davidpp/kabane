@@ -24,6 +24,7 @@ import { ElicitationBlock, elicitationSegments } from "./elicitation-block";
 import { copilotIndicatorFg } from "./footer";
 import { BoardNav } from "./nav";
 import {
+	clicks,
 	outrankedSegments,
 	PermissionBlock,
 	permissionSegments,
@@ -352,17 +353,6 @@ const paneTitle = (
 		? elapsed(log.current.card.startedAt, log.current.card.finishedAt)
 		: null,
 });
-
-// An ask block's click props, from the pane's one handler: none when it has none.
-const clicks = (
-	onAsk: ((click: BoardNav.AskClick) => void) | undefined,
-): { onPick?: (index: number) => void; onKey?: (name: string) => void } =>
-	onAsk
-		? {
-				onPick: (index) => onAsk({ type: "askOption", index }),
-				onKey: (name) => onAsk({ type: "askKey", name }),
-			}
-		: {};
 
 // The panel a form opens: the pane's title row over the form, and nothing to type a prompt into.
 const FormPanel = ({
