@@ -101,5 +101,6 @@ arrive still needs a run against a real one.
   hub) belong in a gitignored `CLAUDE.local.md`, never in this file. A clean clone has none.
   Claude Code reads `CLAUDE.local.md` after these instructions. Codex has no per-project
   local file: an `AGENTS.override.md` replaces `AGENTS.md` in its directory, so one at the
-  root would hide everything here. Codex's one personal file is the global
-  `~/.codex/AGENTS.md`, which applies to every project.
+  root would hide everything here. Codex's personal instructions are global, for every
+  project: `$CODEX_HOME/AGENTS.md` (default `~/.codex/AGENTS.md`), which an
+  `AGENTS.override.md` beside it replaces.
