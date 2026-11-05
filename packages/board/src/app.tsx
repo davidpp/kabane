@@ -5,11 +5,12 @@
 // reload by task id. The board starts scoped to the detected project — `esc` widens to all scopes.
 import type { Task } from "@cabane/core";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
-import { useKeyboard, useRenderer } from "@opentui/react";
+import { useRenderer } from "@opentui/react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import { BoardActivity } from "./activity";
 import { anyActivityRunning, Board } from "./board";
 import { useBoardFeed } from "./board-feed";
+import { useBoardInput } from "./board-input";
 import { useBoardStore } from "./board-store";
 import { CardTab } from "./card-tab";
 import { BoardContext } from "./context";
@@ -27,7 +28,6 @@ import { useNotice } from "./notice";
 import { HelpSheet } from "./overlay";
 import type { ActivitySource, CardHeader, Copilot, Dispatcher } from "./ports";
 import { ProgramStatus } from "./program-status";
-import { BoardPrompt } from "./prompt";
 import { PromptPanel } from "./prompt-field";
 import { isActivityEffect, useRunActivity } from "./run-activity";
 import { useSpinnerFrame } from "./spinner";
@@ -70,7 +70,7 @@ export const App = ({
 	const renderer = useRenderer();
 	const theme = useTheme();
 	const store = useBoardStore(clock);
-	const { state, ref: stateRef, set: setState, update: updateState } = store;
+	const { state, ref: stateRef } = store;
 	const [notice, setNotice] = useNotice();
 	const { records: detailRecords, refresh: refreshDetail } = useDetailRecords(
 		basePath,
@@ -197,91 +197,22 @@ export const App = ({
 		],
 	);
 
-	// Route a board mouse action through the same pure reducer as keys, then run its effect. Keeps
-	// selection single-sourced — the mouse handlers never call setState with an ad-hoc coordinate.
-	const dispatchMouse = useCallback(
-		(action: BoardNav.MouseAction): void => {
-			const current = stateRef.current;
-			if (!current) return;
-			const { state: next, effect } = BoardNav.reduceMouse(current, action);
-			if (next !== current) {
-				setState(next);
-			}
-			runEffect(next, effect);
-		},
-		[runEffect, stateRef, setState],
-	);
-
-	useKeyboard((key) => {
-		// Error screen: `r` retries the initial load, `q` quits.
-		if (error) {
-			if (key.name === "r") retry();
-			else if (key.name === "q") {
-				renderer.destroy();
-			}
-			return;
-		}
-		const current = stateRef.current;
-		if (!current) {
-			if (key.name === "q") renderer.destroy();
-			return;
-		}
-		// A focused textarea sees every key as well, global handler first. Claiming the keys the
-		// copilot reducer answers is what keeps `tab` and `esc` from also landing in the buffer.
-		if (
-			BoardNav.copilotConsumes(current, key) ||
-			BoardPrompt.consumes(current, key)
-		)
-			key.preventDefault();
-		const { state: next, effect } = BoardNav.reduceKey(current, key, clock());
-		if (next !== current) {
-			setState(next);
-		}
-		runEffect(next, effect);
+	const {
+		dispatchMouse,
+		submitCopilot,
+		submitForm,
+		mirrorCopilotText,
+		submitPrompt,
+		mirrorPromptText,
+	} = useBoardInput({
+		store,
+		clock,
+		error,
+		retry,
+		runEffect,
+		inputRef,
+		promptRef,
 	});
-
-	// The textarea's own `submit` binding (enter). The reducer decides expand-versus-send so the
-	// `/name` rule lives in one place.
-	const submitCopilot = useCallback((): void => {
-		const current = stateRef.current;
-		if (!current) return;
-		const text = inputRef.current?.plainText ?? "";
-		const { state: next, effect } = BoardNav.submitCopilot(current, text);
-		setState(next);
-		runEffect(next, effect);
-	}, [runEffect, stateRef, setState]);
-
-	// `enter` in a form's input: the reducer reads the field and moves the form on, or sends it.
-	const submitForm = useCallback(
-		(text: string): void => {
-			const current = stateRef.current;
-			if (!current) return;
-			const { state: next, effect } = BoardNav.submitForm(current, text);
-			setState(next);
-			runEffect(next, effect);
-		},
-		[runEffect, stateRef, setState],
-	);
-
-	// Mirror the buffer into the reducer so `/` matching sees what the human sees.
-	const mirrorCopilotText = useCallback((): void => {
-		const text = inputRef.current?.plainText ?? "";
-		updateState((prev) => BoardNav.withCopilotText(prev, text));
-	}, [updateState]);
-
-	// The same two for a prompt a card's tab or a banner opened.
-	const submitPrompt = useCallback((): void => {
-		const current = stateRef.current;
-		if (!current) return;
-		const text = promptRef.current?.plainText ?? "";
-		const { state: next, effect } = BoardPrompt.submit(current, text);
-		setState(next);
-		runEffect(next, effect);
-	}, [runEffect, stateRef, setState]);
-	const mirrorPromptText = useCallback((): void => {
-		const text = promptRef.current?.plainText ?? "";
-		updateState((prev) => BoardPrompt.withText(prev, text));
-	}, [updateState]);
 
 	// Keep the selected row on-screen: whenever selection changes (j/k, mouse), scroll the minimum
 	// distance to reveal it. Each row box carries id `row-<taskId>`, which scrollChildIntoView resolves.
