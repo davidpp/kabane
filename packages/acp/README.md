@@ -58,8 +58,9 @@ imports the SDK.
   `actorUri(harness)`, the `cabane://actor/agent/<harness>` every write of a session is
   stamped with. `DISPATCH_TEMPLATE` is the absolute path of `templates/dispatch/`, the generic
   dispatch skill `/setup-dispatch` fills from a project's own instructions and writes under its
-  `.claude/skills/dispatch/` — the copilot's one allowed file write. `PLACEHOLDERS.md` there
-  says what fills each `{{NAME}}` and is never copied.
+  `.claude/skills/dispatch/`. `PLACEHOLDERS.md` there says what fills each `{{NAME}}` and is
+  never copied. `GRILL_TEMPLATE` is `templates/grill/`, the skill the copilot follows to walk the
+  human through open questions, and copies unchanged to `.claude/skills/grill/` on request.
 - `Mailbox` — a one-consumer queue whose `filled()` is already settled when something is
   waiting. `BoardCopilot` drains it alongside the harness's stream, which is the only way a
   permission request can reach the board while the agent is blocked on the answer.

@@ -170,6 +170,9 @@ project's `CLAUDE.md`/`AGENTS.md`, its gate commands and `.claude/agents/`, then
 dispatch skill under `.claude/skills/dispatch/` that lets your coding sessions turn asks
 into kabane issues. It shows each file before writing it.
 
+Ask the copilot to "grill me" and it walks you through the questions agents left open, one
+at a time, and records each answer; any harness with the kabane MCP can use the same skill.
+
 The copilot has three requirements of its own. Setup does not check any of them:
 
 - **A logged-in harness.** The default is Claude Code: `claude` on PATH, run once to log

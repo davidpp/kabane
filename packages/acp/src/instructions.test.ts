@@ -1,6 +1,6 @@
 // The instructions are prose, so what is testable about them is the shape the board and the harness
 // depend on: unique `/names`, single-line templates, the tool names a procedure is only correct if
-// it names, and a dispatch template that is where the skill text says it is and fillable from it.
+// it names, and the dispatch and grill templates where the skill text says they are.
 import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -172,6 +172,64 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 			expect(skill).toContain(tool);
 		for (const path of SKILL_FILES)
 			expect(template(path).toLowerCase()).not.toContain("jake");
+	});
+});
+
+describe("CopilotInstructions grilling the human", () => {
+	const skill = (): string =>
+		readFileSync(join(CopilotInstructions.GRILL_TEMPLATE, "SKILL.md"), "utf8");
+
+	it("the procedure points at the skill this package ships, which needs no filling", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			`${CopilotInstructions.GRILL_TEMPLATE}/SKILL.md`,
+		);
+		expect(skill()).toStartWith("---\nname: grill\ndescription: ");
+		expect(skill()).not.toContain("{{");
+		expect(skill().toLowerCase()).not.toContain("jake");
+	});
+
+	it("both read the questions, record through kabane_answer, and withdraw with a reason", () => {
+		for (const text of [CopilotInstructions.SKILLS, skill()]) {
+			expect(text).toContain("kabane_questions");
+			expect(text).toContain("kabane_answer");
+			expect(text).toContain("withdraw: true");
+			expect(text).toMatch(/one (question )?at a time/i);
+		}
+		expect(CopilotInstructions.SKILLS).toContain(
+			"Say when an issue moves to next",
+		);
+		expect(skill()).toContain("When its result says the issue moved to next");
+		expect(skill()).toContain("nextCursor");
+	});
+
+	it("re-reads the issue before recording, because a handle can shift under sync", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"Just before recording, re-read that issue with kabane_questions and its id",
+		);
+		expect(skill()).toContain(
+			"re-read that issue (`kabane_questions` with its `id`)",
+		);
+		expect(skill()).toContain(
+			"same question text, use the handle that does and tell the human what moved",
+		);
+	});
+
+	it("never answers for the human, the recommendation included", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"Only the human answers: never record an answer they did not give, the recommended one included",
+		);
+		expect(skill()).toContain(
+			"Never record an answer they did not give, the recommended one included",
+		);
+	});
+
+	it("installs into a project only on request, under the dispatch skill's rule", () => {
+		expect(CopilotInstructions.BLOCK).toContain(
+			"For a project's dispatch or grill skill, you may write the files the procedures below name",
+		);
+		expect(CopilotInstructions.SKILLS).toContain(
+			"When they ask you to install it in this project, copy SKILL.md unchanged to .claude/skills/grill/SKILL.md",
+		);
 	});
 });
 
