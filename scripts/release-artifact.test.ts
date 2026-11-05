@@ -17,6 +17,9 @@ import {
 	verifyReleaseFiles,
 } from "./release-artifact";
 
+const UNEXPECTED_SHAPE = "Unexpected published package file shape.";
+const MAP_OR_MACHINE_PATH =
+	"Archive exceeds bounds or contains a source map/machine path.";
 const WORK = mkdtempSync(join(tmpdir(), "kabane-artifact-test-"));
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));
 const manifest = {
@@ -106,6 +109,10 @@ for (const name of [
 			archive([...normal, { name: `package/${name}`, text: "unexpected" }]),
 		);
 		expect(checked.result.ok).toBe(false);
+		if (!checked.result.ok)
+			expect(checked.result.error.message).toBe(
+				name.endsWith(".map") ? MAP_OR_MACHINE_PATH : UNEXPECTED_SHAPE,
+			);
 	});
 test("chunks retain machine-path scanning and cannot replace the entry", async () => {
 	const chunk = {
@@ -117,9 +124,7 @@ test("chunks retain machine-path scanning and cannot replace the entry", async (
 	]);
 	expect(checked.result.ok).toBe(false);
 	if (!checked.result.ok)
-		expect(checked.result.error.message).toBe(
-			"Archive exceeds bounds or contains a source map/machine path.",
-		);
+		expect(checked.result.error.message).toBe(MAP_OR_MACHINE_PATH);
 	const missingEntry = await inspect(
 		archive([
 			...normal.filter((member) => member.name !== "package/bin/kabane.js"),
@@ -127,6 +132,8 @@ test("chunks retain machine-path scanning and cannot replace the entry", async (
 		]),
 	);
 	expect(missingEntry.result.ok).toBe(false);
+	if (!missingEntry.result.ok)
+		expect(missingEntry.result.error.message).toBe(UNEXPECTED_SHAPE);
 });
 for (const member of [
 	{ name: "package/../../escape", text: "bad" },
