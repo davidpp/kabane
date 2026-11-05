@@ -53,7 +53,55 @@ describe("Budget.spent", () => {
 			size: 1,
 			cost: { amount: 9, currency: "EUR" },
 		});
-		expect(Budget.spent(meter, "USD")).toEqual({ amount: 3, unpriced: 2 });
+		expect(Budget.spent(meter, "USD", [])).toEqual({
+			amount: 3,
+			unpriced: 2,
+		});
+	});
+});
+
+describe("Budget.spent across resumed sessions", () => {
+	const usd = (amount: number) => ({
+		used: 1,
+		size: 1,
+		cost: { amount, currency: "USD" },
+	});
+	const meterOf = (costs: Record<string, number>): Budget.Meter =>
+		Object.fromEntries(
+			Object.entries(costs).map(([id, amount]) => [id, usd(amount)]),
+		);
+
+	it("counts a harness session resumed by later claims once, and a fresh fallback on top", () => {
+		// Claude's total carries over a resume: 0.006 for the first claim, 0.0077 and 0.009 once
+		// two gate retries resumed it, then a retry the harness refused, in a session of its own.
+		const meter = meterOf({ c1: 0.006, c2: 0.0077, c3: 0.009, c4: 0.005 });
+		const sessions = [
+			{ sessionId: "c1", acpSessionId: "acp-1" },
+			{ sessionId: "c2", acpSessionId: "acp-1" },
+			{ sessionId: "c3", acpSessionId: "acp-1" },
+			{ sessionId: "c4", acpSessionId: "acp-2" },
+		];
+		const { amount, unpriced } = Budget.spent(meter, "USD", sessions);
+		expect(amount).toBeCloseTo(0.014, 10);
+		expect(unpriced).toBe(0);
+		expect(Budget.check(budget({ spend: 0.015 }), meter, sessions)).toEqual({
+			ok: true,
+		});
+	});
+
+	it("adds a total that went down whole: the harness counted that claim from zero", () => {
+		const meter = meterOf({ c1: 0.006, c2: 0.002 });
+		const sessions = [
+			{ sessionId: "c1", acpSessionId: "acp-1" },
+			{ sessionId: "c2", acpSessionId: "acp-1" },
+		];
+		expect(Budget.spent(meter, "USD", sessions).amount).toBeCloseTo(0.008, 10);
+	});
+
+	it("takes a claim that recorded no harness session, or no claim at all, as a session of its own", () => {
+		const meter = meterOf({ c1: 0.006, c2: 0.007, lone: 0.001 });
+		const sessions = [{ sessionId: "c1" }, { sessionId: "c2" }];
+		expect(Budget.spent(meter, "USD", sessions).amount).toBeCloseTo(0.014, 10);
 	});
 });
 
@@ -66,14 +114,14 @@ describe("Budget.check", () => {
 		});
 		const unpriced = Budget.record({}, "a", { used: 1, size: 1 });
 
-		expect(Budget.check(budget(), priced)).toEqual({ ok: true });
-		expect(Budget.check(budget({ spend: 10 }), priced)).toEqual({
+		expect(Budget.check(budget(), priced, [])).toEqual({ ok: true });
+		expect(Budget.check(budget({ spend: 10 }), priced, [])).toEqual({
 			ok: true,
 		});
-		expect(Budget.check(budget({ spend: 5 }), unpriced)).toEqual({
+		expect(Budget.check(budget({ spend: 5 }), unpriced, [])).toEqual({
 			ok: true,
 		});
-		const over = Budget.check(budget({ spend: 5 }), priced);
+		const over = Budget.check(budget({ spend: 5 }), priced, []);
 		expect(over.ok).toBe(false);
 		if (!over.ok) expect(over.reason).toBe("spend");
 	});
