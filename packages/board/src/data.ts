@@ -273,7 +273,7 @@ export namespace BoardData {
 		if (!open.ok) return open;
 		const counts = new Map<string, number>();
 		for (const row of open.value)
-			counts.set(row.task_id, (counts.get(row.task_id) ?? 0) + 1);
+			counts.set(row.taskId, (counts.get(row.taskId) ?? 0) + 1);
 		return ok(counts);
 	};
 
@@ -406,7 +406,7 @@ export namespace BoardData {
 				.sort()
 				.join(",")}`,
 			`u${parts.upstream.length}@${latest(parts.upstream.map((u) => u.updatedAt))}`,
-			`q${parts.questions.length}@${latest(parts.questions.map((q) => q.updated_at))}`,
+			`q${parts.questions.length}@${latest(parts.questions.map((q) => q.updatedAt))}`,
 		].join("|");
 
 	/** The stamp of records already loaded, to compare the next `detailStamp` against. */

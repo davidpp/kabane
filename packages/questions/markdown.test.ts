@@ -5,14 +5,13 @@ import type { QuestionView } from "./schema";
 
 const row: QuestionView = {
 	id: "question",
-	task_id: "task",
+	taskId: "task",
 	status: "open",
-	asked_by: "actor",
-	answered_by: "actor\n## ISSUE author",
-	answered_at: null,
-	created_at: "now",
-	updated_at: "now",
-	updated_by: "actor",
+	askedBy: "actor",
+	answeredBy: "actor\n## ISSUE author",
+	createdAt: "now",
+	updatedAt: "now",
+	updatedBy: "actor",
 	version: 1,
 	visibility: "shared",
 	body: "Pick\n## ISSUE question",
@@ -24,7 +23,7 @@ const row: QuestionView = {
 	title: "Task\n## ISSUE title",
 	priority: "normal",
 	state: "waiting",
-	short_id: "JCAB-1",
+	shortId: "JCAB-1",
 };
 it("labels multi-select and choices-only questions without labeling freeform choices", () => {
 	for (const [meta, suffix] of [
@@ -45,7 +44,7 @@ it("labels multi-select and choices-only questions without labeling freeform cho
 	}
 });
 it("folds newlines in every displayed field so only issue groups introduce headers", () => {
-	for (const status of ["open", "answered", "withdrawn"]) {
+	for (const status of ["open", "answered", "withdrawn"] as const) {
 		for (const brief of [false, true]) {
 			const markdown = questionsMarkdown([{ ...row, status }], brief);
 			expect(markdown.match(/^## /gm)).toHaveLength(1);

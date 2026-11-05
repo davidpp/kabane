@@ -14,7 +14,7 @@ export const questionMarkdown = (row: QuestionView, brief = false): string => {
 	const title = `${singleLine(row.handle)} ${singleLine(question.question)}${mode}`;
 	const reasoning = row.reasoning ? singleLine(row.reasoning) : "";
 	if (row.status === "answered") {
-		const author = singleLine(row.answered_by ?? "unknown");
+		const author = singleLine(row.answeredBy ?? "unknown");
 		const answer = singleLine(row.answer ?? "");
 		return brief
 			? `${title} → ${answer} (${author}${reasoning ? `, ${reasoning}` : ""})`
@@ -40,11 +40,11 @@ export const questionsMarkdown = (
 	const lines: string[] = [];
 	let taskId: string | undefined;
 	for (const row of rows) {
-		if (row.task_id !== taskId) {
+		if (row.taskId !== taskId) {
 			lines.push(
-				`## ${singleLine(row.short_id ?? row.task_id)} ${singleLine(row.title)} · ${singleLine(row.priority)} · ${singleLine(row.state)}`,
+				`## ${singleLine(row.shortId ?? row.taskId)} ${singleLine(row.title)} · ${singleLine(row.priority)} · ${singleLine(row.state)}`,
 			);
-			taskId = row.task_id;
+			taskId = row.taskId;
 		}
 		lines.push(questionMarkdown(row, brief));
 	}

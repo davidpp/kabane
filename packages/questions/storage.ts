@@ -50,7 +50,10 @@ const selectQuestions = (
 	if (filter.status === "open") where.push("q.status = 'open'");
 	return db
 		.query<
-			Omit<QuestionView, "handle">
+			Question &
+				Pick<QuestionView, "ordinal" | "title" | "priority" | "state"> & {
+					short_id: string | null;
+				}
 		>(`SELECT q.*, t.short_id, t.title, t.priority, t.state,
 		(SELECT COUNT(*) FROM ${questionsTable()} preceding WHERE preceding.task_id = q.task_id AND preceding.id <= q.id) AS ordinal
 		FROM ${questionsTable()} q JOIN ${TABLES.tasks} t ON t.id = q.task_id
@@ -58,8 +61,27 @@ const selectQuestions = (
 		ORDER BY q.task_id, q.id`)
 		.all(...params)
 		.map((row) => ({
-			...row,
+			id: row.id,
+			taskId: row.task_id,
+			status: row.status,
+			askedBy: row.asked_by,
+			answeredBy: row.answered_by ?? undefined,
+			answeredAt: row.answered_at ?? undefined,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+			updatedBy: row.updated_by,
+			version: row.version,
+			visibility: row.visibility,
+			body: row.body,
+			why: row.why ?? undefined,
+			answer: row.answer ?? undefined,
+			reasoning: row.reasoning ?? undefined,
 			handle: `${row.short_id ?? row.task_id}:${row.ordinal}`,
+			ordinal: row.ordinal,
+			title: row.title,
+			priority: row.priority,
+			state: row.state,
+			shortId: row.short_id ?? undefined,
 		}));
 };
 

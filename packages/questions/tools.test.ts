@@ -143,8 +143,8 @@ it("rejects invalid MCP inputs and records the connected answer author", async (
 		const row = unwrap(await Questions.list(base, { id: task.id }))[0];
 		expect(row).toMatchObject({
 			answer: "B",
-			asked_by: "cabane://actor/agent/test",
-			answered_by: "cabane://actor/agent/test",
+			askedBy: "cabane://actor/agent/test",
+			answeredBy: "cabane://actor/agent/test",
 		});
 	} finally {
 		await client.close();

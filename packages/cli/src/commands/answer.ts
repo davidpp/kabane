@@ -41,7 +41,7 @@ export const answer: Command = {
 		const { question, moved } = answered.value;
 		const lines = [questionMarkdown(question)];
 		if (moved)
-			lines.push(`${question.short_id ?? question.task_id} moved to next`);
+			lines.push(`${question.shortId ?? question.taskId} moved to next`);
 		return success(answered.value, lines.join("\n\n"));
 	},
 };

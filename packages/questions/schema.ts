@@ -76,10 +76,11 @@ export const AnswerSchema = z
 	});
 export type AnswerInput = z.input<typeof AnswerSchema>;
 
+/** A `task_questions` row as stored: the module's own reads, never its public shape. */
 export type Question = {
 	id: string;
 	task_id: string;
-	status: string;
+	status: QuestionStatus;
 	asked_by: string;
 	answered_by: string | null;
 	answered_at: string | null;
@@ -93,11 +94,29 @@ export type Question = {
 	answer: string | null;
 	reasoning: string | null;
 };
-export type QuestionView = Question & {
+export type QuestionStatus = "open" | "answered" | "withdrawn";
+/** A question as every surface sees it, CLI JSON included: camelCase, with its issue's handle and heading. */
+export type QuestionView = {
+	id: string;
+	taskId: string;
+	status: QuestionStatus;
+	askedBy: string;
+	answeredBy?: string;
+	answeredAt?: string;
+	createdAt: string;
+	updatedAt: string;
+	updatedBy: string;
+	version: number;
+	visibility: string;
+	body: string;
+	why?: string;
+	answer?: string;
+	reasoning?: string;
+	/** `JCAB-12:1`: the issue's short id and the question's ordinal on it. */
 	handle: string;
 	ordinal: number;
 	title: string;
 	priority: string;
 	state: string;
-	short_id: string;
+	shortId?: string;
 };
