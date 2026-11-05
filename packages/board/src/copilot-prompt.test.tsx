@@ -384,13 +384,17 @@ describe("the A prompt against a scripted copilot", () => {
 			expect(frame).toContain("✓ copilot · Moved it to someday.");
 			expect(seen.prompts).toEqual(["is this still real?"]);
 			// `o` still opens the finished transcript; it shows the completed footer of the card. The
-			// header paints before the events land, so the wait is on both.
+			// header paints before the events land, and the agent's markdown after the plain rows: its
+			// paragraphs draw only once the process-wide tree-sitter client has highlighted them, which
+			// takes a few more frames when this file is the first in the process to load the markdown
+			// grammar. So the wait is on all three.
 			mockInput.pressKey("o");
-			const transcript = await until(
-				(f) => f.includes("completed ·") && f.includes("✓ ok"),
+			await until(
+				(f) =>
+					f.includes("completed ·") &&
+					f.includes("✓ ok") &&
+					f.includes("Moved it to someday."),
 			);
-			expect(transcript).toContain("Moved it to someday.");
-			expect(transcript).toContain("✓ ok");
 		} finally {
 			destroy();
 		}
