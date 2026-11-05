@@ -27,7 +27,8 @@ import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
 import { applySchema } from "../db/schema";
 import { physicalTable } from "../db/tables";
-import type { Result } from "../result";
+import { type KabaneModule, Modules } from "../module";
+import { err, ok, type Result } from "../result";
 import { parseQuestionBody } from "../schemas";
 import { columnExists, TABLES } from "./helpers";
 import { Oplog } from "./oplog";
@@ -290,6 +291,70 @@ export namespace Migrations {
 					);
 			},
 		},
+		{
+			// Not shipped yet when it gained the oplog columns below, so it was
+			// extended rather than followed by a ninth migration.
+			// Ops for a data module this device has not registered, or for a newer
+			// version of one it has (`module.ts`), wait here untouched instead of
+			// being skipped, and apply once the module registers or migrates.
+			// Machine-local: never captured, never replicated. `op` is the op as
+			// pulled, JSON; `server_seq` is its place in the log, the replay order.
+			// A replay that failed records why and when; it is tried again on every
+			// pass, with its row's later ops behind it.
+			name: "sync-parked",
+			up: (db) => {
+				db.run(
+					`CREATE TABLE IF NOT EXISTS ${TABLES.sync_parked} (
+					   op_id TEXT PRIMARY KEY,
+					   server_seq INTEGER NOT NULL,
+					   module TEXT NOT NULL,
+					   module_schema INTEGER NOT NULL,
+					   tbl TEXT NOT NULL,
+					   row_id TEXT NOT NULL,
+					   op TEXT NOT NULL,
+					   parked_at TEXT NOT NULL,
+					   error TEXT,
+					   failed_at TEXT
+					 )`,
+				);
+				db.run(
+					`CREATE INDEX IF NOT EXISTS ${TABLES.sync_parked}_module_idx
+					   ON ${TABLES.sync_parked}(module, server_seq)`,
+				);
+				// The delete a replay applied for a row whose later ops are still
+				// parked. Sync keeps no tombstones and a pull's delete evidence lasts
+				// one page, but a row's replay can span passes: without this, an
+				// older update replayed after its module upgrades would bring back a
+				// row an earlier pass deleted. Cleared once nothing for the row is
+				// parked.
+				db.run(
+					`CREATE TABLE IF NOT EXISTS ${TABLES.sync_parked_deletes} (
+					   tbl TEXT NOT NULL,
+					   row_id TEXT NOT NULL,
+					   deleted_at TEXT NOT NULL,
+					   PRIMARY KEY (tbl, row_id)
+					 )`,
+				);
+				// An op whose row already has one parked parks behind it.
+				db.run(
+					`CREATE INDEX IF NOT EXISTS ${TABLES.sync_parked}_row_idx
+					   ON ${TABLES.sync_parked}(tbl, row_id, server_seq)`,
+				);
+				// A module table's op is tagged when it is captured, not when it is
+				// pushed: the module may not be registered by then, and an untagged
+				// op is dropped as `unknown-table` by every device without it.
+				// Guarded: a pre-release database re-runs the whole list from 1.
+				for (const [column, type] of [
+					["module", "TEXT"],
+					["module_schema", "INTEGER"],
+				] as const) {
+					if (!columnExists(db, TABLES.sync_oplog, column))
+						db.run(
+							`ALTER TABLE ${TABLES.sync_oplog} ADD COLUMN ${column} ${type}`,
+						);
+				}
+			},
+		},
 	];
 
 	/**
@@ -301,4 +366,28 @@ export namespace Migrations {
 	/** Bring `db` up to `SCHEMA_VERSION`, or say which migration failed. */
 	export const apply = (db: Db): Result<Migrate.Report> =>
 		Migrate.run(db, LIST);
+
+	/**
+	 * Bring each registered module up to its own list, in registration order,
+	 * after core. Each records its versions in its own table, so a module
+	 * migrating never moves `SCHEMA_VERSION`, and a database a newer build of a
+	 * module migrated is refused for that module the way core refuses its own.
+	 */
+	export const applyModules = (
+		db: Db,
+		modules: readonly KabaneModule[],
+	): Result<void> => {
+		for (const module of modules) {
+			// Run for an empty list too: a database a build of this module with
+			// migrations has opened must still be refused by one without.
+			const ran = Migrate.run(
+				db,
+				module.migrations ?? [],
+				Modules.versionTable(module.name),
+			);
+			if (!ran.ok)
+				return err(new Error(`module "${module.name}": ${ran.error.message}`));
+		}
+		return ok(undefined);
+	};
 }

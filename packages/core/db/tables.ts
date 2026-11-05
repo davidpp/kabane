@@ -28,6 +28,8 @@ export const LOGICAL_TABLES = {
 	sync_oplog: "sync_oplog",
 	sync_state: "sync_state",
 	sync_quarantine: "sync_quarantine",
+	sync_parked: "sync_parked",
+	sync_parked_deletes: "sync_parked_deletes",
 	short_id_history: "short_id_history",
 	schema_migrations: "schema_migrations",
 } as const;

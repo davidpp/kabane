@@ -13,6 +13,7 @@
 
 import type { Db, DbProvider } from "./db/port";
 import { setTablePrefix } from "./db/tables";
+import { type KabaneModule, Modules, setModules } from "./module";
 import { err, ok, type Result } from "./result";
 import { type SyncConfig, SyncConfigSchema } from "./schemas/config";
 import { Deadline } from "./schemas/deadline";
@@ -78,6 +79,11 @@ export type RuntimeConfig = {
 	syncSettings?: SyncSettingsSource;
 	actor?: ActorSource;
 	timezone?: TimezoneSource;
+	/**
+	 * The data modules this host ships (`module.ts`), in the order their
+	 * migrations apply. Default: none.
+	 */
+	modules?: readonly KabaneModule[];
 };
 
 // ============================================================
@@ -105,7 +111,7 @@ const unconfigured: DbProvider = {
 		),
 };
 
-type Ports = Required<Omit<RuntimeConfig, "tablePrefix">>;
+type Ports = Required<Omit<RuntimeConfig, "tablePrefix" | "modules">>;
 
 let ports: Ports = {
 	provider: unconfigured,
@@ -122,7 +128,14 @@ let ports: Ports = {
 // ============================================================
 
 export namespace Runtime {
-	export const configure = (config: RuntimeConfig): void => {
+	/**
+	 * Wire the ports. Refuses an invalid module set (two modules with one name,
+	 * a table core or another module already has) and then changes nothing, so
+	 * a host checks the result before it opens storage.
+	 */
+	export const configure = (config: RuntimeConfig): Result<void> => {
+		const registered = setModules(config.modules ?? []);
+		if (!registered.ok) return registered;
 		ports = {
 			provider: config.provider,
 			tracer: config.tracer ?? identityTracer,
@@ -133,6 +146,7 @@ export namespace Runtime {
 			timezone: config.timezone ?? processZone,
 		};
 		setTablePrefix(config.tablePrefix ?? "");
+		return ok(undefined);
 	};
 
 	export const tracer = (): Tracer => ports.tracer;
@@ -143,6 +157,8 @@ export namespace Runtime {
 	export const actor = (): string => ports.actor();
 	/** The owner's IANA timezone, resolved now. */
 	export const timezone = (): string => ports.timezone();
+	/** The registered data modules, in registration order. */
+	export const modules = (): readonly KabaneModule[] => Modules.list();
 }
 
 /** Run `fn` against the database behind `basePath`. The one storage entry. */

@@ -17,7 +17,8 @@
  * ORDER IS FK ORDER. The receiving device applies in `seq` order inside one
  * transaction, and `foreign_keys = ON` there means a child arriving before its
  * parent aborts the whole batch. Parents are emitted first, and within `tasks`
- * the roots precede their subtasks.
+ * the roots precede their subtasks. Registered data modules' tables follow
+ * core's, in registration and declaration order (`Modules.tables`).
  *
  * IDEMPOTENT BY CONSTRUCTION. `op_id` is derived from table, row and version
  * rather than minted randomly, so a second run collides on `UNIQUE(op_id)` and
@@ -27,6 +28,7 @@
  */
 
 import type { Db } from "../db/port";
+import { Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import { withDb } from "../runtime";
 
@@ -66,7 +68,7 @@ const BACKFILL_ORDER: readonly SyncTable[] = [
  * parent would abort the receiver's batch. Roots first; one level of nesting is
  * all the planner allows, so this is sufficient rather than a topological sort.
  */
-const ROW_ORDER: Partial<Record<SyncTable, string>> = {
+const ROW_ORDER: Partial<Record<string, string>> = {
 	tasks: "(parent_task_id IS NOT NULL), id",
 };
 
@@ -75,8 +77,8 @@ const ROW_ORDER: Partial<Record<SyncTable, string>> = {
 // ============================================================
 
 type BackfillReport = {
-	/** Ops written, per table. Absent means the table was empty. */
-	byTable: Partial<Record<SyncTable, number>>;
+	/** Ops written, per logical table. Absent means the table was empty. */
+	byTable: Record<string, number>;
 	/** Ops written this run. */
 	written: number;
 	/** Rows whose op already existed — a re-run, not a failure. */
@@ -101,12 +103,12 @@ const emptyReport = (): BackfillReport => ({
  * the log and can never collide with live capture's random hex; versioned so a
  * row edited between two runs is re-emitted rather than treated as seen.
  */
-const backfillOpId = (tbl: SyncTable, rowId: string, version: number): string =>
+const backfillOpId = (tbl: string, rowId: string, version: number): string =>
 	`bf:${tbl}:${rowId}:v${version}`;
 
 const backfillTable = (
 	db: Db,
-	tbl: SyncTable,
+	tbl: string,
 	deviceId: string,
 	capturedAt: string,
 	report: BackfillReport,
@@ -188,7 +190,11 @@ export namespace Backfill {
 
 			const run = trySync(() =>
 				db.transaction(() => {
-					for (const tbl of BACKFILL_ORDER) {
+					const tables = [
+						...BACKFILL_ORDER,
+						...Modules.tables().map(({ spec }) => spec.table),
+					];
+					for (const tbl of tables) {
 						const done = backfillTable(db, tbl, deviceId, capturedAt, report);
 						// Inside a bun:sqlite transaction, throwing is the only way to
 						// roll back — see JJAK-1077 on Transaction.atomic committing an

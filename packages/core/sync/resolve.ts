@@ -4,7 +4,8 @@
  * Pure per-table rules: an incoming op plus the local rows the caller already
  * fetched in, one decision out. No `Database` handle, no I/O, no imports from
  * `storage/` — `apply.ts` owns every read and every write. That split is what
- * makes the subtle half of sync testable without a DB.
+ * makes the subtle half of sync testable without a DB. A module table's rule
+ * comes from the module registry (`module.ts`), configuration set once at boot.
  *
  * TOTAL, NOT FALLIBLE. Every failure mode (unknown table, missing payload,
  * unparseable `items` JSON) resolves to `skip` with a distinguishable reason
@@ -40,6 +41,7 @@
  * executes anything.
  */
 
+import { Modules } from "../module";
 import { SYNC_TABLES, type SyncOp, type SyncTable } from "../schemas";
 
 // ============================================================
@@ -47,14 +49,9 @@ import { SYNC_TABLES, type SyncOp, type SyncTable } from "../schemas";
 // ============================================================
 
 /**
- * The LWW clock column per table. `task_links` and `task_work_log` rows are
- * immutable once written (no update path exists), so they have no clock and
- * fall back to the op's own capture time.
- */
-/**
- * Exported so `backfill.ts` stamps `row_updated_at` from the same column this
- * resolver reads. Two copies of this map would drift the moment a table's clock
- * changes, and the failure would be a silently wrong LWW comparison.
+ * The LWW clock column per core table. `task_links` and `task_work_log` rows
+ * are immutable once written (no update path exists), so they have no clock and
+ * fall back to the op's own capture time. A module table declares its own.
  */
 const CLOCK_COLUMN: Partial<Record<SyncTable, string>> = {
 	tasks: "updated_at",
@@ -74,7 +71,7 @@ const CHILD_TABLES: readonly SyncTable[] = [
 ];
 
 /** How a table resolves. One family per distinct rule, not one per table. */
-type Family =
+export type SyncFamily =
 	/** Row LWW on the clock column, keyed by primary key. */
 	| "row-lww"
 	/** Insert-if-absent on the ULID primary key. Append-only. */
@@ -84,7 +81,7 @@ type Family =
 	/** Upsert on a natural key; lower ULID survives, content is LWW. */
 	| "natural-key-lww";
 
-const FAMILY: Record<SyncTable, Family> = {
+const FAMILY: Record<SyncTable, SyncFamily> = {
 	tasks: "row-lww",
 	projects: "row-lww",
 	task_comments: "append-only",
@@ -98,6 +95,19 @@ const FAMILY: Record<SyncTable, Family> = {
 // Types
 // ============================================================
 
+/**
+ * How one replicated table resolves: core's records for a core table, the
+ * registry for a module's. Every rule below reads this, so no family logic is
+ * written twice.
+ */
+type TableRule = {
+	family: SyncFamily;
+	/** LWW clock column; undefined falls back to the op's capture time. */
+	clock: string | undefined;
+	/** Holds an FK to `tasks`, so an op whose task is gone is an orphan. */
+	childOfTasks: boolean;
+};
+
 /** A row snapshot keyed by DB column name, as captured into the oplog. */
 type Row = Record<string, unknown>;
 
@@ -107,8 +117,9 @@ type Row = Record<string, unknown>;
  */
 export const SKIP_REASONS = [
 	/**
-	 * `tbl` is not replicated by this build: a newer device sent a table this
-	 * build does not have yet, or an older one sent a table a migration dropped.
+	 * `tbl` is no core table and no registered module's: an older device sent a
+	 * table a migration dropped. A module's op never lands here while its module
+	 * is missing or behind; apply parks it first.
 	 */
 	"unknown-table",
 	/** Insert/update with no payload, or an `items` blob that will not parse. */
@@ -226,21 +237,36 @@ const skip = (reason: SkipReason): ResolveDecision => ({
 const isSyncTable = (tbl: string): tbl is SyncTable =>
 	(SYNC_TABLES as readonly string[]).includes(tbl);
 
+/** Core's records first, then the registered modules'. */
+const ruleFor = (tbl: string): TableRule | undefined => {
+	if (isSyncTable(tbl))
+		return {
+			family: FAMILY[tbl],
+			clock: CLOCK_COLUMN[tbl],
+			childOfTasks: CHILD_TABLES.includes(tbl),
+		};
+	const spec = Modules.table(tbl)?.spec;
+	return spec === undefined
+		? undefined
+		: {
+				family: spec.family,
+				clock: spec.clock,
+				childOfTasks: spec.childOfTasks,
+			};
+};
+
 /**
  * The op's clock. Deletes carry no payload and clock-less tables carry no
  * `row_updated_at`, so capture time is the floor.
  */
-const opClock = (op: SyncOp, table: SyncTable): string => {
-	const column = CLOCK_COLUMN[table];
+const opClock = (op: SyncOp, rule: TableRule): string => {
 	const fromPayload =
-		column === undefined ? undefined : col(op.payload, column);
+		rule.clock === undefined ? undefined : col(op.payload, rule.clock);
 	return fromPayload ?? op.rowUpdatedAt ?? op.capturedAt;
 };
 
-const localClock = (row: Row, table: SyncTable): string | undefined => {
-	const column = CLOCK_COLUMN[table];
-	return column === undefined ? undefined : col(row, column);
-};
+const localClock = (row: Row, rule: TableRule): string | undefined =>
+	rule.clock === undefined ? undefined : col(row, rule.clock);
 
 /**
  * Clock, then ULID, then version, then actor, then `device_id`. One chain,
@@ -316,14 +342,14 @@ const lower = (a: string, b: string): string => (a < b ? a : b);
 // ============================================================
 
 type WriteArgs = {
-	table: SyncTable;
+	rule: TableRule;
 	op: SyncOp;
 	payload: Row;
 	local: ResolveLocalState;
 };
 
 const resolveRowLww = ({
-	table,
+	rule,
 	op,
 	payload,
 	local,
@@ -331,8 +357,8 @@ const resolveRowLww = ({
 	if (
 		local.byId !== undefined &&
 		!incomingWins({
-			incoming: opClock(op, table),
-			local: localClock(local.byId, table),
+			incoming: opClock(op, rule),
+			local: localClock(local.byId, rule),
 			incomingId: op.rowId,
 			localId: col(local.byId, "id") ?? op.rowId,
 			...lineage(op, local.byId),
@@ -386,7 +412,7 @@ const resolveNaturalKeyDedupe = ({
 };
 
 const resolveNaturalKeyLww = ({
-	table,
+	rule,
 	op,
 	payload,
 	local,
@@ -405,8 +431,8 @@ const resolveNaturalKeyLww = ({
 	const localId = col(localRow, "id") ?? op.rowId;
 	const winnerId = lower(op.rowId, localId);
 	const takesIncoming = incomingWins({
-		incoming: opClock(op, table),
-		local: localClock(localRow, table),
+		incoming: opClock(op, rule),
+		local: localClock(localRow, rule),
 		incomingId: op.rowId,
 		localId,
 		...lineage(op, localRow),
@@ -427,7 +453,7 @@ const resolveNaturalKeyLww = ({
 	};
 };
 
-const RESOLVERS: Record<Family, (args: WriteArgs) => ResolveDecision> = {
+const RESOLVERS: Record<SyncFamily, (args: WriteArgs) => ResolveDecision> = {
 	"row-lww": resolveRowLww,
 	"append-only": resolveAppendOnly,
 	"natural-key-dedupe": resolveNaturalKeyDedupe,
@@ -435,14 +461,14 @@ const RESOLVERS: Record<Family, (args: WriteArgs) => ResolveDecision> = {
 };
 
 const resolveDelete = (
-	table: SyncTable,
+	rule: TableRule,
 	op: SyncOp,
 	local: ResolveLocalState,
 ): ResolveDecision => {
 	if (local.byId === undefined) return skip("already-absent");
 
-	const held = localClock(local.byId, table);
-	if (held !== undefined && held > opClock(op, table)) {
+	const held = localClock(local.byId, rule);
+	if (held !== undefined && held > opClock(op, rule)) {
 		return skip("newer-local-update");
 	}
 
@@ -454,6 +480,9 @@ const resolveDelete = (
 // ============================================================
 
 export namespace Resolve {
+	/** How `tbl` resolves, or undefined when this device replicates no such table. */
+	export const rule = ruleFor;
+
 	/**
 	 * Decide what one incoming op does to local state.
 	 *
@@ -464,17 +493,17 @@ export namespace Resolve {
 		op: SyncOp,
 		local: ResolveLocalState,
 	): ResolveDecision => {
-		if (!isSyncTable(op.tbl)) return skip("unknown-table");
-		const table = op.tbl;
+		const rule = ruleFor(op.tbl);
+		if (rule === undefined) return skip("unknown-table");
 
-		if (op.op === "delete") return resolveDelete(table, op, local);
+		if (op.op === "delete") return resolveDelete(rule, op, local);
 
 		const payload = op.payload;
 		if (payload === undefined) return skip("malformed-payload");
 
 		// First: the parent was deleted on another device, and an orphan insert
 		// aborts the whole apply transaction rather than just itself.
-		if (local.parentPresent === false && CHILD_TABLES.includes(table)) {
+		if (local.parentPresent === false && rule.childOfTasks) {
 			return skip("orphan-parent");
 		}
 
@@ -483,11 +512,11 @@ export namespace Resolve {
 		if (
 			local.byId === undefined &&
 			local.deletedAt !== undefined &&
-			!(opClock(op, table) > local.deletedAt)
+			!(opClock(op, rule) > local.deletedAt)
 		) {
 			return skip("deleted");
 		}
 
-		return RESOLVERS[FAMILY[table]]({ table, op, payload, local });
+		return RESOLVERS[rule.family]({ rule, op, payload, local });
 	};
 }

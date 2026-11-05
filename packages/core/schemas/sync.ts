@@ -16,13 +16,14 @@
 import { z } from "zod";
 
 /**
- * Base tables that replicate.
+ * Core tables that replicate. A data module adds its own (`module.ts`).
  *
  * Deliberately excluded: `agent_sessions` / `agent_activities` (machine-local
  * agent runs) and `sequences` (local counter).
  *
- * This is the set the resolver knows a rule for. Whether a given ROW replicates
- * is decided by its `visibility` column, not by this list.
+ * These are the core tables the resolver has a rule for; it finds a module's
+ * in the registry. Whether a given ROW replicates is decided by its
+ * `visibility` column, not by this list.
  */
 export const SYNC_TABLES = [
 	"tasks",
@@ -84,6 +85,16 @@ export const SyncOpSchema = z.object({
 	 * pushed before the field existed, which read as the baseline, version 1.
 	 */
 	schema: z.number().int().positive().optional(),
+
+	/**
+	 * The data module whose table the op is on (`module.ts`), and that module's
+	 * schema version on the pushing device. Absent on core ops. A device that
+	 * has not registered the module, or runs an older version of it, parks the
+	 * op instead of applying it; only core ops stop a pull.
+	 */
+	module: z
+		.object({ name: z.string(), schema: z.number().int().nonnegative() })
+		.optional(),
 });
 export type SyncOp = z.infer<typeof SyncOpSchema>;
 
@@ -112,6 +123,23 @@ export const QuarantinedOpSchema = z.object({
 	quarantinedAt: z.string(),
 });
 export type QuarantinedOp = z.infer<typeof QuarantinedOpSchema>;
+
+/**
+ * A parked op whose replay failed. It stays parked, with every later op for
+ * its row behind it, and is tried again on every pass. Like a quarantined op,
+ * recorded so the stall is visible: the rest of sync goes on.
+ */
+export const ParkedFailureSchema = z.object({
+	opId: z.string(),
+	module: z.string(),
+	tbl: z.string(),
+	rowId: z.string(),
+	/** What applying it raised the last time, verbatim. */
+	error: z.string(),
+	/** When it last failed. */
+	failedAt: z.string(),
+});
+export type ParkedFailure = z.infer<typeof ParkedFailureSchema>;
 
 /**
  * Replication health, as surfaced to humans and agents. `pendingOps` is the
@@ -147,5 +175,18 @@ export const SyncStatusSchema = z.object({
 	 * the true total, this is the detail a human needs to go look at a row.
 	 */
 	quarantined: z.array(QuarantinedOpSchema),
+
+	/**
+	 * Pulled ops waiting for a data module this device has not registered, or
+	 * for a newer version of it, by module name. Empty when nothing waits. They
+	 * apply on the first sync pass after the module registers or migrates.
+	 */
+	parkedOps: z.record(z.number()),
+
+	/** Parked ops whose replay failed, counted in `parkedOps` too. Normally 0. */
+	parkedFailures: z.number(),
+
+	/** The most recent of them, newest first. Capped like `quarantined`. */
+	parkedFailed: z.array(ParkedFailureSchema),
 });
 export type SyncStatus = z.infer<typeof SyncStatusSchema>;

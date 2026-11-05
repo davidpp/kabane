@@ -3,16 +3,16 @@
  *
  * Hand-built pages for the cases two converging devices cannot reach on demand:
  * the FK parents `Resolve` does not guard, a column this build has never heard
- * of, and applying before sync was armed.
+ * of, applying before sync was armed, and FK parents behind Jake's prefix.
  */
 
-import "../testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db } from "../db/port";
 import { withDb as runWithDb } from "../runtime";
+import { configureTestRuntime } from "../testing";
 
 import { TABLES } from "../storage/helpers";
 import { Planner } from "../storage/index";
@@ -188,5 +188,119 @@ describe("Apply — FK safety and unknown columns", () => {
 		if (report.ok) return;
 		expect(report.error.message).toContain("no sync state");
 		expect(await taskRow("nope-1")).toBeNull();
+	});
+});
+
+describe("Apply — FK parents behind a table prefix", () => {
+	beforeEach(async () => {
+		// Jake shares one database and prefixes core's tables. The prefix is set
+		// after every module is imported, so a parent lookup has to resolve then.
+		configureTestRuntime("planner_");
+		base = join(tmpdir(), `planner-apply-prefix-${crypto.randomUUID()}`);
+		mkdirSync(base, { recursive: true });
+		const init = await Planner.init(base);
+		if (!init.ok) throw init.error;
+		const armed = await runWithDb(base, (db) =>
+			Oplog.initDevice(db, "device-local"),
+		);
+		if (!armed.ok) throw armed.error;
+	});
+
+	afterEach(() => {
+		configureTestRuntime();
+		rmSync(base, { recursive: true, force: true });
+	});
+
+	it("finds a subtask's parent and a comment's task in the prefixed tables", async () => {
+		const report = await Apply.applyBatch(
+			base,
+			page([
+				insertOp(1, "tasks", "parent-1", taskPayload("parent-1")),
+				insertOp(2, "tasks", "child-1", {
+					...taskPayload("child-1"),
+					parent_task_id: "parent-1",
+				}),
+				insertOp(3, "task_comments", "comment-1", {
+					id: "comment-1",
+					task_id: "parent-1",
+					author: "david",
+					author_type: "human",
+					content: "kept",
+					created_at: NOW,
+					updated_at: NOW,
+				}),
+			]),
+		);
+
+		expect(report.ok ? "applied" : report.error.message).toBe("applied");
+		if (!report.ok) return;
+		expect(report.value.applied).toBe(3);
+		expect(report.value.skipped["orphan-parent"]).toBe(0);
+		expect(TABLES.tasks).toBe("planner_tasks");
+		expect((await taskRow("child-1"))?.parent_task_id).toBe("parent-1");
+	});
+});
+
+describe("Apply — the newest delete is the evidence", () => {
+	beforeEach(async () => {
+		base = join(tmpdir(), `planner-apply-deletes-${crypto.randomUUID()}`);
+		mkdirSync(base, { recursive: true });
+		const init = await Planner.init(base);
+		if (!init.ok) throw init.error;
+		const armed = await runWithDb(base, (db) =>
+			Oplog.initDevice(db, "device-local"),
+		);
+		if (!armed.ok) throw armed.error;
+	});
+
+	afterEach(() => {
+		rmSync(base, { recursive: true, force: true });
+	});
+
+	const at = (second: number): string =>
+		`2026-08-03T12:00:${String(second).padStart(2, "0")}.000Z`;
+
+	const deleteOp = (
+		serverSeq: number,
+		rowId: string,
+		capturedAt: string,
+	): RelayOp => ({
+		opId: `op-${serverSeq}`,
+		deviceId: REMOTE,
+		tbl: "tasks",
+		rowId,
+		op: "delete",
+		capturedAt,
+		serverSeq,
+	});
+
+	it("keeps a row deleted when a delayed older delete and then an update between the two arrive", async () => {
+		const report = await Apply.applyBatch(
+			base,
+			page([
+				insertOp(
+					1,
+					"tasks",
+					"row-1",
+					taskPayload("row-1", { updated_at: at(0) }),
+				),
+				deleteOp(2, "row-1", at(30)),
+				// Another device's delete, captured at 10 and delivered late.
+				deleteOp(3, "row-1", at(10)),
+				{
+					...insertOp(4, "tasks", "row-1", {
+						...taskPayload("row-1", { updated_at: at(20) }),
+						title: "stale",
+					}),
+					op: "update",
+					rowUpdatedAt: at(20),
+				},
+			]),
+		);
+
+		expect(report.ok).toBe(true);
+		if (!report.ok) return;
+		expect(report.value.skipped.deleted).toBe(1);
+		expect(await taskRow("row-1")).toBeNull();
 	});
 });

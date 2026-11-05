@@ -19,8 +19,9 @@
  *
  * VISIBILITY IS THE FILTER. A row whose `visibility` is `'private'` never
  * becomes an op, whatever table it lives in. The set of tables that replicate
- * (`SYNC_TABLES`) is still declared, because the resolver needs a family per
- * table, but the per-row decision is the column.
+ * (`SYNC_TABLES`, plus each registered data module's `syncTables`) is still
+ * declared, because the resolver needs a family per table, but the per-row
+ * decision is the column. Capturing any other table is refused.
  *
  * DELETES ARE CAPTURED FROM THE ROW THAT WAS. A delete carries no payload, but
  * the visibility check and the cascade walk both need the row before it is
@@ -31,6 +32,7 @@
 import { z } from "zod";
 import type { Db } from "../db/port";
 import { physicalTable, TABLES, tablePrefix } from "../db/tables";
+import { Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import {
 	type QuarantinedOp,
@@ -38,7 +40,6 @@ import {
 	type SyncOp,
 	type SyncOpKind,
 	SyncOpSchema,
-	type SyncTable,
 } from "../schemas";
 
 // ============================================================
@@ -52,11 +53,17 @@ const LOCAL_STATE_ID = "local";
 const PRIVATE = "private";
 
 /**
- * Physical table for a replicated logical name. A function, not a map: the
- * prefix is configured at runtime, after this module is imported.
+ * Physical table for a replicated logical name, core's or a module's. A
+ * function, not a map: the prefix is configured at runtime, after this module
+ * is imported.
  */
-export const physicalTableFor = (logical: SyncTable): string =>
+export const physicalTableFor = (logical: string): string =>
 	physicalTable(logical);
+
+/** A core replicated table, or a registered data module's. */
+const replicates = (logical: string): boolean =>
+	(SYNC_TABLES as readonly string[]).includes(logical) ||
+	Modules.table(logical) !== undefined;
 
 /**
  * Trigger-name suffixes the previous capture design installed. Dropped on boot
@@ -89,14 +96,15 @@ export type DrainedOp = SyncOp & { seq: number };
 
 /** What a caller hands to capture: which row, in which table, did what. */
 type CaptureInput = {
-	tbl: SyncTable;
+	/** A core replicated table or a registered module's. */
+	tbl: string;
 	op: SyncOpKind;
 	/** The row as it is (insert/update) or as it was (delete). */
 	row: Row;
 };
 
 /** Rows about to go, ordered so children precede their parent. */
-type Cascade = { tbl: SyncTable; row: Row }[];
+type Cascade = { tbl: string; row: Row }[];
 
 type OplogRow = {
 	seq: number;
@@ -108,6 +116,8 @@ type OplogRow = {
 	row_updated_at: string | null;
 	payload: string | null;
 	captured_at: string;
+	module: string | null;
+	module_schema: number | null;
 };
 
 type QuarantineRow = {
@@ -183,6 +193,10 @@ const toDrainedOp = (row: OplogRow): Result<DrainedOp> => {
 		updatedBy: asString(payload.value?.updated_by),
 		version: asNumber(payload.value?.version),
 		capturedAt: row.captured_at,
+		module:
+			row.module === null
+				? undefined
+				: { name: row.module, schema: row.module_schema ?? 0 },
 	});
 	if (!parsed.success) {
 		return err(
@@ -206,7 +220,8 @@ const selectRows = (
 /**
  * Everything the FK cascade will remove when `taskId` goes: the same walk for
  * every subtask first (deepest first), then the task's own rows in the four
- * child tables, then the task itself. Subtasks nest one level in practice; the
+ * child tables and in every registered module table declared `childOfTasks`,
+ * then the task itself. Subtasks nest one level in practice; the
  * walk is recursive so a deeper tree is still emitted FK-safely.
  */
 const cascadeOfTask = (db: Db, taskId: string): Cascade => {
@@ -218,7 +233,7 @@ const cascadeOfTask = (db: Db, taskId: string): Cascade => {
 		if (id !== undefined) out.push(...cascadeOfTask(db, id));
 	}
 
-	const children: [SyncTable, string, string, string[]][] = [
+	const children: [string, string, string, string[]][] = [
 		["task_comments", TABLES.comments, "task_id = ?", [taskId]],
 		["task_work_log", TABLES.work_log, "task_id = ?", [taskId]],
 		["task_context_refs", TABLES.context_refs, "task_id = ?", [taskId]],
@@ -228,6 +243,14 @@ const cascadeOfTask = (db: Db, taskId: string): Cascade => {
 			"source_id = ? OR target_id = ?",
 			[taskId, taskId],
 		],
+		...Modules.tables()
+			.filter(({ spec }) => spec.childOfTasks)
+			.map(({ spec }): [string, string, string, string[]] => [
+				spec.table,
+				physicalTable(spec.table),
+				"task_id = ?",
+				[taskId],
+			]),
 	];
 	for (const [tbl, physical, where, params] of children) {
 		for (const row of selectRows(db, physical, where, params)) {
@@ -246,19 +269,22 @@ const cascadeOfTask = (db: Db, taskId: string): Cascade => {
 
 export namespace Oplog {
 	/**
-	 * Row snapshot → op. Pure: no database, no clock, no randomness beyond the
+	 * Row snapshot → op. No database, no clock, no randomness beyond the
 	 * caller-supplied id. The one place the wire shape of a captured row is
-	 * decided, shared by live capture and by backfill.
+	 * decided, shared by live capture and by backfill. A registered module's
+	 * table gets the module's tag now, from the registry this build was
+	 * configured with, and keeps it through drain and push.
 	 */
 	export const snapshotOp = (args: {
 		deviceId: string;
-		tbl: SyncTable;
+		tbl: string;
 		op: SyncOpKind;
 		row: Row;
 		capturedAt: string;
 		opId?: string;
 	}): SyncOp => {
 		const isDelete = args.op === "delete";
+		const tag = Modules.tagFor(args.tbl);
 		return {
 			opId: args.opId ?? randomOpId(),
 			deviceId: args.deviceId,
@@ -270,6 +296,7 @@ export namespace Oplog {
 			updatedBy: isDelete ? undefined : asString(args.row.updated_by),
 			version: isDelete ? undefined : asNumber(args.row.version),
 			capturedAt: args.capturedAt,
+			...(tag === undefined ? {} : { module: tag }),
 		};
 	};
 
@@ -282,8 +309,8 @@ export namespace Oplog {
 			() =>
 				db.run(
 					`INSERT OR IGNORE INTO ${TABLES.sync_oplog}
-             (op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             (op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at, module, module_schema)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					[
 						op.opId,
 						op.deviceId,
@@ -293,6 +320,8 @@ export namespace Oplog {
 						op.rowUpdatedAt ?? null,
 						op.payload === undefined ? null : JSON.stringify(op.payload),
 						op.capturedAt,
+						op.module?.name ?? null,
+						op.module?.schema ?? null,
 					],
 				).changes > 0,
 		);
@@ -302,6 +331,12 @@ export namespace Oplog {
 	 * recorded: sync is not armed, or the row is private.
 	 */
 	export const capture = (db: Db, input: CaptureInput): Result<boolean> => {
+		if (!replicates(input.tbl))
+			return err(
+				new Error(
+					`Cannot capture a write to "${input.tbl}": it is no core replicated table and no registered module declares it in syncTables. Register the module with Runtime.configure({ modules }).`,
+				),
+			);
 		const state = getState(db);
 		if (!state.ok) return state;
 		if (state.value === undefined) return ok(false);
@@ -326,7 +361,7 @@ export namespace Oplog {
 	 */
 	export const afterWrite = (
 		db: Db,
-		tbl: SyncTable,
+		tbl: string,
 		op: Exclude<SyncOpKind, "delete">,
 		rowId: string,
 	): void => {
@@ -343,7 +378,7 @@ export namespace Oplog {
 	/** Capture the current state of `rowId` as an insert or update. */
 	export const captureRow = (
 		db: Db,
-		tbl: SyncTable,
+		tbl: string,
 		op: Exclude<SyncOpKind, "delete">,
 		rowId: string,
 	): Result<boolean> => {
@@ -367,7 +402,7 @@ export namespace Oplog {
 	/** The row as it is now, for a capture or for a pre-delete snapshot. */
 	export const snapshot = (
 		db: Db,
-		tbl: SyncTable,
+		tbl: string,
 		rowId: string,
 	): Result<Row | undefined> =>
 		trySync(
@@ -389,7 +424,8 @@ export namespace Oplog {
 	/**
 	 * Remove the triggers the trigger-based design installed. Idempotent, cheap,
 	 * and load-bearing on any database that predates explicit capture: leaving
-	 * them in place would record every write twice.
+	 * them in place would record every write twice. Core tables only: module
+	 * tables arrived after trigger capture and never had any.
 	 */
 	export const dropLegacyTriggers = (db: Db): Result<number> =>
 		trySync(() => {
@@ -461,7 +497,7 @@ export namespace Oplog {
 		const rows = trySync(() =>
 			db
 				.query<OplogRow, [number]>(
-					`SELECT seq, op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at
+					`SELECT seq, op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at, module, module_schema
              FROM ${TABLES.sync_oplog}
             WHERE seq > (SELECT last_pushed_seq FROM ${TABLES.sync_state} WHERE id = '${LOCAL_STATE_ID}')
             ORDER BY seq ASC

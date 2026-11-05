@@ -106,6 +106,8 @@ export {
 } from "./session";
 // Sync schemas
 export {
+	type ParkedFailure,
+	ParkedFailureSchema,
 	type QuarantinedOp,
 	QuarantinedOpSchema,
 	SYNC_TABLES,
