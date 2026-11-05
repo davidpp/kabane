@@ -23,11 +23,16 @@ afterEach(() => {
 	configureTestRuntime();
 	rmSync(base, { recursive: true, force: true });
 });
-const connect = async (scopeRequired: boolean, defaultScope?: string) => {
+const connect = async (
+	scopeRequired: boolean,
+	defaultScope?: string,
+	humanActor?: string,
+) => {
 	const server = unwrap(
 		createMcpServer({
 			basePath: base,
 			actor: "cabane://actor/agent/test",
+			humanActor,
 			scopeRequired,
 			defaultScope,
 		}),
@@ -271,5 +276,88 @@ it("withdraws open questions when kabane_done or kabane_edit closes the issue", 
 		}
 	} finally {
 		await client.close();
+	}
+});
+
+it("credits a relayed answer to the human, the plain one to the agent, and refuses relayed without a human", async () => {
+	// As `kabane mcp --as <agent>` runs: every write stamped by the agent.
+	configureTestRuntime("", {
+		modules: [questionsModule],
+		actor: () => "cabane://actor/agent/test",
+	});
+	const task = unwrap(
+		await Planner.addTask(base, { title: "Relay", kind: "issue" }),
+	);
+	unwrap(
+		await Questions.ask(base, {
+			id: task.id,
+			questions: [
+				{ question: "Relayed?" },
+				{ question: "Own?" },
+				{ question: "Nobody?" },
+			],
+		}),
+	);
+	const answer = async (
+		client: Awaited<ReturnType<typeof connect>>,
+		args: Record<string, unknown>,
+	) => {
+		const result = await client.callTool({
+			name: "kabane_answer",
+			arguments: args,
+		});
+		return {
+			isError: result.isError === true,
+			text: (result.content as { text: string }[])[0]?.text ?? "",
+		};
+	};
+	const relaying = await connect(
+		false,
+		undefined,
+		"cabane://actor/human/david",
+	);
+	const bare = await connect(false);
+	try {
+		expect(
+			await answer(relaying, {
+				question: `${task.shortId}:1`,
+				answer: "Yes",
+				relayed: true,
+			}),
+		).toMatchObject({ isError: false });
+		expect(
+			await answer(relaying, { question: `${task.shortId}:2`, answer: "Mine" }),
+		).toMatchObject({ isError: false });
+		const refused = await answer(bare, {
+			question: `${task.shortId}:3`,
+			answer: "Guess",
+			relayed: true,
+		});
+		expect(refused).toEqual({
+			isError: true,
+			text: "Error: relayed: true needs the human this connection relays for, and cabane://actor/agent/test has none configured. Omit relayed to record the answer as cabane://actor/agent/test.",
+		});
+		const rows = unwrap(await Questions.list(base, { id: task.id }));
+		expect(
+			rows.map((row) => [row.status, row.answeredBy, row.updatedBy]),
+		).toEqual([
+			["answered", "cabane://actor/human/david", "cabane://actor/agent/test"],
+			["answered", "cabane://actor/agent/test", "cabane://actor/agent/test"],
+			["open", undefined, "cabane://actor/agent/test"],
+		]);
+		const brief = await relaying.callTool({
+			name: "kabane_context",
+			arguments: {
+				id: task.id,
+				responseFormat: "concise",
+				sections: ["questions.decisions"],
+			},
+		});
+		expect(JSON.stringify(brief.content)).toContain(
+			"Relayed? → Yes (cabane://actor/human/david)",
+		);
+	} finally {
+		await relaying.close();
+		await bare.close();
 	}
 });

@@ -19,5 +19,5 @@ export const questionsModule: KabaneModule = {
 	tools: questionTools,
 	onTaskStateChange: Questions.withdrawOnClose,
 	instructions:
-		"When a decision belongs to the human, file it with kabane_ask (choices, your recommendation, and why) and leave the issue waiting, instead of writing the options into its description. Before acting on an issue that has open questions, read them with kabane_questions.",
+		"When a decision belongs to the human, file it with kabane_ask (choices, your recommendation, and why) and leave the issue waiting, instead of writing the options into its description. Before acting on an issue that has open questions, read them with kabane_questions. When you record with kabane_answer a reply the human gave you in this conversation, set relayed: true so the decision is credited to them; never set it for an answer of your own, the recommended one included.",
 };

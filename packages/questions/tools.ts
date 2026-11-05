@@ -1,4 +1,5 @@
-import { defineTool, err, ok, type ToolDef } from "@cabane/core";
+import { defineTool, err, humanActorOf, ok, type ToolDef } from "@cabane/core";
+import { z } from "zod";
 import { singleLine } from "./markdown";
 import { ListSchema, questionPage } from "./page";
 import { AnswerSchema, AskSchema } from "./schema";
@@ -42,10 +43,25 @@ export const questionTools: readonly ToolDef[] = [
 		name: "kabane_answer",
 		kind: "write",
 		description:
-			"Answer a question by handle (JCAB-12:1) or ULID. Choices match ignoring case; multi-select uses a comma list; free text requires allowFreeform. Re-answering overwrites. Alternatively supply withdraw: true and reasoning, without answer. Closing the last open question moves a waiting issue to next atomically; the result says whether it moved. A handle number can shift after sync brings in an earlier question from another device; pass the ULID from the question's id: when you need stability.",
-		input: AnswerSchema.innerType().shape,
-		handler: async (args, ctx) => {
-			const result = await Questions.answer(ctx.basePath, args, ctx.actor);
+			"Answer a question by handle (JCAB-12:1) or ULID. Choices match ignoring case; multi-select uses a comma list; free text requires allowFreeform. Re-answering overwrites. Alternatively supply withdraw: true and reasoning, without answer. Set relayed: true only when recording a reply the human gave in this conversation: the answer is then credited to the human, and refused when this connection knows no human. Never set it for your own recommendation. Closing the last open question moves a waiting issue to next atomically; the result says whether it moved. A handle number can shift after sync brings in an earlier question from another device; pass the ULID from the question's id: when you need stability.",
+		input: {
+			...AnswerSchema.innerType().shape,
+			relayed: z
+				.boolean()
+				.optional()
+				.describe(
+					"The human gave this reply in this conversation; credit it to them.",
+				),
+		},
+		handler: async ({ relayed, ...args }, ctx) => {
+			const human = relayed ? humanActorOf(ctx) : ctx.actor;
+			if (human === undefined)
+				return err(
+					new Error(
+						`relayed: true needs the human this connection relays for, and ${ctx.actor} has none configured. Omit relayed to record the answer as ${ctx.actor}.`,
+					),
+				);
+			const result = await Questions.answer(ctx.basePath, args, human);
 			if (!result.ok) return result;
 			const { question, moved } = result.value;
 			return ok(
