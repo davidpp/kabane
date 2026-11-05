@@ -58,7 +58,11 @@ export {
 } from "./db/tables";
 export { Events, PLANNER_EVENTS, type PlannerEventType } from "./events";
 // Data modules: a package's own migrations and replicated tables
-export type { KabaneModule, ModuleSyncTable } from "./module";
+export type {
+	KabaneModule,
+	ModuleContextSection,
+	ModuleSyncTable,
+} from "./module";
 // Lint (plan quality checks)
 export * from "./lint";
 // MCP (tool definitions + stdio / Streamable HTTP servers)
@@ -140,5 +144,3 @@ export type {
 	RelayOp,
 	SyncTransport,
 } from "./sync/transport";
-
-export type { KabaneModule, ModuleContextSection } from "./module";

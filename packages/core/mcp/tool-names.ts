@@ -1,0 +1,20 @@
+/** Core tool names, shared with module validation without loading handlers. */
+export const CORE_TOOL_NAMES = {
+	add: "kabane_add",
+	get: "kabane_get",
+	list: "kabane_list",
+	search: "kabane_search",
+	today: "kabane_today",
+	done: "kabane_done",
+	edit: "kabane_edit",
+	link: "kabane_link",
+	comment: "kabane_comment",
+	workLog: "kabane_log",
+	contextAdd: "kabane_contextAdd",
+	contextList: "kabane_contextList",
+	contextRemove: "kabane_contextRemove",
+	context: "kabane_context",
+	upstreamLink: "kabane_upstream_link",
+	upstreamUnlink: "kabane_upstream_unlink",
+	scopeList: "kabane_scopeList",
+} as const;

@@ -14,7 +14,7 @@ import { err, ok, type Result } from "../result";
 import { Planner } from "../storage";
 import { configureTestRuntime } from "../testing";
 import { createMcpServer, handleHttpRequest } from "./server";
-import { KABANE_TOOLS, SERVER_INSTRUCTIONS } from "./tools";
+import { KABANE_TOOLS, SERVER_INSTRUCTIONS, type ToolDef } from "./tools";
 
 const unwrap = <T>(result: Result<T>): T => {
 	if (!result.ok) throw result.error;
@@ -162,10 +162,12 @@ it("lists and calls registered module tools and advertises their instructions", 
 	}
 });
 
-it("refuses colliding module tools before serving either transport", async () => {
+it("refuses tool collisions introduced after configuration before serving either transport", async () => {
 	const core = KABANE_TOOLS[0];
 	if (!core) throw new Error("Missing core tools");
-	configureTestRuntime("", { modules: [{ name: "collision", tools: [core] }] });
+	const tools: ToolDef[] = [];
+	configureTestRuntime("", { modules: [{ name: "collision", tools }] });
+	tools.push(core);
 	const result = createMcpServer(context());
 	expect(result.ok).toBe(false);
 	if (!result.ok) expect(result.error.message).toContain(core.name);

@@ -1,19 +1,16 @@
 import { z } from "zod";
 import { Runtime } from "./runtime";
-import { AssembleContextOptsSchema } from "./schemas/assemble-context";
+import {
+	AssembleContextOptsSchema,
+	CONTEXT_SECTIONS,
+} from "./schemas/assemble-context";
 
 export const CONTEXT_BYTES = 16 * 1024;
-export const CONTEXT_SECTIONS = [
-	"metadata",
-	"description",
-	"upstream",
-	"position",
-	"context",
-	"priorWork",
-	"discussion",
-] as const;
-export const ContextSectionSchema = z.enum(CONTEXT_SECTIONS);
-export type ContextSection = z.infer<typeof ContextSectionSchema>;
+export {
+	CONTEXT_SECTIONS,
+	ContextSectionSchema,
+	type ContextSection,
+} from "./schemas/assemble-context";
 /** Canonical core order, then module registration order at each anchor. */
 export const registeredContextSections = (): string[] => {
 	const sections = Runtime.modules().flatMap(

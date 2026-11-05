@@ -31,6 +31,7 @@ import {
 } from "../schemas";
 import { Planner } from "../storage";
 import { ResponseFormatSchema, taskReceipt } from "../task-output";
+import { CORE_TOOL_NAMES } from "./tool-names";
 
 // ============================================================
 // Types
@@ -107,7 +108,7 @@ const definedOnly = <T extends Record<string, unknown>>(value: T): T =>
 // ============================================================
 
 const add = define({
-	name: "kabane_add",
+	name: CORE_TOOL_NAMES.add,
 	kind: "write",
 	description: `Create a task or an issue (inbox by default).
 
@@ -173,7 +174,7 @@ Parameters:
 });
 
 const get = define({
-	name: "kabane_get",
+	name: CORE_TOOL_NAMES.get,
 	kind: "read",
 	description: `Get one task's own fields: title, description, state, priority, assignee, scope, who last wrote it and its version. A raw record read; use kabane_context for the full brief.
 
@@ -190,7 +191,7 @@ Parameters:
 });
 
 const list = define({
-	name: "kabane_list",
+	name: CORE_TOOL_NAMES.list,
 	kind: "read",
 	description: `Query tasks with filters. Open tasks only unless includeClosed.
 
@@ -241,7 +242,7 @@ Parameters:
 });
 
 const search = define({
-	name: "kabane_search",
+	name: CORE_TOOL_NAMES.search,
 	kind: "read",
 	description: `Full-text search over titles and descriptions.
 
@@ -279,7 +280,7 @@ Parameters:
 });
 
 const today = define({
-	name: "kabane_today",
+	name: CORE_TOOL_NAMES.today,
 	kind: "read",
 	description: `Today's view for daily planning: overdue, due today, and the next actions. Today is the owner's local day; a calendar-date deadline counts on its own day.
 
@@ -325,7 +326,7 @@ Parameters:
 });
 
 const done = define({
-	name: "kabane_done",
+	name: CORE_TOOL_NAMES.done,
 	kind: "write",
 	description: `Mark a task done. Add a comment first if the outcome needs explaining.
 
@@ -354,7 +355,7 @@ Parameters:
 });
 
 const edit = define({
-	name: "kabane_edit",
+	name: CORE_TOOL_NAMES.edit,
 	kind: "write",
 	description: `Edit a task. Pass the id and only the fields to change. Setting state to in_progress with your own assignee is how a runtime claims an issue.
 
@@ -414,7 +415,7 @@ Parameters:
 });
 
 const link = define({
-	name: "kabane_link",
+	name: CORE_TOOL_NAMES.link,
 	kind: "write",
 	description: `Create a typed link in the task DAG, read source → target: one issue blocks another, follows it, duplicates it, or is related. Dependency order becomes queryable instead of buried in prose.
 
@@ -444,7 +445,7 @@ Parameters:
 });
 
 const comment = define({
-	name: "kabane_comment",
+	name: CORE_TOOL_NAMES.comment,
 	kind: "write",
 	description: `Add a comment to a task. The author is the connected identity; agent identities comment as ai. Human comments are never dropped from the brief, so this is how to steer an agent.
 
@@ -499,7 +500,7 @@ Parameters:
 });
 
 const workLog = define({
-	name: "kabane_log",
+	name: CORE_TOOL_NAMES.workLog,
 	kind: "write",
 	description: `Log work done on a task as URI references.
 
@@ -551,7 +552,7 @@ Parameters:
 });
 
 const contextAdd = define({
-	name: "kabane_contextAdd",
+	name: CORE_TOOL_NAMES.contextAdd,
 	kind: "write",
 	description: `Add a curated input-context ref to a task: the PRD, ADR, research note or transcript an implementer should read. The input side of an issue, distinct from the work log.
 
@@ -584,7 +585,7 @@ Parameters:
 });
 
 const contextList = define({
-	name: "kabane_contextList",
+	name: CORE_TOOL_NAMES.contextList,
 	kind: "read",
 	description: `List a task's curated context refs, oldest first.
 
@@ -599,7 +600,7 @@ Parameters:
 });
 
 const contextRemove = define({
-	name: "kabane_contextRemove",
+	name: CORE_TOOL_NAMES.contextRemove,
 	kind: "write",
 	description: `Remove a context ref by its ref id (from kabane_contextList). Never touches the work log.
 
@@ -613,7 +614,7 @@ Parameters:
 });
 
 const context = define({
-	name: "kabane_context",
+	name: CORE_TOOL_NAMES.context,
 	kind: "read",
 	description: `THE read entrypoint before picking up an issue: description, DAG position, curated references, prior work and discussion. Prefer responseFormat: concise for bounded selected markdown (16KiB UTF-8 including JSON); consume ALL preceding chunks and finish required description/human steering before starting work. Completeness describes coverage from offset zero through this chunk, not instructions repeated in this response. Omitted/full preserves the complete legacy markdown envelope without a size bound. Local sessions/files may not be available at the hub.
 
@@ -653,7 +654,7 @@ Parameters:
 });
 
 const upstreamLink = define({
-	name: "kabane_upstream_link",
+	name: CORE_TOOL_NAMES.upstreamLink,
 	kind: "write",
 	description: `Record that a task points at an issue in an external tracker (Linear, GitHub). Identity only: the link names the issue and opens it, it does NOT hold what the issue says. Put what matters about the external issue into the task's own description with kabane_edit — a second copy here would rot. Re-linking the same task to the same issue corrects the identifier, url and title in place.
 
@@ -687,7 +688,7 @@ Parameters:
 });
 
 const upstreamUnlink = define({
-	name: "kabane_upstream_unlink",
+	name: CORE_TOOL_NAMES.upstreamUnlink,
 	kind: "write",
 	description: `Remove the link between a task and an external issue. Addressed by the pair that made it, not by a link id: the same arguments that linked it, unlink it.
 
@@ -726,7 +727,7 @@ Parameters:
 });
 
 const scopeList = define({
-	name: "kabane_scopeList",
+	name: CORE_TOOL_NAMES.scopeList,
 	kind: "read",
 	description:
 		"List the scopes in use with a task count each. Call this before a write when you do not know which scopeUri to pass.",

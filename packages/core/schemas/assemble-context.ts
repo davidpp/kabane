@@ -7,6 +7,18 @@
 
 import { z } from "zod";
 
+export const CONTEXT_SECTIONS = [
+	"metadata",
+	"description",
+	"upstream",
+	"position",
+	"context",
+	"priorWork",
+	"discussion",
+] as const;
+export const ContextSectionSchema = z.enum(CONTEXT_SECTIONS);
+export type ContextSection = z.infer<typeof ContextSectionSchema>;
+
 /**
  * Options for `Planner.assembleContext`.
  * - perRefCap: max chars inlined per dereferenced context ref (8KB)
