@@ -35,7 +35,6 @@ import { upstream } from "./commands/upstream";
 import { resolveHome } from "./config";
 import { type Command, type Ctx, openContext, settingsPort } from "./context";
 import { Extensions } from "./extensions";
-import { openTui } from "./first-run";
 import { print } from "./output";
 import { describeVersion } from "./version";
 
@@ -152,8 +151,10 @@ export const run = async (
 	const [name, ...rest] = argv;
 	// A human at a terminal gets the board (setup first on a new device); a
 	// pipe or an agent still gets help, as it always has.
-	if (!name && process.stdin.isTTY && process.stdout.isTTY)
+	if (!name && process.stdin.isTTY && process.stdout.isTTY) {
+		const { openTui } = await import("./first-run");
 		return openTui(resolveHome(env), cwd);
+	}
 	if (name === "--version" || name === "-v") {
 		const { text, ...json } = describeVersion();
 		return { exitCode: 0, json, text };

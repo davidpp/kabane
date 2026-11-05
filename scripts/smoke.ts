@@ -130,6 +130,26 @@ const install = (tarball: string): void => {
 const kabane = (...args: string[]): Ran =>
 	runOk([BIN, ...args], REPO, isolated);
 
+const checkListImports = (): void => {
+	const probe = join(WORK, "list-imports.cjs");
+	const report = join(WORK, "list-imports.json");
+	writeFileSync(
+		probe,
+		`process.on("exit", () => require("node:fs").writeFileSync(${JSON.stringify(report)}, JSON.stringify(Object.keys(require.cache).filter(path => path.includes("/@opentui/")))));`,
+	);
+	const ran = runOk(
+		[process.execPath, "--preload", probe, BIN, "list", "--format", "concise"],
+		REPO,
+		isolated,
+	);
+	const loaded = z
+		.array(z.string())
+		.safeParse(JSON.parse(readFileSync(report, "utf8")));
+	if (!loaded.success || loaded.data.length !== 0)
+		fail("installed kabane list loads @opentui modules", ran);
+	pass("installed kabane list loads no @opentui modules");
+};
+
 const SMOKE_CONTEXT_BODY = "SMOKE_BODY_MUST_NOT_ECHO 🧭\n".repeat(1000);
 const checkCliContext = (taskId: string): void => {
 	let markdown = "";
@@ -553,6 +573,7 @@ install(tarball);
 mkdirSync(REPO);
 runOk(["git", "init", "-q"], REPO, isolated);
 const contextId = checkCommands(version);
+checkListImports();
 await checkMcp(version, contextId);
 checkLoopExtension();
 if (artifactDir) {

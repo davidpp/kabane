@@ -6,7 +6,7 @@ import {
 	readFileSync,
 	readdirSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { z } from "zod";
 import { runUpdateProcess } from "../packages/cli/src/update-process";
@@ -130,6 +130,19 @@ const inspectExtractedPackage = (
 				),
 			);
 	}
+	const names = files.map((file) => relative(join(unpacked, "package"), file));
+	if (
+		!names.includes("bin/kabane.js") ||
+		names.some(
+			(name) =>
+				!["package.json", "README.md", "LICENSE", "bin/kabane.js"].includes(
+					name,
+				) &&
+				!/^bin\/chunk-[a-z0-9]{8}\.js$/.test(name) &&
+				!name.startsWith("templates/"),
+		)
+	)
+		return err(new Error("Unexpected published package file shape."));
 	const raw = readArtifactFile(join(unpacked, "package/package.json"), 65_536);
 	if (!raw.ok) return raw;
 	if (raw.value.toString().includes("@cabane/"))

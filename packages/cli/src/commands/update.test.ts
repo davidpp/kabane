@@ -171,6 +171,10 @@ test("fresh isolated global registration and exact manager update never imply an
 		fixture.requests.length = 0;
 		const refused = await fixture.run(["update", "--check"]);
 		expect(refused.ok && refused.value.code).toBe(1);
+		// The refusal itself, not just exit 1: a bundle copied without its chunks also exits 1.
+		expect(refused.ok && refused.value.stderr).toContain(
+			"Unsupported installation",
+		);
 		expect(fixture.requests).toEqual([]);
 		expect(updateSnapshot(fixture.install)).toEqual(before);
 	} finally {

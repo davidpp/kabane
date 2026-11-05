@@ -148,9 +148,12 @@ them as release state. The Actions route runs the same scripts on the existing
 private, with a source bin and `workspace:*` dependencies. `scripts/build.ts` generates
 `packages/cli/dist` containing:
 
-- `bin/kabane.js`: Bun bundle, workspace and pure-JS dependencies inlined, Bun shebang kept.
-  Every official extension under `extensions/` is inlined too; the build fails when one of
-  those directories is missing from the bundle, which means the CLI's list does not import it.
+- `bin/kabane.js`: Bun bundle entry, workspace and pure-JS dependencies inlined, Bun shebang
+  kept, plus `bin/chunk-<hash>.js`: code-split chunks for what loads lazily (the board's TUI,
+  the extensions), so a command that draws nothing never loads OpenTUI. The artifact check
+  admits exactly that shape. Every official extension under `extensions/` is bundled too; the
+  build fails when one of those directories is missing from the bundle, which means the CLI's
+  list does not import it.
 - `templates/dispatch/`, repository README and LICENSE, and generated package.json.
 - Exactly pinned external `@opentui/core`, `@opentui/react` and `react`, taken from the
   board manifest. OpenTUI installs its platform-native optional dependency; React must not

@@ -14,9 +14,9 @@ import { ConfigLayers } from "./config-layers";
 /**
  * By the name `config.json` enables each with, as
  * `loop: async () => (await import("@cabane/loop")).loop`. The import is
- * dynamic so that it stays off the startup path; the bundler still inlines the
- * module, and `scripts/build.ts` fails when a directory under `extensions/` is
- * missing from this list.
+ * dynamic so that it stays off the startup path; the bundler emits it as its
+ * own chunk, and `scripts/build.ts` fails when a directory under `extensions/`
+ * is missing from this list.
  */
 const OFFICIAL: Readonly<Record<string, () => Promise<Extension>>> = {
 	loop: async () => (await import("@cabane/loop")).loop,

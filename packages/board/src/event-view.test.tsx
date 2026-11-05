@@ -567,6 +567,71 @@ const rowOf = (frame: string, text: string): number =>
 	frame.split("\n").findIndex((row) => row.includes(text));
 
 describe("tool calls in the transcript", () => {
+	it("keeps both permission turns' tool rows and outputs", async () => {
+		const events: ActivityEvent[] = [
+			{ seq: 1, at: T0, type: "prompt", summary: "first permission turn" },
+			{
+				seq: 2,
+				at: T0,
+				type: "tool_use",
+				callId: "edit-1",
+				summary: "kabane_edit JREP-1",
+			},
+			{
+				seq: 3,
+				at: T0,
+				type: "tool_completed",
+				callId: "edit-1",
+				summary: "kabane_edit JREP-1",
+				detail: { output: "allowed first edit" },
+			},
+			{ seq: 4, at: T0, type: "prompt", summary: "second permission turn" },
+			{
+				seq: 5,
+				at: T0,
+				type: "tool_use",
+				callId: "edit-2",
+				summary: "kabane_edit JREP-1",
+			},
+			{
+				seq: 6,
+				at: T0,
+				type: "tool_failed",
+				callId: "edit-2",
+				summary: "kabane_edit JREP-1",
+				detail: { output: "rejected second edit" },
+			},
+		];
+		const setup = await renderTest(
+			<EventView
+				cardId="copilot"
+				initialCard={copilotCard}
+				source={sourceOf(copilotCard, events)}
+				resolveShortId={() => undefined}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				toolDetails
+			/>,
+			{ width: 80, height: 24 },
+		);
+		try {
+			const frame = await pumpUntil(
+				setup.renderOnce,
+				setup.captureCharFrame,
+				(f) => f.includes("rejected second edit"),
+			);
+			expect(frame.match(/kabane_edit JREP-1/g)).toHaveLength(2);
+			expect(frame).toContain("allowed first edit");
+			expect(rowOf(frame, "allowed first edit")).toBeLessThan(
+				rowOf(frame, "second permission turn"),
+			);
+			expect(rowOf(frame, "rejected second edit")).toBeGreaterThan(
+				rowOf(frame, "second permission turn"),
+			);
+		} finally {
+			setup.destroy();
+		}
+	});
+
 	for (const width of [40, 120])
 		it(`are one closed row each at ${width} columns, a read and a search one row for both`, async () => {
 			const { frame, captureSpans, destroy } = await mountCalls(width);

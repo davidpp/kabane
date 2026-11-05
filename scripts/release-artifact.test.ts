@@ -17,6 +17,9 @@ import {
 	verifyReleaseFiles,
 } from "./release-artifact";
 
+const UNEXPECTED_SHAPE = "Unexpected published package file shape.";
+const MAP_OR_MACHINE_PATH =
+	"Archive exceeds bounds or contains a source map/machine path.";
 const WORK = mkdtempSync(join(tmpdir(), "kabane-artifact-test-"));
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));
 const manifest = {
@@ -79,6 +82,58 @@ const inspect = async (bytes: Buffer, forbidden: string[] = []) => {
 test("ordinary archive validates package identity/bin/engine/exact externals", async () => {
 	const result = await inspect(archive(normal));
 	expect(result.result.ok).toBe(true);
+});
+test("named chunks validate alongside the entry and templates", async () => {
+	const checked = await inspect(
+		archive([
+			...normal,
+			{
+				name: "package/bin/chunk-07j278pm.js",
+				text: "export const value = 1;",
+			},
+			{ name: "package/templates/dispatch/SKILL.md", text: "Dispatch" },
+		]),
+	);
+	expect(checked.result.ok).toBe(true);
+});
+for (const name of [
+	"bin/other.js",
+	"bin/chunk-.js",
+	"bin/chunk-07j278pm.js.map",
+	"bin/nested/chunk-07j278pm.js",
+	"chunk-07j278pm.js",
+	"src/index.ts",
+])
+	test(`unexpected file shape fails: ${name}`, async () => {
+		const checked = await inspect(
+			archive([...normal, { name: `package/${name}`, text: "unexpected" }]),
+		);
+		expect(checked.result.ok).toBe(false);
+		if (!checked.result.ok)
+			expect(checked.result.error.message).toBe(
+				name.endsWith(".map") ? MAP_OR_MACHINE_PATH : UNEXPECTED_SHAPE,
+			);
+	});
+test("chunks retain machine-path scanning and cannot replace the entry", async () => {
+	const chunk = {
+		name: "package/bin/chunk-07j278pm.js",
+		text: "FORBIDDEN_BUILD_MACHINE",
+	};
+	const checked = await inspect(archive([...normal, chunk]), [
+		"FORBIDDEN_BUILD_MACHINE",
+	]);
+	expect(checked.result.ok).toBe(false);
+	if (!checked.result.ok)
+		expect(checked.result.error.message).toBe(MAP_OR_MACHINE_PATH);
+	const missingEntry = await inspect(
+		archive([
+			...normal.filter((member) => member.name !== "package/bin/kabane.js"),
+			chunk,
+		]),
+	);
+	expect(missingEntry.result.ok).toBe(false);
+	if (!missingEntry.result.ok)
+		expect(missingEntry.result.error.message).toBe(UNEXPECTED_SHAPE);
 });
 for (const member of [
 	{ name: "package/../../escape", text: "bad" },

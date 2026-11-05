@@ -69,7 +69,7 @@ describe("run, resolving a command name", () => {
 
 	// Its own process, so the module registry holds only what one command loaded: a built-in
 	// resolves before any extension is looked at, so it wins any name and imports none of them.
-	it("runs a built-in without importing an enabled extension, which its own command does", async () => {
+	it("keeps built-ins and help free of the TUI and extensions, loading an extension for its command", async () => {
 		setExtensions(["loop"]);
 		const main = join(import.meta.dir, "main.ts");
 		const loaded = async (argv: string[]): Promise<unknown> => {
@@ -77,7 +77,8 @@ describe("run, resolving a command name", () => {
 				const { run } = await import(${JSON.stringify(main)});
 				const outcome = await run(${JSON.stringify(argv)}, ${JSON.stringify(env)}, ${JSON.stringify(cwd)});
 				const loop = Object.keys(require.cache).some((path) => path.includes("/extensions/loop/"));
-				console.log(JSON.stringify({ exitCode: outcome.exitCode, loop }));
+				const tui = Object.keys(require.cache).filter((path) => (path.includes("/node_modules/@opentui/") || path.includes("/node_modules/react/")) || path.endsWith("/packages/board/index.ts"));
+				console.log(JSON.stringify({ exitCode: outcome.exitCode, loop, tui }));
 			`;
 			const proc = Bun.spawn(["bun", "-e", script], {
 				cwd,
@@ -88,8 +89,16 @@ describe("run, resolving a command name", () => {
 			await proc.exited;
 			return JSON.parse(out.trim().split("\n").at(-1) ?? "null");
 		};
-		expect(await loaded(["list"])).toEqual({ exitCode: 0, loop: false });
-		expect(await loaded(["loop", "--help"])).toEqual({
+		for (const argv of [
+			["list", "--format", "concise"],
+			["--version"],
+			["board", "--help"],
+			["open", "--help"],
+			["mcp", "--help"],
+		]) {
+			expect(await loaded(argv)).toEqual({ exitCode: 0, loop: false, tui: [] });
+		}
+		expect(await loaded(["loop", "--help"])).toMatchObject({
 			exitCode: 0,
 			loop: true,
 		});
