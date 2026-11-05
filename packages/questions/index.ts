@@ -8,7 +8,12 @@ export {
 } from "./body";
 export { questionsModule } from "./module";
 export { questionMarkdown, questionsMarkdown } from "./markdown";
-export { questionPage } from "./page";
+export {
+	questionPage,
+	questionPageMarkdown,
+	questionRowPage,
+	type QuestionRowPage,
+} from "./page";
 export {
 	AskQuestionSchema,
 	type AskInput,

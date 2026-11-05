@@ -150,3 +150,46 @@ it("rejects invalid MCP inputs and records the connected answer author", async (
 		await client.close();
 	}
 });
+
+it("prints kabane_questions pages byte for byte: markdown, then the cursor line", async () => {
+	const task = unwrap(
+		await Planner.addTask(base, { title: "Paged", kind: "issue" }),
+	);
+	unwrap(
+		await Questions.ask(base, {
+			id: task.id,
+			questions: [
+				{
+					question: "First?",
+					choices: ["A", "B"],
+					recommended: "B",
+					why: "B is local",
+				},
+				{ question: "Second?" },
+			],
+		}),
+	);
+	const client = await connect(false);
+	const text = async (args: Record<string, unknown>) => {
+		const result = await client.callTool({
+			name: "kabane_questions",
+			arguments: args,
+		});
+		expect(result.isError).not.toBe(true);
+		return (result.content as { text: string }[])[0]?.text ?? "";
+	};
+	try {
+		const first = await text({ id: task.id, limit: 1 });
+		const cursor = first.split("\n\nnextCursor: ")[1] ?? "";
+		expect(JSON.parse(cursor)).toMatchObject({ v: 1, offset: 1 });
+		expect(first).toBe(
+			`## ${task.shortId} Paged · normal · waiting\n\n${task.shortId}:1 First? (choices only)\n- A\n- B ★\nwhy: B is local\n\nnextCursor: ${cursor}`,
+		);
+		expect(await text({ id: task.id, limit: 1, cursor })).toBe(
+			`## ${task.shortId} Paged · normal · waiting\n\n${task.shortId}:2 Second?`,
+		);
+		expect(await text({ scopeUri: "nowhere" })).toBe("No questions found.");
+	} finally {
+		await client.close();
+	}
+});
