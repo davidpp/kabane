@@ -30,8 +30,9 @@ export namespace BoardCopilot {
 		// Passed to `kabane mcp --scope`. Absent when the board is open on every scope, and then
 		// writes take the scope of `scopeDir` the way any CLI command there would.
 		scopeUri?: string;
-		// The `kabane` executable the MCP server runs as. Defaults to this process's own entry
-		// script, which is what `kabane board` is.
+		// The `kabane` executable the MCP server runs as, and the one the instructions tell the
+		// copilot's shell to run. Defaults to this process's own entry script, which is what
+		// `kabane board` is.
 		kabaneBin?: string;
 		// The board's KABANE_HOME, set on the MCP server explicitly: Codex starts a stdio server
 		// with only a short allow list of the environment, so an inherited one never arrives.
@@ -99,7 +100,9 @@ export namespace BoardCopilot {
 		return name !== undefined && commands.some((c) => c.name === name);
 	};
 
-	const defaultBin = (): string => {
+	// The executable both the MCP server and the copilot's shell run kabane as.
+	const kabaneBin = (options: Options): string => {
+		if (options.kabaneBin) return options.kabaneBin;
 		const entry = process.argv[1];
 		return entry ? resolve(entry) : "kabane";
 	};
@@ -111,7 +114,7 @@ export namespace BoardCopilot {
 		actor: string,
 	): AcpClient.StdioServer => ({
 		name: CopilotInstructions.SERVER_NAME,
-		command: options.kabaneBin ?? defaultBin(),
+		command: kabaneBin(options),
 		args: [
 			"mcp",
 			...(options.scopeUri ? ["--scope", options.scopeUri] : []),
@@ -430,7 +433,10 @@ export namespace BoardCopilot {
 		let commands: readonly AcpClient.Command[] = [];
 		const questions = createQuestions();
 
-		const instructions = CopilotInstructions.systemPrompt(options.setup);
+		const instructions = CopilotInstructions.systemPrompt(
+			options.setup,
+			kabaneBin(options),
+		);
 
 		// Lazy on purpose: no harness process exists until the human actually asks for something,
 		// so opening the board costs nothing.
