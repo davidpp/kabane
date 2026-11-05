@@ -10,9 +10,10 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Announcer } from "@cabane/board";
-import { err, ok, type Result, tryCatch } from "@cabane/core";
+import { ok, type Result, tryCatch } from "@cabane/core";
 import { z } from "zod";
 import { version } from "../package.json";
+import { UpdateBinary } from "./update-binary";
 import {
 	compareVersions,
 	type DistTags,
@@ -24,7 +25,6 @@ import {
 import { bundled } from "./version";
 
 export namespace UpdateNotice {
-	const REGISTRY = "https://registry.npmjs.org";
 	export const FILE = "update-check.json";
 	/** People reopen the board often; once a day is enough to hear of a release. */
 	const MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -63,28 +63,6 @@ export namespace UpdateNotice {
 			await rename(temporary, cachePath(home));
 		});
 
-	const fetchTags = async (
-		registry: string,
-		version: string,
-		timeoutMs: number,
-	): Promise<Result<DistTags>> => {
-		const response = await tryCatch(() =>
-			fetch(`${registry}/-/package/kabane/dist-tags`, {
-				headers: { "user-agent": `kabane/${version}` },
-				signal: AbortSignal.timeout(timeoutMs),
-			}),
-		);
-		if (!response.ok) return response;
-		if (!response.value.ok)
-			return err(new Error(`registry answered ${response.value.status}`));
-		const body = await tryCatch((): Promise<unknown> => response.value.json());
-		if (!body.ok) return body;
-		const parsed = DistTagsSchema.safeParse(body.value);
-		return parsed.success
-			? ok(parsed.data)
-			: err(new Error("registry dist-tags are not kabane's"));
-	};
-
 	/** The release newer than `runningVersion` that its channel and version policy take, if any. */
 	export const candidate = (
 		runningVersion: string,
@@ -117,12 +95,12 @@ export namespace UpdateNotice {
 		home,
 		version,
 		now = Date.now(),
-		registry = REGISTRY,
+		registry = UpdateBinary.source(process.env).registry,
 		timeoutMs = TIMEOUT_MS,
 	}: Options): Promise<string | undefined> => {
 		const cached = await readCache(home);
 		if (cached && fresh(cached, now)) return candidate(version, cached);
-		const fetched = await fetchTags(registry, version, timeoutMs);
+		const fetched = await UpdateBinary.fetchTags(registry, version, timeoutMs);
 		if (!fetched.ok) return cached && candidate(version, cached);
 		await writeCache(home, {
 			...fetched.value,

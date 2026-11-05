@@ -1,8 +1,11 @@
-import { err, ok, type Result } from "@cabane/core";
+import { realpathSync } from "node:fs";
+import { err, ok, type Result, trySync } from "@cabane/core";
+import { Self } from "@cabane/core/self";
 import { type Outcome, type ParsedArgs, usage } from "@cabane/extension";
 import { z } from "zod";
 import { version } from "../../package.json";
 import type { Command } from "../context";
+import { UpdateBinary } from "../update-binary";
 import {
 	inspectRegistryInstall,
 	type RegistryInstall,
@@ -126,7 +129,15 @@ const readCandidate = async (
 			);
 };
 
-type Details = { installedVersion: string; candidateVersion: string };
+type Details = {
+	installedVersion: string;
+	candidateVersion: string;
+	install?: "binary" | "mise";
+};
+/** What replaces the running kabane: Bun, with the candidate's registry metadata, or itself. */
+type Install =
+	| { kind: "bun"; metadata: Metadata }
+	| { kind: "binary" | "mise" };
 
 /** The version policy (`withinVersionPolicy`), and a Bun the candidate's engine range admits. */
 const withinUpdatePolicy = (
@@ -139,16 +150,16 @@ const withinUpdatePolicy = (
 
 /**
  * The reply a candidate ends the command with before anything is installed: the channel and the
- * update policy held against it, then what `--check` reports. Undefined when the update goes ahead.
+ * update policy held against it, then what `--check` reports, and for mise what to run instead.
+ * Undefined when the update goes ahead.
  */
 const verdict = (
-	{ tag, metadata: candidate }: { tag: Tag; metadata: Metadata },
+	{ tag, target, install }: { tag: Tag; target: string; install: Install },
 	runningVersion: string,
 	check: boolean,
 	details: Details,
 ): Outcome | undefined => {
 	const prerelease = isPrerelease(runningVersion);
-	const target = candidate.version;
 	const manualExit = check ? 0 : 1;
 	if (!SemverSchema.safeParse(target).success)
 		return reply("error", "Invalid registry version; no update attempted.", 1);
@@ -159,9 +170,15 @@ const verdict = (
 				? `Registry ${tag} ${target} is a prerelease outside the beta channel. Review compatibility and choose a manual installation; no channel override is performed. Eligibility is policy-unverified.`
 				: "Registry latest is a prerelease. Review compatibility and choose a manual installation; no prerelease/channel override is performed. Eligibility is policy-unverified.",
 			manualExit,
-			{ installedVersion: runningVersion },
+			{
+				installedVersion: runningVersion,
+				...(details.install ? { install: details.install } : {}),
+			},
 		);
-	if (!/^https?:\/\//.test(candidate.dist.tarball))
+	if (
+		install.kind === "bun" &&
+		!/^https?:\/\//.test(install.metadata.dist.tarball)
+	)
 		return reply(
 			"error",
 			"Invalid registry version or tarball; no update attempted.",
@@ -176,10 +193,18 @@ const verdict = (
 			0,
 			details,
 		);
-	if (!withinUpdatePolicy(target, runningVersion, candidate.engines.bun))
+	if (
+		install.kind === "bun"
+			? !withinUpdatePolicy(
+					target,
+					runningVersion,
+					install.metadata.engines.bun,
+				)
+			: !withinVersionPolicy(target, runningVersion)
+	)
 		return reply(
 			"manual_only",
-			`${prerelease ? `Registry ${tag}` : "Latest stable"} ${target} is outside the supported update policy or Bun engine. Read compatibility notes and choose a manual installation; no downgrade/channel override is performed. Eligibility is policy-unverified.`,
+			`${prerelease ? `Registry ${tag}` : "Latest stable"} ${target} is outside the supported update policy${install.kind === "bun" ? " or Bun engine" : ""}. Read compatibility notes and choose a manual installation; no downgrade/channel override is performed. Eligibility is policy-unverified.`,
 			manualExit,
 			details,
 		);
@@ -190,10 +215,20 @@ const verdict = (
 			0,
 			details,
 		);
+	const named = `${isPrerelease(target) ? "Beta" : "Stable"} candidate ${target} (installed ${runningVersion})`;
+	if (install.kind === "mise")
+		return reply(
+			check ? "candidate" : "manual_only",
+			`${named}. mise owns this install, so kabane update does not replace it: run mise up kabane.`,
+			manualExit,
+			details,
+		);
 	if (check)
 		return reply(
 			"candidate",
-			`${isPrerelease(target) ? "Beta" : "Stable"} candidate ${target} (installed ${runningVersion}); installation eligibility is unknown/policy-unverified. Explicit update will check Bun policy.`,
+			install.kind === "bun"
+				? `${named}; installation eligibility is unknown/policy-unverified. Explicit update will check Bun policy.`
+				: `${named}. kabane update downloads it and checks its SHA256SUMS and version before replacing this binary.`,
 			0,
 			details,
 		);
@@ -298,9 +333,97 @@ const installCandidate = async (
 	);
 };
 
-const runUpdate = async (
+/**
+ * A standalone binary: the candidate from npm's dist-tags under the same policy, then the release
+ * archive for this target downloaded, verified and renamed over the real executable. A binary mise
+ * installed is left to `mise up kabane`.
+ */
+const updateBinary = async (
+	host: Host,
+	runningVersion: string,
+	check: boolean,
+): Promise<Outcome> => {
+	const executable = trySync(() => realpathSync(host.bin));
+	if (!executable.ok)
+		return reply(
+			"unsupported",
+			`Cannot resolve the running executable ${host.bin}; replace it with a verified download by hand. No update attempted.`,
+			1,
+			{ install: "binary" },
+		);
+	const install = UpdateBinary.miseOwned(executable.value, host.env)
+		? "mise"
+		: "binary";
+	const tags = await UpdateBinary.fetchTags(
+		host.source.registry,
+		runningVersion,
+		15_000,
+	);
+	if (!tags.ok)
+		return reply(
+			"error",
+			`Could not read kabane's dist-tags from ${host.source.registry} (${tags.error.message}); check the network and retry. No update attempted.`,
+			1,
+			{ install },
+		);
+	const tag = followedTag(runningVersion, tags.value);
+	const target = tags.value[tag] ?? tags.value.latest;
+	const details: Details = {
+		installedVersion: runningVersion,
+		candidateVersion: target,
+		install,
+	};
+	const ended = verdict(
+		{ tag, target, install: { kind: install } },
+		runningVersion,
+		check,
+		details,
+	);
+	if (ended) return ended;
+	if (!host.target)
+		return reply(
+			"unsupported",
+			`No standalone kabane is published for ${process.platform}-${process.arch}. No update attempted.`,
+			1,
+			details,
+		);
+	const replaced = await UpdateBinary.replace({
+		executable: executable.value,
+		version: target,
+		runningVersion,
+		target: host.target,
+		source: host.source,
+		env: host.env,
+	});
+	if (!replaced.ok)
+		return reply(
+			replaced.error.partial ? "partial_failure" : "error",
+			replaced.error.text,
+			1,
+			replaced.error.partial
+				? { ...details, possiblePartialChange: true }
+				: details,
+		);
+	return reply(
+		"updated",
+		`Verified kabane ${target} at ${executable.value}. Restart running board/MCP sessions; harness entries keep this path. Tracker data was not opened.`,
+		0,
+		{ ...details, eligibility: "checksum_verified", restartRequired: true },
+	);
+};
+
+/** How the running kabane was started and where releases are read; tests pass their own. */
+export type Host = UpdateHost & {
+	/** A standalone binary from `bun build --compile`, which replaces itself. */
+	compiled: boolean;
+	/** This machine's release target, when a binary is published for it. */
+	target: string | undefined;
+	source: UpdateBinary.Source;
+};
+
+export const runUpdate = async (
 	args: ParsedArgs,
-	host: UpdateHost,
+	host: Host,
 	runningVersion: string,
 ): Promise<Outcome> => {
 	if (
@@ -313,6 +436,8 @@ const runUpdate = async (
 			"Only --check is supported; choose other versions/channels manually.",
 			USAGE,
 		);
+	if (host.compiled)
+		return updateBinary(host, runningVersion, args.flags.check === true);
 	const install = await inspectRegistryInstall(host);
 	if (!install.ok)
 		return reply("unsupported", install.error, 1, { reason: install.error });
@@ -334,7 +459,11 @@ const runUpdate = async (
 		candidateVersion: target,
 	};
 	const ended = verdict(
-		read.value,
+		{
+			tag: read.value.tag,
+			target,
+			install: { kind: "bun", metadata: read.value.metadata },
+		},
 		runningVersion,
 		args.flags.check === true,
 		details,
@@ -353,13 +482,20 @@ const runUpdate = async (
 export const update: Command = {
 	name: "update",
 	summary:
-		"check a candidate on the installed channel or explicitly update a verified Bun registry install",
+		"check a candidate on the installed channel, or update a standalone binary or a verified Bun registry install",
 	usage: USAGE,
 	standalone: true,
 	run: (args) =>
 		runUpdate(
 			args,
-			{ bin: Bun.main, bun: process.execPath, env: process.env },
+			{
+				bin: Self.executable(),
+				bun: process.execPath,
+				env: process.env,
+				compiled: Self.compiled(),
+				target: UpdateBinary.target(),
+				source: UpdateBinary.source(process.env),
+			},
 			version,
 		),
 };

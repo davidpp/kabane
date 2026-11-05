@@ -312,6 +312,30 @@ it off:
 kabane config set updates.check false
 ```
 
+### Standalone binaries
+
+```bash
+kabane update --check        # metadata only: the candidate from npm's dist-tags
+kabane update               # download, verify and replace this binary
+```
+
+A binary follows the same channel and version policy as a Bun install
+([subsequent updates](#subsequent-updates), [beta installs](#beta-installs)); it reads npm's
+dist-tags over HTTPS, so Bun's registry and proxy settings do not apply. `kabane update`
+downloads `kabane-<os>-<arch>.tar.gz` and `SHA256SUMS` from that version's
+[GitHub release](https://github.com/davidpp/kabane/releases) and refuses on any checksum
+mismatch. It extracts into a temporary directory beside the executable, runs the new
+`kabane --version` and requires the candidate version, then renames the new executable and
+`templates/` over the old ones. A symlink on PATH is followed to the real executable, so
+harness MCP entries that point at it keep working. A failure before the rename leaves the old
+install as it was. The executable needs `templates/` beside it, as extracted from the release,
+and its directory must be writable; otherwise replace the directory with a verified download
+by hand. Restart running board/MCP sessions afterwards.
+
+When the executable sits under a mise installs directory (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise` or
+`~/.local/share/mise`), `kabane update` reports the candidate and leaves the file to mise: run
+`mise up kabane`. No tracker DB is opened and no harness entry is rewired.
+
 ### One-time upgrade from 0.1.0
 
 Version 0.1.0 predates `kabane update`. For an existing **Bun global registry install**, stop
