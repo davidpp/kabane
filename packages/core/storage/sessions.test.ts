@@ -651,6 +651,33 @@ describe("Planner.answerQuestion", () => {
 		).toEqual([]);
 	});
 
+	it.each([
+		["skip", "skip", "answer"],
+		["skip", "  SKIP  ", "answer"],
+		["omit", "omit", "answer"],
+		["skip", "Redis", "decision"],
+		["skip", "skip, Redis", "decision"],
+		[undefined, "skip", "decision"],
+	])(
+		"classifies skip word %s with reply %s as %s",
+		async (skipAnswer, answer, type) => {
+			const { sessionId } = await startOn();
+			const questionId = await ask(
+				sessionId,
+				formatQuestionBody("Any preference?", { skipAnswer }),
+			);
+			const answered = await Planner.answerQuestion(TEST_BASE, {
+				questionId,
+				answer,
+			});
+			if (!answered.ok) throw answered.error;
+			expect(answered.value.type).toBe(type);
+			expect(answered.value.body).toBe(answer.trim());
+			expect(answered.value.context).toBe(`answers ${questionId}`);
+			expect(await stateOf(sessionId)).toBe("active");
+		},
+	);
+
 	it("leaves awaiting_input only once every question is answered", async () => {
 		const { sessionId } = await startOn();
 		const q1 = await ask(sessionId, "Q1?");

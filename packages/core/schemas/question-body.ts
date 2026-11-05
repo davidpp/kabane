@@ -57,6 +57,8 @@ export const QuestionMetaSchema = z.object({
 	totalQuestions: z.number().optional(),
 	/** Default answer for "apply all defaults" batch flows. */
 	defaultAnswer: z.string().optional(),
+	/** Answer word that skips this question, matched ignoring case and surrounding whitespace. */
+	skipAnswer: z.string().trim().min(1).optional(),
 	/** Set when the question relays a harness permission request. */
 	permission: PermissionRequestMetaSchema.optional(),
 });
@@ -72,6 +74,7 @@ export type ParsedQuestion = {
 	questionIndex?: number;
 	totalQuestions?: number;
 	defaultAnswer?: string;
+	skipAnswer?: string;
 	permission?: PermissionRequestMeta;
 };
 
@@ -130,6 +133,7 @@ export function parseQuestionBody(body: string): ParsedQuestion {
 		questionIndex: meta.questionIndex,
 		totalQuestions: meta.totalQuestions,
 		defaultAnswer: meta.defaultAnswer,
+		skipAnswer: meta.skipAnswer,
 		permission: meta.permission,
 	};
 }

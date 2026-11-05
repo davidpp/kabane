@@ -135,6 +135,7 @@ export namespace Elicitation {
 		].filter((line): line is string => line !== undefined);
 		return formatQuestionBody(lines.join("\n"), {
 			choices: choices(field),
+			skipAnswer: answer(question, SKIP).kind === "skip" ? SKIP : undefined,
 			multiSelect: field.type === "choices",
 			allowFreeform: !listsReserved(field) || question.other !== undefined,
 			...(total > 1 ? { questionIndex: index, totalQuestions: total } : {}),
