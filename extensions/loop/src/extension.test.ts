@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner } from "@cabane/core";
 import { parseArgs } from "@cabane/extension";
+import { LoopConfig } from "./config";
+import { Elicitation } from "./elicitation";
 import { loop } from "./extension";
+import { Steering } from "./steering";
+import { RunStore } from "./store";
 
 let home = "";
 
@@ -82,5 +86,74 @@ describe("kabane loop start", () => {
 		// Past the flags: the parent is what is missing.
 		expect(started.exitCode).toBe(1);
 		expect(started.text).not.toContain("Unknown loop start flag");
+	});
+});
+
+describe("kabane loop status", () => {
+	it("lines a form question's later lines up under its first, with its choices", async () => {
+		const issue = await Planner.addTask(home, {
+			kind: "issue",
+			state: "next",
+			title: "lone",
+		});
+		if (!issue.ok) throw issue.error;
+		const config = LoopConfig.Schema.safeParse({});
+		if (!config.success) throw config.error;
+		const created = RunStore.create(home, {
+			version: 1,
+			id: "run-1",
+			parentId: issue.value.id,
+			parentShortId: issue.value.shortId ?? issue.value.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			pid: process.pid,
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		});
+		if (!created.ok) throw created.error;
+		const session = await Planner.startSession(home, {
+			taskId: issue.value.id,
+			agent: "claude",
+			externalRef: RunStore.sessionRef("run-1"),
+		});
+		if (!session.ok) throw session.error;
+		const request = {
+			message: "Which store should the cache use?",
+			fields: [
+				{
+					key: "question_0",
+					title: "Store",
+					required: false,
+					type: "choice" as const,
+					options: [{ value: "Redis", label: "Redis" }],
+				},
+			],
+		};
+		const [store] = Elicitation.questions(request.fields);
+		if (!store) throw new Error("no question");
+		const asked = await Planner.addActivity(home, {
+			sessionId: session.value.id,
+			type: "question",
+			body: Elicitation.body("claude", request, store, { index: 0, total: 1 }),
+		});
+		if (!asked.ok) throw asked.error;
+
+		const status = await kabaneLoop("status", "run-1");
+		expect(status.text).toContain(
+			[
+				`  waiting on you: ${issue.value.shortId} claude asks: Which store should the cache use?`,
+				"    Store",
+				"    1. Redis",
+				"    2. skip",
+				"    3. decline",
+				`    kabane loop answer ${asked.value.id} <option>`,
+			].join("\n"),
+		);
 	});
 });

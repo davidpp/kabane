@@ -47,35 +47,20 @@ const targetScripts = (options: FixtureOptions) =>
 					},
 				}
 			: {};
-export const createUpdateFixture = async (
-	archive: string,
-	{
-		source = UPDATE_SOURCE,
-		target = UPDATE_TARGET,
-		...options
-	}: FixtureOptions = {},
-) => {
-	const work = mkdtempSync(join(tmpdir(), "kabane-update-test-"));
-	const home = join(work, "home"),
-		install = join(work, "bun"),
-		cache = join(work, "cache"),
-		tracker = join(work, "tracker");
-	const globalDir = options.configured
-		? join(work, "custom-global")
-		: join(install, "install/global");
-	const binDir = options.configured
-		? join(work, "custom-bin")
-		: join(install, "bin");
-	for (const path of [home, globalDir, tracker])
-		mkdirSync(path, { recursive: true });
+/** Files a correct update never opens: the tracker's database and config, and a harness config. */
+const writeSentinels = (tracker: string, home: string): void => {
 	writeFileSync(join(tracker, "config.json"), "NOT_VALID_JSON_DO_NOT_READ");
 	writeFileSync(join(tracker, "kabane.db"), "NOT_A_DATABASE_DO_NOT_OPEN");
 	writeFileSync(join(tracker, "kabane.db-wal"), "WAL_SENTINEL");
 	writeFileSync(join(tracker, "kabane.db-shm"), "SHM_SENTINEL");
 	writeFileSync(join(home, ".claude.json"), "HARNESS_CONFIG_SENTINEL");
+};
+
+/** The target release, packed: a bin that prints its version, and the scripts `options` asks for. */
+const packTarget = (work: string, target: string, options: FixtureOptions) => {
 	const targetDir = join(work, "target/package");
 	mkdirSync(join(targetDir, "bin"), { recursive: true });
-	const targetManifest = {
+	const manifest = {
 		name: "kabane",
 		version: target,
 		type: "module",
@@ -83,25 +68,26 @@ export const createUpdateFixture = async (
 		engines: { bun: ">=1.4.0" },
 		...targetScripts(options),
 	};
-	writeFileSync(
-		join(targetDir, "package.json"),
-		JSON.stringify(targetManifest),
-	);
+	writeFileSync(join(targetDir, "package.json"), JSON.stringify(manifest));
 	writeFileSync(
 		join(targetDir, "bin/kabane.js"),
 		`#!/usr/bin/env bun\nconsole.log(${JSON.stringify(target)});\n`,
 		{ mode: 0o755 },
 	);
-	const targetTar = join(work, "target.tgz");
-	const packed = Bun.spawnSync(["tar", "-czf", targetTar, "package"], {
+	const tarball = join(work, "target.tgz");
+	const packed = Bun.spawnSync(["tar", "-czf", tarball, "package"], {
 		cwd: dirname(targetDir),
 	});
-	if (packed.exitCode !== 0)
-		return { ok: false as const, error: "fixture tar failed" };
-	const tarballs = {
-		[source]: readFileSync(archive),
-		[target]: readFileSync(targetTar),
-	};
+	return packed.exitCode === 0 ? { manifest, tarball } : null;
+};
+
+/** A local registry serving the source and target tarballs and whatever metadata a test sets. */
+const startRegistry = (
+	{ source, target }: { source: string; target: string },
+	tarballs: Record<string, Buffer<ArrayBuffer>>,
+	targetManifest: Record<string, unknown>,
+	young: boolean,
+) => {
 	const requests: string[] = [];
 	let metadata: unknown;
 	const server = Bun.serve({
@@ -118,7 +104,7 @@ export const createUpdateFixture = async (
 			return new Response("unconfigured fixture request", { status: 404 });
 		},
 	});
-	const registry = `http://127.0.0.1:${server.port}`;
+	const url = `http://127.0.0.1:${server.port}`;
 	/** A tag naming the source serves its archive, any other version the target's. */
 	const entry = (version: string, engine = ">=1.4.0") => {
 		const file = version === source ? source : target;
@@ -130,7 +116,7 @@ export const createUpdateFixture = async (
 			// External imports use read-only repo modules in this controlled manager fixture;
 			// the release smoke separately verifies an unmodified registry dependency install.
 			dist: {
-				tarball: `${registry}/kabane/-/kabane-${file}.tgz`,
+				tarball: `${url}/kabane/-/kabane-${file}.tgz`,
 				integrity: `sha512-${createHash("sha512")
 					.update(tarballs[file] ?? Buffer.alloc(0))
 					.digest("base64")}`,
@@ -142,16 +128,43 @@ export const createUpdateFixture = async (
 		"dist-tags": { latest: target },
 		time: {
 			[source]: "2020-01-01T00:00:00Z",
-			[target]: options.young
-				? new Date().toISOString()
-				: "2020-01-01T00:00:00Z",
+			[target]: young ? new Date().toISOString() : "2020-01-01T00:00:00Z",
 		},
 		versions: { [source]: entry(source), [target]: entry(target) },
 	};
-	writeFileSync(
-		join(home, ".bunfig.toml"),
-		`[install]\nregistry = "${registry}"\nminimumReleaseAge = ${options.age ?? 0}\nlinker = "${options.isolated ? "isolated" : "hoisted"}"\n${options.configured ? `globalDir = "${globalDir}"\nglobalBinDir = "${binDir}"\n` : ""}`,
-	);
+	return {
+		url,
+		requests,
+		stop: (): Promise<void> => server.stop(true),
+		setMetadata: (value: unknown): void => {
+			metadata = value;
+		},
+		setDistTags: (tags: Record<string, string>, engine = ">=1.4.0"): void => {
+			metadata = {
+				name: "kabane",
+				"dist-tags": tags,
+				versions: Object.fromEntries(
+					[...new Set(Object.values(tags))].map((version) => [
+						version,
+						entry(version, engine),
+					]),
+				),
+			};
+		},
+	};
+};
+
+/** The process environment with every registry, token and directory override Bun reads replaced by the fixture's. */
+const fixtureEnv = (
+	work: string,
+	{
+		home,
+		install,
+		cache,
+		tracker,
+	}: Record<"home" | "install" | "cache" | "tracker", string>,
+	configured: { globalDir: string; binDir: string } | null,
+): NodeJS.ProcessEnv => {
 	const env: NodeJS.ProcessEnv = {
 		...process.env,
 		HOME: home,
@@ -173,17 +186,59 @@ export const createUpdateFixture = async (
 		"BUN_INSTALL_BIN",
 	])
 		delete env[key];
-	if (options.configured) {
-		env.BUN_INSTALL_GLOBAL_DIR = globalDir;
-		env.BUN_INSTALL_BIN = binDir;
+	if (configured) {
+		env.BUN_INSTALL_GLOBAL_DIR = configured.globalDir;
+		env.BUN_INSTALL_BIN = configured.binDir;
 	}
+	return env;
+};
+
+export const createUpdateFixture = async (
+	archive: string,
+	{
+		source = UPDATE_SOURCE,
+		target = UPDATE_TARGET,
+		...options
+	}: FixtureOptions = {},
+) => {
+	const work = mkdtempSync(join(tmpdir(), "kabane-update-test-"));
+	const home = join(work, "home"),
+		install = join(work, "bun"),
+		cache = join(work, "cache"),
+		tracker = join(work, "tracker");
+	const globalDir = options.configured
+		? join(work, "custom-global")
+		: join(install, "install/global");
+	const binDir = options.configured
+		? join(work, "custom-bin")
+		: join(install, "bin");
+	for (const path of [home, globalDir, tracker])
+		mkdirSync(path, { recursive: true });
+	writeSentinels(tracker, home);
+	const packed = packTarget(work, target, options);
+	if (!packed) return { ok: false as const, error: "fixture tar failed" };
+	const registry = startRegistry(
+		{ source, target },
+		{ [source]: readFileSync(archive), [target]: readFileSync(packed.tarball) },
+		packed.manifest,
+		options.young === true,
+	);
+	writeFileSync(
+		join(home, ".bunfig.toml"),
+		`[install]\nregistry = "${registry.url}"\nminimumReleaseAge = ${options.age ?? 0}\nlinker = "${options.isolated ? "isolated" : "hoisted"}"\n${options.configured ? `globalDir = "${globalDir}"\nglobalBinDir = "${binDir}"\n` : ""}`,
+	);
+	const env = fixtureEnv(
+		work,
+		{ home, install, cache, tracker },
+		options.configured ? { globalDir, binDir } : null,
+	);
 	const initial = await runUpdateProcess(
 		[process.execPath, "add", "--global", "--exact", `kabane@${source}`],
 		home,
 		env,
 	);
 	if (!initial.ok || initial.value.code !== 0) {
-		await server.stop(true);
+		await registry.stop();
 		rmSync(work, { recursive: true, force: true });
 		return {
 			ok: false as const,
@@ -212,25 +267,6 @@ export const createUpdateFixture = async (
 		]);
 		return { ok: true as const, value: { code, stdout, stderr } };
 	};
-	const close = (): void => {
-		void server.stop(true);
-		rmSync(work, { recursive: true, force: true });
-	};
-	const setDistTags = (
-		tags: Record<string, string>,
-		engine = ">=1.4.0",
-	): void => {
-		metadata = {
-			name: "kabane",
-			"dist-tags": tags,
-			versions: Object.fromEntries(
-				[...new Set(Object.values(tags))].map((version) => [
-					version,
-					entry(version, engine),
-				]),
-			),
-		};
-	};
 	return {
 		ok: true as const,
 		work,
@@ -242,16 +278,17 @@ export const createUpdateFixture = async (
 		env,
 		bin,
 		packageBin,
-		requests,
+		requests: registry.requests,
 		run,
-		close,
-		setDistTags,
+		close: (): void => {
+			void registry.stop();
+			rmSync(work, { recursive: true, force: true });
+		},
+		setDistTags: registry.setDistTags,
 		stopRegistry: (): void => {
-			void server.stop(true);
+			void registry.stop();
 		},
-		setMetadata: (value: unknown): void => {
-			metadata = value;
-		},
+		setMetadata: registry.setMetadata,
 		copyBundle: (): void => {
 			const extracted = join(work, "original");
 			mkdirSync(extracted, { recursive: true });

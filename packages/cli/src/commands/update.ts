@@ -3,7 +3,11 @@ import { type Outcome, type ParsedArgs, usage } from "@cabane/extension";
 import { z } from "zod";
 import { version } from "../../package.json";
 import type { Command } from "../context";
-import { inspectRegistryInstall, type UpdateHost } from "../update-install";
+import {
+	inspectRegistryInstall,
+	type RegistryInstall,
+	type UpdateHost,
+} from "../update-install";
 import { runUpdateProcess } from "../update-process";
 import {
 	ChannelVersionSchema,
@@ -129,6 +133,192 @@ const readCandidate = async (
 			);
 };
 
+type Details = { installedVersion: string; candidateVersion: string };
+
+/**
+ * Same major as the installed release, and the same minor below 1.0; not a downgrade; and a Bun
+ * the candidate's engine range admits.
+ */
+const withinUpdatePolicy = (
+	target: string,
+	runningVersion: string,
+	engine: string,
+): boolean => {
+	const currentParts = versionCore(runningVersion).split("."),
+		targetParts = versionCore(target).split(".");
+	return !(
+		compareVersions(target, runningVersion) < 0 ||
+		currentParts[0] !== targetParts[0] ||
+		(currentParts[0] === "0" && currentParts[1] !== targetParts[1]) ||
+		compareVersions(versionCore(Bun.version), engine.slice(2)) < 0
+	);
+};
+
+/**
+ * The reply a candidate ends the command with before anything is installed: the channel and the
+ * update policy held against it, then what `--check` reports. Undefined when the update goes ahead.
+ */
+const verdict = (
+	{ tag, metadata: candidate }: { tag: Tag; metadata: Metadata },
+	runningVersion: string,
+	check: boolean,
+	details: Details,
+): Outcome | undefined => {
+	const prerelease = isPrerelease(runningVersion);
+	const target = candidate.version;
+	const manualExit = check ? 0 : 1;
+	if (!SemverSchema.safeParse(target).success)
+		return reply("error", "Invalid registry version; no update attempted.", 1);
+	if (
+		prerelease
+			? !ChannelVersionSchema.safeParse(target).success
+			: isPrerelease(target)
+	)
+		return reply(
+			"manual_only",
+			prerelease
+				? `Registry ${tag} ${target} is a prerelease outside the beta channel. Review compatibility and choose a manual installation; no channel override is performed. Eligibility is policy-unverified.`
+				: "Registry latest is a prerelease. Review compatibility and choose a manual installation; no prerelease/channel override is performed. Eligibility is policy-unverified.",
+			manualExit,
+			{ installedVersion: runningVersion },
+		);
+	if (!/^https?:\/\//.test(candidate.dist.tarball))
+		return reply(
+			"error",
+			"Invalid registry version or tarball; no update attempted.",
+			1,
+			details,
+		);
+	// Nothing on either tag is newer than a beta that precedes them all; that is current, not a downgrade.
+	if (prerelease && compareVersions(target, runningVersion) <= 0)
+		return reply(
+			"current",
+			`No release on registry latest or beta is newer than installed ${runningVersion}. Installation eligibility remains policy-unverified (metadata only).`,
+			0,
+			details,
+		);
+	if (!withinUpdatePolicy(target, runningVersion, candidate.engines.bun))
+		return reply(
+			"manual_only",
+			`${prerelease ? `Registry ${tag}` : "Latest stable"} ${target} is outside the supported update policy or Bun engine. Read compatibility notes and choose a manual installation; no downgrade/channel override is performed. Eligibility is policy-unverified.`,
+			manualExit,
+			details,
+		);
+	if (target === runningVersion)
+		return reply(
+			"current",
+			`Installed ${runningVersion} matches registry latest. Installation eligibility remains policy-unverified (metadata only).`,
+			0,
+			details,
+		);
+	if (check)
+		return reply(
+			"candidate",
+			`${isPrerelease(target) ? "Beta" : "Stable"} candidate ${target} (installed ${runningVersion}); installation eligibility is unknown/policy-unverified. Explicit update will check Bun policy.`,
+			0,
+			details,
+		);
+	return undefined;
+};
+
+/** The installation is still the one first inspected: same version, same bin, and not dry-run. */
+const unchanged = (
+	current: Result<RegistryInstall, string>,
+	install: RegistryInstall,
+): boolean =>
+	current.ok &&
+	current.value.version === install.version &&
+	current.value.bin === install.bin &&
+	!current.value.dryRun;
+
+/** The installation now holds `target` behind the same bin, and that bin prints it. */
+const verified = async (
+	host: UpdateHost,
+	install: RegistryInstall,
+	target: string,
+): Promise<boolean> => {
+	const after = await inspectRegistryInstall(host);
+	if (
+		!after.ok ||
+		after.value.version !== target ||
+		after.value.bin !== install.bin
+	)
+		return false;
+	const printed = await runUpdateProcess(
+		[host.bun, after.value.bin, "--version"],
+		after.value.globalDir,
+		host.env,
+	);
+	return (
+		printed.ok &&
+		printed.value.code === 0 &&
+		printed.value.stdout.trim() === target
+	);
+};
+
+/**
+ * Bun's own policy preflight, then the exact install, each only while the installation is still
+ * the one inspected, and the result verified before it is reported.
+ */
+const installCandidate = async (
+	host: UpdateHost,
+	install: RegistryInstall,
+	target: string,
+	details: Details,
+): Promise<Outcome> => {
+	if (!unchanged(await inspectRegistryInstall(host), install))
+		return reply(
+			"error",
+			"Installation changed before update; inspect it manually. No install attempted.",
+			1,
+			details,
+		);
+	const argv = [host.bun, "add", "--global", "--exact", `kabane@${target}`];
+	const preflight = await runUpdateProcess(
+		[...argv, "--dry-run"],
+		install.globalDir,
+		host.env,
+		30_000,
+	);
+	if (!preflight.ok || preflight.value.code !== 0)
+		return reply(
+			"blocked",
+			"Bun policy preflight failed or exceeded its limits; inspect registry/release-age/security settings manually. No install attempted; external package-manager cache may have changed.",
+			1,
+			details,
+		);
+	if (!unchanged(await inspectRegistryInstall(host), install))
+		return reply(
+			"error",
+			"Installation changed during preflight; inspect it manually. No install attempted.",
+			1,
+			details,
+		);
+	const changed = await runUpdateProcess(
+		argv,
+		install.globalDir,
+		host.env,
+		120_000,
+	);
+	if (
+		!changed.ok ||
+		changed.value.code !== 0 ||
+		!(await verified(host, install, target))
+	)
+		return reply(
+			"partial_failure",
+			"Update could not be verified; the executable installation may have changed partially. Inspect the Bun global package and bin manually; no automatic repair/rollback was attempted. Tracker data was not opened. Restart board/MCP only after a verified installation.",
+			1,
+			{ ...details, possiblePartialChange: true },
+		);
+	return reply(
+		"updated",
+		`Verified kabane ${target}. Restart running board/MCP sessions; source-pinned harness commands need deliberate manual rewiring. Tracker data was not opened; executable rollback is not database rollback.`,
+		0,
+		{ ...details, eligibility: "bun_preflight_passed", restartRequired: true },
+	);
+};
+
 const runUpdate = async (
 	args: ParsedArgs,
 	host: UpdateHost,
@@ -159,72 +349,18 @@ const runUpdate = async (
 		host,
 	);
 	if (!read.ok) return read.error;
-	const { tag, metadata: candidate } = read.value;
-	const prerelease = isPrerelease(runningVersion);
-	const target = candidate.version;
-	const details = {
+	const target = read.value.metadata.version;
+	const details: Details = {
 		installedVersion: runningVersion,
 		candidateVersion: target,
 	};
-	if (!SemverSchema.safeParse(target).success)
-		return reply("error", "Invalid registry version; no update attempted.", 1);
-	if (
-		prerelease
-			? !ChannelVersionSchema.safeParse(target).success
-			: isPrerelease(target)
-	)
-		return reply(
-			"manual_only",
-			prerelease
-				? `Registry ${tag} ${target} is a prerelease outside the beta channel. Review compatibility and choose a manual installation; no channel override is performed. Eligibility is policy-unverified.`
-				: "Registry latest is a prerelease. Review compatibility and choose a manual installation; no prerelease/channel override is performed. Eligibility is policy-unverified.",
-			args.flags.check ? 0 : 1,
-			{ installedVersion: runningVersion },
-		);
-	if (!/^https?:\/\//.test(candidate.dist.tarball))
-		return reply(
-			"error",
-			"Invalid registry version or tarball; no update attempted.",
-			1,
-			details,
-		);
-	// Nothing on either tag is newer than a beta that precedes them all; that is current, not a downgrade.
-	if (prerelease && compareVersions(target, runningVersion) <= 0)
-		return reply(
-			"current",
-			`No release on registry latest or beta is newer than installed ${runningVersion}. Installation eligibility remains policy-unverified (metadata only).`,
-			0,
-			details,
-		);
-	const currentParts = versionCore(runningVersion).split("."),
-		targetParts = versionCore(target).split(".");
-	if (
-		compareVersions(target, runningVersion) < 0 ||
-		currentParts[0] !== targetParts[0] ||
-		(currentParts[0] === "0" && currentParts[1] !== targetParts[1]) ||
-		compareVersions(versionCore(Bun.version), candidate.engines.bun.slice(2)) <
-			0
-	)
-		return reply(
-			"manual_only",
-			`${prerelease ? `Registry ${tag}` : "Latest stable"} ${target} is outside the supported update policy or Bun engine. Read compatibility notes and choose a manual installation; no downgrade/channel override is performed. Eligibility is policy-unverified.`,
-			args.flags.check ? 0 : 1,
-			details,
-		);
-	if (target === runningVersion)
-		return reply(
-			"current",
-			`Installed ${runningVersion} matches registry latest. Installation eligibility remains policy-unverified (metadata only).`,
-			0,
-			details,
-		);
-	if (args.flags.check)
-		return reply(
-			"candidate",
-			`${isPrerelease(target) ? "Beta" : "Stable"} candidate ${target} (installed ${runningVersion}); installation eligibility is unknown/policy-unverified. Explicit update will check Bun policy.`,
-			0,
-			details,
-		);
+	const ended = verdict(
+		read.value,
+		runningVersion,
+		args.flags.check === true,
+		details,
+	);
+	if (ended) return ended;
 	if (install.value.dryRun)
 		return reply(
 			"blocked",
@@ -232,84 +368,7 @@ const runUpdate = async (
 			1,
 			details,
 		);
-	const rechecked = await inspectRegistryInstall(host);
-	if (
-		!rechecked.ok ||
-		rechecked.value.version !== runningVersion ||
-		rechecked.value.bin !== install.value.bin ||
-		rechecked.value.dryRun
-	)
-		return reply(
-			"error",
-			"Installation changed before update; inspect it manually. No install attempted.",
-			1,
-			details,
-		);
-	const argv = [host.bun, "add", "--global", "--exact", `kabane@${target}`];
-	const preflight = await runUpdateProcess(
-		[...argv, "--dry-run"],
-		install.value.globalDir,
-		host.env,
-		30_000,
-	);
-	if (!preflight.ok || preflight.value.code !== 0)
-		return reply(
-			"blocked",
-			"Bun policy preflight failed or exceeded its limits; inspect registry/release-age/security settings manually. No install attempted; external package-manager cache may have changed.",
-			1,
-			details,
-		);
-	const beforeWrite = await inspectRegistryInstall(host);
-	if (
-		!beforeWrite.ok ||
-		beforeWrite.value.version !== runningVersion ||
-		beforeWrite.value.bin !== install.value.bin ||
-		beforeWrite.value.dryRun
-	)
-		return reply(
-			"error",
-			"Installation changed during preflight; inspect it manually. No install attempted.",
-			1,
-			details,
-		);
-	const changed = await runUpdateProcess(
-		argv,
-		install.value.globalDir,
-		host.env,
-		120_000,
-	);
-	const partial = (): Outcome =>
-		reply(
-			"partial_failure",
-			"Update could not be verified; the executable installation may have changed partially. Inspect the Bun global package and bin manually; no automatic repair/rollback was attempted. Tracker data was not opened. Restart board/MCP only after a verified installation.",
-			1,
-			{ ...details, possiblePartialChange: true },
-		);
-	if (!changed.ok || changed.value.code !== 0) return partial();
-	const after = await inspectRegistryInstall(host);
-	if (
-		!after.ok ||
-		after.value.version !== target ||
-		after.value.bin !== install.value.bin
-	)
-		return partial();
-	const printed = await runUpdateProcess(
-		[host.bun, after.value.bin, "--version"],
-		after.value.globalDir,
-		host.env,
-	);
-	if (
-		!printed.ok ||
-		printed.value.code !== 0 ||
-		printed.value.stdout.trim() !== target
-	)
-		return partial();
-	return reply(
-		"updated",
-		`Verified kabane ${target}. Restart running board/MCP sessions; source-pinned harness commands need deliberate manual rewiring. Tracker data was not opened; executable rollback is not database rollback.`,
-		0,
-		{ ...details, eligibility: "bun_preflight_passed", restartRequired: true },
-	);
+	return installCandidate(host, install.value, target, details);
 };
 
 export const update: Command = {
