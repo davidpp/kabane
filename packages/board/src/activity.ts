@@ -145,6 +145,22 @@ export namespace BoardActivity {
 		return result;
 	};
 
+	// The card whose events `o` opens on a task: its first in-flight card with events, else its most
+	// recent one. Undefined when none of its cards has events to read.
+	export const eventsCard = (
+		activity: ActivityMap,
+		taskId: string,
+		shortId?: string,
+	): ActivityCard | undefined => {
+		const cards = cardsForTask(activity, taskId, shortId).filter(
+			(c) => c.hasEvents,
+		);
+		return (
+			cards.find((c) => c.status === "running" || c.status === "pending") ??
+			cards[0]
+		);
+	};
+
 	// Whether the shared spinner should animate: any live (non-stale) running card.
 	export const anyRunning = (activity: ActivityMap): boolean =>
 		activity.cards.some(

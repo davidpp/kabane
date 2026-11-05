@@ -26,19 +26,13 @@ import { Launcher } from "./launcher";
 import { BoardNav } from "./nav";
 import { flash, useNotice } from "./notice";
 import { HelpSheet } from "./overlay";
-import type {
-	ActivityCard,
-	ActivitySource,
-	CardHeader,
-	Copilot,
-	Dispatcher,
-} from "./ports";
+import type { ActivitySource, CardHeader, Copilot, Dispatcher } from "./ports";
 import { ProgramStatus } from "./program-status";
 import { BoardPrompt } from "./prompt";
 import { PromptPanel } from "./prompt-field";
+import { useRunActivity } from "./run-activity";
 import { useSpinnerFrame } from "./spinner";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
-import { BoardTabs } from "./tabs";
 import { useTheme } from "./theme";
 import { DispatchLayer } from "./trigger-form-view";
 
@@ -84,7 +78,7 @@ export const App = ({
 }: AppProps): ReactNode => {
 	const renderer = useRenderer();
 	const theme = useTheme();
-	const store = useBoardStore();
+	const store = useBoardStore(clock);
 	const { state, ref: stateRef, set: setState, update: updateState } = store;
 	const [notice, setNotice] = useNotice();
 	const { records: detailRecords, refresh: refreshDetail } = useDetailRecords(
@@ -115,15 +109,24 @@ export const App = ({
 		reload,
 		setNotice,
 	});
-	// Host cards plus the copilot's, for every surface that lists activity.
-	const shownActivity = useMemo(
-		() => CopilotLog.withActivity(activity, copilotLog),
-		[activity, copilotLog],
-	);
-	const shownSource = useMemo(
-		() => CopilotLog.source(activitySource, currentLog),
-		[activitySource, currentLog],
-	);
+	const {
+		shown: shownActivity,
+		source: shownSource,
+		answer,
+		dismiss: dismissCard,
+		act: runAct,
+		openEvents,
+		takeCard,
+	} = useRunActivity({
+		basePath,
+		activity,
+		activitySource,
+		copilotLog,
+		currentLog,
+		store,
+		setNotice,
+		reload,
+	});
 
 	// The terminal hears when the board waits on the human, or works: derived from what the board
 	// holds, and written only when it changes.
@@ -141,13 +144,6 @@ export const App = ({
 	);
 	ProgramStatus.useProgramStatus(programStatus);
 
-	// Every committed state is on screen: note what the digits answer from now on, so a question
-	// that just appeared does not take a key already on its way (BoardNav.sight).
-	useEffect(() => {
-		updateState((prev) => BoardNav.sight(prev, clock()));
-	}, [state, clock, updateState]);
-	const activityRef = useRef<BoardActivity.ActivityMap>(shownActivity);
-	activityRef.current = shownActivity;
 	// The detail view's scrollbox lives inside <Detail>; app.tsx holds the ref so the `scroll` effect
 	// can drive it and every key stays in the one useKeyboard handler.
 	const scrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -272,102 +268,6 @@ export const App = ({
 			if (current) void reload(current);
 		},
 		[dispatcher, copilot, basePath, reload, stateRef, setNotice],
-	);
-
-	// `o` in the detail view: the task's first in-flight card with events, else its most recent one.
-	// A card with a tab of its own opens as that tab, so one card never shows in two places.
-	const openEvents = useCallback(
-		(s: BoardNav.BoardState, taskId: string): void => {
-			const cards = BoardActivity.cardsForTask(
-				activityRef.current,
-				taskId,
-				BoardNav.taskById(s, taskId)?.shortId,
-			).filter((c) => c.hasEvents);
-			const target =
-				cards.find((c) => c.status === "running" || c.status === "pending") ??
-				cards[0];
-			if (!target) {
-				setNotice({ text: "no events", tone: "success" });
-				return;
-			}
-			if (s.tabs.open.includes(target.id)) {
-				setState(
-					BoardTabs.reduceMouse(s, { type: "tab", id: target.id }).state,
-				);
-				return;
-			}
-			setState({
-				...s,
-				view: {
-					type: "events",
-					cardId: target.id,
-					fromView: "detail",
-					fromTaskId: taskId,
-					fromTab: BoardNav.detailTab(s.view),
-				},
-			});
-		},
-		[setNotice, setState],
-	);
-
-	// A banner's question answered: core writes the decision, the banner says what was answered until
-	// the human leaves, and the reload takes the question off every badge. The host hears it first, so
-	// one that keeps who answered has it before its work sees the answer; a failed note does not hold
-	// the answer back. A failed write takes back the answer the digit set on the banner.
-	const answer = useCallback(
-		async (
-			s: BoardNav.BoardState,
-			questionId: string,
-			text: string,
-		): Promise<void> => {
-			await shownSource.answering?.(questionId);
-			const res = await BoardData.answerQuestion(basePath, questionId, text);
-			setNotice(flash(res, `answered ${text}`));
-			updateState((prev) =>
-				(res.ok ? BoardTabs.withAnswered : BoardTabs.withoutAnswer)(
-					prev,
-					questionId,
-					text,
-				),
-			);
-			await reload(s);
-		},
-		[basePath, reload, shownSource, updateState, setNotice],
-	);
-
-	// `w` closed a finished card's tab: the host forgets it, so a relaunch does not bring it back. The
-	// tab is already gone either way; only a failure has anything to say.
-	const dismissCard = useCallback(
-		async (cardId: string): Promise<void> => {
-			const res = await shownSource.dismiss?.(cardId);
-			if (res && !res.ok) setNotice({ text: res.error.message, tone: "error" });
-		},
-		[shownSource, setNotice],
-	);
-
-	// One of a card's actions: the host runs it and says what happened, and the reload shows it.
-	const runAct = useCallback(
-		async (
-			s: BoardNav.BoardState,
-			effect: Extract<BoardNav.Effect, { type: "act" }>,
-		): Promise<void> => {
-			const { cardId, actionId, text, lane } = effect;
-			const res = shownSource.act
-				? await shownSource.act(cardId, actionId, {
-						...(text !== undefined ? { text } : {}),
-						...(lane !== undefined ? { lane } : {}),
-					})
-				: null;
-			setNotice(
-				res === null
-					? { text: "this card takes no actions", tone: "error" }
-					: res.ok
-						? { text: res.value, tone: "success" }
-						: { text: res.error.message, tone: "error" },
-			);
-			await reload(s);
-		},
-		[shownSource, reload, setNotice],
 	);
 
 	// The single effect runner, shared by the keyboard and mouse dispatchers so both interaction paths
@@ -595,27 +495,7 @@ export const App = ({
 		if (selectedId) listRef.current?.scrollChildIntoView(`row-${selectedId}`);
 	}, [selectedId]);
 
-	// The tab bar follows the cards that ask for a tab, and the attention queue follows the tracker's
-	// unanswered questions, both on every activity load.
-	useEffect(() => {
-		updateState((prev) =>
-			BoardTabs.withActivity(
-				prev,
-				shownActivity.cards,
-				BoardActivity.questions(shownActivity),
-			),
-		);
-	}, [shownActivity, updateState]);
-
 	const spinnerFrame = useSpinnerFrame(anyActivityRunning(shownActivity));
-
-	// The event view on a card's tab refreshes its card every second; the keys read the same card.
-	const takeCard = useCallback(
-		(card: ActivityCard): void => {
-			updateState((prev) => BoardTabs.withCard(prev, card));
-		},
-		[updateState],
-	);
 
 	// Resolve task ULID → shortId from loaded sections (for the event view's header).
 	const resolveShortId = useCallback(
@@ -650,11 +530,11 @@ export const App = ({
 		header: cardHeader !== undefined,
 		events:
 			openTaskId !== null &&
-			BoardActivity.cardsForTask(
+			BoardActivity.eventsCard(
 				shownActivity,
 				openTaskId,
 				BoardNav.taskById(state, openTaskId)?.shortId,
-			).some((c) => c.hasEvents),
+			) !== undefined,
 	});
 	const keys = {
 		context: BoardNav.keyContext(state),
