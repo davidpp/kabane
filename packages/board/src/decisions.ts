@@ -329,8 +329,10 @@ export namespace BoardDecisions {
 	 * A click on the decision's block, through the reducers its keys take: an answer is its digit, a
 	 * hint its key, and the row that says how to reach it asks for its input. The board already has
 	 * the keys by then (BoardNav.reduceMouse), and a pointer aims at what is drawn, so nothing is held.
+	 * Null for a hint whose key the decision hands on, as the key router would (`esc back` on an
+	 * untouched one goes to the view's own `esc`).
 	 */
-	export const click = (state: State, action: Click): Step => {
+	export const click = (state: State, action: Click): Step | null => {
 		const none = { state, effect: NOTHING };
 		const asked = inHand(state);
 		if (!asked) return none;
@@ -348,7 +350,7 @@ export namespace BoardDecisions {
 					) ?? none
 				);
 			case "decisionKey":
-				return reduceKey(state, { name: action.name }) ?? none;
+				return reduceKey(state, { name: action.name });
 			case "decisionReach":
 				return typed(asked) && !live(asked)
 					? {

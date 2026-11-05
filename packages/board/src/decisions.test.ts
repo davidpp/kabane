@@ -212,6 +212,16 @@ describe("a decision on the detail view", () => {
 		expect(press(cleared, "escape").state.view.type).toBe("board");
 	});
 
+	it("does what esc does on a click on its esc hint: back to the board untouched, over once started", () => {
+		const esc = { type: "decisionKey", name: "escape" } as const;
+		const untouched = BoardNav.reduceMouse(detail([STORE]), esc).state;
+		expect(untouched.view.type).toBe("board");
+		const started = press(detail([STORE]), "1").state;
+		const over = BoardNav.reduceMouse(started, esc).state;
+		expect(over.view.type).toBe("detail");
+		expect(asking(over)?.field).toBe("Answer");
+	});
+
 	it("leaves a typed first field the view's keys until enter asks for it, then keeps them", () => {
 		const s = detail([NAME]);
 		expect(BoardDecisions.reach(s)).toEqual({ key: "enter" });

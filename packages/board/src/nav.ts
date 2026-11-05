@@ -1979,12 +1979,14 @@ export namespace BoardNav {
 		if (action.type === "tab" || action.type === "answer")
 			return BoardTabs.reduceMouse(state, action);
 		if (action.type === "lane") return CardTab.reduceLane(state, action.index);
-		if (
-			action.type === "decisionOption" ||
-			action.type === "decisionKey" ||
-			action.type === "decisionReach"
-		)
-			return BoardDecisions.click(state, action);
+		// A hint the decision hands on goes where its key would: `esc back` to the view's `esc`.
+		if (action.type === "decisionKey")
+			return (
+				BoardDecisions.click(state, action) ??
+				reduceViewKey(state, { name: action.name })
+			);
+		if (action.type === "decisionOption" || action.type === "decisionReach")
+			return BoardDecisions.click(state, action) ?? { state, effect: NONE };
 		return state.view.type === "board"
 			? clickRow(state, action)
 			: { state, effect: NONE };
