@@ -286,10 +286,14 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
   2s`, `failed (exit 1) in 300ms`) and `commit:<sha>` for a checkpoint; a red pass's note is
   the failing tail. A red pass reopens the subtask to `next`, and the next claim's brief opens
   with the gate, its exit and the tail. The final pass logs on the parent.
-- **Worktree:** `git worktree add -b kabane-loop/<runId> $KABANE_HOME/loops/<runId>/worktree
-  HEAD` at `start`, so uncommitted work in the checkout is not in it, and a project's
-  untracked settings (say, `.claude/settings.local.json`) are not either. Never removed.
-  `kabane loop status <runId>` prints it and its checkpoints.
+- **Worktree:** `git worktree add -b <branch> $KABANE_HOME/loops/<runId>/worktree HEAD` at
+  `start`, so uncommitted work in the checkout is not in it, and a project's untracked
+  settings (say, `.claude/settings.local.json`) are not either. The branch is named for the
+  parent (`jcab-91-` and the first words of its title, numbered when taken; JCAB-91), and
+  `run.json` records it and the base the worktree came from (`base: {branch, sha}`).
+  `kabane loop status <runId>` prints it and its checkpoints. Removed with its branch once
+  its work is merged, at the parent's next `start` or by `kabane loop prune`; only a worktree
+  under `$KABANE_HOME/loops` is ever removed.
   - **On by default (JCAB-52):** a run with the worktree off once ran its fixer's `git switch -c`
     in the maintainer's own checkout, the one their global `kabane` runs from. `worktree`
     now defaults to `true`; `--no-worktree`, `"worktree": false` in `.kabane/loop.json` or the
@@ -297,9 +301,13 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
     project that is not a git repository (no `.git` in it or above it) is worked in place,
     and the start output and a `workspace` event say so.
   - **Reused while unmerged:** when the parent's last run has a worktree that is still one of
-    the repository's worktrees, no live run works in it, and its branch is not merged into
-    the project's HEAD (`git for-each-ref --merged HEAD`), the new run goes on in it, on that
-    branch, so follow-up work such as the fixer's builds on what is not merged yet.
+    the repository's worktrees, no live run works in it, and its work is not merged, the new
+    run goes on in it, on that branch, so follow-up work such as the fixer's builds on what is
+    not merged yet. A last run with a pull request asks `gh pr view` (JCAB-91): open, the run
+    goes on in it and takes the pull request over; merged, with the branch at its head, the
+    worktree is removed; closed unmerged, the run starts afresh and the worktree is left.
+    Otherwise git decides (`git for-each-ref --merged HEAD`), which calls a squash-merged
+    branch unmerged.
     `run.json` records `worktreeReused: {runId, branch}`, and the `workspace` event carries
     both. A merged branch (one with no commit past HEAD counts), a removed worktree, or a
     last run without one gets a fresh worktree. A last run whose runner died is still refused
@@ -322,6 +330,14 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
   written by the CLI for a finished run and through the inbox (`rolled_back`) for a live one,
   so the runner stays the trace's one writer.
 - **Stall mark:** closed work, the tree fingerprint and the last pass's gate results.
+- **Landing (JCAB-91):** `land: none|pr` (`--land`, the form's Workspace group). With `pr`, a
+  run whose final checks are done fetches its base in the worktree and rebases onto it,
+  gating again when that moved the branch (a conflict is aborted, a red gate resets the
+  branch), pushes with `--force-with-lease` and runs `gh pr create --base <base>`, or pushes
+  to the pull request already open for the branch. The outcome is `run.json`'s `landing` and
+  `pr`. A failure completes the run anyway, and `kabane loop land <runId>` tries again, or
+  lands a `none` run by hand. With a pull request open the parent moves to `waiting` and the
+  pull request is its upstream twin.
 
 ### C3. Verifier lenses and findings
 - Lens prompt files, the shipped `functional` and `quality` lenses, and repo overrides.

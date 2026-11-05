@@ -101,12 +101,12 @@ export namespace LoopConfig {
 				"Named shell commands run in order after each finished subtask and before a run completes; one gate is its own key (loop.gates.test).",
 			),
 		/**
-		 * Work in a `git worktree` of the project, never removed by the loop, and commit a
-		 * checkpoint there after every green gate, or after every finished subtask when no gates
-		 * are configured: the parent's last run's worktree when its branch is not merged into the
-		 * project's HEAD, else a fresh one of HEAD. A project that is not a git repository is
-		 * worked in place. Off: sessions work in the project checkout itself and nothing is
-		 * committed.
+		 * Work in a `git worktree` of the project, and commit a checkpoint there after every green
+		 * gate, or after every finished subtask when no gates are configured: the parent's last
+		 * run's worktree while its work is not merged (its pull request still open, or its branch
+		 * not in the project's HEAD), else a fresh one of HEAD. A worktree whose work is merged is
+		 * removed with its branch (`Prune`). A project that is not a git repository is worked in
+		 * place. Off: sessions work in the project checkout itself and nothing is committed.
 		 */
 		worktree: z
 			.boolean()
@@ -133,13 +133,14 @@ export namespace LoopConfig {
 			.describe("Harness every lens runs on; absent, the implementer."),
 		/**
 		 * What a completed run does with its worktree's branch: `none` leaves it there, `pr` pushes
-		 * it and opens a pull request with the user's own git and gh.
+		 * it and opens a pull request with the user's own git and gh (`Land`). `kabane loop land`
+		 * does the same for a completed run by hand, or again after a landing that failed.
 		 */
 		land: z
 			.enum(LAND)
 			.default("none")
 			.describe(
-				"What a completed run does with its branch: none leaves it in its worktree, pr pushes it and opens a pull request; defaults to none.",
+				"What a completed run does with its branch: none leaves it in its worktree, pr rebases it onto its base, pushes it and opens a pull request with your git and gh; defaults to none. kabane loop land <runId> lands a completed run by hand.",
 			),
 	});
 
