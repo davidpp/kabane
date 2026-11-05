@@ -583,6 +583,9 @@ describe.concurrent("config through the real CLI", () => {
 				["path", "extra"],
 				["get", "timezone", "extra"],
 				["--typo"],
+				// A bare --layer would otherwise write the user's layer, for every project.
+				["set", "timezone", "UTC", "--layer"],
+				["unset", "timezone", "--layer"],
 				["get", "timezone", "--layer", "user"],
 				["set", "timezone", "UTC", "--layers"],
 				["get", "timezone", "--layers=yes"],

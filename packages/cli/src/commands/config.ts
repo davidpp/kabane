@@ -78,6 +78,11 @@ const requestOf = (args: ParsedArgs): Result<Request, Outcome> => {
 	const scope = flagString(args, "scope");
 	if ("layer" in args.flags && sub !== "set" && sub !== "unset")
 		return err(usage("--layer applies to set and unset", USAGE));
+	// A bare --layer would otherwise fall back to user and change every project's setting.
+	if ("layer" in args.flags && layer === undefined)
+		return err(
+			usage(`--layer takes one of ${ConfigSettings.TARGETS.join(", ")}`, USAGE),
+		);
 	if ("layers" in args.flags && sub !== "get")
 		return err(usage("--layers applies to get", USAGE));
 	if ("layers" in args.flags && args.flags.layers !== true)
