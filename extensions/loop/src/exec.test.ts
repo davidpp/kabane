@@ -54,6 +54,37 @@ describe("Exec.tool", () => {
 		);
 	});
 
+	it("leaves out the credentials in a remote URL argument and in what the tool said", async () => {
+		const git = Exec.tool(
+			failing(
+				"git",
+				"remote: denied for https://bot:ghp_FAKE0123456789abcdefABCD@github.com/acme/w.git (Authorization: Bearer sk-fake-123456)",
+			),
+		);
+		const failed = await git(dir, [
+			"push",
+			"https://x-access-token:ghs_FAKEFAKEFAKEFAKE1234@github.com/acme/w.git",
+			"refs/heads/b:refs/heads/b",
+		]);
+		const said = failed.ok ? "" : failed.error.message;
+		for (const secret of ["ghs_FAKE", "ghp_FAKE", "bot:", "sk-fake"])
+			expect(said).not.toContain(secret);
+		expect(said).toContain(
+			"git push https://<redacted>@github.com/acme/w.git refs/heads/b:refs/heads/b failed",
+		);
+		expect(said).toContain(
+			"remote: denied for https://<redacted>@github.com/acme/w.git (Authorization: Bearer <redacted>)",
+		);
+	});
+
+	it("redacts tokens that stand alone", () => {
+		expect(
+			Exec.redact(
+				"token ghp_abcdefghijklmnopqrstuvwxyz and github_pat_11ABCDEFGHIJKLMNOPQRSTUV_x and x-access-token:abc123",
+			),
+		).toBe("token <redacted> and <redacted> and x-access-token:<redacted>");
+	});
+
 	it("cuts any other long or multi-line argument short", async () => {
 		const sh = Exec.tool(failing("sh-tool", "no"));
 		const failed = await sh(dir, ["a\nb", "x".repeat(70)]);

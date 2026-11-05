@@ -22,9 +22,11 @@ export namespace Land {
 
 	const short = (sha: string): string => sha.slice(0, 12);
 
+	// Whatever a tool or the repository's config put in it, a summary is kept and commented on,
+	// so it never carries a credential.
 	const notLanded = (why: string, extra: Partial<Outcome> = {}): Outcome => ({
 		ok: false,
-		summary: `Not landed: ${why}.`,
+		summary: Exec.redact(`Not landed: ${why}.`),
 		...extra,
 	});
 
@@ -101,7 +103,8 @@ export namespace Land {
 		if (!onto.ok) return err(notLanded(onto.error.message));
 		const from = await revParse(git, dir, "HEAD");
 		if (!from.ok) return err(notLanded(from.error.message));
-		const target = `${remote}/${base} (${short(onto.value)})`;
+		// The remote by its name; a base that tracks a URL is shown without its credentials.
+		const target = `${Exec.redact(remote)}/${base} (${short(onto.value)})`;
 		const contained = await git(dir, [
 			"merge-base",
 			"--is-ancestor",
@@ -386,6 +389,7 @@ export namespace Land {
 		const landing: RunStore.Landing = {
 			at: ctx.now().toISOString(),
 			...outcome,
+			summary: Exec.redact(outcome.summary),
 		};
 		const from = ctx.run.landingFrom;
 		const settled =

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	chmodSync,
 	existsSync,
+	readFileSync,
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
@@ -610,6 +611,57 @@ describe("a run with land: pr, through the real runner", () => {
 		expect(said).toContain("Not landed: git push");
 		expect(said).toContain("pre-receive hook declined");
 		expect(said).toContain(`Merge branch \`${BRANCH}\``);
+	});
+});
+
+describe("a landing through a remote URL that carries credentials", () => {
+	const TOKEN = "ghs_FAKEFAKEFAKEFAKE1234";
+	const HOOK_TOKEN = "ghp_FAKE0123456789abcdefABCD";
+
+	it("keeps them out of run.json, the trace and the parent's comments", async () => {
+		const parent = await parentIssue();
+		const child = await Planner.addTask(home, {
+			title: "the work",
+			kind: "issue",
+			state: "done",
+			parentTaskId: parent.id,
+		});
+		if (!child.ok) throw child.error;
+		// The base tracks the real bare remote by a URL with a token in it, as a CI checkout does,
+		// and the remote's hook names another in what it says.
+		GitFixture.run(repo, [
+			"config",
+			"branch.main.remote",
+			`file://x-access-token:${TOKEN}@localhost${remote}`,
+		]);
+		const hook = join(remote, "hooks", "pre-receive");
+		writeFileSync(
+			hook,
+			`#!/bin/sh\necho "denied for https://bot:${HOOK_TOKEN}@github.com/acme/widget.git" >&2\nexit 1\n`,
+		);
+		chmodSync(hook, 0o755);
+		const run = await completedRun(parent, { gates: { test: "true" } });
+		const pending = RunStore.write(home, { ...run, status: "pending" });
+		if (!pending.ok) throw pending.error;
+
+		const ran = await Runner.run(run.id, runnerDeps());
+
+		if (!ran.ok) throw ran.error;
+		// The fetch went through the URL and the push reached the remote's hook.
+		expect(ran.value.landing?.summary).toContain("Not landed: git push");
+		expect(ran.value.landing?.summary).toContain(
+			"denied for https://<redacted>@github.com",
+		);
+		const paths = RunStore.paths(home, run.id);
+		const comments = await Planner.getComments(home, parent.id);
+		const kept = [
+			readFileSync(paths.run, "utf8"),
+			readFileSync(paths.events, "utf8"),
+			JSON.stringify(comments.ok ? comments.value : []),
+		].join("\n");
+		expect(kept).not.toContain(TOKEN);
+		expect(kept).not.toContain(HOOK_TOKEN);
+		expect(kept).not.toContain("x-access-token:ghs");
 	});
 });
 
