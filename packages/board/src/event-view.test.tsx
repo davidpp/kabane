@@ -14,12 +14,14 @@ import {
 } from "@opentui/core";
 import { act, createRef, useEffect, useState } from "react";
 import { EventView, promptLines } from "./event-view";
+import type { BoardNav } from "./nav";
 import type {
 	ActivityCard,
 	ActivityEvent,
 	ActivitySource,
 	PlanEntry,
 } from "./ports";
+import { noActivity } from "./ports";
 import { SPINNER_FRAMES } from "./spinner";
 import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";
@@ -68,6 +70,48 @@ const source = (card: ActivityCard): ActivitySource => ({
 });
 
 describe("EventView", () => {
+	for (const width of [40, 80])
+		it(`routes permission options and decline clicks at ${width} columns`, async () => {
+			const clicked: BoardNav.AskClick[] = [];
+			const setup = await renderTest(
+				<EventView
+					cardId="copilot"
+					initialCard={copilotCard}
+					source={noActivity}
+					resolveShortId={() => undefined}
+					scrollRef={createRef<ScrollBoxRenderable>()}
+					permissions={[
+						{
+							id: "p1",
+							title: "kabane_edit",
+							options: [
+								{ id: "once", label: "Allow once" },
+								{ id: "always", label: "Allow always" },
+								{ id: "no", label: "Reject" },
+							],
+						},
+					]}
+					onAsk={(click) => clicked.push(click)}
+				/>,
+				{ width, height: 16 },
+			);
+			try {
+				const rows = setup.captureCharFrame().split("\n");
+				for (const text of ["2 Allow always", "3 Reject", "esc decline"]) {
+					const y = rows.findIndex((row) => row.includes(text));
+					expect(y).toBeGreaterThanOrEqual(0);
+					await setup.mockMouse.click(rows[y]?.indexOf(text) ?? 0, y);
+				}
+				expect(clicked).toEqual([
+					{ type: "askOption", index: 1 },
+					{ type: "askOption", index: 2 },
+					{ type: "askKey", name: "escape" },
+				]);
+			} finally {
+				setup.destroy();
+			}
+		});
+
 	it("pins the plan above the scrollbox, so it is still there once the events have scrolled past", async () => {
 		const scrollRef = createRef<ScrollBoxRenderable>();
 		const setup = await renderTest(

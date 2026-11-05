@@ -218,6 +218,7 @@ export type EventViewProps = {
 	// off screen, and where the eye already goes for what to press.
 	// Oldest first: the head is the one asked, the rest are counted beneath it.
 	permissions?: readonly CopilotPermission[];
+	onAsk?: (click: BoardNav.AskClick) => void;
 	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation):
 	// `x` is hinted only on the copilot's transcript while its turn runs. Optional so render-only
 	// tests get the transcript's own keys.
@@ -332,6 +333,7 @@ export const EventView = ({
 	notice,
 	plan = NO_PLAN,
 	permissions = NO_PERMISSIONS,
+	onAsk,
 	keys = TRANSCRIPT_KEYS,
 	banner,
 	pane,
@@ -410,6 +412,8 @@ export const EventView = ({
 					}}
 				>
 					<PermissionBlock
+						onPick={onAsk && ((index) => onAsk({ type: "askOption", index }))}
+						onKey={onAsk && ((name) => onAsk({ type: "askKey", name }))}
 						request={permissions[0]}
 						waiting={permissions.length - 1}
 						width={contentWidth}
