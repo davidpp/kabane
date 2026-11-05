@@ -14,7 +14,7 @@ export const context: Command = {
 	name: "context",
 	summary: "The assembled brief for a task: the read entrypoint for agents",
 	usage:
-		"kabane context <id> [--no-deref] [--no-subtasks] [--format concise|full] [--sections metadata,description,upstream,position,context,priorWork,discussion] [--cursor <cursor>]",
+		"kabane context <id> [--no-deref] [--no-subtasks] [--format concise|full] [--sections metadata,description,upstream,position,context,priorWork,discussion,questions.decisions] [--cursor <cursor>]",
 	run: async (args, ctx) => {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", context.usage);
