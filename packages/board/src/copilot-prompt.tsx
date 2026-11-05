@@ -212,15 +212,8 @@ export const CopilotPane = ({
 	onFormSubmit = () => {},
 	onAsk,
 }: CopilotPaneProps): ReactNode => {
-	const { width, height } = useTerminalDimensions();
+	const { width } = useTerminalDimensions();
 	const theme = useTheme();
-	// A raised panel with no frame of its own: herdr draws the lines, and the accent is kept for the
-	// cursor, the one thing in the pane that is waiting on you. The input is a field one step up, the
-	// width of the pane, so it reads as the place to type and not as more footer under the footer.
-	const paneBg = theme.surface.raised;
-	// Columns inside the panel's one cell of padding either side.
-	const inner = width - 2;
-	const running = copilot.turn === "running";
 	const plan = log?.current.plan ?? [];
 	const progress = plan.length > 0 ? planProgress(plan) : null;
 	const [asking, ...queued] = copilot.asks;
@@ -261,21 +254,67 @@ export const CopilotPane = ({
 			/>
 		);
 
+	return (
+		<OpenPanel
+			copilot={copilot}
+			title={title()}
+			log={log}
+			spinnerFrame={spinnerFrame}
+			detailShownElsewhere={detailShownElsewhere}
+			textareaRef={textareaRef}
+			onSubmit={onSubmit}
+			onContentChange={onContentChange}
+			onAsk={onAsk}
+		/>
+	);
+};
+
+// The focused panel: the title row, then the ask, the palette, or the plan and the agent's last
+// lines, over the input.
+const OpenPanel = ({
+	copilot,
+	title,
+	log,
+	spinnerFrame,
+	detailShownElsewhere,
+	textareaRef,
+	onSubmit,
+	onContentChange,
+	onAsk,
+}: Pick<
+	CopilotPaneProps,
+	| "copilot"
+	| "log"
+	| "spinnerFrame"
+	| "textareaRef"
+	| "onSubmit"
+	| "onContentChange"
+	| "onAsk"
+> & {
+	title: Segments.Segment[];
+	detailShownElsewhere: boolean;
+}): ReactNode => {
+	const { width, height } = useTerminalDimensions();
+	const theme = useTheme();
+	// A raised panel with no frame of its own: herdr draws the lines, and the accent is kept for the
+	// cursor, the one thing in the pane that is waiting on you. The input is a field one step up, the
+	// width of the pane, so it reads as the place to type and not as more footer under the footer.
+	const paneBg = theme.surface.raised;
+	// Columns inside the panel's one cell of padding either side.
+	const inner = width - 2;
+	const running = copilot.turn === "running";
+	const [asking, ...queued] = copilot.asks;
 	const matches = BoardNav.matchingShortcuts(
 		BoardNav.paletteEntries(copilot),
 		copilot.text,
 	);
-	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
 	// A blocked harness outranks everything else the panel could say: the turn is not going anywhere
 	// until it is answered, so the plan and the palette wait.
 	const showChoice = asking !== undefined && !detailShownElsewhere;
 	// A shortcut palette replaces the plan while one is being picked: both at once is noise, and the
 	// human typing `/` is not watching the todo.
 	const showPalette = !showChoice && matches.length > 0;
-	const showPlan =
-		!showChoice && !showPalette && !detailShownElsewhere && plan.length > 0;
-	const showTail =
-		!showChoice && !showPalette && !detailShownElsewhere && tail.length > 0;
+	const showProgress = !showChoice && !showPalette && !detailShownElsewhere;
 
 	const asksPermission = showChoice && asking?.type === "permission";
 	return (
@@ -288,7 +327,7 @@ export const CopilotPane = ({
 			}}
 		>
 			<box style={{ flexDirection: "column", paddingLeft: 1, paddingRight: 1 }}>
-				<text bg={paneBg}>{Segments.spans(Segments.fit(title(), inner))}</text>
+				<text bg={paneBg}>{Segments.spans(Segments.fit(title, inner))}</text>
 				{asksPermission ? (
 					<PermissionBlock
 						request={asking.request}
@@ -298,24 +337,14 @@ export const CopilotPane = ({
 						{...clicks(onAsk)}
 					/>
 				) : null}
-				{showPlan ? (
-					<PlanBlock
-						plan={plan}
+				{showProgress ? (
+					<Progress
+						log={log}
 						spinnerFrame={spinnerFrame}
-						// An entry's text, less the glyph and the space before it.
-						width={inner - 2}
-						maxRows={MAX_PLAN_ROWS}
+						width={inner}
 						bg={paneBg}
 					/>
 				) : null}
-				{showTail
-					? tail.map((line, index) => (
-							// Index keys: a positional window on the last few lines, not a list of things — row N is its only identity, and the same line can legitimately repeat.
-							<text key={index} bg={paneBg} fg={theme.muted}>
-								{fit(line, inner)}
-							</text>
-						))
-					: null}
 				{showPalette ? (
 					<Palette
 						entries={matches}
@@ -335,6 +364,43 @@ export const CopilotPane = ({
 				onContentChange={onContentChange}
 			/>
 		</box>
+	);
+};
+
+// The turn in hand: its plan with live ticks, then the agent's last lines.
+const Progress = ({
+	log,
+	spinnerFrame,
+	width,
+	bg,
+}: {
+	log: CopilotLog.Log | null;
+	spinnerFrame: string;
+	width: number;
+	bg: string;
+}): ReactNode => {
+	const theme = useTheme();
+	const plan = log?.current.plan ?? [];
+	const tail = (log?.current.tail ?? []).slice(-MAX_TAIL_ROWS);
+	return (
+		<>
+			{plan.length > 0 ? (
+				<PlanBlock
+					plan={plan}
+					spinnerFrame={spinnerFrame}
+					// An entry's text, less the glyph and the space before it.
+					width={width - 2}
+					maxRows={MAX_PLAN_ROWS}
+					bg={bg}
+				/>
+			) : null}
+			{tail.map((line, index) => (
+				// Index keys: a positional window on the last few lines, not a list of things — row N is its only identity, and the same line can legitimately repeat.
+				<text key={index} bg={bg} fg={theme.muted}>
+					{fit(line, width)}
+				</text>
+			))}
+		</>
 	);
 };
 
