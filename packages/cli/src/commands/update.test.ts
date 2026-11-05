@@ -3,6 +3,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	symlinkSync,
@@ -29,20 +30,27 @@ let archive = "",
 	betaArchive = "";
 /**
  * The packed CLI at another version: its manifest and the one version literal the bundle inlines
- * from it. The shared dist is built once, so a second build at a beta version is not an option.
+ * from it, in whichever of `bin/`'s files the build split it into (the entry, or a chunk the entry
+ * shares with a lazy command). The shared dist is built once, so a second build at a beta version
+ * is not an option.
  */
 const repack = (from: string, version: string): string => {
 	const dir = join(WORK, `repack-${version}`);
 	mkdirSync(dir);
 	expect(Bun.spawnSync(["tar", "-xzf", from, "-C", dir]).exitCode).toBe(0);
 	const manifest = join(dir, "package/package.json"),
-		bundle = join(dir, "package/bin/kabane.js");
+		bin = join(dir, "package/bin");
 	writeFileSync(
 		manifest,
 		JSON.stringify({ ...JSON.parse(readFileSync(manifest, "utf8")), version }),
 	);
-	const text = readFileSync(bundle, "utf8"),
-		literal = JSON.stringify(UPDATE_SOURCE);
+	const literal = JSON.stringify(UPDATE_SOURCE);
+	const holding = readdirSync(bin)
+		.map((name) => join(bin, name))
+		.filter((file) => readFileSync(file, "utf8").includes(literal));
+	expect(holding).toHaveLength(1);
+	const [bundle = ""] = holding;
+	const text = readFileSync(bundle, "utf8");
 	expect(text.split(literal)).toHaveLength(2);
 	writeFileSync(bundle, text.replace(literal, JSON.stringify(version)));
 	const out = join(WORK, `kabane-${version}.tgz`);

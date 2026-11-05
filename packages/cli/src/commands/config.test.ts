@@ -154,6 +154,8 @@ describe.concurrent("config through the real CLI", () => {
 					"copilot.model",
 					"harness",
 					"harness.mode",
+					"updates",
+					"updates.check",
 					"timezone",
 					"extensions",
 					// The loop's settings, whether or not the extension is enabled.
@@ -210,6 +212,7 @@ describe.concurrent("config through the real CLI", () => {
 				["copilot.command", "/custom/adapter", "/custom/adapter"],
 				["copilot.args", "--model, custom", ["--model", "custom"]],
 				["sync.enabled", "true", true],
+				["updates.check", "false", false],
 				["sync.batchBytes", "4096", 4096],
 				["sync.token", "false", "<set>"],
 				["sync.url", "https://example.invalid", "https://example.invalid"],

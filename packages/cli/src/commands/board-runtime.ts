@@ -20,6 +20,7 @@ import {
 import { configPath } from "../config";
 import { type Command, type Ctx, resolveScope } from "../context";
 import { Extensions } from "../extensions";
+import { UpdateNotice } from "../update-notice";
 
 /**
  * The board's deps plus the copilot's teardown. The `Copilot` port carries no
@@ -102,7 +103,7 @@ const extensionPorts = async (
  * What the CLI hands the board: this device's home as the storage handle, the
  * activity and dispatcher ports the enabled extensions contribute (no-op
  * defaults without any), the scope the CLI would have filtered on, and a
- * copilot on the chosen harness.
+ * copilot on the chosen harness, and the release notice unless `updates.check` is false.
  *
  * The scope is resolved here rather than passed through as a resolver, because
  * the copilot needs the same answer the board shows: the project directory as
@@ -121,6 +122,9 @@ export const boardDeps = async (
 	const overrides = copilotOverrides(ctx);
 	return {
 		...(await extensionPorts(extensions, ctx)),
+		...(ctx.config.updates?.check === false
+			? {}
+			: { announcer: UpdateNotice.announcer(ctx.home) }),
 		cwd: ctx.cwd,
 		basePath: ctx.store,
 		// The board wants a URI and a label; the project root is the copilot's business.
