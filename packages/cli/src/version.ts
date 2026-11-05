@@ -9,7 +9,7 @@ import { version } from "../package.json";
 export type Source = { branch: string; commit: string; dirty: boolean };
 
 // scripts/build.ts defines this as "1" in the published bundle.
-const bundled = process.env.KABANE_BUNDLED === "1";
+export const bundled = process.env.KABANE_BUNDLED === "1";
 
 const source = (dir: string): Source | undefined => {
 	const status = Bun.spawnSync(

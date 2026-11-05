@@ -7,11 +7,12 @@
  * worth an error on screen.
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Announcer } from "@cabane/board";
-import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
+import { err, ok, type Result, tryCatch } from "@cabane/core";
 import { z } from "zod";
+import { version } from "../package.json";
 import {
 	compareVersions,
 	type DistTags,
@@ -20,7 +21,7 @@ import {
 	onChannel,
 	withinVersionPolicy,
 } from "./update-version";
-import { describeVersion } from "./version";
+import { bundled } from "./version";
 
 export namespace UpdateNotice {
 	const REGISTRY = "https://registry.npmjs.org";
@@ -36,9 +37,11 @@ export namespace UpdateNotice {
 
 	const cachePath = (home: string): string => join(home, FILE);
 
-	const readCache = (home: string): Cache | undefined => {
-		const read = trySync((): unknown =>
-			JSON.parse(readFileSync(cachePath(home), "utf8")),
+	// Async, like the write: the board asks after its first frame, and a slow disk must not hold the
+	// frames after it either.
+	const readCache = async (home: string): Promise<Cache | undefined> => {
+		const read = await tryCatch(async (): Promise<unknown> =>
+			JSON.parse(await readFile(cachePath(home), "utf8")),
 		);
 		if (!read.ok) return undefined;
 		const parsed = CacheSchema.safeParse(read.value);
@@ -52,12 +55,12 @@ export namespace UpdateNotice {
 	};
 
 	// Through a temporary file, so a second board writing at the same moment never leaves half a file.
-	const writeCache = (home: string, cache: Cache): Result<void> =>
-		trySync(() => {
-			mkdirSync(home, { recursive: true });
+	const writeCache = (home: string, cache: Cache): Promise<Result<void>> =>
+		tryCatch(async () => {
+			await mkdir(home, { recursive: true });
 			const temporary = `${cachePath(home)}.${process.pid}.tmp`;
-			writeFileSync(temporary, `${JSON.stringify(cache, null, 2)}\n`);
-			renameSync(temporary, cachePath(home));
+			await writeFile(temporary, `${JSON.stringify(cache, null, 2)}\n`);
+			await rename(temporary, cachePath(home));
 		});
 
 	const fetchTags = async (
@@ -117,11 +120,11 @@ export namespace UpdateNotice {
 		registry = REGISTRY,
 		timeoutMs = TIMEOUT_MS,
 	}: Options): Promise<string | undefined> => {
-		const cached = readCache(home);
+		const cached = await readCache(home);
 		if (cached && fresh(cached, now)) return candidate(version, cached);
 		const fetched = await fetchTags(registry, version, timeoutMs);
 		if (!fetched.ok) return cached && candidate(version, cached);
-		writeCache(home, {
+		await writeCache(home, {
 			...fetched.value,
 			checkedAt: new Date(now).toISOString(),
 		});
@@ -132,14 +135,14 @@ export namespace UpdateNotice {
 		`kabane ${release} is out · run kabane update`;
 
 	/**
-	 * The board's announcer for this device. A run from a source checkout says nothing: it is
-	 * ahead of the release its package.json names, and `kabane update` does not replace it.
+	 * The board's announcer for this device. Only the published bundle hears of a release: a run
+	 * from source is ahead of the release its package.json names, and `kabane update` does not
+	 * replace it. That is the build's flag, not a look at git, so nothing here spawns a process.
 	 */
 	export const announcer = (home: string): Announcer => ({
 		announce: async () => {
-			const running = describeVersion();
-			if (running.source) return ok(null);
-			const release = await check({ home, version: running.version });
+			if (!bundled) return ok(null);
+			const release = await check({ home, version });
 			return ok(release === undefined ? null : line(release));
 		},
 	});

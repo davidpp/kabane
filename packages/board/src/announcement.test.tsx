@@ -21,23 +21,37 @@ beforeAll(async () => {
 
 afterAll(() => dropDb(BASE));
 
-it("the board asks its announcer once it is up, shows the line, and esc dismisses it", async () => {
-	let asked = 0;
+it("the board asks its announcer once its first board frame is on screen, shows the line, and esc dismisses it", async () => {
+	// What the terminal held when the board asked: the frame presented by then, not the tree
+	// React had committed.
+	const onScreenWhenAsked: string[] = [];
+	let screen = (): string => "";
 	const announcer: Announcer = {
 		announce: async () => {
-			asked++;
+			onScreenWhenAsked.push(screen());
 			return ok(LINE);
 		},
 	};
+	// The first load waits on the scope, held here until the test can read the screen.
+	let release = (): void => {};
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
 	const { renderOnce, captureCharFrame, mockInput, destroy } = await renderTest(
 		<App
 			cwd={BASE}
 			basePath={BASE}
 			activity={noActivity}
 			announcer={announcer}
+			resolveScope={async () => {
+				await held;
+				return null;
+			}}
 		/>,
 		{ width: 80, height: 16 },
 	);
+	screen = captureCharFrame;
+	release();
 	const until = (p: (f: string) => boolean) =>
 		pumpUntil(renderOnce, captureCharFrame, p);
 	try {
@@ -47,7 +61,8 @@ it("the board asks its announcer once it is up, shows the line, and esc dismisse
 		mockInput.pressEscape();
 		const dismissed = await until((f) => !f.includes(LINE));
 		expect(dismissed).toContain("Ship it");
-		expect(asked).toBe(1);
+		expect(onScreenWhenAsked).toHaveLength(1);
+		expect(onScreenWhenAsked[0]).toContain("Ship it");
 	} finally {
 		destroy();
 	}
