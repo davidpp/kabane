@@ -400,26 +400,11 @@ export const EventView = ({
 				spinnerFrame={spinnerFrame}
 				toolDetails={toolDetails}
 			/>
-			{permissions[0] ? (
-				<box
-					style={{
-						flexDirection: "column",
-						flexShrink: 0,
-						marginTop: 1,
-						backgroundColor: theme.surface.raised,
-						paddingLeft: 1,
-						paddingRight: 1,
-					}}
-				>
-					<PermissionBlock
-						{...clicks(onAsk)}
-						request={permissions[0]}
-						waiting={permissions.length - 1}
-						width={contentWidth}
-						bg={theme.surface.raised}
-					/>
-				</box>
-			) : null}
+			<PermissionDock
+				permissions={permissions}
+				width={contentWidth}
+				onAsk={onAsk}
+			/>
 			{pane}
 			{notice ? (
 				<StatusBar
@@ -429,6 +414,42 @@ export const EventView = ({
 			) : (
 				<StatusBar hints={hints} />
 			)}
+		</box>
+	);
+};
+
+// The permission the harness is blocked on, the rest of the queue counted beneath it (the
+// `permissions` prop says why it sits here). Nothing while none waits.
+const PermissionDock = ({
+	permissions,
+	width,
+	onAsk,
+}: {
+	permissions: readonly CopilotPermission[];
+	width: number;
+	onAsk?: (click: BoardNav.AskClick) => void;
+}): ReactNode => {
+	const theme = useTheme();
+	const [head] = permissions;
+	if (!head) return null;
+	return (
+		<box
+			style={{
+				flexDirection: "column",
+				flexShrink: 0,
+				marginTop: 1,
+				backgroundColor: theme.surface.raised,
+				paddingLeft: 1,
+				paddingRight: 1,
+			}}
+		>
+			<PermissionBlock
+				{...clicks(onAsk)}
+				request={head}
+				waiting={permissions.length - 1}
+				width={width}
+				bg={theme.surface.raised}
+			/>
 		</box>
 	);
 };
