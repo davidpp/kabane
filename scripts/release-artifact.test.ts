@@ -80,6 +80,54 @@ test("ordinary archive validates package identity/bin/engine/exact externals", a
 	const result = await inspect(archive(normal));
 	expect(result.result.ok).toBe(true);
 });
+test("named chunks validate alongside the entry and templates", async () => {
+	const checked = await inspect(
+		archive([
+			...normal,
+			{
+				name: "package/bin/chunk-07j278pm.js",
+				text: "export const value = 1;",
+			},
+			{ name: "package/templates/dispatch/SKILL.md", text: "Dispatch" },
+		]),
+	);
+	expect(checked.result.ok).toBe(true);
+});
+for (const name of [
+	"bin/other.js",
+	"bin/chunk-.js",
+	"bin/chunk-07j278pm.js.map",
+	"bin/nested/chunk-07j278pm.js",
+	"chunk-07j278pm.js",
+	"src/index.ts",
+])
+	test(`unexpected file shape fails: ${name}`, async () => {
+		const checked = await inspect(
+			archive([...normal, { name: `package/${name}`, text: "unexpected" }]),
+		);
+		expect(checked.result.ok).toBe(false);
+	});
+test("chunks retain machine-path scanning and cannot replace the entry", async () => {
+	const chunk = {
+		name: "package/bin/chunk-07j278pm.js",
+		text: "FORBIDDEN_BUILD_MACHINE",
+	};
+	const checked = await inspect(archive([...normal, chunk]), [
+		"FORBIDDEN_BUILD_MACHINE",
+	]);
+	expect(checked.result.ok).toBe(false);
+	if (!checked.result.ok)
+		expect(checked.result.error.message).toBe(
+			"Archive exceeds bounds or contains a source map/machine path.",
+		);
+	const missingEntry = await inspect(
+		archive([
+			...normal.filter((member) => member.name !== "package/bin/kabane.js"),
+			chunk,
+		]),
+	);
+	expect(missingEntry.result.ok).toBe(false);
+});
 for (const member of [
 	{ name: "package/../../escape", text: "bad" },
 	{ name: "/absolute", text: "bad" },

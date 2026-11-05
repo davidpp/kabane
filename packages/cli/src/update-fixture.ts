@@ -303,7 +303,9 @@ export const createUpdateFixture = async (
 			const extracted = join(work, "original");
 			mkdirSync(extracted, { recursive: true });
 			Bun.spawnSync(["tar", "-xzf", archive, "-C", extracted]);
-			cpSync(join(extracted, "package/bin/kabane.js"), packageBin);
+			cpSync(join(extracted, "package/bin"), dirname(packageBin), {
+				recursive: true,
+			});
 		},
 	};
 };
