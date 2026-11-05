@@ -1,9 +1,58 @@
-Read `CLAUDE.md` first for the repository map and the gate, then `CODING_PRINCIPLE.md`
-for the rules and invariants the code holds. Both are versioned in this repository.
+# Kabane
+
+Local-first issue tracker and kanban for humans and AI agent runtimes. The project was called
+Cabane before its first public release; the workspace packages (`@cabane/*`), the
+`cabane-worker` Worker and the `cabane://actor/...` URIs keep that name, because rows and
+deployed hubs store it.
+
+## Shape
+
+```
+packages/
+├── core/      # @cabane/core   — schemas, storage over the Db port, sync (oplog, resolve, apply), MCP tool defs
+├── sqlite/    # @cabane/sqlite — Db adapter over bun:sqlite (local devices)
+├── acp/       # @cabane/acp    — ACP client over Bun.spawn: harness registry, session runner, own Update union
+├── extension/ # @cabane/extension — extension contract (Command, Ctx, board ports), args, outcomes
+├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, board, mcp (stdio)
+├── board/     # @cabane/board  — OpenTUI kanban; ActivitySource + Dispatcher + Copilot ports, no-op defaults
+└── worker/    # cabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
+extensions/
+└── loop/      # @cabane/loop   — drives a parent issue's subtasks through ACP harnesses from a detached runner
+```
+
+Two runtimes: Bun (devices) and Cloudflare Workers (the hub). The same core runs in both.
+Local SQLite is authoritative on every device. The hub is one more device that has a public URL.
+
+## Conventions
+
+See `CODING_PRINCIPLE.md` for the coding rules and the architectural invariants.
 
 For project, code, or pull-request reviews, use
 `.agents/skills/review-oss-typescript/SKILL.md` and judge the repository as a
 public TypeScript project.
+
+## Gate
+
+```bash
+bun run check        # oxlint, its type-aware pass, oxfmt --check, knip, jscpd
+bun run typecheck    # tsc --noEmit in every workspace package
+bun test             # bun packages only (core, sqlite, acp, extension, cli, board, extensions/*)
+bun run test         # the above plus `bun run --cwd packages/worker test` (tsc + vitest)
+```
+
+To run the CLI or the TUI live, use `bun run sandbox [kabane args]` (README, "Try a change
+without touching your own device"). It gives kabane a throwaway `KABANE_HOME` and git repo
+and keeps setup from registering in the real harness configs. Never run a live check
+against `~/.kabane`: on a contributor's machine it is their real tracker.
+
+Root `bun test` must name the bun packages: a bare `bun test` sweeps the Worker's
+vitest files it cannot execute. `bun run fix` applies oxlint's fixes and oxfmt.
+Lefthook runs oxfmt on staged files, both oxlint passes on staged `.ts`/`.tsx`, and
+`typecheck` when `.ts` files are staged.
+
+`bun run lint` fails on any new warning: the type-aware pass denies warnings, and the plain
+pass caps them with `--max-warnings` at today's count (JCAB-15 is clearing them). The cap
+only goes down. A change that removes warnings lowers it in `package.json`; nothing raises it.
 
 ## Validating a UI change
 
@@ -41,3 +90,17 @@ by a key arrives as alt and that key. Use your own `-L` socket and never `kill-s
 without one: the default server holds the human's sessions. Mouse clicks are out of reach here; list them as a manual check.
 A scripted ask does not prove a real harness sends that shape, so a change to how asks
 arrive still needs a run against a real one.
+
+## Constraints for agents
+
+- One concern per commit.
+- Never deploy to Cloudflare from an agent. `wrangler dev`, `wrangler deploy --dry-run` and
+  `@cloudflare/vitest-pool-workers` only. Deploys, DNS, and Access changes are manual steps
+  written into `docs/deploy.md`.
+- Machine-local instructions (a maintainer's own tracker scope, issue ids, worktree habits,
+  hub) belong in a gitignored `CLAUDE.local.md`, never in this file. A clean clone has none.
+  Claude Code reads `CLAUDE.local.md` after these instructions. Codex has no per-project
+  local file: an `AGENTS.override.md` replaces `AGENTS.md` in its directory, so one at the
+  root would hide everything here. Codex's personal instructions are global, for every
+  project: `$CODEX_HOME/AGENTS.md` (default `~/.codex/AGENTS.md`), which an
+  `AGENTS.override.md` beside it replaces.
