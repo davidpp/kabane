@@ -1123,32 +1123,54 @@ export namespace Loop {
 					`Run ${runId} has no worktree, so it has no checkpoints to roll back to`,
 				),
 			);
-		const sha = Worktree.match(RunStore.checkpoints(run), given);
-		if (!sha.ok) return sha;
-		const live = RunStore.isLive(run.status);
-		const working = run.claims.filter((c) => c.endedAt === undefined);
-		if (live && working.length > 0)
-			return err(
-				new Error(
-					`${working.map((c) => c.lane).join(", ")} still working in ${run.worktree}: pause the run and let them finish, or stop it`,
-				),
-			);
-		const reset = await Worktree.reset(run.worktree, sha.value, deps.git);
-		if (!reset.ok) return reset;
-		const at = new Date().toISOString();
-		// The trace is the runner's to write while it is live; it puts the note there itself.
-		if (live)
-			RunStore.appendInbox(deps.home, runId, {
-				kind: "rolled_back",
-				sha: sha.value,
-				by: deps.actor,
-				at,
-			});
-		else {
-			const log = RunStore.eventLog(deps.home, runId);
-			if (log.ok) log.value.append(Worktree.rolledBack(sha.value, deps.actor));
+		const held = Worktree.lock(run.worktree, `kabane loop rollback ${runId}`);
+		if (!held.ok) return held;
+		try {
+			const sha = Worktree.match(RunStore.checkpoints(run), given);
+			if (!sha.ok) return sha;
+			const live = RunStore.isLive(run.status);
+			const working = run.claims.filter((c) => c.endedAt === undefined);
+			if (live && working.length > 0)
+				return err(
+					new Error(
+						`${working.map((c) => c.lane).join(", ")} still working in ${run.worktree}: pause the run and let them finish, or stop it`,
+					),
+				);
+			// Landing and recovery may reset across histories; a human rollback must not.
+			const outside = await (deps.git ?? Worktree.git)(run.worktree, [
+				"rev-list",
+				"--max-count=1",
+				sha.value,
+				"--not",
+				"HEAD",
+			]);
+			if (!outside.ok) return outside;
+			if (outside.value.trim() !== "")
+				return err(
+					new Error(
+						`Checkpoint ${sha.value.slice(0, 12)} is no longer an ancestor of run ${runId}'s tip: the run was landed (rebased) or its history changed after that checkpoint; choose a checkpoint still on this branch, or revert the unwanted changes in ${run.worktree} and run the gates again`,
+					),
+				);
+			const reset = await Worktree.reset(run.worktree, sha.value, deps.git);
+			if (!reset.ok) return reset;
+			const at = new Date().toISOString();
+			// The trace is the runner's to write while it is live; it puts the note there itself.
+			if (live)
+				RunStore.appendInbox(deps.home, runId, {
+					kind: "rolled_back",
+					sha: sha.value,
+					by: deps.actor,
+					at,
+				});
+			else {
+				const log = RunStore.eventLog(deps.home, runId);
+				if (log.ok)
+					log.value.append(Worktree.rolledBack(sha.value, deps.actor));
+			}
+			return ok({ runId, sha: sha.value, worktree: run.worktree });
+		} finally {
+			held.value();
 		}
-		return ok({ runId, sha: sha.value, worktree: run.worktree });
 	};
 
 	/**

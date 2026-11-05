@@ -354,6 +354,78 @@ describe("Loop.rollback", () => {
 		expect(events.ok && events.value.at(-1)?.type).toBe("rollback");
 	});
 
+	it("refuses a checkpoint rewritten by landing's rebase without changing the worktree", async () => {
+		const parent = await add("parent");
+		const ctx = ctxFor(await runOn(parent, { ok: "true" }, true));
+		const dir = ctx.run.worktree ?? "";
+		writeFileSync(join(dir, "work.txt"), "checkpoint\n");
+		const pass = await Checks.gate(ctx, { label: "K", title: "checkpoint" });
+		RunStore.write(home, { ...ctx.run, status: "completed" });
+		const remote = join(root, "remote.git");
+		GitFixture.run(root, ["init", "-q", "--bare", remote]);
+		GitFixture.run(repo, ["remote", "add", "origin", remote]);
+		writeFileSync(join(repo, "upstream.txt"), "base moved\n");
+		GitFixture.run(repo, ["add", "-A"]);
+		GitFixture.run(repo, ["commit", "-q", "-m", "base moved"]);
+		GitFixture.run(repo, ["push", "-q", "origin", "HEAD:main"]);
+		GitFixture.run(dir, ["fetch", "-q", "origin", "main"]);
+		expect((await Worktree.rebase(dir, "FETCH_HEAD")).ok).toBe(true);
+		const tip = head(dir);
+		expect(tip).not.toBe(pass.checkpoint);
+		writeFileSync(join(dir, "work.txt"), "local edit\n");
+		writeFileSync(join(dir, "untracked.txt"), "keep me\n");
+		const events = RunStore.readEvents(home, ctx.run.id);
+
+		const refused = await Loop.rollback(
+			{ home, actor: HUMAN },
+			ctx.run.id,
+			(pass.checkpoint ?? "").slice(0, 8),
+		);
+		expect(!refused.ok && refused.error.message).toContain("landed (rebased)");
+		expect(head(dir)).toBe(tip);
+		expect(readFileSync(join(dir, "work.txt"), "utf8")).toBe("local edit\n");
+		expect(existsSync(join(dir, "upstream.txt"))).toBe(true);
+		expect(existsSync(join(dir, "untracked.txt"))).toBe(true);
+		expect(RunStore.readEvents(home, ctx.run.id)).toEqual(events);
+		expect(Worktree.lockedBy(dir)).toBeUndefined();
+	});
+
+	it("refuses rollback while landing holds the worktree lock, then releases its own lock", async () => {
+		const parent = await add("parent");
+		const ctx = ctxFor(await runOn(parent, { ok: "true" }, true));
+		const dir = ctx.run.worktree ?? "";
+		writeFileSync(join(dir, "work.txt"), "checkpoint\n");
+		const pass = await Checks.gate(ctx, { label: "K", title: "checkpoint" });
+		RunStore.write(home, { ...ctx.run, status: "completed" });
+		writeFileSync(join(dir, "untracked.txt"), "keep while locked\n");
+		const held = Worktree.lock(dir, "kabane loop land run-1");
+		if (!held.ok) throw held.error;
+		try {
+			const refused = await Loop.rollback(
+				{ home, actor: HUMAN },
+				ctx.run.id,
+				pass.checkpoint ?? "",
+			);
+			expect(!refused.ok && refused.error.message).toContain(
+				"kabane loop land run-1",
+			);
+			expect(existsSync(join(dir, "untracked.txt"))).toBe(true);
+		} finally {
+			held.value();
+		}
+		expect(
+			(
+				await Loop.rollback(
+					{ home, actor: HUMAN },
+					ctx.run.id,
+					pass.checkpoint ?? "",
+				)
+			).ok,
+		).toBe(true);
+		expect(existsSync(join(dir, "untracked.txt"))).toBe(false);
+		expect(Worktree.lockedBy(dir)).toBeUndefined();
+	});
+
 	it("refuses while a session is working in the worktree", async () => {
 		const parent = await add("parent");
 		const ctx = ctxFor(await runOn(parent, { ok: "true" }, true));
