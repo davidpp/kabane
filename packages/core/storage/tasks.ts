@@ -136,6 +136,8 @@ export namespace Planner {
 
 		const result = await withDb(basePath, (db) => {
 			const now = new Date().toISOString();
+			const completedAt =
+				draft.state === "done" || draft.state === "cancelled" ? now : null;
 			const id = generateId();
 			const shortId = generateShortId(db, prefixResult.value, scopeUri);
 
@@ -150,8 +152,8 @@ export namespace Planner {
           verification,
           tags, context,
           updated_by,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          created_at, updated_at, completed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					id,
 					shortId,
@@ -182,6 +184,7 @@ export namespace Planner {
 					Runtime.actor(),
 					now,
 					now,
+					completedAt,
 				],
 			);
 			Oplog.afterWrite(db, "tasks", "insert", id);
@@ -198,7 +201,7 @@ export namespace Planner {
 				scopeRefs: draft.scopeRefs,
 				deadline: draft.deadline,
 				deferUntil: draft.deferUntil,
-				completedAt: undefined,
+				completedAt: completedAt ?? undefined,
 				provenance: {
 					source: draft.provenance?.source ?? "human",
 					sourceId: draft.provenance?.sourceId,

@@ -30,6 +30,34 @@ const createDevice = async (deviceId: string): Promise<string> => {
 };
 
 describe("task completion timestamps", () => {
+	for (const state of [
+		"done",
+		"cancelled",
+		"inbox",
+		"next",
+		"in_progress",
+		"waiting",
+		"someday",
+	] as const) {
+		it(`creating a ${state} task stamps only closed states`, async () => {
+			const now = "2026-01-01T00:00:00.000Z";
+			setSystemTime(new Date(now));
+			const base = await createDevice("source");
+			const added = await Planner.addTask(base, {
+				title: "Created in state",
+				state,
+			});
+			if (!added.ok) throw added.error;
+			const expected =
+				state === "done" || state === "cancelled" ? now : undefined;
+			expect(added.value.completedAt).toBe(expected);
+			const stored = await Planner.getTask(base, added.value.id);
+			if (!stored.ok) throw stored.error;
+			expect(stored.value?.state).toBe(state);
+			expect(stored.value?.completedAt).toBe(expected);
+		});
+	}
+
 	for (const closed of ["done", "cancelled"] as const) {
 		for (const open of [
 			"inbox",
