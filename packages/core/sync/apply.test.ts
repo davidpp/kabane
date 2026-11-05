@@ -240,3 +240,67 @@ describe("Apply — FK parents behind a table prefix", () => {
 		expect((await taskRow("child-1"))?.parent_task_id).toBe("parent-1");
 	});
 });
+
+describe("Apply — the newest delete is the evidence", () => {
+	beforeEach(async () => {
+		base = join(tmpdir(), `planner-apply-deletes-${crypto.randomUUID()}`);
+		mkdirSync(base, { recursive: true });
+		const init = await Planner.init(base);
+		if (!init.ok) throw init.error;
+		const armed = await runWithDb(base, (db) =>
+			Oplog.initDevice(db, "device-local"),
+		);
+		if (!armed.ok) throw armed.error;
+	});
+
+	afterEach(() => {
+		rmSync(base, { recursive: true, force: true });
+	});
+
+	const at = (second: number): string =>
+		`2026-08-03T12:00:${String(second).padStart(2, "0")}.000Z`;
+
+	const deleteOp = (
+		serverSeq: number,
+		rowId: string,
+		capturedAt: string,
+	): RelayOp => ({
+		opId: `op-${serverSeq}`,
+		deviceId: REMOTE,
+		tbl: "tasks",
+		rowId,
+		op: "delete",
+		capturedAt,
+		serverSeq,
+	});
+
+	it("keeps a row deleted when a delayed older delete and then an update between the two arrive", async () => {
+		const report = await Apply.applyBatch(
+			base,
+			page([
+				insertOp(
+					1,
+					"tasks",
+					"row-1",
+					taskPayload("row-1", { updated_at: at(0) }),
+				),
+				deleteOp(2, "row-1", at(30)),
+				// Another device's delete, captured at 10 and delivered late.
+				deleteOp(3, "row-1", at(10)),
+				{
+					...insertOp(4, "tasks", "row-1", {
+						...taskPayload("row-1", { updated_at: at(20) }),
+						title: "stale",
+					}),
+					op: "update",
+					rowUpdatedAt: at(20),
+				},
+			]),
+		);
+
+		expect(report.ok).toBe(true);
+		if (!report.ok) return;
+		expect(report.value.skipped.deleted).toBe(1);
+		expect(await taskRow("row-1")).toBeNull();
+	});
+});

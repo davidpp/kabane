@@ -134,6 +134,14 @@ const deleteNote = (device: Device, id: string): Promise<void> =>
 		Oplog.afterDelete(db, [{ tbl: NOTES, row }]);
 	});
 
+/** Stands in for a constraint one database holds and the others do not. */
+const refuse = (db: Db) =>
+	db.run(
+		`CREATE TRIGGER refuse_note BEFORE INSERT ON ${notesTable()}
+		 WHEN NEW.body = 'refused'
+		 BEGIN SELECT RAISE(ABORT, 'refused by this database'); END`,
+	);
+
 // ============================================================
 // Harness
 // ============================================================
@@ -667,14 +675,6 @@ describe("a parked op that fails to replay", () => {
 		expect(reported.parkedFailed).toHaveLength(10);
 	});
 
-	/** Stands in for a constraint this database holds and alpha's does not. */
-	const refuse = (db: Db) =>
-		db.run(
-			`CREATE TRIGGER refuse_note BEFORE INSERT ON ${notesTable()}
-			 WHEN NEW.body = 'refused'
-			 BEGIN SELECT RAISE(ABORT, 'refused by this database'); END`,
-		);
-
 	it("is set aside and reported while core flows, retried every pass, and applies with the ops behind it once it can", async () => {
 		const alpha = await createDevice("alpha", [notes()]);
 		const beta = await createDevice("beta", []);
@@ -739,6 +739,78 @@ describe("a parked op that fails to replay", () => {
 });
 
 describe("a parked delete replayed before the rest of its row", () => {
+	it("keeps the newest delete when an older one replays later, in bulk and one op at a time alike", async () => {
+		const alpha = await createDevice("alpha", [
+			notes([CREATE_NOTES, PIN_NOTES]),
+		]);
+		const task = await addTask(alpha, "parent");
+		await push(alpha);
+
+		// The log for note R, by hand: created and deleted at 30 on version 1;
+		// then another device's delete, captured at 10 on version 2 and delivered
+		// late; then an update captured at 20. One more version-2 note, S, is a
+		// row an extra database refuses, which forces the one-op-at-a-time replay.
+		const at = (second: number): string =>
+			`2026-11-05T10:00:${String(second).padStart(2, "0")}.000Z`;
+		const R = ulid();
+		const S = ulid();
+		const row = (id: string, body: string, clock: string) => ({
+			id,
+			task_id: task,
+			body,
+			updated_at: clock,
+			version: 1,
+			visibility: "shared",
+		});
+		const append = (
+			op: "insert" | "update" | "delete",
+			rowId: string,
+			schema: number,
+			capturedAt: string,
+			payload?: Record<string, unknown>,
+		) =>
+			relay.log.push({
+				opId: crypto.randomUUID(),
+				deviceId: "far",
+				tbl: NOTES,
+				rowId,
+				op,
+				capturedAt,
+				...(payload === undefined
+					? {}
+					: { payload, rowUpdatedAt: String(payload.updated_at) }),
+				schema: Migrations.SCHEMA_VERSION,
+				module: { name: "notes", schema },
+				serverSeq: relay.log.length + 1,
+			});
+		append("insert", R, 1, at(0), row(R, "R", at(0)));
+		append("delete", R, 1, at(30));
+		append("insert", S, 2, at(5), row(S, "refused", at(5)));
+		append("delete", R, 2, at(10));
+		append("update", R, 1, at(20), row(R, "stale", at(20)));
+
+		const replayOn = async (deviceId: string, refusing: boolean) => {
+			const bare = await createDevice(deviceId, []);
+			expect((await pull(bare)).parked).toBe(5);
+			// Version 1 replays the insert and the delete at 30; R waits behind
+			// its version-2 delete.
+			const v1 = { ...bare, modules: [notes([CREATE_NOTES])] };
+			await boot(v1);
+			expect((await pull(v1)).replayed).toBe(2);
+			const v2 = { ...bare, modules: [notes([CREATE_NOTES, PIN_NOTES])] };
+			await boot(v2);
+			if (refusing) await as(v2, refuse);
+			const replay = await pull(v2);
+			expect(replay.replayFailed).toBe(refusing ? 1 : 0);
+			return (await notesOn(v2)).filter((note) => note.id === R);
+		};
+
+		const bulk = await replayOn("bulk", false);
+		const oneByOne = await replayOn("one-by-one", true);
+		expect(bulk).toEqual([]);
+		expect(oneByOne).toEqual(bulk);
+	});
+
 	it("still drops an older update of the row that replays on a later pass", async () => {
 		const gamma = await createDevice("gamma", [notes([CREATE_NOTES])]);
 		const alpha = await createDevice("alpha", [

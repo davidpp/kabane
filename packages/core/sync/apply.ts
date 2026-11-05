@@ -673,9 +673,14 @@ const applyOne = (pass: Pass, op: RelayOp) => {
 	});
 
 	// Every delete seen counts as evidence the row was deleted, applied or
-	// not: a later insert of it from a third device must still lose.
+	// not: a later insert of it from a third device must still lose. The
+	// newest delete is the evidence: a delayed older one arriving later must
+	// not lower it and let an update between the two bring the row back.
 	if (op.op === "delete") {
-		pass.deletedAt.set(deleteKey(op.tbl, op.rowId), op.capturedAt);
+		const key = deleteKey(op.tbl, op.rowId);
+		const known = pass.deletedAt.get(key);
+		if (known === undefined || op.capturedAt > known)
+			pass.deletedAt.set(key, op.capturedAt);
 	}
 
 	execute(pass, meta, decision, localById ?? localByKey);
