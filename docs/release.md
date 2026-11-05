@@ -1,6 +1,7 @@
 # Releasing kabane
 
-Kabane ships as one npm package, `kabane`, requiring Bun at runtime. A release is
+Kabane ships as the npm package `kabane` (requiring Bun) and standalone Unix binaries
+through the Actions release flow. A release is
 **human-triggered**: agents must never publish, log in, create/push tags, run a
 publish-capable workflow, or configure npm/GitHub release settings. Nonpublishing local
 verification and installed smoke are safe with the disposable homes described below.
@@ -164,6 +165,54 @@ adds type/bin/files/dependencies, and derives the minimum Bun engine from `.bun-
 CLI `--version` and stdio MCP identify this version. Do not publish the private source
 package or rebuild/repack after choosing a verified archive.
 
+## Standalone release assets
+
+The Actions workflow builds natively on `macos-15` (darwin-arm64), `macos-15-intel`
+(darwin-x64), `ubuntu-24.04` (linux-x64 baseline) and `ubuntu-24.04-arm` (linux-arm64).
+These labels follow [GitHub's runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+No Windows or notarization is provided. The native build refuses a different host target,
+uses its installed OpenTUI optional dependency, and records an embedded `/$bunfs/.../libopentui`
+dylib/so path plus executable size in the log. Both x64 compilations use Bun's baseline target.
+Project bunfig preloads and dotenv autoload are disabled at compile time.
+
+Each `kabane-<os>-<arch>.tar.gz` contains `kabane/kabane`, `kabane/templates/<name>/`,
+`kabane/README.md` and `kabane/LICENSE`. Template roots and collision handling are shared
+with the npm builder. Keep the directory intact when installing. The copilot and loop still
+need their harness runtime (currently Node/npx); bundling Bun does not bundle those harnesses.
+
+Each matrix job builds once and retains its archive and source/version/Bun/hash record.
+Preparation downloads this run's native artifacts, verifies their source commit, version,
+Bun version and hashes against the npm manifest, then retains one combined artifact ID.
+Its manifest lists all four binaries; `SHA256SUMS` covers all five archives. Linux x64 and
+macOS arm64 smoke extract those downloaded bytes and run version, init/add/list and MCP
+initialize/tools/list with `PATH=/usr/bin:/bin`, isolated HOME/KABANE_HOME, and hostile
+project preload/dotenv files. Publication includes the binaries in existing draft conflict,
+byte verification, no-overwrite and immutable finalization checks. It never rebuilds them.
+
+The local release command still produces npm-only releases; use Actions for all-platform
+binary releases. Older npm-only retained manifests remain valid for partial-release recovery.
+Do not add binaries to an already published immutable release or replace retained bytes.
+Binary self-update, an installer, Homebrew and a mise registry entry are separate work.
+
+Local host verification (no publishing):
+
+```bash
+mkdir .binary-check
+bun scripts/build-binary.ts darwin-arm64 "$PWD/.binary-check/artifact" # choose your native target
+mkdir .binary-check/extracted
+tar -xzf .binary-check/artifact/kabane-darwin-arm64.tar.gz -C .binary-check/extracted
+bun scripts/smoke.ts --binary "$PWD/.binary-check/extracted/kabane/kabane"
+rm -rf .binary-check
+```
+
+The build requires a new output directory and refuses replacement. Smoke creates its isolated
+home/repo under the system temporary directory (honoring `TMPDIR`), removes it on success
+and prints its retained location on failure.
+A human must dispatch `publish: false` to prove all runner builds and retained transfer, then
+check first-run setup/board in a real terminal. Manually verify MCP installation, copilot
+and loop template/self-launch behavior in disposable
+homes. No live release, npm/OIDC or notarization claim follows from local binary smoke.
+
 ## Human-owned Actions setup (optional; before workflow publishing)
 
 1. Review the proposed exact action pins in `.github/workflows/release.yml`, Node
@@ -261,8 +310,8 @@ notes. Do not dispatch a branch and substitute a different checkout ref. The wor
 1. Frozen install and full gates on Linux; build/pack one release archive, inspect and
    upload that immutable Actions artifact identity.
 2. Linux x64 and macOS arm64 jobs download **the same artifact ID**, independently verify
-   hashes, and install/drive CLI+MCP from that archive without another build/pack. No wider
-   platform or interactive-board support is claimed.
+   hashes, and install/drive CLI+MCP from that archive without another build/pack. The standalone
+   matrix also builds macOS x64 and Linux arm64; interactive-board checks remain manual.
 3. The `npm-release` job waits for the configured human approval. Download **this run's
    archive** and perform the real-terminal board check before approving; a prior dry-run
    archive is not necessarily byte-identical to this run's archive.

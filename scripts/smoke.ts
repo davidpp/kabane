@@ -32,6 +32,7 @@ import {
 	verifyReleaseFiles,
 } from "./release-artifact";
 
+const binaryMode = process.argv[2] === "--binary";
 const ROOT = resolve(import.meta.dir, "..");
 const WORK = mkdtempSync(join(tmpdir(), "kabane-smoke-"));
 const HOME = join(WORK, "home");
@@ -39,7 +40,7 @@ const BUN_INSTALL = join(WORK, "bun");
 const KABANE_HOME = join(WORK, "kabane");
 const REPO = join(WORK, "repo");
 const UNPACKED = join(WORK, "unpacked");
-const BIN = join(BUN_INSTALL, "bin", "kabane");
+let BIN = join(BUN_INSTALL, "bin", "kabane");
 
 type Ran = { code: number; stdout: string; stderr: string };
 
@@ -82,7 +83,9 @@ const isolated: NodeJS.ProcessEnv = {
 	BUN_RUNTIME_TRANSPILER_CACHE_PATH: join(WORK, "transpile-cache"),
 	KABANE_HOME,
 	KABANE_HARNESSES: "",
-	PATH: `${join(BUN_INSTALL, "bin")}:${process.env.PATH ?? ""}`,
+	PATH: binaryMode
+		? "/usr/bin:/bin"
+		: `${join(BUN_INSTALL, "bin")}:${process.env.PATH ?? ""}`,
 };
 
 const pack = (): string => {
@@ -198,6 +201,10 @@ const checkCommands = (version: string): string => {
 	kabane("add", "Smoke task");
 	if (!kabane("list", "--json").stdout.includes("Smoke task"))
 		fail("kabane list does not show the task kabane add created");
+	if (binaryMode) {
+		pass("standalone --version, --help, init, add, list (PATH=/usr/bin:/bin)");
+		return "";
+	}
 	const concise = kabane("list", "--format", "concise", "--json").stdout.trim();
 	const page = JSON.parse(concise) as {
 		items?: { id: string; title: string }[];
@@ -469,6 +476,25 @@ const checkMcpContext = (
 		fail("installed concise MCP context shape/budget/partial completeness");
 };
 
+const checkBinaryMcp = (
+	replies: SmokeReply[],
+	version: string,
+	exited: number | "timeout",
+): void => {
+	const info = replies.find((reply) => reply.id === 1)?.result?.serverInfo;
+	const tools = replies.find((reply) => reply.id === 2)?.result?.tools;
+	if (
+		info?.name !== "kabane" ||
+		info.version !== version ||
+		!tools?.some((tool) => tool.name === "kabane_list") ||
+		exited !== 0
+	)
+		return fail("standalone MCP identity/discovery/stdin-close exit");
+	pass(
+		`standalone MCP initialize + tools/list: ${info.name} ${info.version}, ${tools.length} tools; exits on stdin close`,
+	);
+};
+
 // A harness closes the server's stdin when it goes away; the server must exit then, not linger.
 const checkMcp = async (version: string, taskId: string): Promise<void> => {
 	const proc = Bun.spawn([BIN, "mcp"], {
@@ -505,12 +531,14 @@ const checkMcp = async (version: string, taskId: string): Promise<void> => {
 		})),
 	];
 	await proc.stdin.write(
-		requests.map((request) => JSON.stringify(request)).join("\n") + "\n",
+		(binaryMode ? requests.slice(0, 3) : requests)
+			.map((request) => JSON.stringify(request))
+			.join("\n") + "\n",
 	);
 	await proc.stdin.flush();
 	const lines = await within(
 		10_000,
-		readReplies(proc.stdout, 4 + MCP_WRITE_CALLS.length),
+		readReplies(proc.stdout, binaryMode ? 2 : 4 + MCP_WRITE_CALLS.length),
 	);
 	await proc.stdin.end();
 	const exited = await within(10_000, proc.exited);
@@ -519,6 +547,7 @@ const checkMcp = async (version: string, taskId: string): Promise<void> => {
 		return fail("kabane mcp never answered initialize/discover/concise call");
 	const replies = lines.map((line) => JSON.parse(line) as SmokeReply);
 	const info = replies.find((reply) => reply.id === 1)?.result?.serverInfo;
+	if (binaryMode) return checkBinaryMcp(replies, version, exited);
 	checkMcpDiscovery(replies.find((reply) => reply.id === 2));
 	checkMcpPage(replies.find((reply) => reply.id === 3));
 	checkMcpContext(
@@ -539,13 +568,57 @@ const checkMcp = async (version: string, taskId: string): Promise<void> => {
 
 const [mode, input, ...extra] = process.argv.slice(2);
 if (
-	(mode !== undefined && mode !== "--tarball" && mode !== "--artifact-dir") ||
+	(mode !== undefined &&
+		mode !== "--tarball" &&
+		mode !== "--artifact-dir" &&
+		mode !== "--binary") ||
 	(mode !== undefined && !input) ||
 	extra.length
 )
 	fail(
-		"usage: bun run smoke [--tarball <existing.tgz> | --artifact-dir <retained-release>]",
+		"usage: bun run smoke [--tarball <existing.tgz> | --artifact-dir <retained-release> | --binary <extracted-executable>]",
 	);
+if (binaryMode && input) {
+	BIN = resolve(input);
+	const source = z
+		.object({ version: z.string() })
+		.safeParse(
+			JSON.parse(readFileSync(join(ROOT, "packages/cli/package.json"), "utf8")),
+		);
+	if (!source.success) fail("invalid source version");
+	const version = source.success ? source.data.version : "";
+	if (
+		process.env.GITHUB_REF_TYPE === "tag" &&
+		process.env.GITHUB_REF !== `refs/tags/v${version}`
+	)
+		fail("binary smoke tag/source version mismatch");
+	mkdirSync(HOME, { recursive: true });
+	mkdirSync(REPO);
+	runOk(["git", "init", "-q"], REPO, isolated);
+	// A project's preload and dotenv must never execute or alter a compiled CLI.
+	writeFileSync(join(REPO, "bunfig.toml"), 'preload = ["./poison.ts"]\n');
+	writeFileSync(join(REPO, "poison.ts"), "process.exit(91);\n");
+	writeFileSync(
+		join(REPO, ".env"),
+		`KABANE_HOME=${join(WORK, "dotenv-home")}\n`,
+	);
+	// Leave KABANE_HOME unset once: dotenv would otherwise be masked by the explicit env.
+	runOk(
+		[BIN, "init", "--actor", "cabane://actor/human/smoke", "--device", "smoke"],
+		REPO,
+		{ ...isolated, KABANE_HOME: undefined },
+	);
+	if (
+		!existsSync(join(HOME, ".kabane/config.json")) ||
+		existsSync(join(WORK, "dotenv-home"))
+	)
+		fail("standalone loaded project dotenv");
+	checkCommands(version);
+	await checkMcp(version, "");
+	rmSync(WORK, { recursive: true, force: true });
+	console.error("smoke: passed standalone binary");
+	process.exit(0);
+}
 let tarball: string;
 let expectedVersion: string | undefined;
 let artifactDir: string | undefined;
