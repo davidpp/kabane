@@ -9,7 +9,7 @@ Judge whether the resulting repository is healthier and easier for an external m
 
 ## Establish the contract
 
-1. Read `CLAUDE.md`, `CODING_PRINCIPLE.md`, and the task or specification.
+1. Read `AGENTS.md`, `CODING_PRINCIPLE.md`, and the task or specification.
 2. State the intended behavior and public surface before inspecting implementation details.
 3. Inspect tests first. Ask whether each behavioral claim has a test that would fail without its enforcement.
 4. Review the resulting files and dependency graph, not only the diff.
