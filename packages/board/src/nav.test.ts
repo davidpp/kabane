@@ -15,6 +15,10 @@ import { BoardTabs } from "./tabs";
 const requests = (s: BoardNav.BoardState) =>
 	s.copilot.asks.map((ask) => ask.request);
 
+// One instant for every fixture: tests compare states built by separate calls, and a
+// wall-clock stamp makes two of them differ whenever the calls straddle a millisecond.
+const AT = "2026-01-01T00:00:00.000Z";
+
 const task = (over: Partial<Task> = {}): Task => ({
 	id: "01H000000000000000000000AA",
 	shortId: "JAKE-1",
@@ -22,11 +26,11 @@ const task = (over: Partial<Task> = {}): Task => ({
 	kind: "issue",
 	state: "next",
 	priority: "normal",
-	provenance: { source: "human", discoveredAt: new Date().toISOString() },
+	provenance: { source: "human", discoveredAt: AT },
 	needsReview: false,
 	tags: [],
-	createdAt: new Date().toISOString(),
-	updatedAt: new Date().toISOString(),
+	createdAt: AT,
+	updatedAt: AT,
 	...over,
 });
 
