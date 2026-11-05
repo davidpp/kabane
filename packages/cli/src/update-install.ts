@@ -62,52 +62,72 @@ const directory = (value: string, home: string): Result<string, string> => {
 	return isAbsolute(expanded) ? ok(resolve(expanded)) : err(UNSUPPORTED);
 };
 
+type DirectorySettings = {
+	globalDir: string | undefined;
+	binDir: string | undefined;
+	dryRun: boolean;
+};
+
+/** The global directories and dry-run the user's own bunfigs set, read inside `globalDirectories`' try. */
+const userDirectorySettings = (
+	files: readonly string[],
+): Result<DirectorySettings, string> => {
+	let globalDir: string | undefined;
+	let binDir: string | undefined;
+	let dryRun = false;
+	for (const file of files) {
+		if (!existsSync(file)) continue;
+		if (lstatSync(file).size > 65_536) return err(UNSUPPORTED);
+		const settings = DirectorySettingsSchema.safeParse(
+			Bun.TOML.parse(readFileSync(file, "utf8")),
+		);
+		if (!settings.success) return err(UNSUPPORTED);
+		dryRun ||= settings.data.install?.dryRun === true;
+		const nextGlobal = settings.data.install?.globalDir;
+		const nextBin = settings.data.install?.globalBinDir;
+		// Ambiguous HOME/XDG directory precedence is not ownership evidence.
+		if (
+			(globalDir && nextGlobal && globalDir !== nextGlobal) ||
+			(binDir && nextBin && binDir !== nextBin)
+		)
+			return err(UNSUPPORTED);
+		globalDir ??= nextGlobal;
+		binDir ??= nextBin;
+	}
+	return ok({ globalDir, binDir, dryRun });
+};
+
 /** Read only directory settings; Bun itself owns registry/auth/proxy/age configuration. */
 const globalDirectories = (
 	env: NodeJS.ProcessEnv,
 ): Result<{ globalDir: string; binDir: string; dryRun: boolean }, string> => {
 	try {
 		const home = env.HOME ?? homedir();
-		const files = [
+		const settings = userDirectorySettings([
 			...new Set([
 				join(home, ".bunfig.toml"),
 				join(env.XDG_CONFIG_HOME ?? home, ".bunfig.toml"),
 			]),
-		];
-		let globalDir: string | undefined;
-		let binDir: string | undefined;
-		let dryRun = false;
-		for (const file of files) {
-			if (!existsSync(file)) continue;
-			if (lstatSync(file).size > 65_536) return err(UNSUPPORTED);
-			const settings = DirectorySettingsSchema.safeParse(
-				Bun.TOML.parse(readFileSync(file, "utf8")),
-			);
-			if (!settings.success) return err(UNSUPPORTED);
-			dryRun ||= settings.data.install?.dryRun === true;
-			const nextGlobal = settings.data.install?.globalDir;
-			const nextBin = settings.data.install?.globalBinDir;
-			// Ambiguous HOME/XDG directory precedence is not ownership evidence.
-			if (
-				(globalDir && nextGlobal && globalDir !== nextGlobal) ||
-				(binDir && nextBin && binDir !== nextBin)
-			)
-				return err(UNSUPPORTED);
-			globalDir ??= nextGlobal;
-			binDir ??= nextBin;
-		}
+		]);
+		if (!settings.ok) return settings;
 		const base = env.BUN_INSTALL ?? join(home, ".bun");
 		const global = directory(
-			env.BUN_INSTALL_GLOBAL_DIR ?? globalDir ?? join(base, "install/global"),
+			env.BUN_INSTALL_GLOBAL_DIR ??
+				settings.value.globalDir ??
+				join(base, "install/global"),
 			home,
 		);
 		const bin = directory(
-			env.BUN_INSTALL_BIN ?? binDir ?? join(base, "bin"),
+			env.BUN_INSTALL_BIN ?? settings.value.binDir ?? join(base, "bin"),
 			home,
 		);
 		if (!global.ok) return global;
 		if (!bin.ok) return bin;
-		return ok({ globalDir: global.value, binDir: bin.value, dryRun });
+		return ok({
+			globalDir: global.value,
+			binDir: bin.value,
+			dryRun: settings.value.dryRun,
+		});
 	} catch {
 		return err(UNSUPPORTED);
 	}
@@ -134,6 +154,79 @@ const registeredVersion = (specifier: string, version: string): boolean => {
 	);
 };
 
+// The steps below run inside `inspectRegistryInstall`'s try: a filesystem read or parse that
+// throws is an unsupported installation, the same as a check that fails.
+
+/** The global bin is the hoisted slot's own entry, and it is what is running. */
+const ownsGlobalBin = (slot: string, bin: string, running: string): boolean => {
+	// In particular, do not mistake an isolated internal bin for an owned global bin.
+	if (!lstatSync(slot).isDirectory() || lstatSync(slot).isSymbolicLink())
+		return false;
+	if (!lstatSync(bin).isSymbolicLink()) return false;
+	const expected = realpathSync(join(slot, "bin/kabane.js"));
+	return realpathSync(bin) === expected && realpathSync(running) === expected;
+};
+
+/** The version the installed manifest, the global registration and its registry lock all agree on. */
+const lockedVersion = (
+	globalDir: string,
+	slot: string,
+): Result<string, string> => {
+	for (const file of [
+		join(slot, "package.json"),
+		join(globalDir, "package.json"),
+		join(globalDir, "bun.lock"),
+		join(globalDir, "bunfig.toml"),
+	]) {
+		if (!existsSync(file)) continue;
+		const stat = lstatSync(file);
+		if (!stat.isFile() || stat.size > 1_048_576) return err(UNSUPPORTED);
+	}
+	const manifest = ManifestSchema.safeParse(
+		JSON.parse(readFileSync(join(slot, "package.json"), "utf8")),
+	);
+	const registration = RegistrationSchema.safeParse(
+		JSON.parse(readFileSync(join(globalDir, "package.json"), "utf8")),
+	);
+	const lock = LockSchema.safeParse(
+		Bun.JSON5.parse(readFileSync(join(globalDir, "bun.lock"), "utf8")),
+	);
+	if (!manifest.success || !registration.success || !lock.success)
+		return err(UNSUPPORTED);
+	const version = manifest.data.version;
+	const specifier = registration.data.dependencies.kabane;
+	if (
+		!specifier ||
+		!registeredVersion(specifier, version) ||
+		lock.data.workspaces[""].dependencies.kabane !== specifier
+	)
+		return err(UNSUPPORTED);
+	const entry = ResolutionSchema.safeParse(lock.data.packages.kabane);
+	if (
+		!entry.success ||
+		entry.data[0] !== `kabane@${version}` ||
+		(entry.data[1] !== "" && !/^https?:\/\//.test(entry.data[1]))
+	)
+		return err(UNSUPPORTED);
+	return ok(version);
+};
+
+/** Whether the global root's own bunfig asks for dry-run. Reject directory redirection by it rather than guessing. */
+const rootDryRun = (globalDir: string): Result<boolean, string> => {
+	const local = join(globalDir, "bunfig.toml");
+	if (!existsSync(local)) return ok(false);
+	const settings = DirectorySettingsSchema.safeParse(
+		Bun.TOML.parse(readFileSync(local, "utf8")),
+	);
+	if (
+		!settings.success ||
+		settings.data.install?.globalDir ||
+		settings.data.install?.globalBinDir
+	)
+		return err(UNSUPPORTED);
+	return ok(settings.data.install?.dryRun === true);
+};
+
 /** No metadata network request is made until bin, registration and registry lock agree. */
 export const inspectRegistryInstall = async (
 	host: UpdateHost,
@@ -143,65 +236,12 @@ export const inspectRegistryInstall = async (
 		if (!directories.ok) return directories;
 		const globalDir = realpathSync(directories.value.globalDir);
 		const slot = join(globalDir, "node_modules/kabane");
-		// In particular, do not mistake an isolated internal bin for an owned global bin.
-		if (!lstatSync(slot).isDirectory() || lstatSync(slot).isSymbolicLink())
-			return err(UNSUPPORTED);
 		const bin = join(directories.value.binDir, "kabane");
-		if (!lstatSync(bin).isSymbolicLink()) return err(UNSUPPORTED);
-		const expected = realpathSync(join(slot, "bin/kabane.js"));
-		if (realpathSync(bin) !== expected || realpathSync(host.bin) !== expected)
-			return err(UNSUPPORTED);
-		for (const file of [
-			join(slot, "package.json"),
-			join(globalDir, "package.json"),
-			join(globalDir, "bun.lock"),
-			join(globalDir, "bunfig.toml"),
-		]) {
-			if (!existsSync(file)) continue;
-			const stat = lstatSync(file);
-			if (!stat.isFile() || stat.size > 1_048_576) return err(UNSUPPORTED);
-		}
-		const manifest = ManifestSchema.safeParse(
-			JSON.parse(readFileSync(join(slot, "package.json"), "utf8")),
-		);
-		const registration = RegistrationSchema.safeParse(
-			JSON.parse(readFileSync(join(globalDir, "package.json"), "utf8")),
-		);
-		const lock = LockSchema.safeParse(
-			Bun.JSON5.parse(readFileSync(join(globalDir, "bun.lock"), "utf8")),
-		);
-		if (!manifest.success || !registration.success || !lock.success)
-			return err(UNSUPPORTED);
-		const version = manifest.data.version;
-		const specifier = registration.data.dependencies.kabane;
-		if (
-			!specifier ||
-			!registeredVersion(specifier, version) ||
-			lock.data.workspaces[""].dependencies.kabane !== specifier
-		)
-			return err(UNSUPPORTED);
-		const entry = ResolutionSchema.safeParse(lock.data.packages.kabane);
-		if (
-			!entry.success ||
-			entry.data[0] !== `kabane@${version}` ||
-			(entry.data[1] !== "" && !/^https?:\/\//.test(entry.data[1]))
-		)
-			return err(UNSUPPORTED);
-		// Reject directory redirection by a global-root local config rather than guessing.
-		let dryRun = directories.value.dryRun;
-		const local = join(globalDir, "bunfig.toml");
-		if (existsSync(local)) {
-			const settings = DirectorySettingsSchema.safeParse(
-				Bun.TOML.parse(readFileSync(local, "utf8")),
-			);
-			if (
-				!settings.success ||
-				settings.data.install?.globalDir ||
-				settings.data.install?.globalBinDir
-			)
-				return err(UNSUPPORTED);
-			dryRun ||= settings.data.install?.dryRun === true;
-		}
+		if (!ownsGlobalBin(slot, bin, host.bin)) return err(UNSUPPORTED);
+		const version = lockedVersion(globalDir, slot);
+		if (!version.ok) return version;
+		const local = rootDryRun(globalDir);
+		if (!local.ok) return local;
 		const reported = await runUpdateProcess(
 			[host.bun, "pm", "bin", "-g"],
 			globalDir,
@@ -214,7 +254,12 @@ export const inspectRegistryInstall = async (
 				realpathSync(directories.value.binDir)
 		)
 			return err(UNSUPPORTED);
-		return ok({ globalDir, bin, version, dryRun });
+		return ok({
+			globalDir,
+			bin,
+			version: version.value,
+			dryRun: directories.value.dryRun || local.value,
+		});
 	} catch {
 		return err(UNSUPPORTED);
 	}
