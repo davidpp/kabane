@@ -747,7 +747,7 @@ export namespace Loop {
 	 * `kabane loop prune` does. A pull request's state is GitHub's to say (`Prune`).
 	 */
 	export const prune = (
-		deps: Pick<StartDeps, "home" | "git" | "gh">,
+		deps: Pick<StartDeps, "home" | "basePath" | "git" | "gh">,
 	): Promise<Result<Prune.Pruned[]>> => Prune.prune(deps);
 
 	/** One run as it is now: a run whose runner is gone reads as failed. */

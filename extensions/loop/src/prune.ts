@@ -11,11 +11,17 @@ import { existsSync } from "node:fs";
 import { relative } from "node:path";
 import { err, ok, type Result } from "@cabane/core";
 import { Land } from "./land";
+import { Parent } from "./parent";
 import { RunStore } from "./store";
 import { Worktree } from "./worktree";
 
 export namespace Prune {
-	type Deps = { home: string; git?: Worktree.Git; gh?: Land.Gh };
+	type Deps = {
+		basePath: string;
+		home: string;
+		git?: Worktree.Git;
+		gh?: Land.Gh;
+	};
 
 	/** Whether a worktree goes on, stays for the human, or is done with: and why, in a clause. */
 	type Verdict =
@@ -23,7 +29,7 @@ export namespace Prune {
 		| { kind: "kept"; why: string }
 		| { kind: "merged"; why: string; squashed: boolean };
 
-	/** Where the work on `branch`, run `run`'s worktree's branch, stands. */
+	/** Judge the branch and reconcile its parent from the same PR response, under the worktree lock. */
 	export const verdict = async (
 		deps: Deps,
 		run: RunStore.Run,
@@ -32,6 +38,20 @@ export namespace Prune {
 		const { pr, projectDir } = run;
 		const state = pr ? await Land.prState(deps.gh, projectDir, pr) : undefined;
 		if (pr && state?.ok) {
+			const runs = RunStore.list(deps.home);
+			if (!runs.ok) return runs;
+			// An older retained worktree must not settle a newer pull request on this parent.
+			const latestPr = runs.value.find(
+				(r) => r.parentId === run.parentId && r.pr,
+			)?.pr;
+			if (latestPr === pr) {
+				const reconciled = await Parent.reconcile(
+					deps.basePath,
+					run,
+					state.value.state,
+				);
+				if (!reconciled.ok) return reconciled;
+			}
 			if (state.value.state === "OPEN")
 				return ok({ kind: "working", why: `pull request ${pr} is open` });
 			if (state.value.state === "CLOSED")
