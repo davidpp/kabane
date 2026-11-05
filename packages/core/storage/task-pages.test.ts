@@ -346,7 +346,7 @@ describe("concise task pages", () => {
 		const racing: DbProvider = {
 			withDb: (path, fn) =>
 				provider.withDb(path, (db) => {
-					if (++reads === 3)
+					if (++reads === 2)
 						db.run(`UPDATE ${TABLES.tasks} SET short_id = ? WHERE id = ?`, [
 							"X".repeat(20000),
 							task.id,
@@ -365,6 +365,7 @@ describe("concise task pages", () => {
 				expect(result.error.message).not.toContain("no mutation occurred");
 				expect(result.error.message).toContain("before retrying");
 			}
+			expect(reads).toBe(2);
 			const updated = await Planner.getTask(base, task.id);
 			expect(updated.ok).toBe(true);
 			if (updated.ok) expect(updated.value?.state).toBe("done");
