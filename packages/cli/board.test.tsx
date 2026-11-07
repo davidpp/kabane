@@ -10,7 +10,7 @@ import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App, noActivity } from "@cabane/board";
-import { Planner, type Task } from "@cabane/core";
+import { Planner, type Result, type Task } from "@cabane/core";
 import { parseArgs } from "@cabane/extension";
 import { loop } from "@cabane/loop";
 import { testRender } from "@opentui/react/test-utils";
@@ -203,18 +203,13 @@ describe("kabane board", () => {
 	// `--issue` lands on the issue: its own scope unless `--scope` says otherwise, and its
 	// detail over the board, the done one and the subtask included.
 	describe("--issue", () => {
-		const add = async (
+		const add = (
 			input: Parameters<typeof Planner.addTask>[1],
-		): Promise<Task> => {
-			const added = await Planner.addTask(home, input);
-			if (!added.ok) throw added.error;
-			return added.value;
-		};
-		const issue = async (args: string[]): Promise<Task> => {
-			const found = await boardIssue(parseArgs(args), ctx);
-			if (!found.ok) throw found.error;
-			if (!found.value) throw new Error("no issue");
-			return found.value;
+		): Promise<Result<Task>> => Planner.addTask(home, input);
+		// The id `--issue <input>` resolves to, or the error it fails with.
+		const resolved = async (input: string): Promise<string | undefined> => {
+			const found = await boardIssue(parseArgs(["--issue", input]), ctx);
+			return found.ok ? found.value?.id : found.error.message;
 		};
 		// The frame once it shows `text`, or the last one tried.
 		const frameWith = async (deps: BoardWiring, text: string) => {
@@ -243,17 +238,17 @@ describe("kabane board", () => {
 		};
 
 		it("resolves a short id or a ULID, and fails in one line on an unknown one", async () => {
-			const elsewhere = await add({
+			const added = await add({
 				title: "Filed in another scope",
 				kind: "issue",
 				state: "next",
 				scopeUri: "jake://scope/elsewhere",
 			});
-			expect((await issue(["--issue", elsewhere.id])).id).toBe(elsewhere.id);
-			const short = elsewhere.shortId ?? "";
-			expect((await issue(["--issue", short.toLowerCase()])).id).toBe(
-				elsewhere.id,
-			);
+			expect(added.ok).toBe(true);
+			if (!added.ok) return;
+			const { id, shortId } = added.value;
+			expect(await resolved(id)).toBe(id);
+			expect(await resolved((shortId ?? "").toLowerCase())).toBe(id);
 			expect(await boardIssue(parseArgs([]), ctx)).toEqual({
 				ok: true,
 				value: undefined,
@@ -272,12 +267,26 @@ describe("kabane board", () => {
 		});
 
 		it("opens on the issue's own scope unless --scope says otherwise", async () => {
-			const elsewhere = await add({
-				title: "Scoped elsewhere",
-				kind: "issue",
-				state: "next",
-				scopeUri: "jake://scope/elsewhere",
-			});
+			const added = await Promise.all([
+				add({
+					title: "Scoped elsewhere",
+					kind: "issue",
+					state: "next",
+					scopeUri: "jake://scope/elsewhere",
+				}),
+				add({
+					title: "Scoped here",
+					kind: "issue",
+					state: "next",
+					scopeUri: "jake://scope/demo",
+				}),
+				add({ title: "No scope at all", kind: "issue", state: "next" }),
+			]);
+			const [elsewhere, local, unscoped] = added.flatMap((r) =>
+				r.ok ? [r.value] : [],
+			);
+			expect(added.every((r) => r.ok)).toBe(true);
+			if (!elsewhere || !local || !unscoped) return;
 			const deps = await boardDeps(parseArgs([]), ctx, "claude", {
 				issue: elsewhere,
 			});
@@ -288,12 +297,6 @@ describe("kabane board", () => {
 				label: "jake://scope/elsewhere",
 			});
 
-			const local = await add({
-				title: "Scoped here",
-				kind: "issue",
-				state: "next",
-				scopeUri: "jake://scope/demo",
-			});
 			const here = await boardDeps(parseArgs([]), ctx, "claude", {
 				issue: local,
 			});
@@ -303,11 +306,6 @@ describe("kabane board", () => {
 				label: "demo",
 			});
 
-			const unscoped = await add({
-				title: "No scope at all",
-				kind: "issue",
-				state: "next",
-			});
 			const all = await boardDeps(parseArgs([]), ctx, "claude", {
 				issue: unscoped,
 			});
@@ -340,14 +338,18 @@ describe("kabane board", () => {
 				state: "in_progress",
 				scopeUri: "jake://scope/demo",
 			});
+			expect(done.ok && parent.ok).toBe(true);
+			if (!done.ok || !parent.ok) return;
 			const child = await add({
 				title: "A subtask of it",
 				kind: "issue",
 				state: "next",
 				scopeUri: "jake://scope/demo",
-				parentTaskId: parent.id,
+				parentTaskId: parent.value.id,
 			});
-			for (const target of [done, child]) {
+			expect(child.ok).toBe(true);
+			if (!child.ok) return;
+			for (const target of [done.value, child.value]) {
 				const deps = await boardDeps(parseArgs([]), ctx, "claude", {
 					issue: target,
 				});
