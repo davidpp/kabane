@@ -205,7 +205,8 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `questions [<id>]` | `--all` (include answered and withdrawn) `--scope <uri>` `--limit <n>` `--cursor <cursor>` — open questions for the directory's scope or one issue, a bounded page as `kabane_questions` prints it; `--json` is the same page as `{ items, hasMore, nextCursor }`. Pass `nextCursor` back as `--cursor` with the same filters, in either output |
 | `answer <handle> <answer…>` | `--reason <text>` (why you chose it); or `--withdraw --reason <text>` — answer `JCAB-12:1` (a choice ignoring case, a comma list for multi-select); an unknown choice exits 1 listing the valid ones. The last answer moves a waiting issue to next |
 | `log <id>` | `--ref <type:value>` (repeatable) `--commit <sha>` `--branch <name>` `--pr <owner/repo#n>` `--url` `--session` `--file` `--note` |
-| `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,upstream,position,context,priorWork,discussion,questions.decisions` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise. Core's sections, then each registered module's (`questions.decisions`, the issue's decisions) |
+| `checklist <id>` | the issue's checklist, as the brief's `checklist.items` section prints it; `--json` gives `{ items }`. `checklist add <id> <text…>` `--at <n>` (1-based; default the end), `checklist tick <item…>` `--undo`, `checklist edit <item> [<text…>]` `--at <n>` `--remove` — an item is its handle `JCAB-12.3` or its ULID |
+| `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,checklist.items,upstream,position,context,priorWork,discussion,questions.decisions` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise. Core's sections, each registered module's after the one it names (`checklist.items` after the description, `questions.decisions` after the discussion) |
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
 | `update` | `--check` `--json` — metadata-only stable candidate (policy-unverified), or explicit verified update of a supported hoisted Bun global registry install; no tracker initialization |
 | `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
@@ -235,6 +236,27 @@ including query-relevant stale cursors and independent MCP today buckets.
 Ids are short ids (`JCAB-12`) or ULIDs. Short ids are labels, not identities:
 two devices can mint the same one offline, and `sync pull` relabels the later
 one (`sync status` counts `renamed ids`).
+
+## Checklists
+
+A checklist is the steps of one issue, from the `@cabane/checklist` module. An item has no
+assignee, no state beyond done and no brief; work that needs any of those is a subtask
+(`add --parent`). Each write prints one line, the receipt the MCP tools
+(`kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`) return:
+
+```
+$ kabane checklist add JCAB-12 Write the migration
+JCAB-12 0/1 · added JCAB-12.1
+$ kabane checklist tick JCAB-12.1
+JCAB-12 1/1 · ticked JCAB-12.1
+$ kabane checklist JCAB-12
+## Checklist 1/1
+
+- [x] JCAB-12.1 Write the migration id:01K9Z3V4Q8M2D6E7F8G9H0J1K2
+```
+
+`JCAB-12.3` counts every item ever added to the issue, so moving or removing one renumbers
+none. A question's handle (`JCAB-12:3`) is refused with the item form to use instead.
 
 ## MCP on this device
 

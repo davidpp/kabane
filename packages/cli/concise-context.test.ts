@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { CONTEXT_SECTIONS, ContextPageSchema } from "@cabane/core";
+import { checklistModule } from "@cabane/checklist";
+import { ContextPageSchema } from "@cabane/core";
 import { questionsModule } from "@cabane/questions";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -19,6 +20,10 @@ const toolResult = z.object({
 const fullContext = z.object({ markdown: z.string() });
 
 // Each case owns its tracker and its stdio server, so the two layouts run side by side.
+// Core's sections, each registered module's after the one it names.
+const VALID_SECTIONS =
+	"Valid sections: metadata, description, checklist.items, upstream, position, context, priorWork, discussion, questions.decisions";
+
 describe.concurrent("bounded context through actual CLI/stdio", () => {
 	for (const prefixed of [false, true])
 		it(`recovers retained steering and full briefs with identical compact chunks (${prefixed})`, async () => {
@@ -42,7 +47,9 @@ describe.concurrent("bounded context through actual CLI/stdio", () => {
 				);
 				const tools = await client.listTools();
 				expect(tools.tools).toHaveLength(
-					19 + (questionsModule.tools?.length ?? 0),
+					19 +
+						(questionsModule.tools?.length ?? 0) +
+						(checklistModule.tools?.length ?? 0),
 				);
 				for (const field of ["responseFormat", "sections", "cursor"])
 					expect(
@@ -264,16 +271,14 @@ describe.concurrent("bounded context through actual CLI/stdio", () => {
 					longUnknown,
 				);
 				expect(invalidSection.code).toBe(2);
-				expect(invalidSection.stderr).toContain(
-					`Valid sections: ${CONTEXT_SECTIONS.join(", ")}`,
-				);
+				expect(invalidSection.stderr).toContain(VALID_SECTIONS);
 				expect(invalidSection.stderr).not.toContain(longUnknown);
 				expect(
 					await call(
 						{ id, responseFormat: "concise", sections: [longUnknown] },
 						true,
 					),
-				).toContain(`Valid sections: ${CONTEXT_SECTIONS.join(", ")}`);
+				).toContain(VALID_SECTIONS);
 				// External comment writes don't bump task.version, but must stale discussion.
 				const db = new Database(join(tracker.home, "kabane.db"));
 				try {

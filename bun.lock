@@ -90,6 +90,7 @@
       "dependencies": {
         "@cabane/acp": "workspace:*",
         "@cabane/board": "workspace:*",
+        "@cabane/checklist": "workspace:*",
         "@cabane/core": "workspace:*",
         "@cabane/extension": "workspace:*",
         "@cabane/loop": "workspace:*",
