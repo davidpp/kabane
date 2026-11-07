@@ -6,7 +6,9 @@
 // claims it left open are closed as interrupted and their subtasks released, once a subtask its
 // session had closed has had the gate pass (or checkpoint) the dead runner never finished.
 // Starting or resuming takes the parent into in_progress, and every end of the run is a comment
-// on it (`Parent`). A run that completes lands its branch when its `land` setting says so
+// on it (`Parent`). Once the fixer has ended and the gates are green on its result, the lenses
+// whose findings it closed recheck its diff, once and without editing (`recheck`). A run that
+// completes lands its branch when its `land` setting says so
 // (`Land`). A single issue that gains a work child mid-run is a parent from then on.
 import { err, ok, type Result, type Task } from "@cabane/core";
 import { Budget } from "./budget";
@@ -321,10 +323,12 @@ export namespace Runner {
 
 	/**
 	 * The work is done and nothing is running. The phases that follow, each once: the gates on the
-	 * result, the lenses on work that passes them, the fixer on what the lenses found, and the gates
-	 * once more on what the fixer changed. The run completes when all of it has happened. The fixer
-	 * does not wait for the gates: the lenses saw them green, and a fixer resumed after its runner
-	 * died picks up a half-fixed tree. Undefined goes on ticking.
+	 * result, the lenses on work that passes them, the fixer on what the lenses found, the gates
+	 * once more on what the fixer changed, then a recheck of its diff by each lens whose findings it
+	 * closed. The run completes when all of it has happened; what a recheck reopens or files is
+	 * left open for a human, with no second fixer. The fixer does not wait for the gates: the
+	 * lenses saw them green, and a fixer resumed after its runner died picks up a half-fixed tree.
+	 * Undefined goes on ticking.
 	 */
 	const finalChecks = async (
 		ctx: Ctx,
@@ -342,7 +346,12 @@ export namespace Runner {
 		const fixerDone =
 			fixer.kind === "ended" ||
 			(fixer.kind === "unstarted" && findings.length === 0);
-		if (Stop.evaluate(plan, { gatesGreen, lensesDone, fixerDone }).done) {
+		const rechecks = Lenses.rechecks(ctx.run.config, ctx.run.claims, plan);
+		const recheckDone = Lenses.finished(rechecks);
+		if (
+			Stop.evaluate(plan, { gatesGreen, lensesDone, fixerDone, recheckDone })
+				.done
+		) {
 			// A landing that fails still completes the run: the work is done and checked.
 			if (ctx.run.config.land === "pr") {
 				await hearingStop(ctx, () => Land.land(ctx, plan));
@@ -376,7 +385,42 @@ export namespace Runner {
 				detail: fixer.detail,
 			};
 		if (!fixerDone) return startFixer(ctx, plan, findings);
-		return finalGates(ctx, plan);
+		// Before the gates: a recheck that edited files leaves its changes for the human, and a pass
+		// would commit them as the run's checkpoint.
+		const failed = rechecks.failed[0];
+		if (failed)
+			return {
+				status: "stopped",
+				reason: "recheck-failed",
+				detail: `${failed.name}: ${failed.detail}`,
+			};
+		if (!gatesGreen) return finalGates(ctx, plan);
+		return startRechecks(ctx, plan, rechecks.pending);
+	};
+
+	// Each lens due a recheck takes a free slot, as its review did, and none while paused: against
+	// the findings it rechecks (`Lenses.rechecking`), from the commit the fixer started on.
+	const startRechecks = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+		pending: readonly string[],
+	): Promise<Exit | undefined> => {
+		if (ctx.run.steering.paused) return undefined;
+		const base = Lenses.fixerBase(ctx.run.claims);
+		const closed = Lenses.rechecking(ctx.run.config, ctx.run.claims, plan);
+		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
+		for (const name of pending.slice(0, slots)) {
+			const findings = closed.get(name);
+			if (base === undefined || findings === undefined) continue;
+			const started = await Claims.recheck(ctx, name, findings, base, plan);
+			if (!started.ok)
+				return {
+					status: "stopped",
+					reason: "recheck-failed",
+					detail: `${name}: ${started.error.message}`,
+				};
+		}
+		return undefined;
 	};
 
 	// Lenses take free slots like any claim, and none while the run is paused. Their findings are
@@ -476,8 +520,11 @@ export namespace Runner {
 		// set meanwhile is theirs.
 		if (RunStore.onTarget(ctx.run).length === 0)
 			await Parent.take(ctx, `loop run ${resumed ? "resumed" : "started"}`);
-		// Recovery may run a subtask's gates, which a stop must still be able to kill.
-		await hearingStop(ctx, () => Claims.recover(ctx));
+		// Recovery may run a subtask's gates, which a stop must still be able to kill. A recheck that
+		// edited files stops the run before anything is claimed or gated on its edits.
+		const edited = await hearingStop(ctx, () => Claims.recover(ctx));
+		if (edited)
+			return { status: "stopped", reason: "recheck-failed", detail: edited };
 		if (ctx.run.stall === undefined) {
 			const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
 			RunState.save(ctx, {

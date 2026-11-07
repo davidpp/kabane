@@ -1,10 +1,10 @@
 // What a session is told. The issue's own brief comes from `assembleContext`; this adds only what
-// the run knows and the issue does not. An implementing session hears that it is one of several,
-// which subtask is its own, and how it signals that it is finished (on a single issue, that the
+// the run knows and the issue does not. An implementing session hears which subtask is its own
+// (and, in a run with more than one session at once, that its siblings share its tree), and how it signals that it is finished (on a single issue, that the
 // issue is the whole run); a lens hears what it reviews
 // and how it files findings; the fixer hears which findings are its own, in what order, and how
-// it settles each. The kabane tool loop itself is the MCP server's to describe, so it is not
-// restated.
+// it settles each; a lens's recheck hears the fixer's diff and the findings it closed. The kabane
+// tool loop itself is the MCP server's to describe, so it is not restated.
 import { CopilotInstructions } from "@cabane/acp";
 import type { Task } from "@cabane/core";
 import type { Gates } from "./gates";
@@ -16,6 +16,8 @@ export namespace Brief {
 		parent: Task;
 		task: Task;
 		gates: readonly string[];
+		/** Whether the run has more than one session at once: its siblings then share the tree. */
+		concurrent: boolean;
 		retry?: Gates.Result;
 		interrupted?: Interrupted;
 	};
@@ -73,7 +75,13 @@ export namespace Brief {
 		"Finish each turn with at most three lines saying what you did.",
 	];
 
-	const instructions = ({ runId, parent, task, gates }: Subject): string =>
+	const instructions = ({
+		runId,
+		parent,
+		task,
+		gates,
+		concurrent,
+	}: Subject): string =>
 		(task.id === parent.id
 			? [
 					`You are the implementing session of kabane loop run ${runId}, which drives the single issue ${label(task)} ("${task.title}") to completion.`,
@@ -87,7 +95,7 @@ export namespace Brief {
 					),
 				]
 			: [
-					`You are one implementing session of kabane loop run ${runId}, which drives the subtasks of ${label(parent)} ("${parent.title}") to completion. Other sessions may be working on sibling subtasks in the same repository at the same time.`,
+					`You are one implementing session of kabane loop run ${runId}, which drives the subtasks of ${label(parent)} ("${parent.title}") to completion.${concurrent ? " Other sessions may be working on sibling subtasks in the same repository at the same time." : ""}`,
 					`Your subtask is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
 					...finishing(
 						task,
@@ -233,6 +241,70 @@ export namespace Brief {
 			...(interrupted ? [takeover(interrupted)] : []),
 			assembled,
 		].join("\n\n---\n\n");
+
+	type Recheck = {
+		runId: string;
+		parent: Task;
+		lens: string;
+		prompt: string;
+		/** The findings this lens filed that the fixer closed. */
+		findings: readonly Task[];
+		/** The commit the fixer started from, and `git diff` from it to the tree as it is now. */
+		base: string;
+		diff: string;
+		gates: readonly string[];
+		interrupted?: Interrupted;
+	};
+
+	// A diff past this is cut, and the recheck reads the rest itself: the brief is a prompt.
+	const DIFF_CHARS = 60_000;
+
+	// A diff may hold fences of its own (a Markdown file's): one longer than any of them holds it.
+	const fenceAround = (text: string): string => {
+		const longest = Math.max(
+			0,
+			...[...text.matchAll(/`+/g)].map(([run]) => run.length),
+		);
+		const ticks = "`".repeat(Math.max(3, longest + 1));
+		return `${ticks}diff\n${text.trimEnd()}\n${ticks}`;
+	};
+
+	const shownDiff = ({ base, diff }: Recheck): string => {
+		const command = `\`git diff ${base}\``;
+		if (diff.trim() === "")
+			return `${command} shows no change: the fixer closed them without changing tracked files.`;
+		const cut = diff.length > DIFF_CHARS;
+		return [
+			`The fixer's diff, ${command} in this directory (files new to git are not in it; \`git status --short\` lists them):`,
+			fenceAround(cut ? diff.slice(0, DIFF_CHARS) : diff),
+			...(cut
+				? [
+						`The diff is cut at ${DIFF_CHARS} characters: run ${command} for the rest.`,
+					]
+				: []),
+		].join("\n\n");
+	};
+
+	/**
+	 * A lens's recheck of the fixer's diff: what it confirms or reopens and what it may file, the
+	 * review it takes over, the diff, the lens itself, then the parent's own brief.
+	 */
+	export const recheck = (subject: Recheck, assembled: string): string => {
+		const { runId, parent, lens, findings, gates, interrupted } = subject;
+		return [
+			[
+				`You are the \`${lens}\` verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"), rechecking the fixer. You reviewed the work earlier and filed findings; one fixer session has since worked them, and closed these of yours:`,
+				findings.map(listed).join("\n"),
+				`${checked(gates)} Review only the fixer's diff below, through the lens that follows it. Do not change files and do not fix anything: no fixer runs after you, so what you reopen or file is left for a human.`,
+				`${SERVER} For each finding above, read it with kabane_context and check the diff against it. When the diff fixes it, leave it closed. When it does not, or only in part, reopen it with kabane_edit (state "next") and say with kabane_comment on it what is still wrong. File a new finding only for something the diff broke, as the lens defines findings: kabane_add with kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"], after checking kabane_list for one already filed.`,
+				"When you are done, end your turn with one line: how many findings you confirmed, reopened and filed.",
+			].join("\n\n"),
+			...(interrupted ? [takeover(interrupted)] : []),
+			shownDiff(subject),
+			subject.prompt.trim(),
+			assembled,
+		].join("\n\n---\n\n");
+	};
 
 	/** The nudge for a fixer turn that ended with findings it has not settled. */
 	export const fixerContinuation = (left: readonly Task[]): string =>

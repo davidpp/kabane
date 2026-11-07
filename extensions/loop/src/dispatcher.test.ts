@@ -131,7 +131,10 @@ describe("LoopDispatcher.triggers", () => {
 		const offered = await LoopDispatcher.triggers(deps(), parent.id);
 		const [start] = offered.ok ? offered.value : [];
 		expect(start?.satisfiable).toBe(true);
-		expect(start?.inputs["budget.concurrency"]?.default).toBe("2");
+		expect(start?.inputs["budget.concurrency"]).toMatchObject({
+			default: "1",
+			label: "sessions in one tree",
+		});
 		const preview = (start?.preview ?? []).map((line) =>
 			line.map((p) => p.text).join(""),
 		);

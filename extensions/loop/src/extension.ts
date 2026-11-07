@@ -21,7 +21,7 @@ import { LoopDispatcher } from "./dispatcher";
 import { Parent } from "./parent";
 import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini] [--land none|pr]
+const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini] [--recheck|--no-recheck] [--land none|pr]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
@@ -56,12 +56,20 @@ const gatesFrom = (args: ParsedArgs): Result<Record<string, string>> => {
 	return ok(gates);
 };
 
-// A run has a worktree unless a settings layer or `--no-worktree` turns it off; `--worktree` turns
-// it back on over a layer that turns it off.
-const worktreeFrom = (args: ParsedArgs): { worktree?: boolean } => {
-	if (flagBool(args, "no-worktree")) return { worktree: false };
-	return flagBool(args, "worktree") ? { worktree: true } : {};
-};
+// The settings on by default that a flag pair switches: a run has a worktree, and rechecks its
+// fixes, unless a settings layer or `--no-<name>` turns it off; `--<name>` turns it back on over a
+// layer that turns it off.
+const SWITCHES = ["worktree", "recheck"] as const;
+
+const switchesFrom = (
+	args: ParsedArgs,
+): Partial<Record<(typeof SWITCHES)[number], boolean>> =>
+	Object.fromEntries(
+		SWITCHES.flatMap((name): [string, boolean][] => {
+			if (flagBool(args, `no-${name}`)) return [[name, false]];
+			return flagBool(args, name) ? [[name, true]] : [];
+		}),
+	);
 
 const isLand = (value: string): value is LoopConfig.Config["land"] =>
 	(LoopConfig.LAND as readonly string[]).includes(value);
@@ -87,7 +95,7 @@ const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 		...(model ? { model } : {}),
 		budget,
 		gates: gates.value,
-		...worktreeFrom(args),
+		...switchesFrom(args),
 		...(lenses.length > 0 ? { lenses } : {}),
 		...(verifier && Harnesses.isId(verifier) ? { verifier } : {}),
 		...(land && isLand(land) ? { land } : {}),
@@ -229,6 +237,8 @@ const START_FLAGS: ReadonlySet<string> = new Set([
 	"gate",
 	"worktree",
 	"no-worktree",
+	"recheck",
+	"no-recheck",
 	"lens",
 	"verifier",
 	"land",
@@ -255,14 +265,16 @@ const start: Verb = async (args, deps, target) => {
 	if (land !== undefined && !isLand(land))
 		return usage(`--land must be one of ${LoopConfig.LAND.join(", ")}`, USAGE);
 	// A switch followed by a stray word takes it as a value and would read as not given.
-	for (const flag of ["worktree", "no-worktree"])
-		if (flag in args.flags && !flagBool(args, flag))
-			return usage(
-				`--${flag} takes no value, not ${JSON.stringify(args.flags[flag])}`,
-				USAGE,
-			);
-	if (flagBool(args, "worktree") && flagBool(args, "no-worktree"))
-		return usage("Give one of --worktree and --no-worktree", USAGE);
+	for (const name of SWITCHES) {
+		for (const flag of [name, `no-${name}`])
+			if (flag in args.flags && !flagBool(args, flag))
+				return usage(
+					`--${flag} takes no value, not ${JSON.stringify(args.flags[flag])}`,
+					USAGE,
+				);
+		if (flagBool(args, name) && flagBool(args, `no-${name}`))
+			return usage(`Give one of --${name} and --no-${name}`, USAGE);
+	}
 	const config = configFrom(args);
 	if (!config.ok) return usage(config.error.message, USAGE);
 	const dir = flagString(args, "dir");

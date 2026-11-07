@@ -21,6 +21,7 @@ describe("LoopSettings.inputs", () => {
 			"stallAfter",
 			"lenses.functional",
 			"lenses.quality",
+			"recheck",
 			"worktree",
 			"land",
 		]);
@@ -43,6 +44,13 @@ describe("LoopSettings.inputs", () => {
 			label: "land the branch",
 			group: "Workspace",
 		});
+		// On by default, beside the lenses whose fixes it rechecks.
+		expect(inputs.recheck).toMatchObject({
+			type: "boolean",
+			default: true,
+			label: "recheck the fixes",
+			group: "Checks",
+		});
 		expect(inputs["lenses.quality"]).toMatchObject({
 			type: "boolean",
 			default: false,
@@ -61,8 +69,8 @@ describe("LoopSettings.inputs", () => {
 		});
 		expect(inputs["budget.concurrency"]).toMatchObject({
 			type: "number",
-			default: "2",
-			label: "concurrent sessions",
+			default: "1",
+			label: "sessions in one tree",
 			group: "Limits",
 		});
 		expect(inputs["budget.spend"]?.default).toBe("none");
@@ -111,6 +119,7 @@ describe("LoopSettings.overrides", () => {
 					spend: undefined,
 				},
 				stallAfter: 3,
+				recheck: true,
 				worktree: true,
 				verifier: undefined,
 				land: "none",

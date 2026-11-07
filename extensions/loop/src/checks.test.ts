@@ -202,6 +202,7 @@ describe("Checks", () => {
 				parent,
 				task: child,
 				gates: Object.keys(ctx.run.config.gates),
+				concurrent: false,
 				...(retry ? { retry } : {}),
 			},
 			"the issue's own brief",

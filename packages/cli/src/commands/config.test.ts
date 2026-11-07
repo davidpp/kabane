@@ -172,6 +172,7 @@ describe.concurrent("config through the real CLI", () => {
 					"loop.gates",
 					"loop.worktree",
 					"loop.lenses",
+					"loop.recheck",
 					"loop.verifier",
 				].sort(),
 			);

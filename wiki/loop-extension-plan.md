@@ -114,7 +114,10 @@ answered from the board, a finding filed. Mocked transcripts do not count.
      reset by parking. Explicitly set `next` to resume; closing a dependency does not unpark it.
      Exhausting nudges alone does not establish a blocker or complete the issue. Normal automatic
      retries (including red gates) remain separate from the nudge budget.
-   - **Limits:** concurrency and continuations are enforced. An optional spend limit is enforced
+   - **Limits:** concurrency and continuations are enforced. Concurrency defaults to 1: every
+     implementing claim works in the run's one tree, so a subtask's gates and checkpoint would
+     see a sibling's half-done edits (JCAB-113). More is for subtasks that touch disjoint files.
+     An optional spend limit is enforced
      when the harness reports `usage_update.cost`. There is no wall-time deadline; runs continue
      until completion, an explicit stop, or a health/limit stop. Legacy repo `budget.wallMinutes`
      settings are ignored; the CLI flag and board control are removed. ACP reports context
@@ -378,6 +381,14 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
   the run completes saying how many are left for a human. A run started on a parent whose
   subtasks are all closed goes straight to the fixer when no lens is configured, so
   `kabane loop start <parent>` is how a human has an earlier run's findings fixed.
+- **Recheck (JCAB-114):** once the fixer has ended and the gates are green on its result, each
+  lens with a finding the fixer closed runs once more on the verifier (`recheck` on the claim,
+  lane `<name>-recheck`), with the fixer's diff (`git diff` from the HEAD the first fixer claim
+  recorded) and those findings. It edits nothing: it confirms each fix, or reopens the finding
+  with a comment, and files only what the diff broke. No second fixer follows; what it reopens
+  or files is counted in the exit detail and left for a human. The `recheck` setting (on by
+  default, `--no-recheck`, the run form's "recheck the fixes") turns it off; a fixer that closed
+  nothing or a session directory outside git skips it.
 
 ### C4. Questions, permissions and steering
 - **Permissions:** done on branch `worktree-agent-a74b0c0ae0b7397eb`. Every request goes to the

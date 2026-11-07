@@ -3,8 +3,8 @@
 // while the claim still holds it; then close the core session, put a subtask the agent left in
 // progress and still owned back in the ready pool, record the gates, end the claim, and take a
 // progress mark for the stall detector unless the tracker parked or handed off the work. A lens
-// is a claim on the parent that leaves its state alone and has no gates; so is the fixer, whose
-// gates the runner runs once it has ended. A runner that died mid-claim leaves claims with no
+// is a claim on the parent that leaves its state alone and has no gates; so is a lens's recheck of
+// the fixer's diff, and the fixer, whose gates the runner runs once it has ended. A runner that died mid-claim leaves claims with no
 // end; `recover` closes them, finishing a done subtask's gates, and the claim that takes the work
 // over continues the interrupted one: its harness session resumed where the harness can, told what
 // that attempt left either way. A subtask its own red gate reopened is claimed again in the session
@@ -75,7 +75,8 @@ export namespace Claims {
 			});
 	};
 
-	// A lens and the fixer hold the parent without taking it: its state is never theirs to release.
+	// A lens, a recheck and the fixer hold the parent without taking it: its state is never theirs to
+	// release.
 	const onParent = RunStore.reviews;
 
 	export const mark = async (ctx: Ctx, plan: LoopPlan.Plan): Promise<string> =>
@@ -102,29 +103,59 @@ export namespace Claims {
 			await Checks.record(ctx, pass, { ...subject, assignee: claim.harness });
 	};
 
-	/** Close the claims a runner that died left open, finishing the pass a subtask's was owed. */
-	export const recover = async (ctx: Ctx): Promise<void> => {
+	const EDITED =
+		"the recheck changed the working tree, which a recheck must not do: its changes are left in place for a human";
+
+	const treeChanged = async (ctx: Ctx, tree: string): Promise<boolean> =>
+		(await ctx.tree(RunStore.sessionDir(ctx.run))) !== tree;
+
+	// An open recheck whose tree is no longer the one its lens's first recheck started on edited
+	// files before its runner died: it failed, rather than being interrupted, and the run stops on
+	// it at boot, before a claim or a gate pass could commit those edits as a checkpoint.
+	const recheckEdited = async (
+		ctx: Ctx,
+		claim: RunStore.Claim,
+	): Promise<boolean> => {
+		if (claim.recheck === undefined) return false;
+		const tree = ctx.run.claims.find((c) => c.recheck === claim.recheck)?.tree;
+		return tree !== undefined && treeChanged(ctx, tree);
+	};
+
+	/**
+	 * Close the claims a runner that died left open, finishing the pass a subtask's was owed. Why
+	 * the run must stop, when one was a recheck that had edited files; undefined otherwise.
+	 */
+	export const recover = async (ctx: Ctx): Promise<string | undefined> => {
+		let edited: string | undefined;
 		const open = ctx.run.claims.filter((c) => c.endedAt === undefined);
 		for (const claim of open) {
-			const detail = "the runner exited while this session was open";
-			await closeSession(ctx, claim.sessionId, { outcome: "error", detail });
+			const exited = "the runner exited while this session was open";
+			await closeSession(ctx, claim.sessionId, {
+				outcome: "error",
+				detail: exited,
+			});
 			if (!onParent(claim)) {
 				await finishPass(ctx, claim);
 				await release(ctx, claim.taskId, claim.harness);
 			}
+			const failed = await recheckEdited(ctx, claim);
+			const ended = failed
+				? { outcome: "error" as const, detail: EDITED }
+				: { outcome: "interrupted" as const, detail: exited };
+			if (failed) edited ??= `${claim.recheck}: error: ${EDITED}`;
 			RunState.patchClaim(ctx, claim.sessionId, {
 				endedAt: ctx.now().toISOString(),
-				outcome: "interrupted",
-				detail,
+				...ended,
 			});
 			RunState.event(ctx, {
 				type: "session_end",
 				lane: claim.lane,
 				session: claim.sessionId,
 				task: claim.shortId,
-				summary: `interrupted: ${detail}`,
+				summary: `${ended.outcome}: ${ended.detail}`,
 			});
 		}
+		return edited;
 	};
 
 	/** Who the run's inbox says answered `questionId`; the latest note wins. */
@@ -351,12 +382,40 @@ export namespace Claims {
 		interrupted?: Brief.Interrupted;
 		/** The attempt whose session a gate retry continues. */
 		resumes?: Retry.Resume;
+		/** The fixer's: the commit HEAD is at as it starts. */
+		head?: string;
+		/** A recheck's: the working tree's fingerprint it must leave as it found. */
+		tree?: string;
+	};
+
+	// A recheck reports and never edits; nothing enforces that in the harness, whose settings are
+	// the user's, so a tree that changed under it fails it here instead. Its edits stay where they
+	// are. Two rechecks running at once share the tree, so one's edit fails both.
+	const unedited = async (
+		ctx: Ctx,
+		tree: string,
+		outcome: Dispatch.Outcome,
+	): Promise<Dispatch.Outcome> => {
+		if (outcome.outcome !== "done" && outcome.outcome !== "incomplete")
+			return outcome;
+		return (await treeChanged(ctx, tree))
+			? { ...outcome, outcome: "error", detail: EDITED }
+			: outcome;
 	};
 
 	// Record the claim, dispatch its session and hold it live until it has settled.
 	const launch = (ctx: Ctx, plan: LoopPlan.Plan, started: Started): void => {
-		const { task, harness, lane, sessionId, work, interrupted, resumes } =
-			started;
+		const {
+			task,
+			harness,
+			lane,
+			sessionId,
+			work,
+			interrupted,
+			resumes,
+			head,
+			tree,
+		} = started;
 		RunState.save(ctx, {
 			...ctx.run,
 			claims: [
@@ -370,7 +429,20 @@ export namespace Claims {
 					startedAt: ctx.now().toISOString(),
 					continuations: 0,
 					...(work.kind === "lens" ? { lens: work.name } : {}),
-					...(work.kind === "fix" ? { fixer: true as const } : {}),
+					...(work.kind === "fix"
+						? {
+								fixer: true as const,
+								findings: work.findings.map((f) => f.id),
+								...(head ? { head } : {}),
+							}
+						: {}),
+					...(work.kind === "recheck"
+						? {
+								recheck: work.name,
+								findings: work.findings.map((f) => f.id),
+								...(tree !== undefined ? { tree } : {}),
+							}
+						: {}),
 				},
 			],
 		});
@@ -408,7 +480,9 @@ export namespace Claims {
 			},
 			hooks(ctx, sessionId, lane, label(task), harness),
 		);
-		const settled = handle.done.then(async (outcome) => {
+		const settled = handle.done.then(async (ended) => {
+			const outcome =
+				tree === undefined ? ended : await unedited(ctx, tree, ended);
 			const gates =
 				work.kind === "implement" && outcome.outcome === "done"
 					? await gatesAfter(ctx, { taskId: task.id, label: label(task), lane })
@@ -476,6 +550,7 @@ export namespace Claims {
 			work: {
 				kind: "implement",
 				gates: Object.keys(ctx.run.config.gates),
+				concurrent: ctx.run.config.budget.concurrency > 1,
 				...(retry ? { retry } : {}),
 			},
 			summary: `${harness} claims ${label(task)}: ${task.title}`,
@@ -546,8 +621,11 @@ export namespace Claims {
 		if (sessionId === undefined)
 			return err(new Error("the fixer's session did not start"));
 		const interrupted = await interruption(ctx, earlier.at(-1));
+		// Empty outside a git repository: the run then has no base to recheck the fixes against.
+		const head = await git(ctx, ["rev-parse", "HEAD"]);
 		launch(ctx, plan, {
 			...(interrupted ? { interrupted } : {}),
+			...(head ? { head } : {}),
 			task: plan.parent,
 			harness,
 			lane,
@@ -558,6 +636,53 @@ export namespace Claims {
 				gates: Object.keys(ctx.run.config.gates),
 			},
 			summary: `${harness} fixes ${findings.map(label).join(", ")}`,
+		});
+		return ok(undefined);
+	};
+
+	/**
+	 * Recheck the fixer's diff through lens `name`, on the run's verifier harness, against
+	 * `findings`, the ones of the lens's the fixer closed, or the ones an interrupted recheck had. The diff runs from `base`, the commit the
+	 * fixer started from, to the tree as it is, so a run that commits nothing still shows it. An
+	 * error when the lens's prompt cannot be read or its session cannot start.
+	 */
+	export const recheck = async (
+		ctx: Ctx,
+		name: string,
+		findings: readonly Task[],
+		base: string,
+		plan: LoopPlan.Plan,
+	): Promise<Result<void>> => {
+		const prompt = Lenses.prompt(ctx.run.projectDir, name);
+		if (!prompt.ok) return prompt;
+		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;
+		const earlier = ctx.run.claims.filter((c) => c.recheck === name);
+		const attempts = earlier.length;
+		const lane = `${name}-recheck${attempts > 0 ? `#${attempts + 1}` : ""}`;
+		const sessionId = await open(ctx, plan.parent, harness, lane, false);
+		if (sessionId === undefined)
+			return err(new Error(`the ${name} lens's recheck did not start`));
+		const interrupted = await interruption(ctx, earlier.at(-1));
+		// From the lens's first recheck: what an interrupted one edited counts against the next.
+		const tree =
+			earlier[0]?.tree ?? (await ctx.tree(RunStore.sessionDir(ctx.run)));
+		launch(ctx, plan, {
+			...(interrupted ? { interrupted } : {}),
+			tree,
+			task: plan.parent,
+			harness,
+			lane,
+			sessionId,
+			work: {
+				kind: "recheck",
+				name,
+				prompt: prompt.value,
+				findings,
+				base,
+				diff: await git(ctx, ["diff", "--no-color", "--no-ext-diff", base]),
+				gates: Object.keys(ctx.run.config.gates),
+			},
+			summary: `${harness} rechecks the fixer's diff for ${findings.map(label).join(", ")} through the ${name} lens`,
 		});
 		return ok(undefined);
 	};
@@ -612,7 +737,7 @@ export namespace Claims {
 	): Promise<boolean> => {
 		ctx.live.delete(sessionId);
 		const claim = ctx.run.claims.find((c) => c.sessionId === sessionId);
-		const lens = claim?.lens !== undefined;
+		const review = claim?.lens !== undefined || claim?.recheck !== undefined;
 		await closeSession(ctx, sessionId, outcome);
 		if (claim && !onParent(claim)) await release(ctx, taskId, claim.harness);
 		// Recorded while the claim is still open: a runner that dies before the record leaves an
@@ -636,9 +761,9 @@ export namespace Claims {
 			session: sessionId,
 			summary: `${outcome.outcome}${outcome.detail ? `: ${outcome.detail}` : ""}`,
 		});
-		// A lens runs once per run and files findings rather than closing work: its end is not a
-		// step the stall detector should count.
-		if (lens) return false;
+		// A lens, and its recheck, runs once per run and files findings rather than closing work:
+		// its end is not a step the stall detector should count.
+		if (review) return false;
 		return observeStall(ctx, taskId, claim);
 	};
 

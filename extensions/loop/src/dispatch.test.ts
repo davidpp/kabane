@@ -35,7 +35,7 @@ describe("Dispatch.Handle.inject", () => {
 				harness: "claude",
 				sessionId: "s1",
 				lane: "claude:K-1",
-				work: { kind: "implement", gates: [] },
+				work: { kind: "implement", gates: [], concurrent: false },
 			},
 			{
 				basePath: home,

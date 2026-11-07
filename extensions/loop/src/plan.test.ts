@@ -334,7 +334,12 @@ describe("LoopPlan.health", () => {
 });
 
 describe("Stop.evaluate", () => {
-	const GREEN = { gatesGreen: true, lensesDone: true, fixerDone: true };
+	const GREEN = {
+		gatesGreen: true,
+		lensesDone: true,
+		fixerDone: true,
+		recheckDone: true,
+	};
 
 	it("is done when every subtask is closed and every check has run, findings open or not", async () => {
 		const parent = await add({ title: "parent" });
@@ -354,7 +359,12 @@ describe("Stop.evaluate", () => {
 		// The fixer had its pass: what it left open is for a human, not a reason to keep going.
 		expect(Stop.workDone(await load(parent))).toBe(true);
 		expect(Stop.evaluate(await load(parent), GREEN)).toEqual({ done: true });
-		for (const check of ["gatesGreen", "lensesDone", "fixerDone"] as const)
+		for (const check of [
+			"gatesGreen",
+			"lensesDone",
+			"fixerDone",
+			"recheckDone",
+		] as const)
 			expect(
 				Stop.evaluate(await load(parent), { ...GREEN, [check]: false }),
 			).toEqual({ done: false, openSubtasks: 0, ...GREEN, [check]: false });

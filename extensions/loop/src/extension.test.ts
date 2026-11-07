@@ -65,7 +65,7 @@ describe("kabane loop start", () => {
 		);
 	});
 
-	it("refuses --worktree and --no-worktree together", async () => {
+	it("refuses a switch and its --no- form together", async () => {
 		const refused = await kabaneLoop(
 			"start",
 			"K-1",
@@ -74,6 +74,14 @@ describe("kabane loop start", () => {
 		);
 		expect(refused.exitCode).toBe(2);
 		expect(refused.text).toContain("Give one of --worktree and --no-worktree");
+		const recheck = await kabaneLoop(
+			"start",
+			"K-1",
+			"--recheck",
+			"--no-recheck",
+		);
+		expect(recheck.exitCode).toBe(2);
+		expect(recheck.text).toContain("Give one of --recheck and --no-recheck");
 	});
 
 	it("refuses a --land mode it does not have", async () => {
@@ -87,6 +95,7 @@ describe("kabane loop start", () => {
 			"start",
 			"K-404",
 			"--worktree",
+			"--no-recheck",
 			"--land",
 			"pr",
 			"--as",

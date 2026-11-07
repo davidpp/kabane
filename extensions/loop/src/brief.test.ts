@@ -28,6 +28,7 @@ const attempt: Brief.Interrupted = {
 const subject = {
 	runId: "r1",
 	gates: [],
+	concurrent: false,
 	parent: task("P-1", "parent"),
 	task: task("P-2", "child"),
 };
@@ -122,7 +123,14 @@ describe("Brief after a red gate", () => {
 
 describe("Brief on a single issue", () => {
 	const lone = task("P-9", "lone");
-	const single = { runId: "r1", parent: lone, task: lone, gates: [] };
+	// Concurrent or not, a single issue has no siblings.
+	const single = {
+		runId: "r1",
+		parent: lone,
+		task: lone,
+		gates: [],
+		concurrent: true,
+	};
 
 	it("tells the implementing session the issue is the whole run, with no subtasks or siblings", () => {
 		const [instructions] = Brief.opening(single, "ASSEMBLED").split(
@@ -158,10 +166,17 @@ describe("Brief on a single issue", () => {
 			expect(brief).not.toContain("subtasks of");
 	});
 
-	it("still tells a subtask's session it is one of several", () => {
-		expect(Brief.opening(subject, "ASSEMBLED")).toContain(
-			'which drives the subtasks of P-1 ("parent") to completion',
+	it("tells a subtask's session its siblings share the tree only when the run has more than one session at once", () => {
+		const SIBLINGS =
+			"Other sessions may be working on sibling subtasks in the same repository at the same time.";
+		const alone = Brief.opening(subject, "ASSEMBLED");
+		expect(alone).toContain(
+			'which drives the subtasks of P-1 ("parent") to completion.',
 		);
+		expect(alone).not.toContain(SIBLINGS);
+		expect(
+			Brief.opening({ ...subject, concurrent: true }, "ASSEMBLED"),
+		).toContain(`("parent") to completion. ${SIBLINGS}`);
 	});
 });
 
@@ -243,5 +258,49 @@ describe("Brief on a decision that is the human's", () => {
 		expect(Brief.fixerContinuation([subject.task])).toEndWith(
 			"or file the decision it needs with kabane_ask.",
 		);
+	});
+});
+
+describe("Brief.recheck", () => {
+	const recheck = (diff: string) =>
+		Brief.recheck(
+			{
+				runId: "r1",
+				parent: task("P-1", "parent"),
+				lens: "functional",
+				prompt: "# Functional lens\n",
+				findings: [
+					{ ...task("P-7", "empty input crashes"), tags: ["finding", "p1"] },
+				],
+				base: "abc123",
+				diff,
+				gates: ["test"],
+			},
+			"ASSEMBLED",
+		).split("\n\n---\n\n");
+
+	it("hands the lens its closed findings, the fixer's diff, its prompt and the parent's brief, to report on", () => {
+		const [instructions, diff, prompt, assembled, ...rest] = recheck(
+			"diff --git a/x b/x\n+fixed\n",
+		);
+		expect(rest).toEqual([]);
+		expect(instructions).toContain("- P-7 · p1 · ");
+		expect(instructions).toContain("Do not change files");
+		expect(instructions).toContain('kabane_edit (state "next")');
+		expect(instructions).toContain("Its gates (`test`) pass");
+		expect(diff).toContain("`git diff abc123`");
+		expect(diff).toContain("```diff\ndiff --git a/x b/x\n+fixed\n```");
+		expect(prompt).toBe("# Functional lens");
+		expect(assembled).toBe("ASSEMBLED");
+	});
+
+	it("fences a diff that holds fences of its own, cuts a long one, and says when it is empty", () => {
+		const [, fenced] = recheck("+```ts\n+code\n+```\n");
+		expect(fenced).toContain("````diff\n+```ts");
+		const [, cut] = recheck(`+${"x".repeat(70_000)}\n`);
+		expect(cut).toContain("The diff is cut at 60000 characters");
+		expect(cut?.length).toBeLessThan(61_000);
+		const [, empty] = recheck("");
+		expect(empty).toContain("shows no change");
 	});
 });

@@ -33,7 +33,7 @@ describe("LoopConfig.SettingsSchema", () => {
 		expect(config.ok && config.value.value).toEqual({
 			implementer: "claude",
 			budget: {
-				concurrency: 2,
+				concurrency: 1,
 				continuations: 3,
 				currency: "USD",
 			},
@@ -41,8 +41,16 @@ describe("LoopConfig.SettingsSchema", () => {
 			gates: {},
 			worktree: true,
 			lenses: [],
+			recheck: true,
 			land: "none",
 		});
+	});
+
+	it("runs one session at a time unless asked, and says why: more share one tree", () => {
+		const concurrency = LoopConfig.BudgetSchema.shape.concurrency;
+		expect(concurrency.parse(undefined)).toBe(1);
+		expect(concurrency.description).toContain("defaults to 1");
+		expect(concurrency.description).toContain("More than 1 share one tree");
 	});
 
 	it("layers overrides over the project file key by key, budget and gates included", () => {
