@@ -28,14 +28,19 @@ In priority order; when two conflict, the higher one wins.
    able to do the adapting. *Revisit if:* making kabane yours takes more than asking, or the
    core grows to fit one workflow.
 4. **Yours, everywhere.** Your work lives on your machine, and one machine is a complete
-   setup. Every device and every agent you use, browser-only ones
-   included, reaches the same queue.
-   *Rests on:* people working across machines and agent surfaces; people wanting to own their
-   work rather than rent it. *Revisit if:* nobody reaches past one machine once they can, or
-   agent surfaces converge on hosted state.
-5. **The human stays in charge.** Humans and agents share the work as peers. The human is
-   brought in where their judgment matters and can always tell who did what, and why. How
-   often they are asked shifts as agents earn trust; their ability to steer does not.
+   setup. It stays yours across every device, vendor and harness: any agent you use,
+   browser-only ones included, picks up where another left off.
+   *Rests on:* people working across machines and agent surfaces, and mixing or switching
+   vendors; people wanting to own their work rather than rent it. *Revisit if:* nobody reaches
+   past one machine or one vendor once they can, or agent surfaces converge on hosted state.
+5. **Explains itself.** Anyone, human or agent, can later learn what was done, when, by whom
+   and why, without having been there.
+   *Rests on:* more of the work being done by agents nobody watched; the reasons behind work
+   outlasting the memory of the people and sessions that did it. *Revisit if:* the agent
+   tools come to keep a history of their own that is portable across vendors.
+6. **The human stays in charge.** Humans and agents share the work as peers. The human is
+   brought in where their judgment matters. How often they are asked shifts as agents earn
+   trust; their ability to steer does not.
    *Rests on:* agents growing more capable while accountability for the work stays with the
    human. *Revisit if:* that accountability moves to the agents themselves.
 
