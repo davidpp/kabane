@@ -104,9 +104,9 @@ describe("the checklist on an issue's detail", () => {
 			done: 2,
 			total: 3,
 		});
-		// The cursor stays on the item just ticked, so a second press takes it back.
+		// The cursor stays on the item just ticked, so a second press takes it back, once the first
+		// write settles (below).
 		const back = press(ticked.state, "space");
-		expect(back.effect).toMatchObject({ itemId: WRITE.id, done: false });
 		expect(doneOf(back.state)).toEqual([true, false, false]);
 	});
 
@@ -117,27 +117,89 @@ describe("the checklist on an issue's detail", () => {
 		});
 	});
 
-	it("keeps a press until the records agree, and drops it once they do", () => {
+	it("sends one write per item at a time, queueing only the latest press", () => {
+		const first = press(detail(), "space");
+		expect(first.effect).toMatchObject({ itemId: WRITE.id, done: true });
+		// Two more presses while it is in flight: no write of their own, the item shows the last.
+		const queued = keys(first.state, "space", "space");
+		expect(queued.effect).toEqual({ type: "none" });
+		expect(doneOf(queued.state)).toEqual([true, true, false]);
+		// The first settles on what it sent, which is what the human wants: nothing more to send.
+		const settled = BoardChecklist.settle(queued.state, WRITE.id, true);
+		expect(settled.effect).toEqual({ type: "none" });
+		expect(doneOf(settled.state)).toEqual([true, true, false]);
+	});
+
+	// The sequence the review reproduced: open → ticked → unticked, then a poll's records taken
+	// before either write landed, then the records with only the first.
+	it("keeps a press over stale records until its last write settles", () => {
 		const ticked = press(detail(), "space").state;
-		// The poll lands before the write: the records still say open, the press still shows.
-		const before = BoardChecklist.withOpen(ticked, "w", [READ, WRITE, DROP]);
-		expect(doneOf(before)).toEqual([true, true, false]);
-		const after = BoardChecklist.withOpen(ticked, "w", [
+		const unticked = press(ticked, "space").state;
+		expect(doneOf(unticked)).toEqual([true, false, false]);
+		const stale = BoardChecklist.withOpen(unticked, "w", [READ, WRITE, DROP]);
+		expect(doneOf(stale)).toEqual([true, false, false]);
+		// The first write lands: the untick goes next.
+		const next = BoardChecklist.settle(stale, WRITE.id, true);
+		expect(next.effect).toEqual({
+			type: "tickItem",
+			itemId: WRITE.id,
+			handle: "JREP-7.2",
+			done: false,
+		});
+		// A poll sees the tick but not the untick: the item still shows the untick.
+		const between = BoardChecklist.withOpen(next.state, "w", [
 			READ,
 			{ ...WRITE, done: true },
 			DROP,
 		]);
-		expect(after.checklist.flipped.size).toBe(0);
+		expect(doneOf(between)).toEqual([true, false, false]);
+		const done = BoardChecklist.settle(between, WRITE.id, true);
+		expect(done.effect).toEqual({ type: "none" });
+		expect(doneOf(done.state)).toEqual([true, false, false]);
+		// Settled, the next records say what the store holds, a tick from elsewhere included.
+		const after = BoardChecklist.withOpen(done.state, "w", [
+			READ,
+			{ ...WRITE, done: true },
+			DROP,
+		]);
+		expect(after.checklist.writes.size).toBe(0);
 		expect(doneOf(after)).toEqual([true, true, false]);
 	});
 
-	it("takes a press back when its write fails", () => {
+	it("puts an item back to its last acknowledged state when its write fails, dropping what was queued", () => {
+		// WRITE ticked and acknowledged, then unticked and ticked again behind a write that fails.
 		const ticked = press(detail(), "space").state;
-		expect(doneOf(BoardChecklist.withFailed(ticked, WRITE.id))).toEqual([
-			true,
+		const acked = BoardChecklist.settle(ticked, WRITE.id, true).state;
+		const untick = press(acked, "space");
+		expect(untick.effect).toMatchObject({ itemId: WRITE.id, done: false });
+		const queued = press(untick.state, "space").state;
+		// DROP has a write of its own in flight.
+		const other = keys(queued, "J", "space").state;
+		const failed = BoardChecklist.settle(other, WRITE.id, false);
+		expect(failed.effect).toEqual({ type: "none" });
+		expect(doneOf(failed.state)).toEqual([true, true, true]);
+		expect(failed.state.checklist.writes.get(DROP.id)?.sending).toBe(true);
+		// A failure from a first press goes back to the records' state.
+		const lone = BoardChecklist.settle(
+			press(detail(), "space").state,
+			WRITE.id,
 			false,
-			false,
-		]);
+		);
+		expect(doneOf(lone.state)).toEqual([true, false, false]);
+	});
+
+	it("keeps a write in flight when its issue's detail closes, so its outcome still lands", () => {
+		const ticked = press(detail(), "space").state;
+		const closed = BoardChecklist.withOpen(
+			{ ...ticked, view: { type: "board" } },
+			null,
+		);
+		expect(closed.checklist.writes.get(WRITE.id)?.sending).toBe(true);
+		expect(
+			BoardChecklist.settle(closed, WRITE.id, true).state.checklist.writes.get(
+				WRITE.id,
+			)?.sending,
+		).toBeNull();
 	});
 
 	it("shows a tick made elsewhere when the records bring it, a cursor left alone following the first open item", () => {

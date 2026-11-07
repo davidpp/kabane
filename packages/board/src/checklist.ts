@@ -7,9 +7,13 @@
 //
 // A checklist write leaves the task row alone, so nothing on the row says it changed: the poll reads
 // the progress beside the rows every time, and the open detail's stamp counts the items
-// (BoardData.detailStamp), so a tick made from the CLI or by an agent shows within one poll. A tick
-// made here shows at once: `flipped` holds what the human pressed until the records say the same,
-// and a failed write takes it back.
+// (BoardData.detailStamp), so a tick made from the CLI or by an agent shows within one poll.
+//
+// A tick made here shows at once, and its writes go one at a time per item (`writes`): while one is
+// in flight, another press only changes what is queued, and the latest intent goes when it settles.
+// Until then the item shows what the human pressed, whatever a poll's records say: a snapshot taken
+// before the store caught up cannot take a press back. A failed write puts the item back to the
+// state the store last acknowledged and drops what was queued behind it.
 import type { ChecklistItemView, ChecklistProgress } from "@cabane/checklist";
 import { DetailModel } from "./detail-model";
 import type { BoardNav } from "./nav";
@@ -25,15 +29,28 @@ export namespace BoardChecklist {
 		open: { taskId: string; items: readonly ChecklistItemView[] } | null;
 		// The item `J/K` put the cursor on; null leaves it on the first open one.
 		cursor: string | null;
-		// Ticked or unticked from this board, the write still landing: item id to the state pressed.
-		flipped: ReadonlyMap<string, boolean>;
+		// The items this board is writing, by item id.
+		writes: ReadonlyMap<string, Write>;
+	};
+
+	/**
+	 * One item's writes from this board. `wanted` is what it shows: the human's last press. `sending`
+	 * is the state in flight to the store, null once nothing is (the entry then lasts until the next
+	 * records, so a poll that started before the write cannot flash the old state). `acked` is the
+	 * state the store last acknowledged, where a failed write puts the item back.
+	 */
+	type Write = {
+		handle: string;
+		wanted: boolean;
+		sending: boolean | null;
+		acked: boolean;
 	};
 
 	export const NONE: Checklist = {
 		progress: new Map(),
 		open: null,
 		cursor: null,
-		flipped: new Map(),
+		writes: new Map(),
 	};
 
 	const NOTHING: BoardNav.Effect = { type: "none" };
@@ -77,17 +94,17 @@ export namespace BoardChecklist {
 		progress: ChecklistProgress;
 	};
 
-	/** Items as drawn: `flipped` over the records, the cursor where `J/K` left it or the first open one. */
+	/** Items as drawn: `writes` over the records, the cursor where `J/K` left it or the first open one. */
 	export const view = (
 		items: readonly ChecklistItemView[],
 		cursor: string | null = null,
-		flipped: ReadonlyMap<string, boolean> = new Map(),
+		writes: ReadonlyMap<string, Write> = new Map(),
 	): Shown => {
 		const lines = items.map((item) => ({
 			id: item.id,
 			handle: item.handle,
 			text: item.text,
-			done: flipped.get(item.id) ?? item.done,
+			done: writes.get(item.id)?.wanted ?? item.done,
 		}));
 		const at =
 			lines.find((line) => line.id === cursor) ??
@@ -103,46 +120,88 @@ export namespace BoardChecklist {
 		};
 	};
 
+	// The writes still in flight or queued: what new records cannot override. One settled has had
+	// its records by now, which say what the store holds.
+	const unsettled = (
+		writes: ReadonlyMap<string, Write>,
+	): ReadonlyMap<string, Write> =>
+		new Map([...writes].filter(([, write]) => write.sending !== null));
+
 	/**
 	 * The detail view's records, as far as the checklist goes: `items` are the task's, or none when no
-	 * task is open. Another task starts its cursor over; a press the records now agree with, or on an
-	 * item gone, is dropped.
+	 * task is open. Another task starts its cursor over. A write in flight is kept whichever task is
+	 * open, since its outcome still lands; a settled one gives way to these records.
 	 */
 	export const withOpen = (
 		state: State,
 		taskId: string | null,
 		items: readonly ChecklistItemView[] = [],
 	): State => {
+		const writes = unsettled(state.checklist.writes);
 		if (taskId === null)
 			return state.checklist.open === null
 				? state
-				: patch(state, { open: null, cursor: null, flipped: new Map() });
+				: patch(state, { open: null, cursor: null, writes });
 		const same = state.checklist.open?.taskId === taskId;
-		const flipped = new Map(
-			[...state.checklist.flipped].filter(([id, done]) =>
-				items.some((item) => item.id === id && item.done !== done),
-			),
-		);
 		return patch(state, {
 			open: { taskId, items },
 			cursor: same ? state.checklist.cursor : null,
-			flipped,
+			writes,
 		});
 	};
 
-	/** The write failed: the item shows what the records say again. */
-	export const withFailed = (state: State, itemId: string): State => {
-		const flipped = new Map(state.checklist.flipped);
-		return flipped.delete(itemId) ? patch(state, { flipped }) : state;
+	const withWrite = (state: State, id: string, write: Write | null): State => {
+		const writes = new Map(state.checklist.writes);
+		if (write) writes.set(id, write);
+		else writes.delete(id);
+		return patch(state, { writes });
+	};
+
+	/**
+	 * The write in flight for `itemId` settled. On success the store holds what was sent, and the
+	 * latest press goes next when it differs; on failure the item goes back to the state the store
+	 * last acknowledged and what was queued is dropped. Other items' writes are left alone.
+	 */
+	export const settle = (state: State, itemId: string, ok: boolean): Step => {
+		const write = state.checklist.writes.get(itemId);
+		if (write?.sending == null) return { state, effect: NOTHING };
+		if (!ok)
+			return {
+				state: withWrite(state, itemId, {
+					...write,
+					wanted: write.acked,
+					sending: null,
+				}),
+				effect: NOTHING,
+			};
+		const acked = write.sending;
+		if (write.wanted === acked)
+			return {
+				state: withWrite(state, itemId, { ...write, acked, sending: null }),
+				effect: NOTHING,
+			};
+		return {
+			state: withWrite(state, itemId, {
+				...write,
+				acked,
+				sending: write.wanted,
+			}),
+			effect: {
+				type: "tickItem",
+				itemId,
+				handle: write.handle,
+				done: write.wanted,
+			},
+		};
 	};
 
 	/** The open detail view's checklist, while its records are this task's and it has items. */
 	export const shown = (state: State): Shown | undefined => {
 		const { view: on } = state;
-		const { open, cursor, flipped } = state.checklist;
+		const { open, cursor, writes } = state.checklist;
 		if (on.type !== "detail" || open?.taskId !== on.taskId) return undefined;
 		if (open.items.length === 0) return undefined;
-		return view(open.items, cursor, flipped);
+		return view(open.items, cursor, writes);
 	};
 
 	/** The checklist the keys act on: drawn on the description tab, with the board holding the keys. */
@@ -157,15 +216,28 @@ export namespace BoardChecklist {
 	/** Whether `space` and `J/K` have an item to act on, for the footer. */
 	export const listed = (state: State): boolean => inHand(state) !== undefined;
 
-	// `space` on the item under the cursor: it flips at once, and the write follows.
+	// `space` on the item under the cursor: it flips at once. With no write of its own in flight the
+	// write goes now; with one, the press waits behind it (settle sends the latest).
 	const toggle = (state: State, asked: Shown, id: string): Step => {
 		const line = asked.lines.find((l) => l.id === id);
 		if (!line) return { state, effect: NOTHING };
 		const done = !line.done;
+		const at = patch(state, { cursor: id });
+		const write = state.checklist.writes.get(id);
+		if (write && write.sending !== null)
+			return {
+				state: withWrite(at, id, { ...write, wanted: done }),
+				effect: NOTHING,
+			};
+		const stored =
+			state.checklist.open?.items.find((item) => item.id === id)?.done ??
+			line.done;
 		return {
-			state: patch(state, {
-				cursor: id,
-				flipped: new Map([...state.checklist.flipped, [id, done]]),
+			state: withWrite(at, id, {
+				handle: line.handle,
+				wanted: done,
+				sending: done,
+				acked: write?.acked ?? stored,
 			}),
 			effect: { type: "tickItem", itemId: id, handle: line.handle, done },
 		};

@@ -399,7 +399,9 @@ The description tab lists the items under the brief, headed `checklist · 2/5`: 
 one, `○` for an open one, one line each. A cursor sits on the first open item, where a loop
 resumes. `J/K` move it and `space` ticks or unticks the item under it, as `kabane_checklistTick`
 does; the item shows the press at once, the footer says `JREP-8.3 ticked · 3/5`, and a write that
-fails puts the item back with why. A click on an item toggles it the same way. These keys work
+fails puts the item back to the state the store last acknowledged, with why. An item's writes go one
+at a time: presses while one is in flight leave only the latest queued behind it, and a poll's
+records never take back a press still being written. A click on an item toggles it the same way. These keys work
 only on the description tab with the board holding the keys, and a decision on screen keeps
 `space` for its own multi-select.
 
