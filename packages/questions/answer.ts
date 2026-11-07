@@ -39,6 +39,13 @@ const selectionsOf = (choices: readonly string[], text: string): string[] => {
 	return selections;
 };
 
+/**
+ * Choices as an error lists them, each quoted: a choice's text may hold any separator, a comma
+ * included, and JSON quoting escapes the one quote that could end it.
+ */
+const listed = (choices: readonly string[]): string =>
+	choices.map((choice) => JSON.stringify(choice)).join(", ");
+
 /** The one choice of `named`, undefined for none, refused with them all when there are several. */
 const onlyChoice = (
 	typed: string,
@@ -48,7 +55,7 @@ const onlyChoice = (
 	named.length > 1
 		? err(
 				new Error(
-					`"${typed.trim()}" ${how} more than one choice; answer with the exact text of one: ${named.join(" | ")}.`,
+					`${JSON.stringify(typed.trim())} ${how} more than one choice; answer with the exact text of one: ${listed(named)}.`,
 				),
 			)
 		: ok(named[0]);
@@ -99,7 +106,7 @@ export const validateAnswer = (
 		if (choice.value === undefined && !meta.allowFreeform)
 			return err(
 				new Error(
-					`Unknown choice "${part}"; choose ${meta.choices.join(", ")}.`,
+					`Unknown choice ${JSON.stringify(part)}; choose ${listed(meta.choices)}.`,
 				),
 			);
 		const pick = choice.value ?? part;

@@ -95,7 +95,7 @@ it("refuses a label two choices share and names them, while full text still answ
 	expect(ambiguous.ok).toBe(false);
 	if (!ambiguous.ok)
 		expect(ambiguous.error.message).toBe(
-			'"a" labels more than one choice; answer with the exact text of one: A. Keep it | A: Drop it.',
+			'"a" labels more than one choice; answer with the exact text of one: "A. Keep it", "A: Drop it".',
 		);
 	expect(validateAnswer(meta, "A: drop it")).toEqual({
 		ok: true,
@@ -232,7 +232,7 @@ it("takes an exact text before one that matches only with its comma spacing igno
 	});
 	const tie = validateAnswer(meta, "A. Keep it ,for now");
 	expect(tie.ok ? "" : tie.error.message).toBe(
-		'"A. Keep it ,for now" matches, comma spacing aside, more than one choice; answer with the exact text of one: A. Keep it,for now | A. Keep it, for now.',
+		'"A. Keep it ,for now" matches, comma spacing aside, more than one choice; answer with the exact text of one: "A. Keep it,for now", "A. Keep it, for now".',
 	);
 	expect(
 		validateAnswer({ ...meta, multiSelect: true }, "A. Keep it, for now, b"),
@@ -240,4 +240,18 @@ it("takes an exact text before one that matches only with its comma spacing igno
 		ok: true,
 		value: "A. Keep it, for now, B. Drop it",
 	});
+});
+
+it("lists the choices an unknown answer could have been, each quoted so a comma inside one reads as text", () => {
+	const unknown = validateAnswer(
+		{
+			choices: ["A. Keep it, for now", "B. Drop it"],
+			multiSelect: true,
+			allowFreeform: false,
+		},
+		"c",
+	);
+	expect(unknown.ok ? "" : unknown.error.message).toBe(
+		'Unknown choice "c"; choose "A. Keep it, for now", "B. Drop it".',
+	);
 });
