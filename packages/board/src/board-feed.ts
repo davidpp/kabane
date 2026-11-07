@@ -121,6 +121,7 @@ export const useBoardFeed = ({
 		(s: BoardNav.BoardState): BoardData.BoardFilters => ({
 			kind: s.kind === "all" ? undefined : s.kind,
 			scopeUri: s.scoped ? scopeRef.current?.scopeUri : undefined,
+			held: s.held ?? undefined,
 		}),
 		[],
 	);
@@ -170,9 +171,10 @@ export const useBoardFeed = ({
 		let cancelled = false;
 		void (async () => {
 			const detected = resolveScope ? await resolveScope(cwd) : null;
-			const filters: BoardData.BoardFilters = detected
-				? { scopeUri: detected.scopeUri }
-				: {};
+			const filters: BoardData.BoardFilters = {
+				...(detected ? { scopeUri: detected.scopeUri } : {}),
+				...(open ? { held: open.taskId } : {}),
+			};
 			const feed = await loadFeed(basePath, filters, activitySource);
 			const result = feed.rows;
 			if (cancelled) return;

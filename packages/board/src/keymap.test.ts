@@ -88,6 +88,7 @@ const state = (
 	undo: [],
 	prompt: BoardPrompt.CLOSED,
 	sighted: { target: undefined, since: 0 },
+	held: null,
 	...over,
 });
 

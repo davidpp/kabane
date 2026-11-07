@@ -250,6 +250,8 @@ export namespace BoardNav {
 		// What a digit answered as of the last render and since when (sight): how the keys tell a
 		// question the human has had time to read from one that appeared under a key already on its way.
 		sighted: Sighting;
+		// The task a host opened the board on (openTask), which every load keeps past the section caps.
+		held: string | null;
 	};
 
 	type Sighting = { target: string | undefined; since: number };
@@ -1462,6 +1464,7 @@ export namespace BoardNav {
 			prompt: BoardPrompt.CLOSED,
 			undo: [],
 			sighted: { target: undefined, since: 0 },
+			held: null,
 		};
 		return { ...base, selectedId: firstId(visibleRows(base)) };
 	};
@@ -1488,7 +1491,8 @@ export namespace BoardNav {
 	 * takes the keys, and the copilot's draft and asks are kept. When the task is loaded, the board
 	 * under the detail is left showing its row, selected: its parent expanded, the current status
 	 * filter when that shows it, else the one holding its section, and a search or `u` that hides it
-	 * cleared, so `esc` lands on it. A task outside the loaded sections still opens, from its own
+	 * cleared, so `esc` lands on it. The task is `held`, so every reload loads it past the section
+	 * caps (BoardData.loadBoard). A task outside the loaded sections still opens, from its own
 	 * records; bringing it in takes a reload, which is the caller's to run.
 	 */
 	export const openTask = (state: BoardState, taskId: string): BoardState => {
@@ -1499,6 +1503,7 @@ export namespace BoardNav {
 			focus: "board",
 			search: state.search.mode === "typing" ? SEARCH_OFF : state.search,
 			view: { type: "detail", taskId },
+			held: taskId,
 		};
 		const place = rowPlace(state, taskId);
 		if (!place) return opened;

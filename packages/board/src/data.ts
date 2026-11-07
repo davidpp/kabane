@@ -93,6 +93,9 @@ export namespace BoardData {
 	export type BoardFilters = {
 		scopeUri?: string;
 		kind?: ItemKind;
+		// A task id to load past the section caps when it matches the filters: the one a host opened
+		// the board on (BoardNav.openTask), so it keeps a row however old or deep it is.
+		held?: string;
 	};
 
 	export type ScopeInfo = {
@@ -191,11 +194,41 @@ export namespace BoardData {
 			}
 		}
 
+		// The held task joins its state's section like a query result: an open top-level one is a
+		// subtask root, and a subtask is a row of its own unless its parent's subtasks take it in.
+		const held = await heldTask(basePath, filters, tasksByState);
+		if (!held.ok) return held;
+		const extra = held.value;
+		if (extra) {
+			tasksByState[extra.state] = [...(tasksByState[extra.state] ?? []), extra];
+			if (!extra.parentTaskId && !isClosed(extra.state))
+				parentIds.push(extra.id);
+		}
+
+		const subtasks = await loadSubtasks(basePath, parentIds, filters.kind);
+		if (!subtasks.ok) return subtasks;
+		// Past its parent's subtask cap, the held subtask still goes under it.
+		if (
+			extra?.parentTaskId &&
+			parentIds.includes(extra.parentTaskId) &&
+			!subtasks.value.some((t) => t.id === extra.id)
+		)
+			subtasks.value.push(extra);
+
+		return ok(assembleSections(tasksByState, subtasks.value));
+	};
+
+	// The subtasks of the given roots, oldest first, closed ones included.
+	const loadSubtasks = async (
+		basePath: string,
+		parentIds: readonly string[],
+		kind: ItemKind | undefined,
+	): Promise<Result<Task[]>> => {
 		const subtasks: Task[] = [];
 		for (const parentId of parentIds) {
 			const result = await Planner.queryTasks(basePath, {
 				parentTaskId: parentId,
-				kind: filters.kind,
+				kind,
 				includeClosed: true,
 				limit: OPEN_LIMIT,
 				orderBy: "createdAt",
@@ -204,8 +237,29 @@ export namespace BoardData {
 			if (!result.ok) return result;
 			subtasks.push(...result.value);
 		}
+		return ok(subtasks);
+	};
 
-		return ok(assembleSections(tasksByState, subtasks));
+	// `filters.held`, read when the section queries left it out and it matches the filters the way
+	// they match (exact scope, kind); undefined otherwise, or when it is gone.
+	const heldTask = async (
+		basePath: string,
+		{ held, scopeUri, kind }: BoardFilters,
+		tasksByState: Partial<Record<SectionState, Task[]>>,
+	): Promise<Result<Task | undefined>> => {
+		if (held === undefined) return ok(undefined);
+		const loaded = Object.values(tasksByState).some((tasks) =>
+			tasks.some((task) => task.id === held),
+		);
+		if (loaded) return ok(undefined);
+		const found = await Planner.getTask(basePath, held);
+		if (!found.ok) return found;
+		const task = found.value;
+		const matches =
+			task !== null &&
+			(kind === undefined || task.kind === kind) &&
+			(scopeUri === undefined || task.scopeUri === scopeUri);
+		return ok(matches ? task : undefined);
 	};
 
 	// FTS5 search for tier-2 results (description/tag matches, done beyond the loaded window, open

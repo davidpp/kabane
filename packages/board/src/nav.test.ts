@@ -93,6 +93,7 @@ const state = (over: Partial<BoardNav.BoardState> = {}): BoardNav.BoardState =>
 			undo: [],
 			prompt: BoardPrompt.CLOSED,
 			sighted: { target: undefined, since: 0 },
+			held: null,
 			...over,
 		},
 		0,
@@ -1040,6 +1041,12 @@ describe("BoardNav.openTask", () => {
 			"a",
 		);
 		expect(s.status).toBe("review");
+	});
+
+	it("holds the task it opened, loaded or not, so every reload keeps it", () => {
+		expect(BoardNav.openTask(board(), "a").held).toBe("a");
+		expect(BoardNav.openTask(board(), "elsewhere").held).toBe("elsewhere");
+		expect(board().held).toBeNull();
 	});
 
 	it("closes a card's or a question's prompt and keeps the copilot's draft and asks", () => {
