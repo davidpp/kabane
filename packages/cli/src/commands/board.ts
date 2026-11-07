@@ -5,7 +5,9 @@ export const board: Command = {
 	name: "board",
 	summary: "Open the terminal kanban for this device",
 	usage: [
-		"kabane board [--scope <uri>] [--copilot <harness>]",
+		"kabane board [--issue <id>] [--scope <uri>] [--copilot <harness>]",
+		"",
+		"--issue opens on that issue's detail (a short id or a ULID), on its own scope unless --scope says otherwise.",
 		"",
 		"Keys by view; availability depends on selection and state. Press ? in the board for current help and extension actions.",
 		...[

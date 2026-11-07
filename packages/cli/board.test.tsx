@@ -10,11 +10,16 @@ import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App, noActivity } from "@cabane/board";
-import { Planner } from "@cabane/core";
+import { Planner, type Result, type Task } from "@cabane/core";
 import { parseArgs } from "@cabane/extension";
 import { loop } from "@cabane/loop";
 import { testRender } from "@opentui/react/test-utils";
-import { boardDeps, copilotHarness } from "./src/commands/board-runtime";
+import {
+	type BoardWiring,
+	boardDeps,
+	boardIssue,
+	copilotHarness,
+} from "./src/commands/board-runtime";
 import { saveConfig } from "./src/config";
 import { type Ctx, openContext, resolveScope } from "./src/context";
 
@@ -52,7 +57,9 @@ describe("kabane board", () => {
 	});
 
 	it("awaits the loop's board ports before merging them", async () => {
-		const deps = await boardDeps(parseArgs([]), ctx, "claude", [loop]);
+		const deps = await boardDeps(parseArgs([]), ctx, "claude", {
+			extensions: [loop],
+		});
 		try {
 			expect(deps.activity).toBeDefined();
 			expect(deps.dispatcher).toBeDefined();
@@ -191,5 +198,165 @@ describe("kabane board", () => {
 			setup.renderer.destroy();
 			deps.copilot.close();
 		}
+	});
+
+	// `--issue` lands on the issue: its own scope unless `--scope` says otherwise, and its
+	// detail over the board, the done one and the subtask included.
+	describe("--issue", () => {
+		const add = (
+			input: Parameters<typeof Planner.addTask>[1],
+		): Promise<Result<Task>> => Planner.addTask(home, input);
+		// The id `--issue <input>` resolves to, or the error it fails with.
+		const resolved = async (input: string): Promise<string | undefined> => {
+			const found = await boardIssue(parseArgs(["--issue", input]), ctx);
+			return found.ok ? found.value?.id : found.error.message;
+		};
+		// The frame once it shows `text`, or the last one tried.
+		const frameWith = async (deps: BoardWiring, text: string) => {
+			const setup = await testRender(
+				<App
+					cwd={deps.cwd}
+					basePath={deps.basePath}
+					activity={deps.activity ?? noActivity}
+					resolveScope={deps.resolveScope}
+					open={deps.open}
+				/>,
+				{ width: 100, height: 30 },
+			);
+			try {
+				let frame = "";
+				for (let pass = 0; pass < 50; pass++) {
+					await setup.renderOnce();
+					frame = setup.captureCharFrame();
+					if (frame.includes(text)) break;
+					await sleep(20);
+				}
+				return frame;
+			} finally {
+				setup.renderer.destroy();
+			}
+		};
+
+		it("resolves a short id or a ULID, and fails in one line on an unknown one", async () => {
+			const added = await add({
+				title: "Filed in another scope",
+				kind: "issue",
+				state: "next",
+				scopeUri: "jake://scope/elsewhere",
+			});
+			expect(added.ok).toBe(true);
+			if (!added.ok) return;
+			const { id, shortId } = added.value;
+			expect(await resolved(id)).toBe(id);
+			expect(await resolved((shortId ?? "").toLowerCase())).toBe(id);
+			expect(await boardIssue(parseArgs([]), ctx)).toEqual({
+				ok: true,
+				value: undefined,
+			});
+			for (const args of [
+				["--issue", "NOPE-404"],
+				["--issue", "01H000000000000000000000ZZ"],
+			]) {
+				const unknown = await boardIssue(parseArgs(args), ctx);
+				expect(unknown.ok).toBe(false);
+				if (!unknown.ok)
+					expect(unknown.error.message).toMatch(/^No task found with ID: /);
+			}
+			const bare = await boardIssue(parseArgs(["--issue"]), ctx);
+			expect(bare.ok).toBe(false);
+		});
+
+		it("opens on the issue's own scope unless --scope says otherwise", async () => {
+			const added = await Promise.all([
+				add({
+					title: "Scoped elsewhere",
+					kind: "issue",
+					state: "next",
+					scopeUri: "jake://scope/elsewhere",
+				}),
+				add({
+					title: "Scoped here",
+					kind: "issue",
+					state: "next",
+					scopeUri: "jake://scope/demo",
+				}),
+				add({ title: "No scope at all", kind: "issue", state: "next" }),
+			]);
+			const [elsewhere, local, unscoped] = added.flatMap((r) =>
+				r.ok ? [r.value] : [],
+			);
+			expect(added.every((r) => r.ok)).toBe(true);
+			if (!elsewhere || !local || !unscoped) return;
+			const deps = await boardDeps(parseArgs([]), ctx, "claude", {
+				issue: elsewhere,
+			});
+			deps.copilot.close();
+			expect(deps.open).toEqual({ taskId: elsewhere.id });
+			expect(await deps.resolveScope?.(cwd)).toEqual({
+				scopeUri: "jake://scope/elsewhere",
+				label: "jake://scope/elsewhere",
+			});
+
+			const here = await boardDeps(parseArgs([]), ctx, "claude", {
+				issue: local,
+			});
+			here.copilot.close();
+			expect(await here.resolveScope?.(cwd)).toEqual({
+				scopeUri: "jake://scope/demo",
+				label: "demo",
+			});
+
+			const all = await boardDeps(parseArgs([]), ctx, "claude", {
+				issue: unscoped,
+			});
+			all.copilot.close();
+			expect(await all.resolveScope?.(cwd)).toBeNull();
+
+			const pinned = await boardDeps(
+				parseArgs(["--scope", "other"]),
+				ctx,
+				"claude",
+				{ issue: elsewhere },
+			);
+			pinned.copilot.close();
+			expect(await pinned.resolveScope?.(cwd)).toEqual({
+				scopeUri: "other",
+				label: "other",
+			});
+		});
+
+		it("draws the detail of a done issue and of a subtask", async () => {
+			const done = await add({
+				title: "Shipped last week",
+				kind: "issue",
+				state: "done",
+				scopeUri: "jake://scope/demo",
+			});
+			const parent = await add({
+				title: "The parent issue",
+				kind: "issue",
+				state: "in_progress",
+				scopeUri: "jake://scope/demo",
+			});
+			expect(done.ok && parent.ok).toBe(true);
+			if (!done.ok || !parent.ok) return;
+			const child = await add({
+				title: "A subtask of it",
+				kind: "issue",
+				state: "next",
+				scopeUri: "jake://scope/demo",
+				parentTaskId: parent.value.id,
+			});
+			expect(child.ok).toBe(true);
+			if (!child.ok) return;
+			for (const target of [done.value, child.value]) {
+				const deps = await boardDeps(parseArgs([]), ctx, "claude", {
+					issue: target,
+				});
+				deps.copilot.close();
+				const header = `${target.shortId} · ${target.title}`;
+				expect(await frameWith(deps, header)).toContain(header);
+			}
+		});
 	});
 });

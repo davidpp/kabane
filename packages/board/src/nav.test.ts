@@ -93,6 +93,7 @@ const state = (over: Partial<BoardNav.BoardState> = {}): BoardNav.BoardState =>
 			undo: [],
 			prompt: BoardPrompt.CLOSED,
 			sighted: { target: undefined, since: 0 },
+			held: null,
 			...over,
 		},
 		0,
@@ -968,6 +969,167 @@ describe("BoardNav.init", () => {
 
 	it("selects nothing when the board is empty", () => {
 		expect(BoardNav.init([], { scoped: false }).selectedId).toBeNull();
+	});
+});
+
+describe("BoardNav.openTask", () => {
+	const open = task({ id: "a", shortId: "JAKE-1", title: "open one" });
+	const done = task({ id: "d", shortId: "JAKE-2", state: "done" });
+	const parent = task({ id: "p", shortId: "JAKE-3", state: "in_progress" });
+	const child = task({ id: "c", shortId: "JAKE-4", parentTaskId: "p" });
+	const board = (over: Partial<BoardNav.BoardState> = {}) =>
+		state({
+			sections: sections({
+				next: [row(open)],
+				in_progress: [row(parent, [child])],
+				done: [row(done)],
+			}),
+			selectedId: "a",
+			...over,
+		});
+
+	it("pushes the detail with the task's row selected under it", () => {
+		const s = BoardNav.openTask(board(), "a");
+		expect(s.view).toEqual({ type: "detail", taskId: "a" });
+		expect(s.selectedId).toBe("a");
+		expect(s.status).toBe("open");
+	});
+
+	it("switches to the filter that holds a done task, and back for an open one", () => {
+		const s = BoardNav.openTask(board(), "d");
+		expect(s.status).toBe("done");
+		expect(BoardNav.visibleRows(s).map((r) => r.task.id)).toContain("d");
+		expect(BoardNav.openTask(board({ status: "done" }), "a").status).toBe(
+			"open",
+		);
+	});
+
+	it("expands a subtask's parent so esc lands on its row", () => {
+		const s = BoardNav.openTask(board(), "c");
+		expect(s.expanded.has("p")).toBe(true);
+		expect(s.selectedId).toBe("c");
+		const back = reduce(s, { name: "escape" }).state;
+		expect(back.view).toEqual({ type: "board" });
+		expect(BoardNav.visibleRows(back).map((r) => r.task.id)).toContain("c");
+	});
+
+	it("keeps a closed subtask on its open parent's filter, its row visible", () => {
+		for (const closed of ["done", "cancelled"] as const) {
+			const sub = task({
+				id: "s",
+				shortId: "JAKE-5",
+				state: closed,
+				parentTaskId: "p",
+			});
+			const s = BoardNav.openTask(
+				board({
+					sections: sections({ in_progress: [row(parent, [child, sub])] }),
+				}),
+				"s",
+			);
+			expect(s.status).toBe("open");
+			expect(s.selectedId).toBe("s");
+			const back = reduce(s, { name: "escape" }).state;
+			expect(BoardNav.visibleRows(back).map((r) => r.task.id)).toContain("s");
+		}
+	});
+
+	it("keeps the current filter when it already shows the row", () => {
+		const flagged = task({ id: "a", needsReview: true });
+		const s = BoardNav.openTask(
+			board({ status: "review", sections: sections({ next: [row(flagged)] }) }),
+			"a",
+		);
+		expect(s.status).toBe("review");
+	});
+
+	it("holds the task it opened, loaded or not, so every reload keeps it", () => {
+		expect(BoardNav.openTask(board(), "a").held).toBe("a");
+		expect(BoardNav.openTask(board(), "elsewhere").held).toBe("elsewhere");
+		expect(board().held).toBeNull();
+	});
+
+	it("closes a card's or a question's prompt and keeps the copilot's draft and asks", () => {
+		const request: CopilotPermission = {
+			id: "t0",
+			title: "kabane_edit",
+			options: [{ id: "allow", label: "Allow" }],
+		};
+		const prompting = board({
+			prompt: {
+				...BoardPrompt.CLOSED,
+				open: {
+					target: { type: "act", cardId: "loop", actionId: "inject" },
+					title: "inject",
+					placeholder: "",
+				},
+				text: "half an inject",
+			},
+			copilot: copilotState({
+				text: "half a thought",
+				asks: [{ type: "permission", request }],
+			}),
+		});
+		const s = BoardNav.openTask(prompting, "a");
+		expect(s.prompt.open).toBeNull();
+		expect(s.prompt.text).toBe("");
+		expect(s.copilot.text).toBe("half a thought");
+		expect(requests(s)).toEqual([request]);
+	});
+
+	it("clears a search or `u` that hides the task, and keeps one that shows it", () => {
+		const hidden = BoardNav.openTask(
+			board({ search: { mode: "committed", query: "jake-3" } }),
+			"a",
+		);
+		expect(hidden.search).toEqual({ mode: "off" });
+		const shown = BoardNav.openTask(
+			board({ search: { mode: "committed", query: "open" } }),
+			"a",
+		);
+		expect(shown.search).toEqual({ mode: "committed", query: "open" });
+		const decided = board();
+		const only = BoardNav.openTask(
+			{
+				...decided,
+				decisions: {
+					...decided.decisions,
+					only: true,
+					counts: new Map([["p", 1]]),
+				},
+			},
+			"a",
+		);
+		expect(only.decisions.only).toBe(false);
+	});
+
+	it("closes help, dispatch and a search being typed, and keeps the copilot's draft", () => {
+		const s = BoardNav.openTask(
+			board({
+				help: true,
+				dispatch: { taskId: "a", triggers: [], selected: 0, loading: false },
+				search: { mode: "typing", query: "op" },
+				focus: "copilot",
+				copilot: copilotState({ text: "half a thought" }),
+			}),
+			"d",
+		);
+		expect(s).toMatchObject({
+			help: false,
+			dispatch: null,
+			search: { mode: "off" },
+			focus: "board",
+			view: { type: "detail", taskId: "d" },
+		});
+		expect(s.copilot.text).toBe("half a thought");
+	});
+
+	it("opens a task outside the loaded sections and leaves the board under it as it was", () => {
+		const before = board({ status: "done" });
+		const s = BoardNav.openTask(before, "elsewhere");
+		expect(s.view).toEqual({ type: "detail", taskId: "elsewhere" });
+		expect(s.status).toBe("done");
+		expect(s.selectedId).toBe("a");
 	});
 });
 

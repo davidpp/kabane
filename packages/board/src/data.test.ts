@@ -382,6 +382,72 @@ describe("BoardData", () => {
 		});
 	});
 
+	// The task a host opened the board on keeps a row past the caps, under the board's own filters.
+	describe("loadBoard with a held task", () => {
+		const add = (over: Partial<TaskDraft>) =>
+			Planner.addTask(TEST_BASE, draft(over));
+		const ids = (sections: BoardData.BoardSection[]): string[] =>
+			sections.flatMap((s) =>
+				s.rows.flatMap((r) => [r.task.id, ...r.children.map((c) => c.id)]),
+			);
+
+		it("loads a done task older than the archive window, once", async () => {
+			const old = await add({ title: "old done", state: "done" });
+			expect(old.ok).toBe(true);
+			if (!old.ok) return;
+			for (let i = 0; i < 51; i++)
+				await add({ title: `done ${i}`, state: "done" });
+			const capped = await BoardData.loadBoard(TEST_BASE);
+			expect(capped.ok).toBe(true);
+			if (!capped.ok) return;
+			expect(ids(capped.value)).not.toContain(old.value.id);
+
+			const held = await BoardData.loadBoard(TEST_BASE, { held: old.value.id });
+			expect(held.ok).toBe(true);
+			if (!held.ok) return;
+			const done = sectionFor(held.value, "done")?.rows ?? [];
+			expect(done).toHaveLength(51);
+			expect(done.at(-1)?.task.id).toBe(old.value.id);
+		});
+
+		it("puts a held subtask under its open parent", async () => {
+			const parent = await add({ title: "parent", state: "in_progress" });
+			expect(parent.ok).toBe(true);
+			if (!parent.ok) return;
+			const child = await add({
+				title: "child",
+				state: "done",
+				parentTaskId: parent.value.id,
+			});
+			expect(child.ok).toBe(true);
+			if (!child.ok) return;
+			const held = await BoardData.loadBoard(TEST_BASE, {
+				held: child.value.id,
+			});
+			expect(held.ok).toBe(true);
+			if (!held.ok) return;
+			const inProgress = sectionFor(held.value, "in_progress");
+			expect(inProgress?.rows[0]?.children.map((c) => c.id)).toEqual([
+				child.value.id,
+			]);
+			expect(sectionFor(held.value, "done")).toBeUndefined();
+		});
+
+		it("leaves out a held task the filters exclude", async () => {
+			const scoped = ScopeUri.fromScopeId("github.com/acme/widget");
+			const other = await add({ title: "elsewhere" });
+			expect(other.ok).toBe(true);
+			if (!other.ok) return;
+			const held = await BoardData.loadBoard(TEST_BASE, {
+				scopeUri: scoped,
+				held: other.value.id,
+			});
+			expect(held.ok).toBe(true);
+			if (!held.ok) return;
+			expect(ids(held.value)).toEqual([]);
+		});
+	});
+
 	describe("searchBoard", () => {
 		it("returns FTS matches from the planner", async () => {
 			await Planner.addTask(

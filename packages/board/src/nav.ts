@@ -250,6 +250,8 @@ export namespace BoardNav {
 		// What a digit answered as of the last render and since when (sight): how the keys tell a
 		// question the human has had time to read from one that appeared under a key already on its way.
 		sighted: Sighting;
+		// The task a host opened the board on (openTask), which every load keeps past the section caps.
+		held: string | null;
 	};
 
 	type Sighting = { target: string | undefined; since: number };
@@ -1462,8 +1464,65 @@ export namespace BoardNav {
 			prompt: BoardPrompt.CLOSED,
 			undo: [],
 			sighted: { target: undefined, since: 0 },
+			held: null,
 		};
 		return { ...base, selectedId: firstId(visibleRows(base)) };
+	};
+
+	// Where `id` has its row: the section it is in, and the parent it sits under when it is a
+	// subtask there. A subtask's section is its parent's, whatever its own state.
+	const rowPlace = (
+		state: BoardState,
+		id: string,
+	): { section: BoardData.SectionState; parentId?: string } | undefined => {
+		for (const section of state.sections) {
+			for (const { task, children } of section.rows) {
+				if (task.id === id) return { section: section.state };
+				if (children.some((child) => child.id === id))
+					return { section: section.state, parentId: task.id };
+			}
+		}
+		return undefined;
+	};
+
+	/**
+	 * Open `taskId`'s detail the way `enter` on its row would, from wherever the board is: help, the
+	 * dispatch picker or form, a card's or a question's prompt and a `/` being typed close, the board
+	 * takes the keys, and the copilot's draft and asks are kept. When the task is loaded, the board
+	 * under the detail is left showing its row, selected: its parent expanded, the current status
+	 * filter when that shows it, else the one holding its section, and a search or `u` that hides it
+	 * cleared, so `esc` lands on it. The task is `held`, so every reload loads it past the section
+	 * caps (BoardData.loadBoard). A task outside the loaded sections still opens, from its own
+	 * records; bringing it in takes a reload, which is the caller's to run.
+	 */
+	export const openTask = (state: BoardState, taskId: string): BoardState => {
+		const opened: BoardState = {
+			...BoardPrompt.close(state),
+			help: false,
+			dispatch: null,
+			focus: "board",
+			search: state.search.mode === "typing" ? SEARCH_OFF : state.search,
+			view: { type: "detail", taskId },
+			held: taskId,
+		};
+		const place = rowPlace(state, taskId);
+		if (!place) return opened;
+		const at = (status: StatusFilter): BoardState => ({
+			...opened,
+			status,
+			expanded: place.parentId
+				? setExpanded(state, place.parentId, true)
+				: state.expanded,
+			selectedId: taskId,
+		});
+		const shows = (s: BoardState): boolean =>
+			rowOf(visibleRows(s), taskId) !== undefined;
+		const kept = at(state.status);
+		if (shows(kept)) return kept;
+		const holding = at(BoardData.isClosed(place.section) ? "done" : "open");
+		return shows(holding)
+			? holding
+			: { ...BoardDecisions.clear(holding), search: SEARCH_OFF };
 	};
 
 	// Merge freshly loaded sections into an existing state, keeping the same task selected and the same

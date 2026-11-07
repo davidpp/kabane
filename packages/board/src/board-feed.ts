@@ -1,6 +1,7 @@
 // What the board reads from the tracker and the host: the first load scoped to the detected project
-// (`esc` widens to all scopes), a 5s poll that keeps it fresh, the reload a write asks for, and the
-// FTS search merged into the rows. Selection survives every reload by task id (BoardNav.withSections).
+// (`esc` widens to all scopes) and open on the issue the host named, a 5s poll that keeps it fresh,
+// the reload a write asks for, and the FTS search merged into the rows. Selection survives every
+// reload by task id (BoardNav.withSections).
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardActivity } from "./activity";
@@ -55,12 +56,35 @@ const loadFeed = async (
 	};
 };
 
+// The first state over the first load's rows: the copilot's port in, the badges counted, and open on
+// the host's issue when it named one.
+const firstState = (
+	sections: BoardData.BoardSection[],
+	{ counts, progress }: Awaited<ReturnType<typeof loadFeed>>,
+	scoped: boolean,
+	copilot: Copilot | undefined,
+	open: { taskId: string } | undefined,
+): BoardNav.BoardState => {
+	const first = BoardChecklist.withProgress(
+		BoardDecisions.withCounts(
+			BoardNav.withCopilotPort(BoardNav.init(sections, { scoped }), {
+				shortcuts: copilot?.shortcuts() ?? [],
+				actor: copilot?.actor ?? null,
+			}),
+			counts,
+		),
+		progress,
+	);
+	return open ? BoardNav.openTask(first, open.taskId) : first;
+};
+
 export const useBoardFeed = ({
 	cwd,
 	basePath,
 	activitySource,
 	resolveScope,
 	copilot,
+	open,
 	store: { state, ref, set, update },
 	setNotice,
 	refreshDetail,
@@ -71,6 +95,8 @@ export const useBoardFeed = ({
 	resolveScope: BoardData.ScopeResolver | undefined;
 	// Its shortcuts and actor go into the first state.
 	copilot: Copilot | undefined;
+	// The issue the first state opens on (BoardNav.openTask); absent, it opens on the board.
+	open: { taskId: string } | undefined;
 	store: BoardStore;
 	setNotice: SetNotice;
 	// Every reload checks the open detail view's records too.
@@ -95,6 +121,7 @@ export const useBoardFeed = ({
 		(s: BoardNav.BoardState): BoardData.BoardFilters => ({
 			kind: s.kind === "all" ? undefined : s.kind,
 			scopeUri: s.scoped ? scopeRef.current?.scopeUri : undefined,
+			held: s.held ?? undefined,
 		}),
 		[],
 	);
@@ -144,38 +171,37 @@ export const useBoardFeed = ({
 		let cancelled = false;
 		void (async () => {
 			const detected = resolveScope ? await resolveScope(cwd) : null;
-			const filters: BoardData.BoardFilters = detected
-				? { scopeUri: detected.scopeUri }
-				: {};
+			const filters: BoardData.BoardFilters = {
+				...(detected ? { scopeUri: detected.scopeUri } : {}),
+				...(open ? { held: open.taskId } : {}),
+			};
 			const feed = await loadFeed(basePath, filters, activitySource);
 			const result = feed.rows;
 			if (cancelled) return;
 			setScope(detected);
 			if (feed.activity.ok) setActivity(feed.activity.value);
-			if (result.ok) {
-				const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
-				if (!cancelled && links.ok) setLinked(links.value);
+			if (!result.ok) {
+				setError(result.error.message);
+				return;
 			}
-			if (result.ok) {
-				const first = BoardNav.withCopilotPort(
-					BoardNav.init(result.value, { scoped: Boolean(detected) }),
-					{
-						shortcuts: copilot?.shortcuts() ?? [],
-						actor: copilot?.actor ?? null,
-					},
-				);
-				set(
-					BoardChecklist.withProgress(
-						BoardDecisions.withCounts(first, feed.counts),
-						feed.progress,
-					),
-				);
-			} else setError(result.error.message);
+			const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
+			if (cancelled) return;
+			if (links.ok) setLinked(links.value);
+			set(firstState(result.value, feed, Boolean(detected), copilot, open));
 		})();
 		return () => {
 			cancelled = true;
 		};
-	}, [cwd, basePath, resolveScope, activitySource, copilot, retryCount, set]);
+	}, [
+		cwd,
+		basePath,
+		resolveScope,
+		activitySource,
+		copilot,
+		open,
+		retryCount,
+		set,
+	]);
 
 	// 5s background poll — reloads with whatever filters are currently active.
 	useEffect(() => {

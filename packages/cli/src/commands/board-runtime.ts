@@ -9,7 +9,7 @@ import {
 	Headers,
 	startBoard,
 } from "@cabane/board";
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, Planner, type Result, type Task } from "@cabane/core";
 import {
 	type Extension,
 	failure,
@@ -18,7 +18,12 @@ import {
 	success,
 } from "@cabane/extension";
 import { configPath } from "../config";
-import { type Command, type Ctx, resolveScope } from "../context";
+import {
+	type Command,
+	type Ctx,
+	resolveScope,
+	type ScopeSelection,
+} from "../context";
 import { Extensions } from "../extensions";
 import { UpdateNotice } from "../update-notice";
 
@@ -69,6 +74,44 @@ const copilotOverrides = (ctx: Ctx): Harnesses.Overrides | undefined => {
 };
 
 /**
+ * The issue `--issue` names, as a short id or a ULID, resolved before the renderer starts so an
+ * unknown one fails in one line; undefined without the flag.
+ */
+export const boardIssue = async (
+	args: ParsedArgs,
+	ctx: Ctx,
+): Promise<Result<Task | undefined>> => {
+	if (args.flags.issue === undefined) return ok(undefined);
+	const input = flagString(args, "issue");
+	if (input === undefined)
+		return err(new Error("--issue needs an issue id, e.g. --issue JCAB-12"));
+	const id = await Planner.resolveTaskId(ctx.store, input);
+	const task = id.ok ? await Planner.getTask(ctx.store, id.value) : id;
+	if (!task.ok) return task;
+	return task.value
+		? ok(task.value)
+		: err(new Error(`No task found with ID: ${input}`));
+};
+
+/**
+ * The scope the board opens on: `--scope`, else the issue's own scope when it named one (the
+ * detected project when that is it, for its label and root), else the detected project. An issue
+ * with no scope opens on all scopes, the only view that holds it.
+ */
+const boardScope = async (
+	args: ParsedArgs,
+	ctx: Ctx,
+	issue: Task | undefined,
+): Promise<ScopeSelection | undefined> => {
+	const scope = await resolveScope(args, ctx);
+	if (!issue || flagString(args, "scope") !== undefined) return scope;
+	if (issue.scopeUri === undefined) return undefined;
+	return scope?.scopeUri === issue.scopeUri
+		? scope
+		: { scopeUri: issue.scopeUri, label: issue.scopeUri };
+};
+
+/**
  * The enabled extensions' board ports, each merged under its extension's name
  * so ids route back to it. A port no extension fills stays absent, and the
  * board keeps its no-op default for it.
@@ -102,8 +145,9 @@ const extensionPorts = async (
 /**
  * What the CLI hands the board: this device's home as the storage handle, the
  * activity and dispatcher ports the enabled extensions contribute (no-op
- * defaults without any), the scope the CLI would have filtered on, and a
- * copilot on the chosen harness, and the release notice unless `updates.check` is false.
+ * defaults without any), the scope the CLI would have filtered on (the issue's,
+ * with `--issue`), the issue to open on, a copilot on the chosen harness, and
+ * the release notice unless `updates.check` is false.
  *
  * The scope is resolved here rather than passed through as a resolver, because
  * the copilot needs the same answer the board shows: the project directory as
@@ -116,15 +160,19 @@ export const boardDeps = async (
 	args: ParsedArgs,
 	ctx: Ctx,
 	harness: Harnesses.Id,
-	extensions: readonly Extension[] = [],
+	{
+		extensions = [],
+		issue,
+	}: { extensions?: readonly Extension[]; issue?: Task } = {},
 ): Promise<BoardWiring> => {
-	const scope = await resolveScope(args, ctx);
+	const scope = await boardScope(args, ctx, issue);
 	const overrides = copilotOverrides(ctx);
 	return {
 		...(await extensionPorts(extensions, ctx)),
 		...(ctx.config.updates?.check === false
 			? {}
 			: { announcer: UpdateNotice.announcer(ctx.home) }),
+		...(issue ? { open: { taskId: issue.id } } : {}),
 		cwd: ctx.cwd,
 		basePath: ctx.store,
 		// The board wants a URI and a label; the project root is the copilot's business.
@@ -149,6 +197,8 @@ export const boardDeps = async (
 };
 
 export const runBoard: Command["run"] = async (args, ctx) => {
+	const issue = await boardIssue(args, ctx);
+	if (!issue.ok) return failure(issue.error.message);
 	// The board owns a full-screen renderer; on a pipe it would block forever.
 	if (!process.stdout.isTTY)
 		return failure("kabane board needs a terminal; use `kabane list` here");
@@ -158,7 +208,10 @@ export const runBoard: Command["run"] = async (args, ctx) => {
 	if (!enabled.ok) return failure(enabled.error);
 	const extensions = await Extensions.loadAll(enabled.value);
 	if (!extensions.ok) return failure(extensions.error);
-	const deps = await boardDeps(args, ctx, harness.value, extensions.value);
+	const deps = await boardDeps(args, ctx, harness.value, {
+		extensions: extensions.value,
+		issue: issue.value,
+	});
 	try {
 		await startBoard(deps);
 	} finally {

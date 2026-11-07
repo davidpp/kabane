@@ -40,6 +40,9 @@ export type BoardDeps = {
 	headers?: Readonly<Record<string, CardHeader>>;
 	// One line to show over the board's footer once it is up. Default: none, nothing announced.
 	announcer?: Announcer;
+	// The issue to open on, by id: its detail over the board, as `enter` on its row (BoardNav.openTask).
+	// The host picks a scope that holds it. Default: none, the board opens on the board view.
+	open?: { taskId: string };
 };
 
 // Last-resort fallback if a render throws past App: show the error, offer `q` to quit. startBoard's
@@ -75,6 +78,7 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 						resolveScope={deps.resolveScope}
 						headers={deps.headers}
 						announcer={deps.announcer}
+						open={deps.open}
 					/>
 				</ErrorBoundary>
 			</ThemeProvider>,
