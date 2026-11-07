@@ -1,7 +1,7 @@
 // An issue's checklist, as the loop reads it: the steps of one change, which the claim's session
 // works in order in the claim's tree and ticks as each lands (`@cabane/checklist`). The issue is
 // done only once every item is ticked, so a session that closes it with items open has it
-// reopened.
+// reopened, and the checkpoint after a green pass names the items ticked since the last one.
 import {
 	Checklist,
 	type ChecklistItemView,
@@ -26,6 +26,10 @@ export namespace Checklists {
 
 	export const open = (items: readonly Item[]): Item[] =>
 		items.filter((item) => !item.done);
+
+	/** The items ticked after `since`, an ISO time, in list order. */
+	export const tickedSince = (items: readonly Item[], since: string): Item[] =>
+		items.filter((item) => item.doneAt !== undefined && item.doneAt > since);
 
 	/**
 	 * Refuse `task` closed as done with items still open, when `harness` owns it: put it back in

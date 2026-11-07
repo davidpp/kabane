@@ -1,8 +1,10 @@
 // A pass over the run's gates and what follows from it: a checkpoint commit when it is green and
-// the run has a worktree, the pass in run.json and on the trace, and the result on the tracker.
+// the run has a worktree, naming the checklist items ticked since the last checkpoint of the same
+// task, the pass in run.json and on the trace, and the result on the tracker.
 // A subtask's pass goes on its work log, and a red one reopens it; the run's own final pass goes
 // on the parent's.
 import { Planner } from "@cabane/core";
+import { Checklists } from "./checklists";
 import { Gates } from "./gates";
 import { RunState } from "./state";
 import { RunStore } from "./store";
@@ -22,6 +24,51 @@ export namespace Checks {
 
 	const NOTE_CHARS = 2_000;
 
+	/**
+	 * The items of the pass's task (the run's own target for its final pass) ticked since its last
+	 * checkpoint in this run, or since the run started: what this checkpoint commits.
+	 */
+	const ticked = async (
+		ctx: Ctx,
+		subject: Subject,
+	): Promise<Checklists.Item[]> => {
+		const taskId = subject.taskId ?? ctx.run.parentId;
+		const items = await Checklists.of(ctx.deps.basePath, taskId);
+		if (!items.ok) {
+			RunState.event(ctx, {
+				type: "warning",
+				summary: `checklist of ${subject.label} not read: ${items.error.message}`,
+			});
+			return [];
+		}
+		const last = ctx.run.gateRuns.findLast(
+			(r) =>
+				r.checkpoint !== undefined && (r.taskId ?? ctx.run.parentId) === taskId,
+		);
+		return Checklists.tickedSince(
+			items.value,
+			last?.at ?? ctx.run.startedAt ?? ctx.run.createdAt,
+		);
+	};
+
+	const message = (
+		ctx: Ctx,
+		subject: Subject,
+		results: readonly Gates.Result[],
+		items: readonly Checklists.Item[],
+	): string =>
+		[
+			`kabane loop ${ctx.run.id}: ${subject.label} ${subject.title}`,
+			...(items.length > 0
+				? [
+						`Ticked:\n${items.map((item) => `- ${item.handle} ${item.text}`).join("\n")}`,
+					]
+				: []),
+			results.length > 0
+				? `Gates passed: ${results.map((r) => r.name).join(", ")}.`
+				: "No gates configured.",
+		].join("\n\n");
+
 	const commit = async (
 		ctx: Ctx,
 		subject: Subject,
@@ -29,8 +76,12 @@ export namespace Checks {
 	): Promise<string | undefined> => {
 		const dir = ctx.run.worktree;
 		if (dir === undefined) return undefined;
-		const message = `kabane loop ${ctx.run.id}: ${subject.label} ${subject.title}\n\n${results.length > 0 ? `Gates passed: ${results.map((r) => r.name).join(", ")}.` : "No gates configured."}`;
-		const made = await Worktree.checkpoint(dir, message, ctx.deps.git);
+		const items = await ticked(ctx, subject);
+		const made = await Worktree.checkpoint(
+			dir,
+			message(ctx, subject, results, items),
+			ctx.deps.git,
+		);
 		const tag = subject.lane ? { lane: subject.lane } : {};
 		if (!made.ok) {
 			RunState.event(ctx, {
@@ -48,12 +99,13 @@ export namespace Checks {
 			});
 			return undefined;
 		}
+		const handles = items.map((item) => item.handle).join(", ");
 		RunState.event(ctx, {
 			...tag,
 			type: "checkpoint",
 			task: subject.label,
-			summary: `checkpoint ${made.value.slice(0, 12)} for ${subject.label}`,
-			data: { sha: made.value },
+			summary: `checkpoint ${made.value.slice(0, 12)} for ${subject.label}${handles ? `, ticking ${handles}` : ""}`,
+			data: { sha: made.value, ...(handles ? { ticked: handles } : {}) },
 		});
 		return made.value;
 	};

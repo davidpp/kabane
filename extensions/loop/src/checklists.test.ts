@@ -16,8 +16,10 @@ import { Checklist, checklistModule } from "@cabane/checklist";
 import { Planner, type Task, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { configureTestRuntime } from "@cabane/core/testing";
+import { Checks } from "./checks";
 import { LoopConfig } from "./config";
 import { Runner } from "./runner";
+import { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { Worktree } from "./worktree";
@@ -180,7 +182,7 @@ const events = (type: string) => {
 const label = (task: Task): string => task.shortId ?? task.id;
 
 describe("A single-issue run on an issue with a checklist", () => {
-	it("works the items in order in one session, each turn pointed at the first open one", async () => {
+	it("works the items in order in one session, each turn pointed at the first open one, and checkpoints them", async () => {
 		const issue = await issueWithSteps();
 		const id = label(issue);
 		await runOn(issue);
@@ -219,6 +221,17 @@ describe("A single-issue run on an issue with a checklist", () => {
 		expect(readFileSync(join(worktree, "work.txt"), "utf8")).toBe(
 			`${id}.1\n${id}.2\n${id}.3\n`,
 		);
+		// One green pass on the issue's work, so one checkpoint, naming every item it ticked.
+		const [checkpoint, ...more] = RunStore.checkpoints(ended);
+		expect(more).toEqual([]);
+		expect(
+			GitFixture.run(worktree, ["show", "-s", "--format=%B", checkpoint ?? ""]),
+		).toBe(
+			`kabane loop run-1: ${id} stepwise\n\nTicked:\n- ${id}.1 Parse the input\n- ${id}.2 Validate it\n- ${id}.3 Write the output\n\nGates passed: worked.\n\n`,
+		);
+		expect(events("checkpoint").map((e) => e.data?.ticked)).toEqual([
+			`${id}.1, ${id}.2, ${id}.3`,
+		]);
 	});
 
 	it("refuses done while items are open: reopens the issue and nudges it on from the first open item", async () => {
@@ -358,5 +371,48 @@ describe("A single-issue run resumed after its runner died mid-checklist", () =>
 		expect(readFileSync(join(worktree, "work.txt"), "utf8")).toBe(
 			`${id}.2\n${id}.3\n`,
 		);
+		// The run's checkpoint names what it ticked since it started, the dead runner's tick too.
+		expect(events("checkpoint").map((e) => e.data?.ticked)).toEqual([
+			`${id}.1, ${id}.2, ${id}.3`,
+		]);
+	});
+});
+
+describe("A checkpoint on a task with a checklist", () => {
+	it("names only the items ticked since the task's last checkpoint", async () => {
+		const issue = await issueWithSteps();
+		const id = label(issue);
+		const run = await runOn(issue, { startedAt: new Date().toISOString() });
+		const log = RunStore.eventLog(home, run.id);
+		if (!log.ok) throw log.error;
+		const ctx = RunState.make(
+			{
+				home,
+				basePath: home,
+				kabaneBin: "/nonexistent/kabane",
+				pid: process.pid,
+				git,
+			},
+			run,
+			log.value,
+		);
+		const worktree = run.worktree ?? "";
+		const subject = { taskId: issue.id, label: id, title: "stepwise" };
+		// One item ticked and its work written, then a pass; then the next, and another.
+		const pass = async (n: number) => {
+			const ticked = await Checklist.tick(home, { items: [`${id}.${n}`] });
+			if (!ticked.ok) throw ticked.error;
+			writeFileSync(join(worktree, "work.txt"), `${id}.${n}\n`);
+			const checked = await Checks.gate(ctx, subject);
+			return GitFixture.run(worktree, [
+				"show",
+				"-s",
+				"--format=%B",
+				checked.checkpoint ?? "",
+			]);
+		};
+
+		expect(await pass(1)).toContain(`Ticked:\n- ${id}.1 Parse the input\n\n`);
+		expect(await pass(2)).toContain(`Ticked:\n- ${id}.2 Validate it\n\n`);
 	});
 });
