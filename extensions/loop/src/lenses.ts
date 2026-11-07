@@ -97,7 +97,7 @@ export namespace Lenses {
 	 * None until the fixer's pass is over, with the recheck off, or without a base to diff against
 	 * (a session directory that is not a git repository).
 	 */
-	export const closedByFixer = (
+	const closedByFixer = (
 		config: Pick<LoopConfig.Config, "lenses" | "recheck">,
 		claims: readonly RunStore.Claim[],
 		plan: LoopPlan.Plan,
