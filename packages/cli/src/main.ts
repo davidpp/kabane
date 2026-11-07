@@ -17,6 +17,7 @@ import {
 import { add } from "./commands/add";
 import { answer } from "./commands/answer";
 import { board } from "./commands/board";
+import { checklist } from "./commands/checklist";
 import { comment } from "./commands/comment";
 import { config } from "./commands/config";
 import { context } from "./commands/context";
@@ -55,6 +56,7 @@ export const COMMANDS: Command[] = [
 	comment,
 	questions,
 	answer,
+	checklist,
 	log,
 	context,
 	sync,

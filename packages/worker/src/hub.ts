@@ -23,6 +23,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { checklistModule } from "@cabane/checklist";
 import {
 	ANONYMOUS_ACTOR,
 	Deadline,
@@ -88,7 +89,7 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 		super(ctx, env);
 		const zone = hubTimezone(env.KABANE_TIMEZONE);
 		const configured = Runtime.configure({
-			modules: [questionsModule],
+			modules: [questionsModule, checklistModule],
 			provider: DoDb.provider(ctx.storage),
 			actor: () => actorStore.getStore() ?? ANONYMOUS_ACTOR,
 			timezone: () => (zone.ok ? zone.value : "UTC"),

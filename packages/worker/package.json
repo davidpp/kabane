@@ -22,6 +22,7 @@
 		"wrangler": "4.128.0"
 	},
 	"dependencies": {
+		"@cabane/checklist": "workspace:*",
 		"@cabane/core": "workspace:*",
 		"@cabane/questions": "workspace:*",
 		"jose": "6.2.10",

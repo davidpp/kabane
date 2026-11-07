@@ -9,6 +9,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { checklistModule } from "@cabane/checklist";
 import { ok, Planner, type Result, Runtime, tryCatch } from "@cabane/core";
 import { detectScope, type ProjectScope } from "@cabane/core/scope";
 import {
@@ -47,7 +48,7 @@ export const configureRuntime = (
 ): Result<void> => {
 	const zone = config.timezone;
 	return Runtime.configure({
-		modules: [questionsModule],
+		modules: [questionsModule, checklistModule],
 		provider: SqliteDb.provider({ dbName: location.dbName }),
 		tablePrefix: location.tablePrefix,
 		actor: () => actor,
