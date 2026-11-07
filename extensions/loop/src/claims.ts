@@ -698,8 +698,10 @@ export namespace Claims {
 	// holds the subtask, so nothing claims it again before its gates have spoken. A worktree run
 	// with no gates still takes the pass: it is what commits the subtask's checkpoint, and without
 	// one the work stays uncommitted for as long as the agent never commits it itself. A subtask
-	// closed with checklist items open is not done: it is reopened instead, with no pass, as its
-	// session would have had it reopened had it lived to see its turn end.
+	// its session closed with checklist items open is not done: it is reopened instead, with no
+	// pass, as its session would have had it reopened had it lived to see its turn end. That is
+	// settled when the pass's turn comes: with more than one session, it may wait behind another
+	// pass, and an item added meanwhile still holds it back.
 	const gatesAfter = async (
 		ctx: Ctx,
 		{
@@ -712,33 +714,35 @@ export namespace Claims {
 			ctx.stopping.signal.aborted
 		)
 			return undefined;
-		const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
-		if (!task.ok || task.value?.state !== "done") return undefined;
-		const reopened = await Checklists.refuseDone(
-			ctx.deps.basePath,
-			task.value,
-			harness,
-		);
-		const tag = {
-			...(subject.lane ? { lane: subject.lane } : {}),
-			task: subject.label,
-		};
-		// Unread, the checklist does not hold back the pass: the gates still speak on the work.
-		if (!reopened.ok)
-			RunState.event(ctx, {
-				...tag,
-				type: "warning",
-				summary: `checklist of ${subject.label} not read: ${reopened.error.message}`,
-			});
-		else if (reopened.value.length > 0) {
-			RunState.event(ctx, {
-				...tag,
-				type: "reopened",
-				summary: `${subject.label} reopened: closed with ${reopened.value.length} checklist item${reopened.value.length === 1 ? "" : "s"} open`,
-			});
-			return undefined;
-		}
-		return Checks.gate(ctx, { ...subject, title: task.value.title });
+		return Checks.gateWhen(ctx, async () => {
+			const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
+			if (!task.ok || task.value?.state !== "done") return undefined;
+			const reopened = await Checklists.refuseDone(
+				ctx.deps.basePath,
+				task.value,
+				harness,
+			);
+			const tag = {
+				...(subject.lane ? { lane: subject.lane } : {}),
+				task: subject.label,
+			};
+			// Unread, the checklist does not hold back the pass: the gates still speak on the work.
+			if (!reopened.ok)
+				RunState.event(ctx, {
+					...tag,
+					type: "warning",
+					summary: `checklist of ${subject.label} not read: ${reopened.error.message}`,
+				});
+			else if (reopened.value.length > 0) {
+				RunState.event(ctx, {
+					...tag,
+					type: "reopened",
+					summary: `${subject.label} reopened: closed with ${reopened.value.length} checklist item${reopened.value.length === 1 ? "" : "s"} open`,
+				});
+				return undefined;
+			}
+			return { ...subject, title: task.value.title };
+		});
 	};
 
 	const observeStall = async (

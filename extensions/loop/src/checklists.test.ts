@@ -79,10 +79,12 @@ const items = async (task: Task) => {
 const runOn = async (
 	issue: Task,
 	extra: Partial<RunStore.Run> = {},
+	input: LoopConfig.Input = {},
 ): Promise<RunStore.Run> => {
 	const config = LoopConfig.Schema.safeParse({
 		implementer: "gemini",
 		gates: { worked: "test -f work.txt" },
+		...input,
 	});
 	if (!config.success) throw config.error;
 	const run: RunStore.Run = {
@@ -113,10 +115,12 @@ const runOn = async (
 
 // `each` calls kabane_done after every item it ticks; `last` only once the receipt shows all ticked;
 // `human` ticks one, then has a human close the issue. Its writes are the session's own actor's, as
-// the real MCP server's `--as` makes them. No model or MCP server is reached.
+// the real MCP server's `--as` makes them. A task with no checklist is closed at once, and one with
+// a `<task>.wait` marker holds its turn until `<task>.release` exists. No model or MCP server is
+// reached.
 const AGENT = `
 import { createInterface } from "node:readline";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import { configureTestRuntime } from ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
 import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
 import { checklistModule } from ${JSON.stringify(import.meta.resolve("@cabane/checklist"))};
@@ -140,11 +144,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
  if (message.method !== "session/prompt") return;
  const text = message.params.prompt.map((p) => p.text ?? "").join("\\n");
  appendFileSync(prompts, JSON.stringify(text) + "\\n");
- task ??= /Your issue is ([^.]+)\\./.exec(text)?.[1];
+ task ??= /Your (?:issue|subtask) is ([^.]+)\\./.exec(text)?.[1];
+ if (!task) process.exit(2);
+ while (existsSync(task + ".wait") && !existsSync(task + ".release")) await Bun.sleep(5);
  const item = /(?:Start|Continue) at (\\S+) /.exec(text)?.[1];
- if (!task || !item) process.exit(2);
- appendFileSync("work.txt", item + "\\n");
- const receipt = await tool("kabane_checklistTick", { items: [item] });
+ appendFileSync("work.txt", (item ?? task) + "\\n");
+ const receipt = item ? await tool("kabane_checklistTick", { items: [item] }) : "0/0";
  const [, ticked, total] = /(\\d+)\\/(\\d+)/.exec(receipt);
  if (done === "human") {
   actor = "cabane://actor/human/owner";
@@ -157,6 +162,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 
 const drive = async (
 	done: "each" | "last" | "human",
+	input: Partial<RunState.Deps> = {},
 ): Promise<RunStore.Run> => {
 	const agent = join(root, "agent.mjs");
 	writeFileSync(agent, AGENT);
@@ -173,6 +179,7 @@ const drive = async (
 			},
 		},
 		tickMs: 5,
+		...input,
 	});
 	if (!ended.ok) throw ended.error;
 	return ended.value;
@@ -494,5 +501,81 @@ describe("Checklists.refuseDone", () => {
 		expect(refused.ok && refused.value).toEqual([]);
 		const after = await Planner.getTask(home, task.id);
 		expect(after.ok && after.value?.state).toBe("done");
+	});
+});
+
+describe("A parent run with two sessions at once", () => {
+	const until = async (predicate: () => Promise<boolean>): Promise<void> => {
+		const deadline = Date.now() + 5_000;
+		while (!(await predicate()) && Date.now() < deadline) await Bun.sleep(5);
+		expect(await predicate()).toBe(true);
+	};
+
+	it("holds back a pass queued behind another when an item was added while it waited", async () => {
+		const parent = await Planner.addTask(home, {
+			title: "parent",
+			kind: "issue",
+			state: "next",
+		});
+		if (!parent.ok) throw parent.error;
+		const subtask = async (title: string) => {
+			const created = await Planner.addTask(home, {
+				title,
+				kind: "issue",
+				state: "next",
+				parentTaskId: parent.value.id,
+			});
+			if (!created.ok) throw created.error;
+			return created.value;
+		};
+		const first = await subtask("first");
+		const second = await subtask("second");
+		const steps = await Checklist.add(home, {
+			id: second.id,
+			items: ["The one step"],
+		});
+		if (!steps.ok) throw steps.error;
+		// The first subtask's pass holds on `hold` while the second's session ends and queues behind it.
+		const run = await runOn(
+			parent.value,
+			{},
+			{
+				gates: { held: "while [ -f hold ]; do sleep 0.01; done" },
+				budget: { concurrency: 2 },
+			},
+		);
+		const worktree = run.worktree ?? "";
+		const b = label(second);
+		writeFileSync(join(worktree, "hold"), "");
+		writeFileSync(join(worktree, `${b}.wait`), "");
+
+		const running = drive("last");
+		await until(async () =>
+			events("gates").some((e) => e.task === label(first)),
+		);
+		writeFileSync(join(worktree, `${b}.release`), "");
+		await until(async () => {
+			const task = await Planner.getTask(home, second.id);
+			return task.ok && task.value?.state === "done";
+		});
+		// Its session ends and its pass queues behind the first's, which still holds.
+		await Bun.sleep(300);
+		const late = await Checklist.add(home, {
+			id: second.id,
+			items: ["A step added while its pass waited"],
+		});
+		if (!late.ok) throw late.error;
+		rmSync(join(worktree, "hold"));
+		const ended = await running;
+
+		expect([ended.status, ended.exit?.reason]).toEqual([
+			"completed",
+			"plan-done",
+		]);
+		expect(events("reopened").map((e) => e.summary)).toEqual([
+			`${b} reopened: closed with 1 checklist item open`,
+		]);
+		expect(ended.claims.map((c) => c.lane)).toContain(`${b}#2`);
+		expect((await items(second)).map((i) => i.done)).toEqual([true, true]);
 	});
 });
