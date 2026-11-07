@@ -110,18 +110,21 @@ const runOn = async (
 	return written.value;
 };
 
-// `each` calls kabane_done after every item it ticks; `last` only once the receipt shows all ticked.
-// No model or MCP server is reached.
+// `each` calls kabane_done after every item it ticks; `last` only once the receipt shows all ticked;
+// `human` ticks one, then has a human close the issue. Its writes are the session's own actor's, as
+// the real MCP server's `--as` makes them. No model or MCP server is reached.
 const AGENT = `
 import { createInterface } from "node:readline";
 import { appendFileSync } from "node:fs";
 import { configureTestRuntime } from ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
 import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
 import { checklistModule } from ${JSON.stringify(import.meta.resolve("@cabane/checklist"))};
-configureTestRuntime("", { modules: [checklistModule] });
+const AGENT_ACTOR = "cabane://actor/agent/gemini";
+let actor = AGENT_ACTOR;
+configureTestRuntime("", { modules: [checklistModule], actor: () => actor });
 const [home, prompts, done] = process.argv.slice(2);
 let task;
-const ctx = { basePath: home, actor: "cabane://actor/agent/gemini", scopeRequired: false };
+const ctx = { basePath: home, actor: AGENT_ACTOR, scopeRequired: false };
 const tool = async (name, args) => {
  const definition = [...KABANE_TOOLS, ...checklistModule.tools].find((t) => t.name === name);
  const result = await definition.handler(args, ctx);
@@ -142,12 +145,18 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
  appendFileSync("work.txt", item + "\\n");
  const receipt = await tool("kabane_checklistTick", { items: [item] });
  const [, ticked, total] = /(\\d+)\\/(\\d+)/.exec(receipt);
- if (done === "each" || ticked === total) await tool("kabane_done", { id: task });
+ if (done === "human") {
+  actor = "cabane://actor/human/owner";
+  await tool("kabane_done", { id: task });
+  actor = AGENT_ACTOR;
+ } else if (done === "each" || ticked === total) await tool("kabane_done", { id: task });
  reply(message.id, { stopReason: "end_turn" });
 });
 `;
 
-const drive = async (done: "each" | "last"): Promise<RunStore.Run> => {
+const drive = async (
+	done: "each" | "last" | "human",
+): Promise<RunStore.Run> => {
 	const agent = join(root, "agent.mjs");
 	writeFileSync(agent, AGENT);
 	const ended = await Runner.run("run-1", {
@@ -262,6 +271,31 @@ describe("A single-issue run on an issue with a checklist", () => {
 		// The gates ran once, on the issue closed with every item ticked.
 		expect(ended.gateRuns.filter((r) => r.taskId === issue.id)).toHaveLength(1);
 		expect((await items(issue)).every((i) => i.done)).toBe(true);
+		const task = await Planner.getTask(home, issue.id);
+		expect(task.ok && task.value?.state).toBe("done");
+	});
+
+	it("lets a human's close with items open stand: the gates run on it and nothing reopens it", async () => {
+		const issue = await issueWithSteps();
+		await runOn(issue);
+
+		const ended = await drive("human");
+
+		expect([ended.status, ended.exit?.reason]).toEqual([
+			"completed",
+			"plan-done",
+		]);
+		expect(ended.claims.map((c) => c.outcome)).toEqual(["done"]);
+		expect(sent()).toHaveLength(1);
+		expect(events("reopened")).toEqual([]);
+		expect(
+			ended.gateRuns.filter((r) => r.taskId === issue.id).map((r) => r.ok),
+		).toEqual([true]);
+		expect((await items(issue)).map((i) => i.done)).toEqual([
+			true,
+			false,
+			false,
+		]);
 		const task = await Planner.getTask(home, issue.id);
 		expect(task.ok && task.value?.state).toBe("done");
 	});

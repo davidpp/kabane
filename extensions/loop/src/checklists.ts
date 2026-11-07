@@ -2,6 +2,7 @@
 // works in order in the claim's tree and ticks as each lands (`@cabane/checklist`). The issue is
 // done only once every item is ticked, so a session that closes it with items open has it
 // reopened, and the checkpoint after a green pass names the items ticked since the last one.
+import { CopilotInstructions } from "@cabane/acp";
 import {
 	Checklist,
 	type ChecklistItemView,
@@ -32,16 +33,25 @@ export namespace Checklists {
 		items.filter((item) => item.doneAt !== undefined && item.doneAt > since);
 
 	/**
-	 * Refuse `task` closed as done with items still open, when `harness` owns it: put it back in
-	 * progress and say which items are open. Empty when there is nothing to refuse. A done issue
-	 * under another assignee was closed by whoever that is, which is theirs to decide.
+	 * Refuse `task` closed as done with items still open by `harness`'s own session: put it back in
+	 * progress and say which items are open. Empty when there is nothing to refuse. A close by
+	 * anyone else, a human above all, is their decision and stands.
+	 *
+	 * Who closed it is the row's last writer (`updatedBy`): the tracker records who last wrote a
+	 * task, not who changed its state. A write by someone else after the session's close counts as
+	 * theirs, and leaves the close standing.
 	 */
 	export const refuseDone = async (
 		basePath: string,
 		task: Task,
 		harness: string,
 	): Promise<Result<Item[]>> => {
-		if (task.state !== "done" || task.assignee !== harness) return ok([]);
+		if (
+			task.state !== "done" ||
+			task.assignee !== harness ||
+			task.updatedBy !== CopilotInstructions.actorUri(harness)
+		)
+			return ok([]);
 		const items = await of(basePath, task.id);
 		if (!items.ok) return items;
 		const left = open(items.value);
