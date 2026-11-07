@@ -2,9 +2,10 @@
 
 ## North Stars
 
-Coding agents, harnesses, multiplexers and models turn over every few months. The work they
-do (what is open, what was decided, who did what) should not turn over with them. Kabane is
-that substrate: one person's work queue, shared with whichever agents do the work this year.
+Getting good work out of agents is a craft that changes every few months, across vendors,
+harnesses and models that come and go. Kabane makes that work go better, whichever agents do
+it: it brings good practice to the work, lets any agent pick up where another left off, and
+keeps a history that can explain what was done, when, by whom and why.
 
 In priority order; when two conflict, the higher one wins.
 
