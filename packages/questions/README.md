@@ -22,9 +22,9 @@ CLI and the hub register it; a host that does not has no decisions, which is not
   `nextCursor` line when there is more.
 - `kabane_answer` answers one by handle, ULID or `id:<ULID>` as a page prints it, or withdraws
   it with `withdraw: true` and `reasoning`. A choice is named by its full text or by its label,
-  the text before its first `.`, `:` or `)` (`B` for "B. One tree", `yes` for "Yes: one pass"),
-  ignoring case; a label two choices share is refused with both listed. The full text is what is
-  recorded. Answering the last open question moves a `waiting` issue to `next` in the same
+  the text before its first `.`, `:` or `)` when a space follows it (`B` for "B. One tree",
+  `yes` for "Yes: one pass", none for "3.5 seconds"), ignoring case; a label two choices share
+  is refused with both listed. The full text is what is recorded. Answering the last open question moves a `waiting` issue to `next` in the same
   transaction. An agent recording a reply the human gave it (the grill, the copilot) sets
   `relayed: true`: the answer is credited to the human (`answered_by`) and the write to the
   agent (`updated_by`). It is refused when the connection knows no human: `kabane mcp` relays

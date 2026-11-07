@@ -1,8 +1,12 @@
 import { err, ok, type ParsedQuestion, type Result } from "@cabane/core";
 
-/** A choice's label, the text before its first `.`, `:` or `)`: `B` of "B. One tree". */
+/**
+ * A choice's label, the text before its first `.`, `:` or `)` when whitespace follows it: `B` of
+ * "B. One tree", `Yes` of "Yes: one pass". Punctuation inside the text is not a separator, so
+ * "3.5 seconds" and "v1.2, then v2" have no label.
+ */
 export const choiceLabel = (choice: string): string | undefined =>
-	choice.match(/^([^.:)]*)[.:)]/)?.[1]?.trim() || undefined;
+	choice.match(/^([^.:)]*)[.:)]\s/)?.[1]?.trim() || undefined;
 
 /** A choice's text as an answer compares it: ignoring case and the spacing around its commas. */
 const fullText = (text: string): string =>

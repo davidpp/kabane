@@ -31,7 +31,7 @@ For each question:
 2. Give the choices, the recommended one and why. `choices only` refuses any other answer;
    `multi-select` takes several, comma-separated. A question can be both:
    `(multi-select, choices only)`. A choice can be named by its label, the text before its first
-   `.`, `:` or `)`: `B` for "B. One tree", `b, c` for two.
+   `.`, `:` or `)` when a space follows it: `B` for "B. One tree", `b, c` for two.
 3. Check what you can yourself first: read the file, the issue (`kabane_context`) or the command
    the question points at, and say what you found when it sharpens or changes the recommendation.
    Do not ask the human what the code can answer.

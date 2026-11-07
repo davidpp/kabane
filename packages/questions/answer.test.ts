@@ -185,3 +185,33 @@ it("lets a multi-select choice hold commas once its label is comma-free and its 
 		}).success,
 	).toBe(true);
 });
+
+it("reads punctuation inside a choice's text as text, not as the end of a label", () => {
+	const meta = {
+		choices: ["3.5 seconds", "3.7 seconds", "v1.2, then v2", "e.g. later"],
+		multiSelect: false,
+		allowFreeform: false,
+	};
+	for (const typed of ["3", "v1", "e"])
+		expect(validateAnswer(meta, typed).ok).toBe(false);
+	expect(validateAnswer(meta, "3.5 SECONDS")).toEqual({
+		ok: true,
+		value: "3.5 seconds",
+	});
+	// Without a label the whole text names a multi-select choice: decimals no longer collide, and
+	// a text with a comma still needs a real label.
+	expect(
+		AskQuestionSchema.safeParse({
+			question: "How long?",
+			choices: ["3.5 seconds", "3.7 seconds"],
+			multiSelect: true,
+		}).success,
+	).toBe(true);
+	expect(
+		AskQuestionSchema.safeParse({
+			question: "Which?",
+			choices: ["v1.2, then v2", "v1.3"],
+			multiSelect: true,
+		}).success,
+	).toBe(false);
+});
