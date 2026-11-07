@@ -54,9 +54,14 @@ export namespace Brief {
 
 	const named = (item: Item): string => `${item.handle} ("${item.text}")`;
 
+	// The call that ticks `item`, spelled out: a harness that defers tool schemas otherwise guesses
+	// the arguments.
+	const tick = (item: Item): string =>
+		`kabane_checklistTick with items: ["${item.handle}"]`;
+
 	// Where the work picks up: the first item not ticked. The test agents read this phrase.
 	const continueAt = (first: Item): string =>
-		`Continue at ${named(first)}: tick each item with kabane_checklistTick as you finish it, before you start the next`;
+		`Continue at ${named(first)}: tick each item as you finish it (${tick(first)}), before you start the next`;
 
 	// A checklist is the steps of one change: worked in this tree, in order, each ticked as it lands.
 	const steps = (task: Task, items: readonly Item[]): string[] => {
@@ -66,7 +71,7 @@ export namespace Brief {
 		const of = `${label(task)} has a checklist of ${plural(items.length, "item")}, ${ticked} ticked, in its brief below: the steps of this one change, worked in this tree one after another.`;
 		return [
 			first
-				? `${of} Start at ${named(first)}. As you finish each item, tick it with kabane_checklistTick before you start the next, so whoever takes over starts where you stopped. Call kabane_done on ${label(task)} only once every item is ticked: the run reopens it while any is open.`
+				? `${of} Start at ${named(first)}. As you finish each item, tick it (${tick(first)} for this one) before you start the next, so whoever takes over starts where you stopped. Call kabane_done on ${label(task)} only once every item is ticked: the run reopens it while any is open.`
 				: `${of} Every item is ticked.`,
 		];
 	};

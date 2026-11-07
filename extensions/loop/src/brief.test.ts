@@ -320,7 +320,9 @@ describe("Brief on a task with a checklist", () => {
 		expect(instructions).toContain(
 			'P-2 has a checklist of 3 items, 1 ticked, in its brief below: the steps of this one change, worked in this tree one after another. Start at P-2.2 ("Validate").',
 		);
-		expect(instructions).toContain("kabane_checklistTick");
+		expect(instructions).toContain(
+			'(kabane_checklistTick with items: ["P-2.2"] for this one)',
+		);
 		expect(instructions).toContain(
 			"Call kabane_done on P-2 only once every item is ticked",
 		);
