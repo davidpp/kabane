@@ -67,6 +67,10 @@ seven at most, because past that the merges and seams outgrow one orchestrator's
 Real ideas that are not for now become `someday` issues with two lines of description, which
 keeps them visible without widening the wave.
 
+An issue's internal steps go in its checklist, not in sub-issues: `references/issue-template.md`
+says how. An item has no assignee, no state beyond done, and no brief; if it needs any of those,
+it's a subtask. In a wave, each subtask is one of the wave's issues, with a territory of its own.
+
 Decisions, research and ADRs go where {{INSTRUCTIONS_FILE}} says they go: {{DECISIONS}}. Some
 of them may land in an issue's description, and there they are already part of that issue's
 brief. For everything that lands elsewhere, attach it to each issue that relies on it with

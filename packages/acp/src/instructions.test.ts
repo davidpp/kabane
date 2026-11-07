@@ -189,6 +189,18 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 			expect(template(path).toLowerCase()).not.toContain("jake");
 	});
 
+	it("an issue's internal steps go in its checklist, under the checklist module's rule", () => {
+		const prose = (path: string): string => template(path).replace(/\s+/g, " ");
+		expect(prose("SKILL.md")).toContain(
+			"An issue's internal steps go in its checklist, not in sub-issues",
+		);
+		expect(prose("references/issue-template.md")).toContain(
+			"put its internal steps in its checklist with `kabane_checklistAdd`",
+		);
+		for (const path of ["SKILL.md", "references/issue-template.md"])
+			expect(prose(path)).toContain(ITEM_OR_SUBTASK);
+	});
+
 	it("a wave's open decisions are asked on its parent and grilled by the grill skill, not by its own interview", () => {
 		const skill = template("SKILL.md");
 		expect(skill).toContain(
