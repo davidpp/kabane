@@ -29,6 +29,9 @@ Local SQLite is authoritative on every device. The hub is one more device that h
 
 See `CODING_PRINCIPLE.md` for the coding rules and the architectural invariants.
 
+`docs/` and the READMEs are for people who use kabane: usage, behaviour, configuration.
+Internal notes such as plans, design records and research go in `wiki/`, never in `docs/`.
+
 Read the North Stars at the top of `PRODUCT.md` before a product or architecture decision.
 They are provisional: when one looks wrong, say so to the maintainer; never work around it
 quietly.

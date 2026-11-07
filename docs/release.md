@@ -386,5 +386,5 @@ actual supported-platform execution. Local mocks/static workflow validation do n
 those properties.
 
 Official sources and pinned-Bun proof are recorded in
-[`release-update-plan.md`](release-update-plan.md). Binary updates/data rollback are
+[`release-update-plan.md`](../wiki/release-update-plan.md). Binary updates/data rollback are
 separate procedures; see [updating](getting-started.md#updating).
