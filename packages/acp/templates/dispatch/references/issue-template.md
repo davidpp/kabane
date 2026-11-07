@@ -39,3 +39,9 @@ it runs in, and any exception to the project's usual commit or gate rules.
 When filing, set `priority` too: `high` for the wave's spine, `normal` otherwise, `low` for
 parked or out-of-scope findings. A `someday` issue needs only its title and two lines saying what
 it is and why it is parked.
+
+Once the issue is filed, put its internal steps in its checklist with `kabane_checklistAdd`, not
+in the description as `- [ ]` lines and not as sub-issues. The brief lists them in its
+`checklist.items` section, and the agent ticks each one with `kabane_checklistTick` as it lands.
+An item has no assignee, no state beyond done, and no brief; if it needs any of those, it's a
+subtask.

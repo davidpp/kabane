@@ -10,7 +10,7 @@ export const checklistTools: readonly ToolDef[] = [
 	defineTool({
 		name: "kabane_checklistAdd",
 		kind: "write",
-		description: `Add 1–50 steps to an issue's checklist (short id or ULID), in the order given: at the end, or from a 1-based position. An item is a step of this one change, with no assignee, no state beyond done and no brief; work that needs any of those, or is a separate deliverable, is a subtask (kabane_add with parentTaskId). Returns one line: the issue, its progress (done/total), and each new item's handle (JCAB-12.3) with id:<ULID>. The brief lists the checklist: kabane_context with sections: ["checklist.items"].`,
+		description: `Add 1–50 steps to an issue's checklist (short id or ULID), in the order given: at the end, or from a 1-based position. Each item is a step of this one change. An item has no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask. A subtask, like a separate deliverable, is filed with kabane_add and parentTaskId. Returns one line: the issue, its progress (done/total), and each new item's handle (JCAB-12.3) with id:<ULID>. The brief lists the checklist: kabane_context with sections: ["checklist.items"].`,
 		input: AddSchema.shape,
 		handler: async (args, ctx) => {
 			const change = await Checklist.add(ctx.basePath, args);

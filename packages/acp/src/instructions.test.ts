@@ -17,6 +17,10 @@ const SKILL_FILES = [
 	"references/specialists.md",
 ];
 
+// Word for word what @cabane/checklist's MCP instructions say, which its tools test pins.
+const ITEM_OR_SUBTASK =
+	"An item has no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask.";
+
 const SETUP = { configPath: "/sandbox/home/config.json", extensions: ["loop"] };
 const BIN = "/sandbox/checkout/packages/cli/index.ts";
 
@@ -114,6 +118,17 @@ describe("CopilotInstructions reading the project", () => {
 			expect(shortcut?.template).toContain("verify");
 		}
 	});
+
+	it("/split puts steps on a checklist and deliverables in subtasks, under the checklist module's rule", () => {
+		const split = CopilotInstructions.SHORTCUTS.find((s) => s.name === "split");
+		expect(split?.template).toContain(
+			"put the steps of one change on its checklist with kabane_checklistAdd",
+		);
+		expect(split?.template).toContain(
+			"create each separate deliverable as a subtask under it",
+		);
+		expect(split?.template).toContain(ITEM_OR_SUBTASK);
+	});
 });
 
 describe("CopilotInstructions setting up a dispatch skill", () => {
@@ -172,6 +187,18 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 			expect(skill).toContain(tool);
 		for (const path of SKILL_FILES)
 			expect(template(path).toLowerCase()).not.toContain("jake");
+	});
+
+	it("an issue's internal steps go in its checklist, under the checklist module's rule", () => {
+		const prose = (path: string): string => template(path).replace(/\s+/g, " ");
+		expect(prose("SKILL.md")).toContain(
+			"An issue's internal steps go in its checklist, not in sub-issues",
+		);
+		expect(prose("references/issue-template.md")).toContain(
+			"put its internal steps in its checklist with `kabane_checklistAdd`",
+		);
+		for (const path of ["SKILL.md", "references/issue-template.md"])
+			expect(prose(path)).toContain(ITEM_OR_SUBTASK);
 	});
 
 	it("a wave's open decisions are asked on its parent and grilled by the grill skill, not by its own interview", () => {

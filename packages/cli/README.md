@@ -250,7 +250,7 @@ one (`sync status` counts `renamed ids`).
 ## Checklists
 
 A checklist is the steps of one issue, from the `@cabane/checklist` module. An item has no
-assignee, no state beyond done and no brief; work that needs any of those is a subtask
+assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask
 (`add --parent`). Each write prints one line, the receipt the MCP tools
 (`kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`) return:
 

@@ -52,9 +52,12 @@ it("lists the tools and carries the item-or-subtask rule in the server instructi
 		expect(names).toContain(name);
 	const context = tools.find((tool) => tool.name === "kabane_context");
 	expect(JSON.stringify(context?.inputSchema)).toContain("checklist.items");
-	expect(client.getInstructions()).toContain(
-		"make it a subtask (kabane_add with parentTaskId) instead of an item",
-	);
+	// The copilot's /split and the dispatch template state the same sentence, word for word.
+	const rule =
+		"An item has no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask.";
+	expect(client.getInstructions()).toContain(rule);
+	const add = tools.find((tool) => tool.name === "kabane_checklistAdd");
+	expect(add?.description).toContain(rule);
 });
 
 it("answers each write with one line: the issue, its progress and the items", async () => {

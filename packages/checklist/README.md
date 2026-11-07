@@ -5,8 +5,8 @@ The steps of one issue, ticked as they land. It is a data module: its own table
 `Runtime.configure({ modules: [checklistModule] })`. The CLI and the hub register it; a host that
 does not has no checklists, which is not an error.
 
-An item has no assignee, no state beyond done and no brief. Work that needs any of those, or is a
-separate deliverable, is a subtask.
+An item has no assignee, no state beyond done, and no brief; if it needs any of those, it's a
+subtask. A separate deliverable is a subtask too.
 
 ## MCP tools
 
