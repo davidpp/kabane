@@ -1001,13 +1001,6 @@ describe("BoardNav.openTask", () => {
 		expect(BoardNav.openTask(board({ status: "done" }), "a").status).toBe(
 			"open",
 		);
-		// `review` holds a flagged task wherever it sits, so it stays.
-		const flagged = task({ id: "a", needsReview: true });
-		const review = board({
-			status: "review",
-			sections: sections({ next: [row(flagged)] }),
-		});
-		expect(BoardNav.openTask(review, "a").status).toBe("review");
 	});
 
 	it("expands a subtask's parent so esc lands on its row", () => {
@@ -1017,6 +1010,36 @@ describe("BoardNav.openTask", () => {
 		const back = reduce(s, { name: "escape" }).state;
 		expect(back.view).toEqual({ type: "board" });
 		expect(BoardNav.visibleRows(back).map((r) => r.task.id)).toContain("c");
+	});
+
+	it("keeps a closed subtask on its open parent's filter, its row visible", () => {
+		for (const closed of ["done", "cancelled"] as const) {
+			const sub = task({
+				id: "s",
+				shortId: "JAKE-5",
+				state: closed,
+				parentTaskId: "p",
+			});
+			const s = BoardNav.openTask(
+				board({
+					sections: sections({ in_progress: [row(parent, [child, sub])] }),
+				}),
+				"s",
+			);
+			expect(s.status).toBe("open");
+			expect(s.selectedId).toBe("s");
+			const back = reduce(s, { name: "escape" }).state;
+			expect(BoardNav.visibleRows(back).map((r) => r.task.id)).toContain("s");
+		}
+	});
+
+	it("keeps the current filter when it already shows the row", () => {
+		const flagged = task({ id: "a", needsReview: true });
+		const s = BoardNav.openTask(
+			board({ status: "review", sections: sections({ next: [row(flagged)] }) }),
+			"a",
+		);
+		expect(s.status).toBe("review");
 	});
 
 	it("clears a search or `u` that hides the task, and keeps one that shows it", () => {

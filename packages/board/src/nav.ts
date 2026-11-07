@@ -1466,24 +1466,30 @@ export namespace BoardNav {
 		return { ...base, selectedId: firstId(visibleRows(base)) };
 	};
 
-	// The status filter that shows `task`: the current one when it already does, else the one
-	// holding its section.
-	const statusShowing = (task: Task, status: StatusFilter): StatusFilter => {
-		const closed = BoardData.isClosed(task.state);
-		const shows =
-			status === "review" ? task.needsReview : closed === (status === "done");
-		if (shows) return status;
-		return closed ? "done" : "open";
+	// Where `id` has its row: the section it is in, and the parent it sits under when it is a
+	// subtask there. A subtask's section is its parent's, whatever its own state.
+	const rowPlace = (
+		state: BoardState,
+		id: string,
+	): { section: BoardData.SectionState; parentId?: string } | undefined => {
+		for (const section of state.sections) {
+			for (const { task, children } of section.rows) {
+				if (task.id === id) return { section: section.state };
+				if (children.some((child) => child.id === id))
+					return { section: section.state, parentId: task.id };
+			}
+		}
+		return undefined;
 	};
 
 	/**
 	 * Open `taskId`'s detail the way `enter` on its row would, from wherever the board is: help, the
 	 * dispatch picker or form and a `/` being typed close, the board takes the keys, and the copilot's
 	 * draft and asks are kept. When the task is loaded, the board under the detail is left showing
-	 * its row, selected: the status filter that holds it, its parent expanded, and a search or `u`
-	 * that hides it cleared, so `esc` lands on it. A task outside the loaded sections still opens,
-	 * from its own records; bringing it into the sections (its scope, its kind) takes a reload,
-	 * which is the caller's to do first.
+	 * its row, selected: its parent expanded, the current status filter when that shows it, else the
+	 * one holding its section, and a search or `u` that hides it cleared, so `esc` lands on it. A
+	 * task outside the loaded sections still opens, from its own records; bringing it in takes a
+	 * reload, which is the caller's to run.
 	 */
 	export const openTask = (state: BoardState, taskId: string): BoardState => {
 		const opened: BoardState = {
@@ -1494,19 +1500,24 @@ export namespace BoardNav {
 			search: state.search.mode === "typing" ? SEARCH_OFF : state.search,
 			view: { type: "detail", taskId },
 		};
-		const task = taskById(state, taskId);
-		if (!task) return opened;
-		const shown: BoardState = {
+		const place = rowPlace(state, taskId);
+		if (!place) return opened;
+		const at = (status: StatusFilter): BoardState => ({
 			...opened,
-			status: statusShowing(task, state.status),
-			expanded: task.parentTaskId
-				? setExpanded(state, task.parentTaskId, true)
+			status,
+			expanded: place.parentId
+				? setExpanded(state, place.parentId, true)
 				: state.expanded,
 			selectedId: taskId,
-		};
-		return rowOf(visibleRows(shown), taskId)
-			? shown
-			: { ...BoardDecisions.clear(shown), search: SEARCH_OFF };
+		});
+		const shows = (s: BoardState): boolean =>
+			rowOf(visibleRows(s), taskId) !== undefined;
+		const kept = at(state.status);
+		if (shows(kept)) return kept;
+		const holding = at(BoardData.isClosed(place.section) ? "done" : "open");
+		return shows(holding)
+			? holding
+			: { ...BoardDecisions.clear(holding), search: SEARCH_OFF };
 	};
 
 	// Merge freshly loaded sections into an existing state, keeping the same task selected and the same
