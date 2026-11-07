@@ -66,6 +66,21 @@
         "typescript": "5.9.3",
       },
     },
+    "packages/checklist": {
+      "name": "@cabane/checklist",
+      "version": "0.1.0",
+      "dependencies": {
+        "@cabane/core": "workspace:*",
+        "ulid": "3.0.2",
+        "zod": "3.25.76",
+      },
+      "devDependencies": {
+        "@cabane/sqlite": "workspace:*",
+        "@modelcontextprotocol/sdk": "1.30.0",
+        "@types/bun": "1.4.0",
+        "typescript": "5.9.3",
+      },
+    },
     "packages/cli": {
       "name": "kabane",
       "version": "1.0.0-beta.0",
@@ -170,6 +185,8 @@
     "@cabane/acp": ["@cabane/acp@workspace:packages/acp"],
 
     "@cabane/board": ["@cabane/board@workspace:packages/board"],
+
+    "@cabane/checklist": ["@cabane/checklist@workspace:packages/checklist"],
 
     "@cabane/core": ["@cabane/core@workspace:packages/core"],
 
