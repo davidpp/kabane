@@ -259,7 +259,8 @@ for default and renders white on white (JJAK-1017).
 ### Strips (rows)
 - **Notation, left to right:** caret (`▸` / `▾`, expandability only), short id, two spaces,
   mark column, link column, transient `✦ ai`, title, muted meta, then badges (`· review`,
-  the in-flight badge, `+N`, `· ? input` for a live session's question, `· ?N` for the
+  the in-flight badge, `+N`, `· n/m` for a checklist's ticked and total items, muted and in
+  the done hue once complete, `· ? input` for a live session's question, `· ?N` for the
   decisions an agent filed, both in the accent).
 - **Held columns:** the mark and link columns keep their width on the rows without a glyph,
   so one vertical scan answers "which of these", but only while at least one visible strip
@@ -345,6 +346,10 @@ against every glyph already here.
 - **Sections** (`h/l`; never called tabs, which are the tab bar's): the active section in Label
   weight on selected, the others secondary, an empty one faint.
 - **Content column:** every section's content starts one cell in, under the header's text.
+- **Checklist:** under the brief in the description, headed `checklist · n/m` like a bay, one
+  line per item: `✓` in the done hue or `○` muted, then its text, cut with `…`. A cursor on one
+  item, under the Selection Rule, starts on the first open one; `J/K` move it (shifted from the
+  `j/k` that scroll) and `space` toggles it, as `space` toggles a multi-select's answer.
 - **Comments:** one per comment, a raised author band (the actor URI's last segment, never
   the URI, bold for a human; the time muted), then the comment whole, on the terminal's own
   background like the brief. The band is the seam between comments.
