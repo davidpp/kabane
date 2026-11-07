@@ -1466,6 +1466,49 @@ export namespace BoardNav {
 		return { ...base, selectedId: firstId(visibleRows(base)) };
 	};
 
+	// The status filter that shows `task`: the current one when it already does, else the one
+	// holding its section.
+	const statusShowing = (task: Task, status: StatusFilter): StatusFilter => {
+		const closed = BoardData.isClosed(task.state);
+		const shows =
+			status === "review" ? task.needsReview : closed === (status === "done");
+		if (shows) return status;
+		return closed ? "done" : "open";
+	};
+
+	/**
+	 * Open `taskId`'s detail the way `enter` on its row would, from wherever the board is: help, the
+	 * dispatch picker or form and a `/` being typed close, the board takes the keys, and the copilot's
+	 * draft and asks are kept. When the task is loaded, the board under the detail is left showing
+	 * its row, selected: the status filter that holds it, its parent expanded, and a search or `u`
+	 * that hides it cleared, so `esc` lands on it. A task outside the loaded sections still opens,
+	 * from its own records; bringing it into the sections (its scope, its kind) takes a reload,
+	 * which is the caller's to do first.
+	 */
+	export const openTask = (state: BoardState, taskId: string): BoardState => {
+		const opened: BoardState = {
+			...state,
+			help: false,
+			dispatch: null,
+			focus: "board",
+			search: state.search.mode === "typing" ? SEARCH_OFF : state.search,
+			view: { type: "detail", taskId },
+		};
+		const task = taskById(state, taskId);
+		if (!task) return opened;
+		const shown: BoardState = {
+			...opened,
+			status: statusShowing(task, state.status),
+			expanded: task.parentTaskId
+				? setExpanded(state, task.parentTaskId, true)
+				: state.expanded,
+			selectedId: taskId,
+		};
+		return rowOf(visibleRows(shown), taskId)
+			? shown
+			: { ...BoardDecisions.clear(shown), search: SEARCH_OFF };
+	};
+
 	// Merge freshly loaded sections into an existing state, keeping the same task selected and the same
 	// parents expanded across the reload. If the selected task vanished (a state move out of the visible
 	// sections, or a drop past the done cap), re-anchor to the nearest surviving row by its old position

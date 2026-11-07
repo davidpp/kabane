@@ -26,6 +26,8 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 | `copilot: Copilot` | no | `A` flashes `no copilot configured` in the footer |
 | `resolveScope(cwd)` | no | the board opens on all scopes (the CLI passes `@cabane/core/scope` detection) |
 | `headers: Record<kind, CardHeader>` | no | every card tab heads with the board's one-line title |
+| `announcer: Announcer` | no | nothing is announced over the footer |
+| `open: { taskId }` | no | the board opens on the board view. Given, it opens on that task's detail, as `enter` on its row: the filter that holds it, its parent expanded, `esc` back to its row. `resolveScope` should answer the task's scope, as `kabane board --issue <id>` does. |
 
 The host calls `Runtime.configure` before `startBoard`; the board never opens a database itself.
 

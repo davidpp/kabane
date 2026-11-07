@@ -971,6 +971,110 @@ describe("BoardNav.init", () => {
 	});
 });
 
+describe("BoardNav.openTask", () => {
+	const open = task({ id: "a", shortId: "JAKE-1", title: "open one" });
+	const done = task({ id: "d", shortId: "JAKE-2", state: "done" });
+	const parent = task({ id: "p", shortId: "JAKE-3", state: "in_progress" });
+	const child = task({ id: "c", shortId: "JAKE-4", parentTaskId: "p" });
+	const board = (over: Partial<BoardNav.BoardState> = {}) =>
+		state({
+			sections: sections({
+				next: [row(open)],
+				in_progress: [row(parent, [child])],
+				done: [row(done)],
+			}),
+			selectedId: "a",
+			...over,
+		});
+
+	it("pushes the detail with the task's row selected under it", () => {
+		const s = BoardNav.openTask(board(), "a");
+		expect(s.view).toEqual({ type: "detail", taskId: "a" });
+		expect(s.selectedId).toBe("a");
+		expect(s.status).toBe("open");
+	});
+
+	it("switches to the filter that holds a done task, and back for an open one", () => {
+		const s = BoardNav.openTask(board(), "d");
+		expect(s.status).toBe("done");
+		expect(BoardNav.visibleRows(s).map((r) => r.task.id)).toContain("d");
+		expect(BoardNav.openTask(board({ status: "done" }), "a").status).toBe(
+			"open",
+		);
+		// `review` holds a flagged task wherever it sits, so it stays.
+		const flagged = task({ id: "a", needsReview: true });
+		const review = board({
+			status: "review",
+			sections: sections({ next: [row(flagged)] }),
+		});
+		expect(BoardNav.openTask(review, "a").status).toBe("review");
+	});
+
+	it("expands a subtask's parent so esc lands on its row", () => {
+		const s = BoardNav.openTask(board(), "c");
+		expect(s.expanded.has("p")).toBe(true);
+		expect(s.selectedId).toBe("c");
+		const back = reduce(s, { name: "escape" }).state;
+		expect(back.view).toEqual({ type: "board" });
+		expect(BoardNav.visibleRows(back).map((r) => r.task.id)).toContain("c");
+	});
+
+	it("clears a search or `u` that hides the task, and keeps one that shows it", () => {
+		const hidden = BoardNav.openTask(
+			board({ search: { mode: "committed", query: "jake-3" } }),
+			"a",
+		);
+		expect(hidden.search).toEqual({ mode: "off" });
+		const shown = BoardNav.openTask(
+			board({ search: { mode: "committed", query: "open" } }),
+			"a",
+		);
+		expect(shown.search).toEqual({ mode: "committed", query: "open" });
+		const decided = board();
+		const only = BoardNav.openTask(
+			{
+				...decided,
+				decisions: {
+					...decided.decisions,
+					only: true,
+					counts: new Map([["p", 1]]),
+				},
+			},
+			"a",
+		);
+		expect(only.decisions.only).toBe(false);
+	});
+
+	it("closes help, dispatch and a search being typed, and keeps the copilot's draft", () => {
+		const s = BoardNav.openTask(
+			board({
+				help: true,
+				dispatch: { taskId: "a", triggers: [], selected: 0, loading: false },
+				search: { mode: "typing", query: "op" },
+				focus: "copilot",
+				copilot: copilotState({ text: "half a thought" }),
+			}),
+			"d",
+		);
+		expect(s).toMatchObject({
+			help: false,
+			dispatch: null,
+			search: { mode: "off" },
+			focus: "board",
+			view: { type: "detail", taskId: "d" },
+		});
+		expect(s.copilot.text).toBe("half a thought");
+	});
+
+	it("opens a task outside the loaded sections and leaves the board under it as it was", () => {
+		const before = board({ status: "done" });
+		const s = BoardNav.openTask(before, "elsewhere");
+		expect(s.view).toEqual({ type: "detail", taskId: "elsewhere" });
+		expect(s.status).toBe("done");
+		expect(s.selectedId).toBe("a");
+	});
+});
+
 describe("dispatch overlay", () => {
 	const boardWith = (over: Partial<BoardNav.BoardState> = {}) =>
 		state({

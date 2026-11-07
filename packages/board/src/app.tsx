@@ -45,6 +45,8 @@ export type AppProps = {
 	headers?: Readonly<Record<string, CardHeader>>;
 	// Absent → nothing is announced.
 	announcer?: Announcer;
+	// Absent → the board opens on the board view.
+	open?: { taskId: string };
 	// Milliseconds, for how long a question has been on screen before a digit answers it
 	// (BoardNav.ARM_MS). Absent → Date.now.
 	clock?: () => number;
@@ -72,6 +74,7 @@ export const App = ({
 	resolveScope,
 	headers,
 	announcer = noAnnouncer,
+	open,
 	clock = Date.now,
 }: AppProps): ReactNode => {
 	const renderer = useRenderer();
@@ -85,6 +88,7 @@ export const App = ({
 			activitySource,
 			resolveScope,
 			copilot,
+			open,
 			store,
 			setNotice,
 			refreshDetail: detail.refresh,
@@ -165,14 +169,7 @@ export const App = ({
 		],
 	);
 
-	const input = useBoardInput({
-		store,
-		clock,
-		error,
-		retry,
-		runEffect,
-		refs,
-	});
+	const input = useBoardInput({ store, clock, error, retry, runEffect, refs });
 
 	if (error || !store.state) return <Loading error={error} />;
 
