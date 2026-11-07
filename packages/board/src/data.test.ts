@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { Checklist } from "@cabane/checklist";
+import { Checklist, type ChecklistItemView } from "@cabane/checklist";
 import { Planner, ScopeUri, type Task, type TaskDraft } from "@cabane/core";
 import { BoardData } from "./data";
 import { dropDb, freshDb } from "./test-db";
@@ -544,6 +544,75 @@ describe("BoardData", () => {
 			const records = await BoardData.taskDetail(TEST_BASE, id);
 			if (!records.ok) throw records.error;
 			expect(BoardData.recordsStamp(records.value)).toBe(after.value);
+		});
+	});
+
+	// What a sync can deliver: a write to an item that is not the newest, stamped earlier than the
+	// newest one, so neither the count nor the newest timestamp moves.
+	describe("stampOf, over the checklist", () => {
+		const AT = "2026-10-10T00:00:00.000Z";
+		const LATER = "2026-10-10T00:05:00.000Z";
+		const EARLIER = "2026-10-10T00:01:00.000Z";
+		const item = (n: number, over: Partial<ChecklistItemView> = {}) => ({
+			id: `item-${n}`,
+			taskId: "t",
+			text: `step ${n}`,
+			done: false,
+			rank: `a${n}`,
+			createdAt: AT,
+			updatedAt: AT,
+			updatedBy: "cabane://actor/agent/claude",
+			version: 1,
+			visibility: "shared",
+			handle: `JREP-1.${n}`,
+			ordinal: n,
+			...over,
+		});
+		const stamp = (checklist: ChecklistItemView[]) =>
+			BoardData.stampOf({
+				comments: [],
+				workLogs: [],
+				sessions: [],
+				links: [],
+				upstream: [],
+				questions: [],
+				checklist,
+			});
+		// The third item was written last; the first is the older one a sync writes to.
+		const before = [
+			item(1),
+			item(2),
+			item(3, { version: 2, updatedAt: LATER }),
+		];
+		const synced = (over: Partial<ChecklistItemView>) =>
+			stamp([
+				item(1, { version: 2, updatedAt: EARLIER, ...over }),
+				...before.slice(1),
+			]);
+
+		it("holds while nothing changed", () => {
+			expect(stamp([...before])).toBe(stamp(before));
+		});
+
+		it("moves for a tick, an untick or an edit to an older item", () => {
+			expect(synced({ done: true })).not.toBe(stamp(before));
+			const ticked = [
+				item(1, { done: true, version: 2, updatedAt: EARLIER }),
+				...before.slice(1),
+			];
+			expect(
+				stamp([
+					item(1, { done: false, version: 3, updatedAt: EARLIER }),
+					...ticked.slice(1),
+				]),
+			).not.toBe(stamp(ticked));
+			expect(synced({ text: "step one, reworded" })).not.toBe(stamp(before));
+		});
+
+		it("moves when an item is removed", () => {
+			expect(
+				stamp([before[0], before[2]].filter((i) => i !== undefined)),
+			).not.toBe(stamp(before));
 		});
 	});
 

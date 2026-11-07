@@ -432,8 +432,11 @@ export namespace BoardData {
 	/**
 	 * A fingerprint of those records: a count and the newest timestamp per kind. A session's
 	 * `lastActivityAt` moves with every activity and transition, so a session that recorded
-	 * something moves the stamp without its activities being read. Two stamps differ when a record
-	 * landed, went away or changed; pure, so a stamp read fresh and one taken from loaded records agree.
+	 * something moves the stamp without its activities being read. The checklist is fingerprinted
+	 * item by item (id, version, `updatedAt`): a write synced from another device can land on an
+	 * older item with an older timestamp, which leaves the count and the newest one as they were.
+	 * Two stamps differ when a record landed, went away or changed; pure, so a stamp read fresh and
+	 * one taken from loaded records agree.
 	 */
 	export const stampOf = (parts: StampParts): string =>
 		[
@@ -446,7 +449,7 @@ export namespace BoardData {
 				.join(",")}`,
 			`u${parts.upstream.length}@${latest(parts.upstream.map((u) => u.updatedAt))}`,
 			`q${parts.questions.length}@${latest(parts.questions.map((q) => q.updatedAt))}`,
-			`k${parts.checklist.length}@${latest(parts.checklist.map((k) => k.updatedAt))}`,
+			`k${parts.checklist.map((k) => `${k.id}:${k.version}:${k.updatedAt}`).join(",")}`,
 		].join("|");
 
 	/** The stamp of records already loaded, to compare the next `detailStamp` against. */
