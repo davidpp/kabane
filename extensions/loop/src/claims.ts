@@ -103,27 +103,50 @@ export namespace Claims {
 			await Checks.record(ctx, pass, { ...subject, assignee: claim.harness });
 	};
 
+	const EDITED =
+		"the recheck changed the working tree, which a recheck must not do: its changes are left in place for a human";
+
+	const treeChanged = async (ctx: Ctx, tree: string): Promise<boolean> =>
+		(await ctx.tree(RunStore.sessionDir(ctx.run))) !== tree;
+
+	// An open recheck whose tree is no longer the one its lens's first recheck started on edited
+	// files before its runner died: it failed, rather than being interrupted, so the run stops on
+	// it before a gate pass could commit those edits as a checkpoint.
+	const recheckEdited = async (
+		ctx: Ctx,
+		claim: RunStore.Claim,
+	): Promise<boolean> => {
+		if (claim.recheck === undefined) return false;
+		const tree = ctx.run.claims.find((c) => c.recheck === claim.recheck)?.tree;
+		return tree !== undefined && treeChanged(ctx, tree);
+	};
+
 	/** Close the claims a runner that died left open, finishing the pass a subtask's was owed. */
 	export const recover = async (ctx: Ctx): Promise<void> => {
 		const open = ctx.run.claims.filter((c) => c.endedAt === undefined);
 		for (const claim of open) {
-			const detail = "the runner exited while this session was open";
-			await closeSession(ctx, claim.sessionId, { outcome: "error", detail });
+			const exited = "the runner exited while this session was open";
+			await closeSession(ctx, claim.sessionId, {
+				outcome: "error",
+				detail: exited,
+			});
 			if (!onParent(claim)) {
 				await finishPass(ctx, claim);
 				await release(ctx, claim.taskId, claim.harness);
 			}
+			const ended = (await recheckEdited(ctx, claim))
+				? { outcome: "error" as const, detail: EDITED }
+				: { outcome: "interrupted" as const, detail: exited };
 			RunState.patchClaim(ctx, claim.sessionId, {
 				endedAt: ctx.now().toISOString(),
-				outcome: "interrupted",
-				detail,
+				...ended,
 			});
 			RunState.event(ctx, {
 				type: "session_end",
 				lane: claim.lane,
 				session: claim.sessionId,
 				task: claim.shortId,
-				summary: `interrupted: ${detail}`,
+				summary: `${ended.outcome}: ${ended.detail}`,
 			});
 		}
 	};
@@ -358,9 +381,6 @@ export namespace Claims {
 		tree?: string;
 	};
 
-	const EDITED =
-		"the recheck changed the working tree, which a recheck must not do: its changes are left in place for a human";
-
 	// A recheck reports and never edits; nothing enforces that in the harness, whose settings are
 	// the user's, so a tree that changed under it fails it here instead. Its edits stay where they
 	// are. Two rechecks running at once share the tree, so one's edit fails both.
@@ -371,10 +391,9 @@ export namespace Claims {
 	): Promise<Dispatch.Outcome> => {
 		if (outcome.outcome !== "done" && outcome.outcome !== "incomplete")
 			return outcome;
-		const now = await ctx.tree(RunStore.sessionDir(ctx.run));
-		return now === tree
-			? outcome
-			: { ...outcome, outcome: "error", detail: EDITED };
+		return (await treeChanged(ctx, tree))
+			? { ...outcome, outcome: "error", detail: EDITED }
+			: outcome;
 	};
 
 	// Record the claim, dispatch its session and hold it live until it has settled.

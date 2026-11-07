@@ -371,6 +371,71 @@ describe("Runner recheck", () => {
 		expect(prompts("fixer.prompts")).toEqual([]);
 	});
 
+	it("stops on resume, before any gate, when the recheck its runner died in had edited files", async () => {
+		const parent = await add({ title: "parent" });
+		await add({ title: "subtask", parentTaskId: parent.id, state: "done" });
+		const { broken, edge } = await findings(parent);
+		const tree = async () => readFileSync(join(home, "code.txt"), "utf8");
+		const before = await tree();
+		// What the cut-short recheck did to the tree before its runner died.
+		appendFileSync(join(home, "code.txt"), "edited by the recheck\n");
+		createRun(parent, {
+			status: "failed",
+			exit: { reason: "runner-died" },
+			startedAt: "2026-11-04T00:00:00.000Z",
+			gateRuns: [
+				{
+					at: "2026-11-04T00:02:00.000Z",
+					taskId: parent.id,
+					tree: before,
+					ok: true,
+					results: [],
+				},
+			],
+			claims: [
+				LENS_DONE,
+				claim({
+					lane: "fixer",
+					taskId: parent.id,
+					fixer: true,
+					head: first,
+					findings: [broken.id, edge.id],
+					...ENDED,
+				}),
+				claim({
+					lane: "functional-recheck",
+					taskId: parent.id,
+					recheck: "functional",
+					findings: [broken.id, edge.id],
+					tree: before,
+				}),
+			],
+		});
+
+		const ended = await run(tree);
+
+		expect([ended.status, ended.exit?.reason]).toEqual([
+			"stopped",
+			"recheck-failed",
+		]);
+		expect(ended.exit?.detail).toStartWith(
+			"functional: error: the recheck changed the working tree",
+		);
+		expect(ended.claims.map((c) => [c.lane, c.outcome])).toEqual([
+			["functional-lens", "done"],
+			["fixer", "done"],
+			["functional-recheck", "error"],
+		]);
+		// No gate ran on the edit, so nothing committed it: it is still in the tree, uncommitted.
+		const events = RunStore.readEvents(home, "run-1");
+		const types = events.ok ? events.value.map((e) => e.type) : [];
+		expect(types.filter((t) => t.startsWith("gate_"))).toEqual([]);
+		expect(GitFixture.run(home, ["status", "--porcelain", "code.txt"])).toBe(
+			" M code.txt\n",
+		);
+		expect(prompts("recheck.prompts")).toEqual([]);
+	});
+
 	it("resumes a recheck that reopened every finding before its runner died, on the findings it was given", async () => {
 		const parent = await add({ title: "parent" });
 		await add({ title: "subtask", parentTaskId: parent.id, state: "done" });
