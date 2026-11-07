@@ -1,12 +1,15 @@
 // What a session is told. The issue's own brief comes from `assembleContext`; this adds only what
 // the run knows and the issue does not. An implementing session hears which subtask is its own
 // (and, in a run with more than one session at once, that its siblings share its tree), and how it signals that it is finished (on a single issue, that the
-// issue is the whole run); a lens hears what it reviews
+// issue is the whole run); on an issue with a checklist, that it works the items in order from the
+// first open one and ticks each as it lands, every nudge and resume pointing at the first still
+// open; a lens hears what it reviews
 // and how it files findings; the fixer hears which findings are its own, in what order, and how
 // it settles each; a lens's recheck hears the fixer's diff and the findings it closed. The kabane
 // tool loop itself is the MCP server's to describe, so it is not restated.
 import { CopilotInstructions } from "@cabane/acp";
 import type { Task } from "@cabane/core";
+import type { Checklists } from "./checklists";
 import type { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 
@@ -20,7 +23,12 @@ export namespace Brief {
 		concurrent: boolean;
 		retry?: Gates.Result;
 		interrupted?: Interrupted;
+		/** Its task's checklist, in list order; absent or empty when it has none. */
+		checklist?: readonly Item[];
 	};
+
+	/** What a brief says of a checklist item. */
+	type Item = Pick<Checklists.Item, "handle" | "text" | "done">;
 
 	/**
 	 * An attempt the runner's death cut short, as the tracker and the tree show it now: what the
@@ -40,6 +48,28 @@ export namespace Brief {
 	};
 
 	const label = (task: Task): string => task.shortId ?? task.id;
+
+	const plural = (count: number, noun: string): string =>
+		`${count} ${noun}${count === 1 ? "" : "s"}`;
+
+	const named = (item: Item): string => `${item.handle} ("${item.text}")`;
+
+	// Where the work picks up: the first item not ticked. The test agents read this phrase.
+	const continueAt = (first: Item): string =>
+		`Continue at ${named(first)}: tick each item with kabane_checklistTick as you finish it, before you start the next`;
+
+	// A checklist is the steps of one change: worked in this tree, in order, each ticked as it lands.
+	const steps = (task: Task, items: readonly Item[]): string[] => {
+		if (items.length === 0) return [];
+		const first = items.find((item) => !item.done);
+		const ticked = items.filter((item) => item.done).length;
+		const of = `${label(task)} has a checklist of ${plural(items.length, "item")}, ${ticked} ticked, in its brief below: the steps of this one change, worked in this tree one after another.`;
+		return [
+			first
+				? `${of} Start at ${named(first)}. As you finish each item, tick it with kabane_checklistTick before you start the next, so whoever takes over starts where you stopped. Call kabane_done on ${label(task)} only once every item is ticked: the run reopens it while any is open.`
+				: `${of} Every item is ticked.`,
+		];
+	};
 
 	// The session's own server is not the only kabane one it may see: the harness also loads the
 	// human's configured `kabane`, which is unscoped and may point at another home.
@@ -81,11 +111,13 @@ export namespace Brief {
 		task,
 		gates,
 		concurrent,
+		checklist = [],
 	}: Subject): string =>
 		(task.id === parent.id
 			? [
 					`You are the implementing session of kabane loop run ${runId}, which drives the single issue ${label(task)} ("${task.title}") to completion.`,
 					`Your issue is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
+					...steps(task, checklist),
 					// A child would make the issue a parent, whose subtasks the run then works instead.
 					...finishing(
 						task,
@@ -97,6 +129,7 @@ export namespace Brief {
 			: [
 					`You are one implementing session of kabane loop run ${runId}, which drives the subtasks of ${label(parent)} ("${parent.title}") to completion.${concurrent ? " Other sessions may be working on sibling subtasks in the same repository at the same time." : ""}`,
 					`Your subtask is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
+					...steps(task, checklist),
 					...finishing(
 						task,
 						`add it with kabane_add as a child of ${label(parent)} with kind "issue", so the run can claim it, and link it with kabane_link instead of doing it.`,
@@ -149,10 +182,27 @@ export namespace Brief {
 			left(attempt),
 		].join("\n\n");
 
-	/** The first prompt of an interrupted session its harness resumed: its last turn was cut short. */
-	export const resumed = (attempt: Interrupted): string =>
+	// What a resumed session hears of its checklist: how far it got, and where to go on.
+	const progress = (items: readonly Item[]): string[] => {
+		const first = items.find((item) => !item.done);
+		if (first === undefined) return [];
+		const ticked = items.filter((item) => item.done).length;
+		return [
+			`Its checklist has ${ticked} of ${plural(items.length, "item")} ticked. ${continueAt(first)}.`,
+		];
+	};
+
+	/**
+	 * The first prompt of an interrupted session its harness resumed: its last turn was cut short.
+	 * `checklist` is its task's, for an implementing session.
+	 */
+	export const resumed = (
+		attempt: Interrupted,
+		checklist: readonly Item[] = [],
+	): string =>
 		[
 			`The kabane loop runner exited while your last turn was running, and has restarted. This is the same session, resumed, so your instructions and everything said so far still hold. That turn was cut short: its last tool call may not have finished, and if it shows as rejected or cancelled, the restart cut it, nobody refused it. Check the state below, then continue where you left off, retrying that call if it is still needed.`,
+			...progress(checklist),
 			left(attempt),
 		].join("\n\n");
 
@@ -310,7 +360,34 @@ export namespace Brief {
 	export const fixerContinuation = (left: readonly Task[]): string =>
 		`${left.map(label).join(", ")} ${left.length === 1 ? "is" : "are"} still open. Continue: fix each and call kabane_done on it, say why it is left with kabane_comment and call kabane_edit on it with state "waiting", or file the decision it needs with kabane_ask.`;
 
-	/** The nudge for a turn that ended with its subtask, or its single issue, still open. */
-	export const continuation = (task: Task): string =>
-		`${label(task)} is still open. Continue the work. If it is finished and verified, call kabane_done on ${label(task)}. If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. It stays parked until explicitly moved to state "next".`;
+	const blocked = (task: Task): string =>
+		`If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. It stays parked until explicitly moved to state "next".`;
+
+	// The items still open, by handle, and the first of them to go on with.
+	const unticked = (task: Task, open: readonly [Item, ...Item[]]): string =>
+		`${continueAt(open[0])}, and call kabane_done on ${label(task)} once every item is ticked and the work is verified. ${blocked(task)}`;
+
+	const handles = (open: readonly Item[]): string =>
+		open.map((item) => item.handle).join(", ");
+
+	/**
+	 * The nudge for a turn that ended with its subtask, or its single issue, still open; `open` is
+	 * the items of its checklist not ticked yet, in list order.
+	 */
+	export const continuation = (
+		task: Task,
+		open: readonly Item[] = [],
+	): string => {
+		const [first, ...rest] = open;
+		return first
+			? `${label(task)} is still open, with ${plural(open.length, "checklist item")} not ticked: ${handles(open)}. ${unticked(task, [first, ...rest])}`
+			: `${label(task)} is still open. Continue the work. If it is finished and verified, call kabane_done on ${label(task)}. ${blocked(task)}`;
+	};
+
+	/** The nudge for a turn that closed its task with checklist items still open, which the run reopened. */
+	export const reopened = (
+		task: Task,
+		open: readonly [Item, ...Item[]],
+	): string =>
+		`You called kabane_done on ${label(task)} with ${plural(open.length, "checklist item")} not ticked (${handles(open)}), so the run reopened it: it is done only once every item is ticked. ${unticked(task, open)}`;
 }

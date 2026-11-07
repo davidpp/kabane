@@ -304,3 +304,53 @@ describe("Brief.recheck", () => {
 		expect(empty).toContain("shows no change");
 	});
 });
+
+describe("Brief on a task with a checklist", () => {
+	const items = [
+		{ handle: "P-2.1", text: "Parse", done: true },
+		{ handle: "P-2.2", text: "Validate", done: false },
+		{ handle: "P-2.3", text: "Write", done: false },
+	];
+
+	it("tells a subtask's session to start at the first open item and tick each as it lands", () => {
+		const [instructions] = Brief.opening(
+			{ ...subject, checklist: items },
+			"ASSEMBLED",
+		).split("\n\n---\n\n");
+		expect(instructions).toContain(
+			'P-2 has a checklist of 3 items, 1 ticked, in its brief below: the steps of this one change, worked in this tree one after another. Start at P-2.2 ("Validate").',
+		);
+		expect(instructions).toContain("kabane_checklistTick");
+		expect(instructions).toContain(
+			"Call kabane_done on P-2 only once every item is ticked",
+		);
+	});
+
+	it("says nothing of a checklist to a task without one", () => {
+		expect(Brief.opening(subject, "ASSEMBLED")).not.toContain("checklist");
+	});
+
+	it("points a resumed session at the first open item", () => {
+		expect(Brief.resumed(attempt, items)).toContain(
+			'Its checklist has 1 of 3 items ticked. Continue at P-2.2 ("Validate")',
+		);
+		expect(
+			Brief.resumed(
+				attempt,
+				items.map((item) => ({ ...item, done: true })),
+			),
+		).not.toContain("Its checklist");
+	});
+
+	it("names the open items in the nudge, and in the one after a refused kabane_done", () => {
+		const [, ...open] = items;
+		expect(Brief.continuation(subject.task, open)).toStartWith(
+			'P-2 is still open, with 2 checklist items not ticked: P-2.2, P-2.3. Continue at P-2.2 ("Validate")',
+		);
+		const [first, ...rest] = open;
+		if (!first) throw new Error("no open item");
+		expect(Brief.reopened(subject.task, [first, ...rest])).toStartWith(
+			"You called kabane_done on P-2 with 2 checklist items not ticked (P-2.2, P-2.3), so the run reopened it",
+		);
+	});
+});

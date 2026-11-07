@@ -9,11 +9,12 @@
 // over continues the interrupted one: its harness session resumed where the harness can, told what
 // that attempt left either way. A subtask its own red gate reopened is claimed again in the session
 // that closed it, while `Retry` says that session has room, and in a new one told the gate's output
-// otherwise.
+// otherwise. A subtask closed with checklist items open gets no pass: it is reopened.
 import type { Harnesses } from "@cabane/acp";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
 import type { Brief } from "./brief";
 import { Budget } from "./budget";
+import { Checklists } from "./checklists";
 import { Checks } from "./checks";
 import { Dispatch } from "./dispatch";
 import { Elicitation } from "./elicitation";
@@ -94,6 +95,7 @@ export namespace Claims {
 			taskId: claim.taskId,
 			label: claim.shortId,
 			lane: claim.lane,
+			harness: claim.harness,
 		};
 		const pass =
 			ctx.run.gateRuns.findLast(
@@ -485,7 +487,12 @@ export namespace Claims {
 				tree === undefined ? ended : await unedited(ctx, tree, ended);
 			const gates =
 				work.kind === "implement" && outcome.outcome === "done"
-					? await gatesAfter(ctx, { taskId: task.id, label: label(task), lane })
+					? await gatesAfter(ctx, {
+							taskId: task.id,
+							label: label(task),
+							lane,
+							harness,
+						})
 					: undefined;
 			ctx.settled.push({
 				taskId: task.id,
@@ -690,10 +697,15 @@ export namespace Claims {
 	// A session that closed its subtask as done is followed by the gates, while the claim still
 	// holds the subtask, so nothing claims it again before its gates have spoken. A worktree run
 	// with no gates still takes the pass: it is what commits the subtask's checkpoint, and without
-	// one the work stays uncommitted for as long as the agent never commits it itself.
+	// one the work stays uncommitted for as long as the agent never commits it itself. A subtask
+	// closed with checklist items open is not done: it is reopened instead, with no pass, as its
+	// session would have had it reopened had it lived to see its turn end.
 	const gatesAfter = async (
 		ctx: Ctx,
-		subject: Omit<Checks.Subject, "title"> & { taskId: string },
+		{
+			harness,
+			...subject
+		}: Omit<Checks.Subject, "title"> & { taskId: string; harness: string },
 	) => {
 		if (
 			!(Gates.configured(ctx.run.config.gates) || ctx.run.worktree) ||
@@ -702,6 +714,30 @@ export namespace Claims {
 			return undefined;
 		const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
 		if (!task.ok || task.value?.state !== "done") return undefined;
+		const reopened = await Checklists.refuseDone(
+			ctx.deps.basePath,
+			task.value,
+			harness,
+		);
+		const tag = {
+			...(subject.lane ? { lane: subject.lane } : {}),
+			task: subject.label,
+		};
+		// Unread, the checklist does not hold back the pass: the gates still speak on the work.
+		if (!reopened.ok)
+			RunState.event(ctx, {
+				...tag,
+				type: "warning",
+				summary: `checklist of ${subject.label} not read: ${reopened.error.message}`,
+			});
+		else if (reopened.value.length > 0) {
+			RunState.event(ctx, {
+				...tag,
+				type: "reopened",
+				summary: `${subject.label} reopened: closed with ${reopened.value.length} checklist item${reopened.value.length === 1 ? "" : "s"} open`,
+			});
+			return undefined;
+		}
 		return Checks.gate(ctx, { ...subject, title: task.value.title });
 	};
 
