@@ -1595,6 +1595,26 @@ export namespace BoardNav {
 			: { ...BoardDecisions.clear(holding), search: SEARCH_OFF };
 	};
 
+	/**
+	 * The filters `task` needs to be on the board, for a request from outside it (OpenRequests): every
+	 * scope when it is outside the one the board is scoped to (`scopeUri`), as `esc` widens, and every
+	 * kind when the kind filter hides it. Never the other way: the human's wider view stays. The
+	 * status filter, a search and `u` are openTask's. `state` itself when nothing widens, so the
+	 * caller can tell whether the rows on screen were loaded under the filters that now apply.
+	 */
+	export const widenFor = (
+		state: BoardState,
+		task: Pick<Task, "scopeUri" | "kind">,
+		scopeUri: string | undefined,
+	): BoardState => {
+		const scoped = state.scoped && task.scopeUri === scopeUri;
+		const kind =
+			state.kind === "all" || state.kind === task.kind ? state.kind : "all";
+		return scoped === state.scoped && kind === state.kind
+			? state
+			: { ...state, scoped, kind };
+	};
+
 	// Merge freshly loaded sections into an existing state, keeping the same task selected and the same
 	// parents expanded across the reload. If the selected task vanished (a state move out of the visible
 	// sections, or a drop past the done cap), re-anchor to the nearest surviving row by its old position

@@ -1263,6 +1263,32 @@ describe("BoardNav.openTask", () => {
 	});
 });
 
+describe("BoardNav.widenFor", () => {
+	const scoped = state({ scoped: true });
+	const here = { scopeUri: "jake://scope/here", kind: "issue" as const };
+
+	it("keeps the state itself when its filters already hold the task", () => {
+		expect(BoardNav.widenFor(scoped, here, here.scopeUri)).toBe(scoped);
+		const issues = state({ kind: "issue" });
+		expect(BoardNav.widenFor(issues, here, undefined)).toBe(issues);
+	});
+
+	it("widens to every scope for a task outside the board's, or with none", () => {
+		for (const scopeUri of ["jake://scope/there", undefined])
+			expect(
+				BoardNav.widenFor(scoped, { ...here, scopeUri }, here.scopeUri).scoped,
+			).toBe(false);
+	});
+
+	it("widens to every kind when the kind filter hides the task, and never narrows", () => {
+		expect(
+			BoardNav.widenFor(state({ kind: "task" }), here, undefined).kind,
+		).toBe("all");
+		const wide = state({ scoped: false });
+		expect(BoardNav.widenFor(wide, here, here.scopeUri)).toBe(wide);
+	});
+});
+
 describe("dispatch overlay", () => {
 	const boardWith = (over: Partial<BoardNav.BoardState> = {}) =>
 		state({
