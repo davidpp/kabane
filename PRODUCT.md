@@ -8,23 +8,31 @@ that substrate: one person's work queue, shared with whichever agents do the wor
 
 In priority order; when two conflict, the higher one wins.
 
-1. **Instant.** Every read and write, by a human or an agent, feels immediate. Nothing ships
+1. **Helps you work well.** Kabane brings current good practice to the whole of the work,
+   from starting a project to closing an issue, and fits it to the project at hand. Where
+   someone else already does a practice well, kabane recommends theirs instead of redoing it.
+   It learns from what happened to the work, never from how much of it got done, and proposes
+   a better practice when one isn't working; the human decides.
+   *Rests on:* good practice for agent-driven work changing faster than one person can follow;
+   shared, tested practice beating each person rediscovering it. *Revisit if:* the practices
+   settle into the agent tools themselves, or people stop taking kabane's recommendations.
+2. **Instant.** Every read and write, by a human or an agent, feels immediate. Nothing ships
    that puts a wait on the common path.
    *Rests on:* speed being what users feel first (it already feels instant next to Linear).
    *Revisit if:* something users need cannot be had without making the common path wait.
-2. **Yours, by asking.** Light defaults carry good practice without process and work
+3. **Yours, by asking.** Light defaults carry good practice without process and work
    untouched. When you want it different, you ask and kabane adapts; nobody has to learn its
    configuration to make it theirs. The core stays small.
    *Rests on:* people adapting a tool rather than adopting someone's process; agents being
    able to do the adapting. *Revisit if:* making kabane yours takes more than asking, or the
    core grows to fit one workflow.
-3. **Yours, everywhere.** Your work lives on your machine and works with no network; one
+4. **Yours, everywhere.** Your work lives on your machine and works with no network; one
    machine is a complete setup. Every device and every agent you use, browser-only ones
    included, reaches the same queue.
    *Rests on:* people working across machines and agent surfaces; people wanting to own their
    work rather than rent it. *Revisit if:* nobody reaches past one machine once they can, or
    agent surfaces converge on hosted state.
-4. **One honest record for humans and agents.** Either can author, plan, work and review.
+5. **One honest record for humans and agents.** Either can author, plan, work and review.
    Every write names who made it, a decision is credited to whoever made it, and an agent's
    question reaches the human unchanged. Kabane adds no policy over the tools the user
    already set up.
