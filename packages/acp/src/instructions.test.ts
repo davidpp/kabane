@@ -240,6 +240,25 @@ describe("CopilotInstructions grilling the human", () => {
 		expect(skill()).toContain("`withdraw: true`, `relayed: true`");
 	});
 
+	it("reshapes a question the decision does not fit with replaces, never the nearest choice", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"never squeeze it into the nearest one: reshape the question with kabane_ask and replaces set to its handle",
+		);
+		expect(skill()).toContain(
+			"do not squeeze it into the nearest\n  choice. Reshape the question with `kabane_ask` and `replaces` set to its handle",
+		);
+	});
+
+	it("asks through the harness's choice prompt, with plain text only the fallback", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"through your harness's own choice prompt whenever it has one, the choices as its options and the recommended one first",
+		);
+		expect(skill()).toContain(
+			"Ask it through the harness's choice prompt whenever it\n   offers one",
+		);
+		expect(skill()).not.toContain("you may use it");
+	});
+
 	it("never answers for the human, the recommendation included", () => {
 		expect(CopilotInstructions.SKILLS).toContain(
 			"Only the human answers: never record an answer they did not give, the recommended one included",
