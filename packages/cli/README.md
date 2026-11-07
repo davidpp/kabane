@@ -178,7 +178,9 @@ package below it, or in a worktree. The cascade, highest first:
 
 Detection writes nothing into the repo, which may be a checkout you don't own.
 A `.kabane/scope` an earlier kabane's detection left behind is still read and
-never rewritten; a `git:` id in it still gives way to the remote.
+never rewritten; a `git:` id in it still gives way to the remote. On a device
+that already has a config, `kabane init --scope <uri>` on its own writes only
+the pin.
 
 Outside a project there is no scope and a query spans all of them. Bare ids
 normalize to `jake://scope/<id>`; a detected scope also carries `branch` and
@@ -195,7 +197,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 
 | Command | Flags |
 |---|---|
-| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--db-path <file>` `--table-prefix <prefix>` (open another database, e.g. Jake's `~/.jake/jake.db` with `planner_`) `--scope <uri>` (writes `./.kabane/scope`) `--force` |
+| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--db-path <file>` `--table-prefix <prefix>` (open another database, e.g. Jake's `~/.jake/jake.db` with `planner_`) `--scope <uri>` (writes `./.kabane/scope`; alone on a configured device, writes only that) `--force` |
 | `config [list\|get <key>\|set <key> <value>\|unset <key>\|path]` | `--json` — inspect or edit device config without opening the database |
 | `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD\|<ISO time>` (a date is due by the end of that day in your timezone; a time without `Z` or an offset is your local time) `--format concise\|full` |
 | `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` `--format concise\|full` `--cursor <cursor>` |

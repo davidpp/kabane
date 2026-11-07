@@ -286,7 +286,9 @@ available without a new size bound; its subtask rollup now includes all children
 ```
 
 Kabane writes nothing into your repo to find its scope. It remembers the scope it detected
-under `~/.kabane`, keyed by the repo's first commit, so a renamed remote keeps its tasks.
+under `~/.kabane`, keyed by the repo's first commit, so a renamed remote keeps its tasks. To
+pin a scope in the repo itself, for example to check it in, run `kabane init --scope <id>` in
+it, which writes `.kabane/scope`.
 
 Outside a repo, `list` and `search` span every scope. `kabane <command> --help` prints that
 command's flags, `kabane --help` lists the commands, and

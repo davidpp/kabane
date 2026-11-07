@@ -89,6 +89,31 @@ export const buildConfig = (input: ConfigInput): Result<Config> => {
 		: err(new Error(parsed.error.message));
 };
 
+/** The flags that write `config.json`; `--scope` alone writes only the directory's pin. */
+const CONFIG_FLAGS = [
+	"actor",
+	"device",
+	"sync-url",
+	"sync-token",
+	"access-client-id",
+	"access-client-secret",
+	"db-path",
+	"table-prefix",
+] as const;
+
+/**
+ * `--scope` is the one way to put a pin in a repo, since detection writes nothing there. A device
+ * that already has a config pins with it alone, so pinning never costs the config a rewrite.
+ */
+const pinScope = (cwd: string, scope: string) => {
+	const wrote = writeDirectoryScope(cwd, scope);
+	if (!wrote.ok) return failure(wrote.error);
+	return success(
+		{ scope, pin: wrote.value },
+		`✓ Pinned scope ${scope} in ./${SCOPE_FILE}`,
+	);
+};
+
 export const init: Command = {
 	name: "init",
 	summary: "Create KABANE_HOME/config.json and the database",
@@ -97,8 +122,13 @@ export const init: Command = {
 	standalone: true,
 	run: async (args, ctx) => {
 		const path = configPath(ctx.home);
+		const scope = flagString(args, "scope");
 		if (existsSync(path) && !flagBool(args, "force")) {
-			return failure(`${path} already exists. Pass --force to overwrite.`);
+			const configures = CONFIG_FLAGS.some((flag) => flag in args.flags);
+			if (scope !== undefined && !configures) return pinScope(ctx.cwd, scope);
+			return failure(
+				`${path} already exists. Pass --force to overwrite it, or --scope <uri> alone to pin this directory's scope.`,
+			);
 		}
 		const built = buildConfig({
 			actor: flagString(args, "actor") ?? defaultActor(),
@@ -124,7 +154,6 @@ export const init: Command = {
 		const initialized = await Planner.init(location.basePath);
 		if (!initialized.ok) return failure(initialized.error);
 
-		const scope = flagString(args, "scope");
 		if (scope !== undefined) {
 			const wrote = writeDirectoryScope(ctx.cwd, scope);
 			if (!wrote.ok) return failure(wrote.error);
