@@ -1,5 +1,54 @@
 # Product
 
+## North Stars
+
+Coding agents, harnesses, multiplexers and models turn over every few months. The work they
+do (what is open, what was decided, who did what) should not turn over with them. Kabane is
+that substrate: one person's work queue, shared with whichever agents do the work this year.
+
+In priority order; when two conflict, the higher one wins.
+
+1. **Instant.** Every read and write, by a human or an agent, feels immediate. Nothing ships
+   that puts a wait on the common path.
+   *Rests on:* speed being what users feel first (it already feels instant next to Linear).
+   *Revisit if:* something users need cannot be had without making the common path wait.
+2. **Yours, by asking.** Light defaults carry good practice without process and work
+   untouched. When you want it different, you ask and kabane adapts; nobody has to learn its
+   configuration to make it theirs. The core stays small.
+   *Rests on:* people adapting a tool rather than adopting someone's process; agents being
+   able to do the adapting. *Revisit if:* making kabane yours takes more than asking, or the
+   core grows to fit one workflow.
+3. **Yours, everywhere.** Your work lives on your machine and works with no network; one
+   machine is a complete setup. Every device and every agent you use, browser-only ones
+   included, reaches the same queue.
+   *Rests on:* people working across machines and agent surfaces; people wanting to own their
+   work rather than rent it. *Revisit if:* nobody reaches past one machine once they can, or
+   agent surfaces converge on hosted state.
+4. **One honest record for humans and agents.** Either can author, plan, work and review.
+   Every write names who made it, a decision is credited to whoever made it, and an agent's
+   question reaches the human unchanged. Kabane adds no policy over the tools the user
+   already set up.
+   *Rests on:* agent tools owning their own safety; agents staying reachable without a
+   vendor's platform. *Revisit if:* users need kabane to enforce policy, or reaching agents
+   comes to require one.
+
+Two gates, both required: its author uses it daily, and a stranger who installs it watches an
+agent close their first issue with no hub and no help.
+
+Not goals:
+
+- **A team tracker.** A team can adopt and extend it; the core grows no assignee pickers,
+  sprints or permissions. Linear and GitHub stay the team record.
+- **A replacement for the tools around it.** Harnesses, multiplexers (herdr) and team
+  trackers come and go; kabane points at them and outlives them.
+- **The factory line.** No velocity, throughput or "done today" counts.
+
+**Still being refined (since 2026-11-07).** These are a working draft for the next few weeks,
+not settled law. Question them, argue with them, propose a better one, but out loud: never
+quietly work around one or rewrite it without telling the maintainer. Once settled, each one
+should survive a complete rewrite of the software and change only when an assumption under it
+breaks.
+
 ## Register
 
 product

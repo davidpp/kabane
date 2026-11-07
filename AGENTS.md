@@ -28,6 +28,10 @@ Local SQLite is authoritative on every device. The hub is one more device that h
 
 See `CODING_PRINCIPLE.md` for the coding rules and the architectural invariants.
 
+Read the North Stars at the top of `PRODUCT.md` before a product or architecture decision.
+They are provisional: when one looks wrong, say so to the maintainer; never work around it
+quietly.
+
 For project, code, or pull-request reviews, use
 `.agents/skills/review-oss-typescript/SKILL.md` and judge the repository as a
 public TypeScript project.
