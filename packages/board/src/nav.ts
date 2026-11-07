@@ -1484,16 +1484,16 @@ export namespace BoardNav {
 
 	/**
 	 * Open `taskId`'s detail the way `enter` on its row would, from wherever the board is: help, the
-	 * dispatch picker or form and a `/` being typed close, the board takes the keys, and the copilot's
-	 * draft and asks are kept. When the task is loaded, the board under the detail is left showing
-	 * its row, selected: its parent expanded, the current status filter when that shows it, else the
-	 * one holding its section, and a search or `u` that hides it cleared, so `esc` lands on it. A
-	 * task outside the loaded sections still opens, from its own records; bringing it in takes a
-	 * reload, which is the caller's to run.
+	 * dispatch picker or form, a card's or a question's prompt and a `/` being typed close, the board
+	 * takes the keys, and the copilot's draft and asks are kept. When the task is loaded, the board
+	 * under the detail is left showing its row, selected: its parent expanded, the current status
+	 * filter when that shows it, else the one holding its section, and a search or `u` that hides it
+	 * cleared, so `esc` lands on it. A task outside the loaded sections still opens, from its own
+	 * records; bringing it in takes a reload, which is the caller's to run.
 	 */
 	export const openTask = (state: BoardState, taskId: string): BoardState => {
 		const opened: BoardState = {
-			...state,
+			...BoardPrompt.close(state),
 			help: false,
 			dispatch: null,
 			focus: "board",

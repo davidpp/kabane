@@ -1042,6 +1042,34 @@ describe("BoardNav.openTask", () => {
 		expect(s.status).toBe("review");
 	});
 
+	it("closes a card's or a question's prompt and keeps the copilot's draft and asks", () => {
+		const request: CopilotPermission = {
+			id: "t0",
+			title: "kabane_edit",
+			options: [{ id: "allow", label: "Allow" }],
+		};
+		const prompting = board({
+			prompt: {
+				...BoardPrompt.CLOSED,
+				open: {
+					target: { type: "act", cardId: "loop", actionId: "inject" },
+					title: "inject",
+					placeholder: "",
+				},
+				text: "half an inject",
+			},
+			copilot: copilotState({
+				text: "half a thought",
+				asks: [{ type: "permission", request }],
+			}),
+		});
+		const s = BoardNav.openTask(prompting, "a");
+		expect(s.prompt.open).toBeNull();
+		expect(s.prompt.text).toBe("");
+		expect(s.copilot.text).toBe("half a thought");
+		expect(requests(s)).toEqual([request]);
+	});
+
 	it("clears a search or `u` that hides the task, and keeps one that shows it", () => {
 		const hidden = BoardNav.openTask(
 			board({ search: { mode: "committed", query: "jake-3" } }),
