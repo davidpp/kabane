@@ -380,7 +380,9 @@ export namespace Claims {
 								...(head ? { head } : {}),
 							}
 						: {}),
-					...(work.kind === "recheck" ? { recheck: work.name } : {}),
+					...(work.kind === "recheck"
+						? { recheck: work.name, findings: work.findings.map((f) => f.id) }
+						: {}),
 				},
 			],
 		});
@@ -578,7 +580,7 @@ export namespace Claims {
 
 	/**
 	 * Recheck the fixer's diff through lens `name`, on the run's verifier harness, against
-	 * `findings`, the ones of the lens's the fixer closed. The diff runs from `base`, the commit the
+	 * `findings`, the ones of the lens's the fixer closed, or the ones an interrupted recheck had. The diff runs from `base`, the commit the
 	 * fixer started from, to the tree as it is, so a run that commits nothing still shows it. An
 	 * error when the lens's prompt cannot be read or its session cannot start.
 	 */

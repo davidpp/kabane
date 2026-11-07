@@ -75,7 +75,10 @@ export namespace RunStore {
 		fixer: z.literal(true).optional(),
 		/** The fixer's: the commit HEAD was at when it started, which its recheck diffs against. */
 		head: z.string().optional(),
-		/** The fixer's: the findings it was given, by id, so a recheck knows which it closed. */
+		/**
+		 * The findings the session was given, by id: the fixer's, so a recheck knows which it
+		 * closed, and a recheck's, so one interrupted after reopening them still has them to resume.
+		 */
 		findings: z.array(z.string()).optional(),
 		/** The lens whose recheck of the fixer's diff this session ran, on the parent. */
 		recheck: z.string().optional(),

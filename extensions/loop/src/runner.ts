@@ -397,7 +397,7 @@ export namespace Runner {
 	};
 
 	// Each lens due a recheck takes a free slot, as its review did, and none while paused: against
-	// the findings of its own the fixer closed, from the commit the fixer started on.
+	// the findings it rechecks (`Lenses.rechecking`), from the commit the fixer started on.
 	const startRechecks = async (
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
@@ -405,7 +405,7 @@ export namespace Runner {
 	): Promise<Exit | undefined> => {
 		if (ctx.run.steering.paused) return undefined;
 		const base = Lenses.fixerBase(ctx.run.claims);
-		const closed = Lenses.closedByFixer(ctx.run.config, ctx.run.claims, plan);
+		const closed = Lenses.rechecking(ctx.run.config, ctx.run.claims, plan);
 		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
 		for (const name of pending.slice(0, slots)) {
 			const findings = closed.get(name);

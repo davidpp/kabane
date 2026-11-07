@@ -123,20 +123,41 @@ export namespace Lenses {
 	};
 
 	/**
+	 * Each lens's recheck and the findings it rechecks: the ones its first recheck claim was given,
+	 * whatever state they are in now (an interrupted one may have reopened them all), else those the
+	 * fixer closed.
+	 */
+	export const rechecking = (
+		config: Pick<LoopConfig.Config, "lenses" | "recheck">,
+		claims: readonly RunStore.Claim[],
+		plan: LoopPlan.Plan,
+	): Map<string, Task[]> => {
+		const due = closedByFixer(config, claims, plan);
+		const byId = new Map(plan.nodes.map((n) => [n.task.id, n.task]));
+		for (const name of config.lenses) {
+			const first = claims.find((c) => c.recheck === name);
+			if (first)
+				due.set(
+					name,
+					(first.findings ?? []).flatMap((id) => byId.get(id) ?? []),
+				);
+		}
+		return due;
+	};
+
+	/**
 	 * Where each lens's recheck stands: one is due for a lens with a finding the fixer closed, and
-	 * a lens that has rechecked stays done whatever it reopened. Every recheck finished, or none
-	 * due, is `finished`.
+	 * once claimed it stays the lens's, done whatever it reopened, or to run again when interrupted.
+	 * Every recheck finished, or none due, is `finished`.
 	 */
 	export const rechecks = (
 		config: Pick<LoopConfig.Config, "lenses" | "recheck">,
 		claims: readonly RunStore.Claim[],
 		plan: LoopPlan.Plan,
 	): Status => {
-		const due = closedByFixer(config, claims, plan);
-		const ran = (name: string): boolean =>
-			claims.some((c) => c.recheck === name && c.outcome !== "interrupted");
+		const due = rechecking(config, claims, plan);
 		return status(
-			config.lenses.filter((name) => due.has(name) || ran(name)),
+			config.lenses.filter((name) => due.has(name)),
 			claims,
 			(c) => c.recheck,
 		);

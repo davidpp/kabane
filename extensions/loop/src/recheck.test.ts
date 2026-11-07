@@ -327,6 +327,53 @@ describe("Runner recheck", () => {
 		expect(prompt).toContain("+fixed by hand");
 		expect(prompts("fixer.prompts")).toEqual([]);
 	});
+
+	it("resumes a recheck that reopened every finding before its runner died, on the findings it was given", async () => {
+		const parent = await add({ title: "parent" });
+		await add({ title: "subtask", parentTaskId: parent.id, state: "done" });
+		const { broken, edge } = await findings(parent);
+		// Both still `next`: the fixer closed them, then the cut-short recheck reopened them.
+		createRun(parent, {
+			status: "failed",
+			exit: { reason: "runner-died" },
+			startedAt: "2026-11-04T00:00:00.000Z",
+			claims: [
+				LENS_DONE,
+				claim({
+					lane: "fixer",
+					taskId: parent.id,
+					fixer: true,
+					head: first,
+					findings: [broken.id, edge.id],
+					...ENDED,
+				}),
+				claim({
+					lane: "functional-recheck",
+					taskId: parent.id,
+					recheck: "functional",
+					findings: [broken.id, edge.id],
+				}),
+			],
+		});
+
+		const ended = await run();
+
+		expect([ended.status, ended.exit?.detail]).toEqual([
+			"completed",
+			"3 findings left open for a human",
+		]);
+		expect(ended.claims.map((c) => [c.lane, c.outcome, c.findings])).toEqual([
+			["functional-lens", "done", undefined],
+			["fixer", "done", [broken.id, edge.id]],
+			["functional-recheck", "interrupted", [broken.id, edge.id]],
+			["functional-recheck#2", "done", [broken.id, edge.id]],
+		]);
+		const [prompt, ...more] = prompts("recheck.prompts");
+		expect(more).toEqual([]);
+		expect(prompt).toContain(`- ${label(broken)} · p1 · functional · broken`);
+		expect(prompt).toContain(`- ${label(edge)} · p2 · functional · edge`);
+		expect(prompts("fixer.prompts")).toEqual([]);
+	});
 });
 
 describe("Lenses.rechecks", () => {
