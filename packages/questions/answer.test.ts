@@ -95,7 +95,7 @@ it("refuses a label two choices share and names them, while full text still answ
 	expect(ambiguous.ok).toBe(false);
 	if (!ambiguous.ok)
 		expect(ambiguous.error.message).toBe(
-			'"a" labels more than one choice; answer with the full text of one: A. Keep it | A: Drop it.',
+			'"a" labels more than one choice; answer with the exact text of one: A. Keep it | A: Drop it.',
 		);
 	expect(validateAnswer(meta, "A: drop it")).toEqual({
 		ok: true,
@@ -214,4 +214,30 @@ it("reads punctuation inside a choice's text as text, not as the end of a label"
 			multiSelect: true,
 		}).success,
 	).toBe(false);
+});
+
+it("takes an exact text before one that matches only with its comma spacing ignored, and refuses a tie", () => {
+	const meta = {
+		choices: ["A. Keep it,for now", "A. Keep it, for now", "B. Drop it"],
+		multiSelect: false,
+		allowFreeform: false,
+	};
+	expect(validateAnswer(meta, "a. keep it, for now")).toEqual({
+		ok: true,
+		value: "A. Keep it, for now",
+	});
+	expect(validateAnswer(meta, "A. Keep it,for now")).toEqual({
+		ok: true,
+		value: "A. Keep it,for now",
+	});
+	const tie = validateAnswer(meta, "A. Keep it ,for now");
+	expect(tie.ok ? "" : tie.error.message).toBe(
+		'"A. Keep it ,for now" matches, comma spacing aside, more than one choice; answer with the exact text of one: A. Keep it,for now | A. Keep it, for now.',
+	);
+	expect(
+		validateAnswer({ ...meta, multiSelect: true }, "A. Keep it, for now, b"),
+	).toEqual({
+		ok: true,
+		value: "A. Keep it, for now, B. Drop it",
+	});
 });

@@ -39,28 +39,45 @@ const selectionsOf = (choices: readonly string[], text: string): string[] => {
 	return selections;
 };
 
+/** The one choice of `named`, undefined for none, refused with them all when there are several. */
+const onlyChoice = (
+	typed: string,
+	named: readonly string[],
+	how: string,
+): Result<string | undefined> =>
+	named.length > 1
+		? err(
+				new Error(
+					`"${typed.trim()}" ${how} more than one choice; answer with the exact text of one: ${named.join(" | ")}.`,
+				),
+			)
+		: ok(named[0]);
+
 /**
- * The choice `typed` names: its full text ignoring case, else the one choice whose label it is,
- * typed as `B`, `B.` or `b`. Undefined when it names none; refused when it labels more than one.
+ * The choice `typed` names: its exact text ignoring case, else its text ignoring the spacing
+ * around commas, else the choice whose label it is, typed as `B`, `B.` or `b`. Undefined when it
+ * names none; refused when the spacing or the label leaves more than one.
  */
 export const matchChoice = (
 	choices: readonly string[],
 	typed: string,
 ): Result<string | undefined> => {
-	const text = fullText(typed);
-	const full = choices.find((choice) => fullText(choice) === text);
+	const exact = typed.trim().toLowerCase();
+	const full = choices.find((choice) => choice.toLowerCase() === exact);
 	if (full !== undefined) return ok(full);
-	const label = text.replace(/[.:)]$/, "").trimEnd();
-	const labelled = choices.filter(
-		(choice) => choiceLabel(choice)?.toLowerCase() === label,
+	const text = fullText(typed);
+	const spaced = onlyChoice(
+		typed,
+		choices.filter((choice) => fullText(choice) === text),
+		"matches, comma spacing aside,",
 	);
-	if (labelled.length > 1)
-		return err(
-			new Error(
-				`"${typed.trim()}" labels more than one choice; answer with the full text of one: ${labelled.join(" | ")}.`,
-			),
-		);
-	return ok(labelled[0]);
+	if (!spaced.ok || spaced.value !== undefined) return spaced;
+	const label = text.replace(/[.:)]$/, "").trimEnd();
+	return onlyChoice(
+		typed,
+		choices.filter((choice) => choiceLabel(choice)?.toLowerCase() === label),
+		"labels",
+	);
 };
 
 /**
