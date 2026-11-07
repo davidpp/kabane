@@ -49,7 +49,7 @@ it("answers through the module, refuses an unknown choice, and hands the issue b
 	const refused = await kabane(["answer", `${id}:1`, "Postgres"]);
 	expect(refused.exitCode).toBe(1);
 	expect(refused.text).toBe(
-		'Error: Unknown choice "Postgres"; choose SQLite, Remote.',
+		'Error: Unknown choice "Postgres"; choose "SQLite", "Remote".',
 	);
 
 	const first = await kabane([

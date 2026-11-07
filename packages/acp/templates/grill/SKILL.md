@@ -30,12 +30,16 @@ For each question:
 1. Restate it in one line, with its handle.
 2. Give the choices, the recommended one and why. `choices only` refuses any other answer;
    `multi-select` takes several, comma-separated. A question can be both:
-   `(multi-select, choices only)`.
+   `(multi-select, choices only)`. A choice can be named by its label, the text before its first
+   `.`, `:` or `)` when a space follows it: `B` for "B. One tree", `b, c` for two.
 3. Check what you can yourself first: read the file, the issue (`kabane_context`) or the command
    the question points at, and say what you found when it sharpens or changes the recommendation.
    Do not ask the human what the code can answer.
-4. Ask this one question and wait. Where the harness offers a choice prompt (Claude Code's
-   AskUserQuestion) you may use it; plain text works everywhere.
+4. Ask this one question and wait. Ask it through the harness's choice prompt whenever it
+   offers one (Claude Code's AskUserQuestion): the choices as its options, the recommended one
+   first, several picks allowed on a multi-select. A reply typed instead of picked is still the
+   human's reply. Fall back to plain text, ending your turn on the question, only where there is
+   no such prompt or it cannot hold the choices.
 
 Then act on the reply. A handle can shift when sync brings in an earlier question, so just before
 recording, re-read that issue (`kabane_questions` with its `id`): if the handle no longer shows the
@@ -43,6 +47,13 @@ same question text, use the handle that does and tell the human what moved.
 
 - **A choice, or a free answer the question allows:** `kabane_answer` with the handle, the
   answer and `relayed: true`, and the human's own words as `reasoning` when they gave a reason.
+- **A decision the question's shape does not fit**, such as two picks on a single choice, an
+  option it does not list, or a different question altogether: do not squeeze it into the nearest
+  choice. Reshape the question with `kabane_ask` and `replaces` set to its handle: the question as
+  the discussion left it, choices that hold what was concluded (`multiSelect` when the decision
+  picks several), and a `why` that keeps the reasoning. The old question is withdrawn as replaced
+  by the new one in the same write, and the issue stays waiting. Then record the decision on the
+  new handle with `kabane_answer` and `relayed: true`, as for a choice.
 - **Pushback or a question back:** discuss it, then ask again. Record nothing until they decide.
 - **"skip":** leave it open and move to the next one.
 - **"withdraw":** `kabane_answer` with `withdraw: true`, `relayed: true` and the human's reason

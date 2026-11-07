@@ -104,6 +104,17 @@ describe("the form's fields as the answer", () => {
 		);
 	});
 
+	it("joins picks whose text holds commas into a list that reads back as those picks", () => {
+		const commas = decision({
+			choices: ["A. Keep it, for now", "B. Drop it", "C. Defer"],
+			multiSelect: true,
+			allowFreeform: false,
+		});
+		expect(
+			answer(commas, { choice: ["A. Keep it, for now", "C. Defer"] }),
+		).toEqual({ ok: true, value: { answer: "A. Keep it, for now, C. Defer" } });
+	});
+
 	it("refuses an answer with nothing picked and nothing typed, saying what it wants", () => {
 		const empty = answer(multi, { reasoning: "no idea" });
 		expect(empty.ok ? "" : empty.error.message).toBe(

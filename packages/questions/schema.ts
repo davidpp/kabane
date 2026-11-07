@@ -1,4 +1,14 @@
 import { z } from "zod";
+import { choiceLabel, matchChoice } from "./answer";
+
+/** The choice `recommended` names, as `kabane_answer` would read it; undefined when none or ambiguous. */
+const recommendedOf = (
+	choices: readonly string[] = [],
+	recommended: string,
+): string | undefined => {
+	const choice = matchChoice(choices, recommended);
+	return choice.ok ? choice.value : undefined;
+};
 
 export const AskQuestionSchema = z
 	.object({
@@ -12,42 +22,63 @@ export const AskQuestionSchema = z
 		multiSelect: z.boolean().optional(),
 		allowFreeform: z.boolean().optional(),
 		why: z.string().max(8000).optional(),
+		replaces: z
+			.string()
+			.min(1)
+			.optional()
+			.describe(
+				"An open question on the same issue (handle, ULID or id:<ULID>) this one supersedes; it is withdrawn as replaced by this one, in the same write.",
+			),
 	})
 	.superRefine((value, ctx) => {
-		const labels = value.choices?.map((label) => label.toLowerCase()) ?? [];
-		if (new Set(labels).size !== labels.length)
+		const texts = value.choices?.map((choice) => choice.toLowerCase()) ?? [];
+		if (new Set(texts).size !== texts.length)
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
-				message: "Choice labels must be unique ignoring case.",
+				message: "Choices must be unique ignoring case.",
 			});
 		if (
 			value.recommended !== undefined &&
-			!labels.includes(value.recommended.toLowerCase())
+			recommendedOf(value.choices, value.recommended) === undefined
 		)
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
-				message: "recommended must be one of the choice labels.",
+				message:
+					"recommended must name one choice, by its full text or its label.",
 			});
-		if (value.allowFreeform === false && !labels.length)
+		if (value.allowFreeform === false && !texts.length)
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
 				message: "Supply choices when freeform answers are disabled.",
 			});
-		if (
-			value.multiSelect &&
-			value.choices?.some((label) => label.includes(","))
-		)
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				message: "Multi-select choice labels cannot contain commas.",
-			});
+		// A multi-select answer is a comma list of labels, so each choice needs one it can be named
+		// by: its label, or its whole text when it has none. Only that has to stay comma-free.
+		if (value.multiSelect && value.choices) {
+			const nameOf = (choice: string) => choiceLabel(choice) ?? choice;
+			const names = value.choices.map((choice) => nameOf(choice).toLowerCase());
+			const unnamed = value.choices.find((choice) =>
+				nameOf(choice).includes(","),
+			);
+			if (unnamed !== undefined)
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: `Multi-select choices are answered as a comma list, so "${unnamed}" needs a label without a comma: start it with one, as in "A. ${unnamed}".`,
+				});
+			if (new Set(names).size !== names.length)
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message:
+						"Multi-select choices need distinct labels ignoring case, since an answer names them by label.",
+				});
+		}
 	})
 	.transform((value) => ({
 		...value,
 		allowFreeform: value.allowFreeform ?? value.choices === undefined,
-		recommended: value.choices?.find(
-			(choice) => choice.toLowerCase() === value.recommended?.toLowerCase(),
-		),
+		recommended:
+			value.recommended === undefined
+				? undefined
+				: recommendedOf(value.choices, value.recommended),
 	}));
 export const AskSchema = z.object({
 	id: z.string().min(1),

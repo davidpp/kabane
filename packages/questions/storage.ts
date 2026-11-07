@@ -26,6 +26,7 @@ import {
 	type AnswerInput,
 	type AskInput,
 	type Question,
+	type QuestionStatus,
 	type QuestionView,
 } from "./schema";
 
@@ -116,6 +117,8 @@ const close = (
 export namespace Questions {
 	/** The reason recorded on each question a closed issue withdraws. */
 	export const CLOSED_REASON = "issue closed";
+	/** The reasoning on a question `kabane_ask` replaced, before its successor's handle and id. */
+	export const REPLACED_REASON = "replaced by";
 
 	/**
 	 * The module's `onTaskStateChange`: closing an issue (done or cancelled)
@@ -161,10 +164,12 @@ export namespace Questions {
 		);
 	};
 
+	/** A question's ULID from its handle (`JCAB-12:1`), its ULID, or `id:<ULID>` as a page prints it. */
 	export const resolve = async (
 		basePath: string,
 		input: string,
 	): Promise<Result<string>> => {
+		if (input.startsWith("id:")) return ok(input.slice("id:".length));
 		const match = input.match(/^(.+):([1-9]\d*)$/);
 		if (!match) return ok(input);
 		const task = match[1];
@@ -189,6 +194,16 @@ export namespace Questions {
 			return err(new Error(`Invalid questions: ${parsed.error.message}`));
 		const resolved = await Planner.resolveTaskId(basePath, parsed.data.id);
 		if (!resolved.ok) return resolved;
+		// Each question's predecessor, resolved as `answer` resolves a handle.
+		const replaced: (string | undefined)[] = [];
+		for (const { replaces } of parsed.data.questions) {
+			const id =
+				replaces === undefined
+					? ok(undefined)
+					: await resolve(basePath, replaces);
+			if (!id.ok) return id;
+			replaced.push(id.value);
+		}
 		const written = await atomic(basePath, (db) => {
 			const task = db
 				.query<{ kind: string; visibility: string; state: string }>(
@@ -203,7 +218,29 @@ export namespace Questions {
 				);
 			const now = new Date().toISOString();
 			const ids: string[] = [];
-			for (const { question, why, ...meta } of parsed.data.questions) {
+			for (const [
+				index,
+				{ question, why, replaces, ...meta },
+			] of parsed.data.questions.entries()) {
+				const predecessor = replaced[index];
+				if (predecessor !== undefined) {
+					const old = db
+						.query<{ task_id: string; status: QuestionStatus }>(
+							`SELECT task_id, status FROM ${questionsTable()} WHERE id = ?`,
+						)
+						.get(predecessor);
+					if (!old) throw new Error(`No question found: ${replaces}`);
+					if (old.task_id !== resolved.value)
+						throw new Error(
+							`${replaces} is on another issue; ask its replacement on that issue.`,
+						);
+					if (old.status !== "open")
+						throw new Error(
+							`${replaces} is ${old.status}; only an open question can be replaced.`,
+						);
+					if (replaced.indexOf(predecessor) !== index)
+						throw new Error(`${replaces} is replaced twice in one call.`);
+				}
 				const id = generateId();
 				db.run(
 					`INSERT INTO ${questionsTable()} (id, task_id, asked_by, created_at, updated_at, updated_by, visibility, body, why) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -222,6 +259,20 @@ export namespace Questions {
 				Oplog.afterWrite(db, QUESTIONS_TABLE, "insert", id);
 				ids.push(id);
 			}
+			const rows = selectQuestions(db, { taskId: resolved.value }).filter(
+				(row) => ids.includes(row.id),
+			);
+			// Withdrawn in the transaction that opens its successor, so the issue never leaves waiting.
+			replaced.forEach((predecessor, index) => {
+				const successor = rows.find((row) => row.id === ids[index]);
+				if (predecessor === undefined || !successor) return;
+				close(db, predecessor, {
+					status: "withdrawn",
+					answer: null,
+					reasoning: `${REPLACED_REASON} ${successor.handle} id:${successor.id}`,
+					by: actor,
+				});
+			});
 			let changedTask: Task | null = null;
 			if (parsed.data.waiting && task.state !== "waiting") {
 				const moved = Planner.updateTaskIn(db, resolved.value, {
@@ -230,12 +281,7 @@ export namespace Questions {
 				if (!moved.ok) throw moved.error;
 				changedTask = moved.value;
 			}
-			return {
-				rows: selectQuestions(db, { taskId: resolved.value }).filter((row) =>
-					ids.includes(row.id),
-				),
-				changedTask,
-			};
+			return { rows, changedTask };
 		});
 		if (!written.ok) return written;
 		if (written.value.changedTask)

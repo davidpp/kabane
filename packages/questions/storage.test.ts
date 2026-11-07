@@ -465,6 +465,126 @@ it("stores canonical recommendations and refuses mistyped choices by default", a
 	).toBe(true);
 });
 
+it("answers by id:<ULID>, the form a page prints at the end of each question's line", async () => {
+	const task = await issue();
+	const [first] = await ask(task.id);
+	if (!first) throw new Error("Missing question");
+	expect(
+		unwrap(
+			await Questions.answer(base, {
+				question: `id:${first.id}`,
+				answer: "remote",
+			}),
+		).question,
+	).toMatchObject({ id: first.id, answer: "Remote" });
+	expect(
+		(
+			await Questions.answer(base, {
+				question: "id:01M0000000000000000000000Z",
+				answer: "x",
+			})
+		).ok,
+	).toBe(false);
+});
+
+it("replaces an open question in one write: withdrawn as replaced, the issue still waiting", async () => {
+	const task = await issue();
+	const [first] = unwrap(
+		await Questions.ask(base, {
+			id: task.id,
+			questions: [
+				{
+					question: "Which scope source?",
+					choices: ["A. The pin", "B. The remote", "C. The directory"],
+				},
+			],
+		}),
+	);
+	if (!first) throw new Error("Missing question");
+	const [second] = unwrap(
+		await Questions.ask(base, {
+			id: task.id,
+			questions: [
+				{
+					question: "Which scope sources, in order?",
+					choices: [
+						"A. The pin",
+						"B. The remote, normalized",
+						"C. The directory",
+					],
+					multiSelect: true,
+					replaces: `id:${first.id}`,
+				},
+			],
+		}),
+	);
+	if (!second) throw new Error("Missing replacement");
+	expect(second.handle).toBe(`${task.shortId}:2`);
+	expect(unwrap(await Questions.list(base, { id: task.id }))[0]).toMatchObject({
+		status: "withdrawn",
+		reasoning: `${Questions.REPLACED_REASON} ${second.handle} id:${second.id}`,
+		answeredBy: "cabane://actor/human/test",
+	});
+	expect(unwrap(await Planner.getTask(base, task.id))?.state).toBe("waiting");
+	const answered = unwrap(
+		await Questions.answer(base, {
+			question: `id:${second.id}`,
+			answer: "b, c",
+		}),
+	);
+	expect(answered).toMatchObject({
+		question: { answer: "B. The remote, normalized, C. The directory" },
+		moved: true,
+	});
+});
+
+it("refuses a replacement of a question it cannot supersede, writing nothing", async () => {
+	const task = await issue();
+	const other = await issue("Other");
+	const [open, closed] = await ask(task.id);
+	const [elsewhere] = await ask(other.id);
+	if (!open || !closed || !elsewhere) throw new Error("Missing questions");
+	unwrap(
+		await Questions.answer(base, { question: closed.id, answer: "Kabane" }),
+	);
+	for (const [replaces, message] of [
+		[
+			closed.handle,
+			`${closed.handle} is answered; only an open question can be replaced.`,
+		],
+		[
+			elsewhere.handle,
+			`${elsewhere.handle} is on another issue; ask its replacement on that issue.`,
+		],
+		[`${task.shortId}:9`, `No question found: ${task.shortId}:9`],
+		[
+			"id:01M0000000000000000000000Z",
+			"No question found: id:01M0000000000000000000000Z",
+		],
+	] as const) {
+		const refused = await Questions.ask(base, {
+			id: task.id,
+			questions: [{ question: "Reshaped?", replaces }],
+		});
+		expect(refused.ok ? "" : refused.error.message).toBe(message);
+	}
+	const twice = await Questions.ask(base, {
+		id: task.id,
+		questions: [
+			{ question: "One?", replaces: open.handle },
+			{ question: "Two?", replaces: open.id },
+		],
+	});
+	expect(twice.ok ? "" : twice.error.message).toBe(
+		`${open.id} is replaced twice in one call.`,
+	);
+	expect(
+		unwrap(await Questions.list(base, { id: task.id })).map(
+			(row) => row.status,
+		),
+	).toEqual(["open", "answered"]);
+});
+
 const questionOps = async () =>
 	unwrap(
 		await withDb(base, (db) =>
