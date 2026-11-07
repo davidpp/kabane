@@ -15,7 +15,7 @@ import type { BoardData } from "./data";
 import { useDetailRecords } from "./detail-records";
 import { isDispatchEffect, useHostDispatch } from "./host-dispatch";
 import type { BoardNav } from "./nav";
-import { useNotice } from "./notice";
+import { type SetNotice, useNotice } from "./notice";
 import {
 	type ActivitySource,
 	type Announcer,
@@ -65,6 +65,55 @@ const Loading = ({ error }: { error: string | null }): ReactNode => {
 	);
 };
 
+// Each part's effect runner, and what the board runs itself.
+type EffectRoutes = {
+	task: ReturnType<typeof useTaskActions>;
+	dispatch: ReturnType<typeof useHostDispatch>;
+	copilot: ReturnType<typeof useCopilotSession>["runEffect"];
+	activity: ReturnType<typeof useRunActivity>["runEffect"];
+	screen: ReturnType<typeof useScreenRefs>["runEffect"];
+	reload: (next: BoardNav.BoardState) => Promise<void>;
+	setNotice: SetNotice;
+};
+
+// The single effect runner, shared by the keyboard and mouse dispatchers so both interaction paths
+// execute the reducer's output the same way: each effect goes to the part that owns it, and the
+// board runs quit, reload and notice itself. `next` is the post-reduce state a reload merges into.
+const useEffectRunner = ({
+	task,
+	dispatch,
+	copilot,
+	activity,
+	screen,
+	reload,
+	setNotice,
+}: EffectRoutes): ((
+	next: BoardNav.BoardState,
+	effect: BoardNav.Effect,
+) => void) => {
+	const renderer = useRenderer();
+	return useCallback(
+		(next: BoardNav.BoardState, effect: BoardNav.Effect): void => {
+			if (isTaskEffect(effect)) return task(next, effect);
+			if (isDispatchEffect(effect)) return dispatch(next, effect);
+			if (isCopilotEffect(effect)) return copilot(next, effect);
+			if (isActivityEffect(effect)) return activity(next, effect);
+			if (isScreenEffect(effect)) return screen(effect);
+			switch (effect.type) {
+				case "quit":
+					renderer.destroy();
+					return;
+				case "reload":
+					void reload(next);
+					return;
+				case "notice":
+					setNotice(effect.notice);
+			}
+		},
+		[renderer, reload, task, dispatch, copilot, activity, screen, setNotice],
+	);
+};
+
 export const App = ({
 	cwd,
 	basePath,
@@ -77,7 +126,6 @@ export const App = ({
 	open,
 	clock = Date.now,
 }: AppProps): ReactNode => {
-	const renderer = useRenderer();
 	const store = useBoardStore(clock);
 	const [notice, setNotice] = useNotice();
 	const detail = useDetailRecords(basePath, store);
@@ -137,39 +185,24 @@ export const App = ({
 		reload,
 	});
 
-	// The single effect runner, shared by the keyboard and mouse dispatchers so both interaction paths
-	// execute the reducer's output the same way. `next` is the post-reduce state a reload merges into.
-	const runEffect = useCallback(
-		(next: BoardNav.BoardState, effect: BoardNav.Effect): void => {
-			if (isTaskEffect(effect)) return runTaskEffect(next, effect);
-			if (isDispatchEffect(effect)) return runDispatchEffect(next, effect);
-			if (isCopilotEffect(effect)) return runCopilotEffect(next, effect);
-			if (isActivityEffect(effect)) return runActivityEffect(next, effect);
-			if (isScreenEffect(effect)) return runScreenEffect(effect);
-			switch (effect.type) {
-				case "quit":
-					renderer.destroy();
-					return;
-				case "reload":
-					void reload(next);
-					return;
-				case "notice":
-					setNotice(effect.notice);
-			}
-		},
-		[
-			renderer,
-			reload,
-			runTaskEffect,
-			runDispatchEffect,
-			runCopilotEffect,
-			runActivityEffect,
-			runScreenEffect,
-			setNotice,
-		],
-	);
+	const runEffect = useEffectRunner({
+		task: runTaskEffect,
+		dispatch: runDispatchEffect,
+		copilot: runCopilotEffect,
+		activity: runActivityEffect,
+		screen: runScreenEffect,
+		reload,
+		setNotice,
+	});
 
-	const input = useBoardInput({ store, clock, error, retry, runEffect, refs });
+	const input = useBoardInput({
+		store,
+		clock,
+		error,
+		retry,
+		runEffect,
+		refs,
+	});
 
 	if (error || !store.state) return <Loading error={error} />;
 
