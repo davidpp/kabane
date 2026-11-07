@@ -165,6 +165,7 @@
       "name": "cabane-worker",
       "version": "0.1.0",
       "dependencies": {
+        "@cabane/checklist": "workspace:*",
         "@cabane/core": "workspace:*",
         "@cabane/questions": "workspace:*",
         "jose": "6.2.10",

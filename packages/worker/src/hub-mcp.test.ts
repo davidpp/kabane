@@ -130,7 +130,14 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(names).toContain("kabane_add");
 		expect(names).toContain("kabane_context");
 		expect(names).toContain("kabane_scopeList");
-		for (const name of ["kabane_ask", "kabane_questions", "kabane_answer"])
+		for (const name of [
+			"kabane_ask",
+			"kabane_questions",
+			"kabane_answer",
+			"kabane_checklistAdd",
+			"kabane_checklistTick",
+			"kabane_checklistEdit",
+		])
 			expect(names).toContain(name);
 		expect(names.some((n) => n.toLowerCase().includes("session"))).toBe(false);
 		for (const name of ["kabane_configGet", "kabane_configSet"]) {
