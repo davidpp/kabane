@@ -28,6 +28,7 @@ const attempt: Brief.Interrupted = {
 const subject = {
 	runId: "r1",
 	gates: [],
+	concurrent: false,
 	parent: task("P-1", "parent"),
 	task: task("P-2", "child"),
 };
@@ -122,7 +123,14 @@ describe("Brief after a red gate", () => {
 
 describe("Brief on a single issue", () => {
 	const lone = task("P-9", "lone");
-	const single = { runId: "r1", parent: lone, task: lone, gates: [] };
+	// Concurrent or not, a single issue has no siblings.
+	const single = {
+		runId: "r1",
+		parent: lone,
+		task: lone,
+		gates: [],
+		concurrent: true,
+	};
 
 	it("tells the implementing session the issue is the whole run, with no subtasks or siblings", () => {
 		const [instructions] = Brief.opening(single, "ASSEMBLED").split(
@@ -158,10 +166,17 @@ describe("Brief on a single issue", () => {
 			expect(brief).not.toContain("subtasks of");
 	});
 
-	it("still tells a subtask's session it is one of several", () => {
-		expect(Brief.opening(subject, "ASSEMBLED")).toContain(
-			'which drives the subtasks of P-1 ("parent") to completion',
+	it("tells a subtask's session its siblings share the tree only when the run has more than one session at once", () => {
+		const SIBLINGS =
+			"Other sessions may be working on sibling subtasks in the same repository at the same time.";
+		const alone = Brief.opening(subject, "ASSEMBLED");
+		expect(alone).toContain(
+			'which drives the subtasks of P-1 ("parent") to completion.',
 		);
+		expect(alone).not.toContain(SIBLINGS);
+		expect(
+			Brief.opening({ ...subject, concurrent: true }, "ASSEMBLED"),
+		).toContain(`("parent") to completion. ${SIBLINGS}`);
 	});
 });
 

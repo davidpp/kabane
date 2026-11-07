@@ -50,8 +50,14 @@ export namespace Dispatch {
 	 * against the findings of the lens's that it closed.
 	 */
 	export type Work =
-		// `gates`: the run's gate names, so the brief says what has checked the work and what has not.
-		| { kind: "implement"; gates: readonly string[]; retry?: Gates.Result }
+		// `gates`: the run's gate names, so the brief says what has checked the work and what has not;
+		// `concurrent`: whether sibling sessions may work in the same tree meanwhile.
+		| {
+				kind: "implement";
+				gates: readonly string[];
+				concurrent: boolean;
+				retry?: Gates.Result;
+		  }
 		| { kind: "lens"; name: string; prompt: string; gates: readonly string[] }
 		| { kind: "fix"; findings: readonly Task[]; gates: readonly string[] }
 		| {
@@ -690,6 +696,7 @@ export namespace Dispatch {
 						{
 							...subject,
 							gates: work.gates,
+							concurrent: work.concurrent,
 							...(work.retry ? { retry: work.retry } : {}),
 						},
 						assembled.value,

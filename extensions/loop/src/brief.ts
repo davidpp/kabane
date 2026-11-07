@@ -1,6 +1,6 @@
 // What a session is told. The issue's own brief comes from `assembleContext`; this adds only what
-// the run knows and the issue does not. An implementing session hears that it is one of several,
-// which subtask is its own, and how it signals that it is finished (on a single issue, that the
+// the run knows and the issue does not. An implementing session hears which subtask is its own
+// (and, in a run with more than one session at once, that its siblings share its tree), and how it signals that it is finished (on a single issue, that the
 // issue is the whole run); a lens hears what it reviews
 // and how it files findings; the fixer hears which findings are its own, in what order, and how
 // it settles each; a lens's recheck hears the fixer's diff and the findings it closed. The kabane
@@ -16,6 +16,8 @@ export namespace Brief {
 		parent: Task;
 		task: Task;
 		gates: readonly string[];
+		/** Whether the run has more than one session at once: its siblings then share the tree. */
+		concurrent: boolean;
 		retry?: Gates.Result;
 		interrupted?: Interrupted;
 	};
@@ -73,7 +75,13 @@ export namespace Brief {
 		"Finish each turn with at most three lines saying what you did.",
 	];
 
-	const instructions = ({ runId, parent, task, gates }: Subject): string =>
+	const instructions = ({
+		runId,
+		parent,
+		task,
+		gates,
+		concurrent,
+	}: Subject): string =>
 		(task.id === parent.id
 			? [
 					`You are the implementing session of kabane loop run ${runId}, which drives the single issue ${label(task)} ("${task.title}") to completion.`,
@@ -87,7 +95,7 @@ export namespace Brief {
 					),
 				]
 			: [
-					`You are one implementing session of kabane loop run ${runId}, which drives the subtasks of ${label(parent)} ("${parent.title}") to completion. Other sessions may be working on sibling subtasks in the same repository at the same time.`,
+					`You are one implementing session of kabane loop run ${runId}, which drives the subtasks of ${label(parent)} ("${parent.title}") to completion.${concurrent ? " Other sessions may be working on sibling subtasks in the same repository at the same time." : ""}`,
 					`Your subtask is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
 					...finishing(
 						task,

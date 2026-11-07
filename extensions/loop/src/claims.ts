@@ -486,6 +486,7 @@ export namespace Claims {
 			work: {
 				kind: "implement",
 				gates: Object.keys(ctx.run.config.gates),
+				concurrent: ctx.run.config.budget.concurrency > 1,
 				...(retry ? { retry } : {}),
 			},
 			summary: `${harness} claims ${label(task)}: ${task.title}`,
