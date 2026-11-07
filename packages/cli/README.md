@@ -168,10 +168,12 @@ package below it, or in a worktree. The cascade, highest first:
    only `kabane init --scope <uri>` writes it, into the working directory
 3. `.jake/config.json` → `project.id` — a device sharing a Jake database has to
    honour the id Jake already filed tasks under
-4. the id detection stored for this repo in `KABANE_HOME/detected-scopes/`,
-   keyed by its first commit (by its root path while it has none)
+4. the id detection stored for this checkout in `KABANE_HOME/detected-scopes/`,
+   keyed by its root path and holding only while the repo there has the same
+   first commit
 5. the git remote, normalized to `host/owner/repo` (`origin`, else the first
-   remote listed), and stored for step 4, so a renamed remote keeps its scope
+   remote listed), and stored for step 4, so a checkout keeps its scope when
+   its remote is renamed; a fork or another clone resolves by its own remote
 6. the first commit, as `git:<hash12>` — replaced by a real remote id if one
    appears later, never the reverse
 7. the project root path

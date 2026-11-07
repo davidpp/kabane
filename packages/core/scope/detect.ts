@@ -199,14 +199,18 @@ const readScopePin = async (root: string): Promise<string | null> => {
  *
  * Nothing here writes into the repo: it may be a checkout the user does not
  * own. What the remote resolves to is stored under KABANE_HOME instead, keyed
- * by the repo's first commit, so a renamed remote keeps the scope it had.
+ * by the checkout's root and checked against its first commit, so a renamed
+ * remote keeps the scope it had while a fork or another clone resolves by its
+ * own remote.
  *
  * One-way: a `git:` id is a placeholder for a repo that had no remote when it
  * was first seen, so a `git:` pin does not short-circuit and a remote id may
  * replace it; nothing replaces a remote id with a `git:` one, which would
- * orphan everything already filed under it. A `git:` id is never stored, since
- * it is derived from the very commit that keys the store. The legacy pin is
- * read but never stored — another tool's answer stays that tool's.
+ * orphan everything already filed under it, and an id stored before the
+ * repo's first commit still holds once it has one. A `git:` id is never
+ * stored: the commit it derives from is always there to derive it again. The
+ * legacy pin is read but never stored — another tool's answer stays that
+ * tool's.
  */
 export const resolveScopeId = async (
 	root: string,
@@ -221,15 +225,24 @@ export const resolveScopeId = async (
 	const firstCommit = (
 		await git(root, ["rev-list", "--max-parents=0", "HEAD"])
 	)?.split("\n")[0];
-	const key: DetectedScopes.Key = firstCommit ? { firstCommit } : { root };
-	const stored = await DetectedScopes.read(opts.home, key);
-	if (stored) return stored;
+	const stored = await DetectedScopes.read(opts.home, root);
+	// A different first commit is another repo cloned where this one was.
+	if (
+		stored &&
+		(stored.firstCommit === undefined || stored.firstCommit === firstCommit)
+	) {
+		// Stored before the repo's first commit: from now on, that commit is the repo.
+		if (stored.firstCommit === undefined && firstCommit) {
+			await DetectedScopes.write(opts.home, root, { ...stored, firstCommit });
+		}
+		return stored.scopeId;
+	}
 
 	const remote = await remoteUrl(root);
 	if (remote) {
-		const normalized = normalizeGitUrl(remote);
-		await DetectedScopes.write(opts.home, key, normalized);
-		return normalized;
+		const scopeId = normalizeGitUrl(remote);
+		await DetectedScopes.write(opts.home, root, { scopeId, firstCommit });
+		return scopeId;
 	}
 
 	if (firstCommit) return `git:${firstCommit.slice(0, 12)}`;

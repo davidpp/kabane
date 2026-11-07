@@ -4,8 +4,8 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
+	readFileSync,
 	realpathSync,
-	renameSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -63,6 +63,16 @@ const stored = (): string[] => {
 	const store = join(home, DetectedScopes.DIR);
 	return existsSync(store) ? readdirSync(store) : [];
 };
+
+/** The one entry detection stored, parsed. */
+const entry = (): unknown => {
+	const [only] = stored();
+	return only === undefined
+		? null
+		: JSON.parse(readFileSync(join(home, DetectedScopes.DIR, only), "utf8"));
+};
+
+const RENAMED = "git@github.com:davidpp/kabane.git";
 
 beforeEach(() => {
 	// realpath so fixture paths match what git and the detector report: on macOS
@@ -161,29 +171,61 @@ describe("resolveScopeId", () => {
 		expect(stored()).toHaveLength(1);
 	});
 
-	it("keeps the scope after the remote is renamed and the checkout moved", async () => {
+	// A clone made elsewhere after the rename is a checkout of its own, and
+	// resolves by the remote it has, as it did before detection stored anything.
+	it("keeps a checkout's scope after its remote is renamed", async () => {
 		const root = dir("repo");
 		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
 		expect(await resolveScopeId(root, { home })).toBe(
 			"github.com/davidpp/cabane",
 		);
 
-		git(root, [
-			"remote",
-			"set-url",
-			"origin",
-			"git@github.com:davidpp/kabane.git",
-		]);
-		const moved = join(workspace, "moved");
-		renameSync(root, moved);
-
-		expect(await resolveScopeId(moved, { home })).toBe(
+		git(root, ["remote", "set-url", "origin", RENAMED]);
+		expect(await resolveScopeId(root, { home })).toBe(
 			"github.com/davidpp/cabane",
+		);
+
+		const fresh = join(workspace, "fresh");
+		git(workspace, ["clone", "-q", root, fresh]);
+		git(fresh, ["remote", "set-url", "origin", RENAMED]);
+		expect(await resolveScopeId(fresh, { home })).toBe(
+			"github.com/davidpp/kabane",
 		);
 	});
 
-	// No commit yet, so no first commit to key by: the root path stands in.
-	it("keys a repo with no commit by its path", async () => {
+	// A fork and its upstream share a root commit; neither takes the other's id,
+	// even when both resolve for the first time at once.
+	it("resolves clones of one history by their own remotes", async () => {
+		const origin = dir("origin");
+		await gitInit(origin);
+		const [fork, upstream] = ["fork", "upstream"].map((name) => {
+			const clone = join(workspace, name);
+			git(workspace, ["clone", "-q", origin, clone]);
+			git(clone, [
+				"remote",
+				"set-url",
+				"origin",
+				`git@github.com:${name}/cabane.git`,
+			]);
+			return clone;
+		});
+
+		const first = await Promise.all(
+			[fork, upstream].map((root) => resolveScopeId(String(root), { home })),
+		);
+		const again = await Promise.all(
+			[fork, upstream].map((root) => resolveScopeId(String(root), { home })),
+		);
+
+		const expected = ["github.com/fork/cabane", "github.com/upstream/cabane"];
+		expect(first).toEqual(expected);
+		expect(again).toEqual(expected);
+	});
+
+	// Stored while the repo had no commit, so with no first commit beside it.
+	// Its first commit then makes it that repo's, and a removed remote is no
+	// reason to fall back to a git: id.
+	it("keeps an id stored before the first commit", async () => {
 		const root = dir("repo");
 		await gitInit(root, {
 			remote: "git@github.com:davidpp/cabane.git",
@@ -193,18 +235,37 @@ describe("resolveScopeId", () => {
 			"github.com/davidpp/cabane",
 		);
 
-		git(root, [
-			"remote",
-			"set-url",
-			"origin",
-			"git@github.com:davidpp/kabane.git",
-		]);
+		git(root, ["remote", "remove", "origin"]);
+		writeFileSync(join(root, "README.md"), "fixture\n");
+		git(root, ["add", "."]);
+		git(root, ["commit", "-qm", "init"]);
+
 		expect(await resolveScopeId(root, { home })).toBe(
 			"github.com/davidpp/cabane",
 		);
-		const moved = join(workspace, "moved");
-		renameSync(root, moved);
-		expect(await resolveScopeId(moved, { home })).toBe(
+		const firstCommit = git(root, ["rev-parse", "HEAD"]).trim();
+		expect(entry()).toEqual({
+			scopeId: "github.com/davidpp/cabane",
+			firstCommit,
+		});
+	});
+
+	it("resolves afresh for another repo cloned at the same path", async () => {
+		const root = dir("repo");
+		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/cabane",
+		);
+
+		// Other content, or the fixture's commit could hash the same within a second.
+		rmSync(root, { recursive: true, force: true });
+		mkdirSync(root);
+		await gitInit(root, { remote: RENAMED, commit: false });
+		writeFileSync(join(root, "OTHER.md"), "another repo\n");
+		git(root, ["add", "."]);
+		git(root, ["commit", "-qm", "another"]);
+
+		expect(await resolveScopeId(root, { home })).toBe(
 			"github.com/davidpp/kabane",
 		);
 	});
@@ -220,9 +281,7 @@ describe("resolveScopeId", () => {
 
 		expect(new Set(ids)).toEqual(new Set(["github.com/davidpp/cabane"]));
 		expect(stored()).toHaveLength(1);
-		expect(
-			await readFile(join(home, DetectedScopes.DIR, stored()[0] ?? ""), "utf8"),
-		).toBe("github.com/davidpp/cabane\n");
+		expect(entry()).toMatchObject({ scopeId: "github.com/davidpp/cabane" });
 	});
 
 	it("falls back to the first commit when there is no remote", async () => {
