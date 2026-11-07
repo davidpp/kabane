@@ -50,9 +50,19 @@ export namespace Checklists {
 	export const open = (items: readonly Item[]): Item[] =>
 		items.filter((item) => !item.done);
 
-	/** The items ticked after `since`, an ISO time, in list order. */
-	export const tickedSince = (items: readonly Item[], since: string): Item[] =>
-		items.filter((item) => item.doneAt !== undefined && item.doneAt > since);
+	/**
+	 * The ticked items, in list order, that a checkpoint has not named yet: those not `seen` by the
+	 * last one, which recorded what it read; else, with no such record, those ticked after `at`.
+	 */
+	export const tickedSince = (
+		items: readonly Item[],
+		since: { seen: readonly string[] } | { at: string },
+	): Item[] =>
+		items.filter((item) =>
+			"seen" in since
+				? item.done && !since.seen.includes(item.id)
+				: item.doneAt !== undefined && item.doneAt > since.at,
+		);
 
 	/**
 	 * Refuse an issue closed as done with items still open by `harness`'s own session: put it back

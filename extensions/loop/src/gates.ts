@@ -34,6 +34,12 @@ export namespace Gates {
 		tree: z.string(),
 		/** The checkpoint committed for a green pass, in a run with a worktree. */
 		checkpoint: z.string().optional(),
+		/**
+		 * With a checkpoint: the ids of its task's checklist items ticked as the checkpoint read them.
+		 * The task's next checkpoint names the ticked items not among them. Absent on a pass recorded
+		 * before it was kept.
+		 */
+		ticked: z.array(z.string()).optional(),
 	});
 	export type Run = z.infer<typeof RunSchema>;
 

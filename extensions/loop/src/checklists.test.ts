@@ -439,13 +439,13 @@ describe("A single-issue run resumed after its runner died mid-checklist", () =>
 });
 
 describe("A checkpoint on a task with a checklist", () => {
-	it("names only the items ticked since the task's last checkpoint", async () => {
-		const issue = await issueWithSteps();
-		const id = label(issue);
-		const run = await runOn(issue, { startedAt: new Date().toISOString() });
-		const log = RunStore.eventLog(home, run.id);
+	// A runner's context on `run` as run.json holds it, as a runner that resumes it reads it.
+	const ctxOf = (runId: string): RunState.Ctx => {
+		const run = RunStore.readRaw(home, runId);
+		if (!run.ok) throw run.error;
+		const log = RunStore.eventLog(home, runId);
 		if (!log.ok) throw log.error;
-		const ctx = RunState.make(
+		return RunState.make(
 			{
 				home,
 				basePath: home,
@@ -453,27 +453,65 @@ describe("A checkpoint on a task with a checklist", () => {
 				pid: process.pid,
 				git,
 			},
-			run,
+			run.value,
 			log.value,
 		);
-		const worktree = run.worktree ?? "";
-		const subject = { taskId: issue.id, label: id, title: "stepwise" };
-		// One item ticked and its work written, then a pass; then the next, and another.
-		const pass = async (n: number) => {
-			const ticked = await Checklist.tick(home, { items: [`${id}.${n}`] });
-			if (!ticked.ok) throw ticked.error;
-			writeFileSync(join(worktree, "work.txt"), `${id}.${n}\n`);
-			const checked = await Checks.gate(ctx, subject);
-			return GitFixture.run(worktree, [
-				"show",
-				"-s",
-				"--format=%B",
-				checked.checkpoint ?? "",
-			]);
-		};
+	};
 
-		expect(await pass(1)).toContain(`Ticked:\n- ${id}.1 Parse the input\n\n`);
-		expect(await pass(2)).toContain(`Ticked:\n- ${id}.2 Validate it\n\n`);
+	// Tick item `n` of `issue`, write its work, then run a pass: the checkpoint's message.
+	const pass = async (ctx: RunState.Ctx, issue: Task, n: number) => {
+		const id = label(issue);
+		const ticked = await Checklist.tick(home, { items: [`${id}.${n}`] });
+		if (!ticked.ok) throw ticked.error;
+		const worktree = ctx.run.worktree ?? "";
+		writeFileSync(join(worktree, "work.txt"), `${id}.${n}\n`);
+		const checked = await Checks.gate(ctx, {
+			taskId: issue.id,
+			label: id,
+			title: "stepwise",
+		});
+		return GitFixture.run(worktree, [
+			"show",
+			"-s",
+			"--format=%B",
+			checked.checkpoint ?? "",
+		]);
+	};
+
+	it("names only the items ticked since the task's last checkpoint", async () => {
+		const issue = await issueWithSteps();
+		const id = label(issue);
+		await runOn(issue, { startedAt: new Date().toISOString() });
+		const ctx = ctxOf("run-1");
+
+		expect(await pass(ctx, issue, 1)).toContain(
+			`Ticked:\n- ${id}.1 Parse the input\n\n`,
+		);
+		expect(await pass(ctx, issue, 2)).toContain(
+			`Ticked:\n- ${id}.2 Validate it\n\n`,
+		);
+	});
+
+	it("names an item ticked after the last checkpoint read the checklist, even before that pass was recorded, after a resume too", async () => {
+		const issue = await issueWithSteps();
+		const id = label(issue);
+		await runOn(issue, { startedAt: new Date().toISOString() });
+		const first = ctxOf("run-1");
+		await pass(first, issue, 1);
+		expect(first.run.gateRuns.map((r) => r.ticked)).toEqual([
+			(await items(issue)).filter((i) => i.done).map((i) => i.id),
+		]);
+		// The next item's tick lands before the first pass's record is stamped: an hour later here.
+		const stamped = new Date(Date.now() + 3_600_000).toISOString();
+		const written = RunStore.write(home, {
+			...first.run,
+			gateRuns: first.run.gateRuns.map((r) => ({ ...r, at: stamped })),
+		});
+		if (!written.ok) throw written.error;
+
+		expect(await pass(ctxOf("run-1"), issue, 2)).toContain(
+			`Ticked:\n- ${id}.2 Validate it\n\n`,
+		);
 	});
 });
 
