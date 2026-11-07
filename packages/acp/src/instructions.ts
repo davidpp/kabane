@@ -130,9 +130,9 @@ The same skill runs in any coding session that has the kabane MCP. When the huma
 		},
 		{
 			name: "split",
-			hint: "propose and create subtasks",
+			hint: "steps to a checklist, deliverables to subtasks",
 			template:
-				"Split the selected issue: read the code it concerns, propose subtasks that each name the files they touch and how to verify them, then create them under it and link the ones that depend on each other with blocks.",
+				"Split the selected issue: read the code it concerns, then put the steps of one change on its checklist with kabane_checklistAdd, and create each separate deliverable as a subtask under it that names the files it owns and how to verify it, linking the subtasks that depend on each other with blocks. An item has no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask.",
 		},
 		{
 			name: "duplicates",

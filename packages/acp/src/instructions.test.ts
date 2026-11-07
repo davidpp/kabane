@@ -17,6 +17,10 @@ const SKILL_FILES = [
 	"references/specialists.md",
 ];
 
+// Word for word what @cabane/checklist's MCP instructions say, which its tools test pins.
+const ITEM_OR_SUBTASK =
+	"An item has no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask.";
+
 const SETUP = { configPath: "/sandbox/home/config.json", extensions: ["loop"] };
 const BIN = "/sandbox/checkout/packages/cli/index.ts";
 
@@ -113,6 +117,17 @@ describe("CopilotInstructions reading the project", () => {
 			expect(shortcut?.template).toContain("files");
 			expect(shortcut?.template).toContain("verify");
 		}
+	});
+
+	it("/split puts steps on a checklist and deliverables in subtasks, under the checklist module's rule", () => {
+		const split = CopilotInstructions.SHORTCUTS.find((s) => s.name === "split");
+		expect(split?.template).toContain(
+			"put the steps of one change on its checklist with kabane_checklistAdd",
+		);
+		expect(split?.template).toContain(
+			"create each separate deliverable as a subtask under it",
+		);
+		expect(split?.template).toContain(ITEM_OR_SUBTASK);
 	});
 });
 

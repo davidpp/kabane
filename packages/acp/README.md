@@ -56,7 +56,9 @@ imports the SDK.
   Rules); `toElicitationRequest` is the form-to-fields mapping it applies.
 - `CopilotInstructions` — the instruction block, the `/` shortcut templates, and
   `actorUri(harness)`, the `cabane://actor/agent/<harness>` every write of a session is
-  stamped with. `DISPATCH_TEMPLATE` is the absolute path of `templates/dispatch/`, the generic
+  stamped with. `/split` puts the steps of one change on the issue's checklist and makes each
+  separate deliverable a subtask, under the rule the checklist module also states: an item has
+  no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask. `DISPATCH_TEMPLATE` is the absolute path of `templates/dispatch/`, the generic
   dispatch skill `/setup-dispatch` fills from a project's own instructions and writes under its
   `.claude/skills/dispatch/`. `PLACEHOLDERS.md` there says what fills each `{{NAME}}` and is
   never copied. `GRILL_TEMPLATE` is `templates/grill/`, the skill the copilot follows to walk the
