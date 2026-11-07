@@ -52,8 +52,10 @@ Not goals:
 - **A team tracker.** A team can adopt and extend it; the core grows no assignee pickers,
   sprints or permissions. The team's own tracker stays the team record.
 - **A replacement for the tools around it.** Agent harnesses, runtimes, multiplexers and
-  team trackers come and go. Kabane composes with them through open interfaces, tells them
-  its own state, and depends on none of them, so it outlives each one.
+  team trackers come and go. Where one already does a job well and people use it, kabane
+  works with it instead of competing with it, and what kabane grows extends the tools people
+  already chose. It composes with them through open interfaces, tells them its own state, and
+  depends on none of them, so it outlives each one.
 - **The factory line.** No velocity, throughput or "done today" counts.
 
 **Still being refined (since 2026-11-07).** These are a working draft for the next few weeks,
