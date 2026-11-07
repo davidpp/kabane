@@ -134,20 +134,23 @@ export namespace LoopHeader {
 		];
 	};
 
+	// Where the lenses stand, in their review or their recheck.
+	const lensGlyph = (status: Lenses.Status): Part =>
+		status.failed.length > 0
+			? { text: "✗ ", tone: "failed" }
+			: status.running.length > 0
+				? { text: "● ", tone: "working" }
+				: Lenses.finished(status)
+					? { text: "✓ ", tone: "done" }
+					: { text: "○ ", tone: "muted" };
+
 	// The lenses' step, and the debrief's count of what they filed: findings, and how many are
 	// still open.
 	const lensStep = (run: RunStore.Run, plan: LoopPlan.Plan | null): Part[] => {
 		const { lenses } = run.config;
 		if (lenses.length === 0) return [];
 		const status = Lenses.status(lenses, run.claims);
-		const glyph: Part =
-			status.failed.length > 0
-				? { text: "✗ ", tone: "failed" }
-				: status.running.length > 0
-					? { text: "● ", tone: "working" }
-					: Lenses.finished(status)
-						? { text: "✓ ", tone: "done" }
-						: { text: "○ ", tone: "muted" };
+		const glyph = lensGlyph(status);
 		const found = plan ? LoopPlan.findings(plan) : undefined;
 		return [
 			{ text: "  ›  ", tone: "faint" },
@@ -196,17 +199,38 @@ export namespace LoopHeader {
 		];
 	};
 
+	// The lenses' recheck of the fixer's diff, once one has a session: how many have rechecked.
+	const recheckStep = (
+		run: RunStore.Run,
+		plan: LoopPlan.Plan | null,
+	): Part[] => {
+		if (!plan || !run.claims.some((claim) => claim.recheck !== undefined))
+			return [];
+		const status = Lenses.rechecks(run.config, run.claims, plan);
+		const glyph = lensGlyph(status);
+		const all = [
+			...status.pending,
+			...status.running,
+			...status.done,
+			...status.failed.map((f) => f.name),
+		];
+		return [
+			{ text: "  ›  ", tone: "faint" },
+			glyph,
+			{ text: "recheck", tone: "text", bold: status.running.length > 0 },
+			{ text: ` ${all.join("·")}`, tone: "muted" },
+		];
+	};
+
 	/**
 	 * The steps the run has, as a strip: implement, then its gates and its lenses when it has some,
-	 * then the fixer once it has started.
+	 * then the fixer once it has started, and the recheck of its diff once that has.
 	 */
 	export const steps = (
 		run: RunStore.Run,
 		plan: LoopPlan.Plan | null,
 	): Part[] => {
-		const implementing = run.claims.filter(
-			(claim) => claim.lens === undefined && claim.fixer !== true,
-		);
+		const implementing = run.claims.filter((claim) => !RunStore.reviews(claim));
 		const working = implementing.some((claim) => claim.endedAt === undefined);
 		const glyph =
 			run.status === "completed"
@@ -226,6 +250,7 @@ export namespace LoopHeader {
 			...gateStep(run),
 			...lensStep(run, plan),
 			...fixerStep(run, plan),
+			...recheckStep(run, plan),
 		];
 	};
 

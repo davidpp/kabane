@@ -245,3 +245,47 @@ describe("Brief on a decision that is the human's", () => {
 		);
 	});
 });
+
+describe("Brief.recheck", () => {
+	const recheck = (diff: string) =>
+		Brief.recheck(
+			{
+				runId: "r1",
+				parent: task("P-1", "parent"),
+				lens: "functional",
+				prompt: "# Functional lens\n",
+				findings: [
+					{ ...task("P-7", "empty input crashes"), tags: ["finding", "p1"] },
+				],
+				base: "abc123",
+				diff,
+				gates: ["test"],
+			},
+			"ASSEMBLED",
+		).split("\n\n---\n\n");
+
+	it("hands the lens its closed findings, the fixer's diff, its prompt and the parent's brief, to report on", () => {
+		const [instructions, diff, prompt, assembled, ...rest] = recheck(
+			"diff --git a/x b/x\n+fixed\n",
+		);
+		expect(rest).toEqual([]);
+		expect(instructions).toContain("- P-7 · p1 · ");
+		expect(instructions).toContain("Do not change files");
+		expect(instructions).toContain('kabane_edit (state "next")');
+		expect(instructions).toContain("Its gates (`test`) pass");
+		expect(diff).toContain("`git diff abc123`");
+		expect(diff).toContain("```diff\ndiff --git a/x b/x\n+fixed\n```");
+		expect(prompt).toBe("# Functional lens");
+		expect(assembled).toBe("ASSEMBLED");
+	});
+
+	it("fences a diff that holds fences of its own, cuts a long one, and says when it is empty", () => {
+		const [, fenced] = recheck("+```ts\n+code\n+```\n");
+		expect(fenced).toContain("````diff\n+```ts");
+		const [, cut] = recheck(`+${"x".repeat(70_000)}\n`);
+		expect(cut).toContain("The diff is cut at 60000 characters");
+		expect(cut?.length).toBeLessThan(61_000);
+		const [, empty] = recheck("");
+		expect(empty).toContain("shows no change");
+	});
+});

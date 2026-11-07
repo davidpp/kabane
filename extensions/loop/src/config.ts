@@ -132,6 +132,19 @@ export namespace LoopConfig {
 			.describe(
 				"Verifier lenses run once the gates are green: functional, quality, or the repo's .kabane/loop/lenses/<name>.md.",
 			),
+		/**
+		 * Once the fixer has ended and the gates are green on its result, each lens with a finding
+		 * the fixer closed reviews the fixer's diff once, on the verifier, and edits nothing: it
+		 * confirms each fix or reopens the finding, and files only what the diff broke. No second
+		 * fixer follows; what it reopens or files is left for a human. Off: the fixer's word and the
+		 * gates close a finding.
+		 */
+		recheck: z
+			.boolean()
+			.default(true)
+			.describe(
+				"Once the fixer has ended and the gates pass, each lens whose findings it closed reviews its diff once, without editing, and reopens what is not fixed; defaults to true.",
+			),
 		/** The harness every lens runs on; absent, the implementer. */
 		verifier: z
 			.enum(Harnesses.IDS)

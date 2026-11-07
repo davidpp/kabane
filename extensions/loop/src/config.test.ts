@@ -41,6 +41,7 @@ describe("LoopConfig.SettingsSchema", () => {
 			gates: {},
 			worktree: true,
 			lenses: [],
+			recheck: true,
 			land: "none",
 		});
 	});

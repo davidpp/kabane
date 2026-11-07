@@ -72,6 +72,7 @@ export namespace LoopSettings {
 		},
 		// Unset, the lenses run on the implementer's harness.
 		verifier: { label: "verifier", group: "Agents", none: "implementer" },
+		recheck: { label: "recheck the fixes", group: "Checks" },
 		worktree: { label: "own git worktree", group: "Workspace" },
 		land: { label: "land the branch", group: "Workspace" },
 	};
@@ -225,12 +226,12 @@ export namespace LoopSettings {
 		config: LoopConfig.Config,
 		lenses: readonly string[] = [],
 	): Record<string, TriggerInput> => {
-		const entries: [string, TriggerInput][] = [];
+		// The lens toggles first: in their group, the recheck of what the lenses found follows them.
+		const entries: [string, TriggerInput][] = lensInputs(config, lenses);
 		for (const field of FIELDS) {
 			const input = inputOf(field, config);
 			if (input) entries.push([nameOf(field), input]);
 		}
-		entries.push(...lensInputs(config, lenses));
 		// A stable sort: within a group, the schema's order.
 		entries.sort(([, a], [, b]) => groupRank(a) - groupRank(b));
 		return Object.fromEntries(entries);

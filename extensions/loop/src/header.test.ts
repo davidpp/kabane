@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { Task } from "@cabane/core";
 import { LoopConfig } from "./config";
 import { LoopHeader } from "./header";
 import type { RunStore } from "./store";
@@ -162,5 +163,45 @@ describe("LoopHeader.steps", () => {
 				]),
 			),
 		).toBe("● implement ×2 sessions  ›  ✗ gates test red · 1 checkpoint");
+	});
+
+	it("counts the lenses' sessions apart from the work, and shows a recheck once one runs", () => {
+		const config = LoopConfig.Schema.safeParse({ lenses: ["functional"] });
+		if (!config.success) throw config.error;
+		const onParent = (extra: Partial<RunStore.Claim>): RunStore.Claim => ({
+			taskId: "01PARENT",
+			shortId: "KAB-1",
+			harness: "claude",
+			lane: "review",
+			sessionId: `s-${JSON.stringify(extra)}`,
+			startedAt: "2026-10-10T12:20:00.000Z",
+			endedAt: "2026-10-10T12:21:00.000Z",
+			outcome: "done",
+			continuations: 0,
+			...extra,
+		});
+		const base = run({ status: "running", config: config.data });
+		const rechecking = run({
+			config: config.data,
+			claims: [
+				...base.claims.map((c) => ({ ...c, endedAt: c.startedAt })),
+				onParent({ lens: "functional" }),
+				onParent({ fixer: true, head: "abc123", findings: [] }),
+				onParent({
+					recheck: "functional",
+					endedAt: undefined,
+					outcome: undefined,
+				}),
+			],
+		});
+		const parent = { id: "01PARENT", shortId: "KAB-1" } as Task;
+		const plan = { parent, nodes: [], outside: new Map() };
+		expect(
+			LoopHeader.steps(rechecking, plan)
+				.map((part) => part.text)
+				.join(""),
+		).toBe(
+			"○ implement ×2 sessions  ›  ✓ lenses functional  ›  ✓ fixer 0/0 closed  ›  ● recheck functional",
+		);
 	});
 });

@@ -51,8 +51,8 @@ export namespace RunStore {
 	] as const;
 
 	/**
-	 * One subtask claimed by one session, or one lens or the fixer run on the parent. A subtask
-	 * claimed twice has two claims.
+	 * One subtask claimed by one session, or one lens, the fixer or a lens's recheck run on the
+	 * parent. A subtask claimed twice has two claims.
 	 */
 	export const ClaimSchema = z.object({
 		taskId: z.string(),
@@ -73,6 +73,12 @@ export namespace RunStore {
 		lens: z.string().optional(),
 		/** The fixer session after the lenses, on the parent; absent for any other. */
 		fixer: z.literal(true).optional(),
+		/** The fixer's: the commit HEAD was at when it started, which its recheck diffs against. */
+		head: z.string().optional(),
+		/** The fixer's: the findings it was given, by id, so a recheck knows which it closed. */
+		findings: z.array(z.string()).optional(),
+		/** The lens whose recheck of the fixer's diff this session ran, on the parent. */
+		recheck: z.string().optional(),
 	});
 	export type Claim = z.infer<typeof ClaimSchema>;
 
@@ -177,9 +183,11 @@ export namespace RunStore {
 	): string | undefined =>
 		externalRef?.startsWith("loop:") ? externalRef.slice(5) : undefined;
 
-	/** A lens or the fixer: a session that holds the parent without taking it. */
+	/** A lens, the fixer or a recheck: a session that holds the parent without taking it. */
 	export const reviews = (claim: Claim): boolean =>
-		claim.lens !== undefined || claim.fixer === true;
+		claim.lens !== undefined ||
+		claim.fixer === true ||
+		claim.recheck !== undefined;
 
 	/** The claims that took the run's target itself, as the work of a single-issue run. */
 	export const onTarget = (run: Run): Claim[] =>

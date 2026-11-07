@@ -1,8 +1,8 @@
 // One claim, driven over ACP: spawn the harness in the run's repository with `kabane mcp` as its
 // tool server, open it with its assembled brief, and run turns until it is over. An implementing
 // claim is over when its subtask is closed or yielded, active work exhausts its nudges,
-// or the run cancels it; a lens is over when its review turn ends; the fixer is over when none of
-// its findings is still waiting on it, or its nudges run out. Every update goes out through
+// or the run cancels it; a lens, and a lens's recheck, is over when its review turn ends; the fixer
+// is over when none of its findings is still waiting on it, or its nudges run out. Every update goes out through
 // `hooks.event` tagged with the claim's lane and core session.
 //
 // The core session itself is opened and closed by the runner, which owns the claim; this module
@@ -45,14 +45,24 @@ export namespace Dispatch {
 
 	/**
 	 * What the session is for: implementing its subtask (with the gate that failed after the
-	 * subtask's last session, for its brief), reviewing the parent through a lens, or fixing the
-	 * findings the lenses filed, in the order given.
+	 * subtask's last session, for its brief), reviewing the parent through a lens, fixing the
+	 * findings the lenses filed, in the order given, or rechecking through a lens the fixer's diff
+	 * against the findings of the lens's that it closed.
 	 */
 	export type Work =
 		// `gates`: the run's gate names, so the brief says what has checked the work and what has not.
 		| { kind: "implement"; gates: readonly string[]; retry?: Gates.Result }
 		| { kind: "lens"; name: string; prompt: string; gates: readonly string[] }
-		| { kind: "fix"; findings: readonly Task[]; gates: readonly string[] };
+		| { kind: "fix"; findings: readonly Task[]; gates: readonly string[] }
+		| {
+				kind: "recheck";
+				name: string;
+				prompt: string;
+				findings: readonly Task[];
+				base: string;
+				diff: string;
+				gates: readonly string[];
+		  };
 
 	type Claim = {
 		parent: Task;
@@ -486,18 +496,23 @@ export namespace Dispatch {
 		| { kind: "end"; outcome: Outcome["outcome"]; detail: string }
 		| { kind: "prompt"; prompt: string };
 
-	// A lens has one turn: its review. Its findings are in the tracker, not in what it said.
-	const reviewed = (name: string, reason: string): Next =>
+	// A lens has one turn: its review, or its recheck. What it found is in the tracker, not in what
+	// it said.
+	const reviewed = (
+		name: string,
+		reason: string,
+		review: "review" | "recheck",
+	): Next =>
 		reason === "end_turn"
 			? {
 					kind: "end",
 					outcome: "done",
-					detail: `the ${name} lens finished its review`,
+					detail: `the ${name} lens finished its ${review}`,
 				}
 			: {
 					kind: "end",
 					outcome: "incomplete",
-					detail: `the ${name} lens's turn ended (${reason})`,
+					detail: `the ${name} lens's ${review} turn ended (${reason})`,
 				};
 
 	// Only still-active, owned work can receive an automatic nudge. Tracker parking and
@@ -600,7 +615,9 @@ export namespace Dispatch {
 		const { work } = claim;
 		switch (work.kind) {
 			case "lens":
-				return reviewed(work.name, reason);
+				return reviewed(work.name, reason, "review");
+			case "recheck":
+				return reviewed(work.name, reason, "recheck");
 			case "fix":
 				return fixed(
 					{ harness: claim.harness, findings: work.findings },
@@ -652,6 +669,21 @@ export namespace Dispatch {
 						assembled.value,
 					),
 				);
+			case "recheck":
+				return ok(
+					Brief.recheck(
+						{
+							...subject,
+							lens: work.name,
+							prompt: work.prompt,
+							findings: work.findings,
+							base: work.base,
+							diff: work.diff,
+							gates: work.gates,
+						},
+						assembled.value,
+					),
+				);
 			case "implement":
 				return ok(
 					Brief.opening(
@@ -672,6 +704,8 @@ export namespace Dispatch {
 				return `${harness} reviews ${label(task)} through the ${work.name} lens`;
 			case "fix":
 				return `${harness} fixes ${work.findings.length} finding${work.findings.length === 1 ? "" : "s"} of ${label(task)}`;
+			case "recheck":
+				return `${harness} rechecks the fixer's diff on ${label(task)} through the ${work.name} lens`;
 			case "implement":
 				return `${harness} on ${label(task)}`;
 		}

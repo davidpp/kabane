@@ -49,6 +49,7 @@ const CONFIG: LoopConfig.Config = {
 	gates: {},
 	worktree: false,
 	lenses: [],
+	recheck: true,
 	land: "none",
 };
 
@@ -785,6 +786,7 @@ describe("Loop.stop", () => {
 				gates: {},
 				worktree: false,
 				lenses: [],
+				recheck: true,
 				land: "none",
 			},
 			status: "running",
