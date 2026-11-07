@@ -8,14 +8,16 @@ CLI and the hub register it; a host that does not has no decisions, which is not
 ## MCP tools
 
 - `kabane_ask` files 1–10 questions on an issue: the question, its `choices`, the `recommended`
-  one and `why`. With choices, only a choice is accepted unless `allowFreeform` is true;
+  one (its full text or its label) and `why`. With choices, only a choice is accepted unless `allowFreeform` is true;
   `multiSelect` takes a comma list. The issue goes to `waiting` unless `waiting: false`. It
   returns one line per question: `JCAB-12:1 id:<ULID>`.
 - `kabane_questions` reads them grouped by issue, open ones by default (`status: "all"` adds
   answered and withdrawn), for one issue (`id`) or a scope, as a page of at most 16KiB with a
   `nextCursor` line when there is more.
 - `kabane_answer` answers one by handle or ULID, or withdraws it with `withdraw: true` and
-  `reasoning`. Choices match ignoring case. Answering the last open question moves a `waiting`
+  `reasoning`. A choice is named by its full text or by its label, the text before its first
+  `.`, `:` or `)` (`B` for "B. One tree", `yes` for "Yes: one pass"), ignoring case; a label two
+  choices share is refused with both listed. The full text is what is recorded. Answering the last open question moves a `waiting`
   issue to `next` in the same transaction. An agent recording a reply the human gave it (the
   grill, the copilot) sets `relayed: true`: the answer is credited to the human (`answered_by`)
   and the write to the agent (`updated_by`). It is refused when the connection knows no human:

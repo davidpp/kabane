@@ -10,7 +10,7 @@ export const questionTools: readonly ToolDef[] = [
 		name: "kabane_ask",
 		kind: "write",
 		description:
-			"File 1–10 human decisions on an issue (short id or ULID). Supply choices, a recommended choice label, and why. When choices are supplied, allowFreeform defaults to false; set it to true to accept other answers. waiting defaults to true and moves the issue to waiting. Returns one line per question in ULID order: its handle, then id:<ULID>.",
+			"File 1–10 human decisions on an issue (short id or ULID). Supply choices, the recommended choice (its full text or its label), and why. When choices are supplied, allowFreeform defaults to false; set it to true to accept other answers. waiting defaults to true and moves the issue to waiting. Returns one line per question in ULID order: its handle, then id:<ULID>.",
 		input: AskSchema.shape,
 		handler: async (args, ctx) => {
 			const rows = await Questions.ask(ctx.basePath, args, ctx.actor);
@@ -43,7 +43,7 @@ export const questionTools: readonly ToolDef[] = [
 		name: "kabane_answer",
 		kind: "write",
 		description:
-			"Answer a question by handle (JCAB-12:1) or ULID. Choices match ignoring case; multi-select uses a comma list; free text requires allowFreeform. Re-answering overwrites. Alternatively supply withdraw: true and reasoning, without answer. Set relayed: true only when recording a reply the human gave in this conversation: the answer is then credited to the human, and refused when this connection knows no human. Never set it for your own recommendation. Closing the last open question moves a waiting issue to next atomically; the result says whether it moved. A handle number can shift after sync brings in an earlier question from another device; pass the ULID from the question's id: when you need stability.",
+			'Answer a question by handle (JCAB-12:1) or ULID. A choice is named by its full text or by its label, the text before its first ., : or ) (B for "B. One tree"), ignoring case; the full text is recorded. Multi-select takes a comma list; free text requires allowFreeform. Re-answering overwrites. Alternatively supply withdraw: true and reasoning, without answer. Set relayed: true only when recording a reply the human gave in this conversation: the answer is then credited to the human, and refused when this connection knows no human. Never set it for your own recommendation. Closing the last open question moves a waiting issue to next atomically; the result says whether it moved. A handle number can shift after sync brings in an earlier question from another device; pass the ULID from the question\'s id: when you need stability.',
 		input: {
 			...AnswerSchema.innerType().shape,
 			relayed: z
