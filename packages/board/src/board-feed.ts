@@ -5,6 +5,7 @@ import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardActivity } from "./activity";
 import type { BoardStore } from "./board-store";
+import { BoardChecklist } from "./checklist";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
 import { BoardNav } from "./nav";
@@ -30,6 +31,28 @@ export type BoardFeed = {
 	retry: () => void;
 	// Reload with the filters `s` implies, merging the rows in.
 	reload: (s: BoardNav.BoardState) => Promise<void>;
+};
+
+// One read of what a load puts on the board: its rows, the host's activity, and the badges read
+// across the whole tracker (open decisions, checklist progress). A badge read that failed is
+// undefined, so the last-good badges stay, as a failed activity read keeps the last-good map.
+const loadFeed = async (
+	basePath: string,
+	filters: BoardData.BoardFilters,
+	activitySource: ActivitySource,
+) => {
+	const [rows, activity, counts, progress] = await Promise.all([
+		BoardData.loadBoard(basePath, filters),
+		BoardActivity.loadActivity(basePath, activitySource),
+		BoardData.openQuestionCounts(basePath),
+		BoardData.checklistProgress(basePath),
+	]);
+	return {
+		rows,
+		activity,
+		counts: counts.ok ? counts.value : undefined,
+		progress: progress.ok ? progress.value : undefined,
+	};
 };
 
 export const useBoardFeed = ({
@@ -82,11 +105,8 @@ export const useBoardFeed = ({
 	// When a query is active, re-fire the FTS search after the reload so tier-2 results stay merged.
 	const reload = useCallback(
 		async (s: BoardNav.BoardState): Promise<void> => {
-			const [result, act, counts] = await Promise.all([
-				BoardData.loadBoard(basePath, filtersFor(s)),
-				BoardActivity.loadActivity(basePath, activitySource),
-				BoardData.openQuestionCounts(basePath),
-			]);
+			const feed = await loadFeed(basePath, filtersFor(s), activitySource);
+			const result = feed.rows;
 			if (!result.ok) {
 				// Non-fatal: keep last-good state, surface as a transient notice.
 				setNotice({ text: result.error.message, tone: "error" });
@@ -94,10 +114,13 @@ export const useBoardFeed = ({
 			}
 			// Clear any previous poll-error notice on success.
 			setNotice((prev) => (prev?.tone === "error" ? null : prev));
-			// A failed count keeps the last-good badges, as the activity map does.
-			const fresh = counts.ok ? counts.value : undefined;
-			update((prev) => BoardNav.withSections(prev, result.value, fresh));
-			if (act.ok) setActivity(act.value);
+			update((prev) =>
+				BoardChecklist.withProgress(
+					BoardNav.withSections(prev, result.value, feed.counts),
+					feed.progress,
+				),
+			);
+			if (feed.activity.ok) setActivity(feed.activity.value);
 			const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
 			if (links.ok) setLinked(links.value);
 			if (BoardNav.activeQuery(s.search)) void fireFts(s);
@@ -124,14 +147,11 @@ export const useBoardFeed = ({
 			const filters: BoardData.BoardFilters = detected
 				? { scopeUri: detected.scopeUri }
 				: {};
-			const [result, act, counts] = await Promise.all([
-				BoardData.loadBoard(basePath, filters),
-				BoardActivity.loadActivity(basePath, activitySource),
-				BoardData.openQuestionCounts(basePath),
-			]);
+			const feed = await loadFeed(basePath, filters, activitySource);
+			const result = feed.rows;
 			if (cancelled) return;
 			setScope(detected);
-			if (act.ok) setActivity(act.value);
+			if (feed.activity.ok) setActivity(feed.activity.value);
 			if (result.ok) {
 				const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
 				if (!cancelled && links.ok) setLinked(links.value);
@@ -144,7 +164,12 @@ export const useBoardFeed = ({
 						actor: copilot?.actor ?? null,
 					},
 				);
-				set(counts.ok ? BoardDecisions.withCounts(first, counts.value) : first);
+				set(
+					BoardChecklist.withProgress(
+						BoardDecisions.withCounts(first, feed.counts),
+						feed.progress,
+					),
+				);
 			} else setError(result.error.message);
 		})();
 		return () => {

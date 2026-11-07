@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
+import { Checklist } from "@cabane/checklist";
 import { Planner, ScopeUri, type Task, type TaskDraft } from "@cabane/core";
 import { BoardData } from "./data";
 import { dropDb, freshDb } from "./test-db";
@@ -477,6 +478,72 @@ describe("BoardData", () => {
 			const records = await BoardData.taskDetail(TEST_BASE, id);
 			if (!records.ok) throw records.error;
 			expect(BoardData.recordsStamp(records.value)).toBe(await stampNow(id));
+		});
+	});
+
+	describe("checklists", () => {
+		const withItems = async (items: string[]): Promise<string> => {
+			const added = await Planner.addTask(TEST_BASE, draft());
+			if (!added.ok) throw added.error;
+			const listed = await Checklist.add(TEST_BASE, {
+				id: added.value.id,
+				items,
+			});
+			if (!listed.ok) throw listed.error;
+			return added.value.id;
+		};
+
+		it("counts done and total items per task in one read, for the cards", async () => {
+			const id = await withItems(["Read", "Write", "Drop"]);
+			const bare = await Planner.addTask(TEST_BASE, draft());
+			if (!bare.ok) throw bare.error;
+			const detail = await BoardData.taskDetail(TEST_BASE, id);
+			if (!detail.ok) throw detail.error;
+			const [first] = detail.value.checklist;
+			if (!first) throw new Error("no items");
+			const ticked = await BoardData.tickItem(TEST_BASE, first.id, true);
+			expect(ticked.ok && ticked.value.progress).toEqual({ done: 1, total: 3 });
+			const progress = await BoardData.checklistProgress(TEST_BASE);
+			if (!progress.ok) throw progress.error;
+			expect(progress.value.get(id)).toEqual({ done: 1, total: 3 });
+			expect(progress.value.has(bare.value.id)).toBe(false);
+		});
+
+		it("lists a task's items in order on its detail", async () => {
+			const id = await withItems(["Read", "Write"]);
+			const detail = await BoardData.taskDetail(TEST_BASE, id);
+			if (!detail.ok) throw detail.error;
+			expect(
+				detail.value.checklist.map((item) => [item.text, item.done]),
+			).toEqual([
+				["Read", false],
+				["Write", false],
+			]);
+		});
+
+		// A tick leaves the task row alone, so the open detail view learns of one made in a shell
+		// only through its stamp.
+		it("moves the detail stamp for a tick made outside the board, and the records agree with it", async () => {
+			const id = await withItems(["Read", "Write"]);
+			const before = await BoardData.detailStamp(TEST_BASE, id);
+			if (!before.ok) throw before.error;
+			const task = await Planner.getTask(TEST_BASE, id);
+			if (!task.ok || !task.value) throw new Error("no task");
+			await Bun.sleep(5);
+			const ticked = await Checklist.tick(TEST_BASE, {
+				items: [`${task.value.shortId ?? id}.2`],
+			});
+			if (!ticked.ok) throw ticked.error;
+			const after = await BoardData.detailStamp(TEST_BASE, id);
+			if (!after.ok) throw after.error;
+			expect(after.value).not.toBe(before.value);
+			const unchanged = await Planner.getTask(TEST_BASE, id);
+			expect(unchanged.ok && unchanged.value?.updatedAt).toBe(
+				task.value.updatedAt,
+			);
+			const records = await BoardData.taskDetail(TEST_BASE, id);
+			if (!records.ok) throw records.error;
+			expect(BoardData.recordsStamp(records.value)).toBe(after.value);
 		});
 	});
 

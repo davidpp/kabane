@@ -18,6 +18,7 @@ import {
 } from "./board";
 import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
+import { BoardDecisions } from "./decisions";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import {
@@ -459,6 +460,68 @@ test("Board keeps a badged row on a single line at a narrow (60-col) width", asy
 		expect(frame).toContain("…");
 		const widest = Math.max(...frame.split("\n").map((line) => line.length));
 		expect(widest).toBeLessThanOrEqual(60);
+	} finally {
+		destroy();
+	}
+});
+
+test("Board counts a row's checklist beside its decisions, in the done hue once every item is ticked", async () => {
+	const sections = [
+		section("next", [
+			{
+				task: task({
+					id: "a",
+					shortId: "JREP-1",
+					title: "A long title that the badges cut short at forty",
+				}),
+				children: [],
+			},
+			{
+				task: task({ id: "b", shortId: "JREP-2", title: "Done" }),
+				children: [],
+			},
+			{
+				task: task({ id: "c", shortId: "JREP-3", title: "None" }),
+				children: [],
+			},
+		]),
+	];
+	const { renderOnce, captureCharFrame, captureSpans, destroy } =
+		await renderTest(
+			<Board
+				sections={sections}
+				expanded={new Set()}
+				selectedId={null}
+				decisions={{ ...BoardDecisions.NONE, counts: new Map([["a", 2]]) }}
+				progress={
+					new Map([
+						["a", { done: 2, total: 5 }],
+						["b", { done: 3, total: 3 }],
+					])
+				}
+			/>,
+			{ width: 40, height: 20 },
+		);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("3/3"),
+		);
+		const row = (id: string) =>
+			frame.split("\n").find((line) => line.includes(id)) ?? "";
+		expect(row("JREP-1").trimEnd().endsWith("· 2/5 · ?2")).toBe(true);
+		expect(row("JREP-1")).toContain("…");
+		expect(row("JREP-2")).toContain("· 3/3");
+		expect(row("JREP-3")).not.toContain("/");
+		for (const line of frame.split("\n"))
+			expect(line.trimEnd().length).toBeLessThanOrEqual(40);
+		const spans = captureSpans().lines.flatMap((line) => line.spans);
+		const hue = (text: string) =>
+			spans
+				.find((s) => s.text === text)
+				?.fg.toInts()
+				.slice(0, 3);
+		expect(hue(" · 3/3")).toEqual([0x22, 0xc5, 0x5e]);
+		expect(hue(" · 2/5")).not.toEqual([0x22, 0xc5, 0x5e]);
 	} finally {
 		destroy();
 	}

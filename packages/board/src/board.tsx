@@ -4,6 +4,7 @@
 // expanded parent. Pure rendering — it takes sections + selection + expansion and draws them; data
 // loading, selection, and expansion state live in App / BoardNav.
 
+import type { ChecklistProgress } from "@cabane/checklist";
 import {
 	TASK_PRIORITY_DISPLAY,
 	TASK_STATE_DISPLAY,
@@ -18,6 +19,7 @@ import {
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode, RefObject } from "react";
 import { BoardActivity } from "./activity";
+import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
@@ -270,6 +272,7 @@ const rowLabels = (
 		activity,
 		parentShortId,
 		decisions,
+		progress,
 	}: {
 		marked: boolean;
 		linked: boolean;
@@ -278,6 +281,7 @@ const rowLabels = (
 		activity?: BoardActivity.ActivityMap;
 		parentShortId?: string;
 		decisions: number;
+		progress?: ChecklistProgress;
 	},
 ) => {
 	const task = row.task;
@@ -297,9 +301,59 @@ const rowLabels = (
 		// Row badges echo the header strip, which animates the same cards.
 		badge: cards[0] ? cardBadge(cards[0], RUNNING_ECHO) : null,
 		more: moreBadge(cards.length - 1, RUNNING_ECHO),
+		checklist: BoardChecklist.badge(progress),
+		// Every item ticked reads as done, `3/3` in the done hue; short of that the count is chrome.
+		complete: progress !== undefined && progress.done === progress.total,
 		input: activity?.questionsByTaskId.has(task.id) ? " · ? input" : "",
 		decisions: decisionBadge(decisions),
 	};
+};
+
+type RowLabels = ReturnType<typeof rowLabels>;
+
+// Everything on the row but its title, which counts against the title so a badged row never wraps.
+const labelWidth = (labels: RowLabels): number =>
+	[
+		labels.caret,
+		labels.shortId,
+		ID_GAP,
+		labels.mark,
+		labels.link,
+		labels.ai,
+		labels.meta,
+		labels.review,
+		labels.badge?.text ?? "",
+		labels.more,
+		labels.checklist,
+		labels.input,
+		labels.decisions,
+	].join("").length;
+
+// The badges after a row's meta, each in its hue: what waits on the human in the accent, work in
+// flight in the working hue, a complete checklist in the done hue and a partial one as chrome.
+const RowBadges = ({
+	labels,
+	metaFg,
+}: {
+	labels: RowLabels;
+	metaFg: string;
+}): ReactNode => {
+	const theme = useTheme();
+	const { review, badge, more, checklist, complete, input, decisions } = labels;
+	return (
+		<>
+			{review ? <span fg={theme.accent}>{review}</span> : null}
+			{badge ? (
+				<span fg={badge.muted ? theme.muted : theme.working}>{badge.text}</span>
+			) : null}
+			{more ? <span fg={theme.working}>{more}</span> : null}
+			{checklist ? (
+				<span fg={complete ? theme.done : metaFg}>{checklist}</span>
+			) : null}
+			{input ? <span fg={theme.accent}>{input}</span> : null}
+			{decisions ? <span fg={theme.accent}>{decisions}</span> : null}
+		</>
+	);
 };
 
 const Row = ({
@@ -316,10 +370,13 @@ const Row = ({
 	onToggle,
 	parentShortId,
 	decisions,
+	progress,
 }: {
 	row: BoardNav.VisibleRow;
 	// Open decisions on this task.
 	decisions: number;
+	// Its checklist's done and total items, absent when it has none.
+	progress?: ChecklistProgress;
 	marked: boolean;
 	// The gutter columns every visible row holds this frame (heldColumns).
 	columns: { mark: boolean; link: boolean };
@@ -344,19 +401,7 @@ const Row = ({
 		theme,
 		touched,
 	);
-	const {
-		caret,
-		shortId,
-		mark,
-		link,
-		ai,
-		meta,
-		review,
-		badge,
-		more,
-		input,
-		decisions: asked,
-	} = rowLabels(row, {
+	const labels = rowLabels(row, {
 		marked,
 		linked,
 		touched,
@@ -364,25 +409,12 @@ const Row = ({
 		activity,
 		parentShortId,
 		decisions,
+		progress,
 	});
-	// Everything else on the row counts against the title, so a badged row still never wraps.
-	const fixed = [
-		caret,
-		shortId,
-		ID_GAP,
-		mark,
-		link,
-		ai,
-		meta,
-		review,
-		badge?.text ?? "",
-		more,
-		input,
-		asked,
-	].join("").length;
+	const { caret, shortId, mark, link, ai, meta } = labels;
 	const title = truncate(
 		task.title,
-		Math.max(MIN_TITLE_WIDTH, available - fixed),
+		Math.max(MIN_TITLE_WIDTH, available - labelWidth(labels)),
 	);
 
 	// Caret click toggles expansion without also selecting/opening — stopPropagation keeps the row box's
@@ -418,15 +450,7 @@ const Row = ({
 				{ai ? <span fg={style.titleFg}>{ai}</span> : null}
 				{title}
 				<span fg={style.metaFg}>{meta}</span>
-				{review ? <span fg={theme.accent}>{review}</span> : null}
-				{badge ? (
-					<span fg={badge.muted ? theme.muted : theme.working}>
-						{badge.text}
-					</span>
-				) : null}
-				{more ? <span fg={theme.working}>{more}</span> : null}
-				{input ? <span fg={theme.accent}>{input}</span> : null}
-				{asked ? <span fg={theme.accent}>{asked}</span> : null}
+				<RowBadges labels={labels} metaFg={style.metaFg} />
 			</text>
 		</box>
 	);
@@ -446,9 +470,12 @@ const Section = ({
 	onToggle,
 	parentIds,
 	questions,
+	progress,
 }: {
 	// Open decisions by task id.
 	questions: ReadonlyMap<string, number>;
+	// Checklist progress by task id.
+	progress: ReadonlyMap<string, ChecklistProgress>;
 	marked: ReadonlySet<string>;
 	touched: ReadonlySet<string>;
 	linked: ReadonlySet<string>;
@@ -493,6 +520,7 @@ const Section = ({
 					onSelect={onSelect}
 					onToggle={onToggle}
 					decisions={questions.get(row.task.id) ?? 0}
+					progress={progress.get(row.task.id)}
 					parentShortId={
 						row.task.parentTaskId
 							? parentIds.get(row.task.parentTaskId)
@@ -649,6 +677,9 @@ export type BoardProps = {
 	// The open decisions by task id, badged on the rows, and whether `u` shows only their tasks
 	// (BoardDecisions). Optional for the same reason; absent means none.
 	decisions?: BoardDecisions.Decisions;
+	// Checklist progress by task id, the rows' `· 3/5` (BoardChecklist). Optional for the same reason;
+	// absent means no task has items.
+	progress?: ReadonlyMap<string, ChecklistProgress>;
 	// The `m` working set. Optional for the same reason; absent means nothing marked.
 	marked?: ReadonlySet<string>;
 	// Rows the copilot changed in the turn in hand (BoardNav.copilotTouched), glyphed until the next
@@ -678,6 +709,39 @@ export type BoardProps = {
 	onDismissAnnouncement?: () => void;
 };
 
+// The header line: the scope, any filter on, the working set, and what is in flight and what waits
+// on the human, counted; the tab bar above names the tabbed cards one by one.
+const BoardHeader = ({
+	activity,
+	scopeLabel,
+	filters,
+	marked,
+}: Pick<BoardProps, "activity" | "scopeLabel"> & {
+	filters: string;
+	marked: number;
+}): ReactNode => {
+	const theme = useTheme();
+	// The strip's spinner frame; the interval only runs while a live running loop is visible (the
+	// leaked-idle-timer gotcha — see spinner.ts).
+	const spinnerFrame = useSpinnerFrame(
+		activity
+			? anyActivityRunning({ ...activity, cards: hostCards(activity) })
+			: false,
+	);
+	const strip = activity ? activityStrip(activity, spinnerFrame) : "";
+	const markedPart = markedLabel(marked);
+	return (
+		<text fg={theme.defaultFg} style={{ flexShrink: 0 }}>
+			<span attributes={TextAttributes.BOLD}>
+				{`kabane · ${scopeLabel ?? "all scopes"}`.toLowerCase()}
+			</span>
+			{filters ? <span fg={theme.muted}>{filters}</span> : null}
+			{markedPart ? <span fg={theme.accent}>{markedPart}</span> : null}
+			{strip ? <span fg={theme.muted}>{strip}</span> : null}
+		</text>
+	);
+};
+
 export const Board = ({
 	sections,
 	expanded,
@@ -688,6 +752,7 @@ export const Board = ({
 	kind = "all",
 	status = "open",
 	decisions = BoardDecisions.NONE,
+	progress = BoardChecklist.NONE.progress,
 	marked = NO_MARKS,
 	touched = NO_MARKS,
 	linked = NO_MARKS,
@@ -703,22 +768,11 @@ export const Board = ({
 }: BoardProps): ReactNode => {
 	const { width } = useTerminalDimensions();
 	const theme = useTheme();
-	// One shared spinner frame for every badge + the header strip; the interval only runs while a live
-	// running loop is visible (the leaked-idle-timer gotcha — see spinner.ts).
-	const spinnerFrame = useSpinnerFrame(
-		activity
-			? anyActivityRunning({ ...activity, cards: hostCards(activity) })
-			: false,
-	);
-	// What is in flight and what waits on the human, counted; the tab bar above names the tabbed
-	// cards one by one.
-	const strip = activity ? activityStrip(activity, spinnerFrame) : "";
 	const available = Math.max(MIN_TITLE_WIDTH, width - RESERVED_COLS);
 	// Quiet by default: `all` kinds and `open` are what the board shows unfiltered, and this header
 	// <text> does no truncation (unlike StatusBar), so an always-on filter part would spend a narrow
 	// frame's columns saying that nothing is filtered.
 	const filters = headerFilters(kind, status, decisions.only);
-	const markedPart = markedLabel(marked.size);
 	// The SAME flatten the reducer uses for j/k, mouse addressing, and scroll-into-view — filter
 	// included — so the running rowIndex below is in lockstep with BoardNav.visibleRows.
 	const groups = BoardNav.visibleSections(
@@ -740,14 +794,12 @@ export const Board = ({
 	);
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<text fg={theme.defaultFg} style={{ flexShrink: 0 }}>
-				<span attributes={TextAttributes.BOLD}>
-					{`kabane · ${scopeLabel ?? "all scopes"}`.toLowerCase()}
-				</span>
-				{filters ? <span fg={theme.muted}>{filters}</span> : null}
-				{markedPart ? <span fg={theme.accent}>{markedPart}</span> : null}
-				{strip ? <span fg={theme.muted}>{strip}</span> : null}
-			</text>
+			<BoardHeader
+				activity={activity}
+				scopeLabel={scopeLabel}
+				filters={filters}
+				marked={marked.size}
+			/>
 			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
 				{groups.length === 0 ? (
 					filtering ? (
@@ -772,6 +824,7 @@ export const Board = ({
 							onToggle={onToggle}
 							parentIds={parentIds}
 							questions={decisions.counts}
+							progress={progress}
 						/>
 					))
 				)}

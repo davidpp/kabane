@@ -4,6 +4,7 @@
 // registry promises the views: whole hints at forty columns, `? help` kept, a key listed once.
 import { describe, expect, test } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
@@ -82,6 +83,7 @@ const state = (
 	marked: new Set<string>(),
 	announcement: null,
 	decisions: BoardDecisions.NONE,
+	checklist: BoardChecklist.NONE,
 	copilot: copilot(),
 	undo: [],
 	prompt: BoardPrompt.CLOSED,
@@ -184,6 +186,17 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 	search: [state({ search: { mode: "typing", query: "ab" } })],
 	detail: [
 		state({ view: { type: "detail", taskId: "p" } }),
+		// JAKE-2's checklist, its first item ticked: the cursor opens on the second, so `J` and `K`
+		// both have an item to go to and `space` one to toggle.
+		BoardChecklist.withOpen(
+			state({ view: { type: "detail", taskId: "p" } }),
+			"p",
+			[
+				Fixtures.item(task({ id: "p" }), 1, "Read the store", true),
+				Fixtures.item(task({ id: "p" }), 2, "Write the store"),
+				Fixtures.item(task({ id: "p" }), 3, "Drop the old one"),
+			],
+		),
 		state({ view: { type: "detail", taskId: "p", tab: "comments" } }),
 		state({
 			view: {

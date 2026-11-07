@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/react */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { join } from "node:path";
+import { Checklist } from "@cabane/checklist";
 import { Planner, type Result, type Task } from "@cabane/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import type { RefObject } from "react";
@@ -19,6 +20,7 @@ import type { ActivityCard } from "./ports";
 import { SPINNER_FRAMES } from "./spinner";
 import { dropDb, freshDb } from "./test-db";
 import { renderTest } from "./testing";
+import { Theme } from "./theme";
 
 const TEST_BASE = join(import.meta.dir, ".test-detail");
 
@@ -604,6 +606,63 @@ test("Detail at 40 columns: the subtask count pinned, and the subtasks and conte
 		expect(onOneRow(frame, "ADR docs/adr.md")).toBe(true);
 		for (const row of rows(frame))
 			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail lists the checklist under the brief with its count, the cursor on the first open item", async () => {
+	const task = await seed({ title: "Stepwise" });
+	const added = await Checklist.add(TEST_BASE, {
+		id: task.id,
+		items: [
+			"Read the store",
+			"Write the store, which takes a long line to say at forty columns",
+			"Drop the old one",
+		],
+	});
+	if (!added.ok) throw added.error;
+	const [first] = added.value.items;
+	if (!first) throw new Error("no items");
+	const ticked = await Checklist.tick(TEST_BASE, { items: [`id:${first.id}`] });
+	expect(ticked.ok).toBe(true);
+	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
+		task,
+		{ width: 40, height: 30 },
+	);
+	try {
+		const frame = await pumpUntil(
+			renderOnce,
+			captureCharFrame,
+			(f) =>
+				f.includes("Drop the old one") &&
+				f.includes("The description reads here."),
+		);
+		const lines = rows(frame);
+		const heading = lines.findIndex((row) => row.includes("checklist · 1/3"));
+		const brief = lines.findIndex((row) =>
+			row.includes("The description reads here."),
+		);
+		expect(brief).toBeGreaterThanOrEqual(0);
+		expect(heading).toBeGreaterThan(brief);
+		expect(lines[heading + 1]).toContain("✓ Read the store");
+		expect(lines[heading + 2]).toContain("○ Write the store");
+		expect(lines[heading + 2]).toContain("…");
+		expect(lines[heading + 3]).toContain("○ Drop the old one");
+		for (const row of lines)
+			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
+		// The cursor's row is on the selected surface; the others are not painted.
+		const spans = captureSpans().lines.flatMap((line) => line.spans);
+		const bg = (text: string) =>
+			spans
+				.find((s) => s.text.includes(text))
+				?.bg.toInts()
+				.slice(0, 3);
+		const selected = Theme.DARK.surface.selected;
+		const hex = (ints?: number[]) =>
+			ints && `#${ints.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+		expect(hex(bg("Write the store"))).toBe(selected);
+		expect(hex(bg("Drop the old one"))).not.toBe(selected);
 	} finally {
 		destroy();
 	}

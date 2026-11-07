@@ -15,6 +15,7 @@ import { BoardActivity } from "./activity";
 import { anyActivityRunning, Board } from "./board";
 import type { BoardInput } from "./board-input";
 import { CardTab } from "./card-tab";
+import { BoardChecklist } from "./checklist";
 import { BoardContext } from "./context";
 import { CopilotLog } from "./copilot-log";
 import { CopilotPane, contextChip } from "./copilot-prompt";
@@ -50,6 +51,7 @@ export type ScreenRefs = {
 
 const SCREEN_EFFECTS = [
 	"scroll",
+	"reveal",
 	"helpScroll",
 	"copilotSetText",
 	"promptSetText",
@@ -84,6 +86,9 @@ export const useScreenRefs = (
 		switch (effect.type) {
 			case "scroll":
 				scroll.current?.scrollBy(effect.delta);
+				return;
+			case "reveal":
+				scroll.current?.scrollChildIntoView(effect.id);
 				return;
 			case "helpScroll":
 				help.current?.scrollBy(effect.delta);
@@ -388,6 +393,8 @@ const DetailScreen = ({
 				keys={keys}
 				onCopy={() => input.dispatchMouse({ type: "copy" })}
 				decision={<DecisionSlot state={state} input={input} />}
+				checklist={BoardChecklist.shown(state)}
+				onItem={(id) => input.dispatchMouse({ type: "checklistItem", id })}
 			/>
 		</>
 	);
@@ -416,6 +423,7 @@ const BoardScreen = ({
 		kind={state.kind}
 		status={state.status}
 		decisions={state.decisions}
+		progress={state.checklist.progress}
 		marked={state.marked}
 		// The reload after each of the copilot's writes is what puts the fresh `updatedBy`
 		// and `updatedAt` in hand; the reducer decides which of them the glyph is for.

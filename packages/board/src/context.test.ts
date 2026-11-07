@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import { BoardChecklist } from "./checklist";
 import { BoardContext } from "./context";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
@@ -55,6 +56,7 @@ const state = (
 	marked: new Set(["a", "m"]),
 	announcement: null,
 	decisions: BoardDecisions.NONE,
+	checklist: BoardChecklist.NONE,
 	copilot: {
 		text: "",
 		paletteAt: 0,

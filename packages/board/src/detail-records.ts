@@ -1,10 +1,12 @@
 // The records the open detail view shows (BoardData.taskDetail), fetched when it opens or its task
 // changes. A different task opens on its loading line; the same task refetches in place, so a
-// v/x/n/s on it keeps its tab and its scroll. The task's open decisions go on into the board's state,
-// where the keys that answer them are reduced (BoardDecisions.withOpen).
+// v/x/n/s on it keeps its tab and its scroll. The task's open decisions and its checklist go on into
+// the board's state, where the keys that answer and tick them are reduced (BoardDecisions.withOpen,
+// BoardChecklist.withOpen).
 import type { Result } from "@cabane/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BoardStore } from "./board-store";
+import { BoardChecklist } from "./checklist";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
 import { BoardNav } from "./nav";
@@ -36,13 +38,17 @@ export const useDetailRecords = (
 			setRecords(next);
 			if (next.ok)
 				update((prev) =>
-					BoardDecisions.withOpen(prev, taskId, next.value.questions),
+					BoardChecklist.withOpen(
+						BoardDecisions.withOpen(prev, taskId, next.value.questions),
+						taskId,
+						next.value.checklist,
+					),
 				);
 		},
 		[update],
 	);
 
-	// A comment, work log or session activity lands without touching the task row, so the open
+	// A comment, work log, session activity or checklist tick lands without touching the task row, so the open
 	// detail view checks the cheap stamp on every poll and reloads its records only when it moved.
 	// The records are replaced in place, never cleared, so the view keeps its tab and its scroll.
 	// A failed read keeps what is on screen: the board's own poll already reports a broken store.
@@ -66,7 +72,9 @@ export const useDetailRecords = (
 			loadedId.current = null;
 			stamp.current = null;
 			setRecords(undefined);
-			update((prev) => BoardDecisions.withOpen(prev, null));
+			update((prev) =>
+				BoardChecklist.withOpen(BoardDecisions.withOpen(prev, null), null),
+			);
 		}
 		if (!taskId) return;
 		let cancelled = false;

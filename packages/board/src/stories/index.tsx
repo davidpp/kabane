@@ -8,6 +8,7 @@ import type { QuestionView } from "@cabane/questions";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { createRef, type ReactNode } from "react";
 import { Board } from "../board";
+import { BoardChecklist } from "../checklist";
 import { CopilotLog } from "../copilot-log";
 import { CopilotPane, type CopilotPaneProps } from "../copilot-prompt";
 import { DecisionForm } from "../decision-form";
@@ -254,6 +255,28 @@ const onDetail = (
 	/>
 );
 
+// An issue an agent broke into steps of one change, two of four ticked.
+const STEPWISE = task({
+	id: "k1",
+	shortId: "JREP-8",
+	title: "Move the session store to SQLite",
+	state: "in_progress",
+	description:
+		"Sessions live in memory today. Move them to SQLite so a restart keeps them.",
+});
+const STEPS = [
+	Fixtures.item(STEPWISE, 1, "Add the sessions table and its migration", true),
+	Fixtures.item(STEPWISE, 2, "Write through the store on every change", true),
+	Fixtures.item(STEPWISE, 3, "Read the store back on startup"),
+	Fixtures.item(STEPWISE, 4, "Drop the in-memory map"),
+];
+
+// Checklist progress on the board's rows: one under way, one complete.
+const PROGRESS = new Map([
+	["n1", { done: 2, total: 4 }],
+	["n2", { done: 3, total: 3 }],
+]);
+
 const asking = (
 	row: QuestionView,
 	draft: Partial<ElicitationForm.Draft> = {},
@@ -489,6 +512,41 @@ export const STORIES: readonly Story[] = [
 					situation: { selection: true, decisions: true, clearable: true },
 				}}
 				pane={<Pane copilot={Fixtures.copilot({ actor: CLAUDE })} />}
+			/>
+		),
+	},
+	{
+		name: "board-checklist",
+		about:
+			"checklist progress on the cards, `2/4` under way and `3/3` complete",
+		width: 80,
+		height: 20,
+		render: () => (
+			<Board
+				sections={SECTIONS}
+				expanded={new Set(["n1"])}
+				selectedId="n1"
+				scopeLabel="acme/widget"
+				progress={PROGRESS}
+				decisions={{ ...BoardDecisions.NONE, counts: new Map([["n2", 1]]) }}
+				pane={<Pane copilot={Fixtures.copilot({ actor: CLAUDE })} />}
+			/>
+		),
+	},
+	{
+		name: "detail-checklist",
+		about:
+			"an issue's checklist under its brief, the cursor on the first open item",
+		width: 80,
+		height: 24,
+		render: () => (
+			<Detail
+				taskId={STEPWISE.id}
+				task={STEPWISE}
+				records={ok(Fixtures.records(STEPWISE, { checklist: STEPS }))}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				checklist={BoardChecklist.view(STEPS)}
+				keys={{ context: "detail", situation: { checklist: true } }}
 			/>
 		),
 	},

@@ -79,6 +79,7 @@ const records = (
 	subtasks: [],
 	contextRefs: [],
 	questions: [],
+	checklist: [],
 	...over,
 });
 
