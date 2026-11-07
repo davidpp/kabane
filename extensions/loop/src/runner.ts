@@ -385,7 +385,8 @@ export namespace Runner {
 				detail: fixer.detail,
 			};
 		if (!fixerDone) return startFixer(ctx, plan, findings);
-		if (!gatesGreen) return finalGates(ctx, plan);
+		// Before the gates: a recheck that edited files leaves its changes for the human, and a pass
+		// would commit them as the run's checkpoint.
 		const failed = rechecks.failed[0];
 		if (failed)
 			return {
@@ -393,6 +394,7 @@ export namespace Runner {
 				reason: "recheck-failed",
 				detail: `${failed.name}: ${failed.detail}`,
 			};
+		if (!gatesGreen) return finalGates(ctx, plan);
 		return startRechecks(ctx, plan, rechecks.pending);
 	};
 

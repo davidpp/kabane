@@ -82,6 +82,11 @@ export namespace RunStore {
 		findings: z.array(z.string()).optional(),
 		/** The lens whose recheck of the fixer's diff this session ran, on the parent. */
 		recheck: z.string().optional(),
+		/**
+		 * A recheck's: the working tree's fingerprint as its lens's first recheck started. A recheck
+		 * reports and never edits, so a different one once it ends fails it.
+		 */
+		tree: z.string().optional(),
 	});
 	export type Claim = z.infer<typeof ClaimSchema>;
 

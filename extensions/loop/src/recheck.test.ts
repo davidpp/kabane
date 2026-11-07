@@ -128,6 +128,7 @@ createInterface({ input: process.stdin }).on("line", async line => {
   appendFileSync(recheck ? "recheck.prompts" : "fixer.prompts", JSON.stringify(text) + "\\n");
   const ids = [...text.matchAll(/^- (\\S+) · /gm)].map(([, id]) => id);
   if (recheck) {
+   if (existsSync("recheck.edits")) appendFileSync("code.txt", "edited by the recheck\\n");
    for (const id of ids.filter(id => existsSync(id + ".reopen"))) {
     await tool("kabane_edit", { id, state: "next" });
     await tool("kabane_comment", { id, body: "The diff does not cover the empty input." });
@@ -143,7 +144,11 @@ createInterface({ input: process.stdin }).on("line", async line => {
 });
 `;
 
-const run = async (): Promise<RunStore.Run> => {
+// The tree's fingerprint: constant by default, so the tracker and the agent's own notes in the
+// directory never count as an edit.
+const run = async (
+	tree: () => Promise<string> = async () => "tree",
+): Promise<RunStore.Run> => {
 	const agent = join(home, "agent.mjs");
 	writeFileSync(agent, AGENT);
 	const ended = await Runner.run("run-1", {
@@ -152,7 +157,7 @@ const run = async (): Promise<RunStore.Run> => {
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
 		overrides: { gemini: { command: process.execPath, args: [agent] } },
-		tree: async () => "tree",
+		tree,
 		tickMs: 5,
 	});
 	if (!ended.ok) throw ended.error;
@@ -242,6 +247,44 @@ describe("Runner recheck", () => {
 		);
 		expect(passed).toBeGreaterThanOrEqual(0);
 		expect(rechecked).toBeGreaterThan(passed);
+	});
+
+	it("stops the run when the recheck edits files, and leaves its edits in place", async () => {
+		const parent = await add({ title: "parent" });
+		await add({ title: "subtask", parentTaskId: parent.id, state: "done" });
+		await findings(parent);
+		writeFileSync(join(home, "recheck.edits"), "");
+		createRun(parent);
+
+		const ended = await run(async () =>
+			readFileSync(join(home, "code.txt"), "utf8"),
+		);
+
+		expect([ended.status, ended.exit?.reason]).toEqual([
+			"stopped",
+			"recheck-failed",
+		]);
+		expect(ended.exit?.detail).toStartWith(
+			"functional: error: the recheck changed the working tree",
+		);
+		expect(ended.claims.map((c) => [c.lane, c.outcome])).toEqual([
+			["functional-lens", "done"],
+			["fixer", "done"],
+			["functional-recheck", "error"],
+		]);
+		expect(readFileSync(join(home, "code.txt"), "utf8")).toEndWith(
+			"edited by the recheck\n",
+		);
+		// No pass ran on the recheck's edits.
+		const events = RunStore.readEvents(home, "run-1");
+		const trace = events.ok ? events.value : [];
+		const rechecked = trace.findIndex(
+			(e) => e.type === "claim" && e.lane === "functional-recheck",
+		);
+		expect(rechecked).toBeGreaterThanOrEqual(0);
+		expect(trace.slice(rechecked).some((e) => e.type === "gate_passed")).toBe(
+			false,
+		);
 	});
 
 	it("skips the phase when the setting is off, and when the fixer closed none of a lens's findings", async () => {

@@ -354,12 +354,42 @@ export namespace Claims {
 		resumes?: Retry.Resume;
 		/** The fixer's: the commit HEAD is at as it starts. */
 		head?: string;
+		/** A recheck's: the working tree's fingerprint it must leave as it found. */
+		tree?: string;
+	};
+
+	const EDITED =
+		"the recheck changed the working tree, which a recheck must not do: its changes are left in place for a human";
+
+	// A recheck reports and never edits; nothing enforces that in the harness, whose settings are
+	// the user's, so a tree that changed under it fails it here instead. Its edits stay where they
+	// are. Two rechecks running at once share the tree, so one's edit fails both.
+	const unedited = async (
+		ctx: Ctx,
+		tree: string,
+		outcome: Dispatch.Outcome,
+	): Promise<Dispatch.Outcome> => {
+		if (outcome.outcome !== "done" && outcome.outcome !== "incomplete")
+			return outcome;
+		const now = await ctx.tree(RunStore.sessionDir(ctx.run));
+		return now === tree
+			? outcome
+			: { ...outcome, outcome: "error", detail: EDITED };
 	};
 
 	// Record the claim, dispatch its session and hold it live until it has settled.
 	const launch = (ctx: Ctx, plan: LoopPlan.Plan, started: Started): void => {
-		const { task, harness, lane, sessionId, work, interrupted, resumes, head } =
-			started;
+		const {
+			task,
+			harness,
+			lane,
+			sessionId,
+			work,
+			interrupted,
+			resumes,
+			head,
+			tree,
+		} = started;
 		RunState.save(ctx, {
 			...ctx.run,
 			claims: [
@@ -381,7 +411,11 @@ export namespace Claims {
 							}
 						: {}),
 					...(work.kind === "recheck"
-						? { recheck: work.name, findings: work.findings.map((f) => f.id) }
+						? {
+								recheck: work.name,
+								findings: work.findings.map((f) => f.id),
+								...(tree !== undefined ? { tree } : {}),
+							}
 						: {}),
 				},
 			],
@@ -420,7 +454,9 @@ export namespace Claims {
 			},
 			hooks(ctx, sessionId, lane, label(task), harness),
 		);
-		const settled = handle.done.then(async (outcome) => {
+		const settled = handle.done.then(async (ended) => {
+			const outcome =
+				tree === undefined ? ended : await unedited(ctx, tree, ended);
 			const gates =
 				work.kind === "implement" && outcome.outcome === "done"
 					? await gatesAfter(ctx, { taskId: task.id, label: label(task), lane })
@@ -601,8 +637,12 @@ export namespace Claims {
 		if (sessionId === undefined)
 			return err(new Error(`the ${name} lens's recheck did not start`));
 		const interrupted = await interruption(ctx, earlier.at(-1));
+		// From the lens's first recheck: what an interrupted one edited counts against the next.
+		const tree =
+			earlier[0]?.tree ?? (await ctx.tree(RunStore.sessionDir(ctx.run)));
 		launch(ctx, plan, {
 			...(interrupted ? { interrupted } : {}),
+			tree,
 			task: plan.parent,
 			harness,
 			lane,
