@@ -250,24 +250,53 @@ export namespace ClaimTrees {
 		);
 	};
 
+	// Whether the worktree at `dir` holds nothing the run's branch lacks: no change left in it, and
+	// its HEAD already in the run's. What cannot be told counts as work.
+	const empty = async (
+		ctx: Ctx,
+		dir: string,
+		runTree: string,
+	): Promise<boolean> => {
+		const git = gitOf(ctx);
+		const [status, head] = await Promise.all([
+			git(dir, ["status", "--porcelain"]),
+			git(runTree, ["rev-parse", "HEAD"]),
+		]);
+		if (!status.ok || status.value.trim() !== "" || !head.ok) return false;
+		return (
+			await git(dir, ["merge-base", "--is-ancestor", "HEAD", head.value.trim()])
+		).ok;
+	};
+
 	/**
-	 * As the run ends: remove every free worktree, and say which still hold work that never merged
-	 * into the run's branch, left with their branches for a human.
+	 * As the run ends: remove every worktree that holds nothing the run's branch lacks, free or held
+	 * by a subtask whose session never changed it, and say which still hold work that never merged,
+	 * left with their branches for a human.
 	 */
 	export const close = async (ctx: Ctx): Promise<void> => {
 		const runTree = ctx.run.worktree;
 		if (runTree === undefined) return;
 		for (const tree of all(ctx.run)) {
-			if (tree.held) {
+			if (!existsSync(tree.dir)) {
+				forget(ctx, tree.dir);
+				continue;
+			}
+			if (tree.held && !(await empty(ctx, tree.dir, runTree))) {
 				warn(
 					ctx,
 					`worktree ${tree.dir} is left with work on branch ${tree.held.branch} that never merged into ${RunStore.branchOf(ctx.run)}`,
 				);
 				continue;
 			}
-			const removed = existsSync(tree.dir)
-				? await Worktree.drop(runTree, tree.dir, gitOf(ctx))
-				: ok(undefined);
+			const removed = tree.held
+				? await Worktree.remove(
+						runTree,
+						tree.dir,
+						tree.held.branch,
+						false,
+						gitOf(ctx),
+					)
+				: await Worktree.drop(runTree, tree.dir, gitOf(ctx));
 			if (removed.ok) forget(ctx, tree.dir);
 			else
 				warn(ctx, `worktree ${tree.dir} not removed: ${removed.error.message}`);

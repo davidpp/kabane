@@ -176,7 +176,10 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 });
 `;
 
-const drive = async (): Promise<RunStore.Run> => {
+// `harness` none: a harness that is not there, so every session fails before it starts.
+const drive = async (
+	harness: "scripted" | "none" = "scripted",
+): Promise<RunStore.Run> => {
 	const agent = join(root, "agent.mjs");
 	writeFileSync(agent, AGENT);
 	const ended = await Runner.run("run-1", {
@@ -186,7 +189,10 @@ const drive = async (): Promise<RunStore.Run> => {
 		pid: process.pid,
 		git,
 		overrides: {
-			gemini: { command: process.execPath, args: [agent, home, script] },
+			gemini:
+				harness === "scripted"
+					? { command: process.execPath, args: [agent, home, script] }
+					: { command: "/nonexistent/harness" },
 		},
 		tickMs: 5,
 	});
@@ -478,6 +484,68 @@ describe("Subtasks in worktrees of their own", () => {
 			expect(gitIn(worktree, "show", "HEAD:b.txt")).toBe("b");
 			expect(existsSync(join(worktree, "red.txt"))).toBe(false);
 			expect(passFor(ended, second).map((p) => p.ok)).toEqual([true]);
+		},
+		SLOW_MS,
+	);
+
+	it(
+		"removes, as the run ends, the worktrees whose sessions left nothing, and keeps one with work",
+		async () => {
+			const { parent, subtasks } = await plan(
+				{ "a.txt": "a\n" },
+				{ "b.txt": "b\n" },
+			);
+			await runOn(parent, { stallAfter: 1 });
+
+			const ended = await drive("none");
+
+			expect([ended.status, ended.exit?.reason]).toEqual([
+				"stopped",
+				"stalled",
+			]);
+			expect(ended.claims.length).toBeGreaterThan(0);
+			expect(ClaimTrees.all(ended)).toEqual([]);
+			expect(
+				events("warning").filter((e) => e.summary.includes("left with work")),
+			).toEqual([]);
+			expect(gitIn(repo, "branch", "--list", "kabane-loop/run-1--*")).toBe("");
+			expect(subtasks).toHaveLength(2);
+		},
+		SLOW_MS,
+	);
+
+	it(
+		"leaves a worktree holding work that never merged, with its branch, and says so",
+		async () => {
+			const { parent, subtasks } = await plan({
+				"red.txt": "fails the gate\n",
+			});
+			const [only] = subtasks;
+			if (!only) throw new Error("no subtask");
+			await runOn(parent, {
+				gates: { clean: "test ! -f red.txt" },
+				stallAfter: 1,
+			});
+
+			const ended = await drive();
+
+			expect([ended.status, ended.exit?.reason]).toEqual([
+				"stopped",
+				"stalled",
+			]);
+			const [tree, ...others] = ClaimTrees.all(ended);
+			expect(others).toEqual([]);
+			const branch = `kabane-loop/run-1--${label(only).toLowerCase()}`;
+			expect(tree?.held).toEqual({ taskId: only.id, branch });
+			expect(readFileSync(join(tree?.dir ?? "", "red.txt"), "utf8")).toBe(
+				"fails the gate\n",
+			);
+			expect(
+				gitIn(repo, "branch", "--list", "--format=%(refname:short)", branch),
+			).toBe(branch);
+			expect(events("warning").map((e) => e.summary)).toContain(
+				`worktree ${tree?.dir} is left with work on branch ${branch} that never merged into kabane-loop/run-1`,
+			);
 		},
 		SLOW_MS,
 	);
