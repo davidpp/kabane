@@ -285,6 +285,9 @@ available without a new size bound; its subtask rollup now includes all children
 ✓ Created 📥 🟠 🔧JMYA-1  Write the README @claude
 ```
 
+Kabane writes nothing into your repo to find its scope. It remembers the scope it detected
+under `~/.kabane`, keyed by the repo's first commit, so a renamed remote keeps its tasks.
+
 Outside a repo, `list` and `search` span every scope. `kabane <command> --help` prints that
 command's flags, `kabane --help` lists the commands, and
 [`packages/cli/README.md`](../packages/cli/README.md) has the full reference.

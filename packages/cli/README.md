@@ -26,7 +26,7 @@ kabane list
 ## Home and config
 
 `KABANE_HOME` (default `~/.kabane`) holds `config.json` and `kabane.db`, with
-plain table names.
+plain table names, and `detected-scopes/`, the scope ids [detection](#scope) resolved.
 
 ```json
 {
@@ -165,14 +165,20 @@ package below it, or in a worktree. The cascade, highest first:
 
 1. `--scope <uri>`
 2. `.kabane/scope` — the nearest one walking up (one line, e.g. `myapp`);
-   `kabane init --scope <uri>` writes it
+   only `kabane init --scope <uri>` writes it, into the working directory
 3. `.jake/config.json` → `project.id` — a device sharing a Jake database has to
    honour the id Jake already filed tasks under
-4. the git remote, normalized to `host/owner/repo` (`origin`, else the first
-   remote listed), cached into `.kabane/scope`
-5. the first commit, as `git:<hash12>`, also cached — replaced by a real remote
-   id if one appears later, never the reverse
-6. the project root path
+4. the id detection stored for this repo in `KABANE_HOME/detected-scopes/`,
+   keyed by its first commit (by its root path while it has none)
+5. the git remote, normalized to `host/owner/repo` (`origin`, else the first
+   remote listed), and stored for step 4, so a renamed remote keeps its scope
+6. the first commit, as `git:<hash12>` — replaced by a real remote id if one
+   appears later, never the reverse
+7. the project root path
+
+Detection writes nothing into the repo, which may be a checkout you don't own.
+A `.kabane/scope` an earlier kabane's detection left behind is still read and
+never rewritten; a `git:` id in it still gives way to the remote.
 
 Outside a project there is no scope and a query spans all of them. Bare ids
 normalize to `jake://scope/<id>`; a detected scope also carries `branch` and
