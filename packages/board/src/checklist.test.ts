@@ -110,6 +110,18 @@ describe("the checklist on an issue's detail", () => {
 		expect(doneOf(back.state)).toEqual([true, false, false]);
 	});
 
+	it("names each press for the screen to scroll into view, a fresh one every time", () => {
+		const once = press(detail(), "space").state;
+		expect(once.checklist.pressed).toEqual({ itemId: WRITE.id });
+		const twice = press(once, "space").state;
+		expect(twice.checklist.pressed).toEqual({ itemId: WRITE.id });
+		expect(twice.checklist.pressed).not.toBe(once.checklist.pressed);
+		// Moving the cursor is not a press; J/K reveal on their own.
+		expect(press(twice, "J").state.checklist.pressed).toBe(
+			twice.checklist.pressed,
+		);
+	});
+
 	it("unticks a done item", () => {
 		expect(keys(detail(), "K", "space").effect).toMatchObject({
 			itemId: READ.id,

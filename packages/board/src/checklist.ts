@@ -31,6 +31,9 @@ export namespace BoardChecklist {
 		cursor: string | null;
 		// The items this board is writing, by item id.
 		writes: ReadonlyMap<string, Write>;
+		// The item last toggled, a fresh object per press: the screen scrolls its row into view, so
+		// `space` on an item scrolled off shows what it changed in the same press.
+		pressed: { itemId: string } | null;
 	};
 
 	/**
@@ -51,6 +54,7 @@ export namespace BoardChecklist {
 		open: null,
 		cursor: null,
 		writes: new Map(),
+		pressed: null,
 	};
 
 	const NOTHING: BoardNav.Effect = { type: "none" };
@@ -141,7 +145,7 @@ export namespace BoardChecklist {
 		if (taskId === null)
 			return state.checklist.open === null
 				? state
-				: patch(state, { open: null, cursor: null, writes });
+				: patch(state, { open: null, cursor: null, writes, pressed: null });
 		const same = state.checklist.open?.taskId === taskId;
 		return patch(state, {
 			open: { taskId, items },
@@ -222,7 +226,7 @@ export namespace BoardChecklist {
 		const line = asked.lines.find((l) => l.id === id);
 		if (!line) return { state, effect: NOTHING };
 		const done = !line.done;
-		const at = patch(state, { cursor: id });
+		const at = patch(state, { cursor: id, pressed: { itemId: id } });
 		const write = state.checklist.writes.get(id);
 		if (write && write.sending !== null)
 			return {

@@ -82,6 +82,14 @@ export const useScreenRefs = (
 		if (selectedId) list.current?.scrollChildIntoView(`row-${selectedId}`);
 	}, [selectedId]);
 
+	// Each press on a checklist item brings its row into view, so `space` on one scrolled off by
+	// the brief toggles it and shows it at once.
+	const pressed = state?.checklist.pressed ?? null;
+	useEffect(() => {
+		if (pressed)
+			scroll.current?.scrollChildIntoView(BoardChecklist.rowId(pressed.itemId));
+	}, [pressed]);
+
 	const runEffect = useCallback((effect: ScreenEffect): void => {
 		switch (effect.type) {
 			case "scroll":

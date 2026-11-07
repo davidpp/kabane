@@ -349,7 +349,8 @@ against every glyph already here.
 - **Checklist:** under the brief in the description, headed `checklist · n/m` like a bay, one
   line per item: `✓` in the done hue or `○` muted, then its text, cut with `…`. A cursor on one
   item, under the Selection Rule, starts on the first open one; `J/K` move it (shifted from the
-  `j/k` that scroll) and `space` toggles it, as `space` toggles a multi-select's answer.
+  `j/k` that scroll) and `space` toggles it, as `space` toggles a multi-select's answer, scrolling
+  it into view in the same press: a toggle is never out of sight.
 - **Comments:** one per comment, a raised author band (the actor URI's last segment, never
   the URI, bold for a human; the time muted), then the comment whole, on the terminal's own
   background like the brief. The band is the seam between comments.
