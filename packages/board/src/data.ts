@@ -1,3 +1,10 @@
+import {
+	Checklist,
+	type ChecklistChange,
+	type ChecklistItemView,
+	type ChecklistProgress,
+	checklistModule,
+} from "@cabane/checklist";
 // The one module the whole board reads tracker data through. Everything talks to storage via the
 // Planner.* functions over the configured Db provider (same path as the CLI — no server required),
 // so a future swap to a remote client touches this file only.
@@ -248,12 +255,16 @@ export namespace BoardData {
 		contextRefs: TaskContextRef[];
 		// The decisions agents filed on it (`kabane_ask`), every status, oldest first.
 		questions: QuestionView[];
+		// Its checklist's live items, in list order.
+		checklist: ChecklistItemView[];
 	};
 
-	// The questions module's table exists only where the host registered the module (the CLI does).
-	// A host that did not has no decisions to show, which is not a failed read.
-	const asksQuestions = (): boolean =>
-		Runtime.modules().some((module) => module.name === questionsModule.name);
+	// A module's table exists only where the host registered the module (the CLI registers both). A
+	// host that did not has no decisions or checklist to show, which is not a failed read.
+	const registered = (name: string): boolean =>
+		Runtime.modules().some((module) => module.name === name);
+	const asksQuestions = (): boolean => registered(questionsModule.name);
+	const keepsChecklists = (): boolean => registered(checklistModule.name);
 
 	const taskQuestions = async (
 		basePath: string,
@@ -286,6 +297,29 @@ export namespace BoardData {
 		input: AnswerInput,
 	): Promise<Result<{ question: QuestionView; moved: boolean }>> =>
 		Questions.answer(basePath, input);
+
+	const taskChecklist = async (
+		basePath: string,
+		id: string,
+	): Promise<Result<ChecklistItemView[]>> =>
+		keepsChecklists() ? Checklist.list(basePath, id) : ok([]);
+
+	/**
+	 * Done and total items by task id, across the whole tracker, for the cards' `3/5`. One query: a
+	 * checklist write leaves the task row alone, so the poll reads this beside the rows every time.
+	 */
+	export const checklistProgress = async (
+		basePath: string,
+	): Promise<Result<Map<string, ChecklistProgress>>> =>
+		keepsChecklists() ? Checklist.progress(basePath) : ok(new Map());
+
+	/** One item ticked or unticked from its issue's detail, as `kabane_checklistTick` does it. */
+	export const tickItem = async (
+		basePath: string,
+		itemId: string,
+		done: boolean,
+	): Promise<Result<ChecklistChange>> =>
+		Checklist.tick(basePath, { items: [`id:${itemId}`], done });
 
 	// A parent with more subtasks than this is a plan, and the view names the first ones only.
 	const SUBTASK_LIMIT = 200;
@@ -327,6 +361,7 @@ export namespace BoardData {
 			subtasks,
 			contextRefs,
 			questions,
+			checklist,
 		] = await Promise.all([
 			Planner.getComments(basePath, id),
 			Planner.getWorkLogs(basePath, id),
@@ -343,6 +378,7 @@ export namespace BoardData {
 			}),
 			Planner.getContextRefs(basePath, task.value.id),
 			taskQuestions(basePath, task.value.id),
+			taskChecklist(basePath, task.value.id),
 		]);
 		if (!comments.ok) return comments;
 		if (!workLogs.ok) return workLogs;
@@ -352,6 +388,7 @@ export namespace BoardData {
 		if (!subtasks.ok) return subtasks;
 		if (!contextRefs.ok) return contextRefs;
 		if (!questions.ok) return questions;
+		if (!checklist.ok) return checklist;
 		const perSession: SessionRecords[] = [];
 		for (const session of sessions.value) {
 			const records = await sessionRecords(basePath, session);
@@ -374,6 +411,7 @@ export namespace BoardData {
 			subtasks: subtasks.value,
 			contextRefs: contextRefs.value,
 			questions: questions.value,
+			checklist: checklist.value,
 		});
 	};
 
@@ -385,6 +423,7 @@ export namespace BoardData {
 		links: readonly TaskLink[];
 		upstream: readonly UpstreamLink[];
 		questions: readonly QuestionView[];
+		checklist: readonly ChecklistItemView[];
 	};
 
 	const latest = (stamps: readonly string[]): string =>
@@ -393,8 +432,11 @@ export namespace BoardData {
 	/**
 	 * A fingerprint of those records: a count and the newest timestamp per kind. A session's
 	 * `lastActivityAt` moves with every activity and transition, so a session that recorded
-	 * something moves the stamp without its activities being read. Two stamps differ when a record
-	 * landed, went away or changed; pure, so a stamp read fresh and one taken from loaded records agree.
+	 * something moves the stamp without its activities being read. The checklist is fingerprinted
+	 * item by item (id, version, `updatedAt`): a write synced from another device can land on an
+	 * older item with an older timestamp, which leaves the count and the newest one as they were.
+	 * Two stamps differ when a record landed, went away or changed; pure, so a stamp read fresh and
+	 * one taken from loaded records agree.
 	 */
 	export const stampOf = (parts: StampParts): string =>
 		[
@@ -407,6 +449,7 @@ export namespace BoardData {
 				.join(",")}`,
 			`u${parts.upstream.length}@${latest(parts.upstream.map((u) => u.updatedAt))}`,
 			`q${parts.questions.length}@${latest(parts.questions.map((q) => q.updatedAt))}`,
+			`k${parts.checklist.map((k) => `${k.id}:${k.version}:${k.updatedAt}`).join(",")}`,
 		].join("|");
 
 	/** The stamp of records already loaded, to compare the next `detailStamp` against. */
@@ -418,6 +461,7 @@ export namespace BoardData {
 			links: records.links,
 			upstream: records.upstream,
 			questions: records.questions,
+			checklist: records.checklist,
 		});
 
 	/**
@@ -429,21 +473,30 @@ export namespace BoardData {
 		basePath: string,
 		id: string,
 	): Promise<Result<string>> => {
-		const [comments, workLogs, sessions, links, upstream, questions] =
-			await Promise.all([
-				Planner.getComments(basePath, id),
-				Planner.getWorkLogs(basePath, id),
-				Planner.querySessions(basePath, { taskId: id }),
-				Planner.getLinksForTask(basePath, id),
-				Planner.getUpstreamLinksForTask(basePath, id),
-				taskQuestions(basePath, id),
-			]);
+		const [
+			comments,
+			workLogs,
+			sessions,
+			links,
+			upstream,
+			questions,
+			checklist,
+		] = await Promise.all([
+			Planner.getComments(basePath, id),
+			Planner.getWorkLogs(basePath, id),
+			Planner.querySessions(basePath, { taskId: id }),
+			Planner.getLinksForTask(basePath, id),
+			Planner.getUpstreamLinksForTask(basePath, id),
+			taskQuestions(basePath, id),
+			taskChecklist(basePath, id),
+		]);
 		if (!comments.ok) return comments;
 		if (!workLogs.ok) return workLogs;
 		if (!sessions.ok) return sessions;
 		if (!links.ok) return links;
 		if (!upstream.ok) return upstream;
 		if (!questions.ok) return questions;
+		if (!checklist.ok) return checklist;
 		return ok(
 			stampOf({
 				comments: comments.value,
@@ -452,6 +505,7 @@ export namespace BoardData {
 				links: links.value,
 				upstream: upstream.value,
 				questions: questions.value,
+				checklist: checklist.value,
 			}),
 		);
 	};

@@ -9,6 +9,7 @@ import {
 	type TaskState,
 } from "@cabane/core";
 import { CardTab } from "./card-tab";
+import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
@@ -234,6 +235,9 @@ export namespace BoardNav {
 		// The decisions agents filed on issues: counted on the rows, filtered by `u`, asked on the
 		// detail view (decisions.ts).
 		decisions: BoardDecisions.Decisions;
+		// The checklists on issues: progress on the rows, items toggled on the detail view
+		// (checklist.ts).
+		checklist: BoardChecklist.Checklist;
 		copilot: CopilotState;
 		// A prompt opened over a card's tab or a question's banner (prompt.ts): the copilot's input,
 		// typed for a card's action or a question's answer instead.
@@ -275,6 +279,8 @@ export namespace BoardNav {
 		| { type: "markReviewed"; id: string; notice: string }
 		| { type: "applyUndo"; id: string; patch: UndoPatch; notice: string }
 		| { type: "scroll"; delta: number }
+		// `J/K` on the detail view's checklist: the scrollbox brings the row with this id into view.
+		| { type: "reveal"; id: string }
 		// j/k on the `?` sheet: its own scrollbox, not the view's under it (app.tsx holds that ref too).
 		| { type: "helpScroll"; delta: number }
 		| { type: "copy"; id: string }
@@ -297,6 +303,8 @@ export namespace BoardNav {
 				answer: string;
 				reasoning?: string;
 		  }
+		// A checklist item ticked or unticked on its issue's detail (BoardChecklist): `Checklist.tick`.
+		| { type: "tickItem"; itemId: string; handle: string; done: boolean }
 		// `w` closed a finished card's tab: the host forgets the card (ActivitySource.dismiss).
 		| { type: "dismiss"; cardId: string }
 		// One of a card's actions, with the prompt's text and the lane on screen when it has them.
@@ -355,6 +363,8 @@ export namespace BoardNav {
 		| { type: "formField"; index: number }
 		// The host's announcement, which a click puts away as `esc` does.
 		| { type: "announcement" }
+		// A checklist item on the detail view, which a click toggles.
+		| { type: "checklistItem"; id: string }
 		| AskClick
 		| BoardDecisions.Click;
 
@@ -1447,6 +1457,7 @@ export namespace BoardNav {
 			marked: new Set<string>(),
 			announcement: null,
 			decisions: BoardDecisions.NONE,
+			checklist: BoardChecklist.NONE,
 			copilot: COPILOT_IDLE,
 			prompt: BoardPrompt.CLOSED,
 			undo: [],
@@ -1814,6 +1825,7 @@ export namespace BoardNav {
 				state.scoped,
 			decisions: BoardDecisions.listed(state),
 			deciding: BoardDecisions.keysInHand(state),
+			checklist: BoardChecklist.listed(state),
 			history: recallable(state.prompt.open ? state.prompt : state.copilot),
 			reaimable: (state.prompt.open?.aims?.length ?? 0) > 1,
 			ready:
@@ -1993,6 +2005,8 @@ export namespace BoardNav {
 			);
 		if (action.type === "decisionOption" || action.type === "decisionReach")
 			return BoardDecisions.click(state, action) ?? { state, effect: NONE };
+		if (action.type === "checklistItem")
+			return BoardChecklist.click(state, action.id);
 		return state.view.type === "board"
 			? clickRow(state, action)
 			: { state, effect: NONE };
@@ -2049,7 +2063,8 @@ export namespace BoardNav {
 			: { state: { ...state, view: { ...state.view, tab } }, effect: NONE };
 
 	// Detail view: `esc`/`q` pop back to the board (never widen scope or quit); j/k/up/down scroll the
-	// tab in view; a digit picks a tab and `h`/`l` (or left/right) step through them; the keys for the
+	// tab in view; a digit picks a tab and `h`/`l` (or left/right) step through them; on the
+	// description, `J/K` move through the checklist and `space` toggles an item; the keys for the
 	// task in hand act on the OPEN task (not the board's selection), and the view refreshes after a
 	// mutation; everything else is a no-op.
 	const reduceDetailKey = (
@@ -2058,6 +2073,9 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		if (state.view.type !== "detail") return { state, effect: NONE };
 		const { taskId } = state.view;
+		// The checklist's keys, `space` and `J/K`, ahead of `j/k`, which `J` and `K` are shifted from.
+		const ticked = BoardChecklist.reduceKey(state, key);
+		if (ticked) return ticked;
 		const digitTab = DetailModel.tabAt(Number.parseInt(key.name, 10));
 		if (digitTab) return withDetailTab(state, digitTab);
 		switch (key.name) {

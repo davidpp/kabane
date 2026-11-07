@@ -1,8 +1,8 @@
 /** @jsxImportSource @opentui/react */
 // Detail view for a single task, read as parts rather than one wall. Pinned on a raised block: the
 // title, the task at a glance, what is running on it and where it sits; under it, any question
-// waiting on the human. Then tabs: the description (its subtasks and curated context under it), the
-// comments and the agent log, one at a time,
+// waiting on the human. Then tabs: the description (its checklist, subtasks and curated context
+// under it), the comments and the agent log, one at a time,
 // scrolled by app.tsx's `scroll` effect (it owns the ref so every key stays in the one useKeyboard
 // handler). DetailModel decides what goes where; this file only draws it. The agent brief is not
 // drawn here: `y` copies it, and it is what an agent reads.
@@ -18,6 +18,7 @@ import {
 import { useTerminalDimensions } from "@opentui/react";
 import { type ReactNode, type RefObject, useMemo } from "react";
 import type { BoardActivity } from "./activity";
+import { BoardChecklist } from "./checklist";
 import type { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
 import { ErrorBoundary } from "./error-boundary";
@@ -164,6 +165,11 @@ export type DetailProps = {
 	pinned?: string;
 	// The decision asked under the header (DecisionPanel), or the row saying decisions wait.
 	decision?: ReactNode;
+	// The checklist with this board's presses and its cursor (BoardChecklist.shown), and what a click
+	// on an item asks for. Absent, the records' items are drawn as they stand, the cursor on the first
+	// open one.
+	checklist?: BoardChecklist.Shown;
+	onItem?: (itemId: string) => void;
 	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation).
 	// Optional so render-only tests fall back to what the view knows itself.
 	keys?: Keymap.Live;
@@ -278,6 +284,8 @@ export const Detail = ({
 	onCopy,
 	pinned,
 	decision,
+	checklist,
+	onItem,
 	keys,
 }: DetailProps): ReactNode => {
 	const theme = useTheme();
@@ -334,6 +342,8 @@ export const Detail = ({
 					records={records}
 					cards={cards ?? []}
 					spinnerFrame={spinnerFrame}
+					checklist={checklist}
+					onItem={onItem}
 				/>
 			</scrollbox>
 			{pane}
@@ -355,12 +365,14 @@ const TabBody = ({
 	records,
 	cards,
 	spinnerFrame,
+	checklist,
+	onItem,
 }: {
 	tab: DetailModel.Tab;
 	records: Result<BoardData.DetailRecords> | undefined;
 	cards: ActivityCard[];
 	spinnerFrame: string | undefined;
-}): ReactNode => {
+} & Pick<DetailProps, "checklist" | "onItem">): ReactNode => {
 	const theme = useTheme();
 	const { width: room } = useTerminalDimensions();
 	if (records === undefined)
@@ -382,6 +394,8 @@ const TabBody = ({
 			cards={cards}
 			spinnerFrame={spinnerFrame}
 			room={Math.max(0, room - SCROLL_RESERVED - CONTENT_INSET)}
+			checklist={checklist ?? BoardChecklist.view(records.value.checklist)}
+			onItem={onItem}
 		/>
 	);
 };
@@ -558,6 +572,8 @@ const TabContent = ({
 	cards,
 	spinnerFrame,
 	room,
+	checklist,
+	onItem,
 }: {
 	tab: DetailModel.Tab;
 	records: BoardData.DetailRecords;
@@ -565,60 +581,20 @@ const TabContent = ({
 	spinnerFrame?: string;
 	// Columns a log row may use.
 	room: number;
+	checklist: BoardChecklist.Shown;
+	onItem?: (itemId: string) => void;
 }): ReactNode => {
 	const theme = useTheme();
 	switch (tab) {
-		case "description": {
-			const description = records.task.description?.trim();
-			const decisions = DetailModel.decisions(records);
-			const subtasks = DetailModel.subtasks(records);
-			const context = DetailModel.contextRefs(records);
-			if (
-				!description &&
-				decisions.length === 0 &&
-				subtasks.length === 0 &&
-				context.length === 0
-			)
-				return (
-					<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
-						no description
-					</text>
-				);
+		case "description":
 			return (
-				<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
-					{description ? <MarkdownBody content={description} /> : null}
-					{decisions.length > 0 ? (
-						<Section title="decisions" first={!description}>
-							{decisions.map((line) => (
-								<DecisionRow key={line.id} line={line} />
-							))}
-						</Section>
-					) : null}
-					{subtasks.length > 0 ? (
-						<Section
-							title="subtasks"
-							first={!description && decisions.length === 0}
-						>
-							{subtasks.map((line) => (
-								<SubtaskRow key={line.id} line={line} room={room} />
-							))}
-						</Section>
-					) : null}
-					{context.length > 0 ? (
-						<Section
-							title="context"
-							first={
-								!description && decisions.length === 0 && subtasks.length === 0
-							}
-						>
-							{context.map((line) => (
-								<ContextRow key={line.id} line={line} room={room} />
-							))}
-						</Section>
-					) : null}
-				</box>
+				<DescriptionTab
+					records={records}
+					room={room}
+					checklist={checklist}
+					onItem={onItem}
+				/>
 			);
-		}
 		case "comments": {
 			const comments = DetailModel.comments(records);
 			return comments.length > 0 ? (
@@ -658,23 +634,139 @@ const TabContent = ({
 	}
 };
 
-// A list under the description, headed in Label weight like a bay, one blank line above it.
+// One list under the brief: its heading, its count when it has one, and its rows.
+type DescriptionList = { title: string; count?: string; rows: ReactNode[] };
+
+// The description tab: the brief, then the checklist, the decisions made, the subtasks and the
+// curated context, each a list headed like a bay. The first thing drawn has no blank line above it.
+const DescriptionTab = ({
+	records,
+	room,
+	checklist,
+	onItem,
+}: {
+	records: BoardData.DetailRecords;
+	room: number;
+	checklist: BoardChecklist.Shown;
+	onItem?: (itemId: string) => void;
+}): ReactNode => {
+	const theme = useTheme();
+	const description = records.task.description?.trim();
+	const { lines: items, progress, cursor } = checklist;
+	const decisions = DetailModel.decisions(records);
+	const subtasks = DetailModel.subtasks(records);
+	const context = DetailModel.contextRefs(records);
+	const lists: DescriptionList[] = [
+		{
+			title: "checklist",
+			count: `${progress.done}/${progress.total}`,
+			rows: items.map((line) => (
+				<ItemRow
+					key={line.id}
+					line={line}
+					room={room}
+					selected={line.id === cursor}
+					onClick={onItem}
+				/>
+			)),
+		},
+		{
+			title: "decisions",
+			rows: decisions.map((line) => <DecisionRow key={line.id} line={line} />),
+		},
+		{
+			title: "subtasks",
+			rows: subtasks.map((line) => (
+				<SubtaskRow key={line.id} line={line} room={room} />
+			)),
+		},
+		{
+			title: "context",
+			rows: context.map((line) => (
+				<ContextRow key={line.id} line={line} room={room} />
+			)),
+		},
+	].filter((list) => list.rows.length > 0);
+	if (!description && lists.length === 0)
+		return (
+			<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
+				no description
+			</text>
+		);
+	return (
+		<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
+			{description ? <MarkdownBody content={description} /> : null}
+			{lists.map((list, index) => (
+				<Section
+					key={list.title}
+					title={list.title}
+					count={list.count}
+					first={!description && index === 0}
+				>
+					{list.rows}
+				</Section>
+			))}
+		</box>
+	);
+};
+
+// A list under the description, headed in Label weight like a bay, its count muted after a `·`, one
+// blank line above it.
 const Section = ({
 	title,
+	count,
 	first,
 	children,
 }: {
 	title: string;
+	count?: string;
 	first: boolean;
 	children: ReactNode;
 }): ReactNode => {
 	const theme = useTheme();
 	return (
 		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
-			<text fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
-				{title}
+			<text>
+				<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
+					{title}
+				</span>
+				{count ? <span fg={theme.muted}>{` · ${count}`}</span> : null}
 			</text>
 			{children}
+		</box>
+	);
+};
+
+// One checklist item: `✓` in the done hue, `○` muted while open, as a subtask reads, its text cut
+// with `…` so the row never wraps. The item under the cursor is on the selected surface, every cell
+// in the text color (the Selection Rule); a click toggles it, as `space` does.
+const ItemRow = ({
+	line,
+	room,
+	selected,
+	onClick,
+}: {
+	line: BoardChecklist.Line;
+	room: number;
+	selected: boolean;
+	onClick?: (itemId: string) => void;
+}): ReactNode => {
+	const theme = useTheme();
+	const bg = selected ? theme.surface.selected : undefined;
+	const segments = [
+		{
+			text: line.done ? "✓ " : "○ ",
+			fg: selected ? theme.text : line.done ? theme.done : theme.muted,
+		},
+		{ text: line.text, fg: selected ? theme.text : theme.defaultFg },
+	];
+	return (
+		<box
+			id={BoardChecklist.rowId(line.id)}
+			onMouseDown={onClick ? () => onClick(line.id) : undefined}
+			style={{ flexDirection: "row", flexShrink: 0, backgroundColor: bg }}
+		>
+			<text bg={bg}>{Segments.spans(Segments.fit(segments, room))}</text>
 		</box>
 	);
 };

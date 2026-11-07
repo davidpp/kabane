@@ -4,8 +4,8 @@
 //
 // Pinned above the tabs: the task at a glance, where it sits (its subtasks counted there), and any
 // question waiting on a human, a session's or an open decision (BoardDecisions asks those). Then one
-// tab each for the description (with the decisions already made, the subtasks and the curated
-// context under it), the comments and the agent log. The tabs and the log's sources are
+// tab each for the description (with the checklist, the decisions already made, the subtasks and the
+// curated context under it; BoardChecklist draws the checklist's lines), the comments and the agent log. The tabs and the log's sources are
 // lists, so another tab or another kind of log entry is one more item, not a reshape.
 import {
 	type AgentActivity,
@@ -372,6 +372,7 @@ export namespace DetailModel {
 		const logged = (records ? log(records).length : 0) + liveCards;
 		const described =
 			Boolean(records?.task.description?.trim()) ||
+			(records?.checklist.length ?? 0) > 0 ||
 			(records ? decisions(records).length : 0) > 0 ||
 			(records?.subtasks.length ?? 0) > 0 ||
 			(records?.contextRefs.length ?? 0) > 0;

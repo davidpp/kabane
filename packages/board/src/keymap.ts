@@ -32,6 +32,8 @@ export namespace Keymap {
 		decisions?: boolean;
 		/** A decision on the detail view has the keys its form names, the digits among them. */
 		deciding?: boolean;
+		/** The detail view's description lists checklist items, one under the cursor. */
+		checklist?: boolean;
 		/** The copilot's buffer is empty and there are prompts to recall. */
 		history?: boolean;
 		/** The dispatch picker has triggers to move through. */
@@ -104,6 +106,10 @@ export namespace Keymap {
 	};
 
 	const selection = (s: Situation): boolean => s.selection === true;
+
+	// The checklist's keys, while no decision on screen has the keys `space` might toggle on it.
+	const checklist = (s: Situation): boolean =>
+		s.checklist === true && s.deciding !== true;
 
 	/**
 	 * `t` on an event view: open or close every tool row at once, the keyboard's way to what a call
@@ -353,6 +359,13 @@ export namespace Keymap {
 					keys: ["b"],
 					when: (s) => s.back === true,
 				},
+				{
+					key: "space",
+					label: "toggle item",
+					tier: "footer",
+					keys: ["space"],
+					when: checklist,
+				},
 				OPEN_LINK,
 				{
 					key: "o",
@@ -382,6 +395,13 @@ export namespace Keymap {
 					label: "scroll",
 					tier: "help",
 					keys: ["j", "k", "down", "up"],
+				},
+				{
+					key: "J/K",
+					label: "next · previous item",
+					tier: "help",
+					keys: ["J", "K"],
+					when: checklist,
 				},
 				{ key: "a", label: "dispatch", tier: "help", keys: ["a"] },
 				{ key: "n", label: "to next", tier: "help", keys: ["n"] },

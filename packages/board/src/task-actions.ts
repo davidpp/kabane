@@ -1,8 +1,10 @@
-// What the board does to the task in hand: writes its state, answers its decisions, copies its brief,
-// opens its linked issue. Each says how it went in the footer, never silent.
+// What the board does to the task in hand: writes its state, answers its decisions, ticks its
+// checklist, copies its brief, opens its linked issue. Each says how it went in the footer, never
+// silent.
 import { useRenderer } from "@opentui/react";
 import { useCallback } from "react";
 import type { BoardStore } from "./board-store";
+import { BoardChecklist } from "./checklist";
 import { Clipboard } from "./clipboard";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
@@ -18,6 +20,7 @@ const TASK_EFFECTS = [
 	"copy",
 	"openLink",
 	"answerDecision",
+	"tickItem",
 ] as const;
 export type TaskEffect = Extract<
 	BoardNav.Effect,
@@ -82,6 +85,48 @@ const useDecide = (
 		[basePath, setNotice, reload, update],
 	);
 
+// A checklist item ticked on the detail view, as `kabane_checklistTick` ticks it. The item already
+// shows the press. Its writes go one at a time: once this one settles, BoardChecklist.settle sends
+// the press queued behind it, if any, and only the last says how it went and reloads, which brings
+// the records and the card's count up to it. A failed write puts the item back with why.
+const useTick = (
+	basePath: string,
+	{ ref, set }: Pick<BoardStore, "ref" | "set">,
+	setNotice: SetNotice,
+	reload: (s: BoardNav.BoardState) => Promise<void>,
+) =>
+	useCallback(
+		async (
+			effect: Extract<TaskEffect, { type: "tickItem" }>,
+		): Promise<void> => {
+			const send = async (
+				write: Extract<TaskEffect, { type: "tickItem" }>,
+			): Promise<void> => {
+				const res = await BoardData.tickItem(
+					basePath,
+					write.itemId,
+					write.done,
+				);
+				const current = ref.current;
+				if (!current) return;
+				const step = BoardChecklist.settle(current, write.itemId, res.ok);
+				set(step.state);
+				if (step.effect.type === "tickItem") return send(step.effect);
+				if (!res.ok) setNotice({ text: res.error.message, tone: "error" });
+				else {
+					const { done, total } = res.value.progress;
+					setNotice({
+						text: `${write.handle} ${write.done ? "ticked" : "unticked"} · ${done}/${total}`,
+						tone: "success",
+					});
+				}
+				await reload(step.state);
+			};
+			await send(effect);
+		},
+		[basePath, ref, set, setNotice, reload],
+	);
+
 /** The runner for the task effects; `next` is the post-reduce state a reload merges into. */
 export const useTaskActions = ({
 	basePath,
@@ -90,8 +135,8 @@ export const useTaskActions = ({
 	reload,
 }: {
 	basePath: string;
-	// A decision whose write failed is asked again.
-	store: Pick<BoardStore, "update">;
+	// A decision whose write failed is asked again; an item's tick settles on the state in hand.
+	store: Pick<BoardStore, "update" | "ref" | "set">;
 	setNotice: SetNotice;
 	reload: (s: BoardNav.BoardState) => Promise<void>;
 }): ((next: BoardNav.BoardState, effect: TaskEffect) => void) => {
@@ -173,6 +218,7 @@ export const useTaskActions = ({
 	);
 
 	const decide = useDecide(basePath, store, setNotice, reload);
+	const tick = useTick(basePath, store, setNotice, reload);
 
 	return useCallback(
 		(next: BoardNav.BoardState, effect: TaskEffect): void => {
@@ -196,8 +242,11 @@ export const useTaskActions = ({
 					return;
 				case "answerDecision":
 					void decide(next, effect);
+					return;
+				case "tickItem":
+					void tick(effect);
 			}
 		},
-		[basePath, write, copy, openLink, decide],
+		[basePath, write, copy, openLink, decide, tick],
 	);
 };

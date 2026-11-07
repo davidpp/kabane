@@ -52,6 +52,7 @@
       "name": "@cabane/board",
       "version": "0.1.0",
       "dependencies": {
+        "@cabane/checklist": "workspace:*",
         "@cabane/core": "workspace:*",
         "@cabane/questions": "workspace:*",
         "@opentui/core": "0.8.0",

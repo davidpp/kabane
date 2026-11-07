@@ -385,6 +385,31 @@ and moved the issue on. The description tab lists the decisions made, like the b
 `question → answer (who, reasoning)`. Withdrawn ones are not shown. A click on an answer or a
 key hint does what its key does.
 
+## Checklists
+
+An agent or a shell breaks one change into steps with a checklist (`@cabane/checklist`:
+`kabane_checklistAdd`, `kabane checklist add`). The board reads it through `Checklist.progress`
+and `Checklist.list` when the host registered the checklist module (the CLI does; a host that did
+not shows none). It adds no items: agents and the CLI do.
+
+Each row with items says how far they have got, `· 2/5`, muted beside the `· ?N` badge, and in
+the done hue once every item is ticked (`· 3/3`). The counts come from one query on every poll.
+
+The description tab lists the items under the brief, headed `checklist · 2/5`: `✓` for a ticked
+one, `○` for an open one, one line each. A cursor sits on the first open item, where a loop
+resumes. `J/K` move it and `space` ticks or unticks the item under it, as `kabane_checklistTick`
+does, bringing it into view in the same press when the brief has pushed it off screen; the item shows the press at once, the footer says `JREP-8.3 ticked · 3/5`, and a write that
+fails puts the item back to the state the store last acknowledged, with why. An item's writes go one
+at a time: presses while one is in flight leave only the latest queued behind it, and a poll's
+records never take back a press still being written. A click on an item toggles it the same way. These keys work
+only on the description tab with the board holding the keys, and a decision on screen keeps
+`space` for its own multi-select.
+
+A tick leaves the task row alone, so nothing on the row says it changed. The poll reads the
+progress beside the rows, and the open detail's stamp (`BoardData.detailStamp`) counts the items
+and their newest change, so a tick made in a shell or by an agent shows on an open board within
+one poll.
+
 ## Linked issues
 
 A task can point at one issue in an external tracker. The row says only that it does, with a gray

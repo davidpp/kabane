@@ -1,5 +1,6 @@
 // Made-up props the render tests and the gallery's stories share, so a component is drawn from the
 // same data in both: what a test pins is what David looks at.
+import type { ChecklistItemView } from "@cabane/checklist";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import {
 	type DecisionMeta,
@@ -216,6 +217,34 @@ export namespace Fixtures {
 		...over,
 	});
 
+	/** The `n`th checklist item on `on`, open unless `done`. */
+	export const item = (
+		on: Task,
+		n: number,
+		text: string,
+		done = false,
+	): ChecklistItemView => ({
+		id: `01H00000000000000000000K${n}0`,
+		taskId: on.id,
+		text,
+		done,
+		...(done
+			? {
+					doneAt: "2026-10-10T00:00:00.000Z",
+					doneBy: "cabane://actor/agent/claude",
+				}
+			: {}),
+		rank: `a${n}`,
+		createdAt: "2026-10-10T00:00:00.000Z",
+		updatedAt: "2026-10-10T00:00:00.000Z",
+		updatedBy: "cabane://actor/agent/claude",
+		version: 1,
+		visibility: "shared",
+		handle: `${on.shortId ?? on.id}.${n}`,
+		ordinal: n,
+		shortId: on.shortId,
+	});
+
 	/** A task's detail records with nothing on them but `over`. */
 	export const records = (
 		on: Task,
@@ -231,6 +260,7 @@ export namespace Fixtures {
 		subtasks: [],
 		contextRefs: [],
 		questions: [],
+		checklist: [],
 		...over,
 	});
 
