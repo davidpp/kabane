@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
+	readFileSync,
 	realpathSync,
 	rmSync,
 	writeFileSync,
@@ -17,6 +20,7 @@ import {
 	resolveScopeId,
 	SCOPE_FILE,
 } from "./detect";
+import { DetectedScopes } from "./detected";
 import { GitFixture } from "./git-fixture";
 
 const git = GitFixture.run;
@@ -50,6 +54,25 @@ const gitInit = async (
 		git(root, ["commit", "-qm", "init"]);
 	}
 };
+
+/** Everything git sees in the checkout beyond its commits, ignored files included. */
+const untracked = (root: string): string =>
+	git(root, ["status", "--porcelain", "--ignored"]);
+
+const stored = (): string[] => {
+	const store = join(home, DetectedScopes.DIR);
+	return existsSync(store) ? readdirSync(store) : [];
+};
+
+/** The one entry detection stored, parsed. */
+const entry = (): unknown => {
+	const [only] = stored();
+	return only === undefined
+		? null
+		: JSON.parse(readFileSync(join(home, DetectedScopes.DIR, only), "utf8"));
+};
+
+const RENAMED = "git@github.com:davidpp/kabane.git";
 
 beforeEach(() => {
 	// realpath so fixture paths match what git and the detector report: on macOS
@@ -132,24 +155,140 @@ describe("resolveScopeId", () => {
 		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
 		pin(root, "cabane");
 
-		expect(await resolveScopeId(root)).toBe("cabane");
+		expect(await resolveScopeId(root, { home })).toBe("cabane");
 	});
 
-	it("normalizes the git remote and caches it as the pin", async () => {
+	// The repo may be a client's or an employer's checkout: detection keeps what
+	// it resolved under KABANE_HOME, never in the repo.
+	it("normalizes the git remote and writes nothing into the repo", async () => {
 		const root = dir("repo");
 		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
 
-		expect(await resolveScopeId(root)).toBe("github.com/davidpp/cabane");
-		expect((await readFile(join(root, SCOPE_FILE), "utf8")).trim()).toBe(
+		expect(await resolveScopeId(root, { home })).toBe(
 			"github.com/davidpp/cabane",
 		);
+		expect(untracked(root)).toBe("");
+		expect(stored()).toHaveLength(1);
+	});
+
+	// A clone made elsewhere after the rename is a checkout of its own, and
+	// resolves by the remote it has, as it did before detection stored anything.
+	it("keeps a checkout's scope after its remote is renamed", async () => {
+		const root = dir("repo");
+		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/cabane",
+		);
+
+		git(root, ["remote", "set-url", "origin", RENAMED]);
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/cabane",
+		);
+
+		const fresh = join(workspace, "fresh");
+		git(workspace, ["clone", "-q", root, fresh]);
+		git(fresh, ["remote", "set-url", "origin", RENAMED]);
+		expect(await resolveScopeId(fresh, { home })).toBe(
+			"github.com/davidpp/kabane",
+		);
+	});
+
+	// A fork and its upstream share a root commit; neither takes the other's id,
+	// even when both resolve for the first time at once.
+	it("resolves clones of one history by their own remotes", async () => {
+		const origin = dir("origin");
+		await gitInit(origin);
+		const [fork, upstream] = ["fork", "upstream"].map((name) => {
+			const clone = join(workspace, name);
+			git(workspace, ["clone", "-q", origin, clone]);
+			git(clone, [
+				"remote",
+				"set-url",
+				"origin",
+				`git@github.com:${name}/cabane.git`,
+			]);
+			return clone;
+		});
+
+		const first = await Promise.all(
+			[fork, upstream].map((root) => resolveScopeId(String(root), { home })),
+		);
+		const again = await Promise.all(
+			[fork, upstream].map((root) => resolveScopeId(String(root), { home })),
+		);
+
+		const expected = ["github.com/fork/cabane", "github.com/upstream/cabane"];
+		expect(first).toEqual(expected);
+		expect(again).toEqual(expected);
+	});
+
+	// Stored while the repo had no commit, so with no first commit beside it.
+	// Its first commit then makes it that repo's, and a removed remote is no
+	// reason to fall back to a git: id.
+	it("keeps an id stored before the first commit", async () => {
+		const root = dir("repo");
+		await gitInit(root, {
+			remote: "git@github.com:davidpp/cabane.git",
+			commit: false,
+		});
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/cabane",
+		);
+
+		git(root, ["remote", "remove", "origin"]);
+		writeFileSync(join(root, "README.md"), "fixture\n");
+		git(root, ["add", "."]);
+		git(root, ["commit", "-qm", "init"]);
+
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/cabane",
+		);
+		const firstCommit = git(root, ["rev-parse", "HEAD"]).trim();
+		expect(entry()).toEqual({
+			scopeId: "github.com/davidpp/cabane",
+			firstCommit,
+		});
+	});
+
+	it("resolves afresh for another repo cloned at the same path", async () => {
+		const root = dir("repo");
+		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/cabane",
+		);
+
+		// Other content, or the fixture's commit could hash the same within a second.
+		rmSync(root, { recursive: true, force: true });
+		mkdirSync(root);
+		await gitInit(root, { remote: RENAMED, commit: false });
+		writeFileSync(join(root, "OTHER.md"), "another repo\n");
+		git(root, ["add", "."]);
+		git(root, ["commit", "-qm", "another"]);
+
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/kabane",
+		);
+	});
+
+	// MCP, the board and the CLI resolve at once; each write lands whole.
+	it("resolves the same id under concurrent first detections", async () => {
+		const root = dir("repo");
+		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+
+		const ids = await Promise.all(
+			Array.from({ length: 16 }, () => resolveScopeId(root, { home })),
+		);
+
+		expect(new Set(ids)).toEqual(new Set(["github.com/davidpp/cabane"]));
+		expect(stored()).toHaveLength(1);
+		expect(entry()).toMatchObject({ scopeId: "github.com/davidpp/cabane" });
 	});
 
 	it("falls back to the first commit when there is no remote", async () => {
 		const root = dir("repo");
 		await gitInit(root);
 
-		const id = await resolveScopeId(root);
+		const id = await resolveScopeId(root, { home });
 		expect(id).toMatch(/^git:[0-9a-f]{12}$/);
 	});
 
@@ -158,12 +297,36 @@ describe("resolveScopeId", () => {
 	it("upgrades a cached git: id once a remote exists", async () => {
 		const root = dir("repo");
 		await gitInit(root);
-		const frozen = await resolveScopeId(root);
+		const frozen = await resolveScopeId(root, { home });
 		expect(frozen).toStartWith("git:");
 
 		git(root, ["remote", "add", "origin", "git@github.com:davidpp/cabane.git"]);
 
-		expect(await resolveScopeId(root)).toBe("github.com/davidpp/cabane");
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/cabane",
+		);
+
+		git(root, ["remote", "remove", "origin"]);
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/cabane",
+		);
+	});
+
+	// A pin an earlier kabane's detection wrote is the user's file now: still
+	// honoured, still upgradable, never rewritten.
+	it("upgrades a git: pin to the remote without touching the pin", async () => {
+		const root = dir("repo");
+		await gitInit(root);
+		const frozen = await resolveScopeId(root, { home });
+		pin(root, frozen);
+		git(root, ["remote", "add", "origin", "git@github.com:davidpp/cabane.git"]);
+
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/cabane",
+		);
+		expect((await readFile(join(root, SCOPE_FILE), "utf8")).trim()).toBe(
+			frozen,
+		);
 	});
 
 	// The reverse would orphan everything already filed under the remote id.
@@ -172,7 +335,7 @@ describe("resolveScopeId", () => {
 		await gitInit(root);
 		pin(root, "cabane");
 
-		expect(await resolveScopeId(root)).toBe("cabane");
+		expect(await resolveScopeId(root, { home })).toBe("cabane");
 		expect((await readFile(join(root, SCOPE_FILE), "utf8")).trim()).toBe(
 			"cabane",
 		);
@@ -181,26 +344,30 @@ describe("resolveScopeId", () => {
 	it("falls back to the root path with no git at all", async () => {
 		const root = dir("plain");
 
-		expect(await resolveScopeId(root)).toBe(root);
+		expect(await resolveScopeId(root, { home })).toBe(root);
 	});
 
-	it("takes a legacy pin over the remote, and does not cache it", async () => {
+	it("takes a legacy pin over the remote, and stores nothing", async () => {
 		const root = dir("repo");
 		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
 
-		expect(await resolveScopeId(root, async () => "jake")).toBe("jake");
 		expect(
-			await readFile(join(root, SCOPE_FILE), "utf8").catch(() => null),
-		).toBeNull();
+			await resolveScopeId(root, { home, legacyPin: async () => "jake" }),
+		).toBe("jake");
+		expect(untracked(root)).toBe("");
+		expect(stored()).toEqual([]);
 	});
 
 	it("skips a git: legacy pin so a remote can still win", async () => {
 		const root = dir("repo");
 		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
 
-		expect(await resolveScopeId(root, async () => "git:abc123abc123")).toBe(
-			"github.com/davidpp/cabane",
-		);
+		expect(
+			await resolveScopeId(root, {
+				home,
+				legacyPin: async () => "git:abc123abc123",
+			}),
+		).toBe("github.com/davidpp/cabane");
 	});
 });
 
@@ -271,6 +438,19 @@ describe("detectScope", () => {
 
 		expect(scope?.extensions).toEqual({});
 		expect(scope?.scopeUri).toBe("jake://scope/cabane");
+	});
+
+	it("leaves a fresh clone without a kabane file", async () => {
+		const origin = dir("origin");
+		await gitInit(origin);
+		const clone = join(workspace, "clone");
+		git(workspace, ["clone", "-q", origin, clone]);
+
+		const scope = await detectScope(clone, { home });
+
+		expect(scope?.scopeId).toBe(origin);
+		expect(untracked(clone)).toBe("");
+		expect(existsSync(join(clone, ".kabane"))).toBe(false);
 	});
 
 	it("returns null outside any project", async () => {

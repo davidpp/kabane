@@ -285,6 +285,11 @@ available without a new size bound; its subtask rollup now includes all children
 ✓ Created 📥 🟠 🔧JMYA-1  Write the README @claude
 ```
 
+Kabane writes nothing into your repo to find its scope. It remembers the scope it detected
+for each checkout under `~/.kabane`, so a checkout keeps its tasks when its remote is renamed.
+A clone made after the rename resolves by the new remote. To pin a scope in the repo itself,
+for example to check it in, run `kabane init --scope <id>` in it, which writes `.kabane/scope`.
+
 Outside a repo, `list` and `search` span every scope. `kabane <command> --help` prints that
 command's flags, `kabane --help` lists the commands, and
 [`packages/cli/README.md`](../packages/cli/README.md) has the full reference.

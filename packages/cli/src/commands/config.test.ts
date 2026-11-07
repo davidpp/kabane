@@ -470,7 +470,7 @@ describe.concurrent("config through the real CLI", () => {
 					"scope",
 				),
 			).toEqual({ key: "loop.gates.test", layer: "scope", value: "bun test" });
-			expect(existsSync(join(repo, ".kabane", "loop.json"))).toBe(false);
+			expect(existsSync(join(repo, ".kabane"))).toBe(false);
 			const [scopeId] = Object.keys(JSON.parse(read()).scopes);
 			expect(JSON.parse(read()).scopes).toEqual({
 				[String(scopeId)]: { loop: { gates: { test: "bun test" } } },
@@ -481,6 +481,7 @@ describe.concurrent("config through the real CLI", () => {
 				value: 5,
 			});
 			// A checked-in file under it: the scope's value wins where both say something.
+			mkdirSync(join(repo, ".kabane"));
 			writeFileSync(
 				join(repo, ".kabane", "loop.json"),
 				'{\n\t"gates": { "test": "npm test", "lint": "npm run lint" },\n\t"stallAfter": 2\n}\n',

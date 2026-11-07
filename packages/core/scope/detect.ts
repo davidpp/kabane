@@ -11,9 +11,10 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 import { promisify } from "node:util";
+import { DetectedScopes } from "./detected";
 import { ScopeUri } from "./uri";
 
 const run = promisify(execFile);
@@ -21,7 +22,7 @@ const run = promisify(execFile);
 /** The directory that marks a project root and holds its pinned scope. */
 export const MARKER_DIR = ".kabane";
 
-/** The pin `kabane init --scope` writes, and the detector's cache. */
+/** The pin only `kabane init --scope` writes; detection reads it and never writes it. */
 export const SCOPE_FILE = join(MARKER_DIR, "scope");
 
 /**
@@ -41,7 +42,10 @@ export type ProjectScope = {
 };
 
 export type DetectOptions = {
-	/** KABANE_HOME. Guards the walk from mistaking `~/.kabane` for a project. */
+	/**
+	 * KABANE_HOME. Guards the walk from mistaking `~/.kabane` for a project, and
+	 * holds the ids detection resolved (`DetectedScopes`).
+	 */
 	home: string;
 	/** Skip `branch`/`package` detection. Default: detect. */
 	detectExtensions?: boolean;
@@ -190,60 +194,58 @@ const readScopePin = async (root: string): Promise<string | null> => {
 };
 
 /**
- * Cache a resolved id as the project's pin so later runs skip the git probes.
+ * Resolve the stable scope id for a project root (ADR-009 cascade):
+ * pin → legacy pin → the id detection stored → git remote → first commit → path.
+ *
+ * Nothing here writes into the repo: it may be a checkout the user does not
+ * own. What the remote resolves to is stored under KABANE_HOME instead, keyed
+ * by the checkout's root and checked against its first commit, so a renamed
+ * remote keeps the scope it had while a fork or another clone resolves by its
+ * own remote.
  *
  * One-way: a `git:` id is a placeholder for a repo that had no remote when it
- * was first seen, so a real remote id may replace it — never the reverse, which
- * would orphan everything already filed under the remote id. Best-effort; a
- * read-only checkout still resolves, it just re-probes each time.
- */
-const writeScopePin = async (root: string, scopeId: string): Promise<void> => {
-	const current = await readScopePin(root);
-	if (current && !current.startsWith("git:")) return;
-	if (current === scopeId) return;
-
-	try {
-		await mkdir(join(root, MARKER_DIR), { recursive: true });
-		await writeFile(scopePinPath(root), `${scopeId}\n`);
-	} catch {
-		// Caching is optional.
-	}
-};
-
-/**
- * Resolve the stable scope id for a project root (ADR-009 cascade):
- * pin → legacy pin → git remote → first commit → path.
- *
- * A `git:` pin does not short-circuit: it is the cascade's own fallback, and
- * skipping it lets a repo that has since gained a remote upgrade to it. The
- * legacy pin is read but never cached — nothing should rewrite another tool's
- * answer into Cabane's file behind the user's back.
+ * was first seen, so a `git:` pin does not short-circuit and a remote id may
+ * replace it; nothing replaces a remote id with a `git:` one, which would
+ * orphan everything already filed under it, and an id stored before the
+ * repo's first commit still holds once it has one. A `git:` id is never
+ * stored: the commit it derives from is always there to derive it again. The
+ * legacy pin is read but never stored — another tool's answer stays that
+ * tool's.
  */
 export const resolveScopeId = async (
 	root: string,
-	legacyPin?: DetectOptions["legacyPin"],
+	opts: Pick<DetectOptions, "home" | "legacyPin">,
 ): Promise<string> => {
 	const pinned = await readScopePin(root);
 	if (pinned && !pinned.startsWith("git:")) return pinned;
 
-	const legacy = await legacyPin?.(root);
+	const legacy = await opts.legacyPin?.(root);
 	if (legacy && !legacy.startsWith("git:")) return legacy;
-
-	const remote = await remoteUrl(root);
-	if (remote) {
-		const normalized = normalizeGitUrl(remote);
-		await writeScopePin(root, normalized);
-		return normalized;
-	}
 
 	const firstCommit = (
 		await git(root, ["rev-list", "--max-parents=0", "HEAD"])
 	)?.split("\n")[0];
-	if (firstCommit) {
-		const id = `git:${firstCommit.slice(0, 12)}`;
-		await writeScopePin(root, id);
-		return id;
+	const stored = await DetectedScopes.read(opts.home, root);
+	// A different first commit is another repo cloned where this one was.
+	if (
+		stored &&
+		(stored.firstCommit === undefined || stored.firstCommit === firstCommit)
+	) {
+		// Stored before the repo's first commit: from now on, that commit is the repo.
+		if (stored.firstCommit === undefined && firstCommit) {
+			await DetectedScopes.write(opts.home, root, { ...stored, firstCommit });
+		}
+		return stored.scopeId;
 	}
+
+	const remote = await remoteUrl(root);
+	if (remote) {
+		const scopeId = normalizeGitUrl(remote);
+		await DetectedScopes.write(opts.home, root, { scopeId, firstCommit });
+		return scopeId;
+	}
+
+	if (firstCommit) return `git:${firstCommit.slice(0, 12)}`;
 
 	return pinned ?? legacy ?? root;
 };
@@ -315,7 +317,7 @@ export const detectScope = async (
 	const root = await findProjectRoot(cwd, opts.home);
 	if (!root) return null;
 
-	const scopeId = await resolveScopeId(root, opts.legacyPin);
+	const scopeId = await resolveScopeId(root, opts);
 	const extensions =
 		opts.detectExtensions === false ? {} : await detectExtensions(cwd, root);
 
