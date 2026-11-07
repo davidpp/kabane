@@ -465,6 +465,28 @@ it("stores canonical recommendations and refuses mistyped choices by default", a
 	).toBe(true);
 });
 
+it("answers by id:<ULID>, the form a page prints at the end of each question's line", async () => {
+	const task = await issue();
+	const [first] = await ask(task.id);
+	if (!first) throw new Error("Missing question");
+	expect(
+		unwrap(
+			await Questions.answer(base, {
+				question: `id:${first.id}`,
+				answer: "remote",
+			}),
+		).question,
+	).toMatchObject({ id: first.id, answer: "Remote" });
+	expect(
+		(
+			await Questions.answer(base, {
+				question: "id:01M0000000000000000000000Z",
+				answer: "x",
+			})
+		).ok,
+	).toBe(false);
+});
+
 const questionOps = async () =>
 	unwrap(
 		await withDb(base, (db) =>

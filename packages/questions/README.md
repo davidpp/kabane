@@ -14,15 +14,16 @@ CLI and the hub register it; a host that does not has no decisions, which is not
 - `kabane_questions` reads them grouped by issue, open ones by default (`status: "all"` adds
   answered and withdrawn), for one issue (`id`) or a scope, as a page of at most 16KiB with a
   `nextCursor` line when there is more.
-- `kabane_answer` answers one by handle or ULID, or withdraws it with `withdraw: true` and
-  `reasoning`. A choice is named by its full text or by its label, the text before its first
-  `.`, `:` or `)` (`B` for "B. One tree", `yes` for "Yes: one pass"), ignoring case; a label two
-  choices share is refused with both listed. The full text is what is recorded. Answering the last open question moves a `waiting`
-  issue to `next` in the same transaction. An agent recording a reply the human gave it (the
-  grill, the copilot) sets `relayed: true`: the answer is credited to the human (`answered_by`)
-  and the write to the agent (`updated_by`). It is refused when the connection knows no human:
-  `kabane mcp` relays for the device's configured actor, whatever `--as` says, and the hub for
-  the Access identity when Access authenticated a human, never for a service token.
+- `kabane_answer` answers one by handle, ULID or `id:<ULID>` as a page prints it, or withdraws
+  it with `withdraw: true` and `reasoning`. A choice is named by its full text or by its label,
+  the text before its first `.`, `:` or `)` (`B` for "B. One tree", `yes` for "Yes: one pass"),
+  ignoring case; a label two choices share is refused with both listed. The full text is what is
+  recorded. Answering the last open question moves a `waiting` issue to `next` in the same
+  transaction. An agent recording a reply the human gave it (the grill, the copilot) sets
+  `relayed: true`: the answer is credited to the human (`answered_by`) and the write to the
+  agent (`updated_by`). It is refused when the connection knows no human: `kabane mcp` relays
+  for the device's configured actor, whatever `--as` says, and the hub for the Access identity
+  when Access authenticated a human, never for a service token.
 
 Closing an issue (`done` or `cancelled`, from any surface) withdraws its open questions with
 the reasoning "issue closed", in the same transaction. Reopening it restores none of them.

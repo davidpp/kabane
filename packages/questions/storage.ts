@@ -161,10 +161,12 @@ export namespace Questions {
 		);
 	};
 
+	/** A question's ULID from its handle (`JCAB-12:1`), its ULID, or `id:<ULID>` as a page prints it. */
 	export const resolve = async (
 		basePath: string,
 		input: string,
 	): Promise<Result<string>> => {
+		if (input.startsWith("id:")) return ok(input.slice("id:".length));
 		const match = input.match(/^(.+):([1-9]\d*)$/);
 		if (!match) return ok(input);
 		const task = match[1];
