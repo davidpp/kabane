@@ -1,6 +1,8 @@
 // A pass over the run's gates and what follows from it: a checkpoint commit when it is green and
 // the run has a worktree, naming the checklist items ticked since the last checkpoint of the same
-// task, the pass in run.json and on the trace, and the result on the tracker.
+// task, the pass in run.json and on the trace, and the result on the tracker. A subtask that works
+// in a worktree of its own (`ClaimTrees`) has its gates and checkpoint there, and a green pass then
+// merges its branch into the run's; a merge that conflicts fails the pass as a red gate would.
 // A subtask's pass goes on its work log, and a red one reopens it; the run's own final pass goes
 // on the parent's.
 import { Planner } from "@cabane/core";
@@ -8,6 +10,7 @@ import { Checklists } from "./checklists";
 import { Gates } from "./gates";
 import { RunState } from "./state";
 import { RunStore } from "./store";
+import { ClaimTrees } from "./trees";
 import { Worktree } from "./worktree";
 
 export namespace Checks {
@@ -83,8 +86,8 @@ export namespace Checks {
 		ctx: Ctx,
 		subject: Subject,
 		results: readonly Gates.Result[],
+		dir: string | undefined,
 	): Promise<Pick<Gates.Run, "checkpoint" | "ticked">> => {
-		const dir = ctx.run.worktree;
 		if (dir === undefined) return {};
 		const read = await snapshot(ctx, subject);
 		const items = read?.named ?? [];
@@ -121,36 +124,104 @@ export namespace Checks {
 		return { checkpoint: made.value, ...(read ? { ticked: read.ticked } : {}) };
 	};
 
+	/** Where a pass runs: the gates in `dir`, a checkpoint in `worktree`, and a subtask's `tree`. */
+	type Place = { dir: string; worktree?: string; tree?: ClaimTrees.Tree };
+
+	const runPlace = (run: RunStore.Run): Place => ({
+		dir: RunStore.sessionDir(run),
+		...(run.worktree ? { worktree: run.worktree } : {}),
+	});
+
 	/**
-	 * Run the gates for `subject` in the sessions' directory, commit a checkpoint when they pass in
-	 * a run with a worktree, and record the pass. A run that stops meanwhile kills the gate.
+	 * Run the gates for `subject` in the run's own tree, commit a checkpoint when they pass in a run
+	 * with a worktree, and record the pass. A run that stops meanwhile kills the gate.
 	 */
 	export const gate = (ctx: Ctx, subject: Subject): Promise<Gates.Run> =>
-		queued(ctx, () => gateNow(ctx, subject));
+		queued(ctx, () => gateNow(ctx, subject, runPlace(ctx.run)));
 
 	/**
 	 * `gate`, for a subject `ready` settles once the pass's turn comes rather than when it queues:
-	 * the tracker may change while it waits behind another pass. Undefined, it runs nothing.
+	 * the tracker may change while it waits behind another pass. Undefined, it runs nothing. In a
+	 * subtask's own `tree` the pass waits for no other: only its merge into the run's branch does.
 	 */
 	export const gateWhen = (
 		ctx: Ctx,
 		ready: () => Promise<Subject | undefined>,
-	): Promise<Gates.Run | undefined> =>
-		queued(ctx, async () => {
+		tree?: ClaimTrees.Tree,
+	): Promise<Gates.Run | undefined> => {
+		const body = async () => {
 			const subject = await ready();
-			return subject ? gateNow(ctx, subject) : undefined;
-		});
+			if (subject === undefined) return undefined;
+			return gateNow(
+				ctx,
+				subject,
+				tree
+					? {
+							dir: RunStore.projectIn(ctx.run, tree.dir),
+							worktree: tree.dir,
+							tree,
+						}
+					: runPlace(ctx.run),
+			);
+		};
+		return tree ? body() : queued(ctx, body);
+	};
 
-	// One pass at a time: two sessions ending together share a directory, and two passes would run
-	// the gates over each other and race for git's index.
+	// One pass at a time in the run's tree, and one merge into it: two sessions ending together
+	// there share a directory, and two passes would run the gates over each other and race for
+	// git's index.
 	const queued = <T>(ctx: Ctx, body: () => Promise<T>): Promise<T> => {
 		const pass = ctx.gating.then(body);
 		ctx.gating = pass.catch(() => undefined);
 		return pass;
 	};
 
-	const gateNow = async (ctx: Ctx, subject: Subject): Promise<Gates.Run> => {
-		const dir = RunStore.sessionDir(ctx.run);
+	const MERGE = "merge";
+
+	// A green pass in a subtask's tree, merged into the run's branch: the commit that left it at, or
+	// the merge's failure as a red result for the subtask's next brief.
+	const mergeIn = async (
+		ctx: Ctx,
+		subject: Subject,
+		tree: ClaimTrees.Tree,
+	): Promise<{ merged: string } | { failed: Gates.Result }> => {
+		const started = performance.now();
+		const merged = await queued(ctx, () =>
+			ClaimTrees.merge(ctx, tree, {
+				id: subject.taskId ?? ctx.run.parentId,
+				shortId: subject.label,
+				title: subject.title,
+			}),
+		);
+		const tag = subject.lane ? { lane: subject.lane } : {};
+		RunState.event(ctx, {
+			...tag,
+			type: merged.ok ? "merged" : "merge_conflict",
+			task: subject.label,
+			summary: merged.ok
+				? `${subject.label} merged into ${RunStore.branchOf(ctx.run)} at ${merged.value.slice(0, 12)}`
+				: merged.error.message,
+			...(merged.ok ? { data: { sha: merged.value } } : {}),
+		});
+		if (merged.ok) return { merged: merged.value };
+		return {
+			failed: {
+				name: MERGE,
+				command: `git merge --no-ff ${tree.branch}`,
+				ok: false,
+				exit: 1,
+				ms: Math.round(performance.now() - started),
+				tail: merged.error.message,
+			},
+		};
+	};
+
+	const gateNow = async (
+		ctx: Ctx,
+		subject: Subject,
+		place: Place,
+	): Promise<Gates.Run> => {
+		const { dir, tree } = place;
 		const { gates } = ctx.run.config;
 		const tag = subject.lane ? { lane: subject.lane } : {};
 		RunState.event(ctx, {
@@ -161,27 +232,33 @@ export namespace Checks {
 				? `gates for ${subject.label}: ${Object.keys(gates).join(", ")}`
 				: `no gates configured for ${subject.label}; checkpointing it`,
 		});
-		const results = await Gates.run(
+		const ran = await Gates.run(
 			gates,
 			dir,
 			{ KABANE_LOOP: "1", KABANE_LOOP_RUN: ctx.run.id },
 			ctx.stopping.signal,
 		);
-		const ok = Gates.passed(gates, results);
+		const green = Gates.passed(gates, ran);
 		RunState.event(ctx, {
 			...tag,
-			type: ok ? "gate_passed" : "gate_failed",
+			type: green ? "gate_passed" : "gate_failed",
 			task: subject.label,
-			summary: results.map(Gates.describe).join(" · ") || "no gate ran",
+			summary: ran.map(Gates.describe).join(" · ") || "no gate ran",
 		});
-		const committed = ok ? await commit(ctx, subject, results) : {};
+		const committed = green
+			? await commit(ctx, subject, ran, place.worktree)
+			: {};
+		const merge = green && tree ? await mergeIn(ctx, subject, tree) : undefined;
+		const results = merge && "failed" in merge ? [...ran, merge.failed] : ran;
 		const pass: Gates.Run = {
 			at: ctx.now().toISOString(),
 			...(subject.taskId ? { taskId: subject.taskId } : {}),
 			results,
-			ok,
+			ok: green && !(merge && "failed" in merge),
 			tree: await ctx.tree(dir),
 			...committed,
+			...(tree ? { branch: tree.branch } : {}),
+			...(merge && "merged" in merge ? { merged: merge.merged } : {}),
 		};
 		RunState.save(ctx, { ...ctx.run, gateRuns: [...ctx.run.gateRuns, pass] });
 		return pass;
@@ -206,6 +283,14 @@ export namespace Checks {
 			})),
 			...(pass.checkpoint
 				? [{ uri: `commit:${pass.checkpoint}`, label: "loop checkpoint" }]
+				: []),
+			...(pass.merged
+				? [
+						{
+							uri: `commit:${pass.merged}`,
+							label: `merged into ${RunStore.branchOf(ctx.run)}`,
+						},
+					]
 				: []),
 		];
 		if (refs.length > 0) {

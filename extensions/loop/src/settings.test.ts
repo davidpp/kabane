@@ -23,6 +23,9 @@ describe("LoopSettings.inputs", () => {
 			"lenses.quality",
 			"recheck",
 			"worktree",
+			"isolation",
+			"reuse",
+			"maxWorktrees",
 			"land",
 		]);
 		// The gates are named commands the form cannot edit.
@@ -70,9 +73,21 @@ describe("LoopSettings.inputs", () => {
 		expect(inputs["budget.concurrency"]).toMatchObject({
 			type: "number",
 			default: "1",
-			label: "sessions in one tree",
+			label: "sessions at once",
 			group: "Limits",
 		});
+		expect(inputs.isolation).toMatchObject({
+			default: "worktree",
+			options: ["worktree", "shared"],
+			group: "Workspace",
+		});
+		expect(inputs.reuse).toMatchObject({ type: "boolean", default: true });
+		expect(inputs.maxWorktrees).toMatchObject({
+			default: "one per session",
+			group: "Workspace",
+		});
+		// The setup command is free text, which the form cannot hold.
+		expect(inputs.setup).toBeUndefined();
 		expect(inputs["budget.spend"]?.default).toBe("none");
 	});
 
@@ -121,6 +136,9 @@ describe("LoopSettings.overrides", () => {
 				stallAfter: 3,
 				recheck: true,
 				worktree: true,
+				isolation: "worktree",
+				reuse: true,
+				maxWorktrees: undefined,
 				verifier: undefined,
 				land: "none",
 				lenses: ["functional", "quality"],

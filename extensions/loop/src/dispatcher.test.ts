@@ -133,7 +133,7 @@ describe("LoopDispatcher.triggers", () => {
 		expect(start?.satisfiable).toBe(true);
 		expect(start?.inputs["budget.concurrency"]).toMatchObject({
 			default: "1",
-			label: "sessions in one tree",
+			label: "sessions at once",
 		});
 		const preview = (start?.preview ?? []).map((line) =>
 			line.map((p) => p.text).join(""),

@@ -49,9 +49,8 @@ export namespace LoopSettings {
 			options: ["opus", "sonnet", "haiku"],
 			none: "your own",
 		},
-		// More than one session shares the run's one tree (LoopConfig's budget.concurrency).
 		"budget.concurrency": {
-			label: "sessions in one tree",
+			label: "sessions at once",
 			group: "Limits",
 			options: range(1, 8),
 		},
@@ -74,6 +73,15 @@ export namespace LoopSettings {
 		verifier: { label: "verifier", group: "Agents", none: "implementer" },
 		recheck: { label: "recheck the fixes", group: "Checks" },
 		worktree: { label: "own git worktree", group: "Workspace" },
+		isolation: { label: "each subtask works in", group: "Workspace" },
+		reuse: { label: "reuse subtask worktrees", group: "Workspace" },
+		// Unset, as many as the run has sessions at once.
+		maxWorktrees: {
+			label: "subtask worktrees kept",
+			group: "Workspace",
+			options: range(1, 8),
+			none: "one per session",
+		},
 		land: { label: "land the branch", group: "Workspace" },
 	};
 

@@ -1,8 +1,8 @@
 // What a run is configured with: the harness that implements, its budgets, when it counts as
-// stalled, its gates, whether it works in a worktree, and the lenses that verify it. The settings
-// port (`Extension.Ctx.settings`) resolves it through every layer: defaults, the user's config,
-// the repo's `.kabane/loop.json`, the user's settings for the repo's scope, then what the caller
-// passes (the trigger form or flags). A key the schema does not name is refused in every layer: a
+// stalled, its gates, whether it works in a worktree and each subtask in one of its own, and the
+// lenses that verify it. The settings port (`Extension.Ctx.settings`) resolves it through every
+// layer: defaults, the user's config, the repo's `.kabane/loop.json`, the user's settings for the
+// repo's scope, then what the caller passes (the trigger form or flags). A key the schema does not name is refused in every layer: a
 // typo (`workTree`) silently dropped would run the agents somewhere the human did not mean.
 import { Harnesses } from "@cabane/acp";
 import { z } from "zod";
@@ -13,9 +13,9 @@ export namespace LoopConfig {
 
 	export const BudgetSchema = z.object({
 		/**
-		 * Sessions running at once. Every implementing claim works in the run's one tree, so a
-		 * subtask's gates and checkpoint see what its siblings have half done: 1 keeps them apart,
-		 * and more is for a plan whose subtasks touch disjoint files.
+		 * Sessions running at once. With `isolation: shared` every implementing claim works in the
+		 * run's one tree, so a subtask's gates and checkpoint see what its siblings have half done: 1
+		 * keeps them apart, and more is for a plan whose subtasks touch disjoint files.
 		 */
 		concurrency: z
 			.number()
@@ -24,7 +24,7 @@ export namespace LoopConfig {
 			.max(8)
 			.default(1)
 			.describe(
-				"Loop sessions running at once, 1 to 8; defaults to 1. More than 1 share one tree, so a subtask's gates and checkpoint see its siblings' half-done edits: raise it only for subtasks that touch disjoint files.",
+				"Loop sessions running at once, 1 to 8; defaults to 1. With isolation shared, more than 1 share one tree, so a subtask's gates and checkpoint see its siblings' half-done edits: raise it only for subtasks that touch disjoint files.",
 			),
 		/** Automatic nudges across the run for turns ending with active-owned issue work. */
 		continuations: z
@@ -65,6 +65,9 @@ export namespace LoopConfig {
 	export const LensNameSchema = z
 		.string()
 		.regex(/^[a-z][a-z0-9-]*$/, "a lens name is one lowercase word");
+
+	/** Where a subtask's claim works: a worktree of its own, or the run's one tree. */
+	export const ISOLATION = ["worktree", "shared"] as const;
 
 	/** How a completed run's branch lands. */
 	export const LAND = ["none", "pr"] as const;
@@ -121,6 +124,51 @@ export namespace LoopConfig {
 				"Work in a git worktree of the project, committing a checkpoint after each green gate; defaults to true.",
 			),
 		/**
+		 * Where each subtask's claim works, in a run with a worktree: `worktree` gives it a worktree
+		 * and branch of its own, cut from the run's HEAD, where its session and gates run, and a green
+		 * pass merges that branch into the run's (`ClaimTrees`). `shared` has every claim work in the
+		 * run's one tree. A single issue, the lenses, the fixer and the rechecks always work in the
+		 * run's tree, and a run with no worktree has only the one.
+		 */
+		isolation: z
+			.enum(ISOLATION)
+			.default("worktree")
+			.describe(
+				"Where each subtask's session and gates run: worktree, a git worktree and branch of its own merged into the run's branch once its gates pass, or shared, the run's one tree; defaults to worktree.",
+			),
+		/**
+		 * The user's own command for a subtask's worktree, run in it once it is made or reset for a
+		 * subtask and before its session starts: an install, say. Nothing else is installed. One that
+		 * fails stops the run.
+		 */
+		setup: z
+			.string()
+			.min(1)
+			.optional()
+			.describe(
+				"A shell command run in each subtask's worktree as it is made or reset for a subtask, before its session starts, such as bun install; one that fails stops the run.",
+			),
+		/**
+		 * Keep a subtask's worktree once its work merges, for the next subtask, reset to the run's
+		 * HEAD with what git ignores left in place, so build output stays warm. Off: it is removed.
+		 */
+		reuse: z
+			.boolean()
+			.default(true)
+			.describe(
+				"Keep a subtask's worktree once its work merges and reset it for the next subtask, leaving ignored build output (node_modules, target/) warm; off removes it; defaults to true.",
+			),
+		/** The subtask worktrees the run keeps at once, in use or kept for reuse; unset, its concurrency. */
+		maxWorktrees: z
+			.number()
+			.int()
+			.min(1)
+			.max(8)
+			.optional()
+			.describe(
+				"The most subtask worktrees a run keeps at once, in use or kept for reuse, 1 to 8; a subtask waits for one; unset, the run's concurrency.",
+			),
+		/**
 		 * Verifier lenses, each its own session once the plan is done and the gates are green,
 		 * filing findings as tagged child issues of the parent. A lens is a prompt file: shipped
 		 * (`functional`, `quality`) or the repo's `.kabane/loop/lenses/<name>.md`. None: no
@@ -164,6 +212,7 @@ export namespace LoopConfig {
 	});
 
 	export type Config = z.output<typeof Schema>;
+
 	export type Input = z.input<typeof Schema>;
 
 	// Existing files may still hold the retired timer; it is not a runtime setting, so it is dropped
@@ -187,6 +236,18 @@ export namespace LoopConfig {
 		.describe(
 			"The loop extension's settings for a run; edit dotted keys. Flags on kabane loop start and the board's run form override them.",
 		);
+
+	// A run written before `isolation` existed worked every claim in its one tree: resumed, it
+	// goes on that way rather than taking the default a new run gets.
+	const sharedWhenUnset = (config: unknown): unknown => {
+		const parsed = z.record(z.unknown()).safeParse(config);
+		return parsed.success && parsed.data.isolation === undefined
+			? { ...parsed.data, isolation: "shared" }
+			: config;
+	};
+
+	/** A run's config as run.json holds it. */
+	export const RunSchema = z.preprocess(sharedWhenUnset, Schema);
 
 	/**
 	 * What a caller layers over the stored settings (flags, the board's trigger form), shaped like

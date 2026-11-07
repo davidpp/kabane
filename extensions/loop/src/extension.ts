@@ -221,9 +221,10 @@ type Verb = (args: ParsedArgs, deps: Deps, target: string) => Promise<Outcome>;
 const ran = (result: Result<RunStore.Run>): Outcome =>
 	result.ok ? success(result.value, line(result.value)) : failure(result.error);
 
-// `git worktree add` checks out what is committed, and nothing git ignores comes with it.
+// `git worktree add` checks out what is committed, and nothing git ignores comes with it: the
+// run's worktree, and each subtask's (`ClaimTrees`).
 const WORKTREE_NOTE =
-	"  note: a new worktree has no ignored files (node_modules, build output): a gate that needs them installs them first, say `bun install && bun test`";
+	"  note: a new worktree has no ignored files (node_modules, build output): a gate that needs them installs them first, say `bun install && bun test`, and the loop.setup setting readies each subtask's own worktree before its session";
 
 // What `start` takes, and `--as` and `--scope`, which every command takes. A misspelt flag
 // (`--work-tree`) is refused rather than dropped, which would start a run the human did not ask for.

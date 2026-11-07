@@ -595,9 +595,11 @@ describe("A parent run with two sessions at once", () => {
 		const run = await runOn(
 			parent.value,
 			{},
+			// One tree: in worktrees of their own the two passes would not queue.
 			{
 				gates: { held: "while [ -f hold ]; do sleep 0.01; done" },
 				budget: { concurrency: 2 },
+				isolation: "shared",
 			},
 		);
 		const worktree = run.worktree ?? "";

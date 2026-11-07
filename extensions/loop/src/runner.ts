@@ -9,7 +9,8 @@
 // on it (`Parent`). Once the fixer has ended and the gates are green on its result, the lenses
 // whose findings it closed recheck its diff, once and without editing (`recheck`). A run that
 // completes lands its branch when its `land` setting says so
-// (`Land`). A single issue that gains a work child mid-run is a parent from then on.
+// (`Land`). A single issue that gains a work child mid-run is a parent from then on. Each
+// subtask may work in a worktree of its own (`ClaimTrees`), which the run's end removes once free.
 import { err, ok, type Result, type Task } from "@cabane/core";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
@@ -25,6 +26,7 @@ import { RunState } from "./state";
 import { Steering } from "./steering";
 import { Stop } from "./stop";
 import { RunStore } from "./store";
+import { ClaimTrees } from "./trees";
 import { Worktree } from "./worktree";
 
 export namespace Runner {
@@ -93,6 +95,7 @@ export namespace Runner {
 				sessionId,
 				outcome: { outcome: "cancelled", detail: "the harness did not stop" },
 			});
+		await ClaimTrees.close(ctx);
 		await Parent.report(ctx, exit);
 		return finish(ctx, exit);
 	};
@@ -156,17 +159,21 @@ export namespace Runner {
 		RunState.save(ctx, { ...ctx.run, steering, inboxRead: inbox.value.next });
 	};
 
-	// Say once why nothing moves, rather than on every tick.
+	// Say once why nothing moves, rather than on every tick: `treeless` when a subtask waits for a
+	// worktree of its own.
 	const reportWaiting = (
 		ctx: Ctx,
 		health: LoopPlan.Health,
 		last: { said: string },
+		treeless: boolean,
 	): void => {
 		const said = ctx.run.steering.paused
 			? `paused with ${plural(ctx.live.size, "session")} running`
-			: health.kind === "waiting"
-				? `waiting on ${health.on.join(", ") || "nothing claimable"}`
-				: "";
+			: treeless
+				? `waiting for a worktree: the run keeps at most ${ClaimTrees.cap(ctx.run)}, and every one is held by a subtask`
+				: health.kind === "waiting"
+					? `waiting on ${health.on.join(", ") || "nothing claimable"}`
+					: "";
 		if (said !== "" && said !== last.said)
 			RunState.event(ctx, { type: "waiting", summary: said });
 		last.said = said;
@@ -242,6 +249,9 @@ export namespace Runner {
 				reason: `budget:${verdict.reason}`,
 				detail: verdict.detail,
 			};
+		// Before the plan is read: a subtask this lands is closed in it, and one it reopens is ready.
+		if (RunStore.isolated(ctx.run))
+			await hearingStop(ctx, () => Claims.settleHeld(ctx));
 		const loaded = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
 		if (!loaded.ok) {
 			state.planFailures += 1;
@@ -267,8 +277,23 @@ export namespace Runner {
 			? []
 			: LoopPlan.frontier(plan, RunState.liveTasks(ctx), ctx.now(), skipped);
 		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
+		let treeless = false;
 		for (const node of Steering.pick(ctx.run.steering, ready, slots)) {
-			await Claims.claim(ctx, node, plan);
+			const claimed = await hearingStop(ctx, () =>
+				Claims.claim(ctx, node, plan),
+			);
+			if (ctx.stopRequested)
+				return { status: "stopped", reason: "stop-requested" };
+			if (!claimed.ok)
+				return {
+					status: "stopped",
+					reason: "worktree-not-readied",
+					detail: claimed.error.message,
+				};
+			if (!claimed.value) {
+				treeless = true;
+				continue;
+			}
 			RunState.save(ctx, {
 				...ctx.run,
 				steering: Steering.claimed(ctx.run.steering, node.task.id),
@@ -286,7 +311,7 @@ export namespace Runner {
 				reason: "deadlocked",
 				detail: `cycle: ${health.cycle.join(" → ")}`,
 			};
-		reportWaiting(ctx, health, state.health);
+		reportWaiting(ctx, health, state.health, treeless);
 		return undefined;
 	};
 

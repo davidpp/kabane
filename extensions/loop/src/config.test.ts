@@ -40,17 +40,33 @@ describe("LoopConfig.SettingsSchema", () => {
 			stallAfter: 3,
 			gates: {},
 			worktree: true,
+			isolation: "worktree",
+			reuse: true,
 			lenses: [],
 			recheck: true,
 			land: "none",
 		});
 	});
 
-	it("runs one session at a time unless asked, and says why: more share one tree", () => {
+	it("runs one session at a time unless asked, and says why: shared, more share one tree", () => {
 		const concurrency = LoopConfig.BudgetSchema.shape.concurrency;
 		expect(concurrency.parse(undefined)).toBe(1);
 		expect(concurrency.description).toContain("defaults to 1");
-		expect(concurrency.description).toContain("More than 1 share one tree");
+		expect(concurrency.description).toContain(
+			"With isolation shared, more than 1 share one tree",
+		);
+		const shared = resolve({ isolation: "shared" });
+		if (!shared.ok) throw shared.error;
+		expect(shared.value.value.isolation).toBe("shared");
+	});
+
+	it("reads a run saved before isolation existed as sharing one tree", () => {
+		const saved = LoopConfig.RunSchema.safeParse({
+			budget: { concurrency: 2 },
+		});
+		expect(saved.success && saved.data.isolation).toBe("shared");
+		const fresh = LoopConfig.RunSchema.safeParse({ isolation: "worktree" });
+		expect(fresh.success && fresh.data.isolation).toBe("worktree");
 	});
 
 	it("layers overrides over the project file key by key, budget and gates included", () => {

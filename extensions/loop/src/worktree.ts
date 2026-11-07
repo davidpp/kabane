@@ -287,6 +287,14 @@ export namespace Worktree {
 		return cleaned.ok ? ok(undefined) : cleaned;
 	};
 
+	// The files a merge or rebase left conflicted in `dir`.
+	const conflicted = async (dir: string, run: Git): Promise<string[]> => {
+		const listed = await run(dir, ["diff", "--name-only", "--diff-filter=U"]);
+		return listed.ok
+			? listed.value.split("\n").filter((f) => f.trim() !== "")
+			: [];
+	};
+
 	/**
 	 * Rebase the worktree at `dir` onto commit `onto`. A rebase that stops on a conflict is
 	 * aborted, so the branch is left as it was, and the error names the files that conflicted.
@@ -300,20 +308,110 @@ export namespace Worktree {
 		if (!isLinked.ok) return isLinked;
 		const rebased = await run(dir, ["rebase", "-q", onto]);
 		if (rebased.ok) return ok(undefined);
-		const conflicted = await run(dir, [
-			"diff",
-			"--name-only",
-			"--diff-filter=U",
-		]);
+		const files = await conflicted(dir, run);
 		await run(dir, ["rebase", "--abort"]);
-		const files = conflicted.ok
-			? conflicted.value.split("\n").filter((f) => f.trim() !== "")
-			: [];
 		return err(
 			files.length > 0
 				? new Error(`conflicts in ${files.join(", ")}`)
 				: rebased.error,
 		);
+	};
+
+	/**
+	 * Merge `branch` into the worktree at `dir`, as a merge commit of `message` even when it could
+	 * fast-forward: the commit it leaves HEAD at. A merge that stops on a conflict is aborted, so
+	 * HEAD is left as it was, and the error names the files that conflicted.
+	 */
+	export const merge = async (
+		dir: string,
+		branch: string,
+		message: string,
+		run: Git = git,
+	): Promise<Result<string>> => {
+		const isLinked = await linked(dir, run);
+		if (!isLinked.ok) return isLinked;
+		const merged = await run(dir, [
+			"merge",
+			"-q",
+			"--no-ff",
+			"-m",
+			message,
+			branch,
+		]);
+		if (!merged.ok) {
+			const files = await conflicted(dir, run);
+			// Fails, harmlessly, when the merge never started.
+			await run(dir, ["merge", "--abort"]);
+			return err(
+				files.length > 0
+					? new Error(`conflicts in ${files.join(", ")}`)
+					: merged.error,
+			);
+		}
+		const sha = await run(dir, ["rev-parse", "HEAD"]);
+		return sha.ok ? ok(sha.value.trim()) : sha;
+	};
+
+	/**
+	 * Merge commit `sha` into the worktree at `dir` and leave a conflict for whoever works there
+	 * next to resolve: the files left conflicted, none when it merged cleanly.
+	 */
+	export const mergeKeepingConflicts = async (
+		dir: string,
+		sha: string,
+		run: Git = git,
+	): Promise<Result<string[]>> => {
+		const isLinked = await linked(dir, run);
+		if (!isLinked.ok) return isLinked;
+		const merged = await run(dir, ["merge", "-q", "--no-edit", sha]);
+		if (merged.ok) return ok([]);
+		const files = await conflicted(dir, run);
+		return files.length > 0 ? ok(files) : merged;
+	};
+
+	/**
+	 * Put the worktree at `dir` on a new branch `branch` at commit `sha`, its changes discarded and
+	 * the untracked files `sha` does not have removed; what git ignores (build output) stays.
+	 */
+	export const switchTo = async (
+		dir: string,
+		branch: string,
+		sha: string,
+		run: Git = git,
+	): Promise<Result<void>> => {
+		const isLinked = await linked(dir, run);
+		if (!isLinked.ok) return isLinked;
+		// Fails, harmlessly, when no merge is in progress.
+		await run(dir, ["merge", "--abort"]);
+		const switched = await run(dir, [
+			"checkout",
+			"-q",
+			"-f",
+			"-b",
+			branch,
+			sha,
+		]);
+		if (!switched.ok) return switched;
+		const cleaned = await run(dir, ["clean", "-q", "-fd"]);
+		return cleaned.ok ? ok(undefined) : cleaned;
+	};
+
+	/**
+	 * Take the worktree at `dir` off its branch `branch`, which is merged into `into`'s HEAD, and
+	 * delete that branch: the worktree stays, its HEAD detached, for the next branch.
+	 */
+	export const detach = async (
+		dir: string,
+		branch: string,
+		into: string,
+		run: Git = git,
+	): Promise<Result<void>> => {
+		const isLinked = await linked(dir, run);
+		if (!isLinked.ok) return isLinked;
+		const detached = await run(dir, ["checkout", "-q", "--detach"]);
+		if (!detached.ok) return detached;
+		const deleted = await run(into, ["branch", "-q", "-d", branch]);
+		return deleted.ok ? ok(undefined) : deleted;
 	};
 
 	/**
@@ -335,6 +433,19 @@ export namespace Worktree {
 	};
 
 	/**
+	 * Remove the worktree at `dir`, one of `projectDir`'s repository's, leaving its branch: refused
+	 * while it has changes not committed or files git does not ignore.
+	 */
+	export const drop = async (
+		projectDir: string,
+		dir: string,
+		run: Git = git,
+	): Promise<Result<void>> => {
+		const removed = await run(projectDir, ["worktree", "remove", dir]);
+		return removed.ok ? ok(undefined) : removed;
+	};
+
+	/**
 	 * Remove the worktree at `dir` and delete its branch: a run's worktree whose work is merged.
 	 * `git worktree remove` refuses a worktree with changes not committed, which is left as it is.
 	 * A branch merged into HEAD is deleted as git deletes a merged branch; one `squashed` into the
@@ -347,7 +458,7 @@ export namespace Worktree {
 		squashed: boolean,
 		run: Git = git,
 	): Promise<Result<void>> => {
-		const removed = await run(projectDir, ["worktree", "remove", dir]);
+		const removed = await drop(projectDir, dir, run);
 		if (!removed.ok) return removed;
 		const deleted = await run(projectDir, [
 			"branch",

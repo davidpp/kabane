@@ -87,8 +87,20 @@ export namespace RunStore {
 		 * reports and never edits, so a different one once it ends fails it.
 		 */
 		tree: z.string().optional(),
+		/** A subtask's claim's own worktree (`ClaimTrees`), when it worked in one: its top. */
+		worktree: z.string().optional(),
 	});
 	export type Claim = z.infer<typeof ClaimSchema>;
+
+	/**
+	 * A worktree the run's subtask claims work in (`ClaimTrees`): its top, and while a subtask's work
+	 * in it has not merged into the run's branch, that subtask and the branch the work is on.
+	 */
+	export const TreeSchema = z.object({
+		dir: z.string(),
+		held: z.object({ taskId: z.string(), branch: z.string() }).optional(),
+	});
+	export type Tree = z.infer<typeof TreeSchema>;
 
 	/** What landing the run's branch did: the run's `land` setting, or `kabane loop land`. */
 	export const LandingSchema = z.object({
@@ -136,7 +148,7 @@ export namespace RunStore {
 		base: z
 			.object({ branch: z.string().optional(), sha: z.string() })
 			.optional(),
-		config: LoopConfig.Schema,
+		config: LoopConfig.RunSchema,
 		status: StatusSchema,
 		exit: z
 			.object({ reason: z.string(), detail: z.string().optional() })
@@ -161,6 +173,11 @@ export namespace RunStore {
 		steering: Steering.StateSchema.default({}),
 		/** Every pass over the gates, oldest first; the last says whether they are green. */
 		gateRuns: z.array(Gates.RunSchema).default([]),
+		/**
+		 * The worktrees its subtask claims work in, with `isolation: worktree`, oldest first; absent
+		 * until it has one.
+		 */
+		trees: z.array(TreeSchema).optional(),
 		/** The last landing of the run's branch, when it was landed. */
 		landing: LandingSchema.optional(),
 		/**
@@ -223,18 +240,39 @@ export namespace RunStore {
 		run.exit?.reason === "runner-died" ||
 		run.exit?.reason === LANDING_UNRECOVERED;
 
-	/** The checkpoints committed in the run's worktree, oldest first. */
+	/**
+	 * The checkpoints on the run's branch, oldest first: each committed in the run's worktree, or
+	 * for a subtask that worked in its own, the merge that brought its checkpoint into the run's.
+	 */
 	export const checkpoints = (run: Run): string[] =>
-		run.gateRuns.flatMap((g) => (g.checkpoint ? [g.checkpoint] : []));
+		run.gateRuns.flatMap((g) => {
+			const sha = g.branch === undefined ? g.checkpoint : g.merged;
+			return sha ? [sha] : [];
+		});
 
 	/**
 	 * Where the run's sessions and gates work: the project's folder in the run's worktree when it
 	 * has one, else the project.
 	 */
 	export const sessionDir = (run: Run): string =>
-		run.worktree === undefined
-			? run.projectDir
-			: join(run.worktree, run.worktreePrefix ?? "");
+		run.worktree === undefined ? run.projectDir : projectIn(run, run.worktree);
+
+	/**
+	 * Whether the run's subtask claims each work in a worktree of their own: `isolation: worktree`
+	 * in a run that has a worktree to cut theirs from.
+	 */
+	export const isolated = (run: Run): boolean =>
+		run.config.isolation === "worktree" && run.worktree !== undefined;
+
+	/** Where a worktree's sessions and gates work: the project's folder in it. */
+	export const projectIn = (run: Run, worktree: string): string =>
+		join(worktree, run.worktreePrefix ?? "");
+
+	/** Where `claim`'s session and gates worked: its own worktree's project folder, else the run's. */
+	export const claimDir = (run: Run, claim: Pick<Claim, "worktree">): string =>
+		claim.worktree === undefined
+			? sessionDir(run)
+			: projectIn(run, claim.worktree);
 
 	// The board's `ActivityToolDetail`, as a line of events.jsonl carries it. `satisfies` refuses a
 	// field the two type differently; a field only one of them has still compiles, since every
