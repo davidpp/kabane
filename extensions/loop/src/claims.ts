@@ -110,8 +110,8 @@ export namespace Claims {
 		(await ctx.tree(RunStore.sessionDir(ctx.run))) !== tree;
 
 	// An open recheck whose tree is no longer the one its lens's first recheck started on edited
-	// files before its runner died: it failed, rather than being interrupted, so the run stops on
-	// it before a gate pass could commit those edits as a checkpoint.
+	// files before its runner died: it failed, rather than being interrupted, and the run stops on
+	// it at boot, before a claim or a gate pass could commit those edits as a checkpoint.
 	const recheckEdited = async (
 		ctx: Ctx,
 		claim: RunStore.Claim,
@@ -121,8 +121,12 @@ export namespace Claims {
 		return tree !== undefined && treeChanged(ctx, tree);
 	};
 
-	/** Close the claims a runner that died left open, finishing the pass a subtask's was owed. */
-	export const recover = async (ctx: Ctx): Promise<void> => {
+	/**
+	 * Close the claims a runner that died left open, finishing the pass a subtask's was owed. Why
+	 * the run must stop, when one was a recheck that had edited files; undefined otherwise.
+	 */
+	export const recover = async (ctx: Ctx): Promise<string | undefined> => {
+		let edited: string | undefined;
 		const open = ctx.run.claims.filter((c) => c.endedAt === undefined);
 		for (const claim of open) {
 			const exited = "the runner exited while this session was open";
@@ -134,9 +138,11 @@ export namespace Claims {
 				await finishPass(ctx, claim);
 				await release(ctx, claim.taskId, claim.harness);
 			}
-			const ended = (await recheckEdited(ctx, claim))
+			const failed = await recheckEdited(ctx, claim);
+			const ended = failed
 				? { outcome: "error" as const, detail: EDITED }
 				: { outcome: "interrupted" as const, detail: exited };
+			if (failed) edited ??= `${claim.recheck}: error: ${EDITED}`;
 			RunState.patchClaim(ctx, claim.sessionId, {
 				endedAt: ctx.now().toISOString(),
 				...ended,
@@ -149,6 +155,7 @@ export namespace Claims {
 				summary: `${ended.outcome}: ${ended.detail}`,
 			});
 		}
+		return edited;
 	};
 
 	/** Who the run's inbox says answered `questionId`; the latest note wins. */

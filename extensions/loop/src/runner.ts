@@ -520,8 +520,11 @@ export namespace Runner {
 		// set meanwhile is theirs.
 		if (RunStore.onTarget(ctx.run).length === 0)
 			await Parent.take(ctx, `loop run ${resumed ? "resumed" : "started"}`);
-		// Recovery may run a subtask's gates, which a stop must still be able to kill.
-		await hearingStop(ctx, () => Claims.recover(ctx));
+		// Recovery may run a subtask's gates, which a stop must still be able to kill. A recheck that
+		// edited files stops the run before anything is claimed or gated on its edits.
+		const edited = await hearingStop(ctx, () => Claims.recover(ctx));
+		if (edited)
+			return { status: "stopped", reason: "recheck-failed", detail: edited };
 		if (ctx.run.stall === undefined) {
 			const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
 			RunState.save(ctx, {
