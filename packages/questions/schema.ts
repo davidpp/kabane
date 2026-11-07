@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { matchChoice } from "./answer";
+import { choiceLabel, matchChoice } from "./answer";
 
 /** The choice `recommended` names, as `kabane_answer` would read it; undefined when none or ambiguous. */
 const recommendedOf = (
@@ -44,14 +44,26 @@ export const AskQuestionSchema = z
 				code: z.ZodIssueCode.custom,
 				message: "Supply choices when freeform answers are disabled.",
 			});
-		if (
-			value.multiSelect &&
-			value.choices?.some((label) => label.includes(","))
-		)
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				message: "Multi-select choice labels cannot contain commas.",
-			});
+		// A multi-select answer is a comma list of labels, so each choice needs one it can be named
+		// by: its label, or its whole text when it has none. Only that has to stay comma-free.
+		if (value.multiSelect && value.choices) {
+			const nameOf = (choice: string) => choiceLabel(choice) ?? choice;
+			const names = value.choices.map((choice) => nameOf(choice).toLowerCase());
+			const unnamed = value.choices.find((choice) =>
+				nameOf(choice).includes(","),
+			);
+			if (unnamed !== undefined)
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: `Multi-select choices are answered as a comma list, so "${unnamed}" needs a label without a comma: start it with one, as in "A. ${unnamed}".`,
+				});
+			if (new Set(names).size !== names.length)
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message:
+						"Multi-select choices need distinct labels ignoring case, since an answer names them by label.",
+				});
+		}
 	})
 	.transform((value) => ({
 		...value,

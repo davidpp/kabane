@@ -10,7 +10,7 @@ export const questionTools: readonly ToolDef[] = [
 		name: "kabane_ask",
 		kind: "write",
 		description:
-			"File 1–10 human decisions on an issue (short id or ULID). Supply choices, the recommended choice (its full text or its label), and why. When choices are supplied, allowFreeform defaults to false; set it to true to accept other answers. waiting defaults to true and moves the issue to waiting. Returns one line per question in ULID order: its handle, then id:<ULID>.",
+			"File 1–10 human decisions on an issue (short id or ULID). Supply choices, the recommended choice (its full text or its label), and why. When choices are supplied, allowFreeform defaults to false; set it to true to accept other answers. waiting defaults to true and moves the issue to waiting. Multi-select choices are answered by a comma list of labels, so each needs a comma-free label (the text before its first ., : or ), or its whole text when it has none); the rest of its text may hold anything. Returns one line per question in ULID order: its handle, then id:<ULID>.",
 		input: AskSchema.shape,
 		handler: async (args, ctx) => {
 			const rows = await Questions.ask(ctx.basePath, args, ctx.actor);

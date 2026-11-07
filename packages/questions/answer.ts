@@ -1,8 +1,39 @@
 import { err, ok, type ParsedQuestion, type Result } from "@cabane/core";
 
 /** A choice's label, the text before its first `.`, `:` or `)`: `B` of "B. One tree". */
-const choiceLabel = (choice: string): string | undefined =>
+export const choiceLabel = (choice: string): string | undefined =>
 	choice.match(/^([^.:)]*)[.:)]/)?.[1]?.trim() || undefined;
+
+/** A choice's text as an answer compares it: ignoring case and the spacing around its commas. */
+const fullText = (text: string): string =>
+	text
+		.split(",")
+		.map((part) => part.trim())
+		.join(", ")
+		.toLowerCase();
+
+/**
+ * A multi-select answer as its selections. A choice's full text may hold commas, so each one
+ * takes the longest run of comma-separated parts that is a choice's full text, else one part.
+ */
+const selectionsOf = (choices: readonly string[], text: string): string[] => {
+	const parts = text.split(",");
+	const selections: string[] = [];
+	for (let start = 0; start < parts.length;) {
+		let end = parts.length;
+		while (
+			end > start + 1 &&
+			!choices.some(
+				(choice) =>
+					fullText(choice) === fullText(parts.slice(start, end).join(",")),
+			)
+		)
+			end--;
+		selections.push(parts.slice(start, end).join(",").trim());
+		start = end;
+	}
+	return selections;
+};
 
 /**
  * The choice `typed` names: its full text ignoring case, else the one choice whose label it is,
@@ -12,8 +43,8 @@ export const matchChoice = (
 	choices: readonly string[],
 	typed: string,
 ): Result<string | undefined> => {
-	const text = typed.trim().toLowerCase();
-	const full = choices.find((choice) => choice.toLowerCase() === text);
+	const text = fullText(typed);
+	const full = choices.find((choice) => fullText(choice) === text);
 	if (full !== undefined) return ok(full);
 	const label = text.replace(/[.:)]$/, "").trimEnd();
 	const labelled = choices.filter(
@@ -38,9 +69,7 @@ export const validateAnswer = (
 ): Result<string> => {
 	const text = answer.trim();
 	if (!text) return err(new Error("An answer cannot be empty."));
-	const parts = meta.multiSelect
-		? text.split(",").map((part) => part.trim())
-		: [text];
+	const parts = meta.multiSelect ? selectionsOf(meta.choices, text) : [text];
 	const picked: string[] = [];
 	for (const part of parts) {
 		if (!part) return err(new Error("Each selection must be nonempty."));

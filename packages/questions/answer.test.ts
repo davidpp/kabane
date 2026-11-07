@@ -141,3 +141,47 @@ it("defaults choices to strict answers but keeps explicit freeform and text-only
 		if (parsed.success) expect(parsed.data.allowFreeform).toBe(freeform);
 	}
 });
+
+it("reads a multi-select's comma list whose full texts hold commas, by text or by label", () => {
+	const meta = {
+		choices: ["A. Keep it, for now", "B. Drop it", "C. Defer, then decide"],
+		multiSelect: true,
+		allowFreeform: false,
+	};
+	for (const typed of [
+		"A. Keep it, for now, b",
+		"a. keep it,for now ,C. Defer, then decide",
+		"a, c",
+	])
+		expect(validateAnswer(meta, typed).ok).toBe(true);
+	expect(validateAnswer(meta, "b, c")).toEqual({
+		ok: true,
+		value: "B. Drop it, C. Defer, then decide",
+	});
+	// A part of a full text is not a choice of its own.
+	expect(validateAnswer(meta, "A. Keep it").ok).toBe(false);
+});
+
+it("lets a multi-select choice hold commas once its label is comma-free and its own", () => {
+	const ask = (choices: string[]) =>
+		AskQuestionSchema.safeParse({
+			question: "Which?",
+			choices,
+			multiSelect: true,
+		});
+	expect(ask(["A. Keep it, for now", "B. Drop it"]).success).toBe(true);
+	const unlabelled = ask(["Keep it, for now", "B. Drop it"]);
+	expect(unlabelled.success).toBe(false);
+	if (!unlabelled.success)
+		expect(unlabelled.error.issues[0]?.message).toBe(
+			'Multi-select choices are answered as a comma list, so "Keep it, for now" needs a label without a comma: start it with one, as in "A. Keep it, for now".',
+		);
+	expect(ask(["A. Keep it", "a) Drop it"]).success).toBe(false);
+	// A single choice is never split, so its labels may repeat and its text hold commas.
+	expect(
+		AskQuestionSchema.safeParse({
+			question: "Which?",
+			choices: ["Keep it, for now", "A. Drop", "A: Defer"],
+		}).success,
+	).toBe(true);
+});

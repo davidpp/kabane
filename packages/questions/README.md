@@ -8,9 +8,10 @@ CLI and the hub register it; a host that does not has no decisions, which is not
 ## MCP tools
 
 - `kabane_ask` files 1–10 questions on an issue: the question, its `choices`, the `recommended`
-  one (its full text or its label) and `why`. With choices, only a choice is accepted unless `allowFreeform` is true;
-  `multiSelect` takes a comma list. The issue goes to `waiting` unless `waiting: false`. It
-  returns one line per question: `JCAB-12:1 id:<ULID>`.
+  one (its full text or its label) and `why`. With choices, only a choice is accepted unless
+  `allowFreeform` is true; `multiSelect` takes a comma list, so each of its choices needs a label
+  without a comma, while the rest of its text may hold anything. The issue goes to `waiting`
+  unless `waiting: false`. It returns one line per question: `JCAB-12:1 id:<ULID>`.
 - `kabane_questions` reads them grouped by issue, open ones by default (`status: "all"` adds
   answered and withdrawn), for one issue (`id`) or a scope, as a page of at most 16KiB with a
   `nextCursor` line when there is more.
