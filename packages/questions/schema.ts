@@ -22,6 +22,13 @@ export const AskQuestionSchema = z
 		multiSelect: z.boolean().optional(),
 		allowFreeform: z.boolean().optional(),
 		why: z.string().max(8000).optional(),
+		replaces: z
+			.string()
+			.min(1)
+			.optional()
+			.describe(
+				"An open question on the same issue (handle, ULID or id:<ULID>) this one supersedes; it is withdrawn as replaced by this one, in the same write.",
+			),
 	})
 	.superRefine((value, ctx) => {
 		const texts = value.choices?.map((choice) => choice.toLowerCase()) ?? [];

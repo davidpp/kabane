@@ -12,6 +12,11 @@ CLI and the hub register it; a host that does not has no decisions, which is not
   `allowFreeform` is true; `multiSelect` takes a comma list, so each of its choices needs a label
   without a comma, while the rest of its text may hold anything. The issue goes to `waiting`
   unless `waiting: false`. It returns one line per question: `JCAB-12:1 id:<ULID>`.
+- `replaces` on a question reshapes an open one on the same issue, named by handle, ULID or
+  `id:<ULID>`: the new question is filed and the old one withdrawn with the reasoning
+  `replaced by JCAB-12:2 id:<ULID>`, in one transaction, so the issue stays `waiting`. The grill
+  uses it when the human's decision does not fit the choices, such as two picks on a single
+  choice.
 - `kabane_questions` reads them grouped by issue, open ones by default (`status: "all"` adds
   answered and withdrawn), for one issue (`id`) or a scope, as a page of at most 16KiB with a
   `nextCursor` line when there is more.
