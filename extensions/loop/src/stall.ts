@@ -1,7 +1,7 @@
 // Stall detection: no progress across N automatic attempts. The runner excludes lenses and
 // intentional parking/handoffs, then takes a progress mark and asks whether it stopped moving. A mark is any string that
-// changes when the run gets somewhere: which subtasks are closed, the repository's tree, and
-// which gates passed last time.
+// changes when the run gets somewhere: which subtasks are closed, the repository's tree, which
+// gates passed last time, and how far the plan's checklists are ticked.
 import { z } from "zod";
 
 export namespace Stall {
@@ -24,10 +24,15 @@ export namespace Stall {
 	export const stalled = (state: State, limit: number): boolean =>
 		state.unchanged >= limit;
 
-	/** The mark for closed subtask ids, a fingerprint of the working tree and the last gate results. */
+	/**
+	 * The mark for closed subtask ids, a fingerprint of the working tree, the last gate results and
+	 * the checklists' progress.
+	 */
 	export const mark = (
 		closedIds: readonly string[],
 		tree: string,
 		gates = "",
-	): string => `${[...closedIds].sort().join(",")}|${tree}|${gates}`;
+		checklists = "",
+	): string =>
+		`${[...closedIds].sort().join(",")}|${tree}|${gates}|${checklists}`;
 }

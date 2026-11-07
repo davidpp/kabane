@@ -350,6 +350,24 @@ describe("A single-issue run on an issue with a checklist", () => {
 	});
 });
 
+describe("The stall detector on an issue with a checklist", () => {
+	it("counts a tick as progress, so claims that each tick an item in an unchanged tree do not stall", async () => {
+		const issue = await issueWithSteps();
+		const id = label(issue);
+		await runOn(issue, {}, { stallAfter: 1, budget: { continuations: 0 } });
+
+		// The tree's fingerprint never changes: only the ticks move the run.
+		const ended = await drive("each", { tree: async () => "tree" });
+
+		expect([ended.status, ended.exit?.reason]).toEqual([
+			"completed",
+			"plan-done",
+		]);
+		expect(ended.claims.map((c) => c.lane)).toEqual([id, `${id}#2`, `${id}#3`]);
+		expect(ended.stall?.mark).toContain(`${issue.id}:3/3`);
+	});
+});
+
 describe("A single-issue run resumed after its runner died mid-checklist", () => {
 	it("hands the next session the first open item, leaving the ticked one as it was", async () => {
 		const issue = await issueWithSteps();

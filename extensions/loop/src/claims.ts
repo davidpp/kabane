@@ -85,6 +85,10 @@ export namespace Claims {
 			LoopPlan.closed(plan),
 			await ctx.tree(RunStore.sessionDir(ctx.run)),
 			Gates.signature(ctx.run.gateRuns.at(-1)),
+			await Checklists.progress(ctx.deps.basePath, [
+				plan.parent.id,
+				...plan.nodes.map((n) => n.task.id),
+			]),
 		);
 
 	// A subtask's pass is recorded before its claim ends (`settle`), so an open claim on a done
