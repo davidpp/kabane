@@ -16,6 +16,7 @@ import { Checklist, checklistModule } from "@cabane/checklist";
 import { Planner, type Task, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { configureTestRuntime } from "@cabane/core/testing";
+import { Checklists } from "./checklists";
 import { Checks } from "./checks";
 import { LoopConfig } from "./config";
 import { Runner } from "./runner";
@@ -448,5 +449,50 @@ describe("A checkpoint on a task with a checklist", () => {
 
 		expect(await pass(1)).toContain(`Ticked:\n- ${id}.1 Parse the input\n\n`);
 		expect(await pass(2)).toContain(`Ticked:\n- ${id}.2 Validate it\n\n`);
+	});
+});
+
+describe("Checklists.refuseDone", () => {
+	const AGENT = "cabane://actor/agent/gemini";
+
+	// `kind`, closed by the session's own actor with its checklist's items all open.
+	const closedBySession = async (kind: Task["kind"]): Promise<Task> => {
+		configureTestRuntime("", {
+			modules: [checklistModule],
+			actor: () => AGENT,
+		});
+		const created = await Planner.addTask(home, {
+			title: kind,
+			kind,
+			state: "next",
+			assignee: "gemini",
+		});
+		if (!created.ok) throw created.error;
+		const added = await Checklist.add(home, {
+			id: created.value.id,
+			items: STEPS,
+		});
+		if (!added.ok) throw added.error;
+		const closed = await Planner.updateTask(home, created.value.id, {
+			state: "done",
+		});
+		if (!closed.ok || !closed.value) throw new Error("not closed");
+		return closed.value;
+	};
+
+	it("reopens an issue its session closed with items open", async () => {
+		const issue = await closedBySession("issue");
+		const refused = await Checklists.refuseDone(home, issue, "gemini");
+		expect(refused.ok && refused.value.length).toBe(3);
+		const after = await Planner.getTask(home, issue.id);
+		expect(after.ok && after.value?.state).toBe("in_progress");
+	});
+
+	it("never reopens a personal task", async () => {
+		const task = await closedBySession("task");
+		const refused = await Checklists.refuseDone(home, task, "gemini");
+		expect(refused.ok && refused.value).toEqual([]);
+		const after = await Planner.getTask(home, task.id);
+		expect(after.ok && after.value?.state).toBe("done");
 	});
 });

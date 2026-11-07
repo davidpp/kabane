@@ -33,8 +33,8 @@ export namespace Checklists {
 		items.filter((item) => item.doneAt !== undefined && item.doneAt > since);
 
 	/**
-	 * Refuse `task` closed as done with items still open by `harness`'s own session: put it back in
-	 * progress and say which items are open. Empty when there is nothing to refuse. A close by
+	 * Refuse an issue closed as done with items still open by `harness`'s own session: put it back
+	 * in progress and say which items are open. A personal task is never reopened. Empty when there is nothing to refuse. A close by
 	 * anyone else, a human above all, is their decision and stands.
 	 *
 	 * Who closed it is the row's last writer (`updatedBy`): the tracker records who last wrote a
@@ -47,6 +47,7 @@ export namespace Checklists {
 		harness: string,
 	): Promise<Result<Item[]>> => {
 		if (
+			task.kind !== "issue" ||
 			task.state !== "done" ||
 			task.assignee !== harness ||
 			task.updatedBy !== CopilotInstructions.actorUri(harness)
