@@ -17,5 +17,5 @@ export const checklistModule: KabaneModule = {
 	contextSections: [itemsSection],
 	tools: checklistTools,
 	instructions:
-		"Break one change into steps with a checklist: kabane_checklistAdd files them on the issue, kabane_checklistTick ticks each as it lands, and the brief's checklist.items section lists them. An item has no assignee, no state beyond done and no brief. When a piece of work needs any of those, or is a separate deliverable, make it a subtask (kabane_add with parentTaskId) instead of an item.",
+		"Break one change into steps with a checklist: kabane_checklistAdd files them on the issue, kabane_checklistTick ticks each as it lands, and the brief's checklist.items section lists them. An item has no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask. A separate deliverable is a subtask too: kabane_add with parentTaskId.",
 };
