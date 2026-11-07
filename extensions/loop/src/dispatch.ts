@@ -7,7 +7,8 @@
 //
 // The core session itself is opened and closed by the runner, which owns the claim; this module
 // only writes into it (an ephemeral progress row per tool call, so a card can show what the agent
-// is doing now).
+// is doing now). The one tracker write of its own: an implementing session that closed an issue
+// whose checklist still has items open has it reopened, and is nudged to go on from the first.
 import {
 	AcpClient,
 	CopilotInstructions,
@@ -24,6 +25,7 @@ import {
 } from "@cabane/core";
 import { Brief } from "./brief";
 import type { Budget } from "./budget";
+import { Checklists } from "./checklists";
 import type { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 import type { Retry } from "./retry";
@@ -489,13 +491,32 @@ export namespace Dispatch {
 			: started;
 	};
 
+	// The checklist of the task an implementing claim works; none for a review or the fixer.
+	const checklistOf = async (
+		claim: Claim,
+		env: Env,
+	): Promise<Result<Checklists.Item[]>> =>
+		claim.work.kind === "implement"
+			? Checklists.of(env.basePath, claim.task.id)
+			: ok([]);
+
 	// What a resumed session hears first: it has its brief already, so only why it is prompted again.
-	const resumedPrompt = (claim: Claim): string | undefined => {
-		if (claim.interrupted) return Brief.resumed(claim.interrupted);
+	const resumedPrompt = async (
+		claim: Claim,
+		env: Env,
+	): Promise<Result<string | undefined>> => {
+		if (claim.interrupted) {
+			const checklist = await checklistOf(claim, env);
+			return checklist.ok
+				? ok(Brief.resumed(claim.interrupted, checklist.value))
+				: checklist;
+		}
 		const { work } = claim;
-		return work.kind === "implement" && work.retry
-			? Brief.retriedInSession(claim.task, work.retry)
-			: undefined;
+		return ok(
+			work.kind === "implement" && work.retry
+				? Brief.retriedInSession(claim.task, work.retry)
+				: undefined,
+		);
 	};
 
 	type Next =
@@ -521,6 +542,27 @@ export namespace Dispatch {
 					detail: `the ${name} lens's ${review} turn ended (${reason})`,
 				};
 
+	// A session that closed its issue with checklist items open: the run has reopened it, and nudges
+	// the session on from the first open item, as it nudges any turn that left owned work open.
+	const refused = (
+		task: Task,
+		open: readonly [Checklists.Item, ...Checklists.Item[]],
+		hooks: Hooks,
+		sink: Sink,
+		reason: string,
+	): Next => {
+		const left = `${open.length} checklist item${open.length === 1 ? "" : "s"} open`;
+		sink.emit("reopened", `${label(task)} reopened: closed with ${left}`);
+		if (reason !== "end_turn" || !hooks.continueTurn())
+			return {
+				kind: "end",
+				outcome: "incomplete",
+				detail: `turn ended (${reason}) with ${label(task)} closed with ${left}: reopened`,
+			};
+		sink.emit("continuation", `${label(task)} has ${left}: nudged`);
+		return { kind: "prompt", prompt: Brief.reopened(task, open) };
+	};
+
 	// Only still-active, owned work can receive an automatic nudge. Tracker parking and
 	// handoff end this claim without spending the run's continuation budget.
 	const implemented = async (
@@ -540,6 +582,15 @@ export namespace Dispatch {
 				outcome: "incomplete",
 				detail: `${label(claim.task)} was deleted`,
 			};
+		const reopened = await Checklists.refuseDone(
+			env.basePath,
+			task,
+			claim.harness,
+		);
+		if (!reopened.ok)
+			return { kind: "end", outcome: "error", detail: reopened.error.message };
+		const [first, ...rest] = reopened.value;
+		if (first) return refused(task, [first, ...rest], hooks, sink, reason);
 		if (task.state === "done" || task.state === "cancelled")
 			return {
 				kind: "end",
@@ -558,8 +609,14 @@ export namespace Dispatch {
 				outcome: "incomplete",
 				detail: `turn ended (${reason}) with ${label(task)} still ${task.state}`,
 			};
+		const checklist = await Checklists.of(env.basePath, task.id);
+		if (!checklist.ok)
+			return { kind: "end", outcome: "error", detail: checklist.error.message };
 		sink.emit("continuation", `${label(task)} still ${task.state}: nudged`);
-		return { kind: "prompt", prompt: Brief.continuation(task) };
+		return {
+			kind: "prompt",
+			prompt: Brief.continuation(task, Checklists.open(checklist.value)),
+		};
 	};
 
 	// The fixer's findings it has yet to settle: still claimable, or taken by its own harness. One
@@ -648,6 +705,9 @@ export namespace Dispatch {
 		);
 		if (!assembled.ok)
 			return err(new Error(`brief: ${assembled.error.message}`));
+		const checklist = await checklistOf(claim, env);
+		if (!checklist.ok)
+			return err(new Error(`checklist: ${checklist.error.message}`));
 		const subject = {
 			runId: env.runId,
 			parent: claim.parent,
@@ -697,6 +757,7 @@ export namespace Dispatch {
 							...subject,
 							gates: work.gates,
 							concurrent: work.concurrent,
+							checklist: checklist.value,
 							...(work.retry ? { retry: work.retry } : {}),
 						},
 						assembled.value,
@@ -795,9 +856,11 @@ export namespace Dispatch {
 			session = current;
 			hooks.opened(current.id);
 			sink.emit("session_start", started(claim));
-			let text =
-				(opened.value.resumed ? resumedPrompt(claim) : undefined) ??
-				first.value;
+			const again = opened.value.resumed
+				? await resumedPrompt(claim, env)
+				: ok(undefined);
+			if (!again.ok) return ended("error", again.error.message);
+			let text = again.value ?? first.value;
 			for (;;) {
 				if (cancelled) return ended("cancelled");
 				const result = await steering.turn(current, text);
