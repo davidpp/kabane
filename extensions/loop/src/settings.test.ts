@@ -61,8 +61,8 @@ describe("LoopSettings.inputs", () => {
 		});
 		expect(inputs["budget.concurrency"]).toMatchObject({
 			type: "number",
-			default: "2",
-			label: "concurrent sessions",
+			default: "1",
+			label: "sessions in one tree",
 			group: "Limits",
 		});
 		expect(inputs["budget.spend"]?.default).toBe("none");

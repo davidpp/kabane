@@ -12,14 +12,20 @@ export namespace LoopConfig {
 	export const NAMESPACE = "loop";
 
 	export const BudgetSchema = z.object({
-		/** Sessions running at once. */
+		/**
+		 * Sessions running at once. Every implementing claim works in the run's one tree, so a
+		 * subtask's gates and checkpoint see what its siblings have half done: 1 keeps them apart,
+		 * and more is for a plan whose subtasks touch disjoint files.
+		 */
 		concurrency: z
 			.number()
 			.int()
 			.min(1)
 			.max(8)
-			.default(2)
-			.describe("Loop sessions running at once, 1 to 8; defaults to 2."),
+			.default(1)
+			.describe(
+				"Loop sessions running at once, 1 to 8; defaults to 1. More than 1 share one tree, so a subtask's gates and checkpoint see its siblings' half-done edits: raise it only for subtasks that touch disjoint files.",
+			),
 		/** Automatic nudges across the run for turns ending with active-owned issue work. */
 		continuations: z
 			.number()

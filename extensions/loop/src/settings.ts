@@ -49,8 +49,9 @@ export namespace LoopSettings {
 			options: ["opus", "sonnet", "haiku"],
 			none: "your own",
 		},
+		// More than one session shares the run's one tree (LoopConfig's budget.concurrency).
 		"budget.concurrency": {
-			label: "concurrent sessions",
+			label: "sessions in one tree",
 			group: "Limits",
 			options: range(1, 8),
 		},

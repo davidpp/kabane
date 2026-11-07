@@ -157,7 +157,11 @@ describe("Runner scheduling", () => {
 			{ ...deps(), cwd: home },
 			{
 				parent: parent.id,
-				config: { implementer: "gemini", budget: { continuations: 0 } },
+				// Two slots: the parked independent issue's session still holds one.
+				config: {
+					implementer: "gemini",
+					budget: { concurrency: 2, continuations: 0 },
+				},
 			},
 		);
 		if (!prepared.ok) throw prepared.error;

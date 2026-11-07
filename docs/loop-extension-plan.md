@@ -114,7 +114,10 @@ answered from the board, a finding filed. Mocked transcripts do not count.
      reset by parking. Explicitly set `next` to resume; closing a dependency does not unpark it.
      Exhausting nudges alone does not establish a blocker or complete the issue. Normal automatic
      retries (including red gates) remain separate from the nudge budget.
-   - **Limits:** concurrency and continuations are enforced. An optional spend limit is enforced
+   - **Limits:** concurrency and continuations are enforced. Concurrency defaults to 1: every
+     implementing claim works in the run's one tree, so a subtask's gates and checkpoint would
+     see a sibling's half-done edits (JCAB-113). More is for subtasks that touch disjoint files.
+     An optional spend limit is enforced
      when the harness reports `usage_update.cost`. There is no wall-time deadline; runs continue
      until completion, an explicit stop, or a health/limit stop. Legacy repo `budget.wallMinutes`
      settings are ignored; the CLI flag and board control are removed. ACP reports context
