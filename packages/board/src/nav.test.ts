@@ -1236,6 +1236,24 @@ describe("BoardNav.openTask", () => {
 		expect(s.copilot.text).toBe("half a thought");
 	});
 
+	it("gives the screen back to the tracker from a card's tab, which stays open", () => {
+		const s = BoardNav.openTask(
+			board({
+				view: { type: "events", cardId: "loop", fromView: "board" },
+				tabs: {
+					...BoardTabs.NONE,
+					open: ["loop"],
+					active: "loop",
+					tracker: { type: "board" },
+				},
+			}),
+			"a",
+		);
+		expect(s.tabs.active).toBeNull();
+		expect(s.tabs.open).toEqual(["loop"]);
+		expect(s.view).toEqual({ type: "detail", taskId: "a" });
+	});
+
 	it("opens a task outside the loaded sections and leaves the board under it as it was", () => {
 		const before = board({ status: "done" });
 		const s = BoardNav.openTask(before, "elsewhere");
