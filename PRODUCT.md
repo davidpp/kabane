@@ -20,8 +20,8 @@ In priority order; when two conflict, the higher one wins.
    that puts a wait on the common path.
    *Rests on:* speed being what users feel first (it already feels instant next to hosted trackers).
    *Revisit if:* something users need cannot be had without making the common path wait.
-3. **Yours, by asking.** Light defaults carry good practice without process and work
-   untouched. When you want it different, you ask and kabane adapts; nobody has to learn its
+3. **Yours, by asking.** Light defaults work untouched, without process. When you want it
+   different, you ask and kabane adapts; nobody has to learn its
    configuration to make it theirs. The core stays small.
    *Rests on:* people adapting a tool rather than adopting someone's process; agents being
    able to do the adapting. *Revisit if:* making kabane yours takes more than asking, or the
