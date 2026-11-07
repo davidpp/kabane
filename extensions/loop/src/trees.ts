@@ -35,7 +35,7 @@ export namespace ClaimTrees {
 
 	/** The most worktrees the run keeps at once: `maxWorktrees`, else its concurrency. */
 	export const cap = (run: RunStore.Run): number =>
-		run.config.maxWorktrees ?? run.config.budget.concurrency;
+		run.config.maxWorktrees ?? RunStore.concurrency(run);
 
 	/** Where the run's sessions and gates work in each of its subtask worktrees. */
 	export const projectDirs = (run: RunStore.Run): string[] =>

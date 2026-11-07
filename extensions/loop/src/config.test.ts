@@ -33,7 +33,6 @@ describe("LoopConfig.SettingsSchema", () => {
 		expect(config.ok && config.value.value).toEqual({
 			implementer: "claude",
 			budget: {
-				concurrency: 1,
 				continuations: 3,
 				currency: "USD",
 			},
@@ -48,13 +47,25 @@ describe("LoopConfig.SettingsSchema", () => {
 		});
 	});
 
-	it("runs one session at a time unless asked, and says why: shared, more share one tree", () => {
-		const concurrency = LoopConfig.BudgetSchema.shape.concurrency;
-		expect(concurrency.parse(undefined)).toBe(1);
-		expect(concurrency.description).toContain("defaults to 1");
-		expect(concurrency.description).toContain(
-			"With isolation shared, more than 1 share one tree",
-		);
+	it("follows isolation for concurrency unless a layer sets it: 2 in a worktree each, 1 sharing one", () => {
+		const config = resolve(undefined);
+		if (!config.ok) throw config.error;
+		expect(config.value.value.budget.concurrency).toBeUndefined();
+		expect(LoopConfig.concurrency(config.value.value, true)).toBe(2);
+		expect(LoopConfig.concurrency(config.value.value, false)).toBe(1);
+		const description =
+			LoopConfig.BudgetSchema.shape.concurrency.description ?? "";
+		expect(description).toContain("Unset, it follows isolation");
+		expect(description).toContain("share the run's tree");
+		// Set in any layer or by flag, it wins either way.
+		for (const set of [
+			resolve({ budget: { concurrency: 3 } }),
+			resolve({ isolation: "shared" }, { budget: { concurrency: 3 } }),
+		]) {
+			if (!set.ok) throw set.error;
+			expect(LoopConfig.concurrency(set.value.value, true)).toBe(3);
+			expect(LoopConfig.concurrency(set.value.value, false)).toBe(3);
+		}
 		const shared = resolve({ isolation: "shared" });
 		if (!shared.ok) throw shared.error;
 		expect(shared.value.value.isolation).toBe("shared");

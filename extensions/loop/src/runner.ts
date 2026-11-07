@@ -276,7 +276,7 @@ export namespace Runner {
 		const ready = holding
 			? []
 			: LoopPlan.frontier(plan, RunState.liveTasks(ctx), ctx.now(), skipped);
-		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
+		const slots = Budget.slots(RunStore.concurrency(ctx.run), ctx.live.size);
 		let treeless = false;
 		for (const node of Steering.pick(ctx.run.steering, ready, slots)) {
 			const claimed = await hearingStop(ctx, () =>
@@ -433,7 +433,7 @@ export namespace Runner {
 		if (ctx.run.steering.paused) return undefined;
 		const base = Lenses.fixerBase(ctx.run.claims);
 		const closed = Lenses.rechecking(ctx.run.config, ctx.run.claims, plan);
-		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
+		const slots = Budget.slots(RunStore.concurrency(ctx.run), ctx.live.size);
 		for (const name of pending.slice(0, slots)) {
 			const findings = closed.get(name);
 			if (base === undefined || findings === undefined) continue;
@@ -456,7 +456,7 @@ export namespace Runner {
 		pending: readonly string[],
 	): Promise<Exit | undefined> => {
 		if (ctx.run.steering.paused) return undefined;
-		const slots = Budget.slots(ctx.run.config.budget, ctx.live.size);
+		const slots = Budget.slots(RunStore.concurrency(ctx.run), ctx.live.size);
 		for (const name of pending.slice(0, slots)) {
 			const started = await Claims.lens(ctx, name, plan);
 			if (!started.ok)

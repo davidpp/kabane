@@ -264,6 +264,10 @@ export namespace RunStore {
 	export const isolated = (run: Run): boolean =>
 		run.config.isolation === "worktree" && run.worktree !== undefined;
 
+	/** Sessions the run has running at once (`LoopConfig.concurrency`). */
+	export const concurrency = (run: Run): number =>
+		LoopConfig.concurrency(run.config, isolated(run));
+
 	/** Where a worktree's sessions and gates work: the project's folder in it. */
 	export const projectIn = (run: Run, worktree: string): string =>
 		join(worktree, run.worktreePrefix ?? "");

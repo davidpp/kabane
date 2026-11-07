@@ -132,7 +132,7 @@ describe("LoopDispatcher.triggers", () => {
 		const [start] = offered.ok ? offered.value : [];
 		expect(start?.satisfiable).toBe(true);
 		expect(start?.inputs["budget.concurrency"]).toMatchObject({
-			default: "1",
+			default: "by isolation",
 			label: "sessions at once",
 		});
 		const preview = (start?.preview ?? []).map((line) =>

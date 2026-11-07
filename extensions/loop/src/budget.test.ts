@@ -129,10 +129,9 @@ describe("Budget.check", () => {
 
 describe("Budget slots and continuations", () => {
 	it("frees slots under the concurrency cap and never goes negative", () => {
-		const b = budget({ concurrency: 3 });
-		expect(Budget.slots(b, 0)).toBe(3);
-		expect(Budget.slots(b, 2)).toBe(1);
-		expect(Budget.slots(b, 5)).toBe(0);
+		expect(Budget.slots(3, 0)).toBe(3);
+		expect(Budget.slots(3, 2)).toBe(1);
+		expect(Budget.slots(3, 5)).toBe(0);
 	});
 
 	it("allows exactly the configured number of continuations across the run", () => {

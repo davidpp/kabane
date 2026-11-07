@@ -626,8 +626,7 @@ export namespace Claims {
 			work: {
 				kind: "implement",
 				gates: Object.keys(ctx.run.config.gates),
-				concurrent:
-					worktree === undefined && ctx.run.config.budget.concurrency > 1,
+				concurrent: worktree === undefined && RunStore.concurrency(ctx.run) > 1,
 				...(retry ? { retry } : {}),
 			},
 			summary: `${harness} claims ${label(task)}: ${task.title}${worktree ? ` in ${worktree.dir}, on ${worktree.branch}` : ""}`,

@@ -49,10 +49,12 @@ export namespace LoopSettings {
 			options: ["opus", "sonnet", "haiku"],
 			none: "your own",
 		},
+		// Unset, it follows isolation: 2 in a worktree each, 1 in the run's one tree.
 		"budget.concurrency": {
 			label: "sessions at once",
 			group: "Limits",
 			options: range(1, 8),
+			none: "by isolation",
 		},
 		"budget.continuations": {
 			label: "continuations",

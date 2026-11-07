@@ -70,12 +70,23 @@ describe("LoopSettings.inputs", () => {
 			default: "your own",
 			options: ["your own", "opus", "sonnet", "haiku"],
 		});
+		// Unset, it follows isolation; a value set in a layer shows instead.
 		expect(inputs["budget.concurrency"]).toMatchObject({
 			type: "number",
-			default: "1",
+			default: "by isolation",
 			label: "sessions at once",
 			group: "Limits",
 		});
+		expect(inputs["budget.concurrency"]?.options?.slice(0, 3)).toEqual([
+			"by isolation",
+			"1",
+			"2",
+		]);
+		expect(
+			LoopSettings.inputs(config({ budget: { concurrency: 3 } }))[
+				"budget.concurrency"
+			]?.default,
+		).toBe("3");
 		expect(inputs.isolation).toMatchObject({
 			default: "worktree",
 			options: ["worktree", "shared"],

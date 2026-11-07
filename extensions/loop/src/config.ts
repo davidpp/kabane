@@ -13,18 +13,18 @@ export namespace LoopConfig {
 
 	export const BudgetSchema = z.object({
 		/**
-		 * Sessions running at once. With `isolation: shared` every implementing claim works in the
-		 * run's one tree, so a subtask's gates and checkpoint see what its siblings have half done: 1
-		 * keeps them apart, and more is for a plan whose subtasks touch disjoint files.
+		 * Sessions running at once. Unset, it follows `isolation`: 2 when each subtask claim works in
+		 * a worktree of its own, 1 when every claim works in the run's one tree, where a subtask's
+		 * gates and checkpoint see what its siblings have half done (`LoopConfig.concurrency`).
 		 */
 		concurrency: z
 			.number()
 			.int()
 			.min(1)
 			.max(8)
-			.default(1)
+			.optional()
 			.describe(
-				"Loop sessions running at once, 1 to 8; defaults to 1. With isolation shared, more than 1 share one tree, so a subtask's gates and checkpoint see its siblings' half-done edits: raise it only for subtasks that touch disjoint files.",
+				"Loop sessions running at once, 1 to 8. Unset, it follows isolation: 2 when each subtask works in its own worktree, 1 when they share the run's tree, where a subtask's gates and checkpoint see its siblings' half-done edits.",
 			),
 		/** Automatic nudges across the run for turns ending with active-owned issue work. */
 		continuations: z
@@ -213,6 +213,12 @@ export namespace LoopConfig {
 
 	export type Config = z.output<typeof Schema>;
 
+	/**
+	 * Sessions running at once: what the budget says, else 2 when subtask claims are `isolated`
+	 * (a worktree each) and 1 when they share one tree.
+	 */
+	export const concurrency = (config: Config, isolated: boolean): number =>
+		config.budget.concurrency ?? (isolated ? 2 : 1);
 	export type Input = z.input<typeof Schema>;
 
 	// Existing files may still hold the retired timer; it is not a runtime setting, so it is dropped

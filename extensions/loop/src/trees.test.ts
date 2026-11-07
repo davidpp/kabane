@@ -228,10 +228,9 @@ describe("Subtasks in worktrees of their own", () => {
 			const [a, b] = subtasks;
 			if (!a || !b) throw new Error("no subtasks");
 			writeFileSync(join(script, "together"), "2");
-			await runOn(parent, {
-				gates: { both: "test -f README.md" },
-				budget: { concurrency: 2 },
-			});
+			// No concurrency set: with a worktree each, it is 2.
+			const run = await runOn(parent, { gates: { both: "test -f README.md" } });
+			expect(RunStore.concurrency(run)).toBe(2);
 
 			const ended = await drive();
 
@@ -298,7 +297,7 @@ describe("Subtasks in worktrees of their own", () => {
 					join(script, `${label(task)}.resolve.json`),
 					JSON.stringify({ "shared.txt": "from both\n" }),
 				);
-			await runOn(parent, { budget: { concurrency: 2 } });
+			await runOn(parent);
 
 			const ended = await drive();
 
@@ -345,7 +344,8 @@ describe("Subtasks in worktrees of their own", () => {
 				{ "a.txt": "a\n" },
 				{ "b.txt": "b\n" },
 			);
-			await runOn(parent, { isolation: "shared" });
+			const run = await runOn(parent, { isolation: "shared" });
+			expect(RunStore.concurrency(run)).toBe(1);
 
 			const ended = await drive();
 
@@ -386,7 +386,8 @@ describe("Subtasks in worktrees of their own", () => {
 					{ "b.txt": "b\n" },
 				);
 				const log = join(script, "setup.log");
-				// One at a time, so the second subtask's claim comes after the first's work merged.
+				// One at a time, an explicit concurrency over the default of 2, so the second subtask's
+				// claim comes after the first's work merged.
 				await runOn(parent, {
 					setup: SETUP.replaceAll("$LOG", log),
 					reuse,
@@ -418,11 +419,8 @@ describe("Subtasks in worktrees of their own", () => {
 				{ "a.txt": "a\n" },
 				{ "b.txt": "b\n" },
 			);
-			const run = await runOn(parent, {
-				maxWorktrees: 1,
-				budget: { concurrency: 2 },
-			});
-			expect(ClaimTrees.cap(run)).toBe(1);
+			const run = await runOn(parent, { maxWorktrees: 1 });
+			expect([RunStore.concurrency(run), ClaimTrees.cap(run)]).toEqual([2, 1]);
 
 			const ended = await drive();
 
@@ -504,4 +502,44 @@ describe("Subtasks in worktrees of their own", () => {
 		},
 		SLOW_MS,
 	);
+});
+
+describe("RunStore.concurrency", () => {
+	const run = (input: LoopConfig.Input, worktree?: string): RunStore.Run => {
+		const config = LoopConfig.Schema.safeParse(input);
+		if (!config.success) throw config.error;
+		return {
+			version: 1,
+			id: "run-1",
+			parentId: "P",
+			parentShortId: "P-1",
+			projectDir: repo,
+			...(worktree ? { worktree } : {}),
+			config: config.data,
+			status: "pending",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		};
+	};
+
+	it("follows isolation unless set, and a set value wins either way", () => {
+		expect(RunStore.concurrency(run({}, "/w"))).toBe(2);
+		expect(RunStore.concurrency(run({ isolation: "shared" }, "/w"))).toBe(1);
+		// Without a worktree to cut theirs from, subtasks share the one tree.
+		expect(RunStore.concurrency(run({}))).toBe(1);
+		for (const isolation of ["worktree", "shared"] as const)
+			expect(
+				RunStore.concurrency(
+					run({ isolation, budget: { concurrency: 3 } }, "/w"),
+				),
+			).toBe(3);
+		expect(
+			RunStore.concurrency(run({ budget: { concurrency: 1 } }, "/w")),
+		).toBe(1);
+	});
 });
