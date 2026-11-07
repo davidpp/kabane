@@ -18,7 +18,7 @@ In priority order; when two conflict, the higher one wins.
    settle into the agent tools themselves, or people stop taking kabane's recommendations.
 2. **Instant.** Every read and write, by a human or an agent, feels immediate. Nothing ships
    that puts a wait on the common path.
-   *Rests on:* speed being what users feel first (it already feels instant next to Linear).
+   *Rests on:* speed being what users feel first (it already feels instant next to hosted trackers).
    *Revisit if:* something users need cannot be had without making the common path wait.
 3. **Yours, by asking.** Light defaults carry good practice without process and work
    untouched. When you want it different, you ask and kabane adapts; nobody has to learn its
@@ -26,19 +26,17 @@ In priority order; when two conflict, the higher one wins.
    *Rests on:* people adapting a tool rather than adopting someone's process; agents being
    able to do the adapting. *Revisit if:* making kabane yours takes more than asking, or the
    core grows to fit one workflow.
-4. **Yours, everywhere.** Your work lives on your machine and works with no network; one
-   machine is a complete setup. Every device and every agent you use, browser-only ones
+4. **Yours, everywhere.** Your work lives on your machine, and one machine is a complete
+   setup. Every device and every agent you use, browser-only ones
    included, reaches the same queue.
    *Rests on:* people working across machines and agent surfaces; people wanting to own their
    work rather than rent it. *Revisit if:* nobody reaches past one machine once they can, or
    agent surfaces converge on hosted state.
-5. **One honest record for humans and agents.** Either can author, plan, work and review.
-   Every write names who made it, a decision is credited to whoever made it, and an agent's
-   question reaches the human unchanged. Kabane adds no policy over the tools the user
-   already set up.
-   *Rests on:* agent tools owning their own safety; agents staying reachable without a
-   vendor's platform. *Revisit if:* users need kabane to enforce policy, or reaching agents
-   comes to require one.
+5. **The human stays in charge.** Humans and agents share the work as peers. The human is
+   brought in where their judgment matters and can always tell who did what, and why. How
+   often they are asked shifts as agents earn trust; their ability to steer does not.
+   *Rests on:* agents growing more capable while accountability for the work stays with the
+   human. *Revisit if:* that accountability moves to the agents themselves.
 
 Two gates, both required: its author uses it daily, and a stranger who installs it watches an
 agent close their first issue with no hub and no help.
@@ -46,9 +44,10 @@ agent close their first issue with no hub and no help.
 Not goals:
 
 - **A team tracker.** A team can adopt and extend it; the core grows no assignee pickers,
-  sprints or permissions. Linear and GitHub stay the team record.
-- **A replacement for the tools around it.** Harnesses, multiplexers (herdr) and team
-  trackers come and go; kabane points at them and outlives them.
+  sprints or permissions. The team's own tracker stays the team record.
+- **A replacement for the tools around it.** Agent harnesses, runtimes, multiplexers and
+  team trackers come and go. Kabane composes with them through open interfaces, tells them
+  its own state, and depends on none of them, so it outlives each one.
 - **The factory line.** No velocity, throughput or "done today" counts.
 
 **Still being refined (since 2026-11-07).** These are a working draft for the next few weeks,
