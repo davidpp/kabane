@@ -90,12 +90,22 @@ describe("kabane loop start", () => {
 		expect(refused.text).toStartWith("Error: --land must be one of none, pr\n");
 	});
 
+	it("refuses an --isolation it does not have", async () => {
+		const refused = await kabaneLoop("start", "K-1", "--isolation", "none");
+		expect(refused.exitCode).toBe(2);
+		expect(refused.text).toStartWith(
+			"Error: --isolation must be one of worktree, shared\n",
+		);
+	});
+
 	it("takes its own flags and the ones every command takes", async () => {
 		const started = await kabaneLoop(
 			"start",
 			"K-404",
 			"--worktree",
 			"--no-recheck",
+			"--isolation",
+			"shared",
 			"--land",
 			"pr",
 			"--as",

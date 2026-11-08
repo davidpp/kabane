@@ -532,36 +532,53 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 });
 `;
 
-	it("commits each finished subtask as a checkpoint in the worktree", async () => {
-		const parent = await add("parent");
-		await add("child", { parentTaskId: parent.id });
-		// gemini, as in runner-scheduling.test.ts: the claude profile needs a claude on PATH, and CI
-		// has none.
-		const run = await runOn(parent, {}, true, { implementer: "gemini" });
-		const agent = join(root, "implementer.mjs");
-		writeFileSync(agent, IMPLEMENTER);
-		const ended = await Runner.run(run.id, {
-			home,
-			basePath: home,
-			kabaneBin: "/nonexistent/kabane",
-			pid: process.pid,
-			git,
-			overrides: { gemini: { command: process.execPath, args: [agent, home] } },
-			tickMs: 5,
-		});
-		if (!ended.ok) throw ended.error;
+	// Shared, the subtask's checkpoint is the run's HEAD; in a worktree of its own, the merge of its
+	// branch is, and its checkpoint is that merge's second parent.
+	for (const isolation of ["shared", "worktree"] as const)
+		it(`commits each finished subtask as a checkpoint, isolation ${isolation}`, async () => {
+			const parent = await add("parent");
+			await add("child", { parentTaskId: parent.id });
+			// gemini, as in runner-scheduling.test.ts: the claude profile needs a claude on PATH, and CI
+			// has none.
+			const run = await runOn(parent, {}, true, {
+				implementer: "gemini",
+				isolation,
+			});
+			const agent = join(root, "implementer.mjs");
+			writeFileSync(agent, IMPLEMENTER);
+			const ended = await Runner.run(run.id, {
+				home,
+				basePath: home,
+				kabaneBin: "/nonexistent/kabane",
+				pid: process.pid,
+				git,
+				overrides: {
+					gemini: { command: process.execPath, args: [agent, home] },
+				},
+				tickMs: 5,
+			});
+			if (!ended.ok) throw ended.error;
 
-		const worktree = ended.value.worktree ?? "";
-		expect([ended.value.status, ended.value.exit?.reason]).toEqual([
-			"completed",
-			"plan-done",
-		]);
-		expect(RunStore.checkpoints(ended.value)).toEqual([head(worktree)]);
-		expect(GitFixture.run(worktree, ["status", "--porcelain"])).toBe("");
-		expect(
-			GitFixture.run(worktree, ["show", "--name-only", "--format=%b", "HEAD"]),
-		).toContain("No gates configured.");
-	});
+			const worktree = ended.value.worktree ?? "";
+			expect([ended.value.status, ended.value.exit?.reason]).toEqual([
+				"completed",
+				"plan-done",
+			]);
+			expect(RunStore.checkpoints(ended.value)).toEqual([head(worktree)]);
+			expect(GitFixture.run(worktree, ["status", "--porcelain"])).toBe("");
+			const checkpoint = isolation === "shared" ? "HEAD" : "HEAD^2";
+			expect(
+				GitFixture.run(worktree, [
+					"show",
+					"--name-only",
+					"--format=%b",
+					checkpoint,
+				]),
+			).toContain("No gates configured.");
+			expect(
+				GitFixture.run(worktree, ["show", "HEAD:feature.txt"]),
+			).toStartWith("made by ");
+		});
 });
 
 describe("Claims.recover after a runner died during a subtask's pass", () => {

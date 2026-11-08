@@ -23,6 +23,9 @@ describe("LoopSettings.inputs", () => {
 			"lenses.quality",
 			"recheck",
 			"worktree",
+			"isolation",
+			"reuse",
+			"maxWorktrees",
 			"land",
 		]);
 		// The gates are named commands the form cannot edit.
@@ -67,12 +70,35 @@ describe("LoopSettings.inputs", () => {
 			default: "your own",
 			options: ["your own", "opus", "sonnet", "haiku"],
 		});
+		// Unset, it follows isolation; a value set in a layer shows instead.
 		expect(inputs["budget.concurrency"]).toMatchObject({
 			type: "number",
-			default: "1",
-			label: "sessions in one tree",
+			default: "by isolation",
+			label: "sessions at once",
 			group: "Limits",
 		});
+		expect(inputs["budget.concurrency"]?.options?.slice(0, 3)).toEqual([
+			"by isolation",
+			"1",
+			"2",
+		]);
+		expect(
+			LoopSettings.inputs(config({ budget: { concurrency: 3 } }))[
+				"budget.concurrency"
+			]?.default,
+		).toBe("3");
+		expect(inputs.isolation).toMatchObject({
+			default: "worktree",
+			options: ["worktree", "shared"],
+			group: "Workspace",
+		});
+		expect(inputs.reuse).toMatchObject({ type: "boolean", default: true });
+		expect(inputs.maxWorktrees).toMatchObject({
+			default: "one per session",
+			group: "Workspace",
+		});
+		// The setup command is free text, which the form cannot hold.
+		expect(inputs.setup).toBeUndefined();
 		expect(inputs["budget.spend"]?.default).toBe("none");
 	});
 
@@ -121,6 +147,9 @@ describe("LoopSettings.overrides", () => {
 				stallAfter: 3,
 				recheck: true,
 				worktree: true,
+				isolation: "worktree",
+				reuse: true,
+				maxWorktrees: undefined,
 				verifier: undefined,
 				land: "none",
 				lenses: ["functional", "quality"],

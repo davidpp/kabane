@@ -40,6 +40,10 @@ export namespace Gates {
 		 * before it was kept.
 		 */
 		ticked: z.array(z.string()).optional(),
+		/** The subtask's own branch, when it ran in the subtask's own worktree (`ClaimTrees`). */
+		branch: z.string().optional(),
+		/** With a branch: the run's branch's commit once a green pass merged that branch into it. */
+		merged: z.string().optional(),
 	});
 	export type Run = z.infer<typeof RunSchema>;
 

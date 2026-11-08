@@ -9,7 +9,10 @@
 // over continues the interrupted one: its harness session resumed where the harness can, told what
 // that attempt left either way. A subtask its own red gate reopened is claimed again in the session
 // that closed it, while `Retry` says that session has room, and in a new one told the gate's output
-// otherwise. A subtask closed with checklist items open gets no pass: it is reopened.
+// otherwise. A subtask closed with checklist items open gets no pass: it is reopened. With
+// isolated claims, a subtask works in a worktree of its own (`ClaimTrees`), its session, gates
+// and checkpoint there, and a green pass merges its branch into the run's; one the tracker closed
+// or cancelled while it held that worktree is settled there (`settleHeld`).
 import type { Harnesses } from "@cabane/acp";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
 import type { Brief } from "./brief";
@@ -28,6 +31,7 @@ import { Retry } from "./retry";
 import { Stall } from "./stall";
 import { RunState } from "./state";
 import { RunStore } from "./store";
+import { ClaimTrees } from "./trees";
 import { Worktree } from "./worktree";
 
 export namespace Claims {
@@ -80,10 +84,20 @@ export namespace Claims {
 	// release.
 	const onParent = RunStore.reviews;
 
+	// Every tree the run's sessions work in: its own, and its subtasks' (`ClaimTrees`).
+	const trees = async (ctx: Ctx): Promise<string> =>
+		(
+			await Promise.all(
+				[RunStore.sessionDir(ctx.run), ...ClaimTrees.projectDirs(ctx.run)].map(
+					(dir) => ctx.tree(dir),
+				),
+			)
+		).join(",");
+
 	export const mark = async (ctx: Ctx, plan: LoopPlan.Plan): Promise<string> =>
 		Stall.mark(
 			LoopPlan.closed(plan),
-			await ctx.tree(RunStore.sessionDir(ctx.run)),
+			await trees(ctx),
 			Gates.signature(ctx.run.gateRuns.at(-1)),
 			await Checklists.progress(ctx.deps.basePath, [
 				plan.parent.id,
@@ -104,7 +118,7 @@ export namespace Claims {
 		const pass =
 			ctx.run.gateRuns.findLast(
 				(r) => r.taskId === claim.taskId && r.at >= claim.startedAt,
-			) ?? (await gatesAfter(ctx, subject));
+			) ?? (await gatesAfter(ctx, subject, heldBy(ctx, claim)));
 		if (pass)
 			await Checks.record(ctx, pass, { ...subject, assignee: claim.harness });
 	};
@@ -326,10 +340,27 @@ export namespace Claims {
 		return sessionId;
 	};
 
-	const git = (ctx: Ctx, args: string[]): Promise<string> =>
-		(ctx.deps.git ?? Worktree.git)(RunStore.sessionDir(ctx.run), args).then(
-			(out) => (out.ok ? out.value.trim() : ""),
+	// `git <args>` where `claim` worked, the run's own tree without one: its output, or "".
+	const git = (
+		ctx: Ctx,
+		args: string[],
+		claim: Pick<RunStore.Claim, "worktree"> = {},
+	): Promise<string> =>
+		(ctx.deps.git ?? Worktree.git)(
+			RunStore.claimDir(ctx.run, claim),
+			args,
+		).then((out) => (out.ok ? out.value.trim() : ""));
+
+	// The worktree `claim` worked in, while its subtask still holds it.
+	const heldBy = (
+		ctx: Ctx,
+		claim: RunStore.Claim,
+	): ClaimTrees.Tree | undefined => {
+		const tree = ClaimTrees.all(ctx.run).find(
+			(t) => t.dir === claim.worktree && t.held?.taskId === claim.taskId,
 		);
+		return tree?.held ? { dir: tree.dir, branch: tree.held.branch } : undefined;
+	};
 
 	// Its task's work-log entries since it started, but for the loop's own record of its session.
 	const loggedSince = async (
@@ -363,8 +394,8 @@ export namespace Claims {
 		if (previous?.outcome !== "interrupted") return undefined;
 		const [logged, commits, status] = await Promise.all([
 			loggedSince(ctx, previous),
-			git(ctx, ["log", "--oneline", `--since=${previous.startedAt}`]),
-			git(ctx, ["status", "--short"]),
+			git(ctx, ["log", "--oneline", `--since=${previous.startedAt}`], previous),
+			git(ctx, ["status", "--short"], previous),
 		]);
 		return {
 			lane: previous.lane,
@@ -392,6 +423,8 @@ export namespace Claims {
 		head?: string;
 		/** A recheck's: the working tree's fingerprint it must leave as it found. */
 		tree?: string;
+		/** A subtask's own worktree, when it works in one (`ClaimTrees`). */
+		worktree?: ClaimTrees.Tree;
 	};
 
 	// A recheck reports and never edits; nothing enforces that in the harness, whose settings are
@@ -421,6 +454,7 @@ export namespace Claims {
 			resumes,
 			head,
 			tree,
+			worktree,
 		} = started;
 		RunState.save(ctx, {
 			...ctx.run,
@@ -434,6 +468,7 @@ export namespace Claims {
 					sessionId,
 					startedAt: ctx.now().toISOString(),
 					continuations: 0,
+					...(worktree ? { worktree: worktree.dir } : {}),
 					...(work.kind === "lens" ? { lens: work.name } : {}),
 					...(work.kind === "fix"
 						? {
@@ -475,7 +510,9 @@ export namespace Claims {
 				basePath: ctx.deps.basePath,
 				home: ctx.deps.home,
 				kabaneBin: ctx.deps.kabaneBin,
-				cwd: RunStore.sessionDir(ctx.run),
+				cwd: worktree
+					? RunStore.projectIn(ctx.run, worktree.dir)
+					: RunStore.sessionDir(ctx.run),
 				runId: ctx.run.id,
 				...(ctx.run.scopeUri ? { scopeUri: ctx.run.scopeUri } : {}),
 				...(ctx.deps.mode ? { mode: ctx.deps.mode } : {}),
@@ -491,12 +528,11 @@ export namespace Claims {
 				tree === undefined ? ended : await unedited(ctx, tree, ended);
 			const gates =
 				work.kind === "implement" && outcome.outcome === "done"
-					? await gatesAfter(ctx, {
-							taskId: task.id,
-							label: label(task),
-							lane,
-							harness,
-						})
+					? await gatesAfter(
+							ctx,
+							{ taskId: task.id, label: label(task), lane, harness },
+							worktree,
+						)
 					: undefined;
 			ctx.settled.push({
 				taskId: task.id,
@@ -509,32 +545,61 @@ export namespace Claims {
 		ctx.live.set(sessionId, { taskId: task.id, handle, settled });
 	};
 
-	/**
-	 * Claim one ready work node, a subtask or a single issue itself: a core session, a dispatched
-	 * ACP session, a live entry.
-	 */
-	export const claim = async (
+	// The node's task as the tracker has it now, while the run may still claim it. The plan is a
+	// snapshot: tracker changes are respected before acquiring it; this is not cross-process
+	// compare-and-swap ownership.
+	const claimable = async (
 		ctx: Ctx,
 		node: LoopPlan.Node,
 		plan: LoopPlan.Plan,
-	): Promise<void> => {
-		// The plan is a snapshot. Respect tracker changes before acquiring it; this is not
-		// cross-process compare-and-swap ownership.
+	): Promise<Task | undefined> => {
 		const current = await Planner.getTask(ctx.deps.basePath, node.task.id);
 		if (!current.ok) {
 			RunState.event(ctx, {
 				type: "warning",
 				summary: `claim not read: ${current.error.message}`,
 			});
-			return;
+			return undefined;
 		}
 		const task = current.value;
-		if (
-			!task ||
-			!LoopPlan.canClaim(task, ctx.now()) ||
-			!LoopPlan.isWorkOf(plan, task)
-		)
-			return;
+		return task &&
+			LoopPlan.canClaim(task, ctx.now()) &&
+			LoopPlan.isWorkOf(plan, task)
+			? task
+			: undefined;
+	};
+
+	// Where `task`'s claim works: in a worktree of its own for a subtask of a run whose claims are
+	// isolated, in the run's tree otherwise (a single issue is the run's whole work). Undefined while
+	// no worktree is free for it.
+	const placeFor = async (
+		ctx: Ctx,
+		task: Task,
+	): Promise<Result<{ worktree?: ClaimTrees.Tree } | undefined>> => {
+		if (!RunStore.isolated(ctx.run) || task.id === ctx.run.parentId)
+			return ok({});
+		const tree = await ClaimTrees.acquire(ctx, task);
+		if (!tree.ok) return tree;
+		return ok(tree.value ? { worktree: tree.value } : undefined);
+	};
+
+	/**
+	 * Claim one ready work node, a subtask or a single issue itself: a core session, a dispatched
+	 * ACP session, a live entry. False when it waits for a worktree of its own (`ClaimTrees`), an
+	 * error when its worktree could not be readied (its setup failed), which stops the run; true
+	 * otherwise, the node claimed or the tracker's changes having taken it out of the run's hands.
+	 */
+	export const claim = async (
+		ctx: Ctx,
+		node: LoopPlan.Node,
+		plan: LoopPlan.Plan,
+	): Promise<Result<boolean>> => {
+		const task = await claimable(ctx, node, plan);
+		if (task === undefined) return ok(true);
+		const place = await placeFor(ctx, task);
+		if (!place.ok) return place;
+		if (place.value === undefined) return ok(false);
+		const { worktree } = place.value;
 		// The run's harness, whatever the subtask's assignee says: agents assign issues they file
 		// to themselves, so the assignee names who wrote it, not who the human picked to work it.
 		const harness = ctx.run.config.implementer;
@@ -545,7 +610,7 @@ export namespace Claims {
 		// Named by the subtask alone: every subtask runs on the run's one harness, which the header names.
 		const lane = `${label(task)}${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, task, harness, lane, true);
-		if (sessionId === undefined) return;
+		if (sessionId === undefined) return ok(true);
 		const previous = earlier.at(-1);
 		const retry = Gates.lastFailure(ctx.run.gateRuns, task.id);
 		const interrupted = await interruption(ctx, previous);
@@ -561,10 +626,11 @@ export namespace Claims {
 			work: {
 				kind: "implement",
 				gates: Object.keys(ctx.run.config.gates),
-				concurrent: ctx.run.config.budget.concurrency > 1,
+				concurrent: worktree === undefined && RunStore.concurrency(ctx.run) > 1,
 				...(retry ? { retry } : {}),
 			},
-			summary: `${harness} claims ${label(task)}: ${task.title}`,
+			summary: `${harness} claims ${label(task)}: ${task.title}${worktree ? ` in ${worktree.dir}, on ${worktree.branch}` : ""}`,
+			...(worktree ? { worktree } : {}),
 			...(interrupted ? { interrupted } : {}),
 			...(retryIn?.resume ? { resumes: retryIn } : {}),
 		});
@@ -577,6 +643,7 @@ export namespace Claims {
 				task: label(task),
 				summary: `${retryIn.lane}'s session not resumed for a gate retry (${retryIn.why}): a new session gets the full brief`,
 			});
+		return ok(true);
 	};
 
 	/**
@@ -712,41 +779,46 @@ export namespace Claims {
 			harness,
 			...subject
 		}: Omit<Checks.Subject, "title"> & { taskId: string; harness: string },
+		tree: ClaimTrees.Tree | undefined,
 	) => {
 		if (
 			!(Gates.configured(ctx.run.config.gates) || ctx.run.worktree) ||
 			ctx.stopping.signal.aborted
 		)
 			return undefined;
-		return Checks.gateWhen(ctx, async () => {
-			const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
-			if (!task.ok || task.value?.state !== "done") return undefined;
-			const reopened = await Checklists.refuseDone(
-				ctx.deps.basePath,
-				task.value,
-				harness,
-			);
-			const tag = {
-				...(subject.lane ? { lane: subject.lane } : {}),
-				task: subject.label,
-			};
-			// Unread, the checklist does not hold back the pass: the gates still speak on the work.
-			if (!reopened.ok)
-				RunState.event(ctx, {
-					...tag,
-					type: "warning",
-					summary: `checklist of ${subject.label} not read: ${reopened.error.message}`,
-				});
-			else if (reopened.value.length > 0) {
-				RunState.event(ctx, {
-					...tag,
-					type: "reopened",
-					summary: `${subject.label} reopened: closed with ${reopened.value.length} checklist item${reopened.value.length === 1 ? "" : "s"} open`,
-				});
-				return undefined;
-			}
-			return { ...subject, title: task.value.title };
-		});
+		return Checks.gateWhen(
+			ctx,
+			async () => {
+				const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
+				if (!task.ok || task.value?.state !== "done") return undefined;
+				const reopened = await Checklists.refuseDone(
+					ctx.deps.basePath,
+					task.value,
+					harness,
+				);
+				const tag = {
+					...(subject.lane ? { lane: subject.lane } : {}),
+					task: subject.label,
+				};
+				// Unread, the checklist does not hold back the pass: the gates still speak on the work.
+				if (!reopened.ok)
+					RunState.event(ctx, {
+						...tag,
+						type: "warning",
+						summary: `checklist of ${subject.label} not read: ${reopened.error.message}`,
+					});
+				else if (reopened.value.length > 0) {
+					RunState.event(ctx, {
+						...tag,
+						type: "reopened",
+						summary: `${subject.label} reopened: closed with ${reopened.value.length} checklist item${reopened.value.length === 1 ? "" : "s"} open`,
+					});
+					return undefined;
+				}
+				return { ...subject, title: task.value.title };
+			},
+			tree,
+		);
 	};
 
 	const observeStall = async (
@@ -809,6 +881,61 @@ export namespace Claims {
 		// its end is not a step the stall detector should count.
 		if (review) return false;
 		return observeStall(ctx, taskId, claim);
+	};
+
+	// Whether a pass since `task` last changed gave a verdict on it: every gate it ran ran to an end.
+	const judged = (ctx: Ctx, task: Task): boolean => {
+		const last = ctx.run.gateRuns.findLast((r) => r.taskId === task.id);
+		return (
+			last !== undefined &&
+			last.at >= task.updatedAt &&
+			last.results.every((r) => r.exit !== null)
+		);
+	};
+
+	/**
+	 * The worktrees subtasks hold that no claim works in, once the tracker has settled their subtask
+	 * some other way: one closed as done (by a human, or before a pass gave a verdict on it) has its
+	 * pass run there, so its work merges or it is reopened; one cancelled or deleted lets go of its
+	 * worktree, its branch kept.
+	 */
+	export const settleHeld = async (ctx: Ctx): Promise<void> => {
+		for (const tree of ClaimTrees.all(ctx.run)) {
+			const held = tree.held;
+			if (
+				held === undefined ||
+				ctx.run.claims.some(
+					(c) => c.endedAt === undefined && c.worktree === tree.dir,
+				)
+			)
+				continue;
+			const task = await Planner.getTask(ctx.deps.basePath, held.taskId);
+			if (!task.ok) continue;
+			if (!task.value || task.value.state === "cancelled") {
+				ClaimTrees.abandon(
+					ctx,
+					tree,
+					`${task.value ? `${label(task.value)} was cancelled` : `${held.taskId} was deleted`} before its work merged`,
+				);
+				continue;
+			}
+			if (task.value.state !== "done" || judged(ctx, task.value)) continue;
+			const target = {
+				taskId: task.value.id,
+				label: label(task.value),
+				assignee: ctx.run.config.implementer,
+			};
+			const pass = await gatesAfter(
+				ctx,
+				{
+					taskId: target.taskId,
+					label: target.label,
+					harness: target.assignee,
+				},
+				{ dir: tree.dir, branch: held.branch },
+			);
+			if (pass) await Checks.record(ctx, pass, target);
+		}
 	};
 
 	/**

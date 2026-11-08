@@ -393,7 +393,7 @@ export namespace LoopHeader {
 				<text bg={bg} fg={theme.text} attributes={TextAttributes.BOLD}>
 					sessions
 					<span fg={theme.muted} attributes={0}>
-						{`  ${liveClaims(run).length}/${run.config.budget.concurrency} slots in use`}
+						{`  ${liveClaims(run).length}/${RunStore.concurrency(run)} slots in use`}
 					</span>
 				</text>
 				{run.claims.map((claim, index) => (
@@ -536,7 +536,7 @@ export namespace LoopHeader {
 					parts={[
 						...steps(run, plan),
 						{
-							text: `   ${live}/${run.config.budget.concurrency} slots · ${run.config.implementer}${run.config.model ? ` ${run.config.model}` : ""}`,
+							text: `   ${live}/${RunStore.concurrency(run)} slots · ${run.config.implementer}${run.config.model ? ` ${run.config.model}` : ""}`,
 							tone: "muted",
 						},
 					]}

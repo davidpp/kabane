@@ -108,11 +108,9 @@ export namespace Budget {
 		return { ok: true };
 	};
 
-	/** Free session slots under the concurrency cap. */
-	export const slots = (
-		budget: LoopConfig.Config["budget"],
-		live: number,
-	): number => Math.max(0, budget.concurrency - live);
+	/** Free session slots under the concurrency cap (`RunStore.concurrency`). */
+	export const slots = (concurrency: number, live: number): number =>
+		Math.max(0, concurrency - live);
 
 	/** Whether one more continuation nudge fits the run's budget. */
 	export const canContinue = (

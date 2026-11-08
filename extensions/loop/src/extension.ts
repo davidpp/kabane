@@ -21,7 +21,7 @@ import { LoopDispatcher } from "./dispatcher";
 import { Parent } from "./parent";
 import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--lens <name>]... [--verifier claude|codex|gemini] [--recheck|--no-recheck] [--land none|pr]
+const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--isolation worktree|shared] [--lens <name>]... [--verifier claude|codex|gemini] [--recheck|--no-recheck] [--land none|pr]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
@@ -74,6 +74,9 @@ const switchesFrom = (
 const isLand = (value: string): value is LoopConfig.Config["land"] =>
 	(LoopConfig.LAND as readonly string[]).includes(value);
 
+const isIsolation = (value: string): value is LoopConfig.Config["isolation"] =>
+	(LoopConfig.ISOLATION as readonly string[]).includes(value);
+
 // Flags become the caller's layer, validated with the layers below it.
 const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 	const implementer = flagString(args, "implementer");
@@ -81,6 +84,7 @@ const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 	const model = flagString(args, "model");
 	const lenses = flagList(args, "lens");
 	const land = flagString(args, "land");
+	const isolation = flagString(args, "isolation");
 	const gates = gatesFrom(args);
 	if (!gates.ok) return gates;
 	const budget = Object.fromEntries(
@@ -96,6 +100,7 @@ const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 		budget,
 		gates: gates.value,
 		...switchesFrom(args),
+		...(isolation && isIsolation(isolation) ? { isolation } : {}),
 		...(lenses.length > 0 ? { lenses } : {}),
 		...(verifier && Harnesses.isId(verifier) ? { verifier } : {}),
 		...(land && isLand(land) ? { land } : {}),
@@ -221,9 +226,10 @@ type Verb = (args: ParsedArgs, deps: Deps, target: string) => Promise<Outcome>;
 const ran = (result: Result<RunStore.Run>): Outcome =>
 	result.ok ? success(result.value, line(result.value)) : failure(result.error);
 
-// `git worktree add` checks out what is committed, and nothing git ignores comes with it.
+// `git worktree add` checks out what is committed, and nothing git ignores comes with it: the
+// run's worktree, and each subtask's (`ClaimTrees`).
 const WORKTREE_NOTE =
-	"  note: a new worktree has no ignored files (node_modules, build output): a gate that needs them installs them first, say `bun install && bun test`";
+	"  note: a new worktree has no ignored files (node_modules, build output): a gate that needs them installs them first, say `bun install && bun test`, and the loop.setup setting readies each subtask's own worktree before its session";
 
 // What `start` takes, and `--as` and `--scope`, which every command takes. A misspelt flag
 // (`--work-tree`) is refused rather than dropped, which would start a run the human did not ask for.
@@ -237,6 +243,7 @@ const START_FLAGS: ReadonlySet<string> = new Set([
 	"gate",
 	"worktree",
 	"no-worktree",
+	"isolation",
 	"recheck",
 	"no-recheck",
 	"lens",
@@ -246,35 +253,39 @@ const START_FLAGS: ReadonlySet<string> = new Set([
 	"scope",
 ]);
 
-const start: Verb = async (args, deps, target) => {
+// The flags that take one of a few values, and those values.
+const CHOICES: readonly (readonly [string, readonly string[]])[] = [
+	["implementer", Harnesses.IDS],
+	["verifier", Harnesses.IDS],
+	["land", LoopConfig.LAND],
+	["isolation", LoopConfig.ISOLATION],
+];
+
+// Why `start`'s flags are refused, before any is read: one it does not take, a value not among a
+// flag's choices, a switch given a value or both ways.
+const refusedFlags = (args: ParsedArgs): string | undefined => {
 	const unknown = Object.keys(args.flags).filter((f) => !START_FLAGS.has(f));
 	if (unknown.length > 0)
-		return usage(
-			`Unknown loop start flag${unknown.length === 1 ? "" : "s"}: ${unknown.map((f) => `--${f}`).join(", ")}`,
-			USAGE,
-		);
-	for (const flag of ["implementer", "verifier"]) {
-		const harness = flagString(args, flag);
-		if (harness && !Harnesses.isId(harness))
-			return usage(
-				`--${flag} must be one of ${Harnesses.IDS.join(", ")}`,
-				USAGE,
-			);
+		return `Unknown loop start flag${unknown.length === 1 ? "" : "s"}: ${unknown.map((f) => `--${f}`).join(", ")}`;
+	for (const [flag, values] of CHOICES) {
+		const given = flagString(args, flag);
+		if (given !== undefined && !values.includes(given))
+			return `--${flag} must be one of ${values.join(", ")}`;
 	}
-	const land = flagString(args, "land");
-	if (land !== undefined && !isLand(land))
-		return usage(`--land must be one of ${LoopConfig.LAND.join(", ")}`, USAGE);
 	// A switch followed by a stray word takes it as a value and would read as not given.
 	for (const name of SWITCHES) {
 		for (const flag of [name, `no-${name}`])
 			if (flag in args.flags && !flagBool(args, flag))
-				return usage(
-					`--${flag} takes no value, not ${JSON.stringify(args.flags[flag])}`,
-					USAGE,
-				);
+				return `--${flag} takes no value, not ${JSON.stringify(args.flags[flag])}`;
 		if (flagBool(args, name) && flagBool(args, `no-${name}`))
-			return usage(`Give one of --${name} and --no-${name}`, USAGE);
+			return `Give one of --${name} and --no-${name}`;
 	}
+	return undefined;
+};
+
+const start: Verb = async (args, deps, target) => {
+	const refused = refusedFlags(args);
+	if (refused !== undefined) return usage(refused, USAGE);
 	const config = configFrom(args);
 	if (!config.ok) return usage(config.error.message, USAGE);
 	const dir = flagString(args, "dir");
