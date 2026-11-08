@@ -531,6 +531,62 @@ describe("Subtasks in worktrees of their own", () => {
 		SLOW_MS,
 	);
 
+	// Stop the run after `ms` should it never end on its own, so a run that waits forever fails
+	// its test on its exit rather than on the test's timeout.
+	const stopAfter = (ms: number): (() => void) => {
+		const timer = setTimeout(
+			() =>
+				RunStore.appendInbox(home, "run-1", {
+					kind: "stop",
+					at: new Date().toISOString(),
+				}),
+			ms,
+		);
+		return () => clearTimeout(timer);
+	};
+
+	it(
+		"claims a subtask again in the worktree it holds while an older one waits for a worktree",
+		async () => {
+			const { parent, subtasks } = await plan(
+				{ "a.txt": "a\n" },
+				{ "b.txt": "b\n" },
+			);
+			const [older, younger] = subtasks;
+			if (!older || !younger) throw new Error("no subtasks");
+			// Red the first time it runs, green after.
+			const once = join(script, "failed-once");
+			await runOn(parent, {
+				gates: { once: `test -f ${once} || { touch ${once}; exit 1; }` },
+				maxWorktrees: 1,
+				budget: { concurrency: 1 },
+			});
+			// A human asked for the younger one first, as `kabane loop next` does.
+			RunStore.appendInbox(home, "run-1", {
+				kind: "next",
+				at: new Date().toISOString(),
+				taskId: younger.id,
+				task: label(younger),
+			});
+
+			const stop = stopAfter(10_000);
+			const ended = await drive().finally(stop);
+
+			expect([ended.status, ended.exit?.reason]).toEqual([
+				"completed",
+				"plan-done",
+			]);
+			expect(ended.claims.map((c) => c.taskId)).toEqual([
+				younger.id,
+				younger.id,
+				older.id,
+			]);
+			expect(passFor(ended, younger).map((p) => p.ok)).toEqual([false, true]);
+			expect(new Set(ended.claims.map((c) => c.worktree)).size).toBe(1);
+		},
+		SLOW_MS,
+	);
+
 	it(
 		"removes, as the run ends, the worktrees whose sessions left nothing, and keeps one with work",
 		async () => {

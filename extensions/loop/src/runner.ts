@@ -276,9 +276,12 @@ export namespace Runner {
 		const ready = holding
 			? []
 			: LoopPlan.frontier(plan, RunState.liveTasks(ctx), ctx.now(), skipped);
-		const slots = Budget.slots(RunStore.concurrency(ctx.run), ctx.live.size);
+		let slots = Budget.slots(RunStore.concurrency(ctx.run), ctx.live.size);
 		let treeless = false;
-		for (const node of Steering.pick(ctx.run.steering, ready, slots)) {
+		// Every ready node in claim order, until the slots are filled: one that waits for a worktree
+		// takes no slot, so a later one that holds its own still gets claimed.
+		for (const node of Steering.pick(ctx.run.steering, ready, ready.length)) {
+			if (slots === 0) break;
 			const claimed = await hearingStop(ctx, () =>
 				Claims.claim(ctx, node, plan),
 			);
@@ -294,6 +297,7 @@ export namespace Runner {
 				treeless = true;
 				continue;
 			}
+			slots -= 1;
 			RunState.save(ctx, {
 				...ctx.run,
 				steering: Steering.claimed(ctx.run.steering, node.task.id),
