@@ -587,6 +587,65 @@ describe("Subtasks in worktrees of their own", () => {
 		SLOW_MS,
 	);
 
+	// A human, in a process of their own, cancels or deletes a task: `<home> <change> <taskId>`.
+	// Done again or after the task is gone, it changes nothing and still exits 0.
+	const HUMAN = `
+import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
+import { Planner } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+const [home, change, id] = process.argv.slice(2);
+if (change === "cancelled") await Planner.updateTask(home, id, { state: "cancelled" });
+else await Planner.deleteTask(home, id);
+`;
+
+	for (const change of ["cancelled", "deleted"] as const)
+		it(
+			`never merges a subtask ${change} while its gates run, and frees its worktree with its branch kept`,
+			async () => {
+				const { parent, subtasks } = await plan(
+					{ "a.txt": "a\n" },
+					{ "b.txt": "b\n" },
+				);
+				const [gone, kept] = subtasks;
+				if (!gone || !kept) throw new Error("no subtasks");
+				const human = join(root, "human.mjs");
+				writeFileSync(human, HUMAN);
+				// The gate in the worktree holding a.txt is where the human steps in.
+				await runOn(parent, {
+					gates: {
+						meanwhile: `test ! -f a.txt || ${process.execPath} ${human} ${home} ${change} ${gone.id}`,
+					},
+				});
+
+				const ended = await drive();
+
+				expect([ended.status, ended.exit?.reason]).toEqual([
+					"completed",
+					"plan-done",
+				]);
+				expect(events("merged").map((e) => e.task)).toEqual([label(kept)]);
+				const worktree = ended.worktree ?? "";
+				expect(gitIn(worktree, "show", "HEAD:b.txt")).toBe("b");
+				expect(existsSync(join(worktree, "a.txt"))).toBe(false);
+				// Its checkpoint stays on its branch, which the run kept.
+				const [pass] = passFor(ended, gone);
+				expect(pass?.merged).toBeUndefined();
+				const branch = `kabane-loop/run-1--${label(gone).toLowerCase()}`;
+				expect(gitIn(repo, "rev-parse", branch)).toBe(pass?.checkpoint ?? "");
+				const who =
+					change === "cancelled"
+						? `${label(gone)} was cancelled`
+						: `${gone.id} was deleted`;
+				expect(
+					events("warning").some((e) =>
+						e.summary.endsWith(
+							`freed: ${who} before its work merged; its branch ${branch} keeps what it committed`,
+						),
+					),
+				).toBe(true);
+			},
+			SLOW_MS,
+		);
+
 	it(
 		"removes, as the run ends, the worktrees whose sessions left nothing, and keeps one with work",
 		async () => {

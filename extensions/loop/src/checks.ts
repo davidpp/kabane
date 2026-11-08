@@ -198,22 +198,43 @@ export namespace Checks {
 		tail,
 	});
 
+	// Whether the subtask a pass is for was cancelled or deleted since its turn came: a human can
+	// do either while its gates run or its merge waits behind another. Unread, it counts as not.
+	const dropped = async (ctx: Ctx, subject: Subject): Promise<boolean> => {
+		if (subject.taskId === undefined) return false;
+		const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
+		return task.ok && (!task.value || task.value.state === "cancelled");
+	};
+
 	// A green pass in a subtask's tree, merged into the run's branch: the commit that left it at, or
-	// the merge's failure as a red result for the subtask's next brief.
+	// the merge's failure as a red result for the subtask's next brief. Undefined when the subtask
+	// was dropped before its merge's turn came: its tree stays held, for `Claims.settleHeld` to free
+	// with its branch kept, as it frees any a cancelled or deleted subtask holds.
 	const mergeIn = async (
 		ctx: Ctx,
 		subject: Subject,
 		tree: ClaimTrees.Tree,
-	): Promise<{ merged: string } | { failed: Gates.Result }> => {
+	): Promise<{ merged: string } | { failed: Gates.Result } | undefined> => {
 		const started = performance.now();
-		const merged = await queued(ctx, () =>
-			ClaimTrees.merge(ctx, tree, {
-				id: subject.taskId ?? ctx.run.parentId,
-				shortId: subject.label,
-				title: subject.title,
-			}),
+		const merged = await queued(ctx, async () =>
+			(await dropped(ctx, subject))
+				? undefined
+				: ClaimTrees.merge(ctx, tree, {
+						id: subject.taskId ?? ctx.run.parentId,
+						shortId: subject.label,
+						title: subject.title,
+					}),
 		);
 		const tag = subject.lane ? { lane: subject.lane } : {};
+		if (merged === undefined) {
+			RunState.event(ctx, {
+				...tag,
+				type: "warning",
+				task: subject.label,
+				summary: `${subject.label} not merged: it was cancelled or deleted while its pass ran`,
+			});
+			return undefined;
+		}
 		RunState.event(ctx, {
 			...tag,
 			type: merged.ok ? "merged" : "merge_conflict",
