@@ -489,6 +489,49 @@ describe("Subtasks in worktrees of their own", () => {
 	);
 
 	it(
+		"keeps a subtask's worktree and work when a hook refuses its checkpoint, and merges its retry's",
+		async () => {
+			const { parent, subtasks } = await plan({ "a.txt": "a\n" });
+			const [only] = subtasks;
+			if (!only) throw new Error("no subtask");
+			// The repository's own pre-commit hook refuses the first commit, as a lint hook would.
+			const once = join(script, "refused-once");
+			const hooks = join(repo, ".git", "hooks");
+			mkdirSync(hooks, { recursive: true });
+			writeFileSync(
+				join(hooks, "pre-commit"),
+				`#!/bin/sh\ntest -f ${once} && exit 0\ntouch ${once}\necho "lint: a.txt is not formatted" >&2\nexit 1\n`,
+				{ mode: 0o755 },
+			);
+			await runOn(parent);
+
+			const ended = await drive();
+
+			expect([ended.status, ended.exit?.reason]).toEqual([
+				"completed",
+				"plan-done",
+			]);
+			const [refused, retried] = passFor(ended, only);
+			expect([refused?.ok, retried?.ok]).toEqual([false, true]);
+			expect(refused?.merged).toBeUndefined();
+			expect(refused?.results.at(-1)?.name).toBe("checkpoint");
+			// The retry worked in the worktree it held, told why its checkpoint was refused.
+			const claims = ended.claims.filter((c) => c.taskId === only.id);
+			expect(claims.map((c) => c.worktree)).toEqual([
+				claims[0]?.worktree,
+				claims[0]?.worktree,
+			]);
+			const prompts = lines(join(script, `${label(only)}.prompts`)).map((l) =>
+				String(JSON.parse(l)),
+			);
+			expect(prompts[1]).toContain("the `checkpoint` gate");
+			expect(prompts[1]).toContain("lint: a.txt is not formatted");
+			expect(gitIn(ended.worktree ?? "", "show", "HEAD:a.txt")).toBe("a");
+		},
+		SLOW_MS,
+	);
+
+	it(
 		"removes, as the run ends, the worktrees whose sessions left nothing, and keeps one with work",
 		async () => {
 			const { parent, subtasks } = await plan(
