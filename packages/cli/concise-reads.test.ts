@@ -101,6 +101,16 @@ describe.concurrent("concise actual entry points", () => {
 						expect(Boolean(parsed.data.isError)).toBe(error);
 						return parsed.data.content.map((block) => block.text).join("");
 					};
+					const assignedId = tracker.ids[0];
+					expect(assignedId).toBeDefined();
+					if (!assignedId) return;
+					const assigned = await tracker.run(
+						"edit",
+						assignedId,
+						"--assignee",
+						"codex",
+					);
+					expect(assigned.code).toBe(0);
 					const fullArgs = {
 						scopeUri: "jake://scope/corpus",
 						includeClosed: true,
@@ -112,11 +122,18 @@ describe.concurrent("concise actual entry points", () => {
 					).toBe(raw);
 					const fullIds = z
 						.array(
-							z.object({ id: z.string(), description: z.string().optional() }),
+							z.object({
+								id: z.string(),
+								description: z.string().optional(),
+								assignee: z.string().optional(),
+							}),
 						)
 						.safeParse(JSON.parse(raw));
 					expect(fullIds.success).toBe(true);
 					if (!fullIds.success) return;
+					expect(
+						fullIds.data.find((task) => task.id === assignedId)?.assignee,
+					).toBe("codex");
 					const cliRaw = await tracker.run(
 						"list",
 						"--all",
@@ -174,6 +191,8 @@ describe.concurrent("concise actual entry points", () => {
 						);
 						if (cursor)
 							expect(JSON.parse(cli.out)).toEqual(JSON.parse(cliJson.out));
+						for (const item of page.data.items)
+							if (item.id === assignedId) expect(item.assignee).toBe("codex");
 						const cliJsonPage = pageSchema.safeParse(JSON.parse(cliJson.out));
 						expect(cliJsonPage.success).toBe(true);
 						if (cliJsonPage.success)
