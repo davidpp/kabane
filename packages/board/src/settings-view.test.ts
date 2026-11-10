@@ -156,6 +156,43 @@ describe("SettingsView's editor", () => {
 
 	const edit = (state: BoardNav.BoardState) => state.settings?.edit;
 
+	test("a list is typed whole, its items apart by commas, and h/l leave it alone", () => {
+		const lenses = Fixtures.SETTINGS.find((row) => row.key === "loop.lenses");
+		if (!lenses) throw new Error("no lenses row");
+		const row: SettingRow = {
+			...lenses,
+			value: ["functional", "quality"],
+			options: ["functional", "quality", "security"],
+		};
+		const rows = [row];
+		expect(press(opened(rows), "l").state.settings?.edit).toBeUndefined();
+		const typing = press(opened(rows), "return").state;
+		expect(edit(typing)?.change).toEqual({
+			type: "type",
+			text: "functional, quality",
+		});
+		expect(SettingsView.typing(row)).toBe(
+			"apart by commas, each one of functional, quality, security; empty for none",
+		);
+		const saved = press(typing, ...", security".split(""), "return");
+		expect(saved.effect).toMatchObject({
+			type: "saveSetting",
+			key: "loop.lenses",
+			value: "functional,quality,security",
+		});
+		const refused = press(typing, ...",nope".split(""), "return");
+		expect(refused.effect.type).toBe("none");
+		expect(edit(refused.state)?.error).toBe(
+			'"nope" is not one of functional, quality, security',
+		);
+		const cleared = press(
+			typing,
+			...Array.from("functional, quality", () => "backspace"),
+			"return",
+		);
+		expect(cleared.effect).toMatchObject({ type: "saveSetting", value: "" });
+	});
+
 	test("h/l step a value as the run form does, and enter saves it where config set would", () => {
 		const stepped = press(on("loop.stallAfter"), "l");
 		expect(edit(stepped.state)).toEqual({

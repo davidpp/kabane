@@ -213,6 +213,7 @@ const Editor = ({
 	const theme = useTheme();
 	const bg = overlayBg(theme);
 	const cols = inner - DETAIL_INDENT;
+	const typing = SettingsView.typing(row);
 	const value = clip(
 		edit.change.type === "unset"
 			? pending(row, edit)
@@ -225,6 +226,9 @@ const Editor = ({
 				{" ".repeat(DETAIL_INDENT)}
 				{value}
 			</text>
+			{edit.change.type === "type" && typing !== undefined ? (
+				<Lines lines={[typing]} inner={inner} fg={theme.muted} />
+			) : null}
 			{edit.error ? (
 				<Lines lines={[edit.error]} inner={inner} fg={theme.failed} />
 			) : null}

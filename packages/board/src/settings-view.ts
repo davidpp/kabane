@@ -70,6 +70,14 @@ export namespace SettingsView {
 	const plain = (value: unknown): string =>
 		typeof value === "string" ? value : JSON.stringify(value);
 
+	/** A value as the view says it: a list by its items, an empty one as none. */
+	const said = (value: unknown): string =>
+		Array.isArray(value)
+			? value.length === 0
+				? "none"
+				: value.map(plain).join(", ")
+			: plain(value);
+
 	/** What the device's own keys sit under: they belong to no extension. */
 	const DEVICE = "kabane";
 
@@ -198,15 +206,65 @@ export namespace SettingsView {
 			row.options ?? (row.field.kind === "enum" ? row.field.values : undefined),
 	});
 
-	/** `h/l` move the row's value: an enum, a boolean, or a value with looked-up steps. */
+	/** A list of strings, numbers or enum values: typed whole, its items apart by commas. */
+	const listOf = (row: SettingRow): boolean =>
+		row.field.kind === "list" &&
+		["string", "number", "enum"].includes(row.field.item.kind);
+
+	/** `h/l` move the row's value: an enum, a boolean, or a single value with looked-up steps. */
 	const steps = (row: SettingRow): boolean =>
 		!row.readOnly &&
+		row.field.kind !== "list" &&
 		(row.field.kind === "boolean" || (stepsOf(row).options?.length ?? 0) > 0);
 
-	/** `enter` types the row's value: a string or a number. */
+	/** `enter` types the row's value: a string, a number, or a list of them. */
 	const types = (row: SettingRow): boolean =>
 		!row.readOnly &&
-		(row.field.kind === "string" || row.field.kind === "number");
+		(row.field.kind === "string" || row.field.kind === "number" || listOf(row));
+
+	/** The values a list's items are one of, when it has any: its looked-up steps or its enum's. */
+	const itemChoices = (row: SettingRow): readonly string[] | undefined => {
+		if (row.field.kind !== "list") return undefined;
+		const { item } = row.field;
+		const choices =
+			row.options ?? (item.kind === "enum" ? item.values : undefined);
+		return choices?.map(String);
+	};
+
+	/**
+	 * A typed list as `kabane config set` reads one: its items apart by commas, trimmed, the empty
+	 * ones dropped, so an empty text is an empty list; refused when an item is not one of its choices.
+	 */
+	const listInput = (
+		row: SettingRow,
+		text: string,
+	): { ok: true; value: string } | { ok: false; error: string } => {
+		const items = text
+			.split(",")
+			.map((item) => item.trim())
+			.filter((item) => item !== "");
+		const choices = itemChoices(row);
+		const unknown =
+			choices === undefined
+				? []
+				: items.filter((item) => !choices.includes(item));
+		if (unknown.length > 0)
+			return {
+				ok: false,
+				error: `${unknown.map((item) => `"${item}"`).join(", ")} ${unknown.length === 1 ? "is" : "are"} not one of ${choices?.join(", ")}`,
+			};
+		const numbers =
+			row.field.kind === "list" && row.field.item.kind === "number";
+		const nan = numbers
+			? items.filter((item) => !Number.isFinite(Number(item)))
+			: [];
+		if (nan.length > 0)
+			return {
+				ok: false,
+				error: `${nan.map((item) => `"${item}"`).join(", ")} ${nan.length === 1 ? "is" : "are"} not a number`,
+			};
+		return { ok: true, value: items.join(",") };
+	};
 
 	/** The editor can remove the row's key from a layer: not a record's entry, which the CLI adds and removes. */
 	const unsets = (view: View, row: SettingRow): boolean =>
@@ -315,7 +373,9 @@ export namespace SettingsView {
 				text:
 					row.secret || row.value === null || row.value === undefined
 						? ""
-						: plain(row.value),
+						: Array.isArray(row.value)
+							? row.value.map(plain).join(", ")
+							: plain(row.value),
 			});
 		if (row && steps(row))
 			return startEdit(state, view, row, { type: "step", value: current(row) });
@@ -360,6 +420,15 @@ export namespace SettingsView {
 		}
 	};
 
+	/** How the editor says a list is typed, with the values its items are one of; none for a value. */
+	export const typing = (row: SettingRow): string | undefined => {
+		if (!listOf(row)) return undefined;
+		const choices = itemChoices(row);
+		return choices === undefined
+			? "apart by commas; empty for none"
+			: `apart by commas, each one of ${choices.join(", ")}; empty for none`;
+	};
+
 	/** What a save asks a y/n for, a line each; none when it asks nothing. */
 	export const asks = (row: SettingRow, edit: Edit): string[] => [
 		...(edit.layer === "shared"
@@ -378,6 +447,7 @@ export namespace SettingsView {
 		const { change } = edit;
 		if (change.type === "unset") return { ok: true, value: { unset: true } };
 		if (change.type === "type") {
+			if (listOf(row)) return listInput(row, change.text);
 			const read = FormField.read(typedField(row), change.text);
 			if (read.ok) return { ok: true, value: read.value };
 			const given = row.secret ? "the value" : `"${change.text.trim()}"`;
@@ -574,15 +644,15 @@ export namespace SettingsView {
 		const lines = [
 			change.unset
 				? `removed from ${change.layer}`
-				: `saved ${plain(change.value)} to ${change.layer}`,
+				: `saved ${said(change.value)} to ${change.layer}`,
 		];
 		if (change.shadowedBy)
 			lines.push(
-				`${change.shadowedBy.layer} still decides: ${plain(change.shadowedBy.value)} (${change.shadowedBy.from})`,
+				`${change.shadowedBy.layer} still decides: ${said(change.shadowedBy.value)} (${change.shadowedBy.from})`,
 			);
 		if (change.fallsBackTo)
 			lines.push(
-				`${change.fallsBackTo.layer} decides now: ${plain(change.fallsBackTo.value)}`,
+				`${change.fallsBackTo.layer} decides now: ${said(change.fallsBackTo.value)}`,
 			);
 		if (change.unresolved)
 			lines.push(`but settings no longer resolve: ${change.unresolved}`);
@@ -606,9 +676,7 @@ export namespace SettingsView {
 				? "none"
 				: `${entries} ${entries === 1 ? "entry" : "entries"}`;
 		}
-		if (Array.isArray(value))
-			return value.length === 0 ? "none" : value.map(plain).join(", ");
-		return plain(value);
+		return said(value);
 	};
 
 	/** What the row's detail line says, a line each. */
@@ -621,7 +689,7 @@ export namespace SettingsView {
 		// The nearest layer it hides first: the one that would decide without it.
 		for (const held of [...row.hides].reverse())
 			lines.push(
-				`hides ${held.layer}, ${MEANING[held.layer]}: ${plain(held.value)} (${held.from})`,
+				`hides ${held.layer}, ${MEANING[held.layer]}: ${said(held.value)} (${held.from})`,
 			);
 		if (row.readOnly) lines.push("read-only: kabane sets it");
 		if (row.protected) lines.push("protected: the copilot leaves it to you");
