@@ -9,23 +9,13 @@
 // off. The lenses, a list of names, get a toggle each over the lenses the project can run. A field
 // the form cannot hold (free text with no options, a record) is left to the settings layers
 // (`kabane config`) and flags: the gates, named shell commands, which the preview lists read-only.
-import type { TriggerInput } from "@cabane/board/ports";
+import type { SettingField, TriggerInput } from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
+import { Settings } from "@cabane/extension";
 import { z } from "zod";
 import { LoopConfig } from "./config";
 
 export namespace LoopSettings {
-	type Kind = "enum" | "number" | "boolean" | "string" | "other";
-
-	type Field = {
-		path: readonly string[];
-		kind: Kind;
-		/** The enum's values, for an enum. */
-		values: readonly string[];
-		/** Absent is a valid setting (the model: the user's own). */
-		optional: boolean;
-	};
-
 	type Look = {
 		label: string;
 		group: string;
@@ -94,50 +84,14 @@ export namespace LoopSettings {
 	// Lenses are a list of names; the form holds one toggle per lens it can offer, `lenses.<name>`.
 	const LENS_PREFIX = "lenses.";
 
-	// Peel the wrappers that say how a value may be absent, keeping whether it may.
-	const unwrap = (
-		schema: z.ZodTypeAny,
-	): { inner: z.ZodTypeAny; optional: boolean } => {
-		if (schema instanceof z.ZodDefault) return unwrap(schema.removeDefault());
-		if (schema instanceof z.ZodOptional) {
-			const inner = unwrap(schema.unwrap());
-			return { inner: inner.inner, optional: true };
-		}
-		return { inner: schema, optional: false };
-	};
+	// The form holds settings, not the groups they sit in.
+	const FIELDS = Settings.fields(LoopConfig.Schema).filter(
+		(field) => field.kind !== "group",
+	);
 
-	const kindOf = (schema: z.ZodTypeAny): Kind => {
-		if (schema instanceof z.ZodEnum) return "enum";
-		if (schema instanceof z.ZodNumber) return "number";
-		if (schema instanceof z.ZodBoolean) return "boolean";
-		if (schema instanceof z.ZodString) return "string";
-		return "other";
-	};
+	const nameOf = (field: SettingField): string => field.path.join(".");
 
-	/** Every leaf of the config schema, in its order, nested objects flattened by path. */
-	const fieldsOf = (
-		shape: z.ZodRawShape,
-		prefix: readonly string[] = [],
-	): Field[] =>
-		Object.entries(shape).flatMap(([key, schema]): Field[] => {
-			const { inner, optional } = unwrap(schema);
-			const path = [...prefix, key];
-			if (inner instanceof z.ZodObject) return fieldsOf(inner.shape, path);
-			return [
-				{
-					path,
-					kind: kindOf(inner),
-					values: inner instanceof z.ZodEnum ? inner.options : [],
-					optional,
-				},
-			];
-		});
-
-	const FIELDS = fieldsOf(LoopConfig.Schema.shape);
-
-	const nameOf = (field: Field): string => field.path.join(".");
-
-	const lookOf = (field: Field): Look =>
+	const lookOf = (field: SettingField): Look =>
 		LOOKS[nameOf(field)] ?? {
 			label: nameOf(field),
 			group:
@@ -171,7 +125,11 @@ export namespace LoopSettings {
 		);
 	};
 
-	const optionsOf = (field: Field, look: Look, value: unknown): string[] => {
+	const optionsOf = (
+		field: SettingField,
+		look: Look,
+		value: unknown,
+	): string[] => {
 		const listed =
 			field.kind === "enum"
 				? withValue(field.values, value)
@@ -185,7 +143,7 @@ export namespace LoopSettings {
 
 	/** One field's input, or undefined when the form cannot hold it. */
 	const inputOf = (
-		field: Field,
+		field: SettingField,
 		config: LoopConfig.Config,
 	): TriggerInput | undefined => {
 		const look = lookOf(field);
@@ -266,7 +224,7 @@ export namespace LoopSettings {
 
 	// A form value as the config holds it: an option's text back to a number, the unset option to
 	// absent (undefined, so it unsets what the layers below say too).
-	const fromForm = (field: Field, value: unknown): Result<unknown> => {
+	const fromForm = (field: SettingField, value: unknown): Result<unknown> => {
 		if (field.optional && value === (lookOf(field).none ?? NONE))
 			return ok(undefined);
 		if (field.kind !== "number" || typeof value === "number") return ok(value);
