@@ -1,7 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { GitFixture } from "@cabane/core/git-fixture";
+import { ProjectDirs } from "@cabane/core/scope";
 import { configPath, SCOPE_FILE } from "../config";
 import { run } from "../main";
 import { buildConfig } from "./init";
@@ -46,6 +55,7 @@ describe("init --scope on a configured device", () => {
 		home = mkdtempSync(join(tmpdir(), "kabane-init-"));
 		cwd = join(home, "project");
 		mkdirSync(cwd);
+		GitFixture.run(cwd, ["init", "-q"]);
 		const first = await run(
 			["init", "--actor", "cabane://actor/human/ada", "--device", "mbp"],
 			env(),
@@ -56,14 +66,52 @@ describe("init --scope on a configured device", () => {
 
 	afterEach(() => rmSync(home, { recursive: true, force: true }));
 
-	test("pins the directory's scope and leaves the config as it was", async () => {
+	const scopeOf = async (dir: string): Promise<string> => {
+		const out = await run(["scope"], env(), dir);
+		return (out.json as { scopeId: string }).scopeId;
+	};
+
+	test("pins the project's scope under KABANE_HOME, leaving the repo and the config as they were", async () => {
 		const before = readFileSync(configPath(home), "utf8");
 
 		const pinned = await run(["init", "--scope", "myapp"], env(), cwd);
 
 		expect(pinned.exitCode).toBe(0);
-		expect(readFileSync(join(cwd, SCOPE_FILE), "utf8")).toBe("myapp\n");
+		const local = join(ProjectDirs.of(home, realpathSync(cwd)), "scope");
+		expect(readFileSync(local, "utf8")).toBe("myapp\n");
+		expect(pinned.text).toContain(local);
+		expect(existsSync(join(cwd, ".kabane"))).toBe(false);
 		expect(readFileSync(configPath(home), "utf8")).toBe(before);
+		expect(await scopeOf(cwd)).toBe("myapp");
+	});
+
+	test("--shared pins in the repo, and your own pin still wins", async () => {
+		expect((await run(["init", "--scope", "mine"], env(), cwd)).exitCode).toBe(
+			0,
+		);
+
+		const shared = await run(
+			["init", "--scope", "team", "--shared"],
+			env(),
+			cwd,
+		);
+
+		expect(shared.exitCode).toBe(0);
+		expect(readFileSync(join(cwd, SCOPE_FILE), "utf8")).toBe("team\n");
+		expect(await scopeOf(cwd)).toBe("mine");
+		rmSync(join(ProjectDirs.of(home, realpathSync(cwd)), "scope"));
+		expect(await scopeOf(cwd)).toBe("team");
+	});
+
+	test("refuses a local pin outside any project", async () => {
+		const loose = mkdtempSync(join(tmpdir(), "kabane-loose-"));
+		try {
+			const refused = await run(["init", "--scope", "myapp"], env(), loose);
+			expect(refused.exitCode).toBe(1);
+			expect(refused.text).toContain("--shared");
+		} finally {
+			rmSync(loose, { recursive: true, force: true });
+		}
 	});
 
 	test("still refuses to rewrite the config without --force", async () => {
