@@ -121,6 +121,15 @@ const inspect = async (tarball: string): Promise<string> => {
 	return result.value.version;
 };
 
+// The source entry's hashbang passes a define through `env -S`, which some systems' env lacks. The
+// bundle has the define built in, so the build gives it the plain one.
+const checkHashbang = (): void => {
+	const entry = readFileSync(join(UNPACKED, "package/bin/kabane.js"), "utf8");
+	if (!entry.startsWith("#!/usr/bin/env bun\n"))
+		fail(`bin/kabane.js starts with ${JSON.stringify(entry.split("\n")[0])}`);
+	pass("bin/kabane.js has the plain #!/usr/bin/env bun hashbang");
+};
+
 const install = (tarball: string): void => {
 	runOk(["bun", "add", "-g", tarball], WORK, {
 		...isolated,
@@ -676,6 +685,7 @@ if (mode === "--artifact-dir" && input) {
 	tarball = pack();
 }
 const version = await inspect(tarball);
+checkHashbang();
 if (expectedVersion && version !== expectedVersion)
 	fail("archive/release manifest version mismatch");
 install(tarball);
