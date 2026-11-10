@@ -346,7 +346,8 @@ export type SettingWrite = string | number | boolean | { unset: true };
 
 // A save as `kabane config set --json` reports it: the layer and file written, the value (a secret
 // `<set>`), and when it applies. `shadowedBy`: a higher layer still sets the key, so the value seen
-// is not the one written. `fallsBackTo`: after an unset, the layer that now decides.
+// is not the one written. `fallsBackTo`: after an unset, the layer that now decides. `unresolved`:
+// saved, but the layers no longer resolve (another file is invalid), and why.
 export type SettingChange = {
 	key: string;
 	layer: SettingLayer;
@@ -355,6 +356,7 @@ export type SettingChange = {
 	unset?: true;
 	shadowedBy?: SettingHeld;
 	fallsBackTo?: SettingHeld;
+	unresolved?: string;
 	restart: "start" | "resolve";
 };
 

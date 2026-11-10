@@ -183,7 +183,9 @@ per leaf with what it hides under it. `path` returns a string. `set` returns
 `{key, layer, from, value, restart}` and `unset` returns `{key, layer, from, unset: true,
 restart}`, `from` being the file written. Either adds `shadowedBy: {layer, from, value}` when a
 higher layer still decides the key; an unset adds `fallsBackTo`, in the same shape, when a lower
-layer (a legacy `scopes` block included) now decides it. `kabane_configSet` adds
+layer (a legacy `scopes` block included) now decides it. When the write is saved but the layers
+no longer resolve, because another file is invalid, it adds `unresolved` with the error, which
+names that file. `kabane_configSet` adds
 `restartRequired`, true when `restart` is `start`.
 
 Strings are literal; numbers and booleans use JSON syntax. Arrays take trimmed

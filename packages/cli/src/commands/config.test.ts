@@ -531,6 +531,46 @@ describe.concurrent("config through the real CLI", () => {
 	);
 
 	it(
+		"says a write was saved but the settings no longer resolve when another layer's file is broken",
+		withHome(async ({ home, path, write, inRepo }) => {
+			write(initial);
+			const shared = join(realpathSync(join(home, "..", "repo")), ".kabane");
+			mkdirSync(shared);
+			writeFileSync(join(shared, "loop.json"), "{ not json");
+			const human = await inRepo(
+				"config",
+				"set",
+				"loop.stallAfter",
+				"4",
+				"--layer",
+				"global",
+			);
+			expect(human.code).toBe(0);
+			expect(human.out).toStartWith(
+				"loop.stallAfter = 4 (global), but these settings no longer resolve, so every read of them fails until it is fixed: ",
+			);
+			expect(human.out).toContain(join(shared, "loop.json"));
+			const json = await inRepo(
+				"config",
+				"set",
+				"loop.stallAfter",
+				"5",
+				"--layer",
+				"global",
+				"--json",
+			);
+			const change = JSON.parse(json.out);
+			expect(change).toMatchObject({ key: "loop.stallAfter", value: 5 });
+			expect(change.unresolved).toContain(join(shared, "loop.json"));
+			// Saved all the same: the write is not rolled back.
+			expect(JSON.parse(readFileSync(path(), "utf8")).loop).toEqual({
+				stallAfter: 5,
+			});
+		}),
+		30_000,
+	);
+
+	it(
 		"resolves settings through the global, shared and local layers and names each value's layer",
 		withHome(async ({ home, path, read, write, run, repo, inRepo, runAt }) => {
 			write(initial);

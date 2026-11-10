@@ -267,6 +267,26 @@ describe("SettingsView's editor", () => {
 		expect(edit(back)).toBeUndefined();
 	});
 
+	test("a save the layers no longer resolve after says so, as a warning", () => {
+		expect(
+			SettingsView.outcome("loop.stallAfter", {
+				key: "loop.stallAfter",
+				layer: "global",
+				from: "/h/config.json",
+				value: 6,
+				unresolved: "/r/.kabane/loop.json: JSON Parse error",
+				restart: "resolve",
+			}),
+		).toEqual({
+			key: "loop.stallAfter",
+			lines: [
+				"saved 6 to global",
+				"but settings no longer resolve: /r/.kabane/loop.json: JSON Parse error",
+			],
+			warn: true,
+		});
+	});
+
 	test("after a save the rows are read again, the saved one in hand, saying who still decides", () => {
 		const saving = press(on("loop.stallAfter"), "l", "tab", "return").state;
 		const row = Fixtures.SETTINGS.find((r) => r.key === "loop.stallAfter");

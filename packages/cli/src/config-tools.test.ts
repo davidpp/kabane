@@ -6,6 +6,7 @@ import {
 	readFileSync,
 	realpathSync,
 	rmSync,
+	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -414,6 +415,16 @@ it("writes a project's local layer by default over stdio, and names layers the n
 			unset: true,
 			fallsBackTo: { layer: "global", value: 3 },
 		});
+		// A broken file in another layer: the write is saved, and says the settings no longer resolve.
+		writeFileSync(local, "{ not json");
+		const unresolved = await text("kabane_configSet", {
+			key: "loop.stallAfter",
+			value: "5",
+			layer: "global",
+		});
+		expect(unresolved).toMatchObject({ layer: "global", value: 5 });
+		expect(unresolved.unresolved).toContain(local);
+		expect(unresolved.note).toContain("no longer resolve");
 	} finally {
 		await client.close();
 		rmSync(root, { recursive: true, force: true });

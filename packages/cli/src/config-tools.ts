@@ -73,7 +73,8 @@ export const configTools = (
 				typeof layer === "string" ? ConfigSettings.targetOf(layer) : undefined,
 			);
 			if (!result.ok) return result;
-			const { ignored, shadowedBy, fallsBackTo, restart } = result.value;
+			const { ignored, shadowedBy, fallsBackTo, unresolved, restart } =
+				result.value;
 			const applies =
 				restart === "start"
 					? "Restart running board and MCP processes to apply the change; a board already open will not load newly enabled extensions."
@@ -81,7 +82,7 @@ export const configTools = (
 			return ok({
 				...result.value,
 				restartRequired: restart === "start",
-				note: `Saved to ${result.value.layer === "shared" ? "the project's checked-in file" : "this device"} (${result.value.from}).${shadowedBy ? ` It changes nothing here yet: the ${shadowedBy.layer} layer (${shadowedBy.from}) still decides, ${JSON.stringify(shadowedBy.value)}; tell the human, and that a write to that layer, or its unset, is what changes it.` : ""}${fallsBackTo ? ` The ${fallsBackTo.layer} layer (${fallsBackTo.from}) now decides: ${JSON.stringify(fallsBackTo.value)}.` : ""} ${applies}${ignored ? ` This build does not ship ${ignored.join(", ")}, so ${ignored.length > 1 ? "they load" : "it loads"} nothing; it ships ${Extensions.names.join(", ")}.` : ""}`,
+				note: `Saved to ${result.value.layer === "shared" ? "the project's checked-in file" : "this device"} (${result.value.from}).${unresolved ? ` But these settings no longer resolve, so every read of them fails until it is fixed: ${unresolved}. Tell the human which file to fix.` : ""}${shadowedBy ? ` It changes nothing here yet: the ${shadowedBy.layer} layer (${shadowedBy.from}) still decides, ${JSON.stringify(shadowedBy.value)}; tell the human, and that a write to that layer, or its unset, is what changes it.` : ""}${fallsBackTo ? ` The ${fallsBackTo.layer} layer (${fallsBackTo.from}) now decides: ${JSON.stringify(fallsBackTo.value)}.` : ""} ${applies}${ignored ? ` This build does not ship ${ignored.join(", ")}, so ${ignored.length > 1 ? "they load" : "it loads"} nothing; it ships ${Extensions.names.join(", ")}.` : ""}`,
 			});
 		},
 	},

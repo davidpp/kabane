@@ -168,8 +168,11 @@ type Change = Extract<
 // Global is config.json, which `config path` names; another layer names its file. A write a higher
 // layer still decides says so, and how to override it; an unset names what it falls back to.
 const changeText = (change: Change, where: ConfigSettings.Where): string => {
-	const { key, layer, from, unset, shadowedBy, fallsBackTo } = change;
+	const { key, layer, from, unset, shadowedBy, fallsBackTo, unresolved } =
+		change;
 	const written = `${key} ${unset ? "unset" : `= ${display(change.value)}`} (${layer === "global" ? layer : `${layer}: ${from}`})`;
+	if (unresolved !== undefined)
+		return `${written}, but these settings no longer resolve, so every read of them fails until it is fixed: ${unresolved}`;
 	if (shadowedBy !== undefined)
 		return `${written}; here ${shadowedBy.from} (${shadowedBy.layer}) still decides: ${display(shadowedBy.value)}.${where.localRoot === undefined ? "" : " Without --layer, a write here goes to local and overrides it."}`;
 	if (fallsBackTo !== undefined)

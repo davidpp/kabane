@@ -595,8 +595,14 @@ export namespace SettingsView {
 			lines.push(
 				`${change.fallsBackTo.layer} decides now: ${plain(change.fallsBackTo.value)}`,
 			);
+		if (change.unresolved)
+			lines.push(`but settings no longer resolve: ${change.unresolved}`);
 		if (change.restart === "start") lines.push("it applies at the next start");
-		return { key, lines, warn: change.shadowedBy !== undefined };
+		return {
+			key,
+			lines,
+			warn: change.shadowedBy !== undefined || change.unresolved !== undefined,
+		};
 	};
 
 	/** A value as a row shows it: a list joined, a record by its entries, unset as its look says. */

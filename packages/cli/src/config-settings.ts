@@ -367,6 +367,8 @@ type ConfigChange = {
 	shadowedBy?: Held;
 	/** After an unset, the layer at or under the one written that now decides, if not the default. */
 	fallsBackTo?: Held;
+	/** Saved, but the layers no longer resolve: why, naming the file at fault. */
+	unresolved?: string;
 	/** Extension names saved that this build does not ship. */
 	ignored?: string[];
 	restart: Restart;
@@ -470,10 +472,11 @@ const deciding = (
 	stored: Record<string, unknown>,
 	entry: Key,
 	label: string,
-): Pick<ConfigChange, "shadowedBy" | "fallsBackTo"> => {
-	// The write is saved by now; a layer another key makes invalid is for the next read to name.
+): Pick<ConfigChange, "shadowedBy" | "fallsBackTo" | "unresolved"> => {
+	// The write is saved by now, so a layer that fails to resolve is reported beside it, not as
+	// its failure: every read of the namespace fails until that file is fixed.
 	const view = viewOf(home, stored, entry.namespace, where);
-	if (!view.ok) return {};
+	if (!view.ok) return { unresolved: view.error.message };
 	const origin = topOrigin(entry, view.value);
 	if (origin.layer === "default" || origin.label === undefined) return {};
 	const held: Held = {
@@ -553,6 +556,9 @@ const writeSetting = (
 		...(decides.shadowedBy === undefined
 			? {}
 			: { shadowedBy: decides.shadowedBy }),
+		...(decides.unresolved === undefined
+			? {}
+			: { unresolved: decides.unresolved }),
 	};
 	// Saved anyway, since a newer kabane may ship the name, but it loads nothing here.
 	const ignored =
