@@ -236,8 +236,9 @@ extension declares appears with no board code for it.
 Rows sit under their namespace, then their group, in the order the rows first name them. A
 group of settings is no row of its own, and a record with entries is listed by its entries
 (`loop.gates.test`). Each row shows its label, its value (an unset one as its `none`), a mark
-when it is read-only or protected, and the one word for its layer, `default` dimmed. `j/k`
-move, and a click on the row in hand opens or closes its detail under it: the key, its
+when it is read-only or protected, and the one word for its layer, `default` dimmed. In a pane
+too narrow for both, the value keeps its room and the mark gives way. `j/k` move, and a click on
+the row in hand opens or closes its detail under it: the key with its whole value, its
 description, what its layer means and the file it is in, each value it hides with that layer
 and file, and when a change applies. `enter` does the same on a row with no editor.
 

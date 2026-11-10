@@ -681,7 +681,8 @@ export namespace SettingsView {
 
 	/** What the row's detail line says, a line each. */
 	export const detail = (row: SettingRow): string[] => {
-		const lines = [row.key];
+		// The value whole, which the row cuts to its column.
+		const lines = [`${row.key} = ${display(row)}`];
 		if (row.description) lines.push(row.description);
 		lines.push(
 			`${row.layer}, ${MEANING[row.layer]}${row.from === undefined ? "" : `: ${row.from}`}`,

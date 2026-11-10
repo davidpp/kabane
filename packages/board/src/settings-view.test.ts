@@ -130,11 +130,11 @@ describe("SettingsView", () => {
 		).toBe("unset");
 	});
 
-	test("the detail gives the file, what the layer means, and the value it hides", () => {
+	test("the detail gives the value whole, the file, what the layer means, and the value it hides", () => {
 		const gate = Fixtures.SETTINGS.find((r) => r.key === "loop.gates.test");
 		if (!gate) throw new Error("no gate");
 		expect(SettingsView.detail(gate)).toEqual([
-			"loop.gates.test",
+			"loop.gates.test = bun test --bail",
 			"Named shell commands run after each finished subtask.",
 			"local, this project and only you: /Users/ada/.kabane/projects/-Users-ada-acme-widget-8380ae31/loop.json",
 			"hides shared, the file in the repo: bun test (/Users/ada/acme/widget/.kabane/loop.json)",

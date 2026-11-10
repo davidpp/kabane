@@ -74,8 +74,9 @@ const Row = ({
 	onClick?: () => void;
 }): ReactNode => {
 	const theme = useTheme();
-	const mark = markOf(row);
 	const valueCols = Math.max(0, inner - GUTTER - labelCols - BADGE_COLS);
+	// Narrow, the value keeps its room and the mark gives way: the detail says it.
+	const mark = valueCols - markOf(row).length >= VALUE_COLS ? markOf(row) : "";
 	const value = clip(
 		SettingsView.display(row),
 		Math.max(0, valueCols - mark.length),
@@ -91,7 +92,7 @@ const Row = ({
 				onClick={onClick}
 			>
 				<span fg={unset ? theme.muted : theme.text}>{value}</span>
-				<span fg={theme.faint}>{mark.slice(0, valueCols)}</span>
+				<span fg={theme.faint}>{mark}</span>
 				<span
 					fg={row.layer === "default" ? theme.faint : theme.text}
 					attributes={row.layer === "default" ? 0 : TextAttributes.BOLD}
