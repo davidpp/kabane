@@ -15,6 +15,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { DetectedScopes } from "./detected";
+import { ProjectDirs } from "./projects";
 import { ScopeUri } from "./uri";
 
 export { ProjectDirs } from "./projects";
@@ -24,7 +25,10 @@ const run = promisify(execFile);
 /** The directory that marks a project root and holds its pinned scope. */
 export const MARKER_DIR = ".kabane";
 
-/** The pin only `kabane init --scope` writes; detection reads it and never writes it. */
+/**
+ * The shared pin, checked in for everyone who clones the repo. Only `kabane init --scope --shared`
+ * writes it; detection reads it and never writes it.
+ */
 export const SCOPE_FILE = join(MARKER_DIR, "scope");
 
 /**
@@ -204,11 +208,20 @@ const remoteUrl = async (root: string): Promise<string | null> => {
 	return first ? git(root, ["remote", "get-url", first]) : null;
 };
 
-const scopePinPath = (root: string): string => join(root, SCOPE_FILE);
+/**
+ * The local pin: yours for this project, on this device, in the project's directory under
+ * KABANE_HOME. Keyed by the main checkout's path, so every worktree of a repo reads the same one.
+ * Only `kabane init --scope` writes it.
+ */
+export const localPinPath = async (
+	home: string,
+	root: string,
+): Promise<string> =>
+	join(ProjectDirs.of(home, await mainCheckoutRoot(root)), "scope");
 
-const readScopePin = async (root: string): Promise<string | null> => {
+const readScopePin = async (path: string): Promise<string | null> => {
 	try {
-		const value = (await readFile(scopePinPath(root), "utf8")).trim();
+		const value = (await readFile(path, "utf8")).trim();
 		return value.length > 0 ? value : null;
 	} catch {
 		return null;
@@ -217,7 +230,8 @@ const readScopePin = async (root: string): Promise<string | null> => {
 
 /**
  * Resolve the stable scope id for a project root (ADR-009 cascade):
- * pin → legacy pin → the id detection stored → git remote → first commit → path.
+ * local pin → shared pin → legacy pin → the id detection stored → git remote → first commit →
+ * path. Your own pin wins over the repo's, as a local setting wins over a shared one.
  *
  * Nothing here writes into the repo: it may be a checkout the user does not
  * own. What the remote resolves to is stored under KABANE_HOME instead, keyed
@@ -226,8 +240,8 @@ const readScopePin = async (root: string): Promise<string | null> => {
  * own remote.
  *
  * One-way: a `git:` id is a placeholder for a repo that had no remote when it
- * was first seen, so a `git:` pin does not short-circuit and a remote id may
- * replace it; nothing replaces a remote id with a `git:` one, which would
+ * was first seen, so a `git:` pin, local or shared, does not short-circuit and a
+ * remote id may replace it; nothing replaces a remote id with a `git:` one, which would
  * orphan everything already filed under it, and an id stored before the
  * repo's first commit still holds once it has one. A `git:` id is never
  * stored: the commit it derives from is always there to derive it again. The
@@ -238,7 +252,10 @@ export const resolveScopeId = async (
 	root: string,
 	opts: Pick<DetectOptions, "home" | "legacyPin">,
 ): Promise<string> => {
-	const pinned = await readScopePin(root);
+	const local = await readScopePin(await localPinPath(opts.home, root));
+	if (local && !local.startsWith("git:")) return local;
+
+	const pinned = await readScopePin(join(root, SCOPE_FILE));
 	if (pinned && !pinned.startsWith("git:")) return pinned;
 
 	const legacy = await opts.legacyPin?.(root);
@@ -269,7 +286,7 @@ export const resolveScopeId = async (
 
 	if (firstCommit) return `git:${firstCommit.slice(0, 12)}`;
 
-	return pinned ?? legacy ?? root;
+	return local ?? pinned ?? legacy ?? root;
 };
 
 /**
