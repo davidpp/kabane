@@ -24,6 +24,7 @@ import {
 	type Row,
 	type SqlValue,
 	toError,
+	trySync,
 } from "@cabane/core";
 
 export type SqliteProviderOptions = {
@@ -104,24 +105,18 @@ const HOLD_IDLE_MS = 30_000;
 
 type Held = { timer: ReturnType<typeof setTimeout> };
 
-/**
- * The idle connection, attached to the WAL index by one read. None when it cannot be opened: it
- * only saves writes, so a unit of work never fails for want of it.
- */
-const tryOpenHeld = (dbPath: string): Database | undefined => {
-	try {
-		const db = new Database(dbPath);
-		try {
-			db.run("PRAGMA busy_timeout = 5000");
-			db.run("PRAGMA schema_version");
-			return db;
-		} catch {
-			db.close();
-			return undefined;
-		}
-	} catch {
-		return undefined;
-	}
+/** The idle connection, attached to the WAL index by one read. */
+const openHeld = (dbPath: string): Result<Database> => {
+	const opened = trySync(() => new Database(dbPath));
+	if (!opened.ok) return opened;
+	const db = opened.value;
+	const attached = trySync(() => {
+		db.run("PRAGMA busy_timeout = 5000");
+		db.run("PRAGMA schema_version");
+	});
+	if (attached.ok) return ok(db);
+	db.close();
+	return attached;
 };
 
 export namespace SqliteDb {
@@ -147,11 +142,14 @@ export namespace SqliteDb {
 				current.timer.refresh();
 				return;
 			}
-			const opened = tryOpenHeld(dbPath);
-			if (!opened) return;
+			// Its failure is dropped: the held connection only saves writes, so a unit of work never
+			// fails for want of it.
+			const opened = openHeld(dbPath);
+			if (!opened.ok) return;
+			const db = opened.value;
 			const timer = setTimeout(() => {
 				held.delete(dbPath);
-				opened.close();
+				db.close();
 			}, holdIdleMs);
 			timer.unref();
 			held.set(dbPath, { timer });
