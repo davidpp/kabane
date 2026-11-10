@@ -159,13 +159,20 @@ Every operation supports `--json`. `list` returns rows with `key`, `value`,
 - `layers`: the layers it can be written to, `["global"]` for a device key and
   `["global", "shared", "local"]` for an extension's.
 - `secret`: true for `sync.token` and `sync.headers`, which read as `<set>`.
+- `label` and `group`: how the key reads on a settings screen, as `config-looks.ts` declares for
+  a device key and an extension's `looks` for its own; a key with none reads under its path, in
+  its parent object's group or `Other`.
+- `options`: the values it steps through, when it has any: the declared ones, resolved for the
+  project here (`copilot.harness` the harnesses this build launches, `extensions` the ones it
+  ships, `loop.lenses` the project's lenses), else an enum's values or a bounded integer's range.
+  `none`: what an optional key left unset reads as, when declared.
 - `restart`: when a change applies. `start` for a device key, loaded when a process starts, so
   a running board or MCP server needs a restart; `resolve` for an extension's, read each time
   it is used (the loop's at each run it starts).
 
 `get` returns the resolved value, or JSON `null` / human `default` when absent; with
-`--layers` it returns `{key, value, leaves}` and the row's `field`, `layers`, `secret` and
-`restart`, where `leaves` maps every dotted key under `key` to its `value`, `layer`, `from` and
+`--layers` it returns `{key, value, leaves}` and the row's `label`, `group`, `options`, `none`,
+`field`, `layers`, `secret` and `restart`, where `leaves` maps every dotted key under `key` to its `value`, `layer`, `from` and
 `hides`, the `{layer, from, value}` each lower layer sets there, lowest first, and prints a line
 per leaf with what it hides under it. `path` returns a string. `set` returns
 `{key, layer, from, value, restart}` and `unset` returns `{key, layer, from, unset: true,

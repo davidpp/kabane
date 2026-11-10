@@ -21,6 +21,7 @@ import {
 	saveConfig,
 } from "./config";
 import { ConfigLayers } from "./config-layers";
+import { DEVICE_LOOKS } from "./config-looks";
 import { projectAt } from "./context";
 import { Extensions } from "./extensions";
 
@@ -92,8 +93,37 @@ type Restart = "start" | "resolve";
 const restartOf = (entry: Key): Restart =>
 	entry.namespace ? "resolve" : "start";
 
-/** What a row says of a key besides its value: its field, the layers it is written to, and more. */
-const traitsOf = (entry: Key) => ({
+/**
+ * How a key reads: its namespace's look for it, or the device's, with the choices it steps through
+ * for the project at `where`. A namespace's own key reads as its name.
+ */
+const lookOf = (entry: Key, where: ConfigSettings.Where) => {
+	const look =
+		entry.path.length === 0
+			? { label: entry.key, group: Settings.OTHER }
+			: Settings.lookOf(
+					entry.namespace ? entry.namespace.looks : DEVICE_LOOKS,
+					entry.path,
+				);
+	const options = Settings.options(
+		entry.field,
+		look,
+		where.projectDir === undefined ? {} : { projectDir: where.projectDir },
+	);
+	return {
+		label: look.label,
+		group: look.group,
+		...(options === undefined ? {} : { options }),
+		...(look.none === undefined ? {} : { none: look.none }),
+	};
+};
+
+/**
+ * What a row says of a key besides its value: how it reads, its field, the layers it is written
+ * to, and more.
+ */
+const traitsOf = (entry: Key, where: ConfigSettings.Where) => ({
+	...lookOf(entry, where),
 	field: entry.field,
 	// A device key has the global layer only: no project file may redirect the database or the hub.
 	layers: entry.namespace ? ConfigSettings.TARGETS : (["global"] as const),
@@ -610,7 +640,7 @@ export namespace ConfigSettings {
 				readOnly: identities.has(entry.key),
 				protected: isProtected(entry.key),
 				description: entry.field.description ?? "",
-				...traitsOf(entry),
+				...traitsOf(entry, where),
 			});
 		}
 		return ok(rows);
@@ -635,7 +665,7 @@ export namespace ConfigSettings {
 			key,
 			value: redact(key, valueAt(view.value.value, entry.value.path)) ?? null,
 			leaves: leavesOf(entry.value, view.value),
-			...traitsOf(entry.value),
+			...traitsOf(entry.value, where),
 		});
 	};
 

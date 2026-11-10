@@ -9,12 +9,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CopilotInstructions } from "@cabane/acp";
+import { CopilotInstructions, Harnesses } from "@cabane/acp";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { ProjectDirs } from "@cabane/core/scope";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
+import { Extensions } from "./extensions";
 
 it("manages device config through the real stdio MCP server", async () => {
 	const home = mkdtempSync(join(tmpdir(), "kabane-config-mcp-"));
@@ -149,6 +150,37 @@ it("manages device config through the real stdio MCP server", async () => {
 			default: 262144,
 			description: "Push chunk ceiling in bytes; defaults to 262144.",
 		});
+		// How a row reads: its look, and the choices only code knows, from what this build ships.
+		const look = (key: string) => {
+			const row = rows.find((row) => row.key === key);
+			return [row?.label, row?.group, row?.options];
+		};
+		expect(look("copilot.harness")).toEqual([
+			"harness",
+			"Copilot",
+			Harnesses.IDS,
+		]);
+		expect(look("extensions")).toEqual([
+			"extensions",
+			"Board",
+			Extensions.names,
+		]);
+		expect(look("harness.mode")).toEqual([
+			"start mode",
+			"Sessions",
+			["auto", "default"],
+		]);
+		expect(look("loop.lenses")).toEqual([
+			"lenses",
+			"Checks",
+			["functional", "quality"],
+		]);
+		expect(look("loop.budget.concurrency")).toEqual([
+			"sessions at once",
+			"Limits",
+			[1, 2, 3, 4, 5, 6, 7, 8],
+		]);
+		expect(look("timezone")).toEqual(["timezone", "Board", undefined]);
 		expect(await valueOf("timezone")).toBeNull();
 		for (const [key, value, expected] of [
 			["timezone", "UTC", "UTC"],
