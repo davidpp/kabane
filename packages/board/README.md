@@ -237,14 +237,16 @@ Rows sit under their namespace, then their group, in the order the rows first na
 group of settings is no row of its own, and a record with entries is listed by its entries
 (`loop.gates.test`). Each row shows its label, its value (an unset one as its `none`), a mark
 when it is read-only or protected, and the one word for its layer, `default` dimmed. `j/k`
-move, and `enter`, or a click on the row in hand, opens its detail under it: the key, its
+move, and a click on the row in hand opens or closes its detail under it: the key, its
 description, what its layer means and the file it is in, each value it hides with that layer
-and file, and when a change applies.
+and file, and when a change applies. `enter` does the same on a row with no editor.
 
 The view edits the row in hand. `h/l` step an enum, a boolean, or a value with looked-up steps
-(`options`), through `TriggerForm.step` like the run form. `enter` on a string or a number types
-it, read with `FormField.read` against the field's bounds; a value it refuses shows its reason
-under the field and is not saved. `enter` on any other row opens its detail. `x` removes the
+(`options`), through `TriggerForm.step` like the run form. `enter` starts editing: on a string or
+a number it types the value, read with `FormField.read` against the field's bounds, and a value it
+refuses shows its reason under the field and is not saved; on a boolean, an enum, or another
+value with steps it opens the editor on the current value, for `h/l`. On a row with no editor,
+such as a `readOnly` one, `enter` opens or closes its detail. `x` removes the
 key from a layer; a record's entries are added and removed with `kabane config set`. The editor
 opens on the row's `target`, the layer a write that names none goes to, and `tab`/`⇧tab` walk
 the row's `layers`, each said with what it means. A secret is typed masked and never prefilled.

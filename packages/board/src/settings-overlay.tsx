@@ -1,8 +1,8 @@
 /** @jsxImportSource @opentui/react */
 // The settings view on screen: across the pane, every setting under its namespace and then its
 // group, each row its label, its value and the one word for the layer it comes from (`default`
-// dimmed). `enter` opens the row in hand's detail under it: the file, what each word means, and
-// what the layers under it set; on a row it can change, its editor too: the new value, the layer
+// dimmed). The row in hand's detail opens under it: the file, what each word means, and what
+// the layers under it set; on a row it can change, `enter` opens its editor: the new value, the layer
 // it goes to and what that layer means, and the y/n a save to the repo asks. It draws
 // settings-view.ts's state and reports clicks on rows; that module owns every key and what a click
 // does.
