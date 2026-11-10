@@ -29,6 +29,17 @@ const leafText = (leaf: {
 		? "default"
 		: `${display(leaf.value)} (${leaf.from === undefined ? leaf.layer : `${leaf.layer}: ${leaf.from}`})`;
 
+// A leaf's line and, under it, what each lower layer says, the nearest first.
+const leafLines = (
+	leaf: Parameters<typeof leafText>[0] & {
+		hides: { value: unknown; layer: string; from: string }[];
+	},
+): string =>
+	[
+		leafText(leaf),
+		...leaf.hides.toReversed().map((hidden) => `  hides ${leafText(hidden)}`),
+	].join("\n");
+
 // `--layer`, the layer a write targets; `--scope`, whose legacy `scopes` block to read; and
 // `--layers`, which has `get` name the layer of every leaf instead of printing the bare value.
 const FLAGS: ReadonlySet<string> = new Set(["layer", "scope", "layers"]);
@@ -144,9 +155,26 @@ const get = async (
 	return success(
 		got.value,
 		leaves.length === 1 && only?.[0] === key
-			? leafText(only[1])
-			: leaves.map(([name, leaf]) => `${name} = ${leafText(leaf)}`).join("\n"),
+			? leafLines(only[1])
+			: leaves.map(([name, leaf]) => `${name} = ${leafLines(leaf)}`).join("\n"),
 	);
+};
+
+type Change = Extract<
+	Awaited<ReturnType<typeof ConfigSettings.set>>,
+	{ ok: true }
+>["value"];
+
+// Global is config.json, which `config path` names; another layer names its file. A write a higher
+// layer still decides says so, and how to override it; an unset names what it falls back to.
+const changeText = (change: Change, where: ConfigSettings.Where): string => {
+	const { key, layer, from, unset, shadowedBy, fallsBackTo } = change;
+	const written = `${key} ${unset ? "unset" : `= ${display(change.value)}`} (${layer === "global" ? layer : `${layer}: ${from}`})`;
+	if (shadowedBy !== undefined)
+		return `${written}; here ${shadowedBy.from} (${shadowedBy.layer}) still decides: ${display(shadowedBy.value)}.${where.localRoot === undefined ? "" : " Without --layer, a write here goes to local and overrides it."}`;
+	if (fallsBackTo !== undefined)
+		return `${written}; ${fallsBackTo.from} (${fallsBackTo.layer}) now decides: ${display(fallsBackTo.value)}`;
+	return written;
 };
 
 export const config: Command = {
@@ -176,11 +204,6 @@ export const config: Command = {
 		if (!changed.ok) return failure(changed.error);
 		for (const name of changed.value.ignored ?? [])
 			console.error(Extensions.ignoredWarning(name, ctx.home));
-		// Global is config.json, which `config path` names; another layer names its file.
-		const { layer, from, unset, stillSetIn } = changed.value;
-		return success(
-			changed.value,
-			`${key} ${unset ? "unset" : `= ${display(changed.value.value)}`} (${layer === "global" ? layer : `${layer}: ${from}`})${stillSetIn === undefined ? "" : `; still set in ${stillSetIn}, which now decides`}`,
-		);
+		return success(changed.value, changeText(changed.value, where.value));
 	},
 };
