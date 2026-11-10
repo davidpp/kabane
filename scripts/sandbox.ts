@@ -92,23 +92,14 @@ const sandboxEnv = (harnesses: boolean): NodeJS.ProcessEnv =>
 			}
 		: { ...process.env, KABANE_HOME, KABANE_HARNESSES: "" };
 
-// The define the entry's hashbang passes, which a spawn by path skips: the sandbox renders with the
-// React build a linked or installed kabane does.
+// Through the entry's own hashbang, as a linked kabane starts: the sandbox renders with the React
+// build a linked or installed kabane does.
 const kabane = (args: string[], env: NodeJS.ProcessEnv) =>
-	Bun.spawn(
-		[
-			process.execPath,
-			"--define",
-			'process.env.NODE_ENV:"production"',
-			CLI,
-			...args,
-		],
-		{
-			cwd: REPO,
-			env,
-			stdio: ["inherit", "inherit", "inherit"],
-		},
-	);
+	Bun.spawn([CLI, ...args], {
+		cwd: REPO,
+		env,
+		stdio: ["inherit", "inherit", "inherit"],
+	});
 
 // The copilot's launch command, through the config key a user would set for their own wrapper. The
 // harness stays claude: its id only names the actor and the session's instructions, and the
