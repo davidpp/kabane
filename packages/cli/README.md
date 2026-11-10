@@ -147,6 +147,9 @@ comma-separated values, with an empty string meaning an empty array.
 `sync.headers` and `loop.gates` take a JSON object of string values; one gate is its own key,
 `loop.gates.<name>`. Put `--` before a value starting with `--`. Object groups (`sync`, `db`,
 `copilot`, `loop`, `loop.budget`) can be read; edit or unset their dotted keys individually.
+`loop.lenses` names verifier lenses: `functional` and `quality` ship with kabane, and a lens of
+the project's own is `.claude/skills/dispatch/references/lenses/<name>.md` in its dispatch skill,
+where a file named after a shipped lens replaces it.
 `actor`, `deviceId` and `sync.deviceId` are read-only, including for `unset`.
 
 Writes validate the entire config, or the whole namespace block they land in, before touching
