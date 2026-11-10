@@ -170,15 +170,16 @@ export namespace LoopConfig {
 			),
 		/**
 		 * Verifier lenses, each its own session once the plan is done and the gates are green,
-		 * filing findings as tagged child issues of the parent. A lens is a prompt file: shipped
-		 * (`functional`, `quality`) or the repo's `.kabane/loop/lenses/<name>.md`. None: no
-		 * verification, and the run completes on its gates.
+		 * filing findings as tagged child issues of the parent. A lens is a prompt file in the
+		 * project's dispatch skill, `.claude/skills/dispatch/references/lenses/<name>.md`, or one
+		 * kabane ships (`functional`, `quality`). None: no verification, and the run completes on
+		 * its gates.
 		 */
 		lenses: z
 			.array(LensNameSchema)
 			.default([])
 			.describe(
-				"Verifier lenses run once the gates are green: functional, quality, or the repo's .kabane/loop/lenses/<name>.md.",
+				"Verifier lenses run once the gates are green: functional, quality, or the project's .claude/skills/dispatch/references/lenses/<name>.md.",
 			),
 		/**
 		 * Once the fixer has ended and the gates are green on its result, each lens with a finding

@@ -674,7 +674,7 @@ export namespace Claims {
 			work: {
 				kind: "lens",
 				name,
-				prompt: prompt.value,
+				prompt: prompt.value.text,
 				gates: Object.keys(ctx.run.config.gates),
 			},
 			summary: `${harness} reviews ${label(plan.parent)} through the ${name} lens`,
@@ -754,7 +754,7 @@ export namespace Claims {
 			work: {
 				kind: "recheck",
 				name,
-				prompt: prompt.value,
+				prompt: prompt.value.text,
 				findings,
 				base,
 				diff: await git(ctx, ["diff", "--no-color", "--no-ext-diff", base]),

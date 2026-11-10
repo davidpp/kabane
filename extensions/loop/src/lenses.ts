@@ -1,54 +1,101 @@
 // Verifier lenses: a prompt file each, run as their own session once the plan is done and the gates
-// are green. `functional` and `quality` ship with the extension; a repository adds a lens, or
-// replaces a shipped one, with `.kabane/loop/lenses/<name>.md`. Once the fixer has ended, a lens
-// whose findings it closed rechecks its diff. Which lenses a run has run and rechecked, and how
-// they ended, is read off its claims, so a runner that resumes knows where it was.
+// are green. A lens is `references/lenses/<name>.md` in the project's dispatch skill, the same file
+// the skill's own close review reads, so a lens reaches an agent whether the loop drives the
+// session or a person dispatches from a plain one. `functional` and `quality` ship in kabane's
+// dispatch template, so a project with no skill still has them. `.kabane/loop/lenses/<name>.md`,
+// where 0.3.0 and 1.0.0-beta.0 kept a project's lenses, is still read, after the skill, so a lens
+// written there keeps reviewing as it did. Once the fixer has ended, a lens whose findings it
+// closed rechecks its diff. Which lenses a run has run and rechecked, and how they ended, is read
+// off its claims, so a runner that resumes knows where it was.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { err, type Result, type Task, trySync } from "@cabane/core";
-import { Self } from "@cabane/core/self";
+import { CopilotInstructions } from "@cabane/acp";
+import { err, ok, type Result, type Task, trySync } from "@cabane/core";
 import { LoopConfig } from "./config";
 import { Fixer } from "./fixer";
 import { LoopPlan } from "./plan";
 import type { RunStore } from "./store";
 
 export namespace Lenses {
-	// The extension's own `templates/lenses` in the workspace, and `templates/lenses` beside `bin/`
-	// in the published package or beside a compiled binary, where the builds copy it.
-	const SHIPPED_DIR = Self.templates("lenses", import.meta.url);
+	const SHIPPED_DIR = join(
+		CopilotInstructions.DISPATCH_TEMPLATE,
+		"references",
+		"lenses",
+	);
 	const SHIPPED = ["functional", "quality"] as const;
 
-	/** Where a repository keeps its own lenses. */
+	/** Where a project keeps its own lenses: its dispatch skill's. */
 	export const dir = (projectDir: string): string =>
+		join(projectDir, ".claude", "skills", "dispatch", "references", "lenses");
+
+	/** Where a project's lenses were kept before they moved into the skill; read after it. */
+	export const legacyDir = (projectDir: string): string =>
 		join(projectDir, ".kabane", "loop", "lenses");
 
-	/**
-	 * The lenses a run in `projectDir` can have: the shipped ones, then the repository's own. A
-	 * prompt whose file name is no lens name (`security_review.md`) is not offered: a run would
-	 * refuse it.
-	 */
-	export const offered = (projectDir: string): string[] => {
-		const own = trySync(() => readdirSync(dir(projectDir)));
-		const names = (own.ok ? own.value : [])
+	// The lens names among a directory's files. A prompt whose file name is no lens name
+	// (`security_review.md`) is left out: a run would refuse it.
+	const namesIn = (directory: string): string[] => {
+		const files = trySync(() => readdirSync(directory));
+		return (files.ok ? files.value : [])
 			.filter((file) => file.endsWith(".md"))
 			.map((file) => file.slice(0, -".md".length))
-			.filter((name) => LoopConfig.LensNameSchema.safeParse(name).success)
-			.sort();
-		return [...new Set([...SHIPPED, ...names])];
+			.filter((name) => LoopConfig.LensNameSchema.safeParse(name).success);
 	};
 
-	/** Lens `name`'s prompt: the repository's own file first, else the shipped one. */
-	export const prompt = (projectDir: string, name: string): Result<string> => {
+	/** The lenses a run in `projectDir` can have: the shipped ones, then the project's own. */
+	export const offered = (projectDir: string): string[] => [
+		...new Set([
+			...SHIPPED,
+			...[
+				...namesIn(dir(projectDir)),
+				...namesIn(legacyDir(projectDir)),
+			].sort(),
+		]),
+	];
+
+	type Prompt = {
+		text: string;
+		/** The file it was read from, when that is the old directory's: one to move into the skill. */
+		legacy?: string;
+	};
+
+	/** Lens `name`'s prompt: the skill's file, else the old directory's, else the shipped one. */
+	export const prompt = (projectDir: string, name: string): Result<Prompt> => {
 		const own = join(dir(projectDir), `${name}.md`);
-		if (existsSync(own)) return trySync(() => readFileSync(own, "utf8"));
-		if (!SHIPPED.some((shipped) => shipped === name))
+		const legacy = join(legacyDir(projectDir), `${name}.md`);
+		const shipped = SHIPPED.some((s) => s === name)
+			? join(SHIPPED_DIR, `${name}.md`)
+			: undefined;
+		const path = [own, legacy].find((p) => existsSync(p)) ?? shipped;
+		if (path === undefined)
 			return err(
 				new Error(
 					`No lens ${name}: write ${own}, or use ${SHIPPED.join(" or ")}`,
 				),
 			);
-		return trySync(() => readFileSync(join(SHIPPED_DIR, `${name}.md`), "utf8"));
+		const text = trySync(() => readFileSync(path, "utf8"));
+		if (!text.ok) return text;
+		return ok(
+			path === legacy ? { text: text.value, legacy } : { text: text.value },
+		);
 	};
+
+	/**
+	 * One line for each of `names` whose prompt comes from the old directory, naming the file and
+	 * where to move it. Kabane moves nothing itself.
+	 */
+	export const moves = (
+		projectDir: string,
+		names: readonly string[],
+	): string[] =>
+		names.flatMap((name) => {
+			const found = prompt(projectDir, name);
+			return found.ok && found.value.legacy
+				? [
+						`lens ${name} is read from ${found.value.legacy}; move it to ${join(dir(projectDir), `${name}.md`)}`,
+					]
+				: [];
+		});
 
 	export type Status = {
 		/** Lenses with no session yet, or whose last one was interrupted: to be run. */
