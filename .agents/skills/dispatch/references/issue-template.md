@@ -1,0 +1,50 @@
+# Issue brief
+
+The description is everything the implementing agent gets, besides AGENTS.md. Write
+it so an agent that reads nothing else can do the work and knows when it is finished. Use plain
+paragraphs in this order. The labels help the agent find each part. They are not a form, so
+leave out a part that has nothing to say.
+
+**Title.** One line someone can act on. It names the behaviour, not the mechanism: "Closing the
+last tab keeps the window open", not "Refactor the tab handler".
+
+**Files.** The paths that change and what changes in each, including new files and the docs that
+describe the behaviour. When the issue builds on another one, name it and what it provides.
+
+**Finding.** What is true today, with the evidence: `file:line`, a measured number, the
+upstream source that proves a claim. Say why it matters to the person using the project. This is
+the paragraph the user reads first, so it is written for them as well as for the agent.
+
+**Design.** What should change. Number the behaviours when there are several independent ones.
+State the defaults, and give any configurable option together with the reason it earns its
+place (usually one option, never a matrix). When the change needs something across a boundary
+the package graph forbids, write the port or callback into the design.
+
+**Out of scope.** The neighbouring work this issue does not touch. Naming it stops an agent from
+widening the change in good faith.
+
+**Decisions.** The decisions this issue relies on, when they are recorded in the description.
+If they are recorded elsewhere, attach them with `kabane_contextAdd` instead of copying them
+here. A question answered on the parent is the exception: copy the answer this issue needs,
+because its brief does not carry the parent's. A decision still open is not written here as
+options: once the issue is filed, ask it on the issue with `kabane_ask`.
+
+**Verify.** The concrete steps and what to observe, under the testing constraints in
+AGENTS.md. List the checks nothing can script (keys, GUIs, a deploy) as manual here, so the
+agent does not try.
+
+**Conventions.** Only what AGENTS.md leaves out for this issue: its territory (the
+paths it owns), and any exception to the project's usual commit or gate rules. Never a branch
+name, a worktree or a merge order. Whoever runs the issue says where it works: the dispatcher's
+prompt for an agent started by hand, the run for a kabane loop. An order between issues is a
+`blocks` link, not a sentence.
+
+When filing, set `priority` too: `high` for the wave's spine, `normal` otherwise, `low` for
+parked or out-of-scope findings. A `someday` issue needs only its title and two lines saying what
+it is and why it is parked.
+
+Once the issue is filed, put its internal steps in its checklist with `kabane_checklistAdd`, not
+in the description as `- [ ]` lines and not as sub-issues. The brief lists them in its
+`checklist.items` section, and the agent ticks each one with `kabane_checklistTick` as it lands.
+An item has no assignee, no state beyond done, and no brief; if it needs any of those, it's a
+subtask.
