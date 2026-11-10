@@ -83,6 +83,7 @@ const state = (over: Partial<BoardNav.BoardState> = {}): BoardNav.BoardState =>
 			search: { mode: "off" },
 			dispatch: null,
 			help: false,
+			settings: null,
 			focus: "board",
 			tabs: BoardTabs.NONE,
 			marked: new Set<string>(),
@@ -1116,6 +1117,7 @@ describe("BoardNav.openTask", () => {
 		);
 		expect(s).toMatchObject({
 			help: false,
+			settings: null,
 			dispatch: null,
 			search: { mode: "off" },
 			focus: "board",

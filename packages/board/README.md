@@ -27,6 +27,7 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 | `resolveScope(cwd)` | no | the board opens on all scopes (the CLI passes `@cabane/core/scope` detection) |
 | `headers: Record<kind, CardHeader>` | no | every card tab heads with the board's one-line title |
 | `announcer: Announcer` | no | nothing is announced over the footer |
+| `settings: SettingsSource` | no | `,` opens the settings view, which says settings are not available here |
 | `open: { taskId }` | no | the board opens on the board view. Given, it opens on that task's detail, as `enter` on its row: the filter that holds it, its parent expanded, `esc` back to its row. `resolveScope` should answer the task's scope, as `kabane board --issue <id>` does. |
 
 The host calls `Runtime.configure` before `startBoard`; the board never opens a database itself.
@@ -209,6 +210,32 @@ the part that overflows breaks at a space or a comma and carries on under the co
 at, so a list at the end of a line is read whole rather than cut. On a pane too short for both, the
 preview keeps up to half the rows, its last line saying how many it leaves out, and the settings
 scroll to keep the row in hand on screen.
+
+### `SettingsSource`
+
+```ts
+interface SettingsSource {
+  list(): Promise<Result<SettingRow[]>>;
+}
+```
+
+`,` opens the settings view over whichever view is on screen, and `,` or `esc` closes it. It
+calls `list()` each time it opens, never at board start. A `SettingRow` is a row of
+`kabane config list --json`: its `key`, the extension `namespace` that declares it (absent for
+the device's own keys), its `value` (a secret already `<set>`), the `layer` it comes from
+(`default`, `global`, `shared` or `local`) and the file it is in (`from`), what the layers
+under it set there (`hides`), its schema `field`, how it reads (`label`, `group`, `none`), and
+its `readOnly` and `protected` flags. The view is generated from the rows, so a namespace an
+extension declares appears with no board code for it.
+
+Rows sit under their namespace, then their group, in the order the rows first name them. A
+group of settings is no row of its own, and a record with entries is listed by its entries
+(`loop.gates.test`). Each row shows its label, its value (an unset one as its `none`), a mark
+when it is read-only or protected, and the one word for its layer, `default` dimmed. `j/k`
+move, and `enter`, or a click on the row in hand, opens its detail under it: the key, its
+description, what its layer means and the file it is in, each value it hides with that layer
+and file, and when a change applies. The view is read-only; its footer says to ask the copilot,
+or to run `kabane config set`.
 
 ### `Copilot`
 

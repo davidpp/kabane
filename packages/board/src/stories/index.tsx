@@ -18,6 +18,8 @@ import { Detail } from "../detail";
 import { ElicitationForm } from "../elicitation-form";
 import type { BoardNav } from "../nav";
 import type { CopilotElicitation } from "../ports";
+import { SettingsOverlay } from "../settings-overlay";
+import { SettingsView } from "../settings-view";
 import { CardTabQuestion, PinnedQuestion } from "../tab-bar";
 import { BoardTabs } from "../tabs";
 import { Fixtures } from "./fixtures";
@@ -288,6 +290,16 @@ const asking = (
 	waiting,
 });
 
+// The `,` view over Fixtures.SETTINGS, on `loop.gates.test`.
+const settingsView = (detail: boolean): SettingsView.View => {
+	const rows = SettingsView.ordered(Fixtures.SETTINGS);
+	return {
+		rows: { type: "ready", rows },
+		selected: rows.findIndex((row) => row.key === "loop.gates.test"),
+		detail,
+	};
+};
+
 export const STORIES: readonly Story[] = [
 	{
 		name: "board",
@@ -309,6 +321,28 @@ export const STORIES: readonly Story[] = [
 				pane={<Pane copilot={Fixtures.copilot({ actor: CLAUDE })} />}
 			/>
 		),
+	},
+	{
+		name: "settings-view",
+		about:
+			"every setting under its namespace and group, with the layer it comes from",
+		width: 80,
+		height: 24,
+		render: () => <SettingsOverlay view={settingsView(false)} />,
+	},
+	{
+		name: "settings-view-detail",
+		about: "a local gate's detail: its file, and the shared value it hides",
+		width: 80,
+		height: 30,
+		render: () => <SettingsOverlay view={settingsView(true)} />,
+	},
+	{
+		name: "settings-view-narrow",
+		about: "the settings view in forty columns, the gate's detail open",
+		width: 40,
+		height: 30,
+		render: () => <SettingsOverlay view={settingsView(true)} />,
 	},
 	{
 		name: "copilot-collapsed",

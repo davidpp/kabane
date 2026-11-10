@@ -1,0 +1,288 @@
+/** @jsxImportSource @opentui/react */
+// The settings view on screen: across the pane, every setting under its namespace and then its
+// group, each row its label, its value and the one word for the layer it comes from (`default`
+// dimmed). `enter` opens the row in hand's detail under it: the file, what each word means, and
+// what the layers under it set. It draws settings-view.ts's state and reports clicks on rows; that
+// module owns every key and what a click does.
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
+import { type ReactNode, useEffect, useRef } from "react";
+import { StatusBar } from "./footer";
+import { Keymap } from "./keymap";
+import { overlayBg, overlayRowStyle } from "./overlay";
+import type { SettingRow } from "./ports";
+import { SettingsView } from "./settings-view";
+import { useTheme } from "./theme";
+
+const LABEL_COLS = 24;
+// What a value keeps, at least, when the labels are long and the pane narrow.
+const VALUE_COLS = 8;
+// ` default`, the longest layer word, and the space before it.
+const BADGE_COLS = 8;
+// The cursor's `› `, under its group's title, before every row.
+const GUTTER = 4;
+// A detail line starts under its row's label, a step in.
+const DETAIL_INDENT = GUTTER + 2;
+
+const HOW_TO_CHANGE =
+	"To change a setting, ask the copilot (A), or run kabane config set.";
+
+/** `text` in lines of at most `width` columns, broken at spaces, and inside a word too long. */
+const wrap = (text: string, width: number): string[] => {
+	if (width <= 0) return [];
+	const lines: string[] = [];
+	let line = "";
+	for (const word of text.split(" ")) {
+		let rest = word;
+		const joined = line === "" ? rest : `${line} ${rest}`;
+		if (joined.length <= width) {
+			line = joined;
+			continue;
+		}
+		if (line !== "") lines.push(line);
+		while (rest.length > width) {
+			lines.push(rest.slice(0, width));
+			rest = rest.slice(width);
+		}
+		line = rest;
+	}
+	if (line !== "") lines.push(line);
+	return lines;
+};
+
+const clip = (text: string, cols: number): string =>
+	text.length <= cols
+		? text.padEnd(cols)
+		: cols <= 0
+			? ""
+			: `${text.slice(0, cols - 1)}…`;
+
+const markOf = (row: SettingRow): string =>
+	row.readOnly ? " read-only" : row.protected ? " protected" : "";
+
+// A title wherever the namespace or the group changes: the rows come ordered (SettingsView.ordered).
+type Line =
+	| { kind: "namespace"; title: string }
+	| { kind: "group"; title: string }
+	| { kind: "row"; index: number; row: SettingRow };
+
+const linesOf = (rows: readonly SettingRow[]): Line[] => {
+	const lines: Line[] = [];
+	let namespace: string | undefined;
+	let group: string | undefined;
+	rows.forEach((row, index) => {
+		const ns = SettingsView.namespaceOf(row);
+		if (ns !== namespace) {
+			lines.push({ kind: "namespace", title: ns });
+			namespace = ns;
+			group = undefined;
+		}
+		if (row.group !== group) {
+			lines.push({ kind: "group", title: row.group });
+			group = row.group;
+		}
+		lines.push({ kind: "row", index, row });
+	});
+	return lines;
+};
+
+const rowId = (index: number): string => `setting-${index}`;
+
+const Row = ({
+	row,
+	index,
+	selected,
+	detail,
+	inner,
+	labelCols,
+	onClick,
+}: {
+	row: SettingRow;
+	index: number;
+	selected: boolean;
+	detail: boolean;
+	inner: number;
+	labelCols: number;
+	onClick?: () => void;
+}): ReactNode => {
+	const theme = useTheme();
+	const bg = overlayBg(theme);
+	const style = overlayRowStyle(selected, theme);
+	const mark = markOf(row);
+	const valueCols = Math.max(0, inner - GUTTER - labelCols - BADGE_COLS);
+	const value = clip(
+		SettingsView.display(row),
+		Math.max(0, valueCols - mark.length),
+	);
+	const unset = row.value === null || row.value === undefined;
+	return (
+		<box id={rowId(index)} style={{ flexDirection: "column" }}>
+			<text bg={style.bg} fg={theme.secondary} onMouseDown={onClick}>
+				<span fg={theme.accent}>{selected ? "  › " : "    "}</span>
+				{clip(row.label, labelCols - 1)}{" "}
+				<span fg={unset ? theme.muted : theme.text}>{value}</span>
+				<span fg={theme.faint}>{mark.slice(0, valueCols)}</span>
+				<span
+					fg={row.layer === "default" ? theme.faint : theme.text}
+					attributes={row.layer === "default" ? 0 : TextAttributes.BOLD}
+				>
+					{row.layer.padStart(BADGE_COLS)}
+				</span>
+			</text>
+			{selected && detail
+				? SettingsView.detail(row)
+						.flatMap((line) => wrap(line, inner - DETAIL_INDENT))
+						.map((line, at) => (
+							// Index keys: wrapped lines can repeat.
+							<text key={at} bg={bg} fg={theme.muted}>
+								{" ".repeat(DETAIL_INDENT)}
+								{line.padEnd(inner - DETAIL_INDENT)}
+							</text>
+						))
+				: null}
+		</box>
+	);
+};
+
+export type SettingsOverlayProps = {
+	view: SettingsView.View;
+	// A click on a row, by its place in the view's rows (the reducer's `settingsRow`).
+	onRow?: (index: number) => void;
+};
+
+// What the view says in place of rows: still reading, nothing to read from, or the failure.
+const Message = ({
+	view,
+	inner,
+}: {
+	view: SettingsView.View;
+	inner: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const bg = overlayBg(theme);
+	const { rows } = view;
+	const [text, fg] =
+		rows.type === "loading"
+			? ["reading settings…", theme.muted]
+			: rows.type === "unavailable"
+				? ["settings are not available here", theme.muted]
+				: rows.type === "failed"
+					? [rows.error, theme.failed]
+					: ["no settings", theme.muted];
+	return (
+		<>
+			{wrap(text, inner).map((line, at) => (
+				// Index keys: wrapped lines can repeat.
+				<text key={at} bg={bg} fg={fg}>
+					{line.padEnd(inner)}
+				</text>
+			))}
+		</>
+	);
+};
+
+export const SettingsOverlay = ({
+	view,
+	onRow,
+}: SettingsOverlayProps): ReactNode => {
+	const { width, height } = useTerminalDimensions();
+	const theme = useTheme();
+	const bg = overlayBg(theme);
+	const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+	const inner = Math.max(0, width - 2);
+	// The rows leave the scrollbar its column, and a space before it.
+	const listCols = Math.max(0, inner - 2);
+	const rows = view.rows.type === "ready" ? view.rows.rows : [];
+	const hints = Keymap.footer("settings", { settings: rows.length > 0 });
+	// As wide as the longest label needs, up to LABEL_COLS, leaving the values their room.
+	const labelCols = Math.max(
+		0,
+		Math.min(
+			LABEL_COLS,
+			Math.max(0, ...rows.map((row) => row.label.length)) + 2,
+			listCols - GUTTER - VALUE_COLS - BADGE_COLS,
+		),
+	);
+	const { selected, detail } = view;
+	// The row in hand stays on screen, its detail with it.
+	useEffect(() => {
+		scrollRef.current?.scrollChildIntoView(rowId(selected));
+	}, [selected, detail]);
+	return (
+		<box
+			style={{
+				position: "absolute",
+				left: 0,
+				top: 0,
+				width,
+				height,
+				zIndex: 100,
+				flexDirection: "column",
+				backgroundColor: bg,
+			}}
+		>
+			<box
+				style={{
+					flexDirection: "column",
+					flexGrow: 1,
+					paddingTop: 1,
+					paddingLeft: 1,
+					paddingRight: 1,
+					backgroundColor: bg,
+				}}
+			>
+				<box style={{ flexShrink: 0, height: 2 }}>
+					<text bg={bg} fg={theme.text} attributes={TextAttributes.BOLD}>
+						{"settings".padEnd(inner)}
+					</text>
+				</box>
+				<scrollbox ref={scrollRef} style={{ flexGrow: 1 }}>
+					{rows.length === 0 ? (
+						<Message view={view} inner={listCols} />
+					) : (
+						linesOf(rows).map((line, at) =>
+							line.kind === "row" ? (
+								<Row
+									key={line.row.key}
+									row={line.row}
+									index={line.index}
+									selected={line.index === selected}
+									detail={detail}
+									inner={listCols}
+									labelCols={labelCols}
+									{...(onRow ? { onClick: () => onRow(line.index) } : {})}
+								/>
+							) : (
+								<box
+									// Keyed by place: a group's name repeats across namespaces.
+									key={`${line.kind}${at}`}
+									style={{
+										marginTop: line.kind === "namespace" && at > 0 ? 1 : 0,
+									}}
+								>
+									<text
+										bg={bg}
+										fg={line.kind === "namespace" ? theme.text : theme.muted}
+										attributes={TextAttributes.BOLD}
+									>
+										{line.kind === "group" ? "  " : ""}
+										{line.title}
+									</text>
+								</box>
+							),
+						)
+					)}
+				</scrollbox>
+				<box style={{ flexShrink: 0, flexDirection: "column" }}>
+					{wrap(HOW_TO_CHANGE, inner).map((line, at) => (
+						// Index keys: wrapped lines can repeat.
+						<text key={at} bg={bg} fg={theme.muted}>
+							{line.padEnd(inner)}
+						</text>
+					))}
+				</box>
+			</box>
+			<StatusBar hints={hints} />
+		</box>
+	);
+};

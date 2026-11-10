@@ -7,6 +7,7 @@ import {
 	type Dispatcher,
 	Dispatchers,
 	Headers,
+	type SettingsSource,
 	startBoard,
 } from "@cabane/board";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
@@ -18,6 +19,7 @@ import {
 	success,
 } from "@cabane/extension";
 import { configPath } from "../config";
+import { ConfigSettings } from "../config-settings";
 import {
 	type Command,
 	type Ctx,
@@ -143,11 +145,27 @@ const extensionPorts = async (
 };
 
 /**
+ * The `,` view's rows: `kabane config list` where the board was opened, for the scope `--scope`
+ * names. Read each time the view opens, never at board start: it imports every shipped extension.
+ */
+const settingsSource = (args: ParsedArgs, ctx: Ctx): SettingsSource => ({
+	list: async () => {
+		const where = await ConfigSettings.locate(
+			ctx.home,
+			ctx.cwd,
+			flagString(args, "scope"),
+		);
+		return where.ok ? ConfigSettings.list(ctx.home, where.value) : where;
+	},
+});
+
+/**
  * What the CLI hands the board: this device's home as the storage handle, the
  * activity and dispatcher ports the enabled extensions contribute (no-op
  * defaults without any), the scope the CLI would have filtered on (the issue's,
- * with `--issue`), the issue to open on, a copilot on the chosen harness, and
- * the release notice unless `updates.check` is false.
+ * with `--issue`), the issue to open on, a copilot on the chosen harness, the
+ * settings the `,` view lists, and the release notice unless `updates.check`
+ * is false.
  *
  * The scope is resolved here rather than passed through as a resolver, because
  * the copilot needs the same answer the board shows: the project directory as
@@ -173,6 +191,7 @@ export const boardDeps = async (
 			? {}
 			: { announcer: UpdateNotice.announcer(ctx.home) }),
 		...(issue ? { open: { taskId: issue.id } } : {}),
+		settings: settingsSource(args, ctx),
 		cwd: ctx.cwd,
 		basePath: ctx.store,
 		// The board wants a URI and a label; the project root is the copilot's business.

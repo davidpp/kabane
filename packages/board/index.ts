@@ -24,6 +24,8 @@ export type {
 	PanelLine,
 	PanelPart,
 	PanelTone,
+	SettingRow,
+	SettingsSource,
 	TriggerDescriptor,
 	TriggerInput,
 } from "./src/ports";

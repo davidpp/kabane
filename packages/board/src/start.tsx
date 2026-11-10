@@ -17,6 +17,7 @@ import {
 	type Copilot,
 	type Dispatcher,
 	noActivity,
+	type SettingsSource,
 } from "./ports";
 import { ProgramStatus } from "./program-status";
 import { closeRenderer } from "./teardown";
@@ -40,6 +41,9 @@ export type BoardDeps = {
 	headers?: Readonly<Record<string, CardHeader>>;
 	// One line to show over the board's footer once it is up. Default: none, nothing announced.
 	announcer?: Announcer;
+	// Every setting and its layer, for the `,` view, read when it opens. Default: none, the view
+	// says settings are not available here.
+	settings?: SettingsSource;
 	// The issue to open on, by id: its detail over the board, as `enter` on its row (BoardNav.openTask).
 	// The host picks a scope that holds it. Default: none, the board opens on the board view.
 	open?: { taskId: string };
@@ -78,6 +82,7 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 						resolveScope={deps.resolveScope}
 						headers={deps.headers}
 						announcer={deps.announcer}
+						settings={deps.settings}
 						open={deps.open}
 					/>
 				</ErrorBoundary>

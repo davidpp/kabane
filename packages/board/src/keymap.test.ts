@@ -78,6 +78,7 @@ const state = (
 	search: { mode: "off" },
 	dispatch: null,
 	help: false,
+	settings: null,
 	focus: "board",
 	tabs: BoardTabs.NONE,
 	marked: new Set<string>(),
@@ -297,6 +298,16 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 		}),
 	),
 	help: [state({ help: true })],
+	// The settings view on its first row and its last: j has somewhere to go from one, k the other.
+	settings: [0, Fixtures.SETTINGS.length - 1].map((selected) =>
+		state({
+			settings: {
+				rows: { type: "ready", rows: Fixtures.SETTINGS },
+				selected,
+				detail: false,
+			},
+		}),
+	),
 	// A decision on JAKE-2 with no choices, its answer asked for with `enter`: its input has the keys.
 	decisionText: [
 		BoardNav.reduceKey(

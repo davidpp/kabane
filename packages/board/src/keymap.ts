@@ -62,6 +62,8 @@ export namespace Keymap {
 		scrollable?: boolean;
 		/** Setup found harnesses to tick. */
 		harnesses?: boolean;
+		/** The settings view has rows to move through. */
+		settings?: boolean;
 	};
 
 	type Tier = "footer" | "help";
@@ -92,6 +94,7 @@ export namespace Keymap {
 		| "dispatch"
 		| "dispatchForm"
 		| "help"
+		| "settings"
 		| "setupWelcome"
 		| "setupForm"
 		| "setupWorking"
@@ -153,6 +156,7 @@ export namespace Keymap {
 			keys: ["{", "}"],
 			when: (s) => s.tabs === true,
 		},
+		{ key: ",", label: "settings", tier: "help", keys: [","] },
 		{
 			key: "A :",
 			label: "copilot: config & help",
@@ -649,6 +653,29 @@ export namespace Keymap {
 					tier: "footer",
 					keys: ["?", "escape", "q"],
 				},
+			],
+		},
+		// Every setting and where its value comes from (settings-view.ts). Read-only: changing one is
+		// the copilot's, so the view's own footer says how.
+		settings: {
+			name: "settings",
+			sheet: false,
+			bindings: [
+				{
+					key: "j/k",
+					label: "move",
+					tier: "footer",
+					keys: ["j", "k", "down", "up"],
+					when: (s) => s.settings === true,
+				},
+				{
+					key: "enter",
+					label: "details",
+					tier: "footer",
+					keys: ["return"],
+					when: (s) => s.settings === true,
+				},
+				{ key: ", esc", label: "close", tier: "footer", keys: [",", "escape"] },
 			],
 		},
 		setupWelcome: {

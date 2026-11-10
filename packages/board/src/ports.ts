@@ -307,6 +307,45 @@ export type SettingKind =
 // One setting of a namespace, at `path` in its document.
 export type SettingField = SettingValue & { path: readonly string[] };
 
+// Where a setting's value is decided, lowest first: the schema's default, then global (every project
+// on this device), shared (the file checked into the repo), local (this project, only you), and the
+// caller's own overrides for one run.
+export type SettingLayer = "default" | "global" | "shared" | "local" | "caller";
+
+// A value a lower layer sets that the deciding layer hides, and the file it is in.
+export type SettingHeld = { layer: SettingLayer; from: string; value: unknown };
+
+// One setting as it resolves for the project on screen: `kabane config list --json`'s row. `value`
+// is already redacted (a secret reads `<set>`); `from` is the file the deciding layer is stored in;
+// `namespace` is the extension that declares it, absent for the device's own keys. `label`, `group`,
+// `options` and `none` are how it reads; `layers` are where it can be written; `restart` says when a
+// change applies.
+export type SettingRow = {
+	key: string;
+	namespace?: string;
+	value: unknown;
+	layer: SettingLayer;
+	from?: string;
+	hides: readonly SettingHeld[];
+	field: SettingField;
+	label: string;
+	group: string;
+	options?: readonly (string | number)[];
+	none?: string;
+	description: string;
+	layers: readonly SettingLayer[];
+	secret: boolean;
+	restart: "start" | "resolve";
+	readOnly: boolean;
+	protected: boolean;
+};
+
+// The settings the `,` view lists, read when it opens and never before. Absent, the view says
+// settings are not available here.
+export interface SettingsSource {
+	list(): Promise<Result<SettingRow[]>>;
+}
+
 // The harness stopped mid-turn to ask the human to fill a form (AskUserQuestion, a
 // `request_user_input`), and is BLOCKED until it hears back. `id` is unique within the session;
 // `answerElicitation` names it to answer. A form with no fields asks only for a yes.
