@@ -146,9 +146,12 @@ device key always goes to global. `--layer global|local|shared` names the layer.
 `--scope <uri or id>` naming another project reads only its legacy `scopes` block, and a local
 write for it has to run in that project.
 
-Every operation supports `--json`. `list` returns rows with `key`, `value`,
-`default` (no layer sets it), `layer` and `from` (the file or scope it came from), `readOnly`,
-`protected`, `description`, and what the key's schema says of it:
+Every operation supports `--json`. `list` returns rows with `key`, `namespace` (the extension
+that declares it, absent for a device key), `value`, `default` (no layer sets it), `layer` and
+`from` (the file or scope it came from), `hides` (the `{layer, from, value}` each lower layer
+sets at the key, lowest first; empty for a group), `readOnly`, `protected`, `description`, and
+what the key's schema says of it. A record's entries follow it as rows of their own
+(`loop.gates.test`), in its group:
 
 - `field`: its `path` in the namespace (or `config.json`), its `kind` and what bounds that
   kind: `enum` with `values`; `number` with `integer`, and `minimum`, `maximum`,

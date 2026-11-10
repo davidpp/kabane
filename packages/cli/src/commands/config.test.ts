@@ -594,13 +594,42 @@ describe.concurrent("config through the real CLI", () => {
 			).toBe(
 				`bun test (local: ${local})\n  hides npm test (shared: ${join(root, ".kabane", "loop.json")})`,
 			);
-			const rows: { key: string; value: unknown; layer: string }[] = await json(
-				"config",
-				"list",
-			);
+			const rows: {
+				key: string;
+				value: unknown;
+				layer: string;
+				group?: string;
+			}[] = await json("config", "list");
 			expect(rows.find((row) => row.key === "loop.gates")).toMatchObject({
 				value: { test: "bun test", lint: "npm run lint" },
 				layer: "local",
+			});
+			// The record's entries are rows of their own, in its group, with what each one hides.
+			const sharedFile = join(root, ".kabane", "loop.json");
+			expect(
+				rows.filter((row) => row.key.startsWith("loop.gates.")),
+			).toMatchObject([
+				{
+					key: "loop.gates.test",
+					namespace: "loop",
+					value: "bun test",
+					layer: "local",
+					from: local,
+					hides: [{ layer: "shared", from: sharedFile, value: "npm test" }],
+					label: "gates.test",
+					group: rows.find((row) => row.key === "loop.gates")?.group,
+				},
+				{
+					key: "loop.gates.lint",
+					value: "npm run lint",
+					layer: "shared",
+					hides: [],
+				},
+			]);
+			expect(rows.find((row) => row.key === "loop.stallAfter")).toMatchObject({
+				value: 2,
+				layer: "shared",
+				hides: [{ layer: "global", from: path(), value: 5 }],
 			});
 			// A shared write lands in the checked-in file and keeps its indentation; the former
 			// names write where the new ones do.
