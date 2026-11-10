@@ -1,8 +1,17 @@
 import { expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CopilotInstructions } from "@cabane/acp";
+import { GitFixture } from "@cabane/core/git-fixture";
+import { ProjectDirs } from "@cabane/core/scope";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
@@ -138,31 +147,33 @@ it("manages device config through the real stdio MCP server", async () => {
 			expect(await valueOf(key)).toEqual(expected);
 		}
 		expect(existsSync(join(dbDir, "config.json"))).toBe(false);
-		// A namespace key takes a layer; the server started outside any project has no scope.
+		// Outside any project a namespace key goes to the global layer, and there is no local one.
 		expect(
 			JSON.parse(
-				await call("kabane_configSet", {
-					key: "loop.model",
-					value: "haiku",
-					layer: "user",
-				}),
+				await call("kabane_configSet", { key: "loop.model", value: "haiku" }),
 			),
-		).toMatchObject({ key: "loop.model", layer: "user", value: "haiku" });
+		).toMatchObject({ key: "loop.model", layer: "global", value: "haiku" });
 		expect(JSON.parse(read()).loop).toEqual({ model: "haiku" });
 		expect(
 			await call(
 				"kabane_configSet",
-				{ key: "loop.model", value: "opus", layer: "scope" },
+				{ key: "loop.model", value: "opus", layer: "local" },
 				true,
 			),
-		).toContain("No scope here");
+		).toContain("No project here for --layer local");
+		// A former name still means its layer.
 		expect(
 			await call(
 				"kabane_configSet",
 				{ key: "timezone", value: "UTC", layer: "project" },
 				true,
 			),
-		).toContain("it has no project layer");
+		).toContain("it has the global layer only");
+		await call(
+			"kabane_configSet",
+			{ key: "loop.model", value: "opus", layer: "team" },
+			true,
+		);
 		const typo = JSON.parse(
 			await call("kabane_configSet", { key: "extensions", value: "loop,lopo" }),
 		);
@@ -244,5 +255,80 @@ it("manages device config through the real stdio MCP server", async () => {
 	} finally {
 		await client.close();
 		rmSync(home, { recursive: true, force: true });
+	}
+}, 20_000);
+
+it("writes a project's local layer by default over stdio, and names layers the new way", async () => {
+	const root = mkdtempSync(join(tmpdir(), "kabane-config-mcp-local-"));
+	const home = join(root, "home");
+	const repo = join(root, "repo");
+	mkdirSync(home);
+	mkdirSync(repo);
+	GitFixture.run(repo, ["init", "-q"]);
+	GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
+	const env = { ...process.env, KABANE_HOME: home };
+	const bin = join(import.meta.dir, "../index.ts");
+	const init = Bun.spawnSync(
+		[
+			process.execPath,
+			bin,
+			"init",
+			"--actor",
+			"cabane://actor/human/config-test",
+			"--device",
+			"config-test",
+		],
+		{ cwd: home, env },
+	);
+	expect(init.exitCode).toBe(0);
+	const client = new Client({ name: "config-test", version: "1" });
+	const text = async (name: string, args: Record<string, unknown>) => {
+		const result = z
+			.object({ content: z.array(z.object({ text: z.string() })) })
+			.parse(await client.callTool({ name, arguments: args }));
+		return JSON.parse(result.content.map((part) => part.text).join(""));
+	};
+	try {
+		await client.connect(
+			new StdioClientTransport({
+				command: process.execPath,
+				args: [bin, "mcp"],
+				cwd: repo,
+				env,
+				stderr: "pipe",
+			}),
+		);
+		const local = join(
+			home,
+			"projects",
+			ProjectDirs.slug(realpathSync(repo)),
+			"loop.json",
+		);
+		expect(
+			await text("kabane_configSet", { key: "loop.stallAfter", value: "7" }),
+		).toMatchObject({ layer: "local", from: local, value: 7 });
+		expect(
+			await text("kabane_configSet", {
+				key: "loop.model",
+				value: "haiku",
+				layer: "user",
+			}),
+		).toMatchObject({ layer: "global" });
+		const rows: { key: string; layer: string }[] = await text(
+			"kabane_configGet",
+			{},
+		);
+		expect(rows.find((row) => row.key === "loop.stallAfter")?.layer).toBe(
+			"local",
+		);
+		expect(rows.find((row) => row.key === "loop.model")?.layer).toBe("global");
+		expect(
+			await text("kabane_configGet", { key: "loop.stallAfter", layers: true }),
+		).toMatchObject({
+			leaves: { "loop.stallAfter": { value: 7, layer: "local", from: local } },
+		});
+	} finally {
+		await client.close();
+		rmSync(root, { recursive: true, force: true });
 	}
 }, 20_000);

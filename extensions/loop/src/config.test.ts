@@ -13,7 +13,7 @@ const resolve = (
 	Settings.resolve(LoopConfig.NAMESPACE, LoopConfig.SettingsSchema, [
 		...(project === undefined
 			? []
-			: [{ layer: "project" as const, label: PROJECT, value: project }]),
+			: [{ layer: "shared" as const, label: PROJECT, value: project }]),
 		...(overrides
 			? [{ layer: "caller" as const, label: Settings.CALLER, value: overrides }]
 			: []),

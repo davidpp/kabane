@@ -1,6 +1,14 @@
 import { realpathSync } from "node:fs";
 import { Harnesses } from "@cabane/acp/harnesses";
-import { err, ok, type Result, ScopeUri, trySync } from "@cabane/core";
+import {
+	err,
+	ok,
+	type Result,
+	ScopeUri,
+	tryCatch,
+	trySync,
+} from "@cabane/core";
+import { mainCheckoutRoot } from "@cabane/core/scope";
 import { Settings } from "@cabane/extension";
 import { z } from "zod";
 import {
@@ -164,9 +172,9 @@ const editStored = (
 // Lowest first.
 const RANK: readonly Settings.Layer[] = [
 	"default",
-	"user",
-	"project",
-	"scope",
+	"global",
+	"shared",
+	"local",
 	"caller",
 ];
 
@@ -179,10 +187,10 @@ const viewOf = (
 	namespace: Settings.Namespace | undefined,
 	where: ConfigSettings.Where,
 ): Result<View> => {
-	// Device config has the user's layer only, already validated by loading it.
+	// Device config has the global layer only, already validated by loading it.
 	if (namespace === undefined)
 		return Settings.resolve("device", ConfigSchema, [
-			{ layer: "user", label: configPath(home), value: stored },
+			{ layer: "global", label: configPath(home), value: stored },
 		]);
 	const sources = ConfigLayers.sources(home, stored, namespace.name, where);
 	return sources.ok
@@ -265,8 +273,12 @@ const find = (keys: readonly Key[], key: string): Result<Key> => {
 type ConfigChange = {
 	key: string;
 	layer: ConfigSettings.Target;
+	/** The file, or `config.json`, the layer is stored in. */
+	from: string;
 	value?: unknown;
 	unset?: true;
+	/** After a local unset, the legacy `scopes` block that still sets the key. */
+	stillSetIn?: string;
 	/** Extension names saved that this build does not ship. */
 	ignored?: string[];
 };
@@ -281,18 +293,12 @@ type Document = {
 	save: () => Result<string>;
 };
 
-const projectDocument = (
+/** A namespace's document in its own file: a project's shared file or its local one. */
+const fileDocument = (
+	file: string,
 	namespace: string,
 	entry: Key,
-	where: ConfigSettings.Where,
 ): Result<Document> => {
-	if (where.projectDir === undefined)
-		return err(
-			new Error(
-				"No project file here for --layer project: run it from the project's root",
-			),
-		);
-	const file = ConfigLayers.projectFile(where.projectDir, namespace);
 	const read = ConfigLayers.readJson(file);
 	if (!read.ok) return read;
 	const value = read.value ?? {};
@@ -316,40 +322,63 @@ const documentFor = (
 	layer: ConfigSettings.Target,
 	where: ConfigSettings.Where,
 ): Result<Document> => {
-	const inConfig = (block: readonly string[], label: string): Document => ({
-		value: stored,
-		path: [...block, ...entry.path],
-		block,
-		label,
-		save: () => saveConfig(home, stored),
-	});
 	const namespace = entry.namespace?.name;
-	// A device key has the user's layer only: no project file or scope may redirect the database
-	// or the hub.
-	if (namespace === undefined)
-		return layer === "user"
-			? ok(inConfig([], configPath(home)))
-			: err(
-					new Error(
-						`${entry.key} is device config, set for this device only in ${configPath(home)}; it has no ${layer} layer`,
-					),
-				);
-	if (layer === "user") return ok(inConfig([namespace], configPath(home)));
-	if (layer === "project") return projectDocument(namespace, entry, where);
-	if (where.scopeId === undefined)
+	// A device key has the global layer only: no project file may redirect the database or the hub.
+	if (namespace === undefined || layer === "global") {
+		if (namespace !== undefined || layer === "global")
+			return ok({
+				value: stored,
+				path: [...(namespace === undefined ? [] : [namespace]), ...entry.path],
+				block: namespace === undefined ? [] : [namespace],
+				label: configPath(home),
+				save: () => saveConfig(home, stored),
+			});
 		return err(
 			new Error(
-				"No scope here for --layer scope: run it inside the project, or name one with --scope",
+				`${entry.key} is a device key, set for this device in ${configPath(home)}: it has the global layer only, not ${layer}`,
 			),
 		);
-	const block = ConfigLayers.scopeBlock(home, stored, where.scopeId);
-	if (!block.ok) return block;
-	return ok(
-		inConfig(
-			[ConfigLayers.SCOPES, where.scopeId, namespace],
-			ConfigLayers.scopeLabel(home, where.scopeId),
-		),
+	}
+	if (layer === "shared")
+		return where.projectDir === undefined
+			? err(
+					new Error(
+						"No project here for --layer shared: run it from the project's root",
+					),
+				)
+			: fileDocument(
+					ConfigLayers.sharedFile(where.projectDir, namespace),
+					namespace,
+					entry,
+				);
+	if (where.localRoot === undefined)
+		return err(
+			new Error(
+				`No project here for --layer local: run it inside the project.${where.scopeId === undefined ? "" : ` --scope reads ${ConfigLayers.scopeLabel(home, where.scopeId)} and never writes it.`}`,
+			),
+		);
+	return fileDocument(
+		ConfigLayers.localFile(home, where.localRoot, namespace),
+		namespace,
+		entry,
 	);
+};
+
+/** The legacy `scopes` block that still sets `entry` once it is unset from the local file. */
+const legacyHolding = (
+	home: string,
+	stored: Record<string, unknown>,
+	entry: Key,
+	where: ConfigSettings.Where,
+): string | undefined => {
+	if (entry.namespace === undefined || where.scopeId === undefined)
+		return undefined;
+	const block = ConfigLayers.scopeBlock(home, stored, where.scopeId);
+	if (!block.ok) return undefined;
+	const held = valueAt(block.value?.[entry.namespace.name], entry.path);
+	return held === undefined || held === null
+		? undefined
+		: ConfigLayers.scopeLabel(home, where.scopeId);
 };
 
 /** Where a write goes: the home, the project and scope it is made in, and the layer it targets. */
@@ -407,10 +436,21 @@ const writeSetting = (
 		const saved = save();
 		if (!saved.ok) return saved;
 	}
-	if (input === undefined) return ok({ key: entry.key, layer, unset: true });
+	if (input === undefined) {
+		const still =
+			layer === "local" ? legacyHolding(home, stored, entry, where) : undefined;
+		return ok({
+			key: entry.key,
+			layer,
+			from: label,
+			unset: true,
+			...(still === undefined ? {} : { stillSetIn: still }),
+		});
+	}
 	const change = {
 		key: entry.key,
 		layer,
+		from: label,
 		value: redact(entry.key, parsed.value),
 	};
 	// Saved anyway, since a newer kabane may ship the name, but it loads nothing here.
@@ -423,15 +463,27 @@ const writeSetting = (
 
 export namespace ConfigSettings {
 	/** The layers a write can target, lowest first. */
-	export const TARGETS = ["user", "scope", "project"] as const;
+	export const TARGETS = ["global", "shared", "local"] as const;
 	export type Target = (typeof TARGETS)[number];
 
-	export const isTarget = (layer: string): layer is Target =>
-		(TARGETS as readonly string[]).includes(layer);
+	/** The names the layers had before; accepted on input, never output. */
+	const FORMER: Readonly<Record<string, Target>> = {
+		user: "global",
+		project: "shared",
+		scope: "local",
+	};
+
+	/** The layer `name` means, a former name included; undefined when it names none. */
+	export const targetOf = (name: string): Target | undefined =>
+		(TARGETS as readonly string[]).includes(name)
+			? (name as Target)
+			: Object.hasOwn(FORMER, name)
+				? FORMER[name]
+				: undefined;
 
 	/**
-	 * Where settings are read and written: the project checkout whose `.kabane/` files are its
-	 * project layer, and the scope whose user settings apply.
+	 * Where settings are read and written: the checkout whose `.kabane/` is the shared layer, the
+	 * project root that keys the local layer, and the scope of the legacy `scopes` block.
 	 */
 	export type Where = ConfigLayers.Where;
 
@@ -441,10 +493,11 @@ export namespace ConfigSettings {
 	};
 
 	/**
-	 * What a command run in `cwd` reads and writes. The project layer is `cwd`'s own `.kabane/`
-	 * when `cwd` is the project's root: the file `kabane loop start` reads from there. `scope` (a
-	 * scope URI or id) names whose user settings apply, and drops the project layer when the
-	 * project here is another scope.
+	 * What a command run in `cwd` reads and writes. The shared layer is `cwd`'s own `.kabane/`
+	 * when `cwd` is the project's root: the file `kabane loop start` reads from there. The local
+	 * layer is the project's, from anywhere inside it or a worktree of it. `scope` (a scope URI or
+	 * id) naming another project than this one leaves only that scope's legacy `scopes` block:
+	 * local is keyed by path, so a local write needs the project's directory.
 	 */
 	export const locate = async (
 		home: string,
@@ -453,20 +506,33 @@ export namespace ConfigSettings {
 	): Promise<Result<Where>> => {
 		const project = await projectAt(cwd, home);
 		if (!project.ok) return project;
-		const here = project.value;
 		const named = scope === undefined ? undefined : ScopeUri.getScopeId(scope);
-		const scopeId = named ? (named.ok ? named.value : scope) : here?.scopeId;
-		const projectDir =
-			here &&
-			here.scopeId === scopeId &&
-			canonical(cwd) === canonical(here.root)
-				? cwd
-				: undefined;
+		const scopeId = named
+			? named.ok
+				? named.value
+				: scope
+			: project.value?.scopeId;
+		const here =
+			project.value && project.value.scopeId === scopeId ? project.value : null;
+		if (here === null) return ok(scopeId === undefined ? {} : { scopeId });
+		const localRoot = await tryCatch(() => mainCheckoutRoot(here.root));
+		if (!localRoot.ok) return localRoot;
 		return ok({
-			...(projectDir === undefined ? {} : { projectDir }),
-			...(scopeId === undefined ? {} : { scopeId }),
+			...(canonical(cwd) === canonical(here.root) ? { projectDir: cwd } : {}),
+			localRoot: localRoot.value,
+			scopeId: here.scopeId,
 		});
 	};
+
+	/**
+	 * The layer a write with no `--layer` goes to: a device key's only one, global; otherwise
+	 * local in a project (or with `--scope`) and global outside one.
+	 */
+	const defaultTarget = (entry: Key, where: Where): Target =>
+		entry.namespace !== undefined &&
+		(where.localRoot !== undefined || where.scopeId !== undefined)
+			? "local"
+			: "global";
 
 	export const list = async (home: string, where: Where) => {
 		const keys = await allKeys();
@@ -532,7 +598,7 @@ export namespace ConfigSettings {
 		where: Where,
 		key: string,
 		input: string | undefined,
-		layer: Target = "user",
+		layer?: Target,
 	): Promise<Result<ConfigChange>> => {
 		const keys = await allKeys();
 		if (!keys.ok) return keys;
@@ -541,7 +607,7 @@ export namespace ConfigSettings {
 		const loaded = loadConfigDocument(home);
 		return loaded.ok
 			? writeSetting(
-					{ home, where, layer },
+					{ home, where, layer: layer ?? defaultTarget(entry.value, where) },
 					loaded.value.stored,
 					entry.value,
 					input,

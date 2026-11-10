@@ -11,7 +11,11 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { checklistModule } from "@cabane/checklist";
 import { ok, Planner, type Result, Runtime, tryCatch } from "@cabane/core";
-import { detectScope, type ProjectScope } from "@cabane/core/scope";
+import {
+	detectScope,
+	mainCheckoutRoot,
+	type ProjectScope,
+} from "@cabane/core/scope";
 import {
 	type Extension,
 	flagString,
@@ -124,8 +128,8 @@ export const detectProject = (
 	detectScope(cwd, { home, legacyPin: jakeProjectPin });
 
 /**
- * The project at `dir` without the extensions a filter ignores: its root, and the scope id that
- * keys the user's settings for it. Null outside one.
+ * The project at `dir` without the extensions a filter ignores: its root, which keys its local
+ * settings, and its scope id. Null outside one.
  */
 export const projectAt = (
 	dir: string,
@@ -151,9 +155,14 @@ export const settingsPort = (home: string): Settings.Port =>
 		if (!document.ok) return document;
 		const project = await projectAt(projectDir, home);
 		if (!project.ok) return project;
+		const here = project.value;
+		const localRoot = here
+			? await tryCatch(() => mainCheckoutRoot(here.root))
+			: ok(undefined);
+		if (!localRoot.ok) return localRoot;
 		return ConfigLayers.sources(home, document.value?.stored, namespace, {
 			projectDir,
-			...(project.value ? { scopeId: project.value.scopeId } : {}),
+			...(here ? { scopeId: here.scopeId, localRoot: localRoot.value } : {}),
 		});
 	});
 

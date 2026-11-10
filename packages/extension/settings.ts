@@ -1,8 +1,9 @@
 // Settings resolve through layers, so no setting handles where it comes from. A namespace (an
 // extension's name) declares one zod schema; every layer holds a partial document of it. Lowest
-// first: the schema's defaults, the user's config, the project's checked-in file, the user's
-// settings for the project's scope, then the caller (flags, the board's form). Where each layer is
-// stored is the host's business: it hands `port` the documents, and this merges and validates them.
+// first: the schema's defaults; global, for every project on this device; shared, the project's
+// checked-in settings for everyone who clones it; local, the project's settings for you only on
+// this device; then the caller (flags, the board's form). Where each layer is stored is the host's
+// business: it hands `port` the documents, and this merges and validates them.
 //
 // The schema's defaults are the lowest layer. Objects merge key by key and anything else is
 // replaced, so a record of gates gains a gate per layer, defaulted ones included, while a list of
@@ -12,12 +13,12 @@ import { err, ok, type Result } from "@cabane/core";
 import { z } from "zod";
 
 export namespace Settings {
-	export type Layer = "default" | "user" | "project" | "scope" | "caller";
+	export type Layer = "default" | "global" | "shared" | "local" | "caller";
 
 	/** One layer's document for a namespace, and the name an error in it or a value from it gives. */
 	export type Source = {
 		layer: Exclude<Layer, "default">;
-		/** The file path, or what else names the document: "your settings for scope X in <path>". */
+		/** The file path, or what else names the document: "scopes.<id> in <path>". */
 		label: string;
 		value: unknown;
 	};

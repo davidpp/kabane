@@ -19,7 +19,7 @@ const display = (value: unknown): string =>
 			? value
 			: JSON.stringify(value);
 
-// A leaf's value and the layer it came from: `bun test (scope: your settings for scope …)`.
+// A leaf's value and the layer it came from: `bun test (local: ~/.kabane/projects/…/loop.json)`.
 const leafText = (leaf: {
 	value: unknown;
 	layer: string;
@@ -29,7 +29,7 @@ const leafText = (leaf: {
 		? "default"
 		: `${display(leaf.value)} (${leaf.from === undefined ? leaf.layer : `${leaf.layer}: ${leaf.from}`})`;
 
-// `--layer`, the layer a write targets; `--scope`, whose user settings to read or write; and
+// `--layer`, the layer a write targets; `--scope`, whose legacy `scopes` block to read; and
 // `--layers`, which has `get` name the layer of every leaf instead of printing the bare value.
 const FLAGS: ReadonlySet<string> = new Set(["layer", "scope", "layers"]);
 const COUNT = { list: 1, path: 1, get: 2, set: 3, unset: 2 };
@@ -38,18 +38,20 @@ type Request = {
 	sub: keyof typeof COUNT;
 	key?: string;
 	input?: string;
-	target: ConfigSettings.Target;
+	target?: ConfigSettings.Target;
 	scope?: string;
 	layers: boolean;
 };
 
 const USAGE = [
-	"kabane config [list|get <key> [--layers]|set <key> <value>|unset <key>|path] [--layer user|scope|project] [--scope <scope>] [--json]",
+	"kabane config [list|get <key> [--layers]|set <key> <value>|unset <key>|path] [--layer global|local|shared] [--scope <scope>] [--json]",
 	"",
-	"A setting resolves lowest first: its default, your config (user), the project's",
-	".kabane/<namespace>.json (project), your settings for the project's scope (scope), then",
-	"a command's own flags. set and unset write the user layer unless --layer names another;",
-	"scope is the project here, or --scope. Device keys (sync, db, identities) are user only.",
+	"A setting resolves lowest first: its default; global, config.json, for every project;",
+	"shared, the project's checked-in .kabane/<namespace>.json; local, your settings for this",
+	"project on this device, kept under KABANE_HOME/projects/; then a command's own flags.",
+	"set and unset write local inside a project and global outside one, unless --layer names",
+	"another. Device keys (copilot, sync, db, timezone, ...) have the global layer only.",
+	"--scope reads another project's legacy scopes.<id> block in config.json.",
 	"get --layers prints every leaf under the key with the layer it came from.",
 ].join("\n");
 
@@ -92,21 +94,19 @@ const requestOf = (args: ParsedArgs): Result<Request, Outcome> => {
 	const misused = flagMisuse(args, sub);
 	if (misused !== undefined) return err(usage(misused, USAGE));
 	const scope = flagString(args, "scope");
-	// --scope alone names the layer a write goes to. A bare --layer names none, rather than
-	// falling back to user and changing the setting for every project.
+	// Without --layer the write's key and where it runs decide. A bare --layer names none, rather
+	// than falling back to a layer the human did not pick.
 	const target =
 		"layer" in args.flags
-			? (flagString(args, "layer") ?? "")
-			: scope === undefined
-				? "user"
-				: "scope";
-	if (!ConfigSettings.isTarget(target))
+			? ConfigSettings.targetOf(flagString(args, "layer") ?? "")
+			: undefined;
+	if ("layer" in args.flags && target === undefined)
 		return err(
 			usage(`--layer takes one of ${ConfigSettings.TARGETS.join(", ")}`, USAGE),
 		);
 	return ok({
 		sub,
-		target,
+		...(target === undefined ? {} : { target }),
 		layers: args.flags.layers === true,
 		...(key === undefined ? {} : { key }),
 		...(input === undefined ? {} : { input }),
@@ -176,9 +176,11 @@ export const config: Command = {
 		if (!changed.ok) return failure(changed.error);
 		for (const name of changed.value.ignored ?? [])
 			console.error(Extensions.ignoredWarning(name, ctx.home));
+		// Global is config.json, which `config path` names; another layer names its file.
+		const { layer, from, unset, stillSetIn } = changed.value;
 		return success(
 			changed.value,
-			`${key} = ${display(changed.value.value)}${target === "user" ? "" : ` (${target})`}`,
+			`${key} ${unset ? "unset" : `= ${display(changed.value.value)}`} (${layer === "global" ? layer : `${layer}: ${from}`})${stillSetIn === undefined ? "" : `; still set in ${stillSetIn}, which now decides`}`,
 		);
 	},
 };
