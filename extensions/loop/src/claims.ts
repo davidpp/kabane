@@ -655,7 +655,7 @@ export namespace Claims {
 		name: string,
 		plan: LoopPlan.Plan,
 	): Promise<Result<void>> => {
-		const prompt = Lenses.prompt(ctx.run.projectDir, name);
+		const prompt = Lenses.prompt(RunStore.projectRoot(ctx.run), name);
 		if (!prompt.ok) return prompt;
 		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;
 		const earlier = ctx.run.claims.filter((c) => c.lens === name);
@@ -731,7 +731,7 @@ export namespace Claims {
 		base: string,
 		plan: LoopPlan.Plan,
 	): Promise<Result<void>> => {
-		const prompt = Lenses.prompt(ctx.run.projectDir, name);
+		const prompt = Lenses.prompt(RunStore.projectRoot(ctx.run), name);
 		if (!prompt.ok) return prompt;
 		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;
 		const earlier = ctx.run.claims.filter((c) => c.recheck === name);

@@ -79,12 +79,12 @@ export namespace LoopDispatcher {
 					},
 				),
 			]);
-		const { projectDir, config } = prepared.value;
+		const { projectDir, projectRoot, config } = prepared.value;
 		const risks = await lintOf(deps.basePath, taskId, projectDir);
 		return ok([
 			trigger(
 				plan.value,
-				LoopSettings.inputs(config, Lenses.offered(projectDir)),
+				LoopSettings.inputs(config, Lenses.offered(projectRoot)),
 				{
 					preview: Briefing.preview(
 						prepared.value.plan,
