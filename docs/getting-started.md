@@ -287,8 +287,10 @@ available without a new size bound; its subtask rollup now includes all children
 
 Kabane writes nothing into your repo to find its scope. It remembers the scope it detected
 for each checkout under `~/.kabane`, so a checkout keeps its tasks when its remote is renamed.
-A clone made after the rename resolves by the new remote. To pin a scope in the repo itself,
-for example to check it in, run `kabane init --scope <id>` in it, which writes `.kabane/scope`.
+A clone made after the rename resolves by the new remote. To name a project's scope yourself,
+run `kabane init --scope <id>` in it: the pin is kept under `~/.kabane`, for you on this device,
+and still nothing lands in the repo. To pin it for everyone who clones the repo, add `--shared`,
+which writes `.kabane/scope` for you to check in. Your own pin wins over the repo's.
 
 Outside a repo, `list` and `search` span every scope. `kabane <command> --help` prints that
 command's flags, `kabane --help` lists the commands, and
