@@ -6,6 +6,7 @@
 // up and down for a number, on and off for a boolean. `j/k` walk the fields in the host's order,
 // `enter` fires the trigger with every value, and `esc` goes back to the picker with the trigger
 // still selected, one level per press like every other `esc` on the board.
+import { Grid } from "./grid";
 import type { BoardNav } from "./nav";
 import type { TriggerDescriptor, TriggerInput } from "./ports";
 
@@ -129,21 +130,13 @@ export namespace TriggerForm {
 		form: Form,
 		key: BoardNav.KeyInput,
 	): Step => {
+		const move = Grid.moveBy(key);
+		if (move !== undefined) return focus(state, form, form.field + move);
+		const by = Grid.stepBy(key);
+		if (by !== undefined) return change(state, form, by);
 		switch (key.name) {
 			case "escape":
 				return { state: withForm(state, undefined), effect: NOTHING };
-			case "j":
-			case "down":
-				return focus(state, form, form.field + 1);
-			case "k":
-			case "up":
-				return focus(state, form, form.field - 1);
-			case "l":
-			case "right":
-				return change(state, form, 1);
-			case "h":
-			case "left":
-				return change(state, form, -1);
 			case "return":
 			case "enter":
 				return fire(state, form);

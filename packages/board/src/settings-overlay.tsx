@@ -10,13 +10,15 @@ import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { StatusBar } from "./footer";
+import { Grid } from "./grid";
+import { GridRow } from "./grid-view";
 import { Keymap } from "./keymap";
-import { overlayBg, overlayRowStyle } from "./overlay";
+import { overlayBg } from "./overlay";
 import type { SettingLayer, SettingRow } from "./ports";
+import { Segments } from "./segments";
 import { SettingsView } from "./settings-view";
 import { useTheme } from "./theme";
 
-const LABEL_COLS = 24;
 // What a value keeps, at least, when the labels are long and the pane narrow.
 const VALUE_COLS = 8;
 // ` default`, the longest layer word, and the space before it.
@@ -29,64 +31,24 @@ const DETAIL_INDENT = GUTTER + 2;
 const HOW_TO_CHANGE =
 	"The copilot (A) changes settings too, and kabane config set adds a record's entries.";
 
-/** `text` in lines of at most `width` columns, broken at spaces, and inside a word too long. */
-const wrap = (text: string, width: number): string[] => {
-	if (width <= 0) return [];
-	const lines: string[] = [];
-	let line = "";
-	for (const word of text.split(" ")) {
-		let rest = word;
-		const joined = line === "" ? rest : `${line} ${rest}`;
-		if (joined.length <= width) {
-			line = joined;
-			continue;
-		}
-		if (line !== "") lines.push(line);
-		while (rest.length > width) {
-			lines.push(rest.slice(0, width));
-			rest = rest.slice(width);
-		}
-		line = rest;
-	}
-	if (line !== "") lines.push(line);
-	return lines;
-};
+/** `text` in rows of at most `width` columns, broken where `Segments.wrap` breaks a line. */
+const wrap = (text: string, width: number): string[] =>
+	width <= 0 || text === ""
+		? []
+		: Segments.wrap([{ text, fg: "" }], width).map(Segments.plain);
 
+/** `text` held to `cols`, cut with `…` where `Segments.fit` cuts it, and padded to them. */
 const clip = (text: string, cols: number): string =>
-	text.length <= cols
-		? text.padEnd(cols)
-		: cols <= 0
-			? ""
-			: `${text.slice(0, cols - 1)}…`;
+	Segments.plain(Segments.fit([{ text, fg: "" }], cols)).padEnd(
+		Math.max(0, cols),
+	);
 
 const markOf = (row: SettingRow): string =>
 	row.readOnly ? " read-only" : row.protected ? " protected" : "";
 
 // A title wherever the namespace or the group changes: the rows come ordered (SettingsView.ordered).
-type Line =
-	| { kind: "namespace"; title: string }
-	| { kind: "group"; title: string }
-	| { kind: "row"; index: number; row: SettingRow };
-
-const linesOf = (rows: readonly SettingRow[]): Line[] => {
-	const lines: Line[] = [];
-	let namespace: string | undefined;
-	let group: string | undefined;
-	rows.forEach((row, index) => {
-		const ns = SettingsView.namespaceOf(row);
-		if (ns !== namespace) {
-			lines.push({ kind: "namespace", title: ns });
-			namespace = ns;
-			group = undefined;
-		}
-		if (row.group !== group) {
-			lines.push({ kind: "group", title: row.group });
-			group = row.group;
-		}
-		lines.push({ kind: "row", index, row });
-	});
-	return lines;
-};
+const linesOf = (rows: readonly SettingRow[]): Grid.Line<SettingRow>[] =>
+	Grid.sections(rows, [SettingsView.namespaceOf, (row) => row.group]);
 
 const rowId = (index: number): string => `setting-${index}`;
 
@@ -112,7 +74,6 @@ const Row = ({
 	onClick?: () => void;
 }): ReactNode => {
 	const theme = useTheme();
-	const style = overlayRowStyle(selected, theme);
 	const mark = markOf(row);
 	const valueCols = Math.max(0, inner - GUTTER - labelCols - BADGE_COLS);
 	const value = clip(
@@ -122,9 +83,13 @@ const Row = ({
 	const unset = row.value === null || row.value === undefined;
 	return (
 		<box id={rowId(index)} style={{ flexDirection: "column" }}>
-			<text bg={style.bg} fg={theme.secondary} onMouseDown={onClick}>
-				<span fg={theme.accent}>{selected ? "  › " : "    "}</span>
-				{clip(row.label, labelCols - 1)}{" "}
+			<GridRow
+				selected={selected}
+				indent={GUTTER - 2}
+				label={row.label}
+				labelCols={labelCols}
+				onClick={onClick}
+			>
 				<span fg={unset ? theme.muted : theme.text}>{value}</span>
 				<span fg={theme.faint}>{mark.slice(0, valueCols)}</span>
 				<span
@@ -133,7 +98,7 @@ const Row = ({
 				>
 					{row.layer.padStart(BADGE_COLS)}
 				</span>
-			</text>
+			</GridRow>
 			{selected && detail ? (
 				<Lines
 					lines={SettingsView.detail(row)}
@@ -328,14 +293,10 @@ export const SettingsOverlay = ({
 	const listCols = Math.max(0, inner - 2);
 	const rows = view.rows.type === "ready" ? view.rows.rows : [];
 	const hints = Keymap.footer("settings", SettingsView.situation(view));
-	// As wide as the longest label needs, up to LABEL_COLS, leaving the values their room.
-	const labelCols = Math.max(
-		0,
-		Math.min(
-			LABEL_COLS,
-			Math.max(0, ...rows.map((row) => row.label.length)) + 2,
-			listCols - GUTTER - VALUE_COLS - BADGE_COLS,
-		),
+	const labelCols = Grid.labelCols(
+		rows.map((row) => row.label),
+		listCols,
+		GUTTER + VALUE_COLS + BADGE_COLS,
 	);
 	const { selected, detail, edit, said } = view;
 	// The row in hand stays on screen, its detail and its editor with it.
@@ -375,15 +336,15 @@ export const SettingsOverlay = ({
 						<Message view={view} inner={listCols} />
 					) : (
 						linesOf(rows).map((line, at) =>
-							line.kind === "row" ? (
+							line.kind === "item" ? (
 								<Row
-									key={line.row.key}
-									row={line.row}
+									key={line.item.key}
+									row={line.item}
 									index={line.index}
 									selected={line.index === selected}
 									detail={detail}
-									edit={edit?.key === line.row.key ? edit : undefined}
-									said={said?.key === line.row.key ? said : undefined}
+									edit={edit?.key === line.item.key ? edit : undefined}
+									said={said?.key === line.item.key ? said : undefined}
 									inner={listCols}
 									labelCols={labelCols}
 									{...(onRow ? { onClick: () => onRow(line.index) } : {})}
@@ -391,17 +352,17 @@ export const SettingsOverlay = ({
 							) : (
 								<box
 									// Keyed by place: a group's name repeats across namespaces.
-									key={`${line.kind}${at}`}
+									key={`${line.depth}${at}`}
 									style={{
-										marginTop: line.kind === "namespace" && at > 0 ? 1 : 0,
+										marginTop: line.depth === 0 && at > 0 ? 1 : 0,
 									}}
 								>
 									<text
 										bg={bg}
-										fg={line.kind === "namespace" ? theme.text : theme.muted}
+										fg={line.depth === 0 ? theme.text : theme.muted}
 										attributes={TextAttributes.BOLD}
 									>
-										{line.kind === "group" ? "  " : ""}
+										{"  ".repeat(line.depth)}
 										{line.title}
 									</text>
 								</box>

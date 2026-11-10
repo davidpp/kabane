@@ -10,14 +10,11 @@
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import { type ReactNode, useEffect, useRef } from "react";
+import { Grid } from "./grid";
+import { GridRow } from "./grid-view";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
-import {
-	DispatchOverlay,
-	HintRow,
-	overlayBg,
-	overlayRowStyle,
-} from "./overlay";
+import { DispatchOverlay, HintRow, overlayBg } from "./overlay";
 import type { PanelLine, PanelTone } from "./ports";
 import { Segments } from "./segments";
 import { type Theme, useTheme } from "./theme";
@@ -28,7 +25,6 @@ const HINTS = Keymap.footer("dispatchForm");
 // The settings column beside the preview: label, value and the change mark, fixed so the preview
 // gets every other column. Below this width the two stack.
 const SETTINGS_COLS = 46;
-const LABEL_COLS = 24;
 // What a value keeps, at least, when the labels are long and the pane narrow.
 const VALUE_COLS = 10;
 const SIDE_BY_SIDE = 100;
@@ -56,26 +52,24 @@ type Row =
  * The inputs as rows, in the host's order, with a section wherever the group changes: a title only
  * spans consecutive inputs, so a group the host lists twice is titled twice.
  */
-const formRows = (form: TriggerForm.Form): Row[] => {
-	const rows: Row[] = [];
-	let group: string | undefined;
-	Object.entries(form.trigger.inputs).forEach(([name, input], index) => {
-		if (index === 0 ? input.group !== undefined : input.group !== group)
-			rows.push({
+const formRows = (form: TriggerForm.Form): Row[] =>
+	Grid.sections(Object.entries(form.trigger.inputs), [
+		([, input]) => input.group,
+	]).map((line): Row => {
+		if (line.kind === "title")
+			return {
 				kind: "group",
-				...(input.group === undefined ? {} : { title: input.group }),
-			});
-		group = input.group;
-		rows.push({
+				...(line.title === undefined ? {} : { title: line.title }),
+			};
+		const [name, input] = line.item;
+		return {
 			kind: "field",
-			index,
+			index: line.index,
 			label: input.label ?? name,
 			value: shown(form.values[name]),
 			changed: TriggerForm.changed(form, name),
-		});
+		};
 	});
-	return rows;
-};
 
 /** The rows' height: a field or a title is one row, and every section but the first a gap above. */
 const rowsHeight = (rows: readonly Row[]): number =>
@@ -129,22 +123,17 @@ const Field = ({
 	onClick?: () => void;
 }): ReactNode => {
 	const theme = useTheme();
-	const style = overlayRowStyle(focused, theme);
 	const valueCols = Math.max(0, cols - labelCols - 4);
 	const value = focused ? `‹ ${row.value} ›` : `  ${row.value}`;
-	const label =
-		row.label.length < labelCols
-			? row.label
-			: `${row.label.slice(0, Math.max(0, labelCols - 2))}…`;
 	return (
-		<text
+		<GridRow
 			id={fieldId(row.index)}
-			bg={style.bg}
-			fg={theme.secondary}
-			onMouseDown={onClick}
+			selected={focused}
+			indent={0}
+			label={row.label}
+			labelCols={labelCols}
+			onClick={onClick}
 		>
-			<span fg={theme.accent}>{focused ? "› " : "  "}</span>
-			{label.padEnd(labelCols)}
 			<span
 				fg={row.changed || focused ? theme.text : theme.muted}
 				attributes={row.changed ? TextAttributes.BOLD : 0}
@@ -152,7 +141,7 @@ const Field = ({
 				{value.slice(0, valueCols).padEnd(valueCols)}
 			</span>
 			<span fg={theme.text}>{row.changed ? " •" : "  "}</span>
-		</text>
+		</GridRow>
 	);
 };
 
@@ -169,14 +158,10 @@ const Settings = ({
 }): ReactNode => {
 	const theme = useTheme();
 	const bg = overlayBg(theme);
-	// As wide as the longest label needs, up to LABEL_COLS, leaving the values their room.
-	const longest = Math.max(
-		0,
-		...rows.map((row) => (row.kind === "field" ? row.label.length : 0)),
-	);
-	const labelCols = Math.max(
-		0,
-		Math.min(LABEL_COLS, longest + 2, cols - VALUE_COLS - 4),
+	const labelCols = Grid.labelCols(
+		rows.flatMap((row) => (row.kind === "field" ? [row.label] : [])),
+		cols,
+		VALUE_COLS + 4,
 	);
 	return (
 		<>

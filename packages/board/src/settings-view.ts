@@ -6,6 +6,7 @@
 // the view is generated from them: a namespace an extension declares appears with no code here. A
 // change is saved through the same port, to the layer the editor picks, and the rows are read again.
 import { FormField } from "./form-field";
+import { Grid } from "./grid";
 import type { BoardNav } from "./nav";
 import type {
 	SettingChange,
@@ -296,14 +297,6 @@ export namespace SettingsView {
 	export const isKey = (key: BoardNav.KeyInput): boolean =>
 		!key.ctrl && !key.meta && (key.name === "," || key.sequence === ",");
 
-	/** `l`/`right` one step on, `h`/`left` one back; undefined for any other key. */
-	const stepBy = (key: BoardNav.KeyInput): 1 | -1 | undefined =>
-		key.name === "l" || key.name === "right"
-			? 1
-			: key.name === "h" || key.name === "left"
-				? -1
-				: undefined;
-
 	const isHelpKey = (key: BoardNav.KeyInput): boolean =>
 		!key.ctrl && !key.meta && (key.name === "?" || key.sequence === "?");
 
@@ -344,7 +337,7 @@ export namespace SettingsView {
 			return { state: { ...state, help: true }, effect: NOTHING };
 		// What the last save said stays until the next key.
 		const { said: _said, ...quiet } = view;
-		const by = stepBy(key);
+		const by = Grid.stepBy(key);
 		if (by !== undefined)
 			return row && steps(row)
 				? startEdit(state, quiet, row, {
@@ -352,13 +345,9 @@ export namespace SettingsView {
 						value: TriggerForm.step(stepsOf(row), current(row), by),
 					})
 				: { state, effect: NOTHING };
+		const move = Grid.moveBy(key);
+		if (move !== undefined) return select(state, quiet, view.selected + move);
 		switch (key.name) {
-			case "j":
-			case "down":
-				return select(state, quiet, view.selected + 1);
-			case "k":
-			case "up":
-				return select(state, quiet, view.selected - 1);
 			case "return":
 			case "enter":
 				return enter(state, quiet, row);
@@ -472,7 +461,7 @@ export namespace SettingsView {
 				? undefined
 				: { type: "type", text: change.text + char };
 		}
-		const by = stepBy(key);
+		const by = Grid.stepBy(key);
 		return change.type === "step" && by !== undefined
 			? {
 					type: "step",
