@@ -327,6 +327,35 @@ it("writes a project's local layer by default over stdio, and names layers the n
 		).toMatchObject({
 			leaves: { "loop.stallAfter": { value: 7, layer: "local", from: local } },
 		});
+		// A write under the layer that decides is saved, and says it changes nothing yet.
+		const shadowed = await text("kabane_configSet", {
+			key: "loop.stallAfter",
+			value: "3",
+			layer: "global",
+		});
+		expect(shadowed).toMatchObject({
+			layer: "global",
+			value: 3,
+			shadowedBy: { layer: "local", from: local, value: 7 },
+		});
+		expect(shadowed.note).toContain(`the local layer (${local}) still decides`);
+		expect(
+			await text("kabane_configGet", { key: "loop.stallAfter", layers: true }),
+		).toMatchObject({
+			leaves: {
+				"loop.stallAfter": {
+					hides: [
+						{ layer: "global", from: join(home, "config.json"), value: 3 },
+					],
+				},
+			},
+		});
+		expect(
+			await text("kabane_configSet", { key: "loop.stallAfter", unset: true }),
+		).toMatchObject({
+			unset: true,
+			fallsBackTo: { layer: "global", value: 3 },
+		});
 	} finally {
 		await client.close();
 		rmSync(root, { recursive: true, force: true });

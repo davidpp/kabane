@@ -90,7 +90,7 @@ export namespace ConfigLayers {
 	};
 
 	/** `config.json`'s per-scope block for `scopeId`, refused when it is not an object of objects. */
-	export const scopeBlock = (
+	const scopeBlock = (
 		home: string,
 		stored: Record<string, unknown>,
 		scopeId: string,

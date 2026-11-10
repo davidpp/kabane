@@ -461,6 +461,72 @@ describe.concurrent("config through the real CLI", () => {
 	);
 
 	it(
+		"says when a higher layer still decides a write, what a leaf hides, and what an unset falls back to",
+		withHome(async ({ home, path, write, inRepo }) => {
+			write(initial);
+			const root = realpathSync(join(home, "..", "repo"));
+			const shared = join(root, ".kabane", "loop.json");
+			const local = join(ProjectDirs.of(home, root), "loop.json");
+			const out = async (...args: string[]) => {
+				const result = await inRepo(...args);
+				expect(result.err).toBe("");
+				expect(result.code).toBe(0);
+				return result.out;
+			};
+			await out("config", "set", "loop.stallAfter", "2", "--layer", "shared");
+			expect(
+				await out("config", "set", "loop.stallAfter", "7", "--layer", "global"),
+			).toBe(
+				`loop.stallAfter = 7 (global); here ${shared} (shared) still decides: 2. Without --layer, a write here goes to local and overrides it.`,
+			);
+			expect(await out("config", "set", "loop.stallAfter", "9")).toBe(
+				`loop.stallAfter = 9 (local: ${local})`,
+			);
+			const shadowed = JSON.parse(
+				await out(
+					"config",
+					"set",
+					"loop.stallAfter",
+					"4",
+					"--layer",
+					"shared",
+					"--json",
+				),
+			);
+			expect(shadowed).toEqual({
+				key: "loop.stallAfter",
+				layer: "shared",
+				from: shared,
+				value: 4,
+				shadowedBy: { layer: "local", from: local, value: 9 },
+			});
+			expect(await out("config", "get", "loop.stallAfter", "--layers")).toBe(
+				[
+					`9 (local: ${local})`,
+					`  hides 4 (shared: ${shared})`,
+					`  hides 7 (global: ${path()})`,
+				].join("\n"),
+			);
+			expect(
+				JSON.parse(
+					await out("config", "get", "loop.stallAfter", "--layers", "--json"),
+				).leaves["loop.stallAfter"].hides,
+			).toEqual([
+				{ layer: "global", from: path(), value: 7 },
+				{ layer: "shared", from: shared, value: 4 },
+			]);
+			expect(await out("config", "unset", "loop.stallAfter")).toBe(
+				`loop.stallAfter unset (local: ${local}); ${shared} (shared) now decides: 4`,
+			);
+			// A device key has the global layer only: nothing above it to decide.
+			expect(await out("config", "set", "timezone", "UTC")).toBe(
+				"timezone = UTC (global)",
+			);
+		}),
+		30_000,
+	);
+
+	it(
 		"resolves settings through the global, shared and local layers and names each value's layer",
 		withHome(async ({ home, path, read, write, run, repo, inRepo, runAt }) => {
 			write(initial);
@@ -520,7 +586,9 @@ describe.concurrent("config through the real CLI", () => {
 			});
 			expect(
 				(await inRepo("config", "get", "loop.gates.test", "--layers")).out,
-			).toBe(`bun test (local: ${local})`);
+			).toBe(
+				`bun test (local: ${local})\n  hides npm test (shared: ${join(root, ".kabane", "loop.json")})`,
+			);
 			const rows: { key: string; value: unknown; layer: string }[] = await json(
 				"config",
 				"list",
@@ -608,7 +676,7 @@ describe.concurrent("config through the real CLI", () => {
 			expect(read()).toBe(before);
 			const unset = await inRepo("config", "unset", "loop.model");
 			expect(unset.out).toBe(
-				`loop.model unset (local: ${local}); still set in ${legacy}, which now decides`,
+				`loop.model unset (local: ${local}); ${legacy} (local) now decides: haiku`,
 			);
 			expect(await json("config", "get", "loop.model")).toBe("haiku");
 			expect(read()).toBe(before);

@@ -220,17 +220,30 @@ const topOrigin = (entry: Key, view: View): Settings.Origin =>
 		{ layer: "default" },
 	);
 
-/** What `get` says of one leaf: its value and the layer it came from. */
-type Leaf = { value: unknown; layer: Settings.Layer; from?: string };
+/** A value a layer holds, and the file (or `scopes` block) it is in. */
+type Held = { layer: Settings.Layer; from: string; value: unknown };
+
+/** What `get` says of one leaf: its value, the layer it came from, and what the layers under it say. */
+type Leaf = {
+	value: unknown;
+	layer: Settings.Layer;
+	from?: string;
+	hides: Held[];
+};
 
 const leavesOf = (entry: Key, view: View): Record<string, Leaf> =>
 	Object.fromEntries(
-		leavesUnder(entry, view).map(({ path, origin }) => {
+		leavesUnder(entry, view).map(({ path, origin, hides }) => {
 			const key = secretOf(dotted(entry, path)) ?? dotted(entry, path);
 			const leaf: Leaf = {
 				value: redact(key, valueAt(view.value, path)) ?? null,
 				layer: origin.layer,
 				...(origin.label === undefined ? {} : { from: origin.label }),
+				hides: hides.map(({ layer, label, value }) => ({
+					layer,
+					from: label,
+					value: redact(key, value),
+				})),
 			};
 			return [key, leaf];
 		}),
@@ -277,8 +290,10 @@ type ConfigChange = {
 	from: string;
 	value?: unknown;
 	unset?: true;
-	/** After a local unset, the legacy `scopes` block that still sets the key. */
-	stillSetIn?: string;
+	/** A layer above the one written that still sets the key, so the write changed nothing. */
+	shadowedBy?: Held;
+	/** After an unset, the layer at or under the one written that now decides, if not the default. */
+	fallsBackTo?: Held;
 	/** Extension names saved that this build does not ship. */
 	ignored?: string[];
 };
@@ -364,28 +379,37 @@ const documentFor = (
 	);
 };
 
-/** The legacy `scopes` block that still sets `entry` once it is unset from the local file. */
-const legacyHolding = (
-	home: string,
-	stored: Record<string, unknown>,
-	entry: Key,
-	where: ConfigSettings.Where,
-): string | undefined => {
-	if (entry.namespace === undefined || where.scopeId === undefined)
-		return undefined;
-	const block = ConfigLayers.scopeBlock(home, stored, where.scopeId);
-	if (!block.ok) return undefined;
-	const held = valueAt(block.value?.[entry.namespace.name], entry.path);
-	return held === undefined || held === null
-		? undefined
-		: ConfigLayers.scopeLabel(home, where.scopeId);
-};
-
 /** Where a write goes: the home, the project and scope it is made in, and the layer it targets. */
 type WriteAt = {
 	home: string;
 	where: ConfigSettings.Where;
 	layer: ConfigSettings.Target;
+};
+
+/**
+ * Who decides `entry` once a write to `layer` (stored in `label`) is saved: a higher layer that
+ * still sets it, or, the write being an unset, the stored layer it falls back to. The caller's
+ * layer is never stored, so a write never counts it.
+ */
+const deciding = (
+	{ home, where, layer }: WriteAt,
+	stored: Record<string, unknown>,
+	entry: Key,
+	label: string,
+): Pick<ConfigChange, "shadowedBy" | "fallsBackTo"> => {
+	// The write is saved by now; a layer another key makes invalid is for the next read to name.
+	const view = viewOf(home, stored, entry.namespace, where);
+	if (!view.ok) return {};
+	const origin = topOrigin(entry, view.value);
+	if (origin.layer === "default" || origin.label === undefined) return {};
+	const held: Held = {
+		layer: origin.layer,
+		from: origin.label,
+		value: redact(entry.key, valueAt(view.value.value, entry.path)),
+	};
+	if (RANK.indexOf(origin.layer) > RANK.indexOf(layer))
+		return { shadowedBy: held };
+	return origin.label === label ? {} : { fallsBackTo: held };
 };
 
 const writeSetting = (
@@ -436,22 +460,23 @@ const writeSetting = (
 		const saved = save();
 		if (!saved.ok) return saved;
 	}
-	if (input === undefined) {
-		const still =
-			layer === "local" ? legacyHolding(home, stored, entry, where) : undefined;
+	const decides = deciding({ home, where, layer }, stored, entry, label);
+	if (input === undefined)
 		return ok({
 			key: entry.key,
 			layer,
 			from: label,
 			unset: true,
-			...(still === undefined ? {} : { stillSetIn: still }),
+			...decides,
 		});
-	}
 	const change = {
 		key: entry.key,
 		layer,
 		from: label,
 		value: redact(entry.key, parsed.value),
+		...(decides.shadowedBy === undefined
+			? {}
+			: { shadowedBy: decides.shadowedBy }),
 	};
 	// Saved anyway, since a newer kabane may ship the name, but it loads nothing here.
 	const ignored =
