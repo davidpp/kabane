@@ -11,7 +11,7 @@ decisions still open are asked on JCAB-168, and the slices are filed as its chil
    - A write can silently do nothing. `kabane config set loop.stallAfter 7` reports success
      while `.kabane/loop.json` keeps the effective value at 2.
    - Custom lenses can only live in the repo (kept that way: they are files in its dispatch skill, JCAB-174).
-   - The scope pin can only live in the repo.
+   - The scope pin can only live in the repo (JCAB-175 adds a local pin).
 2. **The precedence order should not change.** Every tool compared below puts the project file
    above the user's global settings, so a team's checked-in gate is not beaten by a default the
    user meant for other projects. "The project file is the fallback" already holds for the
@@ -110,7 +110,7 @@ The surfaces that touch it:
 | Path | What | Written by |
 | --- | --- | --- |
 | `.kabane/` (the directory itself) | marks a project root ahead of git's toplevel (`packages/core/scope/detect.ts:105`), so a monorepo package can track its own issues | anything that writes below |
-| `.kabane/scope` | the pin, first in the scope cascade (`detect.ts:26`, `:185`) | only `kabane init --scope` (`packages/cli/src/config.ts:251`) |
+| `.kabane/scope` | the shared pin, in the scope cascade after your own pin in `KABANE_HOME/projects/<slug>/scope` (`detect.ts`, `resolveScopeId`) | only `kabane init --scope --shared` (`packages/cli/src/config.ts`, `writeDirectoryScope`) |
 | Jake's project pin | the legacy pin, read and never stored (`packages/cli/src/context.ts:124`) | Jake |
 | `.kabane/loop.json` | the loop's shared layer (`ConfigLayers.sharedFile`) | `config set --layer shared`, by hand |
 | `.claude/skills/dispatch/references/lenses/<name>.md` | a custom lens, or the replacement for a shipped one, in the project's dispatch skill (`extensions/loop/src/lenses.ts`, JCAB-174); `.kabane/loop/lenses/<name>.md` is still read after it, for lenses written before | `/setup-dispatch`, by hand |
@@ -207,7 +207,11 @@ was also used for "stored in your home". The three layers are named for whom the
   `references/lenses/<name>.md` in the project's dispatch skill, read by the loop and by the
   skill's own close review alike (JCAB-174). Per-project choice exists, because `loop.lenses`
   at `--layer local` selects which lenses run there.
-- **The pin:** JCAB-175 moves it into the same `projects/<slug>/` directory.
+- **The pin:** `kabane init --scope` writes it to the same `projects/<slug>/` directory
+  (JCAB-175), and `--shared` writes `.kabane/scope` as before. The local pin comes first in the
+  cascade: local beats shared, read from "a local setting wins over a shared one" rather than
+  answered by David. A `.kabane/scope` already in a repo keeps working and is never moved.
+  Marking a project root below the git toplevel still takes a `.kabane/` directory in the repo.
 - **Not synced.** A synced per-scope layer, if one is ever wanted, is a separate layer.
 - **Device keys** stay global only (`copilot.command` and `.args` launch a process, which is
   what Codex and VS Code refuse from a checked-in file). A local layer for some of them is
@@ -277,6 +281,6 @@ Two things to take from it:
 
 Order: 2 blocks 3, 3 blocks 4, and 4 blocks 5. Slice 1 blocks 4 and 5. Slice 6 stands alone.
 
-Someday: a user-level scope pin (JCAB-175); a scope layer for `copilot.*` and `harness.mode`
+Someday: a scope layer for `copilot.*` and `harness.mode`
 (JCAB-176); `kabane config move` between layers (JCAB-177); adding and removing record entries
 (gates) in the editor (JCAB-178).

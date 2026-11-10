@@ -15,6 +15,7 @@ import { join } from "node:path";
 import {
 	detectScope,
 	findProjectRoot,
+	localPinPath,
 	mainCheckoutRoot,
 	normalizeGitUrl,
 	ProjectDirs,
@@ -40,6 +41,12 @@ const dir = (...segments: string[]): string => {
 const pin = (root: string, scope: string): void => {
 	mkdirSync(join(root, ".kabane"), { recursive: true });
 	writeFileSync(join(root, SCOPE_FILE), `${scope}\n`);
+};
+
+/** What `kabane init --scope` writes: the pin under KABANE_HOME, keyed by the checkout's path. */
+const localPin = (root: string, scope: string): void => {
+	mkdirSync(ProjectDirs.of(home, root), { recursive: true });
+	writeFileSync(join(ProjectDirs.of(home, root), "scope"), `${scope}\n`);
 };
 
 const gitInit = async (
@@ -192,6 +199,48 @@ describe("resolveScopeId", () => {
 		pin(root, "cabane");
 
 		expect(await resolveScopeId(root, { home })).toBe("cabane");
+	});
+
+	it("prefers your own pin over the repo's pin and the remote", async () => {
+		const root = dir("repo");
+		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		localPin(root, "mine");
+
+		expect(await resolveScopeId(root, { home })).toBe("mine");
+		expect(untracked(root)).toBe("");
+		pin(root, "team");
+		expect(await resolveScopeId(root, { home })).toBe("mine");
+		rmSync(await localPinPath(home, root));
+		expect(await resolveScopeId(root, { home })).toBe("team");
+	});
+
+	it("lets a remote replace a git: local pin, as it does a git: shared pin", async () => {
+		const root = dir("repo");
+		await gitInit(root);
+		localPin(root, await resolveScopeId(root, { home }));
+		git(root, ["remote", "add", "origin", "git@github.com:davidpp/cabane.git"]);
+
+		expect(await resolveScopeId(root, { home })).toBe(
+			"github.com/davidpp/cabane",
+		);
+	});
+
+	it("reads the main checkout's local pin from a linked worktree", async () => {
+		const root = dir("main");
+		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		mkdirSync(join(root, "packages", "app", ".kabane"), { recursive: true });
+		writeFileSync(join(root, "packages", "app", ".kabane", ".keep"), "");
+		git(root, ["add", "."]);
+		git(root, ["commit", "-qm", "marker"]);
+		const tree = join(workspace, "main.feature");
+		git(root, ["worktree", "add", "-q", "-b", "feat", tree]);
+		localPin(root, "mine");
+		localPin(join(root, "packages", "app"), "app");
+
+		expect((await detectScope(tree, { home }))?.scopeId).toBe("mine");
+		const marked = await detectScope(join(tree, "packages", "app"), { home });
+		expect(marked?.root).toBe(join(tree, "packages", "app"));
+		expect(marked?.scopeId).toBe("app");
 	});
 
 	// The repo may be a client's or an employer's checkout: detection keeps what

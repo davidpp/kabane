@@ -288,6 +288,7 @@ describe("kabane cli", () => {
 				"s3cret",
 				"--scope",
 				"cabane",
+				"--shared",
 				"--json",
 			);
 			expect(r.code).toBe(0);

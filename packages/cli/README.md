@@ -12,7 +12,7 @@ kabane              # first run: the setup screen, then the board
 Bare `kabane` in a terminal opens the board. On a device with no
 `config.json` it first shows a setup screen: your name (the actor slug,
 `cabane://actor/human/<name>`), the device id, the detected coding harnesses
-to register `kabane mcp` in, and, inside a git repo, whether to pin its scope.
+to register `kabane mcp` in.
 It writes the same config `kabane init` would, local SQLite and no sync, and
 never replaces one that exists. Piped or run by an agent, bare `kabane` prints
 help as before. The flag form stays for scripts and for sync:
@@ -199,25 +199,31 @@ CLI does, from the working directory, so `list`, `search`, `add`, `board` and
 package below it, or in a worktree. The cascade, highest first:
 
 1. `--scope <uri>`
-2. `.kabane/scope` — the nearest one walking up (one line, e.g. `myapp`);
-   only `kabane init --scope <uri>` writes it, into the working directory
-3. `.jake/config.json` → `project.id` — a device sharing a Jake database has to
+2. your own pin, `KABANE_HOME/projects/<slug>/scope` (one line, e.g. `myapp`),
+   keyed by the project root's path, the main checkout's for a worktree; only
+   `kabane init --scope <uri>` writes it, for the project the working directory
+   is in
+3. `.kabane/scope` — the repo's shared pin, the nearest one walking up; only
+   `kabane init --scope <uri> --shared` writes it, into the working directory
+4. `.jake/config.json` → `project.id` — a device sharing a Jake database has to
    honour the id Jake already filed tasks under
-4. the id detection stored for this checkout in `KABANE_HOME/detected-scopes/`,
+5. the id detection stored for this checkout in `KABANE_HOME/detected-scopes/`,
    keyed by its root path and holding only while the repo there has the same
    first commit
-5. the git remote, normalized to `host/owner/repo` (`origin`, else the first
-   remote listed), and stored for step 4, so a checkout keeps its scope when
+6. the git remote, normalized to `host/owner/repo` (`origin`, else the first
+   remote listed), and stored for step 5, so a checkout keeps its scope when
    its remote is renamed; a fork or another clone resolves by its own remote
-6. the first commit, as `git:<hash12>` — replaced by a real remote id if one
+7. the first commit, as `git:<hash12>` — replaced by a real remote id if one
    appears later, never the reverse
-7. the project root path
+8. the project root path
 
 Detection writes nothing into the repo, which may be a checkout you don't own.
-A `.kabane/scope` an earlier kabane's detection left behind is still read and
-never rewritten; a `git:` id in it still gives way to the remote. On a device
+A `.kabane/scope` an earlier kabane wrote is still read, and never moved or
+rewritten; a `git:` id in either pin still gives way to the remote. Your own pin
+wins over the repo's, as a local setting wins over a shared one. On a device
 that already has a config, `kabane init --scope <uri>` on its own writes only
-the pin.
+the pin. Outside a project there is nothing to key your own pin by, so
+`init --scope` refuses there unless `--shared` marks the directory.
 
 Outside a project there is no scope and a query spans all of them. Bare ids
 normalize to `jake://scope/<id>`; a detected scope also carries `branch` and
@@ -234,7 +240,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 
 | Command | Flags |
 |---|---|
-| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--db-path <file>` `--table-prefix <prefix>` (open another database, e.g. Jake's `~/.jake/jake.db` with `planner_`) `--scope <uri>` (writes `./.kabane/scope`; alone on a configured device, writes only that) `--force` |
+| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--db-path <file>` `--table-prefix <prefix>` (open another database, e.g. Jake's `~/.jake/jake.db` with `planner_`) `--scope <uri>` (writes your own pin for the project under `KABANE_HOME/projects/<slug>/`; alone on a configured device, writes only that) `--shared` (with `--scope`, writes `./.kabane/scope` in the repo instead) `--force` |
 | `config [list\|get <key>\|set <key> <value>\|unset <key>\|path]` | `--json` — inspect or edit device config without opening the database |
 | `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD\|<ISO time>` (a date is due by the end of that day in your timezone; a time without `Z` or an offset is your local time) `--format concise\|full` |
 | `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` `--format concise\|full` `--cursor <cursor>` |
@@ -337,7 +343,7 @@ so the command prints nothing of its own.
 index.ts            bin shim
 src/main.ts         command table, help, exit codes
 src/args.ts         pure argv parser
-src/config.ts       KABANE_HOME, config.json, the scope pin file
+src/config.ts       KABANE_HOME, config.json, the scope pins
 src/context.ts      Runtime.configure + Planner.init, the Ctx commands receive, scope resolution
 src/output.ts       --json vs human rendering, icons
 src/first-run.ts    bare `kabane` in a terminal: the setup screen's deps, then the board
