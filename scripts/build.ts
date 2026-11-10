@@ -138,6 +138,14 @@ const bundle = async (): Promise<void> => {
 		fail("bun build failed");
 	}
 	checkExtensionsCarried(Object.keys(result.metafile?.inputs ?? {}));
+	plainHashbang(join(DIST, "bin/kabane.js"));
+};
+
+// The bundle keeps the source entry's hashbang, whose define needs `env -S`, which some systems'
+// env lacks. The bundle has NODE_ENV defined already, so it gets the plain one.
+const plainHashbang = (file: string): void => {
+	const text = readFileSync(file, "utf8");
+	writeFileSync(file, text.replace(/^#!.*\n/, "#!/usr/bin/env bun\n"));
 };
 
 /**
