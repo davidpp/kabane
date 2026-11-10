@@ -9,7 +9,12 @@ import {
 } from "@cabane/questions";
 import type { BoardData } from "../data";
 import type { BoardNav } from "../nav";
-import type { ActivityCard, CopilotElicitation } from "../ports";
+import type {
+	ActivityCard,
+	CopilotElicitation,
+	SettingKind,
+	SettingRow,
+} from "../ports";
 import type { BoardTabs } from "../tabs";
 
 export namespace Fixtures {
@@ -280,4 +285,196 @@ export namespace Fixtures {
 		agent: "claude",
 		askedAt: `2026-10-10T00:0${n}:00.000Z`,
 	});
+
+	const setting = (
+		key: string,
+		kind: SettingKind,
+		over: Partial<SettingRow> & Pick<SettingRow, "label" | "group">,
+	): SettingRow => {
+		const [head = "", ...rest] = key.split(".");
+		const namespace = over.namespace;
+		return {
+			key,
+			value: null,
+			layer: "default",
+			hides: [],
+			field: {
+				optional: true,
+				...kind,
+				path: namespace === undefined ? [head, ...rest] : rest,
+			},
+			description: "",
+			layers:
+				namespace === undefined ? ["global"] : ["global", "shared", "local"],
+			target: namespace === undefined ? "global" : "local",
+			secret: false,
+			restart: namespace === undefined ? "start" : "resolve",
+			readOnly: false,
+			protected: false,
+			...over,
+		};
+	};
+
+	const HOME = "/Users/ada/.kabane";
+	const LOCAL = `${HOME}/projects/-Users-ada-acme-widget-8380ae31/loop.json`;
+	const SHARED = "/Users/ada/acme/widget/.kabane/loop.json";
+
+	/**
+	 * `kabane config list --json` in acme/widget: the device's keys, then the loop's, the test gate
+	 * set in the repo and again, for this project only, locally.
+	 */
+	export const SETTINGS: readonly SettingRow[] = [
+		setting(
+			"actor",
+			{ kind: "string" },
+			{
+				label: "actor",
+				group: "Identity",
+				value: "cabane://actor/human/ada",
+				layer: "global",
+				from: `${HOME}/config.json`,
+				readOnly: true,
+				description: "Who this device's writes are stamped with.",
+			},
+		),
+		setting("sync", { kind: "group" }, { label: "sync", group: "Sync" }),
+		setting(
+			"sync.enabled",
+			{ kind: "boolean" },
+			{
+				label: "sync on",
+				group: "Sync",
+				value: true,
+				layer: "global",
+				from: `${HOME}/config.json`,
+				protected: true,
+			},
+		),
+		setting(
+			"sync.token",
+			{ kind: "string" },
+			{
+				label: "hub token",
+				group: "Sync",
+				value: "<set>",
+				layer: "global",
+				from: `${HOME}/config.json`,
+				secret: true,
+				protected: true,
+			},
+		),
+		setting(
+			"copilot.harness",
+			{ kind: "enum", values: ["claude", "codex"] },
+			{
+				label: "harness",
+				group: "Copilot",
+				options: ["claude", "codex"],
+				none: "claude",
+			},
+		),
+		setting(
+			"timezone",
+			{ kind: "string" },
+			{
+				label: "timezone",
+				group: "Board",
+				value: "America/Toronto",
+				layer: "global",
+				from: `${HOME}/config.json`,
+			},
+		),
+		setting(
+			"loop.implementer",
+			{ kind: "string" },
+			{
+				namespace: "loop",
+				label: "implementer",
+				group: "Agents",
+				value: "claude",
+			},
+		),
+		setting(
+			"loop.budget.continuations",
+			{ kind: "number", integer: true },
+			{
+				namespace: "loop",
+				label: "continuations",
+				group: "Limits",
+				value: 5,
+				layer: "global",
+				from: `${HOME}/config.json`,
+				hides: [],
+			},
+		),
+		setting(
+			"loop.budget.concurrency",
+			{ kind: "number", integer: true, minimum: 1, maximum: 8 },
+			{
+				namespace: "loop",
+				label: "sessions at once",
+				group: "Limits",
+				options: [1, 2, 3, 4, 5, 6, 7, 8],
+				none: "by isolation",
+			},
+		),
+		setting(
+			"loop.stallAfter",
+			{ kind: "number", integer: true, minimum: 1 },
+			{
+				field: {
+					optional: false,
+					default: 3,
+					kind: "number",
+					integer: true,
+					minimum: 1,
+					path: ["stallAfter"],
+				},
+				namespace: "loop",
+				label: "stall after (attempts)",
+				group: "Limits",
+				value: 3,
+				options: [1, 2, 3, 4, 5, 6],
+			},
+		),
+		setting(
+			"loop.gates",
+			{ kind: "record", value: { optional: false, kind: "string" } },
+			{
+				namespace: "loop",
+				label: "gates",
+				group: "Checks",
+				value: { test: "bun test --bail" },
+				layer: "local",
+				from: LOCAL,
+				description: "Named shell commands run after each finished subtask.",
+			},
+		),
+		setting(
+			"loop.gates.test",
+			{ kind: "string" },
+			{
+				namespace: "loop",
+				label: "gates.test",
+				group: "Checks",
+				value: "bun test --bail",
+				layer: "local",
+				from: LOCAL,
+				hides: [{ layer: "shared", from: SHARED, value: "bun test" }],
+				description: "Named shell commands run after each finished subtask.",
+			},
+		),
+		setting(
+			"loop.lenses",
+			{ kind: "list", item: { optional: false, kind: "string" } },
+			{
+				namespace: "loop",
+				label: "lenses",
+				group: "Checks",
+				value: ["quality"],
+				layer: "shared",
+				from: SHARED,
+			},
+		),
+	];
 }

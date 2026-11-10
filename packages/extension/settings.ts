@@ -1,23 +1,29 @@
 // Settings resolve through layers, so no setting handles where it comes from. A namespace (an
 // extension's name) declares one zod schema; every layer holds a partial document of it. Lowest
-// first: the schema's defaults, the user's config, the project's checked-in file, the user's
-// settings for the project's scope, then the caller (flags, the board's form). Where each layer is
-// stored is the host's business: it hands `port` the documents, and this merges and validates them.
+// first: the schema's defaults; global, for every project on this device; shared, the project's
+// checked-in settings for everyone who clones it; local, the project's settings for you only on
+// this device; then the caller (flags, the board's form). Where each layer is stored is the host's
+// business: it hands `port` the documents, and this merges and validates them.
 //
 // The schema's defaults are the lowest layer. Objects merge key by key and anything else is
 // replaced, so a record of gates gains a gate per layer, defaulted ones included, while a list of
 // lenses is whatever the highest layer that names it says. A key set to null (or undefined, from
 // code) unsets what the layers below it say; it must still name a setting.
+import type {
+	SettingField,
+	SettingKind,
+	SettingValue,
+} from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
 import { z } from "zod";
 
 export namespace Settings {
-	export type Layer = "default" | "user" | "project" | "scope" | "caller";
+	export type Layer = "default" | "global" | "shared" | "local" | "caller";
 
 	/** One layer's document for a namespace, and the name an error in it or a value from it gives. */
 	export type Source = {
 		layer: Exclude<Layer, "default">;
-		/** The file path, or what else names the document: "your settings for scope X in <path>". */
+		/** The file path, or what else names the document: "scopes.<id> in <path>". */
 		label: string;
 		value: unknown;
 	};
@@ -25,14 +31,24 @@ export namespace Settings {
 	/** Where a resolved value came from; a default has no label. */
 	export type Origin = { layer: Layer; label?: string };
 
-	/** A namespace's resolved settings and, for each leaf of it (a scalar or a list), its origin. */
+	/**
+	 * A namespace's resolved settings and, for each leaf of it (a scalar or a list), its origin and
+	 * what the stored layers under it set there, lowest first: the values it hides.
+	 */
 	export type Resolved<T> = {
 		value: T;
-		origins: { path: readonly string[]; origin: Origin }[];
+		origins: {
+			path: readonly string[];
+			origin: Origin;
+			hides: readonly Source[];
+		}[];
 	};
 
-	/** A settings namespace a host knows: its name and the schema of what a human writes in it. */
-	export type Namespace = { name: string; schema: z.ZodTypeAny };
+	/**
+	 * A settings namespace a host knows: its name, the schema of what a human writes in it, and how
+	 * its settings read.
+	 */
+	export type Namespace = { name: string; schema: z.ZodTypeAny; looks?: Looks };
 
 	/**
 	 * What an extension resolves its settings through (`Extension.Ctx.settings`): `namespace` in
@@ -77,13 +93,202 @@ export namespace Settings {
 			.map((line) => `\n  ${line}`)
 			.join("");
 
-	/** The schema under its optional, default and effect wrappers: what a value of it holds. */
-	export const unwrap = (schema: z.ZodTypeAny): z.ZodTypeAny => {
-		if (schema instanceof z.ZodOptional) return unwrap(schema.unwrap());
-		if (schema instanceof z.ZodDefault) return unwrap(schema.removeDefault());
-		if (schema instanceof z.ZodEffects) return unwrap(schema.innerType());
-		return schema;
+	type Peeled = { inner: z.ZodTypeAny; optional: boolean; default?: unknown };
+
+	// The outermost default is the one a parse fills in.
+	const peel = (schema: z.ZodTypeAny): Peeled => {
+		if (schema instanceof z.ZodOptional)
+			return { ...peel(schema.unwrap()), optional: true };
+		if (schema instanceof z.ZodDefault)
+			return {
+				...peel(schema.removeDefault()),
+				default: schema._def.defaultValue(),
+			};
+		if (schema instanceof z.ZodEffects) return peel(schema.innerType());
+		return { inner: schema, optional: false };
 	};
+
+	/** The schema under its optional, default and effect wrappers: what a value of it holds. */
+	export const unwrap = (schema: z.ZodTypeAny): z.ZodTypeAny =>
+		peel(schema).inner;
+
+	const numberOf = (schema: z.ZodNumber): SettingKind => {
+		const kind: Extract<SettingKind, { kind: "number" }> = {
+			kind: "number",
+			integer: false,
+		};
+		for (const check of schema._def.checks) {
+			if (check.kind === "int") kind.integer = true;
+			else if (check.kind === "min") {
+				if (check.inclusive) kind.minimum = check.value;
+				else kind.exclusiveMinimum = check.value;
+			} else if (check.kind === "max") {
+				if (check.inclusive) kind.maximum = check.value;
+				else kind.exclusiveMaximum = check.value;
+			}
+		}
+		return kind;
+	};
+
+	const stringOf = (
+		schema: z.ZodString,
+	): Extract<SettingKind, { kind: "string" }> => {
+		const kind: Extract<SettingKind, { kind: "string" }> = { kind: "string" };
+		for (const check of schema._def.checks) {
+			if (check.kind === "min") kind.minLength = check.value;
+			else if (check.kind === "max") kind.maxLength = check.value;
+			else if (check.kind === "regex") kind.pattern = check.regex.source;
+		}
+		return kind;
+	};
+
+	const kindOf = (schema: z.ZodTypeAny): SettingKind => {
+		if (schema instanceof z.ZodEnum)
+			return { kind: "enum", values: schema.options };
+		if (schema instanceof z.ZodNumber) return numberOf(schema);
+		if (schema instanceof z.ZodBoolean) return { kind: "boolean" };
+		if (schema instanceof z.ZodString) return stringOf(schema);
+		if (schema instanceof z.ZodArray)
+			return { kind: "list", item: valueOf(schema.element) };
+		if (schema instanceof z.ZodRecord) {
+			const key = unwrap(schema.keySchema);
+			const pattern =
+				key instanceof z.ZodString ? stringOf(key).pattern : undefined;
+			return {
+				kind: "record",
+				...(pattern === undefined ? {} : { keyPattern: pattern }),
+				value: valueOf(schema.valueSchema),
+			};
+		}
+		if (schema instanceof z.ZodObject) return { kind: "group" };
+		return { kind: "other" };
+	};
+
+	const valueOf = (schema: z.ZodTypeAny): SettingValue => {
+		const { inner, optional, default: fallback } = peel(schema);
+		return {
+			optional,
+			...(fallback === undefined ? {} : { default: fallback }),
+			...(schema.description === undefined
+				? {}
+				: { description: schema.description }),
+			...kindOf(inner),
+		};
+	};
+
+	/** What `schema` declares of a setting at `path`: its kind, bounds, default and description. */
+	export const field = (
+		schema: z.ZodTypeAny,
+		path: readonly string[] = [],
+	): SettingField => ({ ...valueOf(schema), path });
+
+	/** Where a look's option source is asked for its choices: the project the settings are read for. */
+	export type At = { projectDir?: string };
+
+	/**
+	 * How a setting reads on a generated screen. It says nothing of where the value is stored: that
+	 * is the layers'.
+	 */
+	export type Look = {
+		label: string;
+		/** Its section; sections come in the order their first look names them. */
+		group: string;
+		/**
+		 * The values `h/l` steps through: a fixed list, or a function the host calls as it builds the
+		 * screen, never at load, for choices known only at run time. Without one, an enum's values,
+		 * or a bounded integer's range.
+		 */
+		options?:
+			| readonly (string | number)[]
+			| ((at: At) => readonly (string | number)[]);
+		/** What an optional setting left unset reads as. */
+		none?: string;
+	};
+
+	/** Looks by a setting's dotted path in its namespace. */
+	export type Looks = Readonly<Record<string, Look>>;
+
+	/** The group of a setting no look places, and not in an object of its own. */
+	export const OTHER = "Other";
+
+	/**
+	 * How the setting at `path` reads: its look, or its path under its parent object's name
+	 * (`Budget`), or under `Other` at the top.
+	 */
+	export const lookOf = (
+		looks: Looks | undefined,
+		path: readonly string[],
+	): Look => {
+		const name = path.join(".");
+		const declared =
+			looks && Object.hasOwn(looks, name) ? looks[name] : undefined;
+		if (declared) return declared;
+		const parent = path.length > 1 ? path[0] : undefined;
+		return {
+			label: name,
+			group: parent
+				? `${parent.charAt(0).toUpperCase()}${parent.slice(1)}`
+				: OTHER,
+		};
+	};
+
+	/** The groups `looks` name, in the order they first name them. */
+	export const groupsOf = (looks: Looks | undefined): string[] => [
+		...new Set(Object.values(looks ?? {}).map((look) => look.group)),
+	];
+
+	// A bounded integer steps through its range only when it is short enough to step through.
+	const MAX_STEPS = 32;
+
+	/**
+	 * The values a setting steps through: its look's options (a source called with `at`), else an
+	 * enum's values, else a bounded integer's range; undefined when none of those applies.
+	 */
+	export const options = (
+		field: SettingField,
+		look: Look,
+		at: At,
+	): readonly (string | number)[] | undefined => {
+		if (look.options !== undefined)
+			return typeof look.options === "function"
+				? look.options(at)
+				: look.options;
+		if (field.kind === "enum") return field.values;
+		if (field.kind !== "number" || !field.integer) return undefined;
+		const { minimum, maximum } = field;
+		return minimum !== undefined &&
+			maximum !== undefined &&
+			maximum - minimum < MAX_STEPS
+			? Array.from({ length: maximum - minimum + 1 }, (_, i) => minimum + i)
+			: undefined;
+	};
+
+	/** A setting and the schema it was read from, for a host that also parses values with it. */
+	export type Entry = { field: SettingField; schema: z.ZodTypeAny };
+
+	/**
+	 * Every setting of a namespace's schema, in its order: a group (an object) and then the
+	 * settings in it. A record's entries are not walked: its field describes them.
+	 */
+	export const entries = (
+		schema: z.ZodTypeAny,
+		path: readonly string[] = [],
+	): Entry[] => {
+		const inner = unwrap(schema);
+		if (!(inner instanceof z.ZodObject)) return [];
+		const shape: z.ZodRawShape = inner.shape;
+		return Object.entries(shape).flatMap(([name, child]) => {
+			const at = [...path, name];
+			return [
+				{ field: field(child, at), schema: child },
+				...entries(child, at),
+			];
+		});
+	};
+
+	/** The fields of every setting `schema` declares, as `entries` walks them. */
+	export const fields = (schema: z.ZodTypeAny): SettingField[] =>
+		entries(schema).map((entry) => entry.field);
 
 	// Its issues are the value check's to report; here only the value it leaves matters.
 	const QUIET: z.RefinementCtx = { addIssue: () => undefined, path: [] };
@@ -163,8 +368,9 @@ export namespace Settings {
 		return found === "" ? ok(undefined) : err(new Error(`${invalid}${found}`));
 	};
 
-	// Origins by path, a NUL between segments: a record key (a gate name) may hold a dot.
-	type Origins = Map<string, Origin>;
+	// Origins by path, a NUL between segments: a record key (a gate name) may hold a dot. Beside
+	// each, the values of the layers under it that it replaced; a default is no layer's, so none.
+	type Origins = Map<string, { origin: Origin; hides: Source[] }>;
 	const keyOf = (path: readonly string[]): string => path.join("\0");
 
 	const forget = (origins: Origins, path: readonly string[]): void => {
@@ -181,8 +387,21 @@ export namespace Settings {
 		origins: Origins,
 	): unknown => {
 		if (!isObject(over)) {
+			const below = origins.get(keyOf(path));
+			const hides = below === undefined ? [] : [...below.hides];
+			if (
+				below !== undefined &&
+				below.origin.layer !== "default" &&
+				below.origin.label !== undefined &&
+				!isObject(base)
+			)
+				hides.push({
+					layer: below.origin.layer,
+					label: below.origin.label,
+					value: base,
+				});
 			forget(origins, path);
-			origins.set(keyOf(path), origin);
+			origins.set(keyOf(path), { origin, hides });
 			return over;
 		}
 		if (!isObject(base)) forget(origins, path);
@@ -207,7 +426,15 @@ export namespace Settings {
 			? Object.entries(value).flatMap(([key, inner]) =>
 					leaves(inner, [...path, key], origins),
 				)
-			: [{ path, origin: origins.get(keyOf(path)) ?? { layer: "default" } }];
+			: [
+					{
+						path,
+						...(origins.get(keyOf(path)) ?? {
+							origin: { layer: "default" },
+							hides: [],
+						}),
+					},
+				];
 
 	/**
 	 * `sources`, lowest first, over the schema's defaults as the lowest layer. Each is validated on its own first, so an

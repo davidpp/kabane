@@ -11,6 +11,7 @@ import {
 	flagString,
 	type Outcome,
 	type ParsedArgs,
+	type Settings,
 	success,
 	usage,
 } from "@cabane/extension";
@@ -301,7 +302,7 @@ export const start: Verb = async (args, deps, target) => {
 	const isNew =
 		started.value.worktree !== undefined && !started.value.worktreeReused;
 	const moves = Lenses.moves(
-		started.value.projectDir,
+		RunStore.projectRoot(started.value),
 		started.value.config.lenses,
 	);
 	return success(
@@ -441,9 +442,63 @@ const command: Extension.Command = {
 	},
 };
 
+// How the loop's settings read, here and in the board's run form (`LoopSettings`): the form's
+// sections come in the order these first name them. A bound the schema states is not repeated: a
+// bounded integer steps through its range.
+const looks: Settings.Looks = {
+	implementer: { label: "implementer", group: "Agents" },
+	// Only Claude reads a model; the aliases are its own. Unset, the user's own settings decide.
+	model: {
+		label: "model",
+		group: "Agents",
+		options: ["opus", "sonnet", "haiku"],
+		none: "your own",
+	},
+	// Unset, it follows isolation: 2 in a worktree each, 1 in the run's one tree.
+	"budget.concurrency": {
+		label: "sessions at once",
+		group: "Limits",
+		none: "by isolation",
+	},
+	"budget.continuations": {
+		label: "continuations",
+		group: "Limits",
+		options: [0, 1, 2, 3, 5, 10],
+	},
+	"budget.spend": {
+		label: "spend",
+		group: "Limits",
+		options: [1, 5, 10, 25, 50, 100],
+	},
+	stallAfter: {
+		label: "stall after (attempts)",
+		group: "Limits",
+		options: [1, 2, 3, 4, 5, 6],
+	},
+	// Unset, the lenses run on the implementer's harness.
+	verifier: { label: "verifier", group: "Agents", none: "implementer" },
+	lenses: {
+		label: "lenses",
+		group: "Checks",
+		options: ({ projectDir }) => Lenses.offered(projectDir),
+	},
+	recheck: { label: "recheck the fixes", group: "Checks" },
+	worktree: { label: "own git worktree", group: "Workspace" },
+	isolation: { label: "each subtask works in", group: "Workspace" },
+	reuse: { label: "reuse subtask worktrees", group: "Workspace" },
+	// Unset, as many as the run has sessions at once.
+	maxWorktrees: {
+		label: "subtask worktrees kept",
+		group: "Workspace",
+		none: "one per session",
+	},
+	land: { label: "land the branch", group: "Workspace" },
+};
+
 export const loop: Extension = {
 	name: LoopConfig.NAMESPACE,
 	settings: LoopConfig.SettingsSchema,
+	looks,
 	commands: [command],
 	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
 	// `a` on an issue, alone or with subtasks, starts one from the board's directory, as `loop start` would.

@@ -57,6 +57,11 @@ It never moves an existing tag. A configured signing key may require its own aut
 config/data.** These source/tag/settings writes are authorization granted by the human
 running the command; agents must not execute the release flow against real accounts.
 
+A change that moves where kabane keeps data or settings, or renames what it outputs, gets an
+upgrade section under [Updating](getting-started.md#updating) before its release; the public
+notes link to it (for example
+[settings layers and scope pins](getting-started.md#upgrading-from-100-beta0-settings-layers-and-scope-pins)).
+
 Review the retained notes and perform the real-terminal board check below using that archive,
 then authenticate to npm and explicitly resume:
 
@@ -250,7 +255,8 @@ release, which follows the download redirect, stays a human check.
    **`RELEASE_SETUP_CONFIRMED=true`** in `npm-release`. This is a human assertion, not
    programmatic proof that reviewers, tag protection, immutability or OIDC are configured.
    `npm whoami` is not an OIDC permission check.
-5. Review compatibility and prepare notes. The pipeline compares the existing tag's commit
+5. Review compatibility and prepare notes, linking each upgrade section under
+   [Updating](getting-started.md#updating) that this release adds. The pipeline compares the existing tag's commit
    but does not authenticate a maintainer signing key; signed-tag review is a human step.
 
 The local command needs none of the Actions environment/trusted-publisher setup above.

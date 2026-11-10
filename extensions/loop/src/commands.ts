@@ -3,8 +3,14 @@
 // environment for its own settings. A run whose runner died is restarted (`restart`) where it
 // stopped, with its claims and its worktree.
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import {
+	closeSync,
+	existsSync,
+	openSync,
+	readFileSync,
+	realpathSync,
+} from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Harnesses } from "@cabane/acp";
 import {
 	err,
@@ -215,7 +221,7 @@ export namespace Loop {
 		deps: Pick<StartDeps, "home">,
 		plan: LoopPlan.Plan,
 		config: LoopConfig.Config,
-		projectDir: string,
+		projectRoot: string,
 	): Promise<Result<void>> => {
 		const { parent } = plan;
 		const short = parent.shortId ?? parent.id;
@@ -246,7 +252,7 @@ export namespace Loop {
 			);
 		// A lens with no prompt would fail the run at its end; say so before it starts.
 		for (const name of config.lenses) {
-			const prompt = Lenses.prompt(projectDir, name);
+			const prompt = Lenses.prompt(projectRoot, name);
 			if (!prompt.ok) return prompt;
 		}
 		return checkRuns(deps.home, plan.parent.id, short, config.worktree);
@@ -286,9 +292,34 @@ export namespace Loop {
 	};
 
 	/**
+	 * The project root around `projectDir`, where its settings resolve and its lenses are read,
+	 * whichever folder of the project the run works in. `projectDir` itself outside a project, and
+	 * when the root is not around it, as for a linked worktree with no marker: the shared settings
+	 * resolve there too.
+	 */
+	const projectRootOf = async (
+		home: string,
+		projectDir: string,
+	): Promise<Result<string>> => {
+		const detected = await tryCatch(() =>
+			detectScope(projectDir, { home, detectExtensions: false }),
+		);
+		if (!detected.ok) return detected;
+		const root = detected.value?.root;
+		if (root === undefined) return ok(projectDir);
+		const real = trySync(() => realpathSync(projectDir));
+		const from = real.ok ? real.value : projectDir;
+		const inside = relative(root, from);
+		if (inside.startsWith("..") || isAbsolute(inside)) return ok(projectDir);
+		// Spelled from `projectDir`, not canonical: a run's paths read the way it was started.
+		return ok(resolve(projectDir, relative(from, root)));
+	};
+
+	/**
 	 * The checkout the run works on. A scope URI does not say where a project is checked out, so
 	 * the directory the loop was started from must be the parent's scope; an explicit `dir` is the
-	 * caller saying so and is taken as given.
+	 * caller saying so and is taken as given. A folder inside the project stays the run's: its
+	 * sessions work there, and only its settings and lenses come from the project root.
 	 */
 	const projectDirFor = async (
 		deps: Pick<StartDeps, "home" | "cwd">,
@@ -319,6 +350,8 @@ export namespace Loop {
 	export type Prepared = {
 		plan: LoopPlan.Plan;
 		projectDir: string;
+		/** The project root around `projectDir`: where its settings resolve and its lenses are. */
+		projectRoot: string;
 		config: LoopConfig.Config;
 	};
 
@@ -338,6 +371,8 @@ export namespace Loop {
 		if (!plan.ok) return plan;
 		const projectDir = await projectDirFor(deps, plan.value.parent, input.dir);
 		if (!projectDir.ok) return projectDir;
+		const projectRoot = await projectRootOf(deps.home, projectDir.value);
+		if (!projectRoot.ok) return projectRoot;
 		const config = await deps.settings(
 			LoopConfig.NAMESPACE,
 			LoopConfig.SettingsSchema,
@@ -352,12 +387,13 @@ export namespace Loop {
 			deps,
 			plan.value,
 			config.value,
-			projectDir.value,
+			projectRoot.value,
 		);
 		if (!checked.ok) return checked;
 		return ok({
 			plan: plan.value,
 			projectDir: projectDir.value,
+			projectRoot: projectRoot.value,
 			config: config.value,
 		});
 	};
@@ -372,7 +408,7 @@ export namespace Loop {
 	): Promise<Result<RunStore.Run>> => {
 		const prepared = await prepare(deps, input);
 		if (!prepared.ok) return prepared;
-		const { plan, projectDir, config } = prepared.value;
+		const { plan, projectDir, projectRoot, config } = prepared.value;
 		const parent = plan.parent;
 		const now = (deps.now ?? (() => new Date()))();
 		const short = parent.shortId ?? parent.id;
@@ -383,6 +419,7 @@ export namespace Loop {
 			parentShortId: short,
 			...(parent.scopeUri ? { scopeUri: parent.scopeUri } : {}),
 			projectDir,
+			...(projectRoot === projectDir ? {} : { projectRoot }),
 			config,
 			status: "pending",
 			createdAt: now.toISOString(),

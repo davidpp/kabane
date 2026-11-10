@@ -14,7 +14,7 @@ export const configTools = (
 	{
 		name: "kabane_configGet",
 		description:
-			"Read this device's config and settings, as they resolve for this server's project: default, then user (config.json), project (the repo's .kabane/<namespace>.json), then scope (the user's settings for this project's scope). Omit key to list all keys, values, the layer each comes from (layer, from), defaults, descriptions, readOnly and protected flags. With a key, its effective value; add layers:true for {key, value, leaves}, every leaf under the key with its value and layer. Secrets (sync.token, sync.headers) read as <set> when set. Local only; settings are not synced to the hub.",
+			"Read this device's config and settings, as they resolve for this server's project: default, then global (config.json, every project), shared (the repo's checked-in .kabane/<namespace>.json), then local (the human's settings for this project on this device, outside the repo; a legacy scopes.<id> block in config.json reads as local too). Omit key to list all keys, values, the layer each comes from (layer, from), defaults, descriptions, readOnly and protected flags, and each key's field (kind, bounds, enum values), the layers it can be written to, whether it is secret, and restart (start: applies after a restart; resolve: at its next read). With a key, its effective value; add layers:true for {key, value, leaves}, every leaf under the key with its value, layer, and hides: what the lower layers set there, lowest first. Secrets (sync.token, sync.headers) read as <set> when set. Local only; settings are not synced to the hub.",
 		input: {
 			key: z.string().min(1).optional(),
 			layers: z
@@ -35,7 +35,7 @@ export const configTools = (
 	{
 		name: "kabane_configSet",
 		description:
-			"Set a config key in one layer, or remove it from that layer with unset:true. layer: user (config.json, the default), scope (the user's settings for this project's scope, kept in config.json), or project (the repo's checked-in .kabane/<namespace>.json). Device keys (sync, db, identities, copilot, harness, timezone, extensions) are user only. Uses kabane config parsing: strings as text, booleans/numbers as JSON text, arrays comma-separated, headers and other records as a JSON object; one record entry is its own key (loop.gates.test). Identity keys are read-only. Saved changes need a restart of running board/MCP processes to take effect.",
+			"Set a config key in one layer, or remove it from that layer with unset:true. layer: local (this project only, for this human on this device, kept outside the repo; the default inside a project), global (config.json, every project; the default outside a project), or shared (the repo's checked-in .kabane/<namespace>.json). Device keys (sync, db, identities, copilot, harness, timezone, extensions) are global only, and go there by default. Uses kabane config parsing: strings as text, booleans/numbers as JSON text, arrays comma-separated, headers and other records as a JSON object; one record entry is its own key (loop.gates.test). Identity keys are read-only. When a higher layer still sets the key the write changes nothing yet, and the result carries shadowedBy {layer, from, value}; an unset that leaves a lower layer deciding carries fallsBackTo. A device key applies once running board/MCP processes restart (restartRequired: true); an extension's key (loop.*) applies the next time it is read, such as the next loop run.",
 		input: {
 			key: z.string().min(1),
 			value: z
@@ -47,9 +47,14 @@ export const configTools = (
 				.optional()
 				.describe("Remove the key from the layer; omit value."),
 			layer: z
-				.enum(ConfigSettings.TARGETS)
+				.string()
+				.refine((name) => ConfigSettings.targetOf(name) !== undefined, {
+					message: `one of ${ConfigSettings.TARGETS.join(", ")}`,
+				})
 				.optional()
-				.describe("The layer to write: user (default), scope or project."),
+				.describe(
+					"The layer to write: local, global or shared. Omitted: local inside a project, global outside one or for a device key.",
+				),
 		},
 		kind: "write",
 		handler: async ({ key, value, unset, layer }) => {
@@ -65,16 +70,19 @@ export const configTools = (
 				where,
 				key,
 				value,
-				typeof layer === "string" && ConfigSettings.isTarget(layer)
-					? layer
-					: "user",
+				typeof layer === "string" ? ConfigSettings.targetOf(layer) : undefined,
 			);
 			if (!result.ok) return result;
-			const { ignored } = result.value;
+			const { ignored, shadowedBy, fallsBackTo, unresolved, restart } =
+				result.value;
+			const applies =
+				restart === "start"
+					? "Restart running board and MCP processes to apply the change; a board already open will not load newly enabled extensions."
+					: "It applies the next time the settings are read, such as the next loop run; no restart needed.";
 			return ok({
 				...result.value,
-				restartRequired: true,
-				note: `Saved to ${result.value.layer === "project" ? "the project's file" : "this device"}. Restart running board and MCP processes to apply the change; a board already open will not load newly enabled extensions.${ignored ? ` This build does not ship ${ignored.join(", ")}, so ${ignored.length > 1 ? "they load" : "it loads"} nothing; it ships ${Extensions.names.join(", ")}.` : ""}`,
+				restartRequired: restart === "start",
+				note: `Saved to ${result.value.layer === "shared" ? "the project's checked-in file" : "this device"} (${result.value.from}).${unresolved ? ` But these settings no longer resolve, so every read of them fails until it is fixed: ${unresolved}. Tell the human which file to fix.` : ""}${shadowedBy ? ` It changes nothing here yet: the ${shadowedBy.layer} layer (${shadowedBy.from}) still decides, ${JSON.stringify(shadowedBy.value)}; tell the human, and that a write to that layer, or its unset, is what changes it.` : ""}${fallsBackTo ? ` The ${fallsBackTo.layer} layer (${fallsBackTo.from}) now decides: ${JSON.stringify(fallsBackTo.value)}.` : ""} ${applies}${ignored ? ` This build does not ship ${ignored.join(", ")}, so ${ignored.length > 1 ? "they load" : "it loads"} nothing; it ships ${Extensions.names.join(", ")}.` : ""}`,
 			});
 		},
 	},

@@ -12,7 +12,7 @@ kabane              # first run: the setup screen, then the board
 Bare `kabane` in a terminal opens the board. On a device with no
 `config.json` it first shows a setup screen: your name (the actor slug,
 `cabane://actor/human/<name>`), the device id, the detected coding harnesses
-to register `kabane mcp` in, and, inside a git repo, whether to pin its scope.
+to register `kabane mcp` in.
 It writes the same config `kabane init` would, local SQLite and no sync, and
 never replaces one that exists. Piped or run by an agent, bare `kabane` prints
 help as before. The flag form stays for scripts and for sync:
@@ -85,30 +85,38 @@ An extension's settings (today the loop's, under `loop`) resolve through layers,
 key by key:
 
 1. the schema's defaults;
-2. **user**: the namespace's key in `config.json`, for every project;
-3. **project**: `<repo>/.kabane/<namespace>.json`, checked in with the repo (`.kabane/loop.json`);
-4. **scope**: your settings for one project, in `config.json` under `scopes`, keyed by the scope
-   id the repo detects, so they hold in every checkout and worktree of it and put no file in a
-   repo you do not own;
+2. **global**: the namespace's key in `KABANE_HOME/config.json`, for every project on this device;
+3. **shared**: `<repo>/.kabane/<namespace>.json` (`.kabane/loop.json`), checked in, for everyone
+   who clones the repo;
+4. **local**: `KABANE_HOME/projects/<slug>/<namespace>.json`, for this project, for you only, on
+   this device. `<slug>` is the project root's path with each run of other characters than
+   letters and digits as `-`, then a short hash of it. It holds from anywhere in the project and
+   from its worktrees, puts no file in the repo, and does not change when the project's scope
+   does. Moving or cloning the directory again starts with no local settings;
 5. the command's own flags, or the board's run form.
 
-```json
-{
-  "actor": "cabane://actor/human/alex",
-  "deviceId": "mbp",
-  "loop": { "stallAfter": 4 },
-  "scopes": {
-    "github.com/acme/app": { "loop": { "gates": { "test": "npm test" }, "worktree": false } }
-  }
-}
+`--layer user`, `--layer project` and `--layer scope`, the names before these, still mean global,
+shared and local. Local settings from before kabane kept them by path, under
+`scopes.<scope id>` in `config.json`, are still read as local, just under the file; kabane never
+writes or moves them.
+
+A write lands in the layer it names even when a higher one sets the same key, so it can change
+nothing yet. `set` and `unset` then say which layer still decides and its value; an unset that
+leaves a lower layer deciding names that layer and its value too:
+
+```text
+$ kabane config set loop.stallAfter 7 --layer global
+loop.stallAfter = 7 (global); here /repo/.kabane/loop.json (shared) still decides: 2. Without --layer, a write here goes to local and overrides it.
+$ kabane config get loop.stallAfter --layers
+2 (shared: /repo/.kabane/loop.json)
+  hides 7 (global: ~/.kabane/config.json)
 ```
 
 Objects merge key by key, so each layer can add a gate; lists and scalars are replaced by the
 higher layer. `null` in a layer unsets what the layers under it say. Every layer is validated on
-its own first, so an error names the file, or "your settings for scope X", it is in; a key no
-setting has is refused in every layer. Device keys (`actor`, `deviceId`, `sync`, `db`,
-`copilot`, `harness`, `timezone`, `extensions`) live in your `config.json` only: no project file
-or scope can redirect the database or the hub.
+its own first, so an error names the file it is in; a key no setting has is refused in every
+layer. Device keys (`actor`, `deviceId`, `sync`, `db`, `copilot`, `harness`, `timezone`,
+`extensions`) have the global layer only: no project file can redirect the database or the hub.
 
 ### Managing config from the CLI
 
@@ -123,24 +131,61 @@ kabane config set sync.batchBytes 262144
 kabane config set extensions loop      # comma-separated names; "" clears the array
 kabane config set copilot.args -- '--model,sonnet'
 kabane config set sync.headers '{"CF-Access-Client-Id":"id","CF-Access-Client-Secret":"secret"}'
-kabane config set loop.gates.test 'bun test' --layer scope    # this repo's scope, no file in it
-kabane config set loop.lenses quality --layer project         # the repo's .kabane/loop.json
-kabane config set loop.model haiku --scope github.com/acme/app  # a named scope, from anywhere
+kabane config set loop.gates.test 'bun test'                 # in a project: local, no file in it
+kabane config set loop.model haiku --layer global            # every project
+kabane config set loop.lenses quality --layer shared         # the repo's .kabane/loop.json
+kabane config get loop.model --scope github.com/acme/app     # another project's legacy scopes block
 kabane config unset copilot.model      # remove the key from the layer
 kabane config path                     # resolved config.json location
 ```
 
-Reads resolve for the project the command runs in: its `.kabane/` files when run from the
-project's root (what `kabane loop start` reads from there), and your settings for its scope, or
-for `--scope <uri or id>`. Writes go to the user layer unless `--layer user|scope|project` names
-another; `--scope` alone writes that scope's layer.
+Reads resolve for the project the command runs in, from anywhere inside it: the `.kabane/` files
+at its root, and its local settings. With no `--layer`, a write goes to local inside a project and to global outside one; a
+device key always goes to global. `--layer global|local|shared` names the layer.
+`--scope <uri or id>` naming another project reads only its legacy `scopes` block, and a local
+write for it has to run in that project.
 
-Every operation supports `--json`. `list` returns rows with `key`, `value`,
-`default` (no layer sets it), `layer` and `from` (the file or scope it came from), `readOnly`,
-`protected` and `description`. `get` returns the resolved value, or JSON `null` / human
-`default` when absent; with `--layers` it returns `{key, value, leaves}`, where `leaves` maps
-every dotted key under `key` to its `value`, `layer` and `from`, and prints a line per leaf. `path` returns a string. `set` returns `{key, layer, value}` and `unset`
-returns `{key, layer, unset: true}`. `sync.token` and `sync.headers` read as `<set>`.
+Every operation supports `--json`. `list` returns rows with `key`, `namespace` (the extension
+that declares it, absent for a device key), `value`, `default` (no layer sets it), `layer` and
+`from` (the file or scope it came from), `hides` (the `{layer, from, value}` each lower layer
+sets at the key, lowest first; empty for a group), `readOnly`, `protected`, `description`, and
+what the key's schema says of it. A record's entries follow it as rows of their own
+(`loop.gates.test`), in its group:
+
+- `field`: its `path` in the namespace (or `config.json`), its `kind` and what bounds that
+  kind: `enum` with `values`; `number` with `integer`, and `minimum`, `maximum`,
+  `exclusiveMinimum`, `exclusiveMaximum` when set; `boolean`; `string` with `minLength`,
+  `maxLength`, `pattern`; `list` with its `item`; `record` with `keyPattern` and its `value`;
+  `group` for an object of keys; `other`. Also `optional` (absent is valid), `default` (what
+  the schema fills in) and `description`.
+- `layers`: the layers it can be written to, `["global"]` for a device key and
+  `["global", "shared", "local"]` for an extension's.
+- `target` (`list` only): the layer a `set` with no `--layer` writes, `local` for an
+  extension's key inside a project and `global` otherwise.
+- `secret`: true for `sync.token` and `sync.headers`, which read as `<set>`.
+- `label` and `group`: how the key reads on a settings screen, as `config-looks.ts` declares for
+  a device key and an extension's `looks` for its own; a key with none reads under its path, in
+  its parent object's group or `Other`.
+- `options`: the values it steps through, when it has any: the declared ones, resolved for the
+  project here (`copilot.harness` the harnesses this build launches, `extensions` the ones it
+  ships, `loop.lenses` the project's lenses), else an enum's values or a bounded integer's range.
+  `none`: what an optional key left unset reads as, when declared.
+- `restart`: when a change applies. `start` for a device key, loaded when a process starts, so
+  a running board or MCP server needs a restart; `resolve` for an extension's, read each time
+  it is used (the loop's at each run it starts).
+
+`get` returns the resolved value, or JSON `null` / human `default` when absent; with
+`--layers` it returns `{key, value, leaves}` and the row's `label`, `group`, `options`, `none`,
+`field`, `layers`, `secret` and `restart`, where `leaves` maps every dotted key under `key` to its `value`, `layer`, `from` and
+`hides`, the `{layer, from, value}` each lower layer sets there, lowest first, and prints a line
+per leaf with what it hides under it. `path` returns a string. `set` returns
+`{key, layer, from, value, restart}` and `unset` returns `{key, layer, from, unset: true,
+restart}`, `from` being the file written. Either adds `shadowedBy: {layer, from, value}` when a
+higher layer still decides the key; an unset adds `fallsBackTo`, in the same shape, when a lower
+layer (a legacy `scopes` block included) now decides it. When the write is saved but the layers
+no longer resolve, because another file is invalid, it adds `unresolved` with the error, which
+names that file. `kabane_configSet` adds
+`restartRequired`, true when `restart` is `start`.
 
 Strings are literal; numbers and booleans use JSON syntax. Arrays take trimmed
 comma-separated values, with an empty string meaning an empty array.
@@ -167,25 +212,31 @@ CLI does, from the working directory, so `list`, `search`, `add`, `board` and
 package below it, or in a worktree. The cascade, highest first:
 
 1. `--scope <uri>`
-2. `.kabane/scope` — the nearest one walking up (one line, e.g. `myapp`);
-   only `kabane init --scope <uri>` writes it, into the working directory
-3. `.jake/config.json` → `project.id` — a device sharing a Jake database has to
+2. your own pin, `KABANE_HOME/projects/<slug>/scope` (one line, e.g. `myapp`),
+   keyed by the project root's path, the main checkout's for a worktree; only
+   `kabane init --scope <uri>` writes it, for the project the working directory
+   is in
+3. `.kabane/scope` — the repo's shared pin, the nearest one walking up; only
+   `kabane init --scope <uri> --shared` writes it, into the working directory
+4. `.jake/config.json` → `project.id` — a device sharing a Jake database has to
    honour the id Jake already filed tasks under
-4. the id detection stored for this checkout in `KABANE_HOME/detected-scopes/`,
+5. the id detection stored for this checkout in `KABANE_HOME/detected-scopes/`,
    keyed by its root path and holding only while the repo there has the same
    first commit
-5. the git remote, normalized to `host/owner/repo` (`origin`, else the first
-   remote listed), and stored for step 4, so a checkout keeps its scope when
+6. the git remote, normalized to `host/owner/repo` (`origin`, else the first
+   remote listed), and stored for step 5, so a checkout keeps its scope when
    its remote is renamed; a fork or another clone resolves by its own remote
-6. the first commit, as `git:<hash12>` — replaced by a real remote id if one
+7. the first commit, as `git:<hash12>` — replaced by a real remote id if one
    appears later, never the reverse
-7. the project root path
+8. the project root path
 
 Detection writes nothing into the repo, which may be a checkout you don't own.
-A `.kabane/scope` an earlier kabane's detection left behind is still read and
-never rewritten; a `git:` id in it still gives way to the remote. On a device
+A `.kabane/scope` an earlier kabane wrote is still read, and never moved or
+rewritten; a `git:` id in either pin still gives way to the remote. Your own pin
+wins over the repo's, as a local setting wins over a shared one. On a device
 that already has a config, `kabane init --scope <uri>` on its own writes only
-the pin.
+the pin. Outside a project there is nothing to key your own pin by, so
+`init --scope` refuses there unless `--shared` marks the directory.
 
 Outside a project there is no scope and a query spans all of them. Bare ids
 normalize to `jake://scope/<id>`; a detected scope also carries `branch` and
@@ -202,7 +253,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 
 | Command | Flags |
 |---|---|
-| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--db-path <file>` `--table-prefix <prefix>` (open another database, e.g. Jake's `~/.jake/jake.db` with `planner_`) `--scope <uri>` (writes `./.kabane/scope`; alone on a configured device, writes only that) `--force` |
+| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--db-path <file>` `--table-prefix <prefix>` (open another database, e.g. Jake's `~/.jake/jake.db` with `planner_`) `--scope <uri>` (writes your own pin for the project under `KABANE_HOME/projects/<slug>/`; alone on a configured device, writes only that) `--shared` (with `--scope`, writes `./.kabane/scope` in the repo instead) `--force` |
 | `config [list\|get <key>\|set <key> <value>\|unset <key>\|path]` | `--json` — inspect or edit device config without opening the database |
 | `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD\|<ISO time>` (a date is due by the end of that day in your timezone; a time without `Z` or an offset is your local time) `--format concise\|full` |
 | `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` `--format concise\|full` `--cursor <cursor>` |
@@ -305,7 +356,7 @@ so the command prints nothing of its own.
 index.ts            bin shim
 src/main.ts         command table, help, exit codes
 src/args.ts         pure argv parser
-src/config.ts       KABANE_HOME, config.json, the scope pin file
+src/config.ts       KABANE_HOME, config.json, the scope pins
 src/context.ts      Runtime.configure + Planner.init, the Ctx commands receive, scope resolution
 src/output.ts       --json vs human rendering, icons
 src/first-run.ts    bare `kabane` in a terminal: the setup screen's deps, then the board

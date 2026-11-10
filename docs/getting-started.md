@@ -148,6 +148,15 @@ than the pane. A key that does nothing right now (no row selected, no linked iss
 - `y` copies a task's agent brief to paste into any chat.
 - `⌃z` undoes the last change.
 - `a` is dispatch, a hook for host apps. On its own, kabane has no dispatcher.
+- `,` lists every setting, its value and where it comes from: `default`, `global` (every
+  project on this device), `shared` (the file in the repo) or `local` (this project, only
+  you). `h`/`l` step a setting with choices, and `enter` types a string or a number; on a
+  setting you can't change, `enter` shows the file it is in and what the other layers set
+  under it. `tab` picks the layer the change is saved to, `local` first inside a project and
+  `global` outside one, and `enter` saves it. `x` removes a setting from a layer. A save to
+  `shared`, which writes into the repo, or to a protected setting such as the hub's URL asks
+  `y`/`n` first. A secret is typed without being shown. The copilot changes settings too, and
+  `kabane config set` adds and removes a record's entries, such as a loop's gates.
 - `O` opens a task's linked issue. On the board, `space` and `h`/`l` fold subtasks, and `r`
   refreshes. `tab` moves between the board and the copilot.
 - The top row is the tab bar: the tracker, then one tab per piece of running work that asks
@@ -287,8 +296,10 @@ available without a new size bound; its subtask rollup now includes all children
 
 Kabane writes nothing into your repo to find its scope. It remembers the scope it detected
 for each checkout under `~/.kabane`, so a checkout keeps its tasks when its remote is renamed.
-A clone made after the rename resolves by the new remote. To pin a scope in the repo itself,
-for example to check it in, run `kabane init --scope <id>` in it, which writes `.kabane/scope`.
+A clone made after the rename resolves by the new remote. To name a project's scope yourself,
+run `kabane init --scope <id>` in it: the pin is kept under `~/.kabane`, for you on this device,
+and still nothing lands in the repo. To pin it for everyone who clones the repo, add `--shared`,
+which writes `.kabane/scope` for you to check in. Your own pin wins over the repo's.
 
 Outside a repo, `list` and `search` span every scope. `kabane <command> --help` prints that
 command's flags, `kabane --help` lists the commands, and
@@ -351,6 +362,38 @@ by hand. Restart running board/MCP sessions afterwards.
 When the executable sits under a mise installs directory (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise` or
 `~/.local/share/mise`), `kabane update` reports the candidate and leaves the file to mise: run
 `mise up kabane`. No tracker DB is opened and no harness entry is rewired.
+
+### Upgrading from 1.0.0-beta.0: settings layers and scope pins
+
+1.0.0-beta.0 read a project's settings from the repo only: the loop from `.kabane/loop.json`, the
+pin from `.kabane/scope`, which `kabane init --scope` wrote. Now your settings for a project and
+your pin are kept under `KABANE_HOME`, outside the repo, and the repo's files are written only when
+you name them. Nothing you already have is moved or rewritten, and there is no database change.
+
+- **What stays, and is still read.** `.kabane/loop.json` is the *shared* layer, for everyone who
+  clones the repo, and `.kabane/scope` is the repo's pin. Kabane never moves or deletes either.
+- **Where a write goes now.** `kabane config set` (and the copilot's `kabane_configSet`) sets an
+  extension's keys too, such as `loop.model`. With no `--layer`, it writes inside a project to
+  `KABANE_HOME/projects/<slug>/<namespace>.json` (*local*: yours, on this device, never in the
+  repo) and outside one to `config.json` (*global*: every project). Name `--layer shared` to
+  write the repo's `.kabane/loop.json`.
+- **The pin.** `kabane init --scope <uri>` writes your own pin, `KABANE_HOME/projects/<slug>/scope`,
+  which wins over the repo's. `--shared` writes the repo's `.kabane/scope`, as `init --scope` did
+  in 1.0.0-beta.0.
+- **From a source build since 1.0.0-beta.0.** Those builds called the layers `user`, `scope` and
+  `project`, and kept local settings under `scopes.<scope id>` in `config.json`. The old names are
+  still accepted on input, but JSON output says `global`, `local` and `shared`. The `scopes`
+  blocks are still read, as local just under the new file, and never written: to move a value,
+  set it again with `--layer local` and remove the old one by hand.
+- **Running processes.** A board, `kabane mcp` or loop runner started by an older version does
+  not read the new files. It misses local and global settings the new CLI writes, and a pin
+  written without `--shared`, so it can file tasks under another scope than new processes do.
+  Stop them, update, and start them again before relying on new settings or pins; do not run
+  both versions on one device.
+- **Going back.** 1.0.0-beta.0 still reads the repo's `.kabane/loop.json` and `.kabane/scope`,
+  but nothing in `config.json`'s extension keys or under `KABANE_HOME/projects/`. If you roll
+  back, put the settings you need into `.kabane/loop.json` and pin the scope with
+  `kabane init --scope <uri>`, which writes `.kabane/scope` in that version.
 
 ### One-time upgrade from 0.1.0
 

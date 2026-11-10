@@ -23,10 +23,13 @@ import type {
 	CopilotPermission,
 	CopilotShortcut,
 	CopilotUpdate,
+	SettingLayer,
+	SettingWrite,
 	TriggerDescriptor,
 } from "./ports";
 import { BoardPrompt } from "./prompt";
 import { PromptHistory } from "./prompt-history";
+import { SettingsView } from "./settings-view";
 import { BoardTabs } from "./tabs";
 import { TriggerForm } from "./trigger-form";
 
@@ -223,6 +226,8 @@ export namespace BoardNav {
 		// The `?` help overlay (full keybinding list; footers show only the app-specific subset).
 		// A boolean modal flag, same lifecycle as `dispatch`: owns the keyboard while open.
 		help: boolean;
+		// The `,` settings view (settings-view.ts), modal like the sheet while open.
+		settings: SettingsView.View | null;
 		focus: Focus;
 		// The tab bar and the questions waiting on the human (tabs.ts).
 		tabs: BoardTabs.Tabs;
@@ -295,6 +300,15 @@ export namespace BoardNav {
 				inputs?: Readonly<Record<string, unknown>>;
 		  }
 		| { type: "loadTriggers"; taskId: string }
+		// `,` opened the settings view: the host lists the rows (SettingsSource).
+		| { type: "loadSettings" }
+		// The settings view saved a change: the host writes it (SettingsSource.set), then lists again.
+		| {
+				type: "saveSetting";
+				key: string;
+				value: SettingWrite;
+				layer: SettingLayer;
+		  }
 		// A session question answered from its banner: core writes the decision.
 		| { type: "answerQuestion"; questionId: string; answer: string }
 		// A decision answered on its issue's detail (BoardDecisions): `Questions.answer` writes it.
@@ -363,6 +377,8 @@ export namespace BoardNav {
 		| { type: "lane"; index: number }
 		// A field of the trigger form, by its place in the trigger's inputs.
 		| { type: "formField"; index: number }
+		// A row of the settings view, by its place in the view's rows.
+		| { type: "settingsRow"; index: number }
 		// The host's announcement, which a click puts away as `esc` does.
 		| { type: "announcement" }
 		// A checklist item on the detail view, which a click toggles.
@@ -1454,6 +1470,7 @@ export namespace BoardNav {
 			search: SEARCH_OFF,
 			dispatch: null,
 			help: false,
+			settings: null,
 			focus: "board",
 			tabs: BoardTabs.NONE,
 			marked: new Set<string>(),
@@ -1499,6 +1516,7 @@ export namespace BoardNav {
 		const opened: BoardState = {
 			...BoardPrompt.close(state),
 			help: false,
+			settings: null,
 			dispatch: null,
 			focus: "board",
 			search: state.search.mode === "typing" ? SEARCH_OFF : state.search,
@@ -1626,6 +1644,8 @@ export namespace BoardNav {
 		now: number,
 	): { state: BoardState; effect: Effect } => {
 		if (state.help) return reduceHelpKey(state, key);
+		if (state.settings)
+			return SettingsView.reduceKey(state, state.settings, key);
 		if (state.dispatch?.form)
 			return TriggerForm.reduceKey(state, state.dispatch.form, key);
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
@@ -1702,6 +1722,7 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } | null => {
 		if (isHelpKey(key))
 			return { state: { ...state, help: true }, effect: NONE };
+		if (SettingsView.isKey(key)) return SettingsView.open(state);
 		if (isCopilotKey(key)) return focusCopilot(state);
 		// Also view-agnostic: `O` acts on the task in hand, which is the open one in detail and the
 		// selected row everywhere else.
@@ -1830,6 +1851,7 @@ export namespace BoardNav {
 	// Whose keys are live right now, in the order reduceKey hands them out: a modal first, then the
 	// pane with focus, then the view. The footer shows this context's hints and `?` opens its sheet.
 	export const keyContext = (state: BoardState): Keymap.ContextId => {
+		if (state.settings) return "settings";
 		if (state.dispatch)
 			return state.dispatch.form ? "dispatchForm" : "dispatch";
 		if (state.prompt.open) return "prompt";
@@ -1891,6 +1913,7 @@ export namespace BoardNav {
 				state.dispatch !== null &&
 				!state.dispatch.loading &&
 				state.dispatch.triggers.length > 0,
+			...(state.settings ? SettingsView.situation(state.settings) : {}),
 			...BoardTabs.situation(state),
 			lanes: card.lanes,
 		};
@@ -2025,19 +2048,33 @@ export namespace BoardNav {
 			: { state, effect: NONE };
 	};
 
+	// The clicks a modal answers: the trigger form's fields and the settings view's rows, which are
+	// rows like the board's.
+	type ModalClick = Extract<MouseAction, { type: "formField" | "settingsRow" }>;
+	const isModalClick = (action: MouseAction): action is ModalClick =>
+		action.type === "formField" || action.type === "settingsRow";
+	const clickModal = (
+		state: BoardState,
+		action: ModalClick,
+	): { state: BoardState; effect: Effect } =>
+		action.type === "formField"
+			? TriggerForm.click(state, action.index)
+			: SettingsView.click(state, action.index);
+
+	// A modal has the keyboard, and every click but its own does nothing while it is open.
+	const modalOpen = (state: BoardState): boolean =>
+		state.help || state.dispatch !== null || state.settings !== null;
+
 	// Mouse router, parallel to reduceKey. Board-only actions (`select`, `toggleExpand`) no-op while the
-	// detail view is open (those handlers unmount with the board); `copy` is valid in both views. All
-	// mouse input is inert while a true modal (dispatch, help) is open, same as keys, but for the
-	// trigger form's fields, which are rows like the board's. The copilot is not a modal: a click lands
-	// on the board, so it brings focus along with it.
+	// detail view is open (those handlers unmount with the board); `copy` is valid in both views. A
+	// modal (dispatch, help, settings) answers only its own clicks (clickModal). The copilot is not a
+	// modal: a click lands on the board, so it brings focus along with it.
 	export const reduceMouse = (
 		incoming: BoardState,
 		action: MouseAction,
 	): { state: BoardState; effect: Effect } => {
-		if (action.type === "formField")
-			return TriggerForm.click(incoming, action.index);
-		if (incoming.help || incoming.dispatch)
-			return { state: incoming, effect: NONE };
+		if (isModalClick(action)) return clickModal(incoming, action);
+		if (modalOpen(incoming)) return { state: incoming, effect: NONE };
 		// Putting the announcement away is not choosing a pane: focus and an open prompt stay put.
 		if (action.type === "announcement")
 			return { state: { ...incoming, announcement: null }, effect: NONE };

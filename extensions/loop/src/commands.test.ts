@@ -253,6 +253,46 @@ describe("Loop.start with a worktree", () => {
 	});
 });
 
+describe("Loop.start from a folder of the project", () => {
+	it("works in that folder, and reads the project's lenses at its root, where its settings are", async () => {
+		const scopeUri = await repoScope();
+		const parent = await add("parent", { scopeUri });
+		await add("child", { parentTaskId: parent.id, scopeUri });
+		const lenses = join(
+			repo,
+			".claude",
+			"skills",
+			"dispatch",
+			"references",
+			"lenses",
+		);
+		mkdirSync(lenses, { recursive: true });
+		writeFileSync(join(lenses, "security.md"), "Review the security.\n");
+		const folder = join(repo, "src");
+		mkdirSync(folder);
+
+		const prepared = await Loop.prepare(
+			{ ...deps(), cwd: folder },
+			{ parent: parent.id, config: { lenses: ["security"] } },
+		);
+		if (!prepared.ok) throw prepared.error;
+		expect(prepared.value.projectDir).toBe(folder);
+		expect(prepared.value.projectRoot).toBe(repo);
+
+		// Past the lens check: the run is written and only the (nonexistent) runner fails.
+		await Loop.start(
+			{ ...deps(), cwd: folder },
+			{ parent: parent.id, config: { lenses: ["security"] } },
+		);
+		const runs = RunStore.list(home);
+		const run = runs.ok ? runs.value[0] : undefined;
+		expect(run && [run.projectDir, RunStore.projectRoot(run)]).toEqual([
+			folder,
+			repo,
+		]);
+	});
+});
+
 describe("Loop.start with a worktree, from a folder HEAD lacks", () => {
 	it("refuses before adding a worktree or a branch", async () => {
 		const scopeUri = await repoScope();

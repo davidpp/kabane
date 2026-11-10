@@ -27,6 +27,7 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 | `resolveScope(cwd)` | no | the board opens on all scopes (the CLI passes `@cabane/core/scope` detection) |
 | `headers: Record<kind, CardHeader>` | no | every card tab heads with the board's one-line title |
 | `announcer: Announcer` | no | nothing is announced over the footer |
+| `settings: SettingsSource` | no | `,` opens the settings view, which says settings are not available here |
 | `open: { taskId }` | no | the board opens on the board view. Given, it opens on that task's detail, as `enter` on its row: the filter that holds it, its parent expanded, `esc` back to its row. `resolveScope` should answer the task's scope, as `kabane board --issue <id>` does. |
 
 The host calls `Runtime.configure` before `startBoard`; the board never opens a database itself.
@@ -210,6 +211,55 @@ at, so a list at the end of a line is read whole rather than cut. On a pane too 
 preview keeps up to half the rows, its last line saying how many it leaves out, and the settings
 scroll to keep the row in hand on screen.
 
+### `SettingsSource`
+
+```ts
+interface SettingsSource {
+  list(): Promise<Result<SettingRow[]>>;
+  set(
+    key: string,
+    value: string | number | boolean | { unset: true },
+    layer: SettingLayer,
+  ): Promise<Result<SettingChange>>;
+}
+```
+
+`,` opens the settings view over whichever view is on screen, and `,` or `esc` closes it. It
+calls `list()` each time it opens, never at board start. A `SettingRow` is a row of
+`kabane config list --json`: its `key`, the extension `namespace` that declares it (absent for
+the device's own keys), its `value` (a secret already `<set>`), the `layer` it comes from
+(`default`, `global`, `shared` or `local`) and the file it is in (`from`), what the layers
+under it set there (`hides`), its schema `field`, how it reads (`label`, `group`, `none`), and
+its `readOnly` and `protected` flags. The view is generated from the rows, so a namespace an
+extension declares appears with no board code for it.
+
+Rows sit under their namespace, then their group, in the order the rows first name them. A
+group of settings is no row of its own, and a record with entries is listed by its entries
+(`loop.gates.test`). Each row shows its label, its value (an unset one as its `none`), a mark
+when it is read-only or protected, and the one word for its layer, `default` dimmed. In a pane
+too narrow for both, the value keeps its room and the mark gives way. `j/k` move, and a click on
+the row in hand opens or closes its detail under it: the key with its whole value, its
+description, what its layer means and the file it is in, each value it hides with that layer
+and file, and when a change applies. `enter` does the same on a row with no editor.
+
+The view edits the row in hand. `h/l` step an enum, a boolean, or a single value with looked-up
+steps (`options`), through `TriggerForm.step` like the run form. `enter` starts editing: on a
+string or a number it types the value, read with `FormField.read` against the field's bounds, and
+a value it refuses shows its reason under the field and is not saved; on a list of strings,
+numbers or enum values it types the whole list, items apart by commas as `kabane config set`
+reads them, each checked against the list's `options` when it has any, and an empty text saves an
+empty list; on a boolean, an enum, or another value with steps it opens the editor on the current
+value, for `h/l`. On a row with no editor,
+such as a `readOnly` one, `enter` opens or closes its detail. `x` removes the
+key from a layer; a record's entries are added and removed with `kabane config set`. The editor
+opens on the row's `target`, the layer a write that names none goes to, and `tab`/`⇧tab` walk
+the row's `layers`, each said with what it means. A secret is typed masked and never prefilled.
+A save to `shared`, or to a `protected` key, asks `y/n` first; a `readOnly` key has no editor.
+`enter` saves through `set()`. The rows are then listed again, and the saved row says the layer
+and value written (`SettingChange`), the layer that `shadowedBy` says still decides, the layer an
+unset `fallsBackTo`, and, for `restart: "start"`, that the change applies at the next start. A
+refused save keeps the editor open with the host's reason.
+
 ### `Copilot`
 
 ```ts
@@ -341,7 +391,9 @@ It can also:
   missing one is reported rather than worked around. Kabane holds no provider credentials and
   makes no network call of its own.
 - Explain commands and board keys, change Kabane settings, or enable an official extension
-  (`/setup`). Restart the board after settings change; enabling loop does not start a run.
+  (`/setup`). A device setting, enabling an extension included, applies once the board restarts;
+  an extension's own setting (`loop.*`) applies the next time it is read, with no restart.
+  Enabling loop does not start a run.
 - Create a dispatch skill tailored to the project's conventions (`/setup-dispatch`), showing
   what it wrote and asking before replacing an existing skill.
 - Start a loop run when asked, such as “run this issue with codex”, with the loop extension

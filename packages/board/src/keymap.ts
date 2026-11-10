@@ -62,6 +62,22 @@ export namespace Keymap {
 		scrollable?: boolean;
 		/** Setup found harnesses to tick. */
 		harnesses?: boolean;
+		/** The settings view has rows to move through. */
+		settings?: boolean;
+		/** The setting in hand can be changed here: `enter` edits it rather than open its detail. */
+		settingEditable?: boolean;
+		/** `h/l` step the setting in hand: an enum, a boolean, or one with looked-up steps. */
+		settingSteps?: boolean;
+		/** The setting in hand can be removed from a layer. */
+		settingUnsets?: boolean;
+		/** The editor is open on the setting in hand. */
+		settingEditing?: boolean;
+		/** Its value is being typed, so letters are the value's, not keys. */
+		settingTyping?: boolean;
+		/** The setting in hand can be saved to more than one layer. */
+		settingLayers?: boolean;
+		/** A save waits on its y/n. */
+		settingConfirming?: boolean;
 	};
 
 	type Tier = "footer" | "help";
@@ -92,6 +108,7 @@ export namespace Keymap {
 		| "dispatch"
 		| "dispatchForm"
 		| "help"
+		| "settings"
 		| "setupWelcome"
 		| "setupForm"
 		| "setupWorking"
@@ -153,6 +170,7 @@ export namespace Keymap {
 			keys: ["{", "}"],
 			when: (s) => s.tabs === true,
 		},
+		{ key: ",", label: "settings", tier: "help", keys: [","] },
 		{
 			key: "A :",
 			label: "copilot: config & help",
@@ -651,6 +669,109 @@ export namespace Keymap {
 				},
 			],
 		},
+		// Every setting and where its value comes from (settings-view.ts), and the editor of the one
+		// in hand. Typing a value takes the letters, so only the keys that are no letter work then.
+		settings: {
+			name: "settings",
+			sheet: false,
+			bindings: [
+				{
+					key: "j/k",
+					label: "move",
+					tier: "footer",
+					keys: ["j", "k", "down", "up"],
+					when: (s) =>
+						s.settings === true &&
+						s.settingEditing !== true &&
+						s.settingConfirming !== true,
+				},
+				{
+					key: "h/l",
+					label: "change",
+					tier: "footer",
+					keys: ["h", "l", "left", "right"],
+					when: (s) => s.settingSteps === true && s.settingConfirming !== true,
+				},
+				{
+					key: "enter",
+					label: "edit",
+					tier: "footer",
+					keys: ["return"],
+					when: (s) =>
+						s.settingEditable === true &&
+						s.settingEditing !== true &&
+						s.settingConfirming !== true,
+				},
+				{
+					key: "enter",
+					label: "details",
+					tier: "footer",
+					keys: ["return"],
+					when: (s) => s.settings === true && s.settingEditable !== true,
+				},
+				{
+					key: "x",
+					label: "unset",
+					tier: "footer",
+					keys: ["x"],
+					when: (s) =>
+						s.settingUnsets === true &&
+						s.settingEditing !== true &&
+						s.settingConfirming !== true,
+				},
+				{
+					key: "tab",
+					label: "layer",
+					tier: "footer",
+					keys: ["tab", "shift+tab"],
+					when: (s) => s.settingEditing === true && s.settingLayers === true,
+				},
+				{
+					key: "enter",
+					label: "save",
+					tier: "footer",
+					keys: ["return"],
+					when: (s) => s.settingEditing === true,
+				},
+				{
+					key: "y",
+					label: "save",
+					tier: "footer",
+					keys: ["y"],
+					when: (s) => s.settingConfirming === true,
+				},
+				{
+					key: "n",
+					label: "back",
+					tier: "footer",
+					keys: ["n"],
+					when: (s) => s.settingConfirming === true,
+				},
+				{
+					key: "esc",
+					label: "cancel",
+					tier: "footer",
+					keys: ["escape"],
+					when: (s) => s.settingEditing === true,
+				},
+				{
+					key: "?",
+					label: "keys",
+					tier: "footer",
+					keys: ["?"],
+					when: (s) =>
+						s.settingEditing !== true && s.settingConfirming !== true,
+				},
+				{
+					key: ", esc",
+					label: "close",
+					tier: "footer",
+					keys: [",", "escape"],
+					when: (s) =>
+						s.settingEditing !== true && s.settingConfirming !== true,
+				},
+			],
+		},
 		setupWelcome: {
 			name: "setup",
 			sheet: false,
@@ -788,7 +909,10 @@ export namespace Keymap {
 					]
 				: []),
 			{ title: CONTEXTS[id].name, rows: CONTEXTS[id].bindings.map(row) },
-			{ title: "everywhere", rows: EVERYWHERE.map(row) },
+			// A modal the sheet opens over keeps the keyboard: the everywhere keys wait until it closes.
+			...(CONTEXTS[id].sheet
+				? [{ title: "everywhere", rows: EVERYWHERE.map(row) }]
+				: []),
 		];
 	};
 

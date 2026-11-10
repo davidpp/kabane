@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Settings } from "@cabane/extension";
 import { LoopConfig } from "./config";
+import { loop } from "./extension";
 import { LoopSettings } from "./settings";
 
 const config = (input: LoopConfig.Input = {}): LoopConfig.Config => {
@@ -172,5 +177,65 @@ describe("LoopSettings.overrides", () => {
 			value: { stallAfter: 2 },
 		});
 		expect(LoopSettings.overrides({ stallAfter: "soon" }).ok).toBe(false);
+	});
+});
+
+describe("the loop's looks", () => {
+	const fieldAt = (path: string) => {
+		const found = Settings.fields(LoopConfig.Schema).find(
+			(f) => f.path.join(".") === path,
+		);
+		if (!found) throw new Error(path);
+		return found;
+	};
+	const optionsAt = (path: string, at: Settings.At = {}) =>
+		Settings.options(
+			fieldAt(path),
+			Settings.lookOf(loop.looks, path.split(".")),
+			at,
+		);
+
+	it("are declared on the extension, and their groups are the form's sections in order", () => {
+		expect(
+			Settings.lookOf(loop.looks, ["budget", "concurrency"]),
+		).toMatchObject({
+			label: "sessions at once",
+			group: "Limits",
+		});
+		expect(Settings.groupsOf(loop.looks)).toEqual([
+			"Agents",
+			"Limits",
+			"Checks",
+			"Workspace",
+		]);
+	});
+
+	it("a bound the schema states is the range stepped through", () => {
+		expect(optionsAt("budget.concurrency")).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+		expect(optionsAt("maxWorktrees")).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+	});
+
+	it("the lenses come from what the project offers", () => {
+		expect(optionsAt("lenses")).toEqual(["functional", "quality"]);
+		const repo = mkdtempSync(join(tmpdir(), "loop-looks-"));
+		try {
+			const lenses = join(
+				repo,
+				".claude",
+				"skills",
+				"dispatch",
+				"references",
+				"lenses",
+			);
+			mkdirSync(lenses, { recursive: true });
+			writeFileSync(join(lenses, "security.md"), "Review security.");
+			expect(optionsAt("lenses", { projectDir: repo })).toEqual([
+				"functional",
+				"quality",
+				"security",
+			]);
+		} finally {
+			rmSync(repo, { recursive: true, force: true });
+		}
 	});
 });

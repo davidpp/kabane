@@ -12,17 +12,23 @@
 
 import { execFile } from "node:child_process";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, parse, resolve } from "node:path";
+import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { DetectedScopes } from "./detected";
+import { ProjectDirs } from "./projects";
 import { ScopeUri } from "./uri";
+
+export { ProjectDirs } from "./projects";
 
 const run = promisify(execFile);
 
 /** The directory that marks a project root and holds its pinned scope. */
 export const MARKER_DIR = ".kabane";
 
-/** The pin only `kabane init --scope` writes; detection reads it and never writes it. */
+/**
+ * The shared pin, checked in for everyone who clones the repo. Only `kabane init --scope --shared`
+ * writes it; detection reads it and never writes it.
+ */
 export const SCOPE_FILE = join(MARKER_DIR, "scope");
 
 /**
@@ -105,29 +111,49 @@ const hasMarker = async (dir: string): Promise<boolean> =>
 	isDirectory(join(dir, MARKER_DIR));
 
 /**
- * Git fallback for repos with no marker directory yet.
- *
- * A worktree reports its own toplevel, which would give each worktree a scope
- * of its own; following `--git-common-dir` back to the main checkout keeps a
- * worktree filing under the project it branched from.
+ * The git checkout `dir` is in: its toplevel, and the main checkout's root. A worktree reports its
+ * own toplevel; `--git-common-dir` leads back to the checkout it branched from.
+ */
+const checkoutOf = async (
+	dir: string,
+): Promise<{ toplevel: string; main: string } | null> => {
+	const toplevel = await git(dir, ["rev-parse", "--show-toplevel"]);
+	if (!toplevel) return null;
+	const commonDir = await git(dir, ["rev-parse", "--git-common-dir"]);
+	// A relative common dir (".git") is the main checkout; an absolute one means
+	// this is a worktree pointing back at the main repo's git dir.
+	if (!commonDir || !isAbsolute(commonDir)) return { toplevel, main: toplevel };
+	const mainGitDir = commonDir.includes("/worktrees/")
+		? (commonDir.split("/worktrees/")[0] as string)
+		: commonDir;
+	return { toplevel, main: await canonical(dirname(mainGitDir)) };
+};
+
+/**
+ * Git fallback for repos with no marker directory yet. A worktree files under
+ * the main checkout, so it does not get a scope of its own.
  */
 const findGitRoot = async (
 	startDir: string,
 	homeParent: string,
 ): Promise<string | null> => {
-	const toplevel = await git(startDir, ["rev-parse", "--show-toplevel"]);
-	if (!toplevel || isHomeParent(toplevel, homeParent)) return null;
+	const checkout = await checkoutOf(startDir);
+	if (!checkout || isHomeParent(checkout.toplevel, homeParent)) return null;
+	return isHomeParent(checkout.main, homeParent) ? null : checkout.main;
+};
 
-	const commonDir = await git(startDir, ["rev-parse", "--git-common-dir"]);
-	// A relative common dir (".git") is the main checkout; an absolute one means
-	// this is a worktree pointing back at the main repo's git dir.
-	if (!commonDir || !isAbsolute(commonDir)) return toplevel;
-
-	const mainGitDir = commonDir.includes("/worktrees/")
-		? (commonDir.split("/worktrees/")[0] as string)
-		: commonDir;
-	const mainRoot = await canonical(dirname(mainGitDir));
-	return isHomeParent(mainRoot, homeParent) ? null : mainRoot;
+/**
+ * The same place as the project root `root` in the main checkout, when `root` is in a linked
+ * worktree; `root` otherwise. A repo that checks in `.kabane/` has that marker in every
+ * worktree, so what is keyed by a project's path would otherwise differ per worktree.
+ */
+export const mainCheckoutRoot = async (root: string): Promise<string> => {
+	const checkout = await checkoutOf(root);
+	if (!checkout || checkout.main === checkout.toplevel) return root;
+	const inside = relative(await canonical(checkout.toplevel), root);
+	return inside.startsWith("..") || isAbsolute(inside)
+		? root
+		: join(checkout.main, inside);
 };
 
 /**
@@ -182,11 +208,20 @@ const remoteUrl = async (root: string): Promise<string | null> => {
 	return first ? git(root, ["remote", "get-url", first]) : null;
 };
 
-const scopePinPath = (root: string): string => join(root, SCOPE_FILE);
+/**
+ * The local pin: yours for this project, on this device, in the project's directory under
+ * KABANE_HOME. Keyed by the main checkout's path, so every worktree of a repo reads the same one.
+ * Only `kabane init --scope` writes it.
+ */
+export const localPinPath = async (
+	home: string,
+	root: string,
+): Promise<string> =>
+	join(ProjectDirs.of(home, await mainCheckoutRoot(root)), "scope");
 
-const readScopePin = async (root: string): Promise<string | null> => {
+const readScopePin = async (path: string): Promise<string | null> => {
 	try {
-		const value = (await readFile(scopePinPath(root), "utf8")).trim();
+		const value = (await readFile(path, "utf8")).trim();
 		return value.length > 0 ? value : null;
 	} catch {
 		return null;
@@ -195,7 +230,8 @@ const readScopePin = async (root: string): Promise<string | null> => {
 
 /**
  * Resolve the stable scope id for a project root (ADR-009 cascade):
- * pin → legacy pin → the id detection stored → git remote → first commit → path.
+ * local pin → shared pin → legacy pin → the id detection stored → git remote → first commit →
+ * path. Your own pin wins over the repo's, as a local setting wins over a shared one.
  *
  * Nothing here writes into the repo: it may be a checkout the user does not
  * own. What the remote resolves to is stored under KABANE_HOME instead, keyed
@@ -204,8 +240,8 @@ const readScopePin = async (root: string): Promise<string | null> => {
  * own remote.
  *
  * One-way: a `git:` id is a placeholder for a repo that had no remote when it
- * was first seen, so a `git:` pin does not short-circuit and a remote id may
- * replace it; nothing replaces a remote id with a `git:` one, which would
+ * was first seen, so a `git:` pin, local or shared, does not short-circuit and a
+ * remote id may replace it; nothing replaces a remote id with a `git:` one, which would
  * orphan everything already filed under it, and an id stored before the
  * repo's first commit still holds once it has one. A `git:` id is never
  * stored: the commit it derives from is always there to derive it again. The
@@ -216,7 +252,10 @@ export const resolveScopeId = async (
 	root: string,
 	opts: Pick<DetectOptions, "home" | "legacyPin">,
 ): Promise<string> => {
-	const pinned = await readScopePin(root);
+	const local = await readScopePin(await localPinPath(opts.home, root));
+	if (local && !local.startsWith("git:")) return local;
+
+	const pinned = await readScopePin(join(root, SCOPE_FILE));
 	if (pinned && !pinned.startsWith("git:")) return pinned;
 
 	const legacy = await opts.legacyPin?.(root);
@@ -247,7 +286,7 @@ export const resolveScopeId = async (
 
 	if (firstCommit) return `git:${firstCommit.slice(0, 12)}`;
 
-	return pinned ?? legacy ?? root;
+	return local ?? pinned ?? legacy ?? root;
 };
 
 /**

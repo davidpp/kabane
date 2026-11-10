@@ -12,6 +12,7 @@ import {
 	SCOPE_FILE,
 	saveConfig,
 	writeDirectoryScope,
+	writeLocalScope,
 } from "../config";
 import { type Command, configureRuntime } from "../context";
 
@@ -102,15 +103,43 @@ const CONFIG_FLAGS = [
 ] as const;
 
 /**
- * `--scope` is the one way to put a pin in a repo, since detection writes nothing there. A device
- * that already has a config pins with it alone, so pinning never costs the config a rewrite.
+ * `--scope` pins the project's scope, since detection writes nothing in a repo: for you only,
+ * under KABANE_HOME, or with `--shared` in the repo's `.kabane/scope` for everyone who clones it.
  */
-const pinScope = (cwd: string, scope: string) => {
-	const wrote = writeDirectoryScope(cwd, scope);
+const writePin = async (
+	home: string,
+	cwd: string,
+	scope: string | undefined,
+	shared: boolean,
+): Promise<Result<{ pin: string; where: string } | undefined>> => {
+	if (scope === undefined) return ok(undefined);
+	if (shared) {
+		const wrote = writeDirectoryScope(cwd, scope);
+		return wrote.ok
+			? ok({ pin: wrote.value, where: `./${SCOPE_FILE}, shared with the repo` })
+			: wrote;
+	}
+	const wrote = await writeLocalScope(home, cwd, scope);
+	return wrote.ok
+		? ok({
+				pin: wrote.value.path,
+				where: `${wrote.value.path}, for ${wrote.value.root} on this device only`,
+			})
+		: wrote;
+};
+
+/** A device that already has a config pins with `--scope` alone, so pinning never costs the config a rewrite. */
+const pinScope = async (
+	home: string,
+	cwd: string,
+	scope: string,
+	shared: boolean,
+) => {
+	const wrote = await writePin(home, cwd, scope, shared);
 	if (!wrote.ok) return failure(wrote.error);
 	return success(
-		{ scope, pin: wrote.value },
-		`✓ Pinned scope ${scope} in ./${SCOPE_FILE}`,
+		{ scope, pin: wrote.value?.pin },
+		`✓ Pinned scope ${scope} in ${wrote.value?.where}`,
 	);
 };
 
@@ -118,14 +147,16 @@ export const init: Command = {
 	name: "init",
 	summary: "Create KABANE_HOME/config.json and the database",
 	usage:
-		"kabane init [--actor <uri>] [--device <id>] [--sync-url <url>] [--sync-token <token>] [--access-client-id <id> --access-client-secret <secret>] [--db-path <file> [--table-prefix <prefix>]] [--scope <uri>] [--force]",
+		"kabane init [--actor <uri>] [--device <id>] [--sync-url <url>] [--sync-token <token>] [--access-client-id <id> --access-client-secret <secret>] [--db-path <file> [--table-prefix <prefix>]] [--scope <uri> [--shared]] [--force]",
 	standalone: true,
 	run: async (args, ctx) => {
 		const path = configPath(ctx.home);
 		const scope = flagString(args, "scope");
+		const shared = flagBool(args, "shared");
 		if (existsSync(path) && !flagBool(args, "force")) {
 			const configures = CONFIG_FLAGS.some((flag) => flag in args.flags);
-			if (scope !== undefined && !configures) return pinScope(ctx.cwd, scope);
+			if (scope !== undefined && !configures)
+				return pinScope(ctx.home, ctx.cwd, scope, shared);
 			return failure(
 				`${path} already exists. Pass --force to overwrite it, or --scope <uri> alone to pin this directory's scope.`,
 			);
@@ -141,6 +172,9 @@ export const init: Command = {
 			tablePrefix: flagString(args, "table-prefix"),
 		});
 		if (!built.ok) return failure(built.error);
+		// Before the config, so a pin refused outside a project leaves the device as it was.
+		const pinned = await writePin(ctx.home, ctx.cwd, scope, shared);
+		if (!pinned.ok) return failure(pinned.error);
 
 		const saved = saveConfig(ctx.home, built.value);
 		if (!saved.ok) return failure(saved.error);
@@ -153,11 +187,6 @@ export const init: Command = {
 		if (!configured.ok) return failure(configured.error);
 		const initialized = await Planner.init(location.basePath);
 		if (!initialized.ok) return failure(initialized.error);
-
-		if (scope !== undefined) {
-			const wrote = writeDirectoryScope(ctx.cwd, scope);
-			if (!wrote.ok) return failure(wrote.error);
-		}
 
 		const config = built.value;
 		return success(
@@ -182,7 +211,9 @@ export const init: Command = {
 				`  sync:   ${config.sync.enabled ? config.sync.url : "disabled (pass --sync-url and --sync-token)"}`,
 				`  access: ${config.sync.headers ? "service token headers set" : "none"}`,
 				`  db:     ${location.basePath}/${location.dbName}${location.tablePrefix ? ` (tables ${location.tablePrefix}*)` : ""}`,
-				...(scope ? [`  scope:  ${scope} (written to ./${SCOPE_FILE})`] : []),
+				...(pinned.value
+					? [`  scope:  ${scope} (written to ${pinned.value.where})`]
+					: []),
 				"Next: `kabane mcp install` gives Claude Code, Codex and Gemini this tracker over MCP.",
 			].join("\n"),
 		);

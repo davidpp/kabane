@@ -4,12 +4,14 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitFixture } from "@cabane/core/git-fixture";
+import { detectScope, ProjectDirs } from "@cabane/core/scope";
 
 const initial = { actor: "cabane://actor/human/tester", deviceId: "test" };
 
@@ -29,6 +31,11 @@ const withHome =
 			repo: string;
 			inRepo: (
 				...args: string[]
+			) => Promise<{ out: string; err: string; code: number }>;
+			/** The CLI run in `cwd`. */
+			runAt: (
+				cwd: string,
+				args: string[],
 			) => Promise<{ out: string; err: string; code: number }>;
 		}) => Promise<void>,
 	) =>
@@ -74,6 +81,7 @@ const withHome =
 				},
 				repo,
 				inRepo: (...args) => runAt(repo, args),
+				runAt,
 			});
 		} finally {
 			rmSync(root, { recursive: true, force: true });
@@ -197,7 +205,7 @@ describe.concurrent("config through the real CLI", () => {
 
 	it(
 		"sets typed values without opening SQLite and preserves unknown fields at every level",
-		withHome(async ({ home, read, write, run }) => {
+		withHome(async ({ home, path, read, write, run }) => {
 			const future = {
 				future: { nested: [1, false, "keep"] },
 				constructor: "preserve",
@@ -233,7 +241,13 @@ describe.concurrent("config through the real CLI", () => {
 			] as const) {
 				const result = await run("config", "set", key, "--", input, "--json");
 				expect(result.code).toBe(0);
-				expect(JSON.parse(result.out)).toEqual({ key, layer: "user", value });
+				expect(JSON.parse(result.out)).toEqual({
+					key,
+					layer: "global",
+					from: path(),
+					value,
+					restart: "start",
+				});
 				expected[key] = value;
 			}
 			// One listing reads every value back through get's own lookup and redaction.
@@ -260,7 +274,7 @@ describe.concurrent("config through the real CLI", () => {
 
 	it(
 		"unsets overrides without persisting defaults or removing unknown siblings",
-		withHome(async ({ read, write, run, get }) => {
+		withHome(async ({ path, read, write, run, get }) => {
 			write({
 				...initial,
 				sync: { enabled: true, batchBytes: 1, future: true },
@@ -277,8 +291,10 @@ describe.concurrent("config through the real CLI", () => {
 				expect(result.code).toBe(0);
 				expect(JSON.parse(result.out)).toEqual({
 					key,
-					layer: "user",
+					layer: "global",
+					from: path(),
 					unset: true,
+					restart: "start",
 				});
 			}
 			expect(JSON.parse(read())).toEqual({
@@ -291,7 +307,7 @@ describe.concurrent("config through the real CLI", () => {
 			expect(await get("copilot.model")).toBeNull();
 			expect(await get("copilot.harness")).toBe("claude");
 			expect((await run("config", "set", "extensions", "")).out).toBe(
-				"extensions = []",
+				"extensions = [] (global)",
 			);
 			expect(await get("extensions")).toEqual([]);
 		}),
@@ -433,9 +449,11 @@ describe.concurrent("config through the real CLI", () => {
 			expect(changed.code).toBe(0);
 			expect(JSON.parse(changed.out)).toEqual({
 				key: "extensions",
-				layer: "user",
+				layer: "global",
+				from: path(),
 				value: ["loop", "unshipped"],
 				ignored: ["unshipped"],
+				restart: "start",
 			});
 			expect(changed.err).toBe(
 				`kabane: ignoring "unshipped" in "extensions" of ${path()}: this kabane ships loop`,
@@ -446,8 +464,175 @@ describe.concurrent("config through the real CLI", () => {
 	);
 
 	it(
-		"resolves settings through the user, project and scope layers and names each value's layer",
-		withHome(async ({ path, read, write, repo, inRepo }) => {
+		"says when a higher layer still decides a write, what a leaf hides, and what an unset falls back to",
+		withHome(async ({ home, path, write, inRepo }) => {
+			write(initial);
+			const root = realpathSync(join(home, "..", "repo"));
+			const shared = join(root, ".kabane", "loop.json");
+			const local = join(ProjectDirs.of(home, root), "loop.json");
+			const out = async (...args: string[]) => {
+				const result = await inRepo(...args);
+				expect(result.err).toBe("");
+				expect(result.code).toBe(0);
+				return result.out;
+			};
+			await out("config", "set", "loop.stallAfter", "2", "--layer", "shared");
+			expect(
+				await out("config", "set", "loop.stallAfter", "7", "--layer", "global"),
+			).toBe(
+				`loop.stallAfter = 7 (global); here ${shared} (shared) still decides: 2. Without --layer, a write here goes to local and overrides it.`,
+			);
+			expect(await out("config", "set", "loop.stallAfter", "9")).toBe(
+				`loop.stallAfter = 9 (local: ${local})`,
+			);
+			const shadowed = JSON.parse(
+				await out(
+					"config",
+					"set",
+					"loop.stallAfter",
+					"4",
+					"--layer",
+					"shared",
+					"--json",
+				),
+			);
+			expect(shadowed).toEqual({
+				key: "loop.stallAfter",
+				layer: "shared",
+				from: shared,
+				value: 4,
+				restart: "resolve",
+				shadowedBy: { layer: "local", from: local, value: 9 },
+			});
+			expect(await out("config", "get", "loop.stallAfter", "--layers")).toBe(
+				[
+					`9 (local: ${local})`,
+					`  hides 4 (shared: ${shared})`,
+					`  hides 7 (global: ${path()})`,
+				].join("\n"),
+			);
+			expect(
+				JSON.parse(
+					await out("config", "get", "loop.stallAfter", "--layers", "--json"),
+				).leaves["loop.stallAfter"].hides,
+			).toEqual([
+				{ layer: "global", from: path(), value: 7 },
+				{ layer: "shared", from: shared, value: 4 },
+			]);
+			expect(await out("config", "unset", "loop.stallAfter")).toBe(
+				`loop.stallAfter unset (local: ${local}); ${shared} (shared) now decides: 4`,
+			);
+			// A device key has the global layer only: nothing above it to decide.
+			expect(await out("config", "set", "timezone", "UTC")).toBe(
+				"timezone = UTC (global)",
+			);
+		}),
+		30_000,
+	);
+
+	it(
+		"reads and writes the project's shared settings and lens options the same from a nested directory",
+		withHome(async ({ write, repo, runAt }) => {
+			write(initial);
+			const root = realpathSync(repo);
+			const nested = join(repo, "src", "deep");
+			mkdirSync(nested, { recursive: true });
+			const lenses = join(
+				repo,
+				".claude",
+				"skills",
+				"dispatch",
+				"references",
+				"lenses",
+			);
+			mkdirSync(lenses, { recursive: true });
+			writeFileSync(join(lenses, "team.md"), "# team\n");
+			const json = async (cwd: string, ...args: string[]) => {
+				const result = await runAt(cwd, [...args, "--json"]);
+				expect(result.err).toBe("");
+				expect(result.code).toBe(0);
+				return JSON.parse(result.out);
+			};
+			// Written from the nested directory, to the root's file.
+			expect(
+				await json(
+					nested,
+					"config",
+					"set",
+					"loop.recheck",
+					"false",
+					"--layer",
+					"shared",
+				),
+			).toMatchObject({
+				layer: "shared",
+				from: join(root, ".kabane", "loop.json"),
+			});
+			for (const cwd of [repo, nested]) {
+				const got = await json(
+					cwd,
+					"config",
+					"get",
+					"loop.recheck",
+					"--layers",
+				);
+				expect(got.leaves["loop.recheck"]).toMatchObject({
+					value: false,
+					layer: "shared",
+					from: join(root, ".kabane", "loop.json"),
+				});
+				expect(
+					(await json(cwd, "config", "get", "loop.lenses", "--layers")).options,
+				).toContain("team");
+			}
+			expect(existsSync(join(nested, ".kabane"))).toBe(false);
+		}),
+		30_000,
+	);
+
+	it(
+		"says a write was saved but the settings no longer resolve when another layer's file is broken",
+		withHome(async ({ home, path, write, inRepo }) => {
+			write(initial);
+			const shared = join(realpathSync(join(home, "..", "repo")), ".kabane");
+			mkdirSync(shared);
+			writeFileSync(join(shared, "loop.json"), "{ not json");
+			const human = await inRepo(
+				"config",
+				"set",
+				"loop.stallAfter",
+				"4",
+				"--layer",
+				"global",
+			);
+			expect(human.code).toBe(0);
+			expect(human.out).toStartWith(
+				"loop.stallAfter = 4 (global), but these settings no longer resolve, so every read of them fails until it is fixed: ",
+			);
+			expect(human.out).toContain(join(shared, "loop.json"));
+			const json = await inRepo(
+				"config",
+				"set",
+				"loop.stallAfter",
+				"5",
+				"--layer",
+				"global",
+				"--json",
+			);
+			const change = JSON.parse(json.out);
+			expect(change).toMatchObject({ key: "loop.stallAfter", value: 5 });
+			expect(change.unresolved).toContain(join(shared, "loop.json"));
+			// Saved all the same: the write is not rolled back.
+			expect(JSON.parse(readFileSync(path(), "utf8")).loop).toEqual({
+				stallAfter: 5,
+			});
+		}),
+		30_000,
+	);
+
+	it(
+		"resolves settings through the global, shared and local layers and names each value's layer",
+		withHome(async ({ home, path, read, write, run, repo, inRepo, runAt }) => {
 			write(initial);
 			const json = async (...args: string[]) => {
 				const result = await inRepo(...args, "--json");
@@ -464,36 +649,37 @@ describe.concurrent("config through the real CLI", () => {
 						>,
 					).map(([name, leaf]) => [name, [leaf.value, leaf.layer]]),
 				);
-			// The user's settings for this repo's scope, with no file in the repo.
+			// The CLI detects the real path, which on macOS is /private/var for /var.
+			const root = realpathSync(repo);
+			const local = join(home, "projects", ProjectDirs.slug(root), "loop.json");
+			// Inside a project a write goes to its local layer: a file under the home, none in the repo.
 			expect(
-				await json(
-					"config",
-					"set",
-					"loop.gates.test",
-					"bun test",
-					"--layer",
-					"scope",
-				),
-			).toEqual({ key: "loop.gates.test", layer: "scope", value: "bun test" });
+				await json("config", "set", "loop.gates.test", "bun test"),
+			).toEqual({
+				key: "loop.gates.test",
+				layer: "local",
+				from: local,
+				value: "bun test",
+				restart: "resolve",
+			});
+			expect(JSON.parse(readFileSync(local, "utf8"))).toEqual({
+				gates: { test: "bun test" },
+			});
 			expect(existsSync(join(repo, ".kabane"))).toBe(false);
-			const [scopeId] = Object.keys(JSON.parse(read()).scopes);
-			expect(JSON.parse(read()).scopes).toEqual({
-				[String(scopeId)]: { loop: { gates: { test: "bun test" } } },
-			});
-			expect(await json("config", "set", "loop.stallAfter", "5")).toEqual({
-				key: "loop.stallAfter",
-				layer: "user",
-				value: 5,
-			});
-			// A checked-in file under it: the scope's value wins where both say something.
+			expect(JSON.parse(read())).toEqual(initial);
+			// Outside one, the global layer.
+			const outside = await run("config", "set", "loop.stallAfter", "5");
+			expect(outside.out).toBe("loop.stallAfter = 5 (global)");
+			expect(JSON.parse(read()).loop).toEqual({ stallAfter: 5 });
+			// A checked-in file under local: local wins where both say something.
 			mkdirSync(join(repo, ".kabane"));
 			writeFileSync(
 				join(repo, ".kabane", "loop.json"),
 				'{\n\t"gates": { "test": "npm test", "lint": "npm run lint" },\n\t"stallAfter": 2\n}\n',
 			);
 			expect(await leaves("loop.gates")).toEqual({
-				"loop.gates.test": ["bun test", "scope"],
-				"loop.gates.lint": ["npm run lint", "project"],
+				"loop.gates.test": ["bun test", "local"],
+				"loop.gates.lint": ["npm run lint", "shared"],
 			});
 			// Without --layers, get prints the effective value alone, as it always has.
 			expect(await json("config", "get", "loop.gates")).toEqual({
@@ -501,33 +687,57 @@ describe.concurrent("config through the real CLI", () => {
 				lint: "npm run lint",
 			});
 			expect(await leaves("loop.stallAfter")).toEqual({
-				"loop.stallAfter": [2, "project"],
-			});
-			expect(await leaves("loop.worktree")).toEqual({
-				"loop.worktree": [true, "default"],
+				"loop.stallAfter": [2, "shared"],
 			});
 			expect(
 				(await inRepo("config", "get", "loop.gates.test", "--layers")).out,
 			).toBe(
-				`bun test (scope: your settings for scope ${scopeId} in ${path()})`,
+				`bun test (local: ${local})\n  hides npm test (shared: ${join(root, ".kabane", "loop.json")})`,
 			);
-			// The rows say the same, and outside the repo there is only the user's layer.
-			const rows: { key: string; value: unknown; layer: string }[] = await json(
-				"config",
-				"list",
-			);
+			const rows: {
+				key: string;
+				value: unknown;
+				layer: string;
+				group?: string;
+			}[] = await json("config", "list");
 			expect(rows.find((row) => row.key === "loop.gates")).toMatchObject({
 				value: { test: "bun test", lint: "npm run lint" },
-				layer: "scope",
+				layer: "local",
 			});
-			// A null in a higher layer unsets what the lower ones say.
-			const stored = JSON.parse(read());
-			stored.scopes[String(scopeId)].loop.gates.lint = null;
-			write(stored);
-			expect(await leaves("loop.gates")).toEqual({
-				"loop.gates.test": ["bun test", "scope"],
+			// The record's entries are rows of their own, in its group, with what each one hides.
+			const sharedFile = join(root, ".kabane", "loop.json");
+			expect(
+				rows.filter((row) => row.key.startsWith("loop.gates.")),
+			).toMatchObject([
+				{
+					key: "loop.gates.test",
+					namespace: "loop",
+					value: "bun test",
+					layer: "local",
+					from: local,
+					hides: [{ layer: "shared", from: sharedFile, value: "npm test" }],
+					label: "gates.test",
+					group: rows.find((row) => row.key === "loop.gates")?.group,
+				},
+				{
+					key: "loop.gates.lint",
+					value: "npm run lint",
+					layer: "shared",
+					hides: [],
+				},
+			]);
+			expect(rows.find((row) => row.key === "loop.stallAfter")).toMatchObject({
+				value: 2,
+				layer: "shared",
+				hides: [{ layer: "global", from: path(), value: 5 }],
+				// Where the board's editor saves first: where a set with no --layer writes.
+				target: "local",
 			});
-			// A project write lands in the checked-in file and keeps its indentation.
+			expect(rows.find((row) => row.key === "timezone")).toMatchObject({
+				target: "global",
+			});
+			// A shared write lands in the checked-in file and keeps its indentation; the former
+			// names write where the new ones do.
 			await json(
 				"config",
 				"set",
@@ -539,8 +749,36 @@ describe.concurrent("config through the real CLI", () => {
 			expect(readFileSync(join(repo, ".kabane", "loop.json"), "utf8")).toBe(
 				'{\n\t"gates": {\n\t\t"test": "npm test",\n\t\t"lint": "npm run lint"\n\t},\n\t"stallAfter": 2,\n\t"lenses": [\n\t\t"quality"\n\t]\n}\n',
 			);
-			// Device keys are the user's only: no project file or scope may move the hub or the database.
-			for (const layer of ["project", "scope"]) {
+			expect(
+				(
+					await json(
+						"config",
+						"set",
+						"loop.recheck",
+						"true",
+						"--layer",
+						"scope",
+					)
+				).from,
+			).toBe(local);
+			expect(
+				(
+					await json(
+						"config",
+						"set",
+						"loop.recheck",
+						"false",
+						"--layer",
+						"user",
+					)
+				).layer,
+			).toBe("global");
+			expect(JSON.parse(read()).loop).toEqual({
+				stallAfter: 5,
+				recheck: false,
+			});
+			// Device keys are global only: no project file may move the hub or the database.
+			for (const layer of ["shared", "local", "scope"]) {
 				const refused = await inRepo(
 					"config",
 					"set",
@@ -550,32 +788,85 @@ describe.concurrent("config through the real CLI", () => {
 					layer,
 				);
 				expect(refused.code).toBe(1);
-				expect(refused.err).toContain(`it has no ${layer} layer`);
+				expect(refused.err).toContain("it has the global layer only");
 			}
+			expect(await json("config", "set", "timezone", "UTC")).toMatchObject({
+				layer: "global",
+			});
+			// A legacy scopes.<id> block reads as local, under the file, and is never written.
+			const scopeId = (await detectScope(root, { home }))?.scopeId;
+			const stored = JSON.parse(read());
+			stored.scopes = {
+				[String(scopeId)]: {
+					loop: { model: "haiku", gates: { lint: null, test: "old" } },
+				},
+			};
+			write(stored);
+			const legacy = `scopes.${scopeId} in ${path()}`;
+			expect(
+				(await inRepo("config", "get", "loop.model", "--layers")).out,
+			).toBe(`haiku (local: ${legacy})`);
+			expect(await leaves("loop.gates")).toEqual({
+				"loop.gates.test": ["bun test", "local"],
+			});
+			const before = read();
+			await json("config", "set", "loop.model", "sonnet");
+			expect(await json("config", "get", "loop.model")).toBe("sonnet");
+			expect(read()).toBe(before);
+			const unset = await inRepo("config", "unset", "loop.model");
+			expect(unset.out).toBe(
+				`loop.model unset (local: ${local}); ${legacy} (local) now decides: haiku`,
+			);
+			expect(await json("config", "get", "loop.model")).toBe("haiku");
+			expect(read()).toBe(before);
+			// The local layer follows the path, not the scope id: a remote changes the id.
+			GitFixture.run(repo, [
+				"remote",
+				"add",
+				"origin",
+				"git@github.com:someone/else.git",
+			]);
+			expect((await detectScope(root, { home }))?.scopeId).not.toBe(scopeId);
+			expect(await json("config", "get", "loop.gates.test")).toBe("bun test");
+			// A worktree reads the main checkout's local layer, with or without the marker in it.
+			GitFixture.run(repo, ["worktree", "add", "-q", "--detach", "../wt"]);
+			GitFixture.run(repo, ["add", ".kabane"]);
+			GitFixture.run(repo, ["commit", "-q", "-m", "shared settings"]);
+			GitFixture.run(repo, ["worktree", "add", "-q", "--detach", "../marked"]);
+			for (const tree of ["wt", "marked"]) {
+				const got = await runAt(join(repo, "..", tree), [
+					"config",
+					"get",
+					"loop.gates.test",
+				]);
+				expect(got.out).toBe("bun test");
+			}
+			// --scope names another project's legacy block; a local write needs a project directory.
+			stored.scopes.elsewhere = { loop: { model: "opus" } };
+			write(stored);
+			expect(
+				await json("config", "get", "loop.model", "--scope", "elsewhere"),
+			).toBe("opus");
+			const elsewhere = await inRepo(
+				"config",
+				"set",
+				"loop.model",
+				"haiku",
+				"--scope",
+				"elsewhere",
+			);
+			expect(elsewhere.code).toBe(1);
+			expect(elsewhere.err).toContain("No project here for --layer local");
+			// A checked-in file cannot redirect device config.
 			writeFileSync(
 				join(repo, ".kabane", "loop.json"),
 				JSON.stringify({ sync: { url: "https://elsewhere.invalid" } }),
 			);
 			const redirected = await inRepo("config", "get", "loop.gates");
 			expect(redirected.code).toBe(1);
-			// The CLI's cwd is the real path, which on macOS is /private/var for /var.
 			expect(redirected.err).toMatch(
 				/Invalid loop settings in \S*\/repo\/\.kabane\/loop\.json:\n {2}sync: not a loop setting$/,
 			);
-			// --scope names the scope from anywhere, and writes its layer.
-			expect(
-				await json(
-					"config",
-					"set",
-					"loop.model",
-					"haiku",
-					"--scope",
-					"elsewhere",
-				),
-			).toEqual({ key: "loop.model", layer: "scope", value: "haiku" });
-			expect(JSON.parse(read()).scopes.elsewhere).toEqual({
-				loop: { model: "haiku" },
-			});
 		}),
 		30_000,
 	);
@@ -596,7 +887,8 @@ describe.concurrent("config through the real CLI", () => {
 				// A bare --layer would otherwise write the user's layer, for every project.
 				["set", "timezone", "UTC", "--layer"],
 				["unset", "timezone", "--layer"],
-				["get", "timezone", "--layer", "user"],
+				["get", "timezone", "--layer", "global"],
+				["set", "timezone", "UTC", "--layer", "team"],
 				["set", "timezone", "UTC", "--layers"],
 				["get", "timezone", "--layers=yes"],
 			])

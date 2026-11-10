@@ -18,9 +18,10 @@ import {
 	SyncConfigSchema,
 	TimeZoneSchema,
 	toError,
+	tryCatch,
 	trySync,
 } from "@cabane/core";
-import { MARKER_DIR, SCOPE_FILE } from "@cabane/core/scope";
+import { findProjectRoot, localPinPath, SCOPE_FILE } from "@cabane/core/scope";
 import type { Extension } from "@cabane/extension";
 import { z } from "zod";
 
@@ -244,21 +245,46 @@ export const saveConfig = (home: string, config: unknown): Result<string> => {
 	return written.ok ? ok(written.value) : err(toError(written.error));
 };
 
-/**
- * `kabane init --scope` pins the scope for a directory tree. Reading it back is
- * the first step of `detectScope`'s cascade, so nothing here reads it.
- */
-export const writeDirectoryScope = (
-	cwd: string,
-	scope: string,
-): Result<string> => {
-	const path = join(cwd, SCOPE_FILE);
+const writePin = (path: string, scope: string): Result<string> => {
 	const written = trySync(() => {
-		mkdirSync(join(cwd, MARKER_DIR), { recursive: true });
+		mkdirSync(dirname(path), { recursive: true });
 		writeFileSync(path, `${scope.trim()}\n`);
 		return path;
 	});
 	return written.ok ? ok(written.value) : err(toError(written.error));
+};
+
+/**
+ * `kabane init --scope --shared` pins the scope for a directory tree, in the repo, for everyone
+ * who clones it. Reading it back is a step of `detectScope`'s cascade, so nothing here reads it.
+ */
+export const writeDirectoryScope = (
+	cwd: string,
+	scope: string,
+): Result<string> => writePin(join(cwd, SCOPE_FILE), scope);
+
+/**
+ * `kabane init --scope` pins the scope of the project `cwd` is in, for you only, under
+ * KABANE_HOME: nothing lands in the repo. Outside a project there is no root to key it by.
+ */
+export const writeLocalScope = async (
+	home: string,
+	cwd: string,
+	scope: string,
+): Promise<Result<{ root: string; path: string }>> => {
+	const root = await tryCatch(() => findProjectRoot(cwd, home));
+	if (!root.ok) return root;
+	if (!root.value)
+		return err(
+			new Error(
+				`${cwd} is in no project, so there is nothing to pin. Pass --shared to mark this directory with ./${SCOPE_FILE}.`,
+			),
+		);
+	const projectRoot = root.value;
+	const path = await tryCatch(() => localPinPath(home, projectRoot));
+	if (!path.ok) return path;
+	const wrote = writePin(path.value, scope);
+	return wrote.ok ? ok({ root: projectRoot, path: wrote.value }) : wrote;
 };
 
 /** Human authors comment as `human`; agent actor URIs comment as `ai`. */

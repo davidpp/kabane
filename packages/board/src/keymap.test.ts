@@ -11,6 +11,7 @@ import { BoardDecisions } from "./decisions";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { BoardPrompt } from "./prompt";
+import { SettingsView } from "./settings-view";
 import { Fixtures } from "./stories/fixtures";
 import { BoardTabs } from "./tabs";
 import { TriggerForm } from "./trigger-form";
@@ -78,6 +79,7 @@ const state = (
 	search: { mode: "off" },
 	dispatch: null,
 	help: false,
+	settings: null,
 	focus: "board",
 	tabs: BoardTabs.NONE,
 	marked: new Set<string>(),
@@ -170,6 +172,27 @@ const SHORTCUTS = [
 	{ name: "triage", template: "Triage.", hint: "sort" },
 	{ name: "trim", template: "Trim.", hint: "cut" },
 ];
+
+const keyInput = (name: string): BoardNav.KeyInput => {
+	if (name.startsWith("ctrl+")) return { name: name.slice(5), ctrl: true };
+	if (name.startsWith("shift+")) return { name: name.slice(6), shift: true };
+	return name.length === 1 ? { name, sequence: name } : { name };
+};
+
+// The `,` view over the fixture's rows, on `key`, after `names` are pressed.
+const settingsOn = (key: string, ...names: string[]): BoardNav.BoardState => {
+	const rows = SettingsView.ordered(Fixtures.SETTINGS);
+	let next = state({
+		settings: {
+			rows: { type: "ready", rows },
+			selected: rows.findIndex((row) => row.key === key),
+			detail: false,
+		},
+	});
+	for (const name of names)
+		next = BoardNav.reduceKey(next, keyInput(name), BoardNav.ARM_MS).state;
+	return next;
+};
 
 // Each nav-routed context and states where it is live. A key passes when it does something in at
 // least one of them: some keys only act from one side (`k` needs a row above, `1` a tab that is not
@@ -297,6 +320,15 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 		}),
 	),
 	help: [state({ help: true })],
+	// The settings view on its first row and its last (j has somewhere to go from one, k the other),
+	// on a value `h/l` steps, its editor open, and a save to the repo asking its y/n.
+	settings: [
+		settingsOn("actor"),
+		settingsOn("timezone"),
+		settingsOn("loop.stallAfter"),
+		settingsOn("loop.stallAfter", "l"),
+		settingsOn("loop.stallAfter", "l", "shift+tab", "return"),
+	],
 	// A decision on JAKE-2 with no choices, its answer asked for with `enter`: its input has the keys.
 	decisionText: [
 		BoardNav.reduceKey(
@@ -309,12 +341,6 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 			0,
 		).state,
 	],
-};
-
-const keyInput = (name: string): BoardNav.KeyInput => {
-	if (name.startsWith("ctrl+")) return { name: name.slice(5), ctrl: true };
-	if (name.startsWith("shift+")) return { name: name.slice(6), shift: true };
-	return name.length === 1 ? { name, sequence: name } : { name };
 };
 
 // "Does something": the reducer changed the state or asked app.tsx for an effect.

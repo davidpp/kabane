@@ -62,9 +62,15 @@ describe("CopilotInstructions.SKILLS", () => {
 	});
 
 	it("writes the human's settings for a project to their scope, never to the checked-in file", () => {
-		expect(CopilotInstructions.SKILLS).toContain("layer: scope");
-		expect(CopilotInstructions.SKILLS).toContain("Never pass layer: project");
+		expect(CopilotInstructions.SKILLS).toContain("layer: local");
+		expect(CopilotInstructions.SKILLS).toContain("Never pass layer: shared");
 		expect(CopilotInstructions.SKILLS).not.toContain("supplies the rest");
+	});
+
+	it("tells the human which layer still decides when a write comes back shadowed", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"When kabane_configSet returns shadowedBy",
+		);
 	});
 
 	it("names the tool the substance goes through and the tool the link goes through", () => {

@@ -9,7 +9,7 @@ import { type ReactNode, useCallback } from "react";
 import { useAnnouncement } from "./announcement";
 import { useBoardFeed } from "./board-feed";
 import { useBoardInput } from "./board-input";
-import { useBoardStore } from "./board-store";
+import { type BoardStore, useBoardStore } from "./board-store";
 import { isCopilotEffect, useCopilotSession } from "./copilot-session";
 import type { BoardData } from "./data";
 import { useDetailRecords } from "./detail-records";
@@ -23,10 +23,12 @@ import {
 	type Copilot,
 	type Dispatcher,
 	noAnnouncer,
+	type SettingsSource,
 } from "./ports";
 import { ProgramStatus } from "./program-status";
 import { isActivityEffect, useRunActivity } from "./run-activity";
 import { isScreenEffect, Screen, useScreenRefs } from "./screen";
+import { SettingsView } from "./settings-view";
 import { isTaskEffect, useTaskActions } from "./task-actions";
 import { useTheme } from "./theme";
 
@@ -45,6 +47,8 @@ export type AppProps = {
 	headers?: Readonly<Record<string, CardHeader>>;
 	// Absent → nothing is announced.
 	announcer?: Announcer;
+	// Absent → the `,` view says settings are not available here.
+	settings?: SettingsSource;
 	// Absent → the board opens on the board view.
 	open?: { taskId: string };
 	// Milliseconds, for how long a question has been on screen before a digit answers it
@@ -72,8 +76,52 @@ type EffectRoutes = {
 	copilot: ReturnType<typeof useCopilotSession>["runEffect"];
 	activity: ReturnType<typeof useRunActivity>["runEffect"];
 	screen: ReturnType<typeof useScreenRefs>["runEffect"];
+	loadSettings: () => Promise<void>;
+	saveSetting: (
+		effect: Extract<BoardNav.Effect, { type: "saveSetting" }>,
+	) => Promise<void>;
 	reload: (next: BoardNav.BoardState) => Promise<void>;
 	setNotice: SetNotice;
+};
+
+// The `,` view's rows, read when it opens and never at board start, and its saves: written, then
+// every row read again, since a write can move another's.
+const useSettings = (
+	settings: SettingsSource | undefined,
+	update: BoardStore["update"],
+): Pick<EffectRoutes, "loadSettings" | "saveSetting"> => {
+	const listSettings = useCallback(async (): Promise<SettingsView.Rows> => {
+		const listed = settings ? await settings.list() : undefined;
+		return !listed
+			? { type: "unavailable" }
+			: listed.ok
+				? { type: "ready", rows: listed.value }
+				: { type: "failed", error: listed.error.message };
+	}, [settings]);
+	const loadSettings = useCallback(async (): Promise<void> => {
+		const rows = await listSettings();
+		update((prev) => SettingsView.withRows(prev, rows));
+	}, [listSettings, update]);
+	const saveSetting = useCallback(
+		async ({
+			key,
+			value,
+			layer,
+		}: Extract<BoardNav.Effect, { type: "saveSetting" }>): Promise<void> => {
+			if (!settings) return;
+			const change = await settings.set(key, value, layer);
+			if (!change.ok) {
+				update((prev) => SettingsView.refused(prev, key, change.error.message));
+				return;
+			}
+			const rows = await listSettings();
+			update((prev) =>
+				SettingsView.saved(prev, rows, SettingsView.outcome(key, change.value)),
+			);
+		},
+		[settings, listSettings, update],
+	);
+	return { loadSettings, saveSetting };
 };
 
 // The single effect runner, shared by the keyboard and mouse dispatchers so both interaction paths
@@ -85,6 +133,8 @@ const useEffectRunner = ({
 	copilot,
 	activity,
 	screen,
+	loadSettings,
+	saveSetting,
 	reload,
 	setNotice,
 }: EffectRoutes): ((
@@ -106,11 +156,28 @@ const useEffectRunner = ({
 				case "reload":
 					void reload(next);
 					return;
+				case "loadSettings":
+					void loadSettings();
+					return;
+				case "saveSetting":
+					void saveSetting(effect);
+					return;
 				case "notice":
 					setNotice(effect.notice);
 			}
 		},
-		[renderer, reload, task, dispatch, copilot, activity, screen, setNotice],
+		[
+			renderer,
+			reload,
+			task,
+			dispatch,
+			copilot,
+			activity,
+			screen,
+			loadSettings,
+			saveSetting,
+			setNotice,
+		],
 	);
 };
 
@@ -123,6 +190,7 @@ export const App = ({
 	resolveScope,
 	headers,
 	announcer = noAnnouncer,
+	settings,
 	open,
 	clock = Date.now,
 }: AppProps): ReactNode => {
@@ -185,12 +253,16 @@ export const App = ({
 		reload,
 	});
 
+	const { loadSettings, saveSetting } = useSettings(settings, store.update);
+
 	const runEffect = useEffectRunner({
 		task: runTaskEffect,
 		dispatch: runDispatchEffect,
 		copilot: runCopilotEffect,
 		activity: runActivityEffect,
 		screen: runScreenEffect,
+		loadSettings,
+		saveSetting,
 		reload,
 		setNotice,
 	});

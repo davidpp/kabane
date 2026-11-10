@@ -1,8 +1,8 @@
 // What a run is configured with: the harness that implements, its budgets, when it counts as
 // stalled, its gates, whether it works in a worktree and each subtask in one of its own, and the
 // lenses that verify it. The settings port (`Extension.Ctx.settings`) resolves it through every
-// layer: defaults, the user's config, the repo's `.kabane/loop.json`, the user's settings for the
-// repo's scope, then what the caller passes (the trigger form or flags). A key the schema does not name is refused in every layer: a
+// layer: defaults, global (every project), the repo's shared `.kabane/loop.json`, local (this
+// project, for you only), then what the caller passes (the trigger form or flags). A key the schema does not name is refused in every layer: a
 // typo (`workTree`) silently dropped would run the agents somewhere the human did not mean.
 import { Harnesses } from "@cabane/acp";
 import { z } from "zod";

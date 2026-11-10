@@ -7,6 +7,7 @@ import {
 	type Dispatcher,
 	Dispatchers,
 	Headers,
+	type SettingsSource,
 	startBoard,
 } from "@cabane/board";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
@@ -18,6 +19,7 @@ import {
 	success,
 } from "@cabane/extension";
 import { configPath } from "../config";
+import { ConfigSettings } from "../config-settings";
 import {
 	type Command,
 	type Ctx,
@@ -142,12 +144,47 @@ const extensionPorts = async (
 	};
 };
 
+/** A value the board saves, as `kabane config set` reads it from the command line. */
+const asInput = (value: string | number | boolean): string =>
+	typeof value === "string" ? value : JSON.stringify(value);
+
+/**
+ * The `,` view's rows: `kabane config list` where the board was opened, for the scope `--scope`
+ * names, and its saves: `kabane config set` there. Read each time the view opens, never at board
+ * start: it imports every shipped extension.
+ */
+const settingsSource = (args: ParsedArgs, ctx: Ctx): SettingsSource => {
+	const locate = () =>
+		ConfigSettings.locate(ctx.home, ctx.cwd, flagString(args, "scope"));
+	return {
+		list: async () => {
+			const where = await locate();
+			return where.ok ? ConfigSettings.list(ctx.home, where.value) : where;
+		},
+		set: async (key, value, layer) => {
+			const target = ConfigSettings.targetOf(layer);
+			if (target === undefined)
+				return err(new Error(`${layer} is no layer a setting is saved to`));
+			const where = await locate();
+			if (!where.ok) return where;
+			return ConfigSettings.set(
+				ctx.home,
+				where.value,
+				key,
+				typeof value === "object" ? undefined : asInput(value),
+				target,
+			);
+		},
+	};
+};
+
 /**
  * What the CLI hands the board: this device's home as the storage handle, the
  * activity and dispatcher ports the enabled extensions contribute (no-op
  * defaults without any), the scope the CLI would have filtered on (the issue's,
- * with `--issue`), the issue to open on, a copilot on the chosen harness, and
- * the release notice unless `updates.check` is false.
+ * with `--issue`), the issue to open on, a copilot on the chosen harness, the
+ * settings the `,` view lists, and the release notice unless `updates.check`
+ * is false.
  *
  * The scope is resolved here rather than passed through as a resolver, because
  * the copilot needs the same answer the board shows: the project directory as
@@ -173,6 +210,7 @@ export const boardDeps = async (
 			? {}
 			: { announcer: UpdateNotice.announcer(ctx.home) }),
 		...(issue ? { open: { taskId: issue.id } } : {}),
+		settings: settingsSource(args, ctx),
 		cwd: ctx.cwd,
 		basePath: ctx.store,
 		// The board wants a URI and a label; the project root is the copilot's business.

@@ -123,6 +123,11 @@ export namespace RunStore {
 		scopeUri: z.string().optional(),
 		/** The directory the loop was started from: the project checkout it works on. */
 		projectDir: z.string(),
+		/**
+		 * The project root around `projectDir`, when the loop was started in a folder inside it:
+		 * where the run's lenses are read, as its settings resolved. Absent, `projectDir`.
+		 */
+		projectRoot: z.string().optional(),
 		/** A worktree of `projectDir`'s repository the run works in instead, when one is enabled. */
 		worktree: z.string().optional(),
 		/**
@@ -249,6 +254,10 @@ export namespace RunStore {
 			const sha = g.branch === undefined ? g.checkpoint : g.merged;
 			return sha ? [sha] : [];
 		});
+
+	/** Where the run's project keeps its lenses: the project root around `projectDir`. */
+	export const projectRoot = (run: Run): string =>
+		run.projectRoot ?? run.projectDir;
 
 	/**
 	 * Where the run's sessions and gates work: the project's folder in the run's worktree when it

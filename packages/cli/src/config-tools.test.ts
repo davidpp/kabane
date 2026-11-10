@@ -1,11 +1,22 @@
 import { expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CopilotInstructions } from "@cabane/acp";
+import { CopilotInstructions, Harnesses } from "@cabane/acp";
+import { GitFixture } from "@cabane/core/git-fixture";
+import { ProjectDirs } from "@cabane/core/scope";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
+import { Extensions } from "./extensions";
 
 it("manages device config through the real stdio MCP server", async () => {
 	const home = mkdtempSync(join(tmpdir(), "kabane-config-mcp-"));
@@ -57,6 +68,7 @@ it("manages device config through the real stdio MCP server", async () => {
 				value: z.unknown(),
 				leaves: z.record(z.unknown()),
 			})
+			.passthrough()
 			.parse(JSON.parse(await call("kabane_configGet", { key, layers: true })));
 		expect(await cli("config", "get", key, "--layers")).toEqual(layered);
 		expect(await cli("config", "get", key)).toEqual(layered.value);
@@ -119,6 +131,57 @@ it("manages device config through the real stdio MCP server", async () => {
 		);
 		expect(flags("protected")).toContain("sync.token");
 		expect(flags("protected")).toContain("db.path");
+		expect(flags("secret")).toEqual(["sync.token", "sync.headers"]);
+		// Device keys are written to global only and load at a process's start; the loop's are
+		// written to any layer and read at each resolve.
+		for (const row of rows) {
+			const loop = /^loop(\.|$)/.test(String(row.key));
+			expect([row.key, row.layers, row.restart]).toEqual(
+				loop
+					? [row.key, ["global", "shared", "local"], "resolve"]
+					: [row.key, ["global"], "start"],
+			);
+		}
+		expect(rows.find((row) => row.key === "sync.batchBytes")?.field).toEqual({
+			path: ["sync", "batchBytes"],
+			kind: "number",
+			integer: false,
+			exclusiveMinimum: 0,
+			optional: false,
+			default: 262144,
+			description: "Push chunk ceiling in bytes; defaults to 262144.",
+		});
+		// How a row reads: its look, and the choices only code knows, from what this build ships.
+		const look = (key: string) => {
+			const row = rows.find((row) => row.key === key);
+			return [row?.label, row?.group, row?.options];
+		};
+		expect(look("copilot.harness")).toEqual([
+			"harness",
+			"Copilot",
+			Harnesses.IDS,
+		]);
+		expect(look("extensions")).toEqual([
+			"extensions",
+			"Board",
+			Extensions.names,
+		]);
+		expect(look("harness.mode")).toEqual([
+			"start mode",
+			"Sessions",
+			["auto", "default"],
+		]);
+		expect(look("loop.lenses")).toEqual([
+			"lenses",
+			"Checks",
+			["functional", "quality"],
+		]);
+		expect(look("loop.budget.concurrency")).toEqual([
+			"sessions at once",
+			"Limits",
+			[1, 2, 3, 4, 5, 6, 7, 8],
+		]);
+		expect(look("timezone")).toEqual(["timezone", "Board", undefined]);
 		expect(await valueOf("timezone")).toBeNull();
 		for (const [key, value, expected] of [
 			["timezone", "UTC", "UTC"],
@@ -138,31 +201,38 @@ it("manages device config through the real stdio MCP server", async () => {
 			expect(await valueOf(key)).toEqual(expected);
 		}
 		expect(existsSync(join(dbDir, "config.json"))).toBe(false);
-		// A namespace key takes a layer; the server started outside any project has no scope.
+		// Outside any project a namespace key goes to the global layer, and there is no local one.
 		expect(
 			JSON.parse(
-				await call("kabane_configSet", {
-					key: "loop.model",
-					value: "haiku",
-					layer: "user",
-				}),
+				await call("kabane_configSet", { key: "loop.model", value: "haiku" }),
 			),
-		).toMatchObject({ key: "loop.model", layer: "user", value: "haiku" });
+		).toMatchObject({
+			key: "loop.model",
+			layer: "global",
+			value: "haiku",
+			restartRequired: false,
+		});
 		expect(JSON.parse(read()).loop).toEqual({ model: "haiku" });
 		expect(
 			await call(
 				"kabane_configSet",
-				{ key: "loop.model", value: "opus", layer: "scope" },
+				{ key: "loop.model", value: "opus", layer: "local" },
 				true,
 			),
-		).toContain("No scope here");
+		).toContain("No project here for --layer local");
+		// A former name still means its layer.
 		expect(
 			await call(
 				"kabane_configSet",
 				{ key: "timezone", value: "UTC", layer: "project" },
 				true,
 			),
-		).toContain("it has no project layer");
+		).toContain("it has the global layer only");
+		await call(
+			"kabane_configSet",
+			{ key: "loop.model", value: "opus", layer: "team" },
+			true,
+		);
 		const typo = JSON.parse(
 			await call("kabane_configSet", { key: "extensions", value: "loop,lopo" }),
 		);
@@ -244,5 +314,182 @@ it("manages device config through the real stdio MCP server", async () => {
 	} finally {
 		await client.close();
 		rmSync(home, { recursive: true, force: true });
+	}
+}, 20_000);
+
+it("writes a project's local layer by default over stdio, and names layers the new way", async () => {
+	const root = mkdtempSync(join(tmpdir(), "kabane-config-mcp-local-"));
+	const home = join(root, "home");
+	const repo = join(root, "repo");
+	mkdirSync(home);
+	mkdirSync(repo);
+	GitFixture.run(repo, ["init", "-q"]);
+	GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
+	const env = { ...process.env, KABANE_HOME: home };
+	const bin = join(import.meta.dir, "../index.ts");
+	const init = Bun.spawnSync(
+		[
+			process.execPath,
+			bin,
+			"init",
+			"--actor",
+			"cabane://actor/human/config-test",
+			"--device",
+			"config-test",
+		],
+		{ cwd: home, env },
+	);
+	expect(init.exitCode).toBe(0);
+	const client = new Client({ name: "config-test", version: "1" });
+	const text = async (name: string, args: Record<string, unknown>) => {
+		const result = z
+			.object({ content: z.array(z.object({ text: z.string() })) })
+			.parse(await client.callTool({ name, arguments: args }));
+		return JSON.parse(result.content.map((part) => part.text).join(""));
+	};
+	try {
+		await client.connect(
+			new StdioClientTransport({
+				command: process.execPath,
+				args: [bin, "mcp"],
+				cwd: repo,
+				env,
+				stderr: "pipe",
+			}),
+		);
+		const local = join(
+			home,
+			"projects",
+			ProjectDirs.slug(realpathSync(repo)),
+			"loop.json",
+		);
+		expect(
+			await text("kabane_configSet", { key: "loop.stallAfter", value: "7" }),
+		).toMatchObject({ layer: "local", from: local, value: 7 });
+		expect(
+			await text("kabane_configSet", {
+				key: "loop.model",
+				value: "haiku",
+				layer: "user",
+			}),
+		).toMatchObject({ layer: "global" });
+		const rows: { key: string; layer: string }[] = await text(
+			"kabane_configGet",
+			{},
+		);
+		expect(rows.find((row) => row.key === "loop.stallAfter")?.layer).toBe(
+			"local",
+		);
+		expect(rows.find((row) => row.key === "loop.model")?.layer).toBe("global");
+		expect(
+			await text("kabane_configGet", { key: "loop.stallAfter", layers: true }),
+		).toMatchObject({
+			leaves: { "loop.stallAfter": { value: 7, layer: "local", from: local } },
+		});
+		// A write under the layer that decides is saved, and says it changes nothing yet.
+		const shadowed = await text("kabane_configSet", {
+			key: "loop.stallAfter",
+			value: "3",
+			layer: "global",
+		});
+		expect(shadowed).toMatchObject({
+			layer: "global",
+			value: 3,
+			shadowedBy: { layer: "local", from: local, value: 7 },
+		});
+		expect(shadowed.note).toContain(`the local layer (${local}) still decides`);
+		expect(
+			await text("kabane_configGet", { key: "loop.stallAfter", layers: true }),
+		).toMatchObject({
+			leaves: {
+				"loop.stallAfter": {
+					hides: [
+						{ layer: "global", from: join(home, "config.json"), value: 3 },
+					],
+				},
+			},
+		});
+		expect(
+			await text("kabane_configSet", { key: "loop.stallAfter", unset: true }),
+		).toMatchObject({
+			unset: true,
+			fallsBackTo: { layer: "global", value: 3 },
+		});
+		// A broken file in another layer: the write is saved, and says the settings no longer resolve.
+		writeFileSync(local, "{ not json");
+		const unresolved = await text("kabane_configSet", {
+			key: "loop.stallAfter",
+			value: "5",
+			layer: "global",
+		});
+		expect(unresolved).toMatchObject({ layer: "global", value: 5 });
+		expect(unresolved.unresolved).toContain(local);
+		expect(unresolved.note).toContain("no longer resolve");
+	} finally {
+		await client.close();
+		rmSync(root, { recursive: true, force: true });
+	}
+}, 20_000);
+
+it("reads and writes the project's shared layer over stdio from a nested directory", async () => {
+	const root = mkdtempSync(join(tmpdir(), "kabane-config-mcp-nested-"));
+	const home = join(root, "home");
+	const repo = join(root, "repo");
+	const nested = join(repo, "src");
+	mkdirSync(home);
+	mkdirSync(nested, { recursive: true });
+	GitFixture.run(repo, ["init", "-q"]);
+	GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
+	const env = { ...process.env, KABANE_HOME: home };
+	const bin = join(import.meta.dir, "../index.ts");
+	const init = Bun.spawnSync(
+		[
+			process.execPath,
+			bin,
+			"init",
+			"--actor",
+			"cabane://actor/human/config-test",
+			"--device",
+			"config-test",
+		],
+		{ cwd: home, env },
+	);
+	expect(init.exitCode).toBe(0);
+	const client = new Client({ name: "config-test", version: "1" });
+	const text = async (name: string, args: Record<string, unknown>) => {
+		const result = z
+			.object({ content: z.array(z.object({ text: z.string() })) })
+			.parse(await client.callTool({ name, arguments: args }));
+		return JSON.parse(result.content.map((part) => part.text).join(""));
+	};
+	try {
+		await client.connect(
+			new StdioClientTransport({
+				command: process.execPath,
+				args: [bin, "mcp"],
+				cwd: nested,
+				env,
+				stderr: "pipe",
+			}),
+		);
+		const shared = join(realpathSync(repo), ".kabane", "loop.json");
+		expect(
+			await text("kabane_configSet", {
+				key: "loop.recheck",
+				value: "false",
+				layer: "shared",
+			}),
+		).toMatchObject({ layer: "shared", from: shared });
+		expect(
+			await text("kabane_configGet", { key: "loop.recheck", layers: true }),
+		).toMatchObject({
+			leaves: {
+				"loop.recheck": { value: false, layer: "shared", from: shared },
+			},
+		});
+		expect(existsSync(join(nested, ".kabane"))).toBe(false);
+	} finally {
+		await client.close();
+		rmSync(root, { recursive: true, force: true });
 	}
 }, 20_000);
