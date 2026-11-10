@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { Harnesses } from "@cabane/acp/harnesses";
+import type { SettingField } from "@cabane/board/ports";
 import {
 	err,
 	ok,
@@ -28,45 +29,39 @@ const { unwrap } = Settings;
 type Key = {
 	key: string;
 	schema: z.ZodTypeAny;
-	description: string;
+	field: SettingField;
 	/** The settings namespace the key belongs to; absent, it is device config. */
 	namespace?: Settings.Namespace;
 	/** Where it sits in its namespace's document, or in `config.json` for device config. */
 	path: readonly string[];
 };
 
-const keysOf = (
-	schema: z.ZodObject<z.ZodRawShape>,
-	parent: Pick<Key, "key" | "path" | "namespace">,
-): Key[] =>
-	Object.entries(schema.shape).flatMap(([name, field]) => {
-		const entry: Key = {
-			...parent,
-			key: parent.key ? `${parent.key}.${name}` : name,
-			schema: field,
-			description: field.description ?? "",
-			path: [...parent.path, name],
-		};
-		const inner = unwrap(field);
-		return inner instanceof z.ZodObject
-			? [entry, ...keysOf(inner, entry)]
-			: [entry];
-	});
+const keysOf = (schema: z.ZodTypeAny, namespace?: Settings.Namespace): Key[] =>
+	Settings.entries(schema).map(({ field, schema }) => ({
+		key: [...(namespace ? [namespace.name] : []), ...field.path].join("."),
+		schema,
+		field,
+		...(namespace ? { namespace } : {}),
+		path: field.path,
+	}));
 
-const deviceKeys = keysOf(ConfigSchema, { key: "", path: [] });
+const deviceKeys = keysOf(ConfigSchema);
 
 const namespaceKeys = (namespace: Settings.Namespace): Key[] => {
+	const field = Settings.field(namespace.schema);
 	const root: Key = {
 		key: namespace.name,
 		schema: namespace.schema,
-		description:
-			namespace.schema.description ??
-			`The ${namespace.name} extension's settings; edit dotted keys.`,
+		field: {
+			...field,
+			description:
+				field.description ??
+				`The ${namespace.name} extension's settings; edit dotted keys.`,
+		},
 		namespace,
 		path: [],
 	};
-	const inner = unwrap(namespace.schema);
-	return inner instanceof z.ZodObject ? [root, ...keysOf(inner, root)] : [root];
+	return [root, ...keysOf(namespace.schema, namespace)];
 };
 
 const allKeys = async (): Promise<Result<Key[]>> => {
@@ -87,6 +82,24 @@ const isProtected = (key: string): boolean =>
 // help question never puts the hub token or an Access secret in a model's context.
 const secrets = new Set(["sync.token", "sync.headers"]);
 const REDACTED = "<set>";
+
+/**
+ * When a change to a key applies: device keys load once, at a process's start; an extension's
+ * settings are read again at each resolve (the loop's at each run it starts).
+ */
+type Restart = "start" | "resolve";
+
+const restartOf = (entry: Key): Restart =>
+	entry.namespace ? "resolve" : "start";
+
+/** What a row says of a key besides its value: its field, the layers it is written to, and more. */
+const traitsOf = (entry: Key) => ({
+	field: entry.field,
+	// A device key has the global layer only: no project file may redirect the database or the hub.
+	layers: entry.namespace ? ConfigSettings.TARGETS : (["global"] as const),
+	secret: secretOf(entry.key) !== undefined,
+	restart: restartOf(entry),
+});
 
 const valueAt = (value: unknown, path: readonly string[]): unknown => {
 	for (const part of path) {
@@ -114,22 +127,24 @@ const redact = (key: string, value: unknown): unknown => {
 	);
 };
 
+// What a value of each kind typed as JSON is expected to be.
+const JSON_KINDS: Partial<Record<SettingField["kind"], string>> = {
+	number: "a number",
+	boolean: "true or false",
+	record: "a JSON object of strings",
+};
+
 const parseValue = (entry: Key, text: string): Result<unknown> => {
-	const type = unwrap(entry.schema);
+	const { kind } = entry.field;
+	const expected = JSON_KINDS[kind];
 	let value: unknown = text;
-	if (type instanceof z.ZodArray) {
+	if (kind === "list") {
 		value = text === "" ? [] : text.split(",").map((part) => part.trim());
-	} else if (
-		type instanceof z.ZodNumber ||
-		type instanceof z.ZodBoolean ||
-		type instanceof z.ZodRecord
-	) {
+	} else if (expected !== undefined) {
 		const parsed = trySync((): unknown => JSON.parse(text));
 		if (!parsed.ok)
 			return err(
-				new Error(
-					`Invalid value for ${entry.key}: expected ${type instanceof z.ZodRecord ? "a JSON object of strings" : type instanceof z.ZodBoolean ? "true or false" : "a number"}.`,
-				),
+				new Error(`Invalid value for ${entry.key}: expected ${expected}.`),
 			);
 		value = parsed.value;
 	}
@@ -248,11 +263,13 @@ const recordEntry = (keys: readonly Key[], key: string): Key | undefined => {
 			continue;
 		const name = key.slice(entry.key.length + 1);
 		if (!record.keySchema.safeParse(name).success) return undefined;
+		const path = [...entry.path, name];
 		return {
 			...entry,
 			key,
 			schema: record.valueSchema,
-			path: [...entry.path, name],
+			field: Settings.field(record.valueSchema, path),
+			path,
 		};
 	}
 	return undefined;
@@ -281,6 +298,7 @@ type ConfigChange = {
 	stillSetIn?: string;
 	/** Extension names saved that this build does not ship. */
 	ignored?: string[];
+	restart: Restart;
 };
 
 /** The document a write edits, where in it the key goes, and how to save it. */
@@ -400,7 +418,7 @@ const writeSetting = (
 				`${entry.key} is read-only: actor and device identities cannot be changed or removed here.`,
 			),
 		);
-	if (unwrap(entry.schema) instanceof z.ZodObject)
+	if (entry.field.kind === "group")
 		return err(
 			new Error(
 				`${entry.key} is a config group; set or unset its dotted keys individually.`,
@@ -444,6 +462,7 @@ const writeSetting = (
 			layer,
 			from: label,
 			unset: true,
+			restart: restartOf(entry),
 			...(still === undefined ? {} : { stillSetIn: still }),
 		});
 	}
@@ -452,6 +471,7 @@ const writeSetting = (
 		layer,
 		from: label,
 		value: redact(entry.key, parsed.value),
+		restart: restartOf(entry),
 	};
 	// Saved anyway, since a newer kabane may ship the name, but it loads nothing here.
 	const ignored =
@@ -564,7 +584,8 @@ export namespace ConfigSettings {
 				...(origin.label === undefined ? {} : { from: origin.label }),
 				readOnly: identities.has(entry.key),
 				protected: isProtected(entry.key),
-				description: entry.description,
+				description: entry.field.description ?? "",
+				...traitsOf(entry),
 			});
 		}
 		return ok(rows);
@@ -589,6 +610,7 @@ export namespace ConfigSettings {
 			key,
 			value: redact(key, valueAt(view.value.value, entry.value.path)) ?? null,
 			leaves: leavesOf(entry.value, view.value),
+			...traitsOf(entry.value),
 		});
 	};
 

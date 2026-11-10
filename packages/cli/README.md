@@ -136,11 +136,29 @@ write for it has to run in that project.
 
 Every operation supports `--json`. `list` returns rows with `key`, `value`,
 `default` (no layer sets it), `layer` and `from` (the file or scope it came from), `readOnly`,
-`protected` and `description`. `get` returns the resolved value, or JSON `null` / human
-`default` when absent; with `--layers` it returns `{key, value, leaves}`, where `leaves` maps
-every dotted key under `key` to its `value`, `layer` and `from`, and prints a line per leaf. `path` returns a string. `set` returns `{key, layer, from, value}` and `unset`
-returns `{key, layer, from, unset: true}`, `from` being the file written; an unset from local
-adds `stillSetIn` when a legacy `scopes` block still sets the key. `sync.token` and `sync.headers` read as `<set>`.
+`protected`, `description`, and what the key's schema says of it:
+
+- `field`: its `path` in the namespace (or `config.json`), its `kind` and what bounds that
+  kind: `enum` with `values`; `number` with `integer`, and `minimum`, `maximum`,
+  `exclusiveMinimum`, `exclusiveMaximum` when set; `boolean`; `string` with `minLength`,
+  `maxLength`, `pattern`; `list` with its `item`; `record` with `keyPattern` and its `value`;
+  `group` for an object of keys; `other`. Also `optional` (absent is valid), `default` (what
+  the schema fills in) and `description`.
+- `layers`: the layers it can be written to, `["global"]` for a device key and
+  `["global", "shared", "local"]` for an extension's.
+- `secret`: true for `sync.token` and `sync.headers`, which read as `<set>`.
+- `restart`: when a change applies. `start` for a device key, loaded when a process starts, so
+  a running board or MCP server needs a restart; `resolve` for an extension's, read each time
+  it is used (the loop's at each run it starts).
+
+`get` returns the resolved value, or JSON `null` / human `default` when absent; with
+`--layers` it returns `{key, value, leaves}` and the row's `field`, `layers`, `secret` and
+`restart`, where `leaves` maps every dotted key under `key` to its `value`, `layer` and
+`from`, and prints a line per leaf. `path` returns a string. `set` returns
+`{key, layer, from, value, restart}` and `unset` returns `{key, layer, from, unset: true,
+restart}`, `from` being the file written; an unset from local adds `stillSetIn` when a legacy
+`scopes` block still sets the key. `kabane_configSet` adds `restartRequired`, true when
+`restart` is `start`.
 
 Strings are literal; numbers and booleans use JSON syntax. Arrays take trimmed
 comma-separated values, with an empty string meaning an empty array.
