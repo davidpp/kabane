@@ -209,7 +209,7 @@ const leavesUnder = (entry: Key, view: View): View["origins"] => {
 	const under = view.origins.filter(({ path }) => isUnder(path, entry.path));
 	return under.length > 0
 		? under
-		: [{ path: entry.path, origin: { layer: "default" } }];
+		: [{ path: entry.path, origin: { layer: "default" }, hides: [] }];
 };
 
 /** A group's origin is the highest of its leaves', the one overriding the others. */
