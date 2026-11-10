@@ -22,7 +22,6 @@ import {
 import { Settings } from "@cabane/extension";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
-import { Lenses } from "./lenses";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
@@ -648,8 +647,9 @@ describe("A single issue given a subtask during its run", () => {
 describe("A single issue given a subtask while a lens reviews it", () => {
 	it("holds the subtask until the lens session on the issue has ended", async () => {
 		const issue = await add("lone");
-		mkdirSync(Lenses.dir(home), { recursive: true });
-		writeFileSync(join(Lenses.dir(home), "look.md"), "Look.");
+		const lenses = join(home, ".claude/skills/dispatch/references/lenses");
+		mkdirSync(lenses, { recursive: true });
+		writeFileSync(join(lenses, "look.md"), "Look.");
 		const run = createRun(issue, { implementer: "gemini", lenses: ["look"] });
 		const agent = join(home, "agent.mjs");
 		// The lens names itself in its brief rather than a subtask: its marker files go by its name.

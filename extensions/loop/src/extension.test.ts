@@ -1,14 +1,15 @@
 // `kabane loop` as the CLI calls it: argv parsed by the shared parser, run against a real tracker.
 import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ok, Planner } from "@cabane/core";
 import { parseArgs, Settings } from "@cabane/extension";
+import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
-import { loop } from "./extension";
+import { loop, start } from "./extension";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 
@@ -34,7 +35,73 @@ const kabaneLoop = (...argv: string[]) => {
 	});
 };
 
+// The runner `start` spawns: the real `Loop.run` on this test's tracker, as `kabane loop run` runs
+// it, with no harness a lens session could reach.
+const RUNNER = [
+	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
+	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
+	`const home = process.env.KABANE_HOME ?? "";`,
+	`const ran = await Loop.run({ home, basePath: home, kabaneBin: "/nonexistent/kabane", overrides: { claude: { command: "/nonexistent/harness" } } }, process.argv[1] ?? "");`,
+	`process.exit(ran.ok ? 0 : 1);`,
+].join("\n");
+
 describe("kabane loop start", () => {
+	it("says where to move a lens read from the old directory, and nothing once the skill has it", async () => {
+		const repo = join(home, "repo");
+		const legacy = join(repo, ".kabane/loop/lenses/security.md");
+		const skill = join(
+			repo,
+			".claude/skills/dispatch/references/lenses/security.md",
+		);
+		const created = await Planner.addTask(home, {
+			title: "lone",
+			kind: "issue",
+			state: "done",
+		});
+		if (!created.ok) throw created.error;
+		const id = created.value.id;
+		const deps = {
+			home,
+			basePath: home,
+			kabaneBin: "/nonexistent/kabane",
+			cwd: home,
+			actor: "cabane://actor/human/test",
+			mode: "auto" as const,
+			settings: Settings.port(async () => ok([])),
+			runner: (runId: string) => [process.execPath, "-e", RUNNER, runId],
+		};
+		const argv = [
+			"start",
+			id,
+			"--dir",
+			repo,
+			"--no-worktree",
+			"--lens",
+			"security",
+		];
+		const startOnce = async () => {
+			const started = await start(parseArgs(argv), deps, id);
+			const runId = RunStore.RunSchema.parse(started.json).id;
+			const stopped = await Loop.stop({ home, waitMs: 15_000 }, runId);
+			expect(stopped.ok && RunStore.isLive(stopped.value.status)).toBe(false);
+			return started;
+		};
+		mkdirSync(join(repo, ".kabane/loop/lenses"), { recursive: true });
+		writeFileSync(legacy, "# Security\n");
+		const moved = await startOnce();
+		expect(moved.exitCode).toBe(0);
+		expect(moved.text).toContain(
+			`  note: lens security is read from ${legacy}; move it to ${skill}`,
+		);
+		mkdirSync(join(repo, ".claude/skills/dispatch/references/lenses"), {
+			recursive: true,
+		});
+		writeFileSync(skill, "# Security\n");
+		const overridden = await startOnce();
+		expect(overridden.exitCode).toBe(0);
+		expect(overridden.text).not.toContain("note: lens");
+	}, 30_000);
+
 	it("refuses a flag it does not take, rather than starting without it", async () => {
 		const refused = await kabaneLoop(
 			"start",

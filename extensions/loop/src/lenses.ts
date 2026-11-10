@@ -25,11 +25,11 @@ export namespace Lenses {
 	const SHIPPED = ["functional", "quality"] as const;
 
 	/** Where a project keeps its own lenses: its dispatch skill's. */
-	export const dir = (projectDir: string): string =>
+	const dir = (projectDir: string): string =>
 		join(projectDir, ".claude", "skills", "dispatch", "references", "lenses");
 
 	/** Where a project's lenses were kept before they moved into the skill; read after it. */
-	export const legacyDir = (projectDir: string): string =>
+	const legacyDir = (projectDir: string): string =>
 		join(projectDir, ".kabane", "loop", "lenses");
 
 	// The lens names among a directory's files. A prompt whose file name is no lens name

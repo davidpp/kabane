@@ -68,9 +68,16 @@ const claim = (
 	...extra,
 });
 
-const write = (directory: string, name: string, text: string): void => {
-	mkdirSync(directory, { recursive: true });
-	writeFileSync(join(directory, `${name}.md`), text);
+// The documented homes, spelled out rather than taken from `Lenses`, so a wrong path there fails.
+const SKILL = ".claude/skills/dispatch/references/lenses";
+const LEGACY = ".kabane/loop/lenses";
+
+/** Lens `name`'s file in `dir`, one of the two homes, in the repo. */
+const at = (dir: string, name: string): string => join(repo, dir, `${name}.md`);
+
+const write = (dir: string, name: string, text: string): void => {
+	mkdirSync(join(repo, dir), { recursive: true });
+	writeFileSync(at(dir, name), text);
 };
 
 describe("Lenses.prompt", () => {
@@ -94,18 +101,18 @@ describe("Lenses.prompt", () => {
 	});
 
 	it("reads the skill's file over the old directory's, and the old directory's over the shipped one", () => {
-		write(Lenses.legacyDir(repo), "functional", "# Old\n");
-		const legacy = join(Lenses.legacyDir(repo), "functional.md");
+		write(LEGACY, "functional", "# Old\n");
+		const legacy = at(LEGACY, "functional");
 		expect(Lenses.prompt(repo, "functional")).toEqual({
 			ok: true,
 			value: { text: "# Old\n", legacy },
 		});
-		write(Lenses.dir(repo), "functional", "# Skill\n");
+		write(SKILL, "functional", "# Skill\n");
 		expect(Lenses.prompt(repo, "functional")).toEqual({
 			ok: true,
 			value: { text: "# Skill\n" },
 		});
-		write(Lenses.dir(repo), "security", "# Security\n");
+		write(SKILL, "security", "# Security\n");
 		expect(Lenses.prompt(repo, "security")).toEqual({
 			ok: true,
 			value: { text: "# Security\n" },
@@ -115,19 +122,19 @@ describe("Lenses.prompt", () => {
 	it("refuses a lens no file holds, naming the skill's path only", () => {
 		const unknown = Lenses.prompt(repo, "perf");
 		const message = !unknown.ok && unknown.error.message;
-		expect(message).toContain(join(Lenses.dir(repo), "perf.md"));
-		expect(message).not.toContain(Lenses.legacyDir(repo));
+		expect(message).toContain(at(SKILL, "perf"));
+		expect(message).not.toContain(LEGACY);
 	});
 
 	it("offers the shipped lenses, then the project's own from the skill and the old directory, once each", () => {
 		expect(Lenses.offered(repo)).toEqual(["functional", "quality"]);
-		write(Lenses.dir(repo), "security", "# Security\n");
-		write(Lenses.dir(repo), "quality", "# Ours\n");
-		write(Lenses.legacyDir(repo), "perf", "# Perf\n");
-		write(Lenses.legacyDir(repo), "security", "# Old security\n");
-		writeFileSync(join(Lenses.dir(repo), "notes.txt"), "not a lens\n");
-		write(Lenses.dir(repo), "security_review", "# Not a name\n");
-		write(Lenses.dir(repo), "Perf", "# Not a name\n");
+		write(SKILL, "security", "# Security\n");
+		write(SKILL, "quality", "# Ours\n");
+		write(LEGACY, "perf", "# Perf\n");
+		write(LEGACY, "quality", "# Old quality\n");
+		writeFileSync(join(repo, SKILL, "notes.txt"), "not a lens\n");
+		write(SKILL, "security_review", "# Not a name\n");
+		write(SKILL, "Perf", "# Not a name\n");
 		expect(Lenses.offered(repo)).toEqual([
 			"functional",
 			"quality",
@@ -139,11 +146,11 @@ describe("Lenses.prompt", () => {
 
 describe("Lenses.moves", () => {
 	it("names each lens read from the old directory and where it goes in the skill", () => {
-		write(Lenses.legacyDir(repo), "security", "# Security\n");
+		write(LEGACY, "security", "# Security\n");
 		expect(Lenses.moves(repo, ["functional", "security", "perf"])).toEqual([
-			`lens security is read from ${join(Lenses.legacyDir(repo), "security.md")}; move it to ${join(Lenses.dir(repo), "security.md")}`,
+			`lens security is read from ${at(LEGACY, "security")}; move it to ${at(SKILL, "security")}`,
 		]);
-		write(Lenses.dir(repo), "security", "# Security\n");
+		write(SKILL, "security", "# Security\n");
 		expect(Lenses.moves(repo, ["security"])).toEqual([]);
 	});
 });
