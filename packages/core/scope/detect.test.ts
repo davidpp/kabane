@@ -15,7 +15,9 @@ import { join } from "node:path";
 import {
 	detectScope,
 	findProjectRoot,
+	mainCheckoutRoot,
 	normalizeGitUrl,
+	ProjectDirs,
 	resolveProjectName,
 	resolveScopeId,
 	SCOPE_FILE,
@@ -146,6 +148,40 @@ describe("findProjectRoot", () => {
 
 	it("returns null outside any project", async () => {
 		expect(await findProjectRoot(dir("nowhere"), home)).toBeNull();
+	});
+});
+
+describe("mainCheckoutRoot", () => {
+	it("maps a marked root in a worktree to the same place in the main checkout", async () => {
+		const root = dir("monorepo");
+		mkdirSync(join(root, "packages", "app", ".kabane"), { recursive: true });
+		writeFileSync(join(root, "packages", "app", ".kabane", "loop.json"), "{}");
+		await gitInit(root);
+		const tree = join(workspace, "monorepo.feature");
+		git(root, ["worktree", "add", "-q", "-b", "feat", tree]);
+
+		const marked = await findProjectRoot(join(tree, "packages", "app"), home);
+		expect(marked).toBe(join(tree, "packages", "app"));
+		expect(await mainCheckoutRoot(String(marked))).toBe(
+			join(root, "packages", "app"),
+		);
+		// The main checkout, and a root outside git, are their own place.
+		expect(await mainCheckoutRoot(join(root, "packages", "app"))).toBe(
+			join(root, "packages", "app"),
+		);
+		const loose = dir("loose");
+		expect(await mainCheckoutRoot(loose)).toBe(loose);
+	});
+});
+
+describe("ProjectDirs", () => {
+	it("keys a project's directory by a readable slug of its path and a hash", () => {
+		const slug = ProjectDirs.slug("/Users/me/my repo.git");
+		expect(slug).toMatch(/^-Users-me-my-repo-git-[0-9a-f]{8}$/);
+		expect(ProjectDirs.slug("/Users/me/my_repo.git")).not.toBe(slug);
+		expect(ProjectDirs.of("/home/.kabane", "/Users/me/my repo.git")).toBe(
+			`/home/.kabane/projects/${slug}`,
+		);
 	});
 });
 

@@ -75,26 +75,29 @@ JCAB-144 and JCAB-162, both in flight, add `loop` keys (per-claim isolation and 
 They appear in every surface below through the schema. They need a `LOOKS` entry only to get
 a label.
 
-Layers, lowest first (`packages/extension/settings.ts:15`, stored per
-`packages/cli/src/config-layers.ts:90`):
+Layers, lowest first (`Settings.Layer` in `packages/extension/settings.ts`, stored per
+`ConfigLayers.sources` in `packages/cli/src/config-layers.ts`), named since JCAB-179:
 
-1. Defaults.
-2. `config.json` at `loop`.
-3. `<root>/.kabane/loop.json`.
-4. `config.json` at `scopes.<scopeId>.loop`.
-5. The caller: flags, or the run form.
+| Layer | Stored in | Applies to | Former name |
+| --- | --- | --- | --- |
+| default | the schema | everywhere | — |
+| global | `KABANE_HOME/config.json` at `loop` | every project on this device | `user` |
+| shared | `<root>/.kabane/loop.json`, checked in | this project, for everyone who clones it | `project` |
+| local | `KABANE_HOME/projects/<slug>/loop.json`; under it, a legacy `scopes.<scopeId>.loop` in `config.json` | this project, for you only, on this device | `scope` |
+| caller | flags, or the run form | one run | — |
 
 Objects merge key by key. Lists and scalars are replaced. `null` unsets.
 
 The surfaces that touch it:
 
-- **CLI.** `kabane config list|get [--layers]|set|unset [--layer user|scope|project]
-  [--scope]`. The default write layer is user (`config-settings.ts:535`). The project layer is
-  read and written only when cwd is the detected root (`config-settings.ts:449`).
+- **CLI.** `kabane config list|get [--layers]|set|unset [--layer global|local|shared]
+  [--scope]`. The former names stay accepted on input. With no `--layer` a write goes to local
+  inside a project and to global outside one. The shared layer is read and written only when
+  cwd is the detected root; the local layer from anywhere inside the project.
 - **MCP.** `kabane_configGet` and `kabane_configSet` (`config-tools.ts`) behave the same, for
   the project at the server's cwd. Every write answers `restartRequired: true` (`:76`), even
   though a namespace is re-read at each resolve.
-- **Copilot.** It writes `layer: scope` for "this project only" and never `project`
+- **Copilot.** It writes `layer: local` for "this project only" and never `shared`
   (`packages/acp/src/instructions.ts:64`, `:66`). `/setup` asks for the harness, model and
   extensions (`:170`).
 - **Run form.** `LoopSettings.inputs` reads the resolved config (`dispatcher.ts:87`), and
@@ -109,7 +112,7 @@ The surfaces that touch it:
 | `.kabane/` (the directory itself) | marks a project root ahead of git's toplevel (`packages/core/scope/detect.ts:105`), so a monorepo package can track its own issues | anything that writes below |
 | `.kabane/scope` | the pin, first in the scope cascade (`detect.ts:26`, `:185`) | only `kabane init --scope` (`packages/cli/src/config.ts:251`) |
 | Jake's project pin | the legacy pin, read and never stored (`packages/cli/src/context.ts:124`) | Jake |
-| `.kabane/loop.json` | the loop's project layer (`config-layers.ts:33`) | `config set --layer project`, by hand |
+| `.kabane/loop.json` | the loop's shared layer (`ConfigLayers.sharedFile`) | `config set --layer shared`, by hand |
 | `.claude/skills/dispatch/references/lenses/<name>.md` | a custom lens, or the replacement for a shipped one, in the project's dispatch skill (`extensions/loop/src/lenses.ts`, JCAB-174); `.kabane/loop/lenses/<name>.md` is still read after it, for lenses written before | `/setup-dispatch`, by hand |
 
 Nothing else lands in a repo. Scope detection stores what it found under `KABANE_HOME`
@@ -165,39 +168,50 @@ behaviour don't change, but its row model, its stories and the loop's settings t
 together. One extra walker isn't the risk; the risk is the two existing ones (`keysOf` and
 `fieldsOf`) drifting further, and that is what slice 2 removes.
 
-## User-level gap
+## Settings layers: global, local, shared (JCAB-179)
 
-What "the user is the default, the project file is the fallback" means against the code:
+"User" is not used on its own: in other tools it means "applies to all projects", and here it
+was also used for "stored in your home". The three layers are named for whom they apply to.
 
-- **Precedence:** unchanged. User-global sits below the project file and user-per-scope above
-  it, as in Claude Code, Codex, VS Code and mise. Moving user-global above the project would
-  let a personal default beat a team's checked-in gate in every repo.
-- **Default write layer.** Today it is user (global), wherever the command runs. The failure is
-  not the default but the silence: inside a project whose file sets the key, a user write
-  changes nothing and reports success. Recommended: keep user as the default, and make a
-  shadowed write say which layer still decides and how to override it (`--layer scope`). A
-  default of scope inside a project would guess at intent, would mean something different
-  outside a project, and would contradict the copilot's instructions.
-- **`loop.json`:** stays readable as the project layer. Nothing moves, and nothing is rewritten.
-  A user who wants it out of a repo copies the keys to `--layer scope` and deletes the file
-  themselves. A `config move` is a someday idea.
+- **Names.** `global`, `local` and `shared` in `--layer`, the MCP tools, every JSON row's
+  `layer` and text output. `user`, `scope` and `project` stay accepted on input and mean
+  global, local and shared; output uses only the new names.
+- **Order:** unchanged. Defaults, global, shared, local, caller. Global sits below the shared
+  file, as in Claude Code, Codex, VS Code and mise, so a personal default never beats a team's
+  checked-in gate in every repo; local sits above it.
+- **Where local is stored.** `KABANE_HOME/projects/<slug>/<namespace>.json` (`ProjectDirs` in
+  `packages/core/scope/projects.ts`), the same document a shared file holds. `<slug>` is the
+  root's path with each run outside `[A-Za-z0-9]` as `-`, then `-` and 8 hex of its sha256.
+  Written whole through a temp file and a rename, since the board, MCP and the CLI can write at
+  once.
+- **Keyed by path, not scope id.** A scope id changes during a project's life: a repo with no
+  remote is `git:<firstCommit>` until a remote is added, and `kabane init --scope` changes it.
+  A block keyed by the old id was silently orphaned. Nothing syncs `config.json`, so the id
+  bought no reach across devices. The key is the detected project root, from any directory in
+  it; in a linked worktree, the same place in the main checkout (`mainCheckoutRoot`), since a
+  repo that checks in `.kabane/` has the marker in every worktree. Moving the directory or
+  cloning it again starts with no local settings; that is accepted.
+- **Default write layer** (JCAB-168:1). With no `--layer`, a write inside a project goes to
+  local, and outside one to global. Global and shared are written only when named. A device key
+  has the global layer only, so it goes there wherever the command runs, and any other layer
+  is refused.
+- **Legacy `scopes.<scopeId>` blocks** keep working, read as a second local source just under
+  the file and above shared, labelled `scopes.<id> in <config.json>`. Kabane never writes,
+  moves or deletes them. `config unset --layer local` removes the key from the file only, and
+  says when a `scopes` block still decides. Moving one into the file is JCAB-177.
+- **`--scope <id>`** reads that scope's legacy block only. When it names another project than
+  the one here, there is no shared or local file to read, and a local write is refused: it
+  needs the project's directory.
+- **`loop.json`:** stays readable as the shared layer. Nothing moves, and nothing is rewritten.
 - **Lenses:** no user directory (JCAB-168:2: lenses stay repo files). A lens is
   `references/lenses/<name>.md` in the project's dispatch skill, read by the loop and by the
-  skill's own close review alike (JCAB-174). Lookup is the skill, then the old
-  `.kabane/loop/lenses/<name>.md`, then the copy in kabane's dispatch template; `loop start`
-  prints a line for a lens read from the old directory, and kabane moves nothing. Per-project
-  choice already exists, because `loop.lenses` at `--layer scope` selects which lenses run there.
-- **The pin:** stays a repo file. Since JCAB-110, detection writes nothing and a remote resolves
-  most repos. The pin also marks a root inside a monorepo, which a user-level entry keyed by
-  path would have to replicate. A user-level scope mapping for a repo you don't own is a
-  someday idea.
-- **Team-shared values:** still `--layer project`, written by the human. The copilot never
-  writes it. A project file can never reach a device key (`extensions.ts:105`), which matches
-  Codex's refusal of provider and notify keys at project level and VS Code's
-  `machine`/`application` scopes.
-- **Device keys:** stay single-layer for now. `copilot.*` and `harness.mode` per project are
-  plausible, but only with a scope layer, never project: `copilot.command` and `.args` launch
-  a process, which is what Codex and VS Code refuse from a checked-in file.
+  skill's own close review alike (JCAB-174). Per-project choice exists, because `loop.lenses`
+  at `--layer local` selects which lenses run there.
+- **The pin:** JCAB-175 moves it into the same `projects/<slug>/` directory.
+- **Not synced.** A synced per-scope layer, if one is ever wanted, is a separate layer.
+- **Device keys** stay global only (`copilot.command` and `.args` launch a process, which is
+  what Codex and VS Code refuse from a checked-in file). A local layer for some of them is
+  JCAB-176.
 
 ### How other tools layer settings
 

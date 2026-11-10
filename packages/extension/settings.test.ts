@@ -31,9 +31,13 @@ const resolve = (...sources: Settings.Source[]) =>
 describe("Settings.resolve", () => {
 	it("merges objects key by key and replaces lists, the later layer winning", () => {
 		const resolved = resolve(
-			source("user", { limits: { count: 2 }, named: { a: "1" }, list: ["x"] }),
-			source("project", { named: { b: "2" }, list: ["y", "z"] }),
-			source("scope", { limits: { cap: 9 }, named: { a: "3" } }),
+			source("global", {
+				limits: { count: 2 },
+				named: { a: "1" },
+				list: ["x"],
+			}),
+			source("shared", { named: { b: "2" }, list: ["y", "z"] }),
+			source("local", { limits: { cap: 9 }, named: { a: "3" } }),
 		);
 		expect(resolved.ok && resolved.value.value).toEqual({
 			mode: "a",
@@ -46,8 +50,8 @@ describe("Settings.resolve", () => {
 
 	it("names the layer every leaf came from, and the default for the rest", () => {
 		const resolved = resolve(
-			source("user", { limits: { count: 2 }, named: { a: "1" } }),
-			source("scope", { named: { a: "3" } }),
+			source("global", { limits: { count: 2 }, named: { a: "1" } }),
+			source("local", { named: { a: "3" } }),
 		);
 		expect(resolved.ok).toBe(true);
 		if (!resolved.ok) return;
@@ -60,8 +64,8 @@ describe("Settings.resolve", () => {
 			),
 		).toEqual({
 			mode: "default",
-			"limits.count": "user",
-			"named.a": "scope",
+			"limits.count": "global",
+			"named.a": "local",
 			"gates.test": "default",
 			list: "default",
 		});
@@ -69,8 +73,8 @@ describe("Settings.resolve", () => {
 
 	it("unsets a key a lower layer set with null, back to its default", () => {
 		const resolved = resolve(
-			source("project", { mode: "b", named: { a: "1", b: "2" } }),
-			source("scope", { mode: null, named: { a: null } }),
+			source("shared", { mode: "b", named: { a: "1", b: "2" } }),
+			source("local", { mode: null, named: { a: null } }),
 		);
 		expect(resolved.ok && resolved.value.value).toMatchObject({
 			mode: "a",
@@ -84,7 +88,7 @@ describe("Settings.resolve", () => {
 
 	it("merges a layer into a defaulted record, and a null removes a default entry", () => {
 		const added = resolve(
-			source("project", { gates: { lint: "bun run lint" } }),
+			source("shared", { gates: { lint: "bun run lint" } }),
 		);
 		expect(added.ok && added.value.value.gates).toEqual({
 			test: "bun test",
@@ -97,14 +101,14 @@ describe("Settings.resolve", () => {
 						.filter(({ path }) => path[0] === "gates")
 						.map(({ path, origin }) => [path.join("."), origin.layer]),
 				),
-		).toEqual({ "gates.test": "default", "gates.lint": "project" });
-		const removed = resolve(source("scope", { gates: { test: null } }));
+		).toEqual({ "gates.test": "default", "gates.lint": "shared" });
+		const removed = resolve(source("local", { gates: { test: null } }));
 		expect(removed.ok && removed.value.value.gates).toEqual({});
 	});
 
 	it("refuses an unset that names no setting, or a key its record refuses", () => {
 		const refused = resolve(
-			source("project", {
+			source("shared", {
 				mood: null,
 				limits: { capp: null },
 				gates: { "two words": null },
@@ -112,7 +116,7 @@ describe("Settings.resolve", () => {
 		);
 		expect(!refused.ok && refused.error.message).toBe(
 			[
-				"Invalid demo settings in the project file:",
+				"Invalid demo settings in the shared file:",
 				"  mood: not a demo setting",
 				"  limits.capp: not a demo setting",
 				"  gates.two words: a gate name is one word",
@@ -120,7 +124,7 @@ describe("Settings.resolve", () => {
 		);
 		// A name an object inherits is not one of its settings.
 		const inherited = resolve(
-			source("user", {
+			source("global", {
 				constructor: null,
 				toString: null,
 				limits: { hasOwnProperty: null },
@@ -128,7 +132,7 @@ describe("Settings.resolve", () => {
 		);
 		expect(!inherited.ok && inherited.error.message).toBe(
 			[
-				"Invalid demo settings in the user file:",
+				"Invalid demo settings in the global file:",
 				"  constructor: not a demo setting",
 				"  toString: not a demo setting",
 				"  limits.hasOwnProperty: not a demo setting",
@@ -143,26 +147,26 @@ describe("Settings.resolve", () => {
 
 	it("validates each layer alone first, so the error names the layer it is in", () => {
 		const refused = resolve(
-			source("user", { limits: { count: 2 } }),
-			source("project", { limit: {}, limits: { cap: "high" } }),
+			source("global", { limits: { count: 2 } }),
+			source("shared", { limit: {}, limits: { cap: "high" } }),
 		);
 		expect(!refused.ok && refused.error.message).toBe(
 			[
-				"Invalid demo settings in the project file:",
+				"Invalid demo settings in the shared file:",
 				"  limits.cap: Expected number, received string",
 				"  limit: not a demo setting",
 			].join("\n"),
 		);
-		const notObject = resolve(source("scope", ["mode"]));
+		const notObject = resolve(source("local", ["mode"]));
 		expect(!notObject.ok && notObject.error.message).toBe(
-			"Invalid demo settings in the scope file: expected a JSON object",
+			"Invalid demo settings in the local file: expected a JSON object",
 		);
 	});
 
 	it("puts the caller's overrides over the host's layers through a port", async () => {
 		const port = Settings.port(async (namespace, projectDir) => {
 			expect([namespace, projectDir]).toEqual(["demo", "/repo"]);
-			return { ok: true, value: [source("project", { mode: "b" })] };
+			return { ok: true, value: [source("shared", { mode: "b" })] };
 		});
 		const resolved = await port("demo", Schema, {
 			projectDir: "/repo",

@@ -62,8 +62,8 @@ describe("CopilotInstructions.SKILLS", () => {
 	});
 
 	it("writes the human's settings for a project to their scope, never to the checked-in file", () => {
-		expect(CopilotInstructions.SKILLS).toContain("layer: scope");
-		expect(CopilotInstructions.SKILLS).toContain("Never pass layer: project");
+		expect(CopilotInstructions.SKILLS).toContain("layer: local");
+		expect(CopilotInstructions.SKILLS).toContain("Never pass layer: shared");
 		expect(CopilotInstructions.SKILLS).not.toContain("supplies the rest");
 	});
 

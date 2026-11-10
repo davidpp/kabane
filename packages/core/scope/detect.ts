@@ -12,10 +12,12 @@
 
 import { execFile } from "node:child_process";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, parse, resolve } from "node:path";
+import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { DetectedScopes } from "./detected";
 import { ScopeUri } from "./uri";
+
+export { ProjectDirs } from "./projects";
 
 const run = promisify(execFile);
 
@@ -105,29 +107,49 @@ const hasMarker = async (dir: string): Promise<boolean> =>
 	isDirectory(join(dir, MARKER_DIR));
 
 /**
- * Git fallback for repos with no marker directory yet.
- *
- * A worktree reports its own toplevel, which would give each worktree a scope
- * of its own; following `--git-common-dir` back to the main checkout keeps a
- * worktree filing under the project it branched from.
+ * The git checkout `dir` is in: its toplevel, and the main checkout's root. A worktree reports its
+ * own toplevel; `--git-common-dir` leads back to the checkout it branched from.
+ */
+const checkoutOf = async (
+	dir: string,
+): Promise<{ toplevel: string; main: string } | null> => {
+	const toplevel = await git(dir, ["rev-parse", "--show-toplevel"]);
+	if (!toplevel) return null;
+	const commonDir = await git(dir, ["rev-parse", "--git-common-dir"]);
+	// A relative common dir (".git") is the main checkout; an absolute one means
+	// this is a worktree pointing back at the main repo's git dir.
+	if (!commonDir || !isAbsolute(commonDir)) return { toplevel, main: toplevel };
+	const mainGitDir = commonDir.includes("/worktrees/")
+		? (commonDir.split("/worktrees/")[0] as string)
+		: commonDir;
+	return { toplevel, main: await canonical(dirname(mainGitDir)) };
+};
+
+/**
+ * Git fallback for repos with no marker directory yet. A worktree files under
+ * the main checkout, so it does not get a scope of its own.
  */
 const findGitRoot = async (
 	startDir: string,
 	homeParent: string,
 ): Promise<string | null> => {
-	const toplevel = await git(startDir, ["rev-parse", "--show-toplevel"]);
-	if (!toplevel || isHomeParent(toplevel, homeParent)) return null;
+	const checkout = await checkoutOf(startDir);
+	if (!checkout || isHomeParent(checkout.toplevel, homeParent)) return null;
+	return isHomeParent(checkout.main, homeParent) ? null : checkout.main;
+};
 
-	const commonDir = await git(startDir, ["rev-parse", "--git-common-dir"]);
-	// A relative common dir (".git") is the main checkout; an absolute one means
-	// this is a worktree pointing back at the main repo's git dir.
-	if (!commonDir || !isAbsolute(commonDir)) return toplevel;
-
-	const mainGitDir = commonDir.includes("/worktrees/")
-		? (commonDir.split("/worktrees/")[0] as string)
-		: commonDir;
-	const mainRoot = await canonical(dirname(mainGitDir));
-	return isHomeParent(mainRoot, homeParent) ? null : mainRoot;
+/**
+ * The same place as the project root `root` in the main checkout, when `root` is in a linked
+ * worktree; `root` otherwise. A repo that checks in `.kabane/` has that marker in every
+ * worktree, so what is keyed by a project's path would otherwise differ per worktree.
+ */
+export const mainCheckoutRoot = async (root: string): Promise<string> => {
+	const checkout = await checkoutOf(root);
+	if (!checkout || checkout.main === checkout.toplevel) return root;
+	const inside = relative(await canonical(checkout.toplevel), root);
+	return inside.startsWith("..") || isAbsolute(inside)
+		? root
+		: join(checkout.main, inside);
 };
 
 /**
