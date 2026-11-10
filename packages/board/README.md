@@ -391,7 +391,9 @@ It can also:
   missing one is reported rather than worked around. Kabane holds no provider credentials and
   makes no network call of its own.
 - Explain commands and board keys, change Kabane settings, or enable an official extension
-  (`/setup`). Restart the board after settings change; enabling loop does not start a run.
+  (`/setup`). A device setting, enabling an extension included, applies once the board restarts;
+  an extension's own setting (`loop.*`) applies the next time it is read, with no restart.
+  Enabling loop does not start a run.
 - Create a dispatch skill tailored to the project's conventions (`/setup-dispatch`), showing
   what it wrote and asking before replacing an existing skill.
 - Start a loop run when asked, such as “run this issue with codex”, with the loop extension
