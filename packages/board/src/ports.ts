@@ -277,6 +277,36 @@ export type CopilotFormField = {
 	  }
 );
 
+// What a setting's value is, as its schema declares it (`Settings.fields` in @cabane/extension):
+// the kinds of `CopilotFormField`, plus a list, a record and a group of settings. `other` is a value
+// no kind describes. `optional`: absent is a valid setting; `default`: what the schema fills in when
+// no layer sets it.
+export type SettingValue = {
+	optional: boolean;
+	default?: unknown;
+	description?: string;
+} & SettingKind;
+
+export type SettingKind =
+	| { kind: "enum"; values: readonly string[] }
+	| {
+			kind: "number";
+			integer: boolean;
+			minimum?: number;
+			maximum?: number;
+			exclusiveMinimum?: number;
+			exclusiveMaximum?: number;
+	  }
+	| { kind: "boolean" }
+	| { kind: "string"; minLength?: number; maxLength?: number; pattern?: string }
+	| { kind: "list"; item: SettingValue }
+	| { kind: "record"; keyPattern?: string; value: SettingValue }
+	| { kind: "group" }
+	| { kind: "other" };
+
+// One setting of a namespace, at `path` in its document.
+export type SettingField = SettingValue & { path: readonly string[] };
+
 // The harness stopped mid-turn to ask the human to fill a form (AskUserQuestion, a
 // `request_user_input`), and is BLOCKED until it hears back. `id` is unique within the session;
 // `answerElicitation` names it to answer. A form with no fields asks only for a yes.

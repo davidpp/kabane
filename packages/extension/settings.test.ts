@@ -205,3 +205,84 @@ describe("Settings.resolve", () => {
 		);
 	});
 });
+
+describe("Settings.fields", () => {
+	it("describes every setting of a schema, groups first, from its checks and wrappers", () => {
+		const fields = Settings.fields(
+			z.preprocess(
+				(value) => value,
+				z.object({
+					size: z.number().int().min(1).max(8).optional().describe("How many."),
+					spend: z.number().positive().optional(),
+					name: z
+						.string()
+						.min(1)
+						.refine((text) => text !== "x"),
+					limits: Schema.shape.limits,
+					gates: Schema.shape.gates,
+					list: Schema.shape.list,
+					mode: Schema.shape.mode,
+					on: z.boolean().default(true),
+					other: z.unknown(),
+				}),
+			),
+		);
+		expect(fields).toEqual([
+			{
+				path: ["size"],
+				kind: "number",
+				integer: true,
+				minimum: 1,
+				maximum: 8,
+				optional: true,
+				description: "How many.",
+			},
+			{
+				path: ["spend"],
+				kind: "number",
+				integer: false,
+				exclusiveMinimum: 0,
+				optional: true,
+			},
+			{ path: ["name"], kind: "string", minLength: 1, optional: false },
+			{ path: ["limits"], kind: "group", optional: false, default: {} },
+			{
+				path: ["limits", "count"],
+				kind: "number",
+				integer: false,
+				optional: false,
+				default: 1,
+			},
+			{
+				path: ["limits", "cap"],
+				kind: "number",
+				integer: false,
+				optional: true,
+			},
+			{
+				path: ["gates"],
+				kind: "record",
+				keyPattern: "^[a-z]+$",
+				value: { kind: "string", optional: false },
+				optional: false,
+				default: { test: "bun test" },
+			},
+			{
+				path: ["list"],
+				kind: "list",
+				item: { kind: "string", optional: false },
+				optional: false,
+				default: [],
+			},
+			{
+				path: ["mode"],
+				kind: "enum",
+				values: ["a", "b"],
+				optional: false,
+				default: "a",
+			},
+			{ path: ["on"], kind: "boolean", optional: false, default: true },
+			{ path: ["other"], kind: "other", optional: false },
+		]);
+	});
+});

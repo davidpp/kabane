@@ -66,6 +66,7 @@ it("manages device config through the real stdio MCP server", async () => {
 				value: z.unknown(),
 				leaves: z.record(z.unknown()),
 			})
+			.passthrough()
 			.parse(JSON.parse(await call("kabane_configGet", { key, layers: true })));
 		expect(await cli("config", "get", key, "--layers")).toEqual(layered);
 		expect(await cli("config", "get", key)).toEqual(layered.value);
@@ -128,6 +129,26 @@ it("manages device config through the real stdio MCP server", async () => {
 		);
 		expect(flags("protected")).toContain("sync.token");
 		expect(flags("protected")).toContain("db.path");
+		expect(flags("secret")).toEqual(["sync.token", "sync.headers"]);
+		// Device keys are written to global only and load at a process's start; the loop's are
+		// written to any layer and read at each resolve.
+		for (const row of rows) {
+			const loop = /^loop(\.|$)/.test(String(row.key));
+			expect([row.key, row.layers, row.restart]).toEqual(
+				loop
+					? [row.key, ["global", "shared", "local"], "resolve"]
+					: [row.key, ["global"], "start"],
+			);
+		}
+		expect(rows.find((row) => row.key === "sync.batchBytes")?.field).toEqual({
+			path: ["sync", "batchBytes"],
+			kind: "number",
+			integer: false,
+			exclusiveMinimum: 0,
+			optional: false,
+			default: 262144,
+			description: "Push chunk ceiling in bytes; defaults to 262144.",
+		});
 		expect(await valueOf("timezone")).toBeNull();
 		for (const [key, value, expected] of [
 			["timezone", "UTC", "UTC"],
@@ -152,7 +173,12 @@ it("manages device config through the real stdio MCP server", async () => {
 			JSON.parse(
 				await call("kabane_configSet", { key: "loop.model", value: "haiku" }),
 			),
-		).toMatchObject({ key: "loop.model", layer: "global", value: "haiku" });
+		).toMatchObject({
+			key: "loop.model",
+			layer: "global",
+			value: "haiku",
+			restartRequired: false,
+		});
 		expect(JSON.parse(read()).loop).toEqual({ model: "haiku" });
 		expect(
 			await call(

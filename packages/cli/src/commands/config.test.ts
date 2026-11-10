@@ -246,6 +246,7 @@ describe.concurrent("config through the real CLI", () => {
 					layer: "global",
 					from: path(),
 					value,
+					restart: "start",
 				});
 				expected[key] = value;
 			}
@@ -293,6 +294,7 @@ describe.concurrent("config through the real CLI", () => {
 					layer: "global",
 					from: path(),
 					unset: true,
+					restart: "start",
 				});
 			}
 			expect(JSON.parse(read())).toEqual({
@@ -451,6 +453,7 @@ describe.concurrent("config through the real CLI", () => {
 				from: path(),
 				value: ["loop", "unshipped"],
 				ignored: ["unshipped"],
+				restart: "start",
 			});
 			expect(changed.err).toBe(
 				`kabane: ignoring "unshipped" in "extensions" of ${path()}: this kabane ships loop`,
@@ -498,6 +501,7 @@ describe.concurrent("config through the real CLI", () => {
 				layer: "shared",
 				from: shared,
 				value: 4,
+				restart: "resolve",
 				shadowedBy: { layer: "local", from: local, value: 9 },
 			});
 			expect(await out("config", "get", "loop.stallAfter", "--layers")).toBe(
@@ -556,6 +560,7 @@ describe.concurrent("config through the real CLI", () => {
 				layer: "local",
 				from: local,
 				value: "bun test",
+				restart: "resolve",
 			});
 			expect(JSON.parse(readFileSync(local, "utf8"))).toEqual({
 				gates: { test: "bun test" },
