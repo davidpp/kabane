@@ -44,8 +44,11 @@ export namespace Settings {
 		}[];
 	};
 
-	/** A settings namespace a host knows: its name and the schema of what a human writes in it. */
-	export type Namespace = { name: string; schema: z.ZodTypeAny };
+	/**
+	 * A settings namespace a host knows: its name, the schema of what a human writes in it, and how
+	 * its settings read.
+	 */
+	export type Namespace = { name: string; schema: z.ZodTypeAny; looks?: Looks };
 
 	/**
 	 * What an extension resolves its settings through (`Extension.Ctx.settings`): `namespace` in
@@ -178,6 +181,87 @@ export namespace Settings {
 		schema: z.ZodTypeAny,
 		path: readonly string[] = [],
 	): SettingField => ({ ...valueOf(schema), path });
+
+	/** Where a look's option source is asked for its choices: the project the settings are read for. */
+	export type At = { projectDir?: string };
+
+	/**
+	 * How a setting reads on a generated screen. It says nothing of where the value is stored: that
+	 * is the layers'.
+	 */
+	export type Look = {
+		label: string;
+		/** Its section; sections come in the order their first look names them. */
+		group: string;
+		/**
+		 * The values `h/l` steps through: a fixed list, or a function the host calls as it builds the
+		 * screen, never at load, for choices known only at run time. Without one, an enum's values,
+		 * or a bounded integer's range.
+		 */
+		options?:
+			| readonly (string | number)[]
+			| ((at: At) => readonly (string | number)[]);
+		/** What an optional setting left unset reads as. */
+		none?: string;
+	};
+
+	/** Looks by a setting's dotted path in its namespace. */
+	export type Looks = Readonly<Record<string, Look>>;
+
+	/** The group of a setting no look places, and not in an object of its own. */
+	export const OTHER = "Other";
+
+	/**
+	 * How the setting at `path` reads: its look, or its path under its parent object's name
+	 * (`Budget`), or under `Other` at the top.
+	 */
+	export const lookOf = (
+		looks: Looks | undefined,
+		path: readonly string[],
+	): Look => {
+		const name = path.join(".");
+		const declared =
+			looks && Object.hasOwn(looks, name) ? looks[name] : undefined;
+		if (declared) return declared;
+		const parent = path.length > 1 ? path[0] : undefined;
+		return {
+			label: name,
+			group: parent
+				? `${parent.charAt(0).toUpperCase()}${parent.slice(1)}`
+				: OTHER,
+		};
+	};
+
+	/** The groups `looks` name, in the order they first name them. */
+	export const groupsOf = (looks: Looks | undefined): string[] => [
+		...new Set(Object.values(looks ?? {}).map((look) => look.group)),
+	];
+
+	// A bounded integer steps through its range only when it is short enough to step through.
+	const MAX_STEPS = 32;
+
+	/**
+	 * The values a setting steps through: its look's options (a source called with `at`), else an
+	 * enum's values, else a bounded integer's range; undefined when none of those applies.
+	 */
+	export const options = (
+		field: SettingField,
+		look: Look,
+		at: At,
+	): readonly (string | number)[] | undefined => {
+		if (look.options !== undefined)
+			return typeof look.options === "function"
+				? look.options(at)
+				: look.options;
+		if (field.kind === "enum") return field.values;
+		if (field.kind !== "number" || !field.integer) return undefined;
+		const { minimum, maximum } = field;
+		return minimum !== undefined &&
+			maximum !== undefined &&
+			maximum - minimum < MAX_STEPS
+			? Array.from({ length: maximum - minimum + 1 }, (_, i) => minimum + i)
+			: undefined;
+	};
 
 	/** A setting and the schema it was read from, for a host that also parses values with it. */
 	export type Entry = { field: SettingField; schema: z.ZodTypeAny };
