@@ -5,18 +5,22 @@
 Getting good work out of agents is a craft that changes every few months, across vendors,
 harnesses and models that come and go. Kabane makes that work go better, whichever agents do
 it: it brings good practice to the work, lets any agent pick up where another left off, and
-keeps a history that can explain what was done, when, by whom and why.
+keeps a history that can explain what was done, when, by whom and why. It does this as one
+piece that composes with the tools people already use, never as the whole of them.
 
 In priority order; when two conflict, the higher one wins.
 
 1. **Helps you work well.** Kabane brings current good practice to the whole of the work,
    from starting a project to closing an issue, and fits it to the project at hand. Where
-   someone else already does a practice well, kabane recommends theirs instead of redoing it.
+   someone else already does a practice well, kabane recommends theirs instead of redoing it:
+   bringing a practice to the work never means becoming the tool for every part of it.
    It learns from what happened to the work, never from how much of it got done, and proposes
    a better practice when one isn't working; the human decides.
    *Rests on:* good practice for agent-driven work changing faster than one person can follow;
-   shared, tested practice beating each person rediscovering it. *Revisit if:* the practices
-   settle into the agent tools themselves, or people stop taking kabane's recommendations.
+   shared, tested practice beating each person rediscovering it; a piece that composes with
+   the rest outliving a tool that tries to be all of it. *Revisit if:* the practices settle
+   into the agent tools themselves, people stop taking kabane's recommendations, or carrying
+   a practice keeps requiring kabane to own the job itself.
 2. **Instant.** Every read and write, by a human or an agent, feels immediate. Nothing ships
    that puts a wait on the common path.
    *Rests on:* speed being what users feel first (it already feels instant next to hosted trackers).
@@ -51,7 +55,7 @@ Not goals:
 
 - **A team tracker.** A team can adopt and extend it; the core grows no assignee pickers,
   sprints or permissions. The team's own tracker stays the team record.
-- **A replacement for the tools around it.** Agent harnesses, runtimes, multiplexers and
+- **An all-in-one, or a replacement for the tools around it.** Agent harnesses, runtimes, multiplexers and
   team trackers come and go. Where one already does a job well and people use it, kabane
   works with it instead of competing with it, and what kabane grows extends the tools people
   already chose. It composes with them through open interfaces, tells them its own state, and
