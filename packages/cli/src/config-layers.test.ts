@@ -12,6 +12,7 @@ import { GitFixture } from "@cabane/core/git-fixture";
 import { ProjectDirs } from "@cabane/core/scope";
 import { LoopConfig } from "@cabane/loop";
 import { configPath } from "./config";
+import { ConfigLayers } from "./config-layers";
 import { projectAt, settingsPort } from "./context";
 
 // The port an extension resolves its settings through, as the CLI wires it: config.json, a real
@@ -117,4 +118,12 @@ it("resolves before kabane init, and names the layer an error is in", async () =
 	expect(!scopes.ok && scopes.error.message).toStartWith(
 		`Invalid scopes in ${configPath(home)}`,
 	);
+});
+
+it("a write under a path whose parent is a file returns its error instead of throwing", () => {
+	const file = join(root, "plain");
+	writeFileSync(file, "");
+	const written = ConfigLayers.writeJson(join(file, "loop.json"), {});
+	expect(written.ok).toBe(false);
+	if (!written.ok) expect(written.error.message).toContain("plain");
 });

@@ -85,7 +85,8 @@ export namespace ConfigLayers {
 			return path;
 		});
 		if (written.ok) return written;
-		rmSync(temp, { force: true });
+		// The write's error is the one worth reporting; a failed cleanup only leaves a stray temp file.
+		trySync(() => rmSync(temp, { force: true }));
 		return err(toError(written.error));
 	};
 
