@@ -85,30 +85,26 @@ An extension's settings (today the loop's, under `loop`) resolve through layers,
 key by key:
 
 1. the schema's defaults;
-2. **user**: the namespace's key in `config.json`, for every project;
-3. **project**: `<repo>/.kabane/<namespace>.json`, checked in with the repo (`.kabane/loop.json`);
-4. **scope**: your settings for one project, in `config.json` under `scopes`, keyed by the scope
-   id the repo detects, so they hold in every checkout and worktree of it and put no file in a
-   repo you do not own;
+2. **global**: the namespace's key in `KABANE_HOME/config.json`, for every project on this device;
+3. **shared**: `<repo>/.kabane/<namespace>.json` (`.kabane/loop.json`), checked in, for everyone
+   who clones the repo;
+4. **local**: `KABANE_HOME/projects/<slug>/<namespace>.json`, for this project, for you only, on
+   this device. `<slug>` is the project root's path with each run of other characters than
+   letters and digits as `-`, then a short hash of it. It holds from anywhere in the project and
+   from its worktrees, puts no file in the repo, and does not change when the project's scope
+   does. Moving or cloning the directory again starts with no local settings;
 5. the command's own flags, or the board's run form.
 
-```json
-{
-  "actor": "cabane://actor/human/alex",
-  "deviceId": "mbp",
-  "loop": { "stallAfter": 4 },
-  "scopes": {
-    "github.com/acme/app": { "loop": { "gates": { "test": "npm test" }, "worktree": false } }
-  }
-}
-```
+`--layer user`, `--layer project` and `--layer scope`, the names before these, still mean global,
+shared and local. Local settings from before kabane kept them by path, under
+`scopes.<scope id>` in `config.json`, are still read as local, just under the file; kabane never
+writes or moves them.
 
 Objects merge key by key, so each layer can add a gate; lists and scalars are replaced by the
 higher layer. `null` in a layer unsets what the layers under it say. Every layer is validated on
-its own first, so an error names the file, or "your settings for scope X", it is in; a key no
-setting has is refused in every layer. Device keys (`actor`, `deviceId`, `sync`, `db`,
-`copilot`, `harness`, `timezone`, `extensions`) live in your `config.json` only: no project file
-or scope can redirect the database or the hub.
+its own first, so an error names the file it is in; a key no setting has is refused in every
+layer. Device keys (`actor`, `deviceId`, `sync`, `db`, `copilot`, `harness`, `timezone`,
+`extensions`) have the global layer only: no project file can redirect the database or the hub.
 
 ### Managing config from the CLI
 
@@ -123,24 +119,28 @@ kabane config set sync.batchBytes 262144
 kabane config set extensions loop      # comma-separated names; "" clears the array
 kabane config set copilot.args -- '--model,sonnet'
 kabane config set sync.headers '{"CF-Access-Client-Id":"id","CF-Access-Client-Secret":"secret"}'
-kabane config set loop.gates.test 'bun test' --layer scope    # this repo's scope, no file in it
-kabane config set loop.lenses quality --layer project         # the repo's .kabane/loop.json
-kabane config set loop.model haiku --scope github.com/acme/app  # a named scope, from anywhere
+kabane config set loop.gates.test 'bun test'                 # in a project: local, no file in it
+kabane config set loop.model haiku --layer global            # every project
+kabane config set loop.lenses quality --layer shared         # the repo's .kabane/loop.json
+kabane config get loop.model --scope github.com/acme/app     # another project's legacy scopes block
 kabane config unset copilot.model      # remove the key from the layer
 kabane config path                     # resolved config.json location
 ```
 
 Reads resolve for the project the command runs in: its `.kabane/` files when run from the
-project's root (what `kabane loop start` reads from there), and your settings for its scope, or
-for `--scope <uri or id>`. Writes go to the user layer unless `--layer user|scope|project` names
-another; `--scope` alone writes that scope's layer.
+project's root (what `kabane loop start` reads from there), and its local settings from anywhere
+in it. With no `--layer`, a write goes to local inside a project and to global outside one; a
+device key always goes to global. `--layer global|local|shared` names the layer.
+`--scope <uri or id>` naming another project reads only its legacy `scopes` block, and a local
+write for it has to run in that project.
 
 Every operation supports `--json`. `list` returns rows with `key`, `value`,
 `default` (no layer sets it), `layer` and `from` (the file or scope it came from), `readOnly`,
 `protected` and `description`. `get` returns the resolved value, or JSON `null` / human
 `default` when absent; with `--layers` it returns `{key, value, leaves}`, where `leaves` maps
-every dotted key under `key` to its `value`, `layer` and `from`, and prints a line per leaf. `path` returns a string. `set` returns `{key, layer, value}` and `unset`
-returns `{key, layer, unset: true}`. `sync.token` and `sync.headers` read as `<set>`.
+every dotted key under `key` to its `value`, `layer` and `from`, and prints a line per leaf. `path` returns a string. `set` returns `{key, layer, from, value}` and `unset`
+returns `{key, layer, from, unset: true}`, `from` being the file written; an unset from local
+adds `stillSetIn` when a legacy `scopes` block still sets the key. `sync.token` and `sync.headers` read as `<set>`.
 
 Strings are literal; numbers and booleans use JSON syntax. Arrays take trimmed
 comma-separated values, with an empty string meaning an empty array.
