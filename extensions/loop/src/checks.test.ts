@@ -370,7 +370,9 @@ describe("Loop.rollback", () => {
 		GitFixture.run(repo, ["commit", "-q", "-m", "base moved"]);
 		GitFixture.run(repo, ["push", "-q", "origin", "HEAD:main"]);
 		GitFixture.run(dir, ["fetch", "-q", "origin", "main"]);
-		expect((await Worktree.rebase(dir, "FETCH_HEAD")).ok).toBe(true);
+		// Landing's rebase, done here with the fixture's git: it writes commits, so it needs a
+		// committer identity, which a CI runner's ambient git config does not have.
+		GitFixture.run(dir, ["rebase", "-q", "FETCH_HEAD"]);
 		const tip = head(dir);
 		expect(tip).not.toBe(pass.checkpoint);
 		writeFileSync(join(dir, "work.txt"), "local edit\n");
