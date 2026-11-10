@@ -302,7 +302,7 @@ export const start: Verb = async (args, deps, target) => {
 	const isNew =
 		started.value.worktree !== undefined && !started.value.worktreeReused;
 	const moves = Lenses.moves(
-		started.value.projectDir,
+		RunStore.projectRoot(started.value),
 		started.value.config.lenses,
 	);
 	return success(
