@@ -48,7 +48,8 @@ export namespace Self {
 
 	/**
 	 * An executable path that runs kabane with no interpreter in front of it: the binary, or the
-	 * entry script, whose `#!/usr/bin/env bun` shebang finds bun on PATH.
+	 * entry script, whose hashbang finds bun on PATH. A source entry's hashbang also passes the
+	 * production NODE_ENV define, through `env -S`; the bundle has the define built in.
 	 */
 	export const executable = (host: Host = HOST): string => {
 		if (compiled(host)) return host.execPath;

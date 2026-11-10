@@ -3,7 +3,9 @@
  *
  * One file per database under a base directory, opened per unit of work and
  * closed afterwards (the pattern the storage layer was written for: no shared
- * handle, safe under concurrent processes). WAL, foreign keys and a busy
+ * handle, safe under concurrent processes). While units keep coming, one idle
+ * connection per file stays open beside them so the WAL is not rebuilt on every
+ * open (`hold` in the provider). WAL, foreign keys and a busy
  * timeout are set on every open; SQLITE_BUSY is retried with jittered
  * backoff before it surfaces as an error.
  */
@@ -22,6 +24,7 @@ import {
 	type Row,
 	type SqlValue,
 	toError,
+	trySync,
 } from "@cabane/core";
 
 export type SqliteProviderOptions = {
@@ -29,6 +32,8 @@ export type SqliteProviderOptions = {
 	dbName?: string;
 	/** SQLITE_BUSY retries before giving up. Default 3. */
 	maxBusyRetries?: number;
+	/** How long the idle connection outlives the last unit of work on its file. Default 30 s. */
+	holdIdleMs?: number;
 };
 
 const RETRY_BASE_MS = 50;
@@ -96,6 +101,24 @@ export const adapt = (db: Database): Db => ({
 	},
 });
 
+const HOLD_IDLE_MS = 30_000;
+
+type Held = { timer: ReturnType<typeof setTimeout> };
+
+/** The idle connection, attached to the WAL index by one read. */
+const openHeld = (dbPath: string): Result<Database> => {
+	const opened = trySync(() => new Database(dbPath));
+	if (!opened.ok) return opened;
+	const db = opened.value;
+	const attached = trySync(() => {
+		db.run("PRAGMA busy_timeout = 5000");
+		db.run("PRAGMA schema_version");
+	});
+	if (attached.ok) return ok(db);
+	db.close();
+	return attached;
+};
+
 export namespace SqliteDb {
 	/** Path of the database file the provider opens for `basePath`. */
 	export const pathFor = (basePath: string, dbName = "kabane.db"): string =>
@@ -104,6 +127,33 @@ export namespace SqliteDb {
 	export const provider = (options: SqliteProviderOptions = {}): DbProvider => {
 		const dbName = options.dbName ?? "kabane.db";
 		const maxBusyRetries = options.maxBusyRetries ?? 3;
+		const holdIdleMs = options.holdIdleMs ?? HOLD_IDLE_MS;
+		const held = new Map<string, Held>();
+
+		// When the last connection to a WAL database closes, SQLite checkpoints it and the next open
+		// rebuilds the shared-memory index from scratch: about 36 KB written per unit of work. A
+		// process that polls (the board, a loop runner) did that several times a second, tens of GB a
+		// day. One idle connection kept open while units keep coming means no unit is ever the last.
+		// It holds no lock between statements, so it is still safe under concurrent processes; the
+		// timer is unref'd, so a one-shot command exits as it did.
+		const hold = (dbPath: string): void => {
+			const current = held.get(dbPath);
+			if (current) {
+				current.timer.refresh();
+				return;
+			}
+			// Its failure is dropped: the held connection only saves writes, so a unit of work never
+			// fails for want of it.
+			const opened = openHeld(dbPath);
+			if (!opened.ok) return;
+			const db = opened.value;
+			const timer = setTimeout(() => {
+				held.delete(dbPath);
+				db.close();
+			}, holdIdleMs);
+			timer.unref();
+			held.set(dbPath, { timer });
+		};
 
 		return {
 			withDb: async <T>(
@@ -118,6 +168,7 @@ export namespace SqliteDb {
 						const db = new Database(dbPath, { create: true });
 						try {
 							applyPragmas(db);
+							hold(dbPath);
 							return ok(await fn(adapt(db)));
 						} finally {
 							db.close();

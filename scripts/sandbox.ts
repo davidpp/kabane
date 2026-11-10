@@ -92,8 +92,10 @@ const sandboxEnv = (harnesses: boolean): NodeJS.ProcessEnv =>
 			}
 		: { ...process.env, KABANE_HOME, KABANE_HARNESSES: "" };
 
+// Through the entry's own hashbang, as a linked kabane starts: the sandbox renders with the React
+// build a linked or installed kabane does.
 const kabane = (args: string[], env: NodeJS.ProcessEnv) =>
-	Bun.spawn([process.execPath, CLI, ...args], {
+	Bun.spawn([CLI, ...args], {
 		cwd: REPO,
 		env,
 		stdio: ["inherit", "inherit", "inherit"],
