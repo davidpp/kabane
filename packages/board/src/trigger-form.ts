@@ -52,18 +52,26 @@ export namespace TriggerForm {
 	export const changed = (form: Form, name: string): boolean =>
 		form.values[name] !== form.trigger.inputs[name]?.default;
 
+	/** What `step` moves through: a trigger's input, or a setting's field and looked-up steps. */
+	export type Steps = {
+		type: string;
+		options?: readonly (string | number)[] | undefined;
+	};
+
 	/**
 	 * `value` one step along: the next or previous option, wrapping; a number up or down, never
-	 * below zero; a boolean flipped.
+	 * below zero; a boolean flipped. The settings view steps a setting with it too.
 	 */
 	export const step = (
-		input: TriggerInput,
+		input: TriggerInput | Steps,
 		value: unknown,
 		by: 1 | -1,
 	): unknown => {
 		const options = input.options ?? [];
 		if (options.length > 0) {
-			const at = options.indexOf(String(value));
+			const at = options.findIndex(
+				(option) => String(option) === String(value),
+			);
 			return options[(at + by + options.length) % options.length];
 		}
 		if (input.type === "number" && typeof value === "number")

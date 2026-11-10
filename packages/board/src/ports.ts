@@ -318,8 +318,8 @@ export type SettingHeld = { layer: SettingLayer; from: string; value: unknown };
 // One setting as it resolves for the project on screen: `kabane config list --json`'s row. `value`
 // is already redacted (a secret reads `<set>`); `from` is the file the deciding layer is stored in;
 // `namespace` is the extension that declares it, absent for the device's own keys. `label`, `group`,
-// `options` and `none` are how it reads; `layers` are where it can be written; `restart` says when a
-// change applies.
+// `options` and `none` are how it reads; `layers` are where it can be written, and `target` the one a
+// write that names none goes to; `restart` says when a change applies.
 export type SettingRow = {
 	key: string;
 	namespace?: string;
@@ -334,16 +334,39 @@ export type SettingRow = {
 	none?: string;
 	description: string;
 	layers: readonly SettingLayer[];
+	target: SettingLayer;
 	secret: boolean;
 	restart: "start" | "resolve";
 	readOnly: boolean;
 	protected: boolean;
 };
 
-// The settings the `,` view lists, read when it opens and never before. Absent, the view says
-// settings are not available here.
+// What a save writes: a value of the setting's kind, or the key removed from the layer.
+export type SettingWrite = string | number | boolean | { unset: true };
+
+// A save as `kabane config set --json` reports it: the layer and file written, the value (a secret
+// `<set>`), and when it applies. `shadowedBy`: a higher layer still sets the key, so the value seen
+// is not the one written. `fallsBackTo`: after an unset, the layer that now decides.
+export type SettingChange = {
+	key: string;
+	layer: SettingLayer;
+	from: string;
+	value?: unknown;
+	unset?: true;
+	shadowedBy?: SettingHeld;
+	fallsBackTo?: SettingHeld;
+	restart: "start" | "resolve";
+};
+
+// The settings the `,` view lists, read when it opens and never before, and where it saves a
+// change. Absent, the view says settings are not available here.
 export interface SettingsSource {
 	list(): Promise<Result<SettingRow[]>>;
+	set(
+		key: string,
+		value: SettingWrite,
+		layer: SettingLayer,
+	): Promise<Result<SettingChange>>;
 }
 
 // The harness stopped mid-turn to ask the human to fill a form (AskUserQuestion, a

@@ -54,6 +54,8 @@ describe("SettingsView", () => {
 		expect(rows).toEqual([
 			"loop.implementer",
 			"loop.budget.continuations",
+			"loop.budget.concurrency",
+			"loop.stallAfter",
 			"loop.gates.test",
 			"loop.lenses",
 			"actor",
@@ -76,14 +78,14 @@ describe("SettingsView", () => {
 		).toEqual(["a", "c", "b"]);
 	});
 
-	test("j/k move within the rows, enter opens the detail, and esc or `,` closes", () => {
+	test("j/k move within the rows, enter opens a read-only row's detail, and esc or `,` closes", () => {
 		const start = opened();
 		expect(selectedKey(start)).toBe("actor");
 		expect(press(start, "k").state).toBe(start);
+		expect(press(start, "return").state.settings?.detail).toBe(true);
+		expect(press(start, "return", "return").state.settings?.detail).toBe(false);
 		const moved = press(start, "j", "j").state;
 		expect(selectedKey(moved)).toBe("sync.token");
-		expect(press(moved, "return").state.settings?.detail).toBe(true);
-		expect(press(moved, "return", "return").state.settings?.detail).toBe(false);
 		expect(press(moved, "escape").state.settings).toBeNull();
 		expect(press(moved, ",").state.settings).toBeNull();
 		// Modal: the board's own keys do nothing while it is open.
@@ -140,5 +142,175 @@ describe("SettingsView", () => {
 		const actor = Fixtures.SETTINGS.find((r) => r.key === "actor");
 		if (!actor) throw new Error("no actor");
 		expect(SettingsView.detail(actor)).toContain("read-only: kabane sets it");
+	});
+});
+
+describe("SettingsView's editor", () => {
+	const on = (key: string): BoardNav.BoardState => {
+		const state = opened();
+		const view = state.settings;
+		if (view?.rows.type !== "ready") throw new Error("no rows");
+		const selected = view.rows.rows.findIndex((row) => row.key === key);
+		return { ...state, settings: { ...view, selected } };
+	};
+
+	const edit = (state: BoardNav.BoardState) => state.settings?.edit;
+
+	test("h/l step a value as the run form does, and enter saves it where config set would", () => {
+		const stepped = press(on("loop.stallAfter"), "l");
+		expect(edit(stepped.state)).toEqual({
+			key: "loop.stallAfter",
+			layer: "local",
+			change: { type: "step", value: 4 },
+		});
+		const saved = press(stepped.state, "return");
+		expect(saved.effect).toEqual({
+			type: "saveSetting",
+			key: "loop.stallAfter",
+			value: 4,
+			layer: "local",
+		});
+		expect(edit(saved.state)?.saving).toBe(true);
+		// Saving: the keys wait for the host's answer.
+		expect(press(saved.state, "l").state).toBe(saved.state);
+	});
+
+	test("tab walks the row's own layers, and a device key has global only", () => {
+		const local = press(on("loop.stallAfter"), "l").state;
+		expect(edit(press(local, "tab").state)?.layer).toBe("global");
+		expect(edit(press(local, "tab", "tab").state)?.layer).toBe("shared");
+		const device = press(on("copilot.harness"), "l").state;
+		expect(edit(device)?.layer).toBe("global");
+		expect(press(device, "tab").state).toBe(device);
+	});
+
+	test("a save to shared asks a y/n first: n goes back, y saves", () => {
+		const shared = press(on("loop.stallAfter"), "l", "tab", "tab").state;
+		const asked = press(shared, "return");
+		expect(asked.effect).toEqual({ type: "none" });
+		expect(edit(asked.state)?.confirm).toBe(true);
+		expect(edit(press(asked.state, "n").state)?.confirm).toBeUndefined();
+		expect(press(asked.state, "y").effect).toEqual({
+			type: "saveSetting",
+			key: "loop.stallAfter",
+			value: 4,
+			layer: "shared",
+		});
+	});
+
+	test("enter types a number, read with the field's bounds; a refused one writes nothing", () => {
+		const typing = press(on("loop.budget.concurrency"), "return").state;
+		expect(edit(typing)?.change).toEqual({ type: "type", text: "" });
+		const refused = press(typing, "9", "return");
+		expect(refused.effect).toEqual({ type: "none" });
+		expect(edit(refused.state)?.error).toBe(
+			'"9" is not a whole number from 1 to 8',
+		);
+		// h and l are letters while typing.
+		expect(edit(press(refused.state, "l").state)?.change).toEqual({
+			type: "type",
+			text: "9l",
+		});
+		expect(press(refused.state, "backspace", "5", "return").effect).toEqual({
+			type: "saveSetting",
+			key: "loop.budget.concurrency",
+			value: 5,
+			layer: "local",
+		});
+	});
+
+	test("a secret starts empty, is never echoed in an error, and a protected key asks first", () => {
+		const typing = press(on("sync.token"), "return").state;
+		expect(edit(typing)?.change).toEqual({ type: "type", text: "" });
+		const asked = press(typing, "s", "3", "return");
+		expect(asked.effect).toEqual({ type: "none" });
+		expect(edit(asked.state)?.confirm).toBe(true);
+		expect(press(asked.state, "y").effect).toEqual({
+			type: "saveSetting",
+			key: "sync.token",
+			value: "s3",
+			layer: "global",
+		});
+		const row = Fixtures.SETTINGS.find((r) => r.key === "sync.token");
+		if (!row) throw new Error("no token");
+		const { state } = press(
+			opened([
+				{ ...row, field: { ...row.field, kind: "string", minLength: 4 } },
+			]),
+			"return",
+			"s",
+			"return",
+		);
+		expect(edit(state)?.error).toBe(
+			"the value is not text of at least 4 characters",
+		);
+	});
+
+	test("x removes the key from the layer picked; a record's entry and a read-only key stay", () => {
+		const unset = press(on("loop.stallAfter"), "x", "return");
+		expect(unset.effect).toEqual({
+			type: "saveSetting",
+			key: "loop.stallAfter",
+			value: { unset: true },
+			layer: "local",
+		});
+		const entry = on("loop.gates.test");
+		expect(press(entry, "x").state).toBe(entry);
+		const actor = on("actor");
+		expect(press(actor, "x").state).toBe(actor);
+		expect(press(actor, "l").state).toBe(actor);
+	});
+
+	test("esc leaves the editor and keeps the view", () => {
+		const back = press(on("loop.stallAfter"), "l", "escape").state;
+		expect(back.settings).not.toBeNull();
+		expect(edit(back)).toBeUndefined();
+	});
+
+	test("after a save the rows are read again, the saved one in hand, saying who still decides", () => {
+		const saving = press(on("loop.stallAfter"), "l", "tab", "return").state;
+		const row = Fixtures.SETTINGS.find((r) => r.key === "loop.stallAfter");
+		if (!row) throw new Error("no row");
+		const said = SettingsView.outcome("loop.stallAfter", {
+			key: "loop.stallAfter",
+			layer: "global",
+			from: "/h/config.json",
+			value: 6,
+			shadowedBy: { layer: "local", from: "/h/loop.json", value: 4 },
+			restart: "start",
+		});
+		expect(said).toEqual({
+			key: "loop.stallAfter",
+			lines: [
+				"saved 6 to global",
+				"local still decides: 4 (/h/loop.json)",
+				"it applies at the next start",
+			],
+			warn: true,
+		});
+		const reread = SettingsView.saved(
+			saving,
+			{ type: "ready", rows: [...Fixtures.SETTINGS].reverse() },
+			said,
+		);
+		expect(selectedKey(reread)).toBe("loop.stallAfter");
+		expect(reread.settings?.said).toEqual(said);
+		expect(edit(reread)).toBeUndefined();
+		expect(press(reread, "j").state.settings?.said).toBeUndefined();
+	});
+
+	test("a save the host refuses keeps the editor open with its reason", () => {
+		const saving = press(on("loop.stallAfter"), "l", "return").state;
+		const refused = SettingsView.refused(
+			saving,
+			"loop.stallAfter",
+			"no project",
+		);
+		expect(edit(refused)).toEqual({
+			key: "loop.stallAfter",
+			layer: "local",
+			change: { type: "step", value: 4 },
+			error: "no project",
+		});
 	});
 });

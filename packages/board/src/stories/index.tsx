@@ -300,6 +300,20 @@ const settingsView = (detail: boolean): SettingsView.View => {
 	};
 };
 
+// The `,` view on `key`, its editor at `edit` or a save's word under it.
+const settingsEdit = (
+	key: string,
+	over: Pick<SettingsView.View, "edit" | "said">,
+): SettingsView.View => {
+	const rows = SettingsView.ordered(Fixtures.SETTINGS);
+	return {
+		rows: { type: "ready", rows },
+		selected: rows.findIndex((row) => row.key === key),
+		detail: over.edit !== undefined,
+		...over,
+	};
+};
+
 export const STORIES: readonly Story[] = [
 	{
 		name: "board",
@@ -343,6 +357,82 @@ export const STORIES: readonly Story[] = [
 		width: 40,
 		height: 30,
 		render: () => <SettingsOverlay view={settingsView(true)} />,
+	},
+	{
+		name: "settings-edit",
+		about:
+			"the stall limit stepped to 4 with l, to be saved to local, what local means",
+		width: 80,
+		height: 30,
+		render: () => (
+			<SettingsOverlay
+				view={settingsEdit("loop.stallAfter", {
+					edit: {
+						key: "loop.stallAfter",
+						layer: "local",
+						change: { type: "step", value: 4 },
+					},
+				})}
+			/>
+		),
+	},
+	{
+		name: "settings-edit-typed",
+		about:
+			"9 typed for sessions at once, refused beside the field: nothing is written",
+		width: 80,
+		height: 30,
+		render: () => (
+			<SettingsOverlay
+				view={settingsEdit("loop.budget.concurrency", {
+					edit: {
+						key: "loop.budget.concurrency",
+						layer: "local",
+						change: { type: "type", text: "9" },
+						error: '"9" is not a whole number from 1 to 8',
+					},
+				})}
+			/>
+		),
+	},
+	{
+		name: "settings-edit-protected",
+		about:
+			"a new hub token typed write-only, the protected key's y/n before it saves",
+		width: 80,
+		height: 30,
+		render: () => (
+			<SettingsOverlay
+				view={settingsEdit("sync.token", {
+					edit: {
+						key: "sync.token",
+						layer: "global",
+						change: { type: "type", text: "hunter22" },
+						confirm: true,
+					},
+				})}
+			/>
+		),
+	},
+	{
+		name: "settings-edit-shadowed",
+		about: "6 saved to global while local still decides, and when it applies",
+		width: 80,
+		height: 24,
+		render: () => (
+			<SettingsOverlay
+				view={settingsEdit("loop.stallAfter", {
+					said: {
+						key: "loop.stallAfter",
+						lines: [
+							"saved 6 to global",
+							"local still decides: 4 (/Users/ada/.kabane/projects/-Users-ada-acme-widget-8380ae31/loop.json)",
+						],
+						warn: true,
+					},
+				})}
+			/>
+		),
 	},
 	{
 		name: "copilot-collapsed",

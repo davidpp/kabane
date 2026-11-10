@@ -150,8 +150,13 @@ than the pane. A key that does nothing right now (no row selected, no linked iss
 - `a` is dispatch, a hook for host apps. On its own, kabane has no dispatcher.
 - `,` lists every setting, its value and where it comes from: `default`, `global` (every
   project on this device), `shared` (the file in the repo) or `local` (this project, only
-  you). `enter` on one shows the file it is in and what the other layers set under it. To
-  change one, ask the copilot or run `kabane config set`.
+  you). `h`/`l` step a setting with choices, and `enter` types a string or a number; on a
+  setting you can't change, `enter` shows the file it is in and what the other layers set
+  under it. `tab` picks the layer the change is saved to, `local` first inside a project and
+  `global` outside one, and `enter` saves it. `x` removes a setting from a layer. A save to
+  `shared`, which writes into the repo, or to a protected setting such as the hub's URL asks
+  `y`/`n` first. A secret is typed without being shown. The copilot changes settings too, and
+  `kabane config set` adds and removes a record's entries, such as a loop's gates.
 - `O` opens a task's linked issue. On the board, `space` and `h`/`l` fold subtasks, and `r`
   refreshes. `tab` moves between the board and the copilot.
 - The top row is the tab bar: the tracker, then one tab per piece of running work that asks
