@@ -23,6 +23,8 @@ import type {
 	CopilotPermission,
 	CopilotShortcut,
 	CopilotUpdate,
+	SettingLayer,
+	SettingWrite,
 	TriggerDescriptor,
 } from "./ports";
 import { BoardPrompt } from "./prompt";
@@ -300,6 +302,13 @@ export namespace BoardNav {
 		| { type: "loadTriggers"; taskId: string }
 		// `,` opened the settings view: the host lists the rows (SettingsSource).
 		| { type: "loadSettings" }
+		// The settings view saved a change: the host writes it (SettingsSource.set), then lists again.
+		| {
+				type: "saveSetting";
+				key: string;
+				value: SettingWrite;
+				layer: SettingLayer;
+		  }
 		// A session question answered from its banner: core writes the decision.
 		| { type: "answerQuestion"; questionId: string; answer: string }
 		// A decision answered on its issue's detail (BoardDecisions): `Questions.answer` writes it.
@@ -1904,9 +1913,7 @@ export namespace BoardNav {
 				state.dispatch !== null &&
 				!state.dispatch.loading &&
 				state.dispatch.triggers.length > 0,
-			settings:
-				state.settings?.rows.type === "ready" &&
-				state.settings.rows.rows.length > 0,
+			...(state.settings ? SettingsView.situation(state.settings) : {}),
 			...BoardTabs.situation(state),
 			lanes: card.lanes,
 		};

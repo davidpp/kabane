@@ -216,6 +216,11 @@ scroll to keep the row in hand on screen.
 ```ts
 interface SettingsSource {
   list(): Promise<Result<SettingRow[]>>;
+  set(
+    key: string,
+    value: string | number | boolean | { unset: true },
+    layer: SettingLayer,
+  ): Promise<Result<SettingChange>>;
 }
 ```
 
@@ -234,8 +239,20 @@ group of settings is no row of its own, and a record with entries is listed by i
 when it is read-only or protected, and the one word for its layer, `default` dimmed. `j/k`
 move, and `enter`, or a click on the row in hand, opens its detail under it: the key, its
 description, what its layer means and the file it is in, each value it hides with that layer
-and file, and when a change applies. The view is read-only; its footer says to ask the copilot,
-or to run `kabane config set`.
+and file, and when a change applies.
+
+The view edits the row in hand. `h/l` step an enum, a boolean, or a value with looked-up steps
+(`options`), through `TriggerForm.step` like the run form. `enter` on a string or a number types
+it, read with `FormField.read` against the field's bounds; a value it refuses shows its reason
+under the field and is not saved. `enter` on any other row opens its detail. `x` removes the
+key from a layer; a record's entries are added and removed with `kabane config set`. The editor
+opens on the row's `target`, the layer a write that names none goes to, and `tab`/`⇧tab` walk
+the row's `layers`, each said with what it means. A secret is typed masked and never prefilled.
+A save to `shared`, or to a `protected` key, asks `y/n` first; a `readOnly` key has no editor.
+`enter` saves through `set()`. The rows are then listed again, and the saved row says the layer
+and value written (`SettingChange`), the layer that `shadowedBy` says still decides, the layer an
+unset `fallsBackTo`, and, for `restart: "start"`, that the change applies at the next start. A
+refused save keeps the editor open with the host's reason.
 
 ### `Copilot`
 

@@ -144,20 +144,39 @@ const extensionPorts = async (
 	};
 };
 
+/** A value the board saves, as `kabane config set` reads it from the command line. */
+const asInput = (value: string | number | boolean): string =>
+	typeof value === "string" ? value : JSON.stringify(value);
+
 /**
  * The `,` view's rows: `kabane config list` where the board was opened, for the scope `--scope`
- * names. Read each time the view opens, never at board start: it imports every shipped extension.
+ * names, and its saves: `kabane config set` there. Read each time the view opens, never at board
+ * start: it imports every shipped extension.
  */
-const settingsSource = (args: ParsedArgs, ctx: Ctx): SettingsSource => ({
-	list: async () => {
-		const where = await ConfigSettings.locate(
-			ctx.home,
-			ctx.cwd,
-			flagString(args, "scope"),
-		);
-		return where.ok ? ConfigSettings.list(ctx.home, where.value) : where;
-	},
-});
+const settingsSource = (args: ParsedArgs, ctx: Ctx): SettingsSource => {
+	const locate = () =>
+		ConfigSettings.locate(ctx.home, ctx.cwd, flagString(args, "scope"));
+	return {
+		list: async () => {
+			const where = await locate();
+			return where.ok ? ConfigSettings.list(ctx.home, where.value) : where;
+		},
+		set: async (key, value, layer) => {
+			const target = ConfigSettings.targetOf(layer);
+			if (target === undefined)
+				return err(new Error(`${layer} is no layer a setting is saved to`));
+			const where = await locate();
+			if (!where.ok) return where;
+			return ConfigSettings.set(
+				ctx.home,
+				where.value,
+				key,
+				typeof value === "object" ? undefined : asInput(value),
+				target,
+			);
+		},
+	};
+};
 
 /**
  * What the CLI hands the board: this device's home as the storage handle, the

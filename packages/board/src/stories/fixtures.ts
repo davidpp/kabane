@@ -306,6 +306,7 @@ export namespace Fixtures {
 			description: "",
 			layers:
 				namespace === undefined ? ["global"] : ["global", "shared", "local"],
+			target: namespace === undefined ? "global" : "local",
 			secret: false,
 			restart: namespace === undefined ? "start" : "resolve",
 			readOnly: false,
@@ -404,6 +405,36 @@ export namespace Fixtures {
 				layer: "global",
 				from: `${HOME}/config.json`,
 				hides: [],
+			},
+		),
+		setting(
+			"loop.budget.concurrency",
+			{ kind: "number", integer: true, minimum: 1, maximum: 8 },
+			{
+				namespace: "loop",
+				label: "sessions at once",
+				group: "Limits",
+				options: [1, 2, 3, 4, 5, 6, 7, 8],
+				none: "by isolation",
+			},
+		),
+		setting(
+			"loop.stallAfter",
+			{ kind: "number", integer: true, minimum: 1 },
+			{
+				field: {
+					optional: false,
+					default: 3,
+					kind: "number",
+					integer: true,
+					minimum: 1,
+					path: ["stallAfter"],
+				},
+				namespace: "loop",
+				label: "stall after (attempts)",
+				group: "Limits",
+				value: 3,
+				options: [1, 2, 3, 4, 5, 6],
 			},
 		),
 		setting(
