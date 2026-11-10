@@ -23,6 +23,12 @@ export type Extension = {
 	 * partial, so every key has a default or is optional; a strict schema refuses a typo.
 	 */
 	settings?: z.ZodTypeAny;
+	/**
+	 * How its settings read on a generated screen, by dotted path in the namespace (`budget.spend`):
+	 * a label, a group, and where the choices come from. Optional, whole and per setting: a setting
+	 * with none reads under its path, in its parent object's group or `Other`.
+	 */
+	looks?: Settings.Looks;
 	commands?: readonly Extension.Command[];
 	board?: (ctx: Extension.Ctx) => Promise<Extension.BoardPorts>;
 };

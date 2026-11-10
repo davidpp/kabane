@@ -3,83 +3,27 @@
 // values back into config overrides.
 //
 // The schema says what a field is (an enum, a number, a boolean, an optional) and the resolved
-// config what it is set to. `LOOKS` only says how a known field reads: its label, its group, and
-// the values `h/l` steps through. A field with no look still shows, under its path and an `Other`
-// group (or its parent object's name), stepping through its enum, by one for a number, or on and
-// off. The lenses, a list of names, get a toggle each over the lenses the project can run. A field
-// the form cannot hold (free text with no options, a record) is left to the settings layers
-// (`kabane config`) and flags: the gates, named shell commands, which the preview lists read-only.
+// config what it is set to. The looks the loop declares (`loop.looks`) only say how a field reads:
+// its label, its group, and the values `h/l` steps through. A field with no look still shows,
+// under its path and an `Other` group (or its parent object's name), stepping through its enum, a
+// bounded integer's range, by one for another number, or on and off. The lenses, a list of names,
+// get a toggle each over the lenses the project can run. A field the form cannot hold (free text
+// with no options, a record) is left to the settings layers (`kabane config`) and flags: the gates,
+// named shell commands, which the preview lists read-only.
 import type { SettingField, TriggerInput } from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
 import { Settings } from "@cabane/extension";
 import { z } from "zod";
 import { LoopConfig } from "./config";
+import { loop } from "./extension";
 
 export namespace LoopSettings {
-	type Look = {
-		label: string;
-		group: string;
-		/** The values `h/l` steps through; the configured value joins them when it is not one. */
-		options?: readonly (string | number)[];
-		/** What the row says for an optional field left unset. */
-		none?: string;
-	};
+	type Look = Settings.Look;
 
 	const NONE = "none";
 
-	const range = (from: number, to: number): number[] =>
-		Array.from({ length: to - from + 1 }, (_, i) => from + i);
-
-	const LOOKS: Readonly<Record<string, Look>> = {
-		implementer: { label: "implementer", group: "Agents" },
-		// Only Claude reads a model; the aliases are its own. Unset, the user's own settings decide.
-		model: {
-			label: "model",
-			group: "Agents",
-			options: ["opus", "sonnet", "haiku"],
-			none: "your own",
-		},
-		// Unset, it follows isolation: 2 in a worktree each, 1 in the run's one tree.
-		"budget.concurrency": {
-			label: "sessions at once",
-			group: "Limits",
-			options: range(1, 8),
-			none: "by isolation",
-		},
-		"budget.continuations": {
-			label: "continuations",
-			group: "Limits",
-			options: [0, 1, 2, 3, 5, 10],
-		},
-		"budget.spend": {
-			label: "spend",
-			group: "Limits",
-			options: [1, 5, 10, 25, 50, 100],
-		},
-		stallAfter: {
-			label: "stall after (attempts)",
-			group: "Limits",
-			options: range(1, 6),
-		},
-		// Unset, the lenses run on the implementer's harness.
-		verifier: { label: "verifier", group: "Agents", none: "implementer" },
-		recheck: { label: "recheck the fixes", group: "Checks" },
-		worktree: { label: "own git worktree", group: "Workspace" },
-		isolation: { label: "each subtask works in", group: "Workspace" },
-		reuse: { label: "reuse subtask worktrees", group: "Workspace" },
-		// Unset, as many as the run has sessions at once.
-		maxWorktrees: {
-			label: "subtask worktrees kept",
-			group: "Workspace",
-			options: range(1, 8),
-			none: "one per session",
-		},
-		land: { label: "land the branch", group: "Workspace" },
-	};
-
-	// The form's sections, in this order whatever order the schema has its fields in; a group no
-	// look names comes after them.
-	const GROUPS = ["Agents", "Limits", "Checks", "Workspace"];
+	// Read at a call, never at load: the extension's declaration imports this module.
+	const looks = (): Settings.Looks => loop.looks ?? {};
 
 	// Lenses are a list of names; the form holds one toggle per lens it can offer, `lenses.<name>`.
 	const LENS_PREFIX = "lenses.";
@@ -92,13 +36,7 @@ export namespace LoopSettings {
 	const nameOf = (field: SettingField): string => field.path.join(".");
 
 	const lookOf = (field: SettingField): Look =>
-		LOOKS[nameOf(field)] ?? {
-			label: nameOf(field),
-			group:
-				field.path.length > 1
-					? `${field.path[0]?.charAt(0).toUpperCase()}${field.path[0]?.slice(1)}`
-					: "Other",
-		};
+		Settings.lookOf(looks(), field.path);
 
 	const ObjectSchema = z.record(z.unknown());
 
@@ -125,17 +63,15 @@ export namespace LoopSettings {
 		);
 	};
 
+	// The form steps through a scalar's options; the lenses get their toggles from the caller.
 	const optionsOf = (
 		field: SettingField,
 		look: Look,
 		value: unknown,
 	): string[] => {
-		const listed =
-			field.kind === "enum"
-				? withValue(field.values, value)
-				: look.options
-					? withValue(look.options, value)
-					: [];
+		const options =
+			field.kind === "list" ? undefined : Settings.options(field, look, {});
+		const listed = options ? withValue(options, value) : [];
 		return field.optional && listed.length > 0
 			? [look.none ?? NONE, ...listed]
 			: listed;
@@ -179,15 +115,18 @@ export namespace LoopSettings {
 			},
 		]);
 
-	const groupRank = (input: TriggerInput): number => {
-		const at = GROUPS.indexOf(input.group ?? "");
-		return at === -1 ? GROUPS.length : at;
+	const groupRank = (
+		groups: readonly string[],
+		input: TriggerInput,
+	): number => {
+		const at = groups.indexOf(input.group ?? "");
+		return at === -1 ? groups.length : at;
 	};
 
 	/**
 	 * The form's inputs for a run configured as `config`, by setting path (`budget.concurrency`),
 	 * each defaulting to what the config says, plus a toggle per lens in `lenses` (the ones the
-	 * project can run). Grouped in GROUPS order; a setting the form cannot hold (the gates, a
+	 * project can run). Grouped in the order the loop's looks name the groups; a setting the form cannot hold (the gates, a
 	 * named command each) is left out.
 	 */
 	export const inputs = (
@@ -201,7 +140,8 @@ export namespace LoopSettings {
 			if (input) entries.push([nameOf(field), input]);
 		}
 		// A stable sort: within a group, the schema's order.
-		entries.sort(([, a], [, b]) => groupRank(a) - groupRank(b));
+		const groups = Settings.groupsOf(looks());
+		entries.sort(([, a], [, b]) => groupRank(groups, a) - groupRank(groups, b));
 		return Object.fromEntries(entries);
 	};
 

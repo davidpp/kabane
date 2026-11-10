@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { SettingField } from "@cabane/board/ports";
 import { z } from "zod";
 import { Settings } from "./settings";
 
@@ -284,5 +285,71 @@ describe("Settings.fields", () => {
 			{ path: ["on"], kind: "boolean", optional: false, default: true },
 			{ path: ["other"], kind: "other", optional: false },
 		]);
+	});
+});
+
+describe("Settings looks", () => {
+	const looks: Settings.Looks = {
+		mode: { label: "the mode", group: "First" },
+		"limits.count": {
+			label: "count",
+			group: "Second",
+			options: ({ projectDir }) => (projectDir ? [projectDir] : []),
+		},
+		"limits.cap": { label: "cap", group: "First", options: [1, 2] },
+	};
+	const fieldAt = (path: string): SettingField => {
+		const found = Settings.fields(Schema).find(
+			(f) => f.path.join(".") === path,
+		);
+		if (!found) throw new Error(path);
+		return found;
+	};
+
+	it("a setting with no look reads under its path, in its parent's group or Other", () => {
+		expect(Settings.lookOf(looks, ["mode"])).toEqual({
+			label: "the mode",
+			group: "First",
+		});
+		expect(Settings.lookOf(undefined, ["named"])).toEqual({
+			label: "named",
+			group: "Other",
+		});
+		expect(Settings.lookOf(looks, ["limits", "other"])).toEqual({
+			label: "limits.other",
+			group: "Limits",
+		});
+	});
+
+	it("groups come in the order the looks first name them", () => {
+		expect(Settings.groupsOf(looks)).toEqual(["First", "Second"]);
+	});
+
+	it("options: a fixed list, a source called with the project, an enum, a bounded integer's range", () => {
+		expect(
+			Settings.options(
+				fieldAt("limits.cap"),
+				Settings.lookOf(looks, ["limits", "cap"]),
+				{},
+			),
+		).toEqual([1, 2]);
+		expect(
+			Settings.options(
+				fieldAt("limits.count"),
+				Settings.lookOf(looks, ["limits", "count"]),
+				{ projectDir: "/repo" },
+			),
+		).toEqual(["/repo"]);
+		expect(
+			Settings.options(fieldAt("mode"), Settings.lookOf(looks, ["mode"]), {}),
+		).toEqual(["a", "b"]);
+		const size = Settings.field(z.number().int().min(2).max(4), ["size"]);
+		expect(
+			Settings.options(size, Settings.lookOf(undefined, ["size"]), {}),
+		).toEqual([2, 3, 4]);
+		const wide = Settings.field(z.number().int().min(0).max(1000), ["wide"]);
+		expect(
+			Settings.options(wide, Settings.lookOf(undefined, ["wide"]), {}),
+		).toBeUndefined();
 	});
 });

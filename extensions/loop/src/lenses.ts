@@ -42,14 +42,19 @@ export namespace Lenses {
 			.filter((name) => LoopConfig.LensNameSchema.safeParse(name).success);
 	};
 
-	/** The lenses a run in `projectDir` can have: the shipped ones, then the project's own. */
-	export const offered = (projectDir: string): string[] => [
+	/**
+	 * The lenses a run in `projectDir` can have: the shipped ones, then the project's own. With no
+	 * project, the shipped ones.
+	 */
+	export const offered = (projectDir?: string): string[] => [
 		...new Set([
 			...SHIPPED,
-			...[
-				...namesIn(dir(projectDir)),
-				...namesIn(legacyDir(projectDir)),
-			].sort(),
+			...(projectDir === undefined
+				? []
+				: [
+						...namesIn(dir(projectDir)),
+						...namesIn(legacyDir(projectDir)),
+					].sort()),
 		]),
 	];
 

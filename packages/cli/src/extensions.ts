@@ -106,7 +106,7 @@ export namespace Extensions {
 		extensions: readonly Extension[],
 	): Result<Settings.Namespace[]> => {
 		const found: Settings.Namespace[] = [];
-		for (const { name, settings } of extensions) {
+		for (const { name, settings, looks } of extensions) {
 			if (settings === undefined) continue;
 			if (RESERVED.has(name))
 				return err(
@@ -120,7 +120,7 @@ export namespace Extensions {
 						`Extension ${name}'s settings need a default or optional for every key`,
 					),
 				);
-			found.push({ name, schema: settings });
+			found.push({ name, schema: settings, ...(looks ? { looks } : {}) });
 		}
 		return ok(found);
 	};
