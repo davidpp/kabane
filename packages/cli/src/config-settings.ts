@@ -276,6 +276,13 @@ type Leaf = {
 	hides: Held[];
 };
 
+const heldOf = (key: string, hides: View["origins"][number]["hides"]): Held[] =>
+	hides.map(({ layer, label, value }) => ({
+		layer,
+		from: label,
+		value: redact(key, value),
+	}));
+
 const leavesOf = (entry: Key, view: View): Record<string, Leaf> =>
 	Object.fromEntries(
 		leavesUnder(entry, view).map(({ path, origin, hides }) => {
@@ -284,15 +291,34 @@ const leavesOf = (entry: Key, view: View): Record<string, Leaf> =>
 				value: redact(key, valueAt(view.value, path)) ?? null,
 				layer: origin.layer,
 				...(origin.label === undefined ? {} : { from: origin.label }),
-				hides: hides.map(({ layer, label, value }) => ({
-					layer,
-					from: label,
-					value: redact(key, value),
-				})),
+				hides: heldOf(key, hides),
 			};
 			return [key, leaf];
 		}),
 	);
+
+/** What the layers under the one deciding `entry` set at it, lowest first; none for a group. */
+const hidesAt = (entry: Key, view: View): Held[] =>
+	heldOf(
+		entry.key,
+		view.origins.find(
+			({ path }) =>
+				path.length === entry.path.length && isUnder(path, entry.path),
+		)?.hides ?? [],
+	);
+
+/** The entries a namespace's record holds at `view`, each a key of its own: `loop.gates.test`. */
+const entriesOf = (keys: readonly Key[], entry: Key, view: View): Key[] =>
+	entry.namespace === undefined || entry.field.kind !== "record"
+		? []
+		: leavesUnder(entry, view).flatMap(({ path }) => {
+				const name = path[entry.path.length];
+				const child =
+					path.length === entry.path.length + 1 && name !== undefined
+						? recordEntry(keys, `${entry.key}.${name}`)
+						: undefined;
+				return child ? [child] : [];
+			});
 
 /** A namespace's record (the loop's gates) takes a key per entry: `loop.gates.test`. */
 const recordEntry = (keys: readonly Key[], key: string): Key | undefined => {
@@ -609,6 +635,24 @@ export namespace ConfigSettings {
 			? "local"
 			: "global";
 
+	/** One key as `list` reads it at `view`: its value, where that comes from, and its traits. */
+	const rowOf = (entry: Key, view: View, where: Where) => {
+		const origin = topOrigin(entry, view);
+		return {
+			key: entry.key,
+			...(entry.namespace ? { namespace: entry.namespace.name } : {}),
+			value: redact(entry.key, valueAt(view.value, entry.path)) ?? null,
+			default: origin.layer === "default",
+			layer: origin.layer,
+			...(origin.label === undefined ? {} : { from: origin.label }),
+			hides: hidesAt(entry, view),
+			readOnly: identities.has(entry.key),
+			protected: isProtected(entry.key),
+			description: entry.field.description ?? "",
+			...traitsOf(entry, where),
+		};
+	};
+
 	export const list = async (home: string, where: Where) => {
 		const keys = await allKeys();
 		if (!keys.ok) return keys;
@@ -630,18 +674,17 @@ export namespace ConfigSettings {
 				view = resolved.value;
 				views.set(name, view);
 			}
-			const origin = topOrigin(entry, view);
-			rows.push({
-				key: entry.key,
-				value: redact(entry.key, valueAt(view.value, entry.path)) ?? null,
-				default: origin.layer === "default",
-				layer: origin.layer,
-				...(origin.label === undefined ? {} : { from: origin.label }),
-				readOnly: identities.has(entry.key),
-				protected: isProtected(entry.key),
-				description: entry.field.description ?? "",
-				...traitsOf(entry, where),
-			});
+			const row = rowOf(entry, view, where);
+			rows.push(row);
+			// A record's entries follow it, in its group, described by it unless they say more.
+			for (const child of entriesOf(keys.value, entry, view)) {
+				const own = rowOf(child, view, where);
+				rows.push({
+					...own,
+					group: row.group,
+					description: own.description || row.description,
+				});
+			}
 		}
 		return ok(rows);
 	};

@@ -148,6 +148,10 @@ than the pane. A key that does nothing right now (no row selected, no linked iss
 - `y` copies a task's agent brief to paste into any chat.
 - `⌃z` undoes the last change.
 - `a` is dispatch, a hook for host apps. On its own, kabane has no dispatcher.
+- `,` lists every setting, its value and where it comes from: `default`, `global` (every
+  project on this device), `shared` (the file in the repo) or `local` (this project, only
+  you). `enter` on one shows the file it is in and what the other layers set under it. To
+  change one, ask the copilot or run `kabane config set`.
 - `O` opens a task's linked issue. On the board, `space` and `h`/`l` fold subtasks, and `r`
   refreshes. `tab` moves between the board and the copilot.
 - The top row is the tab bar: the tracker, then one tab per piece of running work that asks

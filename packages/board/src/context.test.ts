@@ -51,6 +51,7 @@ const state = (
 	search: { mode: "off" },
 	dispatch: null,
 	help: false,
+	settings: null,
 	focus: "board",
 	tabs: BoardTabs.NONE,
 	marked: new Set(["a", "m"]),

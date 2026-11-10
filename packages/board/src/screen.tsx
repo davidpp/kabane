@@ -30,6 +30,7 @@ import { BoardNav } from "./nav";
 import { HelpSheet } from "./overlay";
 import type { ActivityCard, ActivitySource, CardHeader } from "./ports";
 import { PromptPanel } from "./prompt-field";
+import { SettingsOverlay } from "./settings-overlay";
 import { useSpinnerFrame } from "./spinner";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";
 import { DispatchLayer } from "./trigger-form-view";
@@ -207,6 +208,13 @@ const Overlay = ({ state, keys, refs, input }: ViewProps): ReactNode => {
 				situation={keys.situation}
 				scrollRef={refs.help}
 				host={keys.host}
+			/>
+		);
+	if (state.settings)
+		return (
+			<SettingsOverlay
+				view={state.settings}
+				onRow={(index) => input.dispatchMouse({ type: "settingsRow", index })}
 			/>
 		);
 	if (!state.dispatch) return null;

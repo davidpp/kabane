@@ -23,10 +23,12 @@ import {
 	type Copilot,
 	type Dispatcher,
 	noAnnouncer,
+	type SettingsSource,
 } from "./ports";
 import { ProgramStatus } from "./program-status";
 import { isActivityEffect, useRunActivity } from "./run-activity";
 import { isScreenEffect, Screen, useScreenRefs } from "./screen";
+import { SettingsView } from "./settings-view";
 import { isTaskEffect, useTaskActions } from "./task-actions";
 import { useTheme } from "./theme";
 
@@ -45,6 +47,8 @@ export type AppProps = {
 	headers?: Readonly<Record<string, CardHeader>>;
 	// Absent → nothing is announced.
 	announcer?: Announcer;
+	// Absent → the `,` view says settings are not available here.
+	settings?: SettingsSource;
 	// Absent → the board opens on the board view.
 	open?: { taskId: string };
 	// Milliseconds, for how long a question has been on screen before a digit answers it
@@ -72,6 +76,7 @@ type EffectRoutes = {
 	copilot: ReturnType<typeof useCopilotSession>["runEffect"];
 	activity: ReturnType<typeof useRunActivity>["runEffect"];
 	screen: ReturnType<typeof useScreenRefs>["runEffect"];
+	loadSettings: () => Promise<void>;
 	reload: (next: BoardNav.BoardState) => Promise<void>;
 	setNotice: SetNotice;
 };
@@ -85,6 +90,7 @@ const useEffectRunner = ({
 	copilot,
 	activity,
 	screen,
+	loadSettings,
 	reload,
 	setNotice,
 }: EffectRoutes): ((
@@ -106,11 +112,24 @@ const useEffectRunner = ({
 				case "reload":
 					void reload(next);
 					return;
+				case "loadSettings":
+					void loadSettings();
+					return;
 				case "notice":
 					setNotice(effect.notice);
 			}
 		},
-		[renderer, reload, task, dispatch, copilot, activity, screen, setNotice],
+		[
+			renderer,
+			reload,
+			task,
+			dispatch,
+			copilot,
+			activity,
+			screen,
+			loadSettings,
+			setNotice,
+		],
 	);
 };
 
@@ -123,6 +142,7 @@ export const App = ({
 	resolveScope,
 	headers,
 	announcer = noAnnouncer,
+	settings,
 	open,
 	clock = Date.now,
 }: AppProps): ReactNode => {
@@ -185,12 +205,25 @@ export const App = ({
 		reload,
 	});
 
+	// The `,` view's rows, read now that it is open and never at board start.
+	const { update } = store;
+	const loadSettings = useCallback(async (): Promise<void> => {
+		const listed = settings ? await settings.list() : undefined;
+		const rows: SettingsView.Rows = !listed
+			? { type: "unavailable" }
+			: listed.ok
+				? { type: "ready", rows: listed.value }
+				: { type: "failed", error: listed.error.message };
+		update((prev) => SettingsView.withRows(prev, rows));
+	}, [settings, update]);
+
 	const runEffect = useEffectRunner({
 		task: runTaskEffect,
 		dispatch: runDispatchEffect,
 		copilot: runCopilotEffect,
 		activity: runActivityEffect,
 		screen: runScreenEffect,
+		loadSettings,
 		reload,
 		setNotice,
 	});
