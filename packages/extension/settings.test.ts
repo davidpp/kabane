@@ -71,6 +71,26 @@ describe("Settings.resolve", () => {
 		});
 	});
 
+	it("keeps, beside each leaf, the values of the layers under it that it replaced, lowest first", () => {
+		const resolved = resolve(
+			source("global", { mode: "b", list: ["x"], limits: { count: 2 } }),
+			source("shared", { mode: "a", list: ["y"] }),
+			source("local", { mode: "b" }),
+		);
+		expect(resolved.ok).toBe(true);
+		if (!resolved.ok) return;
+		const hides = (key: string) =>
+			resolved.value.origins.find(({ path }) => path.join(".") === key)?.hides;
+		expect(hides("mode")).toEqual([
+			source("global", "b"),
+			source("shared", "a"),
+		]);
+		expect(hides("list")).toEqual([source("global", ["x"])]);
+		// A default is no layer's: what a layer replaces of it is not hidden.
+		expect(hides("limits.count")).toEqual([]);
+		expect(hides("gates.test")).toEqual([]);
+	});
+
 	it("unsets a key a lower layer set with null, back to its default", () => {
 		const resolved = resolve(
 			source("shared", { mode: "b", named: { a: "1", b: "2" } }),

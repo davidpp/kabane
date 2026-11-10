@@ -100,6 +100,18 @@ shared and local. Local settings from before kabane kept them by path, under
 `scopes.<scope id>` in `config.json`, are still read as local, just under the file; kabane never
 writes or moves them.
 
+A write lands in the layer it names even when a higher one sets the same key, so it can change
+nothing yet. `set` and `unset` then say which layer still decides and its value; an unset that
+leaves a lower layer deciding names that layer and its value too:
+
+```text
+$ kabane config set loop.stallAfter 7 --layer global
+loop.stallAfter = 7 (global); here /repo/.kabane/loop.json (shared) still decides: 2. Without --layer, a write here goes to local and overrides it.
+$ kabane config get loop.stallAfter --layers
+2 (shared: /repo/.kabane/loop.json)
+  hides 7 (global: ~/.kabane/config.json)
+```
+
 Objects merge key by key, so each layer can add a gate; lists and scalars are replaced by the
 higher layer. `null` in a layer unsets what the layers under it say. Every layer is validated on
 its own first, so an error names the file it is in; a key no setting has is refused in every
@@ -153,12 +165,14 @@ Every operation supports `--json`. `list` returns rows with `key`, `value`,
 
 `get` returns the resolved value, or JSON `null` / human `default` when absent; with
 `--layers` it returns `{key, value, leaves}` and the row's `field`, `layers`, `secret` and
-`restart`, where `leaves` maps every dotted key under `key` to its `value`, `layer` and
-`from`, and prints a line per leaf. `path` returns a string. `set` returns
+`restart`, where `leaves` maps every dotted key under `key` to its `value`, `layer`, `from` and
+`hides`, the `{layer, from, value}` each lower layer sets there, lowest first, and prints a line
+per leaf with what it hides under it. `path` returns a string. `set` returns
 `{key, layer, from, value, restart}` and `unset` returns `{key, layer, from, unset: true,
-restart}`, `from` being the file written; an unset from local adds `stillSetIn` when a legacy
-`scopes` block still sets the key. `kabane_configSet` adds `restartRequired`, true when
-`restart` is `start`.
+restart}`, `from` being the file written. Either adds `shadowedBy: {layer, from, value}` when a
+higher layer still decides the key; an unset adds `fallsBackTo`, in the same shape, when a lower
+layer (a legacy `scopes` block included) now decides it. `kabane_configSet` adds
+`restartRequired`, true when `restart` is `start`.
 
 Strings are literal; numbers and booleans use JSON syntax. Arrays take trimmed
 comma-separated values, with an empty string meaning an empty array.

@@ -67,6 +67,12 @@ describe("CopilotInstructions.SKILLS", () => {
 		expect(CopilotInstructions.SKILLS).not.toContain("supplies the rest");
 	});
 
+	it("tells the human which layer still decides when a write comes back shadowed", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"When kabane_configSet returns shadowedBy",
+		);
+	});
+
 	it("names the tool the substance goes through and the tool the link goes through", () => {
 		expect(CopilotInstructions.SKILLS).toContain("kabane_edit");
 		expect(CopilotInstructions.SKILLS).toContain("kabane_upstream_link");

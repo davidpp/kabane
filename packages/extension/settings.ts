@@ -31,10 +31,17 @@ export namespace Settings {
 	/** Where a resolved value came from; a default has no label. */
 	export type Origin = { layer: Layer; label?: string };
 
-	/** A namespace's resolved settings and, for each leaf of it (a scalar or a list), its origin. */
+	/**
+	 * A namespace's resolved settings and, for each leaf of it (a scalar or a list), its origin and
+	 * what the stored layers under it set there, lowest first: the values it hides.
+	 */
 	export type Resolved<T> = {
 		value: T;
-		origins: { path: readonly string[]; origin: Origin }[];
+		origins: {
+			path: readonly string[];
+			origin: Origin;
+			hides: readonly Source[];
+		}[];
 	};
 
 	/** A settings namespace a host knows: its name and the schema of what a human writes in it. */
@@ -277,8 +284,9 @@ export namespace Settings {
 		return found === "" ? ok(undefined) : err(new Error(`${invalid}${found}`));
 	};
 
-	// Origins by path, a NUL between segments: a record key (a gate name) may hold a dot.
-	type Origins = Map<string, Origin>;
+	// Origins by path, a NUL between segments: a record key (a gate name) may hold a dot. Beside
+	// each, the values of the layers under it that it replaced; a default is no layer's, so none.
+	type Origins = Map<string, { origin: Origin; hides: Source[] }>;
 	const keyOf = (path: readonly string[]): string => path.join("\0");
 
 	const forget = (origins: Origins, path: readonly string[]): void => {
@@ -295,8 +303,21 @@ export namespace Settings {
 		origins: Origins,
 	): unknown => {
 		if (!isObject(over)) {
+			const below = origins.get(keyOf(path));
+			const hides = below === undefined ? [] : [...below.hides];
+			if (
+				below !== undefined &&
+				below.origin.layer !== "default" &&
+				below.origin.label !== undefined &&
+				!isObject(base)
+			)
+				hides.push({
+					layer: below.origin.layer,
+					label: below.origin.label,
+					value: base,
+				});
 			forget(origins, path);
-			origins.set(keyOf(path), origin);
+			origins.set(keyOf(path), { origin, hides });
 			return over;
 		}
 		if (!isObject(base)) forget(origins, path);
@@ -321,7 +342,15 @@ export namespace Settings {
 			? Object.entries(value).flatMap(([key, inner]) =>
 					leaves(inner, [...path, key], origins),
 				)
-			: [{ path, origin: origins.get(keyOf(path)) ?? { layer: "default" } }];
+			: [
+					{
+						path,
+						...(origins.get(keyOf(path)) ?? {
+							origin: { layer: "default" },
+							hides: [],
+						}),
+					},
+				];
 
 	/**
 	 * `sources`, lowest first, over the schema's defaults as the lowest layer. Each is validated on its own first, so an
