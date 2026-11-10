@@ -1,4 +1,3 @@
-import { realpathSync } from "node:fs";
 import { Harnesses } from "@cabane/acp/harnesses";
 import type { SettingField } from "@cabane/board/ports";
 import {
@@ -434,7 +433,7 @@ const documentFor = (
 		return where.projectDir === undefined
 			? err(
 					new Error(
-						"No project here for --layer shared: run it from the project's root",
+						"No project here for --layer shared: run it inside the project",
 					),
 				)
 			: fileDocument(
@@ -594,15 +593,10 @@ export namespace ConfigSettings {
 	 */
 	export type Where = ConfigLayers.Where;
 
-	const canonical = (dir: string): string => {
-		const real = trySync(() => realpathSync(dir));
-		return real.ok ? real.value : dir;
-	};
-
 	/**
-	 * What a command run in `cwd` reads and writes. The shared layer is `cwd`'s own `.kabane/`
-	 * when `cwd` is the project's root: the file `kabane loop start` reads from there. The local
-	 * layer is the project's, from anywhere inside it or a worktree of it. `scope` (a scope URI or
+	 * What a command run in `cwd` reads and writes. The shared layer is the `.kabane/` at the root
+	 * of the project `cwd` is in, from anywhere inside it. The local layer is the project's main
+	 * checkout's, so a worktree of it shares it. `scope` (a scope URI or
 	 * id) naming another project than this one leaves only that scope's legacy `scopes` block:
 	 * local is keyed by path, so a local write needs the project's directory.
 	 */
@@ -624,8 +618,9 @@ export namespace ConfigSettings {
 		if (here === null) return ok(scopeId === undefined ? {} : { scopeId });
 		const localRoot = await tryCatch(() => mainCheckoutRoot(here.root));
 		if (!localRoot.ok) return localRoot;
+		const shared = ConfigLayers.sharedRoot(here.root, cwd);
 		return ok({
-			...(canonical(cwd) === canonical(here.root) ? { projectDir: cwd } : {}),
+			...(shared === undefined ? {} : { projectDir: shared }),
 			localRoot: localRoot.value,
 			scopeId: here.scopeId,
 		});

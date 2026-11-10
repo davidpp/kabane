@@ -160,8 +160,10 @@ export const settingsPort = (home: string): Settings.Port =>
 			? await tryCatch(() => mainCheckoutRoot(here.root))
 			: ok(undefined);
 		if (!localRoot.ok) return localRoot;
+		// The shared file is the project root's, wherever inside the project the caller runs.
 		return ConfigLayers.sources(home, document.value?.stored, namespace, {
-			projectDir,
+			projectDir:
+				(here && ConfigLayers.sharedRoot(here.root, projectDir)) ?? projectDir,
 			...(here ? { scopeId: here.scopeId, localRoot: localRoot.value } : {}),
 		});
 	});

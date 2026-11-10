@@ -531,6 +531,66 @@ describe.concurrent("config through the real CLI", () => {
 	);
 
 	it(
+		"reads and writes the project's shared settings and lens options the same from a nested directory",
+		withHome(async ({ write, repo, runAt }) => {
+			write(initial);
+			const root = realpathSync(repo);
+			const nested = join(repo, "src", "deep");
+			mkdirSync(nested, { recursive: true });
+			const lenses = join(
+				repo,
+				".claude",
+				"skills",
+				"dispatch",
+				"references",
+				"lenses",
+			);
+			mkdirSync(lenses, { recursive: true });
+			writeFileSync(join(lenses, "team.md"), "# team\n");
+			const json = async (cwd: string, ...args: string[]) => {
+				const result = await runAt(cwd, [...args, "--json"]);
+				expect(result.err).toBe("");
+				expect(result.code).toBe(0);
+				return JSON.parse(result.out);
+			};
+			// Written from the nested directory, to the root's file.
+			expect(
+				await json(
+					nested,
+					"config",
+					"set",
+					"loop.recheck",
+					"false",
+					"--layer",
+					"shared",
+				),
+			).toMatchObject({
+				layer: "shared",
+				from: join(root, ".kabane", "loop.json"),
+			});
+			for (const cwd of [repo, nested]) {
+				const got = await json(
+					cwd,
+					"config",
+					"get",
+					"loop.recheck",
+					"--layers",
+				);
+				expect(got.leaves["loop.recheck"]).toMatchObject({
+					value: false,
+					layer: "shared",
+					from: join(root, ".kabane", "loop.json"),
+				});
+				expect(
+					(await json(cwd, "config", "get", "loop.lenses", "--layers")).options,
+				).toContain("team");
+			}
+			expect(existsSync(join(nested, ".kabane"))).toBe(false);
+		}),
+		30_000,
+	);
+
+	it(
 		"says a write was saved but the settings no longer resolve when another layer's file is broken",
 		withHome(async ({ home, path, write, inRepo }) => {
 			write(initial);

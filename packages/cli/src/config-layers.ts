@@ -2,7 +2,7 @@
  * Where each settings layer is stored on a device, for `Settings` to merge:
  *
  * - global: the namespace's key in `KABANE_HOME/config.json` (`"loop": {...}`), for every project;
- * - shared: `<projectDir>/.kabane/<namespace>.json`, checked in, for everyone who clones the repo;
+ * - shared: `<root>/.kabane/<namespace>.json` at the project's root, checked in, for everyone who clones the repo;
  * - local: `KABANE_HOME/projects/<slug>/<namespace>.json`, for this project, for you, on this
  *   device. Keyed by the project's path (`ProjectDirs`), from the main checkout for a worktree, so
  *   it never puts a file in the repo and survives the project's scope id changing.
@@ -21,11 +21,12 @@ import {
 	existsSync,
 	mkdirSync,
 	readFileSync,
+	realpathSync,
 	renameSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { err, ok, type Result, toError, trySync } from "@cabane/core";
 import { MARKER_DIR, ProjectDirs } from "@cabane/core/scope";
 import type { Settings } from "@cabane/extension";
@@ -43,6 +44,17 @@ export namespace ConfigLayers {
 		projectDir?: string;
 		localRoot?: string;
 		scopeId?: string;
+	};
+
+	/**
+	 * The checkout whose `.kabane/` is the shared layer for `dir`: the project root it is in, from
+	 * anywhere inside it. Undefined when that root is not around `dir`, as for a linked worktree
+	 * with no marker, whose project is its main checkout: no shared file is checked out there.
+	 */
+	export const sharedRoot = (root: string, dir: string): string | undefined => {
+		const real = trySync(() => realpathSync(dir));
+		const inside = relative(root, real.ok ? real.value : dir);
+		return inside.startsWith("..") || isAbsolute(inside) ? undefined : root;
 	};
 
 	export const sharedFile = (projectDir: string, namespace: string): string =>

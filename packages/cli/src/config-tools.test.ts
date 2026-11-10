@@ -430,3 +430,66 @@ it("writes a project's local layer by default over stdio, and names layers the n
 		rmSync(root, { recursive: true, force: true });
 	}
 }, 20_000);
+
+it("reads and writes the project's shared layer over stdio from a nested directory", async () => {
+	const root = mkdtempSync(join(tmpdir(), "kabane-config-mcp-nested-"));
+	const home = join(root, "home");
+	const repo = join(root, "repo");
+	const nested = join(repo, "src");
+	mkdirSync(home);
+	mkdirSync(nested, { recursive: true });
+	GitFixture.run(repo, ["init", "-q"]);
+	GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
+	const env = { ...process.env, KABANE_HOME: home };
+	const bin = join(import.meta.dir, "../index.ts");
+	const init = Bun.spawnSync(
+		[
+			process.execPath,
+			bin,
+			"init",
+			"--actor",
+			"cabane://actor/human/config-test",
+			"--device",
+			"config-test",
+		],
+		{ cwd: home, env },
+	);
+	expect(init.exitCode).toBe(0);
+	const client = new Client({ name: "config-test", version: "1" });
+	const text = async (name: string, args: Record<string, unknown>) => {
+		const result = z
+			.object({ content: z.array(z.object({ text: z.string() })) })
+			.parse(await client.callTool({ name, arguments: args }));
+		return JSON.parse(result.content.map((part) => part.text).join(""));
+	};
+	try {
+		await client.connect(
+			new StdioClientTransport({
+				command: process.execPath,
+				args: [bin, "mcp"],
+				cwd: nested,
+				env,
+				stderr: "pipe",
+			}),
+		);
+		const shared = join(realpathSync(repo), ".kabane", "loop.json");
+		expect(
+			await text("kabane_configSet", {
+				key: "loop.recheck",
+				value: "false",
+				layer: "shared",
+			}),
+		).toMatchObject({ layer: "shared", from: shared });
+		expect(
+			await text("kabane_configGet", { key: "loop.recheck", layers: true }),
+		).toMatchObject({
+			leaves: {
+				"loop.recheck": { value: false, layer: "shared", from: shared },
+			},
+		});
+		expect(existsSync(join(nested, ".kabane"))).toBe(false);
+	} finally {
+		await client.close();
+		rmSync(root, { recursive: true, force: true });
+	}
+}, 20_000);

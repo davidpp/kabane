@@ -102,8 +102,9 @@ it("resolves before kabane init, and names the layer an error is in", async () =
 	mkdirSync(join(repo, ".kabane"), { recursive: true });
 	writeFileSync(join(repo, ".kabane", "loop.json"), "{ nope");
 	const broken = await loopAt(repo);
+	// The project's root as detected: its real path, /private/var for /var on macOS.
 	expect(!broken.ok && broken.error.message).toStartWith(
-		join(repo, ".kabane", "loop.json"),
+		join(realpathSync(repo), ".kabane", "loop.json"),
 	);
 	writeFileSync(join(repo, ".kabane", "loop.json"), "{}");
 	writeFileSync(

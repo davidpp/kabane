@@ -139,9 +139,8 @@ kabane config unset copilot.model      # remove the key from the layer
 kabane config path                     # resolved config.json location
 ```
 
-Reads resolve for the project the command runs in: its `.kabane/` files when run from the
-project's root (what `kabane loop start` reads from there), and its local settings from anywhere
-in it. With no `--layer`, a write goes to local inside a project and to global outside one; a
+Reads resolve for the project the command runs in, from anywhere inside it: the `.kabane/` files
+at its root, and its local settings. With no `--layer`, a write goes to local inside a project and to global outside one; a
 device key always goes to global. `--layer global|local|shared` names the layer.
 `--scope <uri or id>` naming another project reads only its legacy `scopes` block, and a local
 write for it has to run in that project.
