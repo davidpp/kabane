@@ -82,11 +82,11 @@ describe("Self.templates", () => {
 	it("reads a script's templates beside the reading module's directory", () => {
 		expect(
 			Self.templates(
-				"lenses",
-				"file:///repo/extensions/loop/src/lenses.ts",
+				"dispatch",
+				"file:///repo/packages/acp/src/instructions.ts",
 				SCRIPT,
 			),
-		).toBe("/repo/extensions/loop/templates/lenses");
+		).toBe("/repo/packages/acp/templates/dispatch");
 	});
 
 	it("reads a binary's templates beside the executable", () => {

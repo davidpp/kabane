@@ -251,8 +251,40 @@ const checkCommands = (version: string): string => {
 	return created.id;
 };
 
+// A shipped lens resolves from the installed templates: `start` reads `quality` from there, then
+// refuses the run on a lens no file holds, before it writes a run or spawns anything.
+const checkShippedLens = (): void => {
+	const created = z
+		.object({ id: z.string() })
+		.safeParse(
+			JSON.parse(
+				kabane("add", "Smoke lens", "--kind", "issue", "--json").stdout,
+			),
+		);
+	if (!created.success) return fail("kabane add --json printed no id");
+	kabane("done", created.data.id);
+	const refused = run(
+		[
+			BIN,
+			"loop",
+			"start",
+			created.data.id,
+			"--no-worktree",
+			"--lens",
+			"quality",
+			"--lens",
+			"smoke",
+		],
+		REPO,
+		isolated,
+	);
+	if (refused.code === 0 || !refused.stderr.includes("No lens smoke"))
+		fail("kabane loop start did not read the shipped quality lens", refused);
+};
+
 // The bundled loop extension, off and then turned on in this KABANE_HOME's config: its command
-// is found, its migrations run against the installed kabane.db, and it reads its own store.
+// is found, its migrations run against the installed kabane.db, it reads its own store, and it
+// reads a shipped lens.
 const checkLoopExtension = (): void => {
 	const off = run([BIN, "loop", "status"], REPO, isolated);
 	if (off.code !== 1 || !off.stderr.includes("loop extension, which is off"))
@@ -268,7 +300,10 @@ const checkLoopExtension = (): void => {
 	const status = kabane("loop", "status");
 	if (!status.stdout.includes("No loop runs"))
 		fail("kabane loop status on a fresh home", status);
-	pass("loop extension: off hint, then enabled --help and status");
+	checkShippedLens();
+	pass(
+		"loop extension: off hint, then enabled --help, status and a shipped lens",
+	);
 };
 
 const readReplies = async (
@@ -614,6 +649,7 @@ if (binaryMode && input) {
 	)
 		fail("standalone loaded project dotenv");
 	checkCommands(version);
+	checkLoopExtension();
 	await checkMcp(version, "");
 	rmSync(WORK, { recursive: true, force: true });
 	console.error("smoke: passed standalone binary");

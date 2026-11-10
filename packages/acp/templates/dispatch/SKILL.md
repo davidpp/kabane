@@ -132,10 +132,12 @@ record.
 
 ## Close
 
-When the last issue has merged, read the combined diff for the seams no single agent could see:
-names that drifted apart, helpers written twice, a contract changed without all of its
-consumers. Check that the docs describing changed behaviour ({{DOCS}}) changed along with it.
-Real defects get a fix issue and an agent, and the gate runs again.
+When the last issue has merged, review the combined diff through each lens in
+`references/lenses/`: each file says what to look for and how to grade it. Then read the diff
+for the seams no single agent could see: names that drifted apart, helpers written twice, a
+contract changed without all of its consumers. Check that the docs describing changed behaviour
+({{DOCS}}) changed along with it. Real defects get a fix issue and an agent, and the gate runs
+again.
 
 Your final report is for someone who did not watch the work happen:
 

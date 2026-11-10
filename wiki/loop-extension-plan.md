@@ -156,8 +156,9 @@ answered from the board, a finding filed. Mocked transcripts do not count.
    was cut. When the harness cannot resume it, a new session's brief says what the interrupted
    attempt left: its work-log entries, its commits and `git status`.
 9. **Config** comes from the trigger form or flags, layered over a repo file `.kabane/loop.json`
-   (gates, lenses, harnesses, budgets). Lens prompts ship with the extension and can be overridden
-   by `.kabane/loop/lenses/<name>.md`.
+   (gates, lenses, harnesses, budgets). Lens prompts ship in kabane's dispatch template and can be
+   overridden by the project's dispatch skill, `.claude/skills/dispatch/references/lenses/<name>.md`
+   (JCAB-174).
 10. **The prototype's UX carries over:**
     - tabs `{`/`}`, `w` closes a finished tab
     - `!` jumps to the next question, oldest first, including non-loop questions
@@ -351,9 +352,11 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
 - **Config:** `lenses: string[]` (none by default, so a run with no lenses completes on its
   gates) and `verifier` (a harness, else the implementer); `--lens <name>` repeatable and
   `--verifier`. `start` refuses a lens with no prompt before writing the run.
-- **Prompts:** `extensions/loop/templates/lenses/{functional,quality}.md`, read from disk
-  like the copilot's dispatch template; the build copies them to `templates/lenses` in the
-  package. A repo's `.kabane/loop/lenses/<name>.md` adds a lens or replaces a shipped one.
+- **Prompts:** `packages/acp/templates/dispatch/references/lenses/{functional,quality}.md`,
+  inside the copilot's dispatch template since JCAB-174 (they began as the loop's own
+  `templates/lenses`). A project's dispatch skill, `.claude/skills/dispatch/references/lenses/<name>.md`,
+  adds a lens or replaces a shipped one, and the skill's close review reads the same files. The
+  old `.kabane/loop/lenses/<name>.md` is still read after the skill.
   The loop's own part of every lens prompt (how to file, the tags, no edits) is prepended in
   `Brief.lens`, so a repository's lens cannot drop the structured channel.
 - **When:** the work is done, nothing is running, and the gates are green on the tree as it

@@ -41,9 +41,11 @@ test("native compile archives executable, real templates, docs and checksum; ref
 		"README.md",
 		"LICENSE",
 		"templates/dispatch/SKILL.md",
-		"templates/lenses",
+		"templates/dispatch/references/lenses/functional.md",
+		"templates/dispatch/references/lenses/quality.md",
 	])
 		expect(existsSync(join(root, name))).toBe(true);
+	expect(existsSync(join(root, "templates/lenses"))).toBe(false);
 	expect(statSync(join(root, "kabane")).mode & 0o111).not.toBe(0);
 	const smoke = Bun.spawnSync(
 		[process.execPath, "scripts/smoke.ts", "--binary", join(root, "kabane")],

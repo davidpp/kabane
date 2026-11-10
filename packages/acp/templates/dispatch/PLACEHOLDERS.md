@@ -2,7 +2,8 @@
 
 The board copilot reads this file on `/setup-dispatch`. It is never copied into the project.
 Replace every `{{NAME}}` in `SKILL.md` and `references/` with what the project itself says, so the
-written skill contains no `{{` at all. "The project" means the files in the repo. A personal
+written skill contains no `{{` at all. `references/lenses/` holds none: copy its files as they
+are. "The project" means the files in the repo. A personal
 instructions file loaded from the user's home directory is not part of it, so none of its rules
 belong in a skill that everyone who clones the repo will run. When the project says nothing
 about a value, write the fallback given here. The fallback is safer than a convention the

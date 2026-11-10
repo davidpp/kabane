@@ -6,10 +6,11 @@
  *   bin/kabane.js         the CLI bundled for Bun, every `@cabane/*` workspace package inlined,
  *                         each official extension under extensions/ among them
  *   bin/chunk-<hash>.js  lazy command modules and shared code
- *   templates/<name>/     each packages/acp/templates/<name> (the copilot's dispatch skill) and
- *                         extensions/<ext>/templates/<name> (the loop's lenses), read from disk
- *                         at runtime as ../templates/<name> from bin/kabane.js; one namespace, so
- *                         two sources of one name fail the build
+ *   templates/<name>/     each packages/acp/templates/<name> (the copilot's dispatch skill, the
+ *                         loop's lenses among its references, and the grill skill) and any
+ *                         extensions/<ext>/templates/<name>, read from disk at runtime as
+ *                         ../templates/<name> from bin/kabane.js; one namespace, so two sources
+ *                         of one name fail the build
  *   package.json          generated from packages/cli/package.json, no workspace dependency left
  *   README.md, LICENSE    the repository's own
  *
@@ -141,8 +142,9 @@ const bundle = async (): Promise<void> => {
 
 /**
  * Copies each `<root>/<name>` to `<into>/<name>`. Every bundled module resolves its templates as
- * ../templates/<name> from bin/kabane.js (CopilotInstructions, the loop's Lenses), so the names
- * share one directory: a name two roots both hold is an error, raised before anything is copied.
+ * ../templates/<name> from bin/kabane.js (CopilotInstructions, and through it the loop's Lenses),
+ * so the names share one directory: a name two roots both hold is an error, raised before anything
+ * is copied.
  */
 export const copyTemplates = (
 	roots: readonly string[],

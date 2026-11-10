@@ -18,6 +18,7 @@ import { LoopActivity } from "./activity";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
+import { Lenses } from "./lenses";
 import { Parent } from "./parent";
 import { RunStore } from "./store";
 
@@ -217,7 +218,7 @@ const answer = async (
 };
 
 type Deps = Loop.Deps &
-	Pick<Loop.StartDeps, "cwd" | "settings"> & {
+	Pick<Loop.StartDeps, "cwd" | "settings" | "runner"> & {
 		actor: string;
 		mode: Harnesses.Mode;
 	};
@@ -283,7 +284,8 @@ const refusedFlags = (args: ParsedArgs): string | undefined => {
 	return undefined;
 };
 
-const start: Verb = async (args, deps, target) => {
+/** `kabane loop start`: exported so a test can drive it with a runner of its own. */
+export const start: Verb = async (args, deps, target) => {
 	const refused = refusedFlags(args);
 	if (refused !== undefined) return usage(refused, USAGE);
 	const config = configFrom(args);
@@ -298,12 +300,17 @@ const start: Verb = async (args, deps, target) => {
 	const placed = Loop.placement(started.value);
 	const isNew =
 		started.value.worktree !== undefined && !started.value.worktreeReused;
+	const moves = Lenses.moves(
+		started.value.projectDir,
+		started.value.config.lenses,
+	);
 	return success(
 		started.value,
 		[
 			line(started.value),
 			...(placed ? [`  ${placed}`] : []),
 			...(isNew ? [WORKTREE_NOTE] : []),
+			...moves.map((move) => `  note: ${move}`),
 		].join("\n"),
 	);
 };

@@ -10,7 +10,7 @@ decisions still open are asked on JCAB-168, and the slices are filed as its chil
    covers one project and beats the checked-in file. What is left is narrow:
    - A write can silently do nothing. `kabane config set loop.stallAfter 7` reports success
      while `.kabane/loop.json` keeps the effective value at 2.
-   - Custom lenses can only live in the repo.
+   - Custom lenses can only live in the repo (kept that way: they are files in its dispatch skill, JCAB-174).
    - The scope pin can only live in the repo.
 2. **The precedence order should not change.** Every tool compared below puts the project file
    above the user's global settings, so a team's checked-in gate is not beaten by a default the
@@ -110,7 +110,7 @@ The surfaces that touch it:
 | `.kabane/scope` | the pin, first in the scope cascade (`detect.ts:26`, `:185`) | only `kabane init --scope` (`packages/cli/src/config.ts:251`) |
 | Jake's project pin | the legacy pin, read and never stored (`packages/cli/src/context.ts:124`) | Jake |
 | `.kabane/loop.json` | the loop's project layer (`config-layers.ts:33`) | `config set --layer project`, by hand |
-| `.kabane/loop/lenses/<name>.md` | a custom lens, or the replacement for a shipped one (`extensions/loop/src/lenses.ts:23`, `:41`) | by hand |
+| `.claude/skills/dispatch/references/lenses/<name>.md` | a custom lens, or the replacement for a shipped one, in the project's dispatch skill (`extensions/loop/src/lenses.ts`, JCAB-174); `.kabane/loop/lenses/<name>.md` is still read after it, for lenses written before | `/setup-dispatch`, by hand |
 
 Nothing else lands in a repo. Scope detection stores what it found under `KABANE_HOME`
 (JCAB-110). Run files and loop worktrees live under `KABANE_HOME` too (`extensions/loop/src/store.ts`).
@@ -181,11 +181,12 @@ What "the user is the default, the project file is the fallback" means against t
 - **`loop.json`:** stays readable as the project layer. Nothing moves, and nothing is rewritten.
   A user who wants it out of a repo copies the keys to `--layer scope` and deletes the file
   themselves. A `config move` is a someday idea.
-- **Lenses:** add a user directory, `KABANE_HOME/loop/lenses/<name>.md`, looked up between the
-  repo's own and the shipped ones (repo, then user, then shipped), the same order as the
-  settings. No per-scope directory: scope ids are paths, so a directory per scope would need an
-  encoding (the reason JCAB-90 kept scope settings inside `config.json`). Per-project choice
-  already exists, because `loop.lenses` at `--layer scope` selects which lenses run there.
+- **Lenses:** no user directory (JCAB-168:2: lenses stay repo files). A lens is
+  `references/lenses/<name>.md` in the project's dispatch skill, read by the loop and by the
+  skill's own close review alike (JCAB-174). Lookup is the skill, then the old
+  `.kabane/loop/lenses/<name>.md`, then the copy in kabane's dispatch template; `loop start`
+  prints a line for a lens read from the old directory, and kabane moves nothing. Per-project
+  choice already exists, because `loop.lenses` at `--layer scope` selects which lenses run there.
 - **The pin:** stays a repo file. Since JCAB-110, detection writes nothing and a remote resolves
   most repos. The pin also marks a root inside a monorepo, which a user-level entry keyed by
   path would have to replicate. A user-level scope mapping for a repo you don't own is a
@@ -257,7 +258,8 @@ Two things to take from it:
    default, and gallery stories.
 5. **Board: edits in the view** (JCAB-173). Step and type values, choose the target layer, unset,
    write-only secrets, a confirmation for protected keys, the shadow warning.
-6. **User-level lenses** (JCAB-174), in `KABANE_HOME/loop/lenses/`. This one is independent of the others.
+6. **Lenses in the dispatch skill** (JCAB-174), `.claude/skills/dispatch/references/lenses/`, with
+   no user-level directory. This one is independent of the others.
 
 Order: 2 blocks 3, 3 blocks 4, and 4 blocks 5. Slice 1 blocks 4 and 5. Slice 6 stands alone.
 

@@ -27,23 +27,24 @@ describe("copyTemplates", () => {
 	it("puts every root's templates side by side under one directory", () => {
 		const into = join(work, "dist");
 		const copied = copyTemplates(
-			[root("acp", ["dispatch"]), root("loop", ["lenses"])],
+			[root("acp", ["dispatch"]), root("ext", ["prompts"])],
 			into,
 		);
-		expect(copied.ok && copied.value).toEqual(["dispatch", "lenses"]);
-		expect(readFileSync(join(into, "lenses/prompt.md"), "utf8")).toBe(
-			"loop/lenses",
+		expect(copied.ok && copied.value).toEqual(["dispatch", "prompts"]);
+		expect(readFileSync(join(into, "prompts/prompt.md"), "utf8")).toBe(
+			"ext/prompts",
 		);
 	});
 
 	it("fails on a name two roots both ship, before copying either", () => {
 		const into = join(work, "dist");
 		const copied = copyTemplates(
-			[root("loop", ["lenses"]), root("other", ["lenses"])],
+			[root("acp", ["dispatch"]), root("ext", ["dispatch"])],
 			into,
 		);
 		expect(copied.ok).toBe(false);
-		if (!copied.ok) expect(copied.error.message).toContain("templates/lenses");
+		if (!copied.ok)
+			expect(copied.error.message).toContain("templates/dispatch");
 		expect(existsSync(into)).toBe(false);
 	});
 });
