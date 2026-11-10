@@ -363,6 +363,38 @@ When the executable sits under a mise installs directory (`$MISE_DATA_DIR`, `$XD
 `~/.local/share/mise`), `kabane update` reports the candidate and leaves the file to mise: run
 `mise up kabane`. No tracker DB is opened and no harness entry is rewired.
 
+### Upgrading from 1.0.0-beta.0: settings layers and scope pins
+
+1.0.0-beta.0 read a project's settings from the repo only: the loop from `.kabane/loop.json`, the
+pin from `.kabane/scope`, which `kabane init --scope` wrote. Now your settings for a project and
+your pin are kept under `KABANE_HOME`, outside the repo, and the repo's files are written only when
+you name them. Nothing you already have is moved or rewritten, and there is no database change.
+
+- **What stays, and is still read.** `.kabane/loop.json` is the *shared* layer, for everyone who
+  clones the repo, and `.kabane/scope` is the repo's pin. Kabane never moves or deletes either.
+- **Where a write goes now.** `kabane config set` (and the copilot's `kabane_configSet`) sets an
+  extension's keys too, such as `loop.model`. With no `--layer`, it writes inside a project to
+  `KABANE_HOME/projects/<slug>/<namespace>.json` (*local*: yours, on this device, never in the
+  repo) and outside one to `config.json` (*global*: every project). Name `--layer shared` to
+  write the repo's `.kabane/loop.json`.
+- **The pin.** `kabane init --scope <uri>` writes your own pin, `KABANE_HOME/projects/<slug>/scope`,
+  which wins over the repo's. `--shared` writes the repo's `.kabane/scope`, as `init --scope` did
+  in 1.0.0-beta.0.
+- **From a source build since 1.0.0-beta.0.** Those builds called the layers `user`, `scope` and
+  `project`, and kept local settings under `scopes.<scope id>` in `config.json`. The old names are
+  still accepted on input, but JSON output says `global`, `local` and `shared`. The `scopes`
+  blocks are still read, as local just under the new file, and never written: to move a value,
+  set it again with `--layer local` and remove the old one by hand.
+- **Running processes.** A board, `kabane mcp` or loop runner started by an older version does
+  not read the new files. It misses local and global settings the new CLI writes, and a pin
+  written without `--shared`, so it can file tasks under another scope than new processes do.
+  Stop them, update, and start them again before relying on new settings or pins; do not run
+  both versions on one device.
+- **Going back.** 1.0.0-beta.0 still reads the repo's `.kabane/loop.json` and `.kabane/scope`,
+  but nothing in `config.json`'s extension keys or under `KABANE_HOME/projects/`. If you roll
+  back, put the settings you need into `.kabane/loop.json` and pin the scope with
+  `kabane init --scope <uri>`, which writes `.kabane/scope` in that version.
+
 ### One-time upgrade from 0.1.0
 
 Version 0.1.0 predates `kabane update`. For an existing **Bun global registry install**, stop
