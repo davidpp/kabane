@@ -161,6 +161,8 @@ what the key's schema says of it. A record's entries follow it as rows of their 
   the schema fills in) and `description`.
 - `layers`: the layers it can be written to, `["global"]` for a device key and
   `["global", "shared", "local"]` for an extension's.
+- `target` (`list` only): the layer a `set` with no `--layer` writes, `local` for an
+  extension's key inside a project and `global` otherwise.
 - `secret`: true for `sync.token` and `sync.headers`, which read as `<set>`.
 - `label` and `group`: how the key reads on a settings screen, as `config-looks.ts` declares for
   a device key and an extension's `looks` for its own; a key with none reads under its path, in

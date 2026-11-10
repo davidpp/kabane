@@ -649,6 +649,8 @@ export namespace ConfigSettings {
 			readOnly: identities.has(entry.key),
 			protected: isProtected(entry.key),
 			description: entry.field.description ?? "",
+			// Where the board's editor saves first: where `set` with no layer would write.
+			target: defaultTarget(entry, where),
 			...traitsOf(entry, where),
 		};
 	};

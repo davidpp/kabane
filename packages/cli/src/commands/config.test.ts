@@ -630,6 +630,11 @@ describe.concurrent("config through the real CLI", () => {
 				value: 2,
 				layer: "shared",
 				hides: [{ layer: "global", from: path(), value: 5 }],
+				// Where the board's editor saves first: where a set with no --layer writes.
+				target: "local",
+			});
+			expect(rows.find((row) => row.key === "timezone")).toMatchObject({
+				target: "global",
 			});
 			// A shared write lands in the checked-in file and keeps its indentation; the former
 			// names write where the new ones do.
