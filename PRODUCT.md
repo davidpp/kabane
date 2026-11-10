@@ -55,11 +55,13 @@ Not goals:
 
 - **A team tracker.** A team can adopt and extend it; the core grows no assignee pickers,
   sprints or permissions. The team's own tracker stays the team record.
-- **An all-in-one, or a replacement for the tools around it.** Agent harnesses, runtimes, multiplexers and
-  team trackers come and go. Where one already does a job well and people use it, kabane
-  works with it instead of competing with it, and what kabane grows extends the tools people
-  already chose. It composes with them through open interfaces, tells them its own state, and
-  depends on none of them, so it outlives each one.
+- **An all-in-one, or a replacement for the tools around it.** Agent harnesses, runtimes,
+  multiplexers and team trackers come and go. Where one already does a job well and people
+  use it, kabane works with it instead of competing with it, and what kabane grows extends
+  the tools people already chose. Before it builds a mechanism of its own, it uses the one
+  those tools already share, and keeps its own layer for what none of them offers. It
+  composes with them through open interfaces, tells them its own state, and depends on none
+  of them, so it outlives each one.
 - **The factory line.** No velocity, throughput or "done today" counts.
 
 **Still being refined (since 2026-11-07).** These are a working draft for the next few weeks,
@@ -174,6 +176,14 @@ from three feet away.
    failed), each paired with its own glyph shape; anything blocked on a human is the
    accent's job. Any other color has to earn its place against every existing use of
    these.
+6. **Borrow the mechanism, keep the record.** Before kabane adds a format, a lookup order or
+   a settings layer of its own, check what the harnesses already share: skills and their
+   sub-files, project instruction files, MCP, subagents. A practice kabane carries ships as
+   content in one of those, so it reaches an agent the same way whether kabane is driving
+   the session or the human is. Kabane's own layer holds what none of them carries: the
+   state of the work, who did what, and what runs when. What kabane does not define, it
+   does not have to layer, configure, sync or document. A feature only one harness has is
+   not shared, and earns no dependency.
 
 ## Accessibility & Inclusion
 
