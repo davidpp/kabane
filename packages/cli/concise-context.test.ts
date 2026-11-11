@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { checklistModule } from "@cabane/checklist";
 import { ContextPageSchema } from "@cabane/core";
+import { handoffModule } from "@cabane/handoff";
 import { questionsModule } from "@cabane/questions";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -22,7 +23,7 @@ const fullContext = z.object({ markdown: z.string() });
 // Each case owns its tracker and its stdio server, so the two layouts run side by side.
 // Core's sections, each registered module's after the one it names.
 const VALID_SECTIONS =
-	"Valid sections: metadata, description, checklist.items, upstream, position, context, priorWork, discussion, questions.decisions";
+	"Valid sections: metadata, description, handoff.latest, checklist.items, upstream, position, context, priorWork, discussion, questions.decisions";
 
 describe.concurrent("bounded context through actual CLI/stdio", () => {
 	for (const prefixed of [false, true])
@@ -49,6 +50,7 @@ describe.concurrent("bounded context through actual CLI/stdio", () => {
 				expect(tools.tools).toHaveLength(
 					19 +
 						(questionsModule.tools?.length ?? 0) +
+						(handoffModule.tools?.length ?? 0) +
 						(checklistModule.tools?.length ?? 0),
 				);
 				for (const field of ["responseFormat", "sections", "cursor"])

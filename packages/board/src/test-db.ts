@@ -4,12 +4,13 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { checklistModule } from "@cabane/checklist";
 import { Planner, Runtime } from "@cabane/core";
+import { handoffModule } from "@cabane/handoff";
 import { questionsModule } from "@cabane/questions";
 import { SqliteDb } from "@cabane/sqlite";
 
 Runtime.configure({
 	provider: SqliteDb.provider(),
-	modules: [questionsModule, checklistModule],
+	modules: [questionsModule, handoffModule, checklistModule],
 });
 
 // Wipe and re-create `base`, then apply the schema. Call from beforeEach.

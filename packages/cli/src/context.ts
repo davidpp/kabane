@@ -22,6 +22,7 @@ import {
 	type ParsedArgs,
 	Settings,
 } from "@cabane/extension";
+import { handoffModule } from "@cabane/handoff";
 import { questionsModule } from "@cabane/questions";
 import { SqliteDb } from "@cabane/sqlite";
 import {
@@ -52,7 +53,7 @@ export const configureRuntime = (
 ): Result<void> => {
 	const zone = config.timezone;
 	return Runtime.configure({
-		modules: [questionsModule, checklistModule],
+		modules: [questionsModule, handoffModule, checklistModule],
 		provider: SqliteDb.provider({ dbName: location.dbName }),
 		tablePrefix: location.tablePrefix,
 		actor: () => actor,
