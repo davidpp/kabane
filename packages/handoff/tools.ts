@@ -53,7 +53,7 @@ export const handOff = async (
 	if (!content.trim())
 		return err(
 			new Error(
-				"A handoff needs a body: markdown under Summary, Evidence, Not verified and Risk, or the headings the work needs.",
+				`A handoff on ${quoted(id)} needs a body: markdown under Summary, Evidence, Not verified and Risk, or the headings the work needs.`,
 			),
 		);
 	const task = await findIssue(basePath, id);

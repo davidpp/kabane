@@ -123,7 +123,7 @@ it("prints the template, and refuses a blank body, a file it cannot read and a m
 	expect((await kabane(["handoff", "--template"])).text).toBe(HANDOFF_TEMPLATE);
 	writeFileSync(join(home, "blank.md"), "\n  \n");
 	expect((await kabane(["handoff", label, "--from", "blank.md"])).text).toBe(
-		"Error: A handoff needs a body: markdown under Summary, Evidence, Not verified and Risk, or the headings the work needs.",
+		`Error: A handoff on "${label}" needs a body: markdown under Summary, Evidence, Not verified and Risk, or the headings the work needs.`,
 	);
 	const missing = await kabane(["handoff", label, "--from", "nope.md"]);
 	expect(missing.exitCode).toBe(1);

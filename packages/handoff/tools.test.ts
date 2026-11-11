@@ -123,7 +123,7 @@ it("refuses a blank body and an id that names no single issue in one line, and w
 	const blank = await call("kabane_handoff", { id: label, body: " \n\t" });
 	expect(blank).toEqual({
 		isError: true,
-		text: "Error: A handoff needs a body: markdown under Summary, Evidence, Not verified and Risk, or the headings the work needs.",
+		text: `Error: A handoff on "${label}" needs a body: markdown under Summary, Evidence, Not verified and Risk, or the headings the work needs.`,
 	});
 	expect(
 		await call("kabane_handoff", { id: "NOPE-404", body: "### Summary" }),
