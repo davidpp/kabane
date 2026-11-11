@@ -3,7 +3,10 @@
  *
  * The table keeps its name, `task_comments`, because rows and synced logs
  * store it. A comment is an entry of kind `comment`, and the comment functions
- * read and write that kind only.
+ * read and write that kind only. Entries are append-only: nothing here edits
+ * or deletes one, matching the table's `append-only` sync family, which never
+ * applies a second op for a row it holds. Deleting a task removes its entries
+ * through the cascade.
  */
 
 import { err, type Result } from "../result";
@@ -14,7 +17,6 @@ import {
 	ENTRY_KIND_PATTERN,
 	type TaskComment,
 	type TaskCommentDraft,
-	type TaskCommentUpdate,
 	type TaskEntry,
 	type TaskEntryDraft,
 } from "../schemas";
@@ -136,45 +138,10 @@ export namespace Planner {
 		});
 	};
 
-	export const updateComment = async (
-		basePath: string,
-		id: string,
-		updates: TaskCommentUpdate,
-	): Promise<Result<TaskComment | null>> => {
-		const updateResult = await withDb(basePath, (db) => {
-			const now = new Date().toISOString();
-			db.run(
-				`UPDATE ${TABLES.comments}
-            SET content = ?, updated_at = ?, version = version + 1, updated_by = ?
-          WHERE id = ?`,
-				[updates.content, now, Runtime.actor(), id],
-			);
-			Oplog.afterWrite(db, "task_comments", "update", id);
-		});
-
-		if (!updateResult.ok) return updateResult;
-
-		return getComment(basePath, id);
-	};
-
 	/** A task's comments: its entries of the default kind, in time order. */
 	export const getComments = async (
 		basePath: string,
 		taskId: string,
 	): Promise<Result<TaskComment[]>> =>
 		getEntries(basePath, taskId, { kind: DEFAULT_ENTRY_KIND });
-
-	export const deleteComment = async (
-		basePath: string,
-		id: string,
-	): Promise<Result<void>> => {
-		return withDb(basePath, (db) => {
-			const row = Oplog.snapshot(db, "task_comments", id);
-			if (!row.ok) throw row.error;
-			db.run(`DELETE FROM ${TABLES.comments} WHERE id = ?`, [id]);
-			if (row.value !== undefined) {
-				Oplog.afterDelete(db, [{ tbl: "task_comments", row: row.value }]);
-			}
-		});
-	};
 }

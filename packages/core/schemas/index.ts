@@ -24,8 +24,6 @@ export {
 	type TaskCommentDraft,
 	TaskCommentDraftSchema,
 	TaskCommentSchema,
-	type TaskCommentUpdate,
-	TaskCommentUpdateSchema,
 	type TaskEntry,
 	type TaskEntryDraft,
 	TaskEntryDraftSchema,

@@ -123,12 +123,3 @@ export const TaskCommentDraftSchema = TaskCommentSchema.omit({
 	updatedAt: true,
 });
 export type TaskCommentDraft = z.infer<typeof TaskCommentDraftSchema>;
-
-/**
- * Partial update for editing a comment
- */
-export const TaskCommentUpdateSchema = z.object({
-	/** Updated content */
-	content: z.string().min(1),
-});
-export type TaskCommentUpdate = z.infer<typeof TaskCommentUpdateSchema>;
