@@ -15,6 +15,7 @@ packages/
 ├── extension/ # @cabane/extension — extension contract (Command, Ctx, board ports), args, outcomes
 ├── questions/ # @cabane/questions — data module: decisions agents ask humans (kabane_ask, kabane_questions, kabane_answer)
 ├── checklist/ # @cabane/checklist — data module: the steps of one issue (kabane_checklistAdd, kabane_checklistTick, kabane_checklistEdit)
+├── handoff/   # @cabane/handoff — data module: the handoff kind and its template, what an agent leaves the next reader on any kind of work (kabane_handoff)
 ├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, board, mcp (stdio)
 ├── board/     # @cabane/board  — OpenTUI kanban; ActivitySource + Dispatcher + Copilot ports, no-op defaults
 └── worker/    # cabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
@@ -47,7 +48,7 @@ Before implementing a change, whatever its size, use `.agents/skills/dispatch/SK
 ```bash
 bun run check        # oxlint, its type-aware pass, oxfmt --check, knip, jscpd
 bun run typecheck    # tsc --noEmit in every workspace package
-bun test             # bun packages only (questions, checklist, core, sqlite, acp, extension, cli, board, extensions/*)
+bun test             # bun packages only (questions, checklist, handoff, core, sqlite, acp, extension, cli, board, extensions/*)
 bun run test         # the above plus `bun run --cwd packages/worker test` (tsc + vitest)
 ```
 
