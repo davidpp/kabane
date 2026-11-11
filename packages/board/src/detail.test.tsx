@@ -733,9 +733,13 @@ test("Detail lifts the latest handoff between the brief and the checklist at for
 		const heading = at(" handoff · claude · just now");
 		expect(heading).toBeGreaterThan(at("The description reads here."));
 		expect(lines[heading + 1]).toContain("The author's own account");
-		expect(at("The second pass.")).toBeGreaterThan(heading);
-		expect(at("1 earlier in comments")).toBeGreaterThan(at("The second pass."));
-		expect(at("checklist · 0/1")).toBeGreaterThan(at("1 earlier in comments"));
+		// The framing takes three rows at forty columns; one blank row sets each part apart.
+		expect(lines[heading + 3]?.trim()).toBe("it.");
+		expect(lines[heading + 4]?.trim()).toBe("");
+		expect(at("The second pass.")).toBe(heading + 5);
+		expect(lines[heading + 6]?.trim()).toBe("");
+		expect(at("1 earlier in comments")).toBe(heading + 7);
+		expect(at("checklist · 0/1")).toBe(heading + 9);
 		expect(frame).not.toContain("The first pass.");
 		for (const row of lines)
 			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
@@ -784,6 +788,41 @@ test("Detail cuts a long author's name and holds the age, under the description 
 		} finally {
 			destroy();
 		}
+	}
+});
+
+test("Detail's lifted block spends no line on a count it does not have", async () => {
+	const task = await seed();
+	const added = await Planner.addEntry(TEST_BASE, {
+		taskId: task.id,
+		kind: "handoff",
+		author: "cabane://actor/agent/claude",
+		authorType: "ai",
+		content: "The only pass.",
+	});
+	if (!added.ok) throw added.error;
+	const items = await Checklist.add(TEST_BASE, {
+		id: task.id,
+		items: ["Read it back"],
+	});
+	if (!items.ok) throw items.error;
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		width: 40,
+	});
+	try {
+		const frame = await pumpUntil(
+			renderOnce,
+			captureCharFrame,
+			(f) => f.includes("The only pass.") && f.includes("Read it back"),
+		);
+		const lines = rows(frame);
+		const body = lines.findIndex((row) => row.includes("The only pass."));
+		expect(body).toBeGreaterThan(-1);
+		expect(frame).not.toContain("earlier in comments");
+		expect(lines[body + 1]?.trim()).toBe("");
+		expect(lines[body + 2]).toContain("checklist · 0/1");
+	} finally {
+		destroy();
 	}
 });
 

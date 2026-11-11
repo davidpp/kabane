@@ -728,7 +728,8 @@ const DescriptionTab = ({
 // An entry the brief lifts, under the description: headed like a list, with the kind's title in
 // Label weight and who wrote it and when muted after a `·`, the age held whole and a long name cut
 // before it; then the kind's framing line muted, the body as markdown, and, when the kind has older
-// entries, one muted line saying where they are.
+// entries, one muted line saying where they are. A blank line sets the body apart from the framing
+// and the count from the body; a part that is not there takes no line.
 const LiftedBlock = ({
 	entry,
 	room,
@@ -757,9 +758,15 @@ const LiftedBlock = ({
 			<text fg={theme.muted} style={{ maxWidth: PROSE_MEASURE }}>
 				{entry.framing}
 			</text>
-			<MarkdownBody content={entry.body} />
+			{entry.body ? (
+				<box style={{ marginTop: 1 }}>
+					<MarkdownBody content={entry.body} />
+				</box>
+			) : null}
 			{entry.earlier > 0 ? (
-				<text fg={theme.muted}>{`${entry.earlier} earlier in comments`}</text>
+				<text fg={theme.muted} style={{ marginTop: 1 }}>
+					{`${entry.earlier} earlier in comments`}
+				</text>
 			) : null}
 		</box>
 	);
