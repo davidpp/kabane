@@ -16,11 +16,32 @@ import { COMPACT_TEMPLATE, HANDOFF_KIND } from "./template";
 /** A recorded handoff: the entry, the issue's label, and how many handoffs came before it. */
 export type HandedOff = { entry: TaskEntry; label: string; earlier: number };
 
-/** The one-line refusal for an id that names no single task: the input, why, and what to give. */
-const notFound = (id: string, cause: string): Result<never> =>
+/** A ULID, or a prefix of one: Crockford base32, which a ULID's canonical form writes uppercase. */
+const ULID_SHAPED = /^[0-9A-HJKMNP-TV-Z]+$/i;
+
+/**
+ * The id as the resolver takes it: trimmed, and uppercased when it is ULID-shaped, since a
+ * full ULID passes the resolver unchanged and is compared case-sensitively. A short id is
+ * left to the resolver, which ignores its case.
+ */
+const lookupInput = (id: string): string => {
+	const trimmed = id.trim();
+	return ULID_SHAPED.test(trimmed) ? trimmed.toUpperCase() : trimmed;
+};
+
+/** The resolver's refusals of an id that names no single task, as opposed to a failed read. */
+const MISS = /^(No task found with ID|Ambiguous ID prefix)/;
+
+/**
+ * The one-line refusal: the caller's input and the cause escaped onto the same line, then
+ * which id to give when the id missed, or nothing more when the lookup itself failed.
+ */
+const unresolved = (id: string, cause: string, miss: boolean): Result<never> =>
 	err(
 		new Error(
-			`Cannot find the issue ${quoted(id)} (${quoted(cause, 200)}): give its short id (JCAB-12) or its ULID, as list and search show them.`,
+			miss
+				? `Cannot find the issue ${quoted(id)} (${quoted(cause, 200)}): give its short id (JCAB-12) or its ULID, as list and search show them.`
+				: `Cannot look up the issue ${quoted(id)}: ${quoted(cause, 200)}.`,
 		),
 	);
 
@@ -32,11 +53,16 @@ export const findIssue = async (
 	basePath: string,
 	id: string,
 ): Promise<Result<Task>> => {
-	const resolved = await Planner.resolveTaskId(basePath, id);
-	if (!resolved.ok) return notFound(id, resolved.error.message);
+	const resolved = await Planner.resolveTaskId(basePath, lookupInput(id));
+	if (!resolved.ok) {
+		const cause = resolved.error.message;
+		return unresolved(id, cause, MISS.test(cause));
+	}
 	const task = await Planner.getTask(basePath, resolved.value);
 	if (!task.ok) return task;
-	return task.value ? ok(task.value) : notFound(id, "no task has this ULID");
+	return task.value
+		? ok(task.value)
+		: unresolved(id, "no task has this ULID", true);
 };
 
 /**

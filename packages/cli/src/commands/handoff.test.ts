@@ -172,9 +172,25 @@ it("prints the template, and refuses a blank body, a file it cannot read and a m
 			])
 		).text,
 	).toBe(`${other.shortId} handed off · 0 earlier on record`);
-	expect((await kabane(["handoff", label.toLowerCase()])).text).toBe(
-		`No handoff on ${label}.`,
-	);
+	// Case and padding do not matter: a lowercase ULID or prefix, a padded short id.
+	for (const id of [
+		task.id.toLowerCase(),
+		task.id.slice(0, shared + 1).toLowerCase(),
+		` ${label} `,
+		label.toLowerCase(),
+	])
+		expect([id, (await kabane(["handoff", id])).text]).toEqual([
+			id,
+			`No handoff on ${label}.`,
+		]);
+	for (const id of [other.id.toLowerCase(), ` ${other.shortId} `])
+		expect([
+			id,
+			(await kabane(["handoff", id, "--from", "body.md"])).exitCode,
+		]).toEqual([id, 0]);
+	expect(
+		unwrap(await Planner.getEntries(home, other.id, { kind: "handoff" })),
+	).toHaveLength(3);
 	for (const conflict of [
 		["handoff", label, "--from"],
 		["handoff", label, "--from", "body.md", "--from", "blank.md"],

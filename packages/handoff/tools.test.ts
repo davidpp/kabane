@@ -153,7 +153,7 @@ it("refuses a blank body and an id that names no single issue in one line, and w
 	expect(unwrap(await Planner.getEntries(base, other.id))).toEqual([]);
 });
 
-it("takes a unique ULID prefix, as the other tools do", async () => {
+it("takes a unique ULID prefix, as the other tools do, in any case and padded", async () => {
 	const { task, label } = await issue("Read the vendor docs");
 	const { task: other } = await issue("Read the pricing page");
 	const unique = task.id.slice(0, sharedPrefix(task.id, other.id).length + 1);
@@ -163,9 +163,19 @@ it("takes a unique ULID prefix, as the other tools do", async () => {
 		isError: false,
 		text: `${label} handed off · 0 earlier on record`,
 	});
+	// Case and padding do not matter: a lowercase ULID or prefix, a padded short id.
+	for (const [id, earlier] of [
+		[task.id.toLowerCase(), 1],
+		[unique.toLowerCase(), 2],
+		[` ${label} `, 3],
+	] as const)
+		expect(await call("kabane_handoff", { id, body: "### Summary" })).toEqual({
+			isError: false,
+			text: `${label} handed off · ${earlier} earlier on record`,
+		});
 	expect(
 		unwrap(await Planner.getEntries(base, task.id, { kind: HANDOFF_KIND })),
-	).toHaveLength(1);
+	).toHaveLength(4);
 });
 
 it("opens the brief with the latest handoff under the description, framed, counting the earlier ones and keeping them out of the Discussion", async () => {
