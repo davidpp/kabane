@@ -752,6 +752,41 @@ test("Detail lifts the latest handoff between the brief and the checklist at for
 	}
 });
 
+test("Detail cuts a long author's name and holds the age, under the description and on the band, at forty columns", async () => {
+	const task = await seed();
+	const added = await Planner.addEntry(TEST_BASE, {
+		taskId: task.id,
+		kind: "handoff",
+		author: "cabane://actor/agent/claude-sonnet-4-20250514",
+		authorType: "ai",
+		content: "Picked up where the first pass stopped.",
+	});
+	if (!added.ok) throw added.error;
+	for (const tab of ["description", "comments"] as const) {
+		const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+			tab,
+			width: 40,
+		});
+		try {
+			const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("Picked up where"),
+			);
+			const heading =
+				tab === "description"
+					? " handoff · claude-sonnet-4… · just now"
+					: " claude-sonnet-4… · handoff · just now";
+			expect({ tab, cut: onOneRow(frame, heading) }).toEqual({
+				tab,
+				cut: true,
+			});
+			for (const row of rows(frame))
+				expect(row.trimEnd().length).toBeLessThanOrEqual(40);
+		} finally {
+			destroy();
+		}
+	}
+});
+
 test("Detail's description tab is not empty when a handoff is all it holds", async () => {
 	const task = await seed({ description: "" });
 	const added = await Planner.addEntry(TEST_BASE, {

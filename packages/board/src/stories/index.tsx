@@ -298,6 +298,15 @@ const TIMELINE = [
 	),
 ];
 
+// A handoff from an agent whose actor name is a dated model id, longer than a narrow pane allows.
+const LONG_HANDOFF = Fixtures.entry(
+	STEPWISE,
+	4,
+	"handoff",
+	"cabane://actor/agent/claude-sonnet-4-20250514",
+	"Picked up where the first pass stopped.",
+);
+
 // Checklist progress on the board's rows: one under way, one complete.
 const PROGRESS = new Map([
 	["n1", { done: 2, total: 4 }],
@@ -743,6 +752,42 @@ export const STORIES: readonly Story[] = [
 				task={STEPWISE}
 				tab="comments"
 				records={ok(Fixtures.records(STEPWISE, { entries: TIMELINE }))}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
+		name: "detail-handoff-long-author",
+		about:
+			"a handoff whose author's name outruns forty columns: the name is cut, the age kept",
+		width: 40,
+		height: 24,
+		render: () => (
+			<Detail
+				taskId={STEPWISE.id}
+				task={STEPWISE}
+				records={ok(
+					Fixtures.records(STEPWISE, {
+						entries: [LONG_HANDOFF],
+						kinds: [...Fixtures.KINDS],
+					}),
+				)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
+		name: "detail-timeline-long-author",
+		about:
+			"the same handoff on the comments tab: its band cuts the name and keeps the kind and the age",
+		width: 40,
+		height: 16,
+		render: () => (
+			<Detail
+				taskId={STEPWISE.id}
+				task={STEPWISE}
+				tab="comments"
+				records={ok(Fixtures.records(STEPWISE, { entries: [LONG_HANDOFF] }))}
 				scrollRef={createRef<ScrollBoxRenderable>()}
 			/>
 		),

@@ -600,7 +600,12 @@ const TabContent = ({
 			return entries.length > 0 ? (
 				<box style={{ flexDirection: "column" }}>
 					{entries.map((entry, index) => (
-						<EntryBlock key={entry.id} entry={entry} first={index === 0} />
+						<EntryBlock
+							key={entry.id}
+							entry={entry}
+							first={index === 0}
+							room={room}
+						/>
 					))}
 				</box>
 			) : (
@@ -721,8 +726,9 @@ const DescriptionTab = ({
 };
 
 // An entry the brief lifts, under the description: headed like a list, with the kind's title in
-// Label weight and who wrote it and when muted after a `·`, then the kind's framing line muted, the
-// body as markdown, and, when the kind has older entries, one muted line saying where they are.
+// Label weight and who wrote it and when muted after a `·`, the age held whole and a long name cut
+// before it; then the kind's framing line muted, the body as markdown, and, when the kind has older
+// entries, one muted line saying where they are.
 const LiftedBlock = ({
 	entry,
 	room,
@@ -733,20 +739,21 @@ const LiftedBlock = ({
 	first: boolean;
 }): ReactNode => {
 	const theme = useTheme();
-	const heading = [
-		{
-			text: entry.title.toLowerCase(),
-			fg: theme.defaultFg,
-			attributes: TextAttributes.BOLD,
-		},
-		{
-			text: ` · ${entry.author} · ${relativeTime(entry.at)}`,
-			fg: theme.muted,
-		},
-	];
+	const heading = Segments.fitHolding(
+		[
+			{
+				text: entry.title.toLowerCase(),
+				fg: theme.defaultFg,
+				attributes: TextAttributes.BOLD,
+			},
+			{ text: ` · ${entry.author}`, fg: theme.muted },
+		],
+		[{ text: ` · ${relativeTime(entry.at)}`, fg: theme.muted }],
+		room,
+	);
 	return (
 		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
-			<text>{Segments.spans(Segments.fit(heading, room))}</text>
+			<text>{Segments.spans(heading)}</text>
 			<text fg={theme.muted} style={{ maxWidth: PROSE_MEASURE }}>
 				{entry.framing}
 			</text>
@@ -954,17 +961,39 @@ const LogRow = ({
 // background, where the description reads too. The band is the seam between two entries; a body
 // on the band's surface would leave nothing to tell them, or their code, apart. A human and an
 // agent are told apart by name and weight: a person's name is bold. An entry that is not a plain
-// comment names its kind between the author and the time, a word rather than a hue.
+// comment names its kind between the author and the time, a word rather than a hue. The band is one
+// row: a long name is cut, and the kind and the age after it are held whole.
 const EntryBlock = ({
 	entry,
 	first,
+	room,
 }: {
 	entry: TaskEntry;
 	first: boolean;
+	room: number;
 }): ReactNode => {
 	const theme = useTheme();
-	const human = entry.authorType === "human";
 	const kind = DetailModel.kindLabel(entry);
+	const band = Segments.fitHolding(
+		[
+			{
+				text: DetailModel.actorName(entry.author),
+				fg: theme.text,
+				attributes:
+					entry.authorType === "human" ? TextAttributes.BOLD : undefined,
+			},
+		],
+		[
+			...(kind
+				? [
+						{ text: " · ", fg: theme.muted },
+						{ text: kind, fg: theme.text },
+					]
+				: []),
+			{ text: ` · ${relativeTime(entry.createdAt)}`, fg: theme.muted },
+		],
+		room,
+	);
 	return (
 		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
 			<box
@@ -974,18 +1003,7 @@ const EntryBlock = ({
 					paddingRight: 1,
 				}}
 			>
-				<text fg={theme.text}>
-					<span attributes={human ? TextAttributes.BOLD : undefined}>
-						{DetailModel.actorName(entry.author)}
-					</span>
-					{kind ? (
-						<>
-							<span fg={theme.muted}> · </span>
-							<span>{kind}</span>
-						</>
-					) : null}
-					<span fg={theme.muted}> · {relativeTime(entry.createdAt)}</span>
-				</text>
+				<text>{Segments.spans(band)}</text>
 			</box>
 			<box style={{ paddingLeft: CONTENT_INSET }}>
 				<MarkdownBody content={entry.content.trim()} />

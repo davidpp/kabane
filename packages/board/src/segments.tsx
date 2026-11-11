@@ -34,6 +34,19 @@ export namespace Segments {
 		return fitted;
 	};
 
+	/**
+	 * `fit`, with `held` kept whole at the row's end: the parts ahead of it are cut to leave it room,
+	 * so a long name never takes the age or the kind that follows it.
+	 */
+	export const fitHolding = (
+		segments: readonly Segment[],
+		held: readonly Segment[],
+		room: number,
+	): Segment[] => [
+		...fit(segments, Math.max(0, room - plain(held).length)),
+		...held,
+	];
+
 	// A part wraps under the column it started at unless that leaves it less than this; then it
 	// starts again at the row's left edge.
 	const MIN_HANG = 8;
