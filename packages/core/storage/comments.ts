@@ -125,19 +125,6 @@ export namespace Planner {
 	): Promise<Result<TaskComment>> =>
 		addEntry(basePath, { ...draft, kind: DEFAULT_ENTRY_KIND });
 
-	export const getComment = async (
-		basePath: string,
-		id: string,
-	): Promise<Result<TaskComment | null>> => {
-		return withDb(basePath, (db) => {
-			const row = db
-				.query(`SELECT * FROM ${TABLES.comments} WHERE id = ?`)
-				.get(id) as Record<string, unknown> | null;
-
-			return row ? rowToEntry(row) : null;
-		});
-	};
-
 	/** A task's comments: its entries of the default kind, in time order. */
 	export const getComments = async (
 		basePath: string,

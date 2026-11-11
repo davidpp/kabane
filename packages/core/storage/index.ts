@@ -65,7 +65,6 @@ export const Planner = {
 	getEntries: Comments.getEntries,
 	latestEntry: Comments.latestEntry,
 	addComment: Comments.addComment,
-	getComment: Comments.getComment,
 	getComments: Comments.getComments,
 	// Work Logs
 	addWorkLog: WorkLogs.addWorkLog,

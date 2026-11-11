@@ -48,7 +48,6 @@ describe("Planner — timeline entries", () => {
 
 		const read = must(await Planner.getEntries(TEST_BASE, taskId));
 		expect(read).toEqual([added]);
-		expect(must(await Planner.getComment(TEST_BASE, added.id))).toEqual(added);
 	});
 
 	it("lists every kind in time order, or one kind when asked", async () => {

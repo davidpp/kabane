@@ -204,9 +204,11 @@ describe("cabane tools", () => {
 			expect(comment.content).toBe(markdown);
 			expect(comment.author).toBe(AGENT);
 			expect(comment.authorType).toBe("ai");
-			expect(unwrap(await Planner.getComment(base, comment.id))).toEqual(
-				comment,
-			);
+			expect(
+				unwrap(await Planner.getComments(base, issue.id)).find(
+					(stored) => stored.id === comment.id,
+				),
+			).toEqual(comment);
 		}
 		expect(unwrap(await Planner.getComments(base, issue.id))).toHaveLength(7);
 	});
