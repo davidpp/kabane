@@ -52,7 +52,7 @@ export const show: Command = {
 
 		const [links, comments, logs, modules] = await Promise.all([
 			Planner.getLinksForTask(ctx.store, id),
-			Planner.getComments(ctx.store, id),
+			Planner.getEntries(ctx.store, id),
 			Planner.getWorkLogs(ctx.store, id),
 			moduleSections(ctx.store, id),
 		]);
