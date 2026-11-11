@@ -202,6 +202,23 @@ describe("kabane cli", () => {
 		expect(json<{ author: string }>(ai).author).toBe(
 			"cabane://actor/agent/claude",
 		);
+		const review = await run(
+			"comment",
+			issueId,
+			"Reviewed: the runbook covers rollback",
+			"--kind",
+			"review",
+			"--as",
+			"cabane://actor/agent/codex",
+		);
+		expect(review.code).toBe(0);
+		expect(review.out).toContain(`review added to ${issueId}`);
+		const bare = await run("comment", issueId, "x", "--kind");
+		expect(bare.code).toBe(2);
+		expect(bare.err).toContain("--kind needs a value");
+		const malformed = await run("comment", issueId, "x", "--kind", "Review!");
+		expect(malformed.code).toBe(1);
+		expect(malformed.err).toContain('Entry kind "Review!" is not valid');
 
 		const logged = await run(
 			"log",
@@ -231,9 +248,15 @@ describe("kabane cli", () => {
 
 		// Replication fields ride along in --json only: the edit above bumped the
 		// version past 1 and stamped this device's actor as the last writer.
-		const detail = json<{ task: { updatedBy?: string; version?: number } }>(
-			await run("show", issueId, "--json"),
-		);
+		const detail = json<{
+			task: { updatedBy?: string; version?: number };
+			comments: { kind: string; content: string }[];
+		}>(await run("show", issueId, "--json"));
+		expect(detail.comments.map((c) => c.kind)).toEqual([
+			"comment",
+			"comment",
+			"review",
+		]);
 		expect(detail.task.updatedBy).toBe("cabane://actor/human/tester");
 		expect(detail.task.version).toBeGreaterThanOrEqual(2);
 		expect(shown.out).not.toMatch(/^Version:/m);
