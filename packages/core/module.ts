@@ -29,6 +29,11 @@ import {
 	type ContextSection,
 	type ResolvedAssembleContextOpts,
 } from "./schemas/assemble-context";
+import {
+	DEFAULT_ENTRY_KIND,
+	type EntryKind,
+	EntryKindSchema,
+} from "./schemas/comment";
 import type { Task, TaskState } from "./schemas/task";
 import type { SyncFamily } from "./sync/resolve";
 
@@ -96,6 +101,12 @@ export type KabaneModule = {
 	/** Tables whose rows replicate. A table's ops go out tagged with this module. */
 	syncTables?: readonly ModuleSyncTable[];
 	contextSections?: readonly ModuleContextSection[];
+	/**
+	 * Timeline entry kinds, each named after the module (`<module>` or
+	 * `<module>.<key>`). Data only: what a kind is and how the brief projects
+	 * it, never how to render it.
+	 */
+	kinds?: readonly EntryKind[];
 	tools?: readonly ToolDef[];
 	/** Appended to the MCP server instructions, one paragraph. */
 	instructions?: string;
@@ -154,6 +165,42 @@ const tableProblem = (
 	return undefined;
 };
 
+/** The section a kind projected as `latest` renders as. */
+const latestSectionName = (kind: string): string => `${kind}.latest`;
+
+const kindProblem = (
+	module: KabaneModule,
+	kind: EntryKind,
+	kinds: Claims,
+	sections: Claims,
+): string | undefined => {
+	const where = `module "${module.name}" kind "${kind.name}"`;
+	const parsed = EntryKindSchema.safeParse(kind);
+	if (!parsed.success) {
+		const issue = parsed.error.issues[0];
+		const field = issue?.path.join(".") || "the declaration";
+		const message =
+			issue === undefined || issue.code === "invalid_union"
+				? `must be "discussion" or { latest: { after: <core section>, framing: <one line> } }`
+				: issue.message;
+		return `${where}: ${field} ${message}`;
+	}
+	if (kind.name === DEFAULT_ENTRY_KIND)
+		return `${where}: "${DEFAULT_ENTRY_KIND}" is core's own kind; pick another`;
+	if (kind.name !== module.name && !kind.name.startsWith(`${module.name}.`))
+		return `${where}: the name must be "${module.name}" or start with "${module.name}."`;
+	const owner = kinds.get(kind.name);
+	if (owner !== undefined)
+		return `${where}: the name is already ${owner}; pick another`;
+	if (kind.projection !== "discussion") {
+		const section = latestSectionName(kind.name);
+		const holder = sections.get(section);
+		if (holder !== undefined)
+			return `${where}: its section "${section}" is already ${holder}; pick another`;
+	}
+	return undefined;
+};
+
 const readSurfaceProblem = (
 	modules: readonly KabaneModule[],
 ): string | undefined => {
@@ -163,6 +210,7 @@ const readSurfaceProblem = (
 	const tools: Claims = new Map(
 		Object.values(CORE_TOOL_NAMES).map((name) => [name, "a core tool"]),
 	);
+	const kinds: Claims = new Map();
 	for (const module of modules) {
 		for (const section of module.contextSections ?? []) {
 			const owner = sections.get(section.name);
@@ -171,6 +219,16 @@ const readSurfaceProblem = (
 			if (!section.name.startsWith(`${module.name}.`))
 				return `module "${module.name}" section "${section.name}": the name must start with "${module.name}."`;
 			sections.set(section.name, `a section of module "${module.name}"`);
+		}
+		for (const kind of module.kinds ?? []) {
+			const problem = kindProblem(module, kind, kinds, sections);
+			if (problem !== undefined) return problem;
+			kinds.set(kind.name, `a kind of module "${module.name}"`);
+			if (kind.projection !== "discussion")
+				sections.set(
+					latestSectionName(kind.name),
+					`the section of kind "${kind.name}"`,
+				);
 		}
 		for (const tool of module.tools ?? []) {
 			const owner = tools.get(tool.name);
@@ -211,8 +269,10 @@ const problemWith = (modules: readonly KabaneModule[]): string | undefined => {
  * Validate and register `modules`, replacing the previous set. Refuses two
  * modules with one name, a table core, another module or a module's migration
  * table already has, a natural-key family and a `row-lww` table without a
- * clock. Also refuses section namespace/uniqueness violations and tool-name
- * collisions. Registers nothing when it refuses.
+ * clock. Also refuses section namespace/uniqueness violations, tool-name
+ * collisions, and a kind that is malformed, outside its module's namespace,
+ * core's own `comment`, already declared, or projected into a section name
+ * already taken. Registers nothing when it refuses.
  */
 export const setModules = (modules: readonly KabaneModule[]): Result<void> => {
 	const problem = problemWith(modules);
@@ -229,6 +289,12 @@ export namespace Modules {
 	/** The registered module called `name`. */
 	export const named = (name: string): KabaneModule | undefined =>
 		registered.find((module) => module.name === name);
+
+	/** The registered entry kind called `name`, if a module declares one. */
+	export const kind = (name: string): EntryKind | undefined =>
+		registered
+			.flatMap((module) => module.kinds ?? [])
+			.find((declared) => declared.name === name);
 
 	/** The schema version this build of `module` writes: its migration count. */
 	export const schemaOf = (module: KabaneModule): number =>

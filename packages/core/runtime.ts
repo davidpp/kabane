@@ -15,6 +15,7 @@ import type { Db, DbProvider } from "./db/port";
 import { setTablePrefix } from "./db/tables";
 import { type KabaneModule, Modules, setModules } from "./module";
 import { err, ok, type Result } from "./result";
+import type { EntryKind } from "./schemas/comment";
 import { type SyncConfig, SyncConfigSchema } from "./schemas/config";
 import { Deadline } from "./schemas/deadline";
 
@@ -159,6 +160,9 @@ export namespace Runtime {
 	export const timezone = (): string => ports.timezone();
 	/** The registered data modules, in registration order. */
 	export const modules = (): readonly KabaneModule[] => Modules.list();
+	/** The entry kind a registered module declares as `name`, if any. */
+	export const entryKind = (name: string): EntryKind | undefined =>
+		Modules.kind(name);
 }
 
 /** Run `fn` against the database behind `basePath`. The one storage entry. */

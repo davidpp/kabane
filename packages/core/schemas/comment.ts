@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import { ContextSectionSchema } from "./assemble-context";
 
 /**
  * Author type - who created the comment
@@ -55,7 +56,7 @@ export const EntryKindNameSchema = z
 	.string()
 	.regex(
 		ENTRY_KIND_PATTERN,
-		'a kind is lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "review", "handoff.summary")',
+		'must be lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "review", "handoff.summary")',
 	);
 
 /** One entry on an issue's timeline (stored in `task_comments`). */
@@ -71,6 +72,47 @@ export const TaskEntryDraftSchema = TaskEntrySchema.omit({
 	updatedAt: true,
 });
 export type TaskEntryDraft = z.infer<typeof TaskEntryDraftSchema>;
+
+const OneLineSchema = z
+	.string()
+	.regex(/^[^\r\n]*\S[^\r\n]*$/, "must be one non-blank line");
+
+/**
+ * What the brief shows of a kind, derived when it is read and never stored.
+ * `discussion`: every entry in the Discussion, in time order, labelled with its
+ * kind. `latest`: only the newest entry, as its own section `<kind>.latest`
+ * after the core section `after`, under the one-line `framing`; the older ones
+ * are counted, not shown.
+ */
+const EntryProjectionSchema = z.union([
+	z.literal("discussion"),
+	z
+		.object({
+			latest: z
+				.object({ after: ContextSectionSchema, framing: OneLineSchema })
+				.strict(),
+		})
+		.strict(),
+]);
+
+/**
+ * A kind a module declares, as plain data and never code, so that a source
+ * that can only supply data (an extension, a project's config) can declare
+ * one the same way. Declaring a kind is what gives its entries a projection;
+ * an entry of a kind nobody declares is still stored and shown.
+ */
+export const EntryKindSchema = z
+	.object({
+		/** The declaring module's name, or `<module>.<key>`. */
+		name: EntryKindNameSchema,
+		/** How the kind reads in the brief. */
+		title: OneLineSchema,
+		/** Markdown shown to whoever writes one. Never checked against a body. */
+		template: z.string(),
+		projection: EntryProjectionSchema,
+	})
+	.strict();
+export type EntryKind = z.infer<typeof EntryKindSchema>;
 
 /**
  * Draft for creating a new comment (without id, timestamps)
