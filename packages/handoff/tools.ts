@@ -16,24 +16,27 @@ import { COMPACT_TEMPLATE, HANDOFF_KIND } from "./template";
 /** A recorded handoff: the entry, the issue's label, and how many handoffs came before it. */
 export type HandedOff = { entry: TaskEntry; label: string; earlier: number };
 
+/** The one-line refusal for an id that names no single task: the input, why, and what to give. */
+const notFound = (id: string, cause: string): Result<never> =>
+	err(
+		new Error(
+			`Cannot find the issue ${quoted(id)} (${quoted(cause, 200)}): give its short id (JCAB-12) or its ULID, as list and search show them.`,
+		),
+	);
+
 /**
- * The task `id` names, its short id in any case or its ULID, checked to exist; an error
- * naming the id when nothing has it. Looked up exactly, so a ULID is never taken unchecked
- * and a prefix never matches.
+ * The task `id` names, resolved as every other command resolves one (short id, ULID or a
+ * unique ULID prefix) and checked to exist, since a full ULID resolves unchecked.
  */
 export const findIssue = async (
 	basePath: string,
 	id: string,
 ): Promise<Result<Task>> => {
-	const task = await Planner.getTask(basePath, id.trim().toUpperCase());
+	const resolved = await Planner.resolveTaskId(basePath, id);
+	if (!resolved.ok) return notFound(id, resolved.error.message);
+	const task = await Planner.getTask(basePath, resolved.value);
 	if (!task.ok) return task;
-	return task.value
-		? ok(task.value)
-		: err(
-				new Error(
-					`No task found with ID ${quoted(id)}: give its short id (JCAB-12) or its ULID, as list and search show them.`,
-				),
-			);
+	return task.value ? ok(task.value) : notFound(id, "no task has this ULID");
 };
 
 /**

@@ -107,8 +107,19 @@ it("records an entry of kind handoff by the caller, answers in one line and leav
 	expect(unwrap(await Planner.getTask(base, task.id))).toEqual(task);
 });
 
-it("refuses a blank body and a missing issue in one line, and writes nothing", async () => {
+const NEXT =
+	"give its short id (JCAB-12) or its ULID, as list and search show them.";
+
+/** The longest prefix two ids share: two tasks filed together share their time part. */
+const sharedPrefix = (a: string, b: string): string => {
+	let n = 0;
+	while (n < a.length && a[n] === b[n]) n++;
+	return a.slice(0, n);
+};
+
+it("refuses a blank body and an id that names no single issue in one line, and writes nothing", async () => {
 	const { task, label } = await issue("Read the vendor docs");
+	const { task: other } = await issue("Read the pricing page");
 	const blank = await call("kabane_handoff", { id: label, body: " \n\t" });
 	expect(blank).toEqual({
 		isError: true,
@@ -118,18 +129,43 @@ it("refuses a blank body and a missing issue in one line, and writes nothing", a
 		await call("kabane_handoff", { id: "NOPE-404", body: "### Summary" }),
 	).toEqual({
 		isError: true,
-		text: 'Error: No task found with ID "NOPE-404": give its short id (JCAB-12) or its ULID, as list and search show them.',
+		text: `Error: Cannot find the issue "NOPE-404" ("No task found with ID: NOPE-404"): ${NEXT}`,
 	});
+	const ghost = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 	expect(
-		await call("kabane_handoff", {
-			id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-			body: "### Summary",
-		}),
+		await call("kabane_handoff", { id: ghost, body: "### Summary" }),
 	).toEqual({
 		isError: true,
-		text: 'Error: No task found with ID "01ARZ3NDEKTSV4RRFFQ69G5FAV": give its short id (JCAB-12) or its ULID, as list and search show them.',
+		text: `Error: Cannot find the issue "${ghost}" ("no task has this ULID"): ${NEXT}`,
 	});
+	const prefix = sharedPrefix(task.id, other.id);
+	const ambiguous = await call("kabane_handoff", {
+		id: prefix,
+		body: "### Summary",
+	});
+	expect(ambiguous.isError).toBe(true);
+	expect(ambiguous.text).toStartWith(
+		`Error: Cannot find the issue "${prefix}" ("Ambiguous ID prefix \\"${prefix}\\" matches 2 tasks:\\n`,
+	);
+	expect(ambiguous.text).toEndWith(`): ${NEXT}`);
+	expect(ambiguous.text).not.toContain("\n");
 	expect(unwrap(await Planner.getEntries(base, task.id))).toEqual([]);
+	expect(unwrap(await Planner.getEntries(base, other.id))).toEqual([]);
+});
+
+it("takes a unique ULID prefix, as the other tools do", async () => {
+	const { task, label } = await issue("Read the vendor docs");
+	const { task: other } = await issue("Read the pricing page");
+	const unique = task.id.slice(0, sharedPrefix(task.id, other.id).length + 1);
+	expect(
+		await call("kabane_handoff", { id: unique, body: "### Summary\n\nRead." }),
+	).toEqual({
+		isError: false,
+		text: `${label} handed off · 0 earlier on record`,
+	});
+	expect(
+		unwrap(await Planner.getEntries(base, task.id, { kind: HANDOFF_KIND })),
+	).toHaveLength(1);
 });
 
 it("opens the brief with the latest handoff under the description, framed, counting the earlier ones and keeping them out of the Discussion", async () => {

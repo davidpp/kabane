@@ -138,9 +138,40 @@ it("prints the template, and refuses a blank body, a file it cannot read and a m
 			(await kabane(["handoff", absent, "--from", "body.md"])).exitCode,
 		).toBe(1);
 	}
-	expect((await kabane(["handoff", ghost.toLowerCase()])).text).toBe(
-		`Error: No task found with ID "${ghost.toLowerCase()}": give its short id (JCAB-12) or its ULID, as list and search show them.`,
+	expect((await kabane(["handoff", ghost])).text).toBe(
+		`Error: Cannot find the issue "${ghost}" ("no task has this ULID"): give its short id (JCAB-12) or its ULID, as list and search show them.`,
 	);
+	// Two issues filed together share their ULID's time part: a prefix of it names both.
+	const other = unwrap(
+		await Planner.addTask(home, { title: "Research", kind: "issue" }),
+	);
+	let shared = 0;
+	while (task.id[shared] === other.id[shared]) shared++;
+	const ambiguous = task.id.slice(0, shared);
+	for (const argv of [
+		["handoff", ambiguous],
+		["handoff", ambiguous, "--from", "body.md"],
+	]) {
+		const refused = await kabane(argv);
+		expect(refused.exitCode).toBe(1);
+		expect(refused.text).toStartWith(
+			`Error: Cannot find the issue "${ambiguous}" ("Ambiguous ID prefix`,
+		);
+		expect(refused.text).not.toContain("\n");
+	}
+	expect((await kabane(["handoff", task.id.slice(0, shared + 1)])).text).toBe(
+		`No handoff on ${label}.`,
+	);
+	expect(
+		(
+			await kabane([
+				"handoff",
+				other.id.slice(0, shared + 1),
+				"--from",
+				"body.md",
+			])
+		).text,
+	).toBe(`${other.shortId} handed off · 0 earlier on record`);
 	expect((await kabane(["handoff", label.toLowerCase()])).text).toBe(
 		`No handoff on ${label}.`,
 	);
