@@ -826,6 +826,32 @@ test("Detail's lifted block spends no line on a count it does not have", async (
 	}
 });
 
+test("Detail's band for a plain comment is one row at forty columns, a long name cut before the age", async () => {
+	const task = await seed();
+	const added = await Planner.addComment(TEST_BASE, {
+		taskId: task.id,
+		author: "cabane://actor/agent/claude-sonnet-4-5-20250929-preview",
+		authorType: "ai",
+		content: "Starting on the read path.",
+	});
+	if (!added.ok) throw added.error;
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		tab: "comments",
+		width: 40,
+	});
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("Starting on the read path."),
+		);
+		const lines = rows(frame);
+		const band = lines.findIndex((row) => row.includes("claude-sonnet"));
+		expect(lines[band]).toContain(" claude-sonnet-4-5-2025092… · just now");
+		expect(lines[band + 1]).toContain("Starting on the read path.");
+	} finally {
+		destroy();
+	}
+});
+
 test("Detail's description tab is not empty when a handoff is all it holds", async () => {
 	const task = await seed({ description: "" });
 	const added = await Planner.addEntry(TEST_BASE, {

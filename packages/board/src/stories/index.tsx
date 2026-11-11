@@ -298,7 +298,15 @@ const TIMELINE = [
 	),
 ];
 
-// A handoff from an agent whose actor name is a dated model id, longer than a narrow pane allows.
+// Agents whose actor names are dated model ids, longer than a narrow pane allows: a plain comment,
+// then a handoff.
+const LONG_COMMENT = Fixtures.entry(
+	STEPWISE,
+	3,
+	"comment",
+	"cabane://actor/agent/claude-sonnet-4-5-20250929-preview",
+	"Starting on the read path.",
+);
 const LONG_HANDOFF = Fixtures.entry(
 	STEPWISE,
 	4,
@@ -779,7 +787,7 @@ export const STORIES: readonly Story[] = [
 	{
 		name: "detail-timeline-long-author",
 		about:
-			"the same handoff on the comments tab: its band cuts the name and keeps the kind and the age",
+			"the comments tab at forty columns: each band cuts the long name and keeps the kind and the age",
 		width: 40,
 		height: 16,
 		render: () => (
@@ -787,7 +795,9 @@ export const STORIES: readonly Story[] = [
 				taskId={STEPWISE.id}
 				task={STEPWISE}
 				tab="comments"
-				records={ok(Fixtures.records(STEPWISE, { entries: [LONG_HANDOFF] }))}
+				records={ok(
+					Fixtures.records(STEPWISE, { entries: [LONG_COMMENT, LONG_HANDOFF] }),
+				)}
 				scrollRef={createRef<ScrollBoxRenderable>()}
 			/>
 		),

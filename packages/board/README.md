@@ -473,6 +473,8 @@ any kind a writer names (`kabane comment <id> "…" --kind review`). The board r
 The comments tab is the whole timeline, newest first. An entry that is not a plain comment names
 its kind in its band, between the author and the time: `claude · handoff · 2h ago`. A kind no
 registered module declares is named the same way; a plain comment's band reads `ada · 2h ago`.
+A band is one row and never wraps: when it is too long for the pane, the author's name is cut with
+`…` first, so the kind and the age stay whole (`claude-sonnet-4… · handoff · just now`).
 
 The description tab shows what the brief lifts. For each kind a registered module projects as
 `latest` (the handoff), the issue's newest entry of that kind sits under the description and
