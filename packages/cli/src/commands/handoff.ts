@@ -3,8 +3,10 @@ import { resolve } from "node:path";
 import {
 	ok,
 	Planner,
+	quoted,
 	type Result,
 	type TaskEntry,
+	toError,
 	tryCatch,
 } from "@cabane/core";
 import {
@@ -37,6 +39,12 @@ const valued = (args: ParsedArgs, flag: string): Outcome | undefined =>
 		? undefined
 		: usage(`--${flag} takes no value; put it after the issue`, USAGE);
 
+/** Why a read failed, on one line: its errno code when it has one. */
+const readFailure = (e: unknown): string =>
+	e instanceof Error && "code" in e && typeof e.code === "string"
+		? e.code
+		: quoted(toError(e).message);
+
 /** The markdown body `--from` names, `-` for stdin. */
 const readBody = (from: string, cwd: string): Promise<Result<string>> =>
 	tryCatch(
@@ -46,7 +54,9 @@ const readBody = (from: string, cwd: string): Promise<Result<string>> =>
 				: await readFile(resolve(cwd, from), "utf8"),
 		(e) =>
 			new Error(
-				`Cannot read a handoff from ${from === "-" ? "stdin" : from}: ${e instanceof Error ? e.message : String(e)}`,
+				from === "-"
+					? `Cannot read the handoff from stdin (${readFailure(e)}): pipe the markdown in, or name its file with --from <file>.`
+					: `Cannot read the handoff file ${quoted(from)} (${readFailure(e)}): give the path of a markdown file, or - to read stdin.`,
 			),
 	);
 
@@ -89,7 +99,11 @@ const show = async (id: string, all: boolean, store: string) => {
 	});
 	if (!entries.ok) return failure(entries.error);
 	const latest = entries.value.at(-1);
-	if (!latest) return success({ handoffs: [] }, `No handoff on ${id}.`);
+	if (!latest)
+		return success(
+			{ handoffs: [] },
+			`No handoff on ${task.value.shortId ?? task.value.id}.`,
+		);
 	if (all)
 		return success(
 			{ handoffs: entries.value },
@@ -119,7 +133,10 @@ const formOf = (args: ParsedArgs): Form | Outcome => {
 			: usage("--template takes no issue and no other flag", USAGE);
 	if (!id) return usage("Issue id required", USAGE);
 	if (extra !== undefined)
-		return usage("One issue at a time: drop the arguments after it", USAGE);
+		return usage(
+			`Unexpected ${quoted(extra)} after the issue: handoff takes one issue`,
+			USAGE,
+		);
 	if (!given("from")) return { mode: "show", id, all: flagBool(args, "all") };
 	if (given("all"))
 		return usage(

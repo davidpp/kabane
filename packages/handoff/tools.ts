@@ -4,6 +4,7 @@ import {
 	err,
 	ok,
 	Planner,
+	quoted,
 	type Result,
 	type Task,
 	type TaskEntry,
@@ -15,16 +16,24 @@ import { COMPACT_TEMPLATE, HANDOFF_KIND } from "./template";
 /** A recorded handoff: the entry, the issue's label, and how many handoffs came before it. */
 export type HandedOff = { entry: TaskEntry; label: string; earlier: number };
 
-/** The task `id` names, short id or ULID; an error when there is none. */
+/**
+ * The task `id` names, its short id in any case or its ULID, checked to exist; an error
+ * naming the id when nothing has it. Looked up exactly, so a ULID is never taken unchecked
+ * and a prefix never matches.
+ */
 export const findIssue = async (
 	basePath: string,
 	id: string,
 ): Promise<Result<Task>> => {
-	const resolved = await Planner.resolveTaskId(basePath, id);
-	if (!resolved.ok) return resolved;
-	const task = await Planner.getTask(basePath, resolved.value);
+	const task = await Planner.getTask(basePath, id.trim().toUpperCase());
 	if (!task.ok) return task;
-	return task.value ? ok(task.value) : err(new Error("No task has that ULID."));
+	return task.value
+		? ok(task.value)
+		: err(
+				new Error(
+					`No task found with ID ${quoted(id)}: give its short id (JCAB-12) or its ULID, as list and search show them.`,
+				),
+			);
 };
 
 /**

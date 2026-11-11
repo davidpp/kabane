@@ -127,8 +127,8 @@ it("prints the template, and refuses a blank body, a file it cannot read and a m
 	);
 	const missing = await kabane(["handoff", label, "--from", "nope.md"]);
 	expect(missing.exitCode).toBe(1);
-	expect(missing.text).toStartWith(
-		"Error: Cannot read a handoff from nope.md:",
+	expect(missing.text).toBe(
+		'Error: Cannot read the handoff file "nope.md" (ENOENT): give the path of a markdown file, or - to read stdin.',
 	);
 	const ghost = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 	for (const absent of ["NOPE-1", ghost]) {
@@ -138,8 +138,11 @@ it("prints the template, and refuses a blank body, a file it cannot read and a m
 			(await kabane(["handoff", absent, "--from", "body.md"])).exitCode,
 		).toBe(1);
 	}
-	expect((await kabane(["handoff", ghost])).text).toBe(
-		"Error: No task has that ULID.",
+	expect((await kabane(["handoff", ghost.toLowerCase()])).text).toBe(
+		`Error: No task found with ID "${ghost.toLowerCase()}": give its short id (JCAB-12) or its ULID, as list and search show them.`,
+	);
+	expect((await kabane(["handoff", label.toLowerCase()])).text).toBe(
+		`No handoff on ${label}.`,
 	);
 	for (const conflict of [
 		["handoff", label, "--from"],
@@ -156,6 +159,9 @@ it("prints the template, and refuses a blank body, a file it cannot read and a m
 		expect([conflict, refused.exitCode]).toEqual([conflict, 2]);
 		expect(refused.text).toContain("Usage: kabane handoff <id>");
 	}
+	expect((await kabane(["handoff", label, "extra"])).text).toStartWith(
+		'Error: Unexpected "extra" after the issue: handoff takes one issue\n',
+	);
 	expect((await kabane(["handoff", label, "--all"])).text).toBe(
 		`No handoff on ${label}.`,
 	);

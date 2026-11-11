@@ -95,6 +95,7 @@ export {
 	flatMap,
 	map,
 	ok,
+	quoted,
 	type Result,
 	toError,
 	tryCatch,

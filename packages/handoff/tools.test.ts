@@ -116,13 +116,19 @@ it("refuses a blank body and a missing issue in one line, and writes nothing", a
 	});
 	expect(
 		await call("kabane_handoff", { id: "NOPE-404", body: "### Summary" }),
-	).toEqual({ isError: true, text: "Error: No task found with ID: NOPE-404" });
+	).toEqual({
+		isError: true,
+		text: 'Error: No task found with ID "NOPE-404": give its short id (JCAB-12) or its ULID, as list and search show them.',
+	});
 	expect(
 		await call("kabane_handoff", {
 			id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
 			body: "### Summary",
 		}),
-	).toEqual({ isError: true, text: "Error: No task has that ULID." });
+	).toEqual({
+		isError: true,
+		text: 'Error: No task found with ID "01ARZ3NDEKTSV4RRFFQ69G5FAV": give its short id (JCAB-12) or its ULID, as list and search show them.',
+	});
 	expect(unwrap(await Planner.getEntries(base, task.id))).toEqual([]);
 });
 
