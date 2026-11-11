@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Modules } from "./module";
+import { type KabaneModule, Modules } from "./module";
 import { Runtime } from "./runtime";
 import {
 	AssembleContextOptsSchema,
@@ -13,11 +13,15 @@ export {
 	type ContextSection,
 } from "./schemas/assemble-context";
 /**
- * Canonical core order, then module registration order at each anchor: a
- * module's own sections, then the `<kind>.latest` sections its kinds project.
+ * The brief's section names for `modules`: core's canonical order, then at each anchor
+ * the modules in the order given, a module's own sections before the `<kind>.latest`
+ * sections its kinds project. A host that has not configured the runtime yet (a CLI's
+ * help) passes the modules it will register.
  */
-export const registeredContextSections = (): string[] => {
-	const sections = Runtime.modules().flatMap((module) => [
+export const contextSectionsOf = (
+	modules: readonly KabaneModule[],
+): string[] => {
+	const sections = modules.flatMap((module) => [
 		...(module.contextSections ?? []),
 		...Modules.latestSections(module),
 	]);
@@ -28,6 +32,10 @@ export const registeredContextSections = (): string[] => {
 			.map((section) => section.name),
 	]);
 };
+
+/** The section names of the brief the registered modules make. */
+export const registeredContextSections = (): string[] =>
+	contextSectionsOf(Runtime.modules());
 
 export const ContextPageOptionsSchema = AssembleContextOptsSchema.extend({
 	sections: z

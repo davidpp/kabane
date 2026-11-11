@@ -1,4 +1,8 @@
-import { ContextPageOptionsSchema, Planner } from "@cabane/core";
+import {
+	ContextPageOptionsSchema,
+	contextSectionsOf,
+	Planner,
+} from "@cabane/core";
 import {
 	conciseSuccess,
 	failure,
@@ -9,12 +13,11 @@ import {
 } from "@cabane/extension";
 import { type Command, MODULES } from "../context";
 import { responseFormat } from "../response-format";
-import { briefSections } from "../sections";
 
 export const context: Command = {
 	name: "context",
 	summary: "The assembled brief for a task: the read entrypoint for agents",
-	usage: `kabane context <id> [--no-deref] [--no-subtasks] [--format concise|full] [--sections ${briefSections(MODULES).join(",")}] [--cursor <cursor>]`,
+	usage: `kabane context <id> [--no-deref] [--no-subtasks] [--format concise|full] [--sections ${contextSectionsOf(MODULES).join(",")}] [--cursor <cursor>]`,
 	run: async (args, ctx) => {
 		const input = args.positionals[0];
 		if (!input) return usage("Task ID required", context.usage);

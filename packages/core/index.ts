@@ -13,6 +13,7 @@ export {
 	ContextPageOptionsSchema,
 	ContextPageSchema,
 	type ContextSection,
+	contextSectionsOf,
 	type ContextPage,
 	type ContextPageOptions,
 } from "./context-output";
