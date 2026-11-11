@@ -53,6 +53,10 @@ export const ContextPageSchema = z
 			.object({
 				selectedComplete: z.boolean(),
 				descriptionComplete: z.boolean(),
+				/**
+				 * The Discussion, and every `<kind>.latest` section whose newest entry
+				 * a human wrote, consumed; false while any of them is omitted.
+				 */
 				humanSteeringComplete: z.boolean(),
 				completedSections: z.array(z.string()),
 				remainingSections: z.array(z.string()),

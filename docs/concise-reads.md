@@ -142,8 +142,9 @@ single response repeats earlier instructions:
 
 - `selectedComplete` is true only at the final selected-stream chunk.
 - `descriptionComplete` / `humanSteeringComplete` indicate coverage of the
-  selected description / discussion respectively. Omitted sections are false,
-  not empty. Empty **selected** sections may be complete on the first page.
+  selected description / discussion respectively; steering also needs every
+  `<kind>.latest` section whose newest entry a human wrote. Omitted sections
+  are false, not empty. Empty **selected** sections may be complete on the first page.
 - `completedSections`, `remainingSections`, and `omittedSections` name coverage
   and intentional exclusions. Discussion covers ALL human comments in chronology,
   plus the existing bounded durable machine signal; progress/noise is folded as

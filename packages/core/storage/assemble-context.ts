@@ -619,6 +619,28 @@ export const readContextSections = async (
 	}
 };
 
+/**
+ * The `<kind>.latest` sections whose newest entry a human wrote. Steering a
+ * reader must consume, like the Discussion: a lifted kind takes its entries
+ * out of the Discussion, human-written ones included.
+ */
+export const humanLatestSections = async (
+	basePath: string,
+	taskId: string,
+): Promise<Result<string[]>> => {
+	const human: string[] = [];
+	for (const section of Runtime.modules().flatMap(Modules.latestSections)) {
+		const newest = await PlannerComments.latestEntry(
+			basePath,
+			taskId,
+			section.kind.name,
+		);
+		if (!newest.ok) return newest;
+		if (newest.value?.authorType === "human") human.push(section.name);
+	}
+	return ok(human);
+};
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 export namespace Planner {

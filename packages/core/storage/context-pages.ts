@@ -8,7 +8,7 @@ import {
 } from "../context-output";
 import { err, ok, type Result } from "../result";
 import { serializedBytes } from "../task-output";
-import { readContextSections } from "./assemble-context";
+import { humanLatestSections, readContextSections } from "./assemble-context";
 import { fingerprintText as digest } from "./read-fingerprint";
 import { Planner as Tasks } from "./tasks";
 
@@ -57,6 +57,7 @@ const packContextPage = ({
 	markdown,
 	sections,
 	ends,
+	steering,
 }: {
 	taskId: string;
 	revision: string;
@@ -65,6 +66,8 @@ const packContextPage = ({
 	markdown: string;
 	sections: string[];
 	ends: Map<string, number>;
+	/** The sections holding human steering, or undefined when they could not be read. */
+	steering: readonly string[] | undefined;
 }): Result<ContextPage> => {
 	const envelope = (end: number): ContextPage => {
 		const complete = (section: string) => {
@@ -75,7 +78,8 @@ const packContextPage = ({
 			completeness: {
 				selectedComplete: end === markdown.length,
 				descriptionComplete: complete("description"),
-				humanSteeringComplete: complete("discussion"),
+				humanSteeringComplete:
+					steering !== undefined && steering.every(complete),
 				completedSections: sections.filter(complete),
 				remainingSections: sections.filter((section) => !complete(section)),
 				omittedSections: registeredContextSections().filter(
@@ -202,6 +206,9 @@ export namespace Planner {
 			(offset >= markdown.length || boundary(markdown, offset) !== offset)
 		)
 			return invalidCursor();
+		// A source that cannot be read never blocks a read that left it out; it
+		// only keeps steering from being claimed complete.
+		const humanLatest = await humanLatestSections(basePath, taskId);
 		return packContextPage({
 			taskId,
 			revision: revision.value,
@@ -210,6 +217,9 @@ export namespace Planner {
 			markdown,
 			sections,
 			ends,
+			steering: humanLatest.ok
+				? ["discussion", ...humanLatest.value]
+				: undefined,
 		});
 	};
 }

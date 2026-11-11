@@ -648,6 +648,30 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 		expect(bounded.value.markdown).not.toContain("## Discussion");
 	});
 
+	it("counts a latest section toward human steering only while a human wrote its newest entry", async () => {
+		configureTestRuntime("", { modules: [verdicts] });
+		const id = await createTask({ title: "Steered", kind: "issue" });
+		const steering = async (sections: string[]) => {
+			const page = await Planner.getContextPage(TEST_BASE, id, { sections });
+			if (!page.ok) throw page.error;
+			return page.value.completeness.humanSteeringComplete;
+		};
+		await entry(id, "verdicts", "AI_VERDICT");
+		expect(await steering(["discussion"])).toBe(true);
+
+		const human = await Planner.addEntry(TEST_BASE, {
+			taskId: id,
+			kind: "verdicts",
+			author: "cabane://actor/human/ada",
+			authorType: "human",
+			content: "HUMAN_VERDICT",
+		});
+		if (!human.ok) throw human.error;
+		expect(await steering(["discussion"])).toBe(false);
+		expect(await steering(["verdicts.latest"])).toBe(false);
+		expect(await steering(["discussion", "verdicts.latest"])).toBe(true);
+	});
+
 	it("omits a latest kind's section while the issue has none of its entries", async () => {
 		configureTestRuntime("", { modules: [verdicts] });
 		const id = await createTask({ title: "None yet", kind: "issue" });
