@@ -31,7 +31,8 @@ options: once the issue is filed, ask it on the issue with `kabane_ask`.
 
 **Verify.** The concrete steps and what to observe, under the testing constraints in
 AGENTS.md. List the checks nothing can script (keys, GUIs, a deploy) as manual here, so the
-agent does not try.
+agent does not try. The agent reports each of these in its handoff, and each manual one under
+"Not verified".
 
 **Conventions.** Only what AGENTS.md leaves out for this issue: its territory (the
 paths it owns), and any exception to the project's usual commit or gate rules. Never a branch

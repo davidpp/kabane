@@ -117,15 +117,18 @@ completion notices are easy to read.
 Merge each agent's work as soon as it finishes rather than at the end of the wave. An early merge
 keeps later conflicts small and unblocks dependents sooner. As each agent finishes:
 
-1. Check `git log` for its commits. The report is a summary, and git is the evidence.
+1. Read the issue's handoff (`kabane handoff <id>`, or the brief) beside `git log` for its
+   commits: the handoff is the agent's account, and git is the evidence. An issue with no
+   handoff, or one whose handoff shows no evidence, goes back to its agent with that said, before
+   any merge.
 2. Integrate the branch the way this session's local instructions say to. When they say
    nothing, open a pull request. When two agents' additive edits conflict, keep both.
    When a test module conflicts, it is usually two helpers with the same name: keep one helper
    and both sets of tests.
 3. Run the full gate on the merged result, not just on the branch:
    the Gate section of AGENTS.md, in full.
-4. Remove the agent's working copy, keep its manual-check list, and mark the issue done with
-   `kabane_done`.
+4. Remove the agent's working copy, keep the manual checks its handoff lists as not verified,
+   and mark the issue done with `kabane_done`.
 5. Dispatch whatever that merge unblocked, and tell any agent that was working against a stub.
 
 Anything an agent reports outside its scope, whether a bug it noticed or a workaround it
@@ -149,7 +152,10 @@ Your final report is for someone who did not watch the work happen:
 - what is still running, blocked, or waiting on a decision;
 - the manual checks, numbered, with the testing constraints repeated beside them.
 
-Post the same report as a `kabane_comment` on the parent, so that it outlives this session.
+Record the same report with `kabane_handoff` on the parent, so that it outlives this session:
+the line per issue, the gate's numbers as its evidence, and the numbered manual checks with the
+testing constraints beside them as what is not verified. What is still running, blocked or
+waiting on a decision goes in a `kabane_comment` on the parent instead.
 
 ## Limits every agent is told about
 
