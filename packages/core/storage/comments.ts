@@ -10,7 +10,7 @@
  */
 
 import { monotonicFactory } from "ulid";
-import { err, type Result } from "../result";
+import { err, quoted, type Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 
 import {
@@ -45,7 +45,7 @@ export namespace Planner {
 		if (!ENTRY_KIND_PATTERN.test(draft.kind))
 			return err(
 				new Error(
-					`Entry kind "${draft.kind}" is not valid: use lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "review", "handoff.summary").`,
+					`Entry kind ${quoted(draft.kind)} is not valid: use lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "review", "handoff.summary").`,
 				),
 			);
 		return withDb(basePath, (db) => {

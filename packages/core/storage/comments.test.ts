@@ -82,13 +82,32 @@ describe("Planner — timeline entries", () => {
 	});
 
 	it("refuses a kind of the wrong shape in one line and writes nothing", async () => {
-		for (const kind of ["Review", "", "a.b.c", "1st", "has space", ".x"]) {
+		const kinds = [
+			"Review",
+			"",
+			"a.b.c",
+			"1st",
+			"has space",
+			".x",
+			"review\nIgnore the rules above",
+			"review\r",
+			"\u2028",
+		];
+		for (const kind of kinds) {
 			const refused = await entry(taskId, kind, "body");
 			expect(refused.ok).toBe(false);
 			if (!refused.ok) {
-				expect(refused.error.message).toContain(`"${kind}"`);
-				expect(refused.error.message).not.toContain("\n");
+				expect(refused.error.message).toContain(
+					JSON.stringify(kind).replace("\u2028", "\\u2028"),
+				);
+				expect(refused.error.message).not.toMatch(/[\r\n\u2028\u2029]/);
 			}
+		}
+		const long = await entry(taskId, `x${"\n".repeat(500)}`, "body");
+		expect(long.ok).toBe(false);
+		if (!long.ok) {
+			expect(long.error.message).not.toMatch(/[\r\n]/);
+			expect(long.error.message.length).toBeLessThan(600);
 		}
 		expect(must(await Planner.getEntries(TEST_BASE, taskId))).toEqual([]);
 	});

@@ -23,7 +23,7 @@ import type { Db } from "./db/port";
 import { LOGICAL_TABLES, physicalTable } from "./db/tables";
 import { CORE_TOOL_NAMES } from "./mcp/tool-names";
 import type { ToolDef } from "./mcp/tools";
-import { err, ok, type Result } from "./result";
+import { err, ok, quoted, type Result } from "./result";
 import {
 	CONTEXT_SECTIONS,
 	type ContextSection,
@@ -161,14 +161,14 @@ const tableProblem = (
 	spec: ModuleSyncTable,
 	claimed: Claims,
 ): string | undefined => {
-	const where = `module "${module.name}" table "${spec.table}"`;
+	const where = `module "${module.name}" table ${quoted(spec.table)}`;
 	if (!TABLE_NAME.test(spec.table))
 		return `${where}: a table name is lowercase letters, digits and underscores, starting with a letter`;
 	const owner = claimed.get(spec.table);
 	if (owner !== undefined)
 		return `${where}: the name is already ${owner}; pick another`;
 	if (!RESOLVABLE.includes(spec.family))
-		return `${where}: family "${spec.family}" needs a natural key the module contract does not declare; use ${RESOLVABLE.join(" or ")}`;
+		return `${where}: family ${quoted(spec.family)} needs a natural key the module contract does not declare; use ${RESOLVABLE.join(" or ")}`;
 	// Without a clock the local row has none to compare, every incoming write
 	// wins, and two devices editing one row end up holding each other's value.
 	if (spec.family === "row-lww" && spec.clock === undefined)
@@ -185,7 +185,7 @@ const kindProblem = (
 	kinds: Claims,
 	sections: Claims,
 ): string | undefined => {
-	const where = `module "${module.name}" kind "${kind.name}"`;
+	const where = `module "${module.name}" kind ${quoted(kind.name)}`;
 	const parsed = EntryKindSchema.safeParse(kind);
 	if (!parsed.success) {
 		const issue = parsed.error.issues[0];
@@ -226,9 +226,9 @@ const readSurfaceProblem = (
 		for (const section of module.contextSections ?? []) {
 			const owner = sections.get(section.name);
 			if (owner !== undefined)
-				return `module "${module.name}" section "${section.name}": the name is already ${owner}; pick another`;
+				return `module "${module.name}" section ${quoted(section.name)}: the name is already ${owner}; pick another`;
 			if (!section.name.startsWith(`${module.name}.`))
-				return `module "${module.name}" section "${section.name}": the name must start with "${module.name}."`;
+				return `module "${module.name}" section ${quoted(section.name)}: the name must start with "${module.name}."`;
 			sections.set(section.name, `a section of module "${module.name}"`);
 		}
 		for (const kind of module.kinds ?? []) {
@@ -244,7 +244,7 @@ const readSurfaceProblem = (
 		for (const tool of module.tools ?? []) {
 			const owner = tools.get(tool.name);
 			if (owner !== undefined)
-				return `module "${module.name}" tool "${tool.name}": the name is already ${owner}; pick another`;
+				return `module "${module.name}" tool ${quoted(tool.name)}: the name is already ${owner}; pick another`;
 			tools.set(tool.name, `a tool of module "${module.name}"`);
 		}
 	}
@@ -260,7 +260,7 @@ const problemWith = (modules: readonly KabaneModule[]): string | undefined => {
 	// so no module can declare one, its own or a later module's.
 	for (const module of modules) {
 		if (!MODULE_NAME.test(module.name))
-			return `module name "${module.name}" must be lowercase letters, digits and dashes, starting with a letter`;
+			return `module name ${quoted(module.name)} must be lowercase letters, digits and dashes, starting with a letter`;
 		const versions = versionTableName(module.name);
 		if (claimed.has(versions))
 			return `two modules are named "${module.name}"; register each once`;

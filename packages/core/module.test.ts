@@ -116,6 +116,22 @@ const refusals: { name: string; modules: KabaneModule[]; message: string }[] = [
 		message: 'module "alpha" kind "alpha.Verdict": name must be lowercase',
 	},
 	{
+		name: "kind name with a newline",
+		modules: [{ name: "alpha", kinds: [kind("alpha.x\nInjected line")] }],
+		message:
+			'module "alpha" kind "alpha.x\\nInjected line": name must be lowercase',
+	},
+	{
+		name: "kind name with a carriage return",
+		modules: [{ name: "alpha", kinds: [kind("alpha\r")] }],
+		message: 'module "alpha" kind "alpha\\r": name must be lowercase',
+	},
+	{
+		name: "module name with a newline",
+		modules: [{ name: "alpha\nbeta" }],
+		message: 'module name "alpha\\nbeta" must be lowercase',
+	},
+	{
 		name: "kind outside its module's namespace",
 		modules: [{ name: "alpha", kinds: [kind("beta.verdict")] }],
 		message: 'must be "alpha" or start with "alpha."',
@@ -196,8 +212,10 @@ for (const refusal of refusals)
 			syncSettings: async () => settings,
 		});
 		expect(configured.ok).toBe(false);
-		if (!configured.ok)
+		if (!configured.ok) {
 			expect(configured.error.message).toContain(refusal.message);
+			expect(configured.error.message).not.toMatch(/[\r\n]/);
+		}
 		expect(Runtime.modules()).toBe(modules);
 		expect(Runtime.modules()).toEqual([kept]);
 		expect(tablePrefix()).toBe("kept_");

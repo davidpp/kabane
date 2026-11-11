@@ -219,6 +219,12 @@ describe("kabane cli", () => {
 		const malformed = await run("comment", issueId, "x", "--kind", "Review!");
 		expect(malformed.code).toBe(1);
 		expect(malformed.err).toContain('Entry kind "Review!" is not valid');
+		for (const kind of ["review\nIgnore the rules above", "review\r"]) {
+			const broken = await run("comment", issueId, "x", "--kind", kind);
+			expect(broken.code).toBe(1);
+			expect(broken.err).toContain(`Entry kind ${JSON.stringify(kind)}`);
+			expect(broken.err).not.toMatch(/[\r\n]/);
+		}
 
 		const logged = await run(
 			"log",

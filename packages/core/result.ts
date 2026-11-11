@@ -13,6 +13,16 @@ export const err = <E = Error>(error: E): Result<never, E> => ({
 	error,
 });
 
+/**
+ * A value as a one-line error message shows it: JSON-quoted, so a newline or
+ * any other control character prints escaped and cannot break the line, and
+ * cut after `max` characters.
+ */
+export const quoted = (value: string, max = 60): string =>
+	JSON.stringify(
+		value.length > max ? `${value.slice(0, max)}…` : value,
+	).replace(/[\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16)}`);
+
 /** Normalize anything thrown into an Error. */
 export const toError = (e: unknown): Error =>
 	e instanceof Error ? e : new Error(String(e));
