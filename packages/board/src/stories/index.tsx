@@ -700,6 +700,38 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	{
+		name: "detail-handoff",
+		about:
+			"the latest handoff under the brief, one earlier counted, the checklist below it",
+		width: 40,
+		height: 40,
+		render: () => (
+			<Detail
+				taskId={STEPWISE.id}
+				task={STEPWISE}
+				records={ok(
+					Fixtures.records(STEPWISE, {
+						entries: [
+							Fixtures.entry(
+								STEPWISE,
+								0,
+								"handoff",
+								CLAUDE,
+								"The sessions table and its migration.",
+							),
+							...TIMELINE,
+						],
+						kinds: [...Fixtures.KINDS],
+						checklist: STEPS,
+					}),
+				)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				checklist={BoardChecklist.view(STEPS)}
+				keys={{ context: "detail", situation: { checklist: true } }}
+			/>
+		),
+	},
+	{
 		name: "detail-timeline",
 		about:
 			"the comments tab: a comment, a handoff, and a review no module declares, each kind named",

@@ -474,6 +474,14 @@ The comments tab is the whole timeline, newest first. An entry that is not a pla
 its kind in its band, between the author and the time: `claude · handoff · 2h ago`. A kind no
 registered module declares is named the same way; a plain comment's band reads `ada · 2h ago`.
 
+The description tab shows what the brief lifts. For each kind a registered module projects as
+`latest` (the handoff), the issue's newest entry of that kind sits under the description and
+above the checklist: one line with the kind's title, its author and its age (`handoff · claude ·
+2h ago`), the kind's framing line muted, the body as markdown, and `1 earlier in comments` when
+there are older ones. The kinds come from the host's registered modules, so a host that registered
+none lifts nothing, and an issue with no such entry shows nothing for it. A new entry moves the
+open detail's stamp, so a handoff recorded in a shell shows within one poll.
+
 ## Linked issues
 
 A task can point at one issue in an external tracker. The row says only that it does, with a gray

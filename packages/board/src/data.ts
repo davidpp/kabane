@@ -11,6 +11,7 @@ import {
 import {
 	type AgentActivity,
 	type AgentSession,
+	type EntryKind,
 	err,
 	type ItemKind,
 	ok,
@@ -298,6 +299,9 @@ export namespace BoardData {
 		task: Task;
 		// Its timeline, every kind, oldest first: comments, handoffs, and kinds no module declares.
 		entries: TaskEntry[];
+		// The entry kinds the host's modules declare, in registration order: which of them the
+		// description lifts, and under what title and framing line.
+		kinds: EntryKind[];
 		workLogs: TaskWorkLog[];
 		sessions: SessionRecords[];
 		links: TaskLink[];
@@ -458,6 +462,7 @@ export namespace BoardData {
 		return ok({
 			task: task.value,
 			entries: entries.value,
+			kinds: Runtime.modules().flatMap((module) => module.kinds ?? []),
 			workLogs: workLogs.value,
 			sessions: perSession,
 			links: links.value,

@@ -1,8 +1,8 @@
 /** @jsxImportSource @opentui/react */
 // Detail view for a single task, read as parts rather than one wall. Pinned on a raised block: the
 // title, the task at a glance, what is running on it and where it sits; under it, any question
-// waiting on the human. Then tabs: the description (its checklist, subtasks and curated context
-// under it), the comments and the agent log, one at a time,
+// waiting on the human. Then tabs: the description (its latest handoff, checklist, subtasks and
+// curated context under it), the comments and the agent log, one at a time,
 // scrolled by app.tsx's `scroll` effect (it owns the ref so every key stays in the one useKeyboard
 // handler). DetailModel decides what goes where; this file only draws it. The agent brief is not
 // drawn here: `y` copies it, and it is what an agent reads.
@@ -637,8 +637,9 @@ const TabContent = ({
 // One list under the brief: its heading, its count when it has one, and its rows.
 type DescriptionList = { title: string; count?: string; rows: ReactNode[] };
 
-// The description tab: the brief, then the checklist, the decisions made, the subtasks and the
-// curated context, each a list headed like a bay. The first thing drawn has no blank line above it.
+// The description tab: the brief, then the newest entry of each kind the brief lifts (a handoff),
+// then the checklist, the decisions made, the subtasks and the curated context, each a list headed
+// like a bay. The first thing drawn has no blank line above it.
 const DescriptionTab = ({
 	records,
 	room,
@@ -652,6 +653,7 @@ const DescriptionTab = ({
 }): ReactNode => {
 	const theme = useTheme();
 	const description = records.task.description?.trim();
+	const lifted = DetailModel.lifted(records);
 	const { lines: items, progress, cursor } = checklist;
 	const decisions = DetailModel.decisions(records);
 	const subtasks = DetailModel.subtasks(records);
@@ -687,7 +689,7 @@ const DescriptionTab = ({
 			)),
 		},
 	].filter((list) => list.rows.length > 0);
-	if (!description && lists.length === 0)
+	if (!description && lifted.length === 0 && lists.length === 0)
 		return (
 			<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
 				no description
@@ -696,16 +698,62 @@ const DescriptionTab = ({
 	return (
 		<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
 			{description ? <MarkdownBody content={description} /> : null}
+			{lifted.map((entry, index) => (
+				<LiftedBlock
+					key={entry.id}
+					entry={entry}
+					room={room}
+					first={!description && index === 0}
+				/>
+			))}
 			{lists.map((list, index) => (
 				<Section
 					key={list.title}
 					title={list.title}
 					count={list.count}
-					first={!description && index === 0}
+					first={!description && lifted.length === 0 && index === 0}
 				>
 					{list.rows}
 				</Section>
 			))}
+		</box>
+	);
+};
+
+// An entry the brief lifts, under the description: headed like a list, with the kind's title in
+// Label weight and who wrote it and when muted after a `·`, then the kind's framing line muted, the
+// body as markdown, and, when the kind has older entries, one muted line saying where they are.
+const LiftedBlock = ({
+	entry,
+	room,
+	first,
+}: {
+	entry: DetailModel.LiftedEntry;
+	room: number;
+	first: boolean;
+}): ReactNode => {
+	const theme = useTheme();
+	const heading = [
+		{
+			text: entry.title.toLowerCase(),
+			fg: theme.defaultFg,
+			attributes: TextAttributes.BOLD,
+		},
+		{
+			text: ` · ${entry.author} · ${relativeTime(entry.at)}`,
+			fg: theme.muted,
+		},
+	];
+	return (
+		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
+			<text>{Segments.spans(Segments.fit(heading, room))}</text>
+			<text fg={theme.muted} style={{ maxWidth: PROSE_MEASURE }}>
+				{entry.framing}
+			</text>
+			<MarkdownBody content={entry.body} />
+			{entry.earlier > 0 ? (
+				<text fg={theme.muted}>{`${entry.earlier} earlier in comments`}</text>
+			) : null}
 		</box>
 	);
 };

@@ -700,3 +700,79 @@ test("Detail lists the checklist under the brief with its count, the cursor on t
 		destroy();
 	}
 });
+
+test("Detail lifts the latest handoff between the brief and the checklist at forty columns, counting the earlier one", async () => {
+	const task = await seed({ title: "Handed off" });
+	for (const content of ["The first pass.", "The **second** pass."]) {
+		const added = await Planner.addEntry(TEST_BASE, {
+			taskId: task.id,
+			kind: "handoff",
+			author: "cabane://actor/agent/claude",
+			authorType: "ai",
+			content,
+		});
+		if (!added.ok) throw added.error;
+	}
+	const items = await Checklist.add(TEST_BASE, {
+		id: task.id,
+		items: ["Read it back"],
+	});
+	if (!items.ok) throw items.error;
+	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
+		task,
+		{ width: 40, height: 30 },
+	);
+	try {
+		const frame = await pumpUntil(
+			renderOnce,
+			captureCharFrame,
+			(f) => f.includes("second pass") && f.includes("Read it back"),
+		);
+		const lines = rows(frame);
+		const at = (text: string) => lines.findIndex((row) => row.includes(text));
+		const heading = at(" handoff · claude · just now");
+		expect(heading).toBeGreaterThan(at("The description reads here."));
+		expect(lines[heading + 1]).toContain("The author's own account");
+		expect(at("The second pass.")).toBeGreaterThan(heading);
+		expect(at("1 earlier in comments")).toBeGreaterThan(at("The second pass."));
+		expect(at("checklist · 0/1")).toBeGreaterThan(at("1 earlier in comments"));
+		expect(frame).not.toContain("The first pass.");
+		for (const row of lines)
+			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
+		const spans = captureSpans().lines.flatMap((line) => line.spans);
+		const fg = (text: string) =>
+			spans
+				.find((s) => s.text.includes(text))
+				?.fg.toInts()
+				.slice(0, 3);
+		expect(fg("The author's own account")).toEqual(fg("1 earlier in comments"));
+		expect(fg("The author's own account")).not.toEqual(fg("second"));
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail's description tab is not empty when a handoff is all it holds", async () => {
+	const task = await seed({ description: "" });
+	const added = await Planner.addEntry(TEST_BASE, {
+		taskId: task.id,
+		kind: "handoff",
+		author: "cabane://actor/agent/claude",
+		authorType: "ai",
+		content: "Only a handoff here.",
+	});
+	if (!added.ok) throw added.error;
+	const { renderOnce, captureCharFrame, destroy } = await mount(task);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("Only a handoff here."),
+		);
+		expect(frame).not.toContain("no description");
+		const lines = rows(frame);
+		const bar = lines.findIndex((row) => row.includes("description"));
+		// The handoff is the first thing drawn: no blank line over it beyond the tab bar's own gap.
+		expect(lines[bar + 2]).toContain("handoff · claude");
+	} finally {
+		destroy();
+	}
+});

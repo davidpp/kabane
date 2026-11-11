@@ -1,15 +1,18 @@
-// The detail view as parts: what a task's records say, each record placed once. Pure: records in,
-// the view's content out, so which record lands where is decided and tested without a renderer. The
-// view never reads the agent brief (assembleContext); `y` still copies that.
+// The detail view as parts: what a task's records say, each record placed once, but for an entry
+// the brief lifts, which shows under the description and stays on the comments tab, the record.
+// Pure: records in, the view's content out, so which record lands where is decided and tested
+// without a renderer. The view never reads the agent brief (assembleContext); `y` still copies that.
 //
 // Pinned above the tabs: the task at a glance, where it sits (its subtasks counted there), and any
 // question waiting on a human, a session's or an open decision (BoardDecisions asks those). Then one
-// tab each for the description (with the checklist, the decisions already made, the subtasks and the
-// curated context under it; BoardChecklist draws the checklist's lines), the comments and the agent log. The tabs and the log's sources are
-// lists, so another tab or another kind of log entry is one more item, not a reshape.
+// tab each for the description (with the newest entry of each kind the brief lifts, the checklist,
+// the decisions already made, the subtasks and the curated context under it; BoardChecklist draws
+// the checklist's lines), the comments and the agent log. The tabs and the log's sources are lists,
+// so another tab or another kind of log entry is one more item, not a reshape.
 import {
 	type AgentActivity,
 	answeredQuestion,
+	CONTEXT_SECTIONS,
 	DEFAULT_ENTRY_KIND,
 	isAnswerTo,
 	parseQuestionBody,
@@ -81,6 +84,21 @@ export namespace DetailModel {
 		kind: string;
 		label?: string;
 		uri: string;
+	};
+
+	/**
+	 * A kind's newest entry, lifted under the description as the brief lifts it: the kind's title,
+	 * who wrote it and when, the kind's framing line, the body, and how many older entries of the
+	 * kind the comments tab holds.
+	 */
+	export type LiftedEntry = {
+		id: string;
+		title: string;
+		framing: string;
+		author: string;
+		at: string;
+		body: string;
+		earlier: number;
 	};
 
 	/** A comment author as a name: `cabane://actor/agent/claude` → `claude`. */
@@ -233,6 +251,41 @@ export namespace DetailModel {
 			};
 		});
 
+	/**
+	 * For each declared kind projected as `latest`, its newest entry on the task, in the brief's
+	 * order: by the core section the kind anchors to, then as the modules declare them. A kind with
+	 * no entry on the task lifts nothing.
+	 */
+	export const lifted = (records: BoardData.DetailRecords): LiftedEntry[] =>
+		records.kinds
+			.flatMap((kind) =>
+				kind.projection === "discussion"
+					? []
+					: [{ kind, latest: kind.projection.latest }],
+			)
+			.sort(
+				(a, b) =>
+					CONTEXT_SECTIONS.indexOf(a.latest.after) -
+					CONTEXT_SECTIONS.indexOf(b.latest.after),
+			)
+			.flatMap(({ kind, latest }) => {
+				const ofKind = records.entries.filter((e) => e.kind === kind.name);
+				const newest = ofKind.at(-1);
+				return newest
+					? [
+							{
+								id: newest.id,
+								title: kind.title,
+								framing: latest.framing,
+								author: actorName(newest.author),
+								at: newest.createdAt,
+								body: newest.content.trim(),
+								earlier: ofKind.length - 1,
+							},
+						]
+					: [];
+			});
+
 	/** The decisions made on the task, in the order they were asked. */
 	export const decisions = (records: BoardData.DetailRecords): DecisionLine[] =>
 		records.questions
@@ -383,6 +436,7 @@ export namespace DetailModel {
 		const logged = (records ? log(records).length : 0) + liveCards;
 		const described =
 			Boolean(records?.task.description?.trim()) ||
+			(records ? lifted(records).length : 0) > 0 ||
 			(records?.checklist.length ?? 0) > 0 ||
 			(records ? decisions(records).length : 0) > 0 ||
 			(records?.subtasks.length ?? 0) > 0 ||

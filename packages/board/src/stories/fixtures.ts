@@ -2,6 +2,7 @@
 // same data in both: what a test pins is what David looks at.
 import type { ChecklistItemView } from "@cabane/checklist";
 import { TASK_STATE_DISPLAY, type Task, type TaskEntry } from "@cabane/core";
+import { handoffModule } from "@cabane/handoff";
 import {
 	type DecisionMeta,
 	formatDecisionBody,
@@ -270,6 +271,9 @@ export namespace Fixtures {
 		createdAt: `2026-10-10T${String(n).padStart(2, "0")}:00:00.000Z`,
 	});
 
+	/** The kinds the CLI's modules declare: the handoff, which the brief lifts under the description. */
+	export const KINDS = handoffModule.kinds ?? [];
+
 	/** A task's detail records with nothing on them but `over`. */
 	export const records = (
 		on: Task,
@@ -277,6 +281,7 @@ export namespace Fixtures {
 	): BoardData.DetailRecords => ({
 		task: on,
 		entries: [],
+		kinds: [],
 		workLogs: [],
 		sessions: [],
 		links: [],
