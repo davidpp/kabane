@@ -420,8 +420,9 @@ you name them. Nothing you already have is moved or rewritten.
 A comment now has a kind, and an agent that finishes its part of an issue hands it off
 ([Agents](#agents)). This changes the database: the new version migrates it the first time it
 opens it. Before that, stop every board, `kabane mcp` and loop runner the old version started,
-and back the database up as [subsequent updates](#subsequent-updates) describes. Start them
-again once the new version is in place.
+let a running `kabane sync` finish, stop any app that embeds the old version's core, and back
+the database up as [subsequent updates](#subsequent-updates) describes. Start them again once
+the new version is in place.
 
 - **What is kept.** Every comment, with its author, time and text. Each one becomes a comment
   of kind `comment`.
@@ -443,7 +444,8 @@ again once the new version is in place.
   running from 1.0.0-beta.0 keeps reading and writing the migrated database, still without
   `kabane_handoff`, and reads every entry as a plain comment: its board lists a handoff among
   the comments, and its brief can leave an agent's handoff out, as it does an older agent
-  comment.
+  comment. A sync still running from the old version can send new comments on without their
+  kind, and a device still on the old version then keeps them that way.
 - **What your agents are told.** The Tracker block from 1.0.0-beta.0 has an agent finish with
   `kabane_comment`, which still works but leaves no handoff: replace it with the block under
   [Agents](#agents). A dispatch skill that `/setup-dispatch` wrote with 1.0.0-beta.0 reports the
