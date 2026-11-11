@@ -7,18 +7,20 @@ import {
 	formatTaskDetail,
 	formatWorkLogs,
 } from "../output";
+import { liftedKinds, sectionsOf } from "../sections";
 
 /**
- * Each registered module section's markdown by name, the empty ones left out: core's
- * selected-section renderer, one section at a time, every bounded chunk consumed.
+ * Each registered module section's markdown by name, a lifted kind's `<kind>.latest`
+ * included, the empty ones left out: core's selected-section renderer, one section at a
+ * time, every bounded chunk consumed.
  */
 const moduleSections = async (
 	basePath: string,
 	id: string,
 ): Promise<Result<Record<string, string>>> => {
-	const names = Runtime.modules().flatMap((module) =>
-		(module.contextSections ?? []).map((section) => section.name),
-	);
+	const names = Runtime.modules()
+		.flatMap(sectionsOf)
+		.map((section) => section.name);
 	const sections: Record<string, string> = {};
 	for (const name of names) {
 		let markdown = "";
@@ -61,11 +63,14 @@ export const show: Command = {
 		if (!logs.ok) return failure(logs.error);
 		if (!modules.ok) return failure(modules.error);
 
+		// A lifted kind's entries print as its section below, not a second time here.
+		const lifted = new Set(Runtime.modules().flatMap(liftedKinds));
+		const listed = comments.value.filter((entry) => !lifted.has(entry.kind));
 		const sections = [formatTaskDetail(task.value)];
 		if (links.value.length > 0)
 			sections.push(`\nLinks:\n${formatLinks(id, links.value)}`);
-		if (comments.value.length > 0)
-			sections.push(`\nComments:\n${formatComments(comments.value)}`);
+		if (listed.length > 0)
+			sections.push(`\nComments:\n${formatComments(listed)}`);
 		if (logs.value.length > 0)
 			sections.push(`\nWork log:\n${formatWorkLogs(logs.value)}`);
 

@@ -85,3 +85,49 @@ it("shows registered decisions through the real CLI entry and consumes multiple 
 	expect(Object.keys(sections)).toEqual(["questions.decisions"]);
 	expect(shown.text).toContain(sections["questions.decisions"] ?? "missing");
 });
+
+it("prints a lifted kind's latest entry as its section, and not a second time under Comments", async () => {
+	const home = mkdtempSync(join(tmpdir(), "kabane-show-"));
+	homes.push(home);
+	const env = { KABANE_HOME: home, KABANE_HARNESSES: "" };
+	const kabane = (argv: string[]) => run(argv, env, home);
+	expect(
+		(
+			await kabane([
+				"init",
+				"--actor",
+				"cabane://actor/human/test",
+				"--device",
+				"test",
+			])
+		).exitCode,
+	).toBe(0);
+	const task = unwrap(
+		await Planner.addTask(home, { title: "Find the limits", kind: "issue" }),
+	);
+	await kabane(["comment", task.id, "Check the paid tier too."]);
+	for (const body of ["First findings.", "Three findings."])
+		await kabane(["comment", task.id, body, "--kind", "handoff"]);
+
+	const shown = await kabane(["show", task.id]);
+	expect(shown.exitCode).toBe(0);
+	const { sections, comments } = shown.json as {
+		sections: Record<string, string>;
+		comments: { kind: string }[];
+	};
+	expect(Object.keys(sections)).toEqual(["handoff.latest"]);
+	expect(sections["handoff.latest"]).toContain("Three findings.");
+	expect(sections["handoff.latest"]).toContain(
+		"1 earlier handoff entry on record.",
+	);
+	expect(shown.text).toContain(sections["handoff.latest"] ?? "missing");
+	expect(shown.text).toContain("Check the paid tier too.");
+	expect(shown.text).not.toContain("First findings.");
+	expect(shown.text.match(/Three findings\./g)).toHaveLength(1);
+	// --json keeps the whole timeline: the record, not the view.
+	expect(comments.map((c) => c.kind)).toEqual([
+		"comment",
+		"handoff",
+		"handoff",
+	]);
+});
