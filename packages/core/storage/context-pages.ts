@@ -8,7 +8,7 @@ import {
 } from "../context-output";
 import { err, ok, type Result } from "../result";
 import { serializedBytes } from "../task-output";
-import { humanLatestSections, readContextSections } from "./assemble-context";
+import { readContextSections } from "./assemble-context";
 import { fingerprintText as digest } from "./read-fingerprint";
 import { Planner as Tasks } from "./tasks";
 
@@ -188,7 +188,7 @@ export namespace Planner {
 			true,
 		);
 		if (!rendered.ok) return rendered;
-		const { markdown, ends } = joinContextSections(rendered.value);
+		const { markdown, ends } = joinContextSections(rendered.value.sections);
 		const revision = await digest(JSON.stringify(markdown));
 		if (!revision.ok)
 			return err(
@@ -206,9 +206,6 @@ export namespace Planner {
 			(offset >= markdown.length || boundary(markdown, offset) !== offset)
 		)
 			return invalidCursor();
-		// A source that cannot be read never blocks a read that left it out; it
-		// only keeps steering from being claimed complete.
-		const humanLatest = await humanLatestSections(basePath, taskId);
 		return packContextPage({
 			taskId,
 			revision: revision.value,
@@ -217,9 +214,7 @@ export namespace Planner {
 			markdown,
 			sections,
 			ends,
-			steering: humanLatest.ok
-				? ["discussion", ...humanLatest.value]
-				: undefined,
+			steering: rendered.value.steering,
 		});
 	};
 }

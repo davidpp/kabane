@@ -416,28 +416,43 @@ const sourceRows = <T>(
 			? err(new Error(`Cannot read context ${source}; retry the bounded read.`))
 			: ok([]);
 
+/** The registered sections lifted kinds render as, in registration order. */
+const latestKindSections = (): LatestKindSection[] =>
+	Runtime.modules().flatMap(Modules.latestSections);
+
+/**
+ * The sections holding human steering in one timeline snapshot: the Discussion,
+ * and each `<kind>.latest` section whose newest entry a human wrote, since a
+ * lifted kind takes its entries out of the Discussion, human-written ones
+ * included. Pure over the snapshot, so it agrees with what was rendered from it.
+ */
+export const steeringSections = (timeline: readonly TaskEntry[]): string[] => [
+	"discussion",
+	...latestKindSections()
+		.filter(
+			(section) =>
+				timeline.findLast((e) => e.kind === section.kind.name)?.authorType ===
+				"human",
+		)
+		.map((section) => section.name),
+];
+
 /**
  * A kind projected as `latest`: its newest entry under the kind's title, author
  * and time as the Discussion prints them, the framing line, the body verbatim,
  * and a count of the older entries it supersedes. Null when there is none.
  */
-const renderLatestSection = async (
+const renderLatestSection = (
 	section: LatestKindSection,
-	basePath: string,
-	task: Task,
+	timeline: Result<TaskEntry[]>,
 	strict: boolean,
-): Promise<Result<string | null>> => {
-	const entries = sourceRows(
-		await PlannerComments.getEntries(basePath, task.id, {
-			kind: section.kind.name,
-		}),
-		section.name,
-		strict,
-	);
+): Result<string | null> => {
+	const entries = sourceRows(timeline, section.name, strict);
 	if (!entries.ok) return entries;
-	const newest = entries.value.at(-1);
+	const ofKind = entries.value.filter((e) => e.kind === section.kind.name);
+	const newest = ofKind.at(-1);
 	if (newest === undefined) return ok(null);
-	const earlier = entries.value.length - 1;
+	const earlier = ofKind.length - 1;
 	return ok(
 		[
 			`## ${section.kind.title} from ${newest.author} · ${newest.createdAt}`,
@@ -473,8 +488,42 @@ const renderModuleSection = async (
 	}
 };
 
+/**
+ * The Discussion from one timeline snapshot (`readContextSections`): plain
+ * comments under their rules, typed entries kept, merged with the sessions'
+ * durable activities.
+ */
+const renderDiscussion = async (
+	basePath: string,
+	task: Task,
+	opts: ResolvedAssembleContextOpts,
+	timeline: Result<TaskEntry[]>,
+	strict: boolean,
+): Promise<Result<string | null>> => {
+	const sessionsR = await PlannerSessions.querySessions(basePath, {
+		taskId: task.id,
+	});
+	const entries = sourceRows(timeline, "discussion comments", strict);
+	if (!entries.ok) return entries;
+	const sessions = sourceRows(sessionsR, "discussion sessions", strict);
+	if (!sessions.ok) return sessions;
+	const comments = entries.value.filter((e) => e.kind === DEFAULT_ENTRY_KIND);
+	const machine =
+		sessions.value.length > 0
+			? await sessionActivityEntries(basePath, sessions.value, strict)
+			: ok(lastAiCommentEntries(comments));
+	if (!machine.ok) return machine;
+	return ok(
+		discussionSection(
+			[...humanCommentEntries(comments), ...typedEntries(entries.value)],
+			machine.value,
+			opts,
+		),
+	);
+};
+
 const renderCoreSection = async (
-	section: ContextSection,
+	section: Exclude<ContextSection, "discussion">,
 	basePath: string,
 	task: Task,
 	opts: ResolvedAssembleContextOpts,
@@ -534,66 +583,65 @@ const renderCoreSection = async (
 			);
 			return logs.ok ? ok(priorWorkSection(logs.value)) : logs;
 		}
-		case "discussion": {
-			const [entriesR, sessionsR] = await Promise.all([
-				PlannerComments.getEntries(basePath, task.id),
-				PlannerSessions.querySessions(basePath, { taskId: task.id }),
-			]);
-			const entries = sourceRows(entriesR, "discussion comments", strict);
-			if (!entries.ok) return entries;
-			const sessions = sourceRows(sessionsR, "discussion sessions", strict);
-			if (!sessions.ok) return sessions;
-			const comments = entries.value.filter(
-				(e) => e.kind === DEFAULT_ENTRY_KIND,
-			);
-			const machine =
-				sessions.value.length > 0
-					? await sessionActivityEntries(basePath, sessions.value, strict)
-					: ok(lastAiCommentEntries(comments));
-			if (!machine.ok) return machine;
-			return ok(
-				discussionSection(
-					[...humanCommentEntries(comments), ...typedEntries(entries.value)],
-					machine.value,
-					opts,
-				),
-			);
-		}
 	}
 };
 
-/** Shared renderer: full reads degrade; bounded reads require selected sources. */
+/**
+ * What a read rendered, and the sections holding human steering, both from one
+ * snapshot of the timeline. `steering` is undefined when the timeline could not
+ * be read: steering cannot be claimed, but a read that left it out still works.
+ */
+type RenderedContext = {
+	sections: RenderedSection[];
+	steering: string[] | undefined;
+};
+
+/**
+ * Shared renderer: full reads degrade; bounded reads require selected sources.
+ * The timeline is read once, so the Discussion, each `<kind>.latest` section
+ * and the steering they make up all come from the same entries.
+ */
 export const readContextSections = async (
 	basePath: string,
 	task: Task,
 	opts: ResolvedAssembleContextOpts,
 	sections: readonly string[],
 	strict: boolean,
-): Promise<Result<RenderedSection[]>> => {
+): Promise<Result<RenderedContext>> => {
 	const registeredModules = new Map(
 		Runtime.modules()
 			.flatMap((module) => module.contextSections ?? [])
 			.map((section) => [section.name, section]),
 	);
 	const latestKinds = new Map(
-		Runtime.modules()
-			.flatMap(Modules.latestSections)
-			.map((section) => [section.name, section]),
+		latestKindSections().map((section) => [section.name, section]),
 	);
+	// Only the Discussion and the lifted sections read the timeline. A read
+	// without the Discussion cannot claim the steering whatever it holds, so it
+	// needs no snapshot to say so.
+	const needsTimeline = sections.some(
+		(section) => section === "discussion" || latestKinds.has(section),
+	);
+	const timeline: Result<TaskEntry[]> | undefined = needsTimeline
+		? await PlannerComments.getEntries(basePath, task.id)
+		: undefined;
+	const snapshot: Result<TaskEntry[]> = timeline ?? ok([]);
 	const render = async (section: string): Promise<Result<string | null>> => {
 		const contribution = registeredModules.get(section);
 		if (contribution)
 			return renderModuleSection(contribution, basePath, task, opts, strict);
 		const latest = latestKinds.get(section);
-		if (latest) return renderLatestSection(latest, basePath, task, strict);
+		if (latest) return renderLatestSection(latest, snapshot, strict);
 		const core = ContextSectionSchema.safeParse(section);
-		if (core.success)
-			return renderCoreSection(core.data, basePath, task, opts, strict);
-		return err(
-			new Error(
-				`Valid sections: ${registeredContextSections().join(", ")}. Unknown section (excerpt): ${section.slice(0, 80)}`,
-			),
-		);
+		if (!core.success)
+			return err(
+				new Error(
+					`Valid sections: ${registeredContextSections().join(", ")}. Unknown section (excerpt): ${section.slice(0, 80)}`,
+				),
+			);
+		return core.data === "discussion"
+			? renderDiscussion(basePath, task, opts, snapshot, strict)
+			: renderCoreSection(core.data, basePath, task, opts, strict);
 	};
 	try {
 		const rendered = await Promise.all(
@@ -607,7 +655,15 @@ export const readContextSections = async (
 			if (!result.ok) return result;
 			output.push({ section, markdown: result.value });
 		}
-		return ok(output);
+		return ok({
+			sections: output,
+			steering:
+				timeline === undefined
+					? ["discussion"]
+					: timeline.ok
+						? steeringSections(timeline.value)
+						: undefined,
+		});
 	} catch (e) {
 		return err(
 			strict
@@ -617,28 +673,6 @@ export const readContextSections = async (
 					: new Error(String(e)),
 		);
 	}
-};
-
-/**
- * The `<kind>.latest` sections whose newest entry a human wrote. Steering a
- * reader must consume, like the Discussion: a lifted kind takes its entries
- * out of the Discussion, human-written ones included.
- */
-export const humanLatestSections = async (
-	basePath: string,
-	taskId: string,
-): Promise<Result<string[]>> => {
-	const human: string[] = [];
-	for (const section of Runtime.modules().flatMap(Modules.latestSections)) {
-		const newest = await PlannerComments.latestEntry(
-			basePath,
-			taskId,
-			section.kind.name,
-		);
-		if (!newest.ok) return newest;
-		if (newest.value?.authorType === "human") human.push(section.name);
-	}
-	return ok(human);
 };
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -686,7 +720,7 @@ export namespace Planner {
 				);
 				if (!sections.ok) return sections;
 				return ok(
-					sections.value
+					sections.value.sections
 						.flatMap(({ markdown }) => (markdown === null ? [] : [markdown]))
 						.join("\n\n"),
 				);
