@@ -40,6 +40,8 @@ For project, code, or pull-request reviews, use
 `.agents/skills/review-oss-typescript/SKILL.md` and judge the repository as a
 public TypeScript project.
 
+Before implementing a change, whatever its size, use `.agents/skills/dispatch/SKILL.md`.
+
 ## Gate
 
 ```bash
