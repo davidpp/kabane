@@ -3,8 +3,7 @@
  *
  * An issue's timeline is a list of entries: a kind, an author, a time and a
  * markdown body kabane never parses. A comment is an entry of kind `comment`,
- * the default; the comment types below are what the entry types were before
- * kinds, kept for the hosts compiled against them.
+ * the default, and a `TaskComment` is such an entry without the `kind` field.
  */
 
 import { z } from "zod";
