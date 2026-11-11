@@ -273,6 +273,48 @@ const STEPS = [
 	Fixtures.item(STEPWISE, 4, "Drop the in-memory map"),
 ];
 
+// Its timeline: a person's comment, the agent's handoff, and a review in a kind no module declares.
+const TIMELINE = [
+	Fixtures.entry(
+		STEPWISE,
+		1,
+		"comment",
+		"ada",
+		"Keep the map until the store reads back.",
+	),
+	Fixtures.entry(
+		STEPWISE,
+		2,
+		"handoff",
+		CLAUDE,
+		"## Summary\n\nThe store writes through on every change; reading it back on startup is next.\n\n## Not verified\n\n- a restart under load",
+	),
+	Fixtures.entry(
+		STEPWISE,
+		3,
+		"review",
+		"cabane://actor/agent/codex",
+		"The migration is idempotent. `write` misses one error path.",
+	),
+];
+
+// Agents whose actor names are dated model ids, longer than a narrow pane allows: a plain comment,
+// then a handoff.
+const LONG_COMMENT = Fixtures.entry(
+	STEPWISE,
+	3,
+	"comment",
+	"cabane://actor/agent/claude-sonnet-4-5-20250929-preview",
+	"Starting on the read path.",
+);
+const LONG_HANDOFF = Fixtures.entry(
+	STEPWISE,
+	4,
+	"handoff",
+	"cabane://actor/agent/claude-sonnet-4-20250514",
+	"Picked up where the first pass stopped.",
+);
+
 // Checklist progress on the board's rows: one under way, one complete.
 const PROGRESS = new Map([
 	["n1", { done: 2, total: 4 }],
@@ -671,6 +713,92 @@ export const STORIES: readonly Story[] = [
 				scrollRef={createRef<ScrollBoxRenderable>()}
 				checklist={BoardChecklist.view(STEPS)}
 				keys={{ context: "detail", situation: { checklist: true } }}
+			/>
+		),
+	},
+	{
+		name: "detail-handoff",
+		about:
+			"the latest handoff under the brief, one earlier counted, the checklist below it",
+		width: 40,
+		height: 40,
+		render: () => (
+			<Detail
+				taskId={STEPWISE.id}
+				task={STEPWISE}
+				records={ok(
+					Fixtures.records(STEPWISE, {
+						entries: [
+							Fixtures.entry(
+								STEPWISE,
+								0,
+								"handoff",
+								CLAUDE,
+								"The sessions table and its migration.",
+							),
+							...TIMELINE,
+						],
+						kinds: [...Fixtures.KINDS],
+						checklist: STEPS,
+					}),
+				)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				checklist={BoardChecklist.view(STEPS)}
+				keys={{ context: "detail", situation: { checklist: true } }}
+			/>
+		),
+	},
+	{
+		name: "detail-timeline",
+		about:
+			"the comments tab: a comment, a handoff, and a review no module declares, each kind named",
+		width: 40,
+		height: 30,
+		render: () => (
+			<Detail
+				taskId={STEPWISE.id}
+				task={STEPWISE}
+				tab="comments"
+				records={ok(Fixtures.records(STEPWISE, { entries: TIMELINE }))}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
+		name: "detail-handoff-long-author",
+		about:
+			"a handoff whose author's name outruns forty columns: the name is cut, the age kept",
+		width: 40,
+		height: 24,
+		render: () => (
+			<Detail
+				taskId={STEPWISE.id}
+				task={STEPWISE}
+				records={ok(
+					Fixtures.records(STEPWISE, {
+						entries: [LONG_HANDOFF],
+						kinds: [...Fixtures.KINDS],
+					}),
+				)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
+		name: "detail-timeline-long-author",
+		about:
+			"the comments tab at forty columns: each band cuts the long name and keeps the kind and the age",
+		width: 40,
+		height: 16,
+		render: () => (
+			<Detail
+				taskId={STEPWISE.id}
+				task={STEPWISE}
+				tab="comments"
+				records={ok(
+					Fixtures.records(STEPWISE, { entries: [LONG_COMMENT, LONG_HANDOFF] }),
+				)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
 			/>
 		),
 	},

@@ -2,8 +2,9 @@ import { describe, expect, it } from "bun:test";
 import type {
 	AgentActivity,
 	AgentSession,
+	EntryKind,
 	Task,
-	TaskComment,
+	TaskEntry,
 	TaskWorkLog,
 } from "@cabane/core";
 import type { BoardData } from "./data";
@@ -24,9 +25,10 @@ const task = (over: Partial<Task> = {}): Task => ({
 	...over,
 });
 
-const comment = (over: Partial<TaskComment>): TaskComment => ({
+const entry = (over: Partial<TaskEntry>): TaskEntry => ({
 	id: "c",
 	taskId: "t1",
+	kind: "comment",
 	author: "david",
 	authorType: "human",
 	content: "a comment",
@@ -70,7 +72,8 @@ const records = (
 	over: Partial<BoardData.DetailRecords> = {},
 ): BoardData.DetailRecords => ({
 	task: task(),
-	comments: [],
+	entries: [],
+	kinds: [],
 	workLogs: [],
 	sessions: [],
 	links: [],
@@ -283,17 +286,132 @@ describe("position", () => {
 	});
 });
 
-describe("comments", () => {
-	it("keeps every comment, newest first", () => {
-		const said = DetailModel.comments(
+describe("timeline", () => {
+	it("keeps every entry, newest first, typed ones and lifted ones too", () => {
+		const said = DetailModel.timeline(
 			records({
-				comments: [
-					comment({ id: "old", createdAt: "2026-09-20T10:00:00.000Z" }),
-					comment({ id: "new", createdAt: "2026-09-22T10:00:00.000Z" }),
+				entries: [
+					entry({ id: "old", createdAt: "2026-09-20T10:00:00.000Z" }),
+					entry({
+						id: "handoff",
+						kind: "handoff",
+						createdAt: "2026-09-21T10:00:00.000Z",
+					}),
+					entry({ id: "new", createdAt: "2026-09-22T10:00:00.000Z" }),
 				],
 			}),
 		);
-		expect(said.map((c) => c.id)).toEqual(["new", "old"]);
+		expect(said.map((e) => e.id)).toEqual(["new", "handoff", "old"]);
+	});
+
+	it("puts the higher id first when two entries share a millisecond, as the lifted block does", () => {
+		const tied = records({
+			kinds: [
+				{
+					name: "handoff",
+					title: "Handoff",
+					template: "",
+					projection: { latest: { after: "description", framing: "f" } },
+				},
+			],
+			entries: [
+				entry({ id: "01A", kind: "handoff", content: "first" }),
+				entry({ id: "01B", kind: "handoff", content: "second" }),
+			],
+		});
+		expect(DetailModel.timeline(tied).map((e) => e.content)).toEqual([
+			"second",
+			"first",
+		]);
+		expect(DetailModel.lifted(tied)[0]?.body).toBe("second");
+	});
+
+	it("labels an entry with its kind, declared or not, and a plain comment with none", () => {
+		expect(DetailModel.kindLabel(entry({ kind: "handoff" }))).toBe("handoff");
+		expect(DetailModel.kindLabel(entry({ kind: "review" }))).toBe("review");
+		expect(DetailModel.kindLabel(entry({}))).toBeUndefined();
+	});
+});
+
+describe("lifted", () => {
+	const latest = (
+		name: string,
+		after: "description" | "discussion",
+	): EntryKind => ({
+		name,
+		title: name === "handoff" ? "Handoff" : "Verdict",
+		template: "",
+		projection: { latest: { after, framing: `What a ${name} is.` } },
+	});
+	const HANDOFF = latest("handoff", "description");
+	const at = (hour: number) => `2026-09-21T${hour}:00:00.000Z`;
+
+	it("lifts each latest kind's newest entry, counting the older ones, by the brief's anchors", () => {
+		const lifted = DetailModel.lifted(
+			records({
+				kinds: [
+					latest("verdict", "discussion"),
+					HANDOFF,
+					{ ...latest("review", "discussion"), projection: "discussion" },
+				],
+				entries: [
+					entry({ id: "h1", kind: "handoff", createdAt: at(10) }),
+					entry({ id: "v1", kind: "verdict", createdAt: at(11) }),
+					entry({ id: "r1", kind: "review", createdAt: at(12) }),
+					entry({
+						id: "h2",
+						kind: "handoff",
+						author: "cabane://actor/agent/claude",
+						content: "  the newer one\n",
+						createdAt: at(13),
+					}),
+					entry({ id: "c1", createdAt: at(14) }),
+				],
+			}),
+		);
+		expect(lifted).toEqual([
+			{
+				id: "h2",
+				title: "Handoff",
+				framing: "What a handoff is.",
+				author: "claude",
+				at: at(13),
+				body: "the newer one",
+				earlier: 1,
+			},
+			{
+				id: "v1",
+				title: "Verdict",
+				framing: "What a verdict is.",
+				author: "david",
+				at: at(11),
+				body: "a comment",
+				earlier: 0,
+			},
+		]);
+	});
+
+	it("lifts nothing for a kind no entry has, or when no module declares a latest kind", () => {
+		expect(DetailModel.lifted(records({ kinds: [HANDOFF] }))).toEqual([]);
+		expect(
+			DetailModel.lifted(
+				records({ entries: [entry({ kind: "handoff", createdAt: at(10) })] }),
+			),
+		).toEqual([]);
+	});
+
+	it("counts a lifted entry as the description tab's content", () => {
+		const handedOff = records({
+			kinds: [HANDOFF],
+			entries: [entry({ kind: "handoff" })],
+		});
+		expect(DetailModel.tabs(handedOff)[0]).toEqual({
+			tab: "description",
+			empty: false,
+		});
+		expect(
+			DetailModel.tabs(records({ entries: [entry({ kind: "handoff" })] }))[0],
+		).toEqual({ tab: "description", empty: true });
 	});
 });
 
@@ -424,7 +542,7 @@ describe("tabs and the tab bar", () => {
 			DetailModel.tabs(
 				records({
 					task: task({ description: "Some words." }),
-					comments: [comment({ id: "c1" }), comment({ id: "c2" })],
+					entries: [entry({ id: "c1" }), entry({ id: "c2" })],
 				}),
 				1,
 			),

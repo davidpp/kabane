@@ -1,7 +1,8 @@
 // Made-up props the render tests and the gallery's stories share, so a component is drawn from the
 // same data in both: what a test pins is what David looks at.
 import type { ChecklistItemView } from "@cabane/checklist";
-import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import { TASK_STATE_DISPLAY, type Task, type TaskEntry } from "@cabane/core";
+import { handoffModule } from "@cabane/handoff";
 import {
 	type DecisionMeta,
 	formatDecisionBody,
@@ -250,13 +251,37 @@ export namespace Fixtures {
 		shortId: on.shortId,
 	});
 
+	/**
+	 * The `n`th entry on `on`'s timeline, `n` hours into the day, so a later `n` is a newer entry.
+	 * An author that is a bare name is a person; an actor URI is an agent.
+	 */
+	export const entry = (
+		on: Task,
+		n: number,
+		kind: string,
+		author: string,
+		content: string,
+	): TaskEntry => ({
+		id: `01H00000000000000000000E${n}0`,
+		taskId: on.id,
+		kind,
+		author,
+		authorType: author.startsWith("cabane://actor/agent/") ? "ai" : "human",
+		content,
+		createdAt: `2026-10-10T${String(n).padStart(2, "0")}:00:00.000Z`,
+	});
+
+	/** The kinds the CLI's modules declare: the handoff, which the brief lifts under the description. */
+	export const KINDS = handoffModule.kinds ?? [];
+
 	/** A task's detail records with nothing on them but `over`. */
 	export const records = (
 		on: Task,
 		over: Partial<BoardData.DetailRecords> = {},
 	): BoardData.DetailRecords => ({
 		task: on,
-		comments: [],
+		entries: [],
+		kinds: [],
 		workLogs: [],
 		sessions: [],
 		links: [],

@@ -1,12 +1,12 @@
 /** @jsxImportSource @opentui/react */
 // Detail view for a single task, read as parts rather than one wall. Pinned on a raised block: the
 // title, the task at a glance, what is running on it and where it sits; under it, any question
-// waiting on the human. Then tabs: the description (its checklist, subtasks and curated context
-// under it), the comments and the agent log, one at a time,
+// waiting on the human. Then tabs: the description (its latest handoff, checklist, subtasks and
+// curated context under it), the comments and the agent log, one at a time,
 // scrolled by app.tsx's `scroll` effect (it owns the ref so every key stays in the one useKeyboard
 // handler). DetailModel decides what goes where; this file only draws it. The agent brief is not
 // drawn here: `y` copies it, and it is what an agent reads.
-import type { Result, TaskComment } from "@cabane/core";
+import type { Result, TaskEntry } from "@cabane/core";
 import {
 	BoxRenderable,
 	type MarkdownOptions,
@@ -596,11 +596,16 @@ const TabContent = ({
 				/>
 			);
 		case "comments": {
-			const comments = DetailModel.comments(records);
-			return comments.length > 0 ? (
+			const entries = DetailModel.timeline(records);
+			return entries.length > 0 ? (
 				<box style={{ flexDirection: "column" }}>
-					{comments.map((c, index) => (
-						<CommentBlock key={c.id} comment={c} first={index === 0} />
+					{entries.map((entry, index) => (
+						<EntryBlock
+							key={entry.id}
+							entry={entry}
+							first={index === 0}
+							room={room}
+						/>
 					))}
 				</box>
 			) : (
@@ -637,8 +642,9 @@ const TabContent = ({
 // One list under the brief: its heading, its count when it has one, and its rows.
 type DescriptionList = { title: string; count?: string; rows: ReactNode[] };
 
-// The description tab: the brief, then the checklist, the decisions made, the subtasks and the
-// curated context, each a list headed like a bay. The first thing drawn has no blank line above it.
+// The description tab: the brief, then the newest entry of each kind the brief lifts (a handoff),
+// then the checklist, the decisions made, the subtasks and the curated context, each a list headed
+// like a bay. The first thing drawn has no blank line above it.
 const DescriptionTab = ({
 	records,
 	room,
@@ -652,6 +658,7 @@ const DescriptionTab = ({
 }): ReactNode => {
 	const theme = useTheme();
 	const description = records.task.description?.trim();
+	const lifted = DetailModel.lifted(records);
 	const { lines: items, progress, cursor } = checklist;
 	const decisions = DetailModel.decisions(records);
 	const subtasks = DetailModel.subtasks(records);
@@ -687,7 +694,7 @@ const DescriptionTab = ({
 			)),
 		},
 	].filter((list) => list.rows.length > 0);
-	if (!description && lists.length === 0)
+	if (!description && lifted.length === 0 && lists.length === 0)
 		return (
 			<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
 				no description
@@ -696,16 +703,71 @@ const DescriptionTab = ({
 	return (
 		<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
 			{description ? <MarkdownBody content={description} /> : null}
+			{lifted.map((entry, index) => (
+				<LiftedBlock
+					key={entry.id}
+					entry={entry}
+					room={room}
+					first={!description && index === 0}
+				/>
+			))}
 			{lists.map((list, index) => (
 				<Section
 					key={list.title}
 					title={list.title}
 					count={list.count}
-					first={!description && index === 0}
+					first={!description && lifted.length === 0 && index === 0}
 				>
 					{list.rows}
 				</Section>
 			))}
+		</box>
+	);
+};
+
+// An entry the brief lifts, under the description: headed like a list, with the kind's title in
+// Label weight and who wrote it and when muted after a `·`, the age held whole and a long name cut
+// before it; then the kind's framing line muted, the body as markdown, and, when the kind has older
+// entries, one muted line saying where they are. A blank line sets the body apart from the framing
+// and the count from the body; a part that is not there takes no line.
+const LiftedBlock = ({
+	entry,
+	room,
+	first,
+}: {
+	entry: DetailModel.LiftedEntry;
+	room: number;
+	first: boolean;
+}): ReactNode => {
+	const theme = useTheme();
+	const heading = Segments.fitHolding(
+		[
+			{
+				text: entry.title.toLowerCase(),
+				fg: theme.defaultFg,
+				attributes: TextAttributes.BOLD,
+			},
+			{ text: ` · ${entry.author}`, fg: theme.muted },
+		],
+		[{ text: ` · ${relativeTime(entry.at)}`, fg: theme.muted }],
+		room,
+	);
+	return (
+		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
+			<text>{Segments.spans(heading)}</text>
+			<text fg={theme.muted} style={{ maxWidth: PROSE_MEASURE }}>
+				{entry.framing}
+			</text>
+			{entry.body ? (
+				<box style={{ marginTop: 1 }}>
+					<MarkdownBody content={entry.body} />
+				</box>
+			) : null}
+			{entry.earlier > 0 ? (
+				<text fg={theme.muted} style={{ marginTop: 1 }}>
+					{`${entry.earlier} earlier in comments`}
+				</text>
+			) : null}
 		</box>
 	);
 };
@@ -902,19 +964,43 @@ const LogRow = ({
 	);
 };
 
-// One comment: who and when on a raised band, what they said, whole, under it on the terminal's own
-// background, where the description reads too. The band is the seam between two comments; a body
+// One entry: who and when on a raised band, what they said, whole, under it on the terminal's own
+// background, where the description reads too. The band is the seam between two entries; a body
 // on the band's surface would leave nothing to tell them, or their code, apart. A human and an
-// agent are told apart by name and weight: a person's name is bold.
-const CommentBlock = ({
-	comment,
+// agent are told apart by name and weight: a person's name is bold. An entry that is not a plain
+// comment names its kind between the author and the time, a word rather than a hue. The band is one
+// row: a long name is cut, and the kind and the age after it are held whole.
+const EntryBlock = ({
+	entry,
 	first,
+	room,
 }: {
-	comment: TaskComment;
+	entry: TaskEntry;
 	first: boolean;
+	room: number;
 }): ReactNode => {
 	const theme = useTheme();
-	const human = comment.authorType === "human";
+	const kind = DetailModel.kindLabel(entry);
+	const band = Segments.fitHolding(
+		[
+			{
+				text: DetailModel.actorName(entry.author),
+				fg: theme.text,
+				attributes:
+					entry.authorType === "human" ? TextAttributes.BOLD : undefined,
+			},
+		],
+		[
+			...(kind
+				? [
+						{ text: " · ", fg: theme.muted },
+						{ text: kind, fg: theme.text },
+					]
+				: []),
+			{ text: ` · ${relativeTime(entry.createdAt)}`, fg: theme.muted },
+		],
+		room,
+	);
 	return (
 		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
 			<box
@@ -924,15 +1010,10 @@ const CommentBlock = ({
 					paddingRight: 1,
 				}}
 			>
-				<text fg={theme.text}>
-					<span attributes={human ? TextAttributes.BOLD : undefined}>
-						{DetailModel.actorName(comment.author)}
-					</span>
-					<span fg={theme.muted}> · {relativeTime(comment.createdAt)}</span>
-				</text>
+				<text>{Segments.spans(band)}</text>
 			</box>
 			<box style={{ paddingLeft: CONTENT_INSET }}>
-				<MarkdownBody content={comment.content.trim()} />
+				<MarkdownBody content={entry.content.trim()} />
 			</box>
 		</box>
 	);

@@ -34,6 +34,20 @@ export namespace Segments {
 		return fitted;
 	};
 
+	/**
+	 * `fit`, with `held` kept whole at the row's end: the parts ahead of it are cut to leave it room,
+	 * so a long name never takes the age or the kind that follows it. When `held` alone is wider than
+	 * the room, the parts ahead go and `held` is cut like any other line, so the row never overflows.
+	 */
+	export const fitHolding = (
+		segments: readonly Segment[],
+		held: readonly Segment[],
+		room: number,
+	): Segment[] => {
+		const left = room - plain(held).length;
+		return left < 0 ? fit(held, room) : [...fit(segments, left), ...held];
+	};
+
 	// A part wraps under the column it started at unless that leaves it less than this; then it
 	// starts again at the row's left edge.
 	const MIN_HANG = 8;

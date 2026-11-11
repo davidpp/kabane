@@ -545,6 +545,34 @@ describe("BoardData", () => {
 			if (!records.ok) throw records.error;
 			expect(BoardData.recordsStamp(records.value)).toBe(await stampNow(id));
 		});
+
+		it("moves for a second handoff, so an open detail lifts the newer one within a poll", async () => {
+			const added = await Planner.addTask(TEST_BASE, draft());
+			if (!added.ok) throw added.error;
+			const id = added.value.id;
+			const handOff = (content: string) =>
+				Planner.addEntry(TEST_BASE, {
+					taskId: id,
+					kind: "handoff",
+					author: "cabane://actor/agent/claude",
+					authorType: "ai",
+					content,
+				});
+			await handOff("first pass");
+			const first = await stampNow(id);
+			await handOff("second pass");
+			expect(await stampNow(id)).not.toBe(first);
+		});
+	});
+
+	describe("taskDetail's kinds", () => {
+		it("are the ones the host's modules declare, the handoff among them", async () => {
+			const added = await Planner.addTask(TEST_BASE, draft());
+			if (!added.ok) throw added.error;
+			const records = await BoardData.taskDetail(TEST_BASE, added.value.id);
+			if (!records.ok) throw records.error;
+			expect(records.value.kinds.map((kind) => kind.name)).toEqual(["handoff"]);
+		});
 	});
 
 	describe("checklists", () => {
@@ -636,7 +664,7 @@ describe("BoardData", () => {
 		});
 		const stamp = (checklist: ChecklistItemView[]) =>
 			BoardData.stampOf({
-				comments: [],
+				entries: [],
 				workLogs: [],
 				sessions: [],
 				links: [],
