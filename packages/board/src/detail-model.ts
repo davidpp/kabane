@@ -313,11 +313,13 @@ export namespace DetailModel {
 
 	/**
 	 * The whole timeline, newest first: plain comments and every typed entry, lifted kinds included,
-	 * since the tab is the record.
+	 * since the tab is the record. Of two in one millisecond the higher id is the newer, as core's
+	 * `latestEntry` and the lifted block read them.
 	 */
 	export const timeline = (records: BoardData.DetailRecords): TaskEntry[] =>
-		[...records.entries].sort((a, b) =>
-			byAtDescending(a.createdAt, b.createdAt),
+		[...records.entries].sort(
+			(a, b) =>
+				byAtDescending(a.createdAt, b.createdAt) || byAtDescending(a.id, b.id),
 		);
 
 	/**

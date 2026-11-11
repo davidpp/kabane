@@ -304,6 +304,28 @@ describe("timeline", () => {
 		expect(said.map((e) => e.id)).toEqual(["new", "handoff", "old"]);
 	});
 
+	it("puts the higher id first when two entries share a millisecond, as the lifted block does", () => {
+		const tied = records({
+			kinds: [
+				{
+					name: "handoff",
+					title: "Handoff",
+					template: "",
+					projection: { latest: { after: "description", framing: "f" } },
+				},
+			],
+			entries: [
+				entry({ id: "01A", kind: "handoff", content: "first" }),
+				entry({ id: "01B", kind: "handoff", content: "second" }),
+			],
+		});
+		expect(DetailModel.timeline(tied).map((e) => e.content)).toEqual([
+			"second",
+			"first",
+		]);
+		expect(DetailModel.lifted(tied)[0]?.body).toBe("second");
+	});
+
 	it("labels an entry with its kind, declared or not, and a plain comment with none", () => {
 		expect(DetailModel.kindLabel(entry({ kind: "handoff" }))).toBe("handoff");
 		expect(DetailModel.kindLabel(entry({ kind: "review" }))).toBe("review");
