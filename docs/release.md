@@ -57,10 +57,11 @@ It never moves an existing tag. A configured signing key may require its own aut
 config/data.** These source/tag/settings writes are authorization granted by the human
 running the command; agents must not execute the release flow against real accounts.
 
-A change that moves where kabane keeps data or settings, or renames what it outputs, gets an
-upgrade section under [Updating](getting-started.md#updating) before its release; the public
-notes link to it (for example
-[settings layers and scope pins](getting-started.md#upgrading-from-100-beta0-settings-layers-and-scope-pins)).
+A change that moves where kabane keeps data or settings, migrates its database, or changes what
+it outputs, gets an upgrade section under [Updating](getting-started.md#updating) before its
+release; the public notes link to it (for example
+[settings layers and scope pins](getting-started.md#upgrading-from-100-beta0-settings-layers-and-scope-pins)
+and [comment kinds and handoffs](getting-started.md#upgrading-from-100-beta0-comment-kinds-and-handoffs)).
 
 Review the retained notes and perform the real-terminal board check below using that archive,
 then authenticate to npm and explicitly resume:

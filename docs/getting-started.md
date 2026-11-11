@@ -384,7 +384,7 @@ When the executable sits under a mise installs directory (`$MISE_DATA_DIR`, `$XD
 1.0.0-beta.0 read a project's settings from the repo only: the loop from `.kabane/loop.json`, the
 pin from `.kabane/scope`, which `kabane init --scope` wrote. Now your settings for a project and
 your pin are kept under `KABANE_HOME`, outside the repo, and the repo's files are written only when
-you name them. Nothing you already have is moved or rewritten, and there is no database change.
+you name them. Nothing you already have is moved or rewritten.
 
 - **What stays, and is still read.** `.kabane/loop.json` is the *shared* layer, for everyone who
   clones the repo, and `.kabane/scope` is the repo's pin. Kabane never moves or deletes either.
@@ -406,10 +406,41 @@ you name them. Nothing you already have is moved or rewritten, and there is no d
   written without `--shared`, so it can file tasks under another scope than new processes do.
   Stop them, update, and start them again before relying on new settings or pins; do not run
   both versions on one device.
-- **Going back.** 1.0.0-beta.0 still reads the repo's `.kabane/loop.json` and `.kabane/scope`,
-  but nothing in `config.json`'s extension keys or under `KABANE_HOME/projects/`. If you roll
-  back, put the settings you need into `.kabane/loop.json` and pin the scope with
-  `kabane init --scope <uri>`, which writes `.kabane/scope` in that version.
+- **Going back.** First restore the database backup
+  ([comment kinds and handoffs](#upgrading-from-100-beta0-comment-kinds-and-handoffs)). Then
+  1.0.0-beta.0 still reads the repo's `.kabane/loop.json` and `.kabane/scope`, but nothing in
+  `config.json`'s extension keys or under `KABANE_HOME/projects/`: put the settings you need
+  into `.kabane/loop.json` and pin the scope with `kabane init --scope <uri>`, which writes
+  `.kabane/scope` in that version.
+
+### Upgrading from 1.0.0-beta.0: comment kinds and handoffs
+
+A comment now has a kind, and an agent that finishes its part of an issue hands it off
+([Agents](#agents)). This changes the database: the new version migrates it the first time it
+opens it. Back it up first, as [subsequent updates](#subsequent-updates) describes.
+
+- **What is kept.** Every comment, with its author, time and text. Each one becomes a comment
+  of kind `comment`.
+- **JSON output.** `kabane show --json` lists every entry on the issue under `comments`, each
+  with a `kind`: plain comments are `"comment"`, and handoffs (`"handoff"`) and other kinds
+  (`"review"`) are listed beside them. A script that reads `comments` as plain comments should
+  keep only those whose `kind` is `"comment"`. `kabane comment --json` and the `kabane_comment`
+  tool return the new comment with its `kind` too.
+- **No going back.** 1.0.0-beta.0 refuses a database the new version has opened: `newer than
+  this kabane knows (7); update kabane before opening it`. Going back takes the backup.
+- **Sync: the hub and every device in one go.** A device still on 1.0.0-beta.0 stops pulling
+  at the first change an updated device pushes, whatever it changed, and fails with `Update
+  kabane on this device and sync again`. It skips nothing and catches up once updated. The hub
+  is one of those devices, and Claude.ai and ChatGPT get `kabane_handoff` only once it is
+  redeployed. Redeploying is a manual step: follow
+  [the hub first, then each device](deploy.md#58-upgrade-kabane-across-devices-the-hub-first-then-each-device).
+- **Running processes.** A board or `kabane mcp` started by 1.0.0-beta.0 keeps working on the
+  migrated database, without `kabane_handoff`, and one started after the update is refused as
+  above: start them again on the new version.
+- **What your agents are told.** The Tracker block from 1.0.0-beta.0 has an agent finish with
+  `kabane_comment`, which still works but leaves no handoff: replace it with the block under
+  [Agents](#agents). A dispatch skill that `/setup-dispatch` wrote with 1.0.0-beta.0 reports the
+  same way; run `/setup-dispatch` again to write it from the current template.
 
 ### One-time upgrade from 0.1.0
 
