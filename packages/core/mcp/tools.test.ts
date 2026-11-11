@@ -222,7 +222,6 @@ describe("cabane tools", () => {
 			),
 		);
 		expect(review).toMatchObject({ kind: "review", authorType: "ai" });
-		await new Promise((resolve) => setTimeout(resolve, 5));
 		unwrap(
 			await tool("kabane_comment").handler(
 				{ id: issue.id, body: "plain" },

@@ -523,7 +523,6 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 			content,
 		});
 		if (!added.ok) throw added.error;
-		await sleep(5);
 	};
 	const aiComment = async (taskId: string, content: string) => {
 		const added = await Planner.addComment(TEST_BASE, {
@@ -533,7 +532,6 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 			content,
 		});
 		if (!added.ok) throw added.error;
-		await sleep(5);
 	};
 	const discussionOf = (md: string): string =>
 		md.slice(md.indexOf("## Discussion"));

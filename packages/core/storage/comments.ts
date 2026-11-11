@@ -9,6 +9,7 @@
  * through the cascade.
  */
 
+import { monotonicFactory } from "ulid";
 import { err, type Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 
@@ -20,8 +21,16 @@ import {
 	type TaskEntry,
 	type TaskEntryDraft,
 } from "../schemas";
-import { generateId, rowToEntry, TABLES } from "./helpers";
+import { rowToEntry, TABLES } from "./helpers";
 import { Oplog } from "./oplog";
+
+/**
+ * Entry ids rise strictly within this process, even inside one millisecond,
+ * so two entries written in the same millisecond keep their order: time order
+ * is `created_at`, then `id`. Writers in two processes (two devices, two CLI
+ * runs) can still tie on `created_at`, and then the id decides arbitrarily.
+ */
+const entryId = monotonicFactory();
 
 export namespace Planner {
 	/**
@@ -41,7 +50,7 @@ export namespace Planner {
 			);
 		return withDb(basePath, (db) => {
 			const now = new Date().toISOString();
-			const id = generateId();
+			const id = entryId();
 
 			db.run(
 				`INSERT INTO ${TABLES.comments}
@@ -100,7 +109,11 @@ export namespace Planner {
 		});
 	};
 
-	/** A task's newest entry of `kind`, or null when it has none. */
+	/**
+	 * A task's newest entry of `kind`, or null when it has none: the latest
+	 * `created_at`, and of two in one millisecond the higher id, which is the
+	 * later write when both came from one process (`entryId`).
+	 */
 	export const latestEntry = async (
 		basePath: string,
 		taskId: string,

@@ -13,9 +13,6 @@ const must = <T>(result: Result<T>): T => {
 	return result.value;
 };
 
-const sleep = (ms: number): Promise<void> =>
-	new Promise((r) => setTimeout(r, ms));
-
 const entry = (taskId: string, kind: string, content: string) =>
 	Planner.addEntry(TEST_BASE, {
 		taskId,
@@ -52,7 +49,6 @@ describe("Planner — timeline entries", () => {
 
 	it("lists every kind in time order, or one kind when asked", async () => {
 		const first = must(await entry(taskId, "review", "first"));
-		await sleep(5);
 		const comment = must(
 			await Planner.addComment(TEST_BASE, {
 				taskId,
@@ -61,7 +57,6 @@ describe("Planner — timeline entries", () => {
 				content: "plain",
 			}),
 		);
-		await sleep(5);
 		const second = must(await entry(taskId, "review", "second"));
 
 		expect(
@@ -76,9 +71,7 @@ describe("Planner — timeline entries", () => {
 
 	it("finds the newest entry of a kind, and null for a kind with none", async () => {
 		must(await entry(taskId, "review", "older"));
-		await sleep(5);
 		must(await entry(taskId, "review", "newer"));
-		await sleep(5);
 		must(await entry(taskId, "finding", "other kind"));
 
 		const latest = must(await Planner.latestEntry(TEST_BASE, taskId, "review"));
