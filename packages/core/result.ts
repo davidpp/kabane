@@ -13,6 +13,28 @@ export const err = <E = Error>(error: E): Result<never, E> => ({
 	error,
 });
 
+/** `value` cut after `max` UTF-16 units, never between the halves of a surrogate pair. */
+const cut = (value: string, max: number): string => {
+	if (value.length <= max) return value;
+	const before = value.charCodeAt(max - 1);
+	const at = value.charCodeAt(max);
+	const splitsPair =
+		before >= 0xd800 && before <= 0xdbff && at >= 0xdc00 && at <= 0xdfff;
+	const end = splitsPair ? max - 1 : max;
+	return `${value.slice(0, end)}…`;
+};
+
+/**
+ * A value as a one-line error message shows it: JSON-quoted, so a newline or
+ * any other control character prints escaped and cannot break the line, and
+ * cut after `max` characters, on a character boundary.
+ */
+export const quoted = (value: string, max = 60): string =>
+	JSON.stringify(cut(value, max)).replace(
+		/[\u2028\u2029]/g,
+		(c) => `\\u${c.charCodeAt(0).toString(16)}`,
+	);
+
 /** Normalize anything thrown into an Error. */
 export const toError = (e: unknown): Error =>
 	e instanceof Error ? e : new Error(String(e));

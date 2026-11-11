@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { configureTestRuntime } from "../testing";
-
-import { formatQuestionBody, type TaskDraft } from "../schemas";
+import { SqliteDb } from "@cabane/sqlite";
+import type { Db, DbProvider } from "../db/port";
+import { TABLES } from "../db/tables";
+import type { KabaneModule } from "../module";
+import { Runtime } from "../runtime";
+import { formatQuestionBody, type TaskDraft, type TaskEntry } from "../schemas";
+import { configureTestRuntime, TEST_DB_NAME } from "../testing";
+import { steeringSections } from "./assemble-context";
 import { Planner } from "./index";
 
 const TEST_BASE = join(import.meta.dir, ".test-data-assemble-context");
@@ -507,5 +512,290 @@ describe("Planner — assembleContext", () => {
 			perRefCap: -5,
 		});
 		expect(result.ok).toBe(false);
+	});
+});
+
+describe("Planner — assembleContext over typed timeline entries", () => {
+	const AGENT = "cabane://actor/agent/claude";
+
+	const entry = async (taskId: string, kind: string, content: string) => {
+		const added = await Planner.addEntry(TEST_BASE, {
+			taskId,
+			kind,
+			author: AGENT,
+			authorType: "ai",
+			content,
+		});
+		if (!added.ok) throw added.error;
+	};
+	const aiComment = async (taskId: string, content: string) => {
+		const added = await Planner.addComment(TEST_BASE, {
+			taskId,
+			author: AGENT,
+			authorType: "ai",
+			content,
+		});
+		if (!added.ok) throw added.error;
+	};
+	const discussionOf = (md: string): string =>
+		md.slice(md.indexOf("## Discussion"));
+
+	const verdicts: KabaneModule = {
+		name: "verdicts",
+		kinds: [
+			{
+				name: "verdicts",
+				title: "Verdict",
+				template: "## Verdict\n\nWhat you decided and why.",
+				projection: {
+					latest: {
+						after: "description",
+						framing:
+							"The newest verdict on record; check it before relying on it.",
+					},
+				},
+			},
+			{
+				name: "verdicts.note",
+				title: "Verdict note",
+				template: "",
+				projection: "discussion",
+			},
+		],
+	};
+
+	beforeEach(async () => {
+		rmSync(TEST_BASE, { recursive: true, force: true });
+		mkdirSync(TEST_BASE, { recursive: true });
+		await Planner.init(TEST_BASE);
+	});
+
+	afterEach(() => {
+		configureTestRuntime();
+		rmSync(TEST_BASE, { recursive: true, force: true });
+	});
+
+	it("keeps a typed AI entry no module declares, labelled, behind more than three later AI comments", async () => {
+		const id = await createTask({ title: "Typed", kind: "issue" });
+		await entry(id, "review", "REVIEW_BODY");
+		for (const n of ["AI_1", "AI_2", "AI_3", "AI_4"]) await aiComment(id, n);
+
+		const discussion = discussionOf(await assemble(id));
+		expect(discussion).toContain(`**${AGENT}** (review, ai, `);
+		expect(discussion).toContain("REVIEW_BODY");
+		// Plain AI comments keep today's rule: the last three.
+		expect(discussion).not.toContain("AI_1");
+		expect(discussion).toContain("AI_4");
+		expect(discussion.indexOf("REVIEW_BODY")).toBeLessThan(
+			discussion.indexOf("AI_2"),
+		);
+	});
+
+	it("keeps a typed AI entry on an issue with a session, where plain AI comments drop", async () => {
+		const id = await createTask({ title: "Session", kind: "issue" });
+		const started = await Planner.startSession(TEST_BASE, {
+			taskId: id,
+			agent: "claude",
+		});
+		if (!started.ok) throw started.error;
+		await entry(id, "finding", "TYPED_FINDING");
+		await aiComment(id, "PLAIN_AI");
+
+		const discussion = discussionOf(await assemble(id));
+		expect(discussion).toContain("(finding, ai, ");
+		expect(discussion).toContain("TYPED_FINDING");
+		expect(discussion).not.toContain("PLAIN_AI");
+	});
+
+	it("lifts a latest kind's newest entry into its own section, counts the older ones and leaves them out of the Discussion", async () => {
+		configureTestRuntime("", { modules: [verdicts] });
+		const id = await createTask({
+			title: "Lifted",
+			kind: "issue",
+			description: "DESCRIPTION",
+		});
+		await entry(id, "verdicts", "OLDEST_VERDICT");
+		await entry(id, "verdicts", "OLDER_VERDICT");
+		await entry(id, "verdicts.note", "A_NOTE");
+		await entry(id, "verdicts", "NEWEST_VERDICT");
+		const human = await Planner.addComment(TEST_BASE, {
+			taskId: id,
+			author: "me",
+			authorType: "human",
+			content: "HUMAN",
+		});
+		if (!human.ok) throw human.error;
+
+		const md = await assemble(id);
+		const section = md.slice(
+			md.indexOf("## Verdict from"),
+			md.indexOf("## Discussion"),
+		);
+		expect(section).toMatch(
+			new RegExp(
+				`^## Verdict from ${AGENT} · \\S+\\n\\nThe newest verdict on record; check it before relying on it\\.\\n\\nNEWEST_VERDICT\\n\\n2 earlier verdicts entries on record\\.\\n\\n$`,
+			),
+		);
+		expect(md.indexOf("DESCRIPTION")).toBeLessThan(
+			md.indexOf("## Verdict from"),
+		);
+		const discussion = discussionOf(md);
+		expect(discussion).not.toContain("VERDICT");
+		expect(discussion).toContain(`**${AGENT}** (verdicts.note, ai, `);
+		expect(discussion).toContain("HUMAN");
+
+		const bounded = await Planner.getContextPage(TEST_BASE, id, {
+			sections: ["verdicts.latest"],
+		});
+		if (!bounded.ok) throw bounded.error;
+		expect(bounded.value.markdown).toContain("NEWEST_VERDICT");
+		expect(bounded.value.markdown).not.toContain("## Discussion");
+	});
+
+	it("counts a latest section toward human steering only while a human wrote its newest entry", async () => {
+		configureTestRuntime("", { modules: [verdicts] });
+		const id = await createTask({ title: "Steered", kind: "issue" });
+		const steering = async (sections: string[]) => {
+			const page = await Planner.getContextPage(TEST_BASE, id, { sections });
+			if (!page.ok) throw page.error;
+			return page.value.completeness.humanSteeringComplete;
+		};
+		await entry(id, "verdicts", "AI_VERDICT");
+		expect(await steering(["discussion"])).toBe(true);
+
+		const human = await Planner.addEntry(TEST_BASE, {
+			taskId: id,
+			kind: "verdicts",
+			author: "cabane://actor/human/ada",
+			authorType: "human",
+			content: "HUMAN_VERDICT",
+		});
+		if (!human.ok) throw human.error;
+		expect(await steering(["discussion"])).toBe(false);
+		expect(await steering(["verdicts.latest"])).toBe(false);
+		expect(await steering(["discussion", "verdicts.latest"])).toBe(true);
+	});
+
+	it("decides steering from a timeline snapshot alone", () => {
+		configureTestRuntime("", { modules: [verdicts] });
+		const verdict = (authorType: "human" | "ai", id: string): TaskEntry => ({
+			id,
+			taskId: "no-such-task",
+			kind: "verdicts",
+			author: authorType === "human" ? "cabane://actor/human/ada" : AGENT,
+			authorType,
+			content: id,
+			createdAt: "2026-11-11T12:00:00.000Z",
+		});
+		expect(steeringSections([])).toEqual(["discussion"]);
+		expect(
+			steeringSections([verdict("ai", "a"), verdict("human", "h")]),
+		).toEqual(["discussion", "verdicts.latest"]);
+		expect(
+			steeringSections([verdict("human", "h"), verdict("ai", "a")]),
+		).toEqual(["discussion"]);
+	});
+
+	it("takes steering from the timeline it rendered, even when an entry lands right after that read", async () => {
+		const id = await createTask({ title: "Raced", kind: "issue" });
+		const human = await Planner.addEntry(TEST_BASE, {
+			taskId: id,
+			kind: "verdicts",
+			author: "cabane://actor/human/ada",
+			authorType: "human",
+			content: "HUMAN_VERDICT",
+		});
+		if (!human.ok) throw human.error;
+
+		// Every read of the timeline is counted, and the first one is followed at
+		// once by an AI verdict, newer than the human one: what another writer
+		// landing between two reads would leave behind.
+		let timelineReads = 0;
+		let injected = false;
+		const reads = /FROM task_comments\b(?!_)/;
+		const racing = (db: Db): Db =>
+			new Proxy(db, {
+				get: (target, property) => {
+					if (property !== "query") {
+						const value = Reflect.get(target, property);
+						return typeof value === "function" ? value.bind(target) : value;
+					}
+					return (sql: string) => {
+						const statement = target.query(sql);
+						if (!reads.test(sql)) return statement;
+						return new Proxy(statement, {
+							get: (inner, member) => {
+								const value = Reflect.get(inner, member);
+								if (member !== "all" || typeof value !== "function")
+									return typeof value === "function"
+										? value.bind(inner)
+										: value;
+								return (...params: unknown[]) => {
+									const rows = Reflect.apply(value, inner, params);
+									timelineReads++;
+									if (!injected) {
+										injected = true;
+										target.run(
+											`INSERT INTO ${TABLES.comments} (id, task_id, kind, author, author_type, content, created_at)
+											 VALUES ('01LATEAIVERDICT', ?, 'verdicts', ?, 'ai', 'AI_VERDICT', '2999-01-01T00:00:00.000Z')`,
+											[id, AGENT],
+										);
+									}
+									return rows;
+								};
+							},
+						});
+					};
+				},
+			});
+		const sqlite = SqliteDb.provider({ dbName: TEST_DB_NAME });
+		const provider: DbProvider = {
+			withDb: (path, fn) => sqlite.withDb(path, (db) => fn(racing(db))),
+		};
+		const configured = Runtime.configure({
+			provider,
+			modules: [verdicts],
+			timezone: () => "UTC",
+		});
+		if (!configured.ok) throw configured.error;
+
+		// The snapshot this read rendered from has a human verdict newest, so its
+		// steering needs that verdict's section, which this read left out. A
+		// second look at the store would find the AI verdict and wrongly call the
+		// steering complete.
+		const raced = await Planner.getContextPage(TEST_BASE, id, {
+			sections: ["discussion"],
+		});
+		if (!raced.ok) throw raced.error;
+		expect(timelineReads).toBe(1);
+		expect(raced.value.completeness.humanSteeringComplete).toBe(false);
+
+		// The AI verdict did land: the next read's snapshot has it newest.
+		const after = await Planner.getContextPage(TEST_BASE, id, {
+			sections: ["discussion", "verdicts.latest"],
+		});
+		if (!after.ok) throw after.error;
+		expect(timelineReads).toBe(2);
+		expect(after.value.markdown).toContain("AI_VERDICT");
+		expect(after.value.completeness.humanSteeringComplete).toBe(true);
+	});
+
+	it("omits a latest kind's section while the issue has none of its entries", async () => {
+		configureTestRuntime("", { modules: [verdicts] });
+		const id = await createTask({ title: "None yet", kind: "issue" });
+		await entry(id, "verdicts.note", "A_NOTE");
+		const md = await assemble(id);
+		expect(md).not.toContain("## Verdict");
+		expect(md).toContain("A_NOTE");
+	});
+
+	it("shows a latest kind's entries in the Discussion, labelled, on a device without its module", async () => {
+		const id = await createTask({ title: "Unregistered", kind: "issue" });
+		await entry(id, "verdicts", "FIRST_VERDICT");
+		await entry(id, "verdicts", "SECOND_VERDICT");
+		const discussion = discussionOf(await assemble(id));
+		expect(discussion).toContain("FIRST_VERDICT");
+		expect(discussion).toContain("SECOND_VERDICT");
+		expect(discussion).toContain("(verdicts, ai, ");
 	});
 });

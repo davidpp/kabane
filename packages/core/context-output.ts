@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Modules } from "./module";
 import { Runtime } from "./runtime";
 import {
 	AssembleContextOptsSchema,
@@ -11,11 +12,15 @@ export {
 	ContextSectionSchema,
 	type ContextSection,
 } from "./schemas/assemble-context";
-/** Canonical core order, then module registration order at each anchor. */
+/**
+ * Canonical core order, then module registration order at each anchor: a
+ * module's own sections, then the `<kind>.latest` sections its kinds project.
+ */
 export const registeredContextSections = (): string[] => {
-	const sections = Runtime.modules().flatMap(
-		(module) => module.contextSections ?? [],
-	);
+	const sections = Runtime.modules().flatMap((module) => [
+		...(module.contextSections ?? []),
+		...Modules.latestSections(module),
+	]);
 	return CONTEXT_SECTIONS.flatMap((core) => [
 		core,
 		...sections
@@ -48,6 +53,10 @@ export const ContextPageSchema = z
 			.object({
 				selectedComplete: z.boolean(),
 				descriptionComplete: z.boolean(),
+				/**
+				 * The Discussion, and every `<kind>.latest` section whose newest entry
+				 * a human wrote, consumed; false while any of them is omitted.
+				 */
 				humanSteeringComplete: z.boolean(),
 				completedSections: z.array(z.string()),
 				remainingSections: z.array(z.string()),

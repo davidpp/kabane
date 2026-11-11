@@ -16,8 +16,8 @@ import type {
 	AgentSession,
 	Project,
 	Task,
-	TaskComment,
 	TaskContextRef,
+	TaskEntry,
 	TaskLink,
 	TaskWorkLog,
 	UpstreamLink,
@@ -329,11 +329,12 @@ export const rowToLink = (row: Record<string, unknown>): TaskLink => ({
 	createdAt: row.created_at as string,
 });
 
-export const rowToComment = (row: Record<string, unknown>): TaskComment => ({
+export const rowToEntry = (row: Record<string, unknown>): TaskEntry => ({
 	id: row.id as string,
 	taskId: row.task_id as string,
+	kind: row.kind as string,
 	author: row.author as string,
-	authorType: row.author_type as TaskComment["authorType"],
+	authorType: row.author_type as TaskEntry["authorType"],
 	content: row.content as string,
 	createdAt: row.created_at as string,
 	updatedAt: (row.updated_at as string) || undefined,

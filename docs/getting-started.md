@@ -230,6 +230,11 @@ new task lands in the repo the agent is working in.
 For MCP comments, use `body` for Markdown. `text` is also accepted, and legacy `content`
 remains supported. Supply at least one nonempty string; if you supply several aliases, their values
 must be **exactly equal**, including whitespace. The stored content is not trimmed or rewritten.
+A comment is not edited or deleted on its own; deleting the issue removes its comments. Add
+`kind` (lowercase `name` or `name.key`, such as `review`) for a report meant to last: the brief
+keeps a comment of any kind but `comment` whoever wrote it, labelled with its kind, where a
+plain agent comment can drop out. A kind a module lifts into its own section shows only its
+newest comment there, under that kind's title, and counts the older ones.
 
 ```jsonl
 {"name":"kabane_comment","arguments":{"id":"JMYA-1","body":"Implemented the change; tests pass."}}
@@ -274,6 +279,7 @@ kabane list                                  # open tasks in this repo's scope
 kabane list --assignee claude --state next --format concise
 kabane edit JMYA-1 --state in_progress --format concise
 kabane comment JMYA-1 "README drafted"
+kabane comment JMYA-1 "Reviewed: rollback is covered" --kind review
 kabane context JMYA-1 --format concise      # finish required description/steering
 kabane context JMYA-1 --format concise --cursor '<nextCursor>'  # same flags
 kabane done JMYA-1 --format concise

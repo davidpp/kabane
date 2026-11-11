@@ -10,6 +10,7 @@ import type { KabaneModule, ModuleContextSection } from "./module";
 import { ok, type Result } from "./result";
 import { Runtime, withDb } from "./runtime";
 import { CONTEXT_SECTIONS } from "./schemas/assemble-context";
+import { type EntryKind, EntryKindSchema } from "./schemas/comment";
 import { configureTestRuntime } from "./testing";
 
 const unwrap = <T>(result: Result<T>): T => {
@@ -28,9 +29,18 @@ const tool = (name: string): ToolDef => ({
 	input: {},
 	handler: async () => ok(null),
 });
+const kind = (
+	name: string,
+	projection: EntryKind["projection"] = "discussion",
+	over: Partial<EntryKind> = {},
+): EntryKind => ({ name, title: "Verdict", template: "", projection, ...over });
+const latest: EntryKind["projection"] = {
+	latest: { after: "description", framing: "The newest verdict." },
+};
 const kept: KabaneModule = {
 	name: "kept",
 	contextSections: [section("kept.summary")],
+	kinds: [kind("kept.verdict", latest)],
 	tools: [tool("kept_read")],
 	instructions: "Read the summary.",
 };
@@ -101,6 +111,76 @@ const refusals: { name: string; modules: KabaneModule[]; message: string }[] = [
 		message: 'already a tool of module "alpha"',
 	},
 	{
+		name: "malformed kind name",
+		modules: [{ name: "alpha", kinds: [kind("alpha.Verdict")] }],
+		message: 'module "alpha" kind "alpha.Verdict": name must be lowercase',
+	},
+	{
+		name: "kind name with a newline",
+		modules: [{ name: "alpha", kinds: [kind("alpha.x\nInjected line")] }],
+		message:
+			'module "alpha" kind "alpha.x\\nInjected line": name must be lowercase',
+	},
+	{
+		name: "kind name with a carriage return",
+		modules: [{ name: "alpha", kinds: [kind("alpha\r")] }],
+		message: 'module "alpha" kind "alpha\\r": name must be lowercase',
+	},
+	{
+		name: "module name with a newline",
+		modules: [{ name: "alpha\nbeta" }],
+		message: 'module name "alpha\\nbeta" must be lowercase',
+	},
+	{
+		name: "kind outside its module's namespace",
+		modules: [{ name: "alpha", kinds: [kind("beta.verdict")] }],
+		message: 'must be "alpha" or start with "alpha."',
+	},
+	{
+		name: "the reserved comment kind",
+		modules: [{ name: "comment", kinds: [kind("comment")] }],
+		message: '"comment" is core\'s own kind',
+	},
+	{
+		name: "duplicate kind within a module",
+		modules: [{ name: "alpha", kinds: [kind("alpha"), kind("alpha")] }],
+		message: 'already a kind of module "alpha"',
+	},
+	{
+		name: "latest kind whose section a module section holds",
+		modules: [
+			{
+				name: "alpha",
+				contextSections: [section("alpha.latest")],
+				kinds: [kind("alpha", latest)],
+			},
+		],
+		message:
+			'its section "alpha.latest" is already a section of module "alpha"',
+	},
+	{
+		name: "kind title on two lines",
+		modules: [
+			{
+				name: "alpha",
+				kinds: [kind("alpha", "discussion", { title: "a\nb" })],
+			},
+		],
+		message: "title must be one non-blank line",
+	},
+	{
+		name: "latest kind with a blank framing",
+		modules: [
+			{
+				name: "alpha",
+				kinds: [
+					kind("alpha", { latest: { after: "description", framing: " " } }),
+				],
+			},
+		],
+		message: "projection.latest.framing must be one non-blank line",
+	},
+	{
 		name: "tool claimed by another module",
 		modules: [
 			{ name: "alpha", tools: [tool("shared_read")] },
@@ -132,8 +212,10 @@ for (const refusal of refusals)
 			syncSettings: async () => settings,
 		});
 		expect(configured.ok).toBe(false);
-		if (!configured.ok)
+		if (!configured.ok) {
 			expect(configured.error.message).toContain(refusal.message);
+			expect(configured.error.message).not.toMatch(/[\r\n]/);
+		}
 		expect(Runtime.modules()).toBe(modules);
 		expect(Runtime.modules()).toEqual([kept]);
 		expect(tablePrefix()).toBe("kept_");
@@ -157,4 +239,24 @@ it("reserves exactly the tools served by core", () => {
 	expect(KABANE_TOOLS.map((item) => item.name).sort()).toEqual(
 		Object.values(CORE_TOOL_NAMES).sort(),
 	);
+});
+
+it("finds a registered kind by name, and nothing for one no module declares", () => {
+	expect(Runtime.entryKind("kept.verdict")).toEqual(kept.kinds?.[0]);
+	expect(Runtime.entryKind("review")).toBeUndefined();
+	expect(Runtime.entryKind("comment")).toBeUndefined();
+});
+
+it("reads a kind as data only, anchored after a core section", () => {
+	const declared = { ...kind("alpha", latest) };
+	expect(EntryKindSchema.safeParse(declared).success).toBe(true);
+	expect(
+		EntryKindSchema.safeParse({
+			...declared,
+			projection: { latest: { after: "nowhere", framing: "x" } },
+		}).success,
+	).toBe(false);
+	expect(
+		EntryKindSchema.safeParse({ ...declared, render: () => "code" }).success,
+	).toBe(false);
 });

@@ -142,12 +142,16 @@ single response repeats earlier instructions:
 
 - `selectedComplete` is true only at the final selected-stream chunk.
 - `descriptionComplete` / `humanSteeringComplete` indicate coverage of the
-  selected description / discussion respectively. Omitted sections are false,
-  not empty. Empty **selected** sections may be complete on the first page.
+  selected description / discussion respectively; steering also needs every
+  `<kind>.latest` section whose newest entry a human wrote. Omitted sections
+  are false, not empty. Empty **selected** sections may be complete on the first page.
 - `completedSections`, `remainingSections`, and `omittedSections` name coverage
   and intentional exclusions. Discussion covers ALL human comments in chronology,
   plus the existing bounded durable machine signal; progress/noise is folded as
-  before. Prior work retains every work-log reference and note.
+  before. It also holds every typed entry (a kind other than `comment`),
+  whoever wrote it, labelled with its kind; a kind a module projects as
+  `latest` shows its newest entry in its own `<kind>.latest` section instead.
+  Prior work retains every work-log reference and note.
 
 **Do not start work or claim complete acceptance criteria/steering until required
 description and human discussion have been consumed.** Repeat the SAME bounded

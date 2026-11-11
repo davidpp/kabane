@@ -350,6 +350,49 @@ it("advertises core and registered section enums for each server", async () => {
 	}
 });
 
+it("advertises a latest kind's section after its anchor, behind its module's own sections", async () => {
+	configureTestRuntime("", {
+		modules: [
+			{
+				...module,
+				kinds: [
+					{
+						name: "decisions.verdict",
+						title: "Verdict",
+						template: "",
+						projection: {
+							latest: { after: "description", framing: "The newest." },
+						},
+					},
+				],
+			},
+		],
+	});
+	const server = unwrap(createMcpServer(context()));
+	const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+	const client = new Client({ name: "kind-schema-test", version: "1" });
+	await server.connect(serverSide);
+	await client.connect(clientSide);
+	try {
+		const tool = (await client.listTools()).tools.find(
+			(item) => item.name === "kabane_context",
+		);
+		expect(tool?.inputSchema.properties?.sections).toMatchObject({
+			items: {
+				enum: [
+					"metadata",
+					"description",
+					"decisions.answers",
+					"decisions.verdict.latest",
+					...CONTEXT_SECTIONS.slice(2),
+				],
+			},
+		});
+	} finally {
+		await client.close();
+	}
+});
+
 it("degrades thrown module renders in full reads and refuses strict reads", async () => {
 	const task = unwrap(
 		await Planner.addTask(base, { title: "Throwing module" }),

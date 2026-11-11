@@ -281,6 +281,48 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		);
 	});
 
+	it("replicates an entry's kind, both ways", async () => {
+		const a = await createDevice("device-a");
+		const b = await createDevice("device-b");
+		const task = await addTask(a, "Timeline", { scopeUri: ALPHA });
+		await converge(a, b);
+
+		const review = await Planner.addEntry(a.base, {
+			taskId: task.id,
+			kind: "review",
+			author: "cabane://actor/agent/claude",
+			authorType: "ai",
+			content: "from device A",
+		});
+		if (!review.ok) throw review.error;
+		const handoff = await Planner.addEntry(b.base, {
+			taskId: task.id,
+			kind: "handoff.summary",
+			author: "cabane://actor/agent/codex",
+			authorType: "ai",
+			content: "from device B",
+		});
+		if (!handoff.ok) throw handoff.error;
+		await converge(a, b);
+
+		for (const device of [a, b]) {
+			const entries = await Planner.getEntries(device.base, task.id);
+			if (!entries.ok) throw entries.error;
+			expect(
+				entries.value.map((e) => [e.id, e.kind]).sort(),
+				device.deviceId,
+			).toEqual(
+				[
+					[review.value.id, "review"],
+					[handoff.value.id, "handoff.summary"],
+				].sort(),
+			);
+		}
+		expect(await rowsOf(b.base, TABLES.comments)).toEqual(
+			await rowsOf(a.base, TABLES.comments),
+		);
+	});
+
 	it("keeps both tasks when two devices mint the same short_id offline", async () => {
 		const a = await createDevice("device-a");
 		const b = await createDevice("device-b");

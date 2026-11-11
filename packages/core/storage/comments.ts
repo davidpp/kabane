@@ -1,34 +1,65 @@
 /**
- * Planner Storage — Comments
+ * Planner Storage — an issue's timeline of entries.
+ *
+ * The table keeps its name, `task_comments`, because rows and synced logs
+ * store it. A comment is an entry of kind `comment`, and the comment functions
+ * read and write that kind only. Entries are append-only: nothing here edits
+ * or deletes one, matching the table's `append-only` sync family, which never
+ * applies a second op for a row it holds. Deleting a task removes its entries
+ * through the cascade.
  */
 
-import type { Result } from "../result";
+import { monotonicFactory } from "ulid";
+import { err, quoted, type Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 
-import type {
-	TaskComment,
-	TaskCommentDraft,
-	TaskCommentUpdate,
+import {
+	DEFAULT_ENTRY_KIND,
+	ENTRY_KIND_PATTERN,
+	type TaskComment,
+	type TaskCommentDraft,
+	type TaskEntry,
+	type TaskEntryDraft,
 } from "../schemas";
-import { generateId, rowToComment, TABLES } from "./helpers";
+import { rowToEntry, TABLES } from "./helpers";
 import { Oplog } from "./oplog";
 
+/**
+ * Entry ids rise strictly within this process, even inside one millisecond,
+ * so two entries written in the same millisecond keep their order: time order
+ * is `created_at`, then `id`. Writers in two processes (two devices, two CLI
+ * runs) can still tie on `created_at`, and then the id decides arbitrarily.
+ */
+const entryId = monotonicFactory();
+
 export namespace Planner {
-	export const addComment = async (
+	/**
+	 * Append an entry to a task's timeline. The kind is checked for its shape
+	 * only: a kind no module declares is stored like any other, and the body is
+	 * never parsed.
+	 */
+	export const addEntry = async (
 		basePath: string,
-		draft: TaskCommentDraft,
-	): Promise<Result<TaskComment>> => {
+		draft: TaskEntryDraft,
+	): Promise<Result<TaskEntry>> => {
+		if (!ENTRY_KIND_PATTERN.test(draft.kind))
+			return err(
+				new Error(
+					`Entry kind ${quoted(draft.kind)} is not valid: use lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "review", "handoff.summary").`,
+				),
+			);
 		return withDb(basePath, (db) => {
 			const now = new Date().toISOString();
-			const id = generateId();
+			const id = entryId();
 
 			db.run(
 				`INSERT INTO ${TABLES.comments}
-           (id, task_id, author, author_type, content, updated_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           (id, task_id, kind, author, author_type, content, updated_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					id,
 					draft.taskId,
+					draft.kind,
 					draft.author,
 					draft.authorType,
 					draft.content,
@@ -41,6 +72,7 @@ export namespace Planner {
 			return {
 				id,
 				taskId: draft.taskId,
+				kind: draft.kind,
 				author: draft.author,
 				authorType: draft.authorType,
 				content: draft.content,
@@ -50,66 +82,66 @@ export namespace Planner {
 		});
 	};
 
-	export const getComment = async (
+	/** A task's entries in time order, only those of `kind` when it is given. */
+	export const getEntries = async (
 		basePath: string,
-		id: string,
-	): Promise<Result<TaskComment | null>> => {
+		taskId: string,
+		{ kind }: { kind?: string } = {},
+	): Promise<Result<TaskEntry[]>> => {
+		return withDb(basePath, (db) => {
+			const rows = (
+				kind === undefined
+					? db
+							.query(
+								`SELECT * FROM ${TABLES.comments} WHERE task_id = ?
+								  ORDER BY created_at ASC, id ASC`,
+							)
+							.all(taskId)
+					: db
+							.query(
+								`SELECT * FROM ${TABLES.comments} WHERE task_id = ? AND kind = ?
+								  ORDER BY created_at ASC, id ASC`,
+							)
+							.all(taskId, kind)
+			) as Record<string, unknown>[];
+
+			return rows.map(rowToEntry);
+		});
+	};
+
+	/**
+	 * A task's newest entry of `kind`, or null when it has none: the latest
+	 * `created_at`, and of two in one millisecond the higher id, which is the
+	 * later write when both came from one process (`entryId`).
+	 */
+	export const latestEntry = async (
+		basePath: string,
+		taskId: string,
+		kind: string,
+	): Promise<Result<TaskEntry | null>> => {
 		return withDb(basePath, (db) => {
 			const row = db
-				.query(`SELECT * FROM ${TABLES.comments} WHERE id = ?`)
-				.get(id) as Record<string, unknown> | null;
+				.query(
+					`SELECT * FROM ${TABLES.comments} WHERE task_id = ? AND kind = ?
+					  ORDER BY created_at DESC, id DESC LIMIT 1`,
+				)
+				.get(taskId, kind) as Record<string, unknown> | null;
 
-			return row ? rowToComment(row) : null;
+			return row ? rowToEntry(row) : null;
 		});
 	};
 
-	export const updateComment = async (
+	/** Add a comment: an entry of the default kind. */
+	export const addComment = async (
 		basePath: string,
-		id: string,
-		updates: TaskCommentUpdate,
-	): Promise<Result<TaskComment | null>> => {
-		const updateResult = await withDb(basePath, (db) => {
-			const now = new Date().toISOString();
-			db.run(
-				`UPDATE ${TABLES.comments}
-            SET content = ?, updated_at = ?, version = version + 1, updated_by = ?
-          WHERE id = ?`,
-				[updates.content, now, Runtime.actor(), id],
-			);
-			Oplog.afterWrite(db, "task_comments", "update", id);
-		});
+		draft: TaskCommentDraft,
+	): Promise<Result<TaskComment>> =>
+		addEntry(basePath, { ...draft, kind: DEFAULT_ENTRY_KIND });
 
-		if (!updateResult.ok) return updateResult;
-
-		return getComment(basePath, id);
-	};
-
+	/** A task's comments: its entries of the default kind, in time order. */
 	export const getComments = async (
 		basePath: string,
 		taskId: string,
-	): Promise<Result<TaskComment[]>> => {
-		return withDb(basePath, (db) => {
-			const rows = db
-				.query(
-					`SELECT * FROM ${TABLES.comments} WHERE task_id = ? ORDER BY created_at ASC`,
-				)
-				.all(taskId) as Record<string, unknown>[];
-
-			return rows.map(rowToComment);
-		});
-	};
-
-	export const deleteComment = async (
-		basePath: string,
-		id: string,
-	): Promise<Result<void>> => {
-		return withDb(basePath, (db) => {
-			const row = Oplog.snapshot(db, "task_comments", id);
-			if (!row.ok) throw row.error;
-			db.run(`DELETE FROM ${TABLES.comments} WHERE id = ?`, [id]);
-			if (row.value !== undefined) {
-				Oplog.afterDelete(db, [{ tbl: "task_comments", row: row.value }]);
-			}
-		});
-	};
+	): Promise<Result<TaskComment[]>> =>
+		getEntries(basePath, taskId, { kind: DEFAULT_ENTRY_KIND });
 }

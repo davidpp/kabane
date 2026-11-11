@@ -6,10 +6,11 @@
  */
 
 import {
+	DEFAULT_ENTRY_KIND,
 	Deadline,
 	Runtime,
 	type Task,
-	type TaskComment,
+	type TaskEntry,
 	type TaskLink,
 	type TaskPriority,
 	type TaskState,
@@ -98,11 +99,12 @@ export const formatLinks = (taskId: string, links: TaskLink[]): string =>
 		})
 		.join("\n");
 
-export const formatComments = (comments: TaskComment[]): string =>
-	comments
+/** A task's timeline, each entry of a kind other than `comment` labelled with it. */
+export const formatComments = (entries: TaskEntry[]): string =>
+	entries
 		.map(
-			(c) =>
-				`  ${c.authorType === "ai" ? "🤖" : "👤"} ${c.author} · ${c.createdAt.slice(0, 16)}\n    ${c.content.replace(/\n/g, "\n    ")}`,
+			(e) =>
+				`  ${e.authorType === "ai" ? "🤖" : "👤"} ${e.author} · ${e.createdAt.slice(0, 16)}${e.kind === DEFAULT_ENTRY_KIND ? "" : ` · ${e.kind}`}\n    ${e.content.replace(/\n/g, "\n    ")}`,
 		)
 		.join("\n");
 

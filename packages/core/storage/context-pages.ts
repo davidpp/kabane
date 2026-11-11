@@ -57,6 +57,7 @@ const packContextPage = ({
 	markdown,
 	sections,
 	ends,
+	steering,
 }: {
 	taskId: string;
 	revision: string;
@@ -65,6 +66,8 @@ const packContextPage = ({
 	markdown: string;
 	sections: string[];
 	ends: Map<string, number>;
+	/** The sections holding human steering, or undefined when they could not be read. */
+	steering: readonly string[] | undefined;
 }): Result<ContextPage> => {
 	const envelope = (end: number): ContextPage => {
 		const complete = (section: string) => {
@@ -75,7 +78,8 @@ const packContextPage = ({
 			completeness: {
 				selectedComplete: end === markdown.length,
 				descriptionComplete: complete("description"),
-				humanSteeringComplete: complete("discussion"),
+				humanSteeringComplete:
+					steering !== undefined && steering.every(complete),
 				completedSections: sections.filter(complete),
 				remainingSections: sections.filter((section) => !complete(section)),
 				omittedSections: registeredContextSections().filter(
@@ -184,7 +188,7 @@ export namespace Planner {
 			true,
 		);
 		if (!rendered.ok) return rendered;
-		const { markdown, ends } = joinContextSections(rendered.value);
+		const { markdown, ends } = joinContextSections(rendered.value.sections);
 		const revision = await digest(JSON.stringify(markdown));
 		if (!revision.ok)
 			return err(
@@ -210,6 +214,7 @@ export namespace Planner {
 			markdown,
 			sections,
 			ends,
+			steering: rendered.value.steering,
 		});
 	};
 }

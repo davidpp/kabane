@@ -346,13 +346,14 @@ describe("Migrations on a device stamped at the baseline", () => {
 	it("drops the retired tables and keeps every live row", async () => {
 		const task = await Planner.addTask(base, { title: "keeps" });
 		if (!task.ok) throw task.error;
-		const comment = await Planner.addComment(base, {
-			taskId: task.value.id,
-			author: "david",
-			authorType: "human",
-			content: "keeps too",
-		});
-		if (!comment.ok) throw comment.error;
+		// Written the way a baseline build wrote it: no kind column yet.
+		await withDb((db) =>
+			db.run(
+				`INSERT INTO ${TABLES.comments} (id, task_id, author, author_type, content, created_at)
+				 VALUES ('01COMMENT', ?, 'david', 'human', 'keeps too', ?)`,
+				[task.value.id, NOW],
+			),
+		);
 		await withDb((db) =>
 			db.run(
 				`INSERT INTO ${physicalTable("proposals")}
@@ -603,6 +604,65 @@ describe("Migration 6: relayed tool-permission answers stop being decisions", ()
 		await mustInit(base);
 		expect(await ids()).toEqual([...kept].sort());
 	});
+});
+
+describe("Migration 9: an issue's comments become entries of kind comment", () => {
+	afterEach(() => {
+		configureTestRuntime();
+		rmSync(base, { recursive: true, force: true });
+	});
+
+	// 7 is where the released 1.0.0-beta.0 leaves a database; 8 never shipped.
+	for (const [prefix, from] of [
+		["", 7],
+		["", 8],
+		["planner_", 8],
+	] as const) {
+		it(`reads every existing comment as kind comment, from version ${from}${prefix ? " behind Jake's prefix" : ""}`, async () => {
+			configureTestRuntime(prefix);
+			base = freshBase(`entry-kind${prefix}-${from}`);
+			await withDb((db) => {
+				const stamped = Migrate.run(db, Migrations.LIST.slice(0, from));
+				if (!stamped.ok) throw stamped.error;
+			});
+			expect(
+				await withDb((db) => columnExists(db, TABLES.comments, "kind")),
+			).toBe(false);
+			const task = await Planner.addTask(base, { title: "t" });
+			if (!task.ok) throw task.error;
+			await withDb((db) =>
+				db.run(
+					`INSERT INTO ${TABLES.comments} (id, task_id, author, author_type, content, created_at)
+					 VALUES ('01COMMENT', ?, 'david', 'human', 'before kinds', ?)`,
+					[task.value.id, NOW],
+				),
+			);
+
+			await mustInit(base);
+			expect(await versionRows()).toEqual(ALL_VERSIONS);
+			const entries = await Planner.getEntries(base, task.value.id);
+			expect(entries.ok && entries.value).toEqual([
+				{
+					id: "01COMMENT",
+					taskId: task.value.id,
+					kind: "comment",
+					author: "david",
+					authorType: "human",
+					content: "before kinds",
+					createdAt: NOW,
+					updatedAt: undefined,
+				},
+			]);
+			const index = await withDb((db) =>
+				db
+					.query<{ name: string }, [string]>(
+						"SELECT name FROM pragma_index_list(?) WHERE name LIKE '%task_kind_idx'",
+					)
+					.all(TABLES.comments),
+			);
+			expect(index).toEqual([{ name: `${TABLES.comments}_task_kind_idx` }]);
+		});
+	}
 });
 
 describe("Migrations with Jake's table prefix", () => {

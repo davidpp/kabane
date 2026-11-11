@@ -417,7 +417,7 @@ export namespace BoardData {
 			questions,
 			checklist,
 		] = await Promise.all([
-			Planner.getComments(basePath, id),
+			Planner.getEntries(basePath, id),
 			Planner.getWorkLogs(basePath, id),
 			Planner.querySessions(basePath, { taskId: id }),
 			Planner.getLinksForTask(basePath, id),
@@ -536,7 +536,7 @@ export namespace BoardData {
 			questions,
 			checklist,
 		] = await Promise.all([
-			Planner.getComments(basePath, id),
+			Planner.getEntries(basePath, id),
 			Planner.getWorkLogs(basePath, id),
 			Planner.querySessions(basePath, { taskId: id }),
 			Planner.getLinksForTask(basePath, id),
