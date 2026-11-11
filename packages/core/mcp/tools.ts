@@ -467,7 +467,7 @@ Parameters:
 const comment = define({
 	name: CORE_TOOL_NAMES.comment,
 	kind: "write",
-	description: `Add a comment to a task. The author is the connected identity; agent identities comment as ai. Human comments are never dropped from the brief, so this is how to steer an agent. An entry given a kind other than comment (a review, a finding) is kept in the brief whoever writes it.
+	description: `Add a comment to a task. The author is the connected identity; agent identities comment as ai. Human comments are never dropped from the brief, so this is how to steer an agent. An entry given a kind other than comment (a review, a finding) is kept in the brief whoever writes it; for a kind a module lifts into its own section, only the newest is shown and the older ones are counted.
 
 Parameters:
 - id: ${ID_HINT}
