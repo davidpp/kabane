@@ -141,7 +141,24 @@ it("prints the template, and refuses a blank body, a file it cannot read and a m
 	expect((await kabane(["handoff", ghost])).text).toBe(
 		"Error: No task has that ULID.",
 	);
-	expect((await kabane(["handoff", label, "--from"])).exitCode).toBe(2);
+	for (const conflict of [
+		["handoff", label, "--from"],
+		["handoff", label, "--from", "body.md", "--from", "blank.md"],
+		["handoff", label, "--from", "body.md", "--template"],
+		["handoff", label, "--template"],
+		["handoff", "--template", "--all"],
+		["handoff", label, "--from", "body.md", "--all"],
+		["handoff", label, "--all", "--from", "body.md"],
+		["handoff", label, "extra"],
+		["handoff", label, "extra", "--from", "body.md"],
+	]) {
+		const refused = await kabane(conflict);
+		expect([conflict, refused.exitCode]).toEqual([conflict, 2]);
+		expect(refused.text).toContain("Usage: kabane handoff <id>");
+	}
+	expect((await kabane(["handoff", label, "--all"])).text).toBe(
+		`No handoff on ${label}.`,
+	);
 	expect((await kabane(["handoff", "--all", label])).exitCode).toBe(2);
 	expect((await kabane(["handoff"])).exitCode).toBe(2);
 	expect((await kabane(["handoff", label])).text).toBe(

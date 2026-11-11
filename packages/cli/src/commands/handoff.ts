@@ -81,24 +81,55 @@ const latestSection = async (
 const entryMarkdown = (entry: TaskEntry): string =>
 	`## Handoff from ${entry.author} · ${entry.createdAt}\n\n${entry.content}`;
 
-const show = async (id: string, args: ParsedArgs, store: string) => {
+const show = async (id: string, all: boolean, store: string) => {
 	const task = await findIssue(store, id);
 	if (!task.ok) return failure(task.error);
-	const all = await Planner.getEntries(store, task.value.id, {
+	const entries = await Planner.getEntries(store, task.value.id, {
 		kind: HANDOFF_KIND,
 	});
-	if (!all.ok) return failure(all.error);
-	const latest = all.value.at(-1);
+	if (!entries.ok) return failure(entries.error);
+	const latest = entries.value.at(-1);
 	if (!latest) return success({ handoffs: [] }, `No handoff on ${id}.`);
-	if (flagBool(args, "all"))
+	if (all)
 		return success(
-			{ handoffs: all.value },
-			all.value.map(entryMarkdown).join("\n\n"),
+			{ handoffs: entries.value },
+			entries.value.map(entryMarkdown).join("\n\n"),
 		);
 	const section = await latestSection(store, task.value.id);
 	return section.ok
 		? success({ handoffs: [latest] }, section.value)
 		: failure(section.error);
+};
+
+/** The documented forms, one per usage line. */
+type Form =
+	| { mode: "show"; id: string; all: boolean }
+	| { mode: "record"; id: string; from: string }
+	| { mode: "template" };
+
+/** The one form the arguments make, or the usage error to print before doing anything. */
+const formOf = (args: ParsedArgs): Form | Outcome => {
+	const bad = valued(args, "all") ?? valued(args, "template");
+	if (bad) return bad;
+	const given = (flag: string) => args.flags[flag] !== undefined;
+	const [id, extra] = args.positionals;
+	if (given("template"))
+		return id === undefined && !given("from") && !given("all")
+			? { mode: "template" }
+			: usage("--template takes no issue and no other flag", USAGE);
+	if (!id) return usage("Issue id required", USAGE);
+	if (extra !== undefined)
+		return usage("One issue at a time: drop the arguments after it", USAGE);
+	if (!given("from")) return { mode: "show", id, all: flagBool(args, "all") };
+	if (given("all"))
+		return usage(
+			"--from records a handoff and --all lists them: use one",
+			USAGE,
+		);
+	const from = flagString(args, "from");
+	return from && !Array.isArray(args.flags.from)
+		? { mode: "record", id, from }
+		: usage("--from takes one file, or - for stdin", USAGE);
 };
 
 export const handoff: Command = {
@@ -107,16 +138,15 @@ export const handoff: Command = {
 		"Show an issue's latest handoff, record one from markdown, or print the template",
 	usage: USAGE,
 	run: async (args, ctx) => {
-		const bad = valued(args, "all") ?? valued(args, "template");
-		if (bad) return bad;
-		if (flagBool(args, "template"))
-			return success({ template: HANDOFF_TEMPLATE }, HANDOFF_TEMPLATE);
-		const [id] = args.positionals;
-		if (!id) return usage("Issue id required", USAGE);
-		if (args.flags.from === undefined) return show(id, args, ctx.store);
-		const from = flagString(args, "from");
-		return from
-			? record(id, from, ctx)
-			: usage("--from takes a file, or - for stdin", USAGE);
+		const form = formOf(args);
+		if ("exitCode" in form) return form;
+		switch (form.mode) {
+			case "template":
+				return success({ template: HANDOFF_TEMPLATE }, HANDOFF_TEMPLATE);
+			case "record":
+				return record(form.id, form.from, ctx);
+			case "show":
+				return show(form.id, form.all, ctx.store);
+		}
 	},
 };
