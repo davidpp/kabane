@@ -25,9 +25,11 @@ matters here.>
 
 Commit and run the gate as {{INSTRUCTIONS_FILE}} describes.
 
-When you finish: add a kabane_comment on <issue id> with what landed, what you verified live and
-what is left manual, and anything you saw that is out of scope. Record your branch and each
-commit with kabane_log (branch:<name>, commit:<sha>). Leave the issue open and the working copy
-in place, because merging is the dispatcher's job. Your final message is the branch, the commit
-shas, the gate result and the manual checks.
+When you finish: hand <issue id> off with kabane_handoff: what landed, the evidence of what you
+verified live (what you ran and what you saw), and what you did not verify, manual checks
+included. Anything you saw that is out of scope goes in a kabane_comment, because it is not part
+of the handoff. Record your branch and each commit with kabane_log (branch:<name>,
+commit:<sha>). Leave the issue open and the working copy in place, because merging is the
+dispatcher's job. Your final message is the branch, the commit shas, the gate result and the
+manual checks.
 ```

@@ -145,7 +145,9 @@ never a service token. A tool that credits the human with a reply an agent relay
 Modules can contribute `contextSections`, keyed as `<module>.<key>` and anchored
 `after` a core section. Full and concise briefs include these by default. Concise
 `sections` accepts registered names, rejects unknown names with the valid list,
-and preserves canonical order. Module content shares the 16KiB pagination budget
+and preserves canonical order. `contextSectionsOf(modules)` is that order for a
+module list, the one implementation behind it, so a host can print the valid
+sections (the CLI's usage line) before it configures the runtime. Module content shares the 16KiB pagination budget
 and cursor checks; failed module reads are omitted in full briefs and fail selected
 concise reads.
 

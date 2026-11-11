@@ -257,7 +257,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `config [list\|get <key>\|set <key> <value>\|unset <key>\|path]` | `--json` — inspect or edit device config without opening the database |
 | `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD\|<ISO time>` (a date is due by the end of that day in your timezone; a time without `Z` or an offset is your local time) `--format concise\|full` |
 | `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` `--format concise\|full` `--cursor <cursor>` |
-| `show <id>` | task, links, comments (every timeline entry, any kind other than `comment` labelled), work log, then each module's section (the decisions); `--json` also carries `updatedBy` (actor URI of the last writer), `version`, each comment's `kind`, and `sections`, each module section's markdown by name (`questions.decisions`) |
+| `show <id>` | task, links, comments (every timeline entry, any kind other than `comment` labelled, except a kind a module lifts into its own section), work log, then each module's section (the latest handoff, the decisions); `--json` also carries `updatedBy` (actor URI of the last writer), `version`, every timeline entry as `comments` with its `kind`, and `sections`, each module section's markdown by name (`handoff.latest`, `questions.decisions`) |
 | `edit <id>` | `--title` `--description` `--state` `--priority` `--kind` `--assignee <who>\|none` `--scope` `--parent <id>\|none` `--tags` `--due` `--format concise\|full` |
 | `done <id>` | `--format concise\|full` |
 | `search <query>` | `--state` `--scope` `--limit` `--format concise\|full` `--cursor <cursor>` |
@@ -270,7 +270,8 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `answer <handle> <answer…>` | `--reason <text>` (why you chose it); or `--withdraw --reason <text>` — answer `JCAB-12:1` or `id:<ULID>` (a choice by its full text or its label, `B` for "B. One tree", ignoring case; a comma list for multi-select); the full text is recorded, and an unknown choice exits 1 listing the valid ones. The last answer moves a waiting issue to next |
 | `log <id>` | `--ref <type:value>` (repeatable) `--commit <sha>` `--branch <name>` `--pr <owner/repo#n>` `--url` `--session` `--file` `--note` |
 | `checklist <id>` | the issue's checklist, as the brief's `checklist.items` section prints it; `--json` gives `{ items }`. `checklist add <id> <text…>` `--at <n>` (1-based; default the end), `checklist tick <item…>` `--undo`, `checklist edit <item> [<text…>]` `--at <n>` `--remove` — an item is its handle `JCAB-12.3` or its ULID |
-| `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,checklist.items,upstream,position,context,priorWork,discussion,questions.decisions` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise. Core's sections, each registered module's after the one it names (`checklist.items` after the description, `questions.decisions` after the discussion), and a `<kind>.latest` section for each entry kind a module lifts out of the discussion |
+| `handoff <id>` | the issue's latest handoff, as the brief's `handoff.latest` section prints it; `--all` every one, oldest first; `--json` gives `{ handoffs }`, the entries. `handoff <id> --from <file\|->` records one whose body is the markdown in the file (`-` reads stdin); `handoff --template` prints the template |
+| `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,handoff.latest,checklist.items,upstream,position,context,priorWork,discussion,questions.decisions` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise. Core's sections, each registered module's after the one it names (`checklist.items` after the description, `questions.decisions` after the discussion), and a `<kind>.latest` section (`handoff.latest`, after the description and before `checklist.items`) for each entry kind a module lifts out of the discussion |
 | `scope` | `--json` — resolve the current directory without device setup: `{ scopeUri, baseUri, scopeId, name, root, extensions }`; `scopeUri` includes branch/package extensions, `baseUri` omits them. Outside a project: `{ "scopeUri": null }`, exit 0. Text: `name · scopeUri · root` |
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
 | `update` | `--check` `--json` — metadata-only stable candidate (policy-unverified), or explicit verified update of a supported hoisted Bun global registry install; no tracker initialization |
@@ -323,6 +324,24 @@ $ kabane checklist JCAB-12
 `JCAB-12.3` counts every item ever added to the issue, so moving or removing one renumbers
 none. A question's handle (`JCAB-12:3`) is refused with the item form to use instead.
 
+## Handoffs
+
+A handoff is what whoever did the work on an issue leaves for whoever reads next, another agent
+or the human, from the `@cabane/handoff` module. The work can be a code change, a research note
+or a design. `kabane handoff --template` prints the headings to write under (Summary, Evidence,
+Not verified, Risk); drop one that does not apply and add one the work needs. Recording one
+changes nothing else on the issue: handing off is not closing. It prints the line
+`kabane_handoff` returns:
+
+```
+$ kabane handoff --template > handoff.md     # then write under each heading
+$ kabane handoff JCAB-12 --from handoff.md
+JCAB-12 handed off · 0 earlier on record
+$ kabane handoff JCAB-12 --all               # every one, oldest first
+```
+
+The brief opens with the latest after the description, and counts the earlier ones.
+
 ## MCP on this device
 
 ```bash
@@ -344,8 +363,9 @@ Same tools as a hub at `https://<your-domain>/mcp`: `kabane_scopeList`,
 `kabane_context`, `kabane_edit`, `kabane_done`, `kabane_link`,
 `kabane_comment`, `kabane_log`, `kabane_contextAdd`, `kabane_contextList`,
 `kabane_contextRemove`, `kabane_upstream_link`, `kabane_upstream_unlink`, and the
-questions module's `kabane_ask`, `kabane_questions`, `kabane_answer`, and the checklist
-module's `kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`. A client's
+questions module's `kabane_ask`, `kabane_questions`, `kabane_answer`, the handoff module's
+`kabane_handoff`, and the checklist module's `kabane_checklistAdd`, `kabane_checklistTick`,
+`kabane_checklistEdit`. A client's
 `tools/list` is the authority, with each tool's parameters. The one difference: here a write may omit `scopeUri`
 and take the directory default; at the hub it is required. Stdout is the wire,
 so the command prints nothing of its own.

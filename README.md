@@ -19,6 +19,7 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 | `packages/extension` | `@cabane/extension` | Bun | the extension contract, and the argument parsing and outcomes every command is written with |
 | `packages/questions` | `@cabane/questions` | Bun + Workers | data module: the decisions agents ask a human on an issue (`kabane_ask`, `kabane_questions`, `kabane_answer`), replicated like tasks |
 | `packages/checklist` | `@cabane/checklist` | Bun + Workers | data module: the steps of one issue, ticked as they land (`kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`), replicated like tasks |
+| `packages/handoff` | `@cabane/handoff` | Bun + Workers | data module: what whoever did the work on an issue, code, research or a design, leaves for the next reader, written from a template (summary, evidence, what is not verified, risk) with `kabane_handoff`; an entry on the issue's timeline, and the brief opens with the latest |
 | `packages/cli` | `kabane` | Bun | the device command line |
 | `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource, Dispatcher and Copilot ports |
 | `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP |

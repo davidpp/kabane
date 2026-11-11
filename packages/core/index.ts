@@ -13,6 +13,7 @@ export {
 	ContextPageOptionsSchema,
 	ContextPageSchema,
 	type ContextSection,
+	contextSectionsOf,
 	type ContextPage,
 	type ContextPageOptions,
 } from "./context-output";
@@ -95,6 +96,7 @@ export {
 	flatMap,
 	map,
 	ok,
+	quoted,
 	type Result,
 	toError,
 	tryCatch,

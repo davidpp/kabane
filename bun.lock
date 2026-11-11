@@ -62,6 +62,7 @@
         "react": "19.2.3",
       },
       "devDependencies": {
+        "@cabane/handoff": "workspace:*",
         "@cabane/sqlite": "workspace:*",
         "@types/bun": "1.4.0",
         "@types/react": "19.2.7",
@@ -95,6 +96,7 @@
         "@cabane/checklist": "workspace:*",
         "@cabane/core": "workspace:*",
         "@cabane/extension": "workspace:*",
+        "@cabane/handoff": "workspace:*",
         "@cabane/loop": "workspace:*",
         "@cabane/questions": "workspace:*",
         "@cabane/sqlite": "workspace:*",
@@ -137,6 +139,19 @@
         "typescript": "5.9.3",
       },
     },
+    "packages/handoff": {
+      "name": "@cabane/handoff",
+      "version": "0.1.0",
+      "dependencies": {
+        "@cabane/core": "workspace:*",
+        "zod": "3.25.76",
+      },
+      "devDependencies": {
+        "@modelcontextprotocol/sdk": "1.30.0",
+        "@types/bun": "1.4.0",
+        "typescript": "5.9.3",
+      },
+    },
     "packages/questions": {
       "name": "@cabane/questions",
       "version": "0.1.0",
@@ -169,6 +184,7 @@
       "dependencies": {
         "@cabane/checklist": "workspace:*",
         "@cabane/core": "workspace:*",
+        "@cabane/handoff": "workspace:*",
         "@cabane/questions": "workspace:*",
         "jose": "6.2.10",
         "zod": "3.25.76",
@@ -195,6 +211,8 @@
     "@cabane/core": ["@cabane/core@workspace:packages/core"],
 
     "@cabane/extension": ["@cabane/extension@workspace:packages/extension"],
+
+    "@cabane/handoff": ["@cabane/handoff@workspace:packages/handoff"],
 
     "@cabane/loop": ["@cabane/loop@workspace:extensions/loop"],
 

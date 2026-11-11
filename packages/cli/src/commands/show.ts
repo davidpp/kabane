@@ -1,4 +1,11 @@
-import { ok, Planner, type Result, Runtime } from "@cabane/core";
+import {
+	CONTEXT_SECTIONS,
+	contextSectionsOf,
+	ok,
+	Planner,
+	type Result,
+	Runtime,
+} from "@cabane/core";
 import { failure, success, usage } from "@cabane/extension";
 import type { Command } from "../context";
 import {
@@ -9,15 +16,17 @@ import {
 } from "../output";
 
 /**
- * Each registered module section's markdown by name, the empty ones left out: core's
- * selected-section renderer, one section at a time, every bounded chunk consumed.
+ * Each registered module section's markdown by name, a lifted kind's `<kind>.latest`
+ * included, in the brief's order, the empty ones left out: core's selected-section
+ * renderer, one section at a time, every bounded chunk consumed.
  */
 const moduleSections = async (
 	basePath: string,
 	id: string,
 ): Promise<Result<Record<string, string>>> => {
-	const names = Runtime.modules().flatMap((module) =>
-		(module.contextSections ?? []).map((section) => section.name),
+	const core: readonly string[] = CONTEXT_SECTIONS;
+	const names = contextSectionsOf(Runtime.modules()).filter(
+		(name) => !core.includes(name),
 	);
 	const sections: Record<string, string> = {};
 	for (const name of names) {
@@ -61,11 +70,19 @@ export const show: Command = {
 		if (!logs.ok) return failure(logs.error);
 		if (!modules.ok) return failure(modules.error);
 
+		// A lifted kind's entries print as its section below, not a second time here.
+		const lifted = new Set(
+			Runtime.modules()
+				.flatMap((module) => module.kinds ?? [])
+				.filter((kind) => kind.projection !== "discussion")
+				.map((kind) => kind.name),
+		);
+		const listed = comments.value.filter((entry) => !lifted.has(entry.kind));
 		const sections = [formatTaskDetail(task.value)];
 		if (links.value.length > 0)
 			sections.push(`\nLinks:\n${formatLinks(id, links.value)}`);
-		if (comments.value.length > 0)
-			sections.push(`\nComments:\n${formatComments(comments.value)}`);
+		if (listed.length > 0)
+			sections.push(`\nComments:\n${formatComments(listed)}`);
 		if (logs.value.length > 0)
 			sections.push(`\nWork log:\n${formatWorkLogs(logs.value)}`);
 

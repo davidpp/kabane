@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checklistModule } from "@cabane/checklist";
+import { handoffModule } from "@cabane/handoff";
 import { questionsModule } from "@cabane/questions";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -125,6 +126,7 @@ describe("retained issue corpus baseline", () => {
 					expect(discovery.tools).toHaveLength(
 						19 +
 							(questionsModule.tools?.length ?? 0) +
+							(handoffModule.tools?.length ?? 0) +
 							(checklistModule.tools?.length ?? 0),
 					);
 					let toolCalls = 0;

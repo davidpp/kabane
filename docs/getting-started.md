@@ -236,8 +236,17 @@ keeps a comment of any kind but `comment` whoever wrote it, labelled with its ki
 plain agent comment can drop out. A kind a module lifts into its own section shows only its
 newest comment there, under that kind's title, and counts the older ones.
 
+When an agent finishes its part of an issue, whatever the work was (a code change, a research
+note, a design), it hands it off with `kabane_handoff`: a markdown `body` under the headings
+Summary, Evidence, Not verified and Risk, which the tool's description carries. Evidence is what
+was seen, not what was concluded: an output, a quoted source, a screenshot's `file:` ref. A
+handoff changes nothing else on the issue, so closing it is still `kabane_done`. The next
+reader's brief opens with the latest handoff, after the description, and counts the earlier
+ones; `kabane handoff <id> --all` prints every one.
+
 ```jsonl
-{"name":"kabane_comment","arguments":{"id":"JMYA-1","body":"Implemented the change; tests pass."}}
+{"name":"kabane_comment","arguments":{"id":"JMYA-1","body":"Drafted the README; the install section is next."}}
+{"name":"kabane_handoff","arguments":{"id":"JMYA-1","body":"### Summary\n\nThe README now opens with install, then the board.\n\n### Evidence\n\nFollowed the install section on a clean machine: `kabane --version` printed `1.0.0-beta.0`.\n\n### Not verified\n\nThe Windows steps.\n\n### Risk\n\nEasy to walk back: one file."}}
 {"name":"kabane_log","arguments":{"id":"JMYA-1","commit":"abc123","note":"Implementation commit"}}
 {"name":"kabane_log","arguments":{"id":"JMYA-1","refs":[{"uri":"commit:abc123","label":"Implementation"},{"uri":"file:src/index.ts"}]}}
 ```
@@ -260,7 +269,7 @@ CLI):
 Work is tracked in kabane (MCP server `kabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.
 - Before starting, `kabane_list` with `assignee` set to your name, `state: "next"`, and `responseFormat: "concise"`. If no suitable task is on the page and `hasMore` is true, follow `nextCursor` with the same filters; only assert no work remains after `hasMore` is false. Read the chosen task with `kabane_context` and `responseFormat: "concise"`; consume every preceding chunk and continue with `nextCursor` until `selectedComplete`, `descriptionComplete`, and `humanSteeringComplete` are true before starting work. Use the same id/options; request any omitted required sections.
 - Set the task `in_progress` with `kabane_edit` and `responseFormat: "concise"` before touching code. Never take a task that is already in progress.
-- When finished, `kabane_comment` with `body` describing what landed (files, commits, what is left). Check write results for errors before `kabane_done` with `responseFormat: "concise"`.
+- When finished, hand the task off with `kabane_handoff`: what landed, the evidence of what you checked, and what you did not verify. `kabane_comment` is for notes along the way. Check write results for errors before `kabane_done` with `responseFormat: "concise"`.
 - File new work you find with `kabane_add` and `responseFormat: "concise"` instead of doing it unasked. Use `kabane_get` for full own fields.
 ```
 
@@ -280,6 +289,7 @@ kabane list --assignee claude --state next --format concise
 kabane edit JMYA-1 --state in_progress --format concise
 kabane comment JMYA-1 "README drafted"
 kabane comment JMYA-1 "Reviewed: rollback is covered" --kind review
+kabane handoff JMYA-1 --from handoff.md      # body under kabane handoff --template's headings
 kabane context JMYA-1 --format concise      # finish required description/steering
 kabane context JMYA-1 --format concise --cursor '<nextCursor>'  # same flags
 kabane done JMYA-1 --format concise

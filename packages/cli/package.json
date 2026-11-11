@@ -44,6 +44,7 @@
 		"@cabane/core": "workspace:*",
 		"@cabane/questions": "workspace:*",
 		"@cabane/extension": "workspace:*",
+		"@cabane/handoff": "workspace:*",
 		"@cabane/loop": "workspace:*",
 		"@cabane/sqlite": "workspace:*",
 		"zod": "3.25.76"

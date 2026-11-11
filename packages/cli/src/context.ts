@@ -22,6 +22,7 @@ import {
 	type ParsedArgs,
 	Settings,
 } from "@cabane/extension";
+import { handoffModule } from "@cabane/handoff";
 import { questionsModule } from "@cabane/questions";
 import { SqliteDb } from "@cabane/sqlite";
 import {
@@ -45,6 +46,9 @@ export type Command = Extension.Command<Ctx>;
  * `actor` is stamped into `updated_by` on every local write, so it has to be
  * the effective one for this invocation (`--as` wins over the config).
  */
+/** The data modules every device registers, in the order their sections render. */
+export const MODULES = [questionsModule, handoffModule, checklistModule];
+
 export const configureRuntime = (
 	config: Config,
 	actor: string,
@@ -52,7 +56,7 @@ export const configureRuntime = (
 ): Result<void> => {
 	const zone = config.timezone;
 	return Runtime.configure({
-		modules: [questionsModule, checklistModule],
+		modules: MODULES,
 		provider: SqliteDb.provider({ dbName: location.dbName }),
 		tablePrefix: location.tablePrefix,
 		actor: () => actor,

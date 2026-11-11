@@ -31,7 +31,8 @@ options: once the issue is filed, ask it on the issue with `kabane_ask`.
 
 **Verify.** The concrete steps and what to observe, under the testing constraints in
 {{INSTRUCTIONS_FILE}}. List the checks nothing can script (keys, GUIs, a deploy) as manual
-here, so the agent does not try.
+here, so the agent does not try. The agent reports each of these in its handoff, and each manual
+one under "Not verified".
 
 **Conventions.** Only what {{INSTRUCTIONS_FILE}} leaves out for this issue: the working copy
 it runs in, and any exception to the project's usual commit or gate rules.
