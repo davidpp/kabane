@@ -92,3 +92,25 @@ describe("Segments.flow", () => {
 		expect(rows[1]?.[0]).toEqual(items[3]);
 	});
 });
+
+describe("Segments.fitHolding", () => {
+	const name = [seg("claude-sonnet-4-20250514")];
+	const age = [seg(" · "), seg("just now")];
+	const at = (room: number): string =>
+		Segments.plain(Segments.fitHolding(name, age, room));
+
+	test("cuts the parts ahead of the held one, which stays whole", () => {
+		expect(at(20)).toBe("claude-s… · just now");
+		expect(at(20).length).toBe(20);
+	});
+
+	test("a room exactly as wide as the held part holds it whole and nothing ahead", () => {
+		expect(at(11)).toBe(" · just now");
+	});
+
+	test("a room narrower than the held part cuts the held part itself", () => {
+		expect(at(10)).toBe(" · just n…");
+		expect(at(1)).toBe("…");
+		expect(at(0)).toBe("");
+	});
+});
