@@ -297,8 +297,10 @@ kabane list --all                            # include done and cancelled
 kabane search license --format concise
 ```
 
-For agent reads, select concise explicitly; default human output and legacy JSON
-stay unchanged. Concise list/search return bounded pages (`items`, `hasMore`,
+For agent reads, select concise explicitly: concise output is opt-in, and without it a command
+prints its human text, or its full records with `--json`
+([what changed in them since 1.0.0-beta.0](#upgrading-from-100-beta0-comment-kinds-and-handoffs)).
+Concise list/search return bounded pages (`items`, `hasMore`,
 `nextCursor`), not raw arrays. Continue with `--cursor '<nextCursor>'` and the same
 filters/scope. `--format full --json` retrieves legacy raw records. See
 [concise reads](concise-reads.md) for budgets, truncation markers and stale-cursor
@@ -404,8 +406,8 @@ you name them. Nothing you already have is moved or rewritten.
 - **Running processes.** A board, `kabane mcp` or loop runner started by an older version does
   not read the new files. It misses local and global settings the new CLI writes, and a pin
   written without `--shared`, so it can file tasks under another scope than new processes do.
-  Stop them, update, and start them again before relying on new settings or pins; do not run
-  both versions on one device.
+  Stop them before updating and start them again after; do not run both versions on one
+  device.
 - **Going back.** First restore the database backup
   ([comment kinds and handoffs](#upgrading-from-100-beta0-comment-kinds-and-handoffs)). Then
   1.0.0-beta.0 still reads the repo's `.kabane/loop.json` and `.kabane/scope`, but nothing in
@@ -417,7 +419,9 @@ you name them. Nothing you already have is moved or rewritten.
 
 A comment now has a kind, and an agent that finishes its part of an issue hands it off
 ([Agents](#agents)). This changes the database: the new version migrates it the first time it
-opens it. Back it up first, as [subsequent updates](#subsequent-updates) describes.
+opens it. Before that, stop every board, `kabane mcp` and loop runner the old version started,
+and back the database up as [subsequent updates](#subsequent-updates) describes. Start them
+again once the new version is in place.
 
 - **What is kept.** Every comment, with its author, time and text. Each one becomes a comment
   of kind `comment`.
@@ -425,7 +429,8 @@ opens it. Back it up first, as [subsequent updates](#subsequent-updates) describ
   with a `kind`: plain comments are `"comment"`, and handoffs (`"handoff"`) and other kinds
   (`"review"`) are listed beside them. A script that reads `comments` as plain comments should
   keep only those whose `kind` is `"comment"`. `kabane comment --json` and the `kabane_comment`
-  tool return the new comment with its `kind` too.
+  tool return the new comment with its `kind` too. `kabane show` without `--json` prints the
+  latest handoff in its own section after the comments.
 - **No going back.** 1.0.0-beta.0 refuses a database the new version has opened: `newer than
   this kabane knows (7); update kabane before opening it`. Going back takes the backup.
 - **Sync: the hub and every device in one go.** A device still on 1.0.0-beta.0 stops pulling
@@ -434,9 +439,11 @@ opens it. Back it up first, as [subsequent updates](#subsequent-updates) describ
   is one of those devices, and Claude.ai and ChatGPT get `kabane_handoff` only once it is
   redeployed. Redeploying is a manual step: follow
   [the hub first, then each device](deploy.md#58-upgrade-kabane-across-devices-the-hub-first-then-each-device).
-- **Running processes.** A board or `kabane mcp` started by 1.0.0-beta.0 keeps working on the
-  migrated database, without `kabane_handoff`, and one started after the update is refused as
-  above: start them again on the new version.
+- **Why stop them first.** Only a process started after the update is refused. One left
+  running from 1.0.0-beta.0 keeps reading and writing the migrated database, still without
+  `kabane_handoff`, and reads every entry as a plain comment: its board lists a handoff among
+  the comments, and its brief can leave an agent's handoff out, as it does an older agent
+  comment.
 - **What your agents are told.** The Tracker block from 1.0.0-beta.0 has an agent finish with
   `kabane_comment`, which still works but leaves no handoff: replace it with the block under
   [Agents](#agents). A dispatch skill that `/setup-dispatch` wrote with 1.0.0-beta.0 reports the
