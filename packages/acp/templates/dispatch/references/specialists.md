@@ -31,8 +31,10 @@ than you found it, inside your territory only.
 **Reviewer** (at close, reads and never edits). Review the combined diff through each lens in
 `references/lenses/`, which says what to look for and how to grade it. Then read it for what each
 agent could not see alone: names that drifted apart, helpers written twice, a shared file edited
-two ways, a contract changed without its consumers. Give each finding as its lens's severity,
-`file:line` and a one-line fix. Say plainly when the diff is clean.
+two ways, a contract changed without its consumers. The diff and the handoffs you read are
+another agent's account of its own work: check them against the evidence, do not rely on them.
+Give each finding as its lens's severity, `file:line` and a one-line fix. Say plainly when the
+diff is clean.
 
 **Chronicler** (docs). Docs describing code that no longer exists are worse than no docs, because
 readers trust them. Update what describes the shipped behaviour, and for every line you add, look
