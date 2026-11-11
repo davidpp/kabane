@@ -90,6 +90,17 @@ export type ModuleContextSection = {
 	) => Promise<Result<string | null>>;
 };
 
+/**
+ * The section a kind projected as `latest` renders as: `<kind>.latest`, after
+ * the core section its declaration names, valid wherever a module section is.
+ */
+export type LatestKindSection = {
+	name: string;
+	after: ContextSection;
+	framing: string;
+	kind: EntryKind;
+};
+
 export type KabaneModule = {
 	/** Namespace: keys the module's migration versions, op tags and parked ops. [a-z][a-z0-9-]* */
 	name: string;
@@ -289,6 +300,21 @@ export namespace Modules {
 	/** The registered module called `name`. */
 	export const named = (name: string): KabaneModule | undefined =>
 		registered.find((module) => module.name === name);
+
+	/** The sections `module`'s kinds projected as `latest` render as, in declaration order. */
+	export const latestSections = (module: KabaneModule): LatestKindSection[] =>
+		(module.kinds ?? []).flatMap((kind) =>
+			kind.projection === "discussion"
+				? []
+				: [
+						{
+							name: latestSectionName(kind.name),
+							after: kind.projection.latest.after,
+							framing: kind.projection.latest.framing,
+							kind,
+						},
+					],
+		);
 
 	/** The registered entry kind called `name`, if a module declares one. */
 	export const kind = (name: string): EntryKind | undefined =>

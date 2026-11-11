@@ -19,7 +19,11 @@ import {
 	ContextSectionSchema,
 	type ContextSection,
 } from "../context-output";
-import type { ModuleContextSection } from "../module";
+import {
+	type LatestKindSection,
+	type ModuleContextSection,
+	Modules,
+} from "../module";
 import { traced } from "../observability";
 import { err, ok, type Result } from "../result";
 import { Runtime } from "../runtime";
@@ -29,9 +33,11 @@ import {
 	answeredQuestion,
 	type AssembleContextOpts,
 	AssembleContextOptsSchema,
+	DEFAULT_ENTRY_KIND,
 	type ResolvedAssembleContextOpts,
 	type Task,
 	type TaskComment,
+	type TaskEntry,
 	type TaskContextRef,
 	type TaskLink,
 	type TaskWorkLog,
@@ -283,6 +289,25 @@ const commentEntry = (c: TaskComment): DiscussionEntry => ({
 	line: `**${c.author}** (${c.authorType}, ${c.createdAt}):\n${c.content}`,
 });
 
+/** A kind whose newest entry has its own `latest` section, out of the Discussion. */
+const liftedKind = (kind: string): boolean => {
+	const declared = Modules.kind(kind);
+	return declared !== undefined && declared.projection !== "discussion";
+};
+
+/**
+ * Every entry of a kind other than `comment` that no `latest` section lifts,
+ * whoever wrote it: a writer chose a kind to keep it, so it is never dropped.
+ * A kind no registered module declares lands here too, labelled the same way.
+ */
+const typedEntries = (entries: TaskEntry[]): DiscussionEntry[] =>
+	entries
+		.filter((e) => e.kind !== DEFAULT_ENTRY_KIND && !liftedKind(e.kind))
+		.map((e) => ({
+			createdAt: e.createdAt,
+			line: `**${e.author}** (${e.kind}, ${e.authorType}, ${e.createdAt}):\n${e.content}`,
+		}));
+
 /** ALL human comments — the load-bearing steering, never dropped. */
 const humanCommentEntries = (comments: TaskComment[]): DiscussionEntry[] =>
 	comments.filter((c) => c.authorType === "human").map(commentEntry);
@@ -350,18 +375,19 @@ const sessionActivityEntries = async (
 };
 
 /**
- * Discussion — ALL human comments (always) merged chronologically with the
- * durable machine signal:
+ * Discussion — ALL human comments and every typed entry no `latest` section
+ * lifts (always) merged chronologically with the durable machine signal:
  *   - session-bearing tasks → durable session activities
  *   - session-less tasks    → the last 3 AI comments (pre-S4 heuristic)
  *
  * Human comments are the most load-bearing brief content (the steering left by
  * people) and carry NO other section, so they are ALWAYS included — the cap
- * bounds only the machine set, never the human comments. Work-log entries are
- * deliberately EXCLUDED — "Prior work" owns them.
+ * bounds only the machine set, never the kept entries. A typed entry is kept
+ * for the same reason: its writer gave it a kind to keep it. Work-log entries
+ * are deliberately EXCLUDED — "Prior work" owns them.
  */
 const discussionSection = (
-	human: DiscussionEntry[],
+	kept: DiscussionEntry[],
 	machine: DiscussionEntry[],
 	opts: ResolvedAssembleContextOpts,
 ): string | null => {
@@ -369,7 +395,7 @@ const discussionSection = (
 		machine.length > opts.maxTimelineEntries
 			? machine.slice(-opts.maxTimelineEntries)
 			: machine;
-	const merged = [...human, ...bounded].sort(byCreatedAtAscEntry);
+	const merged = [...kept, ...bounded].sort(byCreatedAtAscEntry);
 	if (merged.length === 0) return null;
 	return `## Discussion\n\n${merged.map((e) => e.line).join("\n\n")}`;
 };
@@ -389,6 +415,42 @@ const sourceRows = <T>(
 		: strict
 			? err(new Error(`Cannot read context ${source}; retry the bounded read.`))
 			: ok([]);
+
+/**
+ * A kind projected as `latest`: its newest entry under the kind's title, author
+ * and time as the Discussion prints them, the framing line, the body verbatim,
+ * and a count of the older entries it supersedes. Null when there is none.
+ */
+const renderLatestSection = async (
+	section: LatestKindSection,
+	basePath: string,
+	task: Task,
+	strict: boolean,
+): Promise<Result<string | null>> => {
+	const entries = sourceRows(
+		await PlannerComments.getEntries(basePath, task.id, {
+			kind: section.kind.name,
+		}),
+		section.name,
+		strict,
+	);
+	if (!entries.ok) return entries;
+	const newest = entries.value.at(-1);
+	if (newest === undefined) return ok(null);
+	const earlier = entries.value.length - 1;
+	return ok(
+		[
+			`## ${section.kind.title} from ${newest.author} · ${newest.createdAt}`,
+			section.framing,
+			newest.content,
+			...(earlier > 0
+				? [
+						`${earlier} earlier ${section.kind.name} entr${earlier === 1 ? "y" : "ies"} on record.`,
+					]
+				: []),
+		].join("\n\n"),
+	);
+};
 
 const renderModuleSection = async (
 	section: ModuleContextSection,
@@ -473,22 +535,25 @@ const renderCoreSection = async (
 			return logs.ok ? ok(priorWorkSection(logs.value)) : logs;
 		}
 		case "discussion": {
-			const [commentsR, sessionsR] = await Promise.all([
-				PlannerComments.getComments(basePath, task.id),
+			const [entriesR, sessionsR] = await Promise.all([
+				PlannerComments.getEntries(basePath, task.id),
 				PlannerSessions.querySessions(basePath, { taskId: task.id }),
 			]);
-			const comments = sourceRows(commentsR, "discussion comments", strict);
-			if (!comments.ok) return comments;
+			const entries = sourceRows(entriesR, "discussion comments", strict);
+			if (!entries.ok) return entries;
 			const sessions = sourceRows(sessionsR, "discussion sessions", strict);
 			if (!sessions.ok) return sessions;
+			const comments = entries.value.filter(
+				(e) => e.kind === DEFAULT_ENTRY_KIND,
+			);
 			const machine =
 				sessions.value.length > 0
 					? await sessionActivityEntries(basePath, sessions.value, strict)
-					: ok(lastAiCommentEntries(comments.value));
+					: ok(lastAiCommentEntries(comments));
 			if (!machine.ok) return machine;
 			return ok(
 				discussionSection(
-					humanCommentEntries(comments.value),
+					[...humanCommentEntries(comments), ...typedEntries(entries.value)],
 					machine.value,
 					opts,
 				),
@@ -510,30 +575,32 @@ export const readContextSections = async (
 			.flatMap((module) => module.contextSections ?? [])
 			.map((section) => [section.name, section]),
 	);
+	const latestKinds = new Map(
+		Runtime.modules()
+			.flatMap(Modules.latestSections)
+			.map((section) => [section.name, section]),
+	);
+	const render = async (section: string): Promise<Result<string | null>> => {
+		const contribution = registeredModules.get(section);
+		if (contribution)
+			return renderModuleSection(contribution, basePath, task, opts, strict);
+		const latest = latestKinds.get(section);
+		if (latest) return renderLatestSection(latest, basePath, task, strict);
+		const core = ContextSectionSchema.safeParse(section);
+		if (core.success)
+			return renderCoreSection(core.data, basePath, task, opts, strict);
+		return err(
+			new Error(
+				`Valid sections: ${registeredContextSections().join(", ")}. Unknown section (excerpt): ${section.slice(0, 80)}`,
+			),
+		);
+	};
 	try {
 		const rendered = await Promise.all(
-			sections.map(async (section) => {
-				const contribution = registeredModules.get(section);
-				const core = ContextSectionSchema.safeParse(section);
-				return {
-					section,
-					result: contribution
-						? await renderModuleSection(
-								contribution,
-								basePath,
-								task,
-								opts,
-								strict,
-							)
-						: core.success
-							? await renderCoreSection(core.data, basePath, task, opts, strict)
-							: err(
-									new Error(
-										`Valid sections: ${registeredContextSections().join(", ")}. Unknown section (excerpt): ${section.slice(0, 80)}`,
-									),
-								),
-				};
-			}),
+			sections.map(async (section) => ({
+				section,
+				result: await render(section),
+			})),
 		);
 		const output: RenderedSection[] = [];
 		for (const { section, result } of rendered) {

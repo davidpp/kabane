@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { configureTestRuntime } from "../testing";
 
+import type { KabaneModule } from "../module";
 import { formatQuestionBody, type TaskDraft } from "../schemas";
 import { Planner } from "./index";
 
@@ -507,5 +508,164 @@ describe("Planner — assembleContext", () => {
 			perRefCap: -5,
 		});
 		expect(result.ok).toBe(false);
+	});
+});
+
+describe("Planner — assembleContext over typed timeline entries", () => {
+	const AGENT = "cabane://actor/agent/claude";
+
+	const entry = async (taskId: string, kind: string, content: string) => {
+		const added = await Planner.addEntry(TEST_BASE, {
+			taskId,
+			kind,
+			author: AGENT,
+			authorType: "ai",
+			content,
+		});
+		if (!added.ok) throw added.error;
+		await sleep(5);
+	};
+	const aiComment = async (taskId: string, content: string) => {
+		const added = await Planner.addComment(TEST_BASE, {
+			taskId,
+			author: AGENT,
+			authorType: "ai",
+			content,
+		});
+		if (!added.ok) throw added.error;
+		await sleep(5);
+	};
+	const discussionOf = (md: string): string =>
+		md.slice(md.indexOf("## Discussion"));
+
+	const verdicts: KabaneModule = {
+		name: "verdicts",
+		kinds: [
+			{
+				name: "verdicts",
+				title: "Verdict",
+				template: "## Verdict\n\nWhat you decided and why.",
+				projection: {
+					latest: {
+						after: "description",
+						framing:
+							"The newest verdict on record; check it before relying on it.",
+					},
+				},
+			},
+			{
+				name: "verdicts.note",
+				title: "Verdict note",
+				template: "",
+				projection: "discussion",
+			},
+		],
+	};
+
+	beforeEach(async () => {
+		rmSync(TEST_BASE, { recursive: true, force: true });
+		mkdirSync(TEST_BASE, { recursive: true });
+		await Planner.init(TEST_BASE);
+	});
+
+	afterEach(() => {
+		configureTestRuntime();
+		rmSync(TEST_BASE, { recursive: true, force: true });
+	});
+
+	it("keeps a typed AI entry no module declares, labelled, behind more than three later AI comments", async () => {
+		const id = await createTask({ title: "Typed", kind: "issue" });
+		await entry(id, "review", "REVIEW_BODY");
+		for (const n of ["AI_1", "AI_2", "AI_3", "AI_4"]) await aiComment(id, n);
+
+		const discussion = discussionOf(await assemble(id));
+		expect(discussion).toContain(`**${AGENT}** (review, ai, `);
+		expect(discussion).toContain("REVIEW_BODY");
+		// Plain AI comments keep today's rule: the last three.
+		expect(discussion).not.toContain("AI_1");
+		expect(discussion).toContain("AI_4");
+		expect(discussion.indexOf("REVIEW_BODY")).toBeLessThan(
+			discussion.indexOf("AI_2"),
+		);
+	});
+
+	it("keeps a typed AI entry on an issue with a session, where plain AI comments drop", async () => {
+		const id = await createTask({ title: "Session", kind: "issue" });
+		const started = await Planner.startSession(TEST_BASE, {
+			taskId: id,
+			agent: "claude",
+		});
+		if (!started.ok) throw started.error;
+		await entry(id, "finding", "TYPED_FINDING");
+		await aiComment(id, "PLAIN_AI");
+
+		const discussion = discussionOf(await assemble(id));
+		expect(discussion).toContain("(finding, ai, ");
+		expect(discussion).toContain("TYPED_FINDING");
+		expect(discussion).not.toContain("PLAIN_AI");
+	});
+
+	it("lifts a latest kind's newest entry into its own section, counts the older ones and leaves them out of the Discussion", async () => {
+		configureTestRuntime("", { modules: [verdicts] });
+		const id = await createTask({
+			title: "Lifted",
+			kind: "issue",
+			description: "DESCRIPTION",
+		});
+		await entry(id, "verdicts", "OLDEST_VERDICT");
+		await entry(id, "verdicts", "OLDER_VERDICT");
+		await entry(id, "verdicts.note", "A_NOTE");
+		await entry(id, "verdicts", "NEWEST_VERDICT");
+		const human = await Planner.addComment(TEST_BASE, {
+			taskId: id,
+			author: "me",
+			authorType: "human",
+			content: "HUMAN",
+		});
+		if (!human.ok) throw human.error;
+
+		const md = await assemble(id);
+		const section = md.slice(
+			md.indexOf("## Verdict from"),
+			md.indexOf("## Discussion"),
+		);
+		expect(section).toMatch(
+			new RegExp(
+				`^## Verdict from ${AGENT} · \\S+\\n\\nThe newest verdict on record; check it before relying on it\\.\\n\\nNEWEST_VERDICT\\n\\n2 earlier verdicts entries on record\\.\\n\\n$`,
+			),
+		);
+		expect(md.indexOf("DESCRIPTION")).toBeLessThan(
+			md.indexOf("## Verdict from"),
+		);
+		const discussion = discussionOf(md);
+		expect(discussion).not.toContain("VERDICT");
+		expect(discussion).toContain(`**${AGENT}** (verdicts.note, ai, `);
+		expect(discussion).toContain("HUMAN");
+
+		const bounded = await Planner.getContextPage(TEST_BASE, id, {
+			sections: ["verdicts.latest"],
+		});
+		if (!bounded.ok) throw bounded.error;
+		expect(bounded.value.markdown).toContain("NEWEST_VERDICT");
+		expect(bounded.value.markdown).not.toContain("## Discussion");
+	});
+
+	it("omits a latest kind's section while the issue has none of its entries", async () => {
+		configureTestRuntime("", { modules: [verdicts] });
+		const id = await createTask({ title: "None yet", kind: "issue" });
+		await entry(id, "verdicts.note", "A_NOTE");
+		const md = await assemble(id);
+		expect(md).not.toContain("## Verdict");
+		expect(md).toContain("A_NOTE");
+	});
+
+	it("shows a latest kind's entries in the Discussion, labelled, on a device without its module", async () => {
+		const id = await createTask({ title: "Unregistered", kind: "issue" });
+		await entry(id, "verdicts", "FIRST_VERDICT");
+		await entry(id, "verdicts", "SECOND_VERDICT");
+		const discussion = discussionOf(await assemble(id));
+		expect(discussion).toContain("FIRST_VERDICT");
+		expect(discussion).toContain("SECOND_VERDICT");
+		expect(discussion).toContain("(verdicts, ai, ");
 	});
 });
