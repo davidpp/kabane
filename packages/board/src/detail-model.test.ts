@@ -3,7 +3,7 @@ import type {
 	AgentActivity,
 	AgentSession,
 	Task,
-	TaskComment,
+	TaskEntry,
 	TaskWorkLog,
 } from "@cabane/core";
 import type { BoardData } from "./data";
@@ -24,9 +24,10 @@ const task = (over: Partial<Task> = {}): Task => ({
 	...over,
 });
 
-const comment = (over: Partial<TaskComment>): TaskComment => ({
+const entry = (over: Partial<TaskEntry>): TaskEntry => ({
 	id: "c",
 	taskId: "t1",
+	kind: "comment",
 	author: "david",
 	authorType: "human",
 	content: "a comment",
@@ -70,7 +71,7 @@ const records = (
 	over: Partial<BoardData.DetailRecords> = {},
 ): BoardData.DetailRecords => ({
 	task: task(),
-	comments: [],
+	entries: [],
 	workLogs: [],
 	sessions: [],
 	links: [],
@@ -283,17 +284,28 @@ describe("position", () => {
 	});
 });
 
-describe("comments", () => {
-	it("keeps every comment, newest first", () => {
-		const said = DetailModel.comments(
+describe("timeline", () => {
+	it("keeps every entry, newest first, typed ones and lifted ones too", () => {
+		const said = DetailModel.timeline(
 			records({
-				comments: [
-					comment({ id: "old", createdAt: "2026-09-20T10:00:00.000Z" }),
-					comment({ id: "new", createdAt: "2026-09-22T10:00:00.000Z" }),
+				entries: [
+					entry({ id: "old", createdAt: "2026-09-20T10:00:00.000Z" }),
+					entry({
+						id: "handoff",
+						kind: "handoff",
+						createdAt: "2026-09-21T10:00:00.000Z",
+					}),
+					entry({ id: "new", createdAt: "2026-09-22T10:00:00.000Z" }),
 				],
 			}),
 		);
-		expect(said.map((c) => c.id)).toEqual(["new", "old"]);
+		expect(said.map((e) => e.id)).toEqual(["new", "handoff", "old"]);
+	});
+
+	it("labels an entry with its kind, declared or not, and a plain comment with none", () => {
+		expect(DetailModel.kindLabel(entry({ kind: "handoff" }))).toBe("handoff");
+		expect(DetailModel.kindLabel(entry({ kind: "review" }))).toBe("review");
+		expect(DetailModel.kindLabel(entry({}))).toBeUndefined();
 	});
 });
 
@@ -424,7 +436,7 @@ describe("tabs and the tab bar", () => {
 			DetailModel.tabs(
 				records({
 					task: task({ description: "Some words." }),
-					comments: [comment({ id: "c1" }), comment({ id: "c2" })],
+					entries: [entry({ id: "c1" }), entry({ id: "c2" })],
 				}),
 				1,
 			),

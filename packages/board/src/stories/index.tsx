@@ -273,6 +273,31 @@ const STEPS = [
 	Fixtures.item(STEPWISE, 4, "Drop the in-memory map"),
 ];
 
+// Its timeline: a person's comment, the agent's handoff, and a review in a kind no module declares.
+const TIMELINE = [
+	Fixtures.entry(
+		STEPWISE,
+		1,
+		"comment",
+		"ada",
+		"Keep the map until the store reads back.",
+	),
+	Fixtures.entry(
+		STEPWISE,
+		2,
+		"handoff",
+		CLAUDE,
+		"## Summary\n\nThe store writes through on every change; reading it back on startup is next.\n\n## Not verified\n\n- a restart under load",
+	),
+	Fixtures.entry(
+		STEPWISE,
+		3,
+		"review",
+		"cabane://actor/agent/codex",
+		"The migration is idempotent. `write` misses one error path.",
+	),
+];
+
 // Checklist progress on the board's rows: one under way, one complete.
 const PROGRESS = new Map([
 	["n1", { done: 2, total: 4 }],
@@ -671,6 +696,22 @@ export const STORIES: readonly Story[] = [
 				scrollRef={createRef<ScrollBoxRenderable>()}
 				checklist={BoardChecklist.view(STEPS)}
 				keys={{ context: "detail", situation: { checklist: true } }}
+			/>
+		),
+	},
+	{
+		name: "detail-timeline",
+		about:
+			"the comments tab: a comment, a handoff, and a review no module declares, each kind named",
+		width: 40,
+		height: 30,
+		render: () => (
+			<Detail
+				taskId={STEPWISE.id}
+				task={STEPWISE}
+				tab="comments"
+				records={ok(Fixtures.records(STEPWISE, { entries: TIMELINE }))}
+				scrollRef={createRef<ScrollBoxRenderable>()}
 			/>
 		),
 	},

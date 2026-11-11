@@ -464,6 +464,16 @@ progress beside the rows, and the open detail's stamp (`BoardData.detailStamp`) 
 and their newest change, so a tick made in a shell or by an agent shows on an open board within
 one poll.
 
+## Timeline entries
+
+An issue's timeline holds entries of a kind: a plain comment, a handoff (`@cabane/handoff`), or
+any kind a writer names (`kabane comment <id> "…" --kind review`). The board reads them all with
+`Planner.getEntries` and writes none.
+
+The comments tab is the whole timeline, newest first. An entry that is not a plain comment names
+its kind in its band, between the author and the time: `claude · handoff · 2h ago`. A kind no
+registered module declares is named the same way; a plain comment's band reads `ada · 2h ago`.
+
 ## Linked issues
 
 A task can point at one issue in an external tracker. The row says only that it does, with a gray

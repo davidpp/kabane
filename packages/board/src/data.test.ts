@@ -636,7 +636,7 @@ describe("BoardData", () => {
 		});
 		const stamp = (checklist: ChecklistItemView[]) =>
 			BoardData.stampOf({
-				comments: [],
+				entries: [],
 				workLogs: [],
 				sessions: [],
 				links: [],

@@ -19,8 +19,8 @@ import {
 	Runtime,
 	TASK_STATE_DISPLAY,
 	type Task,
-	type TaskComment,
 	type TaskContextRef,
+	type TaskEntry,
 	type TaskLink,
 	type TaskQuery,
 	type TaskState,
@@ -296,7 +296,8 @@ export namespace BoardData {
 	 */
 	export type DetailRecords = {
 		task: Task;
-		comments: TaskComment[];
+		// Its timeline, every kind, oldest first: comments, handoffs, and kinds no module declares.
+		entries: TaskEntry[];
 		workLogs: TaskWorkLog[];
 		sessions: SessionRecords[];
 		links: TaskLink[];
@@ -407,7 +408,7 @@ export namespace BoardData {
 		if (!task.ok) return task;
 		if (!task.value) return err(new Error(`task ${id} not found`));
 		const [
-			comments,
+			entries,
 			workLogs,
 			sessions,
 			links,
@@ -434,7 +435,7 @@ export namespace BoardData {
 			taskQuestions(basePath, task.value.id),
 			taskChecklist(basePath, task.value.id),
 		]);
-		if (!comments.ok) return comments;
+		if (!entries.ok) return entries;
 		if (!workLogs.ok) return workLogs;
 		if (!sessions.ok) return sessions;
 		if (!links.ok) return links;
@@ -456,7 +457,7 @@ export namespace BoardData {
 		if (!neighbors.ok) return neighbors;
 		return ok({
 			task: task.value,
-			comments: comments.value,
+			entries: entries.value,
 			workLogs: workLogs.value,
 			sessions: perSession,
 			links: links.value,
@@ -471,7 +472,7 @@ export namespace BoardData {
 
 	/** The record kinds an open detail view shows that can change while the task row does not. */
 	export type StampParts = {
-		comments: readonly TaskComment[];
+		entries: readonly TaskEntry[];
 		workLogs: readonly TaskWorkLog[];
 		sessions: readonly AgentSession[];
 		links: readonly TaskLink[];
@@ -494,7 +495,7 @@ export namespace BoardData {
 	 */
 	export const stampOf = (parts: StampParts): string =>
 		[
-			`c${parts.comments.length}@${latest(parts.comments.map((c) => c.updatedAt ?? c.createdAt))}`,
+			`e${parts.entries.length}@${latest(parts.entries.map((e) => e.updatedAt ?? e.createdAt))}`,
 			`w${parts.workLogs.length}@${latest(parts.workLogs.map((w) => w.createdAt))}`,
 			`s${parts.sessions.length}@${latest(parts.sessions.map((s) => s.lastActivityAt))}`,
 			`l${parts.links
@@ -509,7 +510,7 @@ export namespace BoardData {
 	/** The stamp of records already loaded, to compare the next `detailStamp` against. */
 	export const recordsStamp = (records: DetailRecords): string =>
 		stampOf({
-			comments: records.comments,
+			entries: records.entries,
 			workLogs: records.workLogs,
 			sessions: records.sessions.map((s) => s.session),
 			links: records.links,
@@ -527,24 +528,17 @@ export namespace BoardData {
 		basePath: string,
 		id: string,
 	): Promise<Result<string>> => {
-		const [
-			comments,
-			workLogs,
-			sessions,
-			links,
-			upstream,
-			questions,
-			checklist,
-		] = await Promise.all([
-			Planner.getEntries(basePath, id),
-			Planner.getWorkLogs(basePath, id),
-			Planner.querySessions(basePath, { taskId: id }),
-			Planner.getLinksForTask(basePath, id),
-			Planner.getUpstreamLinksForTask(basePath, id),
-			taskQuestions(basePath, id),
-			taskChecklist(basePath, id),
-		]);
-		if (!comments.ok) return comments;
+		const [entries, workLogs, sessions, links, upstream, questions, checklist] =
+			await Promise.all([
+				Planner.getEntries(basePath, id),
+				Planner.getWorkLogs(basePath, id),
+				Planner.querySessions(basePath, { taskId: id }),
+				Planner.getLinksForTask(basePath, id),
+				Planner.getUpstreamLinksForTask(basePath, id),
+				taskQuestions(basePath, id),
+				taskChecklist(basePath, id),
+			]);
+		if (!entries.ok) return entries;
 		if (!workLogs.ok) return workLogs;
 		if (!sessions.ok) return sessions;
 		if (!links.ok) return links;
@@ -553,7 +547,7 @@ export namespace BoardData {
 		if (!checklist.ok) return checklist;
 		return ok(
 			stampOf({
-				comments: comments.value,
+				entries: entries.value,
 				workLogs: workLogs.value,
 				sessions: sessions.value,
 				links: links.value,

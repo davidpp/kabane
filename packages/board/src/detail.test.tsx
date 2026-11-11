@@ -379,6 +379,39 @@ test("Detail's comments tab shows every comment whole, newest first", async () =
 	}
 });
 
+test("Detail's comments tab names a typed entry's kind in its band, declared or not, and leaves a plain comment's band as it was", async () => {
+	const task = await seed();
+	for (const [kind, author] of [
+		["comment", "david"],
+		["handoff", "cabane://actor/agent/claude"],
+		["review", "cabane://actor/agent/codex"],
+	] as const) {
+		const added = await Planner.addEntry(TEST_BASE, {
+			taskId: task.id,
+			kind,
+			author,
+			authorType: author === "david" ? "human" : "ai",
+			content: `the ${kind} body`,
+		});
+		if (!added.ok) throw added.error;
+	}
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		tab: "comments",
+		width: 40,
+	});
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("the comment body"),
+		);
+		expect(frame).toContain("comments 3");
+		expect(onOneRow(frame, " codex · review · just now")).toBe(true);
+		expect(onOneRow(frame, " claude · handoff · just now")).toBe(true);
+		expect(onOneRow(frame, " david · just now")).toBe(true);
+	} finally {
+		destroy();
+	}
+});
+
 test("Detail heads a comment with a raised author band at forty columns, and sets what was said on the terminal's own background", async () => {
 	const task = await seed();
 	const added = await Planner.addComment(TEST_BASE, {

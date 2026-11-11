@@ -6,7 +6,7 @@
 // scrolled by app.tsx's `scroll` effect (it owns the ref so every key stays in the one useKeyboard
 // handler). DetailModel decides what goes where; this file only draws it. The agent brief is not
 // drawn here: `y` copies it, and it is what an agent reads.
-import type { Result, TaskComment } from "@cabane/core";
+import type { Result, TaskEntry } from "@cabane/core";
 import {
 	BoxRenderable,
 	type MarkdownOptions,
@@ -596,11 +596,11 @@ const TabContent = ({
 				/>
 			);
 		case "comments": {
-			const comments = DetailModel.comments(records);
-			return comments.length > 0 ? (
+			const entries = DetailModel.timeline(records);
+			return entries.length > 0 ? (
 				<box style={{ flexDirection: "column" }}>
-					{comments.map((c, index) => (
-						<CommentBlock key={c.id} comment={c} first={index === 0} />
+					{entries.map((entry, index) => (
+						<EntryBlock key={entry.id} entry={entry} first={index === 0} />
 					))}
 				</box>
 			) : (
@@ -902,19 +902,21 @@ const LogRow = ({
 	);
 };
 
-// One comment: who and when on a raised band, what they said, whole, under it on the terminal's own
-// background, where the description reads too. The band is the seam between two comments; a body
+// One entry: who and when on a raised band, what they said, whole, under it on the terminal's own
+// background, where the description reads too. The band is the seam between two entries; a body
 // on the band's surface would leave nothing to tell them, or their code, apart. A human and an
-// agent are told apart by name and weight: a person's name is bold.
-const CommentBlock = ({
-	comment,
+// agent are told apart by name and weight: a person's name is bold. An entry that is not a plain
+// comment names its kind between the author and the time, a word rather than a hue.
+const EntryBlock = ({
+	entry,
 	first,
 }: {
-	comment: TaskComment;
+	entry: TaskEntry;
 	first: boolean;
 }): ReactNode => {
 	const theme = useTheme();
-	const human = comment.authorType === "human";
+	const human = entry.authorType === "human";
+	const kind = DetailModel.kindLabel(entry);
 	return (
 		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
 			<box
@@ -926,13 +928,19 @@ const CommentBlock = ({
 			>
 				<text fg={theme.text}>
 					<span attributes={human ? TextAttributes.BOLD : undefined}>
-						{DetailModel.actorName(comment.author)}
+						{DetailModel.actorName(entry.author)}
 					</span>
-					<span fg={theme.muted}> · {relativeTime(comment.createdAt)}</span>
+					{kind ? (
+						<>
+							<span fg={theme.muted}> · </span>
+							<span>{kind}</span>
+						</>
+					) : null}
+					<span fg={theme.muted}> · {relativeTime(entry.createdAt)}</span>
 				</text>
 			</box>
 			<box style={{ paddingLeft: CONTENT_INSET }}>
-				<MarkdownBody content={comment.content.trim()} />
+				<MarkdownBody content={entry.content.trim()} />
 			</box>
 		</box>
 	);

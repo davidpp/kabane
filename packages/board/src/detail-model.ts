@@ -10,12 +10,13 @@
 import {
 	type AgentActivity,
 	answeredQuestion,
+	DEFAULT_ENTRY_KIND,
 	isAnswerTo,
 	parseQuestionBody,
 	TASK_STATE_DISPLAY,
 	type Task,
-	type TaskComment,
 	type TaskContextRef,
+	type TaskEntry,
 	type WorkRef,
 } from "@cabane/core";
 import { parseDecisionBody } from "@cabane/questions";
@@ -257,11 +258,21 @@ export namespace DetailModel {
 
 	// ── comments ────────────────────────────────────────────────────────────────────────────────
 
-	/** Every comment, newest first. */
-	export const comments = (records: BoardData.DetailRecords): TaskComment[] =>
-		[...records.comments].sort((a, b) =>
+	/**
+	 * The whole timeline, newest first: plain comments and every typed entry, lifted kinds included,
+	 * since the tab is the record.
+	 */
+	export const timeline = (records: BoardData.DetailRecords): TaskEntry[] =>
+		[...records.entries].sort((a, b) =>
 			byAtDescending(a.createdAt, b.createdAt),
 		);
+
+	/**
+	 * The word an entry's band carries beside its author: its kind, declared by a module or not.
+	 * None for a plain comment, whose band reads as it always has.
+	 */
+	export const kindLabel = (entry: TaskEntry): string | undefined =>
+		entry.kind === DEFAULT_ENTRY_KIND ? undefined : entry.kind;
 
 	// ── log ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -368,7 +379,7 @@ export namespace DetailModel {
 		records: BoardData.DetailRecords | undefined,
 		liveCards = 0,
 	): TabSummary[] => {
-		const said = records ? records.comments.length : 0;
+		const said = records ? records.entries.length : 0;
 		const logged = (records ? log(records).length : 0) + liveCards;
 		const described =
 			Boolean(records?.task.description?.trim()) ||
