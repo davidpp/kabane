@@ -60,7 +60,10 @@ export const Planner = {
 	updateProject: Projects.updateProject,
 	deleteProject: Projects.deleteProject,
 	queryProjects: Projects.queryProjects,
-	// Comments
+	// Timeline entries (a comment is an entry of kind `comment`)
+	addEntry: Comments.addEntry,
+	getEntries: Comments.getEntries,
+	latestEntry: Comments.latestEntry,
 	addComment: Comments.addComment,
 	updateComment: Comments.updateComment,
 	getComment: Comments.getComment,

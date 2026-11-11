@@ -355,6 +355,25 @@ export namespace Migrations {
 				}
 			},
 		},
+		{
+			// An issue's comments become its timeline: each entry has a kind, and
+			// every row already there is a plain comment (JCAB-217). The table
+			// keeps its name because rows and synced logs store it. A device on an
+			// older schema never applies an op carrying a kind: its pull stops at
+			// the first op from this schema.
+			// Guarded: a pre-release database re-runs the whole list from 1.
+			name: "entry-kind",
+			up: (db) => {
+				if (!columnExists(db, TABLES.comments, "kind"))
+					db.run(
+						`ALTER TABLE ${TABLES.comments} ADD COLUMN kind TEXT NOT NULL DEFAULT 'comment'`,
+					);
+				db.run(
+					`CREATE INDEX IF NOT EXISTS ${TABLES.comments}_task_kind_idx
+					   ON ${TABLES.comments}(task_id, kind, created_at)`,
+				);
+			},
+		},
 	];
 
 	/**

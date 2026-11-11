@@ -11,16 +11,23 @@ export {
 	AssembleContextOptsSchema,
 	type ResolvedAssembleContextOpts,
 } from "./assemble-context";
-// Comment schemas
+// Comment and timeline entry schemas
 export {
 	type AuthorType,
 	AuthorTypeSchema,
+	DEFAULT_ENTRY_KIND,
+	ENTRY_KIND_PATTERN,
+	EntryKindNameSchema,
 	type TaskComment,
 	type TaskCommentDraft,
 	TaskCommentDraftSchema,
 	TaskCommentSchema,
 	type TaskCommentUpdate,
 	TaskCommentUpdateSchema,
+	type TaskEntry,
+	type TaskEntryDraft,
+	TaskEntryDraftSchema,
+	TaskEntrySchema,
 } from "./comment";
 // Config schemas
 export { type SyncConfig, SyncConfigSchema } from "./config";
