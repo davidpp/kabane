@@ -1,4 +1,4 @@
-import type { KabaneModule } from "@cabane/core";
+import { CONTEXT_SECTIONS, type KabaneModule } from "@cabane/core";
 
 /** One section a module adds to the brief, and the core section it follows. */
 type ModuleSection = { name: string; after: string };
@@ -21,3 +21,18 @@ export const sectionsOf = (module: KabaneModule): ModuleSection[] => [
 			: [{ name: `${kind.name}.latest`, after: kind.projection.latest.after }],
 	),
 ];
+
+/**
+ * Every section of the brief `modules` make, in order: core's, each module's after the
+ * one it names, modules in registration order. The order core's own list of valid
+ * sections has, so a usage line built from it matches the error that lists them.
+ */
+export const briefSections = (modules: readonly KabaneModule[]): string[] => {
+	const added = modules.flatMap(sectionsOf);
+	return CONTEXT_SECTIONS.flatMap((core) => [
+		core,
+		...added
+			.filter((section) => section.after === core)
+			.map((section) => section.name),
+	]);
+};
