@@ -297,8 +297,10 @@ kabane list --all                            # include done and cancelled
 kabane search license --format concise
 ```
 
-For agent reads, select concise explicitly; default human output and legacy JSON
-stay unchanged. Concise list/search return bounded pages (`items`, `hasMore`,
+For agent reads, select concise explicitly: concise output is opt-in, and without it a command
+prints its human text, or its full records with `--json`
+([what changed in them since 1.0.0-beta.0](#upgrading-from-100-beta0-comment-kinds-and-handoffs)).
+Concise list/search return bounded pages (`items`, `hasMore`,
 `nextCursor`), not raw arrays. Continue with `--cursor '<nextCursor>'` and the same
 filters/scope. `--format full --json` retrieves legacy raw records. See
 [concise reads](concise-reads.md) for budgets, truncation markers and stale-cursor
@@ -384,7 +386,7 @@ When the executable sits under a mise installs directory (`$MISE_DATA_DIR`, `$XD
 1.0.0-beta.0 read a project's settings from the repo only: the loop from `.kabane/loop.json`, the
 pin from `.kabane/scope`, which `kabane init --scope` wrote. Now your settings for a project and
 your pin are kept under `KABANE_HOME`, outside the repo, and the repo's files are written only when
-you name them. Nothing you already have is moved or rewritten, and there is no database change.
+you name them. Nothing you already have is moved or rewritten.
 
 - **What stays, and is still read.** `.kabane/loop.json` is the *shared* layer, for everyone who
   clones the repo, and `.kabane/scope` is the repo's pin. Kabane never moves or deletes either.
@@ -404,12 +406,50 @@ you name them. Nothing you already have is moved or rewritten, and there is no d
 - **Running processes.** A board, `kabane mcp` or loop runner started by an older version does
   not read the new files. It misses local and global settings the new CLI writes, and a pin
   written without `--shared`, so it can file tasks under another scope than new processes do.
-  Stop them, update, and start them again before relying on new settings or pins; do not run
-  both versions on one device.
-- **Going back.** 1.0.0-beta.0 still reads the repo's `.kabane/loop.json` and `.kabane/scope`,
-  but nothing in `config.json`'s extension keys or under `KABANE_HOME/projects/`. If you roll
-  back, put the settings you need into `.kabane/loop.json` and pin the scope with
-  `kabane init --scope <uri>`, which writes `.kabane/scope` in that version.
+  Stop them before updating and start them again after; do not run both versions on one
+  device.
+- **Going back.** First restore the database backup
+  ([comment kinds and handoffs](#upgrading-from-100-beta0-comment-kinds-and-handoffs)). Then
+  1.0.0-beta.0 still reads the repo's `.kabane/loop.json` and `.kabane/scope`, but nothing in
+  `config.json`'s extension keys or under `KABANE_HOME/projects/`: put the settings you need
+  into `.kabane/loop.json` and pin the scope with `kabane init --scope <uri>`, which writes
+  `.kabane/scope` in that version.
+
+### Upgrading from 1.0.0-beta.0: comment kinds and handoffs
+
+A comment now has a kind, and an agent that finishes its part of an issue hands it off
+([Agents](#agents)). This changes the database: the new version migrates it the first time it
+opens it. Before that, stop every board, `kabane mcp` and loop runner the old version started,
+let a running `kabane sync` finish, stop any app that embeds the old version's core, and back
+the database up as [subsequent updates](#subsequent-updates) describes. Start them again once
+the new version is in place.
+
+- **What is kept.** Every comment, with its author, time and text. Each one becomes a comment
+  of kind `comment`.
+- **JSON output.** `kabane show --json` lists every entry on the issue under `comments`, each
+  with a `kind`: plain comments are `"comment"`, and handoffs (`"handoff"`) and other kinds
+  (`"review"`) are listed beside them. A script that reads `comments` as plain comments should
+  keep only those whose `kind` is `"comment"`. `kabane comment --json` and the `kabane_comment`
+  tool return the new comment with its `kind` too. `kabane show` without `--json` prints the
+  latest handoff in its own section after the comments.
+- **No going back.** 1.0.0-beta.0 refuses a database the new version has opened: `newer than
+  this kabane knows (7); update kabane before opening it`. Going back takes the backup.
+- **Sync: the hub and every device in one go.** A device still on 1.0.0-beta.0 stops pulling
+  at the first change an updated device pushes, whatever it changed, and fails with `Update
+  kabane on this device and sync again`. It skips nothing and catches up once updated. The hub
+  is one of those devices, and Claude.ai and ChatGPT get `kabane_handoff` only once it is
+  redeployed. Redeploying is a manual step: follow
+  [the hub first, then each device](deploy.md#58-upgrade-kabane-across-devices-the-hub-first-then-each-device).
+- **Why stop them first.** Only a process started after the update is refused. One left
+  running from 1.0.0-beta.0 keeps reading and writing the migrated database, still without
+  `kabane_handoff`, and reads every entry as a plain comment: its board lists a handoff among
+  the comments, and its brief can leave an agent's handoff out, as it does an older agent
+  comment. A sync still running from the old version can send new comments on without their
+  kind, and a device still on the old version then keeps them that way.
+- **What your agents are told.** The Tracker block from 1.0.0-beta.0 has an agent finish with
+  `kabane_comment`, which still works but leaves no handoff: replace it with the block under
+  [Agents](#agents). A dispatch skill that `/setup-dispatch` wrote with 1.0.0-beta.0 reports the
+  same way; run `/setup-dispatch` again to write it from the current template.
 
 ### One-time upgrade from 0.1.0
 
