@@ -41,6 +41,14 @@ describe("CopilotInstructions.SHORTCUTS", () => {
 		expect(names).toContain("setup");
 	});
 
+	it("offers settings, which reads before anything is changed", () => {
+		const settings = CopilotInstructions.SHORTCUTS.find(
+			(s) => s.name === "settings",
+		);
+		expect(settings?.template).toContain("kabane_configGet");
+		expect(settings?.template).toContain("wait for me");
+	});
+
 	it("offers setup-dispatch", () => {
 		const names = CopilotInstructions.SHORTCUTS.map((s) => s.name);
 		expect(names).toContain("setup-dispatch");

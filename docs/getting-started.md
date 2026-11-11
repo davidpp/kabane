@@ -177,7 +177,7 @@ hands a coding harness what you are looking at: the scope, the selected task, an
 you marked with `m`. Type a request and press `enter`. The agent runs in the background,
 the footer shows its last tool call, and the board reloads as its writes land. `o` opens
 its transcript. Typing `/` in the prompt lists the shortcuts: `/triage`, `/refine`,
-`/split`, `/duplicates`, `/reparent`, `/check-plan`, `/linear`, `/setup-dispatch`. Each one
+`/split`, `/duplicates`, `/reparent`, `/check-plan`, `/linear`, `/settings`, `/setup-dispatch`. Each one
 expands into editable text, so you can read what will be sent before sending it.
 
 `/setup-dispatch` is the only shortcut that writes files to your project. It reads the

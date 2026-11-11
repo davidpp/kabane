@@ -970,6 +970,7 @@ describe("BoardCopilot", () => {
 			"linear",
 			"github",
 			"setup",
+			"settings",
 			"setup-dispatch",
 		]);
 		for (const shortcut of copilot.shortcuts()) {

@@ -172,6 +172,13 @@ The same skill runs in any coding session that has the kabane MCP. When the huma
 			template:
 				"Set kabane up on this machine: read the config tools' key descriptions, ask which harness, model and extensions to use, then apply my answers with kabane_configSet and report what changed.",
 		},
+		// Reads first and stops: which setting changes, and in which layer, is the human's next line.
+		{
+			name: "settings",
+			hint: "values and their layers, then change one",
+			template:
+				"Show the kabane settings in force for this project with kabane_configGet: each value that differs from its default and the layer it comes from. Then wait for me to say what to change.",
+		},
 		// The one shortcut that writes files, which is why SKILLS carries its limits and this line
 		// only names the job.
 		{
