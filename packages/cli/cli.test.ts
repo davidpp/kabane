@@ -245,6 +245,10 @@ describe("kabane cli", () => {
 		expect(shown.out).toContain("Comments:");
 		expect(shown.out).toContain("Work log:");
 		expect(shown.out).toContain("🤖 cabane://actor/agent/claude");
+		expect(shown.out).toMatch(
+			/🤖 cabane:\/\/actor\/agent\/codex · \S+ · review\n {4}Reviewed: the runbook covers rollback/,
+		);
+		expect(shown.out).not.toMatch(/claude · \S+ · comment/);
 
 		// Replication fields ride along in --json only: the edit above bumped the
 		// version past 1 and stamped this device's actor as the last writer.
