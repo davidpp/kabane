@@ -130,7 +130,17 @@ it("prints the template, and refuses a blank body, a file it cannot read and a m
 	expect(missing.text).toStartWith(
 		"Error: Cannot read a handoff from nope.md:",
 	);
-	expect((await kabane(["handoff", "NOPE-1"])).exitCode).toBe(1);
+	const ghost = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+	for (const absent of ["NOPE-1", ghost]) {
+		expect((await kabane(["handoff", absent])).exitCode).toBe(1);
+		writeFileSync(join(home, "body.md"), "### Summary\n\nDone.");
+		expect(
+			(await kabane(["handoff", absent, "--from", "body.md"])).exitCode,
+		).toBe(1);
+	}
+	expect((await kabane(["handoff", ghost])).text).toBe(
+		"Error: No task has that ULID.",
+	);
 	expect((await kabane(["handoff", label, "--from"])).exitCode).toBe(2);
 	expect((await kabane(["handoff", "--all", label])).exitCode).toBe(2);
 	expect((await kabane(["handoff"])).exitCode).toBe(2);

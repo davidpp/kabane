@@ -5,6 +5,7 @@ import {
 	ok,
 	Planner,
 	type Result,
+	type Task,
 	type TaskEntry,
 	type ToolDef,
 } from "@cabane/core";
@@ -13,6 +14,18 @@ import { COMPACT_TEMPLATE, HANDOFF_KIND } from "./template";
 
 /** A recorded handoff: the entry, the issue's label, and how many handoffs came before it. */
 export type HandedOff = { entry: TaskEntry; label: string; earlier: number };
+
+/** The task `id` names, short id or ULID; an error when there is none. */
+export const findIssue = async (
+	basePath: string,
+	id: string,
+): Promise<Result<Task>> => {
+	const resolved = await Planner.resolveTaskId(basePath, id);
+	if (!resolved.ok) return resolved;
+	const task = await Planner.getTask(basePath, resolved.value);
+	if (!task.ok) return task;
+	return task.value ? ok(task.value) : err(new Error("No task has that ULID."));
+};
 
 /**
  * Record a handoff on an issue as an entry of kind `handoff` by `actor`. The body is
@@ -31,11 +44,8 @@ export const handOff = async (
 				"A handoff needs a body: markdown under Summary, Evidence, Not verified and Risk, or the headings the work needs.",
 			),
 		);
-	const resolved = await Planner.resolveTaskId(basePath, id);
-	if (!resolved.ok) return resolved;
-	const task = await Planner.getTask(basePath, resolved.value);
+	const task = await findIssue(basePath, id);
 	if (!task.ok) return task;
-	if (!task.value) return err(new Error("No task has that ULID."));
 	const entry = await Planner.addEntry(basePath, {
 		taskId: task.value.id,
 		kind: HANDOFF_KIND,

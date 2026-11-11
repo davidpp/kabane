@@ -17,6 +17,7 @@ import {
 	usage,
 } from "@cabane/extension";
 import {
+	findIssue,
 	HANDOFF_KIND,
 	HANDOFF_TEMPLATE,
 	handOff,
@@ -81,9 +82,9 @@ const entryMarkdown = (entry: TaskEntry): string =>
 	`## Handoff from ${entry.author} · ${entry.createdAt}\n\n${entry.content}`;
 
 const show = async (id: string, args: ParsedArgs, store: string) => {
-	const taskId = await Planner.resolveTaskId(store, id);
-	if (!taskId.ok) return failure(taskId.error);
-	const all = await Planner.getEntries(store, taskId.value, {
+	const task = await findIssue(store, id);
+	if (!task.ok) return failure(task.error);
+	const all = await Planner.getEntries(store, task.value.id, {
 		kind: HANDOFF_KIND,
 	});
 	if (!all.ok) return failure(all.error);
@@ -94,7 +95,7 @@ const show = async (id: string, args: ParsedArgs, store: string) => {
 			{ handoffs: all.value },
 			all.value.map(entryMarkdown).join("\n\n"),
 		);
-	const section = await latestSection(store, taskId.value);
+	const section = await latestSection(store, task.value.id);
 	return section.ok
 		? success({ handoffs: [latest] }, section.value)
 		: failure(section.error);
