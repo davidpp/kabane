@@ -22,6 +22,7 @@ import { err, ok, type Result } from "../result";
 import { Runtime } from "../runtime";
 import {
 	Deadline,
+	DEFAULT_ENTRY_KIND,
 	ItemKindSchema,
 	LinkTypeSchema,
 	type TaskDraft,
@@ -466,11 +467,12 @@ Parameters:
 const comment = define({
 	name: CORE_TOOL_NAMES.comment,
 	kind: "write",
-	description: `Add a comment to a task. The author is the connected identity; agent identities comment as ai. Human comments are never dropped from the brief, so this is how to steer an agent.
+	description: `Add a comment to a task. The author is the connected identity; agent identities comment as ai. Human comments are never dropped from the brief, so this is how to steer an agent. An entry given a kind other than comment (a review, a finding) is kept in the brief whoever writes it.
 
 Parameters:
 - id: ${ID_HINT}
-- body: Markdown (recommended); text and legacy content are aliases. Supply at least one; multiple must be exactly equal`,
+- body: Markdown (recommended); text and legacy content are aliases. Supply at least one; multiple must be exactly equal
+- kind: Optional; lowercase "name" or "name.key" (review, handoff.summary). Default comment`,
 	input: {
 		id: z.string().min(1),
 		body: z
@@ -488,6 +490,10 @@ Parameters:
 			.min(1)
 			.optional()
 			.describe("Legacy alias for body; must match exactly if combined."),
+		kind: z
+			.string()
+			.optional()
+			.describe("Entry kind; omitted, a plain comment."),
 	},
 	handler: async (args, ctx) => {
 		const content = args.body ?? args.text ?? args.content;
@@ -509,8 +515,9 @@ Parameters:
 			);
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
-		return Planner.addComment(ctx.basePath, {
+		return Planner.addEntry(ctx.basePath, {
 			taskId: id.value,
+			kind: args.kind ?? DEFAULT_ENTRY_KIND,
 			author: ctx.actor,
 			authorType: authorTypeOf(ctx.actor),
 			content,

@@ -211,6 +211,42 @@ describe("cabane tools", () => {
 		expect(unwrap(await Planner.getComments(base, issue.id))).toHaveLength(7);
 	});
 
+	it("writes an entry of the kind given, a comment without one, and refuses a malformed kind in one line", async () => {
+		const issue = unwrap(await Planner.addTask(base, { title: "Kinds" }));
+		const review = unwrap(
+			await tool("kabane_comment").handler(
+				{ id: issue.id, body: "## Review\n\nLooks right.", kind: "review" },
+				ctx,
+			),
+		);
+		expect(review).toMatchObject({ kind: "review", authorType: "ai" });
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		unwrap(
+			await tool("kabane_comment").handler(
+				{ id: issue.id, body: "plain" },
+				ctx,
+			),
+		);
+		const refused = await tool("kabane_comment").handler(
+			{ id: issue.id, body: "x", kind: "Review!" },
+			ctx,
+		);
+		expect(refused.ok).toBe(false);
+		if (!refused.ok) {
+			expect(refused.error.message).toContain('"Review!"');
+			expect(refused.error.message).not.toContain("\n");
+		}
+		expect(
+			unwrap(await Planner.getEntries(base, issue.id)).map((e) => [
+				e.kind,
+				e.content,
+			]),
+		).toEqual([
+			["review", "## Review\n\nLooks right."],
+			["comment", "plain"],
+		]);
+	});
+
 	it("rejects missing or differing write inputs before any storage or ID lookup", async () => {
 		let accesses = 0;
 		Runtime.configure({
