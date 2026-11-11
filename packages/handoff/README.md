@@ -89,6 +89,13 @@ Easy to walk back: only the batch size depends on it.
 Earlier handoffs are read with `kabane handoff <id> --all` and on the board's comments tab. Like
 every entry, a handoff is never edited or deleted; it goes with its issue.
 
+## On the CLI
+
+`kabane handoff <id>` prints the latest handoff as the brief prints it; `--all` prints every one,
+oldest first; `--json` gives the entries. `kabane handoff <id> --from <file>` records one whose
+body is the markdown in the file, and `--from -` reads it from stdin, so a runner that lives in a
+shell has a way in. `kabane handoff --template` prints the template.
+
 ## Exports
 
 `handoffModule` to register, `HANDOFF_KIND` (the entry kind, `"handoff"`) and `HANDOFF_TEMPLATE`.
