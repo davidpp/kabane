@@ -164,6 +164,32 @@ describe("Apply — FK safety and unknown columns", () => {
 		expect(row).not.toHaveProperty("invented_by_a_newer_device");
 	});
 
+	it("lands a comment from a device before entry kinds as kind comment", async () => {
+		await arm();
+
+		// A schema-8 device snapshots task_comments without a kind column.
+		const report = await Apply.applyBatch(
+			base,
+			page([
+				insertOp(1, "tasks", "task-1", taskPayload("task-1")),
+				insertOp(2, "task_comments", "comment-1", {
+					id: "comment-1",
+					task_id: "task-1",
+					author: "david",
+					author_type: "human",
+					content: "written before kinds",
+					created_at: NOW,
+				}),
+			]),
+		);
+
+		expect(report.ok ? report.value.applied : report.error.message).toBe(2);
+		const entries = await Planner.getEntries(base, "task-1");
+		expect(
+			entries.ok ? entries.value.map((e) => [e.id, e.kind]) : entries.error,
+		).toEqual([["comment-1", "comment"]]);
+	});
+
 	it("counts a table this build does not replicate as a skip, not a failure", async () => {
 		await arm();
 

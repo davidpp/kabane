@@ -612,15 +612,22 @@ describe("Migration 9: an issue's comments become entries of kind comment", () =
 		rmSync(base, { recursive: true, force: true });
 	});
 
-	for (const prefix of ["", "planner_"]) {
-		it(`reads every existing comment as kind comment${prefix ? " behind Jake's prefix" : ""}`, async () => {
+	// 7 is where the released 1.0.0-beta.0 leaves a database; 8 never shipped.
+	for (const [prefix, from] of [
+		["", 7],
+		["", 8],
+		["planner_", 8],
+	] as const) {
+		it(`reads every existing comment as kind comment, from version ${from}${prefix ? " behind Jake's prefix" : ""}`, async () => {
 			configureTestRuntime(prefix);
-			base = freshBase(`entry-kind${prefix}`);
-			// A device on the build before this migration: versions 1 to 8.
+			base = freshBase(`entry-kind${prefix}-${from}`);
 			await withDb((db) => {
-				const stamped = Migrate.run(db, Migrations.LIST.slice(0, 8));
+				const stamped = Migrate.run(db, Migrations.LIST.slice(0, from));
 				if (!stamped.ok) throw stamped.error;
 			});
+			expect(
+				await withDb((db) => columnExists(db, TABLES.comments, "kind")),
+			).toBe(false);
 			const task = await Planner.addTask(base, { title: "t" });
 			if (!task.ok) throw task.error;
 			await withDb((db) =>

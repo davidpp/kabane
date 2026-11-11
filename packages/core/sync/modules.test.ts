@@ -990,13 +990,15 @@ describe("a database from before data modules", () => {
 		const beta = await createDevice("beta", []);
 		await addTask(beta, "already here");
 		// Beta as the release before this one left it: no parked-ops table, no
-		// module columns on the oplog, and no record of the migration that adds
-		// them or of any after it.
+		// module columns on the oplog, no entry kind, and no record of the
+		// migrations that add them.
 		await as(beta, (db) => {
 			db.run(`DROP TABLE ${TABLES.sync_parked}`);
 			db.run(`DROP TABLE ${TABLES.sync_parked_deletes}`);
 			db.run(`ALTER TABLE ${TABLES.sync_oplog} DROP COLUMN module`);
 			db.run(`ALTER TABLE ${TABLES.sync_oplog} DROP COLUMN module_schema`);
+			db.run(`DROP INDEX ${TABLES.comments}_task_kind_idx`);
+			db.run(`ALTER TABLE ${TABLES.comments} DROP COLUMN kind`);
 			db.run(`DELETE FROM ${TABLES.schema_migrations} WHERE version >= 8`);
 		});
 
