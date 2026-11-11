@@ -16,8 +16,11 @@ export const err = <E = Error>(error: E): Result<never, E> => ({
 /** `value` cut after `max` UTF-16 units, never between the halves of a surrogate pair. */
 const cut = (value: string, max: number): string => {
 	if (value.length <= max) return value;
-	const last = value.charCodeAt(max - 1);
-	const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
+	const before = value.charCodeAt(max - 1);
+	const at = value.charCodeAt(max);
+	const splitsPair =
+		before >= 0xd800 && before <= 0xdbff && at >= 0xdc00 && at <= 0xdfff;
+	const end = splitsPair ? max - 1 : max;
 	return `${value.slice(0, end)}…`;
 };
 

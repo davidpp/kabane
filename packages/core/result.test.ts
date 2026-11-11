@@ -21,3 +21,8 @@ it("leaves a value at the limit whole", () => {
 	const value = `${"a".repeat(58)}😀`;
 	expect(quoted(value)).toBe(`"${value}"`);
 });
+
+it("keeps a lone surrogate at the limit, escaped, since it splits no pair", () => {
+	expect(quoted("a\uD800b", 2)).toBe('"a\\ud800…"');
+	expect(quoted("a\uDC00b", 2)).toBe('"a\\udc00…"');
+});
