@@ -16,6 +16,7 @@ import {
 	relativeTime,
 } from "./detail";
 import { DetailModel } from "./detail-model";
+import { BoardNav } from "./nav";
 import type { ActivityCard } from "./ports";
 import { SPINNER_FRAMES } from "./spinner";
 import { dropDb, freshDb } from "./test-db";
@@ -153,7 +154,9 @@ test("Detail opens on the description when nothing is in force, with the title o
 
 test("Detail says so when a task has no description", async () => {
 	const task = await seed({ description: undefined });
-	const { renderOnce, captureCharFrame, destroy } = await mount(task);
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		tab: "description",
+	});
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("no description"),
@@ -447,8 +450,10 @@ test("Detail sets a quote and a code block on panels, with no line drawn beside 
 		description:
 			"> the cube is ported\n\n```sh\nbunx vite\n```\n\n---\n\nafter the rule",
 	});
-	const { renderOnce, captureCharFrame, captureSpans, destroy } =
-		await mount(task);
+	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
+		task,
+		{ tab: "description" },
+	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("after the rule"),
@@ -1000,3 +1005,25 @@ test("Detail marks a fresh block seen only while nothing is drawn over it", asyn
 		open.destroy();
 	}
 }, 10_000);
+
+test("Detail with no tab picked draws the tab the keys read, not one of its own from the records", async () => {
+	// Nothing in force: the state opens this issue on its description (BoardNav.withOpeningTab), and
+	// until it has, the view and the keys both read DEFAULT_TAB.
+	const task = await seed({ title: "Only asked" });
+	const records = await recordsOf(task);
+	if (!records.ok) throw records.error;
+	expect(DetailModel.openingTab(records.value)).toBe("description");
+	const { renderOnce, captureCharFrame, destroy } = await mount(task);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("nothing in force"),
+		);
+		expect(BoardNav.detailTab({ type: "detail", taskId: task.id })).toBe(
+			DetailModel.DEFAULT_TAB,
+		);
+		expect(frame).toContain("nothing in force");
+		expect(frame).not.toContain("The description reads here.");
+	} finally {
+		destroy();
+	}
+});

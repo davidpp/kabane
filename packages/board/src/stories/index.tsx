@@ -240,24 +240,29 @@ const CHECKS_DECISION = Fixtures.decision(
 	},
 );
 
-// The issue's detail as the app lays it out, the decision on screen under its header.
+// The issue's detail as the app lays it out, the decision on screen under its header, on the tab
+// its records open on.
 const onDetail = (
 	questions: QuestionView[],
 	asked?: BoardDecisions.Shown,
-): ReactNode => (
-	<Detail
-		taskId={WAITING.id}
-		task={WAITING}
-		records={ok(Fixtures.records(WAITING, { questions }))}
-		scrollRef={createRef<ScrollBoxRenderable>()}
-		keys={{ context: "detail", situation: { deciding: asked !== undefined } }}
-		decision={
-			asked ? (
-				<DecisionPanel asked={asked} inHand onSubmit={() => {}} />
-			) : undefined
-		}
-	/>
-);
+): ReactNode => {
+	const records = Fixtures.records(WAITING, { questions });
+	return (
+		<Detail
+			taskId={WAITING.id}
+			task={WAITING}
+			records={ok(records)}
+			tab={DetailModel.openingTab(records)}
+			scrollRef={createRef<ScrollBoxRenderable>()}
+			keys={{ context: "detail", situation: { deciding: asked !== undefined } }}
+			decision={
+				asked ? (
+					<DecisionPanel asked={asked} inHand onSubmit={() => {}} />
+				) : undefined
+			}
+		/>
+	);
+};
 
 // An issue an agent broke into steps of one change, two of four ticked.
 const STEPWISE = task({

@@ -150,8 +150,9 @@ export type DetailProps = {
 	// Questions the host says are parked on this task, beside any the records carry. Pinned, so what
 	// is blocked on the human is the first thing they see.
 	questions?: BoardActivity.AwaitingQuestion[];
-	// The tab in view (BoardNav.detailTab) and what a click on another one asks for. Absent, the one
-	// the records open on (DetailModel.openingTab).
+	// The tab in view (BoardNav.detailTab, which the records' first read settles with
+	// BoardNav.withOpeningTab) and what a click on another one asks for. Absent, DEFAULT_TAB, as the
+	// keys read it.
 	tab?: DetailModel.Tab;
 	onTab?: (tab: DetailModel.Tab) => void;
 	// Animated spinner frame threaded from app.tsx — animates card glyphs.
@@ -280,12 +281,6 @@ export const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 // A table as columns, with no grid drawn around it.
 const TABLE: MarkdownOptions["tableOptions"] = { style: "columns" };
 
-// The tab a view no one has picked a tab on shows: the one its records open on, once they are in.
-const openingTab = (
-	loaded: BoardData.DetailRecords | undefined,
-): DetailModel.Tab =>
-	loaded ? DetailModel.openingTab(loaded) : DetailModel.DEFAULT_TAB;
-
 export const Detail = ({
 	taskId,
 	task: freshTask,
@@ -312,7 +307,7 @@ export const Detail = ({
 	const theme = useTheme();
 	const { width: room } = useTerminalDimensions();
 	const loaded = records?.ok ? records.value : undefined;
-	const tab = picked ?? openingTab(loaded);
+	const tab = picked ?? DetailModel.DEFAULT_TAB;
 	const open = DetailModel.openQuestions(loaded, questions, pinned);
 	const marks = useSeen(fresh, tab, covered, scrollRef);
 	const summaries = DetailModel.tabs(
