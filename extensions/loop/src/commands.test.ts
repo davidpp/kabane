@@ -852,3 +852,29 @@ describe("Loop.stop", () => {
 		expect(stopped.ok && stopped.value.exit?.reason).toBe("runner-died");
 	});
 });
+
+describe("Loop.advise", () => {
+	it("routes only the open subtasks, and says when a named agent is nowhere to be found", async () => {
+		const parent = await add("parent");
+		await add("shipped", { parentTaskId: parent.id, state: "done" });
+		const open = await add("open", {
+			parentTaskId: parent.id,
+			tags: ["agent:no-such-agent-jcab-247"],
+		});
+		const advised = await Loop.advise(deps(), { parent: parent.id });
+		if (!advised.ok) throw advised.error;
+		expect(advised.value.subtasks).toEqual([
+			{
+				task: open.shortId ?? open.id,
+				title: "open",
+				tags: ["agent:no-such-agent-jcab-247"],
+				harness: "claude",
+				modelSource: "default",
+				notes: [
+					"no no-such-agent-jcab-247 agent is defined for claude in the project or your home, so it runs its default agent",
+				],
+			},
+		]);
+		expect(RunStore.list(home)).toEqual(ok([]));
+	});
+});

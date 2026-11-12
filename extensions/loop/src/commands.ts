@@ -1,5 +1,5 @@
 // The loop's entry points, as plain functions over explicit dependencies. The extension wires
-// them to `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer|land|prune`; nothing here parses argv or reads the
+// them to `kabane loop start|advise|run|status|stop|pause|resume|skip|next|rollback|answer|land|prune`; nothing here parses argv or reads the
 // environment for its own settings. A run whose runner died is restarted (`restart`) where it
 // stopped, with its claims and its worktree.
 import { spawn } from "node:child_process";
@@ -11,12 +11,13 @@ import {
 	realpathSync,
 } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import type { Harnesses } from "@cabane/acp";
+import { Harnesses } from "@cabane/acp";
 import {
 	err,
 	ok,
 	type AgentActivity,
 	isAnswerTo,
+	Lint,
 	type ParsedQuestion,
 	Planner,
 	parseQuestionBody,
@@ -28,6 +29,8 @@ import {
 } from "@cabane/core";
 import { detectScope } from "@cabane/core/scope";
 import type { Settings } from "@cabane/extension";
+import { z } from "zod";
+import { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
 import { Gates } from "./gates";
@@ -38,6 +41,7 @@ import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Prune } from "./prune";
 import { Questions } from "./questions";
+import { Route } from "./route";
 import { Runner } from "./runner";
 import { RunState } from "./state";
 import { Steering } from "./steering";
@@ -395,6 +399,133 @@ export namespace Loop {
 			projectDir: projectDir.value,
 			projectRoot: projectRoot.value,
 			config: config.value,
+		});
+	};
+
+	/** A subtask's routing tags and what they resolve to under the run's settings. */
+	export type Routed = {
+		task: string;
+		title: string;
+		/** Its `tier:` and `agent:` tags. */
+		tags: string[];
+		harness: Harnesses.Id;
+		agent?: string;
+		model?: string;
+		modelSource: Route.Source;
+		tier?: string;
+		/** Why a tag would not be honoured, one line each. */
+		notes: string[];
+	};
+
+	/** What `advise` reads off a plan: the advisor's settings with reasons, and each subtask's route. */
+	export type Advised = {
+		parent: string;
+		projectDir: string;
+		config: LoopConfig.Config;
+		advice: LoopAdvice.Recommendation[];
+		subtasks: Routed[];
+	};
+
+	const ROUTING_TAG = /^(tier|agent):/;
+
+	// What a claim of `task` would run on, as the runner routes a fresh session: the agent's
+	// definition is read where the session would read it, and a harness that cannot select a named
+	// agent, or has no such agent, runs without it, so nothing it may pin applies.
+	const routedOf = (
+		config: LoopConfig.Config,
+		projectDir: string,
+		task: Task,
+	): Routed => {
+		const route = Route.of(task.tags, config);
+		const notes = [...route.notes];
+		let agent = route.agent;
+		let pin: string | undefined;
+		if (agent !== undefined && !Harnesses.agentOption(route.harness)) {
+			notes.push(
+				`${route.harness} has no way to select a named agent, so it runs without ${agent}`,
+			);
+			agent = undefined;
+		} else if (agent !== undefined) {
+			const found = Harnesses.agentDefinition(route.harness, agent, projectDir);
+			if (!found) {
+				notes.push(
+					`no ${agent} agent is defined for ${route.harness} in the project or your home, so it runs its default agent`,
+				);
+				agent = undefined;
+			}
+			pin = found?.model;
+		}
+		const model = Route.model(
+			config,
+			route.harness,
+			{
+				...(route.tier ? { tier: route.tier } : {}),
+				...(agent ? { agent } : {}),
+			},
+			pin,
+		);
+		return {
+			task: task.shortId ?? task.id,
+			title: task.title,
+			tags: task.tags.filter((t) => ROUTING_TAG.test(t)),
+			harness: route.harness,
+			...(agent ? { agent } : {}),
+			...(model.model === undefined ? {} : { model: model.model }),
+			modelSource: model.source,
+			...(model.tier ? { tier: model.tier } : {}),
+			notes: [...notes, ...model.notes],
+		};
+	};
+
+	const PackageSchema = z.object({
+		scripts: z.record(z.string()).catch({}).default({}),
+	});
+
+	const scriptsOf = (root: string): Record<string, string> => {
+		const read = trySync(() =>
+			JSON.parse(readFileSync(join(root, "package.json"), "utf8")),
+		);
+		const parsed = read.ok ? PackageSchema.safeParse(read.value) : undefined;
+		return parsed?.success ? parsed.data.scripts : {};
+	};
+
+	/**
+	 * What a run of `input` would be advised to set, and what each open subtask's tags would run
+	 * it on, without starting one. Refuses what `prepare` refuses. Read-only.
+	 */
+	export const advise = async (
+		deps: Pick<StartDeps, "home" | "basePath" | "cwd" | "settings">,
+		input: StartInput,
+	): Promise<Result<Advised>> => {
+		const prepared = await prepare(deps, input);
+		if (!prepared.ok) return prepared;
+		const { plan, projectDir, projectRoot, config } = prepared.value;
+		const linted = await Lint.run({
+			basePath: deps.basePath,
+			parentTaskId: plan.parent.id,
+			cwd: projectDir,
+		});
+		const advice = LoopAdvice.of(plan, linted.ok ? linted.value.risks : [], {
+			config,
+			scripts: scriptsOf(projectRoot),
+			lockfiles: LoopAdvice.LOCKFILES.filter((name) =>
+				existsSync(join(projectRoot, name)),
+			),
+		});
+		const subtasks = plan.nodes
+			.filter(
+				(n) =>
+					LoopPlan.isWork(n) &&
+					n.task.kind === "issue" &&
+					!LoopPlan.isClosed(n.task),
+			)
+			.map((n) => routedOf(config, projectDir, n.task));
+		return ok({
+			parent: plan.parent.shortId ?? plan.parent.id,
+			projectDir,
+			config,
+			advice,
+			subtasks,
 		});
 	};
 
