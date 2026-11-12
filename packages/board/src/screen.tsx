@@ -29,6 +29,7 @@ import { FooterTrail } from "./footer";
 import type { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { HelpSheet } from "./overlay";
+import { Paging } from "./paging";
 import type { ActivityCard, ActivitySource, CardHeader } from "./ports";
 import { PromptPanel } from "./prompt-field";
 import { SettingsOverlay } from "./settings-overlay";
@@ -38,11 +39,11 @@ import { DispatchLayer } from "./trigger-form-view";
 
 // The renderables the reducer's effects reach into, which the views mount.
 export type ScreenRefs = {
-	// The detail view's and the event view's scrollbox, which j/k move (`scroll`).
+	// The detail view's and the event view's scrollbox, which the scroll keys move (`scroll`).
 	scroll: RefObject<ScrollBoxRenderable | null>;
 	// The board list's scrollbox, kept on the selected row as j/k move it off-screen.
 	list: RefObject<ScrollBoxRenderable | null>;
-	// The `?` sheet's scrollbox, which j/k move while it is open (`helpScroll`).
+	// The `?` sheet's scrollbox, which the scroll keys move while it is open (`helpScroll`).
 	help: RefObject<ScrollBoxRenderable | null>;
 	// The copilot's input. It OWNS its text; the reducer only ever pushes a whole new value at it
 	// (a shortcut expansion, a recalled prompt, the clear after a send) through `copilotSetText`.
@@ -92,16 +93,27 @@ export const useScreenRefs = (
 			scroll.current?.scrollChildIntoView(BoardChecklist.rowId(pressed.itemId));
 	}, [pressed]);
 
+	// A task's `now` coming on screen brings the checklist cursor's row into view; after that the
+	// human's scrolls are left alone until it comes on screen again.
+	const checklist = state ? BoardChecklist.onScreen(state) : null;
+	const revealedFor = useRef<string | null>(null);
+	useEffect(() => {
+		const taskId = checklist?.taskId ?? null;
+		if (checklist && taskId !== revealedFor.current)
+			scroll.current?.scrollChildIntoView(checklist.rowId);
+		revealedFor.current = taskId;
+	});
+
 	const runEffect = useCallback((effect: ScreenEffect): void => {
 		switch (effect.type) {
 			case "scroll":
-				scroll.current?.scrollBy(effect.delta);
+				Paging.apply(scroll.current, effect);
 				return;
 			case "reveal":
 				scroll.current?.scrollChildIntoView(effect.id);
 				return;
 			case "helpScroll":
-				help.current?.scrollBy(effect.delta);
+				Paging.apply(help.current, effect);
 				return;
 			case "copilotSetText":
 				input.current?.setText(effect.text);

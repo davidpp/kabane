@@ -16,6 +16,7 @@ import { BoardDecisions } from "./decisions";
 import { DetailModel } from "./detail-model";
 import { ElicitationForm } from "./elicitation-form";
 import type { Keymap } from "./keymap";
+import { Paging } from "./paging";
 import type {
 	CopilotElicitation,
 	CopilotElicitationAnswer,
@@ -301,11 +302,12 @@ export namespace BoardNav {
 		| { type: "markDone"; id: string; notice: string }
 		| { type: "markReviewed"; id: string; notice: string }
 		| { type: "applyUndo"; id: string; patch: UndoPatch; notice: string }
-		| { type: "scroll"; delta: number }
+		// The scroll keys (Paging) on the detail or event view, which app.tsx holds the scrollbox of.
+		| ({ type: "scroll" } & Paging.Motion)
 		// `J/K` on the detail view's checklist: the scrollbox brings the row with this id into view.
 		| { type: "reveal"; id: string }
-		// j/k on the `?` sheet: its own scrollbox, not the view's under it (app.tsx holds that ref too).
-		| { type: "helpScroll"; delta: number }
+		// The scroll keys on the `?` sheet: its own scrollbox, not the view's under it (app.tsx holds that ref too).
+		| ({ type: "helpScroll" } & Paging.Motion)
 		| { type: "copy"; id: string }
 		| { type: "notice"; notice: Notice }
 		// Fire a trigger on a task, with its form's values when it had one.
@@ -1110,9 +1112,6 @@ export namespace BoardNav {
 		};
 	};
 
-	// Lines the detail view scrolls per j/k/arrow press.
-	const SCROLL_STEP = 2;
-
 	const clamp = (value: number, min: number, max: number): number =>
 		Math.max(min, Math.min(max, value));
 
@@ -1799,12 +1798,14 @@ export namespace BoardNav {
 		};
 	};
 
-	// Event view: j/k scroll, `t` opens or closes every tool row, esc/q pop back to the previous view.
+	// Event view: the scroll keys, `t` opens or closes every tool row, esc/q pop back to the previous view.
 	const reduceEventsKey = (
 		state: BoardState,
 		key: KeyInput,
 	): { state: BoardState; effect: Effect } => {
 		if (state.view.type !== "events") return { state, effect: NONE };
+		const scrolled = Paging.motion(key);
+		if (scrolled) return { state, effect: { type: "scroll", ...scrolled } };
 		switch (key.name) {
 			case "escape":
 			case "q": {
@@ -1818,12 +1819,6 @@ export namespace BoardNav {
 						: { type: "board" as const };
 				return { state: { ...state, view: back }, effect: NONE };
 			}
-			case "j":
-			case "down":
-				return { state, effect: { type: "scroll", delta: 2 } };
-			case "k":
-			case "up":
-				return { state, effect: { type: "scroll", delta: -2 } };
 			case "t":
 				return {
 					state: {
@@ -1843,7 +1838,7 @@ export namespace BoardNav {
 		}
 	};
 
-	// The `?` sheet: `?`, esc or q closes it, j/k scroll it when it is taller than the pane; everything
+	// The `?` sheet: `?`, esc or q closes it, the scroll keys move it when it is taller than the pane; everything
 	// else is inert (modal, same as dispatch).
 	const reduceHelpKey = (
 		state: BoardState,
@@ -1852,16 +1847,10 @@ export namespace BoardNav {
 		if (isHelpKey(key) || key.name === "escape" || key.name === "q") {
 			return { state: { ...state, help: false }, effect: NONE };
 		}
-		switch (key.name) {
-			case "j":
-			case "down":
-				return { state, effect: { type: "helpScroll", delta: SCROLL_STEP } };
-			case "k":
-			case "up":
-				return { state, effect: { type: "helpScroll", delta: -SCROLL_STEP } };
-			default:
-				return { state, effect: NONE };
-		}
+		const scrolled = Paging.motion(key);
+		return scrolled
+			? { state, effect: { type: "helpScroll", ...scrolled } }
+			: { state, effect: NONE };
 	};
 
 	// Whose keys are live right now, in the order reduceKey hands them out: a modal first, then the
@@ -2174,7 +2163,7 @@ export namespace BoardNav {
 			? { state, effect: NONE }
 			: { state: { ...state, view: { ...state.view, tab } }, effect: NONE };
 
-	// Detail view: `esc`/`q` pop back to the board (never widen scope or quit); j/k/up/down scroll the
+	// Detail view: `esc`/`q` pop back to the board (never widen scope or quit); the scroll keys move the
 	// tab in view; a digit picks a tab and `h`/`l` (or left/right) step through them; on `now`,
 	// `J/K` move through the checklist and `space` toggles an item; the keys for the
 	// task in hand act on the OPEN task (not the board's selection), and the view refreshes after a
@@ -2188,6 +2177,8 @@ export namespace BoardNav {
 		// The checklist's keys, `space` and `J/K`, ahead of `j/k`, which `J` and `K` are shifted from.
 		const ticked = BoardChecklist.reduceKey(state, key);
 		if (ticked) return ticked;
+		const scrolled = Paging.motion(key);
+		if (scrolled) return { state, effect: { type: "scroll", ...scrolled } };
 		const digitTab = DetailModel.tabAt(Number.parseInt(key.name, 10));
 		if (digitTab) return withDetailTab(state, digitTab);
 		switch (key.name) {
@@ -2206,12 +2197,6 @@ export namespace BoardNav {
 			case "escape":
 			case "q":
 				return { state: { ...state, view: { type: "board" } }, effect: NONE };
-			case "j":
-			case "down":
-				return { state, effect: { type: "scroll", delta: SCROLL_STEP } };
-			case "k":
-			case "up":
-				return { state, effect: { type: "scroll", delta: -SCROLL_STEP } };
 			case "o":
 				// The copilot's transcript wins while its indicator is up; otherwise the task's events.
 				return state.copilot.turn === "idle"

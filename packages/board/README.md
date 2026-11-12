@@ -147,7 +147,7 @@ act?(id: string, actionId: string, input: { text?: string; lane?: string }): Pro
 A card may list `actions` (`{ id, key, label, input?, lane? }`) the human can press on its tab; the
 source's `act` runs them and resolves to the footer notice. The footer leads with them, and the `?`
 sheet lists them as `this card`. The board's own keys on a card's tab come first and cannot be taken
-(`h/l`, `j/k`, `e`, `o`, `w`, `q`, `t`, the digits, the everywhere keys), and `x` is reserved for the
+(`h/l`, `j/k`, `g/G`, `e`, `o`, `w`, `q`, `t`, the digits, the everywhere keys), and `x` is reserved for the
 action whose id is `STOP_ACTION` (`stop`), as it stops the copilot's turn on its transcript: `x` runs
 it while the card is in flight, and does nothing on a card that offers none. An action passes the
 lane on screen. One with `lane: true` is aimed at a single lane: the one on screen, else, on the
@@ -426,6 +426,10 @@ three seconds, or when the detail closes. A tick or an answer you make from this
 marked, nor is anything on the issue's first load. A new comment marks nothing: the comments
 count already moves.
 
+The section scrolls with the keys every scrolling view shares, the `?` sheet and the transcript
+included: `j/k` (or the arrows) two rows, `ctrl+d`/`ctrl+u` half the viewport, `g`/`G` the top
+and the end.
+
 ## Decisions agents file
 
 An agent that needs a human's call on an issue files it with `kabane_ask` (`@cabane/questions`):
@@ -476,7 +480,8 @@ the done hue once every item is ticked (`· 3/3`). The counts come from one quer
 
 The `now` section lists the items first, headed `checklist · 2/5`: `✓` for a ticked
 one, `○` for an open one, one line each. A cursor sits on the first open item, where a loop
-resumes. `J/K` move it and `space` ticks or unticks the item under it, as `kabane_checklistTick`
+resumes. Opening `now` scrolls the cursor's row into view; a scroll after that leaves the cursor
+where it is. `J/K` move it and `space` ticks or unticks the item under it, as `kabane_checklistTick`
 does, bringing it into view in the same press when it is off screen; the item shows the press at once, the footer says `JREP-8.3 ticked · 3/5`, and a write that
 fails puts the item back to the state the store last acknowledged, with why. An item's writes go one
 at a time: presses while one is in flight leave only the latest queued behind it, and a poll's

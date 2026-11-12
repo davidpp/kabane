@@ -722,6 +722,20 @@ describe("BoardNav.reduceKey", () => {
 			expect(down.state.selectedId).toBe("a");
 			expect(reduce(detail, { name: "k" }).effect.type).toBe("scroll");
 		});
+
+		it("ctrl+d/ctrl+u page the detail view by half, g/G go to its top and end", () => {
+			const detail = state({ view: { type: "detail", taskId: "a" } });
+			for (const [key, motion] of [
+				[{ name: "d", ctrl: true }, { page: 0.5 }],
+				[{ name: "u", ctrl: true }, { page: -0.5 }],
+				[{ name: "g", sequence: "g" }, { to: "top" }],
+				[{ name: "G", sequence: "G" }, { to: "end" }],
+			] as const)
+				expect(reduce(detail, key).effect).toEqual({
+					type: "scroll",
+					...motion,
+				});
+		});
 	});
 });
 
@@ -1364,6 +1378,18 @@ describe("help overlay", () => {
 		}
 	});
 
+	it("pages the sheet as every scrolling view does: ctrl+d/ctrl+u by half, g/G to its ends", () => {
+		const open = reduce(boardWith(), helpKey).state;
+		expect(reduce(open, { name: "d", ctrl: true }).effect).toEqual({
+			type: "helpScroll",
+			page: 0.5,
+		});
+		expect(reduce(open, { name: "G", sequence: "G" }).effect).toEqual({
+			type: "helpScroll",
+			to: "end",
+		});
+	});
+
 	it("all other keys are inert while open — d/a/x change nothing and emit nothing", () => {
 		const open = reduce(boardWith(), helpKey).state;
 		for (const name of ["d", "a", "x", "/", "space", "return"]) {
@@ -1626,6 +1652,18 @@ describe("event view navigation", () => {
 		expect(reduce(s, { name: "k" }).effect).toEqual({
 			type: "scroll",
 			delta: -2,
+		});
+	});
+
+	it("page by half on ctrl+d/ctrl+u and go to either end on g/G, as the detail does", () => {
+		const s = runView();
+		expect(reduce(s, { name: "u", ctrl: true }).effect).toEqual({
+			type: "scroll",
+			page: -0.5,
+		});
+		expect(reduce(s, { name: "g", sequence: "g" }).effect).toEqual({
+			type: "scroll",
+			to: "top",
 		});
 	});
 

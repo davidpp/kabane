@@ -80,6 +80,29 @@ describe("the checklist on an issue's detail", () => {
 		expect(cursorOf(keys(detail(), "K", "K").state)).toBe("Read the store");
 	});
 
+	it("names the cursor's row while `now` draws it, the same through a scroll, so the screen reveals it once per opening", () => {
+		const opened = BoardChecklist.onScreen(detail());
+		expect(opened).toEqual({
+			taskId: "w",
+			rowId: BoardChecklist.rowId(WRITE.id),
+		});
+		// A page down moves the view, not the cursor: the same task, nothing to reveal again.
+		const paged = press(detail(), "G");
+		expect(paged.effect).toEqual({ type: "scroll", to: "end" });
+		expect(BoardChecklist.onScreen(paged.state)?.taskId).toBe("w");
+		expect(cursorOf(paged.state)).toBe("Write the store");
+		// Another tab draws no checklist; coming back to `now` is a new opening.
+		const away = press(detail(), "2").state;
+		expect(BoardChecklist.onScreen(away)).toBeNull();
+		expect(BoardChecklist.onScreen(press(away, "1").state)?.taskId).toBe("w");
+	});
+
+	it("brings the cursor's row back into view on space, whatever scrolled it off", () => {
+		const scrolled = keys(detail(), "G", "space");
+		expect(scrolled.state.checklist.pressed).toEqual({ itemId: WRITE.id });
+		expect(doneOf(scrolled.state)).toEqual([true, true, false]);
+	});
+
 	it("takes a shifted j as J, whatever name the terminal gives it", () => {
 		const shifted = BoardNav.reduceKey(
 			BoardNav.sight(detail(), 0),
