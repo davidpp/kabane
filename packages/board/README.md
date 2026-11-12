@@ -542,7 +542,9 @@ to the previous and next heading across the entries (headings read as the digest
 one heading per press even near the end where the scroll stops, `?` lists these keys, and `esc` or
 `q` close it onto the detail at the section and scroll you left. A newer entry that lands while
 the reader is open replaces the one on screen, and the heading you were at stays where it was;
-when the newer entry has no heading of that name, the reader goes back to the top.
+when the newer entry has no heading of that name, the reader goes back to the top. Its first row
+stays put while the rest scrolls: once an entry's own first line has gone above the view, it says
+whose entry you are in and which heading you are at (`handoff · claude · Evidence`).
 
 ## Linked issues
 

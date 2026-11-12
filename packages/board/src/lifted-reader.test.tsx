@@ -65,9 +65,12 @@ const mount = async (entries: DetailModel.LiftedEntry[]) => {
 	};
 };
 
-// The text of the reader's first row (the pane's second, under the tab bar), without the scrollbar.
-const topRow = (frame: string): string =>
-	(frame.split("\n")[1] ?? "").replace(/[█▀▄]\s*$/, "").trim();
+// The text of a row of the pane, without the scrollbar.
+const row = (frame: string, n: number): string =>
+	(frame.split("\n")[n] ?? "").replace(/[█▀▄]\s*$/, "").trim();
+// The reader's pinned row (the pane's second, under the tab bar), and the top of its scroll under it.
+const pinRow = (frame: string): string => row(frame, 1);
+const topRow = (frame: string): string => row(frame, 2);
 
 describe("LiftedReader.parts", () => {
 	test("ids a repeated heading by which one it is, and leaves the opening unheaded", () => {
@@ -104,8 +107,9 @@ describe("LiftedReaderSheet", () => {
 		expect(topRow(await r.press(() => h().jump(1)))).toBe("Not verified");
 		expect(topRow(await r.press(() => h().jump(-1)))).toBe("Evidence");
 		await r.press(() => h().jump(-1));
-		expect(topRow(await r.press(() => h().jump(-1)))).toBe("");
-		expect(r.captureCharFrame()).toContain("handoff · claude");
+		const top = await r.press(() => h().jump(-1));
+		expect(topRow(top)).toStartWith("handoff · claude · ");
+		expect(pinRow(top)).toBe("");
 		r.destroy();
 	});
 
@@ -117,13 +121,21 @@ describe("LiftedReaderSheet", () => {
 		const h = (): LiftedReader.Handle =>
 			r.handle.current as LiftedReader.Handle;
 		expect(topRow(await r.press(() => h().jump(1)))).toBe("Summary");
+		// The scroll stops at its end: the view holds still, and the pinned row names each step.
+		const bodyOf = (frame: string): string =>
+			frame.split("\n").slice(2).join("\n");
 		const end = await r.press(() => h().jump(1));
 		expect(end).toContain("Delta");
+		expect(pinRow(end)).toBe("handoff · claude · Beta");
 		await r.press(() => h().jump(1));
-		await r.press(() => h().jump(1));
+		expect(pinRow(await r.press(() => h().jump(1)))).toBe(
+			"handoff · claude · Delta",
+		);
 		// From Delta, `[` steps back through Gamma and Beta, which the end of the scroll holds in
 		// view, before it reaches Summary: the jumps went through every heading, not round Beta.
-		expect(await r.press(() => h().jump(-1))).toBe(end);
+		const gamma = await r.press(() => h().jump(-1));
+		expect(bodyOf(gamma)).toBe(bodyOf(end));
+		expect(pinRow(gamma)).toBe("handoff · claude · Gamma");
 		expect(await r.press(() => h().jump(-1))).toBe(end);
 		expect(topRow(await r.press(() => h().jump(-1)))).toBe("Summary");
 		r.destroy();
@@ -158,6 +170,29 @@ describe("LiftedReaderSheet", () => {
 		r.destroy();
 	});
 
+	test("pins whose entry and which heading the view is in while the body scrolls under it", async () => {
+		const r = await mount(lifted(Fixtures.REAL_HANDOFF));
+		const h = (): LiftedReader.Handle =>
+			r.handle.current as LiftedReader.Handle;
+		// At the top the entry's own first line is in sight, so the pinned row is padding.
+		expect(pinRow(r.captureCharFrame())).toBe("");
+		// A line down, that first line has gone: the row names the entry before any heading.
+		expect(pinRow(await r.press(() => h().scroll({ delta: 1 })))).toBe(
+			"handoff · claude",
+		);
+		await r.press(() => h().scroll({ to: "top" }));
+		await r.press(() => h().jump(1));
+		const evidence = await r.press(() => h().jump(1));
+		expect(pinRow(evidence)).toBe("handoff · claude · Evidence");
+		// Scrolled on into the section, the row still says where the view is.
+		const inside = await r.press(() => h().scroll({ delta: 6 }));
+		expect(topRow(inside)).not.toBe("Evidence");
+		expect(pinRow(inside)).toBe("handoff · claude · Evidence");
+		for (const line of inside.split("\n"))
+			expect(line.length).toBeLessThanOrEqual(40);
+		r.destroy();
+	});
+
 	test("a newer entry without that heading starts the reader over at the top", async () => {
 		const r = await mount(lifted(Fixtures.REAL_HANDOFF));
 		const h = (): LiftedReader.Handle =>
@@ -171,7 +206,8 @@ describe("LiftedReaderSheet", () => {
 			),
 			(f) => f.includes("Redone."),
 		);
-		expect(topRow(frame)).toBe("");
+		expect(topRow(frame)).toStartWith("handoff · claude · ");
+		expect(pinRow(frame)).toBe("");
 		expect(frame).toContain("Redone.");
 		r.destroy();
 	});
