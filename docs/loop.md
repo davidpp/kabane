@@ -26,6 +26,14 @@ one commit. Use `--no-worktree` to work in the project checkout without checkpoi
 worktree, each subtask's claims and any questions waiting on you. `stop` asks the runner
 to cancel its sessions and release their work.
 
+On the board, a run's tab says what the run is doing: working its subtasks, then, once they
+are done, its closing gates, each lens's review, the fixer, the rechecks and the landing.
+When it says `waiting on`, each subtask it names says why, for example `JCAB-64 (someday)`.
+The run never claims a subtask you parked (`someday`, `waiting`) or took (`in_progress`),
+and it does not finish while one is open: set it back to `next` for the run to take it, or
+close it. `kabane loop skip` only keeps the run from claiming a subtask; a skipped subtask
+that stays open still holds the run.
+
 By default, `loop.land` is `none`: the finished branch stays in its worktree. To push a
 completed run's branch and open its pull request with your own git and gh:
 

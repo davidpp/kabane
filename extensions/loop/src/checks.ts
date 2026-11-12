@@ -255,7 +255,32 @@ export namespace Checks {
 		};
 	};
 
+	// One pass in or out of `gating`, for the header: a pass under way shows as running, never as
+	// the result of the one before it.
+	const marking = (ctx: Ctx, label: string, running: boolean): void => {
+		const now = ctx.run.gating ?? [];
+		const at = now.indexOf(label);
+		const next = running ? [...now, label] : now.filter((_, i) => i !== at);
+		RunState.save(ctx, {
+			...ctx.run,
+			gating: next.length > 0 ? next : undefined,
+		});
+	};
+
 	const gateNow = async (
+		ctx: Ctx,
+		subject: Subject,
+		place: Place,
+	): Promise<Gates.Run> => {
+		marking(ctx, subject.label, true);
+		try {
+			return await passNow(ctx, subject, place);
+		} finally {
+			marking(ctx, subject.label, false);
+		}
+	};
+
+	const passNow = async (
 		ctx: Ctx,
 		subject: Subject,
 		place: Place,

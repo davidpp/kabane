@@ -117,7 +117,7 @@ describe("Steering claim decisions", () => {
 		await Planner.updateTask(home, b.id, { state: "done" });
 		expect(LoopPlan.health(await load(parent.id), NONE, NOW, skipped)).toEqual({
 			kind: "waiting",
-			on: [`${a.shortId} (skipped)`],
+			on: [{ id: a.shortId ?? a.id, why: "skipped", parked: false }],
 		});
 	});
 

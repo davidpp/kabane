@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { Task } from "@cabane/core";
 import { LoopConfig } from "./config";
 import { LoopHeader } from "./header";
+import type { LoopPlan } from "./plan";
 import type { RunStore } from "./store";
 
 const NOW = new Date("2026-10-10T12:30:00.000Z");
@@ -203,5 +204,173 @@ describe("LoopHeader.steps", () => {
 		).toBe(
 			"○ implement ×2 sessions  ›  ✓ lenses functional  ›  ✓ fixer 0/0 closed  ›  ● recheck functional",
 		);
+	});
+});
+
+describe("LoopHeader.state past the subtasks", () => {
+	const parent = { id: "01PARENT", shortId: "KAB-1", title: "parent" } as Task;
+	const child = (
+		shortId: string,
+		state: Task["state"],
+		kind: Task["kind"] = "issue",
+	): LoopPlan.Node => ({
+		task: {
+			id: `01${shortId}`,
+			shortId,
+			title: shortId,
+			state,
+			kind,
+			tags: [] as string[],
+		} as Task,
+		blockedBy: [],
+		finding: false,
+		severity: undefined,
+	});
+	const plan = (...nodes: LoopPlan.Node[]): LoopPlan.Plan => ({
+		parent,
+		nodes,
+		outside: new Map(),
+	});
+	const allDone = plan(child("KAB-2", "done"));
+	const ended = run().claims.map((c) => ({ ...c, endedAt: c.startedAt }));
+	const onParent = (extra: Partial<RunStore.Claim>): RunStore.Claim => ({
+		taskId: "01PARENT",
+		shortId: "KAB-1",
+		harness: "claude",
+		lane: `review-${JSON.stringify(extra)}`,
+		sessionId: `s-${JSON.stringify(extra)}`,
+		startedAt: "2026-10-10T12:20:00.000Z",
+		continuations: 0,
+		...extra,
+	});
+	const configured = (input: LoopConfig.Input): RunStore.Run["config"] => {
+		const config = LoopConfig.Schema.safeParse(input);
+		if (!config.success) throw config.error;
+		return config.data;
+	};
+	const green = {
+		at: "2026-10-10T12:19:00.000Z",
+		results: [],
+		ok: true,
+		tree: "t",
+	};
+	const text = (r: RunStore.Run, p: LoopPlan.Plan | null = allDone): string =>
+		LoopHeader.state(r, p, NOW).text;
+
+	it("names the closing gates while they run, and the gates step shows them running", () => {
+		const gating = run({
+			claims: ended,
+			gating: ["KAB-1"],
+			config: configured({ gates: { test: "bun test" } }),
+			gateRuns: [green],
+		});
+		expect(LoopHeader.state(gating, allDone, NOW)).toEqual({
+			text: "● closing gates for KAB-1",
+			tone: "working",
+			bold: true,
+		});
+		expect(
+			LoopHeader.steps(gating, allDone)
+				.map((part) => part.text)
+				.join(""),
+		).toBe("○ implement ×2 sessions  ›  ◐ gates running for KAB-1");
+	});
+
+	it("shows a subtask's pass running in the gates step while its session is still the run's", () => {
+		const gating = run({
+			gating: ["KAB-2"],
+			config: configured({ gates: { test: "bun test" } }),
+		});
+		expect(text(gating, plan(child("KAB-2", "in_progress")))).toBe("● running");
+		expect(
+			LoopHeader.steps(gating, null)
+				.map((part) => part.text)
+				.join(""),
+		).toBe("● implement ×2 sessions  ›  ◐ gates running for KAB-2");
+	});
+
+	it("never shows a pass running for a run whose runner is gone", () => {
+		const dead = run({
+			status: "failed",
+			exit: { reason: "runner-died" },
+			gating: ["KAB-1"],
+			config: configured({ gates: { test: "bun test" } }),
+		});
+		expect(
+			LoopHeader.steps(dead, null)
+				.map((part) => part.text)
+				.join(""),
+		).toBe("✗ implement ×2 sessions  ›  ○ gates test");
+	});
+
+	it("names the lenses reviewing, the fixer, and the lenses rechecking", () => {
+		expect(
+			text(run({ claims: [...ended, onParent({ lens: "quality" })] })),
+		).toBe("● quality lens reviewing");
+		expect(
+			text(
+				run({
+					claims: [
+						...ended,
+						onParent({ lens: "quality" }),
+						onParent({ lens: "docs" }),
+					],
+				}),
+			),
+		).toBe("● quality, docs lenses reviewing");
+		expect(
+			text(
+				run({
+					claims: [...ended, onParent({ fixer: true, findings: ["a", "b"] })],
+				}),
+			),
+		).toBe("● fixer on 2 findings");
+		expect(
+			text(run({ claims: [...ended, onParent({ recheck: "functional" })] })),
+		).toBe("● functional lens rechecking the fixer's diff");
+	});
+
+	it("says landing once every step before it is done, and while a landing is under way", () => {
+		const landing = run({
+			claims: ended,
+			config: configured({ land: "pr" }),
+			gateRuns: [green],
+		});
+		expect(text(landing)).toBe("● landing");
+		expect(text({ ...landing, gating: ["KAB-1"], landingFrom: "abc" })).toBe(
+			"● landing",
+		);
+	});
+
+	it("says it is closing the parent between two steps, never that it waits on nothing", () => {
+		expect(text(run({ claims: ended }))).toBe("● closing KAB-1");
+	});
+
+	it("names what holds the run, and the way out when only a human can release it", () => {
+		const held = run({ claims: ended });
+		const parked = LoopHeader.state(
+			held,
+			plan(child("KAB-2", "done"), child("KAB-3", "someday")),
+			NOW,
+		);
+		expect(parked).toEqual({
+			text: "⏸ waiting on KAB-3 (someday) · set it to next or close it",
+			tone: "accent",
+			bold: true,
+		});
+		expect(
+			text(
+				held,
+				plan(child("KAB-3", "waiting"), child("KAB-4", "in_progress")),
+			),
+		).toBe(
+			"⏸ waiting on KAB-3 (waiting), KAB-4 (in_progress, not the run's) · set them to next or close them",
+		);
+		expect(
+			text(
+				held,
+				plan(child("KAB-3", "someday"), child("KAB-4", "next", "task")),
+			),
+		).toBe("⏸ waiting on KAB-3 (someday), KAB-4 (a human's task)");
 	});
 });

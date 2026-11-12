@@ -125,6 +125,28 @@ describe("Runner resume", () => {
 		);
 	});
 
+	it("says a parked subtask holds it and how a human releases it, and drops a dead runner's pass", async () => {
+		const run = await orphaned("run-1", {
+			steering: Steering.INITIAL,
+			gating: ["KAB-9"],
+		});
+		const children = await Planner.queryTasks(home, {
+			parentTaskId: run.parentId,
+		});
+		const child = children.ok ? children.value[0] : undefined;
+		if (!child) throw new Error("no child");
+		await Planner.updateTask(home, child.id, { state: "someday" });
+		const ended = await resumeUntilWaiting("run-1");
+		expect(ended.gating).toBeUndefined();
+		const events = RunStore.readEvents(home, "run-1");
+		const short = child.shortId ?? child.id;
+		expect(
+			events.ok && events.value.find((e) => e.type === "waiting")?.summary,
+		).toBe(
+			`waiting on ${short} (someday); only a human releases it: \`kabane edit ${short} --state next\` hands it to the run, or close it in the tracker`,
+		);
+	});
+
 	it("refuses to resume while another live run has its parent", async () => {
 		const dead = await orphaned("run-1");
 		RunStore.create(home, {
