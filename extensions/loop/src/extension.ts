@@ -447,12 +447,13 @@ const command: Extension.Command = {
 // bounded integer steps through its range.
 const looks: Settings.Looks = {
 	implementer: { label: "implementer", group: "Agents" },
-	// A tier or a model id the harness lists (`LoopConfig.resolveModel`); these are Claude's aliases.
+	// A tier, resolved per harness through `loop.tiers`, or a model id the harness lists
+	// (`LoopConfig.resolveModel`). The form adds the tiers `loop.tiers` names (`LoopSettings`).
 	// Unset, the user's own settings decide.
 	model: {
 		label: "model",
 		group: "Agents",
-		options: ["opus", "sonnet", "haiku"],
+		options: LoopConfig.TIERS,
 		none: "your own",
 	},
 	// Unset, it follows isolation: 2 in a worktree each, 1 in the run's one tree.
