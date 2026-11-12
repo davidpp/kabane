@@ -79,8 +79,25 @@ const copilotOverrides = (ctx: Ctx): Harnesses.Overrides | undefined => {
 };
 
 /**
- * The issue `--issue` names, as a short id or a ULID, resolved before the renderer starts so an
- * unknown one fails in one line; undefined without the flag.
+ * The issue an id names in this device's tracker: a short id, a ULID or a ULID prefix, in any case.
+ * `--issue` and the ids `--to` sends both go through it, so they accept the same ids and fail alike.
+ */
+const findIssue = async (
+	store: string,
+	input: string,
+): Promise<Result<Task>> => {
+	// ULIDs are upper case, and resolveTaskId returns a full one as typed.
+	const id = await Planner.resolveTaskId(store, input.toUpperCase());
+	const task = id.ok ? await Planner.getTask(store, id.value) : id;
+	if (!task.ok) return task;
+	return task.value
+		? ok(task.value)
+		: err(new Error(`No task found with ID: ${input}`));
+};
+
+/**
+ * The issue `--issue` names, resolved before the renderer starts so an unknown one fails in one
+ * line; undefined without the flag.
  */
 export const boardIssue = async (
 	args: ParsedArgs,
@@ -90,12 +107,7 @@ export const boardIssue = async (
 	const input = flagString(args, "issue");
 	if (input === undefined)
 		return err(new Error("--issue needs an issue id, e.g. --issue JCAB-12"));
-	const id = await Planner.resolveTaskId(ctx.store, input);
-	const task = id.ok ? await Planner.getTask(ctx.store, id.value) : id;
-	if (!task.ok) return task;
-	return task.value
-		? ok(task.value)
-		: err(new Error(`No task found with ID: ${input}`));
+	return findIssue(ctx.store, input);
 };
 
 /**
@@ -245,7 +257,7 @@ export const boardDeps = async (
 
 /**
  * This board's control channel (BoardControl) and the port it feeds: an id sent with `--to` is
- * looked up in this device's tracker, as a short id or a ULID in any case, and handed to the board,
+ * looked up in this device's tracker as `--issue` looks one up (findIssue) and handed to the board,
  * which subscribes once its first load is in. A board that cannot listen still runs, and `--to` then
  * finds no board, which is what it reports.
  */
@@ -267,9 +279,8 @@ export const listenForRequests = (
 		async (input) => {
 			if (!open)
 				return err(new Error(`board pid ${pid} is still loading; try again`));
-			const found = await Planner.getTask(ctx.store, input.toUpperCase());
+			const found = await findIssue(ctx.store, input);
 			if (!found.ok) return found;
-			if (!found.value) return err(new Error(`${input} not found`));
 			open(found.value);
 			return ok(found.value.shortId ?? found.value.id);
 		},
