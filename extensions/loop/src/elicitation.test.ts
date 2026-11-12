@@ -25,33 +25,32 @@ afterEach(() => rmSync(base, { recursive: true, force: true }));
 
 // One AskUserQuestion question as claude-agent-acp 0.99.1 sends it, through AcpClient's mapping:
 // the choice, then its optional "Other" box. Nothing is required.
+const STORE: AcpClient.ElicitationField = {
+	key: "question_0",
+	title: "Store",
+	required: false,
+	type: "choice",
+	options: [
+		{
+			value: "Redis",
+			label: "Redis",
+			description: "Shared, survives restarts",
+		},
+		{ value: "Memory", label: "Memory" },
+	],
+};
+const STORE_OTHER: AcpClient.ElicitationField = {
+	key: "question_0_custom",
+	title: "Other",
+	description:
+		"Type your own answer, or add a note to the option you chose above (optional).",
+	required: false,
+	type: "text",
+};
 const ASK: AcpClient.ElicitationRequest = {
 	message: "Which store should the cache use?",
 	toolCallId: "toolu_ask",
-	fields: [
-		{
-			key: "question_0",
-			title: "Store",
-			required: false,
-			type: "choice",
-			options: [
-				{
-					value: "Redis",
-					label: "Redis",
-					description: "Shared, survives restarts",
-				},
-				{ value: "Memory", label: "Memory" },
-			],
-		},
-		{
-			key: "question_0_custom",
-			title: "Other",
-			description:
-				"Type your own answer, or add a note to the option you chose above (optional).",
-			required: false,
-			type: "text",
-		},
-	],
+	fields: [STORE, STORE_OTHER],
 };
 
 // Two AskUserQuestion questions in one form: each field carries its question as its description,
@@ -103,17 +102,9 @@ const ASK_TWO: AcpClient.ElicitationRequest = {
 const named = { key: "f", title: "F" };
 const field = (f: AcpClient.ElicitationField): AcpClient.ElicitationField => f;
 
-const fieldsOf = (request: AcpClient.ElicitationRequest) => {
-	const [first, second] = request.fields;
-	if (!first || !second) throw new Error("the form has two fields");
-	return [first, second] as const;
-};
-
-const asked = (request: AcpClient.ElicitationRequest) => {
-	const [first, ...rest] = Elicitation.questions(request.fields);
-	if (!first) throw new Error("the form asks nothing");
-	return [first, ...rest] as const;
-};
+// The `index`th question `request` is asked as, if it has one.
+const asked = (request: AcpClient.ElicitationRequest, index: number) =>
+	Elicitation.questions(request.fields)[index];
 
 describe("Elicitation.questions", () => {
 	it("folds each AskUserQuestion Other box into the choice before it", () => {
@@ -166,8 +157,10 @@ describe("Elicitation.questions", () => {
 
 describe("Elicitation.body", () => {
 	it("asks a choice and its Other box as one question that also takes a typed answer", () => {
-		const [store, ...rest] = asked(ASK);
+		const [store, ...rest] = Elicitation.questions(ASK.fields);
 		expect(rest).toEqual([]);
+		expect(store).toBeDefined();
+		if (!store) return;
 		const parsed = parseQuestionBody(
 			Elicitation.body("claude", ASK, store, { index: 0, total: 1 }),
 		);
@@ -181,8 +174,9 @@ describe("Elicitation.body", () => {
 	});
 
 	it("numbers the questions of a form, and says a multi-select takes a typed answer too", () => {
-		const [, checks] = asked(ASK_TWO);
-		if (!checks) throw new Error("missing question");
+		const checks = asked(ASK_TWO, 1);
+		expect(checks?.field.key).toBe("question_1");
+		if (!checks) return;
 		const parsed = parseQuestionBody(
 			Elicitation.body("claude", ASK_TWO, checks, { index: 1, total: 2 }),
 		);
@@ -198,9 +192,8 @@ describe("Elicitation.body", () => {
 	});
 
 	it("asks a choice with no Other box from its options alone", () => {
-		const [store] = fieldsOf(ASK);
 		const parsed = parseQuestionBody(
-			Elicitation.body("claude", ASK, { field: store }, { index: 0, total: 2 }),
+			Elicitation.body("claude", ASK, { field: STORE }, { index: 0, total: 2 }),
 		);
 		expect(parsed.question).toBe(
 			"claude asks: Which store should the cache use?\nStore (1 of 2)",
@@ -210,9 +203,13 @@ describe("Elicitation.body", () => {
 	});
 
 	it("asks a text field as free text, its description verbatim, saying how to skip or decline", () => {
-		const [, other] = fieldsOf(ASK);
 		const parsed = parseQuestionBody(
-			Elicitation.body("claude", ASK, { field: other }, { index: 1, total: 2 }),
+			Elicitation.body(
+				"claude",
+				ASK,
+				{ field: STORE_OTHER },
+				{ index: 1, total: 2 },
+			),
 		);
 		expect(parsed.question).toBe(
 			[
@@ -413,7 +410,9 @@ describe("Elicitation.read", () => {
 
 describe("Elicitation.answer", () => {
 	it("fills the choice with a pick, and its Other box with anything else", () => {
-		const [store] = asked(ASK);
+		const store = asked(ASK, 0);
+		expect(store?.other?.key).toBe("question_0_custom");
+		if (!store) return;
 		expect(Elicitation.answer(store, "1")).toEqual({
 			kind: "value",
 			key: "question_0",
@@ -429,8 +428,9 @@ describe("Elicitation.answer", () => {
 	});
 
 	it("reads a multi-select's picks, and a typed answer into its Other box", () => {
-		const [, checks] = asked(ASK_TWO);
-		if (!checks) throw new Error("missing question");
+		const checks = asked(ASK_TWO, 1);
+		expect(checks?.field.key).toBe("question_1");
+		if (!checks) return;
 		expect(Elicitation.answer(checks, "Lint, 2")).toEqual({
 			kind: "value",
 			key: "question_1",
@@ -444,8 +444,9 @@ describe("Elicitation.answer", () => {
 	});
 
 	it("asks again when picks break a multi-select's limits, rather than taking them as typed text", () => {
-		const [, checks] = asked(ASK_TWO);
-		if (checks?.field.type !== "choices") throw new Error("missing question");
+		const checks = asked(ASK_TWO, 1);
+		expect(checks?.field.type).toBe("choices");
+		if (checks?.field.type !== "choices") return;
 		const capped = { ...checks, field: { ...checks.field, maxItems: 1 } };
 		expect(Elicitation.answer(capped, "1, 2")).toEqual({
 			kind: "invalid",
@@ -459,9 +460,8 @@ describe("Elicitation.answer", () => {
 	});
 
 	it("asks again when a typed answer fits neither the choice nor its Other box", () => {
-		const [store] = fieldsOf(ASK);
 		const capped: Elicitation.Question = {
-			field: store,
+			field: STORE,
 			other: {
 				key: "question_0_custom",
 				title: "Other",
@@ -474,7 +474,7 @@ describe("Elicitation.answer", () => {
 			kind: "invalid",
 			why: "names none of its choices, and as your own answer is not text of at most 3 characters",
 		});
-		expect(Elicitation.answer({ field: store }, "Valkey")).toEqual({
+		expect(Elicitation.answer({ field: STORE }, "Valkey")).toEqual({
 			kind: "invalid",
 			why: "names none of its choices",
 			unmatched: true,
@@ -482,15 +482,17 @@ describe("Elicitation.answer", () => {
 	});
 });
 
+// The helpers below assert their own setup, so a failed write fails the test that called them.
 const session = async (): Promise<string> => {
 	const task = await Planner.addTask(base, { kind: "issue", title: "sub" });
-	if (!task.ok) throw task.error;
+	expect(task).toMatchObject({ ok: true });
+	if (!task.ok) return "";
 	const started = await Planner.startSession(base, {
 		taskId: task.value.id,
 		agent: "claude",
 	});
-	if (!started.ok) throw started.error;
-	return started.value.id;
+	expect(started).toMatchObject({ ok: true });
+	return started.ok ? started.value.id : "";
 };
 
 type Relayed = {
@@ -530,16 +532,19 @@ const waiting = async (
 	sessionId: string,
 	count: number,
 ): Promise<AgentActivity[]> => {
+	let rows: AgentActivity[] = [];
 	for (let i = 0; i < 200; i++) {
 		const needs = await Planner.getNeedsInput(base);
-		if (!needs.ok) throw needs.error;
-		const rows = needs.value.flatMap((r) =>
+		expect(needs).toMatchObject({ ok: true });
+		if (!needs.ok) return [];
+		rows = needs.value.flatMap((r) =>
 			r.session.id === sessionId && r.question ? [r.question] : [],
 		);
 		if (rows.length === count) return rows;
 		await Bun.sleep(5);
 	}
-	throw new Error(`no ${count} questions appeared`);
+	expect(rows).toHaveLength(count);
+	return rows;
 };
 
 const answer = async (questionId: string, text: string) => {
@@ -547,13 +552,14 @@ const answer = async (questionId: string, text: string) => {
 		questionId,
 		answer: text,
 	});
-	if (!answered.ok) throw answered.error;
+	expect(answered).toMatchObject({ ok: true });
 };
 
 // How each question of the session was resolved, in order: [type, body] of what closes it.
 const resolutions = async (sessionId: string) => {
 	const activities = await Planner.getActivities(base, sessionId);
-	if (!activities.ok) throw activities.error;
+	expect(activities).toMatchObject({ ok: true });
+	if (!activities.ok) return [];
 	return activities.value
 		.filter((a) => a.type === "question")
 		.map((q) =>
@@ -568,7 +574,7 @@ describe("Elicitation.relay", () => {
 		const sessionId = await session();
 		const { result, events } = relay(sessionId, ASK_TWO);
 		const [store, checks] = await waiting(sessionId, 2);
-		if (!store || !checks) throw new Error("missing questions");
+		if (!store || !checks) return;
 
 		await answer(store.id, "1");
 		await answer(checks.id, "Fuzzing");
@@ -597,7 +603,7 @@ describe("Elicitation.relay", () => {
 		const sessionId = await session();
 		const { result } = relay(sessionId);
 		const [store] = await waiting(sessionId, 1);
-		if (!store) throw new Error("missing question");
+		if (!store) return;
 		await answer(store.id, "skip");
 		expect(await result).toEqual({
 			ok: true,
@@ -610,7 +616,7 @@ describe("Elicitation.relay", () => {
 		const sessionId = await session();
 		const { result, events } = relay(sessionId, ASK_TWO);
 		const [store] = await waiting(sessionId, 2);
-		if (!store) throw new Error("missing question");
+		if (!store) return;
 
 		await answer(store.id, "decline");
 		expect(await result).toEqual({ ok: true, value: { action: "decline" } });
@@ -644,10 +650,10 @@ describe("Elicitation.relay", () => {
 			],
 		});
 		const [first] = await waiting(sessionId, 1);
-		if (!first) throw new Error("missing question");
+		if (!first) return;
 		await answer(first.id, "lots");
 		const [second] = await waiting(sessionId, 1);
-		if (!second) throw new Error("missing question");
+		if (!second) return;
 		expect(second.id).not.toBe(first.id);
 		expect(parseQuestionBody(second.body).question).toContain(
 			'Asked again: "lots" is not a whole number of at least 1.',
@@ -668,7 +674,7 @@ describe("Elicitation.relay", () => {
 		const sessionId = await session();
 		const { result, events, harness } = relay(sessionId, ASK_TWO);
 		const [store] = await waiting(sessionId, 2);
-		if (!store) throw new Error("missing question");
+		if (!store) return;
 		await answer(store.id, "Memory");
 		// The answered one keeps its answer; only the other is still open.
 		await waiting(sessionId, 1);
@@ -704,14 +710,14 @@ describe("Elicitation.relay", () => {
 		const sessionId = await session();
 		const { result, events } = relay(sessionId, ASK_TWO);
 		const [store] = await waiting(sessionId, 2);
-		if (!store) throw new Error("missing question");
+		if (!store) return;
 		const closed = await Planner.addActivity(base, {
 			sessionId,
 			type: "withdrawn",
 			context: `answers ${store.id}`,
 			body: "Redis",
 		});
-		if (!closed.ok) throw closed.error;
+		expect(closed).toMatchObject({ ok: true });
 		const relayed = await result;
 		expect(!relayed.ok && relayed.error.message).toBe(
 			"withdrawn outside this claim",
@@ -733,7 +739,7 @@ describe("Elicitation.relay", () => {
 			fields: [],
 		});
 		const [confirm] = await waiting(sessionId, 1);
-		if (!confirm) throw new Error("missing question");
+		if (!confirm) return;
 		expect(parseQuestionBody(confirm.body).choices).toEqual([
 			"accept",
 			"decline",

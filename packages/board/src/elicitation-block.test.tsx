@@ -329,7 +329,11 @@ describe("ElicitationBlock", () => {
 	it("answerKeys names what answers each kind of field", () => {
 		const store = STORE.fields[0];
 		const tags = TAGS.fields[0];
-		if (!store || !tags) throw new Error("the forms have their fields");
+		expect([store?.key, tags?.key]).toEqual([
+			expect.any(String),
+			expect.any(String),
+		]);
+		if (!store || !tags) return;
 		expect(answerKeys(store)).toEqual([
 			["↑↓", "move"],
 			["enter", "pick"],

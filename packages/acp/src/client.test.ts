@@ -9,7 +9,7 @@ import {
 	methods,
 	PROTOCOL_VERSION,
 } from "@agentclientprotocol/sdk";
-import { err, ok } from "@cabane/core";
+import { err, ok, type Result } from "@cabane/core";
 import { AcpClient } from "./client";
 
 type Seen = { newSession: unknown[]; prompts: unknown[]; cancels: number };
@@ -1173,15 +1173,20 @@ const turnText = async (session: AcpClient.Session): Promise<string> =>
 		.flatMap((u) => (u.type === "text" ? [u.text] : []))
 		.join("");
 
-const openWith = async (agent: AgentApp, options: AcpClient.ConnectOptions) => {
+const openWith = async (
+	agent: AgentApp,
+	options: AcpClient.ConnectOptions,
+): Promise<
+	Result<{ conn: AcpClient.Connection; session: AcpClient.Session }>
+> => {
 	const conn = await AcpClient.connect("claude", agent, options);
-	if (!conn.ok) throw conn.error;
+	if (!conn.ok) return conn;
 	const session = await AcpClient.newSession(conn.value, {
 		cwd: "/tmp/scope",
 		mcpServers: [],
 	});
-	if (!session.ok) throw session.error;
-	return { conn: conn.value, session: session.value };
+	if (!session.ok) return session;
+	return ok({ conn: conn.value, session: session.value });
 };
 
 describe("AcpClient elicitation", () => {
@@ -1195,27 +1200,30 @@ describe("AcpClient elicitation", () => {
 			onPermission: allow,
 			onElicitation: async () => ok({ action: "decline" }),
 		});
+		expect(without).toMatchObject({ ok: true });
+		expect(withHandler).toMatchObject({ ok: true });
+		if (!without.ok || !withHandler.ok) return;
 		// The agent side parses in ACP's defaults for the other keys; only this one is kabane's.
 		expect(initialized.map((i) => i.clientCapabilities?.elicitation)).toEqual([
 			undefined,
 			{ form: {} },
 		]);
-		AcpClient.close(without.conn);
-		AcpClient.close(withHandler.conn);
+		AcpClient.close(without.value.conn);
+		AcpClient.close(withHandler.value.conn);
 	});
 
 	it("hands the handler the form verbatim and the harness the human's answer", async () => {
 		const asked: AcpClient.ElicitationRequest[] = [];
-		const { conn, session } = await openWith(
-			askingAgent([], elicit(ASK_USER_QUESTION)),
-			{
-				onPermission: allow,
-				onElicitation: async (request) => {
-					asked.push(request);
-					return ok({ action: "accept", content: { question_0: "Redis" } });
-				},
+		const opened = await openWith(askingAgent([], elicit(ASK_USER_QUESTION)), {
+			onPermission: allow,
+			onElicitation: async (request) => {
+				asked.push(request);
+				return ok({ action: "accept", content: { question_0: "Redis" } });
 			},
-		);
+		});
+		expect(opened).toMatchObject({ ok: true });
+		if (!opened.ok) return;
+		const { conn, session } = opened.value;
 		expect(await turnText(session)).toBe(
 			JSON.stringify({ action: "accept", content: { question_0: "Redis" } }),
 		);
@@ -1265,7 +1273,9 @@ describe("AcpClient elicitation", () => {
 			askingAgent([], elicit(ASK_USER_QUESTION)),
 			options,
 		);
-		expect(await turnText(failed.session)).toBe(
+		expect(failed).toMatchObject({ ok: true });
+		if (!failed.ok) return;
+		expect(await turnText(failed.value.session)).toBe(
 			JSON.stringify({ action: "cancel" }),
 		);
 		const url = await openWith(
@@ -1281,12 +1291,14 @@ describe("AcpClient elicitation", () => {
 			),
 			options,
 		);
-		expect(await turnText(url.session)).toBe(
+		expect(url).toMatchObject({ ok: true });
+		if (!url.ok) return;
+		expect(await turnText(url.value.session)).toBe(
 			JSON.stringify({ action: "cancel" }),
 		);
 		expect(calls).toBe(1);
-		AcpClient.close(failed.conn);
-		AcpClient.close(url.conn);
+		AcpClient.close(failed.value.conn);
+		AcpClient.close(url.value.conn);
 	});
 });
 
@@ -1430,7 +1442,7 @@ describe("AcpClient withdrawn requests", () => {
 
 	it("answers a withdrawn permission request cancelled and tells the handler it was withdrawn", async () => {
 		let withdrawn: AbortSignal | undefined;
-		const { conn, session } = await openWith(
+		const opened = await openWith(
 			askingAgent(
 				[],
 				withdrawing(methods.client.session.requestPermission, (sessionId) => ({
@@ -1447,6 +1459,9 @@ describe("AcpClient withdrawn requests", () => {
 				},
 			},
 		);
+		expect(opened).toMatchObject({ ok: true });
+		if (!opened.ok) return;
+		const { conn, session } = opened.value;
 		expect(await turnText(session)).toBe(
 			JSON.stringify({ outcome: { outcome: "cancelled" } }),
 		);
@@ -1456,7 +1471,7 @@ describe("AcpClient withdrawn requests", () => {
 
 	it("answers a withdrawn form cancel and tells the handler it was withdrawn", async () => {
 		let withdrawn: AbortSignal | undefined;
-		const { conn, session } = await openWith(
+		const opened = await openWith(
 			askingAgent(
 				[],
 				withdrawing(methods.client.elicitation.create, ASK_USER_QUESTION),
@@ -1469,6 +1484,9 @@ describe("AcpClient withdrawn requests", () => {
 				},
 			},
 		);
+		expect(opened).toMatchObject({ ok: true });
+		if (!opened.ok) return;
+		const { conn, session } = opened.value;
 		expect(await turnText(session)).toBe(JSON.stringify({ action: "cancel" }));
 		expect(withdrawn?.aborted).toBe(true);
 		AcpClient.close(conn);
