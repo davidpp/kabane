@@ -36,6 +36,8 @@ export namespace LoopSettings {
 
 	const nameOf = (field: SettingField): string => field.path.join(".");
 
+	const DEFAULTS = LoopConfig.Schema.parse({});
+
 	const lookOf = (field: SettingField): Look =>
 		Settings.lookOf(looks(), field.path);
 
@@ -142,11 +144,17 @@ export namespace LoopSettings {
 			const input = inputOf(field, config);
 			if (input && recommendation) {
 				const previous = valueAt(config, field.path);
+				// The port resolves without origins, so a value equal to the schema's default is taken
+				// as unset: naming it "your setting" would credit the human with a default.
+				const yours =
+					previous !== undefined &&
+					previous !== recommendation.value &&
+					previous !== valueAt(DEFAULTS, field.path);
 				input.default =
 					input.options && typeof recommendation.value === "number"
 						? String(recommendation.value)
 						: recommendation.value;
-				input.hint = `advised: ${recommendation.reason}${previous !== undefined && previous !== recommendation.value ? ` (your setting: ${String(previous)})` : ""}`;
+				input.hint = `advised: ${recommendation.reason}${yours ? ` (your setting: ${String(previous)})` : ""}`;
 			}
 			if (input) entries.push([nameOf(field), input]);
 		}

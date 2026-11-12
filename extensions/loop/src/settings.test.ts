@@ -241,6 +241,18 @@ describe("the loop's looks", () => {
 	});
 });
 
+it("an advised hint names no previous value when it is only the schema default", () => {
+	const advice = [
+		{ path: "stallAfter", value: 2, reason: "thrash" },
+	] satisfies LoopAdvice.Recommendation[];
+	expect(LoopSettings.inputs(config({}), [], advice).stallAfter?.hint).toBe(
+		"advised: thrash",
+	);
+	expect(
+		LoopSettings.inputs(config({ stallAfter: 5 }), [], advice).stallAfter?.hint,
+	).toBe("advised: thrash (your setting: 5)");
+});
+
 it("advice replaces task settings with a reason, preserves preferences, and user edits win", () => {
 	const original = config({
 		implementer: "codex",
