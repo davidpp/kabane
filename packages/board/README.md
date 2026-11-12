@@ -534,8 +534,10 @@ new entry moves the open detail's stamp, so a handoff recorded in a shell shows 
 `r` on the detail, from any section, opens the reader: each lifted kind's newest entry in full,
 in the same order, over the detail. The footer names it after the kind (`r read handoff`), or
 says `r read` when an issue has entries of several lifted kinds, and leaves it out when there is
-nothing to read. In the reader, `j/k` scroll, `[` and `]` move to the previous and next heading
-across the entries (headings read as the digest reads them), `?` lists these keys, and `esc` or
+nothing to read; at forty columns, while `now` lists a checklist, `space toggle item` has the room
+and `?` lists `r`. In the reader, the scroll keys move it as they move the detail, `[` and `]` go
+to the previous and next heading across the entries (headings read as the digest reads them),
+one heading per press even near the end where the scroll stops, `?` lists these keys, and `esc` or
 `q` close it onto the detail at the section and scroll you left. A newer entry that lands while
 the reader is open replaces the one on screen, and the heading you were at stays where it was;
 when the newer entry has no heading of that name, the reader goes back to the top.
