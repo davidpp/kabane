@@ -1,7 +1,14 @@
 // Made-up props the render tests and the gallery's stories share, so a component is drawn from the
 // same data in both: what a test pins is what David looks at.
 import type { ChecklistItemView } from "@cabane/checklist";
-import { TASK_STATE_DISPLAY, type Task, type TaskEntry } from "@cabane/core";
+import {
+	type LinkType,
+	TASK_STATE_DISPLAY,
+	type Task,
+	type TaskEntry,
+	type TaskLink,
+	type UpstreamLink,
+} from "@cabane/core";
 import { handoffModule } from "@cabane/handoff";
 import {
 	type DecisionMeta,
@@ -269,6 +276,38 @@ export namespace Fixtures {
 		authorType: author.startsWith("cabane://actor/agent/") ? "ai" : "human",
 		content,
 		createdAt: `2026-10-10T${String(n).padStart(2, "0")}:00:00.000Z`,
+	});
+
+	/** The `n`th link, `source` to `target` as core stores it: `link(n, a, "blocks", b)` reads a blocks b. */
+	export const link = (
+		n: number,
+		source: Task,
+		type: LinkType,
+		target: Task,
+	): TaskLink => ({
+		id: `01H00000000000000000000L${n}0`,
+		sourceId: source.id,
+		targetId: target.id,
+		type,
+		createdAt: `2026-10-10T${String(n).padStart(2, "0")}:00:00.000Z`,
+	});
+
+	/** `on` pointing at `identifier` in `provider`'s tracker. */
+	export const upstream = (
+		on: Task,
+		provider: string,
+		identifier: string,
+		title: string,
+	): UpstreamLink => ({
+		id: `upstream-${identifier}`,
+		taskId: on.id,
+		provider,
+		externalId: `${provider}-${identifier}`,
+		identifier,
+		url: `https://example.com/${identifier}`,
+		title,
+		createdAt: "2026-10-10T00:00:00.000Z",
+		updatedAt: "2026-10-10T00:00:00.000Z",
 	});
 
 	/** The kinds the CLI's modules declare: the handoff, which the brief lifts under the description. */

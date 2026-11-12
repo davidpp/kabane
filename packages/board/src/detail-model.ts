@@ -3,10 +3,11 @@
 // Pure: records in, the view's content out, so which record lands where is decided and tested
 // without a renderer. The view never reads the agent brief (assembleContext); `y` still copies that.
 //
-// Pinned above the tabs: the task at a glance, where it sits (its subtasks counted there), and any
-// question waiting on a human, a session's or an open decision (BoardDecisions asks those). Then one
-// tab each for what is in force now (the checklist, the newest entry of each kind the brief lifts as
-// a digest, the decisions already made and the subtasks: what changes while the work runs;
+// Pinned above the tabs: the task at a glance, where it sits as one trail (its parent, its open
+// blockers, the rest counted), and any question waiting on a human, a session's or an open decision
+// (BoardDecisions asks those). Then one tab each for what is in force now (the checklist, the newest
+// entry of each kind the brief lifts as a digest, the decisions already made, the subtasks and every
+// link: what changes while the work runs;
 // BoardChecklist draws the checklist's lines), the ask (the description and the curated context:
 // written once, read when the issue is picked up), the comments and the agent log. The tabs and the
 // log's sources are lists, so another tab or another kind of log entry is one more item, not a
@@ -22,6 +23,7 @@ import {
 	type Task,
 	type TaskContextRef,
 	type TaskEntry,
+	type TaskLink,
 	type WorkRef,
 } from "@cabane/core";
 import { parseDecisionBody } from "@cabane/questions";
@@ -51,9 +53,6 @@ export namespace DetailModel {
 		failed: boolean;
 	};
 
-	/** One pinned fact under the title: `parent JCAB-1 PRD: Cabane`. */
-	export type MetaLine = { key: string; value: string };
-
 	/** One part of the summary line; `request` parts take the accent (they wait on a human). */
 	export type SummaryPart = { text: string; request: boolean };
 
@@ -71,6 +70,8 @@ export namespace DetailModel {
 	 */
 	export type SubtaskLine = {
 		id: string;
+		// The cursor's key for the row (subtaskKey for a subtask).
+		key: string;
 		shortId: string;
 		title: string;
 		done: boolean;
@@ -191,66 +192,276 @@ export namespace DetailModel {
 	};
 
 	/**
-	 * Where the task sits: its parent, what blocks it (with the blocker's state, the thing a glance
-	 * wants to know), what it blocks, and the external issue it points at. The link semantics mirror
-	 * the agent brief's Position section: `blocks` reads source → target, and `blocked_by` and
-	 * `follows` read target → source.
+	 * One part of the trail under the summary: the parent (`↑ JCAB-229`), an open blocker with its
+	 * state (`⊘ JCAB-228 in progress`), or a count of the rest (`blocks 3`, `◆ linear 1`). A part
+	 * with a `taskId` opens that issue; a count's `target` is the `now` block that lists what it
+	 * counts. A neighbour the records do not carry has no `taskId`: there is nothing to open.
 	 */
-	export const position = (records: BoardData.DetailRecords): MetaLine[] => {
-		const { task, links, neighbors, upstream, subtasks } = records;
-		const byId = new Map(neighbors.map((t) => [t.id, t]));
-		const shortIdOf = (id: string): string =>
-			byId.get(id)?.shortId ?? id.slice(0, 8);
-		const name = (id: string): string => {
-			const t = byId.get(id);
-			return t ? `${shortIdOf(id)} ${t.title}` : shortIdOf(id);
+	export type TrailPart =
+		| { kind: "parent"; shortId: string; taskId?: string }
+		| { kind: "blocker"; shortId: string; state: string; taskId: string }
+		| { kind: "count"; label: string; count: number; target: "links" };
+
+	/**
+	 * Where the task sits, as one row: its parent, each blocker still open (the one fact that changes
+	 * what to do next), then the rest counted: done or unknown blockers, what it blocks, related and
+	 * duplicate issues, and the external issues per provider. Subtasks are not here: `now` lists
+	 * them and the board's card counts them. Blockers are read as the agent brief's Position section
+	 * reads them, `follows` among them (DetailModel.relations).
+	 */
+	export const trail = (records: BoardData.DetailRecords): TrailPart[] => {
+		const groups = new Map(
+			relations(records).map((group) => [group.name, group.lines] as const),
+		);
+		const lines = (...names: RelationGroup[]): LinkLine[] => {
+			const seen = new Set<string>();
+			return names
+				.flatMap((name) => groups.get(name) ?? [])
+				.filter((line) => !seen.has(line.id) && Boolean(seen.add(line.id)));
 		};
-		const blockerName = (id: string): string => {
-			const t = byId.get(id);
-			if (!t) return shortIdOf(id);
-			const state = TASK_STATE_DISPLAY[t.state].label.toLowerCase();
-			return `${shortIdOf(id)} ${state} · ${t.title}`;
-		};
-		const blockers = new Set<string>();
-		const blocks = new Set<string>();
-		for (const link of links) {
-			const outgoing = link.sourceId === task.id;
-			const other = outgoing ? link.targetId : link.sourceId;
-			if (link.type === "blocks") (outgoing ? blocks : blockers).add(other);
-			if (link.type === "blocked_by" || link.type === "follows")
-				(outgoing ? blockers : blocks).add(other);
+		const blockers = lines("blocked by", "follows");
+		const open = blockers.filter(
+			(line) => line.known && !line.done && !line.cancelled,
+		);
+		const providers = new Map<string, number>();
+		for (const link of records.upstream)
+			providers.set(link.provider, (providers.get(link.provider) ?? 0) + 1);
+		const counts: [string, number][] = [
+			["blocked by", blockers.length - open.length],
+			["blocks", lines("blocks", "followed by").length],
+			["related", lines("related").length],
+			["duplicate", lines("duplicate of", "duplicated by").length],
+			...[...providers].map(([provider, n]): [string, number] => [
+				`◆ ${provider}`,
+				n,
+			]),
+		];
+		return [
+			...lines("parent").map((line): TrailPart => ({
+				kind: "parent",
+				shortId: line.shortId,
+				...(line.known ? { taskId: line.id } : {}),
+			})),
+			...open.map((line): TrailPart => ({
+				kind: "blocker",
+				shortId: line.shortId,
+				state: line.state ?? "",
+				taskId: line.id,
+			})),
+			...counts
+				.filter(([, count]) => count > 0)
+				.map(([label, count]): TrailPart => ({
+					kind: "count",
+					label,
+					count,
+					target: "links",
+				})),
+		];
+	};
+
+	/** A trail part as it reads: `↑ JCAB-1`, `⊘ JCAB-2 in progress`, `blocks 3`. */
+	export const partText = (part: TrailPart): string => {
+		switch (part.kind) {
+			case "parent":
+				return `↑ ${part.shortId}`;
+			case "blocker":
+				return `⊘ ${part.shortId} ${part.state}`;
+			case "count":
+				return `${part.label} ${part.count}`;
 		}
-		const lines: MetaLine[] = [];
-		if (task.parentTaskId)
-			lines.push({ key: "parent", value: name(task.parentTaskId) });
-		const children = subtaskSummary(subtasks);
-		if (children) lines.push({ key: "subtasks", value: children });
-		for (const id of blockers)
-			lines.push({ key: "blocked by", value: blockerName(id) });
-		for (const id of blocks) lines.push({ key: "blocks", value: name(id) });
-		for (const link of upstream)
-			lines.push({
-				key: link.provider,
-				value: `${link.identifier ?? link.externalId} ${link.title}`,
-			});
-		return lines;
+	};
+
+	/** Columns between two parts of the trail: ` · `. */
+	export const TRAIL_SEP = " · ";
+
+	/** What the trail ends on when parts were left out. */
+	export const TRAIL_MORE = " …";
+
+	/**
+	 * The parts that fit `room` columns whole, in order, and `more` when some were left out, which
+	 * the row says with TRAIL_MORE. A count gives way to make room for that mark; the parent and the
+	 * open blockers, which lead, never do, and the mark is dropped before them. A part is never cut to
+	 * a stub like `bl…`, which would say nothing; only a first part wider than the whole row is, by
+	 * the view.
+	 */
+	export const fitTrail = (
+		parts: readonly TrailPart[],
+		room: number,
+	): { parts: TrailPart[]; more: boolean } => {
+		const kept: TrailPart[] = [];
+		let used = 0;
+		for (const part of parts) {
+			const width =
+				(kept.length > 0 ? TRAIL_SEP.length : 0) + partText(part).length;
+			if (kept.length > 0 && used + width > room) break;
+			kept.push(part);
+			used += width;
+		}
+		const more = kept.length < parts.length;
+		while (
+			more &&
+			kept.at(-1)?.kind === "count" &&
+			used + TRAIL_MORE.length > room
+		) {
+			const last = kept.pop();
+			if (last) used -= TRAIL_SEP.length + partText(last).length;
+		}
+		return { parts: kept, more };
+	};
+
+	// ── relations ───────────────────────────────────────────────────────────────────────────────
+
+	/** The groups of the `links` block, in the order they are read. */
+	const RELATION_GROUPS = [
+		"parent",
+		"subtask",
+		"blocked by",
+		"blocks",
+		"follows",
+		"followed by",
+		"related",
+		"duplicate of",
+		"duplicated by",
+	] as const;
+	type RelationGroup = (typeof RELATION_GROUPS)[number];
+
+	/**
+	 * The group a link puts its other end in, read from this task's side. The directions mirror the
+	 * agent brief's Position section (positionDependencies in core's storage/assemble-context.ts):
+	 * `blocks` reads source blocks target, `blocked_by` source is blocked by target, and `follows`
+	 * source comes after target. `parent` reads source is the parent of target, `child` the reverse,
+	 * and `duplicate` source duplicates target.
+	 */
+	const groupOf = (link: TaskLink, taskId: string): RelationGroup => {
+		const outgoing = link.sourceId === taskId;
+		switch (link.type) {
+			case "parent":
+				return outgoing ? "subtask" : "parent";
+			case "child":
+				return outgoing ? "parent" : "subtask";
+			case "blocks":
+				return outgoing ? "blocks" : "blocked by";
+			case "blocked_by":
+				return outgoing ? "blocked by" : "blocks";
+			case "follows":
+				return outgoing ? "follows" : "followed by";
+			case "related":
+				return "related";
+			case "duplicate":
+				return outgoing ? "duplicate of" : "duplicated by";
+		}
 	};
 
 	/**
-	 * How far the subtasks have got, as the pinned line says it: `3 · 1 done`, a cancelled one
-	 * counted apart (`· 1 cancelled`) rather than as work. Absent when there are none.
+	 * A linked issue as a row of the `links` block, drawn as a subtask is. `known` is false for a
+	 * neighbour the records do not carry (deleted, or out of scope): its id and `unknown`, nothing to
+	 * open.
 	 */
-	export const subtaskSummary = (
-		subtasks: readonly Task[],
-	): string | undefined => {
-		if (subtasks.length === 0) return undefined;
-		const cancelled = subtasks.filter((t) => t.state === "cancelled").length;
-		const done = subtasks.filter((t) => t.state === "done").length;
-		const parts = [`${subtasks.length - cancelled}`];
-		if (done > 0) parts.push(`${done} done`);
-		if (cancelled > 0) parts.push(`${cancelled} cancelled`);
-		return parts.join(" · ");
+	type LinkLine = SubtaskLine & { known: boolean };
+
+	/** An external issue the task points at: `linear ENG-123 Title`. `O` opens it, not the cursor. */
+	export type UpstreamLine = {
+		id: string;
+		provider: string;
+		identifier: string;
+		title: string;
 	};
+
+	type Relations = { name: RelationGroup; lines: LinkLine[] }[];
+
+	/** The cursor's key for a subtask's row and for a linked issue's, unique across `now`. */
+	const subtaskKey = (taskId: string): string => `subtask:${taskId}`;
+	const linkKey = (group: RelationGroup, taskId: string): string =>
+		`link:${group}:${taskId}`;
+
+	const issueLine = (task: Task, key: string): SubtaskLine => {
+		const done = task.state === "done";
+		const cancelled = task.state === "cancelled";
+		return {
+			id: task.id,
+			key,
+			shortId: task.shortId ?? task.id.slice(0, 8),
+			title: task.title,
+			done,
+			cancelled,
+			state: cancelled
+				? "cancelled"
+				: done
+					? undefined
+					: TASK_STATE_DISPLAY[task.state].label.toLowerCase(),
+		};
+	};
+
+	/**
+	 * Every issue the task is linked to, grouped by how it relates (RELATION_GROUPS' order), each
+	 * group in the order its links were made and each issue once in it. The parent field counts as a
+	 * `parent` link. A child already listed as a subtask is not repeated. A group with nothing in it
+	 * is left out.
+	 */
+	export const relations = (records: BoardData.DetailRecords): Relations => {
+		const { task, links, neighbors, subtasks } = records;
+		const byId = new Map(neighbors.map((t) => [t.id, t]));
+		const listed = new Set(subtasks.map((t) => t.id));
+		const ids = new Map<RelationGroup, string[]>();
+		const add = (group: RelationGroup, id: string): void => {
+			const ofGroup = ids.get(group) ?? [];
+			if (!ofGroup.includes(id)) ids.set(group, [...ofGroup, id]);
+		};
+		if (task.parentTaskId) add("parent", task.parentTaskId);
+		for (const link of links) {
+			const other = link.sourceId === task.id ? link.targetId : link.sourceId;
+			if (other === task.id) continue;
+			const group = groupOf(link, task.id);
+			if (group === "subtask" && listed.has(other)) continue;
+			add(group, other);
+		}
+		return RELATION_GROUPS.flatMap((name) => {
+			const lines = (ids.get(name) ?? []).map((id): LinkLine => {
+				const neighbor = byId.get(id);
+				return neighbor
+					? { ...issueLine(neighbor, linkKey(name, id)), known: true }
+					: {
+							id,
+							key: linkKey(name, id),
+							shortId: id.slice(0, 8),
+							title: "",
+							done: false,
+							cancelled: false,
+							state: "unknown",
+							known: false,
+						};
+			});
+			return lines.length > 0 ? [{ name, lines }] : [];
+		});
+	};
+
+	/** The external issues the task points at, in the order they were linked. */
+	const upstreamLines = (records: BoardData.DetailRecords): UpstreamLine[] =>
+		records.upstream.map((link) => ({
+			id: link.id,
+			provider: link.provider,
+			identifier: link.identifier ?? link.externalId,
+			title: link.title,
+		}));
+
+	/**
+	 * A row the `now` cursor can open, in the order `J/K` reach it: the subtasks, then each linked
+	 * issue the records carry. Upstream rows and unknown neighbours are not here: nothing opens them.
+	 */
+	export type OpenableRow = { key: string; taskId: string };
+
+	export const openable = (records: BoardData.DetailRecords): OpenableRow[] =>
+		now(records).flatMap((block): OpenableRow[] => {
+			if (block.name === "subtasks")
+				return block.lines.map((line) => ({ key: line.key, taskId: line.id }));
+			if (block.name === "links")
+				return block.groups.flatMap((group) =>
+					group.lines
+						.filter((line) => line.known)
+						.map((line) => ({ key: line.key, taskId: line.id })),
+				);
+			return [];
+		});
 
 	// ── now ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -262,16 +473,20 @@ export namespace DetailModel {
 		| { name: "checklist" }
 		| { name: `lifted:${string}`; entry: LiftedEntry }
 		| { name: "decisions"; lines: DecisionLine[] }
-		| { name: "subtasks"; lines: SubtaskLine[] };
+		| { name: "subtasks"; lines: SubtaskLine[] }
+		| { name: "links"; groups: Relations; upstream: UpstreamLine[] };
 
 	/**
 	 * What is in force now, in the order it is read: the checklist, the newest entry of each lifted
-	 * kind, the decisions made, the subtasks. A block with nothing in it is left out. The checklist's
+	 * kind, the decisions made, the subtasks, and last the links (every issue it relates to, and the
+	 * external ones it points at). A block with nothing in it is left out. The checklist's
 	 * lines are not here: the board draws them with its own presses (BoardChecklist.shown).
 	 */
 	export const now = (records: BoardData.DetailRecords): NowBlock[] => {
 		const decided = decisions(records);
 		const children = subtasks(records);
+		const groups = relations(records);
+		const upstream = upstreamLines(records);
 		return [
 			...(records.checklist.length > 0 ? [{ name: "checklist" as const }] : []),
 			...lifted(records).map((entry) => ({
@@ -284,12 +499,20 @@ export namespace DetailModel {
 			...(children.length > 0
 				? [{ name: "subtasks" as const, lines: children }]
 				: []),
+			...(groups.length + upstream.length > 0
+				? [{ name: "links" as const, groups, upstream }]
+				: []),
 		];
 	};
 
-	/** The tab a detail opens on: `now` when anything is in force, otherwise the description. */
+	/**
+	 * The tab a detail opens on: `now` when anything is in force, otherwise the description. Links
+	 * alone are not in force: the trail already says where the task sits.
+	 */
 	export const openingTab = (records: BoardData.DetailRecords): Tab =>
-		now(records).length > 0 ? "now" : "description";
+		now(records).some((block) => block.name !== "links")
+			? "now"
+			: "description";
 
 	/**
 	 * How long a fresh block's header must stay on screen, with `now` showing, before it counts as
@@ -336,7 +559,8 @@ export namespace DetailModel {
 	/**
 	 * The blocks of `now` whose records changed between two reads of the same task: a lifted kind
 	 * whose newest entry is another one, a checklist whose items or ticks moved, decisions made that
-	 * gained or lost one, subtasks that came, went, or changed state or title. A change this board made (`own`) is not one,
+	 * gained or lost one, subtasks that came, went, or changed state or title, and links the same
+	 * way (a link made or removed, a linked issue's state or title). A change this board made (`own`) is not one,
 	 * and a block gone from `after` is never named: there is nothing left to mark.
 	 */
 	export const changed = (
@@ -362,9 +586,11 @@ export namespace DetailModel {
 			lifted(before).map((entry) => [entry.kind, entry.id] as const),
 		);
 		const decided = new Set(decisions(before).map((line) => line.id));
-		// A subtask's row as drawn: a rename moves it as a new state does.
+		// A subtask's or a link's row as drawn: a rename moves it as a new state does.
 		const rows = (records: BoardData.DetailRecords): string =>
 			JSON.stringify(subtasks(records));
+		const linked = (records: BoardData.DetailRecords): string =>
+			JSON.stringify([relations(records), upstreamLines(records)]);
 		return now(after).flatMap((block): BlockName[] => {
 			if ("entry" in block)
 				return lastLifted.get(block.entry.kind) === block.entry.id
@@ -383,6 +609,8 @@ export namespace DetailModel {
 				}
 				case "subtasks":
 					return rows(before) === rows(after) ? [] : [block.name];
+				case "links":
+					return linked(before) === linked(after) ? [] : [block.name];
 			}
 		});
 	};
@@ -576,22 +804,7 @@ export namespace DetailModel {
 
 	/** The subtasks, in the order they were filed. */
 	export const subtasks = (records: BoardData.DetailRecords): SubtaskLine[] =>
-		records.subtasks.map((t) => {
-			const done = t.state === "done";
-			const cancelled = t.state === "cancelled";
-			return {
-				id: t.id,
-				shortId: t.shortId ?? t.id.slice(0, 8),
-				title: t.title,
-				done,
-				cancelled,
-				state: cancelled
-					? "cancelled"
-					: done
-						? undefined
-						: TASK_STATE_DISPLAY[t.state].label.toLowerCase(),
-			};
-		});
+		records.subtasks.map((t) => issueLine(t, subtaskKey(t.id)));
 
 	/**
 	 * For each declared kind projected as `latest`, its newest entry on the task, in the brief's

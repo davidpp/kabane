@@ -393,7 +393,85 @@ const WAVE_RECORDS = Fixtures.records(WAVE, {
 		},
 	],
 });
-const WAVE_CHECKLIST = BoardChecklist.view(WAVE_RECORDS.checklist);
+const WAVE_CHECKLIST = BoardChecklist.view(
+	WAVE_RECORDS.checklist,
+	null,
+	undefined,
+	DetailModel.openable(WAVE_RECORDS),
+);
+
+// One of the wave's issues and where it sits: its parent, a blocker in progress and one done, three
+// issues waiting on it (one of them by `follows`), two related (one gone from the tracker), and the
+// external issue it mirrors.
+const SITTING = task({
+	id: "s1",
+	shortId: "JREP-12",
+	title: "The detail's header shows relations as one trail",
+	state: "next",
+	parentTaskId: WAVE.id,
+});
+const BLOCKER = task({
+	id: "s2",
+	shortId: "JREP-11",
+	title: "The detail opens another issue over itself",
+	state: "in_progress",
+});
+const CLEARED = task({
+	id: "s3",
+	shortId: "JREP-9",
+	title: "Freshness marks on now",
+	state: "done",
+});
+const FIRST = task({
+	id: "s4",
+	shortId: "JREP-13",
+	title: "Relations on board cards",
+});
+const SECOND = task({
+	id: "s5",
+	shortId: "JREP-14",
+	title: "Add and remove links from the board",
+	state: "someday",
+});
+const THIRD = task({
+	id: "s6",
+	shortId: "JREP-15",
+	title: "Sync links with the upstream tracker",
+	state: "inbox",
+});
+const DEPENDENTS = [FIRST, SECOND, THIRD];
+const RELATED = task({
+	id: "s7",
+	shortId: "JREP-7",
+	title: "The now tab",
+	state: "done",
+});
+const GONE = task({ id: "01HZZGONE0000000000000000" });
+const TRAIL_RECORDS = Fixtures.records(SITTING, {
+	links: [
+		Fixtures.link(1, SITTING, "blocked_by", BLOCKER),
+		Fixtures.link(2, CLEARED, "blocks", SITTING),
+		Fixtures.link(3, SITTING, "blocks", FIRST),
+		Fixtures.link(4, SECOND, "blocked_by", SITTING),
+		Fixtures.link(5, THIRD, "follows", SITTING),
+		Fixtures.link(6, SITTING, "related", RELATED),
+		Fixtures.link(7, GONE, "related", SITTING),
+	],
+	neighbors: [WAVE, BLOCKER, CLEARED, ...DEPENDENTS, RELATED],
+	upstream: [
+		Fixtures.upstream(SITTING, "linear", "ENG-412", "Relations in the header"),
+	],
+});
+// The same issue with only the trail the brief names: a parent, a blocker open, three waiting on it.
+const TRAIL_ONLY = Fixtures.records(SITTING, {
+	links: [
+		Fixtures.link(1, SITTING, "blocked_by", BLOCKER),
+		Fixtures.link(3, SITTING, "blocks", FIRST),
+		Fixtures.link(4, SECOND, "blocked_by", SITTING),
+		Fixtures.link(5, THIRD, "follows", SITTING),
+	],
+	neighbors: [WAVE, BLOCKER, ...DEPENDENTS],
+});
 
 // The reader over the wave's detail, moved `jumps` headings down the way `]` moves it, once the
 // markdown has laid out. Under the screen's tab bar, as the board draws it: the reader sits a row
@@ -876,6 +954,47 @@ export const STORIES: readonly Story[] = [
 				scrollRef={createRef<ScrollBoxRenderable>()}
 				checklist={WAVE_CHECKLIST}
 				keys={{ context: "detail", situation: { checklist: true } }}
+			/>
+		),
+	},
+	{
+		name: "detail-trail",
+		about:
+			"where an issue sits, one row under its summary: its parent, a blocker in progress in the accent, what it blocks counted",
+		width: 40,
+		height: 16,
+		render: () => (
+			<Detail
+				taskId={SITTING.id}
+				task={SITTING}
+				tab="description"
+				records={ok(TRAIL_ONLY)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
+		name: "detail-links",
+		about:
+			"every link on now, grouped by how it relates, the cursor on an issue it blocks: enter opens it",
+		width: 40,
+		height: 34,
+		render: () => (
+			<Detail
+				taskId={SITTING.id}
+				task={SITTING}
+				records={ok(TRAIL_RECORDS)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				checklist={BoardChecklist.view(
+					[],
+					`link:blocks:${FIRST.id}`,
+					undefined,
+					DetailModel.openable(TRAIL_RECORDS),
+				)}
+				keys={{
+					context: "detail",
+					situation: { cursor: true, openable: true },
+				}}
 			/>
 		),
 	},

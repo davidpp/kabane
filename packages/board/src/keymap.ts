@@ -34,8 +34,12 @@ export namespace Keymap {
 		deciding?: boolean;
 		/** The titles of the kinds the open task has a lifted entry of, which `r` reads in full. */
 		lifted?: readonly string[];
-		/** The detail view's `now` tab lists checklist items, one under the cursor. */
+		/** The detail view's `now` tab has rows under a cursor: checklist items, subtasks, links. */
+		cursor?: boolean;
+		/** `now`'s cursor is on a checklist item, which `space` toggles. */
 		checklist?: boolean;
+		/** `now`'s cursor is on a subtask or a linked issue, which `enter` opens. */
+		openable?: boolean;
 		/** The copilot's buffer is empty and there are prompts to recall. */
 		history?: boolean;
 		/** The dispatch picker has triggers to move through. */
@@ -129,9 +133,14 @@ export namespace Keymap {
 
 	const selection = (s: Situation): boolean => s.selection === true;
 
-	// The checklist's keys, while no decision on screen has the keys `space` might toggle on it.
+	// `now`'s cursor keys, while no decision on screen has the keys they might act on there.
+	const cursor = (s: Situation): boolean =>
+		s.cursor === true && s.deciding !== true;
 	const checklist = (s: Situation): boolean =>
 		s.checklist === true && s.deciding !== true;
+	// `enter` opens the issue under the cursor while no question on screen takes it to type an answer.
+	const openable = (s: Situation): boolean =>
+		s.openable === true && s.deciding !== true && s.freeform !== true;
 	// The digits go to the detail's sections while no question or decision on screen takes them.
 	const sections = (s: Situation): boolean =>
 		s.pinned !== true && s.deciding !== true;
@@ -415,8 +424,16 @@ export namespace Keymap {
 					keys: ["space"],
 					when: checklist,
 				},
-				// After `space`: at forty columns the footer has room for one of them, and the checklist
-				// is what `now` lets you act on. The `?` sheet lists `r` either way.
+				// Never with `space`: the cursor is on an item or on an issue, so the two share a place.
+				{
+					key: "enter",
+					label: "open",
+					tier: "footer",
+					keys: ["return"],
+					when: openable,
+				},
+				// After `space` and `enter`: at forty columns the footer has room for one of them, and the
+				// cursor is what `now` lets you act on. The `?` sheet lists `r` either way.
 				READ,
 				OPEN_LINK,
 				{
@@ -452,10 +469,10 @@ export namespace Keymap {
 				SCROLL,
 				{
 					key: "J/K",
-					label: "next · previous item",
+					label: "next · previous row on now",
 					tier: "help",
 					keys: ["J", "K"],
-					when: checklist,
+					when: cursor,
 				},
 				{ key: "a", label: "dispatch", tier: "help", keys: ["a"] },
 				{ key: "n", label: "to next", tier: "help", keys: ["n"] },

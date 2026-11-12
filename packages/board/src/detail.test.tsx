@@ -104,6 +104,33 @@ const rows = (frame: string): string[] => frame.split("\n");
 const onOneRow = (frame: string, text: string): boolean =>
 	rows(frame).some((row) => row.includes(text));
 
+const linkTasks = async (
+	sourceId: string,
+	type: Parameters<typeof Planner.addLink>[1]["type"],
+	targetId: string,
+): Promise<void> => {
+	const added = await Planner.addLink(TEST_BASE, { sourceId, targetId, type });
+	if (!added.ok) throw added.error;
+};
+
+// An issue with a parent, a blocker in progress, one done, and three issues waiting on it.
+const seedSitting = async (): Promise<Task> => {
+	const parent = await seed({ title: "The wave" });
+	const sitting = await seed({
+		title: "Sits in a wave",
+		parentTaskId: parent.id,
+	});
+	const blocker = await seed({ title: "Blocks it", state: "in_progress" });
+	const cleared = await seed({ title: "Cleared", state: "done" });
+	await linkTasks(sitting.id, "blocked_by", blocker.id);
+	await linkTasks(cleared.id, "blocks", sitting.id);
+	for (const title of ["Waits one", "Waits two", "Waits three"]) {
+		const waiting = await seed({ title });
+		await linkTasks(sitting.id, "blocks", waiting.id);
+	}
+	return sitting;
+};
+
 // A "loop" card the way a host would project one: label + three detail lines.
 const loopCard = (over: Partial<ActivityCard> = {}): ActivityCard => ({
 	id: "loop-MILL-1",
@@ -600,7 +627,7 @@ test("relativeTime formats relative timestamps", () => {
 	);
 });
 
-test("Detail at 40 columns: the subtask count pinned, the subtasks on now and the context on the description, each once and whole", async () => {
+test("Detail at 40 columns: the subtasks on now, never counted in the header, and the context on the description, each once and whole", async () => {
 	const parent = await seed({ title: "Parent plan" });
 	for (const [title, state] of [
 		["First step", "done"],
@@ -627,7 +654,8 @@ test("Detail at 40 columns: the subtask count pinned, the subtasks on now and th
 		const frame = await pumpUntil(now.renderOnce, now.captureCharFrame, (f) =>
 			f.includes("Third step"),
 		);
-		expect(onOneRow(frame, "subtasks 3 · 1 done")).toBe(true);
+		// `now` lists the subtasks and the card counts them: the header does not.
+		expect(frame).not.toContain("subtasks 3");
 		for (const text of ["First step", "Second step", "Third step"])
 			expect(frame.split(text).length - 1).toBe(1);
 		// The state is held at the row's right, so a long title never pushes it off.
@@ -1064,5 +1092,80 @@ test("Detail's digest with nothing cut ends its last fold on the r hint, at fort
 		expect(frame).not.toContain("more line");
 	} finally {
 		destroy();
+	}
+});
+
+test("Detail: where the task sits is one row under the summary, the parent and an open blocker first and the rest counted", async () => {
+	const sitting = await seedSitting();
+	const records = await recordsOf(sitting);
+	if (!records.ok) throw records.error;
+	const byTitle = (title: string) =>
+		records.value.neighbors.find((t) => t.title === title);
+	const parent = byTitle("The wave")?.shortId;
+	const blocker = byTitle("Blocks it")?.shortId;
+	const view = await mount(sitting, { tab: "description", width: 100 });
+	try {
+		const frame = await pumpUntil(view.renderOnce, view.captureCharFrame, (f) =>
+			f.includes("blocks 3"),
+		);
+		const lines = rows(frame);
+		const summary = lines.findIndex((row) => row.trim().startsWith("next · "));
+		expect(lines[summary + 1]?.trim()).toBe(
+			`↑ ${parent} · ⊘ ${blocker} in progress · blocked by 1 · blocks 3`,
+		);
+		// Nothing else of where it sits is pinned: no row per relation.
+		expect(frame).not.toContain("parent ");
+		expect(frame).not.toContain("Blocks it");
+	} finally {
+		view.destroy();
+	}
+	const narrow = await mount(sitting, { tab: "description", width: 40 });
+	try {
+		const frame = await pumpUntil(
+			narrow.renderOnce,
+			narrow.captureCharFrame,
+			(f) => f.includes("⊘"),
+		);
+		const trail = rows(frame).find((row) => row.includes("⊘")) ?? "";
+		expect(trail.trim()).toBe(`↑ ${parent} · ⊘ ${blocker} in progress …`);
+	} finally {
+		narrow.destroy();
+	}
+});
+
+test("Detail: a task related to nothing has no trail row", async () => {
+	const alone = await seed();
+	const view = await mount(alone, { tab: "description", width: 40 });
+	try {
+		const frame = await pumpUntil(view.renderOnce, view.captureCharFrame, (f) =>
+			f.includes("reads here."),
+		);
+		const lines = rows(frame);
+		const summary = lines.findIndex((row) => row.trim().startsWith("next · "));
+		expect(lines[summary + 1]?.trim()).toBe("");
+	} finally {
+		view.destroy();
+	}
+});
+
+test("Detail: `now` lists the links last, grouped, each issue as a subtask row with its state held right", async () => {
+	const sitting = await seedSitting();
+	const view = await mount(sitting, { width: 40, height: 40 });
+	try {
+		const frame = await pumpUntil(view.renderOnce, view.captureCharFrame, (f) =>
+			f.includes("Waits three"),
+		);
+		const lines = rows(frame).map((row) => row.trim());
+		const at = (text: string) => lines.findIndex((row) => row.includes(text));
+		expect(lines[at("links") + 1]).toBe("parent");
+		expect(at("parent")).toBeLessThan(at("blocked by"));
+		expect(at("blocked by")).toBeLessThan(at("Blocks it"));
+		expect(at("Cleared")).toBeLessThan(at("Waits one"));
+		expect(lines[at("Blocks it")]?.endsWith("in progress")).toBe(true);
+		expect(lines[at("Cleared")]?.startsWith("✓")).toBe(true);
+		for (const row of rows(frame))
+			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
+	} finally {
+		view.destroy();
 	}
 });

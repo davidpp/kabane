@@ -87,6 +87,7 @@ export const useDetailRecords = (
 							BoardDecisions.withOpen(prev, taskId, next.value.questions),
 							taskId,
 							next.value.checklist,
+							DetailModel.openable(next.value),
 						),
 						taskId,
 						DetailModel.openingTab(next.value),

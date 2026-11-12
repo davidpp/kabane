@@ -300,13 +300,13 @@ describe("the checklist on an issue's detail", () => {
 			view: { type: "detail", taskId: "w", tab: "comments" },
 		};
 		expect(press(comments, "space").effect).toEqual({ type: "none" });
-		expect(BoardChecklist.listed(comments)).toBe(false);
+		expect(BoardChecklist.situation(comments).cursor).toBe(false);
 		expect(
 			BoardChecklist.reduceKey({ ...s, focus: "copilot" }, { name: "space" }),
 		).toBeNull();
-		expect(BoardChecklist.listed(s)).toBe(true);
-		// An issue without items leaves space and J/K to nobody.
-		expect(BoardChecklist.listed(detail([]))).toBe(false);
+		expect(BoardChecklist.situation(s).cursor).toBe(true);
+		// An issue without items or rows to open leaves space and J/K to nobody.
+		expect(BoardChecklist.situation(detail([])).cursor).toBe(false);
 		expect(press(detail([]), "space").effect).toEqual({ type: "none" });
 	});
 
@@ -367,5 +367,89 @@ describe("the cards' progress", () => {
 		);
 		expect(s.checklist.progress.get("w")).toEqual({ done: 1, total: 3 });
 		expect(BoardChecklist.withProgress(s, undefined)).toBe(s);
+	});
+});
+
+describe("the cursor past the checklist, over the subtasks and links on `now`", () => {
+	const SUB = task({ id: "s", shortId: "JREP-8", parentTaskId: "w" });
+	const BLOCKER = task({ id: "b", shortId: "JREP-9", state: "in_progress" });
+	const ROWS = [
+		{ key: "subtask:s", taskId: SUB.id },
+		{ key: "link:blocked by:b", taskId: BLOCKER.id },
+	];
+
+	const withRows = (
+		items: readonly ChecklistItemView[] = [READ, WRITE],
+	): BoardNav.BoardState =>
+		BoardChecklist.withOpen(
+			{ ...board(), view: { type: "detail", taskId: "w" } },
+			"w",
+			items,
+			ROWS,
+		);
+
+	const cursor = (s: BoardNav.BoardState): string | undefined =>
+		BoardChecklist.shown(s)?.cursor;
+
+	it("walks the items, then the subtasks, then the links, stopping at the last and revealing each row", () => {
+		const onSub = keys(withRows(), "J");
+		expect(cursor(onSub.state)).toBe("subtask:s");
+		expect(onSub.effect).toEqual({
+			type: "reveal",
+			id: BoardChecklist.rowId("subtask:s"),
+		});
+		const onLink = press(onSub.state, "J").state;
+		expect(cursor(onLink)).toBe("link:blocked by:b");
+		expect(press(onLink, "J").effect).toEqual({ type: "none" });
+		expect(cursor(keys(onLink, "K", "K").state)).toBe(WRITE.id);
+	});
+
+	it("starts on the first row with no checklist, and forgets a row the records dropped", () => {
+		expect(cursor(withRows([]))).toBe("subtask:s");
+		const moved = keys(withRows([]), "J").state;
+		expect(cursor(moved)).toBe("link:blocked by:b");
+		const dropped = BoardChecklist.withOpen(moved, "w", [], ROWS.slice(0, 1));
+		expect(cursor(dropped)).toBe("subtask:s");
+	});
+
+	it("ticks only an item: space on a row does nothing", () => {
+		const onSub = press(withRows(), "J").state;
+		expect(press(onSub, "space").effect).toEqual({ type: "none" });
+		expect(doneOf(press(onSub, "space").state)).toEqual([true, false]);
+	});
+
+	it("opens the issue under the cursor on enter, and nothing on an item", () => {
+		expect(press(withRows(), "return").state.view).toEqual({
+			type: "detail",
+			taskId: "w",
+		});
+		const onLink = keys(withRows(), "J", "J").state;
+		expect(BoardChecklist.target(onLink)).toBe("b");
+		const opened = press(onLink, "return").state;
+		expect(opened.view).toMatchObject({ type: "detail", taskId: "b" });
+	});
+
+	it("tells the footer which keys the cursor's row takes", () => {
+		const situation = (s: BoardNav.BoardState) => BoardChecklist.situation(s);
+		expect(situation(withRows())).toEqual({
+			cursor: true,
+			checklist: true,
+			openable: false,
+		});
+		expect(situation(press(withRows(), "J").state)).toEqual({
+			cursor: true,
+			checklist: false,
+			openable: true,
+		});
+		const fitted = (s: BoardNav.BoardState) =>
+			Keymap.fitHints(
+				Keymap.footer(
+					"detail",
+					BoardNav.keySituation(s, { linked: new Set(), events: false }),
+				),
+				40,
+			).map((h) => `${h.key} ${h.label}`);
+		expect(fitted(withRows())[0]).toBe("space toggle item");
+		expect(fitted(press(withRows(), "J").state)[0]).toBe("enter open");
 	});
 });
