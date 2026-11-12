@@ -2050,7 +2050,7 @@ export namespace BoardNav {
 				state.scoped,
 			decisions: BoardDecisions.listed(state),
 			deciding: BoardDecisions.keysInHand(state),
-			checklist: BoardChecklist.listed(state),
+			...BoardChecklist.situation(state),
 			history: recallable(state.prompt.open ? state.prompt : state.copilot),
 			reaimable: (state.prompt.open?.aims?.length ?? 0) > 1,
 			ready:
@@ -2337,7 +2337,8 @@ export namespace BoardNav {
 
 	// Detail view: `esc`/`q` pop one issue back, then to the board (never widen scope or quit); the scroll keys move the
 	// tab in view; a digit picks a tab and `h`/`l` (or left/right) step through them; on `now`,
-	// `J/K` move through the checklist and `space` toggles an item; the keys for the
+	// `J/K` move through the checklist, the subtasks and the links, `space` toggles an item and
+	// `enter` opens the issue under the cursor; the keys for the
 	// task in hand act on the OPEN task (not the board's selection), and the view refreshes after a
 	// mutation; everything else is a no-op.
 	const reduceDetailKey = (
@@ -2369,6 +2370,17 @@ export namespace BoardNav {
 			case "escape":
 			case "q":
 				return backFromDetail(state);
+			case "return":
+			case "enter": {
+				// The subtask or linked issue under `now`'s cursor, over this one, as a click opens it.
+				const target = BoardChecklist.target(state);
+				return target
+					? {
+							state: openFromDetail(state, target),
+							effect: loadedEffect(state, target),
+						}
+					: { state, effect: NONE };
+			}
 			case "r":
 				return { state, effect: { type: "openReader", taskId } };
 			case "o":

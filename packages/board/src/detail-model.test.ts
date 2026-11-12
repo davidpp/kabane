@@ -5,7 +5,9 @@ import type {
 	EntryKind,
 	Task,
 	TaskEntry,
+	TaskLink,
 	TaskWorkLog,
+	UpstreamLink,
 } from "@cabane/core";
 import { HANDOFF_TEMPLATE } from "@cabane/handoff";
 import type { BoardData } from "./data";
@@ -219,71 +221,309 @@ describe("summary", () => {
 	});
 });
 
-describe("position", () => {
-	it("names the parent, each blocker with its state, what it blocks, and the linked issue", () => {
-		const lines = DetailModel.position(
+const link = (
+	id: string,
+	sourceId: string,
+	type: TaskLink["type"],
+	targetId: string,
+): TaskLink => ({
+	id,
+	sourceId,
+	targetId,
+	type,
+	createdAt: "2026-09-20T10:00:00.000Z",
+});
+
+const linear = (identifier: string, provider = "linear"): UpstreamLink => ({
+	id: `u-${identifier}`,
+	taskId: "t1",
+	provider,
+	externalId: identifier.toLowerCase(),
+	identifier,
+	url: `https://linear.app/x/issue/${identifier}`,
+	title: "Desk detail view",
+	createdAt: "2026-09-20T10:00:00.000Z",
+	updatedAt: "2026-09-20T10:00:00.000Z",
+});
+
+const neighbor = (id: string, state: Task["state"] = "next"): Task =>
+	task({ id, shortId: id.toUpperCase(), title: `Issue ${id}`, state });
+
+describe("relations", () => {
+	// Every link type, from both of its ends: the group the other end lands in, read from t1's side.
+	const groupsOf = (...links: TaskLink[]) =>
+		DetailModel.relations(
 			records({
-				task: task({ parentTaskId: "p" }),
-				links: [
-					{
-						id: "l1",
-						sourceId: "b1",
-						targetId: "t1",
-						type: "blocks",
-						createdAt: "2026-09-20T10:00:00.000Z",
-					},
-					{
-						id: "l2",
-						sourceId: "t1",
-						targetId: "d1",
-						type: "blocks",
-						createdAt: "2026-09-20T10:00:00.000Z",
-					},
-					{
-						id: "l3",
-						sourceId: "t1",
-						targetId: "b2",
-						type: "blocked_by",
-						createdAt: "2026-09-20T10:00:00.000Z",
-					},
-				],
+				links,
 				neighbors: [
-					task({ id: "p", shortId: "CAB-0", title: "The PRD" }),
-					task({ id: "b1", shortId: "CAB-2", title: "Theme", state: "done" }),
-					task({
-						id: "b2",
-						shortId: "CAB-3",
-						title: "Surfaces",
-						state: "next",
-					}),
-					task({ id: "d1", shortId: "CAB-4", title: "Keys" }),
-				],
-				upstream: [
-					{
-						id: "u1",
-						taskId: "t1",
-						provider: "linear",
-						externalId: "abc",
-						identifier: "DSK-12",
-						url: "https://linear.app/x/issue/DSK-12",
-						title: "Desk detail view",
-						createdAt: "2026-09-20T10:00:00.000Z",
-						updatedAt: "2026-09-20T10:00:00.000Z",
-					},
-				],
+					"a",
+					"b",
+					"c",
+					"d",
+					"e",
+					"f",
+					"g",
+					"h",
+					"i",
+					"j",
+					"k",
+					"l",
+					"m",
+				].map((id) => neighbor(id)),
 			}),
-		);
-		expect(lines).toEqual([
-			{ key: "parent", value: "CAB-0 The PRD" },
-			{ key: "blocked by", value: "CAB-2 done · Theme" },
-			{ key: "blocked by", value: "CAB-3 next · Surfaces" },
-			{ key: "blocks", value: "CAB-4 Keys" },
-			{ key: "linear", value: "DSK-12 Desk detail view" },
+		).map((group) => [group.name, group.lines.map((line) => line.id)]);
+
+	it("reads every link type in its direction, as the agent brief's Position section does", () => {
+		expect(
+			groupsOf(
+				link("1", "a", "parent", "t1"),
+				link("2", "t1", "parent", "b"),
+				link("3", "t1", "child", "c"),
+				link("4", "d", "child", "t1"),
+				link("5", "e", "blocks", "t1"),
+				link("6", "t1", "blocked_by", "f"),
+				link("7", "t1", "blocks", "g"),
+				link("8", "h", "blocked_by", "t1"),
+				link("9", "t1", "follows", "i"),
+				link("10", "j", "follows", "t1"),
+				link("11", "k", "related", "t1"),
+				link("12", "t1", "duplicate", "l"),
+				link("13", "m", "duplicate", "t1"),
+			),
+		).toEqual([
+			["parent", ["a", "c"]],
+			["subtask", ["b", "d"]],
+			["blocked by", ["e", "f"]],
+			["blocks", ["g", "h"]],
+			["follows", ["i"]],
+			["followed by", ["j"]],
+			["related", ["k"]],
+			["duplicate of", ["l"]],
+			["duplicated by", ["m"]],
 		]);
 	});
 
-	it("says nothing for a task that sits nowhere", () => {
-		expect(DetailModel.position(records())).toEqual([]);
+	it("lists the parent field as the parent, an issue once per group, and no child already a subtask", () => {
+		const groups = DetailModel.relations(
+			records({
+				task: task({ parentTaskId: "p" }),
+				links: [
+					link("1", "t1", "child", "p"),
+					link("2", "t1", "blocks", "a"),
+					link("3", "a", "blocked_by", "t1"),
+					link("4", "t1", "parent", "s"),
+				],
+				neighbors: [neighbor("p"), neighbor("a"), neighbor("s")],
+				subtasks: [task({ id: "s", parentTaskId: "t1" })],
+			}),
+		);
+		expect(
+			groups.map((group) => [group.name, group.lines.map((l) => l.id)]),
+		).toEqual([
+			["parent", ["p"]],
+			["blocks", ["a"]],
+		]);
+	});
+
+	it("draws a linked issue as a subtask row, and one missing from the records as its id and unknown", () => {
+		const [group] = DetailModel.relations(
+			records({
+				links: [
+					link("1", "t1", "related", "a"),
+					link("2", "t1", "related", "01HMISSING000000000000000"),
+					link("3", "t1", "related", "c"),
+				],
+				neighbors: [neighbor("a", "done"), neighbor("c", "cancelled")],
+			}),
+		);
+		expect(group?.lines).toEqual([
+			{
+				id: "a",
+				key: "link:related:a",
+				shortId: "A",
+				title: "Issue a",
+				done: true,
+				cancelled: false,
+				state: undefined,
+				known: true,
+			},
+			{
+				id: "01HMISSING000000000000000",
+				key: "link:related:01HMISSING000000000000000",
+				shortId: "01HMISSI",
+				title: "",
+				done: false,
+				cancelled: false,
+				state: "unknown",
+				known: false,
+			},
+			{
+				id: "c",
+				key: "link:related:c",
+				shortId: "C",
+				title: "Issue c",
+				done: false,
+				cancelled: true,
+				state: "cancelled",
+				known: true,
+			},
+		]);
+	});
+
+	it("is the last block on now, external issues included, and absent with no links", () => {
+		const block = DetailModel.now(
+			records({
+				links: [link("1", "t1", "related", "a")],
+				neighbors: [neighbor("a")],
+				upstream: [linear("DSK-12")],
+			}),
+		).at(-1);
+		expect(block?.name).toBe("links");
+		expect(block && "upstream" in block ? block.upstream : []).toEqual([
+			{
+				id: "u-DSK-12",
+				provider: "linear",
+				identifier: "DSK-12",
+				title: "Desk detail view",
+			},
+		]);
+		expect(DetailModel.now(records()).map((b) => b.name)).toEqual([]);
+	});
+
+	it("opens nothing on its own: links alone leave the detail opening on the description", () => {
+		const linked = records({
+			links: [link("1", "t1", "related", "a")],
+			neighbors: [neighbor("a")],
+		});
+		expect(DetailModel.openingTab(linked)).toBe("description");
+		expect(DetailModel.tabs(linked)[0]).toEqual({ tab: "now", empty: false });
+	});
+
+	it("gives the cursor the subtasks, then each linked issue the records carry, never an unknown or external one", () => {
+		expect(
+			DetailModel.openable(
+				records({
+					task: task({ parentTaskId: "p" }),
+					links: [
+						link("1", "t1", "blocks", "a"),
+						link("2", "t1", "related", "01HMISSING000000000000000"),
+					],
+					neighbors: [neighbor("p"), neighbor("a")],
+					subtasks: [task({ id: "s", parentTaskId: "t1" })],
+					upstream: [linear("DSK-12")],
+				}),
+			),
+		).toEqual([
+			{ key: "subtask:s", taskId: "s" },
+			{ key: "link:parent:p", taskId: "p" },
+			{ key: "link:blocks:a", taskId: "a" },
+		]);
+	});
+});
+
+describe("trail", () => {
+	it("leads with the parent and each open blocker with its state, then counts the rest", () => {
+		const parts = DetailModel.trail(
+			records({
+				task: task({ parentTaskId: "p" }),
+				links: [
+					link("1", "b1", "blocks", "t1"),
+					link("2", "t1", "blocked_by", "b2"),
+					link("3", "t1", "follows", "b3"),
+					link("4", "t1", "blocked_by", "b4"),
+					link("5", "t1", "blocked_by", "01HMISSING000000000000000"),
+					link("6", "t1", "blocks", "d1"),
+					link("7", "d2", "follows", "t1"),
+					link("8", "t1", "related", "r1"),
+					link("9", "t1", "duplicate", "x1"),
+					link("10", "t1", "parent", "s1"),
+				],
+				neighbors: [
+					neighbor("p"),
+					neighbor("b1", "done"),
+					neighbor("b2", "in_progress"),
+					neighbor("b3", "next"),
+					neighbor("b4", "cancelled"),
+					neighbor("d1"),
+					neighbor("d2"),
+					neighbor("r1"),
+					neighbor("x1"),
+					neighbor("s1"),
+				],
+				upstream: [linear("DSK-12"), linear("DSK-13"), linear("42", "github")],
+			}),
+		);
+		expect(parts).toEqual([
+			{ kind: "parent", shortId: "P", taskId: "p" },
+			{ kind: "blocker", shortId: "B2", state: "in progress", taskId: "b2" },
+			{ kind: "blocker", shortId: "B3", state: "next", taskId: "b3" },
+			{ kind: "count", label: "blocked by", count: 3, target: "links" },
+			{ kind: "count", label: "blocks", count: 2, target: "links" },
+			{ kind: "count", label: "related", count: 1, target: "links" },
+			{ kind: "count", label: "duplicate", count: 1, target: "links" },
+			{ kind: "count", label: "◆ linear", count: 2, target: "links" },
+			{ kind: "count", label: "◆ github", count: 1, target: "links" },
+		]);
+		expect(parts.map(DetailModel.partText).join(DetailModel.TRAIL_SEP)).toBe(
+			"↑ P · ⊘ B2 in progress · ⊘ B3 next · blocked by 3 · blocks 2 · related 1 · duplicate 1 · ◆ linear 2 · ◆ github 1",
+		);
+	});
+
+	it("has a parent missing from the records, with nothing to open, and no subtasks", () => {
+		expect(
+			DetailModel.trail(
+				records({
+					task: task({ parentTaskId: "01HGONE00000000000000000" }),
+					subtasks: [task({ id: "s", parentTaskId: "t1" })],
+				}),
+			),
+		).toEqual([{ kind: "parent", shortId: "01HGONE0" }]);
+	});
+
+	it("is empty for a task that sits nowhere", () => {
+		expect(DetailModel.trail(records())).toEqual([]);
+	});
+
+	it("keeps whole parts at forty columns, the parent and open blockers first, and says the rest with `…`", () => {
+		const parts = DetailModel.trail(
+			records({
+				task: task({ parentTaskId: "p" }),
+				links: [
+					link("1", "t1", "blocked_by", "b"),
+					link("2", "t1", "blocks", "d1"),
+					link("3", "t1", "blocks", "d2"),
+					link("4", "t1", "blocks", "d3"),
+				],
+				neighbors: [
+					task({ id: "p", shortId: "JCAB-229" }),
+					task({ id: "b", shortId: "JCAB-228", state: "in_progress" }),
+					neighbor("d1"),
+					neighbor("d2"),
+					neighbor("d3"),
+				],
+			}),
+		);
+		// The header's room at forty columns: its padding takes two.
+		const at40 = DetailModel.fitTrail(parts, 38);
+		expect(at40.parts.map(DetailModel.partText)).toEqual([
+			"↑ JCAB-229",
+			"⊘ JCAB-228 in progress",
+		]);
+		expect(at40.more).toBe(true);
+		expect(DetailModel.fitTrail(parts, 98)).toEqual({ parts, more: false });
+		// Too tight for the `…`: a count gives way to it, the parent and a blocker never do.
+		const related: DetailModel.TrailPart = {
+			kind: "count",
+			label: "related",
+			count: 1,
+			target: "links",
+		};
+		const counted = DetailModel.fitTrail([...parts, related], 47);
+		expect(counted).toEqual({ parts: parts.slice(0, 2), more: true });
+		expect(DetailModel.fitTrail(parts, 35)).toEqual({
+			parts: parts.slice(0, 2),
+			more: true,
+		});
 	});
 });
 
@@ -626,36 +866,6 @@ describe("subtasks and curated context", () => {
 	const child = (id: string, state: Task["state"], title: string): Task =>
 		task({ id, shortId: id.toUpperCase(), state, title, parentTaskId: "t1" });
 
-	it("the pinned line counts the open and the done, and a cancelled one apart", () => {
-		expect(DetailModel.subtaskSummary([])).toBeUndefined();
-		expect(
-			DetailModel.subtaskSummary([
-				child("c-1", "next", "one"),
-				child("c-2", "done", "two"),
-				child("c-3", "in_progress", "three"),
-			]),
-		).toBe("3 · 1 done");
-		expect(
-			DetailModel.subtaskSummary([
-				child("c-1", "next", "one"),
-				child("c-2", "cancelled", "two"),
-			]),
-		).toBe("1 · 1 cancelled");
-	});
-
-	it("the subtask count sits under the parent line, and only when there are subtasks", () => {
-		const withParent = records({
-			task: task({ parentTaskId: "p1" }),
-			neighbors: [task({ id: "p1", shortId: "CAB-0", title: "The plan" })],
-			subtasks: [child("c-1", "done", "one")],
-		});
-		expect(DetailModel.position(withParent).map((l) => l.key)).toEqual([
-			"parent",
-			"subtasks",
-		]);
-		expect(DetailModel.position(records()).map((l) => l.key)).toEqual([]);
-	});
-
 	it("each subtask says whether it is done, names an open one's state, and keeps a cancelled one", () => {
 		const lines = DetailModel.subtasks(
 			records({
@@ -933,6 +1143,33 @@ describe("what changed between two reads", () => {
 			],
 		};
 		expect(DetailModel.changed(base, renamed, NONE)).toEqual(["subtasks"]);
+	});
+
+	it("names the links when one is made or removed, or a linked issue changes state or title", () => {
+		const linked = {
+			...base,
+			links: [link("l1", "t1", "blocked_by", "b")],
+			neighbors: [neighbor("b", "in_progress")],
+		};
+		expect(DetailModel.changed(linked, { ...linked }, NONE)).toEqual([]);
+		expect(DetailModel.changed(base, linked, NONE)).toEqual(["links"]);
+		const another = {
+			...linked,
+			links: [...linked.links, link("l2", "t1", "related", "r")],
+			neighbors: [...linked.neighbors, neighbor("r")],
+		};
+		expect(DetailModel.changed(linked, another, NONE)).toEqual(["links"]);
+		const cleared = { ...linked, neighbors: [neighbor("b", "done")] };
+		expect(DetailModel.changed(linked, cleared, NONE)).toEqual(["links"]);
+		const renamed = {
+			...linked,
+			neighbors: [{ ...neighbor("b", "in_progress"), title: "Renamed" }],
+		};
+		expect(DetailModel.changed(linked, renamed, NONE)).toEqual(["links"]);
+		const external = { ...linked, upstream: [linear("DSK-12")] };
+		expect(DetailModel.changed(linked, external, NONE)).toEqual(["links"]);
+		// Removing the last link leaves no block to mark.
+		expect(DetailModel.changed(linked, base, NONE)).toEqual([]);
 	});
 
 	it("names the decisions when one made is withdrawn or removed, while others stand", () => {

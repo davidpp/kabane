@@ -426,17 +426,28 @@ issue in the board running as that pid (the CLI's `kabane board --help`).
 
 ## An issue's detail
 
-The detail pins the issue at a glance above four sections, `1`-`4` or `h`/`l` to switch:
+The detail pins the issue at a glance above four sections, `1`-`4` or `h`/`l` to switch. Under
+its title and summary, one row says where it sits: `↑ JCAB-229 · ⊘ JCAB-228 in progress · blocks
+3 · related 2 · ◆ linear 1`. The parent leads, then each blocker still open with its state, in the
+accent since what to do next turns on it, then the rest counted: blockers already done, what it
+blocks, related and duplicate issues, and the issues it points at in another tracker. Subtasks
+are not counted there: `now` lists them. When the row runs out of room the counts go first and
+it ends on `…`. A click on an id opens that issue, and a click on a count or the `…` shows `now`.
+An issue related to nothing has no such row.
 
 - `now`: what is in force while the work runs, the part a glance between edits wants. The
   checklist, the newest entry of each kind the brief lifts as a digest (below), the decisions
-  made and the subtasks, in that order. A part with nothing in it takes no room.
+  made, the subtasks and the links, in that order. A part with nothing in it takes no room.
+  `links` lists every relation, grouped: parent, subtask (by a link), blocked by, blocks,
+  follows, followed by, related, duplicate of, duplicated by, then upstream. Each issue reads
+  as a subtask does, `✓` or `○`, its id and title, its state at the right; one the tracker no
+  longer has reads as its id and `unknown`. `O` opens an upstream issue.
 - `description`: the ask, read when the issue is picked up. The description and the curated
   context.
 - `comments`: the whole timeline, newest first.
 - `log`: the host's cards, then the work logged and what agent sessions said.
 
-The detail opens on `now` when it has anything in it, otherwise on `description`; a section with
+The detail opens on `now` when it has anything in it but links, otherwise on `description`; a section with
 nothing in it is faint in the bar. The section it opened on, or the one you picked, stays when a
 change lands while it is open: a checklist added to an issue you are reading the description of
 does not move you.
@@ -507,7 +518,9 @@ the done hue once every item is ticked (`· 3/3`). The counts come from one quer
 The `now` section lists the items first, headed `checklist · 2/5`: `✓` for a ticked
 one, `○` for an open one, one line each. A cursor sits on the first open item, where a loop
 resumes. Opening `now` scrolls the cursor's row into view; a scroll after that leaves the cursor
-where it is. `J/K` move it and `space` ticks or unticks the item under it, as `kabane_checklistTick`
+where it is. `J/K` move it, on past the items to the subtasks and the linked issues (with no
+checklist it starts on the first of those), and `enter` opens the issue under it, `esc` coming
+back; a click on a subtask or a linked issue opens it too. `space` ticks or unticks the item under it, as `kabane_checklistTick`
 does, bringing it into view in the same press when it is off screen; the item shows the press at once, the footer says `JREP-8.3 ticked · 3/5`, and a write that
 fails puts the item back to the state the store last acknowledged, with why. An item's writes go one
 at a time: presses while one is in flight leave only the latest queued behind it, and a poll's
@@ -562,7 +575,7 @@ new entry moves the open detail's stamp, so a handoff recorded in a shell shows 
 `r` on the detail, from any section, opens the reader: each lifted kind's newest entry in full,
 in the same order, over the detail. The footer names it after the kind (`r read handoff`), or
 says `r read` when an issue has entries of several lifted kinds, and leaves it out when there is
-nothing to read; at forty columns, while `now` lists a checklist, `space toggle item` has the room,
+nothing to read; at forty columns, while `now`'s cursor is on an item (`space toggle item`) or an issue (`enter open`), that hint has the room,
 and the digest's `r read` and `?` list `r`. In the reader, the scroll keys move it as they move the detail, `[` and `]` go
 to the previous and next heading across the entries (headings read as the digest reads them),
 one heading per press even near the end where the scroll stops, `?` lists these keys, and `esc` or

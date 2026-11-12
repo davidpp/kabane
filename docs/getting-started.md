@@ -137,9 +137,10 @@ the view you are in, then the ones that work everywhere, and `j`/`k` (and the pa
 scroll it when it is taller than the pane. A key that does nothing right now (no row selected, no linked issue) shows faint:
 
 - `j`/`k` move, `enter` opens a task, `esc` goes back, `q` quits. The detail view pins the
-  task at a glance, where it sits and any question waiting on you, then shows one section at
-  a time: `now` (its checklist, the latest handoff as a digest, the decisions made and its
-  subtasks), the description (with its curated context), the comments, and the log of work
+  task at a glance, where it sits as one row (`↑` its parent, `⊘` a blocker still open, the
+  rest counted) and any question waiting on you, then shows one section at a time: `now` (its
+  checklist, the latest handoff as a digest, the decisions made, its subtasks and its links,
+  where `J/K` move a cursor and `enter` opens the issue under it), the description (with its curated context), the comments, and the log of work
   and agent activity. It opens on `now` when anything is in it. `1`-`4` or `h`/`l` switch
   sections. `j`/`k` scroll a section, `ctrl+d`/`ctrl+u` by half a page, and `g`/`G` go to its
   top and its end; the `?` sheet and the transcript scroll the same way.

@@ -4,6 +4,9 @@
 // - Each card with items says how far they have got, `· 3/5`, from one progress query per poll.
 // - An issue's detail lists its items first on its `now` tab with a cursor on one: `J/K` move it and
 //   `space` ticks or unticks it. The cursor starts on the first open item, where a loop resumes.
+//   The same cursor walks on past the items to the subtasks and linked issues listed under them
+//   (DetailModel.openable), where `enter` opens the one under it (BoardNav's detail keys). With no
+//   items, it starts on the first of those.
 //
 // A checklist write leaves the task row alone, so nothing on the row says it changed: the poll reads
 // the progress beside the rows every time, and the open detail's stamp counts the items
@@ -25,9 +28,15 @@ export namespace BoardChecklist {
 	export type Checklist = {
 		// Done and total items by task id, over the whole tracker, as of the last poll.
 		progress: ReadonlyMap<string, ChecklistProgress>;
-		// The open detail view's task and its live items, in list order, as of its last records.
-		open: { taskId: string; items: readonly ChecklistItemView[] } | null;
-		// The item `J/K` put the cursor on; null leaves it on the first open one.
+		// The open detail view's task, its live items in list order and the rows after them the cursor
+		// can open, as of its last records.
+		open: {
+			taskId: string;
+			items: readonly ChecklistItemView[];
+			rows: readonly DetailModel.OpenableRow[];
+		} | null;
+		// The item or row `J/K` put the cursor on, by item id or row key; null leaves it on the first
+		// open item, else the first row.
 		cursor: string | null;
 		// The items this board is writing, by item id.
 		writes: ReadonlyMap<string, Write>;
@@ -66,8 +75,11 @@ export namespace BoardChecklist {
 		checklist: { ...state.checklist, ...next },
 	});
 
-	/** The id of an item's row in the detail view, which `reveal` scrolls into view. */
-	export const rowId = (itemId: string): string => `checklist-${itemId}`;
+	/**
+	 * The id of a cursor row in the detail view, an item's by its id or a subtask's or link's by its
+	 * key, which `reveal` scrolls into view.
+	 */
+	export const rowId = (key: string): string => `checklist-${key}`;
 
 	// ── the board ───────────────────────────────────────────────────────────────────────────────
 
@@ -95,16 +107,22 @@ export namespace BoardChecklist {
 
 	export type Shown = {
 		lines: readonly Line[];
-		// The item `space` toggles.
+		// The rows after the items the cursor walks on to, in order.
+		rows: readonly DetailModel.OpenableRow[];
+		// The item `space` toggles, or the row `enter` opens: an item's id or a row's key.
 		cursor: string | undefined;
 		progress: ChecklistProgress;
 	};
 
-	/** Items as drawn: `writes` over the records, the cursor where `J/K` left it or the first open one. */
+	/**
+	 * Items as drawn: `writes` over the records, the cursor where `J/K` left it, else on the first
+	 * open item, else the first item, else the first row.
+	 */
 	export const view = (
 		items: readonly ChecklistItemView[],
 		cursor: string | null = null,
 		writes: ReadonlyMap<string, Write> = new Map(),
+		rows: readonly DetailModel.OpenableRow[] = [],
 	): Shown => {
 		const lines = items.map((item) => ({
 			id: item.id,
@@ -113,12 +131,15 @@ export namespace BoardChecklist {
 			done: writes.get(item.id)?.wanted ?? item.done,
 		}));
 		const at =
-			lines.find((line) => line.id === cursor) ??
-			lines.find((line) => !line.done) ??
-			lines[0];
+			lines.find((line) => line.id === cursor)?.id ??
+			rows.find((row) => row.key === cursor)?.key ??
+			lines.find((line) => !line.done)?.id ??
+			lines[0]?.id ??
+			rows[0]?.key;
 		return {
 			lines,
-			cursor: at?.id,
+			rows,
+			cursor: at,
 			progress: {
 				done: lines.filter((line) => line.done).length,
 				total: lines.length,
@@ -146,8 +167,8 @@ export namespace BoardChecklist {
 		);
 
 	/**
-	 * The detail view's records, as far as the checklist goes: `items` are the task's, or none when no
-	 * task is open. Another task starts its cursor over. A write in flight is kept whichever task is
+	 * The detail view's records, as far as the cursor goes: `items` are the task's, or none when no
+	 * task is open, and `rows` what it lists after them to open. Another task starts its cursor over. A write in flight is kept whichever task is
 	 * open, since its outcome still lands; a settled one gives way to these records once they are
 	 * not older than it.
 	 */
@@ -155,6 +176,7 @@ export namespace BoardChecklist {
 		state: State,
 		taskId: string | null,
 		items: readonly ChecklistItemView[] = [],
+		rows: readonly DetailModel.OpenableRow[] = [],
 	): State => {
 		const writes = standing(state.checklist.writes, items);
 		if (taskId === null)
@@ -163,7 +185,7 @@ export namespace BoardChecklist {
 				: patch(state, { open: null, cursor: null, writes, pressed: null });
 		const same = state.checklist.open?.taskId === taskId;
 		return patch(state, {
-			open: { taskId, items },
+			open: { taskId, items, rows },
 			cursor: same ? state.checklist.cursor : null,
 			writes,
 		});
@@ -216,16 +238,19 @@ export namespace BoardChecklist {
 		};
 	};
 
-	/** The open detail view's checklist, while its records are this task's and it has items. */
+	/**
+	 * The open detail view's checklist and the rows after it, while its records are this task's and
+	 * the cursor has anything to stand on.
+	 */
 	export const shown = (state: State): Shown | undefined => {
 		const { view: on } = state;
 		const { open, cursor, writes } = state.checklist;
 		if (on.type !== "detail" || open?.taskId !== on.taskId) return undefined;
-		if (open.items.length === 0) return undefined;
-		return view(open.items, cursor, writes);
+		if (open.items.length + open.rows.length === 0) return undefined;
+		return view(open.items, cursor, writes, open.rows);
 	};
 
-	/** The checklist the keys act on: drawn on the `now` tab, with the board holding the keys. */
+	/** The cursor the keys act on: drawn on the `now` tab, with the board holding the keys. */
 	const inHand = (state: State): Shown | undefined =>
 		state.focus === "board" &&
 		!state.prompt.open &&
@@ -253,8 +278,29 @@ export namespace BoardChecklist {
 		return { taskId: state.view.taskId, rowId: rowId(asked.cursor) };
 	};
 
-	/** Whether `space` and `J/K` have an item to act on, for the footer. */
-	export const listed = (state: State): boolean => inHand(state) !== undefined;
+	const onItem = (asked: Shown): boolean =>
+		asked.lines.some((line) => line.id === asked.cursor);
+
+	/**
+	 * What the footer can offer on `now`: `J/K` while the cursor has rows to walk, `space` while it
+	 * is on an item, `enter` while it is on a subtask or linked issue.
+	 */
+	export const situation = (
+		state: State,
+	): { cursor: boolean; checklist: boolean; openable: boolean } => {
+		const asked = inHand(state);
+		return {
+			cursor: asked !== undefined,
+			checklist: asked !== undefined && onItem(asked),
+			openable: target(state) !== undefined,
+		};
+	};
+
+	/** The issue under the cursor, which `enter` opens; none while the cursor is on an item. */
+	export const target = (state: State): string | undefined => {
+		const asked = inHand(state);
+		return asked?.rows.find((row) => row.key === asked.cursor)?.taskId;
+	};
 
 	// `space` on the item under the cursor: it flips at once. With no write of its own in flight the
 	// write goes now; with one, the press waits behind it (settle sends the latest).
@@ -283,14 +329,18 @@ export namespace BoardChecklist {
 		};
 	};
 
-	// `J/K`: the cursor one item down or up, stopping at either end, and its row scrolled into view.
+	// `J/K`: the cursor one row down or up, items then the rows after them, stopping at either end,
+	// and its row scrolled into view.
 	const move = (state: State, asked: Shown, delta: number): Step => {
-		const at = asked.lines.findIndex((line) => line.id === asked.cursor);
-		const next = asked.lines[at + delta];
-		if (!next) return { state, effect: NOTHING };
+		const keys = [
+			...asked.lines.map((line) => line.id),
+			...asked.rows.map((row) => row.key),
+		];
+		const next = keys[keys.indexOf(asked.cursor ?? "") + delta];
+		if (next === undefined) return { state, effect: NOTHING };
 		return {
-			state: patch(state, { cursor: next.id }),
-			effect: { type: "reveal", id: rowId(next.id) },
+			state: patch(state, { cursor: next }),
+			effect: { type: "reveal", id: rowId(next) },
 		};
 	};
 
@@ -305,7 +355,7 @@ export namespace BoardChecklist {
 	): Step | null => {
 		const asked = inHand(state);
 		if (!asked || key.ctrl || key.meta) return null;
-		if (key.name === "space" && asked.cursor)
+		if (key.name === "space" && asked.cursor && onItem(asked))
 			return toggle(state, asked, asked.cursor);
 		if (isKey(key, "J")) return move(state, asked, 1);
 		if (isKey(key, "K")) return move(state, asked, -1);

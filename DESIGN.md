@@ -131,8 +131,8 @@ requests and three status hues for states.
 
 ### Primary
 - **Accent** (`{colors.accent}`): a strip pulled out of line. The review flag, a question
-  awaiting input, anything blocked on a human, the marked working set, and the cursor of an
-  input waiting for you. Its value and name are provisional and get decided in a
+  awaiting input, anything blocked on a human, the marked working set, the cursor of an
+  input waiting for you, and a blocker still open in the detail's trail. Its value and name are provisional and get decided in a
   `/colorize` pass.
 
 ### Secondary: status hues
@@ -298,6 +298,8 @@ against every glyph already here.
 | `○` | pending plan step | muted |
 | `✗` | failed | failed |
 | `?` | waiting on your answer | accent |
+| `↑` | the detail's trail: its parent | muted |
+| `⊘` | the detail's trail: a blocker still open | accent |
 | `⚙` `▶` `·` `$` | transcript: a tool call nothing said the end of, phase, progress, cost | muted, working, muted, muted |
 | spinner `✓` `✗` | transcript: a tool call running, ended, failed (its row recedes: a check is muted) | working, muted, failed |
 | `▸` `▾` | transcript: a run of reads and searches folded into one row, closed and open | muted |
@@ -341,9 +343,11 @@ against every glyph already here.
 
 ### Detail view
 - **Header:** a raised block, one cell of padding each side: `id · title` as Title with the
-  `[copy]` affordance at its right, then the in-flight status line in the working hue, then
-  the pinned facts, their key muted and their value secondary, so the title is the one bright
-  line in the block.
+  `[copy]` affordance at its right, the summary, then the in-flight status line in the working
+  hue, then the trail: where the task sits as one row, `↑ JCAB-229 · ⊘ JCAB-228 in progress ·
+  blocks 3`. The parent's id secondary, so the title stays the one bright line; an open blocker's
+  `⊘` and id in the accent, its state muted; the rest counted, muted. Parts go in whole, counts
+  giving way first, and a row that ran out ends on a muted `…`. No relations, no row.
 - **Sections** (`h/l`; never called tabs, which are the tab bar's): `now`, `description`,
   `comments`, `log`; the active one in Label weight on selected, the others secondary, an empty
   one faint.
@@ -355,7 +359,11 @@ against every glyph already here.
   the done hue or `○` muted, then its text, cut with `…`. A cursor on one item, under the
   Selection Rule, starts on the first open one; `J/K` move it (shifted from the `j/k` that
   scroll) and `space` toggles it, as `space` toggles a multi-select's answer, scrolling
-  it into view in the same press: a toggle is never out of sight.
+  it into view in the same press: a toggle is never out of sight. The same cursor walks on to
+  the subtasks and the links, where `enter` opens the issue under it.
+- **Links:** the last block on `now`, every relation grouped under a muted sub-label (`blocked
+  by`), never a key on each row; each issue drawn as a subtask is, one missing from the tracker
+  faint; the external issues last behind a muted `◆`.
 - **Digest:** a lifted entry (the newest handoff) as a block on `now`: `kind · author · age`, the
   kind's title in Label weight and the rest muted, the name cut before the age; the kind's
   framing line muted; then the text before the first heading and the first section rendered, that

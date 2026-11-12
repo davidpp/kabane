@@ -1,8 +1,8 @@
 /** @jsxImportSource @opentui/react */
 // Detail view for a single task, read as parts rather than one wall. Pinned on a raised block: the
-// title, the task at a glance, what is running on it and where it sits; under it, any question
-// waiting on the human. Then tabs: what is in force now (the checklist, the latest handoff as a
-// digest, the decisions made and the subtasks), the description (the ask, with its curated context),
+// title, the task at a glance, what is running on it and where it sits as one trail; under it, any
+// question waiting on the human. Then tabs: what is in force now (the checklist, the latest handoff
+// as a digest, the decisions made, the subtasks and the links), the description (the ask, with its curated context),
 // the comments and the agent log, one at a time, scrolled by screen.tsx's `scroll` effect (it owns
 // the ref, so every key stays in board-input.ts's one useKeyboard handler). DetailModel decides
 // what goes where; this file only draws it. The agent brief is not drawn here: `y` copies it, and
@@ -20,9 +20,11 @@ import { useTerminalDimensions } from "@opentui/react";
 import {
 	type ReactNode,
 	type RefObject,
+	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
+	useState,
 } from "react";
 import type { BoardActivity } from "./activity";
 import { BoardChecklist } from "./checklist";
@@ -306,6 +308,7 @@ export const Detail = ({
 	keys,
 	fresh,
 	covered,
+	onOpenTask,
 }: DetailProps): ReactNode => {
 	const theme = useTheme();
 	const { width: room } = useTerminalDimensions();
@@ -337,6 +340,8 @@ export const Detail = ({
 				spinnerFrame={spinnerFrame}
 				copied={notice?.tone === "success"}
 				onCopy={onCopy}
+				onOpenTask={onOpenTask}
+				onTab={onTab}
 			/>
 			{open.length > 0 ? (
 				<box
@@ -369,6 +374,7 @@ export const Detail = ({
 					spinnerFrame={spinnerFrame}
 					checklist={checklist}
 					onItem={onItem}
+					onOpenTask={onOpenTask}
 					fresh={marks.blocks}
 				/>
 			</scrollbox>
@@ -393,6 +399,7 @@ const TabBody = ({
 	spinnerFrame,
 	checklist,
 	onItem,
+	onOpenTask,
 	fresh,
 }: {
 	tab: DetailModel.Tab;
@@ -400,7 +407,7 @@ const TabBody = ({
 	cards: ActivityCard[];
 	spinnerFrame: string | undefined;
 	fresh: ReadonlySet<DetailModel.BlockName>;
-} & Pick<DetailProps, "checklist" | "onItem">): ReactNode => {
+} & Pick<DetailProps, "checklist" | "onItem" | "onOpenTask">): ReactNode => {
 	const theme = useTheme();
 	const { width: room } = useTerminalDimensions();
 	if (records === undefined)
@@ -422,8 +429,17 @@ const TabBody = ({
 			cards={cards}
 			spinnerFrame={spinnerFrame}
 			room={Math.max(0, room - SCROLL_RESERVED - CONTENT_INSET)}
-			checklist={checklist ?? BoardChecklist.view(records.value.checklist)}
+			checklist={
+				checklist ??
+				BoardChecklist.view(
+					records.value.checklist,
+					null,
+					undefined,
+					DetailModel.openable(records.value),
+				)
+			}
 			onItem={onItem}
+			onOpenTask={onOpenTask}
 			fresh={fresh}
 		/>
 	);
@@ -439,9 +455,17 @@ const DetailHeader = ({
 	spinnerFrame,
 	copied,
 	onCopy,
+	onOpenTask,
+	onTab,
 }: Pick<
 	DetailProps,
-	"taskId" | "task" | "cards" | "spinnerFrame" | "onCopy"
+	| "taskId"
+	| "task"
+	| "cards"
+	| "spinnerFrame"
+	| "onCopy"
+	| "onOpenTask"
+	| "onTab"
 > & {
 	loaded: BoardData.DetailRecords | undefined;
 	// A notice that just succeeded lights `[copy]`, the copy it most often confirms.
@@ -456,6 +480,7 @@ const DetailHeader = ({
 		(c) =>
 			c.status === "running" || c.status === "pending" || c.status === "paused",
 	);
+	const trail = loaded ? DetailModel.trail(loaded) : [];
 	return (
 		<box
 			style={{
@@ -493,15 +518,14 @@ const DetailHeader = ({
 					</text>
 				</box>
 			) : null}
-			{loaded
-				? DetailModel.position(loaded).map((line) => (
-						<MetaRow
-							key={`${line.key} ${line.value}`}
-							line={line}
-							room={headerRoom}
-						/>
-					))
-				: null}
+			{trail.length > 0 ? (
+				<TrailRow
+					parts={trail}
+					room={headerRoom}
+					onOpenTask={onOpenTask}
+					onTab={onTab}
+				/>
+			) : null}
 		</box>
 	);
 };
@@ -523,21 +547,71 @@ const SummaryLine = ({
 	return <text>{Segments.spans(Segments.fit(segments, room))}</text>;
 };
 
-// A pinned fact: its key muted, its value one step down from the title it sits under, one row, its
-// tail cut with `…`.
-const MetaRow = ({
-	line,
+// Where the task sits, one row under the summary: the parent's id one step down from the title, an
+// open blocker in the accent (it holds the work, so what to do next turns on it) with its state
+// muted, then the rest as muted counts, ` · ` between parts. The tail is cut with `…`, so the parent
+// and the open blockers, which lead, are the last to go. An id opens its issue on a click, and a
+// count shows `now`, whose links block lists what it counts.
+const TrailRow = ({
+	parts,
 	room,
+	onOpenTask,
+	onTab,
 }: {
-	line: DetailModel.MetaLine;
+	parts: readonly DetailModel.TrailPart[];
 	room: number;
-}): ReactNode => {
+} & Pick<DetailProps, "onOpenTask" | "onTab">): ReactNode => {
 	const theme = useTheme();
-	const segments = [
-		{ text: `${line.key} `, fg: theme.muted },
-		{ text: line.value, fg: theme.secondary },
-	];
-	return <text>{Segments.spans(Segments.fit(segments, room))}</text>;
+	const segmentsOf = (part: DetailModel.TrailPart): Segments.Segment[] => {
+		switch (part.kind) {
+			case "parent":
+				return [
+					{ text: "↑ ", fg: theme.muted },
+					{ text: part.shortId, fg: theme.secondary },
+				];
+			case "blocker":
+				return [
+					{ text: `⊘ ${part.shortId}`, fg: theme.accent },
+					{ text: ` ${part.state}`, fg: theme.muted },
+				];
+			case "count":
+				return [{ text: `${part.label} ${part.count}`, fg: theme.muted }];
+		}
+	};
+	const clickOf = (part: DetailModel.TrailPart): (() => void) | undefined => {
+		if (part.kind === "count") return onTab ? () => onTab("now") : undefined;
+		const { taskId } = part;
+		return taskId && onOpenTask ? () => onOpenTask(taskId) : undefined;
+	};
+	// Each part its own text, so a click lands on the part it is over. What does not fit is a muted
+	// `…`, which shows `now` as a count does (DetailModel.fitTrail).
+	const sep = { text: DetailModel.TRAIL_SEP, fg: theme.muted };
+	const fitted = DetailModel.fitTrail(parts, room);
+	const cells = fitted.parts.map((part, index) => ({
+		segments:
+			index === 0
+				? Segments.fit(segmentsOf(part), room)
+				: [sep, ...segmentsOf(part)],
+		onClick: clickOf(part),
+	}));
+	const used = cells.reduce(
+		(n, cell) => n + Segments.plain(cell.segments).length,
+		0,
+	);
+	if (fitted.more && used + DetailModel.TRAIL_MORE.length <= room)
+		cells.push({
+			segments: [{ text: DetailModel.TRAIL_MORE, fg: theme.muted }],
+			onClick: onTab && (() => onTab("now")),
+		});
+	return (
+		<box style={{ flexDirection: "row", flexShrink: 0 }}>
+			{cells.map(({ segments, onClick }, index) => (
+				<text key={index} onMouseDown={onClick} style={{ flexShrink: 0 }}>
+					{Segments.spans(segments)}
+				</text>
+			))}
+		</box>
+	);
 };
 
 // The tab bar: the active tab in Label weight on the selected surface, an empty one faint, every
@@ -607,6 +681,7 @@ const TabContent = ({
 	room,
 	checklist,
 	onItem,
+	onOpenTask,
 	fresh,
 }: {
 	tab: DetailModel.Tab;
@@ -617,6 +692,7 @@ const TabContent = ({
 	room: number;
 	checklist: BoardChecklist.Shown;
 	onItem?: (itemId: string) => void;
+	onOpenTask?: (taskId: string) => void;
 	fresh: ReadonlySet<DetailModel.BlockName>;
 }): ReactNode => {
 	const theme = useTheme();
@@ -628,6 +704,7 @@ const TabContent = ({
 					room={room}
 					checklist={checklist}
 					onItem={onItem}
+					onOpenTask={onOpenTask}
 					fresh={fresh}
 				/>
 			);
@@ -679,19 +756,21 @@ const TabContent = ({
 
 // The `now` tab: what is in force while the work runs, each block named as the model names it
 // (DetailModel.NowBlock), so a block can be found again by its name: the checklist, the newest entry
-// of each lifted kind as a digest, the decisions made and the subtasks. The first block has no blank
-// line above it.
+// of each lifted kind as a digest, the decisions made, the subtasks and the links. The first block
+// has no blank line above it.
 const NowTab = ({
 	records,
 	room,
 	checklist,
 	onItem,
+	onOpenTask,
 	fresh,
 }: {
 	records: BoardData.DetailRecords;
 	room: number;
 	checklist: BoardChecklist.Shown;
 	onItem?: (itemId: string) => void;
+	onOpenTask?: (taskId: string) => void;
 	fresh: ReadonlySet<DetailModel.BlockName>;
 }): ReactNode => {
 	const theme = useTheme();
@@ -715,6 +794,7 @@ const NowTab = ({
 						room={room}
 						checklist={checklist}
 						onItem={onItem}
+						onOpenTask={onOpenTask}
 						fresh={fresh.has(block.name)}
 					/>
 				</box>
@@ -778,14 +858,17 @@ const NowBlockBody = ({
 	room,
 	checklist,
 	onItem,
+	onOpenTask,
 	fresh,
 }: {
 	block: DetailModel.NowBlock;
 	room: number;
 	checklist: BoardChecklist.Shown;
 	onItem?: (itemId: string) => void;
+	onOpenTask?: (taskId: string) => void;
 	fresh: boolean;
 }): ReactNode => {
+	const theme = useTheme();
 	if ("entry" in block)
 		return <LiftedDigest entry={block.entry} room={room} fresh={fresh} />;
 	switch (block.name) {
@@ -821,8 +904,54 @@ const NowBlockBody = ({
 			return (
 				<Section title="subtasks" fresh={fresh}>
 					{block.lines.map((line) => (
-						<SubtaskRow key={line.id} line={line} room={room} />
+						<IssueRow
+							key={line.key}
+							line={line}
+							room={room}
+							selected={line.key === checklist.cursor}
+							onOpen={onOpenTask}
+						/>
 					))}
+				</Section>
+			);
+		// Grouped by how each issue relates, the group's name a muted sub-label over its rows rather
+		// than a key on every row, a blank line between groups; the external issues last.
+		case "links":
+			return (
+				<Section title="links" fresh={fresh}>
+					{block.groups.map((group, index) => (
+						<box
+							key={group.name}
+							style={{
+								flexDirection: "column",
+								marginTop: index === 0 ? 0 : 1,
+							}}
+						>
+							<text fg={theme.muted}>{group.name}</text>
+							{group.lines.map((line) => (
+								<IssueRow
+									key={line.key}
+									line={line}
+									room={room}
+									selected={line.key === checklist.cursor}
+									onOpen={line.known ? onOpenTask : undefined}
+								/>
+							))}
+						</box>
+					))}
+					{block.upstream.length > 0 ? (
+						<box
+							style={{
+								flexDirection: "column",
+								marginTop: block.groups.length === 0 ? 0 : 1,
+							}}
+						>
+							<text fg={theme.muted}>upstream</text>
+							{block.upstream.map((line) => (
+								<UpstreamRow key={line.id} line={line} room={room} />
+							))}
+						</box>
+					) : null}
 				</Section>
 			);
 	}
@@ -1063,19 +1192,52 @@ const ItemRow = ({
 	);
 };
 
-// One subtask: `✓` in the done hue for a finished one, `○` muted for an open one, the whole row faint
-// when cancelled. The title's tail is cut with `…`; an open or cancelled one's state is held to the
-// right, as the log holds its age, so the cut never takes the fact a plan is read for.
-const SubtaskRow = ({
+// The columns a row really has once laid out, less the one it keeps clear of the scrollbar as prose
+// does, so a part held at its right sits one space after the cut title. `room` is the estimate from
+// the terminal's width, which holds back a scrollbar column and a margin whether a bar is drawn or
+// not; it stands until the first layout measures the row.
+const useRowWidth = (
+	room: number,
+): {
+	ref: RefObject<BoxRenderable | null>;
+	measure: () => void;
+	columns: number;
+} => {
+	const ref = useRef<BoxRenderable | null>(null);
+	const [measured, setMeasured] = useState<number | undefined>(undefined);
+	const measure = useCallback(() => {
+		const width = ref.current?.width;
+		if (width !== undefined && width > CONTENT_INSET)
+			setMeasured(width - CONTENT_INSET);
+	}, []);
+	return { ref, measure, columns: measured ?? room };
+};
+
+// One issue, a subtask or a linked one: `✓` in the done hue for a finished one, `○` muted for an open
+// one, the whole row faint when cancelled or missing from the records (`unknown`). The title's tail
+// is cut with `…`; an open or cancelled one's state is held to the right, as the log holds its age,
+// so the cut never takes the fact a plan is read for. Under `now`'s cursor it is on the selected
+// surface, every cell in the text color (the Selection Rule), as an item is; a click opens it.
+const IssueRow = ({
 	line,
 	room,
+	selected,
+	onOpen,
 }: {
-	line: DetailModel.SubtaskLine;
+	line: DetailModel.SubtaskLine & { known?: boolean };
 	room: number;
+	selected: boolean;
+	onOpen?: (taskId: string) => void;
 }): ReactNode => {
 	const theme = useTheme();
-	const faint = line.cancelled ? theme.faint : undefined;
+	const bg = selected ? theme.surface.selected : undefined;
+	const faint = selected
+		? theme.text
+		: line.cancelled || line.known === false
+			? theme.faint
+			: undefined;
 	const state = line.state ?? "";
+	const width = useRowWidth(room);
 	const segments = [
 		{
 			text: line.done ? "✓ " : "○ ",
@@ -1086,15 +1248,27 @@ const SubtaskRow = ({
 	];
 	const titled = Segments.fit(
 		segments,
-		Math.max(0, room - (state ? state.length + 1 : 0)),
+		Math.max(0, width.columns - (state ? state.length + 1 : 0)),
 	);
 	return (
-		<box style={{ flexDirection: "row" }}>
-			<text style={{ flexGrow: 1, flexShrink: 1 }}>
+		<box
+			ref={width.ref}
+			onSizeChange={width.measure}
+			id={BoardChecklist.rowId(line.key)}
+			onMouseDown={onOpen ? () => onOpen(line.id) : undefined}
+			style={{
+				flexDirection: "row",
+				flexShrink: 0,
+				backgroundColor: bg,
+				paddingRight: CONTENT_INSET,
+			}}
+		>
+			<text bg={bg} style={{ flexGrow: 1, flexShrink: 1 }}>
 				{Segments.spans(titled)}
 			</text>
 			{state ? (
 				<text
+					bg={bg}
 					fg={faint ?? theme.muted}
 					style={{ flexShrink: 0, marginLeft: 1 }}
 				>
@@ -1103,6 +1277,23 @@ const SubtaskRow = ({
 			) : null}
 		</box>
 	);
+};
+
+// An external issue the task points at: `◆`, the tracker and its id muted, as a linked card reads,
+// then its title. Not under the cursor: `O` opens it.
+const UpstreamRow = ({
+	line,
+	room,
+}: {
+	line: DetailModel.UpstreamLine;
+	room: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const segments = [
+		{ text: `◆ ${line.provider} ${line.identifier} `, fg: theme.muted },
+		{ text: line.title, fg: theme.defaultFg },
+	];
+	return <text>{Segments.spans(Segments.fit(segments, room))}</text>;
 };
 
 // One decision made: the question, the answer after `→` in the text color, who made it and why muted.
