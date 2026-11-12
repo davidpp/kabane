@@ -213,10 +213,13 @@ export interface Dispatcher {
 	triggers(taskId: string): Promise<Result<TriggerDescriptor[]>>;
 	// Resolves to the footer notice on success. `inputs` carries the form's values, by input name,
 	// when the trigger had a form: an option input's value is the option picked, as written.
+	// `edited` names the inputs the human moved, even back to their default, so a dispatcher can
+	// tell a default it offered from a value the human chose.
 	dispatch(
 		triggerId: string,
 		target: DispatchTarget,
 		inputs?: Readonly<Record<string, unknown>>,
+		edited?: readonly string[],
 	): Promise<Result<string>>;
 }
 

@@ -94,20 +94,19 @@ export namespace LoopDispatcher {
 		deps: Deps,
 		parent: string,
 		values: Readonly<Record<string, unknown>>,
+		edited: readonly string[],
 		advice: readonly LoopAdvice.Recommendation[],
 	): Promise<Result<string>> => {
 		// Setup and a width above one were advised for worktrees. A shared submission keeps only
-		// configured setup; one sharing a tree also drops the width, and "sessions at once" still at
-		// that width is the form's default, not the human's (one stepped away and back reads the same).
+		// configured setup; one sharing a tree also drops the width, and "sessions at once" the human
+		// never moved is that advised default, not their choice.
 		const sharedTree =
 			values.isolation === "shared" || values.worktree === false;
 		const width = advice.find(
 			(r) => r.path === "budget.concurrency" && r.value > 1,
 		);
 		const dropWidth =
-			sharedTree &&
-			width !== undefined &&
-			String(values[width.path]) === String(width.value);
+			sharedTree && width !== undefined && !edited.includes(width.path);
 		const config = LoopSettings.overrides(
 			dropWidth
 				? Object.fromEntries(
@@ -137,9 +136,15 @@ export namespace LoopDispatcher {
 					advised.set(taskId, advice),
 				);
 			},
-			dispatch: (triggerId, target, inputs) =>
+			dispatch: (triggerId, target, inputs, edited) =>
 				triggerId === START
-					? start(deps, target.id, inputs ?? {}, advised.get(target.id) ?? [])
+					? start(
+							deps,
+							target.id,
+							inputs ?? {},
+							edited ?? [],
+							advised.get(target.id) ?? [],
+						)
 					: Promise.resolve(
 							err(new Error(`Unknown loop trigger: ${triggerId}`)),
 						),

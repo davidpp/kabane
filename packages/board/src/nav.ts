@@ -353,6 +353,7 @@ export namespace BoardNav {
 				triggerId: string;
 				id: string;
 				inputs?: Readonly<Record<string, unknown>>;
+				edited?: readonly string[];
 		  }
 		| { type: "loadTriggers"; taskId: string }
 		// `,` opened the settings view: the host lists the rows (SettingsSource).

@@ -235,19 +235,35 @@ it.each([
 		"a shared tree, the advised width untouched",
 		{ isolation: "shared" },
 		"3",
+		[],
 		undefined,
 	],
 	[
 		"no run worktree, the advised width untouched",
 		{ worktree: false },
 		"3",
+		[],
 		undefined,
 	],
-	["a shared tree, a width the human chose", { isolation: "shared" }, "2", 2],
-	["worktrees, the advised width", { isolation: "worktree" }, "3", 3],
+	[
+		"a shared tree, a width the human chose",
+		{ isolation: "shared" },
+		"2",
+		["budget.concurrency"],
+		2,
+	],
+	// Stepped 3 → 2 → 3: the advised value again, but the human's.
+	[
+		"a shared tree, the advised width chosen again",
+		{ isolation: "shared" },
+		"3",
+		["budget.concurrency"],
+		3,
+	],
+	["worktrees, the advised width", { isolation: "worktree" }, "3", [], 3],
 ] as const)(
 	"submitted on %s: the run's sessions at once",
-	async (_, where, sessions, expected) => {
+	async (_, where, sessions, edited, expected) => {
 		const scope = await detectScope(repo, { home, detectExtensions: false });
 		const parent = await add("parent", { scopeUri: scope?.scopeUri });
 		for (const title of ["first", "second", "third"])
@@ -266,6 +282,7 @@ it.each([
 				brief: "",
 			},
 			{ ...where, "budget.concurrency": sessions },
+			edited,
 		);
 		const runs = RunStore.list(home);
 		if (!runs.ok) throw runs.error;

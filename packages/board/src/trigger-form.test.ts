@@ -100,6 +100,7 @@ describe("the form on the board", () => {
 				wall: 0,
 				worktree: false,
 			},
+			edited: [],
 		});
 		expect(BoardNav.keyContext(state)).toBe("dispatchForm");
 	});
@@ -146,6 +147,17 @@ describe("the form on the board", () => {
 				wall: 0,
 				worktree: false,
 			},
+			edited: ["concurrency"],
+		});
+	});
+
+	test("a value stepped away and back is still the human's: edited names it", () => {
+		const { state, effect } = keys(picker([START]), "return", "j", "l", "h");
+		expect(state.dispatch?.form?.edited).toEqual(["concurrency"]);
+		expect(effect).toEqual({ type: "none" });
+		expect(keys(state, "return").effect).toMatchObject({
+			inputs: { concurrency: "2" },
+			edited: ["concurrency"],
 		});
 	});
 

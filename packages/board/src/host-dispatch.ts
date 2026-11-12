@@ -66,7 +66,12 @@ export const useHostDispatch = ({
 	const dispatch = useCallback(
 		async (
 			s: BoardNav.BoardState,
-			{ triggerId, id, inputs }: Extract<DispatchEffect, { type: "dispatch" }>,
+			{
+				triggerId,
+				id,
+				inputs,
+				edited,
+			}: Extract<DispatchEffect, { type: "dispatch" }>,
 		): Promise<void> => {
 			if (!dispatcher) {
 				setNotice(noDispatcher(copilot));
@@ -83,6 +88,7 @@ export const useHostDispatch = ({
 				triggerId,
 				{ id, shortId, title: task?.title ?? "", brief: brief.value },
 				inputs,
+				edited,
 			);
 			setNotice(reported(res));
 			// Refresh activity so a newly started card shows up.

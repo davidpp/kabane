@@ -125,10 +125,10 @@ export namespace Dispatchers {
 			if (failed && !failed.ok) return failed;
 			return ok(offered.flatMap((result) => (result.ok ? result.value : [])));
 		},
-		dispatch: async (triggerId, target, inputs) => {
+		dispatch: async (triggerId, target, inputs, edited) => {
 			const routed = route(dispatchers, triggerId);
 			if (!routed) return err(unrouted("trigger", triggerId));
-			return routed.part.dispatch(routed.id, target, inputs);
+			return routed.part.dispatch(routed.id, target, inputs, edited);
 		},
 	});
 }
