@@ -143,6 +143,9 @@ scroll it when it is taller than the pane. A key that does nothing right now (no
   and agent activity. It opens on `now` when anything is in it. `1`-`4` or `h`/`l` switch
   sections. `j`/`k` scroll a section, `ctrl+d`/`ctrl+u` by half a page, and `g`/`G` go to its
   top and its end; the `?` sheet and the transcript scroll the same way.
+- `r` on a task's detail reads its latest handoff in full, `[`/`]` jump between its headings,
+  `esc` closes it. A part of `now` that changed while the detail was open reads `✦` until you
+  have looked at it.
 - `[` and `]` move a task through the states (inbox, next, in progress, waiting, done).
   `d` marks it done, `n` next, `s` someday, `x` cancel.
 - `/` filters as you type, `f` cycles open, done and cancelled, and review, `i` cycles the
