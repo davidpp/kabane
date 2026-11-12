@@ -141,7 +141,22 @@ A, then C1 and D, then B, with E deferred.
     no models pinned.
   - Fallback: a subtask with no tier gets the run's `model`, or the harness default when that is
     unset. A tier wins over `model` for its subtask.
-  - The model reaches the session through ACP's model config option, which both pinned adapters
-    expose (`dispatch.ts`), not through harness-specific agent definitions.
+- **What runs a subtask has three parts, each its own tag.** The harness (who) is the run's
+  preference unless `tier:<harness>/<tier>` pins it. The agent, `agent:<name>`, is the harness's
+  own named specialist, which kabane names and never defines, because each harness has its own
+  agent format. The tier, `tier:<name>`, says how capable the model must be. They combine
+  freely.
+  - Claude: the pinned adapter passes `_meta.claudeCode.options` into the Agent SDK, and its
+    `agent` option runs the session as a named agent (`sdk.d.ts`, Options `agent`). Codex's
+    equivalent (profiles) is unverified.
+  - An agent whose definition pins a model keeps its pin: that is the user's harness-side
+    choice. The trace says the tier was not applied and why. An agent with `model: inherit`
+    takes the tier.
+- **`model` becomes a reference, set through ACP.** Today it is the `ANTHROPIC_MODEL` env var,
+  so it works on Claude only, and codex-acp reads none (`harnesses.ts`). A value matching a tier
+  key resolves through `loop.tiers.<harness>.<tier>`, and anything else passes through as a
+  literal. It is applied with `session/set_config_option` on the session's model option, which
+  works across harnesses. Codex-acp's model option is still to verify; where a harness has none,
+  the loop warns and falls back.
   - The loop ignores a subtask's assignee on purpose (`claims.ts`: agents assign what they file
     to themselves), so the tier is its own signal.
