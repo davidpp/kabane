@@ -133,8 +133,8 @@ The board shows the scope of the directory you opened it in: the repo's name in 
 tasks grouped by state. A scope with nothing open says so, and how to file the first task.
 The footer lists the everyday keys of where you are: the board, a task, the transcript, a
 card's tab or the copilot each has its own. `?` opens a sheet along the bottom with every key of
-the view you are in, then the ones that work everywhere, and the scroll keys move it when it
-is taller than the pane. A key that does nothing right now (no row selected, no linked issue) shows faint:
+the view you are in, then the ones that work everywhere, and `j`/`k` (and the paging keys below)
+scroll it when it is taller than the pane. A key that does nothing right now (no row selected, no linked issue) shows faint:
 
 - `j`/`k` move, `enter` opens a task, `esc` goes back, `q` quits. The detail view pins the
   task at a glance, where it sits and any question waiting on you, then shows one section at
@@ -143,6 +143,9 @@ is taller than the pane. A key that does nothing right now (no row selected, no 
   and agent activity. It opens on `now` when anything is in it. `1`-`4` or `h`/`l` switch
   sections. `j`/`k` scroll a section, `ctrl+d`/`ctrl+u` by half a page, and `g`/`G` go to its
   top and its end; the `?` sheet and the transcript scroll the same way.
+- `r` on a task's detail reads its latest handoff in full, `[`/`]` jump between its headings,
+  `esc` closes it. A part of `now` that changed while the detail was open reads `✦` until you
+  have looked at it.
 - `[` and `]` move a task through the states (inbox, next, in progress, waiting, done).
   `d` marks it done, `n` next, `s` someday, `x` cancel.
 - `/` filters as you type, `f` cycles open, done and cancelled, and review, `i` cycles the
