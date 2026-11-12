@@ -634,6 +634,52 @@ describe.concurrent("config through the real CLI", () => {
 	);
 
 	it(
+		"takes a key per entry of a record of records, and lists each entry as a row",
+		withHome(async ({ write, inRepo }) => {
+			write(initial);
+			const json = async (...args: string[]) => {
+				const result = await inRepo(...args, "--json");
+				expect(result.err).toBe("");
+				expect(result.code).toBe(0);
+				return JSON.parse(result.out);
+			};
+			await json("config", "set", "loop.tiers.claude.fast", "haiku");
+			await json("config", "set", "loop.tiers.codex.fast", "gpt-6-luna");
+			expect(await json("config", "get", "loop.tiers")).toEqual({
+				claude: { fast: "haiku" },
+				codex: { fast: "gpt-6-luna" },
+			});
+			expect(await json("config", "get", "loop.tiers.claude")).toEqual({
+				fast: "haiku",
+			});
+			const rows: { key: string; value: unknown }[] = await json(
+				"config",
+				"list",
+			);
+			expect(
+				rows
+					.filter((row) => row.key.startsWith("loop.tiers."))
+					.map((row) => [row.key, row.value]),
+			).toEqual([
+				["loop.tiers.claude.fast", "haiku"],
+				["loop.tiers.codex.fast", "gpt-6-luna"],
+			]);
+			// A harness kabane does not know is no key.
+			const refused = await inRepo(
+				"config",
+				"set",
+				"loop.tiers.claud.fast",
+				"haiku",
+			);
+			expect(refused.code).not.toBe(0);
+			expect(refused.err).toContain(
+				"Unknown config key: loop.tiers.claud.fast",
+			);
+		}),
+		30_000,
+	);
+
+	it(
 		"resolves settings through the global, shared and local layers and names each value's layer",
 		withHome(async ({ home, path, read, write, run, repo, inRepo, runAt }) => {
 			write(initial);

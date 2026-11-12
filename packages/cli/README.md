@@ -114,7 +114,9 @@ kabane config set extensions loop      # comma-separated names; "" clears the ar
 kabane config set copilot.args -- '--model,sonnet'
 kabane config set sync.headers '{"CF-Access-Client-Id":"id","CF-Access-Client-Secret":"secret"}'
 kabane config set loop.gates.test 'bun test'                 # in a project: local, no file in it
-kabane config set loop.model haiku --layer global            # every project
+kabane config set loop.tiers.claude.fast haiku --layer global  # what the fast tier means on Claude
+kabane config set loop.tiers.codex.fast gpt-6-luna --layer global
+kabane config set loop.model fast --layer global             # every project: a tier, or a model id
 kabane config set loop.lenses quality --layer shared         # the repo's .kabane/loop.json
 kabane config get loop.model --scope github.com/acme/app     # another project's legacy scopes block
 kabane config unset copilot.model      # remove the key from the layer
