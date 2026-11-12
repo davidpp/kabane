@@ -356,29 +356,6 @@ kabane sync status
 Expected: `Sync: armed as device <name>`, `pending ops: 0`, `last sync:` a timestamp,
 `quarantined: 0`.
 
-### 2.5 Or share a host app's database instead
-
-A device can open a database another host already keeps, instead of its own
-`~/.kabane/kabane.db`. This is for a host app that embeds `@cabane/core` and keeps its
-tables behind a prefix (Jake, the planner kabane was extracted from, uses `planner_` in
-`~/.jake/jake.db`). Skip 2.2 to 2.4 and initialize like this instead:
-
-```bash
-kabane init \
-  --actor cabane://actor/human/<your name> \
-  --device <short machine name> \
-  --db-path <the host's database file> --table-prefix <its table prefix>
-kabane list --limit 5
-```
-
-Expected: the `init` output ends with `db: <the file> (tables <prefix>*)` and `list` shows
-the host's tasks. Nothing is copied and nothing syncs between the two hosts, because it is
-one file. Do **not** add `--sync-url` in this shape: the host syncs that file as its own
-device, and `kabane sync` warns when `db.path` and sync are both set. Opening the file
-applies the migrations it has not had yet (§5.8), so update the host's `@cabane/core` to
-the same release before either host opens the file on a newer build; the two share one
-schema.
-
 ---
 
 ## 3. Additional devices
@@ -676,8 +653,7 @@ bun run deploy                   # with all values from 1.0 and 1.5 in your envi
 
 ### 5.8 Upgrade kabane across devices: the hub first, then each device
 
-Every database carries a numbered schema version (`schema_migrations`, behind the table
-prefix when a host app shares its database). On boot, kabane applies the migrations the
+Every database carries a numbered schema version (`schema_migrations`). On boot, kabane applies the migrations the
 database has not had yet, each once and each in its own transaction: a migration that fails is reported by
 number and leaves the database at the version before it. A database already at a newer
 version than the build opening it is refused with "update kabane before opening it",
@@ -696,8 +672,6 @@ So a release that adds a migration goes out in this order:
 2. Each device: `bun add -g kabane@<version>`, then run any `kabane` command once. Until
    a device updates, its scheduled pull logs the
    "update kabane" error and holds its place.
-3. A host app that shares a database file with a device (2.5): update its `@cabane/core`
-   at the same time as the CLI on that machine.
 
 A device that updates before the hub is safe too: the hub's cloud device and every older
 device stop at that device's first op until they update.
@@ -713,6 +687,12 @@ Migration 5 (calendar-date deadlines) rewrites every deadline stored as the end 
 (`…T23:59:59.999Z`, `…T23:59:00Z` and the like) as the date it meant, on each database as it
 boots; deadlines with a real time are left alone. Set `KABANE_TIMEZONE` on the hub (1.5) in
 the same redeploy, or the hub keeps reading those dates in UTC.
+
+Migration 10 (scope URIs) renames every stored scope from `jake://scope/<id>` to
+`kabane://scope/<id>`, on each database as it boots, with the ops still in that device's own
+log. The hub's log is not rewritten: an op in it from before the migration keeps the old
+scheme, and each updated device renames it as it pulls. The old scheme stays valid wherever a
+scope is given, so a client configured with a `jake://scope/…` URI keeps working.
 
 ---
 

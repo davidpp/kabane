@@ -103,13 +103,13 @@ const rows = (frame: string): string[] => frame.split("\n");
 const onOneRow = (frame: string, text: string): boolean =>
 	rows(frame).some((row) => row.includes(text));
 
-// A host "loop" card the way Jake would project one: label + three detail lines.
+// A "loop" card the way a host would project one: label + three detail lines.
 const loopCard = (over: Partial<ActivityCard> = {}): ActivityCard => ({
-	id: "loop-JAKE-1",
+	id: "loop-MILL-1",
 	kind: "loops",
 	label: "loop",
 	status: "running",
-	taskShortId: "JAKE-1",
+	taskShortId: "MILL-1",
 	startedAt: new Date().toISOString(),
 	detail: ["implement", "iteration 3", "$0.42"],
 	...over,
@@ -166,7 +166,7 @@ test("Detail says so when a task has no description", async () => {
 
 test("Detail shows a loop status line for a task with an active loop", async () => {
 	const task = await seed({ state: "in_progress" });
-	const loop = loopCard({ taskShortId: task.shortId ?? "JAKE-1" });
+	const loop = loopCard({ taskShortId: task.shortId ?? "MILL-1" });
 	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
 		cards: [loop],
 	});
@@ -188,7 +188,7 @@ test("Detail pins a waiting question above the tabs, with no answer hint for a c
 			sessionId: "sess-1",
 			questionActivityId: "act-1",
 			question: "Which auth flow should the CLI use?",
-			taskShortId: "JAKE-1",
+			taskShortId: "MILL-1",
 			choices: [],
 			multiSelect: false,
 			allowFreeform: true,

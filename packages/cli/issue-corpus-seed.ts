@@ -101,7 +101,7 @@ const seedTasks = async (
 			scopeUri:
 				index === drafts.length - 1 && synthetic
 					? undefined
-					: "jake://scope/corpus",
+					: "kabane://scope/corpus",
 			assignee:
 				synthetic && index === 24
 					? "synthetic-" + "a".repeat(2000)
@@ -131,8 +131,7 @@ const seedTasks = async (
 
 const seed = async (): Promise<Result<string[]>> => {
 	const root = process.argv[2];
-	const prefix = process.argv[3] === "prefixed" ? "fixture_" : "";
-	const synthetic = process.argv[4] === "synthetic";
+	const synthetic = process.argv[3] === "synthetic";
 	if (
 		!root ||
 		!root.startsWith(join(tmpdir(), "kabane-corpus-")) ||
@@ -147,7 +146,6 @@ const seed = async (): Promise<Result<string[]>> => {
 	const provider = SqliteDb.provider();
 	Runtime.configure({
 		provider,
-		tablePrefix: prefix,
 		actor: () => "cabane://actor/human/fixture",
 		timezone: () => "UTC",
 	});
@@ -170,11 +168,11 @@ const seed = async (): Promise<Result<string[]>> => {
 	}
 	// Test-only timestamps, not source chronology. All ordering ties are deliberate.
 	const tied = await provider.withDb(home, (db) => {
-		db.run(`UPDATE ${prefix}tasks SET created_at = ?, updated_at = ?`, [
+		db.run("UPDATE tasks SET created_at = ?, updated_at = ?", [
 			FIXTURE_TIME,
 			FIXTURE_TIME,
 		]);
-		db.run(`UPDATE ${prefix}task_comments SET created_at = ?`, [FIXTURE_TIME]);
+		db.run("UPDATE task_comments SET created_at = ?", [FIXTURE_TIME]);
 	});
 	if (!tied.ok) return tied;
 	return ok(ids);

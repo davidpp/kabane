@@ -1,11 +1,9 @@
 /**
  * Storage — the migration list on real databases.
  *
- * The repeat failure in this codebase is new code booting on an old database
- * (see the jake-db-migrations note): a column the DDL declares but the live
- * table lacks. A pre-release database is modelled the way one really looks:
- * the current schema with what an older build lacked taken away, and no
- * version table, because the runner that writes it did not exist yet.
+ * The repeat failure in this codebase is new code booting on an old database:
+ * a column the DDL declares but the live table lacks. So each migration runs
+ * here on a database stamped at the version before it.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -14,7 +12,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
-import { physicalTable } from "../db/tables";
 import type { Result } from "../result";
 import { withDb as runWithDb } from "../runtime";
 import { answersContext, formatQuestionBody } from "../schemas";
@@ -22,6 +19,7 @@ import { configureTestRuntime } from "../testing";
 import { columnExists, TABLES } from "./helpers";
 import { Planner } from "./index";
 import { Migrations } from "./migrations";
+import { Oplog } from "./oplog";
 
 let base: string;
 
@@ -45,11 +43,6 @@ const mustInit = async (at: string): Promise<void> => {
 	if (!init.ok) throw init.error;
 };
 
-/** Make a current database look like one from before the runner. */
-const forgetVersion = (db: Db): void => {
-	db.run(`DROP TABLE ${TABLES.schema_migrations}`);
-};
-
 const versionRows = (at = base) =>
 	withDb(
 		(db) =>
@@ -60,42 +53,6 @@ const versionRows = (at = base) =>
 				.all(),
 		at,
 	);
-
-/**
- * Everything a schema is, independent of column order: an ALTER appends a
- * column at the end where the DDL declares it in the middle, and SQLite's own
- * autoindexes follow from UNIQUE written inline versus added later.
- */
-const schemaSignature = (at: string) =>
-	withDb((db) => {
-		const objects = db
-			.query<{ type: string; name: string }, []>(
-				`SELECT type, name FROM sqlite_master
-				  WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name`,
-			)
-			.all();
-		const columns = Object.fromEntries(
-			objects
-				.filter((o) => o.type === "table")
-				.map((t) => [
-					t.name,
-					db
-						.query<
-							{
-								name: string;
-								type: string;
-								notnull: number;
-								dflt_value: string | null;
-							},
-							[]
-						>(
-							`SELECT name, type, "notnull", dflt_value FROM pragma_table_info('${t.name}') ORDER BY name`,
-						)
-						.all(),
-				]),
-		);
-		return { objects: objects.map((o) => `${o.type}:${o.name}`), columns };
-	}, at);
 
 /** What a database reports once every migration has run. */
 const ALL_VERSIONS = Migrations.LIST.map((m, i) => ({
@@ -114,8 +71,6 @@ const tableNames = (at = base) =>
 				.map((r) => r.name),
 		at,
 	);
-
-const REPLICATION_COLUMNS = ["updated_by", "version", "visibility"] as const;
 
 const NOW = "2026-07-18T12:00:00.000Z";
 
@@ -142,48 +97,6 @@ describe("Migrations on a fresh database", () => {
 		});
 	});
 
-	it("ends at the same schema as a pre-release database brought up by the baseline", async () => {
-		const upgraded = freshBase("upgraded");
-		try {
-			await mustInit(upgraded);
-			await withDb(forgetVersion, upgraded);
-			await mustInit(upgraded);
-			expect(await versionRows(upgraded)).toEqual(ALL_VERSIONS);
-			expect(await schemaSignature(upgraded)).toEqual(
-				await schemaSignature(base),
-			);
-		} finally {
-			rmSync(upgraded, { recursive: true, force: true });
-		}
-	});
-
-	it("leaves a linked issue made private on purpose private across boots", async () => {
-		const task = await Planner.addTask(base, { title: "root" });
-		if (!task.ok) throw task.error;
-		await withDb((db) =>
-			db.run(
-				`INSERT INTO ${TABLES.upstream_links}
-				   (id, task_id, provider, external_id, identifier, url, title,
-				    created_at, updated_at, visibility)
-				 VALUES ('01PRIVATE', ?, 'linear', 'uuid', 'ENG-9',
-				         'https://linear.app/acme/issue/ENG-9/x', 'Private', ?, ?, 'private')`,
-				[task.value.id, NOW, NOW],
-			),
-		);
-
-		await mustInit(base);
-		await mustInit(base);
-
-		const row = await withDb((db) =>
-			db
-				.query<{ visibility: string }, [string]>(
-					`SELECT visibility FROM ${TABLES.upstream_links} WHERE id = ?`,
-				)
-				.get("01PRIVATE"),
-		);
-		expect(row?.visibility).toBe("private");
-	});
-
 	it("refuses a database a newer kabane has migrated, and says to update", async () => {
 		await withDb((db) =>
 			db.run(
@@ -197,136 +110,32 @@ describe("Migrations on a fresh database", () => {
 	});
 });
 
-describe("Migrations on a pre-release database", () => {
-	beforeEach(async () => {
-		base = freshBase("pre-release");
-		await mustInit(base);
-	});
-
+describe("Migrations on a database from before the runner", () => {
 	afterEach(() => rmSync(base, { recursive: true, force: true }));
 
-	it("adds updated_by, version and visibility to a table created without them", async () => {
-		const seeded = await Planner.addTask(base, { title: "pre-existing" });
-		if (!seeded.ok) throw seeded.error;
-
-		// Turn the table into what a trigger-era database has.
-		await withDb((db) => {
-			for (const column of REPLICATION_COLUMNS) {
-				db.run(`ALTER TABLE ${TABLES.tasks} DROP COLUMN ${column}`);
-				db.run(`ALTER TABLE ${TABLES.comments} DROP COLUMN ${column}`);
-			}
-			db.run(`ALTER TABLE ${TABLES.upstream_links} DROP COLUMN visibility`);
-			forgetVersion(db);
-		});
-		expect(
-			await withDb((db) => columnExists(db, TABLES.tasks, "version")),
-		).toBe(false);
-
-		const reinit = await Planner.init(base);
-		expect(reinit.ok).toBe(true);
-		expect(await versionRows()).toEqual(ALL_VERSIONS);
-
-		for (const column of REPLICATION_COLUMNS) {
-			expect(await withDb((db) => columnExists(db, TABLES.tasks, column))).toBe(
-				true,
-			);
-			expect(
-				await withDb((db) => columnExists(db, TABLES.comments, column)),
-			).toBe(true);
-		}
-
-		// Existing rows read as version 1 and shared, which is what they were
-		// implicitly.
-		const row = await withDb((db) =>
-			db
-				.query<
-					{ version: number; visibility: string; updated_by: string | null },
-					[string]
-				>(
-					`SELECT version, visibility, updated_by FROM ${TABLES.tasks} WHERE id = ?`,
-				)
-				.get(seeded.value.id),
-		);
-		expect(row).toEqual({ version: 1, visibility: "shared", updated_by: null });
-
-		const upstreamDefault = await withDb((db) =>
-			db
-				.query<{ dflt_value: string }, []>(
-					`SELECT dflt_value FROM pragma_table_info('${TABLES.upstream_links}') WHERE name = 'visibility'`,
-				)
-				.get(),
-		);
-		expect(upstreamDefault?.dflt_value).toBe("'shared'");
-
-		// And the migrated table writes like a fresh one.
-		const updated = await Planner.updateTask(base, seeded.value.id, {
-			title: "after migration",
-		});
-		expect(updated.ok).toBe(true);
-	});
-
-	it("drops the linked-issue snapshot columns and releases the held rows", async () => {
-		const task = await Planner.addTask(base, { title: "root" });
+	it("refuses it, says which kabane still upgrades it, and changes nothing", async () => {
+		base = freshBase("pre-runner");
+		await mustInit(base);
+		const task = await Planner.addTask(base, { title: "kept" });
 		if (!task.ok) throw task.error;
+		// Tables and no version table: what a build older than the runner left.
+		await withDb((db) => db.run(`DROP TABLE ${TABLES.schema_migrations}`));
 
-		// Rebuild the table as a snapshot-era database: the four content columns
-		// back, visibility pinned private, one row already in it.
-		await withDb((db) => {
-			db.run(`DROP TABLE ${TABLES.upstream_links}`);
-			db.run(
-				`CREATE TABLE ${TABLES.upstream_links} (
-				   id TEXT PRIMARY KEY,
-				   task_id TEXT NOT NULL REFERENCES ${TABLES.tasks}(id) ON DELETE CASCADE,
-				   provider TEXT NOT NULL,
-				   external_id TEXT NOT NULL,
-				   identifier TEXT,
-				   url TEXT NOT NULL,
-				   title TEXT NOT NULL,
-				   description TEXT,
-				   state TEXT,
-				   external_updated_at TEXT,
-				   refreshed_at TEXT NOT NULL,
-				   created_at TEXT NOT NULL,
-				   updated_at TEXT NOT NULL,
-				   visibility TEXT NOT NULL DEFAULT 'private',
-				   UNIQUE(task_id, provider, external_id)
-				 )`,
+		for (const _boot of [1, 2]) {
+			const init = await Planner.init(base);
+			expect(init.ok ? "" : init.error.message).toContain(
+				"open it once with kabane 1.0.0-beta.0",
 			);
-			db.run(
-				`INSERT INTO ${TABLES.upstream_links}
-				   (id, task_id, provider, external_id, identifier, url, title,
-				    description, state, external_updated_at, refreshed_at,
-				    created_at, updated_at)
-				 VALUES ('01LINK', ?, 'linear', 'linear-uuid', 'ENG-123',
-				         'https://linear.app/acme/issue/ENG-123/x', 'Team feature',
-				         'cached body', 'In Progress', ?, ?, ?, ?)`,
-				[task.value.id, NOW, NOW, NOW, NOW],
-			);
-			forgetVersion(db);
-		});
-
-		const reinit = await Planner.init(base);
-		expect(reinit.ok).toBe(true);
-
-		for (const column of [
-			"description",
-			"state",
-			"external_updated_at",
-			"refreshed_at",
-		]) {
-			expect(
-				await withDb((db) => columnExists(db, TABLES.upstream_links, column)),
-			).toBe(false);
+			expect(await versionRows()).toEqual([]);
 		}
-
-		const row = await withDb((db) =>
+		const kept = await withDb((db) =>
 			db
-				.query<{ visibility: string; title: string }, [string]>(
-					`SELECT visibility, title FROM ${TABLES.upstream_links} WHERE id = ?`,
+				.query<{ title: string }, [string]>(
+					`SELECT title FROM ${TABLES.tasks} WHERE id = ?`,
 				)
-				.get("01LINK"),
+				.get(task.value.id),
 		);
-		expect(row).toEqual({ visibility: "shared", title: "Team feature" });
+		expect(kept).toEqual({ title: "kept" });
 	});
 });
 
@@ -356,7 +165,7 @@ describe("Migrations on a device stamped at the baseline", () => {
 		);
 		await withDb((db) =>
 			db.run(
-				`INSERT INTO ${physicalTable("proposals")}
+				`INSERT INTO proposals
 				   (id, action, confidence, summary, payload, created_at, updated_at)
 				 VALUES ('01PROPOSAL', 'ask_question', 0.9, 'retired', '{}', ?, ?)`,
 				[NOW, NOW],
@@ -364,14 +173,14 @@ describe("Migrations on a device stamped at the baseline", () => {
 		);
 		await withDb((db) =>
 			db.run(
-				`INSERT INTO ${physicalTable("focus_lists")} (id, period, created_at, updated_at)
+				`INSERT INTO focus_lists (id, period, created_at, updated_at)
 				 VALUES ('01FOCUS', 'daily', ?, ?)`,
 				[NOW, NOW],
 			),
 		);
 		await withDb((db) =>
 			db.run(
-				`INSERT INTO ${physicalTable("task_activity")}
+				`INSERT INTO task_activity
 				   (id, task_id, event_type, actor, actor_type, timestamp)
 				 VALUES ('01ACTIVITY', ?, 'short_id_renamed', 'sync', 'ai', ?)`,
 				[task.value.id, NOW],
@@ -420,54 +229,51 @@ describe("Migration 5: end-of-UTC-day deadlines become the dates they meant", ()
 		rmSync(base, { recursive: true, force: true });
 	});
 
-	for (const prefix of ["", "planner_"]) {
-		it(`converts only the end-of-day shapes${prefix ? " behind Jake's prefix" : ""}, once`, async () => {
-			configureTestRuntime(prefix);
-			base = freshBase(`deadlines${prefix}`);
-			// A device on the build before this migration: versions 1 to 4.
-			await withDb((db) => {
-				const stamped = Migrate.run(db, Migrations.LIST.slice(0, 4));
-				if (!stamped.ok) throw stamped.error;
-			});
-			const ids: string[] = [];
-			for (const [stored] of SHAPES) {
-				// Written as the old build stored it, past today's input parsing.
-				const task = await Planner.addTask(base, { title: stored });
-				if (!task.ok) throw task.error;
-				await withDb((db) =>
-					db.run(`UPDATE ${TABLES.tasks} SET deadline = ? WHERE id = ?`, [
-						stored,
-						task.value.id,
-					]),
-				);
-				ids.push(task.value.id);
-			}
-			const none = await Planner.addTask(base, { title: "no deadline" });
-			if (!none.ok) throw none.error;
-
-			await mustInit(base);
-			expect(await versionRows()).toEqual(ALL_VERSIONS);
-			const read = async () =>
-				withDb((db) =>
-					ids.map(
-						(id) =>
-							db
-								.query<{ deadline: string | null }, [string]>(
-									`SELECT deadline FROM ${TABLES.tasks} WHERE id = ?`,
-								)
-								.get(id)?.deadline,
-					),
-				);
-			expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
-			const kept = await Planner.getTask(base, none.value.id);
-			expect(kept.ok && kept.value?.deadline).toBeUndefined();
-
-			// A second boot applies nothing and changes nothing.
-			await mustInit(base);
-			expect(await versionRows()).toEqual(ALL_VERSIONS);
-			expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
+	it("converts only the end-of-day shapes, once", async () => {
+		base = freshBase("deadlines");
+		// A device on the build before this migration: versions 1 to 4.
+		await withDb((db) => {
+			const stamped = Migrate.run(db, Migrations.LIST.slice(0, 4));
+			if (!stamped.ok) throw stamped.error;
 		});
-	}
+		const ids: string[] = [];
+		for (const [stored] of SHAPES) {
+			// Written as the old build stored it, past today's input parsing.
+			const task = await Planner.addTask(base, { title: stored });
+			if (!task.ok) throw task.error;
+			await withDb((db) =>
+				db.run(`UPDATE ${TABLES.tasks} SET deadline = ? WHERE id = ?`, [
+					stored,
+					task.value.id,
+				]),
+			);
+			ids.push(task.value.id);
+		}
+		const none = await Planner.addTask(base, { title: "no deadline" });
+		if (!none.ok) throw none.error;
+
+		await mustInit(base);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
+		const read = async () =>
+			withDb((db) =>
+				ids.map(
+					(id) =>
+						db
+							.query<{ deadline: string | null }, [string]>(
+								`SELECT deadline FROM ${TABLES.tasks} WHERE id = ?`,
+							)
+							.get(id)?.deadline,
+				),
+			);
+		expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
+		const kept = await Planner.getTask(base, none.value.id);
+		expect(kept.ok && kept.value?.deadline).toBeUndefined();
+
+		// A second boot applies nothing and changes nothing.
+		await mustInit(base);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
+		expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
+	});
 });
 
 describe("Migration 6: relayed tool-permission answers stop being decisions", () => {
@@ -613,14 +419,9 @@ describe("Migration 9: an issue's comments become entries of kind comment", () =
 	});
 
 	// 7 is where the released 1.0.0-beta.0 leaves a database; 8 never shipped.
-	for (const [prefix, from] of [
-		["", 7],
-		["", 8],
-		["planner_", 8],
-	] as const) {
-		it(`reads every existing comment as kind comment, from version ${from}${prefix ? " behind Jake's prefix" : ""}`, async () => {
-			configureTestRuntime(prefix);
-			base = freshBase(`entry-kind${prefix}-${from}`);
+	for (const from of [7, 8]) {
+		it(`reads every existing comment as kind comment, from version ${from}`, async () => {
+			base = freshBase(`entry-kind-${from}`);
 			await withDb((db) => {
 				const stamped = Migrate.run(db, Migrations.LIST.slice(0, from));
 				if (!stamped.ok) throw stamped.error;
@@ -665,26 +466,135 @@ describe("Migration 9: an issue's comments become entries of kind comment", () =
 	}
 });
 
-describe("Migrations with Jake's table prefix", () => {
-	afterEach(() => {
-		configureTestRuntime();
-		rmSync(base, { recursive: true, force: true });
-	});
+describe("Migration 10: scopes leave the jake:// scheme", () => {
+	afterEach(() => rmSync(base, { recursive: true, force: true }));
 
-	it("keeps its version table behind the prefix too", async () => {
-		configureTestRuntime("planner_");
-		base = freshBase("prefixed");
+	it("renames every stored scope and logged op, once, and moves no version or clock", async () => {
+		base = freshBase("scope-scheme");
+		// A device on the build before this migration, with sync armed.
+		await withDb((db) => {
+			const stamped = Migrate.run(db, Migrations.LIST.slice(0, 9));
+			if (!stamped.ok) throw stamped.error;
+			const armed = Oplog.initDevice(db, "device-a");
+			if (!armed.ok) throw armed.error;
+		});
+		const project = await Planner.addProject(base, {
+			title: "p",
+			scopeUri: "mill",
+		});
+		if (!project.ok) throw project.error;
+		const plain = await Planner.addTask(base, {
+			title: "plain",
+			scopeUri: "mill",
+			// Text that only mentions the old scheme is not a scope.
+			description: "see jake://scope/mill for the history",
+		});
+		const extended = await Planner.addTask(base, {
+			title: "extended",
+			scopeUri: "kabane://scope/github.com%2Facme%2Fmill?branch=main",
+			scopeRefs: [{ scopeUri: "kabane://scope/other", role: "related" }],
+		});
+		const unscoped = await Planner.addTask(base, { title: "unscoped" });
+		if (!plain.ok || !extended.ok || !unscoped.ok)
+			throw new Error("seeding failed");
+		// What that build stored: the same rows and ops under the old scheme.
+		await withDb((db) => {
+			for (const table of [TABLES.tasks, TABLES.projects, TABLES.sequences])
+				db.run(
+					`UPDATE ${table} SET scope_uri = replace(scope_uri, 'kabane://scope/', 'jake://scope/')`,
+				);
+			db.run(
+				`UPDATE ${TABLES.tasks} SET scope_refs = replace(scope_refs, 'kabane://scope/', 'jake://scope/')`,
+			);
+			db.run(
+				`UPDATE ${TABLES.sync_oplog} SET payload = replace(payload, 'kabane://scope/', 'jake://scope/')`,
+			);
+		});
+		const scopes = () =>
+			withDb((db) => ({
+				tasks: db
+					.query<Record<string, unknown>, []>(
+						`SELECT title, scope_uri, scope_refs, description, version, updated_at
+						   FROM ${TABLES.tasks} ORDER BY title`,
+					)
+					.all(),
+				projects: db
+					.query<{ scope_uri: string }, []>(
+						`SELECT scope_uri FROM ${TABLES.projects}`,
+					)
+					.all(),
+				sequences: db
+					.query<{ prefix: string; scope_uri: string | null }, []>(
+						`SELECT prefix, scope_uri FROM ${TABLES.sequences} ORDER BY prefix`,
+					)
+					.all(),
+				ops: db
+					.query<{ payload: string }, []>(
+						`SELECT payload FROM ${TABLES.sync_oplog} WHERE tbl IN ('tasks', 'projects') ORDER BY seq`,
+					)
+					.all()
+					.map((op) => JSON.parse(op.payload) as Record<string, unknown>)
+					.map((row) => [row.title, row.scope_uri, row.scope_refs]),
+			}));
+		const before = await scopes();
+		expect(before.ops).toContainEqual(["plain", "jake://scope/mill", null]);
+
 		await mustInit(base);
-		const names = await withDb((db) =>
-			db
-				.query<{ name: string }, []>(
-					"SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%schema_migrations'",
-				)
-				.all()
-				.map((r) => r.name),
-		);
-		expect(names).toEqual(["planner_schema_migrations"]);
 		expect(await versionRows()).toEqual(ALL_VERSIONS);
+
+		const after = await scopes();
+		const old = (uri: string) => uri.replace("kabane://", "jake://");
+		expect(after.tasks).toEqual([
+			{
+				...before.tasks[0],
+				scope_uri: "kabane://scope/github.com%2Facme%2Fmill?branch=main",
+				scope_refs: '[{"scopeUri":"kabane://scope/other","role":"related"}]',
+			},
+			{ ...before.tasks[1], scope_uri: "kabane://scope/mill" },
+			{ ...before.tasks[2] },
+		]);
+		expect(after.tasks[1]?.description).toBe(
+			"see jake://scope/mill for the history",
+		);
+		expect(after.tasks[2]?.scope_uri).toBeNull();
+		expect(after.projects).toEqual([{ scope_uri: "kabane://scope/mill" }]);
+		expect(after.sequences).toEqual(
+			before.sequences.map((row) => ({
+				...row,
+				scope_uri:
+					row.scope_uri && row.scope_uri.replace("jake://", "kabane://"),
+			})),
+		);
+		expect(after.sequences.map((row) => row.scope_uri)).toContain(
+			"kabane://scope/mill",
+		);
+		expect(after.ops).toEqual([
+			["p", "kabane://scope/mill", undefined],
+			["plain", "kabane://scope/mill", null],
+			[
+				"extended",
+				"kabane://scope/github.com%2Facme%2Fmill?branch=main",
+				'[{"scopeUri":"kabane://scope/other","role":"related"}]',
+			],
+			["unscoped", null, null],
+		]);
+		expect(before.ops.map(([, uri]) => uri)).toEqual(
+			after.ops.map(([, uri]) => (typeof uri === "string" ? old(uri) : uri)),
+		);
+
+		// A second boot is a read of the version table.
+		await mustInit(base);
+		expect(await scopes()).toEqual(after);
+
+		// The old scheme, the new one and a bare id all name the scope.
+		for (const scopeUri of [
+			"jake://scope/mill",
+			"kabane://scope/mill",
+			"mill",
+		]) {
+			const found = await Planner.queryTasks(base, { scopeUri });
+			expect(found.ok && found.value.map((t) => t.title)).toEqual(["plain"]);
+		}
 	});
 });
 

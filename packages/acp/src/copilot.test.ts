@@ -233,7 +233,7 @@ const scriptedAgent = (
 const context = (
 	over: Partial<BoardContext.Context> = {},
 ): BoardContext.Context => ({
-	scopeUri: "jake://scope/cabane",
+	scopeUri: "kabane://scope/cabane",
 	view: "board",
 	section: "next",
 	filter: { kind: "all", status: "open" },
@@ -259,7 +259,7 @@ const copilotOver = (
 	BoardCopilot.create({
 		harness: "claude",
 		scopeDir: "/repos/cabane",
-		scopeUri: "jake://scope/cabane",
+		scopeUri: "kabane://scope/cabane",
 		kabaneBin: BIN,
 		home: "/home/me/.kabane",
 		setup: SETUP,
@@ -321,7 +321,7 @@ describe("BoardCopilot", () => {
 					args: [
 						"mcp",
 						"--scope",
-						"jake://scope/cabane",
+						"kabane://scope/cabane",
 						"--as",
 						"cabane://actor/agent/claude",
 					],
@@ -391,7 +391,7 @@ describe("BoardCopilot", () => {
 			CopilotInstructions.systemPrompt(SETUP, BIN),
 		);
 		const firstContext = textOf(seen.prompts[0], 1);
-		expect(firstContext).toContain("scope: jake://scope/cabane");
+		expect(firstContext).toContain("scope: kabane://scope/cabane");
 		expect(firstContext).toContain("selected: JCAB-33 · Sweep the backlog");
 		expect(firstContext).toContain("the assembled brief");
 		expect(textOf(seen.prompts[0], 2)).toBe(
@@ -399,7 +399,9 @@ describe("BoardCopilot", () => {
 		);
 
 		// Second turn: context block, then the prompt. No instructions.
-		expect(textOf(seen.prompts[1], 0)).toContain("scope: jake://scope/cabane");
+		expect(textOf(seen.prompts[1], 0)).toContain(
+			"scope: kabane://scope/cabane",
+		);
 		expect(textOf(seen.prompts[1], 1)).toBe("now split the first one");
 		copilot.close();
 	});
@@ -462,7 +464,9 @@ describe("BoardCopilot", () => {
 		]);
 		// A slash the harness never listed is a prompt like any other, context and all.
 		await collect(copilot.run("/nope", context()));
-		expect(textOf(seen.prompts[2], 0)).toContain("scope: jake://scope/cabane");
+		expect(textOf(seen.prompts[2], 0)).toContain(
+			"scope: kabane://scope/cabane",
+		);
 		expect(textOf(seen.prompts[2], 1)).toBe("/nope");
 		copilot.close();
 	});

@@ -112,7 +112,7 @@ export namespace Oplog {
 	 *
 	 * `received_at` is a JS ISO string, never SQLite's `datetime('now')`: that
 	 * emits a space-separated, second-granularity value that sorts below and
-	 * misorders against every other timestamp in Jake.
+	 * misorders against every other timestamp kabane writes.
 	 */
 	export const append = (sql: SqlStorage, req: PushRequest): PushAck => {
 		registerDevice(sql, req.deviceId, req.name);

@@ -1,17 +1,12 @@
 /**
  * Schema DDL and its application.
  *
- * The DDL is written once with LOGICAL table names. `applySchema` rewrites it
- * for the configured prefix and creates the FTS5 tables and their triggers,
- * so "shared database with a prefix" versus "own database with plain names"
- * is configuration, not a fork of the schema.
+ * `applySchema` runs the DDL and creates the FTS5 tables and their triggers.
  *
  * THIS IS MIGRATION 1, THE RELEASE BASELINE (`storage/migrations.ts`), and it
  * runs once per database. Do not edit it to change the schema: append a
  * migration to that list instead, so a fresh database and an upgraded one end
- * at the same schema. Every statement stays IF NOT EXISTS because a
- * pre-release database already has most of these tables when the baseline
- * runs on it.
+ * at the same schema.
  *
  * Being frozen, it still creates the tables later migrations drop (proposals,
  * focus_lists, task_activity); `migrations.ts` removes them right after. So the
@@ -20,12 +15,11 @@
  */
 
 import type { Db } from "./port";
-import { tablePrefix } from "./tables";
 
 export type FtsTable = {
-	/** Virtual table logical name */
+	/** Virtual table name */
 	name: string;
-	/** Source table logical name */
+	/** Source table name */
 	sourceTable: string;
 	/** Columns to index */
 	columns: string[];
@@ -69,36 +63,10 @@ const BASELINE_FTS_TABLES: readonly FtsTable[] = [
 	},
 ];
 
-/**
- * Apply a table-name prefix to DDL.
- *
- * Handles CREATE TABLE, CREATE [UNIQUE] INDEX, REFERENCES x(, and ON x( —
- * NOT CREATE TRIGGER, which is why capture triggers are built in code from
- * the physical names (see storage/oplog.ts).
- */
-export const prefixSql = (sql: string, prefix: string): string => {
-	if (prefix === "") return sql;
-	return sql
-		.replace(
-			/CREATE TABLE IF NOT EXISTS (\w+)/gi,
-			`CREATE TABLE IF NOT EXISTS ${prefix}$1`,
-		)
-		.replace(
-			/CREATE INDEX IF NOT EXISTS (\w+)/gi,
-			`CREATE INDEX IF NOT EXISTS ${prefix}$1`,
-		)
-		.replace(
-			/CREATE UNIQUE INDEX IF NOT EXISTS (\w+)/gi,
-			`CREATE UNIQUE INDEX IF NOT EXISTS ${prefix}$1`,
-		)
-		.replace(/REFERENCES (\w+)\(/gi, `REFERENCES ${prefix}$1(`)
-		.replace(/\bON (\w+)\(/gi, `ON ${prefix}$1(`);
-};
-
 /** FTS5 virtual table plus the three triggers that keep it in step. */
-export const generateFtsSql = (prefix: string, fts: FtsTable): string => {
-	const ftsTableName = `${prefix}${fts.name}`;
-	const sourceTableName = `${prefix}${fts.sourceTable}`;
+export const generateFtsSql = (fts: FtsTable): string => {
+	const ftsTableName = fts.name;
+	const sourceTableName = fts.sourceTable;
 	const columns = fts.columns.join(", ");
 	const newColumns = fts.columns.map((c) => `NEW.${c}`).join(", ");
 	const oldColumns = fts.columns.map((c) => `OLD.${c}`).join(", ");
@@ -129,12 +97,11 @@ END;
 `;
 };
 
-/** Migration 1: create the baseline's tables, indexes and FTS tables for the configured prefix. */
+/** Migration 1: create the baseline's tables, indexes and FTS tables. */
 export const applySchema = (db: Db): void => {
-	const prefix = tablePrefix();
-	db.exec(prefixSql(SCHEMA_SQL, prefix));
+	db.exec(SCHEMA_SQL);
 	for (const fts of BASELINE_FTS_TABLES) {
-		db.exec(generateFtsSql(prefix, fts));
+		db.exec(generateFtsSql(fts));
 	}
 };
 
@@ -476,10 +443,6 @@ CREATE INDEX IF NOT EXISTS idx_agent_sessions_last_activity ON agent_sessions(la
 -- ============================================================
 -- Append-only. Ephemeral rows (e.g. a spinner) are folded at query time
 -- (durable + latest ephemeral only) and compacted on session close.
--- NOTE: first planner-internal FK between two NEW tables. prefixSql rewrites
--- the REFERENCES target agent_sessions to planner_agent_sessions (verified
--- against packages/core/db/registry.ts prefixSql; the rewrite is content-
--- agnostic, so new-to-new works exactly like new-to-existing).
 
 CREATE TABLE IF NOT EXISTS agent_activities (
   id TEXT PRIMARY KEY,              -- ULID
@@ -503,9 +466,6 @@ CREATE INDEX IF NOT EXISTS idx_agent_activities_durable ON agent_activities(sess
 -- Append-only queue written by the capture triggers in storage/oplog.ts.
 -- seq is the local total order and the only ordering that matters here;
 -- op_id is the remote idempotency key, so a retried push is a no-op.
--- NOTE: the triggers that write this table are built in TypeScript, not here —
--- prefixSql does not rewrite CREATE TRIGGER, so raw trigger DDL in this string
--- would reference unprefixed tables that do not exist.
 
 CREATE TABLE IF NOT EXISTS sync_oplog (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -568,7 +528,7 @@ CREATE TABLE IF NOT EXISTS sync_quarantine (
 -- rename protocol keeps one and reassigns the other, recording the old label
 -- here as an AUDIT TRAIL. Not a lookup fallback: the winner keeps the label
 -- live, so resolving it finds the winner's real row and never reaches this
--- table. See the short_id ruling in packages/planner/CLAUDE.md.
+-- table. See the short_id ruling in packages/core/AGENTS.md.
 
 CREATE TABLE IF NOT EXISTS short_id_history (
   old_short_id TEXT PRIMARY KEY,

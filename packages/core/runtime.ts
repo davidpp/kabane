@@ -3,7 +3,7 @@
  *
  * Storage functions take a `basePath` string, not a database handle, so they
  * need one place to turn that string into a `Db`. This is that place. A host
- * (the CLI, Jake, the Worker) calls `Runtime.configure` once at startup; core
+ * (the CLI, the Worker) calls `Runtime.configure` once at startup; core
  * code calls `withDb` and never learns which engine is underneath.
  *
  * Every port has a default that does nothing, so the core is usable with only
@@ -12,7 +12,6 @@
  */
 
 import type { Db, DbProvider } from "./db/port";
-import { setTablePrefix } from "./db/tables";
 import { type KabaneModule, Modules, setModules } from "./module";
 import { err, ok, type Result } from "./result";
 import type { EntryKind } from "./schemas/comment";
@@ -40,14 +39,6 @@ export type Tracer = <TArgs extends unknown[], TReturn>(
 /** Receives domain events (task created, updated, deleted). No-op by default. */
 export type Notifier = (type: string, payload: unknown) => Promise<void>;
 
-/**
- * Resolves a working directory to a stable project identity, for a host that
- * keys its own state by project (Jake's session defaults). Nothing in the core
- * calls it. Returns null when the host has no notion of project identity, which
- * is the default.
- */
-export type ScopeResolver = (cwd: string) => Promise<string | null>;
-
 /** Where the sync block comes from. Default: sync disabled. */
 export type SyncSettingsSource = () => Promise<Result<SyncConfig>>;
 
@@ -72,11 +63,8 @@ export type TimezoneSource = () => string;
 
 export type RuntimeConfig = {
 	provider: DbProvider;
-	/** Physical table-name prefix, e.g. "planner_". Default: none. */
-	tablePrefix?: string;
 	tracer?: Tracer;
 	notifier?: Notifier;
-	scopeResolver?: ScopeResolver;
 	syncSettings?: SyncSettingsSource;
 	actor?: ActorSource;
 	timezone?: TimezoneSource;
@@ -93,7 +81,6 @@ export type RuntimeConfig = {
 
 const identityTracer: Tracer = (_name, fn) => fn;
 const silentNotifier: Notifier = async () => {};
-const noScope: ScopeResolver = async () => null;
 const anonymous: ActorSource = () => ANONYMOUS_ACTOR;
 const processZone: TimezoneSource = () => Deadline.systemZone();
 const syncDisabled: SyncSettingsSource = async () => {
@@ -112,13 +99,12 @@ const unconfigured: DbProvider = {
 		),
 };
 
-type Ports = Required<Omit<RuntimeConfig, "tablePrefix" | "modules">>;
+type Ports = Required<Omit<RuntimeConfig, "modules">>;
 
 let ports: Ports = {
 	provider: unconfigured,
 	tracer: identityTracer,
 	notifier: silentNotifier,
-	scopeResolver: noScope,
 	syncSettings: syncDisabled,
 	actor: anonymous,
 	timezone: processZone,
@@ -141,18 +127,15 @@ export namespace Runtime {
 			provider: config.provider,
 			tracer: config.tracer ?? identityTracer,
 			notifier: config.notifier ?? silentNotifier,
-			scopeResolver: config.scopeResolver ?? noScope,
 			syncSettings: config.syncSettings ?? syncDisabled,
 			actor: config.actor ?? anonymous,
 			timezone: config.timezone ?? processZone,
 		};
-		setTablePrefix(config.tablePrefix ?? "");
 		return ok(undefined);
 	};
 
 	export const tracer = (): Tracer => ports.tracer;
 	export const notifier = (): Notifier => ports.notifier;
-	export const scopeResolver = (): ScopeResolver => ports.scopeResolver;
 	export const syncSettings = (): SyncSettingsSource => ports.syncSettings;
 	/** The actor URI to stamp on a local write, resolved now. */
 	export const actor = (): string => ports.actor();

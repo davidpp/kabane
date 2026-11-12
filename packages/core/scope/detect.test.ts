@@ -431,35 +431,12 @@ describe("resolveScopeId", () => {
 
 		expect(await resolveScopeId(root, { home })).toBe(root);
 	});
-
-	it("takes a legacy pin over the remote, and stores nothing", async () => {
-		const root = dir("repo");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
-
-		expect(
-			await resolveScopeId(root, { home, legacyPin: async () => "jake" }),
-		).toBe("jake");
-		expect(untracked(root)).toBe("");
-		expect(stored()).toEqual([]);
-	});
-
-	it("skips a git: legacy pin so a remote can still win", async () => {
-		const root = dir("repo");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
-
-		expect(
-			await resolveScopeId(root, {
-				home,
-				legacyPin: async () => "git:abc123abc123",
-			}),
-		).toBe("github.com/davidpp/cabane");
-	});
 });
 
 describe("resolveProjectName", () => {
 	it.each([
 		["the repo half of a remote id", "github.com/davidpp/cabane", "cabane"],
-		["the folder of a path fallback", "/Users/x/Projects/jake", "jake"],
+		["the folder of a path fallback", "/Users/x/Projects/mill", "mill"],
 		["a bare id unchanged", "cabane", "cabane"],
 	])("takes %s", (_label, scopeId, expected) => {
 		expect(resolveProjectName(scopeId)).toBe(expected);
@@ -492,7 +469,7 @@ describe("detectScope", () => {
 			branch: "main",
 		});
 		expect(scope?.scopeUri).toBe(
-			"jake://scope/cabane?branch=main&package=%40cabane%2Fcore",
+			"kabane://scope/cabane?branch=main&package=%40cabane%2Fcore",
 		);
 	});
 
@@ -522,7 +499,7 @@ describe("detectScope", () => {
 		const scope = await detectScope(root, { home, detectExtensions: false });
 
 		expect(scope?.extensions).toEqual({});
-		expect(scope?.scopeUri).toBe("jake://scope/cabane");
+		expect(scope?.scopeUri).toBe("kabane://scope/cabane");
 	});
 
 	it("leaves a fresh clone without a kabane file", async () => {

@@ -165,7 +165,7 @@ export const TaskSchema = z.object({
 	// --- Scoping (ADR-010) ---
 
 	/**
-	 * Primary scope URI (e.g., "jake://scope/github.com/user/repo?client=acme")
+	 * Primary scope URI (e.g., "kabane://scope/github.com/user/repo?client=acme")
 	 * Uses Core Scope system for stable identity across machines/renames.
 	 */
 	scopeUri: z.string().optional(),
@@ -308,9 +308,6 @@ export const TaskQuerySchema = z.object({
 
 	/** Filter by scope URI (exact match) */
 	scopeUri: z.string().optional(),
-
-	/** Filter by scope URI pattern (SQL LIKE, e.g., "jake://scope/github.com/user/%") */
-	scopeUriPattern: z.string().optional(),
 
 	/** Filter by source */
 	source: TaskSourceSchema.optional(),

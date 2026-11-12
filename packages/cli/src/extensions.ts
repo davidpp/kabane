@@ -91,15 +91,17 @@ export namespace Extensions {
 		return ok(extensions);
 	};
 
-	// The top-level keys a namespace may not take: device config, and the per-scope block.
+	// The top-level keys a namespace may not take: device config, the per-scope block, and `db`,
+	// a retired device key a config is refused for still holding.
 	const RESERVED: ReadonlySet<string> = new Set([
 		...Object.keys(ConfigSchema.shape),
 		ConfigLayers.SCOPES,
+		"db",
 	]);
 
 	/**
 	 * The settings namespaces `extensions` declare. Refuses a namespace named like a device key,
-	 * which would let a project file reach `sync` or `db`, and one whose schema refuses an empty
+	 * which would let a project file reach `sync`, and one whose schema refuses an empty
 	 * layer, since every layer is partial.
 	 */
 	export const namespacesOf = (

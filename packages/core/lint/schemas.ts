@@ -1,10 +1,8 @@
 /**
  * Plan Lint Schemas
  *
- * Shared types for plan quality checks. Used by:
- * - `jake plan lint <id>` CLI
- * - `planner.lint` tRPC procedure
- * - Loop briefing (pre-dispatch risk display)
+ * Shared types for plan quality checks, used by the loop's briefing
+ * (pre-dispatch risk display).
  */
 
 import { z } from "zod";

@@ -157,7 +157,7 @@ export namespace Fixtures {
 
 	export const task = (over: Partial<Task> = {}): Task => ({
 		id: "01H000000000000000000000AA",
-		shortId: "JAKE-42",
+		shortId: "MILL-42",
 		title: "Wire the board",
 		kind: "issue",
 		state: "next",

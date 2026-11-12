@@ -3,14 +3,19 @@
  *
  * `Runtime.configure` happens once per process, here. Every command receives
  * the same `Ctx` and calls core with `ctx.store` as the base path, which is the
- * home unless `config.db.path` points elsewhere.
+ * home.
  */
 
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { checklistModule } from "@cabane/checklist";
-import { ok, Planner, type Result, Runtime, tryCatch } from "@cabane/core";
+import {
+	normalizeScopeUri,
+	ok,
+	Planner,
+	type Result,
+	Runtime,
+	tryCatch,
+} from "@cabane/core";
 import {
 	detectScope,
 	mainCheckoutRoot,
@@ -28,8 +33,7 @@ import { SqliteDb } from "@cabane/sqlite";
 import {
 	type Config,
 	configPath,
-	type DatabaseLocation,
-	databaseLocation,
+	DB_NAME,
 	harnessMode,
 	loadConfig,
 	loadConfigDocument,
@@ -52,13 +56,11 @@ export const MODULES = [questionsModule, handoffModule, checklistModule];
 export const configureRuntime = (
 	config: Config,
 	actor: string,
-	location: DatabaseLocation,
 ): Result<void> => {
 	const zone = config.timezone;
 	return Runtime.configure({
 		modules: MODULES,
-		provider: SqliteDb.provider({ dbName: location.dbName }),
-		tablePrefix: location.tablePrefix,
+		provider: SqliteDb.provider({ dbName: DB_NAME }),
 		actor: () => actor,
 		syncSettings: async () => ok(config.sync),
 		// Absent, the runtime's default: the system zone, which honours `TZ`.
@@ -75,14 +77,13 @@ export const openContext = async (
 	const config = loadConfig(home);
 	if (!config.ok) return config;
 	const actor = flagString(args, "as") ?? config.value.actor;
-	const location = databaseLocation(home, config.value);
-	const configured = configureRuntime(config.value, actor, location);
+	const configured = configureRuntime(config.value, actor);
 	if (!configured.ok) return configured;
-	const initialized = await Planner.init(location.basePath);
+	const initialized = await Planner.init(home);
 	if (!initialized.ok) return initialized;
 	return ok({
 		home,
-		store: location.basePath,
+		store: home,
 		cwd,
 		config: config.value,
 		actor,
@@ -105,31 +106,13 @@ export type ScopeSelection = {
 };
 
 /**
- * Jake pins a project's identity in `<root>/.jake/config.json`. A device
- * configured with `db.path` pointing at a Jake database inherits its tasks, so
- * it has to inherit that pin too: resolving the same repo to its git remote
- * instead would be a different scope id, and every task already filed there
- * would drop out of the filter.
- */
-const jakeProjectPin = async (root: string): Promise<string | null> => {
-	try {
-		const raw = await readFile(join(root, ".jake", "config.json"), "utf8");
-		const id = (JSON.parse(raw) as { project?: { id?: unknown } }).project?.id;
-		return typeof id === "string" && id.length > 0 ? id : null;
-	} catch {
-		return null;
-	}
-};
-
-/**
  * The project `cwd` sits in, the way every command resolves it, or null outside
  * one. Needs no config, so setup can ask it before the device has one.
  */
 export const detectProject = (
 	cwd: string,
 	home: string,
-): Promise<ProjectScope | null> =>
-	detectScope(cwd, { home, legacyPin: jakeProjectPin });
+): Promise<ProjectScope | null> => detectScope(cwd, { home });
 
 /**
  * The project at `dir` without the extensions a filter ignores: its root, which keys its local
@@ -139,13 +122,7 @@ export const projectAt = (
 	dir: string,
 	home: string,
 ): Promise<Result<ProjectScope | null>> =>
-	tryCatch(() =>
-		detectScope(dir, {
-			home,
-			legacyPin: jakeProjectPin,
-			detectExtensions: false,
-		}),
-	);
+	tryCatch(() => detectScope(dir, { home, detectExtensions: false }));
 
 /**
  * Settings through every layer for an extension. It reads `config.json` when it resolves, so a
@@ -182,7 +159,16 @@ export const resolveScope = async (
 	ctx: Ctx,
 ): Promise<ScopeSelection | undefined> => {
 	const explicit = flagString(args, "scope");
-	if (explicit) return { scopeUri: explicit, label: explicit };
+	if (explicit) {
+		// The URI rows are stored under, so a bare id or the scheme before schema 10 names the
+		// same scope wherever this one is compared to a row's. An unusable one goes on as typed,
+		// for storage to refuse with its own message.
+		const normalized = normalizeScopeUri(explicit);
+		return {
+			scopeUri: normalized.ok ? normalized.value : explicit,
+			label: explicit,
+		};
+	}
 
 	const detected = await detectProject(ctx.cwd, ctx.home);
 	return detected

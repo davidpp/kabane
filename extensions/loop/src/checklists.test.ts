@@ -42,7 +42,7 @@ beforeEach(async () => {
 	writeFileSync(join(repo, "README.md"), "# fixture\n");
 	GitFixture.run(repo, ["add", "-A"]);
 	GitFixture.run(repo, ["commit", "-q", "-m", "first"]);
-	configureTestRuntime("", { modules: [checklistModule] });
+	configureTestRuntime({ modules: [checklistModule] });
 	await Planner.init(home);
 });
 
@@ -126,7 +126,7 @@ import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"
 import { checklistModule } from ${JSON.stringify(import.meta.resolve("@cabane/checklist"))};
 const AGENT_ACTOR = "cabane://actor/agent/gemini";
 let actor = AGENT_ACTOR;
-configureTestRuntime("", { modules: [checklistModule], actor: () => actor });
+configureTestRuntime({ modules: [checklistModule], actor: () => actor });
 const [home, prompts, done] = process.argv.slice(2);
 let task;
 const ctx = { basePath: home, actor: AGENT_ACTOR, scopeRequired: false };
@@ -520,7 +520,7 @@ describe("Checklists.refuseDone", () => {
 
 	// `kind`, closed by the session's own actor with its checklist's items all open.
 	const closedBySession = async (kind: Task["kind"]): Promise<Task> => {
-		configureTestRuntime("", {
+		configureTestRuntime({
 			modules: [checklistModule],
 			actor: () => AGENT,
 		});

@@ -13,7 +13,6 @@ dist/
 .test-data*/
 
 # Machine-local, never part of the published tree: a maintainer's agent card
-# (CLAUDE.local.md), Jake's project pin, and working research notes.
+# (CLAUDE.local.md) and working research notes.
 CLAUDE.local.md
-.jake/
 docs/research/

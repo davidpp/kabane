@@ -92,9 +92,6 @@ export const ProjectQuerySchema = z.object({
 	/** Filter by scope URI (exact match) */
 	scopeUri: z.string().optional(),
 
-	/** Filter by scope URI pattern (SQL LIKE) */
-	scopeUriPattern: z.string().optional(),
-
 	/** Full-text search query */
 	query: z.string().optional(),
 

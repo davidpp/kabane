@@ -174,7 +174,7 @@ export namespace CommitLinker {
 	/**
 	 * Scan recent commits for task IDs and link them to planner issues.
 	 *
-	 * @param basePath - Jake home path
+	 * @param basePath - The storage base path
 	 * @param projectPath - Git repository path
 	 * @param opts.since - ISO date to start scanning from (default: 24 hours ago)
 	 * @param opts.limit - Max commits to scan (default: 100)

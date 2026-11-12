@@ -31,7 +31,7 @@
 
 import { z } from "zod";
 import type { Db } from "../db/port";
-import { physicalTable, TABLES, tablePrefix } from "../db/tables";
+import { TABLES } from "../db/tables";
 import { Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import {
@@ -52,24 +52,10 @@ const LOCAL_STATE_ID = "local";
 /** The `visibility` value that keeps a row out of the log. */
 const PRIVATE = "private";
 
-/**
- * Physical table for a replicated logical name, core's or a module's. A
- * function, not a map: the prefix is configured at runtime, after this module
- * is imported.
- */
-export const physicalTableFor = (logical: string): string =>
-	physicalTable(logical);
-
 /** A core replicated table, or a registered data module's. */
-const replicates = (logical: string): boolean =>
-	(SYNC_TABLES as readonly string[]).includes(logical) ||
-	Modules.table(logical) !== undefined;
-
-/**
- * Trigger-name suffixes the previous capture design installed. Dropped on boot
- * so a database upgraded from trigger capture does not record every write twice.
- */
-const LEGACY_TRIGGER_SUFFIX = ["ins", "upd", "del"] as const;
+const replicates = (tbl: string): boolean =>
+	(SYNC_TABLES as readonly string[]).includes(tbl) ||
+	Modules.table(tbl) !== undefined;
 
 // ============================================================
 // Types
@@ -209,13 +195,11 @@ const toDrainedOp = (row: OplogRow): Result<DrainedOp> => {
 
 const selectRows = (
 	db: Db,
-	physical: string,
+	tbl: string,
 	where: string,
 	params: string[],
 ): Row[] =>
-	db
-		.query<Row, string[]>(`SELECT * FROM ${physical} WHERE ${where}`)
-		.all(...params);
+	db.query<Row, string[]>(`SELECT * FROM ${tbl} WHERE ${where}`).all(...params);
 
 /**
  * Everything the FK cascade will remove when `taskId` goes: the same walk for
@@ -233,33 +217,27 @@ const cascadeOfTask = (db: Db, taskId: string): Cascade => {
 		if (id !== undefined) out.push(...cascadeOfTask(db, id));
 	}
 
-	const children: [string, string, string, string[]][] = [
-		["task_comments", TABLES.comments, "task_id = ?", [taskId]],
-		["task_work_log", TABLES.work_log, "task_id = ?", [taskId]],
-		["task_context_refs", TABLES.context_refs, "task_id = ?", [taskId]],
-		[
-			"task_links",
-			TABLES.task_links,
-			"source_id = ? OR target_id = ?",
-			[taskId, taskId],
-		],
+	const children: [string, string, string[]][] = [
+		[TABLES.comments, "task_id = ?", [taskId]],
+		[TABLES.work_log, "task_id = ?", [taskId]],
+		[TABLES.context_refs, "task_id = ?", [taskId]],
+		[TABLES.task_links, "source_id = ? OR target_id = ?", [taskId, taskId]],
 		...Modules.tables()
 			.filter(({ spec }) => spec.childOfTasks)
-			.map(({ spec }): [string, string, string, string[]] => [
+			.map(({ spec }): [string, string, string[]] => [
 				spec.table,
-				physicalTable(spec.table),
 				"task_id = ?",
 				[taskId],
 			]),
 	];
-	for (const [tbl, physical, where, params] of children) {
-		for (const row of selectRows(db, physical, where, params)) {
+	for (const [tbl, where, params] of children) {
+		for (const row of selectRows(db, tbl, where, params)) {
 			out.push({ tbl, row });
 		}
 	}
 
 	const self = selectRows(db, TABLES.tasks, "id = ?", [taskId])[0];
-	if (self !== undefined) out.push({ tbl: "tasks", row: self });
+	if (self !== undefined) out.push({ tbl: TABLES.tasks, row: self });
 	return out;
 };
 
@@ -408,9 +386,7 @@ export namespace Oplog {
 		trySync(
 			() =>
 				db
-					.query<Row, [string]>(
-						`SELECT * FROM ${physicalTableFor(tbl)} WHERE id = ?`,
-					)
+					.query<Row, [string]>(`SELECT * FROM ${tbl} WHERE id = ?`)
 					.get(rowId) ?? undefined,
 		);
 
@@ -420,31 +396,6 @@ export namespace Oplog {
 	 */
 	export const cascadeOf = (db: Db, taskId: string): Result<Cascade> =>
 		trySync(() => cascadeOfTask(db, taskId));
-
-	/**
-	 * Remove the triggers the trigger-based design installed. Idempotent, cheap,
-	 * and load-bearing on any database that predates explicit capture: leaving
-	 * them in place would record every write twice. Core tables only: module
-	 * tables arrived after trigger capture and never had any.
-	 */
-	export const dropLegacyTriggers = (db: Db): Result<number> =>
-		trySync(() => {
-			let dropped = 0;
-			for (const logical of SYNC_TABLES) {
-				for (const suffix of LEGACY_TRIGGER_SUFFIX) {
-					const name = `${tablePrefix()}sync_cap_${logical}_${suffix}`;
-					const exists = db
-						.query<{ one: number }, [string]>(
-							`SELECT 1 AS one FROM sqlite_master WHERE type = 'trigger' AND name = ?`,
-						)
-						.get(name);
-					if (!exists) continue;
-					db.run(`DROP TRIGGER IF EXISTS ${name}`);
-					dropped++;
-				}
-			}
-			return dropped;
-		});
 
 	/**
 	 * Create the singleton state row, which is what arms capture.

@@ -109,7 +109,9 @@ describe("LoopDispatcher.triggers", () => {
 	});
 
 	it("offers start loop, unsatisfiable with start's own reason, from a folder that is not the scope", async () => {
-		const parent = await add("parent", { scopeUri: "jake://scope/elsewhere" });
+		const parent = await add("parent", {
+			scopeUri: "kabane://scope/elsewhere",
+		});
 		await add("child", { parentTaskId: parent.id });
 		const offered = await LoopDispatcher.triggers(deps(), parent.id);
 		const [start] = offered.ok ? offered.value : [];

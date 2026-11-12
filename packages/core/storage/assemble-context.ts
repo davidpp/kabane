@@ -114,7 +114,7 @@ const positionDependencies = (taskId: string, links: TaskLink[]) => {
 
 /** Position: parent · blockers (w/ states) · blocks · subtask states. */
 const positionSection = async (
-	jakePath: string,
+	basePath: string,
 	task: Task,
 	links: TaskLink[],
 	subtasks: Task[],
@@ -128,7 +128,7 @@ const positionSection = async (
 	const fetched = await Promise.all(
 		[...neighborIds].map(async (id) => ({
 			id,
-			result: await PlannerTasks.getTask(jakePath, id),
+			result: await PlannerTasks.getTask(basePath, id),
 		})),
 	);
 	const neighbors = new Map<string, Task>();
@@ -345,13 +345,13 @@ const activityEntry = (
  * session (never fails the call).
  */
 const sessionActivityEntries = async (
-	jakePath: string,
+	basePath: string,
 	sessions: AgentSession[],
 	strict: boolean,
 ): Promise<Result<DiscussionEntry[]>> => {
 	const perSession = await Promise.all(
 		sessions.map(async (s) => {
-			const r = await PlannerSessions.getActivities(jakePath, s.id);
+			const r = await PlannerSessions.getActivities(basePath, s.id);
 			if (!r.ok && strict)
 				return err(
 					new Error(
@@ -680,7 +680,7 @@ export const readContextSections = async (
 export namespace Planner {
 	/**
 	 * Assemble an issue's full agent brief as markdown. Kind-agnostic (task and
-	 * issue are both rows). ShortId is resolved to a ULID inside, so tRPC/MCP
+	 * issue are both rows). ShortId is resolved to a ULID inside, so
 	 * callers can pass either.
 	 *
 	 * @returns Result<string> — formatted markdown, embedded verbatim by consumers.
@@ -688,7 +688,7 @@ export namespace Planner {
 	export const assembleContext = traced(
 		"planner.assembleContext",
 		async (
-			jakePath: string,
+			basePath: string,
 			taskIdInput: string,
 			opts?: AssembleContextOpts,
 		): Promise<Result<string>> => {
@@ -700,19 +700,19 @@ export namespace Planner {
 
 			try {
 				const idResult = await PlannerTasks.resolveTaskId(
-					jakePath,
+					basePath,
 					taskIdInput,
 				);
 				if (!idResult.ok) return idResult;
 				const taskId = idResult.value;
 
-				const taskResult = await PlannerTasks.getTask(jakePath, taskId);
+				const taskResult = await PlannerTasks.getTask(basePath, taskId);
 				if (!taskResult.ok) return taskResult;
 				const task = taskResult.value;
 				if (!task) return err(new Error(`Task not found: ${taskIdInput}`));
 
 				const sections = await readContextSections(
-					jakePath,
+					basePath,
 					task,
 					o,
 					registeredContextSections(),

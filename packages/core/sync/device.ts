@@ -2,9 +2,8 @@
  * Planner Sync — Device Wiring
  *
  * Turns the host's sync settings into a live transport, and
- * arms this machine for capture the first time it is asked to. One place, so the
- * CLI, the tRPC router and the Stop hook cannot disagree about what "sync is on"
- * means.
+ * arms this machine for capture the first time it is asked to. One place, so no
+ * two callers can disagree about what "sync is on" means.
  *
  * ONLY THE SYNC BLOCK IS VALIDATED. Parsing the whole planner config would fail
  * sync because of an unrelated bad key somewhere else in it, and sync is the one
@@ -87,8 +86,8 @@ export namespace SyncDevice {
 	 * A transport for this machine, or an error explaining what is missing.
 	 *
 	 * Disabled sync is an error here rather than a silent no-op: a caller reaching
-	 * for a transport has already decided to sync, and the surfaces that must stay
-	 * quiet (the Stop hook) check `settings().enabled` first.
+	 * for a transport has already decided to sync, and a surface that must stay
+	 * quiet checks `settings().enabled` first.
 	 */
 	export const connect = async (
 		basePath: string,

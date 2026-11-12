@@ -281,11 +281,6 @@ export namespace Planner {
 				}
 			}
 
-			if (query.scopeUriPattern) {
-				conditions.push("scope_uri LIKE ?");
-				params.push(query.scopeUriPattern);
-			}
-
 			if (query.query) {
 				conditions.push("(title LIKE ? OR description LIKE ?)");
 				const pattern = `%${query.query}%`;

@@ -45,7 +45,7 @@ const makeOp = (
 
 const taskRow = (id: string, updatedAt: string, extra: Row = {}): Row => ({
 	id,
-	short_id: "JJAK-5",
+	short_id: "JMIL-5",
 	title: "Task",
 	state: "inbox",
 	created_at: T1,
@@ -704,7 +704,7 @@ describe("Resolve.decide — short_id collision", () => {
 			rowId: LOW,
 			row: taskRow(LOW, T2),
 			loserId: HIGH,
-			shortId: "JJAK-5",
+			shortId: "JMIL-5",
 		});
 	});
 
@@ -719,7 +719,7 @@ describe("Resolve.decide — short_id collision", () => {
 			rowId: HIGH,
 			row: taskRow(HIGH, T2),
 			loserId: HIGH,
-			shortId: "JJAK-5",
+			shortId: "JMIL-5",
 		});
 	});
 

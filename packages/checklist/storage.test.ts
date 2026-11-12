@@ -18,7 +18,7 @@ const failure = <T>(result: Result<T>): string => {
 let base: string;
 beforeEach(async () => {
 	base = mkdtempSync(join(tmpdir(), "kabane-checklist-"));
-	configureTestRuntime("planner_", {
+	configureTestRuntime({
 		modules: [checklistModule],
 		actor: () => "cabane://actor/human/test",
 	});
@@ -40,7 +40,7 @@ const ops = async () =>
 		await withDb(base, (db) =>
 			db
 				.query<{ op: string; module: string; module_schema: number }>(
-					"SELECT op, module, module_schema FROM planner_sync_oplog WHERE tbl = 'task_checklist_items' ORDER BY seq",
+					"SELECT op, module, module_schema FROM sync_oplog WHERE tbl = 'task_checklist_items' ORDER BY seq",
 				)
 				.all(),
 		),
@@ -219,9 +219,7 @@ it("inherits private visibility and never captures private items", async () => {
 	const task = await issue();
 	unwrap(
 		await withDb(base, (db) =>
-			db.run("UPDATE planner_tasks SET visibility = 'private' WHERE id = ?", [
-				task.id,
-			]),
+			db.run("UPDATE tasks SET visibility = 'private' WHERE id = ?", [task.id]),
 		),
 	);
 	const [item] = unwrap(

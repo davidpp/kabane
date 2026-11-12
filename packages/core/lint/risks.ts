@@ -108,7 +108,7 @@ const checkFileOverlapImpl = (subtasks: SubtaskInput[]): Risk[] => {
 /**
  * Detect missing test files for packages referenced by subtasks.
  * Flags when a package directory has no .test.ts files at all
- * (JAKE-228: empty test dirs return non-zero from `bun test`).
+ * (an empty test dir returns non-zero from `bun test`).
  */
 const checkMissingTestsImpl = (
 	packagePaths: string[],
@@ -122,7 +122,7 @@ const checkMissingTestsImpl = (
 			risks.push({
 				type: "no_tests",
 				severity: "medium",
-				message: `No test files found in ${pkg} — bun test may return non-zero (JAKE-228)`,
+				message: `No test files found in ${pkg} — bun test may return non-zero`,
 			});
 		}
 	}
@@ -158,7 +158,6 @@ const checkLargeScopeImpl = (subtaskCount: number): Risk[] => {
 
 /**
  * Detect past thrash patterns from progress history.
- * Mirrors JAKE-258 pattern.
  */
 const checkPastThrashImpl = (entries: ReopenEvent[]): Risk[] => {
 	const reopenCounts = new Map<string, number>();
@@ -177,7 +176,7 @@ const checkPastThrashImpl = (entries: ReopenEvent[]): Risk[] => {
 			risks.push({
 				type: "past_thrash",
 				severity: "high",
-				message: `${subtaskId} reopened ${count} times — likely thrash loop (JAKE-258 pattern)`,
+				message: `${subtaskId} reopened ${count} times — likely thrash loop`,
 			});
 		} else if (count >= 2) {
 			risks.push({

@@ -1,16 +1,13 @@
 /**
  * Device configuration: `KABANE_HOME/config.json`.
  *
- * `KABANE_HOME` defaults to `~/.kabane`. By default the database lives beside
- * the config as `kabane.db` with plain table names; an optional `db` block
- * points the CLI at another SQLite file and prefix instead, which is how a Jake
- * user opens `~/.jake/jake.db` (`planner_` tables) with zero migration. Nothing
- * here touches the database.
+ * `KABANE_HOME` defaults to `~/.kabane`. The database lives beside the config
+ * as `kabane.db`. Nothing here touches the database.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import {
 	err,
 	ok,
@@ -24,19 +21,6 @@ import {
 import { findProjectRoot, localPinPath, SCOPE_FILE } from "@cabane/core/scope";
 import type { Extension } from "@cabane/extension";
 import { z } from "zod";
-
-const DbConfigSchema = z.object({
-	path: z
-		.string()
-		.min(1)
-		.optional()
-		.describe("SQLite file instead of KABANE_HOME/kabane.db; ~ expands."),
-	tablePrefix: z
-		.string()
-		.optional()
-		.describe("Table-name prefix (planner_ for a Jake database)."),
-});
-export type DbConfig = z.infer<typeof DbConfigSchema>;
 
 const CopilotConfigSchema = z.object({
 	// A plain string, not an enum, so a config naming a harness a newer kabane added still loads.
@@ -107,9 +91,6 @@ export const ConfigSchema = z.object({
 	sync: SyncConfigSchema.default({}).describe(
 		"Multi-device replication settings; edit dotted keys.",
 	),
-	db: DbConfigSchema.optional().describe(
-		"Alternate SQLite location and table prefix; edit dotted keys.",
-	),
 	copilot: CopilotConfigSchema.optional().describe(
 		"Board copilot settings; absent uses the default harness and pinned adapter.",
 	),
@@ -134,15 +115,8 @@ export const harnessMode = (
 	config: Pick<Config, "harness">,
 ): Extension.Ctx["harnessMode"] => config.harness?.mode ?? "auto";
 
-export type DatabaseLocation = {
-	/** The base path core receives; the provider joins `dbName` onto it. */
-	basePath: string;
-	dbName: string;
-	tablePrefix: string;
-};
-
 const CONFIG_FILE = "config.json";
-const DB_NAME = "kabane.db";
+export const DB_NAME = "kabane.db";
 export { SCOPE_FILE };
 
 export const resolveHome = (env: NodeJS.ProcessEnv = process.env): string =>
@@ -151,30 +125,6 @@ export const resolveHome = (env: NodeJS.ProcessEnv = process.env): string =>
 		: join(homedir(), ".kabane");
 
 export const configPath = (home: string): string => join(home, CONFIG_FILE);
-
-const expandHome = (path: string): string =>
-	path === "~"
-		? homedir()
-		: path.startsWith("~/")
-			? join(homedir(), path.slice(2))
-			: path;
-
-/**
- * Where the database is. The provider only knows `basePath` + `dbName`, so an
- * explicit file path is split into its directory and file name; the rest of the
- * CLI hands `basePath` to core as the storage handle.
- */
-export const databaseLocation = (
-	home: string,
-	config: Pick<Config, "db">,
-): DatabaseLocation => {
-	const tablePrefix = config.db?.tablePrefix ?? "";
-	if (config.db?.path === undefined) {
-		return { basePath: home, dbName: DB_NAME, tablePrefix };
-	}
-	const file = resolve(expandHome(config.db.path));
-	return { basePath: dirname(file), dbName: basename(file), tablePrefix };
-};
 
 export const defaultActor = (): string =>
 	`cabane://actor/human/${userInfo().username}`;
@@ -218,6 +168,15 @@ export const loadConfigDocument = (
 		return err(
 			new Error(
 				`Invalid config at ${path}: ${!parsed.success ? describeIssues(parsed.error) : "expected an object"}`,
+			),
+		);
+	}
+	// A `db` block used to point kabane at another file. Ignoring one would open
+	// an empty database beside the config, which reads as every task gone.
+	if ("db" in raw.value) {
+		return err(
+			new Error(
+				`Invalid config at ${path}: the \`db\` block is no longer supported. The database is always ${join(home, DB_NAME)}, with unprefixed tables; remove the block once that file holds your tasks.`,
 			),
 		);
 	}

@@ -3,7 +3,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteDb } from "@cabane/sqlite";
-import { tablePrefix } from "./db/tables";
 import { CORE_TOOL_NAMES } from "./mcp/tool-names";
 import { KABANE_TOOLS, type ToolDef } from "./mcp/tools";
 import type { KabaneModule, ModuleContextSection } from "./module";
@@ -51,7 +50,6 @@ beforeEach(async () => {
 		Runtime.configure({
 			provider: SqliteDb.provider({ dbName: "kept.db" }),
 			modules: [kept],
-			tablePrefix: "kept_",
 			actor: () => "kept",
 			timezone: () => "UTC",
 		}),
@@ -195,7 +193,6 @@ for (const refusal of refusals)
 		const ports = [
 			Runtime.tracer(),
 			Runtime.notifier(),
-			Runtime.scopeResolver(),
 			Runtime.syncSettings(),
 		];
 		const modules = Runtime.modules();
@@ -203,12 +200,10 @@ for (const refusal of refusals)
 		const configured = Runtime.configure({
 			provider: SqliteDb.provider({ dbName: "rejected.db" }),
 			modules: refusal.modules,
-			tablePrefix: "rejected_",
 			actor: () => "rejected",
 			timezone: () => "Europe/Paris",
 			tracer: (_name, fn) => fn,
 			notifier: async () => {},
-			scopeResolver: async () => "rejected",
 			syncSettings: async () => settings,
 		});
 		expect(configured.ok).toBe(false);
@@ -218,13 +213,11 @@ for (const refusal of refusals)
 		}
 		expect(Runtime.modules()).toBe(modules);
 		expect(Runtime.modules()).toEqual([kept]);
-		expect(tablePrefix()).toBe("kept_");
 		expect(Runtime.actor()).toBe("kept");
 		expect(Runtime.timezone()).toBe("UTC");
 		const after = [
 			Runtime.tracer(),
 			Runtime.notifier(),
-			Runtime.scopeResolver(),
 			Runtime.syncSettings(),
 		];
 		for (let i = 0; i < ports.length; i++) expect(after[i]).toBe(ports[i]);

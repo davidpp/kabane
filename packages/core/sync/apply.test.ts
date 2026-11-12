@@ -3,7 +3,7 @@
  *
  * Hand-built pages for the cases two converging devices cannot reach on demand:
  * the FK parents `Resolve` does not guard, a column this build has never heard
- * of, applying before sync was armed, and FK parents behind Jake's prefix.
+ * of, and applying before sync was armed.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db } from "../db/port";
 import { withDb as runWithDb } from "../runtime";
-import { configureTestRuntime } from "../testing";
+import "../testing";
 
 import { TABLES } from "../storage/helpers";
 import { Planner } from "../storage/index";
@@ -190,6 +190,40 @@ describe("Apply — FK safety and unknown columns", () => {
 		).toEqual([["comment-1", "comment"]]);
 	});
 
+	it("stores a scope a device before schema 10 sent under the scheme in force", async () => {
+		await arm();
+
+		const report = await Apply.applyBatch(
+			base,
+			page([
+				insertOp(1, "tasks", "old-1", {
+					...taskPayload("old-1"),
+					scope_uri: "jake://scope/mill?branch=main",
+					scope_refs: '[{"scopeUri":"jake://scope/other","role":"related"}]',
+					description: "jake://scope/mill in prose stays",
+				}),
+				insertOp(2, "tasks", "new-1", {
+					...taskPayload("new-1"),
+					scope_uri: "kabane://scope/mill",
+				}),
+			]),
+		);
+
+		expect(report.ok ? report.value.applied : report.error.message).toBe(2);
+		const old = await taskRow("old-1");
+		expect(old?.scope_uri).toBe("kabane://scope/mill?branch=main");
+		expect(old?.scope_refs).toBe(
+			'[{"scopeUri":"kabane://scope/other","role":"related"}]',
+		);
+		expect(old?.description).toBe("jake://scope/mill in prose stays");
+		// One scope, whichever device wrote the row.
+		const scoped = await Planner.queryTasks(base, { scopeUri: "mill" });
+		expect(scoped.ok && scoped.value.map((t) => t.id).sort()).toEqual([
+			"new-1",
+			"old-1",
+		]);
+	});
+
 	it("counts a table this build does not replicate as a skip, not a failure", async () => {
 		await arm();
 
@@ -214,56 +248,6 @@ describe("Apply — FK safety and unknown columns", () => {
 		if (report.ok) return;
 		expect(report.error.message).toContain("no sync state");
 		expect(await taskRow("nope-1")).toBeNull();
-	});
-});
-
-describe("Apply — FK parents behind a table prefix", () => {
-	beforeEach(async () => {
-		// Jake shares one database and prefixes core's tables. The prefix is set
-		// after every module is imported, so a parent lookup has to resolve then.
-		configureTestRuntime("planner_");
-		base = join(tmpdir(), `planner-apply-prefix-${crypto.randomUUID()}`);
-		mkdirSync(base, { recursive: true });
-		const init = await Planner.init(base);
-		if (!init.ok) throw init.error;
-		const armed = await runWithDb(base, (db) =>
-			Oplog.initDevice(db, "device-local"),
-		);
-		if (!armed.ok) throw armed.error;
-	});
-
-	afterEach(() => {
-		configureTestRuntime();
-		rmSync(base, { recursive: true, force: true });
-	});
-
-	it("finds a subtask's parent and a comment's task in the prefixed tables", async () => {
-		const report = await Apply.applyBatch(
-			base,
-			page([
-				insertOp(1, "tasks", "parent-1", taskPayload("parent-1")),
-				insertOp(2, "tasks", "child-1", {
-					...taskPayload("child-1"),
-					parent_task_id: "parent-1",
-				}),
-				insertOp(3, "task_comments", "comment-1", {
-					id: "comment-1",
-					task_id: "parent-1",
-					author: "david",
-					author_type: "human",
-					content: "kept",
-					created_at: NOW,
-					updated_at: NOW,
-				}),
-			]),
-		);
-
-		expect(report.ok ? "applied" : report.error.message).toBe("applied");
-		if (!report.ok) return;
-		expect(report.value.applied).toBe(3);
-		expect(report.value.skipped["orphan-parent"]).toBe(0);
-		expect(TABLES.tasks).toBe("planner_tasks");
-		expect((await taskRow("child-1"))?.parent_task_id).toBe("parent-1");
 	});
 });
 

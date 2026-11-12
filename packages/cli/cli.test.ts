@@ -95,7 +95,7 @@ describe("kabane cli", () => {
 			kind: string;
 			provenance: { discoveredBy: string };
 		}>(r);
-		expect(task.scopeUri).toBe("jake://scope/demo");
+		expect(task.scopeUri).toBe("kabane://scope/demo");
 		expect(task.kind).toBe("issue");
 		expect(task.provenance.discoveredBy).toBe("cabane://actor/human/tester");
 		issueId = task.shortId;
@@ -113,7 +113,7 @@ describe("kabane cli", () => {
 		taskId = json<{ shortId: string; scopeUri: string; deadline: string }>(
 			t,
 		).shortId;
-		expect(json<{ scopeUri: string }>(t).scopeUri).toBe("jake://scope/home");
+		expect(json<{ scopeUri: string }>(t).scopeUri).toBe("kabane://scope/home");
 		// A date is stored as the calendar date itself, not an instant.
 		expect(json<{ deadline: string }>(t).deadline).toBe("2026-12-24");
 	});
@@ -123,6 +123,9 @@ describe("kabane cli", () => {
 		expect(json<unknown[]>(all)).toHaveLength(1); // directory scope "demo" applies
 		const home = await run("list", "--scope", "home", "--json");
 		expect(json<{ shortId: string }[]>(home)[0]?.shortId).toBe(taskId);
+		// The scheme scopes had before schema 10 still names the scope.
+		const legacy = await run("list", "--scope", "jake://scope/home", "--json");
+		expect(json<unknown[]>(legacy)).toEqual(json<unknown[]>(home));
 
 		await run("done", taskId);
 		const open = await run("list", "--scope", "home", "--json");
@@ -349,7 +352,7 @@ describe("kabane cli", () => {
 			const added = await runOther("add", "Scoped by init", "--json");
 			expect(added.code).toBe(0);
 			expect(json<{ scopeUri: string }>(added).scopeUri).toBe(
-				"jake://scope/cabane",
+				"kabane://scope/cabane",
 			);
 		} finally {
 			rmSync(other, { recursive: true, force: true });
@@ -424,90 +427,6 @@ describe("kabane cli", () => {
 		expect(actual).toEqual(expected);
 	});
 
-	it("db block opens another file with a prefix; two homes share it; the default stays separate", async () => {
-		const root = join(tmpdir(), `cabane-cli-db-${crypto.randomUUID()}`);
-		const shared = join(root, "jake-like", "jake.db");
-		const homeA = join(root, "a");
-		const homeB = join(root, "b");
-		const homeC = join(root, "c");
-		const runA = makeRunner(homeA, root);
-		const runB = makeRunner(homeB, root);
-		const runC = makeRunner(homeC, root);
-		mkdirSync(root, { recursive: true });
-		try {
-			const initA = await runA(
-				"init",
-				"--actor",
-				"cabane://actor/human/a",
-				"--device",
-				"a",
-				"--db-path",
-				shared,
-				"--table-prefix",
-				"planner_",
-				"--json",
-			);
-			expect(initA.code).toBe(0);
-			const cfg = JSON.parse(
-				readFileSync(join(homeA, "config.json"), "utf8"),
-			) as { db?: { path?: string; tablePrefix?: string } };
-			expect(cfg.db).toEqual({ path: shared, tablePrefix: "planner_" });
-			expect(initA.out).toContain("planner_");
-
-			const added = await runA("add", "Shared row", "--json");
-			expect(added.code).toBe(0);
-			const { shortId } = json<{ shortId: string }>(added);
-
-			// Same file, same prefix, different KABANE_HOME: same rows.
-			const initB = await runB(
-				"init",
-				"--device",
-				"b",
-				"--db-path",
-				shared,
-				"--table-prefix",
-				"planner_",
-			);
-			expect(initB.code).toBe(0);
-			const listB = await runB("list", "--json");
-			expect(listB.code).toBe(0);
-			expect(
-				json<{ shortId: string }[]>(listB).map((t) => t.shortId),
-			).toContain(shortId);
-			expect((await runB("show", shortId)).code).toBe(0);
-
-			// No db block: KABANE_HOME/kabane.db with plain names, nothing shared.
-			expect((await runC("init", "--device", "c")).code).toBe(0);
-			const cfgC = JSON.parse(
-				readFileSync(join(homeC, "config.json"), "utf8"),
-			) as { db?: unknown };
-			expect(cfgC.db).toBeUndefined();
-			expect(json<unknown[]>(await runC("list", "--json"))).toHaveLength(0);
-
-			// Sync against a shared file is allowed but warned about.
-			const initShared = await runB(
-				"init",
-				"--force",
-				"--device",
-				"b",
-				"--db-path",
-				shared,
-				"--table-prefix",
-				"planner_",
-				"--sync-url",
-				"http://127.0.0.1:1",
-				"--sync-token",
-				"t",
-			);
-			expect(initShared.code).toBe(0);
-			const status = await runB("sync", "status");
-			expect(status.code).toBe(0);
-			expect(status.out).toContain("another host may already sync");
-		} finally {
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
 	it("mcp serves the same tools over stdio, with the directory scope as default", async () => {
 		const transport = new StdioClientTransport({
 			command: "bun",
@@ -529,7 +448,7 @@ describe("kabane cli", () => {
 			const task = JSON.parse(
 				(created.content as { text: string }[])[0]?.text ?? "{}",
 			) as { scopeUri: string; updatedBy: string; shortId: string };
-			expect(task.scopeUri).toBe("jake://scope/demo");
+			expect(task.scopeUri).toBe("kabane://scope/demo");
 			expect(task.updatedBy).toBe("cabane://actor/agent/codex");
 
 			const shown = await run("show", task.shortId, "--json");

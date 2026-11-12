@@ -24,7 +24,7 @@ const useSettings = (raw: Partial<SyncConfig>) => {
 	const parsed = SyncConfigSchema.safeParse(raw);
 	if (!parsed.success) throw new Error(parsed.error.message);
 	const settings = parsed.data;
-	configureTestRuntime("", { syncSettings: async () => ok(settings) });
+	configureTestRuntime({ syncSettings: async () => ok(settings) });
 };
 
 const stateOf = async () => {

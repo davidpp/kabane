@@ -8,7 +8,7 @@
 import { firstGroups } from "../regex";
 
 /**
- * Task ID pattern - matches short IDs like JAKE-123, ALL-45
+ * Task ID pattern - matches short IDs like JCAB-123, ALL-45
  */
 export const TASK_ID_PATTERN = /\b([A-Z]{2,4}-\d+)\b/g;
 
@@ -19,8 +19,8 @@ export const PATTERNS = {
 	/**
 	 * Conventional commit format
 	 * Examples:
-	 * - fix(JAKE-123): resolve auth bug
-	 * - feat(JAKE-123, JAKE-124): add login and signup
+	 * - fix(JCAB-123): resolve auth bug
+	 * - feat(JCAB-123, JCAB-124): add login and signup
 	 */
 	conventional:
 		/^(?:feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)\(([^)]+)\)/i,
@@ -28,18 +28,18 @@ export const PATTERNS = {
 	/**
 	 * Reference markers in commit body
 	 * Examples:
-	 * - Refs: JAKE-123
-	 * - refs #JAKE-45
-	 * - Ref: JAKE-1, JAKE-2
+	 * - Refs: JCAB-123
+	 * - refs #JCAB-45
+	 * - Ref: JCAB-1, JCAB-2
 	 */
 	references: /(?:refs?:?\s*#?)([A-Z]{2,4}-\d+(?:\s*,\s*[A-Z]{2,4}-\d+)*)/gi,
 
 	/**
 	 * Close/fix/resolve keywords (marks task as done)
 	 * Examples:
-	 * - closes JAKE-123
-	 * - Fixes JAKE-45
-	 * - resolves JAKE-789
+	 * - closes JCAB-123
+	 * - Fixes JCAB-45
+	 * - resolves JCAB-789
 	 */
 	closes: /(?:close[s]?|fix(?:es)?|resolve[s]?)\s+([A-Z]{2,4}-\d+)/gi,
 } as const;
@@ -51,7 +51,7 @@ export function parseConventionalCommit(message: string): string[] {
 	const match = message.match(PATTERNS.conventional);
 	if (!match) return [];
 
-	// Extract IDs from parentheses content (e.g., "JAKE-123, JAKE-124")
+	// Extract IDs from parentheses content (e.g., "JCAB-123, JCAB-124")
 	const content = match[1];
 	if (!content) return [];
 
@@ -63,7 +63,7 @@ export function parseConventionalCommit(message: string): string[] {
  * Parse task IDs from reference markers
  */
 export function parseReferences(message: string): string[] {
-	// Extract all IDs from each match (handles "JAKE-1, JAKE-2")
+	// Extract all IDs from each match (handles "JCAB-1, JCAB-2")
 	return firstGroups(message, PATTERNS.references).flatMap(
 		(group) => group.match(TASK_ID_PATTERN) ?? [],
 	);

@@ -47,16 +47,9 @@ export {
 	FTS_TABLES,
 	type FtsTable,
 	generateFtsSql,
-	prefixSql,
 	SCHEMA_SQL,
 } from "./db/schema";
-export {
-	LOGICAL_TABLES,
-	physicalTable,
-	TABLES,
-	type TableKey,
-	tablePrefix,
-} from "./db/tables";
+export { TABLES, type TableKey } from "./db/tables";
 export { Events, PLANNER_EVENTS, type PlannerEventType } from "./events";
 // Data modules: a package's own migrations and replicated tables
 export type {
@@ -110,7 +103,6 @@ export {
 	type Notifier,
 	Runtime,
 	type RuntimeConfig,
-	type ScopeResolver,
 	type SyncSettingsSource,
 	type TimezoneSource,
 	type Tracer,

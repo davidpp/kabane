@@ -1,18 +1,9 @@
 /**
- * Physical table names.
- *
- * Every table has a logical name (what the DDL and the sync wire use) and a
- * physical name (what SQL statements address). The two differ only by a
- * configurable prefix: Jake shares one `jake.db` with other modules and needs
- * `planner_tasks`; a standalone Cabane database uses `tasks`.
- *
- * `TABLES` exposes the physical names through getters so the prefix can be set
- * once at configure time and every call site written as `${TABLES.tasks}`
- * inside a function body picks it up. Do NOT capture `TABLES.x` into a
- * module-level constant — that evaluates at import, before configuration.
+ * Table names: what the DDL creates, what SQL statements address and what the
+ * sync wire carries in an op's `tbl`.
  */
 
-export const LOGICAL_TABLES = {
+export const TABLES = {
 	tasks: "tasks",
 	tasks_fts: "tasks_fts",
 	task_links: "task_links",
@@ -34,30 +25,4 @@ export const LOGICAL_TABLES = {
 	schema_migrations: "schema_migrations",
 } as const;
 
-export type TableKey = keyof typeof LOGICAL_TABLES;
-
-let prefix = "";
-
-/** Set the physical-name prefix, e.g. "planner_". Empty means plain names. */
-export const setTablePrefix = (value: string): void => {
-	prefix = value;
-};
-
-/** The prefix in force. Trigger and index names built in code use it too. */
-export const tablePrefix = (): string => prefix;
-
-/** Physical name for a logical table name. */
-export const physicalTable = (logical: string): string => `${prefix}${logical}`;
-
-const defineTables = (): Record<TableKey, string> => {
-	const out = {} as Record<TableKey, string>;
-	for (const key of Object.keys(LOGICAL_TABLES) as TableKey[]) {
-		Object.defineProperty(out, key, {
-			enumerable: true,
-			get: () => physicalTable(LOGICAL_TABLES[key]),
-		});
-	}
-	return out;
-};
-
-export const TABLES: Readonly<Record<TableKey, string>> = defineTables();
+export type TableKey = keyof typeof TABLES;

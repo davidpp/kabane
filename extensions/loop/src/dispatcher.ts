@@ -48,7 +48,7 @@ export namespace LoopDispatcher {
 		parentTaskId: string,
 		cwd: string,
 	): Promise<string[]> => {
-		const linted = await Lint.run({ jakePath: basePath, parentTaskId, cwd });
+		const linted = await Lint.run({ basePath, parentTaskId, cwd });
 		return linted.ok
 			? linted.value.risks.map((r) => `${r.message} (${r.severity})`)
 			: [`lint did not run: ${linted.error.message}`];

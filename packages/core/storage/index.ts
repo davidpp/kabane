@@ -2,7 +2,7 @@
  * Planner Storage
  *
  * Storage for tasks, projects, links, comments, work logs, sessions and sync
- * state, over the Db port. The host decides the engine and the table prefix.
+ * state, over the Db port. The host decides the engine.
  *
  * Each domain file declares its own `export namespace Planner { ... }`.
  * This barrel re-exports them under a single merged `Planner` namespace.

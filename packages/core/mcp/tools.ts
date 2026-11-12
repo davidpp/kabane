@@ -96,7 +96,7 @@ export const define = <Shape extends z.ZodRawShape>(
 // ============================================================
 
 const SCOPE_HINT =
-	'Workspace/repo/client scope: a bare id ("jake") or a full URI ("jake://scope/jake"). The context boundary, not a project.';
+	'Workspace/repo/client scope: a bare id ("myapp") or a full URI ("kabane://scope/myapp"). The context boundary, not a project.';
 
 const ID_HINT = "Task id: the short label (JCAB-12) or the ULID.";
 

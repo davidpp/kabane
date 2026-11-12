@@ -45,14 +45,14 @@ test("reports a pinned repo and its text without device setup", () => {
 	mkdirSync(join(cwd, ".kabane"));
 	writeFileSync(join(cwd, ".kabane/scope"), "pinned\n");
 	expect(JSON.parse(cli("scope", "--json"))).toEqual({
-		scopeUri: "jake://scope/pinned",
-		baseUri: "jake://scope/pinned",
+		scopeUri: "kabane://scope/pinned",
+		baseUri: "kabane://scope/pinned",
 		scopeId: "pinned",
 		name: "pinned",
 		root: cwd,
 		extensions: {},
 	});
-	expect(cli("scope")).toBe(`pinned · jake://scope/pinned · ${cwd}`);
+	expect(cli("scope")).toBe(`pinned · kabane://scope/pinned · ${cwd}`);
 });
 
 test("resolves a git remote without a project pin", () => {
@@ -60,8 +60,8 @@ test("resolves a git remote without a project pin", () => {
 	git("init", "-q");
 	git("remote", "add", "origin", "git@github.com:example/repo.git");
 	expect(JSON.parse(cli("scope", "--json"))).toEqual({
-		scopeUri: "jake://scope/github.com%2Fexample%2Frepo",
-		baseUri: "jake://scope/github.com%2Fexample%2Frepo",
+		scopeUri: "kabane://scope/github.com%2Fexample%2Frepo",
+		baseUri: "kabane://scope/github.com%2Fexample%2Frepo",
 		scopeId: "github.com/example/repo",
 		name: "repo",
 		root: cwd,
@@ -95,8 +95,8 @@ test("keeps branch and package provenance while returning the base URI", () => {
 	);
 	expect(JSON.parse(cli("scope", "--json"))).toEqual({
 		scopeUri:
-			"jake://scope/pinned?branch=feature%2Fscope&package=%40example%2Fapp",
-		baseUri: "jake://scope/pinned",
+			"kabane://scope/pinned?branch=feature%2Fscope&package=%40example%2Fapp",
+		baseUri: "kabane://scope/pinned",
 		scopeId: "pinned",
 		name: "pinned",
 		root: cwd,

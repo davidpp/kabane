@@ -78,7 +78,7 @@ const state = (
 });
 
 const scope: BoardData.ScopeInfo = {
-	scopeUri: "jake://scope/cabane",
+	scopeUri: "kabane://scope/cabane",
 	label: "cabane",
 };
 
@@ -92,7 +92,7 @@ describe("BoardContext.project", () => {
 	it("carries scope, view, section, filter, selected, marked and briefs, selected first", () => {
 		const ctx = BoardContext.project(state(), scope, briefs);
 		expect(ctx).toEqual({
-			scopeUri: "jake://scope/cabane",
+			scopeUri: "kabane://scope/cabane",
 			view: "board",
 			section: "next",
 			filter: { kind: "all", status: "open" },
@@ -183,7 +183,7 @@ describe("BoardContext.render", () => {
 		expect(BoardContext.render(ctx)).toBe(
 			[
 				"```kabane-board",
-				"scope: jake://scope/cabane",
+				"scope: kabane://scope/cabane",
 				"view: board",
 				"section: next",
 				'filter: kind=all status=open query="acp"',

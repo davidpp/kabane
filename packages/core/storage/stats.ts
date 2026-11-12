@@ -16,7 +16,7 @@ const STALE_IN_PROGRESS_MS = 7 * DAY_MS;
 /**
  * Stored scope_uri values vary for the same logical scope (branch/package
  * extensions, percent-encoding, legacy bare ids). Merge rows down to their
- * base scopeId so every read surface (CLI, tRPC, MCP) sees one entry per scope.
+ * base scopeId so every read surface (CLI, MCP, the board) sees one entry per scope.
  */
 const mergeByScopeId = (
 	rows: { scope_uri: string; count: number }[],

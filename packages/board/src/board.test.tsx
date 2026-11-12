@@ -69,9 +69,9 @@ test("Board renders a section header and a row's shortId, title, and kind", asyn
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-42"),
+			f.includes("MILL-42"),
 		);
-		expect(frame).toContain("JAKE-42");
+		expect(frame).toContain("MILL-42");
 		expect(frame).toContain("Wire the board");
 		// Section header: lowercased label · count.
 		expect(frame).toContain("next · 1");
@@ -87,7 +87,7 @@ test("Board keeps its header line when the list outgrows the screen", async () =
 	const rows = Array.from({ length: 40 }, (_, i) => ({
 		task: task({
 			id: `01H0000000000000000000${String(i).padStart(4, "0")}`,
-			shortId: `JAKE-${i + 1}`,
+			shortId: `MILL-${i + 1}`,
 		}),
 		children: [],
 	}));
@@ -102,7 +102,7 @@ test("Board keeps its header line when the list outgrows the screen", async () =
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-1 "),
+			f.includes("MILL-1 "),
 		);
 		expect(frame.split("\n")[0]).toContain("kabane · acme/widget");
 	} finally {
@@ -111,10 +111,10 @@ test("Board keeps its header line when the list outgrows the screen", async () =
 });
 
 test("Board expands a parent's subtasks under it with a caret, indented and showing their own state", async () => {
-	const parent = task({ id: "p", shortId: "JAKE-1", title: "parent task" });
+	const parent = task({ id: "p", shortId: "MILL-1", title: "parent task" });
 	const child = task({
 		id: "c",
-		shortId: "JAKE-2",
+		shortId: "MILL-2",
 		title: "child task",
 		state: "done",
 		parentTaskId: "p",
@@ -126,11 +126,11 @@ test("Board expands a parent's subtasks under it with a caret, indented and show
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-2"),
+			f.includes("MILL-2"),
 		);
 		// Expanded caret on the parent, child visible with its own (differing) state.
 		expect(frame).toContain("▾");
-		expect(frame).toContain("JAKE-2");
+		expect(frame).toContain("MILL-2");
 		expect(frame).toContain("child task");
 		expect(frame).toContain("· done");
 	} finally {
@@ -139,8 +139,8 @@ test("Board expands a parent's subtasks under it with a caret, indented and show
 });
 
 test("Board shows a collapsed caret for a parent whose subtasks are hidden", async () => {
-	const parent = task({ id: "p", shortId: "JAKE-1", title: "parent task" });
-	const child = task({ id: "c", shortId: "JAKE-2", parentTaskId: "p" });
+	const parent = task({ id: "p", shortId: "MILL-1", title: "parent task" });
+	const child = task({ id: "c", shortId: "MILL-2", parentTaskId: "p" });
 	const sections = [section("next", [{ task: parent, children: [child] }])];
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
 		<Board sections={sections} expanded={new Set()} selectedId="p" />,
@@ -148,11 +148,11 @@ test("Board shows a collapsed caret for a parent whose subtasks are hidden", asy
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-1"),
+			f.includes("MILL-1"),
 		);
 		expect(frame).toContain("▸");
 		// The collapsed child is not rendered.
-		expect(frame).not.toContain("JAKE-2");
+		expect(frame).not.toContain("MILL-2");
 	} finally {
 		destroy();
 	}
@@ -171,7 +171,7 @@ test("Board truncates long titles to a single line at a narrow (60-col) width", 
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-42"),
+			f.includes("MILL-42"),
 		);
 		// The full title never renders; it is cut with an ellipsis.
 		expect(frame).not.toContain(longTitle);
@@ -236,7 +236,7 @@ test("Board draws an idle row's title in the terminal's own foreground, not whit
 const searchFixture: BoardData.BoardSection[] = [
 	section("next", [
 		{
-			task: task({ id: "a", shortId: "JAKE-10", title: "auth login flow" }),
+			task: task({ id: "a", shortId: "MILL-10", title: "auth login flow" }),
 			children: [],
 		},
 	]),
@@ -244,7 +244,7 @@ const searchFixture: BoardData.BoardSection[] = [
 		{
 			task: task({
 				id: "b",
-				shortId: "JAKE-11",
+				shortId: "MILL-11",
 				title: "board polish",
 				state: "in_progress",
 			}),
@@ -269,8 +269,8 @@ test("Board in search-typing mode shows the `/ query▌` footer line and live-fi
 		);
 		expect(frame).toContain("/auth▌");
 		// Matching row visible, non-matching row and its section header gone.
-		expect(frame).toContain("JAKE-10");
-		expect(frame).not.toContain("JAKE-11");
+		expect(frame).toContain("MILL-10");
+		expect(frame).not.toContain("MILL-11");
 		expect(frame).not.toContain("in progress");
 	} finally {
 		destroy();
@@ -292,8 +292,8 @@ test("Board with a committed filter shows the match-count summary and only match
 			f.includes("esc clear"),
 		);
 		expect(frame).toContain("/auth · 1 match  esc clear · ? help");
-		expect(frame).toContain("JAKE-10");
-		expect(frame).not.toContain("JAKE-11");
+		expect(frame).toContain("MILL-10");
+		expect(frame).not.toContain("MILL-11");
 	} finally {
 		destroy();
 	}
@@ -315,8 +315,8 @@ test("Board renders a muted `no matches` state when the query matches nothing", 
 		);
 		expect(frame).toContain("no matches");
 		expect(frame).toContain("/zzz▌");
-		expect(frame).not.toContain("JAKE-10");
-		expect(frame).not.toContain("JAKE-11");
+		expect(frame).not.toContain("MILL-10");
+		expect(frame).not.toContain("MILL-11");
 	} finally {
 		destroy();
 	}
@@ -324,13 +324,13 @@ test("Board renders a muted `no matches` state when the query matches nothing", 
 
 // --- In-flight badges (JJAK-1027) ---
 
-// A host "loop" card as Jake would project it: keyed by the issue shortId, phase + iteration first.
+// A "loop" card as a host would project it: keyed by the issue shortId, phase + iteration first.
 const activeLoop = (over: Partial<ActivityCard> = {}): ActivityCard => ({
-	id: `loop-${over.taskShortId ?? "JAKE-42"}`,
+	id: `loop-${over.taskShortId ?? "MILL-42"}`,
 	kind: "loops",
 	label: "loop",
 	status: "running",
-	taskShortId: "JAKE-42",
+	taskShortId: "MILL-42",
 	startedAt: new Date().toISOString(),
 	detail: ["implement 3"],
 	...over,
@@ -341,7 +341,7 @@ const question = (taskId: string): BoardActivity.AwaitingQuestion => ({
 	sessionId: "s1",
 	questionActivityId: "q1",
 	question: "Which auth flow?",
-	taskShortId: "JAKE-1",
+	taskShortId: "MILL-1",
 	choices: [],
 	multiSelect: false,
 	allowFreeform: true,
@@ -423,7 +423,7 @@ test("Board with no activity renders no strip and no badges (quiet by default)",
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-42"),
+			f.includes("MILL-42"),
 		);
 		expect(frame).not.toContain("loop");
 		expect(frame).not.toContain("input");
@@ -558,7 +558,7 @@ test("activityStrip counts cards by kind (singular for one), omits zero parts, a
 			activityWith(
 				[
 					activeLoop(),
-					activeLoop({ taskShortId: "JAKE-43" }),
+					activeLoop({ taskShortId: "MILL-43" }),
 					activeLoop({ id: "r1", kind: "runs", label: "scout", taskId: "t9" }),
 					activeLoop({ id: "r2", kind: "runs", status: "completed" }),
 				],
@@ -627,16 +627,16 @@ test("DispatchOverlay renders the title, the numbered host triggers, the preview
 	];
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
 		<DispatchOverlay
-			shortId="JAKE-42"
+			shortId="MILL-42"
 			overlay={{ taskId: "test", triggers, selected: 2, loading: false }}
 		/>,
 		{ width: 90, height: 24 },
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("dispatch JAKE-42"),
+			f.includes("dispatch MILL-42"),
 		);
-		expect(frame).toContain("dispatch JAKE-42");
+		expect(frame).toContain("dispatch MILL-42");
 		expect(frame).toContain("1 claude");
 		expect(frame).toContain("2 scout");
 		expect(frame).toContain("3 custom");
@@ -654,7 +654,7 @@ test("DispatchOverlay renders the title, the numbered host triggers, the preview
 test("DispatchOverlay shows the loading and empty states", async () => {
 	const loading = await renderTest(
 		<DispatchOverlay
-			shortId="JAKE-42"
+			shortId="MILL-42"
 			overlay={{ taskId: "test", triggers: [], selected: 0, loading: true }}
 		/>,
 		{ width: 80, height: 20 },
@@ -671,7 +671,7 @@ test("DispatchOverlay shows the loading and empty states", async () => {
 	}
 	const empty = await renderTest(
 		<DispatchOverlay
-			shortId="JAKE-42"
+			shortId="MILL-42"
 			overlay={{ taskId: "test", triggers: [], selected: 0, loading: false }}
 		/>,
 		{ width: 80, height: 20 },
@@ -763,7 +763,7 @@ test("Board footer hints only the keys that do something: the row keys wait for 
 	const rows = [
 		section("next", [
 			{
-				task: task({ id: "a", shortId: "JAKE-1", title: "one" }),
+				task: task({ id: "a", shortId: "MILL-1", title: "one" }),
 				children: [],
 			},
 		]),
@@ -793,7 +793,7 @@ test("Board footer at forty columns drops whole hints from the end and keeps `? 
 	const rows = [
 		section("next", [
 			{
-				task: task({ id: "a", shortId: "JAKE-1", title: "one" }),
+				task: task({ id: "a", shortId: "MILL-1", title: "one" }),
 				children: [],
 			},
 		]),
@@ -817,7 +817,7 @@ test("Board footer at forty columns drops whole hints from the end and keeps `? 
 const statusFixture: BoardData.BoardSection[] = [
 	section("next", [
 		{
-			task: task({ id: "a", shortId: "JAKE-50", title: "open work" }),
+			task: task({ id: "a", shortId: "MILL-50", title: "open work" }),
 			children: [],
 		},
 	]),
@@ -825,7 +825,7 @@ const statusFixture: BoardData.BoardSection[] = [
 		{
 			task: task({
 				id: "sd",
-				shortId: "JAKE-52",
+				shortId: "MILL-52",
 				title: "parked idea",
 				state: "someday",
 			}),
@@ -836,7 +836,7 @@ const statusFixture: BoardData.BoardSection[] = [
 		{
 			task: task({
 				id: "df",
-				shortId: "JAKE-51",
+				shortId: "MILL-51",
 				title: "shipped unverified",
 				state: "done",
 				needsReview: true,
@@ -848,7 +848,7 @@ const statusFixture: BoardData.BoardSection[] = [
 		{
 			task: task({
 				id: "cx",
-				shortId: "JAKE-53",
+				shortId: "MILL-53",
 				title: "abandoned work",
 				state: "cancelled",
 			}),
@@ -869,7 +869,7 @@ test("Board at the default status shows the unresolved sections — someday incl
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-50"),
+			f.includes("MILL-50"),
 		);
 		// `open` stays quiet in the header, but it means UNRESOLVED: the parked someday row is on
 		// screen, and neither closed section is.
@@ -877,9 +877,9 @@ test("Board at the default status shows the unresolved sections — someday incl
 		expect(frame).toContain("kabane · acme/widget");
 		expect(frame).not.toContain("kind:");
 		expect(frame).not.toContain("status:");
-		expect(frame).toContain("JAKE-52");
-		expect(frame).not.toContain("JAKE-51");
-		expect(frame).not.toContain("JAKE-53");
+		expect(frame).toContain("MILL-52");
+		expect(frame).not.toContain("MILL-51");
+		expect(frame).not.toContain("MILL-53");
 	} finally {
 		destroy();
 	}
@@ -898,14 +898,14 @@ test("Board under status done shows the chip and BOTH archive sections with no q
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-51"),
+			f.includes("MILL-51"),
 		);
 		expect(frame).toContain("status: done");
 		// done AND cancelled — the closed bucket, not the state name.
-		expect(frame).toContain("JAKE-51");
-		expect(frame).toContain("JAKE-53");
-		expect(frame).not.toContain("JAKE-50");
-		expect(frame).not.toContain("JAKE-52");
+		expect(frame).toContain("MILL-51");
+		expect(frame).toContain("MILL-53");
+		expect(frame).not.toContain("MILL-50");
+		expect(frame).not.toContain("MILL-52");
 	} finally {
 		destroy();
 	}
@@ -915,7 +915,7 @@ test("Board under status review says 'no matches' rather than going blank when n
 	const unflagged: BoardData.BoardSection[] = [
 		section("next", [
 			{
-				task: task({ id: "a", shortId: "JAKE-50", title: "open work" }),
+				task: task({ id: "a", shortId: "MILL-50", title: "open work" }),
 				children: [],
 			},
 		]),
@@ -935,7 +935,7 @@ test("Board under status review says 'no matches' rather than going blank when n
 		);
 		expect(frame).toContain("status: review");
 		expect(frame).toContain("no matches");
-		expect(frame).not.toContain("JAKE-50");
+		expect(frame).not.toContain("MILL-50");
 	} finally {
 		destroy();
 	}
@@ -1082,8 +1082,8 @@ test("Board renders an orphaned subtask distinguishably from a genuine top-level
 });
 
 test("Board draws the mark glyph on a marked row and counts marks in the header", async () => {
-	const a = task({ id: "a", shortId: "JAKE-1", title: "Marked one" });
-	const b = task({ id: "b", shortId: "JAKE-2", title: "Plain one" });
+	const a = task({ id: "a", shortId: "MILL-1", title: "Marked one" });
+	const b = task({ id: "b", shortId: "MILL-2", title: "Plain one" });
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
 		<Board
 			sections={[
@@ -1100,11 +1100,11 @@ test("Board draws the mark glyph on a marked row and counts marks in the header"
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-2"),
+			f.includes("MILL-2"),
 		);
 		// The mark gutter, held on the unmarked row too; no row is linked, so no link gutter at all.
-		expect(frame).toContain("JAKE-1  ● Marked one");
-		expect(frame).toContain("JAKE-2    Plain one");
+		expect(frame).toContain("MILL-1  ● Marked one");
+		expect(frame).toContain("MILL-2    Plain one");
 		expect(frame).toContain("kabane · all scopes · 1 marked");
 	} finally {
 		destroy();
@@ -1117,10 +1117,10 @@ test("markedLabel is quiet at zero", () => {
 });
 
 test("Board glyphs the rows the copilot touched, and leaves the rest their full width", async () => {
-	const changed = task({ id: "a", shortId: "JAKE-1", title: "Agent wrote it" });
+	const changed = task({ id: "a", shortId: "MILL-1", title: "Agent wrote it" });
 	const untouched = task({
 		id: "b",
-		shortId: "JAKE-2",
+		shortId: "MILL-2",
 		title: "Human wrote it",
 	});
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
@@ -1139,19 +1139,19 @@ test("Board glyphs the rows the copilot touched, and leaves the rest their full 
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-2"),
+			f.includes("MILL-2"),
 		);
-		expect(frame).toContain("JAKE-1  ✦ ai Agent wrote it");
+		expect(frame).toContain("MILL-1  ✦ ai Agent wrote it");
 		// Transient, so it holds no column: an untouched title starts where it always did.
-		expect(frame).toContain("JAKE-2  Human wrote it");
+		expect(frame).toContain("MILL-2  Human wrote it");
 	} finally {
 		destroy();
 	}
 });
 
 test("Board glyphs a row with a linked issue and keeps every title aligned", async () => {
-	const linkedTask = task({ id: "a", shortId: "JAKE-1", title: "Team work" });
-	const plain = task({ id: "b", shortId: "JAKE-2", title: "Local work" });
+	const linkedTask = task({ id: "a", shortId: "MILL-1", title: "Team work" });
+	const plain = task({ id: "b", shortId: "MILL-2", title: "Local work" });
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
 		<Board
 			sections={[
@@ -1168,12 +1168,12 @@ test("Board glyphs a row with a linked issue and keeps every title aligned", asy
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-2"),
+			f.includes("MILL-2"),
 		);
-		expect(frame).toContain("JAKE-1  ◆ Team work");
+		expect(frame).toContain("MILL-1  ◆ Team work");
 		// The gutter holds its column on the row without a link, which is what makes the glyphs
 		// scannable; nothing is marked, so the mark gutter costs nothing.
-		expect(frame).toContain("JAKE-2    Local work");
+		expect(frame).toContain("MILL-2    Local work");
 	} finally {
 		destroy();
 	}
@@ -1200,7 +1200,7 @@ test("Board keeps a linked row on a single line at a narrow (40-col) width", asy
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-42"),
+			f.includes("MILL-42"),
 		);
 		expect(frame).toContain("◆");
 		expect(frame).toContain("…");
@@ -1212,8 +1212,8 @@ test("Board keeps a linked row on a single line at a narrow (40-col) width", asy
 });
 
 test("the footer offers O only while the selected row has a linked issue", async () => {
-	const linkedTask = task({ id: "a", shortId: "JAKE-1", title: "Team work" });
-	const plain = task({ id: "b", shortId: "JAKE-2", title: "Local work" });
+	const linkedTask = task({ id: "a", shortId: "MILL-1", title: "Team work" });
+	const plain = task({ id: "b", shortId: "MILL-2", title: "Local work" });
 	const sections = [
 		section("next", [
 			{ task: linkedTask, children: [] },
@@ -1234,7 +1234,7 @@ test("the footer offers O only while the selected row has a linked issue", async
 		const frame = await pumpUntil(
 			onLinked.renderOnce,
 			onLinked.captureCharFrame,
-			(f) => f.includes("JAKE-2"),
+			(f) => f.includes("MILL-2"),
 		);
 		expect(frame).toContain("O open issue");
 	} finally {
@@ -1254,7 +1254,7 @@ test("the footer offers O only while the selected row has a linked issue", async
 		const frame = await pumpUntil(
 			onPlain.renderOnce,
 			onPlain.captureCharFrame,
-			(f) => f.includes("JAKE-2"),
+			(f) => f.includes("MILL-2"),
 		);
 		expect(frame).not.toContain("O open issue");
 	} finally {
@@ -1336,7 +1336,7 @@ test("Board shows the kind in the header only while a kind filter is on", async 
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("JAKE-42"),
+			f.includes("MILL-42"),
 		);
 		expect(frame).toContain("kabane · acme/widget · kind: issue");
 	} finally {

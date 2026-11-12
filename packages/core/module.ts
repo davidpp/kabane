@@ -14,13 +14,13 @@
  * module registers or migrates applies those ops in log order. Core ops keep
  * their own gate: a pull stops at an op from a newer core schema.
  *
- * The registry is process-wide, like the table prefix (`db/tables.ts`), and is
- * set only through `Runtime.configure`, which validates it first.
+ * The registry is process-wide and is set only through `Runtime.configure`,
+ * which validates it first.
  */
 
 import type { Migrate } from "./db/migrate";
 import type { Db } from "./db/port";
-import { LOGICAL_TABLES, physicalTable } from "./db/tables";
+import { TABLES } from "./db/tables";
 import { CORE_TOOL_NAMES } from "./mcp/tool-names";
 import type { ToolDef } from "./mcp/tools";
 import { err, ok, quoted, type Result } from "./result";
@@ -52,10 +52,7 @@ import type { SyncFamily } from "./sync/resolve";
  * parent row is still parked would fail its whole pull.
  */
 export type ModuleSyncTable = {
-	/**
-	 * Logical name, without the table prefix; SQL addresses it as
-	 * `physicalTable(table)`, resolved inside a function, never captured at import.
-	 */
+	/** The table's name, in SQL and in an op's `tbl`. */
 	table: string;
 	/**
 	 * How an incoming op resolves against the local row. `row-lww` or
@@ -254,7 +251,7 @@ const readSurfaceProblem = (
 /** The first thing wrong with `modules`, in one line, or undefined. */
 const problemWith = (modules: readonly KabaneModule[]): string | undefined => {
 	const claimed: Claims = new Map(
-		Object.values(LOGICAL_TABLES).map((table) => [table, "a core table"]),
+		Object.values(TABLES).map((table) => [table, "a core table"]),
 	);
 	// Every module's migration table is reserved before any table is checked,
 	// so no module can declare one, its own or a later module's.
@@ -350,23 +347,22 @@ export namespace Modules {
 		return ok(undefined);
 	};
 
-	/** The registered module table called `logical`, if any. */
-	export const table = (logical: string): ModuleTableRef | undefined =>
-		tables().find((ref) => ref.spec.table === logical);
+	/** The registered module table called `name`, if any. */
+	export const table = (name: string): ModuleTableRef | undefined =>
+		tables().find((ref) => ref.spec.table === name);
 
-	/** The tag an op on `logical` goes out with, or undefined for a core table. */
-	export const tagFor = (logical: string): ModuleTag | undefined => {
-		const ref = table(logical);
+	/** The tag an op on table `name` goes out with, or undefined for a core table. */
+	export const tagFor = (name: string): ModuleTag | undefined => {
+		const ref = table(name);
 		return ref === undefined
 			? undefined
 			: { name: ref.module.name, schema: schemaOf(ref.module) };
 	};
 
 	/**
-	 * The physical table recording `name`'s migration versions, apart from
+	 * The table recording `name`'s migration versions, apart from
 	 * core's `schema_migrations`. A dash becomes an underscore; module names
 	 * cannot hold underscores, so two names never share a table.
 	 */
-	export const versionTable = (name: string): string =>
-		physicalTable(versionTableName(name));
+	export const versionTable = (name: string): string => versionTableName(name);
 }

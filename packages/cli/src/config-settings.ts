@@ -72,12 +72,11 @@ const allKeys = async (): Promise<Result<Key[]>> => {
 };
 
 const identities = new Set(["actor", "deviceId", "sync.deviceId"]);
-// Groups an agent should leave to the human: a wrong value disconnects the device
-// or points it at another database. Writable here on purpose, since `kabane config`
-// is how the human changes them; the copilot is told to refuse any key flagged so.
-const protectedGroups = ["sync", "db"];
+// The group an agent should leave to the human: a wrong value disconnects the
+// device. Writable here on purpose, since `kabane config` is how the human changes
+// it; the copilot is told to refuse any key flagged so.
 const isProtected = (key: string): boolean =>
-	protectedGroups.some((group) => key === group || key.startsWith(`${group}.`));
+	key === "sync" || key.startsWith("sync.");
 // Credentials: reads, and the echo of a write, say only whether one is set, so a
 // help question never puts the hub token or an Access secret in a model's context.
 const secrets = new Set(["sync.token", "sync.headers"]);
@@ -124,7 +123,7 @@ const lookOf = (entry: Key, where: ConfigSettings.Where) => {
 const traitsOf = (entry: Key, where: ConfigSettings.Where) => ({
 	...lookOf(entry, where),
 	field: entry.field,
-	// A device key has the global layer only: no project file may redirect the database or the hub.
+	// A device key has the global layer only: no project file may redirect the hub.
 	layers: entry.namespace ? ConfigSettings.TARGETS : (["global"] as const),
 	secret: secretOf(entry.key) !== undefined,
 	restart: restartOf(entry),
@@ -413,7 +412,7 @@ const documentFor = (
 	where: ConfigSettings.Where,
 ): Result<Document> => {
 	const namespace = entry.namespace?.name;
-	// A device key has the global layer only: no project file may redirect the database or the hub.
+	// A device key has the global layer only: no project file may redirect the hub.
 	if (namespace === undefined || layer === "global") {
 		if (namespace !== undefined || layer === "global")
 			return ok({

@@ -27,9 +27,9 @@ describe("BoardActivity.indexCards (pure)", () => {
 	it("keeps every card in order and indexes only in-flight ones by task id and shortId", () => {
 		const cards = [
 			card({ id: "a", taskId: "t1" }),
-			card({ id: "b", taskShortId: "JAKE-1", status: "paused" }),
+			card({ id: "b", taskShortId: "MILL-1", status: "paused" }),
 			card({ id: "c", taskId: "t1", status: "completed" }),
-			card({ id: "d", taskId: "t2", taskShortId: "JAKE-2", status: "pending" }),
+			card({ id: "d", taskId: "t2", taskShortId: "MILL-2", status: "pending" }),
 			card({ id: "e", status: "failed" }),
 		];
 		const activity = BoardActivity.indexCards(cards);
@@ -40,10 +40,10 @@ describe("BoardActivity.indexCards (pure)", () => {
 		expect(activity.inFlightByTaskId.get("t2")?.map((c) => c.id)).toEqual([
 			"d",
 		]);
-		expect(activity.inFlightByShortId.get("JAKE-1")?.map((c) => c.id)).toEqual([
+		expect(activity.inFlightByShortId.get("MILL-1")?.map((c) => c.id)).toEqual([
 			"b",
 		]);
-		expect(activity.inFlightByShortId.get("JAKE-2")?.map((c) => c.id)).toEqual([
+		expect(activity.inFlightByShortId.get("MILL-2")?.map((c) => c.id)).toEqual([
 			"d",
 		]);
 		expect(activity.questionsByTaskId.size).toBe(0);
@@ -65,12 +65,12 @@ describe("BoardActivity.inFlightForTask / cardsForTask (pure)", () => {
 			id: "loop-live",
 			kind: "loops",
 			label: "loop",
-			taskShortId: "JAKE-1",
+			taskShortId: "MILL-1",
 		}),
 		card({
 			id: "both",
 			taskId: "t1",
-			taskShortId: "JAKE-1",
+			taskShortId: "MILL-1",
 			status: "pending",
 		}),
 		card({ id: "run-done", taskId: "t1", status: "completed" }),
@@ -79,14 +79,14 @@ describe("BoardActivity.inFlightForTask / cardsForTask (pure)", () => {
 		card({
 			id: "loop-done",
 			kind: "loops",
-			taskShortId: "JAKE-1",
+			taskShortId: "MILL-1",
 			status: "completed",
 		}),
 	]);
 
 	it("inFlightForTask unions the id and shortId matches, deduped by card id", () => {
 		expect(
-			BoardActivity.inFlightForTask(activity, "t1", "JAKE-1").map((c) => c.id),
+			BoardActivity.inFlightForTask(activity, "t1", "MILL-1").map((c) => c.id),
 		).toEqual(["run-live", "both", "loop-live"]);
 		expect(
 			BoardActivity.inFlightForTask(activity, "t1").map((c) => c.id),
@@ -95,10 +95,10 @@ describe("BoardActivity.inFlightForTask / cardsForTask (pure)", () => {
 
 	it("cardsForTask lists in-flight first, then recent finished ones, capped", () => {
 		expect(
-			BoardActivity.cardsForTask(activity, "t1", "JAKE-1").map((c) => c.id),
+			BoardActivity.cardsForTask(activity, "t1", "MILL-1").map((c) => c.id),
 		).toEqual(["run-live", "both", "loop-live", "run-done", "run-failed"]);
 		expect(
-			BoardActivity.cardsForTask(activity, "t1", "JAKE-1", 4).map((c) => c.id),
+			BoardActivity.cardsForTask(activity, "t1", "MILL-1", 4).map((c) => c.id),
 		).toEqual(["run-live", "both", "loop-live", "run-done"]);
 	});
 
