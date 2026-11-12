@@ -109,6 +109,36 @@ describe("LiftedReaderSheet", () => {
 		r.destroy();
 	});
 
+	test("headings too near the end to reach the top are still each a step of `]` and `[`", async () => {
+		// A long first section, then three one-line ones that all sit inside the last screen.
+		const long = Array.from({ length: 40 }, (_, n) => `Line ${String(n)}.`);
+		const body = `## Summary\n\n${long.join("\n\n")}\n\n## Beta\n\nb\n\n## Gamma\n\nc\n\n## Delta\n\nd`;
+		const r = await mount(lifted(body));
+		const h = (): LiftedReader.Handle =>
+			r.handle.current as LiftedReader.Handle;
+		expect(topRow(await r.press(() => h().jump(1)))).toBe("Summary");
+		const end = await r.press(() => h().jump(1));
+		expect(end).toContain("Delta");
+		await r.press(() => h().jump(1));
+		await r.press(() => h().jump(1));
+		// From Delta, `[` steps back through Gamma and Beta, which the end of the scroll holds in
+		// view, before it reaches Summary: the jumps went through every heading, not round Beta.
+		expect(await r.press(() => h().jump(-1))).toBe(end);
+		expect(await r.press(() => h().jump(-1))).toBe(end);
+		expect(topRow(await r.press(() => h().jump(-1)))).toBe("Summary");
+		r.destroy();
+	});
+
+	test("a scroll between jumps makes the next one step from the view, not the heading picked", async () => {
+		const r = await mount(lifted(Fixtures.REAL_HANDOFF));
+		const h = (): LiftedReader.Handle =>
+			r.handle.current as LiftedReader.Handle;
+		await r.press(() => h().jump(1));
+		await r.press(() => h().scroll({ to: "top" }));
+		expect(topRow(await r.press(() => h().jump(1)))).toBe("Summary");
+		r.destroy();
+	});
+
 	test("a newer entry keeps the heading under the cursor where it was", async () => {
 		const r = await mount(lifted(Fixtures.REAL_HANDOFF));
 		const h = (): LiftedReader.Handle =>

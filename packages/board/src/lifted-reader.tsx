@@ -107,6 +107,32 @@ const headingUnder = (
 		return offset !== undefined && offset <= box.scrollTop;
 	}) ?? null;
 
+/**
+ * Where `[` (-1) or `]` (+1) goes: a heading's id, null for the top, undefined for nowhere. Straight
+ * after a jump it steps from the heading picked; otherwise from the top of the view, to the first
+ * heading below it or the last one above it.
+ */
+const jumpTarget = (
+	box: ScrollBoxRenderable,
+	ids: readonly string[],
+	picked: string | null,
+	delta: 1 | -1,
+): string | null | undefined => {
+	const at = picked === null ? -1 : ids.indexOf(picked);
+	if (at >= 0) {
+		const next = at + delta;
+		return next < 0 ? null : ids[next];
+	}
+	const top = box.scrollTop;
+	const placed = ids.flatMap((id) => {
+		const offset = offsetOf(box, id);
+		return offset === undefined ? [] : [{ id, offset }];
+	});
+	return delta > 0
+		? placed.find((h) => h.offset > top)?.id
+		: (placed.findLast((h) => h.offset < top)?.id ?? null);
+};
+
 export type LiftedReaderSheetProps = {
 	entries: readonly DetailModel.LiftedEntry[];
 	// The handle the screen's `readerScroll` and `readerJump` effects call.
@@ -125,6 +151,10 @@ export const LiftedReaderSheet = ({
 	const idsRef = useRef(ids);
 	idsRef.current = ids;
 	const cursor = useRef<string | null>(null);
+	// The heading the last `[`/`]` went to, until the view is moved some other way. A heading near
+	// the end cannot reach the top (the scroll stops at the end), so the next jump steps from the
+	// heading picked, not from where the view stopped.
+	const picked = useRef<string | null>(null);
 	// Ends the hold a newer entry put on the heading under the cursor (see below).
 	const held = useRef<(() => void) | null>(null);
 	const loosen = (): void => {
@@ -136,6 +166,7 @@ export const LiftedReaderSheet = ({
 	// After the view moves, the heading under its top is the one a newer entry keeps in place.
 	const settle = (): void => {
 		loosen();
+		picked.current = null;
 		const current = box.current;
 		current?.afterLayout(() => {
 			cursor.current = headingUnder(current, idsRef.current);
@@ -152,22 +183,12 @@ export const LiftedReaderSheet = ({
 			loosen();
 			const current = box.current;
 			if (!current) return;
-			const top = current.scrollTop;
-			const placed = idsRef.current.flatMap((id) => {
-				const offset = offsetOf(current, id);
-				return offset === undefined ? [] : [{ id, offset }];
-			});
-			const target =
-				delta > 0
-					? placed.find((h) => h.offset > top)
-					: placed.findLast((h) => h.offset < top);
-			if (target) {
-				current.scrollChildIntoView(target.id, { align: "start" });
-				cursor.current = target.id;
-			} else if (delta < 0) {
-				current.scrollTo(0);
-				cursor.current = null;
-			}
+			const target = jumpTarget(current, idsRef.current, picked.current, delta);
+			if (target === undefined) return;
+			if (target === null) current.scrollTo(0);
+			else current.scrollChildIntoView(target, { align: "start" });
+			picked.current = target;
+			cursor.current = target;
 		},
 	}));
 
@@ -190,6 +211,7 @@ export const LiftedReaderSheet = ({
 		}
 		current.scrollTo(0);
 		cursor.current = null;
+		picked.current = null;
 	}, [signature]);
 
 	// The prose's own width: the sheet's padding and the markdown's inset off the pane.
