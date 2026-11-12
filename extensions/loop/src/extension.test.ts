@@ -394,3 +394,100 @@ describe("kabane loop status", () => {
 		);
 	});
 });
+
+describe("kabane loop advise", () => {
+	it("prints the advised settings with their reasons, and what each subtask's tags run it on", async () => {
+		writeFileSync(
+			join(home, "package.json"),
+			JSON.stringify({ scripts: { test: "bun test" } }),
+		);
+		writeFileSync(join(home, "bun.lock"), "");
+		mkdirSync(join(home, ".claude/agents"), { recursive: true });
+		writeFileSync(
+			join(home, ".claude/agents/docs-writer.md"),
+			"---\nname: docs-writer\nmodel: haiku\n---\nWrite docs.\n",
+		);
+		const add = async (title: string, extra: Record<string, unknown>) => {
+			const created = await Planner.addTask(home, {
+				title,
+				kind: "issue",
+				state: "next",
+				...extra,
+			});
+			if (!created.ok) throw created.error;
+			return created.value;
+		};
+		const parent = await add("parser", {});
+		const header = await add("header", {
+			parentTaskId: parent.id,
+			tags: ["tier:fast"],
+			description: "Change src/parser.ts to read the header.",
+		});
+		const body = await add("body", {
+			parentTaskId: parent.id,
+			tags: ["tier:codex/frontier", "agent:reviewer"],
+			description: "Change src/parser.ts to read the body.",
+		});
+		const docs = await add("docs", {
+			parentTaskId: parent.id,
+			tags: ["agent:docs-writer", "tier:balanced", "area:docs"],
+			description: "Write docs/parser.md.",
+		});
+		const command = loop.commands?.find((c) => c.name === "loop");
+		if (!command) throw new Error("no loop command");
+		const advised = await command.run(
+			parseArgs(["advise", parent.shortId ?? parent.id]),
+			{
+				home,
+				store: home,
+				cwd: home,
+				actor: "cabane://actor/human/test",
+				harnessMode: "auto",
+				settings: Settings.port(async () =>
+					ok([
+						{
+							layer: "global",
+							label: "test",
+							value: {
+								tiers: {
+									claude: { fast: "claude-haiku-4-5" },
+									codex: { frontier: "gpt-5.5" },
+								},
+							},
+						},
+					]),
+				),
+			},
+		);
+		expect(advised.exitCode).toBe(0);
+		const lines = advised.text.split("\n");
+		expect(lines.slice(1, 8)).toEqual([
+			"  implementer claude  model unset  tiers frontier, balanced, fast",
+			"advised:",
+			`  budget.concurrency 1 (now unset): src/parser.ts referenced by ${header.shortId}, ${body.shortId} — potential merge conflict if run in parallel`,
+			'  gates test="bun run test" (now none): package.json scripts, using bun from the lockfile',
+			"  setup bun install (now unset): install dependencies in each worktree using the project's lockfile",
+			'  start with: --concurrency 1 --gate test="bun run test"',
+			'  no start flag, a setting: loop.setup "bun install"',
+		]);
+		expect(lines.slice(8)).toEqual([
+			"subtasks:",
+			`  ${header.shortId}  header`,
+			"    tier:fast  claude  model claude-haiku-4-5 (tier fast)",
+			`  ${body.shortId}  body`,
+			"    tier:codex/frontier agent:reviewer  codex  model gpt-5.5 (tier frontier)",
+			"    note: codex has no way to select a named agent, so it runs without reviewer",
+			`  ${docs.shortId}  docs`,
+			"    agent:docs-writer tier:balanced  claude  agent docs-writer  model haiku (docs-writer's pin)",
+			"    note: tier balanced not applied: agent docs-writer pins haiku",
+		]);
+	});
+
+	it("refuses a flag start does not take", async () => {
+		const refused = await kabaneLoop("advise", "K-1", "--work-tree");
+		expect(refused.exitCode).toBe(2);
+		expect(refused.text).toStartWith(
+			"Error: Unknown loop start flag: --work-tree\n",
+		);
+	});
+});

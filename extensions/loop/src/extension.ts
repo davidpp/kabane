@@ -24,6 +24,7 @@ import { Parent } from "./parent";
 import { RunStore } from "./store";
 
 const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <tier|model>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--isolation worktree|shared] [--lens <name>]... [--verifier claude|codex|gemini] [--recheck|--no-recheck] [--land none|pr]
+       kabane loop advise <issue> [start's flags]   (the settings advised for the plan and why, and what each subtask's tags run it on; changes no issue, run or setting)
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
@@ -176,8 +177,10 @@ const landed = (run: RunStore.Run): string[] => {
 const withdrawn = (q: Loop.Waiting): string =>
 	`  withdrawn, its runner died: ${q.task} ${indented(q.question)} (the restarted run asks again)`;
 
-// Where a claim's model came from, as `loop status` reads it.
-const modelSource = (claim: RunStore.Claim): string => {
+// Where a claim's model came from, as `loop status` and `loop advise` read it.
+const modelSource = (
+	claim: Pick<RunStore.Claim, "modelSource" | "tier" | "agent">,
+): string => {
 	switch (claim.modelSource) {
 		case "tier":
 			return `tier ${claim.tier}`;
@@ -267,7 +270,7 @@ const ran = (result: Result<RunStore.Run>): Outcome =>
 const WORKTREE_NOTE =
 	"  note: a new worktree has no ignored files (node_modules, build output): a gate that needs them installs them first, say `bun install && bun test`, and the loop.setup setting readies each subtask's own worktree before its session";
 
-// What `start` takes, and `--as` and `--scope`, which every command takes. A misspelt flag
+// What `start` and `advise` take, and `--as` and `--scope`, which every command takes. A misspelt flag
 // (`--work-tree`) is refused rather than dropped, which would start a run the human did not ask for.
 const START_FLAGS: ReadonlySet<string> = new Set([
 	"dir",
@@ -319,18 +322,24 @@ const refusedFlags = (args: ParsedArgs): string | undefined => {
 	return undefined;
 };
 
+// What `start`'s flags ask of a run of `parent`, `advise`'s too; an error is a usage line.
+const inputFrom = (
+	args: ParsedArgs,
+	parent: string,
+): Result<Loop.StartInput> => {
+	const refused = refusedFlags(args);
+	if (refused !== undefined) return err(new Error(refused));
+	const config = configFrom(args);
+	if (!config.ok) return config;
+	const dir = flagString(args, "dir");
+	return ok({ parent, ...(dir ? { dir } : {}), config: config.value });
+};
+
 /** `kabane loop start`: exported so a test can drive it with a runner of its own. */
 export const start: Verb = async (args, deps, target) => {
-	const refused = refusedFlags(args);
-	if (refused !== undefined) return usage(refused, USAGE);
-	const config = configFrom(args);
-	if (!config.ok) return usage(config.error.message, USAGE);
-	const dir = flagString(args, "dir");
-	const started = await Loop.start(deps, {
-		parent: target,
-		...(dir ? { dir } : {}),
-		config: config.value,
-	});
+	const input = inputFrom(args, target);
+	if (!input.ok) return usage(input.error.message, USAGE);
+	const started = await Loop.start(deps, input.value);
 	if (!started.ok) return ran(started);
 	const placed = Loop.placement(started.value);
 	const isNew =
@@ -348,6 +357,93 @@ export const start: Verb = async (args, deps, target) => {
 			...moves.map((move) => `  note: ${move}`),
 		].join("\n"),
 	);
+};
+
+type Recommendation = Loop.Advised["advice"][number];
+
+const shown = (value: unknown): string => {
+	if (value === undefined) return "unset";
+	if (typeof value !== "object" || value === null) return String(value);
+	const entries = Object.entries(value);
+	return entries.length === 0
+		? "none"
+		: entries.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(" ");
+};
+
+// What a setting is under the run's layers now, to read the advice against.
+const current = (config: LoopConfig.Config, r: Recommendation): unknown => {
+	switch (r.path) {
+		case "budget.concurrency":
+			return config.budget.concurrency;
+		case "gates":
+			return config.gates;
+		default:
+			return config[r.path];
+	}
+};
+
+// `loop start` takes the advice only as flags; setup and stallAfter have none, only a setting.
+const asFlags = (r: Recommendation): string[] => {
+	switch (r.path) {
+		case "budget.concurrency":
+			return [`--concurrency ${r.value}`];
+		case "isolation":
+			return [`--isolation ${r.value}`];
+		case "gates":
+			return Object.entries(r.value).map(
+				([name, command]) => `--gate ${name}=${JSON.stringify(command)}`,
+			);
+		default:
+			return [];
+	}
+};
+
+const asSetting = (r: Recommendation): string[] =>
+	r.path === "setup" || r.path === "stallAfter"
+		? [`loop.${r.path} ${JSON.stringify(r.value)}`]
+		: [];
+
+// A subtask's route: its tags, the harness, agent and model they run it on, and why one is not
+// honoured.
+const routedLines = (s: Loop.Routed): string[] => [
+	`  ${s.task}  ${s.title}`,
+	`    ${[
+		s.tags.length > 0 ? s.tags.join(" ") : "no tier: or agent: tag",
+		s.harness,
+		...(s.agent ? [`agent ${s.agent}`] : []),
+		`model ${s.model ?? "unset"} (${modelSource(s)})`,
+	].join("  ")}`,
+	...s.notes.map((note) => `    note: ${note}`),
+];
+
+const advisedText = (a: Loop.Advised): string => {
+	const flags = a.advice.flatMap(asFlags);
+	const settings = a.advice.flatMap(asSetting);
+	return [
+		`${a.parent} in ${a.projectDir}`,
+		`  implementer ${a.config.implementer}  model ${a.config.model ?? "unset"}  tiers ${LoopConfig.tierNames(a.config).join(", ")}`,
+		"advised:",
+		...a.advice.map(
+			(r) =>
+				`  ${r.path} ${shown(r.value)} (now ${shown(current(a.config, r))}): ${r.reason}`,
+		),
+		...(flags.length > 0 ? [`  start with: ${flags.join(" ")}`] : []),
+		...(settings.length > 0
+			? [`  no start flag, a setting: ${settings.join(", ")}`]
+			: []),
+		...(a.subtasks.length > 0 ? ["subtasks:"] : []),
+		...a.subtasks.flatMap(routedLines),
+	].join("\n");
+};
+
+/** `kabane loop advise`: what `start` with the same flags would be advised, and how it would route. */
+const advise: Verb = async (args, deps, target) => {
+	const input = inputFrom(args, target);
+	if (!input.ok) return usage(input.error.message, USAGE);
+	const advised = await Loop.advise(deps, input.value);
+	return advised.ok
+		? success(advised.value, advisedText(advised.value))
+		: failure(advised.error);
 };
 
 const rollback: Verb = async (args, deps, target) => {
@@ -397,6 +493,7 @@ const direct =
 // Each verb that takes a target, with what the target is for the usage line when it is missing.
 const VERBS: Record<string, { needs: string; run: Verb }> = {
 	start: { needs: "an issue, or a parent issue", run: start },
+	advise: { needs: "an issue, or a parent issue", run: advise },
 	run: {
 		needs: "a run id",
 		run: async (_a, deps, id) => ran(await Loop.run(deps, id)),
