@@ -28,13 +28,14 @@ import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { overlayBg } from "./overlay";
+import { Paging } from "./paging";
 import { Segments } from "./segments";
 import { useTheme } from "./theme";
 
 export namespace LiftedReader {
 	/** What the screen's effects reach into: the reader's scroll and its heading jumps. */
 	export type Handle = {
-		scrollBy: (delta: number) => void;
+		scroll: (motion: Paging.Motion) => void;
 		jump: (delta: 1 | -1) => void;
 	};
 
@@ -142,9 +143,9 @@ export const LiftedReaderSheet = ({
 	};
 
 	useImperativeHandle(handleRef, () => ({
-		scrollBy: (delta) => {
+		scroll: (motion) => {
 			loosen();
-			box.current?.scrollBy(delta);
+			Paging.apply(box.current, motion);
 			settle();
 		},
 		jump: (delta) => {

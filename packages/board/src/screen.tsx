@@ -25,12 +25,14 @@ import { DecisionPanel, DecisionsWaiting } from "./decision-panel";
 import { BoardDecisions } from "./decisions";
 import { Detail } from "./detail";
 import { DetailModel } from "./detail-model";
+import type { Fresh } from "./detail-records";
 import { EventView } from "./event-view";
 import { FooterTrail } from "./footer";
 import type { Keymap } from "./keymap";
 import { type LiftedReader, LiftedReaderSheet } from "./lifted-reader";
 import { BoardNav } from "./nav";
 import { HelpSheet } from "./overlay";
+import { Paging } from "./paging";
 import type { ActivityCard, ActivitySource, CardHeader } from "./ports";
 import { PromptPanel } from "./prompt-field";
 import { SettingsOverlay } from "./settings-overlay";
@@ -40,11 +42,11 @@ import { DispatchLayer } from "./trigger-form-view";
 
 // The renderables the reducer's effects reach into, which the views mount.
 export type ScreenRefs = {
-	// The detail view's and the event view's scrollbox, which j/k move (`scroll`).
+	// The detail view's and the event view's scrollbox, which the scroll keys move (`scroll`).
 	scroll: RefObject<ScrollBoxRenderable | null>;
 	// The board list's scrollbox, kept on the selected row as j/k move it off-screen.
 	list: RefObject<ScrollBoxRenderable | null>;
-	// The `?` sheet's scrollbox, which j/k move while it is open (`helpScroll`).
+	// The `?` sheet's scrollbox, which the scroll keys move while it is open (`helpScroll`).
 	help: RefObject<ScrollBoxRenderable | null>;
 	// The reader over the detail view, which j/k scroll and `[`/`]` move by heading.
 	reader: RefObject<LiftedReader.Handle | null>;
@@ -99,19 +101,30 @@ export const useScreenRefs = (
 			scroll.current?.scrollChildIntoView(BoardChecklist.rowId(pressed.itemId));
 	}, [pressed]);
 
+	// A task's `now` coming on screen brings the checklist cursor's row into view; after that the
+	// human's scrolls are left alone until it comes on screen again.
+	const checklist = state ? BoardChecklist.onScreen(state) : null;
+	const revealedFor = useRef<string | null>(null);
+	useEffect(() => {
+		const taskId = checklist?.taskId ?? null;
+		if (checklist && taskId !== revealedFor.current)
+			scroll.current?.scrollChildIntoView(checklist.rowId);
+		revealedFor.current = taskId;
+	});
+
 	const runEffect = useCallback((effect: ScreenEffect): void => {
 		switch (effect.type) {
 			case "scroll":
-				scroll.current?.scrollBy(effect.delta);
+				Paging.apply(scroll.current, effect);
 				return;
 			case "reveal":
 				scroll.current?.scrollChildIntoView(effect.id);
 				return;
 			case "helpScroll":
-				help.current?.scrollBy(effect.delta);
+				Paging.apply(help.current, effect);
 				return;
 			case "readerScroll":
-				reader.current?.scrollBy(effect.delta);
+				reader.current?.scroll(effect);
 				return;
 			case "readerJump":
 				reader.current?.jump(effect.delta);
@@ -140,6 +153,8 @@ export type ScreenProps = {
 	source: ActivitySource;
 	// The open detail view's records.
 	records: Result<BoardData.DetailRecords> | undefined;
+	// What landed on its `now` tab that the human has not seen yet.
+	fresh?: Fresh;
 	refs: ScreenRefs;
 	input: BoardInput;
 	// The event view on a card's tab refreshes its card every second; the keys read the same card.
@@ -406,6 +421,7 @@ const DetailScreen = ({
 	linked,
 	activity,
 	records,
+	fresh,
 	refs,
 	input,
 	keys,
@@ -427,6 +443,7 @@ const DetailScreen = ({
 				taskId={taskId}
 				task={task}
 				records={records}
+				fresh={fresh}
 				cards={taskCards.length > 0 ? taskCards : undefined}
 				questions={activity.questionsByTaskId.get(taskId)}
 				pinned={banner?.question.questionActivityId}
