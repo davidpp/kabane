@@ -68,6 +68,9 @@ export namespace BoardNav {
 				taskId: string;
 				tab?: DetailModel.Tab;
 				banner?: BoardTabs.Banner;
+				// `r`: the reader over the detail, every lifted kind's newest entry in full. The detail
+				// stays mounted under it, so closing it lands on the same tab and scroll.
+				reader?: true;
 		  }
 		| {
 				type: "events";
@@ -83,6 +86,16 @@ export namespace BoardNav {
 	/** The tab a detail view is on. */
 	export const detailTab = (view: BoardView): DetailModel.Tab =>
 		(view.type === "detail" ? view.tab : undefined) ?? DetailModel.DEFAULT_TAB;
+
+	/** The reader is open over the detail view. */
+	export const readerOpen = (state: BoardState): boolean =>
+		state.view.type === "detail" && state.view.reader === true;
+
+	/** Open the reader over the detail view on `taskId`; any other view is left as it is. */
+	export const withReader = (state: BoardState, taskId: string): BoardState =>
+		state.view.type === "detail" && state.view.taskId === taskId
+			? { ...state, view: { ...state.view, reader: true } }
+			: state;
 
 	/**
 	 * The detail view on `taskId` settles on `tab`, the one its first records open on
@@ -308,6 +321,12 @@ export namespace BoardNav {
 		| { type: "reveal"; id: string }
 		// The scroll keys on the `?` sheet: its own scrollbox, not the view's under it (app.tsx holds that ref too).
 		| ({ type: "helpScroll" } & Paging.Motion)
+		// `r` on the detail view: app.tsx opens the reader when the task has a lifted entry to read.
+		| { type: "openReader"; taskId: string }
+		// The scroll keys in the reader move its own scrollbox; `[`/`]` move it to the previous or
+		// next heading.
+		| ({ type: "readerScroll" } & Paging.Motion)
+		| { type: "readerJump"; delta: 1 | -1 }
 		| { type: "copy"; id: string }
 		| { type: "notice"; notice: Notice }
 		// Fire a trigger on a task, with its form's values when it had one.
@@ -1664,6 +1683,7 @@ export namespace BoardNav {
 		if (state.dispatch?.form)
 			return TriggerForm.reduceKey(state, state.dispatch.form, key);
 		if (state.dispatch) return reduceDispatchKey(state, state.dispatch, key);
+		if (readerOpen(state)) return reduceReaderKey(state, key);
 		if (answersUnread(state, key, now))
 			return { state, effect: { type: "notice", notice: justAsked() } };
 		// A harness blocked on a question is the most urgent thing on screen, so it takes the keys
@@ -1853,12 +1873,41 @@ export namespace BoardNav {
 			: { state, effect: NONE };
 	};
 
+	// The reader over the detail view: the scroll keys (Paging) move it, `[`/`]` jump between the
+	// headings of its entries, `?` lists its keys, and esc or q close it back onto the detail.
+	// Everything else is inert, as on the `?` sheet.
+	const reduceReaderKey = (
+		state: BoardState,
+		key: KeyInput,
+	): { state: BoardState; effect: Effect } => {
+		if (state.view.type !== "detail") return { state, effect: NONE };
+		if (isHelpKey(key))
+			return { state: { ...state, help: true }, effect: NONE };
+		const scrolled = Paging.motion(key);
+		if (scrolled)
+			return { state, effect: { type: "readerScroll", ...scrolled } };
+		switch (key.name) {
+			case "escape":
+			case "q": {
+				const { reader: _closed, ...view } = state.view;
+				return { state: { ...state, view }, effect: NONE };
+			}
+			case "]":
+				return { state, effect: { type: "readerJump", delta: 1 } };
+			case "[":
+				return { state, effect: { type: "readerJump", delta: -1 } };
+			default:
+				return { state, effect: NONE };
+		}
+	};
+
 	// Whose keys are live right now, in the order reduceKey hands them out: a modal first, then the
 	// pane with focus, then the view. The footer shows this context's hints and `?` opens its sheet.
 	export const keyContext = (state: BoardState): Keymap.ContextId => {
 		if (state.settings) return "settings";
 		if (state.dispatch)
 			return state.dispatch.form ? "dispatchForm" : "dispatch";
+		if (readerOpen(state)) return "reader";
 		if (state.prompt.open) return "prompt";
 		if (state.focus === "copilot")
 			return matchingShortcuts(
@@ -1884,12 +1933,17 @@ export namespace BoardNav {
 	/**
 	 * The facts that decide which keys do something right now. `linked` and `events` come from the
 	 * host's data, which app.tsx holds and the reducer does not: the tasks pointing at an external
-	 * issue, whether the open task has host activity to read, and whether the card on screen has a
-	 * header of its host's.
+	 * issue, whether the open task has host activity to read, whether the card on screen has a
+	 * header of its host's, and the titles of the kinds the open task has a lifted entry of.
 	 */
 	export const keySituation = (
 		state: BoardState,
-		facts: { linked: ReadonlySet<string>; events: boolean; header?: boolean },
+		facts: {
+			linked: ReadonlySet<string>;
+			events: boolean;
+			header?: boolean;
+			lifted?: readonly string[];
+		},
 	): Keymap.Situation => {
 		const inHand =
 			state.view.type === "detail"
@@ -1900,6 +1954,7 @@ export namespace BoardNav {
 			selection: rowOf(visibleRows(state), state.selectedId) !== undefined,
 			linked: inHand !== undefined && facts.linked.has(inHand),
 			events: facts.events,
+			lifted: facts.lifted ?? [],
 			header: facts.header === true,
 			transcript: state.copilot.hasLog,
 			stoppable: turnStoppable(state) || card.stoppable,
@@ -2068,7 +2123,10 @@ export namespace BoardNav {
 
 	// A modal has the keyboard, and every click but its own does nothing while it is open.
 	const modalOpen = (state: BoardState): boolean =>
-		state.help || state.dispatch !== null || state.settings !== null;
+		state.help ||
+		state.dispatch !== null ||
+		state.settings !== null ||
+		readerOpen(state);
 
 	// Mouse router, parallel to reduceKey. Board-only actions (`select`, `toggleExpand`) no-op while the
 	// detail view is open (those handlers unmount with the board); `copy` is valid in both views. A
@@ -2197,6 +2255,8 @@ export namespace BoardNav {
 			case "escape":
 			case "q":
 				return { state: { ...state, view: { type: "board" } }, effect: NONE };
+			case "r":
+				return { state, effect: { type: "openReader", taskId } };
 			case "o":
 				// The copilot's transcript wins while its indicator is up; otherwise the task's events.
 				return state.copilot.turn === "idle"

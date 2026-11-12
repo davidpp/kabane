@@ -248,7 +248,7 @@ const unlined = (block: Renderable | null, bg?: string): Renderable | null => {
 // Markdown render is the one place a throw can reach the app; wrap it so a parse failure degrades to
 // the raw text instead of tearing down the tree. Prose keeps a column clear of the scrollbar and
 // stops at the measure.
-const MarkdownBody = ({ content }: { content: string }): ReactNode => {
+export const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 	const theme = useTheme();
 	const markdownStyle = useMarkdownStyle();
 	// Stable per theme: a new renderNode has OpenTUI rebuild every block.

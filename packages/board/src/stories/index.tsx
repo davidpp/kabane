@@ -6,7 +6,7 @@
 import { ok } from "@cabane/core";
 import type { QuestionView } from "@cabane/questions";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
-import { createRef, type ReactNode } from "react";
+import { createRef, type ReactNode, useEffect, useRef } from "react";
 import { Board } from "../board";
 import { BoardChecklist } from "../checklist";
 import { CopilotLog } from "../copilot-log";
@@ -15,7 +15,9 @@ import { DecisionForm } from "../decision-form";
 import { DecisionPanel } from "../decision-panel";
 import { BoardDecisions } from "../decisions";
 import { Detail } from "../detail";
+import { DetailModel } from "../detail-model";
 import { ElicitationForm } from "../elicitation-form";
+import { type LiftedReader, LiftedReaderSheet } from "../lifted-reader";
 import type { BoardNav } from "../nav";
 import type { CopilotElicitation } from "../ports";
 import { SettingsOverlay } from "../settings-overlay";
@@ -386,6 +388,35 @@ const WAVE_RECORDS = Fixtures.records(WAVE, {
 	],
 });
 const WAVE_CHECKLIST = BoardChecklist.view(WAVE_RECORDS.checklist);
+
+// The reader over the wave's detail, moved `jumps` headings down the way `]` moves it, once the
+// markdown has laid out.
+const ReaderOver = ({ jumps }: { jumps: number }): ReactNode => {
+	const handle = useRef<LiftedReader.Handle | null>(null);
+	useEffect(() => {
+		const timers = Array.from({ length: jumps }, (_, n) =>
+			setTimeout(() => handle.current?.jump(1), 60 * (n + 1)),
+		);
+		return () => {
+			for (const timer of timers) clearTimeout(timer);
+		};
+	}, [jumps]);
+	return (
+		<>
+			<Detail
+				taskId={WAVE.id}
+				task={WAVE}
+				records={ok(WAVE_RECORDS)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				checklist={WAVE_CHECKLIST}
+			/>
+			<LiftedReaderSheet
+				entries={DetailModel.lifted(WAVE_RECORDS)}
+				handleRef={handle}
+			/>
+		</>
+	);
+};
 
 // Checklist progress on the board's rows: one under way, one complete.
 const PROGRESS = new Map([
@@ -851,6 +882,21 @@ export const STORIES: readonly Story[] = [
 				scrollRef={createRef<ScrollBoxRenderable>()}
 			/>
 		),
+	},
+	{
+		name: "reader",
+		about:
+			"`r` over the same issue: its real handoff in full, in the reader over the detail",
+		width: 40,
+		height: 40,
+		render: () => <ReaderOver jumps={0} />,
+	},
+	{
+		name: "reader-heading",
+		about: "the reader moved two headings down by `]`, Evidence at its top",
+		width: 40,
+		height: 40,
+		render: () => <ReaderOver jumps={2} />,
 	},
 	{
 		name: "detail-now-fresh",

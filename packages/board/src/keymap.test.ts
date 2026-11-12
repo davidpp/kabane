@@ -320,6 +320,7 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 		}),
 	),
 	help: [state({ help: true })],
+	reader: [state({ view: { type: "detail", taskId: "p", reader: true } })],
 	// The settings view on its first row and its last (j has somewhere to go from one, k the other),
 	// on a value `h/l` steps, its editor open, and a save to the repo asking its y/n.
 	settings: [
@@ -413,6 +414,34 @@ describe("the drift guard: every key the registry lists does something in its co
 });
 
 describe("Keymap.footer", () => {
+	test("`r` on the detail names the one kind it reads, says only `read` for several, and is gone with none", () => {
+		const read = (lifted?: string[]) =>
+			Keymap.footer("detail", lifted ? { lifted } : {}).find(
+				(h) => h.key === "r",
+			);
+		expect(read(["Handoff"])).toEqual({ key: "r", label: "read handoff" });
+		expect(read(["Handoff", "Review"])).toEqual({ key: "r", label: "read" });
+		expect(read([])).toBeUndefined();
+		expect(read()).toBeUndefined();
+		const row = Keymap.sheet("detail", { lifted: ["Handoff"] })[0]?.rows.find(
+			(r) => r.key === "r",
+		);
+		expect(row).toEqual({ key: "r", label: "read handoff", available: true });
+	});
+
+	test("at forty columns `space` keeps its place over `r` while `now` lists a checklist, and `r` shows without one", () => {
+		const fitted = (situation: Keymap.Situation) =>
+			Keymap.fitHints(Keymap.footer("detail", situation), 40).map((h) => h.key);
+		const lifted = ["Handoff"];
+		expect(fitted({ lifted, checklist: true })).toEqual(["space", "?"]);
+		expect(fitted({ lifted })).toContain("r");
+	});
+
+	test("the reader's own row keeps its headings and its way out at forty columns", () => {
+		const fitted = Keymap.fitHints(Keymap.footer("reader"), 40);
+		expect(fitted.map((h) => h.key).slice(0, 2)).toEqual(["[ ]", "esc"]);
+	});
+
 	test("where the sheet opens, the footer ends in `? help`; where `?` is a character, it does not", () => {
 		expect(Keymap.footer("board").at(-1)).toEqual({ key: "?", label: "help" });
 		expect(Keymap.footer("transcript").at(-1)).toEqual({
