@@ -395,8 +395,6 @@ const asFlags = (r: Recommendation): string[] => {
 	switch (r.path) {
 		case "budget.concurrency":
 			return [`--concurrency ${r.value}`];
-		case "isolation":
-			return [`--isolation ${r.value}`];
 		case "gates":
 			return Object.entries(r.value).map(
 				([name, command]) => `--gate ${name}=${JSON.stringify(command)}`,

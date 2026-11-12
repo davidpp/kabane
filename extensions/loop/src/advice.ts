@@ -10,7 +10,6 @@ export namespace LoopAdvice {
 				value: number;
 				reason: string;
 		  }
-		| { path: "isolation"; value: "worktree"; reason: string }
 		| { path: "setup"; value: string; reason: string }
 		| { path: "gates"; value: Record<string, string>; reason: string };
 
@@ -149,20 +148,6 @@ export namespace LoopAdvice {
 			? width
 			: { path: "budget.concurrency", value: 1, reason: SHARED_TREE };
 
-	const checkIsolation = (
-		risks: readonly Risk[],
-		concurrency: number,
-	): Recommendation[] =>
-		risks.some((r) => r.type === "file_overlap") && concurrency > 1
-			? [
-					{
-						path: "isolation",
-						value: "worktree",
-						reason: "file overlap in a plan with parallel work",
-					},
-				]
-			: [];
-
 	const checkGates = (project: Project): Recommendation[] => {
 		const install = installer(project);
 		if (!install || Object.keys(project.config.gates).length > 0) return [];
@@ -182,12 +167,9 @@ export namespace LoopAdvice {
 			: [];
 	};
 
-	const checkSetup = (
-		project: Project,
-		isolation: string,
-	): Recommendation[] => {
+	const checkSetup = (project: Project): Recommendation[] => {
 		const install = installer(project);
-		return isolation === "worktree" && install
+		return project.config.isolation === "worktree" && install
 			? [
 					{
 						path: "setup",
@@ -211,19 +193,14 @@ export namespace LoopAdvice {
 		risks: readonly Risk[],
 		project: Project,
 	): Recommendation[] => {
-		const width = checkWidth(plan, risks);
-		const isolation = checkIsolation(risks, width.value);
-		const effective =
-			isolation.length > 0 ? "worktree" : project.config.isolation;
 		const concurrency = checkConcurrency(
-			width,
-			isolated({ ...project.config, isolation: effective }),
+			checkWidth(plan, risks),
+			isolated(project.config),
 		);
 		return [
 			concurrency,
-			...isolation,
 			...checkGates(project),
-			...checkSetup(project, effective),
+			...checkSetup(project),
 			...checkStall(risks),
 		];
 	};
