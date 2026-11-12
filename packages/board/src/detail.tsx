@@ -991,7 +991,8 @@ const SubtaskRow = ({
 };
 
 // One decision made: the question, the answer after `→` in the text color, who made it and why muted.
-// Wrapped rather than cut, inside the prose measure: the answer is what the row is read for.
+// Wrapped rather than cut, inside the prose measure and a column clear of the scrollbar, as prose
+// is: the answer is what the row is read for.
 const DecisionRow = ({
 	line,
 }: {
@@ -1000,11 +1001,13 @@ const DecisionRow = ({
 	const theme = useTheme();
 	const why = line.reasoning ? `, ${line.reasoning}` : "";
 	return (
-		<text fg={theme.defaultFg} style={{ maxWidth: PROSE_MEASURE }}>
-			{line.question}
-			<span fg={theme.text}>{` → ${line.answer}`}</span>
-			<span fg={theme.muted}>{` (${line.by}${why})`}</span>
-		</text>
+		<box style={{ paddingRight: CONTENT_INSET }}>
+			<text fg={theme.defaultFg} style={{ maxWidth: PROSE_MEASURE }}>
+				{line.question}
+				<span fg={theme.text}>{` → ${line.answer}`}</span>
+				<span fg={theme.muted}>{` (${line.by}${why})`}</span>
+			</text>
+		</box>
 	);
 };
 
