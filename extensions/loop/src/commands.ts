@@ -518,6 +518,65 @@ export namespace Loop {
 		return parsed?.success ? parsed.data.scripts : {};
 	};
 
+	// The subtasks this parent's past runs reopened, from their events, for lint's thrash check.
+	const reopened = (
+		home: string,
+		parentId: string,
+		messages: string[],
+	): { subtaskId: string; status: string }[] => {
+		const runs = RunStore.list(home);
+		if (!runs.ok) messages.push(`run history not read: ${runs.error.message}`);
+		return (runs.ok ? runs.value : [])
+			.filter((run) => run.parentId === parentId)
+			.flatMap((run) => {
+				const events = RunStore.readEvents(home, run.id);
+				if (!events.ok) {
+					messages.push(
+						`run ${run.id} history not read: ${events.error.message}`,
+					);
+					return [];
+				}
+				return events.value.flatMap((event) =>
+					event.type === "reopened" && event.task !== undefined
+						? [{ subtaskId: event.task, status: event.type }]
+						: [],
+				);
+			});
+	};
+
+	/**
+	 * The advisor's settings for a prepared run, from core lint (with the parent's past reopens),
+	 * the project's package.json scripts and its lockfile: what the board's run form and
+	 * `loop advise` both show. `messages` are lint's risks, most severe first, and anything that
+	 * could not be read, for the preview.
+	 */
+	export const adviceOf = async (
+		deps: Pick<Deps, "home" | "basePath">,
+		{ plan, projectDir, projectRoot, config }: Prepared,
+	): Promise<{ advice: LoopAdvice.Recommendation[]; messages: string[] }> => {
+		const messages: string[] = [];
+		const progressEntries = reopened(deps.home, plan.parent.id, messages);
+		const linted = await Lint.run({
+			basePath: deps.basePath,
+			parentTaskId: plan.parent.id,
+			cwd: projectDir,
+			progressEntries,
+		});
+		if (linted.ok)
+			messages.push(
+				...linted.value.risks.map((r) => `${r.message} (${r.severity})`),
+			);
+		else messages.push(`lint did not run: ${linted.error.message}`);
+		const advice = LoopAdvice.of(plan, linted.ok ? linted.value.risks : [], {
+			config,
+			scripts: scriptsOf(projectRoot),
+			lockfiles: LoopAdvice.LOCKFILES.filter((name) =>
+				existsSync(join(projectRoot, name)),
+			),
+		});
+		return { advice, messages };
+	};
+
 	/**
 	 * What a run of `input` would be advised to set, and what each open subtask's tags would run
 	 * it on, without starting one. Refuses what `prepare` refuses. It changes no issue, run or
@@ -529,19 +588,8 @@ export namespace Loop {
 	): Promise<Result<Advised>> => {
 		const prepared = await prepare(deps, input);
 		if (!prepared.ok) return prepared;
-		const { plan, projectDir, projectRoot, config } = prepared.value;
-		const linted = await Lint.run({
-			basePath: deps.basePath,
-			parentTaskId: plan.parent.id,
-			cwd: projectDir,
-		});
-		const advice = LoopAdvice.of(plan, linted.ok ? linted.value.risks : [], {
-			config,
-			scripts: scriptsOf(projectRoot),
-			lockfiles: LoopAdvice.LOCKFILES.filter((name) =>
-				existsSync(join(projectRoot, name)),
-			),
-		});
+		const { plan, projectDir, config } = prepared.value;
+		const { advice } = await adviceOf(deps, prepared.value);
 		const git = deps.git ?? Worktree.git;
 		const subtasks = await Promise.all(
 			plan.nodes

@@ -1,22 +1,18 @@
 // Starting a loop from the board: `a` on an issue, or on a parent of issue subtasks, offers "start loop", whose form
 // holds the run's settings (LoopSettings) beside the plan it would start on (Briefing), and whose
 // `enter` is `kabane loop start` from the board's directory, with the same checks.
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import type {
 	Dispatcher,
 	TriggerDescriptor,
 	TriggerInput,
 } from "@cabane/board/ports";
-import { err, Lint, ok, type Result, type Risk } from "@cabane/core";
-import { z } from "zod";
-import { LoopAdvice } from "./advice";
+import { err, ok, type Result } from "@cabane/core";
+import type { LoopAdvice } from "./advice";
 import { Briefing } from "./briefing";
 import { Loop } from "./commands";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
 import { LoopSettings } from "./settings";
-import { RunStore } from "./store";
 
 export namespace LoopDispatcher {
 	const START = "start";
@@ -46,66 +42,6 @@ export namespace LoopDispatcher {
 		...extra,
 	});
 
-	// Core lint's risks for the plan, most severe first; a lint that cannot run is itself worth
-	// reading before starting.
-	const lintOf = async (
-		home: string,
-		basePath: string,
-		parentTaskId: string,
-		cwd: string,
-	): Promise<{ risks: Risk[]; messages: string[] }> => {
-		const runs = RunStore.list(home);
-		const messages: string[] = [];
-		if (!runs.ok) messages.push(`run history not read: ${runs.error.message}`);
-		const progressEntries = (runs.ok ? runs.value : [])
-			.filter((run) => run.parentId === parentTaskId)
-			.flatMap((run) => {
-				const events = RunStore.readEvents(home, run.id);
-				if (!events.ok) {
-					messages.push(
-						`run ${run.id} history not read: ${events.error.message}`,
-					);
-					return [];
-				}
-				return events.value.flatMap((event) =>
-					event.type === "reopened" && event.task !== undefined
-						? [{ subtaskId: event.task, status: event.type }]
-						: [],
-				);
-			});
-		const linted = await Lint.run({
-			basePath,
-			parentTaskId,
-			cwd,
-			progressEntries,
-		});
-		return linted.ok
-			? {
-					risks: linted.value.risks,
-					messages: [
-						...messages,
-						...linted.value.risks.map((r) => `${r.message} (${r.severity})`),
-					],
-				}
-			: {
-					risks: [],
-					messages: [...messages, `lint did not run: ${linted.error.message}`],
-				};
-	};
-
-	const projectScripts = (root: string): Record<string, string> => {
-		try {
-			const parsed = z
-				.object({ scripts: z.record(z.string()).default({}) })
-				.safeParse(
-					JSON.parse(readFileSync(join(root, "package.json"), "utf8")),
-				);
-			return parsed.success ? parsed.data.scripts : {};
-		} catch {
-			return {};
-		}
-	};
-
 	/**
 	 * The loop's triggers on `taskId`: none unless it has work for a run (subtasks, or itself as a
 	 * single issue); "start loop", with its form and the plan, when `Loop.start` would take it from
@@ -132,20 +68,8 @@ export namespace LoopDispatcher {
 					},
 				),
 			]);
-		const { projectDir, projectRoot, config } = prepared.value;
-		const lint = await lintOf(
-			deps.home,
-			deps.basePath,
-			plan.value.parent.id,
-			projectDir,
-		);
-		const advice = LoopAdvice.of(plan.value, lint.risks, {
-			config,
-			scripts: projectScripts(projectRoot),
-			lockfiles: LoopAdvice.LOCKFILES.filter((name) =>
-				existsSync(join(projectRoot, name)),
-			),
-		});
+		const { projectRoot, config } = prepared.value;
+		const { advice, messages } = await Loop.adviceOf(deps, prepared.value);
 		onAdvice?.(advice);
 		const gates = advice.find((r) => r.path === "gates")?.value ?? config.gates;
 		return ok([
@@ -156,7 +80,7 @@ export namespace LoopDispatcher {
 					preview: Briefing.preview(
 						prepared.value.plan,
 						gates,
-						lint.messages,
+						messages,
 						now,
 						advice,
 					),

@@ -10,6 +10,7 @@ import { ok, Planner } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope } from "@cabane/core/scope";
 import { Settings } from "@cabane/extension";
+import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
 import { RunStore } from "./store";
@@ -283,6 +284,14 @@ it("advises stallAfter from this parent's stored reopen events, across past runs
 	expect(offered.value[0]?.inputs.stallAfter).toMatchObject({
 		default: "2",
 		hint: expect.stringContaining("reopened 2 times"),
+	});
+	// `loop advise` reads the same advice inputs, so it cannot disagree with the form.
+	const advised = await Loop.advise(deps(), { parent: parent.id });
+	if (!advised.ok) throw advised.error;
+	expect(advised.value.advice).toContainEqual({
+		path: "stallAfter",
+		value: 2,
+		reason: expect.stringContaining("reopened 2 times"),
 	});
 	const unrelated = await LoopDispatcher.triggers(deps(), other.id);
 	if (!unrelated.ok) throw unrelated.error;
