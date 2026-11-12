@@ -1,10 +1,6 @@
 /**
  * Resolve a working directory to the scope its project files under.
  *
- * Lifted from Jake's `@jake/core/scope/resolver.ts` (ADR-009) so Cabane owns
- * the rule outright — a host that has no scope opinion of its own gets the same
- * answer `jake plan` gives, and `kabane board` opens where `jake board` does.
- *
  * NOT exported from the package barrel, and deliberately so: this module spawns
  * `git` and reads the filesystem, neither of which exists on Workers. The hub
  * imports `@cabane/core`; only Bun hosts import `@cabane/core/scope`.

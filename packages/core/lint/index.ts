@@ -1,8 +1,4 @@
-/**
- * @jake/planner/lint
- *
- * Plan quality checks. Used by `jake plan lint` and loop briefing.
- */
+/** Plan quality checks, used by the loop's briefing. */
 
 export type { CollectedInputs, CollectOptions } from "./collectors";
 export { LintCollectors } from "./collectors";

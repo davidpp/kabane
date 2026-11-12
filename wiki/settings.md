@@ -111,7 +111,6 @@ The surfaces that touch it:
 | --- | --- | --- |
 | `.kabane/` (the directory itself) | marks a project root ahead of git's toplevel (`packages/core/scope/detect.ts:105`), so a monorepo package can track its own issues | anything that writes below |
 | `.kabane/scope` | the shared pin, in the scope cascade after your own pin in `KABANE_HOME/projects/<slug>/scope` (`detect.ts`, `resolveScopeId`) | only `kabane init --scope --shared` (`packages/cli/src/config.ts`, `writeDirectoryScope`) |
-| Jake's project pin | the legacy pin, read and never stored (`packages/cli/src/context.ts:124`) | Jake |
 | `.kabane/loop.json` | the loop's shared layer (`ConfigLayers.sharedFile`) | `config set --layer shared`, by hand |
 | `.claude/skills/dispatch/references/lenses/<name>.md` | a custom lens, or the replacement for a shipped one, in the project's dispatch skill (`extensions/loop/src/lenses.ts`, JCAB-174); `.kabane/loop/lenses/<name>.md` is still read after it, for lenses written before | `/setup-dispatch`, by hand |
 

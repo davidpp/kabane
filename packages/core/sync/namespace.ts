@@ -1,8 +1,8 @@
 /**
  * Planner Sync — Entry Points
  *
- * `push`, `pull`, `status` — the three operations every surface (CLI, tRPC,
- * hook, scheduled workflow) calls, and the only functions here carrying
+ * `push`, `pull`, `status` — the three operations every surface (the CLI, a
+ * scheduled pull) calls, and the only functions here carrying
  * `traced()`. They orchestrate; the leaf helpers under them stay untraced so a
  * sync pass produces three readable spans instead of one per op.
  *
@@ -11,7 +11,7 @@
  * production without a branch anywhere in this file.
  *
  * FAILURE IS ORDINARY. Every path returns `Result` and none throws: sync runs
- * from a Stop hook and an hourly workflow, and a sync failure must never block
+ * unattended on a schedule, and a sync failure must never block
  * or fail a planner write.
  */
 

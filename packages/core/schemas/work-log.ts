@@ -10,7 +10,7 @@ import { AuthorTypeSchema } from "./comment";
 
 /**
  * URI patterns for work references:
- * - session:<sessionId> - Jake session
+ * - session:<sessionId> - Agent session
  * - commit:<sha> - Git commit
  * - pr:<owner>/<repo>#<number> - Pull request
  * - issue:<owner>/<repo>#<number> - GitHub issue
@@ -116,7 +116,7 @@ export function parseWorkRefUri(
  * Supported URI types for work references
  */
 export const WORK_REF_TYPES = [
-	"session", // Jake session
+	"session", // Agent session
 	"commit", // Git commit
 	"pr", // Pull request
 	"issue", // GitHub issue

@@ -624,9 +624,9 @@ export namespace BoardData {
 	): Promise<Result<AgentActivity>> =>
 		Planner.answerQuestion(basePath, { questionId, answer });
 
-	// The planner's review op (mirrors tRPC `review` / `jake plan review`): clears the needsReview flag
-	// and stamps the verification record — NOT a bare boolean flip. Review is a flag lifecycle, never a
-	// state (planner CLAUDE.md: `needs_review` is not one of the 7 canonical states).
+	// The review op: clears the needsReview flag and stamps the verification record — NOT a bare
+	// boolean flip. Review is a flag lifecycle, never a state (packages/core/AGENTS.md: `needs_review`
+	// is not one of the 7 canonical states).
 	export const markReviewed = async (
 		basePath: string,
 		id: string,

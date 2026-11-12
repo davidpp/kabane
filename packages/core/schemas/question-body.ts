@@ -12,8 +12,8 @@
  *
  *   Should we use Redis or an in-memory cache?
  *
- * Producers (recipe askQuestion/askQuestionBatch, CLI `jake plan ask`) serialize
- * via `formatQuestionBody`; consumers (dashboard question cards, CLI display)
+ * Producers (the loop's relay of a harness's ask) serialize
+ * via `formatQuestionBody`; consumers (the board's question cards, CLI display)
  * recover the pieces via `parseQuestionBody`. The block is OPTIONAL — a body with
  * no leading json fence parses as a pure freeform question (choices=[], freeform
  * on). The activity `context` field stays reserved for the self-contained

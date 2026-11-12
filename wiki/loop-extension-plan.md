@@ -518,7 +518,6 @@ way:
 - Third-party extensions as `kabane-<name>` executables on `PATH`, with a manifest.
 - A herdr backend for dispatch.
 - A stream across all loops.
-- Jake re-hosted as an extension.
 - A switch for starting a loop on a whole subtree in one session.
 
 ## Open questions

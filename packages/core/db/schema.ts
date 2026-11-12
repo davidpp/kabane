@@ -528,7 +528,7 @@ CREATE TABLE IF NOT EXISTS sync_quarantine (
 -- rename protocol keeps one and reassigns the other, recording the old label
 -- here as an AUDIT TRAIL. Not a lookup fallback: the winner keeps the label
 -- live, so resolving it finds the winner's real row and never reaches this
--- table. See the short_id ruling in packages/planner/CLAUDE.md.
+-- table. See the short_id ruling in packages/core/AGENTS.md.
 
 CREATE TABLE IF NOT EXISTS short_id_history (
   old_short_id TEXT PRIMARY KEY,

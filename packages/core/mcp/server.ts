@@ -11,7 +11,7 @@
  * The low-level `Server` rather than `McpServer`: the high-level class infers
  * types over each tool's zod shape and, fed a generic `ZodRawShape`, tsc
  * recurses until it gives up (TS2589). Registering ListTools and CallTool by
- * hand is thirty lines and mirrors the Jake server this replaces.
+ * hand is thirty lines.
  *
  * Handlers return `Result`; an `err` becomes an MCP tool error (`isError`),
  * never a thrown exception, so a bad id or a missing scope reads as a message

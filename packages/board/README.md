@@ -2,7 +2,7 @@
 
 Terminal kanban for the Kabane tracker, built on OpenTUI. It reads the tracker through
 `@cabane/core` and learns about the host's running work, its dispatch targets and its copilot
-through three ports, so the same board runs standalone or inside a host like Jake.
+through three ports, so the same board runs standalone or inside another host.
 
 ## Start it
 

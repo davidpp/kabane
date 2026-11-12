@@ -63,8 +63,8 @@ const discoverTestFiles = async (cwd: string): Promise<Set<string>> => {
 // ── Composite collector ─────────────────────────────────────────────
 
 export interface CollectOptions {
-	/** Path to ~/.jake (or JAKE_HOME) */
-	jakePath: string;
+	/** The storage base path */
+	basePath: string;
 	/** Parent task ULID (resolve display IDs upstream via Planner.resolveTaskId) */
 	parentTaskId: string;
 	/** Working directory for test file discovery */
@@ -88,12 +88,12 @@ export interface CollectedInputs {
 const collectImpl = async (
 	options: CollectOptions,
 ): Promise<Result<CollectedInputs>> => {
-	const { jakePath, parentTaskId, cwd, includeParent = true } = options;
+	const { basePath, parentTaskId, cwd, includeParent = true } = options;
 
-	const parentResult = await Planner.getTask(jakePath, parentTaskId);
+	const parentResult = await Planner.getTask(basePath, parentTaskId);
 	const parent = parentResult.ok ? parentResult.value : null;
 
-	const subtasksResult = await Planner.queryTasks(jakePath, {
+	const subtasksResult = await Planner.queryTasks(basePath, {
 		parentTaskId,
 		includeClosed: true,
 	});

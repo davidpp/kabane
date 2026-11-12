@@ -2,10 +2,8 @@
  * Plan Lint Namespace
  *
  * One-shot composition: collect inputs from the planner, run all
- * rules, return findings. Used by:
- * - `jake plan lint <id>` CLI
- * - `planner.lint` tRPC procedure
- * - Loop briefing (which overlays its own progress entries)
+ * rules, return findings. Used by the loop's briefing, which overlays its own
+ * progress entries.
  */
 
 import { traced } from "../observability";

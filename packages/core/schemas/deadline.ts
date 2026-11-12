@@ -12,7 +12,7 @@
  * the evening before in the Americas), is how a date lands on the wrong day.
  *
  * The functions are pure and take the timezone as an IANA name, so a host
- * (the board, Jake's dashboard) reads a deadline exactly as the core buckets
+ * (the board, the hub) reads a deadline exactly as the core buckets
  * it. `Runtime.timezone()` is the owner's zone the core itself uses.
  */
 

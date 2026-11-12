@@ -2,8 +2,6 @@
 
 Coordination substrate for agent teams, with humans consuming it to plan and review. Most items are AI-created; the tracker's job is to hold the *structure* agents need — sessions, typed activities, curated context, a link DAG — so no consumer reinvents it in prose.
 
-Extracted from Jake's planner, a host app that still consumes this package. Public storage function names were kept so Jake's CLI and tRPC router compile against it unchanged.
-
 ## Design principles
 
 1. **Unix composability.** Every capability is optional at use time. `addTask` touches the tasks table and nothing else. Sessions never gate commenting; the context registry costs zero when empty; `assembleContext` degrades over whatever exists.
@@ -155,7 +153,3 @@ over each zod shape and, fed a generic `ZodRawShape`, tsc recurses until it give
 (TS2589). Inputs are validated by hand with `z.object(shape).safeParse`, and JSON
 schema comes from `zod-to-json-schema`. Handler `err`s become `isError` tool
 results, never thrown.
-
-## Not moved from Jake (host adapters)
-
-`parser/` (AI extraction), `workflows/`, `hooks/`, `trpc/`, `cli/`, `widgets/`, `jake-module.ts`, `db-registration.ts`. `storage/schema.sql.ts` was dead and was not ported. The `proposals` surface moved as-is and was dropped by migration 2 once Jake retired its consumers.
