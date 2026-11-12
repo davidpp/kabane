@@ -102,7 +102,7 @@ describe("Briefing.preview", () => {
 		const at = lines.indexOf("Risks  2");
 		expect(at).toBeGreaterThan(0);
 		expect(lines.slice(at + 1)).toEqual([
-			" ! nothing is ready: waiting on P-2",
+			" ! nothing is ready: waiting on P-2 (waiting)",
 			" ! P-2 has no brief (high)",
 		]);
 	});

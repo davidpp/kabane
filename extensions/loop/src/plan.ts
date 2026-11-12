@@ -199,10 +199,25 @@ export namespace LoopPlan {
 		);
 	};
 
+	/**
+	 * Something that holds a run that cannot move: its short id, why it holds the run when that is
+	 * more than being open (`someday`, `skipped`, `outside the plan`), and whether a human parked or
+	 * took it. The run never overrules a human's parking, so only a human releases a parked one.
+	 */
+	export type Holder = { id: string; why?: string; parked: boolean };
+
 	export type Health =
 		| { kind: "moving" }
 		| { kind: "deadlocked"; cycle: string[] }
-		| { kind: "waiting"; on: string[] };
+		| { kind: "waiting"; on: Holder[] };
+
+	/** `JCAB-64 (someday)`: a holder as the header and the trace name it. */
+	export const holder = (h: Holder): string =>
+		h.why === undefined ? h.id : `${h.id} (${h.why})`;
+
+	/** Whether only a human can release the run: it waits on something, and a human parked all of it. */
+	export const parkedOnly = (on: readonly Holder[]): boolean =>
+		on.length > 0 && on.every((h) => h.parked);
 
 	const label = (task: Task): string => task.shortId ?? task.id;
 
@@ -262,17 +277,38 @@ export namespace LoopPlan {
 			};
 		}
 		const tasks = byId(plan);
-		const holders = new Set<string>();
+		const holders = new Map<string, Holder>();
+		const hold = (task: Task, why: string, parked = false): void => {
+			if (!holders.has(task.id))
+				holders.set(task.id, { id: label(task), why, parked });
+		};
 		for (const n of plan.nodes) {
 			if (!isWork(n) || isClosed(n.task)) continue;
-			if (skipped.has(n.task.id)) holders.add(`${label(n.task)} (skipped)`);
-			else if (!canClaim(n.task, now)) holders.add(label(n.task));
+			if (skipped.has(n.task.id)) hold(n.task, "skipped");
+			else if (!canClaim(n.task, now)) {
+				const why = unclaimable(n.task);
+				hold(n.task, why.why, why.parked);
+			}
 			for (const id of n.blockedBy) {
 				const blocker = plan.outside.get(id);
-				if (blocker && !resolved(tasks, id)) holders.add(label(blocker));
+				if (blocker && !resolved(tasks, id)) hold(blocker, "outside the plan");
 			}
 		}
-		return { kind: "waiting", on: [...holders] };
+		return { kind: "waiting", on: [...holders.values()] };
+	};
+
+	// Why open work the run may not claim is not claimable. A live claim's subtask is never asked:
+	// a run with one is moving, so work in progress here is someone else's.
+	const unclaimable = (task: Task): { why: string; parked: boolean } => {
+		if (task.kind !== "issue") return { why: "a human's task", parked: false };
+		if (task.state === "in_progress")
+			return { why: "in_progress, not the run's", parked: true };
+		if (task.state === "someday" || task.state === "waiting")
+			return { why: task.state, parked: true };
+		return {
+			why: `deferred until ${task.deferUntil?.slice(0, 10) ?? "later"}`,
+			parked: false,
+		};
 	};
 
 	/**

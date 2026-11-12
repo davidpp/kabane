@@ -159,6 +159,14 @@ export namespace Runner {
 		RunState.save(ctx, { ...ctx.run, steering, inboxRead: inbox.value.next });
 	};
 
+	// Work a human parked or took only a human releases: the run never overrules them. Skipping it
+	// releases nothing, since a skipped subtask stays open and the plan is not done until it closes.
+	const wayOut = (on: readonly LoopPlan.Holder[]): string => {
+		const one = on.length === 1;
+		const id = one ? (on[0]?.id ?? "<id>") : "<id>";
+		return `only a human releases ${one ? "it" : "them"}: \`kabane edit ${id} --state next\` hands ${one ? "it" : "one"} to the run, or close ${one ? "it" : "them"} in the tracker`;
+	};
+
 	// Say once why nothing moves, rather than on every tick: `treeless` when a subtask waits for a
 	// worktree of its own.
 	const reportWaiting = (
@@ -172,7 +180,7 @@ export namespace Runner {
 			: treeless
 				? `waiting for a worktree: the run keeps at most ${ClaimTrees.cap(ctx.run)}, and every one is held by a subtask`
 				: health.kind === "waiting"
-					? `waiting on ${health.on.join(", ") || "nothing claimable"}`
+					? `waiting on ${health.on.map(LoopPlan.holder).join(", ") || "nothing claimable"}${LoopPlan.parkedOnly(health.on) ? `; ${wayOut(health.on)}` : ""}`
 					: "";
 		if (said !== "" && said !== last.said)
 			RunState.event(ctx, { type: "waiting", summary: said });
@@ -526,6 +534,8 @@ export namespace Runner {
 			...ctx.run,
 			status: "running",
 			exit: undefined,
+			// A pass the dead runner left marked is not running: recovery marks any it runs again.
+			gating: undefined,
 			pid: ctx.deps.pid,
 			pidStart: pidStart.ok ? pidStart.value : undefined,
 			startedAt: ctx.run.startedAt ?? now,

@@ -66,7 +66,7 @@ export namespace Briefing {
 			return [`deadlocked: ${health.cycle.join(" → ")} block each other`];
 		if (health.kind === "waiting")
 			return [
-				`nothing is ready: waiting on ${health.on.join(", ") || "a blocker"}`,
+				`nothing is ready: waiting on ${health.on.map(LoopPlan.holder).join(", ") || "a blocker"}`,
 			];
 		return [];
 	};

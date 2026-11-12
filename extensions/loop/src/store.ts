@@ -191,6 +191,12 @@ export namespace RunStore {
 		/** Every pass over the gates, oldest first; the last says whether they are green. */
 		gateRuns: z.array(Gates.RunSchema).default([]),
 		/**
+		 * The passes over the gates under way, by what each is for (a subtask's short id, or the
+		 * parent's for the run's own): what the header shows running. A pass's is written as it
+		 * starts and dropped as it ends; a runner that boots drops what a dead one left.
+		 */
+		gating: z.array(z.string()).optional(),
+		/**
 		 * The worktrees its subtask claims work in, with `isolation: worktree`, oldest first; absent
 		 * until it has one.
 		 */

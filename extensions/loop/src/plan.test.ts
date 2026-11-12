@@ -145,7 +145,13 @@ describe("LoopPlan.frontier", () => {
 		expect(LoopPlan.frontier(plan, NONE, NOW)).toEqual([]);
 		expect(LoopPlan.health(plan, NONE, NOW)).toEqual({
 			kind: "waiting",
-			on: [plan.nodes[0]?.task.shortId ?? human],
+			on: [
+				{
+					id: plan.nodes[0]?.task.shortId ?? human,
+					why: "a human's task",
+					parked: false,
+				},
+			],
 		});
 		expect(Stop.workDone(plan)).toBe(false);
 		await close(human);
@@ -306,7 +312,58 @@ describe("LoopPlan.health", () => {
 			[...plan.nodes.map((n) => n.task), ...plan.outside.values()].find(
 				(t) => t.id === id,
 			)?.shortId ?? id;
-		expect(health.on.sort()).toEqual([short(parked), short(outside)].sort());
+		expect(health.on.map(LoopPlan.holder).sort()).toEqual(
+			[
+				`${short(parked)} (waiting)`,
+				`${short(outside)} (outside the plan)`,
+			].sort(),
+		);
+		expect(LoopPlan.parkedOnly(health.on)).toBe(false);
+	});
+
+	it("says why each holder holds the run, and when only a human can release it", async () => {
+		const parent = await add({ title: "parent" });
+		const someday = await add({
+			title: "someday",
+			parentTaskId: parent,
+			state: "someday",
+		});
+		const taken = await add({
+			title: "taken",
+			parentTaskId: parent,
+			state: "in_progress",
+		});
+		const done = await add({ title: "done", parentTaskId: parent });
+		await close(done);
+
+		const health = LoopPlan.health(await load(parent), NONE, NOW);
+		if (health.kind !== "waiting") throw new Error(health.kind);
+		const plan = await load(parent);
+		const short = (id: string): string =>
+			plan.nodes.find((n) => n.task.id === id)?.task.shortId ?? id;
+		expect(health.on).toEqual([
+			{ id: short(someday), why: "someday", parked: true },
+			{ id: short(taken), why: "in_progress, not the run's", parked: true },
+		]);
+		expect(health.on.map(LoopPlan.holder)).toEqual([
+			`${short(someday)} (someday)`,
+			`${short(taken)} (in_progress, not the run's)`,
+		]);
+		expect(LoopPlan.parkedOnly(health.on)).toBe(true);
+		expect(LoopPlan.parkedOnly([])).toBe(false);
+	});
+
+	it("names a deferred subtask with the day it comes back, and no human need release it", async () => {
+		const parent = await add({ title: "parent" });
+		await add({
+			title: "later",
+			parentTaskId: parent,
+			deferUntil: "2099-01-02T00:00:00.000Z",
+		});
+		const health = LoopPlan.health(await load(parent), NONE, NOW);
+		if (health.kind !== "waiting") throw new Error(health.kind);
+		expect(health.on.map((h) => h.why)).toEqual(["deferred until 2099-01-02"]);
+		expect(LoopPlan.parkedOnly(health.on)).toBe(false);
 	});
 
 	it("detects cycles formed by follows links", async () => {

@@ -24,6 +24,7 @@ import { Loop } from "./commands";
 import { Fixer } from "./fixer";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
+import { Stop } from "./stop";
 import { RunStore } from "./store";
 
 export namespace LoopHeader {
@@ -52,6 +53,72 @@ export namespace LoopHeader {
 		run.exit
 			? `${run.exit.reason}${run.exit.detail ? ` (${run.exit.detail})` : ""}`
 			: run.status;
+
+	const word = (count: number, noun: string, many = `${noun}s`): string =>
+		count === 1 ? noun : many;
+
+	const busy = (text: string): Part => ({
+		text: `● ${text}`,
+		tone: "working",
+		bold: true,
+	});
+
+	// Whether a run past its subtasks and its reviews is landing next: the step the runner takes
+	// once the gates are green, every lens has reviewed, the fixer has had what they found, and
+	// every recheck it owes is done.
+	const landingNext = (
+		run: RunStore.Run,
+		plan: LoopPlan.Plan,
+		now: Date,
+	): boolean => {
+		if (run.config.land !== "pr" || run.gateRuns.at(-1)?.ok !== true)
+			return false;
+		const fixer = Fixer.status(run.claims);
+		const fixable = LoopPlan.fixable(plan, now, new Set(run.steering.skipped));
+		return (
+			Lenses.finished(Lenses.status(run.config.lenses, run.claims)) &&
+			(fixer.kind === "ended" ||
+				(fixer.kind === "unstarted" && fixable.length === 0)) &&
+			Lenses.finished(Lenses.rechecks(run.config, run.claims, plan))
+		);
+	};
+
+	/**
+	 * What a running run does once no subtask is being worked, from what run.json holds: landing,
+	 * a gate pass, a lens review, the fixer, a recheck, or the step between two of them. Undefined
+	 * while a subtask's session is open, and while the plan has open work.
+	 */
+	const closing = (
+		run: RunStore.Run,
+		plan: LoopPlan.Plan | null,
+		now: Date,
+	): Part | undefined => {
+		const live = liveClaims(run);
+		if (live.some((claim) => !RunStore.reviews(claim))) return undefined;
+		if (run.landingFrom !== undefined) return busy("landing");
+		const gating = run.gating ?? [];
+		if (gating.length > 0)
+			return busy(`closing gates for ${gating.join(", ")}`);
+		const lenses = live.flatMap((claim) => claim.lens ?? []);
+		if (lenses.length > 0)
+			return busy(
+				`${lenses.join(", ")} ${word(lenses.length, "lens", "lenses")} reviewing`,
+			);
+		const fixer = live.find((claim) => claim.fixer === true);
+		if (fixer) {
+			const count = fixer.findings?.length ?? 0;
+			return busy(`fixer on ${count} ${word(count, "finding")}`);
+		}
+		const rechecks = live.flatMap((claim) => claim.recheck ?? []);
+		if (rechecks.length > 0)
+			return busy(
+				`${rechecks.join(", ")} ${word(rechecks.length, "lens", "lenses")} rechecking the fixer's diff`,
+			);
+		if (!plan || !Stop.workDone(plan)) return undefined;
+		return busy(
+			landingNext(run, plan, now) ? "landing" : `closing ${run.parentShortId}`,
+		);
+	};
 
 	/** The one fact that matters most right now, with its glyph and tone. */
 	export const state = (
@@ -86,6 +153,8 @@ export namespace LoopHeader {
 				tone: "accent",
 				bold: true,
 			};
+		const wrapping = closing(run, plan, now);
+		if (wrapping) return wrapping;
 		const health: LoopPlan.Health = plan
 			? LoopPlan.health(plan, live, now, new Set(run.steering.skipped))
 			: { kind: "moving" };
@@ -95,12 +164,17 @@ export namespace LoopHeader {
 				tone: "failed",
 				bold: true,
 			};
-		if (health.kind === "waiting")
+		if (health.kind === "waiting") {
+			// Work a human parked holds the run until a human hands it back or closes it: the run
+			// never overrules them, and skipping it would leave it open, still holding the plan.
+			const parked = LoopPlan.parkedOnly(health.on);
+			const it = health.on.length === 1 ? "it" : "them";
 			return {
-				text: `⏸ waiting on ${health.on.join(", ") || "nothing claimable"}`,
-				tone: "muted",
+				text: `⏸ waiting on ${health.on.map(LoopPlan.holder).join(", ") || "nothing claimable"}${parked ? ` · set ${it} to next or close ${it}` : ""}`,
+				tone: parked ? "accent" : "muted",
 				bold: true,
 			};
+		}
 		const unchanged = run.stall?.unchanged ?? 0;
 		return unchanged > 0
 			? {
@@ -111,10 +185,27 @@ export namespace LoopHeader {
 			: { text: "● running", tone: "done", bold: true };
 	};
 
-	// The gates' step: the last pass, by gate. Green ones are checked; the first red one is named.
+	// The gates' step: a pass under way, by what it is for, or else the last pass, by gate. Green
+	// ones are checked; the first red one is named.
 	const gateStep = (run: RunStore.Run): Part[] => {
 		const names = Object.keys(run.config.gates);
 		if (names.length === 0) return [];
+		const checkpoints = RunStore.checkpoints(run).length;
+		const counted =
+			checkpoints > 0
+				? ` · ${checkpoints} ${word(checkpoints, "checkpoint")}`
+				: "";
+		const gating = RunStore.isLive(run.status) ? (run.gating ?? []) : [];
+		if (gating.length > 0)
+			return [
+				{ text: "  ›  ", tone: "faint" },
+				{ text: "◐ ", tone: "working" },
+				{ text: "gates", tone: "text", bold: true },
+				{
+					text: ` running for ${gating.join(", ")}${counted}`,
+					tone: "muted",
+				},
+			];
 		const last = run.gateRuns.at(-1);
 		const failed = last?.results.find((r) => !r.ok);
 		const glyph: Part = !last
@@ -122,13 +213,12 @@ export namespace LoopHeader {
 			: last.ok
 				? { text: "✓ ", tone: "done" }
 				: { text: "✗ ", tone: "failed" };
-		const checkpoints = RunStore.checkpoints(run).length;
 		return [
 			{ text: "  ›  ", tone: "faint" },
 			glyph,
 			{ text: "gates", tone: "text", bold: failed !== undefined },
 			{
-				text: ` ${failed ? `${failed.name} red` : names.join("·")}${checkpoints > 0 ? ` · ${checkpoints} checkpoint${checkpoints === 1 ? "" : "s"}` : ""}`,
+				text: ` ${failed ? `${failed.name} red` : names.join("·")}${counted}`,
 				tone: failed ? "failed" : "muted",
 			},
 		];
