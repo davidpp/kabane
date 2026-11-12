@@ -141,12 +141,15 @@ logged in on this machine ([`docs/deploy.md`](docs/deploy.md) part 4.7).
 `enter` on a row opens its detail view. Pinned on top: the title, the task at a glance
 (state, priority, kind, assignee), what is running on it, its parent, how many subtasks it
 has and how many are done, what blocks it and what it blocks, the issue it links to, and any
-question an agent is waiting on. Under it, three tabs, one at a time: the description, with
-the decisions made on the issue, the subtasks (done or open, and an open one's state) and the
-curated context refs (kind, label, ref) under it; the comments (whole, newest first); and the log (work logs with short
-shas and session activity, one line each). `1`-`3` jump to a tab,
-`h`/`l` step through them, and a click picks one. The view draws the task's records, not the
-agent brief; `y` still copies the brief for pasting into a chat.
+question an agent is waiting on. Under it, four sections, one at a time: `now`, what is in
+force while the work runs (the checklist, the newest handoff as a digest whose further headings
+fold to one line each, the decisions made, the subtasks); `description`, the ask and its curated
+context refs; `comments`, the whole timeline, newest first; and `log`, the work logged and what
+agent sessions said. It opens on `now` when that has anything in it. `1`-`4` jump to a section,
+`h`/`l` step through them, a click picks one, and `j/k`, `ctrl+d`/`ctrl+u` and `g`/`G` scroll
+it. `r` reads the handoff in full, and `✦` marks what lands while the detail is open. The view
+draws the task's records, not the agent brief; `y` still copies the brief for pasting into a
+chat.
 
 ```
  JMYA-89 · Retry a declined card once    [copy]
@@ -155,9 +158,11 @@ agent brief; `y` still copies the brief for pasting into a chat.
  subtasks 3 · 1 done
  blocked by JMYA-84 done · Payment errors…
 
- description  comments 2  log 9
+ now  description  comments 2  log 9
 
- A declined card fails the order today…
+ checklist · 1/3
+ ✓ Reproduce the decline
+ ○ Retry once on a soft decline
 ```
 
 ## Agent reads
