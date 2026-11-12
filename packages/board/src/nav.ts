@@ -57,10 +57,13 @@ export namespace BoardNav {
 
 	// The view stack: the board is always the base; `enter` pushes a detail view for the selected task
 	// on top. Modeled as a discriminated `view` (not a flat `detailOpen` boolean) so `esc` pops exactly
-	// one level — from detail back to the board — WITHOUT the same press also widening scope. A detail
+	// one level — from detail back to the previous detail or the board — WITHOUT the same press also widening scope. A detail
 	// view without a `tab` is on the default one; the events view remembers the tab it was opened
 	// from, so `esc` lands back on it. A detail view may carry a session question pinned over it
-	// (`!`, or `o` from a card's tab), answerable with the brief on screen.
+	// (`!`, or `o` from a card's tab), answerable with the brief on screen. A detail opened from
+	// another (openFromDetail) keeps the ones before it in `back`, oldest first, and `esc` reopens
+	// the last of them on the tab it was left on.
+	type BackEntry = { taskId: string; tab?: DetailModel.Tab };
 	type BoardView =
 		| { type: "board" }
 		| {
@@ -71,6 +74,7 @@ export namespace BoardNav {
 				// `r`: the reader over the detail, every lifted kind's newest entry in full. The detail
 				// stays mounted under it, so closing it lands on the same tab and scroll.
 				reader?: true;
+				back?: readonly BackEntry[];
 		  }
 		| {
 				type: "events";
@@ -78,6 +82,7 @@ export namespace BoardNav {
 				fromView: "board" | "detail";
 				fromTaskId?: string;
 				fromTab?: DetailModel.Tab;
+				fromBack?: readonly BackEntry[];
 				// `t`: every tool row open, the ones still to come too; absent, every row closed. A
 				// click still opens or closes one row against it.
 				toolDetails?: boolean;
@@ -433,6 +438,8 @@ export namespace BoardNav {
 		| { type: "announcement" }
 		// A checklist item on the detail view, which a click toggles.
 		| { type: "checklistItem"; id: string }
+		// Another issue, opened over the detail view (openFromDetail).
+		| { type: "openTask"; taskId: string }
 		| AskClick
 		| BoardDecisions.Click;
 
@@ -615,6 +622,7 @@ export namespace BoardNav {
 				fromTaskId:
 					state.view.type === "detail" ? state.view.taskId : undefined,
 				fromTab: state.view.type === "detail" ? state.view.tab : undefined,
+				fromBack: state.view.type === "detail" ? state.view.back : undefined,
 			},
 		},
 		effect: NONE,
@@ -638,6 +646,8 @@ export namespace BoardNav {
 						fromView: "detail",
 						fromTaskId: taskId,
 						fromTab: detailTab(state.view),
+						fromBack:
+							state.view.type === "detail" ? state.view.back : undefined,
 					},
 				};
 
@@ -1590,6 +1600,40 @@ export namespace BoardNav {
 			: { ...BoardDecisions.clear(holding), search: SEARCH_OFF };
 	};
 
+	// How many issues a detail view remembers behind it; a longer walk forgets the oldest.
+	export const BACK_CAP = 20;
+
+	/**
+	 * Open `taskId` over the detail view, as openTask does, keeping the issue in view and its tab in
+	 * `back` so `esc` returns to it. The reader and a pinned banner close, and the new issue settles
+	 * its own opening tab (withOpeningTab). The issue already open stays as it is; with no detail
+	 * view open, this is openTask.
+	 */
+	export const openFromDetail = (
+		state: BoardState,
+		taskId: string,
+	): BoardState => {
+		const { view } = state;
+		if (view.type !== "detail") return openTask(state, taskId);
+		if (view.taskId === taskId) return state;
+		const left: BackEntry = {
+			taskId: view.taskId,
+			...(view.tab ? { tab: view.tab } : {}),
+		};
+		return {
+			...openTask(state, taskId),
+			view: {
+				type: "detail",
+				taskId,
+				back: [...(view.back ?? []), left].slice(-BACK_CAP),
+			},
+		};
+	};
+
+	// An issue opened outside the loaded sections comes in on a reload, which loads it as `held`.
+	const loadedEffect = (state: BoardState, taskId: string): Effect =>
+		rowPlace(state, taskId) ? NONE : { type: "reload" };
+
 	// Merge freshly loaded sections into an existing state, keeping the same task selected and the same
 	// parents expanded across the reload. If the selected task vanished (a state move out of the visible
 	// sections, or a drop past the done cap), re-anchor to the nearest surviving row by its old position
@@ -1680,7 +1724,7 @@ export namespace BoardNav {
 
 	// The single key router: pure (state, key) -> (state, effect). Modals route FIRST (help, then
 	// dispatch — each owns the keyboard while open), then by the current view — the detail view
-	// swallows `esc`/`q` to pop back to the board, so neither falls through to the board's
+	// swallows `esc`/`q` to pop one level back, so neither falls through to the board's
 	// scope-widen / quit. Unknown keys return the same state reference so the caller can skip a
 	// re-render.
 	//
@@ -1849,6 +1893,7 @@ export namespace BoardNav {
 								type: "detail" as const,
 								taskId: state.view.fromTaskId,
 								tab: state.view.fromTab,
+								back: state.view.fromBack,
 							}
 						: { type: "board" as const };
 				return { state: { ...state, view: back }, effect: NONE };
@@ -2180,6 +2225,11 @@ export namespace BoardNav {
 			return BoardDecisions.click(state, action) ?? { state, effect: NONE };
 		if (action.type === "checklistItem")
 			return BoardChecklist.click(state, action.id);
+		if (action.type === "openTask")
+			return {
+				state: openFromDetail(state, action.taskId),
+				effect: loadedEffect(state, action.taskId),
+			};
 		return state.view.type === "board"
 			? clickRow(state, action)
 			: { state, effect: NONE };
@@ -2235,7 +2285,32 @@ export namespace BoardNav {
 			? { state, effect: NONE }
 			: { state: { ...state, view: { ...state.view, tab } }, effect: NONE };
 
-	// Detail view: `esc`/`q` pop back to the board (never widen scope or quit); the scroll keys move the
+	// `esc`/`q` on the detail view: the issue opened before this one, on the tab it was left on and
+	// selected the way openTask selects, else the board.
+	const backFromDetail = (
+		state: BoardState,
+	): { state: BoardState; effect: Effect } => {
+		if (state.view.type !== "detail") return { state, effect: NONE };
+		const back = state.view.back ?? [];
+		const previous = back.at(-1);
+		if (!previous)
+			return { state: { ...state, view: { type: "board" } }, effect: NONE };
+		const rest = back.slice(0, -1);
+		return {
+			state: {
+				...openTask(state, previous.taskId),
+				view: {
+					type: "detail",
+					taskId: previous.taskId,
+					...(previous.tab ? { tab: previous.tab } : {}),
+					...(rest.length > 0 ? { back: rest } : {}),
+				},
+			},
+			effect: loadedEffect(state, previous.taskId),
+		};
+	};
+
+	// Detail view: `esc`/`q` pop one issue back, then to the board (never widen scope or quit); the scroll keys move the
 	// tab in view; a digit picks a tab and `h`/`l` (or left/right) step through them; on `now`,
 	// `J/K` move through the checklist and `space` toggles an item; the keys for the
 	// task in hand act on the OPEN task (not the board's selection), and the view refreshes after a
@@ -2268,7 +2343,7 @@ export namespace BoardNav {
 				);
 			case "escape":
 			case "q":
-				return { state: { ...state, view: { type: "board" } }, effect: NONE };
+				return backFromDetail(state);
 			case "r":
 				return { state, effect: { type: "openReader", taskId } };
 			case "o":

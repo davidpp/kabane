@@ -465,6 +465,9 @@ const DetailScreen = ({
 				decision={<DecisionSlot state={state} input={input} />}
 				checklist={BoardChecklist.shown(state)}
 				onItem={(id) => input.dispatchMouse({ type: "checklistItem", id })}
+				onOpenTask={(id) =>
+					input.dispatchMouse({ type: "openTask", taskId: id })
+				}
 			/>
 		</>
 	);

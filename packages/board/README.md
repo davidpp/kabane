@@ -418,6 +418,9 @@ nothing in it is faint in the bar. The section it opened on, or the one you pick
 change lands while it is open: a checklist added to an issue you are reading the description of
 does not move you.
 
+An issue opened from the detail opens over it, and `esc` comes back to the one before on the
+section you left it on; `esc` on the first one goes back to the board.
+
 What lands while the detail is open is marked where it landed instead. Within one poll of a new
 handoff, a tick, a decision made or a subtask moving, that part's header on `now` reads
 `✦ checklist · 2/3`, `✦ handoff · claude · just now`, and while you are on another section the
