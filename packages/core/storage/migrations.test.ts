@@ -44,11 +44,6 @@ const mustInit = async (at: string): Promise<void> => {
 	if (!init.ok) throw init.error;
 };
 
-/** Make a current database look like one from before the runner. */
-const forgetVersion = (db: Db): void => {
-	db.run(`DROP TABLE ${TABLES.schema_migrations}`);
-};
-
 const versionRows = (at = base) =>
 	withDb(
 		(db) =>
@@ -59,42 +54,6 @@ const versionRows = (at = base) =>
 				.all(),
 		at,
 	);
-
-/**
- * Everything a schema is, independent of column order: an ALTER appends a
- * column at the end where the DDL declares it in the middle, and SQLite's own
- * autoindexes follow from UNIQUE written inline versus added later.
- */
-const schemaSignature = (at: string) =>
-	withDb((db) => {
-		const objects = db
-			.query<{ type: string; name: string }, []>(
-				`SELECT type, name FROM sqlite_master
-				  WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name`,
-			)
-			.all();
-		const columns = Object.fromEntries(
-			objects
-				.filter((o) => o.type === "table")
-				.map((t) => [
-					t.name,
-					db
-						.query<
-							{
-								name: string;
-								type: string;
-								notnull: number;
-								dflt_value: string | null;
-							},
-							[]
-						>(
-							`SELECT name, type, "notnull", dflt_value FROM pragma_table_info('${t.name}') ORDER BY name`,
-						)
-						.all(),
-				]),
-		);
-		return { objects: objects.map((o) => `${o.type}:${o.name}`), columns };
-	}, at);
 
 /** What a database reports once every migration has run. */
 const ALL_VERSIONS = Migrations.LIST.map((m, i) => ({
@@ -113,8 +72,6 @@ const tableNames = (at = base) =>
 				.map((r) => r.name),
 		at,
 	);
-
-const REPLICATION_COLUMNS = ["updated_by", "version", "visibility"] as const;
 
 const NOW = "2026-07-18T12:00:00.000Z";
 
@@ -141,48 +98,6 @@ describe("Migrations on a fresh database", () => {
 		});
 	});
 
-	it("ends at the same schema as a pre-release database brought up by the baseline", async () => {
-		const upgraded = freshBase("upgraded");
-		try {
-			await mustInit(upgraded);
-			await withDb(forgetVersion, upgraded);
-			await mustInit(upgraded);
-			expect(await versionRows(upgraded)).toEqual(ALL_VERSIONS);
-			expect(await schemaSignature(upgraded)).toEqual(
-				await schemaSignature(base),
-			);
-		} finally {
-			rmSync(upgraded, { recursive: true, force: true });
-		}
-	});
-
-	it("leaves a linked issue made private on purpose private across boots", async () => {
-		const task = await Planner.addTask(base, { title: "root" });
-		if (!task.ok) throw task.error;
-		await withDb((db) =>
-			db.run(
-				`INSERT INTO ${TABLES.upstream_links}
-				   (id, task_id, provider, external_id, identifier, url, title,
-				    created_at, updated_at, visibility)
-				 VALUES ('01PRIVATE', ?, 'linear', 'uuid', 'ENG-9',
-				         'https://linear.app/acme/issue/ENG-9/x', 'Private', ?, ?, 'private')`,
-				[task.value.id, NOW, NOW],
-			),
-		);
-
-		await mustInit(base);
-		await mustInit(base);
-
-		const row = await withDb((db) =>
-			db
-				.query<{ visibility: string }, [string]>(
-					`SELECT visibility FROM ${TABLES.upstream_links} WHERE id = ?`,
-				)
-				.get("01PRIVATE"),
-		);
-		expect(row?.visibility).toBe("private");
-	});
-
 	it("refuses a database a newer kabane has migrated, and says to update", async () => {
 		await withDb((db) =>
 			db.run(
@@ -196,136 +111,32 @@ describe("Migrations on a fresh database", () => {
 	});
 });
 
-describe("Migrations on a pre-release database", () => {
-	beforeEach(async () => {
-		base = freshBase("pre-release");
-		await mustInit(base);
-	});
-
+describe("Migrations on a database from before the runner", () => {
 	afterEach(() => rmSync(base, { recursive: true, force: true }));
 
-	it("adds updated_by, version and visibility to a table created without them", async () => {
-		const seeded = await Planner.addTask(base, { title: "pre-existing" });
-		if (!seeded.ok) throw seeded.error;
-
-		// Turn the table into what a trigger-era database has.
-		await withDb((db) => {
-			for (const column of REPLICATION_COLUMNS) {
-				db.run(`ALTER TABLE ${TABLES.tasks} DROP COLUMN ${column}`);
-				db.run(`ALTER TABLE ${TABLES.comments} DROP COLUMN ${column}`);
-			}
-			db.run(`ALTER TABLE ${TABLES.upstream_links} DROP COLUMN visibility`);
-			forgetVersion(db);
-		});
-		expect(
-			await withDb((db) => columnExists(db, TABLES.tasks, "version")),
-		).toBe(false);
-
-		const reinit = await Planner.init(base);
-		expect(reinit.ok).toBe(true);
-		expect(await versionRows()).toEqual(ALL_VERSIONS);
-
-		for (const column of REPLICATION_COLUMNS) {
-			expect(await withDb((db) => columnExists(db, TABLES.tasks, column))).toBe(
-				true,
-			);
-			expect(
-				await withDb((db) => columnExists(db, TABLES.comments, column)),
-			).toBe(true);
-		}
-
-		// Existing rows read as version 1 and shared, which is what they were
-		// implicitly.
-		const row = await withDb((db) =>
-			db
-				.query<
-					{ version: number; visibility: string; updated_by: string | null },
-					[string]
-				>(
-					`SELECT version, visibility, updated_by FROM ${TABLES.tasks} WHERE id = ?`,
-				)
-				.get(seeded.value.id),
-		);
-		expect(row).toEqual({ version: 1, visibility: "shared", updated_by: null });
-
-		const upstreamDefault = await withDb((db) =>
-			db
-				.query<{ dflt_value: string }, []>(
-					`SELECT dflt_value FROM pragma_table_info('${TABLES.upstream_links}') WHERE name = 'visibility'`,
-				)
-				.get(),
-		);
-		expect(upstreamDefault?.dflt_value).toBe("'shared'");
-
-		// And the migrated table writes like a fresh one.
-		const updated = await Planner.updateTask(base, seeded.value.id, {
-			title: "after migration",
-		});
-		expect(updated.ok).toBe(true);
-	});
-
-	it("drops the linked-issue snapshot columns and releases the held rows", async () => {
-		const task = await Planner.addTask(base, { title: "root" });
+	it("refuses it, says which kabane still upgrades it, and changes nothing", async () => {
+		base = freshBase("pre-runner");
+		await mustInit(base);
+		const task = await Planner.addTask(base, { title: "kept" });
 		if (!task.ok) throw task.error;
+		// Tables and no version table: what a build older than the runner left.
+		await withDb((db) => db.run(`DROP TABLE ${TABLES.schema_migrations}`));
 
-		// Rebuild the table as a snapshot-era database: the four content columns
-		// back, visibility pinned private, one row already in it.
-		await withDb((db) => {
-			db.run(`DROP TABLE ${TABLES.upstream_links}`);
-			db.run(
-				`CREATE TABLE ${TABLES.upstream_links} (
-				   id TEXT PRIMARY KEY,
-				   task_id TEXT NOT NULL REFERENCES ${TABLES.tasks}(id) ON DELETE CASCADE,
-				   provider TEXT NOT NULL,
-				   external_id TEXT NOT NULL,
-				   identifier TEXT,
-				   url TEXT NOT NULL,
-				   title TEXT NOT NULL,
-				   description TEXT,
-				   state TEXT,
-				   external_updated_at TEXT,
-				   refreshed_at TEXT NOT NULL,
-				   created_at TEXT NOT NULL,
-				   updated_at TEXT NOT NULL,
-				   visibility TEXT NOT NULL DEFAULT 'private',
-				   UNIQUE(task_id, provider, external_id)
-				 )`,
+		for (const _boot of [1, 2]) {
+			const init = await Planner.init(base);
+			expect(init.ok ? "" : init.error.message).toContain(
+				"open it once with kabane 1.0.0-beta.0",
 			);
-			db.run(
-				`INSERT INTO ${TABLES.upstream_links}
-				   (id, task_id, provider, external_id, identifier, url, title,
-				    description, state, external_updated_at, refreshed_at,
-				    created_at, updated_at)
-				 VALUES ('01LINK', ?, 'linear', 'linear-uuid', 'ENG-123',
-				         'https://linear.app/acme/issue/ENG-123/x', 'Team feature',
-				         'cached body', 'In Progress', ?, ?, ?, ?)`,
-				[task.value.id, NOW, NOW, NOW, NOW],
-			);
-			forgetVersion(db);
-		});
-
-		const reinit = await Planner.init(base);
-		expect(reinit.ok).toBe(true);
-
-		for (const column of [
-			"description",
-			"state",
-			"external_updated_at",
-			"refreshed_at",
-		]) {
-			expect(
-				await withDb((db) => columnExists(db, TABLES.upstream_links, column)),
-			).toBe(false);
+			expect(await versionRows()).toEqual([]);
 		}
-
-		const row = await withDb((db) =>
+		const kept = await withDb((db) =>
 			db
-				.query<{ visibility: string; title: string }, [string]>(
-					`SELECT visibility, title FROM ${TABLES.upstream_links} WHERE id = ?`,
+				.query<{ title: string }, [string]>(
+					`SELECT title FROM ${TABLES.tasks} WHERE id = ?`,
 				)
-				.get("01LINK"),
+				.get(task.value.id),
 		);
-		expect(row).toEqual({ visibility: "shared", title: "Team feature" });
+		expect(kept).toEqual({ title: "kept" });
 	});
 });
 

@@ -193,7 +193,6 @@ for (const refusal of refusals)
 		const ports = [
 			Runtime.tracer(),
 			Runtime.notifier(),
-			Runtime.scopeResolver(),
 			Runtime.syncSettings(),
 		];
 		const modules = Runtime.modules();
@@ -205,7 +204,6 @@ for (const refusal of refusals)
 			timezone: () => "Europe/Paris",
 			tracer: (_name, fn) => fn,
 			notifier: async () => {},
-			scopeResolver: async () => "rejected",
 			syncSettings: async () => settings,
 		});
 		expect(configured.ok).toBe(false);
@@ -220,7 +218,6 @@ for (const refusal of refusals)
 		const after = [
 			Runtime.tracer(),
 			Runtime.notifier(),
-			Runtime.scopeResolver(),
 			Runtime.syncSettings(),
 		];
 		for (let i = 0; i < ports.length; i++) expect(after[i]).toBe(ports[i]);

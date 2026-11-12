@@ -431,29 +431,6 @@ describe("resolveScopeId", () => {
 
 		expect(await resolveScopeId(root, { home })).toBe(root);
 	});
-
-	it("takes a legacy pin over the remote, and stores nothing", async () => {
-		const root = dir("repo");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
-
-		expect(
-			await resolveScopeId(root, { home, legacyPin: async () => "jake" }),
-		).toBe("jake");
-		expect(untracked(root)).toBe("");
-		expect(stored()).toEqual([]);
-	});
-
-	it("skips a git: legacy pin so a remote can still win", async () => {
-		const root = dir("repo");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
-
-		expect(
-			await resolveScopeId(root, {
-				home,
-				legacyPin: async () => "git:abc123abc123",
-			}),
-		).toBe("github.com/davidpp/cabane");
-	});
 });
 
 describe("resolveProjectName", () => {

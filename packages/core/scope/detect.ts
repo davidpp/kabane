@@ -55,14 +55,6 @@ export type DetectOptions = {
 	home: string;
 	/** Skip `branch`/`package` detection. Default: detect. */
 	detectExtensions?: boolean;
-	/**
-	 * A pin written by another tracker over the same database, consulted after
-	 * Cabane's own pin and before git. A host that shares a database has to
-	 * honour the id already filed there: resolving the same repo to its remote
-	 * id instead would be a different scope, and every existing task would
-	 * vanish from the filter.
-	 */
-	legacyPin?: (root: string) => Promise<string | null>;
 };
 
 const isDirectory = async (path: string): Promise<boolean> => {
@@ -230,7 +222,7 @@ const readScopePin = async (path: string): Promise<string | null> => {
 
 /**
  * Resolve the stable scope id for a project root (ADR-009 cascade):
- * local pin → shared pin → legacy pin → the id detection stored → git remote → first commit →
+ * local pin → shared pin → the id detection stored → git remote → first commit →
  * path. Your own pin wins over the repo's, as a local setting wins over a shared one.
  *
  * Nothing here writes into the repo: it may be a checkout the user does not
@@ -244,22 +236,17 @@ const readScopePin = async (path: string): Promise<string | null> => {
  * remote id may replace it; nothing replaces a remote id with a `git:` one, which would
  * orphan everything already filed under it, and an id stored before the
  * repo's first commit still holds once it has one. A `git:` id is never
- * stored: the commit it derives from is always there to derive it again. The
- * legacy pin is read but never stored — another tool's answer stays that
- * tool's.
+ * stored: the commit it derives from is always there to derive it again.
  */
 export const resolveScopeId = async (
 	root: string,
-	opts: Pick<DetectOptions, "home" | "legacyPin">,
+	opts: Pick<DetectOptions, "home">,
 ): Promise<string> => {
 	const local = await readScopePin(await localPinPath(opts.home, root));
 	if (local && !local.startsWith("git:")) return local;
 
 	const pinned = await readScopePin(join(root, SCOPE_FILE));
 	if (pinned && !pinned.startsWith("git:")) return pinned;
-
-	const legacy = await opts.legacyPin?.(root);
-	if (legacy && !legacy.startsWith("git:")) return legacy;
 
 	const firstCommit = (
 		await git(root, ["rev-list", "--max-parents=0", "HEAD"])
@@ -286,7 +273,7 @@ export const resolveScopeId = async (
 
 	if (firstCommit) return `git:${firstCommit.slice(0, 12)}`;
 
-	return local ?? pinned ?? legacy ?? root;
+	return local ?? pinned ?? root;
 };
 
 /**

@@ -57,12 +57,6 @@ const replicates = (tbl: string): boolean =>
 	(SYNC_TABLES as readonly string[]).includes(tbl) ||
 	Modules.table(tbl) !== undefined;
 
-/**
- * Trigger-name suffixes the previous capture design installed. Dropped on boot
- * so a database upgraded from trigger capture does not record every write twice.
- */
-const LEGACY_TRIGGER_SUFFIX = ["ins", "upd", "del"] as const;
-
 // ============================================================
 // Types
 // ============================================================
@@ -402,31 +396,6 @@ export namespace Oplog {
 	 */
 	export const cascadeOf = (db: Db, taskId: string): Result<Cascade> =>
 		trySync(() => cascadeOfTask(db, taskId));
-
-	/**
-	 * Remove the triggers the trigger-based design installed. Idempotent, cheap,
-	 * and load-bearing on any database that predates explicit capture: leaving
-	 * them in place would record every write twice. Core tables only: module
-	 * tables arrived after trigger capture and never had any.
-	 */
-	export const dropLegacyTriggers = (db: Db): Result<number> =>
-		trySync(() => {
-			let dropped = 0;
-			for (const tbl of SYNC_TABLES) {
-				for (const suffix of LEGACY_TRIGGER_SUFFIX) {
-					const name = `sync_cap_${tbl}_${suffix}`;
-					const exists = db
-						.query<{ one: number }, [string]>(
-							`SELECT 1 AS one FROM sqlite_master WHERE type = 'trigger' AND name = ?`,
-						)
-						.get(name);
-					if (!exists) continue;
-					db.run(`DROP TRIGGER IF EXISTS ${name}`);
-					dropped++;
-				}
-			}
-			return dropped;
-		});
 
 	/**
 	 * Create the singleton state row, which is what arms capture.

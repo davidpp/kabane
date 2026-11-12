@@ -103,7 +103,6 @@ export {
 	type Notifier,
 	Runtime,
 	type RuntimeConfig,
-	type ScopeResolver,
 	type SyncSettingsSource,
 	type TimezoneSource,
 	type Tracer,

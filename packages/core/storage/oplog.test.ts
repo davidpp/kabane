@@ -380,27 +380,4 @@ describe("Oplog — storage-layer capture", () => {
 		expect(ops[0]?.payload?.project_id).toBeNull();
 		expect(ops[0]?.version).toBe(2);
 	});
-
-	it("drops the legacy capture triggers a trigger-era database still carries", async () => {
-		// A trigger-era database predates the migration runner too, so it has no
-		// version table: that is what sends it down the pre-release path.
-		await withDb((db) => {
-			db.run(
-				`CREATE TRIGGER sync_cap_tasks_ins AFTER INSERT ON ${TABLES.tasks}
-           BEGIN SELECT 1; END`,
-			);
-			db.run(`DROP TABLE ${TABLES.schema_migrations}`);
-		});
-		const reinit = await Planner.init(base);
-		expect(reinit.ok).toBe(true);
-
-		const triggers = await withDb((db) =>
-			db
-				.query<{ name: string }, []>(
-					`SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'sync_cap_%'`,
-				)
-				.all(),
-		);
-		expect(triggers).toEqual([]);
-	});
 });

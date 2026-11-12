@@ -6,9 +6,7 @@
  * THIS IS MIGRATION 1, THE RELEASE BASELINE (`storage/migrations.ts`), and it
  * runs once per database. Do not edit it to change the schema: append a
  * migration to that list instead, so a fresh database and an upgraded one end
- * at the same schema. Every statement stays IF NOT EXISTS because a
- * pre-release database already has most of these tables when the baseline
- * runs on it.
+ * at the same schema.
  *
  * Being frozen, it still creates the tables later migrations drop (proposals,
  * focus_lists, task_activity); `migrations.ts` removes them right after. So the

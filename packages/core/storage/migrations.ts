@@ -8,15 +8,10 @@
  * migration 1, and a fresh database must end at the same schema as an upgraded
  * one.
  *
- * MIGRATION 1 IS THE RELEASE BASELINE. A database with no version table is
- * either fresh (no tasks table yet) or pre-release: created by a build older
- * than this runner, which re-ran the whole schema plus a list of column-guarded
- * steps on every boot. Both take the same path, because every pre-release step
- * checks the column before touching it and finds nothing to do on a fresh
- * database. The pre-release steps exist only for David's own devices and
- * Jake's shared `jake.db`; once each of those has booted on this build and been
- * stamped, `PreRelease` can be deleted and migration 1 becomes the schema, the
- * late indexes and nothing else.
+ * MIGRATION 1 IS THE RELEASE BASELINE: the frozen DDL and what completes it. Every
+ * release has shipped this runner, so a database with no version table is
+ * fresh. One that has tables all the same was created by a build older than
+ * the first release, and the baseline refuses it (`refusePreRunner`).
  *
  * A TABLE A RELEASE RETIRES keeps its place in migration 1, which still creates
  * it, and a later migration drops it. `TABLES` stops listing it, so the steps
@@ -29,118 +24,35 @@ import { applySchema } from "../db/schema";
 import { type KabaneModule, Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import { parseQuestionBody } from "../schemas";
-import { columnExists, TABLES } from "./helpers";
-import { Oplog } from "./oplog";
+import { TABLES } from "./helpers";
 
 /**
- * What a pre-release database may still lack, brought up to the baseline. Every
- * step is guarded, so on a fresh or already-current database it does nothing.
+ * A database with a tasks table and no version table predates the runner. The
+ * steps that brought one up to the baseline went with their last users, and the
+ * baseline run over it would record a schema it does not have.
  */
-namespace PreRelease {
-	/** The snapshot columns a linked issue no longer carries (JCAB-61). None is indexed, which is what makes DROP COLUMN legal. */
-	const DROPPED_UPSTREAM_SNAPSHOT_COLUMNS = [
-		"description",
-		"state",
-		"external_updated_at",
-		"refreshed_at",
-	] as const;
-
-	/** The tables that replicate, for the column migration. */
-	const replicatedTables = (): string[] => [
-		TABLES.tasks,
-		TABLES.projects,
-		TABLES.task_links,
-		"focus_lists", // retired by migration 3
-		TABLES.comments,
-		TABLES.work_log,
-		TABLES.context_refs,
-		TABLES.upstream_links,
-	];
-
-	const addColumnIfMissing = (
-		db: Db,
-		table: string,
-		column: string,
-		ddl: string,
-	): void => {
-		if (columnExists(db, table, column)) return;
-		db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
-	};
-
-	const dropColumnIfPresent = (db: Db, table: string, column: string): void => {
-		if (!columnExists(db, table, column)) return;
-		db.run(`ALTER TABLE ${table} DROP COLUMN ${column}`);
-	};
-
-	/**
-	 * Linked issues used to be identity plus a snapshot of the external issue's
-	 * content, and the content is what kept them private. The columns go, and the
-	 * rows held back are released, but only on a database that still has the
-	 * columns: a link made private later, on purpose, is not touched. (Before
-	 * this runner the release ran on every boot and would have undone that.)
-	 */
-	const releaseSnapshotEraLinks = (db: Db): void => {
-		const snapshotEra = DROPPED_UPSTREAM_SNAPSHOT_COLUMNS.some((column) =>
-			columnExists(db, TABLES.upstream_links, column),
+const refusePreRunner = (db: Db): void => {
+	const tasks = db
+		.query<{ one: number }, [string]>(
+			"SELECT 1 AS one FROM sqlite_master WHERE type = 'table' AND name = ?",
+		)
+		.get(TABLES.tasks);
+	if (tasks)
+		throw new Error(
+			"this database was created before kabane 0.2.0 and is no longer upgraded from here; open it once with kabane 1.0.0-beta.0, then update",
 		);
-		if (!snapshotEra) return;
-		for (const column of DROPPED_UPSTREAM_SNAPSHOT_COLUMNS) {
-			dropColumnIfPresent(db, TABLES.upstream_links, column);
-		}
-		db.run(
-			`UPDATE ${TABLES.upstream_links} SET visibility = 'shared'
-			 WHERE visibility = 'private'`,
-		);
-	};
-
-	/** Throws on failure, which is how the runner's transaction rolls back. */
-	export const upgrade = (db: Db): void => {
-		// Columns added after their table first shipped. SQLite cannot ADD COLUMN
-		// with UNIQUE, so short_id's uniqueness comes from the late index below.
-		addColumnIfMissing(db, TABLES.tasks, "short_id", "TEXT");
-		addColumnIfMissing(db, TABLES.tasks, "project_id", "TEXT");
-		addColumnIfMissing(
-			db,
-			TABLES.tasks,
-			"kind",
-			"TEXT NOT NULL DEFAULT 'task'",
-		);
-		// Retired by migration 2.
-		const proposals = "proposals";
-		if (!columnExists(db, proposals, "task_id")) {
-			db.run(`ALTER TABLE ${proposals} ADD COLUMN task_id TEXT`);
-			db.run(
-				`CREATE INDEX IF NOT EXISTS ${proposals}_task_id_idx ON ${proposals}(task_id)`,
-			);
-		}
-
-		// Replication columns on every synced table. Existing rows get version 1
-		// and visibility 'shared', which is what they implicitly were.
-		for (const table of replicatedTables()) {
-			addColumnIfMissing(db, table, "updated_by", "TEXT");
-			addColumnIfMissing(db, table, "version", "INTEGER NOT NULL DEFAULT 1");
-			addColumnIfMissing(
-				db,
-				table,
-				"visibility",
-				"TEXT NOT NULL DEFAULT 'shared'",
-			);
-		}
-
-		releaseSnapshotEraLinks(db);
-
-		// Capture triggers from before explicit capture.
-		const dropped = Oplog.dropLegacyTriggers(db);
-		if (!dropped.ok) throw dropped.error;
-	};
-}
+};
 
 /**
- * The two indexes the DDL leaves out, because on a pre-release database their
- * columns only exist once `PreRelease.upgrade` has added them. Every database
- * gets them, fresh or upgraded.
+ * What the baseline has always done right after its frozen DDL, which leaves
+ * these out: the two replication columns `upstream_links` is declared without,
+ * and two indexes on `tasks`.
  */
-const createLateIndexes = (db: Db): void => {
+const completeBaseline = (db: Db): void => {
+	db.run(`ALTER TABLE ${TABLES.upstream_links} ADD COLUMN updated_by TEXT`);
+	db.run(
+		`ALTER TABLE ${TABLES.upstream_links} ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
+	);
 	db.run(
 		`CREATE UNIQUE INDEX IF NOT EXISTS ${TABLES.tasks}_short_id_idx ON ${TABLES.tasks}(short_id)`,
 	);
@@ -149,7 +61,7 @@ const createLateIndexes = (db: Db): void => {
 	);
 };
 
-/** The time parts an end-of-UTC-day deadline was written with, by cabane and by Jake. */
+/** The time parts an end-of-UTC-day deadline was written with. */
 const END_OF_UTC_DAY = [
 	"T23:59:59.999Z",
 	"T23:59:59.000Z",
@@ -223,14 +135,13 @@ export namespace Migrations {
 		{
 			name: "baseline",
 			up: (db) => {
+				refusePreRunner(db);
 				applySchema(db);
-				PreRelease.upgrade(db);
-				createLateIndexes(db);
+				completeBaseline(db);
 			},
 		},
 		{
-			// A retired surface: nothing in cabane reads or writes it, and Jake
-			// retires its own proposals commands with it (JCAB-97).
+			// A retired surface: nothing reads or writes it (JCAB-97).
 			name: "drop-proposals",
 			up: (db) => {
 				// The FTS triggers are on `proposals` and go with it; the FTS table is its own.
@@ -239,7 +150,7 @@ export namespace Migrations {
 			},
 		},
 		{
-			// Only Jake read or wrote focus lists, and it retires them (JCAB-97).
+			// Nothing in kabane read or wrote focus lists (JCAB-97).
 			// The table replicated: a focus-list op still arriving from a device on
 			// an older build is skipped as `unknown-table`, and one still waiting in
 			// this device's own log is pushed and skipped the same way elsewhere.
@@ -281,13 +192,9 @@ export namespace Migrations {
 		{
 			// A decision answering a question names who chose (JCAB-26). Activities
 			// written before have no author on record and read as the session's.
-			// Guarded: a pre-release database re-runs the whole list from 1.
 			name: "activity-author",
 			up: (db) => {
-				if (!columnExists(db, TABLES.agent_activities, "author"))
-					db.run(
-						`ALTER TABLE ${TABLES.agent_activities} ADD COLUMN author TEXT`,
-					);
+				db.run(`ALTER TABLE ${TABLES.agent_activities} ADD COLUMN author TEXT`);
 			},
 		},
 		{
@@ -342,15 +249,13 @@ export namespace Migrations {
 				// A module table's op is tagged when it is captured, not when it is
 				// pushed: the module may not be registered by then, and an untagged
 				// op is dropped as `unknown-table` by every device without it.
-				// Guarded: a pre-release database re-runs the whole list from 1.
 				for (const [column, type] of [
 					["module", "TEXT"],
 					["module_schema", "INTEGER"],
 				] as const) {
-					if (!columnExists(db, TABLES.sync_oplog, column))
-						db.run(
-							`ALTER TABLE ${TABLES.sync_oplog} ADD COLUMN ${column} ${type}`,
-						);
+					db.run(
+						`ALTER TABLE ${TABLES.sync_oplog} ADD COLUMN ${column} ${type}`,
+					);
 				}
 			},
 		},
@@ -360,13 +265,11 @@ export namespace Migrations {
 			// keeps its name because rows and synced logs store it. A device on an
 			// older schema never applies an op carrying a kind: its pull stops at
 			// the first op from this schema.
-			// Guarded: a pre-release database re-runs the whole list from 1.
 			name: "entry-kind",
 			up: (db) => {
-				if (!columnExists(db, TABLES.comments, "kind"))
-					db.run(
-						`ALTER TABLE ${TABLES.comments} ADD COLUMN kind TEXT NOT NULL DEFAULT 'comment'`,
-					);
+				db.run(
+					`ALTER TABLE ${TABLES.comments} ADD COLUMN kind TEXT NOT NULL DEFAULT 'comment'`,
+				);
 				db.run(
 					`CREATE INDEX IF NOT EXISTS ${TABLES.comments}_task_kind_idx
 					   ON ${TABLES.comments}(task_id, kind, created_at)`,
