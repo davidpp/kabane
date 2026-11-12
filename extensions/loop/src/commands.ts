@@ -520,7 +520,8 @@ export namespace Loop {
 
 	/**
 	 * What a run of `input` would be advised to set, and what each open subtask's tags would run
-	 * it on, without starting one. Refuses what `prepare` refuses. Read-only.
+	 * it on, without starting one. Refuses what `prepare` refuses. It changes no issue, run or
+	 * setting; scope detection may cache the checkout's scope, as every scoped command does.
 	 */
 	export const advise = async (
 		deps: Pick<StartDeps, "home" | "basePath" | "cwd" | "settings" | "git">,

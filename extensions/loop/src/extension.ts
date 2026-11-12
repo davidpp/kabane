@@ -24,7 +24,7 @@ import { Parent } from "./parent";
 import { RunStore } from "./store";
 
 const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <tier|model>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--isolation worktree|shared] [--lens <name>]... [--verifier claude|codex|gemini] [--recheck|--no-recheck] [--land none|pr]
-       kabane loop advise <issue> [start's flags]   (the settings advised for the plan and why, and what each subtask's tags run it on; starts nothing)
+       kabane loop advise <issue> [start's flags]   (the settings advised for the plan and why, and what each subtask's tags run it on; changes no issue, run or setting)
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
