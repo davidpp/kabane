@@ -23,6 +23,7 @@ import type { BoardData } from "./data";
 import { DecisionPanel, DecisionsWaiting } from "./decision-panel";
 import { BoardDecisions } from "./decisions";
 import { Detail } from "./detail";
+import type { Fresh } from "./detail-records";
 import { EventView } from "./event-view";
 import { FooterTrail } from "./footer";
 import type { Keymap } from "./keymap";
@@ -126,6 +127,8 @@ export type ScreenProps = {
 	source: ActivitySource;
 	// The open detail view's records.
 	records: Result<BoardData.DetailRecords> | undefined;
+	// What landed on its `now` tab that the human has not seen yet.
+	fresh?: Fresh;
 	refs: ScreenRefs;
 	input: BoardInput;
 	// The event view on a card's tab refreshes its card every second; the keys read the same card.
@@ -375,6 +378,7 @@ const DetailScreen = ({
 	linked,
 	activity,
 	records,
+	fresh,
 	refs,
 	input,
 	keys,
@@ -396,6 +400,7 @@ const DetailScreen = ({
 				taskId={taskId}
 				task={task}
 				records={records}
+				fresh={fresh}
 				cards={taskCards.length > 0 ? taskCards : undefined}
 				questions={activity.questionsByTaskId.get(taskId)}
 				pinned={banner?.question.questionActivityId}

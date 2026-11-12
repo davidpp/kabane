@@ -418,6 +418,14 @@ nothing in it is faint in the bar. The section it opened on, or the one you pick
 change lands while it is open: a checklist added to an issue you are reading the description of
 does not move you.
 
+What lands while the detail is open is marked where it landed instead. Within one poll of a new
+handoff, a tick, a decision made or a subtask moving, that part's header on `now` reads
+`✦ checklist · 2/3`, `✦ handoff · claude · just now`, and while you are on another section the
+bar reads `✦ now`. A mark goes once its header has stayed on screen with `now` showing for
+three seconds, or when the detail closes. A tick or an answer you make from this board is not
+marked, nor is anything on the issue's first load. A new comment marks nothing: the comments
+count already moves.
+
 ## Decisions agents file
 
 An agent that needs a human's call on an issue files it with `kabane_ask` (`@cabane/questions`):

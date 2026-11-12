@@ -289,6 +289,7 @@ export const App = ({
 			activity={shownActivity}
 			source={shownSource}
 			records={detail.records}
+			fresh={detail.fresh}
 			refs={refs}
 			input={input}
 			onCard={takeCard}
