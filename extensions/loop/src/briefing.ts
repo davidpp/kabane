@@ -124,15 +124,25 @@ export namespace Briefing {
 
 	// The gates the run will hold each subtask to, in order. The form cannot edit a named command,
 	// so they are read here and set through the settings layers or with `--gate`.
-	const gateLines = (gates: Readonly<Record<string, string>>): PanelLine[] => {
+	const gateLines = (
+		gates: Readonly<Record<string, string>>,
+		advised: boolean,
+	): PanelLine[] => {
 		const named = Object.entries(gates);
 		const width = Math.max(0, ...named.map(([name]) => name.length));
 		return [
 			[],
 			[
-				{ text: `Gates  ${named.length || "none"}`, bold: true },
 				{
-					text: `  set with kabane config set loop.gates.<name> or --gate`,
+					text: advised
+						? "Gates  advised from package.json"
+						: `Gates  ${named.length || "none"}`,
+					bold: true,
+				},
+				{
+					text: advised
+						? ""
+						: `  set with kabane config set loop.gates.<name> or --gate`,
 					tone: "muted",
 				},
 			],
@@ -205,7 +215,10 @@ export namespace Briefing {
 							{ text: `   ${path.length} deep`, tone: "muted" },
 						] satisfies PanelLine,
 					]),
-			...gateLines(gates),
+			...gateLines(
+				gates,
+				advice.some((r) => r.path === "gates"),
+			),
 			...(advice.length === 0
 				? []
 				: [

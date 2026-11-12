@@ -106,4 +106,17 @@ describe("Briefing.preview", () => {
 			" ! P-2 has no brief (high)",
 		]);
 	});
+
+	it("labels package gates as advice without the configured-gates wording", () => {
+		const gates = { test: "bun run test" };
+		const lines = Briefing.preview(DIAMOND, gates, [], NOW, [
+			{ path: "gates", value: gates, reason: "package.json scripts" },
+		]).map(text);
+		const at = lines.findIndex((line) => line.startsWith("Gates"));
+		expect(lines.slice(at, at + 2)).toEqual([
+			"Gates  advised from package.json",
+			" test  bun run test",
+		]);
+		expect(lines.some((line) => line.includes("set with"))).toBe(false);
+	});
 });
