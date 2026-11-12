@@ -1,5 +1,5 @@
 // The session modes against the real pinned adapters, over the user's installed CLI: initialize,
-// session/new, the mode switch and a model switch only, so nothing is prompted and nothing is spent. Both pinned
+// session/new, the model and mode switches only, so nothing is prompted and nothing is spent. Both pinned
 // adapters send a mode config option, so both must take that path rather than session/set_mode. A harness whose CLI is not
 // on PATH is skipped, with the reason in the test's name.
 import { describe, expect, it } from "bun:test";
@@ -46,7 +46,8 @@ describe("AcpClient session modes on the real adapters", () => {
 					expect(session.value.mode.via).toBe("config_option");
 					console.info(`${harness}: ${session.value.mode.note}`);
 					// Both advertise their model as a select option, which is how the loop picks one on
-					// every harness; another listed value is taken.
+					// every harness: a second session opens on another listed value, then negotiates
+					// its mode from the options that switch answered with.
 					const model = session.value.configOptions.find(
 						(o) => o.category === "model" && o.type === "select",
 					);
@@ -55,12 +56,19 @@ describe("AcpClient session modes on the real adapters", () => {
 						.flatMap((o) => ("options" in o ? o.options : [o]))
 						.find((o) => o.value !== model.currentValue);
 					if (!other) throw new Error("a single model listed");
-					const chosen = await AcpClient.selectModel(
-						session.value,
-						other.value,
+					const switched = await AcpClient.newSession(conn.value, {
+						cwd: process.cwd(),
+						mcpServers: [],
+						model: other.value,
+					});
+					if (!switched.ok) throw switched.error;
+					expect(switched.value.model).toMatchObject({
+						current: other.value,
+						applied: true,
+					});
+					console.info(
+						`${harness}: ${switched.value.model?.note} · ${switched.value.mode.note}`,
 					);
-					expect(chosen).toMatchObject({ current: other.value, applied: true });
-					console.info(`${harness}: ${chosen.note}`);
 				} finally {
 					AcpClient.close(conn.value);
 					await conn.value.closed;

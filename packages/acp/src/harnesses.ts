@@ -25,8 +25,8 @@ export namespace Harnesses {
 		// own settings — a config `model` overrides it with any name the harness accepts.
 		// Only Claude has the pair: Gemini reads `GEMINI_MODEL` but no pin is chosen for it,
 		// and codex-acp reads no model variable at all. That is why the loop does not use it: it
-		// selects its model on the session's `model` config option (`AcpClient.selectModel`),
-		// which both pinned adapters advertise.
+		// selects its model on the session's `model` config option as the session opens
+		// (`AcpClient.newSession`'s `model`), which both pinned adapters advertise.
 		model?: { env: string; pinned: string };
 		// The ACP session modes the adapter advertises on `session/new`: the one that asks
 		// before every change (`manual`) and the harness's own auto mode, where the harness

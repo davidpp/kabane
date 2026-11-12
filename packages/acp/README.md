@@ -168,11 +168,14 @@ repeats the current mode are not.
 
 Both pinned adapters advertise their model as a `category: "model"` select option on
 `session/new`, with the values the user's own CLI lists (claude-agent-acp: `default`, `opus`,
-`sonnet`, `haiku` and full ids; codex-acp: the Codex model ids). `selectModel(session, value)`
-selects one through `session/set_config_option`, on every harness, which is how the loop applies
-its `model` setting. A harness with no model option, a value it does not list, or a switch it
-refuses leaves the session on the model it opened with; `applied` is false and `note` says
-why. It never fails the session.
+`sonnet`, `haiku` and full ids; codex-acp: the Codex model ids). A `model` in `newSession`'s or
+`resumeSession`'s options is selected through `session/set_config_option`, on every harness,
+before the mode is negotiated, since the model decides which modes the harness offers (Claude
+has no auto mode on some models); this is how the loop applies its `model` setting.
+`session.model` says what came of it. A harness with no model option, a value it does not
+list, or a switch it refuses leaves the session on the model it opened with: `applied` is false
+and `note` says why. It never
+fails the session.
 
 ## Notices
 
