@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Checklist } from "@cabane/checklist";
 import { Planner, type Result, type Task } from "@cabane/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
-import type { RefObject } from "react";
+import { createRef, type RefObject } from "react";
 import type { BoardActivity } from "./activity";
 import { BoardData } from "./data";
 import {
@@ -15,7 +15,7 @@ import {
 	formatElapsed,
 	relativeTime,
 } from "./detail";
-import type { DetailModel } from "./detail-model";
+import { DetailModel } from "./detail-model";
 import type { ActivityCard } from "./ports";
 import { SPINNER_FRAMES } from "./spinner";
 import { dropDb, freshDb } from "./test-db";
@@ -957,3 +957,46 @@ test("Detail opens on now when a handoff is all an issue holds, the handoff firs
 		described.destroy();
 	}
 });
+
+test("Detail marks a fresh block seen only while nothing is drawn over it", async () => {
+	const task = await seed({ title: "Watched" });
+	const items = await Checklist.add(TEST_BASE, {
+		id: task.id,
+		items: ["Read it back"],
+	});
+	if (!items.ok) throw items.error;
+	const records = await recordsOf(task);
+	// The same fresh checklist on two views, one under the reader and one in plain sight.
+	const view = async (covered: boolean) => {
+		const seen: string[] = [];
+		const mounted = await renderTest(
+			<Detail
+				taskId={task.id}
+				task={task}
+				records={records}
+				tab="now"
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				fresh={{
+					blocks: new Set(["checklist"]),
+					seen: (name) => seen.push(name),
+				}}
+				covered={covered}
+			/>,
+			{ width: 40, height: 20 },
+		);
+		await pumpUntil(mounted.renderOnce, mounted.captureCharFrame, (f) =>
+			f.includes(`${DetailModel.FRESH_MARK}checklist`),
+		);
+		return { seen, ...mounted };
+	};
+	const under = await view(true);
+	const open = await view(false);
+	try {
+		await sleep(DetailModel.SEEN_MS + 500);
+		expect(open.seen).toEqual(["checklist"]);
+		expect(under.seen).toEqual([]);
+	} finally {
+		under.destroy();
+		open.destroy();
+	}
+}, 10_000);

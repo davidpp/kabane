@@ -184,6 +184,8 @@ export type DetailProps = {
 	// The blocks of `now` a change landed on that the human has not seen (useDetailRecords), and how
 	// the view tells it they have been. Absent, nothing is marked.
 	fresh?: Fresh;
+	// Something is drawn over the view (the reader, the `?` sheet), so nothing on it is being seen.
+	covered?: boolean;
 };
 
 // Code, quotes and rules are set apart by a surface, never a line. OpenTUI draws a quote with a bar
@@ -305,13 +307,14 @@ export const Detail = ({
 	onItem,
 	keys,
 	fresh,
+	covered,
 }: DetailProps): ReactNode => {
 	const theme = useTheme();
 	const { width: room } = useTerminalDimensions();
 	const loaded = records?.ok ? records.value : undefined;
 	const tab = picked ?? openingTab(loaded);
 	const open = DetailModel.openQuestions(loaded, questions, pinned);
-	const marks = useSeen(fresh, tab, scrollRef);
+	const marks = useSeen(fresh, tab, covered, scrollRef);
 	const summaries = DetailModel.tabs(
 		loaded,
 		cards?.length ?? 0,
@@ -727,17 +730,18 @@ const nowBlockId = (name: DetailModel.BlockName): string => `now:${name}`;
 
 const NOTHING_FRESH: ReadonlySet<DetailModel.BlockName> = new Set();
 
-// A fresh block is seen once its header row has stayed inside the viewport, with `now` showing, for
-// DetailModel.SEEN_MS (DetailModel.dwell says why a dwell). What is marked: the fresh blocks, and
+// A fresh block is seen once its header row has stayed inside the viewport, with `now` showing and
+// nothing drawn over it, for DetailModel.SEEN_MS (DetailModel.dwell says why a dwell). What is marked: the fresh blocks, and
 // whether any is on `now` while another tab shows, which its label then says.
 const SEEN_CHECK_MS = 250;
 
 const useSeen = (
 	fresh: Fresh | undefined,
 	tab: DetailModel.Tab,
+	covered: boolean | undefined,
 	scrollRef: RefObject<ScrollBoxRenderable | null>,
 ): { blocks: ReadonlySet<DetailModel.BlockName>; elsewhere: boolean } => {
-	const showing = tab === "now";
+	const showing = tab === "now" && !covered;
 	// Since when each fresh block has been on screen; kept across renders so one block's mark going
 	// does not restart the others', and held to the blocks still fresh each time the marks change.
 	const since = useRef<ReadonlyMap<DetailModel.BlockName, number>>(new Map());
@@ -768,7 +772,7 @@ const useSeen = (
 		return () => clearInterval(timer);
 	}, [fresh, showing, scrollRef]);
 	const blocks = fresh?.blocks ?? NOTHING_FRESH;
-	return { blocks, elsewhere: !showing && blocks.size > 0 };
+	return { blocks, elsewhere: tab !== "now" && blocks.size > 0 };
 };
 
 const NowBlockBody = ({
