@@ -373,3 +373,20 @@ describe("CopilotInstructions starting a loop run", () => {
 		expect(CopilotInstructions.SKILLS).toContain("`kabane loop stop <runId>`");
 	});
 });
+
+describe("CopilotInstructions setting up a loop run", () => {
+	it("reads the advice first, proposes with reasons, and waits for a yes before tagging or starting", () => {
+		const skills = CopilotInstructions.SKILLS;
+		expect(skills).toContain("SETTING UP A LOOP RUN");
+		expect(skills).toContain("kabane loop advise <id>");
+		expect(skills).toContain(
+			"Never change the implementer or the verifier unless asked",
+		);
+		expect(skills).toContain(
+			"Your proposal is your own suggestion: wait for a yes",
+		);
+		expect(skills.indexOf("SETTING UP A LOOP RUN")).toBeGreaterThan(
+			skills.indexOf("STARTING A LOOP RUN"),
+		);
+	});
+});
