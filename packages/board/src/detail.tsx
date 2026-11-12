@@ -188,6 +188,8 @@ export type DetailProps = {
 	fresh?: Fresh;
 	// Something is drawn over the view (the reader, the `?` sheet), so nothing on it is being seen.
 	covered?: boolean;
+	// Open another issue over this one (BoardNav.openFromDetail), `esc` coming back here.
+	onOpenTask?: (taskId: string) => void;
 };
 
 // Code, quotes and rules are set apart by a surface, never a line. OpenTUI draws a quote with a bar
