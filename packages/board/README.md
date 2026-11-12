@@ -401,6 +401,23 @@ It can also:
 
 The copilot manages the tracker and setup; the loop's coding sessions make the code changes.
 
+## An issue's detail
+
+The detail pins the issue at a glance above four sections, `1`-`4` or `h`/`l` to switch:
+
+- `now`: what is in force while the work runs, the part a glance between edits wants. The
+  checklist, the newest entry of each kind the brief lifts as a digest (below), the decisions
+  made and the subtasks, in that order. A part with nothing in it takes no room.
+- `description`: the ask, read when the issue is picked up. The description and the curated
+  context.
+- `comments`: the whole timeline, newest first.
+- `log`: the host's cards, then the work logged and what agent sessions said.
+
+The detail opens on `now` when it has anything in it, otherwise on `description`; a section with
+nothing in it is faint in the bar. The section it opened on, or the one you picked, stays when a
+change lands while it is open: a checklist added to an issue you are reading the description of
+does not move you.
+
 ## Decisions agents file
 
 An agent that needs a human's call on an issue files it with `kabane_ask` (`@cabane/questions`):
@@ -435,7 +452,7 @@ to answer · the copilot has the keys`. A session question pinned over the view 
 one row saying how many decisions wait behind it.
 
 Once answered, the footer says `JREP-7:1 answered`, and `· JREP-7 → next` when it was the last
-and moved the issue on. The description tab lists the decisions made, like the brief:
+and moved the issue on. The `now` section lists the decisions made, like the brief:
 `question → answer (who, reasoning)`. Withdrawn ones are not shown. A click on an answer or a
 key hint does what its key does.
 
@@ -449,14 +466,14 @@ not shows none). It adds no items: agents and the CLI do.
 Each row with items says how far they have got, `· 2/5`, muted beside the `· ?N` badge, and in
 the done hue once every item is ticked (`· 3/3`). The counts come from one query on every poll.
 
-The description tab lists the items under the brief, headed `checklist · 2/5`: `✓` for a ticked
+The `now` section lists the items first, headed `checklist · 2/5`: `✓` for a ticked
 one, `○` for an open one, one line each. A cursor sits on the first open item, where a loop
 resumes. `J/K` move it and `space` ticks or unticks the item under it, as `kabane_checklistTick`
-does, bringing it into view in the same press when the brief has pushed it off screen; the item shows the press at once, the footer says `JREP-8.3 ticked · 3/5`, and a write that
+does, bringing it into view in the same press when it is off screen; the item shows the press at once, the footer says `JREP-8.3 ticked · 3/5`, and a write that
 fails puts the item back to the state the store last acknowledged, with why. An item's writes go one
 at a time: presses while one is in flight leave only the latest queued behind it, and a poll's
 records never take back a press still being written. A click on an item toggles it the same way. These keys work
-only on the description tab with the board holding the keys, and a decision on screen keeps
+only on `now` with the board holding the keys, and a decision on screen keeps
 `space` for its own multi-select.
 
 A tick leaves the task row alone, so nothing on the row says it changed. The poll reads the
@@ -476,13 +493,30 @@ registered module declares is named the same way; a plain comment's band reads `
 A band is one row and never wraps: when it is too long for the pane, the author's name is cut with
 `…` first, so the kind and the age stay whole (`claude-sonnet-4… · handoff · just now`).
 
-The description tab shows what the brief lifts. For each kind a registered module projects as
-`latest` (the handoff), the issue's newest entry of that kind sits under the description and
-above the checklist: one line with the kind's title, its author and its age (`handoff · claude ·
-2h ago`), the kind's framing line muted, the body as markdown, and `1 earlier in comments` when
-there are older ones. The kinds come from the host's registered modules, so a host that registered
-none lifts nothing, and an issue with no such entry shows nothing for it. A new entry moves the
-open detail's stamp, so a handoff recorded in a shell shows within one poll.
+The `now` section shows what the brief lifts. For each kind a registered module projects as
+`latest` (the handoff), the issue's newest entry of that kind sits under the checklist as a
+digest: one line with the kind's title, its author and its age (`handoff · claude · 2h ago`), the
+kind's framing line muted, then the body read as markdown sections. The text before the first
+heading and the first section show rendered, the first heading behind `▾`, held to about eight
+rows at forty columns (more of it fits a wider pane) with `… 6 more lines` for what that leaves
+out. Every further heading at the body's top level is one line with its size, never its content:
+
+```
+▾ Summary
+The wave is merged on local main at
+1519458, not pushed. …
+… 6 more lines
+▸ Evidence · 7 lines
+▸ Not verified · 8 lines
+▸ Risk · 1 line
+```
+
+Headings are read from the text, `##` or `###` alike, never checked against the kind's template;
+a `#` line inside a code block is code. A body with no headings shows its first paragraph and how
+many lines follow. `1 earlier in comments` says when there are older entries of the kind; the
+comments section has every entry whole. The kinds come from the host's registered modules, so a
+host that registered none lifts nothing, and an issue with no such entry shows nothing for it. A
+new entry moves the open detail's stamp, so a handoff recorded in a shell shows within one poll.
 
 ## Linked issues
 
