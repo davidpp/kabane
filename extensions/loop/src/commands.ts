@@ -428,14 +428,36 @@ export namespace Loop {
 
 	const ROUTING_TAG = /^(tier|agent):/;
 
+	// A run's worktree is cut from HEAD, so a project agent's definition HEAD lacks is not there; one
+	// outside the checkout (the user's own) is read wherever the session runs.
+	const notAtHead = async (
+		git: Worktree.Git,
+		projectDir: string,
+		path: string,
+	): Promise<boolean> => {
+		const top = await git(projectDir, ["rev-parse", "--show-toplevel"]);
+		if (!top.ok) return false;
+		const real = trySync(() => realpathSync(path));
+		const inside = relative(top.value.trim(), real.ok ? real.value : path);
+		if (inside.startsWith("..") || isAbsolute(inside)) return false;
+		const committed = await git(projectDir, [
+			"cat-file",
+			"-e",
+			`HEAD:${inside}`,
+		]);
+		return !committed.ok;
+	};
+
 	// What a claim of `task` would run on, as the runner routes a fresh session: the agent's
 	// definition is read where the session would read it, and a harness that cannot select a named
-	// agent, or has no such agent, runs without it, so nothing it may pin applies.
-	const routedOf = (
+	// agent, or has no such agent where the session runs, runs without it, so nothing it may pin
+	// applies.
+	const routedOf = async (
 		config: LoopConfig.Config,
 		projectDir: string,
+		git: Worktree.Git,
 		task: Task,
-	): Routed => {
+	): Promise<Routed> => {
 		const route = Route.of(task.tags, config);
 		const notes = [...route.notes];
 		let agent = route.agent;
@@ -452,8 +474,15 @@ export namespace Loop {
 					`no ${agent} agent is defined for ${route.harness} in the project or your home, so it runs its default agent`,
 				);
 				agent = undefined;
-			}
-			pin = found?.model;
+			} else if (
+				config.worktree &&
+				(await notAtHead(git, projectDir, found.path))
+			) {
+				notes.push(
+					`agent ${agent} is not committed; a worktree run won't see it, so it runs its default agent`,
+				);
+				agent = undefined;
+			} else pin = found.model;
 		}
 		const model = Route.model(
 			config,
@@ -494,7 +523,7 @@ export namespace Loop {
 	 * it on, without starting one. Refuses what `prepare` refuses. Read-only.
 	 */
 	export const advise = async (
-		deps: Pick<StartDeps, "home" | "basePath" | "cwd" | "settings">,
+		deps: Pick<StartDeps, "home" | "basePath" | "cwd" | "settings" | "git">,
 		input: StartInput,
 	): Promise<Result<Advised>> => {
 		const prepared = await prepare(deps, input);
@@ -512,14 +541,17 @@ export namespace Loop {
 				existsSync(join(projectRoot, name)),
 			),
 		});
-		const subtasks = plan.nodes
-			.filter(
-				(n) =>
-					LoopPlan.isWork(n) &&
-					n.task.kind === "issue" &&
-					!LoopPlan.isClosed(n.task),
-			)
-			.map((n) => routedOf(config, projectDir, n.task));
+		const git = deps.git ?? Worktree.git;
+		const subtasks = await Promise.all(
+			plan.nodes
+				.filter(
+					(n) =>
+						LoopPlan.isWork(n) &&
+						n.task.kind === "issue" &&
+						!LoopPlan.isClosed(n.task),
+				)
+				.map((n) => routedOf(config, projectDir, git, n.task)),
+		);
 		return ok({
 			parent: plan.parent.shortId ?? plan.parent.id,
 			projectDir,

@@ -878,3 +878,41 @@ describe("Loop.advise", () => {
 		expect(RunStore.list(home)).toEqual(ok([]));
 	});
 });
+
+describe("Loop.advise, a project agent and the run's worktree", () => {
+	it("says a worktree run won't see an agent HEAD lacks, and routes to it once committed", async () => {
+		const scopeUri = await repoScope();
+		const parent = await add("parent", { scopeUri });
+		await add("docs", {
+			parentTaskId: parent.id,
+			scopeUri,
+			tags: ["agent:docs-writer"],
+		});
+		mkdirSync(join(repo, ".claude/agents"), { recursive: true });
+		writeFileSync(
+			join(repo, ".claude/agents/docs-writer.md"),
+			"---\nname: docs-writer\nmodel: haiku\n---\nWrite docs.\n",
+		);
+		const routed = async (worktree: boolean) => {
+			const advised = await Loop.advise(deps(), {
+				parent: parent.id,
+				config: { worktree },
+			});
+			if (!advised.ok) throw advised.error;
+			const [docs] = advised.value.subtasks;
+			return [docs?.agent, docs?.model, docs?.notes];
+		};
+		expect(await routed(true)).toEqual([
+			undefined,
+			undefined,
+			[
+				"agent docs-writer is not committed; a worktree run won't see it, so it runs its default agent",
+			],
+		]);
+		// Without a worktree the session runs in this checkout, where the file is.
+		expect(await routed(false)).toEqual(["docs-writer", "haiku", []]);
+		GitFixture.run(repo, ["add", ".claude"]);
+		GitFixture.run(repo, ["commit", "-q", "-m", "agent"]);
+		expect(await routed(true)).toEqual(["docs-writer", "haiku", []]);
+	});
+});
