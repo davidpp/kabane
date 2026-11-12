@@ -51,7 +51,7 @@
 	},
 	"devDependencies": {
 		"@modelcontextprotocol/sdk": "1.30.0",
-		"@opentui/react": "0.8.0",
+		"@opentui/react": "0.8.2",
 		"@types/bun": "1.4.0",
 		"@types/react": "19.2.7",
 		"react": "19.2.3",

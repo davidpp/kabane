@@ -12,7 +12,7 @@ imports the SDK.
 ## Pieces
 
 - `Harnesses` — registry of launch commands with pinned adapter versions
-  (`claude` → `npx -y @agentclientprotocol/claude-agent-acp@0.99.1`,
+  (`claude` → `npx -y @agentclientprotocol/claude-agent-acp@0.100.0`,
   `codex` → `npx -y @agentclientprotocol/codex-acp@2.5.0`, `gemini` → `gemini --acp`).
   `resolve(id, overrides?)` returns `{ command, args, env }`; the env always carries
   `KABANE_SESSION=1` so user hooks can tell a board session from an interactive one,
@@ -145,7 +145,7 @@ Both pinned adapters send the option (claude-agent-acp mirrors its modes into on
 
 | Harness | Manual | Auto | Others |
 | --- | --- | --- | --- |
-| claude-agent-acp 0.99.1 | `default` ("Manual") | `auto` ("Claude handles permission decisions") | `acceptEdits`, `plan`, `bypassPermissions` |
+| claude-agent-acp 0.100.0 | `default` ("Manual") | `auto` ("Claude handles permission decisions") | `acceptEdits`, `plan`, `bypassPermissions` |
 | codex-acp 2.5.0 | `read-only` (a read-only sandbox) | `agent` ("Auto review"), where a session opens | `workspace-write`, `agent-full-access` |
 | gemini | not named | not named | |
 

@@ -37,7 +37,7 @@ export namespace Harnesses {
 	const REGISTRY: Record<Id, Entry> = {
 		claude: {
 			command: "npx",
-			args: ["-y", "@agentclientprotocol/claude-agent-acp@0.99.1"],
+			args: ["-y", "@agentclientprotocol/claude-agent-acp@0.100.0"],
 			// The adapter reads ANTHROPIC_MODEL ahead of settings.json, and takes the picker's
 			// aliases as well as full ids. The alias is the point: it tracks whatever Sonnet is
 			// current instead of pinning a version that ages out of the list.
