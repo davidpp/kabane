@@ -25,8 +25,8 @@ imports the SDK.
   model variable. `acceptsSystemPrompt(id)` is true only for Claude, the one
   adapter that reads `_meta.systemPrompt` on `session/new`. All of that is the
   copilot's profile, `COPILOT`, and the default: `resolve`'s third argument is a
-  `Profile` (`pinModel`, `env`) for another launcher, such as the loop, which runs the
-  user's own default model under its own env marker. A profile has no allow list or
+  `Profile` (`pinModel`, `env`) for another launcher, such as the loop, which pins no model
+  in the env and runs under its own env marker. A profile has no allow list or
   settings file, and `onPermission` hands every request to the caller, which never answers
   one for the human. `modes(id)` names the adapter's manual and auto session modes (see
   Session modes). `installedCli(id)` is the env
@@ -163,6 +163,16 @@ harness's own policy, not kabane's: whatever it still asks reaches `onPermission
 A `current_mode_update`, or a `config_option_update` whose mode option holds a mode the session
 is not in, is a `mode` update; the echo of the switch `newSession` made and an update that
 repeats the current mode are not.
+
+## Session models
+
+Both pinned adapters advertise their model as a `category: "model"` select option on
+`session/new`, with the values the user's own CLI lists (claude-agent-acp: `default`, `opus`,
+`sonnet`, `haiku` and full ids; codex-acp: the Codex model ids). `selectModel(session, value)`
+selects one through `session/set_config_option`, on every harness, which is how the loop applies
+its `model` setting. A harness with no model option, a value it does not list, or a switch it
+refuses leaves the session on the model it opened with; `applied` is false and `note` says
+why. It never fails the session.
 
 ## Notices
 

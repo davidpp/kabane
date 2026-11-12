@@ -841,6 +841,118 @@ describe("AcpClient session modes through a config option", () => {
 	});
 });
 
+// An agent with a model option, as both pinned adapters send it (here in groups): opens on `gpt-6-astra`, records
+// every session/set_config_option, and answers with the model it landed on: `refuse` throws,
+// `swap` lands on another model than the one asked for.
+const modelAgent = (
+	seen: { setConfig: unknown[] },
+	options: { advertise?: boolean; refuse?: boolean; swap?: string } = {},
+): AgentApp => {
+	let model = "gpt-6-astra";
+	const configOptions = () =>
+		options.advertise === false
+			? []
+			: [
+					{
+						id: "model",
+						name: "Model",
+						category: "model",
+						type: "select" as const,
+						currentValue: model,
+						options: [
+							{
+								group: "current",
+								name: "Current",
+								options: [{ value: "gpt-6-astra", name: "6 Astra" }],
+							},
+							{
+								group: "older",
+								name: "Older",
+								options: [{ value: "gpt-6-luna", name: "6 Luna" }],
+							},
+						],
+					},
+				];
+	return agentApp({ name: "models" })
+		.onRequest(methods.agent.initialize, () => ({
+			protocolVersion: PROTOCOL_VERSION,
+			agentCapabilities: { loadSession: false },
+		}))
+		.onRequest(methods.agent.session.new, () => ({
+			sessionId: "s-1",
+			configOptions: configOptions(),
+		}))
+		.onRequest(methods.agent.session.setConfigOption, (c) => {
+			const { configId, value } = c.params;
+			seen.setConfig.push({ configId, value });
+			if (options.refuse) throw new Error("not on this plan");
+			model = options.swap ?? String(value);
+			return { configOptions: configOptions() };
+		});
+};
+
+describe("AcpClient.selectModel", () => {
+	const open = (agent: AgentApp) => openModed(agent, "codex", "default");
+
+	it("selects a listed model, out of its group, through session/set_config_option", async () => {
+		const seen = { setConfig: [] as unknown[] };
+		const { conn, session } = await open(modelAgent(seen));
+		expect(await AcpClient.selectModel(session, "gpt-6-luna")).toEqual({
+			current: "gpt-6-luna",
+			applied: true,
+			note: "model gpt-6-luna, from gpt-6-astra",
+		});
+		expect(seen.setConfig).toEqual([
+			{ configId: "model", value: "gpt-6-luna" },
+		]);
+		// The session keeps what the harness answered, so what it runs is read from there.
+		expect(session.configOptions[0]).toMatchObject({
+			currentValue: "gpt-6-luna",
+		});
+		// Already there: nothing is sent.
+		expect(await AcpClient.selectModel(session, "gpt-6-luna")).toMatchObject({
+			applied: true,
+		});
+		expect(seen.setConfig).toHaveLength(1);
+		AcpClient.close(conn);
+	});
+
+	it("keeps the session's model, and says why, when it cannot take the one asked for", async () => {
+		const seen = { setConfig: [] as unknown[] };
+		const unlisted = await open(modelAgent(seen));
+		expect(await AcpClient.selectModel(unlisted.session, "sonnet")).toEqual({
+			current: "gpt-6-astra",
+			applied: false,
+			note: "codex does not list sonnet (it lists gpt-6-astra, gpt-6-luna), so it keeps gpt-6-astra",
+		});
+		expect(seen.setConfig).toEqual([]);
+		AcpClient.close(unlisted.conn);
+
+		const none = await open(modelAgent(seen, { advertise: false }));
+		expect(await AcpClient.selectModel(none.session, "gpt-6-luna")).toEqual({
+			applied: false,
+			note: "codex advertises no model option, so it runs its own default instead of gpt-6-luna",
+		});
+		AcpClient.close(none.conn);
+
+		const refused = await open(modelAgent(seen, { refuse: true }));
+		const choice = await AcpClient.selectModel(refused.session, "gpt-6-luna");
+		expect(choice).toMatchObject({ current: "gpt-6-astra", applied: false });
+		expect(choice.note).toStartWith(
+			"selecting gpt-6-luna failed, so codex keeps gpt-6-astra: ",
+		);
+		AcpClient.close(refused.conn);
+
+		const swapped = await open(modelAgent(seen, { swap: "gpt-6-astra" }));
+		expect(await AcpClient.selectModel(swapped.session, "gpt-6-luna")).toEqual({
+			current: "gpt-6-astra",
+			applied: false,
+			note: "asked codex for gpt-6-luna and it chose gpt-6-astra",
+		});
+		AcpClient.close(swapped.conn);
+	});
+});
+
 // An agent that keeps sessions by id across connections, as a harness keeps them on disk.
 const resumableAgent = (
 	seen: { resumed: unknown[]; prompts: unknown[] },

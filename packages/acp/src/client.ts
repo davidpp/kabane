@@ -641,20 +641,34 @@ export namespace AcpClient {
 		  }
 		| { via: "set_mode"; current: string; available: string[] };
 
+	type SelectOption = Extract<SessionConfigOption, { type: "select" }>;
+
+	const selectOption = (
+		options: SessionConfigOption[] | null | undefined,
+		category: string,
+	): SelectOption | undefined => {
+		const option = options?.find(
+			(o) => o.category === category && o.type === "select",
+		);
+		return option?.type === "select" ? option : undefined;
+	};
+
+	// A select's values, flattened out of any groups.
+	const selectValues = (option: SelectOption): string[] =>
+		option.options.flatMap((o) =>
+			"options" in o ? o.options.map((v) => v.value) : [o.value],
+		);
+
 	const modeOption = (
 		options: SessionConfigOption[] | null | undefined,
 	): Extract<ModeControl, { via: "config_option" }> | undefined => {
-		const option = options?.find(
-			(o) => o.category === "mode" && o.type === "select",
-		);
-		if (option?.type !== "select") return undefined;
+		const option = selectOption(options, "mode");
+		if (!option) return undefined;
 		return {
 			via: "config_option",
 			configId: option.id,
 			current: option.currentValue,
-			available: option.options.flatMap((o) =>
-				"options" in o ? o.options.map((v) => v.value) : [o.value],
-			),
+			available: selectValues(option),
 		};
 	};
 
@@ -756,6 +770,68 @@ export namespace AcpClient {
 					? `mode ${switchTo}: ${connection.harness}'s auto mode, switched from ${from}`
 					: `mode ${landed}: asked for ${connection.harness}'s auto mode (${switchTo}) from ${from}, and it chose ${landed}`,
 		};
+	};
+
+	/** What `selectModel` left the session on, and why. */
+	export type ModelChoice = {
+		/** The model the session runs, by the harness's value; absent when it advertises none. */
+		current?: string;
+		/** Whether the session runs the model asked for. */
+		applied: boolean;
+		/** What was selected, or why nothing was, as one line for the session's log. */
+		note: string;
+	};
+
+	/**
+	 * Select `value` on the session's model option (`category: "model"`) through
+	 * `session/set_config_option`. A harness with no model option, one that does not list
+	 * `value`, or one that refuses the switch leaves the session on the model it opened with: the
+	 * choice says so and never fails the session.
+	 */
+	export const selectModel = async (
+		session: Session,
+		value: string,
+	): Promise<ModelChoice> => {
+		const { harness } = session.connection;
+		const option = selectOption(session.configOptions, "model");
+		if (!option)
+			return {
+				applied: false,
+				note: `${harness} advertises no model option, so it runs its own default instead of ${value}`,
+			};
+		const from = option.currentValue;
+		if (from === value)
+			return { current: from, applied: true, note: `model ${from}` };
+		const available = selectValues(option);
+		if (!available.includes(value))
+			return {
+				current: from,
+				applied: false,
+				note: `${harness} does not list ${value} (it lists ${available.join(", ")}), so it keeps ${from}`,
+			};
+		const set = await tryCatch(() =>
+			session.connection.agent.request(methods.agent.session.setConfigOption, {
+				sessionId: session.id,
+				configId: option.id,
+				value,
+			}),
+		);
+		if (!set.ok)
+			return {
+				current: from,
+				applied: false,
+				note: `selecting ${value} failed, so ${harness} keeps ${from}: ${toError(set.error).message}`,
+			};
+		session.configOptions = set.value.configOptions;
+		const landed =
+			selectOption(set.value.configOptions, "model")?.currentValue ?? value;
+		return landed === value
+			? { current: value, applied: true, note: `model ${value}, from ${from}` }
+			: {
+					current: landed,
+					applied: false,
+					note: `asked ${harness} for ${value} and it chose ${landed}`,
+				};
 	};
 
 	// Lazy: nothing is sent until the caller starts iterating, which is what makes
