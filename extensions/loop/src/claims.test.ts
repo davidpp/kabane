@@ -486,6 +486,136 @@ describe("Claims.claim", () => {
 	});
 });
 
+describe("Claims.claim, resuming an attempt's session", () => {
+	// A subtask whose last attempt ran on codex as `kabane-test` at tier fast, its tags since
+	// changed to route it elsewhere, claimed again on a run whose harnesses all fail at once.
+	let runs = 0;
+	const reclaim = async (
+		attempt: Partial<RunStore.Claim>,
+		extra: (child: Task) => Partial<RunStore.Run> = () => ({}),
+	) => {
+		const parent = await add("parent");
+		const child = await add("child", {
+			parentTaskId: parent.id,
+			tags: ["tier:claude/frontier", "agent:board-ui"],
+		});
+		const config = LoopConfig.Schema.safeParse({});
+		if (!config.success) throw config.error;
+		const previous: RunStore.Claim = {
+			...claimOf(child, "s-old"),
+			harness: "codex",
+			lane: child.shortId ?? child.id,
+			acpSessionId: "codex-thread-1",
+			agent: "kabane-test",
+			model: "gpt-6-luna",
+			modelSource: "tier",
+			tier: "fast",
+			endedAt: new Date().toISOString(),
+			...attempt,
+		};
+		runs += 1;
+		const run: RunStore.Run = {
+			version: 1,
+			id: `run-${runs}`,
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims: [previous],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+			...extra(child),
+		};
+		const created = RunStore.create(home, run);
+		if (!created.ok) throw created.error;
+		const ctx = ctxFor(run);
+		const fails = { command: "/usr/bin/false", args: [] };
+		ctx.deps = {
+			...ctx.deps,
+			overrides: { claude: fails, codex: fails, gemini: fails },
+		};
+		const plan = await LoopPlan.load(home, parent.id);
+		if (!plan.ok) throw plan.error;
+		const node = plan.value.nodes.find((n) => n.task.id === child.id);
+		if (!node) throw new Error("child is not in the plan");
+		await Claims.claim(ctx, node, plan.value);
+		await Promise.all([...ctx.live.values()].map((l) => l.settled));
+		const events = RunStore.readEvents(home, run.id);
+		if (!events.ok) throw events.error;
+		return {
+			child,
+			claim: ctx.run.claims[1],
+			said: events.value.map((e) => e.summary),
+		};
+	};
+
+	it("takes over an interrupted session on the harness, agent and tier it ran with, whatever the tags say now", async () => {
+		const { child, claim, said } = await reclaim({ outcome: "interrupted" });
+		expect(claim?.harness).toBe("codex");
+		const lane = child.shortId ?? child.id;
+		expect(said).toContain(
+			`codex as kabane-test at tier fast claims ${lane}: child`,
+		);
+		expect(said).toContain(
+			`${lane}'s session is resumed as it ran (codex as kabane-test at tier fast); the tags (claude as board-ui at tier frontier) route a fresh session`,
+		);
+	});
+
+	it("continues a gate retry's session as it ran, too, and routes a fresh retry by the tags", async () => {
+		const red = (child: Task): Gates.Run => ({
+			at: new Date().toISOString(),
+			taskId: child.id,
+			results: [
+				{
+					name: "test",
+					command: "exit 1",
+					ok: false,
+					exit: 1,
+					ms: 5,
+					tail: "1 failed",
+				},
+			],
+			ok: false,
+			tree: "tree",
+		});
+		const roomy = await reclaim({ outcome: "done" }, (child) => ({
+			usage: { "s-old": { used: 10, size: 100 } },
+			gateRuns: [red(child)],
+		}));
+		expect(roomy.claim?.harness).toBe("codex");
+		expect(
+			roomy.said.some((s) =>
+				s.startsWith("codex as kabane-test at tier fast claims"),
+			),
+		).toBe(true);
+		// Past half its window, the retry starts fresh: the tags route it.
+		const full = await reclaim({ outcome: "done" }, (child) => ({
+			usage: { "s-old": { used: 90, size: 100 } },
+			gateRuns: [red(child)],
+		}));
+		expect(full.claim?.harness).toBe("claude");
+		expect(
+			full.said.some((s) =>
+				s.startsWith("claude as board-ui at tier frontier claims"),
+			),
+		).toBe(true);
+	});
+
+	it("routes by the tags when the last attempt left no session to resume", async () => {
+		const { claim, said } = await reclaim({
+			outcome: "interrupted",
+			acpSessionId: undefined,
+		});
+		expect(claim?.harness).toBe("claude");
+		expect(said.some((s) => s.includes("is resumed as it ran"))).toBe(false);
+	});
+});
+
 describe("Claims.interruption", () => {
 	// A real repository: one commit from before the attempt, one it made, and a file it left.
 	const repo = (): string => {

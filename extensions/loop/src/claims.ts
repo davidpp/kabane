@@ -13,7 +13,7 @@
 // isolated claims, a subtask works in a worktree of its own (`ClaimTrees`), its session, gates
 // and checkpoint there, and a green pass merges its branch into the run's; one the tracker closed
 // or cancelled while it held that worktree is settled there (`settleHeld`).
-import type { Harnesses } from "@cabane/acp";
+import { Harnesses } from "@cabane/acp";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
 import type { Brief } from "./brief";
 import { Budget } from "./budget";
@@ -432,8 +432,10 @@ export namespace Claims {
 		tree?: string;
 		/** A subtask's own worktree, when it works in one (`ClaimTrees`). */
 		worktree?: ClaimTrees.Tree;
-		/** What its subtask's tags ask of it (`Route`): a subtask's claim only. */
+		/** What its subtask's tags ask of it (`Route`): a subtask's fresh claim only. */
 		route?: Pick<Route.Route, "tier" | "agent">;
+		/** What the attempt whose session it resumes ran as, which it keeps (`continuing`). */
+		kept?: Dispatch.Kept;
 	};
 
 	// A recheck reports and never edits; nothing enforces that in the harness, whose settings are
@@ -465,6 +467,7 @@ export namespace Claims {
 			tree,
 			worktree,
 			route,
+			kept,
 		} = started;
 		RunState.save(ctx, {
 			...ctx.run,
@@ -516,6 +519,7 @@ export namespace Claims {
 				...(resumes ? { resumes } : {}),
 				...(route?.tier ? { tier: route.tier } : {}),
 				...(route?.agent ? { agent: route.agent } : {}),
+				...(kept ? { kept } : {}),
 			},
 			{
 				basePath: ctx.deps.basePath,
@@ -595,6 +599,91 @@ export namespace Claims {
 	};
 
 	/**
+	 * The attempt whose harness session a new claim on the same work resumes: an interrupted one
+	 * that recorded its session, or the one a gate retry continues while that session has room.
+	 * Undefined when the claim starts a fresh session.
+	 */
+	const continuing = (
+		ctx: Ctx,
+		previous: RunStore.Claim | undefined,
+		retried: boolean,
+	): (RunStore.Claim & { harness: Harnesses.Id }) | undefined => {
+		if (!previous || !Harnesses.isId(previous.harness)) return undefined;
+		const resumes =
+			previous.outcome === "interrupted"
+				? previous.acpSessionId !== undefined
+				: retried &&
+					Retry.session(previous, previous.harness, ctx.run.usage)?.resume ===
+						true;
+		return resumes ? { ...previous, harness: previous.harness } : undefined;
+	};
+
+	// How a claim reads on the trace: its harness, and the agent and tier it asks for or keeps.
+	const routed = (
+		harness: string,
+		agent: string | undefined,
+		tier: string | undefined,
+	): string =>
+		`${harness}${agent ? ` as ${agent}` : ""}${tier ? ` at tier ${tier}` : ""}`;
+
+	type Routing = {
+		harness: Harnesses.Id;
+		/** How the claim reads on the trace: its harness, agent and tier. */
+		as: string;
+		/** What the dispatch is given: the tags' route for a fresh session, or what a resumed one keeps. */
+		given: Pick<Started, "route" | "kept">;
+		/** Why the tags do not route it as they say, one line each. */
+		notes: string[];
+	};
+
+	/**
+	 * Where a subtask's claim runs, and as what. The run's harness unless a `tier:<harness>/<name>`
+	 * tag pins another, whatever the subtask's assignee says: agents assign issues they file to
+	 * themselves, so the assignee names who wrote it, not who the human picked to work it. A resumed
+	 * session goes on as it ran, on its harness, as its agent and on its model: the tags as they are
+	 * now route a fresh session, and a session id never goes to another harness.
+	 */
+	const routing = (
+		ctx: Ctx,
+		task: Task,
+		previous: RunStore.Claim | undefined,
+		retried: boolean,
+	): Routing => {
+		const route = Route.of(task.tags, ctx.run.config);
+		const tags = routed(route.harness, route.agent, route.tier);
+		const resumed = continuing(ctx, previous, retried);
+		if (!resumed)
+			return {
+				harness: route.harness,
+				as: tags,
+				given: { route },
+				notes: route.notes,
+			};
+		const as = routed(resumed.harness, resumed.agent, resumed.tier);
+		const differs =
+			route.harness !== resumed.harness ||
+			route.agent !== resumed.agent ||
+			(route.tier !== undefined && route.tier !== resumed.tier);
+		return {
+			harness: resumed.harness,
+			as,
+			given: {
+				kept: {
+					...(resumed.agent ? { agent: resumed.agent } : {}),
+					...(resumed.model ? { model: resumed.model } : {}),
+					...(resumed.modelSource ? { source: resumed.modelSource } : {}),
+					...(resumed.tier ? { tier: resumed.tier } : {}),
+				},
+			},
+			notes: differs
+				? [
+						`${resumed.lane}'s session is resumed as it ran (${as}); the tags (${tags}) route a fresh session`,
+					]
+				: [],
+		};
+	};
+
+	/**
 	 * Claim one ready work node, a subtask or a single issue itself: a core session, a dispatched
 	 * ACP session, a live entry. False when it waits for a worktree of its own (`ClaimTrees`), an
 	 * error when its worktree could not be readied (its setup failed), which stops the run; true
@@ -611,21 +700,18 @@ export namespace Claims {
 		if (!place.ok) return place;
 		if (place.value === undefined) return ok(false);
 		const { worktree } = place.value;
-		// The run's harness unless a `tier:<harness>/<name>` tag pins another, whatever the subtask's
-		// assignee says: agents assign issues they file to themselves, so the assignee names who
-		// wrote it, not who the human picked to work it.
-		const route = Route.of(task.tags, ctx.run.config);
-		const { harness } = route;
 		const earlier = ctx.run.claims.filter(
 			(c) => c.taskId === task.id && !onParent(c),
 		);
+		const previous = earlier.at(-1);
+		const retry = Gates.lastFailure(ctx.run.gateRuns, task.id);
+		const routes = routing(ctx, task, previous, retry !== undefined);
+		const { harness } = routes;
 		const attempts = earlier.length;
 		// Named by the subtask alone: its claim's trace says which harness, agent and model it ran on.
 		const lane = `${label(task)}${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, task, harness, lane, true);
 		if (sessionId === undefined) return ok(true);
-		const previous = earlier.at(-1);
-		const retry = Gates.lastFailure(ctx.run.gateRuns, task.id);
 		const interrupted = await interruption(ctx, previous);
 		const retryIn =
 			retry && previous
@@ -642,14 +728,15 @@ export namespace Claims {
 				concurrent: worktree === undefined && RunStore.concurrency(ctx.run) > 1,
 				...(retry ? { retry } : {}),
 			},
-			summary: `${harness}${route.agent ? ` as ${route.agent}` : ""}${route.tier ? ` at tier ${route.tier}` : ""} claims ${label(task)}: ${task.title}${worktree ? ` in ${worktree.dir}, on ${worktree.branch}` : ""}`,
-			route,
+			summary: `${routes.as} claims ${label(task)}: ${task.title}${worktree ? ` in ${worktree.dir}, on ${worktree.branch}` : ""}`,
+			...routes.given,
 			...(worktree ? { worktree } : {}),
 			...(interrupted ? { interrupted } : {}),
 			...(retryIn?.resume ? { resumes: retryIn } : {}),
 		});
-		// A tag the run could not honour: the claim runs on the fallback, and its lane says why.
-		for (const note of route.notes)
+		// A tag the run could not honour, or one a resumed session leaves for a fresh one: the
+		// claim runs on the fallback, and its lane says why.
+		for (const note of routes.notes)
 			RunState.event(ctx, {
 				type: "warning",
 				lane,

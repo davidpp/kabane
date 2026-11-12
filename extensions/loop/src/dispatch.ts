@@ -95,7 +95,39 @@ export namespace Dispatch {
 		tier?: string;
 		/** The harness's named agent its subtask's `agent:` tag names, which its session runs as. */
 		agent?: string;
+		/**
+		 * What the attempt whose session it resumes ran as, kept in place of its tags: that
+		 * session's agent and model.
+		 */
+		kept?: Kept;
 	};
+
+	/** A resumed attempt's agent, and its model and where that came from, as its claim recorded them. */
+	export type Kept = {
+		agent?: string;
+		model?: string;
+		source?: Route.Source;
+		tier?: string;
+	};
+
+	// The agent a claim's session runs as: the one its resumed attempt ran as, else its tag's.
+	const agentOf = (claim: Claim): string | undefined =>
+		claim.kept ? claim.kept.agent : claim.agent;
+
+	// A kept model is asked for again only where the run chose it (a tier or the run's model): an
+	// agent's pin runs unasked, and the harness's default is the session's own.
+	const keptModel = (kept: Kept): Route.Model =>
+		(kept.source === "tier" ||
+			kept.source === "run" ||
+			kept.source === "agent") &&
+		kept.model !== undefined
+			? {
+					model: kept.model,
+					source: kept.source,
+					...(kept.tier ? { tier: kept.tier } : {}),
+					notes: [],
+				}
+			: { source: "default", notes: [] };
 
 	/** What a claim's session ran as, once it opened: its agent, and its model and where that came from. */
 	type Ran = {
@@ -424,19 +456,22 @@ export namespace Dispatch {
 		on.connected(spawned.value);
 		// An agent that pins its own model keeps it, so none is selected over it: read from its
 		// definition, since the session's model option goes on naming the session's own.
+		const agent = agentOf(claim);
 		const pin =
-			claim.agent === undefined
+			claim.kept || agent === undefined
 				? undefined
-				: Harnesses.agentDefinition(claim.harness, claim.agent, env.cwd)?.model;
-		const asked = Route.model(
-			env.models ?? { tiers: {} },
-			claim.harness,
-			{
-				...(claim.tier ? { tier: claim.tier } : {}),
-				...(claim.agent ? { agent: claim.agent } : {}),
-			},
-			pin,
-		);
+				: Harnesses.agentDefinition(claim.harness, agent, env.cwd)?.model;
+		const asked = claim.kept
+			? keptModel(claim.kept)
+			: Route.model(
+					env.models ?? { tiers: {} },
+					claim.harness,
+					{
+						...(claim.tier ? { tier: claim.tier } : {}),
+						...(agent ? { agent } : {}),
+					},
+					pin,
+				);
 		for (const note of asked.notes) sink.emit("warning", note);
 		const started = await reopen(
 			claim,
@@ -447,11 +482,11 @@ export namespace Dispatch {
 		);
 		if (!started.ok) return started;
 		const { session } = started.value;
-		const agent = emitAgent(session, sink);
+		const ranAs = emitAgent(session, sink);
 		// A pin only holds for an agent the session runs as; without it, the harness's own model.
 		const model = emitModel(
 			session,
-			asked.source === "agent" && agent === undefined
+			asked.source === "agent" && ranAs === undefined
 				? { source: "default", notes: [] }
 				: asked,
 			sink,
@@ -467,7 +502,7 @@ export namespace Dispatch {
 		);
 		return ok({
 			...started.value,
-			ran: { ...(agent ? { agent } : {}), ...model },
+			ran: { ...(ranAs ? { agent: ranAs } : {}), ...model },
 		});
 	};
 
@@ -564,12 +599,13 @@ export namespace Dispatch {
 		sink: Sink,
 		model: string | undefined,
 	): Promise<Result<Opened>> => {
+		const agent = agentOf(claim);
 		const options = {
 			cwd: env.cwd,
 			mcpServers: [mcpServer(env, claim.harness)],
 			...(env.mode ? { mode: env.mode } : {}),
 			...(model === undefined ? {} : { model }),
-			...(claim.agent === undefined ? {} : { agent: claim.agent }),
+			...(agent === undefined ? {} : { agent }),
 		};
 		const previous = claim.interrupted;
 		if (previous?.acpSessionId !== undefined)
