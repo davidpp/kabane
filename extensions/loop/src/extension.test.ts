@@ -461,10 +461,11 @@ describe("kabane loop advise", () => {
 		);
 		expect(advised.exitCode).toBe(0);
 		const lines = advised.text.split("\n");
+		// The project is no git repository, so a run works in place: one shared tree.
 		expect(lines.slice(1, 8)).toEqual([
 			"  implementer claude  model unset  tiers frontier, balanced, fast",
 			"advised:",
-			`  budget.concurrency 1 (now 2, the default with worktrees): src/parser.ts referenced by ${header.shortId}, ${body.shortId} — potential merge conflict if run in parallel`,
+			`  budget.concurrency 1 (now 1, the default in a shared tree): src/parser.ts referenced by ${header.shortId}, ${body.shortId} — potential merge conflict if run in parallel`,
 			'  gates test="bun run test" (now none): package.json scripts, using bun from the lockfile',
 			"  setup bun install (now unset): install dependencies in each worktree using the project's lockfile",
 			'  start with: --concurrency 1 --gate test="bun run test"',

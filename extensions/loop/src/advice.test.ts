@@ -29,10 +29,15 @@ const config = (input: LoopConfig.Input = {}): LoopConfig.Config => {
 	if (!result.success) throw result.error;
 	return result.data;
 };
-const project = (input: LoopConfig.Input = {}): LoopAdvice.Project => ({
+// A git repository unless `inRepo` says otherwise.
+const project = (
+	input: LoopConfig.Input = {},
+	inRepo = true,
+): LoopAdvice.Project => ({
 	config: config(input),
 	scripts: {},
 	lockfiles: [],
+	isolated: LoopAdvice.isolated(config(input), inRepo),
 });
 const node = (id: string, blockers: string[] = [], file = "") =>
 	LoopPlan.node({ ...task(id, id), description: file }, blockers);
@@ -102,9 +107,11 @@ test("a shared tree is advised one session however wide the plan; worktrees get 
 		value: 4,
 		reason: "up to 4 independent issues in the blocker DAG",
 	});
+	// Outside a git repository a run works in place, its worktree setting notwithstanding.
 	for (const shared of [
 		project({ isolation: "shared" }),
 		project({ worktree: false }),
+		project({}, false),
 	])
 		expect(recommendation(wide, [], shared)[0]).toEqual({
 			path: "budget.concurrency",

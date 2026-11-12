@@ -16,7 +16,6 @@ import {
 	usage,
 } from "@cabane/extension";
 import { LoopActivity } from "./activity";
-import { LoopAdvice } from "./advice";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
@@ -374,15 +373,14 @@ const shown = (value: unknown): string => {
 };
 
 // What a setting is under the run's layers now, to read the advice against.
-const current = (config: LoopConfig.Config, r: Recommendation): unknown => {
+const current = (a: Loop.Advised, r: Recommendation): unknown => {
+	const { config } = a;
 	switch (r.path) {
-		case "budget.concurrency": {
-			const isolated = LoopAdvice.isolated(config);
+		case "budget.concurrency":
 			return (
 				config.budget.concurrency ??
-				`${LoopConfig.concurrency(config, isolated)}, the default ${isolated ? "with worktrees" : "in a shared tree"}`
+				`${LoopConfig.concurrency(config, a.isolated)}, the default ${a.isolated ? "with worktrees" : "in a shared tree"}`
 			);
-		}
 		case "gates":
 			return config.gates;
 		default:
@@ -431,7 +429,7 @@ const advisedText = (a: Loop.Advised): string => {
 		"advised:",
 		...a.advice.map(
 			(r) =>
-				`  ${r.path} ${shown(r.value)} (now ${shown(current(a.config, r))}): ${r.reason}`,
+				`  ${r.path} ${shown(r.value)} (now ${shown(current(a, r))}): ${r.reason}`,
 		),
 		...(flags.length > 0 ? [`  start with: ${flags.join(" ")}`] : []),
 		...(settings.length > 0

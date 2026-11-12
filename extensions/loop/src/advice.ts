@@ -25,6 +25,8 @@ export namespace LoopAdvice {
 		config: LoopConfig.Config;
 		scripts: Readonly<Record<string, string>>;
 		lockfiles: readonly string[];
+		/** Whether each subtask would work in a worktree of its own (`isolated`). */
+		isolated: boolean;
 	};
 
 	const installer = (
@@ -64,10 +66,13 @@ export namespace LoopAdvice {
 
 	/**
 	 * Whether each subtask would work in a worktree of its own: `isolation: worktree` in a run with
-	 * a worktree. Otherwise every session shares one tree.
+	 * a worktree, which only a git repository has (`RunStore.isolated`, before the run exists).
+	 * Otherwise every session shares one tree.
 	 */
-	export const isolated = (config: LoopConfig.Config): boolean =>
-		config.isolation === "worktree" && config.worktree;
+	export const isolated = (
+		config: LoopConfig.Config,
+		inRepo: boolean,
+	): boolean => config.isolation === "worktree" && config.worktree && inRepo;
 
 	const SHARED_TREE =
 		"subtasks share one tree; their gates see each other's half-done edits";
@@ -195,7 +200,7 @@ export namespace LoopAdvice {
 	): Recommendation[] => {
 		const concurrency = checkConcurrency(
 			checkWidth(plan, risks),
-			isolated(project.config),
+			project.isolated,
 		);
 		return [
 			concurrency,
