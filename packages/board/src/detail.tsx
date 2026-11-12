@@ -3,9 +3,10 @@
 // title, the task at a glance, what is running on it and where it sits; under it, any question
 // waiting on the human. Then tabs: what is in force now (the checklist, the latest handoff as a
 // digest, the decisions made and the subtasks), the description (the ask, with its curated context),
-// the comments and the agent log, one at a time, scrolled by app.tsx's `scroll` effect (it owns the ref so every key stays in the one useKeyboard
-// handler). DetailModel decides what goes where; this file only draws it. The agent brief is not
-// drawn here: `y` copies it, and it is what an agent reads.
+// the comments and the agent log, one at a time, scrolled by screen.tsx's `scroll` effect (it owns
+// the ref, so every key stays in board-input.ts's one useKeyboard handler). DetailModel decides
+// what goes where; this file only draws it. The agent brief is not drawn here: `y` copies it, and
+// it is what an agent reads.
 import type { Result, TaskEntry } from "@cabane/core";
 import {
 	BoxRenderable,
