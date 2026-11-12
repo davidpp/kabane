@@ -429,6 +429,14 @@ describe("Keymap.footer", () => {
 		expect(row).toEqual({ key: "r", label: "read handoff", available: true });
 	});
 
+	test("at forty columns `space` keeps its place over `r` while `now` lists a checklist, and `r` shows without one", () => {
+		const fitted = (situation: Keymap.Situation) =>
+			Keymap.fitHints(Keymap.footer("detail", situation), 40).map((h) => h.key);
+		const lifted = ["Handoff"];
+		expect(fitted({ lifted, checklist: true })).toEqual(["space", "?"]);
+		expect(fitted({ lifted })).toContain("r");
+	});
+
 	test("the reader's own row keeps its headings and its way out at forty columns", () => {
 		const fitted = Keymap.fitHints(Keymap.footer("reader"), 40);
 		expect(fitted.map((h) => h.key).slice(0, 2)).toEqual(["[ ]", "esc"]);

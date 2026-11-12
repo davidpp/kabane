@@ -408,9 +408,6 @@ export namespace Keymap {
 					keys: ["b"],
 					when: (s) => s.back === true,
 				},
-				// Ahead of `space`: at forty columns the footer has room for one of them, and the digest
-				// above the checklist's items is what asks to be opened.
-				READ,
 				{
 					key: "space",
 					label: "toggle item",
@@ -418,6 +415,9 @@ export namespace Keymap {
 					keys: ["space"],
 					when: checklist,
 				},
+				// After `space`: at forty columns the footer has room for one of them, and the checklist
+				// is what `now` lets you act on. The `?` sheet lists `r` either way.
+				READ,
 				OPEN_LINK,
 				{
 					key: "o",
