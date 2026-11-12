@@ -3,7 +3,7 @@
 // run spawns the runner, which is the sandbox check, not a unit test.
 import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ok, Planner } from "@cabane/core";
@@ -134,7 +134,7 @@ describe("LoopDispatcher.triggers", () => {
 		const [start] = offered.ok ? offered.value : [];
 		expect(start?.satisfiable).toBe(true);
 		expect(start?.inputs["budget.concurrency"]).toMatchObject({
-			default: "by isolation",
+			default: "1",
 			label: "sessions at once",
 		});
 		const preview = (start?.preview ?? []).map((line) =>
@@ -145,4 +145,36 @@ describe("LoopDispatcher.triggers", () => {
 			preview.some((l) => l.includes(`← ${first.shortId ?? first.id}`)),
 		).toBe(true);
 	});
+});
+
+it("the real tracker form advises overlapping children and project gates", async () => {
+	const scope = await detectScope(repo, { home, detectExtensions: false });
+	const parent = await add("parent", { scopeUri: scope?.scopeUri });
+	for (const title of ["first", "second"])
+		await add(title, {
+			parentTaskId: parent.id,
+			description:
+				"Both implementations edit src/shared.ts and must preserve existing behavior.",
+		});
+	writeFileSync(
+		join(repo, "package.json"),
+		JSON.stringify({
+			scripts: {
+				check: "echo checked",
+				typecheck: "echo typed",
+				test: "echo tested",
+			},
+		}),
+	);
+	writeFileSync(join(repo, "bun.lock"), "");
+	const offered = await LoopDispatcher.triggers(deps(), parent.id);
+	const [start] = offered.ok ? offered.value : [];
+	expect(start?.inputs["budget.concurrency"]?.default).toBe("1");
+	expect(start?.inputs["budget.concurrency"]?.hint).toContain("src/shared.ts");
+	const preview = start?.preview
+		?.flatMap((l) => l.map((p) => p.text))
+		.join(" ");
+	expect(preview).toContain("Advised");
+	expect(preview).toContain("bun run typecheck");
+	expect(preview).toContain("bun install");
 });

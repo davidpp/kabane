@@ -4,6 +4,7 @@
 // `lint` found, so it is the same plan the runner will read on its first tick.
 import type { PanelLine, PanelPart } from "@cabane/board/ports";
 import type { Task } from "@cabane/core";
+import type { LoopAdvice } from "./advice";
 import { LoopPlan } from "./plan";
 
 export namespace Briefing {
@@ -164,6 +165,7 @@ export namespace Briefing {
 		gates: Readonly<Record<string, string>>,
 		lint: readonly string[],
 		now: Date,
+		advice: readonly LoopAdvice.Recommendation[] = [],
 	): PanelLine[] => {
 		const work = plan.nodes.filter(LoopPlan.isWork);
 		const ready = new Set(
@@ -204,6 +206,18 @@ export namespace Briefing {
 						] satisfies PanelLine,
 					]),
 			...gateLines(gates),
+			...(advice.length === 0
+				? []
+				: [
+						[],
+						[{ text: "Advised", bold: true }],
+						...advice.map((r): PanelLine => [
+							{
+								text: ` ${r.path} = ${typeof r.value === "object" ? JSON.stringify(r.value) : r.value} · ${r.reason}`,
+								tone: "muted",
+							},
+						]),
+					]),
 			...riskLines([...planRisks(plan, now), ...lint]),
 		];
 	};

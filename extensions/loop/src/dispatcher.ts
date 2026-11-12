@@ -1,12 +1,16 @@
 // Starting a loop from the board: `a` on an issue, or on a parent of issue subtasks, offers "start loop", whose form
 // holds the run's settings (LoopSettings) beside the plan it would start on (Briefing), and whose
 // `enter` is `kabane loop start` from the board's directory, with the same checks.
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
 	Dispatcher,
 	TriggerDescriptor,
 	TriggerInput,
 } from "@cabane/board/ports";
-import { err, Lint, ok, type Result } from "@cabane/core";
+import { err, Lint, ok, type Result, type Risk } from "@cabane/core";
+import { z } from "zod";
+import { LoopAdvice } from "./advice";
 import { Briefing } from "./briefing";
 import { Loop } from "./commands";
 import { Lenses } from "./lenses";
@@ -47,11 +51,29 @@ export namespace LoopDispatcher {
 		basePath: string,
 		parentTaskId: string,
 		cwd: string,
-	): Promise<string[]> => {
+	): Promise<{ risks: Risk[]; messages: string[] }> => {
 		const linted = await Lint.run({ basePath, parentTaskId, cwd });
 		return linted.ok
-			? linted.value.risks.map((r) => `${r.message} (${r.severity})`)
-			: [`lint did not run: ${linted.error.message}`];
+			? {
+					risks: linted.value.risks,
+					messages: linted.value.risks.map(
+						(r) => `${r.message} (${r.severity})`,
+					),
+				}
+			: { risks: [], messages: [`lint did not run: ${linted.error.message}`] };
+	};
+
+	const projectScripts = (root: string): Record<string, string> => {
+		try {
+			const parsed = z
+				.object({ scripts: z.record(z.string()).default({}) })
+				.safeParse(
+					JSON.parse(readFileSync(join(root, "package.json"), "utf8")),
+				);
+			return parsed.success ? parsed.data.scripts : {};
+		} catch {
+			return {};
+		}
 	};
 
 	/**
@@ -63,6 +85,7 @@ export namespace LoopDispatcher {
 		deps: Deps,
 		taskId: string,
 		now: Date = new Date(),
+		onAdvice?: (advice: LoopAdvice.Recommendation[]) => void,
 	): Promise<Result<TriggerDescriptor[]>> => {
 		const plan = await LoopPlan.load(deps.basePath, taskId);
 		if (!plan.ok) return plan;
@@ -80,17 +103,27 @@ export namespace LoopDispatcher {
 				),
 			]);
 		const { projectDir, projectRoot, config } = prepared.value;
-		const risks = await lintOf(deps.basePath, taskId, projectDir);
+		const lint = await lintOf(deps.basePath, taskId, projectDir);
+		const advice = LoopAdvice.of(plan.value, lint.risks, {
+			config,
+			scripts: projectScripts(projectRoot),
+			lockfiles: LoopAdvice.LOCKFILES.filter((name) =>
+				existsSync(join(projectRoot, name)),
+			),
+		});
+		onAdvice?.(advice);
+		const gates = advice.find((r) => r.path === "gates")?.value ?? config.gates;
 		return ok([
 			trigger(
 				plan.value,
-				LoopSettings.inputs(config, Lenses.offered(projectRoot)),
+				LoopSettings.inputs(config, Lenses.offered(projectRoot), advice),
 				{
 					preview: Briefing.preview(
 						prepared.value.plan,
-						config.gates,
-						risks,
+						gates,
+						lint.messages,
 						now,
+						advice,
 					),
 				},
 			),
@@ -102,8 +135,9 @@ export namespace LoopDispatcher {
 		deps: Deps,
 		parent: string,
 		values: Readonly<Record<string, unknown>>,
+		advice: readonly LoopAdvice.Recommendation[],
 	): Promise<Result<string>> => {
-		const config = LoopSettings.overrides(values);
+		const config = LoopSettings.overrides(values, advice);
 		if (!config.ok) return config;
 		const run = await Loop.start(deps, { parent, config: config.value });
 		return run.ok
@@ -111,11 +145,22 @@ export namespace LoopDispatcher {
 			: err(run.error);
 	};
 
-	export const make = (deps: Deps): Dispatcher => ({
-		triggers: (taskId) => triggers(deps, taskId),
-		dispatch: (triggerId, target, inputs) =>
-			triggerId === START
-				? start(deps, target.id, inputs ?? {})
-				: Promise.resolve(err(new Error(`Unknown loop trigger: ${triggerId}`))),
-	});
+	export const make = (deps: Deps): Dispatcher => {
+		// Keep the non-editable advice (gates and setup) that this form actually previewed.
+		const advised = new Map<string, LoopAdvice.Recommendation[]>();
+		return {
+			triggers: (taskId) => {
+				advised.delete(taskId);
+				return triggers(deps, taskId, new Date(), (advice) =>
+					advised.set(taskId, advice),
+				);
+			},
+			dispatch: (triggerId, target, inputs) =>
+				triggerId === START
+					? start(deps, target.id, inputs ?? {}, advised.get(target.id) ?? [])
+					: Promise.resolve(
+							err(new Error(`Unknown loop trigger: ${triggerId}`)),
+						),
+		};
+	};
 }
