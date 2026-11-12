@@ -853,6 +853,44 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	{
+		name: "detail-now-fresh",
+		about:
+			"now while a handoff and a tick that landed are not yet seen: each block's header carries the fresh ✦",
+		width: 40,
+		height: 40,
+		render: () => (
+			<Detail
+				taskId={WAVE.id}
+				task={WAVE}
+				records={ok(WAVE_RECORDS)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				checklist={WAVE_CHECKLIST}
+				keys={{ context: "detail", situation: { checklist: true } }}
+				fresh={{
+					blocks: new Set(["checklist", "lifted:handoff"]),
+					seen: () => {},
+				}}
+			/>
+		),
+	},
+	{
+		name: "detail-description-fresh",
+		about:
+			"the description tab while a change on now is not yet seen: the now label carries the fresh ✦",
+		width: 40,
+		height: 12,
+		render: () => (
+			<Detail
+				taskId={WAVE.id}
+				task={WAVE}
+				tab="description"
+				records={ok(WAVE_RECORDS)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				fresh={{ blocks: new Set(["decisions"]), seen: () => {} }}
+			/>
+		),
+	},
+	{
 		name: "detail-timeline",
 		about:
 			"the comments tab: a comment, a handoff, and a review no module declares, each kind named",
