@@ -120,9 +120,9 @@ describe("Planner — Private Upstream Links", () => {
 		await Planner.upsertUpstreamLink(TEST_BASE, {
 			...linkInput(taskId),
 			provider: "github",
-			identifier: "acme/jake#42",
+			identifier: "acme/mill#42",
 			externalId: "github-issue-42",
-			url: "https://github.com/acme/jake/issues/42",
+			url: "https://github.com/acme/mill/issues/42",
 		});
 
 		const summaries = await Planner.getUpstreamSummariesForTasks(TEST_BASE, [

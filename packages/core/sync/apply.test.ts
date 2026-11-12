@@ -3,7 +3,7 @@
  *
  * Hand-built pages for the cases two converging devices cannot reach on demand:
  * the FK parents `Resolve` does not guard, a column this build has never heard
- * of, applying before sync was armed, and FK parents behind Jake's prefix.
+ * of, and applying before sync was armed.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";

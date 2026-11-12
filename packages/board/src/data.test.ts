@@ -21,7 +21,7 @@ const sectionFor = (
 // Minimal Task for the pure-assembly tests (no DB).
 const task = (over: Partial<Task> = {}): Task => ({
 	id: "01H000000000000000000000AA",
-	shortId: "JAKE-1",
+	shortId: "MILL-1",
 	title: "A task",
 	kind: "issue",
 	state: "next",

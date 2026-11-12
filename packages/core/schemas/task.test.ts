@@ -51,8 +51,8 @@ describe("TaskSchema replication fields", () => {
 });
 
 describe("TaskSchema deadline", () => {
-	// Other writers of the shared database store calendar dates; a read that
-	// validates its output (Jake's tRPC `today`) must accept them.
+	// A deadline entered as a date is stored as a calendar date; a read that
+	// validates its output must accept it.
 	it("accepts a calendar date as well as a datetime", () => {
 		expect(
 			TaskSchema.safeParse({ ...base, deadline: "2026-02-06" }).success,

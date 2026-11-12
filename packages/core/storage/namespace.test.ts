@@ -100,10 +100,10 @@ describe("Planner", () => {
 		it("should prefix the short ID from a normalized scope", async () => {
 			const result = await Planner.addTask(TEST_BASE, {
 				...draft,
-				scopeUri: "jake://scope/jake",
+				scopeUri: "jake://scope/mill",
 			});
 			expect(result.ok).toBe(true);
-			if (result.ok) expect(result.value.shortId).toStartWith("JJAK-");
+			if (result.ok) expect(result.value.shortId).toStartWith("JMIL-");
 		});
 
 		// Storage owns normalization: recipes, workflows and the intelligence
@@ -128,23 +128,23 @@ describe("Planner", () => {
 
 		it("should canonicalize near-miss scopes so a canonical filter finds them", async () => {
 			for (const scope of [
-				"jake",
-				"jake://scope/jake",
-				"jake://scope/jake/",
-				" jake",
-				"JAKE",
-				"Jake",
+				"mill",
+				"jake://scope/mill",
+				"jake://scope/mill/",
+				" mill",
+				"MILL",
+				"Mill",
 			]) {
 				const result = await Planner.addTask(TEST_BASE, {
 					...draft,
 					scopeUri: scope,
 				});
 				expect(result.ok).toBe(true);
-				if (result.ok) expect(result.value.scopeUri).toBe("jake://scope/jake");
+				if (result.ok) expect(result.value.scopeUri).toBe("jake://scope/mill");
 			}
 
 			const found = await Planner.queryTasks(TEST_BASE, {
-				scopeUri: "jake://scope/jake",
+				scopeUri: "jake://scope/mill",
 			});
 			expect(found.ok).toBe(true);
 			if (found.ok) expect(found.value).toHaveLength(6);
@@ -505,11 +505,11 @@ describe("Planner", () => {
 		it("should derive prefix from scope URI", async () => {
 			const result = await Planner.addTask(TEST_BASE, {
 				title: "Scoped task",
-				scopeUri: "jake://scope/github.com/user/jake",
+				scopeUri: "jake://scope/github.com/user/mill",
 			});
 			expect(result.ok).toBe(true);
 			if (result.ok) {
-				expect(result.value.shortId).toMatch(/^JJAK-\d+$/);
+				expect(result.value.shortId).toMatch(/^JMIL-\d+$/);
 			}
 		});
 
@@ -542,22 +542,22 @@ describe("Planner", () => {
 			const all1 = await Planner.addTask(TEST_BASE, { title: "All 1" });
 			const all2 = await Planner.addTask(TEST_BASE, { title: "All 2" });
 
-			// Create JAKE tasks
-			const jake1 = await Planner.addTask(TEST_BASE, {
-				title: "Jake 1",
-				scopeUri: "jake://scope/github.com/user/jake",
+			// Create MILL tasks
+			const mill1 = await Planner.addTask(TEST_BASE, {
+				title: "Mill 1",
+				scopeUri: "jake://scope/github.com/user/mill",
 			});
-			const jake2 = await Planner.addTask(TEST_BASE, {
-				title: "Jake 2",
-				scopeUri: "jake://scope/github.com/user/jake",
+			const mill2 = await Planner.addTask(TEST_BASE, {
+				title: "Mill 2",
+				scopeUri: "jake://scope/github.com/user/mill",
 			});
 
-			expect(all1.ok && all2.ok && jake1.ok && jake2.ok).toBe(true);
-			if (all1.ok && all2.ok && jake1.ok && jake2.ok) {
+			expect(all1.ok && all2.ok && mill1.ok && mill2.ok).toBe(true);
+			if (all1.ok && all2.ok && mill1.ok && mill2.ok) {
 				expect(all1.value.shortId).toBe("JALL-1");
 				expect(all2.value.shortId).toBe("JALL-2");
-				expect(jake1.value.shortId).toBe("JJAK-1");
-				expect(jake2.value.shortId).toBe("JJAK-2");
+				expect(mill1.value.shortId).toBe("JMIL-1");
+				expect(mill2.value.shortId).toBe("JMIL-2");
 			}
 		});
 
@@ -649,12 +649,12 @@ describe("Planner", () => {
 			const updateResult = await Planner.updateTask(
 				TEST_BASE,
 				addResult.value.id,
-				{ scopeUri: " jake/ " },
+				{ scopeUri: " mill/ " },
 			);
 			expect(updateResult.ok).toBe(true);
 			if (updateResult.ok) {
-				expect(updateResult.value?.scopeUri).toBe("jake://scope/jake");
-				expect(updateResult.value?.shortId).toStartWith("JJAK-");
+				expect(updateResult.value?.scopeUri).toBe("jake://scope/mill");
+				expect(updateResult.value?.shortId).toStartWith("JMIL-");
 			}
 		});
 

@@ -314,7 +314,7 @@ describe("CopilotLog", () => {
 		host.questionsByTaskId.set("t1", [
 			{
 				taskId: "t1",
-				taskShortId: "JAKE-1",
+				taskShortId: "MILL-1",
 				sessionId: "s",
 				questionActivityId: "q",
 				question: "?",

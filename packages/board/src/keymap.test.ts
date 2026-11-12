@@ -18,7 +18,7 @@ import { TriggerForm } from "./trigger-form";
 
 const task = (over: Partial<Task> = {}): Task => ({
 	id: "01H000000000000000000000AA",
-	shortId: "JAKE-1",
+	shortId: "MILL-1",
 	title: "A task",
 	kind: "issue",
 	state: "in_progress",
@@ -58,12 +58,12 @@ const copilot = (
 // Three rows, the middle one a collapsed parent, selected: j and k both have somewhere to go, and
 // every row key has a row to act on.
 const ROWS = sections([
-	{ task: task({ id: "a", shortId: "JAKE-1" }), children: [] },
+	{ task: task({ id: "a", shortId: "MILL-1" }), children: [] },
 	{
-		task: task({ id: "p", shortId: "JAKE-2" }),
-		children: [task({ id: "c", shortId: "JAKE-3", parentTaskId: "p" })],
+		task: task({ id: "p", shortId: "MILL-2" }),
+		children: [task({ id: "c", shortId: "MILL-3", parentTaskId: "p" })],
 	},
-	{ task: task({ id: "b", shortId: "JAKE-4" }), children: [] },
+	{ task: task({ id: "b", shortId: "MILL-4" }), children: [] },
 ]);
 
 const state = (
@@ -94,11 +94,11 @@ const state = (
 	...over,
 });
 
-// A finished loop card with a tab, one of whose sessions asked QUESTION about JAKE-2.
+// A finished loop card with a tab, one of whose sessions asked QUESTION about MILL-2.
 const LOOP = "loop:r1";
 const QUESTION: BoardTabs.Question = {
 	taskId: "p",
-	taskShortId: "JAKE-2",
+	taskShortId: "MILL-2",
 	sessionId: "s1",
 	questionActivityId: "q1",
 	question: "LRU or TTL?",
@@ -118,7 +118,7 @@ const TABS: BoardTabs.Tabs = {
 				finished: true,
 				sessionIds: ["s1"],
 				taskId: "p",
-				lanes: ["claude:JAKE-3", "codex:JAKE-4"],
+				lanes: ["claude:MILL-3", "codex:MILL-4"],
 			},
 		],
 	]),
@@ -210,7 +210,7 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 	search: [state({ search: { mode: "typing", query: "ab" } })],
 	detail: [
 		state({ view: { type: "detail", taskId: "p" } }),
-		// JAKE-2's checklist, its first item ticked: the cursor opens on the second, so `J` and `K`
+		// MILL-2's checklist, its first item ticked: the cursor opens on the second, so `J` and `K`
 		// both have an item to go to and `space` one to toggle.
 		BoardChecklist.withOpen(
 			state({ view: { type: "detail", taskId: "p" } }),
@@ -276,11 +276,11 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 						type: "act",
 						cardId: LOOP,
 						actionId: "inject",
-						lane: "claude:JAKE-3",
+						lane: "claude:MILL-3",
 					},
 					title: "message",
-					aim: "claude:JAKE-3",
-					aims: ["claude:JAKE-3", "codex:JAKE-4"],
+					aim: "claude:MILL-3",
+					aims: ["claude:MILL-3", "codex:MILL-4"],
 					placeholder: "a message",
 				},
 				text: "",
@@ -329,7 +329,7 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 		settingsOn("loop.stallAfter", "l"),
 		settingsOn("loop.stallAfter", "l", "shift+tab", "return"),
 	],
-	// A decision on JAKE-2 with no choices, its answer asked for with `enter`: its input has the keys.
+	// A decision on MILL-2 with no choices, its answer asked for with `enter`: its input has the keys.
 	decisionText: [
 		BoardNav.reduceKey(
 			BoardDecisions.withOpen(

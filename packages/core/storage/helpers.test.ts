@@ -16,33 +16,33 @@ const normalized = (scope: string): string => {
 describe("normalizeScopeUri", () => {
 	// Every spelling of the same scope has to land on one string, or a filter on
 	// the canonical form silently misses the near-misses.
-	const CANONICAL = "jake://scope/jake";
+	const CANONICAL = "jake://scope/mill";
 	it.each([
-		["bare id", "jake"],
+		["bare id", "mill"],
 		["canonical URI", CANONICAL],
-		["trailing slash", "jake://scope/jake/"],
-		["repeated slashes", "jake://scope/jake//"],
-		["leading whitespace", " jake"],
-		["surrounding whitespace", "  jake  "],
-		["whitespace around a URI", "  jake://scope/jake  "],
-		["encoded whitespace in the URI", "jake://scope/%20jake"],
-		["upper-case bare id", "JAKE"],
-		["title-case bare id", "Jake"],
-		["padded upper-case bare id", "  JAKE  "],
+		["trailing slash", "jake://scope/mill/"],
+		["repeated slashes", "jake://scope/mill//"],
+		["leading whitespace", " mill"],
+		["surrounding whitespace", "  mill  "],
+		["whitespace around a URI", "  jake://scope/mill  "],
+		["encoded whitespace in the URI", "jake://scope/%20mill"],
+		["upper-case bare id", "MILL"],
+		["title-case bare id", "Mill"],
+		["padded upper-case bare id", "  MILL  "],
 	])("collapses %s onto the canonical URI", (_label, input) => {
 		expect(normalized(input)).toBe(CANONICAL);
 	});
 
 	it("is idempotent", () => {
 		for (const input of [
-			"jake",
-			"JAKE",
+			"mill",
+			"MILL",
 			CANONICAL,
-			"jake://scope/jake/",
-			" jake ",
+			"jake://scope/mill/",
+			" mill ",
 			"github.com/user/repo",
 			"/Users/alex/Projects/acme",
-			"jake://scope/jake?client=acme",
+			"jake://scope/mill?client=acme",
 		]) {
 			const once = normalized(input);
 			expect(normalized(once)).toBe(once);
@@ -50,11 +50,11 @@ describe("normalizeScopeUri", () => {
 	});
 
 	it("preserves extensions on a valid URI", () => {
-		expect(normalized("jake://scope/jake?client=acme")).toBe(
-			"jake://scope/jake?client=acme",
+		expect(normalized("jake://scope/mill?client=acme")).toBe(
+			"jake://scope/mill?client=acme",
 		);
-		expect(normalized("jake://scope/jake/?client=acme")).toBe(
-			"jake://scope/jake?client=acme",
+		expect(normalized("jake://scope/mill/?client=acme")).toBe(
+			"jake://scope/mill?client=acme",
 		);
 	});
 
@@ -81,7 +81,7 @@ describe("normalizeScopeUri", () => {
 	it("keeps the case of a path-shaped bare ID, leading slash included", () => {
 		for (const path of [
 			"/Users/alex/Projects/acme",
-			"/Users/alex/.jake/pa",
+			"/Users/alex/.mill/pa",
 			"/Users/alex",
 		]) {
 			expect(normalized(path)).toBe(`jake://scope/${encodeURIComponent(path)}`);
@@ -89,8 +89,8 @@ describe("normalizeScopeUri", () => {
 	});
 
 	it("keeps a leading slash — it cannot be told apart from a path ID", () => {
-		expect(normalized("/jake/")).toBe("jake://scope/%2Fjake");
-		expect(normalized("jake://scope//jake//")).toBe("jake://scope/%2Fjake");
+		expect(normalized("/mill/")).toBe("jake://scope/%2Fmill");
+		expect(normalized("jake://scope//mill//")).toBe("jake://scope/%2Fmill");
 	});
 
 	it("keeps the case of a host/owner/repo bare ID", () => {
@@ -130,23 +130,23 @@ describe("normalizeOptionalScopeUri", () => {
 	});
 
 	it("normalizes a present scope", () => {
-		const result = normalizeOptionalScopeUri(" JAKE ");
+		const result = normalizeOptionalScopeUri(" MILL ");
 		expect(result.ok).toBe(true);
-		if (result.ok) expect(result.value).toBe("jake://scope/jake");
+		if (result.ok) expect(result.value).toBe("jake://scope/mill");
 	});
 });
 
 describe("buildScopeFamilyMatch", () => {
 	it("matches the same family for every spelling of a scope", () => {
 		for (const input of [
-			"jake",
-			"JAKE",
-			"jake://scope/jake",
-			"jake://scope/jake/",
+			"mill",
+			"MILL",
+			"jake://scope/mill",
+			"jake://scope/mill/",
 		]) {
 			expect(buildScopeFamilyMatch(input)).toEqual({
-				baseScopeUri: "jake://scope/jake",
-				queryPattern: "jake://scope/jake?%",
+				baseScopeUri: "jake://scope/mill",
+				queryPattern: "jake://scope/mill?%",
 			});
 		}
 	});
@@ -171,9 +171,9 @@ describe("derivePrefix", () => {
 	});
 
 	it("derives from the last segment of the scope ID", () => {
-		const jake = derivePrefix("jake://scope/jake");
-		expect(jake.ok).toBe(true);
-		if (jake.ok) expect(jake.value).toBe("JJAK");
+		const mill = derivePrefix("jake://scope/mill");
+		expect(mill.ok).toBe(true);
+		if (mill.ok) expect(mill.value).toBe("JMIL");
 
 		const repo = derivePrefix("jake://scope/github.com%2Fuser%2Frepo");
 		expect(repo.ok).toBe(true);
@@ -187,9 +187,9 @@ describe("derivePrefix", () => {
 	});
 
 	it("errors on an un-normalized scope instead of falling back to JALL", () => {
-		const result = derivePrefix("jake");
+		const result = derivePrefix("mill");
 		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.error.message).toContain("jake");
+		if (!result.ok) expect(result.error.message).toContain("mill");
 	});
 
 	it("errors when the scope ID has no alphanumeric characters", () => {

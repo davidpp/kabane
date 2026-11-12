@@ -1,11 +1,9 @@
 /**
  * Storage — the migration list on real databases.
  *
- * The repeat failure in this codebase is new code booting on an old database
- * (see the jake-db-migrations note): a column the DDL declares but the live
- * table lacks. A pre-release database is modelled the way one really looks:
- * the current schema with what an older build lacked taken away, and no
- * version table, because the runner that writes it did not exist yet.
+ * The repeat failure in this codebase is new code booting on an old database:
+ * a column the DDL declares but the live table lacks. So each migration runs
+ * here on a database stamped at the version before it.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";

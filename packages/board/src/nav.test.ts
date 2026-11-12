@@ -23,7 +23,7 @@ const AT = "2026-01-01T00:00:00.000Z";
 
 const task = (over: Partial<Task> = {}): Task => ({
 	id: "01H000000000000000000000AA",
-	shortId: "JAKE-1",
+	shortId: "MILL-1",
 	title: "A task",
 	kind: "issue",
 	state: "next",
@@ -275,7 +275,7 @@ describe("BoardNav.reduceKey", () => {
 				type: "setState",
 				id: "a",
 				state: "next",
-				notice: "JAKE-1 → next",
+				notice: "MILL-1 → next",
 			});
 		});
 
@@ -288,7 +288,7 @@ describe("BoardNav.reduceKey", () => {
 				type: "setState",
 				id: "a",
 				state: "inbox",
-				notice: "JAKE-1 → inbox",
+				notice: "MILL-1 → inbox",
 			});
 		});
 
@@ -308,7 +308,7 @@ describe("BoardNav.reduceKey", () => {
 			expect(reduce(s, { name: "d" }).effect).toEqual({
 				type: "markDone",
 				id: "a",
-				notice: "JAKE-1 done",
+				notice: "MILL-1 done",
 			});
 		});
 
@@ -331,19 +331,19 @@ describe("BoardNav.reduceKey", () => {
 				type: "setState",
 				id: "a",
 				state: "next",
-				notice: "JAKE-1 → next",
+				notice: "MILL-1 → next",
 			});
 			expect(reduce(s, { name: "s" }).effect).toEqual({
 				type: "setState",
 				id: "a",
 				state: "someday",
-				notice: "JAKE-1 → someday",
+				notice: "MILL-1 → someday",
 			});
 			expect(reduce(s, { name: "x" }).effect).toEqual({
 				type: "setState",
 				id: "a",
 				state: "cancelled",
-				notice: "JAKE-1 cancelled",
+				notice: "MILL-1 cancelled",
 			});
 		});
 
@@ -357,7 +357,7 @@ describe("BoardNav.reduceKey", () => {
 			expect(reduce(flagged, { name: "v" }).effect).toEqual({
 				type: "markReviewed",
 				id: "a",
-				notice: "JAKE-1 reviewed",
+				notice: "MILL-1 reviewed",
 			});
 
 			const clean = state({
@@ -369,7 +369,7 @@ describe("BoardNav.reduceKey", () => {
 			const { effect } = reduce(clean, { name: "v" });
 			expect(effect).toEqual({
 				type: "notice",
-				notice: { text: "JAKE-1: no review flag", tone: "success" },
+				notice: { text: "MILL-1: no review flag", tone: "success" },
 			});
 		});
 	});
@@ -470,12 +470,12 @@ describe("BoardNav.reduceKey", () => {
 	describe("search (`/`)", () => {
 		const auth = task({
 			id: "auth",
-			shortId: "JAKE-10",
+			shortId: "MILL-10",
 			title: "Fix auth flow",
 		});
 		const board = task({
 			id: "board",
-			shortId: "JAKE-11",
+			shortId: "MILL-11",
 			title: "Board polish",
 		});
 		const searchable = (over: Partial<BoardNav.BoardState> = {}) =>
@@ -508,7 +508,7 @@ describe("BoardNav.reduceKey", () => {
 				BoardNav.visibleRows(typeQuery(typing, "AUTH")).map((r) => r.task.id),
 			).toEqual(["auth"]);
 			expect(
-				BoardNav.visibleRows(typeQuery(typing, "jake-11")).map(
+				BoardNav.visibleRows(typeQuery(typing, "mill-11")).map(
 					(r) => r.task.id,
 				),
 			).toEqual(["board"]);
@@ -596,16 +596,16 @@ describe("BoardNav.reduceKey", () => {
 		});
 
 		it("a matching subtask keeps its parent visible and forces it expanded", () => {
-			const parent = task({ id: "p", shortId: "JAKE-20", title: "Parent" });
+			const parent = task({ id: "p", shortId: "MILL-20", title: "Parent" });
 			const hit = task({
 				id: "c1",
-				shortId: "JAKE-21",
+				shortId: "MILL-21",
 				title: "Wire auth token",
 				parentTaskId: "p",
 			});
 			const miss = task({
 				id: "c2",
-				shortId: "JAKE-22",
+				shortId: "MILL-22",
 				title: "Other child",
 				parentTaskId: "p",
 			});
@@ -621,10 +621,10 @@ describe("BoardNav.reduceKey", () => {
 		});
 
 		it("a matching parent hides non-matching children unless it is expanded", () => {
-			const parent = task({ id: "p", shortId: "JAKE-20", title: "Auth epic" });
+			const parent = task({ id: "p", shortId: "MILL-20", title: "Auth epic" });
 			const child = task({
 				id: "c",
-				shortId: "JAKE-21",
+				shortId: "MILL-21",
 				title: "Other child",
 				parentTaskId: "p",
 			});
@@ -974,10 +974,10 @@ describe("BoardNav.init", () => {
 });
 
 describe("BoardNav.openTask", () => {
-	const open = task({ id: "a", shortId: "JAKE-1", title: "open one" });
-	const done = task({ id: "d", shortId: "JAKE-2", state: "done" });
-	const parent = task({ id: "p", shortId: "JAKE-3", state: "in_progress" });
-	const child = task({ id: "c", shortId: "JAKE-4", parentTaskId: "p" });
+	const open = task({ id: "a", shortId: "MILL-1", title: "open one" });
+	const done = task({ id: "d", shortId: "MILL-2", state: "done" });
+	const parent = task({ id: "p", shortId: "MILL-3", state: "in_progress" });
+	const child = task({ id: "c", shortId: "MILL-4", parentTaskId: "p" });
 	const board = (over: Partial<BoardNav.BoardState> = {}) =>
 		state({
 			sections: sections({
@@ -1018,7 +1018,7 @@ describe("BoardNav.openTask", () => {
 		for (const closed of ["done", "cancelled"] as const) {
 			const sub = task({
 				id: "s",
-				shortId: "JAKE-5",
+				shortId: "MILL-5",
 				state: closed,
 				parentTaskId: "p",
 			});
@@ -1080,7 +1080,7 @@ describe("BoardNav.openTask", () => {
 
 	it("clears a search or `u` that hides the task, and keeps one that shows it", () => {
 		const hidden = BoardNav.openTask(
-			board({ search: { mode: "committed", query: "jake-3" } }),
+			board({ search: { mode: "committed", query: "mill-3" } }),
 			"a",
 		);
 		expect(hidden.search).toEqual({ mode: "off" });
@@ -1139,7 +1139,7 @@ describe("dispatch overlay", () => {
 	const boardWith = (over: Partial<BoardNav.BoardState> = {}) =>
 		state({
 			sections: sections({
-				next: [row(task({ id: "a", shortId: "JAKE-1" }))],
+				next: [row(task({ id: "a", shortId: "MILL-1" }))],
 			}),
 			selectedId: "a",
 			...over,
@@ -1313,7 +1313,7 @@ describe("help overlay", () => {
 	const boardWith = () =>
 		state({
 			sections: sections({
-				next: [row(task({ id: "a", shortId: "JAKE-1" }))],
+				next: [row(task({ id: "a", shortId: "MILL-1" }))],
 			}),
 			selectedId: "a",
 		});
@@ -1396,12 +1396,12 @@ describe("help overlay", () => {
 describe("withSearchResults (FTS tier-2 merge)", () => {
 	const auth = task({
 		id: "auth",
-		shortId: "JAKE-10",
+		shortId: "MILL-10",
 		title: "Fix auth flow",
 	});
 	const board = task({
 		id: "board",
-		shortId: "JAKE-11",
+		shortId: "MILL-11",
 		title: "Board polish",
 	});
 
@@ -1416,7 +1416,7 @@ describe("withSearchResults (FTS tier-2 merge)", () => {
 		const s = withQuery("deploy");
 		const ftsTask = task({
 			id: "fts1",
-			shortId: "JAKE-99",
+			shortId: "MILL-99",
 			title: "Deploy pipeline",
 			state: "next",
 		});
@@ -1440,7 +1440,7 @@ describe("withSearchResults (FTS tier-2 merge)", () => {
 		const s = withQuery("deploy");
 		const ftsTask = task({
 			id: "fts1",
-			shortId: "JAKE-99",
+			shortId: "MILL-99",
 			title: "Deploy pipeline",
 			state: "next",
 		});
@@ -1453,7 +1453,7 @@ describe("withSearchResults (FTS tier-2 merge)", () => {
 		const s = withQuery("old");
 		const doneTask = task({
 			id: "done1",
-			shortId: "JAKE-50",
+			shortId: "MILL-50",
 			title: "Old done thing",
 			state: "done",
 		});
@@ -1469,7 +1469,7 @@ describe("withSearchResults (FTS tier-2 merge)", () => {
 		const s = withQuery("parked");
 		const parked = task({
 			id: "sd1",
-			shortId: "JAKE-51",
+			shortId: "MILL-51",
 			title: "Parked idea",
 			state: "someday",
 		});
@@ -1483,7 +1483,7 @@ describe("withSearchResults (FTS tier-2 merge)", () => {
 		const s = withQuery("dropped");
 		const killed = task({
 			id: "cx1",
-			shortId: "JAKE-52",
+			shortId: "MILL-52",
 			title: "Dropped work",
 			state: "cancelled",
 		});
@@ -1539,7 +1539,7 @@ describe("withSearchResults (FTS tier-2 merge)", () => {
 		});
 		const ftsTask = task({
 			id: "fts1",
-			shortId: "JAKE-99",
+			shortId: "MILL-99",
 			title: "something",
 			state: "next",
 		});
@@ -1565,7 +1565,7 @@ describe("the focus ring", () => {
 	const boardWith = (over: Partial<BoardNav.BoardState> = {}) =>
 		state({
 			sections: sections({
-				next: [row(task({ id: "a", shortId: "JAKE-1" }))],
+				next: [row(task({ id: "a", shortId: "MILL-1" }))],
 			}),
 			selectedId: "a",
 			focus: "board",
@@ -1606,7 +1606,7 @@ describe("event view navigation", () => {
 	const runView = (over: Partial<BoardNav.BoardState> = {}) =>
 		state({
 			sections: sections({
-				next: [row(task({ id: "a", shortId: "JAKE-1" }))],
+				next: [row(task({ id: "a", shortId: "MILL-1" }))],
 			}),
 			selectedId: "a",
 			view: {
@@ -1675,7 +1675,7 @@ describe("event view navigation", () => {
 describe("done is search-only", () => {
 	const doneTask = task({
 		id: "dn",
-		shortId: "JAKE-9",
+		shortId: "MILL-9",
 		title: "shipped thing",
 		state: "done",
 	});
@@ -1728,9 +1728,9 @@ describe("undo (ctrl-z)", () => {
 		over: Partial<BoardNav.UndoEntry> = {},
 	): BoardNav.UndoEntry => ({
 		id: "a",
-		shortId: "JAKE-1",
+		shortId: "MILL-1",
 		patch: { state: "inbox" },
-		label: "JAKE-1 → inbox",
+		label: "MILL-1 → inbox",
 		...over,
 	});
 
@@ -1743,9 +1743,9 @@ describe("undo (ctrl-z)", () => {
 			expect(reduce(s, { name: "]" }).state.undo).toEqual([
 				{
 					id: "a",
-					shortId: "JAKE-1",
+					shortId: "MILL-1",
 					patch: { state: "inbox" },
-					label: "JAKE-1 → inbox",
+					label: "MILL-1 → inbox",
 				},
 			]);
 		});
@@ -1758,9 +1758,9 @@ describe("undo (ctrl-z)", () => {
 			expect(reduce(s, { name: "[" }).state.undo).toEqual([
 				{
 					id: "a",
-					shortId: "JAKE-1",
+					shortId: "MILL-1",
 					patch: { state: "next" },
-					label: "JAKE-1 → next",
+					label: "MILL-1 → next",
 				},
 			]);
 		});
@@ -1774,9 +1774,9 @@ describe("undo (ctrl-z)", () => {
 				expect(reduce(s, { name }).state.undo).toEqual([
 					{
 						id: "a",
-						shortId: "JAKE-1",
+						shortId: "MILL-1",
 						patch: { state: "inbox" },
-						label: "JAKE-1 → inbox",
+						label: "MILL-1 → inbox",
 					},
 				]);
 			}
@@ -1790,9 +1790,9 @@ describe("undo (ctrl-z)", () => {
 			expect(reduce(s, { name: "d" }).state.undo).toEqual([
 				{
 					id: "a",
-					shortId: "JAKE-1",
+					shortId: "MILL-1",
 					patch: { state: "next" },
-					label: "JAKE-1 → next",
+					label: "MILL-1 → next",
 				},
 			]);
 		});
@@ -1807,9 +1807,9 @@ describe("undo (ctrl-z)", () => {
 			expect(reduce(clean, { name: "v" }).state.undo).toEqual([
 				{
 					id: "a",
-					shortId: "JAKE-1",
+					shortId: "MILL-1",
 					patch: { needsReview: true },
-					label: "JAKE-1 review restored",
+					label: "MILL-1 review restored",
 				},
 			]);
 
@@ -1830,9 +1830,9 @@ describe("undo (ctrl-z)", () => {
 			expect(reduce(withVerification, { name: "v" }).state.undo).toEqual([
 				{
 					id: "a",
-					shortId: "JAKE-1",
+					shortId: "MILL-1",
 					patch: { needsReview: true, verification: prior },
-					label: "JAKE-1 review restored",
+					label: "MILL-1 review restored",
 				},
 			]);
 		});
@@ -1863,7 +1863,7 @@ describe("undo (ctrl-z)", () => {
 				type: "applyUndo",
 				id: "a",
 				patch: { state: "inbox" },
-				notice: "undo: JAKE-1 → inbox",
+				notice: "undo: MILL-1 → inbox",
 			});
 			expect(next.undo).toHaveLength(0);
 		});
@@ -1955,9 +1955,9 @@ describe("undo (ctrl-z)", () => {
 		});
 		const next = reduce(s, { name: "]" }).state;
 		expect(next.undo).toHaveLength(20);
-		// Oldest (X0) dropped; newest is the JAKE-1 push.
+		// Oldest (X0) dropped; newest is the MILL-1 push.
 		expect(next.undo[0]?.shortId).toBe("X1");
-		expect(next.undo[19]?.label).toBe("JAKE-1 → inbox");
+		expect(next.undo[19]?.label).toBe("MILL-1 → inbox");
 	});
 
 	it("withSections preserves the undo stack across a reload", () => {
@@ -2076,42 +2076,42 @@ describe("BoardNav.withTaskEvents", () => {
 });
 
 describe("status filter", () => {
-	const openTask = task({ id: "a", shortId: "JAKE-1", title: "open work" });
+	const openTask = task({ id: "a", shortId: "MILL-1", title: "open work" });
 	const flagged = task({
 		id: "fl",
-		shortId: "JAKE-2",
+		shortId: "MILL-2",
 		title: "agent output",
 		needsReview: true,
 	});
 	const doneFlagged = task({
 		id: "df",
-		shortId: "JAKE-3",
+		shortId: "MILL-3",
 		title: "shipped, unverified",
 		state: "done",
 		needsReview: true,
 	});
 	const donePlain = task({
 		id: "dp",
-		shortId: "JAKE-4",
+		shortId: "MILL-4",
 		title: "shipped, verified",
 		state: "done",
 	});
 	const parked = task({
 		id: "sd",
-		shortId: "JAKE-5",
+		shortId: "MILL-5",
 		title: "parked idea",
 		state: "someday",
 	});
 	const parkedFlagged = task({
 		id: "sdf",
-		shortId: "JAKE-6",
+		shortId: "MILL-6",
 		title: "parked, unverified",
 		state: "someday",
 		needsReview: true,
 	});
 	const killed = task({
 		id: "cx",
-		shortId: "JAKE-7",
+		shortId: "MILL-7",
 		title: "abandoned, unverified",
 		state: "cancelled",
 		needsReview: true,
@@ -2251,14 +2251,14 @@ describe("status filter", () => {
 	});
 
 	it("review keeps a flagged subtask's parent visible and forces it open", () => {
-		const parent = task({ id: "p", shortId: "JAKE-8", title: "parent" });
+		const parent = task({ id: "p", shortId: "MILL-8", title: "parent" });
 		const child = task({
 			id: "c",
-			shortId: "JAKE-9",
+			shortId: "MILL-9",
 			title: "child",
 			needsReview: true,
 		});
-		const sibling = task({ id: "c2", shortId: "JAKE-10", title: "sibling" });
+		const sibling = task({ id: "c2", shortId: "MILL-10", title: "sibling" });
 		const s = state({
 			sections: sections({ next: [row(parent, [child, sibling])] }),
 			status: "review",
@@ -3381,7 +3381,7 @@ describe("a form the harness is blocked on", () => {
 		const banner = {
 			question: {
 				taskId: "a",
-				taskShortId: "JAKE-1",
+				taskShortId: "MILL-1",
 				sessionId: "s",
 				questionActivityId: "q",
 				question: "Ship it?",

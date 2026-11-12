@@ -11,7 +11,7 @@ import { type DrainedOp, Oplog } from "./oplog";
 
 const DEVICE = "device-a";
 
-/** Own temp dir per test — never a real JAKE_HOME. */
+/** Own temp dir per test — never a real KABANE_HOME. */
 let base: string;
 
 const withDb = async <T>(fn: (db: Db) => T): Promise<T> => {

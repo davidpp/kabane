@@ -436,7 +436,7 @@ describe("resolveScopeId", () => {
 describe("resolveProjectName", () => {
 	it.each([
 		["the repo half of a remote id", "github.com/davidpp/cabane", "cabane"],
-		["the folder of a path fallback", "/Users/x/Projects/jake", "jake"],
+		["the folder of a path fallback", "/Users/x/Projects/mill", "mill"],
 		["a bare id unchanged", "cabane", "cabane"],
 	])("takes %s", (_label, scopeId, expected) => {
 		expect(resolveProjectName(scopeId)).toBe(expected);
