@@ -306,7 +306,7 @@ export namespace DetailModel {
 	/**
 	 * The blocks of `now` whose records changed between two reads of the same task: a lifted kind
 	 * whose newest entry is another one, a checklist whose items or ticks moved, decisions made that
-	 * grew, subtasks that came, went or changed state. A change this board made (`own`) is not one,
+	 * gained or lost one, subtasks that came, went, or changed state or title. A change this board made (`own`) is not one,
 	 * and a block gone from `after` is never named: there is nothing left to mark.
 	 */
 	export const changed = (
@@ -332,8 +332,9 @@ export namespace DetailModel {
 			lifted(before).map((entry) => [entry.kind, entry.id] as const),
 		);
 		const decided = new Set(decisions(before).map((line) => line.id));
-		const states = (records: BoardData.DetailRecords): string =>
-			records.subtasks.map((t) => `${t.id}:${t.state}`).join(" ");
+		// A subtask's row as drawn: a rename moves it as a new state does.
+		const rows = (records: BoardData.DetailRecords): string =>
+			JSON.stringify(subtasks(records));
 		return now(after).flatMap((block): BlockName[] => {
 			if ("entry" in block)
 				return lastLifted.get(block.entry.kind) === block.entry.id
@@ -342,14 +343,16 @@ export namespace DetailModel {
 			switch (block.name) {
 				case "checklist":
 					return ticksMoved ? [block.name] : [];
-				case "decisions":
-					return block.lines.some(
+				case "decisions": {
+					const ids = new Set(block.lines.map((line) => line.id));
+					const added = block.lines.some(
 						(line) => !decided.has(line.id) && !own.answered.has(line.id),
-					)
-						? [block.name]
-						: [];
+					);
+					const gone = [...decided].some((id) => !ids.has(id));
+					return added || gone ? [block.name] : [];
+				}
 				case "subtasks":
-					return states(before) === states(after) ? [] : [block.name];
+					return rows(before) === rows(after) ? [] : [block.name];
 			}
 		});
 	};

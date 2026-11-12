@@ -925,6 +925,33 @@ describe("what changed between two reads", () => {
 		).toEqual(["checklist"]);
 	});
 
+	it("names the subtasks when one is renamed", () => {
+		const renamed = {
+			...base,
+			subtasks: [
+				task({ id: "c1", parentTaskId: "t1", state: "next", title: "Renamed" }),
+			],
+		};
+		expect(DetailModel.changed(base, renamed, NONE)).toEqual(["subtasks"]);
+	});
+
+	it("names the decisions when one made is withdrawn or removed, while others stand", () => {
+		const two = {
+			...base,
+			questions: [question("q1", "answered"), question("q3", "answered")],
+		};
+		const withdrawn = {
+			...two,
+			questions: [
+				question("q1", "answered"),
+				{ ...question("q3", "answered"), status: "withdrawn" as const },
+			],
+		};
+		const removed = { ...two, questions: [question("q1", "answered")] };
+		expect(DetailModel.changed(two, withdrawn, NONE)).toEqual(["decisions"]);
+		expect(DetailModel.changed(two, removed, NONE)).toEqual(["decisions"]);
+	});
+
 	it("never names a block that is gone", () => {
 		expect(DetailModel.changed(base, { ...base, checklist: [] }, NONE)).toEqual(
 			[],
