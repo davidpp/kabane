@@ -10,7 +10,9 @@ import { ok, Planner } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope } from "@cabane/core/scope";
 import { Settings } from "@cabane/extension";
+import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
+import { RunStore } from "./store";
 
 let root = "";
 let home = "";
@@ -175,6 +177,114 @@ it("the real tracker form advises overlapping children and project gates", async
 		?.flatMap((l) => l.map((p) => p.text))
 		.join(" ");
 	expect(preview).toContain("Advised");
+	expect(preview).toContain("Gates  advised from package.json");
+	expect(preview).not.toContain("set with");
 	expect(preview).toContain("bun run typecheck");
 	expect(preview).toContain("bun install");
+});
+
+it.each([
+	["shared", undefined, undefined],
+	["worktree", undefined, "bun install"],
+	["shared", "echo configured", "echo configured"],
+] as const)(
+	"submitted %s isolation preserves the right setup (%s)",
+	async (isolation, setup, expected) => {
+		const scope = await detectScope(repo, { home, detectExtensions: false });
+		const parent = await add("parent", { scopeUri: scope?.scopeUri });
+		writeFileSync(join(repo, "bun.lock"), "");
+		writeFileSync(
+			join(repo, "package.json"),
+			JSON.stringify({ scripts: { test: "bun test" } }),
+		);
+		const dispatcher = LoopDispatcher.make({
+			...deps(),
+			settings: Settings.port(async () =>
+				ok([{ layer: "shared", label: "project", value: { setup } }]),
+			),
+		});
+		const offered = await dispatcher.triggers(parent.id);
+		expect(offered.ok).toBe(true);
+		// Exercise the real dispatch and persisted run configuration. The missing executable stops
+		// at runner boot, before any harness or advised shell command can run.
+		const started = await dispatcher.dispatch(
+			"start",
+			{
+				id: parent.id,
+				shortId: parent.shortId ?? parent.id,
+				title: parent.title,
+				brief: "",
+			},
+			{ isolation, worktree: false },
+		);
+		expect(started.ok).toBe(false);
+		const runs = RunStore.list(home);
+		if (!runs.ok) throw runs.error;
+		expect(runs.value).toHaveLength(1);
+		expect(runs.value[0]?.config).toMatchObject({
+			isolation,
+			gates: { test: "bun run test" },
+		});
+		expect(runs.value[0]?.config.setup).toBe(expected);
+	},
+);
+
+it("advises stallAfter from this parent's stored reopen events, across past runs", async () => {
+	const scope = await detectScope(repo, { home, detectExtensions: false });
+	const parent = await add("parent", { scopeUri: scope?.scopeUri });
+	const child = await add("child", { parentTaskId: parent.id });
+	const other = await add("other", { scopeUri: scope?.scopeUri });
+	const parsed = LoopConfig.Schema.safeParse({});
+	if (!parsed.success) throw parsed.error;
+	for (const id of ["first", "second"]) {
+		expect(
+			RunStore.create(home, {
+				version: 1,
+				id,
+				parentId: parent.id,
+				parentShortId: parent.shortId ?? parent.id,
+				projectDir: repo,
+				config: parsed.data,
+				status: "stopped",
+				createdAt: "2026-11-01T00:00:00.000Z",
+				claims: [],
+				usage: {},
+				continuationsUsed: 0,
+				inboxRead: 0,
+				steering: { paused: false, skipped: [], next: [] },
+				gateRuns: [],
+			}).ok,
+		).toBe(true);
+		const log = RunStore.eventLog(home, id);
+		if (!log.ok) throw log.error;
+		expect(
+			log.value.append({
+				type: "reopened",
+				task: child.shortId ?? child.id,
+				summary: "gate failed",
+			}).ok,
+		).toBe(true);
+		expect(
+			log.value.append({
+				type: "warning",
+				task: child.shortId ?? child.id,
+				summary: "not reopened",
+			}).ok,
+		).toBe(true);
+		expect(log.value.append({ type: "reopened", summary: "no task" }).ok).toBe(
+			true,
+		);
+	}
+	const offered = await LoopDispatcher.triggers(
+		deps(),
+		parent.shortId ?? parent.id,
+	);
+	if (!offered.ok) throw offered.error;
+	expect(offered.value[0]?.inputs.stallAfter).toMatchObject({
+		default: "2",
+		hint: expect.stringContaining("reopened 2 times"),
+	});
+	const unrelated = await LoopDispatcher.triggers(deps(), other.id);
+	if (!unrelated.ok) throw unrelated.error;
+	expect(unrelated.value[0]?.inputs.stallAfter?.hint).toBeUndefined();
 });
