@@ -22,7 +22,8 @@ import type { BoardNav } from "../nav";
 import type { CopilotElicitation } from "../ports";
 import { SettingsOverlay } from "../settings-overlay";
 import { SettingsView } from "../settings-view";
-import { CardTabQuestion, PinnedQuestion } from "../tab-bar";
+import { SPINNER_IDLE } from "../spinner";
+import { CardTabQuestion, PinnedQuestion, TabBar } from "../tab-bar";
 import { BoardTabs } from "../tabs";
 import { Fixtures } from "./fixtures";
 
@@ -395,7 +396,8 @@ const WAVE_RECORDS = Fixtures.records(WAVE, {
 const WAVE_CHECKLIST = BoardChecklist.view(WAVE_RECORDS.checklist);
 
 // The reader over the wave's detail, moved `jumps` headings down the way `]` moves it, once the
-// markdown has laid out.
+// markdown has laid out. Under the screen's tab bar, as the board draws it: the reader sits a row
+// down, under that bar.
 const ReaderOver = ({ jumps }: { jumps: number }): ReactNode => {
 	const handle = useRef<LiftedReader.Handle | null>(null);
 	useEffect(() => {
@@ -407,19 +409,23 @@ const ReaderOver = ({ jumps }: { jumps: number }): ReactNode => {
 		};
 	}, [jumps]);
 	return (
-		<>
-			<Detail
-				taskId={WAVE.id}
-				task={WAVE}
-				records={ok(WAVE_RECORDS)}
-				scrollRef={createRef<ScrollBoxRenderable>()}
-				checklist={WAVE_CHECKLIST}
-			/>
+		<box style={{ flexDirection: "column", flexGrow: 1 }}>
+			<TabBar tabs={BoardTabs.NONE} cards={[]} spinnerFrame={SPINNER_IDLE} />
+			<box style={{ flexDirection: "column", flexGrow: 1 }}>
+				<Detail
+					taskId={WAVE.id}
+					task={WAVE}
+					records={ok(WAVE_RECORDS)}
+					scrollRef={createRef<ScrollBoxRenderable>()}
+					checklist={WAVE_CHECKLIST}
+					covered
+				/>
+			</box>
 			<LiftedReaderSheet
 				entries={DetailModel.lifted(WAVE_RECORDS)}
 				handleRef={handle}
 			/>
-		</>
+		</box>
 	);
 };
 
