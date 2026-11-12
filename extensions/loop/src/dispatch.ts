@@ -26,10 +26,11 @@ import {
 import { Brief } from "./brief";
 import type { Budget } from "./budget";
 import { Checklists } from "./checklists";
-import { LoopConfig } from "./config";
+import type { LoopConfig } from "./config";
 import type { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 import type { Retry } from "./retry";
+import { Route } from "./route";
 import type { RunStore } from "./store";
 
 export namespace Dispatch {
@@ -44,7 +45,10 @@ export namespace Dispatch {
 		overrides?: Harnesses.Overrides;
 		/** The mode the session starts in; the harness's own auto mode when absent. */
 		mode?: Harnesses.Mode;
-		/** The run's model and tiers, resolved for the claim's harness; absent, the harness's default. */
+		/**
+		 * The run's model and tiers, resolved for the claim's harness and tier (`Route.model`); absent,
+		 * the harness's default.
+		 */
 		models?: Pick<LoopConfig.Config, "model" | "tiers">;
 	};
 
@@ -87,12 +91,27 @@ export namespace Dispatch {
 		interrupted?: Brief.Interrupted;
 		/** The attempt whose session this gate retry continues, its harness willing. */
 		resumes?: Retry.Resume;
+		/** The tier its subtask's `tier:` tag names (`Route`), which wins over the run's model. */
+		tier?: string;
+		/** The harness's named agent its subtask's `agent:` tag names, which its session runs as. */
+		agent?: string;
+	};
+
+	/** What a claim's session ran as, once it opened: its agent, and its model and where that came from. */
+	type Ran = {
+		agent?: string;
+		model?: string;
+		source: Route.Source;
+		tier?: string;
 	};
 
 	export type Hooks = {
 		event: (event: RunStore.EventDraft) => void;
-		/** The harness session is open: its id, kept so a runner that dies can resume it. */
-		opened: (acpSessionId: string) => void;
+		/**
+		 * The harness session is open: its id, kept so a runner that dies can resume it, and what it
+		 * runs as.
+		 */
+		opened: (acpSessionId: string, ran: Ran) => void;
 		usage: (usage: Budget.Usage) => void;
 		/** A turn ended with active-owned work. True spends one continuation and nudges. */
 		continueTurn: () => boolean;
@@ -389,7 +408,7 @@ export namespace Dispatch {
 			elicitation: AcpClient.OnElicitation;
 			connected: (connection: AcpClient.Connection) => void;
 		},
-	): Promise<Result<Opened>> => {
+	): Promise<Result<Opened & { ran: Ran }>> => {
 		const cli = Harnesses.installedCli(claim.harness);
 		if (!cli.ok) return cli;
 		const profile = loopProfile(env.runId, cli.value);
@@ -403,15 +422,42 @@ export namespace Dispatch {
 		});
 		if (!spawned.ok) return spawned;
 		on.connected(spawned.value);
-		const asked: LoopConfig.Model = env.models
-			? LoopConfig.resolveModel(env.models, claim.harness)
-			: { source: "default" };
-		if (asked.note) sink.emit("warning", asked.note);
-		const started = await reopen(claim, env, spawned.value, sink, asked.model);
+		// An agent that pins its own model keeps it, so none is selected over it: read from its
+		// definition, since the session's model option goes on naming the session's own.
+		const pin =
+			claim.agent === undefined
+				? undefined
+				: Harnesses.agentDefinition(claim.harness, claim.agent, env.cwd)?.model;
+		const asked = Route.model(
+			env.models ?? { tiers: {} },
+			claim.harness,
+			{
+				...(claim.tier ? { tier: claim.tier } : {}),
+				...(claim.agent ? { agent: claim.agent } : {}),
+			},
+			pin,
+		);
+		for (const note of asked.notes) sink.emit("warning", note);
+		const started = await reopen(
+			claim,
+			env,
+			spawned.value,
+			sink,
+			asked.source === "agent" ? undefined : asked.model,
+		);
 		if (!started.ok) return started;
-		emitModel(started.value.session, asked, sink);
+		const { session } = started.value;
+		const agent = emitAgent(session, sink);
+		// A pin only holds for an agent the session runs as; without it, the harness's own model.
+		const model = emitModel(
+			session,
+			asked.source === "agent" && agent === undefined
+				? { source: "default", notes: [] }
+				: asked,
+			sink,
+		);
 		// Which mode decides what gets asked: the harness's auto mode, or why not.
-		const { mode } = started.value.session;
+		const { mode } = session;
 		sink.emit(
 			"mode",
 			mode.note,
@@ -419,19 +465,46 @@ export namespace Dispatch {
 				? { mode: mode.current, ...(mode.via ? { via: mode.via } : {}) }
 				: undefined,
 		);
-		return ok(started.value);
+		return ok({
+			...started.value,
+			ran: { ...(agent ? { agent } : {}), ...model },
+		});
+	};
+
+	/**
+	 * The named agent the session runs as, when one was asked for and the harness says it runs it;
+	 * a warning says why not otherwise, and the session goes on as the harness's default agent.
+	 */
+	const emitAgent = (
+		session: AcpClient.Session,
+		sink: Sink,
+	): string | undefined => {
+		const chosen = session.agent;
+		if (!chosen) return undefined;
+		if (!chosen.applied || chosen.current === undefined) {
+			sink.emit("warning", chosen.note);
+			return undefined;
+		}
+		sink.emit("agent", chosen.current);
+		return chosen.current;
 	};
 
 	/**
 	 * The model the session opened on, new or resumed, which `AcpClient` selected before the mode
 	 * was negotiated. The `model` event names only what the harness says it runs: a model it could
-	 * not take, or did not confirm, is a warning, and the session goes on.
+	 * not take, or did not confirm, is a warning, and the session goes on. An agent's pinned model
+	 * is the exception: nothing was selected over it, and the harness's model option goes on naming
+	 * the session's own, so the pin is what it runs.
 	 */
 	const emitModel = (
 		session: AcpClient.Session,
-		asked: LoopConfig.Model,
+		asked: Route.Model,
 		sink: Sink,
-	): void => {
+	): Pick<Ran, "model" | "source" | "tier"> => {
+		if (asked.source === "agent" && asked.model !== undefined) {
+			sink.emit("model", asked.model, { source: "agent" });
+			return { model: asked.model, source: "agent" };
+		}
 		const chosen = session.model;
 		if (chosen && !chosen.applied) sink.emit("warning", chosen.note);
 		const option = session.configOptions.find(
@@ -442,12 +515,11 @@ export namespace Dispatch {
 			: option?.type === "select"
 				? option.currentValue
 				: undefined;
-		if (current === undefined) return;
 		const source = chosen?.applied ? asked.source : "default";
-		sink.emit("model", current, {
-			source,
-			...(source === "tier" && asked.tier ? { tier: asked.tier } : {}),
-		});
+		const tier = source !== "default" ? asked.tier : undefined;
+		if (current === undefined) return { source };
+		sink.emit("model", current, { source, ...(tier ? { tier } : {}) });
+		return { model: current, source, ...(tier ? { tier } : {}) };
 	};
 
 	type Opened = { session: AcpClient.Session; resumed: boolean };
@@ -497,6 +569,7 @@ export namespace Dispatch {
 			mcpServers: [mcpServer(env, claim.harness)],
 			...(env.mode ? { mode: env.mode } : {}),
 			...(model === undefined ? {} : { model }),
+			...(claim.agent === undefined ? {} : { agent: claim.agent }),
 		};
 		const previous = claim.interrupted;
 		if (previous?.acpSessionId !== undefined)
@@ -886,7 +959,7 @@ export namespace Dispatch {
 			if (!opened.ok) return ended("error", opened.error.message);
 			const current = opened.value.session;
 			session = current;
-			hooks.opened(current.id);
+			hooks.opened(current.id, opened.value.ran);
 			sink.emit("session_start", started(claim));
 			const again = opened.value.resumed
 				? await resumedPrompt(claim, env)

@@ -421,6 +421,69 @@ describe("Claims.claim", () => {
 		const task = await Planner.getTask(home, child.id);
 		expect(task.ok && task.value?.assignee).toBe("codex");
 	});
+
+	it("runs a subtask on the harness its tier tag pins, and notes the tags it cannot honour", async () => {
+		const parent = await add("parent");
+		const pinned = await add("pinned", {
+			parentTaskId: parent.id,
+			tags: ["tier:codex/fast", "agent:board-ui"],
+		});
+		const bad = await add("bad", {
+			parentTaskId: parent.id,
+			tags: ["tier:cobol/fast", "tier:fast"],
+		});
+		const config = LoopConfig.Schema.safeParse({});
+		if (!config.success) throw config.error;
+		const run: RunStore.Run = {
+			version: 1,
+			id: "run-1",
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		};
+		const created = RunStore.create(home, run);
+		if (!created.ok) throw created.error;
+		const ctx = ctxFor(run);
+		const fails = { command: "/usr/bin/false", args: [] };
+		ctx.deps = {
+			...ctx.deps,
+			overrides: { claude: fails, codex: fails, gemini: fails },
+		};
+		const plan = await LoopPlan.load(home, parent.id);
+		if (!plan.ok) throw plan.error;
+		for (const task of [pinned, bad]) {
+			const node = plan.value.nodes.find((n) => n.task.id === task.id);
+			if (!node) throw new Error(`${task.title} is not in the plan`);
+			await Claims.claim(ctx, node, plan.value);
+		}
+		await Promise.all([...ctx.live.values()].map((l) => l.settled));
+
+		expect(ctx.run.claims.map((c) => [c.taskId, c.harness])).toEqual([
+			[pinned.id, "codex"],
+			[bad.id, "claude"],
+		]);
+		const assigned = await Planner.getTask(home, pinned.id);
+		expect(assigned.ok && assigned.value?.assignee).toBe("codex");
+		const events = RunStore.readEvents(home, run.id);
+		if (!events.ok) throw events.error;
+		const said = events.value.map((e) => e.summary);
+		expect(said).toContain(
+			`codex as board-ui at tier fast claims ${pinned.shortId}: pinned`,
+		);
+		expect(said).toContain(
+			"tier:cobol/fast: cobol is not a harness (claude, codex, gemini), so it runs on claude",
+		);
+		expect(said).toContain("tier:fast ignored: the first tag of its kind wins");
+	});
 });
 
 describe("Claims.interruption", () => {

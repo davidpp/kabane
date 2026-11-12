@@ -32,7 +32,12 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop rollback <runId> <sha>
        kabane loop answer <questionId> <option>
        kabane loop land <runId>              (pushes a completed run's branch and opens its pull request)
-       kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)`;
+       kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)
+
+A subtask's tags route its claim: tier:<name> asks for a tier's model (loop.tiers) over --model,
+tier:<harness>/<name> also runs it on that harness, and agent:<name> runs it as the harness's named
+agent (Claude's .claude/agents; an agent that pins a model keeps it). A tag the run cannot honour is
+noted on the trace and the claim runs on the run's settings.`;
 
 // The executable the runner and each session's MCP server run as: this process's own.
 const kabaneBin = Self.executable;
@@ -171,6 +176,34 @@ const landed = (run: RunStore.Run): string[] => {
 const withdrawn = (q: Loop.Waiting): string =>
 	`  withdrawn, its runner died: ${q.task} ${indented(q.question)} (the restarted run asks again)`;
 
+// Where a claim's model came from, as `loop status` reads it.
+const modelSource = (claim: RunStore.Claim): string => {
+	switch (claim.modelSource) {
+		case "tier":
+			return `tier ${claim.tier}`;
+		case "run":
+			return claim.tier ? `the run's tier ${claim.tier}` : "the run's model";
+		case "agent":
+			return `${claim.agent}'s pin`;
+		default:
+			return "the harness's default";
+	}
+};
+
+// Each claim of the run: what it ran on (harness, agent, model and why) and how it ended.
+const claimLine = (claim: RunStore.Claim): string =>
+	[
+		`  ${claim.lane}`,
+		claim.harness,
+		...(claim.agent ? [`agent ${claim.agent}`] : []),
+		...(claim.model
+			? [`model ${claim.model} (${modelSource(claim)})`]
+			: claim.modelSource
+				? [`model unknown (${modelSource(claim)})`]
+				: []),
+		claim.outcome ?? (claim.endedAt ? "ended" : "running"),
+	].join("  ");
+
 // A run whose runner died waits on a human to bring it back.
 const restart = (run: RunStore.Run): string[] =>
 	Loop.died(run) ? [`  restart: ${Loop.restartCommand(run.id)}`] : [];
@@ -193,6 +226,7 @@ const statusOf = async (
 			line(run.value),
 			...restart(run.value),
 			...worktree(run.value),
+			...run.value.claims.map(claimLine),
 			...landing(run.value),
 			...gone.value.map(withdrawn),
 			...waiting.value.map(question),

@@ -28,6 +28,7 @@ import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import type { Questions } from "./questions";
 import { Retry } from "./retry";
+import { Route } from "./route";
 import { Stall } from "./stall";
 import { RunState } from "./state";
 import { RunStore } from "./store";
@@ -231,8 +232,14 @@ export namespace Claims {
 		harness: string,
 	): Dispatch.Hooks => ({
 		event: (draft) => RunState.event(ctx, draft),
-		opened: (acpSessionId) =>
-			RunState.patchClaim(ctx, sessionId, { acpSessionId }),
+		opened: (acpSessionId, ran) =>
+			RunState.patchClaim(ctx, sessionId, {
+				acpSessionId,
+				...(ran.agent ? { agent: ran.agent } : {}),
+				...(ran.model ? { model: ran.model } : {}),
+				modelSource: ran.source,
+				...(ran.tier ? { tier: ran.tier } : {}),
+			}),
 		usage: (usage) =>
 			RunState.save(ctx, {
 				...ctx.run,
@@ -425,6 +432,8 @@ export namespace Claims {
 		tree?: string;
 		/** A subtask's own worktree, when it works in one (`ClaimTrees`). */
 		worktree?: ClaimTrees.Tree;
+		/** What its subtask's tags ask of it (`Route`): a subtask's claim only. */
+		route?: Pick<Route.Route, "tier" | "agent">;
 	};
 
 	// A recheck reports and never edits; nothing enforces that in the harness, whose settings are
@@ -455,6 +464,7 @@ export namespace Claims {
 			head,
 			tree,
 			worktree,
+			route,
 		} = started;
 		RunState.save(ctx, {
 			...ctx.run,
@@ -504,6 +514,8 @@ export namespace Claims {
 				work,
 				...(interrupted ? { interrupted } : {}),
 				...(resumes ? { resumes } : {}),
+				...(route?.tier ? { tier: route.tier } : {}),
+				...(route?.agent ? { agent: route.agent } : {}),
 			},
 			{
 				basePath: ctx.deps.basePath,
@@ -599,14 +611,16 @@ export namespace Claims {
 		if (!place.ok) return place;
 		if (place.value === undefined) return ok(false);
 		const { worktree } = place.value;
-		// The run's harness, whatever the subtask's assignee says: agents assign issues they file
-		// to themselves, so the assignee names who wrote it, not who the human picked to work it.
-		const harness = ctx.run.config.implementer;
+		// The run's harness unless a `tier:<harness>/<name>` tag pins another, whatever the subtask's
+		// assignee says: agents assign issues they file to themselves, so the assignee names who
+		// wrote it, not who the human picked to work it.
+		const route = Route.of(task.tags, ctx.run.config);
+		const { harness } = route;
 		const earlier = ctx.run.claims.filter(
 			(c) => c.taskId === task.id && !onParent(c),
 		);
 		const attempts = earlier.length;
-		// Named by the subtask alone: every subtask runs on the run's one harness, which the header names.
+		// Named by the subtask alone: its claim's trace says which harness, agent and model it ran on.
 		const lane = `${label(task)}${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, task, harness, lane, true);
 		if (sessionId === undefined) return ok(true);
@@ -628,11 +642,21 @@ export namespace Claims {
 				concurrent: worktree === undefined && RunStore.concurrency(ctx.run) > 1,
 				...(retry ? { retry } : {}),
 			},
-			summary: `${harness} claims ${label(task)}: ${task.title}${worktree ? ` in ${worktree.dir}, on ${worktree.branch}` : ""}`,
+			summary: `${harness}${route.agent ? ` as ${route.agent}` : ""}${route.tier ? ` at tier ${route.tier}` : ""} claims ${label(task)}: ${task.title}${worktree ? ` in ${worktree.dir}, on ${worktree.branch}` : ""}`,
+			route,
 			...(worktree ? { worktree } : {}),
 			...(interrupted ? { interrupted } : {}),
 			...(retryIn?.resume ? { resumes: retryIn } : {}),
 		});
+		// A tag the run could not honour: the claim runs on the fallback, and its lane says why.
+		for (const note of route.notes)
+			RunState.event(ctx, {
+				type: "warning",
+				lane,
+				session: sessionId,
+				task: label(task),
+				summary: note,
+			});
 		// Whether the harness resumes it is the dispatch's to say; why it was not tried is the run's.
 		if (retryIn && !retryIn.resume)
 			RunState.event(ctx, {
@@ -919,10 +943,13 @@ export namespace Claims {
 				continue;
 			}
 			if (task.value.state !== "done" || judged(ctx, task.value)) continue;
+			// The harness its last claim ran on, which its tags may have pinned.
 			const target = {
 				taskId: task.value.id,
 				label: label(task.value),
-				assignee: ctx.run.config.implementer,
+				assignee:
+					ctx.run.claims.findLast((c) => c.taskId === held.taskId)?.harness ??
+					ctx.run.config.implementer,
 			};
 			const pass = await gatesAfter(
 				ctx,
