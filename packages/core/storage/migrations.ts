@@ -39,7 +39,7 @@ const refusePreRunner = (db: Db): void => {
 		.get(TABLES.tasks);
 	if (tasks)
 		throw new Error(
-			"this database was created before kabane 0.2.0 and is no longer upgraded from here; open it once with kabane 1.0.0-beta.0, then update",
+			"this database was created before kabane 0.1.0, its first release, and is no longer upgraded from here; open it once with kabane 1.0.0-beta.0, then update",
 		);
 };
 
