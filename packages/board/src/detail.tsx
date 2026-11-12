@@ -727,12 +727,9 @@ const nowBlockId = (name: DetailModel.BlockName): string => `now:${name}`;
 
 const NOTHING_FRESH: ReadonlySet<DetailModel.BlockName> = new Set();
 
-// A fresh block has been seen once its header row has stayed inside the viewport, with `now`
-// showing, for SEEN_MS. A dwell rather than a key: the human reviews by looking, and a terminal
-// cannot see a glance, so the mark lasts long enough to be caught from across the desk but goes
-// without a keypress. A block scrolled away, or another tab, starts its count again. What is marked:
-// the fresh blocks, and whether any is on `now` while another tab shows, which its label then says.
-const SEEN_MS = 3000;
+// A fresh block is seen once its header row has stayed inside the viewport, with `now` showing, for
+// DetailModel.SEEN_MS (DetailModel.dwell says why a dwell). What is marked: the fresh blocks, and
+// whether any is on `now` while another tab shows, which its label then says.
 const SEEN_CHECK_MS = 250;
 
 const useSeen = (
@@ -742,32 +739,30 @@ const useSeen = (
 ): { blocks: ReadonlySet<DetailModel.BlockName>; elsewhere: boolean } => {
 	const showing = tab === "now";
 	// Since when each fresh block has been on screen; kept across renders so one block's mark going
-	// does not restart the others'.
-	const since = useRef(new Map<DetailModel.BlockName, number>());
+	// does not restart the others', and held to the blocks still fresh each time the marks change.
+	const since = useRef<ReadonlyMap<DetailModel.BlockName, number>>(new Map());
 	useEffect(() => {
-		if (!fresh || !showing || fresh.blocks.size === 0) {
-			since.current.clear();
-			return;
-		}
+		const blocks = fresh?.blocks ?? NOTHING_FRESH;
+		since.current = new Map(
+			[...since.current].filter(([name]) => showing && blocks.has(name)),
+		);
+		if (!fresh || !showing || blocks.size === 0) return;
 		const check = (): void => {
 			const scroll = scrollRef.current;
 			if (!scroll) return;
 			const top = scroll.viewport.screenY;
 			const bottom = top + scroll.viewport.height;
-			const at = Date.now();
-			for (const name of fresh.blocks) {
-				const y = scroll.findDescendantById(nowBlockId(name))?.screenY;
-				if (y === undefined || y < top || y >= bottom) {
-					since.current.delete(name);
-					continue;
-				}
-				const from = since.current.get(name) ?? at;
-				since.current.set(name, from);
-				if (at - from >= SEEN_MS) {
-					since.current.delete(name);
-					fresh.seen(name);
-				}
-			}
+			const look = DetailModel.dwell(
+				since.current,
+				blocks,
+				(name) => {
+					const y = scroll.findDescendantById(nowBlockId(name))?.screenY;
+					return y !== undefined && y >= top && y < bottom;
+				},
+				Date.now(),
+			);
+			since.current = look.since;
+			for (const name of look.seen) fresh.seen(name);
 		};
 		const timer = setInterval(check, SEEN_CHECK_MS);
 		return () => clearInterval(timer);

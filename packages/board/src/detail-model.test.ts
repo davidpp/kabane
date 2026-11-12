@@ -972,6 +972,58 @@ describe("what changed between two reads", () => {
 	});
 });
 
+describe("when a fresh block is seen", () => {
+	const onScreen = () => true;
+
+	it("counts a block seen once it has stayed on screen for the whole dwell", () => {
+		const first = DetailModel.dwell(
+			new Map(),
+			new Set(["checklist"]),
+			onScreen,
+			0,
+		);
+		expect(first.seen).toEqual([]);
+		const early = DetailModel.dwell(
+			first.since,
+			new Set(["checklist"]),
+			onScreen,
+			DetailModel.SEEN_MS - 1,
+		);
+		expect(early.seen).toEqual([]);
+		expect(
+			DetailModel.dwell(
+				early.since,
+				new Set(["checklist"]),
+				onScreen,
+				DetailModel.SEEN_MS,
+			).seen,
+		).toEqual(["checklist"]);
+	});
+
+	it("starts again from nothing for a block scrolled away or no longer fresh", () => {
+		const both = new Set<DetailModel.BlockName>(["checklist", "subtasks"]);
+		const start = DetailModel.dwell(new Map(), both, onScreen, 0);
+		// The checklist stops being fresh while the subtasks stay; then it comes back.
+		const gone = DetailModel.dwell(
+			start.since,
+			new Set(["subtasks"]),
+			onScreen,
+			1000,
+		);
+		expect([...gone.since.keys()]).toEqual(["subtasks"]);
+		const back = DetailModel.dwell(gone.since, both, onScreen, 2000);
+		const later = DetailModel.dwell(
+			back.since,
+			both,
+			onScreen,
+			DetailModel.SEEN_MS,
+		);
+		expect(later.seen).toEqual(["subtasks"]);
+		const away = DetailModel.dwell(later.since, both, () => false, 4000);
+		expect(away.since.size).toBe(0);
+	});
+});
+
 describe("sections of a lifted body", () => {
 	it("reads the handoff template's four headings, each with its line", () => {
 		expect(DetailModel.sections(HANDOFF_TEMPLATE)).toEqual([

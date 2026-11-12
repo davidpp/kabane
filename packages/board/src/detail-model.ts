@@ -291,6 +291,36 @@ export namespace DetailModel {
 	export const openingTab = (records: BoardData.DetailRecords): Tab =>
 		now(records).length > 0 ? "now" : "description";
 
+	/**
+	 * How long a fresh block's header must stay on screen, with `now` showing, before it counts as
+	 * seen. A dwell rather than a key: the human reviews by looking, and a terminal cannot see a
+	 * glance, so the mark lasts long enough to be caught from across the desk but goes without a
+	 * keypress.
+	 */
+	export const SEEN_MS = 3000;
+
+	/**
+	 * One look at the fresh blocks at `at`: since when each one on screen has been there, and those
+	 * whose dwell reached SEEN_MS. Only fresh blocks on screen keep a time, so a block scrolled away,
+	 * gone, or no longer fresh starts again from nothing if it comes back.
+	 */
+	export const dwell = (
+		since: ReadonlyMap<BlockName, number>,
+		fresh: ReadonlySet<BlockName>,
+		onScreen: (name: BlockName) => boolean,
+		at: number,
+	): { since: Map<BlockName, number>; seen: BlockName[] } => {
+		const next = new Map<BlockName, number>();
+		const seen: BlockName[] = [];
+		for (const name of fresh) {
+			if (!onScreen(name)) continue;
+			const from = since.get(name) ?? at;
+			if (at - from >= SEEN_MS) seen.push(name);
+			else next.set(name, from);
+		}
+		return { since: next, seen };
+	};
+
 	/** A block of `now` by its name: `checklist`, `lifted:handoff`. */
 	export type BlockName = NowBlock["name"];
 
