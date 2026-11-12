@@ -16,11 +16,18 @@ import {
 	Yoga,
 } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import { type ReactNode, type RefObject, useMemo } from "react";
+import {
+	type ReactNode,
+	type RefObject,
+	useEffect,
+	useMemo,
+	useRef,
+} from "react";
 import type { BoardActivity } from "./activity";
 import { BoardChecklist } from "./checklist";
 import type { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
+import type { Fresh } from "./detail-records";
 import { ErrorBoundary } from "./error-boundary";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
@@ -174,6 +181,9 @@ export type DetailProps = {
 	// Whose keys the footer shows and what is true right now (BoardNav.keyContext / keySituation).
 	// Optional so render-only tests fall back to what the view knows itself.
 	keys?: Keymap.Live;
+	// The blocks of `now` a change landed on that the human has not seen (useDetailRecords), and how
+	// the view tells it they have been. Absent, nothing is marked.
+	fresh?: Fresh;
 };
 
 // Code, quotes and rules are set apart by a surface, never a line. OpenTUI draws a quote with a bar
@@ -294,13 +304,19 @@ export const Detail = ({
 	checklist,
 	onItem,
 	keys,
+	fresh,
 }: DetailProps): ReactNode => {
 	const theme = useTheme();
 	const { width: room } = useTerminalDimensions();
 	const loaded = records?.ok ? records.value : undefined;
 	const tab = picked ?? openingTab(loaded);
 	const open = DetailModel.openQuestions(loaded, questions, pinned);
-	const summaries = DetailModel.tabs(loaded, cards?.length ?? 0);
+	const marks = useSeen(fresh, tab, scrollRef);
+	const summaries = DetailModel.tabs(
+		loaded,
+		cards?.length ?? 0,
+		marks.elsewhere,
+	);
 	const live: Keymap.Live = keys ?? {
 		context: focus === "copilot" ? "copilot" : "detail",
 		situation: {
@@ -352,6 +368,7 @@ export const Detail = ({
 					spinnerFrame={spinnerFrame}
 					checklist={checklist}
 					onItem={onItem}
+					fresh={marks.blocks}
 				/>
 			</scrollbox>
 			{pane}
@@ -375,11 +392,13 @@ const TabBody = ({
 	spinnerFrame,
 	checklist,
 	onItem,
+	fresh,
 }: {
 	tab: DetailModel.Tab;
 	records: Result<BoardData.DetailRecords> | undefined;
 	cards: ActivityCard[];
 	spinnerFrame: string | undefined;
+	fresh: ReadonlySet<DetailModel.BlockName>;
 } & Pick<DetailProps, "checklist" | "onItem">): ReactNode => {
 	const theme = useTheme();
 	const { width: room } = useTerminalDimensions();
@@ -404,6 +423,7 @@ const TabBody = ({
 			room={Math.max(0, room - SCROLL_RESERVED - CONTENT_INSET)}
 			checklist={checklist ?? BoardChecklist.view(records.value.checklist)}
 			onItem={onItem}
+			fresh={fresh}
 		/>
 	);
 };
@@ -520,7 +540,8 @@ const MetaRow = ({
 };
 
 // The tab bar: the active tab in Label weight on the selected surface, an empty one faint, every
-// other one step down, so the bar reads as chrome above the content; counts muted. A click on a cell
+// other one step down, so the bar reads as chrome above the content; counts muted. A tab a change
+// landed on that the human has not seen carries the fresh `✦` in the terminal's foreground. A click on a cell
 // asks for its tab.
 const TabBarRow = ({
 	summaries,
@@ -560,6 +581,9 @@ const TabBarRow = ({
 						}}
 					>
 						{pad}
+						{cell.fresh ? (
+							<span fg={theme.defaultFg}>{DetailModel.FRESH_MARK}</span>
+						) : null}
 						{label}
 						{count !== undefined ? (
 							<span fg={isActive || summary?.empty ? fg : theme.muted}>
@@ -582,6 +606,7 @@ const TabContent = ({
 	room,
 	checklist,
 	onItem,
+	fresh,
 }: {
 	tab: DetailModel.Tab;
 	records: BoardData.DetailRecords;
@@ -591,6 +616,7 @@ const TabContent = ({
 	room: number;
 	checklist: BoardChecklist.Shown;
 	onItem?: (itemId: string) => void;
+	fresh: ReadonlySet<DetailModel.BlockName>;
 }): ReactNode => {
 	const theme = useTheme();
 	switch (tab) {
@@ -601,6 +627,7 @@ const TabContent = ({
 					room={room}
 					checklist={checklist}
 					onItem={onItem}
+					fresh={fresh}
 				/>
 			);
 		case "description":
@@ -658,11 +685,13 @@ const NowTab = ({
 	room,
 	checklist,
 	onItem,
+	fresh,
 }: {
 	records: BoardData.DetailRecords;
 	room: number;
 	checklist: BoardChecklist.Shown;
 	onItem?: (itemId: string) => void;
+	fresh: ReadonlySet<DetailModel.BlockName>;
 }): ReactNode => {
 	const theme = useTheme();
 	const blocks = DetailModel.now(records);
@@ -685,6 +714,7 @@ const NowTab = ({
 						room={room}
 						checklist={checklist}
 						onItem={onItem}
+						fresh={fresh.has(block.name)}
 					/>
 				</box>
 			))}
@@ -693,26 +723,83 @@ const NowTab = ({
 };
 
 /** The renderable id of a block on the `now` tab: `now:checklist`, `now:lifted:handoff`. */
-const nowBlockId = (name: DetailModel.NowBlock["name"]): string =>
-	`now:${name}`;
+const nowBlockId = (name: DetailModel.BlockName): string => `now:${name}`;
+
+const NOTHING_FRESH: ReadonlySet<DetailModel.BlockName> = new Set();
+
+// A fresh block has been seen once its header row has stayed inside the viewport, with `now`
+// showing, for SEEN_MS. A dwell rather than a key: the human reviews by looking, and a terminal
+// cannot see a glance, so the mark lasts long enough to be caught from across the desk but goes
+// without a keypress. A block scrolled away, or another tab, starts its count again. What is marked:
+// the fresh blocks, and whether any is on `now` while another tab shows, which its label then says.
+const SEEN_MS = 3000;
+const SEEN_CHECK_MS = 250;
+
+const useSeen = (
+	fresh: Fresh | undefined,
+	tab: DetailModel.Tab,
+	scrollRef: RefObject<ScrollBoxRenderable | null>,
+): { blocks: ReadonlySet<DetailModel.BlockName>; elsewhere: boolean } => {
+	const showing = tab === "now";
+	// Since when each fresh block has been on screen; kept across renders so one block's mark going
+	// does not restart the others'.
+	const since = useRef(new Map<DetailModel.BlockName, number>());
+	useEffect(() => {
+		if (!fresh || !showing || fresh.blocks.size === 0) {
+			since.current.clear();
+			return;
+		}
+		const check = (): void => {
+			const scroll = scrollRef.current;
+			if (!scroll) return;
+			const top = scroll.viewport.screenY;
+			const bottom = top + scroll.viewport.height;
+			const at = Date.now();
+			for (const name of fresh.blocks) {
+				const y = scroll.findDescendantById(nowBlockId(name))?.screenY;
+				if (y === undefined || y < top || y >= bottom) {
+					since.current.delete(name);
+					continue;
+				}
+				const from = since.current.get(name) ?? at;
+				since.current.set(name, from);
+				if (at - from >= SEEN_MS) {
+					since.current.delete(name);
+					fresh.seen(name);
+				}
+			}
+		};
+		const timer = setInterval(check, SEEN_CHECK_MS);
+		return () => clearInterval(timer);
+	}, [fresh, showing, scrollRef]);
+	const blocks = fresh?.blocks ?? NOTHING_FRESH;
+	return { blocks, elsewhere: !showing && blocks.size > 0 };
+};
 
 const NowBlockBody = ({
 	block,
 	room,
 	checklist,
 	onItem,
+	fresh,
 }: {
 	block: DetailModel.NowBlock;
 	room: number;
 	checklist: BoardChecklist.Shown;
 	onItem?: (itemId: string) => void;
+	fresh: boolean;
 }): ReactNode => {
-	if ("entry" in block) return <LiftedDigest entry={block.entry} room={room} />;
+	if ("entry" in block)
+		return <LiftedDigest entry={block.entry} room={room} fresh={fresh} />;
 	switch (block.name) {
 		case "checklist": {
 			const { lines, progress, cursor } = checklist;
 			return (
-				<Section title="checklist" count={`${progress.done}/${progress.total}`}>
+				<Section
+					title="checklist"
+					count={`${progress.done}/${progress.total}`}
+					fresh={fresh}
+				>
 					{lines.map((line) => (
 						<ItemRow
 							key={line.id}
@@ -727,7 +814,7 @@ const NowBlockBody = ({
 		}
 		case "decisions":
 			return (
-				<Section title="decisions">
+				<Section title="decisions" fresh={fresh}>
 					{block.lines.map((line) => (
 						<DecisionRow key={line.id} line={line} />
 					))}
@@ -735,7 +822,7 @@ const NowBlockBody = ({
 			);
 		case "subtasks":
 			return (
-				<Section title="subtasks">
+				<Section title="subtasks" fresh={fresh}>
 					{block.lines.map((line) => (
 						<SubtaskRow key={line.id} line={line} room={room} />
 					))}
@@ -788,13 +875,16 @@ const DescriptionTab = ({
 const LiftedDigest = ({
 	entry,
 	room,
+	fresh = false,
 }: {
 	entry: DetailModel.LiftedEntry;
 	room: number;
+	fresh?: boolean;
 }): ReactNode => {
 	const theme = useTheme();
 	const heading = Segments.fitHolding(
 		[
+			...(fresh ? [{ text: DetailModel.FRESH_MARK, fg: theme.defaultFg }] : []),
 			{
 				text: entry.title.toLowerCase(),
 				fg: theme.defaultFg,
@@ -890,20 +980,26 @@ const FoldRow = ({
 	return <text>{Segments.spans(segments)}</text>;
 };
 
-// A list on a tab, headed in Label weight like a bay, its count muted after a `·`.
+// A list on a tab, headed in Label weight like a bay, its count muted after a `·`; a `✦` in front
+// while a change on it is fresh.
 const Section = ({
 	title,
 	count,
+	fresh = false,
 	children,
 }: {
 	title: string;
 	count?: string;
+	fresh?: boolean;
 	children: ReactNode;
 }): ReactNode => {
 	const theme = useTheme();
 	return (
 		<box style={{ flexDirection: "column" }}>
 			<text>
+				{fresh ? (
+					<span fg={theme.defaultFg}>{DetailModel.FRESH_MARK}</span>
+				) : null}
 				<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
 					{title}
 				</span>
