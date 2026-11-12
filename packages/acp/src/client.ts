@@ -390,7 +390,7 @@ export namespace AcpClient {
 			: undefined;
 
 	// The steering extension's advert, a sibling of `agentCapabilities` on initialize. Both pinned
-	// adapters send it (claude-agent-acp 0.99.1, codex-acp 2.5.0); Gemini's does not.
+	// adapters send it (claude-agent-acp 0.100.0, codex-acp 2.5.0); Gemini's does not.
 	const advertisesSteering = (meta: unknown): boolean =>
 		field(field(meta, "steering"), "supported") === true;
 
