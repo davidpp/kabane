@@ -3129,34 +3129,47 @@ describe("detail tabs", () => {
 	const detail = (tab?: DetailModel.Tab) =>
 		state({ view: { type: "detail", taskId: "a", tab } });
 
-	it("opens on the description, the default tab", () => {
-		expect(BoardNav.detailTab(detail().view)).toBe("description");
+	it("is on now while its records load, and its first records settle the tab it opens on", () => {
+		expect(BoardNav.detailTab(detail().view)).toBe("now");
+		const settled = BoardNav.withOpeningTab(detail(), "a", "description");
+		expect(BoardNav.detailTab(settled.view)).toBe("description");
+		// Settled, or picked, the tab stays: a later refetch with something in force does not move it.
+		expect(BoardNav.withOpeningTab(settled, "a", "now")).toBe(settled);
+		const picked = detail("log");
+		expect(BoardNav.withOpeningTab(picked, "a", "now")).toBe(picked);
+		// Records for another task leave the view alone.
+		expect(BoardNav.withOpeningTab(detail(), "b", "description").view).toEqual(
+			detail().view,
+		);
 	});
 
 	it("a digit jumps to its tab, and one past the last does nothing", () => {
-		expect(BoardNav.detailTab(reduce(detail(), { name: "3" }).state.view)).toBe(
+		expect(BoardNav.detailTab(reduce(detail(), { name: "4" }).state.view)).toBe(
 			"log",
 		);
 		expect(BoardNav.detailTab(reduce(detail(), { name: "2" }).state.view)).toBe(
-			"comments",
+			"description",
 		);
+		expect(
+			BoardNav.detailTab(reduce(detail("log"), { name: "1" }).state.view),
+		).toBe("now");
 		const s = detail("log");
-		expect(reduce(s, { name: "4" }).state).toBe(s);
+		expect(reduce(s, { name: "5" }).state).toBe(s);
 	});
 
 	it("h/l and the arrows step through the tabs and wrap at either end", () => {
 		const step = (s: BoardNav.BoardState, name: string) =>
 			BoardNav.detailTab(reduce(s, { name }).state.view);
-		expect(step(detail(), "l")).toBe("comments");
-		expect(step(detail(), "right")).toBe("comments");
+		expect(step(detail(), "l")).toBe("description");
+		expect(step(detail(), "right")).toBe("description");
 		expect(step(detail(), "h")).toBe("log");
-		expect(step(detail("log"), "l")).toBe("description");
-		expect(step(detail("comments"), "left")).toBe("description");
+		expect(step(detail("log"), "l")).toBe("now");
+		expect(step(detail("description"), "left")).toBe("now");
 	});
 
 	it("the tab already in view hands back the same state, so nothing re-renders", () => {
 		const s = detail("comments");
-		expect(reduce(s, { name: "2" }).state).toBe(s);
+		expect(reduce(s, { name: "3" }).state).toBe(s);
 	});
 
 	it("a click on a tab selects it, and does nothing off the detail view", () => {

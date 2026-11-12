@@ -241,7 +241,7 @@ describe("a decision on the detail view", () => {
 		const s = detail([NAME]);
 		expect(BoardDecisions.reach(s)).toEqual({ key: "enter" });
 		// `l` still walks the sections, `q` still leaves.
-		expect(BoardNav.detailTab(press(s, "l").state.view)).toBe("comments");
+		expect(BoardNav.detailTab(press(s, "l").state.view)).toBe("description");
 		const typing = press(s, "return").state;
 		expect(BoardDecisions.keysInHand(typing)).toBe(true);
 		for (const name of ["l", "q", "?", "u"])

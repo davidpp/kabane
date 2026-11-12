@@ -2,7 +2,7 @@
 // board's state beside decisions.ts. Two surfaces:
 //
 // - Each card with items says how far they have got, `· 3/5`, from one progress query per poll.
-// - An issue's detail lists its items in the description tab with a cursor on one: `J/K` move it and
+// - An issue's detail lists its items first on its `now` tab with a cursor on one: `J/K` move it and
 //   `space` ticks or unticks it. The cursor starts on the first open item, where a loop resumes.
 //
 // A checklist write leaves the task row alone, so nothing on the row says it changed: the poll reads
@@ -208,12 +208,12 @@ export namespace BoardChecklist {
 		return view(open.items, cursor, writes);
 	};
 
-	/** The checklist the keys act on: drawn on the description tab, with the board holding the keys. */
+	/** The checklist the keys act on: drawn on the `now` tab, with the board holding the keys. */
 	const inHand = (state: State): Shown | undefined =>
 		state.focus === "board" &&
 		!state.prompt.open &&
 		state.view.type === "detail" &&
-		(state.view.tab ?? DetailModel.DEFAULT_TAB) === "description"
+		(state.view.tab ?? DetailModel.DEFAULT_TAB) === "now"
 			? shown(state)
 			: undefined;
 

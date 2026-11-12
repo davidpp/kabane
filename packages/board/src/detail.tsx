@@ -1,9 +1,9 @@
 /** @jsxImportSource @opentui/react */
 // Detail view for a single task, read as parts rather than one wall. Pinned on a raised block: the
 // title, the task at a glance, what is running on it and where it sits; under it, any question
-// waiting on the human. Then tabs: the description (its latest handoff, checklist, subtasks and
-// curated context under it), the comments and the agent log, one at a time,
-// scrolled by app.tsx's `scroll` effect (it owns the ref so every key stays in the one useKeyboard
+// waiting on the human. Then tabs: what is in force now (the checklist, the latest handoff as a
+// digest, the decisions made and the subtasks), the description (the ask, with its curated context),
+// the comments and the agent log, one at a time, scrolled by app.tsx's `scroll` effect (it owns the ref so every key stays in the one useKeyboard
 // handler). DetailModel decides what goes where; this file only draws it. The agent brief is not
 // drawn here: `y` copies it, and it is what an agent reads.
 import type { Result, TaskEntry } from "@cabane/core";
@@ -143,7 +143,8 @@ export type DetailProps = {
 	// Questions the host says are parked on this task, beside any the records carry. Pinned, so what
 	// is blocked on the human is the first thing they see.
 	questions?: BoardActivity.AwaitingQuestion[];
-	// The tab in view (BoardNav.detailTab) and what a click on another one asks for.
+	// The tab in view (BoardNav.detailTab) and what a click on another one asks for. Absent, the one
+	// the records open on (DetailModel.openingTab).
 	tab?: DetailModel.Tab;
 	onTab?: (tab: DetailModel.Tab) => void;
 	// Animated spinner frame threaded from app.tsx — animates card glyphs.
@@ -267,13 +268,19 @@ const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 // A table as columns, with no grid drawn around it.
 const TABLE: MarkdownOptions["tableOptions"] = { style: "columns" };
 
+// The tab a view no one has picked a tab on shows: the one its records open on, once they are in.
+const openingTab = (
+	loaded: BoardData.DetailRecords | undefined,
+): DetailModel.Tab =>
+	loaded ? DetailModel.openingTab(loaded) : DetailModel.DEFAULT_TAB;
+
 export const Detail = ({
 	taskId,
 	task: freshTask,
 	records,
 	cards,
 	questions,
-	tab = DetailModel.DEFAULT_TAB,
+	tab: picked,
 	onTab,
 	spinnerFrame,
 	scrollRef,
@@ -291,6 +298,7 @@ export const Detail = ({
 	const theme = useTheme();
 	const { width: room } = useTerminalDimensions();
 	const loaded = records?.ok ? records.value : undefined;
+	const tab = picked ?? openingTab(loaded);
 	const open = DetailModel.openQuestions(loaded, questions, pinned);
 	const summaries = DetailModel.tabs(loaded, cards?.length ?? 0);
 	const live: Keymap.Live = keys ?? {
@@ -586,15 +594,17 @@ const TabContent = ({
 }): ReactNode => {
 	const theme = useTheme();
 	switch (tab) {
-		case "description":
+		case "now":
 			return (
-				<DescriptionTab
+				<NowTab
 					records={records}
 					room={room}
 					checklist={checklist}
 					onItem={onItem}
 				/>
 			);
+		case "description":
+			return <DescriptionTab records={records} room={room} />;
 		case "comments": {
 			const entries = DetailModel.timeline(records);
 			return entries.length > 0 ? (
@@ -639,13 +649,11 @@ const TabContent = ({
 	}
 };
 
-// One list under the brief: its heading, its count when it has one, and its rows.
-type DescriptionList = { title: string; count?: string; rows: ReactNode[] };
-
-// The description tab: the brief, then the newest entry of each kind the brief lifts (a handoff),
-// then the checklist, the decisions made, the subtasks and the curated context, each a list headed
-// like a bay. The first thing drawn has no blank line above it.
-const DescriptionTab = ({
+// The `now` tab: what is in force while the work runs, each block named as the model names it
+// (DetailModel.NowBlock), so a block can be found again by its name: the checklist, the newest entry
+// of each lifted kind as a digest, the decisions made and the subtasks. The first block has no blank
+// line above it.
+const NowTab = ({
 	records,
 	room,
 	checklist,
@@ -657,44 +665,98 @@ const DescriptionTab = ({
 	onItem?: (itemId: string) => void;
 }): ReactNode => {
 	const theme = useTheme();
+	const blocks = DetailModel.now(records);
+	if (blocks.length === 0)
+		return (
+			<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
+				nothing in force
+			</text>
+		);
+	return (
+		<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
+			{blocks.map((block, index) => (
+				<box
+					key={block.name}
+					id={nowBlockId(block.name)}
+					style={{ flexDirection: "column", marginTop: index === 0 ? 0 : 1 }}
+				>
+					<NowBlockBody
+						block={block}
+						room={room}
+						checklist={checklist}
+						onItem={onItem}
+					/>
+				</box>
+			))}
+		</box>
+	);
+};
+
+/** The renderable id of a block on the `now` tab: `now:checklist`, `now:lifted:handoff`. */
+export const nowBlockId = (name: DetailModel.NowBlock["name"]): string =>
+	`now:${name}`;
+
+const NowBlockBody = ({
+	block,
+	room,
+	checklist,
+	onItem,
+}: {
+	block: DetailModel.NowBlock;
+	room: number;
+	checklist: BoardChecklist.Shown;
+	onItem?: (itemId: string) => void;
+}): ReactNode => {
+	if ("entry" in block) return <LiftedDigest entry={block.entry} room={room} />;
+	switch (block.name) {
+		case "checklist": {
+			const { lines, progress, cursor } = checklist;
+			return (
+				<Section title="checklist" count={`${progress.done}/${progress.total}`}>
+					{lines.map((line) => (
+						<ItemRow
+							key={line.id}
+							line={line}
+							room={room}
+							selected={line.id === cursor}
+							onClick={onItem}
+						/>
+					))}
+				</Section>
+			);
+		}
+		case "decisions":
+			return (
+				<Section title="decisions">
+					{block.lines.map((line) => (
+						<DecisionRow key={line.id} line={line} />
+					))}
+				</Section>
+			);
+		case "subtasks":
+			return (
+				<Section title="subtasks">
+					{block.lines.map((line) => (
+						<SubtaskRow key={line.id} line={line} room={room} />
+					))}
+				</Section>
+			);
+	}
+};
+
+// The description tab: the ask, read when the issue is picked up. The description, then the curated
+// context headed like a bay.
+const DescriptionTab = ({
+	records,
+	room,
+}: {
+	records: BoardData.DetailRecords;
+	room: number;
+}): ReactNode => {
+	const theme = useTheme();
 	const description = records.task.description?.trim();
-	const lifted = DetailModel.lifted(records);
-	const { lines: items, progress, cursor } = checklist;
-	const decisions = DetailModel.decisions(records);
-	const subtasks = DetailModel.subtasks(records);
 	const context = DetailModel.contextRefs(records);
-	const lists: DescriptionList[] = [
-		{
-			title: "checklist",
-			count: `${progress.done}/${progress.total}`,
-			rows: items.map((line) => (
-				<ItemRow
-					key={line.id}
-					line={line}
-					room={room}
-					selected={line.id === cursor}
-					onClick={onItem}
-				/>
-			)),
-		},
-		{
-			title: "decisions",
-			rows: decisions.map((line) => <DecisionRow key={line.id} line={line} />),
-		},
-		{
-			title: "subtasks",
-			rows: subtasks.map((line) => (
-				<SubtaskRow key={line.id} line={line} room={room} />
-			)),
-		},
-		{
-			title: "context",
-			rows: context.map((line) => (
-				<ContextRow key={line.id} line={line} room={room} />
-			)),
-		},
-	].filter((list) => list.rows.length > 0);
-	if (!description && lifted.length === 0 && lists.length === 0)
+	if (!description && context.length === 0)
 		return (
 			<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
 				no description
@@ -703,41 +765,32 @@ const DescriptionTab = ({
 	return (
 		<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
 			{description ? <MarkdownBody content={description} /> : null}
-			{lifted.map((entry, index) => (
-				<LiftedBlock
-					key={entry.id}
-					entry={entry}
-					room={room}
-					first={!description && index === 0}
-				/>
-			))}
-			{lists.map((list, index) => (
-				<Section
-					key={list.title}
-					title={list.title}
-					count={list.count}
-					first={!description && lifted.length === 0 && index === 0}
-				>
-					{list.rows}
-				</Section>
-			))}
+			{context.length > 0 ? (
+				<box style={{ marginTop: description ? 1 : 0 }}>
+					<Section title="context">
+						{context.map((line) => (
+							<ContextRow key={line.id} line={line} room={room} />
+						))}
+					</Section>
+				</box>
+			) : null}
 		</box>
 	);
 };
 
-// An entry the brief lifts, under the description: headed like a list, with the kind's title in
-// Label weight and who wrote it and when muted after a `·`, the age held whole and a long name cut
-// before it; then the kind's framing line muted, the body as markdown, and, when the kind has older
-// entries, one muted line saying where they are. A blank line sets the body apart from the framing
-// and the count from the body; a part that is not there takes no line.
-const LiftedBlock = ({
+// An entry the brief lifts, as a digest on the `now` tab: headed like a list, with the kind's title
+// in Label weight and who wrote it and when muted after a `·`, the age held whole and a long name cut
+// before it; then the kind's framing line muted. Under a blank line, the body's opening rendered
+// (DetailModel.digest), its first heading behind an open `▾`, and a muted `… n more lines` when the
+// cap left some out; then one line per further heading behind a closed `▸`, its size muted, never
+// its content. Those are the `▸ ▾` of a folded run in a transcript: a part closed, a part open. When
+// the kind has older entries, one muted line under a blank line says where they are.
+const LiftedDigest = ({
 	entry,
 	room,
-	first,
 }: {
 	entry: DetailModel.LiftedEntry;
 	room: number;
-	first: boolean;
 }): ReactNode => {
 	const theme = useTheme();
 	const heading = Segments.fitHolding(
@@ -752,15 +805,45 @@ const LiftedBlock = ({
 		[{ text: ` · ${relativeTime(entry.at)}`, fg: theme.muted }],
 		room,
 	);
+	// The columns the markdown wraps in: the room less its own inset, never past the measure.
+	const digest = DetailModel.digest(
+		entry.sections,
+		Math.min(room - CONTENT_INSET, PROSE_MEASURE),
+	);
+	const hasBody = digest.shown.length > 0 || digest.folded.length > 0;
 	return (
-		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
+		<box style={{ flexDirection: "column" }}>
 			<text>{Segments.spans(heading)}</text>
 			<text fg={theme.muted} style={{ maxWidth: PROSE_MEASURE }}>
 				{entry.framing}
 			</text>
-			{entry.body ? (
-				<box style={{ marginTop: 1 }}>
-					<MarkdownBody content={entry.body} />
+			{hasBody ? (
+				<box style={{ flexDirection: "column", marginTop: 1 }}>
+					{digest.shown.map((part) => (
+						<box
+							key={part.heading ?? "opening"}
+							style={{ flexDirection: "column" }}
+						>
+							{part.heading !== undefined ? (
+								<FoldRow glyph="▾" heading={part.heading} room={room} />
+							) : null}
+							{part.text ? <MarkdownBody content={part.text} /> : null}
+						</box>
+					))}
+					{digest.more > 0 ? (
+						<text fg={theme.muted}>
+							{`… ${digest.more} more ${digest.more === 1 ? "line" : "lines"}`}
+						</text>
+					) : null}
+					{digest.folded.map((part, index) => (
+						<FoldRow
+							key={index}
+							glyph="▸"
+							heading={part.heading}
+							size={part.size}
+							room={room}
+						/>
+					))}
 				</box>
 			) : null}
 			{entry.earlier > 0 ? (
@@ -772,22 +855,54 @@ const LiftedBlock = ({
 	);
 };
 
-// A list under the description, headed in Label weight like a bay, its count muted after a `·`, one
-// blank line above it.
+// One heading of a digest: the fold glyph muted, the heading in the terminal's foreground, and, for a
+// folded one, its size muted after a `·` (`▸ Evidence · 7 lines`, `▸ Risk · empty`), held whole while
+// a long heading is cut.
+const FoldRow = ({
+	glyph,
+	heading,
+	size,
+	room,
+}: {
+	glyph: string;
+	heading: string;
+	size?: number;
+	room: number;
+}): ReactNode => {
+	const theme = useTheme();
+	const sized =
+		size === undefined
+			? []
+			: [
+					{
+						text: ` · ${size === 0 ? "empty" : `${size} ${size === 1 ? "line" : "lines"}`}`,
+						fg: theme.muted,
+					},
+				];
+	const segments = Segments.fitHolding(
+		[
+			{ text: `${glyph} `, fg: theme.muted },
+			{ text: heading, fg: theme.defaultFg },
+		],
+		sized,
+		room,
+	);
+	return <text>{Segments.spans(segments)}</text>;
+};
+
+// A list on a tab, headed in Label weight like a bay, its count muted after a `·`.
 const Section = ({
 	title,
 	count,
-	first,
 	children,
 }: {
 	title: string;
 	count?: string;
-	first: boolean;
 	children: ReactNode;
 }): ReactNode => {
 	const theme = useTheme();
 	return (
-		<box style={{ flexDirection: "column", marginTop: first ? 0 : 1 }}>
+		<box style={{ flexDirection: "column" }}>
 			<text>
 				<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
 					{title}

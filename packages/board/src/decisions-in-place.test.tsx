@@ -122,7 +122,11 @@ it("u finds the issue, its detail asks both decisions, and the last answer moves
 		mockInput.pressEnter();
 		const done = await until((f) => f.includes("→ next"));
 		expect(done).toContain(":2 answered · ");
-		expect(done).toContain("Which store should hold the tokens? → SQLite (");
+		// The issue opened on its description, nothing being in force then, and stays there; the
+		// decisions made are on `now`.
+		mockInput.pressKey("1");
+		const decided = await until((f) => f.includes("decisions"));
+		expect(decided).toContain("Which store should hold the tokens? → SQLite (");
 		const issue = await Planner.getTask(BASE, issueId);
 		expect(issue.ok && issue.value?.state).toBe("next");
 		const rows = await Questions.list(BASE, { id: issueId });

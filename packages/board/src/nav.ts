@@ -83,6 +83,22 @@ export namespace BoardNav {
 	export const detailTab = (view: BoardView): DetailModel.Tab =>
 		(view.type === "detail" ? view.tab : undefined) ?? DetailModel.DEFAULT_TAB;
 
+	/**
+	 * The detail view on `taskId` settles on `tab`, the one its first records open on
+	 * (DetailModel.openingTab), unless a tab is already picked. Settled once, the tab stays across a
+	 * refetch: a checklist that lands while the human reads the description does not move them.
+	 */
+	export const withOpeningTab = (
+		state: BoardState,
+		taskId: string,
+		tab: DetailModel.Tab,
+	): BoardState =>
+		state.view.type === "detail" &&
+		state.view.taskId === taskId &&
+		state.view.tab === undefined
+			? { ...state, view: { ...state.view, tab } }
+			: state;
+
 	// Vim-style `/` search over the loaded board. `typing` is input mode (the footer shows the query,
 	// every other board key is inert — printable chars go to the query); `enter` commits to `committed`
 	// where normal keys work again over the filtered list. The filter itself lives in visibleRows so
@@ -2159,8 +2175,8 @@ export namespace BoardNav {
 			: { state: { ...state, view: { ...state.view, tab } }, effect: NONE };
 
 	// Detail view: `esc`/`q` pop back to the board (never widen scope or quit); j/k/up/down scroll the
-	// tab in view; a digit picks a tab and `h`/`l` (or left/right) step through them; on the
-	// description, `J/K` move through the checklist and `space` toggles an item; the keys for the
+	// tab in view; a digit picks a tab and `h`/`l` (or left/right) step through them; on `now`,
+	// `J/K` move through the checklist and `space` toggles an item; the keys for the
 	// task in hand act on the OPEN task (not the board's selection), and the view refreshes after a
 	// mutation; everything else is a no-op.
 	const reduceDetailKey = (

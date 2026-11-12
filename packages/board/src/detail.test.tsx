@@ -127,7 +127,7 @@ const runCard = (over: Partial<ActivityCard> = {}): ActivityCard => ({
 	...over,
 });
 
-test("Detail opens on the description, with the title once, the task at a glance and the tab bar", async () => {
+test("Detail opens on the description when nothing is in force, with the title once, the task at a glance and the tab bar", async () => {
 	const task = await seed({ title: "Unique Sunflower Title" });
 	const { renderOnce, captureCharFrame, destroy } = await mount(task);
 	try {
@@ -136,7 +136,7 @@ test("Detail opens on the description, with the title once, the task at a glance
 		);
 		expect(frame.split("Unique Sunflower Title").length - 1).toBe(1);
 		expect(frame).toContain("next · task");
-		expect(onOneRow(frame, "description")).toBe(true);
+		expect(onOneRow(frame, " now  description  comments 0")).toBe(true);
 		expect(frame).toContain("comments 0");
 		expect(frame).toContain("log 0");
 		// The agent brief is not drawn: none of its headings reach the screen.
@@ -478,7 +478,7 @@ test("Detail's tab bar reads whole at forty columns and paints the active tab", 
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("no comments"),
 		);
-		expect(onOneRow(frame, " description  comments 0  log 0 ")).toBe(true);
+		expect(onOneRow(frame, " now  description  comments 0  log 0 ")).toBe(true);
 		const active = captureSpans()
 			.lines.flatMap((line) => line.spans)
 			.find((span) => span.text.includes("comments"));
@@ -595,7 +595,7 @@ test("relativeTime formats relative timestamps", () => {
 	);
 });
 
-test("Detail at 40 columns: the subtask count pinned, and the subtasks and context under the description, each once and whole", async () => {
+test("Detail at 40 columns: the subtask count pinned, the subtasks on now and the context on the description, each once and whole", async () => {
 	const parent = await seed({ title: "Parent plan" });
 	for (const [title, state] of [
 		["First step", "done"],
@@ -617,34 +617,47 @@ test("Detail at 40 columns: the subtask count pinned, and the subtasks and conte
 		});
 		expect(added.ok).toBe(true);
 	}
-	const { renderOnce, captureCharFrame, destroy } = await mount(parent, {
-		width: 40,
-		height: 30,
-	});
+	const now = await mount(parent, { width: 40, height: 30 });
 	try {
-		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+		const frame = await pumpUntil(now.renderOnce, now.captureCharFrame, (f) =>
 			f.includes("Third step"),
 		);
 		expect(onOneRow(frame, "subtasks 3 · 1 done")).toBe(true);
-		for (const text of [
-			"First step",
-			"Second step",
-			"Third step",
-			"Cabane PRD",
-		])
+		for (const text of ["First step", "Second step", "Third step"])
 			expect(frame.split(text).length - 1).toBe(1);
 		// The state is held at the row's right, so a long title never pushes it off.
 		const working = rows(frame).find((row) => row.includes("Second step"));
 		expect(working?.trimEnd().endsWith("in progress")).toBe(true);
-		expect(onOneRow(frame, "ADR docs/adr.md")).toBe(true);
+		// The ask is not on `now`.
+		expect(frame).not.toContain("Cabane PRD");
+		expect(frame).not.toContain("The description reads here.");
 		for (const row of rows(frame))
 			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
 	} finally {
-		destroy();
+		now.destroy();
+	}
+	const described = await mount(parent, {
+		tab: "description",
+		width: 40,
+		height: 30,
+	});
+	try {
+		const frame = await pumpUntil(
+			described.renderOnce,
+			described.captureCharFrame,
+			(f) => f.includes("Cabane PRD") && f.includes("reads here."),
+		);
+		const lines = rows(frame);
+		const brief = lines.findIndex((row) => row.includes("reads here."));
+		expect(lines[brief + 2]).toContain("context");
+		expect(onOneRow(frame, "ADR docs/adr.md")).toBe(true);
+		expect(frame).not.toContain("First step");
+	} finally {
+		described.destroy();
 	}
 });
 
-test("Detail lists the checklist under the brief with its count, the cursor on the first open item", async () => {
+test("Detail opens on now with the checklist first, its count and the cursor on the first open item", async () => {
 	const task = await seed({ title: "Stepwise" });
 	const added = await Checklist.add(TEST_BASE, {
 		id: task.id,
@@ -664,20 +677,14 @@ test("Detail lists the checklist under the brief with its count, the cursor on t
 		{ width: 40, height: 30 },
 	);
 	try {
-		const frame = await pumpUntil(
-			renderOnce,
-			captureCharFrame,
-			(f) =>
-				f.includes("Drop the old one") &&
-				f.includes("The description reads here."),
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("Drop the old one"),
 		);
 		const lines = rows(frame);
+		const bar = lines.findIndex((row) => row.includes(" now  "));
 		const heading = lines.findIndex((row) => row.includes("checklist · 1/3"));
-		const brief = lines.findIndex((row) =>
-			row.includes("The description reads here."),
-		);
-		expect(brief).toBeGreaterThanOrEqual(0);
-		expect(heading).toBeGreaterThan(brief);
+		expect(heading).toBe(bar + 2);
+		expect(frame).not.toContain("The description reads here.");
 		expect(lines[heading + 1]).toContain("✓ Read the store");
 		expect(lines[heading + 2]).toContain("○ Write the store");
 		expect(lines[heading + 2]).toContain("…");
@@ -696,12 +703,14 @@ test("Detail lists the checklist under the brief with its count, the cursor on t
 			ints && `#${ints.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
 		expect(hex(bg("Write the store"))).toBe(selected);
 		expect(hex(bg("Drop the old one"))).not.toBe(selected);
+		// The tab is painted active though no one picked it: the view opened on it.
+		expect(hex(bg(" now "))).toBe(selected);
 	} finally {
 		destroy();
 	}
 });
 
-test("Detail lifts the latest handoff between the brief and the checklist at forty columns, counting the earlier one", async () => {
+test("Detail lifts the latest handoff under the checklist at forty columns, counting the earlier one", async () => {
 	const task = await seed({ title: "Handed off" });
 	for (const content of ["The first pass.", "The **second** pass."]) {
 		const added = await Planner.addEntry(TEST_BASE, {
@@ -731,7 +740,8 @@ test("Detail lifts the latest handoff between the brief and the checklist at for
 		const lines = rows(frame);
 		const at = (text: string) => lines.findIndex((row) => row.includes(text));
 		const heading = at(" handoff · claude · just now");
-		expect(heading).toBeGreaterThan(at("The description reads here."));
+		expect(at("checklist · 0/1")).toBe(heading - 3);
+		expect(lines[heading - 1]?.trim()).toBe("");
 		expect(lines[heading + 1]).toContain("The author's own account");
 		// The framing takes three rows at forty columns; one blank row sets each part apart.
 		expect(lines[heading + 3]?.trim()).toBe("it.");
@@ -739,7 +749,6 @@ test("Detail lifts the latest handoff between the brief and the checklist at for
 		expect(at("The second pass.")).toBe(heading + 5);
 		expect(lines[heading + 6]?.trim()).toBe("");
 		expect(at("1 earlier in comments")).toBe(heading + 7);
-		expect(at("checklist · 0/1")).toBe(heading + 9);
 		expect(frame).not.toContain("The first pass.");
 		for (const row of lines)
 			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
@@ -756,7 +765,73 @@ test("Detail lifts the latest handoff between the brief and the checklist at for
 	}
 });
 
-test("Detail cuts a long author's name and holds the age, under the description and on the band, at forty columns", async () => {
+test("Detail shows a handoff as a digest: its first section open, every further heading one line with its size", async () => {
+	const task = await seed({ title: "Handed off" });
+	const body = [
+		"### Summary",
+		"",
+		"The store writes through on every change.",
+		"",
+		"- one",
+		"- two",
+		"- three",
+		"- four",
+		"- five",
+		"- six",
+		"- seven",
+		"",
+		"### Evidence",
+		"",
+		"- `bun test` 12 pass",
+		"- the sandbox read it back",
+		"",
+		"### Not verified",
+		"",
+		"A restart under load.",
+		"",
+		"### Risk",
+	].join("\n");
+	const added = await Planner.addEntry(TEST_BASE, {
+		taskId: task.id,
+		kind: "handoff",
+		author: "cabane://actor/agent/claude",
+		authorType: "ai",
+		content: body,
+	});
+	if (!added.ok) throw added.error;
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		width: 40,
+		height: 40,
+	});
+	try {
+		const frame = await pumpUntil(
+			renderOnce,
+			captureCharFrame,
+			(f) => f.includes("▸ Risk") && f.includes("four"),
+		);
+		const lines = rows(frame);
+		const at = (text: string) => lines.findIndex((row) => row.includes(text));
+		const open = at("▾ Summary");
+		expect(open).toBeGreaterThan(at("handoff · claude"));
+		expect(lines[open + 1]).toContain("The store writes through");
+		// Eight rows: the heading, two of the paragraph, a blank, and four items; three are left out.
+		expect(at("… 3 more lines")).toBeGreaterThan(at("four"));
+		expect(frame).not.toContain("five");
+		expect(lines[at("… 3 more lines") + 1]).toContain("▸ Evidence · 2 lines");
+		expect(lines[at("… 3 more lines") + 2]).toContain(
+			"▸ Not verified · 1 line",
+		);
+		expect(lines[at("… 3 more lines") + 3]).toContain("▸ Risk · empty");
+		expect(frame).not.toContain("12 pass");
+		expect(frame).not.toContain("A restart under load.");
+		for (const row of lines)
+			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail cuts a long author's name and holds the age, on now and on the band, at forty columns", async () => {
 	const task = await seed();
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
@@ -766,7 +841,7 @@ test("Detail cuts a long author's name and holds the age, under the description 
 		content: "Picked up where the first pass stopped.",
 	});
 	if (!added.ok) throw added.error;
-	for (const tab of ["description", "comments"] as const) {
+	for (const tab of ["now", "comments"] as const) {
 		const { renderOnce, captureCharFrame, destroy } = await mount(task, {
 			tab,
 			width: 40,
@@ -776,7 +851,7 @@ test("Detail cuts a long author's name and holds the age, under the description 
 				f.includes("Picked up where"),
 			);
 			const heading =
-				tab === "description"
+				tab === "now"
 					? " handoff · claude-sonnet-4… · just now"
 					: " claude-sonnet-4… · handoff · just now";
 			expect({ tab, cut: onOneRow(frame, heading) }).toEqual({
@@ -801,11 +876,7 @@ test("Detail's lifted block spends no line on a count it does not have", async (
 		content: "The only pass.",
 	});
 	if (!added.ok) throw added.error;
-	const items = await Checklist.add(TEST_BASE, {
-		id: task.id,
-		items: ["Read it back"],
-	});
-	if (!items.ok) throw items.error;
+	await seed({ title: "A step under it", parentTaskId: task.id });
 	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
 		width: 40,
 	});
@@ -813,14 +884,14 @@ test("Detail's lifted block spends no line on a count it does not have", async (
 		const frame = await pumpUntil(
 			renderOnce,
 			captureCharFrame,
-			(f) => f.includes("The only pass.") && f.includes("Read it back"),
+			(f) => f.includes("The only pass.") && f.includes("A step under it"),
 		);
 		const lines = rows(frame);
 		const body = lines.findIndex((row) => row.includes("The only pass."));
 		expect(body).toBeGreaterThan(-1);
 		expect(frame).not.toContain("earlier in comments");
 		expect(lines[body + 1]?.trim()).toBe("");
-		expect(lines[body + 2]).toContain("checklist · 0/1");
+		expect(lines[body + 2]).toContain("subtasks");
 	} finally {
 		destroy();
 	}
@@ -852,7 +923,7 @@ test("Detail's band for a plain comment is one row at forty columns, a long name
 	}
 });
 
-test("Detail's description tab is not empty when a handoff is all it holds", async () => {
+test("Detail opens on now when a handoff is all an issue holds, the handoff first, and its description says it has none", async () => {
 	const task = await seed({ description: "" });
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
@@ -862,17 +933,27 @@ test("Detail's description tab is not empty when a handoff is all it holds", asy
 		content: "Only a handoff here.",
 	});
 	if (!added.ok) throw added.error;
-	const { renderOnce, captureCharFrame, destroy } = await mount(task);
+	const now = await mount(task);
 	try {
-		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+		const frame = await pumpUntil(now.renderOnce, now.captureCharFrame, (f) =>
 			f.includes("Only a handoff here."),
 		);
-		expect(frame).not.toContain("no description");
 		const lines = rows(frame);
-		const bar = lines.findIndex((row) => row.includes("description"));
+		const bar = lines.findIndex((row) => row.includes(" now  description"));
 		// The handoff is the first thing drawn: no blank line over it beyond the tab bar's own gap.
 		expect(lines[bar + 2]).toContain("handoff · claude");
 	} finally {
-		destroy();
+		now.destroy();
+	}
+	const described = await mount(task, { tab: "description" });
+	try {
+		const frame = await pumpUntil(
+			described.renderOnce,
+			described.captureCharFrame,
+			(f) => f.includes("no description"),
+		);
+		expect(frame).not.toContain("Only a handoff here.");
+	} finally {
+		described.destroy();
 	}
 });
