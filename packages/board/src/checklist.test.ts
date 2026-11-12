@@ -191,14 +191,32 @@ describe("the checklist on an issue's detail", () => {
 		const done = BoardChecklist.settle(between, WRITE.id, true);
 		expect(done.effect).toEqual({ type: "none" });
 		expect(doneOf(done.state)).toEqual([true, false, false]);
-		// Settled, the next records say what the store holds, a tick from elsewhere included.
+		// Settled, records from after both writes say what the store holds, a tick from elsewhere
+		// included: the store is at version 3 once both writes landed, and the tick makes it 4.
 		const after = BoardChecklist.withOpen(done.state, "w", [
 			READ,
-			{ ...WRITE, done: true },
+			{ ...WRITE, done: true, version: 4 },
 			DROP,
 		]);
 		expect(after.checklist.writes.size).toBe(0);
 		expect(doneOf(after)).toEqual([true, true, false]);
+	});
+
+	// The sequence the closing review found: a poll's fetch begins before the tick, the tick
+	// settles, and that poll lands after it.
+	it("keeps a settled press over records read before its write, until records that agree land", () => {
+		const ticked = press(detail(), "space").state;
+		const settled = BoardChecklist.settle(ticked, WRITE.id, true).state;
+		const stale = BoardChecklist.withOpen(settled, "w", [READ, WRITE, DROP]);
+		expect(stale.checklist.writes.get(WRITE.id)?.wanted).toBe(true);
+		expect(doneOf(stale)).toEqual([true, true, false]);
+		const agreed = BoardChecklist.withOpen(stale, "w", [
+			READ,
+			{ ...WRITE, done: true, version: 2 },
+			DROP,
+		]);
+		expect(agreed.checklist.writes.size).toBe(0);
+		expect(doneOf(agreed)).toEqual([true, true, false]);
 	});
 
 	it("puts an item back to its last acknowledged state when its write fails, dropping what was queued", () => {
