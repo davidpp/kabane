@@ -24,6 +24,9 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 | `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource, Dispatcher and Copilot ports |
 | `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP |
 
+The [loop extension](docs/loop.md) runs issues through coding harnesses, with model tiers,
+subtask routing and advice on run settings.
+
 ## Install
 
 Install the npm package with [Bun](https://bun.sh) 1.4 or later (not Node):
