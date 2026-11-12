@@ -865,8 +865,10 @@ const DescriptionTab = ({
 // before it; then the kind's framing line muted. Under a blank line, the body's opening rendered
 // (DetailModel.digest), its first heading behind an open `▾`, and a muted `… n more lines` when the
 // cap left some out; then one line per further heading behind a closed `▸`, its size muted, never
-// its content. Those are the `▸ ▾` of a folded run in a transcript: a part closed, a part open. When
-// the kind has older entries, one muted line under a blank line says where they are.
+// its content. Those are the `▸ ▾` of a folded run in a transcript: a part closed, a part open. The
+// fold's last line (the cut, or the last `▸` when nothing is cut) ends on the `r` hint, in the
+// footer's two tones, since the footer gives its own room to the checklist's keys. When the kind has
+// older entries, one muted line under a blank line says where they are.
 const LiftedDigest = ({
 	entry,
 	room,
@@ -896,6 +898,12 @@ const LiftedDigest = ({
 		Math.min(room - CONTENT_INSET, PROSE_MEASURE),
 	);
 	const hasBody = digest.shown.length > 0 || digest.folded.length > 0;
+	const readHint = [
+		{ text: " · ", fg: theme.muted },
+		{ text: "r", fg: theme.defaultFg },
+		{ text: " read", fg: theme.muted },
+	];
+	const lastFold = digest.more > 0 ? -1 : digest.folded.length - 1;
 	return (
 		<box style={{ flexDirection: "column" }}>
 			<text>{Segments.spans(heading)}</text>
@@ -916,8 +924,19 @@ const LiftedDigest = ({
 						</box>
 					))}
 					{digest.more > 0 ? (
-						<text fg={theme.muted}>
-							{`… ${digest.more} more ${digest.more === 1 ? "line" : "lines"}`}
+						<text>
+							{Segments.spans(
+								Segments.fitHolding(
+									[
+										{
+											text: `… ${digest.more} more ${digest.more === 1 ? "line" : "lines"}`,
+											fg: theme.muted,
+										},
+									],
+									readHint,
+									room,
+								),
+							)}
 						</text>
 					) : null}
 					{digest.folded.map((part, index) => (
@@ -927,6 +946,7 @@ const LiftedDigest = ({
 							heading={part.heading}
 							size={part.size}
 							room={room}
+							hint={index === lastFold ? readHint : undefined}
 						/>
 					))}
 				</box>
@@ -941,18 +961,20 @@ const LiftedDigest = ({
 };
 
 // One heading of a digest: the fold glyph muted, the heading in the terminal's foreground, and, for a
-// folded one, its size muted after a `·` (`▸ Evidence · 7 lines`, `▸ Risk · empty`), held whole while
-// a long heading is cut.
+// folded one, its size muted after a `·` (`▸ Evidence · 7 lines`, `▸ Risk · empty`) and any hint after
+// it, held whole while a long heading is cut.
 const FoldRow = ({
 	glyph,
 	heading,
 	size,
 	room,
+	hint = [],
 }: {
 	glyph: string;
 	heading: string;
 	size?: number;
 	room: number;
+	hint?: readonly Segments.Segment[];
 }): ReactNode => {
 	const theme = useTheme();
 	const sized =
@@ -969,7 +991,7 @@ const FoldRow = ({
 			{ text: `${glyph} `, fg: theme.muted },
 			{ text: heading, fg: theme.defaultFg },
 		],
-		sized,
+		[...sized, ...hint],
 		room,
 	);
 	return <text>{Segments.spans(segments)}</text>;
