@@ -25,6 +25,7 @@ import { z } from "zod";
 import { Budget } from "./budget";
 import { LoopConfig } from "./config";
 import { Gates } from "./gates";
+import { Route } from "./route";
 import { Stall } from "./stall";
 import { Steering } from "./steering";
 
@@ -89,6 +90,17 @@ export namespace RunStore {
 		tree: z.string().optional(),
 		/** A subtask's claim's own worktree (`ClaimTrees`), when it worked in one: its top. */
 		worktree: z.string().optional(),
+		/** The harness's named agent the session ran as (`agent:` tag), once it opened as one. */
+		agent: z.string().optional(),
+		/** The model the session ran on, by the harness's value, once it opened and when known. */
+		model: z.string().optional(),
+		/**
+		 * Where that model came from: the subtask's `tier:` tag, the run's `model`, the agent's own
+		 * pin, or the harness's default.
+		 */
+		modelSource: z.enum(Route.SOURCES).optional(),
+		/** The tier the model was resolved from, the tag's or the run's. */
+		tier: z.string().optional(),
 	});
 	export type Claim = z.infer<typeof ClaimSchema>;
 

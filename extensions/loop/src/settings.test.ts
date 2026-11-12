@@ -71,11 +71,16 @@ describe("LoopSettings.inputs", () => {
 			options: ["claude", "codex", "gemini"],
 			group: "Agents",
 		});
-		// No model is the user's own; the loop pins none.
+		// No model is the user's own; the loop pins none. The tiers are what it steps through.
 		expect(inputs.model).toMatchObject({
 			default: "your own",
-			options: ["your own", "opus", "sonnet", "haiku"],
+			options: ["your own", "frontier", "balanced", "fast"],
 		});
+		// A tier loop.tiers adds is one more step.
+		expect(
+			LoopSettings.inputs(config({ tiers: { codex: { docs: "gpt-6-luna" } } }))
+				.model?.options,
+		).toEqual(["your own", "frontier", "balanced", "fast", "docs"]);
 		// Unset, it follows isolation; a value set in a layer shows instead.
 		expect(inputs["budget.concurrency"]).toMatchObject({
 			type: "number",

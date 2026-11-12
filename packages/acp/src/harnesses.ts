@@ -1,7 +1,11 @@
 // Which coding harness to talk ACP to and how to launch it. Adapter versions are pinned so a
 // board session behaves the same on every device; a user overrides the command when they run
 // a harness from somewhere else (a local build, a wrapper script).
-import { err, ok, type Result } from "@cabane/core";
+import { readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { err, ok, type Result, trySync } from "@cabane/core";
+import { z } from "zod";
 
 export namespace Harnesses {
 	export const IDS = ["claude", "codex", "gemini"] as const;
@@ -32,6 +36,19 @@ export namespace Harnesses {
 		// before every change (`manual`) and the harness's own auto mode, where the harness
 		// decides which tool calls need a human. Ids as each pinned adapter sends them.
 		modes?: Modes;
+		// How a session runs its main thread as one of the harness's named agents, where it can:
+		// what `session/new` and `session/resume` carry in `_meta` to ask for agent `name`, the
+		// config option the harness reports the agent it runs on, and where its definitions live
+		// under a project and under the home directory. Only Claude has it: codex-acp 2.5.0 takes no
+		// agent or profile per session, and codex-cli refuses the legacy `profile` key its
+		// `CODEX_CONFIG` could carry, selecting a profile only with its own `--profile` flag.
+		agents?: Agents;
+	};
+
+	type Agents = {
+		meta: (name: string) => Record<string, unknown>;
+		option: string;
+		dir: string;
 	};
 
 	export type Modes = { manual: string; auto: string };
@@ -47,6 +64,14 @@ export namespace Harnesses {
 			// Advertised: `default` ("Manual", always ask), `acceptEdits`, `plan`, `auto` ("Claude
 			// handles permission decisions") and `bypassPermissions`, which kabane never selects.
 			modes: { manual: "default", auto: "auto" },
+			// The adapter spreads `_meta.claudeCode.options` into the Agent SDK's options, whose
+			// `agent` runs the main thread as that agent (`--agent`), and reports it on its `agent`
+			// option, listed only when the user has an agent of their own.
+			agents: {
+				meta: (name) => ({ claudeCode: { options: { agent: name } } }),
+				option: "agent",
+				dir: join(".claude", "agents"),
+			},
 		},
 		codex: {
 			command: "npx",
@@ -72,6 +97,90 @@ export namespace Harnesses {
 	export type Mode = (typeof MODES)[number];
 
 	export const modes = (id: Id): Modes | undefined => REGISTRY[id].modes;
+
+	/** What a session's `_meta` carries to run as agent `name`; undefined where the harness has no way. */
+	export const agentMeta = (
+		id: Id,
+		name: string,
+	): Record<string, unknown> | undefined => REGISTRY[id].agents?.meta(name);
+
+	/** The config option the harness reports its running agent on; undefined where it has none. */
+	export const agentOption = (id: Id): string | undefined =>
+		REGISTRY[id].agents?.option;
+
+	/** A named agent's definition as `agentDefinition` found it: its file and the model it pins. */
+	export type AgentDefinition = { path: string; model?: string };
+
+	// What an agent's definition says of itself: its name and the model it pins, if any. Other keys
+	// are Claude's to read.
+	const FrontmatterSchema = z.object({
+		name: z.string().min(1).optional(),
+		model: z.string().min(1).optional(),
+	});
+
+	// The frontmatter of an agent's markdown file, the YAML between its opening `---` and the next;
+	// empty when it has none, or none Claude could read either.
+	const frontmatter = (text: string): z.infer<typeof FrontmatterSchema> => {
+		const [first, ...rest] = text.split("\n");
+		if (first?.trim() !== "---") return {};
+		const end = rest.findIndex((line) => line.trim() === "---");
+		if (end === -1) return {};
+		const yaml = trySync(() => Bun.YAML.parse(rest.slice(0, end).join("\n")));
+		if (!yaml.ok) return {};
+		const fields = FrontmatterSchema.safeParse(yaml.value);
+		return fields.success ? fields.data : {};
+	};
+
+	// Agent `name` among the markdown files of `dir`, by its frontmatter name, else its file name.
+	const definedIn = (
+		dir: string,
+		name: string,
+	): AgentDefinition | undefined => {
+		let files: string[];
+		try {
+			files = readdirSync(dir).filter((f) => f.endsWith(".md"));
+		} catch {
+			return undefined;
+		}
+		for (const file of files) {
+			const path = join(dir, file);
+			let text: string;
+			try {
+				text = readFileSync(path, "utf8");
+			} catch {
+				continue;
+			}
+			const fields = frontmatter(text);
+			if ((fields.name ?? file.slice(0, -".md".length)) !== name) continue;
+			const model = fields.model;
+			// `inherit` is the session's own model, which a tier may choose: no pin.
+			return model && model !== "inherit" ? { path, model } : { path };
+		}
+		return undefined;
+	};
+
+	/**
+	 * Where harness `id` defines agent `name` as a session in `cwd` would find it, and the model it
+	 * pins: the project's definition, from `cwd` up to the root, nearest first, then the user's own
+	 * under `home`, as Claude Code ranks a project agent over a user one. Undefined when neither
+	 * defines it, or the harness has no named agents. Read from the files rather than from the
+	 * opened session, whose model option names the model and never says that an agent chose it.
+	 */
+	export const agentDefinition = (
+		id: Id,
+		name: string,
+		cwd: string,
+		home: string = homedir(),
+	): AgentDefinition | undefined => {
+		const agents = REGISTRY[id].agents;
+		if (!agents) return undefined;
+		for (let dir = cwd; ; dir = dirname(dir)) {
+			const found = definedIn(join(dir, agents.dir), name);
+			if (found) return found;
+			if (dirname(dir) === dir) break;
+		}
+		return definedIn(join(home, agents.dir), name);
+	};
 
 	// Lets the user's harness hooks tell a board session from an interactive one.
 	export const SESSION_ENV = { KABANE_SESSION: "1" };

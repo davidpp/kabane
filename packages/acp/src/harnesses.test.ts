@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Harnesses } from "./harnesses";
 
 describe("Harnesses.resolve", () => {
@@ -116,5 +119,94 @@ describe("Harnesses.installedCli", () => {
 		expect(codex.ok && codex.value).toEqual({
 			CODEX_PATH: "/opt/codex-dev/codex",
 		});
+	});
+});
+
+describe("Harnesses.agentDefinition", () => {
+	const agent = (dir: string, file: string, frontmatter: string): string => {
+		const agents = join(dir, ".claude", "agents");
+		mkdirSync(agents, { recursive: true });
+		const path = join(agents, file);
+		writeFileSync(path, `---\n${frontmatter}\n---\nYou review board UI.\n`);
+		return path;
+	};
+
+	it("reads the model a Claude agent pins, the project's over the user's, nearest first", () => {
+		const root = mkdtempSync(join(tmpdir(), "harness-agents-"));
+		try {
+			const home = join(root, "home");
+			const project = join(root, "project");
+			const sub = join(project, "packages", "board");
+			mkdirSync(sub, { recursive: true });
+			agent(home, "board-ui.md", "name: board-ui\nmodel: haiku");
+			expect(
+				Harnesses.agentDefinition("claude", "board-ui", sub, home),
+			).toEqual({
+				path: join(home, ".claude", "agents", "board-ui.md"),
+				model: "haiku",
+			});
+			// Named by its frontmatter, whatever its file is called, and found from a folder inside.
+			const own = agent(project, "ui.md", 'name: board-ui\nmodel: "opus"');
+			expect(
+				Harnesses.agentDefinition("claude", "board-ui", sub, home),
+			).toEqual({ path: own, model: "opus" });
+			const nearer = agent(sub, "board-ui.md", "description: x");
+			expect(
+				Harnesses.agentDefinition("claude", "board-ui", sub, home),
+			).toEqual({ path: nearer });
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("reads the frontmatter as YAML: a comment is not part of a value, and a file it cannot read defines nothing", () => {
+		const root = mkdtempSync(join(tmpdir(), "harness-agents-"));
+		try {
+			const inherit = agent(
+				root,
+				"a.md",
+				"name: board-ui # specialist\nmodel: inherit # use the selected tier",
+			);
+			expect(
+				Harnesses.agentDefinition("claude", "board-ui", root, root),
+			).toEqual({ path: inherit });
+			const pinned = agent(
+				root,
+				"b.md",
+				"name: 'docs'\ndescription: >\n  Writes the docs,\n  nothing else\nmodel: haiku # cheap",
+			);
+			expect(Harnesses.agentDefinition("claude", "docs", root, root)).toEqual({
+				path: pinned,
+				model: "haiku",
+			});
+			agent(root, "c.md", "name: [broken\nmodel: opus");
+			agent(root, "d.md", "name: reviewer\nmodel: 3");
+			expect(Harnesses.agentDefinition("claude", "c", root, root)).toEqual({
+				path: join(root, ".claude", "agents", "c.md"),
+			});
+			expect(
+				Harnesses.agentDefinition("claude", "reviewer", root, root),
+			).toBeUndefined();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("reads no pin from inherit, and nothing for an agent nobody defines or a harness without agents", () => {
+		const root = mkdtempSync(join(tmpdir(), "harness-agents-"));
+		try {
+			const path = agent(root, "docs.md", "name: docs\nmodel: inherit");
+			expect(Harnesses.agentDefinition("claude", "docs", root, root)).toEqual({
+				path,
+			});
+			expect(
+				Harnesses.agentDefinition("claude", "nobody", root, root),
+			).toBeUndefined();
+			expect(
+				Harnesses.agentDefinition("codex", "docs", root, root),
+			).toBeUndefined();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 });

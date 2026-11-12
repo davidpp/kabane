@@ -219,6 +219,71 @@ describe("kabane loop status, after a landing", () => {
 	});
 });
 
+describe("kabane loop status, its claims", () => {
+	it("says what ran each claim: harness, agent, and model with where it came from", async () => {
+		const config = LoopConfig.Schema.safeParse({});
+		if (!config.success) throw config.error;
+		const at = new Date().toISOString();
+		const claim = (lane: string, extra: Partial<RunStore.Claim>) => ({
+			taskId: lane,
+			shortId: lane,
+			harness: "claude",
+			lane,
+			sessionId: `s-${lane}`,
+			startedAt: at,
+			continuations: 0,
+			...extra,
+		});
+		const created = RunStore.create(home, {
+			version: 1,
+			id: "run-1",
+			parentId: "01PARENT",
+			parentShortId: "K-1",
+			projectDir: home,
+			config: config.data,
+			status: "completed",
+			createdAt: at,
+			claims: [
+				claim("K-2", {
+					model: "haiku",
+					modelSource: "tier",
+					tier: "fast",
+					endedAt: at,
+					outcome: "done",
+				}),
+				claim("K-3", {
+					agent: "board-ui",
+					model: "opus",
+					modelSource: "agent",
+				}),
+				claim("K-4", {
+					harness: "codex",
+					model: "gpt-6-astra",
+					modelSource: "default",
+				}),
+				claim("K-5", { model: "sonnet", modelSource: "run" }),
+			],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		});
+		if (!created.ok) throw created.error;
+
+		const shown = await kabaneLoop("status", "run-1");
+
+		expect(shown.text).toContain(
+			[
+				"  K-2  claude  model haiku (tier fast)  done",
+				"  K-3  claude  agent board-ui  model opus (board-ui's pin)  running",
+				"  K-4  codex  model gpt-6-astra (the harness's default)  running",
+				"  K-5  claude  model sonnet (the run's model)  running",
+			].join("\n"),
+		);
+	});
+});
+
 describe("kabane loop status, after a landing its runner died in", () => {
 	it("says the landing is not undone, what to put back, and the command that goes on", async () => {
 		const config = LoopConfig.Schema.safeParse({ land: "pr" });

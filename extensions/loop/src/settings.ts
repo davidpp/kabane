@@ -66,14 +66,23 @@ export namespace LoopSettings {
 		);
 	};
 
+	// The model steps through every tier the config knows, those `loop.tiers` adds included, which
+	// the look's own options cannot read.
+	const MODEL = "model";
+
 	// The form steps through a scalar's options; the lenses get their toggles from the caller.
 	const optionsOf = (
 		field: SettingField,
 		look: Look,
-		value: unknown,
+		config: LoopConfig.Config,
 	): string[] => {
+		const value = valueAt(config, field.path);
 		const options =
-			field.kind === "list" ? undefined : Settings.options(field, look, {});
+			field.kind === "list"
+				? undefined
+				: nameOf(field) === MODEL
+					? LoopConfig.tierNames(config)
+					: Settings.options(field, look, {});
 		const listed = options ? withValue(options, value) : [];
 		return field.optional && listed.length > 0
 			? [look.none ?? NONE, ...listed]
@@ -87,7 +96,7 @@ export namespace LoopSettings {
 	): TriggerInput | undefined => {
 		const look = lookOf(field);
 		const value = valueAt(config, field.path);
-		const options = optionsOf(field, look, value);
+		const options = optionsOf(field, look, config);
 		const common = { label: look.label, group: look.group, required: false };
 		if (options.length > 0)
 			return {
