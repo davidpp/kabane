@@ -734,10 +734,24 @@ test("the ? sheet lists the view's own keys under its name, then the ones that w
 	}
 });
 
-test("every ? sheet row reads whole at forty columns", () => {
-	for (const context of ["board", "detail", "transcript", "cardTab"] as const)
+// Forty columns less the sheet's padding on either side and the scrollbar it shows once it scrolls,
+// which it does at forty by twenty-four.
+const SHEET_ROOM_AT_FORTY = 40 - 2 - 1;
+
+test("every ? sheet row reads whole at forty columns, beside the sheet's scrollbar", () => {
+	for (const context of [
+		"board",
+		"detail",
+		"reader",
+		"transcript",
+		"cardTab",
+	] as const)
 		for (const line of sheetLines(Keymap.sheet(context)))
-			expect({ context, line, fits: sheetLineWidth(line) <= 38 }).toEqual({
+			expect({
+				context,
+				line,
+				fits: sheetLineWidth(line) <= SHEET_ROOM_AT_FORTY,
+			}).toEqual({
 				context,
 				line,
 				fits: true,

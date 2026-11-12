@@ -66,7 +66,7 @@ export namespace DetailModel {
 	};
 
 	/**
-	 * One subtask under the description. `done` carries the `✓`; an open one names its state after
+	 * One subtask on the `now` tab. `done` carries the `✓`; an open one names its state after
 	 * the title; a cancelled one stays listed, faint, because it is part of the plan's record.
 	 */
 	export type SubtaskLine = {

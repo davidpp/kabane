@@ -38,15 +38,17 @@ export namespace BoardChecklist {
 
 	/**
 	 * One item's writes from this board. `wanted` is what it shows: the human's last press. `sending`
-	 * is the state in flight to the store, null once nothing is (the entry then lasts until the next
-	 * records, so a poll that started before the write cannot flash the old state). `acked` is the
-	 * state the store last acknowledged, where a failed write puts the item back.
+	 * is the state in flight to the store, null once nothing is. `acked` is the state the store last
+	 * acknowledged, where a failed write puts the item back. `version` is the item's version once the
+	 * store has applied every write sent: records older than that were read before the last write
+	 * landed, so a settled entry outlasts them (see `standing`).
 	 */
 	type Write = {
 		handle: string;
 		wanted: boolean;
 		sending: boolean | null;
 		acked: boolean;
+		version: number;
 	};
 
 	export const NONE: Checklist = {
@@ -124,24 +126,37 @@ export namespace BoardChecklist {
 		};
 	};
 
-	// The writes still in flight or queued: what new records cannot override. One settled has had
-	// its records by now, which say what the store holds.
-	const unsettled = (
+	// The writes new records cannot override: one still in flight or queued, and one settled whose
+	// item these records show otherwise from before its last write, as a poll that began before the
+	// write lands after it. Records that agree with it, or carry a later change, end a settled one.
+	const standing = (
 		writes: ReadonlyMap<string, Write>,
+		items: readonly ChecklistItemView[],
 	): ReadonlyMap<string, Write> =>
-		new Map([...writes].filter(([, write]) => write.sending !== null));
+		new Map(
+			[...writes].filter(([id, write]) => {
+				if (write.sending !== null) return true;
+				const item = items.find((i) => i.id === id);
+				return (
+					item !== undefined &&
+					item.done !== write.wanted &&
+					item.version < write.version
+				);
+			}),
+		);
 
 	/**
 	 * The detail view's records, as far as the checklist goes: `items` are the task's, or none when no
 	 * task is open. Another task starts its cursor over. A write in flight is kept whichever task is
-	 * open, since its outcome still lands; a settled one gives way to these records.
+	 * open, since its outcome still lands; a settled one gives way to these records once they are
+	 * not older than it.
 	 */
 	export const withOpen = (
 		state: State,
 		taskId: string | null,
 		items: readonly ChecklistItemView[] = [],
 	): State => {
-		const writes = unsettled(state.checklist.writes);
+		const writes = standing(state.checklist.writes, items);
 		if (taskId === null)
 			return state.checklist.open === null
 				? state
@@ -175,6 +190,7 @@ export namespace BoardChecklist {
 					...write,
 					wanted: write.acked,
 					sending: null,
+					version: write.version - 1,
 				}),
 				effect: NOTHING,
 			};
@@ -189,6 +205,7 @@ export namespace BoardChecklist {
 				...write,
 				acked,
 				sending: write.wanted,
+				version: write.version + 1,
 			}),
 			effect: {
 				type: "tickItem",
@@ -252,15 +269,15 @@ export namespace BoardChecklist {
 				state: withWrite(at, id, { ...write, wanted: done }),
 				effect: NOTHING,
 			};
-		const stored =
-			state.checklist.open?.items.find((item) => item.id === id)?.done ??
-			line.done;
+		const record = state.checklist.open?.items.find((item) => item.id === id);
 		return {
 			state: withWrite(at, id, {
 				handle: line.handle,
 				wanted: done,
 				sending: done,
-				acked: write?.acked ?? stored,
+				acked: write?.acked ?? record?.done ?? line.done,
+				// A settled write's own count stands when the open records are older than it.
+				version: Math.max(write?.version ?? 0, record?.version ?? 0) + 1,
 			}),
 			effect: { type: "tickItem", itemId: id, handle: line.handle, done },
 		};

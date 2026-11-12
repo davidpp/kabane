@@ -3,9 +3,10 @@
 // title, the task at a glance, what is running on it and where it sits; under it, any question
 // waiting on the human. Then tabs: what is in force now (the checklist, the latest handoff as a
 // digest, the decisions made and the subtasks), the description (the ask, with its curated context),
-// the comments and the agent log, one at a time, scrolled by app.tsx's `scroll` effect (it owns the ref so every key stays in the one useKeyboard
-// handler). DetailModel decides what goes where; this file only draws it. The agent brief is not
-// drawn here: `y` copies it, and it is what an agent reads.
+// the comments and the agent log, one at a time, scrolled by screen.tsx's `scroll` effect (it owns
+// the ref, so every key stays in board-input.ts's one useKeyboard handler). DetailModel decides
+// what goes where; this file only draws it. The agent brief is not drawn here: `y` copies it, and
+// it is what an agent reads.
 import type { Result, TaskEntry } from "@cabane/core";
 import {
 	BoxRenderable,
@@ -150,8 +151,9 @@ export type DetailProps = {
 	// Questions the host says are parked on this task, beside any the records carry. Pinned, so what
 	// is blocked on the human is the first thing they see.
 	questions?: BoardActivity.AwaitingQuestion[];
-	// The tab in view (BoardNav.detailTab) and what a click on another one asks for. Absent, the one
-	// the records open on (DetailModel.openingTab).
+	// The tab in view (BoardNav.detailTab, which the records' first read settles with
+	// BoardNav.withOpeningTab) and what a click on another one asks for. Absent, DEFAULT_TAB, as the
+	// keys read it.
 	tab?: DetailModel.Tab;
 	onTab?: (tab: DetailModel.Tab) => void;
 	// Animated spinner frame threaded from app.tsx — animates card glyphs.
@@ -184,6 +186,8 @@ export type DetailProps = {
 	// The blocks of `now` a change landed on that the human has not seen (useDetailRecords), and how
 	// the view tells it they have been. Absent, nothing is marked.
 	fresh?: Fresh;
+	// Something is drawn over the view (the reader, the `?` sheet), so nothing on it is being seen.
+	covered?: boolean;
 };
 
 // Code, quotes and rules are set apart by a surface, never a line. OpenTUI draws a quote with a bar
@@ -278,12 +282,6 @@ export const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 // A table as columns, with no grid drawn around it.
 const TABLE: MarkdownOptions["tableOptions"] = { style: "columns" };
 
-// The tab a view no one has picked a tab on shows: the one its records open on, once they are in.
-const openingTab = (
-	loaded: BoardData.DetailRecords | undefined,
-): DetailModel.Tab =>
-	loaded ? DetailModel.openingTab(loaded) : DetailModel.DEFAULT_TAB;
-
 export const Detail = ({
 	taskId,
 	task: freshTask,
@@ -305,13 +303,14 @@ export const Detail = ({
 	onItem,
 	keys,
 	fresh,
+	covered,
 }: DetailProps): ReactNode => {
 	const theme = useTheme();
 	const { width: room } = useTerminalDimensions();
 	const loaded = records?.ok ? records.value : undefined;
-	const tab = picked ?? openingTab(loaded);
+	const tab = picked ?? DetailModel.DEFAULT_TAB;
 	const open = DetailModel.openQuestions(loaded, questions, pinned);
-	const marks = useSeen(fresh, tab, scrollRef);
+	const marks = useSeen(fresh, tab, covered, scrollRef);
 	const summaries = DetailModel.tabs(
 		loaded,
 		cards?.length ?? 0,
@@ -727,17 +726,18 @@ const nowBlockId = (name: DetailModel.BlockName): string => `now:${name}`;
 
 const NOTHING_FRESH: ReadonlySet<DetailModel.BlockName> = new Set();
 
-// A fresh block is seen once its header row has stayed inside the viewport, with `now` showing, for
-// DetailModel.SEEN_MS (DetailModel.dwell says why a dwell). What is marked: the fresh blocks, and
+// A fresh block is seen once its header row has stayed inside the viewport, with `now` showing and
+// nothing drawn over it, for DetailModel.SEEN_MS (DetailModel.dwell says why a dwell). What is marked: the fresh blocks, and
 // whether any is on `now` while another tab shows, which its label then says.
 const SEEN_CHECK_MS = 250;
 
 const useSeen = (
 	fresh: Fresh | undefined,
 	tab: DetailModel.Tab,
+	covered: boolean | undefined,
 	scrollRef: RefObject<ScrollBoxRenderable | null>,
 ): { blocks: ReadonlySet<DetailModel.BlockName>; elsewhere: boolean } => {
-	const showing = tab === "now";
+	const showing = tab === "now" && !covered;
 	// Since when each fresh block has been on screen; kept across renders so one block's mark going
 	// does not restart the others', and held to the blocks still fresh each time the marks change.
 	const since = useRef<ReadonlyMap<DetailModel.BlockName, number>>(new Map());
@@ -768,7 +768,7 @@ const useSeen = (
 		return () => clearInterval(timer);
 	}, [fresh, showing, scrollRef]);
 	const blocks = fresh?.blocks ?? NOTHING_FRESH;
-	return { blocks, elsewhere: !showing && blocks.size > 0 };
+	return { blocks, elsewhere: tab !== "now" && blocks.size > 0 };
 };
 
 const NowBlockBody = ({
@@ -865,8 +865,10 @@ const DescriptionTab = ({
 // before it; then the kind's framing line muted. Under a blank line, the body's opening rendered
 // (DetailModel.digest), its first heading behind an open `▾`, and a muted `… n more lines` when the
 // cap left some out; then one line per further heading behind a closed `▸`, its size muted, never
-// its content. Those are the `▸ ▾` of a folded run in a transcript: a part closed, a part open. When
-// the kind has older entries, one muted line under a blank line says where they are.
+// its content. Those are the `▸ ▾` of a folded run in a transcript: a part closed, a part open. The
+// fold's last line (the cut, or the last `▸` when nothing is cut) ends on the `r` hint, in the
+// footer's two tones, since the footer gives its own room to the checklist's keys. When the kind has
+// older entries, one muted line under a blank line says where they are.
 const LiftedDigest = ({
 	entry,
 	room,
@@ -896,6 +898,12 @@ const LiftedDigest = ({
 		Math.min(room - CONTENT_INSET, PROSE_MEASURE),
 	);
 	const hasBody = digest.shown.length > 0 || digest.folded.length > 0;
+	const readHint = [
+		{ text: " · ", fg: theme.muted },
+		{ text: "r", fg: theme.defaultFg },
+		{ text: " read", fg: theme.muted },
+	];
+	const lastFold = digest.more > 0 ? -1 : digest.folded.length - 1;
 	return (
 		<box style={{ flexDirection: "column" }}>
 			<text>{Segments.spans(heading)}</text>
@@ -916,8 +924,19 @@ const LiftedDigest = ({
 						</box>
 					))}
 					{digest.more > 0 ? (
-						<text fg={theme.muted}>
-							{`… ${digest.more} more ${digest.more === 1 ? "line" : "lines"}`}
+						<text>
+							{Segments.spans(
+								Segments.fitHolding(
+									[
+										{
+											text: `… ${digest.more} more ${digest.more === 1 ? "line" : "lines"}`,
+											fg: theme.muted,
+										},
+									],
+									readHint,
+									room,
+								),
+							)}
 						</text>
 					) : null}
 					{digest.folded.map((part, index) => (
@@ -927,6 +946,7 @@ const LiftedDigest = ({
 							heading={part.heading}
 							size={part.size}
 							room={room}
+							hint={index === lastFold ? readHint : undefined}
 						/>
 					))}
 				</box>
@@ -941,18 +961,20 @@ const LiftedDigest = ({
 };
 
 // One heading of a digest: the fold glyph muted, the heading in the terminal's foreground, and, for a
-// folded one, its size muted after a `·` (`▸ Evidence · 7 lines`, `▸ Risk · empty`), held whole while
-// a long heading is cut.
+// folded one, its size muted after a `·` (`▸ Evidence · 7 lines`, `▸ Risk · empty`) and any hint after
+// it, held whole while a long heading is cut.
 const FoldRow = ({
 	glyph,
 	heading,
 	size,
 	room,
+	hint = [],
 }: {
 	glyph: string;
 	heading: string;
 	size?: number;
 	room: number;
+	hint?: readonly Segments.Segment[];
 }): ReactNode => {
 	const theme = useTheme();
 	const sized =
@@ -969,7 +991,7 @@ const FoldRow = ({
 			{ text: `${glyph} `, fg: theme.muted },
 			{ text: heading, fg: theme.defaultFg },
 		],
-		sized,
+		[...sized, ...hint],
 		room,
 	);
 	return <text>{Segments.spans(segments)}</text>;

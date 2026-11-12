@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Checklist } from "@cabane/checklist";
 import { Planner, type Result, type Task } from "@cabane/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
-import type { RefObject } from "react";
+import { createRef, type RefObject } from "react";
 import type { BoardActivity } from "./activity";
 import { BoardData } from "./data";
 import {
@@ -15,7 +15,8 @@ import {
 	formatElapsed,
 	relativeTime,
 } from "./detail";
-import type { DetailModel } from "./detail-model";
+import { DetailModel } from "./detail-model";
+import { BoardNav } from "./nav";
 import type { ActivityCard } from "./ports";
 import { SPINNER_FRAMES } from "./spinner";
 import { dropDb, freshDb } from "./test-db";
@@ -153,7 +154,9 @@ test("Detail opens on the description when nothing is in force, with the title o
 
 test("Detail says so when a task has no description", async () => {
 	const task = await seed({ description: undefined });
-	const { renderOnce, captureCharFrame, destroy } = await mount(task);
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		tab: "description",
+	});
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("no description"),
@@ -447,8 +450,10 @@ test("Detail sets a quote and a code block on panels, with no line drawn beside 
 		description:
 			"> the cube is ported\n\n```sh\nbunx vite\n```\n\n---\n\nafter the rule",
 	});
-	const { renderOnce, captureCharFrame, captureSpans, destroy } =
-		await mount(task);
+	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
+		task,
+		{ tab: "description" },
+	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("after the rule"),
@@ -822,6 +827,9 @@ test("Detail shows a handoff as a digest: its first section open, every further 
 			"▸ Not verified · 1 line",
 		);
 		expect(lines[at("… 3 more lines") + 3]).toContain("▸ Risk · empty");
+		// The cut says where the rest is read, on its own row; the folds below it do not repeat it.
+		expect(lines[at("… 3 more lines")]?.trim()).toBe("… 3 more lines · r read");
+		expect(frame.match(/r read/g)).toHaveLength(1);
 		expect(frame).not.toContain("12 pass");
 		expect(frame).not.toContain("A restart under load.");
 		for (const row of lines)
@@ -955,5 +963,106 @@ test("Detail opens on now when a handoff is all an issue holds, the handoff firs
 		expect(frame).not.toContain("Only a handoff here.");
 	} finally {
 		described.destroy();
+	}
+});
+
+test("Detail marks a fresh block seen only while nothing is drawn over it", async () => {
+	const task = await seed({ title: "Watched" });
+	const items = await Checklist.add(TEST_BASE, {
+		id: task.id,
+		items: ["Read it back"],
+	});
+	if (!items.ok) throw items.error;
+	const records = await recordsOf(task);
+	// The same fresh checklist on two views, one under the reader and one in plain sight.
+	const view = async (covered: boolean) => {
+		const seen: string[] = [];
+		const mounted = await renderTest(
+			<Detail
+				taskId={task.id}
+				task={task}
+				records={records}
+				tab="now"
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				fresh={{
+					blocks: new Set(["checklist"]),
+					seen: (name) => seen.push(name),
+				}}
+				covered={covered}
+			/>,
+			{ width: 40, height: 20 },
+		);
+		await pumpUntil(mounted.renderOnce, mounted.captureCharFrame, (f) =>
+			f.includes(`${DetailModel.FRESH_MARK}checklist`),
+		);
+		return { seen, ...mounted };
+	};
+	const under = await view(true);
+	const open = await view(false);
+	try {
+		await sleep(DetailModel.SEEN_MS + 500);
+		expect(open.seen).toEqual(["checklist"]);
+		expect(under.seen).toEqual([]);
+	} finally {
+		under.destroy();
+		open.destroy();
+	}
+}, 10_000);
+
+test("Detail with no tab picked draws the tab the keys read, not one of its own from the records", async () => {
+	// Nothing in force: the state opens this issue on its description (BoardNav.withOpeningTab), and
+	// until it has, the view and the keys both read DEFAULT_TAB.
+	const task = await seed({ title: "Only asked" });
+	const records = await recordsOf(task);
+	if (!records.ok) throw records.error;
+	expect(DetailModel.openingTab(records.value)).toBe("description");
+	const { renderOnce, captureCharFrame, destroy } = await mount(task);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("nothing in force"),
+		);
+		expect(BoardNav.detailTab({ type: "detail", taskId: task.id })).toBe(
+			DetailModel.DEFAULT_TAB,
+		);
+		expect(frame).toContain("nothing in force");
+		expect(frame).not.toContain("The description reads here.");
+	} finally {
+		destroy();
+	}
+});
+
+test("Detail's digest with nothing cut ends its last fold on the r hint, at forty columns", async () => {
+	const task = await seed({ title: "Short handoff" });
+	const added = await Planner.addEntry(TEST_BASE, {
+		taskId: task.id,
+		kind: "handoff",
+		author: "cabane://actor/agent/claude",
+		authorType: "ai",
+		content: [
+			"### Summary",
+			"",
+			"Done.",
+			"",
+			"### Evidence of a run that takes a long heading to name",
+			"",
+			"- it ran",
+		].join("\n"),
+	});
+	if (!added.ok) throw added.error;
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		width: 40,
+		height: 30,
+	});
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("r read"),
+		);
+		const fold = rows(frame).find((row) => row.includes("▸ Evidence"));
+		// The heading is cut; its size and the hint are held whole.
+		expect(fold?.trimEnd()).toMatch(/^ ▸ Evidence of a .*… · 1 line · r read$/);
+		expect(fold?.trimEnd().length).toBeLessThanOrEqual(40);
+		expect(frame).not.toContain("more line");
+	} finally {
+		destroy();
 	}
 });

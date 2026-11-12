@@ -444,7 +444,7 @@ export namespace Keymap {
 				},
 				{
 					key: "2-4",
-					label: "description · comments · log",
+					label: "the ask · comments · log",
 					tier: "help",
 					keys: ["2", "3", "4"],
 					when: sections,

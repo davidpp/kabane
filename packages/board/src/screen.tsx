@@ -444,6 +444,12 @@ const DetailScreen = ({
 				task={task}
 				records={records}
 				fresh={fresh}
+				covered={
+					BoardNav.readerOpen(state) ||
+					state.help ||
+					state.settings !== null ||
+					state.dispatch !== null
+				}
 				cards={taskCards.length > 0 ? taskCards : undefined}
 				questions={activity.questionsByTaskId.get(taskId)}
 				pinned={banner?.question.questionActivityId}

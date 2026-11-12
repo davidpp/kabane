@@ -512,13 +512,15 @@ digest: one line with the kind's title, its author and its age (`handoff · clau
 kind's framing line muted, then the body read as markdown sections. The text before the first
 heading and the first section show rendered, the first heading behind `▾`, held to about eight
 rows at forty columns (more of it fits a wider pane) with `… 6 more lines` for what that leaves
-out. Every further heading at the body's top level is one line with its size, never its content:
+out. Every further heading at the body's top level is one line with its size, never its content.
+The fold's last line, the cut or the last heading when nothing is cut, ends on `· r read`, which
+opens the rest (below):
 
 ```
 ▾ Summary
 The wave is merged on local main at
 1519458, not pushed. …
-… 6 more lines
+… 6 more lines · r read
 ▸ Evidence · 7 lines
 ▸ Not verified · 8 lines
 ▸ Risk · 1 line
@@ -534,13 +536,15 @@ new entry moves the open detail's stamp, so a handoff recorded in a shell shows 
 `r` on the detail, from any section, opens the reader: each lifted kind's newest entry in full,
 in the same order, over the detail. The footer names it after the kind (`r read handoff`), or
 says `r read` when an issue has entries of several lifted kinds, and leaves it out when there is
-nothing to read; at forty columns, while `now` lists a checklist, `space toggle item` has the room
-and `?` lists `r`. In the reader, the scroll keys move it as they move the detail, `[` and `]` go
+nothing to read; at forty columns, while `now` lists a checklist, `space toggle item` has the room,
+and the digest's `r read` and `?` list `r`. In the reader, the scroll keys move it as they move the detail, `[` and `]` go
 to the previous and next heading across the entries (headings read as the digest reads them),
 one heading per press even near the end where the scroll stops, `?` lists these keys, and `esc` or
 `q` close it onto the detail at the section and scroll you left. A newer entry that lands while
 the reader is open replaces the one on screen, and the heading you were at stays where it was;
-when the newer entry has no heading of that name, the reader goes back to the top.
+when the newer entry has no heading of that name, the reader goes back to the top. Its first row
+stays put while the rest scrolls: once an entry's own first line has gone above the view, it says
+whose entry you are in and which heading you are at (`handoff · claude · Evidence`).
 
 ## Linked issues
 
