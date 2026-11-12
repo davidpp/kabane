@@ -7,6 +7,7 @@ import type {
 	TaskEntry,
 	TaskWorkLog,
 } from "@cabane/core";
+import { HANDOFF_TEMPLATE } from "@cabane/handoff";
 import type { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
 
@@ -372,20 +373,24 @@ describe("lifted", () => {
 		expect(lifted).toEqual([
 			{
 				id: "h2",
+				kind: "handoff",
 				title: "Handoff",
 				framing: "What a handoff is.",
 				author: "claude",
 				at: at(13),
 				body: "the newer one",
+				sections: [{ lines: ["the newer one"], size: 1 }],
 				earlier: 1,
 			},
 			{
 				id: "v1",
+				kind: "verdict",
 				title: "Verdict",
 				framing: "What a verdict is.",
 				author: "david",
 				at: at(11),
 				body: "a comment",
+				sections: [{ lines: ["a comment"], size: 1 }],
 				earlier: 0,
 			},
 		]);
@@ -400,18 +405,19 @@ describe("lifted", () => {
 		).toEqual([]);
 	});
 
-	it("counts a lifted entry as the description tab's content", () => {
+	it("counts a lifted entry as the now tab's content, never the description's", () => {
 		const handedOff = records({
+			task: task({ description: undefined }),
 			kinds: [HANDOFF],
 			entries: [entry({ kind: "handoff" })],
 		});
-		expect(DetailModel.tabs(handedOff)[0]).toEqual({
-			tab: "description",
-			empty: false,
-		});
+		expect(DetailModel.tabs(handedOff).slice(0, 2)).toEqual([
+			{ tab: "now", empty: false },
+			{ tab: "description", empty: true },
+		]);
 		expect(
 			DetailModel.tabs(records({ entries: [entry({ kind: "handoff" })] }))[0],
-		).toEqual({ tab: "description", empty: true });
+		).toEqual({ tab: "now", empty: true });
 	});
 });
 
@@ -547,11 +553,13 @@ describe("tabs and the tab bar", () => {
 				1,
 			),
 		).toEqual([
+			{ tab: "now", empty: true },
 			{ tab: "description", empty: false },
 			{ tab: "comments", count: 2, empty: false },
 			{ tab: "log", count: 1, empty: false },
 		]);
 		expect(DetailModel.tabs(undefined).map((t) => t.empty)).toEqual([
+			true,
 			true,
 			true,
 			true,
@@ -561,6 +569,7 @@ describe("tabs and the tab bar", () => {
 	it("fits forty columns whole with padded cells and full labels", () => {
 		const bar = DetailModel.tabBar(
 			[
+				{ tab: "now", empty: false },
 				{ tab: "description", empty: false },
 				{ tab: "comments", count: 12, empty: false },
 				{ tab: "log", count: 140, empty: false },
@@ -569,6 +578,7 @@ describe("tabs and the tab bar", () => {
 		);
 		expect(bar.pad).toBe(1);
 		expect(bar.cells.map((c) => c.text)).toEqual([
+			"now",
 			"description",
 			"comments 12",
 			"log 140",
@@ -578,25 +588,27 @@ describe("tabs and the tab bar", () => {
 
 	it("shortens a label before it drops the padding, and never cuts one", () => {
 		const summaries: DetailModel.TabSummary[] = [
+			{ tab: "now", empty: false },
 			{ tab: "description", empty: false },
 			{ tab: "comments", count: 3, empty: false },
 			{ tab: "log", count: 9, empty: false },
 		];
-		const short = DetailModel.tabBar(summaries, 28);
-		expect(short.cells[0]?.text).toBe("about");
+		const short = DetailModel.tabBar(summaries, 33);
+		expect(short.cells[1]?.text).toBe("about");
 		expect(short.pad).toBe(1);
-		const tight = DetailModel.tabBar(summaries, 22);
+		const tight = DetailModel.tabBar(summaries, 26);
 		expect(tight.pad).toBe(0);
-		expect(DetailModel.barWidth(tight)).toBeLessThanOrEqual(22);
+		expect(DetailModel.barWidth(tight)).toBeLessThanOrEqual(26);
 	});
 
 	it("steps through the tabs wrapping at either end, and a digit names one", () => {
-		expect(DetailModel.stepTab("description", 1)).toBe("comments");
-		expect(DetailModel.stepTab("description", -1)).toBe("log");
-		expect(DetailModel.stepTab("log", 1)).toBe("description");
-		expect(DetailModel.tabAt(1)).toBe("description");
-		expect(DetailModel.tabAt(3)).toBe("log");
-		expect(DetailModel.tabAt(4)).toBeUndefined();
+		expect(DetailModel.stepTab("now", 1)).toBe("description");
+		expect(DetailModel.stepTab("now", -1)).toBe("log");
+		expect(DetailModel.stepTab("log", 1)).toBe("now");
+		expect(DetailModel.tabAt(1)).toBe("now");
+		expect(DetailModel.tabAt(2)).toBe("description");
+		expect(DetailModel.tabAt(4)).toBe("log");
+		expect(DetailModel.tabAt(5)).toBeUndefined();
 	});
 });
 
@@ -707,12 +719,232 @@ describe("subtasks and curated context", () => {
 		]);
 	});
 
-	it("a description tab with only subtasks or context in it is not empty", () => {
+	it("subtasks fill the now tab and curated context the description", () => {
 		const bare = records({ task: task({ description: undefined }) });
-		expect(DetailModel.tabs(bare)[0]?.empty).toBe(true);
+		const empty = (r: BoardData.DetailRecords) =>
+			DetailModel.tabs(r)
+				.slice(0, 2)
+				.map((t) => t.empty);
+		expect(empty(bare)).toEqual([true, true]);
+		expect(empty({ ...bare, subtasks: [child("c-1", "next", "one")] })).toEqual(
+			[false, true],
+		);
 		expect(
-			DetailModel.tabs({ ...bare, subtasks: [child("c-1", "next", "one")] })[0]
-				?.empty,
-		).toBe(false);
+			empty({
+				...bare,
+				contextRefs: [
+					{
+						id: "r1",
+						taskId: "t1",
+						uri: "docs/a.md",
+						kind: "doc",
+						addedAt: "2026-09-20T10:00:00.000Z",
+					},
+				],
+			}),
+		).toEqual([true, false]);
+	});
+});
+
+describe("the now tab", () => {
+	const HANDOFF: EntryKind = {
+		name: "handoff",
+		title: "Handoff",
+		template: "",
+		projection: { latest: { after: "description", framing: "f" } },
+	};
+	const item = (id: string): BoardData.DetailRecords["checklist"][number] => ({
+		id,
+		taskId: "t1",
+		text: "a step",
+		done: false,
+		rank: "a",
+		createdAt: "2026-09-20T10:00:00.000Z",
+		updatedAt: "2026-09-20T10:00:00.000Z",
+		updatedBy: "david",
+		version: 1,
+		visibility: "shared",
+		handle: "CAB-1.1",
+		ordinal: 1,
+	});
+
+	it("holds the checklist, each lifted kind by name, then the subtasks, each block named and the empty ones left out", () => {
+		const blocks = DetailModel.now(
+			records({
+				checklist: [item("k1")],
+				kinds: [HANDOFF],
+				entries: [entry({ id: "h1", kind: "handoff" })],
+				subtasks: [task({ id: "c1", parentTaskId: "t1" })],
+			}),
+		);
+		expect(blocks.map((b) => b.name)).toEqual([
+			"checklist",
+			"lifted:handoff",
+			"subtasks",
+		]);
+		expect(DetailModel.now(records())).toEqual([]);
+	});
+
+	it("opens on now when anything is in force, otherwise on the description", () => {
+		expect(DetailModel.openingTab(records({ checklist: [item("k1")] }))).toBe(
+			"now",
+		);
+		expect(
+			DetailModel.openingTab(
+				records({ task: task({ description: "Only the ask." }) }),
+			),
+		).toBe("description");
+	});
+});
+
+describe("sections of a lifted body", () => {
+	it("reads the handoff template's four headings, each with its line", () => {
+		expect(DetailModel.sections(HANDOFF_TEMPLATE)).toEqual([
+			{
+				heading: "Summary",
+				lines: ["The smallest picture of what was made or changed."],
+				size: 1,
+			},
+			expect.objectContaining({ heading: "Evidence", size: 1 }),
+			expect.objectContaining({ heading: "Not verified", size: 1 }),
+			expect.objectContaining({ heading: "Risk", size: 1 }),
+		]);
+	});
+
+	it("reads a body with no headings as one section without a heading", () => {
+		expect(DetailModel.sections("\nfirst\nsecond\n\nthird\n")).toEqual([
+			{ lines: ["first", "second", "", "third"], size: 3 },
+		]);
+	});
+
+	it("splits at the shallowest level the body uses, keeping deeper headings and the text before the first", () => {
+		const body = [
+			"Where things stand.",
+			"## Summary",
+			"Done.",
+			"### Detail",
+			"More.",
+			"## Risk",
+			"None.",
+		].join("\n");
+		expect(DetailModel.sections(body)).toEqual([
+			{ lines: ["Where things stand."], size: 1 },
+			{
+				heading: "Summary",
+				lines: ["Done.", "### Detail", "More."],
+				size: 3,
+			},
+			{ heading: "Risk", lines: ["None."], size: 1 },
+		]);
+		expect(
+			DetailModel.sections("### A\none\n### B\ntwo").map((s) => s.heading),
+		).toEqual(["A", "B"]);
+	});
+
+	it("keeps a heading with nothing under it, its size nought", () => {
+		expect(DetailModel.sections("## Summary\nDone.\n\n## Risk\n\n")).toEqual([
+			{ heading: "Summary", lines: ["Done."], size: 1 },
+			{ heading: "Risk", lines: [], size: 0 },
+		]);
+	});
+
+	it("reads a # line inside a fenced code block as code, never a heading", () => {
+		const body = [
+			"## Evidence",
+			"```sh",
+			"# run the gate",
+			"bun run check",
+			"```",
+			"~~~",
+			"## not a heading either",
+			"~~~",
+			"## Risk",
+			"None.",
+		].join("\n");
+		const read = DetailModel.sections(body);
+		expect(read.map((s) => s.heading)).toEqual(["Evidence", "Risk"]);
+		expect(read[0]?.size).toBe(7);
+	});
+
+	it("strips a closing run of #s from a heading, and needs a space after the opening run", () => {
+		expect(
+			DetailModel.sections("## Summary ##\nDone.\n#hashtag").map((s) => ({
+				heading: s.heading,
+				size: s.size,
+			})),
+		).toEqual([{ heading: "Summary", size: 2 }]);
+	});
+});
+
+describe("the digest of a lifted body", () => {
+	const digestOf = (body: string, width = 38, rows?: number) =>
+		DetailModel.digest(DetailModel.sections(body), width, rows);
+
+	it("shows the first section and folds every further one into its heading and size", () => {
+		expect(digestOf(HANDOFF_TEMPLATE)).toEqual({
+			shown: [
+				{
+					heading: "Summary",
+					text: "The smallest picture of what was made or changed.",
+				},
+			],
+			more: 0,
+			folded: [
+				{ heading: "Evidence", size: 1 },
+				{ heading: "Not verified", size: 1 },
+				{ heading: "Risk", size: 1 },
+			],
+		});
+	});
+
+	it("shows the text before the first heading too, under the same cap", () => {
+		const read = digestOf("Merged.\n\n## Summary\nDone.\n## Risk\nNone.");
+		expect(read.shown).toEqual([
+			{ text: "Merged." },
+			{ heading: "Summary", text: "Done." },
+		]);
+		expect(read.folded).toEqual([{ heading: "Risk", size: 1 }]);
+	});
+
+	it("caps the opening by the rows it wraps to, counting the lines it leaves out", () => {
+		const long = "word ".repeat(30).trim(); // 149 columns: 4 rows at 38
+		const body = ["## Summary", long, "", long, "", "- one", "- two"].join(
+			"\n",
+		);
+		const read = digestOf(body, 38, 8);
+		// The heading takes a row, the first paragraph 4, the blank 1; the second paragraph's 4 do not fit.
+		expect(read.shown).toEqual([{ heading: "Summary", text: long }]);
+		expect(read.more).toBe(3);
+		// A wider pane fits more of it in the same rows.
+		expect(digestOf(body, 78, 8).more).toBe(1);
+	});
+
+	it("cuts the first line to fit when even it is taller than the cap", () => {
+		const long = "word ".repeat(100).trim();
+		const read = digestOf(long, 38, 3);
+		expect(read.shown[0]?.text.endsWith(" …")).toBe(true);
+		expect(read.shown[0]?.text.length).toBeLessThanOrEqual(3 * 38);
+		expect(read.more).toBe(0);
+	});
+
+	it("closes a code fence the cap cut through", () => {
+		const body = ["## Evidence", "```", "a", "b", "c", "d", "```"].join("\n");
+		const read = digestOf(body, 38, 4);
+		expect(read.shown[0]?.text).toBe("```\na\nb\n```");
+		expect(read.more).toBe(3);
+	});
+
+	it("shows a body with no headings by its first paragraph and counts the rest", () => {
+		expect(digestOf("One line.\nStill the first.\n\nSecond.\nThird.")).toEqual({
+			shown: [{ text: "One line.\nStill the first." }],
+			more: 2,
+			folded: [],
+		});
+	});
+
+	it("folds a heading with nothing under it at size nought", () => {
+		expect(digestOf("## Summary\nDone.\n## Risk").folded).toEqual([
+			{ heading: "Risk", size: 0 },
+		]);
 	});
 });

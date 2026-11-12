@@ -274,6 +274,48 @@ export namespace Fixtures {
 	/** The kinds the CLI's modules declare: the handoff, which the brief lifts under the description. */
 	export const KINDS = handoffModule.kinds ?? [];
 
+	/**
+	 * A handoff the size of a real one: the one JCAB-213's wave closed with, 37 lines under the four
+	 * headings of the template. The gallery's six-line handoffs hid how much a real one takes.
+	 */
+	export const REAL_HANDOFF = `### Summary
+
+The wave is merged on local \`main\` at \`1519458\`, not pushed. An issue's comments are now a timeline of entries with a kind; a handoff is the first kind built on it.
+
+- JCAB-217: comments carry a \`kind\` (migration 9); \`Planner.addEntry\`, \`getEntries\`, \`latestEntry\`; entries are append-only; a module declares kinds as data; the brief keeps every typed entry and lifts a kind projected as \`latest\` into its own section. \`kabane_comment\` and \`kabane comment\` take a kind.
+- JCAB-218: \`@cabane/handoff\`, with no table: the \`handoff\` kind, a four-heading template, \`kabane_handoff(id, body)\`, \`kabane handoff <id> [--all] [--json] | --from <file|-> | --template\`. \`kabane show\` and \`kabane context --help\` follow the registered sections through one core helper.
+- JCAB-219: every instruction that told an agent to report finished work in a comment now says to hand off: this repo's dispatch skill, the shipped template, the first-run Tracker block and its copy in the docs, the copilot's \`/setup-dispatch\`.
+- JCAB-221: the board's comments tab names an entry's kind, and the description tab shows the latest handoff under the description. A band never wraps: it cuts a long author first.
+- JCAB-224: an upgrade note for someone coming from \`1.0.0-beta.0\`.
+
+Cancelled on the way: JCAB-212 (verdicts bound to a digest), JCAB-214 to 216 (a handoff module with its own table and typed fields). Filed for later under this parent: JCAB-220, 222, 225, 226, 227. Separate: JCAB-223 (Jake cleanup, two questions open).
+
+### Evidence
+
+- Final \`main\` (\`1519458\`), run by the dispatcher after the last merge: \`bun run check\` exit 0, \`bun run typecheck\` exit 0, \`bun test packages/board\` 889 pass, 0 fail. The full suite was last run by the board's implementer on its branch tip (\`28dd4d7\`): 2459 bun tests pass, 0 fail, worker vitest 81 of 81; \`main\` differs from that tree only by JCAB-224's two docs files.
+- Each branch merged with a tree identical to the one its implementer tested, except JCAB-221, merged after the docs-only JCAB-224.
+- Migration 9 on a real \`1.0.0-beta.0\` database, run three times by different agents: the beta's tarball built a store with a comment; \`main\` opened it; the comment reads back as \`kind: "comment"\`; the beta then refuses the store with "newer than this kabane knows (7)".
+- Real MCP over stdio in the sandbox: \`tools/list\` shows \`kabane_handoff\`; \`initialize\` carries the instructions paragraph; a call records the handoff under the calling agent; \`kabane_context\` shows it under the description.
+- The real board under tmux at 100 and 40 columns: a handoff written from another shell appears in an open detail within one poll (up to 5 seconds).
+- Reviews: one Claude review and three Codex rounds on JCAB-217; three Codex rounds on JCAB-218 and 219; two each on JCAB-221 and JCAB-224; one Codex closing review of the combined diff. Every blocking finding was fixed on its branch before merge; the last fix on JCAB-217, 218, 221 and 224 was read and its tests run by the dispatcher instead of a further Codex round.
+- The installed \`kabane\` reports \`source: main@1519458\`; this handoff was written with it.
+
+### Not verified
+
+Checks only a person can make, or that no agent ran. Agents drove the CLI and the board through \`bun run sandbox\`, never \`~/.kabane\`.
+
+1. A fresh agent session, on its own, hands off with \`kabane_handoff\` when it finishes an issue.
+2. Mouse behaviour over the board's lifted block and the labelled bands.
+3. The hub: the module is registered there and the Worker's tests pass, but nothing was run against a deployed hub, and deploying is a manual step.
+4. \`/setup-dispatch\` in a real harness: that it finishes with a handoff, and that running it again rewrites an existing skill.
+5. Three claims in the upgrade note rest on the beta's code, not on a run: a beta board left running across the update, the sync stop with two devices or a hub, and a sync in flight sending comments on without their kind.
+6. A \`latest\` kind other than \`handoff\`, and a host with no lifting module, on the live board (tests only).
+7. Codex itself: the Homebrew cask's helper binaries are held at launch after today's upgrade; reviews ran with the daemon's copy. \`brew reinstall --cask codex\`, then clear the quarantine flag on the two helpers before first use.
+
+### Risk
+
+Mostly easy to walk back, with one exception: a database opened by this build has migration 9 and can no longer be opened by \`1.0.0-beta.0\`; going back takes a backup. That has already happened to the maintainer's own tracker on this machine. Entries can no longer be edited or deleted on their own, by design, so a wrong handoff is corrected by writing another one. Nothing was pushed or deployed. If the kinds contract (\`EntryKind\`: name, title, template, projection) turns out wrong, the cost is in every module that declares a kind; today that is one.`;
+
 	/** A task's detail records with nothing on them but `over`. */
 	export const records = (
 		on: Task,

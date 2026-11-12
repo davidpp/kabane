@@ -32,7 +32,7 @@ export namespace Keymap {
 		decisions?: boolean;
 		/** A decision on the detail view has the keys its form names, the digits among them. */
 		deciding?: boolean;
-		/** The detail view's description lists checklist items, one under the cursor. */
+		/** The detail view's `now` tab lists checklist items, one under the cursor. */
 		checklist?: boolean;
 		/** The copilot's buffer is empty and there are prompts to recall. */
 		history?: boolean;
@@ -127,6 +127,9 @@ export namespace Keymap {
 	// The checklist's keys, while no decision on screen has the keys `space` might toggle on it.
 	const checklist = (s: Situation): boolean =>
 		s.checklist === true && s.deciding !== true;
+	// The digits go to the detail's sections while no question or decision on screen takes them.
+	const sections = (s: Situation): boolean =>
+		s.pinned !== true && s.deciding !== true;
 
 	/**
 	 * `t` on an event view: open or close every tool row at once, the keyboard's way to what a call
@@ -402,11 +405,18 @@ export namespace Keymap {
 				{ key: "y", label: "copy brief", tier: "footer", keys: ["y"] },
 				{ key: "m", label: "mark", tier: "footer", keys: ["m"] },
 				{
-					key: "1-3",
-					label: "go to a section",
+					key: "1",
+					label: "now: what is in force",
 					tier: "help",
-					keys: ["1", "2", "3"],
-					when: (s) => s.pinned !== true && s.deciding !== true,
+					keys: ["1"],
+					when: sections,
+				},
+				{
+					key: "2-4",
+					label: "description · comments · log",
+					tier: "help",
+					keys: ["2", "3", "4"],
+					when: sections,
 				},
 				{
 					key: "j/k",

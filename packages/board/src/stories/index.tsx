@@ -315,6 +315,78 @@ const LONG_HANDOFF = Fixtures.entry(
 	"Picked up where the first pass stopped.",
 );
 
+// A wave's parent the size of a real one (JCAB-213): its real handoff, three steps of the merge
+// with one ticked, a decision made on it, and five subtasks, four done.
+const WAVE = task({
+	id: "w1",
+	shortId: "JREP-1",
+	title:
+		"An issue has a timeline of typed entries, and a handoff is the first kind built on it",
+	state: "in_progress",
+	description:
+		"Parent of the wave. Its measure is dogfooding: the dispatch skill uses it now.\n\n**The model.** Research and context are an issue's inputs. The issue is the ask. Comments, decisions and handoffs are **entries** on the issue's **timeline**, each with a **kind**.",
+});
+const WAVE_RECORDS = Fixtures.records(WAVE, {
+	kinds: [...Fixtures.KINDS],
+	entries: [
+		Fixtures.entry(WAVE, 1, "comment", "david", "Keep the jcab-214 branch."),
+		Fixtures.entry(WAVE, 2, "handoff", CLAUDE, Fixtures.REAL_HANDOFF),
+	],
+	checklist: [
+		Fixtures.item(WAVE, 1, "Merge JCAB-217", true),
+		Fixtures.item(WAVE, 2, "Merge JCAB-218 and 219"),
+		Fixtures.item(WAVE, 3, "Closing review of the combined diff"),
+	],
+	questions: [
+		Fixtures.decision(
+			WAVE,
+			1,
+			"Does a handoff get a table of its own?",
+			{ choices: ["A table", "An entry kind"], allowFreeform: false },
+			{
+				status: "answered",
+				answer: "An entry kind",
+				answeredBy: "cabane://actor/human/david",
+				reasoning: "one timeline",
+			},
+		),
+	],
+	subtasks: [
+		...[
+			"Core seam: comments gain a kind",
+			"Handoff module",
+			"Dispatch skill hands off",
+			"Board labels kinds",
+		].map((title, n) =>
+			task({
+				id: `w1-${n}`,
+				shortId: `JREP-${n + 2}`,
+				title,
+				state: "done",
+				parentTaskId: WAVE.id,
+			}),
+		),
+		task({
+			id: "w1-4",
+			shortId: "JREP-6",
+			title: "Kinds from extensions and project config",
+			state: "someday",
+			parentTaskId: WAVE.id,
+		}),
+	],
+	contextRefs: [
+		{
+			id: "r1",
+			taskId: WAVE.id,
+			uri: "wiki/timeline-entries.md",
+			kind: "design",
+			label: "Timeline entries",
+			addedAt: "2026-10-10T00:00:00.000Z",
+		},
+	],
+});
+const WAVE_CHECKLIST = BoardChecklist.view(WAVE_RECORDS.checklist);
+
 // Checklist progress on the board's rows: one under way, one complete.
 const PROGRESS = new Map([
 	["n1", { done: 2, total: 4 }],
@@ -702,7 +774,7 @@ export const STORIES: readonly Story[] = [
 	{
 		name: "detail-checklist",
 		about:
-			"an issue's checklist under its brief, the cursor on the first open item",
+			"an issue that opens on now: its checklist, the cursor on the first open item",
 		width: 80,
 		height: 24,
 		render: () => (
@@ -719,7 +791,7 @@ export const STORIES: readonly Story[] = [
 	{
 		name: "detail-handoff",
 		about:
-			"the latest handoff under the brief, one earlier counted, the checklist below it",
+			"the latest handoff under the checklist as a digest, one earlier counted",
 		width: 40,
 		height: 40,
 		render: () => (
@@ -749,6 +821,38 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	{
+		name: "detail-now",
+		about:
+			"a wave's parent on now: its checklist, its real handoff as a digest, a decision made, five subtasks",
+		width: 40,
+		height: 40,
+		render: () => (
+			<Detail
+				taskId={WAVE.id}
+				task={WAVE}
+				records={ok(WAVE_RECORDS)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				checklist={WAVE_CHECKLIST}
+				keys={{ context: "detail", situation: { checklist: true } }}
+			/>
+		),
+	},
+	{
+		name: "detail-description",
+		about: "the same issue's description tab: the ask and its curated context",
+		width: 40,
+		height: 24,
+		render: () => (
+			<Detail
+				taskId={WAVE.id}
+				task={WAVE}
+				tab="description"
+				records={ok(WAVE_RECORDS)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
 		name: "detail-timeline",
 		about:
 			"the comments tab: a comment, a handoff, and a review no module declares, each kind named",
@@ -767,7 +871,7 @@ export const STORIES: readonly Story[] = [
 	{
 		name: "detail-handoff-long-author",
 		about:
-			"a handoff whose author's name outruns forty columns: the name is cut, the age kept",
+			"a handoff on now whose author's name outruns forty columns: the name is cut, the age kept",
 		width: 40,
 		height: 24,
 		render: () => (

@@ -137,10 +137,11 @@ the view you are in, then the ones that work everywhere, and `j`/`k` scroll it w
 than the pane. A key that does nothing right now (no row selected, no linked issue) shows faint:
 
 - `j`/`k` move, `enter` opens a task, `esc` goes back, `q` quits. The detail view pins the
-  task at a glance, where it sits and any question waiting on you, then shows one tab at a
-  time: the description (with the decisions made on it, its subtasks and curated context
-  under it), the comments, and the log of work and agent activity. `1`-`3` or `h`/`l`
-  switch tabs.
+  task at a glance, where it sits and any question waiting on you, then shows one section at
+  a time: `now` (its checklist, the latest handoff as a digest, the decisions made and its
+  subtasks), the description (with its curated context), the comments, and the log of work
+  and agent activity. It opens on `now` when anything is in it. `1`-`4` or `h`/`l` switch
+  sections.
 - `[` and `]` move a task through the states (inbox, next, in progress, waiting, done).
   `d` marks it done, `n` next, `s` someday, `x` cancel.
 - `/` filters as you type, `f` cycles open, done and cancelled, and review, `i` cycles the

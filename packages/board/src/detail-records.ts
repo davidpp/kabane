@@ -1,6 +1,7 @@
 // The records the open detail view shows (BoardData.taskDetail), fetched when it opens or its task
 // changes. A different task opens on its loading line; the same task refetches in place, so a
-// v/x/n/s on it keeps its tab and its scroll. The task's open decisions and its checklist go on into
+// v/x/n/s on it keeps its tab and its scroll. Its first records settle the tab it opens on
+// (BoardNav.withOpeningTab). The task's open decisions and its checklist go on into
 // the board's state, where the keys that answer and tick them are reduced (BoardDecisions.withOpen,
 // BoardChecklist.withOpen).
 import type { Result } from "@cabane/core";
@@ -9,6 +10,7 @@ import type { BoardStore } from "./board-store";
 import { BoardChecklist } from "./checklist";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
+import { DetailModel } from "./detail-model";
 import { BoardNav } from "./nav";
 
 export type DetailRecords = {
@@ -38,10 +40,14 @@ export const useDetailRecords = (
 			setRecords(next);
 			if (next.ok)
 				update((prev) =>
-					BoardChecklist.withOpen(
-						BoardDecisions.withOpen(prev, taskId, next.value.questions),
+					BoardNav.withOpeningTab(
+						BoardChecklist.withOpen(
+							BoardDecisions.withOpen(prev, taskId, next.value.questions),
+							taskId,
+							next.value.checklist,
+						),
 						taskId,
-						next.value.checklist,
+						DetailModel.openingTab(next.value),
 					),
 				);
 		},
