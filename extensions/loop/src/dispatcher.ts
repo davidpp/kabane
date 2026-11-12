@@ -16,6 +16,7 @@ import { Loop } from "./commands";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
 import { LoopSettings } from "./settings";
+import { RunStore } from "./store";
 
 export namespace LoopDispatcher {
 	const START = "start";
@@ -48,19 +49,48 @@ export namespace LoopDispatcher {
 	// Core lint's risks for the plan, most severe first; a lint that cannot run is itself worth
 	// reading before starting.
 	const lintOf = async (
+		home: string,
 		basePath: string,
 		parentTaskId: string,
 		cwd: string,
 	): Promise<{ risks: Risk[]; messages: string[] }> => {
-		const linted = await Lint.run({ basePath, parentTaskId, cwd });
+		const runs = RunStore.list(home);
+		const messages: string[] = [];
+		if (!runs.ok) messages.push(`run history not read: ${runs.error.message}`);
+		const progressEntries = (runs.ok ? runs.value : [])
+			.filter((run) => run.parentId === parentTaskId)
+			.flatMap((run) => {
+				const events = RunStore.readEvents(home, run.id);
+				if (!events.ok) {
+					messages.push(
+						`run ${run.id} history not read: ${events.error.message}`,
+					);
+					return [];
+				}
+				return events.value.flatMap((event) =>
+					event.type === "reopened" && event.task !== undefined
+						? [{ subtaskId: event.task, status: event.type }]
+						: [],
+				);
+			});
+		const linted = await Lint.run({
+			basePath,
+			parentTaskId,
+			cwd,
+			progressEntries,
+		});
 		return linted.ok
 			? {
 					risks: linted.value.risks,
-					messages: linted.value.risks.map(
-						(r) => `${r.message} (${r.severity})`,
-					),
+					messages: [
+						...messages,
+						...linted.value.risks.map((r) => `${r.message} (${r.severity})`),
+					],
 				}
-			: { risks: [], messages: [`lint did not run: ${linted.error.message}`] };
+			: {
+					risks: [],
+					messages: [...messages, `lint did not run: ${linted.error.message}`],
+				};
 	};
 
 	const projectScripts = (root: string): Record<string, string> => {
@@ -103,7 +133,12 @@ export namespace LoopDispatcher {
 				),
 			]);
 		const { projectDir, projectRoot, config } = prepared.value;
-		const lint = await lintOf(deps.basePath, taskId, projectDir);
+		const lint = await lintOf(
+			deps.home,
+			deps.basePath,
+			plan.value.parent.id,
+			projectDir,
+		);
 		const advice = LoopAdvice.of(plan.value, lint.risks, {
 			config,
 			scripts: projectScripts(projectRoot),
