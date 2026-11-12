@@ -425,8 +425,19 @@ describe("the cursor past the checklist, over the subtasks and links on `now`", 
 		});
 		const onLink = keys(withRows(), "J", "J").state;
 		expect(BoardChecklist.target(onLink)).toBe("b");
-		const opened = press(onLink, "return").state;
-		expect(opened.view).toMatchObject({ type: "detail", taskId: "b" });
+		// The blocker is outside the loaded sections: it opens over this one and comes in on a reload.
+		const opened = press(onLink, "return");
+		expect(opened.state.view).toMatchObject({
+			type: "detail",
+			taskId: "b",
+			back: [{ taskId: "w" }],
+		});
+		expect(opened.effect).toEqual({ type: "reload" });
+		// esc comes back to this issue.
+		expect(press(opened.state, "escape").state.view).toMatchObject({
+			type: "detail",
+			taskId: "w",
+		});
 	});
 
 	it("tells the footer which keys the cursor's row takes", () => {
