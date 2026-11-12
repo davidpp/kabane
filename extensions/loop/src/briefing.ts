@@ -211,9 +211,11 @@ export namespace Briefing {
 				: [
 						[],
 						[{ text: "Advised", bold: true }],
+						// The lead space is its own part, so a wrapped reason hangs under the path.
 						...advice.map((r): PanelLine => [
+							{ text: " ", tone: "muted" },
 							{
-								text: ` ${r.path} = ${typeof r.value === "object" ? JSON.stringify(r.value) : r.value} · ${r.reason}`,
+								text: `${r.path} = ${typeof r.value === "object" ? JSON.stringify(r.value) : r.value} · ${r.reason}`,
 								tone: "muted",
 							},
 						]),
