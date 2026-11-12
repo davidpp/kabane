@@ -109,9 +109,9 @@ const offsetOf = (box: ScrollBoxRenderable, id: string): number | undefined => {
 };
 
 // The pinned row's entry and heading. After a jump, the heading picked and its entry, though near
-// the end of the scroll it cannot reach the top. Otherwise the last entry whose first line has gone
-// above the view, and the heading under the cursor when it is that entry's; none while the first
-// line of the entry at the top is in sight.
+// the end of the scroll it cannot reach the top. Otherwise the entry the view's top is in, and the
+// heading under the cursor when it is that entry's; none while that entry's first line is the top
+// row, where it says the same.
 const pinAt = (
 	box: ScrollBoxRenderable,
 	entries: readonly DetailModel.LiftedEntry[],
@@ -126,11 +126,13 @@ const pinAt = (
 	};
 	const jumped = of(picked);
 	if (jumped) return jumped;
-	const entry = entries.findLast((e) => {
-		const offset = offsetOf(box, LiftedReader.entryId(e.kind));
-		return offset !== undefined && offset < box.scrollTop;
+	const placed = entries.flatMap((entry) => {
+		const offset = offsetOf(box, LiftedReader.entryId(entry.kind));
+		return offset === undefined ? [] : [{ entry, offset }];
 	});
-	if (!entry) return null;
+	const at = placed.findLast(({ offset }) => offset <= box.scrollTop);
+	if (!at || at.offset === box.scrollTop) return null;
+	const { entry } = at;
 	const heading = of(under);
 	return heading?.kind === entry.kind ? heading : { kind: entry.kind };
 };

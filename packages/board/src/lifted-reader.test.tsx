@@ -193,6 +193,52 @@ describe("LiftedReaderSheet", () => {
 		r.destroy();
 	});
 
+	test("pins the entry the view's top is in, and nothing while a later entry's first line is the top row", async () => {
+		const finding = {
+			name: "finding",
+			title: "Finding",
+			template: "## Gap",
+			projection: {
+				latest: {
+					after: "description" as const,
+					framing: "What a reviewer found.",
+				},
+			},
+		};
+		const entries = DetailModel.lifted(
+			Fixtures.records(ISSUE, {
+				kinds: [...Fixtures.KINDS, finding],
+				entries: [
+					Fixtures.entry(ISSUE, 1, "handoff", CLAUDE, Fixtures.REAL_HANDOFF),
+					Fixtures.entry(
+						ISSUE,
+						2,
+						"finding",
+						CLAUDE,
+						`## Gap\n\n${Array.from({ length: 40 }, (_, n) => `Line ${String(n)}.`).join("\n\n")}`,
+					),
+				],
+			}),
+		);
+		expect(entries.map((entry) => entry.kind)).toEqual(["handoff", "finding"]);
+		const r = await mount(entries);
+		const h = (): LiftedReader.Handle =>
+			r.handle.current as LiftedReader.Handle;
+		// Line by line down to the finding's first line at the top of the view.
+		let frame = r.captureCharFrame();
+		for (let step = 0; step < 400; step++) {
+			if (topRow(frame).startsWith("finding · claude")) break;
+			frame = await r.press(() => h().scroll({ delta: 1 }));
+		}
+		expect(topRow(frame)).toStartWith("finding · claude");
+		expect(pinRow(frame)).toBe("");
+		// A line further, the finding's first line has gone above: the row names it, not the handoff.
+		expect(pinRow(await r.press(() => h().scroll({ delta: 1 })))).toBe(
+			"finding · claude",
+		);
+		r.destroy();
+	}, 20_000);
+
 	test("a newer entry without that heading starts the reader over at the top", async () => {
 		const r = await mount(lifted(Fixtures.REAL_HANDOFF));
 		const h = (): LiftedReader.Handle =>
