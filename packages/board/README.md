@@ -518,6 +518,15 @@ comments section has every entry whole. The kinds come from the host's registere
 host that registered none lifts nothing, and an issue with no such entry shows nothing for it. A
 new entry moves the open detail's stamp, so a handoff recorded in a shell shows within one poll.
 
+`r` on the detail, from any section, opens the reader: each lifted kind's newest entry in full,
+in the same order, over the detail. The footer names it after the kind (`r read handoff`), or
+says `r read` when an issue has entries of several lifted kinds, and leaves it out when there is
+nothing to read. In the reader, `j/k` scroll, `[` and `]` move to the previous and next heading
+across the entries (headings read as the digest reads them), `?` lists these keys, and `esc` or
+`q` close it onto the detail at the section and scroll you left. A newer entry that lands while
+the reader is open replaces the one on screen, and the heading you were at stays where it was;
+when the newer entry has no heading of that name, the reader goes back to the top.
+
 ## Linked issues
 
 A task can point at one issue in an external tracker. The row says only that it does, with a gray
