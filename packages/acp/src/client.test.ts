@@ -1116,6 +1116,151 @@ describe("AcpClient.resumeSession", () => {
 	});
 });
 
+// An agent that runs a session as one of its named agents, the way Claude's adapter does: asked
+// for in `_meta.claudeCode.options.agent`, reported on its `agent` option, listed only when the
+// user has agents of their own, and its default for a name it does not know.
+const namedAgents = (
+	seen: { opened: unknown[] },
+	agents: string[] = ["board-ui"],
+): AgentApp => {
+	const opened = (params: { _meta?: Record<string, unknown> | null }) => {
+		seen.opened.push(params);
+		const claudeCode = params._meta?.claudeCode as
+			| { options?: { agent?: string } }
+			| undefined;
+		const asked = claudeCode?.options?.agent;
+		const current = asked && agents.includes(asked) ? asked : "default";
+		return agents.length === 0
+			? []
+			: [
+					{
+						id: "agent",
+						name: "Agent",
+						type: "select" as const,
+						currentValue: current,
+						options: ["default", ...agents].map((value) => ({
+							value,
+							name: value,
+						})),
+					},
+				];
+	};
+	return agentApp({ name: "agents" })
+		.onRequest(methods.agent.initialize, () => ({
+			protocolVersion: PROTOCOL_VERSION,
+			agentCapabilities: {
+				loadSession: true,
+				sessionCapabilities: { resume: {} },
+			},
+		}))
+		.onRequest(methods.agent.session.new, (c) => ({
+			sessionId: "s-1",
+			configOptions: opened(c.params),
+		}))
+		.onRequest(methods.agent.session.resume, (c) => ({
+			configOptions: opened(c.params),
+		}));
+};
+
+describe("AcpClient named agents", () => {
+	const open = async (
+		harness: "claude" | "codex",
+		agent: AgentApp,
+		options: Partial<AcpClient.NewSessionOptions>,
+	) => {
+		const conn = await AcpClient.connect(harness, agent, {
+			onPermission: allow,
+		});
+		if (!conn.ok) throw conn.error;
+		const session = await AcpClient.newSession(conn.value, {
+			cwd: "/tmp/scope",
+			mcpServers: [],
+			...options,
+		});
+		if (!session.ok) throw session.error;
+		AcpClient.close(conn.value);
+		return session.value;
+	};
+
+	it("asks Claude for the agent in _meta, beside the system prompt, and confirms it from its agent option", async () => {
+		const seen = { opened: [] as unknown[] };
+		const session = await open("claude", namedAgents(seen), {
+			agent: "board-ui",
+			systemPromptAppend: "Be brief.",
+		});
+		expect(seen.opened).toEqual([
+			{
+				cwd: "/tmp/scope",
+				mcpServers: [],
+				_meta: {
+					systemPrompt: { append: "Be brief." },
+					claudeCode: { options: { agent: "board-ui" } },
+				},
+			},
+		]);
+		expect(session.agent).toEqual({
+			current: "board-ui",
+			applied: true,
+			note: "agent board-ui",
+		});
+	});
+
+	it("asks for it on a resumed session too", async () => {
+		const seen = { opened: [] as unknown[] };
+		const conn = await AcpClient.connect("claude", namedAgents(seen), {
+			onPermission: allow,
+		});
+		if (!conn.ok) throw conn.error;
+		const resumed = await AcpClient.resumeSession(conn.value, "s-old", {
+			cwd: "/tmp/scope",
+			mcpServers: [],
+			agent: "board-ui",
+		});
+		if (!resumed.ok) throw resumed.error;
+		expect(seen.opened).toEqual([
+			{
+				sessionId: "s-old",
+				cwd: "/tmp/scope",
+				mcpServers: [],
+				_meta: { claudeCode: { options: { agent: "board-ui" } } },
+			},
+		]);
+		expect(resumed.value.agent).toMatchObject({ applied: true });
+		AcpClient.close(conn.value);
+	});
+
+	it("says the session runs without the agent when the harness lacks it or has no way to select one", async () => {
+		const unknown = await open("claude", namedAgents({ opened: [] }), {
+			agent: "nobody",
+		});
+		expect(unknown.agent).toEqual({
+			current: "default",
+			applied: false,
+			note: "claude has no agent nobody (it offers default, board-ui), so it runs default",
+		});
+		const none = await open("claude", namedAgents({ opened: [] }, []), {
+			agent: "board-ui",
+		});
+		expect(none.agent).toEqual({
+			applied: false,
+			note: "claude has no agent board-ui, so it runs its default agent",
+		});
+		const seen = { opened: [] as unknown[] };
+		const codex = await open("codex", namedAgents(seen), {
+			agent: "board-ui",
+		});
+		expect(seen.opened[0]).not.toHaveProperty("_meta");
+		expect(codex.agent).toEqual({
+			applied: false,
+			note: "codex has no way to select a named agent, so it runs without board-ui",
+		});
+		// Nothing asked, nothing reported.
+		expect(
+			(await open("claude", namedAgents({ opened: [] }), {})).agent,
+		).toBeUndefined();
+	});
+});
+
 describe("AcpClient.resumeOrStart", () => {
 	const options = { cwd: "/tmp/scope", mcpServers: [] };
 

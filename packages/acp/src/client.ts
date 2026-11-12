@@ -185,6 +185,8 @@ export namespace AcpClient {
 		configOptions: SessionConfigOption[];
 		/** What selecting the model the session was opened with did; absent when none was asked for. */
 		model?: ModelChoice;
+		/** Whether the session runs as the named agent it was opened with; absent when none was asked for. */
+		agent?: AgentChoice;
 	};
 
 	/**
@@ -236,6 +238,9 @@ export namespace AcpClient {
 		// A value the session's model option lists, selected before the mode is negotiated, since
 		// the model decides which modes are on offer; the harness's own when absent.
 		model?: string;
+		// The harness's named agent the session's main thread runs as, where the harness can select
+		// one (`Harnesses.agentMeta`); its own default agent when absent.
+		agent?: string;
 	};
 
 	export type NewSessionOptions = {
@@ -248,6 +253,7 @@ export namespace AcpClient {
 		mode?: Harnesses.Mode;
 		// As in `ResumeOptions`.
 		model?: string;
+		agent?: string;
 	};
 
 	const DEFAULT_HANDSHAKE_MS = 30_000;
@@ -456,17 +462,20 @@ export namespace AcpClient {
 		connection: Connection,
 		options: NewSessionOptions,
 	): Promise<Result<Session>> => {
-		const meta =
+		const meta = sessionMeta(
+			connection.harness,
 			options.systemPromptAppend !== undefined &&
-			Harnesses.acceptsSystemPrompt(connection.harness)
+				Harnesses.acceptsSystemPrompt(connection.harness)
 				? { systemPrompt: { append: options.systemPromptAppend } }
-				: undefined;
+				: {},
+			options,
+		);
 		const started = await tryCatch(() =>
 			connection.agent
 				.buildSession({
 					cwd: options.cwd,
 					mcpServers: options.mcpServers.map(toMcpServer),
-					...(meta ? { _meta: meta } : {}),
+					...withMeta(meta),
 				})
 				.start(),
 		);
@@ -512,6 +521,7 @@ export namespace AcpClient {
 				sessionId: id,
 				cwd: options.cwd,
 				mcpServers: options.mcpServers.map(toMcpServer),
+				...withMeta(sessionMeta(connection.harness, {}, options)),
 			}),
 		);
 		if (!resumed.ok) {
@@ -527,6 +537,25 @@ export namespace AcpClient {
 			...(await configure(connection, id, resumed.value, options)),
 		});
 	};
+
+	// What `session/new` or `session/resume` carries in `_meta`: `base`, plus the named agent where
+	// the harness takes one that way. Undefined when there is nothing to carry.
+	const sessionMeta = (
+		harness: Harnesses.Id,
+		base: Record<string, unknown>,
+		options: ResumeOptions,
+	): Record<string, unknown> | undefined => {
+		const agent =
+			options.agent === undefined
+				? undefined
+				: Harnesses.agentMeta(harness, options.agent);
+		const meta = { ...base, ...agent };
+		return Object.keys(meta).length > 0 ? meta : undefined;
+	};
+
+	const withMeta = (
+		meta: Record<string, unknown> | undefined,
+	): { _meta?: Record<string, unknown> } => (meta ? { _meta: meta } : {});
 
 	/**
 	 * Set up a session that just opened: the model first, then the mode from the options the model
@@ -565,6 +594,15 @@ export namespace AcpClient {
 			configOptions,
 			mode,
 			...(selected ? { model: selected.choice } : {}),
+			...(options.agent === undefined
+				? {}
+				: {
+						agent: agentChoice(
+							connection.harness,
+							configOptions,
+							options.agent,
+						),
+					}),
 		};
 	};
 
@@ -809,6 +847,45 @@ export namespace AcpClient {
 				landed === switchTo
 					? `mode ${switchTo}: ${connection.harness}'s auto mode, switched from ${from}`
 					: `mode ${landed}: asked for ${connection.harness}'s auto mode (${switchTo}) from ${from}, and it chose ${landed}`,
+		};
+	};
+
+	/** Whether a session runs as the named agent it was opened with, and why not. */
+	export type AgentChoice = {
+		/** The agent the harness says the session runs as; absent when it says none. */
+		current?: string;
+		applied: boolean;
+		/** As one line for the session's log. */
+		note: string;
+	};
+
+	/**
+	 * Whether the session runs as agent `name`, by the option the harness reports its agent on
+	 * (`Harnesses.agentOption`). A harness with no way to select one runs without it, and so does
+	 * one that has no such agent: Claude's adapter lists only the user's own agents, and falls back
+	 * to its default for a name it does not know.
+	 */
+	const agentChoice = (
+		harness: Harnesses.Id,
+		options: SessionConfigOption[],
+		name: string,
+	): AgentChoice => {
+		const id = Harnesses.agentOption(harness);
+		if (id === undefined)
+			return {
+				applied: false,
+				note: `${harness} has no way to select a named agent, so it runs without ${name}`,
+			};
+		const found = options.find((o) => o.id === id);
+		const option = found?.type === "select" ? found : undefined;
+		const current = option?.currentValue;
+		if (current === name)
+			return { current, applied: true, note: `agent ${name}` };
+		const offered = option ? selectValues(option) : [];
+		return {
+			...(current === undefined ? {} : { current }),
+			applied: false,
+			note: `${harness} has no agent ${name}${offered.length > 0 ? ` (it offers ${offered.join(", ")})` : ""}, so it runs ${current ?? "its default agent"}`,
 		};
 	};
 

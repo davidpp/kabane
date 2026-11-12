@@ -177,6 +177,22 @@ list, or a switch it refuses leaves the session on the model it opened with, and
 that names no model leaves it unconfirmed: `applied` is false and `note` says why. It never
 fails the session.
 
+## Named agents
+
+An `agent` in `newSession`'s or `resumeSession`'s options runs the session's main thread as one
+of the harness's own named agents, where the harness can select one; this is how the loop
+applies a subtask's `agent:` tag. Only Claude can: the pinned adapter takes it as
+`_meta.claudeCode.options.agent` (the Agent SDK's `agent`, the CLI's `--agent`) and reports
+the agent it runs on its `agent` config option, which it lists only when the user has agents of
+their own. `session.agent` says what came of it: an agent the harness does not have runs its
+default agent, and a harness with no way to select one (codex-acp 2.5.0 takes no agent or
+profile per session) runs without it; `applied` is false and `note` says why.
+
+`Harnesses.agentDefinition(id, name, cwd)` finds the agent's definition as a session in `cwd`
+would (Claude: `.claude/agents/*.md` from `cwd` up, then `~/.claude/agents`), and the model its
+frontmatter pins (`inherit` is no pin). It is read from the file because the session's model
+option goes on naming the session's own model while a pinned agent's turns run on its pin.
+
 ## Notices
 
 `initialize` advertises `clientCapabilities.session.notices`, so a harness sends what it wants
