@@ -844,13 +844,15 @@ describe("AcpClient session modes through a config option", () => {
 // An agent with a model option, as both pinned adapters send it (in groups here), and a mode
 // option whose auto mode only `opus` offers, as Claude has no auto mode on some models. It opens
 // on `haiku` in its manual mode, records every session/set_config_option, and can resume `s-1`.
-// `refuse` throws on a model switch, and `swap` lands on another model than the one asked for.
+// `refuse` throws on a model switch, `swap` lands on another model than the one asked for, and
+// `unnamed` answers a model switch without its model option.
 const modelAgent = (
 	seen: { setConfig: unknown[] },
 	options: {
 		advertise?: boolean;
 		refuse?: boolean;
 		swap?: string;
+		unnamed?: boolean;
 	} = {},
 ): AgentApp => {
 	let model = "haiku";
@@ -908,7 +910,7 @@ const modelAgent = (
 			}
 			if (options.refuse) throw new Error("not on this plan");
 			model = options.swap ?? String(value);
-			return { configOptions: configOptions() };
+			return { configOptions: configOptions(!options.unnamed) };
 		});
 };
 
@@ -1003,6 +1005,11 @@ describe("AcpClient session models", () => {
 			current: "haiku",
 			applied: false,
 			note: "asked claude for opus and it chose haiku",
+		});
+		// An answer without the model option is no evidence of the model: none is claimed.
+		expect((await modelOf("opus", { unnamed: true })).model).toEqual({
+			applied: false,
+			note: "asked claude for opus, and its answer names no model, so which one it runs is unconfirmed",
 		});
 	});
 });

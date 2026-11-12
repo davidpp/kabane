@@ -814,7 +814,7 @@ export namespace AcpClient {
 
 	/** What selecting a session's model left it on, and why. */
 	export type ModelChoice = {
-		/** The model the session runs, by the harness's value; absent when it advertises none. */
+		/** The model the session runs, by the harness's value; absent when it is not known. */
 		current?: string;
 		/** Whether the session runs the model asked for. */
 		applied: boolean;
@@ -826,7 +826,8 @@ export namespace AcpClient {
 	 * Select `value` on the model option (`category: "model"`) through `session/set_config_option`,
 	 * with the config options the harness answered. A harness with no model option, one that does
 	 * not list `value`, or one that refuses the switch leaves the session on the model it opened
-	 * with. The choice says which, and never fails the session.
+	 * with; one whose answer has no model option leaves it unconfirmed. The choice says which, and
+	 * never fails the session.
 	 */
 	const selectModel = async (
 		connection: Connection,
@@ -866,7 +867,16 @@ export namespace AcpClient {
 				note: `selecting ${value} failed, so ${harness} keeps ${from}: ${toError(set.error).message}`,
 			});
 		const { configOptions } = set.value;
-		const landed = selectOption(configOptions, "model")?.currentValue ?? value;
+		const landed = selectOption(configOptions, "model")?.currentValue;
+		// No model in the answer is no evidence of one: what the session runs is unknown.
+		if (landed === undefined)
+			return {
+				choice: {
+					applied: false,
+					note: `asked ${harness} for ${value}, and its answer names no model, so which one it runs is unconfirmed`,
+				},
+				configOptions,
+			};
 		return {
 			choice:
 				landed === value

@@ -173,8 +173,8 @@ Both pinned adapters advertise their model as a `category: "model"` select optio
 before the mode is negotiated, since the model decides which modes the harness offers (Claude
 has no auto mode on some models); this is how the loop applies its `model` setting.
 `session.model` says what came of it. A harness with no model option, a value it does not
-list, or a switch it refuses leaves the session on the model it opened with: `applied` is false
-and `note` says why. It never
+list, or a switch it refuses leaves the session on the model it opened with, and an answer
+that names no model leaves it unconfirmed: `applied` is false and `note` says why. It never
 fails the session.
 
 ## Notices
