@@ -94,12 +94,30 @@ export namespace LoopDispatcher {
 		deps: Deps,
 		parent: string,
 		values: Readonly<Record<string, unknown>>,
+		edited: readonly string[],
 		advice: readonly LoopAdvice.Recommendation[],
 	): Promise<Result<string>> => {
-		// Setup was advised for worktrees; a shared submission keeps only configured setup.
+		// Setup and a width above one were advised for worktrees. A shared submission keeps only
+		// configured setup; one sharing a tree also drops the width, and "sessions at once" the human
+		// never moved is that advised default, not their choice.
+		const sharedTree =
+			values.isolation === "shared" || values.worktree === false;
+		const width = advice.find(
+			(r) => r.path === "budget.concurrency" && r.value > 1,
+		);
+		const dropWidth =
+			sharedTree && width !== undefined && !edited.includes(width.path);
 		const config = LoopSettings.overrides(
-			values,
-			advice.filter((r) => r.path !== "setup" || values.isolation !== "shared"),
+			dropWidth
+				? Object.fromEntries(
+						Object.entries(values).filter(([name]) => name !== width.path),
+					)
+				: values,
+			advice.filter(
+				(r) =>
+					(r.path !== "setup" || values.isolation !== "shared") &&
+					(r !== width || !sharedTree),
+			),
 		);
 		if (!config.ok) return config;
 		const run = await Loop.start(deps, { parent, config: config.value });
@@ -118,9 +136,15 @@ export namespace LoopDispatcher {
 					advised.set(taskId, advice),
 				);
 			},
-			dispatch: (triggerId, target, inputs) =>
+			dispatch: (triggerId, target, inputs, edited) =>
 				triggerId === START
-					? start(deps, target.id, inputs ?? {}, advised.get(target.id) ?? [])
+					? start(
+							deps,
+							target.id,
+							inputs ?? {},
+							edited ?? [],
+							advised.get(target.id) ?? [],
+						)
 					: Promise.resolve(
 							err(new Error(`Unknown loop trigger: ${triggerId}`)),
 						),

@@ -20,6 +20,8 @@ export namespace TriggerForm {
 		field: number;
 		// Every input's value, by name, from its default on.
 		values: Readonly<Record<string, unknown>>;
+		// The inputs the human has moved, those moved back to their default included.
+		edited: readonly string[];
 	};
 
 	const NOTHING: BoardNav.Effect = { type: "none" };
@@ -47,6 +49,7 @@ export namespace TriggerForm {
 				input.default,
 			]),
 		),
+		edited: [],
 	});
 
 	/** Whether the human moved `name` off its default. */
@@ -106,7 +109,13 @@ export namespace TriggerForm {
 			...form.values,
 			[name]: step(input, form.values[name], by),
 		};
-		return { state: withForm(state, { ...form, values }), effect: NOTHING };
+		const edited = form.edited.includes(name)
+			? form.edited
+			: [...form.edited, name];
+		return {
+			state: withForm(state, { ...form, values, edited }),
+			effect: NOTHING,
+		};
 	};
 
 	/** `enter`: the picker closes and the trigger fires on the task with the form's values. */
@@ -120,6 +129,7 @@ export namespace TriggerForm {
 				triggerId: form.trigger.id,
 				id: taskId,
 				inputs: form.values,
+				edited: form.edited,
 			},
 		};
 	};

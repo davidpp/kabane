@@ -35,6 +35,8 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop land <runId>              (pushes a completed run's branch and opens its pull request)
        kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)
 
+start applies no advice: loop advise shows it, and its "start with" line is the flags that apply it.
+
 A subtask's tags route its claim: tier:<name> asks for a tier's model (loop.tiers) over --model,
 tier:<harness>/<name> also runs it on that harness, and agent:<name> runs it as the harness's named
 agent (Claude's .claude/agents; an agent that pins a model keeps it). A tag the run cannot honour is
@@ -371,10 +373,14 @@ const shown = (value: unknown): string => {
 };
 
 // What a setting is under the run's layers now, to read the advice against.
-const current = (config: LoopConfig.Config, r: Recommendation): unknown => {
+const current = (a: Loop.Advised, r: Recommendation): unknown => {
+	const { config } = a;
 	switch (r.path) {
 		case "budget.concurrency":
-			return config.budget.concurrency;
+			return (
+				config.budget.concurrency ??
+				`${LoopConfig.concurrency(config, a.isolated)}, the default ${a.isolated ? "with worktrees" : "in a shared tree"}`
+			);
 		case "gates":
 			return config.gates;
 		default:
@@ -387,8 +393,6 @@ const asFlags = (r: Recommendation): string[] => {
 	switch (r.path) {
 		case "budget.concurrency":
 			return [`--concurrency ${r.value}`];
-		case "isolation":
-			return [`--isolation ${r.value}`];
 		case "gates":
 			return Object.entries(r.value).map(
 				([name, command]) => `--gate ${name}=${JSON.stringify(command)}`,
@@ -425,7 +429,7 @@ const advisedText = (a: Loop.Advised): string => {
 		"advised:",
 		...a.advice.map(
 			(r) =>
-				`  ${r.path} ${shown(r.value)} (now ${shown(current(a.config, r))}): ${r.reason}`,
+				`  ${r.path} ${shown(r.value)} (now ${shown(current(a, r))}): ${r.reason}`,
 		),
 		...(flags.length > 0 ? [`  start with: ${flags.join(" ")}`] : []),
 		...(settings.length > 0

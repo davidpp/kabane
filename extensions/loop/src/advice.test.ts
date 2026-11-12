@@ -29,10 +29,15 @@ const config = (input: LoopConfig.Input = {}): LoopConfig.Config => {
 	if (!result.success) throw result.error;
 	return result.data;
 };
-const project = (input: LoopConfig.Input = {}): LoopAdvice.Project => ({
+// A git repository unless `inRepo` says otherwise.
+const project = (
+	input: LoopConfig.Input = {},
+	inRepo = true,
+): LoopAdvice.Project => ({
 	config: config(input),
 	scripts: {},
 	lockfiles: [],
+	isolated: LoopAdvice.isolated(config(input), inRepo),
 });
 const node = (id: string, blockers: string[] = [], file = "") =>
 	LoopPlan.node({ ...task(id, id), description: file }, blockers);
@@ -69,27 +74,58 @@ test("concurrency uses the maximum antichain, not synchronous topological layers
 	).toBe(3);
 });
 
-test("parallel overlap serializes; sequential overlap allows unrelated parallel work and advises isolation", () => {
+test("parallel overlap serializes; overlap between ordered issues leaves the unrelated parallel work", () => {
 	const a = node("A", [], "src/shared.ts");
 	const b = node("B", [], "src/shared.ts");
 	expect(recommendation([a, b], [overlap])[0]).toMatchObject({
 		value: 1,
 		reason: expect.stringContaining("src/shared.ts"),
 	});
-	const advice = recommendation(
-		[a, { ...b, blockedBy: ["A"] }, node("C")],
-		[overlap],
-		project({ isolation: "shared" }),
-	);
-	expect(advice[0]?.value).toBe(2);
-	expect(advice).toContainEqual({
-		path: "isolation",
-		value: "worktree",
-		reason: "file overlap in a plan with parallel work",
-	});
+	const ordered = [a, { ...b, blockedBy: ["A"] }, node("C")];
+	expect(recommendation(ordered, [overlap])[0]?.value).toBe(2);
+	// A and B never run together, so their overlap asks nothing of a shared tree: only C runs beside
+	// A, and the shared tree keeps it to one session.
+	expect(
+		recommendation(ordered, [overlap], project({ isolation: "shared" })),
+	).toEqual([
+		{
+			path: "budget.concurrency",
+			value: 1,
+			reason:
+				"subtasks share one tree; their gates see each other's half-done edits",
+		},
+	]);
 	expect(
 		recommendation([a, b], [{ ...overlap, type: "no_tests" }])[0]?.value,
 	).toBe(2);
+});
+
+test("a shared tree is advised one session however wide the plan; worktrees get the width", () => {
+	const wide = ["A", "B", "C", "D"].map((id) => node(id));
+	expect(recommendation(wide)[0]).toEqual({
+		path: "budget.concurrency",
+		value: 4,
+		reason: "up to 4 independent issues in the blocker DAG",
+	});
+	// Outside a git repository a run works in place, its worktree setting notwithstanding.
+	for (const shared of [
+		project({ isolation: "shared" }),
+		project({ worktree: false }),
+		project({}, false),
+	])
+		expect(recommendation(wide, [], shared)[0]).toEqual({
+			path: "budget.concurrency",
+			value: 1,
+			reason:
+				"subtasks share one tree; their gates see each other's half-done edits",
+		});
+	expect(
+		recommendation(
+			[node("A"), node("B", ["A"])],
+			[],
+			project({ isolation: "shared" }),
+		)[0]?.reason,
+	).toBe("up to 1 independent issues in the blocker DAG");
 });
 
 test("closed nodes, findings and human tasks do not add sessions; cycles remain safe", () => {

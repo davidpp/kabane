@@ -10,7 +10,6 @@ export namespace LoopAdvice {
 				value: number;
 				reason: string;
 		  }
-		| { path: "isolation"; value: "worktree"; reason: string }
 		| { path: "setup"; value: string; reason: string }
 		| { path: "gates"; value: Record<string, string>; reason: string };
 
@@ -26,6 +25,8 @@ export namespace LoopAdvice {
 		config: LoopConfig.Config;
 		scripts: Readonly<Record<string, string>>;
 		lockfiles: readonly string[];
+		/** Whether each subtask would work in a worktree of its own (`isolated`). */
+		isolated: boolean;
 	};
 
 	const installer = (
@@ -57,10 +58,29 @@ export namespace LoopAdvice {
 		return found;
 	};
 
-	const checkConcurrency = (
+	type Concurrency = {
+		path: "budget.concurrency";
+		value: number;
+		reason: string;
+	};
+
+	/**
+	 * Whether each subtask would work in a worktree of its own: `isolation: worktree` in a run with
+	 * a worktree, which only a git repository has (`RunStore.isolated`, before the run exists).
+	 * Otherwise every session shares one tree.
+	 */
+	export const isolated = (
+		config: LoopConfig.Config,
+		inRepo: boolean,
+	): boolean => config.isolation === "worktree" && config.worktree && inRepo;
+
+	const SHARED_TREE =
+		"subtasks share one tree; their gates see each other's half-done edits";
+
+	const checkWidth = (
 		plan: LoopPlan.Plan,
 		risks: readonly Risk[],
-	): Recommendation => {
+	): Concurrency => {
 		const nodes = plan.nodes.filter(
 			(n) =>
 				LoopPlan.isWork(n) &&
@@ -124,19 +144,14 @@ export namespace LoopAdvice {
 		};
 	};
 
-	const checkIsolation = (
-		risks: readonly Risk[],
-		concurrency: number,
-	): Recommendation[] =>
-		risks.some((r) => r.type === "file_overlap") && concurrency > 1
-			? [
-					{
-						path: "isolation",
-						value: "worktree",
-						reason: "file overlap in a plan with parallel work",
-					},
-				]
-			: [];
+	// The width yields to isolation, never the reverse: where work happens is the human's call.
+	const checkConcurrency = (
+		width: Concurrency,
+		inWorktrees: boolean,
+	): Recommendation =>
+		inWorktrees || width.value <= 1
+			? width
+			: { path: "budget.concurrency", value: 1, reason: SHARED_TREE };
 
 	const checkGates = (project: Project): Recommendation[] => {
 		const install = installer(project);
@@ -157,12 +172,9 @@ export namespace LoopAdvice {
 			: [];
 	};
 
-	const checkSetup = (
-		project: Project,
-		isolation: string,
-	): Recommendation[] => {
+	const checkSetup = (project: Project): Recommendation[] => {
 		const install = installer(project);
-		return isolation === "worktree" && install
+		return project.config.isolation === "worktree" && install
 			? [
 					{
 						path: "setup",
@@ -186,16 +198,14 @@ export namespace LoopAdvice {
 		risks: readonly Risk[],
 		project: Project,
 	): Recommendation[] => {
-		const concurrency = checkConcurrency(plan, risks);
-		const isolation = checkIsolation(risks, Number(concurrency.value));
+		const concurrency = checkConcurrency(
+			checkWidth(plan, risks),
+			project.isolated,
+		);
 		return [
 			concurrency,
-			...isolation,
 			...checkGates(project),
-			...checkSetup(
-				project,
-				isolation.length > 0 ? "worktree" : project.config.isolation,
-			),
+			...checkSetup(project),
 			...checkStall(risks),
 		];
 	};

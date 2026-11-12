@@ -357,6 +357,8 @@ export namespace Loop {
 		/** The project root around `projectDir`: where its settings resolve and its lenses are. */
 		projectRoot: string;
 		config: LoopConfig.Config;
+		/** Whether each subtask would work in a worktree of its own (`LoopAdvice.isolated`). */
+		isolated: boolean;
 	};
 
 	/**
@@ -399,6 +401,10 @@ export namespace Loop {
 			projectDir: projectDir.value,
 			projectRoot: projectRoot.value,
 			config: config.value,
+			isolated: LoopAdvice.isolated(
+				config.value,
+				Worktree.inRepo(projectDir.value),
+			),
 		});
 	};
 
@@ -422,6 +428,8 @@ export namespace Loop {
 		parent: string;
 		projectDir: string;
 		config: LoopConfig.Config;
+		/** Whether each subtask would work in a worktree of its own (`Prepared.isolated`). */
+		isolated: boolean;
 		advice: LoopAdvice.Recommendation[];
 		subtasks: Routed[];
 	};
@@ -552,7 +560,7 @@ export namespace Loop {
 	 */
 	export const adviceOf = async (
 		deps: Pick<Deps, "home" | "basePath">,
-		{ plan, projectDir, projectRoot, config }: Prepared,
+		{ plan, projectDir, projectRoot, config, isolated }: Prepared,
 	): Promise<{ advice: LoopAdvice.Recommendation[]; messages: string[] }> => {
 		const messages: string[] = [];
 		const progressEntries = reopened(deps.home, plan.parent.id, messages);
@@ -573,6 +581,7 @@ export namespace Loop {
 			lockfiles: LoopAdvice.LOCKFILES.filter((name) =>
 				existsSync(join(projectRoot, name)),
 			),
+			isolated,
 		});
 		return { advice, messages };
 	};
@@ -588,7 +597,7 @@ export namespace Loop {
 	): Promise<Result<Advised>> => {
 		const prepared = await prepare(deps, input);
 		if (!prepared.ok) return prepared;
-		const { plan, projectDir, config } = prepared.value;
+		const { plan, projectDir, config, isolated } = prepared.value;
 		const { advice } = await adviceOf(deps, prepared.value);
 		const git = deps.git ?? Worktree.git;
 		const subtasks = await Promise.all(
@@ -605,6 +614,7 @@ export namespace Loop {
 			parent: plan.parent.shortId ?? plan.parent.id,
 			projectDir,
 			config,
+			isolated,
 			advice,
 			subtasks,
 		});
