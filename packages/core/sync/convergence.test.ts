@@ -33,9 +33,9 @@ type Device = {
 	transport: SyncTransport;
 };
 
-const ALPHA = "jake://scope/alpha";
-const BETA = "jake://scope/beta";
-const SHARED = "jake://scope/coll";
+const ALPHA = "kabane://scope/alpha";
+const BETA = "kabane://scope/beta";
+const SHARED = "kabane://scope/coll";
 
 let relay: Relay;
 let bases: string[];

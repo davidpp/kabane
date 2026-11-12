@@ -155,7 +155,7 @@ describe("updateTaskIn", () => {
 		const result = await withDb(base, (db) =>
 			db.transaction(() => {
 				const invalid = Planner.updateTaskIn(db, added.value.id, {
-					scopeUri: "jake://scope/",
+					scopeUri: "kabane://scope/",
 				});
 				expect(invalid.ok).toBe(false);
 				const changed = Planner.updateTaskIn(db, added.value.id, {
@@ -167,7 +167,7 @@ describe("updateTaskIn", () => {
 				expect(changed.value).toMatchObject({
 					title: "After",
 					state: "waiting",
-					scopeUri: "jake://scope/after",
+					scopeUri: "kabane://scope/after",
 					version: 2,
 				});
 				return changed.value;

@@ -385,10 +385,13 @@ it("rolls back the answer and oplog if the task move fails, and notifies only af
 
 it("matches base and qualified scope filters against the same family as kabane_list", async () => {
 	const bare = await issue("Base", "family");
-	const qualified = await issue("Branch", "jake://scope/family?branch=review");
+	const qualified = await issue(
+		"Branch",
+		"kabane://scope/family?branch=review",
+	);
 	const outside = await issue("Outside", "family-other");
 	for (const task of [bare, qualified, outside]) await ask(task.id);
-	for (const scopeUri of ["family", "jake://scope/family?branch=review"]) {
+	for (const scopeUri of ["family", "kabane://scope/family?branch=review"]) {
 		const tasks = unwrap(await Planner.queryTasks(base, { scopeUri }));
 		const rows = unwrap(await Questions.list(base, { scopeUri }));
 		expect([...new Set(rows.map((row) => row.taskId))].sort()).toEqual(

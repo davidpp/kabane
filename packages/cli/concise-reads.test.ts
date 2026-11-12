@@ -113,7 +113,7 @@ describe.concurrent("concise actual entry points", () => {
 				);
 				expect(assigned.code).toBe(0);
 				const fullArgs = {
-					scopeUri: "jake://scope/corpus",
+					scopeUri: "kabane://scope/corpus",
 					includeClosed: true,
 					limit: 200,
 				};
@@ -324,7 +324,7 @@ describe.concurrent("concise actual entry points", () => {
 				const searchQuery = synthetic ? "Synthetic" : "dataset";
 				const searchText = await call("kabane_search", {
 					query: searchQuery,
-					scopeUri: "jake://scope/corpus",
+					scopeUri: "kabane://scope/corpus",
 					responseFormat: "concise",
 				});
 				const search = pageSchema.safeParse(JSON.parse(searchText));
@@ -343,7 +343,7 @@ describe.concurrent("concise actual entry points", () => {
 					expect(cliSearchPage.data.items).toEqual(search.data.items);
 				const rawSearchArgs = {
 					query: searchQuery,
-					scopeUri: "jake://scope/corpus",
+					scopeUri: "kabane://scope/corpus",
 				};
 				const searchIds = search.data.items.map((item) => item.id);
 				let searchCursor = search.data.nextCursor;
@@ -501,7 +501,7 @@ describe.concurrent("concise actual entry points", () => {
 				).toContain("DO_NOT_ECHO_BODY");
 				const todayText = await call("kabane_today", {
 					responseFormat: "concise",
-					scopeUri: "jake://scope/corpus",
+					scopeUri: "kabane://scope/corpus",
 					limit: 100,
 				});
 				expect(Buffer.byteLength(todayText)).toBeLessThanOrEqual(16384);
@@ -515,11 +515,11 @@ describe.concurrent("concise actual entry points", () => {
 						.safeParse(JSON.parse(todayText)).success,
 				).toBe(true);
 				const rawToday = await call("kabane_today", {
-					scopeUri: "jake://scope/corpus",
+					scopeUri: "kabane://scope/corpus",
 				});
 				expect(
 					await call("kabane_today", {
-						scopeUri: "jake://scope/corpus",
+						scopeUri: "kabane://scope/corpus",
 						responseFormat: "full",
 					}),
 				).toBe(rawToday);

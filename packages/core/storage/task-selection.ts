@@ -73,10 +73,6 @@ export const selectTaskQuery = (
 		conditions.push(scope.sql);
 		params.push(...scope.params);
 	}
-	if (query.scopeUriPattern) {
-		conditions.push("scope_uri LIKE ?");
-		params.push(query.scopeUriPattern);
-	}
 	const equalities = [
 		["kind", query.kind],
 		["priority", query.priority],

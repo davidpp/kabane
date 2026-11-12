@@ -469,7 +469,7 @@ describe("detectScope", () => {
 			branch: "main",
 		});
 		expect(scope?.scopeUri).toBe(
-			"jake://scope/cabane?branch=main&package=%40cabane%2Fcore",
+			"kabane://scope/cabane?branch=main&package=%40cabane%2Fcore",
 		);
 	});
 
@@ -499,7 +499,7 @@ describe("detectScope", () => {
 		const scope = await detectScope(root, { home, detectExtensions: false });
 
 		expect(scope?.extensions).toEqual({});
-		expect(scope?.scopeUri).toBe("jake://scope/cabane");
+		expect(scope?.scopeUri).toBe("kabane://scope/cabane");
 	});
 
 	it("leaves a fresh clone without a kabane file", async () => {

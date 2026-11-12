@@ -70,6 +70,7 @@ import {
 } from "../schemas";
 import { TABLES } from "../storage/helpers";
 import { Oplog } from "../storage/oplog";
+import { ScopeScheme } from "../storage/scope-scheme";
 import {
 	Resolve,
 	type ResolveDecision,
@@ -471,6 +472,13 @@ const collectLabels = (ops: readonly SyncOp[]): string[] => {
 /** Tombstone-free storage: an absent row is otherwise a never-seen row. */
 const deleteKey = (tbl: string, rowId: string): string => `${tbl} ${rowId}`;
 
+/** `op` as this schema stores it: a device on an older one still sends the old scope scheme. */
+const currentScopes = (op: SyncOp): SyncOp => {
+	if (op.payload === undefined) return op;
+	const payload = ScopeScheme.inRow(op.payload);
+	return payload === op.payload ? op : { ...op, payload };
+};
+
 type Prepared = {
 	op: SyncOp;
 	/** Every FK parent present, after `set-null` columns were cleared. */
@@ -642,7 +650,11 @@ const applyOne = (pass: Pass, op: RelayOp) => {
 	const meta = pass.metas.get(op.tbl) ?? tableMeta(db, op.tbl);
 	pass.metas.set(op.tbl, meta);
 
-	const prepared = prepareParents(db, parentsOf(op.tbl, rule), op);
+	const prepared = prepareParents(
+		db,
+		parentsOf(op.tbl, rule),
+		currentScopes(op),
+	);
 	counts.clearedRefs += prepared.cleared;
 
 	// Before the resolver, and for every table: a dangling FK is the one

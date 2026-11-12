@@ -451,6 +451,34 @@ the new version is in place.
   [Agents](#agents). A dispatch skill that `/setup-dispatch` wrote with 1.0.0-beta.0 reports the
   same way; run `/setup-dispatch` again to write it from the current template.
 
+### Upgrading from 1.0.0-beta.0: scope URIs, and one place for the database
+
+A scope's URI was `jake://scope/<id>`, after the planner kabane was extracted from. It is
+`kabane://scope/<id>` now. This changes the database too: the new version renames every stored
+scope the first time it opens it, in the same step as the
+[comment kinds](#upgrading-from-100-beta0-comment-kinds-and-handoffs) migration, so stop the
+old version's processes and back the database up as that section says.
+
+- **What is kept.** Every task and project stays in its scope, under the same scope id and
+  the same short id. Only the scheme in front of the id changes.
+- **The old scheme is still read.** `--scope jake://scope/myapp`, a tool's `scopeUri`
+  argument and a bare id (`myapp`) all name the same scope as `kabane://scope/myapp`. Pins
+  hold the bare id and need no change.
+- **Output says `kabane://scope/…`.** `scopeUri` in `--json` output and in tool results is the
+  new URI. A script that compares it to a `jake://scope/…` string has to change; one that
+  passes it back to kabane does not.
+- **Sync.** A device still on the old version stops pulling at an updated device's first
+  change, as for comment kinds. What it pushes meanwhile still carries the old scheme, and an
+  updated device renames it as it pulls, so both versions' tasks land in one scope.
+- **The `db` block is gone.** `kabane init --db-path … --table-prefix …` and the `db` block in
+  `config.json` let a device open another application's database, with prefixed tables. The
+  database is always `KABANE_HOME/kabane.db` now. A config that still has a `db` block is
+  refused, with a message, so that it is not read as an empty tracker: if the file it names
+  has unprefixed tables, move it to `KABANE_HOME/kabane.db` and remove the block. A database
+  with prefixed tables is not opened by this version.
+- **A database from before 0.1.0.** One created by a source build older than the first
+  release, and not opened since, is refused: open it once with 1.0.0-beta.0, then update.
+
 ### One-time upgrade from 0.1.0
 
 Version 0.1.0 predates `kabane update`. For an existing **Bun global registry install**, stop
@@ -577,9 +605,8 @@ The next `kabane` shows the setup screen again.
 
 Known rough edges:
 
-- **Ids and scopes still carry Jake's prefixes.** Kabane was extracted from a planner called
-  Jake. Short ids start with `J` plus the first letters of the scope (`JMYA-1` in `myapp`),
-  and scopes are `jake://scope/…` URIs.
+- **Short ids start with `J`.** A short id is `J` plus the first letters of the scope
+  (`JMYA-1` in `myapp`), whatever the project is called.
 - **Sync means hosting a hub.** More than one machine needs the Cloudflare hub in
   [`deploy.md`](deploy.md), on your own Cloudflare account and domain.
 - **Add the git remote before you file tasks.** A repo with no remote is scoped by its first

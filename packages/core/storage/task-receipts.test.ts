@@ -92,7 +92,7 @@ describe("prospective scope labels", () => {
 						[importedId, added.value.id],
 					);
 					db.run(
-						`INSERT INTO ${TABLES.sequences} (prefix, next_number, scope_uri, created_at) VALUES ('JNEW', 8, 'jake://scope/new', ?)`,
+						`INSERT INTO ${TABLES.sequences} (prefix, next_number, scope_uri, created_at) VALUES ('JNEW', 8, 'kabane://scope/new', ?)`,
 						[new Date().toISOString()],
 					);
 					expect(Oplog.initDevice(db, "receipt-race").ok).toBe(true);
@@ -126,7 +126,7 @@ describe("prospective scope labels", () => {
 		if (updated.ok) {
 			expect(updated.value?.shortId).toBe("JNEW-10");
 			expect(updated.value?.version).toBe(2);
-			expect(updated.value?.scopeUri).toBe("jake://scope/new");
+			expect(updated.value?.scopeUri).toBe("kabane://scope/new");
 		}
 	});
 });

@@ -25,6 +25,7 @@ import { type KabaneModule, Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import { parseQuestionBody } from "../schemas";
 import { TABLES } from "./helpers";
+import { ScopeScheme } from "./scope-scheme";
 
 /**
  * A database with a tasks table and no version table predates the runner. The
@@ -275,6 +276,15 @@ export namespace Migrations {
 					   ON ${TABLES.comments}(task_id, kind, created_at)`,
 				);
 			},
+		},
+		{
+			// A scope was `jake://scope/<id>`, after the planner core was extracted
+			// from; it is `kabane://scope/<id>` (JCAB-223). Rows, and the ops still
+			// in this device's log, are renamed here. A device on an older schema
+			// keeps sending the old scheme, which apply renames as it pulls, and
+			// stops its own pull at the first op from this schema.
+			name: "scope-scheme",
+			up: ScopeScheme.migrate,
 		},
 	];
 

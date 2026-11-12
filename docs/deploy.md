@@ -653,8 +653,7 @@ bun run deploy                   # with all values from 1.0 and 1.5 in your envi
 
 ### 5.8 Upgrade kabane across devices: the hub first, then each device
 
-Every database carries a numbered schema version (`schema_migrations`, behind the table
-prefix when a host app shares its database). On boot, kabane applies the migrations the
+Every database carries a numbered schema version (`schema_migrations`). On boot, kabane applies the migrations the
 database has not had yet, each once and each in its own transaction: a migration that fails is reported by
 number and leaves the database at the version before it. A database already at a newer
 version than the build opening it is refused with "update kabane before opening it",
@@ -688,6 +687,12 @@ Migration 5 (calendar-date deadlines) rewrites every deadline stored as the end 
 (`…T23:59:59.999Z`, `…T23:59:00Z` and the like) as the date it meant, on each database as it
 boots; deadlines with a real time are left alone. Set `KABANE_TIMEZONE` on the hub (1.5) in
 the same redeploy, or the hub keeps reading those dates in UTC.
+
+Migration 10 (scope URIs) renames every stored scope from `jake://scope/<id>` to
+`kabane://scope/<id>`, on each database as it boots, with the ops still in that device's own
+log. The hub's log is not rewritten: an op in it from before the migration keeps the old
+scheme, and each updated device renames it as it pulls. The old scheme stays valid wherever a
+scope is given, so a client configured with a `jake://scope/…` URI keeps working.
 
 ---
 

@@ -76,7 +76,7 @@ describe("cabane tools", () => {
 		const created = unwrap(
 			await tool("kabane_add").handler({ title: "scoped" }, withDefault),
 		) as Task;
-		expect(created.scopeUri).toBe("jake://scope/demo");
+		expect(created.scopeUri).toBe("kabane://scope/demo");
 		expect(created.updatedBy).toBe(AGENT);
 		expect(created.provenance.source).toBe("ai");
 	});

@@ -167,15 +167,17 @@ describe("Loop.start refusals", () => {
 	});
 
 	it("refuses a directory that is not the parent's scope, and names --dir", async () => {
-		const parent = await add("parent", { scopeUri: "jake://scope/elsewhere" });
+		const parent = await add("parent", {
+			scopeUri: "kabane://scope/elsewhere",
+		});
 		await add("child", {
 			parentTaskId: parent.id,
-			scopeUri: "jake://scope/elsewhere",
+			scopeUri: "kabane://scope/elsewhere",
 		});
 		const started = await Loop.start(deps(), { parent: parent.id });
 		expect(started.ok).toBe(false);
 		if (!started.ok) {
-			expect(started.error.message).toContain("jake://scope/elsewhere");
+			expect(started.error.message).toContain("kabane://scope/elsewhere");
 			expect(started.error.message).toContain("--dir");
 		}
 		const runs = RunStore.list(home);

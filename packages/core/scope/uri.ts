@@ -9,22 +9,36 @@ import {
 /**
  * Scope URI utilities.
  *
- * Format: jake://scope/<scopeId>?<extensions>
- * Example: jake://scope/jake?client=acme&session=xyz
+ * Format: kabane://scope/<scopeId>?<extensions>
+ * Example: kabane://scope/myapp?client=acme&session=xyz
  */
 export namespace ScopeUri {
-	const SCHEME = "jake";
+	const SCHEME = "kabane";
 	const NAMESPACE = "scope";
-	const PREFIX = `${SCHEME}://${NAMESPACE}/`;
+	/** What every scope URI kabane writes starts with. */
+	export const PREFIX = `${SCHEME}://${NAMESPACE}/`;
+	/**
+	 * What one started with before schema 10. Never written; read wherever a
+	 * scope comes in from outside this build: a flag, a tool argument, a pin, an
+	 * op pulled from a device on an older schema.
+	 */
+	export const LEGACY_PREFIX = `jake://${NAMESPACE}/`;
+
+	/** `uri` under the scheme in force, the rest of it untouched. */
+	export const current = (uri: string): string =>
+		uri.startsWith(LEGACY_PREFIX)
+			? `${PREFIX}${uri.slice(LEGACY_PREFIX.length)}`
+			: uri;
 
 	/**
 	 * Parse a scope URI string into components
 	 *
 	 * @example
-	 * parse("jake://scope/jake?client=acme")
-	 * // → { ok: true, value: { scheme: 'jake', namespace: 'scope', scopeId: 'jake', extensions: { client: 'acme' } } }
+	 * parse("kabane://scope/myapp?client=acme")
+	 * // → { ok: true, value: { scheme: 'kabane', namespace: 'scope', scopeId: 'myapp', extensions: { client: 'acme' } } }
 	 */
-	export const parse = (uri: string): Result<ParsedScopeUri> => {
+	export const parse = (input: string): Result<ParsedScopeUri> => {
+		const uri = current(input);
 		if (!uri.startsWith(PREFIX)) {
 			return err(new Error(`Invalid scope URI: must start with "${PREFIX}"`));
 		}
@@ -72,8 +86,8 @@ export namespace ScopeUri {
 	 * Format components into a scope URI string
 	 *
 	 * @example
-	 * format({ scopeId: 'jake', extensions: { client: 'acme' } })
-	 * // → "jake://scope/jake?client=acme"
+	 * format({ scopeId: 'myapp', extensions: { client: 'acme' } })
+	 * // → "kabane://scope/myapp?client=acme"
 	 */
 	export const format = (parts: ScopeUriParts): string => {
 		// Encode the scopeId for URL safety
@@ -99,8 +113,8 @@ export namespace ScopeUri {
 	 * Canonicalize a scope URI (sort params, lowercase keys, normalize)
 	 *
 	 * @example
-	 * canonicalize("jake://scope/jake?Session=xyz&Client=acme")
-	 * // → "jake://scope/jake?client=acme&session=xyz"
+	 * canonicalize("kabane://scope/myapp?Session=xyz&Client=acme")
+	 * // → "kabane://scope/myapp?client=acme&session=xyz"
 	 */
 	export const canonicalize = (uri: string): Result<string> => {
 		const parsed = parse(uri);
@@ -117,10 +131,10 @@ export namespace ScopeUri {
 	 * - Query with extensions: matches only if all specified extensions match
 	 *
 	 * @example
-	 * matches("jake://scope/jake?client=acme", { scopeId: 'jake' })
+	 * matches("kabane://scope/myapp?client=acme", { scopeId: 'myapp' })
 	 * // → true
 	 *
-	 * matches("jake://scope/jake?client=acme", { scopeId: 'jake', extensions: { client: 'globex' } })
+	 * matches("kabane://scope/myapp?client=acme", { scopeId: 'myapp', extensions: { client: 'globex' } })
 	 * // → false
 	 */
 	export const matches = (uri: string, query: ScopeQuery): boolean => {

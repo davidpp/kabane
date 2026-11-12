@@ -3,14 +3,14 @@ import { z } from "zod";
 /**
  * Scope URI schemas.
  *
- * `jake://scope/<scopeId>?<extensions>` is the canonical context identifier a
- * task carries. The scheme is kept for wire compatibility with existing data;
- * Cabane parses and formats it and never resolves it — a host decides what a
- * scope id means.
+ * `kabane://scope/<scopeId>?<extensions>` is the canonical context identifier a
+ * task carries. Core parses and formats it and never resolves it: a host
+ * decides what a scope id means. `jake://scope/…`, the scheme before schema 10,
+ * is read as the same scope and never written (`ScopeUri.LEGACY_PREFIX`).
  */
 
 export const ParsedScopeUriSchema = z.object({
-	scheme: z.literal("jake"),
+	scheme: z.literal("kabane"),
 	namespace: z.literal("scope"),
 	scopeId: z.string().min(1),
 	extensions: z.record(z.string()).optional(),

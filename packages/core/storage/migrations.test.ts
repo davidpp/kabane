@@ -19,6 +19,7 @@ import { configureTestRuntime } from "../testing";
 import { columnExists, TABLES } from "./helpers";
 import { Planner } from "./index";
 import { Migrations } from "./migrations";
+import { Oplog } from "./oplog";
 
 let base: string;
 
@@ -463,6 +464,138 @@ describe("Migration 9: an issue's comments become entries of kind comment", () =
 			expect(index).toEqual([{ name: `${TABLES.comments}_task_kind_idx` }]);
 		});
 	}
+});
+
+describe("Migration 10: scopes leave the jake:// scheme", () => {
+	afterEach(() => rmSync(base, { recursive: true, force: true }));
+
+	it("renames every stored scope and logged op, once, and moves no version or clock", async () => {
+		base = freshBase("scope-scheme");
+		// A device on the build before this migration, with sync armed.
+		await withDb((db) => {
+			const stamped = Migrate.run(db, Migrations.LIST.slice(0, 9));
+			if (!stamped.ok) throw stamped.error;
+			const armed = Oplog.initDevice(db, "device-a");
+			if (!armed.ok) throw armed.error;
+		});
+		const project = await Planner.addProject(base, {
+			title: "p",
+			scopeUri: "mill",
+		});
+		if (!project.ok) throw project.error;
+		const plain = await Planner.addTask(base, {
+			title: "plain",
+			scopeUri: "mill",
+			// Text that only mentions the old scheme is not a scope.
+			description: "see jake://scope/mill for the history",
+		});
+		const extended = await Planner.addTask(base, {
+			title: "extended",
+			scopeUri: "kabane://scope/github.com%2Facme%2Fmill?branch=main",
+			scopeRefs: [{ scopeUri: "kabane://scope/other", role: "related" }],
+		});
+		const unscoped = await Planner.addTask(base, { title: "unscoped" });
+		if (!plain.ok || !extended.ok || !unscoped.ok)
+			throw new Error("seeding failed");
+		// What that build stored: the same rows and ops under the old scheme.
+		await withDb((db) => {
+			for (const table of [TABLES.tasks, TABLES.projects, TABLES.sequences])
+				db.run(
+					`UPDATE ${table} SET scope_uri = replace(scope_uri, 'kabane://scope/', 'jake://scope/')`,
+				);
+			db.run(
+				`UPDATE ${TABLES.tasks} SET scope_refs = replace(scope_refs, 'kabane://scope/', 'jake://scope/')`,
+			);
+			db.run(
+				`UPDATE ${TABLES.sync_oplog} SET payload = replace(payload, 'kabane://scope/', 'jake://scope/')`,
+			);
+		});
+		const scopes = () =>
+			withDb((db) => ({
+				tasks: db
+					.query<Record<string, unknown>, []>(
+						`SELECT title, scope_uri, scope_refs, description, version, updated_at
+						   FROM ${TABLES.tasks} ORDER BY title`,
+					)
+					.all(),
+				projects: db
+					.query<{ scope_uri: string }, []>(
+						`SELECT scope_uri FROM ${TABLES.projects}`,
+					)
+					.all(),
+				sequences: db
+					.query<{ prefix: string; scope_uri: string | null }, []>(
+						`SELECT prefix, scope_uri FROM ${TABLES.sequences} ORDER BY prefix`,
+					)
+					.all(),
+				ops: db
+					.query<{ payload: string }, []>(
+						`SELECT payload FROM ${TABLES.sync_oplog} WHERE tbl IN ('tasks', 'projects') ORDER BY seq`,
+					)
+					.all()
+					.map((op) => JSON.parse(op.payload) as Record<string, unknown>)
+					.map((row) => [row.title, row.scope_uri, row.scope_refs]),
+			}));
+		const before = await scopes();
+		expect(before.ops).toContainEqual(["plain", "jake://scope/mill", null]);
+
+		await mustInit(base);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
+
+		const after = await scopes();
+		const old = (uri: string) => uri.replace("kabane://", "jake://");
+		expect(after.tasks).toEqual([
+			{
+				...before.tasks[0],
+				scope_uri: "kabane://scope/github.com%2Facme%2Fmill?branch=main",
+				scope_refs: '[{"scopeUri":"kabane://scope/other","role":"related"}]',
+			},
+			{ ...before.tasks[1], scope_uri: "kabane://scope/mill" },
+			{ ...before.tasks[2] },
+		]);
+		expect(after.tasks[1]?.description).toBe(
+			"see jake://scope/mill for the history",
+		);
+		expect(after.tasks[2]?.scope_uri).toBeNull();
+		expect(after.projects).toEqual([{ scope_uri: "kabane://scope/mill" }]);
+		expect(after.sequences).toEqual(
+			before.sequences.map((row) => ({
+				...row,
+				scope_uri:
+					row.scope_uri && row.scope_uri.replace("jake://", "kabane://"),
+			})),
+		);
+		expect(after.sequences.map((row) => row.scope_uri)).toContain(
+			"kabane://scope/mill",
+		);
+		expect(after.ops).toEqual([
+			["p", "kabane://scope/mill", undefined],
+			["plain", "kabane://scope/mill", null],
+			[
+				"extended",
+				"kabane://scope/github.com%2Facme%2Fmill?branch=main",
+				'[{"scopeUri":"kabane://scope/other","role":"related"}]',
+			],
+			["unscoped", null, null],
+		]);
+		expect(before.ops.map(([, uri]) => uri)).toEqual(
+			after.ops.map(([, uri]) => (typeof uri === "string" ? old(uri) : uri)),
+		);
+
+		// A second boot is a read of the version table.
+		await mustInit(base);
+		expect(await scopes()).toEqual(after);
+
+		// The old scheme, the new one and a bare id all name the scope.
+		for (const scopeUri of [
+			"jake://scope/mill",
+			"kabane://scope/mill",
+			"mill",
+		]) {
+			const found = await Planner.queryTasks(base, { scopeUri });
+			expect(found.ok && found.value.map((t) => t.title)).toEqual(["plain"]);
+		}
+	});
 });
 
 describe("Migrations when several processes boot one database at once", () => {

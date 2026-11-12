@@ -8,7 +8,14 @@
 
 import { existsSync } from "node:fs";
 import { checklistModule } from "@cabane/checklist";
-import { ok, Planner, type Result, Runtime, tryCatch } from "@cabane/core";
+import {
+	normalizeScopeUri,
+	ok,
+	Planner,
+	type Result,
+	Runtime,
+	tryCatch,
+} from "@cabane/core";
 import {
 	detectScope,
 	mainCheckoutRoot,
@@ -152,7 +159,16 @@ export const resolveScope = async (
 	ctx: Ctx,
 ): Promise<ScopeSelection | undefined> => {
 	const explicit = flagString(args, "scope");
-	if (explicit) return { scopeUri: explicit, label: explicit };
+	if (explicit) {
+		// The URI rows are stored under, so a bare id or the scheme before schema 10 names the
+		// same scope wherever this one is compared to a row's. An unusable one goes on as typed,
+		// for storage to refuse with its own message.
+		const normalized = normalizeScopeUri(explicit);
+		return {
+			scopeUri: normalized.ok ? normalized.value : explicit,
+			label: explicit,
+		};
+	}
 
 	const detected = await detectProject(ctx.cwd, ctx.home);
 	return detected

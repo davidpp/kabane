@@ -190,6 +190,40 @@ describe("Apply — FK safety and unknown columns", () => {
 		).toEqual([["comment-1", "comment"]]);
 	});
 
+	it("stores a scope a device before schema 10 sent under the scheme in force", async () => {
+		await arm();
+
+		const report = await Apply.applyBatch(
+			base,
+			page([
+				insertOp(1, "tasks", "old-1", {
+					...taskPayload("old-1"),
+					scope_uri: "jake://scope/mill?branch=main",
+					scope_refs: '[{"scopeUri":"jake://scope/other","role":"related"}]',
+					description: "jake://scope/mill in prose stays",
+				}),
+				insertOp(2, "tasks", "new-1", {
+					...taskPayload("new-1"),
+					scope_uri: "kabane://scope/mill",
+				}),
+			]),
+		);
+
+		expect(report.ok ? report.value.applied : report.error.message).toBe(2);
+		const old = await taskRow("old-1");
+		expect(old?.scope_uri).toBe("kabane://scope/mill?branch=main");
+		expect(old?.scope_refs).toBe(
+			'[{"scopeUri":"kabane://scope/other","role":"related"}]',
+		);
+		expect(old?.description).toBe("jake://scope/mill in prose stays");
+		// One scope, whichever device wrote the row.
+		const scoped = await Planner.queryTasks(base, { scopeUri: "mill" });
+		expect(scoped.ok && scoped.value.map((t) => t.id).sort()).toEqual([
+			"new-1",
+			"old-1",
+		]);
+	});
+
 	it("counts a table this build does not replicate as a skip, not a failure", async () => {
 		await arm();
 

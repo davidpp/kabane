@@ -100,7 +100,7 @@ describe("Planner", () => {
 		it("should prefix the short ID from a normalized scope", async () => {
 			const result = await Planner.addTask(TEST_BASE, {
 				...draft,
-				scopeUri: "jake://scope/mill",
+				scopeUri: "kabane://scope/mill",
 			});
 			expect(result.ok).toBe(true);
 			if (result.ok) expect(result.value.shortId).toStartWith("JMIL-");
@@ -111,8 +111,8 @@ describe("Planner", () => {
 		// here, not only behind the tRPC router.
 		it("should normalize a bare scope ID passed straight to storage", async () => {
 			for (const [scope, expected, prefix] of [
-				["acme", "jake://scope/acme", "JACM-"],
-				["work", "jake://scope/work", "JWOR-"],
+				["acme", "kabane://scope/acme", "JACM-"],
+				["work", "kabane://scope/work", "JWOR-"],
 			] satisfies [string, string, string][]) {
 				const result = await Planner.addTask(TEST_BASE, {
 					...draft,
@@ -129,8 +129,8 @@ describe("Planner", () => {
 		it("should canonicalize near-miss scopes so a canonical filter finds them", async () => {
 			for (const scope of [
 				"mill",
-				"jake://scope/mill",
-				"jake://scope/mill/",
+				"kabane://scope/mill",
+				"kabane://scope/mill/",
 				" mill",
 				"MILL",
 				"Mill",
@@ -140,11 +140,12 @@ describe("Planner", () => {
 					scopeUri: scope,
 				});
 				expect(result.ok).toBe(true);
-				if (result.ok) expect(result.value.scopeUri).toBe("jake://scope/mill");
+				if (result.ok)
+					expect(result.value.scopeUri).toBe("kabane://scope/mill");
 			}
 
 			const found = await Planner.queryTasks(TEST_BASE, {
-				scopeUri: "jake://scope/mill",
+				scopeUri: "kabane://scope/mill",
 			});
 			expect(found.ok).toBe(true);
 			if (found.ok) expect(found.value).toHaveLength(6);
@@ -155,7 +156,7 @@ describe("Planner", () => {
 		// would orphan the live rows filed under them.
 		it("should keep a path-shaped bare scope ID byte-identical", async () => {
 			const path = "/Users/alex/Projects/acme";
-			const stored = `jake://scope/${encodeURIComponent(path)}`;
+			const stored = `kabane://scope/${encodeURIComponent(path)}`;
 
 			const result = await Planner.addTask(TEST_BASE, {
 				...draft,
@@ -175,7 +176,7 @@ describe("Planner", () => {
 		it("should reject a scope with no usable ID instead of writing a JALL row", async () => {
 			const result = await Planner.addTask(TEST_BASE, {
 				...draft,
-				scopeUri: "jake://scope/",
+				scopeUri: "kabane://scope/",
 			});
 			expect(result.ok).toBe(false);
 
@@ -505,7 +506,7 @@ describe("Planner", () => {
 		it("should derive prefix from scope URI", async () => {
 			const result = await Planner.addTask(TEST_BASE, {
 				title: "Scoped task",
-				scopeUri: "jake://scope/github.com/user/mill",
+				scopeUri: "kabane://scope/github.com/user/mill",
 			});
 			expect(result.ok).toBe(true);
 			if (result.ok) {
@@ -516,7 +517,7 @@ describe("Planner", () => {
 		it("should truncate long repo names to 4 chars", async () => {
 			const result = await Planner.addTask(TEST_BASE, {
 				title: "Task in long repo",
-				scopeUri: "jake://scope/github.com/org/verylongreponame",
+				scopeUri: "kabane://scope/github.com/org/verylongreponame",
 			});
 			expect(result.ok).toBe(true);
 			if (result.ok) {
@@ -545,11 +546,11 @@ describe("Planner", () => {
 			// Create MILL tasks
 			const mill1 = await Planner.addTask(TEST_BASE, {
 				title: "Mill 1",
-				scopeUri: "jake://scope/github.com/user/mill",
+				scopeUri: "kabane://scope/github.com/user/mill",
 			});
 			const mill2 = await Planner.addTask(TEST_BASE, {
 				title: "Mill 2",
-				scopeUri: "jake://scope/github.com/user/mill",
+				scopeUri: "kabane://scope/github.com/user/mill",
 			});
 
 			expect(all1.ok && all2.ok && mill1.ok && mill2.ok).toBe(true);
@@ -653,7 +654,7 @@ describe("Planner", () => {
 			);
 			expect(updateResult.ok).toBe(true);
 			if (updateResult.ok) {
-				expect(updateResult.value?.scopeUri).toBe("jake://scope/mill");
+				expect(updateResult.value?.scopeUri).toBe("kabane://scope/mill");
 				expect(updateResult.value?.shortId).toStartWith("JMIL-");
 			}
 		});
@@ -666,7 +667,7 @@ describe("Planner", () => {
 			const updateResult = await Planner.updateTask(
 				TEST_BASE,
 				addResult.value.id,
-				{ scopeUri: "jake://scope/" },
+				{ scopeUri: "kabane://scope/" },
 			);
 			expect(updateResult.ok).toBe(false);
 
@@ -803,9 +804,9 @@ describe("Planner", () => {
 		});
 
 		it("should match scope family by scopeId (ignoring query params)", async () => {
-			const baseScope = "jake://scope/shop";
+			const baseScope = "kabane://scope/shop";
 			const scopedVariant =
-				"jake://scope/shop?branch=main&package=shop-storefront";
+				"kabane://scope/shop?branch=main&package=shop-storefront";
 
 			await Planner.addTask(TEST_BASE, {
 				title: "Shop base",
@@ -876,15 +877,15 @@ describe("Planner", () => {
 		it("should search across scope variants sharing the same scopeId", async () => {
 			await Planner.addTask(TEST_BASE, {
 				title: "Shop scoped auth issue",
-				scopeUri: "jake://scope/shop",
+				scopeUri: "kabane://scope/shop",
 			});
 			await Planner.addTask(TEST_BASE, {
 				title: "Shop branch auth issue",
-				scopeUri: "jake://scope/shop?branch=main&package=shop-storefront",
+				scopeUri: "kabane://scope/shop?branch=main&package=shop-storefront",
 			});
 
 			const result = await Planner.searchTasks(TEST_BASE, "auth", {
-				scopeUri: "jake://scope/shop",
+				scopeUri: "kabane://scope/shop",
 				limit: 50,
 			});
 			expect(result.ok).toBe(true);
@@ -956,16 +957,16 @@ describe("Planner", () => {
 			await Planner.addTask(TEST_BASE, {
 				title: "Shop today base",
 				deadline: today,
-				scopeUri: "jake://scope/shop",
+				scopeUri: "kabane://scope/shop",
 			});
 			await Planner.addTask(TEST_BASE, {
 				title: "Shop today variant",
 				deadline: today,
-				scopeUri: "jake://scope/shop?branch=main&package=shop-storefront",
+				scopeUri: "kabane://scope/shop?branch=main&package=shop-storefront",
 			});
 
 			const result = await Planner.getToday(TEST_BASE, {
-				scopeUri: "jake://scope/shop",
+				scopeUri: "kabane://scope/shop",
 			});
 			expect(result.ok).toBe(true);
 			if (result.ok) {
@@ -1218,7 +1219,7 @@ describe("Planner", () => {
 			await Planner.addTask(TEST_BASE, {
 				title: "Task 4",
 				state: "done",
-				scopeUri: "jake://scope/github.com/user/repo",
+				scopeUri: "kabane://scope/github.com/user/repo",
 			});
 		});
 
@@ -1237,11 +1238,12 @@ describe("Planner", () => {
 		it("merges scope_uri variants into one scope in listScopes", async () => {
 			await Planner.addTask(TEST_BASE, {
 				title: "Branch variant",
-				scopeUri: "jake://scope/github.com/user/repo?branch=main&package=repo",
+				scopeUri:
+					"kabane://scope/github.com/user/repo?branch=main&package=repo",
 			});
 			await Planner.addTask(TEST_BASE, {
 				title: "Encoded variant",
-				scopeUri: "jake://scope/github.com%2Fuser%2Frepo",
+				scopeUri: "kabane://scope/github.com%2Fuser%2Frepo",
 			});
 
 			const result = await Planner.listScopes(TEST_BASE);
@@ -1253,7 +1255,7 @@ describe("Planner", () => {
 				expect(repoScopes).toHaveLength(1);
 				expect(repoScopes[0]?.count).toBe(3);
 				expect(repoScopes[0]?.scopeUri).toBe(
-					"jake://scope/github.com%2Fuser%2Frepo",
+					"kabane://scope/github.com%2Fuser%2Frepo",
 				);
 			}
 		});

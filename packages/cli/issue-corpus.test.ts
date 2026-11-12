@@ -153,7 +153,7 @@ describe("retained issue corpus baseline", () => {
 				}
 				expect(
 					mcpRows.data
-						.filter((row) => row.scopeUri === "jake://scope/corpus")
+						.filter((row) => row.scopeUri === "kabane://scope/corpus")
 						.map((row) => row.id)
 						.sort(),
 				).toEqual(cliRows.data.map((row) => row.id).sort());

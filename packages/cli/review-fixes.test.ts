@@ -110,7 +110,7 @@ describe("Astra review regressions", () => {
 						expect(updated.data).toMatchObject({
 							id,
 							shortId: scope === "new" ? "JNEW-1" : "JCOR-25",
-							scopeUri: `jake://scope/${scope}`,
+							scopeUri: `kabane://scope/${scope}`,
 							version: 2,
 						});
 				} finally {
@@ -167,7 +167,7 @@ describe("Astra review regressions", () => {
 						payload: {
 							...row.data,
 							id: remoteId,
-							scope_uri: "jake://scope/other",
+							scope_uri: "kabane://scope/other",
 							title: "Remote label winner",
 						},
 					},

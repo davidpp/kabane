@@ -77,7 +77,7 @@ imports the SDK.
 const copilot = BoardCopilot.create({
   harness: "claude",
   scopeDir: "/repos/myapp",         // the session cwd, so the harness reads the project's own rules
-  scopeUri: "jake://scope/myapp",   // omit on an all-scopes board
+  scopeUri: "kabane://scope/myapp", // omit on an all-scopes board
   kabaneBin: "/usr/local/bin/kabane", // defaults to this process's entry script
 });
 ```

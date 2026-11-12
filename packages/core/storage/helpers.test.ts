@@ -16,16 +16,18 @@ const normalized = (scope: string): string => {
 describe("normalizeScopeUri", () => {
 	// Every spelling of the same scope has to land on one string, or a filter on
 	// the canonical form silently misses the near-misses.
-	const CANONICAL = "jake://scope/mill";
+	const CANONICAL = "kabane://scope/mill";
 	it.each([
 		["bare id", "mill"],
 		["canonical URI", CANONICAL],
-		["trailing slash", "jake://scope/mill/"],
-		["repeated slashes", "jake://scope/mill//"],
+		["trailing slash", "kabane://scope/mill/"],
+		["repeated slashes", "kabane://scope/mill//"],
 		["leading whitespace", " mill"],
 		["surrounding whitespace", "  mill  "],
-		["whitespace around a URI", "  jake://scope/mill  "],
-		["encoded whitespace in the URI", "jake://scope/%20mill"],
+		["whitespace around a URI", "  kabane://scope/mill  "],
+		["encoded whitespace in the URI", "kabane://scope/%20mill"],
+		["the scheme before schema 10", "jake://scope/mill"],
+		["that scheme with a trailing slash", "jake://scope/mill/"],
 		["upper-case bare id", "MILL"],
 		["title-case bare id", "Mill"],
 		["padded upper-case bare id", "  MILL  "],
@@ -38,11 +40,11 @@ describe("normalizeScopeUri", () => {
 			"mill",
 			"MILL",
 			CANONICAL,
-			"jake://scope/mill/",
+			"kabane://scope/mill/",
 			" mill ",
 			"github.com/user/repo",
 			"/Users/alex/Projects/acme",
-			"jake://scope/mill?client=acme",
+			"kabane://scope/mill?client=acme",
 		]) {
 			const once = normalized(input);
 			expect(normalized(once)).toBe(once);
@@ -50,20 +52,20 @@ describe("normalizeScopeUri", () => {
 	});
 
 	it("preserves extensions on a valid URI", () => {
-		expect(normalized("jake://scope/mill?client=acme")).toBe(
-			"jake://scope/mill?client=acme",
+		expect(normalized("kabane://scope/mill?client=acme")).toBe(
+			"kabane://scope/mill?client=acme",
 		);
-		expect(normalized("jake://scope/mill/?client=acme")).toBe(
-			"jake://scope/mill?client=acme",
+		expect(normalized("kabane://scope/mill/?client=acme")).toBe(
+			"kabane://scope/mill?client=acme",
 		);
 	});
 
 	it("encodes a path-shaped scope ID and keeps its inner slashes", () => {
 		expect(normalized("github.com/user/repo")).toBe(
-			"jake://scope/github.com%2Fuser%2Frepo",
+			"kabane://scope/github.com%2Fuser%2Frepo",
 		);
-		expect(normalized("jake://scope/github.com%2Fuser%2Frepo")).toBe(
-			"jake://scope/github.com%2Fuser%2Frepo",
+		expect(normalized("kabane://scope/github.com%2Fuser%2Frepo")).toBe(
+			"kabane://scope/github.com%2Fuser%2Frepo",
 		);
 	});
 
@@ -71,7 +73,7 @@ describe("normalizeScopeUri", () => {
 	// "project://desk". Collapsing repeated slashes there rewrote it to
 	// "project:/desk", silently moving those rows to a scope nothing queries.
 	it("preserves a scheme embedded in a parsed scope ID", () => {
-		const stored = `jake://scope/${encodeURIComponent("project://desk")}`;
+		const stored = `kabane://scope/${encodeURIComponent("project://desk")}`;
 		expect(normalized(stored)).toBe(stored);
 	});
 
@@ -84,30 +86,43 @@ describe("normalizeScopeUri", () => {
 			"/Users/alex/.mill/pa",
 			"/Users/alex",
 		]) {
-			expect(normalized(path)).toBe(`jake://scope/${encodeURIComponent(path)}`);
+			expect(normalized(path)).toBe(
+				`kabane://scope/${encodeURIComponent(path)}`,
+			);
 		}
 	});
 
 	it("keeps a leading slash — it cannot be told apart from a path ID", () => {
-		expect(normalized("/mill/")).toBe("jake://scope/%2Fmill");
-		expect(normalized("jake://scope//mill//")).toBe("jake://scope/%2Fmill");
+		expect(normalized("/mill/")).toBe("kabane://scope/%2Fmill");
+		expect(normalized("kabane://scope//mill//")).toBe("kabane://scope/%2Fmill");
 	});
 
 	it("keeps the case of a host/owner/repo bare ID", () => {
 		expect(normalized("GitHub.com/Foo/Bar")).toBe(
-			"jake://scope/GitHub.com%2FFoo%2FBar",
+			"kabane://scope/GitHub.com%2FFoo%2FBar",
 		);
 	});
 
 	it("keeps the case of a full scope URI verbatim", () => {
-		expect(normalized("jake://scope/GitHub.com/Foo")).toBe(
-			"jake://scope/GitHub.com%2FFoo",
+		expect(normalized("kabane://scope/GitHub.com/Foo")).toBe(
+			"kabane://scope/GitHub.com%2FFoo",
 		);
-		expect(normalized("jake://scope/MyRepo")).toBe("jake://scope/MyRepo");
+		expect(normalized("kabane://scope/MyRepo")).toBe("kabane://scope/MyRepo");
+	});
+
+	it("reads the scheme before schema 10 as the same scope, its case and extensions kept", () => {
+		expect(normalized("jake://scope/GitHub.com/Foo?Branch=main")).toBe(
+			normalized("kabane://scope/GitHub.com/Foo?Branch=main"),
+		);
+		expect(normalized("jake://scope/GitHub.com/Foo?Branch=main")).toBe(
+			"kabane://scope/GitHub.com%2FFoo?branch=main",
+		);
 	});
 
 	it("rejects a malformed scope URI instead of burying it in a valid one", () => {
+		expect(normalizeScopeUri("kabane://scope/").ok).toBe(false);
 		expect(normalizeScopeUri("jake://scope/").ok).toBe(false);
+		expect(normalizeScopeUri("kabane://resource/task/01ABC").ok).toBe(false);
 		expect(normalizeScopeUri("jake://resource/task/01ABC").ok).toBe(false);
 		expect(normalizeScopeUri("https://example.com/thing").ok).toBe(false);
 	});
@@ -116,7 +131,7 @@ describe("normalizeScopeUri", () => {
 		expect(normalizeScopeUri("").ok).toBe(false);
 		expect(normalizeScopeUri("   ").ok).toBe(false);
 		expect(normalizeScopeUri("///").ok).toBe(false);
-		expect(normalizeScopeUri("jake://scope/%20").ok).toBe(false);
+		expect(normalizeScopeUri("kabane://scope/%20").ok).toBe(false);
 	});
 });
 
@@ -132,7 +147,7 @@ describe("normalizeOptionalScopeUri", () => {
 	it("normalizes a present scope", () => {
 		const result = normalizeOptionalScopeUri(" MILL ");
 		expect(result.ok).toBe(true);
-		if (result.ok) expect(result.value).toBe("jake://scope/mill");
+		if (result.ok) expect(result.value).toBe("kabane://scope/mill");
 	});
 });
 
@@ -141,25 +156,25 @@ describe("buildScopeFamilyMatch", () => {
 		for (const input of [
 			"mill",
 			"MILL",
-			"jake://scope/mill",
-			"jake://scope/mill/",
+			"kabane://scope/mill",
+			"kabane://scope/mill/",
 		]) {
 			expect(buildScopeFamilyMatch(input)).toEqual({
-				baseScopeUri: "jake://scope/mill",
-				queryPattern: "jake://scope/mill?%",
+				baseScopeUri: "kabane://scope/mill",
+				queryPattern: "kabane://scope/mill?%",
 			});
 		}
 	});
 
 	it("matches the stored family for a path-shaped scope", () => {
-		const stored = "jake://scope/%2FUsers%2Falex%2FProjects%2Facme";
+		const stored = "kabane://scope/%2FUsers%2Falex%2FProjects%2Facme";
 		for (const input of ["/Users/alex/Projects/acme", stored]) {
 			expect(buildScopeFamilyMatch(input)?.baseScopeUri).toBe(stored);
 		}
 	});
 
 	it("returns undefined for an unusable filter (caller falls back to exact match)", () => {
-		expect(buildScopeFamilyMatch("jake://scope/")).toBeUndefined();
+		expect(buildScopeFamilyMatch("kabane://scope/")).toBeUndefined();
 	});
 });
 
@@ -171,17 +186,17 @@ describe("derivePrefix", () => {
 	});
 
 	it("derives from the last segment of the scope ID", () => {
-		const mill = derivePrefix("jake://scope/mill");
+		const mill = derivePrefix("kabane://scope/mill");
 		expect(mill.ok).toBe(true);
 		if (mill.ok) expect(mill.value).toBe("JMIL");
 
-		const repo = derivePrefix("jake://scope/github.com%2Fuser%2Frepo");
+		const repo = derivePrefix("kabane://scope/github.com%2Fuser%2Frepo");
 		expect(repo.ok).toBe(true);
 		if (repo.ok) expect(repo.value).toBe("JREP");
 	});
 
 	it("pads short scope IDs", () => {
-		const result = derivePrefix("jake://scope/ab");
+		const result = derivePrefix("kabane://scope/ab");
 		expect(result.ok).toBe(true);
 		if (result.ok) expect(result.value).toBe("JABX");
 	});
@@ -193,6 +208,6 @@ describe("derivePrefix", () => {
 	});
 
 	it("errors when the scope ID has no alphanumeric characters", () => {
-		expect(derivePrefix("jake://scope/---").ok).toBe(false);
+		expect(derivePrefix("kabane://scope/---").ok).toBe(false);
 	});
 });

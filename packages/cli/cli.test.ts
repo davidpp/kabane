@@ -95,7 +95,7 @@ describe("kabane cli", () => {
 			kind: string;
 			provenance: { discoveredBy: string };
 		}>(r);
-		expect(task.scopeUri).toBe("jake://scope/demo");
+		expect(task.scopeUri).toBe("kabane://scope/demo");
 		expect(task.kind).toBe("issue");
 		expect(task.provenance.discoveredBy).toBe("cabane://actor/human/tester");
 		issueId = task.shortId;
@@ -113,7 +113,7 @@ describe("kabane cli", () => {
 		taskId = json<{ shortId: string; scopeUri: string; deadline: string }>(
 			t,
 		).shortId;
-		expect(json<{ scopeUri: string }>(t).scopeUri).toBe("jake://scope/home");
+		expect(json<{ scopeUri: string }>(t).scopeUri).toBe("kabane://scope/home");
 		// A date is stored as the calendar date itself, not an instant.
 		expect(json<{ deadline: string }>(t).deadline).toBe("2026-12-24");
 	});
@@ -123,6 +123,9 @@ describe("kabane cli", () => {
 		expect(json<unknown[]>(all)).toHaveLength(1); // directory scope "demo" applies
 		const home = await run("list", "--scope", "home", "--json");
 		expect(json<{ shortId: string }[]>(home)[0]?.shortId).toBe(taskId);
+		// The scheme scopes had before schema 10 still names the scope.
+		const legacy = await run("list", "--scope", "jake://scope/home", "--json");
+		expect(json<unknown[]>(legacy)).toEqual(json<unknown[]>(home));
 
 		await run("done", taskId);
 		const open = await run("list", "--scope", "home", "--json");
@@ -349,7 +352,7 @@ describe("kabane cli", () => {
 			const added = await runOther("add", "Scoped by init", "--json");
 			expect(added.code).toBe(0);
 			expect(json<{ scopeUri: string }>(added).scopeUri).toBe(
-				"jake://scope/cabane",
+				"kabane://scope/cabane",
 			);
 		} finally {
 			rmSync(other, { recursive: true, force: true });
@@ -445,7 +448,7 @@ describe("kabane cli", () => {
 			const task = JSON.parse(
 				(created.content as { text: string }[])[0]?.text ?? "{}",
 			) as { scopeUri: string; updatedBy: string; shortId: string };
-			expect(task.scopeUri).toBe("jake://scope/demo");
+			expect(task.scopeUri).toBe("kabane://scope/demo");
 			expect(task.updatedBy).toBe("cabane://actor/agent/codex");
 
 			const shown = await run("show", task.shortId, "--json");

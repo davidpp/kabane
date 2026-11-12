@@ -195,7 +195,7 @@ is relative to available host data, not a claim that the hub read local sessions
 ## Regression evidence
 
 Tests use the retained Apache-2.0 public corpus and explicitly synthetic edges
-in disposable homes and fresh/prefixed SQLite. Actual CLI and stdio enumeration
+in disposable homes. Actual CLI and stdio enumeration
 of the same scope measured:
 
 | Fixture | Full list text (1 call) | All concise page text | Calls |
@@ -210,7 +210,7 @@ Domain tests cover escaped byte boundaries, ties, filters, relevance/staleness,
 HTTP entry point; the pack/install smoke exercises the installed CLI and MCP.
 
 Actual CLI/stdio context reconstruction (`deref: false`, all sections, including
-all106 synthetic children) measured identically on fresh/prefixed SQLite:
+all106 synthetic children) measured:
 
 | Context | Full text bytes / characters / calls | Complete concise stream bytes / characters / calls |
 | --- | ---: | ---: |

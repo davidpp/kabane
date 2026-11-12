@@ -72,7 +72,7 @@ const collapseSlashes = (scopeId: string): string =>
  * Case-fold a scope ID that arrived as a bare identifier.
  *
  * Bare ids are typed by humans and LLMs — the add tool documents them as valid
- * input — so "jake", "JAKE" and "Jake" are one scope spelled three ways and
+ * input — so "myapp", "MYAPP" and "MyApp" are one scope spelled three ways and
  * have to converge. Ids carrying a separator are exempt: those come from the
  * ADR-009 cascade (a filesystem path, or host/owner/repo off a git remote)
  * where the case on disk or on the remote is authoritative, and folding would
@@ -85,12 +85,14 @@ const foldBareScopeId = (scopeId: string): string =>
 /**
  * Normalize a scope value to its canonical scope URI.
  *
- * - Bare identifiers like "jake" become "jake://scope/jake", case-folded
+ * - Bare identifiers like "myapp" become "kabane://scope/myapp", case-folded
  *   unless path-shaped (see foldBareScopeId)
- * - A full jake://scope/... URI keeps its case verbatim: it comes from
- *   `Scope.resolve` or an explicit `project.id`, both authoritative
- * - Parseable input is re-formatted, not merely accepted: " jake",
- *   "jake://scope/jake/" and "jake://scope/jake" all land on the same string,
+ * - A full kabane://scope/... URI keeps its case verbatim: it comes from
+ *   scope detection or an explicit pin, both authoritative
+ * - A jake://scope/... URI, the scheme before schema 10, is the same scope and
+ *   comes out as kabane://scope/...
+ * - Parseable input is re-formatted, not merely accepted: " myapp",
+ *   "kabane://scope/myapp/" and "kabane://scope/myapp" all land on the same string,
  *   so a near-miss can't hide from a canonical filter the way a JALL misfile
  *   used to. Non-canonical input is corrected silently; only input with no
  *   usable scope ID is rejected.
@@ -104,7 +106,7 @@ export const normalizeScopeUri = (scope: string): Result<string> => {
 	if (!parsed.ok && scope.includes("://")) {
 		return err(
 			new Error(
-				`Invalid scope URI: "${scope}". Expected jake://scope/<scopeId>.`,
+				`Invalid scope URI: "${scope}". Expected ${ScopeUri.PREFIX}<scopeId>.`,
 			),
 		);
 	}
@@ -115,7 +117,7 @@ export const normalizeScopeUri = (scope: string): Result<string> => {
 	if (!scopeId) {
 		return err(
 			new Error(
-				`Invalid scope: "${scope}". Expected a scope URI (jake://scope/<scopeId>) or a bare scope ID.`,
+				`Invalid scope: "${scope}". Expected a scope URI (${ScopeUri.PREFIX}<scopeId>) or a bare scope ID.`,
 			),
 		);
 	}
@@ -231,8 +233,8 @@ export const generateShortId = (
 
 /**
  * Family match for a scope filter: the canonical base URI plus its
- * extension-carrying variants. Normalizes first, so a bare "jake" filters the
- * same rows as "jake://scope/jake". An unusable filter returns undefined and
+ * extension-carrying variants. Normalizes first, so a bare "myapp" filters the
+ * same rows as "kabane://scope/myapp". An unusable filter returns undefined and
  * the caller falls back to an exact match on the raw value.
  */
 export const buildScopeFamilyMatch = (

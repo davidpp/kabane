@@ -202,7 +202,7 @@ export namespace Planner {
 		}
 
 		// Normalized here, not at the caller: every surface (MCP, CLI, the board)
-		// writes through this function, so a bare "jake" can
+		// writes through this function, so a bare "myapp" can
 		// neither be stored raw nor fall through to the JALL prefix.
 		const scopeResult = normalizeOptionalScopeUri(draft.scopeUri);
 		if (!scopeResult.ok) return scopeResult;

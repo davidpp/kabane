@@ -101,7 +101,7 @@ const seedTasks = async (
 			scopeUri:
 				index === drafts.length - 1 && synthetic
 					? undefined
-					: "jake://scope/corpus",
+					: "kabane://scope/corpus",
 			assignee:
 				synthetic && index === 24
 					? "synthetic-" + "a".repeat(2000)

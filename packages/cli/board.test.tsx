@@ -76,7 +76,7 @@ describe("kabane board", () => {
 		// The pin resolves to a canonical URI, and the board labels it with the
 		// scope's friendly name rather than the raw URI.
 		expect(await deps.resolveScope?.(cwd)).toEqual({
-			scopeUri: "jake://scope/demo",
+			scopeUri: "kabane://scope/demo",
 			label: "demo",
 		});
 
@@ -86,7 +86,7 @@ describe("kabane board", () => {
 			"claude",
 		);
 		expect(await explicit.resolveScope?.(cwd)).toEqual({
-			scopeUri: "other",
+			scopeUri: "kabane://scope/other",
 			label: "other",
 		});
 	});
@@ -95,14 +95,21 @@ describe("kabane board", () => {
 	// directory, since that is the cwd its harness reads the repo's rules from.
 	it("carries the project root for the copilot's cwd, but not for a --scope URI", async () => {
 		expect(await resolveScope(parseArgs([]), ctx)).toEqual({
-			scopeUri: "jake://scope/demo",
+			scopeUri: "kabane://scope/demo",
 			label: "demo",
 			root: realpathSync(cwd),
 		});
 		// A URI on the command line says where to file, not where the project is.
 		expect(await resolveScope(parseArgs(["--scope", "other"]), ctx)).toEqual({
-			scopeUri: "other",
+			scopeUri: "kabane://scope/other",
 			label: "other",
+		});
+		// The scheme before schema 10 names the same scope, under the label as typed.
+		expect(
+			await resolveScope(parseArgs(["--scope", "jake://scope/other"]), ctx),
+		).toEqual({
+			scopeUri: "kabane://scope/other",
+			label: "jake://scope/other",
 		});
 	});
 
@@ -160,7 +167,7 @@ describe("kabane board", () => {
 
 		const deps = await boardDeps(parseArgs([]), opened.value, "claude");
 		expect(await deps.resolveScope?.(nested)).toMatchObject({
-			scopeUri: "jake://scope/demo",
+			scopeUri: "kabane://scope/demo",
 			label: "demo",
 		});
 	});
@@ -242,7 +249,7 @@ describe("kabane board", () => {
 				title: "Filed in another scope",
 				kind: "issue",
 				state: "next",
-				scopeUri: "jake://scope/elsewhere",
+				scopeUri: "kabane://scope/elsewhere",
 			});
 			expect(added.ok).toBe(true);
 			if (!added.ok) return;
@@ -272,13 +279,13 @@ describe("kabane board", () => {
 					title: "Scoped elsewhere",
 					kind: "issue",
 					state: "next",
-					scopeUri: "jake://scope/elsewhere",
+					scopeUri: "kabane://scope/elsewhere",
 				}),
 				add({
 					title: "Scoped here",
 					kind: "issue",
 					state: "next",
-					scopeUri: "jake://scope/demo",
+					scopeUri: "kabane://scope/demo",
 				}),
 				add({ title: "No scope at all", kind: "issue", state: "next" }),
 			]);
@@ -293,8 +300,8 @@ describe("kabane board", () => {
 			deps.copilot.close();
 			expect(deps.open).toEqual({ taskId: elsewhere.id });
 			expect(await deps.resolveScope?.(cwd)).toEqual({
-				scopeUri: "jake://scope/elsewhere",
-				label: "jake://scope/elsewhere",
+				scopeUri: "kabane://scope/elsewhere",
+				label: "kabane://scope/elsewhere",
 			});
 
 			const here = await boardDeps(parseArgs([]), ctx, "claude", {
@@ -302,7 +309,7 @@ describe("kabane board", () => {
 			});
 			here.copilot.close();
 			expect(await here.resolveScope?.(cwd)).toEqual({
-				scopeUri: "jake://scope/demo",
+				scopeUri: "kabane://scope/demo",
 				label: "demo",
 			});
 
@@ -320,7 +327,7 @@ describe("kabane board", () => {
 			);
 			pinned.copilot.close();
 			expect(await pinned.resolveScope?.(cwd)).toEqual({
-				scopeUri: "other",
+				scopeUri: "kabane://scope/other",
 				label: "other",
 			});
 		});
@@ -330,13 +337,13 @@ describe("kabane board", () => {
 				title: "Shipped last week",
 				kind: "issue",
 				state: "done",
-				scopeUri: "jake://scope/demo",
+				scopeUri: "kabane://scope/demo",
 			});
 			const parent = await add({
 				title: "The parent issue",
 				kind: "issue",
 				state: "in_progress",
-				scopeUri: "jake://scope/demo",
+				scopeUri: "kabane://scope/demo",
 			});
 			expect(done.ok && parent.ok).toBe(true);
 			if (!done.ok || !parent.ok) return;
@@ -344,7 +351,7 @@ describe("kabane board", () => {
 				title: "A subtask of it",
 				kind: "issue",
 				state: "next",
-				scopeUri: "jake://scope/demo",
+				scopeUri: "kabane://scope/demo",
 				parentTaskId: parent.value.id,
 			});
 			expect(child.ok).toBe(true);

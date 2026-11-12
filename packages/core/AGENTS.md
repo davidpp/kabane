@@ -113,7 +113,7 @@ Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is
 - **Work logs**: append-only URI refs — `session:`, `commit:`, `pr:owner/repo#n`, `issue:`, `file:`, `url:`, `branch:`.
 - **Links**: `blocks`/`blocked_by`, `parent`/`child`, `related`, `duplicate`, `follows`. `UNIQUE(source_id, target_id, type)`.
 - **Projects**: a flat `projectId` on the task, not a scope boundary.
-- **Scope**: `scopeUri` is a string storage parses and formats (`ScopeUri`) and never resolves. Bare ids normalize to `jake://scope/<id>`; the scheme is kept for wire compatibility with existing data.
+- **Scope**: `scopeUri` is a string storage parses and formats (`ScopeUri`) and never resolves. Bare ids normalize to `kabane://scope/<id>`. The scheme was `jake://scope/<id>` until schema 10: migration 10 renamed every stored scope and every op in the device's own log (`storage/scope-scheme.ts`), `ScopeUri.parse` and `normalizeScopeUri` still read the old scheme as the same scope, and sync apply renames the scopes of an op pulled from a device on an older schema. Nothing writes it.
 - **Scope detection** (`scope/detect.ts`, `@cabane/core/scope`): turns a cwd into a scope — marker walk, then git; pin → remote → first commit → path. Deliberately OFF the package barrel: it spawns `git` and reads the filesystem, so importing it from the Worker would break the hub.
 - **Self** (`self.ts`, `@cabane/core/self`): how a device runs kabane again (an MCP entry, a session server, the loop's runner) and where its shipped `templates/` are, for a script and for a `bun build --compile` binary, whose own entry is a virtual `/$bunfs/root/…` path. Off the barrel for the same reason: it reads the Bun process.
 
