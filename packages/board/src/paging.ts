@@ -18,9 +18,13 @@ export namespace Paging {
 		| { page: number }
 		| { to: "top" | "end" };
 
-	// A letter by what it types: `G` arrives as `g` with shift on some terminals, `G` on others.
-	const typed = (key: BoardNav.KeyInput): string =>
-		key.name.length === 1 ? (key.sequence ?? key.name) : key.name;
+	// A letter by what it types: `G` arrives as `g` with shift on some terminals, `G` on others, and
+	// without the raw sequence a shifted letter is its uppercase.
+	const typed = (key: BoardNav.KeyInput): string => {
+		if (key.name.length !== 1) return key.name;
+		if (key.sequence !== undefined) return key.sequence;
+		return key.shift ? key.name.toUpperCase() : key.name;
+	};
 
 	/** The motion a key asks of a scrolling view; null for any other key. */
 	export const motion = (key: BoardNav.KeyInput): Motion | null => {

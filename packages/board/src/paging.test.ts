@@ -21,12 +21,16 @@ describe("Paging.motion", () => {
 		expect(Paging.motion({ name: "g", sequence: "G", shift: true })).toEqual({
 			to: "end",
 		});
+		expect(Paging.motion({ name: "g", shift: true })).toEqual({ to: "end" });
+		expect(Paging.motion({ name: "G" })).toEqual({ to: "end" });
+		expect(Paging.motion({ name: "g" })).toEqual({ to: "top" });
 	});
 
 	it("leaves every other key alone: space, the shifted J/K, and j/k with ctrl or meta", () => {
 		for (const key of [
 			{ name: "space", sequence: " " },
 			{ name: "j", sequence: "J", shift: true },
+			{ name: "j", shift: true },
 			{ name: "K", sequence: "K" },
 			{ name: "j", ctrl: true },
 			{ name: "d", sequence: "d" },
