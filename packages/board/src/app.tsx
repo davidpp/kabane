@@ -14,6 +14,7 @@ import { isCopilotEffect, useCopilotSession } from "./copilot-session";
 import type { BoardData } from "./data";
 import { useDetailRecords } from "./detail-records";
 import { isDispatchEffect, useHostDispatch } from "./host-dispatch";
+import { useOpenReader } from "./lifted-reader";
 import type { BoardNav } from "./nav";
 import { type SetNotice, useNotice } from "./notice";
 import {
@@ -76,6 +77,7 @@ type EffectRoutes = {
 	copilot: ReturnType<typeof useCopilotSession>["runEffect"];
 	activity: ReturnType<typeof useRunActivity>["runEffect"];
 	screen: ReturnType<typeof useScreenRefs>["runEffect"];
+	openReader: (taskId: string) => void;
 	loadSettings: () => Promise<void>;
 	saveSetting: (
 		effect: Extract<BoardNav.Effect, { type: "saveSetting" }>,
@@ -133,6 +135,7 @@ const useEffectRunner = ({
 	copilot,
 	activity,
 	screen,
+	openReader,
 	loadSettings,
 	saveSetting,
 	reload,
@@ -156,6 +159,9 @@ const useEffectRunner = ({
 				case "reload":
 					void reload(next);
 					return;
+				case "openReader":
+					openReader(effect.taskId);
+					return;
 				case "loadSettings":
 					void loadSettings();
 					return;
@@ -174,6 +180,7 @@ const useEffectRunner = ({
 			copilot,
 			activity,
 			screen,
+			openReader,
 			loadSettings,
 			saveSetting,
 			setNotice,
@@ -254,6 +261,7 @@ export const App = ({
 	});
 
 	const { loadSettings, saveSetting } = useSettings(settings, store.update);
+	const openReader = useOpenReader(detail.records, store.update);
 
 	const runEffect = useEffectRunner({
 		task: runTaskEffect,
@@ -261,6 +269,7 @@ export const App = ({
 		copilot: runCopilotEffect,
 		activity: runActivityEffect,
 		screen: runScreenEffect,
+		openReader,
 		loadSettings,
 		saveSetting,
 		reload,

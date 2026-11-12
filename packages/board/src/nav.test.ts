@@ -2046,6 +2046,85 @@ describe("o key in the detail view emits openEvents effect", () => {
 	});
 });
 
+describe("the reader over the detail view (`r`)", () => {
+	const t1 = task({ id: "t1" });
+	const detail = (over: Partial<BoardNav.BoardState> = {}) =>
+		state({
+			sections: sections({ next: [row(t1)] }),
+			selectedId: "t1",
+			view: { type: "detail", taskId: "t1", tab: "comments" },
+			...over,
+		});
+	const reading = BoardNav.withReader(detail(), "t1");
+
+	it("`r` asks app.tsx to open it, which decides whether there is anything to read", () => {
+		expect(reduce(detail(), char("r")).effect).toEqual({
+			type: "openReader",
+			taskId: "t1",
+		});
+		expect(BoardNav.readerOpen(reading)).toBe(true);
+		expect(BoardNav.keyContext(reading)).toBe("reader");
+	});
+
+	it("opens only over the detail view on that task", () => {
+		expect(BoardNav.withReader(detail(), "t2").view).toEqual(detail().view);
+		expect(BoardNav.withReader(state(), "t1").view).toEqual({ type: "board" });
+	});
+
+	it("j/k scroll it and [ ] jump between headings, not the detail under it", () => {
+		expect(reduce(reading, char("j")).effect).toEqual({
+			type: "readerScroll",
+			delta: 2,
+		});
+		expect(reduce(reading, { name: "up" }).effect).toEqual({
+			type: "readerScroll",
+			delta: -2,
+		});
+		expect(reduce(reading, char("]")).effect).toEqual({
+			type: "readerJump",
+			delta: 1,
+		});
+		expect(reduce(reading, char("[")).effect).toEqual({
+			type: "readerJump",
+			delta: -1,
+		});
+	});
+
+	it("esc and q close it onto the detail's tab as it was", () => {
+		for (const key of [{ name: "escape" }, char("q")]) {
+			const { state: next } = reduce(reading, key);
+			expect(next.view).toEqual({
+				type: "detail",
+				taskId: "t1",
+				tab: "comments",
+			});
+		}
+	});
+
+	it("holds every other key, the detail's and the everywhere ones alike", () => {
+		for (const key of [char("2"), char("d"), char("o"), { name: "tab" }]) {
+			const { state: next, effect } = reduce(reading, key);
+			expect(effect.type).toBe("none");
+			expect(next).toBe(BoardNav.sight(reading, 0));
+		}
+	});
+
+	it("`?` lists its keys over it, and closing the sheet leaves it open", () => {
+		const sheet = reduce(reading, char("?")).state;
+		expect(sheet.help).toBe(true);
+		expect(BoardNav.sheetContext(sheet)).toBe("reader");
+		expect(BoardNav.readerOpen(reduce(sheet, { name: "escape" }).state)).toBe(
+			true,
+		);
+	});
+
+	it("a click on the detail under it does nothing", () => {
+		expect(
+			BoardNav.reduceMouse(reading, { type: "detailTab", tab: "now" }).state,
+		).toBe(reading);
+	});
+});
+
 describe("BoardNav.withTaskEvents", () => {
 	const t1 = task({ id: "t1" });
 	const detail = state({

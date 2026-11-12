@@ -32,6 +32,8 @@ export namespace Keymap {
 		decisions?: boolean;
 		/** A decision on the detail view has the keys its form names, the digits among them. */
 		deciding?: boolean;
+		/** The titles of the kinds the open task has a lifted entry of, which `r` reads in full. */
+		lifted?: readonly string[];
 		/** The detail view's `now` tab lists checklist items, one under the cursor. */
 		checklist?: boolean;
 		/** The copilot's buffer is empty and there are prompts to recall. */
@@ -87,6 +89,8 @@ export namespace Keymap {
 		/** The key names this hint stands for, as nav.ts's KeyInput carries them. */
 		keys: readonly string[];
 		when?: (situation: Situation) => boolean;
+		/** The label when it depends on what is in hand; `label` stands for it where nothing is. */
+		labelOf?: (situation: Situation) => string;
 		/**
 		 * Who owns these keys when it is not the context's nav.ts reducer: the copilot's textarea (enter
 		 * submits, `/` is typed) or the setup screen's own handler. The drift test skips these by name.
@@ -108,6 +112,7 @@ export namespace Keymap {
 		| "dispatch"
 		| "dispatchForm"
 		| "help"
+		| "reader"
 		| "settings"
 		| "setupWelcome"
 		| "setupForm"
@@ -215,6 +220,18 @@ export namespace Keymap {
 		tier: "footer",
 		keys: ["return"],
 		when: (s) => s.freeform === true,
+	};
+
+	// `r` on the detail view: the lifted entries in full. Named after the kind when there is one, as
+	// the footer would otherwise promise a read of nothing in particular.
+	const READ: Binding = {
+		key: "r",
+		label: "read",
+		tier: "footer",
+		keys: ["r"],
+		when: (s) => (s.lifted?.length ?? 0) > 0,
+		labelOf: (s) =>
+			s.lifted?.length === 1 ? `read ${s.lifted[0]?.toLowerCase()}` : "read",
 	};
 
 	const ESC_BOARD: Binding = {
@@ -380,6 +397,9 @@ export namespace Keymap {
 					keys: ["b"],
 					when: (s) => s.back === true,
 				},
+				// Ahead of `space`: at forty columns the footer has room for one of them, and the digest
+				// above the checklist's items is what asks to be opened.
+				READ,
 				{
 					key: "space",
 					label: "toggle item",
@@ -679,6 +699,27 @@ export namespace Keymap {
 				},
 			],
 		},
+		// The reader over the detail view: the lifted entries in full, its own scrollbox and keys.
+		reader: {
+			name: "reader",
+			sheet: false,
+			bindings: [
+				{
+					key: "[ ]",
+					label: "headings",
+					tier: "footer",
+					keys: ["[", "]"],
+				},
+				{ key: "esc", label: "close", tier: "footer", keys: ["escape", "q"] },
+				{
+					key: "j/k",
+					label: "scroll",
+					tier: "footer",
+					keys: ["j", "k", "down", "up"],
+				},
+				{ key: "?", label: "keys", tier: "footer", keys: ["?"] },
+			],
+		},
 		// Every setting and where its value comes from (settings-view.ts), and the editor of the one
 		// in hand. Typing a value takes the letters, so only the keys that are no letter work then.
 		settings: {
@@ -869,7 +910,10 @@ export namespace Keymap {
 	const available = (binding: Binding, situation: Situation): boolean =>
 		binding.when === undefined || binding.when(situation);
 
-	const asHint = ({ key, label }: Binding): Hint => ({ key, label });
+	const asHint = (
+		{ key, label, labelOf }: Binding,
+		situation: Situation = {},
+	): Hint => ({ key, label: labelOf?.(situation) ?? label });
 
 	/**
 	 * The footer for a context: a host card's own keys, then the context's available `footer` tier
@@ -883,7 +927,7 @@ export namespace Keymap {
 		const context = CONTEXTS[id];
 		const own = context.bindings
 			.filter((b) => b.tier === "footer" && available(b, situation))
-			.map(asHint);
+			.map((b) => asHint(b, situation));
 		// Where the sheet opens, so do the everywhere keys: `!` leads while something waits on you.
 		const waiting = available(NEXT_QUESTION, situation)
 			? [asHint(NEXT_QUESTION)]
@@ -906,7 +950,7 @@ export namespace Keymap {
 		host: readonly Hint[] = [],
 	): SheetGroup[] => {
 		const row = (binding: Binding): SheetRow => ({
-			...asHint(binding),
+			...asHint(binding, situation),
 			available: available(binding, situation),
 		});
 		return [
