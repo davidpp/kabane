@@ -46,6 +46,7 @@ type Row =
 			label: string;
 			value: string;
 			changed: boolean;
+			hint?: string;
 	  };
 
 /**
@@ -68,16 +69,24 @@ const formRows = (form: TriggerForm.Form): Row[] =>
 			label: input.label ?? name,
 			value: shown(form.values[name]),
 			changed: TriggerForm.changed(form, name),
+			hint: input.hint,
 		};
 	});
 
-/** The rows' height: a field or a title is one row, and every section but the first a gap above. */
-const rowsHeight = (rows: readonly Row[]): number =>
+const hintLines = (hint: string | undefined, cols: number): string[] =>
+	hint
+		? Segments.wrap([{ text: hint, fg: "" }], Math.max(1, cols - 2)).map(
+				(line) => line.map((part) => part.text).join(""),
+			)
+		: [];
+
+/** Fields include their wrapped hints; groups after the first add a gap. */
+const rowsHeight = (rows: readonly Row[], cols: number): number =>
 	rows.reduce(
 		(height, row, at) =>
 			height +
 			(row.kind === "field"
-				? 1
+				? 1 + hintLines(row.hint, cols).length
 				: (row.title === undefined ? 0 : 1) + (at === 0 ? 0 : 1)),
 		0,
 	);
@@ -126,22 +135,33 @@ const Field = ({
 	const valueCols = Math.max(0, cols - labelCols - 4);
 	const value = focused ? `‹ ${row.value} ›` : `  ${row.value}`;
 	return (
-		<GridRow
+		<box
 			id={fieldId(row.index)}
-			selected={focused}
-			indent={0}
-			label={row.label}
-			labelCols={labelCols}
-			onClick={onClick}
+			style={{ flexDirection: "column", flexShrink: 0 }}
 		>
-			<span
-				fg={row.changed || focused ? theme.text : theme.muted}
-				attributes={row.changed ? TextAttributes.BOLD : 0}
+			<GridRow
+				selected={focused}
+				indent={0}
+				label={row.label}
+				labelCols={labelCols}
+				onClick={onClick}
 			>
-				{value.slice(0, valueCols).padEnd(valueCols)}
-			</span>
-			<span fg={theme.text}>{row.changed ? " •" : "  "}</span>
-		</GridRow>
+				<span
+					fg={row.changed || focused ? theme.text : theme.muted}
+					attributes={row.changed ? TextAttributes.BOLD : 0}
+				>
+					{value.slice(0, valueCols).padEnd(valueCols)}
+				</span>
+				<span fg={theme.text}>{row.changed ? " •" : "  "}</span>
+			</GridRow>
+			{hintLines(row.hint, cols).map((line, i) => (
+				<text
+					key={i}
+					fg={theme.muted}
+					bg={overlayBg(theme)}
+				>{`  ${line}`}</text>
+			))}
+		</box>
 	);
 };
 
@@ -266,7 +286,7 @@ const layoutOf = (
 	// The preview panel's own padding, and the gap to the settings beside it.
 	const previewRoom = (side ? inner - SETTINGS_COLS - 2 : inner) - 2;
 	const preview = previewRows(previewRoom);
-	const settings = rowsHeight(rows);
+	const settings = rowsHeight(rows, (side ? SETTINGS_COLS : inner) - 1);
 	const whole = bodyHeight(side, preview, settings);
 	const hints =
 		Keymap.hintLine(HINTS).length <= inner &&

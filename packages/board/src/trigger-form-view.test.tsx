@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import { act, type ReactNode, useEffect, useState } from "react";
 import type { TriggerDescriptor } from "./ports";
+import { Fixtures } from "./stories/fixtures";
 import { pumpUntil, renderTest } from "./testing";
 import { TriggerForm } from "./trigger-form";
 import { TriggerFormView } from "./trigger-form-view";
@@ -213,3 +214,26 @@ test("a group listed twice is titled twice, and an ungrouped input after a group
 	}
 	expect(String(errors)).not.toContain("same key");
 });
+
+for (const width of [40, 80, 110])
+	test(`advised hints wrap under the value at ${width} columns`, async () => {
+		const { renderOnce, captureCharFrame, destroy } = await renderTest(
+			<TriggerFormView
+				shortId="JCAB-2"
+				form={TriggerForm.open(Fixtures.ADVISED_RUN)}
+			/>,
+			{ width, height: 24 },
+		);
+		try {
+			const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.replace(/\s+/g, "").includes("yoursetting:3)"),
+			);
+			expect(frame.replace(/\s+/g, "")).toContain(
+				"advised:JCAB-3andJCAB-4bothtouchpackages/core/lint/risks.ts(yoursetting:3)",
+			);
+			expect(frame).toContain("isolation");
+			expect(frame).toMatch(/‹ 1 ›/);
+		} finally {
+			destroy();
+		}
+	});

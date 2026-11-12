@@ -14,6 +14,7 @@ import type { SettingField, TriggerInput } from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
 import { Settings } from "@cabane/extension";
 import { z } from "zod";
+import type { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
 import { loop } from "./extension";
 
@@ -34,6 +35,8 @@ export namespace LoopSettings {
 	);
 
 	const nameOf = (field: SettingField): string => field.path.join(".");
+
+	const DEFAULTS = LoopConfig.Schema.parse({});
 
 	const lookOf = (field: SettingField): Look =>
 		Settings.lookOf(looks(), field.path);
@@ -132,11 +135,27 @@ export namespace LoopSettings {
 	export const inputs = (
 		config: LoopConfig.Config,
 		lenses: readonly string[] = [],
+		advice: readonly LoopAdvice.Recommendation[] = [],
 	): Record<string, TriggerInput> => {
 		// The lens toggles first: in their group, the recheck of what the lenses found follows them.
 		const entries: [string, TriggerInput][] = lensInputs(config, lenses);
 		for (const field of FIELDS) {
+			const recommendation = advice.find((r) => r.path === nameOf(field));
 			const input = inputOf(field, config);
+			if (input && recommendation) {
+				const previous = valueAt(config, field.path);
+				// The port resolves without origins, so a value equal to the schema's default is taken
+				// as unset: naming it "your setting" would credit the human with a default.
+				const yours =
+					previous !== undefined &&
+					previous !== recommendation.value &&
+					previous !== valueAt(DEFAULTS, field.path);
+				input.default =
+					input.options && typeof recommendation.value === "number"
+						? String(recommendation.value)
+						: recommendation.value;
+				input.hint = `advised: ${recommendation.reason}${yours ? ` (your setting: ${String(previous)})` : ""}`;
+			}
 			if (input) entries.push([nameOf(field), input]);
 		}
 		// A stable sort: within a group, the schema's order.
@@ -177,8 +196,11 @@ export namespace LoopSettings {
 	/** The form's values as the caller's layer, for `Loop.start` to put over the stored settings. */
 	export const overrides = (
 		values: Readonly<Record<string, unknown>>,
+		advice: readonly LoopAdvice.Recommendation[] = [],
 	): Result<LoopConfig.Overrides> => {
 		const out: Record<string, unknown> = {};
+		for (const recommendation of advice)
+			setAt(out, recommendation.path.split("."), recommendation.value);
 		for (const field of FIELDS) {
 			if (!(nameOf(field) in values)) continue;
 			const value = fromForm(field, values[nameOf(field)]);

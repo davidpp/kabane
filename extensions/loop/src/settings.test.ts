@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Settings } from "@cabane/extension";
+import type { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
 import { loop } from "./extension";
 import { LoopSettings } from "./settings";
@@ -238,4 +239,55 @@ describe("the loop's looks", () => {
 			rmSync(repo, { recursive: true, force: true });
 		}
 	});
+});
+
+it("an advised hint names no previous value when it is only the schema default", () => {
+	const advice = [
+		{ path: "stallAfter", value: 2, reason: "thrash" },
+	] satisfies LoopAdvice.Recommendation[];
+	expect(LoopSettings.inputs(config({}), [], advice).stallAfter?.hint).toBe(
+		"advised: thrash",
+	);
+	expect(
+		LoopSettings.inputs(config({ stallAfter: 5 }), [], advice).stallAfter?.hint,
+	).toBe("advised: thrash (your setting: 5)");
+});
+
+it("advice replaces task settings with a reason, preserves preferences, and user edits win", () => {
+	const original = config({
+		implementer: "codex",
+		verifier: "claude",
+		model: "chosen",
+		land: "pr",
+		budget: { concurrency: 3 },
+	});
+	const advice = [
+		{ path: "budget.concurrency", value: 1, reason: "shared files" },
+		{
+			path: "gates",
+			value: { test: "bun run test" },
+			reason: "project script",
+		},
+		{ path: "setup", value: "bun install", reason: "lockfile" },
+	] satisfies LoopAdvice.Recommendation[];
+	const inputs = LoopSettings.inputs(original, [], advice);
+	expect(inputs["budget.concurrency"]).toMatchObject({
+		default: "1",
+		hint: "advised: shared files (your setting: 3)",
+	});
+	expect(inputs.implementer?.default).toBe("codex");
+	expect(inputs.verifier?.default).toBe("claude");
+	expect(inputs.model?.default).toBe("chosen");
+	expect(inputs.land?.default).toBe("pr");
+	expect(LoopSettings.overrides({ "budget.concurrency": "4" }, advice)).toEqual(
+		{
+			ok: true,
+			value: {
+				budget: { concurrency: 4 },
+				gates: { test: "bun run test" },
+				setup: "bun install",
+			},
+		},
+	);
+	expect(original.budget.concurrency).toBe(3);
 });
