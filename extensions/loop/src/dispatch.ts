@@ -26,6 +26,7 @@ import {
 import { Brief } from "./brief";
 import type { Budget } from "./budget";
 import { Checklists } from "./checklists";
+import { LoopConfig } from "./config";
 import type { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 import type { Retry } from "./retry";
@@ -43,6 +44,8 @@ export namespace Dispatch {
 		overrides?: Harnesses.Overrides;
 		/** The mode the session starts in; the harness's own auto mode when absent. */
 		mode?: Harnesses.Mode;
+		/** The run's model and tiers, resolved for the claim's harness; absent, the harness's default. */
+		models?: Pick<LoopConfig.Config, "model" | "tiers">;
 	};
 
 	/**
@@ -158,8 +161,8 @@ export namespace Dispatch {
 	});
 
 	/**
-	 * The loop's launch profile, not the copilot's: the user's own default model (a run that
-	 * names one forwards it as an override), the installed CLI rather than the adapter's
+	 * The loop's launch profile, not the copilot's: no model pinned in the env (a run that names
+	 * one selects it on the open session, `selectModel`), the installed CLI rather than the adapter's
 	 * bundled copy, and a marker of its own so the user's hooks can tell a loop session from a
 	 * board copilot. Its instructions ride the opening prompt, not a system prompt append.
 	 * It sets no allow list or settings file. The session opens in the harness's own auto mode
@@ -402,12 +405,13 @@ export namespace Dispatch {
 		on.connected(spawned.value);
 		const started = await reopen(claim, env, spawned.value, sink);
 		if (!started.ok) return started;
-		// What the harness says it runs, which is the evidence the user's default was used.
-		const model = started.value.session.configOptions.find(
-			(option) => option.category === "model" && option.type === "select",
+		await selectModel(
+			started.value.session,
+			env.models
+				? LoopConfig.resolveModel(env.models, claim.harness)
+				: { source: "default" },
+			sink,
 		);
-		if (model && model.type === "select")
-			sink.emit("model", String(model.currentValue));
 		// Which mode decides what gets asked: the harness's auto mode, or why not.
 		const { mode } = started.value.session;
 		sink.emit(
@@ -418,6 +422,36 @@ export namespace Dispatch {
 				: undefined,
 		);
 		return ok(started.value);
+	};
+
+	/**
+	 * Ask the session's harness for the model the run resolved, on a new session and a resumed one
+	 * alike. The `model` event names what the harness says it runs, which is the evidence of what
+	 * was chosen; a model it could not take is a warning, and the session goes on on its default.
+	 */
+	const selectModel = async (
+		session: AcpClient.Session,
+		asked: LoopConfig.Model,
+		sink: Sink,
+	): Promise<void> => {
+		if (asked.note) sink.emit("warning", asked.note);
+		const chosen =
+			asked.model === undefined
+				? undefined
+				: await AcpClient.selectModel(session, asked.model);
+		if (chosen && !chosen.applied) sink.emit("warning", chosen.note);
+		const option = session.configOptions.find(
+			(o) => o.category === "model" && o.type === "select",
+		);
+		const current =
+			chosen?.current ??
+			(option?.type === "select" ? option.currentValue : undefined);
+		if (current === undefined) return;
+		const source = chosen?.applied ? asked.source : "default";
+		sink.emit("model", current, {
+			source,
+			...(source === "tier" && asked.tier ? { tier: asked.tier } : {}),
+		});
 	};
 
 	type Opened = { session: AcpClient.Session; resumed: boolean };

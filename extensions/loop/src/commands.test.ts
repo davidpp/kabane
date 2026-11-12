@@ -44,6 +44,7 @@ const deps = () => ({
 
 const CONFIG: LoopConfig.Config = {
 	implementer: "claude",
+	tiers: {},
 	budget: { concurrency: 1, continuations: 0, currency: "USD" },
 	stallAfter: 1,
 	gates: {},
@@ -825,6 +826,7 @@ describe("Loop.stop", () => {
 			projectDir: repo,
 			config: {
 				implementer: "claude",
+				tiers: {},
 				budget: { concurrency: 1, continuations: 0, currency: "USD" },
 				stallAfter: 1,
 				gates: {},

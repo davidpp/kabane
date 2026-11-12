@@ -23,7 +23,7 @@ import { Lenses } from "./lenses";
 import { Parent } from "./parent";
 import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <name>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--isolation worktree|shared] [--lens <name>]... [--verifier claude|codex|gemini] [--recheck|--no-recheck] [--land none|pr]
+const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <tier|model>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--isolation worktree|shared] [--lens <name>]... [--verifier claude|codex|gemini] [--recheck|--no-recheck] [--land none|pr]
        kabane loop run <runId>
        kabane loop status [<runId>]
        kabane loop stop <runId>
@@ -447,7 +447,8 @@ const command: Extension.Command = {
 // bounded integer steps through its range.
 const looks: Settings.Looks = {
 	implementer: { label: "implementer", group: "Agents" },
-	// Only Claude reads a model; the aliases are its own. Unset, the user's own settings decide.
+	// A tier or a model id the harness lists (`LoopConfig.resolveModel`); these are Claude's aliases.
+	// Unset, the user's own settings decide.
 	model: {
 		label: "model",
 		group: "Agents",

@@ -32,6 +32,7 @@ describe("LoopConfig.SettingsSchema", () => {
 		const config = resolve(undefined);
 		expect(config.ok && config.value.value).toEqual({
 			implementer: "claude",
+			tiers: {},
 			budget: {
 				continuations: 3,
 				currency: "USD",
@@ -183,5 +184,79 @@ describe("LoopConfig.SettingsSchema", () => {
 		expect(refusal({ sync: { url: "https://elsewhere" } })).toBe(
 			`Invalid loop settings in ${PROJECT}:\n  sync: not a loop setting`,
 		);
+	});
+});
+
+describe("LoopConfig tiers", () => {
+	it("layers a tier's model per harness key by key, and refuses a harness kabane does not know", () => {
+		const config = resolve(
+			{ tiers: { claude: { fast: "haiku", frontier: "fable" } } },
+			{ tiers: { claude: { fast: "sonnet" }, codex: { fast: "gpt-6-luna" } } },
+		);
+		expect(config.ok && config.value.value.tiers).toEqual({
+			claude: { fast: "sonnet", frontier: "fable" },
+			codex: { fast: "gpt-6-luna" },
+		});
+		expect(refusal({ tiers: { claud: { fast: "haiku" } } })).toContain(
+			"tiers.claud",
+		);
+	});
+
+	const tiers = {
+		claude: { fast: "sonnet", review: "opus" },
+		codex: { fast: "gpt-6-luna" },
+	};
+
+	it("resolves a model that names a tier through the session's harness", () => {
+		expect(LoopConfig.resolveModel({ model: "fast", tiers }, "claude")).toEqual(
+			{ model: "sonnet", source: "tier", tier: "fast" },
+		);
+		expect(LoopConfig.resolveModel({ model: "fast", tiers }, "codex")).toEqual({
+			model: "gpt-6-luna",
+			source: "tier",
+			tier: "fast",
+		});
+		// A key a layer adds is a tier on every harness, mapped or not.
+		expect(LoopConfig.tierNames({ tiers })).toEqual([
+			"frontier",
+			"balanced",
+			"fast",
+			"review",
+		]);
+		expect(
+			LoopConfig.resolveModel({ model: "review", tiers }, "codex"),
+		).toEqual({
+			source: "default",
+			note: "tier review names no model for codex (loop.tiers.codex.review), so codex runs its own default",
+		});
+	});
+
+	it("passes any other value through as a literal, and asks for nothing when unset", () => {
+		expect(
+			LoopConfig.resolveModel({ model: "claude-opus-4-8", tiers }, "claude"),
+		).toEqual({ model: "claude-opus-4-8", source: "literal" });
+		expect(LoopConfig.resolveModel({ tiers }, "gemini")).toEqual({
+			source: "default",
+		});
+		// A built-in tier with nothing behind it is the harness's default, not a model named "balanced".
+		expect(
+			LoopConfig.resolveModel({ model: "balanced", tiers: {} }, "claude"),
+		).toMatchObject({ source: "default" });
+	});
+
+	it("lets a subtask's tier win over the run's model, and never reads it as a literal", () => {
+		expect(
+			LoopConfig.resolveModel(
+				{ model: "claude-opus-4-8", tiers },
+				"claude",
+				"fast",
+			),
+		).toEqual({ model: "sonnet", source: "tier", tier: "fast" });
+		expect(
+			LoopConfig.resolveModel({ model: "fast", tiers }, "claude", "turbo"),
+		).toEqual({
+			source: "default",
+			note: "turbo is not a tier (frontier, balanced, fast, review), so claude runs its own default",
+		});
 	});
 });

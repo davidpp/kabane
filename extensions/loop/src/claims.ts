@@ -494,7 +494,6 @@ export namespace Claims {
 			task: label(task),
 			summary: started.summary,
 		});
-		const model = ctx.run.config.model;
 		const handle = Dispatch.begin(
 			{
 				parent: plan.parent,
@@ -516,10 +515,10 @@ export namespace Claims {
 				runId: ctx.run.id,
 				...(ctx.run.scopeUri ? { scopeUri: ctx.run.scopeUri } : {}),
 				...(ctx.deps.mode ? { mode: ctx.deps.mode } : {}),
-				overrides: {
-					...ctx.deps.overrides?.[harness],
-					...(model ? { model } : {}),
-				},
+				...(ctx.deps.overrides?.[harness]
+					? { overrides: ctx.deps.overrides[harness] }
+					: {}),
+				models: ctx.run.config,
 			},
 			hooks(ctx, sessionId, lane, label(task), harness),
 		);
