@@ -3,7 +3,7 @@
 // trigger descriptors, answers the `A` prompt with a copilot that streams updates, and may have one
 // line to announce. All default to no-ops so the board runs standalone with no activity strip, a "no
 // dispatcher configured" hint on `a`, a "no copilot configured" hint on `A`, and nothing announced.
-import { ok, type Result } from "@cabane/core";
+import { ok, type Result, type Task } from "@cabane/core";
 import type { ReactNode } from "react";
 import type { BoardContext } from "./context";
 
@@ -480,6 +480,15 @@ export interface Copilot {
 export interface Announcer {
 	announce(): Promise<Result<string | null>>;
 }
+
+// Requests from outside the board to show the human a task: `kabane board --issue <id> --to <pid>`
+// from another terminal today, an agent's tool some day. The board subscribes with what opens a task
+// once its first load is in, and calls what `subscribe` returned as it comes down. The host has
+// resolved the id, so the board gets the task itself, whose scope and kind say which filters must
+// widen to hold it. Each one lands the way `enter` on its row would (BoardNav.openTask).
+export type OpenRequests = {
+	subscribe(open: (task: Task) => void): () => void;
+};
 
 export const noActivity: ActivitySource = {
 	load: async () => ok([]),

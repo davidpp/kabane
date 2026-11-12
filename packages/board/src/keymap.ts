@@ -480,7 +480,7 @@ export namespace Keymap {
 				{ key: "x", label: "cancel task", tier: "help", keys: ["x"] },
 				{
 					key: "esc q",
-					label: "back to the board",
+					label: "back",
 					tier: "help",
 					keys: ["escape", "q"],
 				},

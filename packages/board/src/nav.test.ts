@@ -1236,12 +1236,195 @@ describe("BoardNav.openTask", () => {
 		expect(s.copilot.text).toBe("half a thought");
 	});
 
+	it("gives the screen back to the tracker from a card's tab, which stays open", () => {
+		const s = BoardNav.openTask(
+			board({
+				view: { type: "events", cardId: "loop", fromView: "board" },
+				tabs: {
+					...BoardTabs.NONE,
+					open: ["loop"],
+					active: "loop",
+					tracker: { type: "board" },
+				},
+			}),
+			"a",
+		);
+		expect(s.tabs.active).toBeNull();
+		expect(s.tabs.open).toEqual(["loop"]);
+		expect(s.view).toEqual({ type: "detail", taskId: "a" });
+	});
+
 	it("opens a task outside the loaded sections and leaves the board under it as it was", () => {
 		const before = board({ status: "done" });
 		const s = BoardNav.openTask(before, "elsewhere");
 		expect(s.view).toEqual({ type: "detail", taskId: "elsewhere" });
 		expect(s.status).toBe("done");
 		expect(s.selectedId).toBe("a");
+	});
+});
+
+describe("BoardNav.widenFor", () => {
+	const scoped = state({ scoped: true });
+	const here = { scopeUri: "jake://scope/here", kind: "issue" as const };
+
+	it("keeps the state itself when its filters already hold the task", () => {
+		expect(BoardNav.widenFor(scoped, here, here.scopeUri)).toBe(scoped);
+		const issues = state({ kind: "issue" });
+		expect(BoardNav.widenFor(issues, here, undefined)).toBe(issues);
+	});
+
+	it("widens to every scope for a task outside the board's, or with none", () => {
+		for (const scopeUri of ["jake://scope/there", undefined])
+			expect(
+				BoardNav.widenFor(scoped, { ...here, scopeUri }, here.scopeUri).scoped,
+			).toBe(false);
+	});
+
+	it("widens to every kind when the kind filter hides the task, and never narrows", () => {
+		expect(
+			BoardNav.widenFor(state({ kind: "task" }), here, undefined).kind,
+		).toBe("all");
+		const wide = state({ scoped: false });
+		expect(BoardNav.widenFor(wide, here, here.scopeUri)).toBe(wide);
+	});
+});
+
+describe("BoardNav.openFromDetail", () => {
+	const a = task({ id: "a", shortId: "MILL-1", title: "first" });
+	const b = task({ id: "b", shortId: "MILL-2", state: "done" });
+	const board = () =>
+		state({
+			sections: sections({ next: [row(a)], done: [row(b)] }),
+			selectedId: "a",
+		});
+	const esc = (s: BoardNav.BoardState) => reduce(s, { name: "escape" });
+	const onComments = (): BoardNav.BoardState => {
+		const s = BoardNav.openTask(board(), "a");
+		return { ...s, view: { type: "detail", taskId: "a", tab: "comments" } };
+	};
+
+	it("opens B over A, esc lands on A's comments, and a second esc on the board", () => {
+		const onB = BoardNav.openFromDetail(onComments(), "b");
+		expect(onB.view).toEqual({
+			type: "detail",
+			taskId: "b",
+			back: [{ taskId: "a", tab: "comments" }],
+		});
+		expect(onB).toMatchObject({ selectedId: "b", status: "done", held: "b" });
+		const onA = esc(onB);
+		expect(onA.state.view).toEqual({
+			type: "detail",
+			taskId: "a",
+			tab: "comments",
+		});
+		expect(onA.state).toMatchObject({
+			selectedId: "a",
+			status: "open",
+			held: "a",
+		});
+		expect(onA.effect).toEqual({ type: "none" });
+		const onBoard = esc(onA.state).state;
+		expect(onBoard.view).toEqual({ type: "board" });
+		expect(onBoard.selectedId).toBe("a");
+	});
+
+	it("q pops the same way", () => {
+		const onB = BoardNav.openFromDetail(onComments(), "b");
+		expect(reduce(onB, { name: "q" }).state.view).toMatchObject({
+			type: "detail",
+			taskId: "a",
+		});
+	});
+
+	it("leaves the new issue's tab unset, for its opening tab to settle", () => {
+		const onB = BoardNav.openFromDetail(onComments(), "b");
+		expect(BoardNav.withOpeningTab(onB, "b", "now").view).toMatchObject({
+			taskId: "b",
+			tab: "now",
+		});
+	});
+
+	it("does nothing when the issue is the one already open", () => {
+		const s = onComments();
+		expect(BoardNav.openFromDetail(s, "a")).toBe(s);
+	});
+
+	it("is openTask when no detail view is open", () => {
+		expect(BoardNav.openFromDetail(board(), "b")).toEqual(
+			BoardNav.openTask(board(), "b"),
+		);
+	});
+
+	it("closes the reader and a pinned banner on the issue it leaves", () => {
+		const s = onComments();
+		const reading: BoardNav.BoardState = {
+			...s,
+			view: { ...s.view, type: "detail", taskId: "a", reader: true },
+		};
+		const onB = BoardNav.openFromDetail(reading, "b");
+		expect(onB.view).toEqual({
+			type: "detail",
+			taskId: "b",
+			back: [{ taskId: "a", tab: "comments" }],
+		});
+	});
+
+	it("remembers the last BACK_CAP issues, forgetting the oldest", () => {
+		const ids = Array.from(
+			{ length: BoardNav.BACK_CAP + 5 },
+			(_, i) => `t${i}`,
+		);
+		const walked = ids.reduce(
+			(s, id) => BoardNav.openFromDetail(s, id),
+			BoardNav.openTask(board(), "a"),
+		);
+		const view = walked.view;
+		if (view.type !== "detail") throw new Error("not on a detail");
+		// a, then t0…t23 behind t24: the last twenty are t4…t23.
+		expect(view.taskId).toBe("t24");
+		expect(view.back?.map((entry) => entry.taskId)).toEqual(ids.slice(4, 24));
+	});
+
+	it("esc with the reader open closes the reader only", () => {
+		const onB = BoardNav.openFromDetail(onComments(), "b");
+		const reading = BoardNav.withReader(onB, "b");
+		const closed = esc(reading).state;
+		expect(closed.view).toEqual({
+			type: "detail",
+			taskId: "b",
+			back: [{ taskId: "a", tab: "comments" }],
+		});
+	});
+
+	it("keeps the stack across the event view and back", () => {
+		const onB = BoardNav.openFromDetail(onComments(), "b");
+		const events = BoardNav.withTaskEvents(onB, "b", "card");
+		const back = reduce(events, { name: "escape" }).state;
+		expect(back.view).toMatchObject({
+			type: "detail",
+			taskId: "b",
+			back: [{ taskId: "a", tab: "comments" }],
+		});
+	});
+
+	it("a click opens the issue, reloading only for one outside the loaded sections", () => {
+		const loaded = BoardNav.reduceMouse(onComments(), {
+			type: "openTask",
+			taskId: "b",
+		});
+		expect(loaded.state.view).toMatchObject({ type: "detail", taskId: "b" });
+		expect(loaded.effect).toEqual({ type: "none" });
+		const elsewhere = BoardNav.reduceMouse(onComments(), {
+			type: "openTask",
+			taskId: "elsewhere",
+		});
+		expect(elsewhere.state).toMatchObject({
+			view: { type: "detail", taskId: "elsewhere" },
+			held: "elsewhere",
+		});
+		expect(elsewhere.effect).toEqual({ type: "reload" });
+		const popped = esc(BoardNav.openFromDetail(elsewhere.state, "b"));
+		expect(popped.effect).toEqual({ type: "reload" });
 	});
 });
 
