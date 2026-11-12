@@ -15,7 +15,7 @@ const unwrap = <T>(result: Result<T>): T => {
 let base: string;
 beforeEach(async () => {
 	base = mkdtempSync(join(tmpdir(), "kabane-questions-"));
-	configureTestRuntime("planner_", {
+	configureTestRuntime({
 		modules: [questionsModule],
 		actor: () => "cabane://actor/human/test",
 	});
@@ -78,7 +78,7 @@ it("migrates prefixed tables, assigns stable ordinals and captures every write",
 		await withDb(base, (db) =>
 			db
 				.query<{ module: string; module_schema: number }>(
-					"SELECT module, module_schema FROM planner_sync_oplog WHERE tbl = 'task_questions'",
+					"SELECT module, module_schema FROM sync_oplog WHERE tbl = 'task_questions'",
 				)
 				.all(),
 		),
@@ -191,9 +191,7 @@ it("inherits private visibility and never captures private questions", async () 
 	const task = await issue();
 	unwrap(
 		await withDb(base, (db) =>
-			db.run("UPDATE planner_tasks SET visibility = 'private' WHERE id = ?", [
-				task.id,
-			]),
+			db.run("UPDATE tasks SET visibility = 'private' WHERE id = ?", [task.id]),
 		),
 	);
 	const rows = await ask(task.id);
@@ -205,9 +203,7 @@ it("inherits private visibility and never captures private questions", async () 
 	expect(first.visibility).toBe("private");
 	const ops = unwrap(
 		await withDb(base, (db) =>
-			db
-				.query("SELECT * FROM planner_sync_oplog WHERE tbl = 'task_questions'")
-				.all(),
+			db.query("SELECT * FROM sync_oplog WHERE tbl = 'task_questions'").all(),
 		),
 	);
 	expect(ops).toHaveLength(0);
@@ -331,7 +327,7 @@ it("withdrawal closes the last question, while waiting:false and non-waiting iss
 
 it("rolls back the answer and oplog if the task move fails, and notifies only after commit", async () => {
 	const seen: string[] = [];
-	configureTestRuntime("planner_", {
+	configureTestRuntime({
 		modules: [questionsModule],
 		notifier: async (type) => {
 			if (type !== "planner.task.updated") return;
@@ -352,16 +348,14 @@ it("rolls back the answer and oplog if the task move fails, and notifies only af
 	unwrap(
 		await withDb(base, (db) =>
 			db.run(
-				"CREATE TRIGGER refuse_resume BEFORE UPDATE OF state ON planner_tasks WHEN NEW.state = 'next' BEGIN SELECT RAISE(ABORT, 'resume refused'); END",
+				"CREATE TRIGGER refuse_resume BEFORE UPDATE OF state ON tasks WHEN NEW.state = 'next' BEGIN SELECT RAISE(ABORT, 'resume refused'); END",
 			),
 		),
 	);
 	const count = async () =>
 		unwrap(
 			await withDb(base, (db) =>
-				db
-					.query<{ n: number }>("SELECT COUNT(*) n FROM planner_sync_oplog")
-					.get(),
+				db.query<{ n: number }>("SELECT COUNT(*) n FROM sync_oplog").get(),
 			),
 		)?.n;
 	const before = await count();
@@ -590,7 +584,7 @@ const questionOps = async () =>
 		await withDb(base, (db) =>
 			db
 				.query<{ n: number }>(
-					"SELECT COUNT(*) n FROM planner_sync_oplog WHERE tbl = 'task_questions'",
+					"SELECT COUNT(*) n FROM sync_oplog WHERE tbl = 'task_questions'",
 				)
 				.get(),
 		),
@@ -635,16 +629,14 @@ it("rolls the close back when withdrawing its questions fails", async () => {
 	unwrap(
 		await withDb(base, (db) =>
 			db.run(
-				"CREATE TRIGGER refuse_withdraw BEFORE UPDATE OF status ON planner_task_questions WHEN NEW.status = 'withdrawn' BEGIN SELECT RAISE(ABORT, 'withdraw refused'); END",
+				"CREATE TRIGGER refuse_withdraw BEFORE UPDATE OF status ON task_questions WHEN NEW.status = 'withdrawn' BEGIN SELECT RAISE(ABORT, 'withdraw refused'); END",
 			),
 		),
 	);
 	const count = async () =>
 		unwrap(
 			await withDb(base, (db) =>
-				db
-					.query<{ n: number }>("SELECT COUNT(*) n FROM planner_sync_oplog")
-					.get(),
+				db.query<{ n: number }>("SELECT COUNT(*) n FROM sync_oplog").get(),
 			),
 		)?.n;
 	const before = await count();
@@ -660,7 +652,7 @@ it("rolls the close back when withdrawing its questions fails", async () => {
 
 it("notifies a close only after its withdrawals commit", async () => {
 	const seen: string[] = [];
-	configureTestRuntime("planner_", {
+	configureTestRuntime({
 		modules: [questionsModule],
 		notifier: async (type, payload) => {
 			if (type !== "planner.task.updated") return;

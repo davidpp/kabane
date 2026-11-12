@@ -19,7 +19,7 @@
 import { Migrate } from "./migrate";
 import type { Db, DbProvider, Row } from "./port";
 import { applySchema } from "./schema";
-import { setTablePrefix, TABLES } from "./tables";
+import { TABLES } from "./tables";
 
 export type ConformanceCase = {
 	name: string;
@@ -312,7 +312,6 @@ const fts: ConformanceCase["run"] = async (provider) => {
 };
 
 const schema: ConformanceCase["run"] = async (provider) => {
-	setTablePrefix("");
 	await must(
 		provider.withDb(BASE, (db) => {
 			applySchema(db);
@@ -450,7 +449,6 @@ const newerDatabase: ConformanceCase["run"] = async (provider) => {
 };
 
 const transactionalSchema: ConformanceCase["run"] = async (provider) => {
-	setTablePrefix("");
 	const versions = scratch("mig_versions");
 	await must(
 		provider.withDb(BASE, (db) => {

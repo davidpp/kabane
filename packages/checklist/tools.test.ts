@@ -16,7 +16,7 @@ let base: string;
 let client: Client;
 beforeEach(async () => {
 	base = mkdtempSync(join(tmpdir(), "checklist-tools-"));
-	configureTestRuntime("", { modules: [checklistModule] });
+	configureTestRuntime({ modules: [checklistModule] });
 	unwrap(await Planner.init(base));
 	const server = unwrap(
 		createMcpServer({

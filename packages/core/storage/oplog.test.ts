@@ -283,7 +283,7 @@ describe("Oplog — storage-layer capture", () => {
 	});
 
 	it("stamps updated_by from the actor port and bumps version on every update", async () => {
-		configureTestRuntime("", { actor: () => "cabane://actor/human/tester" });
+		configureTestRuntime({ actor: () => "cabane://actor/human/tester" });
 		await armCapture();
 
 		const id = await createTask("versioned");

@@ -43,7 +43,7 @@ const module: KabaneModule = {
 let base: string;
 beforeEach(async () => {
 	base = mkdtempSync(join(tmpdir(), "kabane-modules-"));
-	configureTestRuntime("", { modules: [module] });
+	configureTestRuntime({ modules: [module] });
 	unwrap(await Planner.init(base));
 });
 afterEach(() => {
@@ -79,7 +79,7 @@ it("renders a module after its core anchor, including when the anchor is empty",
 it("degrades a failed or empty module section in the full brief", async () => {
 	const task = unwrap(await Planner.addTask(base, { title: "Still readable" }));
 	for (const result of [err(new Error("unavailable")), ok(null)]) {
-		configureTestRuntime("", {
+		configureTestRuntime({
 			modules: [
 				{
 					name: "empty",
@@ -166,7 +166,7 @@ it("refuses tool collisions introduced after configuration before serving either
 	const core = KABANE_TOOLS[0];
 	if (!core) throw new Error("Missing core tools");
 	const tools: ToolDef[] = [];
-	configureTestRuntime("", { modules: [{ name: "collision", tools }] });
+	configureTestRuntime({ modules: [{ name: "collision", tools }] });
 	tools.push(core);
 	const result = createMcpServer(context());
 	expect(result.ok).toBe(false);
@@ -229,7 +229,7 @@ it("includes module sections by default and reports canonical selection and omis
 
 it("fails bounded reads only when a failing module section is selected", async () => {
 	const task = unwrap(await Planner.addTask(base, { title: "Readable core" }));
-	configureTestRuntime("", {
+	configureTestRuntime({
 		modules: [
 			{
 				name: "failed",
@@ -259,7 +259,7 @@ it("fails bounded reads only when a failing module section is selected", async (
 it("paginates module sections within 16KiB and invalidates changed module content", async () => {
 	const task = unwrap(await Planner.addTask(base, { title: "Large section" }));
 	let markdown = "## Long answers\n\n" + "Answer 🌲\n".repeat(6000);
-	configureTestRuntime("", {
+	configureTestRuntime({
 		modules: [
 			{
 				name: "large",
@@ -311,7 +311,7 @@ it("paginates module sections within 16KiB and invalidates changed module conten
 
 it("advertises core and registered section enums for each server", async () => {
 	for (const modules of [[], [module]]) {
-		configureTestRuntime("", { modules });
+		configureTestRuntime({ modules });
 		const server = unwrap(createMcpServer(context()));
 		const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
 		const client = new Client({ name: "schema-test", version: "1" });
@@ -351,7 +351,7 @@ it("advertises core and registered section enums for each server", async () => {
 });
 
 it("advertises a latest kind's section after its anchor, behind its module's own sections", async () => {
-	configureTestRuntime("", {
+	configureTestRuntime({
 		modules: [
 			{
 				...module,
@@ -397,7 +397,7 @@ it("degrades thrown module renders in full reads and refuses strict reads", asyn
 	const task = unwrap(
 		await Planner.addTask(base, { title: "Throwing module" }),
 	);
-	configureTestRuntime("", {
+	configureTestRuntime({
 		modules: [
 			{
 				name: "broken",
@@ -444,7 +444,7 @@ it("renders modules sharing an anchor in registration order", async () => {
 		],
 	}));
 	for (const order of [modules, [...modules].reverse()]) {
-		configureTestRuntime("", { modules: order });
+		configureTestRuntime({ modules: order });
 		const expected = order.map((item) => `## ${item.name}`).join("\n\n");
 		expect(unwrap(await Planner.assembleContext(base, task.id))).toContain(
 			`Anchor\n\n${expected}`,

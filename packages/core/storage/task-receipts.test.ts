@@ -17,53 +17,51 @@ afterEach(() => {
 	configureTestRuntime();
 });
 describe("prospective scope labels", () => {
-	for (const prefix of ["", "receipt_"])
-		it(`previews new/existing counters without writes and agrees with allocation (${prefix})`, async () => {
-			base = mkdtempSync(join(tmpdir(), "kabane-receipt-label-"));
-			Runtime.configure({
-				provider: SqliteDb.provider(),
-				tablePrefix: prefix,
-				timezone: () => "UTC",
-			});
-			expect((await Planner.init(base)).ok).toBe(true);
-			const before = await withDb(base, (db) =>
-				db.query(`SELECT * FROM ${TABLES.sequences}`).all(),
-			);
-			const fresh = await prospectiveShortId(base, "JNEW");
-			expect(fresh).toEqual({ ok: true, value: "JNEW-1" });
-			expect(
-				await withDb(base, (db) =>
-					db.query(`SELECT * FROM ${TABLES.sequences}`).all(),
-				),
-			).toEqual(before);
-			const added = await Planner.addTask(base, {
-				title: "Label preview",
-				scopeUri: "new",
-			});
-			if (!added.ok) return;
-			expect(added.value.shortId).toBe("JNEW-1");
-			const prior = await withDb(base, (db) => {
-				db.run(
-					`UPDATE ${TABLES.sequences} SET next_number = 9 WHERE prefix = 'JNEW'`,
-				);
-				return db.query(`SELECT * FROM ${TABLES.sequences}`).all();
-			});
-			const next = await prospectiveShortId(base, "JNEW");
-			expect(next).toEqual({ ok: true, value: "JNEW-10" });
-			expect(
-				await withDb(base, (db) =>
-					db.query(`SELECT * FROM ${TABLES.sequences}`).all(),
-				),
-			).toEqual(prior);
-			const updated = await Planner.updateTaskReceipt(base, added.value.id, {
-				scopeUri: "new",
-			});
-			expect(updated.ok).toBe(true);
-			if (updated.ok) {
-				expect(updated.value.shortId).toBe("JNEW-10");
-				expect(updated.value.version).toBe(2);
-			}
+	it("previews new/existing counters without writes and agrees with allocation", async () => {
+		base = mkdtempSync(join(tmpdir(), "kabane-receipt-label-"));
+		Runtime.configure({
+			provider: SqliteDb.provider(),
+			timezone: () => "UTC",
 		});
+		expect((await Planner.init(base)).ok).toBe(true);
+		const before = await withDb(base, (db) =>
+			db.query(`SELECT * FROM ${TABLES.sequences}`).all(),
+		);
+		const fresh = await prospectiveShortId(base, "JNEW");
+		expect(fresh).toEqual({ ok: true, value: "JNEW-1" });
+		expect(
+			await withDb(base, (db) =>
+				db.query(`SELECT * FROM ${TABLES.sequences}`).all(),
+			),
+		).toEqual(before);
+		const added = await Planner.addTask(base, {
+			title: "Label preview",
+			scopeUri: "new",
+		});
+		if (!added.ok) return;
+		expect(added.value.shortId).toBe("JNEW-1");
+		const prior = await withDb(base, (db) => {
+			db.run(
+				`UPDATE ${TABLES.sequences} SET next_number = 9 WHERE prefix = 'JNEW'`,
+			);
+			return db.query(`SELECT * FROM ${TABLES.sequences}`).all();
+		});
+		const next = await prospectiveShortId(base, "JNEW");
+		expect(next).toEqual({ ok: true, value: "JNEW-10" });
+		expect(
+			await withDb(base, (db) =>
+				db.query(`SELECT * FROM ${TABLES.sequences}`).all(),
+			),
+		).toEqual(prior);
+		const updated = await Planner.updateTaskReceipt(base, added.value.id, {
+			scopeUri: "new",
+		});
+		expect(updated.ok).toBe(true);
+		if (updated.ok) {
+			expect(updated.value.shortId).toBe("JNEW-10");
+			expect(updated.value.version).toBe(2);
+		}
+	});
 	it("keeps an honest postwrite error when a genuine concurrent counter advance crosses the receipt boundary", async () => {
 		base = mkdtempSync(join(tmpdir(), "kabane-receipt-race-"));
 		configureTestRuntime();

@@ -69,7 +69,7 @@ import {
 	type SyncTable,
 } from "../schemas";
 import { TABLES } from "../storage/helpers";
-import { Oplog, physicalTableFor } from "../storage/oplog";
+import { Oplog } from "../storage/oplog";
 import {
 	Resolve,
 	type ResolveDecision,
@@ -103,10 +103,6 @@ const SHORT_ID_TABLES: readonly SyncTable[] = ["tasks", "projects"];
  */
 type ParentRef = {
 	column: string;
-	/**
-	 * Logical, resolved through `TABLES` at use: this map is built at import,
-	 * before the host sets the table prefix.
-	 */
 	table: "tasks" | "projects";
 	onDelete: "cascade" | "set-null";
 };
@@ -140,7 +136,7 @@ type BindValue = string | number | null;
 
 /** Per-table facts read once per pass. */
 type TableMeta = {
-	physical: string;
+	table: string;
 	/** Live column list, so a column a newer device sent is dropped, not fatal. */
 	columns: string[];
 	naturalKey: readonly string[] | undefined;
@@ -187,11 +183,9 @@ const asString = (value: unknown): string | undefined =>
 
 /** A module table resolves by `family` alone: no natural key, no `short_id`. */
 const tableMeta = (db: Db, table: string): TableMeta => ({
-	physical: physicalTableFor(table),
+	table,
 	columns: db
-		.query<{ name: string }, []>(
-			`PRAGMA table_info(${physicalTableFor(table)})`,
-		)
+		.query<{ name: string }, []>(`PRAGMA table_info(${table})`)
 		.all()
 		.map((column) => column.name),
 	naturalKey: isSyncTable(table) ? NATURAL_KEY[table] : undefined,
@@ -224,18 +218,18 @@ const toBind = (value: unknown): BindValue => {
 /** Whole row or nothing — the resolver needs the clock column, whichever it is. */
 const selectRow = (
 	db: Db,
-	physical: string,
+	table: string,
 	where: string,
 	params: BindValue[],
 ): Row | undefined =>
 	db
-		.query<Row, BindValue[]>(`SELECT * FROM ${physical} WHERE ${where} LIMIT 1`)
+		.query<Row, BindValue[]>(`SELECT * FROM ${table} WHERE ${where} LIMIT 1`)
 		.get(...params) ?? undefined;
 
-const rowExists = (db: Db, physical: string, id: string): boolean =>
+const rowExists = (db: Db, table: string, id: string): boolean =>
 	(db
 		.query<{ one: number }, [string]>(
-			`SELECT 1 AS one FROM ${physical} WHERE id = ? LIMIT 1`,
+			`SELECT 1 AS one FROM ${table} WHERE id = ? LIMIT 1`,
 		)
 		.get(id) ?? undefined) !== undefined;
 
@@ -250,7 +244,7 @@ const byNaturalKey = (
 		.map((column) => `"${column}" = ?`)
 		.join(" AND ");
 	const params = meta.naturalKey.map((column) => toBind(payload[column]));
-	return selectRow(db, meta.physical, where, params);
+	return selectRow(db, meta.table, where, params);
 };
 
 const byShortId = (
@@ -261,7 +255,7 @@ const byShortId = (
 	const shortId =
 		payload === undefined ? undefined : asString(payload.short_id);
 	if (!meta.hasShortId || shortId === undefined) return undefined;
-	return selectRow(db, meta.physical, `short_id = ?`, [shortId]);
+	return selectRow(db, meta.table, `short_id = ?`, [shortId]);
 };
 
 // ============================================================
@@ -293,15 +287,15 @@ const writeRow = (db: Db, meta: TableMeta, rowId: string, row: Row) => {
 		updates.length === 0 ? "DO NOTHING" : `DO UPDATE SET ${updates.join(", ")}`;
 
 	db.run(
-		`INSERT INTO ${meta.physical} (${quoted.join(", ")})
+		`INSERT INTO ${meta.table} (${quoted.join(", ")})
      VALUES (${placeholders})
      ON CONFLICT(id) ${onConflict}`,
 		params,
 	);
 };
 
-const deleteRow = (db: Db, physical: string, rowId: string) => {
-	db.run(`DELETE FROM ${physical} WHERE id = ?`, [rowId]);
+const deleteRow = (db: Db, table: string, rowId: string) => {
+	db.run(`DELETE FROM ${table} WHERE id = ?`, [rowId]);
 };
 
 const versionOf = (row: Row | undefined): number | undefined =>
@@ -327,11 +321,11 @@ const labelSuffix = (shortId: string, prefix: string): number => {
 };
 
 /** Highest number already issued for `prefix` in this table. */
-const localMaxSuffix = (db: Db, physical: string, prefix: string): number =>
+const localMaxSuffix = (db: Db, table: string, prefix: string): number =>
 	db
 		.query<{ max_n: number | null }, [number, string]>(
 			`SELECT MAX(CAST(substr(short_id, ?) AS INTEGER)) AS max_n
-         FROM ${physical} WHERE short_id LIKE ?`,
+         FROM ${table} WHERE short_id LIKE ?`,
 		)
 		.get(prefix.length + 2, `${prefix}-%`)?.max_n ?? 0;
 
@@ -382,8 +376,7 @@ const mintShortId = (
 	const batchMax = batchLabels
 		.filter((label) => label.startsWith(`${prefix}-`))
 		.reduce((max, label) => Math.max(max, labelSuffix(label, prefix)), 0);
-	const next =
-		Math.max(localMaxSuffix(db, meta.physical, prefix), batchMax) + 1;
+	const next = Math.max(localMaxSuffix(db, meta.table, prefix), batchMax) + 1;
 
 	reserveThrough(db, prefix, next, now);
 	return `${prefix}-${next}`;
@@ -446,7 +439,7 @@ const executeRename = (
 	// `updated_at` is deliberately left alone — the rename is not captured, so
 	// bumping the clock here would only desynchronize LWW comparisons later.
 	const minted = mintShortId(db, meta, shortId, batchLabels, now);
-	db.run(`UPDATE ${meta.physical} SET short_id = ? WHERE id = ?`, [
+	db.run(`UPDATE ${meta.table} SET short_id = ? WHERE id = ?`, [
 		minted,
 		loserId,
 	]);
@@ -501,7 +494,7 @@ const prepareParents = (
 	for (const parent of parents) {
 		const value = asString(payload[parent.column]);
 		if (value === undefined) continue;
-		if (rowExists(db, TABLES[parent.table], value)) continue;
+		if (rowExists(db, parent.table, value)) continue;
 
 		if (parent.onDelete === "set-null") {
 			payload = { ...payload, [parent.column]: null };
@@ -617,12 +610,12 @@ const execute = (
 			counts.skipped[decision.reason]++;
 			break;
 		case "delete":
-			deleteRow(db, meta.physical, decision.rowId);
+			deleteRow(db, meta.table, decision.rowId);
 			counts.applied++;
 			break;
 		case "apply":
 			if (decision.dropRowId !== undefined) {
-				deleteRow(db, meta.physical, decision.dropRowId);
+				deleteRow(db, meta.table, decision.dropRowId);
 			}
 			writeRow(db, meta, decision.rowId, withVersion(decision.row, local));
 			counts.applied++;
@@ -661,7 +654,7 @@ const applyOne = (pass: Pass, op: RelayOp) => {
 	}
 
 	const payload = prepared.op.payload;
-	const localById = selectRow(db, meta.physical, "id = ?", [op.rowId]);
+	const localById = selectRow(db, meta.table, "id = ?", [op.rowId]);
 	const localByKey = byNaturalKey(db, meta, payload);
 	const decision = Resolve.decide(prepared.op, {
 		byId: localById,

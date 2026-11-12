@@ -56,7 +56,7 @@ describe("cabane tools", () => {
 	beforeEach(async () => {
 		base = join(tmpdir(), `cabane-mcp-${crypto.randomUUID()}`);
 		mkdirSync(base, { recursive: true });
-		configureTestRuntime("", { actor: () => AGENT });
+		configureTestRuntime({ actor: () => AGENT });
 		unwrap(await Planner.init(base));
 		ctx = { basePath: base, actor: AGENT, scopeRequired: true };
 	});
@@ -97,7 +97,7 @@ describe("cabane tools", () => {
 			),
 		) as Task;
 		expect(byTime.deadline).toBe("2026-02-06T10:00:00.000Z");
-		configureTestRuntime("", { timezone: () => "America/Montreal" });
+		configureTestRuntime({ timezone: () => "America/Montreal" });
 		try {
 			const byLocalTime = unwrap(
 				await tool("kabane_add").handler(
@@ -280,7 +280,7 @@ describe("cabane tools", () => {
 				expect(missingLog.error.message).toContain("supply commit");
 			expect(accesses).toBe(0);
 		} finally {
-			configureTestRuntime("", { actor: () => AGENT });
+			configureTestRuntime({ actor: () => AGENT });
 		}
 	});
 

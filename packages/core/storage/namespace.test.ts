@@ -1079,7 +1079,7 @@ describe("Planner", () => {
 
 		it("sorts by when each falls due in the runtime's zone, DST-aware", async () => {
 			await seed();
-			configureTestRuntime("", { timezone: () => MONTREAL });
+			configureTestRuntime({ timezone: () => MONTREAL });
 			const sorted = await Planner.queryTasks(TEST_BASE, {
 				orderBy: "deadline",
 				orderDir: "asc",
@@ -1099,7 +1099,7 @@ describe("Planner", () => {
 
 		it("a date bound covers its whole local day, and a date deadline ends with its day", async () => {
 			await seed();
-			configureTestRuntime("", { timezone: () => MONTREAL });
+			configureTestRuntime({ timezone: () => MONTREAL });
 			const byThe6th = await Planner.queryTasks(TEST_BASE, {
 				dueAfter: "2026-02-06",
 				dueBefore: "2026-02-06",

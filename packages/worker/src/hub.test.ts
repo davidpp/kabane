@@ -26,7 +26,7 @@ const unwrap = <T>(
 const hub = (name: string) => env.CABANE_HUB.getByName(name);
 
 describe("CabaneHub boot", () => {
-	it("applies the core schema with plain names", async () => {
+	it("applies the core schema", async () => {
 		const h = hub("boot");
 		expect(unwrap(await h.boot())).toBeUndefined();
 		const tables = await h.tables();
@@ -34,7 +34,6 @@ describe("CabaneHub boot", () => {
 		expect(tables).toContain("tasks_fts");
 		expect(tables).toContain("agent_sessions");
 		expect(tables).toContain("sync_oplog");
-		expect(tables.some((t) => t.startsWith("planner_"))).toBe(false);
 		expect(await h.taskCount()).toBe(0);
 	});
 });

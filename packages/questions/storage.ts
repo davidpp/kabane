@@ -19,7 +19,7 @@ import {
 import { monotonicFactory } from "ulid";
 import { validateAnswer } from "./answer";
 import { formatDecisionBody, parseDecisionBody } from "./body";
-import { QUESTIONS_TABLE, questionsTable } from "./migrations";
+import { QUESTIONS_TABLE } from "./migrations";
 import {
 	AnswerSchema,
 	AskSchema,
@@ -56,8 +56,8 @@ const selectQuestions = (
 					short_id: string | null;
 				}
 		>(`SELECT q.*, t.short_id, t.title, t.priority, t.state,
-		(SELECT COUNT(*) FROM ${questionsTable()} preceding WHERE preceding.task_id = q.task_id AND preceding.id <= q.id) AS ordinal
-		FROM ${questionsTable()} q JOIN ${TABLES.tasks} t ON t.id = q.task_id
+		(SELECT COUNT(*) FROM ${QUESTIONS_TABLE} preceding WHERE preceding.task_id = q.task_id AND preceding.id <= q.id) AS ordinal
+		FROM ${QUESTIONS_TABLE} q JOIN ${TABLES.tasks} t ON t.id = q.task_id
 		${where.length ? `WHERE ${where.join(" AND ")}` : ""}
 		ORDER BY q.task_id, q.id`)
 		.all(...params)
@@ -99,7 +99,7 @@ const close = (
 ): void => {
 	const now = new Date().toISOString();
 	db.run(
-		`UPDATE ${questionsTable()} SET status = ?, answer = ?, reasoning = ?, answered_by = ?, answered_at = ?, updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?`,
+		`UPDATE ${QUESTIONS_TABLE} SET status = ?, answer = ?, reasoning = ?, answered_by = ?, answered_at = ?, updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?`,
 		[
 			closing.status,
 			closing.answer,
@@ -130,7 +130,7 @@ export namespace Questions {
 			return ok(undefined);
 		const open = db
 			.query<{ id: string }>(
-				`SELECT id FROM ${questionsTable()} WHERE task_id = ? AND status = 'open' ORDER BY id`,
+				`SELECT id FROM ${QUESTIONS_TABLE} WHERE task_id = ? AND status = 'open' ORDER BY id`,
 			)
 			.all(task.id);
 		for (const { id } of open)
@@ -226,7 +226,7 @@ export namespace Questions {
 				if (predecessor !== undefined) {
 					const old = db
 						.query<{ task_id: string; status: QuestionStatus }>(
-							`SELECT task_id, status FROM ${questionsTable()} WHERE id = ?`,
+							`SELECT task_id, status FROM ${QUESTIONS_TABLE} WHERE id = ?`,
 						)
 						.get(predecessor);
 					if (!old) throw new Error(`No question found: ${replaces}`);
@@ -243,7 +243,7 @@ export namespace Questions {
 				}
 				const id = generateId();
 				db.run(
-					`INSERT INTO ${questionsTable()} (id, task_id, asked_by, created_at, updated_at, updated_by, visibility, body, why) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					`INSERT INTO ${QUESTIONS_TABLE} (id, task_id, asked_by, created_at, updated_at, updated_by, visibility, body, why) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					[
 						id,
 						resolved.value,
@@ -301,7 +301,7 @@ export namespace Questions {
 		if (!resolved.ok) return resolved;
 		const written = await atomic(basePath, (db) => {
 			const question = db
-				.query<Question>(`SELECT * FROM ${questionsTable()} WHERE id = ?`)
+				.query<Question>(`SELECT * FROM ${QUESTIONS_TABLE} WHERE id = ?`)
 				.get(resolved.value);
 			if (!question) throw new Error(`No question found: ${input.question}`);
 			const answer = parsed.data.withdraw
@@ -320,7 +320,7 @@ export namespace Questions {
 			let changedTask: Task | null = null;
 			const open = db
 				.query<{ id: string }>(
-					`SELECT id FROM ${questionsTable()} WHERE task_id = ? AND status = 'open' LIMIT 1`,
+					`SELECT id FROM ${QUESTIONS_TABLE} WHERE task_id = ? AND status = 'open' LIMIT 1`,
 				)
 				.get(question.task_id);
 			const task = db

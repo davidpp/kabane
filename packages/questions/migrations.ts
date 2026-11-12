@@ -1,13 +1,12 @@
-import { type Migrate, physicalTable, TABLES } from "@cabane/core";
+import { type Migrate, TABLES } from "@cabane/core";
 
 export const QUESTIONS_TABLE = "task_questions";
-export const questionsTable = (): string => physicalTable(QUESTIONS_TABLE);
 
 export const migrations: readonly Migrate.Migration[] = [
 	{
 		name: "create-task-questions",
 		up: (db) => {
-			db.run(`CREATE TABLE ${questionsTable()} (
+			db.run(`CREATE TABLE ${QUESTIONS_TABLE} (
 			id TEXT PRIMARY KEY,
 			task_id TEXT NOT NULL REFERENCES ${TABLES.tasks}(id) ON DELETE CASCADE,
 			status TEXT NOT NULL DEFAULT 'open',
@@ -25,7 +24,7 @@ export const migrations: readonly Migrate.Migration[] = [
 			reasoning TEXT
 		)`);
 			db.run(
-				`CREATE INDEX ${physicalTable("idx_task_questions_task_status")} ON ${questionsTable()} (task_id, status)`,
+				`CREATE INDEX idx_task_questions_task_status ON ${QUESTIONS_TABLE} (task_id, status)`,
 			);
 		},
 	},

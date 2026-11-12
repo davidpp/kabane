@@ -529,7 +529,7 @@ the oldest marks are dropped first and `truncated` says when anything was cut. `
 
 `bun test` in this package. Rendering tests go through `src/testing.ts`, a headless OpenTUI test
 renderer that captures character frames; nothing needs a real TTY. Storage tests use
-`src/test-db.ts`, which configures the bun:sqlite provider with plain table names on a temp
+`src/test-db.ts`, which configures the bun:sqlite provider on a temp
 directory. Key-driven flows (the `A` prompt against a scripted copilot) go through the test renderer's
 `mockInput`; a lone escape must be rendered through before the next key, or the parser reads the
 pair as Alt+key. Not covered here and left to a manual run: a real terminal's keyboard, mouse,

@@ -20,13 +20,12 @@
  *
  * A TABLE A RELEASE RETIRES keeps its place in migration 1, which still creates
  * it, and a later migration drops it. `TABLES` stops listing it, so the steps
- * that still touch it name it with `physicalTable("<logical name>")`.
+ * that still touch it name it as a string.
  */
 
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
 import { applySchema } from "../db/schema";
-import { physicalTable } from "../db/tables";
 import { type KabaneModule, Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import { parseQuestionBody } from "../schemas";
@@ -46,12 +45,12 @@ namespace PreRelease {
 		"refreshed_at",
 	] as const;
 
-	/** The physical names of the tables that replicate, for the column migration. */
+	/** The tables that replicate, for the column migration. */
 	const replicatedTables = (): string[] => [
 		TABLES.tasks,
 		TABLES.projects,
 		TABLES.task_links,
-		physicalTable("focus_lists"), // retired by migration 3
+		"focus_lists", // retired by migration 3
 		TABLES.comments,
 		TABLES.work_log,
 		TABLES.context_refs,
@@ -107,7 +106,7 @@ namespace PreRelease {
 			"TEXT NOT NULL DEFAULT 'task'",
 		);
 		// Retired by migration 2.
-		const proposals = physicalTable("proposals");
+		const proposals = "proposals";
 		if (!columnExists(db, proposals, "task_id")) {
 			db.run(`ALTER TABLE ${proposals} ADD COLUMN task_id TEXT`);
 			db.run(
@@ -211,14 +210,14 @@ namespace RelayedPermissions {
 }
 
 /** Drop a retired table; its indexes and triggers go with it. */
-const dropTable = (db: Db, logical: string): void => {
-	db.run(`DROP TABLE IF EXISTS ${physicalTable(logical)}`);
+const dropTable = (db: Db, table: string): void => {
+	db.run(`DROP TABLE IF EXISTS ${table}`);
 };
 
 export namespace Migrations {
 	/**
-	 * Append-only. Version = index + 1. A migration may be any SQL over the
-	 * physical names, including a backfill or a table rebuild.
+	 * Append-only. Version = index + 1. A migration may be any SQL, including a
+	 * backfill or a table rebuild.
 	 */
 	export const LIST: readonly Migrate.Migration[] = [
 		{

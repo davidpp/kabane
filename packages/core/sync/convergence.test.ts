@@ -19,7 +19,7 @@ import { withDb as runWithDb } from "../runtime";
 import { SYNC_TABLES } from "../schemas";
 import { TABLES } from "../storage/helpers";
 import { Planner } from "../storage/index";
-import { Oplog, physicalTableFor } from "../storage/oplog";
+import { Oplog } from "../storage/oplog";
 import { Apply } from "./apply";
 import { LocalRelay, type Relay } from "./local-relay";
 import { Sync } from "./namespace";
@@ -262,9 +262,8 @@ describe("Sync — two devices, one relay, no cloud", () => {
 
 		// Every replicated table, row for row, both directions.
 		for (const table of SYNC_TABLES) {
-			const physical = physicalTableFor(table);
-			const onA = await rowsOf(a.base, physical);
-			const onB = await rowsOf(b.base, physical);
+			const onA = await rowsOf(a.base, table);
+			const onB = await rowsOf(b.base, table);
 			expect(
 				onA.length,
 				`${table} is empty — the test proves nothing`,

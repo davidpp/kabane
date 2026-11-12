@@ -12,7 +12,7 @@ import {
 	withDb,
 } from "@cabane/core";
 import { monotonicFactory } from "ulid";
-import { ITEMS_TABLE, itemsTable } from "./migrations";
+import { ITEMS_TABLE } from "./migrations";
 import { place } from "./rank";
 import {
 	AddSchema,
@@ -41,8 +41,8 @@ const selectItems = (db: Db, taskId: string): ChecklistItemView[] =>
 	db
 		.query<ChecklistItem & { ordinal: number; short_id: string | null }>(
 			`SELECT i.*, t.short_id,
-		(SELECT COUNT(*) FROM ${itemsTable()} preceding WHERE preceding.task_id = i.task_id AND preceding.id <= i.id) AS ordinal
-		FROM ${itemsTable()} i JOIN ${TABLES.tasks} t ON t.id = i.task_id
+		(SELECT COUNT(*) FROM ${ITEMS_TABLE} preceding WHERE preceding.task_id = i.task_id AND preceding.id <= i.id) AS ordinal
+		FROM ${ITEMS_TABLE} i JOIN ${TABLES.tasks} t ON t.id = i.task_id
 		WHERE i.task_id = ?
 		ORDER BY i.rank, i.id`,
 		)
@@ -102,7 +102,7 @@ const changeOf = (
 const write = (db: Db, id: string, set: Record<string, SqlValue>): void => {
 	const columns = Object.keys(set).map((column) => `${column} = ?`);
 	db.run(
-		`UPDATE ${itemsTable()} SET ${columns.join(", ")}, updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?`,
+		`UPDATE ${ITEMS_TABLE} SET ${columns.join(", ")}, updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?`,
 		[...Object.values(set), new Date().toISOString(), Runtime.actor(), id],
 	);
 	Oplog.afterWrite(db, ITEMS_TABLE, "update", id);
@@ -111,7 +111,7 @@ const write = (db: Db, id: string, set: Record<string, SqlValue>): void => {
 /** The live item `id`, refusing a missing or removed one; `ref` is what the caller passed. */
 const liveItem = (db: Db, id: string, ref: string): ChecklistItem => {
 	const row = db
-		.query<ChecklistItem>(`SELECT * FROM ${itemsTable()} WHERE id = ?`)
+		.query<ChecklistItem>(`SELECT * FROM ${ITEMS_TABLE} WHERE id = ?`)
 		.get(id);
 	if (!row) throw new Error(`No checklist item found: ${ref}`);
 	if (row.removed_at !== null)
@@ -143,7 +143,7 @@ export namespace Checklist {
 				new Map(
 					db
 						.query<{ task_id: string; done: number; total: number }>(
-							`SELECT task_id, COUNT(done_at) AS done, COUNT(*) AS total FROM ${itemsTable()} WHERE removed_at IS NULL GROUP BY task_id`,
+							`SELECT task_id, COUNT(done_at) AS done, COUNT(*) AS total FROM ${ITEMS_TABLE} WHERE removed_at IS NULL GROUP BY task_id`,
 						)
 						.all()
 						.map((row) => [row.task_id, { done: row.done, total: row.total }]),
@@ -176,7 +176,7 @@ export namespace Checklist {
 		const ids = await withDb(basePath, (db) =>
 			db
 				.query<{ id: string }>(
-					`SELECT id FROM ${itemsTable()} WHERE task_id = ? ORDER BY id`,
+					`SELECT id FROM ${ITEMS_TABLE} WHERE task_id = ? ORDER BY id`,
 				)
 				.all(taskId.value),
 		);
@@ -226,7 +226,7 @@ export namespace Checklist {
 			const ids = placed.map(({ entry: text, rank }) => {
 				const id = generateId();
 				db.run(
-					`INSERT INTO ${itemsTable()} (id, task_id, text, rank, created_at, updated_at, updated_by, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+					`INSERT INTO ${ITEMS_TABLE} (id, task_id, text, rank, created_at, updated_at, updated_by, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 					[
 						id,
 						taskId.value,

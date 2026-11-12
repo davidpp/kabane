@@ -23,7 +23,6 @@ import { SqliteDb } from "@cabane/sqlite";
 import { ulid } from "ulid";
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
-import { physicalTable } from "../db/tables";
 import type { KabaneModule } from "../module";
 import { err, ok } from "../result";
 import { Runtime, withDb as runWithDb } from "../runtime";
@@ -50,13 +49,12 @@ type Device = {
 // ============================================================
 
 const NOTES = "task_notes";
-const notesTable = (): string => physicalTable(NOTES);
 
 const CREATE_NOTES: Migrate.Migration = {
 	name: "create-task-notes",
 	up: (db) =>
 		db.run(
-			`CREATE TABLE IF NOT EXISTS ${notesTable()} (
+			`CREATE TABLE IF NOT EXISTS ${NOTES} (
 			   id TEXT PRIMARY KEY,
 			   task_id TEXT NOT NULL REFERENCES ${TABLES.tasks}(id) ON DELETE CASCADE,
 			   body TEXT NOT NULL,
@@ -71,9 +69,7 @@ const CREATE_NOTES: Migrate.Migration = {
 const PIN_NOTES: Migrate.Migration = {
 	name: "pin-task-notes",
 	up: (db) =>
-		db.run(
-			`ALTER TABLE ${notesTable()} ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
-		),
+		db.run(`ALTER TABLE ${NOTES} ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`),
 };
 
 const notes = (
@@ -100,7 +96,7 @@ const writeNote = (
 	return as(device, (db) => {
 		const pinned = note.pinned === undefined ? "" : ", pinned";
 		db.run(
-			`INSERT INTO ${notesTable()} (id, task_id, body, updated_at${pinned})
+			`INSERT INTO ${NOTES} (id, task_id, body, updated_at${pinned})
 			 VALUES (?, ?, ?, ?${note.pinned === undefined ? "" : ", ?"})`,
 			[
 				id,
@@ -118,7 +114,7 @@ const writeNote = (
 const editNote = (device: Device, id: string, body: string): Promise<void> =>
 	as(device, (db) => {
 		db.run(
-			`UPDATE ${notesTable()} SET body = ?, version = version + 1, updated_at = ?
+			`UPDATE ${NOTES} SET body = ?, version = version + 1, updated_at = ?
 			 WHERE id = ?`,
 			[body, new Date(Date.now() + 1).toISOString(), id],
 		);
@@ -128,17 +124,17 @@ const editNote = (device: Device, id: string, body: string): Promise<void> =>
 const deleteNote = (device: Device, id: string): Promise<void> =>
 	as(device, (db) => {
 		const row = db
-			.query<Row, [string]>(`SELECT * FROM ${notesTable()} WHERE id = ?`)
+			.query<Row, [string]>(`SELECT * FROM ${NOTES} WHERE id = ?`)
 			.get(id);
 		if (row === null) throw new Error(`no note ${id}`);
-		db.run(`DELETE FROM ${notesTable()} WHERE id = ?`, [id]);
+		db.run(`DELETE FROM ${NOTES} WHERE id = ?`, [id]);
 		Oplog.afterDelete(db, [{ tbl: NOTES, row }]);
 	});
 
 /** Stands in for a constraint one database holds and the others do not. */
 const refuse = (db: Db) =>
 	db.run(
-		`CREATE TRIGGER refuse_note BEFORE INSERT ON ${notesTable()}
+		`CREATE TRIGGER refuse_note BEFORE INSERT ON ${NOTES}
 		 WHEN NEW.body = 'refused'
 		 BEGIN SELECT RAISE(ABORT, 'refused by this database'); END`,
 	);
@@ -237,7 +233,7 @@ const titles = (device: Device): Promise<string[]> =>
 
 const notesOn = (device: Device): Promise<Row[]> =>
 	as(device, (db) =>
-		db.query<Row, []>(`SELECT * FROM ${notesTable()} ORDER BY id`).all(),
+		db.query<Row, []>(`SELECT * FROM ${NOTES} ORDER BY id`).all(),
 	);
 
 const tableExists = (device: Device, name: string): Promise<boolean> =>
@@ -362,7 +358,7 @@ describe("a module's migrations", () => {
 			core: Migrate.current(db),
 			notes: db
 				.query<{ version: number; name: string }, []>(
-					`SELECT version, name FROM ${physicalTable("schema_migrations_notes")} ORDER BY version`,
+					`SELECT version, name FROM schema_migrations_notes ORDER BY version`,
 				)
 				.all(),
 		}));
@@ -518,7 +514,7 @@ const hooked = (calls: string[], refusal?: string): KabaneModule => ({
 		if (refusal !== undefined) return err(new Error(refusal));
 		const id = ulid();
 		db.run(
-			`INSERT INTO ${notesTable()} (id, task_id, body, updated_at) VALUES (?, ?, ?, ?)`,
+			`INSERT INTO ${NOTES} (id, task_id, body, updated_at) VALUES (?, ?, ?, ?)`,
 			[id, task.id, `${from}->${to}`, new Date().toISOString()],
 		);
 		Oplog.afterWrite(db, NOTES, "insert", id);

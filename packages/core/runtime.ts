@@ -12,7 +12,6 @@
  */
 
 import type { Db, DbProvider } from "./db/port";
-import { setTablePrefix } from "./db/tables";
 import { type KabaneModule, Modules, setModules } from "./module";
 import { err, ok, type Result } from "./result";
 import type { EntryKind } from "./schemas/comment";
@@ -72,8 +71,6 @@ export type TimezoneSource = () => string;
 
 export type RuntimeConfig = {
 	provider: DbProvider;
-	/** Physical table-name prefix, e.g. "planner_". Default: none. */
-	tablePrefix?: string;
 	tracer?: Tracer;
 	notifier?: Notifier;
 	scopeResolver?: ScopeResolver;
@@ -112,7 +109,7 @@ const unconfigured: DbProvider = {
 		),
 };
 
-type Ports = Required<Omit<RuntimeConfig, "tablePrefix" | "modules">>;
+type Ports = Required<Omit<RuntimeConfig, "modules">>;
 
 let ports: Ports = {
 	provider: unconfigured,
@@ -146,7 +143,6 @@ export namespace Runtime {
 			actor: config.actor ?? anonymous,
 			timezone: config.timezone ?? processZone,
 		};
-		setTablePrefix(config.tablePrefix ?? "");
 		return ok(undefined);
 	};
 

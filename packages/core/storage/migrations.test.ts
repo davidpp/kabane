@@ -14,7 +14,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
-import { physicalTable } from "../db/tables";
 import type { Result } from "../result";
 import { withDb as runWithDb } from "../runtime";
 import { answersContext, formatQuestionBody } from "../schemas";
@@ -356,7 +355,7 @@ describe("Migrations on a device stamped at the baseline", () => {
 		);
 		await withDb((db) =>
 			db.run(
-				`INSERT INTO ${physicalTable("proposals")}
+				`INSERT INTO proposals
 				   (id, action, confidence, summary, payload, created_at, updated_at)
 				 VALUES ('01PROPOSAL', 'ask_question', 0.9, 'retired', '{}', ?, ?)`,
 				[NOW, NOW],
@@ -364,14 +363,14 @@ describe("Migrations on a device stamped at the baseline", () => {
 		);
 		await withDb((db) =>
 			db.run(
-				`INSERT INTO ${physicalTable("focus_lists")} (id, period, created_at, updated_at)
+				`INSERT INTO focus_lists (id, period, created_at, updated_at)
 				 VALUES ('01FOCUS', 'daily', ?, ?)`,
 				[NOW, NOW],
 			),
 		);
 		await withDb((db) =>
 			db.run(
-				`INSERT INTO ${physicalTable("task_activity")}
+				`INSERT INTO task_activity
 				   (id, task_id, event_type, actor, actor_type, timestamp)
 				 VALUES ('01ACTIVITY', ?, 'short_id_renamed', 'sync', 'ai', ?)`,
 				[task.value.id, NOW],
@@ -420,54 +419,51 @@ describe("Migration 5: end-of-UTC-day deadlines become the dates they meant", ()
 		rmSync(base, { recursive: true, force: true });
 	});
 
-	for (const prefix of ["", "planner_"]) {
-		it(`converts only the end-of-day shapes${prefix ? " behind Jake's prefix" : ""}, once`, async () => {
-			configureTestRuntime(prefix);
-			base = freshBase(`deadlines${prefix}`);
-			// A device on the build before this migration: versions 1 to 4.
-			await withDb((db) => {
-				const stamped = Migrate.run(db, Migrations.LIST.slice(0, 4));
-				if (!stamped.ok) throw stamped.error;
-			});
-			const ids: string[] = [];
-			for (const [stored] of SHAPES) {
-				// Written as the old build stored it, past today's input parsing.
-				const task = await Planner.addTask(base, { title: stored });
-				if (!task.ok) throw task.error;
-				await withDb((db) =>
-					db.run(`UPDATE ${TABLES.tasks} SET deadline = ? WHERE id = ?`, [
-						stored,
-						task.value.id,
-					]),
-				);
-				ids.push(task.value.id);
-			}
-			const none = await Planner.addTask(base, { title: "no deadline" });
-			if (!none.ok) throw none.error;
-
-			await mustInit(base);
-			expect(await versionRows()).toEqual(ALL_VERSIONS);
-			const read = async () =>
-				withDb((db) =>
-					ids.map(
-						(id) =>
-							db
-								.query<{ deadline: string | null }, [string]>(
-									`SELECT deadline FROM ${TABLES.tasks} WHERE id = ?`,
-								)
-								.get(id)?.deadline,
-					),
-				);
-			expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
-			const kept = await Planner.getTask(base, none.value.id);
-			expect(kept.ok && kept.value?.deadline).toBeUndefined();
-
-			// A second boot applies nothing and changes nothing.
-			await mustInit(base);
-			expect(await versionRows()).toEqual(ALL_VERSIONS);
-			expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
+	it("converts only the end-of-day shapes, once", async () => {
+		base = freshBase("deadlines");
+		// A device on the build before this migration: versions 1 to 4.
+		await withDb((db) => {
+			const stamped = Migrate.run(db, Migrations.LIST.slice(0, 4));
+			if (!stamped.ok) throw stamped.error;
 		});
-	}
+		const ids: string[] = [];
+		for (const [stored] of SHAPES) {
+			// Written as the old build stored it, past today's input parsing.
+			const task = await Planner.addTask(base, { title: stored });
+			if (!task.ok) throw task.error;
+			await withDb((db) =>
+				db.run(`UPDATE ${TABLES.tasks} SET deadline = ? WHERE id = ?`, [
+					stored,
+					task.value.id,
+				]),
+			);
+			ids.push(task.value.id);
+		}
+		const none = await Planner.addTask(base, { title: "no deadline" });
+		if (!none.ok) throw none.error;
+
+		await mustInit(base);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
+		const read = async () =>
+			withDb((db) =>
+				ids.map(
+					(id) =>
+						db
+							.query<{ deadline: string | null }, [string]>(
+								`SELECT deadline FROM ${TABLES.tasks} WHERE id = ?`,
+							)
+							.get(id)?.deadline,
+				),
+			);
+		expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
+		const kept = await Planner.getTask(base, none.value.id);
+		expect(kept.ok && kept.value?.deadline).toBeUndefined();
+
+		// A second boot applies nothing and changes nothing.
+		await mustInit(base);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
+		expect(await read()).toEqual(SHAPES.map(([, expected]) => expected));
+	});
 });
 
 describe("Migration 6: relayed tool-permission answers stop being decisions", () => {
@@ -613,14 +609,9 @@ describe("Migration 9: an issue's comments become entries of kind comment", () =
 	});
 
 	// 7 is where the released 1.0.0-beta.0 leaves a database; 8 never shipped.
-	for (const [prefix, from] of [
-		["", 7],
-		["", 8],
-		["planner_", 8],
-	] as const) {
-		it(`reads every existing comment as kind comment, from version ${from}${prefix ? " behind Jake's prefix" : ""}`, async () => {
-			configureTestRuntime(prefix);
-			base = freshBase(`entry-kind${prefix}-${from}`);
+	for (const from of [7, 8]) {
+		it(`reads every existing comment as kind comment, from version ${from}`, async () => {
+			base = freshBase(`entry-kind-${from}`);
 			await withDb((db) => {
 				const stamped = Migrate.run(db, Migrations.LIST.slice(0, from));
 				if (!stamped.ok) throw stamped.error;
@@ -663,29 +654,6 @@ describe("Migration 9: an issue's comments become entries of kind comment", () =
 			expect(index).toEqual([{ name: `${TABLES.comments}_task_kind_idx` }]);
 		});
 	}
-});
-
-describe("Migrations with Jake's table prefix", () => {
-	afterEach(() => {
-		configureTestRuntime();
-		rmSync(base, { recursive: true, force: true });
-	});
-
-	it("keeps its version table behind the prefix too", async () => {
-		configureTestRuntime("planner_");
-		base = freshBase("prefixed");
-		await mustInit(base);
-		const names = await withDb((db) =>
-			db
-				.query<{ name: string }, []>(
-					"SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%schema_migrations'",
-				)
-				.all()
-				.map((r) => r.name),
-		);
-		expect(names).toEqual(["planner_schema_migrations"]);
-		expect(await versionRows()).toEqual(ALL_VERSIONS);
-	});
 });
 
 describe("Migrations when several processes boot one database at once", () => {

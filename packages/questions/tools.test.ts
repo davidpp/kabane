@@ -16,7 +16,7 @@ const unwrap = <T>(result: Result<T>): T => {
 let base: string;
 beforeEach(async () => {
 	base = mkdtempSync(join(tmpdir(), "questions-tools-"));
-	configureTestRuntime("", { modules: [questionsModule] });
+	configureTestRuntime({ modules: [questionsModule] });
 	unwrap(await Planner.init(base));
 });
 afterEach(() => {
@@ -281,7 +281,7 @@ it("withdraws open questions when kabane_done or kabane_edit closes the issue", 
 
 it("credits a relayed answer to the human, the plain one to the agent, and refuses relayed without a human", async () => {
 	// As `kabane mcp --as <agent>` runs: every write stamped by the agent.
-	configureTestRuntime("", {
+	configureTestRuntime({
 		modules: [questionsModule],
 		actor: () => "cabane://actor/agent/test",
 	});

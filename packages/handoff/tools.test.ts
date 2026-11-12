@@ -21,7 +21,7 @@ let base: string;
 let client: Client;
 beforeEach(async () => {
 	base = mkdtempSync(join(tmpdir(), "handoff-tools-"));
-	configureTestRuntime("", { modules: [handoffModule] });
+	configureTestRuntime({ modules: [handoffModule] });
 	unwrap(await Planner.init(base));
 	const server = unwrap(
 		createMcpServer({ basePath: base, actor: AGENT, scopeRequired: false }),

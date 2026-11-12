@@ -1,9 +1,8 @@
 /**
  * The migration runner: a numbered, append-only list applied once per database.
  *
- * Every database carries a version table (`schema_migrations`, through the
- * table prefix, so Jake's shared `jake.db` gets `planner_schema_migrations`).
- * A migration's version is its index in the list plus one. The runner applies
+ * Every database carries a version table (`schema_migrations`). A migration's
+ * version is its index in the list plus one. The runner applies
  * every migration above the recorded version, each inside one transaction
  * together with the row that records it, so a migration that throws leaves the
  * database exactly as the previous one left it and says which one failed.
@@ -33,8 +32,7 @@ import { TABLES } from "./tables";
 export namespace Migrate {
 	/**
 	 * One schema step. `up` runs once per database. Any SQL goes, including a
-	 * backfill or a table rebuild, as long as it is written against the physical
-	 * names (`TABLES.x`) so the prefix holds.
+	 * backfill or a table rebuild.
 	 */
 	export type Migration = {
 		/** A short slug, recorded beside the version for whoever reads the table. */

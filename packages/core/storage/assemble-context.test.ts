@@ -422,7 +422,7 @@ describe("Planner — assembleContext", () => {
 				allowFreeform: false,
 			}),
 		);
-		configureTestRuntime("", { actor: () => "cabane://actor/human/ada" });
+		configureTestRuntime({ actor: () => "cabane://actor/human/ada" });
 		try {
 			for (const [questionId, answer] of [
 				[approval, "Yes"],
@@ -608,7 +608,7 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 	});
 
 	it("lifts a latest kind's newest entry into its own section, counts the older ones and leaves them out of the Discussion", async () => {
-		configureTestRuntime("", { modules: [verdicts] });
+		configureTestRuntime({ modules: [verdicts] });
 		const id = await createTask({
 			title: "Lifted",
 			kind: "issue",
@@ -653,7 +653,7 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 	});
 
 	it("counts a latest section toward human steering only while a human wrote its newest entry", async () => {
-		configureTestRuntime("", { modules: [verdicts] });
+		configureTestRuntime({ modules: [verdicts] });
 		const id = await createTask({ title: "Steered", kind: "issue" });
 		const steering = async (sections: string[]) => {
 			const page = await Planner.getContextPage(TEST_BASE, id, { sections });
@@ -677,7 +677,7 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 	});
 
 	it("decides steering from a timeline snapshot alone", () => {
-		configureTestRuntime("", { modules: [verdicts] });
+		configureTestRuntime({ modules: [verdicts] });
 		const verdict = (authorType: "human" | "ai", id: string): TaskEntry => ({
 			id,
 			taskId: "no-such-task",
@@ -781,7 +781,7 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 	});
 
 	it("omits a latest kind's section while the issue has none of its entries", async () => {
-		configureTestRuntime("", { modules: [verdicts] });
+		configureTestRuntime({ modules: [verdicts] });
 		const id = await createTask({ title: "None yet", kind: "issue" });
 		await entry(id, "verdicts.note", "A_NOTE");
 		const md = await assemble(id);

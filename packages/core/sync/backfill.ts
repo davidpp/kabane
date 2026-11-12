@@ -33,7 +33,7 @@ import { err, ok, type Result } from "../result";
 import { withDb } from "../runtime";
 
 import type { SyncTable } from "../schemas";
-import { Oplog, physicalTableFor } from "../storage/oplog";
+import { Oplog } from "../storage/oplog";
 
 /** Local mirror of the `oplog.ts` idiom — SQLite throws, this module does not. */
 const trySync = <T>(fn: () => T): Result<T> => {
@@ -113,13 +113,12 @@ const backfillTable = (
 	capturedAt: string,
 	report: BackfillReport,
 ): Result<void> => {
-	const physical = physicalTableFor(tbl);
 	const order = ROW_ORDER[tbl] ?? "id";
 
 	const rows = trySync(() =>
 		db
 			.query<Record<string, unknown>, []>(
-				`SELECT * FROM ${physical} ORDER BY ${order}`,
+				`SELECT * FROM ${tbl} ORDER BY ${order}`,
 			)
 			.all(),
 	);
