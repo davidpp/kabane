@@ -288,6 +288,7 @@ against every glyph already here.
 | `●` (mark column) | in the marked working set | accent |
 | `◆` | points at an issue in another tracker | muted |
 | `✦ ai` | an agent changed this strip this turn | default fg |
+| `✦` (detail) | landed on this `now` block, or on `now` while you read another section, since you opened the detail | default fg |
 | `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` | in flight, on the one surface that owns the fact | working |
 | `●` (badge) | in flight, echoed on a surface that does not own it | working |
 | `⠋` frozen | in flight, but the runner stopped reporting | muted |
@@ -343,24 +344,37 @@ against every glyph already here.
   `[copy]` affordance at its right, then the in-flight status line in the working hue, then
   the pinned facts, their key muted and their value secondary, so the title is the one bright
   line in the block.
-- **Sections** (`h/l`; never called tabs, which are the tab bar's): the active section in Label
-  weight on selected, the others secondary, an empty one faint.
+- **Sections** (`h/l`; never called tabs, which are the tab bar's): `now`, `description`,
+  `comments`, `log`; the active one in Label weight on selected, the others secondary, an empty
+  one faint.
 - **Content column:** every section's content starts one cell in, under the header's text.
-- **Checklist:** under the brief in the description, headed `checklist · n/m` like a bay, one
-  line per item: `✓` in the done hue or `○` muted, then its text, cut with `…`. A cursor on one
-  item, under the Selection Rule, starts on the first open one; `J/K` move it (shifted from the
-  `j/k` that scroll) and `space` toggles it, as `space` toggles a multi-select's answer, scrolling
+- **Now:** blocks headed like a bay, a blank line between them, an empty one taking no room. One
+  that changed while the detail is open has `✦ ` before its header, and the `now` label carries
+  it while another section shows, until the header has been on screen for three seconds.
+- **Checklist:** the first block on `now`, headed `checklist · n/m`, one line per item: `✓` in
+  the done hue or `○` muted, then its text, cut with `…`. A cursor on one item, under the
+  Selection Rule, starts on the first open one; `J/K` move it (shifted from the `j/k` that
+  scroll) and `space` toggles it, as `space` toggles a multi-select's answer, scrolling
   it into view in the same press: a toggle is never out of sight.
-- **Comments:** one per comment, a raised author band (the actor URI's last segment, never
-  the URI, bold for a human; the time muted), then the comment whole, on the terminal's own
+- **Digest:** a lifted entry (the newest handoff) as a block on `now`: `kind · author · age`, the
+  kind's title in Label weight and the rest muted, the name cut before the age; the kind's
+  framing line muted; then the text before the first heading and the first section rendered, that
+  heading behind a muted `▾`, held to about eight rows at forty columns with a muted `… n more
+  lines`. Every further top-level heading is one line, `▸ Heading · n lines`: glyph and size
+  muted, heading in default fg, never its content. `n earlier in comments` muted under it.
+- **Reader** (`r`): the lifted entries whole, over the detail under its title row, rendered as
+  the brief is; `[`/`]` step through the headings the digest folds.
+- **Comments:** one per timeline entry, a raised author band (the actor URI's last segment,
+  never the URI, bold for a human; an entry's kind when it is not a plain comment; the time
+  muted), then the entry whole, on the terminal's own
   background like the brief. The band is the seam between comments.
 - **Brief:** rendered markdown, prose stopping at `{spacing.prose-measure}` however wide the
   pane, with a cell clear of the scrollbar. Headings in heading ink, list bullets muted,
   inline code in code ink on overlay, code blocks and quotes on a raised panel with no bar,
   a link's label in link ink underlined and its URL muted, tables as columns with no grid, a
   rule as a blank line.
-- **Age:** the meta line says how old the brief is in words (`brief · 41d`). This is where
-  decay is spelled out.
+- **Age:** the header says how old the brief is in words (`brief · 41d`), where decay is
+  spelled out. Not built yet.
 
 ### Copilot pane
 - **Style:** `{components.copilot-pane}`, no border. The first line is `copilot · <harness>`,
@@ -434,7 +448,7 @@ one-row collapsed forms follow the same colors.
 ### Motion
 - **Spinner:** braille frames at 80ms, animating on exactly one surface per fact; every echo
   shows a still `●`.
-- **Fresh change:** the single contrast step described under Strips.
+- **Fresh change:** the single contrast step described under Strips, and the detail's still `✦`.
 - **Nothing else moves.** No idle loops, no entrance choreography, no bounce.
 
 ## 6. Do's and Don'ts
