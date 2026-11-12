@@ -137,7 +137,11 @@ export namespace LoopDispatcher {
 		values: Readonly<Record<string, unknown>>,
 		advice: readonly LoopAdvice.Recommendation[],
 	): Promise<Result<string>> => {
-		const config = LoopSettings.overrides(values, advice);
+		// Setup was advised for worktrees; a shared submission keeps only configured setup.
+		const config = LoopSettings.overrides(
+			values,
+			advice.filter((r) => r.path !== "setup" || values.isolation !== "shared"),
+		);
 		if (!config.ok) return config;
 		const run = await Loop.start(deps, { parent, config: config.value });
 		return run.ok
