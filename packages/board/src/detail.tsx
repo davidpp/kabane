@@ -693,7 +693,7 @@ const NowTab = ({
 };
 
 /** The renderable id of a block on the `now` tab: `now:checklist`, `now:lifted:handoff`. */
-export const nowBlockId = (name: DetailModel.NowBlock["name"]): string =>
+const nowBlockId = (name: DetailModel.NowBlock["name"]): string =>
 	`now:${name}`;
 
 const NowBlockBody = ({

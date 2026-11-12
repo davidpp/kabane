@@ -115,7 +115,7 @@ export namespace DetailModel {
 	 * headings included. `lines` are its source lines without the heading's own and without the
 	 * blank ones at either end; `size` counts the ones that are not blank.
 	 */
-	export type BodySection = { heading?: string; lines: string[]; size: number };
+	type BodySection = { heading?: string; lines: string[]; size: number };
 
 	/** A comment author as a name: `cabane://actor/agent/claude` → `claude`. */
 	export const actorName = (author: string): string =>
@@ -358,7 +358,7 @@ export namespace DetailModel {
 	 * checklist above and the folded headings below on one screen of a 27-row viewport; a wider pane
 	 * fits more of the opening in the same rows.
 	 */
-	export const DIGEST_ROWS = 8;
+	const DIGEST_ROWS = 8;
 
 	/**
 	 * A lifted body as the `now` tab shows it: the opening rendered (the text before the first
@@ -366,7 +366,7 @@ export namespace DetailModel {
 	 * how many of the opening's lines the cap left out, then each further section as its heading
 	 * and its size.
 	 */
-	export type Digest = {
+	type Digest = {
 		shown: { heading?: string; text: string }[];
 		more: number;
 		folded: { heading: string; size: number }[];
@@ -529,7 +529,7 @@ export namespace DetailModel {
 			});
 
 	/** The decisions made on the task, in the order they were asked. */
-	export const decisions = (records: BoardData.DetailRecords): DecisionLine[] =>
+	const decisions = (records: BoardData.DetailRecords): DecisionLine[] =>
 		records.questions
 			.filter((q) => q.status === "answered")
 			.map((q) => ({
