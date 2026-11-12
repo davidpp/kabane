@@ -142,6 +142,17 @@ export namespace Keymap {
 		keys: ["t"],
 	};
 
+	/**
+	 * The scroll keys (paging.ts) of every view that scrolls: a couple of rows, the top and the end,
+	 * half the viewport. One row on the sheet, its key short enough for the sheet's key column.
+	 */
+	const SCROLL: Binding = {
+		key: "j/k g/G",
+		label: "scroll · ⌃d/⌃u half page",
+		tier: "help",
+		keys: ["j", "k", "down", "up", "g", "G", "ctrl+d", "ctrl+u"],
+	};
+
 	/** `?` itself: last in every footer where the sheet opens. */
 	const HELP: Binding = {
 		key: "?",
@@ -418,12 +429,7 @@ export namespace Keymap {
 					keys: ["2", "3", "4"],
 					when: sections,
 				},
-				{
-					key: "j/k",
-					label: "scroll",
-					tier: "help",
-					keys: ["j", "k", "down", "up"],
-				},
+				SCROLL,
 				{
 					key: "J/K",
 					label: "next · previous item",
@@ -464,12 +470,7 @@ export namespace Keymap {
 			name: "transcript",
 			sheet: true,
 			bindings: [
-				{
-					key: "j/k",
-					label: "scroll",
-					tier: "footer",
-					keys: ["j", "k", "down", "up"],
-				},
+				SCROLL,
 				{
 					key: "x",
 					label: "stop the turn",
@@ -518,12 +519,7 @@ export namespace Keymap {
 					keys: ["e"],
 					when: (s) => s.header === true,
 				},
-				{
-					key: "j/k",
-					label: "scroll",
-					tier: "help",
-					keys: ["j", "k", "down", "up"],
-				},
+				SCROLL,
 				{ ...TOOL_DETAILS, tier: "help" },
 				{ key: "esc q", label: "tracker", tier: "help", keys: ["escape", "q"] },
 			],
@@ -665,10 +661,10 @@ export namespace Keymap {
 			sheet: false,
 			bindings: [
 				{
-					key: "j/k",
+					...SCROLL,
+					key: "j/k g/G ⌃d/⌃u",
 					label: "scroll",
 					tier: "footer",
-					keys: ["j", "k", "down", "up"],
 					when: (s) => s.scrollable === true,
 				},
 				{

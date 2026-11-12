@@ -1428,9 +1428,9 @@ test("the ? sheet at 40x24: frameless along the bottom, scrollable, and a key th
 		const rows = frame.split("\n");
 		// The board's keys run past a 24-row pane, so the sheet says it scrolls; the header row
 		// above it stays the view's.
-		expect(rows.some((row) => row.includes("j/k scroll · ? esc close"))).toBe(
-			true,
-		);
+		expect(
+			rows.some((row) => row.includes("j/k g/G ⌃d/⌃u scroll · ? esc close")),
+		).toBe(true);
 		expect(rows[0]?.trim()).toBe("");
 		const spans = spansOf(captureSpans);
 		const title = spans.find((span) => span.text.trim() === "board");

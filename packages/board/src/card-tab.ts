@@ -26,7 +26,7 @@ export namespace CardTab {
 	// Keys the board answers on a card's tab, whatever a host binds: an action under one is never
 	// offered. `x` is the stop action's alone.
 	const RESERVED: ReadonlySet<string> = new Set([
-		..."xhlewoqjkt{}!?A:O,0123456789",
+		..."xhlewoqjkgGt{}!?A:O,0123456789",
 		"escape",
 		"return",
 		"tab",
