@@ -18,7 +18,7 @@ import { buildConfig } from "./init";
 const BASE = { actor: "cabane://actor/human/ada", deviceId: "mbp" };
 
 describe("buildConfig", () => {
-	test("a local device: sync off, no db block", () => {
+	test("a local device: sync off", () => {
 		const built = buildConfig(BASE);
 		expect(built.ok && built.value).toEqual({
 			...BASE,

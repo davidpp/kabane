@@ -83,7 +83,7 @@ export const helpText = (
 			(c) => `  ${c.name.padEnd(9)} ${c.summary}`,
 		),
 		"",
-		"KABANE_HOME (default ~/.kabane) holds config.json and kabane.db, unless config.json's db block points at another file.",
+		"KABANE_HOME (default ~/.kabane) holds config.json and kabane.db.",
 	].join("\n");
 
 const HELP_USAGE = "kabane <command> [args]";

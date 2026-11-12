@@ -1,22 +1,6 @@
 import { Backfill, Sync, SyncDevice, type SyncStatus } from "@cabane/core";
 import { failure, success, usage } from "@cabane/extension";
-import type { Config } from "../config";
-import type { Command, Ctx } from "../context";
-
-/**
- * A database opened through `db.path` usually belongs to another host (Jake)
- * that already syncs it as its own device. Syncing the same file from here too
- * would race that device on the shared `sync_state` row.
- */
-const sharedDbWarning = (config: Config): string | undefined =>
-	config.db?.path !== undefined && config.sync.enabled
-		? `⚠️  db.path points at ${config.db.path}, which another host may already sync as its own device. Sync from that host instead, or drop the sync block from this config.`
-		: undefined;
-
-const withWarning = (ctx: Ctx, text: string): string => {
-	const warning = sharedDbWarning(ctx.config);
-	return warning ? `${warning}\n${text}` : text;
-};
+import type { Command } from "../context";
 
 const formatStatus = (s: SyncStatus): string => {
 	if (!s.enabled)
@@ -44,10 +28,7 @@ export const sync: Command = {
 		if (sub === "status") {
 			const status = await Sync.status(ctx.store);
 			if (!status.ok) return failure(status.error);
-			return success(
-				{ ...status.value, warning: sharedDbWarning(ctx.config) },
-				withWarning(ctx, formatStatus(status.value)),
-			);
+			return success(status.value, formatStatus(status.value));
 		}
 		if (sub !== "push" && sub !== "pull" && sub !== "backfill") {
 			return usage(`Unknown sync subcommand: ${sub}`, sync.usage);
@@ -63,10 +44,7 @@ export const sync: Command = {
 			const r = pulled.value;
 			return success(
 				{ deviceId, ...r },
-				withWarning(
-					ctx,
-					`⬇️  Pulled ${r.received} ops, applied ${r.applied}, renamed ${r.renamed} (${r.batches} batches, through seq ${r.throughSeq})`,
-				),
+				`⬇️  Pulled ${r.received} ops, applied ${r.applied}, renamed ${r.renamed} (${r.batches} batches, through seq ${r.throughSeq})`,
 			);
 		}
 
@@ -81,10 +59,7 @@ export const sync: Command = {
 		const r = pushed.value;
 		return success(
 			{ deviceId, ...r },
-			withWarning(
-				ctx,
-				`${backfilled}⬆️  Pushed ${r.pushed} ops (${r.duplicates} duplicates, ${r.batches} batches) as device ${deviceId}`,
-			),
+			`${backfilled}⬆️  Pushed ${r.pushed} ops (${r.duplicates} duplicates, ${r.batches} batches) as device ${deviceId}`,
 		);
 	},
 };

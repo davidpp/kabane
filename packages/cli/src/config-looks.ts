@@ -28,9 +28,6 @@ export const DEVICE_LOOKS: Settings.Looks = {
 	"sync.headers": { label: "edge headers", group: "Sync" },
 	"sync.batchBytes": { label: "push chunk (bytes)", group: "Sync" },
 	"sync.deviceId": { label: "first device id", group: "Sync" },
-	db: { label: "database", group: "Database" },
-	"db.path": { label: "file", group: "Database", none: "kabane.db" },
-	"db.tablePrefix": { label: "table prefix", group: "Database", none: "none" },
 	extensions: {
 		label: "extensions",
 		group: "Board",

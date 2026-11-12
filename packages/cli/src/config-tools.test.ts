@@ -86,9 +86,6 @@ it("manages device config through the real stdio MCP server", async () => {
 			"--device",
 			"config-test",
 		);
-		// Exercise home binding when ToolContext.basePath points elsewhere.
-		const dbDir = join(home, "alternate");
-		await cli("config", "set", "db.path", join(dbDir, "tracker.db"));
 		await client.connect(
 			new StdioClientTransport({
 				command: process.execPath,
@@ -127,10 +124,9 @@ it("manages device config through the real stdio MCP server", async () => {
 		expect(flags("protected")).toEqual(
 			rows
 				.map((row) => String(row.key))
-				.filter((key) => /^(sync|db)(\.|$)/.test(key)),
+				.filter((key) => /^sync(\.|$)/.test(key)),
 		);
 		expect(flags("protected")).toContain("sync.token");
-		expect(flags("protected")).toContain("db.path");
 		expect(flags("secret")).toEqual(["sync.token", "sync.headers"]);
 		// Device keys are written to global only and load at a process's start; the loop's are
 		// written to any layer and read at each resolve.
@@ -200,7 +196,6 @@ it("manages device config through the real stdio MCP server", async () => {
 			expect(changed.note).toContain("Restart running board and MCP");
 			expect(await valueOf(key)).toEqual(expected);
 		}
-		expect(existsSync(join(dbDir, "config.json"))).toBe(false);
 		// Outside any project a namespace key goes to the global layer, and there is no local one.
 		expect(
 			JSON.parse(

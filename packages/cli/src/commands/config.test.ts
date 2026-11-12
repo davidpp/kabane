@@ -152,9 +152,6 @@ describe.concurrent("config through the real CLI", () => {
 					"sync.deviceId",
 					"sync.headers",
 					"sync.batchBytes",
-					"db",
-					"db.path",
-					"db.tablePrefix",
 					"copilot",
 					"copilot.harness",
 					"copilot.command",
@@ -215,7 +212,6 @@ describe.concurrent("config through the real CLI", () => {
 				...initial,
 				...future,
 				sync: { ...future },
-				db: { ...future },
 				copilot: { ...future },
 			});
 			const expected: Record<string, unknown> = {};
@@ -230,12 +226,6 @@ describe.concurrent("config through the real CLI", () => {
 				["sync.token", "false", "<set>"],
 				["sync.url", "https://example.invalid", "https://example.invalid"],
 				["sync.headers", '{"X-Test":"value"}', "<set>"],
-				[
-					"db.path",
-					"/nonexistent/kabane-test/db.sqlite",
-					"/nonexistent/kabane-test/db.sqlite",
-				],
-				["db.tablePrefix", "", ""],
 				["timezone", "UTC", "UTC"],
 				["extensions", "loop", ["loop"]],
 			] as const) {
@@ -264,7 +254,6 @@ describe.concurrent("config through the real CLI", () => {
 			expect(JSON.parse(read())).toMatchObject({
 				...future,
 				sync: { ...future, token: "false", headers: { "X-Test": "value" } },
-				db: future,
 				copilot: future,
 			});
 			expect(existsSync(join(home, "kabane.db"))).toBe(false);
@@ -284,7 +273,6 @@ describe.concurrent("config through the real CLI", () => {
 				"sync.enabled",
 				"sync.batchBytes",
 				"copilot.model",
-				"db.path",
 				"extensions",
 			]) {
 				const result = await run("config", "unset", key, "--json");
@@ -360,7 +348,6 @@ describe.concurrent("config through the real CLI", () => {
 			}
 			for (const [key, value] of [
 				["sync", "{}"],
-				["db", "{}"],
 				["copilot", "{}"],
 				["sync.enabled", "yes"],
 				["sync.enabled", '"false"'],
@@ -379,7 +366,7 @@ describe.concurrent("config through the real CLI", () => {
 				["constructor", "oops"],
 			] as const)
 				expect((await run("config", "set", key, value)).code).toBe(1);
-			for (const key of ["sync", "db", "copilot", "unknown"])
+			for (const key of ["sync", "copilot", "unknown"])
 				expect((await run("config", "unset", key)).code).toBe(1);
 			expect((await run("config", "get", "sync.unknown")).code).toBe(1);
 			expect(read()).toBe(before);
@@ -431,6 +418,21 @@ describe.concurrent("config through the real CLI", () => {
 				expect((await run("config", "set", "timezone", "UTC")).code).toBe(1);
 				expect(read()).toBe(content);
 			}
+		}),
+		30_000,
+	);
+
+	it(
+		"refuses a config that still holds a db block, for config and data commands alike",
+		withHome(async ({ read, write, run }) => {
+			write({ ...initial, db: { path: "~/elsewhere.db", tablePrefix: "x_" } });
+			const before = read();
+			for (const args of [["config", "list"], ["list"]]) {
+				const result = await run(...args);
+				expect(result.code).not.toBe(0);
+				expect(result.err).toContain("the `db` block is no longer supported");
+			}
+			expect(read()).toBe(before);
 		}),
 		30_000,
 	);
@@ -777,7 +779,7 @@ describe.concurrent("config through the real CLI", () => {
 				stallAfter: 5,
 				recheck: false,
 			});
-			// Device keys are global only: no project file may move the hub or the database.
+			// Device keys are global only: no project file may move the hub.
 			for (const layer of ["shared", "local", "scope"]) {
 				const refused = await inRepo(
 					"config",

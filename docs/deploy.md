@@ -356,29 +356,6 @@ kabane sync status
 Expected: `Sync: armed as device <name>`, `pending ops: 0`, `last sync:` a timestamp,
 `quarantined: 0`.
 
-### 2.5 Or share a host app's database instead
-
-A device can open a database another host already keeps, instead of its own
-`~/.kabane/kabane.db`. This is for a host app that embeds `@cabane/core` and keeps its
-tables behind a prefix (Jake, the planner kabane was extracted from, uses `planner_` in
-`~/.jake/jake.db`). Skip 2.2 to 2.4 and initialize like this instead:
-
-```bash
-kabane init \
-  --actor cabane://actor/human/<your name> \
-  --device <short machine name> \
-  --db-path <the host's database file> --table-prefix <its table prefix>
-kabane list --limit 5
-```
-
-Expected: the `init` output ends with `db: <the file> (tables <prefix>*)` and `list` shows
-the host's tasks. Nothing is copied and nothing syncs between the two hosts, because it is
-one file. Do **not** add `--sync-url` in this shape: the host syncs that file as its own
-device, and `kabane sync` warns when `db.path` and sync are both set. Opening the file
-applies the migrations it has not had yet (§5.8), so update the host's `@cabane/core` to
-the same release before either host opens the file on a newer build; the two share one
-schema.
-
 ---
 
 ## 3. Additional devices
@@ -696,8 +673,6 @@ So a release that adds a migration goes out in this order:
 2. Each device: `bun add -g kabane@<version>`, then run any `kabane` command once. Until
    a device updates, its scheduled pull logs the
    "update kabane" error and holds its place.
-3. A host app that shares a database file with a device (2.5): update its `@cabane/core`
-   at the same time as the CLI on that machine.
 
 A device that updates before the hub is safe too: the hub's cloud device and every older
 device stop at that device's first op until they update.

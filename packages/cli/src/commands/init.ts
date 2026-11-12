@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { err, ok, Planner, type Result } from "@cabane/core";
 import { failure, flagBool, flagString, success } from "@cabane/extension";
 import {
 	type Config,
 	ConfigSchema,
 	configPath,
-	type DbConfig,
-	databaseLocation,
+	DB_NAME,
 	defaultActor,
 	defaultDeviceId,
 	SCOPE_FILE,
@@ -40,20 +40,6 @@ const accessHeaders = (
 	});
 };
 
-/**
- * The `db` block exists only when asked for, so a config written before it
- * existed keeps meaning `KABANE_HOME/kabane.db` with plain names. A Jake user
- * passes `--db-path ~/.jake/jake.db --table-prefix planner_` and shares Jake's
- * database instead of migrating.
- */
-const dbBlock = (
-	path: string | undefined,
-	tablePrefix: string | undefined,
-): DbConfig | undefined =>
-	path === undefined && tablePrefix === undefined
-		? undefined
-		: { path, tablePrefix };
-
 /** Everything a device's config is made of, as `init`'s flags or the setup screen give it. */
 export type ConfigInput = {
 	actor: string;
@@ -62,8 +48,6 @@ export type ConfigInput = {
 	syncToken?: string;
 	accessClientId?: string;
 	accessClientSecret?: string;
-	dbPath?: string;
-	tablePrefix?: string;
 };
 
 /**
@@ -83,7 +67,6 @@ export const buildConfig = (input: ConfigInput): Result<Config> => {
 			headers: headers.value,
 			deviceId: input.deviceId,
 		},
-		db: dbBlock(input.dbPath, input.tablePrefix),
 	});
 	return parsed.success
 		? ok(parsed.data)
@@ -98,8 +81,6 @@ const CONFIG_FLAGS = [
 	"sync-token",
 	"access-client-id",
 	"access-client-secret",
-	"db-path",
-	"table-prefix",
 ] as const;
 
 /**
@@ -147,7 +128,7 @@ export const init: Command = {
 	name: "init",
 	summary: "Create KABANE_HOME/config.json and the database",
 	usage:
-		"kabane init [--actor <uri>] [--device <id>] [--sync-url <url>] [--sync-token <token>] [--access-client-id <id> --access-client-secret <secret>] [--db-path <file> [--table-prefix <prefix>]] [--scope <uri> [--shared]] [--force]",
+		"kabane init [--actor <uri>] [--device <id>] [--sync-url <url>] [--sync-token <token>] [--access-client-id <id> --access-client-secret <secret>] [--scope <uri> [--shared]] [--force]",
 	standalone: true,
 	run: async (args, ctx) => {
 		const path = configPath(ctx.home);
@@ -168,8 +149,6 @@ export const init: Command = {
 			syncToken: flagString(args, "sync-token"),
 			accessClientId: flagString(args, "access-client-id"),
 			accessClientSecret: flagString(args, "access-client-secret"),
-			dbPath: flagString(args, "db-path"),
-			tablePrefix: flagString(args, "table-prefix"),
 		});
 		if (!built.ok) return failure(built.error);
 		// Before the config, so a pin refused outside a project leaves the device as it was.
@@ -178,14 +157,9 @@ export const init: Command = {
 
 		const saved = saveConfig(ctx.home, built.value);
 		if (!saved.ok) return failure(saved.error);
-		const location = databaseLocation(ctx.home, built.value);
-		const configured = configureRuntime(
-			built.value,
-			built.value.actor,
-			location,
-		);
+		const configured = configureRuntime(built.value, built.value.actor);
 		if (!configured.ok) return failure(configured.error);
-		const initialized = await Planner.init(location.basePath);
+		const initialized = await Planner.init(ctx.home);
 		if (!initialized.ok) return failure(initialized.error);
 
 		const config = built.value;
@@ -210,7 +184,7 @@ export const init: Command = {
 				`  device: ${config.deviceId}`,
 				`  sync:   ${config.sync.enabled ? config.sync.url : "disabled (pass --sync-url and --sync-token)"}`,
 				`  access: ${config.sync.headers ? "service token headers set" : "none"}`,
-				`  db:     ${location.basePath}/${location.dbName}${location.tablePrefix ? ` (tables ${location.tablePrefix}*)` : ""}`,
+				`  db:     ${join(ctx.home, DB_NAME)}`,
 				...(pinned.value
 					? [`  scope:  ${scope} (written to ${pinned.value.where})`]
 					: []),

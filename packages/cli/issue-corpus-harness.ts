@@ -1,11 +1,4 @@
-import {
-	cpSync,
-	mkdtempSync,
-	mkdirSync,
-	readFileSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { err, ok } from "@cabane/core";
@@ -17,7 +10,7 @@ export const payloadMetrics = (text: string) => ({
 	calls: 1,
 });
 
-type Variant = { prefixed?: boolean; synthetic?: boolean };
+type Variant = { synthetic?: boolean };
 
 const tracker = (root: string, ids: string[]) => {
 	const home = join(root, "tracker");
@@ -44,20 +37,16 @@ const tracker = (root: string, ids: string[]) => {
 /** Owns the home/database lifecycle; no caller-supplied tracker paths. */
 export const createCorpusTracker = async (options: Variant = {}) => {
 	const root = mkdtempSync(join(tmpdir(), "kabane-corpus-"));
-	const { home, cwd, env, run, close } = tracker(root, []);
+	const { cwd, env, run, close } = tracker(root, []);
 	mkdirSync(join(cwd, ".kabane"), { recursive: true });
 	mkdirSync(env.HOME, { recursive: true });
 	writeFileSync(join(cwd, ".kabane", "scope"), "corpus\n");
-	const initArgs = options.prefixed
-		? ["--db-path", join(home, "kabane.db"), "--table-prefix", "fixture_"]
-		: [];
 	const init = await run(
 		"init",
 		"--actor",
 		"cabane://actor/human/fixture",
 		"--device",
 		"fixture",
-		...initArgs,
 	);
 	if (init.code !== 0) {
 		close();
@@ -68,7 +57,6 @@ export const createCorpusTracker = async (options: Variant = {}) => {
 			process.execPath,
 			join(import.meta.dir, "issue-corpus-seed.ts"),
 			root,
-			options.prefixed ? "prefixed" : "fresh",
 			options.synthetic ? "synthetic" : "public",
 		],
 		{ cwd, env, stdout: "pipe", stderr: "pipe" },
@@ -106,14 +94,7 @@ export const createCorpusTemplate = async (options: Variant = {}) => {
 	const clone = () => {
 		const root = mkdtempSync(join(tmpdir(), "kabane-corpus-"));
 		cpSync(template.root, root, { recursive: true });
-		const copy = tracker(root, template.ids);
-		// A prefixed config names its database by absolute path.
-		const config = join(copy.home, "config.json");
-		writeFileSync(
-			config,
-			readFileSync(config, "utf8").replaceAll(template.root, root),
-		);
-		return copy;
+		return tracker(root, template.ids);
 	};
 	return ok({ clone, close: template.close });
 };

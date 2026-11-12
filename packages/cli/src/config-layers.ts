@@ -13,7 +13,7 @@
  *
  * A local file is written whole through a rename, since the board, MCP and the CLI can write at
  * once. Only namespaces have a shared or local layer, and no namespace may take a device key's
- * name (`Extensions.namespaces`), so a checked-in file can never redirect the database or the hub.
+ * name (`Extensions.namespaces`), so a checked-in file can never redirect the hub.
  */
 
 import { randomUUID } from "node:crypto";

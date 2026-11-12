@@ -25,8 +25,8 @@ kabane list
 
 ## Home and config
 
-`KABANE_HOME` (default `~/.kabane`) holds `config.json` and `kabane.db`, with
-plain table names, and `detected-scopes/`, the scope ids [detection](#scope) resolved.
+`KABANE_HOME` (default `~/.kabane`) holds `config.json`, `kabane.db` and
+`detected-scopes/`, the scope ids [detection](#scope) resolved.
 
 ```json
 {
@@ -51,24 +51,6 @@ plain table names, and `detected-scopes/`, the scope ids [detection](#scope) res
   log's bearer `token`. `init --access-client-id <id> --access-client-secret
   <secret>` writes them as `CF-Access-Client-Id` / `CF-Access-Client-Secret`;
   both or neither.
-- **db** (optional) points the CLI at another SQLite file and table prefix
-  instead of `KABANE_HOME/kabane.db` with plain names. `path` is absolute or
-  `~`-expanded; `tablePrefix` defaults to empty. This is how a host app that
-  embeds `@cabane/core` shares its database with the CLI, with zero migration
-  and no sync between the two hosts, because it is the same file. Jake, the
-  planner the CLI was extracted from, is one such host:
-
-  ```json
-  { "actor": "cabane://actor/human/alex", "deviceId": "mbp",
-    "sync": { "enabled": false, "batchBytes": 262144 },
-    "db": { "path": "~/.jake/jake.db", "tablePrefix": "planner_" } }
-  ```
-
-  `kabane init --db-path ~/.jake/jake.db --table-prefix planner_` writes that
-  block. Both hosts run the same `@cabane/core`, so the schema apply on open is
-  the same idempotent one Jake runs at boot. Leave `sync` disabled in this
-  shape: Jake already syncs that file as its own device, and `kabane sync`
-  warns when `db.path` and sync are both set.
 - **extensions** (optional) turns official extensions on by name, e.g.
   `"extensions": ["loop"]`; absent is none. An extension ships inside the
   `kabane` package and adds commands, listed by `kabane help` once it is on,
@@ -115,8 +97,8 @@ $ kabane config get loop.stallAfter --layers
 Objects merge key by key, so each layer can add a gate; lists and scalars are replaced by the
 higher layer. `null` in a layer unsets what the layers under it say. Every layer is validated on
 its own first, so an error names the file it is in; a key no setting has is refused in every
-layer. Device keys (`actor`, `deviceId`, `sync`, `db`, `copilot`, `harness`, `timezone`,
-`extensions`) have the global layer only: no project file can redirect the database or the hub.
+layer. Device keys (`actor`, `deviceId`, `sync`, `copilot`, `harness`, `timezone`,
+`extensions`) have the global layer only: no project file can redirect the hub.
 
 ### Managing config from the CLI
 
@@ -190,7 +172,7 @@ names that file. `kabane_configSet` adds
 Strings are literal; numbers and booleans use JSON syntax. Arrays take trimmed
 comma-separated values, with an empty string meaning an empty array.
 `sync.headers` and `loop.gates` take a JSON object of string values; one gate is its own key,
-`loop.gates.<name>`. Put `--` before a value starting with `--`. Object groups (`sync`, `db`,
+`loop.gates.<name>`. Put `--` before a value starting with `--`. Object groups (`sync`,
 `copilot`, `loop`, `loop.budget`) can be read; edit or unset their dotted keys individually.
 `loop.lenses` names verifier lenses: `functional` and `quality` ship with kabane, and a lens of
 the project's own is `.claude/skills/dispatch/references/lenses/<name>.md` in its dispatch skill,
@@ -218,17 +200,15 @@ package below it, or in a worktree. The cascade, highest first:
    is in
 3. `.kabane/scope` — the repo's shared pin, the nearest one walking up; only
    `kabane init --scope <uri> --shared` writes it, into the working directory
-4. `.jake/config.json` → `project.id` — a device sharing a Jake database has to
-   honour the id Jake already filed tasks under
-5. the id detection stored for this checkout in `KABANE_HOME/detected-scopes/`,
+4. the id detection stored for this checkout in `KABANE_HOME/detected-scopes/`,
    keyed by its root path and holding only while the repo there has the same
    first commit
-6. the git remote, normalized to `host/owner/repo` (`origin`, else the first
-   remote listed), and stored for step 5, so a checkout keeps its scope when
+5. the git remote, normalized to `host/owner/repo` (`origin`, else the first
+   remote listed), and stored for step 4, so a checkout keeps its scope when
    its remote is renamed; a fork or another clone resolves by its own remote
-7. the first commit, as `git:<hash12>` — replaced by a real remote id if one
+6. the first commit, as `git:<hash12>` — replaced by a real remote id if one
    appears later, never the reverse
-8. the project root path
+7. the project root path
 
 Detection writes nothing into the repo, which may be a checkout you don't own.
 A `.kabane/scope` an earlier kabane wrote is still read, and never moved or
@@ -253,7 +233,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 
 | Command | Flags |
 |---|---|
-| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--db-path <file>` `--table-prefix <prefix>` (open another database, e.g. Jake's `~/.jake/jake.db` with `planner_`) `--scope <uri>` (writes your own pin for the project under `KABANE_HOME/projects/<slug>/`; alone on a configured device, writes only that) `--shared` (with `--scope`, writes `./.kabane/scope` in the repo instead) `--force` |
+| `init` | `--actor <uri>` `--device <id>` `--sync-url <url>` `--sync-token <token>` `--access-client-id <id>` `--access-client-secret <secret>` (together; Access service token sent as headers on every push and pull) `--scope <uri>` (writes your own pin for the project under `KABANE_HOME/projects/<slug>/`; alone on a configured device, writes only that) `--shared` (with `--scope`, writes `./.kabane/scope` in the repo instead) `--force` |
 | `config [list\|get <key>\|set <key> <value>\|unset <key>\|path]` | `--json` — inspect or edit device config without opening the database |
 | `add "<title>"` | `--kind task\|issue` `--state <s>` `--priority urgent\|high\|normal\|low` `--scope <uri>` `--assignee <who>` `--parent <id>` `--description <text>` `--tags a,b` `--due YYYY-MM-DD\|<ISO time>` (a date is due by the end of that day in your timezone; a time without `Z` or an offset is your local time) `--format concise\|full` |
 | `list` | `--state <s>` `--kind` `--priority` `--assignee` `--scope` `--tag` `--all` (include done and cancelled) `--limit <n>` `--format concise\|full` `--cursor <cursor>` |
