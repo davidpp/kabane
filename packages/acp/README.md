@@ -210,7 +210,9 @@ Every turn ends with exactly one `stop` or one `error`.
   `cancel`. `elicitation: { form: {} }` is advertised only when a handler is passed: without
   it claude-agent-acp turns AskUserQuestion off and codex-acp its `request_user_input` forms,
   which is right for a launcher nobody watches. URL elicitation is never advertised, and a
-  form that requires a field of a type kabane cannot ask is answered `cancel` unasked.
+  form that requires a field of a type kabane cannot ask is answered `cancel` unasked; the
+  reason, naming the form and the field, goes to `onElicitationRefused`, which the board
+  copilot shows as an error notice and the loop records as a `notice` event.
 - Both callbacks get an `AbortSignal` that aborts when the harness withdraws the request
   (`$/cancel_request`) or the connection closes. The request is then answered `cancelled` /
   `cancel` at once, whatever the callback does after, so the caller can close what it asked.

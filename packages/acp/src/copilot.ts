@@ -51,7 +51,7 @@ export namespace BoardCopilot {
 	// so a connector hands both to the client as they are.
 	export type Handlers = Pick<
 		AcpClient.ConnectOptions,
-		"onPermission" | "onElicitation"
+		"onPermission" | "onElicitation" | "onElicitationRefused"
 	>;
 
 	export type Connector = (
@@ -228,7 +228,7 @@ export namespace BoardCopilot {
 	// goes on the outbox and waits, and a request nobody answers keeps the turn waiting for as long
 	// as the human leaves it, which is what `cancel` is for. A board that guessed here would be
 	// deciding on their behalf.
-	const createQuestions = () => {
+	const createQuestions = (harness: Harnesses.Id) => {
 		// Updates that do not come off the harness's stream — the permission requests and forms,
 		// which arrive on their own call while that stream is necessarily quiet.
 		const outbox = Mailbox.create<CopilotUpdate>();
@@ -305,6 +305,15 @@ export namespace BoardCopilot {
 			);
 		};
 
+		// A form the client cancelled before it could be put to the human: they still see why.
+		const onElicitationRefused = (reason: string): void =>
+			outbox.push({
+				type: "notice",
+				severity: "error",
+				summary: `${harness}: ${reason}`,
+				at: at(),
+			});
+
 		const answerPermission: Copilot["answerPermission"] = (id, optionId) => {
 			const resolve = blocked.get(id);
 			if (!resolve) return;
@@ -334,6 +343,7 @@ export namespace BoardCopilot {
 			outbox,
 			onPermission,
 			onElicitation,
+			onElicitationRefused,
 			answerPermission,
 			answerElicitation,
 			unblockAll,
@@ -428,7 +438,7 @@ export namespace BoardCopilot {
 		// The harness's slash commands as it last listed them, so a prompt that runs one goes to it
 		// as written.
 		let commands: readonly AcpClient.Command[] = [];
-		const questions = createQuestions();
+		const questions = createQuestions(options.harness);
 
 		const instructions = CopilotInstructions.systemPrompt(
 			options.setup,
@@ -442,6 +452,7 @@ export namespace BoardCopilot {
 			const opened = await openSession(options, actor, instructions, {
 				onPermission: questions.onPermission,
 				onElicitation: questions.onElicitation,
+				onElicitationRefused: questions.onElicitationRefused,
 			});
 			if (!opened.ok) return opened;
 			connection = opened.value.connection;

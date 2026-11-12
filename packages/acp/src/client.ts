@@ -214,6 +214,9 @@ export namespace AcpClient {
 		// form elicitation, without which claude-agent-acp turns AskUserQuestion off and codex-acp
 		// its `request_user_input` forms. URL elicitation is never advertised.
 		onElicitation?: OnElicitation;
+		// Told why a form never reached `onElicitation` (a URL form, a required field kabane cannot
+		// ask), as one line naming the form and the field, after the harness was answered `cancel`.
+		onElicitationRefused?: (reason: string) => void;
 		handshakeMs?: number;
 	};
 
@@ -337,7 +340,12 @@ export namespace AcpClient {
 			});
 		const app = onElicitation
 			? base.onRequest(methods.client.elicitation.create, async (c) =>
-					answerElicitation(onElicitation, c.params, c.signal),
+					answerElicitation(
+						onElicitation,
+						options.onElicitationRefused,
+						c.params,
+						c.signal,
+					),
 				)
 			: base;
 		// Identical branches: `connect` is overloaded per transport and needs the narrowing.
@@ -873,11 +881,17 @@ export namespace AcpClient {
 
 	const answerElicitation = async (
 		onElicitation: OnElicitation,
+		onRefused: ((reason: string) => void) | undefined,
 		params: CreateElicitationRequest,
 		signal: AbortSignal,
 	): Promise<CreateElicitationResponse> => {
 		const request = toElicitationRequest(params);
-		if (!request.ok) return { action: "cancel" };
+		if (!request.ok) {
+			onRefused?.(
+				`form "${params.message}" answered cancel, never shown: ${request.error.message}`,
+			);
+			return { action: "cancel" };
+		}
 		const answer = await unlessWithdrawn(
 			onElicitation(request.value, signal),
 			signal,

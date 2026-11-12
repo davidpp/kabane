@@ -1260,14 +1260,16 @@ describe("AcpClient elicitation", () => {
 		AcpClient.close(conn);
 	});
 
-	it("a failed handler answers cancel, and a URL request is cancelled without asking", async () => {
+	it("a failed handler answers cancel, and a URL request is cancelled without asking, saying why", async () => {
 		let calls = 0;
+		const refused: string[] = [];
 		const options: AcpClient.ConnectOptions = {
 			onPermission: allow,
 			onElicitation: async () => {
 				calls += 1;
 				return err(new Error("nobody to ask"));
 			},
+			onElicitationRefused: (reason) => refused.push(reason),
 		};
 		const failed = await openWith(
 			askingAgent([], elicit(ASK_USER_QUESTION)),
@@ -1297,8 +1299,50 @@ describe("AcpClient elicitation", () => {
 			JSON.stringify({ action: "cancel" }),
 		);
 		expect(calls).toBe(1);
+		// A handler's own failure is the handler's to report; only the refusal is told here.
+		expect(refused).toEqual([
+			'form "Sign in" answered cancel, never shown: unsupported elicitation mode: url',
+		]);
 		AcpClient.close(failed.value.conn);
 		AcpClient.close(url.value.conn);
+	});
+
+	it("cancels a form that requires a field it cannot ask, and says which field and why", async () => {
+		let calls = 0;
+		const refused: string[] = [];
+		const opened = await openWith(
+			askingAgent(
+				[],
+				elicit((sessionId) => ({
+					mode: "form",
+					sessionId,
+					message: "Pick a theme",
+					requestedSchema: {
+						type: "object",
+						properties: { accent: { type: "_color" } as never },
+						required: ["accent"],
+					},
+				})),
+			),
+			{
+				onPermission: allow,
+				onElicitation: async () => {
+					calls += 1;
+					return ok({ action: "decline" });
+				},
+				onElicitationRefused: (reason) => refused.push(reason),
+			},
+		);
+		expect(opened).toMatchObject({ ok: true });
+		if (!opened.ok) return;
+		expect(await turnText(opened.value.session)).toBe(
+			JSON.stringify({ action: "cancel" }),
+		);
+		expect(calls).toBe(0);
+		expect(refused).toEqual([
+			'form "Pick a theme" answered cancel, never shown: required field accent has a type kabane cannot ask: _color',
+		]);
+		AcpClient.close(opened.value.conn);
 	});
 });
 
