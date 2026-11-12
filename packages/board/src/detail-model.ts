@@ -57,7 +57,13 @@ export namespace DetailModel {
 	/** One part of the summary line; `request` parts take the accent (they wait on a human). */
 	export type SummaryPart = { text: string; request: boolean };
 
-	export type TabSummary = { tab: Tab; count?: number; empty: boolean };
+	/** One tab and what it holds; `fresh` when a change landed on it that the human has not seen. */
+	export type TabSummary = {
+		tab: Tab;
+		count?: number;
+		empty: boolean;
+		fresh?: boolean;
+	};
 
 	/**
 	 * One subtask under the description. `done` carries the `✓`; an open one names its state after
@@ -284,6 +290,69 @@ export namespace DetailModel {
 	/** The tab a detail opens on: `now` when anything is in force, otherwise the description. */
 	export const openingTab = (records: BoardData.DetailRecords): Tab =>
 		now(records).length > 0 ? "now" : "description";
+
+	/** A block of `now` by its name: `checklist`, `lifted:handoff`. */
+	export type BlockName = NowBlock["name"];
+
+	/**
+	 * What this board wrote itself between two reads, so a change it caused is not taken for one
+	 * that landed: the items it ticked, each with the state it wrote, and the decisions it answered.
+	 */
+	export type OwnWrites = {
+		ticked: ReadonlyMap<string, boolean>;
+		answered: ReadonlySet<string>;
+	};
+
+	/**
+	 * The blocks of `now` whose records changed between two reads of the same task: a lifted kind
+	 * whose newest entry is another one, a checklist whose items or ticks moved, decisions made that
+	 * grew, subtasks that came, went or changed state. A change this board made (`own`) is not one,
+	 * and a block gone from `after` is never named: there is nothing left to mark.
+	 */
+	export const changed = (
+		before: BoardData.DetailRecords,
+		after: BoardData.DetailRecords,
+		own: OwnWrites,
+	): BlockName[] => {
+		const was = new Map(
+			before.checklist.map((item) => [item.id, item] as const),
+		);
+		const ticksMoved =
+			before.checklist.length !== after.checklist.length ||
+			after.checklist.some((item, index) => {
+				const old = was.get(item.id);
+				return (
+					old === undefined ||
+					before.checklist[index]?.id !== item.id ||
+					old.text !== item.text ||
+					(old.done !== item.done && own.ticked.get(item.id) !== item.done)
+				);
+			});
+		const lastLifted = new Map(
+			lifted(before).map((entry) => [entry.kind, entry.id] as const),
+		);
+		const decided = new Set(decisions(before).map((line) => line.id));
+		const states = (records: BoardData.DetailRecords): string =>
+			records.subtasks.map((t) => `${t.id}:${t.state}`).join(" ");
+		return now(after).flatMap((block): BlockName[] => {
+			if ("entry" in block)
+				return lastLifted.get(block.entry.kind) === block.entry.id
+					? []
+					: [block.name];
+			switch (block.name) {
+				case "checklist":
+					return ticksMoved ? [block.name] : [];
+				case "decisions":
+					return block.lines.some(
+						(line) => !decided.has(line.id) && !own.answered.has(line.id),
+					)
+						? [block.name]
+						: [];
+				case "subtasks":
+					return states(before) === states(after) ? [] : [block.name];
+			}
+		});
+	};
 
 	// A fence opens a code block, whose lines are never headings; it closes on a run of the same
 	// character at least as long, alone on its line.
@@ -672,11 +741,12 @@ export namespace DetailModel {
 	/**
 	 * Each tab and what it holds. `now` and the description have no count (each is one read, there
 	 * or not); a tab with nothing in it is `empty`. `liveCards` counts the host's in-flight cards,
-	 * which head the log.
+	 * which head the log. `freshNow` marks `now` for a change on it not seen yet.
 	 */
 	export const tabs = (
 		records: BoardData.DetailRecords | undefined,
 		liveCards = 0,
+		freshNow = false,
 	): TabSummary[] => {
 		const said = records ? records.entries.length : 0;
 		const logged = (records ? log(records).length : 0) + liveCards;
@@ -685,7 +755,7 @@ export namespace DetailModel {
 			Boolean(records?.task.description?.trim()) ||
 			(records?.contextRefs.length ?? 0) > 0;
 		return [
-			{ tab: "now", empty: !inForce },
+			{ tab: "now", empty: !inForce, ...(freshNow ? { fresh: true } : {}) },
 			{ tab: "description", empty: !described },
 			{ tab: "comments", count: said, empty: said === 0 },
 			{ tab: "log", count: logged, empty: logged === 0 },
@@ -704,15 +774,24 @@ export namespace DetailModel {
 		{ now: "now", description: "about", comments: "comments", log: "log" },
 	];
 
-	type TabCell = { tab: Tab; text: string };
+	type TabCell = { tab: Tab; text: string; fresh: boolean };
+
+	/** What a fresh tab's text carries in front of it: the fresh-change glyph of a strip's `✦ ai`. */
+	export const FRESH_MARK = "✦ ";
 
 	/** The bar: each tab's text and the padding either side of it. */
 	type TabBar = { cells: TabCell[]; pad: number };
 
 	/** Columns the bar takes: each cell padded, or one space between cells when unpadded. */
 	export const barWidth = (bar: TabBar): number =>
-		bar.cells.reduce((n, cell) => n + cell.text.length + 2 * bar.pad, 0) +
-		(bar.pad === 0 ? Math.max(0, bar.cells.length - 1) : 0);
+		bar.cells.reduce(
+			(n, cell) =>
+				n +
+				(cell.fresh ? FRESH_MARK.length : 0) +
+				cell.text.length +
+				2 * bar.pad,
+			0,
+		) + (bar.pad === 0 ? Math.max(0, bar.cells.length - 1) : 0);
 
 	/** The widest bar that fits `room` columns, else the narrowest there is. */
 	export const tabBar = (
@@ -726,6 +805,7 @@ export namespace DetailModel {
 					pad,
 					cells: summaries.map((t) => ({
 						tab: t.tab,
+						fresh: t.fresh === true,
 						text:
 							t.count === undefined
 								? labels[t.tab]

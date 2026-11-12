@@ -797,6 +797,154 @@ describe("the now tab", () => {
 	});
 });
 
+describe("what changed between two reads", () => {
+	const HANDOFF: EntryKind = {
+		name: "handoff",
+		title: "Handoff",
+		template: "",
+		projection: { latest: { after: "description", framing: "f" } },
+	};
+	const item = (
+		id: string,
+		over: Partial<BoardData.DetailRecords["checklist"][number]> = {},
+	): BoardData.DetailRecords["checklist"][number] => ({
+		id,
+		taskId: "t1",
+		text: "a step",
+		done: false,
+		rank: "a",
+		createdAt: "2026-09-20T10:00:00.000Z",
+		updatedAt: "2026-09-20T10:00:00.000Z",
+		updatedBy: "david",
+		version: 1,
+		visibility: "shared",
+		handle: "CAB-1.1",
+		ordinal: 1,
+		...over,
+	});
+	const question = (
+		id: string,
+		status: "open" | "answered",
+	): BoardData.DetailRecords["questions"][number] => ({
+		id,
+		taskId: "t1",
+		status,
+		askedBy: "claude",
+		createdAt: "2026-09-20T10:00:00.000Z",
+		updatedAt: "2026-09-20T10:00:00.000Z",
+		updatedBy: "claude",
+		version: 1,
+		visibility: "shared",
+		body: "Tabs or one scroll?",
+		...(status === "answered" ? { answer: "tabs", answeredBy: "david" } : {}),
+		handle: "CAB-1:1",
+		ordinal: 1,
+		title: "Render the detail as parts",
+		priority: "normal",
+		state: "in_progress",
+	});
+	const NONE: DetailModel.OwnWrites = {
+		ticked: new Map(),
+		answered: new Set(),
+	};
+	const base = records({
+		checklist: [item("k1"), item("k2")],
+		kinds: [HANDOFF],
+		entries: [entry({ id: "h1", kind: "handoff" })],
+		questions: [question("q1", "answered"), question("q2", "open")],
+		subtasks: [task({ id: "c1", parentTaskId: "t1", state: "next" })],
+	});
+
+	it("names nothing when the records read the same", () => {
+		expect(DetailModel.changed(base, { ...base }, NONE)).toEqual([]);
+	});
+
+	it("names the lifted kind whose newest entry is another one, and not for a plain comment", () => {
+		const handedOff = {
+			...base,
+			entries: [...base.entries, entry({ id: "h2", kind: "handoff" })],
+		};
+		expect(DetailModel.changed(base, handedOff, NONE)).toEqual([
+			"lifted:handoff",
+		]);
+		const commented = {
+			...base,
+			entries: [...base.entries, entry({ id: "c9" })],
+		};
+		expect(DetailModel.changed(base, commented, NONE)).toEqual([]);
+	});
+
+	it("names the checklist when an item is ticked, added, removed or reworded elsewhere", () => {
+		const tick = {
+			...base,
+			checklist: [item("k1", { done: true }), item("k2")],
+		};
+		const added = { ...base, checklist: [...base.checklist, item("k3")] };
+		const removed = { ...base, checklist: [item("k2")] };
+		const reworded = {
+			...base,
+			checklist: [item("k1", { text: "another step" }), item("k2")],
+		};
+		for (const after of [tick, added, removed, reworded])
+			expect(DetailModel.changed(base, after, NONE)).toEqual(["checklist"]);
+	});
+
+	it("does not name a tick or an answer this board wrote itself", () => {
+		const tick = {
+			...base,
+			checklist: [item("k1", { done: true }), item("k2")],
+		};
+		expect(
+			DetailModel.changed(base, tick, {
+				ticked: new Map([["k1", true]]),
+				answered: new Set(),
+			}),
+		).toEqual([]);
+		const answered = {
+			...base,
+			questions: [question("q1", "answered"), question("q2", "answered")],
+		};
+		expect(DetailModel.changed(base, answered, NONE)).toEqual(["decisions"]);
+		expect(
+			DetailModel.changed(base, answered, {
+				ticked: new Map(),
+				answered: new Set(["q2"]),
+			}),
+		).toEqual([]);
+	});
+
+	it("names the subtasks when one changes state or is filed, and a first block that appears", () => {
+		const moved = {
+			...base,
+			subtasks: [task({ id: "c1", parentTaskId: "t1", state: "done" })],
+		};
+		expect(DetailModel.changed(base, moved, NONE)).toEqual(["subtasks"]);
+		const empty = records();
+		expect(
+			DetailModel.changed(empty, records({ checklist: [item("k1")] }), NONE),
+		).toEqual(["checklist"]);
+	});
+
+	it("never names a block that is gone", () => {
+		expect(DetailModel.changed(base, { ...base, checklist: [] }, NONE)).toEqual(
+			[],
+		);
+	});
+
+	it("marks the now tab in the bar, which still fits forty columns", () => {
+		const summaries = DetailModel.tabs(
+			records({ entries: [entry({ id: "c1" })] }),
+			3,
+			true,
+		);
+		expect(summaries[0]).toEqual({ tab: "now", empty: true, fresh: true });
+		const bar = DetailModel.tabBar(summaries, 40);
+		expect(bar.cells[0]?.fresh).toBe(true);
+		expect(bar.cells[1]?.text).toBe("description");
+		expect(DetailModel.barWidth(bar)).toBe(39);
+	});
+});
+
 describe("sections of a lifted body", () => {
 	it("reads the handoff template's four headings, each with its line", () => {
 		expect(DetailModel.sections(HANDOFF_TEMPLATE)).toEqual([
