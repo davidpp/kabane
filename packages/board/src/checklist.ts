@@ -217,6 +217,25 @@ export namespace BoardChecklist {
 			? shown(state)
 			: undefined;
 
+	/**
+	 * The cursor's row while the `now` tab draws the checklist, and the task it is drawn for. The
+	 * screen scrolls the row into view when that task's `now` comes on screen, by a switch of tab or
+	 * when its records land, so the item `space` would toggle is in sight. A scroll or a poll leaves
+	 * the task the same and moves nothing: the cursor never pulls the view after it on its own.
+	 */
+	export const onScreen = (
+		state: State,
+	): { taskId: string; rowId: string } | null => {
+		const asked = shown(state);
+		if (
+			!asked?.cursor ||
+			state.view.type !== "detail" ||
+			(state.view.tab ?? DetailModel.DEFAULT_TAB) !== "now"
+		)
+			return null;
+		return { taskId: state.view.taskId, rowId: rowId(asked.cursor) };
+	};
+
 	/** Whether `space` and `J/K` have an item to act on, for the footer. */
 	export const listed = (state: State): boolean => inHand(state) !== undefined;
 

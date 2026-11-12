@@ -92,6 +92,17 @@ export const useScreenRefs = (
 			scroll.current?.scrollChildIntoView(BoardChecklist.rowId(pressed.itemId));
 	}, [pressed]);
 
+	// A task's `now` coming on screen brings the checklist cursor's row into view; after that the
+	// human's scrolls are left alone until it comes on screen again.
+	const checklist = state ? BoardChecklist.onScreen(state) : null;
+	const revealedFor = useRef<string | null>(null);
+	useEffect(() => {
+		const taskId = checklist?.taskId ?? null;
+		if (checklist && taskId !== revealedFor.current)
+			scroll.current?.scrollChildIntoView(checklist.rowId);
+		revealedFor.current = taskId;
+	});
+
 	const runEffect = useCallback((effect: ScreenEffect): void => {
 		switch (effect.type) {
 			case "scroll":
