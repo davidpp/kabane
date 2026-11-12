@@ -19,6 +19,7 @@ import type { BoardData } from "../data";
 import type { BoardNav } from "../nav";
 import type {
 	ActivityCard,
+	TriggerDescriptor,
 	CopilotElicitation,
 	SettingKind,
 	SettingRow,
@@ -583,4 +584,33 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 			},
 		),
 	];
+	export const ADVISED_RUN: TriggerDescriptor = {
+		id: "start",
+		label: "start loop",
+		satisfiable: true,
+		inputs: {
+			"budget.concurrency": {
+				type: "number",
+				required: false,
+				default: "1",
+				options: ["1", "2", "3"],
+				label: "sessions at once",
+				group: "Limits",
+				hint: "advised: JCAB-3 and JCAB-4 both touch packages/core/lint/risks.ts (your setting: 3)",
+			},
+			isolation: {
+				type: "string",
+				required: false,
+				default: "worktree",
+				options: ["worktree", "shared"],
+				label: "isolation",
+				group: "Workspace",
+			},
+		},
+		preview: [
+			[{ text: "Plan  2 subtasks · 0 links · 2 ready", bold: true }],
+			[{ text: "Advised", bold: true }],
+			[{ text: "budget.concurrency = 1 · shared files", tone: "muted" }],
+		],
+	};
 }

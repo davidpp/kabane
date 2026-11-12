@@ -158,6 +158,8 @@ export interface ActivitySource {
 // a `number` or `boolean` type is filled in on the board, in a form, before it fires; any other
 // input is the host's to collect.
 export type TriggerInput = {
+	/** Context for this default, shown below its value. */
+	hint?: string;
 	type: string;
 	required: boolean;
 	default?: unknown;

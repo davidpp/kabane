@@ -25,6 +25,8 @@ import { SettingsView } from "../settings-view";
 import { SPINNER_IDLE } from "../spinner";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "../tab-bar";
 import { BoardTabs } from "../tabs";
+import { TriggerForm } from "../trigger-form";
+import { TriggerFormView } from "../trigger-form-view";
 import { Fixtures } from "./fixtures";
 
 export type Story = {
@@ -549,6 +551,18 @@ const settingsEdit = (
 };
 
 export const STORIES: readonly Story[] = [
+	{
+		name: "trigger-advised",
+		about: "run settings with a wrapped advice reason and the original setting",
+		width: 80,
+		height: 24,
+		render: () => (
+			<TriggerFormView
+				shortId="JCAB-2"
+				form={TriggerForm.open(Fixtures.ADVISED_RUN)}
+			/>
+		),
+	},
 	{
 		name: "board",
 		about: "a few cards, a parent expanded, the copilot's row collapsed",
