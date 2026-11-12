@@ -4,7 +4,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result, trySync } from "@cabane/core";
+import { z } from "zod";
 
 export namespace Harnesses {
 	export const IDS = ["claude", "codex", "gemini"] as const;
@@ -110,21 +111,24 @@ export namespace Harnesses {
 	/** A named agent's definition as `agentDefinition` found it: its file and the model it pins. */
 	export type AgentDefinition = { path: string; model?: string };
 
-	// The frontmatter of an agent's markdown file: what sits between its opening `---` and the next.
-	const frontmatter = (text: string): Record<string, string> => {
+	// What an agent's definition says of itself: its name and the model it pins, if any. Other keys
+	// are Claude's to read.
+	const FrontmatterSchema = z.object({
+		name: z.string().min(1).optional(),
+		model: z.string().min(1).optional(),
+	});
+
+	// The frontmatter of an agent's markdown file, the YAML between its opening `---` and the next;
+	// empty when it has none, or none Claude could read either.
+	const frontmatter = (text: string): z.infer<typeof FrontmatterSchema> => {
 		const [first, ...rest] = text.split("\n");
 		if (first?.trim() !== "---") return {};
 		const end = rest.findIndex((line) => line.trim() === "---");
-		const fields: Record<string, string> = {};
-		for (const line of end === -1 ? [] : rest.slice(0, end)) {
-			const at = line.indexOf(":");
-			if (at <= 0 || /^\s/.test(line)) continue;
-			fields[line.slice(0, at).trim()] = line
-				.slice(at + 1)
-				.trim()
-				.replace(/^(["'])(.*)\1$/, "$2");
-		}
-		return fields;
+		if (end === -1) return {};
+		const yaml = trySync(() => Bun.YAML.parse(rest.slice(0, end).join("\n")));
+		if (!yaml.ok) return {};
+		const fields = FrontmatterSchema.safeParse(yaml.value);
+		return fields.success ? fields.data : {};
 	};
 
 	// Agent `name` among the markdown files of `dir`, by its frontmatter name, else its file name.

@@ -159,6 +159,39 @@ describe("Harnesses.agentDefinition", () => {
 		}
 	});
 
+	it("reads the frontmatter as YAML: a comment is not part of a value, and a file it cannot read defines nothing", () => {
+		const root = mkdtempSync(join(tmpdir(), "harness-agents-"));
+		try {
+			const inherit = agent(
+				root,
+				"a.md",
+				"name: board-ui # specialist\nmodel: inherit # use the selected tier",
+			);
+			expect(
+				Harnesses.agentDefinition("claude", "board-ui", root, root),
+			).toEqual({ path: inherit });
+			const pinned = agent(
+				root,
+				"b.md",
+				"name: 'docs'\ndescription: >\n  Writes the docs,\n  nothing else\nmodel: haiku # cheap",
+			);
+			expect(Harnesses.agentDefinition("claude", "docs", root, root)).toEqual({
+				path: pinned,
+				model: "haiku",
+			});
+			agent(root, "c.md", "name: [broken\nmodel: opus");
+			agent(root, "d.md", "name: reviewer\nmodel: 3");
+			expect(Harnesses.agentDefinition("claude", "c", root, root)).toEqual({
+				path: join(root, ".claude", "agents", "c.md"),
+			});
+			expect(
+				Harnesses.agentDefinition("claude", "reviewer", root, root),
+			).toBeUndefined();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("reads no pin from inherit, and nothing for an agent nobody defines or a harness without agents", () => {
 		const root = mkdtempSync(join(tmpdir(), "harness-agents-"));
 		try {
