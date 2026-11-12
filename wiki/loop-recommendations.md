@@ -26,7 +26,7 @@ instead of starting every run from the same defaults.
 | Setting | Signal | Kind |
 | --- | --- | --- |
 | `budget.concurrency` | width of the ready set (max antichain of the blocker DAG), capped; lint's file overlap among subtasks that could run together | deterministic |
-| `isolation` | file overlap → `worktree`; single issue → irrelevant | deterministic |
+| `isolation` | none advised: overlap already serializes through concurrency (JCAB-251 removed an overlap → `worktree` rule) | — |
 | `gates` | the project's own scripts (`package.json` `check`/`test`/`typecheck`, `Makefile`, `cargo`, `justfile`) | deterministic |
 | `setup` | lockfile present and `isolation: worktree` → its installer (`bun install`, `pnpm install`…) | deterministic |
 | `reuse`, `maxWorktrees` | follow concurrency and setup cost | deterministic |
