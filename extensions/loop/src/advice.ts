@@ -57,10 +57,26 @@ export namespace LoopAdvice {
 		return found;
 	};
 
-	const checkConcurrency = (
+	type Concurrency = {
+		path: "budget.concurrency";
+		value: number;
+		reason: string;
+	};
+
+	/**
+	 * Whether each subtask would work in a worktree of its own: `isolation: worktree` in a run with
+	 * a worktree. Otherwise every session shares one tree.
+	 */
+	export const isolated = (config: LoopConfig.Config): boolean =>
+		config.isolation === "worktree" && config.worktree;
+
+	const SHARED_TREE =
+		"subtasks share one tree; their gates see each other's half-done edits";
+
+	const checkWidth = (
 		plan: LoopPlan.Plan,
 		risks: readonly Risk[],
-	): Recommendation => {
+	): Concurrency => {
 		const nodes = plan.nodes.filter(
 			(n) =>
 				LoopPlan.isWork(n) &&
@@ -124,6 +140,15 @@ export namespace LoopAdvice {
 		};
 	};
 
+	// The width yields to isolation, never the reverse: where work happens is the human's call.
+	const checkConcurrency = (
+		width: Concurrency,
+		inWorktrees: boolean,
+	): Recommendation =>
+		inWorktrees || width.value <= 1
+			? width
+			: { path: "budget.concurrency", value: 1, reason: SHARED_TREE };
+
 	const checkIsolation = (
 		risks: readonly Risk[],
 		concurrency: number,
@@ -186,16 +211,19 @@ export namespace LoopAdvice {
 		risks: readonly Risk[],
 		project: Project,
 	): Recommendation[] => {
-		const concurrency = checkConcurrency(plan, risks);
-		const isolation = checkIsolation(risks, Number(concurrency.value));
+		const width = checkWidth(plan, risks);
+		const isolation = checkIsolation(risks, width.value);
+		const effective =
+			isolation.length > 0 ? "worktree" : project.config.isolation;
+		const concurrency = checkConcurrency(
+			width,
+			isolated({ ...project.config, isolation: effective }),
+		);
 		return [
 			concurrency,
 			...isolation,
 			...checkGates(project),
-			...checkSetup(
-				project,
-				isolation.length > 0 ? "worktree" : project.config.isolation,
-			),
+			...checkSetup(project, effective),
 			...checkStall(risks),
 		];
 	};

@@ -230,6 +230,49 @@ it.each([
 	},
 );
 
+it.each([
+	[
+		"a shared tree, the advised width untouched",
+		{ isolation: "shared" },
+		"3",
+		undefined,
+	],
+	[
+		"no run worktree, the advised width untouched",
+		{ worktree: false },
+		"3",
+		undefined,
+	],
+	["a shared tree, a width the human chose", { isolation: "shared" }, "2", 2],
+	["worktrees, the advised width", { isolation: "worktree" }, "3", 3],
+] as const)(
+	"submitted on %s: the run's sessions at once",
+	async (_, where, sessions, expected) => {
+		const scope = await detectScope(repo, { home, detectExtensions: false });
+		const parent = await add("parent", { scopeUri: scope?.scopeUri });
+		for (const title of ["first", "second", "third"])
+			await add(title, { parentTaskId: parent.id });
+		const dispatcher = LoopDispatcher.make(deps());
+		const offered = await dispatcher.triggers(parent.id);
+		const [trigger] = offered.ok ? offered.value : [];
+		expect(trigger?.inputs["budget.concurrency"]?.default).toBe("3");
+		// The runner binary is missing: the run is written, then stops at boot.
+		await dispatcher.dispatch(
+			"start",
+			{
+				id: parent.id,
+				shortId: parent.shortId ?? parent.id,
+				title: parent.title,
+				brief: "",
+			},
+			{ ...where, "budget.concurrency": sessions },
+		);
+		const runs = RunStore.list(home);
+		if (!runs.ok) throw runs.error;
+		expect(runs.value[0]?.config.budget.concurrency).toBe(expected);
+	},
+);
+
 it("advises stallAfter from this parent's stored reopen events, across past runs", async () => {
 	const scope = await detectScope(repo, { home, detectExtensions: false });
 	const parent = await add("parent", { scopeUri: scope?.scopeUri });

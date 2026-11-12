@@ -92,6 +92,35 @@ test("parallel overlap serializes; sequential overlap allows unrelated parallel 
 	).toBe(2);
 });
 
+test("a shared tree is advised one session however wide the plan; worktrees get the width", () => {
+	const wide = ["A", "B", "C", "D"].map((id) => node(id));
+	expect(recommendation(wide)[0]).toEqual({
+		path: "budget.concurrency",
+		value: 4,
+		reason: "up to 4 independent issues in the blocker DAG",
+	});
+	for (const shared of [
+		{ isolation: "shared" },
+		{ worktree: false },
+	] as const) {
+		const advice = recommendation(wide, [], project(shared));
+		expect(advice[0]).toEqual({
+			path: "budget.concurrency",
+			value: 1,
+			reason:
+				"subtasks share one tree; their gates see each other's half-done edits",
+		});
+		expect(advice.some((r) => r.path === "isolation")).toBe(false);
+	}
+	expect(
+		recommendation(
+			[node("A"), node("B", ["A"])],
+			[],
+			project({ isolation: "shared" }),
+		)[0]?.reason,
+	).toBe("up to 1 independent issues in the blocker DAG");
+});
+
 test("closed nodes, findings and human tasks do not add sessions; cycles remain safe", () => {
 	expect(
 		recommendation([

@@ -96,10 +96,29 @@ export namespace LoopDispatcher {
 		values: Readonly<Record<string, unknown>>,
 		advice: readonly LoopAdvice.Recommendation[],
 	): Promise<Result<string>> => {
-		// Setup was advised for worktrees; a shared submission keeps only configured setup.
+		// Setup and a width above one were advised for worktrees. A shared submission keeps only
+		// configured setup; one sharing a tree also drops the width, and "sessions at once" still at
+		// that width is the form's default, not the human's (one stepped away and back reads the same).
+		const sharedTree =
+			values.isolation === "shared" || values.worktree === false;
+		const width = advice.find(
+			(r) => r.path === "budget.concurrency" && r.value > 1,
+		);
+		const dropWidth =
+			sharedTree &&
+			width !== undefined &&
+			String(values[width.path]) === String(width.value);
 		const config = LoopSettings.overrides(
-			values,
-			advice.filter((r) => r.path !== "setup" || values.isolation !== "shared"),
+			dropWidth
+				? Object.fromEntries(
+						Object.entries(values).filter(([name]) => name !== width.path),
+					)
+				: values,
+			advice.filter(
+				(r) =>
+					(r.path !== "setup" || values.isolation !== "shared") &&
+					(r !== width || !sharedTree),
+			),
 		);
 		if (!config.ok) return config;
 		const run = await Loop.start(deps, { parent, config: config.value });
