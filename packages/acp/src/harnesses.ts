@@ -24,7 +24,9 @@ export namespace Harnesses {
 		// for, so the default is the cheap one rather than whatever the human left in their
 		// own settings — a config `model` overrides it with any name the harness accepts.
 		// Only Claude has the pair: Gemini reads `GEMINI_MODEL` but no pin is chosen for it,
-		// and codex-acp reads no model variable at all.
+		// and codex-acp reads no model variable at all. That is why the loop does not use it: it
+		// selects its model on the session's `model` config option as the session opens
+		// (`AcpClient.newSession`'s `model`), which both pinned adapters advertise.
 		model?: { env: string; pinned: string };
 		// The ACP session modes the adapter advertises on `session/new`: the one that asks
 		// before every change (`manual`) and the harness's own auto mode, where the harness
@@ -75,8 +77,9 @@ export namespace Harnesses {
 	export const SESSION_ENV = { KABANE_SESSION: "1" };
 
 	// Who launches a session and on what terms. The board copilot pins the cheap model and
-	// marks its sessions with SESSION_ENV; another launcher (the loop) runs the user's own
-	// default model and carries its own marker, plus whatever else its env needs.
+	// marks its sessions with SESSION_ENV; another launcher (the loop) pins nothing here, picks
+	// its model once the session is open, and carries its own marker, plus whatever else its env
+	// needs.
 	export type Profile = {
 		/** Pin the registry's model when no override names one. */
 		pinModel: boolean;

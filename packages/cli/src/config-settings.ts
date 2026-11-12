@@ -305,41 +305,55 @@ const hidesAt = (entry: Key, view: View): Held[] =>
 		)?.hides ?? [],
 	);
 
-/** The entries a namespace's record holds at `view`, each a key of its own: `loop.gates.test`. */
+/**
+ * The entries a namespace's record holds at `view`, each a key of its own: `loop.gates.test`, and
+ * for a record of records each inner entry: `loop.tiers.claude.fast`.
+ */
 const entriesOf = (keys: readonly Key[], entry: Key, view: View): Key[] =>
 	entry.namespace === undefined || entry.field.kind !== "record"
 		? []
-		: leavesUnder(entry, view).flatMap(({ path }) => {
-				const name = path[entry.path.length];
-				const child =
-					path.length === entry.path.length + 1 && name !== undefined
-						? recordEntry(keys, `${entry.key}.${name}`)
-						: undefined;
+		: [
+				...new Set(
+					leavesUnder(entry, view)
+						.filter(({ path }) => path.length > entry.path.length)
+						.map(({ path }) =>
+							[entry.key, ...path.slice(entry.path.length)].join("."),
+						),
+				),
+			].flatMap((key) => {
+				const child = recordEntry(keys, key);
 				return child ? [child] : [];
 			});
 
-/** A namespace's record (the loop's gates) takes a key per entry: `loop.gates.test`. */
+/** A namespace's record (the loop's gates, its tiers) takes a key per entry: `loop.gates.test`. */
 const recordEntry = (keys: readonly Key[], key: string): Key | undefined => {
-	for (const entry of keys) {
-		const record = unwrap(entry.schema);
-		if (
-			!entry.namespace ||
-			!(record instanceof z.ZodRecord) ||
-			!key.startsWith(`${entry.key}.`)
-		)
-			continue;
-		const name = key.slice(entry.key.length + 1);
-		if (!record.keySchema.safeParse(name).success) return undefined;
-		const path = [...entry.path, name];
-		return {
-			...entry,
-			key,
-			schema: record.valueSchema,
-			field: Settings.field(record.valueSchema, path),
-			path,
-		};
-	}
-	return undefined;
+	const entry = keys.find(
+		(entry) =>
+			entry.namespace &&
+			unwrap(entry.schema) instanceof z.ZodRecord &&
+			key.startsWith(`${entry.key}.`),
+	);
+	return entry && recordChild(entry, key.slice(entry.key.length + 1));
+};
+
+// One entry of `entry`'s record named by `rest`. A record of records takes one name per segment
+// (`claude.fast`); a record of values takes the rest whole, so a gate's name may hold a dot.
+const recordChild = (entry: Key, rest: string): Key | undefined => {
+	const record = unwrap(entry.schema);
+	if (!(record instanceof z.ZodRecord)) return undefined;
+	const at =
+		unwrap(record.valueSchema) instanceof z.ZodRecord ? rest.indexOf(".") : -1;
+	const name = at < 0 ? rest : rest.slice(0, at);
+	if (!record.keySchema.safeParse(name).success) return undefined;
+	const path = [...entry.path, name];
+	const child: Key = {
+		...entry,
+		key: `${entry.key}.${name}`,
+		schema: record.valueSchema,
+		field: Settings.field(record.valueSchema, path),
+		path,
+	};
+	return at < 0 ? child : recordChild(child, rest.slice(at + 1));
 };
 
 const find = (keys: readonly Key[], key: string): Result<Key> => {

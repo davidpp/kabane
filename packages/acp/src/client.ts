@@ -178,8 +178,13 @@ export namespace AcpClient {
 		mode: SessionMode;
 		/** The modes the harness advertised on opening, before any switch. */
 		modes: SessionModeState | null | undefined;
-		/** The session's config options as the harness sent them on opening (its model among them). */
+		/**
+		 * The session's config options as the harness sent them on opening, or as it answered the
+		 * model switch when one was asked for (`model`), before the mode is negotiated.
+		 */
 		configOptions: SessionConfigOption[];
+		/** What selecting the model the session was opened with did; absent when none was asked for. */
+		model?: ModelChoice;
 	};
 
 	/**
@@ -228,6 +233,9 @@ export namespace AcpClient {
 		mcpServers: StdioServer[];
 		// The harness's own auto mode when absent.
 		mode?: Harnesses.Mode;
+		// A value the session's model option lists, selected before the mode is negotiated, since
+		// the model decides which modes are on offer; the harness's own when absent.
+		model?: string;
 	};
 
 	export type NewSessionOptions = {
@@ -238,6 +246,8 @@ export namespace AcpClient {
 		systemPromptAppend?: string;
 		// The harness's own auto mode when absent.
 		mode?: Harnesses.Mode;
+		// As in `ResumeOptions`.
+		model?: string;
 	};
 
 	const DEFAULT_HANDSHAKE_MS = 30_000;
@@ -467,17 +477,16 @@ export namespace AcpClient {
 			id: active.sessionId,
 			active,
 			turn: { active: false, dispatched: false, cancelled: false },
-			mode: await selectMode(
+			modes: active.modes,
+			...(await configure(
 				connection,
 				active.sessionId,
-				planMode(
-					connection.harness,
-					options.mode ?? "auto",
-					modeControl(active.newSessionResponse.configOptions, active.modes),
-				),
-			),
-			modes: active.modes,
-			configOptions: active.newSessionResponse.configOptions ?? [],
+				{
+					configOptions: active.newSessionResponse.configOptions,
+					modes: active.modes,
+				},
+				options,
+			)),
 		});
 	};
 
@@ -514,18 +523,49 @@ export namespace AcpClient {
 			id,
 			active: resumedTurns(connection, id, queue),
 			turn: { active: false, dispatched: false, cancelled: false },
-			mode: await selectMode(
-				connection,
-				id,
-				planMode(
-					connection.harness,
-					options.mode ?? "auto",
-					modeControl(resumed.value.configOptions, resumed.value.modes),
-				),
-			),
 			modes: resumed.value.modes,
-			configOptions: resumed.value.configOptions ?? [],
+			...(await configure(connection, id, resumed.value, options)),
 		});
+	};
+
+	/**
+	 * Set up a session that just opened: the model first, then the mode from the options the model
+	 * switch answered with, because the model decides which modes the harness offers (Claude has no
+	 * auto mode on some models).
+	 */
+	const configure = async (
+		connection: Connection,
+		sessionId: string,
+		opened: {
+			configOptions?: SessionConfigOption[] | null;
+			modes?: SessionModeState | null;
+		},
+		options: ResumeOptions,
+	): Promise<Pick<Session, "configOptions" | "mode" | "model">> => {
+		const selected =
+			options.model === undefined
+				? undefined
+				: await selectModel(
+						connection,
+						sessionId,
+						opened.configOptions ?? [],
+						options.model,
+					);
+		const configOptions = selected?.configOptions ?? opened.configOptions ?? [];
+		const mode = await selectMode(
+			connection,
+			sessionId,
+			planMode(
+				connection.harness,
+				options.mode ?? "auto",
+				modeControl(configOptions, opened.modes),
+			),
+		);
+		return {
+			configOptions,
+			mode,
+			...(selected ? { model: selected.choice } : {}),
+		};
 	};
 
 	export type Reopened =
@@ -641,20 +681,34 @@ export namespace AcpClient {
 		  }
 		| { via: "set_mode"; current: string; available: string[] };
 
+	type SelectOption = Extract<SessionConfigOption, { type: "select" }>;
+
+	const selectOption = (
+		options: SessionConfigOption[] | null | undefined,
+		category: string,
+	): SelectOption | undefined => {
+		const option = options?.find(
+			(o) => o.category === category && o.type === "select",
+		);
+		return option?.type === "select" ? option : undefined;
+	};
+
+	// A select's values, flattened out of any groups.
+	const selectValues = (option: SelectOption): string[] =>
+		option.options.flatMap((o) =>
+			"options" in o ? o.options.map((v) => v.value) : [o.value],
+		);
+
 	const modeOption = (
 		options: SessionConfigOption[] | null | undefined,
 	): Extract<ModeControl, { via: "config_option" }> | undefined => {
-		const option = options?.find(
-			(o) => o.category === "mode" && o.type === "select",
-		);
-		if (option?.type !== "select") return undefined;
+		const option = selectOption(options, "mode");
+		if (!option) return undefined;
 		return {
 			via: "config_option",
 			configId: option.id,
 			current: option.currentValue,
-			available: option.options.flatMap((o) =>
-				"options" in o ? o.options.map((v) => v.value) : [o.value],
-			),
+			available: selectValues(option),
 		};
 	};
 
@@ -755,6 +809,88 @@ export namespace AcpClient {
 				landed === switchTo
 					? `mode ${switchTo}: ${connection.harness}'s auto mode, switched from ${from}`
 					: `mode ${landed}: asked for ${connection.harness}'s auto mode (${switchTo}) from ${from}, and it chose ${landed}`,
+		};
+	};
+
+	/** What selecting a session's model left it on, and why. */
+	export type ModelChoice = {
+		/** The model the session runs, by the harness's value; absent when it is not known. */
+		current?: string;
+		/** Whether the session runs the model asked for. */
+		applied: boolean;
+		/** What was selected, or why nothing was, as one line for the session's log. */
+		note: string;
+	};
+
+	/**
+	 * Select `value` on the model option (`category: "model"`) through `session/set_config_option`,
+	 * with the config options the harness answered. A harness with no model option, one that does
+	 * not list `value`, or one that refuses the switch leaves the session on the model it opened
+	 * with; one whose answer has no model option leaves it unconfirmed. The choice says which, and
+	 * never fails the session.
+	 */
+	const selectModel = async (
+		connection: Connection,
+		sessionId: string,
+		options: SessionConfigOption[],
+		value: string,
+	): Promise<{ choice: ModelChoice; configOptions: SessionConfigOption[] }> => {
+		const { harness } = connection;
+		const kept = (choice: ModelChoice) => ({ choice, configOptions: options });
+		const option = selectOption(options, "model");
+		if (!option)
+			return kept({
+				applied: false,
+				note: `${harness} advertises no model option, so it runs its own default instead of ${value}`,
+			});
+		const from = option.currentValue;
+		if (from === value)
+			return kept({ current: from, applied: true, note: `model ${from}` });
+		const available = selectValues(option);
+		if (!available.includes(value))
+			return kept({
+				current: from,
+				applied: false,
+				note: `${harness} does not list ${value} (it lists ${available.join(", ")}), so it keeps ${from}`,
+			});
+		const set = await tryCatch(() =>
+			connection.agent.request(methods.agent.session.setConfigOption, {
+				sessionId,
+				configId: option.id,
+				value,
+			}),
+		);
+		if (!set.ok)
+			return kept({
+				current: from,
+				applied: false,
+				note: `selecting ${value} failed, so ${harness} keeps ${from}: ${toError(set.error).message}`,
+			});
+		const { configOptions } = set.value;
+		const landed = selectOption(configOptions, "model")?.currentValue;
+		// No model in the answer is no evidence of one: what the session runs is unknown.
+		if (landed === undefined)
+			return {
+				choice: {
+					applied: false,
+					note: `asked ${harness} for ${value}, and its answer names no model, so which one it runs is unconfirmed`,
+				},
+				configOptions,
+			};
+		return {
+			choice:
+				landed === value
+					? {
+							current: value,
+							applied: true,
+							note: `model ${value}, from ${from}`,
+						}
+					: {
+							current: landed,
+							applied: false,
+							note: `asked ${harness} for ${value} and it chose ${landed}`,
+						},
+			configOptions,
 		};
 	};
 

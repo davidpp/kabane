@@ -841,6 +841,179 @@ describe("AcpClient session modes through a config option", () => {
 	});
 });
 
+// An agent with a model option, as both pinned adapters send it (in groups here), and a mode
+// option whose auto mode only `opus` offers, as Claude has no auto mode on some models. It opens
+// on `haiku` in its manual mode, records every session/set_config_option, and can resume `s-1`.
+// `refuse` throws on a model switch, `swap` lands on another model than the one asked for, and
+// `unnamed` answers a model switch without its model option.
+const modelAgent = (
+	seen: { setConfig: unknown[] },
+	options: {
+		advertise?: boolean;
+		refuse?: boolean;
+		swap?: string;
+		unnamed?: boolean;
+	} = {},
+): AgentApp => {
+	let model = "haiku";
+	let mode = "default";
+	const modelOption = {
+		id: "model",
+		name: "Model",
+		category: "model",
+		type: "select" as const,
+		options: [
+			{
+				group: "current",
+				name: "Current",
+				options: [{ value: "opus", name: "Opus" }],
+			},
+			{
+				group: "fast",
+				name: "Fast",
+				options: [{ value: "haiku", name: "Haiku" }],
+			},
+		],
+	};
+	const configOptions = (withModel = options.advertise !== false) => [
+		...(withModel ? [{ ...modelOption, currentValue: model }] : []),
+		{
+			...modeConfig(mode),
+			options: [
+				"default",
+				"acceptEdits",
+				...(model === "opus" ? ["auto"] : []),
+			].map((value) => ({ value, name: value })),
+		},
+	];
+	return agentApp({ name: "models" })
+		.onRequest(methods.agent.initialize, () => ({
+			protocolVersion: PROTOCOL_VERSION,
+			agentCapabilities: {
+				loadSession: true,
+				sessionCapabilities: { resume: {} },
+			},
+		}))
+		.onRequest(methods.agent.session.new, () => ({
+			sessionId: "s-1",
+			configOptions: configOptions(),
+		}))
+		.onRequest(methods.agent.session.resume, () => ({
+			configOptions: configOptions(),
+		}))
+		.onRequest(methods.agent.session.setConfigOption, (c) => {
+			const { configId, value } = c.params;
+			seen.setConfig.push({ configId, value });
+			if (configId === "mode") {
+				mode = String(value);
+				return { configOptions: configOptions() };
+			}
+			if (options.refuse) throw new Error("not on this plan");
+			model = options.swap ?? String(value);
+			return { configOptions: configOptions(!options.unnamed) };
+		});
+};
+
+describe("AcpClient session models", () => {
+	const open = async (agent: AgentApp, model?: string) => {
+		const conn = await AcpClient.connect("claude", agent, {
+			onPermission: allow,
+		});
+		if (!conn.ok) throw conn.error;
+		const session = await AcpClient.newSession(conn.value, {
+			cwd: "/tmp/scope",
+			mcpServers: [],
+			...(model === undefined ? {} : { model }),
+		});
+		if (!session.ok) throw session.error;
+		return { conn: conn.value, session: session.value };
+	};
+
+	it("selects the model before the mode, so the mode is chosen among what that model offers", async () => {
+		const seen = { setConfig: [] as unknown[] };
+		const { conn, session } = await open(modelAgent(seen), "opus");
+		expect(seen.setConfig).toEqual([
+			{ configId: "model", value: "opus" },
+			{ configId: "mode", value: "auto" },
+		]);
+		expect(session.model).toEqual({
+			current: "opus",
+			applied: true,
+			note: "model opus, from haiku",
+		});
+		expect(session.mode.current).toBe("auto");
+		expect(session.configOptions[0]).toMatchObject({ currentValue: "opus" });
+		AcpClient.close(conn);
+
+		// Left on haiku, the session has no auto mode to move to.
+		const unasked = await open(modelAgent({ setConfig: [] }));
+		expect(unasked.session.model).toBeUndefined();
+		expect(unasked.session.mode.note).toBe(
+			"mode default: claude does not advertise its auto mode (auto)",
+		);
+		AcpClient.close(unasked.conn);
+	});
+
+	it("selects the model on a resumed session too", async () => {
+		const seen = { setConfig: [] as unknown[] };
+		const conn = await AcpClient.connect("claude", modelAgent(seen), {
+			onPermission: allow,
+		});
+		if (!conn.ok) throw conn.error;
+		const resumed = await AcpClient.resumeSession(conn.value, "s-1", {
+			cwd: "/tmp/scope",
+			mcpServers: [],
+			model: "opus",
+		});
+		if (!resumed.ok) throw resumed.error;
+		expect(resumed.value.model).toMatchObject({
+			current: "opus",
+			applied: true,
+		});
+		expect(resumed.value.mode.current).toBe("auto");
+		AcpClient.close(conn.value);
+	});
+
+	it("keeps the session's model, and says why, when it cannot take the one asked for", async () => {
+		const modelOf = async (
+			value: string,
+			options: Parameters<typeof modelAgent>[1] = {},
+		) => {
+			const seen = { setConfig: [] as unknown[] };
+			const { conn, session } = await open(modelAgent(seen, options), value);
+			AcpClient.close(conn);
+			return { model: session.model, setConfig: seen.setConfig };
+		};
+		expect(await modelOf("sonnet")).toEqual({
+			model: {
+				current: "haiku",
+				applied: false,
+				note: "claude does not list sonnet (it lists opus, haiku), so it keeps haiku",
+			},
+			setConfig: [],
+		});
+		expect((await modelOf("opus", { advertise: false })).model).toEqual({
+			applied: false,
+			note: "claude advertises no model option, so it runs its own default instead of opus",
+		});
+		const refused = (await modelOf("opus", { refuse: true })).model;
+		expect(refused).toMatchObject({ current: "haiku", applied: false });
+		expect(refused?.note).toStartWith(
+			"selecting opus failed, so claude keeps haiku: ",
+		);
+		expect((await modelOf("opus", { swap: "haiku" })).model).toEqual({
+			current: "haiku",
+			applied: false,
+			note: "asked claude for opus and it chose haiku",
+		});
+		// An answer without the model option is no evidence of the model: none is claimed.
+		expect((await modelOf("opus", { unnamed: true })).model).toEqual({
+			applied: false,
+			note: "asked claude for opus, and its answer names no model, so which one it runs is unconfirmed",
+		});
+	});
+});
+
 // An agent that keeps sessions by id across connections, as a harness keeps them on disk.
 const resumableAgent = (
 	seen: { resumed: unknown[]; prompts: unknown[] },

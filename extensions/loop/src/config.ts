@@ -66,6 +66,18 @@ export namespace LoopConfig {
 		.string()
 		.regex(/^[a-z][a-z0-9-]*$/, "a lens name is one lowercase word");
 
+	/**
+	 * The capability tiers every run knows, with no model behind any of them until `tiers` maps it
+	 * for a harness. A model changes with releases and quotas; a tier names how capable the work
+	 * needs it to be.
+	 */
+	export const TIERS = ["frontier", "balanced", "fast"] as const;
+
+	// A tier's name is a settings key and, later, a `tier:<name>` tag, so it is one lowercase word.
+	const TierNameSchema = z
+		.string()
+		.regex(/^[a-z][a-z0-9-]*$/, "a tier name is one lowercase word");
+
 	/** Where a subtask's claim works: a worktree of its own, or the run's one tree. */
 	export const ISOLATION = ["worktree", "shared"] as const;
 
@@ -78,13 +90,30 @@ export namespace LoopConfig {
 			.enum(Harnesses.IDS)
 			.default("claude")
 			.describe("Harness every subtask runs on; defaults to claude."),
-		/** Model override for every harness that reads one (Claude); absent keeps the pin. */
+		/**
+		 * The model every session asks its harness for: a tier name, resolved through `tiers` for the
+		 * session's harness, or a literal model id the harness lists (`resolveModel`). Absent, the
+		 * harness runs its own default.
+		 */
 		model: z
 			.string()
 			.min(1)
 			.optional()
 			.describe(
-				"Model for harnesses that read one (Claude); absent keeps the pin.",
+				"Model every session asks for: a tier (frontier, balanced, fast, or one loop.tiers adds), resolved per harness through loop.tiers, or a model id the harness lists; absent, the harness's own default.",
+			),
+		/**
+		 * What each tier means on each harness: harness id → tier name → a model id that harness
+		 * lists. Its keys, with `TIERS`, are the tier names.
+		 */
+		tiers: z
+			.record(
+				z.enum(Harnesses.IDS),
+				z.record(TierNameSchema, z.string().min(1)),
+			)
+			.default({})
+			.describe(
+				"The model each tier names on each harness, one key per pair (loop.tiers.claude.fast = sonnet); frontier, balanced and fast are tiers with no model until set here, and any other key is a tier too.",
 			),
 		budget: BudgetSchema.default({}).describe(
 			"A run's limits; edit dotted keys.",
@@ -221,6 +250,53 @@ export namespace LoopConfig {
 	export const concurrency = (config: Config, isolated: boolean): number =>
 		config.budget.concurrency ?? (isolated ? 2 : 1);
 	export type Input = z.input<typeof Schema>;
+	/**
+	 * The model a session asks for, and where it came from: `tier` when the reference is a tier
+	 * mapped for this harness, `literal` for any other value, passed through as a model id, and
+	 * `default` when nothing asks for one, or a tier maps no model here, so the harness runs its own.
+	 * `note` says why a tier fell back.
+	 */
+	export type Model = {
+		model?: string;
+		source: "tier" | "literal" | "default";
+		/** The tier a `tier` model was resolved from. */
+		tier?: string;
+		note?: string;
+	};
+
+	/** Every tier name: the built-in ones and any key a layer's `tiers` adds for some harness. */
+	export const tierNames = (config: Pick<Config, "tiers">): string[] => [
+		...new Set([
+			...TIERS,
+			...Object.values(config.tiers).flatMap((tiers) =>
+				Object.keys(tiers ?? {}),
+			),
+		]),
+	];
+
+	/**
+	 * Resolve a session's model on `harness`. `tier`, when given, wins over the run's `model`: a
+	 * tier is always resolved as a tier, while `model` is one only when its value is a tier name.
+	 */
+	export const resolveModel = (
+		config: Pick<Config, "model" | "tiers">,
+		harness: Harnesses.Id,
+		tier?: string,
+	): Model => {
+		const reference = tier ?? config.model;
+		if (reference === undefined) return { source: "default" };
+		const names = tierNames(config);
+		if (tier === undefined && !names.includes(reference))
+			return { model: reference, source: "literal" };
+		const model = config.tiers[harness]?.[reference];
+		if (model !== undefined) return { model, source: "tier", tier: reference };
+		return {
+			source: "default",
+			note: names.includes(reference)
+				? `tier ${reference} names no model for ${harness} (loop.tiers.${harness}.${reference}), so ${harness} runs its own default`
+				: `${reference} is not a tier (${names.join(", ")}), so ${harness} runs its own default`,
+		};
+	};
 
 	// Existing files may still hold the retired timer; it is not a runtime setting, so it is dropped
 	// before the strict schema sees it, and no listing of the settings shows it.
