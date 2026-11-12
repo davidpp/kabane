@@ -7,6 +7,7 @@ import {
 	type Dispatcher,
 	Dispatchers,
 	Headers,
+	type OpenRequests,
 	type SettingsSource,
 	startBoard,
 } from "@cabane/board";
@@ -15,6 +16,7 @@ import {
 	type Extension,
 	failure,
 	flagString,
+	type Outcome,
 	type ParsedArgs,
 	success,
 } from "@cabane/extension";
@@ -28,6 +30,7 @@ import {
 } from "../context";
 import { Extensions } from "../extensions";
 import { UpdateNotice } from "../update-notice";
+import { BoardControl } from "./board-control";
 
 /**
  * The board's deps plus the copilot's teardown. The `Copilot` port carries no
@@ -200,7 +203,12 @@ export const boardDeps = async (
 	{
 		extensions = [],
 		issue,
-	}: { extensions?: readonly Extension[]; issue?: Task } = {},
+		requests,
+	}: {
+		extensions?: readonly Extension[];
+		issue?: Task;
+		requests?: OpenRequests;
+	} = {},
 ): Promise<BoardWiring> => {
 	const scope = await boardScope(args, ctx, issue);
 	const overrides = copilotOverrides(ctx);
@@ -211,6 +219,7 @@ export const boardDeps = async (
 			: { announcer: UpdateNotice.announcer(ctx.home) }),
 		...(issue ? { open: { taskId: issue.id } } : {}),
 		settings: settingsSource(args, ctx),
+		...(requests ? { requests } : {}),
 		cwd: ctx.cwd,
 		basePath: ctx.store,
 		// The board wants a URI and a label; the project root is the copilot's business.
@@ -234,7 +243,67 @@ export const boardDeps = async (
 	};
 };
 
+/**
+ * This board's control channel (BoardControl) and the port it feeds: an id sent with `--to` is
+ * looked up in this device's tracker, as a short id or a ULID in any case, and handed to the board,
+ * which subscribes once its first load is in. A board that cannot listen still runs, and `--to` then
+ * finds no board, which is what it reports.
+ */
+export const listenForRequests = (
+	ctx: Ctx,
+	pid: number,
+): { requests: OpenRequests; close: () => void } => {
+	let open: ((task: Task) => void) | undefined;
+	const requests: OpenRequests = {
+		subscribe: (listener) => {
+			open = listener;
+			return () => {
+				if (open === listener) open = undefined;
+			};
+		},
+	};
+	const listener = BoardControl.listen(
+		BoardControl.socketPath(ctx.home, pid),
+		async (input) => {
+			if (!open)
+				return err(new Error(`board pid ${pid} is still loading; try again`));
+			const found = await Planner.getTask(ctx.store, input.toUpperCase());
+			if (!found.ok) return found;
+			if (!found.value) return err(new Error(`${input} not found`));
+			open(found.value);
+			return ok(found.value.shortId ?? found.value.id);
+		},
+	);
+	return {
+		requests,
+		close: () => {
+			if (listener.ok) listener.value.close();
+		},
+	};
+};
+
+/** `--issue <id> --to <pid>`: open the issue in the board running as that pid, with no TUI here. */
+const openInRunningBoard = async (
+	args: ParsedArgs,
+	ctx: Ctx,
+): Promise<Outcome> => {
+	const to = flagString(args, "to");
+	const pid = to !== undefined && /^\d+$/.test(to) ? Number(to) : 0;
+	if (!Number.isSafeInteger(pid) || pid <= 0)
+		return failure("--to needs a board's pid, e.g. --to 77516");
+	const id = flagString(args, "issue");
+	if (id === undefined)
+		return failure("--to needs --issue <id>, the issue to open");
+	const opened = await BoardControl.send(ctx.home, pid, id);
+	if (!opened.ok) return failure(opened.error.message);
+	return success(
+		{ opened: opened.value, pid },
+		`opened ${opened.value} in board pid ${pid}`,
+	);
+};
+
 export const runBoard: Command["run"] = async (args, ctx) => {
+	if (args.flags.to !== undefined) return openInRunningBoard(args, ctx);
 	const issue = await boardIssue(args, ctx);
 	if (!issue.ok) return failure(issue.error.message);
 	// The board owns a full-screen renderer; on a pipe it would block forever.
@@ -246,15 +315,18 @@ export const runBoard: Command["run"] = async (args, ctx) => {
 	if (!enabled.ok) return failure(enabled.error);
 	const extensions = await Extensions.loadAll(enabled.value);
 	if (!extensions.ok) return failure(extensions.error);
+	const control = listenForRequests(ctx, process.pid);
 	const deps = await boardDeps(args, ctx, harness.value, {
 		extensions: extensions.value,
 		issue: issue.value,
+		requests: control.requests,
 	});
 	try {
 		await startBoard(deps);
 	} finally {
 		// Nothing was spawned unless the human pressed `A`, and then this kills it.
 		deps.copilot.close();
+		control.close();
 	}
 	return success({ closed: true }, "");
 };

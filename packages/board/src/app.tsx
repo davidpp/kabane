@@ -7,7 +7,7 @@
 import { useRenderer } from "@opentui/react";
 import { type ReactNode, useCallback } from "react";
 import { useAnnouncement } from "./announcement";
-import { useBoardFeed } from "./board-feed";
+import { useBoardFeed, useOpenRequests } from "./board-feed";
 import { useBoardInput } from "./board-input";
 import { type BoardStore, useBoardStore } from "./board-store";
 import { isCopilotEffect, useCopilotSession } from "./copilot-session";
@@ -24,6 +24,7 @@ import {
 	type Copilot,
 	type Dispatcher,
 	noAnnouncer,
+	type OpenRequests,
 	type SettingsSource,
 } from "./ports";
 import { ProgramStatus } from "./program-status";
@@ -52,6 +53,8 @@ export type AppProps = {
 	settings?: SettingsSource;
 	// Absent → the board opens on the board view.
 	open?: { taskId: string };
+	// Absent → nobody outside the board asks it to open an issue.
+	requests?: OpenRequests;
 	// Milliseconds, for how long a question has been on screen before a digit answers it
 	// (BoardNav.ARM_MS). Absent → Date.now.
 	clock?: () => number;
@@ -199,6 +202,7 @@ export const App = ({
 	announcer = noAnnouncer,
 	settings,
 	open,
+	requests,
 	clock = Date.now,
 }: AppProps): ReactNode => {
 	const store = useBoardStore(clock);
@@ -244,6 +248,7 @@ export const App = ({
 		reload,
 	});
 
+	useOpenRequests(requests, store, scopeRef, reload);
 	useAnnouncement(announcer, store);
 
 	// The terminal hears when the board waits on the human, or works.

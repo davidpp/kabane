@@ -21,6 +21,7 @@ export type {
 	CopilotUpdate,
 	Dispatcher,
 	DispatchTarget,
+	OpenRequests,
 	PanelLine,
 	PanelPart,
 	PanelTone,

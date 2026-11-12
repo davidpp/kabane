@@ -1551,8 +1551,9 @@ export namespace BoardNav {
 
 	/**
 	 * Open `taskId`'s detail the way `enter` on its row would, from wherever the board is: help, the
-	 * dispatch picker or form, a card's or a question's prompt and a `/` being typed close, the board
-	 * takes the keys, and the copilot's draft and asks are kept. When the task is loaded, the board
+	 * dispatch picker or form, a card's or a question's prompt and a `/` being typed close, a card's
+	 * tab gives the screen back to the tracker (its tab stays open), the board takes the keys, and the
+	 * copilot's draft and asks are kept. When the task is loaded, the board
 	 * under the detail is left showing its row, selected: its parent expanded, the current status
 	 * filter when that shows it, else the one holding its section, and a search or `u` that hides it
 	 * cleared, so `esc` lands on it. The task is `held`, so every reload loads it past the section
@@ -1561,7 +1562,11 @@ export namespace BoardNav {
 	 */
 	export const openTask = (state: BoardState, taskId: string): BoardState => {
 		const opened: BoardState = {
-			...BoardPrompt.close(state),
+			// The click on the tracker's tab, so the tracker's view comes back the way the bar brings it.
+			...BoardTabs.reduceMouse(BoardPrompt.close(state), {
+				type: "tab",
+				id: null,
+			}).state,
 			help: false,
 			settings: null,
 			dispatch: null,
@@ -1588,6 +1593,26 @@ export namespace BoardNav {
 		return shows(holding)
 			? holding
 			: { ...BoardDecisions.clear(holding), search: SEARCH_OFF };
+	};
+
+	/**
+	 * The filters `task` needs to be on the board, for a request from outside it (OpenRequests): every
+	 * scope when it is outside the one the board is scoped to (`scopeUri`), as `esc` widens, and every
+	 * kind when the kind filter hides it. Never the other way: the human's wider view stays. The
+	 * status filter, a search and `u` are openTask's. `state` itself when nothing widens, so the
+	 * caller can tell whether the rows on screen were loaded under the filters that now apply.
+	 */
+	export const widenFor = (
+		state: BoardState,
+		task: Pick<Task, "scopeUri" | "kind">,
+		scopeUri: string | undefined,
+	): BoardState => {
+		const scoped = state.scoped && task.scopeUri === scopeUri;
+		const kind =
+			state.kind === "all" || state.kind === task.kind ? state.kind : "all";
+		return scoped === state.scoped && kind === state.kind
+			? state
+			: { ...state, scoped, kind };
 	};
 
 	// Merge freshly loaded sections into an existing state, keeping the same task selected and the same

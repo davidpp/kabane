@@ -1236,12 +1236,56 @@ describe("BoardNav.openTask", () => {
 		expect(s.copilot.text).toBe("half a thought");
 	});
 
+	it("gives the screen back to the tracker from a card's tab, which stays open", () => {
+		const s = BoardNav.openTask(
+			board({
+				view: { type: "events", cardId: "loop", fromView: "board" },
+				tabs: {
+					...BoardTabs.NONE,
+					open: ["loop"],
+					active: "loop",
+					tracker: { type: "board" },
+				},
+			}),
+			"a",
+		);
+		expect(s.tabs.active).toBeNull();
+		expect(s.tabs.open).toEqual(["loop"]);
+		expect(s.view).toEqual({ type: "detail", taskId: "a" });
+	});
+
 	it("opens a task outside the loaded sections and leaves the board under it as it was", () => {
 		const before = board({ status: "done" });
 		const s = BoardNav.openTask(before, "elsewhere");
 		expect(s.view).toEqual({ type: "detail", taskId: "elsewhere" });
 		expect(s.status).toBe("done");
 		expect(s.selectedId).toBe("a");
+	});
+});
+
+describe("BoardNav.widenFor", () => {
+	const scoped = state({ scoped: true });
+	const here = { scopeUri: "jake://scope/here", kind: "issue" as const };
+
+	it("keeps the state itself when its filters already hold the task", () => {
+		expect(BoardNav.widenFor(scoped, here, here.scopeUri)).toBe(scoped);
+		const issues = state({ kind: "issue" });
+		expect(BoardNav.widenFor(issues, here, undefined)).toBe(issues);
+	});
+
+	it("widens to every scope for a task outside the board's, or with none", () => {
+		for (const scopeUri of ["jake://scope/there", undefined])
+			expect(
+				BoardNav.widenFor(scoped, { ...here, scopeUri }, here.scopeUri).scoped,
+			).toBe(false);
+	});
+
+	it("widens to every kind when the kind filter hides the task, and never narrows", () => {
+		expect(
+			BoardNav.widenFor(state({ kind: "task" }), here, undefined).kind,
+		).toBe("all");
+		const wide = state({ scoped: false });
+		expect(BoardNav.widenFor(wide, here, here.scopeUri)).toBe(wide);
 	});
 });
 

@@ -17,6 +17,7 @@ import {
 	type Copilot,
 	type Dispatcher,
 	noActivity,
+	type OpenRequests,
 	type SettingsSource,
 } from "./ports";
 import { ProgramStatus } from "./program-status";
@@ -47,6 +48,9 @@ export type BoardDeps = {
 	// The issue to open on, by id: its detail over the board, as `enter` on its row (BoardNav.openTask).
 	// The host picks a scope that holds it. Default: none, the board opens on the board view.
 	open?: { taskId: string };
+	// Issues to open while the board runs, asked from outside it (`kabane board --issue <id> --to <pid>`).
+	// The host resolves each id to its task. Default: none, nothing outside the board opens an issue.
+	requests?: OpenRequests;
 };
 
 // Last-resort fallback if a render throws past App: show the error, offer `q` to quit. startBoard's
@@ -84,6 +88,7 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 						announcer={deps.announcer}
 						settings={deps.settings}
 						open={deps.open}
+						requests={deps.requests}
 					/>
 				</ErrorBoundary>
 			</ThemeProvider>,

@@ -1,7 +1,8 @@
 // What the board reads from the tracker and the host: the first load scoped to the detected project
-// (`esc` widens to all scopes) and open on the issue the host named, a 5s poll that keeps it fresh,
-// the reload a write asks for, and the FTS search merged into the rows. Selection survives every
-// reload by task id (BoardNav.withSections).
+// (`esc` widens to all scopes) and open on the issue the host named, the issues the host asks it to
+// open later, a 5s poll that keeps it fresh, the reload a write asks for, and the FTS search merged
+// into the rows. Selection survives every reload by task id (BoardNav.withSections).
+import type { Task } from "@cabane/core";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardActivity } from "./activity";
@@ -11,7 +12,7 @@ import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
 import { BoardNav } from "./nav";
 import type { SetNotice } from "./notice";
-import type { ActivitySource, Copilot } from "./ports";
+import type { ActivitySource, Copilot, OpenRequests } from "./ports";
 
 const POLL_INTERVAL_MS = 5000;
 // Stable identity so a board with nothing linked doesn't re-render on it.
@@ -213,6 +214,45 @@ export const useBoardFeed = ({
 	}, [reload, ref]);
 
 	return { scope, scopeRef, activity, linked, error, retry, reload };
+};
+
+// A host's requests to open a task, taken once the first load is in so one never lands on a board
+// with no rows yet. Each opens at once, over the filters widened to hold it. When the rows on screen
+// were loaded under other filters, or do not hold it, a reload brings it in and the open lands again
+// so the board under the detail shows its row, unless the human has moved on since.
+export const useOpenRequests = (
+	requests: OpenRequests | undefined,
+	{ state, ref, set, update }: BoardStore,
+	scopeRef: RefObject<BoardData.ScopeInfo | null>,
+	reload: (s: BoardNav.BoardState) => Promise<void>,
+): void => {
+	const openRequested = useCallback(
+		(task: Task): void => {
+			const current = ref.current;
+			if (!current) return;
+			const widened = BoardNav.widenFor(
+				current,
+				task,
+				scopeRef.current?.scopeUri,
+			);
+			const opened = BoardNav.openTask(widened, task.id);
+			set(opened);
+			if (widened === current && BoardNav.taskById(current, task.id)) return;
+			void reload(opened).then(() =>
+				update((prev) =>
+					prev.view.type === "detail" && prev.view.taskId === task.id
+						? BoardNav.openTask(prev, task.id)
+						: prev,
+				),
+			);
+		},
+		[ref, scopeRef, set, update, reload],
+	);
+	const loaded = state !== null;
+	useEffect(
+		() => (loaded ? requests?.subscribe(openRequested) : undefined),
+		[loaded, requests, openRequested],
+	);
 };
 
 // Tier-2 FTS: debounced 200ms while typing, immediate on commit. Fires on every search query change

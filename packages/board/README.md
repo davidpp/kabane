@@ -29,6 +29,7 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 | `announcer: Announcer` | no | nothing is announced over the footer |
 | `settings: SettingsSource` | no | `,` opens the settings view, which says settings are not available here |
 | `open: { taskId }` | no | the board opens on the board view. Given, it opens on that task's detail, as `enter` on its row: the filter that holds it, its parent expanded, `esc` back to its row. `resolveScope` should answer the task's scope, as `kabane board --issue <id>` does. |
+| `requests: OpenRequests` | no | nothing outside the board opens an issue in it |
 
 The host calls `Runtime.configure` before `startBoard`; the board never opens a database itself.
 
@@ -400,6 +401,28 @@ It can also:
   enabled. A run handles a single issue or a parent's subtasks; follow it in its board tab.
 
 The copilot manages the tracker and setup; the loop's coding sessions make the code changes.
+
+### `OpenRequests`
+
+```ts
+interface OpenRequests {
+  subscribe(open: (task: Task) => void): () => void;
+}
+```
+
+How something outside a running board shows the human an issue. The board subscribes once its
+first load is in and unsubscribes as it comes down. The host resolves the id, so `open` gets the
+task itself. Each request lands the way `enter` on its row would, from wherever the board is:
+
+- Help, the dispatch picker or form, a card's or a question's prompt, and a `/` being typed close.
+- A card's tab gives the screen back to the tracker, and its tab stays open.
+- The copilot's draft and any pending ask are kept, and the board takes the keys.
+- A task outside the board's scope widens it to all scopes, as `esc` does, and one the kind filter
+  hides widens it to every kind. The status filter follows the task's state, so a done issue opens
+  on the done filter.
+
+`kabane board` fills it from a Unix socket, so `kabane board --issue <id> --to <pid>` opens an
+issue in the board running as that pid (the CLI's `kabane board --help`).
 
 ## An issue's detail
 
