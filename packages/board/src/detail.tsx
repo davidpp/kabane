@@ -20,9 +20,11 @@ import { useTerminalDimensions } from "@opentui/react";
 import {
 	type ReactNode,
 	type RefObject,
+	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
+	useState,
 } from "react";
 import type { BoardActivity } from "./activity";
 import { BoardChecklist } from "./checklist";
@@ -1190,6 +1192,27 @@ const ItemRow = ({
 	);
 };
 
+// The columns a row really has once laid out, less the one it keeps clear of the scrollbar as prose
+// does, so a part held at its right sits one space after the cut title. `room` is the estimate from
+// the terminal's width, which holds back a scrollbar column and a margin whether a bar is drawn or
+// not; it stands until the first layout measures the row.
+const useRowWidth = (
+	room: number,
+): {
+	ref: RefObject<BoxRenderable | null>;
+	measure: () => void;
+	columns: number;
+} => {
+	const ref = useRef<BoxRenderable | null>(null);
+	const [measured, setMeasured] = useState<number | undefined>(undefined);
+	const measure = useCallback(() => {
+		const width = ref.current?.width;
+		if (width !== undefined && width > CONTENT_INSET)
+			setMeasured(width - CONTENT_INSET);
+	}, []);
+	return { ref, measure, columns: measured ?? room };
+};
+
 // One issue, a subtask or a linked one: `✓` in the done hue for a finished one, `○` muted for an open
 // one, the whole row faint when cancelled or missing from the records (`unknown`). The title's tail
 // is cut with `…`; an open or cancelled one's state is held to the right, as the log holds its age,
@@ -1214,6 +1237,7 @@ const IssueRow = ({
 			? theme.faint
 			: undefined;
 	const state = line.state ?? "";
+	const width = useRowWidth(room);
 	const segments = [
 		{
 			text: line.done ? "✓ " : "○ ",
@@ -1224,13 +1248,20 @@ const IssueRow = ({
 	];
 	const titled = Segments.fit(
 		segments,
-		Math.max(0, room - (state ? state.length + 1 : 0)),
+		Math.max(0, width.columns - (state ? state.length + 1 : 0)),
 	);
 	return (
 		<box
+			ref={width.ref}
+			onSizeChange={width.measure}
 			id={BoardChecklist.rowId(line.key)}
 			onMouseDown={onOpen ? () => onOpen(line.id) : undefined}
-			style={{ flexDirection: "row", flexShrink: 0, backgroundColor: bg }}
+			style={{
+				flexDirection: "row",
+				flexShrink: 0,
+				backgroundColor: bg,
+				paddingRight: CONTENT_INSET,
+			}}
 		>
 			<text bg={bg} style={{ flexGrow: 1, flexShrink: 1 }}>
 				{Segments.spans(titled)}
