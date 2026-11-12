@@ -16,6 +16,7 @@ import {
 	usage,
 } from "@cabane/extension";
 import { LoopActivity } from "./activity";
+import { LoopAdvice } from "./advice";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
@@ -34,6 +35,8 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop answer <questionId> <option>
        kabane loop land <runId>              (pushes a completed run's branch and opens its pull request)
        kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)
+
+start applies no advice: loop advise shows it, and its "start with" line is the flags that apply it.
 
 A subtask's tags route its claim: tier:<name> asks for a tier's model (loop.tiers) over --model,
 tier:<harness>/<name> also runs it on that harness, and agent:<name> runs it as the harness's named
@@ -373,8 +376,13 @@ const shown = (value: unknown): string => {
 // What a setting is under the run's layers now, to read the advice against.
 const current = (config: LoopConfig.Config, r: Recommendation): unknown => {
 	switch (r.path) {
-		case "budget.concurrency":
-			return config.budget.concurrency;
+		case "budget.concurrency": {
+			const isolated = LoopAdvice.isolated(config);
+			return (
+				config.budget.concurrency ??
+				`${LoopConfig.concurrency(config, isolated)}, the default ${isolated ? "with worktrees" : "in a shared tree"}`
+			);
+		}
 		case "gates":
 			return config.gates;
 		default:

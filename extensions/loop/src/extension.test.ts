@@ -464,7 +464,7 @@ describe("kabane loop advise", () => {
 		expect(lines.slice(1, 8)).toEqual([
 			"  implementer claude  model unset  tiers frontier, balanced, fast",
 			"advised:",
-			`  budget.concurrency 1 (now unset): src/parser.ts referenced by ${header.shortId}, ${body.shortId} — potential merge conflict if run in parallel`,
+			`  budget.concurrency 1 (now 2, the default with worktrees): src/parser.ts referenced by ${header.shortId}, ${body.shortId} — potential merge conflict if run in parallel`,
 			'  gates test="bun run test" (now none): package.json scripts, using bun from the lockfile',
 			"  setup bun install (now unset): install dependencies in each worktree using the project's lockfile",
 			'  start with: --concurrency 1 --gate test="bun run test"',
