@@ -124,9 +124,24 @@ A, then C1 and D, then B, with E deferred.
    from now on.
 5. **E** only if A to D show that routing by kind pays.
 
-## Open decisions
+## Decided (2026-11-12, JCAB-243)
 
-- Whether advice may fill in an unset setting silently (marked as advised) or must always be
-  accepted by the human.
-- Where territories live on a subtask (D): tags, a context ref, or a data module.
-- Whether per-subtask routing (E) is in scope at all.
+- **First wave: A and C1**, plus E in its tier form below. D and B come later.
+- **What advice may change.** Preferences are never overridden: which harness implements and
+  which verifies. Task-shaped settings (lenses, concurrency, isolation and the like) may be
+  overridden by advice even when a layer sets them, and the reason is shown.
+- **Model tiers instead of models on issues.** An issue states how demanding its work is, never
+  a model, because the right model for a tier changes with releases, quotas, the week and the
+  project.
+  - On the issue: a tag, `tier:balanced`, or `tier:codex/fast` to pin the harness too (a harness
+    id, not a vendor).
+  - In settings: the mapping from tier to model per harness, in the usual layers, so a change is
+    one config write or one request to the copilot. Its keys are the vocabulary. The defaults
+    are `frontier`, `balanced` and `fast`, the generic terms routing write-ups converge on, with
+    no models pinned.
+  - Fallback: a subtask with no tier gets the run's `model`, or the harness default when that is
+    unset. A tier wins over `model` for its subtask.
+  - The model reaches the session through ACP's model config option, which both pinned adapters
+    expose (`dispatch.ts`), not through harness-specific agent definitions.
+  - The loop ignores a subtask's assignee on purpose (`claims.ts`: agents assign what they file
+    to themselves), so the tier is its own signal.
