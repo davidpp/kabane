@@ -256,6 +256,26 @@ describe("SettingsView's editor", () => {
 		});
 	});
 
+	test("ctrl+backspace and ctrl+enter reach the editor as backspace and enter", () => {
+		const typed = press(on("loop.budget.concurrency"), "return", "9").state;
+		const ctrl = (name: string): BoardNav.KeyInput => ({ name, ctrl: true });
+		const deleted = BoardNav.reduceKey(
+			typed,
+			ctrl("backspace"),
+			BoardNav.ARM_MS,
+		).state;
+		expect(edit(deleted)?.change).toEqual({ type: "type", text: "" });
+		const five = press(deleted, "5").state;
+		expect(
+			BoardNav.reduceKey(five, ctrl("return"), BoardNav.ARM_MS).effect,
+		).toEqual({
+			type: "saveSetting",
+			key: "loop.budget.concurrency",
+			value: 5,
+			layer: "local",
+		});
+	});
+
 	test("a secret starts empty, is never echoed in an error, and a protected key asks first", () => {
 		const typing = press(on("sync.token"), "return").state;
 		expect(edit(typing)?.change).toEqual({ type: "type", text: "" });

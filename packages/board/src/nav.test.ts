@@ -844,6 +844,22 @@ describe("a ctrl chord is its own key, never the letter under it", () => {
 		});
 	});
 
+	it("a named key with ctrl stays that key: ctrl+backspace and ctrl+enter edit and commit a search", () => {
+		const typing = typeQuery(reduce(board, char("/")).state, "ab");
+		const deleted = reduce(typing, { name: "backspace", ctrl: true }).state;
+		expect(deleted.search).toEqual({ mode: "typing", query: "a" });
+		expect(
+			reduce(deleted, { name: "return", ctrl: true }).state.search,
+		).toEqual({ mode: "committed", query: "a" });
+	});
+
+	it("ctrl+enter on a board row still opens it", () => {
+		expect(reduce(board, { name: "return", ctrl: true }).state.view).toEqual({
+			type: "detail",
+			taskId: "b",
+		});
+	});
+
 	it("ctrl+x on the copilot's transcript leaves its running turn alone", () => {
 		const transcript = state({
 			view: {
