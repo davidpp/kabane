@@ -24,7 +24,7 @@ import { applySchema } from "../db/schema";
 import { type KabaneModule, Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import { parseQuestionBody } from "../schemas";
-import { TABLES } from "./helpers";
+import { columnExists, TABLES } from "./helpers";
 import { ScopeScheme } from "./scope-scheme";
 
 /**
@@ -193,9 +193,13 @@ export namespace Migrations {
 		{
 			// A decision answering a question names who chose (JCAB-26). Activities
 			// written before have no author on record and read as the session's.
+			// The guard is the body v1.0.0-beta.0 shipped; a shipped migration stays as it shipped.
 			name: "activity-author",
 			up: (db) => {
-				db.run(`ALTER TABLE ${TABLES.agent_activities} ADD COLUMN author TEXT`);
+				if (!columnExists(db, TABLES.agent_activities, "author"))
+					db.run(
+						`ALTER TABLE ${TABLES.agent_activities} ADD COLUMN author TEXT`,
+					);
 			},
 		},
 		{
