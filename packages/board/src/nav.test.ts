@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
 import { BoardChecklist } from "./checklist";
+import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
 import type { DetailModel } from "./detail-model";
@@ -777,6 +778,85 @@ describe("status keys in the detail view target the open task", () => {
 			type: "notice",
 			notice: { tone: "success" },
 		});
+	});
+});
+
+describe("a ctrl chord is its own key, never the letter under it", () => {
+	const ctrl = (name: string): BoardNav.KeyInput => ({ name, ctrl: true });
+	const flagged = task({ id: "b", needsReview: true });
+	const board = state({
+		sections: sections({ next: [row(task({ id: "a" })), row(flagged)] }),
+		selectedId: "b",
+	});
+	const detail = { ...board, view: { type: "detail" as const, taskId: "b" } };
+
+	// Nothing changes and nothing runs: the state comes back as it went in.
+	const inert = (s: BoardNav.BoardState, key: BoardNav.KeyInput): void => {
+		const { state: next, effect } = reduce(s, key);
+		expect(effect).toEqual({ type: "none" });
+		expect(next).toBe(BoardNav.sight(s, 0));
+	};
+
+	for (const letter of ["x", "n", "s", "v"])
+		it(`ctrl+${letter} on the detail leaves the open task's state alone`, () => {
+			expect(reduce(detail, char(letter)).effect.type).not.toBe("none");
+			inert(detail, ctrl(letter));
+		});
+
+	it("nor does any other unbound chord act as its letter on the detail", () => {
+		for (const letter of ["y", "m", "a", "r", "o", "q", "h", "l", "g", "1"])
+			inert(detail, ctrl(letter));
+	});
+
+	it("on the board neither does a chord, the paging pair included: ctrl+d is not `d`", () => {
+		for (const letter of ["d", "u", "x", "n", "s", "v", "q", "r", "i", "f"])
+			inert(board, ctrl(letter));
+	});
+
+	it("the bound chords still act: ctrl+d/ctrl+u page the detail and ctrl+z undoes", () => {
+		expect(reduce(detail, ctrl("d")).effect).toEqual({
+			type: "scroll",
+			page: 0.5,
+		});
+		expect(reduce(detail, ctrl("u")).effect).toEqual({
+			type: "scroll",
+			page: -0.5,
+		});
+		const cancelled = reduce(detail, char("x")).state;
+		expect(reduce(cancelled, ctrl("z")).effect.type).toBe("applyUndo");
+	});
+
+	it("ctrl+q leaves the reader and the sheet open, while ctrl+d still pages them", () => {
+		const reading = BoardNav.withReader(
+			{ ...detail, view: { type: "detail", taskId: "b", tab: "comments" } },
+			"b",
+		);
+		inert(reading, ctrl("q"));
+		expect(reduce(reading, ctrl("d")).effect).toEqual({
+			type: "readerScroll",
+			page: 0.5,
+		});
+		const sheet = { ...detail, help: true };
+		inert(sheet, ctrl("q"));
+		expect(reduce(sheet, ctrl("d")).effect).toEqual({
+			type: "helpScroll",
+			page: 0.5,
+		});
+	});
+
+	it("ctrl+x on the copilot's transcript leaves its running turn alone", () => {
+		const transcript = state({
+			view: {
+				type: "events",
+				cardId: CopilotLog.CARD_ID,
+				fromView: "board",
+			},
+			copilot: copilotState({ turn: "running", hasLog: true }),
+		});
+		expect(reduce(transcript, char("x")).effect).toEqual({
+			type: "copilotCancel",
+		});
+		inert(transcript, ctrl("x"));
 	});
 });
 

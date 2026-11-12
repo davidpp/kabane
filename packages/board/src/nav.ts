@@ -222,6 +222,14 @@ export namespace BoardNav {
 	const isUndoKey = (key: KeyInput): boolean =>
 		!!key.ctrl && !key.meta && (key.name === "z" || key.sequence === "\x1a");
 
+	// A ctrl chord is a key of its own, never the letter under it, but OpenTUI names ctrl+x `x` and the
+	// reducers below match by name. So only the chords the board binds go on: ctrl+z and the paging
+	// pair (the board view, which pages nothing, drops those itself). Any other does nothing, rather
+	// than act as its letter: ctrl+x, pressed by habit or meant for the terminal or a multiplexer,
+	// would cancel the task in hand.
+	const unboundChord = (key: KeyInput): boolean =>
+		key.ctrl === true && !isUndoKey(key) && Paging.motion(key) === null;
+
 	// Selection is by task id (not an index) so it survives the 5s poll reload — the same task stays
 	// selected even when the list reshuffles. `expanded` is the set of expanded parent ids, likewise
 	// preserved across reloads. `scoped` gates the project-scope filter — `esc` flips it off to widen
@@ -1677,6 +1685,7 @@ export namespace BoardNav {
 		key: KeyInput,
 		now: number,
 	): { state: BoardState; effect: Effect } => {
+		if (unboundChord(key)) return { state, effect: NONE };
 		if (state.help) return reduceHelpKey(state, key);
 		if (state.settings)
 			return SettingsView.reduceKey(state, state.settings, key);
@@ -2370,6 +2379,8 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		if (state.search.mode === "typing")
 			return reduceSearchTyping(state, state.search.query, key);
+		// The paging chords reach here too, and the board has no page to move: ctrl+d is not `d`.
+		if (key.ctrl) return { state, effect: NONE };
 		switch (key.name) {
 			case "q":
 				return { state, effect: { type: "quit" } };
