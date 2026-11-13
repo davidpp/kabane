@@ -226,6 +226,12 @@ bun run gallery --list                    # the stories
 bun run gallery --print form-described    # one story's frame as text; --ansi for its colors
 ```
 
+## Benchmark agent workflows
+
+`bun run benchmark init <recipe-dir>` creates editable app briefs for paired Codex/Claude
+subscription runs, with and without Kabane. The [benchmark runbook](wiki/benchmark.md) covers
+freezing inputs, isolated profiles, running stages, grading real outcomes and reading the evidence.
+
 ## License
 
 MIT, see [`LICENSE`](LICENSE).

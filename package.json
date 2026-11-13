@@ -29,7 +29,8 @@
 		"test": "bun test packages/questions packages/checklist packages/handoff packages/core packages/sqlite packages/acp packages/extension packages/cli packages/board extensions scripts && bun run --cwd packages/worker test",
 		"test:bun": "bun test packages/questions packages/checklist packages/handoff packages/core packages/sqlite packages/acp packages/extension packages/cli packages/board extensions scripts",
 		"test:worker": "bun run --cwd packages/worker test",
-		"clean": "bun run --filter '*' clean"
+		"clean": "bun run --filter '*' clean",
+		"benchmark": "bun scripts/benchmark.ts"
 	},
 	"devDependencies": {
 		"@types/bun": "1.4.0",
