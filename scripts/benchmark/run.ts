@@ -305,8 +305,11 @@ const finishAttempt = async (
 			: [];
 	const inventoryCheck = compareInventory(root, record, trace);
 	if (!inventoryCheck.ok) deviations.push(inventoryCheck.error.message);
-	if (record.arm === "kabane" && trace.kabaneCalls === 0)
-		deviations.push("Treatment did not make an observed Kabane tool call");
+	if (
+		record.arm === "kabane" &&
+		!trace.successfulKabaneTools.includes("kabane_handoff")
+	)
+		deviations.push("Treatment did not complete a successful Kabane handoff");
 	record.endedAt = new Date().toISOString();
 	record.elapsedMs = Date.now() - Date.parse(record.startedAt);
 	record.exitCode = executed.code;
@@ -324,6 +327,7 @@ const finishAttempt = async (
 		model: trace.model,
 		inventory: trace.inventory,
 		kabaneCalls: trace.kabaneCalls,
+		successfulKabaneTools: trace.successfulKabaneTools,
 		deviations,
 	});
 	if (!evidence.ok) return evidence;

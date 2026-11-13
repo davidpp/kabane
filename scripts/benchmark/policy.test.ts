@@ -78,6 +78,75 @@ describe("benchmark measurement policy", () => {
 			cacheWrite: null,
 		});
 	});
+	it("counts rejected MCP calls without treating them as successful handoffs", () => {
+		const events = [
+			{
+				type: "item.completed",
+				item: {
+					type: "mcp_tool_call",
+					server: "kabane",
+					tool: "kabane_handoff",
+					status: "failed",
+					result: null,
+					error: {
+						message:
+							"MCP tool call requires approval, but approval policy is never",
+					},
+				},
+			},
+			{ type: "turn.completed" },
+		]
+			.map((event) => JSON.stringify(event))
+			.join("\n");
+		const trace = summarizeTrace(events, "codex");
+		expect(trace.kabaneCalls).toBe(1);
+		expect(trace.successfulKabaneTools).toEqual([]);
+		expect(
+			summarizeTrace(
+				JSON.stringify({
+					type: "item.completed",
+					item: {
+						type: "mcp_tool_call",
+						server: "kabane",
+						tool: "kabane_handoff",
+						status: "completed",
+						result: { content: [] },
+						error: null,
+					},
+				}),
+				"codex",
+			).successfulKabaneTools,
+		).toEqual(["kabane_handoff"]);
+	});
+	it("requires the Claude tool result, not merely a proposed handoff", () => {
+		const use = JSON.stringify({
+			type: "assistant",
+			message: {
+				content: [
+					{
+						type: "tool_use",
+						id: "call-1",
+						name: "mcp__kabane__kabane_handoff",
+					},
+				],
+			},
+		});
+		const result = (is_error: boolean) =>
+			JSON.stringify({
+				type: "user",
+				message: {
+					content: [{ type: "tool_result", tool_use_id: "call-1", is_error }],
+				},
+			});
+		expect(summarizeTrace(use, "claude").successfulKabaneTools).toEqual([]);
+		expect(
+			summarizeTrace(use + "\n" + result(true), "claude").successfulKabaneTools,
+		).toEqual([]);
+		expect(
+			summarizeTrace(use + "\n" + result(false), "claude")
+				.successfulKabaneTools,
+		).toEqual(["kabane_handoff"]);
+	});
 	it("uses Claude's final usage once, preserving separate cache categories", () => {
 		const trace = summarizeTrace(
 			JSON.stringify({

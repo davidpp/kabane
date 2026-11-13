@@ -40,6 +40,12 @@ const eventSchema = z
 				type: z.string(),
 				server: z.string().optional(),
 				tool: z.string().optional(),
+				status: z.string().optional(),
+				error: z.unknown().optional(),
+				result: z
+					.object({ isError: z.boolean().optional() })
+					.passthrough()
+					.nullish(),
 			})
 			.passthrough()
 			.optional(),
@@ -48,7 +54,13 @@ const eventSchema = z
 				content: z
 					.array(
 						z
-							.object({ type: z.string(), name: z.string().optional() })
+							.object({
+								type: z.string(),
+								name: z.string().optional(),
+								id: z.string().optional(),
+								tool_use_id: z.string().optional(),
+								is_error: z.boolean().optional(),
+							})
 							.passthrough(),
 					)
 					.optional(),
@@ -77,6 +89,7 @@ export type Trace = {
 	usage: Usage;
 	toolCalls: number;
 	kabaneCalls: number;
+	successfulKabaneTools: string[];
 	completed: boolean;
 	failed: boolean;
 	model: string | null;
@@ -126,6 +139,16 @@ const codexEvent = (trace: Trace, event: Event): void => {
 		trace.toolCalls++;
 	if (event.item.type === "mcp_tool_call" && event.item.server === "kabane")
 		trace.kabaneCalls++;
+	if (
+		event.item.type === "mcp_tool_call" &&
+		event.item.server === "kabane" &&
+		event.item.status === "completed" &&
+		!event.item.error &&
+		event.item.result &&
+		!event.item.result.isError &&
+		event.item.tool
+	)
+		trace.successfulKabaneTools.push(event.item.tool);
 };
 const claudeUsage = (event: Event): Usage => ({
 	input: event.usage?.input_tokens ?? null,
@@ -134,14 +157,24 @@ const claudeUsage = (event: Event): Usage => ({
 	output: event.usage?.output_tokens ?? null,
 	source: "claude result usage; cache reads/writes reported separately",
 });
-const claudeEvent = (trace: Trace, event: Event): void => {
+const claudeEvent = (
+	trace: Trace,
+	event: Event,
+	pendingTools: Map<string, string>,
+): void => {
 	if (event.type === "result") {
 		trace.completed = !event.is_error && event.subtype === "success";
 		trace.failed = !trace.completed;
 		if (event.usage) trace.usage = claudeUsage(event);
 	}
 	for (const item of event.message?.content ?? []) {
+		if (item.type === "tool_result" && item.tool_use_id && !item.is_error) {
+			const tool = pendingTools.get(item.tool_use_id);
+			if (tool) trace.successfulKabaneTools.push(tool);
+		}
 		if (item.type !== "tool_use") continue;
+		if (item.id && item.name?.startsWith("mcp__kabane__"))
+			pendingTools.set(item.id, item.name.slice("mcp__kabane__".length));
 		trace.toolCalls++;
 		if (item.name?.startsWith("mcp__kabane__")) trace.kabaneCalls++;
 	}
@@ -164,11 +197,13 @@ export const summarizeTrace = (source: string, harness: Harness): Trace => {
 		usage: emptyUsage(),
 		toolCalls: 0,
 		kabaneCalls: 0,
+		successfulKabaneTools: [],
 		completed: false,
 		failed: false,
 		model: null,
 		inventory: null,
 	};
+	const pendingTools = new Map<string, string>();
 	for (const line of source.split("\n")) {
 		if (!line.trim()) continue;
 		const raw = trySync((): unknown => JSON.parse(line));
@@ -181,7 +216,7 @@ export const summarizeTrace = (source: string, harness: Harness): Trace => {
 			trace.inventory = inventory(event);
 		}
 		if (harness === "codex") codexEvent(trace, event);
-		else claudeEvent(trace, event);
+		else claudeEvent(trace, event, pendingTools);
 	}
 	return trace;
 };

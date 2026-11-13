@@ -44,7 +44,7 @@ export const environment = (root: string, arm: Arm): NodeJS.ProcessEnv => ({
 const workflow = (arm: Arm): string =>
 	arm === "baseline"
 		? "Maintain work state and handoff in repository notes, such as HANDOFF.md. Read the prior handoff before continuing."
-		: "Use the provided Kabane MCP tools for work state and handoff: read kabane_context for existing work, create an issue if needed, and record completed work, decisions, verification and gaps with kabane_handoff. Read prior records before continuing. Repository notes and native planning remain available. Use only this experiment's supplied local Kabane server.";
+		: "Use the provided Kabane MCP tools for work state and handoff: read kabane_context for existing work, create an issue if needed, and record completed work, decisions, verification and gaps with kabane_handoff. Read prior records before continuing. Repository notes and native planning remain available. Use only this experiment's supplied local Kabane server. Its disposable scope is benchmark; writes and handoffs in this isolated device are authorized.";
 const instructions = (manifest: Manifest, arm: Arm): string =>
 	`${manifest.common}\n\n${workflow(arm)}\n${manifest.recipe.browser ? `\nBrowser tool (same in both conditions): ${JSON.stringify(manifest.recipe.browser.command)}. Use from the shell: open <local-url>, snapshot -i, click @e1, fill @e2 <text>, screenshot <path>, close. Re-snapshot after navigation. The browser executable/session environment is configured. Use a real local app; save evidence inside the workspace. Stop app servers you start before ending.\n` : ""}`;
 const configFiles = (
@@ -65,7 +65,8 @@ const configFiles = (
 	const toml = [
 		'model_provider = "openai"',
 		'forced_login_method = "chatgpt"',
-		'approval_policy = "never"',
+		'approval_policy = "on-request"',
+		'approvals_reviewer = "auto_review"',
 		'sandbox_mode = "workspace-write"',
 		"[features]",
 		"apps = false",

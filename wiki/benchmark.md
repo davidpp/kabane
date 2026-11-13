@@ -110,7 +110,10 @@ Profiles use an allowlisted environment, isolated `HOME`, `CODEX_HOME`, `CLAUDE_
 and XDG directories. Ambient API keys, provider overrides, normal skills, account configuration,
 and project settings are not forwarded. Claude receives an explicit tool list, disabled
 skill discovery, strict MCP configuration and disabled automatic memory. Codex uses an explicit
-local configuration with unrelated integrations, memories and delegation disabled. Both get
+local configuration with unrelated integrations, memories and delegation disabled. Both Codex
+conditions retain the workspace sandbox and use `approval_policy="on-request"` with
+`approvals_reviewer="auto_review"`; authorized local MCP writes still pass native approval review.
+Both get
 the same short browser usage guidance. The runner prelaunches an isolated browser companion
 before injecting model credentials; the sandboxed agent controls it through the same local
 session/socket. This lets Chrome retain its own sandbox while Codex keeps its native sandbox.
@@ -120,7 +123,8 @@ first protocol.
 Doctor checks native subscription authentication and Codex's native MCP inventory. Every
 Claude run also captures and checks its startup model, API-key source, tools, MCP connection,
 skills and plugins. Builtin Claude plugins remain and are compared across conditions; external
-plugins/skills fail the check. Treatment must make an observed Kabane tool call. Same-harness
+plugins/skills fail the check. Treatment must complete an observed successful `kabane_handoff`, checked from native tool
+results rather than attempted calls. Failed calls still count toward tool usage. Same-harness
 Claude inventories must match after removing the intended Kabane tool difference. Codex's
 JSON stream does not provide the same startup inventory/model evidence; its record consists
 of requested settings, native MCP inventory and observed execution/tool calls. Do not label
@@ -280,21 +284,39 @@ separate and should use the reviewed app prompts and acceptance criteria.
 
 ## Verification status (2026-11-12)
 
-The final CLI's `init → freeze → doctor --browser` path was exercised against actual installed
-Codex/Claude clients and Chrome. Both condition profiles passed native subscription-auth
-checks, native MCP inventory checks, and real browser open/snapshot/click/read through the
-Codex sandbox client. The browser click changed the page to `42`. This preflight makes no model
-requests and leaves the billing gate blocked.
+The final CLI's `init → freeze → doctor --browser → run --next → report` path was exercised
+against actual installed subscription clients, local Kabane MCP and Chrome. The owner authorized
+the small smoke within an existing spending limit; no account billing settings were changed.
+The final pair completed all four stages on their first attempts:
 
-The generated local Kabane stdio configuration was also exercised with two actual MCP clients:
-the first created an issue and handoff containing a decision, disconnected, and a fresh second
-client retrieved that decision with `kabane_context`. This verifies local transport and durable
-shared state; it does not prove that either model chooses the right tools during an app task.
+| Condition | Codex build | Claude continuation | Executable evaluator | Successful Kabane calls |
+| --- | ---: | ---: | --- | ---: |
+| Baseline | 45.6 s | 20.9 s | Both pass | 0 |
+| Kabane | 65.9 s | 39.1 s | Both pass | 6 + 9 |
 
-An earlier baseline Codex smoke stage completed and passed the real export/decision evaluator.
-That stage preceded final browser-companion and configuration fixes, so it is not evidence that
-the final paired model workflow has passed. No scored app trial has run. The final model-driven
-Kabane condition, Claude continuation, both-direction handoffs and in-model browser use remain
-unverified because the owner explicitly requested no more model runs until billing controls
-are checked. Running the final CLI with the default false gate was verified to refuse before
-creating an attempt. This is the remaining live verification step, not a simulated passing path.
+All four stages opened the real local page, clicked Check and saved screenshots showing `42`.
+The raw browser traces and screenshots were inspected separately from the executable evaluator.
+Claude's actual model and normalized tool/plugin inventory matched across conditions, with only
+the intended Kabane MCP tools added. No external skills/plugins loaded. Codex's inventory limits
+remain as documented above. No quota errors or retries occurred in the final pair.
+
+The treatment Codex created an issue and successful handoff. Fresh Claude retrieved that
+handoff with `kabane_context`, preserved the addition decision, created a linked continuation
+issue and wrote its own handoff. Read-only inspection of both saved SQLite snapshots confirmed
+the respective Codex and Claude handoff authors and contents. This proves the Codex-to-Claude
+path; the reverse harness order has not been exercised.
+
+An earlier preserved smoke exposed a native configuration error: `approval_policy="never"`
+rejected a Kabane write before review. Its app evaluator passed, but the treatment handoff was
+invalid. Both conditions now use native automatic approval review with the workspace sandbox;
+validation requires a successful handoff result, not a tool-call count. The fixed configuration
+was frozen into a new experiment, leaving the earlier evidence intact.
+
+The no-model preflight also passed browser open/snapshot/click/read from the native Codex
+sandbox in both profiles. Two fresh MCP clients independently verified shared local handoff
+persistence. Repository gates passed: check, typecheck, 2,545 Bun tests and 81 Worker tests;
+12 focused benchmark policy tests passed, including rejected calls and correlated tool results.
+
+No scored app trial has run. This tiny plumbing task showed Kabane overhead and is not evidence
+of an efficiency benefit. Review the editable app prompts and rubric before collecting app
+results; evaluate quality before interpreting resource differences.
