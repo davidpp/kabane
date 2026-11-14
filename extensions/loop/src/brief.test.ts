@@ -25,7 +25,17 @@ const attempt: Brief.Interrupted = {
 	status: "?? hello.txt",
 };
 
+const tree: Brief.Tree = {
+	worktree: true,
+	isolation: "shared",
+	land: "none",
+	dir: "/run/project",
+	branch: "run-branch",
+	runBranch: "run-branch",
+};
+
 const subject = {
+	tree,
 	runId: "r1",
 	gates: [],
 	concurrent: false,
@@ -101,7 +111,7 @@ describe("Brief after a red gate", () => {
 			"After you called kabane_done on P-2, the runner ran the gates and the `check` gate (`grep -q fixed out.txt`) failed with exit 1, so P-2 is open again. This is the same session, resumed, so your instructions, the brief and what you did so far still hold. The end of the gate's output:",
 		);
 		expect(prompt).toContain("```\nno match\n```");
-		expect(prompt).toEndWith(
+		expect(prompt).toContain(
 			"Make it pass, then call kabane_done on P-2 again.",
 		);
 		expect(prompt).not.toContain("You are one implementing session");
@@ -124,6 +134,7 @@ describe("Brief on a single issue", () => {
 	const lone = task("P-9", "lone");
 	// Concurrent or not, a single issue has no siblings.
 	const single = {
+		tree,
 		runId: "r1",
 		parent: lone,
 		task: lone,
@@ -262,7 +273,7 @@ describe("Brief on a decision that is the human's", () => {
 		expect(fixer).toContain(
 			`If fixing a finding needs a call that is the human's (two reasonable fixes, or a change to what P-1 asked for), do not change code for it either: file the decision on it ${asked}. ${parked}`,
 		);
-		expect(Brief.fixerContinuation([subject.task])).toEndWith(
+		expect(Brief.fixerContinuation([subject.task])).toContain(
 			"or file the decision it needs with kabane_ask.",
 		);
 	});
@@ -272,6 +283,7 @@ describe("Brief.recheck", () => {
 	const recheck = (diff: string) =>
 		Brief.recheck(
 			{
+				tree,
 				runId: "r1",
 				parent: task("P-1", "parent"),
 				lens: "functional",
@@ -361,5 +373,120 @@ describe("Brief on a task with a checklist", () => {
 		expect(Brief.reopened(subject.task, [first, ...rest])).toStartWith(
 			"You called kabane_done on P-2 with 2 checklist items not ticked (P-2.2, P-2.3), so the run reopened it",
 		);
+	});
+});
+
+describe("Brief working copy", () => {
+	for (const worktree of [true, false])
+		for (const isolation of ["worktree", "shared"] as const)
+			for (const single of [true, false])
+				for (const land of ["none", "pr", "merge"] as const)
+					it(`${worktree ? "worktree" : "checkout"}, ${isolation}, ${single ? "single" : "subtask"}, ${land}`, () => {
+						const isolated = worktree && isolation === "worktree" && !single;
+						const place = {
+							...tree,
+							worktree,
+							isolation,
+							land,
+							dir: isolated ? "/run/trees/1/project" : "/run/project",
+							branch: isolated ? "claim-branch" : "run-branch",
+						};
+						const prompt = Brief.opening(
+							{
+								...subject,
+								tree: place,
+								task: single ? subject.parent : subject.task,
+								concurrent: !single && !isolated,
+							},
+							"Branch foo in its own worktree",
+						);
+						expect(prompt).toContain(`You are in \`${place.dir}\``);
+						expect(prompt).toContain(
+							"Do not create a branch or a worktree and do not switch branches.",
+						);
+						expect(prompt).toContain(
+							"Where the issue's brief names a branch, a worktree or a merge order, this paragraph replaces it.",
+						);
+						expect(prompt.indexOf("this paragraph replaces it")).toBeLessThan(
+							prompt.indexOf("Branch foo"),
+						);
+						expect(prompt.includes("Sibling sessions edit the same tree")).toBe(
+							!single && !isolated,
+						);
+						expect(prompt.includes("nothing needs to reach main")).toBe(
+							!single,
+						);
+						expect(
+							prompt.includes(
+								"a green pass merges this branch into the run's branch `run-branch`",
+							),
+						).toBe(isolated);
+						if (!worktree) {
+							expect(prompt).toContain(
+								"The run commits nothing: commit your own work.",
+							);
+							expect(prompt).not.toContain("opens the pull request");
+						} else {
+							expect(prompt).toContain(`on branch \`${place.branch}\``);
+							expect(prompt).toContain(
+								land === "pr"
+									? "opens the pull request; push nothing"
+									: land === "merge"
+										? "merges it into its base in the project checkout"
+										: "left for the human",
+							);
+						}
+					});
+
+	it("keeps reviews and fixes in the run's tree even with isolated subtasks", () => {
+		const target = {
+			...subject,
+			tree: { ...tree, isolation: "worktree" as const },
+			lens: "functional",
+			prompt: "LENS",
+			lenses: [{ name: "functional", prompt: "LENS" }],
+			findings: [],
+			base: "base",
+			diff: "",
+		};
+		for (const prompt of [
+			Brief.lens(target, "BRIEF"),
+			Brief.recheck(target, "BRIEF"),
+			Brief.fixer(target, "BRIEF"),
+		]) {
+			expect(prompt).toContain(
+				"You are in `/run/project`, a git worktree on branch `run-branch`",
+			);
+			expect(prompt).toContain("This is the run's one tree and branch.");
+			expect(prompt).not.toContain("a green pass merges this branch");
+		}
+		const review = Brief.lens(
+			{ ...target, tree: { ...tree, worktree: false } },
+			"BRIEF",
+		);
+		expect(review).toContain("Review here without changing files.");
+		expect(review).not.toContain("commit your own work");
+	});
+
+	it("repeats the working-copy constraint on nudges, retries and resumes", () => {
+		const item = { handle: "P-2.1", text: "finish", done: false };
+		for (const prompt of [
+			Brief.continuation(subject.task),
+			Brief.continuation(subject.task, [item]),
+			Brief.reopened(subject.task, [item]),
+			Brief.resumed(attempt),
+			Brief.fixerContinuation([subject.task]),
+			Brief.retriedInSession(subject.task, {
+				name: "test",
+				command: "bun test",
+				ok: false,
+				exit: 1,
+				ms: 1,
+				tail: "failed",
+			}),
+		])
+			expect(prompt).toContain(
+				"Continue in the directory and on the branch assigned by this run",
+			);
 	});
 });

@@ -310,6 +310,14 @@ describe("Brief.lens", () => {
 		const brief = Brief.lens(
 			{
 				runId: "run-1",
+				tree: {
+					worktree: false,
+					isolation: "shared",
+					land: "none",
+					dir: home,
+					branch: "",
+					runBranch: "",
+				},
 				parent,
 				lenses: [{ name: "quality", prompt: "# Quality lens\n" }],
 				gates: ["check", "test"],
@@ -331,6 +339,14 @@ describe("Brief.lens", () => {
 		const brief = Brief.lens(
 			{
 				runId: "run-1",
+				tree: {
+					worktree: false,
+					isolation: "shared",
+					land: "none",
+					dir: home,
+					branch: "",
+					runBranch: "",
+				},
 				parent,
 				lenses: [
 					{ name: "functional", prompt: "# Functional lens\n" },
@@ -360,6 +376,14 @@ describe("Brief.lens", () => {
 		const lone = Brief.lens(
 			{
 				runId: "run-1",
+				tree: {
+					worktree: false,
+					isolation: "shared",
+					land: "none",
+					dir: home,
+					branch: "",
+					runBranch: "",
+				},
 				parent,
 				lenses: [{ name: "docs", prompt: "# Docs lens\n" }],
 				gates: [],
@@ -375,6 +399,14 @@ describe("Brief.lens", () => {
 		const brief = Brief.lens(
 			{
 				runId: "run-1",
+				tree: {
+					worktree: false,
+					isolation: "shared",
+					land: "none",
+					dir: home,
+					branch: "",
+					runBranch: "",
+				},
 				parent,
 				lenses: [{ name: "functional", prompt: "" }],
 				gates: [],

@@ -453,6 +453,19 @@ export namespace Claims {
 			: outcome;
 	};
 
+	// The same directory goes to ACP and the brief, including a nested project's prefix.
+	const briefTree = (
+		run: RunStore.Run,
+		claim: ClaimTrees.Tree | undefined,
+	): Brief.Tree => ({
+		worktree: run.worktree !== undefined,
+		isolation: run.config.isolation,
+		land: run.config.land,
+		dir: claim ? RunStore.projectIn(run, claim.dir) : RunStore.sessionDir(run),
+		branch: claim?.branch ?? RunStore.branchOf(run),
+		runBranch: RunStore.branchOf(run),
+	});
+
 	// Record the claim, dispatch its session and hold it live until it has settled.
 	const launch = (ctx: Ctx, plan: LoopPlan.Plan, started: Started): void => {
 		const {
@@ -509,6 +522,7 @@ export namespace Claims {
 			task: label(task),
 			summary: started.summary,
 		});
+		const place = briefTree(ctx.run, worktree);
 		const handle = Dispatch.begin(
 			{
 				parent: plan.parent,
@@ -527,9 +541,7 @@ export namespace Claims {
 				basePath: ctx.deps.basePath,
 				home: ctx.deps.home,
 				kabaneBin: ctx.deps.kabaneBin,
-				cwd: worktree
-					? RunStore.projectIn(ctx.run, worktree.dir)
-					: RunStore.sessionDir(ctx.run),
+				cwd: place.dir,
 				runId: ctx.run.id,
 				...(ctx.run.scopeUri ? { scopeUri: ctx.run.scopeUri } : {}),
 				...(ctx.deps.mode ? { mode: ctx.deps.mode } : {}),
@@ -537,6 +549,7 @@ export namespace Claims {
 					? { overrides: ctx.deps.overrides[harness] }
 					: {}),
 				models: ctx.run.config,
+				tree: place,
 			},
 			hooks(ctx, sessionId, lane, label(task), harness),
 		);

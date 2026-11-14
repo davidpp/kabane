@@ -10,11 +10,23 @@
 import { CopilotInstructions } from "@cabane/acp";
 import type { Task } from "@cabane/core";
 import type { Checklists } from "./checklists";
+import type { LoopConfig } from "./config";
 import type { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 
 export namespace Brief {
+	/** Resolved run settings and the working copy actually assigned to this session. */
+	export type Tree = Pick<
+		LoopConfig.Config,
+		"worktree" | "isolation" | "land"
+	> & {
+		dir: string;
+		branch: string;
+		runBranch: string;
+	};
+
 	type Subject = {
+		tree: Tree;
 		runId: string;
 		parent: Task;
 		task: Task;
@@ -48,6 +60,49 @@ export namespace Brief {
 	};
 
 	const label = (task: Task): string => task.shortId ?? task.id;
+
+	const STAY =
+		"Continue in the directory and on the branch assigned by this run in your opening instructions; do not create a branch or a worktree or switch branches, even if the issue's brief says otherwise.";
+
+	const location = (tree: Tree): string =>
+		tree.worktree
+			? `You are in \`${tree.dir}\`, a git worktree on branch \`${tree.branch}\`.`
+			: `You are in \`${tree.dir}\`, the project checkout itself.`;
+
+	const landing = (tree: Tree): string => {
+		if (!tree.worktree)
+			return "The run commits nothing: commit your own work. It has no branch of its own to land.";
+		switch (tree.land) {
+			case "pr":
+				return `Once it completes, the run rebases and pushes its branch \`${tree.runBranch}\` and opens the pull request; push nothing and open no pull request yourself.`;
+			case "merge":
+				return `Once it completes, the run rebases its branch \`${tree.runBranch}\` and merges it into its base in the project checkout, without pushing; do not merge, push or open a pull request yourself.`;
+			case "none":
+				return `The run's branch \`${tree.runBranch}\` is left for the human; push nothing and open no pull request yourself.`;
+		}
+	};
+
+	const working = (
+		tree: Tree,
+		subtask?: Task,
+		concurrent = false,
+		review = false,
+	): string =>
+		[
+			location(tree),
+			subtask && tree.worktree && tree.isolation === "worktree"
+				? `This run made this worktree for ${label(subtask)}. Work and commit here. The gates run in this directory when you call kabane_done, and a green pass merges this branch into the run's branch \`${tree.runBranch}\`.`
+				: `${review ? "Review here without changing files." : "Work and commit here; the configured gates run in this directory."}${tree.worktree ? " This is the run's one tree and branch." : ""}${concurrent ? " Sibling sessions edit the same tree: protect their work." : ""}`,
+			"Do not create a branch or a worktree and do not switch branches.",
+			...(subtask
+				? [
+						"A subtask starts once its tracker blockers are done, cancelled or deleted and no longer have a live claim in this run. This checks tracker readiness, not commit presence: external completion alone does not prove its commits are here, and cancelled or deleted blockers may have no work. Work actually merged by this run is in the run's branch; for those in-run merges, nothing needs to reach main. Check this working copy for any required dependency changes before relying on them.",
+					]
+				: []),
+			// Reviewers never commit, even when the run cannot checkpoint their tree.
+			...(review && !tree.worktree ? [] : [landing(tree)]),
+			"Where the issue's brief names a branch, a worktree or a merge order, this paragraph replaces it.",
+		].join(" ");
 
 	const plural = (count: number, noun: string): string =>
 		`${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -117,11 +172,13 @@ export namespace Brief {
 		gates,
 		concurrent,
 		checklist = [],
+		tree,
 	}: Subject): string =>
 		(task.id === parent.id
 			? [
 					`You are the implementing session of kabane loop run ${runId}, which drives the single issue ${label(task)} ("${task.title}") to completion.`,
 					`Your issue is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
+					working(tree),
 					...steps(task, checklist),
 					// A child would make the issue a parent, whose subtasks the run then works instead.
 					...finishing(
@@ -134,6 +191,7 @@ export namespace Brief {
 			: [
 					`You are one implementing session of kabane loop run ${runId}, which drives the subtasks of ${label(parent)} ("${parent.title}") to completion.${concurrent ? " Other sessions may be working on sibling subtasks in the same repository at the same time." : ""}`,
 					`Your subtask is ${label(task)}. Work on it and nothing else. Its brief follows, assembled from the tracker.`,
+					working(tree, task, concurrent),
 					...steps(task, checklist),
 					...finishing(
 						task,
@@ -163,6 +221,7 @@ export namespace Brief {
 			`After you called kabane_done on ${label(task)}, the runner ran the gates and ${failed(gate)}, so ${label(task)} is open again. This is the same session, resumed, so your instructions, the brief and what you did so far still hold. The end of the gate's output:`,
 			`\`\`\`\n${gate.tail}\n\`\`\``,
 			`Make it pass, then call kabane_done on ${label(task)} again.`,
+			STAY,
 		].join("\n\n");
 
 	const fence = (text: string): string => `\`\`\`\n${text.trimEnd()}\n\`\`\``;
@@ -207,6 +266,7 @@ export namespace Brief {
 	): string =>
 		[
 			`The kabane loop runner exited while your last turn was running, and has restarted. This is the same session, resumed, so your instructions and everything said so far still hold. That turn was cut short: its last tool call may not have finished, and if it shows as rejected or cancelled, the restart cut it, nobody refused it. Check the state below, then continue where you left off, retrying that call if it is still needed.`,
+			STAY,
 			...progress(checklist),
 			left(attempt),
 		].join("\n\n");
@@ -227,6 +287,7 @@ export namespace Brief {
 	export type LensPrompt = { name: string; prompt: string };
 
 	type Lens = {
+		tree: Tree;
 		runId: string;
 		parent: Task;
 		/** One lens, or a group one session reviews through in turn. */
@@ -258,7 +319,7 @@ export namespace Brief {
 	// the run reads them back structurally. It is the run's part of every lens, so a repository's
 	// own lens cannot leave it out. A group's session tags each finding with the one lens it falls
 	// under, so the fixer, the severities and the rechecks read it as they read a lone lens's.
-	const filing = ({ runId, parent, lenses, gates }: Lens): string => {
+	const filing = ({ runId, parent, lenses, gates, tree }: Lens): string => {
 		const names = lenses.map((l) => l.name);
 		const [only] = names;
 		const one = names.length === 1 && only !== undefined;
@@ -269,6 +330,7 @@ export namespace Brief {
 			one
 				? `You are the \`${only}\` verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`
 				: `You are the ${listing(ticked(names))} verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates)} Review the result through each lens below in turn and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`,
+			working(tree, undefined, false, true),
 			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", ${tagged}, a title that names the problem, and a description with the evidence and what fixed looks like. The fixer takes every finding, most severe first, and a human reads the severities, so grade by the lens's definitions as written: a finding that meets the p1 definition is p1 even when the fix is small, and one that does not stays p2 or p3. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
 			`When the fix is a trade-off the human must choose, file the finding all the same, then ${asking("it")}. ${PARKED} The fixer leaves a waiting finding to the human.`,
 			"When everything is filed, end your turn with one line: how many findings you filed at each severity.",
@@ -295,6 +357,7 @@ export namespace Brief {
 		].join("\n\n---\n\n");
 
 	type Fixer = {
+		tree: Tree;
 		runId: string;
 		parent: Task;
 		/** In the order to work them. */
@@ -317,13 +380,14 @@ export namespace Brief {
 	 * parent's own brief.
 	 */
 	export const fixer = (
-		{ runId, parent, findings, gates, interrupted }: Fixer,
+		{ runId, parent, findings, gates, interrupted, tree }: Fixer,
 		assembled: string,
 	): string =>
 		[
 			[
 				`You are the fixer session of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"), whose work is done. Its verifier lenses reviewed the result and filed the findings below as child issues of ${label(parent)}. They are all yours, and no other session works in the repository meanwhile. Work through them in this order, most severe first:`,
 				findings.map(listed).join("\n"),
+				working(tree),
 				`For each finding: read its brief with kabane_context, fix it, verify the fix, log what you changed with kabane_log on it, then call kabane_done on it. Close only a finding you fixed. If a finding is wrong, already fixed, or outside ${label(parent)}'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open for a human. If fixing a finding needs a call that is the human's (two reasonable fixes, or a change to what ${label(parent)} asked for), do not change code for it either: ${asking("it")}. ${PARKED} ${after(gates)}`,
 				`Do not file findings. If fixing one turns up other work, add it with kabane_add as a child of ${label(parent)} with kind "issue" instead of doing it.`,
 				"When every finding is closed or waiting, end your turn with one line per finding: fixed, or why it was left.",
@@ -333,6 +397,7 @@ export namespace Brief {
 		].join("\n\n---\n\n");
 
 	type Recheck = {
+		tree: Tree;
 		runId: string;
 		parent: Task;
 		lens: string;
@@ -380,11 +445,12 @@ export namespace Brief {
 	 * review it takes over, the diff, the lens itself, then the parent's own brief.
 	 */
 	export const recheck = (subject: Recheck, assembled: string): string => {
-		const { runId, parent, lens, findings, gates, interrupted } = subject;
+		const { runId, parent, lens, findings, gates, interrupted, tree } = subject;
 		return [
 			[
 				`You are the \`${lens}\` verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"), rechecking the fixer. You reviewed the work earlier and filed findings; one fixer session has since worked them, and closed these of yours:`,
 				findings.map(listed).join("\n"),
+				working(tree, undefined, false, true),
 				`${checked(gates)} Review only the fixer's diff below, through the lens that follows it. Do not change files and do not fix anything: no fixer runs after you, so what you reopen or file is left for a human.`,
 				`${SERVER} For each finding above, read it with kabane_context and check the diff against it. When the diff fixes it, leave it closed. When it does not, or only in part, reopen it with kabane_edit (state "next") and say with kabane_comment on it what is still wrong. File a new finding only for something the diff broke, as the lens defines findings: kabane_add with kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"], after checking kabane_list for one already filed.`,
 				"When you are done, end your turn with one line: how many findings you confirmed, reopened and filed.",
@@ -398,7 +464,7 @@ export namespace Brief {
 
 	/** The nudge for a fixer turn that ended with findings it has not settled. */
 	export const fixerContinuation = (left: readonly Task[]): string =>
-		`${left.map(label).join(", ")} ${left.length === 1 ? "is" : "are"} still open. Continue: fix each and call kabane_done on it, say why it is left with kabane_comment and call kabane_edit on it with state "waiting", or file the decision it needs with kabane_ask.`;
+		`${left.map(label).join(", ")} ${left.length === 1 ? "is" : "are"} still open. Continue: fix each and call kabane_done on it, say why it is left with kabane_comment and call kabane_edit on it with state "waiting", or file the decision it needs with kabane_ask. ${STAY}`;
 
 	const blocked = (task: Task): string =>
 		`If you are blocked, call kabane_edit on ${label(task)} with state "waiting", explain the blocker with kabane_comment, then end your turn. It stays parked until explicitly moved to state "next".`;
@@ -420,8 +486,8 @@ export namespace Brief {
 	): string => {
 		const [first, ...rest] = open;
 		return first
-			? `${label(task)} is still open, with ${plural(open.length, "checklist item")} not ticked: ${handles(open)}. ${unticked(task, [first, ...rest])}`
-			: `${label(task)} is still open. Continue the work. If it is finished and verified, call kabane_done on ${label(task)}. ${blocked(task)}`;
+			? `${label(task)} is still open, with ${plural(open.length, "checklist item")} not ticked: ${handles(open)}. ${unticked(task, [first, ...rest])} ${STAY}`
+			: `${label(task)} is still open. Continue the work. If it is finished and verified, call kabane_done on ${label(task)}. ${blocked(task)} ${STAY}`;
 	};
 
 	/** The nudge for a turn that closed its task with checklist items still open, which the run reopened. */
@@ -429,5 +495,5 @@ export namespace Brief {
 		task: Task,
 		open: readonly [Item, ...Item[]],
 	): string =>
-		`You called kabane_done on ${label(task)} with ${plural(open.length, "checklist item")} not ticked (${handles(open)}), so the run reopened it: it is done only once every item is ticked. ${unticked(task, open)}`;
+		`You called kabane_done on ${label(task)} with ${plural(open.length, "checklist item")} not ticked (${handles(open)}), so the run reopened it: it is done only once every item is ticked. ${unticked(task, open)} ${STAY}`;
 }
