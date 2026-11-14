@@ -4,6 +4,10 @@ import { z } from "zod";
 import { err, ok, type Result } from "../packages/core/result";
 import { doctor } from "./benchmark/doctor";
 import { freeze } from "./benchmark/experiment";
+import {
+	runOrchestration,
+	orchestrationReport,
+} from "./benchmark/orchestration";
 import { evaluate, grade, report } from "./benchmark/report";
 import { runExperiment } from "./benchmark/run";
 import { armSchema } from "./benchmark/schema";
@@ -19,6 +23,8 @@ const help = `Local subscription benchmark
   bun run benchmark evaluate <experiment-dir> <baseline|kabane> <round>
   bun run benchmark grade <experiment-dir> <baseline|kabane> <round> <pass|fail> <evidence>
   bun run benchmark report <experiment-dir>
+  bun run benchmark orchestrate <experiment-dir> <baseline|kabane>
+  bun run benchmark orchestration-report <experiment-dir>
 
 Keep experiments outside repositories to avoid inherited instructions.
 Each round starts a fresh harness session. Retry preserves failed attempts and starts a new session on the existing workspace.
@@ -51,7 +57,9 @@ const main = async (args: string[]): Promise<Result<unknown>> => {
 		return summary.ok ? ok(`Report: ${root}/report.md`) : summary;
 	}
 	if (command === "report") return report(root);
+
 	const arm = armSchema.safeParse(target);
+
 	const round = z.coerce.number().int().min(1).safeParse(roundText);
 	if (arm.success && round.success) {
 		if (command === "evaluate") return evaluate(root, arm.data, round.data);
@@ -60,7 +68,16 @@ const main = async (args: string[]): Promise<Result<unknown>> => {
 	}
 	return err(new Error(help));
 };
-const result = await main(process.argv.slice(2));
+const execute = async (args: string[]): Promise<Result<unknown>> => {
+	const [command, directory, target] = args;
+	if (command === "orchestration-report" && directory)
+		return orchestrationReport(resolve(directory));
+	const arm = armSchema.safeParse(target);
+	if (command === "orchestrate" && directory && arm.success)
+		return runOrchestration(resolve(directory), arm.data);
+	return main(args);
+};
+const result = await execute(process.argv.slice(2));
 if (!result.ok) {
 	console.error(result.error.message);
 	process.exitCode = 1;

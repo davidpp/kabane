@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { orchestrationSchema } from "./orchestration-policy";
 
 export const armSchema = z.enum(["baseline", "kabane"]);
 export type Arm = z.infer<typeof armSchema>;
@@ -22,6 +23,7 @@ export const recipeSchema = z
 		maxSeconds: z.number().int().min(10).max(7200),
 		maxAttempts: z.number().int().min(1).max(3).default(2),
 		billingControlsVerified: z.boolean().default(false),
+		orchestration: orchestrationSchema.optional(),
 		common: relativeFile,
 		rubric: relativeFile,
 		starter: relativeFile,

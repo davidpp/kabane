@@ -353,3 +353,53 @@ persistence. Repository gates passed: check, typecheck, 2,545 Bun tests and 81 W
 No scored app trial has run. This tiny plumbing task showed Kabane overhead and is not evidence
 of an efficiency benefit. Review the editable app prompts and rubric before collecting app
 results; evaluate quality before interpreting resource differences.
+
+## Bounded orchestration pilot
+
+A recipe can opt into `orchestration: { "turnCaps": [12, 30, 30, 30] }` with exactly four
+Claude rounds named by their prompts: planner, domain worker, UI worker and fresh integrator.
+Use `maxAttempts: 1`, no automatic evaluator, the normal frozen manifest, and the same model
+and effort for corresponding roles. The native `--max-turns` option bounds agentic turns;
+these limits do not impose a hard aggregate token ceiling. The account's existing spending
+limit remains the monetary boundary. Tokens and native turns are primary measurements;
+time is diagnostic.
+
+```sh
+bun run benchmark freeze /path/to/orchestration-recipe /path/to/new-experiment
+bun run benchmark orchestrate /path/to/new-experiment baseline
+bun run benchmark orchestrate /path/to/new-experiment baseline
+# Review a disposable copy of baseline/first-integration before any integration repair.
+bun run benchmark orchestrate /path/to/new-experiment baseline
+# Repeat the three phases for kabane, then inspect all-role accounting.
+bun run benchmark orchestration-report /path/to/new-experiment
+```
+
+Each call advances one phase: planner, two parallel workers, or integrator. There is exactly
+one invocation per role and no retry/reset path. A native turn-cap outcome is retained and
+may be followed by the next role; quota exhaustion, interruption, timeout, inventory drift or
+other failures stop progression. An infrastructure failure cannot be erased by rerunning.
+Review incomplete evidence before deciding on a separately frozen experiment.
+
+Every role receives a separate home and workspace. Both conditions can read and update a
+live shared `notes/` directory, using role-specific files; treatment additionally shares one
+isolated Kabane device. Worker source copies inherit the coordinator's source at the same
+point. Source deltas are transported identically, retaining the base for conflicting changes
+and listing the competing deliveries in `.benchmark/transport.json`. Runtime databases,
+backups, browser state, `dist/`, verification evidence and the generated client bundle are
+not merged. Database migrations must be implemented in source. Prior workspace and snapshot
+digests are checked before subsequent phases and after the integrator, whose worker-copy
+access is instructed read-only but is not an OS-enforced boundary.
+
+The external semantic reviewer uses disposable checkpoint copies; the integrator receives
+no external grading feedback. Freeze the same real app/database/browser cases for first and
+final integration, while allowing the coordinator to choose interface names. Record blocked
+or unbuildable checkpoints as such, never repair them in evaluation. The worker pair's Kabane
+state is snapshotted only after both processes have ended. Native traces and per-role final
+usage remain authoritative, including capped/failed work. `orchestration-report.json` and
+`.md` include every attempted role; missing telemetry remains unknown. Native inventory is
+compared between corresponding roles after removing only Kabane tools.
+
+Use this protocol for Kabane-versus-files coordination, not as evidence that multi-agent work
+beats a single agent. Keep the starting app identical; retain the original two-round build
+experiment separately. Baseline-first order is fixed for this pilot and must be disclosed as
+an order/cache confound. No universal benefit threshold follows from one paired task.

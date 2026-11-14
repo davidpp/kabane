@@ -58,7 +58,7 @@ export const attemptDirectory = (
 	round: number,
 	attempt: number,
 ): string => join(root, arm, "attempts", `round-${round}-attempt-${attempt}`);
-const launchArguments = (
+export const launchArguments = (
 	root: string,
 	manifest: Manifest,
 	arm: Arm,
@@ -373,6 +373,12 @@ export const runExperiment = async (
 	const loaded = loadManifest(root);
 	if (!loaded.ok) return loaded;
 	const manifest = loaded.value;
+	if (manifest.recipe.orchestration)
+		return err(
+			new Error(
+				"Use orchestrate for this recipe; ordinary run/retry would bypass its fixed topology and native turn caps.",
+			),
+		);
 	if (!manifest.recipe.billingControlsVerified)
 		return err(
 			new Error(

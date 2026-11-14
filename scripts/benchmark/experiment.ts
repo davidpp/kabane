@@ -47,18 +47,20 @@ const workflow = (arm: Arm): string =>
 		: "Use the provided Kabane MCP tools for work state and handoff: read kabane_context for existing work, create an issue if needed, and record completed work, decisions, verification and gaps with kabane_handoff. Read prior records before continuing. Repository notes and native planning remain available. Use only this experiment's supplied local Kabane server. Its disposable scope is benchmark; writes and handoffs in this isolated device are authorized.";
 const instructions = (manifest: Manifest, arm: Arm): string =>
 	`${manifest.common}\n\n${workflow(arm)}\n${manifest.recipe.browser ? `\nBrowser tool (same in both conditions): ${JSON.stringify(manifest.recipe.browser.command)}. Use from the shell: open <local-url>, snapshot -i, click @e1, fill @e2 <text>, screenshot <path>, close. Re-snapshot after navigation. The browser executable/session environment is configured. Use a real local app; save evidence inside the workspace. Stop app servers you start before ending.\n` : ""}`;
-const configFiles = (
+export const configFiles = (
 	root: string,
 	manifest: Manifest,
 	arm: Arm,
+	sharedState?: string,
+	actor = "claude",
 ): Record<string, string> => {
 	const cli = join(manifest.sourceRoot, "packages/cli/index.ts");
 	const mcp = {
 		command: process.execPath,
-		args: [cli, "mcp", "--as", "cabane://actor/agent/claude"],
+		args: [cli, "mcp", "--as", `cabane://actor/agent/${actor}`],
 		cwd: workspace(root, arm),
 		env: {
-			KABANE_HOME: join(home(root, arm), ".kabane"),
+			KABANE_HOME: sharedState ?? join(home(root, arm), ".kabane"),
 			KABANE_HARNESSES: "",
 		},
 	};
@@ -205,7 +207,10 @@ export const freeze = async (
 		prompts: content.slice(2),
 		evaluator: evaluator.value,
 		starterDigest: starterDigest.value,
-		order: randomInt(2) ? ["baseline", "kabane"] : ["kabane", "baseline"],
+		order:
+			recipe.value.orchestration || randomInt(2)
+				? ["baseline", "kabane"]
+				: ["kabane", "baseline"],
 		versions: binaries.value,
 		sourceRoot,
 	};

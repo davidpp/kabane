@@ -15,6 +15,8 @@ const eventSchema = z
 	.object({
 		type: z.string(),
 		subtype: z.string().optional(),
+		num_turns: z.number().int().nonnegative().optional(),
+		errors: z.array(z.string()).optional(),
 		is_error: z.boolean().optional(),
 		model: z.string().optional(),
 		apiKeySource: z.string().optional(),
@@ -86,6 +88,9 @@ export type Inventory = {
 	apiKeySource: string | null;
 };
 export type Trace = {
+	quotaExhausted: boolean;
+	turns: number | null;
+	resultSubtype: string | null;
 	usage: Usage;
 	toolCalls: number;
 	kabaneCalls: number;
@@ -163,6 +168,13 @@ const claudeEvent = (
 	pendingTools: Map<string, string>,
 ): void => {
 	if (event.type === "result") {
+		trace.turns = event.num_turns ?? null;
+		trace.resultSubtype = event.subtype ?? null;
+		trace.quotaExhausted = (event.errors ?? []).some((message) =>
+			/usage limit|hit your limit|quota exceeded|rate_limit_error|insufficient_quota/i.test(
+				message,
+			),
+		);
 		trace.completed = !event.is_error && event.subtype === "success";
 		trace.failed = !trace.completed;
 		if (event.usage) trace.usage = claudeUsage(event);
@@ -194,6 +206,9 @@ const inventory = (event: Event): Inventory => ({
 });
 export const summarizeTrace = (source: string, harness: Harness): Trace => {
 	const trace: Trace = {
+		quotaExhausted: false,
+		turns: null,
+		resultSubtype: null,
 		usage: emptyUsage(),
 		toolCalls: 0,
 		kabaneCalls: 0,

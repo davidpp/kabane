@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { canonical, copyTree, hash } from "./files";
+import { mergeWorkers } from "./orchestration-policy";
 import { cleanEnvironment, runProcess } from "./process";
 import { recipeSchema } from "./schema";
 import {
@@ -254,5 +255,82 @@ describe("benchmark measurement policy", () => {
 			seconds: 0.05,
 		});
 		expect(result.ok && result.value.timedOut).toBe(true);
+	});
+});
+
+describe("orchestration accounting and integration", () => {
+	it("keeps native turns separate from tools and detects only reported quota failures", () => {
+		const source = JSON.stringify({
+			type: "result",
+			subtype: "error_max_turns",
+			is_error: true,
+			num_turns: 30,
+			errors: ["Reached max turns"],
+		});
+		const value = summarizeTrace(source, "claude");
+		expect(value.turns).toBe(30);
+		expect(value.toolCalls).toBe(0);
+		expect(value.completed).toBe(false);
+		expect(value.quotaExhausted).toBe(false);
+		expect(
+			summarizeTrace(
+				JSON.stringify({
+					type: "result",
+					is_error: true,
+					errors: ["You have hit your limit"],
+				}),
+				"claude",
+			).quotaExhausted,
+		).toBe(true);
+		expect(
+			summarizeTrace(
+				JSON.stringify({
+					type: "assistant",
+					message: {
+						content: [
+							{ type: "text", text: "Document quota exceeded handling" },
+						],
+					},
+				}),
+				"claude",
+			).quotaExhausted,
+		).toBe(false);
+		expect(
+			summarizeTrace(JSON.stringify({ type: "turn.completed" }), "codex").turns,
+		).toBeNull();
+	});
+	it("merges disjoint real files, preserves conflicts, and excludes worker database mutations", () => {
+		const root = directory();
+		for (const name of ["base", "a", "b"]) {
+			mkdirSync(join(root, name, "data"), { recursive: true });
+			writeFileSync(join(root, name, "shared.ts"), "base");
+			writeFileSync(join(root, name, "data/app.sqlite"), "original");
+		}
+		writeFileSync(join(root, "a", "shared.ts"), "A");
+		writeFileSync(join(root, "b", "shared.ts"), "B");
+		writeFileSync(join(root, "a", "data/app.sqlite"), "worker data");
+		writeFileSync(join(root, "a", "run.sh"), "#!/bin/sh\n", { mode: 0o700 });
+		writeFileSync(join(root, "b", "ui.ts"), "UI");
+		expect(
+			mergeWorkers(
+				join(root, "base"),
+				[join(root, "a"), join(root, "b")],
+				join(root, "merged"),
+			).ok,
+		).toBe(true);
+		expect(readFileSync(join(root, "merged", "shared.ts"), "utf8")).toBe(
+			"base",
+		);
+		expect(readFileSync(join(root, "merged", "ui.ts"), "utf8")).toBe("UI");
+		expect(readFileSync(join(root, "merged", "data/app.sqlite"), "utf8")).toBe(
+			"original",
+		);
+		expect(statSync(join(root, "merged", "run.sh")).mode & 0o100).toBe(0o100);
+		expect(
+			readFileSync(join(root, "merged", ".benchmark/transport.json"), "utf8"),
+		).toContain('"path": "shared.ts"');
+		expect(mergeWorkers(join(root, "base"), [], join(root, "merged")).ok).toBe(
+			false,
+		);
 	});
 });
