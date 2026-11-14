@@ -95,10 +95,15 @@ describe("kabane board --issue <id> --to <pid>", () => {
 			expect(sent.code).toBe(0);
 			expect(JSON.parse(sent.out)).toEqual({ opened: shortId, pid });
 			expect(opened).toEqual([added.value.id]);
+			const prefix = added.value.id.slice(0, 20).toLowerCase();
+			expect(
+				await kabane("board", "--issue", prefix, "--to", `${pid}`),
+			).toEqual({ out: `opened ${shortId} in board pid ${pid}`, code: 0 });
+			expect(opened).toEqual([added.value.id, added.value.id]);
 			expect(
 				await kabane("board", "--issue", "JRET-99", "--to", `${pid}`),
 			).toEqual({
-				out: "Error: JRET-99 not found",
+				out: "Error: No task found with ID: JRET-99",
 				code: 1,
 			});
 			unsubscribe();
