@@ -857,6 +857,34 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
+	it("a form kabane cannot put to the human reaches the harness as cancel and the board as an error notice", async () => {
+		const seen = fresh();
+		const copilot = copilotOver(
+			scriptedAgent(seen, {
+				form: (sessionId) => ({
+					mode: "form",
+					sessionId,
+					message: "Pick a theme",
+					requestedSchema: {
+						type: "object",
+						properties: { accent: { type: "_color" } as never },
+						required: ["accent"],
+					},
+				}),
+				text: "ok",
+			}),
+		);
+		const updates = await filling(copilot, () => {});
+		expect(types(updates)).toEqual(["notice", "text", "done"]);
+		expect(updates[0]).toMatchObject({
+			severity: "error",
+			summary:
+				'claude: form "Pick a theme" answered cancel, never shown: required field accent has a type kabane cannot ask: _color',
+		});
+		expect(seen.forms).toEqual([{ action: "cancel" }]);
+		copilot.close();
+	});
+
 	it("cancel lets go of a form nobody filled in, and nothing answers it twice", async () => {
 		const seen = fresh();
 		const copilot = copilotOver(

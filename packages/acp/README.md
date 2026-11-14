@@ -12,7 +12,7 @@ imports the SDK.
 ## Pieces
 
 - `Harnesses` — registry of launch commands with pinned adapter versions
-  (`claude` → `npx -y @agentclientprotocol/claude-agent-acp@0.99.1`,
+  (`claude` → `npx -y @agentclientprotocol/claude-agent-acp@0.100.0`,
   `codex` → `npx -y @agentclientprotocol/codex-acp@2.5.0`, `gemini` → `gemini --acp`).
   `resolve(id, overrides?)` returns `{ command, args, env }`; the env always carries
   `KABANE_SESSION=1` so user hooks can tell a board session from an interactive one,
@@ -145,7 +145,7 @@ Both pinned adapters send the option (claude-agent-acp mirrors its modes into on
 
 | Harness | Manual | Auto | Others |
 | --- | --- | --- | --- |
-| claude-agent-acp 0.99.1 | `default` ("Manual") | `auto` ("Claude handles permission decisions") | `acceptEdits`, `plan`, `bypassPermissions` |
+| claude-agent-acp 0.100.0 | `default` ("Manual") | `auto` ("Claude handles permission decisions") | `acceptEdits`, `plan`, `bypassPermissions` |
 | codex-acp 2.5.0 | `read-only` (a read-only sandbox) | `agent` ("Auto review"), where a session opens | `workspace-write`, `agent-full-access` |
 | gemini | not named | not named | |
 
@@ -239,7 +239,9 @@ Every turn ends with exactly one `stop` or one `error`.
   `cancel`. `elicitation: { form: {} }` is advertised only when a handler is passed: without
   it claude-agent-acp turns AskUserQuestion off and codex-acp its `request_user_input` forms,
   which is right for a launcher nobody watches. URL elicitation is never advertised, and a
-  form that requires a field of a type kabane cannot ask is answered `cancel` unasked.
+  form that requires a field of a type kabane cannot ask is answered `cancel` unasked; the
+  reason, naming the form and the field, goes to `onElicitationRefused`, which the board
+  copilot shows as an error notice and the loop records as a `notice` event.
 - Both callbacks get an `AbortSignal` that aborts when the harness withdraws the request
   (`$/cancel_request`) or the connection closes. The request is then answered `cancelled` /
   `cancel` at once, whatever the callback does after, so the caller can close what it asked.

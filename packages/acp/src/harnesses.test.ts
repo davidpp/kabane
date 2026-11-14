@@ -10,7 +10,7 @@ describe("Harnesses.resolve", () => {
 		expect(launch.command).toBe("npx");
 		expect(launch.args).toEqual([
 			"-y",
-			"@agentclientprotocol/claude-agent-acp@0.99.1",
+			"@agentclientprotocol/claude-agent-acp@0.100.0",
 		]);
 		expect(launch.env).toEqual({
 			KABANE_SESSION: "1",

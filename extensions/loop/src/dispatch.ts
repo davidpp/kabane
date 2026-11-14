@@ -449,6 +449,9 @@ export namespace Dispatch {
 		const spawned = await AcpClient.spawn(claim.harness, env.cwd, {
 			onPermission: on.permission,
 			onElicitation: on.elicitation,
+			// Recorded as the harness's own notices are, so the event log says why it saw `cancel`.
+			onElicitationRefused: (reason) =>
+				sink.emit("notice", `error: ${reason}`, { severity: "error" }),
 			...(env.overrides ? { overrides: env.overrides } : {}),
 			profile,
 		});

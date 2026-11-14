@@ -17,7 +17,7 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
-		"@agentclientprotocol/sdk": "2.1.0",
+		"@agentclientprotocol/sdk": "2.4.0",
 		"@cabane/board": "workspace:*",
 		"@cabane/core": "workspace:*",
 		"zod": "3.25.76"

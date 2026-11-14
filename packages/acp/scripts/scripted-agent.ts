@@ -11,6 +11,7 @@
  *   ask form        a single choice with descriptions and an Other box (claude's AskUserQuestion)
  *   ask multi       a multi-select with descriptions and no item cap
  *   ask text        a text field
+ *   ask color       a form that requires a field kabane cannot ask, which it refuses
  *   ask permission  a tool call that asks before it runs
  *   plan            a plan ticking through its entries
  *   tools           a few tool calls with their input and output
@@ -39,6 +40,7 @@ const KEYWORDS = [
 	"ask form",
 	"ask multi",
 	"ask text",
+	"ask color",
 	"ask permission",
 	"plan",
 	"tools",
@@ -74,7 +76,7 @@ const say = (ctx: Context, text: string) =>
 	});
 
 const FORMS: Record<
-	"ask form" | "ask multi" | "ask text",
+	"ask form" | "ask multi" | "ask text" | "ask color",
 	(sessionId: string) => CreateElicitationRequest
 > = {
 	"ask form": (sessionId) => ({
@@ -155,6 +157,17 @@ const FORMS: Record<
 				},
 			},
 			required: ["slug"],
+		},
+	}),
+	// A type outside ACP's form schema, as a vendor extension would send it.
+	"ask color": (sessionId) => ({
+		mode: "form",
+		sessionId,
+		message: "Which accent should the board use?",
+		requestedSchema: {
+			type: "object",
+			properties: { accent: { type: "_color", title: "Accent" } as never },
+			required: ["accent"],
 		},
 	}),
 };
@@ -320,6 +333,7 @@ const turn = async (ctx: Context, text: string): Promise<boolean> => {
 		case "ask form":
 		case "ask multi":
 		case "ask text":
+		case "ask color":
 			await askForm(ctx, keyword);
 			return cancelled;
 		case "ask permission":
