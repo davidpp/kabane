@@ -821,6 +821,42 @@ describe("Land.land by merge into the project's checkout", () => {
 		expect(head(repo)).toBe(merged);
 		expect(head(ctx.run.worktree ?? "")).toBe(tip);
 	});
+
+	it("names the merge a human made of a branch already on the base, never the branch's tip", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		const tip = head(ctx.run.worktree ?? "");
+		commit(repo, "theirs.txt");
+		GitFixture.run(repo, ["merge", "-q", "--no-ff", "-m", "by hand", BRANCH]);
+		const merge = head(repo);
+		// Merged into the base again later on: the merge that took the tip is still the first.
+		commit(repo, "after.txt");
+
+		const landing = await merges(ctx);
+
+		expect(landing).toMatchObject({ ok: true, merged: merge });
+		expect(landing.merged).not.toBe(tip);
+		expect(landing.summary).toContain(`(${merge.slice(0, 12)})`);
+	});
+
+	it("names no merge for a branch the base took by a fast-forward", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		GitFixture.run(repo, ["merge", "-q", "--ff-only", BRANCH]);
+		// A merge on top of it has the tip as its first parent, the base's side: not the landing.
+		GitFixture.run(repo, ["checkout", "-q", "-b", "side"]);
+		commit(repo, "side.txt");
+		GitFixture.run(repo, ["checkout", "-q", "main"]);
+		GitFixture.run(repo, ["merge", "-q", "--no-ff", "-m", "side", "side"]);
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(true);
+		expect(landing.merged).toBeUndefined();
+		expect(landing.summary).toBe(
+			`\`${BRANCH}\` is already merged into \`main\`.`,
+		);
+	});
 });
 
 describe("a run with land: merge, through the real runner", () => {

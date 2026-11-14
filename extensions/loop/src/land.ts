@@ -387,6 +387,31 @@ export namespace Land {
 		return undefined;
 	};
 
+	// The merge that brought `tip` into `base`: the oldest merge commit on the base's side of it
+	// with the tip as a parent it merged in. None when the base took the tip some other way, by a
+	// fast-forward or a rebase: no commit on the base is that landing's merge then.
+	const mergeOf = async (
+		git: Worktree.Git,
+		dir: string,
+		tip: string,
+		base: string,
+	): Promise<string | undefined> => {
+		const listed = await git(dir, [
+			"rev-list",
+			"--ancestry-path",
+			"--merges",
+			"--parents",
+			"--reverse",
+			`${tip}..refs/heads/${base}`,
+		]);
+		if (!listed.ok) return undefined;
+		for (const line of listed.value.split("\n")) {
+			const [sha, , ...merged] = line.trim().split(" ");
+			if (sha && merged.includes(tip)) return sha;
+		}
+		return undefined;
+	};
+
 	// The merge path: onto the base, then merged into it in the project's checkout with --no-ff.
 	// Nothing is pushed: what follows a landing is the user's.
 	const viaMerge = async (
@@ -412,11 +437,12 @@ export namespace Land {
 					])
 				).ok;
 			if (tip.ok && already) {
-				const merged = ctx.run.landing?.merged ?? tip.value;
+				const merged =
+					ctx.run.landing?.merged ?? (await mergeOf(git, dir, tip.value, base));
 				return record(ctx, {
 					ok: true,
-					summary: `\`${branch}\` is already merged into \`${base}\` (${short(merged)}).`,
-					merged,
+					summary: `\`${branch}\` is already merged into \`${base}\`${merged ? ` (${short(merged)})` : ""}.`,
+					...(merged ? { merged } : {}),
 				});
 			}
 			const refused = await checkoutRefuses(ctx, base);
