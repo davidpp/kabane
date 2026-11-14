@@ -100,9 +100,8 @@ They know things about priority and risk that are not in the code.
 ## Dispatch
 
 Set each unblocked issue to `in_progress` with `kabane_edit`, then start one agent per issue,
-all in a single message so they run in parallel. When `.claude/agents/` has a specialist for
-the issue's territory, use it (see `references/specialists.md`). Otherwise use a general-purpose
-agent. Model: the session's model; name another one only when the user asks for it.
+all in a single message so they run in parallel. `references/specialists.md` says which
+agent and few-liner fit the issue's territory. Model: the session's model; name another one only when the user asks for it.
 
 Each agent works in its own copy of the repo so that parallel edits cannot collide:
 `git worktree add ../<repo>-<branch> -b <branch>`, then `bun install`; `git worktree remove`
