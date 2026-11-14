@@ -15,7 +15,7 @@
 // or cancelled while it held that worktree is settled there (`settleHeld`).
 import { Harnesses } from "@cabane/acp";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
-import type { Brief } from "./brief";
+import { Brief } from "./brief";
 import { Budget } from "./budget";
 import { Checklists } from "./checklists";
 import { Checks } from "./checks";
@@ -482,7 +482,9 @@ export namespace Claims {
 					startedAt: ctx.now().toISOString(),
 					continuations: 0,
 					...(worktree ? { worktree: worktree.dir } : {}),
-					...(work.kind === "lens" ? { lens: work.name } : {}),
+					...(work.kind === "lens"
+						? { lenses: work.lenses.map((l) => l.name) }
+						: {}),
 					...(work.kind === "fix"
 						? {
 								fixer: true as const,
@@ -756,24 +758,45 @@ export namespace Claims {
 		return ok(true);
 	};
 
+	// Whether `claim` reviewed through exactly the group `names`, in any order: an earlier attempt at
+	// the same review.
+	const sameGroup = (
+		claim: RunStore.Claim,
+		names: readonly string[],
+	): boolean =>
+		claim.lenses !== undefined &&
+		claim.lenses.length === names.length &&
+		names.every((name) => claim.lenses?.includes(name));
+
 	/**
-	 * Run lens `name` on the parent, on the run's verifier harness. An error when its prompt
-	 * cannot be read or its session cannot start.
+	 * Run one review session on the parent through the group of lenses `names`, one or several, on
+	 * the run's verifier harness, at `tier` when given (`Route`) and on the run's model otherwise.
+	 * An error when a prompt cannot be read or the session cannot start.
 	 */
 	export const lens = async (
 		ctx: Ctx,
-		name: string,
+		names: readonly string[],
 		plan: LoopPlan.Plan,
+		tier?: string,
 	): Promise<Result<void>> => {
-		const prompt = Lenses.prompt(RunStore.projectRoot(ctx.run), name);
-		if (!prompt.ok) return prompt;
+		const lenses: Brief.LensPrompt[] = [];
+		for (const name of names) {
+			const prompt = Lenses.prompt(RunStore.projectRoot(ctx.run), name);
+			if (!prompt.ok) return prompt;
+			lenses.push({ name, prompt: prompt.value.text });
+		}
 		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;
-		const earlier = ctx.run.claims.filter((c) => c.lens === name);
+		const group = names.join("+");
+		const earlier = ctx.run.claims.filter((c) => sameGroup(c, names));
 		const attempts = earlier.length;
-		const lane = `${name}-lens${attempts > 0 ? `#${attempts + 1}` : ""}`;
+		const lane = `${group}-lens${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, plan.parent, harness, lane, false);
 		if (sessionId === undefined)
-			return err(new Error(`the ${name} lens's session did not start`));
+			return err(
+				new Error(
+					`${Brief.lensNames(names)}${names.length === 1 ? "'s" : "'"} session did not start`,
+				),
+			);
 		const interrupted = await interruption(ctx, earlier.at(-1));
 		launch(ctx, plan, {
 			...(interrupted ? { interrupted } : {}),
@@ -783,11 +806,11 @@ export namespace Claims {
 			sessionId,
 			work: {
 				kind: "lens",
-				name,
-				prompt: prompt.value.text,
+				lenses,
 				gates: Object.keys(ctx.run.config.gates),
 			},
-			summary: `${harness} reviews ${label(plan.parent)} through the ${name} lens`,
+			...(tier ? { route: { tier } } : {}),
+			summary: `${routed(harness, undefined, tier)} reviews ${label(plan.parent)} through ${Brief.lensNames(names)}`,
 		});
 		return ok(undefined);
 	};
@@ -963,7 +986,7 @@ export namespace Claims {
 	): Promise<boolean> => {
 		ctx.live.delete(sessionId);
 		const claim = ctx.run.claims.find((c) => c.sessionId === sessionId);
-		const review = claim?.lens !== undefined || claim?.recheck !== undefined;
+		const review = claim?.lenses !== undefined || claim?.recheck !== undefined;
 		await closeSession(ctx, sessionId, outcome);
 		if (claim && !onParent(claim)) await release(ctx, taskId, claim.harness);
 		// Recorded while the claim is still open: a runner that dies before the record leaves an
