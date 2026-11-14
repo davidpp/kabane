@@ -34,14 +34,27 @@ and it does not finish while one is open: set it back to `next` for the run to t
 close it. `kabane loop skip` only keeps the run from claiming a subtask; a skipped subtask
 that stays open still holds the run.
 
-By default, `loop.land` is `none`: the finished branch stays in its worktree. To push a
-completed run's branch and open its pull request with your own git and gh:
+By default, `loop.land` is `none`: the finished branch stays in its worktree. The other
+settings land it on completion, after rebasing it onto the latest of its base and running
+the gates again when the rebase moved it:
+
+- `pr` pushes the branch and opens its pull request with your own git and gh. The parent
+  waits on that review.
+- `merge` merges the branch into the base in your project checkout, as
+  `git merge --no-ff`, and moves the parent to done. It refuses, changing nothing, while
+  the checkout is not on the base or has uncommitted changes to tracked files; a merge
+  that conflicts is aborted. It does not push: pushing the base is left to you. The next
+  `kabane loop start` or `kabane loop prune` removes the merged worktree and branch.
+
+To land a completed run by hand, or again once a landing that failed is fixed:
 
 ```bash
-kabane loop land <runId>
+kabane loop land <runId> [--land pr|merge]
 ```
 
-`loop.land = pr` does that automatically on completion. See `kabane loop --help` for
+It lands as the run's `loop.land` says, as `--land` says over it, or as `pr` when the
+setting is `none`. Run again after a `merge` landing, it only reports the branch as
+merged. See `kabane loop --help` for
 flags and the commands for pausing, resuming, answering questions and rolling back to a
 checkpoint.
 

@@ -82,7 +82,7 @@ export namespace LoopConfig {
 	export const ISOLATION = ["worktree", "shared"] as const;
 
 	/** How a completed run's branch lands. */
-	export const LAND = ["none", "pr"] as const;
+	export const LAND = ["none", "pr", "merge"] as const;
 
 	export const Schema = z.object({
 		/** The harness every subtask runs on; a claim makes it the subtask's assignee. */
@@ -230,14 +230,15 @@ export namespace LoopConfig {
 			.describe("Harness every lens runs on; absent, the implementer."),
 		/**
 		 * What a completed run does with its worktree's branch: `none` leaves it there, `pr` pushes
-		 * it and opens a pull request with the user's own git and gh (`Land`). `kabane loop land`
-		 * does the same for a completed run by hand, or again after a landing that failed.
+		 * it and opens a pull request with the user's own git and gh, `merge` merges it into the
+		 * base in the project's checkout and pushes the base (`Land`). `kabane loop land` does the
+		 * same for a completed run by hand, or again after a landing that failed.
 		 */
 		land: z
 			.enum(LAND)
 			.default("none")
 			.describe(
-				"What a completed run does with its branch: none leaves it in its worktree, pr rebases it onto its base, pushes it and opens a pull request with your git and gh; defaults to none. kabane loop land <runId> lands a completed run by hand.",
+				"What a completed run does with its branch: none leaves it in its worktree, pr rebases it onto its base, pushes it and opens a pull request with your git and gh, merge rebases it onto its base, merges it into the base in your checkout (--no-ff) and pushes the base; defaults to none. kabane loop land <runId> lands a completed run by hand.",
 			),
 	});
 

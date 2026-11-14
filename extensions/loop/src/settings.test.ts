@@ -49,7 +49,7 @@ describe("LoopSettings.inputs", () => {
 		});
 		expect(inputs.land).toMatchObject({
 			default: "none",
-			options: ["none", "pr"],
+			options: ["none", "pr", "merge"],
 			label: "land the branch",
 			group: "Workspace",
 		});

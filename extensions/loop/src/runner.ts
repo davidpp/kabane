@@ -390,8 +390,9 @@ export namespace Runner {
 				.done
 		) {
 			// A landing that fails still completes the run: the work is done and checked.
-			if (ctx.run.config.land === "pr") {
-				await hearingStop(ctx, () => Land.land(ctx, plan));
+			const { land } = ctx.run.config;
+			if (land !== "none") {
+				await hearingStop(ctx, () => Land.land(ctx, plan, land));
 				if (ctx.stopRequested)
 					return { status: "stopped", reason: "stop-requested" };
 			}

@@ -152,9 +152,11 @@ describe("kabane loop start", () => {
 	});
 
 	it("refuses a --land mode it does not have", async () => {
-		const refused = await kabaneLoop("start", "K-1", "--land", "merge");
+		const refused = await kabaneLoop("start", "K-1", "--land", "squash");
 		expect(refused.exitCode).toBe(2);
-		expect(refused.text).toStartWith("Error: --land must be one of none, pr\n");
+		expect(refused.text).toStartWith(
+			"Error: --land must be one of none, pr, merge\n",
+		);
 	});
 
 	it("refuses an --isolation it does not have", async () => {
@@ -181,6 +183,20 @@ describe("kabane loop start", () => {
 		// Past the flags: the parent is what is missing.
 		expect(started.exitCode).toBe(1);
 		expect(started.text).not.toContain("Unknown loop start flag");
+	});
+});
+
+describe("kabane loop land", () => {
+	it("takes a --land that lands something, and refuses none", async () => {
+		const refused = await kabaneLoop("land", "run-1", "--land", "none");
+		expect(refused.exitCode).toBe(2);
+		expect(refused.text).toStartWith(
+			"Error: --land must be one of pr, merge\n",
+		);
+		// Past the flag: the run is what is missing.
+		const missing = await kabaneLoop("land", "run-404", "--land", "merge");
+		expect(missing.exitCode).toBe(1);
+		expect(missing.text).not.toContain("--land must be");
 	});
 });
 

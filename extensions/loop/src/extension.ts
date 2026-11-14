@@ -19,11 +19,12 @@ import { LoopActivity } from "./activity";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
+import type { Land } from "./land";
 import { Lenses } from "./lenses";
 import { Parent } from "./parent";
 import { RunStore } from "./store";
 
-const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <tier|model>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--isolation worktree|shared] [--lens <name>]... [--verifier claude|codex|gemini] [--recheck|--no-recheck] [--land none|pr]
+const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <tier|model>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--isolation worktree|shared] [--lens <name>]... [--verifier claude|codex|gemini] [--recheck|--no-recheck] [--land none|pr|merge]
        kabane loop advise <issue> [start's flags]   (the settings advised for the plan and why, and what each subtask's tags run it on; changes no issue, run or setting)
        kabane loop run <runId>
        kabane loop status [<runId>]
@@ -32,7 +33,7 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop skip|next <subtask|issue>
        kabane loop rollback <runId> <sha>
        kabane loop answer <questionId> <option>
-       kabane loop land <runId>              (pushes a completed run's branch and opens its pull request)
+       kabane loop land <runId> [--land pr|merge]   (lands a completed run's branch as its land setting says, or as --land says; pr when it is none)
        kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)
 
 start applies no advice: loop advise shows it, and its "start with" line is the flags that apply it.
@@ -462,6 +463,23 @@ const rollback: Verb = async (args, deps, target) => {
 		: failure(reset.error);
 };
 
+// The modes `land` takes over a run's setting: every one that lands something.
+const LANDINGS = LoopConfig.LAND.filter((mode) => mode !== "none");
+
+const isLanding = (value: string): value is Land.Mode =>
+	(LANDINGS as readonly string[]).includes(value);
+
+const land: Verb = async (args, deps, target) => {
+	const mode = flagString(args, "land");
+	if (mode !== undefined && !isLanding(mode))
+		return usage(`--land must be one of ${LANDINGS.join(", ")}`, USAGE);
+	const landed = await Loop.land(deps, target, mode);
+	if (!landed.ok) return failure(landed.error);
+	return landed.value.landing?.ok
+		? success(landed.value, landed.value.landing.summary)
+		: failure(new Error(landed.value.landing?.summary ?? "Not landed"));
+};
+
 const pause =
 	(kind: "pause" | "resume"): Verb =>
 	async (_args, deps, target) => {
@@ -517,16 +535,7 @@ const VERBS: Record<string, { needs: string; run: Verb }> = {
 		run: direct("next"),
 	},
 	rollback: { needs: "a run id", run: rollback },
-	land: {
-		needs: "a run id",
-		run: async (_a, deps, id) => {
-			const landed = await Loop.land(deps, id);
-			if (!landed.ok) return failure(landed.error);
-			return landed.value.landing?.ok
-				? success(landed.value, landed.value.landing.summary)
-				: failure(new Error(landed.value.landing?.summary ?? "Not landed"));
-		},
-	},
+	land: { needs: "a run id", run: land },
 };
 
 const prune = async (deps: Deps): Promise<Outcome> => {
