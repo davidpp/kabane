@@ -14,7 +14,9 @@ repository's own rules and leaves the code easier to change, not harder.
 - Look for: duplicated logic that has a home already, an abstraction nothing needs yet, error
   handling that hides a failure, names that say something other than what the code does,
   comments that restate the code, dead code, tests that test a mock instead of the behaviour.
-- Run the project's own checks (lint, typecheck, format) if the gates did not already.
+- Never rerun a gate your brief says passed on this tree, whole or in part: run only a check
+  no gate covers. When the brief says no gates ran, run the project's own checks (lint,
+  typecheck, format).
 
 Severity:
 

@@ -10,11 +10,14 @@ would find out.
 - Read the parent's brief and every subtask's brief and acceptance criteria. List what was
   promised before you look at the code.
 - For each promise, find the code that keeps it and exercise it the way a user would: run the
-  command, call the API, open the page, run the tests that cover it. Prefer running it over
-  reading it.
+  command, call the API, open the page. Prefer running it over reading it.
+- The gates your brief says passed on this tree have run the test suite and the checks: do not
+  run them again, whole or in part. Spend your runs on the real path no gate exercises. When
+  the brief says no gates ran, run the tests that cover each promise yourself.
 - Look for what the briefs imply but nobody wrote down: empty input, a missing file, a second
   run, an error path, the state a previous version left behind.
-- Check that the tests cover the promises, and that they would fail if a promise broke.
+- Read the tests to judge whether they cover the promises, and whether they would fail if a
+  promise broke.
 
 Severity:
 
