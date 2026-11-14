@@ -157,6 +157,14 @@ describe("Lenses.prompt", () => {
 		});
 	});
 
+	it("gives the shipped lenses' frontmatter: functional always runs, quality says when it applies", () => {
+		const functional = Lenses.prompt(repo, "functional");
+		expect(functional.ok && functional.value.always).toBe(true);
+		const quality = Lenses.prompt(repo, "quality");
+		expect(quality.ok && quality.value.always).toBe(false);
+		expect(quality.ok && quality.value.applies).toBeString();
+	});
+
 	it("refuses frontmatter it cannot read, naming the file", () => {
 		const cases: [string, string][] = [
 			["---\napplies: x\nruns: always\n", "no closing ---"],

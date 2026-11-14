@@ -1,3 +1,7 @@
+---
+applies: a change to code, meaning source, tests, scripts, or lint, type and build configuration; a change to prose alone (docs, READMEs, skill text) has nothing for it
+---
+
 # Quality lens
 
 Check that the change is one the project's maintainers would merge: it follows the
