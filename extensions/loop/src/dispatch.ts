@@ -35,6 +35,7 @@ import type { RunStore } from "./store";
 
 export namespace Dispatch {
 	type Env = {
+		tree: Brief.Tree;
 		basePath: string;
 		/** KABANE_HOME, handed to the MCP server so it opens the same tracker. */
 		home: string;
@@ -854,6 +855,7 @@ export namespace Dispatch {
 			return err(new Error(`checklist: ${checklist.error.message}`));
 		const subject = {
 			runId: env.runId,
+			tree: env.tree,
 			parent: claim.parent,
 			task: claim.task,
 			...(claim.interrupted ? { interrupted: claim.interrupted } : {}),

@@ -201,6 +201,14 @@ describe("Brief.lens", () => {
 		const brief = Brief.lens(
 			{
 				runId: "run-1",
+				tree: {
+					worktree: false,
+					isolation: "shared",
+					land: "none",
+					dir: home,
+					branch: "",
+					runBranch: "",
+				},
 				parent,
 				lens: "quality",
 				prompt: "# Quality lens\n",
@@ -221,7 +229,21 @@ describe("Brief.lens", () => {
 	it("never claims gates passed in a run that has none", async () => {
 		const parent = await add("Ship the cache");
 		const brief = Brief.lens(
-			{ runId: "run-1", parent, lens: "functional", prompt: "", gates: [] },
+			{
+				runId: "run-1",
+				tree: {
+					worktree: false,
+					isolation: "shared",
+					land: "none",
+					dir: home,
+					branch: "",
+					runBranch: "",
+				},
+				parent,
+				lens: "functional",
+				prompt: "",
+				gates: [],
+			},
 			"",
 		);
 		expect(brief).not.toContain("gates pass");
