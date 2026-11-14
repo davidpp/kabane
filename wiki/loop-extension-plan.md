@@ -449,9 +449,10 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
     answered, who, wait), `elicitation_cancelled` or `elicitation_withdrawn`.
   - **CLI:** `kabane loop answer <questionId> <answer>` takes a multi-select as
     comma-separated options (`1, 3` or labels).
-  - AskUserQuestion's companion "Other" box (`question_<n>_custom`) is its own optional
-    free-text question: kabane cannot tell it from any other text field without the AIR-only
-    markers, so it is relayed as the adapter describes it.
+  - AskUserQuestion's companion "Other" box (`question_<n>_custom`) is folded into its
+    choice by key (JCAB-67, keyed by JCAB-257): an optional text field keyed `<key>_custom`
+    beside an optional choice keyed `<key>` is that choice's typed answer, taken instead of a
+    pick, never beside one. Any other field, wherever it sits, is its own question.
 - **Steering:** done on branch `worktree-agent-aec5e4f6bb339d036`.
   - **Inject:** the runner hands an `inject` entry to the live claim behind its session
     (`Dispatch.Handle.inject`); one for a session that has ended is dropped with a warning.

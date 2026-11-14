@@ -23,7 +23,7 @@ beforeEach(async () => {
 
 afterEach(() => rmSync(base, { recursive: true, force: true }));
 
-// One AskUserQuestion question as claude-agent-acp 0.99.1 sends it, through AcpClient's mapping:
+// One AskUserQuestion question as claude-agent-acp 0.100.0 sends it, through AcpClient's mapping:
 // the choice, then its optional "Other" box. Nothing is required.
 const STORE: AcpClient.ElicitationField = {
 	key: "question_0",
@@ -98,6 +98,29 @@ const ASK_TWO: AcpClient.ElicitationRequest = {
 	],
 };
 
+// An optional choice followed by an optional text field it has nothing to do with.
+const REGION: AcpClient.ElicitationRequest = {
+	message: "Where should the service run?",
+	fields: [
+		{
+			key: "region",
+			title: "Region",
+			required: false,
+			type: "choice",
+			options: [
+				{ value: "eu", label: "Europe" },
+				{ value: "us", label: "United States" },
+			],
+		},
+		{
+			key: "email",
+			title: "Notification email",
+			required: false,
+			type: "text",
+		},
+	],
+};
+
 // A field named F, of whatever shape the test gives it.
 const named = { key: "f", title: "F" };
 const field = (f: AcpClient.ElicitationField): AcpClient.ElicitationField => f;
@@ -118,39 +141,49 @@ describe("Elicitation.questions", () => {
 		]);
 	});
 
-	it("keeps a free-text field apart when it does not follow an optional choice, or is required", () => {
+	it("asks an optional choice and the optional text after it apart when their keys do not pair", () => {
+		expect(
+			Elicitation.questions(REGION.fields).map((q) => [
+				q.field.key,
+				q.other?.key,
+			]),
+		).toEqual([
+			["region", undefined],
+			["email", undefined],
+		]);
+	});
+
+	it("folds a box by its key wherever it sits, and keeps it apart when either field is required", () => {
 		const choice = field({
 			...named,
 			required: false,
 			type: "choice",
 			options: [{ value: "a", label: "A" }],
 		});
-		const note = field({
-			key: "n",
-			title: "Note",
+		const box = field({
+			key: "f_custom",
+			title: "Other",
 			required: false,
 			type: "text",
 		});
-		const apart = (...fields: AcpClient.ElicitationField[]) =>
+		const pairs = (...fields: AcpClient.ElicitationField[]) =>
 			Elicitation.questions(fields).map((q) => [q.field.key, q.other?.key]);
+		// The box before its choice is still its box, asked where the choice is.
+		expect(pairs(box, choice)).toEqual([["f", "f_custom"]]);
 		// codex's request_user_input: its choice is required, so a typed answer would leave it empty.
-		expect(apart({ ...choice, required: true }, note)).toEqual([
+		expect(pairs({ ...choice, required: true }, box)).toEqual([
 			["f", undefined],
-			["n", undefined],
+			["f_custom", undefined],
 		]);
-		expect(apart(choice, { ...note, required: true })).toEqual([
+		expect(pairs(choice, { ...box, required: true })).toEqual([
 			["f", undefined],
-			["n", undefined],
-		]);
-		expect(apart(note, choice)).toEqual([
-			["n", undefined],
-			["f", undefined],
+			["f_custom", undefined],
 		]);
 		expect(
-			apart(field({ ...named, required: false, type: "boolean" }), note),
+			pairs(field({ ...named, required: false, type: "boolean" }), box),
 		).toEqual([
 			["f", undefined],
-			["n", undefined],
+			["f_custom", undefined],
 		]);
 	});
 });
@@ -610,6 +643,25 @@ describe("Elicitation.relay", () => {
 			value: { action: "accept", content: {} },
 		});
 		expect(await resolutions(sessionId)).toHaveLength(1);
+	});
+
+	it("asks an unrelated choice and text field apart, and accepts both answers", async () => {
+		const sessionId = await session();
+		const { result } = relay(sessionId, REGION);
+		const [region, email] = await waiting(sessionId, 2);
+		if (!region || !email) return;
+		expect(parseQuestionBody(email.body).question).toContain(
+			"Notification email (2 of 2)",
+		);
+		await answer(region.id, "Europe");
+		await answer(email.id, "ops@example.com");
+		expect(await result).toEqual({
+			ok: true,
+			value: {
+				action: "accept",
+				content: { region: "eu", email: "ops@example.com" },
+			},
+		});
 	});
 
 	it("declines the form when any field is declined, and closes the rest unanswered", async () => {
