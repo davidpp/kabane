@@ -96,7 +96,7 @@ export namespace Brief {
 			"Do not create a branch or a worktree and do not switch branches.",
 			...(subtask
 				? [
-						"A subtask starts only after its blockers are done and their work is integrated into the branch it starts from: an issue's 'after X merges' order is already satisfied; nothing needs to reach main.",
+						"A subtask starts once its tracker blockers are done, cancelled or deleted and no longer have a live claim in this run. This checks tracker readiness, not commit presence: external completion alone does not prove its commits are here, and cancelled or deleted blockers may have no work. Work actually merged by this run is in the run's branch; for those in-run merges, nothing needs to reach main. Check this working copy for any required dependency changes before relying on them.",
 					]
 				: []),
 			// Reviewers never commit, even when the run cannot checkpoint their tree.
