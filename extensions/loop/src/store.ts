@@ -51,11 +51,20 @@ export namespace RunStore {
 		"interrupted",
 	] as const;
 
+	// A claim written before a review session could cover several lenses held its one lens as
+	// `lens`: resumed, it reads as a group of that one.
+	const groupedLens = (claim: unknown): unknown => {
+		const parsed = z.record(z.unknown()).safeParse(claim);
+		if (!parsed.success || typeof parsed.data.lens !== "string") return claim;
+		const { lens, ...rest } = parsed.data;
+		return rest.lenses === undefined ? { ...rest, lenses: [lens] } : rest;
+	};
+
 	/**
-	 * One subtask claimed by one session, or one lens, the fixer or a lens's recheck run on the
-	 * parent. A subtask claimed twice has two claims.
+	 * One subtask claimed by one session, or one group of lenses, the fixer or a lens's recheck run
+	 * on the parent. A subtask claimed twice has two claims.
 	 */
-	export const ClaimSchema = z.object({
+	const ClaimObject = z.object({
 		taskId: z.string(),
 		shortId: z.string(),
 		harness: z.string(),
@@ -70,8 +79,11 @@ export namespace RunStore {
 		outcome: z.enum(OUTCOMES).optional(),
 		detail: z.string().optional(),
 		continuations: z.number().int().min(0).default(0),
-		/** The verifier lens this session ran, on the parent; absent for an implementing one. */
-		lens: z.string().optional(),
+		/**
+		 * The verifier lenses this session reviewed through, one or several, on the parent; absent for
+		 * any other session.
+		 */
+		lenses: z.array(z.string()).min(1).optional(),
 		/** The fixer session after the lenses, on the parent; absent for any other. */
 		fixer: z.literal(true).optional(),
 		/** The fixer's: the commit HEAD was at when it started, which its recheck diffs against. */
@@ -102,7 +114,8 @@ export namespace RunStore {
 		/** The tier the model was resolved from, the tag's or the run's. */
 		tier: z.string().optional(),
 	});
-	export type Claim = z.infer<typeof ClaimSchema>;
+	export const ClaimSchema = z.preprocess(groupedLens, ClaimObject);
+	export type Claim = z.infer<typeof ClaimObject>;
 
 	/**
 	 * A worktree the run's subtask claims work in (`ClaimTrees`): its top, and while a subtask's work
@@ -243,7 +256,7 @@ export namespace RunStore {
 
 	/** A lens, the fixer or a recheck: a session that holds the parent without taking it. */
 	export const reviews = (claim: Claim): boolean =>
-		claim.lens !== undefined ||
+		claim.lenses !== undefined ||
 		claim.fixer === true ||
 		claim.recheck !== undefined;
 

@@ -62,6 +62,33 @@ describe("RunStore files", () => {
 		if (!read.ok) expect(read.error.message).toContain("run.json");
 	});
 
+	it("reads a lens claim written before groups as a group of its one lens", () => {
+		RunStore.create(home, draft());
+		const claim: RunStore.Claim = {
+			taskId: "01PARENT",
+			shortId: "KAB-1",
+			harness: "claude",
+			lane: "functional-lens",
+			sessionId: "s-1",
+			startedAt: "2026-10-10T12:01:00.000Z",
+			endedAt: "2026-10-10T12:02:00.000Z",
+			outcome: "done",
+			continuations: 0,
+		};
+		writeFileSync(
+			RunStore.paths(home, "KAB-1-abc").run,
+			JSON.stringify({
+				...draft(),
+				claims: [{ ...claim, lens: "functional" }],
+			}),
+		);
+		const read = RunStore.read(home, "KAB-1-abc");
+		expect(read.ok && read.value.claims).toEqual([
+			{ ...claim, lenses: ["functional"] },
+		]);
+		expect(read.ok && read.value.claims.every(RunStore.reviews)).toBe(true);
+	});
+
 	it("rejects a run id that would leave the loops directory", () => {
 		expect(RunStore.read(home, "../../etc").ok).toBe(false);
 		expect(RunStore.create(home, draft({ id: "../escape" })).ok).toBe(false);

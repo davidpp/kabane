@@ -99,7 +99,7 @@ export namespace LoopHeader {
 		const gating = run.gating ?? [];
 		if (gating.length > 0)
 			return busy(`closing gates for ${gating.join(", ")}`);
-		const lenses = live.flatMap((claim) => claim.lens ?? []);
+		const lenses = live.flatMap((claim) => claim.lenses ?? []);
 		if (lenses.length > 0)
 			return busy(
 				`${lenses.join(", ")} ${word(lenses.length, "lens", "lenses")} reviewing`,

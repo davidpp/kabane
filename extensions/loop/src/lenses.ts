@@ -169,17 +169,18 @@ export namespace Lenses {
 	};
 
 	/**
-	 * Where each of `lenses` stands, from the run's claims: a lens's latest claim decides, its
-	 * review's or, with `of` reading `recheck`, its recheck's.
+	 * Where each of `lenses` stands, from the run's claims: a lens's latest claim decides, the
+	 * latest review whose group holds it or, with `of` reading `recheck`, its latest recheck. A
+	 * group's outcome is each of its lenses'.
 	 */
 	export const status = (
 		lenses: readonly string[],
 		claims: readonly RunStore.Claim[],
-		of: (claim: RunStore.Claim) => string | undefined = (c) => c.lens,
+		of: (claim: RunStore.Claim) => readonly string[] = (c) => c.lenses ?? [],
 	): Status => {
 		const status: Status = { pending: [], running: [], done: [], failed: [] };
 		for (const name of lenses) {
-			const last = claims.findLast((c) => of(c) === name);
+			const last = claims.findLast((c) => of(c).includes(name));
 			if (!last || last.outcome === "interrupted") status.pending.push(name);
 			else if (last.endedAt === undefined) status.running.push(name);
 			else if (last.outcome === "done") status.done.push(name);
@@ -268,7 +269,7 @@ export namespace Lenses {
 		return status(
 			config.lenses.filter((name) => due.has(name)),
 			claims,
-			(c) => c.recheck,
+			(c) => (c.recheck === undefined ? [] : [c.recheck]),
 		);
 	};
 }

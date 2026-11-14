@@ -64,7 +64,7 @@ const claim = (
 	sessionId: `s-${lens}`,
 	startedAt: "2026-10-11T00:00:00.000Z",
 	continuations: 0,
-	lens,
+	lenses: [lens],
 	...extra,
 });
 
@@ -259,6 +259,51 @@ describe("Lenses.status", () => {
 	});
 });
 
+describe("Lenses.status of a group", () => {
+	const group = (extra: Partial<RunStore.Claim> = {}): RunStore.Claim =>
+		claim("functional", { lenses: ["functional", "quality"], ...extra });
+	const ended = { endedAt: "2026-10-11T00:01:00.000Z" };
+
+	it("reads each lens of a group from the group's claim", () => {
+		const names = ["functional", "quality", "docs"];
+		expect(
+			Lenses.status(names, [group({ ...ended, outcome: "done" })]),
+		).toEqual({
+			pending: ["docs"],
+			running: [],
+			done: ["functional", "quality"],
+			failed: [],
+		});
+		expect(Lenses.status(names, [group()]).running).toEqual([
+			"functional",
+			"quality",
+		]);
+		expect(
+			Lenses.status(names, [group({ ...ended, outcome: "interrupted" })])
+				.pending,
+		).toEqual(["functional", "quality", "docs"]);
+		expect(
+			Lenses.status(names, [
+				group({ ...ended, outcome: "error", detail: "no harness" }),
+			]).failed,
+		).toEqual([
+			{ name: "functional", detail: "error: no harness" },
+			{ name: "quality", detail: "error: no harness" },
+		]);
+	});
+
+	it("takes a lens's latest claim, a lone one after its group or a group after it", () => {
+		const alone = claim("quality", { ...ended, outcome: "done" });
+		const failed = group({ ...ended, outcome: "error" });
+		expect(Lenses.status(["quality"], [failed, alone]).done).toEqual([
+			"quality",
+		]);
+		expect(
+			Lenses.status(["quality"], [alone, failed]).failed.map((f) => f.name),
+		).toEqual(["quality"]);
+	});
+});
+
 describe("Brief.lens", () => {
 	it("tells the lens to file findings as tagged children of the parent, then gives the lens", async () => {
 		const parent = await add("Ship the cache");
@@ -266,8 +311,7 @@ describe("Brief.lens", () => {
 			{
 				runId: "run-1",
 				parent,
-				lens: "quality",
-				prompt: "# Quality lens\n",
+				lenses: [{ name: "quality", prompt: "# Quality lens\n" }],
 				gates: ["check", "test"],
 			},
 			"the parent's own brief",
@@ -282,10 +326,59 @@ describe("Brief.lens", () => {
 		);
 	});
 
+	it("has a group's session review through each lens in turn, tagging each finding with one", async () => {
+		const parent = await add("Ship the cache");
+		const brief = Brief.lens(
+			{
+				runId: "run-1",
+				parent,
+				lenses: [
+					{ name: "functional", prompt: "# Functional lens\n" },
+					{ name: "docs", prompt: "# Docs lens\n" },
+				],
+				gates: [],
+			},
+			"the parent's own brief",
+		);
+		expect(brief).toStartWith(
+			`You are the \`functional\` and \`docs\` verifier of kabane loop run run-1 on ${parent.shortId}`,
+		);
+		expect(brief).toContain("through each lens below in turn");
+		expect(brief).toContain(
+			'tags ["finding", "<severity>", "<lens>"] where lens is the name of the lens whose definitions the finding meets (one of `functional` and `docs`)',
+		);
+		expect(brief).toContain(
+			"One finding carries one lens tag: a defect two lenses would both flag is filed once, under the lens whose reading of it is more severe",
+		);
+		const at = (text: string): number => brief.indexOf(text);
+		expect(at("# Lens `functional`\n\n# Functional lens")).toBeGreaterThan(0);
+		expect(at("# Lens `functional`")).toBeLessThan(
+			at("# Lens `docs`\n\n# Docs lens"),
+		);
+		expect(at("# Docs lens")).toBeLessThan(at("the parent's own brief"));
+		// A lone lens's brief has neither the headings nor the tagging rule.
+		const lone = Brief.lens(
+			{
+				runId: "run-1",
+				parent,
+				lenses: [{ name: "docs", prompt: "# Docs lens\n" }],
+				gates: [],
+			},
+			"",
+		);
+		expect(lone).not.toContain("# Lens `docs`");
+		expect(lone).not.toContain("One finding carries one lens tag");
+	});
+
 	it("never claims gates passed in a run that has none", async () => {
 		const parent = await add("Ship the cache");
 		const brief = Brief.lens(
-			{ runId: "run-1", parent, lens: "functional", prompt: "", gates: [] },
+			{
+				runId: "run-1",
+				parent,
+				lenses: [{ name: "functional", prompt: "" }],
+				gates: [],
+			},
 			"",
 		);
 		expect(brief).not.toContain("gates pass");
@@ -357,14 +450,69 @@ describe("Runner lenses", () => {
 			"lens-failed",
 		]);
 		expect(
-			ended.value.claims.map((c) => [c.lens, c.lane, c.taskId, c.outcome]),
-		).toEqual([["functional", "functional-lens", parent.id, "error"]]);
+			ended.value.claims.map((c) => [c.lenses, c.lane, c.taskId, c.outcome]),
+		).toEqual([[["functional"], "functional-lens", parent.id, "error"]]);
 		const events = RunStore.readEvents(home, "run-1");
 		const types = events.ok ? events.value.map((e) => e.type) : [];
 		expect(types.indexOf("gate_passed")).toBeLessThan(types.indexOf("claim"));
 		// The run took the parent; the lens that failed leaves it as the run left it.
 		const after = await Planner.getTask(home, parent.id);
 		expect(after.ok && after.value?.state).toBe("in_progress");
+	});
+
+	// One review session covered both lenses: the runner counts each as reviewed, starts neither
+	// again, and with nothing filed completes. A harness it reached would be the missing one.
+	it("counts each lens of a group's finished claim as reviewed", async () => {
+		const parent = await add("parent");
+		await add("child", { parentTaskId: parent.id, state: "done" });
+		const config = LoopConfig.Schema.safeParse({
+			gates: { ok: "true" },
+			lenses: ["functional", "quality"],
+		});
+		if (!config.success) throw config.error;
+		const reviewed = {
+			...claim("functional", {
+				lenses: ["functional", "quality"],
+				lane: "functional+quality-lens",
+				taskId: parent.id,
+				endedAt: new Date().toISOString(),
+				outcome: "done",
+			}),
+		};
+		const created = RunStore.create(home, {
+			version: 1,
+			id: "run-1",
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: repo,
+			config: config.data,
+			status: "pending",
+			createdAt: new Date().toISOString(),
+			claims: [reviewed],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		});
+		if (!created.ok) throw created.error;
+		const ended = await Runner.run("run-1", {
+			home,
+			basePath: home,
+			kabaneBin: "/nonexistent/kabane",
+			pid: process.pid,
+			overrides: { claude: { command: "/nonexistent/harness" } },
+			tickMs: 5,
+		});
+		if (!ended.ok) throw ended.error;
+
+		expect([ended.value.status, ended.value.exit?.reason]).toEqual([
+			"completed",
+			"plan-done",
+		]);
+		expect(ended.value.claims.map((c) => c.lane)).toEqual([
+			"functional+quality-lens",
+		]);
 	});
 
 	it("start refuses a lens with no prompt before anything runs", async () => {

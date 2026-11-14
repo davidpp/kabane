@@ -223,14 +223,29 @@ export namespace Brief {
 			assembled,
 		].join("\n\n---\n\n");
 
+	/** One lens a review session looks through: its name, which tags its findings, and its prompt. */
+	export type LensPrompt = { name: string; prompt: string };
+
 	type Lens = {
 		runId: string;
 		parent: Task;
-		lens: string;
-		prompt: string;
+		/** One lens, or a group one session reviews through in turn. */
+		lenses: readonly LensPrompt[];
 		gates: readonly string[];
 		interrupted?: Interrupted;
 	};
+
+	const ticked = (names: readonly string[]): string[] =>
+		names.map((n) => `\`${n}\``);
+
+	const listing = (items: readonly string[]): string =>
+		items.length < 2
+			? items.join("")
+			: `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+
+	/** How the trace and an outcome name a review's lenses: `the docs lens`, `the functional and docs lenses`. */
+	export const lensNames = (names: readonly string[]): string =>
+		`the ${listing(names)} ${names.length === 1 ? "lens" : "lenses"}`;
 
 	// What has checked the work before the lens sees it. A run with no gates has run nothing, and
 	// saying otherwise would have the lens skip the very checks nobody made.
@@ -241,21 +256,41 @@ export namespace Brief {
 
 	// How a lens reports: findings are child issues of the parent, through kabane MCP, tagged so
 	// the run reads them back structurally. It is the run's part of every lens, so a repository's
-	// own lens cannot leave it out.
-	const filing = ({ runId, parent, lens, gates }: Lens): string =>
-		[
-			`You are the \`${lens}\` verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`,
-			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"] where severity is p1, p2 or p3 as the lens defines them, a title that names the problem, and a description with the evidence and what fixed looks like. The fixer takes every finding, most severe first, and a human reads the severities, so grade by the lens's definitions as written: a finding that meets the p1 definition is p1 even when the fix is small, and one that does not stays p2 or p3. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
+	// own lens cannot leave it out. A group's session tags each finding with the one lens it falls
+	// under, so the fixer, the severities and the rechecks read it as they read a lone lens's.
+	const filing = ({ runId, parent, lenses, gates }: Lens): string => {
+		const names = lenses.map((l) => l.name);
+		const [only] = names;
+		const one = names.length === 1 && only !== undefined;
+		const tagged = one
+			? `tags ["finding", "<severity>", "${only}"] where severity is p1, p2 or p3 as the lens defines them`
+			: `tags ["finding", "<severity>", "<lens>"] where lens is the name of the lens whose definitions the finding meets (one of ${listing(ticked(names))}) and severity is p1, p2 or p3 as that lens defines them. One finding carries one lens tag: a defect two lenses would both flag is filed once, under the lens whose reading of it is more severe`;
+		return [
+			one
+				? `You are the \`${only}\` verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`
+				: `You are the ${listing(ticked(names))} verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates)} Review the result through each lens below in turn and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`,
+			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", ${tagged}, a title that names the problem, and a description with the evidence and what fixed looks like. The fixer takes every finding, most severe first, and a human reads the severities, so grade by the lens's definitions as written: a finding that meets the p1 definition is p1 even when the fix is small, and one that does not stays p2 or p3. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
 			`When the fix is a trade-off the human must choose, file the finding all the same, then ${asking("it")}. ${PARKED} The fixer leaves a waiting finding to the human.`,
 			"When everything is filed, end your turn with one line: how many findings you filed at each severity.",
 		].join("\n\n");
+	};
 
-	/** A lens's prompt: how to file, the review it takes over, the lens itself, then the parent's own brief. */
+	// A lone lens's prompt stands as written; a group's each go under a heading with its name, the
+	// name its findings are tagged with.
+	const prompts = (lenses: readonly LensPrompt[]): string[] =>
+		lenses.length === 1
+			? lenses.map((l) => l.prompt.trim())
+			: lenses.map((l) => `# Lens \`${l.name}\`\n\n${l.prompt.trim()}`);
+
+	/**
+	 * A review's prompt: how to file, the review it takes over, the lens or each lens of its group,
+	 * then the parent's own brief.
+	 */
 	export const lens = (subject: Lens, assembled: string): string =>
 		[
 			filing(subject),
 			...(subject.interrupted ? [takeover(subject.interrupted)] : []),
-			subject.prompt.trim(),
+			...prompts(subject.lenses),
 			assembled,
 		].join("\n\n---\n\n");
 
