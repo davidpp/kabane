@@ -168,6 +168,7 @@ describe.concurrent("config through the real CLI", () => {
 					"loop.implementer",
 					"loop.land",
 					"loop.model",
+					"loop.onLanded",
 					"loop.budget",
 					"loop.budget.concurrency",
 					"loop.budget.continuations",
