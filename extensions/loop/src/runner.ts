@@ -415,7 +415,12 @@ export namespace Runner {
 					reason: "lens-failed",
 					detail: `${failed.name}: ${failed.detail}`,
 				};
-			return startLenses(ctx, plan, reviewed.pending);
+			// Nothing groups the lenses yet: each pending one is a session of its own.
+			return startLenses(
+				ctx,
+				plan,
+				reviewed.pending.map((name) => [name]),
+			);
 		}
 		if (fixer.kind === "failed")
 			return {
@@ -462,22 +467,23 @@ export namespace Runner {
 		return undefined;
 	};
 
-	// Lenses take free slots like any claim, and none while the run is paused. Their findings are
-	// children of the parent, for the fixer once every lens has reviewed.
+	// Each group of lenses is one review session, and takes a free slot like any claim, none while
+	// the run is paused. Their findings are children of the parent, for the fixer once every lens
+	// has reviewed.
 	const startLenses = async (
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
-		pending: readonly string[],
+		groups: readonly (readonly string[])[],
 	): Promise<Exit | undefined> => {
 		if (ctx.run.steering.paused) return undefined;
 		const slots = Budget.slots(RunStore.concurrency(ctx.run), ctx.live.size);
-		for (const name of pending.slice(0, slots)) {
-			const started = await Claims.lens(ctx, name, plan);
+		for (const group of groups.slice(0, slots)) {
+			const started = await Claims.lens(ctx, group, plan);
 			if (!started.ok)
 				return {
 					status: "stopped",
 					reason: "lens-failed",
-					detail: `${name}: ${started.error.message}`,
+					detail: `${group.join("+")}: ${started.error.message}`,
 				};
 		}
 		return undefined;

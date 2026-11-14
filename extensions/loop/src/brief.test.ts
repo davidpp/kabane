@@ -69,8 +69,7 @@ describe("Brief, after an interrupted attempt", () => {
 		const lens = Brief.lens(
 			{
 				...subject,
-				lens: "security",
-				prompt: "LENS",
+				lenses: [{ name: "security", prompt: "LENS" }],
 				gates: [],
 				interrupted: attempt,
 			},
@@ -160,7 +159,11 @@ describe("Brief on a single issue", () => {
 
 	it("speaks of the run's target, not its subtasks, to a lens and the fixer", () => {
 		const lens = Brief.lens(
-			{ ...single, lens: "security", prompt: "LENS", gates: [] },
+			{
+				...single,
+				lenses: [{ name: "security", prompt: "LENS" }],
+				gates: [],
+			},
 			"ASSEMBLED",
 		);
 		const fixer = Brief.fixer(
@@ -247,7 +250,11 @@ describe("Brief on a decision that is the human's", () => {
 
 	it("has a lens file a trade-off finding, then ask its options on it", () => {
 		const lens = Brief.lens(
-			{ ...subject, lens: "security", prompt: "LENS", gates: [] },
+			{
+				...subject,
+				lenses: [{ name: "security", prompt: "LENS" }],
+				gates: [],
+			},
 			"ASSEMBLED",
 		);
 		expect(lens).toContain(
@@ -437,6 +444,7 @@ describe("Brief working copy", () => {
 			tree: { ...tree, isolation: "worktree" as const },
 			lens: "functional",
 			prompt: "LENS",
+			lenses: [{ name: "functional", prompt: "LENS" }],
 			findings: [],
 			base: "base",
 			diff: "",

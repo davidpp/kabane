@@ -186,7 +186,7 @@ describe("LoopHeader.steps", () => {
 			config: config.data,
 			claims: [
 				...base.claims.map((c) => ({ ...c, endedAt: c.startedAt })),
-				onParent({ lens: "functional" }),
+				onParent({ lenses: ["functional"] }),
 				onParent({ fixer: true, head: "abc123", findings: [] }),
 				onParent({
 					recheck: "functional",
@@ -305,15 +305,15 @@ describe("LoopHeader.state past the subtasks", () => {
 
 	it("names the lenses reviewing, the fixer, and the lenses rechecking", () => {
 		expect(
-			text(run({ claims: [...ended, onParent({ lens: "quality" })] })),
+			text(run({ claims: [...ended, onParent({ lenses: ["quality"] })] })),
 		).toBe("● quality lens reviewing");
 		expect(
 			text(
 				run({
 					claims: [
 						...ended,
-						onParent({ lens: "quality" }),
-						onParent({ lens: "docs" }),
+						onParent({ lenses: ["quality"] }),
+						onParent({ lenses: ["docs"] }),
 					],
 				}),
 			),

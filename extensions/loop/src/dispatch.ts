@@ -68,7 +68,12 @@ export namespace Dispatch {
 				concurrent: boolean;
 				retry?: Gates.Result;
 		  }
-		| { kind: "lens"; name: string; prompt: string; gates: readonly string[] }
+		// `lenses`: the group one session reviews through, in turn, each with its prompt.
+		| {
+				kind: "lens";
+				lenses: readonly Brief.LensPrompt[];
+				gates: readonly string[];
+		  }
 		| { kind: "fix"; findings: readonly Task[]; gates: readonly string[] }
 		| {
 				kind: "recheck";
@@ -668,24 +673,27 @@ export namespace Dispatch {
 		| { kind: "end"; outcome: Outcome["outcome"]; detail: string }
 		| { kind: "prompt"; prompt: string };
 
-	// A lens has one turn: its review, or its recheck. What it found is in the tracker, not in what
-	// it said.
+	// A lens has one turn: its review, or its recheck; a group of lenses shares that one turn. What
+	// it found is in the tracker, not in what it said.
 	const reviewed = (
-		name: string,
+		names: readonly string[],
 		reason: string,
 		review: "review" | "recheck",
-	): Next =>
-		reason === "end_turn"
+	): Next => {
+		const who = Brief.lensNames(names);
+		const one = names.length === 1;
+		return reason === "end_turn"
 			? {
 					kind: "end",
 					outcome: "done",
-					detail: `the ${name} lens finished its ${review}`,
+					detail: `${who} finished ${one ? "its" : "their"} ${review}`,
 				}
 			: {
 					kind: "end",
 					outcome: "incomplete",
-					detail: `the ${name} lens's ${review} turn ended (${reason})`,
+					detail: `${who}${one ? "'s" : "'"} ${review} turn ended (${reason})`,
 				};
+	};
 
 	// A session that closed its issue with checklist items open: the run has reopened it, and nudges
 	// the session on from the first open item, as it nudges any turn that left owned work open.
@@ -823,9 +831,13 @@ export namespace Dispatch {
 		const { work } = claim;
 		switch (work.kind) {
 			case "lens":
-				return reviewed(work.name, reason, "review");
+				return reviewed(
+					work.lenses.map((l) => l.name),
+					reason,
+					"review",
+				);
 			case "recheck":
-				return reviewed(work.name, reason, "recheck");
+				return reviewed([work.name], reason, "recheck");
 			case "fix":
 				return fixed(
 					{ harness: claim.harness, findings: work.findings },
@@ -865,12 +877,7 @@ export namespace Dispatch {
 			case "lens":
 				return ok(
 					Brief.lens(
-						{
-							...subject,
-							lens: work.name,
-							prompt: work.prompt,
-							gates: work.gates,
-						},
+						{ ...subject, lenses: work.lenses, gates: work.gates },
 						assembled.value,
 					),
 				);
@@ -915,7 +922,7 @@ export namespace Dispatch {
 	const started = ({ harness, task, work }: Claim): string => {
 		switch (work.kind) {
 			case "lens":
-				return `${harness} reviews ${label(task)} through the ${work.name} lens`;
+				return `${harness} reviews ${label(task)} through ${Brief.lensNames(work.lenses.map((l) => l.name))}`;
 			case "fix":
 				return `${harness} fixes ${work.findings.length} finding${work.findings.length === 1 ? "" : "s"} of ${label(task)}`;
 			case "recheck":

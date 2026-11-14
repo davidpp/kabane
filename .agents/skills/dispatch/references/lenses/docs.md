@@ -1,3 +1,7 @@
+---
+applies: anything a person or an agent outside the code can see, such as a command, a flag, a default, an output or JSON field, an error, a setting, a file kabane reads or writes, a board key or view, an MCP tool or its inputs, the copilot's instructions, a shipped template, or the docs and READMEs themselves
+---
+
 # Docs lens
 
 Check that everything a person or an agent reads to use kabane says what the work now does.

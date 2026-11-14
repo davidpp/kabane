@@ -201,6 +201,29 @@ adviser leaves that list at your configured value; choose the lenses you want th
 Advice never changes `loop.implementer`, `loop.verifier`, `loop.model` or `loop.land`.
 Those are your choices of harness, model and what happens to the finished branch.
 
+A lens is a Markdown prompt in your dispatch skill,
+`.claude/skills/dispatch/references/lenses/<name>.md`, the same file the skill's close
+review reads; `functional` and `quality` ship with kabane. A lens file can open with
+frontmatter that says which changes it reviews:
+
+```markdown
+---
+applies: persisted rows, sync ops, MCP tool inputs, config keys, file formats, CLI flags and output
+always: false
+---
+
+# Compatibility lens
+```
+
+`applies` is one line of prose, written for a model deciding from a diff stat and the
+brief. `always: true` marks a lens that reviews every change; the shipped `functional`
+lens is one. Both keys are optional: a file without frontmatter is a lens with no
+`applies` that is not `always`. Any other key, or frontmatter that is not YAML, is an
+error that names the file, and `kabane loop start` refuses a run that would use that lens.
+The session gets the prompt without its frontmatter. The dispatch skill's close review
+skips a lens whose `applies` the diff does not touch; a loop run still runs every lens in
+`loop.lenses`.
+
 To read the same advice from the CLI, including how the subtask tags would route:
 
 ```bash

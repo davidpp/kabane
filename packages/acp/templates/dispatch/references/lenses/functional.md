@@ -1,3 +1,7 @@
+---
+always: true
+---
+
 # Functional lens
 
 Check that the work does what the parent issue and its subtasks asked for, as a user of it
