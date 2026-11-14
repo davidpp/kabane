@@ -105,18 +105,74 @@ describe("Lenses.prompt", () => {
 		const legacy = at(LEGACY, "functional");
 		expect(Lenses.prompt(repo, "functional")).toEqual({
 			ok: true,
-			value: { text: "# Old\n", legacy },
+			value: { text: "# Old\n", legacy, always: false },
 		});
 		write(SKILL, "functional", "# Skill\n");
 		expect(Lenses.prompt(repo, "functional")).toEqual({
 			ok: true,
-			value: { text: "# Skill\n" },
+			value: { text: "# Skill\n", always: false },
 		});
 		write(SKILL, "security", "# Security\n");
 		expect(Lenses.prompt(repo, "security")).toEqual({
 			ok: true,
-			value: { text: "# Security\n" },
+			value: { text: "# Security\n", always: false },
 		});
+	});
+
+	it("reads applies and always from the frontmatter, and gives the session the text without it", () => {
+		write(
+			SKILL,
+			"compat",
+			"---\napplies: persisted rows, CLI flags and output\nalways: false\n---\n\n# Compat\n",
+		);
+		expect(Lenses.prompt(repo, "compat")).toEqual({
+			ok: true,
+			value: {
+				text: "# Compat\n",
+				applies: "persisted rows, CLI flags and output",
+				always: false,
+			},
+		});
+		write(SKILL, "functional", "---\nalways: true\n---\n# Functional\n");
+		expect(Lenses.prompt(repo, "functional")).toEqual({
+			ok: true,
+			value: { text: "# Functional\n", always: true },
+		});
+	});
+
+	it("takes a quoted applies line as YAML would", () => {
+		write(SKILL, "docs", '---\napplies: "help: flags, docs"\n---\n# Docs\n');
+		const docs = Lenses.prompt(repo, "docs");
+		expect(docs.ok && docs.value.applies).toBe("help: flags, docs");
+	});
+
+	it("leaves a file with no frontmatter whole, with no applies and not always", () => {
+		write(SKILL, "perf", "# Perf\n\n---\n\nA rule, not a fence.\n");
+		expect(Lenses.prompt(repo, "perf")).toEqual({
+			ok: true,
+			value: {
+				text: "# Perf\n\n---\n\nA rule, not a fence.\n",
+				always: false,
+			},
+		});
+	});
+
+	it("refuses frontmatter it cannot read, naming the file", () => {
+		const cases: [string, string][] = [
+			["---\napplies: x\nruns: always\n", "no closing ---"],
+			["---\napplies: x\nruns: always\n---\n# X\n", "runs"],
+			["---\nalways: yes\n---\n# X\n", "always"],
+			["---\napplies:\n---\n# X\n", "applies"],
+			["---\njust prose\n---\n# X\n", "Expected object"],
+			["---\napplies: [unclosed\n---\n# X\n", "not YAML"],
+		];
+		for (const [text, says] of cases) {
+			write(SKILL, "odd", text);
+			const odd = Lenses.prompt(repo, "odd");
+			const message = !odd.ok && odd.error.message;
+			expect(message).toContain(at(SKILL, "odd"));
+			expect(message).toContain(says);
+		}
 	});
 
 	it("refuses a lens no file holds, naming the skill's path only", () => {
