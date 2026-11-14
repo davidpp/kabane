@@ -111,6 +111,13 @@ describe("LoopConfig.SettingsSchema", () => {
 		});
 	});
 
+	it("lands by merge, and refuses a landing it does not have", () => {
+		expect(LoopConfig.Schema.safeParse({ land: "merge" }).data?.land).toBe(
+			"merge",
+		);
+		expect(LoopConfig.Schema.safeParse({ land: "squash" }).success).toBe(false);
+	});
+
 	it("drops the retired timer from existing files and saved runs", () => {
 		const legacy = { budget: { concurrency: 4, wallMinutes: 120 } };
 		const resolved = resolve(legacy);

@@ -4,9 +4,9 @@
 // removed, with its branch (`Prune`). A checkpoint is a commit of everything in the worktree
 // after a green gate; a rollback resets the worktree to one of them.
 //
-// Nothing here commits into, or resets, the user's own checkout: `checkpoint` and `rollback`
-// refuse any directory that is not a linked worktree, so a run without one cannot reach them by
-// mistake.
+// Nothing here commits into, or resets, the user's own checkout but `mergeIntoCheckout`, which a
+// `merge` landing calls by name: `checkpoint`, `rollback` and the rest refuse any directory that
+// is not a linked worktree, so a run without one cannot reach them by mistake.
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { err, ok, type Result, trySync } from "@cabane/core";
@@ -318,18 +318,21 @@ export namespace Worktree {
 	};
 
 	/**
-	 * Merge `branch` into the worktree at `dir`, as a merge commit of `message` even when it could
+	 * Merge `branch` into the checkout at `dir`, as a merge commit of `message` even when it could
 	 * fast-forward: the commit it leaves HEAD at. A merge that stops on a conflict is aborted, so
-	 * HEAD is left as it was, and the error names the files that conflicted.
+	 * HEAD is left as it was, and the error names the files that conflicted; one git refuses before
+	 * it starts (an untracked file it would overwrite) is that refusal.
+	 *
+	 * The one thing here that commits into the user's own checkout: only a `merge` landing calls it
+	 * there, once it has seen the checkout on the base with no changes to tracked files. Everything
+	 * else goes through `merge`, which takes a linked worktree only.
 	 */
-	export const merge = async (
+	export const mergeIntoCheckout = async (
 		dir: string,
 		branch: string,
 		message: string,
 		run: Git = git,
 	): Promise<Result<string>> => {
-		const isLinked = await linked(dir, run);
-		if (!isLinked.ok) return isLinked;
 		const merged = await run(dir, [
 			"merge",
 			"-q",
@@ -350,6 +353,19 @@ export namespace Worktree {
 		}
 		const sha = await run(dir, ["rev-parse", "HEAD"]);
 		return sha.ok ? ok(sha.value.trim()) : sha;
+	};
+
+	/** `mergeIntoCheckout` into the linked worktree at `dir`, refused for any other checkout. */
+	export const merge = async (
+		dir: string,
+		branch: string,
+		message: string,
+		run: Git = git,
+	): Promise<Result<string>> => {
+		const isLinked = await linked(dir, run);
+		return isLinked.ok
+			? mergeIntoCheckout(dir, branch, message, run)
+			: isLinked;
 	};
 
 	/**

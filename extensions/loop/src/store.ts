@@ -123,6 +123,11 @@ export namespace RunStore {
 		summary: z.string(),
 		/** The branch's tip before and after its rebase onto the base, when the rebase moved it. */
 		rebased: z.object({ from: z.string(), to: z.string() }).optional(),
+		/**
+		 * The merge commit a `merge` landing left on the base in the project's checkout; absent for
+		 * a landing that opened a pull request.
+		 */
+		merged: z.string().optional(),
 	});
 	export type Landing = z.infer<typeof LandingSchema>;
 
