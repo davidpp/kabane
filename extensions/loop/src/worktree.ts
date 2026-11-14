@@ -321,7 +321,8 @@ export namespace Worktree {
 	 * Merge `branch` into the checkout at `dir`, as a merge commit of `message` even when it could
 	 * fast-forward: the commit it leaves HEAD at. A merge that stops on a conflict is aborted, so
 	 * HEAD is left as it was, and the error names the files that conflicted; one git refuses before
-	 * it starts (an untracked file it would overwrite) is that refusal.
+	 * it starts (an untracked file it would overwrite) is that refusal. An abort git refuses leaves
+	 * the checkout mid-merge, which the error says, with git's reason: `mergeHead` tells it apart.
 	 *
 	 * The one thing here that commits into the user's own checkout: only a `merge` landing calls it
 	 * there, once it has seen the checkout on the base with no changes to tracked files. Everything
@@ -343,16 +344,32 @@ export namespace Worktree {
 		]);
 		if (!merged.ok) {
 			const files = await conflicted(dir, run);
-			// Fails, harmlessly, when the merge never started.
-			await run(dir, ["merge", "--abort"]);
-			return err(
+			const why =
 				files.length > 0
-					? new Error(`conflicts in ${files.join(", ")}`)
-					: merged.error,
+					? `conflicts in ${files.join(", ")}`
+					: merged.error.message;
+			// A merge git refused before it started has nothing to abort.
+			if ((await mergeHead(dir, run)) === undefined) return err(new Error(why));
+			const aborted = await run(dir, ["merge", "--abort"]);
+			return err(
+				new Error(
+					aborted.ok
+						? why
+						: `${why}, and git merge --abort failed (${aborted.error.message}), so the merge is still in progress`,
+				),
 			);
 		}
 		const sha = await run(dir, ["rev-parse", "HEAD"]);
 		return sha.ok ? ok(sha.value.trim()) : sha;
+	};
+
+	/** The commit a merge stopped in the checkout at `dir` is merging, while one is in progress. */
+	export const mergeHead = async (
+		dir: string,
+		run: Git = git,
+	): Promise<string | undefined> => {
+		const found = await run(dir, ["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
+		return found.ok ? found.value.trim() : undefined;
 	};
 
 	/** `mergeIntoCheckout` into the linked worktree at `dir`, refused for any other checkout. */

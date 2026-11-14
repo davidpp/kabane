@@ -712,6 +712,34 @@ describe("Land.land by merge into the project's checkout", () => {
 		expect(existsSync(join(repo, ".git", "MERGE_HEAD"))).toBe(false);
 	});
 
+	it("says the checkout is mid-merge when git refuses to abort a merge that conflicts, and leaves the branch rebased", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(
+			await completedRun(parent, { land: "merge", gates: { test: "true" } }),
+		);
+		const dir = ctx.run.worktree ?? "";
+		const tip = head(dir);
+		baseMoves("teammate.txt");
+		commit(repo, "work.txt", "the checkout's own\n");
+		// A git killed beside this one leaves its index lock, so the abort is refused.
+		ctx.deps.git = async (cwd, args) => {
+			if (args[0] === "merge" && args[1] === "--abort") staleIndexLock(repo);
+			return git(cwd, args);
+		};
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain("conflicts in work.txt");
+		expect(landing.summary).toContain("git merge --abort failed");
+		expect(landing.summary).toContain("the checkout is mid-merge");
+		expect(landing.summary).not.toContain("the checkout is as it was");
+		expect(existsSync(join(repo, ".git", "MERGE_HEAD"))).toBe(true);
+		// Not put back under the merge in progress, and kept for recover to look at.
+		expect(head(dir)).not.toBe(tip);
+		expect(ctx.run.landingFrom).toBe(tip);
+	});
+
 	it("leaves an untracked file git would overwrite alone, refused like a conflict", async () => {
 		const parent = await parentIssue();
 		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));

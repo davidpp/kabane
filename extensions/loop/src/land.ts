@@ -445,7 +445,17 @@ export namespace Land {
 			`Merge branch '${branch}' (${ctx.run.parentShortId})`,
 			git,
 		);
-		if (!merged.ok)
+		if (!merged.ok) {
+			// A merge git could not abort is the human's to finish or abort: the branch stays where
+			// that merge has it, and so does its landingFrom.
+			if ((await Worktree.mergeHead(dir, git)) !== undefined)
+				return record(
+					ctx,
+					notLanded(
+						`merging into ${into} in ${dir}: ${merged.error.message}; the checkout is mid-merge: resolve and commit the merge there, or run \`git merge --abort\` in it`,
+						keep,
+					),
+				);
 			return record(
 				ctx,
 				notLanded(
@@ -453,6 +463,7 @@ export namespace Land {
 					keep,
 				),
 			);
+		}
 		return record(ctx, {
 			ok: true,
 			summary: `${said}. Merged \`${branch}\` into \`${into}\` as \`${short(merged.value)}\`.`,
