@@ -843,6 +843,98 @@ describe("a run with land: merge, through the real runner", () => {
 	});
 });
 
+// The `onLanded` command a test sets: it says whether the run reads as over to a prune it would
+// start (run.json completed, no lock on the worktree), then does what the docs' recipes do.
+const overThen = (runId: string, then: string): string =>
+	`test ! -e "$KABANE_WORKTREE.lock" && grep -q '"status": "completed"' ${RunStore.paths(home, runId).run} && echo "$KABANE_MERGED" > ${join(root, "hooked")} && ${then}`;
+
+const hooked = (): string =>
+	existsSync(join(root, "hooked"))
+		? readFileSync(join(root, "hooked"), "utf8").trim()
+		: "";
+
+describe("onLanded after a merge landing", () => {
+	it("runs once the runner has written the run completed, and its git push moves the remote's base", async () => {
+		const parent = await parentIssue();
+		const child = await Planner.addTask(home, {
+			title: "the work",
+			kind: "issue",
+			state: "done",
+			parentTaskId: parent.id,
+		});
+		if (!child.ok) throw child.error;
+		const run = await completedRun(parent, {
+			land: "merge",
+			gates: { test: "true" },
+			onLanded: overThen("run-1", "git push -q origin main"),
+		});
+		const pending = RunStore.write(home, { ...run, status: "pending" });
+		if (!pending.ok) throw pending.error;
+
+		const ran = await Runner.run(run.id, runnerDeps());
+
+		if (!ran.ok) throw ran.error;
+		const merged = head(repo);
+		expect(ran.value.landing).toMatchObject({ ok: true, merged });
+		expect(hooked()).toBe(merged);
+		expect(head(remote, "refs/heads/main")).toBe(merged);
+		const events = RunStore.readEvents(home, run.id);
+		const types = events.ok ? events.value.map((e) => e.type) : [];
+		expect(types.slice(-2)).toEqual(["run_end", "on_landed"]);
+	});
+
+	it("runs after kabane loop land has let go of the worktree, and a failing one leaves the landing ok", async () => {
+		const parent = await parentIssue();
+		const run = await completedRun(parent, {
+			land: "merge",
+			onLanded: overThen("run-1", "exit 3"),
+		});
+		const written = RunStore.write(home, {
+			...run,
+			status: "completed",
+			exit: { reason: "plan-done" },
+		});
+		if (!written.ok) throw written.error;
+
+		const landed = await Loop.land(
+			{ home, basePath: home, kabaneBin: "/nonexistent/kabane", git, gh },
+			run.id,
+		);
+
+		if (!landed.ok) throw landed.error;
+		expect(hooked()).toBe(head(repo));
+		const saved = RunStore.read(home, run.id);
+		expect(saved.ok && saved.value).toMatchObject({
+			status: "completed",
+			landing: { ok: true, merged: head(repo) },
+		});
+		const events = RunStore.readEvents(home, run.id);
+		expect(events.ok && events.value.at(-1)).toMatchObject({
+			type: "warning",
+			data: { exit: 3 },
+		});
+	});
+
+	it("does not run when the landing fails", async () => {
+		const parent = await parentIssue();
+		const run = await completedRun(parent, {
+			land: "merge",
+			onLanded: overThen("run-1", "true"),
+		});
+		const written = RunStore.write(home, { ...run, status: "completed" });
+		if (!written.ok) throw written.error;
+		GitFixture.run(repo, ["checkout", "-q", "-b", "elsewhere"]);
+
+		const landed = await Loop.land(
+			{ home, basePath: home, kabaneBin: "/nonexistent/kabane", git, gh },
+			run.id,
+		);
+
+		expect(landed.ok && landed.value.landing?.ok).toBe(false);
+		expect(hooked()).toBe("");
+	});
+});
+
 describe("a landing through a remote URL that carries credentials", () => {
 	const TOKEN = "ghs_FAKEFAKEFAKEFAKE1234";
 	const HOOK_TOKEN = "ghp_FAKE0123456789abcdefABCD";

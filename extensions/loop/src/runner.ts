@@ -9,7 +9,7 @@
 // on it (`Parent`). Once the fixer has ended and the gates are green on its result, the lenses
 // whose findings it closed recheck its diff, once and without editing (`recheck`). A run that
 // completes lands its branch when its `land` setting says so
-// (`Land`). A single issue that gains a work child mid-run is a parent from then on. Each
+// (`Land`), then runs the user's `onLanded` command once it is over (`Landed`). A single issue that gains a work child mid-run is a parent from then on. Each
 // subtask may work in a worktree of its own (`ClaimTrees`), which the run's end removes once free.
 import { err, ok, type Result, type Task } from "@cabane/core";
 import { Budget } from "./budget";
@@ -18,6 +18,7 @@ import { Claims } from "./claims";
 import { Fixer } from "./fixer";
 import { Gates } from "./gates";
 import { Land } from "./land";
+import { Landed } from "./landed";
 import { Lenses } from "./lenses";
 import { Parent } from "./parent";
 import { LoopPlan } from "./plan";
@@ -641,6 +642,11 @@ export namespace Runner {
 			ctx.wake();
 		});
 		const waits = await boot(ctx);
-		return ok(waits ? await halt(ctx, waits) : await loop(ctx));
+		const over = waits ? await halt(ctx, waits) : await loop(ctx);
+		// After `halt` has written the run completed, so a `kabane loop prune` it runs sees it over.
+		// Its own signal: the run's stop has already fired by now.
+		const { land } = over.config;
+		if (land !== "none") await Landed.hook(ctx, land, deps.signal);
+		return ok(over);
 	};
 }
