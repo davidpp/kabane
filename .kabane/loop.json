@@ -5,5 +5,7 @@
 		"check": "bun run check",
 		"typecheck": "bun run typecheck",
 		"test": "bun run test"
-	}
+	},
+	"land": "pr",
+	"onLanded": "gh pr merge \"$KABANE_PR\" --merge"
 }
