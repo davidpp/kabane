@@ -30,6 +30,7 @@ import type { LoopConfig } from "./config";
 import type { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 import type { Retry } from "./retry";
+import { Review } from "./review";
 import { Route } from "./route";
 import type { RunStore } from "./store";
 
@@ -56,8 +57,8 @@ export namespace Dispatch {
 	/**
 	 * What the session is for: implementing its subtask (with the gate that failed after the
 	 * subtask's last session, for its brief), reviewing the parent through a lens, fixing the
-	 * findings the lenses filed, in the order given, or rechecking through a lens the fixer's diff
-	 * against the findings of the lens's that it closed.
+	 * findings the lenses filed, in the order given, rechecking through a lens the fixer's diff
+	 * against the findings of the lens's that it closed, or triaging the lenses before they review.
 	 */
 	export type Work =
 		// `gates`: the run's gate names, so the brief says what has checked the work and what has not;
@@ -86,6 +87,13 @@ export namespace Dispatch {
 				diff: string;
 				gates: readonly string[];
 				passed?: readonly Gates.Result[];
+		  }
+		// `lenses`: the run's, with their frontmatter; `tiers`: the tier names its plan may use.
+		| {
+				kind: "triage";
+				lenses: readonly Review.Lens[];
+				diff: Review.Diff;
+				tiers: readonly string[];
 		  };
 
 	type Claim = {
@@ -841,6 +849,15 @@ export namespace Dispatch {
 				);
 			case "recheck":
 				return reviewed([work.name], reason, "recheck");
+			// One turn, whose last message is the plan: the claim reads it once the session ends.
+			case "triage":
+				return reason === "end_turn"
+					? { kind: "end", outcome: "done", detail: "triage answered" }
+					: {
+							kind: "end",
+							outcome: "incomplete",
+							detail: `triage turn ended (${reason})`,
+						};
 			case "fix":
 				return fixed(
 					{ harness: claim.harness, findings: work.findings },
@@ -912,6 +929,19 @@ export namespace Dispatch {
 						assembled.value,
 					),
 				);
+			case "triage":
+				return ok(
+					Review.brief(
+						{
+							runId: env.runId,
+							parent: claim.parent,
+							lenses: work.lenses,
+							diff: work.diff,
+							tiers: work.tiers,
+						},
+						assembled.value,
+					),
+				);
 			case "implement":
 				return ok(
 					Brief.opening(
@@ -936,6 +966,8 @@ export namespace Dispatch {
 				return `${harness} fixes ${work.findings.length} finding${work.findings.length === 1 ? "" : "s"} of ${label(task)}`;
 			case "recheck":
 				return `${harness} rechecks the fixer's diff on ${label(task)} through the ${work.name} lens`;
+			case "triage":
+				return `${harness} triages the review of ${label(task)}`;
 			case "implement":
 				return `${harness} on ${label(task)}`;
 		}

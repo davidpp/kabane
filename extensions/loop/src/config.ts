@@ -84,6 +84,21 @@ export namespace LoopConfig {
 	/** How a completed run's branch lands. */
 	export const LAND = ["none", "pr", "merge"] as const;
 
+	/** Whether a run triages its lenses before they review (`Review`). */
+	export const REVIEW_MODES = ["triage", "all"] as const;
+
+	const ReviewSchema = z.object({
+		mode: z
+			.enum(REVIEW_MODES)
+			.default("triage")
+			.describe(
+				"triage: with two lenses or more, one short read-only session reads the diff and decides which lenses run, grouped into shared sessions at a tier each, and which are skipped, never one whose frontmatter says always; all: every lens runs in a session of its own; defaults to triage.",
+			),
+		tier: TierNameSchema.default("fast").describe(
+			"The tier the triage session runs at, resolved through loop.tiers like a subtask's tier: tag, so loop.review.tier triage with loop.tiers.claude.triage = haiku gives triage its own model; an unmapped tier runs on the run's model; defaults to fast.",
+		),
+	});
+
 	export const Schema = z.object({
 		/** The harness every subtask runs on; a claim makes it the subtask's assignee. */
 		implementer: z
@@ -223,6 +238,15 @@ export namespace LoopConfig {
 			.describe(
 				"Once the fixer has ended and the gates pass, each lens whose findings it closed reviews its diff once, without editing, and reopens what is not fixed; defaults to true.",
 			),
+		/**
+		 * How much review a run gets (`Review`): with `triage`, a run with two lenses or more first runs
+		 * one read-only session that groups the lenses its diff needs, at a tier each, and skips the
+		 * rest above the `always` floor; `all` runs every lens in a session of its own. `tier` is the
+		 * tier that session runs at, so it can have a model of its own (`loop.tiers.<harness>.<tier>`).
+		 */
+		review: ReviewSchema.default({}).describe(
+			"How much review a run gets; edit dotted keys (loop.review.mode, loop.review.tier).",
+		),
 		/** The harness every lens runs on; absent, the implementer. */
 		verifier: z
 			.enum(Harnesses.IDS)
@@ -328,19 +352,28 @@ export namespace LoopConfig {
 			.preprocess(withoutTimer, BudgetSchema.strict())
 			.default({})
 			.describe("A run's limits; edit dotted keys."),
+		review: ReviewSchema.strict()
+			.default({})
+			.describe(
+				"How much review a run gets; edit dotted keys (loop.review.mode, loop.review.tier).",
+			),
 	})
 		.strict()
 		.describe(
 			"The loop extension's settings for a run; edit dotted keys. Flags on kabane loop start and the board's run form override them.",
 		);
 
-	// A run written before `isolation` existed worked every claim in its one tree: resumed, it
-	// goes on that way rather than taking the default a new run gets.
+	// A run written before `isolation` existed worked every claim in its one tree, and one written
+	// before `review` ran every lens: resumed, it goes on that way rather than taking the defaults a
+	// new run gets.
 	const sharedWhenUnset = (config: unknown): unknown => {
 		const parsed = z.record(z.unknown()).safeParse(config);
-		return parsed.success && parsed.data.isolation === undefined
-			? { ...parsed.data, isolation: "shared" }
-			: config;
+		if (!parsed.success) return config;
+		return {
+			...parsed.data,
+			...(parsed.data.isolation === undefined ? { isolation: "shared" } : {}),
+			...(parsed.data.review === undefined ? { review: { mode: "all" } } : {}),
+		};
 	};
 
 	/** A run's config as run.json holds it. */

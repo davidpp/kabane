@@ -44,6 +44,7 @@ describe("LoopConfig.SettingsSchema", () => {
 			reuse: true,
 			lenses: [],
 			recheck: true,
+			review: { mode: "triage", tier: "fast" },
 			land: "none",
 		});
 	});

@@ -53,6 +53,7 @@ const CONFIG: LoopConfig.Config = {
 	reuse: true,
 	lenses: [],
 	recheck: true,
+	review: { mode: "triage", tier: "fast" },
 	land: "none",
 };
 
@@ -835,6 +836,7 @@ describe("Loop.stop", () => {
 				reuse: true,
 				lenses: [],
 				recheck: true,
+				review: { mode: "all", tier: "fast" },
 				land: "none",
 			},
 			status: "running",

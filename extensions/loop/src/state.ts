@@ -5,6 +5,7 @@ import type { Harnesses } from "@cabane/acp";
 import type { Dispatch } from "./dispatch";
 import type { Gates } from "./gates";
 import type { Land } from "./land";
+import type { Review } from "./review";
 import { RunStore } from "./store";
 import { Worktree } from "./worktree";
 
@@ -48,6 +49,8 @@ export namespace RunState {
 		outcome: Dispatch.Outcome;
 		/** The gates its end ran: a session that closed its subtask, in a run with gates. */
 		gates?: Gates.Run;
+		/** The review plan a triage session's end gave. */
+		review?: Review.Decided;
 	};
 
 	export type Ctx = {

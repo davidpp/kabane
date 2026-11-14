@@ -22,6 +22,7 @@ import { Landed } from "./landed";
 import { Lenses } from "./lenses";
 import { Parent } from "./parent";
 import { LoopPlan } from "./plan";
+import { Review } from "./review";
 import { Stall } from "./stall";
 import { RunState } from "./state";
 import { Steering } from "./steering";
@@ -361,9 +362,9 @@ export namespace Runner {
 
 	/**
 	 * The work is done and nothing is running. The phases that follow, each once: the gates on the
-	 * result, the lenses on work that passes them, the fixer on what the lenses found, the gates
-	 * once more on what the fixer changed, then a recheck of its diff by each lens whose findings it
-	 * closed. The run completes when all of it has happened; what a recheck reopens or files is
+	 * result, on work that passes them the triage that plans the review (`Review`) and the lenses
+	 * it groups, the fixer on what the lenses found, the gates once more on what the fixer changed,
+	 * then a recheck of its diff by each lens whose findings it closed. The run completes when all of it has happened; what a recheck reopens or files is
 	 * left open for a human, with no second fixer. The fixer does not wait for the gates: the
 	 * lenses saw them green, and a fixer resumed after its runner died picks up a half-fixed tree.
 	 * Undefined goes on ticking.
@@ -373,7 +374,11 @@ export namespace Runner {
 		plan: LoopPlan.Plan,
 	): Promise<Exit | undefined> => {
 		const gatesGreen = await checked(ctx);
-		const reviewed = Lenses.status(ctx.run.config.lenses, ctx.run.claims);
+		// Skipped lenses count as reviewed: only the plan's groups are owed a session.
+		const reviewed = Lenses.status(
+			Review.reviewed(ctx.run.config, ctx.run.review),
+			ctx.run.claims,
+		);
 		const lensesDone = Lenses.finished(reviewed);
 		const fixer = Fixer.status(ctx.run.claims);
 		const findings = LoopPlan.fixable(
@@ -415,12 +420,7 @@ export namespace Runner {
 					reason: "lens-failed",
 					detail: `${failed.name}: ${failed.detail}`,
 				};
-			// Nothing groups the lenses yet: each pending one is a session of its own.
-			return startLenses(
-				ctx,
-				plan,
-				reviewed.pending.map((name) => [name]),
-			);
+			return startReview(ctx, plan, reviewed.pending);
 		}
 		if (fixer.kind === "failed")
 			return {
@@ -467,23 +467,66 @@ export namespace Runner {
 		return undefined;
 	};
 
-	// Each group of lenses is one review session, and takes a free slot like any claim, none while
-	// the run is paused. Their findings are children of the parent, for the fixer once every lens
-	// has reviewed.
+	/**
+	 * Start the triage: undefined once it has started, else why not. Never on a review already
+	 * under way (a run resumed by a kabane that triages, mid-review), nor without a base to diff.
+	 */
+	const triage = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+	): Promise<string | undefined> => {
+		if (ctx.run.claims.some((c) => c.lenses !== undefined))
+			return "review already under way";
+		const base = ctx.run.base?.sha;
+		if (base === undefined) return "no base to diff against";
+		const started = await Claims.triage(ctx, plan, base);
+		return started.ok
+			? undefined
+			: `triage did not start: ${started.error.message}`;
+	};
+
+	/**
+	 * The review, none of it while the run is paused: in a run that triages and has no plan yet, the
+	 * triage session, once, or every lens on its own when it cannot run; then the plan's groups
+	 * with a lens still `pending`.
+	 */
+	const startReview = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+		pending: readonly string[],
+	): Promise<Exit | undefined> => {
+		if (ctx.run.steering.paused) return undefined;
+		const { config } = ctx.run;
+		if (ctx.run.review === undefined && Review.wanted(config)) {
+			const why = await triage(ctx, plan);
+			if (why === undefined) return undefined;
+			Claims.planReview(ctx, {
+				plan: Review.fallback(config.lenses, why),
+				notes: [],
+			});
+		}
+		const groups = Review.groups(config, ctx.run.review).flatMap((g) => {
+			const left = g.lenses.filter((name) => pending.includes(name));
+			return left.length > 0 ? [{ ...g, lenses: left }] : [];
+		});
+		return startLenses(ctx, plan, groups);
+	};
+
+	// Each group of lenses is one review session, at its tier, and takes a free slot like any claim.
+	// Their findings are children of the parent, for the fixer once every lens has reviewed.
 	const startLenses = async (
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
-		groups: readonly (readonly string[])[],
+		groups: readonly Review.Group[],
 	): Promise<Exit | undefined> => {
-		if (ctx.run.steering.paused) return undefined;
 		const slots = Budget.slots(RunStore.concurrency(ctx.run), ctx.live.size);
 		for (const group of groups.slice(0, slots)) {
-			const started = await Claims.lens(ctx, group, plan);
+			const started = await Claims.lens(ctx, group.lenses, plan, group.tier);
 			if (!started.ok)
 				return {
 					status: "stopped",
 					reason: "lens-failed",
-					detail: `${group.join("+")}: ${started.error.message}`,
+					detail: `${group.lenses.join("+")}: ${started.error.message}`,
 				};
 		}
 		return undefined;
