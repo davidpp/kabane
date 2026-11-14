@@ -1,4 +1,5 @@
 {
+	"setup": "bun install --frozen-lockfile",
 	"gates": {
 		"install": "bun install --frozen-lockfile",
 		"check": "bun run check",
