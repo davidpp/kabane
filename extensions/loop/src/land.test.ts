@@ -1474,6 +1474,67 @@ describe("a landing whose runner died", () => {
 		expect(ghCalls).toEqual([]);
 	});
 
+	it("keeps a branch it had already merged into the base, and records that merge", async () => {
+		const parent = await parentIssue();
+		const run = await completedRun(parent, {
+			land: "merge",
+			gates: { test: "true" },
+		});
+		const dir = run.worktree ?? "";
+		const before = head(dir);
+		baseMoves("teammate.txt");
+		const first = await landed(ctxFor(run), "merge");
+		expect(first.ok).toBe(true);
+		const merge = head(repo);
+		const rebased = head(dir);
+		// The runner died once it had merged, before it recorded the landing.
+		const died = RunStore.write(home, {
+			...run,
+			status: "completed",
+			landingFrom: before,
+		});
+		if (!died.ok) throw died.error;
+		const ctx = ctxFor(died.value);
+
+		const again = await landed(ctx, "merge");
+
+		expect(again).toMatchObject({ ok: true, merged: merge });
+		expect(again.summary).toContain("is already merged into `main`");
+		expect(head(dir)).toBe(rebased);
+		expect(head(repo)).toBe(merge);
+		expect(ctx.run.landingFrom).toBeUndefined();
+		const events = RunStore.readEvents(home, run.id);
+		const recovered = events.ok
+			? events.value.find((e) => e.type === "landing_recovered")
+			: undefined;
+		expect(recovered?.summary).toContain("it is kept there");
+	});
+
+	it("leaves a merge of the branch still in progress in the checkout to the human, and lands nothing", async () => {
+		const parent = await parentIssue();
+		const run = await completedRun(parent, { land: "merge" });
+		const dir = run.worktree ?? "";
+		const tip = head(dir);
+		commit(repo, "work.txt", "the checkout's own\n");
+		const before = head(repo);
+		// The runner died with its merge stopped on the conflict.
+		expect(() =>
+			GitFixture.run(repo, ["merge", "-q", "--no-ff", BRANCH]),
+		).toThrow();
+		const ctx = ctxFor(run);
+
+		const landing = await landed(ctx, "merge");
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain(
+			`is still merging branch ${BRANCH} (${tip.slice(0, 12)})`,
+		);
+		expect(landing.summary).toContain("git merge --abort");
+		expect(existsSync(join(repo, ".git", "MERGE_HEAD"))).toBe(true);
+		expect(head(repo)).toBe(before);
+		expect(head(dir)).toBe(tip);
+	});
+
 	it("is undone when the run resumes, before its gates run again on the tree", async () => {
 		const parent = await parentIssue();
 		const child = await Planner.addTask(home, {

@@ -432,6 +432,16 @@ export namespace Land {
 			: `the merge went onto ${short(first.value)}, not ${short(seen)}, the tip of ${into} it was checked at`;
 	};
 
+	// The tip of `branch` in the repository of the checkout at `dir`.
+	const inBranch = async (
+		git: Worktree.Git,
+		dir: string,
+		branch: string,
+	): Promise<string | undefined> => {
+		const tip = await revParse(git, dir, `refs/heads/${branch}`);
+		return tip.ok ? tip.value : undefined;
+	};
+
 	// The tip of the run's `branch` when it is in the local `base` of the checkout at `dir`.
 	const inBase = async (
 		git: Worktree.Git,
@@ -439,15 +449,15 @@ export namespace Land {
 		branch: string,
 		base: string,
 	): Promise<string | undefined> => {
-		const tip = await revParse(git, dir, `refs/heads/${branch}`);
-		if (!tip.ok) return undefined;
+		const tip = await inBranch(git, dir, branch);
+		if (tip === undefined) return undefined;
 		const contained = await git(dir, [
 			"merge-base",
 			"--is-ancestor",
-			tip.value,
+			tip,
 			`refs/heads/${base}`,
 		]);
-		return contained.ok ? tip.value : undefined;
+		return contained.ok ? tip : undefined;
 	};
 
 	// Record a merge landing that landed. On the base, the branch no longer lands through a pull
@@ -617,14 +627,45 @@ export namespace Land {
 	/**
 	 * Put back a landing a runner died in: abort a rebase it left stopped, and reset the run's
 	 * branch to the tip it was at before the landing, so nothing (a gate pass, a checkpoint, a
-	 * session) works on a half-replayed tree. Nothing to do when no landing was under way.
+	 * session) works on a half-replayed tree. A branch already in the local base was merged before
+	 * the runner died: it is kept as it is, for the landing to record as already merged. A merge of
+	 * the branch still in progress in the project's checkout is not aborted, since a human may be
+	 * resolving it: it is reported, and nothing goes on until it is finished or aborted. Nothing to
+	 * do when no landing was under way.
 	 */
 	export const recover = async (ctx: Ctx): Promise<Result<void>> => {
-		const tip = ctx.run.landingFrom;
 		const dir = ctx.run.worktree;
-		if (tip === undefined || dir === undefined) return ok(undefined);
+		if (dir === undefined) return ok(undefined);
+		const git = ctx.deps.git ?? Worktree.git;
+		const { projectDir } = ctx.run;
 		const branch = RunStore.branchOf(ctx.run);
-		const restored = await Worktree.restore(dir, branch, tip, ctx.deps.git);
+		const merging = await Worktree.mergeHead(projectDir, git);
+		if (
+			merging !== undefined &&
+			merging === (await inBranch(git, projectDir, branch))
+		) {
+			const why = `the checkout ${projectDir} is still merging branch ${branch} (${short(merging)}), a merge a landing left unfinished: commit it there once its conflicts are resolved, or run \`git merge --abort\` in it`;
+			RunState.event(ctx, { type: "warning", summary: why });
+			return err(new Error(why));
+		}
+		const tip = ctx.run.landingFrom;
+		if (tip === undefined) return ok(undefined);
+		// On its branch, not detached under a rebase left stopped, which is undone whatever its tip.
+		const on = await git(dir, ["symbolic-ref", "-q", "--short", "HEAD"]);
+		const base = ctx.run.base?.branch;
+		const merged =
+			base === undefined || !on.ok || on.value.trim() !== branch
+				? undefined
+				: await inBase(git, projectDir, branch, base);
+		if (merged !== undefined) {
+			RunState.save(ctx, { ...ctx.run, landingFrom: undefined });
+			RunState.event(ctx, {
+				type: "landing_recovered",
+				summary: `the landing the last runner died in had merged branch ${branch} into ${base} at ${short(merged)}: it is kept there`,
+			});
+			return ok(undefined);
+		}
+		const restored = await Worktree.restore(dir, branch, tip, git);
 		if (!restored.ok) {
 			// landingFrom stays: nothing goes on in the worktree until it is put back.
 			const why = `the landing an earlier runner died in could not be undone (${restored.error.message}): put branch ${branch} in ${dir} back at ${short(tip)} by hand, removing a lock file git left there if it says so`;
