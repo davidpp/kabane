@@ -644,7 +644,7 @@ export namespace Land {
 			merging !== undefined &&
 			merging === (await inBranch(git, projectDir, branch))
 		) {
-			const why = `the checkout ${projectDir} is still merging branch ${branch} (${short(merging)}), a merge a landing left unfinished: commit it there once its conflicts are resolved, or run \`git merge --abort\` in it`;
+			const why = `the checkout ${projectDir} is still merging branch ${branch} (${short(merging)}): commit the merge there once its conflicts are resolved, or run \`git merge --abort\` in it`;
 			RunState.event(ctx, { type: "warning", summary: why });
 			return err(new Error(why));
 		}
