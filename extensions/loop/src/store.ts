@@ -128,6 +128,11 @@ export namespace RunStore {
 		 * a landing that opened a pull request.
 		 */
 		merged: z.string().optional(),
+		/**
+		 * The pull request the run's branch had when a `merge` landing landed it on the base instead:
+		 * the run's `pr` until then, which that landing clears.
+		 */
+		insteadOf: z.string().optional(),
 	});
 	export type Landing = z.infer<typeof LandingSchema>;
 

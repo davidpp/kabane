@@ -422,6 +422,22 @@ export namespace Land {
 		const dir = ctx.run.projectDir;
 		const base = ctx.run.base?.branch;
 		const branch = RunStore.branchOf(ctx.run);
+		// Landed on the base here, the branch no longer lands through a pull request it had: the run
+		// stops naming it, so prune judges the branch by the base, and the parent waiting on it is
+		// done (`Parent`). The pull request itself is the human's to close.
+		const landed = (outcome: Outcome): Promise<RunStore.Landing> => {
+			const { pr } = ctx.run;
+			return record(
+				ctx,
+				pr
+					? {
+							...outcome,
+							summary: `${outcome.summary} Pull request ${pr} is left open: close it on GitHub.`,
+							insteadOf: pr,
+						}
+					: outcome,
+			);
+		};
 		// A branch already on the local base (an earlier landing, or a human merged it) is landed:
 		// rebasing it again would only fork it from what the base has.
 		if (base !== undefined) {
@@ -439,7 +455,7 @@ export namespace Land {
 			if (tip.ok && already) {
 				const merged =
 					ctx.run.landing?.merged ?? (await mergeOf(git, dir, tip.value, base));
-				return record(ctx, {
+				return landed({
 					ok: true,
 					summary: `\`${branch}\` is already merged into \`${base}\`${merged ? ` (${short(merged)})` : ""}.`,
 					...(merged ? { merged } : {}),
@@ -490,7 +506,7 @@ export namespace Land {
 				),
 			);
 		}
-		return record(ctx, {
+		return landed({
 			ok: true,
 			summary: `${said}. Merged \`${branch}\` into \`${into}\` as \`${short(merged.value)}\`.`,
 			...keep,
@@ -536,6 +552,7 @@ export namespace Land {
 			landing,
 			...(settled ? { landingFrom: undefined } : {}),
 			...(pr ? { pr } : {}),
+			...(outcome.insteadOf ? { pr: undefined } : {}),
 		});
 		RunState.event(ctx, {
 			type: landing.ok ? "landed" : "warning",

@@ -22,6 +22,7 @@ import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Land } from "./land";
 import { LoopPlan } from "./plan";
+import { Prune } from "./prune";
 import { Runner } from "./runner";
 import type { RunState } from "./state";
 import { Steering } from "./steering";
@@ -1139,6 +1140,62 @@ describe("Loop.land", () => {
 		const said = comments.ok ? comments.value.map((c) => c.content) : [];
 		expect(said[0]).toContain("`kabane loop land run-1` tries again");
 		expect(said[1]).toContain(`Merged \`${BRANCH}\` into \`main\``);
+	});
+
+	it("merges a run whose pull request is open: the run drops it, prune goes by the base, and the parent waiting on it is done", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent);
+		const opened = await Loop.land(landDeps(), run.id);
+		expect(opened.ok && opened.value.pr).toBe(PR_URL);
+		const waiting = await Planner.getTask(home, parent.id);
+		expect(waiting.ok && waiting.value?.state).toBe("waiting");
+
+		const landed = await Loop.land(landDeps(), run.id, "merge");
+
+		if (!landed.ok) throw landed.error;
+		expect(landed.value.pr).toBeUndefined();
+		expect(landed.value.landing).toMatchObject({
+			ok: true,
+			merged: head(repo),
+			insteadOf: PR_URL,
+		});
+		expect(landed.value.landing?.summary).toContain(
+			`Pull request ${PR_URL} is left open: close it on GitHub.`,
+		);
+		const after = await Planner.getTask(home, parent.id);
+		expect(after.ok && after.value).toMatchObject({
+			state: "done",
+			needsReview: false,
+		});
+		// gh still says the pull request is open; prune does not ask it, git says the branch is in.
+		ghCalls = [];
+		const pruned = await Prune.prune({ home, basePath: home, git, gh });
+		if (!pruned.ok) throw pruned.error;
+		expect(pruned.value).toMatchObject([
+			{ removed: true, why: `branch ${BRANCH} is merged into HEAD` },
+		]);
+		expect(ghCalls).toEqual([]);
+	});
+
+	it("leaves a parent a human set waiting in its state when it merges a run whose pull request is open", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent);
+		const opened = await Loop.land(landDeps(), run.id);
+		expect(opened.ok && opened.value.pr).toBe(PR_URL);
+		// The human takes the review flag off: waiting is theirs now, on something else.
+		const moved = await Planner.updateTask(home, parent.id, {
+			needsReview: false,
+		});
+		if (!moved.ok) throw moved.error;
+
+		const landed = await Loop.land(landDeps(), run.id, "merge");
+
+		expect(landed.ok && landed.value.landing?.ok).toBe(true);
+		const after = await Planner.getTask(home, parent.id);
+		expect(after.ok && after.value).toMatchObject({
+			state: "waiting",
+			needsReview: false,
+		});
 	});
 
 	it("lands as the run's setting says when no --land is given", async () => {
