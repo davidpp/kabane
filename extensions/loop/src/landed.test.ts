@@ -132,6 +132,31 @@ describe("Landed.hook", () => {
 		expect(said).not.toContain("KABANE_PR");
 	});
 
+	it("keeps out what an outer hook's landing told the runner, when this landing does not say it", async () => {
+		const ctx = ctxFor(
+			`echo "merged=\${KABANE_MERGED-unset} pr=\${KABANE_PR-unset} land=$KABANE_LAND" > ran`,
+			{
+				pr: "https://github.com/acme/widget/pull/7",
+				landing: { at: new Date().toISOString(), ok: true, summary: "Open." },
+			},
+		);
+		// A runner a merge landing's onLanded started inherits that hook's variables.
+		const outer = { ...process.env };
+		process.env.KABANE_MERGED = "f".repeat(40);
+		process.env.KABANE_LAND = "merge";
+		try {
+			await Landed.hook(ctx, "pr");
+		} finally {
+			for (const name of ["KABANE_MERGED", "KABANE_LAND"])
+				if (outer[name] === undefined) delete process.env[name];
+				else process.env[name] = outer[name];
+		}
+
+		expect(readFileSync(marker(), "utf8").trim()).toBe(
+			"merged=unset pr=https://github.com/acme/widget/pull/7 land=pr",
+		);
+	});
+
 	it("writes a failing command as a warning, with its output redacted, and leaves the run as it was", async () => {
 		const ctx = ctxFor(
 			"echo 'rejected by https://bot:ghp_FAKE0123456789abcdefABCD@github.com/acme/widget.git' >&2; exit 4",

@@ -43,8 +43,13 @@ the gates again when the rebase moved it:
 - `merge` merges the branch into the base in your project checkout, as
   `git merge --no-ff`, and moves the parent to done. It refuses, changing nothing, while
   the checkout is not on the base or has uncommitted changes to tracked files; a merge
-  that conflicts is aborted. It does not push: pushing the base is left to you. The next
-  `kabane loop start` or `kabane loop prune` removes the merged worktree and branch.
+  that conflicts is aborted. If git cannot abort it, the landing says the checkout is
+  mid-merge and leaves it for you to finish or abort. If you commit on the base or switch
+  branches while the merge runs, the landing reports it as not landed and undoes nothing.
+  It does not push: pushing the base is left to you. The next `kabane loop start` or
+  `kabane loop prune` removes the merged worktree and branch. A run that already had a pull
+  request stops tracking it: the parent waiting on it moves to done, and the pull request
+  stays open on GitHub for you to close.
 
 To land a completed run by hand, or again once a landing that failed is fixed:
 
@@ -54,7 +59,7 @@ kabane loop land <runId> [--land pr|merge]
 
 It lands as the run's `loop.land` says, as `--land` says over it, or as `pr` when the
 setting is `none`. Run again after a `merge` landing, it only reports the branch as
-merged. See `kabane loop --help` for
+merged, and still runs `loop.onLanded`. See `kabane loop --help` for
 flags and the commands for pausing, resuming, answering questions and rolling back to a
 checkpoint.
 
@@ -77,8 +82,8 @@ The command learns what landed from these environment variables:
 | `KABANE_BRANCH` | The run's branch. |
 | `KABANE_BASE` | The base branch it landed on (its commit, for a run started from a detached HEAD). |
 | `KABANE_WORKTREE` | The run's worktree. |
-| `KABANE_PR` | The pull request's URL, when the run has one. |
-| `KABANE_MERGED` | The merge commit on the base, after a `merge` landing. |
+| `KABANE_PR` | The pull request's URL, after a `pr` landing. |
+| `KABANE_MERGED` | The merge commit on the base, after a `merge` landing. Unset when the base took the branch without one, for example by a fast-forward you made. |
 
 Some commands to start from:
 
@@ -96,6 +101,10 @@ status and the end of its output go on the run's trace. A command that fails lea
 warning there and changes nothing else: the run stays completed and the landing stays
 done. A `pr` landing's pull request is usually still open when the command runs, so
 `kabane loop prune` keeps that worktree until it is merged.
+
+Every successful landing runs the command, so a retry with `kabane loop land` runs it
+again, also when the branch was already merged. Write a command that is safe to run twice:
+`git push` and `kabane loop prune` are.
 
 ## Settings and layers
 

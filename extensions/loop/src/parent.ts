@@ -120,12 +120,12 @@ export namespace Parent {
 			: `${merge}, then close ${ctx.run.parentShortId}.`;
 	};
 
-	// Where the work went: the base a landing merged it into, the pull request a landing opened, else
-	// the branch to merge by hand, with
+	// Where the work went: the base a landing merged it into (the one ok landing that leaves the run
+	// no pull request), the pull request a landing opened, else the branch to merge by hand, with
 	// why the landing did not get it there when one was tried.
 	const destination = async (ctx: Ctx, single: boolean): Promise<string> => {
 		const { landing, pr } = ctx.run;
-		if (landing?.ok && landing.merged)
+		if (landing?.ok && pr === undefined)
 			return `${landing.summary} The next \`kabane loop start\` or \`kabane loop prune\` removes its worktree and branch.`;
 		if (landing?.ok && pr)
 			return `${landing.summary} ${ctx.run.parentShortId} waits on its review.`;
@@ -208,7 +208,7 @@ export namespace Parent {
 	/** Record the run's pull request as the parent's upstream twin. */
 	const twin = async (ctx: Ctx, parent: Task): Promise<void> => {
 		const { pr, landing } = ctx.run;
-		if (!landing?.ok || landing.merged || pr === undefined) return;
+		if (!landing?.ok || pr === undefined) return;
 		const path = URL.canParse(pr) ? PR_PATH.exec(new URL(pr).pathname) : null;
 		const linked = await Planner.upsertUpstreamLink(ctx.deps.basePath, {
 			taskId: parent.id,
@@ -259,12 +259,21 @@ export namespace Parent {
 		const parent = await read(ctx);
 		if (!parent) return;
 		await twin(ctx, parent);
-		if (!flaggable(parent, single)) return;
 		const { landing, pr } = ctx.run;
+		const merged = landing?.ok === true && pr === undefined;
+		// A parent the run left waiting on the pull request this landing merged in place of is done
+		// with it; one a human moved stays where they put it.
+		const insteadOf = merged ? landing?.insteadOf : undefined;
+		const waited = insteadOf
+			? await waitsOn(ctx.deps.basePath, parent, insteadOf)
+			: ok(false);
+		if (!waited.ok)
+			warn(ctx, `parent's pull request not read: ${waited.error.message}`);
+		if (!(waited.ok && waited.value) && !flaggable(parent, single)) return;
 		const flagged = await Planner.updateTask(
 			ctx.deps.basePath,
 			parent.id,
-			landing?.ok && landing.merged
+			merged
 				? { state: "done", needsReview: false }
 				: {
 						needsReview: true,
@@ -273,6 +282,21 @@ export namespace Parent {
 		);
 		if (!flagged.ok)
 			warn(ctx, `parent not flagged for review: ${flagged.error.message}`);
+	};
+
+	// Whether `parent` is as a landing that opened pull request `pr` left it: waiting on its
+	// review, with the pull request as its upstream twin. Anything else is a human's doing.
+	const waitsOn = async (
+		basePath: string,
+		parent: Task,
+		pr: string,
+	): Promise<Result<boolean>> => {
+		if (parent.state !== "waiting" || !parent.needsReview) return ok(false);
+		const links = await Planner.getUpstreamLinksForTask(basePath, parent.id);
+		if (!links.ok) return links;
+		return ok(
+			links.value.some((link) => link.provider === "github" && link.url === pr),
+		);
 	};
 
 	/** Reconcile only a parent still waiting for review of this run's upstream PR. */
@@ -284,16 +308,10 @@ export namespace Parent {
 		if (!run.pr || state === "OPEN") return ok(undefined);
 		const parent = await Planner.getTask(basePath, run.parentId);
 		if (!parent.ok) return parent;
-		if (parent.value?.state !== "waiting" || !parent.value.needsReview)
-			return ok(undefined);
-		const links = await Planner.getUpstreamLinksForTask(basePath, run.parentId);
-		if (!links.ok) return links;
-		if (
-			!links.value.some(
-				(link) => link.provider === "github" && link.url === run.pr,
-			)
-		)
-			return ok(undefined);
+		if (!parent.value) return ok(undefined);
+		const waiting = await waitsOn(basePath, parent.value, run.pr);
+		if (!waiting.ok) return waiting;
+		if (!waiting.value) return ok(undefined);
 		const merged = state === "MERGED";
 		const actor = Runtime.actor();
 		const commented = await Planner.addComment(basePath, {

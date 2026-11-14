@@ -11,8 +11,23 @@ import { RunState } from "./state";
 import { RunStore } from "./store";
 
 export namespace Landed {
+	// Every variable the command can be told of a landing, set or not for this one.
+	const CONTEXT = [
+		"KABANE_RUN_ID",
+		"KABANE_PARENT",
+		"KABANE_LAND",
+		"KABANE_BRANCH",
+		"KABANE_BASE",
+		"KABANE_WORKTREE",
+		"KABANE_PR",
+		"KABANE_MERGED",
+	] as const;
+
 	// What the command is told of the landing, as environment variables.
-	const env = (run: RunStore.Run, mode: Land.Mode): Record<string, string> => ({
+	const env = (
+		run: RunStore.Run,
+		mode: Land.Mode,
+	): Partial<Record<(typeof CONTEXT)[number], string>> => ({
 		KABANE_RUN_ID: run.id,
 		KABANE_PARENT: run.parentShortId,
 		KABANE_LAND: mode,
@@ -42,10 +57,18 @@ export namespace Landed {
 			run.landing?.ok !== true
 		)
 			return;
+		const told = env(run, mode);
+		// The command's environment is the runner's with the landing's on top, so a variable this
+		// landing does not set would come through from an outer one (a runner an onLanded hook
+		// started): the shell unsets it before the command.
+		const unset = CONTEXT.filter((name) => told[name] === undefined);
 		const [ran] = await Gates.run(
-			{ onLanded: command },
+			{
+				onLanded:
+					unset.length > 0 ? `unset ${unset.join(" ")}\n${command}` : command,
+			},
 			run.projectDir,
-			env(run, mode),
+			told,
 			signal,
 		);
 		if (ran === undefined) return;
