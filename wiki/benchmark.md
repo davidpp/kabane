@@ -219,6 +219,39 @@ context reads, bookkeeping, failed tools and implementation/verification rework.
 locations for those diagnoses. Neither removed lines nor large token counts alone establish
 waste. The runner does not fabricate human-time or causal-rework measurements.
 
+## After the first app run
+
+Keep the current clean local profiles for the pilot; do not add Docker or `sbx` before
+there is evidence that stronger isolation is needed. Review both conditions before interpreting
+an efficiency difference. This audit checks accidental contamination as well as deliberate
+shortcuts; native traces are not a complete filesystem or network audit.
+
+1. Grade each saved attempt against the frozen rubric using the actual app, evaluator output
+   and browser evidence. Distinguish observed checks from the agent's claims. Preserve failed
+   attempts, retries, quota interruptions and human interventions in the accounting.
+2. Inspect native JSONL traces, launch configuration, observed tool inventories and workspace
+   snapshots for reads of personal instructions/skills, unrelated projects, another condition's
+   files or an earlier solution; undeclared MCPs, agents or services; and changes to evaluation
+   criteria or unsupported claims of successful checks. Expected subscription authentication
+   and the explicitly supplied local tools are part of the setup, not contamination.
+3. Save a separate `post-run-review.md` in the experiment directory. For each condition and
+   round, record the verdict (`no contamination observed`, `suspected`, or `confirmed`), exact
+   trace/artifact references, human interventions, unresolved gaps and whether the pair is
+   eligible for comparison. Do not modify the frozen manifest or evidence to repair a finding.
+4. Retain compromised runs and their costs, but exclude a confirmed contaminated pair from
+   the clean paired comparison. Keep suspected cases unresolved until investigated; do not
+   silently count them as clean or discard an unfavorable valid result. Document any rerun as
+   a new experiment and disclose the original finding alongside its replacement.
+5. Revisit isolation if there is concrete cross-condition/personal-context leakage or unexplained
+   access that these logs cannot resolve. Qualify local `sbx` or another boundary with a small
+   smoke test before rerunning the app pair, applying identical isolation to both conditions.
+   Stronger public claims may require stronger controls even without observed leakage.
+
+Report **no contamination observed**, not proof that no contamination occurred. The first
+pair is an exploratory case study. Current rounds prescribe Codex build then Claude continuation;
+this protocol does not test autonomous dispatch versus an explicit dispatch skill. Any future
+change to that question belongs in a new frozen protocol, not a post-hoc interpretation.
+
 ## Interpreting a pilot
 
 Report first-round, continuation and combined outcomes. Round 2 inherits the quality of round 1;
