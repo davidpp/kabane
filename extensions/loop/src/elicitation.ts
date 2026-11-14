@@ -5,13 +5,14 @@
 // Every field becomes one question on the claim's core session, asked together and numbered
 // "i of n" so the board lists them as one group: the harness's message, then the field's title
 // and description verbatim. A choice is the field's options, several choices a multi-select, a
-// boolean Yes / No, text and numbers free text. An optional free-text field that follows an
-// optional choice is not asked apart: it is that choice's "Other" box (AskUserQuestion sends one
-// after every question), so the choice question takes a typed answer instead of a pick and fills
-// the box with it. An optional field also offers `skip`, which leaves it out of the answer, and
-// every field offers `decline`, which declines the form: among the choices of a choice or a
-// boolean, and as words to type on any other field, so a multi-select's choices are its options
-// alone and neither word is toggled beside one. The form resolves once every question has an
+// boolean Yes / No, text and numbers free text. An optional free-text field keyed `<key>_custom`
+// beside an optional choice keyed `<key>` is not asked apart: it is that choice's "Other" box
+// (claude-agent-acp's AskUserQuestion keys one `question_<n>_custom` for every question), so the
+// choice question takes a typed answer instead of a pick and fills the box with it, never both.
+// Every other field is its own question. An optional field also offers `skip`, which leaves it
+// out of the answer, and every field offers `decline`, which declines the form: among the choices
+// of a choice or a boolean, and as words to type on any other field, so a multi-select's choices
+// are its options alone and neither word is toggled beside one. The form resolves once every question has an
 // answer; an answer that does not fit its field is asked again, with why, judged as the board's
 // form judges it (`FormField`). A claim that stops, or a harness that withdraws the form, closes
 // the questions still open as withdrawn (`questions.ts`).
@@ -41,24 +42,31 @@ export namespace Elicitation {
 	 */
 	export type Question = { field: Field; other?: Text };
 
-	// An optional choice followed by an optional free-text field, which is its "Other" box: asked
-	// apart, the human answers one question twice, and the box they skip reads as a choice they
-	// made. A required choice keeps its box apart: a typed answer would leave the choice empty.
-	const otherBox = (field: Field, next: Field | undefined): Text | undefined =>
-		(field.type === "choice" || field.type === "choices") &&
-		!field.required &&
-		next?.type === "text" &&
-		!next.required
-			? next
+	// The optional free-text field keyed `<key>_custom` beside an optional choice keyed `<key>`,
+	// which is its "Other" box: asked apart, the human answers one question twice, and the box
+	// they skip reads as a choice they made. Only the key ties them; a field that merely follows a
+	// choice is its own question. A required choice keeps its box apart: a typed answer would
+	// leave the choice empty.
+	const otherBox = (
+		field: Field,
+		fields: readonly Field[],
+	): Text | undefined =>
+		(field.type === "choice" || field.type === "choices") && !field.required
+			? fields.find(
+					(f): f is Text =>
+						f.type === "text" && !f.required && f.key === `${field.key}_custom`,
+				)
 			: undefined;
 
-	/** The questions `fields` are asked as, in their order. */
-	export const questions = (fields: readonly Field[]): Question[] =>
-		fields.reduce<Question[]>((asked, field, i) => {
-			if (asked.some((q) => q.other === field)) return asked;
-			const other = otherBox(field, fields[i + 1]);
-			return [...asked, other ? { field, other } : { field }];
-		}, []);
+	/** The questions `fields` are asked as, in their order, each box with its choice. */
+	export const questions = (fields: readonly Field[]): Question[] => {
+		const asked = fields.map((field): Question => {
+			const other = otherBox(field, fields);
+			return other ? { field, other } : { field };
+		});
+		const boxes = new Set<Field | undefined>(asked.map((q) => q.other));
+		return asked.filter((q) => !boxes.has(q.field));
+	};
 
 	const optionChoices = (field: Field): Choice[] => {
 		switch (field.type) {
