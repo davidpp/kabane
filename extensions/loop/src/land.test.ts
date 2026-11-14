@@ -741,6 +741,52 @@ describe("Land.land by merge into the project's checkout", () => {
 		expect(ctx.run.landingFrom).toBe(tip);
 	});
 
+	it("reports, and leaves alone, a commit a human made on the base between the checks and the merge", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		const checked = head(repo);
+		let human = "";
+		ctx.deps.git = async (cwd, args) => {
+			if (cwd === repo && args[0] === "merge" && args.includes("--no-ff")) {
+				commit(repo, "human.txt");
+				human = head(repo);
+			}
+			return git(cwd, args);
+		};
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.merged).toBeUndefined();
+		expect(landing.summary).toContain(
+			`the merge went onto ${human.slice(0, 12)}, not ${checked.slice(0, 12)}`,
+		);
+		expect(landing.summary).toContain("nothing was undone");
+		// The human's commit and the merge on it are both still there.
+		expect(parents()).toEqual([human, head(ctx.run.worktree ?? "")]);
+		expect(status()).toBe("");
+	});
+
+	it("reports a checkout switched off the base between the checks and the merge", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		const base = head(repo);
+		ctx.deps.git = async (cwd, args) => {
+			if (cwd === repo && args[0] === "merge" && args.includes("--no-ff"))
+				GitFixture.run(repo, ["switch", "-q", "-c", "elsewhere"]);
+			return git(cwd, args);
+		};
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain(
+			"it is on branch elsewhere, not the base main",
+		);
+		expect(head(repo, "refs/heads/main")).toBe(base);
+		expect(parents()).toEqual([base, head(ctx.run.worktree ?? "")]);
+	});
+
 	it("leaves an untracked file git would overwrite alone, refused like a conflict", async () => {
 		const parent = await parentIssue();
 		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
