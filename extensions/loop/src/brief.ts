@@ -293,6 +293,8 @@ export namespace Brief {
 		/** One lens, or a group one session reviews through in turn. */
 		lenses: readonly LensPrompt[];
 		gates: readonly string[];
+		/** Every gate's result in the latest pass, when it was green on the tree under review. */
+		passed?: readonly Gates.Result[];
 		interrupted?: Interrupted;
 	};
 
@@ -308,18 +310,45 @@ export namespace Brief {
 	export const lensNames = (names: readonly string[]): string =>
 		`the ${listing(names)} ${names.length === 1 ? "lens" : "lenses"}`;
 
+	// `41s`, `3m12s`: how long a gate took, as the lens is told it.
+	const took = (ms: number): string => {
+		if (ms < 1000) return `${ms}ms`;
+		const seconds = Math.round(ms / 1000);
+		return seconds < 60
+			? `${seconds}s`
+			: `${Math.floor(seconds / 60)}m${seconds % 60}s`;
+	};
+
 	// What has checked the work before the lens sees it. A run with no gates has run nothing, and
-	// saying otherwise would have the lens skip the very checks nobody made.
-	const checked = (gates: readonly string[]): string =>
-		gates.length > 0
-			? `Its gates (${gates.map((g) => `\`${g}\``).join(", ")}) pass on the tree you are reviewing.`
-			: "No gates are configured for this run, so nothing has run the project's checks on the result: do not assume they pass.";
+	// saying otherwise would have the lens skip the very checks nobody made. A green pass on this
+	// tree is named gate by gate, command and duration, because a lens told only the names reran
+	// the test suite to see for itself: minutes a lens, spent on what the gates had just shown.
+	const checked = (
+		gates: readonly string[],
+		passed: readonly Gates.Result[] = [],
+	): string => {
+		if (gates.length === 0)
+			return "No gates are configured for this run, so nothing has run the project's checks on the result: do not assume they pass.";
+		if (passed.length === 0)
+			return `Its gates (${gates.map((g) => `\`${g}\``).join(", ")}) pass on the tree you are reviewing.`;
+		const each = passed.map(
+			(r) => `\`${r.name}\` (\`${r.command}\`, ${took(r.ms)})`,
+		);
+		return `These gates passed on this exact tree: ${each.join(", ")}. Do not rerun them or any part of them (a package's tests, one test file, lint) to confirm they pass. Run something only when it checks what they cannot: the real entry point, the way a user reaches it, or a probe you write to test a specific claim.`;
+	};
 
 	// How a lens reports: findings are child issues of the parent, through kabane MCP, tagged so
 	// the run reads them back structurally. It is the run's part of every lens, so a repository's
 	// own lens cannot leave it out. A group's session tags each finding with the one lens it falls
 	// under, so the fixer, the severities and the rechecks read it as they read a lone lens's.
-	const filing = ({ runId, parent, lenses, gates, tree }: Lens): string => {
+	const filing = ({
+		runId,
+		parent,
+		lenses,
+		gates,
+		passed,
+		tree,
+	}: Lens): string => {
 		const names = lenses.map((l) => l.name);
 		const [only] = names;
 		const one = names.length === 1 && only !== undefined;
@@ -328,8 +357,8 @@ export namespace Brief {
 			: `tags ["finding", "<severity>", "<lens>"] where lens is the name of the lens whose definitions the finding meets (one of ${listing(ticked(names))}) and severity is p1, p2 or p3 as that lens defines them. One finding carries one lens tag: a defect two lenses would both flag is filed once, under the lens whose reading of it is more severe`;
 		return [
 			one
-				? `You are the \`${only}\` verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`
-				: `You are the ${listing(ticked(names))} verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates)} Review the result through each lens below in turn and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`,
+				? `You are the \`${only}\` verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates, passed)} Review the result through the lens below and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`
+				: `You are the ${listing(ticked(names))} verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"). Its work is done. ${checked(gates, passed)} Review the result through each lens below in turn and file what you find. Do not change files and do not fix anything: once every lens has reviewed, one fixer session works through all the findings.`,
 			working(tree, undefined, false, true),
 			`${SERVER} File each finding with kabane_add: kind "issue", state "next", parentTaskId "${label(parent)}", ${tagged}, a title that names the problem, and a description with the evidence and what fixed looks like. The fixer takes every finding, most severe first, and a human reads the severities, so grade by the lens's definitions as written: a finding that meets the p1 definition is p1 even when the fix is small, and one that does not stays p2 or p3. Before filing, check kabane_list for findings already under ${label(parent)} and do not file one twice.`,
 			`When the fix is a trade-off the human must choose, file the finding all the same, then ${asking("it")}. ${PARKED} The fixer leaves a waiting finding to the human.`,
@@ -408,6 +437,8 @@ export namespace Brief {
 		base: string;
 		diff: string;
 		gates: readonly string[];
+		/** Every gate's result in the latest pass, when it was green on the fixer's result. */
+		passed?: readonly Gates.Result[];
 		interrupted?: Interrupted;
 	};
 
@@ -445,13 +476,14 @@ export namespace Brief {
 	 * review it takes over, the diff, the lens itself, then the parent's own brief.
 	 */
 	export const recheck = (subject: Recheck, assembled: string): string => {
-		const { runId, parent, lens, findings, gates, interrupted, tree } = subject;
+		const { runId, parent, lens, findings, gates, passed, interrupted, tree } =
+			subject;
 		return [
 			[
 				`You are the \`${lens}\` verifier of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"), rechecking the fixer. You reviewed the work earlier and filed findings; one fixer session has since worked them, and closed these of yours:`,
 				findings.map(listed).join("\n"),
 				working(tree, undefined, false, true),
-				`${checked(gates)} Review only the fixer's diff below, through the lens that follows it. Do not change files and do not fix anything: no fixer runs after you, so what you reopen or file is left for a human.`,
+				`${checked(gates, passed)} Review only the fixer's diff below, through the lens that follows it. Do not change files and do not fix anything: no fixer runs after you, so what you reopen or file is left for a human.`,
 				`${SERVER} For each finding above, read it with kabane_context and check the diff against it. When the diff fixes it, leave it closed. When it does not, or only in part, reopen it with kabane_edit (state "next") and say with kabane_comment on it what is still wrong. File a new finding only for something the diff broke, as the lens defines findings: kabane_add with kind "issue", state "next", parentTaskId "${label(parent)}", tags ["finding", "<severity>", "${lens}"], after checking kabane_list for one already filed.`,
 				"When you are done, end your turn with one line: how many findings you confirmed, reopened and filed.",
 			].join("\n\n"),

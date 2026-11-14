@@ -73,6 +73,8 @@ export namespace Dispatch {
 				kind: "lens";
 				lenses: readonly Brief.LensPrompt[];
 				gates: readonly string[];
+				// The latest pass's results, when it was green on the tree the review reads.
+				passed?: readonly Gates.Result[];
 		  }
 		| { kind: "fix"; findings: readonly Task[]; gates: readonly string[] }
 		| {
@@ -83,6 +85,7 @@ export namespace Dispatch {
 				base: string;
 				diff: string;
 				gates: readonly string[];
+				passed?: readonly Gates.Result[];
 		  };
 
 	type Claim = {
@@ -877,7 +880,12 @@ export namespace Dispatch {
 			case "lens":
 				return ok(
 					Brief.lens(
-						{ ...subject, lenses: work.lenses, gates: work.gates },
+						{
+							...subject,
+							lenses: work.lenses,
+							gates: work.gates,
+							...(work.passed ? { passed: work.passed } : {}),
+						},
 						assembled.value,
 					),
 				);
@@ -899,6 +907,7 @@ export namespace Dispatch {
 							base: work.base,
 							diff: work.diff,
 							gates: work.gates,
+							...(work.passed ? { passed: work.passed } : {}),
 						},
 						assembled.value,
 					),
