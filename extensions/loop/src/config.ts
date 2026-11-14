@@ -240,6 +240,19 @@ export namespace LoopConfig {
 			.describe(
 				"What a completed run does with its branch: none leaves it in its worktree, pr rebases it onto its base, pushes it and opens a pull request with your git and gh, merge rebases it onto its base, merges it into the base in your checkout (--no-ff) and pushes the base; defaults to none. kabane loop land <runId> lands a completed run by hand.",
 			),
+		/**
+		 * The user's own command for after a landing: run in the project's checkout once a run's
+		 * branch has landed, at the end of the run or by `kabane loop land`, told what landed through
+		 * `KABANE_*` variables (`Landed`). A push, GitHub's auto-merge or `kabane loop prune` goes
+		 * here. One that fails is a warning on the run's trace and changes nothing else.
+		 */
+		onLanded: z
+			.string()
+			.min(1)
+			.optional()
+			.describe(
+				"A shell command run in your checkout once a run's branch lands, at the end of the run or by kabane loop land, with KABANE_RUN_ID, KABANE_PARENT, KABANE_LAND, KABANE_BRANCH, KABANE_BASE, KABANE_WORKTREE, KABANE_PR and KABANE_MERGED set, such as git push or kabane loop prune; one that fails is a warning on the run's trace.",
+			),
 	});
 
 	export type Config = z.output<typeof Schema>;

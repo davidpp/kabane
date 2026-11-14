@@ -58,6 +58,45 @@ merged. See `kabane loop --help` for
 flags and the commands for pausing, resuming, answering questions and rolling back to a
 checkpoint.
 
+### Run a command after a landing
+
+`loop.onLanded` is one shell command that runs after a branch lands, both at the end of a
+run and after `kabane loop land`. It runs in your project checkout, only when the landing
+succeeded, and never for a run that was stopped. By then the run is recorded as completed
+and nothing holds its worktree, so a `kabane loop prune` in the command can remove this
+run's worktree and branch. Unset, nothing runs. Like every loop setting, it is read when
+the run starts: `kabane loop land` runs the command the run started with.
+
+The command learns what landed from these environment variables:
+
+| Variable | Value |
+|---|---|
+| `KABANE_RUN_ID` | The run id. |
+| `KABANE_PARENT` | The issue's short id. |
+| `KABANE_LAND` | How it landed: `pr` or `merge`. |
+| `KABANE_BRANCH` | The run's branch. |
+| `KABANE_BASE` | The base branch it landed on (its commit, for a run started from a detached HEAD). |
+| `KABANE_WORKTREE` | The run's worktree. |
+| `KABANE_PR` | The pull request's URL, when the run has one. |
+| `KABANE_MERGED` | The merge commit on the base, after a `merge` landing. |
+
+Some commands to start from:
+
+```bash
+# land: merge, then publish the base
+kabane config set loop.onLanded 'git push'
+# land: pr, then let GitHub merge it once its checks pass
+kabane config set loop.onLanded 'gh pr merge "$KABANE_PR" --auto --merge'
+# remove the merged worktree and branch right away
+kabane config set loop.onLanded 'kabane loop prune'
+```
+
+Chain them with `&&`, for example `git push && kabane loop prune`. The command's exit
+status and the end of its output go on the run's trace. A command that fails leaves a
+warning there and changes nothing else: the run stays completed and the landing stays
+done. A `pr` landing's pull request is usually still open when the command runs, so
+`kabane loop prune` keeps that worktree until it is merged.
+
 ## Settings and layers
 
 Loop settings live under `loop.*`. Each key resolves from lowest to highest priority:
