@@ -463,7 +463,7 @@ it("lists only loop questions with their card and lane, and answers through the 
 	});
 	expect(await source.answer?.(question.value.id, "SQLite")).toEqual({
 		ok: true,
-		value: `${task.value.shortId ?? task.value.id}: answered "SQLite" (run KAB-1-abc)`,
+		value: "answered SQLite",
 	});
 	const activities = await Planner.getActivities(home, session.value.id);
 	if (!activities.ok) throw activities.error;

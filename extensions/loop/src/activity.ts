@@ -296,11 +296,7 @@ export namespace LoopActivity {
 		},
 		answer: async (id, text) => {
 			const answered = await Loop.answer({ home, basePath, actor }, id, text);
-			return answered.ok
-				? ok(
-						`${answered.value.task}: answered "${answered.value.answer}" (run ${answered.value.runId})`,
-					)
-				: answered;
+			return answered.ok ? ok(`answered ${answered.value.answer}`) : answered;
 		},
 	});
 }

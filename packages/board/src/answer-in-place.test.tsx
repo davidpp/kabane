@@ -128,7 +128,13 @@ it("! lands on the card's tab and a digit there answers the question in core, on
 		expect(noted).toEqual([]);
 		now += BoardNav.ARM_MS;
 		mockInput.pressKey("1");
-		await until((f) => f.includes("answered Yes"));
+		const answered = await until((f) => f.includes("answered Yes"));
+		expect(
+			answered
+				.split("\n")
+				.find((row) => row.includes("answered Yes"))
+				?.trim(),
+		).toBe("answered Yes");
 		const activities = await Planner.getActivities(BASE, sessionId);
 		if (!activities.ok) throw activities.error;
 		const decision = activities.value.find(
