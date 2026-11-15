@@ -317,7 +317,7 @@ test("Detail's log heads with the host's cards and offers the o events hint", as
 	}
 });
 
-test("Detail's log puts work logs and session activity on one line each, newest first, and pins the open question instead", async () => {
+test("Detail's log puts work logs and session activity on one line each, newest first, including an open question absent from the port", async () => {
 	const task = await seed({ state: "in_progress" });
 	const session = await Planner.startSession(TEST_BASE, {
 		taskId: task.id,
@@ -338,7 +338,7 @@ test("Detail's log puts work logs and session activity on one line each, newest 
 	await add({ type: "progress", body: "read the brief" });
 	const q = await add({ type: "question", body: "Tabs or one scroll?" });
 	await add({ type: "decision", body: "tabs", context: `answers ${q.id}` });
-	const open = await add({ type: "question", body: "Which tab opens first?" });
+	await add({ type: "question", body: "Which tab opens first?" });
 	await add({ type: "error", body: "the gate failed on biome" });
 	const logged = await Planner.addWorkLog(TEST_BASE, {
 		taskId: task.id,
@@ -351,20 +351,6 @@ test("Detail's log puts work logs and session activity on one line each, newest 
 		task,
 		{
 			tab: "log",
-			questions: [
-				{
-					id: open.id,
-					cardId: "loop:r1",
-					taskId: task.id,
-					taskShortId: task.shortId ?? task.id,
-					question: open.body,
-					choices: [],
-					multiSelect: false,
-					allowFreeform: true,
-					agent: "claude",
-					askedAt: open.createdAt,
-				},
-			],
 		},
 	);
 	try {
@@ -376,9 +362,9 @@ test("Detail's log puts work logs and session activity on one line each, newest 
 		expect(frame).toContain("· decision Tabs or one scroll? → tabs");
 		expect(frame).toContain("· question Tabs or one scroll?");
 		expect(frame).toContain("· progress read the brief");
-		// The open question is pinned above the tabs and nowhere else.
+		// Without a port question, the waiting session question remains in the log.
 		expect(frame.split("Which tab opens first?").length - 1).toBe(1);
-		expect(frame).toContain("? Which tab opens first?");
+		expect(frame).toContain("· question Which tab opens first?");
 		const commit = rows(frame).findIndex((r) => r.includes("landed the tabs"));
 		const progress = rows(frame).findIndex((r) => r.includes("read the brief"));
 		expect(commit).toBeLessThan(progress);

@@ -17,7 +17,6 @@ import {
 	answeredQuestion,
 	CONTEXT_SECTIONS,
 	DEFAULT_ENTRY_KIND,
-	isAnswerTo,
 	parseQuestionBody,
 	TASK_STATE_DISPLAY,
 	type Task,
@@ -139,26 +138,19 @@ export namespace DetailModel {
 	const activitiesOf = (records: BoardData.DetailRecords): AgentActivity[] =>
 		records.sessions.flatMap((s) => s.activities);
 
-	// A session question is answered by an activity whose context is `answers <question-id>`.
-	const unansweredQuestions = (
-		activities: readonly AgentActivity[],
-	): AgentActivity[] =>
-		activities.filter(
-			(a) =>
-				a.type === "question" &&
-				!activities.some((d) => isAnswerTo(d.context, a.id)),
-		);
-
 	// ── pinned ──────────────────────────────────────────────────────────────────────────────────
 
 	/** Questions supplied by the task's activity port, except the one already pinned in a banner. */
 	export const openQuestions = (
-		_records: BoardData.DetailRecords | undefined,
 		awaiting: readonly BoardActivity.AwaitingQuestion[] = [],
 		pinned?: string,
 	): OpenQuestion[] =>
 		awaiting
-			.filter((q) => q.id !== pinned)
+			.filter(
+				(q, index) =>
+					q.id !== pinned &&
+					awaiting.findIndex((other) => other.id === q.id) === index,
+			)
 			.map((q) => ({ id: q.id, question: q.question }));
 
 	/** The task at a glance: state, a priority other than normal, kind, assignee, review. */
@@ -924,10 +916,13 @@ export namespace DetailModel {
 		return `${parseQuestionBody(question.body).question} → ${firstLine(a.body)}${by}`;
 	};
 
-	// Everything a session recorded, except a question still waiting: that one is pinned on top.
-	const activityLines = (records: BoardData.DetailRecords): LogLine[] => {
+	// Session questions stay in the log unless the activity port pins them above it.
+	const activityLines = (
+		records: BoardData.DetailRecords,
+		awaiting: readonly BoardActivity.AwaitingQuestion[],
+	): LogLine[] => {
 		const activities = activitiesOf(records);
-		const pinned = new Set(unansweredQuestions(activities).map((a) => a.id));
+		const pinned = new Set(awaiting.map((q) => q.id));
 		return activities
 			.filter((a) => !pinned.has(a.id))
 			.map((a) => ({
@@ -953,7 +948,10 @@ export namespace DetailModel {
 		}));
 
 	/** Where log lines come from. Another kind of entry is one more source here. */
-	export type LogSource = (records: BoardData.DetailRecords) => LogLine[];
+	export type LogSource = (
+		records: BoardData.DetailRecords,
+		awaiting: readonly BoardActivity.AwaitingQuestion[],
+	) => LogLine[];
 
 	export const LOG_SOURCES: readonly LogSource[] = [
 		activityLines,
@@ -963,10 +961,11 @@ export namespace DetailModel {
 	/** The agent log, newest first, from every source. */
 	export const log = (
 		records: BoardData.DetailRecords,
+		awaiting: readonly BoardActivity.AwaitingQuestion[] = [],
 		sources: readonly LogSource[] = LOG_SOURCES,
 	): LogLine[] =>
 		sources
-			.flatMap((source) => source(records))
+			.flatMap((source) => source(records, awaiting))
 			.sort((a, b) => byAtDescending(a.at, b.at));
 
 	// ── tabs ────────────────────────────────────────────────────────────────────────────────────
@@ -980,9 +979,10 @@ export namespace DetailModel {
 		records: BoardData.DetailRecords | undefined,
 		liveCards = 0,
 		freshNow = false,
+		awaiting: readonly BoardActivity.AwaitingQuestion[] = [],
 	): TabSummary[] => {
 		const said = records ? records.entries.length : 0;
-		const logged = (records ? log(records).length : 0) + liveCards;
+		const logged = (records ? log(records, awaiting).length : 0) + liveCards;
 		const inForce = records ? now(records).length > 0 : false;
 		const described =
 			Boolean(records?.task.description?.trim()) ||
