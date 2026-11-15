@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { Planner } from "@cabane/core";
+import { ok, Planner } from "@cabane/core";
 import { Doctor, flagList, success, usage } from "@cabane/extension";
 import { configPath, loadConfig } from "../config";
 import { type Command, configureRuntime } from "../context";
@@ -9,7 +9,8 @@ import { Extensions } from "../extensions";
 const USAGE = "kabane doctor [--fix [<source/id>...]] [--json]";
 
 const text = (report: Doctor.Report): string => {
-	if (report.findings.length === 0) return "No findings.";
+	if (report.findings.length === 0 && report.fixes.length === 0)
+		return "No findings.";
 	const lines: string[] = [];
 	for (const severity of ["auto", "mention", "suggest", "route"] as const) {
 		const findings = report.findings.filter(
@@ -75,19 +76,20 @@ export const doctor: Command = {
 				if (extension.doctor)
 					sources.push({ name: extension.name, doctor: extension.doctor });
 		}
-		const report = await Doctor.run(
-			sources,
-			ctx,
-			"fix" in args.flags ? { fix: selected.length > 0 ? selected : true } : {},
-		);
 		if (!enabled.ok)
-			report.findings.push({
+			unavailable.push({
 				id: "extensions-unavailable",
 				source: "kabane",
 				severity: "mention",
 				summary: enabled.error.message,
 			});
-		report.findings.push(...unavailable);
+		sources.push({ name: "kabane", doctor: async () => ok(unavailable) });
+		const report = await Doctor.run(
+			sources,
+			ctx,
+			"fix" in args.flags ? { fix: selected.length > 0 ? selected : true } : {},
+		);
+
 		return success(Doctor.toJson(report), text(report));
 	},
 };

@@ -1,4 +1,4 @@
-import { type Result, tryCatch } from "@cabane/core";
+import { err, type Result, tryCatch } from "@cabane/core";
 import type { Extension } from "./contract";
 
 export namespace Doctor {
@@ -21,6 +21,28 @@ export namespace Doctor {
 	export type Report = {
 		findings: Finding[];
 		fixes: { source: string; id: string; result: Result<string> }[];
+	};
+
+	const accountForSelectors = (report: Report, selectors: string[]): void => {
+		for (const selector of new Set(selectors)) {
+			if (report.fixes.some((fix) => `${fix.source}/${fix.id}` === selector))
+				continue;
+			const finding = report.findings.find(
+				(item) => `${item.source}/${item.id}` === selector,
+			);
+			const slash = selector.indexOf("/");
+			report.fixes.push({
+				source: finding?.source ?? (slash < 0 ? "" : selector.slice(0, slash)),
+				id: finding?.id ?? (slash < 0 ? selector : selector.slice(slash + 1)),
+				result: err(
+					new Error(
+						finding
+							? `${selector} has no mechanical fix.${finding.route ? ` Use ${finding.route}.` : ""}`
+							: `No finding matches ${selector}. Run kabane doctor to see current source/id handles.`,
+					),
+				),
+			});
+		}
 	};
 
 	/** Checks finish before repairs start; a failed check or repair does not stop the others. */
@@ -59,6 +81,8 @@ export namespace Doctor {
 				result: fixed.ok ? fixed.value : fixed,
 			});
 		}
+		if (Array.isArray(options.fix)) accountForSelectors(report, options.fix);
+
 		return report;
 	};
 

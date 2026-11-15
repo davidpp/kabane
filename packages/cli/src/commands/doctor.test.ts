@@ -191,3 +191,13 @@ test("an unreadable store leaves the other doctor findings in text and JSON", ()
 	);
 	expect(cli()).toContain("Cannot open the store:");
 });
+
+test("a named missing fix is visible even with no findings", () => {
+	const { cli } = setup();
+	expect(cli("--fix", "kabane/nope")).toContain(
+		"No finding matches kabane/nope",
+	);
+	expect(
+		JSON.parse(cli("--fix", "kabane/nope", "--json")).fixes[0].result.ok,
+	).toBe(false);
+});

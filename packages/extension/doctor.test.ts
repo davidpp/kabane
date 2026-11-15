@@ -130,3 +130,29 @@ describe("Doctor", () => {
 		});
 	});
 });
+
+it("accounts for unmatched selectors and findings without fixes", async () => {
+	const report = await Doctor.run(
+		[{ name: "src", doctor: async () => [finding("src", "manual")] }],
+		ctx,
+		{ fix: ["src/absent", "src/manual"] },
+	);
+	expect(Doctor.toJson(report).fixes).toEqual([
+		{
+			source: "src",
+			id: "absent",
+			result: {
+				ok: false,
+				error: expect.stringContaining("No finding matches src/absent"),
+			},
+		},
+		{
+			source: "src",
+			id: "manual",
+			result: {
+				ok: false,
+				error: expect.stringContaining("has no mechanical fix"),
+			},
+		},
+	]);
+});
