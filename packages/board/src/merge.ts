@@ -3,11 +3,10 @@
 // the port gets `<name>:` in front, so a card refresh, an events poll or a dispatch routes back to
 // the contributor that minted it, and two contributors may reuse the same ids.
 import { err, ok, type Result } from "@cabane/core";
-import { createElement } from "react";
 import type {
 	ActivityCard,
 	ActivitySource,
-	CardHeader,
+	Header,
 	Dispatcher,
 	TriggerDescriptor,
 } from "./ports";
@@ -140,22 +139,22 @@ export namespace Headers {
 	 * contributors both name goes to the later one.
 	 */
 	export const merge = (
-		headers: Named<Readonly<Record<string, CardHeader>>>,
-	): Record<string, CardHeader> => {
-		const merged: Record<string, CardHeader> = {};
+		headers: Named<Readonly<Record<string, Header>>>,
+	): Record<string, Header> => {
+		const merged: Record<string, Header> = {};
 		for (const [name, byKind] of Object.entries(headers)) {
 			const prefix = prefixed(name, "");
-			for (const [kind, Header] of Object.entries(byKind))
-				merged[kind] = (props) =>
-					createElement(Header, {
-						...props,
-						card: {
-							...props.card,
-							id: props.card.id.startsWith(prefix)
-								? props.card.id.slice(prefix.length)
-								: props.card.id,
+			for (const [kind, header] of Object.entries(byKind))
+				merged[kind] = (card, view) =>
+					header(
+						{
+							...card,
+							id: card.id.startsWith(prefix)
+								? card.id.slice(prefix.length)
+								: card.id,
 						},
-					});
+						view,
+					);
 		}
 		return merged;
 	};

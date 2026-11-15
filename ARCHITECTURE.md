@@ -143,7 +143,7 @@ The verdicts for what core holds today that is not obviously the record:
 
 | In core | 1 | 2 | 3 | 4 | Verdict |
 |---|---|---|---|---|---|
-| `lint/` | no: it computes advice from a plan and stores nothing | no: one consumer, the loop (`extensions/loop/src/commands.ts:568`, `advice.ts:120`); `lint/index.ts:1` says "used by the loop's briefing" | no: `Bun.Glob` at `lint/collectors.ts:52` | yes | Moves into the loop extension (JCAB-326). |
+| `lint/` | no: it computes advice from a plan and stores nothing | no: one consumer, the loop (`extensions/loop/src/commands.ts:568`, `advice.ts:120`); `lint/index.ts:1` says "used by the loop's briefing" | no: `Bun.Glob` at `lint/collectors.ts:52` | yes | Moved into `extensions/loop/src/lint/` (JCAB-338). |
 | `commit-linker/` | no | no: nothing outside core called it | no: it ran `git` through `Bun.spawn` | no: git keeps commits | Deleted by JCAB-228, now on main. |
 | `file:` deref in `storage/assemble-context.ts` | yes: it inlines a context ref into the brief, which every reader gets | yes: every brief | no: `Bun.file` at `storage/assemble-context.ts:187` | yes | Assembling the brief stays; reading the file moves behind a port (below, JCAB-328). |
 | `scope/detect.ts` | no: it turns a directory into a scope and stores nothing | yes: the CLI (`packages/cli/src/context.ts:115`) and the loop (`commands.ts:310`) | no: `node:child_process` at `scope/detect.ts:9` | yes | Moves to the host and reaches extensions as `host.scope.detect` (JCAB-328). The device-only helpers beside it go too: `ProjectDirs` (`scope/projects.ts`), `mainCheckoutRoot`, `findProjectRoot`, `localPinPath`, `MARKER_DIR` and `SCOPE_FILE`, which only the CLI imports, and `DetectedScopes` (`scope/detected.ts`), detection's own cache. `scope/uri.ts`, which parses and formats the stored field, stays, and so does `scope/git-fixture.ts`, test support for the CLI's and the loop's tests. |
@@ -157,8 +157,9 @@ The verdicts for what core holds today that is not obviously the record:
 ### Core reaches a device's files through a port with a no-op default
 
 The brief inlines a `file:` context ref by reading the file (`storage/assemble-context.ts:183-205`),
-and that read is the last Bun call on core's barrel once `lint/` leaves; the hub's
-`tsconfig.json` lists `bun` for it and for lint (`packages/worker/tsconfig.json:9-11`). The four
+and that read is the last Bun call on core's barrel now that `lint/` has moved into the loop
+(JCAB-338); the hub's `tsconfig.json` lists `bun` for it alone
+(`packages/worker/tsconfig.json:9-11`). The four
 questions split it: assembling the brief passes all four, and reading a file on this device fails
 question 3. So core keeps the assembly and reaches the file through a port on `Runtime.configure`,
 as it already reaches the tracer, notifier and actor ("Explicit dependencies" in
@@ -249,10 +250,10 @@ host.
 
 ### An extension describes a card header as lines of toned parts, and the board owns its layout
 
-`CardHeader` is a React component (`packages/board/src/ports.ts:81-87`), the one port that takes
-a component, and the loop's header renders with the board's `useTheme` and OpenTUI
-(`extensions/loop/src/header.tsx:12-18`). A component binds an extension to the board's React and
-OpenTUI versions, and a second client could not draw it. In API v1 a header is data:
+Headers are data returned by an extension's `Header` port. JCAB-337 added the header data
+types and the board's renderer (`packages/board/src/card-header.tsx`), and the loop's header
+already returns that data (`extensions/loop/src/header.ts`). Keeping React and OpenTUI in
+the board lets a second client draw the same header without those dependencies:
 
 ```ts
 type HeaderView = { width: number; expanded: boolean };
@@ -264,27 +265,25 @@ type Header = (
 // BoardPorts.headers?: Readonly<Record<string, Header>>, by card kind
 ```
 
-The board owns everything about how a header sits on screen, because the loop's header sets it
-by hand today (`header.tsx:613-621`) and every extension would otherwise copy it:
+The board owns everything about how a header sits on screen, so extensions do not duplicate
+its layout:
 
 - **Block.** The header is one block above the card's events, on the theme's raised surface, with
   one column of padding left and right, and it never shrinks when the tab runs out of rows.
-  `view.width` is the width inside that padding.
-- **Rows.** Each line is exactly one row and is clipped at the width, never wrapped: the loop draws
-  every row with `wrapMode="none"` (`header.tsx:428`, `:452`, `:490`, `:537`). This differs from
-  `PanelLine` in a trigger's preview, which wraps (`ports.ts:185-186`).
-- **Tones.** `PanelTone` has six roles (`ports.ts:177-183`). The loop's header also uses `faint`
-  (`header.tsx:33-40`) and the theme's `secondary` (`header.tsx:464`, `:541`); both join
-  `PanelTone`.
-- **Series.** A part that carries `series: n` takes the theme's n-th series color, as
-  `Theme.seriesOf(theme, n)` gives it today (`header.tsx:491`, `:546`), so a session keeps the
-  color of its lane chip.
-- **Polling and failure.** The board calls the header while the tab is open, once a second as the
-  loop's header polls today (`header.tsx`, `POLL_MS`), and shows its last good lines, or
-  `loading…` before the first, when a call fails or has not returned.
+  `view.width` preserves the headline budget: the pane width less the reserved scrollbar
+  column and the two padding columns. The block itself stretches across the pane.
+- **Rows.** Each line is exactly one row, clipped rather than wrapped. This differs from
+  `PanelLine` in a trigger's preview, which wraps.
+- **Tones.** `PanelTone` includes `faint` and `secondary` alongside the other semantic roles.
+  The board maps those roles to its theme for both headers and trigger previews.
+- **Series.** A part that carries `series: n` takes the theme's n-th series color through
+  `Theme.seriesOf(theme, n)`, so a session keeps the color of its lane chip.
+- **Polling and failure.** The board calls the header while the tab is open, once a second and
+  immediately when expansion or width changes. It keeps the last good lines when a call fails,
+  or shows a bare muted `loading…` before the first result.
 
-Meters stay text: the loop draws them as cells of characters. JCAB-320 adds the types and the
-board's renderer; JCAB-326 ports the loop's header onto them.
+Meters stay text: the loop returns them as cells of characters. Header data, the board's
+renderer, and the loop's data-returning header landed with JCAB-337.
 
 ## Extension API v1
 
@@ -656,11 +655,11 @@ This follows the 2026-11-04 research note except in three places:
 | The contract and the harness client do not depend on a client | `@cabane/extension` and `@cabane/acp` list `@cabane/board` (`packages/extension/contract.ts:11`, `packages/acp/src/client.ts:32`) | JCAB-320 |
 | An extension imports no `@cabane/*` value except from the harness client it bundles | The loop lists `@cabane/acp`, `board`, `checklist`, `core` and `extension` (`extensions/loop/package.json`) and imports values from them in 30 source files | JCAB-326, which waits on JCAB-340 for the session calls, and JCAB-340 on JCAB-329 |
 | A host depends on no extension | `packages/cli/package.json` lists `@cabane/loop`, which `OFFICIAL` in `packages/cli/src/extensions.ts` bundles; JCAB-318's table lists the edge as an exception tied to JCAB-326 | JCAB-326 |
-| Core keeps only what passes the four questions | `lint/`, re-exported at `packages/core/index.ts:49` | JCAB-326 |
+| Core keeps only what passes the four questions | Plan lint moved to `extensions/loop/src/lint/`; core no longer exports it | JCAB-338, done |
 | | `scope/detect.ts`, `self.ts`, `serveStdio`, `handleHttpRequest` | JCAB-328 |
 | | `storage/sessions.ts` | JCAB-316:7, then JCAB-329 |
 | | `file:` deref reads with `Bun.file` (`storage/assemble-context.ts:187`) | JCAB-328 |
-| Core needs no Bun types | `packages/worker/tsconfig.json:9-11` lists `bun` "only because @cabane/core's lint collectors and file-ref deref use Bun globals" | JCAB-326 (lint), JCAB-328 (deref) |
+| Core needs no Bun types | Plan lint moved into the loop; `packages/worker/tsconfig.json` still lists `bun` for core's file-ref deref | JCAB-338 (lint), done; JCAB-328 (deref) |
 | Base kabane does not describe an extension | `packages/acp/src/instructions.ts:66`, `:76`; `packages/board/src/setup.tsx:136` | JCAB-324 |
 | | The dispatch and grill templates in `packages/acp/templates/` | JCAB-327 |
 
@@ -681,6 +680,6 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | A failed module stops database access; a disabled one's deletes are captured | not built | JCAB-323 (persisted declarations, the stop) |
 | Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts`; Host currently carries `api` and `kabane` | built (JCAB-321) |
 | `host` and its typed record wrappers | not built | JCAB-322 |
-| Headers are data, laid out and clipped by the board | not built | JCAB-320 (types, renderer), JCAB-326 (the loop's header) |
+| Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` | built (JCAB-337) |
 | Procedures and shortcuts are files; `{{extension}}` is the only placeholder, and a computed value comes from a command | not built | JCAB-324; JCAB-327 for the stamp |
 | Core reaches files through a port | not built | JCAB-328 |

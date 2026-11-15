@@ -168,7 +168,7 @@ export namespace Briefing {
 	/**
 	 * The plan the run would start on: a row per subtask (findings are the fixer's, after the
 	 * lenses), or the single issue's one row, the critical path of subtasks, and the risks, the
-	 * plan's own first and then core lint's.
+	 * plan's own first and then the plan lint's.
 	 */
 	export const preview = (
 		plan: LoopPlan.Plan,

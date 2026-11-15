@@ -13,7 +13,7 @@ import { ErrorBoundary } from "./error-boundary";
 import {
 	type ActivitySource,
 	type Announcer,
-	type CardHeader,
+	type Header,
 	type Copilot,
 	type Dispatcher,
 	noActivity,
@@ -39,7 +39,7 @@ export type BoardDeps = {
 	resolveScope?: BoardData.ScopeResolver;
 	// A host's own header for its cards, by card kind. Default: none, every card tab heads with its
 	// one-line title.
-	headers?: Readonly<Record<string, CardHeader>>;
+	headers?: Readonly<Record<string, Header>>;
 	// One line to show over the board's footer once it is up. Default: none, nothing announced.
 	announcer?: Announcer;
 	// Every setting and its layer, for the `,` view, read when it opens. Default: none, the view

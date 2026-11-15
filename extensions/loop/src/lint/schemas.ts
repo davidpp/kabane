@@ -12,7 +12,7 @@ import { z } from "zod";
  *
  * Adding a new rule: extend this enum + add a checker in `risks.ts`.
  */
-export const RiskTypeSchema = z.enum([
+const RiskTypeSchema = z.enum([
 	"file_overlap",
 	"no_tests",
 	"large_scope",
@@ -21,19 +21,17 @@ export const RiskTypeSchema = z.enum([
 	"unreviewable_scope",
 ]);
 
-export type RiskType = z.infer<typeof RiskTypeSchema>;
-
 /**
  * Severity of a lint finding. `--strict` exits non-zero on `high`.
  */
-export const RiskSeveritySchema = z.enum(["low", "medium", "high"]);
+const RiskSeveritySchema = z.enum(["low", "medium", "high"]);
 
 export type RiskSeverity = z.infer<typeof RiskSeveritySchema>;
 
 /**
  * A single lint finding.
  */
-export const RiskSchema = z.object({
+const RiskSchema = z.object({
 	type: RiskTypeSchema,
 	message: z.string(),
 	severity: RiskSeveritySchema,

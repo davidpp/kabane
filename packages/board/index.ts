@@ -14,8 +14,9 @@ export type {
 	ActivitySource,
 	ActivityStatus,
 	Announcer,
-	CardHeader,
-	CardHeaderProps,
+	Header,
+	HeaderView,
+	HeaderPart,
 	Copilot,
 	CopilotShortcut,
 	CopilotUpdate,
@@ -34,5 +35,3 @@ export { noActivity, noAnnouncer, noCopilot, noDispatcher } from "./src/ports";
 export { type SetupDeps, startSetup } from "./src/setup";
 export { SetupPlan } from "./src/setup-plan";
 export { type BoardDeps, startBoard } from "./src/start";
-// For a host's CardHeader, which renders inside the board and takes its colors from it.
-export { Theme, useTheme } from "./src/theme";

@@ -151,8 +151,8 @@ imports `bun:test`, and 18 open scratch databases through `bun:sqlite` and
 - **`/types` is where `cloudflare:test` is declared.** `tsconfig.json` lists
   `@cloudflare/vitest-pool-workers/types`, not the package root.
 - **`bun` is in the worker's `types`** only because `@cabane/core`'s
-  lint collectors and file-ref deref reference Bun globals and `tsc` walks the
-  imported sources. The hub never calls those paths.
+  file-ref deref references Bun globals and `tsc` walks the imported sources.
+  The hub never calls that path.
 - **`nodejs_compat` is on.** One core file reaches for `node:os` (the device
   name), and the hub uses `node:async_hooks` for the per-request actor.
 - **The MCP SDK bundles fine.** `@modelcontextprotocol/sdk`'s low-level `Server`

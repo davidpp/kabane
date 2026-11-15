@@ -8,9 +8,8 @@
  * history) are overlaid by callers via `AnalyzeOptions.progressEntries`.
  */
 
-import { firstGroups } from "../regex";
-import { ok, type Result, tryCatch } from "../result";
-import { Planner } from "../storage";
+import { ok, Planner, type Result, tryCatch } from "@cabane/core";
+import { firstGroups } from "./regex";
 import type { SubtaskInput } from "./risks";
 
 // ── File-path / package extraction ──────────────────────────────────
@@ -73,7 +72,7 @@ export interface CollectOptions {
 	includeParent?: boolean;
 }
 
-export interface CollectedInputs {
+interface CollectedInputs {
 	subtasks: SubtaskInput[];
 	packagePaths: string[];
 	existingTestFiles: Set<string>;
@@ -136,6 +135,4 @@ const collectImpl = async (
 
 export namespace LintCollectors {
 	export const collect = collectImpl;
-	export const discoverTests = discoverTestFiles;
-	export const extractPackages = extractPackagePaths;
 }
