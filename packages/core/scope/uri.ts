@@ -110,21 +110,6 @@ export namespace ScopeUri {
 	};
 
 	/**
-	 * Canonicalize a scope URI (sort params, lowercase keys, normalize)
-	 *
-	 * @example
-	 * canonicalize("kabane://scope/myapp?Session=xyz&Client=acme")
-	 * // → "kabane://scope/myapp?client=acme&session=xyz"
-	 */
-	export const canonicalize = (uri: string): Result<string> => {
-		const parsed = parse(uri);
-		if (!parsed.ok) {
-			return parsed;
-		}
-		return ok(format(parsed.value));
-	};
-
-	/**
 	 * Check if a URI matches a query (with optional extension filters)
 	 *
 	 * - Query with scopeId only: matches all URIs with that scopeId
@@ -173,39 +158,9 @@ export namespace ScopeUri {
 	};
 
 	/**
-	 * Check if a string is a valid scope URI
-	 */
-	export const isValid = (uri: string): boolean => {
-		return parse(uri).ok;
-	};
-
-	/**
 	 * Create a simple scope URI from just a scopeId
 	 */
 	export const fromScopeId = (scopeId: string): string => {
 		return format({ scopeId });
-	};
-
-	/**
-	 * Add or update extensions on an existing URI
-	 */
-	export const withExtensions = (
-		uri: string,
-		extensions: Record<string, string>,
-	): Result<string> => {
-		const parsed = parse(uri);
-		if (!parsed.ok) {
-			return parsed;
-		}
-
-		return ok(
-			format({
-				scopeId: parsed.value.scopeId,
-				extensions: {
-					...parsed.value.extensions,
-					...extensions,
-				},
-			}),
-		);
 	};
 }
