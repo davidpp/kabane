@@ -1,8 +1,8 @@
 import "@cabane/core/testing";
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createMcpServer, KABANE_TOOLS, ok, type ToolDef } from "@cabane/core";
 import { type Extension, Settings } from "@cabane/extension";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -35,17 +35,6 @@ beforeEach(() => {
 });
 
 afterEach(() => rmSync(ctx.home, { recursive: true, force: true }));
-
-const readTool: ToolDef = {
-	name: "kabane_loop_read",
-	description: "Injected read",
-	kind: "read",
-	input: {},
-	handler: async () => ok(null),
-};
-
-const inject = (extension: Extension) => async (names: readonly string[]) =>
-	ok(names.map(() => extension));
 
 test("enabled loop contributes its tool and instructions on the MCP wire", async () => {
 	const contribution = await extensionMcp(ctx, []);
@@ -172,127 +161,145 @@ test("tool annotations preserve core and module listings and add only declared h
 	}
 });
 
-test.each(["other_read", "kabane_loop_"])(
-	"refuses extension tool name %s",
-	async (name) => {
-		const result = await extensionMcp(
-			ctx,
-			[],
-			inject({
-				name: "loop",
-				mcp: async () => ({ tools: [{ ...readTool, name }] }),
-			}),
-		);
-		expect(result.ok).toBe(false);
-		if (result.ok) throw new Error("Expected naming refusal");
-		expect(result.error.message).toBe(
-			`Extension loop MCP tool ${name} must be named kabane_loop_<verb>`,
-		);
-	},
-);
+const installMcp = (name: string, body: string) => {
+	const dir = join(ctx.home, "extensions", name);
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(
+		join(dir, "package.json"),
+		JSON.stringify({ kabane: { extension: "./index.ts", api: 1 } }),
+	);
+	writeFileSync(
+		join(dir, "index.ts"),
+		`export default () => ({name: ${JSON.stringify(name)}, mcp: async () => {${body}}});`,
+	);
+};
 
-test("labels an extension mcp contribution that throws", async () => {
-	const result = await extensionMcp(
-		ctx,
-		[],
-		inject({
-			name: "loop",
-			mcp: async () => {
-				throw new Error("broken contribution");
-			},
-		}),
+test("real extension failures discard whole contributions while core and good tools remain on the wire", async () => {
+	configure(["good", "throws", "bad", "duplicate", "badshape", "upstream"]);
+	const tool = (name: string) =>
+		`{name: "${name}", description: "Read", kind: "read", input: {}, handler: async () => ({ok:true, value:null})}`;
+	installMcp(
+		"good",
+		`return {instructions: "good vocabulary", tools: [${tool("kabane_good_read")}]};`,
 	);
-	expect(result.ok).toBe(false);
-	if (result.ok) throw new Error("Expected contribution failure");
-	expect(result.error.message).toBe(
-		"Extension loop MCP failed: broken contribution",
+	installMcp("throws", 'throw new Error("broken contribution");');
+	installMcp(
+		"bad",
+		`return {instructions: "bad vocabulary", tools: [${tool("kabane_bad_read")}, ${tool("other_read")}]};`,
 	);
+	installMcp(
+		"duplicate",
+		`return {instructions: "duplicate vocabulary", tools: [${tool("kabane_duplicate_read")}, ${tool("kabane_duplicate_read")}]};`,
+	);
+	installMcp("badshape", 'return {tools: [{description: "x"}]};');
+	installMcp("upstream", `return {tools: [${tool("kabane_upstream_link")}]};`);
+	const contribution = await extensionMcp(ctx, KABANE_TOOLS);
+	if (!contribution.ok) throw contribution.error;
+	expect(contribution.value.tools.map((t) => t.name)).toEqual([
+		"kabane_good_read",
+	]);
+	expect(contribution.value.instructions).toEqual(["good vocabulary"]);
+	const server = createMcpServer(
+		{ basePath: ctx.store, actor: ctx.actor, scopeRequired: false },
+		{},
+		undefined,
+		[...KABANE_TOOLS, ...contribution.value.tools],
+		contribution.value.instructions,
+	);
+	if (!server.ok) throw server.error;
+	const client = new Client({ name: "isolation-test", version: "1" });
+	const [clientTransport, serverTransport] =
+		InMemoryTransport.createLinkedPair();
+	await server.value.connect(serverTransport);
+	await client.connect(clientTransport);
+	try {
+		expect((await client.listTools()).tools.map((t) => t.name)).toEqual([
+			...KABANE_TOOLS.map((t) => t.name),
+			"kabane_good_read",
+		]);
+		expect(client.getInstructions()).toContain("good vocabulary");
+		expect(client.getInstructions()).not.toContain("bad vocabulary");
+	} finally {
+		await client.close();
+		await server.value.close();
+	}
 });
 
-test("labels an extension tool handler that throws", async () => {
-	const result = await extensionMcp(
-		ctx,
-		[],
-		inject({
-			name: "loop",
-			mcp: async () => ({
-				tools: [
-					{
-						...readTool,
-						handler: async () => {
-							throw new Error("broken handler");
-						},
-					},
-				],
-			}),
-		}),
+test("real extension handler failures name their owner", async () => {
+	configure(["handler"]);
+	installMcp(
+		"handler",
+		'return {tools: [{name: "kabane_handler_read", description: "Read", kind: "read", input: {}, handler: async () => {throw new Error("broken handler");}}]};',
 	);
+	const result = await extensionMcp(ctx, []);
 	if (!result.ok) throw result.error;
 	const tool = result.value.tools[0];
-	if (!tool) throw new Error("Missing injected tool");
+	if (!tool) throw new Error("Missing tool");
 	const called = await tool.handler(
 		{},
 		{ basePath: ctx.store, actor: ctx.actor, scopeRequired: false },
 	);
 	expect(called.ok).toBe(false);
-	if (called.ok) throw new Error("Expected handler failure");
-	expect(called.error.message).toBe(
-		"Extension loop MCP tool kabane_loop_read failed: broken handler",
+	if (called.ok) throw new Error("Expected failure");
+	expect(called.error.message).toContain(
+		"Extension handler MCP tool kabane_handler_read failed: broken handler",
 	);
 });
 
-test("command contributions omit a configured-off extension", async () => {
-	configure([]);
-	let calls = 0;
-	const result = await extensionMcp(
-		ctx,
-		[],
-		inject({
-			name: "loop",
-			mcp: async () => {
-				calls++;
-				return { instructions: "Injected vocabulary", tools: [readTool] };
-			},
-		}),
+test("an extension cannot replace the core kabane_upstream_link tool", async () => {
+	configure(["upstream"]);
+	installMcp(
+		"upstream",
+		'return {tools: [{name:"kabane_upstream_link",description:"Replacement",input:{},kind:"write",handler:async()=>({ok:true,value:null})}]};',
 	);
-	expect(result).toEqual(ok({ tools: [], instructions: [] }));
-	expect(calls).toBe(0);
+	const contribution = await extensionMcp(ctx, KABANE_TOOLS);
+	if (!contribution.ok) throw contribution.error;
+	expect(contribution.value).toEqual({ tools: [], instructions: [] });
+	expect(
+		KABANE_TOOLS.some((tool) => tool.name === "kabane_upstream_link"),
+	).toBe(true);
 });
 
-test("command contributions load duplicate configured names only once", async () => {
-	configure(["loop", "loop"]);
-	let calls = 0;
-	const result = await extensionMcp(
-		ctx,
-		[],
-		inject({
-			name: "loop",
-			mcp: async () => {
-				calls++;
-				return { instructions: "Injected vocabulary", tools: [readTool] };
-			},
-		}),
-	);
-	if (!result.ok) throw result.error;
-	expect(calls).toBe(1);
-	expect(result.value.tools.map((tool) => tool.name)).toEqual([readTool.name]);
-	expect(result.value.instructions).toEqual(["Injected vocabulary"]);
+test.each([
+	'{tools:"nope"}',
+	"{instructions:42}",
+	'{tools:[{name:"kabane_invalid_read", description:"Read",kind:"read",input:{id:"not a schema"},handler:async()=>({ok:true,value:null})}]}',
+	'{tools:[{name:"kabane_invalid_read", description:"Read",kind:"read",input:{},handler:"nope"}]}',
+])("invalid MCP contribution is isolated: %s", async (result) => {
+	configure(["invalid"]);
+	installMcp("invalid", `return ${result};`);
+	const contribution = await extensionMcp(ctx, KABANE_TOOLS);
+	if (!contribution.ok) throw contribution.error;
+	expect(contribution.value).toEqual({ tools: [], instructions: [] });
 });
 
-test("extension collision with a core tool names the extension and remedy", async () => {
-	const result = await extensionMcp(
-		ctx,
-		KABANE_TOOLS,
-		inject({
-			name: "upstream",
-			mcp: async () => ({
-				tools: [{ ...readTool, name: "kabane_upstream_link" }],
-			}),
-		}),
+test("reports MCP causes, invalid paths and the real foreign zod limit", async () => {
+	configure(["cause", "shape", "ownzod"]);
+	installMcp("cause", 'throw new Error("boom in mcp");');
+	installMcp("shape", "return {tools:[{name:42}]};");
+	installMcp(
+		"ownzod",
+		'const {z} = await import("zod"); return {tools:[{name:"kabane_ownzod_read", description:"Read", kind:"read", input:{id:z.string()}, handler:async()=>({ok:true,value:null})}]};',
 	);
-	expect(result.ok).toBe(false);
-	if (result.ok) throw new Error("Expected duplicate refusal");
-	expect(result.error.message).toBe(
-		"Extension upstream MCP tool kabane_upstream_link duplicates an existing tool. Rename the extension tool.",
+	cpSync(
+		dirname(Bun.resolveSync("zod/package.json", import.meta.dir)),
+		join(ctx.home, "extensions/ownzod/node_modules/zod"),
+		{ recursive: true },
 	);
+	const stderr = spyOn(console, "error").mockImplementation(() => {});
+	try {
+		await extensionMcp(ctx, []);
+		const messages = stderr.mock.calls.map(([message]) => message);
+		expect(messages[0]).toContain(
+			"MCP contribution failed: boom in mcp; repair its mcp function",
+		);
+		expect(messages[1]).toContain(
+			"MCP contribution is invalid: tools[0].name must be a string",
+		);
+		expect(messages[2]).toContain(
+			"MCP contribution is invalid: tools[0].input.id must be built with kabane's zod, which the extension API passes as host.z; this kabane does not provide host.z yet",
+		);
+	} finally {
+		stderr.mockRestore();
+	}
 });

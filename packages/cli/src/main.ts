@@ -5,6 +5,7 @@
  * outcome's JSON instead of the human text.
  */
 
+import { existsSync } from "node:fs";
 import { err, ok, type Result } from "@cabane/core";
 import {
 	type Extension,
@@ -37,7 +38,7 @@ import { show } from "./commands/show";
 import { sync } from "./commands/sync";
 import { update } from "./commands/update";
 import { upstream } from "./commands/upstream";
-import { resolveHome } from "./config";
+import { configPath, resolveHome } from "./config";
 import { type Command, type Ctx, openContext, settingsPort } from "./context";
 import { Extensions } from "./extensions";
 import { print } from "./output";
@@ -88,27 +89,27 @@ export const helpText = (
 
 const HELP_USAGE = "kabane <command> [args]";
 
-const extensionCommands = async (
-	home: string,
-): Promise<Result<Extension.Command[]>> => {
-	const names = Extensions.enabled(home);
-	if (!names.ok) return names;
-	const loaded = await Extensions.loadAll(names.value);
-	return loaded.ok
-		? ok(loaded.value.flatMap((extension) => extension.commands ?? []))
-		: loaded;
-};
-
-/** Help lists the enabled extensions' commands, and still prints when one of them is broken. */
+/** Help keeps every successfully loaded command and names each refusal. */
 const help = async (home: string, exitCode: 0 | 2): Promise<Outcome> => {
-	const extra = await extensionCommands(home);
-	const commands = [...COMMANDS, ...(extra.ok ? extra.value : [])];
+	const names = Extensions.enabled(home);
+	if (!names.ok)
+		return {
+			exitCode,
+			json: { commands: COMMANDS.map((c) => c.name) },
+			text: `${helpText()}\n\nExtensions unavailable: ${names.error.message}`,
+		};
+	const all = await Extensions.loadAll(names.value, home);
+	Extensions.report(all.refused);
+	const accepted = Extensions.commands(
+		all.loaded,
+		COMMANDS.map((command) => command.name),
+	);
+	Extensions.report(accepted.refused);
+	const extra = accepted.commands;
 	return {
 		exitCode,
-		json: { commands: commands.map((c) => c.name) },
-		text: extra.ok
-			? helpText(extra.value)
-			: `${helpText()}\n\nExtensions unavailable: ${extra.error.message}`,
+		json: { commands: [...COMMANDS, ...extra].map((c) => c.name) },
+		text: helpText(extra),
 	};
 };
 
@@ -124,18 +125,23 @@ const resolveCommand = async (
 	if (builtIn) return ok(builtIn);
 	const enabled = Extensions.enabled(home);
 	if (!enabled.ok) return err(failure(enabled.error));
-	const found = await Extensions.find(name, enabled.value);
-	if (!found.ok) return err(failure(found.error));
-	switch (found.value.found) {
-		case "enabled":
-			return ok(found.value.command);
-		case "disabled":
-			return err(
-				failure(Extensions.enableHint(name, found.value.extension, home)),
-			);
-		case "none":
-			return err(usage(`Unknown command: ${name}`, HELP_USAGE));
-	}
+	const all = await Extensions.loadAll(enabled.value, home);
+	const accepted = Extensions.commands(
+		all.loaded,
+		COMMANDS.map((command) => command.name),
+	);
+	Extensions.report([...all.refused, ...accepted.refused]);
+	const found = accepted.commands.find((command) => command.name === name);
+	if (found) return ok(found);
+	const disabled = Extensions.available(home).filter(
+		(extension) => !enabled.value.includes(extension),
+	);
+	return err(
+		usage(
+			`Unknown command: ${name}${disabled.length ? `; installed extensions not enabled: ${disabled.join(", ")}. ${existsSync(configPath(home)) ? "Enable them" : "Run `kabane init` first, then enable them"} with \`kabane config set extensions <names> --layer global\` to discover their commands` : ""}`,
+			HELP_USAGE,
+		),
+	);
 };
 
 /** A context init and mcp can run with: no config file needed. */

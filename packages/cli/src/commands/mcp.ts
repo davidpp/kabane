@@ -8,6 +8,7 @@ import {
 	type ToolDef,
 } from "@cabane/core";
 import { type Extension, failure, success } from "@cabane/extension";
+import { z } from "zod";
 import { version } from "../../package.json";
 import { ConfigSettings } from "../config-settings";
 import { configTools } from "../config-tools";
@@ -15,45 +16,87 @@ import { type Command, openContext, resolveScopeUri } from "../context";
 import { Extensions } from "../extensions";
 import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
 
+const McpContribution = z.object({
+	instructions: z.string().optional(),
+	tools: z
+		.array(
+			z.object({
+				name: z.string(),
+				description: z.string(),
+				input: z.record(Extensions.zodSchema),
+				kind: z.enum(["read", "write"]),
+				annotations: z
+					.object({
+						destructiveHint: z.boolean().optional(),
+						openWorldHint: z.boolean().optional(),
+					})
+					.optional(),
+				handler: z.custom<ToolDef["handler"]>(
+					(value) => typeof value === "function",
+					"must be a function",
+				),
+			}),
+		)
+		.optional(),
+});
+
 /** Compose the enabled extensions, using the same selection as the board. */
 export const extensionMcp = async (
 	ctx: Extension.Ctx,
 	hostTools: readonly ToolDef[],
-	load: typeof Extensions.loadAll = Extensions.loadAll,
 ): Promise<Result<{ tools: ToolDef[]; instructions: string[] }>> => {
 	const enabled = Extensions.enabled(ctx.home);
 	if (!enabled.ok) return enabled;
-	const loaded = await load(enabled.value);
-	if (!loaded.ok) return loaded;
+	const loaded = await Extensions.loadAll(enabled.value, ctx.home);
+	Extensions.report(loaded.refused);
 	const tools: ToolDef[] = [];
 	const names = new Set(hostTools.map((tool) => tool.name));
 	const instructions: string[] = [];
-	for (const extension of loaded.value) {
+	for (const extension of loaded.loaded) {
 		const contribute = extension.mcp;
 		if (!contribute) continue;
 		const contributed = await tryCatch(() => contribute(ctx));
-		if (!contributed.ok)
-			return err(
-				new Error(
-					`Extension ${extension.name} MCP failed: ${contributed.error.message}`,
-				),
-			);
-		for (const tool of contributed.value.tools ?? []) {
+		if (!contributed.ok) {
+			Extensions.report([
+				{
+					name: extension.name,
+					reason: `MCP contribution failed: ${Extensions.cause(contributed.error)}; repair its mcp function; ${Extensions.disabledAdvice}`,
+				},
+			]);
+			continue;
+		}
+		const parsed = McpContribution.safeParse(contributed.value);
+		if (!parsed.success) {
+			Extensions.report([
+				{
+					name: extension.name,
+					reason: `MCP contribution is invalid: ${Extensions.invalid(parsed.error)}; ${Extensions.disabledAdvice}`,
+				},
+			]);
+			continue;
+		}
+		const pending = parsed.data.tools ?? [];
+		const seen = new Set(names);
+		let reason: string | undefined;
+		for (const tool of pending) {
 			if (
 				!tool.name.startsWith(`kabane_${extension.name}_`) ||
 				tool.name === `kabane_${extension.name}_`
-			)
-				return err(
-					new Error(
-						`Extension ${extension.name} MCP tool ${tool.name} must be named kabane_${extension.name}_<verb>`,
-					),
-				);
-			if (names.has(tool.name))
-				return err(
-					new Error(
-						`Extension ${extension.name} MCP tool ${tool.name} duplicates an existing tool. Rename the extension tool.`,
-					),
-				);
+			) {
+				reason = `MCP tool ${tool.name} must be named kabane_${extension.name}_<verb>; rename it; ${Extensions.disabledAdvice}`;
+				break;
+			}
+			if (seen.has(tool.name)) {
+				reason = `MCP tool ${tool.name} duplicates an existing tool; rename the extension tool; ${Extensions.disabledAdvice}`;
+				break;
+			}
+			seen.add(tool.name);
+		}
+		if (reason) {
+			Extensions.report([{ name: extension.name, reason }]);
+			continue;
+		}
+		for (const tool of pending) {
 			names.add(tool.name);
 			tools.push({
 				...tool,
@@ -70,8 +113,7 @@ export const extensionMcp = async (
 				},
 			});
 		}
-		if (contributed.value.instructions)
-			instructions.push(contributed.value.instructions);
+		if (parsed.data.instructions) instructions.push(parsed.data.instructions);
 	}
 	return ok({ tools, instructions });
 };

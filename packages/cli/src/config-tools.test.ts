@@ -237,7 +237,8 @@ it("manages device config through the real stdio MCP server", async () => {
 			value: ["loop", "lopo"],
 			ignored: ["lopo"],
 		});
-		expect(typo.note).toContain("does not ship lopo");
+		expect(typo.note).toContain("Extension lopo: not installed");
+		await call("kabane_configSet", { key: "extensions", value: "loop" });
 		const secret = "hub-bearer-secret";
 		const accessSecret = "access-client-secret";
 		for (const [key, value] of [

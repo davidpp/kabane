@@ -296,8 +296,13 @@ const checkShippedLens = (): void => {
 // reads a shipped lens.
 const checkLoopExtension = (): void => {
 	const off = run([BIN, "loop", "status"], REPO, isolated);
-	if (off.code !== 1 || !off.stderr.includes("loop extension, which is off"))
-		fail("kabane loop with the extension off printed no enable hint", off);
+	if (
+		off.code !== 2 ||
+		!off.stderr.includes(
+			"Unknown command: loop; installed extensions not enabled: loop. Enable them with `kabane config set extensions <names> --layer global` to discover their commands",
+		)
+	)
+		fail("disabled loop command printed no config set enable hint", off);
 	const path = join(KABANE_HOME, "config.json");
 	const config = z
 		.record(z.unknown())
@@ -311,7 +316,7 @@ const checkLoopExtension = (): void => {
 		fail("kabane loop status on a fresh home", status);
 	checkShippedLens();
 	pass(
-		"loop extension: off hint, then enabled --help, status and a shipped lens",
+		"loop extension: disabled command enable hint, then enabled --help, status and a shipped lens",
 	);
 };
 

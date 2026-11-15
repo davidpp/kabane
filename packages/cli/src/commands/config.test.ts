@@ -463,7 +463,7 @@ describe.concurrent("config through the real CLI", () => {
 				restart: "start",
 			});
 			expect(changed.err).toBe(
-				`kabane: ignoring "unshipped" in "extensions" of ${path()}: this kabane ships loop`,
+				`Extension unshipped: not installed; put it in ${path().replace(/config\.json$/, "extensions/unshipped/")}; or remove it from extensions with \`kabane config set extensions <names> --layer global\`.`,
 			);
 			expect((await run("help")).err).toBe(changed.err);
 		}),
@@ -954,3 +954,33 @@ describe.concurrent("config through the real CLI", () => {
 		30_000,
 	);
 });
+
+it(
+	"only suggests enabling settings for a disabled installed directory",
+	withHome(async ({ home, write, run }) => {
+		write({ ...initial, extensions: [] });
+		const dir = join(home, "extensions", "custom");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(
+			join(dir, "package.json"),
+			JSON.stringify({ kabane: { extension: "./index.ts", api: 1 } }),
+		);
+		writeFileSync(
+			join(dir, "index.ts"),
+			'export default () => ({name:"custom"});',
+		);
+		expect((await run("config", "get", "custom.typo")).err).toContain(
+			"settings are unknown until it is enabled",
+		);
+		expect((await run("config", "get", "unknown.typo")).err).not.toContain(
+			"settings are unknown until it is enabled",
+		);
+		write({ ...initial, extensions: ["custom"] });
+		expect((await run("config", "get", "custom.typo")).err).not.toContain(
+			"settings are unknown until it is enabled",
+		);
+		expect((await run("config", "set", "custom.typo", "x")).err).not.toContain(
+			"settings are unknown until it is enabled",
+		);
+	}),
+);

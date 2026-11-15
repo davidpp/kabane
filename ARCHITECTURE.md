@@ -477,11 +477,11 @@ type Extension = {
 };
 ```
 
-- **`commands`, `settings`, `looks`** are unchanged from `contract.ts:17-34`. Built-in commands
-  win a name.
+- **`commands`, `settings`, `looks`** are defined in `packages/extension/contract.ts`. Command
+  names follow the collision rule beside shortcuts below.
 - **`board`** keeps `activity` and `dispatcher` and takes headers as data (above).
-- **`doctor`** arrives with JCAB-266 on the JCAB-263 branch, typed there as
-  `Doctor.Source["doctor"]`: findings with a stable `id`, a severity of `auto`, `mention`,
+- **`doctor`** uses `Doctor.Source["doctor"]` from `packages/extension/doctor.ts`: findings
+  with a stable `id`, a severity of `auto`, `mention`,
   `suggest` or `route`, and an optional `fix` returning `Result<string>`. A check returns its
   findings or a `Result` of them; one that throws or returns an `err` becomes a `check-failed`
   finding instead of failing the run.
@@ -499,8 +499,8 @@ type Extension = {
 
 Today the CLI registers a fixed module list once per process (`packages/cli/src/context.ts:54`,
 `:61-62`) and imports an extension only when a command or the board needs it, so `kabane list`
-loads no extension code (`packages/cli/src/extensions.ts:4-5`). An extension's modules cannot
-follow that. `Oplog.cascadeOf` finds the module tables a task delete cascades into through the
+loads no extension code (`resolveCommand` in `packages/cli/src/main.ts`). An extension's modules
+cannot follow that. `Oplog.cascadeOf` finds the module tables a task delete cascades into through the
 registered modules (`packages/core/storage/oplog.ts:225-231`), so a process without the module
 would delete a task without capturing those rows' deletes; it would also change a task's state
 without the module's `onTaskStateChange`, and park on a pull the ops it could apply. So every
@@ -579,6 +579,11 @@ extension ships them as files, as opencode ships commands (`.opencode/commands/<
   refused with a diagnostic, because a human types it.
 - `templates/<name>/`: skill templates a procedure tells the copilot to copy into a project.
 
+Extension commands use the same name rule: a command named like a built-in is refused with
+one line, while the rest of that extension loads. If two enabled extensions contribute the
+same command name, both contributions are refused with one line each. Help lists neither
+refused command.
+
 A procedure names a file of its own extension by the one placeholder the host fills:
 `{{extension}}`, replaced with the absolute path of the extension's directory before the text
 reaches the copilot. Base kabane's procedures interpolate two such paths today, the dispatch and
@@ -589,9 +594,8 @@ computed text is the host's own block on how this machine runs kabane (`instruct
 Nothing else in a procedure is substituted: a procedure file computes nothing. When a procedure
 needs a computed value, its extension contributes a command that prints it, and the procedure
 tells the copilot to run that command with the kabane the host's block names and copy the
-output. The dispatch template's stamp is the first such value: the doctor branch computes it in
-`setup()` (`DISPATCH TEMPLATE STAMP`, `instructions.ts:108` on
-`jcab-263-doctor-kabane-reports-and-repairs-what`), and JCAB-327 replaces that with
+output. The dispatch template's stamp is the first such value: `setup()` computes it
+(`DISPATCH TEMPLATE STAMP` in `packages/acp/src/instructions.ts`), and JCAB-327 replaces that with
 `kabane dispatch stamp`, which `setup-dispatch.md` tells the copilot to run. A file has no field for
 harness mode, allow lists or MCP entries, so a procedure cannot carry a permission policy in its
 type, though its text can still ask for anything (JCAB-324).
@@ -609,15 +613,19 @@ type, though its text can still ask for anything (JCAB-324).
    both versions, and its code never runs. An enabled extension refused this way whose manifest
    names a modules entry counts as a failed module (rule above).
 4. **Import and factory.** The entry is imported with `import()` and its own `node_modules`
-   resolve normally. The factory's `name` must equal the directory's.
+   resolve normally. Before import, the entry's real path must be inside the extension's real
+   directory; a symlinked extension directory is allowed. The host validates the factory result
+   against the extension contract, and its `name` must equal the directory's.
 5. **A load failure of the main entry** (a missing or invalid manifest, an unsupported `api` on
    an extension with no modules entry, an
    import or factory that throws, a name mismatch) refuses that one extension with one line naming
-   it and why: on stderr for the CLI and `kabane mcp`, as a notice on the board. The others load,
+   it and why: on stderr for the CLI and `kabane mcp`; the board announces a short reason for
+   one refusal or a count and names for several, followed by any update notice. The others load,
    and the board, `kabane --help` and `kabane mcp` open. A failure of its modules entry stops
-   database access instead, as "A module that fails to load stops writes" says. Today `Extensions.loadAll` returns the first error
-   (`packages/cli/src/extensions.ts:82-92`) and the board refuses to open on it
-   (`packages/cli/src/commands/board-runtime.ts:327-328`) (JCAB-321).
+   database access instead, as "A module that fails to load stops writes" says.
+   `Extensions.loadAll(names, home)` returns `{ loaded, refused }`; callers keep the loaded
+   contributions and report each refusal. Until JCAB-323, manifests naming modules are refused
+   before import and register nothing.
 6. **A call failure** (a command's `run`, a board port, an MCP handler, a doctor check, a module
    hook) becomes a one-line error naming the extension. A module's `onTaskStateChange` that returns
    `err` rolls back the state change, as a first-party module's does.
@@ -631,7 +639,8 @@ This follows the 2026-11-04 research note except in three places:
 - **`api` sits in the manifest**, read before the import, where the note put it on the exported
   object. An incompatible extension then runs no code at all.
 - **There are no official extensions inside the bundle.** The note kept official extensions on
-  internals because they ship in lockstep with the CLI (`OFFICIAL`, `extensions.ts:21-23`).
+  internals because they ship in lockstep with the CLI (`OFFICIAL` in
+  `packages/cli/src/extensions.ts`).
   JCAB-316:3 builds the loop as an external extension against API v1 alone, so the `OFFICIAL` list
   goes and an official name has no precedence to defend.
 - **A single `<name>.ts` file is not an extension.** The note accepted one; a directory is the one
@@ -643,7 +652,7 @@ This follows the 2026-11-04 research note except in three places:
 | Rule | Where the code breaks it | Removed by |
 |---|---|---|
 | An extension imports no `@cabane/*` value except from the harness client it bundles | The loop lists `@cabane/acp`, `checklist`, `core` and `extension` (`extensions/loop/package.json`) and imports values from them in 30 source files | JCAB-326, which waits on JCAB-340 for the session calls, and JCAB-340 on JCAB-329 |
-| A host depends on no extension | `packages/cli/package.json` lists `@cabane/loop`, which `OFFICIAL` bundles (`packages/cli/src/extensions.ts:21-23`); JCAB-318's table lists the edge as an exception tied to JCAB-326 | JCAB-326 |
+| A host depends on no extension | `packages/cli/package.json` lists `@cabane/loop`, which `OFFICIAL` in `packages/cli/src/extensions.ts` bundles; JCAB-318's table lists the edge as an exception tied to JCAB-326 | JCAB-326 |
 | Core keeps only what passes the four questions | Plan lint moved to `extensions/loop/src/lint/`; core no longer exports it | JCAB-338, done |
 | | `scope/detect.ts`, `self.ts`, `serveStdio`, `handleHttpRequest` | JCAB-328 |
 | | `storage/sessions.ts` | JCAB-316:7, then JCAB-329 |
@@ -651,8 +660,6 @@ This follows the 2026-11-04 research note except in three places:
 | Core needs no Bun types | Plan lint moved into the loop; `packages/worker/tsconfig.json` still lists `bun` for core's file-ref deref | JCAB-338 (lint), done; JCAB-328 (deref) |
 | Base kabane does not describe an extension | `packages/board/src/copilot-instructions.ts`; `packages/board/src/setup.tsx:136` | JCAB-324 |
 | | The dispatch and grill templates in `packages/acp/templates/` | JCAB-327 |
-| A broken extension does not take the board down | `packages/cli/src/commands/board-runtime.ts:327-328` | JCAB-321 |
-| Extensions load from `$KABANE_HOME/extensions` | Only names in `OFFICIAL` load (`packages/cli/src/extensions.ts:21-23`) | JCAB-321, JCAB-322 |
 
 Each rule in this file, how it is held today, and the issue that makes a check or the code hold
 it. "Review" means nothing fails a build; a reviewer has to notice.
@@ -669,7 +676,7 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | A modules entry imports only what its module objects need | review | JCAB-323: an import-graph test on a fixture extension's modules entry, and on the loop's once it has one |
 | An extension writes only its own tables and changes tasks only through `tx.updateTask` | partly by the kit: capture refuses an undeclared table; raw SQL on `tx.db` is review | JCAB-323 builds the kit |
 | A failed module stops database access; a disabled one's deletes are captured | not built | JCAB-323 (persisted declarations, the stop) |
-| Manifest, `api` check before import, per-extension refusal | not built | JCAB-321 |
+| Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts`; Host currently carries `api` and `kabane` | built (JCAB-321) |
 | `host` and its typed record wrappers | not built | JCAB-322 |
 | Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` | built (JCAB-337) |
 | Procedures and shortcuts are files; `{{extension}}` is the only placeholder, and a computed value comes from a command | not built | JCAB-324; JCAB-327 for the stamp |

@@ -205,8 +205,11 @@ export const config: Command = {
 			target,
 		);
 		if (!changed.ok) return failure(changed.error);
-		for (const name of changed.value.ignored ?? [])
-			console.error(Extensions.ignoredWarning(name, ctx.home));
+		Extensions.report(
+			(changed.value.ignored ?? []).map((name) =>
+				Extensions.missing(name, ctx.home),
+			),
+		);
 		return success(changed.value, changeText(changed.value, where.value));
 	},
 };

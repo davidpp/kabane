@@ -10,6 +10,7 @@ export {
 } from "./args";
 export type { Extension } from "./contract";
 export { Doctor } from "./doctor";
+export type { Host } from "./host";
 export {
 	conciseSuccess,
 	failure,
