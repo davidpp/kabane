@@ -51,7 +51,7 @@ describe("kabane loop start", () => {
 		const legacy = join(repo, ".kabane/loop/lenses/security.md");
 		const skill = join(
 			repo,
-			".claude/skills/dispatch/references/lenses/security.md",
+			".agents/skills/dispatch/references/lenses/security.md",
 		);
 		const created = await Planner.addTask(home, {
 			title: "lone",
@@ -93,7 +93,7 @@ describe("kabane loop start", () => {
 		expect(moved.text).toContain(
 			`  note: lens security is read from ${legacy}; move it to ${skill}`,
 		);
-		mkdirSync(join(repo, ".claude/skills/dispatch/references/lenses"), {
+		mkdirSync(join(repo, ".agents/skills/dispatch/references/lenses"), {
 			recursive: true,
 		});
 		writeFileSync(skill, "# Security\n");

@@ -1,10 +1,12 @@
 // Verifier lenses: a prompt file each, run as their own session once the plan is done and the gates
 // are green. A lens is `references/lenses/<name>.md` in the project's dispatch skill, the same file
 // the skill's own close review reads, so a lens reaches an agent whether the loop drives the
-// session or a person dispatches from a plain one. `functional` and `quality` ship in kabane's
-// dispatch template, so a project with no skill still has them. `.kabane/loop/lenses/<name>.md`,
-// where 0.3.0 and 1.0.0-beta.0 kept a project's lenses, is still read, after the skill, so a lens
-// written there keeps reviewing as it did. Once the fixer has ended, a lens whose findings it
+// session or a person dispatches from a plain one. The skill lives in `.agents/skills/dispatch`,
+// with `.claude/skills/dispatch` a symlink to it for Claude Code. `functional` and `quality` ship
+// in kabane's dispatch template, so a project with no skill still has them. Two older homes are
+// still read after the skill, so a lens written there keeps reviewing as it did: a real
+// `.claude/skills/dispatch` that an earlier `/setup-dispatch` wrote, then `.kabane/loop/lenses`,
+// where 0.3.0 and 1.0.0-beta.0 kept a project's lenses. Once the fixer has ended, a lens whose findings it
 // closed rechecks its diff. Which lenses a run has run and rechecked, and how they ended, is read
 // off its claims, so a runner that resumes knows where it was.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -27,11 +29,16 @@ export namespace Lenses {
 
 	/** Where a project keeps its own lenses: its dispatch skill's. */
 	const dir = (projectDir: string): string =>
-		join(projectDir, ".claude", "skills", "dispatch", "references", "lenses");
+		join(projectDir, ".agents", "skills", "dispatch", "references", "lenses");
 
-	/** Where a project's lenses were kept before they moved into the skill; read after it. */
-	const legacyDir = (projectDir: string): string =>
-		join(projectDir, ".kabane", "loop", "lenses");
+	/**
+	 * Where a project's lenses were kept before, in the order they are read after the skill's: the
+	 * skill when it lived in `.claude/skills`, then the loop's own directory from before the skill.
+	 */
+	const legacyDirs = (projectDir: string): string[] => [
+		join(projectDir, ".claude", "skills", "dispatch", "references", "lenses"),
+		join(projectDir, ".kabane", "loop", "lenses"),
+	];
 
 	// The lens names among a directory's files. A prompt whose file name is no lens name
 	// (`security_review.md`) is left out: a run would refuse it.
@@ -52,10 +59,7 @@ export namespace Lenses {
 			...SHIPPED,
 			...(projectDir === undefined
 				? []
-				: [
-						...namesIn(dir(projectDir)),
-						...namesIn(legacyDir(projectDir)),
-					].sort()),
+				: [dir(projectDir), ...legacyDirs(projectDir)].flatMap(namesIn).sort()),
 		]),
 	];
 
@@ -117,18 +121,20 @@ export namespace Lenses {
 	type Prompt = Frontmatter & {
 		/** The prompt a session gets: the file without its frontmatter. */
 		text: string;
-		/** The file it was read from, when that is the old directory's: one to move into the skill. */
+		/** The file it was read from, when that is an older home's: one to move into the skill. */
 		legacy?: string;
 	};
 
-	/** Lens `name`'s prompt: the skill's file, else the old directory's, else the shipped one. */
+	/** Lens `name`'s prompt: the skill's file, else an older home's, else the shipped one. */
 	export const prompt = (projectDir: string, name: string): Result<Prompt> => {
 		const own = join(dir(projectDir), `${name}.md`);
-		const legacy = join(legacyDir(projectDir), `${name}.md`);
+		const legacy = legacyDirs(projectDir)
+			.map((d) => join(d, `${name}.md`))
+			.find((p) => existsSync(p));
 		const shipped = SHIPPED.some((s) => s === name)
 			? join(SHIPPED_DIR, `${name}.md`)
 			: undefined;
-		const path = [own, legacy].find((p) => existsSync(p)) ?? shipped;
+		const path = existsSync(own) ? own : (legacy ?? shipped);
 		if (path === undefined)
 			return err(
 				new Error(
@@ -143,7 +149,7 @@ export namespace Lenses {
 	};
 
 	/**
-	 * One line for each of `names` whose prompt comes from the old directory, naming the file and
+	 * One line for each of `names` whose prompt comes from an older home, naming the file and
 	 * where to move it. Kabane moves nothing itself.
 	 */
 	export const moves = (
