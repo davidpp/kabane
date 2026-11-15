@@ -112,13 +112,13 @@ The surfaces that touch it:
 | `.kabane/` (the directory itself) | marks a project root ahead of git's toplevel (`packages/core/scope/detect.ts:105`), so a monorepo package can track its own issues | anything that writes below |
 | `.kabane/scope` | the shared pin, in the scope cascade after your own pin in `KABANE_HOME/projects/<slug>/scope` (`detect.ts`, `resolveScopeId`) | only `kabane init --scope --shared` (`packages/cli/src/config.ts`, `writeDirectoryScope`) |
 | `.kabane/loop.json` | the loop's shared layer (`ConfigLayers.sharedFile`) | `config set --layer shared`, by hand |
-| `.claude/skills/dispatch/references/lenses/<name>.md` | a custom lens, or the replacement for a shipped one, in the project's dispatch skill (`extensions/loop/src/lenses.ts`, JCAB-174); `.kabane/loop/lenses/<name>.md` is still read after it, for lenses written before | `/setup-dispatch`, by hand |
+| `.agents/skills/dispatch/references/lenses/<name>.md` | a custom lens, or the replacement for a shipped one, in the project's dispatch skill (`extensions/loop/src/lenses.ts`, JCAB-174, JCAB-210); a real `.claude/skills/dispatch/references/lenses/<name>.md`, then `.kabane/loop/lenses/<name>.md`, are still read after it, for lenses written before | `/setup-dispatch`, by hand |
 
 Nothing else lands in a repo. Scope detection stores what it found under `KABANE_HOME`
 (JCAB-110). Run files and loop worktrees live under `KABANE_HOME` too (`extensions/loop/src/store.ts`).
 Two files are written by an agent at the human's request, never by kabane: the first issue
 asks an agent to add the tracker block to `CLAUDE.md` or `AGENTS.md` (`first-run.ts:77`), and
-`/setup-dispatch` writes `.claude/skills/dispatch/`. Neither is a setting.
+`/setup-dispatch` writes `.agents/skills/dispatch/` and, when the project has `.claude/` or the human asks, the symlink `.claude/skills/dispatch` to it. Neither is a setting.
 
 ## Editor gap
 

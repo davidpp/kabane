@@ -5,6 +5,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -236,6 +237,21 @@ describe("Lenses.moves", () => {
 		]);
 		write(SKILL, "security", "# Security\n");
 		expect(Lenses.moves(repo, ["security"])).toEqual([]);
+	});
+
+	it("names no move when .claude/skills/dispatch is the symlink /setup-dispatch writes", () => {
+		write(SKILL, "security", "# Security\n");
+		mkdirSync(join(repo, ".claude/skills"), { recursive: true });
+		symlinkSync(
+			"../../.agents/skills/dispatch",
+			join(repo, ".claude/skills/dispatch"),
+		);
+		expect(Lenses.prompt(repo, "security")).toEqual({
+			ok: true,
+			value: { text: "# Security\n", always: false },
+		});
+		expect(Lenses.moves(repo, ["security"])).toEqual([]);
+		expect(Lenses.offered(repo)).toContain("security");
 	});
 });
 

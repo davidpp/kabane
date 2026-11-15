@@ -15,6 +15,8 @@ constraints), point at it instead of copying it: "the gate in CLAUDE.md". Every 
 that file anyway, and a copy in the skill drifts away from it the first time either one is
 edited. Copy a value only when the project leaves it unstated and the fallback below fills it.
 
+- `{{TEMPLATE_STAMP}}`: the exact value kabane gives in the procedure, as DISPATCH TEMPLATE STAMP;
+  never computed by hand. It tells a later kabane which template the skill was filled from.
 - `{{PROJECT}}`: the project's name, from its package manifest or its instructions file.
 - `{{ISSUE_PREFIX}}`: the prefix of this scope's issue ids as the board context block shows them
   (`ABC` for `ABC-12`). Take it from those ids and not from an example in the docs.
@@ -45,7 +47,7 @@ edited. Copy a value only when the project leaves it unstated and the fallback b
   testing (never deploy, never touch production, which environments are allowed). Otherwise
   use `Ask before anything that leaves this machine: a deploy, a publish, a write to a
   shared service.`
-- `{{AGENTS}}`: one line per file in `.claude/agents/`, giving the agent type and the territory
+- `{{AGENTS}}`: one line per project agent file (Claude Code's `.claude/agents/`), giving the agent type and the territory
   it takes, from its description. Otherwise use `None. Use a general-purpose agent with the
   few-liners below.`
 - `{{TERRITORIES}}`: a table mapping each area to its globs, covering the top-level packages or

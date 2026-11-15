@@ -353,3 +353,77 @@ describe("Settings looks", () => {
 		).toBeUndefined();
 	});
 });
+
+describe("Settings.drift", () => {
+	it("finds unknown nested keys, including unsets, without flagging record entries", () => {
+		const found = Settings.drift(
+			"demo",
+			Schema,
+			{
+				mood: null,
+				limits: { capp: 1 },
+				named: { arbitrary: "ok" },
+			},
+			"local",
+		);
+		expect(found.map(({ path, severity }) => ({ path, severity }))).toEqual([
+			{ path: "demo.mood", severity: "mention" },
+			{ path: "demo.limits.capp", severity: "mention" },
+		]);
+		expect(found[0]?.id).toBe("unknown-setting-local-demo-mood");
+	});
+
+	it("distinguishes dropped keys from inferred renames through real preprocessing", () => {
+		const budget = z
+			.preprocess(
+				(value) => {
+					if (!value || typeof value !== "object" || Array.isArray(value))
+						return value;
+					const {
+						wallMinutes: _retired,
+						spend: old,
+						...rest
+					} = value as Record<string, unknown>;
+					return old === undefined ? rest : { ...rest, cost: old };
+				},
+				z.object({ cost: z.number().optional() }).strict(),
+			)
+			.optional();
+		const schema = z.object({ budget });
+		const raw = { budget: { wallMinutes: 10, spend: 3 } };
+		const found = Settings.drift("loop", schema, raw, "shared");
+		expect(found.map(({ path, severity }) => ({ path, severity }))).toEqual([
+			{ path: "loop.budget.wallMinutes", severity: "mention" },
+			{ path: "loop.budget.spend", severity: "auto" },
+		]);
+		expect(found[1]?.summary).toContain("maps to loop.budget.cost");
+		expect(raw).toEqual({ budget: { wallMinutes: 10, spend: 3 } });
+		expect(
+			Settings.drift("loop", schema, { budget: { cost: 3 } }, "shared"),
+		).toEqual([]);
+	});
+
+	it("preserves raw input even when preprocessing mutates it", () => {
+		const schema = z.preprocess((value) => {
+			if (value && typeof value === "object" && "retired" in value)
+				delete value.retired;
+			return value;
+		}, z.object({}));
+		const raw = { retired: true };
+		expect(Settings.drift("demo", schema, raw, "global")[0]?.id).toStartWith(
+			"retired-setting-",
+		);
+		expect(raw).toEqual({ retired: true });
+	});
+
+	it("keeps IDs stable and distinct across layers, case and path separators", () => {
+		const schema = z.object({ a: z.object({}) });
+		const raw = { "a-b": 1, "a.b": 2, a: { b: 3 }, A: 4, "": 5, "\0": 6 };
+		const local = Settings.drift("demo", schema, raw, "local");
+		const global = Settings.drift("demo", schema, raw, "global");
+		const ids = [...local, ...global].map(({ id }) => id);
+		expect(new Set(ids).size).toBe(12);
+		for (const id of ids) expect(id).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+		expect(Settings.drift("demo", schema, raw, "local")).toEqual(local);
+	});
+});

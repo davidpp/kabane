@@ -8,6 +8,7 @@ import type { ActivitySource, Header, Dispatcher } from "@cabane/board/ports";
 import type { ToolDef } from "@cabane/core";
 import type { z } from "zod";
 import type { ParsedArgs } from "./args";
+import type { Doctor } from "./doctor";
 import type { Outcome } from "./outcome";
 import type { Settings } from "./settings";
 
@@ -26,6 +27,7 @@ export type Extension = {
 	 * with none reads under its path, in its parent object's group or `Other`.
 	 */
 	looks?: Settings.Looks;
+	doctor?: Doctor.Source["doctor"];
 	commands?: readonly Extension.Command[];
 	board?: (ctx: Extension.Ctx) => Promise<Extension.BoardPorts>;
 	/** Device MCP vocabulary and tools, named `kabane_<extension>_<verb>`. */
