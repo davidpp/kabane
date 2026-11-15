@@ -269,7 +269,7 @@ describe("Brief on a decision that is the human's", () => {
 			"ASSEMBLED",
 		);
 		expect(fixer).toContain(
-			'If a finding is wrong, already fixed, or outside P-1\'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open for a human.',
+			'If a finding is wrong, already fixed, or outside P-1\'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open with the reason and next step recorded.',
 		);
 		expect(fixer).toContain(
 			`If fixing a finding needs a call that is the human's (two reasonable fixes, or a change to what P-1 asked for), do not change code for it either: file the decision on it ${asked}. ${parked}`,
@@ -484,7 +484,7 @@ describe("Brief working copy", () => {
 							"Do not create a branch or a worktree and do not switch branches.",
 						);
 						expect(prompt).toContain(
-							"Where the issue's brief names a branch, a worktree or a merge order, this paragraph replaces it.",
+							"Where the issue's brief names a branch, a worktree, a merge order or who pushes, opens a PR or runs landing automation, this paragraph replaces it.",
 						);
 						expect(prompt.indexOf("this paragraph replaces it")).toBeLessThan(
 							prompt.indexOf("Branch foo"),
@@ -512,7 +512,7 @@ describe("Brief working copy", () => {
 									? "opens the pull request; push nothing"
 									: land === "merge"
 										? "merges it into its base in the project checkout"
-										: "left for the human",
+										: "stays in its worktree with no automatic landing",
 							);
 						}
 					});
@@ -545,6 +545,59 @@ describe("Brief working copy", () => {
 		);
 		expect(review).toContain("Review here without changing files.");
 		expect(review).not.toContain("commit your own work");
+	});
+
+	it("describes post-landing automation without exposing its command or promising CI completion", () => {
+		const target = {
+			...subject,
+			tree: {
+				...tree,
+				land: "pr" as const,
+				onLanded: "TOKEN=private gh pr merge --auto",
+			},
+			lenses: [{ name: "functional", prompt: "LENS" }],
+			lens: "functional",
+			prompt: "LENS",
+			findings: [],
+			base: "base",
+			diff: "",
+		};
+		for (const prompt of [
+			Brief.opening(target, "BRIEF"),
+			Brief.lens(target, "BRIEF"),
+			Brief.recheck(target, "BRIEF"),
+			Brief.fixer(target, "BRIEF"),
+			Brief.reviewing(target.tree),
+		]) {
+			expect(prompt).toContain("After successful landing, the runner executes");
+			expect(prompt).not.toContain(target.tree.onLanded);
+			expect(prompt).toContain("do not run them early or wait in this session");
+			expect(prompt).toContain("as pending automation");
+			expect(prompt).toContain("kabane loop status <runId>");
+			expect(prompt).toContain("gh pr checks <pr-url>");
+			expect(prompt).toContain(
+				"does not monitor later CI or automatically close findings",
+			);
+		}
+		const fixer = Brief.fixer(target, "BRIEF");
+		expect(fixer).toContain(
+			"If verification must wait for landing or later CI",
+		);
+		expect(fixer).toContain('then kabane_edit with state "waiting"');
+		expect(fixer).toContain(
+			"who pushes, opens a PR or runs landing automation, this paragraph replaces it",
+		);
+		for (const place of [
+			{ ...target.tree, land: "none" as const },
+			{ ...target.tree, worktree: false },
+		]) {
+			const prompt = Brief.opening({ ...subject, tree: place }, "BRIEF");
+			expect(prompt).toContain("so it will not run automatically");
+			expect(prompt).not.toContain("After successful landing");
+		}
+		expect(Brief.opening(subject, "BRIEF")).toContain(
+			"No onLanded command is configured",
+		);
 	});
 
 	it("repeats the working-copy constraint on nudges, retries and resumes", () => {

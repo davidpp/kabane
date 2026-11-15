@@ -102,6 +102,14 @@ warning there and changes nothing else: the run stays completed and the landing 
 done. A `pr` landing's pull request is usually still open when the command runs, so
 `kabane loop prune` keeps that worktree until it is merged.
 
+Session briefs name the resolved landing mode and whether an `onLanded` command is
+configured, without exposing its shell contents. Sessions leave landing and the hook to
+the runner. Steps owned by configured automation are reported as pending; publication or
+checks without automation need an explicit follow-up. Neither is automatically human-only.
+`kabane loop status <runId>` reports the landing result and PR URL; the board trace contains hook output and warnings. For GitHub, inspect later
+checks with `gh pr checks <pr-url>` or `gh run list --branch <branch>`. The loop does not
+monitor those later checks or close findings when they pass.
+
 Every successful landing runs the command, so a retry with `kabane loop land` runs it
 again, also when the branch was already merged. Write a command that is safe to run twice:
 `git push` and `kabane loop prune` are.

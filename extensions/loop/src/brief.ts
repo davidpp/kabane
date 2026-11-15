@@ -18,7 +18,7 @@ export namespace Brief {
 	/** Resolved run settings and the working copy actually assigned to this session. */
 	export type Tree = Pick<
 		LoopConfig.Config,
-		"worktree" | "isolation" | "land"
+		"worktree" | "isolation" | "land" | "onLanded"
 	> & {
 		dir: string;
 		branch: string;
@@ -74,13 +74,25 @@ export namespace Brief {
 			return "The run commits nothing: commit your own work. It has no branch of its own to land.";
 		switch (tree.land) {
 			case "pr":
-				return `Once it completes, the run rebases and pushes its branch \`${tree.runBranch}\` and opens the pull request; push nothing and open no pull request yourself.`;
+				return `After its sessions and gates finish, the runner rebases and pushes its branch \`${tree.runBranch}\` and opens the pull request; push nothing and open no pull request yourself.`;
 			case "merge":
-				return `Once it completes, the run rebases its branch \`${tree.runBranch}\` and merges it into its base in the project checkout, without pushing; do not merge, push or open a pull request yourself.`;
+				return `After its sessions and gates finish, the runner rebases its branch \`${tree.runBranch}\` and merges it into its base in the project checkout, without pushing in the landing step; do not merge, push or open a pull request yourself.`;
 			case "none":
-				return `The run's branch \`${tree.runBranch}\` is left for the human; push nothing and open no pull request yourself.`;
+				return `The run's branch \`${tree.runBranch}\` stays in its worktree with no automatic landing; push nothing and open no pull request yourself.`;
 		}
 	};
+
+	const automation = (tree: Tree): string =>
+		[
+			tree.onLanded === undefined
+				? "No onLanded command is configured for this run."
+				: tree.worktree && tree.land !== "none"
+					? "After successful landing, the runner executes this run's configured onLanded command in the project checkout. Its contents are omitted here; do not assume it pushes, enables auto-merge or waits for CI."
+					: "An onLanded command is configured, but this run has no automatic landing, so it will not run automatically.",
+			"Landing and its hook belong to the runner, not this session: do not run them early or wait in this session for automation that starts after you finish. This is not a blanket prohibition on agents pushing.",
+			"Report steps owned by configured automation as pending automation, with the evidence still needed. If publication or a later check has no configured automation, name the missing step and needed follow-up instead of claiming it will happen. Neither case is human-only just because this session cannot run it yet. Do not mark an unverified finding fixed. Ask a human only for a decision or access that is actually missing.",
+			"Use kabane loop status <runId> for the run's landing result and PR URL, and the run's board trace for onLanded output or warnings. For GitHub, gh pr checks <pr-url> and gh run list --branch <branch> inspect checks after publication. The loop does not monitor later CI or automatically close findings when it passes.",
+		].join(" ");
 
 	const working = (
 		tree: Tree,
@@ -101,7 +113,8 @@ export namespace Brief {
 				: []),
 			// Reviewers never commit, even when the run cannot checkpoint their tree.
 			...(review && !tree.worktree ? [] : [landing(tree)]),
-			"Where the issue's brief names a branch, a worktree or a merge order, this paragraph replaces it.",
+			automation(tree),
+			"Where the issue's brief names a branch, a worktree, a merge order or who pushes, opens a PR or runs landing automation, this paragraph replaces it.",
 		].join(" ");
 
 	/** Where a read-only session works, and that it changes nothing there: a triage's (`Review`). */
@@ -414,7 +427,7 @@ export namespace Brief {
 				`You are the fixer session of kabane loop run ${runId} on ${label(parent)} ("${parent.title}"), whose work is done. Its verifier lenses reviewed the result and filed the findings below as child issues of ${label(parent)}. They are all yours, and no other session works in the repository meanwhile. Work through them in this order, most severe first:`,
 				findings.map(listed).join("\n"),
 				working(tree),
-				`For each finding: read its brief with kabane_context, fix it, verify the fix, log what you changed with kabane_log on it, then call kabane_done on it. Close only a finding you fixed. If a finding is wrong, already fixed, or outside ${label(parent)}'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open for a human. If fixing a finding needs a call that is the human's (two reasonable fixes, or a change to what ${label(parent)} asked for), do not change code for it either: ${asking("it")}. ${PARKED} ${after(gates)}`,
+				`For each finding: read its brief with kabane_context, fix it, verify the fix, log what you changed with kabane_log on it, then call kabane_done on it. Close only a finding you fixed. If a finding is wrong, already fixed, or outside ${label(parent)}'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open with the reason and next step recorded. If verification must wait for landing or later CI, use kabane_comment to record the configured automation or missing follow-up, exact check and evidence needed, then kabane_edit with state "waiting"; do not close it or ask for a human decision merely because the later step has not run. If fixing a finding needs a call that is the human's (two reasonable fixes, or a change to what ${label(parent)} asked for), do not change code for it either: ${asking("it")}. ${PARKED} ${after(gates)}`,
 				`Do not file findings. If fixing one turns up other work, add it with kabane_add as a child of ${label(parent)} with kind "issue" instead of doing it.`,
 				"When every finding is closed or waiting, end your turn with one line per finding: fixed, or why it was left.",
 			].join("\n\n"),
