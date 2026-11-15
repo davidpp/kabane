@@ -659,10 +659,11 @@ Parameters:
 const logList = define({
 	name: CORE_TOOL_NAMES.logList,
 	kind: "read",
-	description: `List a task's work logs, oldest first; limit selects the newest entries.
+	description: `List a task's work logs, oldest first.
 
 Parameters:
-- id: ${ID_HINT}`,
+- id: ${ID_HINT}
+- limit: Optional; only the newest N entries, still oldest first`,
 	input: { id: z.string().min(1), limit: z.number().int().min(1).optional() },
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);

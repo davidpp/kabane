@@ -386,7 +386,7 @@ namespace Host {
 		// Wrappers over kabane_linkList, kabane_upstreamList and kabane_logList (JCAB-336).
 		links(input: { id: string }): Promise<Result<TaskLink[]>>;
 		upstreamLinks(input: { id: string }): Promise<Result<UpstreamLink[]>>;
-		workLogs(input: { id: string }): Promise<Result<TaskWorkLog[]>>;
+		workLogs(input: { id: string; limit?: number }): Promise<Result<TaskWorkLog[]>>;
 		/** Any registered tool by name, full format; a data module's included. An unregistered name is an err. */
 		call(tool: string, input: unknown): Promise<Result<unknown>>;
 	};

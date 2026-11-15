@@ -141,7 +141,8 @@ never a service token. A tool that credits the human with a reply an agent relay
 
 `kabane_list` accepts `parentTaskId` (short id or ULID) and `includeDeferred`;
 `kabane_edit` accepts `needsReview`. The read tools `kabane_linkList`,
-`kabane_upstreamList` and `kabane_logList` take `{ id }` and return raw records.
+`kabane_upstreamList` and `kabane_logList` take `{ id }` and return raw records;
+`kabane_logList` also takes an optional `limit` (the newest N, still oldest first).
 These input shapes are part of extension API v1, held by review; `mcp/tools.test.ts`
 pins the list filters and review flag through handler calls in both response formats.
 
