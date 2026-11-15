@@ -28,8 +28,12 @@ export namespace Lenses {
 	const SHIPPED = ["functional", "quality"] as const;
 
 	/** Where a project keeps its own lenses: its dispatch skill's. */
-	const dir = (projectDir: string): string =>
+	export const dir = (projectDir: string): string =>
 		join(projectDir, ".agents", "skills", "dispatch", "references", "lenses");
+
+	/** The loop's own lens directory from before the dispatch skill held them. */
+	export const loopDir = (projectDir: string): string =>
+		join(projectDir, ".kabane", "loop", "lenses");
 
 	/**
 	 * Where a project's lenses were kept before, in the order they are read after the skill's: the
@@ -37,7 +41,13 @@ export namespace Lenses {
 	 */
 	const legacyDirs = (projectDir: string): string[] => [
 		join(projectDir, ".claude", "skills", "dispatch", "references", "lenses"),
-		join(projectDir, ".kabane", "loop", "lenses"),
+		loopDir(projectDir),
+	];
+
+	/** Every directory a project's lenses are read from, first in force first. */
+	export const directories = (projectDir: string): string[] => [
+		dir(projectDir),
+		...legacyDirs(projectDir),
 	];
 
 	// The lens names among a directory's files. A prompt whose file name is no lens name
@@ -59,7 +69,7 @@ export namespace Lenses {
 			...SHIPPED,
 			...(projectDir === undefined
 				? []
-				: [dir(projectDir), ...legacyDirs(projectDir)].flatMap(namesIn).sort()),
+				: directories(projectDir).flatMap(namesIn).sort()),
 		]),
 	];
 
