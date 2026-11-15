@@ -101,6 +101,12 @@ An issue has a **timeline** of **entries**. An entry has a **kind**, an author, 
 
 ## Agent sessions
 
+The outcome kinds `outcome.decision`, `outcome.finding`, `outcome.verification` and
+`outcome.summary` live in `@cabane/outcome`; `handoff` remains in `@cabane/handoff`.
+JCAB-340 moves the loop's sessions and questions to its own store, then JCAB-343 migrates
+existing outcomes into timeline entries and removes sessions from core. Until then these
+session rows and the durable fold remain readable.
+
 `agent_sessions` + `agent_activities`, CASCADE from tasks, soft TEXT. State machine in `storage/sessions.ts`: `start → active`, a `question` activity → `awaiting_input`, any non-question activity once no question is unanswered → `active`, `end(complete|error)` compacts ephemerals and emits a `response` activity from the summary, an `active` session idle > 24h → `stale` via `sweepStaleSessions` (an `awaiting_input` one waits on a human and is never swept).
 
 Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is `Planner.selectDurableActivities`: keeps `response`/`finding`/`verification`/`decision`/`handoff`, drops the rest plus all-but-latest ephemeral.
