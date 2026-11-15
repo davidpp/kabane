@@ -14,7 +14,7 @@ packages/
 ├── acp/       # @cabane/acp    — ACP client over Bun.spawn: harness registry, session runner, own Update union
 ├── extension/ # @cabane/extension — extension contract (Command, Ctx, board ports), args, outcomes
 ├── questions/ # @cabane/questions — data module: decisions agents ask humans (kabane_ask, kabane_questions, kabane_answer)
-├── checklist/ # @cabane/checklist — data module: the steps of one issue (kabane_checklistAdd, kabane_checklistTick, kabane_checklistEdit)
+├── checklist/ # @cabane/checklist — data module: the steps of one issue (kabane_checklist, kabane_checklistAdd, kabane_checklistTick, kabane_checklistEdit)
 ├── handoff/   # @cabane/handoff — data module: the handoff kind and its template, what an agent leaves the next reader on any kind of work (kabane_handoff)
 ├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, board, mcp (stdio)
 ├── board/     # @cabane/board  — OpenTUI kanban; ActivitySource + Dispatcher + Copilot ports, no-op defaults

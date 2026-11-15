@@ -186,7 +186,7 @@ export namespace Checklist {
 			? ok(item.id)
 			: err(
 					new Error(
-						`No checklist item ${input}: ${match[1]} has ${ids.value.length}. Read them with kabane_context, sections: ["checklist.items"].`,
+						`No checklist item ${input}: ${match[1]} has ${ids.value.length}. Read them with kabane_checklist.`,
 					),
 				);
 	};

@@ -45,6 +45,7 @@ it("lists the tools and carries the item-or-subtask rule in the server instructi
 	const { tools } = await client.listTools();
 	const names = tools.map((tool) => tool.name);
 	for (const name of [
+		"kabane_checklist",
 		"kabane_checklistAdd",
 		"kabane_checklistTick",
 		"kabane_checklistEdit",
@@ -117,4 +118,37 @@ it("answers each write with one line: the issue, its progress and the items", as
 			`^## Checklist 0/2\n\n- \\[ \\] ${label}\\.3 Ship id:\\w{26}\n- \\[ \\] ${label}\\.2 Test more id:\\w{26}$`,
 		),
 	);
+});
+
+it("reads live items in list order as records, including empty and unknown tasks", async () => {
+	const task = unwrap(await Planner.addTask(base, { title: "Read steps" }));
+	const id = task.shortId ?? task.id;
+	expect(await call("kabane_checklist", { id })).toEqual({
+		isError: false,
+		text: "[]",
+	});
+	await call("kabane_checklistAdd", {
+		id,
+		items: ["First", "Second", "Removed"],
+	});
+	await call("kabane_checklistEdit", { item: `${id}.2`, position: 1 });
+	await call("kabane_checklistTick", { items: [`${id}.2`] });
+	await call("kabane_checklistEdit", { item: `${id}.3`, remove: true });
+	for (const ref of [id, task.id]) {
+		const result = await call("kabane_checklist", { id: ref });
+		expect(result.isError).toBe(false);
+		expect(JSON.parse(result.text)).toMatchObject([
+			{ taskId: task.id, text: "Second", done: true, handle: `${id}.2` },
+			{ taskId: task.id, text: "First", done: false, handle: `${id}.1` },
+		]);
+		expect(JSON.parse(result.text)).toHaveLength(2);
+	}
+	const missing = await call("kabane_checklist", { id: "JCAB-999999" });
+	expect(missing.isError).toBe(true);
+	expect(missing.text).toContain("JCAB-999999");
+	const { tools } = await client.listTools();
+	expect(
+		tools.find((tool) => tool.name === "kabane_checklist")?.annotations
+			?.readOnlyHint,
+	).toBe(true);
 });
