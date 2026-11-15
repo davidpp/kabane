@@ -61,7 +61,15 @@ export const install = async (
 	const findings: Doctor.Finding[] = [];
 	for (const harness of harnesses) {
 		const found = McpClients.registrations(harness, where);
-		if (!found.ok) return found;
+		if (!found.ok) {
+			findings.push({
+				id: `mcp-config-unreadable-${harness}`,
+				source: "kabane",
+				severity: "mention",
+				summary: `${harness}: ${found.error.message}. Repair this config so its MCP registration can be checked.`,
+			});
+			continue;
+		}
 		const expected = McpClients.launchFor(launcher, harness);
 		const other = found.value.filter(
 			(r) => !McpClients.sameLaunch(r.launch, expected),

@@ -297,3 +297,15 @@ test.skipIf(Bun.which("claude") === null)(
 	},
 	60_000,
 );
+
+test("one malformed config leaves both earlier and later harness findings intact", async () => {
+	const s = setup();
+	s.claude({ kabane: s.entry("claude", "/gone/kabane") });
+	write(join(s.home, ".codex/config.toml"), "[mcp_servers.kabane");
+	s.gemini(s.entry("gemini", "/gone/kabane"));
+	expect(await s.ids()).toEqual([
+		"mcp-entry-stale-claude:mention",
+		"mcp-config-unreadable-codex:mention",
+		"mcp-entry-stale-gemini:mention",
+	]);
+});
