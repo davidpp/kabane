@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -10,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Templates } from "@cabane/acp/templates";
+import { DB_NAME } from "../config";
 import { ConfigLayers } from "../config-layers";
 import { TRACKER_BLOCK } from "../first-run";
 
@@ -34,14 +36,9 @@ const setup = () => {
 		`---\nname: dispatch\nmetadata:\n  kabane-template: ${Templates.stamp("dispatch")}\n---\n`,
 	);
 	writeFileSync(join(cwd, "AGENTS.md"), `${TRACKER_BLOCK}\n`);
-	const cli = (...args: string[]) => {
+	const run = (...args: string[]) => {
 		const result = Bun.spawnSync(
-			[
-				process.execPath,
-				resolve(import.meta.dir, "../../index.ts"),
-				"doctor",
-				...args,
-			],
+			[process.execPath, resolve(import.meta.dir, "../../index.ts"), ...args],
 			// No harness config is read: the machine's own registrations are not this test's.
 			{ cwd, env: { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" } },
 		);
@@ -51,13 +48,44 @@ const setup = () => {
 	};
 	const config = (value: unknown) =>
 		writeFileSync(join(home, "config.json"), JSON.stringify(value));
-	return { cwd, home, cli, config };
+	return {
+		cwd,
+		home,
+		cli: (...args: string[]) => run("doctor", ...args),
+		run,
+		config,
+	};
 };
 
 test("clean home reports one line and closure-free JSON", () => {
-	const { cli } = setup();
+	const { home, cli } = setup();
 	expect(cli()).toBe("No findings.");
 	expect(JSON.parse(cli("--json"))).toEqual({ findings: [], fixes: [] });
+	expect(existsSync(join(home, DB_NAME))).toBe(false);
+});
+
+test("extension doctor counts open tier-tagged issues through the CLI store", () => {
+	const { cli, run, config } = setup();
+	config({
+		actor: "cabane://actor/human/test",
+		deviceId: "test",
+		extensions: ["loop"],
+	});
+	run("add", "Unmapped tier", "--kind", "issue", "--tags", "tier:fast");
+	const report = JSON.parse(cli("--json"));
+	expect(report.findings).toContainEqual(
+		expect.objectContaining({
+			source: "loop",
+			id: "tier-unmapped",
+			summary: expect.stringContaining("1 open issue tagged for it"),
+		}),
+	);
+	expect(
+		report.findings.some(
+			(finding: { id: string }) =>
+				finding.id === "tier-tags-unchecked" || finding.id === "check-failed",
+		),
+	).toBe(false);
 });
 
 test("reports unknown shared keys even with the extension disabled", () => {
@@ -136,4 +164,5 @@ test("malformed config is reported without opening a database", () => {
 	writeFileSync(join(home, "config.json"), "{broken");
 	expect(cli()).toContain("config.json");
 	expect(JSON.parse(cli("--json")).findings.length).toBeGreaterThan(0);
+	expect(existsSync(join(home, DB_NAME))).toBe(false);
 });

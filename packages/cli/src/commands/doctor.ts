@@ -1,5 +1,8 @@
+import { existsSync } from "node:fs";
+import { Planner } from "@cabane/core";
 import { Doctor, failure, flagList, success, usage } from "@cabane/extension";
-import type { Command } from "../context";
+import { configPath, loadConfig } from "../config";
+import { type Command, configureRuntime } from "../context";
 import { kabane } from "../doctor/kabane";
 import { Extensions } from "../extensions";
 
@@ -37,6 +40,16 @@ export const doctor: Command = {
 			(!("fix" in args.flags) && args.positionals.length > 0)
 		)
 			return usage("Unexpected doctor arguments", USAGE);
+		if (existsSync(configPath(ctx.home))) {
+			const config = loadConfig(ctx.home);
+			// Settings diagnostics report invalid config; it must not prevent the other checks.
+			if (config.ok) {
+				const configured = configureRuntime(config.value, config.value.actor);
+				if (!configured.ok) return failure(configured.error);
+				const initialized = await Planner.init(ctx.home);
+				if (!initialized.ok) return failure(initialized.error);
+			}
+		}
 		const selected = [...flagList(args, "fix"), ...args.positionals];
 		const sources: Doctor.Source[] = [kabane];
 		const enabled = Extensions.enabled(ctx.home);
