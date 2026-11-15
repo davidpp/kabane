@@ -32,8 +32,10 @@ describe("Astra review regressions", () => {
 					const original = tracker.ids[0];
 					if (!original) return;
 					const id = "X".repeat(1904);
+					// In a scope of its own, so that both targets are real moves that mint a label: an
+					// edit naming the task's current scope mints none (JCAB-344).
 					db.run(
-						"UPDATE tasks SET id = ?, short_id = NULL, title = 'Receipt boundary', version = 1 WHERE id = ?",
+						"UPDATE tasks SET id = ?, short_id = NULL, scope_uri = 'kabane://scope/elsewhere', title = 'Receipt boundary', version = 1 WHERE id = ?",
 						[id, original],
 					);
 					const snapshot = () => ({
