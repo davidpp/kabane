@@ -16,15 +16,16 @@ list. It never imports the CLI or an extension, never opens a database (the host
 and the data modules' exports (`ARCHITECTURE.md`, "A client uses only what another client
 could"). `@cabane/sqlite` and `@cabane/handoff` are `devDependencies` for tests and stories.
 
-Who imports the board today: the CLI (`startBoard`, `startSetup`, the `Activity`, `Dispatchers`
-and `Headers` merges, `Launcher`), the loop (`@cabane/board/ports`, `/form-field`), and, through
-named exceptions, `@cabane/extension` and `@cabane/acp` (`/ports`, `/context`).
+The CLI imports the board (`startBoard`, `startSetup`, `BoardCopilot`, the `Activity`,
+`Dispatchers` and `Headers` merges, `Launcher`). Nothing below this client imports it.
 
-JCAB-320 changes this package's shape: port types leave `src/ports.ts` and `src/form-field.ts`,
-the copilot arrives from `@cabane/acp`. `Header` already returns data: `src/card-header.tsx`
-polls it and lays out its rows, sharing tone mapping with trigger previews.
-`ARCHITECTURE.md`, "Ports", says what moves where; check main before editing those files or a
-card header. JCAB-324 removes the text in `src/setup.tsx` that offers to turn on the loop.
+`@cabane/extension` owns the activity, dispatch, header, panel, settings field and shortcut
+port types; `@cabane/acp/form-field` owns form types and validation. `src/ports.ts` keeps the
+board-only ports and no-op defaults. `src/copilot.ts` implements `BoardCopilot` over ACP;
+`src/mailbox.ts` and `src/copilot-instructions.ts` support it. The host supplies `kabaneBin`.
+`Header` returns data: `src/card-header.tsx` polls it and lays out its rows, sharing tone mapping
+with trigger previews. JCAB-324 removes the loop procedure from `src/copilot-instructions.ts`
+and the text in `src/setup.tsx` that offers to turn on the loop.
 
 Where things are drawn: `src/app.tsx` holds the state and wires the ports; `src/board.tsx` is
 the board view, one row per card; `src/detail.tsx` an issue's detail; `src/tab-bar.tsx` and
@@ -52,5 +53,5 @@ Mouse, the host's pasteboard, OSC 52 over ssh and a real light/dark switch are m
 - A hex color outside `src/theme.ts`. Every color comes from the theme's tokens (`useTheme`),
   which follow the terminal's palette and its light/dark switch, and a test fails on a hex
   literal elsewhere (`DESIGN.md`).
-- Adding to `src/ports.ts` a type an extension produces. Under JCAB-320 that type belongs in
-  the contract; add it there or say in the handoff why it waits.
+- Adding to `src/ports.ts` a type an extension produces. That type belongs in
+  `@cabane/extension/ports.ts`; the board imports it from the contract.

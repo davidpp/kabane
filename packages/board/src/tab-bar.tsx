@@ -1,3 +1,4 @@
+import type { ActivityCard } from "@cabane/extension";
 /** @jsxImportSource @opentui/react */
 // The tab bar across the top of every view, and the banner a session question leaves over the view
 // it is shown on. The tracker is always tab 1; every other tab is a host card that asked for one. A
@@ -11,7 +12,6 @@
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
-import type { ActivityCard } from "./ports";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
 import { BoardTabs } from "./tabs";
 import { type Theme, useTheme } from "./theme";

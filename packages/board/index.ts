@@ -9,29 +9,32 @@ export { Launcher } from "./src/launcher";
 // For a host with more than one contributor (the CLI's enabled extensions) behind the one port.
 export { Activity, Dispatchers, Headers } from "./src/merge";
 export type {
+	Announcer,
+	Copilot,
+	CopilotUpdate,
+	OpenRequests,
+	SettingRow,
+	SettingsSource,
+} from "./src/ports";
+export type {
 	ActivityCard,
 	ActivityEvent,
 	ActivitySource,
 	ActivityStatus,
-	Announcer,
 	Header,
 	HeaderView,
 	HeaderPart,
-	Copilot,
 	CopilotShortcut,
-	CopilotUpdate,
 	Dispatcher,
 	DispatchTarget,
-	OpenRequests,
 	PanelLine,
 	PanelPart,
 	PanelTone,
-	SettingRow,
-	SettingsSource,
 	TriggerDescriptor,
 	TriggerInput,
-} from "./src/ports";
+} from "@cabane/extension";
 export { noActivity, noAnnouncer, noCopilot, noDispatcher } from "./src/ports";
 export { type SetupDeps, startSetup } from "./src/setup";
 export { SetupPlan } from "./src/setup-plan";
 export { type BoardDeps, startBoard } from "./src/start";
+export { BoardCopilot } from "./src/copilot";

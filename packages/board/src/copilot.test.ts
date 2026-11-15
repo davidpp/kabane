@@ -1,7 +1,6 @@
 // The copilot against the SDK's in-process agent: what reaches the harness on session/new and on
 // each prompt, and what the board gets back. No subprocess, no npx, same wire as client.test.ts.
 import { describe, expect, it } from "bun:test";
-import { resolve } from "node:path";
 import {
 	type AgentApp,
 	agent as agentApp,
@@ -12,16 +11,16 @@ import {
 	type ToolCallContent,
 	type ToolCallStatus,
 } from "@agentclientprotocol/sdk";
-import type { BoardContext } from "@cabane/board/context";
+import { AcpClient } from "@cabane/acp";
+import { err } from "@cabane/core";
+import type { BoardContext } from "./context";
+import { BoardCopilot } from "./copilot";
+import { CopilotInstructions } from "./copilot-instructions";
 import type {
 	CopilotElicitation,
 	CopilotPermission,
 	CopilotUpdate,
-} from "@cabane/board/ports";
-import { err } from "@cabane/core";
-import { AcpClient } from "./client";
-import { BoardCopilot } from "./copilot";
-import { CopilotInstructions } from "./instructions";
+} from "./ports";
 
 type ToolStep = {
 	kind: "call" | "update";
@@ -349,15 +348,15 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("defaults the shell's bin to the MCP server's when none is given, or an empty one", async () => {
-		for (const kabaneBin of [undefined, ""]) {
+	it("uses the host-supplied bin for both the shell and MCP server", async () => {
+		for (const kabaneBin of [BIN, "/host/kabane"]) {
 			const seen = fresh();
 			const copilot = copilotOver(scriptedAgent(seen), { kabaneBin });
 			await collect(copilot.run("go", context()));
 			const server = (
 				seen.newSession[0] as { mcpServers: { command: string }[] }
 			).mcpServers[0];
-			expect(server?.command).toBe(resolve(process.argv[1] ?? ""));
+			expect(server?.command).toBe(kabaneBin);
 			expect(textOf(seen.prompts[0], 0)).toContain(
 				`'${server?.command}' loop start <id>`,
 			);

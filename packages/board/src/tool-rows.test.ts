@@ -1,7 +1,7 @@
 // How the log's tool events fold into rows: one per call whatever its events, a group for a run of
 // reads and searches, and the caps an opened row is held to.
 import { describe, expect, it } from "bun:test";
-import type { ActivityEvent } from "./ports";
+import type { ActivityEvent } from "@cabane/extension";
 import { ToolRows } from "./tool-rows";
 
 const T0 = "2026-11-04T10:00:00.000Z";

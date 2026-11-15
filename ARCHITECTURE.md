@@ -199,25 +199,24 @@ loop's side of the answer, and JCAB-340 blocks JCAB-326. What each outcome does 
 
 ### Nothing below the board imports the board, and each port type moves to the package that produces it
 
-Today the contract and the harness client import the board: `packages/extension/contract.ts:7-11`
-and `settings.ts:12-16` import `@cabane/board/ports`; so do `packages/acp/src/client.ts:27-32`,
-`copilot.ts:9-15`, `tool-calls.ts:5` and `instructions.ts:8`, and `copilot.ts:8` imports a value,
-`BoardContext`, from `@cabane/board/context`. JCAB-320 removes these edges. The types move by
-who produces them and who reads them:
+The contract and the harness client no longer import the board (JCAB-320). The types live
+with whoever produces them and are imported directly by their readers:
 
 - **To `@cabane/extension`**, because an extension produces them and any client reads them: the
   activity types (`ActivityStatus`, `ActivityCard`, `CardAction`, `ActivityDiff`,
   `ActivityToolDetail`, `NoticeSeverity`, `ActivityEvent`, `ActivitySource`), the dispatch types
   (`TriggerInput`, `TriggerDescriptor`, `DispatchTarget`, `Dispatcher`), the panel types
-  (`PanelTone`, `PanelPart`, `PanelLine`), the settings field types `settings.ts` uses
+  (`PanelTone`, `PanelPart`, `PanelLine`), the header types (`Header`, `HeaderView`,
+  `HeaderPart`), the settings field types `settings.ts` uses
   (`SettingValue`, `SettingKind`, `SettingField`), and `CopilotShortcut`, which an extension
   contributes (below). A constant an extension compares against, such as `STOP_ACTION`
-  (`packages/board/src/ports.ts:63`, `"stop"`), becomes a string literal type in the contract.
+  (`"stop"`), is the string literal type `StopAction` in the contract; the board and loop
+  each keep their own typed constant.
 - **To `@cabane/acp`**, because they are the shape of an ACP elicitation: the form field types
   (`CopilotFormField`, `CopilotFormOption`, `CopilotFormValue`, `CopilotElicitationAnswer`, which
   `AcpClient.ElicitationField` already aliases at `client.ts:121`) and `FormField`, which judges a
   typed answer against one. Two readers judge those answers today, the board's form and the loop's
-  tracker questions (`packages/board/src/form-field.ts:1-3`); the loop reaches them through its
+  tracker questions (`packages/acp/src/form-field.ts`); the loop reaches them through its
   own harness client, and the board through the harness client as a library. `ToolCalls` declares
   its own detail type instead of importing `ActivityToolDetail`; the two are the same shape, so
   an extension passes one where the other is asked for.
@@ -225,15 +224,11 @@ who produces them and who reads them:
   update union, `BoardContext`, `Announcer`, `OpenRequests`, the settings screen's port
   (`SettingsSource`, `SettingRow`, `SettingChange`), the no-op defaults, the keymap and the theme.
 
-`packages/acp/src/copilot.ts` and `instructions.ts` are the board's copilot: they implement the
-board's `Copilot` port over a harness and render `BoardContext` into every prompt. They are client
-code inside the harness client package. `copilot.ts` moves to the board, which then depends on the
-harness client as a library, and `mailbox.ts`, which only `copilot.ts` uses, goes with it. The
-CLI, which imports `BoardCopilot` from `@cabane/acp` (`packages/cli/src/commands/board-runtime.ts:1`),
-imports it from the board. acp's imports of the board go first, so the two packages never depend
-on each other.
+`packages/board/src/copilot.ts` implements the board's `Copilot` port over the harness client
+and renders `BoardContext` into every prompt. `mailbox.ts` lives beside it. The CLI imports
+`BoardCopilot` from `@cabane/board`; acp has no dependency on the board.
 
-Of `instructions.ts`, the prose moves to the board as `packages/board/src/copilot-instructions.ts`
+Of `instructions.ts`, the prose lives in the board as `packages/board/src/copilot-instructions.ts`
 (`BLOCK`, `SKILLS`, `Setup`, `setup`, `systemPrompt`, `SHORTCUTS`), and acp keeps a
 `CopilotInstructions` with four names: `actorUri`, `SERVER_NAME`, `DISPATCH_TEMPLATE` and
 `GRILL_TEMPLATE`. Two reasons keep them in acp. The two template paths come from `Self.templates`,
@@ -244,9 +239,12 @@ which resolves `../templates/<name>` from the module that calls it (`instruction
 `checklists.ts`, `dispatch.ts`, `lenses.ts`), which it may, since it bundles its harness client,
 where it may not read the board. JCAB-327 removes both template paths with the templates, and
 JCAB-326 moves `actorUri` and `SERVER_NAME` into the loop, which leaves acp's
-`CopilotInstructions` empty. The path kabane runs as, which `copilot.ts:17` reads from `Self` today, becomes an option the CLI passes
-(`BoardCopilot.Options.kabaneBin`), so the board never imports `Self`, which JCAB-328 moves to the
-host.
+`CopilotInstructions` empty. The path kabane runs as is required in
+`BoardCopilot.Options.kabaneBin`; the CLI passes `Self.executable()`, so the board never imports
+`Self`, which JCAB-328 moves to the host. Unlike the previous optional argument, there is no
+board-side fallback. The instructions are available through `@cabane/board/copilot-instructions`
+for the CLI's config procedure test. The moved copilot tests use the ACP SDK's in-process agent,
+so the board declares the SDK as a development dependency.
 
 ### An extension describes a card header as lines of toned parts, and the board owns its layout
 
@@ -644,15 +642,14 @@ This follows the 2026-11-04 research note except in three places:
 
 | Rule | Where the code breaks it | Removed by |
 |---|---|---|
-| The contract and the harness client do not depend on a client | `@cabane/extension` and `@cabane/acp` list `@cabane/board` (`packages/extension/contract.ts:11`, `packages/acp/src/client.ts:32`) | JCAB-320 |
-| An extension imports no `@cabane/*` value except from the harness client it bundles | The loop lists `@cabane/acp`, `board`, `checklist`, `core` and `extension` (`extensions/loop/package.json`) and imports values from them in 30 source files | JCAB-326, which waits on JCAB-340 for the session calls, and JCAB-340 on JCAB-329 |
+| An extension imports no `@cabane/*` value except from the harness client it bundles | The loop lists `@cabane/acp`, `checklist`, `core` and `extension` (`extensions/loop/package.json`) and imports values from them in 30 source files | JCAB-326, which waits on JCAB-340 for the session calls, and JCAB-340 on JCAB-329 |
 | A host depends on no extension | `packages/cli/package.json` lists `@cabane/loop`, which `OFFICIAL` bundles (`packages/cli/src/extensions.ts:21-23`); JCAB-318's table lists the edge as an exception tied to JCAB-326 | JCAB-326 |
 | Core keeps only what passes the four questions | Plan lint moved to `extensions/loop/src/lint/`; core no longer exports it | JCAB-338, done |
 | | `scope/detect.ts`, `self.ts`, `serveStdio`, `handleHttpRequest` | JCAB-328 |
 | | `storage/sessions.ts` | JCAB-316:7, then JCAB-329 |
 | | `file:` deref reads with `Bun.file` (`storage/assemble-context.ts:187`) | JCAB-328 |
 | Core needs no Bun types | Plan lint moved into the loop; `packages/worker/tsconfig.json` still lists `bun` for core's file-ref deref | JCAB-338 (lint), done; JCAB-328 (deref) |
-| Base kabane does not describe an extension | `packages/acp/src/instructions.ts:66`, `:76`; `packages/board/src/setup.tsx:136` | JCAB-324 |
+| Base kabane does not describe an extension | `packages/board/src/copilot-instructions.ts`; `packages/board/src/setup.tsx:136` | JCAB-324 |
 | | The dispatch and grill templates in `packages/acp/templates/` | JCAB-327 |
 | A broken extension does not take the board down | `packages/cli/src/commands/board-runtime.ts:327-328` | JCAB-321 |
 | Extensions load from `$KABANE_HOME/extensions` | Only names in `OFFICIAL` load (`packages/cli/src/extensions.ts:21-23`) | JCAB-321, JCAB-322 |

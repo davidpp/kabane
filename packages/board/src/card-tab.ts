@@ -1,3 +1,4 @@
+import { type CardAction, type StopAction } from "@cabane/extension";
 // A host card's own tab, past what the tab bar decides (tabs.ts, which also answers the question the
 // tab shows): which of its lanes is on screen, whether its header is expanded, and the actions it
 // offers. Plain functions over the board's state, like the rest of the key routing, so the keys and
@@ -12,9 +13,10 @@
 // An action with `input` opens the board's prompt (prompt.ts) and sends what was typed.
 import type { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
-import { type CardAction, STOP_ACTION } from "./ports";
 import { BoardPrompt } from "./prompt";
 import type { BoardTabs } from "./tabs";
+
+const STOP_ACTION: StopAction = "stop";
 
 export namespace CardTab {
 	type State = BoardNav.BoardState;

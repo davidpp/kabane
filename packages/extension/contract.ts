@@ -4,12 +4,12 @@
  * so an extension importing the CLI would be a cycle.
  */
 
-import type { ActivitySource, Header, Dispatcher } from "@cabane/board/ports";
 import type { ToolDef } from "@cabane/core";
 import type { z } from "zod";
 import type { ParsedArgs } from "./args";
 import type { Doctor } from "./doctor";
 import type { Outcome } from "./outcome";
+import type { ActivitySource, Header, Dispatcher } from "./ports";
 import type { Settings } from "./settings";
 
 export type Extension = {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import type { CopilotFormField } from "@cabane/acp/form-field";
 import { ElicitationForm } from "./elicitation-form";
-import type { CopilotElicitation, CopilotFormField } from "./ports";
+import type { CopilotElicitation } from "./ports";
 
 const form = (...fields: CopilotFormField[]): CopilotElicitation => ({
 	id: "form-1",

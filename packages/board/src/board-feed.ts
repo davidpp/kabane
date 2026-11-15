@@ -3,6 +3,7 @@
 // open later, a 5s poll that keeps it fresh, the reload a write asks for, and the FTS search merged
 // into the rows. Selection survives every reload by task id (BoardNav.withSections).
 import type { Task } from "@cabane/core";
+import type { ActivitySource } from "@cabane/extension";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardActivity } from "./activity";
@@ -12,7 +13,7 @@ import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
 import { BoardNav } from "./nav";
 import type { SetNotice } from "./notice";
-import type { ActivitySource, Copilot, OpenRequests } from "./ports";
+import type { Copilot, OpenRequests } from "./ports";
 
 const POLL_INTERVAL_MS = 5000;
 // Stable identity so a board with nothing linked doesn't re-render on it.

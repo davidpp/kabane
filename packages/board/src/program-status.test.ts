@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import type { ActivityCard } from "@cabane/extension";
 import type { BoardActivity } from "./activity";
 import { ElicitationForm } from "./elicitation-form";
 import type { BoardNav } from "./nav";
-import type { ActivityCard } from "./ports";
 import { ProgramStatus } from "./program-status";
 
 const idle: ProgramStatus.Input = {

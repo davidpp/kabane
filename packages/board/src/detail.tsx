@@ -8,6 +8,7 @@
 // what goes where; this file only draws it. The agent brief is not drawn here: `y` copies it, and
 // it is what an agent reads.
 import type { Result, TaskEntry } from "@cabane/core";
+import type { ActivityCard, ActivityStatus } from "@cabane/extension";
 import {
 	BoxRenderable,
 	type MarkdownOptions,
@@ -35,7 +36,6 @@ import { ErrorBoundary } from "./error-boundary";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
-import type { ActivityCard, ActivityStatus } from "./ports";
 import { Segments } from "./segments";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
 import { type Theme, useMarkdownStyle, useTheme } from "./theme";

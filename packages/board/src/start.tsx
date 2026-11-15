@@ -3,6 +3,11 @@
 // it (try/finally) so a crash still restores the terminal. The host has already called
 // `Runtime.configure` with a Db provider; the board only needs the base path that provider reads.
 
+import {
+	type ActivitySource,
+	type Header,
+	type Dispatcher,
+} from "@cabane/extension";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ReactNode } from "react";
@@ -11,11 +16,8 @@ import { Clipboard } from "./clipboard";
 import type { BoardData } from "./data";
 import { ErrorBoundary } from "./error-boundary";
 import {
-	type ActivitySource,
 	type Announcer,
-	type Header,
 	type Copilot,
-	type Dispatcher,
 	noActivity,
 	type OpenRequests,
 	type SettingsSource,

@@ -6,6 +6,11 @@
 // indent at forty columns.
 import { describe, expect, it } from "bun:test";
 import { ok } from "@cabane/core";
+import type {
+	ActivityCard,
+	ActivityEvent,
+	ActivitySource,
+} from "@cabane/extension";
 import {
 	type CapturedSpan,
 	RGBA,
@@ -15,12 +20,7 @@ import {
 import { act, createRef, useEffect, useState } from "react";
 import { EventView, promptLines } from "./event-view";
 import type { BoardNav } from "./nav";
-import type {
-	ActivityCard,
-	ActivityEvent,
-	ActivitySource,
-	PlanEntry,
-} from "./ports";
+import type { PlanEntry } from "./ports";
 import { noActivity } from "./ports";
 import { SPINNER_FRAMES } from "./spinner";
 import { pumpUntil, renderTest } from "./testing";

@@ -1,3 +1,4 @@
+import type { ActivityCard, ActivitySource } from "@cabane/extension";
 // The work running on the board's tasks, as every surface that lists it sees it: the host's cards
 // plus the copilot's own, the questions they wait on, and what the human does to them (answers a
 // question, runs a card's action, closes its tab, opens its events).
@@ -8,7 +9,6 @@ import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
 import { BoardNav } from "./nav";
 import { flash, reported, type SetNotice } from "./notice";
-import type { ActivityCard, ActivitySource } from "./ports";
 import { BoardTabs } from "./tabs";
 
 const ACTIVITY_EFFECTS = [

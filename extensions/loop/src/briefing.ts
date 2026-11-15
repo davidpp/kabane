@@ -1,9 +1,9 @@
+import type { Task } from "@cabane/core";
 // What the board's trigger form shows before a loop starts: the plan as the tracker holds it right
 // now, which subtasks a free slot would claim first and what each of the others waits on, the
 // longest chain of blockers, and what could go wrong. Pure over a loaded plan and the risks core
 // `lint` found, so it is the same plan the runner will read on its first tick.
-import type { PanelLine, PanelPart } from "@cabane/board/ports";
-import type { Task } from "@cabane/core";
+import type { PanelLine, PanelPart } from "@cabane/extension";
 import type { LoopAdvice } from "./advice";
 import { LoopPlan } from "./plan";
 

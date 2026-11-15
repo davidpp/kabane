@@ -1,5 +1,6 @@
-import { BoardCopilot, Harnesses } from "@cabane/acp";
+import { Harnesses } from "@cabane/acp";
 import {
+	BoardCopilot,
 	Activity,
 	type ActivitySource,
 	type BoardDeps,
@@ -12,6 +13,7 @@ import {
 	startBoard,
 } from "@cabane/board";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
+import { Self } from "@cabane/core/self";
 import {
 	type Extension,
 	failure,
@@ -238,6 +240,7 @@ export const boardDeps = async (
 		resolveScope: async () =>
 			scope ? { scopeUri: scope.scopeUri, label: scope.label } : null,
 		copilot: BoardCopilot.create({
+			kabaneBin: Self.executable(),
 			harness,
 			// The harness reads the project's own CLAUDE.md / AGENTS.md from its cwd. A
 			// `--scope` URI names a scope without saying where it is checked out, so the

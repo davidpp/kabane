@@ -9,12 +9,12 @@
 // root (and with it every child) once its renderer has let go of the terminal (start.tsx).
 import { createHash } from "node:crypto";
 import { trySync } from "@cabane/core";
+import type { ActivityCard } from "@cabane/extension";
 import type { ProgramStatus as Report, ProgramStatusKind } from "@opentui/core";
 import { useRenderer } from "@opentui/react";
 import { useEffect, useMemo, useRef } from "react";
 import type { BoardActivity } from "./activity";
 import type { BoardNav } from "./nav";
-import type { ActivityCard } from "./ports";
 
 export namespace ProgramStatus {
 	export type Input = {

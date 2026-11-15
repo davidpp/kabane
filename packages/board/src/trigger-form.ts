@@ -1,3 +1,4 @@
+import type { TriggerDescriptor, TriggerInput } from "@cabane/extension";
 // A trigger's settings, filled in on the board before it fires: the form `a` opens over a trigger
 // whose every input it can hold (`fillable`). Plain functions over the board's state, like the other
 // key routers, so the keys and the clicks are tested without a renderer.
@@ -8,7 +9,6 @@
 // still selected, one level per press like every other `esc` on the board.
 import { Grid } from "./grid";
 import type { BoardNav } from "./nav";
-import type { TriggerDescriptor, TriggerInput } from "./ports";
 
 export namespace TriggerForm {
 	type State = BoardNav.BoardState;

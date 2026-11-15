@@ -12,27 +12,21 @@ change touches.
 | `AcpClient` (`src/client.ts`): spawn, sessions, prompt, steer, cancel, permissions and forms | the loop, the copilot |
 | `ToolCalls` (`src/tool-calls.ts`): folds tool call updates | the loop, the copilot |
 | `Stdio` (`src/stdio.ts`): `Bun.spawn` pipes to the SDK's stream | `AcpClient` |
-| `BoardCopilot` (`src/copilot.ts`), with its internal `Mailbox` (`src/mailbox.ts`) | the CLI's board runtime (`packages/cli/src/commands/board-runtime.ts`) |
-| `CopilotInstructions` (`src/instructions.ts`) | the copilot; the loop reads `actorUri`, `SERVER_NAME` and `DISPATCH_TEMPLATE` |
+| `FormField` (`src/form-field.ts`) and form types | the board and the loop, also through the SDK-free `/form-field` export |
+| `CopilotInstructions` (`src/instructions.ts`): `actorUri`, `SERVER_NAME`, `DISPATCH_TEMPLATE`, `GRILL_TEMPLATE` | the board's copilot and the loop |
 | `templates/dispatch`, `templates/grill` | the copilot's `/setup-dispatch` and grill procedures |
 | `scripts/scripted-agent.ts` | `bun run sandbox --scripted`, and tests that need a harness subprocess |
 
-## It depends on core alone, and today it also imports the board
+## It depends on core alone
 
 Its layer is `harness client`; its entry in `scripts/layers.ts` (`"@cabane/acp"`) says what it
-may list. The entry carries an exception, `@cabane/board`, for the imports in
-`src/client.ts`, `copilot.ts`, `tool-calls.ts` and `instructions.ts`. Never add another. The
-loop's dependency on this package is allowed and stays: an extension bundles its own harness
-client (`ARCHITECTURE.md`, the fourth narrowing under the layer table).
+may list. The board and loop both use it as a library; it imports neither of them.
+`BoardCopilot`, `Mailbox` and the copilot's prose live in `packages/board/src`.
+The template paths stay here so `Self.templates` resolves beside this package's templates.
 
-This package is about to change shape; check main before you edit the files these name:
-
-- JCAB-320 moves `copilot.ts`, `instructions.ts` and `mailbox.ts` into the board and brings the
-  form field types here (`ARCHITECTURE.md`, "Ports").
-- JCAB-324 takes the loop's procedure and shortcut out of `instructions.ts`.
 - JCAB-327 moves `templates/` out of base kabane.
-- JCAB-328 moves `Self` (`@cabane/core/self`, read by `copilot.ts` and `instructions.ts`) into
-  the host, which then passes the path as an argument.
+- JCAB-326 removes the loop's use of `actorUri` and `SERVER_NAME`.
+- JCAB-328 moves `Self` (`@cabane/core/self`, read by `instructions.ts`) into the host.
 
 Read before writing: `src/client.ts`, `src/harnesses.ts`, `src/client.test.ts` (an in-process
 `AgentApp`, no subprocess).

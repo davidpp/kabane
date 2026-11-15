@@ -1,3 +1,4 @@
+import type { TriggerDescriptor } from "@cabane/extension";
 /** @jsxImportSource @opentui/react */
 // The overlays: the `a` dispatch picker (one list of host triggers, centered) and the `?` sheet (the
 // keys of the view in hand, anchored at the bottom, which-key style). Deliberately minimal — no
@@ -12,7 +13,6 @@ import type { ReactNode, RefObject } from "react";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
-import type { TriggerDescriptor } from "./ports";
 import { type Theme, useTheme } from "./theme";
 import { TriggerForm } from "./trigger-form";
 

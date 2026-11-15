@@ -1,3 +1,8 @@
+import { FormField } from "@cabane/acp/form-field";
+import type {
+	CopilotFormField,
+	CopilotFormOption,
+} from "@cabane/acp/form-field";
 /** @jsxImportSource @opentui/react */
 // The harness stopped to ask the human to fill in a form, and is blocked until it hears back. The
 // permission block's visual language, a field at a time: the harness's message verbatim, then the
@@ -13,14 +18,9 @@ import {
 } from "@opentui/core";
 import { type ReactNode, type RefObject, useRef } from "react";
 import { ElicitationForm } from "./elicitation-form";
-import { FormField } from "./form-field";
 import type { BoardNav } from "./nav";
 import { type ClickPart, ClickRow } from "./permission-block";
-import type {
-	CopilotElicitation,
-	CopilotFormField,
-	CopilotFormOption,
-} from "./ports";
+import type { CopilotElicitation } from "./ports";
 import { Segments } from "./segments";
 import { type Theme, useTheme } from "./theme";
 

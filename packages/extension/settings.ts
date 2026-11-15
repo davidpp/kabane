@@ -1,3 +1,6 @@
+import { err, ok, type Result } from "@cabane/core";
+import { z } from "zod";
+import type { Doctor } from "./doctor";
 // Settings resolve through layers, so no setting handles where it comes from. A namespace (an
 // extension's name) declares one zod schema; every layer holds a partial document of it. Lowest
 // first: the schema's defaults; global, for every project on this device; shared, the project's
@@ -9,14 +12,7 @@
 // replaced, so a record of gates gains a gate per layer, defaulted ones included, while a list of
 // lenses is whatever the highest layer that names it says. A key set to null (or undefined, from
 // code) unsets what the layers below it say; it must still name a setting.
-import type {
-	SettingField,
-	SettingKind,
-	SettingValue,
-} from "@cabane/board/ports";
-import { err, ok, type Result } from "@cabane/core";
-import { z } from "zod";
-import type { Doctor } from "./doctor";
+import type { SettingField, SettingKind, SettingValue } from "./ports";
 
 export namespace Settings {
 	export type Layer = "default" | "global" | "shared" | "local" | "caller";

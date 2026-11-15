@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { SettingField } from "@cabane/board/ports";
 import { z } from "zod";
+import type { SettingField } from "./ports";
 import { Settings } from "./settings";
 
 const Schema = z

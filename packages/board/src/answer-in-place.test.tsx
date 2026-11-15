@@ -6,9 +6,9 @@ import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatQuestionBody, isAnswerTo, ok, Planner } from "@cabane/core";
+import type { ActivityCard, ActivitySource } from "@cabane/extension";
 import { App } from "./app";
 import { BoardNav } from "./nav";
-import type { ActivityCard, ActivitySource } from "./ports";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 

@@ -1,3 +1,4 @@
+import { type ActivityCard, type CardAction } from "@cabane/extension";
 // The tab bar and the attention queue, as plain functions over the board's state, beside the rest of
 // the key routing in nav.ts rather than inside it.
 //
@@ -13,7 +14,7 @@
 import type { BoardActivity } from "./activity";
 import { ElicitationForm } from "./elicitation-form";
 import type { BoardNav } from "./nav";
-import { type ActivityCard, type CardAction, isInFlight } from "./ports";
+import { isInFlight } from "./ports";
 import { BoardPrompt } from "./prompt";
 
 export namespace BoardTabs {

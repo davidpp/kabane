@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { Checklist } from "@cabane/checklist";
 import { Planner, type Result, type Task } from "@cabane/core";
+import type { ActivityCard } from "@cabane/extension";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createRef, type RefObject } from "react";
 import type { BoardActivity } from "./activity";
@@ -17,7 +18,6 @@ import {
 } from "./detail";
 import { DetailModel } from "./detail-model";
 import { BoardNav } from "./nav";
-import type { ActivityCard } from "./ports";
 import { SPINNER_FRAMES } from "./spinner";
 import { dropDb, freshDb } from "./test-db";
 import { renderTest } from "./testing";

@@ -1,3 +1,8 @@
+import {
+	type ActivitySource,
+	type Header,
+	type Dispatcher,
+} from "@cabane/extension";
 /** @jsxImportSource @opentui/react */
 // The board's composition root. Each part of the board is a hook that owns its state and the effects
 // it runs: the reducer's state (board-store), what the board reads (board-feed), the open detail
@@ -18,11 +23,8 @@ import { useOpenReader } from "./lifted-reader";
 import type { BoardNav } from "./nav";
 import { type SetNotice, useNotice } from "./notice";
 import {
-	type ActivitySource,
 	type Announcer,
-	type Header,
 	type Copilot,
-	type Dispatcher,
 	noAnnouncer,
 	type OpenRequests,
 	type SettingsSource,

@@ -11,13 +11,11 @@ command, built-in or extension, is written with. It has no runtime of its own.
   layers (`default`, `global`, `shared`, `local`, `caller`) behind one `Port`, and describes a
   zod schema's settings for `kabane config` and the settings screen.
 
-## It depends on core alone, and today it also imports the board
+## It depends on core alone
 
 Its layer is `extension contract`; its entry in `scripts/layers.ts` (`"@cabane/extension"`)
-says what it may list. That entry carries one exception, `@cabane/board`, because
-`contract.ts` and `settings.ts` import the board's port types (`@cabane/board/ports`).
-JCAB-320 moves those types here and removes the exception (`ARCHITECTURE.md`, "Ports", says
-which). Never add a new import from the board in the meantime.
+says what it may list. `ports.ts` owns the activity, dispatch, header, panel, settings field
+and copilot shortcut types an extension produces and any client reads. It imports no board.
 
 Two consumers implement or call the contract: the CLI (`packages/cli/src/context.ts` builds
 its `Ctx` as `Extension.Ctx` plus the device config, and every command in

@@ -1,14 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { ok } from "@cabane/core";
+import type { ActivityCard, ActivitySource } from "@cabane/extension";
 import { BoardActivity } from "./activity";
 import { CopilotLog } from "./copilot-log";
-import type {
-	ActivityCard,
-	ActivitySource,
-	CopilotStep,
-	CopilotUpdate,
-	PlanEntry,
-} from "./ports";
+import type { CopilotStep, CopilotUpdate, PlanEntry } from "./ports";
 
 const T0 = "2026-09-12T10:00:00.000Z";
 const T1 = "2026-09-12T10:00:01.000Z";

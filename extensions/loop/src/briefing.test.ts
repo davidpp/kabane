@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { PanelLine } from "@cabane/board/ports";
 import type { Task, TaskState } from "@cabane/core";
+import type { PanelLine } from "@cabane/extension";
 import { Briefing } from "./briefing";
 import { LoopPlan } from "./plan";
 

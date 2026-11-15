@@ -31,3 +31,7 @@ preprocessing as settings validation. A dropped key is a `mention`; when a newly
 added, declared sibling has the same JSON value, it infers a rename and reports
 `auto`. That inference is a heuristic, not a migration guarantee. The caller owns
 storage and attaches any repair closures; drift detection does not write files.
+
+`ports.ts` exports the activity, dispatch, header, panel, settings field and copilot shortcut
+types through `@cabane/extension`. `StopAction` is the literal type `"stop"`; consumers use
+their own constant. The contract has no dependency on the board.

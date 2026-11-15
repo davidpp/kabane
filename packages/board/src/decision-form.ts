@@ -1,3 +1,8 @@
+import type {
+	CopilotFormField,
+	CopilotFormOption,
+	CopilotFormValue,
+} from "@cabane/acp/form-field";
 // An agent's decision on an issue (`kabane_ask`, @cabane/questions) as the form a harness asks
 // with, so the board answers it with the copilot's keys (elicitation-form.ts) and draws it with the
 // copilot's block (elicitation-block.tsx) rather than a second form of its own. Pure: a question row
@@ -14,12 +19,7 @@ import {
 	type QuestionView,
 	validateAnswer,
 } from "@cabane/questions";
-import type {
-	CopilotElicitation,
-	CopilotFormField,
-	CopilotFormOption,
-	CopilotFormValue,
-} from "./ports";
+import type { CopilotElicitation } from "./ports";
 
 export namespace DecisionForm {
 	/** `id` is the ULID `Questions.answer` takes and the form's id carries; `handle` what the notice calls it. */

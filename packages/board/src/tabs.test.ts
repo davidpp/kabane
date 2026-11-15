@@ -2,8 +2,9 @@
 // which tab is on screen, where `!` lands, what a banner's digits answer and when it clears.
 import { describe, expect, it } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import type { ActivityCard } from "@cabane/extension";
 import { BoardNav } from "./nav";
-import type { ActivityCard, CopilotPermission } from "./ports";
+import type { CopilotPermission } from "./ports";
 import { BoardTabs } from "./tabs";
 
 // What the copilot is blocked on, in queue order.

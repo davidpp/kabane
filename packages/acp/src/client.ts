@@ -24,13 +24,13 @@ import {
 	type Stream,
 	type ToolCallContent,
 } from "@agentclientprotocol/sdk";
+import { err, ok, type Result, toError, tryCatch } from "@cabane/core";
 import type {
 	CopilotElicitationAnswer,
 	CopilotFormField,
 	CopilotFormOption,
 	CopilotFormValue,
-} from "@cabane/board/ports";
-import { err, ok, type Result, toError, tryCatch } from "@cabane/core";
+} from "./form-field";
 import { Harnesses } from "./harnesses";
 import { Stdio } from "./stdio";
 
@@ -111,7 +111,7 @@ export namespace AcpClient {
 	) => Promise<Result<string>>;
 
 	// A form's parts are the board's: the board and the loop put the same form to a human, and read
-	// its answers the same way (`@cabane/board/form-field`).
+	// its answers the same way (`@cabane/acp/form-field`).
 	export type ElicitationOption = CopilotFormOption;
 
 	/**

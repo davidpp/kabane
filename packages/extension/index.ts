@@ -18,3 +18,28 @@ export {
 	usage,
 } from "./outcome";
 export { Settings } from "./settings";
+export type {
+	ActivityCard,
+	ActivityDiff,
+	ActivityEvent,
+	ActivitySource,
+	ActivityStatus,
+	ActivityToolDetail,
+	CardAction,
+	CopilotShortcut,
+	DispatchTarget,
+	Dispatcher,
+	Header,
+	HeaderPart,
+	HeaderView,
+	NoticeSeverity,
+	PanelLine,
+	PanelPart,
+	PanelTone,
+	SettingField,
+	SettingKind,
+	SettingValue,
+	StopAction,
+	TriggerDescriptor,
+	TriggerInput,
+} from "./ports";

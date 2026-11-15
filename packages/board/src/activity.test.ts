@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { err, formatQuestionBody, ok, Planner } from "@cabane/core";
+import { type ActivityCard, type ActivitySource } from "@cabane/extension";
 import { BoardActivity } from "./activity";
 import { BoardData } from "./data";
-import { type ActivityCard, type ActivitySource, noActivity } from "./ports";
+import { noActivity } from "./ports";
 import { dropDb, freshDb } from "./test-db";
 
 const TEST_BASE = join(import.meta.dir, ".test-activity");

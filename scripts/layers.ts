@@ -49,23 +49,21 @@ export const layers: Readonly<Record<string, Rule>> = {
 		layer: "extension contract",
 		dependencies: ["@cabane/core"],
 		devDependencies: [],
-		exceptions: {
-			"@cabane/board":
-				"JCAB-320: move UI-neutral ports to the extension contract",
-		},
 	},
 	"@cabane/acp": {
 		layer: "harness client",
 		dependencies: ["@cabane/core"],
 		devDependencies: [],
-		exceptions: {
-			"@cabane/board":
-				"JCAB-320: move UI-neutral ports to the extension contract",
-		},
 	},
 	"@cabane/board": {
 		layer: "client",
-		dependencies: ["@cabane/core", "@cabane/checklist", "@cabane/questions"],
+		dependencies: [
+			"@cabane/core",
+			"@cabane/checklist",
+			"@cabane/questions",
+			"@cabane/acp",
+			"@cabane/extension",
+		],
 		devDependencies: ["@cabane/handoff", "@cabane/sqlite"],
 		testSupport: [
 			"packages/board/src/test-db.ts",
@@ -112,7 +110,6 @@ export const layers: Readonly<Record<string, Rule>> = {
 		dependencies: ["@cabane/acp"],
 		devDependencies: [],
 		exceptions: {
-			"@cabane/board": "JCAB-326: port the loop onto the extension API",
 			"@cabane/checklist": "JCAB-326: port the loop onto the extension API",
 			"@cabane/core": "JCAB-326: port the loop onto the extension API",
 			"@cabane/extension": "JCAB-326: port the loop onto the extension API",

@@ -2,10 +2,17 @@
 // ACP opens a call with `tool_call` and then sends only what changed, so whoever records a call keeps
 // the call so far, and the board's port gets the detail it shows when the row is opened, capped here
 // so a session that read a big file does not write the whole file into its event log.
-import type { ActivityDiff, ActivityToolDetail } from "@cabane/board/ports";
+
 import type { AcpClient } from "./client";
 
 export namespace ToolCalls {
+	export type Diff = { path: string; oldText?: string; newText: string };
+	export type Detail = {
+		kind?: string;
+		input?: string;
+		output?: string;
+		diffs?: readonly Diff[];
+	};
 	export type Call = {
 		title: string;
 		kind?: string;
@@ -48,10 +55,10 @@ export namespace ToolCalls {
 	};
 
 	/** What the board shows of `call` once its row is opened. */
-	export const detail = (call: Call): ActivityToolDetail => {
+	export const detail = (call: Call): Detail => {
 		const input = inputText(call.input);
 		const output = outputText(call);
-		const diffs = call.content.flatMap((item): ActivityDiff[] =>
+		const diffs = call.content.flatMap((item): Diff[] =>
 			item.type === "diff" &&
 			(item.oldText ?? "").length + item.newText.length <= DIFF_CHARS
 				? [

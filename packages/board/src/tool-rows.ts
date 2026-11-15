@@ -1,3 +1,8 @@
+import type {
+	ActivityDiff,
+	ActivityEvent,
+	ActivityToolDetail,
+} from "@cabane/extension";
 // The event log's tool calls as rows: a call and its end fold into one row that knows how the call
 // went, and a run of reads and searches with nothing said between them folds into one group. Pure,
 // so the folding is asserted without a renderer; event-view.tsx draws what this returns.
@@ -6,7 +11,6 @@
 // ending in `…`, and an output's tail kept behind an `(N earlier lines)` label, since a command's
 // output says how it went at its end.
 import { formatPatch, OMIT_HEADERS, structuredPatch } from "diff";
-import type { ActivityDiff, ActivityEvent, ActivityToolDetail } from "./ports";
 
 export namespace ToolRows {
 	// `unknown` is a call nothing said the end of: a host that records only some ends, or a card that

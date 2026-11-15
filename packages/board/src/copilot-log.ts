@@ -4,11 +4,13 @@
 // `start`, `apply` and `footer` are pure; `source` is the ActivitySource-shaped adapter app.tsx
 // hands the event view, layered over the host's own source.
 import { ok } from "@cabane/core";
-import { BoardActivity } from "./activity";
 import {
 	type ActivityCard,
 	type ActivityEvent,
 	type ActivitySource,
+} from "@cabane/extension";
+import { BoardActivity } from "./activity";
+import {
 	type CopilotStep,
 	type CopilotUpdate,
 	type CopilotUsage,

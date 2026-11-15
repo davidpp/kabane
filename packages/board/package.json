@@ -12,7 +12,7 @@
 		"./keymap": "./src/keymap.ts",
 		"./context": "./src/context.ts",
 		"./ports": "./src/ports.ts",
-		"./form-field": "./src/form-field.ts"
+		"./copilot-instructions": "./src/copilot-instructions.ts"
 	},
 	"scripts": {
 		"test": "bun test",
@@ -20,6 +20,8 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
+		"@cabane/acp": "workspace:*",
+		"@cabane/extension": "workspace:*",
 		"@cabane/checklist": "workspace:*",
 		"@cabane/core": "workspace:*",
 		"@cabane/questions": "workspace:*",
@@ -29,6 +31,7 @@
 		"react": "19.2.3"
 	},
 	"devDependencies": {
+		"@agentclientprotocol/sdk": "2.4.0",
 		"@cabane/handoff": "workspace:*",
 		"@cabane/sqlite": "workspace:*",
 		"@types/bun": "1.4.0",

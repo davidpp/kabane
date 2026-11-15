@@ -4,11 +4,12 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CopilotInstructions } from "./instructions";
-import { Templates } from "./templates";
+import { CopilotInstructions as HarnessInstructions } from "@cabane/acp";
+import { Templates } from "@cabane/acp/templates";
+import { CopilotInstructions } from "./copilot-instructions";
 
 const template = (path: string): string =>
-	readFileSync(join(CopilotInstructions.DISPATCH_TEMPLATE, path), "utf8");
+	readFileSync(join(HarnessInstructions.DISPATCH_TEMPLATE, path), "utf8");
 
 // What the copilot copies into a project, as opposed to PLACEHOLDERS.md, which it only reads.
 const SKILL_FILES = [
@@ -181,11 +182,11 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 
 	it("the skill text points at the template this package ships", () => {
 		expect(CopilotInstructions.SKILLS).toContain(
-			CopilotInstructions.DISPATCH_TEMPLATE,
+			HarnessInstructions.DISPATCH_TEMPLATE,
 		);
 		for (const path of [...SKILL_FILES, "PLACEHOLDERS.md"])
 			expect(
-				existsSync(join(CopilotInstructions.DISPATCH_TEMPLATE, path)),
+				existsSync(join(HarnessInstructions.DISPATCH_TEMPLATE, path)),
 			).toBe(true);
 	});
 
@@ -273,11 +274,11 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 
 describe("CopilotInstructions grilling the human", () => {
 	const skill = (): string =>
-		readFileSync(join(CopilotInstructions.GRILL_TEMPLATE, "SKILL.md"), "utf8");
+		readFileSync(join(HarnessInstructions.GRILL_TEMPLATE, "SKILL.md"), "utf8");
 
 	it("the procedure points at the skill this package ships, which needs no filling", () => {
 		expect(CopilotInstructions.SKILLS).toContain(
-			`${CopilotInstructions.GRILL_TEMPLATE}/SKILL.md`,
+			`${HarnessInstructions.GRILL_TEMPLATE}/SKILL.md`,
 		);
 		expect(skill()).toStartWith("---\nname: grill\ndescription: ");
 		expect(skill()).not.toContain("{{");

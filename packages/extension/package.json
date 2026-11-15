@@ -16,7 +16,6 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
-		"@cabane/board": "workspace:*",
 		"@cabane/core": "workspace:*",
 		"zod": "3.25.76"
 	},
