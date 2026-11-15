@@ -10,6 +10,7 @@ import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
 import {
+	type Doctor,
 	failure,
 	type Extension,
 	type Host,
@@ -87,6 +88,22 @@ const ExtensionShape = z.object({
 	mcp: callable<NonNullable<Extension["mcp"]>>().optional(),
 	doctor: callable<NonNullable<Extension["doctor"]>>().optional(),
 });
+const Findings = z.array(
+	z.object({
+		id: z.string().min(1),
+		source: z.string().min(1),
+		path: z.string().optional(),
+		severity: z.enum(["auto", "mention", "suggest", "route"]),
+		summary: z.string(),
+		fix: callable<NonNullable<Doctor.Finding["fix"]>>().optional(),
+		route: z.string().optional(),
+	}),
+);
+const DoctorReport = z.union([
+	Findings,
+	z.object({ ok: z.literal(true), value: Findings }),
+	z.object({ ok: z.literal(false), error: z.instanceof(Error) }),
+]);
 const Name = z
 	.string()
 	.min(1)
@@ -337,11 +354,14 @@ export namespace Extensions {
 		return ok(found);
 	};
 
-	/** Bundled settings remain configurable before enablement; directory code must be enabled. */
+	/**
+	 * Bundled settings remain configurable before enablement; directory code must be enabled.
+	 * `selected` stands in for the config's list when that config may not parse (doctor's case).
+	 */
 	export const namespaces = async (
 		home: string,
+		selected: Result<string[]> = enabled(home),
 	): Promise<Result<Settings.Namespace[]>> => {
-		const selected = enabled(home);
 		if (!selected.ok) return selected;
 		const all = await loadAll(selected.value, home);
 		// Bundled settings remain known even when a disabled directory shadows that name.
@@ -396,4 +416,29 @@ export namespace Extensions {
 		}
 		return { commands, refused };
 	};
+
+	/**
+	 * Each extension's doctor as a check source. What one returns is checked against the finding
+	 * shape, so a malformed report, like a throw, becomes that extension's failed check.
+	 */
+	export const doctors = (loaded: readonly Extension[]): Doctor.Source[] =>
+		loaded.flatMap(({ name, doctor }) =>
+			doctor === undefined
+				? []
+				: [
+						{
+							name,
+							doctor: async (ctx: Extension.Ctx) => {
+								const parsed = DoctorReport.safeParse(await doctor(ctx));
+								return parsed.success
+									? parsed.data
+									: err(
+											new Error(
+												`returned an invalid report: ${invalid(parsed.error)}; repair the extension's doctor`,
+											),
+										);
+							},
+						},
+					],
+		);
 }

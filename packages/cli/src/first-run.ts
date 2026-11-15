@@ -41,6 +41,7 @@ const lastLine = (text: string): string =>
 	text.trim().split("\n").at(-1)?.trim() ?? text;
 
 // `replaced` cannot happen without `--force`, which setup never passes; it reads as installed.
+// A stale entry is there all the same: `kabane doctor` reports what it launches.
 // The agent's actor URI goes unsaid: it is jargon to a newcomer, and the guide lists it per harness.
 export const outcomeOf = (
 	report: McpInstall.Report,
@@ -51,6 +52,7 @@ export const outcomeOf = (
 		case "replaced":
 			return { id, status: "installed" };
 		case "present":
+		case "stale":
 			return { id, status: "already" };
 		case "missing":
 			return { id, status: "failed", message: "not on PATH" };
@@ -69,10 +71,23 @@ const mcpInstaller: Installer = {
 };
 
 /**
+ * The section an instruction file needs before an agent uses kabane unprompted. getting-started.md
+ * gives a human the same block to paste by hand, and `kabane doctor` compares a project's copy to it.
+ */
+export const TRACKER_BLOCK = [
+	"## Tracker",
+	"",
+	"Work is tracked in kabane (MCP server `kabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.",
+	'- Before starting, `kabane_list` with `assignee` set to your name, `state: "next"`, and `responseFormat: "concise"`. If no suitable task is on the page and `hasMore` is true, follow `nextCursor` with the same filters; only assert no work remains after `hasMore` is false. Read the chosen task with `kabane_context` and `responseFormat: "concise"`; consume every preceding chunk and continue with `nextCursor` until `selectedComplete`, `descriptionComplete`, and `humanSteeringComplete` are true before starting work. Use the same id/options; request any omitted required sections.',
+	'- Set the task `in_progress` with `kabane_edit` and `responseFormat: "concise"` before touching code. Never take a task that is already in progress.',
+	'- When finished, hand the task off with `kabane_handoff`: what landed, the evidence of what you checked, and what you did not verify. `kabane_comment` is for notes along the way. Check write results for errors before `kabane_done` with `responseFormat: "concise"`.',
+	'- File new work you find with `kabane_add` and `responseFormat: "concise"` instead of doing it unasked. Use `kabane_get` for full own fields.',
+].join("\n");
+
+/**
  * The brief of the first issue. It asks for the step an agent needs before it uses kabane
  * unprompted, and it is worked the way the block says, so the agent's first pass through the
- * tracker is on the issue that teaches it the tracker. The block is the one getting-started.md
- * gives a human to paste by hand.
+ * tracker is on the issue that teaches it the tracker.
  */
 export const firstIssueBrief = (instructionFile: string): string =>
 	[
@@ -81,13 +96,7 @@ export const firstIssueBrief = (instructionFile: string): string =>
 		"Work this issue the way the block says: set it `in_progress` first, then hand it off with `kabane_handoff` saying what you changed and how you checked it; check write results for errors before `kabane_done`.",
 		"",
 		"```markdown",
-		"## Tracker",
-		"",
-		"Work is tracked in kabane (MCP server `kabane`). Your assignee name is your harness: `claude`, `codex` or `gemini`.",
-		'- Before starting, `kabane_list` with `assignee` set to your name, `state: "next"`, and `responseFormat: "concise"`. If no suitable task is on the page and `hasMore` is true, follow `nextCursor` with the same filters; only assert no work remains after `hasMore` is false. Read the chosen task with `kabane_context` and `responseFormat: "concise"`; consume every preceding chunk and continue with `nextCursor` until `selectedComplete`, `descriptionComplete`, and `humanSteeringComplete` are true before starting work. Use the same id/options; request any omitted required sections.',
-		'- Set the task `in_progress` with `kabane_edit` and `responseFormat: "concise"` before touching code. Never take a task that is already in progress.',
-		'- When finished, hand the task off with `kabane_handoff`: what landed, the evidence of what you checked, and what you did not verify. `kabane_comment` is for notes along the way. Check write results for errors before `kabane_done` with `responseFormat: "concise"`.',
-		'- File new work you find with `kabane_add` and `responseFormat: "concise"` instead of doing it unasked. Use `kabane_get` for full own fields.',
+		TRACKER_BLOCK,
 		"```",
 	].join("\n");
 

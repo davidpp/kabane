@@ -22,6 +22,7 @@ import { checklist } from "./commands/checklist";
 import { comment } from "./commands/comment";
 import { config } from "./commands/config";
 import { context } from "./commands/context";
+import { doctor } from "./commands/doctor";
 import { done } from "./commands/done";
 import { edit } from "./commands/edit";
 import { handoff } from "./commands/handoff";
@@ -47,6 +48,7 @@ import { describeVersion } from "./version";
 export const COMMANDS: Command[] = [
 	init,
 	config,
+	doctor,
 	add,
 	list,
 	show,

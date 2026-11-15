@@ -405,6 +405,9 @@ It can also:
   Enabling loop does not start a run.
 - Create a dispatch skill tailored to the project's conventions (`/setup-dispatch`), showing
   what it wrote and asking before replacing an existing skill.
+- Check that what kabane wrote is current (`/doctor`): it runs `kabane doctor --json`, applies
+  the `auto` fixes unasked, waits for a yes on the rest, follows a `route`, and hands you the
+  command for a harness MCP entry instead of rewriting it.
 - Start a loop run when asked, such as “run this issue with codex”, with the loop extension
   enabled. A run handles a single issue or a parent's subtasks; follow it in its board tab.
 

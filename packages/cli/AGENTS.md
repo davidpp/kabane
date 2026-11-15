@@ -31,7 +31,10 @@ reading the environment (`CODING_PRINCIPLE.md`, "Explicit dependencies").
 Most of the extension API lands here; check main before editing these files:
 
 - The extension contract includes `mcp` and `doctor`; the `doctor` runner is in
-  `packages/extension/doctor.ts`. The CLI `doctor` command remains separate work.
+  `packages/extension/doctor.ts`. `src/commands/doctor.ts` runs kabane's own checks
+  (`src/doctor/`) and each loaded extension's through `Extensions.doctors`, which turns a
+  malformed report into that extension's `check-failed` finding; a refused extension is an
+  `extension-refused` finding.
 - `src/extensions.ts` loads enabled directories from `$KABANE_HOME/extensions` before the bundled
   fallback. `loadAll(names, home)` returns `loaded` and `refused`; callers must consume both.
   Help, commands and MCP report refusals on stderr; the board uses its announcer. A disabled
