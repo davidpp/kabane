@@ -11,7 +11,6 @@ subtask. A separate deliverable is a subtask too.
 ## MCP tools
 
 - `kabane_checklist { id }` reads the live items in list order as records, by task short id or ULID.
-
 - `kabane_checklistAdd` adds 1–50 items to an issue, in the order given, at the end or from a
   1-based `position`. It returns one line: `JCAB-12 0/2 · added JCAB-12.1 id:<ULID>, JCAB-12.2 id:<ULID>`.
 - `kabane_checklistTick` ticks items of one issue by handle or ULID; `done: false` unticks them.

@@ -1,9 +1,9 @@
 # @cabane/checklist
 
 A data module: the steps of one issue, ticked as they land. It owns the `task_checklist_items`
-table and its migrations, the tools `kabane_checklist`, `kabane_checklistAdd`, `kabane_checklistTick` and
-`kabane_checklistEdit`, the brief's checklist section and one MCP instructions paragraph that
-carries the item-or-subtask rule. `README.md` describes handles (`JCAB-12.3`), ordinals and
+table and its migrations, the tools `kabane_checklist`, `kabane_checklistAdd`,
+`kabane_checklistTick` and `kabane_checklistEdit`, the brief's checklist section and one MCP
+instructions paragraph that carries the item-or-subtask rule. `README.md` describes handles (`JCAB-12.3`), ordinals and
 removal; read it before changing one.
 
 ## It depends on core alone and both hosts register it
@@ -13,8 +13,9 @@ it may list. The CLI (`MODULES` in `packages/cli/src/context.ts`) and the hub
 (`packages/worker/src/hub.ts`) register `checklistModule`. Its other entry points are
 `Checklist` (`storage.ts`), which the board reads for card progress and the detail, the CLI's
 `kabane checklist` calls, and the loop calls directly today (`Checklist.list`,
-`Checklist.progress`); and the receipts and markdown in `markdown.ts`. `kabane_checklist` returns live items in list order so that an extension can read checklists through a tool (`ARCHITECTURE.md`, "The
-record half of `host`").
+`Checklist.progress`); and the receipts and markdown in `markdown.ts`. `kabane_checklist`
+returns live items in list order so that an extension can read checklists through a tool
+(`ARCHITECTURE.md`, "The record half of `host`").
 
 The module seam's rules are in `packages/core/AGENTS.md`, "Data modules".
 

@@ -53,7 +53,7 @@ compiler erases it. The types are listed after the values.
 | `@cabane/board` `Theme`, `useTheme` | 1 | drawing the run header (`header.tsx:12-18`) | dropped | the header becomes `PanelLine`s |
 | `@cabane/board/form-field` `FormField` | 1 | judging an answer to a harness form (`elicitation.ts:20`) | own dependency | `@cabane/acp`, where JCAB-320 moves it |
 | `@cabane/board/ports` `STOP_ACTION` | 1 | the stop action's id (`activity.ts:41`, `:134`) | dropped | the string literal `"stop"`, typed by the contract |
-| `@cabane/checklist` `Checklist` | 1 | `list`, `progress` (`checklists.ts:27`, `:39`) | on host | through a read tool; no checklist read tool exists yet |
+| `@cabane/checklist` `Checklist` | 1 | `list`, `progress` (`checklists.ts:27`, `:39`) | on host | through `kabane_checklist` (JCAB-336) |
 | `@cabane/checklist` `checklistModule` | 1 | its `name`, for the registration check | dropped | as `Runtime.modules()` above |
 | `@cabane/extension` `Settings` | 3 | `fields`, `groupsOf`, `lookOf`, `options` | on host | `host.settings` |
 | `@cabane/extension` `success`, `failure`, `usage` | 1 | a command's outcome | on host | `host.outcome` |
@@ -64,16 +64,16 @@ compiler erases it. The types are listed after the values.
 | Call | Uses | Tool | Where it lands |
 |---|---|---|---|
 | `getTask` | 13 | `kabane_get` | `host.record.get` |
-| `updateTask` | 7: `state` alone in 4 (`checklists.ts:92`, `checks.ts:414`, `claims.ts:56`, `parent.ts:69`), with `assignee` once (`claims.ts:327`), with `needsReview` twice (`parent.ts:273`, `:324`) | `kabane_edit`, `kabane_done`; `kabane_edit` has no `needsReview` | `host.record.edit`, `done`, once `kabane_edit` takes `needsReview` (JCAB-322) |
+| `updateTask` | 7: `state` alone in 4 (`checklists.ts:92`, `checks.ts:414`, `claims.ts:56`, `parent.ts:69`), with `assignee` once (`claims.ts:327`), with `needsReview` twice (`parent.ts:273`, `:324`) | `kabane_edit`, `kabane_done` | `host.record.edit`, `done` |
 | `resolveTaskId` | 2 | `kabane_get` (returns the ULID) | `host.record.get` |
-| `queryTasks` | 1 (`plan.ts:98`: `parentTaskId`, `includeClosed`, `includeDeferred`, `limit`) | `kabane_list`, full format; it has no `parentTaskId` and no `includeDeferred` | `host.record.list`, once `kabane_list` takes both (JCAB-322) |
+| `queryTasks` | 1 (`plan.ts:98`: `parentTaskId`, `includeClosed`, `includeDeferred`, `limit`) | `kabane_list`, full format | `host.record.list` |
 | `addComment` | 2 | `kabane_comment` | `host.record.comment` |
 | `addWorkLog` | 3, each with `addedBy: "loop:<runId>"` and `addedByType: "ai"` (`checks.ts:377`, `claims.ts:342`, `parent.ts:76`) | `kabane_log`, which stamps the connected actor | `host.record.log` under `ctx.actor`; the run stays named by its `loop:<runId>` ref |
 | `assembleContext` | 1 | `kabane_context` | `host.record.context` |
 | `upsertUpstreamLink` | 1 | `kabane_upstream_link` | `host.record.upstreamLink` |
-| `getLinksForTask` | 2 | none; links reach an agent only inside `kabane_context` | a new read tool (JCAB-322) |
-| `getUpstreamLinksForTask` | 1 | none, as above | a new read tool (JCAB-322) |
-| `getWorkLogs` | 1 | none, as above | a new read tool (JCAB-322) |
+| `getLinksForTask` | 2 | `kabane_linkList` | `host.record.links` |
+| `getUpstreamLinksForTask` | 1 | `kabane_upstreamList` | `host.record.upstreamLinks` |
+| `getWorkLogs` | 1 | `kabane_logList` | `host.record.workLogs` |
 | `startSession`, `getSession`, `endSession` | 1, 1, 2 | none | JCAB-316:7 |
 | `addActivity`, `getActivities` | 3, 3 | none | JCAB-316:7 |
 | `getNeedsInput`, `answerQuestion` | 2, 3 | none | JCAB-316:7 |
