@@ -563,8 +563,7 @@ describe("Sync — two devices, one relay, no cloud", () => {
             WHERE id = ?`,
 					[title, TIE, actor, task.id],
 				);
-				const captured = Oplog.captureRow(db, "tasks", "update", task.id);
-				if (!captured.ok) throw captured.error;
+				Oplog.afterWrite(db, "tasks", "update", task.id);
 			});
 		await edit(a, "cabane://actor/agent/hermes", "written by hermes");
 		await edit(b, "cabane://actor/agent/claude", "written by claude");
