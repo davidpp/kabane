@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { Planner } from "@cabane/core";
-import { Doctor, failure, flagList, success, usage } from "@cabane/extension";
+import { Doctor, flagList, success, usage } from "@cabane/extension";
 import { configPath, loadConfig } from "../config";
 import { type Command, configureRuntime } from "../context";
 import { kabane } from "../doctor/kabane";
@@ -40,14 +40,23 @@ export const doctor: Command = {
 			(!("fix" in args.flags) && args.positionals.length > 0)
 		)
 			return usage("Unexpected doctor arguments", USAGE);
+		const unavailable: Doctor.Finding[] = [];
 		if (existsSync(configPath(ctx.home))) {
 			const config = loadConfig(ctx.home);
 			// Settings diagnostics report invalid config; it must not prevent the other checks.
 			if (config.ok) {
 				const configured = configureRuntime(config.value, config.value.actor);
-				if (!configured.ok) return failure(configured.error);
-				const initialized = await Planner.init(ctx.home);
-				if (!initialized.ok) return failure(initialized.error);
+				const initialized = configured.ok
+					? await Planner.init(ctx.home)
+					: configured;
+				if (!initialized.ok)
+					unavailable.push({
+						id: "store-unavailable",
+						source: "kabane",
+						severity: "mention",
+						path: ctx.store,
+						summary: `Cannot open the store: ${initialized.error.message}. Restore a readable database before running checks that query issues.`,
+					});
 			}
 		}
 		const selected = [...flagList(args, "fix"), ...args.positionals];
@@ -55,8 +64,14 @@ export const doctor: Command = {
 		const enabled = Extensions.enabled(ctx.home);
 		if (enabled.ok) {
 			const loaded = await Extensions.loadAll(enabled.value);
-			if (!loaded.ok) return failure(loaded.error);
-			for (const extension of loaded.value)
+			if (!loaded.ok)
+				unavailable.push({
+					id: "extensions-unavailable",
+					source: "kabane",
+					severity: "mention",
+					summary: loaded.error.message,
+				});
+			for (const extension of loaded.ok ? loaded.value : [])
 				if (extension.doctor)
 					sources.push({ name: extension.name, doctor: extension.doctor });
 		}
@@ -72,6 +87,7 @@ export const doctor: Command = {
 				severity: "mention",
 				summary: enabled.error.message,
 			});
+		report.findings.push(...unavailable);
 		return success(Doctor.toJson(report), text(report));
 	},
 };

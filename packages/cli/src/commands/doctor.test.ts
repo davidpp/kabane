@@ -172,3 +172,22 @@ test("malformed config is reported without opening a database", () => {
 	expect(JSON.parse(cli("--json")).findings.length).toBeGreaterThan(0);
 	expect(existsSync(join(home, DB_NAME))).toBe(false);
 });
+
+test("an unreadable store leaves the other doctor findings in text and JSON", () => {
+	const { home, cwd, config, cli } = setup();
+	config({
+		actor: "cabane://actor/human/test",
+		deviceId: "test",
+		extensions: ["loop"],
+	});
+	writeFileSync(join(home, DB_NAME), "not a database");
+	rmSync(join(cwd, ".agents"), { recursive: true });
+	const report = JSON.parse(cli("--json"));
+	expect(report.findings).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ id: "store-unavailable", severity: "mention" }),
+			expect.objectContaining({ id: "dispatch-skill-missing" }),
+		]),
+	);
+	expect(cli()).toContain("Cannot open the store:");
+});
