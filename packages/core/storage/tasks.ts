@@ -32,6 +32,12 @@ import {
 	selectTodayBucket,
 } from "./task-selection";
 
+/** Compare normalized scopes from task rows or decoded tasks. */
+export const taskScopeChanged = (
+	scopeUri: string | undefined,
+	currentScopeUri: string | null | undefined,
+): boolean => (scopeUri ?? null) !== (currentScopeUri ?? null);
+
 const taskFieldUpdates = (updates: TaskUpdate) =>
 	[
 		["title", updates.title],
@@ -447,7 +453,16 @@ export namespace Planner {
 			params.push(updates.state, now);
 		}
 
-		if (updates.scopeUri !== undefined) {
+		const current = db
+			.query<{ state: Task["state"]; scope_uri: string | null }>(
+				`SELECT state, scope_uri FROM ${TABLES.tasks} WHERE id = ?`,
+			)
+			.get(id);
+		if (!current) return ok(null);
+		if (
+			updates.scopeUri !== undefined &&
+			taskScopeChanged(scopeUri, current.scope_uri)
+		) {
 			sets.push("scope_uri = ?");
 			params.push(scopeUri ?? null);
 			// Regenerate shortId when scope changes (J + 3-char ID like JDES-123)
@@ -476,14 +491,6 @@ export namespace Planner {
 
 		params.push(id);
 
-		const from =
-			updates.state === undefined
-				? undefined
-				: db
-						.query<{ state: Task["state"] }>(
-							`SELECT state FROM ${TABLES.tasks} WHERE id = ?`,
-						)
-						.get(id)?.state;
 		db.run(
 			`UPDATE ${TABLES.tasks} SET ${sets.join(", ")} WHERE id = ?`,
 			params,
@@ -496,8 +503,13 @@ export namespace Planner {
 			.get(id);
 		if (!row) return ok(null);
 		const task = rowToTask(row);
-		if (from !== undefined && from !== task.state) {
-			const hooked = Modules.taskStateChanged(db, task, from, task.state);
+		if (current.state !== task.state) {
+			const hooked = Modules.taskStateChanged(
+				db,
+				task,
+				current.state,
+				task.state,
+			);
 			if (!hooked.ok) return hooked;
 		}
 		return ok(task);

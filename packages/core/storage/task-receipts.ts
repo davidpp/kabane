@@ -6,7 +6,7 @@ import {
 	normalizeOptionalScopeUri,
 	prospectiveShortId,
 } from "./helpers";
-import { Planner as Tasks } from "./tasks";
+import { Planner as Tasks, taskScopeChanged } from "./tasks";
 
 export namespace Planner {
 	/** Preflight required identity and prospective state/version before any write.
@@ -31,14 +31,17 @@ export namespace Planner {
 		if (!current.value)
 			return err(new Error("No task found; no mutation occurred."));
 		let shortId = current.value.shortId;
-		if (updates.scopeUri !== undefined) {
-			const scope = normalizeOptionalScopeUri(updates.scopeUri);
-			if (!scope.ok)
-				return err(
-					new Error(
-						"Invalid concise scope; check the scope URI. No mutation occurred.",
-					),
-				);
+		const scope = normalizeOptionalScopeUri(updates.scopeUri);
+		if (!scope.ok)
+			return err(
+				new Error(
+					"Invalid concise scope; check the scope URI. No mutation occurred.",
+				),
+			);
+		if (
+			updates.scopeUri !== undefined &&
+			taskScopeChanged(scope.value, current.value.scopeUri)
+		) {
 			const prefix = derivePrefix(scope.value);
 			if (!prefix.ok)
 				return err(
