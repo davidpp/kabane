@@ -38,7 +38,9 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop land <runId> [--land pr|merge]   (lands a completed run's branch as its land setting says, or as --land says; pr when it is none)
        kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)
 
-${LoopAdvice.INSTRUCTIONS}`;
+start applies no advice: loop advise shows it, and its "start with" line is the flags that apply it.
+
+${LoopAdvice.TAG_VOCABULARY}`;
 
 // The executable the runner and each session's MCP server run as: this process's own.
 const kabaneBin = Self.executable;

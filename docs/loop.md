@@ -309,8 +309,8 @@ process after enabling or disabling the extension. The hub does not load extensi
 
 Call `kabane_loop_advise` with `id` (an issue id or short id). Settings resolve for the MCP
 server’s project directory; use `kabane loop advise` for overrides. Its JSON result contains
-resolved settings, recommendations with
-reasons, and each open subtask's harness, agent, model, `modelSource`, tier and fallback notes.
+resolved settings, recommendations with reasons, and each open subtask's harness, agent, model,
+`modelSource`, tier and fallback notes.
 It uses the same advice path as `kabane loop advise`; it starts no run and changes no issue or
 setting. Advice is not applied automatically when starting a run.
 

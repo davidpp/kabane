@@ -16,7 +16,6 @@
  * write demand one and points the agent at `kabane_scopeList`.
  */
 
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { ContextPageOptionsSchema } from "../context-output";
 import { err, ok, type Result } from "../result";
@@ -69,7 +68,7 @@ export type ToolDef<Shape extends z.ZodRawShape = z.ZodRawShape> = {
 	input: Shape;
 	/** A read never mutates; the hub pushes to the log after every write. */
 	kind: "read" | "write";
-	annotations?: Pick<ToolAnnotations, "destructiveHint" | "openWorldHint">;
+	annotations?: { destructiveHint?: boolean; openWorldHint?: boolean };
 	handler: ToolHandler<Shape>;
 };
 

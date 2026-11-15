@@ -72,7 +72,15 @@ const toSdkTool = (
 			$refStrategy: "none",
 		},
 	) as Tool["inputSchema"],
-	annotations: { readOnlyHint: tool.kind === "read", ...tool.annotations },
+	annotations: {
+		readOnlyHint: tool.kind === "read",
+		...(tool.annotations?.destructiveHint !== undefined
+			? { destructiveHint: tool.annotations.destructiveHint }
+			: {}),
+		...(tool.annotations?.openWorldHint !== undefined
+			? { openWorldHint: tool.annotations.openWorldHint }
+			: {}),
+	},
 });
 
 const toCallResult = (

@@ -15,14 +15,18 @@ import { type Command, openContext, resolveScopeUri } from "../context";
 import { Extensions } from "../extensions";
 import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
 
-/** Compose only the enabled extensions, in device configuration order. */
+/** Compose the enabled extensions, using the same selection as the board. */
 export const extensionMcp = async (
 	ctx: Extension.Ctx,
-	names: readonly string[],
+	hostTools: readonly ToolDef[],
+	load: typeof Extensions.loadAll = Extensions.loadAll,
 ): Promise<Result<{ tools: ToolDef[]; instructions: string[] }>> => {
-	const loaded = await Extensions.loadAll(names);
+	const enabled = Extensions.enabled(ctx.home);
+	if (!enabled.ok) return enabled;
+	const loaded = await load(enabled.value);
 	if (!loaded.ok) return loaded;
 	const tools: ToolDef[] = [];
+	const names = new Set(hostTools.map((tool) => tool.name));
 	const instructions: string[] = [];
 	for (const extension of loaded.value) {
 		const contribute = extension.mcp;
@@ -44,6 +48,13 @@ export const extensionMcp = async (
 						`Extension ${extension.name} MCP tool ${tool.name} must be named kabane_${extension.name}_<verb>`,
 					),
 				);
+			if (names.has(tool.name))
+				return err(
+					new Error(
+						`Extension ${extension.name} MCP tool ${tool.name} duplicates an existing tool. Rename the extension tool.`,
+					),
+				);
+			names.add(tool.name);
 			tools.push({
 				...tool,
 				handler: async (input, toolCtx) => {
@@ -94,14 +105,11 @@ export const mcp: Command = {
 			defaultScope,
 		);
 		if (!where.ok) return failure(where.error);
-		const enabled = Extensions.enabled(bare.home);
-		if (!enabled.ok) return failure(enabled.error);
-		const contributions = await extensionMcp(
-			ctx.value,
-			(ctx.value.config.extensions ?? []).filter((name) =>
-				enabled.value.includes(name),
-			),
-		);
+		const hostTools = [
+			...registeredTools(),
+			...configTools(bare.home, where.value),
+		];
+		const contributions = await extensionMcp(ctx.value, hostTools);
 		if (!contributions.ok) return failure(contributions.error);
 		const served = await serveStdio(
 			{
@@ -113,11 +121,7 @@ export const mcp: Command = {
 				scopeRequired: false,
 			},
 			{ name: "kabane", version },
-			[
-				...registeredTools(),
-				...configTools(bare.home, where.value),
-				...contributions.value.tools,
-			],
+			[...hostTools, ...contributions.value.tools],
 			contributions.value.instructions,
 		);
 		if (!served.ok) return failure(served.error);
