@@ -8,7 +8,7 @@ instead of starting every run from the same defaults.
 - The run form (`extensions/loop/src/dispatcher.ts:87`) defaults each input to the resolved config:
   schema defaults, then global, shared `.kabane/loop.json`, then local. Nothing about the plan
   reaches those defaults.
-- The plan is already analysed before the form opens. `Lint.run` (`packages/core/lint/risks.ts`)
+- The plan is already analysed before the form opens. `Lint.run` (`extensions/loop/src/lint/risks.ts`)
   finds file overlap between subtasks, missing tests, large scope, past thrash (reopens), thin
   descriptions and descriptions that name no files. `Briefing.preview` adds the critical path. All
   of it lands in the preview as **risks**: text only. It never changes a setting.

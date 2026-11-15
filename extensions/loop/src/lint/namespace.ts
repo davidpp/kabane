@@ -6,15 +6,14 @@
  * progress entries.
  */
 
-import { traced } from "../observability";
-import { ok, type Result } from "../result";
+import { ok, type Result } from "@cabane/core";
 import { type CollectOptions, LintCollectors } from "./collectors";
 import { type ReopenEvent, RiskAnalyzer } from "./risks";
 import type { Risk, RiskSeverity } from "./schemas";
 
 // ── Composite lint ──────────────────────────────────────────────────
 
-export interface LintOptions extends CollectOptions {
+interface LintOptions extends CollectOptions {
 	/**
 	 * Optional reopen events overlaid on top of planner-collected inputs.
 	 * Used by loop to feed its progress history into the past_thrash check.
@@ -22,7 +21,7 @@ export interface LintOptions extends CollectOptions {
 	progressEntries?: ReopenEvent[];
 }
 
-export interface LintResult {
+interface LintResult {
 	risks: Risk[];
 	parentTitle: string | null;
 	subtaskCount: number;
@@ -67,15 +66,5 @@ export namespace Lint {
 	/**
 	 * Lint a parent task + its subtasks. Returns all findings sorted by severity.
 	 */
-	export const run = traced("planner.lint.run", lintImpl, {
-		attrs: (options) => ({
-			"planner.lint.parentTaskId": options.parentTaskId,
-		}),
-		resultAttrs: (result) => ({
-			"planner.lint.riskCount": result.risks.length,
-			"planner.lint.highCount": result.counts.high,
-			"planner.lint.mediumCount": result.counts.medium,
-			"planner.lint.lowCount": result.counts.low,
-		}),
-	});
+	export const run = lintImpl;
 }

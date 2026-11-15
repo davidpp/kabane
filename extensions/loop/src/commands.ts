@@ -17,7 +17,6 @@ import {
 	ok,
 	type AgentActivity,
 	isAnswerTo,
-	Lint,
 	type ParsedQuestion,
 	Planner,
 	parseQuestionBody,
@@ -37,6 +36,7 @@ import { Gates } from "./gates";
 import { Land } from "./land";
 import { Landed } from "./landed";
 import { Lenses } from "./lenses";
+import { Lint } from "./lint";
 import { Parent } from "./parent";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
@@ -554,7 +554,7 @@ export namespace Loop {
 	};
 
 	/**
-	 * The advisor's settings for a prepared run, from core lint (with the parent's past reopens),
+	 * The advisor's settings for a prepared run, from the plan lint (with the parent's past reopens),
 	 * the project's package.json scripts and its lockfile: what the board's run form and
 	 * `loop advise` both show. `messages` are lint's risks, most severe first, and anything that
 	 * could not be read, for the preview.

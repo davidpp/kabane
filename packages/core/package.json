@@ -1,7 +1,7 @@
 {
 	"name": "@cabane/core",
 	"version": "0.1.0",
-	"description": "Cabane core: schemas, storage over the Db port, sync, lint",
+	"description": "Cabane core: schemas, storage over the Db port, sync",
 	"license": "MIT",
 	"private": true,
 	"type": "module",

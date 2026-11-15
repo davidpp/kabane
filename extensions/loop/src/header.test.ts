@@ -1,9 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import type { Task } from "@cabane/core";
+import "@cabane/core/testing";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ActivityCard } from "@cabane/board/ports";
+import { Planner, type Task } from "@cabane/core";
 import { LoopConfig } from "./config";
 import { LoopHeader } from "./header";
 import type { LoopPlan } from "./plan";
-import type { RunStore } from "./store";
+import { RunStore } from "./store";
 
 const NOW = new Date("2026-10-10T12:30:00.000Z");
 
@@ -373,4 +378,126 @@ describe("LoopHeader.state past the subtasks", () => {
 			),
 		).toBe("⏸ waiting on KAB-3 (someday), KAB-4 (a human's task)");
 	});
+});
+
+describe("LoopHeader.lines", () => {
+	it("keeps the compact rows and the meters as toned character cells", () => {
+		const rows = LoopHeader.lines(run(), null, NOW, 80, false);
+		expect(rows.map((row) => row.map((part) => part.text).join(""))).toEqual([
+			"KAB-1     ● running",
+			"● implement ×2 sessions   1/1 slots · claude",
+			"context ▰▰▰▱▱▱▱▱▱▱ 25%   continuations ▰▰▰▱▱▱▱▱▱▱ 1/3",
+		]);
+		expect(rows[0]?.[0]).toEqual({
+			text: "KAB-1  ",
+			tone: "default",
+			bold: true,
+		});
+		expect(rows[2]?.[2]).toEqual({ text: "▱▱▱▱▱▱▱", tone: "faint" });
+	});
+
+	it("expands sessions in lane order and gives a plan row its latest session's series", () => {
+		const parent = {
+			id: "01PARENT",
+			shortId: "KAB-1",
+			title: "parent",
+		} as Task;
+		const child = {
+			id: "01CHILD",
+			shortId: "KAB-2",
+			title: "child",
+			state: "done",
+		} as Task;
+		const plan: LoopPlan.Plan = {
+			parent,
+			nodes: [
+				{ task: child, blockedBy: [], finding: false, severity: undefined },
+			],
+			outside: new Map(),
+		};
+		const rows = LoopHeader.lines(run(), plan, NOW, 80, true);
+		expect(
+			rows.slice(3).map((row) => row.map((part) => part.text).join("")),
+		).toEqual([
+			"sessions  1/1 slots in use",
+			" claude:KAB-2    ended",
+			" claude:KAB-2#2  → KAB-2",
+			"plan",
+			" ✓ KAB-2  child  claude:KAB-2#2",
+		]);
+		expect(rows[4]?.[0]).toEqual({ text: " claude:KAB-2    ", series: 0 });
+		expect(rows[5]?.[0]).toEqual({ text: " claude:KAB-2#2  ", series: 1 });
+		expect(rows[7]?.[2]).toEqual({ text: "child", tone: "secondary" });
+		expect(rows[7]?.[3]).toEqual({ text: "  claude:KAB-2#2", series: 1 });
+	});
+
+	it("preserves stopped and failed state text in the first returned line", () => {
+		for (const status of ["stopped", "failed"] as const) {
+			const current = run({ status, exit: { reason: "runner-died" } });
+			expect(
+				LoopHeader.lines(current, null, NOW, 20, false)[0]?.at(-1),
+			).toEqual(LoopHeader.state(current, null, NOW));
+		}
+	});
+});
+
+it("reads the real run file and current tracker plan on each header call", async () => {
+	const home = mkdtempSync(join(tmpdir(), "loop-header-"));
+	try {
+		const initialized = await Planner.init(home);
+		if (!initialized.ok) throw initialized.error;
+		const parent = await Planner.addTask(home, {
+			title: "Header parent",
+			kind: "issue",
+		});
+		if (!parent.ok) throw parent.error;
+		const child = await Planner.addTask(home, {
+			title: "Header child",
+			kind: "issue",
+			parentTaskId: parent.value.id,
+		});
+		if (!child.ok) throw child.error;
+		const current = run({
+			status: "completed",
+			parentId: parent.value.id,
+			parentShortId: parent.value.shortId ?? parent.value.id,
+		});
+		const created = RunStore.create(home, current);
+		if (!created.ok) throw created.error;
+		const card: ActivityCard = {
+			id: current.id,
+			kind: "loops",
+			label: "Header parent",
+			status: "completed",
+			startedAt: current.createdAt,
+			detail: [],
+		};
+		const header = LoopHeader.make(home, home);
+		const first = await header(card, { width: 100, expanded: true });
+		if (!first.ok) throw first.error;
+		expect(
+			first.value
+				.flat()
+				.map((part) => part.text)
+				.join(""),
+		).toContain("Header child");
+		const updated = await Planner.updateTask(home, child.value.id, {
+			title: "Updated child",
+		});
+		if (!updated.ok) throw updated.error;
+		const second = await header(card, { width: 100, expanded: true });
+		if (!second.ok) throw second.error;
+		expect(
+			second.value
+				.flat()
+				.map((part) => part.text)
+				.join(""),
+		).toContain("Updated child");
+		rmSync(RunStore.paths(home, current.id).run);
+		expect((await header(card, { width: 100, expanded: false })).ok).toBe(
+			false,
+		);
+	} finally {
+		rmSync(home, { recursive: true, force: true });
+	}
 });

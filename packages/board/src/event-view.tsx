@@ -24,6 +24,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { CardHeader } from "./card-header";
 import { blockOnSurface, PROSE_MEASURE } from "./detail";
 import { elapsed } from "./elapsed";
 import { ErrorBoundary } from "./error-boundary";
@@ -37,7 +38,7 @@ import {
 	type ActivityDiff,
 	type ActivityEvent,
 	type ActivitySource,
-	type CardHeader,
+	type Header,
 	type CopilotPermission,
 	isInFlight,
 	type NoticeSeverity,
@@ -238,7 +239,7 @@ export type EventViewProps = {
 	onCard?: (card: ActivityCard) => void;
 	// The host's own header for this card's kind, in place of the one-line title; `expanded` is the
 	// tab's `e`.
-	header?: CardHeader;
+	header?: Header;
 	expanded?: boolean;
 	// The view's `t`: every tool row open, the ones still to come too. A click opens or closes one
 	// row against it, and pressing `t` again starts every row afresh.
@@ -341,7 +342,7 @@ export const EventView = ({
 	lane = null,
 	onLane,
 	onCard,
-	header: Header,
+	header,
 	expanded = false,
 	toolDetails,
 }: EventViewProps): ReactNode => {
@@ -364,9 +365,15 @@ export const EventView = ({
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			{Header ? (
+			{header ? (
 				// Less the cell the scrollbar column keeps clear.
-				<Header card={card} width={width - 1} expanded={expanded} />
+				<CardHeader
+					key={card.id}
+					header={header}
+					card={card}
+					width={width - 1}
+					expanded={expanded}
+				/>
 			) : (
 				<TitleRow card={card} resolveShortId={resolveShortId} />
 			)}

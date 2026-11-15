@@ -13,7 +13,7 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 
 | Package | Name | Runtime | Holds |
 |---|---|---|---|
-| `packages/core` | `@cabane/core` | Bun + Workers | schemas, storage over the Db port, sync, plan lint, MCP tool definitions and servers (stdio, Streamable HTTP) |
+| `packages/core` | `@cabane/core` | Bun + Workers | schemas, storage over the Db port, sync, MCP tool definitions and servers (stdio, Streamable HTTP) |
 | `packages/sqlite` | `@cabane/sqlite` | Bun | Db adapter over `bun:sqlite` |
 | `packages/acp` | `@cabane/acp` | Bun | Agent Client Protocol client: harness registry, session runner, the board's copilot |
 | `packages/extension` | `@cabane/extension` | Bun | the extension contract, and the argument parsing and outcomes every command is written with |

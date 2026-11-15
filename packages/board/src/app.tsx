@@ -20,7 +20,7 @@ import { type SetNotice, useNotice } from "./notice";
 import {
 	type ActivitySource,
 	type Announcer,
-	type CardHeader,
+	type Header,
 	type Copilot,
 	type Dispatcher,
 	noAnnouncer,
@@ -46,7 +46,7 @@ export type AppProps = {
 	// Absent → the board opens on all scopes.
 	resolveScope?: BoardData.ScopeResolver;
 	// A host's own header for its cards, by card kind. Absent → every card tab heads with its title.
-	headers?: Readonly<Record<string, CardHeader>>;
+	headers?: Readonly<Record<string, Header>>;
 	// Absent → nothing is announced.
 	announcer?: Announcer;
 	// Absent → the `,` view says settings are not available here.

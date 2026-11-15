@@ -25,7 +25,7 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 | `dispatcher: Dispatcher` | no | `a` flashes `no dispatcher configured` in the footer |
 | `copilot: Copilot` | no | `A` flashes `no copilot configured` in the footer |
 | `resolveScope(cwd)` | no | the board opens on all scopes (the CLI passes `@cabane/core/scope` detection) |
-| `headers: Record<kind, CardHeader>` | no | every card tab heads with the board's one-line title |
+| `headers: Record<kind, Header>` | no | every card tab heads with the board's one-line title |
 | `announcer: Announcer` | no | nothing is announced over the footer |
 | `settings: SettingsSource` | no | `,` opens the settings view, which says settings are not available here |
 | `open: { taskId }` | no | the board opens on the board view. Given, it opens on that task's detail, as `enter` on its row: the filter that holds it, its parent expanded, `esc` back to its row. `resolveScope` should answer the task's scope, as `kabane board --issue <id>` does. |
@@ -127,17 +127,21 @@ failed note does not hold the answer back.
 #### A card's header
 
 ```ts
-type CardHeader = (props: { card: ActivityCard; width: number; expanded: boolean }) => ReactNode;
+type HeaderView = { width: number; expanded: boolean };
+type HeaderPart = PanelPart | { text: string; series: number; bold?: boolean };
+type Header = (card: ActivityCard, view: HeaderView) => Promise<Result<readonly (readonly HeaderPart[])[]>>;
 ```
 
-`headers`, by card kind, is the one seam that takes a component rather than data: a host's status
-is its own design. A card tab whose card's kind has one draws it above the lane chips in place of
-the board's one-line title (`loop · JREP-1 · running · 2m`). It is compact by default, and `e`
-expands it (per card, kept across tab switches; the footer offers `e more` only where there is a
-header). It renders inside the board's tree, so it reads the board's colors through the exported
-`useTheme` and picks a session's color with `Theme.seriesOf`, the same one its lane chip and its
-lines carry. `Headers.merge` keys several contributors' headers by kind and hands each its card under
-the id its own source minted.
+`headers` maps card kinds to functions returning lines of toned text. The board draws them above
+lane chips in place of its one-line title, on a raised surface with one column of padding on
+each side. `view.width` is the space inside that padding. Each line occupies one row, clipped
+rather than wrapped. `e` expands the header per card, kept across tab switches.
+
+The board calls the header once a second while its tab is open, without overlapping calls. It
+keeps the last good lines when a call fails, throws or remains pending, and shows `loading…`
+until the first success. Tones are `default`, `muted`, `faint`, `secondary`, `working`, `done`,
+`failed` and `accent`; `series: n` picks the same color as lane n. Parts may be bold.
+`Headers.merge` hands each contributor its card under the id its own source minted.
 
 #### Card actions and the prompt
 
