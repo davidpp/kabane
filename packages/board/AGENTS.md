@@ -17,12 +17,12 @@ and the data modules' exports (`ARCHITECTURE.md`, "A client uses only what anoth
 could"). `@cabane/sqlite` and `@cabane/handoff` are `devDependencies` for tests and stories.
 
 Who imports the board today: the CLI (`startBoard`, `startSetup`, the `Activity`, `Dispatchers`
-and `Headers` merges, `Launcher`), the loop (`@cabane/board/ports`, `/form-field`, `Theme` for
-its card header), and, through named exceptions, `@cabane/extension` and `@cabane/acp`
+and `Headers` merges, `Launcher`), the loop (`@cabane/board/ports`, `/form-field`), and, through named exceptions, `@cabane/extension` and `@cabane/acp`
 (`/ports`, `/context`).
 
 JCAB-320 changes this package's shape: port types leave `src/ports.ts` and `src/form-field.ts`,
-the copilot arrives from `@cabane/acp`, and `CardHeader` becomes data the board lays out.
+the copilot arrives from `@cabane/acp`. `Header` already returns data: `src/card-header.tsx`
+polls it and lays out its rows, sharing tone mapping with trigger previews.
 `ARCHITECTURE.md`, "Ports", says what moves where; check main before editing those files or a
 card header. JCAB-324 removes the text in `src/setup.tsx` that offers to turn on the loop.
 

@@ -4,11 +4,7 @@
  * so an extension importing the CLI would be a cycle.
  */
 
-import type {
-	ActivitySource,
-	CardHeader,
-	Dispatcher,
-} from "@cabane/board/ports";
+import type { ActivitySource, Header, Dispatcher } from "@cabane/board/ports";
 import type { ToolDef } from "@cabane/core";
 import type { z } from "zod";
 import type { ParsedArgs } from "./args";
@@ -74,6 +70,6 @@ export namespace Extension {
 	export type BoardPorts = {
 		activity?: ActivitySource;
 		dispatcher?: Dispatcher;
-		headers?: Readonly<Record<string, CardHeader>>;
+		headers?: Readonly<Record<string, Header>>;
 	};
 }

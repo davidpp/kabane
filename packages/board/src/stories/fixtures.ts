@@ -19,6 +19,7 @@ import type { BoardData } from "../data";
 import type { BoardNav } from "../nav";
 import type {
 	ActivityCard,
+	HeaderPart,
 	TriggerDescriptor,
 	CopilotElicitation,
 	SettingKind,
@@ -27,6 +28,27 @@ import type {
 import type { BoardTabs } from "../tabs";
 
 export namespace Fixtures {
+	export const HEADER: readonly (readonly HeaderPart[])[] = [
+		[
+			{ text: "default ", bold: true },
+			{ text: "muted ", tone: "muted" },
+			{ text: "faint ", tone: "faint" },
+			{ text: "secondary", tone: "secondary" },
+		],
+		[
+			{ text: "working ", tone: "working" },
+			{ text: "done ", tone: "done" },
+			{ text: "failed ", tone: "failed" },
+			{ text: "accent", tone: "accent" },
+		],
+		[{ text: "session lane", series: 1 }],
+		[
+			{
+				text: "A long header line that is clipped at the inner width and never wraps into a second row, even at eighty columns.",
+			},
+		],
+	];
+
 	/** A described single choice with an `Other` text field behind it, as claude-agent-acp sends one. */
 	export const STORE: CopilotElicitation = {
 		id: "form-1",

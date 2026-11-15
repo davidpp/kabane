@@ -33,7 +33,7 @@ import { type LiftedReader, LiftedReaderSheet } from "./lifted-reader";
 import { BoardNav } from "./nav";
 import { HelpSheet } from "./overlay";
 import { Paging } from "./paging";
-import type { ActivityCard, ActivitySource, CardHeader } from "./ports";
+import type { ActivityCard, ActivitySource, Header } from "./ports";
 import { PromptPanel } from "./prompt-field";
 import { SettingsOverlay } from "./settings-overlay";
 import { useSpinnerFrame } from "./spinner";
@@ -146,7 +146,7 @@ export type ScreenProps = {
 	// The tasks pointing at an external issue.
 	linked: ReadonlySet<string>;
 	// A host's own header for its cards, by card kind.
-	headers?: Readonly<Record<string, CardHeader>>;
+	headers?: Readonly<Record<string, Header>>;
 	log: CopilotLog.Log | null;
 	// Host cards plus the copilot's, and the source that reads their events.
 	activity: BoardActivity.ActivityMap;
@@ -165,7 +165,7 @@ export type ScreenProps = {
 // the pane it mounts between its content and its footer.
 type ViewProps = ScreenProps & {
 	keys: Keymap.Live;
-	header: CardHeader | undefined;
+	header: Header | undefined;
 	pane: ReactNode;
 };
 
