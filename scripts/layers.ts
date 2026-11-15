@@ -74,6 +74,7 @@ export const layers: Readonly<Record<string, Rule>> = {
 	},
 	kabane: {
 		layer: "host",
+		testSupport: ["packages/cli/issue-corpus-harness.ts"],
 		relativeImports: {
 			"packages/cli/src/update-process.ts": {
 				"../../core/result":
@@ -222,12 +223,11 @@ function relativeImportFinding(
 function workspaceImportFinding(
 	pkg: Workspace,
 	packages: Workspace[],
-	rule: Rule | undefined,
 	{
-		path,
+		testSupport,
 		specifier,
 		location,
-	}: { path: string; specifier: string; location: string },
+	}: { testSupport: boolean; specifier: string; location: string },
 ): string | undefined {
 	const dependency = specifier.startsWith("@")
 		? specifier.split("/").slice(0, 2).join("/")
@@ -240,12 +240,34 @@ function workspaceImportFinding(
 		return undefined;
 	if (!(dependency in pkg.dependencies) && !(dependency in pkg.devDependencies))
 		return `${pkg.name} -> ${dependency}: undeclared workspace import ${specifier} in ${location}; declare it in package.json under the scripts/layers.ts allowance.`;
-	if (
-		!(dependency in pkg.dependencies) &&
-		!/\.test\.[^/]+$/.test(path) &&
-		!rule?.testSupport?.includes(path)
-	)
+	if (!(dependency in pkg.dependencies) && !testSupport)
 		return `${pkg.name} -> ${dependency}: production workspace import ${specifier} in ${location} is only in devDependencies; declare it in dependencies under the scripts/layers.ts allowance.`;
+}
+
+function isTestSupport(path: string, rule: Rule | undefined): boolean {
+	return /\.test\.[^/]+$/.test(path) || !!rule?.testSupport?.includes(path);
+}
+
+function importsCoreTestSupport(
+	pkg: Workspace,
+	file: string,
+	specifier: string,
+): boolean {
+	if (
+		specifier === "@cabane/core/testing" ||
+		specifier.startsWith("@cabane/core/testing/")
+	)
+		return true;
+	if (pkg.name !== "@cabane/core" || !specifier.startsWith(".")) return false;
+	const target = relative(pkg.directory, resolve(dirname(file), specifier))
+		.split(sep)
+		.join("/");
+	return (
+		target === "testing" ||
+		target === "testing.ts" ||
+		target === "testing.js" ||
+		target.startsWith("testing/")
+	);
 }
 
 function importFindings(
@@ -279,8 +301,16 @@ function importFindings(
 				)
 		)
 			continue;
+		const path = relative(root, file).split(sep).join("/");
+		const testSupport = isTestSupport(path, rule);
 		for (const { specifier, line } of importSpecifiers(file)) {
 			const location = `${relative(root, file)}:${line}`;
+			if (!testSupport && importsCoreTestSupport(pkg, file, specifier)) {
+				findings.push(
+					`${pkg.name} -> @cabane/core: production import ${specifier} in ${location} uses test support; move it to a test or listed test-support file.`,
+				);
+				continue;
+			}
 			if (specifier.startsWith(".")) {
 				const finding = relativeImportFinding(
 					pkg,
@@ -290,14 +320,13 @@ function importFindings(
 					location,
 				);
 				if (!finding) continue;
-				const path = relative(root, file).split(sep).join("/");
 				if (rule?.relativeImports?.[path]?.[specifier]) {
 					pending.delete(JSON.stringify([path, specifier]));
 				} else findings.push(finding);
 				continue;
 			}
-			const finding = workspaceImportFinding(pkg, packages, rule, {
-				path: relative(root, file).split(sep).join("/"),
+			const finding = workspaceImportFinding(pkg, packages, {
+				testSupport,
 				specifier,
 				location,
 			});
