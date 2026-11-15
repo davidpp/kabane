@@ -157,8 +157,9 @@ The verdicts for what core holds today that is not obviously the record:
 ### Core reaches a device's files through a port with a no-op default
 
 The brief inlines a `file:` context ref by reading the file (`storage/assemble-context.ts:183-205`),
-and that read is the last Bun call on core's barrel once `lint/` leaves; the hub's
-`tsconfig.json` lists `bun` for it and for lint (`packages/worker/tsconfig.json:9-11`). The four
+and that read is the last Bun call on core's barrel now that `lint/` has moved into the loop
+(JCAB-338); the hub's `tsconfig.json` lists `bun` for it alone
+(`packages/worker/tsconfig.json:9-11`). The four
 questions split it: assembling the brief passes all four, and reading a file on this device fails
 question 3. So core keeps the assembly and reaches the file through a port on `Runtime.configure`,
 as it already reaches the tracer, notifier and actor ("Explicit dependencies" in
