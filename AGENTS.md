@@ -30,6 +30,10 @@ Local SQLite is authoritative on every device. The hub is one more device that h
 
 See `CODING_PRINCIPLE.md` for the coding rules and the architectural invariants.
 
+Read `ARCHITECTURE.md` before you add a package, a dependency between packages, anything to
+`packages/core` or a field to the extension contract: it says what each layer owns and what an
+extension gets from kabane.
+
 `docs/` and the READMEs are for people who use kabane: usage, behaviour, configuration.
 Internal notes such as plans, design records and research go in `wiki/`, never in `docs/`.
 
