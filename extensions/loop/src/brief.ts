@@ -11,7 +11,7 @@ import { CopilotInstructions } from "@cabane/acp";
 import type { Task } from "@cabane/core";
 import type { Checklists } from "./checklists";
 import type { LoopConfig } from "./config";
-import type { Gates } from "./gates";
+import { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 
 export namespace Brief {
@@ -314,15 +314,6 @@ export namespace Brief {
 	export const lensNames = (names: readonly string[]): string =>
 		`the ${listing(names)} ${names.length === 1 ? "lens" : "lenses"}`;
 
-	// `41s`, `3m12s`: how long a gate took, as the lens is told it.
-	const took = (ms: number): string => {
-		if (ms < 1000) return `${ms}ms`;
-		const seconds = Math.round(ms / 1000);
-		return seconds < 60
-			? `${seconds}s`
-			: `${Math.floor(seconds / 60)}m${seconds % 60}s`;
-	};
-
 	// What has checked the work before the lens sees it. A run with no gates has run nothing, and
 	// saying otherwise would have the lens skip the very checks nobody made. A green pass on this
 	// tree is named gate by gate, command and duration, because a lens told only the names reran
@@ -338,7 +329,7 @@ export namespace Brief {
 		if (passed.length === 0)
 			return `The run's gates (${gates.map((g) => `\`${g}\``).join(", ")}) have no green pass on record for this exact tree: do not assume they pass, and run the checks you need.`;
 		const each = passed.map(
-			(r) => `\`${r.name}\` (\`${r.command}\`, ${took(r.ms)})`,
+			(r) => `\`${r.name}\` (\`${r.command}\`, ${Gates.took(r.ms)})`,
 		);
 		return `These gates passed on this exact tree: ${each.join(", ")}. Do not rerun them or any part of them (a package's tests, one test file, lint) to confirm they pass. Run something only when it checks what they cannot: the real entry point, the way a user reaches it, or a probe you write to test a specific claim.`;
 	};

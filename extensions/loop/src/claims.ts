@@ -129,6 +129,11 @@ export namespace Claims {
 	const EDITED =
 		"the recheck changed the working tree, which a recheck must not do: its changes are left in place for a human";
 
+	// A triage that edits fails as a recheck does, but the run goes on: its plan falls back to
+	// every lens on a session of its own (`Review.decide`).
+	const TRIAGE_EDITED =
+		"the triage changed the working tree, which a triage must not do: its changes are left in place and every lens reviews in a session of its own";
+
 	const treeChanged = async (ctx: Ctx, tree: string): Promise<boolean> =>
 		(await ctx.tree(RunStore.sessionDir(ctx.run))) !== tree;
 
@@ -440,18 +445,20 @@ export namespace Claims {
 		kept?: Dispatch.Kept;
 	};
 
-	// A recheck reports and never edits; nothing enforces that in the harness, whose settings are
-	// the user's, so a tree that changed under it fails it here instead. Its edits stay where they
-	// are. Two rechecks running at once share the tree, so one's edit fails both.
+	// A recheck or a triage reports and never edits; nothing enforces that in the harness, whose
+	// settings are the user's, so a tree that changed under it fails it here instead, with `edited`
+	// as its detail. Its edits stay where they are. Two rechecks running at once share the tree, so
+	// one's edit fails both.
 	const unedited = async (
 		ctx: Ctx,
 		tree: string,
 		outcome: Dispatch.Outcome,
+		edited: string,
 	): Promise<Dispatch.Outcome> => {
 		if (outcome.outcome !== "done" && outcome.outcome !== "incomplete")
 			return outcome;
 		return (await treeChanged(ctx, tree))
-			? { ...outcome, outcome: "error", detail: EDITED }
+			? { ...outcome, outcome: "error", detail: edited }
 			: outcome;
 	};
 
@@ -476,7 +483,14 @@ export namespace Claims {
 		ended: Dispatch.Outcome,
 	): Promise<RunState.Settled> => {
 		const outcome =
-			tree === undefined ? ended : await unedited(ctx, tree, ended);
+			tree === undefined
+				? ended
+				: await unedited(
+						ctx,
+						tree,
+						ended,
+						work.kind === "triage" ? TRIAGE_EDITED : EDITED,
+					);
 		const gates =
 			work.kind === "implement" && outcome.outcome === "done"
 				? await gatesAfter(

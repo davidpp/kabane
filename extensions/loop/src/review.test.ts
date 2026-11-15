@@ -270,9 +270,10 @@ beforeEach(async () => {
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 // Answers a triage prompt with the plan in `plan.json`, then ends every turn; each prompt is kept.
+// With `triage.edits` present, the triage also edits code.txt.
 const AGENT = `
 import { createInterface } from "node:readline";
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 const send = (message) => console.log(JSON.stringify({ jsonrpc: "2.0", ...message }));
 createInterface({ input: process.stdin }).on("line", line => {
  const message = JSON.parse(line);
@@ -282,6 +283,7 @@ createInterface({ input: process.stdin }).on("line", line => {
   const text = message.params.prompt.filter(p => p.type === "text").map(p => p.text).join("\\n");
   appendFileSync("prompts.jsonl", JSON.stringify(text) + "\\n");
   if (text.startsWith(${JSON.stringify(Review.OPENING)})) {
+   if (existsSync("triage.edits")) appendFileSync("code.txt", "edited by the triage\\n");
    const plan = readFileSync("plan.json", "utf8");
    send({ method: "session/update", params: { sessionId: "fixture", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "\`\`\`json\\n" + plan + "\\n\`\`\`" } } } });
   }
@@ -355,7 +357,8 @@ const start = async (
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
 		overrides: { gemini: { command: process.execPath, args: [agent] } },
-		tree: async () => "tree",
+		// The tree is code.txt: what a session edits there changes it.
+		tree: async () => readFileSync(join(home, "code.txt"), "utf8"),
 		tickMs: 5,
 	});
 	if (!ended.ok) throw ended.error;
@@ -573,5 +576,23 @@ describe("Runner review triage", () => {
 			"quality-lens",
 		]);
 		expect(run.review?.fallback).toBe("triage answered no review plan");
+	});
+
+	it("falls back when the triage edits the tree, naming the triage, and leaves its edits in place", async () => {
+		writeFileSync(join(home, "triage.edits"), "");
+		const run = await start({});
+		expect([run.status, run.exit?.reason]).toEqual(["completed", "plan-done"]);
+		expect(run.claims.map((c) => [c.lane, c.outcome])).toEqual([
+			["triage", "error"],
+			["functional-lens", "done"],
+			["quality-lens", "done"],
+		]);
+		const edited =
+			"the triage changed the working tree, which a triage must not do: its changes are left in place and every lens reviews in a session of its own";
+		expect(run.review?.fallback).toBe(`triage error: ${edited}`);
+		expect(trace("session_end")[0]).toBe(`error: ${edited}`);
+		expect(readFileSync(join(home, "code.txt"), "utf8")).toBe(
+			"after\nedited by the triage\n",
+		);
 	});
 });
