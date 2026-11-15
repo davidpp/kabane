@@ -6,8 +6,10 @@
 import { ok } from "@cabane/core";
 import type { QuestionView } from "@cabane/questions";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
 import { createRef, type ReactNode, useEffect, useRef } from "react";
 import { Board } from "../board";
+import { CardHeader } from "../card-header";
 import { BoardChecklist } from "../checklist";
 import { CopilotLog } from "../copilot-log";
 import { CopilotPane, type CopilotPaneProps } from "../copilot-prompt";
@@ -550,7 +552,27 @@ const settingsEdit = (
 	};
 };
 
+const headerStory = async () => ok(Fixtures.HEADER);
+const HeaderStory = (): ReactNode => {
+	const { width } = useTerminalDimensions();
+	return (
+		<CardHeader
+			header={headerStory}
+			card={Fixtures.loop(1)}
+			width={width - 1}
+			expanded={false}
+		/>
+	);
+};
+
 export const STORIES: readonly Story[] = [
+	{
+		name: "card-header",
+		about: "Toned data rows, a series color, bold text and a clipped line",
+		width: 40,
+		height: 8,
+		render: () => <HeaderStory />,
+	},
 	{
 		name: "trigger-advised",
 		about: "run settings with a wrapped advice reason and the original setting",

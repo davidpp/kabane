@@ -1,4 +1,3 @@
-/** @jsxImportSource @opentui/react */
 // The loop tab's header: what the board draws above a run's stream, in place of its one-line title.
 // Three rows, in order of what matters: the run's state, its steps as a strip, its budgets as
 // meters. `e` adds the sessions and the plan. It shows only what the run has: the implement step,
@@ -7,18 +6,9 @@
 // harness priced its work, context occupancy (ACP reports occupancy, not a running token count)
 // and continuations.
 //
-// It reads the board's theme and nothing else of the board's: tones are the theme's roles, and a
-// session's color is the theme's series at its claim's place, the same as its lane chip and its
-// lines. The run comes from `run.json` and the plan from the tracker, polled while the tab is open.
-import {
-	type ActivityCard,
-	type CardHeader,
-	type CardHeaderProps,
-	Theme,
-	useTheme,
-} from "@cabane/board";
-import { TextAttributes } from "@opentui/core";
-import { type ReactNode, useEffect, useState } from "react";
+// The board polls these lines and maps tones and session series onto its own theme.
+import type { Header, HeaderPart, PanelPart } from "@cabane/board/ports";
+import { ok } from "@cabane/core";
 import { Budget } from "./budget";
 import { Loop } from "./commands";
 import { Fixer } from "./fixer";
@@ -28,20 +18,8 @@ import { Stop } from "./stop";
 import { RunStore } from "./store";
 
 export namespace LoopHeader {
-	const POLL_MS = 1000;
 	const METER_CELLS = 10;
-
-	type Tone =
-		| "text"
-		| "muted"
-		| "faint"
-		| "working"
-		| "done"
-		| "failed"
-		| "accent";
-	type Part = { text: string; tone: Tone; bold?: boolean };
-
-	type Snapshot = { run: RunStore.Run; plan: LoopPlan.Plan | null };
+	type Part = PanelPart;
 
 	// A claim left open by a runner that died holds no slot: nobody is working it.
 	const liveClaims = (run: RunStore.Run): RunStore.Claim[] =>
@@ -200,7 +178,7 @@ export namespace LoopHeader {
 			return [
 				{ text: "  ›  ", tone: "faint" },
 				{ text: "◐ ", tone: "working" },
-				{ text: "gates", tone: "text", bold: true },
+				{ text: "gates", tone: "default", bold: true },
 				{
 					text: ` running for ${gating.join(", ")}${counted}`,
 					tone: "muted",
@@ -216,7 +194,7 @@ export namespace LoopHeader {
 		return [
 			{ text: "  ›  ", tone: "faint" },
 			glyph,
-			{ text: "gates", tone: "text", bold: failed !== undefined },
+			{ text: "gates", tone: "default", bold: failed !== undefined },
 			{
 				text: ` ${failed ? `${failed.name} red` : names.join("·")}${counted}`,
 				tone: failed ? "failed" : "muted",
@@ -245,7 +223,7 @@ export namespace LoopHeader {
 		return [
 			{ text: "  ›  ", tone: "faint" },
 			glyph,
-			{ text: "lenses", tone: "text", bold: status.running.length > 0 },
+			{ text: "lenses", tone: "default", bold: status.running.length > 0 },
 			{ text: ` ${lenses.join("·")}`, tone: "muted" },
 			...(found && found.total > 0
 				? [
@@ -277,7 +255,7 @@ export namespace LoopHeader {
 		return [
 			{ text: "  ›  ", tone: "faint" },
 			glyph,
-			{ text: "fixer", tone: "text", bold: status.kind === "running" },
+			{ text: "fixer", tone: "default", bold: status.kind === "running" },
 			...(found
 				? [
 						{
@@ -307,7 +285,7 @@ export namespace LoopHeader {
 		return [
 			{ text: "  ›  ", tone: "faint" },
 			glyph,
-			{ text: "recheck", tone: "text", bold: status.running.length > 0 },
+			{ text: "recheck", tone: "default", bold: status.running.length > 0 },
 			{ text: ` ${all.join("·")}`, tone: "muted" },
 		];
 	};
@@ -332,7 +310,7 @@ export namespace LoopHeader {
 						: { text: "○ ", tone: "muted" as const };
 		return [
 			glyph,
-			{ text: "implement", tone: "text", bold: working },
+			{ text: "implement", tone: "default", bold: working },
 			{
 				text: ` ×${implementing.length} session${implementing.length === 1 ? "" : "s"}`,
 				tone: "muted",
@@ -391,171 +369,73 @@ export namespace LoopHeader {
 		return { filled, empty: METER_CELLS - filled };
 	};
 
-	const useSnapshot = (
-		home: string,
-		basePath: string,
-		runId: string,
-	): Snapshot | null => {
-		const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-		useEffect(() => {
-			let cancelled = false;
-			const poll = async (): Promise<void> => {
-				const run = RunStore.read(home, runId);
-				if (!run.ok) return;
-				const plan = await LoopPlan.load(basePath, run.value.parentId);
-				if (!cancelled)
-					setSnapshot({ run: run.value, plan: plan.ok ? plan.value : null });
-			};
-			void poll();
-			const timer = setInterval(() => void poll(), POLL_MS);
-			return () => {
-				cancelled = true;
-				clearInterval(timer);
-			};
-		}, [home, basePath, runId]);
-		return snapshot;
-	};
+	const meterRow = (run: RunStore.Run): HeaderPart[] =>
+		meters(run).flatMap((meter, at) => {
+			const { filled, empty } = cells(meter.share);
+			return [
+				{ text: `${at > 0 ? "   " : ""}${meter.label} `, tone: "muted" },
+				{
+					text: "▰".repeat(filled),
+					tone: meter.share >= 0.8 ? "accent" : "working",
+				},
+				{ text: "▱".repeat(empty), tone: "faint" },
+				{ text: ` ${meter.text}`, tone: "secondary" },
+			];
+		});
 
-	const Row = ({
-		parts,
-		bg,
-	}: {
-		parts: readonly Part[];
-		bg: string;
-	}): ReactNode => {
-		const theme = useTheme();
-		return (
-			<text bg={bg} wrapMode="none">
-				{parts.map((part, at) => (
-					// Index keys: a row's parts are positional.
-					<span
-						key={at}
-						fg={theme[part.tone]}
-						attributes={part.bold ? TextAttributes.BOLD : 0}
-					>
-						{part.text}
-					</span>
-				))}
-			</text>
-		);
-	};
-
-	const MeterRow = ({
-		meters: shown,
-		bg,
-	}: {
-		meters: readonly Meter[];
-		bg: string;
-	}): ReactNode => {
-		const theme = useTheme();
-		return (
-			<text bg={bg} wrapMode="none">
-				{shown.map((meter, at) => {
-					const { filled, empty } = cells(meter.share);
-					// Most of a budget gone is a human's call to make, so it takes the accent.
-					const fill = meter.share >= 0.8 ? theme.accent : theme.working;
-					return (
-						<span key={meter.label}>
-							<span
-								fg={theme.muted}
-							>{`${at > 0 ? "   " : ""}${meter.label} `}</span>
-							<span fg={fill}>{"▰".repeat(filled)}</span>
-							<span fg={theme.faint}>{"▱".repeat(empty)}</span>
-							<span fg={theme.secondary}>{` ${meter.text}`}</span>
-						</span>
-					);
-				})}
-			</text>
-		);
-	};
-
-	const Sessions = ({
-		run,
-		bg,
-	}: {
-		run: RunStore.Run;
-		bg: string;
-	}): ReactNode => {
-		const theme = useTheme();
+	const sessions = (run: RunStore.Run): HeaderPart[][] => {
 		const width = Math.max(0, ...run.claims.map((claim) => claim.lane.length));
-		return (
-			<>
-				<text bg={bg} fg={theme.text} attributes={TextAttributes.BOLD}>
-					sessions
-					<span fg={theme.muted} attributes={0}>
-						{`  ${liveClaims(run).length}/${RunStore.concurrency(run)} slots in use`}
-					</span>
-				</text>
-				{run.claims.map((claim, index) => (
-					<text key={claim.sessionId} bg={bg} wrapMode="none">
-						<span fg={Theme.seriesOf(theme, index)}>
-							{` ${claim.lane.padEnd(width)}  `}
-						</span>
-						{claim.endedAt ? (
-							<span fg={theme.muted}>
-								{`${claim.outcome ?? "ended"}${claim.detail ? ` · ${claim.detail}` : ""}`}
-							</span>
-						) : (
-							<span fg={theme.working}>{`→ ${claim.shortId}`}</span>
-						)}
-					</text>
-				))}
-			</>
-		);
+		return [
+			[
+				{ text: "sessions", bold: true },
+				{
+					text: `  ${liveClaims(run).length}/${RunStore.concurrency(run)} slots in use`,
+					tone: "muted",
+				},
+			],
+			...run.claims.map((claim, index): HeaderPart[] => [
+				{ text: ` ${claim.lane.padEnd(width)}  `, series: index },
+				claim.endedAt
+					? {
+							text: `${claim.outcome ?? "ended"}${claim.detail ? ` · ${claim.detail}` : ""}`,
+							tone: "muted",
+						}
+					: { text: `→ ${claim.shortId}`, tone: "working" },
+			]),
+		];
 	};
 
-	const PlanRows = ({
-		plan,
-		run,
-		bg,
-	}: {
-		plan: LoopPlan.Plan;
-		run: RunStore.Run;
-		bg: string;
-	}): ReactNode => {
-		const theme = useTheme();
-		const glyph = (node: LoopPlan.Node): { text: string; fg: string } =>
-			LoopPlan.isClosed(node.task)
-				? { text: "✓", fg: theme.done }
+	const planRows = (plan: LoopPlan.Plan, run: RunStore.Run): HeaderPart[][] => [
+		[{ text: "plan", bold: true }],
+		...plan.nodes.map((node): HeaderPart[] => {
+			const glyph: PanelPart = LoopPlan.isClosed(node.task)
+				? { text: "✓", tone: "done" }
 				: node.task.state === "in_progress"
-					? { text: "●", fg: theme.working }
+					? { text: "●", tone: "working" }
 					: node.task.state === "waiting" || node.task.state === "someday"
-						? { text: "⏸", fg: theme.muted }
-						: { text: "○", fg: theme.faint };
-		return (
-			<>
-				<text bg={bg} fg={theme.text} attributes={TextAttributes.BOLD}>
-					plan
-				</text>
-				{plan.nodes.map((node) => {
-					const g = glyph(node);
-					const lanes = run.claims.flatMap((claim, index) =>
-						claim.taskId === node.task.id ? [index] : [],
-					);
-					const last = lanes.at(-1);
-					return (
-						<text key={node.task.id} bg={bg} wrapMode="none">
-							<span fg={g.fg}>{` ${g.text} `}</span>
-							<span fg={theme.muted}>{`${node.task.shortId ?? ""}  `}</span>
-							<span
-								fg={LoopPlan.isClosed(node.task) ? theme.secondary : theme.text}
-							>
-								{node.task.title}
-							</span>
-							{last !== undefined ? (
-								<span fg={Theme.seriesOf(theme, last)}>
-									{`  ${run.claims[last]?.lane ?? ""}`}
-								</span>
-							) : null}
-							{node.finding ? (
-								<span fg={theme.muted}>{"  finding"}</span>
-							) : null}
-						</text>
-					);
-				})}
-			</>
-		);
-	};
+						? { text: "⏸", tone: "muted" }
+						: { text: "○", tone: "faint" };
+			const last = run.claims
+				.flatMap((claim, index) =>
+					claim.taskId === node.task.id ? [index] : [],
+				)
+				.at(-1);
+			return [
+				{ ...glyph, text: ` ${glyph.text} ` },
+				{ text: `${node.task.shortId ?? ""}  `, tone: "muted" },
+				{
+					text: node.task.title,
+					tone: LoopPlan.isClosed(node.task) ? "secondary" : "default",
+				},
+				...(last === undefined
+					? []
+					: [{ text: `  ${run.claims[last]?.lane ?? ""}`, series: last }]),
+				...(node.finding
+					? [{ text: "  finding", tone: "muted" as const }]
+					: []),
+			];
+		}),
+	];
 
 	const doneCount = (plan: LoopPlan.Plan | null): string => {
 		if (!plan) return "";
@@ -582,77 +462,45 @@ export namespace LoopHeader {
 			parts.reduce((sum, part) => sum + part.text.length, 0);
 		const full = `${run.parentShortId}  ${title}`;
 		const named = full.length + length(rest) <= room ? full : run.parentShortId;
-		return [{ text: named, tone: "text", bold: true }, ...rest];
+		return [{ text: named, tone: "default", bold: true }, ...rest];
 	};
 
-	const Header = ({
-		home,
-		basePath,
-		card,
-		width,
-		expanded,
-	}: {
-		home: string;
-		basePath: string;
-		card: ActivityCard;
-		width: number;
-		expanded: boolean;
-	}): ReactNode => {
-		const theme = useTheme();
-		const snapshot = useSnapshot(home, basePath, card.id);
-		const bg = theme.surface.raised;
-		if (!snapshot)
-			return (
-				<text fg={theme.muted} style={{ flexShrink: 0 }}>
-					loading…
-				</text>
+	/** The rows of a run, independent of the client that draws them. */
+	export const lines = (
+		run: RunStore.Run,
+		plan: LoopPlan.Plan | null,
+		now: Date,
+		width: number,
+		expanded: boolean,
+	): HeaderPart[][] => [
+		headline(run, plan, now, width),
+		[
+			...steps(run, plan),
+			{
+				text: `   ${liveClaims(run).length}/${RunStore.concurrency(run)} slots · ${run.config.implementer}${run.config.model ? ` ${run.config.model}` : ""}`,
+				tone: "muted",
+			},
+		],
+		meterRow(run),
+		...(expanded ? sessions(run) : []),
+		...(expanded && plan ? planRows(plan, run) : []),
+	];
+
+	/** The header for loop cards, reading each run and its current plan on every call. */
+	export const make =
+		(home: string, basePath: string): Header =>
+		async (card, view) => {
+			const run = RunStore.read(home, card.id);
+			if (!run.ok) return run;
+			const plan = await LoopPlan.load(basePath, run.value.parentId);
+			return ok(
+				lines(
+					run.value,
+					plan.ok ? plan.value : null,
+					new Date(),
+					view.width,
+					view.expanded,
+				),
 			);
-		const { run, plan } = snapshot;
-		const now = new Date();
-		const live = liveClaims(run).length;
-		return (
-			<box
-				style={{
-					flexDirection: "column",
-					flexShrink: 0,
-					backgroundColor: bg,
-					paddingLeft: 1,
-					paddingRight: 1,
-				}}
-			>
-				<Row bg={bg} parts={headline(run, plan, now, width - 2)} />
-				<Row
-					bg={bg}
-					parts={[
-						...steps(run, plan),
-						{
-							text: `   ${live}/${RunStore.concurrency(run)} slots · ${run.config.implementer}${run.config.model ? ` ${run.config.model}` : ""}`,
-							tone: "muted",
-						},
-					]}
-				/>
-				<MeterRow meters={meters(run)} bg={bg} />
-				{expanded ? <Sessions run={run} bg={bg} /> : null}
-				{expanded && plan ? <PlanRows plan={plan} run={run} bg={bg} /> : null}
-			</box>
-		);
-	};
-
-	/** The header for loop cards, reading each run from `home` and its plan from `basePath`. */
-	export const make = (home: string, basePath: string): CardHeader => {
-		const LoopTabHeader = ({
-			card,
-			width,
-			expanded,
-		}: CardHeaderProps): ReactNode => (
-			<Header
-				home={home}
-				basePath={basePath}
-				card={card}
-				width={width}
-				expanded={expanded}
-			/>
-		);
-		return LoopTabHeader;
-	};
+		};
 }

@@ -3,7 +3,7 @@ import {
 	Activity,
 	type ActivitySource,
 	type BoardDeps,
-	type CardHeader,
+	type Header,
 	type Dispatcher,
 	Dispatchers,
 	Headers,
@@ -139,7 +139,7 @@ const extensionPorts = async (
 ): Promise<Pick<BoardDeps, "activity" | "dispatcher" | "headers">> => {
 	const activity: Record<string, ActivitySource> = {};
 	const dispatchers: Record<string, Dispatcher> = {};
-	const headers: Record<string, Readonly<Record<string, CardHeader>>> = {};
+	const headers: Record<string, Readonly<Record<string, Header>>> = {};
 	for (const extension of extensions) {
 		const ports = await extension.board?.(ctx);
 		if (ports?.activity) activity[extension.name] = ports.activity;

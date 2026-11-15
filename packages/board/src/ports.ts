@@ -4,7 +4,6 @@
 // line to announce. All default to no-ops so the board runs standalone with no activity strip, a "no
 // dispatcher configured" hint on `a`, a "no copilot configured" hint on `A`, and nothing announced.
 import { ok, type Result, type Task } from "@cabane/core";
-import type { ReactNode } from "react";
 import type { BoardContext } from "./context";
 
 export type ActivityStatus =
@@ -74,17 +73,16 @@ export type CardAction = {
 	lane?: boolean;
 };
 
-// A host's own header for its cards, by card kind, drawn above the events on a card's tab in place
-// of the board's one-line title. Compact by default; `expanded` is the tab's `e`. The one seam that
-// takes a component rather than data, because a host's status is its own design: it renders inside
-// the board's tree and reads the board's colors through the exported `useTheme`.
-export type CardHeaderProps = {
-	card: ActivityCard;
-	// Columns the header may use.
-	width: number;
-	expanded: boolean;
-};
-export type CardHeader = (props: CardHeaderProps) => ReactNode;
+// A host describes its card header; the board owns polling, colors and one-row layout.
+// Width is the room inside the board's one-column padding on each side.
+export type HeaderView = { width: number; expanded: boolean };
+export type HeaderPart =
+	| PanelPart
+	| { text: string; series: number; bold?: boolean };
+export type Header = (
+	card: ActivityCard,
+	view: HeaderView,
+) => Promise<Result<readonly (readonly HeaderPart[])[]>>;
 
 // One file a tool call changed, as the harness reported it: the whole text before (absent for a file
 // it created) and after. The board makes the patch.
@@ -176,6 +174,8 @@ export type TriggerInput = {
 // says what a part is (a request, work in flight) and never which hue it is.
 export type PanelTone =
 	| "default"
+	| "faint"
+	| "secondary"
 	| "muted"
 	| "working"
 	| "done"

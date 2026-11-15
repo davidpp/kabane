@@ -10,12 +10,12 @@
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import { type ReactNode, useEffect, useRef } from "react";
+import { segmentsOf } from "./card-header";
 import { Grid } from "./grid";
 import { GridRow } from "./grid-view";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import { DispatchOverlay, HintRow, overlayBg } from "./overlay";
-import type { PanelLine, PanelTone } from "./ports";
 import { Segments } from "./segments";
 import { type Theme, useTheme } from "./theme";
 import { TriggerForm } from "./trigger-form";
@@ -90,30 +90,6 @@ const rowsHeight = (rows: readonly Row[], cols: number): number =>
 				: (row.title === undefined ? 0 : 1) + (at === 0 ? 0 : 1)),
 		0,
 	);
-
-const toneFg = (tone: PanelTone | undefined, theme: Theme.Tokens): string => {
-	switch (tone) {
-		case "muted":
-			return theme.muted;
-		case "working":
-			return theme.working;
-		case "done":
-			return theme.done;
-		case "failed":
-			return theme.failed;
-		case "accent":
-			return theme.accent;
-		default:
-			return theme.text;
-	}
-};
-
-const segmentsOf = (line: PanelLine, theme: Theme.Tokens): Segments.Segment[] =>
-	line.map((part) => ({
-		text: part.text,
-		fg: toneFg(part.tone, theme),
-		...(part.bold ? { attributes: TextAttributes.BOLD } : {}),
-	}));
 
 const fieldId = (index: number): string => `form-field-${index}`;
 

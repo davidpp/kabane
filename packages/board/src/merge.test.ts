@@ -1,12 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { err, ok } from "@cabane/core";
-import { isValidElement } from "react";
 import { Activity, Dispatchers, Headers } from "./merge";
 import type {
 	ActivityCard,
 	ActivitySource,
-	CardHeader,
-	CardHeaderProps,
+	Header,
 	Dispatcher,
 	DispatchTarget,
 	TriggerDescriptor,
@@ -132,22 +130,22 @@ describe("Activity.merge", () => {
 });
 
 describe("Headers.merge", () => {
-	test("keys every contributor's headers by kind, each given its card under its own id", () => {
-		const seen: string[] = [];
-		const Loop: CardHeader = ({ card }) => {
-			seen.push(card.id);
-			return null;
-		};
-		const merged = Headers.merge({ loop: { loops: Loop } });
-		const element = merged.loops?.({
-			card: card("loop:r1", "2026-10-10T10:00:00.000Z"),
-			width: 40,
-			expanded: false,
-		});
-		expect(isValidElement(element)).toBe(true);
-		if (!isValidElement<CardHeaderProps>(element)) return;
-		expect(element.type).toBe(Loop);
-		expect(element.props.card.id).toBe("r1");
+	test("keys headers by kind and forwards the view with the contributor's own card id", async () => {
+		const header: Header = async (card, view) =>
+			ok([[{ text: `${card.id}/${view.width}/${view.expanded}` }]]);
+		const merged = Headers.merge({ loop: { loops: header } });
+		expect(
+			await merged.loops?.(card("loop:r1", "2026-10-10T10:00:00.000Z"), {
+				width: 40,
+				expanded: true,
+			}),
+		).toEqual(ok([[{ text: "r1/40/true" }]]));
+		expect(
+			await merged.loops?.(card("r2", "2026-10-10T10:00:00.000Z"), {
+				width: 20,
+				expanded: false,
+			}),
+		).toEqual(ok([[{ text: "r2/20/false" }]]));
 		expect(Object.keys(merged)).toEqual(["loops"]);
 	});
 });

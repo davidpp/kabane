@@ -249,10 +249,10 @@ host.
 
 ### An extension describes a card header as lines of toned parts, and the board owns its layout
 
-`CardHeader` is a React component (`packages/board/src/ports.ts:81-87`), the one port that takes
-a component, and the loop's header renders with the board's `useTheme` and OpenTUI
-(`extensions/loop/src/header.tsx:12-18`). A component binds an extension to the board's React and
-OpenTUI versions, and a second client could not draw it. In API v1 a header is data:
+Headers are data returned by an extension's `Header` port. JCAB-337 added the header data
+types and the board's renderer (`packages/board/src/card-header.tsx`), and the loop's header
+already returns that data (`extensions/loop/src/header.ts`). Keeping React and OpenTUI in
+the board lets a second client draw the same header without those dependencies:
 
 ```ts
 type HeaderView = { width: number; expanded: boolean };
@@ -264,27 +264,25 @@ type Header = (
 // BoardPorts.headers?: Readonly<Record<string, Header>>, by card kind
 ```
 
-The board owns everything about how a header sits on screen, because the loop's header sets it
-by hand today (`header.tsx:613-621`) and every extension would otherwise copy it:
+The board owns everything about how a header sits on screen, so extensions do not duplicate
+its layout:
 
 - **Block.** The header is one block above the card's events, on the theme's raised surface, with
   one column of padding left and right, and it never shrinks when the tab runs out of rows.
-  `view.width` is the width inside that padding.
-- **Rows.** Each line is exactly one row and is clipped at the width, never wrapped: the loop draws
-  every row with `wrapMode="none"` (`header.tsx:428`, `:452`, `:490`, `:537`). This differs from
-  `PanelLine` in a trigger's preview, which wraps (`ports.ts:185-186`).
-- **Tones.** `PanelTone` has six roles (`ports.ts:177-183`). The loop's header also uses `faint`
-  (`header.tsx:33-40`) and the theme's `secondary` (`header.tsx:464`, `:541`); both join
-  `PanelTone`.
-- **Series.** A part that carries `series: n` takes the theme's n-th series color, as
-  `Theme.seriesOf(theme, n)` gives it today (`header.tsx:491`, `:546`), so a session keeps the
-  color of its lane chip.
-- **Polling and failure.** The board calls the header while the tab is open, once a second as the
-  loop's header polls today (`header.tsx`, `POLL_MS`), and shows its last good lines, or
-  `loading…` before the first, when a call fails or has not returned.
+  `view.width` preserves the headline budget: the pane width less the reserved scrollbar
+  column and the two padding columns. The block itself stretches across the pane.
+- **Rows.** Each line is exactly one row, clipped rather than wrapped. This differs from
+  `PanelLine` in a trigger's preview, which wraps.
+- **Tones.** `PanelTone` includes `faint` and `secondary` alongside the other semantic roles.
+  The board maps those roles to its theme for both headers and trigger previews.
+- **Series.** A part that carries `series: n` takes the theme's n-th series color through
+  `Theme.seriesOf(theme, n)`, so a session keeps the color of its lane chip.
+- **Polling and failure.** The board calls the header while the tab is open, once a second and
+  immediately when expansion or width changes. It keeps the last good lines when a call fails,
+  or shows a bare muted `loading…` before the first result.
 
-Meters stay text: the loop draws them as cells of characters. JCAB-320 adds the types and the
-board's renderer; JCAB-326 ports the loop's header onto them.
+Meters stay text: the loop returns them as cells of characters. Header data, the board's
+renderer, and the loop's data-returning header landed with JCAB-337.
 
 ## Extension API v1
 
@@ -675,6 +673,6 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | A failed module stops database access; a disabled one's deletes are captured | not built | JCAB-323 (persisted declarations, the stop) |
 | Manifest, `api` check before import, per-extension refusal | not built | JCAB-321 |
 | `host` and its typed record wrappers | not built | JCAB-322 |
-| Headers are data, laid out and clipped by the board | not built | JCAB-320 (types, renderer), JCAB-326 (the loop's header) |
+| Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` | built (JCAB-337) |
 | Procedures and shortcuts are files; `{{extension}}` is the only placeholder, and a computed value comes from a command | not built | JCAB-324; JCAB-327 for the stamp |
 | Core reaches files through a port | not built | JCAB-328 |
