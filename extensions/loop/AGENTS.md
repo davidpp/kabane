@@ -27,8 +27,8 @@ Several issues change this package; check main before you edit:
 
 - In flight now: JCAB-263 (a `doctor` check, on its own branch).
 - JCAB-326 ports the loop: values arrive on `host`, `src/header.tsx` becomes header data the
-  board lays out, core's `lint/` moves in (`src/advice.ts`, `src/commands.ts` use it), and the
-  loop leaves the CLI's bundle.
+  board lays out, and the loop leaves the CLI's bundle. Plan lint now lives in `src/lint/`
+  (JCAB-338); `src/advice.ts` and `src/commands.ts` use it.
 - JCAB-324 moves the copilot's loop procedure and shortcut into files in this extension.
 
 Read before writing: `src/extension.ts`, `src/store.ts`, and the entry point you are changing

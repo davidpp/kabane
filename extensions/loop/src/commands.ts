@@ -17,7 +17,6 @@ import {
 	ok,
 	type AgentActivity,
 	isAnswerTo,
-	Lint,
 	type ParsedQuestion,
 	Planner,
 	parseQuestionBody,
@@ -37,6 +36,7 @@ import { Gates } from "./gates";
 import { Land } from "./land";
 import { Landed } from "./landed";
 import { Lenses } from "./lenses";
+import { Lint } from "./lint";
 import { Parent } from "./parent";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";

@@ -1,8 +1,8 @@
 /**
  * @cabane/core
  *
- * Local-first issue tracker core: schemas, storage over the Db port, sync,
- * and plan lint. A host supplies a `DbProvider` through
+ * Local-first issue tracker core: schemas, storage over the Db port, sync.
+ * A host supplies a `DbProvider` through
  * `Runtime.configure` and gets the same behaviour on any SQLite engine.
  */
 
@@ -45,8 +45,6 @@ export type {
 	ModuleContextSection,
 	ModuleSyncTable,
 } from "./module";
-// Lint (plan quality checks)
-export * from "./lint";
 // MCP (tool definitions + stdio / Streamable HTTP servers)
 export {
 	type AfterWrite,

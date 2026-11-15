@@ -1,6 +1,7 @@
 // Deterministic run advice. The host supplies project files and resolved settings; no I/O here.
-import { RiskAnalyzer, type Risk } from "@cabane/core";
+
 import type { LoopConfig } from "./config";
+import { RiskAnalyzer, type Risk } from "./lint";
 import { LoopPlan } from "./plan";
 
 export namespace LoopAdvice {

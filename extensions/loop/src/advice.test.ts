@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import type { Task, TaskState, Risk } from "@cabane/core";
+import type { Task, TaskState } from "@cabane/core";
 import { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
+import type { Risk } from "./lint";
 import { LoopPlan } from "./plan";
 
 const task = (id: string, title: string, state: TaskState = "next"): Task => ({
