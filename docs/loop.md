@@ -205,8 +205,9 @@ Those are your choices of harness, model and what happens to the finished branch
 
 A lens is a Markdown prompt in your dispatch skill,
 `.agents/skills/dispatch/references/lenses/<name>.md`, the same file the skill's close
-review reads; `functional` and `quality` ship with kabane. A skill kabane wrote before, still
-a real directory at `.claude/skills/dispatch/`, is read after it. A lens file can open with
+review reads; `functional` and `quality` ship with kabane. Lenses under
+`.claude/skills/dispatch/references/lenses/` are read too, after `.agents/`: a lens there is
+offered, and a file of the same name under `.agents/` replaces it. A lens file can open with
 frontmatter that says which changes it reviews:
 
 ```markdown
