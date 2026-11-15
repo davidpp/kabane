@@ -9,7 +9,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { Templates } from "@cabane/acp/templates";
 import { ConfigLayers } from "../config-layers";
+import { TRACKER_BLOCK } from "../first-run";
 
 const folders: string[] = [];
 afterEach(() => {
@@ -25,6 +27,13 @@ const setup = () => {
 	mkdirSync(home);
 	expect(Bun.spawnSync(["git", "init", "-q", cwd]).exitCode).toBe(0);
 	writeFileSync(join(cwd, ".kabane/scope"), "pinned\n");
+	// A project kabane set up with this version, so its project checks find nothing.
+	mkdirSync(join(cwd, ".agents/skills/dispatch"), { recursive: true });
+	writeFileSync(
+		join(cwd, ".agents/skills/dispatch/SKILL.md"),
+		`---\nname: dispatch\nmetadata:\n  kabane-template: ${Templates.stamp("dispatch")}\n---\n`,
+	);
+	writeFileSync(join(cwd, "AGENTS.md"), `${TRACKER_BLOCK}\n`);
 	const cli = (...args: string[]) => {
 		const result = Bun.spawnSync(
 			[
