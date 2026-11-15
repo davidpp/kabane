@@ -27,17 +27,20 @@ extension surface that differs from the one `ARCHITECTURE.md` specifies.
    that allows test-only edges (a data module or a client may use the storage adapter in
    tests), not against the order. An added `exceptions` or `relativeImports` entry is a
    forbidden edge the check now lets through: does the brief name it, and does it carry the
-   issue that removes it?
+   issue that removes it? An edge already listed as an exception, or retagged to another
+   issue, is not a new finding.
    ("The layer table is `scripts/layers.ts`, and the gate fails a dependency it does not list")
 2. **Does each thing added to `packages/core` pass all four questions?** Is it the record,
    how the record replicates, or a definition every reader goes through? Do two packages in
-   different layers use it in this diff or on main, not one? Does it run in Workers, with no
+   different layers, core itself not counted, use it in this diff or on main? Does it run in Workers, with no
    Bun, Node or process call reachable from `packages/core/index.ts` beyond the ones
    `CODING_PRINCIPLE.md` names as never called by the hub? Is kabane the only tool that keeps
    it, or should the record hold a URI to it? Name where a "no" sends it. A subpath export
    (`@cabane/core/scope`, `@cabane/core/self`) keeps a call off the barrel but is no more
    Workers-safe, and `ARCHITECTURE.md` already sends both to the host (JCAB-328): something
-   new there that only a device runs is a finding too.
+   new there that only a device runs is a finding too, and needs naming in the verdict table
+   even when it sits beside a file the table lists. Test support is exempt: the `./testing`
+   subpaths and the files core's entry in `scripts/layers.ts` lists as `testSupport`.
    ("Core keeps only what passes four questions")
 3. **Does a new replicated table go in a data module?** A new table in core's
    `storage/migrations.ts` is a finding unless it changes the task row itself. A first-party
