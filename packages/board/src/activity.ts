@@ -3,7 +3,8 @@
 // direct reads, NO server. app.tsx fetches this in the same 5s poll as loadBoard and threads the
 // result down as props.
 import { ok, Planner, parseQuestionBody, type Result } from "@cabane/core";
-import { type ActivityCard, type ActivitySource, isInFlight } from "./ports";
+import { type ActivityCard, type ActivitySource } from "@cabane/extension";
+import { isInFlight } from "./ports";
 
 export namespace BoardActivity {
 	export type AwaitingQuestion = {

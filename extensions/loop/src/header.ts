@@ -7,8 +7,8 @@
 // and continuations.
 //
 // The board polls these lines and maps tones and session series onto its own theme.
-import type { Header, HeaderPart, PanelPart } from "@cabane/board/ports";
 import { ok } from "@cabane/core";
+import type { Header, HeaderPart, PanelPart } from "@cabane/extension";
 import { Budget } from "./budget";
 import { Loop } from "./commands";
 import { Fixer } from "./fixer";

@@ -9,7 +9,9 @@
 	"types": "index.ts",
 	"exports": {
 		".": "./index.ts",
+		"./form-field": "./src/form-field.ts",
 		"./harnesses": "./src/harnesses.ts",
+		"./instructions": "./src/instructions.ts",
 		"./templates": "./src/templates.ts"
 	},
 	"scripts": {
@@ -19,7 +21,6 @@
 	},
 	"dependencies": {
 		"@agentclientprotocol/sdk": "2.4.0",
-		"@cabane/board": "workspace:*",
 		"@cabane/core": "workspace:*",
 		"zod": "3.25.76"
 	},

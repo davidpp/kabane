@@ -1,10 +1,10 @@
 // A card's own tab through the same reducer the keyboard and the mouse drive: its lanes, its
 // actions and the prompt they open, and a question it shows that takes a typed answer.
 import { describe, expect, it } from "bun:test";
+import type { ActivityCard, CardAction } from "@cabane/extension";
 import { CardTab } from "./card-tab";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
-import type { ActivityCard, CardAction } from "./ports";
 import { BoardPrompt } from "./prompt";
 import { BoardTabs } from "./tabs";
 

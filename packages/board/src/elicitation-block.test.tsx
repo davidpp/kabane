@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { type CopilotElicitationAnswer } from "@cabane/acp/form-field";
 import {
 	RGBA,
 	type TextareaRenderable,
@@ -13,12 +14,7 @@ import { CopilotPane } from "./copilot-prompt";
 import { answerKeys, ElicitationBlock } from "./elicitation-block";
 import { ElicitationForm } from "./elicitation-form";
 import type { BoardNav } from "./nav";
-import {
-	type Copilot,
-	type CopilotElicitation,
-	type CopilotElicitationAnswer,
-	noActivity,
-} from "./ports";
+import { type Copilot, type CopilotElicitation, noActivity } from "./ports";
 import { Fixtures } from "./stories/fixtures";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";

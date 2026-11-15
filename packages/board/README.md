@@ -4,6 +4,10 @@ Terminal kanban for the Kabane tracker, built on OpenTUI. It reads the tracker t
 `@cabane/core` and learns about the host's running work, its dispatch targets and its copilot
 through three ports, so the same board runs standalone or inside another host.
 
+Activity, dispatch, header, panel, settings field and shortcut types come from
+`@cabane/extension`. Form types and `FormField` come from `@cabane/acp/form-field`.
+Board-only ports and their no-op defaults remain in `@cabane/board/ports`.
+
 ## Start it
 
 ```ts
@@ -153,7 +157,7 @@ A card may list `actions` (`{ id, key, label, input?, lane? }`) the human can pr
 source's `act` runs them and resolves to the footer notice. The footer leads with them, and the `?`
 sheet lists them as `this card`. The board's own keys on a card's tab come first and cannot be taken
 (`h/l`, `j/k`, `g/G`, `e`, `o`, `w`, `q`, `t`, the digits, the everywhere keys), and `x` is reserved for the
-action whose id is `STOP_ACTION` (`stop`), as it stops the copilot's turn on its transcript: `x` runs
+action whose id is `stop` (`StopAction` in `@cabane/extension`), as it stops the copilot's turn on its transcript: `x` runs
 it while the card is in flight, and does nothing on a card that offers none. An action passes the
 lane on screen. One with `lane: true` is aimed at a single lane: the one on screen, else, on the
 all-lanes view, one of the card's `liveLanes` (every lane when the host lists none). With one, it goes
@@ -640,3 +644,68 @@ directory. Key-driven flows (the `A` prompt against a scripted copilot) go throu
 pair as Alt+key. Not covered here and left to a manual run: a real terminal's keyboard, mouse,
 the host's pasteboard, OSC 52 reaching a real terminal (over ssh or through a multiplexer), and a
 real light/dark switch.
+
+## The ACP copilot
+
+```ts
+import { BoardCopilot } from "@cabane/board";
+
+const copilot = BoardCopilot.create({
+  harness: "claude",
+  scopeDir: "/repos/myapp",         // the session cwd, so the harness reads the project's own rules
+  scopeUri: "kabane://scope/myapp", // omit on an all-scopes board
+  kabaneBin: "/usr/local/bin/kabane", // required, supplied by the host
+  home: "/home/me/.kabane",
+  setup: { configPath: "/home/me/.kabane/config.json", extensions: [] },
+});
+```
+
+Nothing is spawned until the first `run`. The session opens with one stdio MCP server,
+`kabane mcp --scope <uri> --as cabane://actor/agent/<harness>`, so every write goes through
+the same tools and database the board reads and arrives stamped as an agent's.
+
+What the harness is told:
+
+- The instruction block goes out twice on Claude and once everywhere else — as
+  `_meta.systemPrompt.append` on `session/new` where the adapter reads it, and as the first
+  text block of the session's first prompt, which is the channel every harness has. An
+  adapter that ignores `_meta` would otherwise run with no instructions at all.
+- The tool loop is not restated: the kabane MCP server sends `SERVER_INSTRUCTIONS` on
+  initialize, and the block points at it.
+- Every prompt is preceded by `BoardContext.render(context)` — the board's scope, view,
+  section, filters, selected row, marked set, and the assembled briefs. It is refreshed each
+  turn, so "these", "here" and "the selection" always mean what is on screen now.
+
+What comes back, as the port's `CopilotUpdate`:
+
+| Harness update | Port update |
+|---|---|
+| `text`, `thought` | one `text` / `thought` per MESSAGE: ACP streams these as deltas, and a run of them is joined until something else happens |
+| `tool_call` | `tool_call` with its `callId` and `ToolCalls.detail` (plus its end when it already completed or failed) |
+| `tool_call_update`, completed or failed | `tool_result` or `tool_failed`, with the call folded whole; marked `wrote` on a `kabane_*` write tool → the board reloads |
+| `plan` | `plan` → the pane and the transcript show the agent's todo, the footer counts it |
+| `session/request_permission` | `permission` → the board asks, and `answerPermission` unblocks the turn |
+| `elicitation/create` (form), through `onElicitation` | `elicitation` → the board shows the form, and `answerElicitation` unblocks the turn |
+| `$/cancel_request` on either of those, through the callback's `withdrawn` signal | `withdrawn` → the board stops asking; a late answer finds nothing |
+| `mode` (from `current_mode_update` or `config_option_update`) | `mode`, a transcript line naming where the harness moved the session |
+| `notice` | `notice` with its `severity` (`info`, `warning` or `error`) as a field, the line naming the harness |
+| `usage` (from `usage_update`) | `usage` → every footer ends on `ctx 42%` (and the cost); the loop extension reads it for its budget |
+| `commands` (from `available_commands_update`) | `commands`, labelled with the harness → the `/` picker offers them after kabane's shortcuts; a prompt that runs one goes alone, as typed |
+| `stop`, `error` | `done`, `error` |
+
+A write is recognised by the tool call's **title**, never by its result: the two adapters
+disagree on where MCP results land, so the title is scanned for a `kabane_*` write tool name
+(`add`, `edit`, `done`, `link`, `comment`, `log`, `contextAdd`, `contextRemove`), which also
+survives a namespaced `mcp__kabane__kabane_edit`. Reads trigger no reload.
+
+A permission request is carried to the human, never answered here. `session/request_permission`
+becomes a `permission` update on the port and the ACP callback's promise is held open until the
+board calls `answerPermission(id, optionId | null)` — an option id selects it, `null` answers
+`cancelled`. Nothing is ever auto-allowed and there is no timeout; `cancel` and `close` let go of
+whatever is outstanding with a decline, so a turn nobody answered is still cancellable and the
+harness is never left holding a promise that cannot settle.
+
+That update cannot ride the harness's own stream, which is why `Mailbox` exists: the request
+arrives on its own JSON-RPC call and the agent is blocked on the answer, so no further session
+update can come until it has one. `run` drains the mailbox and the stream together, taking
+whichever settles first.

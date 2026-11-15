@@ -1,7 +1,6 @@
 // The copilot against the SDK's in-process agent: what reaches the harness on session/new and on
 // each prompt, and what the board gets back. No subprocess, no npx, same wire as client.test.ts.
 import { describe, expect, it } from "bun:test";
-import { resolve } from "node:path";
 import {
 	type AgentApp,
 	agent as agentApp,
@@ -12,16 +11,16 @@ import {
 	type ToolCallContent,
 	type ToolCallStatus,
 } from "@agentclientprotocol/sdk";
-import type { BoardContext } from "@cabane/board/context";
+import { AcpClient } from "@cabane/acp";
+import { err } from "@cabane/core";
+import type { BoardContext } from "./context";
+import { BoardCopilot } from "./copilot";
+import { CopilotInstructions } from "./copilot-instructions";
 import type {
 	CopilotElicitation,
 	CopilotPermission,
 	CopilotUpdate,
-} from "@cabane/board/ports";
-import { err } from "@cabane/core";
-import { AcpClient } from "./client";
-import { BoardCopilot } from "./copilot";
-import { CopilotInstructions } from "./instructions";
+} from "./ports";
 
 type ToolStep = {
 	kind: "call" | "update";
@@ -335,7 +334,7 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("tells the copilot's shell to run the bin its MCP server runs, quoted when the path needs it", async () => {
+	it("uses the host-supplied bin for both the shell and MCP server, quoting the shell path", async () => {
 		const seen = fresh();
 		const bin = "/Users/me/My Code/kabane/packages/cli/index.ts";
 		const copilot = copilotOver(scriptedAgent(seen), { kabaneBin: bin });
@@ -347,22 +346,6 @@ describe("BoardCopilot", () => {
 			`\`'${bin}' loop start <id>\``,
 		);
 		copilot.close();
-	});
-
-	it("defaults the shell's bin to the MCP server's when none is given, or an empty one", async () => {
-		for (const kabaneBin of [undefined, ""]) {
-			const seen = fresh();
-			const copilot = copilotOver(scriptedAgent(seen), { kabaneBin });
-			await collect(copilot.run("go", context()));
-			const server = (
-				seen.newSession[0] as { mcpServers: { command: string }[] }
-			).mcpServers[0];
-			expect(server?.command).toBe(resolve(process.argv[1] ?? ""));
-			expect(textOf(seen.prompts[0], 0)).toContain(
-				`'${server?.command}' loop start <id>`,
-			);
-			copilot.close();
-		}
 	});
 
 	it("omits --scope when the board is open on every scope", async () => {

@@ -5,8 +5,12 @@
 // The caps follow opencode's util/collapse-tool-output.ts: a head cut by lines and by characters
 // ending in `…`, and an output's tail kept behind an `(N earlier lines)` label, since a command's
 // output says how it went at its end.
+import type {
+	ActivityDiff,
+	ActivityEvent,
+	ActivityToolDetail,
+} from "@cabane/extension";
 import { formatPatch, OMIT_HEADERS, structuredPatch } from "diff";
-import type { ActivityDiff, ActivityEvent, ActivityToolDetail } from "./ports";
 
 export namespace ToolRows {
 	// `unknown` is a call nothing said the end of: a host that records only some ends, or a card that

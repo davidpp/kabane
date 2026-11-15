@@ -9,6 +9,12 @@ import {
 	type TaskLink,
 	type UpstreamLink,
 } from "@cabane/core";
+import type {
+	ActivityCard,
+	HeaderPart,
+	TriggerDescriptor,
+	SettingKind,
+} from "@cabane/extension";
 import { handoffModule } from "@cabane/handoff";
 import {
 	type DecisionMeta,
@@ -17,14 +23,7 @@ import {
 } from "@cabane/questions";
 import type { BoardData } from "../data";
 import type { BoardNav } from "../nav";
-import type {
-	ActivityCard,
-	HeaderPart,
-	TriggerDescriptor,
-	CopilotElicitation,
-	SettingKind,
-	SettingRow,
-} from "../ports";
+import type { CopilotElicitation, SettingRow } from "../ports";
 import type { BoardTabs } from "../tabs";
 
 export namespace Fixtures {

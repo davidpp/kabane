@@ -7,6 +7,11 @@
 // A decision is up to three fields, in this order: its choices (one, or a multi-select), an `Other`
 // box when the asker takes a typed answer (the whole answer when it offers no choices), and an
 // optional reasoning line. The recommended choice carries `★` after its label.
+import type {
+	CopilotFormField,
+	CopilotFormOption,
+	CopilotFormValue,
+} from "@cabane/acp/form-field";
 import { err, ok, type Result } from "@cabane/core";
 import {
 	type ParsedDecision,
@@ -14,12 +19,7 @@ import {
 	type QuestionView,
 	validateAnswer,
 } from "@cabane/questions";
-import type {
-	CopilotElicitation,
-	CopilotFormField,
-	CopilotFormOption,
-	CopilotFormValue,
-} from "./ports";
+import type { CopilotElicitation } from "./ports";
 
 export namespace DecisionForm {
 	/** `id` is the ULID `Questions.answer` takes and the form's id carries; `handle` what the notice calls it. */

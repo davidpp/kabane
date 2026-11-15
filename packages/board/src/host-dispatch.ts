@@ -1,12 +1,13 @@
 // Handing a task to the host's Dispatcher: the triggers it can start on the task, listed into the
 // dispatch overlay, and the one the human confirms. Never silent — success flashes the host's notice,
 // failure the error message.
+import type { Dispatcher } from "@cabane/extension";
 import { useCallback } from "react";
 import type { BoardStore } from "./board-store";
 import { BoardData } from "./data";
 import { BoardNav } from "./nav";
 import { reported, type SetNotice } from "./notice";
-import type { Copilot, Dispatcher } from "./ports";
+import type { Copilot } from "./ports";
 
 const DISPATCH_EFFECTS = ["loadTriggers", "dispatch"] as const;
 export type DispatchEffect = Extract<

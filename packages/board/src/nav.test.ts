@@ -1,16 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import type { TriggerDescriptor } from "@cabane/extension";
 import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
 import type { DetailModel } from "./detail-model";
 import { BoardNav } from "./nav";
-import type {
-	CopilotElicitation,
-	CopilotPermission,
-	TriggerDescriptor,
-} from "./ports";
+import type { CopilotElicitation, CopilotPermission } from "./ports";
 import { BoardPrompt } from "./prompt";
 import { BoardTabs } from "./tabs";
 

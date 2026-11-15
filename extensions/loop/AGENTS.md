@@ -19,9 +19,11 @@ branch. `docs/loop.md` is what a user reads; read the part your change touches.
 Its layer is `extension`; its entry in `scripts/layers.ts` (`"@cabane/loop"`) allows one
 runtime dependency, `@cabane/acp`. Its other `@cabane/*` dependencies are named exceptions
 that JCAB-326 removes by porting the loop onto extension API v1 (`ARCHITECTURE.md`, "Extension
-API v1"). Until then, every value newly used from `@cabane/core`, `board`, `checklist` or
+API v1"). Until then, every value newly used from `@cabane/core`, `checklist` or
 `extension` is new dependence on kabane's internals that JCAB-326 must then undo, whichever
 import line it sits on. Use one only when the brief asks for it, and name it in the handoff.
+Activity, dispatch and header types come from `@cabane/extension`; forms and `FormField`
+come from `@cabane/acp`. The loop has no dependency on the board.
 
 Several issues change this package; check main before you edit:
 

@@ -10,10 +10,11 @@
 // walks it: a question one of a tabbed card's sessions asked lands on that card's tab, pinned under
 // its header, any other on its task's detail view with the question pinned over the brief as a
 // banner. Either way a digit answers it in place, through `Planner.answerQuestion`.
+import { type ActivityCard, type CardAction } from "@cabane/extension";
 import type { BoardActivity } from "./activity";
 import { ElicitationForm } from "./elicitation-form";
 import type { BoardNav } from "./nav";
-import { type ActivityCard, type CardAction, isInFlight } from "./ports";
+import { isInFlight } from "./ports";
 import { BoardPrompt } from "./prompt";
 
 export namespace BoardTabs {

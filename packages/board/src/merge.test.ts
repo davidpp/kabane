@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { err, ok } from "@cabane/core";
-import { Activity, Dispatchers, Headers } from "./merge";
 import type {
 	ActivityCard,
 	ActivitySource,
@@ -8,7 +7,8 @@ import type {
 	Dispatcher,
 	DispatchTarget,
 	TriggerDescriptor,
-} from "./ports";
+} from "@cabane/extension";
+import { Activity, Dispatchers, Headers } from "./merge";
 
 const card = (id: string, startedAt: string): ActivityCard => ({
 	id,

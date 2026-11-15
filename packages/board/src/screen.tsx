@@ -3,6 +3,7 @@
 // detail, a card's events), the copilot's pane and any open prompt under the view, and the overlays
 // floating over whichever view is on screen. Every key and click goes back through BoardInput.
 import type { Result } from "@cabane/core";
+import type { ActivityCard, ActivitySource, Header } from "@cabane/extension";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import {
 	type ReactNode,
@@ -33,7 +34,6 @@ import { type LiftedReader, LiftedReaderSheet } from "./lifted-reader";
 import { BoardNav } from "./nav";
 import { HelpSheet } from "./overlay";
 import { Paging } from "./paging";
-import type { ActivityCard, ActivitySource, Header } from "./ports";
 import { PromptPanel } from "./prompt-field";
 import { SettingsOverlay } from "./settings-overlay";
 import { useSpinnerFrame } from "./spinner";

@@ -10,7 +10,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CopilotInstructions, Harnesses } from "@cabane/acp";
+import { Harnesses } from "@cabane/acp";
+import { CopilotInstructions } from "@cabane/board/copilot-instructions";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { ProjectDirs } from "@cabane/core/scope";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";

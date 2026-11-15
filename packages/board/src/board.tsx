@@ -10,6 +10,7 @@ import {
 	TASK_STATE_DISPLAY,
 	type Task,
 } from "@cabane/core";
+import type { ActivityCard } from "@cabane/extension";
 import {
 	type ColorInput,
 	type MouseEvent,
@@ -26,7 +27,6 @@ import { BoardDecisions } from "./decisions";
 import { StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
-import type { ActivityCard } from "./ports";
 import { Segments } from "./segments";
 import { RUNNING_ECHO, SPINNER_IDLE, useSpinnerFrame } from "./spinner";
 import { type Theme, useTheme } from "./theme";

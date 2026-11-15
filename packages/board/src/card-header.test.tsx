@@ -1,10 +1,10 @@
 /** @jsxImportSource @opentui/react */
 import { describe, expect, test } from "bun:test";
 import { err, ok } from "@cabane/core";
+import type { Header, HeaderView } from "@cabane/extension";
 import { RGBA } from "@opentui/core";
 import { act, type ReactNode, useEffect, useState } from "react";
 import { CardHeader, segmentsOf } from "./card-header";
-import type { Header, HeaderView } from "./ports";
 import { Fixtures } from "./stories/fixtures";
 import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";

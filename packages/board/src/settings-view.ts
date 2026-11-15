@@ -5,7 +5,7 @@
 // The rows are the host's (SettingsSource), read when the view opens and never at board start, and
 // the view is generated from them: a namespace an extension declares appears with no code here. A
 // change is saved through the same port, to the layer the editor picks, and the rows are read again.
-import { FormField } from "./form-field";
+import { FormField } from "@cabane/acp/form-field";
 import { Grid } from "./grid";
 import type { BoardNav } from "./nav";
 import type {

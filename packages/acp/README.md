@@ -1,13 +1,12 @@
 # @cabane/acp
 
-Agent Client Protocol client for the board copilot. It launches one coding harness
+Agent Client Protocol client used by the board’s copilot and the loop. It launches one coding harness
 (Claude Code, Codex, or Gemini) as a subprocess, speaks ACP to it over stdio, and turns a
 prompt into a stream of kabane's own updates. The board consumes that stream and never
 imports the SDK.
 
-`BoardCopilot` is the piece the board actually holds: the `Copilot` port from
-`@cabane/board`, implemented over one lazily started session whose only tool server is
-`kabane mcp`.
+The board's `BoardCopilot` uses this package as a library; its implementation and
+instructions live in `@cabane/board` (see [the board README](../board/README.md#the-acp-copilot)).
 
 ## Pieces
 
@@ -54,84 +53,10 @@ imports the SDK.
   which is how the tests run without a subprocess. `options.onElicitation`, passed only by a
   launcher with a human to ask, is what makes the client advertise form elicitation (see
   Rules); `toElicitationRequest` is the form-to-fields mapping it applies.
-- `CopilotInstructions` — the instruction block, the `/` shortcut templates, and
-  `actorUri(harness)`, the `cabane://actor/agent/<harness>` every write of a session is
-  stamped with. `/split` puts the steps of one change on the issue's checklist and makes each
-  separate deliverable a subtask, under the rule the checklist module also states: an item has
-  no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask. `DISPATCH_TEMPLATE` is the absolute path of `templates/dispatch/`, the generic
-  dispatch skill `/setup-dispatch` fills from a project's own instructions and writes under its
-  `.agents/skills/dispatch/`, adding a `.claude/skills/dispatch` link for Claude Code when the
-  project has a `.claude/` directory or the human asks. `PLACEHOLDERS.md` there says what fills
-  each `{{NAME}}` and is never copied. `GRILL_TEMPLATE` is `templates/grill/`, the skill the copilot follows to walk the
-  human through open questions, asking each through the harness's choice prompt where it has one
-  and reshaping one the decision does not fit with `kabane_ask`'s `replaces`, and copies unchanged to `.agents/skills/grill/` on request.
-- `Mailbox` — a one-consumer queue whose `filled()` is already settled when something is
-  waiting. `BoardCopilot` drains it alongside the harness's stream, which is the only way a
-  permission request can reach the board while the agent is blocked on the answer.
-- `BoardCopilot` — `create(options)` returns the board's `Copilot` plus a `close()` for the
-  board's teardown to kill the harness with. It carries that same actor uri as the port's
-  `actor`, which is how the board glyphs the rows this session wrote.
-
-## The copilot
-
-```ts
-const copilot = BoardCopilot.create({
-  harness: "claude",
-  scopeDir: "/repos/myapp",         // the session cwd, so the harness reads the project's own rules
-  scopeUri: "kabane://scope/myapp", // omit on an all-scopes board
-  kabaneBin: "/usr/local/bin/kabane", // defaults to this process's entry script
-});
-```
-
-Nothing is spawned until the first `run`. The session opens with one stdio MCP server,
-`kabane mcp --scope <uri> --as cabane://actor/agent/<harness>`, so every write goes through
-the same tools and database the board reads and arrives stamped as an agent's.
-
-What the harness is told:
-
-- The instruction block goes out twice on Claude and once everywhere else — as
-  `_meta.systemPrompt.append` on `session/new` where the adapter reads it, and as the first
-  text block of the session's first prompt, which is the channel every harness has. An
-  adapter that ignores `_meta` would otherwise run with no instructions at all.
-- The tool loop is not restated: the kabane MCP server sends `SERVER_INSTRUCTIONS` on
-  initialize, and the block points at it.
-- Every prompt is preceded by `BoardContext.render(context)` — the board's scope, view,
-  section, filters, selected row, marked set, and the assembled briefs. It is refreshed each
-  turn, so "these", "here" and "the selection" always mean what is on screen now.
-
-What comes back, as the port's `CopilotUpdate`:
-
-| Harness update | Port update |
-|---|---|
-| `text`, `thought` | one `text` / `thought` per MESSAGE: ACP streams these as deltas, and a run of them is joined until something else happens |
-| `tool_call` | `tool_call` with its `callId` and `ToolCalls.detail` (plus its end when it already completed or failed) |
-| `tool_call_update`, completed or failed | `tool_result` or `tool_failed`, with the call folded whole; marked `wrote` on a `kabane_*` write tool → the board reloads |
-| `plan` | `plan` → the pane and the transcript show the agent's todo, the footer counts it |
-| `session/request_permission` | `permission` → the board asks, and `answerPermission` unblocks the turn |
-| `elicitation/create` (form), through `onElicitation` | `elicitation` → the board shows the form, and `answerElicitation` unblocks the turn |
-| `$/cancel_request` on either of those, through the callback's `withdrawn` signal | `withdrawn` → the board stops asking; a late answer finds nothing |
-| `mode` (from `current_mode_update` or `config_option_update`) | `mode`, a transcript line naming where the harness moved the session |
-| `notice` | `notice` with its `severity` (`info`, `warning` or `error`) as a field, the line naming the harness |
-| `usage` (from `usage_update`) | `usage` → every footer ends on `ctx 42%` (and the cost); the loop extension reads it for its budget |
-| `commands` (from `available_commands_update`) | `commands`, labelled with the harness → the `/` picker offers them after kabane's shortcuts; a prompt that runs one goes alone, as typed |
-| `stop`, `error` | `done`, `error` |
-
-A write is recognised by the tool call's **title**, never by its result: the two adapters
-disagree on where MCP results land, so the title is scanned for a `kabane_*` write tool name
-(`add`, `edit`, `done`, `link`, `comment`, `log`, `contextAdd`, `contextRemove`), which also
-survives a namespaced `mcp__kabane__kabane_edit`. Reads trigger no reload.
-
-A permission request is carried to the human, never answered here. `session/request_permission`
-becomes a `permission` update on the port and the ACP callback's promise is held open until the
-board calls `answerPermission(id, optionId | null)` — an option id selects it, `null` answers
-`cancelled`. Nothing is ever auto-allowed and there is no timeout; `cancel` and `close` let go of
-whatever is outstanding with a decline, so a turn nobody answered is still cancellable and the
-harness is never left holding a promise that cannot settle.
-
-That update cannot ride the harness's own stream, which is why `Mailbox` exists: the request
-arrives on its own JSON-RPC call and the agent is blocked on the answer, so no further session
-update can come until it has one. `run` drains the mailbox and the stream together, taking
-whichever settles first.
+- `CopilotInstructions` — `actorUri`, `SERVER_NAME`, `DISPATCH_TEMPLATE` and `GRILL_TEMPLATE`.
+  The paths resolve beside this package's templates, also used by the loop.
+- `FormField` and the form types — typed answer validation shared by the board and the loop.
+  `@cabane/acp/form-field` is a light entry point with no ACP SDK on its import path.
 
 ## Session modes
 
@@ -200,7 +125,7 @@ option goes on naming the session's own model while a pinned agent's turns run o
 the human to know outside the agent's reply (a mode it fell back from, a model it swapped) as
 a `notice` session update rather than as a bold line in the agent's text. It reaches the caller
 as `{ type: "notice"; severity; text }`, with `text` the notice's title and description as one
-line and `severity` ACP's open-ended value read as `info`, `warning` or `error`. The loop records it as a `notice` run event; the copilot's mapping is in the table above.
+line and `severity` ACP's open-ended value read as `info`, `warning` or `error`. The loop records it as a `notice` run event; the copilot's mapping is in the board README.
 
 ## Updates
 

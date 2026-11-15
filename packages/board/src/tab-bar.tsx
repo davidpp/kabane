@@ -8,10 +8,10 @@
 // A bar wider than the pane keeps the tracker, the tab on screen and every tab with a `?n`, then as
 // many of the rest as fit in tab order, and counts the others in a `+n` cell; `{` `}` still reach
 // them.
+import type { ActivityCard } from "@cabane/extension";
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
-import type { ActivityCard } from "./ports";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
 import { BoardTabs } from "./tabs";
 import { type Theme, useTheme } from "./theme";

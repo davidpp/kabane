@@ -9,6 +9,14 @@
 // tool call is one row however many events it took, closed until clicked (ToolRows folds them).
 
 import {
+	type ActivityCard,
+	type ActivityDiff,
+	type ActivityEvent,
+	type ActivitySource,
+	type Header,
+	type NoticeSeverity,
+} from "@cabane/extension";
+import {
 	type ColorInput,
 	RGBA,
 	type Renderable,
@@ -34,14 +42,8 @@ import type { BoardNav } from "./nav";
 import { clicks, PermissionBlock } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import {
-	type ActivityCard,
-	type ActivityDiff,
-	type ActivityEvent,
-	type ActivitySource,
-	type Header,
 	type CopilotPermission,
 	isInFlight,
-	type NoticeSeverity,
 	type PlanEntry,
 	PROMPT_EVENT,
 } from "./ports";

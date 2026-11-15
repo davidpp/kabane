@@ -6,6 +6,11 @@
 // are typed into a one-line input, the one thing here that takes the keyboard as text. The keys
 // themselves are nav.ts's (elicitation-form.ts); this only draws the draft, and hands a click on
 // an option or a hint to the same reducers.
+import { FormField } from "@cabane/acp/form-field";
+import type {
+	CopilotFormField,
+	CopilotFormOption,
+} from "@cabane/acp/form-field";
 import {
 	type ColorInput,
 	type InputRenderable,
@@ -13,14 +18,9 @@ import {
 } from "@opentui/core";
 import { type ReactNode, type RefObject, useRef } from "react";
 import { ElicitationForm } from "./elicitation-form";
-import { FormField } from "./form-field";
 import type { BoardNav } from "./nav";
 import { type ClickPart, ClickRow } from "./permission-block";
-import type {
-	CopilotElicitation,
-	CopilotFormField,
-	CopilotFormOption,
-} from "./ports";
+import type { CopilotElicitation } from "./ports";
 import { Segments } from "./segments";
 import { type Theme, useTheme } from "./theme";
 

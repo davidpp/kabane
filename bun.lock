@@ -21,7 +21,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@cabane/acp": "workspace:*",
-        "@cabane/board": "workspace:*",
         "@cabane/checklist": "workspace:*",
         "@cabane/core": "workspace:*",
         "@cabane/extension": "workspace:*",
@@ -37,7 +36,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@agentclientprotocol/sdk": "2.4.0",
-        "@cabane/board": "workspace:*",
         "@cabane/core": "workspace:*",
         "zod": "3.25.76",
       },
@@ -50,8 +48,10 @@
       "name": "@cabane/board",
       "version": "0.1.0",
       "dependencies": {
+        "@cabane/acp": "workspace:*",
         "@cabane/checklist": "workspace:*",
         "@cabane/core": "workspace:*",
+        "@cabane/extension": "workspace:*",
         "@cabane/questions": "workspace:*",
         "@opentui/core": "0.8.2",
         "@opentui/react": "0.8.2",
@@ -59,6 +59,7 @@
         "react": "19.2.3",
       },
       "devDependencies": {
+        "@agentclientprotocol/sdk": "2.4.0",
         "@cabane/handoff": "workspace:*",
         "@cabane/sqlite": "workspace:*",
         "@types/bun": "1.4.0",
@@ -127,7 +128,6 @@
       "name": "@cabane/extension",
       "version": "0.1.0",
       "dependencies": {
-        "@cabane/board": "workspace:*",
         "@cabane/core": "workspace:*",
         "zod": "3.25.76",
       },

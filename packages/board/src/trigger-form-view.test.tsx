@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 import { expect, test } from "bun:test";
+import type { TriggerDescriptor } from "@cabane/extension";
 import { act, type ReactNode, useEffect, useState } from "react";
-import type { TriggerDescriptor } from "./ports";
 import { Fixtures } from "./stories/fixtures";
 import { pumpUntil, renderTest } from "./testing";
 import { TriggerForm } from "./trigger-form";

@@ -9,7 +9,7 @@ import type {
 	Header,
 	Dispatcher,
 	TriggerDescriptor,
-} from "./ports";
+} from "@cabane/extension";
 
 type Named<T> = Readonly<Record<string, T>>;
 

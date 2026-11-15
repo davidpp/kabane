@@ -4,6 +4,11 @@
 // view's records, the copilot's turns, the work running on the board's tasks, the writes to a task
 // and its dispatch to the host, and the screen's renderables. App wires them to the ONE key and click
 // router (board-input), whose reducer output runs through `runEffect` below, and draws Screen.
+import {
+	type ActivitySource,
+	type Header,
+	type Dispatcher,
+} from "@cabane/extension";
 import { useRenderer } from "@opentui/react";
 import { type ReactNode, useCallback } from "react";
 import { useAnnouncement } from "./announcement";
@@ -18,11 +23,8 @@ import { useOpenReader } from "./lifted-reader";
 import type { BoardNav } from "./nav";
 import { type SetNotice, useNotice } from "./notice";
 import {
-	type ActivitySource,
 	type Announcer,
-	type Header,
 	type Copilot,
-	type Dispatcher,
 	noAnnouncer,
 	type OpenRequests,
 	type SettingsSource,

@@ -1,5 +1,4 @@
 import { Harnesses } from "@cabane/acp/harnesses";
-import type { SettingField } from "@cabane/board/ports";
 import {
 	err,
 	ok,
@@ -9,6 +8,7 @@ import {
 	trySync,
 } from "@cabane/core";
 import { mainCheckoutRoot } from "@cabane/core/scope";
+import type { SettingField } from "@cabane/extension";
 import { Settings } from "@cabane/extension";
 import { z } from "zod";
 import {

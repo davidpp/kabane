@@ -7,11 +7,14 @@ import {
 	type ActivityStatus,
 	type CardAction,
 	type NoticeSeverity,
-	STOP_ACTION,
-} from "@cabane/board/ports";
+	type StopAction,
+} from "@cabane/extension";
+
 import { err, ok, type Result } from "@cabane/core";
 import { Loop } from "./commands";
 import { RunStore } from "./store";
+
+const STOP_ACTION: StopAction = "stop";
 
 // A board polls every few seconds, and every run ever started on the device stays on disk.
 const RECENT_RUNS = 10;

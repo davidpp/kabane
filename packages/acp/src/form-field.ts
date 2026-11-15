@@ -2,7 +2,42 @@
 // a form read it: the board's form (elicitation-form.ts) and the loop's tracker questions
 // (extensions/loop's elicitation.ts). One form is then judged alike wherever it is answered.
 import { err, ok, type Result, trySync } from "@cabane/core";
-import type { CopilotFormField } from "./ports";
+
+// One option of a choice field: `value` is what the harness is answered with, `label` what the human
+// reads.
+export type CopilotFormOption = {
+	value: string;
+	label: string;
+	description?: string;
+};
+
+// One field of a harness's form, as the harness described it: `title` and `description` verbatim.
+// `choice` picks one option, `choices` any number of them.
+export type CopilotFormField = {
+	key: string;
+	title: string;
+	description?: string;
+	required: boolean;
+} & (
+	| { type: "text"; minLength?: number; maxLength?: number; pattern?: string }
+	| { type: "number"; integer: boolean; minimum?: number; maximum?: number }
+	| { type: "boolean" }
+	| { type: "choice"; options: readonly CopilotFormOption[] }
+	| {
+			type: "choices";
+			options: readonly CopilotFormOption[];
+			minItems?: number;
+			maxItems?: number;
+	  }
+);
+
+export type CopilotFormValue = string | number | boolean | readonly string[];
+
+// The human's answer to a form. `content` holds only the fields they answered: an optional field
+// left empty is absent, never filled in for them.
+export type CopilotElicitationAnswer =
+	| { action: "accept"; content: Readonly<Record<string, CopilotFormValue>> }
+	| { action: "decline" };
 
 export namespace FormField {
 	/** A field answered by typing: text, or a number. */
