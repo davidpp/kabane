@@ -8,8 +8,6 @@ import {
 import { BoardActivity } from "./activity";
 import { noActivity } from "./ports";
 
-const TEST_BASE = "/unused";
-
 const card = (over: Partial<ActivityCard> = {}): ActivityCard => ({
 	id: "c1",
 	kind: "runs",
@@ -169,7 +167,7 @@ describe("BoardActivity.inFlightForTask / cardsForTask (pure)", () => {
 
 describe("BoardActivity.loadActivity", () => {
 	it("returns empty maps when nothing is in flight", async () => {
-		const result = await BoardActivity.loadActivity(TEST_BASE, noActivity);
+		const result = await BoardActivity.loadActivity(noActivity);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.value.cards).toEqual([]);
@@ -178,7 +176,6 @@ describe("BoardActivity.loadActivity", () => {
 
 	it("indexes the source's cards", async () => {
 		const result = await BoardActivity.loadActivity(
-			TEST_BASE,
 			sourceOf([card({ id: "a", taskId: "t1" })]),
 		);
 		expect(result.ok).toBe(true);
@@ -191,7 +188,7 @@ describe("BoardActivity.loadActivity", () => {
 		const broken: ActivitySource = {
 			load: async () => err(new Error("host down")),
 		};
-		const result = await BoardActivity.loadActivity(TEST_BASE, broken);
+		const result = await BoardActivity.loadActivity(broken);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.value.cards).toEqual([]);
@@ -211,7 +208,7 @@ describe("BoardActivity.loadActivity", () => {
 			asker: "claude",
 			askedAt: "2026-10-10T00:00:00Z",
 		};
-		const result = await BoardActivity.loadActivity(TEST_BASE, {
+		const result = await BoardActivity.loadActivity({
 			load: async () => err(new Error("cards unavailable")),
 			questions: async () =>
 				ok([
@@ -233,7 +230,7 @@ describe("BoardActivity.loadActivity", () => {
 	});
 
 	it("a failed question read keeps the cards", async () => {
-		const result = await BoardActivity.loadActivity(TEST_BASE, {
+		const result = await BoardActivity.loadActivity({
 			...sourceOf([card()]),
 			questions: async () => err(new Error("questions unavailable")),
 		});
@@ -243,7 +240,7 @@ describe("BoardActivity.loadActivity", () => {
 	});
 
 	it("keeps a card's question even without a task", async () => {
-		const result = await BoardActivity.loadActivity(TEST_BASE, {
+		const result = await BoardActivity.loadActivity({
 			...sourceOf([card()]),
 			questions: async () =>
 				ok([

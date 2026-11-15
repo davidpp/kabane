@@ -54,7 +54,6 @@ export namespace BoardActivity {
 	// Load everything in flight. Reads are lenient — the board is a glance surface, so a failing
 	// activity source must not blank the questions.
 	export const loadActivity = async (
-		_basePath: string,
 		source: ActivitySource,
 	): Promise<Result<ActivityMap>> => {
 		const cards = await source.load();
