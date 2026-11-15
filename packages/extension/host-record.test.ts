@@ -6,9 +6,12 @@ import {
 	KABANE_TOOLS,
 	Planner,
 	type Result,
+	type CoreToolInputShapes,
 	TaskLinkSchema,
 } from "@cabane/core";
 import { configureTestRuntime } from "@cabane/core/testing";
+import type { z } from "zod";
+import type { Host } from "./host";
 import { createHostRecord } from "./host-record";
 
 const homes: string[] = [];
@@ -53,9 +56,14 @@ it("maps every wrapper to the full tool result in a real database", async () => 
 			}),
 		),
 	).toMatchObject({ id: parent.id, needsReview: true, state: "in_progress" });
-	const comment = value(
-		await record.comment({ id: parent.id, body: "From host", kind: "review" }),
-	);
+	const commentInput = {
+		id: parent.id,
+		body: "From host",
+		kind: "review",
+		text: "ignored alias",
+		content: "ignored legacy alias",
+	};
+	const comment = value(await record.comment(commentInput));
 	expect(comment).toMatchObject({
 		taskId: parent.id,
 		content: "From host",
@@ -109,19 +117,17 @@ it("maps every wrapper to the full tool result in a real database", async () => 
 		id: parent.id,
 		state: "done",
 	});
+	// JavaScript callers cannot change the named wrappers' full result shape.
+	const listInput = {
+		responseFormat: "concise",
+		cursor: "ignored",
+		includeClosed: true,
+	};
+	expect(value(await record.list(listInput))).toBeArray();
 	expect(
-		value(
-			await record.call("kabane_list", {
-				responseFormat: "concise",
-				cursor: "ignored",
-				includeClosed: true,
-			}),
-		),
-	).toBeArray();
+		value(await record.call("kabane_list", { responseFormat: "concise" })),
+	).not.toBeArray();
 	expect((await record.get({ id: "" })).ok).toBe(false);
-	expect(
-		(await record.context({ id: parent.id, sections: ["description"] })).ok,
-	).toBe(false);
 	expect((await record.workLogs({ id: parent.id, limit: 0 })).ok).toBe(false);
 	expect(await record.call("missing", {})).toMatchObject({
 		ok: false,
@@ -155,7 +161,57 @@ it("refuses every record method before the runtime is configured", async () => {
 			ok: false,
 			error: {
 				message:
-					"the runtime is not configured yet; call it from a command, a board port or a tool handler, not from the factory",
+					"the runtime is not configured yet for this host; call record after the factory returns and the store opens (standalone commands do not open it automatically)",
 			},
 		});
+});
+
+// The tool schema is the source of truth; these assertions compile in the package gate.
+type Input<K extends keyof CoreToolInputShapes> = Omit<
+	z.input<z.ZodObject<CoreToolInputShapes[K]>>,
+	"responseFormat" | "cursor"
+>;
+type NamedInputs = {
+	get: Input<"get">;
+	list: Input<"list">;
+	edit: Input<"edit">;
+	done: Input<"done">;
+	// The wrapper requires body because it removes the two alternative spellings.
+	comment: Omit<Input<"comment">, "text" | "content" | "body"> &
+		Required<Pick<Input<"comment">, "body">>;
+	log: Input<"workLog">;
+	// Sections select concise output, which the full-format wrapper does not expose.
+	context: Omit<Input<"context">, "sections">;
+	upstreamLink: Input<"upstreamLink">;
+	links: Input<"linkList">;
+	upstreamLinks: Input<"upstreamList">;
+	workLogs: Input<"logList">;
+};
+type Equal<A, B> =
+	(<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+		? true
+		: false;
+type Flatten<T> = { [K in keyof T]: T[K] };
+type InputParity = {
+	[K in keyof NamedInputs]: Equal<
+		Flatten<Parameters<Host.Record[K]>[0]>,
+		Flatten<NamedInputs[K]>
+	>;
+};
+
+it("holds every named wrapper input equal to its tool schema", () => {
+	const parity: InputParity = {
+		get: true,
+		list: true,
+		edit: true,
+		done: true,
+		comment: true,
+		log: true,
+		context: true,
+		upstreamLink: true,
+		links: true,
+		upstreamLinks: true,
+		workLogs: true,
+	};
+	expect(Object.values(parity).every(Boolean)).toBe(true);
 });

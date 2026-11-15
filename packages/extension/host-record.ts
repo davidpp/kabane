@@ -10,37 +10,44 @@ import type { Host } from "./host";
 
 export const createHostRecord = (
 	tools: readonly ToolDef[] | (() => readonly ToolDef[]),
-	context: ToolContext | (() => ToolContext | undefined),
+	context:
+		| ToolContext
+		| (() => ToolContext | undefined | Promise<ToolContext | undefined>),
 ): Host.Record => {
 	const call: Host.Record["call"] = async (name, input) => {
-		const ctx = typeof context === "function" ? context() : context;
+		const ctx = typeof context === "function" ? await context() : context;
 		if (!ctx)
 			return err(
 				new Error(
-					"the runtime is not configured yet; call it from a command, a board port or a tool handler, not from the factory",
+					"the runtime is not configured yet for this host; call record after the factory returns and the store opens (standalone commands do not open it automatically)",
 				),
 			);
 		const tool = (typeof tools === "function" ? tools() : tools).find(
 			(tool) => tool.name === name,
 		);
 		if (!tool) return err(new Error(`Unknown tool: ${name}`));
-		// Presentation cannot change the return type, even for JavaScript callers.
-		const full =
-			typeof input === "object" && input !== null && !Array.isArray(input)
-				? Object.fromEntries(
-						Object.entries(input).filter(
-							([key]) => key !== "responseFormat" && key !== "cursor",
-						),
-					)
-				: input;
-		return callTool(tool, full, ctx);
+		return callTool(tool, input, ctx);
 	};
 	// ToolDef erases handler results. These named wrappers pin the full-format contract;
 	// real-database tests exercise every mapping and its returned record.
+	// Strip presentation only here: call must preserve a module's paging inputs.
 	const wrap =
 		<T>(name: string) =>
 		(input: unknown): Promise<Result<T>> =>
-			call(name, input) as Promise<Result<T>>;
+			call(
+				name,
+				typeof input === "object" && input !== null && !Array.isArray(input)
+					? Object.fromEntries(
+							Object.entries(input).filter(
+								([key]) =>
+									key !== "responseFormat" &&
+									key !== "cursor" &&
+									(name !== "kabane_comment" ||
+										(key !== "text" && key !== "content")),
+							),
+						)
+					: input,
+			) as Promise<Result<T>>;
 	return {
 		get: wrap("kabane_get"),
 		list: wrap("kabane_list"),

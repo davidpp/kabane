@@ -87,7 +87,6 @@ export namespace Host {
 		id: string;
 		deref?: boolean;
 		includeSubtasks?: boolean;
-		sections?: string[];
 	};
 	export type UpstreamLinkInput = {
 		id: string;
@@ -115,11 +114,11 @@ export namespace Host {
 		/** kabane_log */
 		log(input: {
 			id: string;
-			refs?: readonly { uri: string; label?: string }[];
+			refs?: { uri: string; label?: string }[];
 			commit?: string;
 			note?: string;
 		}): Promise<Result<TaskWorkLog>>;
-		/** kabane_context; sections, like the tool, is refused in full format. */
+		/** kabane_context, full format. */
 		context(
 			input: ContextInput,
 		): Promise<Result<{ id: string; markdown: string }>>;
@@ -134,7 +133,7 @@ export namespace Host {
 			id: string;
 			limit?: number;
 		}): Promise<Result<TaskWorkLog[]>>;
-		/** Any registered tool, including data modules, in full format. */
+		/** Any registered tool, including data modules; input passes through unchanged. */
 		call(tool: string, input: unknown): Promise<Result<unknown>>;
 	};
 }
