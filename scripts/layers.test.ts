@@ -375,3 +375,102 @@ test("production imports permit declared runtime dependency subpaths", () => {
 	write(root, "packages/sqlite/index.ts", 'import "@cabane/core/db";');
 	expect(checkLayers(root)).toEqual([]);
 });
+
+for (const specifier of [
+	"@cabane/core/testing",
+	"@cabane/core/testing/issue-corpus",
+	"@cabane/core/testing/fixtures/issue-corpus/issues.json",
+]) {
+	test.each([
+		`import "${specifier}";`,
+		`import type { Port } from "${specifier}";`,
+		`export { Port } from "${specifier}";`,
+		`export type { Port } from "${specifier}";`,
+		`const support = import("${specifier}");`,
+		`const support = require("${specifier}");`,
+		`import support = require("${specifier}");`,
+		`type Port = import("${specifier}").Port;`,
+		`const support = import(\`${specifier}\`);`,
+	])("production imports reject core test support: %s", (source) => {
+		const root = workspace();
+		manifest(root, "packages/sqlite", "@cabane/sqlite", {
+			"@cabane/core": "workspace:*",
+		});
+		write(root, "packages/sqlite/index.ts", `\n${source}`);
+		expect(checkLayers(root)).toEqual([
+			`@cabane/sqlite -> @cabane/core: production import ${specifier} in packages/sqlite/index.ts:2 uses test support; move it to a test or listed test-support file.`,
+		]);
+	});
+}
+
+test.each([
+	"../testing",
+	"../testing.ts",
+	"../testing.js",
+	"../testing/issue-corpus-harness",
+	"../storage/../testing/issue-corpus-seed.ts",
+	"@cabane/core/testing",
+])("core production files reject their own test support: %s", (specifier) => {
+	const root = workspace();
+	manifest(root, "packages/core", "@cabane/core");
+	write(root, "packages/core/storage/read.ts", `import "${specifier}";`);
+	expect(checkLayers(root)).toEqual([
+		`@cabane/core -> @cabane/core: production import ${specifier} in packages/core/storage/read.ts:1 uses test support; move it to a test or listed test-support file.`,
+	]);
+});
+
+test("tests and listed support permit core test support; similar names are production", () => {
+	const root = workspace();
+	manifest(root, "packages/core", "@cabane/core");
+	for (const file of [
+		"testing.ts",
+		"storage/read.test.ts",
+		"storage/read.test.tsx",
+	]) {
+		write(
+			root,
+			`packages/core/${file}`,
+			'import "@cabane/core/testing";\nimport "./testing/issue-corpus-harness";',
+		);
+	}
+	write(
+		root,
+		"packages/core/index.ts",
+		'import "./testing-other";\nimport "@cabane/core/testing-other";',
+	);
+	expect(checkLayers(root)).toEqual([]);
+	write(
+		root,
+		"packages/core/testing-other.ts",
+		'import "@cabane/core/testing";',
+	);
+	expect(checkLayers(root)).toEqual([
+		"@cabane/core -> @cabane/core: production import @cabane/core/testing in packages/core/testing-other.ts:1 uses test support; move it to a test or listed test-support file.",
+	]);
+});
+
+test("extension packages enforce the rule and listed support can import subpaths", () => {
+	const root = workspace();
+	const policy = {
+		...rules,
+		"@cabane/sample": {
+			layer: "extension",
+			dependencies: ["@cabane/core"],
+			devDependencies: [],
+			testSupport: ["extensions/sample/support.ts"],
+		},
+	};
+	manifest(root, "extensions/sample", "@cabane/sample", {
+		"@cabane/core": "workspace:*",
+	});
+	for (const file of ["support.ts", "index.test.ts", "index.ts"]) {
+		write(
+			root,
+			`extensions/sample/${file}`,
+			'import "@cabane/core/testing/issue-corpus";',
+		);
+	}
+	expect(checkWorkspaceLayers(root, policy)).toEqual([
+		"@cabane/sample -> @cabane/core: production import @cabane/core/testing/issue-corpus in extensions/sample/index.ts:1 uses test support; move it to a test or listed test-support file.",
+	]);
+});
