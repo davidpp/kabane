@@ -264,7 +264,9 @@ afterAll(() => configureTestRuntime());
 // ============================================================
 
 describe("registering modules", () => {
-	afterEach(() => configureTestRuntime());
+	// Before, not after: testing.ts configures the runtime once per process, on its first import,
+	// and a CLI test file run earlier leaves it with the CLI's modules.
+	beforeEach(() => configureTestRuntime());
 
 	const refused = (modules: readonly KabaneModule[]): string => {
 		const configured = Runtime.configure({
