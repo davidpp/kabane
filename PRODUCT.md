@@ -3,24 +3,22 @@
 ## North Stars
 
 Getting good work out of agents is a craft that changes every few months, across vendors,
-harnesses and models that come and go. The tools that run agents keep their state while a
-session or a terminal is open; none of them keeps a record of the work that outlives both.
-Base kabane is that record: what is to be done, who did what and why, the questions put to
-the human and what was handed off, kept in step across a person's machines and agents so
-that any agent can pick up where another left off. Practice, meaning how people plan the
+harnesses and models that come and go. Base kabane keeps a record of the work that outlives
+each session, terminal and vendor: what is to be done, who did what and why, the questions
+put to the human and what was handed off, kept in step across a person's machines and agents
+so that any agent can pick up where another left off. Practice, meaning how people plan the
 work and drive agents through it, is built on top of that record, and so are the screens
 people work in; both change or get replaced while the record stays. Kabane is one piece
 that composes with the tools people already use, never the whole of them.
 
 In priority order; when two conflict, the higher one wins.
 
-1. **A base to build practice on.** Base kabane keeps what any way of working with agents
-   needs and the tools around it do not keep: the record of the work, in step across
-   machines and agents. Practice, from planning a project to driving agents through its
-   issues, comes as extensions and skills that a person can take, replace or leave out, and
-   each one changes at its own pace. Kabane is complete without any of them, the ones it
-   offers included. Where someone else already does a practice well, kabane points to theirs
-   instead of redoing it.
+1. **A base to build practice on.** Base kabane keeps what practice builds on: the record of
+   the work, in step across machines and agents. Practice, from planning a project to
+   driving agents through its issues, comes as extensions and skills that a person can take,
+   replace or leave out, and each one changes at its own pace. Kabane is complete without
+   any of them, the ones it offers included. Where someone else already does a practice
+   well, kabane points to theirs instead of redoing it.
    *Rests on:* good practice for agent-driven work changing faster than the record of it
    should; people assembling their own way of working from tools they chose; a piece that
    composes with the rest outliving a tool that tries to be all of it. *Revisit if:* people
