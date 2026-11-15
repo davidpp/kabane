@@ -334,7 +334,7 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("tells the copilot's shell to run the bin its MCP server runs, quoted when the path needs it", async () => {
+	it("uses the host-supplied bin for both the shell and MCP server, quoting the shell path", async () => {
 		const seen = fresh();
 		const bin = "/Users/me/My Code/kabane/packages/cli/index.ts";
 		const copilot = copilotOver(scriptedAgent(seen), { kabaneBin: bin });
@@ -346,22 +346,6 @@ describe("BoardCopilot", () => {
 			`\`'${bin}' loop start <id>\``,
 		);
 		copilot.close();
-	});
-
-	it("uses the host-supplied bin for both the shell and MCP server", async () => {
-		for (const kabaneBin of [BIN, "/host/kabane"]) {
-			const seen = fresh();
-			const copilot = copilotOver(scriptedAgent(seen), { kabaneBin });
-			await collect(copilot.run("go", context()));
-			const server = (
-				seen.newSession[0] as { mcpServers: { command: string }[] }
-			).mcpServers[0];
-			expect(server?.command).toBe(kabaneBin);
-			expect(textOf(seen.prompts[0], 0)).toContain(
-				`'${server?.command}' loop start <id>`,
-			);
-			copilot.close();
-		}
 	});
 
 	it("omits --scope when the board is open on every scope", async () => {

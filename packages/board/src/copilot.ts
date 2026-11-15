@@ -96,9 +96,6 @@ export namespace BoardCopilot {
 		return name !== undefined && commands.some((c) => c.name === name);
 	};
 
-	// The executable both the MCP server and the copilot's shell run kabane as.
-	const kabaneBin = (options: Options): string => options.kabaneBin;
-
 	// The session's only tool server. `--as` is what stamps every write it makes with this
 	// session's actor.
 	const mcpServer = (
@@ -106,7 +103,7 @@ export namespace BoardCopilot {
 		actor: string,
 	): AcpClient.StdioServer => ({
 		name: HarnessInstructions.SERVER_NAME,
-		command: kabaneBin(options),
+		command: options.kabaneBin,
 		args: [
 			"mcp",
 			...(options.scopeUri ? ["--scope", options.scopeUri] : []),
@@ -441,7 +438,7 @@ export namespace BoardCopilot {
 		const instructions = (): string =>
 			(built ??= CopilotInstructions.systemPrompt(
 				options.setup,
-				kabaneBin(options),
+				options.kabaneBin,
 			));
 
 		// Lazy on purpose: no harness process exists until the human actually asks for something,

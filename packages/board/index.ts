@@ -16,23 +16,6 @@ export type {
 	SettingRow,
 	SettingsSource,
 } from "./src/ports";
-export type {
-	ActivityCard,
-	ActivityEvent,
-	ActivitySource,
-	ActivityStatus,
-	Header,
-	HeaderView,
-	HeaderPart,
-	CopilotShortcut,
-	Dispatcher,
-	DispatchTarget,
-	PanelLine,
-	PanelPart,
-	PanelTone,
-	TriggerDescriptor,
-	TriggerInput,
-} from "@cabane/extension";
 export { noActivity, noAnnouncer, noCopilot, noDispatcher } from "./src/ports";
 export { type SetupDeps, startSetup } from "./src/setup";
 export { SetupPlan } from "./src/setup-plan";

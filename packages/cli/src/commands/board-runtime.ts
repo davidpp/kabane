@@ -2,10 +2,7 @@ import { Harnesses } from "@cabane/acp";
 import {
 	BoardCopilot,
 	Activity,
-	type ActivitySource,
 	type BoardDeps,
-	type Header,
-	type Dispatcher,
 	Dispatchers,
 	Headers,
 	type OpenRequests,
@@ -22,6 +19,9 @@ import {
 } from "@cabane/core";
 import { Self } from "@cabane/core/self";
 import {
+	type ActivitySource,
+	type Header,
+	type Dispatcher,
 	type Extension,
 	failure,
 	flagString,
