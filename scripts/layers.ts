@@ -18,15 +18,12 @@ type Rule = {
 export const layers: Readonly<Record<string, Rule>> = {
 	"@cabane/core": {
 		layer: "core",
-		relativeImports: {
-			"packages/core/storage/context-pages.test.ts": {
-				"../../cli/issue-corpus-harness":
-					"JCAB-331: replace relative cross-package imports",
-			},
-		},
 		dependencies: [],
 		devDependencies: ["@cabane/sqlite"],
-		testSupport: ["packages/core/testing.ts"],
+		testSupport: [
+			"packages/core/testing.ts",
+			"packages/core/testing/issue-corpus-seed.ts",
+		],
 	},
 	"@cabane/sqlite": {
 		layer: "storage adapter",
@@ -78,25 +75,9 @@ export const layers: Readonly<Record<string, Rule>> = {
 	kabane: {
 		layer: "host",
 		relativeImports: {
-			"packages/cli/issue-corpus-seed.ts": {
-				"../core/testing/fixtures/issue-corpus/issues.json":
-					"JCAB-331: replace relative cross-package imports",
-			},
-			"packages/cli/issue-corpus.test.ts": {
-				"../core/testing/fixtures/issue-corpus/issues.json":
-					"JCAB-331: replace relative cross-package imports",
-				"../core/testing/fixtures/issue-corpus/manifest.json":
-					"JCAB-331: replace relative cross-package imports",
-			},
-			"packages/cli/review-fixes.test.ts": {
-				"../core/storage/oplog":
-					"JCAB-331: replace relative cross-package imports",
-				"../core/sync/apply":
-					"JCAB-331: replace relative cross-package imports",
-				"../core/testing": "JCAB-331: replace relative cross-package imports",
-			},
 			"packages/cli/src/update-process.ts": {
-				"../../core/result": "JCAB-331: replace relative cross-package imports",
+				"../../core/result":
+					"JCAB-334: let the release fixtures resolve core, or make update-process dependency-free",
 			},
 		},
 		dependencies: [
@@ -116,12 +97,6 @@ export const layers: Readonly<Record<string, Rule>> = {
 	},
 	"cabane-worker": {
 		layer: "hub",
-		relativeImports: {
-			"packages/worker/src/concise-mcp.test.ts": {
-				"../../core/testing/fixtures/issue-corpus/issues.json":
-					"JCAB-331: replace relative cross-package imports",
-			},
-		},
 		dependencies: [
 			"@cabane/core",
 			"@cabane/checklist",

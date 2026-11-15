@@ -1,8 +1,8 @@
 import { SELF } from "cloudflare:test";
 import { ContextPageSchema } from "@cabane/core";
+import issues from "@cabane/core/testing/fixtures/issue-corpus/issues.json";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import issues from "../../core/testing/fixtures/issue-corpus/issues.json";
 import { HUMAN, withAccess } from "./test-access";
 
 const toolResult = z.object({

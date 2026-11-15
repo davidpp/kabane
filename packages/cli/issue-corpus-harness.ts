@@ -1,7 +1,6 @@
-import { cpSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { err, ok } from "@cabane/core";
+import { createCorpusTracker as createTracker } from "@cabane/core/testing/issue-corpus";
 
 export const CLI_BIN = join(import.meta.dir, "index.ts");
 export const payloadMetrics = (text: string) => ({
@@ -10,14 +9,9 @@ export const payloadMetrics = (text: string) => ({
 	calls: 1,
 });
 
-type Variant = { synthetic?: boolean };
-
-const tracker = (root: string, ids: string[]) => {
-	const home = join(root, "tracker");
-	const cwd = join(root, "project");
-	const env = { ...process.env, HOME: join(root, "home"), KABANE_HOME: home };
-	const close = () => rmSync(root, { recursive: true, force: true });
-	const run = async (...args: string[]) => {
+const runCli =
+	(cwd: string, env: Record<string, string | undefined>) =>
+	async (...args: string[]) => {
 		const proc = Bun.spawn([process.execPath, CLI_BIN, ...args], {
 			cwd,
 			env,
@@ -31,70 +25,24 @@ const tracker = (root: string, ids: string[]) => {
 		]);
 		return { out, stderr, code };
 	};
-	return { root, home, cwd, env, run, close, ids };
-};
 
-/** Owns the home/database lifecycle; no caller-supplied tracker paths. */
-export const createCorpusTracker = async (options: Variant = {}) => {
-	const root = mkdtempSync(join(tmpdir(), "kabane-corpus-"));
-	const { cwd, env, run, close } = tracker(root, []);
-	mkdirSync(join(cwd, ".kabane"), { recursive: true });
-	mkdirSync(env.HOME, { recursive: true });
-	writeFileSync(join(cwd, ".kabane", "scope"), "corpus\n");
-	const init = await run(
-		"init",
-		"--actor",
-		"cabane://actor/human/fixture",
-		"--device",
-		"fixture",
-	);
-	if (init.code !== 0) {
-		close();
-		return err(new Error(init.stderr));
-	}
-	const processSeed = Bun.spawn(
-		[
-			process.execPath,
-			join(import.meta.dir, "issue-corpus-seed.ts"),
-			root,
-			options.synthetic ? "synthetic" : "public",
-		],
-		{ cwd, env, stdout: "pipe", stderr: "pipe" },
-	);
-	const [out, stderr, code] = await Promise.all([
-		new Response(processSeed.stdout).text(),
-		new Response(processSeed.stderr).text(),
-		processSeed.exited,
-	]);
-	if (code !== 0) {
-		close();
-		return err(new Error(stderr));
-	}
-	const ids: unknown = JSON.parse(out);
-	if (
-		!Array.isArray(ids) ||
-		!ids.every((id): id is string => typeof id === "string")
-	) {
-		close();
-		return err(new Error("Seeder returned invalid task IDs"));
-	}
-	return ok(tracker(root, ids));
-};
-
-/**
- * Seeds one tracker and hands out byte copies of it, for files that need a fresh
- * corpus per case: seeding costs about a second, a copy a few milliseconds. Copies
- * share task IDs. File refs in the seeded rows keep naming the template's reference
- * files, which no test writes, so `close()` the template only after its copies.
- */
-export const createCorpusTemplate = async (options: Variant = {}) => {
-	const seeded = await createCorpusTracker(options);
+export const createCorpusTracker = async (
+	options: { synthetic?: boolean } = {},
+) => {
+	const seeded = await createTracker({
+		...options,
+		initialize: async ({ cwd, env }) => {
+			const init = await runCli(cwd, env)(
+				"init",
+				"--actor",
+				"cabane://actor/human/fixture",
+				"--device",
+				"fixture",
+			);
+			return init.code === 0 ? ok(undefined) : err(new Error(init.stderr));
+		},
+	});
 	if (!seeded.ok) return seeded;
-	const template = seeded.value;
-	const clone = () => {
-		const root = mkdtempSync(join(tmpdir(), "kabane-corpus-"));
-		cpSync(template.root, root, { recursive: true });
-		return tracker(root, template.ids);
-	};
-	return ok({ clone, close: template.close });
+	const tracker = seeded.value;
+	return ok({ ...tracker, run: runCli(tracker.cwd, tracker.env) });
 };
