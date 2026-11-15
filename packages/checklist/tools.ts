@@ -12,7 +12,7 @@ export const checklistTools: readonly ToolDef[] = [
 		name: "kabane_checklist",
 		kind: "read",
 		description:
-			"Read a task's live checklist items in list order (short id or ULID). The brief's checklist.items section is the text form.",
+			"Read a task's live checklist items by task short id or ULID, in list order. The brief's checklist.items section is the text form.",
 		input: { id: z.string().min(1) },
 		handler: (args, ctx) => Checklist.list(ctx.basePath, args.id),
 	}),

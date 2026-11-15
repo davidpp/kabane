@@ -396,7 +396,7 @@ Parameters:
 - id: ${ID_HINT}
 - title, description, state, priority, kind, assignee, scopeUri, parentTaskId, tags, dueDate: as in kabane_add
 - assignee 'none' and parentTaskId 'none' clear the field
-- needsReview: Set or clear the review flag
+- needsReview: Flag or unflag the issue for human review
 - responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
 	input: {
 		id: z.string().min(1),
@@ -629,7 +629,7 @@ Parameters:
 const linkList = define({
 	name: CORE_TOOL_NAMES.linkList,
 	kind: "read",
-	description: `List a task’s links in both directions.
+	description: `List a task's links in both directions.
 
 Parameters:
 - id: ${ID_HINT}`,
@@ -644,7 +644,7 @@ Parameters:
 const upstreamList = define({
 	name: CORE_TOOL_NAMES.upstreamList,
 	kind: "read",
-	description: `List a task’s upstream links.
+	description: `List a task's upstream links.
 
 Parameters:
 - id: ${ID_HINT}`,
@@ -659,15 +659,19 @@ Parameters:
 const logList = define({
 	name: CORE_TOOL_NAMES.logList,
 	kind: "read",
-	description: `List a task’s work logs, oldest first.
+	description: `List a task's work logs, oldest first; limit selects the newest entries.
 
 Parameters:
 - id: ${ID_HINT}`,
-	input: { id: z.string().min(1) },
+	input: { id: z.string().min(1), limit: z.number().int().min(1).optional() },
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
-		return Planner.getWorkLogs(ctx.basePath, id.value);
+		const logs = await Planner.getWorkLogs(ctx.basePath, id.value);
+		if (!logs.ok) return logs;
+		return ok(
+			args.limit === undefined ? logs.value : logs.value.slice(-args.limit),
+		);
 	},
 });
 
@@ -838,15 +842,15 @@ export const KABANE_TOOLS: readonly ToolDef[] = [
 	edit,
 	done,
 	link,
+	linkList,
 	comment,
 	workLog,
+	logList,
 	contextAdd,
 	contextList,
-	logList,
-	upstreamList,
-	linkList,
 	contextRemove,
 	upstreamLink,
+	upstreamList,
 	upstreamUnlink,
 ];
 
