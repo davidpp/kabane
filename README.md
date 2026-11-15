@@ -132,7 +132,7 @@ Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicat
 `/reparent`, `/check-plan`, `/linear`, `/github`, `/settings`), which expand into the window so you read what will be sent.
 `/setup-dispatch` is the one that writes a file: it reads the project's CLAUDE.md/AGENTS.md,
 gate and `.claude/agents/`, and writes a dispatch skill under `.agents/skills/dispatch/` for
-coding sessions to turn asks into issues here, showing each file before it lands. Codex and Pi
+coding sessions to turn asks into issues here, then shows you each file it wrote. Codex and Pi
 read `.agents/skills/`; Claude Code reaches it through a link, `.claude/skills/dispatch` ->
 `../../.agents/skills/dispatch`, which the copilot adds when the project has a `.claude/`
 directory or you ask.
