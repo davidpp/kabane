@@ -65,6 +65,132 @@ describe("cabane tools", () => {
 		rmSync(base, { recursive: true, force: true });
 	});
 
+	it("filters children and deferred tasks in both formats and binds the cursor to both filters", async () => {
+		const parent = unwrap(await Planner.addTask(base, { title: "Parent" }));
+		const other = unwrap(await Planner.addTask(base, { title: "Other" }));
+		const first = unwrap(
+			await Planner.addTask(base, { title: "First", parentTaskId: parent.id }),
+		);
+		const later = unwrap(
+			await Planner.addTask(base, {
+				title: "Later",
+				parentTaskId: parent.id,
+				deferUntil: "2099-01-01T00:00:00Z",
+			}),
+		);
+		for (const responseFormat of ["full", "concise"]) {
+			for (const includeDeferred of [undefined, false, true]) {
+				const result = unwrap(
+					await tool("kabane_list").handler(
+						{ parentTaskId: parent.shortId, includeDeferred, responseFormat },
+						ctx,
+					),
+				) as Task[] | { items: Task[] };
+				const items = Array.isArray(result) ? result : result.items;
+				expect(items.map((item) => item.id).sort()).toEqual(
+					(includeDeferred ? [first.id, later.id] : [first.id]).sort(),
+				);
+			}
+			const missing = await tool("kabane_list").handler(
+				{ parentTaskId: "JCAB-999999", responseFormat },
+				ctx,
+			);
+			expect(missing.ok).toBe(false);
+			if (!missing.ok) expect(missing.error.message).toContain("JCAB-999999");
+		}
+		const args = {
+			parentTaskId: parent.id,
+			includeDeferred: true,
+			responseFormat: "concise",
+			limit: 1,
+		};
+		const page = unwrap(await tool("kabane_list").handler(args, ctx)) as {
+			nextCursor: string;
+		};
+		expect(page.nextCursor).toBeString();
+		expect(
+			(
+				await tool("kabane_list").handler(
+					{ ...args, cursor: page.nextCursor },
+					ctx,
+				)
+			).ok,
+		).toBe(true);
+		for (const change of [
+			{ parentTaskId: other.id },
+			{ includeDeferred: false },
+		]) {
+			const result = await tool("kabane_list").handler(
+				{ ...args, ...change, cursor: page.nextCursor },
+				ctx,
+			);
+			expect(result.ok).toBe(false);
+			if (!result.ok)
+				expect(result.error.message).toContain("mismatched cursor");
+		}
+	});
+
+	it("sets and clears needsReview as the only edit in either format", async () => {
+		const task = unwrap(await Planner.addTask(base, { title: "Review" }));
+		for (const responseFormat of ["full", "concise"]) {
+			for (const needsReview of [true, false]) {
+				unwrap(
+					await tool("kabane_edit").handler(
+						{ id: task.shortId, needsReview, responseFormat },
+						ctx,
+					),
+				);
+				expect(unwrap(await Planner.getTask(base, task.id))?.needsReview).toBe(
+					needsReview,
+				);
+			}
+		}
+	});
+
+	it("reads empty records and refuses unknown tasks with read-only tools", async () => {
+		const task = unwrap(await Planner.addTask(base, { title: "Empty" }));
+		for (const name of [
+			"kabane_linkList",
+			"kabane_upstreamList",
+			"kabane_logList",
+		]) {
+			expect(tool(name).kind).toBe("read");
+			expect(
+				unwrap(await tool(name).handler({ id: task.shortId }, ctx)),
+			).toEqual([]);
+			const missing = await tool(name).handler({ id: "JCAB-999999" }, ctx);
+			expect(missing.ok).toBe(false);
+			if (!missing.ok) expect(missing.error.message).toContain("JCAB-999999");
+		}
+	});
+
+	it("reads incoming and outgoing links and work logs oldest first", async () => {
+		const a = unwrap(await Planner.addTask(base, { title: "A" }));
+		const b = unwrap(await Planner.addTask(base, { title: "B" }));
+		unwrap(
+			await tool("kabane_link").handler(
+				{ sourceId: a.id, targetId: b.id, type: "blocks" },
+				ctx,
+			),
+		);
+		for (const task of [a, b]) {
+			expect(
+				unwrap(
+					await tool("kabane_linkList").handler({ id: task.shortId }, ctx),
+				),
+			).toMatchObject([{ sourceId: a.id, targetId: b.id, type: "blocks" }]);
+		}
+		for (const note of ["First", "Second"]) {
+			unwrap(
+				await tool("kabane_log").handler({ id: a.id, commit: note, note }, ctx),
+			);
+		}
+		const logs = unwrap(
+			await tool("kabane_logList").handler({ id: a.shortId }, ctx),
+		) as TaskWorkLog[];
+		expect(logs.map((log) => log.note)).toEqual(["First", "Second"]);
+	});
+
 	it("refuses a scopeless write when scope is required, and names the fix", async () => {
 		const result = await tool("kabane_add").handler({ title: "x" }, ctx);
 		expect(result.ok).toBe(false);
@@ -475,7 +601,10 @@ describe("cabane tools", () => {
 			),
 		);
 
-		// The brief is the read path; there is deliberately no upstream read tool.
+		expect(
+			unwrap(await tool("kabane_upstreamList").handler({ id: args.id }, ctx)),
+		).toMatchObject([{ externalId: "linear-uuid", identifier: "ENG-123" }]);
+		// The brief also renders the upstream identity.
 		const brief = unwrap(
 			await tool("kabane_context").handler({ id: args.id }, ctx),
 		) as { markdown: string };

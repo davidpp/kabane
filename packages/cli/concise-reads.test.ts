@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { checklistModule } from "@cabane/checklist";
+import { KABANE_TOOLS } from "@cabane/core";
 import { handoffModule } from "@cabane/handoff";
 import { questionsModule } from "@cabane/questions";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -12,6 +13,7 @@ import {
 	createCorpusTracker,
 	payloadMetrics,
 } from "./issue-corpus-harness";
+import { configTools } from "./src/config-tools";
 
 const summarySchema = z
 	.object({
@@ -72,7 +74,8 @@ describe.concurrent("concise actual entry points", () => {
 				);
 				const discovery = await client.listTools();
 				expect(discovery.tools).toHaveLength(
-					19 +
+					KABANE_TOOLS.length +
+						configTools(tracker.home, { projectDir: tracker.cwd }).length +
 						(questionsModule.tools?.length ?? 0) +
 						(handoffModule.tools?.length ?? 0) +
 						(checklistModule.tools?.length ?? 0),
@@ -105,6 +108,22 @@ describe.concurrent("concise actual entry points", () => {
 				const assignedId = tracker.ids[0];
 				expect(assignedId).toBeDefined();
 				if (!assignedId) return;
+				for (const note of ["First", "Second", "Third"])
+					await call("kabane_log", { id: assignedId, commit: note, note });
+				const logs = JSON.parse(
+					await call("kabane_logList", { id: assignedId }),
+				);
+				expect(logs).toMatchObject([
+					{ note: "First" },
+					{ note: "Second" },
+					{ note: "Third" },
+				]);
+				for (const limit of [1, 2, 10])
+					expect(
+						JSON.parse(await call("kabane_logList", { id: assignedId, limit })),
+					).toEqual(logs.slice(-limit));
+				for (const limit of [0, -1, 1.5])
+					await call("kabane_logList", { id: assignedId, limit }, true);
 				const assigned = await tracker.run(
 					"edit",
 					assignedId,

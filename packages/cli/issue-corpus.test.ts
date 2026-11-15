@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { checklistModule } from "@cabane/checklist";
+import { KABANE_TOOLS } from "@cabane/core";
 import issues from "@cabane/core/testing/fixtures/issue-corpus/issues.json";
 import manifest from "@cabane/core/testing/fixtures/issue-corpus/manifest.json";
 import {
@@ -21,6 +22,7 @@ import {
 	createCorpusTracker,
 	payloadMetrics,
 } from "./issue-corpus-harness";
+import { configTools } from "./src/config-tools";
 
 const taskSchema = z
 	.object({
@@ -114,7 +116,8 @@ describe("retained issue corpus baseline", () => {
 				await client.connect(transport);
 				const discovery = await client.listTools();
 				expect(discovery.tools).toHaveLength(
-					19 +
+					KABANE_TOOLS.length +
+						configTools(tracker.home, { projectDir: tracker.cwd }).length +
 						(questionsModule.tools?.length ?? 0) +
 						(handoffModule.tools?.length ?? 0) +
 						(checklistModule.tools?.length ?? 0),

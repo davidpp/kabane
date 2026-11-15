@@ -124,9 +124,19 @@ describe("hub MCP over Streamable HTTP", () => {
 
 	it("lists replicated tools without session or local config tools", async () => {
 		const { body } = await rpc(HUMAN, "tools/list");
-		const names = (body.result as { tools: { name: string }[] }).tools.map(
-			(t) => t.name,
-		);
+		const { tools } = body.result as {
+			tools: { name: string; annotations?: { readOnlyHint?: boolean } }[];
+		};
+		const names = tools.map((t) => t.name);
+		for (const name of [
+			"kabane_linkList",
+			"kabane_upstreamList",
+			"kabane_logList",
+			"kabane_checklist",
+		])
+			expect(
+				tools.find((t) => t.name === name)?.annotations?.readOnlyHint,
+			).toBe(true);
 		expect(names).toContain("kabane_add");
 		expect(names).toContain("kabane_context");
 		expect(names).toContain("kabane_scopeList");
@@ -137,6 +147,10 @@ describe("hub MCP over Streamable HTTP", () => {
 			"kabane_checklistAdd",
 			"kabane_checklistTick",
 			"kabane_checklistEdit",
+			"kabane_linkList",
+			"kabane_upstreamList",
+			"kabane_logList",
+			"kabane_checklist",
 		])
 			expect(names).toContain(name);
 		expect(names.some((n) => n.toLowerCase().includes("session"))).toBe(false);
@@ -471,6 +485,12 @@ describe("hub MCP over Streamable HTTP", () => {
 				})
 			).isError,
 		).toBe(false);
+
+		const links = await callTool(HUMAN, "kabane_linkList", { id: a.id });
+		expect(links.isError).toBe(false);
+		expect(links.value).toMatchObject([
+			{ sourceId: a.id, targetId: b.id, type: "blocks" },
+		]);
 
 		const edited = (
 			await callTool(HUMAN, "kabane_edit", {
