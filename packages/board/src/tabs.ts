@@ -282,18 +282,26 @@ export namespace BoardTabs {
 		if (queue.length === 0) return notice(state, "nothing is waiting on you");
 		const here = position(state);
 		const at = queue.findIndex((q) => q.id === here);
-		const next = queue[(at + 1) % queue.length];
-		if (!next) return { state, effect: NOTHING };
-		if (next.id === here)
-			return notice(state, "nothing else is waiting on you");
-		const owner = ownerOf(state.tabs, next);
-		if (owner === undefined)
-			return { state: pin(state, next), effect: NOTHING };
-		const shown = show(state, owner);
-		return {
-			state: withTabs(shown, { landed: next.id }),
-			effect: NOTHING,
-		};
+		let skipped = 0;
+		for (let offset = 1; offset <= queue.length; offset++) {
+			const next = queue[(at + offset) % queue.length];
+			if (!next) continue;
+			const owner = ownerOf(state.tabs, next);
+			const landed =
+				owner === undefined
+					? pin(state, next)
+					: withTabs(show(state, owner), { landed: next.id });
+			if (landed === state) {
+				skipped++;
+				continue;
+			}
+			if (skipped)
+				return notice(landed, `skipped ${skipped} without a task or tab`);
+			if (next.id === here)
+				return notice(state, "nothing else is waiting on you");
+			return { state: landed, effect: NOTHING };
+		}
+		return notice(state, `skipped ${skipped} without a task or tab`);
 	};
 
 	// `w`: close a finished card's tab for good, and tell the host so it stops listing the card across

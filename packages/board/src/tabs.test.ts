@@ -217,6 +217,29 @@ describe("! walks every unanswered question, oldest first", () => {
 		});
 	});
 
+	it("skips a question with no task or open tab and reaches the next question", () => {
+		const hidden = { ...SOLO_Q, taskId: undefined, taskShortId: undefined };
+		const result = press(withLoop([card()], [hidden, LOOP_Q]), "!");
+		expect(BoardTabs.cardQuestion(result.state.tabs)).toEqual(LOOP_Q);
+		expect(result.effect).toEqual({
+			type: "notice",
+			notice: { text: "skipped 1 without a task or tab", tone: "success" },
+		});
+		const wrapped = press(result.state, "!");
+		expect(BoardTabs.cardQuestion(wrapped.state.tabs)).toEqual(LOOP_Q);
+		expect(wrapped.effect).toEqual(result.effect);
+	});
+	it("reports when every waiting question has no task or open tab", () => {
+		const hidden = { ...SOLO_Q, taskId: undefined, taskShortId: undefined };
+		const state = withLoop([], [hidden]);
+		const result = press(state, "!");
+		expect(result.state).toBe(state);
+		expect(result.effect).toEqual({
+			type: "notice",
+			notice: { text: "skipped 1 without a task or tab", tone: "success" },
+		});
+	});
+
 	it("lands a stand-alone session's question on its task, pinned, then a card's on the card's tab, then wraps", () => {
 		const first = press(withLoop(), "!").state;
 		expect(first.tabs.active).toBeNull();
