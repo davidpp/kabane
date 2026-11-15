@@ -19,6 +19,7 @@ import { LoopActivity } from "./activity";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
+import { LoopDoctor } from "./doctor";
 import type { Land } from "./land";
 import { Lenses } from "./lenses";
 import { Parent } from "./parent";
@@ -645,6 +646,7 @@ export const loop: Extension = {
 	name: LoopConfig.NAMESPACE,
 	settings: LoopConfig.SettingsSchema,
 	looks,
+	doctor: LoopDoctor.doctor,
 	commands: [command],
 	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
 	// `a` on an issue, alone or with subtasks, starts one from the board's directory, as `loop start` would.
