@@ -559,7 +559,7 @@ const HeaderStory = (): ReactNode => {
 		<CardHeader
 			header={headerStory}
 			card={Fixtures.loop(1)}
-			width={width}
+			width={width - 1}
 			expanded={false}
 		/>
 	);

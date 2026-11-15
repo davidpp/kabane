@@ -28,11 +28,13 @@ export const CardHeader = ({
 	card,
 	width,
 	expanded,
+	intervalMs = 1000,
 }: {
 	header: Header;
 	card: ActivityCard;
 	width: number;
 	expanded: boolean;
+	intervalMs?: number;
 }): ReactNode => {
 	const theme = useTheme();
 	const room = Math.max(0, width - 2);
@@ -42,9 +44,10 @@ export const CardHeader = ({
 	const latest = useRef({ card, width: room, expanded });
 	latest.current = { card, width: room, expanded };
 	const pending = useRef(false);
+	const refresh = useRef<(() => void) | null>(null);
+	useEffect(() => setLines(null), [header, card.id]);
 	useEffect(() => {
 		let cancelled = false;
-		setLines(null);
 		const poll = async (): Promise<void> => {
 			if (pending.current) return;
 			pending.current = true;
@@ -59,19 +62,28 @@ export const CardHeader = ({
 				// A broken extension leaves the last good header visible.
 			} finally {
 				pending.current = false;
+				// A view change during a read must not wait for the next tick.
+				if (cancelled) refresh.current?.();
 			}
 		};
+		refresh.current = () => void poll();
 		void poll();
-		const timer = setInterval(() => void poll(), 1000);
+		const timer = setInterval(() => void poll(), intervalMs);
 		return () => {
 			cancelled = true;
+			refresh.current = null;
 			clearInterval(timer);
 		};
-	}, [header, card.id]);
+	}, [header, card.id, expanded, room, intervalMs]);
+	if (!lines)
+		return (
+			<text fg={theme.muted} style={{ flexShrink: 0 }}>
+				loading…
+			</text>
+		);
 	return (
 		<box
 			style={{
-				width,
 				flexDirection: "column",
 				flexShrink: 0,
 				backgroundColor: theme.surface.raised,
@@ -80,13 +92,13 @@ export const CardHeader = ({
 				overflow: "hidden",
 			}}
 		>
-			{(lines ?? [[{ text: "loading…", tone: "muted" }]]).map((line, index) => (
+			{lines.map((line, index) => (
 				// Lines have positional identity, including repeated and empty rows.
 				<text
 					key={index}
 					bg={theme.surface.raised}
 					wrapMode="none"
-					style={{ height: 1, flexShrink: 0, width: room }}
+					style={{ height: 1, flexShrink: 0 }}
 				>
 					{Segments.spans(segmentsOf(line, theme))}
 				</text>
