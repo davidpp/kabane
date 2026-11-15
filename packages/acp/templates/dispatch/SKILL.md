@@ -2,6 +2,8 @@
 name: dispatch
 description: Turn an ask in {{PROJECT}} into shipped work. Size it first (do it inline, file one kabane issue, or plan a wave), then write issues that are complete briefs, run parallel agents with owned file territories, merge each one behind the gate, and report what is left for a human to check. Use this whenever the user asks to dispatch, plan and run, or parallelize work in this repo (for example `/dispatch` or "dispatch {{ISSUE_PREFIX}}-123"), or asks for a change with more than one independent piece, even if they never say "dispatch".
 argument-hint: <kabane issue id | freeform ask>
+metadata:
+  kabane-template: {{TEMPLATE_STAMP}}
 ---
 
 # Dispatch — {{PROJECT}}
@@ -99,8 +101,8 @@ They know things about priority and risk that are not in the code.
 ## Dispatch
 
 Set each unblocked issue to `in_progress` with `kabane_edit`, then start one agent per issue,
-all in a single message so they run in parallel. When `.claude/agents/` has a specialist for
-the issue's territory, use it (see `references/specialists.md`). Otherwise use a general-purpose
+all in a single message so they run in parallel. When the harness has project agents (Claude
+Code: `.claude/agents/`) and one is a specialist for the issue's territory, use it (see `references/specialists.md`). Otherwise use a general-purpose
 agent. Model: {{MODEL}}.
 
 Each agent works in its own copy of the repo so that parallel edits cannot collide:
