@@ -68,6 +68,7 @@ export type ToolDef<Shape extends z.ZodRawShape = z.ZodRawShape> = {
 	input: Shape;
 	/** A read never mutates; the hub pushes to the log after every write. */
 	kind: "read" | "write";
+	annotations?: { destructiveHint?: boolean; openWorldHint?: boolean };
 	handler: ToolHandler<Shape>;
 };
 

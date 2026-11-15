@@ -4,6 +4,13 @@ import type { LoopConfig } from "./config";
 import { LoopPlan } from "./plan";
 
 export namespace LoopAdvice {
+	export const TAG_VOCABULARY = `A subtask's tags route its claim: tier:<name> asks for a tier's model (loop.tiers) over --model,
+tier:<harness>/<name> also runs it on that harness, and agent:<name> runs it as the harness's named
+agent (Claude's .claude/agents; an agent that pins a model keeps it). A tag the run cannot honour is
+noted on the trace and the claim runs on the run's settings.`;
+
+	export const INSTRUCTIONS = `Use kabane_loop_advise before starting a run; start applies no advice automatically. For run controls, see \`kabane loop --help\`. ${TAG_VOCABULARY.replaceAll("\n", " ")}`;
+
 	export type Recommendation =
 		| {
 				path: "budget.concurrency" | "stallAfter";
