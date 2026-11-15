@@ -35,8 +35,8 @@ compiler erases it. The types are listed after the values.
 | `@cabane/core` `tryCatch`, `trySync` | 4, 7 | wrapping throwing calls | on host | `host.result` |
 | `@cabane/core` `Runtime` | 2 | `Runtime.actor()` (`parent.ts:226`, `:316`) | dropped | `ctx.actor`, already on `Extension.Ctx` |
 | | | `Runtime.modules()`, to ask whether the checklist module is registered (`checklists.ts:16-17`) | dropped | `host.record.call` returns `err` for a tool no registered module provides |
-| `@cabane/core` `Lint` | 1 | `Lint.run` (`commands.ts:568`) | moves into the extension | with `lint/` (JCAB-326) |
-| `@cabane/core` `RiskAnalyzer` | 1 | `checkFileOverlap` (`advice.ts:113`) | moves into the extension | with `lint/` |
+| `@cabane/core` `Lint` | 1 | `Lint.run` (`commands.ts:568`) | moved into the extension | with `lint/` (JCAB-338); its collectors call `getTask` and `queryTasks` (`lint/collectors.ts:92`, `:95`), which the counts under "What the loop asks of `Planner`" predate |
+| `@cabane/core` `RiskAnalyzer` | 1 | `checkFileOverlap` (`advice.ts:113`) | moved into the extension | with `lint/` (JCAB-338) |
 | `@cabane/core` `defineTool` | 1 | typing `kabane_loop_advise`'s handler against its input (`mcp.ts:10`); added by JCAB-275 after the baseline, so not in the counts above | on host | `host.defineTool` |
 | `@cabane/core` `ScopeUri` | 1 | `getScopeId` (`commands.ts:343`) | on host | `host.scope.idOf`; parsing a stored URI, both schemes, stays with core |
 | `@cabane/core` `authorTypeOf` | 1 | stamping a comment's author type (`parent.ts`) | dropped | `host.record.comment` stamps it, as `kabane_comment` does (`mcp/tools.ts`, `authorType: authorTypeOf(ctx.actor)`) |
@@ -85,7 +85,7 @@ From the published contract types: `Task`, `TaskLink`, `TaskPriority`, `TaskStat
 `Settings.Look`, and the port types `ActivityCard`, `ActivitySource`, `ActivityStatus`,
 `ActivityToolDetail`, `CardAction`, `Dispatcher`, `NoticeSeverity`, `PanelLine`, `PanelPart`,
 `SettingField`, `TriggerDescriptor`, `TriggerInput`. `CardHeader` and `CardHeaderProps` go with
-the component header. `Risk` moves with `lint/`. `AgentActivity`, `ParsedQuestion` and
+the component header. `Risk` moved with `lint/` (JCAB-338). `AgentActivity`, `ParsedQuestion` and
 `PermissionRequestMeta` wait on JCAB-316:7.
 
 ## The record half of `host` follows the MCP tools

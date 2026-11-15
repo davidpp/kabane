@@ -8,8 +8,8 @@
  * progress data on top of what the planner-side collector produces.
  */
 
-import { firstGroups } from "../regex";
-import { ok, type Result } from "../result";
+import { ok, type Result } from "@cabane/core";
+import { firstGroups } from "./regex";
 import type { Risk } from "./schemas";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ export interface ReopenEvent {
 }
 
 /** Options for the full analysis. */
-export interface AnalyzeOptions {
+interface AnalyzeOptions {
 	/** Parent issue + its subtasks. Pass the parent first (or omit if not analyzing it). */
 	subtasks: SubtaskInput[];
 	/** Reopen events from loop progress history. Empty array if unavailable. */

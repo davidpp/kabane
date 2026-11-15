@@ -143,7 +143,7 @@ The verdicts for what core holds today that is not obviously the record:
 
 | In core | 1 | 2 | 3 | 4 | Verdict |
 |---|---|---|---|---|---|
-| `lint/` | no: it computes advice from a plan and stores nothing | no: one consumer, the loop (`extensions/loop/src/commands.ts:568`, `advice.ts:120`); `lint/index.ts:1` says "used by the loop's briefing" | no: `Bun.Glob` at `lint/collectors.ts:52` | yes | Moves into the loop extension (JCAB-326). |
+| `lint/` | no: it computes advice from a plan and stores nothing | no: one consumer, the loop (`extensions/loop/src/commands.ts:568`, `advice.ts:120`); `lint/index.ts:1` says "used by the loop's briefing" | no: `Bun.Glob` at `lint/collectors.ts:52` | yes | Moved into `extensions/loop/src/lint/` (JCAB-338). |
 | `commit-linker/` | no | no: nothing outside core called it | no: it ran `git` through `Bun.spawn` | no: git keeps commits | Deleted by JCAB-228, now on main. |
 | `file:` deref in `storage/assemble-context.ts` | yes: it inlines a context ref into the brief, which every reader gets | yes: every brief | no: `Bun.file` at `storage/assemble-context.ts:187` | yes | Assembling the brief stays; reading the file moves behind a port (below, JCAB-328). |
 | `scope/detect.ts` | no: it turns a directory into a scope and stores nothing | yes: the CLI (`packages/cli/src/context.ts:115`) and the loop (`commands.ts:310`) | no: `node:child_process` at `scope/detect.ts:9` | yes | Moves to the host and reaches extensions as `host.scope.detect` (JCAB-328). The device-only helpers beside it go too: `ProjectDirs` (`scope/projects.ts`), `mainCheckoutRoot`, `findProjectRoot`, `localPinPath`, `MARKER_DIR` and `SCOPE_FILE`, which only the CLI imports, and `DetectedScopes` (`scope/detected.ts`), detection's own cache. `scope/uri.ts`, which parses and formats the stored field, stays, and so does `scope/git-fixture.ts`, test support for the CLI's and the loop's tests. |
@@ -157,8 +157,9 @@ The verdicts for what core holds today that is not obviously the record:
 ### Core reaches a device's files through a port with a no-op default
 
 The brief inlines a `file:` context ref by reading the file (`storage/assemble-context.ts:183-205`),
-and that read is the last Bun call on core's barrel once `lint/` leaves; the hub's
-`tsconfig.json` lists `bun` for it and for lint (`packages/worker/tsconfig.json:9-11`). The four
+and that read is the last Bun call on core's barrel now that `lint/` has moved into the loop
+(JCAB-338); the hub's `tsconfig.json` lists `bun` for it alone
+(`packages/worker/tsconfig.json:9-11`). The four
 questions split it: assembling the brief passes all four, and reading a file on this device fails
 question 3. So core keeps the assembly and reaches the file through a port on `Runtime.configure`,
 as it already reaches the tracer, notifier and actor ("Explicit dependencies" in
@@ -646,11 +647,11 @@ This follows the 2026-11-04 research note except in three places:
 | The contract and the harness client do not depend on a client | `@cabane/extension` and `@cabane/acp` list `@cabane/board` (`packages/extension/contract.ts:11`, `packages/acp/src/client.ts:32`) | JCAB-320 |
 | An extension imports no `@cabane/*` value except from the harness client it bundles | The loop lists `@cabane/acp`, `board`, `checklist`, `core` and `extension` (`extensions/loop/package.json`) and imports values from them in 30 source files | JCAB-326, which waits on JCAB-340 for the session calls, and JCAB-340 on JCAB-329 |
 | A host depends on no extension | `packages/cli/package.json` lists `@cabane/loop`, which `OFFICIAL` bundles (`packages/cli/src/extensions.ts:21-23`); JCAB-318's table lists the edge as an exception tied to JCAB-326 | JCAB-326 |
-| Core keeps only what passes the four questions | `lint/`, re-exported at `packages/core/index.ts:49` | JCAB-326 |
+| Core keeps only what passes the four questions | Plan lint moved to `extensions/loop/src/lint/`; core no longer exports it | JCAB-338, done |
 | | `scope/detect.ts`, `self.ts`, `serveStdio`, `handleHttpRequest` | JCAB-328 |
 | | `storage/sessions.ts` | JCAB-316:7, then JCAB-329 |
 | | `file:` deref reads with `Bun.file` (`storage/assemble-context.ts:187`) | JCAB-328 |
-| Core needs no Bun types | `packages/worker/tsconfig.json:9-11` lists `bun` "only because @cabane/core's lint collectors and file-ref deref use Bun globals" | JCAB-326 (lint), JCAB-328 (deref) |
+| Core needs no Bun types | Plan lint moved into the loop; `packages/worker/tsconfig.json` still lists `bun` for core's file-ref deref | JCAB-338 (lint), done; JCAB-328 (deref) |
 | Base kabane does not describe an extension | `packages/acp/src/instructions.ts:66`, `:76`; `packages/board/src/setup.tsx:136` | JCAB-324 |
 | | The dispatch and grill templates in `packages/acp/templates/` | JCAB-327 |
 | A broken extension does not take the board down | `packages/cli/src/commands/board-runtime.ts:327-328` | JCAB-321 |
