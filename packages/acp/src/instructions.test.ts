@@ -171,6 +171,9 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 
 	it("offers to move a real .claude/skills/dispatch/ and moves nothing without a yes", () => {
 		expect(CopilotInstructions.SKILLS).toContain(
+			"When neither .agents/skills/dispatch/ nor a real .claude/skills/dispatch/ directory exists yet, being asked to set the skill up is the go-ahead",
+		);
+		expect(CopilotInstructions.SKILLS).toContain(
 			"offer to move it to .agents/skills/dispatch/ and leave the link in its place, show the diff against what you would write, and move or write nothing without an explicit yes",
 		);
 	});
@@ -207,7 +210,7 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 			"write the files without asking, then show the content of each one",
 		);
 		expect(CopilotInstructions.SKILLS).toContain(
-			"If it already exists, show the diff and write nothing without an explicit yes",
+			"If .agents/skills/dispatch/ already exists, show the diff and write nothing without an explicit yes",
 		);
 		expect(CopilotInstructions.SKILLS).not.toContain("before writing it");
 	});
@@ -337,6 +340,12 @@ describe("CopilotInstructions grilling the human", () => {
 		);
 		expect(CopilotInstructions.SKILLS).toContain(
 			"When they ask you to install it in this project, copy SKILL.md unchanged to .agents/skills/grill/SKILL.md",
+		);
+		expect(CopilotInstructions.SKILLS).toContain(
+			"when neither .agents/skills/grill/ nor a real .claude/skills/grill/ directory exists, the request is the go-ahead",
+		);
+		expect(CopilotInstructions.SKILLS).toContain(
+			"a real .claude/skills/grill/ directory gets the offer to move it and waits for a yes",
 		);
 	});
 });
