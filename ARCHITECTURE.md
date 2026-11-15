@@ -68,7 +68,7 @@ Kabane's layers, from the bottom:
 |---|---|---|
 | core | `@cabane/core` | The record, its sync, the module seam and the MCP tool definitions. Runs in Bun and in Workers. |
 | storage adapter | `@cabane/sqlite` | The `Db` port over `bun:sqlite`, for devices. |
-| data module | `@cabane/questions`, `@cabane/checklist`, `@cabane/handoff` | One feature's own record, as a `KabaneModule`. |
+| data module | `@cabane/questions`, `@cabane/checklist`, `@cabane/handoff`, `@cabane/outcome` | One feature's own record, as a `KabaneModule`. |
 | extension contract | `@cabane/extension` | The types an extension and the host exchange, and the argument, outcome and settings helpers every command is written with. |
 | harness client | `@cabane/acp` | Driving a coding harness over ACP: the harness registry, the session runner, tool calls, elicitation forms. |
 | client | `@cabane/board` | A UI over the record. |
@@ -190,14 +190,6 @@ The migration has three ordered steps, so existing records remain readable throu
 3. JCAB-343 migrates existing outcomes to timeline entries, drops `agent_sessions` and
    `agent_activities`, removes `storage/sessions.ts`, and changes the brief's fold. Until then,
    the board's detail log still reads session activities, preserving outcomes already written.
-
-`Loop.answer` returns `Result<Loop.Answered>`, rather than the port sketch's `Result<string>`.
-The activity adapter maps that record to the existing CLI receipt for the board's footer;
-errors pass through unchanged. The port signatures otherwise follow the brief. The board's
-`AwaitingQuestion` retains its UI name `agent` for `asker` and accepts the port's optional task
-ids; card ownership does not require a task. `loadActivity` retains its unused base-path argument
-and `openQuestions` its unused records argument because their callers are outside this issue's
-file territory; neither argument is read to obtain questions.
 
 ## Ports
 

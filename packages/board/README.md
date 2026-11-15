@@ -98,7 +98,8 @@ options, `asker` and `askedAt`. The tracker tab's `?n` counts every question; a 
 questions with its card id. Merging sources prefixes both question and card ids by source name.
 
 `!` walks them all, oldest first, from any view; on the only question, already on screen, it says
-nothing else is waiting. A question owned by a tabbed card lands on that card's tab,
+nothing else is waiting. A question with neither a resolvable task nor an open card tab is
+skipped, with a short footer notice, so it cannot block the queue. A question owned by a tabbed card lands on that card's tab,
 pinned under its header and answered there: a digit (or a click on an answer) answers it through
 `ActivitySource.answer`, which records the answer and returns the footer notice. The tab shows
 its oldest question first, with `+n more` for the rest, and says what was answered until the
@@ -112,13 +113,14 @@ clears when you leave the view; an unanswered one stays pinned until it is answe
 that offers no answers (freeform), or whose asker allows a typed answer besides its answers
 (`allowFreeform` in the question body), takes a typed one: `enter`, on its banner or on the card's
 tab that shows it, opens the board's prompt (below), and what is sent goes to
-`ActivitySource.answer` as the answer. On a multi-select question (`multiSelect`) the digits, or a
+`ActivitySource.answer` as the answer. The loop matches typed answers as `kabane loop answer`
+does: typing `1` records the first choice's label. On a multi-select question (`multiSelect`) the digits, or a
 click, toggle answers rather than sending one, and `enter` sends the toggled labels
 comma-separated in the order picked (`Gamma, Alpha`), the form `kabane loop answer` takes. A
 banner whose question left the queue without an answer from this board (answered elsewhere, or
 withdrawn by its asker) reads `closed`. Every surface answers through the one `answerQuestion`
 effect: marked answered on the keypress, so a second digit answers nothing, and taken back if the
-write fails.
+write fails. If the loop runner died, the footer shows the command to resume its run.
 
 The source owns recording who answered and any inbox notification its runtime needs. The merged
 source routes an answer only to the contributor that owns its prefixed question id. A source

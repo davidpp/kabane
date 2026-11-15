@@ -115,17 +115,29 @@ export type ActivityEvent = {
 };
 
 export type ActivityQuestion = {
+	// The host's question id, named by `answer`.
 	id: string;
+	// The card that owns this question, in the same source's card id space.
 	cardId: string;
+	// The owning card's lane to show when the question is opened.
 	lane?: string;
+	// Optional task identities; with neither, a question can be placed only through its card.
 	taskId?: string;
+	// The task's short label; a client may resolve it when `taskId` is absent.
 	taskShortId?: string;
+	// The question as shown to the human, already parsed by its owner.
 	question: string;
+	// Choice labels in display order, also used to answer.
 	choices: readonly string[];
+	// Whether several choices may be selected together.
 	multiSelect: boolean;
+	// Whether the human may send free text besides the choices.
 	allowFreeform: boolean;
+	// Whether this asks permission to run a tool.
 	permission?: boolean;
+	// The displayed name of whoever asked.
 	asker: string;
+	// When it was asked, as an ISO timestamp; clients order the queue oldest first.
 	askedAt: string;
 };
 
@@ -148,8 +160,12 @@ export interface ActivitySource {
 	// across a relaunch. Optional: without it the tab stays closed for this session only.
 	dismiss?(id: string): Promise<Result<void>>;
 	// Questions waiting on the human, with display text already parsed by their owner.
+	// Optional: without it the source contributes no questions.
 	questions?(): Promise<Result<ActivityQuestion[]>>;
-	// Answer the owner's question; resolves to the footer notice.
+	// Answer the host's question id with a choice's label, multi-select labels joined as
+	// "Gamma, Alpha", a permission option's label, or free text when `allowFreeform`.
+	// Resolves to the notice the client shows. Optional: without it answers are refused.
+	// No identity is passed: each source records the actor it was built with; a client cannot attest it.
 	answer?(questionId: string, answer: string): Promise<Result<string>>;
 }
 
