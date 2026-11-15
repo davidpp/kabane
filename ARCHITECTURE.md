@@ -372,8 +372,9 @@ of zod and directs the extension to `host.z`.
 ### The record half of `host` is the MCP tools' operations, as typed wrappers
 
 `host.record` offers the operations the MCP tools expose, called in the host's process under
-`ctx.actor`. `host.record` runs under the device’s actor and human actor, as an agent’s call
-over local stdio does, so an extension can record a relayed answer; it cannot name another actor.
+`ctx.actor`. `host.record` runs under the context's actor (the one `--as` sets) and the device's human
+actor, as an agent's call over local stdio does, so an extension can record a relayed answer;
+it cannot name another actor.
 Each named method is a wrapper over one tool, and says so: it takes the tool's input
 without the presentation fields (`responseFormat`, `cursor`, and `kabane_comment`'s `text` and
 `content` aliases of `body`), always runs the tool's full format, and returns the value the tool
