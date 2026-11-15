@@ -382,10 +382,10 @@ namespace Host {
 		log(input: { id: string; refs?: readonly { uri: string; label?: string }[]; commit?: string; note?: string }): Promise<Result<TaskWorkLog>>; // kabane_log
 		context(input: ContextInput): Promise<Result<{ id: string; markdown: string }>>; // kabane_context
 		upstreamLink(input: UpstreamLinkInput): Promise<Result<UpstreamLink>>; // kabane_upstream_link
-		// Wrappers over the read tools JCAB-322 adds (table below); names are JCAB-322's to pick.
+		// Wrappers over kabane_linkList, kabane_upstreamList and kabane_logList (JCAB-336).
 		links(input: { id: string }): Promise<Result<TaskLink[]>>;
 		upstreamLinks(input: { id: string }): Promise<Result<UpstreamLink[]>>;
-		workLogs(input: { id: string }): Promise<Result<TaskWorkLog[]>>;
+		workLogs(input: { id: string; limit?: number }): Promise<Result<TaskWorkLog[]>>;
 		/** Any registered tool by name, full format; a data module's included. An unregistered name is an err. */
 		call(tool: string, input: unknown): Promise<Result<unknown>>;
 	};
@@ -393,23 +393,23 @@ namespace Host {
 ```
 
 `ListInput`, `EditInput`, `ContextInput` and `UpstreamLinkInput` are the tools' zod shapes less
-the presentation fields. A data module's tools, the checklist reads JCAB-322 adds among them, are
+the presentation fields. A data module's tools, `kabane_checklist` among them, are
 reached through `call`, whose result is `unknown` until the caller parses it; core's tools get
 typed wrappers. `log` takes `refs` or `commit` or both, as `kabane_log` does.
 
 The rule that keeps this surface honest: **`host.record` has no operation an agent cannot perform
 through a tool.** An extension that needs an operation no tool offers gets a new tool or a new
 tool input, so agents gain it too. Read against every `Planner` call in `extensions/loop/src`,
-argument by argument, the loop needs these, and JCAB-322 adds them:
+argument by argument, the loop needed these, and JCAB-336 added the tools and inputs below:
 
-| The loop calls | With | Missing from the tools | JCAB-322 adds |
+| The loop calls | With | Was missing | JCAB-336 added |
 |---|---|---|---|
 | `queryTasks` (`plan.ts:98`) | `parentTaskId`, `includeClosed`, `includeDeferred`, `limit` | `kabane_list` has no `parentTaskId` and no `includeDeferred` | both inputs on `kabane_list` |
 | `updateTask` (`parent.ts:273`, `:324`) | `state`, `needsReview` | `kabane_edit` has no `needsReview` | `needsReview` on `kabane_edit` |
-| `getLinksForTask` (`plan.ts:110`, `:116`) | a task id | no tool returns links as data; they reach an agent as markdown in `kabane_context` | a read tool for a task's links |
-| `getUpstreamLinksForTask` (`parent.ts:295`) | a task id | as above | a read tool for a task's upstream links |
-| `getWorkLogs` (`claims.ts:384`) | a task id | as above | a read tool for a task's work log |
-| `Checklist.list`, `Checklist.progress` (`checklists.ts:27`, `:39`) | a task id; the store | the checklist module has write tools only | read tools in `@cabane/checklist` |
+| `getLinksForTask` (`plan.ts:110`, `:116`) | a task id | no tool returns links as data; they reach an agent as markdown in `kabane_context` | `kabane_linkList` |
+| `getUpstreamLinksForTask` (`parent.ts:295`) | a task id | as above | `kabane_upstreamList` |
+| `getWorkLogs` (`claims.ts:384`) | a task id | as above | `kabane_logList` |
+| `Checklist.list`, `Checklist.progress` (`checklists.ts:27`, `:39`) | a task id; the store | the checklist module has write tools only | `kabane_checklist` (live items); progress is computed per task from it |
 | `addWorkLog` (`checks.ts:377`, `claims.ts:342`, `parent.ts:76`) | `addedBy: "loop:<runId>"`, `addedByType` | `kabane_log` stamps the connected actor | nothing: the run is already named by its `loop:<runId>` ref (`parent.ts:78`), so the loop writes under `ctx.actor` and puts the run in the ref's label |
 | `startSession`, `getSession`, `endSession`, `addActivity`, `getActivities`, `getNeedsInput`, `answerQuestion` | sessions and their questions | no session tool | waits on JCAB-316:7, above |
 

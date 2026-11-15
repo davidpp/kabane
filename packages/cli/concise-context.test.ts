@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { checklistModule } from "@cabane/checklist";
-import { ContextPageSchema } from "@cabane/core";
+import { ContextPageSchema, KABANE_TOOLS } from "@cabane/core";
 import { handoffModule } from "@cabane/handoff";
 import { questionsModule } from "@cabane/questions";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -13,6 +13,7 @@ import {
 	createCorpusTracker,
 	payloadMetrics,
 } from "./issue-corpus-harness";
+import { configTools } from "./src/config-tools";
 
 const toolResult = z.object({
 	isError: z.boolean().optional(),
@@ -47,7 +48,8 @@ describe.concurrent("bounded context through actual CLI/stdio", () => {
 			);
 			const tools = await client.listTools();
 			expect(tools.tools).toHaveLength(
-				19 +
+				KABANE_TOOLS.length +
+					configTools(tracker.home, { projectDir: tracker.cwd }).length +
 					(questionsModule.tools?.length ?? 0) +
 					(handoffModule.tools?.length ?? 0) +
 					(checklistModule.tools?.length ?? 0),
