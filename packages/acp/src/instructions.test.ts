@@ -5,6 +5,7 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CopilotInstructions } from "./instructions";
+import { Templates } from "./templates";
 
 const template = (path: string): string =>
 	readFileSync(join(CopilotInstructions.DISPATCH_TEMPLATE, path), "utf8");
@@ -186,6 +187,20 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 			expect(
 				existsSync(join(CopilotInstructions.DISPATCH_TEMPLATE, path)),
 			).toBe(true);
+	});
+
+	it("the system prompt gives the dispatch template's stamp, and the skill's frontmatter takes it", () => {
+		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN);
+		const stamp = Templates.stamp("dispatch");
+		expect(stamp).toMatch(/^dispatch@[0-9a-f]{12}$/);
+		expect(prompt).toContain(`DISPATCH TEMPLATE STAMP: ${stamp}`);
+		expect(CopilotInstructions.SKILLS).toContain(
+			"{{TEMPLATE_STAMP}} takes the DISPATCH TEMPLATE STAMP given below, copied exactly",
+		);
+		const frontmatter = template("SKILL.md").split("\n---\n")[0];
+		expect(frontmatter).toContain(
+			"metadata:\n  kabane-template: {{TEMPLATE_STAMP}}",
+		);
 	});
 
 	it("every placeholder in the skill is one PLACEHOLDERS.md says how to fill", () => {

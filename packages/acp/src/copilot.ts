@@ -440,16 +440,20 @@ export namespace BoardCopilot {
 		let commands: readonly AcpClient.Command[] = [];
 		const questions = createQuestions(options.harness);
 
-		const instructions = CopilotInstructions.systemPrompt(
-			options.setup,
-			kabaneBin(options),
-		);
+		// Built on the first prompt, not here: it hashes the dispatch template, and opening the board
+		// must not wait on that.
+		let built: string | null = null;
+		const instructions = (): string =>
+			(built ??= CopilotInstructions.systemPrompt(
+				options.setup,
+				kabaneBin(options),
+			));
 
 		// Lazy on purpose: no harness process exists until the human actually asks for something,
 		// so opening the board costs nothing.
 		const start = async (): Promise<Result<AcpClient.Session>> => {
 			if (session) return ok(session);
-			const opened = await openSession(options, actor, instructions, {
+			const opened = await openSession(options, actor, instructions(), {
 				onPermission: questions.onPermission,
 				onElicitation: questions.onElicitation,
 				onElicitationRefused: questions.onElicitationRefused,
@@ -477,7 +481,7 @@ export namespace BoardCopilot {
 			return instructed
 				? { blocks: [shown, asked], instructing: false }
 				: {
-						blocks: [{ type: "text", text: instructions }, shown, asked],
+						blocks: [{ type: "text", text: instructions() }, shown, asked],
 						instructing: true,
 					};
 		};
