@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { Self } from "@cabane/core/self";
 import {
 	flagBool,
@@ -25,12 +26,14 @@ export namespace McpInstall {
 		run?: Runner;
 		which?: Which;
 		launcher?: McpClients.Launch;
+		/** Where the harness config files are read from, to tell a stale entry from a current one. */
+		where?: McpClients.Where;
 	};
 
 	export type Report =
 		| {
 				harness: McpClients.Id;
-				status: "installed" | "present" | "replaced" | "missing";
+				status: "installed" | "present" | "stale" | "replaced" | "missing";
 		  }
 		| { harness: McpClients.Id; status: "failed"; error: string };
 
@@ -96,15 +99,22 @@ export namespace McpInstall {
 		if (deps.which(entry.binary) === null)
 			return { harness, status: "missing" };
 
+		const launch = McpClients.launchFor(deps.launcher, harness);
 		const probe = await deps.run(entry.find);
 		const present = entry.isPresent(probe);
-		if (present && !opts.force) return { harness, status: "present" };
+		if (present && !opts.force) {
+			// An unreadable config says nothing either way; the harness found an entry, so it is present.
+			const found = McpClients.registrations(harness, deps.where);
+			const stale =
+				found.ok &&
+				found.value.some((r) => !McpClients.sameLaunch(r.launch, launch));
+			return { harness, status: stale ? "stale" : "present" };
+		}
 		if (present) {
 			const removed = await deps.run(entry.remove);
 			if (removed.code !== 0) return failed(harness, removed);
 		}
 
-		const launch = McpClients.launchFor(deps.launcher, harness);
 		const added = await deps.run(entry.add(launch));
 		if (added.code !== 0) return failed(harness, added);
 		return { harness, status: present ? "replaced" : "installed" };
@@ -120,6 +130,7 @@ export namespace McpInstall {
 			run: deps.run ?? runSpawn,
 			which: deps.which ?? Bun.which,
 			launcher: deps.launcher ?? launcher(),
+			where: deps.where ?? { home: homedir(), env: process.env },
 		};
 		const reports: Report[] = [];
 		for (const harness of harnesses) {
@@ -144,12 +155,18 @@ const REPORT_TEXT: Record<McpInstall.Report["status"], string> = {
 	installed: "installed",
 	replaced: "replaced",
 	present: "already installed (pass --force to replace)",
+	stale: "registered with another command (pass --force to re-point it here)",
 	missing: "not on PATH",
 	failed: "failed",
 };
 
 const formatReport = (report: McpInstall.Report): string => {
-	const ok = report.status !== "failed" && report.status !== "missing";
+	const mark =
+		report.status === "failed" || report.status === "missing"
+			? "✗"
+			: report.status === "stale"
+				? "!"
+				: "✓";
 	const detail =
 		report.status === "failed"
 			? `failed: ${report.error}`
@@ -158,7 +175,7 @@ const formatReport = (report: McpInstall.Report): string => {
 		report.status === "installed" || report.status === "replaced"
 			? `  as ${McpClients.actorFor(report.harness)}`
 			: "";
-	return `${ok ? "✓" : "✗"} ${report.harness.padEnd(6)} ${detail}${actor}`;
+	return `${mark} ${report.harness.padEnd(6)} ${detail}${actor}`;
 };
 
 export const MCP_INSTALL_USAGE =

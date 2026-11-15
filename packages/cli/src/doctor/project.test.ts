@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import {
 	mkdirSync,
 	mkdtempSync,
@@ -16,6 +16,16 @@ import { settingsPort } from "../context";
 import { TRACKER_BLOCK } from "../first-run";
 import { kabane } from "./kabane";
 import { project } from "./project";
+
+// kabane's checks include the harness registrations; this machine's own are not these tests'.
+const harnesses = process.env.KABANE_HARNESSES;
+beforeAll(() => {
+	process.env.KABANE_HARNESSES = "";
+});
+afterAll(() => {
+	if (harnesses === undefined) delete process.env.KABANE_HARNESSES;
+	else process.env.KABANE_HARNESSES = harnesses;
+});
 
 const folders: string[] = [];
 afterEach(() => {

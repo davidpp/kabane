@@ -42,7 +42,8 @@ const setup = () => {
 				"doctor",
 				...args,
 			],
-			{ cwd, env: { ...process.env, KABANE_HOME: home } },
+			// No harness config is read: the machine's own registrations are not this test's.
+			{ cwd, env: { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" } },
 		);
 		expect(result.stderr.toString()).toBe("");
 		expect(result.exitCode).toBe(0);

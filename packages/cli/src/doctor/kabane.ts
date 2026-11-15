@@ -1,11 +1,13 @@
 import { ok } from "@cabane/core";
 import { type Doctor, type Extension } from "@cabane/extension";
+import { install } from "./install";
 import { project } from "./project";
 import { settings } from "./settings";
 
 const checks: { id: string; run: Doctor.Source["doctor"] }[] = [
 	{ id: "settings", run: settings },
 	{ id: "project", run: project },
+	{ id: "install", run: install },
 ];
 
 export const kabane = {
