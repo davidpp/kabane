@@ -13,23 +13,27 @@ import { join, relative } from "node:path";
 import { Templates } from "@cabane/acp/templates";
 import { ok, type Result, trySync } from "@cabane/core";
 import type { Doctor, Extension } from "@cabane/extension";
+import { z } from "zod";
 import { projectAt } from "../context";
 import { McpClients } from "../mcp-clients";
 
 const SOURCE = "project";
 const SETUP = "/setup-dispatch";
 
+const FrontmatterSchema = z.object({
+	metadata: z.object({ "kabane-template": z.string() }).optional(),
+});
+
 /** `metadata.kabane-template` from a skill's YAML frontmatter, if it has one. */
 const stampOf = (skill: string): string | undefined => {
-	const frontmatter = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(skill)?.[1];
-	if (frontmatter === undefined) return undefined;
-	const parsed = trySync(() => Bun.YAML.parse(frontmatter));
-	if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null)
-		return undefined;
-	const metadata = (parsed.value as { metadata?: unknown }).metadata;
-	if (typeof metadata !== "object" || metadata === null) return undefined;
-	const stamp = (metadata as Record<string, unknown>)["kabane-template"];
-	return typeof stamp === "string" ? stamp : undefined;
+	const [first, ...rest] = skill.split("\n");
+	if (first?.trimEnd() !== "---") return undefined;
+	const end = rest.findIndex((line) => line.trimEnd() === "---");
+	if (end === -1) return undefined;
+	const parsed = trySync(() => Bun.YAML.parse(rest.slice(0, end).join("\n")));
+	if (!parsed.ok) return undefined;
+	const fields = FrontmatterSchema.safeParse(parsed.value);
+	return fields.success ? fields.data.metadata?.["kabane-template"] : undefined;
 };
 
 const isRealDirectory = (path: string): boolean =>
