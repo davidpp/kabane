@@ -31,11 +31,11 @@ fields", specifies what the contract holds and will hold, including the `Host` t
 or member that section does not list comes with a change to it in the same diff (question 6 of
 `.agents/skills/dispatch/references/lenses/architecture.md`).
 
-Work on this package is in flight on other branches. Rebase onto main before you start, and
-expect these to land around you:
+The current contract and loader enforce these boundaries:
 
 - `kabane/extension` publishes generated types only; factories receive values through `host`.
-  `record` becomes live only after the CLI configures and migrates the runtime.
+  `record` becomes live only after the CLI configures and migrates the runtime and the
+  host’s factory returns. Doctor activates it only when it opens the store.
 - The CLI validates the manifest in `package.json` before importing the factory. JCAB-323 adds
   its modules entry; it does not live on `Extension`.
 

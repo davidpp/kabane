@@ -26,45 +26,69 @@ import {
 } from "@cabane/extension";
 import { z } from "zod";
 import { version } from "../package.json";
-import { harnessMode, loadConfig } from "./config";
+import { type Config, harnessMode, loadConfig } from "./config";
 
-let active: { home: string; context: ToolContext } | undefined;
+const modes = new Map<string, Host["harnessMode"]>();
 
-/** Clear before configuration, publish only after migration and scope resolution succeed. */
+/** One mode per device invocation, shared with the command context. */
+export const hostHarnessMode = (
+	home: string,
+	config?: Config,
+): Host["harnessMode"] => {
+	const cached = modes.get(home);
+	if (cached !== undefined) return cached;
+	const loaded = config ? ok(config) : loadConfig(home);
+	// A config-less standalone context (including doctor diagnosing broken config) uses auto.
+	const mode = loaded.ok ? harnessMode(loaded.value) : "auto";
+	modes.set(home, mode);
+	return mode;
+};
+
+let active: { home: string; context: () => Promise<ToolContext> } | undefined;
+
+/** Clear before configuration; publish lazy context only after migration succeeds. */
 export const activateHostRecord = (
 	home: string,
-	context?: ToolContext,
+	context?: () => Promise<ToolContext>,
 ): void => {
 	active = context ? { home, context } : undefined;
 };
 
-export const createHost = (home: string): Host => ({
-	api: 1,
-	kabane: { version, executable: Self.executable() },
-	record: createHostRecord(registeredTools, () =>
-		active?.home === home ? active.context : undefined,
-	),
-	scope: {
-		detect: (dir) =>
-			tryCatch(() => detectScope(dir, { home, detectExtensions: false })),
-		idOf: (uri) => {
-			const parsed = trySync(() => ScopeUri.getScopeId(uri));
-			return parsed.ok ? parsed.value : parsed;
+export const createHost = (home: string): { host: Host; ready: () => void } => {
+	let ready = false;
+	const host: Host = {
+		api: 1,
+		kabane: { version, executable: Self.executable() },
+		record: createHostRecord(registeredTools, () =>
+			ready && active?.home === home ? active.context() : undefined,
+		),
+		scope: {
+			detect: (dir) =>
+				tryCatch(() => detectScope(dir, { home, detectExtensions: false })),
+			idOf: (uri) => {
+				const parsed = trySync(() => ScopeUri.getScopeId(uri));
+				return parsed.ok ? parsed.value : parsed;
+			},
 		},
-	},
-	get harnessMode() {
-		const config = loadConfig(home);
-		return config.ok ? harnessMode(config.value) : "auto";
-	},
-	z,
-	result: { ok, err, tryCatch, trySync },
-	args: { flagBool, flagString, flagList, flagCsv },
-	outcome: { success, conciseSuccess, failure, usage },
-	settings: {
-		fields: Settings.fields,
-		groupsOf: Settings.groupsOf,
-		lookOf: Settings.lookOf,
-		options: Settings.options,
-	},
-	defineTool,
-});
+		get harnessMode() {
+			return hostHarnessMode(home);
+		},
+		z,
+		result: { ok, err, tryCatch, trySync },
+		args: { flagBool, flagString, flagList, flagCsv },
+		outcome: { success, conciseSuccess, failure, usage },
+		settings: {
+			fields: Settings.fields,
+			groupsOf: Settings.groupsOf,
+			lookOf: Settings.lookOf,
+			options: Settings.options,
+		},
+		defineTool,
+	};
+	return {
+		host,
+		ready: () => {
+			ready = true;
+		},
+	};
+};

@@ -311,7 +311,9 @@ An `import type` compiles to nothing, so the extension never resolves that path 
 is scoped to that extension's modules, so the kit knows whose tables a write may touch. It is
 built in two stages (see "Every process that opens the
 database registers the same modules"): everything but `record` and `store` works from the start,
-and `record` and `store` work once the runtime is configured and migrated. Each
+and `record` works once the runtime is configured and migrated and that host’s factory has
+returned. A doctor check can use it only when doctor successfully opened the store.
+Standalone extension commands do not open the store. `store` remains planned for JCAB-323. Each
 member below exists because the loop's inventory needs it (`wiki/extension-api.md`); JCAB-322
 does not widen it beyond that.
 
@@ -346,10 +348,11 @@ type Host = {
 ```
 
 `host.store` remains planned for JCAB-323. The compiled contract uses `typeof` for helper
-signatures and an explicit `harnessMode` member (Mode only, JCAB-316:8). The build uses
-`dts-bundle-generator` 9.5.1 with workspace source paths and inlines zod as well as core;
-`types/extension.d.ts` has no external type imports. The published `./extension` export
-has a `types` condition only.
+signatures and an explicit `harnessMode` member (Mode only, JCAB-316:8).
+`types/extension.d.ts` is generated from the types-only entry in `packages/extension`: it is
+self-contained, includes the reachable core and zod types, and exports types only. The
+published `./extension` export has a `types` condition only. Build tests compile named type
+imports and reject value imports.
 
 The helpers on `result`, `args`, `outcome` and `settings` keep their signatures in
 `packages/core/result.ts` and `packages/extension/index.ts`, and `defineTool` is `define` in
@@ -369,7 +372,9 @@ of zod and directs the extension to `host.z`.
 ### The record half of `host` is the MCP tools' operations, as typed wrappers
 
 `host.record` offers the operations the MCP tools expose, called in the host's process under
-`ctx.actor`. Each method is a wrapper over one tool, and says so: it takes the tool's input
+`ctx.actor`. `host.record` runs under the device’s actor and human actor, as an agent’s call
+over local stdio does, so an extension can record a relayed answer; it cannot name another actor.
+Each named method is a wrapper over one tool, and says so: it takes the tool's input
 without the presentation fields (`responseFormat`, `cursor`, and `kabane_comment`'s `text` and
 `content` aliases of `body`), always runs the tool's full format, and returns the value the tool
 returns in that format before the MCP server serializes it. The types below are those values,
@@ -383,14 +388,14 @@ namespace Host {
 		edit(input: EditInput): Promise<Result<Task>>; // kabane_edit
 		done(input: { id: string }): Promise<Result<Task>>; // kabane_done
 		comment(input: { id: string; body: string; kind?: string }): Promise<Result<TaskEntry>>; // kabane_comment
-		log(input: { id: string; refs?: readonly { uri: string; label?: string }[]; commit?: string; note?: string }): Promise<Result<TaskWorkLog>>; // kabane_log
+		log(input: { id: string; refs?: { uri: string; label?: string }[]; commit?: string; note?: string }): Promise<Result<TaskWorkLog>>; // kabane_log
 		context(input: ContextInput): Promise<Result<{ id: string; markdown: string }>>; // kabane_context
 		upstreamLink(input: UpstreamLinkInput): Promise<Result<UpstreamLink>>; // kabane_upstream_link
 		// Wrappers over kabane_linkList, kabane_upstreamList and kabane_logList (JCAB-336).
 		links(input: { id: string }): Promise<Result<TaskLink[]>>;
 		upstreamLinks(input: { id: string }): Promise<Result<UpstreamLink[]>>;
 		workLogs(input: { id: string; limit?: number }): Promise<Result<TaskWorkLog[]>>;
-		/** Any registered tool by name, full format; a data module's included. An unregistered name is an err. */
+		/** Any registered tool by name, input unchanged; a data module's included. An unregistered name is an err. */
 		call(tool: string, input: unknown): Promise<Result<unknown>>;
 	};
 }
@@ -399,10 +404,11 @@ namespace Host {
 `ListInput`, `EditInput`, `ContextInput` and `UpstreamLinkInput` are the tools' zod shapes less
 the presentation fields. A data module's tools, `kabane_checklist` among them, are
 reached through `call`, whose result is `unknown` until the caller parses it; core's tools get
-typed wrappers. `log` takes `refs` or `commit` or both, as `kabane_log` does. `ContextInput` retains the
-tool's optional `sections`, which the handler refuses in full format; callers omit it.
-Inputs are spelled out in `Host` because `ToolDef` erases each registered tool's shape;
-real database tests pin the wrappers to the handlers' full results.
+typed wrappers. `call` passes input unchanged, including cursors and response format.
+`log` takes `refs` or `commit` or both, as `kabane_log` does. `context` always returns the full
+context. Inputs are spelled out in `Host`; compile-time assertions compare each mirror to
+the tool’s typed input shape, and real database tests pin the wrappers to the handlers’ full
+results. Default scope is resolved lazily on the first record call and reused.
 
 The rule that keeps this surface honest: **`host.record` has no operation an agent cannot perform
 through a tool.** An extension that needs an operation no tool offers gets a new tool or a new

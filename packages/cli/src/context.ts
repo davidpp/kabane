@@ -13,6 +13,7 @@ import {
 	ok,
 	Planner,
 	type Result,
+	type ToolContext,
 	Runtime,
 	tryCatch,
 } from "@cabane/core";
@@ -34,12 +35,11 @@ import {
 	type Config,
 	configPath,
 	DB_NAME,
-	harnessMode,
 	loadConfig,
 	loadConfigDocument,
 } from "./config";
 import { ConfigLayers } from "./config-layers";
-import { activateHostRecord } from "./host";
+import { activateHostRecord, hostHarnessMode } from "./host";
 
 /** An extension's context plus the device config, which only built-in commands read. */
 export type Ctx = Extension.Ctx & { config: Config };
@@ -89,17 +89,27 @@ export const openContext = async (
 		cwd,
 		config: config.value,
 		actor,
-		harnessMode: harnessMode(config.value),
+		harnessMode: hostHarnessMode(home, config.value),
 		settings: settingsPort(home),
 	};
-	activateHostRecord(home, {
-		basePath: home,
-		actor,
-		humanActor: config.value.actor,
-		defaultScope: await resolveScopeUri(args, ctx),
-		scopeRequired: false,
-	});
+	activateContextRecord(ctx, args);
 	return ok(ctx);
+};
+
+/** Doctor and commands publish the same identity and lazily resolved scope. */
+export const activateContextRecord = (ctx: Ctx, args: ParsedArgs): void => {
+	let context: Promise<ToolContext> | undefined;
+	activateHostRecord(
+		ctx.home,
+		() =>
+			(context ??= resolveScopeUri(args, ctx).then((defaultScope) => ({
+				basePath: ctx.store,
+				actor: ctx.actor,
+				humanActor: ctx.config.actor,
+				defaultScope,
+				scopeRequired: false,
+			}))),
+	);
 };
 
 /** A scope to filter on or file under, with the name a UI should show for it. */

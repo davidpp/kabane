@@ -2,9 +2,11 @@ import { afterAll, describe, expect, it, spyOn } from "bun:test";
 import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { parseArgs } from "@cabane/extension";
 import { z } from "zod";
 import { configPath } from "./config";
 import { ConfigSettings } from "./config-settings";
+import { openContext } from "./context";
 import { Extensions } from "./extensions";
 import { run } from "./main";
 
@@ -493,4 +495,53 @@ it("a directory with its own zod uses host.z for settings and a tool served by k
 	} finally {
 		await client.close();
 	}
+});
+
+for (const openFirst of [false, true]) {
+	it(`keeps factory record calls staged with openContext ${openFirst ? "before" : "after"} loading`, async () => {
+		const home = makeHome({ extensions: ["stages"] });
+		install(
+			home,
+			"stages",
+			`export default async host => {
+			const during = await host.record.list({});
+			return { name: "stages", doctor: async () => {
+				const after = await host.record.list({});
+				return [{ id: "stages", source: "stages", severity: "mention", summary: JSON.stringify({ during: during.ok ? "live" : during.error.message, after: after.ok }) }];
+			} };
+		}`,
+		);
+		const open = async () => {
+			const ctx = await openContext(home, home, parseArgs([]));
+			if (!ctx.ok) throw ctx.error;
+			return ctx.value;
+		};
+		const before = openFirst ? await open() : undefined;
+		const all = await Extensions.loadAll(["stages"], home);
+		expect(all.refused).toEqual([]);
+		const ctx = before ?? (await open());
+		const check = all.loaded[0]?.doctor;
+		if (!check) throw new Error("Missing doctor check");
+		const findings = await check(ctx);
+		if (!Array.isArray(findings)) throw new Error("Expected findings");
+		expect(findings[0]?.summary).toContain(
+			"standalone commands do not open it automatically",
+		);
+		expect(findings[0]?.summary).toContain('"after":true');
+	});
+}
+
+it("gives standalone extension commands the host's cached harness mode", async () => {
+	const home = makeHome({ extensions: ["mode"], harness: { mode: "default" } });
+	install(
+		home,
+		"mode",
+		`export default host => ({name: "mode", commands: [{name: "mode", summary: "Mode", usage: "mode", standalone: true, run: async (_args, ctx) => host.outcome.success({host: host.harnessMode, context: ctx.harnessMode})}]});`,
+	);
+	const outcome = await run(
+		["mode"],
+		{ KABANE_HOME: home, KABANE_HARNESSES: "" },
+		home,
+	);
+	expect(outcome.json).toEqual({ host: "default", context: "default" });
 });

@@ -19,7 +19,7 @@ import {
 import { z } from "zod";
 import { ConfigSchema, configPath, loadConfig } from "./config";
 import { ConfigLayers } from "./config-layers";
-import { createHost } from "./host";
+import { createHost, hostHarnessMode } from "./host";
 
 /**
  * By the name `config.json` enables each with, as
@@ -273,8 +273,9 @@ export namespace Extensions {
 						"the entry's default export must be a factory (host) => Extension",
 					),
 				);
-			const host = createHost(home);
+			const { host, ready } = createHost(home);
 			loaded = await tryCatch(async () => factory.data(host));
+			if (loaded.ok) ready();
 		} else {
 			const loader = Object.hasOwn(OFFICIAL, name) ? OFFICIAL[name] : undefined;
 			if (!loader)
@@ -407,7 +408,12 @@ export namespace Extensions {
 			commands.push({
 				...command,
 				run: async (args, ctx) => {
-					const called = await tryCatch(() => command.run(args, ctx));
+					const called = await tryCatch(() =>
+						command.run(args, {
+							...ctx,
+							harnessMode: hostHarnessMode(ctx.home),
+						}),
+					);
 					return called.ok
 						? called.value
 						: failure(line({ name: owner, reason: called.error.message }));
