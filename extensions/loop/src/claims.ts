@@ -470,6 +470,7 @@ export namespace Claims {
 		worktree: run.worktree !== undefined,
 		isolation: run.config.isolation,
 		land: run.config.land,
+		onLanded: run.config.onLanded,
 		dir: claim ? RunStore.projectIn(run, claim.dir) : RunStore.sessionDir(run),
 		branch: claim?.branch ?? RunStore.branchOf(run),
 		runBranch: RunStore.branchOf(run),
