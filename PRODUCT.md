@@ -3,24 +3,29 @@
 ## North Stars
 
 Getting good work out of agents is a craft that changes every few months, across vendors,
-harnesses and models that come and go. Kabane makes that work go better, whichever agents do
-it: it brings good practice to the work, lets any agent pick up where another left off, and
-keeps a history that can explain what was done, when, by whom and why. It does this as one
-piece that composes with the tools people already use, never as the whole of them.
+harnesses and models that come and go. The tools that run agents keep their state while a
+session or a terminal is open; none of them keeps a record of the work that outlives both.
+Base kabane is that record: what is to be done, who did what and why, the questions put to
+the human and what was handed off, kept in step across a person's machines and agents so
+that any agent can pick up where another left off. Practice, meaning how people plan the
+work and drive agents through it, is built on top of that record, and so are the screens
+people work in; both change or get replaced while the record stays. Kabane is one piece
+that composes with the tools people already use, never the whole of them.
 
 In priority order; when two conflict, the higher one wins.
 
-1. **Helps you work well.** Kabane brings current good practice to the whole of the work,
-   from starting a project to closing an issue, and fits it to the project at hand. Where
-   someone else already does a practice well, kabane recommends theirs instead of redoing it:
-   bringing a practice to the work never means becoming the tool for every part of it.
-   It learns from what happened to the work, never from how much of it got done, and proposes
-   a better practice when one isn't working; the human decides.
-   *Rests on:* good practice for agent-driven work changing faster than one person can follow;
-   shared, tested practice beating each person rediscovering it; a piece that composes with
-   the rest outliving a tool that tries to be all of it. *Revisit if:* the practices settle
-   into the agent tools themselves, people stop taking kabane's recommendations, or carrying
-   a practice keeps requiring kabane to own the job itself.
+1. **A base to build practice on.** Base kabane keeps what any way of working with agents
+   needs and the tools around it do not keep: the record of the work, in step across
+   machines and agents. Practice, from planning a project to driving agents through its
+   issues, comes as extensions and skills that a person can take, replace or leave out, and
+   each one changes at its own pace. Kabane is complete without any of them, the ones it
+   offers included. Where someone else already does a practice well, kabane points to theirs
+   instead of redoing it.
+   *Rests on:* good practice for agent-driven work changing faster than the record of it
+   should; people assembling their own way of working from tools they chose; a piece that
+   composes with the rest outliving a tool that tries to be all of it. *Revisit if:* people
+   use kabane only with the practice it comes with and never replace or drop it, or a
+   practice keeps needing the base to change before it can work.
 2. **Instant.** Every read and write, by a human or an agent, feels immediate. Nothing ships
    that puts a wait on the common path.
    *Rests on:* speed being what users feel first (it already feels instant next to hosted trackers).
@@ -65,10 +70,11 @@ Not goals:
 - **The factory line.** No velocity, throughput or "done today" counts.
 
 **Still being refined (since 2026-11-07).** These are a working draft for the next few weeks,
-not settled law. Question them, argue with them, propose a better one, but out loud: never
-quietly work around one or rewrite it without telling the maintainer. Once settled, each one
-should survive a complete rewrite of the software and change only when an assumption under it
-breaks.
+not settled law. On 2026-11-15 the first one changed from bringing good practice to the work
+to being the base that practice is built on. Question them, argue with them, propose a better
+one, but out loud: never quietly work around one or rewrite it without telling the
+maintainer. Once settled, each one should survive a complete rewrite of the software and
+change only when an assumption under it breaks.
 
 ## Register
 
@@ -85,7 +91,8 @@ install it.
 The human's context is a narrow pane: a terminal split beside an editor, or a pane in
 herdr (a terminal multiplexer for coding agents) next to the agent sessions doing the work.
 It is glanced at between edits, not sat in. The job to be done is "see what is open in this
-scope, move one thing, and get back to work" in under five seconds.
+scope, move one thing, and get back to work" in under five seconds. The board serves that job
+today; it is one client of the record, and another client may replace it.
 
 The agents are first-class authors and workers with no screen at all: the board's copilot
 over ACP, coding sessions over stdio MCP on the device, and browser-only clients (ChatGPT,
@@ -95,11 +102,15 @@ affordances.
 
 ## Product Purpose
 
-A local-first issue tracker and kanban for one person and their agents. Issues live in
-SQLite on the machine, and every write names the human or the agent that made it. One
-machine on local SQLite is a complete setup. Several machines converge through an oplog,
-and a Cloudflare Worker running the same core joins as one more device that has a public
-URL; that hub is optional.
+A local-first issue tracker for one person and their agents, with a kanban board as its
+first client. Issues live in SQLite on the machine, and every write names the human or the
+agent that made it. One machine on local SQLite is a complete setup. Several machines
+converge through an oplog, and a Cloudflare Worker running the same core joins as one more
+device that has a public URL; that hub is optional.
+
+Kabane's own practice ships beside it as optional extensions: the loop, which drives a parent
+issue's subtasks through coding agents, and the dispatch and grill skills. Kabane works
+without any of them.
 
 It is not a team tracker. Linear and GitHub stay the team record; kabane links to their
 issues by identity and keeps the person's own working notes beside them.
