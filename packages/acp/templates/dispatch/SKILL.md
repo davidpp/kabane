@@ -2,6 +2,8 @@
 name: dispatch
 description: Turn an ask in {{PROJECT}} into shipped work. Size it first (do it inline, file one kabane issue, or plan a wave), then write issues that are complete briefs, run parallel agents with owned file territories, merge each one behind the gate, and report what is left for a human to check. Use this whenever the user asks to dispatch, plan and run, or parallelize work in this repo (for example `/dispatch` or "dispatch {{ISSUE_PREFIX}}-123"), or asks for a change with more than one independent piece, even if they never say "dispatch".
 argument-hint: <kabane issue id | freeform ask>
+metadata:
+  kabane-template: {{TEMPLATE_STAMP}}
 ---
 
 # Dispatch — {{PROJECT}}
