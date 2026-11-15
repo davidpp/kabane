@@ -69,10 +69,11 @@ const claim = (
 });
 
 // The documented homes, spelled out rather than taken from `Lenses`, so a wrong path there fails.
-const SKILL = ".claude/skills/dispatch/references/lenses";
+const SKILL = ".agents/skills/dispatch/references/lenses";
+const CLAUDE = ".claude/skills/dispatch/references/lenses";
 const LEGACY = ".kabane/loop/lenses";
 
-/** Lens `name`'s file in `dir`, one of the two homes, in the repo. */
+/** Lens `name`'s file in `dir`, one of the three homes, in the repo. */
 const at = (dir: string, name: string): string => join(repo, dir, `${name}.md`);
 
 const write = (dir: string, name: string, text: string): void => {
@@ -116,6 +117,21 @@ describe("Lenses.prompt", () => {
 		expect(Lenses.prompt(repo, "security")).toEqual({
 			ok: true,
 			value: { text: "# Security\n", always: false },
+		});
+	});
+
+	it("reads the skill's file under .claude/ after .agents/ and before the old directory, with no move to name", () => {
+		write(LEGACY, "security", "# Old\n");
+		write(CLAUDE, "security", "# Claude\n");
+		expect(Lenses.prompt(repo, "security")).toEqual({
+			ok: true,
+			value: { text: "# Claude\n", always: false },
+		});
+		expect(Lenses.moves(repo, ["security"])).toEqual([]);
+		write(SKILL, "security", "# Agents\n");
+		expect(Lenses.prompt(repo, "security")).toEqual({
+			ok: true,
+			value: { text: "# Agents\n", always: false },
 		});
 	});
 
@@ -188,12 +204,15 @@ describe("Lenses.prompt", () => {
 		const message = !unknown.ok && unknown.error.message;
 		expect(message).toContain(at(SKILL, "perf"));
 		expect(message).not.toContain(LEGACY);
+		expect(message).not.toContain(CLAUDE);
 	});
 
-	it("offers the shipped lenses, then the project's own from the skill and the old directory, once each", () => {
+	it("offers the shipped lenses, then the project's own from the skill, its .claude/ home and the old directory, once each", () => {
 		expect(Lenses.offered(repo)).toEqual(["functional", "quality"]);
 		write(SKILL, "security", "# Security\n");
 		write(SKILL, "quality", "# Ours\n");
+		write(CLAUDE, "compat", "# Compat\n");
+		write(CLAUDE, "security", "# Claude security\n");
 		write(LEGACY, "perf", "# Perf\n");
 		write(LEGACY, "quality", "# Old quality\n");
 		writeFileSync(join(repo, SKILL, "notes.txt"), "not a lens\n");
@@ -202,6 +221,7 @@ describe("Lenses.prompt", () => {
 		expect(Lenses.offered(repo)).toEqual([
 			"functional",
 			"quality",
+			"compat",
 			"perf",
 			"security",
 		]);

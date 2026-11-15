@@ -204,8 +204,9 @@ Advice never changes `loop.implementer`, `loop.verifier`, `loop.model` or `loop.
 Those are your choices of harness, model and what happens to the finished branch.
 
 A lens is a Markdown prompt in your dispatch skill,
-`.claude/skills/dispatch/references/lenses/<name>.md`, the same file the skill's close
-review reads; `functional` and `quality` ship with kabane. A lens file can open with
+`.agents/skills/dispatch/references/lenses/<name>.md`, the same file the skill's close
+review reads; `functional` and `quality` ship with kabane. A skill kabane wrote before, still
+a real directory at `.claude/skills/dispatch/`, is read after it. A lens file can open with
 frontmatter that says which changes it reviews:
 
 ```markdown
