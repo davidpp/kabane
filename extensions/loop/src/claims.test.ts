@@ -9,6 +9,7 @@ import { Planner, type Task } from "@cabane/core";
 import { Claims } from "./claims";
 import { LoopConfig } from "./config";
 import type { Gates } from "./gates";
+import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
 import { Stall } from "./stall";
 import type { RunState } from "./state";
@@ -727,5 +728,153 @@ describe("Claims.interruption", () => {
 		const ctx = runOn(parent, [ended]);
 		expect(await Claims.interruption(ctx, ended)).toBeUndefined();
 		expect(await Claims.interruption(ctx, undefined)).toBeUndefined();
+	});
+});
+
+describe("Claims.lens on a group", () => {
+	// The launch points at no harness, so the session fails without reaching a model: what is under
+	// test is the one claim the group makes and how its end reads for each of its lenses.
+	it("runs the group as one claim, at the tier given, and its end is each lens's", async () => {
+		const parent = await add("parent", { state: "in_progress" });
+		const config = LoopConfig.Schema.safeParse({
+			lenses: ["functional", "quality"],
+			tiers: { claude: { fast: "sonnet" } },
+		});
+		if (!config.success) throw config.error;
+		const run: RunStore.Run = {
+			version: 1,
+			id: "run-1",
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		};
+		const created = RunStore.create(home, run);
+		if (!created.ok) throw created.error;
+		const ctx = ctxFor(run);
+		ctx.deps = {
+			...ctx.deps,
+			overrides: { claude: { command: "/nonexistent/harness" } },
+		};
+		const plan = await LoopPlan.load(home, parent.id);
+		if (!plan.ok) throw plan.error;
+
+		const started = await Claims.lens(
+			ctx,
+			["functional", "quality"],
+			plan.value,
+			"fast",
+		);
+		expect(started.ok).toBe(true);
+		expect(
+			ctx.run.claims.map((c) => [c.lenses, c.lane, c.taskId, c.harness]),
+		).toEqual([
+			[
+				["functional", "quality"],
+				"functional+quality-lens",
+				parent.id,
+				"claude",
+			],
+		]);
+		expect(Lenses.status(config.data.lenses, ctx.run.claims).running).toEqual([
+			"functional",
+			"quality",
+		]);
+		const events = RunStore.readEvents(home, run.id);
+		if (!events.ok) throw events.error;
+		expect(events.value.find((e) => e.type === "claim")?.summary).toBe(
+			`claude at tier fast reviews ${parent.shortId} through the functional and quality lenses`,
+		);
+
+		await Promise.all([...ctx.live.values()].map((l) => l.settled));
+		await Claims.settleAll(ctx);
+		const ended = Lenses.status(config.data.lenses, ctx.run.claims);
+		expect(ended.failed.map((f) => f.name)).toEqual(["functional", "quality"]);
+
+		// The same group again, in whatever order, is its second attempt.
+		await Claims.lens(ctx, ["quality", "functional"], plan.value);
+		expect(ctx.run.claims.at(-1)?.lane).toBe("quality+functional-lens#2");
+		await Promise.all([...ctx.live.values()].map((l) => l.settled));
+		await Claims.settleAll(ctx);
+	});
+});
+
+describe("Claims.greenPass", () => {
+	const result = (name: string, ok: boolean): Gates.Result => ({
+		name,
+		command: `run ${name}`,
+		ok,
+		exit: ok ? 0 : 1,
+		ms: 10,
+		tail: "",
+	});
+	const pass = (results: Gates.Result[], tree = "tree"): Gates.Run => ({
+		at: new Date().toISOString(),
+		results,
+		ok: results.every((r) => r.ok),
+		tree,
+	});
+	// `ctxFor`'s tree is "tree": a pass left on it is on the tree as it is now. One run each.
+	let runs = 0;
+	const ctxWith = async (
+		gates: Record<string, string>,
+		gateRuns: Gates.Run[],
+	): Promise<RunState.Ctx> => {
+		const parent = await add("parent", { state: "in_progress" });
+		const config = LoopConfig.Schema.safeParse({ gates });
+		if (!config.success) throw config.error;
+		const run: RunStore.Run = {
+			version: 1,
+			id: `run-${++runs}`,
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns,
+		};
+		const created = RunStore.create(home, run);
+		if (!created.ok) throw created.error;
+		return ctxFor(run);
+	};
+	const gates = { check: "run check", test: "run test" };
+	const green = [result("check", true), result("test", true)];
+
+	it("takes the latest pass when every gate passed on the tree as it is", async () => {
+		const ctx = await ctxWith(gates, [
+			pass([result("check", false)]),
+			pass(green),
+		]);
+		expect(await Claims.greenPass(ctx)).toEqual(green);
+	});
+
+	it("takes none when the latest pass is red, stopped short, on another tree, or there are no gates", async () => {
+		const red = [result("check", true), result("test", false)];
+		for (const runs of [
+			[pass(green), pass(red)],
+			[pass([result("check", true)])],
+			[pass(green, "earlier tree")],
+			[],
+		])
+			expect(
+				await Claims.greenPass(await ctxWith(gates, runs)),
+			).toBeUndefined();
+		expect(
+			await Claims.greenPass(await ctxWith({}, [pass([])])),
+		).toBeUndefined();
 	});
 });

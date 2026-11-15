@@ -34,16 +34,77 @@ and it does not finish while one is open: set it back to `next` for the run to t
 close it. `kabane loop skip` only keeps the run from claiming a subtask; a skipped subtask
 that stays open still holds the run.
 
-By default, `loop.land` is `none`: the finished branch stays in its worktree. To push a
-completed run's branch and open its pull request with your own git and gh:
+By default, `loop.land` is `none`: the finished branch stays in its worktree. The other
+settings land it on completion, after rebasing it onto the latest of its base and running
+the gates again when the rebase moved it:
+
+- `pr` pushes the branch and opens its pull request with your own git and gh. The parent
+  waits on that review.
+- `merge` merges the branch into the base in your project checkout, as
+  `git merge --no-ff`, and moves the parent to done. It refuses, changing nothing, while
+  the checkout is not on the base or has uncommitted changes to tracked files; a merge
+  that conflicts is aborted. If git cannot abort it, the landing says the checkout is
+  mid-merge and leaves it for you to finish or abort. If you commit on the base or switch
+  branches while the merge runs, the landing reports it as not landed and undoes nothing.
+  It does not push: pushing the base is left to you. The next `kabane loop start` or
+  `kabane loop prune` removes the merged worktree and branch. A run that already had a pull
+  request stops tracking it: the parent waiting on it moves to done, and the pull request
+  stays open on GitHub for you to close.
+
+To land a completed run by hand, or again once a landing that failed is fixed:
 
 ```bash
-kabane loop land <runId>
+kabane loop land <runId> [--land pr|merge]
 ```
 
-`loop.land = pr` does that automatically on completion. See `kabane loop --help` for
+It lands as the run's `loop.land` says, as `--land` says over it, or as `pr` when the
+setting is `none`. Run again after a `merge` landing, it only reports the branch as
+merged, and still runs `loop.onLanded`. See `kabane loop --help` for
 flags and the commands for pausing, resuming, answering questions and rolling back to a
 checkpoint.
+
+### Run a command after a landing
+
+`loop.onLanded` is one shell command that runs after a branch lands, both at the end of a
+run and after `kabane loop land`. It runs in your project checkout, only when the landing
+succeeded, and never for a run that was stopped. By then the run is recorded as completed
+and nothing holds its worktree, so a `kabane loop prune` in the command can remove this
+run's worktree and branch. Unset, nothing runs. Like every loop setting, it is read when
+the run starts: `kabane loop land` runs the command the run started with.
+
+The command learns what landed from these environment variables:
+
+| Variable | Value |
+|---|---|
+| `KABANE_RUN_ID` | The run id. |
+| `KABANE_PARENT` | The issue's short id. |
+| `KABANE_LAND` | How it landed: `pr` or `merge`. |
+| `KABANE_BRANCH` | The run's branch. |
+| `KABANE_BASE` | The base branch it landed on (its commit, for a run started from a detached HEAD). |
+| `KABANE_WORKTREE` | The run's worktree. |
+| `KABANE_PR` | The pull request's URL, after a `pr` landing. |
+| `KABANE_MERGED` | The merge commit on the base, after a `merge` landing. Unset when the base took the branch without one, for example by a fast-forward you made. |
+
+Some commands to start from:
+
+```bash
+# land: merge, then publish the base
+kabane config set loop.onLanded 'git push'
+# land: pr, then let GitHub merge it once its checks pass
+kabane config set loop.onLanded 'gh pr merge "$KABANE_PR" --auto --merge'
+# remove the merged worktree and branch right away
+kabane config set loop.onLanded 'kabane loop prune'
+```
+
+Chain them with `&&`, for example `git push && kabane loop prune`. The command's exit
+status and the end of its output go on the run's trace. A command that fails leaves a
+warning there and changes nothing else: the run stays completed and the landing stays
+done. A `pr` landing's pull request is usually still open when the command runs, so
+`kabane loop prune` keeps that worktree until it is merged.
+
+Every successful landing runs the command, so a retry with `kabane loop land` runs it
+again, also when the branch was already merged. Write a command that is safe to run twice:
+`git push` and `kabane loop prune` are.
 
 ## Settings and layers
 
@@ -136,9 +197,36 @@ file overlap and past attempts, plus the project's scripts and lockfile. It can 
 - `loop.stallAfter`: fewer attempts before stalling when past work has thrashed.
 
 Verifier lenses (`loop.lenses`) are also task-shaped choices in the form. The current
-adviser leaves that list at your configured value; choose the lenses you want there.
+adviser leaves that list at your configured value; choose the lenses you want there. Which
+of them review a given run, and in how many sessions, is decided once the work is done by
+the run's triage (see "How much review a run gets").
 Advice never changes `loop.implementer`, `loop.verifier`, `loop.model` or `loop.land`.
 Those are your choices of harness, model and what happens to the finished branch.
+
+A lens is a Markdown prompt in your dispatch skill,
+`.agents/skills/dispatch/references/lenses/<name>.md`, the same file the skill's close
+review reads; `functional` and `quality` ship with kabane. Lenses under
+`.claude/skills/dispatch/references/lenses/` are read too, after `.agents/`: a lens there is
+offered, and a file of the same name under `.agents/` replaces it. A lens file can open with
+frontmatter that says which changes it reviews:
+
+```markdown
+---
+applies: persisted rows, sync ops, MCP tool inputs, config keys, file formats, CLI flags and output
+always: false
+---
+
+# Compatibility lens
+```
+
+`applies` is one line of prose, written for a model deciding from a diff stat and the
+brief. `always: true` marks a lens that reviews every change; the shipped `functional`
+lens is one. Both keys are optional: a file without frontmatter is a lens with no
+`applies` that is not `always`. Any other key, or frontmatter that is not YAML, is an
+error that names the file, and `kabane loop start` refuses a run that would use that lens.
+The session gets the prompt without its frontmatter. The dispatch skill's close review
+skips a lens whose `applies` the diff does not touch. A loop run's triage reads both keys
+to decide which lenses run; with `loop.review.mode all`, every lens in `loop.lenses` runs.
 
 To read the same advice from the CLI, including how the subtask tags would route:
 
@@ -157,3 +245,50 @@ You can also ask the board copilot to "set up a loop for X". It reads the advice
 subtasks' briefs, proposes settings and `tier:`/`agent:` tags with a reason for each, and
 waits for your yes before it tags anything or starts the run. It never changes the
 implementer or verifier unless you ask.
+
+## How much review a run gets
+
+With two lenses or more in `loop.lenses`, a run triages before they review. Once the
+work is done and the gates are green, one short session reads what the run changed
+(`git diff --stat` from the commit its worktree was made from, plus files new to git),
+the parent's brief and each lens's `applies` and `always`. It changes nothing and answers
+with a review plan: which lenses review together in one session, at which tier, and which
+it skips, each with a reason. The plan goes on the run's trace, one line per session and
+per skipped lens:
+
+```text
+functional+quality at tier balanced: one code path, the change is a new CLI flag
+docs: README.md and docs/loop.md changed
+skipped compat: no persisted data, interface or config change in the diff
+```
+
+The run then starts one session per group. A skipped lens files nothing and counts as
+reviewed. The plan cannot go below these bounds:
+
+- A lens marked `always: true` always reviews. A plan that skips it gets it back in a
+  session of its own.
+- A lens the plan does not mention reviews in a session of its own. A lens the run does
+  not have is dropped, and so is a tier that no run knows.
+- A diff of more than 20 files or 800 changed lines gets one session per lens, whatever
+  the plan grouped.
+- Triage never changes `loop.implementer`, `loop.verifier`, `loop.model` or `loop.land`.
+
+Every lens reviews in a session of its own, with the reason on the trace, when triage
+fails, is stopped, edits a file, or answers no plan. The same happens when the run has
+no commit to diff against (a run without a worktree, or outside git), where no triage
+session starts, and when a run resumed by a newer kabane was already reviewing. A failed
+triage never stops the run. A run triages once: a restarted runner keeps the plan, and
+runs a triage again only when the last one was cut short.
+
+Triage runs on the verifier harness (`loop.verifier`, else `loop.implementer`) as its
+default agent, at tier `loop.review.tier`, `fast` by default. Map that tier to the model
+you want, or give triage a tier of its own so `tier:fast` subtasks keep theirs:
+
+```bash
+kabane config set loop.review.tier triage
+kabane config set loop.tiers.claude.triage haiku
+```
+
+An unmapped tier runs on the run's model, with a trace warning. `kabane loop status
+<runId>` lists the `triage` session with the model it ran on. `loop.review.mode all`
+turns triage off: every lens reviews in a session of its own, as a run with one lens does.

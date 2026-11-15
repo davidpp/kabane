@@ -9,7 +9,7 @@
 // on it (`Parent`). Once the fixer has ended and the gates are green on its result, the lenses
 // whose findings it closed recheck its diff, once and without editing (`recheck`). A run that
 // completes lands its branch when its `land` setting says so
-// (`Land`). A single issue that gains a work child mid-run is a parent from then on. Each
+// (`Land`), then runs the user's `onLanded` command once it is over (`Landed`). A single issue that gains a work child mid-run is a parent from then on. Each
 // subtask may work in a worktree of its own (`ClaimTrees`), which the run's end removes once free.
 import { err, ok, type Result, type Task } from "@cabane/core";
 import { Budget } from "./budget";
@@ -18,9 +18,11 @@ import { Claims } from "./claims";
 import { Fixer } from "./fixer";
 import { Gates } from "./gates";
 import { Land } from "./land";
+import { Landed } from "./landed";
 import { Lenses } from "./lenses";
 import { Parent } from "./parent";
 import { LoopPlan } from "./plan";
+import { Review } from "./review";
 import { Stall } from "./stall";
 import { RunState } from "./state";
 import { Steering } from "./steering";
@@ -360,9 +362,9 @@ export namespace Runner {
 
 	/**
 	 * The work is done and nothing is running. The phases that follow, each once: the gates on the
-	 * result, the lenses on work that passes them, the fixer on what the lenses found, the gates
-	 * once more on what the fixer changed, then a recheck of its diff by each lens whose findings it
-	 * closed. The run completes when all of it has happened; what a recheck reopens or files is
+	 * result, on work that passes them the triage that plans the review (`Review`) and the lenses
+	 * it groups, the fixer on what the lenses found, the gates once more on what the fixer changed,
+	 * then a recheck of its diff by each lens whose findings it closed. The run completes when all of it has happened; what a recheck reopens or files is
 	 * left open for a human, with no second fixer. The fixer does not wait for the gates: the
 	 * lenses saw them green, and a fixer resumed after its runner died picks up a half-fixed tree.
 	 * Undefined goes on ticking.
@@ -372,7 +374,11 @@ export namespace Runner {
 		plan: LoopPlan.Plan,
 	): Promise<Exit | undefined> => {
 		const gatesGreen = await checked(ctx);
-		const reviewed = Lenses.status(ctx.run.config.lenses, ctx.run.claims);
+		// Skipped lenses count as reviewed: only the plan's groups are owed a session.
+		const reviewed = Lenses.status(
+			Review.reviewed(ctx.run.config, ctx.run.review),
+			ctx.run.claims,
+		);
 		const lensesDone = Lenses.finished(reviewed);
 		const fixer = Fixer.status(ctx.run.claims);
 		const findings = LoopPlan.fixable(
@@ -390,8 +396,9 @@ export namespace Runner {
 				.done
 		) {
 			// A landing that fails still completes the run: the work is done and checked.
-			if (ctx.run.config.land === "pr") {
-				await hearingStop(ctx, () => Land.land(ctx, plan));
+			const { land } = ctx.run.config;
+			if (land !== "none") {
+				await hearingStop(ctx, () => Land.land(ctx, plan, land));
 				if (ctx.stopRequested)
 					return { status: "stopped", reason: "stop-requested" };
 			}
@@ -413,7 +420,7 @@ export namespace Runner {
 					reason: "lens-failed",
 					detail: `${failed.name}: ${failed.detail}`,
 				};
-			return startLenses(ctx, plan, reviewed.pending);
+			return startReview(ctx, plan, reviewed.pending);
 		}
 		if (fixer.kind === "failed")
 			return {
@@ -460,22 +467,66 @@ export namespace Runner {
 		return undefined;
 	};
 
-	// Lenses take free slots like any claim, and none while the run is paused. Their findings are
-	// children of the parent, for the fixer once every lens has reviewed.
-	const startLenses = async (
+	/**
+	 * Start the triage: undefined once it has started, else why not. Never on a review already
+	 * under way (a run resumed by a kabane that triages, mid-review), nor without a base to diff.
+	 */
+	const triage = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+	): Promise<string | undefined> => {
+		if (ctx.run.claims.some((c) => c.lenses !== undefined))
+			return "review already under way";
+		const base = ctx.run.base?.sha;
+		if (base === undefined) return "no base to diff against";
+		const started = await Claims.triage(ctx, plan, base);
+		return started.ok
+			? undefined
+			: `triage did not start: ${started.error.message}`;
+	};
+
+	/**
+	 * The review, none of it while the run is paused: in a run that triages and has no plan yet, the
+	 * triage session, once, or every lens on its own when it cannot run; then the plan's groups
+	 * with a lens still `pending`.
+	 */
+	const startReview = async (
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
 		pending: readonly string[],
 	): Promise<Exit | undefined> => {
 		if (ctx.run.steering.paused) return undefined;
+		const { config } = ctx.run;
+		if (ctx.run.review === undefined && Review.wanted(config)) {
+			const why = await triage(ctx, plan);
+			if (why === undefined) return undefined;
+			Claims.planReview(ctx, {
+				plan: Review.fallback(config.lenses, why),
+				notes: [],
+			});
+		}
+		const groups = Review.groups(config, ctx.run.review).flatMap((g) => {
+			const left = g.lenses.filter((name) => pending.includes(name));
+			return left.length > 0 ? [{ ...g, lenses: left }] : [];
+		});
+		return startLenses(ctx, plan, groups);
+	};
+
+	// Each group of lenses is one review session, at its tier, and takes a free slot like any claim.
+	// Their findings are children of the parent, for the fixer once every lens has reviewed.
+	const startLenses = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+		groups: readonly Review.Group[],
+	): Promise<Exit | undefined> => {
 		const slots = Budget.slots(RunStore.concurrency(ctx.run), ctx.live.size);
-		for (const name of pending.slice(0, slots)) {
-			const started = await Claims.lens(ctx, name, plan);
+		for (const group of groups.slice(0, slots)) {
+			const started = await Claims.lens(ctx, group.lenses, plan, group.tier);
 			if (!started.ok)
 				return {
 					status: "stopped",
 					reason: "lens-failed",
-					detail: `${name}: ${started.error.message}`,
+					detail: `${group.lenses.join("+")}: ${started.error.message}`,
 				};
 		}
 		return undefined;
@@ -640,6 +691,11 @@ export namespace Runner {
 			ctx.wake();
 		});
 		const waits = await boot(ctx);
-		return ok(waits ? await halt(ctx, waits) : await loop(ctx));
+		const over = waits ? await halt(ctx, waits) : await loop(ctx);
+		// After `halt` has written the run completed, so a `kabane loop prune` it runs sees it over.
+		// Its own signal: the run's stop has already fired by now.
+		const { land } = over.config;
+		if (land !== "none") await Landed.hook(ctx, land, deps.signal);
+		return ok(over);
 	};
 }

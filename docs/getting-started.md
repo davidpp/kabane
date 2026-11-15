@@ -188,8 +188,16 @@ expands into editable text, so you can read what will be sent before sending it.
 
 `/setup-dispatch` is the only shortcut that writes files to your project. It reads the
 project's `CLAUDE.md`/`AGENTS.md`, its gate commands and `.claude/agents/`, then writes a
-dispatch skill under `.claude/skills/dispatch/` that lets your coding sessions turn asks
-into kabane issues. It shows each file before writing it.
+dispatch skill under `.agents/skills/dispatch/` that lets your coding sessions turn asks
+into kabane issues. Codex and Pi read skills from `.agents/skills/`. Claude Code reads only
+`.claude/skills/`, so the copilot links `.claude/skills/dispatch` to
+`../../.agents/skills/dispatch` when the project already has a `.claude/` directory or you
+ask, and otherwise tells you the command that adds the link. On a project with no dispatch
+skill yet, it writes the skill and that link first, then shows you each file; deleting the
+directory undoes it. When `.agents/skills/dispatch/` already exists, it shows the diff and
+writes nothing without your yes. A dispatch skill an earlier kabane wrote as a real
+directory at `.claude/skills/dispatch/` keeps working; the copilot offers to move it and
+leave the link, shows the diff, and moves or writes nothing without your yes.
 
 Ask the copilot to "grill me" and it walks you through the questions agents left open, one
 at a time, and records each answer; any harness with the kabane MCP can use the same skill.

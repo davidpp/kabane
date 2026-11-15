@@ -44,6 +44,7 @@ describe("LoopConfig.SettingsSchema", () => {
 			reuse: true,
 			lenses: [],
 			recheck: true,
+			review: { mode: "triage", tier: "fast" },
 			land: "none",
 		});
 	});
@@ -109,6 +110,13 @@ describe("LoopConfig.SettingsSchema", () => {
 			test: "bun test",
 			lint: "bun run check",
 		});
+	});
+
+	it("lands by merge, and refuses a landing it does not have", () => {
+		expect(LoopConfig.Schema.safeParse({ land: "merge" }).data?.land).toBe(
+			"merge",
+		);
+		expect(LoopConfig.Schema.safeParse({ land: "squash" }).success).toBe(false);
 	});
 
 	it("drops the retired timer from existing files and saved runs", () => {

@@ -82,7 +82,22 @@ export namespace LoopConfig {
 	export const ISOLATION = ["worktree", "shared"] as const;
 
 	/** How a completed run's branch lands. */
-	export const LAND = ["none", "pr"] as const;
+	export const LAND = ["none", "pr", "merge"] as const;
+
+	/** Whether a run triages its lenses before they review (`Review`). */
+	export const REVIEW_MODES = ["triage", "all"] as const;
+
+	const ReviewSchema = z.object({
+		mode: z
+			.enum(REVIEW_MODES)
+			.default("triage")
+			.describe(
+				"triage: with two lenses or more, one short read-only session reads the diff and decides which lenses run, grouped into shared sessions at a tier each, and which are skipped, never one whose frontmatter says always; all: every lens runs in a session of its own; defaults to triage.",
+			),
+		tier: TierNameSchema.default("fast").describe(
+			"The tier the triage session runs at, resolved through loop.tiers like a subtask's tier: tag, so loop.review.tier triage with loop.tiers.claude.triage = haiku gives triage its own model; an unmapped tier runs on the run's model; defaults to fast.",
+		),
+	});
 
 	export const Schema = z.object({
 		/** The harness every subtask runs on; a claim makes it the subtask's assignee. */
@@ -200,7 +215,7 @@ export namespace LoopConfig {
 		/**
 		 * Verifier lenses, each its own session once the plan is done and the gates are green,
 		 * filing findings as tagged child issues of the parent. A lens is a prompt file in the
-		 * project's dispatch skill, `.claude/skills/dispatch/references/lenses/<name>.md`, or one
+		 * project's dispatch skill, `.agents/skills/dispatch/references/lenses/<name>.md`, or one
 		 * kabane ships (`functional`, `quality`). None: no verification, and the run completes on
 		 * its gates.
 		 */
@@ -208,7 +223,7 @@ export namespace LoopConfig {
 			.array(LensNameSchema)
 			.default([])
 			.describe(
-				"Verifier lenses run once the gates are green: functional, quality, or the project's .claude/skills/dispatch/references/lenses/<name>.md.",
+				"Verifier lenses run once the gates are green: functional, quality, or the project's .agents/skills/dispatch/references/lenses/<name>.md.",
 			),
 		/**
 		 * Once the fixer has ended and the gates are green on its result, each lens with a finding
@@ -223,6 +238,15 @@ export namespace LoopConfig {
 			.describe(
 				"Once the fixer has ended and the gates pass, each lens whose findings it closed reviews its diff once, without editing, and reopens what is not fixed; defaults to true.",
 			),
+		/**
+		 * How much review a run gets (`Review`): with `triage`, a run with two lenses or more first runs
+		 * one read-only session that groups the lenses its diff needs, at a tier each, and skips the
+		 * rest above the `always` floor; `all` runs every lens in a session of its own. `tier` is the
+		 * tier that session runs at, so it can have a model of its own (`loop.tiers.<harness>.<tier>`).
+		 */
+		review: ReviewSchema.default({}).describe(
+			"How much review a run gets; edit dotted keys (loop.review.mode, loop.review.tier).",
+		),
 		/** The harness every lens runs on; absent, the implementer. */
 		verifier: z
 			.enum(Harnesses.IDS)
@@ -230,14 +254,28 @@ export namespace LoopConfig {
 			.describe("Harness every lens runs on; absent, the implementer."),
 		/**
 		 * What a completed run does with its worktree's branch: `none` leaves it there, `pr` pushes
-		 * it and opens a pull request with the user's own git and gh (`Land`). `kabane loop land`
-		 * does the same for a completed run by hand, or again after a landing that failed.
+		 * it and opens a pull request with the user's own git and gh, `merge` merges it into the
+		 * base in the project's checkout and pushes nothing (`Land`). `kabane loop land` does the
+		 * same for a completed run by hand, or again after a landing that failed.
 		 */
 		land: z
 			.enum(LAND)
 			.default("none")
 			.describe(
-				"What a completed run does with its branch: none leaves it in its worktree, pr rebases it onto its base, pushes it and opens a pull request with your git and gh; defaults to none. kabane loop land <runId> lands a completed run by hand.",
+				"What a completed run does with its branch: none leaves it in its worktree, pr rebases it onto its base, pushes it and opens a pull request with your git and gh, merge rebases it onto its base, merges it into the base in your checkout (--no-ff) and pushes nothing; defaults to none. kabane loop land <runId> lands a completed run by hand.",
+			),
+		/**
+		 * The user's own command for after a landing: run in the project's checkout once a run's
+		 * branch has landed, at the end of the run or by `kabane loop land`, told what landed through
+		 * `KABANE_*` variables (`Landed`). A push, GitHub's auto-merge or `kabane loop prune` goes
+		 * here. One that fails is a warning on the run's trace and changes nothing else.
+		 */
+		onLanded: z
+			.string()
+			.min(1)
+			.optional()
+			.describe(
+				"A shell command run in your checkout once a run's branch lands, at the end of the run or by kabane loop land, with KABANE_RUN_ID, KABANE_PARENT, KABANE_LAND, KABANE_BRANCH, KABANE_BASE, KABANE_WORKTREE, KABANE_PR and KABANE_MERGED set, such as git push or kabane loop prune; one that fails is a warning on the run's trace.",
 			),
 	});
 
@@ -314,19 +352,28 @@ export namespace LoopConfig {
 			.preprocess(withoutTimer, BudgetSchema.strict())
 			.default({})
 			.describe("A run's limits; edit dotted keys."),
+		review: ReviewSchema.strict()
+			.default({})
+			.describe(
+				"How much review a run gets; edit dotted keys (loop.review.mode, loop.review.tier).",
+			),
 	})
 		.strict()
 		.describe(
 			"The loop extension's settings for a run; edit dotted keys. Flags on kabane loop start and the board's run form override them.",
 		);
 
-	// A run written before `isolation` existed worked every claim in its one tree: resumed, it
-	// goes on that way rather than taking the default a new run gets.
+	// A run written before `isolation` existed worked every claim in its one tree, and one written
+	// before `review` ran every lens: resumed, it goes on that way rather than taking the defaults a
+	// new run gets.
 	const sharedWhenUnset = (config: unknown): unknown => {
 		const parsed = z.record(z.unknown()).safeParse(config);
-		return parsed.success && parsed.data.isolation === undefined
-			? { ...parsed.data, isolation: "shared" }
-			: config;
+		if (!parsed.success) return config;
+		return {
+			...parsed.data,
+			...(parsed.data.isolation === undefined ? { isolation: "shared" } : {}),
+			...(parsed.data.review === undefined ? { review: { mode: "all" } } : {}),
+		};
 	};
 
 	/** A run's config as run.json holds it. */

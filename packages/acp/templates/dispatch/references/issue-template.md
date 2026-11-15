@@ -34,8 +34,11 @@ options: once the issue is filed, ask it on the issue with `kabane_ask`.
 here, so the agent does not try. The agent reports each of these in its handoff, and each manual
 one under "Not verified".
 
-**Conventions.** Only what {{INSTRUCTIONS_FILE}} leaves out for this issue: the working copy
-it runs in, and any exception to the project's usual commit or gate rules.
+**Conventions.** Only what {{INSTRUCTIONS_FILE}} leaves out for this issue: its territory (the
+paths it owns), and any exception to the project's usual commit or gate rules. Never a branch
+name, a worktree or a merge order. Whoever runs the issue says where it works: the dispatcher's
+prompt for an agent started by hand, the run for a kabane loop. An order between issues is a
+`blocks` link, not a sentence.
 
 When filing, set `priority` too: `high` for the wave's spine, `normal` otherwise, `low` for
 parked or out-of-scope findings. A `someday` issue needs only its title and two lines saying what

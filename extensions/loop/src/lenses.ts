@@ -2,15 +2,18 @@
 // are green. A lens is `references/lenses/<name>.md` in the project's dispatch skill, the same file
 // the skill's own close review reads, so a lens reaches an agent whether the loop drives the
 // session or a person dispatches from a plain one. `functional` and `quality` ship in kabane's
-// dispatch template, so a project with no skill still has them. `.kabane/loop/lenses/<name>.md`,
-// where 0.3.0 and 1.0.0-beta.0 kept a project's lenses, is still read, after the skill, so a lens
-// written there keeps reviewing as it did. Once the fixer has ended, a lens whose findings it
-// closed rechecks its diff. Which lenses a run has run and rechecked, and how they ended, is read
-// off its claims, so a runner that resumes knows where it was.
+// dispatch template, so a project with no skill still has them. The skill lives under
+// `.agents/skills/dispatch/`; one still at `.claude/skills/dispatch/`, where kabane wrote it before,
+// is read after it. `.kabane/loop/lenses/<name>.md`, where 0.3.0 and 1.0.0-beta.0 kept a project's
+// lenses, is read after both, so a lens written there keeps reviewing as it did. Once the fixer
+// has ended, a lens whose findings it closed rechecks its diff. Which lenses a run has run and
+// rechecked, and how they ended, is read off its claims, so a runner that resumes knows where it
+// was.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CopilotInstructions } from "@cabane/acp";
 import { err, ok, type Result, type Task, trySync } from "@cabane/core";
+import { z } from "zod";
 import { LoopConfig } from "./config";
 import { Fixer } from "./fixer";
 import { LoopPlan } from "./plan";
@@ -26,6 +29,13 @@ export namespace Lenses {
 
 	/** Where a project keeps its own lenses: its dispatch skill's. */
 	const dir = (projectDir: string): string =>
+		join(projectDir, ".agents", "skills", "dispatch", "references", "lenses");
+
+	/**
+	 * The dispatch skill's lenses where kabane wrote the skill before `.agents/skills/`; read after
+	 * it, with no notice, since a Claude Code link to the new home resolves to the same files.
+	 */
+	const claudeDir = (projectDir: string): string =>
 		join(projectDir, ".claude", "skills", "dispatch", "references", "lenses");
 
 	/** Where a project's lenses were kept before they moved into the skill; read after it. */
@@ -53,36 +63,97 @@ export namespace Lenses {
 				? []
 				: [
 						...namesIn(dir(projectDir)),
+						...namesIn(claudeDir(projectDir)),
 						...namesIn(legacyDir(projectDir)),
 					].sort()),
 		]),
 	];
 
-	type Prompt = {
+	/**
+	 * A lens's frontmatter: which changes it reviews, written for a model deciding from a diff stat
+	 * and the brief, and whether it runs on every run whatever a triage decides. A file without
+	 * frontmatter has no `applies` and is not `always`.
+	 */
+	const FrontmatterSchema = z
+		.object({
+			applies: z.string().min(1).optional(),
+			always: z.boolean().default(false),
+		})
+		.strict();
+	type Frontmatter = z.infer<typeof FrontmatterSchema>;
+
+	// The YAML between a lens file's opening `---` and the next, read the way an agent definition's
+	// is (`Harnesses`), but strictly: an unknown key or YAML that does not parse is an error naming
+	// the file, since a lens that says when it applies and is misread would be skipped or run
+	// wrongly. The text comes back without it, so no session sees it.
+	const parse = (
+		path: string,
+		raw: string,
+	): Result<Frontmatter & { text: string }> => {
+		const [first, ...rest] = raw.split("\n");
+		if (first?.trimEnd() !== "---") return ok({ text: raw, always: false });
+		const end = rest.findIndex((line) => line.trimEnd() === "---");
+		if (end === -1)
+			return err(new Error(`${path}: its frontmatter has no closing ---`));
+		const yaml = trySync(() => Bun.YAML.parse(rest.slice(0, end).join("\n")));
+		if (!yaml.ok)
+			return err(
+				new Error(
+					`${path}: its frontmatter is not YAML: ${yaml.error.message}`,
+				),
+			);
+		const fields = FrontmatterSchema.safeParse(yaml.value ?? {});
+		if (!fields.success) {
+			const issues = fields.error.issues
+				.map((issue) =>
+					issue.path.length > 0
+						? `${issue.path.join(".")}: ${issue.message}`
+						: issue.message,
+				)
+				.join("; ");
+			return err(
+				new Error(
+					`${path}: ${issues} (a lens's frontmatter takes applies, a line of prose, and always, true or false)`,
+				),
+			);
+		}
+		const text = rest
+			.slice(end + 1)
+			.join("\n")
+			.replace(/^(?:[ \t]*\r?\n)+/, "");
+		return ok({ text, ...fields.data });
+	};
+
+	type Prompt = Frontmatter & {
+		/** The prompt a session gets: the file without its frontmatter. */
 		text: string;
 		/** The file it was read from, when that is the old directory's: one to move into the skill. */
 		legacy?: string;
 	};
 
-	/** Lens `name`'s prompt: the skill's file, else the old directory's, else the shipped one. */
+	/**
+	 * Lens `name`'s prompt: the skill's file under `.agents/`, else under `.claude/`, else the old
+	 * directory's, else the shipped one.
+	 */
 	export const prompt = (projectDir: string, name: string): Result<Prompt> => {
 		const own = join(dir(projectDir), `${name}.md`);
+		const claude = join(claudeDir(projectDir), `${name}.md`);
 		const legacy = join(legacyDir(projectDir), `${name}.md`);
 		const shipped = SHIPPED.some((s) => s === name)
 			? join(SHIPPED_DIR, `${name}.md`)
 			: undefined;
-		const path = [own, legacy].find((p) => existsSync(p)) ?? shipped;
+		const path = [own, claude, legacy].find((p) => existsSync(p)) ?? shipped;
 		if (path === undefined)
 			return err(
 				new Error(
 					`No lens ${name}: write ${own}, or use ${SHIPPED.join(" or ")}`,
 				),
 			);
-		const text = trySync(() => readFileSync(path, "utf8"));
-		if (!text.ok) return text;
-		return ok(
-			path === legacy ? { text: text.value, legacy } : { text: text.value },
-		);
+		const raw = trySync(() => readFileSync(path, "utf8"));
+		if (!raw.ok) return raw;
+		const parsed = parse(path, raw.value);
+		if (!parsed.ok) return parsed;
+		return ok(path === legacy ? { ...parsed.value, legacy } : parsed.value);
 	};
 
 	/**
@@ -112,17 +183,18 @@ export namespace Lenses {
 	};
 
 	/**
-	 * Where each of `lenses` stands, from the run's claims: a lens's latest claim decides, its
-	 * review's or, with `of` reading `recheck`, its recheck's.
+	 * Where each of `lenses` stands, from the run's claims: a lens's latest claim decides, the
+	 * latest review whose group holds it or, with `of` reading `recheck`, its latest recheck. A
+	 * group's outcome is each of its lenses'.
 	 */
 	export const status = (
 		lenses: readonly string[],
 		claims: readonly RunStore.Claim[],
-		of: (claim: RunStore.Claim) => string | undefined = (c) => c.lens,
+		of: (claim: RunStore.Claim) => readonly string[] = (c) => c.lenses ?? [],
 	): Status => {
 		const status: Status = { pending: [], running: [], done: [], failed: [] };
 		for (const name of lenses) {
-			const last = claims.findLast((c) => of(c) === name);
+			const last = claims.findLast((c) => of(c).includes(name));
 			if (!last || last.outcome === "interrupted") status.pending.push(name);
 			else if (last.endedAt === undefined) status.running.push(name);
 			else if (last.outcome === "done") status.done.push(name);
@@ -211,7 +283,7 @@ export namespace Lenses {
 		return status(
 			config.lenses.filter((name) => due.has(name)),
 			claims,
-			(c) => c.recheck,
+			(c) => (c.recheck === undefined ? [] : [c.recheck]),
 		);
 	};
 }

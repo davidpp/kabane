@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type LinkType, Planner, type TaskDraft } from "@cabane/core";
+import { Brief } from "./brief";
 import { LoopPlan } from "./plan";
 import { Stop } from "./stop";
 
@@ -249,22 +250,64 @@ describe("LoopPlan.frontier", () => {
 		]);
 	});
 
-	it("waits on an open blocker outside the plan, and not on a closed or deleted one", async () => {
-		const parent = await add({ title: "parent" });
-		const outside = await add({ title: "outside" });
-		const gone = await add({ title: "gone" });
-		const a = await add({ title: "a", parentTaskId: parent });
-		await link(outside, "blocks", a);
-		await link(gone, "blocks", a);
-		const deleted = await Planner.deleteTask(base, gone);
-		expect(deleted.ok).toBe(true);
+	it.each(["done", "cancelled", "deleted"] as const)(
+		"describes tracker readiness without promising integration for a %s external blocker",
+		async (state) => {
+			const parent = await add({ title: "parent" });
+			const outside = await add({ title: "outside" });
+			const gone = await add({ title: "gone" });
+			const a = await add({ title: "a", parentTaskId: parent });
+			await link(outside, "blocks", a);
+			await link(gone, "blocks", a);
+			const deleted = await Planner.deleteTask(base, gone);
+			expect(deleted.ok).toBe(true);
 
-		expect(LoopPlan.frontier(await load(parent), NONE, NOW)).toEqual([]);
-		await close(outside);
-		expect(titles(LoopPlan.frontier(await load(parent), NONE, NOW))).toEqual([
-			"a",
-		]);
-	});
+			expect(LoopPlan.frontier(await load(parent), NONE, NOW)).toEqual([]);
+			const changed =
+				state === "deleted"
+					? await Planner.deleteTask(base, outside)
+					: await Planner.updateTask(base, outside, { state });
+			expect(changed.ok).toBe(true);
+			const plan = await load(parent);
+			const ready = LoopPlan.frontier(plan, NONE, NOW);
+			expect(titles(ready)).toEqual(["a"]);
+			const node = ready[0];
+			if (!node) throw new Error("dependent is not ready");
+			const prompt = Brief.opening(
+				{
+					parent: plan.parent,
+					task: node.task,
+					runId: "dependency-check",
+					gates: [],
+					concurrent: false,
+					tree: {
+						worktree: true,
+						isolation: "worktree",
+						land: "none",
+						dir: base,
+						branch: "claim",
+						runBranch: "run",
+					},
+				},
+				"",
+			);
+			expect(prompt).toContain(
+				"tracker blockers are done, cancelled or deleted",
+			);
+			expect(prompt).toContain(
+				"external completion alone does not prove its commits are here",
+			);
+			expect(prompt).toContain(
+				"cancelled or deleted blockers may have no work",
+			);
+			expect(prompt).toContain(
+				"Work actually merged by this run is in the run's branch; for those in-run merges, nothing needs to reach main",
+			);
+			expect(prompt).not.toContain(
+				"their work is integrated into the branch it starts from",
+			);
+		},
+	);
 });
 
 describe("LoopPlan.health", () => {

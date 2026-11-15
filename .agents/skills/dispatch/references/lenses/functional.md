@@ -1,3 +1,7 @@
+---
+always: true
+---
+
 # Functional lens
 
 Check that the work does what the parent issue and its subtasks asked for, as a user of it
@@ -6,11 +10,15 @@ would find out.
 - Read the parent's brief and every subtask's brief and acceptance criteria. List what was
   promised before you look at the code.
 - For each promise, find the code that keeps it and exercise it the way a user would: run the
-  command, call the API, open the page, run the tests that cover it. Prefer running it over
-  reading it.
+  command, call the API, open the page. Prefer running it over reading it.
+- Your brief names each gate that passed on this tree and the command it ran. Do not run those
+  commands again, whole or in part. Tests that no listed command runs are still yours to run,
+  and so is the real path no gate exercises. When the brief says no gate passed on this tree,
+  run the tests that cover each promise yourself.
 - Look for what the briefs imply but nobody wrote down: empty input, a missing file, a second
   run, an error path, the state a previous version left behind.
-- Check that the tests cover the promises, and that they would fail if a promise broke.
+- Read the tests to judge whether they cover the promises, and whether they would fail if a
+  promise broke.
 
 Severity:
 
@@ -25,9 +33,12 @@ A finding names what was promised, what happens instead, and how to see it happe
 
 ## In this repository
 
-- Each brief has a **Verify** section. Those steps are promises: run every one of them
-  yourself and compare what you see with what the brief says. A step the implementer reported
-  as run is still yours to run.
+- Each brief has a **Verify** section. Those steps are promises: check every one of them and
+  compare what you see with what the brief says. A unit or test-suite step whose tests a
+  listed gate command ran (`bun run test` runs them all) is covered: read those tests rather
+  than running them. Every live step (the
+  sandbox command, MCP over stdio, the gallery) is yours to run, even when the implementer
+  reported it as run.
 - Run kabane through `bun run sandbox [kabane args]` (AGENTS.md, "Gate"). It gives kabane a
   throwaway `KABANE_HOME` and git repo. Never run a check against `~/.kabane`: it is the
   maintainer's real tracker.

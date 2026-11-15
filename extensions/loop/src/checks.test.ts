@@ -199,6 +199,14 @@ describe("Checks", () => {
 		const brief = Brief.opening(
 			{
 				runId: "run-1",
+				tree: {
+					worktree: false,
+					isolation: "shared",
+					land: "none",
+					dir: home,
+					branch: "",
+					runBranch: "",
+				},
 				parent,
 				task: child,
 				gates: Object.keys(ctx.run.config.gates),

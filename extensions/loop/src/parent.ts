@@ -1,8 +1,9 @@
 // The run's parent in the tracker. A run that starts or resumes takes the parent into
-// in_progress, and nothing in the run takes it out: merging the run's work is the human's step,
-// so a completed run flags the parent for review. A run whose landing
-// opened a pull request also moves it to waiting, on that review, and records the pull request as
-// its upstream twin; start and prune reconcile it when they observe that PR merged or closed.
+// in_progress, and nothing in the run takes it out but a landing that merges: merging the run's
+// work is otherwise the human's step, so a completed run flags the parent for review. A run whose
+// landing opened a pull request also moves it to waiting, on that review, and records the pull
+// request as its upstream twin; start and prune reconcile it when they observe that PR merged or
+// closed. A run whose landing merged its branch into the base moves the parent to done.
 // Every end of a run comments on the parent saying how it ended and what to do next. A state a human gave the
 // parent during the run is theirs: the end of the run only comments on it.
 //
@@ -119,10 +120,13 @@ export namespace Parent {
 			: `${merge}, then close ${ctx.run.parentShortId}.`;
 	};
 
-	// Where the work went: the pull request a landing opened, else the branch to merge by hand, with
+	// Where the work went: the base a landing merged it into (the one ok landing that leaves the run
+	// no pull request), the pull request a landing opened, else the branch to merge by hand, with
 	// why the landing did not get it there when one was tried.
 	const destination = async (ctx: Ctx, single: boolean): Promise<string> => {
 		const { landing, pr } = ctx.run;
+		if (landing?.ok && pr === undefined)
+			return `${landing.summary} The next \`kabane loop start\` or \`kabane loop prune\` removes its worktree and branch.`;
 		if (landing?.ok && pr)
 			return `${landing.summary} ${ctx.run.parentShortId} waits on its review.`;
 		const merge = await where(ctx, single);
@@ -203,8 +207,8 @@ export namespace Parent {
 
 	/** Record the run's pull request as the parent's upstream twin. */
 	const twin = async (ctx: Ctx, parent: Task): Promise<void> => {
-		const { pr } = ctx.run;
-		if (!ctx.run.landing?.ok || pr === undefined) return;
+		const { pr, landing } = ctx.run;
+		if (!landing?.ok || pr === undefined) return;
 		const path = URL.canParse(pr) ? PR_PATH.exec(new URL(pr).pathname) : null;
 		const linked = await Planner.upsertUpstreamLink(ctx.deps.basePath, {
 			taskId: parent.id,
@@ -233,7 +237,7 @@ export namespace Parent {
 	/**
 	 * Comment the run's end on the parent. A completed run whose parent is still in_progress (or,
 	 * for a single issue, done by its session) also flags it for review, and moves it to waiting
-	 * when its landing opened a pull request; one a human moved during the run keeps the state they
+	 * when its landing opened a pull request, or to done, unflagged, when its landing merged it; one a human moved during the run keeps the state they
 	 * gave it. A pull request is the parent's upstream twin either way.
 	 */
 	export const report = async (ctx: Ctx, exit: Exit): Promise<void> => {
@@ -249,18 +253,50 @@ export namespace Parent {
 	};
 
 	// A completed run's parent waits on the human: flagged for review, and waiting on its pull
-	// request once there is one, which is its upstream twin.
+	// request once there is one, which is its upstream twin. A landing that merged it into the base
+	// leaves nothing to wait on: the parent is done.
 	const review = async (ctx: Ctx, single: boolean): Promise<void> => {
 		const parent = await read(ctx);
 		if (!parent) return;
 		await twin(ctx, parent);
-		if (!flaggable(parent, single)) return;
-		const flagged = await Planner.updateTask(ctx.deps.basePath, parent.id, {
-			needsReview: true,
-			...(ctx.run.landing?.ok && ctx.run.pr ? { state: "waiting" } : {}),
-		});
+		const { landing, pr } = ctx.run;
+		const merged = landing?.ok === true && pr === undefined;
+		// A parent the run left waiting on the pull request this landing merged in place of is done
+		// with it; one a human moved stays where they put it.
+		const insteadOf = merged ? landing?.insteadOf : undefined;
+		const waited = insteadOf
+			? await waitsOn(ctx.deps.basePath, parent, insteadOf)
+			: ok(false);
+		if (!waited.ok)
+			warn(ctx, `parent's pull request not read: ${waited.error.message}`);
+		if (!(waited.ok && waited.value) && !flaggable(parent, single)) return;
+		const flagged = await Planner.updateTask(
+			ctx.deps.basePath,
+			parent.id,
+			merged
+				? { state: "done", needsReview: false }
+				: {
+						needsReview: true,
+						...(landing?.ok && pr ? { state: "waiting" } : {}),
+					},
+		);
 		if (!flagged.ok)
 			warn(ctx, `parent not flagged for review: ${flagged.error.message}`);
+	};
+
+	// Whether `parent` is as a landing that opened pull request `pr` left it: waiting on its
+	// review, with the pull request as its upstream twin. Anything else is a human's doing.
+	const waitsOn = async (
+		basePath: string,
+		parent: Task,
+		pr: string,
+	): Promise<Result<boolean>> => {
+		if (parent.state !== "waiting" || !parent.needsReview) return ok(false);
+		const links = await Planner.getUpstreamLinksForTask(basePath, parent.id);
+		if (!links.ok) return links;
+		return ok(
+			links.value.some((link) => link.provider === "github" && link.url === pr),
+		);
 	};
 
 	/** Reconcile only a parent still waiting for review of this run's upstream PR. */
@@ -272,16 +308,10 @@ export namespace Parent {
 		if (!run.pr || state === "OPEN") return ok(undefined);
 		const parent = await Planner.getTask(basePath, run.parentId);
 		if (!parent.ok) return parent;
-		if (parent.value?.state !== "waiting" || !parent.value.needsReview)
-			return ok(undefined);
-		const links = await Planner.getUpstreamLinksForTask(basePath, run.parentId);
-		if (!links.ok) return links;
-		if (
-			!links.value.some(
-				(link) => link.provider === "github" && link.url === run.pr,
-			)
-		)
-			return ok(undefined);
+		if (!parent.value) return ok(undefined);
+		const waiting = await waitsOn(basePath, parent.value, run.pr);
+		if (!waiting.ok) return waiting;
+		if (!waiting.value) return ok(undefined);
 		const merged = state === "MERGED";
 		const actor = Runtime.actor();
 		const commented = await Planner.addComment(basePath, {
@@ -300,7 +330,8 @@ export namespace Parent {
 
 	/**
 	 * Comment a landing of a run that was over on the parent (`kabane loop land`), and when it
-	 * opened a pull request, leave the parent waiting on it as a completed run's landing does.
+	 * opened a pull request, leave the parent waiting on it as a completed run's landing does, or
+	 * done when it merged.
 	 */
 	export const landed = async (ctx: Ctx): Promise<void> => {
 		const loaded = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);

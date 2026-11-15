@@ -178,8 +178,14 @@ export namespace Gates {
 		return last && !last.ok ? last.results.find((r) => !r.ok) : undefined;
 	};
 
-	const took = (ms: number): string =>
-		ms < 1000 ? `${ms}ms` : `${Math.round(ms / 1000)}s`;
+	/** How long a gate took, as the trace and a lens's brief both say it: `300ms`, `41s`, `3m12s`. */
+	export const took = (ms: number): string => {
+		if (ms < 1000) return `${ms}ms`;
+		const seconds = Math.round(ms / 1000);
+		return seconds < 60
+			? `${seconds}s`
+			: `${Math.floor(seconds / 60)}m${seconds % 60}s`;
+	};
 
 	/** `test passed in 12s`, `lint failed (exit 1) in 300ms`. */
 	export const describe = (result: Result): string =>

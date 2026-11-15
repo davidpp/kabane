@@ -1,3 +1,7 @@
+---
+applies: a change to code, meaning source, tests, scripts, or lint, type and build configuration; a change to prose alone (docs, READMEs, skill text) has nothing for it
+---
+
 # Quality lens
 
 Check that the change is one the project's maintainers would merge: it follows the
@@ -10,7 +14,10 @@ repository's own rules and leaves the code easier to change, not harder.
 - Look for: duplicated logic that has a home already, an abstraction nothing needs yet, error
   handling that hides a failure, names that say something other than what the code does,
   comments that restate the code, dead code, tests that test a mock instead of the behaviour.
-- Run the project's own checks (lint, typecheck, format) if the gates did not already.
+- Your brief names each gate that passed on this tree and the command it ran. Never run those
+  commands again, whole or in part. Run the project's own checks (lint, typecheck, format)
+  that no listed command covers, and all of them when the brief says no gate passed on this
+  tree.
 
 Severity:
 

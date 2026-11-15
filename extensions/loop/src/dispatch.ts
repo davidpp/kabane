@@ -30,11 +30,13 @@ import type { LoopConfig } from "./config";
 import type { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 import type { Retry } from "./retry";
+import { Review } from "./review";
 import { Route } from "./route";
 import type { RunStore } from "./store";
 
 export namespace Dispatch {
 	type Env = {
+		tree: Brief.Tree;
 		basePath: string;
 		/** KABANE_HOME, handed to the MCP server so it opens the same tracker. */
 		home: string;
@@ -55,8 +57,8 @@ export namespace Dispatch {
 	/**
 	 * What the session is for: implementing its subtask (with the gate that failed after the
 	 * subtask's last session, for its brief), reviewing the parent through a lens, fixing the
-	 * findings the lenses filed, in the order given, or rechecking through a lens the fixer's diff
-	 * against the findings of the lens's that it closed.
+	 * findings the lenses filed, in the order given, rechecking through a lens the fixer's diff
+	 * against the findings of the lens's that it closed, or triaging the lenses before they review.
 	 */
 	export type Work =
 		// `gates`: the run's gate names, so the brief says what has checked the work and what has not;
@@ -67,7 +69,14 @@ export namespace Dispatch {
 				concurrent: boolean;
 				retry?: Gates.Result;
 		  }
-		| { kind: "lens"; name: string; prompt: string; gates: readonly string[] }
+		// `lenses`: the group one session reviews through, in turn, each with its prompt.
+		| {
+				kind: "lens";
+				lenses: readonly Brief.LensPrompt[];
+				gates: readonly string[];
+				// The latest pass's results, when it was green on the tree the review reads.
+				passed?: readonly Gates.Result[];
+		  }
 		| { kind: "fix"; findings: readonly Task[]; gates: readonly string[] }
 		| {
 				kind: "recheck";
@@ -77,6 +86,14 @@ export namespace Dispatch {
 				base: string;
 				diff: string;
 				gates: readonly string[];
+				passed?: readonly Gates.Result[];
+		  }
+		// `lenses`: the run's, with their frontmatter; `tiers`: the tier names its plan may use.
+		| {
+				kind: "triage";
+				lenses: readonly Review.Lens[];
+				diff: Review.Diff;
+				tiers: readonly string[];
 		  };
 
 	type Claim = {
@@ -667,24 +684,27 @@ export namespace Dispatch {
 		| { kind: "end"; outcome: Outcome["outcome"]; detail: string }
 		| { kind: "prompt"; prompt: string };
 
-	// A lens has one turn: its review, or its recheck. What it found is in the tracker, not in what
-	// it said.
+	// A lens has one turn: its review, or its recheck; a group of lenses shares that one turn. What
+	// it found is in the tracker, not in what it said.
 	const reviewed = (
-		name: string,
+		names: readonly string[],
 		reason: string,
 		review: "review" | "recheck",
-	): Next =>
-		reason === "end_turn"
+	): Next => {
+		const who = Brief.lensNames(names);
+		const one = names.length === 1;
+		return reason === "end_turn"
 			? {
 					kind: "end",
 					outcome: "done",
-					detail: `the ${name} lens finished its ${review}`,
+					detail: `${who} finished ${one ? "its" : "their"} ${review}`,
 				}
 			: {
 					kind: "end",
 					outcome: "incomplete",
-					detail: `the ${name} lens's ${review} turn ended (${reason})`,
+					detail: `${who}${one ? "'s" : "'"} ${review} turn ended (${reason})`,
 				};
+	};
 
 	// A session that closed its issue with checklist items open: the run has reopened it, and nudges
 	// the session on from the first open item, as it nudges any turn that left owned work open.
@@ -822,9 +842,22 @@ export namespace Dispatch {
 		const { work } = claim;
 		switch (work.kind) {
 			case "lens":
-				return reviewed(work.name, reason, "review");
+				return reviewed(
+					work.lenses.map((l) => l.name),
+					reason,
+					"review",
+				);
 			case "recheck":
-				return reviewed(work.name, reason, "recheck");
+				return reviewed([work.name], reason, "recheck");
+			// One turn, whose last message is the plan: the claim reads it once the session ends.
+			case "triage":
+				return reason === "end_turn"
+					? { kind: "end", outcome: "done", detail: "triage answered" }
+					: {
+							kind: "end",
+							outcome: "incomplete",
+							detail: `triage turn ended (${reason})`,
+						};
 			case "fix":
 				return fixed(
 					{ harness: claim.harness, findings: work.findings },
@@ -854,6 +887,7 @@ export namespace Dispatch {
 			return err(new Error(`checklist: ${checklist.error.message}`));
 		const subject = {
 			runId: env.runId,
+			tree: env.tree,
 			parent: claim.parent,
 			task: claim.task,
 			...(claim.interrupted ? { interrupted: claim.interrupted } : {}),
@@ -865,9 +899,9 @@ export namespace Dispatch {
 					Brief.lens(
 						{
 							...subject,
-							lens: work.name,
-							prompt: work.prompt,
+							lenses: work.lenses,
 							gates: work.gates,
+							...(work.passed ? { passed: work.passed } : {}),
 						},
 						assembled.value,
 					),
@@ -890,6 +924,21 @@ export namespace Dispatch {
 							base: work.base,
 							diff: work.diff,
 							gates: work.gates,
+							...(work.passed ? { passed: work.passed } : {}),
+						},
+						assembled.value,
+					),
+				);
+			case "triage":
+				return ok(
+					Review.brief(
+						{
+							tree: env.tree,
+							runId: env.runId,
+							parent: claim.parent,
+							lenses: work.lenses,
+							diff: work.diff,
+							tiers: work.tiers,
 						},
 						assembled.value,
 					),
@@ -913,11 +962,13 @@ export namespace Dispatch {
 	const started = ({ harness, task, work }: Claim): string => {
 		switch (work.kind) {
 			case "lens":
-				return `${harness} reviews ${label(task)} through the ${work.name} lens`;
+				return `${harness} reviews ${label(task)} through ${Brief.lensNames(work.lenses.map((l) => l.name))}`;
 			case "fix":
 				return `${harness} fixes ${work.findings.length} finding${work.findings.length === 1 ? "" : "s"} of ${label(task)}`;
 			case "recheck":
 				return `${harness} rechecks the fixer's diff on ${label(task)} through the ${work.name} lens`;
+			case "triage":
+				return `${harness} triages the review of ${label(task)}`;
 			case "implement":
 				return `${harness} on ${label(task)}`;
 		}

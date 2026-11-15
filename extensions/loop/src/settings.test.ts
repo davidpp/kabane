@@ -33,6 +33,7 @@ describe("LoopSettings.inputs", () => {
 			"reuse",
 			"maxWorktrees",
 			"land",
+			"review.mode",
 		]);
 		// The gates are named commands the form cannot edit.
 		expect(Object.keys(inputs).some((name) => name.startsWith("gates"))).toBe(
@@ -49,7 +50,7 @@ describe("LoopSettings.inputs", () => {
 		});
 		expect(inputs.land).toMatchObject({
 			default: "none",
-			options: ["none", "pr"],
+			options: ["none", "pr", "merge"],
 			label: "land the branch",
 			group: "Workspace",
 		});
@@ -163,6 +164,7 @@ describe("LoopSettings.overrides", () => {
 				maxWorktrees: undefined,
 				verifier: undefined,
 				land: "none",
+				review: { mode: "triage" },
 				lenses: ["functional", "quality"],
 			},
 		});

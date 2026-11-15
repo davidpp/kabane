@@ -22,6 +22,7 @@ import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Land } from "./land";
 import { LoopPlan } from "./plan";
+import { Prune } from "./prune";
 import { Runner } from "./runner";
 import type { RunState } from "./state";
 import { Steering } from "./steering";
@@ -179,10 +180,13 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 	};
 };
 
-const landed = async (ctx: RunState.Ctx): Promise<RunStore.Landing> => {
+const landed = async (
+	ctx: RunState.Ctx,
+	mode: Land.Mode = "pr",
+): Promise<RunStore.Landing> => {
 	const plan = await LoopPlan.load(home, ctx.run.parentId);
 	if (!plan.ok) throw plan.error;
-	return Land.land(ctx, plan.value);
+	return Land.land(ctx, plan.value, mode);
 };
 
 describe("Land.land onto the base", () => {
@@ -614,6 +618,434 @@ describe("a run with land: pr, through the real runner", () => {
 	});
 });
 
+describe("Land.land by merge into the project's checkout", () => {
+	const merges = (ctx: RunState.Ctx) => landed(ctx, "merge");
+	const parents = (rev = "HEAD"): string[] =>
+		GitFixture.run(repo, ["rev-list", "--parents", "-n", "1", rev])
+			.trim()
+			.split(" ")
+			.slice(1);
+	const subject = (): string =>
+		GitFixture.run(repo, ["log", "-1", "--format=%s"]).trim();
+	const status = (): string =>
+		GitFixture.run(repo, ["status", "--porcelain"]).trim();
+	const remoteMain = (): string =>
+		GitFixture.run(remote, ["rev-parse", "refs/heads/main"]).trim();
+
+	it("rebases onto a base that moved, gates it, merges it --no-ff into the checkout and pushes nothing", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(
+			await completedRun(parent, { land: "merge", gates: { test: "true" } }),
+		);
+		const dir = ctx.run.worktree ?? "";
+		baseMoves("teammate.txt");
+		const before = head(repo);
+		const published = remoteMain();
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(true);
+		expect(landing.rebased).toBeDefined();
+		expect(landing.merged).toBe(head(repo));
+		expect(parents()).toEqual([before, head(dir)]);
+		expect(subject()).toBe(`Merge branch '${BRANCH}' (${parent.shortId})`);
+		expect(existsSync(join(repo, "teammate.txt"))).toBe(true);
+		expect(landing.summary).toContain(
+			`Merged \`${BRANCH}\` into \`main\` as \`${head(repo).slice(0, 12)}\`.`,
+		);
+		expect(remoteMain()).toBe(published);
+		expect(ctx.run.gateRuns).toHaveLength(1);
+		expect(ghCalls).toEqual([]);
+		const events = RunStore.readEvents(home, ctx.run.id);
+		expect(events.ok && events.value.at(-1)?.type).toBe("landed");
+	});
+
+	it("refuses a checkout with changes to tracked files, and changes neither it nor the branch", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		const tip = head(ctx.run.worktree ?? "");
+		baseMoves("teammate.txt");
+		writeFileSync(join(repo, "README.md"), "# edited by hand\n");
+		const before = head(repo);
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain("has changes to tracked files");
+		expect(landing.summary).toContain("nothing was changed");
+		expect(head(repo)).toBe(before);
+		expect(head(ctx.run.worktree ?? "")).toBe(tip);
+		expect(readFileSync(join(repo, "README.md"), "utf8")).toBe(
+			"# edited by hand\n",
+		);
+	});
+
+	it("refuses a checkout that is not on the base", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		GitFixture.run(repo, ["switch", "-q", "-c", "elsewhere"]);
+		const before = head(repo);
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain(
+			"is on branch elsewhere, not the base main",
+		);
+		expect(head(repo)).toBe(before);
+		expect(head(repo, "refs/heads/main")).toBe(ctx.run.base?.sha ?? "");
+	});
+
+	it("aborts a merge that conflicts, names the files, and leaves the checkout as it was", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		// A commit on the local base the remote has not seen, on the run's own file.
+		commit(repo, "work.txt", "the checkout's own\n");
+		const before = head(repo);
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain("conflicts in work.txt");
+		expect(landing.merged).toBeUndefined();
+		expect(head(repo)).toBe(before);
+		expect(status()).toBe("");
+		expect(existsSync(join(repo, ".git", "MERGE_HEAD"))).toBe(false);
+	});
+
+	it("says the checkout is mid-merge when git refuses to abort a merge that conflicts, and leaves the branch rebased", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(
+			await completedRun(parent, { land: "merge", gates: { test: "true" } }),
+		);
+		const dir = ctx.run.worktree ?? "";
+		const tip = head(dir);
+		baseMoves("teammate.txt");
+		commit(repo, "work.txt", "the checkout's own\n");
+		// A git killed beside this one leaves its index lock, so the abort is refused.
+		ctx.deps.git = async (cwd, args) => {
+			if (args[0] === "merge" && args[1] === "--abort") staleIndexLock(repo);
+			return git(cwd, args);
+		};
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain("conflicts in work.txt");
+		expect(landing.summary).toContain("git merge --abort failed");
+		expect(landing.summary).toContain("the checkout is mid-merge");
+		expect(landing.summary).not.toContain("the checkout is as it was");
+		expect(existsSync(join(repo, ".git", "MERGE_HEAD"))).toBe(true);
+		// Not put back under the merge in progress, and kept for recover to look at.
+		expect(head(dir)).not.toBe(tip);
+		expect(ctx.run.landingFrom).toBe(tip);
+	});
+
+	it("reports, and leaves alone, a commit a human made on the base between the checks and the merge", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		const checked = head(repo);
+		let human = "";
+		ctx.deps.git = async (cwd, args) => {
+			if (cwd === repo && args[0] === "merge" && args.includes("--no-ff")) {
+				commit(repo, "human.txt");
+				human = head(repo);
+			}
+			return git(cwd, args);
+		};
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.merged).toBeUndefined();
+		expect(landing.summary).toContain(
+			`the merge went onto ${human.slice(0, 12)}, not ${checked.slice(0, 12)}`,
+		);
+		expect(landing.summary).toContain("nothing was undone");
+		// The human's commit and the merge on it are both still there.
+		expect(parents()).toEqual([human, head(ctx.run.worktree ?? "")]);
+		expect(status()).toBe("");
+	});
+
+	it("reports a checkout switched off the base between the checks and the merge", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		const base = head(repo);
+		ctx.deps.git = async (cwd, args) => {
+			if (cwd === repo && args[0] === "merge" && args.includes("--no-ff"))
+				GitFixture.run(repo, ["switch", "-q", "-c", "elsewhere"]);
+			return git(cwd, args);
+		};
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain(
+			"it is on branch elsewhere, not the base main",
+		);
+		expect(head(repo, "refs/heads/main")).toBe(base);
+		expect(parents()).toEqual([base, head(ctx.run.worktree ?? "")]);
+	});
+
+	it("leaves an untracked file git would overwrite alone, refused like a conflict", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		writeFileSync(join(repo, "work.txt"), "mine, not tracked\n");
+		const before = head(repo);
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain("untracked working tree files");
+		expect(head(repo)).toBe(before);
+		expect(readFileSync(join(repo, "work.txt"), "utf8")).toBe(
+			"mine, not tracked\n",
+		);
+	});
+
+	it("changes nothing when the run is stopped before the merge", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		const tip = head(ctx.run.worktree ?? "");
+		const before = head(repo);
+		ctx.deps.git = async (cwd, args) => {
+			if (args[0] === "fetch") {
+				ctx.stopRequested = true;
+				ctx.stopping.abort();
+			}
+			return git(cwd, args);
+		};
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain("the run was stopped before the merge");
+		expect(head(repo)).toBe(before);
+		expect(head(ctx.run.worktree ?? "")).toBe(tip);
+	});
+
+	it("puts a rebased branch back when the checkout refuses after the rebase", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(
+			await completedRun(parent, { land: "merge", gates: { test: "true" } }),
+		);
+		const dir = ctx.run.worktree ?? "";
+		const tip = head(dir);
+		baseMoves("teammate.txt");
+		// Someone starts editing in the checkout while the rebased branch is gated.
+		ctx.deps.git = async (cwd, args) => {
+			if (args[0] === "rebase")
+				writeFileSync(join(repo, "README.md"), "# mid-landing\n");
+			return git(cwd, args);
+		};
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain("has changes to tracked files");
+		expect(landing.summary).toContain(
+			`the branch is back at ${tip.slice(0, 12)}`,
+		);
+		expect(head(dir)).toBe(tip);
+		expect(ctx.run.landingFrom).toBeUndefined();
+	});
+
+	it("records a branch already on the local base as landed, merging nothing again", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		const first = await merges(ctx);
+		expect(first.ok).toBe(true);
+		const merged = head(repo);
+		baseMoves("teammate.txt");
+		const tip = head(ctx.run.worktree ?? "");
+
+		const again = await merges(ctx);
+
+		expect(again).toMatchObject({ ok: true, merged });
+		expect(again.summary).toBe(
+			`\`${BRANCH}\` is already merged into \`main\` (${merged.slice(0, 12)}).`,
+		);
+		expect(head(repo)).toBe(merged);
+		expect(head(ctx.run.worktree ?? "")).toBe(tip);
+	});
+
+	it("names the merge a human made of a branch already on the base, never the branch's tip", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		const tip = head(ctx.run.worktree ?? "");
+		commit(repo, "theirs.txt");
+		GitFixture.run(repo, ["merge", "-q", "--no-ff", "-m", "by hand", BRANCH]);
+		const merge = head(repo);
+		// Merged into the base again later on: the merge that took the tip is still the first.
+		commit(repo, "after.txt");
+
+		const landing = await merges(ctx);
+
+		expect(landing).toMatchObject({ ok: true, merged: merge });
+		expect(landing.merged).not.toBe(tip);
+		expect(landing.summary).toContain(`(${merge.slice(0, 12)})`);
+	});
+
+	it("names no merge for a branch the base took by a fast-forward", async () => {
+		const parent = await parentIssue();
+		const ctx = ctxFor(await completedRun(parent, { land: "merge" }));
+		GitFixture.run(repo, ["merge", "-q", "--ff-only", BRANCH]);
+		// A merge on top of it has the tip as its first parent, the base's side: not the landing.
+		GitFixture.run(repo, ["checkout", "-q", "-b", "side"]);
+		commit(repo, "side.txt");
+		GitFixture.run(repo, ["checkout", "-q", "main"]);
+		GitFixture.run(repo, ["merge", "-q", "--no-ff", "-m", "side", "side"]);
+
+		const landing = await merges(ctx);
+
+		expect(landing.ok).toBe(true);
+		expect(landing.merged).toBeUndefined();
+		expect(landing.summary).toBe(
+			`\`${BRANCH}\` is already merged into \`main\`.`,
+		);
+	});
+});
+
+describe("a run with land: merge, through the real runner", () => {
+	it("completes, merges its branch into the base, and moves its parent to done", async () => {
+		const parent = await parentIssue();
+		const child = await Planner.addTask(home, {
+			title: "the work",
+			kind: "issue",
+			state: "done",
+			parentTaskId: parent.id,
+		});
+		if (!child.ok) throw child.error;
+		const run = await completedRun(parent, {
+			land: "merge",
+			gates: { test: "true" },
+		});
+		const pending = RunStore.write(home, { ...run, status: "pending" });
+		if (!pending.ok) throw pending.error;
+
+		const ran = await Runner.run(run.id, {
+			home,
+			basePath: home,
+			kabaneBin: "/nonexistent/kabane",
+			pid: process.pid,
+			git,
+			gh,
+			tickMs: 10,
+		});
+
+		if (!ran.ok) throw ran.error;
+		expect(ran.value.status).toBe("completed");
+		expect(ran.value.pr).toBeUndefined();
+		const merged = head(repo);
+		expect(ran.value.landing).toMatchObject({ ok: true, merged });
+		const after = await Planner.getTask(home, parent.id);
+		expect(after.ok && after.value).toMatchObject({
+			state: "done",
+			needsReview: false,
+		});
+		const comments = await Planner.getComments(home, parent.id);
+		const said = comments.ok ? (comments.value.at(-1)?.content ?? "") : "";
+		expect(said).toContain(
+			`Merged \`${BRANCH}\` into \`main\` as \`${merged.slice(0, 12)}\`. The next \`kabane loop start\` or \`kabane loop prune\` removes its worktree and branch.`,
+		);
+		expect(said).not.toContain("push");
+		const links = await Planner.getUpstreamLinksForTask(home, parent.id);
+		expect(links.ok && links.value).toEqual([]);
+	});
+});
+
+// The `onLanded` command a test sets: it says whether the run reads as over to a prune it would
+// start (run.json completed, no lock on the worktree), then does what the docs' recipes do.
+const overThen = (runId: string, then: string): string =>
+	`test ! -e "$KABANE_WORKTREE.lock" && grep -q '"status": "completed"' ${RunStore.paths(home, runId).run} && echo "$KABANE_MERGED" > ${join(root, "hooked")} && ${then}`;
+
+const hooked = (): string =>
+	existsSync(join(root, "hooked"))
+		? readFileSync(join(root, "hooked"), "utf8").trim()
+		: "";
+
+describe("onLanded after a merge landing", () => {
+	it("runs once the runner has written the run completed, and its git push moves the remote's base", async () => {
+		const parent = await parentIssue();
+		const child = await Planner.addTask(home, {
+			title: "the work",
+			kind: "issue",
+			state: "done",
+			parentTaskId: parent.id,
+		});
+		if (!child.ok) throw child.error;
+		const run = await completedRun(parent, {
+			land: "merge",
+			gates: { test: "true" },
+			onLanded: overThen("run-1", "git push -q origin main"),
+		});
+		const pending = RunStore.write(home, { ...run, status: "pending" });
+		if (!pending.ok) throw pending.error;
+
+		const ran = await Runner.run(run.id, runnerDeps());
+
+		if (!ran.ok) throw ran.error;
+		const merged = head(repo);
+		expect(ran.value.landing).toMatchObject({ ok: true, merged });
+		expect(hooked()).toBe(merged);
+		expect(head(remote, "refs/heads/main")).toBe(merged);
+		const events = RunStore.readEvents(home, run.id);
+		const types = events.ok ? events.value.map((e) => e.type) : [];
+		expect(types.slice(-2)).toEqual(["run_end", "on_landed"]);
+	});
+
+	it("runs after kabane loop land has let go of the worktree, and a failing one leaves the landing ok", async () => {
+		const parent = await parentIssue();
+		const run = await completedRun(parent, {
+			land: "merge",
+			onLanded: overThen("run-1", "exit 3"),
+		});
+		const written = RunStore.write(home, {
+			...run,
+			status: "completed",
+			exit: { reason: "plan-done" },
+		});
+		if (!written.ok) throw written.error;
+
+		const landed = await Loop.land(
+			{ home, basePath: home, kabaneBin: "/nonexistent/kabane", git, gh },
+			run.id,
+		);
+
+		if (!landed.ok) throw landed.error;
+		expect(hooked()).toBe(head(repo));
+		const saved = RunStore.read(home, run.id);
+		expect(saved.ok && saved.value).toMatchObject({
+			status: "completed",
+			landing: { ok: true, merged: head(repo) },
+		});
+		const events = RunStore.readEvents(home, run.id);
+		expect(events.ok && events.value.at(-1)).toMatchObject({
+			type: "warning",
+			data: { exit: 3 },
+		});
+	});
+
+	it("does not run when the landing fails", async () => {
+		const parent = await parentIssue();
+		const run = await completedRun(parent, {
+			land: "merge",
+			onLanded: overThen("run-1", "true"),
+		});
+		const written = RunStore.write(home, { ...run, status: "completed" });
+		if (!written.ok) throw written.error;
+		GitFixture.run(repo, ["checkout", "-q", "-b", "elsewhere"]);
+
+		const landed = await Loop.land(
+			{ home, basePath: home, kabaneBin: "/nonexistent/kabane", git, gh },
+			run.id,
+		);
+
+		expect(landed.ok && landed.value.landing?.ok).toBe(false);
+		expect(hooked()).toBe("");
+	});
+});
+
 describe("a landing through a remote URL that carries credentials", () => {
 	const TOKEN = "ghs_FAKEFAKEFAKEFAKE1234";
 	const HOOK_TOKEN = "ghp_FAKE0123456789abcdefABCD";
@@ -725,6 +1157,113 @@ describe("Loop.land", () => {
 
 		expect(landed.ok && landed.value.landing?.ok).toBe(true);
 		expect(remoteTip()).toBe(head(run.worktree ?? ""));
+	});
+
+	it("lands by merge when --land says so over a setting of pr, and its parent is done", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent);
+		writeFileSync(join(repo, "README.md"), "# edited by hand\n");
+		const refused = await Loop.land(landDeps(), run.id, "merge");
+		expect(refused.ok && refused.value.landing?.summary).toContain(
+			"has changes to tracked files",
+		);
+		GitFixture.run(repo, ["checkout", "-q", "--", "README.md"]);
+
+		const landed = await Loop.land(landDeps(), run.id, "merge");
+
+		if (!landed.ok) throw landed.error;
+		expect(landed.value.landing).toMatchObject({
+			ok: true,
+			merged: head(repo),
+		});
+		expect(ghCalls).toEqual([]);
+		const after = await Planner.getTask(home, parent.id);
+		expect(after.ok && after.value).toMatchObject({
+			state: "done",
+			needsReview: false,
+		});
+		const comments = await Planner.getComments(home, parent.id);
+		const said = comments.ok ? comments.value.map((c) => c.content) : [];
+		expect(said[0]).toContain("`kabane loop land run-1` tries again");
+		expect(said[1]).toContain(`Merged \`${BRANCH}\` into \`main\``);
+	});
+
+	it("merges a run whose pull request is open: the run drops it, prune goes by the base, and the parent waiting on it is done", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent);
+		const opened = await Loop.land(landDeps(), run.id);
+		expect(opened.ok && opened.value.pr).toBe(PR_URL);
+		const waiting = await Planner.getTask(home, parent.id);
+		expect(waiting.ok && waiting.value?.state).toBe("waiting");
+
+		const landed = await Loop.land(landDeps(), run.id, "merge");
+
+		if (!landed.ok) throw landed.error;
+		expect(landed.value.pr).toBeUndefined();
+		expect(landed.value.landing).toMatchObject({
+			ok: true,
+			merged: head(repo),
+			insteadOf: PR_URL,
+		});
+		expect(landed.value.landing?.summary).toContain(
+			`Pull request ${PR_URL} is left open: close it on GitHub.`,
+		);
+		const after = await Planner.getTask(home, parent.id);
+		expect(after.ok && after.value).toMatchObject({
+			state: "done",
+			needsReview: false,
+		});
+		// gh still says the pull request is open; prune does not ask it, git says the branch is in.
+		ghCalls = [];
+		const pruned = await Prune.prune({ home, basePath: home, git, gh });
+		if (!pruned.ok) throw pruned.error;
+		expect(pruned.value).toMatchObject([
+			{ removed: true, why: `branch ${BRANCH} is merged into HEAD` },
+		]);
+		expect(ghCalls).toEqual([]);
+	});
+
+	it("leaves a parent a human set waiting in its state when it merges a run whose pull request is open", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent);
+		const opened = await Loop.land(landDeps(), run.id);
+		expect(opened.ok && opened.value.pr).toBe(PR_URL);
+		// The human takes the review flag off: waiting is theirs now, on something else.
+		const moved = await Planner.updateTask(home, parent.id, {
+			needsReview: false,
+		});
+		if (!moved.ok) throw moved.error;
+
+		const landed = await Loop.land(landDeps(), run.id, "merge");
+
+		expect(landed.ok && landed.value.landing?.ok).toBe(true);
+		const after = await Planner.getTask(home, parent.id);
+		expect(after.ok && after.value).toMatchObject({
+			state: "waiting",
+			needsReview: false,
+		});
+	});
+
+	it("lands as the run's setting says when no --land is given", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent, { land: "merge" });
+
+		const landed = await Loop.land(landDeps(), run.id);
+
+		expect(landed.ok && landed.value.landing?.merged).toBe(head(repo));
+	});
+
+	it("leaves a parent a human moved during the run in its state when it merges", async () => {
+		const parent = await parentIssue();
+		const run = await completed(parent, { land: "merge" });
+		const moved = await Planner.updateTask(home, parent.id, { state: "next" });
+		if (!moved.ok) throw moved.error;
+
+		const landed = await Loop.land(landDeps(), run.id);
+
+		expect(landed.ok && landed.value.landing?.ok).toBe(true);
+		const after = await Planner.getTask(home, parent.id);
+		expect(after.ok && after.value?.state).toBe("next");
 	});
 
 	it("refuses a run whose worktree a later run works in, or went on in, and changes nothing", async () => {
@@ -933,6 +1472,67 @@ describe("a landing whose runner died", () => {
 			GitFixture.run(remote, ["for-each-ref", "refs/heads"]).trim().split("\n"),
 		).toHaveLength(1);
 		expect(ghCalls).toEqual([]);
+	});
+
+	it("keeps a branch it had already merged into the base, and records that merge", async () => {
+		const parent = await parentIssue();
+		const run = await completedRun(parent, {
+			land: "merge",
+			gates: { test: "true" },
+		});
+		const dir = run.worktree ?? "";
+		const before = head(dir);
+		baseMoves("teammate.txt");
+		const first = await landed(ctxFor(run), "merge");
+		expect(first.ok).toBe(true);
+		const merge = head(repo);
+		const rebased = head(dir);
+		// The runner died once it had merged, before it recorded the landing.
+		const died = RunStore.write(home, {
+			...run,
+			status: "completed",
+			landingFrom: before,
+		});
+		if (!died.ok) throw died.error;
+		const ctx = ctxFor(died.value);
+
+		const again = await landed(ctx, "merge");
+
+		expect(again).toMatchObject({ ok: true, merged: merge });
+		expect(again.summary).toContain("is already merged into `main`");
+		expect(head(dir)).toBe(rebased);
+		expect(head(repo)).toBe(merge);
+		expect(ctx.run.landingFrom).toBeUndefined();
+		const events = RunStore.readEvents(home, run.id);
+		const recovered = events.ok
+			? events.value.find((e) => e.type === "landing_recovered")
+			: undefined;
+		expect(recovered?.summary).toContain("it is kept there");
+	});
+
+	it("leaves a merge of the branch still in progress in the checkout to the human, and lands nothing", async () => {
+		const parent = await parentIssue();
+		const run = await completedRun(parent, { land: "merge" });
+		const dir = run.worktree ?? "";
+		const tip = head(dir);
+		commit(repo, "work.txt", "the checkout's own\n");
+		const before = head(repo);
+		// The runner died with its merge stopped on the conflict.
+		expect(() =>
+			GitFixture.run(repo, ["merge", "-q", "--no-ff", BRANCH]),
+		).toThrow();
+		const ctx = ctxFor(run);
+
+		const landing = await landed(ctx, "merge");
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain(
+			`is still merging branch ${BRANCH} (${tip.slice(0, 12)})`,
+		);
+		expect(landing.summary).toContain("git merge --abort");
+		expect(existsSync(join(repo, ".git", "MERGE_HEAD"))).toBe(true);
+		expect(head(repo)).toBe(before);
+		expect(head(dir)).toBe(tip);
 	});
 
 	it("is undone when the run resumes, before its gates run again on the tree", async () => {

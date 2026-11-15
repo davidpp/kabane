@@ -647,7 +647,7 @@ describe("A single issue given a subtask during its run", () => {
 describe("A single issue given a subtask while a lens reviews it", () => {
 	it("holds the subtask until the lens session on the issue has ended", async () => {
 		const issue = await add("lone");
-		const lenses = join(home, ".claude/skills/dispatch/references/lenses");
+		const lenses = join(home, ".agents/skills/dispatch/references/lenses");
 		mkdirSync(lenses, { recursive: true });
 		writeFileSync(join(lenses, "look.md"), "Look.");
 		const run = createRun(issue, { implementer: "gemini", lenses: ["look"] });
@@ -681,9 +681,9 @@ describe("A single issue given a subtask while a lens reviews it", () => {
 			});
 			// A free slot and a ready child, and still no claim: the lens on the issue holds it back.
 			await Bun.sleep(50);
-			expect(readRun().claims.map((c) => [c.taskId, c.lens])).toEqual([
+			expect(readRun().claims.map((c) => [c.taskId, c.lenses])).toEqual([
 				[issue.id, undefined],
-				[issue.id, "look"],
+				[issue.id, ["look"]],
 			]);
 
 			writeFileSync(join(home, "look.release"), "");

@@ -1,3 +1,7 @@
+---
+applies: anything that outlives a process or crosses a boundary, such as database tables, columns and migrations, what the oplog captures, files under KABANE_HOME or .kabane/, the dispatch skill, sync ops and the schema version, CLI commands, flags, exit codes and --json output, MCP tool names, inputs and results, and the names rows and hubs store (@cabane/*, cabane-worker, cabane://actor/...)
+---
+
 # Compatibility lens
 
 Check that someone who already uses kabane can take this change without losing anything.

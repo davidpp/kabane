@@ -65,7 +65,7 @@ const claim = (
 const ENDED = { endedAt: "2026-11-04T00:01:00.000Z", outcome: "done" as const };
 const LENS_DONE = claim({
 	lane: "functional-lens",
-	lens: "functional",
+	lenses: ["functional"],
 	...ENDED,
 });
 

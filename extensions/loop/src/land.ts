@@ -1,7 +1,8 @@
 // Landing a completed run's branch, as its `land` setting says: in the run's worktree, fetch the
 // branch the run started from and rebase onto its latest commit, gate the result again when the
-// rebase moved anything, push the branch and open a pull request against the base, or push to the
-// one already open for it. The user's own git and gh do all of it, with their own credentials and
+// rebase moved anything, then either push the branch and open a pull request against the base (or
+// push to the one already open for it), or merge it into the base in the project's checkout with
+// --no-ff, which pushes nothing. The user's own git and gh do all of it, with their own credentials and
 // config; the loop adds none. The outcome is run.json's `landing`, and the pull request its `pr`.
 // A landing that fails leaves the run completed: the work is done and its gates were green, only
 // getting it onto the base is left, and the branch stays as the run left it.
@@ -361,6 +362,220 @@ export namespace Land {
 				);
 	};
 
+	// Why the project's checkout cannot take the merge, before anything in it changes: it is not on
+	// the base, or has changes to tracked files, or the run is stopping. Untracked files are left
+	// to git, which refuses a merge that would overwrite one.
+	const checkoutRefuses = async (
+		ctx: Ctx,
+		base: string,
+	): Promise<string | undefined> => {
+		const git = ctx.deps.git ?? Worktree.git;
+		const dir = ctx.run.projectDir;
+		if (stopping(ctx)) return "the run was stopped before the merge";
+		const named = await git(dir, ["symbolic-ref", "-q", "--short", "HEAD"]);
+		const on = named.ok ? named.value.trim() : "";
+		if (on !== base)
+			return `the checkout ${dir} is on ${on === "" ? "a detached HEAD" : `branch ${on}`}, not the base ${base}; switch it to ${base}`;
+		const status = await git(dir, [
+			"status",
+			"--porcelain",
+			"--untracked-files=no",
+		]);
+		if (!status.ok) return status.error.message;
+		if (status.value.trim() !== "")
+			return `the checkout ${dir} has changes to tracked files not committed; commit or stash them`;
+		return undefined;
+	};
+
+	// The merge that brought `tip` into `base`: the oldest merge commit on the base's side of it
+	// with the tip as a parent it merged in. None when the base took the tip some other way, by a
+	// fast-forward or a rebase: no commit on the base is that landing's merge then.
+	const mergeOf = async (
+		git: Worktree.Git,
+		dir: string,
+		tip: string,
+		base: string,
+	): Promise<string | undefined> => {
+		const listed = await git(dir, [
+			"rev-list",
+			"--ancestry-path",
+			"--merges",
+			"--parents",
+			"--reverse",
+			`${tip}..refs/heads/${base}`,
+		]);
+		if (!listed.ok) return undefined;
+		for (const line of listed.value.split("\n")) {
+			const [sha, , ...merged] = line.trim().split(" ");
+			if (sha && merged.includes(tip)) return sha;
+		}
+		return undefined;
+	};
+
+	// How the checkout at `dir` changed between the checks and the merge commit `merge` they let
+	// through: off the base `into`, or the merge's first parent not the base tip `seen` they saw.
+	const movedUnder = async (
+		git: Worktree.Git,
+		dir: string,
+		into: string,
+		seen: string,
+		merge: string,
+	): Promise<string | undefined> => {
+		const named = await git(dir, ["symbolic-ref", "-q", "--short", "HEAD"]);
+		const on = named.ok ? named.value.trim() : "";
+		if (on !== into)
+			return `it is on ${on === "" ? "a detached HEAD" : `branch ${on}`}, not the base ${into}`;
+		const first = await revParse(git, dir, `${merge}^1`);
+		if (!first.ok) return first.error.message;
+		return first.value === seen
+			? undefined
+			: `the merge went onto ${short(first.value)}, not ${short(seen)}, the tip of ${into} it was checked at`;
+	};
+
+	// The tip of `branch` in the repository of the checkout at `dir`.
+	const inBranch = async (
+		git: Worktree.Git,
+		dir: string,
+		branch: string,
+	): Promise<string | undefined> => {
+		const tip = await revParse(git, dir, `refs/heads/${branch}`);
+		return tip.ok ? tip.value : undefined;
+	};
+
+	// The tip of the run's `branch` when it is in the local `base` of the checkout at `dir`.
+	const inBase = async (
+		git: Worktree.Git,
+		dir: string,
+		branch: string,
+		base: string,
+	): Promise<string | undefined> => {
+		const tip = await inBranch(git, dir, branch);
+		if (tip === undefined) return undefined;
+		const contained = await git(dir, [
+			"merge-base",
+			"--is-ancestor",
+			tip,
+			`refs/heads/${base}`,
+		]);
+		return contained.ok ? tip : undefined;
+	};
+
+	// Record a merge landing that landed. On the base, the branch no longer lands through a pull
+	// request it had: the run stops naming it, so prune judges the branch by the base, and the
+	// parent waiting on it is done (`Parent`). The pull request itself is the human's to close.
+	const landedHere = (
+		ctx: Ctx,
+		outcome: Outcome,
+	): Promise<RunStore.Landing> => {
+		const { pr } = ctx.run;
+		return record(
+			ctx,
+			pr
+				? {
+						...outcome,
+						summary: `${outcome.summary} Pull request ${pr} is left open: close it on GitHub.`,
+						insteadOf: pr,
+					}
+				: outcome,
+		);
+	};
+
+	// The merge path: onto the base, then merged into it in the project's checkout with --no-ff.
+	// Nothing is pushed: what follows a landing is the user's.
+	const viaMerge = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+	): Promise<RunStore.Landing> => {
+		const git = ctx.deps.git ?? Worktree.git;
+		const dir = ctx.run.projectDir;
+		const base = ctx.run.base?.branch;
+		const branch = RunStore.branchOf(ctx.run);
+		// A branch already on the local base (an earlier landing, or a human merged it) is landed:
+		// rebasing it again would only fork it from what the base has.
+		if (base !== undefined) {
+			const tip = await inBase(git, dir, branch, base);
+			if (tip !== undefined) {
+				const merged =
+					ctx.run.landing?.merged ?? (await mergeOf(git, dir, tip, base));
+				return landedHere(ctx, {
+					ok: true,
+					summary: `\`${branch}\` is already merged into \`${base}\`${merged ? ` (${short(merged)})` : ""}.`,
+					...(merged ? { merged } : {}),
+				});
+			}
+			const refused = await checkoutRefuses(ctx, base);
+			if (refused !== undefined)
+				return record(ctx, notLanded(`${refused}; nothing was changed`));
+		}
+		const placed = await onBase(ctx, plan.parent);
+		if (!placed.ok) return record(ctx, placed.error);
+		const { rebased, said } = placed.value;
+		const into = placed.value.base;
+		const keep = rebased ? { rebased } : {};
+		// Again once the branch is on the base: gating it may take long enough for a human to switch
+		// branches or start editing in the checkout.
+		const refused = await checkoutRefuses(ctx, into);
+		if (refused !== undefined)
+			return record(
+				ctx,
+				notLanded(
+					`${refused}${rebased ? `; ${await putBack(ctx, placed.value.dir, rebased.from)}` : ""}`,
+					keep,
+				),
+			);
+		// The base as the checks saw it, for the merge to be judged against: a human can still
+		// commit or switch branches between them and the merge, which is reported, never undone.
+		const seen = await revParse(git, dir, `refs/heads/${into}`);
+		if (!seen.ok)
+			return record(
+				ctx,
+				notLanded(
+					`${seen.error.message}${rebased ? `; ${await putBack(ctx, placed.value.dir, rebased.from)}` : ""}`,
+					keep,
+				),
+			);
+		const merged = await Worktree.mergeIntoCheckout(
+			dir,
+			branch,
+			`Merge branch '${branch}' (${ctx.run.parentShortId})`,
+			git,
+		);
+		if (!merged.ok) {
+			// A merge git could not abort is the human's to finish or abort: the branch stays where
+			// that merge has it, and so does its landingFrom.
+			if ((await Worktree.mergeHead(dir, git)) !== undefined)
+				return record(
+					ctx,
+					notLanded(
+						`merging into ${into} in ${dir}: ${merged.error.message}; the checkout is mid-merge: resolve and commit the merge there, or run \`git merge --abort\` in it`,
+						keep,
+					),
+				);
+			return record(
+				ctx,
+				notLanded(
+					`merging into ${into} in ${dir}: ${merged.error.message}; the checkout is as it was${rebased ? `, and ${await putBack(ctx, placed.value.dir, rebased.from)}` : ""}`,
+					keep,
+				),
+			);
+		}
+		const moved = await movedUnder(git, dir, into, seen.value, merged.value);
+		if (moved !== undefined)
+			return record(
+				ctx,
+				notLanded(
+					`the checkout changed while \`${branch}\` was merged in ${dir} as ${short(merged.value)}: ${moved}; nothing was undone, so check that merge and keep or reset it`,
+					keep,
+				),
+			);
+		return landedHere(ctx, {
+			ok: true,
+			summary: `${said}. Merged \`${branch}\` into \`${into}\` as \`${short(merged.value)}\`.`,
+			...keep,
+			merged: merged.value,
+		});
+	};
+
 	// Whether a landing that did not land left the branch as the run left it: on its branch, at
 	// the tip it was at before the landing rebased it.
 	const putBackAt = async (ctx: Ctx, tip: string): Promise<boolean> => {
@@ -399,6 +614,7 @@ export namespace Land {
 			landing,
 			...(settled ? { landingFrom: undefined } : {}),
 			...(pr ? { pr } : {}),
+			...(outcome.insteadOf ? { pr: undefined } : {}),
 		});
 		RunState.event(ctx, {
 			type: landing.ok ? "landed" : "warning",
@@ -411,14 +627,45 @@ export namespace Land {
 	/**
 	 * Put back a landing a runner died in: abort a rebase it left stopped, and reset the run's
 	 * branch to the tip it was at before the landing, so nothing (a gate pass, a checkpoint, a
-	 * session) works on a half-replayed tree. Nothing to do when no landing was under way.
+	 * session) works on a half-replayed tree. A branch already in the local base was merged before
+	 * the runner died: it is kept as it is, for the landing to record as already merged. A merge of
+	 * the branch still in progress in the project's checkout is not aborted, since a human may be
+	 * resolving it: it is reported, and nothing goes on until it is finished or aborted. Nothing to
+	 * do when no landing was under way.
 	 */
 	export const recover = async (ctx: Ctx): Promise<Result<void>> => {
-		const tip = ctx.run.landingFrom;
 		const dir = ctx.run.worktree;
-		if (tip === undefined || dir === undefined) return ok(undefined);
+		if (dir === undefined) return ok(undefined);
+		const git = ctx.deps.git ?? Worktree.git;
+		const { projectDir } = ctx.run;
 		const branch = RunStore.branchOf(ctx.run);
-		const restored = await Worktree.restore(dir, branch, tip, ctx.deps.git);
+		const merging = await Worktree.mergeHead(projectDir, git);
+		if (
+			merging !== undefined &&
+			merging === (await inBranch(git, projectDir, branch))
+		) {
+			const why = `the checkout ${projectDir} is still merging branch ${branch} (${short(merging)}): commit the merge there once its conflicts are resolved, or run \`git merge --abort\` in it`;
+			RunState.event(ctx, { type: "warning", summary: why });
+			return err(new Error(why));
+		}
+		const tip = ctx.run.landingFrom;
+		if (tip === undefined) return ok(undefined);
+		// On its branch, not detached under a rebase left stopped, which is undone whatever its tip.
+		const on = await git(dir, ["symbolic-ref", "-q", "--short", "HEAD"]);
+		const base = ctx.run.base?.branch;
+		const merged =
+			base === undefined || !on.ok || on.value.trim() !== branch
+				? undefined
+				: await inBase(git, projectDir, branch, base);
+		if (merged !== undefined) {
+			RunState.save(ctx, { ...ctx.run, landingFrom: undefined });
+			RunState.event(ctx, {
+				type: "landing_recovered",
+				summary: `the landing the last runner died in had merged branch ${branch} into ${base} at ${short(merged)}: it is kept there`,
+			});
+			return ok(undefined);
+		}
+		const restored = await Worktree.restore(dir, branch, tip, git);
 		if (!restored.ok) {
 			// landingFrom stays: nothing goes on in the worktree until it is put back.
 			const why = `the landing an earlier runner died in could not be undone (${restored.error.message}): put branch ${branch} in ${dir} back at ${short(tip)} by hand, removing a lock file git left there if it says so`;
@@ -433,16 +680,14 @@ export namespace Land {
 		return ok(undefined);
 	};
 
-	/**
-	 * Land the run's branch: onto its base, pushed, with a pull request open. What happened is
-	 * recorded on the run, the pull request's URL with it, and on its trace.
-	 */
-	export const land = async (
+	/** How a landing lands: every `land` setting but `none`, which lands nothing. */
+	export type Mode = Exclude<RunStore.Run["config"]["land"], "none">;
+
+	// The pull request path: onto the base, pushed, with a pull request open.
+	const viaPr = async (
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
 	): Promise<RunStore.Landing> => {
-		const undone = await recover(ctx);
-		if (!undone.ok) return record(ctx, notLanded(undone.error.message));
 		const placed = await onBase(ctx, plan.parent);
 		if (!placed.ok) return record(ctx, placed.error);
 		const pr = await toPr(ctx, plan, placed.value);
@@ -457,5 +702,25 @@ export namespace Land {
 			},
 			pr.value,
 		);
+	};
+
+	/**
+	 * Land the run's branch as `mode` says: `pr` onto its base, pushed, with a pull request open;
+	 * `merge` onto its base and merged into it in the project's checkout. What happened is recorded
+	 * on the run, with the pull request's URL or the merge commit, and on its trace.
+	 */
+	export const land = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+		mode: Mode,
+	): Promise<RunStore.Landing> => {
+		const undone = await recover(ctx);
+		if (!undone.ok) return record(ctx, notLanded(undone.error.message));
+		switch (mode) {
+			case "pr":
+				return viaPr(ctx, plan);
+			case "merge":
+				return viaMerge(ctx, plan);
+		}
 	};
 }

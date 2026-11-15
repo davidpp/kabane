@@ -100,9 +100,8 @@ They know things about priority and risk that are not in the code.
 ## Dispatch
 
 Set each unblocked issue to `in_progress` with `kabane_edit`, then start one agent per issue,
-all in a single message so they run in parallel. When `.claude/agents/` has a specialist for
-the issue's territory, use it (see `references/specialists.md`). Otherwise use a general-purpose
-agent. Model: the session's model; name another one only when the user asks for it.
+all in a single message so they run in parallel. `references/specialists.md` says which
+agent and few-liner fit the issue's territory. Model: the session's model; name another one only when the user asks for it.
 
 Each agent works in its own copy of the repo so that parallel edits cannot collide:
 `git worktree add ../<repo>-<branch> -b <branch>`, then `bun install`; `git worktree remove`
@@ -139,7 +138,10 @@ record.
 ## Close
 
 When the last issue has merged, review the combined diff through each lens in
-`references/lenses/`: each file says what to look for and how to grade it. Then read the diff
+`references/lenses/`: each file says what to look for and how to grade it. First read each
+lens's frontmatter. Skip a lens whose `applies` line names no change the diff touches, and say
+in the final report which lens you skipped and why; never skip a lens marked `always: true`.
+You may review through several lenses in one pass. Then read the diff
 for the seams no single agent could see: names that drifted apart, helpers written twice, a
 contract changed without all of its consumers. Check that the docs describing changed behaviour (README.md, the package READMEs
 under `packages/*/README.md`, and `docs/`) changed along with it. Real defects get a fix issue

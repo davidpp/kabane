@@ -334,7 +334,12 @@ Done on branch `worktree-agent-aec5e4f6bb339d036`. Found on the way:
   written by the CLI for a finished run and through the inbox (`rolled_back`) for a live one,
   so the runner stays the trace's one writer.
 - **Stall mark:** closed work, the tree fingerprint and the last pass's gate results.
-- **Landing (JCAB-91):** `land: none|pr` (`--land`, the form's Workspace group). With `pr`, a
+- **Landing (JCAB-91, JCAB-282, JCAB-284):** `land: none|pr|merge` (`--land`, the form's
+  Workspace group). `merge` rebases the same way, then merges the branch `--no-ff` into the base
+  in the project's checkout and pushes nothing; `landing.merged` is the merge commit. After any
+  landing that succeeded, `onLanded` runs one user shell command in the checkout with
+  `KABANE_*` variables, once the run is written completed and the worktree lock is released, so
+  `kabane loop prune` in it removes the run's worktree. With `pr`, a
   run whose final checks are done fetches its base in the worktree and rebases onto it,
   gating again when that moved the branch (a conflict is aborted, a red gate resets the
   branch), pushes with `--force-with-lease` and runs `gh pr create --base <base>`, or pushes

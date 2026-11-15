@@ -25,6 +25,7 @@ import { z } from "zod";
 import { Budget } from "./budget";
 import { LoopConfig } from "./config";
 import { Gates } from "./gates";
+import { Review } from "./review";
 import { Route } from "./route";
 import { Stall } from "./stall";
 import { Steering } from "./steering";
@@ -51,11 +52,20 @@ export namespace RunStore {
 		"interrupted",
 	] as const;
 
+	// A claim written before a review session could cover several lenses held its one lens as
+	// `lens`: resumed, it reads as a group of that one.
+	const groupedLens = (claim: unknown): unknown => {
+		const parsed = z.record(z.unknown()).safeParse(claim);
+		if (!parsed.success || typeof parsed.data.lens !== "string") return claim;
+		const { lens, ...rest } = parsed.data;
+		return rest.lenses === undefined ? { ...rest, lenses: [lens] } : rest;
+	};
+
 	/**
-	 * One subtask claimed by one session, or one lens, the fixer or a lens's recheck run on the
-	 * parent. A subtask claimed twice has two claims.
+	 * One subtask claimed by one session, or one group of lenses, the fixer or a lens's recheck run
+	 * on the parent. A subtask claimed twice has two claims.
 	 */
-	export const ClaimSchema = z.object({
+	const ClaimObject = z.object({
 		taskId: z.string(),
 		shortId: z.string(),
 		harness: z.string(),
@@ -70,8 +80,13 @@ export namespace RunStore {
 		outcome: z.enum(OUTCOMES).optional(),
 		detail: z.string().optional(),
 		continuations: z.number().int().min(0).default(0),
-		/** The verifier lens this session ran, on the parent; absent for an implementing one. */
-		lens: z.string().optional(),
+		/**
+		 * The verifier lenses this session reviewed through, one or several, on the parent; absent for
+		 * any other session.
+		 */
+		lenses: z.array(z.string()).min(1).optional(),
+		/** The triage session before the lenses, on the parent (`Review`); absent for any other. */
+		triage: z.literal(true).optional(),
 		/** The fixer session after the lenses, on the parent; absent for any other. */
 		fixer: z.literal(true).optional(),
 		/** The fixer's: the commit HEAD was at when it started, which its recheck diffs against. */
@@ -84,8 +99,8 @@ export namespace RunStore {
 		/** The lens whose recheck of the fixer's diff this session ran, on the parent. */
 		recheck: z.string().optional(),
 		/**
-		 * A recheck's: the working tree's fingerprint as its lens's first recheck started. A recheck
-		 * reports and never edits, so a different one once it ends fails it.
+		 * A recheck's or a triage's: the working tree's fingerprint as the first of them started. Neither
+		 * edits, so a different one once it ends fails it.
 		 */
 		tree: z.string().optional(),
 		/** A subtask's claim's own worktree (`ClaimTrees`), when it worked in one: its top. */
@@ -102,7 +117,8 @@ export namespace RunStore {
 		/** The tier the model was resolved from, the tag's or the run's. */
 		tier: z.string().optional(),
 	});
-	export type Claim = z.infer<typeof ClaimSchema>;
+	export const ClaimSchema = z.preprocess(groupedLens, ClaimObject);
+	export type Claim = z.infer<typeof ClaimObject>;
 
 	/**
 	 * A worktree the run's subtask claims work in (`ClaimTrees`): its top, and while a subtask's work
@@ -123,6 +139,16 @@ export namespace RunStore {
 		summary: z.string(),
 		/** The branch's tip before and after its rebase onto the base, when the rebase moved it. */
 		rebased: z.object({ from: z.string(), to: z.string() }).optional(),
+		/**
+		 * The merge commit a `merge` landing left on the base in the project's checkout; absent for
+		 * a landing that opened a pull request.
+		 */
+		merged: z.string().optional(),
+		/**
+		 * The pull request the run's branch had when a `merge` landing landed it on the base instead:
+		 * the run's `pr` until then, which that landing clears.
+		 */
+		insteadOf: z.string().optional(),
 	});
 	export type Landing = z.infer<typeof LandingSchema>;
 
@@ -201,6 +227,13 @@ export namespace RunStore {
 		 * until it has one.
 		 */
 		trees: z.array(TreeSchema).optional(),
+		/**
+		 * Which lenses review the run, grouped into sessions at a tier each, and which are skipped, each
+		 * with its reason (`Review`): once triage has decided, or once the run has fallen back to every
+		 * lens on its own. Absent while the run has not reached its review, and in a run that does not
+		 * triage.
+		 */
+		review: Review.PlanSchema.optional(),
 		/** The last landing of the run's branch, when it was landed. */
 		landing: LandingSchema.optional(),
 		/**
@@ -231,9 +264,10 @@ export namespace RunStore {
 	): string | undefined =>
 		externalRef?.startsWith("loop:") ? externalRef.slice(5) : undefined;
 
-	/** A lens, the fixer or a recheck: a session that holds the parent without taking it. */
+	/** A triage, a lens, the fixer or a recheck: a session that holds the parent without taking it. */
 	export const reviews = (claim: Claim): boolean =>
-		claim.lens !== undefined ||
+		claim.triage === true ||
+		claim.lenses !== undefined ||
 		claim.fixer === true ||
 		claim.recheck !== undefined;
 

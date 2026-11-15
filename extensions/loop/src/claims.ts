@@ -15,10 +15,11 @@
 // or cancelled while it held that worktree is settled there (`settleHeld`).
 import { Harnesses } from "@cabane/acp";
 import { err, ok, Planner, type Result, type Task } from "@cabane/core";
-import type { Brief } from "./brief";
+import { Brief } from "./brief";
 import { Budget } from "./budget";
 import { Checklists } from "./checklists";
 import { Checks } from "./checks";
+import { LoopConfig } from "./config";
 import { Dispatch } from "./dispatch";
 import { Elicitation } from "./elicitation";
 import { Fixer } from "./fixer";
@@ -28,6 +29,7 @@ import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import type { Questions } from "./questions";
 import { Retry } from "./retry";
+import { Review } from "./review";
 import { Route } from "./route";
 import { Stall } from "./stall";
 import { RunState } from "./state";
@@ -126,6 +128,11 @@ export namespace Claims {
 
 	const EDITED =
 		"the recheck changed the working tree, which a recheck must not do: its changes are left in place for a human";
+
+	// A triage that edits fails as a recheck does, but the run goes on: its plan falls back to
+	// every lens on a session of its own (`Review.decide`).
+	const TRIAGE_EDITED =
+		"the triage changed the working tree, which a triage must not do: its changes are left in place and every lens reviews in a session of its own";
 
 	const treeChanged = async (ctx: Ctx, tree: string): Promise<boolean> =>
 		(await ctx.tree(RunStore.sessionDir(ctx.run))) !== tree;
@@ -438,19 +445,71 @@ export namespace Claims {
 		kept?: Dispatch.Kept;
 	};
 
-	// A recheck reports and never edits; nothing enforces that in the harness, whose settings are
-	// the user's, so a tree that changed under it fails it here instead. Its edits stay where they
-	// are. Two rechecks running at once share the tree, so one's edit fails both.
+	// A recheck or a triage reports and never edits; nothing enforces that in the harness, whose
+	// settings are the user's, so a tree that changed under it fails it here instead, with `edited`
+	// as its detail. Its edits stay where they are. Two rechecks running at once share the tree, so
+	// one's edit fails both.
 	const unedited = async (
 		ctx: Ctx,
 		tree: string,
 		outcome: Dispatch.Outcome,
+		edited: string,
 	): Promise<Dispatch.Outcome> => {
 		if (outcome.outcome !== "done" && outcome.outcome !== "incomplete")
 			return outcome;
 		return (await treeChanged(ctx, tree))
-			? { ...outcome, outcome: "error", detail: EDITED }
+			? { ...outcome, outcome: "error", detail: edited }
 			: outcome;
+	};
+
+	// The same directory goes to ACP and the brief, including a nested project's prefix.
+	const briefTree = (
+		run: RunStore.Run,
+		claim: ClaimTrees.Tree | undefined,
+	): Brief.Tree => ({
+		worktree: run.worktree !== undefined,
+		isolation: run.config.isolation,
+		land: run.config.land,
+		dir: claim ? RunStore.projectIn(run, claim.dir) : RunStore.sessionDir(run),
+		branch: claim?.branch ?? RunStore.branchOf(run),
+		runBranch: RunStore.branchOf(run),
+	});
+
+	// What a claim's session left once it ended: its outcome, failed when a session that must not edit
+	// did, the gates a subtask it closed is owed, and the plan a triage answered.
+	const afterSession = async (
+		ctx: Ctx,
+		{ task, harness, lane, sessionId, work, tree, worktree }: Started,
+		ended: Dispatch.Outcome,
+	): Promise<RunState.Settled> => {
+		const outcome =
+			tree === undefined
+				? ended
+				: await unedited(
+						ctx,
+						tree,
+						ended,
+						work.kind === "triage" ? TRIAGE_EDITED : EDITED,
+					);
+		const gates =
+			work.kind === "implement" && outcome.outcome === "done"
+				? await gatesAfter(
+						ctx,
+						{ taskId: task.id, label: label(task), lane, harness },
+						worktree,
+					)
+				: undefined;
+		const review =
+			work.kind === "triage"
+				? Review.decide(outcome, work.lenses, work.tiers, work.diff)
+				: undefined;
+		return {
+			taskId: task.id,
+			sessionId,
+			outcome,
+			...(gates ? { gates } : {}),
+			...(review ? { review } : {}),
+		};
 	};
 
 	// Record the claim, dispatch its session and hold it live until it has settled.
@@ -482,7 +541,9 @@ export namespace Claims {
 					startedAt: ctx.now().toISOString(),
 					continuations: 0,
 					...(worktree ? { worktree: worktree.dir } : {}),
-					...(work.kind === "lens" ? { lens: work.name } : {}),
+					...(work.kind === "lens"
+						? { lenses: work.lenses.map((l) => l.name) }
+						: {}),
 					...(work.kind === "fix"
 						? {
 								fixer: true as const,
@@ -494,9 +555,11 @@ export namespace Claims {
 						? {
 								recheck: work.name,
 								findings: work.findings.map((f) => f.id),
-								...(tree !== undefined ? { tree } : {}),
 							}
 						: {}),
+					...(work.kind === "triage" ? { triage: true as const } : {}),
+					// A recheck's and a triage's: the tree it must leave as it found it.
+					...(tree !== undefined ? { tree } : {}),
 				},
 			],
 		});
@@ -507,6 +570,7 @@ export namespace Claims {
 			task: label(task),
 			summary: started.summary,
 		});
+		const place = briefTree(ctx.run, worktree);
 		const handle = Dispatch.begin(
 			{
 				parent: plan.parent,
@@ -525,9 +589,7 @@ export namespace Claims {
 				basePath: ctx.deps.basePath,
 				home: ctx.deps.home,
 				kabaneBin: ctx.deps.kabaneBin,
-				cwd: worktree
-					? RunStore.projectIn(ctx.run, worktree.dir)
-					: RunStore.sessionDir(ctx.run),
+				cwd: place.dir,
 				runId: ctx.run.id,
 				...(ctx.run.scopeUri ? { scopeUri: ctx.run.scopeUri } : {}),
 				...(ctx.deps.mode ? { mode: ctx.deps.mode } : {}),
@@ -535,26 +597,12 @@ export namespace Claims {
 					? { overrides: ctx.deps.overrides[harness] }
 					: {}),
 				models: ctx.run.config,
+				tree: place,
 			},
 			hooks(ctx, sessionId, lane, label(task), harness),
 		);
 		const settled = handle.done.then(async (ended) => {
-			const outcome =
-				tree === undefined ? ended : await unedited(ctx, tree, ended);
-			const gates =
-				work.kind === "implement" && outcome.outcome === "done"
-					? await gatesAfter(
-							ctx,
-							{ taskId: task.id, label: label(task), lane, harness },
-							worktree,
-						)
-					: undefined;
-			ctx.settled.push({
-				taskId: task.id,
-				sessionId,
-				outcome,
-				...(gates ? { gates } : {}),
-			});
+			ctx.settled.push(await afterSession(ctx, started, ended));
 			ctx.wake();
 		});
 		ctx.live.set(sessionId, { taskId: task.id, handle, settled });
@@ -756,25 +804,65 @@ export namespace Claims {
 		return ok(true);
 	};
 
+	// Whether `claim` reviewed through exactly the group `names`, in any order: an earlier attempt at
+	// the same review.
+	const sameGroup = (
+		claim: RunStore.Claim,
+		names: readonly string[],
+	): boolean =>
+		claim.lenses !== undefined &&
+		claim.lenses.length === names.length &&
+		names.every((name) => claim.lenses?.includes(name));
+
 	/**
-	 * Run lens `name` on the parent, on the run's verifier harness. An error when its prompt
-	 * cannot be read or its session cannot start.
+	 * The latest pass, when it ran every gate green on the tree as it is now: what a review is told
+	 * has checked the work, gate by gate, so it does not run those checks again.
+	 */
+	export const greenPass = async (
+		ctx: Ctx,
+	): Promise<readonly Gates.Result[] | undefined> => {
+		const last = ctx.run.gateRuns.at(-1);
+		if (
+			last === undefined ||
+			!Gates.configured(ctx.run.config.gates) ||
+			!Gates.passed(ctx.run.config.gates, last.results)
+		)
+			return undefined;
+		const tree = await ctx.tree(RunStore.sessionDir(ctx.run));
+		return last.tree === tree ? last.results : undefined;
+	};
+
+	/**
+	 * Run one review session on the parent through the group of lenses `names`, one or several, on
+	 * the run's verifier harness, at `tier` when given (`Route`) and on the run's model otherwise.
+	 * An error when a prompt cannot be read or the session cannot start.
 	 */
 	export const lens = async (
 		ctx: Ctx,
-		name: string,
+		names: readonly string[],
 		plan: LoopPlan.Plan,
+		tier?: string,
 	): Promise<Result<void>> => {
-		const prompt = Lenses.prompt(RunStore.projectRoot(ctx.run), name);
-		if (!prompt.ok) return prompt;
+		const lenses: Brief.LensPrompt[] = [];
+		for (const name of names) {
+			const prompt = Lenses.prompt(RunStore.projectRoot(ctx.run), name);
+			if (!prompt.ok) return prompt;
+			lenses.push({ name, prompt: prompt.value.text });
+		}
 		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;
-		const earlier = ctx.run.claims.filter((c) => c.lens === name);
+		const group = names.join("+");
+		const earlier = ctx.run.claims.filter((c) => sameGroup(c, names));
 		const attempts = earlier.length;
-		const lane = `${name}-lens${attempts > 0 ? `#${attempts + 1}` : ""}`;
+		const lane = `${group}-lens${attempts > 0 ? `#${attempts + 1}` : ""}`;
 		const sessionId = await open(ctx, plan.parent, harness, lane, false);
 		if (sessionId === undefined)
-			return err(new Error(`the ${name} lens's session did not start`));
+			return err(
+				new Error(
+					`${Brief.lensNames(names)}${names.length === 1 ? "'s" : "'"} session did not start`,
+				),
+			);
 		const interrupted = await interruption(ctx, earlier.at(-1));
+		const passed = await greenPass(ctx);
 		launch(ctx, plan, {
 			...(interrupted ? { interrupted } : {}),
 			task: plan.parent,
@@ -783,11 +871,12 @@ export namespace Claims {
 			sessionId,
 			work: {
 				kind: "lens",
-				name,
-				prompt: prompt.value.text,
+				lenses,
 				gates: Object.keys(ctx.run.config.gates),
+				...(passed ? { passed } : {}),
 			},
-			summary: `${harness} reviews ${label(plan.parent)} through the ${name} lens`,
+			...(tier ? { route: { tier } } : {}),
+			summary: `${routed(harness, undefined, tier)} reviews ${label(plan.parent)} through ${Brief.lensNames(names)}`,
 		});
 		return ok(undefined);
 	};
@@ -854,6 +943,7 @@ export namespace Claims {
 		// From the lens's first recheck: what an interrupted one edited counts against the next.
 		const tree =
 			earlier[0]?.tree ?? (await ctx.tree(RunStore.sessionDir(ctx.run)));
+		const passed = await greenPass(ctx);
 		launch(ctx, plan, {
 			...(interrupted ? { interrupted } : {}),
 			tree,
@@ -869,6 +959,7 @@ export namespace Claims {
 				base,
 				diff: await git(ctx, ["diff", "--no-color", "--no-ext-diff", base]),
 				gates: Object.keys(ctx.run.config.gates),
+				...(passed ? { passed } : {}),
 			},
 			summary: `${harness} rechecks the fixer's diff for ${findings.map(label).join(", ")} through the ${name} lens`,
 		});
@@ -959,11 +1050,14 @@ export namespace Claims {
 	/** Close the books on one ended session; true when the run has stalled. */
 	export const settle = async (
 		ctx: Ctx,
-		{ taskId, sessionId, outcome, gates }: RunState.Settled,
+		{ taskId, sessionId, outcome, gates, review: decided }: RunState.Settled,
 	): Promise<boolean> => {
 		ctx.live.delete(sessionId);
 		const claim = ctx.run.claims.find((c) => c.sessionId === sessionId);
-		const review = claim?.lens !== undefined || claim?.recheck !== undefined;
+		const review =
+			claim?.lenses !== undefined ||
+			claim?.recheck !== undefined ||
+			claim?.triage === true;
 		await closeSession(ctx, sessionId, outcome);
 		if (claim && !onParent(claim)) await release(ctx, taskId, claim.harness);
 		// Recorded while the claim is still open: a runner that dies before the record leaves an
@@ -987,7 +1081,8 @@ export namespace Claims {
 			session: sessionId,
 			summary: `${outcome.outcome}${outcome.detail ? `: ${outcome.detail}` : ""}`,
 		});
-		// A lens, and its recheck, runs once per run and files findings rather than closing work:
+		if (decided) planReview(ctx, decided, ended?.lane);
+		// A triage, a lens, and its recheck, runs once per run and files findings rather than closing work:
 		// its end is not a step the stall detector should count.
 		if (review) return false;
 		return observeStall(ctx, taskId, claim);
@@ -1061,5 +1156,107 @@ export namespace Claims {
 		for (const s of ctx.settled.splice(0))
 			if (await settle(ctx, s)) stalled = true;
 		return stalled;
+	};
+
+	/**
+	 * Store the run's review plan and put it on the trace: what the bounds changed, as warnings, then
+	 * one `review` event per group and per skipped lens.
+	 */
+	export const planReview = (
+		ctx: Ctx,
+		{ plan, notes }: Review.Decided,
+		lane?: string,
+	): void => {
+		RunState.save(ctx, { ...ctx.run, review: plan });
+		const tag = { ...(lane ? { lane } : {}), task: ctx.run.parentShortId };
+		for (const note of notes)
+			RunState.event(ctx, { ...tag, type: "warning", summary: note });
+		for (const line of Review.lines(plan))
+			RunState.event(ctx, { ...tag, type: "review", summary: line });
+	};
+
+	// What the run changed from `base`, as triage reads it, or which git read failed: unlike `git`,
+	// a failure is not an empty diff.
+	const triageDiff = async (
+		ctx: Ctx,
+		base: string,
+	): Promise<Result<Review.Diff>> => {
+		const reads = [
+			["diff", "--stat", "--no-color", base],
+			["diff", "--numstat", base],
+			["ls-files", "--others", "--exclude-standard"],
+		];
+		const run = ctx.deps.git ?? Worktree.git;
+		const dir = RunStore.sessionDir(ctx.run);
+		const out = await Promise.all(reads.map((args) => run(dir, args)));
+		const texts: string[] = [];
+		for (const [i, read] of out.entries()) {
+			if (!read.ok)
+				return err(
+					new Error(
+						`\`git ${reads[i]?.join(" ")}\` failed: ${read.error.message}`,
+					),
+				);
+			texts.push(read.value.trim());
+		}
+		const [stat = "", numstat = "", untracked = ""] = texts;
+		return ok(
+			Review.diff(
+				base,
+				stat,
+				numstat,
+				untracked.split("\n").filter((f) => f !== ""),
+			),
+		);
+	};
+
+	/**
+	 * Triage the run's lenses (`Review`): one read-only session on the verifier harness, at
+	 * `loop.review.tier`, reads the diff from `base` and each lens's frontmatter and answers the
+	 * review plan, which its end stores. A new session each time: one a dead runner cut short runs
+	 * again from the start. An error when a lens's prompt cannot be read or the session cannot start.
+	 */
+	export const triage = async (
+		ctx: Ctx,
+		plan: LoopPlan.Plan,
+		base: string,
+	): Promise<Result<void>> => {
+		const lenses: Review.Lens[] = [];
+		for (const name of ctx.run.config.lenses) {
+			const prompt = Lenses.prompt(RunStore.projectRoot(ctx.run), name);
+			if (!prompt.ok) return prompt;
+			const { applies, always } = prompt.value;
+			lenses.push({ name, always, ...(applies ? { applies } : {}) });
+		}
+		// Read before any session: a plan made on a diff git could not give would skip lenses, and
+		// slip past the size cap, on no change information at all.
+		const diff = await triageDiff(ctx, base);
+		if (!diff.ok) return diff;
+		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;
+		const { tier } = ctx.run.config.review;
+		const earlier = ctx.run.claims.filter((c) => c.triage === true);
+		const lane = `${Review.LANE}${earlier.length > 0 ? `#${earlier.length + 1}` : ""}`;
+		const sessionId = await open(ctx, plan.parent, harness, lane, false);
+		if (sessionId === undefined)
+			return err(new Error("the triage session did not start"));
+		// From the first triage: what an interrupted one edited counts against the next.
+		const tree =
+			earlier[0]?.tree ?? (await ctx.tree(RunStore.sessionDir(ctx.run)));
+		launch(ctx, plan, {
+			tree,
+			task: plan.parent,
+			harness,
+			lane,
+			sessionId,
+			work: {
+				kind: "triage",
+				lenses,
+				diff: diff.value,
+				tiers: LoopConfig.tierNames(ctx.run.config),
+			},
+			route: { tier },
+			summary: `${routed(harness, undefined, tier)} triages the review of ${label(plan.parent)}: ${diff.value.files} ${diff.value.files === 1 ? "file" : "files"} and ${diff.value.lines} ${diff.value.lines === 1 ? "line" : "lines"} changed, through ${Brief.lensNames(lenses.map((l) => l.name))}`,
+		});
+		return ok(undefined);
 	};
 }

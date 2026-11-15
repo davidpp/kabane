@@ -35,6 +35,7 @@ import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
 import { Gates } from "./gates";
 import { Land } from "./land";
+import { Landed } from "./landed";
 import { Lenses } from "./lenses";
 import { Parent } from "./parent";
 import { Permission } from "./permission";
@@ -930,15 +931,18 @@ export namespace Loop {
 	};
 
 	/**
-	 * Land completed run `runId`'s branch as `land: pr` does at the end of a run: onto the latest
-	 * of its base, gated again when that moved it, pushed, with a pull request open. What
-	 * `kabane loop land` does, for a run whose landing failed or one that does not land itself.
-	 * The landing is commented on the parent, which waits on the pull request it opened. Refused
-	 * for a run that is not completed, or has no worktree.
+	 * Land completed run `runId`'s branch as its `land` setting does at the end of a run, or as
+	 * `mode` says over it, or as `pr` for a run set not to land: onto the latest of its base, gated
+	 * again when that moved it, then pushed with a pull request open (`pr`) or merged into the base
+	 * in the project's checkout (`merge`). What `kabane loop land` does, for a run whose landing
+	 * failed or one that does not land itself. The landing is commented on the parent, which waits
+	 * on the pull request it opened, or is done once merged; one that lands runs the `onLanded`
+	 * command after it (`Landed`). Refused for a run that is not completed, or has no worktree.
 	 */
 	export const land = async (
 		deps: Deps & Pick<StartDeps, "git" | "gh">,
 		runId: string,
+		mode?: Land.Mode,
 	): Promise<Result<RunStore.Run>> => {
 		const read = RunStore.read(deps.home, runId);
 		if (!read.ok) return read;
@@ -960,6 +964,9 @@ export namespace Loop {
 		// prune removes it meanwhile.
 		const held = Worktree.lock(dir, Parent.landCommand(runId));
 		if (!held.ok) return held;
+		const set = run.config.land;
+		const as = mode ?? (set === "none" ? "pr" : set);
+		let ctx: RunState.Ctx;
 		try {
 			const owned = ownWorktree(deps.home, run, dir);
 			if (!owned.ok) return owned;
@@ -967,13 +974,15 @@ export namespace Loop {
 			if (!plan.ok) return plan;
 			const log = RunStore.eventLog(deps.home, runId);
 			if (!log.ok) return log;
-			const ctx = RunState.make({ ...deps, pid: process.pid }, run, log.value);
-			await Land.land(ctx, plan.value);
+			ctx = RunState.make({ ...deps, pid: process.pid }, run, log.value);
+			await Land.land(ctx, plan.value, as);
 			await Parent.landed(ctx);
-			return ok(ctx.run);
 		} finally {
 			held.value();
 		}
+		// Once the lock is released, so a `kabane loop prune` it runs can remove the worktree.
+		await Landed.hook(ctx, as);
+		return ok(ctx.run);
 	};
 
 	// Whether `run` still owns its worktree `dir`: no live run works in it, and no later run went on

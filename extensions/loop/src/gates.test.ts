@@ -139,3 +139,27 @@ describe("Gates.green and lastFailure", () => {
 		).toBeUndefined();
 	});
 });
+
+describe("Gates.describe", () => {
+	const result = (ms: number, exit: number | null = 0): Gates.Result => ({
+		name: "test",
+		command: "bun test",
+		ok: exit === 0,
+		exit,
+		ms,
+		tail: "",
+	});
+
+	// The duration a lens's brief names for a green pass (`Brief.lens`), so one pass reads the same.
+	it("says how long the gate took in milliseconds, seconds, or minutes and seconds", () => {
+		expect(Gates.describe(result(300))).toBe("test passed in 300ms");
+		expect(Gates.describe(result(41_200))).toBe("test passed in 41s");
+		expect(Gates.describe(result(192_000))).toBe("test passed in 3m12s");
+		expect(Gates.describe(result(60_000, 1))).toBe(
+			"test failed (exit 1) in 1m0s",
+		);
+		expect(Gates.describe(result(59_600, null))).toBe(
+			"test failed (killed) in 1m0s",
+		);
+	});
+});
