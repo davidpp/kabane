@@ -92,8 +92,11 @@ network access or downloads are part of installation or tests.
 
 ## Disposable seeding and baseline
 
-`packages/cli/issue-corpus-harness.ts` creates independent OS temporary roots,
-HOME and KABANE_HOME and initializes the actual CLI. The seed subprocess uses
+`packages/core/testing/issue-corpus-harness.ts` owns the corpus lifecycle and
+creates independent OS temporary roots, HOME and KABANE_HOME. Its
+`createCorpusTemplate` seeds without running `kabane init`. The thin wrapper in
+`packages/cli/issue-corpus-harness.ts` runs `kabane init` through the core harness's
+`initialize` hook and adds `run` for CLI calls. The seed subprocess uses
 storage APIs without reconfiguring the test process Runtime. Fresh and
 `fixture_`-prefixed SQLite are supported; no vendored DB or live tracker access.
 Call `close()` in `finally`. Task IDs are intentionally runtime-generated ULIDs;
