@@ -9,7 +9,9 @@ An extension can provide `doctor(ctx)`, returning
 sources in display order. Checks finish before any fixes run. A thrown or returned
 check error becomes a `mention` finding named `check-failed` for that source.
 
-Each finding has a stable kebab-case `id`, unique within its `source`, a `summary`,
+The runner assigns `source` from its registered source name; a check cannot supply it.
+Duplicate IDs under one source become a mention with no repair, retaining both diagnostics.
+Each finding has a stable kebab-case `id`, unique within its source, a `summary`,
 and a severity:
 
 - `auto`: a mechanical repair, eligible for `fix: true`.

@@ -53,7 +53,7 @@ export const doctor: Command = {
 				if (!initialized.ok)
 					unavailable.push({
 						id: "store-unavailable",
-						source: "kabane",
+
 						severity: "mention",
 						path: ctx.store,
 						summary: `Cannot open the store: ${initialized.error.message}. Restore a readable database before running checks that query issues.`,
@@ -68,7 +68,7 @@ export const doctor: Command = {
 			if (!loaded.ok)
 				unavailable.push({
 					id: "extensions-unavailable",
-					source: "kabane",
+
 					severity: "mention",
 					summary: loaded.error.message,
 				});
@@ -79,7 +79,7 @@ export const doctor: Command = {
 		if (!enabled.ok)
 			unavailable.push({
 				id: "extensions-unavailable",
-				source: "kabane",
+
 				severity: "mention",
 				summary: enabled.error.message,
 			});

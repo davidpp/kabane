@@ -31,8 +31,6 @@ import { Lenses } from "./lenses";
 import { Route } from "./route";
 
 export namespace LoopDoctor {
-	const SOURCE = LoopConfig.NAMESPACE;
-
 	const MODEL_ROUTE =
 		"propose loop.model (a tier is best) and the loop.tiers mapping it needs; the human picks the models; write it with kabane_configSet in the global layer unless they say this project only";
 
@@ -94,7 +92,7 @@ export namespace LoopDoctor {
 			return [
 				{
 					id: "legacy-lens-dir",
-					source: SOURCE,
+
 					path: legacy,
 					severity: "mention",
 					summary: `${shown} holds ${files.join(", ")}, where lenses were kept before the dispatch skill. They still run from there; with a dispatch skill (/setup-dispatch writes one) they belong in ${target}.`,
@@ -103,7 +101,7 @@ export namespace LoopDoctor {
 		return [
 			{
 				id: "legacy-lens-dir",
-				source: SOURCE,
+
 				path: legacy,
 				severity: "auto",
 				summary: `${shown} holds ${files.join(", ")}, where lenses were kept before the dispatch skill. --fix moves them to ${target}, refusing a name the skill already holds with other content, and removes ${shown} once it is empty.`,
@@ -140,7 +138,7 @@ export namespace LoopDoctor {
 		return [
 			{
 				id: "lens-shadowed",
-				source: SOURCE,
+
 				severity: "mention",
 				summary: shadowed
 					.map(
@@ -181,7 +179,7 @@ export namespace LoopDoctor {
 		if (config.model === undefined)
 			findings.push({
 				id: "model-unpinned",
-				source: SOURCE,
+
 				severity: "suggest",
 				summary: `loop.model is unset, so every loop session runs on ${harness}'s own default model, which for Claude Code is whichever model was last picked interactively.`,
 				route: MODEL_ROUTE,
@@ -221,7 +219,7 @@ export namespace LoopDoctor {
 		if (unmapped.size > 0)
 			findings.push({
 				id: "tier-unmapped",
-				source: SOURCE,
+
 				severity: "suggest",
 				summary: [...unmapped]
 					.sort(([a], [b]) => a.localeCompare(b))
@@ -276,7 +274,7 @@ export namespace LoopDoctor {
 			: [
 					{
 						id: "tier-tags-unchecked",
-						source: SOURCE,
+
 						severity: "mention",
 						summary: `Open issues' tier: tags were not checked against loop.tiers: ${issues.error.message}`,
 					},

@@ -49,7 +49,7 @@ const dispatchSkill = (root: string): Doctor.Finding[] => {
 		return [
 			{
 				id: "dispatch-skill-missing",
-				source: SOURCE,
+
 				severity: "suggest",
 				summary:
 					"No dispatch skill in .agents/skills/dispatch or .claude/skills/dispatch.",
@@ -60,7 +60,7 @@ const dispatchSkill = (root: string): Doctor.Finding[] => {
 	if (isRealDirectory(claudeDir))
 		findings.push({
 			id: "dispatch-skill-location",
-			source: SOURCE,
+
 			path: claudeDir,
 			severity: "route",
 			summary:
@@ -75,7 +75,7 @@ const dispatchSkill = (root: string): Doctor.Finding[] => {
 			...findings,
 			{
 				id: "dispatch-template-unavailable",
-				source: SOURCE,
+
 				path: Templates.dir("dispatch"),
 				severity: "mention",
 				summary: `Cannot read the shipped dispatch template: ${current.error.message}. Restore the templates directory from this kabane installation.`,
@@ -84,7 +84,7 @@ const dispatchSkill = (root: string): Doctor.Finding[] => {
 	if (stamp === undefined)
 		findings.push({
 			id: "dispatch-skill-unstamped",
-			source: SOURCE,
+
 			path,
 			severity: "route",
 			summary: `${shown} has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from ${current.value}, keeping the project's own edits, and shows the diff before writing.`,
@@ -93,7 +93,7 @@ const dispatchSkill = (root: string): Doctor.Finding[] => {
 	else if (stamp !== current.value)
 		findings.push({
 			id: "dispatch-skill-behind",
-			source: SOURCE,
+
 			path,
 			severity: "route",
 			summary: `${shown} was filled from ${stamp}; the template is now ${current.value}. /setup-dispatch re-fills it, keeping the project's own edits, and shows the diff before writing.`,
@@ -120,7 +120,7 @@ const grillSkill = (root: string): Doctor.Finding[] => {
 	return [
 		{
 			id: "grill-skill-behind",
-			source: SOURCE,
+
 			path: behind[0],
 			severity: "mention",
 			summary: `${shown} differs from the grill skill this kabane ships. --fix ${SOURCE}/grill-skill-behind copies the template over it, replacing any edits of the project's own.`,
@@ -159,7 +159,7 @@ const trackerBlock = (root: string, block: string): Doctor.Finding[] => {
 		return [
 			{
 				id: "tracker-block-missing",
-				source: SOURCE,
+
 				severity: "suggest",
 				summary:
 					"No CLAUDE.md, AGENTS.md or GEMINI.md here has a ## Tracker section; agents use kabane unprompted only when the project tells them to. docs/getting-started.md gives the block to add.",
@@ -170,7 +170,7 @@ const trackerBlock = (root: string, block: string): Doctor.Finding[] => {
 	return [
 		{
 			id: "tracker-block-differs",
-			source: SOURCE,
+
 			path: differing[0]?.path,
 			severity: "mention",
 			summary: `The ## Tracker section of ${differing.map(({ name }) => name).join(", ")} is not the block this kabane gives (docs/getting-started.md). It may hold the project's own edits, or come from an older kabane.`,
@@ -198,7 +198,7 @@ export const project = async (
 		else
 			findings.push({
 				id: `${id}-check-failed`,
-				source: SOURCE,
+
 				severity: "mention",
 				summary: found.error.message,
 			});

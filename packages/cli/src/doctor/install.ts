@@ -64,7 +64,7 @@ export const install = async (
 		if (!found.ok) {
 			findings.push({
 				id: `mcp-config-unreadable-${harness}`,
-				source: "kabane",
+
 				severity: "mention",
 				summary: `${harness}: ${found.error.message}. Repair this config so its MCP registration can be checked.`,
 			});
@@ -83,7 +83,7 @@ export const install = async (
 		const command = `kabane doctor --fix kabane/${id}`;
 		findings.push({
 			id,
-			source: "kabane",
+
 			path: other[0]?.at,
 			// An entry that still starts another kabane, a source checkout say, may be deliberate.
 			severity: dead.length > 0 ? "mention" : "suggest",
