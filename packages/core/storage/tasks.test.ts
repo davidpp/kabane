@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, setSystemTime } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { createMcpServer } from "../mcp/server";
 import { withDb } from "../runtime";
 import type { Task } from "../schemas";
 import { LocalRelay } from "../sync/local-relay";
@@ -28,6 +31,72 @@ const createDevice = async (deviceId: string): Promise<string> => {
 	if (!armed.value.ok) throw armed.value.error;
 	return base;
 };
+
+describe("task scope edits over MCP", () => {
+	for (const scopeUri of ["review", "kabane://scope/review"]) {
+		it(`keeps the short id when edited with its own scope: ${scopeUri}`, async () => {
+			const base = await createDevice("scope-edit");
+			const added = await Planner.addTask(base, {
+				title: "Keep my label",
+				kind: "issue",
+				scopeUri: "review",
+			});
+			if (!added.ok) throw added.error;
+			if (!added.value.shortId) throw new Error("Missing short id");
+			const server = createMcpServer({
+				basePath: base,
+				actor: "cabane://actor/agent/codex",
+				scopeRequired: true,
+			});
+			if (!server.ok) throw server.error;
+			const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+			const client = new Client({ name: "scope-edit-test", version: "0" });
+			await server.value.connect(serverSide);
+			await client.connect(clientSide);
+			try {
+				const response = await client.callTool({
+					name: "kabane_edit",
+					arguments: { id: added.value.shortId, needsReview: true, scopeUri },
+				});
+				expect(response.isError).not.toBe(true);
+				const stored = await Planner.getTask(base, added.value.id);
+				if (!stored.ok) throw stored.error;
+				expect(
+					stored.value?.shortId,
+					`old short id: ${added.value.shortId}; new short id: ${stored.value?.shortId}`,
+				).toBe(added.value.shortId);
+				expect(stored.value).toMatchObject({
+					scopeUri: added.value.scopeUri,
+					needsReview: true,
+					version: 2,
+				});
+				const resolved = await Planner.getTask(base, added.value.shortId);
+				if (!resolved.ok) throw resolved.error;
+				expect(resolved.value?.id).toBe(added.value.id);
+				const next = await Planner.addTask(base, {
+					title: "Next label",
+					scopeUri,
+				});
+				if (!next.ok) throw next.error;
+				expect(next.value.shortId).toBe("JREV-2");
+				const moved = await client.callTool({
+					name: "kabane_edit",
+					arguments: { id: added.value.shortId, scopeUri: "destination" },
+				});
+				expect(moved.isError).not.toBe(true);
+				const destination = await Planner.getTask(base, added.value.id);
+				if (!destination.ok) throw destination.error;
+				expect(destination.value).toMatchObject({
+					shortId: "JDES-1",
+					scopeUri: "kabane://scope/destination",
+				});
+			} finally {
+				await client.close();
+				await server.value.close();
+			}
+		});
+	}
+});
 
 describe("task completion timestamps", () => {
 	for (const state of [

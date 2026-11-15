@@ -36,13 +36,14 @@ describe("prospective scope labels", () => {
 		).toEqual(before);
 		const added = await Planner.addTask(base, {
 			title: "Label preview",
-			scopeUri: "new",
+			scopeUri: "old",
 		});
 		if (!added.ok) return;
-		expect(added.value.shortId).toBe("JNEW-1");
+		expect(added.value.shortId).toBe("JOLD-1");
 		const prior = await withDb(base, (db) => {
 			db.run(
-				`UPDATE ${TABLES.sequences} SET next_number = 9 WHERE prefix = 'JNEW'`,
+				`INSERT INTO ${TABLES.sequences} (prefix, next_number, scope_uri, created_at) VALUES ('JNEW', 9, 'kabane://scope/new', ?)`,
+				[new Date().toISOString()],
 			);
 			return db.query(`SELECT * FROM ${TABLES.sequences}`).all();
 		});
@@ -62,6 +63,33 @@ describe("prospective scope labels", () => {
 			expect(updated.value.version).toBe(2);
 		}
 	});
+	for (const scopeUri of ["new", "kabane://scope/new"]) {
+		it(`keeps the receipt label and sequence table for its own scope: ${scopeUri}`, async () => {
+			base = mkdtempSync(join(tmpdir(), "kabane-receipt-same-scope-"));
+			configureTestRuntime();
+			expect((await Planner.init(base)).ok).toBe(true);
+			const added = await Planner.addTask(base, {
+				title: "Keep label",
+				scopeUri: "new",
+			});
+			if (!added.ok) throw added.error;
+			const before = await withDb(base, (db) =>
+				db.query(`SELECT * FROM ${TABLES.sequences}`).all(),
+			);
+			if (!before.ok) throw before.error;
+			const receipt = await Planner.updateTaskReceipt(base, added.value.id, {
+				scopeUri,
+			});
+			if (!receipt.ok) throw receipt.error;
+			expect(receipt.value.shortId).toBe(added.value.shortId);
+			expect(receipt.value.version).toBe(2);
+			expect(
+				await withDb(base, (db) =>
+					db.query(`SELECT * FROM ${TABLES.sequences}`).all(),
+				),
+			).toEqual(before);
+		});
+	}
 	it("keeps an honest postwrite error when a genuine concurrent counter advance crosses the receipt boundary", async () => {
 		base = mkdtempSync(join(tmpdir(), "kabane-receipt-race-"));
 		configureTestRuntime();
