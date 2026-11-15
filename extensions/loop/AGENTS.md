@@ -14,15 +14,14 @@ branch. `docs/loop.md` is what a user reads; read the part your change touches.
 | `src/land.ts`, `src/worktree.ts`, `src/trees.ts` | branches, worktrees and landing |
 | `src/activity.ts`, `src/dispatcher.ts`, `src/header.tsx` | what the board shows of a run |
 
-## It is an extension, so it takes types from kabane and values only from its harness client
+## It takes types from kabane, and values only from the harness client it bundles
 
 Its layer is `extension`; its entry in `scripts/layers.ts` (`"@cabane/loop"`) allows one
-runtime dependency, `@cabane/acp`, the harness client it bundles. It also lists
-`@cabane/board`, `checklist`, `core` and `extension`, and imports values from them in about
-thirty files; each is a named exception that JCAB-326 removes by porting the loop onto
-extension API v1 (`ARCHITECTURE.md`, "Extension API v1"). Until then, every new value import
-from one of those four adds to JCAB-326's work: take what you need through an existing import
-of the same module, or say in your handoff why it could not wait.
+runtime dependency, `@cabane/acp`. Its other `@cabane/*` dependencies are named exceptions
+that JCAB-326 removes by porting the loop onto extension API v1 (`ARCHITECTURE.md`, "Extension
+API v1"). Until then, every value newly used from `@cabane/core`, `board`, `checklist` or
+`extension` is new dependence on kabane's internals that JCAB-326 must then undo, whichever
+import line it sits on. Use one only when the brief asks for it, and name it in the handoff.
 
 Several issues change this package; check main before you edit:
 
@@ -40,25 +39,24 @@ in `src/commands.ts` with its test.
 
 ```bash
 bun test extensions/loop                  # runner tests drive packages/acp/scripts/scripted-agent.ts
+bun run sandbox init                      # once per fresh sandbox
 bun run sandbox config set extensions loop --layer global
 bun run sandbox add "try the loop" --kind issue
-bun run sandbox loop advise <id>          # the plan, the advice and the routing; changes nothing
+bun run sandbox loop advise <id>          # the plan, the advice and the routing; changes no issue, run or setting
 bun run sandbox loop status
 ```
 
-`loop advise` with `--dir` pointing at a checkout reads that checkout's lenses and gates. A
-real `loop start` opens sessions on the harness the human is logged in to and spends its quota,
-so run one only when the brief allows it; otherwise list it as a manual check. The run's tab on
-the board is checked under tmux with `bun run sandbox board`.
+`loop advise --dir <checkout>` reads that checkout's lenses and gates. A real `loop start`
+opens sessions on the harness the human is logged in to and spends its quota, so run one only
+when the brief allows it; otherwise list it as a manual check.
 
 ## Mistakes that are easy to make here
 
+- Writing `run.json` or `events.jsonl` from outside the runner while a run is live. The runner
+  owns both; anyone else appends a request to `inbox.jsonl` (`src/store.ts:8`). The rename that
+  replaces `run.json` keeps a reader from seeing half a file, not two writers apart.
 - Answering a harness's permission request, or adding an allow list, a settings file or a
-  model the run did not name. The loop is a thin wrapper: a request becomes a question for the
-  human (`src/permission.ts`).
-- Keeping run state in the tracker. Runs live in files; the tracker gets work-log refs,
-  comments and child issues for findings.
-- Writing `run.json` in place. The runner replaces it by rename so a reader never sees half a
-  file (`src/store.ts`).
+  model the run did not name. A request becomes a question for the human
+  (`src/permission.ts`).
 - Base kabane text that names the loop (the copilot's instructions, the board's setup, help).
   What the loop needs said goes in the loop.

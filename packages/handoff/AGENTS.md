@@ -6,20 +6,16 @@ A data module with no table: it declares the timeline entry kind `handoff`, its 
 declaration in `module.ts`. `README.md` describes the template, the tool, the brief section and
 the CLI; read it before changing any of them.
 
-## It depends on core alone and is registered by both hosts
+## It depends on core alone and both hosts register it
 
 Its layer is `data module`; its entry in `scripts/layers.ts` (`"@cabane/handoff"`) says what it
-may list, and `bun run layers` fails anything else. Two hosts register `handoffModule`:
-`MODULES` in `packages/cli/src/context.ts` and the module list in `packages/worker/src/hub.ts`.
-The CLI's `kabane handoff` calls `handOff`, `findIssue` and `handoffReceipt`.
-
-## A kind is data, so this package holds no storage
+may list. The CLI (`MODULES` in `packages/cli/src/context.ts`) and the hub
+(`packages/worker/src/hub.ts`) register `handoffModule`. The CLI's `kabane handoff` calls
+`handOff`, `findIssue` and `handoffReceipt` (`tools.ts`) and the template (`template.ts`).
 
 How kinds work (the name pattern, `latest` and `discussion` projections, append-only entries,
 what `Runtime.configure` refuses) is in `packages/core/AGENTS.md`, "Timeline entries". A change
-to how the brief folds a handoff is a change to core's fold, not to this package. A change that
-gives handoffs a table of their own makes this a different kind of module and needs a brief
-that says so.
+to how the brief folds a handoff is made in core's fold.
 
 Read before writing: `module.ts`, `template.ts`, `tools.ts`, `tools.test.ts`.
 
@@ -28,9 +24,10 @@ Read before writing: `module.ts`, `template.ts`, `tools.ts`, `tools.test.ts`.
 ```bash
 bun test packages/handoff
 bun run --cwd packages/worker test      # the hub serves kabane_handoff too
+bun run sandbox init                    # once per fresh sandbox
 bun run sandbox add "hand me off" --kind issue
 bun run sandbox handoff --template
-bun run sandbox handoff <id> --from -   # paste a body, then
+printf '### Summary\n\nx\n' | bun run sandbox handoff <id> --from -
 bun run sandbox context <id>            # the brief shows it as handoff.latest
 bun run gallery --print detail-handoff --width 40
 ```
@@ -39,6 +36,8 @@ bun run gallery --print detail-handoff --width 40
 
 - Editing the template in `template.ts` and leaving the README's copy of it behind. The tool's
   description and `kabane handoff --template` show the template itself; the README quotes it.
-- Adding a field the body must contain. Kabane never parses or validates an entry's body.
+- Checking a body against the template's headings. `handOff` refuses a blank body and trims
+  trailing whitespace (`tools.ts:78`), and checks nothing else: a handoff may drop a heading
+  or add one.
 - Treating a handoff as closing the issue. `kabane_handoff` changes neither state nor the review
   flag.
