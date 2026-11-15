@@ -188,7 +188,7 @@ cover byte bounds, preview markers and stale cursors.
 
 ```bash
 bun install
-bun run check       # oxlint, its type-aware pass, oxfmt --check, knip, jscpd
+bun run check       # layers, oxlint, its type-aware pass, oxfmt --check, knip, jscpd
 bun run typecheck   # tsc --noEmit per package
 bun run test        # bun packages, then the Worker suite under vitest
 ```
