@@ -2,19 +2,81 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { checkLayers as checkWorkspaceLayers, layers } from "./layers";
+import { checkLayers as checkWorkspaceLayers, type layers } from "./layers";
 
-const rules = Object.fromEntries(
-	Object.entries(layers).map(([name, rule]) => [
-		name,
-		{ ...rule, relativeImports: {} },
-	]),
-);
+// Checker fixtures own their policy; production changes must not change coverage.
+const rules = {
+	"@cabane/core": {
+		layer: "core",
+		dependencies: [],
+		devDependencies: ["@cabane/sqlite"],
+		testSupport: ["packages/core/testing.ts"],
+	},
+	"@cabane/sqlite": {
+		layer: "storage adapter",
+		dependencies: ["@cabane/core"],
+		devDependencies: [],
+	},
+	"@cabane/acp": {
+		layer: "harness client",
+		dependencies: [],
+		devDependencies: [],
+		exceptions: { "@cabane/board": "fixture: pending port extraction" },
+	},
+	"@cabane/board": {
+		layer: "client",
+		dependencies: [],
+		devDependencies: ["@cabane/sqlite"],
+		testSupport: [
+			"packages/board/src/test-db.ts",
+			"packages/board/src/stories/fixtures.ts",
+		],
+	},
+	kabane: {
+		layer: "host",
+		dependencies: [],
+		devDependencies: [],
+		exceptions: { "@cabane/loop": "fixture: pending loop extraction" },
+	},
+	"cabane-worker": {
+		layer: "hub",
+		dependencies: [],
+		devDependencies: [],
+	},
+} satisfies typeof layers;
 const checkLayers = (root: string): string[] =>
 	checkWorkspaceLayers(root, rules);
-const coreRule = layers["@cabane/core"];
-if (!coreRule) throw new Error("Missing core layer rule");
-const coreExceptionsPolicy = { ...rules, "@cabane/core": coreRule };
+const coreExceptionsPolicy = {
+	...rules,
+	"@cabane/core": {
+		...rules["@cabane/core"],
+		relativeImports: {
+			"packages/core/storage/context-pages.test.ts": {
+				"../../cli/issue-corpus-harness": "fixture: pending harness move",
+			},
+		},
+	},
+};
+const relativeExceptionsPolicy: typeof layers = {
+	...coreExceptionsPolicy,
+	kabane: {
+		...rules.kabane,
+		relativeImports: {
+			"packages/cli/corpus.test.ts": {
+				"../core/issues.json": "fixture: pending fixture entry",
+				"../core/manifest.json": "fixture: pending fixture entry",
+			},
+		},
+	},
+	"cabane-worker": {
+		...rules["cabane-worker"],
+		relativeImports: {
+			"packages/worker/src/corpus.test.ts": {
+				"../../core/issues.json": "fixture: pending fixture entry",
+			},
+		},
+	},
+};
 const roots: string[] = [];
 function workspace(): string {
 	const root = mkdtempSync(join(tmpdir(), "kabane-layers-"));
@@ -98,7 +160,7 @@ test("named exceptions must still exist in runtime dependencies", () => {
 	expect(checkLayers(root)).toEqual([]);
 	manifest(root, "packages/acp", "@cabane/acp");
 	expect(checkLayers(root)).toEqual([
-		"@cabane/acp -> @cabane/board: stale exception (JCAB-320: move UI-neutral ports to the extension contract); remove this exception from scripts/layers.ts.",
+		"@cabane/acp -> @cabane/board: stale exception (fixture: pending port extraction); remove this exception from scripts/layers.ts.",
 	]);
 });
 
@@ -108,7 +170,7 @@ test("the CLI loop exception becomes stale when its runtime dependency is remove
 	expect(checkLayers(root)).toEqual([]);
 	manifest(root, "packages/cli", "kabane", {});
 	expect(checkLayers(root)).toEqual([
-		"kabane -> @cabane/loop: stale exception (JCAB-326: the build stops bundling the loop); remove this exception from scripts/layers.ts.",
+		"kabane -> @cabane/loop: stale exception (fixture: pending loop extraction); remove this exception from scripts/layers.ts.",
 	]);
 });
 
@@ -213,11 +275,7 @@ test("relative exceptions match file and specifier, survive line shifts, and rej
 	expect(checkWorkspaceLayers(root, policy)).toEqual([
 		"@cabane/core -> kabane: relative cross-package import ../../cli/new in packages/core/storage/context-pages.test.ts:2; use a declared package import instead.",
 	]);
-	write(
-		root,
-		"packages/core/other.ts",
-		`import "../cli/issue-corpus-harness";`,
-	);
+	write(root, "packages/core/storage/other.test.ts", `import "${specifier}";`);
 	expect(checkWorkspaceLayers(root, policy)).toHaveLength(2);
 });
 
@@ -230,12 +288,12 @@ test.each(["removed import", "removed file"])(
 		const file = "packages/core/storage/context-pages.test.ts";
 		if (change === "removed import") write(root, file, "export {};");
 		expect(checkWorkspaceLayers(root, coreExceptionsPolicy)).toEqual([
-			"@cabane/core -> ../../cli/issue-corpus-harness: stale relative import exception in packages/core/storage/context-pages.test.ts (JCAB-331: replace relative cross-package imports); remove this exception from scripts/layers.ts.",
+			"@cabane/core -> ../../cli/issue-corpus-harness: stale relative import exception in packages/core/storage/context-pages.test.ts (fixture: pending harness move); remove this exception from scripts/layers.ts.",
 		]);
 	},
 );
 
-test("the nine named relative imports pass but a tenth fails", () => {
+test("named relative imports across packages pass but an unlisted import fails", () => {
 	const root = workspace();
 	for (const [path, name] of [
 		["packages/core", "@cabane/core"],
@@ -243,7 +301,7 @@ test("the nine named relative imports pass but a tenth fails", () => {
 		["packages/worker", "cabane-worker"],
 	] as const) {
 		manifest(root, path, name);
-		const rule = layers[name];
+		const rule = relativeExceptionsPolicy[name];
 		for (const [file, imports] of Object.entries(rule?.relativeImports ?? {})) {
 			write(
 				root,
@@ -254,13 +312,13 @@ test("the nine named relative imports pass but a tenth fails", () => {
 			);
 		}
 	}
-	expect(checkWorkspaceLayers(root)).toEqual([]);
+	expect(checkWorkspaceLayers(root, relativeExceptionsPolicy)).toEqual([]);
 	write(
 		root,
 		"packages/core/storage/new.test.ts",
 		'import "../../cli/issue-corpus-harness";',
 	);
-	expect(checkWorkspaceLayers(root)).toEqual([
+	expect(checkWorkspaceLayers(root, relativeExceptionsPolicy)).toEqual([
 		"@cabane/core -> kabane: relative cross-package import ../../cli/issue-corpus-harness in packages/core/storage/new.test.ts:1; use a declared package import instead.",
 	]);
 });
