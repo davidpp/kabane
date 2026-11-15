@@ -112,7 +112,11 @@ Never run the fix of a kabane/mcp-entry-stale-<harness> finding, whatever its se
 		kabane: string,
 	): string => {
 		const bin = shellWord(kabane);
-		return `KABANE ON THIS MACHINE. This board runs kabane as \`${bin}\`. Every kabane command the procedures above name runs in your shell as that, for example \`${bin} loop start <id>\` and \`${bin} --help\`, never as a kabane found on PATH, which may be another install with another home. The config tools manage ${configPath}. This build ships: ${extensions.join(", ")}. These are the official extensions available to enable. Supported copilot harnesses: ${Harnesses.IDS.join(", ")}; the chosen harness must be installed and logged in on this machine.\n\nDISPATCH TEMPLATE STAMP: ${Templates.stamp("dispatch")}`;
+		const stamp = Templates.stamp("dispatch");
+		const provenance = stamp.ok
+			? stamp.value
+			: `unavailable (${stamp.error.message}). /setup-dispatch must report this error and ask the human to restore the shipped templates; never invent a stamp.`;
+		return `KABANE ON THIS MACHINE. This board runs kabane as \`${bin}\`. Every kabane command the procedures above name runs in your shell as that, for example \`${bin} loop start <id>\` and \`${bin} --help\`, never as a kabane found on PATH, which may be another install with another home. The config tools manage ${configPath}. This build ships: ${extensions.join(", ")}. These are the official extensions available to enable. Supported copilot harnesses: ${Harnesses.IDS.join(", ")}; the chosen harness must be installed and logged in on this machine.\n\nDISPATCH TEMPLATE STAMP: ${provenance}`;
 	};
 
 	// What every harness is actually given. Both of the places that send instructions — the session's

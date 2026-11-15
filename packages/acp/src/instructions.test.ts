@@ -2,10 +2,22 @@
 // depend on: unique `/names`, single-line templates, the tool names a procedure is only correct if
 // it names, and the dispatch and grill templates where the skill text says they are.
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import {
+	existsSync,
+	readFileSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { type Result } from "@cabane/core";
 import { CopilotInstructions } from "./instructions";
 import { Templates } from "./templates";
+const unwrap = <T>(result: Result<T>): T => {
+	if (!result.ok) throw result.error;
+	return result.value;
+};
 
 const template = (path: string): string =>
 	readFileSync(join(CopilotInstructions.DISPATCH_TEMPLATE, path), "utf8");
@@ -186,7 +198,7 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 
 	it("the system prompt gives the dispatch template's stamp, and the skill's frontmatter takes it", () => {
 		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN);
-		const stamp = Templates.stamp("dispatch");
+		const stamp = unwrap(Templates.stamp("dispatch"));
 		expect(stamp).toMatch(/^dispatch@[0-9a-f]{12}$/);
 		expect(prompt).toContain(`DISPATCH TEMPLATE STAMP: ${stamp}`);
 		expect(CopilotInstructions.SKILLS).toContain(
@@ -444,3 +456,34 @@ describe("CopilotInstructions setting up a loop run", () => {
 		);
 	});
 });
+
+it("a compiled prompt still supplies procedures when shipped templates are missing", () => {
+	const root = mkdtempSync(join(tmpdir(), "kabane-prompt-"));
+	try {
+		const entry = join(root, "prompt.ts");
+		const binary = join(root, "prompt");
+		writeFileSync(
+			entry,
+			`import { CopilotInstructions } from ${JSON.stringify(join(import.meta.dir, "instructions.ts"))}; console.log(CopilotInstructions.systemPrompt({configPath: "config.json", extensions: []}, "kabane"));`,
+		);
+		const build = Bun.spawnSync([
+			process.execPath,
+			"build",
+			"--compile",
+			entry,
+			"--outfile",
+			binary,
+		]);
+		expect(build.exitCode).toBe(0);
+		const run = Bun.spawnSync([binary]);
+		expect(run.exitCode).toBe(0);
+		expect(run.stdout.toString()).toContain("SETTING UP A DISPATCH SKILL");
+		expect(run.stdout.toString()).toContain("DOCTOR.");
+		expect(run.stdout.toString()).toContain(
+			"DISPATCH TEMPLATE STAMP: unavailable",
+		);
+		expect(run.stdout.toString()).toContain("never invent a stamp");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+}, 120_000);

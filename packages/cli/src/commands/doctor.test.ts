@@ -11,6 +11,12 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Templates } from "@cabane/acp/templates";
+import { type Result } from "@cabane/core";
+const unwrap = <T>(result: Result<T>): T => {
+	if (!result.ok) throw result.error;
+	return result.value;
+};
+
 import { DB_NAME } from "../config";
 import { ConfigLayers } from "../config-layers";
 import { TRACKER_BLOCK } from "../first-run";
@@ -33,7 +39,7 @@ const setup = () => {
 	mkdirSync(join(cwd, ".agents/skills/dispatch"), { recursive: true });
 	writeFileSync(
 		join(cwd, ".agents/skills/dispatch/SKILL.md"),
-		`---\nname: dispatch\nmetadata:\n  kabane-template: ${Templates.stamp("dispatch")}\n---\n`,
+		`---\nname: dispatch\nmetadata:\n  kabane-template: ${unwrap(Templates.stamp("dispatch"))}\n---\n`,
 	);
 	writeFileSync(join(cwd, "AGENTS.md"), `${TRACKER_BLOCK}\n`);
 	const run = (...args: string[]) => {

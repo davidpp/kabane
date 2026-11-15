@@ -11,6 +11,12 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Templates } from "@cabane/acp/templates";
+import { type Result } from "@cabane/core";
+const unwrap = <T>(result: Result<T>): T => {
+	if (!result.ok) throw result.error;
+	return result.value;
+};
+
 import { Doctor } from "@cabane/extension";
 import { settingsPort } from "../context";
 import { TRACKER_BLOCK } from "../first-run";
@@ -53,7 +59,7 @@ const setup = () => {
 	writeFileSync(join(root, ".kabane/scope"), "pinned\n");
 	write(
 		join(root, ".agents/skills/dispatch/SKILL.md"),
-		skill(Templates.stamp("dispatch")),
+		skill(unwrap(Templates.stamp("dispatch"))),
 	);
 	mkdirSync(join(root, ".claude/skills"), { recursive: true });
 	symlinkSync(
@@ -101,7 +107,9 @@ test("an unstamped skill and an old stamp are told apart", async () => {
 	const found = await project(ctx);
 	if (!found.ok) throw found.error;
 	expect(found.value[0]?.summary).toContain("dispatch@000000000000");
-	expect(found.value[0]?.summary).toContain(Templates.stamp("dispatch"));
+	expect(found.value[0]?.summary).toContain(
+		unwrap(Templates.stamp("dispatch")),
+	);
 });
 
 test("a real .claude/skills/dispatch directory is reported, a symlink is not", async () => {
@@ -110,7 +118,7 @@ test("a real .claude/skills/dispatch directory is reported, a symlink is not", a
 	rmSync(join(root, ".claude/skills/dispatch"));
 	write(
 		join(root, ".claude/skills/dispatch/SKILL.md"),
-		skill(Templates.stamp("dispatch")),
+		skill(unwrap(Templates.stamp("dispatch"))),
 	);
 	expect(await ids()).toEqual(["dispatch-skill-location:route"]);
 });

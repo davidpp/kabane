@@ -70,22 +70,33 @@ const dispatchSkill = (root: string): Doctor.Finding[] => {
 	const shown = relative(root, path);
 	const stamp = stampOf(readFileSync(path, "utf8"));
 	const current = Templates.stamp("dispatch");
+	if (!current.ok)
+		return [
+			...findings,
+			{
+				id: "dispatch-template-unavailable",
+				source: SOURCE,
+				path: Templates.dir("dispatch"),
+				severity: "mention",
+				summary: `Cannot read the shipped dispatch template: ${current.error.message}. Restore the templates directory from this kabane installation.`,
+			},
+		];
 	if (stamp === undefined)
 		findings.push({
 			id: "dispatch-skill-unstamped",
 			source: SOURCE,
 			path,
 			severity: "route",
-			summary: `${shown} has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from ${current}, keeping the project's own edits, and shows the diff before writing.`,
+			summary: `${shown} has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from ${current.value}, keeping the project's own edits, and shows the diff before writing.`,
 			route: SETUP,
 		});
-	else if (stamp !== current)
+	else if (stamp !== current.value)
 		findings.push({
 			id: "dispatch-skill-behind",
 			source: SOURCE,
 			path,
 			severity: "route",
-			summary: `${shown} was filled from ${stamp}; the template is now ${current}. /setup-dispatch re-fills it, keeping the project's own edits, and shows the diff before writing.`,
+			summary: `${shown} was filled from ${stamp}; the template is now ${current.value}. /setup-dispatch re-fills it, keeping the project's own edits, and shows the diff before writing.`,
 			route: SETUP,
 		});
 	return findings;
@@ -113,10 +124,11 @@ const grillSkill = (root: string): Doctor.Finding[] => {
 			path: behind[0],
 			severity: "mention",
 			summary: `${shown} differs from the grill skill this kabane ships. --fix ${SOURCE}/grill-skill-behind copies the template over it, replacing any edits of the project's own.`,
-			fix: async () => {
-				for (const path of behind) copyFileSync(template, path);
-				return ok(`Copied the grill skill template to ${shown}`);
-			},
+			fix: async () =>
+				trySync(() => {
+					for (const path of behind) copyFileSync(template, path);
+					return `Copied the grill skill template to ${shown}`;
+				}),
 		},
 	];
 };
@@ -175,9 +187,21 @@ export const project = async (
 	const { root } = here.value;
 	// first-run carries the board's setup screen; main loads it lazily, and so does this check.
 	const { TRACKER_BLOCK } = await import("../first-run");
-	return trySync(() => [
-		...dispatchSkill(root),
-		...grillSkill(root),
-		...trackerBlock(root, TRACKER_BLOCK),
-	]);
+	const findings: Doctor.Finding[] = [];
+	for (const [id, check] of [
+		["dispatch", () => dispatchSkill(root)],
+		["grill", () => grillSkill(root)],
+		["tracker", () => trackerBlock(root, TRACKER_BLOCK)],
+	] as const) {
+		const found = trySync(check);
+		if (found.ok) findings.push(...found.value);
+		else
+			findings.push({
+				id: `${id}-check-failed`,
+				source: SOURCE,
+				severity: "mention",
+				summary: found.error.message,
+			});
+	}
+	return ok(findings);
 };
