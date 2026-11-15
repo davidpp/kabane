@@ -6,7 +6,8 @@ command, built-in or extension, is written with. It has no runtime of its own.
 - `contract.ts`: `Extension` (`name`, `settings`, `looks`, `commands`, `board`, `mcp`, `doctor`),
   and in the `Extension` namespace `Ctx` (what every command runs with), `Command` and `BoardPorts`.
 - `doctor.ts`: check sources, findings and repairs; a failed check becomes a finding.
-- `host.ts`: the factory host, currently `api: 1` and `kabane: { version, executable }`.
+- `host.ts`: API 1: record, scope, zod, helpers, harness mode and kabane identity.
+- `host-record.ts`: typed wrappers through `callTool`, shared by the CLI and real database tests.
 - `args.ts`: `parseArgs` and the `flag*` readers.
 - `outcome.ts`: `Outcome` and `success`, `conciseSuccess`, `failure`, `usage`.
 - `settings.ts`: the `Settings` namespace, which resolves a settings namespace through the
@@ -30,10 +31,11 @@ fields", specifies what the contract holds and will hold, including the `Host` t
 or member that section does not list comes with a change to it in the same diff (question 6 of
 `.agents/skills/dispatch/references/lenses/architecture.md`).
 
-Work on this package is in flight on other branches. Rebase onto main before you start, and
-expect these to land around you:
+The current contract and loader enforce these boundaries:
 
-- JCAB-322: the remaining `Host` members and the published import path `kabane/extension`.
+- `kabane/extension` publishes generated types only; factories receive values through `host`.
+  `record` becomes live only after the CLI configures and migrates the runtime and the
+  host’s factory returns. Doctor activates it only when it opens the store.
 - The CLI validates the manifest in `package.json` before importing the factory. JCAB-323 adds
   its modules entry; it does not live on `Extension`.
 
@@ -56,6 +58,6 @@ bun run sandbox loop --help                                 # an extension's com
   is replaced, so the highest layer that names `loop.lenses` decides the whole list
   (`settings.ts:8`).
 - Building a settings schema with a zod other than the one this package uses. `Settings` walks
-  the schema, so a second copy of zod is untested against it.
+  the schema, so schemas must use `host.z`; the loader refuses a foreign copy.
 - Giving a setting neither a default nor `.optional()`. Every layer is partial, so the comment
   on `Extension.settings` asks for one or the other on every key.

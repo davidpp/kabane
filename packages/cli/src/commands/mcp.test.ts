@@ -297,7 +297,7 @@ test("reports MCP causes, invalid paths and the real foreign zod limit", async (
 			"MCP contribution is invalid: tools[0].name must be a string",
 		);
 		expect(messages[2]).toContain(
-			"MCP contribution is invalid: tools[0].input.id must be built with kabane's zod, which the extension API passes as host.z; this kabane does not provide host.z yet",
+			"MCP contribution is invalid: tools[0].input.id must be built with host.z",
 		);
 	} finally {
 		stderr.mockRestore();

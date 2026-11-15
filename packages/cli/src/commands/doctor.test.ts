@@ -11,9 +11,13 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Templates } from "@cabane/acp/templates";
+import { Doctor, parseArgs } from "@cabane/extension";
 import { DB_NAME } from "../config";
 import { ConfigLayers } from "../config-layers";
+import { openContext } from "../context";
+import { Extensions } from "../extensions";
 import { TRACKER_BLOCK } from "../first-run";
+import { doctor } from "./doctor";
 
 const folders: string[] = [];
 afterEach(() => {
@@ -240,4 +244,51 @@ test("a throwing, malformed or refused extension doctor costs only that extensio
 			summary: expect.stringContaining("Extension refused:"),
 		}),
 	]);
+});
+
+test("a directory doctor reads the live record and stays staged when config cannot open the store", async () => {
+	const { home, cwd, cli, run, config } = setup();
+	const dir = join(home, "extensions", "records");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(
+		join(dir, "package.json"),
+		JSON.stringify({ kabane: { extension: "./index.ts", api: 1 } }),
+	);
+	writeFileSync(
+		join(dir, "index.ts"),
+		`export default host => ({
+		name: "records",
+		doctor: async () => {
+			const rows = await host.record.list({});
+			return [{ id: "record", source: "records", severity: "mention", summary: rows.ok ? rows.value.map(row => row.title).join(", ") : rows.error.message }];
+		}
+	});`,
+	);
+	config({
+		actor: "cabane://actor/human/test",
+		deviceId: "test",
+		extensions: ["records"],
+	});
+	run("add", "Directory doctor issue", "--kind", "issue");
+	expect(JSON.parse(cli("--json")).findings).toContainEqual(
+		expect.objectContaining({
+			source: "records",
+			id: "record",
+			summary: "Directory doctor issue",
+		}),
+	);
+	const ctx = await openContext(home, cwd, parseArgs([]));
+	if (!ctx.ok) throw ctx.error;
+	const loaded = await Extensions.loadAll(["records"], home);
+	expect(loaded.refused).toEqual([]);
+	writeFileSync(join(home, "config.json"), "{broken");
+	const outcome = await doctor.run(parseArgs([]), ctx.value);
+	expect(outcome.exitCode).toBe(0);
+	expect(outcome.text).toContain("config.json");
+	// Invalid JSON cannot supply enabled names. A previously loaded check still receives the
+	// stage error after doctor declines to open that store, rather than a stale live context.
+	const report = await Doctor.run(Extensions.doctors(loaded.loaded), ctx.value);
+	expect(report.findings[0]?.summary).toContain(
+		"standalone commands do not open it automatically",
+	);
 });

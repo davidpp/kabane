@@ -9,7 +9,6 @@ import {
 import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
-import { Self } from "@cabane/core/self";
 import {
 	type Doctor,
 	failure,
@@ -18,9 +17,9 @@ import {
 	type Settings,
 } from "@cabane/extension";
 import { z } from "zod";
-import { version } from "../package.json";
 import { ConfigSchema, configPath, loadConfig } from "./config";
 import { ConfigLayers } from "./config-layers";
+import { createHost, hostHarnessMode } from "./host";
 
 /**
  * By the name `config.json` enables each with, as
@@ -52,7 +51,7 @@ const zodType = z.custom<z.ZodType>(
 			"_def" in value &&
 			"safeParse" in value &&
 			typeof value.safeParse === "function"
-				? "must be built with kabane's zod, which the extension API passes as host.z; this kabane does not provide host.z yet"
+				? "must be built with host.z"
 				: "must be a Zod schema",
 	}),
 );
@@ -274,11 +273,9 @@ export namespace Extensions {
 						"the entry's default export must be a factory (host) => Extension",
 					),
 				);
-			const host: Host = {
-				api: 1,
-				kabane: { version, executable: Self.executable() },
-			};
+			const { host, ready } = createHost(home);
 			loaded = await tryCatch(async () => factory.data(host));
+			if (loaded.ok) ready();
 		} else {
 			const loader = Object.hasOwn(OFFICIAL, name) ? OFFICIAL[name] : undefined;
 			if (!loader)
@@ -411,7 +408,12 @@ export namespace Extensions {
 			commands.push({
 				...command,
 				run: async (args, ctx) => {
-					const called = await tryCatch(() => command.run(args, ctx));
+					const called = await tryCatch(() =>
+						command.run(args, {
+							...ctx,
+							harnessMode: hostHarnessMode(ctx.home),
+						}),
+					);
 					return called.ok
 						? called.value
 						: failure(line({ name: owner, reason: called.error.message }));

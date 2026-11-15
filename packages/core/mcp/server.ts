@@ -107,7 +107,7 @@ const toCallResult = (
 	return { content: [{ type: "text", text }] };
 };
 
-const callTool = async (
+export const callTool = async (
 	tool: ToolDef,
 	rawArgs: unknown,
 	ctx: ToolContext,

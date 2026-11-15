@@ -2,9 +2,14 @@ import { existsSync } from "node:fs";
 import { Planner } from "@cabane/core";
 import { Doctor, failure, flagList, success, usage } from "@cabane/extension";
 import { configPath, loadConfig } from "../config";
-import { type Command, configureRuntime } from "../context";
+import {
+	activateContextRecord,
+	type Command,
+	configureRuntime,
+} from "../context";
 import { kabane } from "../doctor/kabane";
 import { Extensions } from "../extensions";
+import { activateHostRecord, hostHarnessMode } from "../host";
 
 const USAGE = "kabane doctor [--fix [<source/id>...]] [--json]";
 
@@ -40,6 +45,7 @@ export const doctor: Command = {
 			(!("fix" in args.flags) && args.positionals.length > 0)
 		)
 			return usage("Unexpected doctor arguments", USAGE);
+		activateHostRecord(ctx.home);
 		if (existsSync(configPath(ctx.home))) {
 			const config = loadConfig(ctx.home);
 			// Settings diagnostics report invalid config; it must not prevent the other checks.
@@ -48,6 +54,13 @@ export const doctor: Command = {
 				if (!configured.ok) return failure(configured.error);
 				const initialized = await Planner.init(ctx.home);
 				if (!initialized.ok) return failure(initialized.error);
+				ctx = {
+					...ctx,
+					config: config.value,
+					actor: config.value.actor,
+					harnessMode: hostHarnessMode(ctx.home, config.value),
+				};
+				activateContextRecord(ctx, args);
 			}
 		}
 		const selected = [...flagList(args, "fix"), ...args.positionals];

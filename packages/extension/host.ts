@@ -1,8 +1,139 @@
 /** The versioned host supplied to an extension factory. */
+import type {
+	defineTool,
+	err,
+	ok,
+	Result,
+	tryCatch,
+	trySync,
+	Task,
+	TaskEntry,
+	TaskLink,
+	TaskWorkLog,
+	UpstreamLink,
+	ItemKind,
+	TaskPriority,
+	TaskState,
+} from "@cabane/core";
+import type { ProjectScope } from "@cabane/core/scope";
+import type { z } from "zod";
+import type { flagBool, flagCsv, flagList, flagString } from "./args";
+import type { conciseSuccess, failure, success, usage } from "./outcome";
+import type { Settings } from "./settings";
+
 export type Host = {
 	readonly api: 1;
-	readonly kabane: {
-		readonly version: string;
-		readonly executable: string;
+	readonly kabane: { readonly version: string; readonly executable: string };
+	readonly record: Host.Record;
+	readonly scope: {
+		detect(dir: string): Promise<Result<ProjectScope | null>>;
+		idOf(uri: string): Result<string>;
 	};
+	readonly harnessMode: "auto" | "default";
+	readonly z: typeof z;
+	readonly result: {
+		ok: typeof ok;
+		err: typeof err;
+		tryCatch: typeof tryCatch;
+		trySync: typeof trySync;
+	};
+	readonly args: {
+		flagBool: typeof flagBool;
+		flagString: typeof flagString;
+		flagList: typeof flagList;
+		flagCsv: typeof flagCsv;
+	};
+	readonly outcome: {
+		success: typeof success;
+		conciseSuccess: typeof conciseSuccess;
+		failure: typeof failure;
+		usage: typeof usage;
+	};
+	readonly settings: Pick<
+		typeof Settings,
+		"fields" | "groupsOf" | "lookOf" | "options"
+	>;
+	readonly defineTool: typeof defineTool;
 };
+
+export namespace Host {
+	export type ListInput = {
+		state?: TaskState;
+		kind?: ItemKind;
+		priority?: TaskPriority;
+		assignee?: string;
+		scopeUri?: string;
+		tag?: string;
+		parentTaskId?: string;
+		includeDeferred?: boolean;
+		includeClosed?: boolean;
+		limit?: number;
+	};
+	export type EditInput = {
+		id: string;
+		title?: string;
+		description?: string;
+		state?: TaskState;
+		needsReview?: boolean;
+		priority?: TaskPriority;
+		kind?: ItemKind;
+		assignee?: string;
+		scopeUri?: string;
+		parentTaskId?: string;
+		tags?: string[];
+		dueDate?: string;
+	};
+	export type ContextInput = {
+		id: string;
+		deref?: boolean;
+		includeSubtasks?: boolean;
+	};
+	export type UpstreamLinkInput = {
+		id: string;
+		provider: string;
+		externalId: string;
+		identifier?: string;
+		url: string;
+		title: string;
+	};
+	export type Record = {
+		/** kabane_get */
+		get(input: { id: string }): Promise<Result<Task>>;
+		/** kabane_list */
+		list(input: ListInput): Promise<Result<Task[]>>;
+		/** kabane_edit */
+		edit(input: EditInput): Promise<Result<Task>>;
+		/** kabane_done */
+		done(input: { id: string }): Promise<Result<Task>>;
+		/** kabane_comment */
+		comment(input: {
+			id: string;
+			body: string;
+			kind?: string;
+		}): Promise<Result<TaskEntry>>;
+		/** kabane_log */
+		log(input: {
+			id: string;
+			refs?: { uri: string; label?: string }[];
+			commit?: string;
+			note?: string;
+		}): Promise<Result<TaskWorkLog>>;
+		/** kabane_context, full format. */
+		context(
+			input: ContextInput,
+		): Promise<Result<{ id: string; markdown: string }>>;
+		/** kabane_upstream_link */
+		upstreamLink(input: UpstreamLinkInput): Promise<Result<UpstreamLink>>;
+		/** kabane_linkList */
+		links(input: { id: string }): Promise<Result<TaskLink[]>>;
+		/** kabane_upstreamList */
+		upstreamLinks(input: { id: string }): Promise<Result<UpstreamLink[]>>;
+		/** kabane_logList */
+		workLogs(input: {
+			id: string;
+			limit?: number;
+		}): Promise<Result<TaskWorkLog[]>>;
+		/** Any registered tool, including data modules; input passes through unchanged. */
+		call(tool: string, input: unknown): Promise<Result<unknown>>;
+	};
+}

@@ -57,8 +57,9 @@ kabane list
   Its entry exports a factory `(host) => Extension`; the factory's name must match the
   directory. Enable it with `kabane config set extensions <names> --layer global`.
   Enabled extensions contribute commands to `kabane --help`, settings, board ports,
-  MCP tools and checks to `kabane doctor`, reported under the extension's name. Until
-  `host.z` exists, a directory extension cannot declare settings or MCP tools with inputs. Disabled directories are discovered without importing their code. The host
+  MCP tools and checks to `kabane doctor`, reported under the extension's name. Build
+  settings schemas and MCP tool inputs with `host.z`, the host's zod. Disabled directories
+  are discovered without importing their code. The host
   checks the manifest and API before importing the entry, whose dependencies resolve from
   its own `node_modules`. A refused extension prints one line naming the problem and how
   to repair or disable it; the others still load. Manifests naming `modules` are refused

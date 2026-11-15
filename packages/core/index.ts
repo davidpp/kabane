@@ -49,6 +49,7 @@ export type {
 export {
 	type AfterWrite,
 	authorTypeOf,
+	callTool,
 	createMcpServer,
 	defineTool,
 	handleHttpRequest,
@@ -58,6 +59,7 @@ export {
 	registeredTools,
 	SERVER_INSTRUCTIONS,
 	serveStdio,
+	type CoreToolInputShapes,
 	type ToolContext,
 	type ToolDef,
 	type ToolHandler,

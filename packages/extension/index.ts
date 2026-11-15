@@ -1,46 +1,8 @@
-// Public entry for @cabane/extension: the contract, plus the argument parsing and outcomes every
-// command, built-in or extension, is written with.
-export {
-	flagBool,
-	flagCsv,
-	flagList,
-	flagString,
-	type ParsedArgs,
-	parseArgs,
-} from "./args";
-export type { Extension } from "./contract";
+// Workspace entry: the contract and runtime helpers used by the host and built-in commands.
+// The published kabane/extension declaration is generated from the types-only entry in types.ts.
+export { flagBool, flagCsv, flagList, flagString, parseArgs } from "./args";
 export { Doctor } from "./doctor";
-export type { Host } from "./host";
-export {
-	conciseSuccess,
-	failure,
-	type Outcome,
-	success,
-	usage,
-} from "./outcome";
+export { createHostRecord } from "./host-record";
+export { conciseSuccess, failure, success, usage } from "./outcome";
 export { Settings } from "./settings";
-export type {
-	ActivityCard,
-	ActivityDiff,
-	ActivityEvent,
-	ActivitySource,
-	ActivityStatus,
-	ActivityToolDetail,
-	CardAction,
-	CopilotShortcut,
-	DispatchTarget,
-	Dispatcher,
-	Header,
-	HeaderPart,
-	HeaderView,
-	NoticeSeverity,
-	PanelLine,
-	PanelPart,
-	PanelTone,
-	SettingField,
-	SettingKind,
-	SettingValue,
-	StopAction,
-	TriggerDescriptor,
-	TriggerInput,
-} from "./ports";
+export type * from "./types";
