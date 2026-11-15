@@ -46,28 +46,42 @@ const migrate = (
 		: saved;
 };
 
-// Preprocessing identifies possible renames heuristically; only the explicit legacy
-// migration below has enough storage information to offer an automatic repair.
+// Escape separators, capitals and the escape marker itself, so paths and layers cannot
+// collide (a-b vs a.b, or a camelCase setting vs its lowercase spelling).
+const idPart = (value: string): string =>
+	Array.from(value, (char) =>
+		/^[a-wyz0-9]$/.test(char) ? char : `x${char.codePointAt(0)?.toString(16)}x`,
+	).join("") || "xemptyx";
+
+// Only the storage owner knows which repairs are safe.
 const drift = (
 	namespace: Settings.Namespace,
 	source: Settings.Source,
 ): Doctor.Finding[] =>
-	Settings.drift(
-		namespace.name,
-		namespace.schema,
-		source.value,
-		source.layer,
-	).map((finding) => ({
-		...finding,
-		id: `${finding.id}-${createHash("sha256")
-			.update(source.label ?? "")
-			.digest("hex")
-			.slice(0, 12)}`,
-		source: "kabane",
-		severity: "mention",
-		path: source.label,
-		summary: `${finding.summary} (${source.label})`,
-	}));
+	Settings.drift(namespace.schema, source.value).map((finding) => {
+		const key = [namespace.name, ...finding.path];
+		const detail =
+			finding.category === "unknown"
+				? "unknown setting"
+				: finding.replacement
+					? `retired setting may map to ${[namespace.name, ...finding.replacement].join(".")}`
+					: "retired setting is dropped by preprocessing";
+		return {
+			id: [
+				`${finding.category}-setting`,
+				source.layer,
+				...key.map(idPart),
+				createHash("sha256")
+					.update(source.label ?? "")
+					.digest("hex")
+					.slice(0, 12),
+			].join("-"),
+
+			severity: "mention",
+			path: source.label,
+			summary: `${key.join(".")} in ${source.layer}: ${detail} (${source.label})`,
+		};
+	});
 
 export const settings = async (
 	ctx: Extension.Ctx,
@@ -139,7 +153,7 @@ const legacySettings = (
 					.update(JSON.stringify([scope, name]))
 					.digest("hex")
 					.slice(0, 12)}`,
-				source: "kabane",
+
 				path,
 				severity: destination === undefined ? "mention" : "auto",
 				summary: `Legacy scopes.${scope}.${name} in ${path}. ${destination === undefined ? "Run kabane doctor in that project with a version that ships this namespace to migrate it." : `--fix moves this block to ${destination} and removes it from config.json; conflicting local values are refused.`}`,
