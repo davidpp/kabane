@@ -329,8 +329,10 @@ export namespace Brief {
 	): string => {
 		if (gates.length === 0)
 			return "No gates are configured for this run, so nothing has run the project's checks on the result: do not assume they pass.";
+		// Configured gates with no green pass on this tree: claiming they pass would have the lens
+		// skip checks nobody made on what it reads.
 		if (passed.length === 0)
-			return `Its gates (${gates.map((g) => `\`${g}\``).join(", ")}) pass on the tree you are reviewing.`;
+			return `The run's gates (${gates.map((g) => `\`${g}\``).join(", ")}) have no green pass on record for this exact tree: do not assume they pass, and run the checks you need.`;
 		const each = passed.map(
 			(r) => `\`${r.name}\` (\`${r.command}\`, ${took(r.ms)})`,
 		);

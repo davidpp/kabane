@@ -781,9 +781,11 @@ export namespace Claims {
 		claim.lenses.length === names.length &&
 		names.every((name) => claim.lenses?.includes(name));
 
-	// The latest pass, when it ran every gate green on the tree as it is now: what a review is told
-	// has checked the work, gate by gate, so it does not run those checks again.
-	const greenPass = async (
+	/**
+	 * The latest pass, when it ran every gate green on the tree as it is now: what a review is told
+	 * has checked the work, gate by gate, so it does not run those checks again.
+	 */
+	export const greenPass = async (
 		ctx: Ctx,
 	): Promise<readonly Gates.Result[] | undefined> => {
 		const last = ctx.run.gateRuns.at(-1);

@@ -336,14 +336,15 @@ describe("Brief on the gates a review can trust", () => {
 		}
 	});
 
-	it("keeps the names alone when no green pass is on hand, and claims nothing without gates", () => {
+	it("says no pass is verified when no green pass is on hand, and claims nothing without gates", () => {
 		for (const brief of [
 			lens({ gates: ["check", "test"] }),
 			recheck({ gates: ["check", "test"] }),
 		]) {
 			expect(brief).toContain(
-				"Its gates (`check`, `test`) pass on the tree you are reviewing.",
+				"The run's gates (`check`, `test`) have no green pass on record for this exact tree: do not assume they pass, and run the checks you need.",
 			);
+			expect(brief).not.toContain("pass on the tree you are reviewing");
 			expect(brief).not.toContain("Do not rerun");
 		}
 		for (const brief of [lens({ gates: [] }), recheck({ gates: [] })]) {
@@ -382,7 +383,9 @@ describe("Brief.recheck", () => {
 		expect(instructions).toContain("- P-7 · p1 · ");
 		expect(instructions).toContain("Do not change files");
 		expect(instructions).toContain('kabane_edit (state "next")');
-		expect(instructions).toContain("Its gates (`test`) pass");
+		expect(instructions).toContain(
+			"The run's gates (`test`) have no green pass on record",
+		);
 		expect(diff).toContain("`git diff abc123`");
 		expect(diff).toContain("```diff\ndiff --git a/x b/x\n+fixed\n```");
 		expect(prompt).toBe("# Functional lens");
