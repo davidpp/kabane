@@ -3,7 +3,6 @@
 // from a newer kabane still loads, come from what this build ships.
 import { Harnesses } from "@cabane/acp/harnesses";
 import type { Settings } from "@cabane/extension";
-import { Extensions } from "./extensions";
 
 export const DEVICE_LOOKS: Settings.Looks = {
 	copilot: { label: "copilot", group: "Copilot" },
@@ -31,7 +30,6 @@ export const DEVICE_LOOKS: Settings.Looks = {
 	extensions: {
 		label: "extensions",
 		group: "Board",
-		options: Extensions.names,
 	},
 	updates: { label: "updates", group: "Board" },
 	"updates.check": { label: "release notices", group: "Board" },

@@ -6,6 +6,7 @@ import { Planner } from "@cabane/core";
 import { parseArgs } from "@cabane/extension";
 import { configPath } from "../config";
 import { openContext } from "../context";
+import { Extensions } from "../extensions";
 import { boardDeps, listenForRequests } from "./board-runtime";
 
 const HOME = join(tmpdir(), `kabane-board-runtime-${crypto.randomUUID()}`);
@@ -125,4 +126,45 @@ describe("kabane board --issue <id> --to <pid>", () => {
 			code: 1,
 		});
 	});
+});
+
+test("a real directory board factory rejection reaches the announcer with load refusals", async () => {
+	const home = join(HOME, "refusals");
+	const dir = join(home, "extensions", "broken");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(
+		join(dir, "package.json"),
+		JSON.stringify({ kabane: { extension: "./index.ts", api: 1 } }),
+	);
+	writeFileSync(
+		join(dir, "index.ts"),
+		'export default () => ({name: "broken", board: async () => {throw new Error("port rejected");}});',
+	);
+	writeFileSync(
+		configPath(home),
+		JSON.stringify({
+			actor: "test",
+			deviceId: "test",
+			updates: { check: false },
+		}),
+	);
+	const args = parseArgs([]);
+	const ctx = await openContext(home, home, args);
+	if (!ctx.ok) throw ctx.error;
+	const all = await Extensions.loadAll(["broken", "missing"], home);
+	const wired = await boardDeps(args, ctx.value, "claude", {
+		extensions: all.loaded,
+		refusals: all.refused,
+	});
+	try {
+		const notice = await wired.announcer?.announce();
+		expect(notice?.ok && notice.value).toContain(
+			"Extension broken: board failed: port rejected",
+		);
+		expect(notice?.ok && notice.value).toContain(
+			"Extension missing: not installed",
+		);
+	} finally {
+		wired.copilot.close();
+	}
 });

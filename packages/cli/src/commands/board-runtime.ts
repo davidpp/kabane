@@ -11,7 +11,14 @@ import {
 	type SettingsSource,
 	startBoard,
 } from "@cabane/board";
-import { err, ok, Planner, type Result, type Task } from "@cabane/core";
+import {
+	err,
+	ok,
+	Planner,
+	type Result,
+	type Task,
+	tryCatch,
+} from "@cabane/core";
 import {
 	type Extension,
 	failure,
@@ -136,12 +143,21 @@ const boardScope = async (
 const extensionPorts = async (
 	extensions: readonly Extension[],
 	ctx: Ctx,
+	refusals: Extensions.Refusal[],
 ): Promise<Pick<BoardDeps, "activity" | "dispatcher" | "headers">> => {
 	const activity: Record<string, ActivitySource> = {};
 	const dispatchers: Record<string, Dispatcher> = {};
 	const headers: Record<string, Readonly<Record<string, CardHeader>>> = {};
 	for (const extension of extensions) {
-		const ports = await extension.board?.(ctx);
+		const called = await tryCatch(async () => extension.board?.(ctx));
+		if (!called.ok) {
+			refusals.push({
+				name: extension.name,
+				reason: `board failed: ${called.error.message}`,
+			});
+			continue;
+		}
+		const ports = called.value;
 		if (ports?.activity) activity[extension.name] = ports.activity;
 		if (ports?.dispatcher) dispatchers[extension.name] = ports.dispatcher;
 		if (ports?.headers) headers[extension.name] = ports.headers;
@@ -214,10 +230,12 @@ export const boardDeps = async (
 	harness: Harnesses.Id,
 	{
 		extensions = [],
+		refusals = [],
 		issue,
 		requests,
 	}: {
 		extensions?: readonly Extension[];
+		refusals?: Extensions.Refusal[];
 		issue?: Task;
 		requests?: OpenRequests;
 	} = {},
@@ -225,10 +243,20 @@ export const boardDeps = async (
 	const scope = await boardScope(args, ctx, issue);
 	const overrides = copilotOverrides(ctx);
 	return {
-		...(await extensionPorts(extensions, ctx)),
-		...(ctx.config.updates?.check === false
+		...(await extensionPorts(extensions, ctx, refusals)),
+		...(ctx.config.updates?.check === false && refusals.length === 0
 			? {}
-			: { announcer: UpdateNotice.announcer(ctx.home) }),
+			: {
+					announcer: {
+						announce: async () => {
+							if (refusals.length)
+								return ok(refusals.map(Extensions.line).join("; "));
+							return ctx.config.updates?.check === false
+								? ok(null)
+								: UpdateNotice.announcer(ctx.home).announce();
+						},
+					},
+				}),
 		...(issue ? { open: { taskId: issue.id } } : {}),
 		settings: settingsSource(args, ctx),
 		...(requests ? { requests } : {}),
@@ -249,7 +277,7 @@ export const boardDeps = async (
 			mode: ctx.harnessMode,
 			setup: {
 				configPath: configPath(ctx.home),
-				extensions: Extensions.names,
+				extensions: Extensions.available(ctx.home),
 			},
 		}),
 	};
@@ -324,11 +352,11 @@ export const runBoard: Command["run"] = async (args, ctx) => {
 	if (!harness.ok) return failure(harness.error.message);
 	const enabled = Extensions.enabled(ctx.home);
 	if (!enabled.ok) return failure(enabled.error);
-	const extensions = await Extensions.loadAll(enabled.value);
-	if (!extensions.ok) return failure(extensions.error);
+	const extensions = await Extensions.loadAll(enabled.value, ctx.home);
 	const control = listenForRequests(ctx, process.pid);
 	const deps = await boardDeps(args, ctx, harness.value, {
-		extensions: extensions.value,
+		extensions: extensions.loaded,
+		refusals: extensions.refused,
 		issue: issue.value,
 		requests: control.requests,
 	});

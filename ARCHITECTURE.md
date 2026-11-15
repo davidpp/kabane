@@ -618,9 +618,10 @@ type, though its text can still ask for anything (JCAB-324).
    import or factory that throws, a name mismatch) refuses that one extension with one line naming
    it and why: on stderr for the CLI and `kabane mcp`, as a notice on the board. The others load,
    and the board, `kabane --help` and `kabane mcp` open. A failure of its modules entry stops
-   database access instead, as "A module that fails to load stops writes" says. Today `Extensions.loadAll` returns the first error
-   (`packages/cli/src/extensions.ts:82-92`) and the board refuses to open on it
-   (`packages/cli/src/commands/board-runtime.ts:327-328`) (JCAB-321).
+   database access instead, as "A module that fails to load stops writes" says.
+   `Extensions.loadAll(names, home)` returns `{ loaded, refused }`; callers keep the loaded
+   contributions and report each refusal. Until JCAB-323, manifests naming modules are refused
+   before import and register nothing.
 6. **A call failure** (a command's `run`, a board port, an MCP handler, a doctor check, a module
    hook) becomes a one-line error naming the extension. A module's `onTaskStateChange` that returns
    `err` rolls back the state change, as a first-party module's does.
@@ -655,8 +656,8 @@ This follows the 2026-11-04 research note except in three places:
 | Core needs no Bun types | `packages/worker/tsconfig.json:9-11` lists `bun` "only because @cabane/core's lint collectors and file-ref deref use Bun globals" | JCAB-326 (lint), JCAB-328 (deref) |
 | Base kabane does not describe an extension | `packages/acp/src/instructions.ts:66`, `:76`; `packages/board/src/setup.tsx:136` | JCAB-324 |
 | | The dispatch and grill templates in `packages/acp/templates/` | JCAB-327 |
-| A broken extension does not take the board down | `packages/cli/src/commands/board-runtime.ts:327-328` | JCAB-321 |
-| Extensions load from `$KABANE_HOME/extensions` | Only names in `OFFICIAL` load (`packages/cli/src/extensions.ts:21-23`) | JCAB-321, JCAB-322 |
+| A broken extension does not take the board down | Loader and board-port refusals reach the announcer in `packages/cli/src/commands/board-runtime.ts` | built (JCAB-321) |
+| Extensions load from `$KABANE_HOME/extensions` | Enabled directories take precedence over `OFFICIAL` in `packages/cli/src/extensions.ts` | built (JCAB-321); remaining Host members: JCAB-322 |
 
 Each rule in this file, how it is held today, and the issue that makes a check or the code hold
 it. "Review" means nothing fails a build; a reviewer has to notice.
@@ -673,7 +674,7 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | A modules entry imports only what its module objects need | review | JCAB-323: an import-graph test on a fixture extension's modules entry, and on the loop's once it has one |
 | An extension writes only its own tables and changes tasks only through `tx.updateTask` | partly by the kit: capture refuses an undeclared table; raw SQL on `tx.db` is review | JCAB-323 builds the kit |
 | A failed module stops database access; a disabled one's deletes are captured | not built | JCAB-323 (persisted declarations, the stop) |
-| Manifest, `api` check before import, per-extension refusal | not built | JCAB-321 |
+| Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts`; Host currently carries `api` and `kabane` | built (JCAB-321) |
 | `host` and its typed record wrappers | not built | JCAB-322 |
 | Headers are data, laid out and clipped by the board | not built | JCAB-320 (types, renderer), JCAB-326 (the loop's header) |
 | Procedures and shortcuts are files; `{{extension}}` is the only placeholder, and a computed value comes from a command | not built | JCAB-324; JCAB-327 for the stamp |

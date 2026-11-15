@@ -9,6 +9,7 @@ export {
 	parseArgs,
 } from "./args";
 export type { Extension } from "./contract";
+export type { Host } from "./host";
 export {
 	conciseSuccess,
 	failure,

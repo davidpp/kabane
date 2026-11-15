@@ -64,8 +64,8 @@ const namespaceKeys = (namespace: Settings.Namespace): Key[] => {
 	return [root, ...keysOf(namespace.schema, namespace)];
 };
 
-const allKeys = async (): Promise<Result<Key[]>> => {
-	const namespaces = await Extensions.namespaces();
+const allKeys = async (home: string): Promise<Result<Key[]>> => {
+	const namespaces = await Extensions.namespaces(home);
 	return namespaces.ok
 		? ok([...deviceKeys, ...namespaces.value.flatMap(namespaceKeys)])
 		: namespaces;
@@ -95,7 +95,7 @@ const restartOf = (entry: Key): Restart =>
  * How a key reads: its namespace's look for it, or the device's, with the choices it steps through
  * for the project at `where`. A namespace's own key reads as its name.
  */
-const lookOf = (entry: Key, where: ConfigSettings.Where) => {
+const lookOf = (entry: Key, where: ConfigSettings.Where, home: string) => {
 	const look =
 		entry.path.length === 0
 			? { label: entry.key, group: Settings.OTHER }
@@ -103,11 +103,16 @@ const lookOf = (entry: Key, where: ConfigSettings.Where) => {
 					entry.namespace ? entry.namespace.looks : DEVICE_LOOKS,
 					entry.path,
 				);
-	const options = Settings.options(
-		entry.field,
-		look,
-		where.projectDir === undefined ? {} : { projectDir: where.projectDir },
-	);
+	const options =
+		entry.key === "extensions"
+			? Extensions.available(home)
+			: Settings.options(
+					entry.field,
+					look,
+					where.projectDir === undefined
+						? {}
+						: { projectDir: where.projectDir },
+				);
 	return {
 		label: look.label,
 		group: look.group,
@@ -120,8 +125,8 @@ const lookOf = (entry: Key, where: ConfigSettings.Where) => {
  * What a row says of a key besides its value: how it reads, its field, the layers it is written
  * to, and more.
  */
-const traitsOf = (entry: Key, where: ConfigSettings.Where) => ({
-	...lookOf(entry, where),
+const traitsOf = (entry: Key, where: ConfigSettings.Where, home: string) => ({
+	...lookOf(entry, where, home),
 	field: entry.field,
 	// A device key has the global layer only: no project file may redirect the hub.
 	layers: entry.namespace ? ConfigSettings.TARGETS : (["global"] as const),
@@ -363,7 +368,7 @@ const find = (keys: readonly Key[], key: string): Result<Key> => {
 		? ok(entry)
 		: err(
 				new Error(
-					`Unknown config key: ${key}. Run \`kabane config list\` or call kabane_configGet without a key for known keys.`,
+					`Unknown config key: ${key}. Run \`kabane config list\` or call kabane_configGet without a key for known keys. A directory extension's settings are unknown until it is enabled in extensions.`,
 				),
 			);
 };
@@ -575,7 +580,7 @@ const writeSetting = (
 	// Saved anyway, since a newer kabane may ship the name, but it loads nothing here.
 	const ignored =
 		entry.key === "extensions" && Array.isArray(parsed.value)
-			? Extensions.unshipped(parsed.value)
+			? Extensions.unshipped(parsed.value, home)
 			: [];
 	return ok(ignored.length > 0 ? { ...change, ignored } : change);
 };
@@ -650,7 +655,7 @@ export namespace ConfigSettings {
 			: "global";
 
 	/** One key as `list` reads it at `view`: its value, where that comes from, and its traits. */
-	const rowOf = (entry: Key, view: View, where: Where) => {
+	const rowOf = (entry: Key, view: View, where: Where, home: string) => {
 		const origin = topOrigin(entry, view);
 		return {
 			key: entry.key,
@@ -665,12 +670,12 @@ export namespace ConfigSettings {
 			description: entry.field.description ?? "",
 			// Where the board's editor saves first: where `set` with no layer would write.
 			target: defaultTarget(entry, where),
-			...traitsOf(entry, where),
+			...traitsOf(entry, where, home),
 		};
 	};
 
 	export const list = async (home: string, where: Where) => {
-		const keys = await allKeys();
+		const keys = await allKeys(home);
 		if (!keys.ok) return keys;
 		const loaded = loadConfigDocument(home);
 		if (!loaded.ok) return loaded;
@@ -690,11 +695,11 @@ export namespace ConfigSettings {
 				view = resolved.value;
 				views.set(name, view);
 			}
-			const row = rowOf(entry, view, where);
+			const row = rowOf(entry, view, where, home);
 			rows.push(row);
 			// A record's entries follow it, in its group, described by it unless they say more.
 			for (const child of entriesOf(keys.value, entry, view)) {
-				const own = rowOf(child, view, where);
+				const own = rowOf(child, view, where, home);
 				rows.push({
 					...own,
 					group: row.group,
@@ -707,7 +712,7 @@ export namespace ConfigSettings {
 
 	/** The effective value of `key` at `where`, and every leaf under it with the layer it came from. */
 	export const get = async (home: string, where: Where, key: string) => {
-		const keys = await allKeys();
+		const keys = await allKeys(home);
 		if (!keys.ok) return keys;
 		const entry = find(keys.value, key);
 		if (!entry.ok) return entry;
@@ -724,7 +729,7 @@ export namespace ConfigSettings {
 			key,
 			value: redact(key, valueAt(view.value.value, entry.value.path)) ?? null,
 			leaves: leavesOf(entry.value, view.value),
-			...traitsOf(entry.value, where),
+			...traitsOf(entry.value, where, home),
 		});
 	};
 
@@ -736,7 +741,7 @@ export namespace ConfigSettings {
 		input: string | undefined,
 		layer?: Target,
 	): Promise<Result<ConfigChange>> => {
-		const keys = await allKeys();
+		const keys = await allKeys(home);
 		if (!keys.ok) return keys;
 		const entry = find(keys.value, key);
 		if (!entry.ok) return entry;

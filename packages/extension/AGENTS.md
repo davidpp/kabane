@@ -5,6 +5,7 @@ command, built-in or extension, is written with. It has no runtime of its own.
 
 - `contract.ts`: `Extension` (`name`, `settings`, `looks`, `commands`, `board`), and in the
   `Extension` namespace `Ctx` (what every command runs with), `Command` and `BoardPorts`.
+- `host.ts`: the factory host, currently `api: 1` and `kabane: { version, executable }`.
 - `args.ts`: `parseArgs` and the `flag*` readers.
 - `outcome.ts`: `Outcome` and `success`, `conciseSuccess`, `failure`, `usage`.
 - `settings.ts`: the `Settings` namespace, which resolves a settings namespace through the
@@ -34,9 +35,9 @@ Work on this package is in flight on other branches. Rebase onto main before you
 expect these to land around you:
 
 - JCAB-263 (JCAB-266 on its branch): a `doctor` field.
-- JCAB-322: the `Host` type and the published import path `kabane/extension`.
-- JCAB-321 and JCAB-323: the manifest and the modules entry, which live in `package.json`
-  rather than on `Extension`.
+- JCAB-322: the remaining `Host` members and the published import path `kabane/extension`.
+- The CLI validates the manifest in `package.json` before importing the factory. JCAB-323 adds
+  its modules entry; it does not live on `Extension`.
 
 Read before writing: `contract.ts`, `settings.ts`, `settings.test.ts`.
 

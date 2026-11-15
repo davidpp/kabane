@@ -3,7 +3,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { version } from "../package.json";
-import { configPath, loadConfig, saveConfig } from "./config";
+import { loadConfig, saveConfig } from "./config";
 import { run } from "./main";
 import { describeVersion } from "./version";
 
@@ -33,7 +33,7 @@ describe("run", () => {
 describe("run, resolving a command name", () => {
 	const home = join(tmpdir(), `kabane-main-${crypto.randomUUID()}`);
 	const cwd = join(home, "project");
-	const env = { KABANE_HOME: home };
+	const env = { KABANE_HOME: home, KABANE_HARNESSES: "" };
 	const setExtensions = (extensions: string[]): void => {
 		const config = loadConfig(home);
 		if (!config.ok) throw config.error;
@@ -61,10 +61,8 @@ describe("run, resolving a command name", () => {
 	it("says which extension to turn on for an off extension's command", async () => {
 		setExtensions([]);
 		const outcome = await run(["loop"], env, cwd);
-		expect(outcome.exitCode).toBe(1);
-		expect(outcome.text).toContain(
-			`comes with the loop extension, which is off; add "loop" to "extensions" in ${configPath(home)}`,
-		);
+		expect(outcome.exitCode).toBe(2);
+		expect(outcome.text).toContain(`installed extensions not enabled: loop`);
 	});
 
 	// Its own process, so the module registry holds only what one command loaded: a built-in

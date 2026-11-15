@@ -463,7 +463,7 @@ describe.concurrent("config through the real CLI", () => {
 				restart: "start",
 			});
 			expect(changed.err).toBe(
-				`kabane: ignoring "unshipped" in "extensions" of ${path()}: this kabane ships loop`,
+				`Extension unshipped: not installed; put it in ${path().replace(/config\.json$/, "extensions/unshipped/")}`,
 			);
 			expect((await run("help")).err).toBe(changed.err);
 		}),

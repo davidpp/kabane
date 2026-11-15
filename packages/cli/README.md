@@ -151,8 +151,9 @@ what the key's schema says of it. A record's entries follow it as rows of their 
   a device key and an extension's `looks` for its own; a key with none reads under its path, in
   its parent object's group or `Other`.
 - `options`: the values it steps through, when it has any: the declared ones, resolved for the
-  project here (`copilot.harness` the harnesses this build launches, `extensions` the ones it
-  ships, `loop.lenses` the project's lenses), else an enum's values or a bounded integer's range.
+  project here (`copilot.harness` the harnesses this build launches, `extensions` the bundled and
+  installed directory names, `loop.lenses` the project's lenses), else an enum's values or a
+  bounded integer's range.
   `none`: what an optional key left unset reads as, when declared.
 - `restart`: when a change applies. `start` for a device key, loaded when a process starts, so
   a running board or MCP server needs a restart; `resolve` for an extension's, read each time
@@ -184,9 +185,29 @@ where a file named after a shipped lens replaces it.
 Writes validate the entire config, or the whole namespace block they land in, before touching
 the file, and retain unknown device fields, including those inside groups. A project file keeps
 its indentation. Unsetting removes the key from that layer so a lower layer, or the default,
-applies. Enabling an unshipped extension preserves its name and prints the extension loader's
-warning on stderr. These operations never open SQLite or connect to sync. Except for `path`,
+applies. Enabling a missing extension preserves its name and prints its expected directory on
+stderr. These operations never open SQLite or connect to sync. Except for `path`,
 they require an existing config and point to `kabane init` when none exists.
+
+## Extensions
+
+Put an extension directory (or a symlink to one) at `$KABANE_HOME/extensions/<name>/`, then
+run `kabane config set extensions <name> --layer global` (comma-separated names for several).
+Its `package.json` must contain `"kabane": { "extension": "./index.ts", "api": 1 }`.
+The entry's default export is a factory receiving `{ api: 1, kabane: { version, executable } }`
+and returning an extension whose `name` matches the directory. Its own `node_modules` resolve
+normally. A manifest naming `modules` is refused until data-module loading is supported.
+
+Only enabled directories run code; a directory alone, a single `.ts` file, or a repository's
+files load nothing. Directory settings become known to `kabane config` only after enablement.
+The bundled loop's settings remain available before enablement. A directory named `loop`
+takes precedence over the bundle, with a warning.
+
+An incompatible API is refused before import. A load failure, throwing command or board port,
+or invalid MCP contribution names its extension and leaves the others available. Help lists
+loaded commands and refusals; the board shows refusals through its announcer. Unknown commands
+list installed but disabled extensions without importing them. Restart the board or MCP server
+after changing the enabled list.
 
 ## Scope
 

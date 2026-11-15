@@ -88,27 +88,22 @@ export const helpText = (
 
 const HELP_USAGE = "kabane <command> [args]";
 
-const extensionCommands = async (
-	home: string,
-): Promise<Result<Extension.Command[]>> => {
-	const names = Extensions.enabled(home);
-	if (!names.ok) return names;
-	const loaded = await Extensions.loadAll(names.value);
-	return loaded.ok
-		? ok(loaded.value.flatMap((extension) => extension.commands ?? []))
-		: loaded;
-};
-
-/** Help lists the enabled extensions' commands, and still prints when one of them is broken. */
+/** Help keeps every successfully loaded command and names each refusal. */
 const help = async (home: string, exitCode: 0 | 2): Promise<Outcome> => {
-	const extra = await extensionCommands(home);
-	const commands = [...COMMANDS, ...(extra.ok ? extra.value : [])];
+	const names = Extensions.enabled(home);
+	if (!names.ok)
+		return {
+			exitCode,
+			json: { commands: COMMANDS.map((c) => c.name) },
+			text: `${helpText()}\n\nExtensions unavailable: ${names.error.message}`,
+		};
+	const all = await Extensions.loadAll(names.value, home);
+	Extensions.report(all.refused);
+	const extra = all.loaded.flatMap((extension) => extension.commands ?? []);
 	return {
 		exitCode,
-		json: { commands: commands.map((c) => c.name) },
-		text: extra.ok
-			? helpText(extra.value)
-			: `${helpText()}\n\nExtensions unavailable: ${extra.error.message}`,
+		json: { commands: [...COMMANDS, ...extra].map((c) => c.name) },
+		text: [helpText(extra), ...all.refused.map(Extensions.line)].join("\n"),
 	};
 };
 
@@ -124,18 +119,17 @@ const resolveCommand = async (
 	if (builtIn) return ok(builtIn);
 	const enabled = Extensions.enabled(home);
 	if (!enabled.ok) return err(failure(enabled.error));
-	const found = await Extensions.find(name, enabled.value);
-	if (!found.ok) return err(failure(found.error));
-	switch (found.value.found) {
-		case "enabled":
-			return ok(found.value.command);
-		case "disabled":
-			return err(
-				failure(Extensions.enableHint(name, found.value.extension, home)),
-			);
-		case "none":
-			return err(usage(`Unknown command: ${name}`, HELP_USAGE));
-	}
+	const found = await Extensions.find(name, enabled.value, home);
+	if (found) return ok(found);
+	const disabled = Extensions.available(home).filter(
+		(extension) => !enabled.value.includes(extension),
+	);
+	return err(
+		usage(
+			`Unknown command: ${name}${disabled.length ? `; installed extensions not enabled: ${disabled.join(", ")}. Enable them in ${home}/config.json to discover their commands` : ""}`,
+			HELP_USAGE,
+		),
+	);
 };
 
 /** A context init and mcp can run with: no config file needed. */
