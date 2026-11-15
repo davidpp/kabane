@@ -922,7 +922,10 @@ export namespace DetailModel {
 		awaiting: readonly BoardActivity.AwaitingQuestion[],
 	): LogLine[] => {
 		const activities = activitiesOf(records);
-		const pinned = new Set(awaiting.map((q) => q.id));
+		// A merged question id is `<source>:<id>`, and a session activity carries the bare id.
+		const pinned = new Set(
+			awaiting.flatMap((q) => [q.id, q.id.slice(q.id.indexOf(":") + 1)]),
+		);
 		return activities
 			.filter((a) => !pinned.has(a.id))
 			.map((a) => ({
