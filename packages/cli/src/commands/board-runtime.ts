@@ -153,7 +153,7 @@ const extensionPorts = async (
 		if (!called.ok) {
 			refusals.push({
 				name: extension.name,
-				reason: `board contribution failed; repair its board function; ${Extensions.disabledAdvice}`,
+				reason: `board contribution failed: ${Extensions.cause(called.error)}; repair its board function; ${Extensions.disabledAdvice}`,
 			});
 			continue;
 		}
@@ -254,7 +254,23 @@ export const boardDeps = async (
 									? ok(null)
 									: await UpdateNotice.announcer(ctx.home).announce();
 							if (!update.ok) return update;
-							const notices = refusals.map(Extensions.line);
+							const names = [...new Set(refusals.map(({ name }) => name))];
+							const first = refusals[0];
+							const notices = first
+								? [
+										names.length === 1
+											? `Extension ${first.name} refused: ${first.reason.split(";", 1)[0]}`.replace(
+													/[\r\n]+/g,
+													" ",
+												)
+											: `${names.length} extensions refused: ${names.join(", ")}; run kabane --help for why`,
+									]
+								: [];
+							const summary = notices[0];
+							const available =
+								100 - (update.value ? update.value.length + 2 : 0);
+							if (summary && summary.length > available)
+								notices[0] = `${summary.slice(0, Math.max(0, available - 1))}…`;
 							if (update.value) notices.push(update.value);
 							return ok(notices.length ? notices.join("; ") : null);
 						},

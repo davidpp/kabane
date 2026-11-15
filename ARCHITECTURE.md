@@ -621,7 +621,8 @@ type, though its text can still ask for anything (JCAB-324).
 5. **A load failure of the main entry** (a missing or invalid manifest, an unsupported `api` on
    an extension with no modules entry, an
    import or factory that throws, a name mismatch) refuses that one extension with one line naming
-   it and why: on stderr for the CLI and `kabane mcp`, as a notice on the board. The others load,
+   it and why: on stderr for the CLI and `kabane mcp`; the board announces a short reason for
+   one refusal or a count and names for several, followed by any update notice. The others load,
    and the board, `kabane --help` and `kabane mcp` open. A failure of its modules entry stops
    database access instead, as "A module that fails to load stops writes" says.
    `Extensions.loadAll(names, home)` returns `{ loaded, refused }`; callers keep the loaded

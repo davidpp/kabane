@@ -151,7 +151,7 @@ test("a real directory board factory rejection reaches the announcer with load r
 	const args = parseArgs([]);
 	const ctx = await openContext(home, home, args);
 	if (!ctx.ok) throw ctx.error;
-	const all = await Extensions.loadAll(["broken", "missing"], home);
+	const all = await Extensions.loadAll(["broken"], home);
 	const wired = await boardDeps(args, ctx.value, "claude", {
 		extensions: all.loaded,
 		refusals: all.refused,
@@ -159,10 +159,13 @@ test("a real directory board factory rejection reaches the announcer with load r
 	try {
 		const notice = await wired.announcer?.announce();
 		expect(notice?.ok && notice.value).toContain(
-			"Extension broken: board contribution failed; repair its board function; or remove it from extensions with `kabane config set extensions <names> --layer global`.",
+			"Extension broken refused: board contribution failed: port rejected",
 		);
-		expect(notice?.ok && notice.value).toContain(
-			"Extension missing: not installed",
+		expect(notice?.ok && notice.value).not.toContain("repair");
+		all.refused.push(Extensions.missing("missing", home));
+		const several = await wired.announcer?.announce();
+		expect(several?.ok && several.value).toBe(
+			"2 extensions refused: broken, missing; run kabane --help for why",
 		);
 	} finally {
 		wired.copilot.close();
@@ -186,7 +189,7 @@ test("the real board announcer includes cached updates alongside refusals", asyn
   const args = parseArgs([]);
   const ctx = await openContext(${JSON.stringify(home)}, ${JSON.stringify(home)}, args);
   if (!ctx.ok) throw ctx.error;
-  const wired = await boardDeps(args, ctx.value, "claude", {refusals:[{name:"broken",reason:"repair it"}]});
+  const wired = await boardDeps(args, ctx.value, "claude", {refusals:[{name:"broken",reason:"not installed; put it in its extension directory"}]});
   try { console.log(JSON.stringify(await wired.announcer.announce())); } finally { wired.copilot.close(); }
  `;
 	const proc = Bun.spawn([process.execPath, "-e", script], {
@@ -201,6 +204,8 @@ test("the real board announcer includes cached updates alongside refusals", asyn
 		proc.exited,
 	]);
 	expect({ code, err }).toEqual({ code: 0, err: "" });
-	expect(out).toContain("Extension broken: repair it");
+	expect(out).toContain("Extension broken refused: not install");
 	expect(out).toContain("is out ·");
+	const notice = JSON.parse(out);
+	expect(notice.value.length).toBeLessThanOrEqual(100);
 });

@@ -57,7 +57,8 @@ kabane list
   Its entry exports a factory `(host) => Extension`; the factory's name must match the
   directory. Enable it with `kabane config set extensions <names> --layer global`.
   Enabled extensions contribute commands to `kabane --help`, settings, board ports and
-  MCP tools. Disabled directories are discovered without importing their code. The host
+  MCP tools. Until `host.z` exists, a directory extension cannot declare settings or MCP
+  tools with inputs. Disabled directories are discovered without importing their code. The host
   checks the manifest and API before importing the entry, whose dependencies resolve from
   its own `node_modules`. A refused extension prints one line naming the problem and how
   to repair or disable it; the others still load. Manifests naming `modules` are refused
@@ -209,7 +210,8 @@ takes precedence over the bundle, with a warning.
 
 An incompatible API is refused before import. A load failure, throwing command or board port,
 or invalid MCP contribution names its extension and leaves the others available. Help lists
-loaded commands and refusals; the board shows refusals through its announcer. Unknown commands
+loaded commands and refusals; the board announces a short reason for one refused extension
+or the count and names for several, followed by any update notice. Unknown commands
 list installed but disabled extensions without importing them. Restart the board or MCP server
 after changing the enabled list.
 
