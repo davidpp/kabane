@@ -150,7 +150,29 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 		expect(CopilotInstructions.BLOCK).toContain(
 			"you may write the files the procedures below name and nowhere else",
 		);
-		expect(CopilotInstructions.SKILLS).toContain(".claude/skills/dispatch/");
+		expect(CopilotInstructions.SKILLS).toContain(
+			"Write only under .agents/skills/dispatch/ in the project root",
+		);
+		expect(CopilotInstructions.SKILLS).not.toContain("GEMINI.md");
+	});
+
+	it("links Claude Code to the skill when the project has .claude/ or the human asks, and otherwise says how", () => {
+		const { SKILLS } = CopilotInstructions;
+		expect(SKILLS).toContain(
+			".claude/skills/dispatch pointing to ../../.agents/skills/dispatch",
+		);
+		expect(SKILLS).toContain(
+			"Create that link when the project root already has a .claude/ directory or the human asks for it",
+		);
+		expect(SKILLS).toContain(
+			"`ln -s ../../.agents/skills/dispatch .claude/skills/dispatch`",
+		);
+	});
+
+	it("offers to move a real .claude/skills/dispatch/ and moves nothing without a yes", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"offer to move it to .agents/skills/dispatch/ and leave the link in its place, show the diff against what you would write, and move or write nothing without an explicit yes",
+		);
 	});
 
 	it("the skill text points at the template this package ships", () => {
@@ -176,7 +198,7 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 		const shortcut = CopilotInstructions.SHORTCUTS.find(
 			(s) => s.name === "setup-dispatch",
 		);
-		expect(shortcut?.template).toContain("write .claude/skills/dispatch/");
+		expect(shortcut?.template).toContain("write .agents/skills/dispatch/");
 		expect(shortcut?.template).not.toMatch(/confirm|propose|before writing/i);
 		expect(CopilotInstructions.BLOCK).toContain(
 			"A shortcut or a direct instruction is the go-ahead for exactly what it asks",
@@ -314,7 +336,7 @@ describe("CopilotInstructions grilling the human", () => {
 			"For a project's dispatch or grill skill, you may write the files the procedures below name",
 		);
 		expect(CopilotInstructions.SKILLS).toContain(
-			"When they ask you to install it in this project, copy SKILL.md unchanged to .claude/skills/grill/SKILL.md",
+			"When they ask you to install it in this project, copy SKILL.md unchanged to .agents/skills/grill/SKILL.md",
 		);
 	});
 });

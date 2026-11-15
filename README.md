@@ -131,8 +131,11 @@ each under the prompt that started it — and `x` there stops a running one.
 Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicates`,
 `/reparent`, `/check-plan`, `/linear`, `/github`, `/settings`), which expand into the window so you read what will be sent.
 `/setup-dispatch` is the one that writes a file: it reads the project's CLAUDE.md/AGENTS.md,
-gate and `.claude/agents/`, and writes a dispatch skill under `.claude/skills/dispatch/` for
-coding sessions to turn asks into issues here, showing each file before it lands.
+gate and `.claude/agents/`, and writes a dispatch skill under `.agents/skills/dispatch/` for
+coding sessions to turn asks into issues here, showing each file before it lands. Codex and Pi
+read `.agents/skills/`; Claude Code reaches it through a link, `.claude/skills/dispatch` ->
+`../../.agents/skills/dispatch`, which the copilot adds when the project has a `.claude/`
+directory or you ask.
 
 Every write the copilot makes goes through `kabane mcp` into this device's database, stamped
 `cabane://actor/agent/<harness>`, and the board reloads as each one lands. The harness is
