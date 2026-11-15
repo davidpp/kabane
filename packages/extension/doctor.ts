@@ -15,7 +15,7 @@ export namespace Doctor {
 
 	export type Source = {
 		name: string;
-		doctor: (ctx: Extension.Ctx) => Promise<Finding[] | Result<Finding[]>>;
+		doctor: (ctx: Extension.Ctx) => Promise<Result<Finding[]>>;
 	};
 
 	export type Report = {
@@ -54,11 +54,7 @@ export namespace Doctor {
 		const report: Report = { findings: [], fixes: [] };
 		for (const source of sources) {
 			const checked = await tryCatch(() => source.doctor(ctx));
-			const found = checked.ok
-				? Array.isArray(checked.value)
-					? { ok: true as const, value: checked.value }
-					: checked.value
-				: checked;
+			const found = checked.ok ? checked.value : checked;
 			if (found.ok) report.findings.push(...found.value);
 			else
 				report.findings.push({

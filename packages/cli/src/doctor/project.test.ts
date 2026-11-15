@@ -132,9 +132,9 @@ test("an edited grill copy is reported and --fix project/grill-skill-behind rest
 	expect(await ids()).toEqual([]);
 	writeFileSync(path, `${template}\nA project edit.\n`);
 	expect(await ids()).toEqual(["grill-skill-behind:mention"]);
-	const unasked = await Doctor.run([kabane], ctx, { fix: true });
+	const unasked = await Doctor.run([...kabane], ctx, { fix: true });
 	expect(unasked.fixes).toEqual([]);
-	const report = await Doctor.run([kabane], ctx, {
+	const report = await Doctor.run([...kabane], ctx, {
 		fix: ["project/grill-skill-behind"],
 	});
 	expect(report.fixes).toHaveLength(1);

@@ -18,14 +18,14 @@ const finding = (
 ): Doctor.Finding => ({ source, id, severity, summary: id });
 
 describe("Doctor", () => {
-	it("merges array and Result checks in source order and isolates both failure forms", async () => {
+	it("merges Result checks in source order and isolates both failure forms", async () => {
 		const report = await Doctor.run(
 			[
 				{
 					name: "a",
 					doctor: async (received) => {
 						expect(received).toBe(ctx);
-						return [finding("a", "one"), finding("a", "two")];
+						return ok([finding("a", "one"), finding("a", "two")]);
 					},
 				},
 				{
@@ -64,7 +64,7 @@ describe("Doctor", () => {
 			}),
 		);
 		const sources: Doctor.Source[] = [
-			{ name: "src", doctor: async () => findings },
+			{ name: "src", doctor: async () => ok(findings) },
 		];
 		await Doctor.run(sources, ctx);
 		expect(applied).toEqual([]);
@@ -88,25 +88,26 @@ describe("Doctor", () => {
 			[
 				{
 					name: "src",
-					doctor: async () => [
-						{
-							...finding("src", "returned", "auto"),
-							fix: async () => err(new Error("write failed")),
-						},
-						{
-							...finding("src", "thrown", "auto"),
-							fix: () => Promise.reject("permission denied"),
-						},
-						{
-							...finding("src", "last", "auto"),
-							path: "config.json",
-							fix: async () => ok("updated"),
-						},
-						{
-							...finding("src", "route", "route"),
-							route: "run /setup-dispatch",
-						},
-					],
+					doctor: async () =>
+						ok([
+							{
+								...finding("src", "returned", "auto"),
+								fix: async () => err(new Error("write failed")),
+							},
+							{
+								...finding("src", "thrown", "auto"),
+								fix: () => Promise.reject("permission denied"),
+							},
+							{
+								...finding("src", "last", "auto"),
+								path: "config.json",
+								fix: async () => ok("updated"),
+							},
+							{
+								...finding("src", "route", "route"),
+								route: "run /setup-dispatch",
+							},
+						]),
 				},
 			],
 			ctx,
@@ -133,7 +134,7 @@ describe("Doctor", () => {
 
 it("accounts for unmatched selectors and findings without fixes", async () => {
 	const report = await Doctor.run(
-		[{ name: "src", doctor: async () => [finding("src", "manual")] }],
+		[{ name: "src", doctor: async () => ok([finding("src", "manual")]) }],
 		ctx,
 		{ fix: ["src/absent", "src/manual"] },
 	);

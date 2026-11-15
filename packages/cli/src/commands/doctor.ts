@@ -61,7 +61,7 @@ export const doctor: Command = {
 			}
 		}
 		const selected = [...flagList(args, "fix"), ...args.positionals];
-		const sources: Doctor.Source[] = [kabane];
+		const sources: Doctor.Source[] = [...kabane];
 		const enabled = Extensions.enabled(ctx.home);
 		if (enabled.ok) {
 			const loaded = await Extensions.loadAll(enabled.value);
