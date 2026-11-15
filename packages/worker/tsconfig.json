@@ -6,7 +6,7 @@
 		"lib": ["ESNext"],
 		// `/types` (not the package root) is where the `cloudflare:test` module
 		// declaration lives in pool-workers >= 0.18.
-		// "bun" is here only because @cabane/core's commit-linker, lint
+		// "bun" is here only because @cabane/core's lint
 		// collectors and file-ref deref use Bun globals; the hub never calls
 		// those paths, but tsc walks the imported sources.
 		"types": [

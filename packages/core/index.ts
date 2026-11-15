@@ -2,7 +2,7 @@
  * @cabane/core
  *
  * Local-first issue tracker core: schemas, storage over the Db port, sync,
- * plan lint, and commit linking. A host supplies a `DbProvider` through
+ * and plan lint. A host supplies a `DbProvider` through
  * `Runtime.configure` and gets the same behaviour on any SQLite engine.
  */
 
@@ -17,18 +17,6 @@ export {
 	type ContextPage,
 	type ContextPageOptions,
 } from "./context-output";
-export type { GitCommit, ScanResult } from "./commit-linker/namespace";
-// Commit Linker
-export { CommitLinker } from "./commit-linker/namespace";
-export {
-	hasCloseKeyword,
-	PATTERNS,
-	parseAllTaskIds,
-	parseCloseKeywords,
-	parseConventionalCommit,
-	parseReferences,
-	TASK_ID_PATTERN,
-} from "./commit-linker/patterns";
 // Db port conformance (adapter test suites run these)
 export { type ConformanceCase, conformanceCases } from "./db/conformance";
 // Schema migrations: the runner and the list it applies
