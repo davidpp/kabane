@@ -39,6 +39,7 @@ import {
 	loadConfigDocument,
 } from "./config";
 import { ConfigLayers } from "./config-layers";
+import { activateHostRecord } from "./host";
 
 /** An extension's context plus the device config, which only built-in commands read. */
 export type Ctx = Extension.Ctx & { config: Config };
@@ -74,6 +75,7 @@ export const openContext = async (
 	cwd: string,
 	args: ParsedArgs,
 ): Promise<Result<Ctx>> => {
+	activateHostRecord(home);
 	const config = loadConfig(home);
 	if (!config.ok) return config;
 	const actor = flagString(args, "as") ?? config.value.actor;
@@ -81,7 +83,7 @@ export const openContext = async (
 	if (!configured.ok) return configured;
 	const initialized = await Planner.init(home);
 	if (!initialized.ok) return initialized;
-	return ok({
+	const ctx: Ctx = {
 		home,
 		store: home,
 		cwd,
@@ -89,7 +91,15 @@ export const openContext = async (
 		actor,
 		harnessMode: harnessMode(config.value),
 		settings: settingsPort(home),
+	};
+	activateHostRecord(home, {
+		basePath: home,
+		actor,
+		humanActor: config.value.actor,
+		defaultScope: await resolveScopeUri(args, ctx),
+		scopeRequired: false,
 	});
+	return ok(ctx);
 };
 
 /** A scope to filter on or file under, with the name a UI should show for it. */

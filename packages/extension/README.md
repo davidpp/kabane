@@ -2,6 +2,23 @@
 
 The shared contract for extension commands, board ports, settings and doctor checks.
 
+## Factory host
+
+Import `Extension` and `Host` with `import type` from `kabane/extension`. The published
+package includes their declarations, including the reachable core and zod types; no
+`@cabane/*` package or additional type dependency is required.
+
+The factory receives API 1 with `kabane.version`, `kabane.executable`, `record`, `scope`,
+`harnessMode`, `z`, `defineTool`, and the `result`, `args`, `outcome` and `settings` helpers.
+Build settings and tool schemas with `host.z`, even when the extension installs its own zod.
+
+`host.record` wraps MCP operations with validated inputs and full, unserialized results.
+Its named methods document their corresponding tools; `call(name, input)` also reaches
+registered data-module tools and returns `Result<unknown>`. Calls use the invocation's actor.
+Before the host configures and migrates the database, all record methods return an error;
+use them from commands, board ports or tool handlers. Scope detection and helpers are ready
+in the factory. Harness configuration exposes only the mode, never sessions.
+
 ## Doctor checks
 
 An extension can provide `doctor(ctx)`, returning `Doctor.Finding[]` or a

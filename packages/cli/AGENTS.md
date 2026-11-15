@@ -40,7 +40,8 @@ Most of the extension API lands here; check main before editing these files:
   result is validated before its contributions are accepted. A directory named `loop` overrides
   the bundled fallback. Manifests naming data modules are refused until JCAB-323 adds
   registration and its database gate.
-- JCAB-322 builds the `host` object; JCAB-323 splits `openContext` into the stages
+- `src/host.ts` builds API 1 hosts; `openContext` activates their record after migration
+  with the MCP actor and scope context. JCAB-323 splits `openContext` into the stages
   `ARCHITECTURE.md` lists under "Every process that opens the database registers the same
   modules".
 - JCAB-328 moves scope detection, `Self` and `serveStdio` from core into this package.

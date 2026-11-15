@@ -49,6 +49,7 @@ export type {
 export {
 	type AfterWrite,
 	authorTypeOf,
+	callTool,
 	createMcpServer,
 	defineTool,
 	handleHttpRequest,

@@ -397,7 +397,7 @@ it("reports the first invalid field and a real foreign zod schema", async () => 
 	const all = await Extensions.loadAll(["shape", "ownzod"], home);
 	expect(all.refused.map(({ reason }) => reason)).toEqual([
 		`the factory returned an invalid Extension: commands must be an array; ${Extensions.disabledAdvice}`,
-		`the factory returned an invalid Extension: settings must be built with kabane's zod, which the extension API passes as host.z; this kabane does not provide host.z yet; ${Extensions.disabledAdvice}`,
+		`the factory returned an invalid Extension: settings must be built with host.z; ${Extensions.disabledAdvice}`,
 	]);
 });
 
@@ -421,4 +421,76 @@ it("keeps bounded first-line causes without engine call annotations", async () =
 	expect(
 		Extensions.cause(new Error("oops (In 'imported.default(host)', noise)")),
 	).toBe("oops");
+});
+
+it("a directory with its own zod uses host.z for settings and a tool served by kabane mcp", async () => {
+	const home = makeHome({ extensions: ["hostzod"] });
+	const dir = install(
+		home,
+		"hostzod",
+		`
+ import type { Extension, Host } from "kabane/extension";
+ import { z as ownZod } from "zod";
+ export default (host: Host): Extension => ({
+  name: "hostzod",
+  settings: host.z.object({ word: host.z.string().default("hello") }),
+  mcp: async () => ({ tools: [host.defineTool({
+   name: "kabane_hostzod_echo", description: "Echo a word", kind: "read",
+   input: { word: host.z.string().min(1) },
+   handler: async ({ word }) => host.result.ok({ word, distinct: ownZod !== host.z }),
+  })] }),
+ });`,
+	);
+	cpSync(
+		dirname(Bun.resolveSync("zod/package.json", import.meta.dir)),
+		join(dir, "node_modules/zod"),
+		{ recursive: true },
+	);
+	const loaded = await Extensions.loadAll(["hostzod"], home);
+	expect(loaded.refused).toEqual([]);
+	expect(loaded.loaded.map((extension) => extension.name)).toEqual(["hostzod"]);
+	const config = await run(
+		["config", "list"],
+		{ KABANE_HOME: home, KABANE_HARNESSES: "" },
+		home,
+	);
+	expect(config.exitCode).toBe(0);
+	expect(config.text).toContain("hostzod.word");
+	const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+	const { StdioClientTransport } =
+		await import("@modelcontextprotocol/sdk/client/stdio.js");
+	const client = new Client({ name: "host-zod-test", version: "1" });
+	const transport = new StdioClientTransport({
+		command: process.execPath,
+		args: [join(import.meta.dir, "../index.ts"), "mcp"],
+		cwd: home,
+		env: { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" },
+		stderr: "pipe",
+	});
+	try {
+		await client.connect(transport);
+		expect((await client.listTools()).tools).toContainEqual(
+			expect.objectContaining({
+				name: "kabane_hostzod_echo",
+				inputSchema: expect.objectContaining({ required: ["word"] }),
+			}),
+		);
+		const result = await client.callTool({
+			name: "kabane_hostzod_echo",
+			arguments: { word: "wire" },
+		});
+		expect(result).toMatchObject({
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify({ word: "wire", distinct: true }, null, 2),
+				},
+			],
+		});
+		expect(
+			await client.callTool({ name: "kabane_hostzod_echo", arguments: {} }),
+		).toMatchObject({ isError: true });
+	} finally {
+		await client.close();
+	}
 });

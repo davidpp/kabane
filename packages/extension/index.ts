@@ -11,6 +11,7 @@ export {
 export type { Extension } from "./contract";
 export { Doctor } from "./doctor";
 export type { Host } from "./host";
+export { createHostRecord } from "./host-record";
 export {
 	conciseSuccess,
 	failure,

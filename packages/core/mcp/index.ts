@@ -1,5 +1,6 @@
 export {
 	type AfterWrite,
+	callTool,
 	createMcpServer,
 	handleHttpRequest,
 	type McpServerInfo,
