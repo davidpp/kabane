@@ -549,6 +549,21 @@ describe("Runner review triage", () => {
 		]);
 	});
 
+	// Git reads failing are not an empty diff: a plan made on one would skip lenses on nothing.
+	it("with a diff git cannot read, starts no triage and runs every lens on its own, naming the read", async () => {
+		const missing = "0123456789abcdef0123456789abcdef01234567";
+		const run = await start({}, { base: { sha: missing } });
+		expect([run.status, run.exit?.reason]).toEqual(["completed", "plan-done"]);
+		expect(run.claims.map((c) => c.lane)).toEqual([
+			"functional-lens",
+			"quality-lens",
+		]);
+		expect(run.review?.fallback).toStartWith(
+			`triage did not start: \`git diff --stat --no-color ${missing}\` failed`,
+		);
+		expect(prompts().some((p) => p.startsWith(Review.OPENING))).toBe(false);
+	});
+
 	it("falls back when the triage answers no plan, and the run goes on", async () => {
 		const run = await start({}, {}, "not a plan");
 		expect([run.status, run.exit?.reason]).toEqual(["completed", "plan-done"]);

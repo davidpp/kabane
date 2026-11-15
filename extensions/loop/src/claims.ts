@@ -1161,6 +1161,41 @@ export namespace Claims {
 			RunState.event(ctx, { ...tag, type: "review", summary: line });
 	};
 
+	// What the run changed from `base`, as triage reads it, or which git read failed: unlike `git`,
+	// a failure is not an empty diff.
+	const triageDiff = async (
+		ctx: Ctx,
+		base: string,
+	): Promise<Result<Review.Diff>> => {
+		const reads = [
+			["diff", "--stat", "--no-color", base],
+			["diff", "--numstat", base],
+			["ls-files", "--others", "--exclude-standard"],
+		];
+		const run = ctx.deps.git ?? Worktree.git;
+		const dir = RunStore.sessionDir(ctx.run);
+		const out = await Promise.all(reads.map((args) => run(dir, args)));
+		const texts: string[] = [];
+		for (const [i, read] of out.entries()) {
+			if (!read.ok)
+				return err(
+					new Error(
+						`\`git ${reads[i]?.join(" ")}\` failed: ${read.error.message}`,
+					),
+				);
+			texts.push(read.value.trim());
+		}
+		const [stat = "", numstat = "", untracked = ""] = texts;
+		return ok(
+			Review.diff(
+				base,
+				stat,
+				numstat,
+				untracked.split("\n").filter((f) => f !== ""),
+			),
+		);
+	};
+
 	/**
 	 * Triage the run's lenses (`Review`): one read-only session on the verifier harness, at
 	 * `loop.review.tier`, reads the diff from `base` and each lens's frontmatter and answers the
@@ -1179,6 +1214,10 @@ export namespace Claims {
 			const { applies, always } = prompt.value;
 			lenses.push({ name, always, ...(applies ? { applies } : {}) });
 		}
+		// Read before any session: a plan made on a diff git could not give would skip lenses, and
+		// slip past the size cap, on no change information at all.
+		const diff = await triageDiff(ctx, base);
+		if (!diff.ok) return diff;
 		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;
 		const { tier } = ctx.run.config.review;
 		const earlier = ctx.run.claims.filter((c) => c.triage === true);
@@ -1189,17 +1228,6 @@ export namespace Claims {
 		// From the first triage: what an interrupted one edited counts against the next.
 		const tree =
 			earlier[0]?.tree ?? (await ctx.tree(RunStore.sessionDir(ctx.run)));
-		const [stat, numstat, untracked] = await Promise.all([
-			git(ctx, ["diff", "--stat", "--no-color", base]),
-			git(ctx, ["diff", "--numstat", base]),
-			git(ctx, ["ls-files", "--others", "--exclude-standard"]),
-		]);
-		const diff = Review.diff(
-			base,
-			stat,
-			numstat,
-			untracked.split("\n").filter((f) => f !== ""),
-		);
 		launch(ctx, plan, {
 			tree,
 			task: plan.parent,
@@ -1209,11 +1237,11 @@ export namespace Claims {
 			work: {
 				kind: "triage",
 				lenses,
-				diff,
+				diff: diff.value,
 				tiers: LoopConfig.tierNames(ctx.run.config),
 			},
 			route: { tier },
-			summary: `${routed(harness, undefined, tier)} triages the review of ${label(plan.parent)}: ${diff.files} ${diff.files === 1 ? "file" : "files"} and ${diff.lines} ${diff.lines === 1 ? "line" : "lines"} changed, through ${Brief.lensNames(lenses.map((l) => l.name))}`,
+			summary: `${routed(harness, undefined, tier)} triages the review of ${label(plan.parent)}: ${diff.value.files} ${diff.value.files === 1 ? "file" : "files"} and ${diff.value.lines} ${diff.value.lines === 1 ? "line" : "lines"} changed, through ${Brief.lensNames(lenses.map((l) => l.name))}`,
 		});
 		return ok(undefined);
 	};
