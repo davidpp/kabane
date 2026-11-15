@@ -9,6 +9,7 @@ import type {
 	CardHeader,
 	Dispatcher,
 } from "@cabane/board/ports";
+import type { ToolDef } from "@cabane/core";
 import type { z } from "zod";
 import type { ParsedArgs } from "./args";
 import type { Outcome } from "./outcome";
@@ -31,6 +32,10 @@ export type Extension = {
 	looks?: Settings.Looks;
 	commands?: readonly Extension.Command[];
 	board?: (ctx: Extension.Ctx) => Promise<Extension.BoardPorts>;
+	/** Device MCP vocabulary and tools, named `kabane_<extension>_<verb>`. */
+	mcp?: (
+		ctx: Extension.Ctx,
+	) => Promise<{ instructions?: string; tools?: readonly ToolDef[] }>;
 };
 
 export namespace Extension {

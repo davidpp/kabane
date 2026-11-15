@@ -4,6 +4,9 @@ import type { LoopConfig } from "./config";
 import { LoopPlan } from "./plan";
 
 export namespace LoopAdvice {
+	export const INSTRUCTIONS =
+		"The loop runs an issue or a parent’s subtasks: use kabane_loop_advise for advised settings with reasons and each subtask’s harness, agent and model source. Start with `kabane loop start <issue>`; follow with `kabane loop status [<runId>]`, and pause, resume or stop with `kabane loop pause|resume|stop <runId>`. Start applies no advice automatically. A subtask’s tier:<name> tag asks for a tier’s model (loop.tiers) over --model; tier:<harness>/<name> also selects that harness. agent:<name> selects the harness’s named agent (Claude’s .claude/agents); an agent that pins a model keeps it. A tag the run cannot honour is noted on the trace and falls back to the run’s settings.";
+
 	export type Recommendation =
 		| {
 				path: "budget.concurrency" | "stallAfter";

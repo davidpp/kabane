@@ -327,6 +327,13 @@ The brief opens with the latest after the description, and counts the earlier on
 
 ## MCP on this device
 
+Enabled extensions contribute tools named `kabane_<extension>_<verb>` and instructions after
+registered modules, in device configuration order. With the loop enabled, `kabane_loop_advise`
+returns recommended settings and per-subtask harness/model routes; see [loop advice](../../docs/loop.md#Advice-over-MCP).
+Disabled extensions contribute nothing. Restart the MCP process after changing `extensions`.
+These contributions are device-only; the hub's tool list is unchanged. Duplicate tool names
+are refused.
+
 ```bash
 kabane mcp install          # every harness on PATH: claude, codex, gemini
 kabane mcp install --print  # .mcp.json, config.toml, settings.json, and a generic entry

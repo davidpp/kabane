@@ -300,3 +300,19 @@ kabane config set loop.tiers.claude.triage haiku
 An unmapped tier runs on the run's model, with a trace warning. `kabane loop status
 <runId>` lists the `triage` session with the model it ran on. `loop.review.mode all`
 turns triage off: every lens reviews in a session of its own, as a run with one lens does.
+
+## Advice over MCP
+
+With `loop` in the device's `extensions` list, `kabane mcp` includes the loop's route-tag
+vocabulary in its initialize instructions and exposes `kabane_loop_advise`. Restart the MCP
+process after enabling or disabling the extension. The hub does not load extensions.
+
+Call `kabane_loop_advise` with `id` (an issue id or short id). Settings resolve for the MCP
+server’s project directory; use `kabane loop advise` for overrides. Its JSON result contains
+resolved settings, recommendations with
+reasons, and each open subtask's harness, agent, model, `modelSource`, tier and fallback notes.
+It uses the same advice path as `kabane loop advise`; it starts no run and changes no issue or
+setting. Advice is not applied automatically when starting a run.
+
+`readOnlyHint` follows the tool’s `kind`; an extension may add `destructiveHint` and
+`openWorldHint`, and kabane reads none of these hints.

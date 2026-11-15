@@ -72,7 +72,7 @@ const toSdkTool = (
 			$refStrategy: "none",
 		},
 	) as Tool["inputSchema"],
-	annotations: { readOnlyHint: tool.kind === "read" },
+	annotations: { readOnlyHint: tool.kind === "read", ...tool.annotations },
 });
 
 const toCallResult = (
@@ -130,6 +130,7 @@ export const createMcpServer = (
 	info: McpServerInfo = {},
 	afterWrite?: AfterWrite,
 	toolDefs: readonly ToolDef[] = registeredTools(),
+	instructions: readonly string[] = [],
 ): Result<Server> => {
 	const names = new Set<string>();
 	for (const tool of toolDefs) {
@@ -150,6 +151,7 @@ export const createMcpServer = (
 				...Runtime.modules().flatMap((module) =>
 					module.instructions ? [module.instructions] : [],
 				),
+				...instructions,
 			].join("\n\n"),
 		},
 	);
@@ -186,8 +188,9 @@ export const serveStdio = async (
 	ctx: ToolContext,
 	info: McpServerInfo = {},
 	tools: readonly ToolDef[] = registeredTools(),
+	instructions: readonly string[] = [],
 ): Promise<Result<void>> => {
-	const created = createMcpServer(ctx, info, undefined, tools);
+	const created = createMcpServer(ctx, info, undefined, tools, instructions);
 	if (!created.ok) return created;
 	const server = created.value;
 	const transport = new StdioServerTransport();

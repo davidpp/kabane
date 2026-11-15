@@ -16,11 +16,13 @@ import {
 	usage,
 } from "@cabane/extension";
 import { LoopActivity } from "./activity";
+import { LoopAdvice } from "./advice";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
 import type { Land } from "./land";
 import { Lenses } from "./lenses";
+import { loopMcp } from "./mcp";
 import { Parent } from "./parent";
 import { RunStore } from "./store";
 
@@ -36,12 +38,7 @@ const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|co
        kabane loop land <runId> [--land pr|merge]   (lands a completed run's branch as its land setting says, or as --land says; pr when it is none)
        kabane loop prune                     (removes run worktrees, and their branches, whose work is merged)
 
-start applies no advice: loop advise shows it, and its "start with" line is the flags that apply it.
-
-A subtask's tags route its claim: tier:<name> asks for a tier's model (loop.tiers) over --model,
-tier:<harness>/<name> also runs it on that harness, and agent:<name> runs it as the harness's named
-agent (Claude's .claude/agents; an agent that pins a model keeps it). A tag the run cannot honour is
-noted on the trace and the claim runs on the run's settings.`;
+${LoopAdvice.INSTRUCTIONS}`;
 
 // The executable the runner and each session's MCP server run as: this process's own.
 const kabaneBin = Self.executable;
@@ -646,6 +643,7 @@ export const loop: Extension = {
 	settings: LoopConfig.SettingsSchema,
 	looks,
 	commands: [command],
+	mcp: loopMcp,
 	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
 	// `a` on an issue, alone or with subtasks, starts one from the board's directory, as `loop start` would.
 	board: async (ctx) => {
