@@ -128,12 +128,6 @@ describe("stored deadlines in a zone", () => {
 			ok: true,
 			value: "later",
 		});
-		// 17:00 local on the 6th.
-		expect(
-			Deadline.isDueToday("2026-02-06T22:00:00.000Z", lateEvening, MONTREAL),
-		).toBe(true);
-		expect(Deadline.isOverdue("2026-02-05", lateEvening, MONTREAL)).toBe(true);
-		expect(Deadline.isOverdue("garbage", lateEvening, MONTREAL)).toBe(false);
 	});
 
 	it("sorts an evening instant before the date of the same local day", () => {

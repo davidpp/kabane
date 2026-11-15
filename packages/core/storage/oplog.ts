@@ -354,7 +354,7 @@ export namespace Oplog {
 	};
 
 	/** Capture the current state of `rowId` as an insert or update. */
-	export const captureRow = (
+	const captureRow = (
 		db: Db,
 		tbl: string,
 		op: Exclude<SyncOpKind, "delete">,
@@ -367,7 +367,7 @@ export namespace Oplog {
 	};
 
 	/** Capture several rows as deletes, in the order given. */
-	export const captureDeletes = (db: Db, rows: Cascade): Result<number> => {
+	const captureDeletes = (db: Db, rows: Cascade): Result<number> => {
 		let recorded = 0;
 		for (const { tbl, row } of rows) {
 			const done = capture(db, { tbl, op: "delete", row });

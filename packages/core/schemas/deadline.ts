@@ -245,26 +245,6 @@ export namespace Deadline {
 		);
 	};
 
-	/** Its day is before today in `zone`. False for an unreadable deadline. */
-	export const isOverdue = (
-		stored: string,
-		now: number,
-		zone: string,
-	): boolean => {
-		const found = bucket(stored, now, zone);
-		return found.ok && found.value === "overdue";
-	};
-
-	/** Its day is today in `zone`. False for an unreadable deadline. */
-	export const isDueToday = (
-		stored: string,
-		now: number,
-		zone: string,
-	): boolean => {
-		const found = bucket(stored, now, zone);
-		return found.ok && found.value === "today";
-	};
-
 	/** Order two stored deadlines by when they fall due; an unreadable one sorts last. */
 	export const compare = (a: string, b: string, zone: string): number => {
 		const left = dueAt(a, zone);
