@@ -51,15 +51,18 @@ kabane list
   log's bearer `token`. `init --access-client-id <id> --access-client-secret
   <secret>` writes them as `CF-Access-Client-Id` / `CF-Access-Client-Secret`;
   both or neither.
-- **extensions** (optional) turns official extensions on by name, e.g.
-  `"extensions": ["loop"]`; absent is none. An extension ships inside the
-  `kabane` package and adds commands, listed by `kabane help` once it is on,
-  and board activity and triggers. It is imported only when one of its
-  commands or the board runs, so `kabane list` never loads it. An off
-  extension's command prints the line to add here instead of running. A name
-  this version does not ship is ignored, with a warning on stderr when a
-  command reads the list. The contract an extension implements
-  is `@cabane/extension`.
+- **extensions** (optional) enables extensions by name, e.g. `"extensions": ["hello"]`;
+  absent is none. Put an extension in `$KABANE_HOME/extensions/<name>/` with a
+  `package.json` containing `"kabane": { "extension": "./index.ts", "api": 1 }`.
+  Its entry exports a factory `(host) => Extension`; the factory's name must match the
+  directory. Enable it with `kabane config set extensions <names> --layer global`.
+  Enabled extensions contribute commands to `kabane --help`, settings, board ports and
+  MCP tools. Disabled directories are discovered without importing their code. The host
+  checks the manifest and API before importing the entry, whose dependencies resolve from
+  its own `node_modules`. A refused extension prints one line naming the problem and how
+  to repair or disable it; the others still load. Manifests naming `modules` are refused
+  until data-module loading is supported. The bundled `loop` remains available without a
+  directory; a directory named `loop` overrides it, with a notice on stderr.
 
 ### Settings layers
 

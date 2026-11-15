@@ -30,12 +30,16 @@ reading the environment (`CODING_PRINCIPLE.md`, "Explicit dependencies").
 
 Most of the extension API lands here; check main before editing these files:
 
-- In flight now: JCAB-263 (a `doctor` command, on its own branch).
+- The extension contract includes `mcp` and `doctor`; the `doctor` runner is in
+  `packages/extension/doctor.ts`. The CLI `doctor` command remains separate work.
 - `src/extensions.ts` loads enabled directories from `$KABANE_HOME/extensions` before the bundled
   fallback. `loadAll(names, home)` returns `loaded` and `refused`; callers must consume both.
   Help, commands and MCP report refusals on stderr; the board uses its announcer. A disabled
   directory is discovered without importing it, including during command lookup and config.
-  Manifests naming data modules are refused until JCAB-323 adds registration and its database gate.
+  The manifest API and the resolved entry path are checked before import, and the factory
+  result is validated before its contributions are accepted. A directory named `loop` overrides
+  the bundled fallback. Manifests naming data modules are refused until JCAB-323 adds
+  registration and its database gate.
 - JCAB-322 builds the `host` object; JCAB-323 splits `openContext` into the stages
   `ARCHITECTURE.md` lists under "Every process that opens the database registers the same
   modules".
