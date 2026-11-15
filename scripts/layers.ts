@@ -67,9 +67,12 @@ export const layers: Readonly<Record<string, Rule>> = {
 		layer: "client",
 		dependencies: ["@cabane/core", "@cabane/checklist", "@cabane/questions"],
 		devDependencies: ["@cabane/handoff", "@cabane/sqlite"],
+		// The gallery and its stories are dev tooling: `bun run gallery` and the render tests.
 		testSupport: [
+			"packages/board/gallery.tsx",
 			"packages/board/src/test-db.ts",
 			"packages/board/src/stories/fixtures.ts",
+			"packages/board/src/stories/index.tsx",
 		],
 	},
 	kabane: {
@@ -270,6 +273,25 @@ function importsCoreTestSupport(
 	);
 }
 
+function importsListedTestSupport(
+	root: string,
+	file: string,
+	specifier: string,
+	rule: Rule | undefined,
+): boolean {
+	const target = relative(root, resolve(dirname(file), specifier))
+		.split(sep)
+		.join("/");
+	return !!rule?.testSupport?.some(
+		(path) =>
+			path === target ||
+			path.replace(/\.(?:[cm]?[jt]s|[jt]sx)$/, "") === target ||
+			path.replace(/\/index\.(?:[cm]?[jt]s|[jt]sx)$/, "") === target ||
+			path.replace(/\.([cm]?)ts$/, ".$1js").replace(/\.tsx$/, ".jsx") ===
+				target,
+	);
+}
+
 function importFindings(
 	pkg: Workspace,
 	packages: Workspace[],
@@ -312,6 +334,15 @@ function importFindings(
 				continue;
 			}
 			if (specifier.startsWith(".")) {
+				if (
+					!testSupport &&
+					importsListedTestSupport(root, file, specifier, rule)
+				) {
+					findings.push(
+						`${pkg.name} -> ${pkg.name}: production import ${specifier} in ${location} uses test support; move it to a test or listed test-support file.`,
+					);
+					continue;
+				}
 				const finding = relativeImportFinding(
 					pkg,
 					packages,
