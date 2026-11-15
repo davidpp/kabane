@@ -1,6 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import {
 	existsSync,
+	chmodSync,
+	lstatSync,
+	statSync,
+	symlinkSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -166,10 +170,19 @@ test("selected repair refuses conflicting local settings without deleting legacy
 });
 
 test("malformed config is reported without opening a database", () => {
-	const { home, cli } = setup();
+	const { home, cwd, cli } = setup();
+	rmSync(join(cwd, ".agents"), { recursive: true });
 	writeFileSync(join(home, "config.json"), "{broken");
 	expect(cli()).toContain("config.json");
-	expect(JSON.parse(cli("--json")).findings.length).toBeGreaterThan(0);
+	expect(JSON.parse(cli("--json")).findings).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ source: "kabane", id: "check-failed" }),
+			expect.objectContaining({
+				source: "project",
+				id: "dispatch-skill-missing",
+			}),
+		]),
+	);
 	expect(existsSync(join(home, DB_NAME))).toBe(false);
 });
 
@@ -201,3 +214,29 @@ test("a named missing fix is visible even with no findings", () => {
 		JSON.parse(cli("--fix", "kabane/nope", "--json")).fixes[0].result.ok,
 	).toBe(false);
 });
+
+for (const linked of [false, true])
+	test(`legacy settings repair preserves config mode and symlink (${linked})`, () => {
+		const { home, config, cli } = setup();
+		const path = join(home, "config.json");
+		config({
+			scopes: { pinned: { loop: { concurrency: 2 } } },
+			sync: { token: "private-token" },
+		});
+		if (linked) {
+			const target = join(home, "managed-config.json");
+			writeFileSync(target, readFileSync(path));
+			rmSync(path);
+			symlinkSync(target, path);
+		}
+		chmodSync(path, 0o600);
+		const report = JSON.parse(cli("--fix", "--json"));
+		expect(
+			report.fixes.some((fix: { result: { ok: boolean } }) => fix.result.ok),
+		).toBe(true);
+		expect(statSync(path).mode & 0o777).toBe(0o600);
+		expect(lstatSync(path).isSymbolicLink()).toBe(linked);
+		const stored = JSON.parse(readFileSync(path, "utf8"));
+		expect(stored.sync.token).toBe("private-token");
+		expect(stored.scopes).toBeUndefined();
+	});
