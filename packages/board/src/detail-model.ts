@@ -151,28 +151,15 @@ export namespace DetailModel {
 
 	// ── pinned ──────────────────────────────────────────────────────────────────────────────────
 
-	/**
-	 * What waits on a human: every question a session asked that nothing answers yet, then any the
-	 * host reported that the records do not carry (a host that tracks sessions of its own). The one
-	 * `pinned` in a banner over the view is left to the banner, so it is not read twice.
-	 */
+	/** Questions supplied by the task's activity port, except the one already pinned in a banner. */
 	export const openQuestions = (
-		records: BoardData.DetailRecords | undefined,
+		_records: BoardData.DetailRecords | undefined,
 		awaiting: readonly BoardActivity.AwaitingQuestion[] = [],
 		pinned?: string,
-	): OpenQuestion[] => {
-		const fromSessions = records
-			? unansweredQuestions(activitiesOf(records)).map((a) => ({
-					id: a.id,
-					question: parseQuestionBody(a.body).question,
-				}))
-			: [];
-		const seen = new Set(fromSessions.map((q) => q.id));
-		const fromHost = awaiting
-			.filter((q) => !seen.has(q.questionActivityId))
-			.map((q) => ({ id: q.questionActivityId, question: q.question }));
-		return [...fromSessions, ...fromHost].filter((q) => q.id !== pinned);
-	};
+	): OpenQuestion[] =>
+		awaiting
+			.filter((q) => q.id !== pinned)
+			.map((q) => ({ id: q.id, question: q.question }));
 
 	/** The task at a glance: state, a priority other than normal, kind, assignee, review. */
 	export const summary = (task: Task): SummaryPart[] => {

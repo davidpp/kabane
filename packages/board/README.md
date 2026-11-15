@@ -55,7 +55,8 @@ interface ActivitySource {
   events?(id: string, afterSeq: number): Promise<Result<ActivityEvent[]>>;
   act?(id: string, actionId: string, input: { text?: string; lane?: string }): Promise<Result<string>>;
   dismiss?(id: string): Promise<Result<void>>;
-  answering?(questionId: string): Promise<Result<void>>;
+  questions?(): Promise<Result<ActivityQuestion[]>>;
+  answer?(questionId: string, answer: string): Promise<Result<string>>;
 }
 ```
 
@@ -91,18 +92,16 @@ screen animates its spinner; a running card on another tab is the still `●`. A
 pane keeps the tracker, the tab on screen and every tab with a `?n`, then what fits of the rest, and
 counts the others in a `+n` cell.
 
-Questions are core's, never the host's: every unanswered `question` activity `Planner.getNeedsInput`
-returns, whoever asked it. A card says which are its own by listing the core `agent_session` ids
-its work runs as in `sessionIds`. The tracker tab's `?n` counts every question; a card's tab counts
-its sessions' questions.
+Questions come from the activity source's optional `questions()` member. Each carries its own
+`id`, its owning `cardId`, an optional `lane` and task identity, display text and choices, answer
+options, `asker` and `askedAt`. The tracker tab's `?n` counts every question; a card's tab counts
+questions with its card id. Merging sources prefixes both question and card ids by source name.
 
 `!` walks them all, oldest first, from any view; on the only question, already on screen, it says
-nothing else is waiting. A question one of a tabbed card's sessions asked lands on that card's tab,
+nothing else is waiting. A question owned by a tabbed card lands on that card's tab,
 pinned under its header and answered there: a digit (or a click on an answer) answers it through
-`Planner.answerQuestion`, which writes the answer and unblocks the session: a `decision`, naming
-the question, the choice and who made it, or an `answer` for a tool permission request, which is
-no decision and stays out of the brief. The tab shows its
-sessions' oldest question first, with `+n more` for the rest, and says what was answered until the
+`ActivitySource.answer`, which records the answer and returns the footer notice. The tab shows
+its oldest question first, with `+n more` for the rest, and says what was answered until the
 next poll drops it and moves on to the next. `o` there opens the question's task for context, with
 the question pinned over it. Any other question lands straight on its task's detail view, pinned
 over it as a banner that answers the same way. While a question is pinned the digits are its alone:
@@ -113,7 +112,7 @@ clears when you leave the view; an unanswered one stays pinned until it is answe
 that offers no answers (freeform), or whose asker allows a typed answer besides its answers
 (`allowFreeform` in the question body), takes a typed one: `enter`, on its banner or on the card's
 tab that shows it, opens the board's prompt (below), and what is sent goes to
-`Planner.answerQuestion` as the answer. On a multi-select question (`multiSelect`) the digits, or a
+`ActivitySource.answer` as the answer. On a multi-select question (`multiSelect`) the digits, or a
 click, toggle answers rather than sending one, and `enter` sends the toggled labels
 comma-separated in the order picked (`Gamma, Alpha`), the form `kabane loop answer` takes. A
 banner whose question left the queue without an answer from this board (answered elsewhere, or
@@ -121,12 +120,9 @@ withdrawn by its asker) reads `closed`. Every surface answers through the one `a
 effect: marked answered on the keypress, so a second digit answers nothing, and taken back if the
 write fails.
 
-Core records who answered on the answer itself (`author`). Before it writes any answer, the board
-also calls the source's optional `answering(questionId)`, so a host that keeps who answered of its
-own (the loop notes the board's actor in its run's inbox) has it on record by the time its work sees
-the answer. The id is core's, so a
-merged source hands it to every contributor, and a host whose sessions did not ask it does nothing. A
-failed note does not hold the answer back.
+The source owns recording who answered and any inbox notification its runtime needs. The merged
+source routes an answer only to the contributor that owns its prefixed question id. A source
+without an answer member returns an error and leaves the question unanswered.
 
 #### A card's header
 

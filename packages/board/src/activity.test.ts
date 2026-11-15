@@ -1,13 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { join } from "node:path";
-import { err, formatQuestionBody, ok, Planner } from "@cabane/core";
-import { type ActivityCard, type ActivitySource } from "@cabane/extension";
+import { describe, expect, it } from "bun:test";
+import { err, ok } from "@cabane/core";
+import {
+	type ActivityCard,
+	type ActivityQuestion,
+	type ActivitySource,
+} from "@cabane/extension";
 import { BoardActivity } from "./activity";
-import { BoardData } from "./data";
 import { noActivity } from "./ports";
-import { dropDb, freshDb } from "./test-db";
 
-const TEST_BASE = join(import.meta.dir, ".test-activity");
+const TEST_BASE = "/unused";
 
 const card = (over: Partial<ActivityCard> = {}): ActivityCard => ({
 	id: "c1",
@@ -167,14 +168,6 @@ describe("BoardActivity.inFlightForTask / cardsForTask (pure)", () => {
 });
 
 describe("BoardActivity.loadActivity", () => {
-	beforeEach(async () => {
-		await freshDb(TEST_BASE);
-	});
-
-	afterEach(() => {
-		dropDb(TEST_BASE);
-	});
-
 	it("returns empty maps when nothing is in flight", async () => {
 		const result = await BoardActivity.loadActivity(TEST_BASE, noActivity);
 		expect(result.ok).toBe(true);
@@ -204,112 +197,71 @@ describe("BoardActivity.loadActivity", () => {
 		expect(result.value.cards).toEqual([]);
 	});
 
-	it("maps unanswered questions by task id with parsed question text", async () => {
-		const added = await Planner.addTask(TEST_BASE, {
-			title: "Agent work",
-			kind: "issue",
-		});
-		expect(added.ok).toBe(true);
-		if (!added.ok) return;
-		const started = await Planner.startSession(TEST_BASE, {
-			taskId: added.value.id,
-			agent: "claude",
-		});
-		expect(started.ok).toBe(true);
-		if (!started.ok) return;
-		// Body carries the json metadata fence — the seam must strip it down to the question text.
-		const activity = await Planner.addActivity(TEST_BASE, {
-			sessionId: started.value.id,
-			type: "question",
-			context: "why we're asking",
-			body: formatQuestionBody("Redis or in-memory?", {
-				choices: ["Redis", "In-memory"],
-			}),
-		});
-		expect(activity.ok).toBe(true);
-		if (!activity.ok) return;
-
-		const result = await BoardActivity.loadActivity(TEST_BASE, noActivity);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-
-		const questions = result.value.questionsByTaskId.get(added.value.id);
-		expect(questions).toHaveLength(1);
-		expect(questions?.[0]?.question).toBe("Redis or in-memory?");
-		expect(questions?.[0]?.sessionId).toBe(started.value.id);
-		expect(questions?.[0]?.questionActivityId).toBe(activity.value.id);
-		expect(questions?.[0]?.choices).toEqual(["Redis", "In-memory"]);
-		expect(questions?.[0]?.agent).toBe("claude");
-		expect(questions?.[0]?.taskShortId).toBe(added.value.shortId);
-	});
-
-	it("answering through the board takes the question off the queue and unblocks the session", async () => {
-		const added = await Planner.addTask(TEST_BASE, {
-			title: "Asked twice",
-			kind: "issue",
-		});
-		if (!added.ok) throw added.error;
-		const started = await Planner.startSession(TEST_BASE, {
-			taskId: added.value.id,
-			agent: "claude",
-		});
-		if (!started.ok) throw started.error;
-		const ask = async (body: string): Promise<string> => {
-			const asked = await Planner.addActivity(TEST_BASE, {
-				sessionId: started.value.id,
-				type: "question",
-				body: formatQuestionBody(body, { choices: ["Yes", "No"] }),
-			});
-			if (!asked.ok) throw asked.error;
-			return asked.value.id;
+	it("takes questions from the source and indexes them independently of cards", async () => {
+		const question: ActivityQuestion = {
+			id: "q1",
+			cardId: "c1",
+			lane: "claude",
+			taskId: "t1",
+			taskShortId: "T-1",
+			question: "Redis or in-memory?",
+			choices: ["Redis", "In-memory"],
+			multiSelect: false,
+			allowFreeform: false,
+			asker: "claude",
+			askedAt: "2026-10-10T00:00:00Z",
 		};
-		const first = await ask("First?");
-		await ask("Second?");
-
-		const before = await BoardActivity.loadActivity(TEST_BASE, noActivity);
-		if (!before.ok) throw before.error;
-		// Oldest first: the order `!` walks them in.
-		expect(
-			BoardActivity.questions(before.value).map((q) => q.question),
-		).toEqual(["First?", "Second?"]);
-
-		const answered = await BoardData.answerQuestion(TEST_BASE, first, "Yes");
-		expect(answered.ok).toBe(true);
-		const after = await BoardActivity.loadActivity(TEST_BASE, noActivity);
-		if (!after.ok) throw after.error;
-		expect(BoardActivity.questions(after.value).map((q) => q.question)).toEqual(
-			["Second?"],
-		);
-	});
-
-	it("groups multiple unanswered questions under the same task", async () => {
-		const added = await Planner.addTask(TEST_BASE, {
-			title: "Batch",
-			kind: "issue",
+		const result = await BoardActivity.loadActivity(TEST_BASE, {
+			load: async () => err(new Error("cards unavailable")),
+			questions: async () =>
+				ok([
+					question,
+					{ ...question, id: "q2", askedAt: "2026-10-09T00:00:00Z" },
+				]),
 		});
-		expect(added.ok).toBe(true);
-		if (!added.ok) return;
-		const started = await Planner.startSession(TEST_BASE, {
-			taskId: added.value.id,
+		if (!result.ok) throw result.error;
+		expect(result.value.questionsByTaskId.get("t1")).toHaveLength(2);
+		expect(BoardActivity.questions(result.value).map((q) => q.id)).toEqual([
+			"q2",
+			"q1",
+		]);
+		expect(BoardActivity.questions(result.value)[0]).toMatchObject({
+			cardId: "c1",
+			lane: "claude",
 			agent: "claude",
 		});
-		expect(started.ok).toBe(true);
-		if (!started.ok) return;
-		for (const q of ["Q1?", "Q2?"]) {
-			await Planner.addActivity(TEST_BASE, {
-				sessionId: started.value.id,
-				type: "question",
-				body: q,
-			});
-		}
+	});
 
-		const result = await BoardActivity.loadActivity(TEST_BASE, noActivity);
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(
-			result.value.questionsByTaskId
-				.get(added.value.id)
-				?.map((q) => q.question),
-		).toEqual(["Q1?", "Q2?"]);
+	it("a failed question read keeps the cards", async () => {
+		const result = await BoardActivity.loadActivity(TEST_BASE, {
+			...sourceOf([card()]),
+			questions: async () => err(new Error("questions unavailable")),
+		});
+		if (!result.ok) throw result.error;
+		expect(result.value.cards).toHaveLength(1);
+		expect(BoardActivity.questions(result.value)).toEqual([]);
+	});
+
+	it("keeps a card's question even without a task", async () => {
+		const result = await BoardActivity.loadActivity(TEST_BASE, {
+			...sourceOf([card()]),
+			questions: async () =>
+				ok([
+					{
+						id: "q",
+						cardId: "c1",
+						question: "Continue?",
+						choices: [],
+						multiSelect: false,
+						allowFreeform: true,
+						asker: "claude",
+						askedAt: "2026-10-10T00:00:00Z",
+					},
+				]),
+		});
+		if (!result.ok) throw result.error;
+		expect(BoardActivity.questions(result.value).map((q) => q.id)).toEqual([
+			"q",
+		]);
 	});
 });

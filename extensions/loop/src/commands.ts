@@ -1220,7 +1220,7 @@ export namespace Loop {
 	 * board does before it writes an answer of its own. Any other question is not the loop's to note.
 	 * A question of a run whose runner died is withdrawn and refused, as `answer` refuses it.
 	 */
-	export const answering = async (
+	export const noteAnswerer = async (
 		deps: AnswerDeps,
 		questionId: string,
 	): Promise<Result<void>> => {

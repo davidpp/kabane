@@ -17,7 +17,9 @@ command, built-in or extension, is written with. It has no runtime of its own.
 
 Its layer is `extension contract`; its entry in `scripts/layers.ts` (`"@cabane/extension"`)
 says what it may list. `ports.ts` owns the activity, dispatch, header, panel, settings field
-and copilot shortcut types an extension produces and any client reads. It imports no board.
+and copilot shortcut types an extension produces and any client reads. `ActivityQuestion` names
+its owning card and optional lane; `ActivitySource.questions` and `answer` keep questions and
+answers with their source, without a core session dependency. It imports no board.
 
 Two consumers implement or call the contract: the CLI (`packages/cli/src/context.ts` builds
 its `Ctx` as `Extension.Ctx` plus the device config, and every command in

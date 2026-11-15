@@ -35,9 +35,6 @@ export type ActivityCard = {
 	// Show this card as a tab of its own beside the tracker. A finished card keeps its tab until the
 	// human closes it with `w`.
 	tab?: boolean;
-	// The core agent sessions this card's work runs as. A question one of them asks is the card's:
-	// its tab counts it, and `!` lands on the tab rather than on the question's task.
-	sessionIds?: readonly string[];
 	// Named streams inside the card (one per agent session, say), in a stable order: on the card's
 	// tab `h/l` pick one, and every line of the all-lanes stream is tagged with its lane in a color
 	// that stays the lane's. Append, never reorder: a lane's place is its color.
@@ -117,6 +114,21 @@ export type ActivityEvent = {
 	detail?: ActivityToolDetail;
 };
 
+export type ActivityQuestion = {
+	id: string;
+	cardId: string;
+	lane?: string;
+	taskId?: string;
+	taskShortId?: string;
+	question: string;
+	choices: readonly string[];
+	multiSelect: boolean;
+	allowFreeform: boolean;
+	permission?: boolean;
+	asker: string;
+	askedAt: string;
+};
+
 export interface ActivitySource {
 	// Everything worth showing, newest first, already capped by the host.
 	load(): Promise<Result<ActivityCard[]>>;
@@ -135,12 +147,10 @@ export interface ActivitySource {
 	// The human closed a finished card's tab with `w`: stop listing it, for good, so it stays closed
 	// across a relaunch. Optional: without it the tab stays closed for this session only.
 	dismiss?(id: string): Promise<Result<void>>;
-	// The human is answering the core session question `questionId` from the board, whoever asked
-	// it. Called just before the answer is written, so a host that keeps who answered of its own
-	// has it on record by the time its work sees the answer; a host whose sessions did not ask it
-	// has nothing to do. A failure does not hold the answer back.
-	// Optional.
-	answering?(questionId: string): Promise<Result<void>>;
+	// Questions waiting on the human, with display text already parsed by their owner.
+	questions?(): Promise<Result<ActivityQuestion[]>>;
+	// Answer the owner's question; resolves to the footer notice.
+	answer?(questionId: string, answer: string): Promise<Result<string>>;
 }
 
 // One setting a trigger takes. A trigger whose every input has a `default` and either `options` or

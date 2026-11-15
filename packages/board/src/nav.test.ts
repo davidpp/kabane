@@ -3788,8 +3788,8 @@ describe("a form the harness is blocked on", () => {
 			question: {
 				taskId: "a",
 				taskShortId: "MILL-1",
-				sessionId: "s",
-				questionActivityId: "q",
+				cardId: "loop:r1",
+				id: "q",
 				question: "Ship it?",
 				choices: ["Yes", "No"],
 				multiSelect: false,

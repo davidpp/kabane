@@ -338,8 +338,8 @@ const activeLoop = (over: Partial<ActivityCard> = {}): ActivityCard => ({
 
 const question = (taskId: string): BoardActivity.AwaitingQuestion => ({
 	taskId,
-	sessionId: "s1",
-	questionActivityId: "q1",
+	cardId: "loop:r1",
+	id: "q1",
 	question: "Which auth flow?",
 	taskShortId: "MILL-1",
 	choices: [],
@@ -354,11 +354,13 @@ const activityWith = (
 	questions: BoardActivity.AwaitingQuestion[] = [],
 ): BoardActivity.ActivityMap => {
 	const map = BoardActivity.indexCards(cards);
-	for (const q of questions)
+	for (const q of questions) {
+		if (!q.taskId) continue;
 		map.questionsByTaskId.set(q.taskId, [
 			...(map.questionsByTaskId.get(q.taskId) ?? []),
 			q,
 		]);
+	}
 	return map;
 };
 

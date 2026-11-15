@@ -215,8 +215,8 @@ test("Detail pins a waiting question above the tabs, with no answer hint for a c
 	const questions: BoardActivity.AwaitingQuestion[] = [
 		{
 			taskId: task.id,
-			sessionId: "sess-1",
-			questionActivityId: "act-1",
+			cardId: "loop:r1",
+			id: "act-1",
 			question: "Which auth flow should the CLI use?",
 			taskShortId: "MILL-1",
 			choices: [],
@@ -338,7 +338,7 @@ test("Detail's log puts work logs and session activity on one line each, newest 
 	await add({ type: "progress", body: "read the brief" });
 	const q = await add({ type: "question", body: "Tabs or one scroll?" });
 	await add({ type: "decision", body: "tabs", context: `answers ${q.id}` });
-	await add({ type: "question", body: "Which tab opens first?" });
+	const open = await add({ type: "question", body: "Which tab opens first?" });
 	await add({ type: "error", body: "the gate failed on biome" });
 	const logged = await Planner.addWorkLog(TEST_BASE, {
 		taskId: task.id,
@@ -349,7 +349,23 @@ test("Detail's log puts work logs and session activity on one line each, newest 
 
 	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
 		task,
-		{ tab: "log" },
+		{
+			tab: "log",
+			questions: [
+				{
+					id: open.id,
+					cardId: "loop:r1",
+					taskId: task.id,
+					taskShortId: task.shortId ?? task.id,
+					question: open.body,
+					choices: [],
+					multiSelect: false,
+					allowFreeform: true,
+					agent: "claude",
+					askedAt: open.createdAt,
+				},
+			],
+		},
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>

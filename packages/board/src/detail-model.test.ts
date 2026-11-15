@@ -121,10 +121,8 @@ const askedTwice = (): BoardData.DetailRecords =>
 	});
 
 describe("openQuestions", () => {
-	it("pins the questions nothing answers yet, and only those", () => {
-		expect(DetailModel.openQuestions(askedTwice())).toEqual([
-			{ id: "q2", question: "Which tab opens first?" },
-		]);
+	it("does not read questions from legacy sessions", () => {
+		expect(DetailModel.openQuestions(askedTwice())).toEqual([]);
 	});
 
 	it("takes an answer of any type as answering its question", () => {
@@ -151,8 +149,8 @@ describe("openQuestions", () => {
 		const open = DetailModel.openQuestions(askedTwice(), [
 			{
 				taskId: "t1",
-				sessionId: "s1",
-				questionActivityId: "q2",
+				cardId: "s1",
+				id: "q2",
 				question: "Which tab opens first?",
 				taskShortId: "MILL-1",
 				choices: [],
@@ -163,8 +161,8 @@ describe("openQuestions", () => {
 			},
 			{
 				taskId: "t1",
-				sessionId: "s9",
-				questionActivityId: "h1",
+				cardId: "s9",
+				id: "h1",
 				question: "Ship it?",
 				taskShortId: "MILL-1",
 				choices: [],
@@ -182,8 +180,8 @@ describe("openQuestions", () => {
 			DetailModel.openQuestions(undefined, [
 				{
 					taskId: "t1",
-					sessionId: "s9",
-					questionActivityId: "h1",
+					cardId: "s9",
+					id: "h1",
 					question: "Ship it?",
 					taskShortId: "MILL-1",
 					choices: [],

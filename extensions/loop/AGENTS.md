@@ -25,6 +25,11 @@ import line it sits on. Use one only when the brief asks for it, and name it in 
 Activity, dispatch and header types come from `@cabane/extension`; forms and `FormField`
 come from `@cabane/acp`. The loop has no dependency on the board.
 
+The activity port reads questions with `Planner.getNeedsInput` and `parseQuestionBody` from
+`@cabane/core`, assigning each its run card id and claim lane. These new core uses are a
+JCAB-329 stopgap removed by JCAB-340. Answers go through `Loop.answer`, which records the
+answer and the answering actor's inbox note; the board no longer writes the answer itself.
+
 Several issues change this package; check main before you edit:
 
 - In flight now: JCAB-263 (a `doctor` check, on its own branch).
