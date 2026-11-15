@@ -61,7 +61,14 @@ SETTING UP A LOOP RUN. When the human asks to set up or tune a run ("set up a lo
 
 GRILLING. Agents file the decisions they need from the human with kabane_ask, and kabane_questions lists the open ones with their choices, the asker's recommendation (★) and why. When the human asks you to grill them, to go through the open questions, or anything like it, follow the grill skill at ${GRILL_TEMPLATE}/SKILL.md: read the questions for the scope, or for the issue they name, say how many are open across how many issues, then take them one at a time, highest-priority issue first. For each one, restate it in a line, give the choices and the recommended one with its why, and check what the code or the tracker can answer before you ask. Then ask that one question and wait for the reply: through your harness's own choice prompt whenever it has one, the choices as its options and the recommended one first, and in plain text, ending your turn on it, only where it has none. Just before recording, re-read that issue with kabane_questions and its id, because a handle can shift when sync brings in an earlier question: if the handle no longer shows the same question text, use the one that does and tell the human what moved. Record a choice with kabane_answer and relayed: true, which credits the decision to the human rather than to you, with their own words as reasoning; "skip" leaves it open; "withdraw" is kabane_answer with withdraw: true, relayed: true and their reason. When the human's decision does not fit the question's choices, as two picks on a single choice do, never squeeze it into the nearest one: reshape the question with kabane_ask and replaces set to its handle, with choices that hold what was concluded, which withdraws the old one and keeps the issue waiting, then record the decision on the new handle with kabane_answer and relayed: true. Say when an issue moves to next, and end with a one-line tally. Only the human answers: never record an answer they did not give, the recommended one included.
 
-The same skill runs in any coding session that has the kabane MCP. When the human asks how, point them at that path. When they ask you to install it in this project, copy SKILL.md unchanged to .agents/skills/grill/SKILL.md under the dispatch skill's rule: when neither .agents/skills/grill/ nor a real .claude/skills/grill/ directory exists, the request is the go-ahead; an existing .agents/skills/grill/ gets a diff and waits for a yes; a real .claude/skills/grill/ directory gets the offer to move it and waits for a yes; and the .claude/skills/grill link to ../../.agents/skills/grill follows the dispatch skill's link rule.`;
+The same skill runs in any coding session that has the kabane MCP. When the human asks how, point them at that path. When they ask you to install it in this project, copy SKILL.md unchanged to .agents/skills/grill/SKILL.md under the dispatch skill's rule: when neither .agents/skills/grill/ nor a real .claude/skills/grill/ directory exists, the request is the go-ahead; an existing .agents/skills/grill/ gets a diff and waits for a yes; a real .claude/skills/grill/ directory gets the offer to move it and waits for a yes; and the .claude/skills/grill link to ../../.agents/skills/grill follows the dispatch skill's link rule.
+
+DOCTOR. \`kabane doctor\` reports what kabane wrote, in its settings, this project and the harnesses' MCP entries, that has fallen behind the installed version; enabled extensions add their own checks. When the human asks you to check that kabane is current, run \`kabane doctor --json\` once from your working directory. It prints findings, each with source, id, severity, summary, fixable and sometimes route and path. No findings is the good outcome: say so in one line and stop. The severity says what to do, not how bad it is:
+- auto needs no decision. Run \`kabane doctor --fix\` once, without asking first, which applies every auto finding and nothing else, then report in one line what its fixes say changed.
+- mention is something the human should know. Say each one in a sentence with its fix. Run \`kabane doctor --fix <source>/<id>\` only after an explicit yes to that finding.
+- suggest is a better setting rather than a broken one. Say what is better and why, then wait; on an explicit yes, apply it as a mention's fix is applied, or as its route says.
+- route names the procedure that repairs it. Follow the finding's route text: when it is /setup-dispatch, offer to run SETTING UP A DISPATCH SKILL, whose rule that an existing skill gets a diff and waits for a yes still holds.
+Never run the fix of a kabane/mcp-entry-stale-<harness> finding, whatever its severity, even after a yes: give the human its command, \`kabane doctor --fix kabane/mcp-entry-stale-<harness>\`, to run themselves, because it rewrites that harness's MCP entries, which are theirs. Report every group in one pass, auto first. Findings are not errors, so do not present them as failures. Only this procedure repairs drift: never run a fix as a side effect of another request, and never re-run doctor to retry a fix that failed; report its message as it is.`;
 
 	/** Device and build context for the config-and-help procedure. */
 	export type Setup = {
@@ -170,6 +177,13 @@ The same skill runs in any coding session that has the kabane MCP. When the huma
 			hint: "write this project's dispatch skill",
 			template:
 				"Set up a dispatch skill for this project: read its CLAUDE.md/AGENTS.md, gate commands and agents, then write .agents/skills/dispatch/ from the kabane template and show me what you wrote.",
+		},
+		// SKILLS carries what each severity allows; the template only asks for the pass.
+		{
+			name: "doctor",
+			hint: "check what kabane wrote is current",
+			template:
+				"Run kabane doctor on this project and act on each finding by its severity, as your doctor procedure says.",
 		},
 	];
 }

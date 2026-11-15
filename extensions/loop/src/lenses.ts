@@ -28,8 +28,12 @@ export namespace Lenses {
 	const SHIPPED = ["functional", "quality"] as const;
 
 	/** Where a project keeps its own lenses: its dispatch skill's. */
-	const dir = (projectDir: string): string =>
+	export const dir = (projectDir: string): string =>
 		join(projectDir, ".agents", "skills", "dispatch", "references", "lenses");
+
+	/** The loop's own lens directory from before the dispatch skill held them. */
+	export const loopDir = (projectDir: string): string =>
+		join(projectDir, ".kabane", "loop", "lenses");
 
 	/**
 	 * The dispatch skill's lenses where kabane wrote the skill before `.agents/skills/`; read after
@@ -38,9 +42,12 @@ export namespace Lenses {
 	const claudeDir = (projectDir: string): string =>
 		join(projectDir, ".claude", "skills", "dispatch", "references", "lenses");
 
-	/** Where a project's lenses were kept before they moved into the skill; read after it. */
-	const legacyDir = (projectDir: string): string =>
-		join(projectDir, ".kabane", "loop", "lenses");
+	/** Every directory a project's lenses are read from, first in force first. */
+	export const directories = (projectDir: string): string[] => [
+		dir(projectDir),
+		claudeDir(projectDir),
+		loopDir(projectDir),
+	];
 
 	// The lens names among a directory's files. A prompt whose file name is no lens name
 	// (`security_review.md`) is left out: a run would refuse it.
@@ -61,11 +68,7 @@ export namespace Lenses {
 			...SHIPPED,
 			...(projectDir === undefined
 				? []
-				: [
-						...namesIn(dir(projectDir)),
-						...namesIn(claudeDir(projectDir)),
-						...namesIn(legacyDir(projectDir)),
-					].sort()),
+				: directories(projectDir).flatMap(namesIn).sort()),
 		]),
 	];
 
@@ -138,7 +141,7 @@ export namespace Lenses {
 	export const prompt = (projectDir: string, name: string): Result<Prompt> => {
 		const own = join(dir(projectDir), `${name}.md`);
 		const claude = join(claudeDir(projectDir), `${name}.md`);
-		const legacy = join(legacyDir(projectDir), `${name}.md`);
+		const legacy = join(loopDir(projectDir), `${name}.md`);
 		const shipped = SHIPPED.some((s) => s === name)
 			? join(SHIPPED_DIR, `${name}.md`)
 			: undefined;

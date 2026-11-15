@@ -1,9 +1,15 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { err, ok, type Result, trySync } from "@cabane/core";
+
 /**
  * What each coding harness needs to register this device's MCP server: the
  * binary to look for, the argv that adds, finds and removes the `kabane`
- * entry, the config snippet a human pastes instead, and the project file it
- * reads its instructions from. One table, so the install and the printed
- * snippets cannot drift apart. Pure: nothing here spawns.
+ * entry, where its config file keeps that entry, the config snippet a human
+ * pastes instead, and the project file it reads its instructions from. One
+ * table, so the install and the printed snippets cannot drift apart. Nothing
+ * here spawns: a harness's own `mcp get` health-checks the server, starting it.
  */
 export namespace McpClients {
 	/**
@@ -35,6 +41,101 @@ export namespace McpClients {
 	};
 
 	export type Snippet = { title: string; text: string };
+
+	/** Where a harness's config lives: the user's home, the environment, and the project, if any. */
+	export type Where = {
+		home: string;
+		env: NodeJS.ProcessEnv;
+		projectRoot?: string;
+	};
+
+	/** A `kabane` entry found in a harness config file, and which file and key held it. */
+	type Registration = { at: string; launch: Launch };
+
+	const isRecord = (value: unknown): value is Record<string, unknown> =>
+		typeof value === "object" && value !== null && !Array.isArray(value);
+
+	// JSONC, because Gemini's settings.json may carry comments; a plain JSON file parses the same.
+	const readConfig = (
+		path: string,
+		parse: (text: string) => unknown,
+	): Result<Record<string, unknown> | undefined> => {
+		if (!existsSync(path)) return ok(undefined);
+		const parsed = trySync(() => parse(readFileSync(path, "utf8")));
+		if (!parsed.ok) return err(new Error(`${path}: ${parsed.error.message}`));
+		return isRecord(parsed.value)
+			? ok(parsed.value)
+			: err(new Error(`${path}: expected an object`));
+	};
+
+	// An entry without a command (an HTTP server) is not one `mcp install` writes.
+	const launchOf = (entry: unknown): Launch | undefined => {
+		if (!isRecord(entry) || typeof entry.command !== "string") return undefined;
+		const args = Array.isArray(entry.args)
+			? entry.args.filter((a): a is string => typeof a === "string")
+			: [];
+		return { command: entry.command, args };
+	};
+
+	const serverIn = (servers: unknown, at: string): Registration[] => {
+		const launch = isRecord(servers)
+			? launchOf(servers[SERVER_NAME])
+			: undefined;
+		return launch ? [{ at, launch }] : [];
+	};
+
+	// User scope, then the project's local scope, which Claude keys by the project's path.
+	const claudeRegistrations = (where: Where): Result<Registration[]> => {
+		const path = join(where.home, ".claude.json");
+		const config = readConfig(path, Bun.JSONC.parse);
+		if (!config.ok || config.value === undefined)
+			return config.ok ? ok([]) : config;
+		const found = serverIn(config.value.mcpServers, `${path} mcpServers`);
+		const projects = config.value.projects;
+		if (where.projectRoot !== undefined && isRecord(projects)) {
+			const project = projects[where.projectRoot];
+			if (isRecord(project))
+				found.push(
+					...serverIn(
+						project.mcpServers,
+						`${path} projects["${where.projectRoot}"].mcpServers`,
+					),
+				);
+		}
+		return ok(found);
+	};
+
+	const codexRegistrations = (where: Where): Result<Registration[]> => {
+		const path = join(
+			where.env.CODEX_HOME || join(where.home, ".codex"),
+			"config.toml",
+		);
+		const config = readConfig(path, Bun.TOML.parse);
+		if (!config.ok || config.value === undefined)
+			return config.ok ? ok([]) : config;
+		return ok(serverIn(config.value.mcp_servers, `${path} [mcp_servers]`));
+	};
+
+	const geminiRegistrations = (where: Where): Result<Registration[]> => {
+		const path = join(where.home, ".gemini", "settings.json");
+		const config = readConfig(path, Bun.JSONC.parse);
+		if (!config.ok || config.value === undefined)
+			return config.ok ? ok([]) : config;
+		return ok(serverIn(config.value.mcpServers, `${path} mcpServers`));
+	};
+
+	const REGISTRATIONS: Record<Id, (where: Where) => Result<Registration[]>> = {
+		claude: claudeRegistrations,
+		codex: codexRegistrations,
+		gemini: geminiRegistrations,
+	};
+
+	/** The `kabane` entries a harness's config files hold, read without spawning the harness. */
+	export const registrations = (id: Id, where: Where): Result<Registration[]> =>
+		REGISTRATIONS[id](where);
+
+	export const sameLaunch = (a: Launch, b: Launch): boolean =>
+		isDeepStrictEqual(a, b);
 
 	const json = (value: unknown): string => JSON.stringify(value, null, 2);
 

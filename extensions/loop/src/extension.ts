@@ -20,6 +20,7 @@ import { LoopAdvice } from "./advice";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
+import { LoopDoctor } from "./doctor";
 import type { Land } from "./land";
 import { Lenses } from "./lenses";
 import { loopMcp } from "./mcp";
@@ -644,6 +645,7 @@ export const loop: Extension = {
 	name: LoopConfig.NAMESPACE,
 	settings: LoopConfig.SettingsSchema,
 	looks,
+	doctor: LoopDoctor.doctor,
 	commands: [command],
 	mcp: loopMcp,
 	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.

@@ -12,6 +12,7 @@ branch. `docs/loop.md` is what a user reads; read the part your change touches.
 | `src/store.ts` | run state as files under `$KABANE_HOME/loops/<runId>/`, never in the tracker |
 | `src/gates.ts`, `src/lenses.ts`, `src/review.ts`, `src/fixer.ts` | the closing checks, review and the fixer |
 | `src/land.ts`, `src/worktree.ts`, `src/trees.ts` | branches, worktrees and landing |
+| `src/doctor.ts` | the loop's `kabane doctor` checks: legacy and shadowed lenses, `loop.model` and `loop.tiers` |
 | `src/activity.ts`, `src/dispatcher.ts`, `src/header.ts` | what the board shows of a run; the header returns toned lines, with no React or OpenTUI |
 
 ## It takes types from kabane, and values only from the harness client it bundles
@@ -27,7 +28,6 @@ come from `@cabane/acp`. The loop has no dependency on the board.
 
 Several issues change this package; check main before you edit:
 
-- In flight now: JCAB-263 (a `doctor` check, on its own branch).
 - JCAB-326 ports the loop: values arrive on `host`, and the loop leaves the CLI's bundle. Plan
   lint now lives in `src/lint/` (JCAB-338); `src/advice.ts` and `src/commands.ts` use it.
 - JCAB-324 moves the copilot's loop procedure and shortcut into files in this extension.
