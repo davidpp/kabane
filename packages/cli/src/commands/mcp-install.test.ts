@@ -1,9 +1,14 @@
 import { describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parseArgs } from "@cabane/extension";
 import type { McpClients } from "../mcp-clients";
 import { McpInstall, mcpInstall } from "./mcp-install";
 
 const LAUNCHER = { command: "/opt/bun", args: ["/src/cli/index.ts"] };
+// No harness config files: tests never read the real home.
+const NO_CONFIGS = { home: "/nonexistent/kabane-test-home", env: {} };
 
 /** Records every argv; `present` names the harnesses whose probe finds an entry. */
 const fakeRunner = (present: McpClients.Id[] = [], failing: string[] = []) => {
@@ -43,6 +48,7 @@ describe("McpInstall.run", () => {
 				run: fake.run,
 				which: onPath("claude"),
 				launcher: LAUNCHER,
+				where: NO_CONFIGS,
 			},
 		);
 		expect(reports).toEqual([{ harness: "claude", status: "installed" }]);
@@ -74,6 +80,7 @@ describe("McpInstall.run", () => {
 				run: fake.run,
 				which: onPath("codex", "gemini"),
 				launcher: LAUNCHER,
+				where: NO_CONFIGS,
 			},
 		);
 		expect(reports.map((r) => r.status)).toEqual(["present", "present"]);
@@ -89,6 +96,7 @@ describe("McpInstall.run", () => {
 				run: fake.run,
 				which: onPath("gemini"),
 				launcher: LAUNCHER,
+				where: NO_CONFIGS,
 			},
 		);
 		expect(reports).toEqual([{ harness: "gemini", status: "replaced" }]);
@@ -108,6 +116,7 @@ describe("McpInstall.run", () => {
 				run: fake.run,
 				which: onPath("codex"),
 				launcher: LAUNCHER,
+				where: NO_CONFIGS,
 			},
 		);
 		expect(reports).toEqual([
@@ -145,6 +154,7 @@ describe("mcp install command", () => {
 	const install = (argv: string[], deps: McpInstall.Deps) =>
 		mcpInstall(parseArgs(["install", ...argv]), {
 			launcher: LAUNCHER,
+			where: NO_CONFIGS,
 			...deps,
 		});
 
@@ -160,6 +170,36 @@ describe("mcp install command", () => {
 		);
 		expect(outcome.text).toContain("✓ gemini installed");
 		expect(fake.calls.some((c) => c[0] === "codex")).toBe(false);
+	});
+
+	it("reports an entry registered with another command as stale, and leaves it", async () => {
+		const home = mkdtempSync(join(tmpdir(), "mcp-install-stale-"));
+		try {
+			mkdirSync(join(home, ".codex"));
+			const codexEntry = (command: string) =>
+				writeFileSync(
+					join(home, ".codex/config.toml"),
+					`[mcp_servers.kabane]\ncommand = "${command}"\nargs = ["/src/cli/index.ts", "mcp", "--as", "cabane://actor/agent/codex"]\n`,
+				);
+			codexEntry("/opt/old-bun");
+			const fake = fakeRunner(["codex"]);
+			const deps = {
+				run: fake.run,
+				which: onPath("codex"),
+				where: { home, env: {} },
+			};
+			const stale = await install([], deps);
+			expect(stale.exitCode).toBe(0);
+			expect(stale.text).toBe(
+				"! codex  registered with another command (pass --force to re-point it here)",
+			);
+			expect(verbs(fake.calls)).toEqual(["codex mcp get"]);
+			codexEntry("/opt/bun");
+			const current = await install([], deps);
+			expect(current.text).toContain("✓ codex  already installed");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
 	});
 
 	it("prints the snippets and spawns nothing with --print", async () => {

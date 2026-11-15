@@ -41,6 +41,7 @@ const lastLine = (text: string): string =>
 	text.trim().split("\n").at(-1)?.trim() ?? text;
 
 // `replaced` cannot happen without `--force`, which setup never passes; it reads as installed.
+// A stale entry is there all the same: `kabane doctor` reports what it launches.
 // The agent's actor URI goes unsaid: it is jargon to a newcomer, and the guide lists it per harness.
 export const outcomeOf = (
 	report: McpInstall.Report,
@@ -51,6 +52,7 @@ export const outcomeOf = (
 		case "replaced":
 			return { id, status: "installed" };
 		case "present":
+		case "stale":
 			return { id, status: "already" };
 		case "missing":
 			return { id, status: "failed", message: "not on PATH" };

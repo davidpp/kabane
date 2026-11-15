@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CopilotInstructions, Harnesses } from "@cabane/acp";
 import { McpClients } from "./mcp-clients";
 
@@ -123,4 +126,47 @@ describe("McpClients", () => {
 			],
 		});
 	});
+});
+
+describe("McpClients.registrations", () => {
+	const withHome = (run: (home: string) => void) => {
+		const home = mkdtempSync(join(tmpdir(), "mcp-clients-"));
+		try {
+			run(home);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	};
+
+	it("finds nothing without config files", () =>
+		withHome((home) => {
+			for (const id of McpClients.IDS)
+				expect(McpClients.registrations(id, { home, env: {} })).toEqual({
+					ok: true,
+					value: [],
+				});
+		}));
+
+	it("skips an entry with no command, such as an HTTP server", () =>
+		withHome((home) => {
+			mkdirSync(join(home, ".gemini"));
+			writeFileSync(
+				join(home, ".gemini/settings.json"),
+				JSON.stringify({ mcpServers: { kabane: { httpUrl: "https://hub" } } }),
+			);
+			expect(McpClients.registrations("gemini", { home, env: {} })).toEqual({
+				ok: true,
+				value: [],
+			});
+		}));
+
+	it("names the file it could not parse", () =>
+		withHome((home) => {
+			mkdirSync(join(home, ".codex"));
+			writeFileSync(join(home, ".codex/config.toml"), "[mcp_servers.kabane");
+			const read = McpClients.registrations("codex", { home, env: {} });
+			expect(read.ok).toBe(false);
+			if (!read.ok)
+				expect(read.error.message).toContain(join(home, ".codex/config.toml"));
+		}));
 });
