@@ -8,6 +8,8 @@ type Rule = {
 	dependencies: readonly string[];
 	// These are additional allowances; normal dependencies are also allowed in tests.
 	devDependencies: readonly string[];
+	// Repository-relative paths, in addition to *.test.* files.
+	testSupport?: readonly string[];
 	exceptions?: Readonly<Record<string, string>>;
 	relativeImports?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 };
@@ -15,15 +17,16 @@ type Rule = {
 // The current workspace graph, not a proposal for future package boundaries.
 export const layers: Readonly<Record<string, Rule>> = {
 	"@cabane/core": {
+		layer: "core",
 		relativeImports: {
 			"packages/core/storage/context-pages.test.ts": {
 				"../../cli/issue-corpus-harness":
 					"JCAB-331: replace relative cross-package imports",
 			},
 		},
-		layer: "core",
 		dependencies: [],
 		devDependencies: ["@cabane/sqlite"],
+		testSupport: ["packages/core/testing.ts"],
 	},
 	"@cabane/sqlite": {
 		layer: "storage adapter",
@@ -67,8 +70,13 @@ export const layers: Readonly<Record<string, Rule>> = {
 		layer: "client",
 		dependencies: ["@cabane/core", "@cabane/checklist", "@cabane/questions"],
 		devDependencies: ["@cabane/handoff", "@cabane/sqlite"],
+		testSupport: [
+			"packages/board/src/test-db.ts",
+			"packages/board/src/stories/fixtures.ts",
+		],
 	},
 	kabane: {
+		layer: "host",
 		relativeImports: {
 			"packages/cli/issue-corpus-seed.ts": {
 				"../core/testing/fixtures/issue-corpus/issues.json":
@@ -91,7 +99,6 @@ export const layers: Readonly<Record<string, Rule>> = {
 				"../../core/result": "JCAB-331: replace relative cross-package imports",
 			},
 		},
-		layer: "host",
 		dependencies: [
 			"@cabane/acp",
 			"@cabane/board",
@@ -106,13 +113,13 @@ export const layers: Readonly<Record<string, Rule>> = {
 		devDependencies: [],
 	},
 	"cabane-worker": {
+		layer: "hub",
 		relativeImports: {
 			"packages/worker/src/concise-mcp.test.ts": {
 				"../../core/testing/fixtures/issue-corpus/issues.json":
 					"JCAB-331: replace relative cross-package imports",
 			},
 		},
-		layer: "hub",
 		dependencies: [
 			"@cabane/core",
 			"@cabane/checklist",
@@ -227,13 +234,43 @@ function relativeImportFinding(
 	location: string,
 ): string | undefined {
 	const target = resolve(dirname(file), specifier);
+	if (target === pkg.directory || target.startsWith(`${pkg.directory}${sep}`))
+		return undefined;
 	const owner = packages.find(
 		(other) =>
 			target === other.directory ||
 			target.startsWith(`${other.directory}${sep}`),
 	);
-	if (!owner || owner.name === pkg.name) return undefined;
-	return `${pkg.name} -> ${owner.name}: relative cross-package import ${specifier} in ${location}; use a declared package import instead.`;
+	return `${pkg.name} -> ${owner?.name ?? "(outside workspace packages)"}: relative cross-package import ${specifier} in ${location}; use a declared package import instead.`;
+}
+
+function workspaceImportFinding(
+	pkg: Workspace,
+	packages: Workspace[],
+	rule: Rule | undefined,
+	{
+		path,
+		specifier,
+		location,
+	}: { path: string; specifier: string; location: string },
+): string | undefined {
+	const dependency = specifier.startsWith("@")
+		? specifier.split("/").slice(0, 2).join("/")
+		: specifier.split("/")[0];
+	if (!dependency || dependency === pkg.name) return undefined;
+	if (
+		!dependency.startsWith("@cabane/") &&
+		!packages.some((other) => other.name === dependency)
+	)
+		return undefined;
+	if (!(dependency in pkg.dependencies) && !(dependency in pkg.devDependencies))
+		return `${pkg.name} -> ${dependency}: undeclared workspace import ${specifier} in ${location}; declare it in package.json under the scripts/layers.ts allowance.`;
+	if (
+		!(dependency in pkg.dependencies) &&
+		!/\.test\.[^/]+$/.test(path) &&
+		!rule?.testSupport?.includes(path)
+	)
+		return `${pkg.name} -> ${dependency}: production workspace import ${specifier} in ${location} is only in devDependencies; declare it in dependencies under the scripts/layers.ts allowance.`;
 }
 
 function importFindings(
@@ -284,22 +321,12 @@ function importFindings(
 				} else findings.push(finding);
 				continue;
 			}
-			const dependency = specifier.startsWith("@")
-				? specifier.split("/").slice(0, 2).join("/")
-				: specifier.split("/")[0];
-			if (!dependency || dependency === pkg.name) continue;
-			if (
-				!dependency.startsWith("@cabane/") &&
-				!packages.some((other) => other.name === dependency)
-			)
-				continue;
-			if (
-				!(dependency in pkg.dependencies) &&
-				!(dependency in pkg.devDependencies)
-			)
-				findings.push(
-					`${pkg.name} -> ${dependency}: undeclared workspace import ${specifier} in ${location}; declare it in package.json under the scripts/layers.ts allowance.`,
-				);
+			const finding = workspaceImportFinding(pkg, packages, rule, {
+				path: relative(root, file).split(sep).join("/"),
+				specifier,
+				location,
+			});
+			if (finding) findings.push(finding);
 		}
 	}
 	for (const { file, specifier, issue } of pending.values()) {

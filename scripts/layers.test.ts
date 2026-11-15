@@ -136,7 +136,7 @@ test.each([
 	);
 });
 
-test("comments and strings are not imports; dependencies and dev dependencies permit subpaths", () => {
+test("comments and strings are not imports; tests permit dev dependency subpaths", () => {
 	const root = workspace();
 	manifest(
 		root,
@@ -147,7 +147,7 @@ test("comments and strings are not imports; dependencies and dev dependencies pe
 	);
 	write(
 		root,
-		"packages/core/index.ts",
+		"packages/core/index.test.ts",
 		`
 // import "@cabane/board";
 const example = 'import "@cabane/board"';
@@ -251,4 +251,57 @@ test("the nine named relative imports pass but a tenth fails", () => {
 	expect(checkWorkspaceLayers(root)).toEqual([
 		"@cabane/core -> kabane: relative cross-package import ../../cli/issue-corpus-harness in packages/core/storage/new.test.ts:1; use a declared package import instead.",
 	]);
+});
+
+test("production files cannot import dev-only workspace dependencies", () => {
+	const root = workspace();
+	manifest(
+		root,
+		"packages/core",
+		"@cabane/core",
+		{},
+		{ "@cabane/sqlite": "workspace:*" },
+	);
+	write(root, "packages/core/storage/oplog.ts", 'import "@cabane/sqlite";');
+	expect(checkLayers(root)).toEqual([
+		"@cabane/core -> @cabane/sqlite: production workspace import @cabane/sqlite in packages/core/storage/oplog.ts:1 is only in devDependencies; declare it in dependencies under the scripts/layers.ts allowance.",
+	]);
+});
+
+test("relative imports outside every package fail", () => {
+	const root = workspace();
+	manifest(root, "packages/core", "@cabane/core");
+	write(
+		root,
+		"packages/core/storage/oplog.ts",
+		'import "../../../scripts/layers";',
+	);
+	expect(checkLayers(root)).toEqual([
+		"@cabane/core -> (outside workspace packages): relative cross-package import ../../../scripts/layers in packages/core/storage/oplog.ts:1; use a declared package import instead.",
+	]);
+});
+
+test.each([
+	["packages/core", "@cabane/core", "packages/core/testing.ts"],
+	["packages/board", "@cabane/board", "packages/board/src/test-db.ts"],
+	["packages/board", "@cabane/board", "packages/board/src/stories/fixtures.ts"],
+])(
+	"explicit test support in %s permits dev dependencies: %s %s",
+	(directory, name, file) => {
+		const root = workspace();
+		manifest(root, directory, name, {}, { "@cabane/sqlite": "workspace:*" });
+		write(root, file, 'import "@cabane/sqlite/testing";');
+		expect(checkLayers(root)).toEqual([]);
+		write(root, file.replace(".ts", "-other.ts"), 'import "@cabane/sqlite";');
+		expect(checkLayers(root)).toHaveLength(1);
+	},
+);
+
+test("production imports permit declared runtime dependency subpaths", () => {
+	const root = workspace();
+	manifest(root, "packages/sqlite", "@cabane/sqlite", {
+		"@cabane/core": "workspace:*",
+	});
+	write(root, "packages/sqlite/index.ts", 'import "@cabane/core/db";');
+	expect(checkLayers(root)).toEqual([]);
 });
