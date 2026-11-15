@@ -60,8 +60,9 @@ imports the SDK.
   separate deliverable a subtask, under the rule the checklist module also states: an item has
   no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask. `DISPATCH_TEMPLATE` is the absolute path of `templates/dispatch/`, the generic
   dispatch skill `/setup-dispatch` fills from a project's own instructions and writes under its
-  `.agents/skills/dispatch/`, with a `.claude/skills/dispatch` link for Claude Code. `PLACEHOLDERS.md` there says what fills each `{{NAME}}` and is
-  never copied. `GRILL_TEMPLATE` is `templates/grill/`, the skill the copilot follows to walk the
+  `.agents/skills/dispatch/`, adding a `.claude/skills/dispatch` link for Claude Code when the
+  project has a `.claude/` directory or the human asks. `PLACEHOLDERS.md` there says what fills
+  each `{{NAME}}` and is never copied. `GRILL_TEMPLATE` is `templates/grill/`, the skill the copilot follows to walk the
   human through open questions, asking each through the harness's choice prompt where it has one
   and reshaping one the decision does not fit with `kabane_ask`'s `replaces`, and copies unchanged to `.agents/skills/grill/` on request.
 - `Mailbox` — a one-consumer queue whose `filled()` is already settled when something is
