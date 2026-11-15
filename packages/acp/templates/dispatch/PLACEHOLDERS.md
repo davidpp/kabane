@@ -45,7 +45,7 @@ edited. Copy a value only when the project leaves it unstated and the fallback b
   testing (never deploy, never touch production, which environments are allowed). Otherwise
   use `Ask before anything that leaves this machine: a deploy, a publish, a write to a
   shared service.`
-- `{{AGENTS}}`: one line per file in `.claude/agents/`, giving the agent type and the territory
+- `{{AGENTS}}`: one line per project agent file (Claude Code's `.claude/agents/`), giving the agent type and the territory
   it takes, from its description. Otherwise use `None. Use a general-purpose agent with the
   few-liners below.`
 - `{{TERRITORIES}}`: a table mapping each area to its globs, covering the top-level packages or
