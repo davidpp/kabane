@@ -1,14 +1,12 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { Runtime } from "@cabane/core";
+import { Oplog, Runtime } from "@cabane/core";
+import { Apply, configureTestRuntime } from "@cabane/core/testing";
 import { SqliteDb } from "@cabane/sqlite";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
-import { Oplog } from "../core/storage/oplog";
-import { Apply } from "../core/sync/apply";
-import { configureTestRuntime } from "../core/testing";
 import { CLI_BIN, createCorpusTracker } from "./issue-corpus-harness";
 
 const toolResult = z.object({
