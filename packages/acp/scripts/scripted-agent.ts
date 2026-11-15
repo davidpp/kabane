@@ -18,6 +18,10 @@
  *   long            a long reply, streamed in chunks
  *   anything else   echoed back
  *
+ * A loop run's review triage brief (it opens with TRIAGE) is answered with a review plan, so a
+ * loop run reaches its lenses through a triage live: every lens it lists but the last in one
+ * group at tier fast, and the last skipped.
+ *
  * After an ask is answered it says what it received, so a flow is checkable end to end. Its first
  * reply in a session opens by saying what it is, since the pane's title names the harness id the
  * sandbox launches it under, claude, and that alone reads as a real harness answering.
@@ -318,6 +322,30 @@ const runLong = async (ctx: Context): Promise<boolean> => {
 	return false;
 };
 
+// `Review.OPENING` in extensions/loop/src/review.ts: a loop run's triage brief starts with it.
+const TRIAGE = "You are the review triage of kabane loop run";
+
+const runTriage = async (ctx: Context, text: string): Promise<boolean> => {
+	const lenses = [...text.matchAll(/^- `([a-z][a-z0-9-]*)`/gm)].map(
+		([, name]) => name,
+	);
+	const last = lenses.at(-1);
+	const plan = {
+		groups: [
+			{
+				lenses: lenses.slice(0, -1),
+				tier: "fast",
+				reason: "scripted: one session for every lens but the last",
+			},
+		],
+		skipped: last
+			? [{ lens: last, reason: "scripted: the last lens is skipped" }]
+			: [],
+	};
+	await say(ctx, `\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\``);
+	return false;
+};
+
 const INTRO =
 	"Scripted agent (packages/acp/scripts/scripted-agent.ts), not claude: the sandbox runs it under claude's harness id.\n\n";
 const introduced = new Set<string>();
@@ -328,6 +356,7 @@ const turn = async (ctx: Context, text: string): Promise<boolean> => {
 		introduced.add(ctx.sessionId);
 		await say(ctx, INTRO);
 	}
+	if (text.startsWith(TRIAGE)) return runTriage(ctx, text);
 	const keyword = keywordOf(text);
 	switch (keyword) {
 		case "ask form":

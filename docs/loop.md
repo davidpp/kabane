@@ -197,7 +197,9 @@ file overlap and past attempts, plus the project's scripts and lockfile. It can 
 - `loop.stallAfter`: fewer attempts before stalling when past work has thrashed.
 
 Verifier lenses (`loop.lenses`) are also task-shaped choices in the form. The current
-adviser leaves that list at your configured value; choose the lenses you want there.
+adviser leaves that list at your configured value; choose the lenses you want there. Which
+of them review a given run, and in how many sessions, is decided once the work is done by
+the run's triage (see "How much review a run gets").
 Advice never changes `loop.implementer`, `loop.verifier`, `loop.model` or `loop.land`.
 Those are your choices of harness, model and what happens to the finished branch.
 
@@ -221,8 +223,8 @@ lens is one. Both keys are optional: a file without frontmatter is a lens with n
 `applies` that is not `always`. Any other key, or frontmatter that is not YAML, is an
 error that names the file, and `kabane loop start` refuses a run that would use that lens.
 The session gets the prompt without its frontmatter. The dispatch skill's close review
-skips a lens whose `applies` the diff does not touch; a loop run still runs every lens in
-`loop.lenses`.
+skips a lens whose `applies` the diff does not touch. A loop run's triage reads both keys
+to decide which lenses run; with `loop.review.mode all`, every lens in `loop.lenses` runs.
 
 To read the same advice from the CLI, including how the subtask tags would route:
 
@@ -241,3 +243,50 @@ You can also ask the board copilot to "set up a loop for X". It reads the advice
 subtasks' briefs, proposes settings and `tier:`/`agent:` tags with a reason for each, and
 waits for your yes before it tags anything or starts the run. It never changes the
 implementer or verifier unless you ask.
+
+## How much review a run gets
+
+With two lenses or more in `loop.lenses`, a run triages before they review. Once the
+work is done and the gates are green, one short session reads what the run changed
+(`git diff --stat` from the commit its worktree was made from, plus files new to git),
+the parent's brief and each lens's `applies` and `always`. It changes nothing and answers
+with a review plan: which lenses review together in one session, at which tier, and which
+it skips, each with a reason. The plan goes on the run's trace, one line per session and
+per skipped lens:
+
+```text
+functional+quality at tier balanced: one code path, the change is a new CLI flag
+docs: README.md and docs/loop.md changed
+skipped compat: no persisted data, interface or config change in the diff
+```
+
+The run then starts one session per group. A skipped lens files nothing and counts as
+reviewed. The plan cannot go below these bounds:
+
+- A lens marked `always: true` always reviews. A plan that skips it gets it back in a
+  session of its own.
+- A lens the plan does not mention reviews in a session of its own. A lens the run does
+  not have is dropped, and so is a tier that no run knows.
+- A diff of more than 20 files or 800 changed lines gets one session per lens, whatever
+  the plan grouped.
+- Triage never changes `loop.implementer`, `loop.verifier`, `loop.model` or `loop.land`.
+
+Every lens reviews in a session of its own, with the reason on the trace, when triage
+fails, is stopped, edits a file, or answers no plan. The same happens when the run has
+no commit to diff against (a run without a worktree, or outside git), where no triage
+session starts, and when a run resumed by a newer kabane was already reviewing. A failed
+triage never stops the run. A run triages once: a restarted runner keeps the plan, and
+runs a triage again only when the last one was cut short.
+
+Triage runs on the verifier harness (`loop.verifier`, else `loop.implementer`) as its
+default agent, at tier `loop.review.tier`, `fast` by default. Map that tier to the model
+you want, or give triage a tier of its own so `tier:fast` subtasks keep theirs:
+
+```bash
+kabane config set loop.review.tier triage
+kabane config set loop.tiers.claude.triage haiku
+```
+
+An unmapped tier runs on the run's model, with a trace warning. `kabane loop status
+<runId>` lists the `triage` session with the model it ran on. `loop.review.mode all`
+turns triage off: every lens reviews in a session of its own, as a run with one lens does.

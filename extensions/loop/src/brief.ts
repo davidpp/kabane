@@ -104,6 +104,10 @@ export namespace Brief {
 			"Where the issue's brief names a branch, a worktree or a merge order, this paragraph replaces it.",
 		].join(" ");
 
+	/** Where a read-only session works, and that it changes nothing there: a triage's (`Review`). */
+	export const reviewing = (tree: Tree): string =>
+		working(tree, undefined, false, true);
+
 	const plural = (count: number, noun: string): string =>
 		`${count} ${noun}${count === 1 ? "" : "s"}`;
 
