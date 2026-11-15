@@ -1,13 +1,23 @@
-/**
- * The official extensions. Each is a workspace package under `extensions/`,
- * bundled into the one `kabane` package, and off until `config.json`'s
- * `extensions` names it. One is imported only when a command or the board
- * needs it, so a built-in command such as `kabane list` loads none of them.
- */
-
-import { existsSync } from "node:fs";
-import { err, ok, type Result, tryCatch } from "@cabane/core";
-import type { Extension, Settings } from "@cabane/extension";
+/** Device extensions are discovered without importing them; only enabled code runs. */
+import {
+	existsSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	statSync,
+} from "node:fs";
+import { join, sep } from "node:path";
+import { pathToFileURL } from "node:url";
+import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
+import { Self } from "@cabane/core/self";
+import {
+	failure,
+	type Extension,
+	type Host,
+	type Settings,
+} from "@cabane/extension";
+import { z } from "zod";
+import { version } from "../package.json";
 import { ConfigSchema, configPath, loadConfig } from "./config";
 import { ConfigLayers } from "./config-layers";
 
@@ -22,73 +32,277 @@ const OFFICIAL: Readonly<Record<string, () => Promise<Extension>>> = {
 	loop: async () => (await import("@cabane/loop")).loop,
 };
 
-/** What an unknown command name turned out to be. */
-type Lookup =
-	| { found: "enabled"; command: Extension.Command }
-	| { found: "disabled"; extension: string }
-	| { found: "none" };
-
-// Names already warned about, so a process that reads the config twice says it once.
-const warnedUnknown = new Set<string>();
+const Manifest = z.object({
+	kabane: z.object({
+		extension: z.string().min(1),
+		api: z.number(),
+		modules: z.string().optional(),
+	}),
+});
+const callable = <T extends (...args: never[]) => unknown>() =>
+	z.custom<T>((value) => typeof value === "function", "must be a function");
+const Factory = callable<(host: Host) => unknown>();
+const zodType = z.custom<z.ZodType>(
+	(value) => value instanceof z.ZodType,
+	(value) => ({
+		message:
+			typeof value === "object" &&
+			value !== null &&
+			"_def" in value &&
+			"safeParse" in value &&
+			typeof value.safeParse === "function"
+				? "must be built with kabane's zod, which the extension API passes as host.z; this kabane does not provide host.z yet"
+				: "must be a Zod schema",
+	}),
+);
+const ExtensionShape = z.object({
+	name: z.string(),
+	commands: z
+		.array(
+			z.object({
+				name: z.string(),
+				usage: z.string(),
+				summary: z.string(),
+				standalone: z.boolean().optional(),
+				run: callable<Extension.Command["run"]>(),
+			}),
+		)
+		.optional(),
+	settings: zodType.optional(),
+	looks: z
+		.record(
+			z.object({
+				label: z.string(),
+				group: z.string(),
+				options: z
+					.union([
+						z.array(z.union([z.string(), z.number()])),
+						callable<(at: Settings.At) => readonly (string | number)[]>(),
+					])
+					.optional(),
+				none: z.string().optional(),
+			}),
+		)
+		.optional(),
+	board: callable<NonNullable<Extension["board"]>>().optional(),
+	mcp: callable<NonNullable<Extension["mcp"]>>().optional(),
+	doctor: callable<NonNullable<Extension["doctor"]>>().optional(),
+});
+const Name = z
+	.string()
+	.min(1)
+	.refine((name) => name !== "." && name !== ".." && !/[\\/\0]/.test(name));
+const warned = new Set<string>();
 
 export namespace Extensions {
-	/** Every official extension this build ships, by the name `extensions` takes. */
+	export const zodSchema = zodType;
+	/** Keep the author's first line, excluding Bun's call-expression annotation. */
+	export const cause = (error: Error): string => {
+		const first = (error.message.split(/[\r\n]/, 1)[0] ?? "").replace(
+			/\s*\(In '[\s\S]*$/,
+			"",
+		);
+		return first.length > 200 ? `${first.slice(0, 199)}…` : first;
+	};
+	export const invalid = (error: z.ZodError): string => {
+		const issue = error.issues[0];
+		if (!issue) return "value does not match the extension contract";
+		const path =
+			issue.path.reduce<string>(
+				(text, part) =>
+					typeof part === "number"
+						? `${text}[${part}]`
+						: `${text}${text ? "." : ""}${part}`,
+				"",
+			) || "value";
+		if (issue.code === "invalid_type") {
+			const article = /^[aeiou]/.test(issue.expected) ? "an" : "a";
+			return `${path} must be ${article} ${issue.expected}`;
+		}
+		if (issue.code === "invalid_union")
+			return [...new Set(issue.unionErrors.map(invalid))].join(" or ");
+		if (issue.code === "invalid_enum_value")
+			return `${path} must be ${issue.options.map(String).join(" or ")}`;
+		return `${path} ${issue.message}`;
+	};
 	export const names: readonly string[] = Object.keys(OFFICIAL);
-
-	/**
-	 * The official extensions this home turns on. No config file is none on;
-	 * an unreadable one is the error every other command would report. A name
-	 * this build does not ship is skipped, so a config a newer kabane wrote
-	 * still opens, with a warning on stderr since it may be a typo.
-	 */
+	export type Refusal = { name: string; reason: string };
+	export const line = ({ name, reason }: Refusal): string =>
+		`Extension ${name}: ${reason}`.replace(/[\r\n]+/g, " ");
+	export const report = (refused: readonly Refusal[]): void => {
+		for (const refusal of refused) {
+			const message = line(refusal);
+			if (warned.has(message)) continue;
+			warned.add(message);
+			console.error(message);
+		}
+	};
+	const directory = (home: string, name: string): string =>
+		join(home, "extensions", name);
+	export const installed = (home: string, name: string): boolean => {
+		if (!Name.safeParse(name).success) return false;
+		const stat = trySync(() => statSync(directory(home, name)));
+		return stat.ok && stat.value.isDirectory();
+	};
+	/** Directory discovery never reads a manifest or imports disabled code. */
+	export const available = (home: string): string[] => {
+		const entries = trySync(() => readdirSync(join(home, "extensions")));
+		return [
+			...new Set([
+				...names,
+				...(entries.ok
+					? entries.value.filter((name) => installed(home, name))
+					: []),
+			]),
+		];
+	};
 	export const enabled = (home: string): Result<string[]> => {
 		if (!existsSync(configPath(home))) return ok([]);
 		const config = loadConfig(home);
-		if (!config.ok) return config;
-		const named = config.value.extensions ?? [];
-		for (const name of unshipped(named)) {
-			if (warnedUnknown.has(name)) continue;
-			warnedUnknown.add(name);
-			console.error(ignoredWarning(name, home));
-		}
-		return ok(Object.keys(OFFICIAL).filter((name) => named.includes(name)));
+		return config.ok ? ok([...new Set(config.value.extensions ?? [])]) : config;
 	};
+	export const unshipped = (named: readonly string[], home: string): string[] =>
+		named.filter(
+			(name) => !Object.hasOwn(OFFICIAL, name) && !installed(home, name),
+		);
+	export const disabledAdvice =
+		"or remove it from extensions with `kabane config set extensions <names> --layer global`.";
+	const refusal = (reason: string): string => `${reason}; ${disabledAdvice}`;
+	export const missing = (name: string, home: string): Refusal => ({
+		name,
+		reason: refusal(`not installed; put it in ${directory(home, name)}/`),
+	});
 
-	/** The names in an `extensions` list that this build does not ship, so would load nothing. */
-	export const unshipped = (named: readonly string[]): string[] =>
-		named.filter((name) => !Object.hasOwn(OFFICIAL, name));
-
-	export const ignoredWarning = (name: string, home: string): string =>
-		`kabane: ignoring "${name}" in "extensions" of ${configPath(home)}: this kabane ships ${names.join(", ")}`;
-
-	const load = async (name: string): Promise<Result<Extension>> => {
-		const loader = OFFICIAL[name];
-		if (!loader) return err(new Error(`No official extension "${name}"`));
-		const loaded = await tryCatch(loader);
-		if (!loaded.ok)
+	const load = async (
+		name: string,
+		home: string,
+	): Promise<Result<Extension>> => {
+		if (!Name.safeParse(name).success)
 			return err(
-				new Error(`Extension ${name} failed to load: ${loaded.error.message}`),
+				new Error(
+					"invalid extension directory name; use a single directory name",
+				),
 			);
-		// The key is what config enables and what prefixes the board ids; the object has to agree.
-		return loaded.value.name === name
-			? loaded
-			: err(
+		let loaded: Result<unknown>;
+		if (installed(home, name)) {
+			const dir = directory(home, name);
+			if (Object.hasOwn(OFFICIAL, name))
+				report([
+					{ name, reason: `directory ${dir}/ overrides bundled ${name}` },
+				]);
+			const file = join(dir, "package.json");
+			const contents = trySync(() => readFileSync(file, "utf8"));
+			if (!contents.ok)
+				return err(
 					new Error(
-						`Extension listed as "${name}" calls itself "${loaded.value.name}"`,
+						existsSync(file)
+							? `${file} cannot be read; make it readable`
+							: `${file} is missing; add a package.json manifest`,
 					),
 				);
+			const manifest = trySync((): unknown => JSON.parse(contents.value));
+			if (!manifest.ok)
+				return err(
+					new Error(`${file} contains invalid JSON; correct its JSON`),
+				);
+			const parsed = Manifest.safeParse(manifest.value);
+			if (!parsed.success)
+				return err(
+					new Error(
+						`${file} needs "kabane": { "extension": "<entry>", "api": 1 }`,
+					),
+				);
+			const entry = parsed.data.kabane;
+			if (entry.api !== 1)
+				return err(
+					new Error(
+						`requires API ${entry.api}; this kabane supports API 1; install an API 1 version of the extension`,
+					),
+				);
+			if (entry.modules !== undefined)
+				return err(
+					new Error(
+						"this kabane does not load data modules yet; install a version without data modules",
+					),
+				);
+			const resolved = trySync(() => ({
+				root: realpathSync(dir),
+				entry: realpathSync(Bun.resolveSync(entry.extension, dir)),
+			}));
+			if (!resolved.ok)
+				return err(
+					new Error(
+						`${file} names an entry that cannot be resolved; correct kabane.extension`,
+					),
+				);
+			if (!resolved.value.entry.startsWith(`${resolved.value.root}${sep}`))
+				return err(
+					new Error(
+						`${file} names an entry outside its extension directory; move the entry inside that directory`,
+					),
+				);
+			const imported = await tryCatch(
+				() => import(pathToFileURL(resolved.value.entry).href),
+			);
+			if (!imported.ok)
+				return err(
+					new Error(
+						`the entry could not be imported: ${cause(imported.error)}; repair the entry and its dependencies`,
+					),
+				);
+			const factory = Factory.safeParse(imported.value.default);
+			if (!factory.success)
+				return err(
+					new Error(
+						"the entry's default export must be a factory (host) => Extension",
+					),
+				);
+			const host: Host = {
+				api: 1,
+				kabane: { version, executable: Self.executable() },
+			};
+			loaded = await tryCatch(async () => factory.data(host));
+		} else {
+			const loader = Object.hasOwn(OFFICIAL, name) ? OFFICIAL[name] : undefined;
+			if (!loader)
+				return err(
+					new Error(`not installed; put it in ${directory(home, name)}/`),
+				);
+			loaded = await tryCatch(loader);
+		}
+		if (!loaded.ok)
+			return err(
+				new Error(
+					`the factory failed: ${cause(loaded.error)}; repair the extension's factory`,
+				),
+			);
+		const parsed = ExtensionShape.safeParse(loaded.value);
+		if (!parsed.success)
+			return err(
+				new Error(
+					`the factory returned an invalid Extension: ${invalid(parsed.error)}`,
+				),
+			);
+		if (parsed.data.name !== name)
+			return err(
+				new Error(
+					`factory name must be "${name}"; got ${JSON.stringify(parsed.data.name)}; correct the factory's name`,
+				),
+			);
+		return ok(loaded.value as Extension);
 	};
-
 	export const loadAll = async (
 		names: readonly string[],
-	): Promise<Result<Extension[]>> => {
-		const extensions: Extension[] = [];
-		for (const name of names) {
-			const loaded = await load(name);
-			if (!loaded.ok) return loaded;
-			extensions.push(loaded.value);
+		home: string,
+	): Promise<{ loaded: Extension[]; refused: Refusal[] }> => {
+		const loaded: Extension[] = [];
+		const refused: Refusal[] = [];
+		for (const name of new Set(names)) {
+			const result = await load(name, home);
+			if (result.ok) loaded.push(result.value);
+			else refused.push({ name, reason: refusal(result.error.message) });
 		}
-		return ok(extensions);
+		return { loaded, refused };
 	};
 
 	// The top-level keys a namespace may not take: device config, the per-scope block, and `db`,
@@ -127,56 +341,63 @@ export namespace Extensions {
 		return ok(found);
 	};
 
-	/**
-	 * Every shipped extension's settings namespace, enabled or not, so its settings can be set
-	 * before it is turned on. Loads every extension: only the config surface asks.
-	 */
-	export const namespaces = async (): Promise<Result<Settings.Namespace[]>> => {
-		const all = await loadAll(names);
-		return all.ok ? namespacesOf(all.value) : all;
-	};
-
-	const commandOf = (
-		extension: Extension,
-		name: string,
-	): Extension.Command | undefined =>
-		extension.commands?.find((command) => command.name === name);
-
-	/**
-	 * A command name no built-in claimed (built-ins always win). Enabled
-	 * extensions are searched first; only a miss loads the disabled ones, to
-	 * tell the human which extension to turn on. A disabled one that fails to
-	 * load just does not own the name: it is off, so it has no say.
-	 */
-	export const find = async (
-		name: string,
-		enabledNames: readonly string[],
-	): Promise<Result<Lookup>> => {
-		const enabled = await loadAll(enabledNames);
-		if (!enabled.ok) return enabled;
-		for (const extension of enabled.value) {
-			const command = commandOf(extension, name);
-			if (command) return ok({ found: "enabled", command });
-		}
-		for (const other of Object.keys(OFFICIAL)) {
-			if (enabledNames.includes(other)) continue;
-			const extension = await load(other);
-			if (extension.ok && commandOf(extension.value, name))
-				return ok({ found: "disabled", extension: other });
-		}
-		return ok({ found: "none" });
-	};
-
-	/** Without a config there is no file to edit yet, and init is what writes one. */
-	export const enableHint = (
-		command: string,
-		extension: string,
+	/** Bundled settings remain configurable before enablement; directory code must be enabled. */
+	export const namespaces = async (
 		home: string,
-	): string => {
-		const path = configPath(home);
-		const off = `\`kabane ${command}\` comes with the ${extension} extension, which is off`;
-		return existsSync(path)
-			? `${off}; add "${extension}" to "extensions" in ${path}`
-			: `${off}; run \`kabane init\`, then add "${extension}" to "extensions" in ${path}`;
+	): Promise<Result<Settings.Namespace[]>> => {
+		const selected = enabled(home);
+		if (!selected.ok) return selected;
+		const all = await loadAll(selected.value, home);
+		// Bundled settings remain known even when a disabled directory shadows that name.
+		for (const name of names) {
+			if (selected.value.includes(name)) continue;
+			const loader = Object.hasOwn(OFFICIAL, name) ? OFFICIAL[name] : undefined;
+			if (!loader) continue;
+			const bundled = await tryCatch(loader);
+			if (bundled.ok) all.loaded.push(bundled.value);
+			else all.refused.push({ name, reason: bundled.error.message });
+		}
+		report(all.refused);
+		return namespacesOf(all.loaded);
+	};
+	export const commands = (
+		loaded: readonly Extension[],
+		builtinNames: readonly string[],
+	): { commands: Extension.Command[]; refused: Refusal[] } => {
+		const contributions = loaded.flatMap((extension) =>
+			(extension.commands ?? []).map((command) => ({
+				owner: extension.name,
+				command,
+			})),
+		);
+		const commands: Extension.Command[] = [];
+		const refused: Refusal[] = [];
+		for (const { owner, command } of contributions) {
+			const conflict = builtinNames.includes(command.name)
+				? "a built-in command"
+				: contributions.filter((entry) => entry.command.name === command.name)
+							.length > 1
+					? "another enabled extension command"
+					: undefined;
+			if (conflict) {
+				refused.push({
+					name: owner,
+					reason: refusal(
+						`command "${command.name}" conflicts with ${conflict}; rename the extension command`,
+					),
+				});
+				continue;
+			}
+			commands.push({
+				...command,
+				run: async (args, ctx) => {
+					const called = await tryCatch(() => command.run(args, ctx));
+					return called.ok
+						? called.value
+						: failure(line({ name: owner, reason: called.error.message }));
+				},
+			});
+		}
+		return { commands, refused };
 	};
 }

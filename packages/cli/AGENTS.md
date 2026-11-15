@@ -12,7 +12,7 @@ data modules; setup, configuration, updates and the board's runtime are the host
 | `src/commands/*.ts` | one file per command, each a `Command` |
 | `src/context.ts` | `MODULES`, `configureRuntime`, `openContext` (the `Ctx` a command gets), scope selection |
 | `src/config*.ts` | `config.json`, the settings layers, `kabane config`, and the device config tools only `kabane mcp` serves (`config-tools.ts`) |
-| `src/extensions.ts` | the official extensions (`OFFICIAL`), loaded only when a command or the board needs one |
+| `src/extensions.ts` | directory extensions and the bundled fallback (`OFFICIAL`), loaded only when a command or the board needs one |
 | `src/commands/board-runtime.ts` | builds the board's ports and the copilot, then calls `startBoard` |
 | `src/first-run.ts`, `src/mcp-clients.ts`, `src/update-*.ts` | the setup screen, MCP registration in harness configs, self-update |
 
@@ -30,12 +30,16 @@ reading the environment (`CODING_PRINCIPLE.md`, "Explicit dependencies").
 
 Most of the extension API lands here; check main before editing these files:
 
-- In flight now: JCAB-263 (a `doctor` command, on its own branch).
-- JCAB-321 rewrites `src/extensions.ts` and the board's refusal in `board-runtime.ts`: kabane
-  loads extensions from `$KABANE_HOME/extensions`. A broken command, board port, tool or
-  copilot file is skipped with one line; an enabled extension whose modules entry fails stops
-  every command that opens the database until it is repaired or disabled (`ARCHITECTURE.md`,
-  "A module that fails to load stops writes").
+- The extension contract includes `mcp` and `doctor`; the `doctor` runner is in
+  `packages/extension/doctor.ts`. The CLI `doctor` command remains separate work.
+- `src/extensions.ts` loads enabled directories from `$KABANE_HOME/extensions` before the bundled
+  fallback. `loadAll(names, home)` returns `loaded` and `refused`; callers must consume both.
+  Help, commands and MCP report refusals on stderr; the board uses its announcer. A disabled
+  directory is discovered without importing it, including during command lookup and config.
+  The manifest API and the resolved entry path are checked before import, and the factory
+  result is validated before its contributions are accepted. A directory named `loop` overrides
+  the bundled fallback. Manifests naming data modules are refused until JCAB-323 adds
+  registration and its database gate.
 - JCAB-322 builds the `host` object; JCAB-323 splits `openContext` into the stages
   `ARCHITECTURE.md` lists under "Every process that opens the database registers the same
   modules".
