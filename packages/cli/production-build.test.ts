@@ -44,7 +44,14 @@ process.on("exit", () => require("node:fs").writeFileSync(${JSON.stringify(repor
 			stdout: "ignore",
 			stderr: "pipe",
 		});
-		expect(await proc.exited).toBe(0);
+		const exited = await proc.exited;
+		// The exit code alone does not say why the entry failed; its stderr does.
+		expect({
+			exited,
+			stderr: await new Response(proc.stderr).text(),
+		}).toMatchObject({
+			exited: 0,
+		});
 
 		const probed = Probed.parse(JSON.parse(readFileSync(report, "utf8")));
 		expect(probed.nodeEnv).toBe("production");
