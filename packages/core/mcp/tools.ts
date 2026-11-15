@@ -222,6 +222,8 @@ Parameters:
 - priority: urgent, high, normal, low
 - assignee: Who it is assigned to. An agent runtime polls with its own name and state next to find work
 - scopeUri: ${SCOPE_HINT} Omit for every scope
+- parentTaskId: Parent task short id or ULID
+- includeDeferred: Include tasks deferred to a future date (default false)
 - tag: One tag
 - includeClosed: Include done and cancelled (default false)
 - limit: Full default 100; concise default 20, maximum 100
@@ -234,12 +236,20 @@ Parameters:
 		assignee: z.string().optional(),
 		scopeUri: z.string().optional(),
 		tag: z.string().optional(),
+		parentTaskId: z.string().min(1).optional(),
+		includeDeferred: z.boolean().optional(),
 		includeClosed: z.boolean().optional(),
 		limit: z.number().int().positive().optional(),
 		responseFormat: ResponseFormatSchema.optional(),
 		cursor: z.string().max(700).optional(),
 	},
-	handler: (args, ctx) => {
+	handler: async (args, ctx) => {
+		let parentTaskId: string | undefined;
+		if (args.parentTaskId !== undefined) {
+			const parent = await resolveId(ctx, args.parentTaskId);
+			if (!parent.ok) return parent;
+			parentTaskId = parent.value;
+		}
 		const query = {
 			state: args.state,
 			kind: args.kind,
@@ -247,6 +257,8 @@ Parameters:
 			assignee: args.assignee,
 			scopeUri: args.scopeUri,
 			tag: args.tag,
+			parentTaskId,
+			includeDeferred: args.includeDeferred ?? false,
 			includeClosed: args.includeClosed ?? args.state !== undefined,
 		};
 		if (args.responseFormat === "concise")
@@ -384,12 +396,14 @@ Parameters:
 - id: ${ID_HINT}
 - title, description, state, priority, kind, assignee, scopeUri, parentTaskId, tags, dueDate: as in kabane_add
 - assignee 'none' and parentTaskId 'none' clear the field
+- needsReview: Set or clear the review flag
 - responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
 	input: {
 		id: z.string().min(1),
 		title: z.string().min(1).max(500).optional(),
 		description: z.string().optional(),
 		state: TaskStateSchema.optional(),
+		needsReview: z.boolean().optional(),
 		priority: TaskPrioritySchema.optional(),
 		kind: ItemKindSchema.optional(),
 		assignee: z.string().optional(),
@@ -414,6 +428,7 @@ Parameters:
 			title: args.title,
 			description: args.description,
 			state: args.state,
+			needsReview: args.needsReview,
 			priority: args.priority,
 			kind: args.kind,
 			assignee: args.assignee === "none" ? "" : args.assignee,
@@ -611,6 +626,51 @@ Parameters:
 	},
 });
 
+const linkList = define({
+	name: CORE_TOOL_NAMES.linkList,
+	kind: "read",
+	description: `List a task’s links in both directions.
+
+Parameters:
+- id: ${ID_HINT}`,
+	input: { id: z.string().min(1) },
+	handler: async (args, ctx) => {
+		const id = await resolveId(ctx, args.id);
+		if (!id.ok) return id;
+		return Planner.getLinksForTask(ctx.basePath, id.value);
+	},
+});
+
+const upstreamList = define({
+	name: CORE_TOOL_NAMES.upstreamList,
+	kind: "read",
+	description: `List a task’s upstream links.
+
+Parameters:
+- id: ${ID_HINT}`,
+	input: { id: z.string().min(1) },
+	handler: async (args, ctx) => {
+		const id = await resolveId(ctx, args.id);
+		if (!id.ok) return id;
+		return Planner.getUpstreamLinksForTask(ctx.basePath, id.value);
+	},
+});
+
+const logList = define({
+	name: CORE_TOOL_NAMES.logList,
+	kind: "read",
+	description: `List a task’s work logs, oldest first.
+
+Parameters:
+- id: ${ID_HINT}`,
+	input: { id: z.string().min(1) },
+	handler: async (args, ctx) => {
+		const id = await resolveId(ctx, args.id);
+		if (!id.ok) return id;
+		return Planner.getWorkLogs(ctx.basePath, id.value);
+	},
+});
+
 const contextList = define({
 	name: CORE_TOOL_NAMES.contextList,
 	kind: "read",
@@ -782,6 +842,9 @@ export const KABANE_TOOLS: readonly ToolDef[] = [
 	workLog,
 	contextAdd,
 	contextList,
+	logList,
+	upstreamList,
+	linkList,
 	contextRemove,
 	upstreamLink,
 	upstreamUnlink,
