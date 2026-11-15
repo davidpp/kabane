@@ -106,11 +106,13 @@ export const layers: Readonly<Record<string, Rule>> = {
 			"@cabane/core",
 			"@cabane/extension",
 			"@cabane/handoff",
-			"@cabane/loop",
 			"@cabane/questions",
 			"@cabane/sqlite",
 		],
 		devDependencies: [],
+		exceptions: {
+			"@cabane/loop": "JCAB-326: the build stops bundling the loop",
+		},
 	},
 	"cabane-worker": {
 		layer: "hub",
@@ -130,16 +132,14 @@ export const layers: Readonly<Record<string, Rule>> = {
 	},
 	"@cabane/loop": {
 		layer: "extension",
-		dependencies: [],
+		// An extension brings its own harness client and bundles it (JCAB-316:2).
+		dependencies: ["@cabane/acp"],
 		devDependencies: [],
 		exceptions: {
-			"@cabane/acp": "JCAB-316: port the loop outside the workspace build",
-			"@cabane/board": "JCAB-316: port the loop outside the workspace build",
-			"@cabane/checklist":
-				"JCAB-316: port the loop outside the workspace build",
-			"@cabane/core": "JCAB-316: port the loop outside the workspace build",
-			"@cabane/extension":
-				"JCAB-316: port the loop outside the workspace build",
+			"@cabane/board": "JCAB-326: port the loop onto the extension API",
+			"@cabane/checklist": "JCAB-326: port the loop onto the extension API",
+			"@cabane/core": "JCAB-326: port the loop onto the extension API",
+			"@cabane/extension": "JCAB-326: port the loop onto the extension API",
 		},
 	},
 };

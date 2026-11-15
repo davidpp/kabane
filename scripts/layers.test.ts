@@ -30,7 +30,9 @@ function manifest(
 	root: string,
 	path: string,
 	name: string,
-	dependencies = {},
+	dependencies: Record<string, string> = name === "kabane"
+		? { "@cabane/loop": "workspace:*" }
+		: {},
 	devDependencies = {},
 ): void {
 	write(
@@ -97,6 +99,16 @@ test("named exceptions must still exist in runtime dependencies", () => {
 	manifest(root, "packages/acp", "@cabane/acp");
 	expect(checkLayers(root)).toEqual([
 		"@cabane/acp -> @cabane/board: stale exception (JCAB-320: move UI-neutral ports to the extension contract); remove this exception from scripts/layers.ts.",
+	]);
+});
+
+test("the CLI loop exception becomes stale when its runtime dependency is removed", () => {
+	const root = workspace();
+	manifest(root, "packages/cli", "kabane");
+	expect(checkLayers(root)).toEqual([]);
+	manifest(root, "packages/cli", "kabane", {});
+	expect(checkLayers(root)).toEqual([
+		"kabane -> @cabane/loop: stale exception (JCAB-326: the build stops bundling the loop); remove this exception from scripts/layers.ts.",
 	]);
 });
 
