@@ -35,8 +35,8 @@ maintainer's yes or a correction before the issue it names starts.
    module that fails to load stops writes".
 3. **Form fields go to `@cabane/acp`, and the copilot moves into the board (JCAB-320's brief).**
    The brief moves form fields to the contract and touches only import lines in acp. This file
-   puts the form field types and `FormField` in acp and moves `copilot.ts`, `instructions.ts` and
-   `mailbox.ts` into the board, which widens JCAB-320's territory; see "Ports".
+   puts the form field types and `FormField` in acp and moves `copilot.ts`, `mailbox.ts` and the
+   prose of `instructions.ts` into the board, which widens JCAB-320's territory; see "Ports".
 4. **`api` is in the manifest, not on the exported object (the parent's draft).** The host reads it
    before importing anything.
 5. **Modules are a manifest entry, not a field on `Extension` (the parent's draft).** The draft
@@ -143,11 +143,11 @@ The verdicts for what core holds today that is not obviously the record:
 
 | In core | 1 | 2 | 3 | 4 | Verdict |
 |---|---|---|---|---|---|
-| `lint/` | no: it computes advice from a plan and stores nothing | no: one consumer, the loop (`extensions/loop/src/commands.ts:568`, `advice.ts:113`); `lint/index.ts:1` says "used by the loop's briefing" | no: `Bun.Glob` at `lint/collectors.ts:52` | yes | Moves into the loop extension (JCAB-326). |
+| `lint/` | no: it computes advice from a plan and stores nothing | no: one consumer, the loop (`extensions/loop/src/commands.ts:568`, `advice.ts:120`); `lint/index.ts:1` says "used by the loop's briefing" | no: `Bun.Glob` at `lint/collectors.ts:52` | yes | Moves into the loop extension (JCAB-326). |
 | `commit-linker/` | no | no: nothing outside core called it | no: it ran `git` through `Bun.spawn` | no: git keeps commits | Deleted by JCAB-228, now on main. |
 | `file:` deref in `storage/assemble-context.ts` | yes: it inlines a context ref into the brief, which every reader gets | yes: every brief | no: `Bun.file` at `storage/assemble-context.ts:187` | yes | Assembling the brief stays; reading the file moves behind a port (below, JCAB-328). |
-| `scope/detect.ts` | no: it turns a directory into a scope and stores nothing | yes: the CLI (`packages/cli/src/context.ts:115`) and the loop (`commands.ts:310`) | no: `node:child_process` at `scope/detect.ts:9` | yes | Moves to the host and reaches extensions as `host.scope.detect` (JCAB-328). `scope/uri.ts`, which parses and formats the stored field, stays. |
-| `self.ts` | no | yes: the CLI (`packages/cli/src/commands/mcp-install.ts:1`), `@cabane/acp` (`src/copilot.ts:17`) and the loop (`src/extension.ts:5`) | no: `Bun.main` at `self.ts:29` | yes | Moves to the host and reaches extensions as `host.kabane.executable` (JCAB-328). |
+| `scope/detect.ts` | no: it turns a directory into a scope and stores nothing | yes: the CLI (`packages/cli/src/context.ts:115`) and the loop (`commands.ts:310`) | no: `node:child_process` at `scope/detect.ts:9` | yes | Moves to the host and reaches extensions as `host.scope.detect` (JCAB-328). The device-only helpers beside it go too: `ProjectDirs` (`scope/projects.ts`), `mainCheckoutRoot`, `findProjectRoot`, `localPinPath`, `MARKER_DIR` and `SCOPE_FILE`, which only the CLI imports, and `DetectedScopes` (`scope/detected.ts`), detection's own cache. `scope/uri.ts`, which parses and formats the stored field, stays, and so does `scope/git-fixture.ts`, test support for the CLI's and the loop's tests. |
+| `self.ts` | no | yes: the CLI (`packages/cli/src/commands/mcp-install.ts:1`, `commands/update.ts:3`, `update-notice.ts:16`), `@cabane/acp` (`src/copilot.ts:17`, `src/instructions.ts:9`) and the loop (`src/extension.ts:5`) | no: `Bun.main` at `self.ts:29` | yes | Moves to the host and reaches extensions as `host.kabane.executable` (JCAB-328). |
 | `mcp/tools.ts` | yes: the definition of every operation on the record, and `KabaneModule.tools` takes its `ToolDef` (`module.ts:118`) | yes: both hosts and every data module | yes | yes | Stays. |
 | `mcp/server.ts`, `createMcpServer` | yes: it composes the tool list both hosts serve | yes: the CLI and the hub | yes | yes | Stays. |
 | `mcp/server.ts`, `serveStdio` | no | no: the CLI alone (`packages/cli/src/commands/mcp.ts:38`) | no: `StdioServerTransport` at `server.ts:22` | yes | Moves to the CLI (JCAB-328). |
@@ -173,8 +173,13 @@ hosts; with it and JCAB-326, `bun` leaves the hub's `tsconfig.json`.
 JCAB-316:7 asks what kabane keeps of an agent session; JCAB-329 carries out the answer. The rows
 mix the session's own stream (tool activity, progress, permission prompts) with outcomes about
 the issue (findings, decisions, verification, handoffs), which `assembleContext` folds into the
-brief as the durable machine signal. Nothing in this file depends on the answer except the
-session rows of the inventory in `wiki/extension-api.md`. What each outcome does to the layers:
+brief as the durable machine signal. Two things depend on the answer: the session rows of the
+inventory in `wiki/extension-api.md`, and the loop's loading from outside kabane's build. Once the
+rest of the loop goes through `host` (JCAB-339), its last `Planner` calls are the seven session
+calls (`startSession`, `getSession`, `endSession`, `addActivity`, `getActivities`,
+`getNeedsInput`, `answerQuestion`), which have no path on `host`, and a loop that bundled its own
+copy of core would run them on a `Runtime` nobody configured. So JCAB-329 blocks JCAB-340, the
+loop's side of the answer, and JCAB-340 blocks JCAB-326. What each outcome does to the layers:
 
 - **Split** (the recommendation on the question, and the maintainer's lean in the planning
   conversation: "should we just hold uri and not the data itself? but questions and decisions
@@ -221,13 +226,26 @@ who produces them and who reads them:
 
 `packages/acp/src/copilot.ts` and `instructions.ts` are the board's copilot: they implement the
 board's `Copilot` port over a harness and render `BoardContext` into every prompt. They are client
-code inside the harness client package. They move to the board, which then depends on the harness
-client as a library. `mailbox.ts`, which only `copilot.ts` uses, goes with them, and the CLI,
-which imports `BoardCopilot` from `@cabane/acp` (`packages/cli/src/commands/board-runtime.ts:1`),
+code inside the harness client package. `copilot.ts` moves to the board, which then depends on the
+harness client as a library, and `mailbox.ts`, which only `copilot.ts` uses, goes with it. The
+CLI, which imports `BoardCopilot` from `@cabane/acp` (`packages/cli/src/commands/board-runtime.ts:1`),
 imports it from the board. acp's imports of the board go first, so the two packages never depend
-on each other. The path kabane runs as, which `copilot.ts:17` reads from `Self` today, comes from
-the host as an argument once `Self` lives in the host (JCAB-328); the dispatch and grill templates
-they point at leave with JCAB-327.
+on each other.
+
+Of `instructions.ts`, the prose moves to the board as `packages/board/src/copilot-instructions.ts`
+(`BLOCK`, `SKILLS`, `Setup`, `setup`, `systemPrompt`, `SHORTCUTS`), and acp keeps a
+`CopilotInstructions` with four names: `actorUri`, `SERVER_NAME`, `DISPATCH_TEMPLATE` and
+`GRILL_TEMPLATE`. Two reasons keep them in acp. The two template paths come from `Self.templates`,
+which resolves `../templates/<name>` from the module that calls it (`instructions.ts:40`, `:44`,
+`packages/core/self.ts:69-80`); called from `packages/board/src`, it would point at a
+`packages/board/templates` that does not exist when kabane runs from source. And the loop reads
+`actorUri`, `SERVER_NAME` and `DISPATCH_TEMPLATE` from acp (`extensions/loop/src/brief.ts`,
+`checklists.ts`, `dispatch.ts`, `lenses.ts`), which it may, since it bundles its harness client,
+where it may not read the board. JCAB-327 removes both template paths with the templates, and
+JCAB-326 moves `actorUri` and `SERVER_NAME` into the loop, which leaves acp's
+`CopilotInstructions` empty. The path kabane runs as, which `copilot.ts:17` reads from `Self` today, becomes an option the CLI passes
+(`BoardCopilot.Options.kabaneBin`), so the board never imports `Self`, which JCAB-328 moves to the
+host.
 
 ### An extension describes a card header as lines of toned parts, and the board owns its layout
 
@@ -325,11 +343,15 @@ type Host = {
 	readonly args: { flagBool; flagString; flagList; flagCsv };
 	readonly outcome: { success; conciseSuccess; failure; usage };
 	readonly settings: { fields; groupsOf; lookOf; options };
+	/** Types a tool's handler against its input shape, for the tools `Extension.mcp` returns. */
+	readonly defineTool: <Shape extends z.ZodRawShape>(def: ToolDef<Shape>) => ToolDef;
 };
 ```
 
 The helpers on `result`, `args`, `outcome` and `settings` keep their signatures in
-`packages/core/result.ts` and `packages/extension/index.ts`. `Extension.Ctx` keeps its fields
+`packages/core/result.ts` and `packages/extension/index.ts`, and `defineTool` is `define` in
+`packages/core/mcp/tools.ts:91`, which the loop's `kabane_loop_advise` uses since JCAB-275
+(`extensions/loop/src/mcp.ts:1`). `Extension.Ctx` keeps its fields
 (`contract.ts:38-53`): `home`, `store`, `cwd`, `actor`, `harnessMode` and the `settings` port.
 `ctx.store` stays the path of the database's directory; `host.store` is the storage kit bound to
 it.
@@ -453,7 +475,7 @@ type Extension = {
 	looks?: Settings.Looks;
 	commands?: readonly Extension.Command[];
 	board?: (ctx: Extension.Ctx) => Promise<Extension.BoardPorts>;
-	doctor?: (ctx: Extension.Ctx) => Promise<Doctor.Finding[]>;
+	doctor?: (ctx: Extension.Ctx) => Promise<Doctor.Finding[] | Result<Doctor.Finding[]>>;
 	mcp?: (ctx: Extension.Ctx) => Promise<{ instructions?: string; tools?: readonly ToolDef[] }>;
 };
 ```
@@ -463,8 +485,9 @@ type Extension = {
 - **`board`** keeps `activity` and `dispatcher` and takes headers as data (above).
 - **`doctor`** arrives with JCAB-266 on the JCAB-263 branch, typed there as
   `Doctor.Source["doctor"]`: findings with a stable `id`, a severity of `auto`, `mention`,
-  `suggest` or `route`, and an optional `fix` returning `Result<string>`. A check that throws
-  becomes a `check-failed` finding instead of failing the run.
+  `suggest` or `route`, and an optional `fix` returning `Result<string>`. A check returns its
+  findings or a `Result` of them; one that throws or returns an `err` becomes a `check-failed`
+  finding instead of failing the run.
 - **`mcp`** is JCAB-275: tools named `kabane_<extension>_<verb>` and one instructions paragraph,
   served by `kabane mcp` after the device's config tools. The hub never serves them: it cannot
   load an extension.
@@ -489,7 +512,7 @@ modules before `Runtime.configure`.
 
 To keep the rest of the extension off that path, the manifest names the modules as an entry of
 their own, `"kabane": { "modules": "./modules.ts" }`, whose default export is
-`(host) => KabaneModule[]`. `openContext` (`packages/cli/src/context.ts:72-83`) then runs in
+`(host) => KabaneModule[]`. `openContext` (`packages/cli/src/context.ts:72-93`) then runs in
 stages:
 
 1. Read the device config and, for each enabled extension, its manifest; check `api`.
@@ -507,7 +530,8 @@ That an entry imports only what its module objects need is a convention: nothing
 `modules.ts` from importing the extension's board. JCAB-323 measures the whole `openContext` path
 of `kabane list` on main and with one module-bearing extension enabled (manifest reads, the
 entry's transitive imports, the factory, registration, the migration check) and checks the import
-graph of the loop's modules entry in a test.
+graph of a modules entry in a test. The loop has no modules entry yet, so the test runs on a
+fixture extension's and is wired to the loop's when the loop gains one.
 
 ### A module that fails to load stops writes; anything else that fails is skipped
 
@@ -565,8 +589,13 @@ grill templates (`instructions.ts:68`, `:80`), which `Self.templates` resolves b
 or the compiled binary (`instructions.ts:40`, `:44`); in a file they become
 `{{extension}}/templates/dispatch` and `{{extension}}/templates/grill/SKILL.md`. The other
 computed text is the host's own block on how this machine runs kabane (`instructions.ts:107`).
-Nothing else in a procedure is substituted, and a procedure that needs other computed text would
-need a code slot, which v1 does not have. A file has no field for
+Nothing else in a procedure is substituted: a procedure file computes nothing. When a procedure
+needs a computed value, its extension contributes a command that prints it, and the procedure
+tells the copilot to run that command with the kabane the host's block names and copy the
+output. The dispatch template's stamp is the first such value: the doctor branch computes it in
+`setup()` (`DISPATCH TEMPLATE STAMP`, `instructions.ts:108` on
+`jcab-263-doctor-kabane-reports-and-repairs-what`), and JCAB-327 replaces that with
+`kabane dispatch stamp`, which `setup-dispatch.md` tells the copilot to run. A file has no field for
 harness mode, allow lists or MCP entries, so a procedure cannot carry a permission policy in its
 type, though its text can still ask for anything (JCAB-324).
 
@@ -617,7 +646,7 @@ This follows the 2026-11-04 research note except in three places:
 | Rule | Where the code breaks it | Removed by |
 |---|---|---|
 | The contract and the harness client do not depend on a client | `@cabane/extension` and `@cabane/acp` list `@cabane/board` (`packages/extension/contract.ts:11`, `packages/acp/src/client.ts:32`) | JCAB-320 |
-| An extension imports no `@cabane/*` value except from the harness client it bundles | The loop lists `@cabane/acp`, `board`, `checklist`, `core` and `extension` (`extensions/loop/package.json`) and imports values from them in 30 source files | JCAB-326 |
+| An extension imports no `@cabane/*` value except from the harness client it bundles | The loop lists `@cabane/acp`, `board`, `checklist`, `core` and `extension` (`extensions/loop/package.json`) and imports values from them in 30 source files | JCAB-326, which waits on JCAB-340 for the session calls, and JCAB-340 on JCAB-329 |
 | A host depends on no extension | `packages/cli/package.json` lists `@cabane/loop`, which `OFFICIAL` bundles (`packages/cli/src/extensions.ts:21-23`); JCAB-318's table lists the edge as an exception tied to JCAB-326 | JCAB-326 |
 | Core keeps only what passes the four questions | `lint/`, re-exported at `packages/core/index.ts:49` | JCAB-326 |
 | | `scope/detect.ts`, `self.ts`, `serveStdio`, `handleHttpRequest` | JCAB-328 |
@@ -641,11 +670,11 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | Core needs no Bun types | the hub's typecheck and vitest pool, partly: `bun` stays in its `tsconfig.json` | JCAB-326 and JCAB-328 remove `bun` from it, and the hub's typecheck then fails a Bun call on the barrel |
 | A client uses only what another client could | review | the lens (JCAB-325) |
 | An extension imports types only, apart from the harness client it bundles | review | JCAB-326: a check on the loop's imports |
-| A modules entry imports only what its module objects need | review | JCAB-323: an import-graph test on the loop's modules entry |
+| A modules entry imports only what its module objects need | review | JCAB-323: an import-graph test on a fixture extension's modules entry, and on the loop's once it has one |
 | An extension writes only its own tables and changes tasks only through `tx.updateTask` | partly by the kit: capture refuses an undeclared table; raw SQL on `tx.db` is review | JCAB-323 builds the kit |
 | A failed module stops database access; a disabled one's deletes are captured | not built | JCAB-323 (persisted declarations, the stop) |
 | Manifest, `api` check before import, per-extension refusal | not built | JCAB-321 |
 | `host` and its typed record wrappers | not built | JCAB-322 |
 | Headers are data, laid out and clipped by the board | not built | JCAB-320 (types, renderer), JCAB-326 (the loop's header) |
-| Procedures and shortcuts are files; `{{extension}}` is the only placeholder | not built | JCAB-324 |
+| Procedures and shortcuts are files; `{{extension}}` is the only placeholder, and a computed value comes from a command | not built | JCAB-324; JCAB-327 for the stamp |
 | Core reaches files through a port | not built | JCAB-328 |

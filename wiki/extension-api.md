@@ -37,6 +37,7 @@ compiler erases it. The types are listed after the values.
 | | | `Runtime.modules()`, to ask whether the checklist module is registered (`checklists.ts:16-17`) | dropped | `host.record.call` returns `err` for a tool no registered module provides |
 | `@cabane/core` `Lint` | 1 | `Lint.run` (`commands.ts:568`) | moves into the extension | with `lint/` (JCAB-326) |
 | `@cabane/core` `RiskAnalyzer` | 1 | `checkFileOverlap` (`advice.ts:113`) | moves into the extension | with `lint/` |
+| `@cabane/core` `defineTool` | 1 | typing `kabane_loop_advise`'s handler against its input (`mcp.ts:10`); added by JCAB-275 after the baseline, so not in the counts above | on host | `host.defineTool` |
 | `@cabane/core` `ScopeUri` | 1 | `getScopeId` (`commands.ts:343`) | on host | `host.scope.idOf`; parsing a stored URI, both schemes, stays with core |
 | `@cabane/core` `authorTypeOf` | 1 | stamping a comment's author type (`parent.ts`) | dropped | `host.record.comment` stamps it, as `kabane_comment` does (`mcp/tools.ts`, `authorType: authorTypeOf(ctx.actor)`) |
 | `@cabane/core` `answersContext`, `isAnswerTo` | 1, 2 | matching an answer activity to its question | open | JCAB-316:7 |
@@ -172,7 +173,10 @@ unchanged while code plugins broke ("should continue to work without changes",
 how this machine runs kabane (`instructions.ts:107`), which stays the host's, and the paths of the
 dispatch and grill templates (`:68`, `:80`), which `Self.templates` resolves where the package or
 the binary is installed (`:40`, `:44`). One placeholder, `{{extension}}` for the extension's
-directory, covers the second kind. Alternatives weighed: a relative path the copilot resolves
+directory, covers the second kind. A value that has to be computed, such as the dispatch
+template's stamp the doctor branch puts in `setup()`, comes from a command the extension
+contributes and the procedure tells the copilot to run (`kabane dispatch stamp`, JCAB-327).
+Alternatives weighed: a relative path the copilot resolves
 itself (it does not know where the extension is installed), and a general template language (no
 procedure needs more than a path). Files with that one placeholder meet every need the loop and
 the dispatch skill have; a code slot would be API to keep stable for no current user.
@@ -190,7 +194,8 @@ the dispatch skill have; a code slot would be API to keep stable for no current 
   `record` and `store` start working only after migration. Its cost is the whole `openContext`
   path of `kabane list` (manifest reads, the entry's transitive imports, the factory,
   registration, the migration check), which JCAB-323 measures. That the entry imports nothing
-  else of the extension is a convention, checked for the loop by a test JCAB-323 adds.
+  else of the extension is a convention, checked by a test JCAB-323 adds, on a fixture
+  extension until the loop has a modules entry.
 
 ### A module that fails to load: stop database access, and persist what capture needs
 
