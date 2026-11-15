@@ -782,6 +782,24 @@ export namespace Claims {
 		names.every((name) => claim.lenses?.includes(name));
 
 	/**
+	 * The latest pass, when it ran every gate green on the tree as it is now: what a review is told
+	 * has checked the work, gate by gate, so it does not run those checks again.
+	 */
+	export const greenPass = async (
+		ctx: Ctx,
+	): Promise<readonly Gates.Result[] | undefined> => {
+		const last = ctx.run.gateRuns.at(-1);
+		if (
+			last === undefined ||
+			!Gates.configured(ctx.run.config.gates) ||
+			!Gates.passed(ctx.run.config.gates, last.results)
+		)
+			return undefined;
+		const tree = await ctx.tree(RunStore.sessionDir(ctx.run));
+		return last.tree === tree ? last.results : undefined;
+	};
+
+	/**
 	 * Run one review session on the parent through the group of lenses `names`, one or several, on
 	 * the run's verifier harness, at `tier` when given (`Route`) and on the run's model otherwise.
 	 * An error when a prompt cannot be read or the session cannot start.
@@ -811,6 +829,7 @@ export namespace Claims {
 				),
 			);
 		const interrupted = await interruption(ctx, earlier.at(-1));
+		const passed = await greenPass(ctx);
 		launch(ctx, plan, {
 			...(interrupted ? { interrupted } : {}),
 			task: plan.parent,
@@ -821,6 +840,7 @@ export namespace Claims {
 				kind: "lens",
 				lenses,
 				gates: Object.keys(ctx.run.config.gates),
+				...(passed ? { passed } : {}),
 			},
 			...(tier ? { route: { tier } } : {}),
 			summary: `${routed(harness, undefined, tier)} reviews ${label(plan.parent)} through ${Brief.lensNames(names)}`,
@@ -890,6 +910,7 @@ export namespace Claims {
 		// From the lens's first recheck: what an interrupted one edited counts against the next.
 		const tree =
 			earlier[0]?.tree ?? (await ctx.tree(RunStore.sessionDir(ctx.run)));
+		const passed = await greenPass(ctx);
 		launch(ctx, plan, {
 			...(interrupted ? { interrupted } : {}),
 			tree,
@@ -905,6 +926,7 @@ export namespace Claims {
 				base,
 				diff: await git(ctx, ["diff", "--no-color", "--no-ext-diff", base]),
 				gates: Object.keys(ctx.run.config.gates),
+				...(passed ? { passed } : {}),
 			},
 			summary: `${harness} rechecks the fixer's diff for ${findings.map(label).join(", ")} through the ${name} lens`,
 		});

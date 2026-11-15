@@ -806,3 +806,75 @@ describe("Claims.lens on a group", () => {
 		await Claims.settleAll(ctx);
 	});
 });
+
+describe("Claims.greenPass", () => {
+	const result = (name: string, ok: boolean): Gates.Result => ({
+		name,
+		command: `run ${name}`,
+		ok,
+		exit: ok ? 0 : 1,
+		ms: 10,
+		tail: "",
+	});
+	const pass = (results: Gates.Result[], tree = "tree"): Gates.Run => ({
+		at: new Date().toISOString(),
+		results,
+		ok: results.every((r) => r.ok),
+		tree,
+	});
+	// `ctxFor`'s tree is "tree": a pass left on it is on the tree as it is now. One run each.
+	let runs = 0;
+	const ctxWith = async (
+		gates: Record<string, string>,
+		gateRuns: Gates.Run[],
+	): Promise<RunState.Ctx> => {
+		const parent = await add("parent", { state: "in_progress" });
+		const config = LoopConfig.Schema.safeParse({ gates });
+		if (!config.success) throw config.error;
+		const run: RunStore.Run = {
+			version: 1,
+			id: `run-${++runs}`,
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns,
+		};
+		const created = RunStore.create(home, run);
+		if (!created.ok) throw created.error;
+		return ctxFor(run);
+	};
+	const gates = { check: "run check", test: "run test" };
+	const green = [result("check", true), result("test", true)];
+
+	it("takes the latest pass when every gate passed on the tree as it is", async () => {
+		const ctx = await ctxWith(gates, [
+			pass([result("check", false)]),
+			pass(green),
+		]);
+		expect(await Claims.greenPass(ctx)).toEqual(green);
+	});
+
+	it("takes none when the latest pass is red, stopped short, on another tree, or there are no gates", async () => {
+		const red = [result("check", true), result("test", false)];
+		for (const runs of [
+			[pass(green), pass(red)],
+			[pass([result("check", true)])],
+			[pass(green, "earlier tree")],
+			[],
+		])
+			expect(
+				await Claims.greenPass(await ctxWith(gates, runs)),
+			).toBeUndefined();
+		expect(
+			await Claims.greenPass(await ctxWith({}, [pass([])])),
+		).toBeUndefined();
+	});
+});

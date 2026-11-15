@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "@cabane/core";
 import { Brief } from "./brief";
+import type { Gates } from "./gates";
 
 const task = (id: string, title: string): Task => ({
 	id,
@@ -279,6 +280,82 @@ describe("Brief on a decision that is the human's", () => {
 	});
 });
 
+describe("Brief on the gates a review can trust", () => {
+	const passed: Gates.Result[] = [
+		{
+			name: "check",
+			command: "bun run check",
+			ok: true,
+			exit: 0,
+			ms: 41_200,
+			tail: "",
+		},
+		{
+			name: "test",
+			command: "bun run test",
+			ok: true,
+			exit: 0,
+			ms: 192_000,
+			tail: "",
+		},
+	];
+	const named =
+		"These gates passed on this exact tree: `check` (`bun run check`, 41s), `test` (`bun run test`, 3m12s).";
+	const rule =
+		"Do not rerun them or any part of them (a package's tests, one test file, lint) to confirm they pass. Run something only when it checks what they cannot";
+	const lens = (extra: { gates: string[]; passed?: Gates.Result[] }) =>
+		Brief.lens(
+			{
+				...subject,
+				lenses: [{ name: "functional", prompt: "LENS" }],
+				...extra,
+			},
+			"ASSEMBLED",
+		);
+	const recheck = (extra: { gates: string[]; passed?: Gates.Result[] }) =>
+		Brief.recheck(
+			{
+				...subject,
+				lens: "functional",
+				prompt: "LENS",
+				findings: [],
+				base: "abc123",
+				diff: "",
+				...extra,
+			},
+			"ASSEMBLED",
+		);
+
+	it("names each gate of a green pass with its command and duration, and says not to rerun them", () => {
+		for (const brief of [
+			lens({ gates: ["check", "test"], passed }),
+			recheck({ gates: ["check", "test"], passed }),
+		]) {
+			expect(brief).toContain(`${named} ${rule}`);
+			expect(brief).not.toContain("Its gates (");
+		}
+	});
+
+	it("says no pass is verified when no green pass is on hand, and claims nothing without gates", () => {
+		for (const brief of [
+			lens({ gates: ["check", "test"] }),
+			recheck({ gates: ["check", "test"] }),
+		]) {
+			expect(brief).toContain(
+				"The run's gates (`check`, `test`) have no green pass on record for this exact tree: do not assume they pass, and run the checks you need.",
+			);
+			expect(brief).not.toContain("pass on the tree you are reviewing");
+			expect(brief).not.toContain("Do not rerun");
+		}
+		for (const brief of [lens({ gates: [] }), recheck({ gates: [] })]) {
+			expect(brief).toContain(
+				"No gates are configured for this run, so nothing has run the project's checks on the result: do not assume they pass.",
+			);
+			expect(brief).not.toContain("Do not rerun");
+		}
+	});
+});
+
 describe("Brief.recheck", () => {
 	const recheck = (diff: string) =>
 		Brief.recheck(
@@ -306,7 +383,9 @@ describe("Brief.recheck", () => {
 		expect(instructions).toContain("- P-7 · p1 · ");
 		expect(instructions).toContain("Do not change files");
 		expect(instructions).toContain('kabane_edit (state "next")');
-		expect(instructions).toContain("Its gates (`test`) pass");
+		expect(instructions).toContain(
+			"The run's gates (`test`) have no green pass on record",
+		);
 		expect(diff).toContain("`git diff abc123`");
 		expect(diff).toContain("```diff\ndiff --git a/x b/x\n+fixed\n```");
 		expect(prompt).toBe("# Functional lens");

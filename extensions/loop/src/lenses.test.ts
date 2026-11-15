@@ -324,7 +324,9 @@ describe("Brief.lens", () => {
 			},
 			"the parent's own brief",
 		);
-		expect(brief).toContain("Its gates (`check`, `test`) pass");
+		expect(brief).toContain(
+			"The run's gates (`check`, `test`) have no green pass on record",
+		);
 		expect(brief).toContain("kabane_add");
 		expect(brief).toContain(`parentTaskId "${parent.shortId}"`);
 		expect(brief).toContain('tags ["finding", "<severity>", "quality"]');
