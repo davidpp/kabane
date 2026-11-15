@@ -177,8 +177,9 @@ comma-separated values, with an empty string meaning an empty array.
 `loop.gates.<name>`. Put `--` before a value starting with `--`. Object groups (`sync`,
 `copilot`, `loop`, `loop.budget`) can be read; edit or unset their dotted keys individually.
 `loop.lenses` names verifier lenses: `functional` and `quality` ship with kabane, and a lens of
-the project's own is `.claude/skills/dispatch/references/lenses/<name>.md` in its dispatch skill,
-where a file named after a shipped lens replaces it.
+the project's own is `.agents/skills/dispatch/references/lenses/<name>.md` in its dispatch skill,
+where a file named after a shipped lens replaces it. A real `.claude/skills/dispatch/` from an
+earlier `/setup-dispatch`, then `.kabane/loop/lenses/`, are still read after it.
 `actor`, `deviceId` and `sync.deviceId` are read-only, including for `unset`.
 
 Writes validate the entire config, or the whole namespace block they land in, before touching

@@ -99,8 +99,8 @@ They know things about priority and risk that are not in the code.
 ## Dispatch
 
 Set each unblocked issue to `in_progress` with `kabane_edit`, then start one agent per issue,
-all in a single message so they run in parallel. When `.claude/agents/` has a specialist for
-the issue's territory, use it (see `references/specialists.md`). Otherwise use a general-purpose
+all in a single message so they run in parallel. When the harness has project agents (Claude
+Code: `.claude/agents/`) and one is a specialist for the issue's territory, use it (see `references/specialists.md`). Otherwise use a general-purpose
 agent. Model: {{MODEL}}.
 
 Each agent works in its own copy of the repo so that parallel edits cannot collide:

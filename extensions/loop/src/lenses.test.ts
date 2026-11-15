@@ -5,6 +5,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -69,10 +70,11 @@ const claim = (
 });
 
 // The documented homes, spelled out rather than taken from `Lenses`, so a wrong path there fails.
-const SKILL = ".claude/skills/dispatch/references/lenses";
+const SKILL = ".agents/skills/dispatch/references/lenses";
+const CLAUDE_SKILL = ".claude/skills/dispatch/references/lenses";
 const LEGACY = ".kabane/loop/lenses";
 
-/** Lens `name`'s file in `dir`, one of the two homes, in the repo. */
+/** Lens `name`'s file in `dir`, one of the homes, in the repo. */
 const at = (dir: string, name: string): string => join(repo, dir, `${name}.md`);
 
 const write = (dir: string, name: string, text: string): void => {
@@ -100,12 +102,24 @@ describe("Lenses.prompt", () => {
 		}
 	});
 
-	it("reads the skill's file over the old directory's, and the old directory's over the shipped one", () => {
+	it("reads the skill's file over the older homes', each older home over the next, and those over the shipped one", () => {
 		write(LEGACY, "functional", "# Old\n");
-		const legacy = at(LEGACY, "functional");
 		expect(Lenses.prompt(repo, "functional")).toEqual({
 			ok: true,
-			value: { text: "# Old\n", legacy, always: false },
+			value: {
+				text: "# Old\n",
+				legacy: at(LEGACY, "functional"),
+				always: false,
+			},
+		});
+		write(CLAUDE_SKILL, "functional", "# Claude skill\n");
+		expect(Lenses.prompt(repo, "functional")).toEqual({
+			ok: true,
+			value: {
+				text: "# Claude skill\n",
+				legacy: at(CLAUDE_SKILL, "functional"),
+				always: false,
+			},
 		});
 		write(SKILL, "functional", "# Skill\n");
 		expect(Lenses.prompt(repo, "functional")).toEqual({
@@ -209,13 +223,31 @@ describe("Lenses.prompt", () => {
 });
 
 describe("Lenses.moves", () => {
-	it("names each lens read from the old directory and where it goes in the skill", () => {
+	it("names each lens read from an older home and where it goes in the skill", () => {
 		write(LEGACY, "security", "# Security\n");
+		write(CLAUDE_SKILL, "perf", "# Perf\n");
 		expect(Lenses.moves(repo, ["functional", "security", "perf"])).toEqual([
 			`lens security is read from ${at(LEGACY, "security")}; move it to ${at(SKILL, "security")}`,
+			`lens perf is read from ${at(CLAUDE_SKILL, "perf")}; move it to ${at(SKILL, "perf")}`,
 		]);
 		write(SKILL, "security", "# Security\n");
+		write(SKILL, "perf", "# Perf\n");
+		expect(Lenses.moves(repo, ["security", "perf"])).toEqual([]);
+	});
+
+	it("names no move when .claude/skills/dispatch is the symlink /setup-dispatch writes", () => {
+		write(SKILL, "security", "# Security\n");
+		mkdirSync(join(repo, ".claude/skills"), { recursive: true });
+		symlinkSync(
+			"../../.agents/skills/dispatch",
+			join(repo, ".claude/skills/dispatch"),
+		);
+		expect(Lenses.prompt(repo, "security")).toEqual({
+			ok: true,
+			value: { text: "# Security\n", always: false },
+		});
 		expect(Lenses.moves(repo, ["security"])).toEqual([]);
+		expect(Lenses.offered(repo)).toContain("security");
 	});
 });
 
