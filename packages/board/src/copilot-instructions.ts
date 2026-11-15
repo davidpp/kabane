@@ -5,8 +5,8 @@
 //
 // BLOCK is who the copilot is; SKILLS holds procedures; setup supplies this device's context.
 // They are joined by systemPrompt, because procedures grow without diluting the identity paragraph.
-import { CopilotInstructions as HarnessInstructions } from "@cabane/acp";
 import { Harnesses } from "@cabane/acp/harnesses";
+import { CopilotInstructions as HarnessInstructions } from "@cabane/acp/instructions";
 import { Templates } from "@cabane/acp/templates";
 import type { CopilotShortcut } from "@cabane/extension";
 

@@ -1,4 +1,3 @@
-import { err, ok, type Result } from "@cabane/core";
 // A run's config as the board's trigger form: one input per setting the form can hold, read off
 // `LoopConfig.Schema` so a field the schema gains shows up without a change here, and the form's
 // values back into config overrides.
@@ -11,8 +10,12 @@ import { err, ok, type Result } from "@cabane/core";
 // get a toggle each over the lenses the project can run. A field the form cannot hold (free text
 // with no options, a record) is left to the settings layers (`kabane config`) and flags: the gates,
 // named shell commands, which the preview lists read-only.
-import type { SettingField, TriggerInput } from "@cabane/extension";
-import { Settings } from "@cabane/extension";
+import { err, ok, type Result } from "@cabane/core";
+import {
+	type SettingField,
+	Settings,
+	type TriggerInput,
+} from "@cabane/extension";
 import { z } from "zod";
 import type { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
