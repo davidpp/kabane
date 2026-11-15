@@ -33,7 +33,6 @@ or member that section does not list comes with a change to it in the same diff 
 Work on this package is in flight on other branches. Rebase onto main before you start, and
 expect these to land around you:
 
-- JCAB-275: an `mcp` field on `Extension` (tools and instructions served by `kabane mcp`).
 - JCAB-263 (JCAB-266 on its branch): a `doctor` field.
 - JCAB-322: the `Host` type and the published import path `kabane/extension`.
 - JCAB-321 and JCAB-323: the manifest and the modules entry, which live in `package.json`

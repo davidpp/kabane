@@ -30,8 +30,7 @@ reading the environment (`CODING_PRINCIPLE.md`, "Explicit dependencies").
 
 Most of the extension API lands here; check main before editing these files:
 
-- In flight now: JCAB-275 (`kabane mcp` serves extension tools, `src/commands/mcp.ts`), JCAB-263
-  (a `doctor` command, on its own branch).
+- In flight now: JCAB-263 (a `doctor` command, on its own branch).
 - JCAB-321 rewrites `src/extensions.ts` and the board's refusal in `board-runtime.ts`: kabane
   loads extensions from `$KABANE_HOME/extensions`. A broken command, board port, tool or
   copilot file is skipped with one line; an enabled extension whose modules entry fails stops

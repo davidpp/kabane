@@ -25,8 +25,7 @@ import line it sits on. Use one only when the brief asks for it, and name it in 
 
 Several issues change this package; check main before you edit:
 
-- In flight now: JCAB-275 (MCP tools and instructions through an `mcp` field), JCAB-263
-  (a `doctor` check, on its own branch).
+- In flight now: JCAB-263 (a `doctor` check, on its own branch).
 - JCAB-326 ports the loop: values arrive on `host`, `src/header.tsx` becomes header data the
   board lays out, core's `lint/` moves in (`src/advice.ts`, `src/commands.ts` use it), and the
   loop leaves the CLI's bundle.
