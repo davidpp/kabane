@@ -59,7 +59,7 @@ Both share the same states with different interpretation: `inbox` = triage (task
 - Never key on `short_id` across machines. Resolve to the ULID first (`Planner.resolveTaskId`).
 - `sequences` does not replicate. `sync/apply.ts` raises each counter past every label a batch delivered.
 - Do not propose block leasing, hash IDs, or an ID format change. Considered and rejected; the rename protocol is the agreed repair.
-- `\d+` is hardcoded in `commit-linker/patterns.ts` and `SHORT_ID_PATTERN` in `storage/helpers.ts`. `next_number` stores the *last used* number.
+- `\d+` is hardcoded in `SHORT_ID_PATTERN` in `storage/helpers.ts`. `next_number` stores the *last used* number.
 
 ## Multi-device sync
 
