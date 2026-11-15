@@ -63,11 +63,11 @@ compiler erases it. The types are listed after the values.
 | Call | Uses | Tool | Where it lands |
 |---|---|---|---|
 | `getTask` | 13 | `kabane_get` | `host.record.get` |
-| `updateTask` | 7 (`state` in 6, `needsReview` and `assignee` once) | `kabane_edit`, `kabane_done` | `host.record.edit`, `done` |
+| `updateTask` | 7: `state` alone in 4 (`checklists.ts:92`, `checks.ts:414`, `claims.ts:56`, `parent.ts:69`), with `assignee` once (`claims.ts:327`), with `needsReview` twice (`parent.ts:273`, `:324`) | `kabane_edit`, `kabane_done`; `kabane_edit` has no `needsReview` | `host.record.edit`, `done`, once `kabane_edit` takes `needsReview` (JCAB-322) |
 | `resolveTaskId` | 2 | `kabane_get` (returns the ULID) | `host.record.get` |
-| `queryTasks` | 1 | `kabane_list`, full format | `host.record.list` |
+| `queryTasks` | 1 (`plan.ts:98`: `parentTaskId`, `includeClosed`, `includeDeferred`, `limit`) | `kabane_list`, full format; it has no `parentTaskId` and no `includeDeferred` | `host.record.list`, once `kabane_list` takes both (JCAB-322) |
 | `addComment` | 2 | `kabane_comment` | `host.record.comment` |
-| `addWorkLog` | 3 | `kabane_log` | `host.record.log` |
+| `addWorkLog` | 3, each with `addedBy: "loop:<runId>"` and `addedByType: "ai"` (`checks.ts:377`, `claims.ts:342`, `parent.ts:76`) | `kabane_log`, which stamps the connected actor | `host.record.log` under `ctx.actor`; the run stays named by its `loop:<runId>` ref |
 | `assembleContext` | 1 | `kabane_context` | `host.record.context` |
 | `upsertUpstreamLink` | 1 | `kabane_upstream_link` | `host.record.upstreamLink` |
 | `getLinksForTask` | 2 | none; links reach an agent only inside `kabane_context` | a new read tool (JCAB-322) |
@@ -102,14 +102,18 @@ plugin context "is essentially an OpenCode server client" and "Its read and acti
 the same inputs and responses as the client" (`opencode-architecture.md`). It lost on output: a
 tool's concise format is text sized for a context window, which a program then parses back.
 
-**The tools' operations, typed, returning the value before it is serialized** (chosen). Inputs
-are the tools' zod shapes, and the outputs are what the handlers compute in their full format,
-which for `kabane_get` is the `Task` itself (`packages/core/mcp/tools.ts`, the `get` handler
-returns `ok(task.value)`). Its reasons:
+**The tools' operations, typed, returning the value before it is serialized** (chosen). Each method is a declared wrapper over one tool: the tool's input less `responseFormat`, `cursor`
+and `kabane_comment`'s two aliases of `body`, run in the full format, returning what the handler
+returns there. That is the `Task` for `kabane_get`, `kabane_edit` and `kabane_done`, a
+`TaskWorkLog` for `kabane_log` (`Planner.addWorkLog`), a `TaskEntry` for `kabane_comment`
+(`Planner.addEntry`), `{ id, markdown }` for `kabane_context`, and `Task[]` for `kabane_list`.
+Exposing the presentation fields was rejected: the concise format changes the envelope, so one
+method would return two shapes. Its reasons:
 
 - one rule decides what an extension can do: what an agent can do through a tool;
-- a read an extension needs and no tool offers becomes a tool, so agents gain it too (the loop's
-  inventory finds four);
+- an operation an extension needs and no tool offers becomes a tool or a tool input, so agents
+  gain it too (the loop's inventory finds four reads, two `kabane_list` inputs and one
+  `kabane_edit` input);
 - input is validated where every other caller's is, and returns `Result`;
 - a data module's tools reach extensions with no host change, through `call`.
 
@@ -134,10 +138,14 @@ exception to the rule above).
   `z.object(shape).safeParse`. JSON Schema would mean a second introspection path for settings
   and a converter for tools. Whether a user's own zod copy mixes with the host's was never run
   (H3 in `kabane-extension-model.md`); passing one zod removes the question.
-- **`harnessMode` on `ctx`, and no harness launch on `host`.** JCAB-316:2 has the extension own
-  its harness client, and the loop already reads its launch overrides from its own settings
-  (`extensions/loop/src/commands.ts:383-390`). The device's `harness.mode` is the one harness
-  setting the host owns (`packages/cli/src/config.ts:114-116`).
+- **`harnessMode` on `ctx`, and no harness launch on `host`.** This narrows JCAB-316:2 and is
+  listed first under "Where this document departs from a decision" in `ARCHITECTURE.md`. The
+  device's `harness.mode` is the one harness setting the device config holds for every session
+  (`packages/cli/src/config.ts:114-116`). The only launch command it holds is the board copilot's
+  (`copilot.command`, `copilot.args`, `config.ts:34-43`). The loop has a seam for per-harness
+  launch overrides, `RunDeps.overrides` (`extensions/loop/src/commands.ts:903`), and nothing sets
+  it outside the loop's tests. Exposing "which command runs claude or codex" on `host` would mean
+  inventing that device setting first.
 
 ## Slots
 
@@ -147,18 +155,27 @@ The 2026-11-04 note kept component-taking ports for official extensions only, in
 VS Code's proposed APIs. With JCAB-316:3 there is no official extension inside the bundle to keep
 it for, and a component ties an extension to the board's React and OpenTUI. opencode's record
 shows the price: "TUI plugins require OpenTUI 0.8" in its v2.2.3. The loop's header (658 lines,
-`extensions/loop/src/header.tsx`) draws text, meters as cells of characters, and colors; what
-`PanelLine` lacks is the `faint` tone and a per-session series color, which the port adds.
+`extensions/loop/src/header.tsx`) draws text, meters as cells of characters, and colors. What
+`PanelLine` lacks is more than two tones: the header also sets its own layout, a raised
+background, one column of padding, `flexShrink: 0` and rows that never wrap (`header.tsx:613-621`,
+`:428`), where `PanelLine` wraps. A per-extension layout would be copied by every extension, so
+the board owns it, and the data carries only lines, tones (with `faint` and `secondary` added)
+and series indices.
 
 ### Copilot procedures and shortcuts: files, over a `copilot(ctx)` code slot
 
 opencode ships commands, agents and skills as markdown, and those survived its V2 rewrite
 unchanged while code plugins broke ("should continue to work without changes",
 `opencode-architecture.md`). Base kabane's `CopilotShortcut` is already plain data,
-`{ name, hint, template }` (`packages/board/src/ports.ts:448`). Every loop text in
-`packages/acp/src/instructions.ts` is fixed prose; the only computed part of the copilot's
-instructions is the host's own block on how this machine runs kabane (`instructions.ts:107`).
-Files meet every need the loop has; a code slot would be API to keep stable for no current user.
+`{ name, hint, template }` (`packages/board/src/ports.ts:448`). The procedures in
+`packages/acp/src/instructions.ts` are prose with two kinds of computed text: the host's block on
+how this machine runs kabane (`instructions.ts:107`), which stays the host's, and the paths of the
+dispatch and grill templates (`:68`, `:80`), which `Self.templates` resolves where the package or
+the binary is installed (`:40`, `:44`). One placeholder, `{{extension}}` for the extension's
+directory, covers the second kind. Alternatives weighed: a relative path the copilot resolves
+itself (it does not know where the extension is installed), and a general template language (no
+procedure needs more than a path). Files with that one placeholder meet every need the loop and
+the dispatch skill have; a code slot would be API to keep stable for no current user.
 
 ### Data modules: a manifest entry, over a field on `Extension` or lazy registration
 
@@ -169,8 +186,49 @@ Files meet every need the loop has; a code slot would be API to keep stable for 
   skips the module's `onTaskStateChange`, and a pull that parks ops the device could apply
   (`packages/core/AGENTS.md`, "Data modules" and "Multi-device sync").
 - **A separate modules entry** (chosen) is imported by every process and holds only the module
-  objects. Its cost, one import per extension with modules on every command, is what JCAB-323
-  measures.
+  objects. Its factory needs `host` before `Runtime.configure`, so `host` is built in two stages:
+  `record` and `store` start working only after migration. Its cost is the whole `openContext`
+  path of `kabane list` (manifest reads, the entry's transitive imports, the factory,
+  registration, the migration check), which JCAB-323 measures. That the entry imports nothing
+  else of the extension is a convention, checked for the loop by a test JCAB-323 adds.
+
+### A module that fails to load: stop database access, and persist what capture needs
+
+`Oplog.cascadeOf` finds the module tables a task delete cascades into through the registered set
+(`packages/core/storage/oplog.ts:225-231`), and `onTaskStateChange` runs only for registered
+modules (`packages/core/module.ts`, `Modules.taskStateChanged`). A device whose module tables
+exist but whose module is not registered therefore loses deletes from the log and skips the
+module's reaction to state changes. Four rules were weighed for an enabled extension whose
+modules fail to load:
+
+- **Skip it, as any other contribution** (the 2026-11-04 note, the parent's draft). Rejected:
+  every task delete in that state loses the module rows' deletes from the log, and the devices
+  diverge.
+- **Open read-only.** Reads are safe, but every write path (the CLI's commands, every MCP write
+  tool, the board, the copilot through `kabane mcp`, the loop's runner) would need a gate, and a
+  read-only `kabane mcp` fails its agent on every write anyway. Rejected for now as cost without
+  a user; it can come later as a refinement of the stop.
+- **Refuse writes command by command.** The same gates, spread across every write.
+- **Stop every process that opens the database, with one line naming the extension and the two
+  ways out** (chosen). The commands that open no database stay usable, so the human can repair
+  or disable.
+
+Separately, capture must not depend on code at all, because a disabled extension is a state the
+human chooses and keeps. So the host persists, per module, what capture reads (name, schema
+version, `syncTables` with `family`, `clock`, `childOfTasks`) and `cascadeOf` reads those
+declarations for unregistered modules. Persisting them is the alternative to forbidding
+disabling an extension that has tables, which would make every experiment permanent. What
+disabling still costs: the module's `onTaskStateChange` stops running, which is the trade the
+human made.
+
+### Writes through the kit: one `write` that rolls back on `err` and notifies after commit
+
+`atomic` commits whatever its function returns and rolls back only on a throw
+(`packages/core/runtime.ts:167-191`), and `Planner.updateTaskIn`'s comment asks its caller to roll
+back on `err` and emit `TASK_UPDATED` after commit (`packages/core/storage/tasks.ts:401-405`). Handing
+`atomic` and `updateTaskIn` to extension authors leaves both rules to each author. The chosen
+`write(fn)` turns a returned `err` into a rollback and emits the notifications itself after
+commit, and capture calls exist only on the transaction object, so they cannot run outside one.
 
 ### Loading: where this departs from the 2026-11-04 note
 
