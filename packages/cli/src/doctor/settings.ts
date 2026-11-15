@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result, trySync } from "@cabane/core";
 import { type Doctor, type Extension, Settings } from "@cabane/extension";
 import { ConfigSchema, configPath, isPlainObject } from "../config";
 import { ConfigLayers } from "../config-layers";
@@ -40,7 +41,10 @@ const migrate = (
 	delete block[namespace];
 	if (Object.keys(block).length === 0) delete stored.scopes[scope];
 	if (Object.keys(stored.scopes).length === 0) delete stored.scopes;
-	const saved = ConfigLayers.writeJson(path, stored);
+	// config.json can be permission-restricted or managed through a symlink.
+	const saved = trySync(() =>
+		writeFileSync(path, `${JSON.stringify(stored, null, 2)}\n`),
+	);
 	return saved.ok
 		? ok(`Moved scopes.${scope}.${namespace} to ${destination}`)
 		: saved;
