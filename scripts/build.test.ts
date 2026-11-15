@@ -56,6 +56,10 @@ it("publishes self-contained extension types that compile with only the built pa
 	const declaration = readFileSync(join(DIST, "types/extension.d.ts"), "utf8");
 	expect(declaration).not.toContain("@cabane/");
 	expect(declaration).not.toMatch(/^import\s/m);
+	expect(declaration).not.toMatch(
+		/export declare (?:const|function|namespace|class)\b/,
+	);
+	expect(declaration).not.toContain("createHostRecord");
 	const work = mkdtempSync(join(tmpdir(), "kabane-type-consumer-"));
 	try {
 		const installed = join(work, "node_modules/kabane");
@@ -71,7 +75,18 @@ it("publishes self-contained extension types that compile with only the built pa
 		writeFileSync(
 			source,
 			`
-import type { Extension, Host } from "kabane/extension";
+import type {
+ Extension, Host, Task, TaskEntry, TaskWorkLog, TaskLink, UpstreamLink,
+ Result, ToolDef, ProjectScope, ParsedArgs, Outcome, Settings, Doctor,
+ ActivitySource, Dispatcher, Header,
+} from "kabane/extension";
+export type NamedContract = {
+ task: Task; entry: TaskEntry; log: TaskWorkLog; link: TaskLink; upstream: UpstreamLink;
+ result: Result<Task>; tool: ToolDef; scope: ProjectScope; args: ParsedArgs; outcome: Outcome;
+ settings: Settings.Port; finding: Doctor.Finding; command: Extension.Command;
+ ctx: Extension.Ctx; board: Extension.BoardPorts; input: Host.ListInput;
+ activity: ActivitySource; dispatcher: Dispatcher; header: Header;
+};
 export default (host: Host): Extension => ({
  name: "sample",
  settings: host.z.object({ word: host.z.string().default("hello") }),
@@ -106,6 +121,25 @@ export default (host: Host): Extension => ({
 				ts.flattenDiagnosticMessageText(d.messageText, "\n"),
 			),
 		).toEqual([]);
+		writeFileSync(
+			source,
+			`
+import { success, Settings, Doctor } from "kabane/extension";
+success({}, "ok");
+Settings.fields;
+Doctor.run;
+`,
+		);
+		const invalid = ts.getPreEmitDiagnostics(
+			ts.createProgram([source], program.getCompilerOptions()),
+		);
+		expect(
+			invalid.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n")),
+		).toEqual([
+			"Module '\"kabane/extension\"' declares 'success' locally, but it is not exported.",
+			"'Settings' cannot be used as a value because it was exported using 'export type'.",
+			"'Doctor' cannot be used as a value because it was exported using 'export type'.",
+		]);
 	} finally {
 		rmSync(work, { recursive: true, force: true });
 	}

@@ -210,7 +210,7 @@ const buildExtensionTypes = (into: string): void => {
 		const [declaration] = generateDtsBundle(
 			[
 				{
-					filePath: join(ROOT, "packages/extension/index.ts"),
+					filePath: join(ROOT, "packages/extension/types.ts"),
 					libraries: {
 						inlinedLibraries: ["@cabane/core", "zod"],
 						allowedTypesLibraries: [],
@@ -223,7 +223,20 @@ const buildExtensionTypes = (into: string): void => {
 		if (!declaration)
 			return fail("extension declaration generation produced no output");
 		mkdirSync(join(into, "types"), { recursive: true });
-		writeFileSync(join(into, "types/extension.d.ts"), declaration);
+		// The bundler promotes type-only namespace re-exports to value exports. Keep the
+		// declarations private and re-export their names explicitly as types.
+		const namespaces: string[] = [];
+		const typesOnly = declaration.replace(
+			/^export declare namespace (\w+)/gm,
+			(_, name: string) => {
+				namespaces.push(name);
+				return `declare namespace ${name}`;
+			},
+		);
+		writeFileSync(
+			join(into, "types/extension.d.ts"),
+			`${typesOnly}\nexport type { ${namespaces.join(", ")} };\n`,
+		);
 	} finally {
 		rmSync(work, { recursive: true, force: true });
 	}
