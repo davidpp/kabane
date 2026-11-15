@@ -2,11 +2,13 @@
 // are green. A lens is `references/lenses/<name>.md` in the project's dispatch skill, the same file
 // the skill's own close review reads, so a lens reaches an agent whether the loop drives the
 // session or a person dispatches from a plain one. `functional` and `quality` ship in kabane's
-// dispatch template, so a project with no skill still has them. `.kabane/loop/lenses/<name>.md`,
-// where 0.3.0 and 1.0.0-beta.0 kept a project's lenses, is still read, after the skill, so a lens
-// written there keeps reviewing as it did. Once the fixer has ended, a lens whose findings it
-// closed rechecks its diff. Which lenses a run has run and rechecked, and how they ended, is read
-// off its claims, so a runner that resumes knows where it was.
+// dispatch template, so a project with no skill still has them. The skill lives under
+// `.agents/skills/dispatch/`; one still at `.claude/skills/dispatch/`, where kabane wrote it before,
+// is read after it. `.kabane/loop/lenses/<name>.md`, where 0.3.0 and 1.0.0-beta.0 kept a project's
+// lenses, is read after both, so a lens written there keeps reviewing as it did. Once the fixer
+// has ended, a lens whose findings it closed rechecks its diff. Which lenses a run has run and
+// rechecked, and how they ended, is read off its claims, so a runner that resumes knows where it
+// was.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CopilotInstructions } from "@cabane/acp";
@@ -27,6 +29,13 @@ export namespace Lenses {
 
 	/** Where a project keeps its own lenses: its dispatch skill's. */
 	const dir = (projectDir: string): string =>
+		join(projectDir, ".agents", "skills", "dispatch", "references", "lenses");
+
+	/**
+	 * The dispatch skill's lenses where kabane wrote the skill before `.agents/skills/`; read after
+	 * it, with no notice, since a Claude Code link to the new home resolves to the same files.
+	 */
+	const claudeDir = (projectDir: string): string =>
 		join(projectDir, ".claude", "skills", "dispatch", "references", "lenses");
 
 	/** Where a project's lenses were kept before they moved into the skill; read after it. */
@@ -54,6 +63,7 @@ export namespace Lenses {
 				? []
 				: [
 						...namesIn(dir(projectDir)),
+						...namesIn(claudeDir(projectDir)),
 						...namesIn(legacyDir(projectDir)),
 					].sort()),
 		]),
@@ -121,14 +131,18 @@ export namespace Lenses {
 		legacy?: string;
 	};
 
-	/** Lens `name`'s prompt: the skill's file, else the old directory's, else the shipped one. */
+	/**
+	 * Lens `name`'s prompt: the skill's file under `.agents/`, else under `.claude/`, else the old
+	 * directory's, else the shipped one.
+	 */
 	export const prompt = (projectDir: string, name: string): Result<Prompt> => {
 		const own = join(dir(projectDir), `${name}.md`);
+		const claude = join(claudeDir(projectDir), `${name}.md`);
 		const legacy = join(legacyDir(projectDir), `${name}.md`);
 		const shipped = SHIPPED.some((s) => s === name)
 			? join(SHIPPED_DIR, `${name}.md`)
 			: undefined;
-		const path = [own, legacy].find((p) => existsSync(p)) ?? shipped;
+		const path = [own, claude, legacy].find((p) => existsSync(p)) ?? shipped;
 		if (path === undefined)
 			return err(
 				new Error(

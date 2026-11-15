@@ -647,7 +647,7 @@ describe("A single issue given a subtask during its run", () => {
 describe("A single issue given a subtask while a lens reviews it", () => {
 	it("holds the subtask until the lens session on the issue has ended", async () => {
 		const issue = await add("lone");
-		const lenses = join(home, ".claude/skills/dispatch/references/lenses");
+		const lenses = join(home, ".agents/skills/dispatch/references/lenses");
 		mkdirSync(lenses, { recursive: true });
 		writeFileSync(join(lenses, "look.md"), "Look.");
 		const run = createRun(issue, { implementer: "gemini", lenses: ["look"] });
