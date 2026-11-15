@@ -46,7 +46,7 @@ Before implementing a change, whatever its size, use `.agents/skills/dispatch/SK
 ## Gate
 
 ```bash
-bun run check        # oxlint, its type-aware pass, oxfmt --check, knip, jscpd
+bun run check        # layers, oxlint, its type-aware pass, oxfmt --check, knip, jscpd
 bun run typecheck    # tsc --noEmit in every workspace package
 bun test             # bun packages only (questions, checklist, handoff, core, sqlite, acp, extension, cli, board, extensions/*)
 bun run test         # the above plus `bun run --cwd packages/worker test` (tsc + vitest)
