@@ -40,8 +40,21 @@ const Manifest = z.object({
 	}),
 });
 const callable = <T extends (...args: never[]) => unknown>() =>
-	z.custom<T>((value) => typeof value === "function");
+	z.custom<T>((value) => typeof value === "function", "must be a function");
 const Factory = callable<(host: Host) => unknown>();
+const zodType = z.custom<z.ZodType>(
+	(value) => value instanceof z.ZodType,
+	(value) => ({
+		message:
+			typeof value === "object" &&
+			value !== null &&
+			"_def" in value &&
+			"safeParse" in value &&
+			typeof value.safeParse === "function"
+				? "must be built with kabane's zod, which the extension API passes as host.z; this kabane does not provide host.z yet"
+				: "must be a Zod schema",
+	}),
+);
 const ExtensionShape = z.object({
 	name: z.string(),
 	commands: z
@@ -55,7 +68,7 @@ const ExtensionShape = z.object({
 			}),
 		)
 		.optional(),
-	settings: z.instanceof(z.ZodType).optional(),
+	settings: zodType.optional(),
 	looks: z
 		.record(
 			z.object({
@@ -82,6 +95,36 @@ const Name = z
 const warned = new Set<string>();
 
 export namespace Extensions {
+	export const zodSchema = zodType;
+	/** Keep the author's first line, excluding Bun's call-expression annotation. */
+	export const cause = (error: Error): string => {
+		const first = (error.message.split(/[\r\n]/, 1)[0] ?? "").replace(
+			/\s*\(In '[\s\S]*$/,
+			"",
+		);
+		return first.length > 200 ? `${first.slice(0, 199)}…` : first;
+	};
+	export const invalid = (error: z.ZodError): string => {
+		const issue = error.issues[0];
+		if (!issue) return "value does not match the extension contract";
+		const path =
+			issue.path.reduce<string>(
+				(text, part) =>
+					typeof part === "number"
+						? `${text}[${part}]`
+						: `${text}${text ? "." : ""}${part}`,
+				"",
+			) || "value";
+		if (issue.code === "invalid_type") {
+			const article = /^[aeiou]/.test(issue.expected) ? "an" : "a";
+			return `${path} must be ${article} ${issue.expected}`;
+		}
+		if (issue.code === "invalid_union")
+			return [...new Set(issue.unionErrors.map(invalid))].join(" or ");
+		if (issue.code === "invalid_enum_value")
+			return `${path} must be ${issue.options.map(String).join(" or ")}`;
+		return `${path} ${issue.message}`;
+	};
 	export const names: readonly string[] = Object.keys(OFFICIAL);
 	export type Refusal = { name: string; reason: string };
 	export const line = ({ name, reason }: Refusal): string =>
@@ -204,7 +247,7 @@ export namespace Extensions {
 			if (!imported.ok)
 				return err(
 					new Error(
-						"the entry could not be imported; repair the entry and its dependencies",
+						`the entry could not be imported: ${cause(imported.error)}; repair the entry and its dependencies`,
 					),
 				);
 			const factory = Factory.safeParse(imported.value.default);
@@ -229,13 +272,15 @@ export namespace Extensions {
 		}
 		if (!loaded.ok)
 			return err(
-				new Error("the factory failed; repair the extension's factory"),
+				new Error(
+					`the factory failed: ${cause(loaded.error)}; repair the extension's factory`,
+				),
 			);
 		const parsed = ExtensionShape.safeParse(loaded.value);
 		if (!parsed.success)
 			return err(
 				new Error(
-					"the factory returned an invalid Extension; correct its name, commands, settings, looks, board, mcp and doctor fields to match the extension contract",
+					`the factory returned an invalid Extension: ${invalid(parsed.error)}`,
 				),
 			);
 		if (parsed.data.name !== name)
@@ -244,7 +289,7 @@ export namespace Extensions {
 					`factory name must be "${name}"; got ${JSON.stringify(parsed.data.name)}; correct the factory's name`,
 				),
 			);
-		return ok(parsed.data);
+		return ok(loaded.value as Extension);
 	};
 	export const loadAll = async (
 		names: readonly string[],

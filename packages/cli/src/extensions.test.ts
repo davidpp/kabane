@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it, spyOn } from "bun:test";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 import { configPath } from "./config";
 import { ConfigSettings } from "./config-settings";
@@ -210,7 +210,9 @@ it("contains a command rejection and invalid manifests, factories, and traversal
 	);
 	expect(all.loaded).toEqual([]);
 	expect(all.refused).toHaveLength(4);
-	expect(all.refused[1]?.reason).toContain("the factory failed; repair");
+	expect(all.refused[1]?.reason).toContain(
+		"the factory failed: factory failed; repair",
+	);
 	expect(all.refused[3]?.reason).toContain(join(home, "extensions/missing"));
 });
 
@@ -362,4 +364,61 @@ it("names malformed or missing manifests and a non-factory export with repair an
 	);
 	for (const { reason } of all.refused)
 		expect(reason).toEndWith(Extensions.disabledAdvice);
+});
+
+it("keeps unlisted extension fields after validation", async () => {
+	const home = makeHome();
+	install(
+		home,
+		"futurefield",
+		'export default () => ({name:"futurefield", futureField:{kept:true}});',
+	);
+	const all = await Extensions.loadAll(["futurefield"], home);
+	expect(all.loaded[0]).toMatchObject({ futureField: { kept: true } });
+});
+
+it("reports the first invalid field and a real foreign zod schema", async () => {
+	const home = makeHome();
+	install(
+		home,
+		"shape",
+		'export default () => ({name:"shape", commands:"nope"});',
+	);
+	const dir = install(
+		home,
+		"ownzod",
+		'import {z} from "zod"; export default () => ({name:"ownzod", settings:z.object({})});',
+	);
+	cpSync(
+		dirname(Bun.resolveSync("zod/package.json", import.meta.dir)),
+		join(dir, "node_modules/zod"),
+		{ recursive: true },
+	);
+	const all = await Extensions.loadAll(["shape", "ownzod"], home);
+	expect(all.refused.map(({ reason }) => reason)).toEqual([
+		`the factory returned an invalid Extension: commands must be an array; ${Extensions.disabledAdvice}`,
+		`the factory returned an invalid Extension: settings must be built with kabane's zod, which the extension API passes as host.z; this kabane does not provide host.z yet; ${Extensions.disabledAdvice}`,
+	]);
+});
+
+it("keeps bounded first-line causes without engine call annotations", async () => {
+	const home = makeHome();
+	install(home, "broken", 'throw new Error("boom on import\\nsecond line");');
+	install(home, "missingdep", 'import "not-there";');
+	install(home, "syntax", "export default () => { const = ; };");
+	const all = await Extensions.loadAll(
+		["broken", "missingdep", "syntax"],
+		home,
+	);
+	expect(all.refused[0]?.reason).toBe(
+		`the entry could not be imported: boom on import; repair the entry and its dependencies; ${Extensions.disabledAdvice}`,
+	);
+	expect(all.refused[1]?.reason).toContain("Cannot find package 'not-there'");
+	expect(all.refused[2]?.reason).toMatch(/could not be imported: .+; repair/);
+	expect(Extensions.cause(new Error("x".repeat(500)))).toBe(
+		`${"x".repeat(199)}…`,
+	);
+	expect(
+		Extensions.cause(new Error("oops (In 'imported.default(host)', noise)")),
+	).toBe("oops");
 });

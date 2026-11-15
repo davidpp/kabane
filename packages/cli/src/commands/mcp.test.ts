@@ -1,8 +1,8 @@
 import "@cabane/core/testing";
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createMcpServer, KABANE_TOOLS, ok, type ToolDef } from "@cabane/core";
 import { type Extension, Settings } from "@cabane/extension";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -271,4 +271,35 @@ test.each([
 	const contribution = await extensionMcp(ctx, KABANE_TOOLS);
 	if (!contribution.ok) throw contribution.error;
 	expect(contribution.value).toEqual({ tools: [], instructions: [] });
+});
+
+test("reports MCP causes, invalid paths and the real foreign zod limit", async () => {
+	configure(["cause", "shape", "ownzod"]);
+	installMcp("cause", 'throw new Error("boom in mcp");');
+	installMcp("shape", "return {tools:[{name:42}]};");
+	installMcp(
+		"ownzod",
+		'const {z} = await import("zod"); return {tools:[{name:"kabane_ownzod_read", description:"Read", kind:"read", input:{id:z.string()}, handler:async()=>({ok:true,value:null})}]};',
+	);
+	cpSync(
+		dirname(Bun.resolveSync("zod/package.json", import.meta.dir)),
+		join(ctx.home, "extensions/ownzod/node_modules/zod"),
+		{ recursive: true },
+	);
+	const stderr = spyOn(console, "error").mockImplementation(() => {});
+	try {
+		await extensionMcp(ctx, []);
+		const messages = stderr.mock.calls.map(([message]) => message);
+		expect(messages[0]).toContain(
+			"MCP contribution failed: boom in mcp; repair its mcp function",
+		);
+		expect(messages[1]).toContain(
+			"MCP contribution is invalid: tools[0].name must be a string",
+		);
+		expect(messages[2]).toContain(
+			"MCP contribution is invalid: tools[0].input.id must be built with kabane's zod, which the extension API passes as host.z; this kabane does not provide host.z yet",
+		);
+	} finally {
+		stderr.mockRestore();
+	}
 });

@@ -23,7 +23,7 @@ const McpContribution = z.object({
 			z.object({
 				name: z.string(),
 				description: z.string(),
-				input: z.record(z.instanceof(z.ZodType)),
+				input: z.record(Extensions.zodSchema),
 				kind: z.enum(["read", "write"]),
 				annotations: z
 					.object({
@@ -33,6 +33,7 @@ const McpContribution = z.object({
 					.optional(),
 				handler: z.custom<ToolDef["handler"]>(
 					(value) => typeof value === "function",
+					"must be a function",
 				),
 			}),
 		)
@@ -59,7 +60,7 @@ export const extensionMcp = async (
 			Extensions.report([
 				{
 					name: extension.name,
-					reason: `MCP contribution failed; repair its mcp function; ${Extensions.disabledAdvice}`,
+					reason: `MCP contribution failed: ${Extensions.cause(contributed.error)}; repair its mcp function; ${Extensions.disabledAdvice}`,
 				},
 			]);
 			continue;
@@ -69,7 +70,7 @@ export const extensionMcp = async (
 			Extensions.report([
 				{
 					name: extension.name,
-					reason: `MCP contribution is invalid; return optional string instructions and tools with a string name and description, a Zod input shape, read/write kind and handler function; ${Extensions.disabledAdvice}`,
+					reason: `MCP contribution is invalid: ${Extensions.invalid(parsed.error)}; ${Extensions.disabledAdvice}`,
 				},
 			]);
 			continue;
