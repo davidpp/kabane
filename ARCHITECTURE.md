@@ -553,7 +553,8 @@ consistent only while the module is registered. The rule has two parts:
   two ways out, repair it or remove it from `extensions` in `config.json`, by hand or with
   `kabane config set extensions <list>`. Commands that do not
   open the database (`kabane --help`, and the commands marked `standalone`: `config`, `init`,
-  `scope`, `update`) still run, so the human can do either; so will `doctor` once JCAB-263 lands.
+  `scope`, `update`) still run, so the human can do either. `doctor` runs too: it opens the
+  database only when `config.json` parses, with the first-party modules, so a check can read issues.
   Writing on in that state would change task states without the module's `onTaskStateChange`, and
   the human never chose that.
 

@@ -80,6 +80,9 @@ layouts refuse replacement. The board shows `kabane <version> is out` when that 
 exists, with what your install runs to take it: `kabane update`, or `mise up kabane`. It reads npm's dist-tags at most once a day and installs nothing;
 `kabane config set updates.check false` turns it off. `kabane mcp` and other commands never
 check, and `kabane update` opens no tracker DB and rewires no MCP entry.
+After an update, `kabane doctor` reports what kabane wrote that the new version has moved past:
+settings, a project's dispatch and grill skills, a harness's MCP entry. `kabane doctor --fix`
+repairs what needs no decision; `/doctor` in the board's copilot walks you through the rest.
 See [updating and data compatibility](docs/getting-started.md#updating).
 
 ## Quick start
@@ -129,7 +132,7 @@ footer carries `⠹ copilot · <last tool call>` while it goes, then `✓ copilo
 last line>` until the next keypress. `o` opens the transcript — the session's last few turns,
 each under the prompt that started it — and `x` there stops a running one.
 Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicates`,
-`/reparent`, `/check-plan`, `/linear`, `/github`, `/settings`), which expand into the window so you read what will be sent.
+`/reparent`, `/check-plan`, `/linear`, `/github`, `/settings`, `/doctor`), which expand into the window so you read what will be sent.
 `/setup-dispatch` is the one that writes a file: it reads the project's CLAUDE.md/AGENTS.md,
 gate and `.claude/agents/`, and writes a dispatch skill under `.agents/skills/dispatch/` for
 coding sessions to turn asks into issues here, then shows you each file it wrote. Codex and Pi

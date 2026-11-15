@@ -1,0 +1,179 @@
+// The files kabane writes into a project, compared with what this kabane ships: the dispatch skill
+// /setup-dispatch fills, a copy of the grill skill, and the `## Tracker` block of the instruction
+// files. Each finding says only what the comparison showed; re-filling the dispatch skill stays
+// /setup-dispatch's job, so doctor routes there instead of writing it.
+import {
+	copyFileSync,
+	existsSync,
+	lstatSync,
+	readFileSync,
+	realpathSync,
+} from "node:fs";
+import { join, relative } from "node:path";
+import { Templates } from "@cabane/acp/templates";
+import { ok, type Result, trySync } from "@cabane/core";
+import type { Doctor, Extension } from "@cabane/extension";
+import { projectAt } from "../context";
+import { McpClients } from "../mcp-clients";
+
+const SOURCE = "project";
+const SETUP = "/setup-dispatch";
+
+/** `metadata.kabane-template` from a skill's YAML frontmatter, if it has one. */
+const stampOf = (skill: string): string | undefined => {
+	const frontmatter = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(skill)?.[1];
+	if (frontmatter === undefined) return undefined;
+	const parsed = trySync(() => Bun.YAML.parse(frontmatter));
+	if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null)
+		return undefined;
+	const metadata = (parsed.value as { metadata?: unknown }).metadata;
+	if (typeof metadata !== "object" || metadata === null) return undefined;
+	const stamp = (metadata as Record<string, unknown>)["kabane-template"];
+	return typeof stamp === "string" ? stamp : undefined;
+};
+
+const isRealDirectory = (path: string): boolean =>
+	existsSync(path) && lstatSync(path).isDirectory();
+
+const dispatchSkill = (root: string): Doctor.Finding[] => {
+	const claudeDir = join(root, ".claude/skills/dispatch");
+	const path = [
+		join(root, ".agents/skills/dispatch/SKILL.md"),
+		join(claudeDir, "SKILL.md"),
+	].find((candidate) => existsSync(candidate));
+	if (path === undefined)
+		return [
+			{
+				id: "dispatch-skill-missing",
+				source: SOURCE,
+				severity: "suggest",
+				summary:
+					"No dispatch skill in .agents/skills/dispatch or .claude/skills/dispatch.",
+				route: `${SETUP} writes one`,
+			},
+		];
+	const findings: Doctor.Finding[] = [];
+	if (isRealDirectory(claudeDir))
+		findings.push({
+			id: "dispatch-skill-location",
+			source: SOURCE,
+			path: claudeDir,
+			severity: "route",
+			summary:
+				".claude/skills/dispatch is a directory, so only Claude Code reads it; the skill belongs in .agents/skills/dispatch with .claude/skills/dispatch as a symlink to it. /setup-dispatch offers the move and waits for a yes.",
+			route: SETUP,
+		});
+	const shown = relative(root, path);
+	const stamp = stampOf(readFileSync(path, "utf8"));
+	const current = Templates.stamp("dispatch");
+	if (stamp === undefined)
+		findings.push({
+			id: "dispatch-skill-unstamped",
+			source: SOURCE,
+			path,
+			severity: "route",
+			summary: `${shown} has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from ${current}, keeping the project's own edits, and shows the diff before writing.`,
+			route: SETUP,
+		});
+	else if (stamp !== current)
+		findings.push({
+			id: "dispatch-skill-behind",
+			source: SOURCE,
+			path,
+			severity: "route",
+			summary: `${shown} was filled from ${stamp}; the template is now ${current}. /setup-dispatch re-fills it, keeping the project's own edits, and shows the diff before writing.`,
+			route: SETUP,
+		});
+	return findings;
+};
+
+const grillSkill = (root: string): Doctor.Finding[] => {
+	const template = join(Templates.dir("grill"), "SKILL.md");
+	const shipped = readFileSync(template);
+	// The .claude path is usually a symlink to the .agents copy: one file, compared once.
+	const copies = [
+		...new Set(
+			[".agents/skills/grill/SKILL.md", ".claude/skills/grill/SKILL.md"]
+				.map((path) => join(root, path))
+				.filter((path) => existsSync(path))
+				.map((path) => realpathSync(path)),
+		),
+	];
+	const behind = copies.filter((path) => !readFileSync(path).equals(shipped));
+	if (behind.length === 0) return [];
+	const shown = behind.map((path) => relative(root, path)).join(", ");
+	return [
+		{
+			id: "grill-skill-behind",
+			source: SOURCE,
+			path: behind[0],
+			severity: "mention",
+			summary: `${shown} differs from the grill skill this kabane ships. --fix ${SOURCE}/grill-skill-behind copies the template over it, replacing any edits of the project's own.`,
+			fix: async () => {
+				for (const path of behind) copyFileSync(template, path);
+				return ok(`Copied the grill skill template to ${shown}`);
+			},
+		},
+	];
+};
+
+/** The `## Tracker` section of `text`: up to the next heading of the same or a higher level. */
+const trackerSection = (text: string): string | undefined => {
+	const lines = text.split("\n");
+	const start = lines.findIndex((line) => /^## Tracker\s*$/.test(line));
+	if (start === -1) return undefined;
+	const end = lines.findIndex(
+		(line, index) => index > start && /^#{1,2}\s/.test(line),
+	);
+	return lines
+		.slice(start, end === -1 ? undefined : end)
+		.join("\n")
+		.trimEnd();
+};
+
+const trackerBlock = (root: string, block: string): Doctor.Finding[] => {
+	const files = McpClients.IDS.map((id) => McpClients.entry(id).instructionFile)
+		.map((name) => ({ name, path: join(root, name) }))
+		.filter(({ path }) => existsSync(path));
+	const sections = files.flatMap(({ name, path }) => {
+		const section = trackerSection(readFileSync(path, "utf8"));
+		return section === undefined ? [] : [{ name, path, section }];
+	});
+	if (sections.length === 0)
+		return [
+			{
+				id: "tracker-block-missing",
+				source: SOURCE,
+				severity: "suggest",
+				summary:
+					"No CLAUDE.md, AGENTS.md or GEMINI.md here has a ## Tracker section; agents use kabane unprompted only when the project tells them to. docs/getting-started.md gives the block to add.",
+			},
+		];
+	const differing = sections.filter(({ section }) => section !== block);
+	if (differing.length === 0) return [];
+	return [
+		{
+			id: "tracker-block-differs",
+			source: SOURCE,
+			path: differing[0]?.path,
+			severity: "mention",
+			summary: `The ## Tracker section of ${differing.map(({ name }) => name).join(", ")} is not the block this kabane gives (docs/getting-started.md). It may hold the project's own edits, or come from an older kabane.`,
+		},
+	];
+};
+
+export const project = async (
+	ctx: Extension.Ctx,
+): Promise<Result<Doctor.Finding[]>> => {
+	const here = await projectAt(ctx.cwd, ctx.home);
+	if (!here.ok) return here;
+	if (here.value === null) return ok([]);
+	const { root } = here.value;
+	// first-run carries the board's setup screen; main loads it lazily, and so does this check.
+	const { TRACKER_BLOCK } = await import("../first-run");
+	return trySync(() => [
+		...dispatchSkill(root),
+		...grillSkill(root),
+		...trackerBlock(root, TRACKER_BLOCK),
+	]);
+};

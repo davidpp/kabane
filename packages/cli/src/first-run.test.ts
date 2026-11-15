@@ -9,6 +9,7 @@ import { configPath, loadConfig } from "./config";
 import { openContext } from "./context";
 import {
 	firstIssueBrief,
+	TRACKER_BLOCK,
 	type Installer,
 	outcomeOf,
 	setupDeps,
@@ -161,8 +162,8 @@ describe("firstIssueBrief", () => {
 			"utf8",
 		);
 		const block = /```markdown\n(## Tracker[\s\S]*?)```/.exec(guide)?.[1];
-		expect(block).toBeDefined();
-		expect(firstIssueBrief("CLAUDE.md")).toContain(block ?? "");
+		expect(block).toBe(`${TRACKER_BLOCK}\n`);
+		expect(firstIssueBrief("CLAUDE.md")).toContain(TRACKER_BLOCK);
 		expect(firstIssueBrief("CLAUDE.md")).toContain(
 			"`CLAUDE.md` at the project root",
 		);
