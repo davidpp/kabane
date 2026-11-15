@@ -30,12 +30,14 @@ const rules = {
 		testSupport: [
 			"packages/board/src/test-db.ts",
 			"packages/board/src/stories/fixtures.ts",
+			"packages/board/src/stories/index.tsx",
 		],
 	},
 	kabane: {
 		layer: "host",
 		dependencies: [],
 		devDependencies: [],
+		testSupport: ["packages/cli/issue-corpus-harness.ts"],
 		exceptions: { "@cabane/loop": "fixture: pending loop extraction" },
 	},
 	"cabane-worker": {
@@ -366,6 +368,42 @@ test.each([
 		expect(checkLayers(root)).toHaveLength(1);
 	},
 );
+
+test.each([
+	"../issue-corpus-harness",
+	"../issue-corpus-harness.ts",
+	"../issue-corpus-harness.js",
+	"./../src/../issue-corpus-harness",
+])("production files reject their own listed support: %s", (specifier) => {
+	const root = workspace();
+	manifest(root, "packages/cli", "kabane");
+	write(root, "packages/cli/issue-corpus-harness.ts", "export {};");
+	write(root, "packages/cli/src/index.test.ts", `import "${specifier}";`);
+	expect(checkLayers(root)).toEqual([]);
+	write(root, "packages/cli/src/index.ts", `import "${specifier}";`);
+	expect(checkLayers(root)).toEqual([
+		`kabane -> kabane: production import ${specifier} in packages/cli/src/index.ts:1 uses test support; move it to a test or listed test-support file.`,
+	]);
+});
+
+test("tests and listed support may import listed support; similar names pass", () => {
+	const root = workspace();
+	manifest(root, "packages/board", "@cabane/board");
+	write(root, "packages/board/src/test-db.ts", "export {};");
+	write(root, "packages/board/src/stories/fixtures.ts", 'import "../test-db";');
+	write(root, "packages/board/src/index.test.ts", 'import "./test-db";');
+	write(root, "packages/board/src/index.ts", 'import "./test-db-other";');
+	expect(checkLayers(root)).toEqual([]);
+	write(root, "packages/board/src/index.ts", 'import "./test-db";');
+	expect(checkLayers(root)).toEqual([
+		"@cabane/board -> @cabane/board: production import ./test-db in packages/board/src/index.ts:1 uses test support; move it to a test or listed test-support file.",
+	]);
+	write(root, "packages/board/src/stories/index.tsx", "export {};");
+	write(root, "packages/board/src/index.ts", 'import "./stories";');
+	expect(checkLayers(root)).toEqual([
+		"@cabane/board -> @cabane/board: production import ./stories in packages/board/src/index.ts:1 uses test support; move it to a test or listed test-support file.",
+	]);
+});
 
 test("production imports permit declared runtime dependency subpaths", () => {
 	const root = workspace();
