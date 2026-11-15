@@ -16,6 +16,7 @@ import type {
 } from "@cabane/board/ports";
 import { err, ok, type Result } from "@cabane/core";
 import { z } from "zod";
+import type { Doctor } from "./doctor";
 
 export namespace Settings {
 	export type Layer = "default" | "global" | "shared" | "local" | "caller";
@@ -314,41 +315,147 @@ export namespace Settings {
 		return { inner: schema, value };
 	};
 
-	/**
-	 * The unsets in `value` that name no setting: a key a strict object does not have (inherited
-	 * names such as `constructor` included), or one its record's key schema refuses. The value
-	 * check never sees them, since pruning removes them.
-	 */
+	type Node = {
+		inner: z.ZodTypeAny;
+		given: unknown;
+		value: unknown;
+		path: readonly string[];
+	};
+
+	const childSchema = (
+		inner: z.ZodTypeAny,
+		key: string,
+	): z.ZodTypeAny | undefined => {
+		if (inner instanceof z.ZodRecord)
+			return inner.keySchema.safeParse(key).success
+				? inner.valueSchema
+				: undefined;
+		if (!(inner instanceof z.ZodObject)) return undefined;
+		const shape: z.ZodRawShape = inner.shape;
+		return Object.hasOwn(shape, key) ? shape[key] : undefined;
+	};
+
+	// Both drift and unset validation follow preprocessing through the same schema walk.
+	const walkWith = <T>(
+		schema: z.ZodTypeAny,
+		given: unknown,
+		visit: (node: Node) => T[],
+		path: readonly string[] = [],
+		raw: unknown = given,
+	): T[] => {
+		const { inner, value } = unwrapWith(schema, given);
+		const found = visit({ inner, given: raw, value, path });
+		if (!isObject(value)) return found;
+		for (const [key, child] of Object.entries(value)) {
+			const field = childSchema(inner, key);
+			if (field)
+				found.push(
+					...walkWith(
+						field,
+						child,
+						visit,
+						[...path, key],
+						isObject(raw) && Object.hasOwn(raw, key) ? raw[key] : child,
+					),
+				);
+		}
+		return found;
+	};
+
 	const unsetIssues = (
 		namespace: string,
 		schema: z.ZodTypeAny,
 		given: unknown,
-		path: readonly string[] = [],
-	): string[] => {
-		const { inner, value } = unwrapWith(schema, given);
-		if (!isObject(value)) return [];
-		return Object.entries(value).flatMap(([key, child]) => {
-			const at = [...path, key].join(".");
-			if (inner instanceof z.ZodRecord) {
-				const named = inner.keySchema.safeParse(key);
-				if (!named.success)
-					return unsets(child)
-						? named.error.issues.map(
+	): string[] =>
+		walkWith(schema, given, ({ inner, value, path }) => {
+			if (!isObject(value)) return [];
+			return Object.entries(value).flatMap(([key, child]) => {
+				if (!unsets(child)) return [];
+				const at = [...path, key].join(".");
+				if (inner instanceof z.ZodRecord) {
+					const named = inner.keySchema.safeParse(key);
+					return named.success
+						? []
+						: named.error.issues.map(
 								(issue: z.ZodIssue) => `${at}: ${issue.message}`,
-							)
-						: [];
-				return unsetIssues(namespace, inner.valueSchema, child, [...path, key]);
-			}
-			if (!(inner instanceof z.ZodObject)) return [];
-			const shape: Record<string, z.ZodTypeAny> = inner.shape;
-			const field = Object.hasOwn(shape, key) ? shape[key] : undefined;
-			if (field !== undefined)
-				return unsetIssues(namespace, field, child, [...path, key]);
-			return unsets(child) && inner._def.unknownKeys === "strict"
-				? [`${at}: not a ${namespace} setting`]
-				: [];
+							);
+				}
+				return inner instanceof z.ZodObject &&
+					inner._def.unknownKeys === "strict" &&
+					!childSchema(inner, key)
+					? [`${at}: not a ${namespace} setting`]
+					: [];
+			});
 		});
-	};
+
+	// Escape separators, capitals and the escape marker itself, so paths and layers cannot
+	// collide (a-b vs a.b, or a camelCase setting vs its lowercase spelling).
+	const idPart = (value: string): string =>
+		Array.from(value, (char) =>
+			/^[a-wyz0-9]$/.test(char)
+				? char
+				: `x${char.codePointAt(0)?.toString(16)}x`,
+		).join("") || "xemptyx";
+
+	/**
+	 * Report drift in one raw layer. No writes: the storage owner attaches repair closures.
+	 * A removed key is inferred to be a rename when a new, declared sibling has the same
+	 * JSON value. This is a heuristic, not migration metadata supplied by zod.
+	 */
+	export const drift = (
+		namespace: string,
+		schema: z.ZodTypeAny,
+		raw: unknown,
+		layer: Layer,
+	): Doctor.Finding[] =>
+		walkWith(
+			schema,
+			structuredClone(raw),
+			({ inner, given, value, path }) => {
+				if (!isObject(given)) return [];
+				return Object.entries(given).flatMap(
+					([key, child]): Doctor.Finding[] => {
+						const retired = !isObject(value) || !Object.hasOwn(value, key);
+						if (
+							!retired &&
+							(!(
+								inner instanceof z.ZodObject || inner instanceof z.ZodRecord
+							) ||
+								childSchema(inner, key))
+						)
+							return [];
+						const replacement =
+							retired && isObject(value)
+								? Object.keys(value).find(
+										(name) =>
+											!Object.hasOwn(given, name) &&
+											childSchema(inner, name) !== undefined &&
+											JSON.stringify(value[name]) === JSON.stringify(child),
+									)
+								: undefined;
+						const category = retired ? "retired-setting" : "unknown-setting";
+						const at = [namespace, ...path, key];
+						return [
+							{
+								id: [category, layer, ...at.map(idPart)].join("-"),
+								source: namespace,
+								path: at.join("."),
+								severity: replacement === undefined ? "mention" : "auto",
+								summary: `${at.join(".")} in ${layer}: ${
+									retired
+										? replacement === undefined
+											? "retired setting is dropped by preprocessing"
+											: `retired setting maps to ${[namespace, ...path, replacement].join(".")}`
+										: "unknown setting"
+								}`,
+							},
+						];
+					},
+				);
+			},
+			[],
+			raw,
+		);
 
 	/** One layer on its own, so an error names the layer it is in. */
 	export const validate = (
