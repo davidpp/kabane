@@ -241,3 +241,59 @@ test("the fix re-registers through mcp install --force, and only when named", as
 		"cabane://actor/agent/gemini",
 	]);
 });
+
+test.skipIf(Bun.which("claude") === null)(
+	"real Claude registrations in user and local scopes are both repaired",
+	() => {
+		const s = setup();
+		const cli = join(import.meta.dir, "../../index.ts");
+		const expected = McpClients.launchFor(
+			{ command: process.execPath, args: [cli] },
+			"claude",
+		);
+		s.claude(
+			{ kabane: expected },
+			{ kabane: s.entry("claude", "/gone/kabane") },
+		);
+		const env = {
+			...process.env,
+			HOME: s.home,
+			KABANE_HOME: s.ctx.home,
+			KABANE_HARNESSES: "claude",
+		};
+		const run = (...args: string[]) => {
+			const result = Bun.spawnSync([process.execPath, cli, ...args], {
+				cwd: s.root,
+				env,
+			});
+			expect(result.exitCode).toBe(0);
+			return JSON.parse(result.stdout.toString());
+		};
+		expect(
+			run("mcp", "install", "--harness", "claude", "--json").reports[0].status,
+		).toBe("stale");
+		const fixed = run(
+			"doctor",
+			"--fix",
+			"kabane/mcp-entry-stale-claude",
+			"--json",
+		);
+		expect(fixed.fixes[0].result.ok).toBe(true);
+		const registrations = McpClients.registrations("claude", {
+			home: s.home,
+			env,
+			projectRoot: s.root,
+		});
+		if (!registrations.ok) throw registrations.error;
+		expect(registrations.value.map(({ scope }) => scope)).toEqual([
+			"user",
+			"local",
+		]);
+		for (const registration of registrations.value)
+			expect(registration.launch).toEqual(expected);
+		expect(
+			run("mcp", "install", "--harness", "claude", "--json").reports[0].status,
+		).toBe("present");
+	},
+	60_000,
+);

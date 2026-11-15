@@ -36,10 +36,11 @@ export namespace McpClients {
 	type Entry = {
 		/** The binary on PATH that says the harness is installed. */
 		binary: string;
-		add: (launch: Launch) => string[];
+		add: (launch: Launch, scope?: "user" | "local") => string[];
 		find: string[];
 		isPresent: (probe: Probe) => boolean;
 		remove: string[];
+		removeScoped?: (scope: "user" | "local") => string[];
 		snippet: (launch: Launch) => Snippet;
 		/** The file at a project root this harness reads as its instructions. */
 		instructionFile: string;
@@ -55,7 +56,7 @@ export namespace McpClients {
 	};
 
 	/** A `kabane` entry found in a harness config file, and which file and key held it. */
-	type Registration = { at: string; launch: Launch };
+	type Registration = { at: string; launch: Launch; scope?: "user" | "local" };
 
 	const ConfigSchema = z.record(z.unknown());
 
@@ -87,7 +88,10 @@ export namespace McpClients {
 		const config = readConfig(path, Bun.JSONC.parse);
 		if (!config.ok || config.value === undefined)
 			return config.ok ? ok([]) : config;
-		const found = serverIn(config.value.mcpServers, `${path} mcpServers`);
+		const found: Registration[] = serverIn(
+			config.value.mcpServers,
+			`${path} mcpServers`,
+		).map((registration) => ({ ...registration, scope: "user" }));
 		const projects = ConfigSchema.safeParse(config.value.projects);
 		if (where.projectRoot !== undefined && projects.success) {
 			const project = ConfigSchema.safeParse(projects.data[where.projectRoot]);
@@ -96,7 +100,10 @@ export namespace McpClients {
 					...serverIn(
 						project.data.mcpServers,
 						`${path} projects["${where.projectRoot}"].mcpServers`,
-					),
+					).map((registration): Registration => ({
+						...registration,
+						scope: "local",
+					})),
 				);
 		}
 		return ok(found);
@@ -161,12 +168,12 @@ export namespace McpClients {
 	const TABLE: Record<Id, Entry> = {
 		claude: {
 			binary: "claude",
-			add: (launch) => [
+			add: (launch, scope = "user") => [
 				"claude",
 				"mcp",
 				"add",
 				"-s",
-				"user",
+				scope,
 				SERVER_NAME,
 				"--",
 				launch.command,
@@ -174,8 +181,16 @@ export namespace McpClients {
 			],
 			find: ["claude", "mcp", "get", SERVER_NAME],
 			isPresent: (probe) => probe.code === 0,
-			// No scope: removes the entry from whichever scope `get` found it in.
+			// A fallback for entries not represented by the launch schema.
 			remove: ["claude", "mcp", "remove", SERVER_NAME],
+			removeScoped: (scope) => [
+				"claude",
+				"mcp",
+				"remove",
+				"-s",
+				scope,
+				SERVER_NAME,
+			],
 			snippet: (launch) => ({
 				title: "Claude Code: .mcp.json at a project root",
 				text: mcpServersJson(launch),
