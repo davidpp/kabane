@@ -5,6 +5,7 @@
  * outcome's JSON instead of the human text.
  */
 
+import { existsSync } from "node:fs";
 import { err, ok, type Result } from "@cabane/core";
 import {
 	type Extension,
@@ -37,7 +38,7 @@ import { show } from "./commands/show";
 import { sync } from "./commands/sync";
 import { update } from "./commands/update";
 import { upstream } from "./commands/upstream";
-import { resolveHome } from "./config";
+import { configPath, resolveHome } from "./config";
 import { type Command, type Ctx, openContext, settingsPort } from "./context";
 import { Extensions } from "./extensions";
 import { print } from "./output";
@@ -99,11 +100,16 @@ const help = async (home: string, exitCode: 0 | 2): Promise<Outcome> => {
 		};
 	const all = await Extensions.loadAll(names.value, home);
 	Extensions.report(all.refused);
-	const extra = all.loaded.flatMap((extension) => extension.commands ?? []);
+	const accepted = Extensions.commands(
+		all.loaded,
+		COMMANDS.map((command) => command.name),
+	);
+	Extensions.report(accepted.refused);
+	const extra = accepted.commands;
 	return {
 		exitCode,
 		json: { commands: [...COMMANDS, ...extra].map((c) => c.name) },
-		text: [helpText(extra), ...all.refused.map(Extensions.line)].join("\n"),
+		text: helpText(extra),
 	};
 };
 
@@ -119,14 +125,20 @@ const resolveCommand = async (
 	if (builtIn) return ok(builtIn);
 	const enabled = Extensions.enabled(home);
 	if (!enabled.ok) return err(failure(enabled.error));
-	const found = await Extensions.find(name, enabled.value, home);
+	const all = await Extensions.loadAll(enabled.value, home);
+	const accepted = Extensions.commands(
+		all.loaded,
+		COMMANDS.map((command) => command.name),
+	);
+	Extensions.report([...all.refused, ...accepted.refused]);
+	const found = accepted.commands.find((command) => command.name === name);
 	if (found) return ok(found);
 	const disabled = Extensions.available(home).filter(
 		(extension) => !enabled.value.includes(extension),
 	);
 	return err(
 		usage(
-			`Unknown command: ${name}${disabled.length ? `; installed extensions not enabled: ${disabled.join(", ")}. Enable them in ${home}/config.json to discover their commands` : ""}`,
+			`Unknown command: ${name}${disabled.length ? `; installed extensions not enabled: ${disabled.join(", ")}. ${existsSync(configPath(home)) ? "Enable them" : "Run `kabane init` first, then enable them"} with \`kabane config set extensions <names> --layer global\` to discover their commands` : ""}`,
 			HELP_USAGE,
 		),
 	);

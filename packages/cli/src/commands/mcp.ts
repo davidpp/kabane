@@ -8,12 +8,36 @@ import {
 	type ToolDef,
 } from "@cabane/core";
 import { type Extension, failure, success } from "@cabane/extension";
+import { z } from "zod";
 import { version } from "../../package.json";
 import { ConfigSettings } from "../config-settings";
 import { configTools } from "../config-tools";
 import { type Command, openContext, resolveScopeUri } from "../context";
 import { Extensions } from "../extensions";
 import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
+
+const McpContribution = z.object({
+	instructions: z.string().optional(),
+	tools: z
+		.array(
+			z.object({
+				name: z.string(),
+				description: z.string(),
+				input: z.record(z.instanceof(z.ZodType)),
+				kind: z.enum(["read", "write"]),
+				annotations: z
+					.object({
+						destructiveHint: z.boolean().optional(),
+						openWorldHint: z.boolean().optional(),
+					})
+					.optional(),
+				handler: z.custom<ToolDef["handler"]>(
+					(value) => typeof value === "function",
+				),
+			}),
+		)
+		.optional(),
+});
 
 /** Compose the enabled extensions, using the same selection as the board. */
 export const extensionMcp = async (
@@ -35,12 +59,22 @@ export const extensionMcp = async (
 			Extensions.report([
 				{
 					name: extension.name,
-					reason: `MCP failed: ${contributed.error.message}`,
+					reason: `MCP contribution failed; repair its mcp function; ${Extensions.disabledAdvice}`,
 				},
 			]);
 			continue;
 		}
-		const pending = contributed.value.tools ?? [];
+		const parsed = McpContribution.safeParse(contributed.value);
+		if (!parsed.success) {
+			Extensions.report([
+				{
+					name: extension.name,
+					reason: `MCP contribution is invalid; return optional string instructions and tools with a string name and description, a Zod input shape, read/write kind and handler function; ${Extensions.disabledAdvice}`,
+				},
+			]);
+			continue;
+		}
+		const pending = parsed.data.tools ?? [];
 		const seen = new Set(names);
 		let reason: string | undefined;
 		for (const tool of pending) {
@@ -48,11 +82,11 @@ export const extensionMcp = async (
 				!tool.name.startsWith(`kabane_${extension.name}_`) ||
 				tool.name === `kabane_${extension.name}_`
 			) {
-				reason = `MCP tool ${tool.name} must be named kabane_${extension.name}_<verb>`;
+				reason = `MCP tool ${tool.name} must be named kabane_${extension.name}_<verb>; rename it; ${Extensions.disabledAdvice}`;
 				break;
 			}
 			if (seen.has(tool.name)) {
-				reason = `MCP tool ${tool.name} duplicates an existing tool. Rename the extension tool.`;
+				reason = `MCP tool ${tool.name} duplicates an existing tool; rename the extension tool; ${Extensions.disabledAdvice}`;
 				break;
 			}
 			seen.add(tool.name);
@@ -78,8 +112,7 @@ export const extensionMcp = async (
 				},
 			});
 		}
-		if (contributed.value.instructions)
-			instructions.push(contributed.value.instructions);
+		if (parsed.data.instructions) instructions.push(parsed.data.instructions);
 	}
 	return ok({ tools, instructions });
 };

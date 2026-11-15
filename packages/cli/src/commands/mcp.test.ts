@@ -175,7 +175,7 @@ const installMcp = (name: string, body: string) => {
 };
 
 test("real extension failures discard whole contributions while core and good tools remain on the wire", async () => {
-	configure(["good", "throws", "bad", "duplicate"]);
+	configure(["good", "throws", "bad", "duplicate", "badshape", "upstream"]);
 	const tool = (name: string) =>
 		`{name: "${name}", description: "Read", kind: "read", input: {}, handler: async () => ({ok:true, value:null})}`;
 	installMcp(
@@ -191,6 +191,8 @@ test("real extension failures discard whole contributions while core and good to
 		"duplicate",
 		`return {instructions: "duplicate vocabulary", tools: [${tool("kabane_duplicate_read")}, ${tool("kabane_duplicate_read")}]};`,
 	);
+	installMcp("badshape", 'return {tools: [{description: "x"}]};');
+	installMcp("upstream", `return {tools: [${tool("kabane_upstream_link")}]};`);
 	const contribution = await extensionMcp(ctx, KABANE_TOOLS);
 	if (!contribution.ok) throw contribution.error;
 	expect(contribution.value.tools.map((t) => t.name)).toEqual([
@@ -242,4 +244,31 @@ test("real extension handler failures name their owner", async () => {
 	expect(called.error.message).toContain(
 		"Extension handler MCP tool kabane_handler_read failed: broken handler",
 	);
+});
+
+test("an extension cannot replace the core kabane_upstream_link tool", async () => {
+	configure(["upstream"]);
+	installMcp(
+		"upstream",
+		'return {tools: [{name:"kabane_upstream_link",description:"Replacement",input:{},kind:"write",handler:async()=>({ok:true,value:null})}]};',
+	);
+	const contribution = await extensionMcp(ctx, KABANE_TOOLS);
+	if (!contribution.ok) throw contribution.error;
+	expect(contribution.value).toEqual({ tools: [], instructions: [] });
+	expect(
+		KABANE_TOOLS.some((tool) => tool.name === "kabane_upstream_link"),
+	).toBe(true);
+});
+
+test.each([
+	'{tools:"nope"}',
+	"{instructions:42}",
+	'{tools:[{name:"kabane_invalid_read", description:"Read",kind:"read",input:{id:"not a schema"},handler:async()=>({ok:true,value:null})}]}',
+	'{tools:[{name:"kabane_invalid_read", description:"Read",kind:"read",input:{},handler:"nope"}]}',
+])("invalid MCP contribution is isolated: %s", async (result) => {
+	configure(["invalid"]);
+	installMcp("invalid", `return ${result};`);
+	const contribution = await extensionMcp(ctx, KABANE_TOOLS);
+	if (!contribution.ok) throw contribution.error;
+	expect(contribution.value).toEqual({ tools: [], instructions: [] });
 });

@@ -361,14 +361,20 @@ const recordChild = (entry: Key, rest: string): Key | undefined => {
 	return at < 0 ? child : recordChild(child, rest.slice(at + 1));
 };
 
-const find = (keys: readonly Key[], key: string): Result<Key> => {
+const find = (keys: readonly Key[], key: string, home: string): Result<Key> => {
+	const namespace = key.split(".")[0] ?? "";
+	const enabled = Extensions.enabled(home);
+	const disabled =
+		Extensions.installed(home, namespace) &&
+		enabled.ok &&
+		!enabled.value.includes(namespace);
 	const entry =
 		keys.find((entry) => entry.key === key) ?? recordEntry(keys, key);
 	return entry
 		? ok(entry)
 		: err(
 				new Error(
-					`Unknown config key: ${key}. Run \`kabane config list\` or call kabane_configGet without a key for known keys. A directory extension's settings are unknown until it is enabled in extensions.`,
+					`Unknown config key: ${key}. Run \`kabane config list\` or call kabane_configGet without a key for known keys.${disabled ? " A directory extension's settings are unknown until it is enabled in extensions." : ""}`,
 				),
 			);
 };
@@ -714,7 +720,7 @@ export namespace ConfigSettings {
 	export const get = async (home: string, where: Where, key: string) => {
 		const keys = await allKeys(home);
 		if (!keys.ok) return keys;
-		const entry = find(keys.value, key);
+		const entry = find(keys.value, key, home);
 		if (!entry.ok) return entry;
 		const loaded = loadConfigDocument(home);
 		if (!loaded.ok) return loaded;
@@ -743,7 +749,7 @@ export namespace ConfigSettings {
 	): Promise<Result<ConfigChange>> => {
 		const keys = await allKeys(home);
 		if (!keys.ok) return keys;
-		const entry = find(keys.value, key);
+		const entry = find(keys.value, key, home);
 		if (!entry.ok) return entry;
 		const loaded = loadConfigDocument(home);
 		return loaded.ok

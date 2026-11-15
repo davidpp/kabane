@@ -193,7 +193,7 @@ it("contains a command rejection and invalid manifests, factories, and traversal
 	install(
 		home,
 		"throws",
-		`export default () => ({name: "throws", commands: [{name: "throws", standalone: true, run: async () => {throw new Error("command failed");}}]});`,
+		`export default () => ({name: "throws", commands: [{name: "throws", usage: "throws", summary: "Throw", standalone: true, run: async () => {throw new Error("command failed");}}]});`,
 	);
 	expect((await run(["throws"], { KABANE_HOME: home }, home)).text).toContain(
 		"Extension throws: command failed",
@@ -210,7 +210,7 @@ it("contains a command rejection and invalid manifests, factories, and traversal
 	);
 	expect(all.loaded).toEqual([]);
 	expect(all.refused).toHaveLength(4);
-	expect(all.refused[1]?.reason).toBe("factory failed");
+	expect(all.refused[1]?.reason).toContain("the factory failed; repair");
 	expect(all.refused[3]?.reason).toContain(join(home, "extensions/missing"));
 });
 
@@ -247,9 +247,19 @@ it("discovers symlinks and directory settings only when enabled, preserving bund
 it("an enabled directory wins over the bundled extension", async () => {
 	const home = makeHome({ extensions: ["loop"] });
 	install(home, "loop", 'export default () => ({name: "loop", commands: []});');
-	const all = await Extensions.loadAll(["loop"], home);
-	expect(all.refused).toEqual([]);
-	expect(all.loaded[0]?.commands).toEqual([]);
+	const stderr = spyOn(console, "error").mockImplementation(() => {});
+	try {
+		const all = await Extensions.loadAll(["loop"], home);
+		expect(all.refused).toEqual([]);
+		expect(all.loaded[0]?.commands).toEqual([]);
+		expect(stderr.mock.calls).toEqual([
+			[
+				`Extension loop: directory ${join(home, "extensions/loop")}/ overrides bundled loop`,
+			],
+		]);
+	} finally {
+		stderr.mockRestore();
+	}
 });
 
 it("reports an enabled missing extension once even when config discovery and a write both name it", async () => {
@@ -269,4 +279,87 @@ it("reports an enabled missing extension once even when config discovery and a w
 	} finally {
 		stderr.mockRestore();
 	}
+});
+
+for (const [name, fields] of [
+	["badshape", 'commands: "nope"'],
+	["badname", "commands: [{name: 42}]"],
+	["badsettings", "settings: {}"],
+	["badlooks", "looks: {word: {label: 42}}"],
+	["badboard", "board: {}"],
+	["badmcp", "mcp: []"],
+	["baddoctor", "doctor: true"],
+] as const) {
+	it(`refuses malformed factory fields for ${name} before help and dispatch`, async () => {
+		const home = makeHome({ extensions: [name] });
+		install(home, name, `export default () => ({name: "${name}", ${fields}});`);
+		const all = await Extensions.loadAll([name], home);
+		expect(all.loaded).toEqual([]);
+		expect(all.refused[0]?.reason).toContain(
+			"the factory returned an invalid Extension",
+		);
+		const env = { KABANE_HOME: home, KABANE_HARNESSES: "" };
+		expect((await run(["--help"], env, home)).exitCode).toBe(0);
+		expect((await run(["unknown"], env, home)).exitCode).toBe(2);
+	});
+}
+
+for (const mode of ["relative", "absolute", "symlink"]) {
+	it(`refuses a ${mode} entry escape before importing it`, async () => {
+		const home = makeHome();
+		const outside = join(home, "outside.ts");
+		const marker = join(home, "outside-ran");
+		writeFileSync(
+			outside,
+			`import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(marker)}, "ran"); export default () => ({name: "escape"});`,
+		);
+		const dir = install(home, "escape", "", {
+			extension:
+				mode === "absolute"
+					? outside
+					: mode === "relative"
+						? "../../outside.ts"
+						: "./index.ts",
+			api: 1,
+		});
+		if (mode === "symlink") {
+			rmSync(join(dir, "index.ts"));
+			symlinkSync(outside, join(dir, "index.ts"));
+		}
+		const all = await Extensions.loadAll(["escape"], home);
+		expect(all.loaded).toEqual([]);
+		expect(all.refused[0]?.reason).toContain(
+			"entry outside its extension directory",
+		);
+		expect(await Bun.file(marker).exists()).toBe(false);
+	});
+}
+
+it("names malformed or missing manifests and a non-factory export with repair and disable advice", async () => {
+	const home = makeHome();
+	const missing = install(home, "missingfile", "");
+	rmSync(join(missing, "package.json"));
+	const invalid = install(home, "json", "");
+	writeFileSync(join(invalid, "package.json"), "{");
+	install(home, "manifest", "", {});
+	install(home, "notfactory", "export default {}; ");
+	const all = await Extensions.loadAll(
+		["missingfile", "json", "manifest", "notfactory"],
+		home,
+	);
+	expect(all.loaded).toEqual([]);
+	expect(all.refused[0]?.reason).toContain(
+		`${join(missing, "package.json")} is missing`,
+	);
+	expect(all.refused[1]?.reason).toContain(
+		`${join(invalid, "package.json")} contains invalid JSON`,
+	);
+	expect(all.refused[2]?.reason).toContain(
+		'needs "kabane": { "extension": "<entry>", "api": 1 }',
+	);
+	expect(all.refused[3]?.reason).toContain(
+		"the entry's default export must be a factory (host) => Extension",
+	);
+	for (const { reason } of all.refused)
+		expect(reason).toEndWith(Extensions.disabledAdvice);
 });

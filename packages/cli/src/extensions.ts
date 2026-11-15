@@ -1,6 +1,12 @@
 /** Device extensions are discovered without importing them; only enabled code runs. */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import {
+	existsSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	statSync,
+} from "node:fs";
+import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
 import { Self } from "@cabane/core/self";
@@ -33,6 +39,42 @@ const Manifest = z.object({
 		modules: z.string().optional(),
 	}),
 });
+const callable = <T extends (...args: never[]) => unknown>() =>
+	z.custom<T>((value) => typeof value === "function");
+const Factory = callable<(host: Host) => unknown>();
+const ExtensionShape = z.object({
+	name: z.string(),
+	commands: z
+		.array(
+			z.object({
+				name: z.string(),
+				usage: z.string(),
+				summary: z.string(),
+				standalone: z.boolean().optional(),
+				run: callable<Extension.Command["run"]>(),
+			}),
+		)
+		.optional(),
+	settings: z.instanceof(z.ZodType).optional(),
+	looks: z
+		.record(
+			z.object({
+				label: z.string(),
+				group: z.string(),
+				options: z
+					.union([
+						z.array(z.union([z.string(), z.number()])),
+						callable<(at: Settings.At) => readonly (string | number)[]>(),
+					])
+					.optional(),
+				none: z.string().optional(),
+			}),
+		)
+		.optional(),
+	board: callable<NonNullable<Extension["board"]>>().optional(),
+	mcp: callable<NonNullable<Extension["mcp"]>>().optional(),
+	doctor: callable<NonNullable<Extension["doctor"]>>().optional(),
+});
 const Name = z
 	.string()
 	.min(1)
@@ -54,7 +96,7 @@ export namespace Extensions {
 	};
 	const directory = (home: string, name: string): string =>
 		join(home, "extensions", name);
-	const installed = (home: string, name: string): boolean => {
+	export const installed = (home: string, name: string): boolean => {
 		if (!Name.safeParse(name).success) return false;
 		const stat = trySync(() => statSync(directory(home, name)));
 		return stat.ok && stat.value.isDirectory();
@@ -80,9 +122,12 @@ export namespace Extensions {
 		named.filter(
 			(name) => !Object.hasOwn(OFFICIAL, name) && !installed(home, name),
 		);
+	export const disabledAdvice =
+		"or remove it from extensions with `kabane config set extensions <names> --layer global`.";
+	const refusal = (reason: string): string => `${reason}; ${disabledAdvice}`;
 	export const missing = (name: string, home: string): Refusal => ({
 		name,
-		reason: `not installed; put it in ${directory(home, name)}/`,
+		reason: refusal(`not installed; put it in ${directory(home, name)}/`),
 	});
 
 	const load = async (
@@ -90,56 +135,116 @@ export namespace Extensions {
 		home: string,
 	): Promise<Result<Extension>> => {
 		if (!Name.safeParse(name).success)
-			return err(new Error("invalid extension directory name"));
-		let loaded: Result<Extension>;
-		if (installed(home, name)) {
-			if (Object.hasOwn(OFFICIAL, name))
-				report([
-					{
-						name,
-						reason: `directory ${directory(home, name)}/ overrides bundled ${name}`,
-					},
-				]);
-			const manifest = trySync((): unknown =>
-				JSON.parse(
-					readFileSync(join(directory(home, name), "package.json"), "utf8"),
+			return err(
+				new Error(
+					"invalid extension directory name; use a single directory name",
 				),
 			);
-			if (!manifest.ok) return manifest;
+		let loaded: Result<unknown>;
+		if (installed(home, name)) {
+			const dir = directory(home, name);
+			if (Object.hasOwn(OFFICIAL, name))
+				report([
+					{ name, reason: `directory ${dir}/ overrides bundled ${name}` },
+				]);
+			const file = join(dir, "package.json");
+			const contents = trySync(() => readFileSync(file, "utf8"));
+			if (!contents.ok)
+				return err(
+					new Error(
+						existsSync(file)
+							? `${file} cannot be read; make it readable`
+							: `${file} is missing; add a package.json manifest`,
+					),
+				);
+			const manifest = trySync((): unknown => JSON.parse(contents.value));
+			if (!manifest.ok)
+				return err(
+					new Error(`${file} contains invalid JSON; correct its JSON`),
+				);
 			const parsed = Manifest.safeParse(manifest.value);
 			if (!parsed.success)
 				return err(
 					new Error(
-						`invalid package.json kabane manifest: ${parsed.error.message}`,
+						`${file} needs "kabane": { "extension": "<entry>", "api": 1 }`,
 					),
 				);
 			const entry = parsed.data.kabane;
 			if (entry.api !== 1)
 				return err(
-					new Error(`requires API ${entry.api}; this kabane supports API 1`),
+					new Error(
+						`requires API ${entry.api}; this kabane supports API 1; install an API 1 version of the extension`,
+					),
 				);
 			if (entry.modules !== undefined)
-				return err(new Error("this kabane does not load data modules yet"));
-			loaded = await tryCatch(async () => {
-				const imported = await import(
-					pathToFileURL(Bun.resolveSync(entry.extension, directory(home, name)))
-						.href
+				return err(
+					new Error(
+						"this kabane does not load data modules yet; install a version without data modules",
+					),
 				);
-				const host: Host = {
-					api: 1,
-					kabane: { version, executable: Self.executable() },
-				};
-				return imported.default(host) as Extension;
-			});
+			const resolved = trySync(() => ({
+				root: realpathSync(dir),
+				entry: realpathSync(Bun.resolveSync(entry.extension, dir)),
+			}));
+			if (!resolved.ok)
+				return err(
+					new Error(
+						`${file} names an entry that cannot be resolved; correct kabane.extension`,
+					),
+				);
+			if (!resolved.value.entry.startsWith(`${resolved.value.root}${sep}`))
+				return err(
+					new Error(
+						`${file} names an entry outside its extension directory; move the entry inside that directory`,
+					),
+				);
+			const imported = await tryCatch(
+				() => import(pathToFileURL(resolved.value.entry).href),
+			);
+			if (!imported.ok)
+				return err(
+					new Error(
+						"the entry could not be imported; repair the entry and its dependencies",
+					),
+				);
+			const factory = Factory.safeParse(imported.value.default);
+			if (!factory.success)
+				return err(
+					new Error(
+						"the entry's default export must be a factory (host) => Extension",
+					),
+				);
+			const host: Host = {
+				api: 1,
+				kabane: { version, executable: Self.executable() },
+			};
+			loaded = await tryCatch(async () => factory.data(host));
 		} else {
 			const loader = Object.hasOwn(OFFICIAL, name) ? OFFICIAL[name] : undefined;
-			if (!loader) return err(new Error(missing(name, home).reason));
+			if (!loader)
+				return err(
+					new Error(`not installed; put it in ${directory(home, name)}/`),
+				);
 			loaded = await tryCatch(loader);
 		}
-		if (!loaded.ok) return loaded;
-		if (!loaded.value || loaded.value.name !== name)
-			return err(new Error(`factory name must be "${name}"`));
-		return loaded;
+		if (!loaded.ok)
+			return err(
+				new Error("the factory failed; repair the extension's factory"),
+			);
+		const parsed = ExtensionShape.safeParse(loaded.value);
+		if (!parsed.success)
+			return err(
+				new Error(
+					"the factory returned an invalid Extension; correct its name, commands, settings, looks, board, mcp and doctor fields to match the extension contract",
+				),
+			);
+		if (parsed.data.name !== name)
+			return err(
+				new Error(
+					`factory name must be "${name}"; got ${JSON.stringify(parsed.data.name)}; correct the factory's name`,
+				),
+			);
+		return ok(parsed.data);
 	};
 	export const loadAll = async (
 		names: readonly string[],
@@ -150,7 +255,7 @@ export namespace Extensions {
 		for (const name of new Set(names)) {
 			const result = await load(name, home);
 			if (result.ok) loaded.push(result.value);
-			else refused.push({ name, reason: result.error.message });
+			else refused.push({ name, reason: refusal(result.error.message) });
 		}
 		return { loaded, refused };
 	};
@@ -210,30 +315,44 @@ export namespace Extensions {
 		report(all.refused);
 		return namespacesOf(all.loaded);
 	};
-	export const find = async (
-		name: string,
-		enabledNames: readonly string[],
-		home: string,
-	): Promise<Extension.Command | undefined> => {
-		const all = await loadAll(enabledNames, home);
-		report(all.refused);
-		for (const extension of all.loaded) {
-			const command = extension.commands?.find(
-				(command) => command.name === name,
-			);
-			if (!command) continue;
-			return {
+	export const commands = (
+		loaded: readonly Extension[],
+		builtinNames: readonly string[],
+	): { commands: Extension.Command[]; refused: Refusal[] } => {
+		const contributions = loaded.flatMap((extension) =>
+			(extension.commands ?? []).map((command) => ({
+				owner: extension.name,
+				command,
+			})),
+		);
+		const commands: Extension.Command[] = [];
+		const refused: Refusal[] = [];
+		for (const { owner, command } of contributions) {
+			const conflict = builtinNames.includes(command.name)
+				? "a built-in command"
+				: contributions.filter((entry) => entry.command.name === command.name)
+							.length > 1
+					? "another enabled extension command"
+					: undefined;
+			if (conflict) {
+				refused.push({
+					name: owner,
+					reason: refusal(
+						`command "${command.name}" conflicts with ${conflict}; rename the extension command`,
+					),
+				});
+				continue;
+			}
+			commands.push({
 				...command,
 				run: async (args, ctx) => {
 					const called = await tryCatch(() => command.run(args, ctx));
 					return called.ok
 						? called.value
-						: failure(
-								line({ name: extension.name, reason: called.error.message }),
-							);
+						: failure(line({ name: owner, reason: called.error.message }));
 				},
-			};
+			});
 		}
-		return undefined;
+		return { commands, refused };
 	};
 }

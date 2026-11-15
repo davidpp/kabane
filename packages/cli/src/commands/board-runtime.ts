@@ -153,7 +153,7 @@ const extensionPorts = async (
 		if (!called.ok) {
 			refusals.push({
 				name: extension.name,
-				reason: `board failed: ${called.error.message}`,
+				reason: `board contribution failed; repair its board function; ${Extensions.disabledAdvice}`,
 			});
 			continue;
 		}
@@ -249,11 +249,14 @@ export const boardDeps = async (
 			: {
 					announcer: {
 						announce: async () => {
-							if (refusals.length)
-								return ok(refusals.map(Extensions.line).join("; "));
-							return ctx.config.updates?.check === false
-								? ok(null)
-								: UpdateNotice.announcer(ctx.home).announce();
+							const update =
+								ctx.config.updates?.check === false
+									? ok(null)
+									: await UpdateNotice.announcer(ctx.home).announce();
+							if (!update.ok) return update;
+							const notices = refusals.map(Extensions.line);
+							if (update.value) notices.push(update.value);
+							return ok(notices.length ? notices.join("; ") : null);
 						},
 					},
 				}),
