@@ -64,6 +64,9 @@ imports the SDK.
   never copied. `GRILL_TEMPLATE` is `templates/grill/`, the skill the copilot follows to walk the
   human through open questions, asking each through the harness's choice prompt where it has one
   and reshaping one the decision does not fit with `kabane_ask`'s `replaces`, and copies unchanged to `.agents/skills/grill/`, linked the same way, on request.
+  `/doctor` runs `kabane doctor --json` and acts on each finding by severity: it applies `auto`
+  fixes unasked, waits for a yes on the rest, follows a `route`, and hands the human the command
+  for a harness MCP entry instead of rewriting it.
 - `Mailbox` — a one-consumer queue whose `filled()` is already settled when something is
   waiting. `BoardCopilot` drains it alongside the harness's stream, which is the only way a
   permission request can reach the board while the agent is blocked on the answer.

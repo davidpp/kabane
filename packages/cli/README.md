@@ -59,7 +59,8 @@ kabane list
   extension's command prints the line to add here instead of running. A name
   this version does not ship is ignored, with a warning on stderr when a
   command reads the list. The contract an extension implements
-  is `@cabane/extension`.
+  is `@cabane/extension`; its optional `doctor` field contributes checks to
+  `kabane doctor`, reported under the extension's name.
 
 ### Settings layers
 
@@ -258,6 +259,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,handoff.latest,checklist.items,upstream,position,context,priorWork,discussion,questions.decisions` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise. Core's sections, each registered module's after the one it names (`checklist.items` after the description, `questions.decisions` after the discussion), and a `<kind>.latest` section (`handoff.latest`, after the description and before `checklist.items`) for each entry kind a module lifts out of the discussion |
 | `scope` | `--json` — resolve the current directory without device setup: `{ scopeUri, baseUri, scopeId, name, root, extensions }`; `scopeUri` includes branch/package extensions, `baseUri` omits them. Outside a project: `{ "scopeUri": null }`, exit 0. Text: `name · scopeUri · root` |
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
+| `doctor` | `--fix [<source/id>…]` `--json` — report what kabane wrote that has fallen behind this version (settings, the project's dispatch and grill skills and Tracker block, harness MCP entries) plus each enabled extension's checks; each finding is `auto`, `mention`, `suggest` or `route`. `--fix` alone applies the `auto` ones, `--fix <source/id>` the named ones. `--json` gives `{ findings, fixes }`. Findings do not fail the command |
 | `update` | `--check` `--json` — metadata-only stable candidate (policy-unverified), or explicit verified update of a supported hoisted Bun global registry install; no tracker initialization |
 | `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
 | `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`kabane_*`), with the working directory's scope as the default so writes may omit `scopeUri` |

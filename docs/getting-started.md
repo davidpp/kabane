@@ -183,7 +183,8 @@ hands a coding harness what you are looking at: the scope, the selected task, an
 you marked with `m`. Type a request and press `enter`. The agent runs in the background,
 the footer shows its last tool call, and the board reloads as its writes land. `o` opens
 its transcript. Typing `/` in the prompt lists the shortcuts: `/triage`, `/refine`,
-`/split`, `/duplicates`, `/reparent`, `/check-plan`, `/linear`, `/settings`, `/setup-dispatch`. Each one
+`/split`, `/duplicates`, `/reparent`, `/check-plan`, `/linear`, `/settings`, `/setup-dispatch`,
+`/doctor`. Each one
 expands into editable text, so you can read what will be sent before sending it.
 
 `/setup-dispatch` is the only shortcut that writes files to your project. It reads the
@@ -194,6 +195,7 @@ into kabane issues. Codex and Pi read it there; Claude Code reads it through a s
 files and then shows them; when the skill already exists it shows the diff and waits for your
 yes. A project set up before kabane moved the skill has a real `.claude/skills/dispatch/`:
 running `/setup-dispatch` again offers to move it to `.agents/skills/dispatch/` and link it.
+`/doctor` checks that what kabane wrote is current: see [Keeping kabane current](#keeping-kabane-current).
 
 Ask the copilot to "grill me" and it walks you through the questions agents left open, one
 at a time, and records each answer; any harness with the kabane MCP can use the same skill.
@@ -367,6 +369,30 @@ it off:
 kabane config set updates.check false
 ```
 
+### Keeping kabane current
+
+An update can leave behind what an older kabane wrote: a setting under a retired key, a
+dispatch skill filled from an older template, a Tracker block that predates handoffs, a
+harness's MCP entry that launches a kabane you no longer have. `kabane doctor` lists each
+one with its fix, and enabled extensions add their own checks:
+
+```bash
+kabane doctor                        # report; changes nothing
+kabane doctor --fix                  # apply the findings that need no decision (severity auto)
+kabane doctor --fix kabane/<id>      # apply one other finding, by the source/id the report shows
+kabane doctor --json                 # the same report, for scripts and agents
+```
+
+Each finding has a severity that says what to do with it, not how bad it is: `auto` needs no
+decision, `mention` is worth knowing and has a fix you can choose to run, `suggest` is a better
+setting rather than a broken one, and `route` names the procedure that repairs it, such as
+`/setup-dispatch`. Findings are not errors, and the command succeeds when it has some.
+
+In the board, `/doctor` has the copilot run the same report and act on it: it applies the
+`auto` fixes without asking, tells you each `mention` and `suggest` and waits for your yes,
+and offers the procedure a `route` names. It never rewrites a harness's MCP entry itself; it
+gives you the `kabane doctor --fix` command to run.
+
 ### Standalone binaries
 
 ```bash
@@ -459,7 +485,8 @@ the new version is in place.
 - **What your agents are told.** The Tracker block from 1.0.0-beta.0 has an agent finish with
   `kabane_comment`, which still works but leaves no handoff: replace it with the block under
   [Agents](#agents). A dispatch skill that `/setup-dispatch` wrote with 1.0.0-beta.0 reports the
-  same way; run `/setup-dispatch` again to write it from the current template.
+  same way; run `/doctor` in the copilot, which finds it and offers to write it again from the
+  current template.
 
 ### Upgrading from 1.0.0-beta.0: scope URIs, and one place for the database
 
@@ -587,7 +614,8 @@ does not orchestrate backup/restore/downgrade.
 Restart running board/MCP sessions after a verified update. Source-pinned harness commands
 still point at source and need deliberate manual rewiring if desired. If you separately
 upgrade Bun through mise/asdf, existing harness entries can still point at the old Bun;
-review and explicitly run `kabane mcp install --force` when you want to re-point them.
+review and explicitly run `kabane mcp install --force` when you want to re-point them;
+`kabane doctor` names each entry that no longer launches this kabane.
 
 ### Beta installs
 
