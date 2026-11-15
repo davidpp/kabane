@@ -1004,6 +1004,7 @@ describe("BoardCopilot", () => {
 			"setup",
 			"settings",
 			"setup-dispatch",
+			"doctor",
 		]);
 		for (const shortcut of copilot.shortcuts()) {
 			expect(shortcut.template.length).toBeGreaterThan(20);

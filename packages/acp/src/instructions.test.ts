@@ -55,6 +55,15 @@ describe("CopilotInstructions.SHORTCUTS", () => {
 		expect(names).toContain("setup-dispatch");
 	});
 
+	it("offers doctor, which hands the pass to the doctor procedure", () => {
+		const doctor = CopilotInstructions.SHORTCUTS.find(
+			(s) => s.name === "doctor",
+		);
+		expect(doctor?.hint).toBe("check what kabane wrote is current");
+		expect(doctor?.template).toContain("kabane doctor");
+		expect(doctor?.template).not.toContain("\n");
+	});
+
 	it("every template is one line, because it lands in the input line", () => {
 		for (const shortcut of CopilotInstructions.SHORTCUTS) {
 			expect(shortcut.name).not.toBe("");
@@ -196,6 +205,25 @@ describe("CopilotInstructions setting up a dispatch skill", () => {
 		]).map(([placeholder]) => placeholder);
 		expect(used.length).toBeGreaterThan(0);
 		for (const placeholder of used) expect(documented).toContain(placeholder);
+	});
+
+	it("doctor reads the report once, fixes only auto findings unasked and never the MCP entries", () => {
+		const skills = CopilotInstructions.SKILLS;
+		expect(skills).toContain("run `kabane doctor --json` once");
+		expect(skills).toContain(
+			"Run `kabane doctor --fix` once, without asking first",
+		);
+		expect(skills).toContain(
+			"Run `kabane doctor --fix <source>/<id>` only after an explicit yes",
+		);
+		expect(skills).toContain(
+			"Never run the fix of a kabane/mcp-entry-stale-<harness> finding",
+		);
+		expect(skills).toContain(
+			"never run a fix as a side effect of another request",
+		);
+		// A route to /setup-dispatch keeps that procedure's diff-and-yes rule.
+		expect(skills).toContain("offer to run SETTING UP A DISPATCH SKILL");
 	});
 
 	it("/setup-dispatch is the go-ahead to write a new skill; only an existing one waits for a yes", () => {
