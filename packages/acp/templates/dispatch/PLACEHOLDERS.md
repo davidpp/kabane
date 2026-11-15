@@ -15,6 +15,8 @@ constraints), point at it instead of copying it: "the gate in CLAUDE.md". Every 
 that file anyway, and a copy in the skill drifts away from it the first time either one is
 edited. Copy a value only when the project leaves it unstated and the fallback below fills it.
 
+- `{{TEMPLATE_STAMP}}`: the exact value kabane gives in the procedure, as DISPATCH TEMPLATE STAMP;
+  never computed by hand. It tells a later kabane which template the skill was filled from.
 - `{{PROJECT}}`: the project's name, from its package manifest or its instructions file.
 - `{{ISSUE_PREFIX}}`: the prefix of this scope's issue ids as the board context block shows them
   (`ABC` for `ABC-12`). Take it from those ids and not from an example in the docs.
