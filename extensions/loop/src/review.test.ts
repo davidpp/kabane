@@ -415,6 +415,8 @@ describe("Runner review triage", () => {
 		expect(triage).toContain(`git diff --stat ${first}`);
 		expect(triage).toContain("code.txt");
 		expect(triage).toContain("- `functional` (always runs: never skip it)");
+		// Where it works, read-only, as a lens's brief says it (`Brief.working`).
+		expect(triage).toContain("Review here without changing files.");
 		const events = RunStore.readEvents(home, "run-1");
 		const types = events.ok ? events.value.map((e) => e.type) : [];
 		expect(types.indexOf("gate_passed")).toBeLessThan(types.indexOf("claim"));

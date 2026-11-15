@@ -933,6 +933,7 @@ export namespace Dispatch {
 				return ok(
 					Review.brief(
 						{
+							tree: env.tree,
 							runId: env.runId,
 							parent: claim.parent,
 							lenses: work.lenses,

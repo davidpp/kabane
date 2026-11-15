@@ -6,6 +6,7 @@
 // past the size cap gets one session per lens. A triage that fails, edits the tree or answers no
 // plan leaves every lens its own group, as a run without triage has; the run never stops on it.
 import { z } from "zod";
+import { Brief } from "./brief";
 import type { LoopConfig } from "./config";
 
 export namespace Review {
@@ -263,6 +264,7 @@ export namespace Review {
 		`- \`${lens.name}\`${lens.always ? " (always runs: never skip it)" : ""}: ${lens.applies ?? "says nothing about when it applies, so judge from its name"}`;
 
 	type Subject = {
+		tree: Brief.Tree;
 		runId: string;
 		parent: { shortId?: string; id: string; title: string };
 		lenses: readonly Lens[];
@@ -274,12 +276,13 @@ export namespace Review {
 
 	/** The triage session's prompt: what to decide and how to answer, the diff, then the parent's brief. */
 	export const brief = (subject: Subject, assembled: string): string => {
-		const { runId, parent, lenses, diff: d, tiers } = subject;
+		const { tree, runId, parent, lenses, diff: d, tiers } = subject;
 		const short = parent.shortId ?? parent.id;
 		return [
 			[
 				`${OPENING} ${runId} on ${short} ("${parent.title}"). Its work is done and its gates pass. Before the verifier lenses review it, decide which of them this change needs, which can review together in one session, and how capable a model each session needs.`,
-				"Do not change files and do not write to the tracker: read the diff stat below, the brief after it, and the changed files themselves when the stat is not enough. Keep it short: this decision should cost a fraction of one review.",
+				"Do not write to the tracker: read the diff stat below, the brief after it, and the changed files themselves when the stat is not enough. Keep it short: this decision should cost a fraction of one review.",
+				Brief.reviewing(tree),
 				`The run's lenses, each with the changes it reviews:\n${lenses.map(describe).join("\n")}`,
 				`Skip a lens only when the change touches nothing it reviews, and say why in a sentence that names what the diff does not touch. Group lenses whose reviews read the same files. Give each group a tier (${tiers.join(", ")}) only when it needs other than the run's model: a tier on a trivial diff, a stronger one on a risky change. A lens marked always runs is never skipped.`,
 				`End your turn with the review plan as one fenced JSON block and nothing after it, every lens in one group or skipped:\n\`\`\`json\n${EXAMPLE}\n\`\`\``,
