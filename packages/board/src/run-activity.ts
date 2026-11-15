@@ -1,7 +1,7 @@
-import type { ActivityCard, ActivitySource } from "@cabane/extension";
 // The work running on the board's tasks, as every surface that lists it sees it: the host's cards
 // plus the copilot's own, the questions they wait on, and what the human does to them (answers a
 // question, runs a card's action, closes its tab, opens its events).
+import type { ActivityCard, ActivitySource } from "@cabane/extension";
 import { useCallback, useEffect, useMemo } from "react";
 import { BoardActivity } from "./activity";
 import type { BoardStore } from "./board-store";

@@ -1,4 +1,3 @@
-import type { TriggerDescriptor } from "@cabane/extension";
 /** @jsxImportSource @opentui/react */
 // The overlays: the `a` dispatch picker (one list of host triggers, centered) and the `?` sheet (the
 // keys of the view in hand, anchored at the bottom, which-key style). Deliberately minimal — no
@@ -7,6 +6,7 @@ import type { TriggerDescriptor } from "@cabane/extension";
 // already draw the pane's lines, so an overlay is set apart by the overlay surface and a cell of
 // padding, never a border. Selection highlight follows board.tsx's rowStyle rule — explicit bg + fg
 // on the row, NEVER INVERSE (JJAK-1017).
+import type { TriggerDescriptor } from "@cabane/extension";
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode, RefObject } from "react";

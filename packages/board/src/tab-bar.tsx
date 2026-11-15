@@ -1,4 +1,3 @@
-import type { ActivityCard } from "@cabane/extension";
 /** @jsxImportSource @opentui/react */
 // The tab bar across the top of every view, and the banner a session question leaves over the view
 // it is shown on. The tracker is always tab 1; every other tab is a host card that asked for one. A
@@ -9,6 +8,7 @@ import type { ActivityCard } from "@cabane/extension";
 // A bar wider than the pane keeps the tracker, the tab on screen and every tab with a `?n`, then as
 // many of the rest as fit in tab order, and counts the others in a `+n` cell; `{` `}` still reach
 // them.
+import type { ActivityCard } from "@cabane/extension";
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";

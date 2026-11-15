@@ -1,4 +1,3 @@
-import type { TriggerDescriptor, TriggerInput } from "@cabane/extension";
 // A trigger's settings, filled in on the board before it fires: the form `a` opens over a trigger
 // whose every input it can hold (`fillable`). Plain functions over the board's state, like the other
 // key routers, so the keys and the clicks are tested without a renderer.
@@ -7,6 +6,7 @@ import type { TriggerDescriptor, TriggerInput } from "@cabane/extension";
 // up and down for a number, on and off for a boolean. `j/k` walk the fields in the host's order,
 // `enter` fires the trigger with every value, and `esc` goes back to the picker with the trigger
 // still selected, one level per press like every other `esc` on the board.
+import type { TriggerDescriptor, TriggerInput } from "@cabane/extension";
 import { Grid } from "./grid";
 import type { BoardNav } from "./nav";
 

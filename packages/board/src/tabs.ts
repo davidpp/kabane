@@ -1,4 +1,3 @@
-import { type ActivityCard, type CardAction } from "@cabane/extension";
 // The tab bar and the attention queue, as plain functions over the board's state, beside the rest of
 // the key routing in nav.ts rather than inside it.
 //
@@ -11,6 +10,7 @@ import { type ActivityCard, type CardAction } from "@cabane/extension";
 // walks it: a question one of a tabbed card's sessions asked lands on that card's tab, pinned under
 // its header, any other on its task's detail view with the question pinned over the brief as a
 // banner. Either way a digit answers it in place, through `Planner.answerQuestion`.
+import { type ActivityCard, type CardAction } from "@cabane/extension";
 import type { BoardActivity } from "./activity";
 import { ElicitationForm } from "./elicitation-form";
 import type { BoardNav } from "./nav";

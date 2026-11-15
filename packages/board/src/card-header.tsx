@@ -1,5 +1,5 @@
-import type { ActivityCard, Header, HeaderPart } from "@cabane/extension";
 /** @jsxImportSource @opentui/react */
+import type { ActivityCard, Header, HeaderPart } from "@cabane/extension";
 import { TextAttributes } from "@opentui/core";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Segments } from "./segments";

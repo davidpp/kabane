@@ -1,8 +1,3 @@
-import type {
-	CopilotFormField,
-	CopilotFormOption,
-	CopilotFormValue,
-} from "@cabane/acp/form-field";
 // An agent's decision on an issue (`kabane_ask`, @cabane/questions) as the form a harness asks
 // with, so the board answers it with the copilot's keys (elicitation-form.ts) and draws it with the
 // copilot's block (elicitation-block.tsx) rather than a second form of its own. Pure: a question row
@@ -12,6 +7,11 @@ import type {
 // A decision is up to three fields, in this order: its choices (one, or a multi-select), an `Other`
 // box when the asker takes a typed answer (the whole answer when it offers no choices), and an
 // optional reasoning line. The recommended choice carries `★` after its label.
+import type {
+	CopilotFormField,
+	CopilotFormOption,
+	CopilotFormValue,
+} from "@cabane/acp/form-field";
 import { err, ok, type Result } from "@cabane/core";
 import {
 	type ParsedDecision,

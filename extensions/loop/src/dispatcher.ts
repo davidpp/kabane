@@ -1,7 +1,7 @@
-import { err, ok, type Result } from "@cabane/core";
 // Starting a loop from the board: `a` on an issue, or on a parent of issue subtasks, offers "start loop", whose form
 // holds the run's settings (LoopSettings) beside the plan it would start on (Briefing), and whose
 // `enter` is `kabane loop start` from the board's directory, with the same checks.
+import { err, ok, type Result } from "@cabane/core";
 import type {
 	Dispatcher,
 	TriggerDescriptor,

@@ -1,8 +1,3 @@
-import { FormField } from "@cabane/acp/form-field";
-import type {
-	CopilotFormField,
-	CopilotFormOption,
-} from "@cabane/acp/form-field";
 /** @jsxImportSource @opentui/react */
 // The harness stopped to ask the human to fill in a form, and is blocked until it hears back. The
 // permission block's visual language, a field at a time: the harness's message verbatim, then the
@@ -11,6 +6,11 @@ import type {
 // are typed into a one-line input, the one thing here that takes the keyboard as text. The keys
 // themselves are nav.ts's (elicitation-form.ts); this only draws the draft, and hands a click on
 // an option or a hint to the same reducers.
+import { FormField } from "@cabane/acp/form-field";
+import type {
+	CopilotFormField,
+	CopilotFormOption,
+} from "@cabane/acp/form-field";
 import {
 	type ColorInput,
 	type InputRenderable,

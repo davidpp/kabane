@@ -1,14 +1,14 @@
-import {
-	type ActivitySource,
-	type Header,
-	type Dispatcher,
-} from "@cabane/extension";
 /** @jsxImportSource @opentui/react */
 // The board's composition root. Each part of the board is a hook that owns its state and the effects
 // it runs: the reducer's state (board-store), what the board reads (board-feed), the open detail
 // view's records, the copilot's turns, the work running on the board's tasks, the writes to a task
 // and its dispatch to the host, and the screen's renderables. App wires them to the ONE key and click
 // router (board-input), whose reducer output runs through `runEffect` below, and draws Screen.
+import {
+	type ActivitySource,
+	type Header,
+	type Dispatcher,
+} from "@cabane/extension";
 import { useRenderer } from "@opentui/react";
 import { type ReactNode, useCallback } from "react";
 import { useAnnouncement } from "./announcement";

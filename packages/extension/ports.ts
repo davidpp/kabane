@@ -1,3 +1,5 @@
+/** Extension-facing board ports, produced by extensions and read by clients and the host. */
+
 import type { Result } from "@cabane/core";
 
 export type ActivityStatus =
