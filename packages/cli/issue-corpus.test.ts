@@ -1,26 +1,26 @@
 import { describe, expect, it } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { checklistModule } from "@cabane/checklist";
-import { handoffModule } from "@cabane/handoff";
-import { questionsModule } from "@cabane/questions";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { z } from "zod";
-import issues from "../core/testing/fixtures/issue-corpus/issues.json";
-import manifest from "../core/testing/fixtures/issue-corpus/manifest.json";
-import {
-	CLI_BIN,
-	createCorpusTracker,
-	payloadMetrics,
-} from "./issue-corpus-harness";
+import issues from "@cabane/core/testing/fixtures/issue-corpus/issues.json";
+import manifest from "@cabane/core/testing/fixtures/issue-corpus/manifest.json";
 import {
 	corpusSchema,
 	HUGE_BODY,
 	HUGE_COMMENT,
 	FIXTURE_TIME,
-} from "./issue-corpus-seed";
+} from "@cabane/core/testing/issue-corpus-seed";
+import { handoffModule } from "@cabane/handoff";
+import { questionsModule } from "@cabane/questions";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { z } from "zod";
+import {
+	CLI_BIN,
+	createCorpusTracker,
+	payloadMetrics,
+} from "./issue-corpus-harness";
 
 const taskSchema = z
 	.object({
@@ -46,9 +46,9 @@ describe("retained issue corpus baseline", () => {
 		expect(manifest.normalizationVersion).toBe(2);
 		expect(issues.map((issue) => issue.number)).toEqual(manifest.issueNumbers);
 		const bytes = readFileSync(
-			join(
-				import.meta.dir,
-				"../core/testing/fixtures/issue-corpus/issues.json",
+			fileURLToPath(
+				import.meta
+					.resolve("@cabane/core/testing/fixtures/issue-corpus/issues.json"),
 			),
 		);
 		expect(createHash("sha256").update(bytes).digest("hex")).toBe(

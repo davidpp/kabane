@@ -2,10 +2,10 @@ import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 /** Disposable seeding process: never configure the parent test's shared Runtime. */
 import { basename, join } from "node:path";
-import { Planner, Runtime, err, ok, type Result } from "@cabane/core";
+import issues from "@cabane/core/testing/fixtures/issue-corpus/issues.json";
 import { SqliteDb } from "@cabane/sqlite";
 import { z } from "zod";
-import issues from "../core/testing/fixtures/issue-corpus/issues.json";
+import { Planner, Runtime, err, ok, type Result } from "../index";
 
 export const corpusSchema = z.array(
 	z.object({

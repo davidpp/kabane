@@ -11,7 +11,6 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SqliteDb } from "@cabane/sqlite";
 import { z } from "zod";
-import { createCorpusTemplate } from "../../cli/issue-corpus-harness";
 import {
 	CONTEXT_BYTES,
 	type ContextPage,
@@ -23,6 +22,7 @@ import { err, ok, type Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 import { serializedBytes } from "../task-output";
 import { configureTestRuntime } from "../testing";
+import { createCorpusTemplate } from "../testing/issue-corpus-harness";
 import { Planner } from "./index";
 
 type Template = Extract<
