@@ -1,6 +1,6 @@
 # @cabane/acp
 
-Agent Client Protocol client for the board copilot. It launches one coding harness
+Agent Client Protocol client used by the board’s copilot and the loop. It launches one coding harness
 (Claude Code, Codex, or Gemini) as a subprocess, speaks ACP to it over stdio, and turns a
 prompt into a stream of kabane's own updates. The board consumes that stream and never
 imports the SDK.

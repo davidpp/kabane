@@ -15,7 +15,7 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 |---|---|---|---|
 | `packages/core` | `@cabane/core` | Bun + Workers | schemas, storage over the Db port, sync, MCP tool definitions and servers (stdio, Streamable HTTP) |
 | `packages/sqlite` | `@cabane/sqlite` | Bun | Db adapter over `bun:sqlite` |
-| `packages/acp` | `@cabane/acp` | Bun | Agent Client Protocol client: harness registry, session runner, the board's copilot |
+| `packages/acp` | `@cabane/acp` | Bun | Agent Client Protocol client: harness registry, session runner and form types |
 | `packages/extension` | `@cabane/extension` | Bun | the extension contract, and the argument parsing and outcomes every command is written with |
 | `packages/questions` | `@cabane/questions` | Bun + Workers | data module: the decisions agents ask a human on an issue (`kabane_ask`, `kabane_questions`, `kabane_answer`), replicated like tasks |
 | `packages/checklist` | `@cabane/checklist` | Bun + Workers | data module: the steps of one issue, ticked as they land (`kabane_checklist`, `kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`), replicated like tasks |

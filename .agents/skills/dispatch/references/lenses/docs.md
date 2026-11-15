@@ -16,7 +16,7 @@ The code can be right while the help still describes yesterday.
   - the CLI's own help: `bun run sandbox <command> --help`, usage lines, and the errors that
     name a flag or a next step;
   - what an agent reads: MCP tool descriptions and input descriptions, the server
-    instructions, the copilot's instructions (`packages/acp/src/instructions.ts`), and the
+    instructions, the copilot's instructions (`packages/board/src/copilot-instructions.ts`), and the
     templates kabane ships (`packages/acp/templates/`);
   - the board: the `?` sheet, the footer hints, the keymap registry, empty states;
   - a setting's `.describe()` text, which is what `kabane config list` shows;

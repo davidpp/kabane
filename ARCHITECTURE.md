@@ -80,7 +80,7 @@ Each layer depends only on layers listed before it in this table, never on a pac
 layer, with four narrowings:
 
 - **The contract and the harness client depend on core alone.** Neither may depend on a client:
-  a second client could not exist without the first if they did. Both do today (JCAB-320).
+  a second client could not exist without the first if they did.
 - **Only a host depends on the storage adapter at runtime.** A data module or a client may use it
   in tests, as a `devDependency`; at runtime the host picks the adapter.
 - **The hub depends on core and the data modules alone.** It runs in Workers, which cannot run
@@ -91,11 +91,11 @@ layer, with four narrowings:
   for the loop. The loop takes `@cabane/acp` from the workspace, where it stays (JCAB-316:3); how an extension
   outside this repository gets a harness client belongs to distribution, which is not designed.
   From the rest of kabane it imports types only, with `import type`, which the compiler erases;
-  every value it needs from kabane arrives on `host`. The loop lists five workspace packages
-  today (JCAB-326).
+  every value it needs from kabane arrives on `host`. The loop lists four workspace packages
+  today: `acp`, `checklist`, `core` and `extension` (JCAB-326).
 
-A client may use the harness client as a library. The board does not list `@cabane/acp` today;
-the change that moves the copilot into the board adds that edge (see "Ports").
+A client may use the harness client as a library. The board lists `@cabane/acp` for
+its copilot (`packages/board/src/copilot.ts`; see "Ports").
 
 A client uses only what another client could: the exports of core, the data modules, the contract
 and the harness client. It never reaches into a host or another client, and it never reads a
@@ -147,7 +147,7 @@ The verdicts for what core holds today that is not obviously the record:
 | `commit-linker/` | no | no: nothing outside core called it | no: it ran `git` through `Bun.spawn` | no: git keeps commits | Deleted by JCAB-228, now on main. |
 | `file:` deref in `storage/assemble-context.ts` | yes: it inlines a context ref into the brief, which every reader gets | yes: every brief | no: `Bun.file` at `storage/assemble-context.ts:187` | yes | Assembling the brief stays; reading the file moves behind a port (below, JCAB-328). |
 | `scope/detect.ts` | no: it turns a directory into a scope and stores nothing | yes: the CLI (`packages/cli/src/context.ts:115`) and the loop (`commands.ts:310`) | no: `node:child_process` at `scope/detect.ts:9` | yes | Moves to the host and reaches extensions as `host.scope.detect` (JCAB-328). The device-only helpers beside it go too: `ProjectDirs` (`scope/projects.ts`), `mainCheckoutRoot`, `findProjectRoot`, `localPinPath`, `MARKER_DIR` and `SCOPE_FILE`, which only the CLI imports, and `DetectedScopes` (`scope/detected.ts`), detection's own cache. `scope/uri.ts`, which parses and formats the stored field, stays, and so does `scope/git-fixture.ts`, test support for the CLI's and the loop's tests. |
-| `self.ts` | no | yes: the CLI (`packages/cli/src/commands/mcp-install.ts:1`, `commands/update.ts:3`, `update-notice.ts:16`), `@cabane/acp` (`src/copilot.ts:17`, `src/instructions.ts:9`) and the loop (`src/extension.ts:5`) | no: `Bun.main` at `self.ts:29` | yes | Moves to the host and reaches extensions as `host.kabane.executable` (JCAB-328). |
+| `self.ts` | no | yes: the CLI (`packages/cli/src/commands/mcp-install.ts:1`, `commands/update.ts:3`, `update-notice.ts:16`, `commands/board-runtime.ts:290`, which passes `Self.executable()` to `BoardCopilot`), `@cabane/acp` (`src/instructions.ts:1`) and the loop (`src/extension.ts:5`) | no: `Bun.main` at `self.ts:29` | yes | Moves to the host and reaches extensions as `host.kabane.executable` (JCAB-328). |
 | `mcp/tools.ts` | yes: the definition of every operation on the record, and `KabaneModule.tools` takes its `ToolDef` (`module.ts:118`) | yes: both hosts and every data module | yes | yes | Stays. |
 | `mcp/server.ts`, `createMcpServer` | yes: it composes the tool list both hosts serve | yes: the CLI and the hub | yes | yes | Stays. |
 | `mcp/server.ts`, `serveStdio` | no | no: the CLI alone (`packages/cli/src/commands/mcp.ts:38`) | no: `StdioServerTransport` at `server.ts:22` | yes | Moves to the CLI (JCAB-328). |
@@ -232,7 +232,7 @@ Of `instructions.ts`, the prose lives in the board as `packages/board/src/copilo
 (`BLOCK`, `SKILLS`, `Setup`, `setup`, `systemPrompt`, `SHORTCUTS`), and acp keeps a
 `CopilotInstructions` with four names: `actorUri`, `SERVER_NAME`, `DISPATCH_TEMPLATE` and
 `GRILL_TEMPLATE`. Two reasons keep them in acp. The two template paths come from `Self.templates`,
-which resolves `../templates/<name>` from the module that calls it (`instructions.ts:40`, `:44`,
+which resolves `../templates/<name>` from the module that calls it (`packages/acp/src/instructions.ts:19`, `:23`,
 `packages/core/self.ts:69-80`); called from `packages/board/src`, it would point at a
 `packages/board/templates` that does not exist when kabane runs from source. And the loop reads
 `actorUri`, `SERVER_NAME` and `DISPATCH_TEMPLATE` from acp (`extensions/loop/src/brief.ts`,
@@ -241,8 +241,7 @@ where it may not read the board. JCAB-327 removes both template paths with the t
 JCAB-326 moves `actorUri` and `SERVER_NAME` into the loop, which leaves acp's
 `CopilotInstructions` empty. The path kabane runs as is required in
 `BoardCopilot.Options.kabaneBin`; the CLI passes `Self.executable()`, so the board never imports
-`Self`, which JCAB-328 moves to the host. Unlike the previous optional argument, there is no
-board-side fallback. The instructions are available through `@cabane/board/copilot-instructions`
+`Self`, which JCAB-328 moves to the host. The instructions are available through `@cabane/board/copilot-instructions`
 for the CLI's config procedure test. The moved copilot tests use the ACP SDK's in-process agent,
 so the board declares the SDK as a development dependency.
 
@@ -566,9 +565,9 @@ The alternatives, a read-only mode and refusing writes command by command, are i
 
 ### Procedures and shortcuts are markdown files, because the loop's need no code
 
-The copilot's procedures and shortcuts are constants in `packages/acp/src/instructions.ts`, and
-base kabane's describe the loop by name (`instructions.ts:66`, and the "STARTING A LOOP RUN"
-procedure at `:76`; `packages/board/src/setup.tsx:136` offers "turns on the loop"). In API v1 an
+The copilot's procedures and shortcuts are constants in `packages/board/src/copilot-instructions.ts`, and
+base kabane's describe the loop by name (`copilot-instructions.ts:48`, and the "STARTING A LOOP RUN"
+procedure at `:58`; `packages/board/src/setup.tsx:136` offers "turns on the loop"). In API v1 an
 extension ships them as files, as opencode ships commands (`.opencode/commands/<name>.md`):
 
 - `copilot/procedures/<name>.md`: frontmatter `title`; the body is appended to the copilot's
@@ -587,15 +586,15 @@ refused command.
 A procedure names a file of its own extension by the one placeholder the host fills:
 `{{extension}}`, replaced with the absolute path of the extension's directory before the text
 reaches the copilot. Base kabane's procedures interpolate two such paths today, the dispatch and
-grill templates (`instructions.ts:68`, `:80`), which `Self.templates` resolves beside the package
-or the compiled binary (`instructions.ts:40`, `:44`); in a file they become
+grill templates (`copilot-instructions.ts:50`, `:62`), which `Self.templates` resolves beside the package
+or the compiled binary (`packages/acp/src/instructions.ts:19`, `:23`); in a file they become
 `{{extension}}/templates/dispatch` and `{{extension}}/templates/grill/SKILL.md`. The other
-computed text is the host's own block on how this machine runs kabane (`instructions.ts:107`).
+computed text is the host's own block on how this machine runs kabane (`copilot-instructions.ts:89`).
 Nothing else in a procedure is substituted: a procedure file computes nothing. When a procedure
 needs a computed value, its extension contributes a command that prints it, and the procedure
 tells the copilot to run that command with the kabane the host's block names and copy the
 output. The dispatch template's stamp is the first such value: `setup()` computes it
-(`DISPATCH TEMPLATE STAMP` in `packages/acp/src/instructions.ts`), and JCAB-327 replaces that with
+(`DISPATCH TEMPLATE STAMP` in `packages/board/src/copilot-instructions.ts:89`), and JCAB-327 replaces that with
 `kabane dispatch stamp`, which `setup-dispatch.md` tells the copilot to run. A file has no field for
 harness mode, allow lists or MCP entries, so a procedure cannot carry a permission policy in its
 type, though its text can still ask for anything (JCAB-324).

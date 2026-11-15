@@ -24,6 +24,8 @@ may list. The board and loop both use it as a library; it imports neither of the
 `BoardCopilot`, `Mailbox` and the copilot's prose live in `packages/board/src`.
 The template paths stay here so `Self.templates` resolves beside this package's templates.
 
+The remaining template and host dependencies are tracked in these issues:
+
 - JCAB-327 moves `templates/` out of base kabane.
 - JCAB-326 removes the loop's use of `actorUri` and `SERVER_NAME`.
 - JCAB-328 moves `Self` (`@cabane/core/self`, read by `instructions.ts`) into the host.
