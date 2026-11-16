@@ -18,7 +18,7 @@
 
 import { z } from "zod";
 import { ContextPageOptionsSchema } from "../context-output";
-import { err, ok, type Result } from "../result";
+import { err, ok, NotFoundError, type Result } from "../result";
 import { Runtime } from "../runtime";
 import {
 	Deadline,
@@ -205,11 +205,13 @@ Parameters:
 - id: ${ID_HINT}`,
 	input: getInput,
 	handler: async (args, ctx) => {
-		const task = await Planner.getTask(ctx.basePath, args.id);
+		const id = await resolveId(ctx, args.id);
+		if (!id.ok) return id;
+		const task = await Planner.getTask(ctx.basePath, id.value);
 		if (!task.ok) return task;
 		return task.value
 			? ok(task.value)
-			: err(new Error(`No task found: ${args.id}`));
+			: err(new NotFoundError(`No task found: ${args.id}`));
 	},
 });
 
@@ -224,6 +226,7 @@ const listInput = {
 	includeDeferred: z.boolean().optional(),
 	includeClosed: z.boolean().optional(),
 	limit: z.number().int().positive().optional(),
+	offset: z.number().int().nonnegative().optional(),
 	responseFormat: ResponseFormatSchema.optional(),
 	cursor: z.string().max(700).optional(),
 };
@@ -244,10 +247,15 @@ Parameters:
 - tag: One tag
 - includeClosed: Include done and cancelled (default false)
 - limit: Full default 100; concise default 20, maximum 100
+- offset: Full-format rows to skip (default 0)
 - responseFormat: concise returns a <=16KiB summary page; omitted/full returns raw records
 - cursor: Concise continuation; repeat the same filters. Relevant writes invalidate it`,
 	input: listInput,
 	handler: async (args, ctx) => {
+		if (args.responseFormat === "concise" && args.offset !== undefined)
+			return err(
+				new Error("concise pages with cursor; offset requires full format."),
+			);
 		let parentTaskId: string | undefined;
 		if (args.parentTaskId !== undefined) {
 			const parent = await resolveId(ctx, args.parentTaskId);
@@ -274,7 +282,11 @@ Parameters:
 			return Promise.resolve(
 				err(new Error("cursor requires responseFormat: concise.")),
 			);
-		return Planner.queryTasks(ctx.basePath, { ...query, limit: args.limit });
+		return Planner.queryTasks(ctx.basePath, {
+			...query,
+			limit: args.limit,
+			offset: args.offset,
+		});
 	},
 });
 

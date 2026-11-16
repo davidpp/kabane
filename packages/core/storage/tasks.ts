@@ -5,7 +5,7 @@
 import type { Db } from "../db/port";
 import { Events, PLANNER_EVENTS } from "../events";
 import { Modules } from "../module";
-import { err, ok, type Result } from "../result";
+import { err, ok, NotFoundError, type Result } from "../result";
 import { atomic, Runtime, withDb } from "../runtime";
 import {
 	type Task,
@@ -150,7 +150,7 @@ export namespace Planner {
 			if (!result.ok) return result;
 
 			if (!result.value) {
-				return err(new Error(`No task found with ID: ${input}`));
+				return err(new NotFoundError(`No task found with ID: ${input}`));
 			}
 
 			return ok(result.value.id);
@@ -175,7 +175,7 @@ export namespace Planner {
 		const matches = result.value;
 		const [match] = matches;
 		if (match === undefined) {
-			return err(new Error(`No task found with ID prefix: ${input}`));
+			return err(new NotFoundError(`No task found with ID prefix: ${input}`));
 		}
 		if (matches.length > 1) {
 			const candidates = matches

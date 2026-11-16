@@ -83,6 +83,7 @@ export {
 	tryCatch,
 	trySync,
 	unwrapOr,
+	NotFoundError,
 } from "./result";
 export {
 	type ActorSource,

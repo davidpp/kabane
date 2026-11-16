@@ -94,6 +94,7 @@ export default (host: Host): Extension => ({
   const id = args.positionals[0] ?? "missing";
   const task = await host.record.get({ id });
   if (!task.ok) return host.outcome.failure(task.error);
+  if (task.value === null) return host.outcome.failure(new Error("No task " + id));
   const title: string = task.value.title;
   const mode: "auto" | "default" = host.harnessMode;
   return host.outcome.success({ title, mode, actor: ctx.actor }, title);

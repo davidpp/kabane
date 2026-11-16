@@ -59,6 +59,7 @@ export default (host: Host): Extension => ({
 				if (!id) return host.outcome.usage("a task id is required", "kabane notes add <task> <text>");
 				const task = await host.record.get({ id });
 				if (!task.ok) return host.outcome.failure(task.error);
+				if (!task.value) return host.outcome.failure(new Error("No task found: " + id));
 				if (verb === "add") {
 					const noteId = \`\${Date.now().toString(36)}-\${crypto.randomUUID()}\`;
 					const written = await host.store.write((tx) => {

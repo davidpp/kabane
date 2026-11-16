@@ -1,6 +1,9 @@
 /** Record calls share the MCP boundary, including input validation and actor attribution. */
 import {
 	callTool,
+	NotFoundError,
+	ok,
+	type Task,
 	err,
 	type Result,
 	type ToolContext,
@@ -65,7 +68,10 @@ export const createHostRecord = (
 					: input,
 			) as Promise<Result<T>>;
 	return {
-		get: wrap("kabane_get"),
+		get: async (input) => {
+			const task = await wrap<Task>("kabane_get")(input);
+			return !task.ok && task.error instanceof NotFoundError ? ok(null) : task;
+		},
 		list: wrap("kabane_list"),
 		edit: wrap("kabane_edit"),
 		done: wrap("kabane_done"),

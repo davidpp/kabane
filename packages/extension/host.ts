@@ -73,6 +73,7 @@ export namespace Host {
 		includeDeferred?: boolean;
 		includeClosed?: boolean;
 		limit?: number;
+		offset?: number;
 	};
 	export type EditInput = {
 		id: string;
@@ -102,8 +103,8 @@ export namespace Host {
 		title: string;
 	};
 	export type Record = {
-		/** kabane_get */
-		get(input: { id: string }): Promise<Result<Task>>;
+		/** kabane_get; null when absent, err only when the read fails. */
+		get(input: { id: string }): Promise<Result<Task | null>>;
 		/** kabane_list */
 		list(input: ListInput): Promise<Result<Task[]>>;
 		/** kabane_edit */
