@@ -4,7 +4,7 @@
 // layer: defaults, global (every project), the repo's shared `.kabane/loop.json`, local (this
 // project, for you only), then what the caller passes (the trigger form or flags). A key the schema does not name is refused in every layer: a
 // typo (`workTree`) silently dropped would run the agents somewhere the human did not mean.
-import { Harnesses } from "@cabane/acp";
+import { Harnesses } from "@cabane/acp/harnesses";
 import type { Host } from "@cabane/extension";
 import { z as ownZ, type z } from "zod";
 

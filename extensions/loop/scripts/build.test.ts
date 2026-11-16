@@ -34,6 +34,15 @@ it("builds a relocatable loop with its client, procedures and working shipped le
 				file.includes("packages/acp/src/client.ts"),
 			),
 		).toBe(true);
+		const emitted = Object.values(result.metafile?.outputs ?? {})
+			.flatMap((output) => Object.entries(output.inputs))
+			.filter(([, input]) => input.bytesInOutput > 0)
+			.map(([file]) => file);
+		expect(emitted.filter((file) => file.startsWith("packages/core/"))).toEqual(
+			["packages/core/result.ts"],
+		);
+		for (const file of ["instructions.ts", "templates.ts"])
+			expect(emitted).not.toContain(`packages/acp/src/${file}`);
 		const installed = join(work, "home/extensions/loop");
 		cpSync(output, installed, { recursive: true });
 		rmSync(output, { recursive: true });

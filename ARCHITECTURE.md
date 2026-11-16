@@ -93,6 +93,10 @@ layer, with four narrowings:
   From the rest of kabane it imports types only, with `import type`, which the compiler erases;
   every value it needs from kabane arrives on `host`. The loop lists `acp` as its only workspace runtime dependency;
   `checklist`, `core` and `extension` are development dependencies for types and tests.
+  Its runtime imports use ACP capability subpaths (`/client`, `/harnesses`, `/tool-calls`,
+  `/form-field`), keeping instructions and templates out of the bundle. ACP takes result
+  helpers from `@cabane/core/result`; `result.ts` is the only core source emitted in the
+  loop build, enforced by its real-build metafile test.
 
 A client may use the harness client as a library. The board lists `@cabane/acp` for
 its copilot (`packages/board/src/copilot.ts`; see "Ports").
