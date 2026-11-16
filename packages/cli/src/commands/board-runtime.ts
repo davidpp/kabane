@@ -37,6 +37,7 @@ import {
 	resolveScope,
 	type ScopeSelection,
 } from "../context";
+import { CopilotFiles } from "../copilot-files";
 import { Extensions } from "../extensions";
 import { UpdateNotice } from "../update-notice";
 import { BoardControl } from "./board-control";
@@ -233,17 +234,22 @@ export const boardDeps = async (
 	{
 		extensions = [],
 		refusals = [],
+		directories = [],
 		issue,
 		requests,
 	}: {
 		extensions?: readonly Extension[];
 		refusals?: Extensions.Refusal[];
+		directories?: readonly Extensions.Directory[];
 		issue?: Task;
 		requests?: OpenRequests;
 	} = {},
 ): Promise<BoardWiring> => {
 	const scope = await boardScope(args, ctx, issue);
 	const overrides = copilotOverrides(ctx);
+	// Read before the announcer is built, so a refused file is announced like a refused extension.
+	const contributed = CopilotFiles.read(directories);
+	refusals.push(...contributed.refused);
 	return {
 		...(await extensionPorts(extensions, ctx, refusals)),
 		...(ctx.config.updates?.check === false && refusals.length === 0
@@ -300,6 +306,8 @@ export const boardDeps = async (
 			setup: {
 				configPath: configPath(ctx.home),
 				extensions: Extensions.available(ctx.home),
+				procedures: contributed.procedures,
+				shortcuts: contributed.shortcuts,
 			},
 		}),
 	};
@@ -379,6 +387,7 @@ export const runBoard: Command["run"] = async (args, ctx) => {
 	const deps = await boardDeps(args, ctx, harness.value, {
 		extensions: extensions.loaded,
 		refusals: extensions.refused,
+		directories: extensions.directories,
 		issue: issue.value,
 		requests: control.requests,
 	});

@@ -1,0 +1,238 @@
+// Real extension directories on disk, read by the real reader and, at the end, loaded through the
+// real loader into the board's real copilot and announcer.
+import { afterAll, describe, expect, it } from "bun:test";
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { CopilotInstructions } from "@cabane/board/copilot-instructions";
+import { parseArgs } from "@cabane/extension";
+import { boardDeps } from "./commands/board-runtime";
+import { configPath } from "./config";
+import { openContext } from "./context";
+import { CopilotFiles } from "./copilot-files";
+import { Extensions } from "./extensions";
+
+const ROOT = join(tmpdir(), `kabane-copilot-files-${crypto.randomUUID()}`);
+afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
+
+const LOOP = resolve(import.meta.dir, "../../../extensions/loop");
+
+/** An extension directory holding `files`, by path under it. */
+const extension = (
+	name: string,
+	files: Record<string, string>,
+	parent = join(ROOT, crypto.randomUUID()),
+): Extensions.Directory => {
+	const directory = join(parent, name);
+	for (const [path, text] of Object.entries(files)) {
+		mkdirSync(dirname(join(directory, path)), { recursive: true });
+		writeFileSync(join(directory, path), text);
+	}
+	return { name, directory };
+};
+
+const procedure = (title: string, body: string): string =>
+	`---\ntitle: ${title}\n---\n${body}\n`;
+const shortcut = (hint: string, body: string): string =>
+	`---\nhint: ${hint}\n---\n${body}\n`;
+
+describe("CopilotFiles.read", () => {
+	it("reads procedures and shortcuts by file name, filling {{extension}} with the directory", () => {
+		const notes = extension("notes", {
+			"copilot/procedures/b-reading.md": procedure(
+				"READING NOTES",
+				"Read {{extension}}/notes.md.",
+			),
+			"copilot/procedures/a-keeping.md": procedure(
+				"KEEPING NOTES",
+				"Keep them.\n\nTwo paragraphs.",
+			),
+			"copilot/procedures/ignored.txt": "not markdown",
+			"copilot/shortcuts/note.md": shortcut(
+				"write a note",
+				"Write a note in {{extension}}.",
+			),
+		});
+		const read = CopilotFiles.read([notes]);
+		expect(read.refused).toEqual([]);
+		expect(read.procedures).toEqual([
+			{
+				extension: "notes",
+				procedures: [
+					{ title: "KEEPING NOTES", body: "Keep them.\n\nTwo paragraphs." },
+					{
+						title: "READING NOTES",
+						body: `Read ${notes.directory}/notes.md.`,
+					},
+				],
+			},
+		]);
+		expect(read.shortcuts).toEqual([
+			{
+				name: "note",
+				hint: "write a note",
+				template: `Write a note in ${notes.directory}.`,
+			},
+		]);
+	});
+
+	it("an extension without copilot files contributes nothing", () => {
+		const read = CopilotFiles.read([extension("bare", { "index.ts": "" })]);
+		expect(read).toEqual({ procedures: [], shortcuts: [], refused: [] });
+	});
+
+	it("refuses each unusable file with one line naming the extension and the file, and loads the rest", () => {
+		const bad = extension("bad", {
+			"copilot/procedures/bare.md": "No frontmatter here.\n",
+			"copilot/procedures/unclosed.md": "---\ntitle: OPEN\nNo close.\n",
+			"copilot/procedures/yaml.md": "---\ntitle: [unclosed\n---\nBody.\n",
+			"copilot/procedures/untitled.md": "---\n---\nBody.\n",
+			"copilot/procedures/policy.md":
+				"---\ntitle: POLICY\nmode: bypassPermissions\n---\nBody.\n",
+			"copilot/procedures/good.md": procedure("GOOD", "Still loads."),
+			"copilot/shortcuts/long.md": shortcut("two lines", "One.\nTwo."),
+			"copilot/shortcuts/empty.md": shortcut("nothing", ""),
+			"copilot/shortcuts/hintless.md": "---\ntitle: wrong key\n---\nGo.\n",
+			"copilot/shortcuts/triage.md": shortcut("mine", "Triage my way."),
+			"copilot/shortcuts/fine.md": shortcut("fine", "Do the fine thing."),
+		});
+		const read = CopilotFiles.read([bad]);
+		expect(read.procedures).toEqual([
+			{
+				extension: "bad",
+				procedures: [{ title: "GOOD", body: "Still loads." }],
+			},
+		]);
+		expect(read.shortcuts.map((s) => s.name)).toEqual(["fine"]);
+		const lines = read.refused.map(Extensions.line);
+		expect(lines).toEqual([
+			"Extension bad: copilot/procedures/bare.md has no frontmatter between --- lines; add one",
+			"Extension bad: copilot/procedures/policy.md: invalid frontmatter (Unrecognized key(s) in object: 'mode')",
+			"Extension bad: copilot/procedures/unclosed.md has no frontmatter between --- lines; add one",
+			"Extension bad: copilot/procedures/untitled.md: invalid frontmatter (Expected object, received null)",
+			"Extension bad: copilot/procedures/yaml.md: its frontmatter is not YAML",
+			"Extension bad: copilot/shortcuts/empty.md: its body must be one line, the template dropped into the prompt",
+			"Extension bad: copilot/shortcuts/hintless.md: invalid frontmatter (hint: Required)",
+			"Extension bad: copilot/shortcuts/long.md: its body must be one line, the template dropped into the prompt",
+			"Extension bad: copilot/shortcuts/triage.md: /triage is a built-in shortcut, which wins; rename the file",
+		]);
+	});
+
+	it("a shortcut name two extensions use is refused for both, and a built-in keeps its own", () => {
+		const one = extension("one", {
+			"copilot/shortcuts/go.md": shortcut("one's", "Go one way."),
+			"copilot/shortcuts/only.md": shortcut("one's only", "Only one."),
+		});
+		const two = extension("two", {
+			"copilot/shortcuts/go.md": shortcut("two's", "Go the other way."),
+		});
+		const read = CopilotFiles.read([one, two]);
+		expect(read.shortcuts.map((s) => s.name)).toEqual(["only"]);
+		expect(read.refused.map(Extensions.line)).toEqual([
+			"Extension one: copilot/shortcuts/go.md: /go is also a shortcut of two, so neither is offered; rename one",
+			"Extension two: copilot/shortcuts/go.md: /go is also a shortcut of one, so neither is offered; rename one",
+		]);
+		const triage = CopilotInstructions.shortcuts({
+			configPath: "config.json",
+			extensions: [],
+			procedures: [],
+			shortcuts: read.shortcuts,
+		}).filter((s) => s.name === "triage");
+		expect(triage).toEqual(
+			CopilotInstructions.SHORTCUTS.filter((s) => s.name === "triage"),
+		);
+	});
+
+	it("the loop's own files load whole, once, under a heading naming the loop", () => {
+		const read = CopilotFiles.read([{ name: "loop", directory: LOOP }]);
+		expect(read.refused).toEqual([]);
+		expect(read.shortcuts).toEqual([]);
+		const titles = read.procedures.flatMap((c) =>
+			c.procedures.map((p) => p.title),
+		);
+		expect(titles.sort()).toEqual([
+			"SETTING UP A LOOP RUN",
+			"STARTING A LOOP RUN",
+		]);
+		const prompt = CopilotInstructions.systemPrompt(
+			{
+				configPath: "config.json",
+				extensions: ["loop"],
+				procedures: read.procedures,
+				shortcuts: read.shortcuts,
+			},
+			"kabane",
+		);
+		expect(prompt.split("EXTENSION loop.").length).toBe(2);
+		expect(prompt.split("STARTING A LOOP RUN.").length).toBe(2);
+		expect(prompt).not.toContain("{{extension}}");
+		expect(prompt).toContain(`The loop extension, installed at ${LOOP},`);
+		// What the procedure lets the copilot do, and what it must not do on its own idea.
+		expect(prompt).toContain("`kabane loop start <id>`");
+		expect(prompt).toContain(
+			'When the human tells you to run an issue ("run JCAB-79 with codex"), that is the go-ahead',
+		);
+		expect(prompt).toContain(
+			"When a run is your own suggestion, name the issue and the harness and wait for a yes",
+		);
+		expect(prompt).toContain("`a` on an issue opens its run form");
+		expect(prompt).toContain("kabane loop advise <id>");
+		expect(prompt).toContain(
+			"Never change the implementer or the verifier unless asked",
+		);
+		expect(prompt.indexOf("EXTENSION loop.")).toBeGreaterThan(
+			prompt.indexOf("KABANE ON THIS MACHINE."),
+		);
+	});
+});
+
+it("an enabled directory's files reach the board's copilot, and a refused one its announcer", async () => {
+	const home = join(ROOT, "home");
+	const notes = extension(
+		"notes",
+		{
+			"package.json": JSON.stringify({
+				kabane: { extension: "./index.ts", api: 1 },
+			}),
+			"index.ts": 'export default () => ({name: "notes"});',
+			"copilot/procedures/keeping.md": procedure("KEEPING NOTES", "Keep them."),
+			"copilot/shortcuts/note.md": shortcut("write a note", "Write a note."),
+			"copilot/shortcuts/split.md": shortcut("mine", "Split my way."),
+		},
+		join(home, "extensions"),
+	);
+	writeFileSync(
+		configPath(home),
+		JSON.stringify({
+			actor: "test",
+			deviceId: "test",
+			extensions: ["notes"],
+			updates: { check: false },
+		}),
+	);
+	const args = parseArgs([]);
+	const ctx = await openContext(home, home, args);
+	if (!ctx.ok) throw ctx.error;
+	const all = await Extensions.loadAll(["notes"], home);
+	expect(all.directories).toEqual([
+		{ name: "notes", directory: realpathSync(notes.directory) },
+	]);
+	const wired = await boardDeps(args, ctx.value, "claude", {
+		extensions: all.loaded,
+		refusals: all.refused,
+		directories: all.directories,
+	});
+	try {
+		const names = wired.copilot.shortcuts().map((s) => s.name);
+		expect(names).toEqual([
+			...CopilotInstructions.SHORTCUTS.map((s) => s.name),
+			"note",
+		]);
+		const notice = await wired.announcer?.announce();
+		expect(notice?.ok && notice.value).toBe(
+			"Extension notes refused: copilot/shortcuts/split.md: /split is a built-in shortcut, which wins",
+		);
+	} finally {
+		wired.copilot.close();
+	}
+});

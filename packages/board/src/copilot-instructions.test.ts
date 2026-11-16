@@ -36,7 +36,12 @@ const SKILL_FILES = [
 const ITEM_OR_SUBTASK =
 	"An item has no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask.";
 
-const SETUP = { configPath: "/sandbox/home/config.json", extensions: ["loop"] };
+const SETUP: CopilotInstructions.Setup = {
+	configPath: "/sandbox/home/config.json",
+	extensions: [],
+	procedures: [],
+	shortcuts: [],
+};
 const BIN = "/sandbox/checkout/packages/cli/index.ts";
 
 describe("CopilotInstructions.SHORTCUTS", () => {
@@ -127,11 +132,19 @@ describe("CopilotInstructions.SKILLS", () => {
 		expect(setup?.template).not.toMatch(/confirm/i);
 	});
 
-	it("names the resolved config path and the extensions this build ships", () => {
-		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN);
+	it("names the resolved config path and the installed extensions", () => {
+		const prompt = CopilotInstructions.systemPrompt(
+			{ ...SETUP, extensions: ["notes", "timer"] },
+			BIN,
+		);
 		expect(prompt).toContain("/sandbox/home/config.json");
-		expect(prompt).toContain("This build ships: loop.");
+		expect(prompt).toContain(
+			"Installed extensions: notes, timer. These are the extensions available to enable.",
+		);
 		expect(prompt).not.toContain("~/.kabane");
+		expect(CopilotInstructions.systemPrompt(SETUP, BIN)).toContain(
+			"Installed extensions: none.",
+		);
 	});
 });
 
@@ -407,75 +420,110 @@ describe("CopilotInstructions grilling the human", () => {
 	});
 });
 
-describe("CopilotInstructions starting a loop run", () => {
-	it("starts one through the loop's own command, on an instruction, and waits for a yes on its own idea", () => {
-		const { SKILLS } = CopilotInstructions;
-		expect(SKILLS).toContain("`kabane loop start <id>`");
-		expect(SKILLS).toContain(
-			'When the human tells you to run an issue ("run JCAB-79 with codex"), that is the go-ahead',
+describe("CopilotInstructions with no extension", () => {
+	it("names no extension: no loop, no run form, no official extension", () => {
+		// "tool loop" is the kabane MCP server's own loop, not the extension.
+		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN).replaceAll(
+			"tool loop",
+			"",
 		);
-		expect(SKILLS).toContain(
-			"When a run is your own suggestion, name the issue and the harness and wait for a yes",
-		);
+		expect(prompt).not.toMatch(/\bloop\b/i);
+		expect(prompt).not.toMatch(/run form/i);
+		expect(prompt).not.toMatch(/official extension/i);
+		expect(prompt).not.toContain("EXTENSION ");
 	});
 
+	it("enables an installed extension by keeping the list, passing it whole and reopening the board", () => {
+		const { SKILLS } = CopilotInstructions;
+		expect(SKILLS).toContain(
+			"To enable an installed extension, check the installed extensions KABANE ON THIS MACHINE lists below",
+		);
+		expect(SKILLS).toContain("preserve every existing entry in the new list");
+		expect(SKILLS).toContain(
+			"Pass the full comma-separated list to kabane_configSet with key extensions",
+		);
+		expect(SKILLS).toContain("remind the human to reopen the board");
+	});
+});
+
+describe("CopilotInstructions running kabane", () => {
 	it("runs kabane as the board's own bin, not one found on PATH", () => {
 		const setup = CopilotInstructions.setup(SETUP, BIN);
 		expect(setup).toContain(`This board runs kabane as \`'${BIN}'\``);
-		expect(setup).toContain(`\`'${BIN}' loop start <id>\``);
+		expect(setup).toContain(`for example \`'${BIN}' --help\``);
 		expect(setup).toContain("never as a kabane found on PATH");
-		expect(CopilotInstructions.SKILLS).toContain(
-			"as the kabane command KABANE ON THIS MACHINE names",
-		);
 	});
 
 	it("quotes a bin the shell would split or expand", () => {
 		expect(
 			CopilotInstructions.setup(SETUP, "/Users/me/My Code/index.ts"),
-		).toContain("`'/Users/me/My Code/index.ts' loop start <id>`");
+		).toContain("`'/Users/me/My Code/index.ts' --help`");
 		expect(
 			CopilotInstructions.setup(SETUP, "/Users/me/it's $HOME/index.ts"),
-		).toContain(`\`'/Users/me/it'\\''s $HOME/index.ts' loop start <id>\``);
+		).toContain(`\`'/Users/me/it'\\''s $HOME/index.ts' --help\``);
 	});
 
 	it("quotes a bin the shell would read as a keyword or an assignment", () => {
-		expect(CopilotInstructions.setup(SETUP, "if")).toContain(
-			"`'if' loop start <id>`",
-		);
+		expect(CopilotInstructions.setup(SETUP, "if")).toContain("`'if' --help`");
 		expect(CopilotInstructions.setup(SETUP, "KABANE_BIN=x")).toContain(
-			"`'KABANE_BIN=x' loop start <id>`",
+			"`'KABANE_BIN=x' --help`",
 		);
-	});
-
-	it("says a single issue runs too, and that `a` opens the run form on any issue", () => {
-		const { SKILLS } = CopilotInstructions;
-		expect(SKILLS).toContain(
-			"loop drives an issue, or a parent issue's subtasks, to done",
-		);
-		expect(SKILLS).toContain("`a` on an issue opens its run form");
-		expect(SKILLS).not.toContain("on a parent with subtasks");
-	});
-
-	it("reports the run id and how to stop the run", () => {
-		expect(CopilotInstructions.SKILLS).toContain("report the run id");
-		expect(CopilotInstructions.SKILLS).toContain("`kabane loop stop <runId>`");
 	});
 });
 
-describe("CopilotInstructions setting up a loop run", () => {
-	it("reads the advice first, proposes with reasons, and waits for a yes before tagging or starting", () => {
-		const skills = CopilotInstructions.SKILLS;
-		expect(skills).toContain("SETTING UP A LOOP RUN");
-		expect(skills).toContain("kabane loop advise <id>");
-		expect(skills).toContain(
-			"Never change the implementer or the verifier unless asked",
+describe("CopilotInstructions with contributed procedures and shortcuts", () => {
+	const contributed: CopilotInstructions.Setup = {
+		...SETUP,
+		extensions: ["notes", "timer", "quiet"],
+		procedures: [
+			{
+				extension: "notes",
+				procedures: [
+					{
+						title: "KEEPING NOTES",
+						body: "Write notes with the notes command.",
+					},
+					{ title: "READING NOTES", body: "Read them back." },
+				],
+			},
+			{ extension: "quiet", procedures: [] },
+			{
+				extension: "timer",
+				procedures: [{ title: "TIMING", body: "Start the timer." }],
+			},
+		],
+		shortcuts: [
+			{ name: "note", hint: "write a note", template: "Write a note." },
+			{ name: "triage", hint: "not the built-in", template: "Something else." },
+		],
+	};
+
+	it("appends each extension's procedures after base kabane's whole text, under one heading naming it", () => {
+		const prompt = CopilotInstructions.systemPrompt(contributed, BIN);
+		const base = CopilotInstructions.systemPrompt(SETUP, BIN).replace(
+			"Installed extensions: none.",
+			"Installed extensions: notes, timer, quiet.",
 		);
-		expect(skills).toContain(
-			"Your proposal is your own suggestion: wait for a yes",
+		expect(prompt.startsWith(`${base}\n\n`)).toBe(true);
+		const added = prompt.slice(base.length + 2);
+		expect(added).toBe(
+			[
+				"EXTENSION notes. These procedures come from the notes extension and add to kabane's own above.",
+				"KEEPING NOTES. Write notes with the notes command.",
+				"READING NOTES. Read them back.",
+				"EXTENSION timer. These procedures come from the timer extension and add to kabane's own above.",
+				"TIMING. Start the timer.",
+			].join("\n\n"),
 		);
-		expect(skills.indexOf("SETTING UP A LOOP RUN")).toBeGreaterThan(
-			skills.indexOf("STARTING A LOOP RUN"),
-		);
+		expect(prompt).not.toContain("EXTENSION quiet");
+	});
+
+	it("offers built-ins first, then contributed shortcuts, and a built-in name stays the built-in's", () => {
+		const shortcuts = CopilotInstructions.shortcuts(contributed);
+		expect(shortcuts).toEqual([
+			...CopilotInstructions.SHORTCUTS,
+			{ name: "note", hint: "write a note", template: "Write a note." },
+		]);
 	});
 });
 
@@ -486,7 +534,7 @@ it("a compiled prompt still supplies procedures when shipped templates are missi
 		const binary = join(root, "prompt");
 		writeFileSync(
 			entry,
-			`import { CopilotInstructions } from ${JSON.stringify(join(import.meta.dir, "copilot-instructions.ts"))}; console.log(CopilotInstructions.systemPrompt({configPath: "config.json", extensions: []}, "kabane"));`,
+			`import { CopilotInstructions } from ${JSON.stringify(join(import.meta.dir, "copilot-instructions.ts"))}; console.log(CopilotInstructions.systemPrompt({configPath: "config.json", extensions: [], procedures: [], shortcuts: []}, "kabane"));`,
 		);
 		const build = Bun.spawnSync([
 			process.execPath,
