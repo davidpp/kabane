@@ -239,8 +239,6 @@ export namespace Fixtures {
 			"on studio",
 			"kabane runs attach 01M7JZQ9PDZYZKDTYX93KKZTZC",
 		],
-		hasEvents: true,
-		tab: true,
 		actions: [{ id: "stop", key: "x", label: "stop" }],
 	});
 

@@ -151,17 +151,15 @@ each state from the terminal, as `kabane runs` does, and draws it this way:
 |---|---|
 | `running` | in flight, with a spinner: the issue's row shows the recipe's name and the state, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy |
 | `waiting` | paused, with no spinner: the issue's row shows `⏸ <recipe> · paused` and the state, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy. The agent waits on you: answer it with `kabane runs attach <id>` or `kabane runs send <id>` |
-| `idle`, `ended` | finished: no badge on the row or line in the header, only the card's tab. `kabane runs --all` says which of the two it is |
+| `idle`, `ended` | finished: no badge on the row or line in the header. `kabane runs --all` says which of the two it is |
 
 Every run in flight (`running` or `waiting`) is listed, and the newest finished ones (`idle` or
 `ended`) up to ten runs in all. A run with no target is not on the board: `kabane runs` lists
 it.
 
-`o` on the issue opens the card's tab: the terminal's screen, followed while the run is in
-flight, a new line at a time. A screen that the program redraws whole starts again under "the
-screen was redrawn". A run on another machine shows where it runs instead, and a terminal that
-is gone shows the run's last state. `x` on the tab stops the run, as `kabane runs stop` does.
-Nothing else is answered from the board.
+A run's card has no tab: the board does not show the terminal. To see or answer the session,
+run `kabane runs attach <id>`, which opens it in hc; `kabane runs read <id>` prints its screen
+and `kabane runs stop <id>` stops it. Nothing is answered from the board.
 
 `a` on an issue offers every recipe of the project whose frontmatter says `target: issue`,
 with its description. A recipe whose inputs all have a default and are choices, numbers or
