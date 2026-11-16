@@ -149,8 +149,9 @@ each state from the terminal, as `kabane runs` does, and draws it this way:
 | `waiting` | paused: row and header show only `⏸ <recipe> · paused`. The agent waits on you: find the run's id with `kabane runs`, then answer it with `kabane runs attach <id>` or `kabane runs send <id>` |
 | `idle`, `ended` | finished: no badge on the row or line in the header, only the card's tab. `kabane runs --all` says which of the two it is |
 
-Every unfinished run is listed, and the newest ended ones up to ten runs in all. A run with no
-target is not on the board: `kabane runs` lists it.
+Every run in flight (`running` or `waiting`) is listed, and the newest finished ones (`idle` or
+`ended`) up to ten runs in all. A run with no target is not on the board: `kabane runs` lists
+it.
 
 `o` on the issue opens the card's tab: the terminal's screen, followed while the run is in
 flight, a new line at a time. A screen that the program redraws whole starts again under "the

@@ -85,7 +85,8 @@ a target are cards: a run without one belongs to a jobs view, not the issue boar
 | `idle`, `ended` | `completed` | finished; `detail[0]` is the run state, though the board draws no badge or header line for a finished card, so only `kabane runs` tells the two apart |
 
 Listing and `card` run `reconcile` first, as `kabane runs` does; retention follows the loop's
-source (every unfinished run, the newest ended up to ten). `events` is the screen through
+source (every run in flight, the newest finished up to ten, where `idle` counts as finished as
+the board draws it). `events` is the screen through
 `Runtime.read`: the board's event view only appends, so a poll returns the lines the screen
 gained (the longest tail of the last screen that heads the new one is already shown), or a
 "redrawn" notice and the whole screen when none does. That state is in memory, per card, reset

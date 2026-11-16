@@ -261,6 +261,35 @@ describe("RecipeActivity", () => {
 		expect(stored?.state).toBe("waiting");
 	});
 
+	it("counts an idle run as finished, so idle runs past ten drop off", async () => {
+		const hc = scripted();
+		const live = run("01M7JT0TFJB7MF38VYDWCG0500", {
+			startedAt: "2026-11-16T09:00:00.000Z",
+		});
+		hc.states.set(live.session, "running");
+		value(await Runs.insert(host, live, "t"));
+		for (let at = 0; at < 12; at++) {
+			const idle = run(
+				`01M7JT0TFJB7MF38VYDWCG06${String(at).padStart(2, "0")}`,
+				{
+					state: "idle",
+					startedAt: `2026-11-16T10:${String(at).padStart(2, "0")}:00.000Z`,
+				},
+			);
+			hc.states.set(idle.session, "idle");
+			value(await Runs.insert(host, idle, "t"));
+		}
+		const cards = value(await sourceWith(hc.runtime).load());
+		expect(cards).toHaveLength(10);
+		expect(cards.some((card) => card.id === live.id)).toBe(true);
+		// The newest nine idle runs stay; the three oldest drop off.
+		expect(
+			cards
+				.filter((card) => card.status === "completed")
+				.map((card) => card.id.slice(-2)),
+		).toEqual(["11", "10", "09", "08", "07", "06", "05", "04", "03"]);
+	});
+
 	it("shows the terminal's screen on the tab, then only the lines it gained", async () => {
 		const hc = scripted();
 		const one = run("01M7JT0TFJB7MF38VYDWCG0300");

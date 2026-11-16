@@ -23,7 +23,7 @@ export namespace RecipeActivity {
 	/** What the board's strip counts a run's card as. */
 	const KIND = "runs";
 
-	// As the loop's source: every unfinished run, and the newest ended ones up to this many in all.
+	// As the loop's source: every run in flight, and the newest finished ones up to this many in all.
 	const RECENT_RUNS = 10;
 
 	// `waiting` is a harness stopped on the human: paused is the in-flight status the board draws
@@ -78,16 +78,19 @@ export namespace RecipeActivity {
 		};
 	};
 
-	/** The targeted runs the board lists: every unfinished one, then the newest ended ones. */
+	/**
+	 * The targeted runs the board lists: every one in flight, then the newest finished ones. A run
+	 * counts as finished when the board draws it so: `idle` too, which a harness that stays open
+	 * after its turn sits in until someone stops it.
+	 */
 	const listed = (runs: readonly Runs.Run[]): Runs.Run[] => {
 		const targeted = runs.filter((run) => run.target !== undefined);
-		const live = targeted.filter((run) => run.state !== "ended");
+		const finished = (run: Runs.Run) => STATUS[run.state] === "completed";
+		const inFlight = targeted.filter((run) => !finished(run)).length;
 		const recent = new Set(
-			targeted
-				.filter((run) => run.state === "ended")
-				.slice(0, Math.max(0, RECENT_RUNS - live.length)),
+			targeted.filter(finished).slice(0, Math.max(0, RECENT_RUNS - inFlight)),
 		);
-		return targeted.filter((run) => run.state !== "ended" || recent.has(run));
+		return targeted.filter((run) => !finished(run) || recent.has(run));
 	};
 
 	/**
