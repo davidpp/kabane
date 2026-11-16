@@ -261,7 +261,8 @@ shows it as unknown.
 
 ## Read the advice before starting
 
-On the board, `a` on an issue opens the run form with advised values and their reasons.
+On the board, `a` on an issue lists what can start on it; the loop's entry opens the run form
+with advised values and their reasons.
 Review the values before submitting. The advice is based on the plan's dependencies,
 file overlap and past attempts, plus the project's scripts and lockfile. It can propose:
 
