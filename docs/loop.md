@@ -130,6 +130,10 @@ your defaults across projects. A higher layer still wins.
 
 ## Pick models with tiers
 
+With the loop extension enabled, `kabane doctor` suggests pinning an unset `loop.model`
+(`loop/model-unpinned`) and names each tier requested by `loop.model` or an open issue's
+`tier:` tag that `loop.tiers` does not map (`loop/tier-unmapped`).
+
 `loop.implementer` picks the default harness: `claude`, `codex` or `gemini`. It defaults
 to `claude`. `loop.verifier` picks the harness for verifier lenses; unset, it follows the
 implementer.
@@ -205,8 +209,18 @@ Those are your choices of harness, model and what happens to the finished branch
 
 A lens is a Markdown prompt in your dispatch skill,
 `.agents/skills/dispatch/references/lenses/<name>.md`, the same file the skill's close
-review reads; `functional` and `quality` ship with kabane. A lens file can open with
-frontmatter that says which changes it reviews:
+review reads; `functional` and `quality` ship with kabane.
+
+Older lenses still run: lookup checks `.agents/skills/dispatch/references/lenses/`,
+then a real `.claude/skills/dispatch/references/lenses/`, then `.kabane/loop/lenses/`.
+`kabane doctor` reports legacy loop lenses (`loop/legacy-lens-dir`) and duplicate names
+(`loop/lens-shadowed`), naming the copy in force. `kabane doctor --fix` moves legacy loop
+lenses into the `.agents` dispatch skill once it exists and removes the old directory
+when empty. A conflicting copy in either skill directory is left for a manual merge;
+without a dispatch skill the finding is informational and points to `/setup-dispatch`.
+The project check offers `/setup-dispatch` for moving a real `.claude` skill itself.
+
+A lens file can open with frontmatter that says which changes it reviews:
 
 ```markdown
 ---
