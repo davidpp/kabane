@@ -176,6 +176,7 @@ describe.concurrent("config through the real CLI", () => {
 					"loop.budget.currency",
 					"loop.stallAfter",
 					"loop.tiers",
+					"loop.harnesses",
 					"loop.gates",
 					"loop.worktree",
 					"loop.isolation",
