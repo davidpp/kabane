@@ -10,7 +10,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CopilotInstructions } from "@cabane/acp";
 import { ok, Planner, type Task } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { Settings } from "@cabane/extension";
@@ -85,22 +84,16 @@ const write = (dir: string, name: string, text: string): void => {
 };
 
 describe("Lenses.prompt", () => {
-	it("ships functional and quality in kabane's dispatch template", () => {
+	it("ships functional and quality with the loop", () => {
 		for (const [name, heading] of [
 			["functional", "# Functional lens"],
 			["quality", "# Quality lens"],
 		] as const) {
 			const shipped = Lenses.prompt(repo, name);
 			expect(shipped.ok && shipped.value.text).toStartWith(heading);
-			expect(
-				existsSync(
-					join(
-						CopilotInstructions.DISPATCH_TEMPLATE,
-						"references/lenses",
-						`${name}.md`,
-					),
-				),
-			).toBe(true);
+			expect(existsSync(join(import.meta.dir, "../lenses", `${name}.md`))).toBe(
+				true,
+			);
 		}
 	});
 

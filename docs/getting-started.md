@@ -154,6 +154,7 @@ scroll it when it is taller than the pane. A key that does nothing right now (no
 - `y` copies a task's agent brief to paste into any chat.
 - `⌃z` undoes the last change.
 - `a` is dispatch, a hook for host apps. On its own, kabane has no dispatcher.
+  Install and enable the optional [loop extension](loop.md#install) to dispatch coding runs.
 - `,` lists every setting, its value and where it comes from: `default`, `global` (every
   project on this device), `shared` (the file in the repo) or `local` (this project, only
   you). `h`/`l` step a setting with choices, and `enter` types a string or a number; on a

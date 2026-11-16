@@ -62,8 +62,7 @@ kabane list
   are discovered without importing their code. The host
   checks the manifest and API before importing the entry, whose dependencies resolve from
   its own `node_modules`. A refused extension prints one line naming the problem and how
-  to repair or disable it; the others still load. The bundled `loop` remains available without a
-  directory; a directory named `loop` overrides it, with a notice on stderr.
+  to repair or disable it; the others still load. The optional [loop](../../docs/loop.md) must be installed as a directory too.
 
 ### Settings layers
 
@@ -157,8 +156,7 @@ what the key's schema says of it. A record's entries follow it as rows of their 
   a device key and an extension's `looks` for its own; a key with none reads under its path, in
   its parent object's group or `Other`.
 - `options`: the values it steps through, when it has any: the declared ones, resolved for the
-  project here (`copilot.harness` the harnesses this build launches, `extensions` the bundled and
-  installed directory names, `loop.lenses` the project's lenses), else an enum's values or a
+  project here (`copilot.harness` the harnesses this build launches, `extensions` the installed directory names, `loop.lenses` the project's lenses), else an enum's values or a
   bounded integer's range.
   `none`: what an optional key left unset reads as, when declared.
 - `restart`: when a change applies. `start` for a device key, loaded when a process starts, so
@@ -227,8 +225,6 @@ board's README describes them, under its copilot.
 
 Only enabled directories run code; a directory alone, a single `.ts` file, or a repository's
 files load nothing. Directory settings become known to `kabane config` only after enablement.
-The bundled loop's settings remain available before enablement. A directory named `loop`
-takes precedence over the bundle, with a warning.
 
 An incompatible API is refused before import. A load failure, throwing command or board port,
 or invalid MCP contribution names its extension and leaves the others available. Help lists

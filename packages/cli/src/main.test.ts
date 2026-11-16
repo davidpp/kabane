@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { version } from "../package.json";
@@ -42,6 +42,11 @@ describe("run, resolving a command name", () => {
 
 	beforeAll(async () => {
 		mkdirSync(cwd, { recursive: true });
+		mkdirSync(join(home, "extensions"));
+		symlinkSync(
+			join(import.meta.dir, "../../../extensions/loop"),
+			join(home, "extensions/loop"),
+		);
 		const init = await run(
 			["init", "--actor", "cabane://actor/human/t", "--device", "t"],
 			env,
@@ -105,7 +110,13 @@ describe("run, resolving a command name", () => {
 
 describe("directory commands through the real CLI", () => {
 	const home = join(tmpdir(), `kabane-main-directory-${crypto.randomUUID()}`);
-	beforeAll(() => mkdirSync(home, { recursive: true }));
+	beforeAll(() => {
+		mkdirSync(join(home, "extensions"), { recursive: true });
+		symlinkSync(
+			join(import.meta.dir, "../../../extensions/loop"),
+			join(home, "extensions/loop"),
+		);
+	});
 	afterAll(() => rmSync(home, { recursive: true, force: true }));
 	const invoke = async (...args: string[]) => {
 		const proc = Bun.spawn(

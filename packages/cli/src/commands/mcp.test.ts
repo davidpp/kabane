@@ -1,6 +1,13 @@
 import "@cabane/core/testing";
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	cpSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createMcpServer, KABANE_TOOLS, ok, type ToolDef } from "@cabane/core";
@@ -23,6 +30,11 @@ const configure = (extensions: string[]) =>
 
 beforeEach(() => {
 	const home = mkdtempSync(join(tmpdir(), "kabane-mcp-"));
+	mkdirSync(join(home, "extensions"));
+	symlinkSync(
+		join(import.meta.dir, "../../../../extensions/loop"),
+		join(home, "extensions/loop"),
+	);
 	ctx = {
 		home,
 		store: home,

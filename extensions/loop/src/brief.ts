@@ -7,12 +7,14 @@
 // and how it files findings; the fixer hears which findings are its own, in what order, and how
 // it settles each; a lens's recheck hears the fixer's diff and the findings it closed. The kabane
 // tool loop itself is the MCP server's to describe, so it is not restated.
-import { CopilotInstructions } from "@cabane/acp";
 import type { Task } from "@cabane/core";
 import type { Checklists } from "./checklists";
 import type { LoopConfig } from "./config";
 import { Gates } from "./gates";
 import { LoopPlan } from "./plan";
+
+// Kept distinct from the human's configured kabane MCP server.
+const SERVER_NAME = "kabane-session";
 
 export namespace Brief {
 	/** Resolved run settings and the working copy actually assigned to this session. */
@@ -150,7 +152,7 @@ export namespace Brief {
 
 	// The session's own server is not the only kabane one it may see: the harness also loads the
 	// human's configured `kabane`, which is unscoped and may point at another home.
-	const SERVER = `Your kabane_* tools are the ones of the ${CopilotInstructions.SERVER_NAME} MCP server. A server named kabane from your harness's own config may also be loaded; it is not tied to this run, so do not use it.`;
+	const SERVER = `Your kabane_* tools are the ones of the ${SERVER_NAME} MCP server. A server named kabane from your harness's own config may also be loaded; it is not tied to this run, so do not use it.`;
 
 	// How a session hands a decision to the human: as questions on the issue, which kabane_context
 	// shows with their choices and answers, rather than options written into its prose.

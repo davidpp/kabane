@@ -12,7 +12,7 @@ data modules; setup, configuration, updates and the board's runtime are the host
 | `src/commands/*.ts` | one file per command, each a `Command` |
 | `src/context.ts` | `MODULES`, `configureRuntime`, `openContext` (the `Ctx` a command gets), scope selection |
 | `src/config*.ts` | `config.json`, the settings layers, `kabane config`, and the device config tools only `kabane mcp` serves (`config-tools.ts`) |
-| `src/extensions.ts` | directory extensions and the bundled fallback (`OFFICIAL`), loaded only when a command or the board needs one |
+| `src/extensions.ts` | directory extensions, loaded only when a command or the board needs one |
 | `src/copilot-files.ts` | a directory extension's `copilot/procedures` and `copilot/shortcuts` files, `{{extension}}` filled, unusable files refused |
 | `src/commands/board-runtime.ts` | builds the board's ports and `BoardCopilot` from `@cabane/board`, passing `Self.executable()`, then calls `startBoard` |
 | `src/first-run.ts`, `src/mcp-clients.ts`, `src/update-*.ts` | the setup screen, MCP registration in harness configs, self-update |
@@ -20,10 +20,8 @@ data modules; setup, configuration, updates and the board's runtime are the host
 ## It is the host, so it may depend on everything below it and nothing beside it
 
 Its layer is `host`; its entry in `scripts/layers.ts` (`kabane`) says what it may list. It is
-the only package that depends on `@cabane/sqlite` at runtime. Two named exceptions remain: the
-dependency on `@cabane/loop`, which JCAB-326 removes (never add an import from `extensions/`),
-and `src/update-process.ts` importing `../../core/result` by relative path, which JCAB-334
-removes.
+the only package that depends on `@cabane/sqlite` at runtime. One named exception remains: `src/update-process.ts` importing `../../core/result` by
+relative path, which JCAB-334 removes. Never add an import from `extensions/`.
 
 A first-party data module is registered in `MODULES` and in `packages/worker/src/hub.ts`. What
 core needs from the device reaches it through a port wired in `configureRuntime`, never by core
@@ -36,8 +34,7 @@ The extension API is implemented here:
   (`src/doctor/`) and each loaded extension's through `Extensions.doctors`, which turns a
   malformed report into that extension's `check-failed` finding; a refused extension is an
   `extension-refused` finding.
-- `src/extensions.ts` loads enabled directories from `$KABANE_HOME/extensions` before the bundled
-  fallback. `loadAll(names, home)` returns `loaded`, `refused` and `directories` (each
+- `src/extensions.ts` loads enabled directories from `$KABANE_HOME/extensions`. `loadAll(names, home)` returns `loaded`, `refused` and `directories` (each
   extension loaded from a directory, with that directory); callers must consume `loaded` and
   `refused`. Help, commands and MCP report refusals on stderr; the board uses its announcer.
   `src/copilot-files.ts` reads the copilot files of `directories` for the board; a refused file
@@ -45,8 +42,7 @@ The extension API is implemented here:
   (`src/doctor/copilot-files.ts`). A disabled
   directory is discovered without importing it, including during command lookup and config.
   The manifest API and the resolved entry path are checked before import, and the factory
-  result is validated before its contributions are accepted. A directory named `loop` overrides
-  the bundled fallback.
+  result is validated before its contributions are accepted.
 - Data modules are the other path, kept apart in `src/extensions.ts`: `Extensions.modules`
   imports each enabled extension's modules entry and calls its factory, and a failure there is
   no refusal but the stop (`Extensions.stopLine`): `registerModules` in `src/context.ts` runs
@@ -62,7 +58,6 @@ The extension API is implemented here:
   factories runs and until one has returned. Doctor activates them only after it opens the
   store.
 - JCAB-328 moves scope detection, `Self` and `serveStdio` from core into this package.
-- JCAB-326 removes `OFFICIAL` and the loop dependency.
 
 Read before writing: `src/main.ts`, `src/context.ts`, and one command with its test
 (`src/commands/checklist.ts`, `src/commands/checklist.test.ts`).

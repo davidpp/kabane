@@ -14,6 +14,7 @@ import { z } from "zod";
 import { configPath } from "./config";
 import { ConfigSettings } from "./config-settings";
 import { openContext } from "./context";
+import { CopilotFiles } from "./copilot-files";
 import { Extensions } from "./extensions";
 import { hostFor } from "./host";
 import { run } from "./main";
@@ -35,6 +36,14 @@ const makeHome = (config?: Record<string, unknown>): string => {
 	return home;
 };
 
+const installLoop = (home: string): void => {
+	mkdirSync(join(home, "extensions"), { recursive: true });
+	symlinkSync(
+		join(import.meta.dir, "../../../extensions/loop"),
+		join(home, "extensions/loop"),
+	);
+};
+
 afterAll(() => {
 	for (const home of homes) rmSync(home, { recursive: true, force: true });
 });
@@ -50,9 +59,9 @@ describe("Extensions.enabled", () => {
 });
 
 describe("Extensions.namespaces", () => {
-	it("is every shipped extension's settings, enabled or not", async () => {
+	it("has no settings without enabled directory extensions", async () => {
 		const found = await Extensions.namespaces(makeHome());
-		expect(found.ok && found.value.map((n) => n.name)).toEqual(["loop"]);
+		expect(found.ok && found.value.map((n) => n.name)).toEqual([]);
 	});
 
 	it("refuses a namespace that would take a device key or the scopes block", () => {
@@ -86,6 +95,7 @@ describe("extension board imports", () => {
 	]) {
 		it(`keeps OpenTUI out of ${argv.join(" ") || "bare non-TTY kabane"}`, async () => {
 			const home = makeHome({ extensions: ["loop"] });
+			installLoop(home);
 			const source = `
 				import { run } from ${JSON.stringify(join(import.meta.dir, "main.ts"))};
 				const outcome = await run(${JSON.stringify(argv)});
@@ -218,7 +228,7 @@ it("contains a command rejection and invalid manifests, factories, and traversal
 	expect(all.refused[3]?.reason).toContain(join(home, "extensions/missing"));
 });
 
-it("discovers symlinks and directory settings only when enabled, preserving bundled defaults", async () => {
+it("discovers symlinks and directory settings only when enabled", async () => {
 	const home = makeHome({ extensions: [] });
 	const target = install(
 		home,
@@ -232,8 +242,8 @@ it("discovers symlinks and directory settings only when enabled, preserving bund
 	expect(disabled.ok).toBe(false);
 	if (disabled.ok) throw new Error("Expected disabled settings refusal");
 	expect(disabled.error.message).toContain("unknown until it is enabled");
-	const bundled = await Extensions.namespaces(home);
-	expect(bundled.ok && bundled.value.map((n) => n.name)).toEqual(["loop"]);
+	const disabledNamespaces = await Extensions.namespaces(home);
+	expect(disabledNamespaces.ok && disabledNamespaces.value).toEqual([]);
 	const enabled = await ConfigSettings.set(
 		home,
 		{},
@@ -273,49 +283,63 @@ it("an installed extension's description comes from its package.json, read witho
 	const loop = await Bun.file(
 		join(import.meta.dir, "../../../extensions/loop/package.json"),
 	).json();
+	expect(await Extensions.description(home, "loop")).toBeUndefined();
+	installLoop(home);
 	expect(await Extensions.description(home, "loop")).toBe(loop.description);
 	expect(loop.description).toContain("`a` on an issue opens its run form");
 });
 
-it("a bundled extension carries no directory, so it contributes no copilot files", async () => {
-	const all = await Extensions.loadAll(["loop"], makeHome());
-	expect(all.loaded.map((e) => e.name)).toEqual(["loop"]);
+it("refuses an enabled loop without a directory and keeps other commands usable", async () => {
+	const home = makeHome({ extensions: ["loop"] });
+	const all = await Extensions.loadAll(["loop"], home);
+	expect(all.loaded).toEqual([]);
 	expect(all.directories).toEqual([]);
+	expect(all.refused).toEqual([Extensions.missing("loop", home)]);
+	expect(Extensions.available(home)).toEqual([]);
+	const help = await run(
+		["--help"],
+		{ KABANE_HOME: home, KABANE_HARNESSES: "" },
+		home,
+	);
+	expect(help.exitCode).toBe(0);
+	expect(help.text).not.toMatch(/^\s+loop\s/m);
 });
 
-for (const enabled of [true, false]) {
-	it(`builds the ${enabled ? "enabled" : "disabled settings"} bundled factory with its per-home host`, async () => {
-		const home = makeHome({ extensions: [] });
-		const staged = hostFor(home, "loop");
-		const other = hostFor(makeHome(), "loop");
-		const build = spyOn(staged, "build");
-		try {
-			if (enabled) {
-				const loaded = await Extensions.loadAll(["loop"], home);
-				expect(loaded.refused).toEqual([]);
-				expect(loaded.loaded.map((extension) => extension.name)).toEqual([
-					"loop",
-				]);
-			} else {
-				const settings = await Extensions.namespaces(home);
-				expect(
-					settings.ok && settings.value.map((namespace) => namespace.name),
-				).toEqual(["loop"]);
-			}
-			expect(build).toHaveBeenCalledTimes(1);
-			expect(build.mock.calls[0]?.[0]).toBeTypeOf("function");
-			expect((await staged.host.record.list({})).ok).toBe(false);
-			const context = await openContext(home, home, parseArgs([]));
-			if (!context.ok) throw context.error;
-			expect((await staged.host.record.list({})).ok).toBe(true);
-			expect((await other.host.record.list({})).ok).toBe(false);
-		} finally {
-			build.mockRestore();
-		}
-	});
-}
+it("loads the real loop directory with its per-home host and copilot files", async () => {
+	const home = makeHome({ extensions: ["loop"] });
+	installLoop(home);
+	const staged = hostFor(home, "loop");
+	const other = hostFor(makeHome(), "loop");
+	const all = await Extensions.loadAll(["loop"], home);
+	expect(all.refused).toEqual([]);
+	expect(all.loaded.map((extension) => extension.name)).toEqual(["loop"]);
+	expect(all.directories).toEqual([
+		{ name: "loop", directory: realpathSync(join(home, "extensions/loop")) },
+	]);
+	const copilot = CopilotFiles.read(all.directories);
+	expect(copilot.refused).toEqual([]);
+	expect(
+		copilot.procedures
+			.flatMap((entry) => entry.procedures)
+			.map((procedure) => procedure.title),
+	).toEqual(["SETTING UP A LOOP RUN", "STARTING A LOOP RUN"]);
+	const disabled = await Extensions.loadAll([], home);
+	expect(CopilotFiles.read(disabled.directories).procedures).toEqual([]);
+	expect((await staged.host.record.list({})).ok).toBe(false);
+	const context = await openContext(home, home, parseArgs([]));
+	if (!context.ok) throw context.error;
+	expect((await staged.host.record.list({})).ok).toBe(true);
+	expect((await other.host.record.list({})).ok).toBe(false);
+	const help = await run(
+		["loop", "--help"],
+		{ KABANE_HOME: home, KABANE_HARNESSES: "" },
+		home,
+	);
+	expect(help.exitCode).toBe(0);
+	expect(help.text).toContain("loop start");
+});
 
-it("an enabled directory wins over the bundled extension", async () => {
+it("a directory named loop has no special precedence or warning", async () => {
 	const home = makeHome({ extensions: ["loop"] });
 	install(home, "loop", 'export default () => ({name: "loop", commands: []});');
 	const stderr = spyOn(console, "error").mockImplementation(() => {});
@@ -323,11 +347,7 @@ it("an enabled directory wins over the bundled extension", async () => {
 		const all = await Extensions.loadAll(["loop"], home);
 		expect(all.refused).toEqual([]);
 		expect(all.loaded[0]?.commands).toEqual([]);
-		expect(stderr.mock.calls).toEqual([
-			[
-				`Extension loop: directory ${join(home, "extensions/loop")}/ overrides bundled loop`,
-			],
-		]);
+		expect(stderr.mock.calls).toEqual([]);
 	} finally {
 		stderr.mockRestore();
 	}
@@ -612,28 +632,3 @@ it("gives standalone extension commands the host's cached harness mode", async (
 	);
 	expect(outcome.json).toEqual({ host: "default", context: "default" });
 });
-
-it("a compiled kabane still carries the bundled loop's description", () => {
-	const root = makeHome();
-	const entry = join(root, "describe.ts");
-	const binary = join(root, "describe");
-	writeFileSync(
-		entry,
-		`import { Extensions } from ${JSON.stringify(join(import.meta.dir, "extensions.ts"))}; console.log(await Extensions.description(${JSON.stringify(root)}, "loop"));`,
-	);
-	const build = Bun.spawnSync([
-		process.execPath,
-		"build",
-		"--compile",
-		entry,
-		"--outfile",
-		binary,
-	]);
-	expect(build.exitCode).toBe(0);
-	// Run from elsewhere, so nothing beside the source tree can stand in for the bundle.
-	const run = Bun.spawnSync([binary], { cwd: tmpdir() });
-	expect(run.exitCode).toBe(0);
-	expect(run.stdout.toString().trim()).toContain(
-		"`a` on an issue opens its run form",
-	);
-}, 120_000);

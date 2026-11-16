@@ -512,3 +512,67 @@ test("extension packages enforce the rule and listed support can import subpaths
 		"@cabane/sample -> @cabane/core: production import @cabane/core/testing/issue-corpus in extensions/sample/index.ts:1 uses test support; move it to a test or listed test-support file.",
 	]);
 });
+
+test("extension production type imports may use declared development dependencies", () => {
+	const root = workspace();
+	manifest(
+		root,
+		"extensions/loop",
+		"@cabane/loop",
+		{},
+		{ "@cabane/core": "workspace:*" },
+	);
+	write(
+		root,
+		"extensions/loop/index.ts",
+		[
+			'import type { Task } from "@cabane/core";',
+			'export type { Result } from "@cabane/core";',
+			'import { type Task as T, type Result as R } from "@cabane/core";',
+			'export { type Task as Other } from "@cabane/core";',
+		].join("\n"),
+	);
+	expect(
+		checkWorkspaceLayers(root, {
+			"@cabane/loop": {
+				layer: "extension",
+				dependencies: [],
+				devDependencies: ["@cabane/core"],
+			},
+		}),
+	).toEqual([]);
+});
+
+for (const source of [
+	'import { Planner } from "@cabane/core";',
+	'import { type Task, Planner } from "@cabane/core";',
+	'import Planner, { type Task } from "@cabane/core";',
+	'import {} from "@cabane/core";',
+	'import "@cabane/core";',
+	'export { Planner } from "@cabane/core";',
+	'export * from "@cabane/core";',
+	'const core = import("@cabane/core");',
+]) {
+	test(`extension production value import is refused: ${source}`, () => {
+		const root = workspace();
+		manifest(
+			root,
+			"extensions/loop",
+			"@cabane/loop",
+			{},
+			{ "@cabane/core": "workspace:*" },
+		);
+		write(root, "extensions/loop/index.ts", source);
+		expect(
+			checkWorkspaceLayers(root, {
+				"@cabane/loop": {
+					layer: "extension",
+					dependencies: [],
+					devDependencies: ["@cabane/core"],
+				},
+			}),
+		).toEqual([
+			"@cabane/loop -> @cabane/core: production workspace import @cabane/core in extensions/loop/index.ts:1 is only in devDependencies; declare it in dependencies under the scripts/layers.ts allowance.",
+		]);
+	});
+}

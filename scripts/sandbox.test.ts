@@ -2,7 +2,7 @@
 // the contributor's own sandbox is untouched: what `--scripted` writes into the sandbox's config and
 // takes out again.
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
@@ -36,8 +36,12 @@ const sandbox = async (...args: string[]) => {
 	return { code, output: `${out}${error}` };
 };
 
-const config = (): Record<string, unknown> =>
-	JSON.parse(readFileSync(CONFIG, "utf8"));
+const config = (): Record<string, unknown> => {
+	expect(realpathSync(join(CONFIG, "../extensions/loop"))).toBe(
+		realpathSync(join(ROOT, "extensions/loop")),
+	);
+	return JSON.parse(readFileSync(CONFIG, "utf8"));
+};
 
 // The expectations on one sandbox run, with its output printed when one fails.
 const after = async (

@@ -28,27 +28,6 @@ import { ConfigSchema, configPath, loadConfig } from "./config";
 import { ConfigLayers } from "./config-layers";
 import { hostFor, hostHarnessMode } from "./host";
 
-/**
- * By the name `config.json` enables each with, as
- * `loop: async () => (await import("@cabane/loop")).loop`. The import is
- * dynamic so that it stays off the startup path; the bundler emits it as its
- * own chunk, and `scripts/build.ts` fails when a directory under `extensions/`
- * is missing from this list.
- */
-const OFFICIAL: Readonly<
-	Record<string, () => Promise<(host: Host) => Extension>>
-> = {
-	loop: async () => (await import("@cabane/loop")).loop,
-};
-
-/**
- * What each bundled extension says it adds, from its package.json, imported only when asked so a
- * command that lists no extension loads nothing of it. JCAB-326 removes this with `OFFICIAL`.
- */
-const BUNDLED_DESCRIPTIONS: Readonly<Record<string, () => Promise<string>>> = {
-	loop: async () => (await import("@cabane/loop/package.json")).description,
-};
-
 const Manifest = z.object({
 	kabane: z.object({
 		extension: z.string().min(1),
@@ -183,7 +162,6 @@ export namespace Extensions {
 			return `${path} must be ${issue.options.map(String).join(" or ")}`;
 		return `${path} ${issue.message}`;
 	};
-	export const names: readonly string[] = Object.keys(OFFICIAL);
 	export type Refusal = { name: string; reason: string };
 	export const line = ({ name, reason }: Refusal): string =>
 		`Extension ${name}: ${reason}`.replace(/[\r\n]+/g, " ");
@@ -206,30 +184,19 @@ export namespace Extensions {
 	/** Directory discovery never reads a manifest or imports disabled code. */
 	export const available = (home: string): string[] => {
 		const entries = trySync(() => readdirSync(join(home, "extensions")));
-		return [
-			...new Set([
-				...names,
-				...(entries.ok
-					? entries.value.filter((name) => installed(home, name))
-					: []),
-			]),
-		];
+		return entries.ok
+			? entries.value.filter((name) => installed(home, name))
+			: [];
 	};
 	/**
 	 * What an installed extension says it adds: the `description` of its `package.json`, read as
-	 * JSON and never imported. The bundled loop's comes from its package.json, bundled at build time
-	 * and imported only here, so a command that lists no extension loads nothing of the loop.
+	 * JSON and never imported.
 	 */
 	export const description = async (
 		home: string,
 		name: string,
 	): Promise<string | undefined> => {
-		if (!installed(home, name)) {
-			const bundled = Object.hasOwn(BUNDLED_DESCRIPTIONS, name)
-				? BUNDLED_DESCRIPTIONS[name]
-				: undefined;
-			return bundled ? await bundled() : undefined;
-		}
+		if (!installed(home, name)) return undefined;
 		const text = trySync(() =>
 			readFileSync(join(directory(home, name), "package.json"), "utf8"),
 		);
@@ -249,9 +216,7 @@ export namespace Extensions {
 		return config.ok ? ok([...new Set(config.value.extensions ?? [])]) : config;
 	};
 	export const unshipped = (named: readonly string[], home: string): string[] =>
-		named.filter(
-			(name) => !Object.hasOwn(OFFICIAL, name) && !installed(home, name),
-		);
+		named.filter((name) => !installed(home, name));
 	export const disabledAdvice =
 		"or remove it from extensions with `kabane config set extensions <names> --layer global`.";
 	const refusal = (reason: string): string => `${reason}; ${disabledAdvice}`;
@@ -341,43 +306,24 @@ export namespace Extensions {
 					"invalid extension directory name; use a single directory name",
 				),
 			);
-		let loaded: Result<unknown>;
-		if (installed(home, name)) {
-			const dir = directory(home, name);
-			if (Object.hasOwn(OFFICIAL, name))
-				report([
-					{ name, reason: `directory ${dir}/ overrides bundled ${name}` },
-				]);
-			const manifest = readManifest(home, name);
-			if (!manifest.ok) return manifest;
-			if (manifest.value.entry.api !== 1)
-				return err(new Error(unsupported(manifest.value.entry.api)));
-			const imported = await importEntry(
-				home,
-				name,
-				manifest.value,
-				"extension",
+		if (!installed(home, name))
+			return err(
+				new Error(`not installed; put it in ${directory(home, name)}/`),
 			);
-			if (!imported.ok) return imported;
-			const factory = Factory.safeParse(imported.value);
-			if (!factory.success)
-				return err(
-					new Error(
-						"the entry's default export must be a factory (host) => Extension",
-					),
-				);
-			loaded = await hostFor(home, name).build(factory.data);
-		} else {
-			const loader = Object.hasOwn(OFFICIAL, name) ? OFFICIAL[name] : undefined;
-			if (!loader)
-				return err(
-					new Error(`not installed; put it in ${directory(home, name)}/`),
-				);
-			const factory = await tryCatch(loader);
-			loaded = factory.ok
-				? await hostFor(home, name).build(factory.value)
-				: factory;
-		}
+		const manifest = readManifest(home, name);
+		if (!manifest.ok) return manifest;
+		if (manifest.value.entry.api !== 1)
+			return err(new Error(unsupported(manifest.value.entry.api)));
+		const imported = await importEntry(home, name, manifest.value, "extension");
+		if (!imported.ok) return imported;
+		const factory = Factory.safeParse(imported.value);
+		if (!factory.success)
+			return err(
+				new Error(
+					"the entry's default export must be a factory (host) => Extension",
+				),
+			);
+		const loaded = await hostFor(home, name).build(factory.data);
 		if (!loaded.ok)
 			return err(
 				new Error(
@@ -419,11 +365,8 @@ export namespace Extensions {
 				continue;
 			}
 			loaded.push(result.value);
-			// `load` took the directory over the bundle exactly when one is installed.
-			const root = installed(home, name)
-				? trySync(() => realpathSync(directory(home, name)))
-				: undefined;
-			if (root?.ok) directories.push({ name, directory: root.value });
+			const root = trySync(() => realpathSync(directory(home, name)));
+			if (root.ok) directories.push({ name, directory: root.value });
 		}
 		return { loaded, refused, directories };
 	};
@@ -555,7 +498,7 @@ export namespace Extensions {
 	};
 
 	/**
-	 * Bundled settings remain configurable before enablement; directory code must be enabled.
+	 * Directory code must be enabled before its settings are available.
 	 * `selected` stands in for the config's list when that config may not parse (doctor's case).
 	 */
 	export const namespaces = async (
@@ -564,18 +507,7 @@ export namespace Extensions {
 	): Promise<Result<Settings.Namespace[]>> => {
 		if (!selected.ok) return selected;
 		const all = await loadAll(selected.value, home);
-		// Bundled settings remain known even when a disabled directory shadows that name.
-		for (const name of names) {
-			if (selected.value.includes(name)) continue;
-			const loader = Object.hasOwn(OFFICIAL, name) ? OFFICIAL[name] : undefined;
-			if (!loader) continue;
-			const factory = await tryCatch(loader);
-			const bundled = factory.ok
-				? await hostFor(home, name).build(factory.value)
-				: factory;
-			if (bundled.ok) all.loaded.push(bundled.value);
-			else all.refused.push({ name, reason: bundled.error.message });
-		}
+
 		report(all.refused);
 		return namespacesOf(all.loaded);
 	};

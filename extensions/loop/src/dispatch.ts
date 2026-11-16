@@ -8,12 +8,7 @@
 // The loop session itself is opened and closed by the runner, which owns the claim; this module
 // emits the session stream through its hooks. The one tracker write of its own: an implementing session that closed an issue
 // whose checklist still has items open has it reopened, and is nudged to go on from the first.
-import {
-	AcpClient,
-	CopilotInstructions,
-	Harnesses,
-	ToolCalls,
-} from "@cabane/acp";
+import { AcpClient, Harnesses, ToolCalls } from "@cabane/acp";
 import { type Result, type Task } from "@cabane/core";
 import type { Host } from "@cabane/extension";
 import { Brief } from "./brief";
@@ -27,6 +22,9 @@ import type { Retry } from "./retry";
 import { Review } from "./review";
 import { Route } from "./route";
 import type { RunStore } from "./store";
+
+// Kept distinct from the human's configured kabane MCP server.
+const SERVER_NAME = "kabane-session";
 
 export namespace Dispatch {
 	type Env = {
@@ -212,13 +210,13 @@ export namespace Dispatch {
 		env: Env,
 		harness: Harnesses.Id,
 	): AcpClient.StdioServer => ({
-		name: CopilotInstructions.SERVER_NAME,
+		name: SERVER_NAME,
 		command: env.kabaneBin,
 		args: [
 			"mcp",
 			...(env.scopeUri ? ["--scope", env.scopeUri] : []),
 			"--as",
-			CopilotInstructions.actorUri(harness),
+			`cabane://actor/agent/${harness}`,
 		],
 		env: { KABANE_HOME: env.home },
 	});

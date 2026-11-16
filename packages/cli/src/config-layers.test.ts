@@ -10,11 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { ProjectDirs } from "@cabane/core/scope";
-import { LoopConfig } from "@cabane/loop";
+import { z } from "zod";
 import { configPath } from "./config";
 import { ConfigLayers } from "./config-layers";
 import { projectAt, settingsPort } from "./context";
-import { hostFor } from "./host";
 
 // The port an extension resolves its settings through, as the CLI wires it: config.json, a real
 // checkout's `.kabane/loop.json`, the legacy scopes block for the scope it detects, and its local
@@ -37,8 +36,14 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 const loopAt = (projectDir: string, overrides?: Record<string, unknown>) =>
 	settingsPort(home)(
-		LoopConfig.NAMESPACE,
-		LoopConfig.schemas(hostFor(home, "loop").host.z).SettingsSchema,
+		"loop",
+		z.object({
+			implementer: z.string().default("claude"),
+			stallAfter: z.number().default(3),
+			worktree: z.boolean().default(true),
+			recheck: z.boolean().default(true),
+			gates: z.record(z.string()).default({}),
+		}),
 		{
 			projectDir,
 			...(overrides ? { overrides } : {}),

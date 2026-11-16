@@ -41,6 +41,11 @@ const setup = () => {
 	const home = join(folder, "home");
 	mkdirSync(join(cwd, ".kabane"), { recursive: true });
 	mkdirSync(home);
+	mkdirSync(join(home, "extensions"));
+	symlinkSync(
+		join(import.meta.dir, "../../../../extensions/loop"),
+		join(home, "extensions/loop"),
+	);
 	expect(Bun.spawnSync(["git", "init", "-q", cwd]).exitCode).toBe(0);
 	writeFileSync(join(cwd, ".kabane/scope"), "pinned\n");
 	// A project kabane set up with this version, so its project checks find nothing.
@@ -67,8 +72,16 @@ const setup = () => {
 		expect(stderr).toBe("");
 		return stdout;
 	};
-	const config = (value: unknown) =>
-		writeFileSync(join(home, "config.json"), JSON.stringify(value));
+	const config = (value: Record<string, unknown>) =>
+		writeFileSync(
+			join(home, "config.json"),
+			JSON.stringify({
+				actor: "test",
+				deviceId: "test",
+				extensions: ["loop"],
+				...value,
+			}),
+		);
 	return {
 		cwd,
 		home,
@@ -110,10 +123,12 @@ test("extension doctor counts open tier-tagged issues through the CLI store", ()
 	).toBe(false);
 });
 
-test("reports unknown shared keys even with the extension disabled", () => {
-	const { cwd, cli } = setup();
+test("inspects shared keys only after enabling the directory extension", () => {
+	const { cwd, cli, config } = setup();
 	const path = join(cwd, ".kabane/loop.json");
 	writeFileSync(path, JSON.stringify({ mystery: 1 }));
+	expect(JSON.parse(cli("--json")).findings).toEqual([]);
+	config({});
 	const report = JSON.parse(cli("--json"));
 	expect(report.findings).toHaveLength(1);
 	expect(report.findings[0]).toMatchObject({

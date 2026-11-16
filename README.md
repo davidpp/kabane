@@ -25,7 +25,7 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 | `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource, Dispatcher and Copilot ports |
 | `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP |
 
-The [loop extension](docs/loop.md) runs issues through coding harnesses, with model tiers,
+The optional [loop extension](docs/loop.md#install), installed separately, runs issues through coding harnesses, with model tiers,
 subtask routing and advice on run settings.
 
 ## Install

@@ -1,4 +1,3 @@
-import { CopilotInstructions } from "@cabane/acp";
 import type { Result, Task } from "@cabane/core";
 import type { Host } from "@cabane/extension";
 import type { z } from "zod";
@@ -93,7 +92,7 @@ export namespace Checklists {
 			task.kind !== "issue" ||
 			task.state !== "done" ||
 			task.assignee !== harness ||
-			task.updatedBy !== CopilotInstructions.actorUri(harness)
+			task.updatedBy !== `cabane://actor/agent/${harness}`
 		)
 			return ok([]);
 		const items = await of(host, task.id);
