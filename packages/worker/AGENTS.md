@@ -19,10 +19,9 @@ The hub registers the first-party data modules in `src/hub.ts`, the same list an
 `MODULES` in `packages/cli/src/context.ts`. A module added on one host and not the other gives
 the hub a different tool list and brief.
 
-`tsconfig.json` lists `bun` in `types` only because core's `file:` deref references Bun globals.
-JCAB-328 (a file reader port on `Runtime.configure`) removes that reason, and `bun` then
-leaves this `tsconfig.json`. JCAB-328 also moves `handleHttpRequest` from
-`packages/core/mcp/server.ts` into this package.
+`tsconfig.json` includes no Bun types: the hub's typecheck rejects Bun globals reachable from
+core's production barrel. Core's file reader defaults to a pointer; the hub wires none.
+`src/mcp-http.ts` owns `handleHttpRequest`, connecting core's server to stateless Streamable HTTP.
 
 Read before writing: `src/hub.ts`, `src/db-do.ts`, `src/hub-mcp.test.ts`.
 

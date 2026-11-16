@@ -125,15 +125,17 @@ schema 10 or older stops its pull at the first op from schema 11 until it upgrad
 - **Links**: `blocks`/`blocked_by`, `parent`/`child`, `related`, `duplicate`, `follows`. `UNIQUE(source_id, target_id, type)`.
 - **Projects**: a flat `projectId` on the task, not a scope boundary.
 - **Scope**: `scopeUri` is a string storage parses and formats (`ScopeUri`) and never resolves. Bare ids normalize to `kabane://scope/<id>`. The scheme was `jake://scope/<id>` until schema 10: migration 10 renamed every stored scope and every op in the device's own log (`storage/scope-scheme.ts`), `ScopeUri.parse` and `normalizeScopeUri` still read the old scheme as the same scope, and sync apply renames the scopes of an op pulled from a device on an older schema. Nothing writes it.
-- **Scope detection** (`scope/detect.ts`, `@cabane/core/scope`): turns a cwd into a scope — marker walk, then git; pin → remote → first commit → path. Deliberately OFF the package barrel: it spawns `git` and reads the filesystem, so importing it from the Worker would break the hub.
-- **Self** (`self.ts`, `@cabane/core/self`): how a device runs kabane again (an MCP entry, a session server, the loop's runner), for a script and for a `bun build --compile` binary, whose own entry is a virtual `/$bunfs/root/…` path. Off the barrel for the same reason: it reads the Bun process.
+- **Resolved scope type** (`scope/schemas.ts`): `ProjectScope` is shared with the extension contract. Detection lives in `packages/cli/src/scope/` and reaches extensions through `host.scope.detect`.
+- **Executable discovery** lives in `packages/cli/src/self.ts` and reaches extensions through `host.kabane.executable`.
+- **File references** use `RuntimeConfig.fileReader` (`FileReader` / `FileHead` in `runtime.ts`). The host returns a bounded head and total byte size, missing, or pointer; the default is pointer. Core owns caps and notes; the CLI wires `Bun.file`.
 
 ## MCP (`mcp/`)
 
 `KABANE_TOOLS` is the shared tracker tool list: name, description, zod input shape, `read` or
 `write`, handler over `Planner` returning `Result`. Both servers use
 `registeredTools()` to compose it with every registered module's `tools`:
-`serveStdio` (the CLI's `kabane mcp`) and `handleHttpRequest` (the hub, stateless
+`serveStdio` (`packages/cli/src/mcp-stdio.ts`) and `handleHttpRequest`
+(`packages/worker/src/mcp-http.ts`, stateless
 Streamable HTTP, fresh server per request). The CLI adds device config tools from
 `packages/cli/src/config-tools.ts` to the stdio list; HTTP keeps the shared core
 and module surface. Each host registers

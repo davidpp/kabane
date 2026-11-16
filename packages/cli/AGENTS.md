@@ -59,7 +59,8 @@ The extension API is implemented here:
   actor context and lazy, cached scope resolution; each host refuses both while one of its
   factories runs and until one has returned. Doctor activates them only after it opens the
   store.
-- JCAB-328 moves scope detection, `Self` and `serveStdio` from core into this package.
+- `src/scope/` owns scope detection, `src/self.ts` owns executable discovery, and
+  `src/mcp-stdio.ts` owns `serveStdio`. `configureRuntime` wires core's bounded file reader.
 
 Read before writing: `src/main.ts`, `src/context.ts`, and one command with its test
 (`src/commands/checklist.ts`, `src/commands/checklist.test.ts`).

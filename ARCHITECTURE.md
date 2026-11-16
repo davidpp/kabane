@@ -149,29 +149,31 @@ The verdicts for what core holds today that is not obviously the record:
 |---|---|---|---|---|---|
 | `lint/` | no: it computes advice from a plan and stores nothing | no: one consumer, the loop (`extensions/loop/src/commands.ts:568`, `advice.ts:120`); `lint/index.ts:1` says "used by the loop's briefing" | no: `Bun.Glob` at `lint/collectors.ts:52` | yes | Moved into `extensions/loop/src/lint/` (JCAB-338). |
 | `commit-linker/` | no | no: nothing outside core called it | no: it ran `git` through `Bun.spawn` | no: git keeps commits | Deleted by JCAB-228, now on main. |
-| `file:` deref in `storage/assemble-context.ts` | yes: it inlines a context ref into the brief, which every reader gets | yes: every brief | no: `Bun.file` at `storage/assemble-context.ts:187` | yes | Assembling the brief stays; reading the file moves behind a port (below, JCAB-328). |
-| `scope/detect.ts` | no: it turns a directory into a scope and stores nothing | yes: the CLI (`packages/cli/src/context.ts:115`) and the loop (`commands.ts:310`) | no: `node:child_process` at `scope/detect.ts:9` | yes | Moves to the host and reaches extensions as `host.scope.detect` (JCAB-328). The device-only helpers beside it go too: `ProjectDirs` (`scope/projects.ts`), `mainCheckoutRoot`, `findProjectRoot`, `localPinPath`, `MARKER_DIR` and `SCOPE_FILE`, which only the CLI imports, and `DetectedScopes` (`scope/detected.ts`), detection's own cache. `scope/uri.ts`, which parses and formats the stored field, stays, and so does `scope/git-fixture.ts`, test support for the CLI's and the loop's tests. |
-| `self.ts` | no | yes: the CLI (`packages/cli/src/commands/mcp-install.ts:1`, `commands/update.ts:3`, `update-notice.ts:16`, `commands/board-runtime.ts:290`, which passes `Self.executable()` to `BoardCopilot`) and the loop's test host (`extensions/loop/src/test-host.ts`); `Self.templates` left with the templates (JCAB-327) | no: `Bun.main` at `self.ts:29` | yes | Moves to the host and reaches extensions as `host.kabane.executable` (JCAB-328). |
+| `file:` deref in `storage/assemble-context.ts` | yes: it inlines a context ref into the brief, which every reader gets | yes: every brief | yes: the host reads through `RuntimeConfig.fileReader` | yes | Assembly stays in core; the CLI wires the bounded reader (JCAB-328). |
+| `scope/detect.ts` | no: it turns a directory into a scope and stores nothing | yes: the CLI and extensions through `host.scope.detect` | no: `node:child_process` at `scope/detect.ts:9` | yes | Moved to `packages/cli/src/scope/` and reaches extensions as `host.scope.detect` (JCAB-328). The device-only helpers moved too: `ProjectDirs` (`scope/projects.ts`), `mainCheckoutRoot`, `findProjectRoot`, `localPinPath`, `MARKER_DIR` and `SCOPE_FILE`, which only the CLI imports, and `DetectedScopes` (`scope/detected.ts`), detection's own cache. `scope/uri.ts`, which parses and formats the stored field, stays, and so does `scope/git-fixture.ts`, test support for the CLI's and the loop's tests. |
+| `self.ts` | no | yes: the CLI (`packages/cli/src/commands/mcp-install.ts:1`, `commands/update.ts:3`, `update-notice.ts:16`, `commands/board-runtime.ts:290`, which passes `Self.executable()` to `BoardCopilot`) and extensions through `host.kabane.executable`; the loop's test host supplies a fixed test value. `Self.templates` left with the templates (JCAB-327) | no: `Bun.main` at `self.ts:29` | yes | Moved to `packages/cli/src/self.ts` and reaches extensions as `host.kabane.executable` (JCAB-328). |
 | `mcp/tools.ts` | yes: the definition of every operation on the record, and `KabaneModule.tools` takes its `ToolDef` (`module.ts:118`) | yes: both hosts and every data module | yes | yes | Stays. |
 | `mcp/server.ts`, `createMcpServer` | yes: it composes the tool list both hosts serve | yes: the CLI and the hub | yes | yes | Stays. |
-| `mcp/server.ts`, `serveStdio` | no | no: the CLI alone (`packages/cli/src/commands/mcp.ts:38`) | no: `StdioServerTransport` at `server.ts:22` | yes | Moves to the CLI (JCAB-328). |
-| `mcp/server.ts`, `handleHttpRequest` | no | no: the hub alone (`packages/worker/src/hub.ts:137`) | yes | yes | Moves to the worker (JCAB-328). |
+| `mcp/server.ts`, `serveStdio` | no | no: the CLI alone (`packages/cli/src/commands/mcp.ts:38`) | no: `StdioServerTransport` at `server.ts:22` | yes | Moved to `packages/cli/src/mcp-stdio.ts` (JCAB-328). |
+| `mcp/server.ts`, `handleHttpRequest` | no | no: the hub alone (`packages/worker/src/hub.ts:137`) | yes | yes | Moved to `packages/worker/src/mcp-http.ts` (JCAB-328). |
 | `storage/sessions.ts` | partly: its rows outlive the process but never leave the device; `SYNC_TABLES` (`schemas/sync.ts:28-36`) omits `agent_sessions` and `agent_activities` | yes: the board and the loop | yes | partly: the harness keeps the session's transcript | Split, done in JCAB-343: outcomes are timeline entries and each session a `session:` ref in the work log; the file and both tables are gone. |
 
 ### Core reaches a device's files through a port with a no-op default
 
-The brief inlines a `file:` context ref by reading the file (`storage/assemble-context.ts:183-205`),
-and that read is the last Bun call on core's barrel now that `lint/` has moved into the loop
-(JCAB-338); the hub's `tsconfig.json` lists `bun` for it alone
-(`packages/worker/tsconfig.json:9-11`). The four
-questions split it: assembling the brief passes all four, and reading a file on this device fails
-question 3. So core keeps the assembly and reaches the file through a port on `Runtime.configure`,
-as it already reaches the tracer, notifier and actor ("Explicit dependencies" in
-`CODING_PRINCIPLE.md`): a file reader that returns the file's head or "missing". Its default
-returns the pointer `derefFile` already falls back to, so the hub, which wires none, renders a
-`file:` ref as a pointer, as it does today when the read fails. The CLI wires a reader over
-`Bun.file`. JCAB-328 owns the port, since it already moves core's other device-only calls to the
-hosts; with it and JCAB-326, `bun` leaves the hub's `tsconfig.json`.
+The brief inlines a `file:` context ref through `RuntimeConfig.fileReader`, set by
+`Runtime.configure`. `FileReader` takes the filesystem path stripped from the `file:` URI and
+a byte cap, and returns `Promise<FileHead>`: `{ status: "read", head: string, size: number }`,
+`{ status: "missing" }`, or `{ status: "pointer" }`. `size` is the total byte size. The no-op
+default returns `pointer`; the hub wires no reader and never opens a device file.
+The CLI wires the bounded read over `Bun.file` in `packages/cli/src/context.ts`.
+Core keeps the per-ref and total caps, truncation and missing notes, and pointer fallback.
+`ProjectScope` stays in `scope/schemas.ts` and on core's barrel as the shared resolved-scope
+type; scope detection and executable discovery belong to the CLI host.
+
+Core's production barrel needs no Bun types. The Worker's `tsconfig.json` excludes `bun`
+from `types`, so `bun run typecheck` (which includes the Worker) rejects a Bun global reachable
+from that barrel. The Worker test script also typechecks before running its Workers pool.
+Core's explicit test-support exports still use Bun and are not imported by the hub.
 
 ### What core keeps of an agent session: outcomes and a URI
 
@@ -250,7 +252,7 @@ its own copies (`extensions/loop/src/session-identity.ts`, JCAB-326). The two te
 acp kept for `Self.templates`, `DISPATCH_TEMPLATE` and `GRILL_TEMPLATE`, left with the templates
 for the dispatch extension (JCAB-327), which reads them from its own directory. The path kabane
 runs as is required in `BoardCopilot.Options.kabaneBin`; the CLI passes `Self.executable()`, so the
-board never imports `Self`, which JCAB-328 moves to the host. The instructions are available through `@cabane/board/copilot-instructions`
+board never imports `Self`, which lives in the CLI host (JCAB-328). The instructions are available through `@cabane/board/copilot-instructions`
 for the CLI's config procedure test. The moved copilot tests use the ACP SDK's in-process agent,
 so the board declares the SDK as a development dependency.
 
@@ -781,10 +783,7 @@ This follows the 2026-11-04 research note except in three places:
 | An extension imports no `@cabane/*` value except from the harness client it bundles | The loop's core and contract imports are type-only development dependencies; the layer check refuses production value imports. Its bundled harness client still brings core sources transitively. | JCAB-326 removed direct import exceptions; transitive harness dependencies remain |
 | A host depends on no extension | The CLI loads enabled directory extensions; it no longer depends on or bundles the loop | JCAB-326, done |
 | Core keeps only what passes the four questions | Plan lint moved to `extensions/loop/src/lint/`; core no longer exports it | JCAB-338, done |
-| | `scope/detect.ts`, `self.ts`, `serveStdio`, `handleHttpRequest` | JCAB-328 |
 | | `storage/sessions.ts` removed: outcomes are timeline entries, a session a `session:` work-log ref | JCAB-343, done |
-| | `file:` deref reads with `Bun.file` (`storage/assemble-context.ts:187`) | JCAB-328 |
-| Core needs no Bun types | Plan lint moved into the loop; `packages/worker/tsconfig.json` still lists `bun` for core's file-ref deref | JCAB-338 (lint), done; JCAB-328 (deref) |
 
 Each rule in this file, how it is held today, and the issue that makes a check or the code hold
 it. "Review" means nothing fails a build; a reviewer has to notice.
@@ -795,7 +794,7 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | No package depends on one of its own layer; only a host uses the storage adapter at runtime | review | JCAB-318's table, once its entries say so |
 | A first-party package with a layer moves its code in the change that creates it | review | the lens (JCAB-325) |
 | Core keeps only what passes the four questions | review | the lens and per-package `AGENTS.md` (JCAB-325) |
-| Core needs no Bun types | the hub's typecheck and vitest pool, partly: `bun` stays in its `tsconfig.json` | JCAB-328 removes `bun` from it, and the hub's typecheck then fails a Bun call on the barrel |
+| Core needs no Bun types | the hub's typecheck, with no `bun` in `types`, fails a Bun global on the production barrel | built (JCAB-328); `bun run typecheck` and the Worker test script |
 | A client uses only what another client could | review | the lens (JCAB-325) |
 | An extension imports types only, apart from the harness client it bundles | `scripts/layers.ts` permits production type-only imports from extension development dependencies and refuses value imports | built (JCAB-326) |
 | A modules entry imports only what its module objects need | `scripts/modules-entry.test.ts` on the fixture extension and every in-repo manifest naming `modules` (none of the loop's yet); an extension outside the repo, review | built (JCAB-323) |
@@ -805,4 +804,4 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | `host` and its typed record wrappers | `host-record.test.ts`, CLI host and directory-extension tests; isolated declaration typecheck | built (JCAB-322) |
 | Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` | built (JCAB-337) |
 | Procedures and shortcuts are files; `{{extension}}` is the only placeholder, and a computed value comes from a command | `packages/cli/src/copilot-files.ts` and its test; `kabane dispatch stamp` (`extensions/dispatch`) | built (JCAB-324, JCAB-327) |
-| Core reaches files through a port | not built | JCAB-328 |
+| Core reaches files through a port | `RuntimeConfig.fileReader`, defaulting to a pointer; CLI reader and core assembly tests | built (JCAB-328) |
