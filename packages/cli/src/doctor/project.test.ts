@@ -166,3 +166,17 @@ test("a Tracker block from before JCAB-219 is mentioned, a missing one suggested
 	write(join(root, "AGENTS.md"), "# Project\n");
 	expect(await ids()).toEqual(["tracker-block-missing:suggest"]);
 });
+
+test("CRLF preserves dispatch provenance and the current Tracker block", async () => {
+	const { root, ids } = setup();
+	writeFileSync(
+		join(root, ".agents/skills/dispatch/SKILL.md"),
+		skill(unwrap(Templates.stamp("dispatch"))).replaceAll("\n", "\r\n"),
+	);
+	expect(await ids()).toEqual([]);
+	writeFileSync(
+		join(root, "AGENTS.md"),
+		`# Project\n\n${TRACKER_BLOCK}\n`.replaceAll("\n", "\r\n"),
+	);
+	expect(await ids()).toEqual([]);
+});

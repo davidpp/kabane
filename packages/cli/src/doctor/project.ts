@@ -137,7 +137,7 @@ const grillSkill = (root: string): Doctor.Finding[] => {
 
 /** The `## Tracker` section of `text`: up to the next heading of the same or a higher level. */
 const trackerSection = (text: string): string | undefined => {
-	const lines = text.split("\n");
+	const lines = text.split(/\r?\n/);
 	const start = lines.findIndex((line) => /^## Tracker\s*$/.test(line));
 	if (start === -1) return undefined;
 	const end = lines.findIndex(
