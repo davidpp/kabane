@@ -202,15 +202,12 @@ const refUris = (raw: string): string[] => {
 	}
 };
 
-const hasRef = (db: Db, taskId: string, uri: string): boolean =>
-	db
-		.query<{ refs: string }, [string]>(
-			`SELECT refs FROM ${TABLES.work_log} WHERE task_id = ?`,
-		)
-		.all(taskId)
-		.some((row) => refUris(row.refs).includes(uri));
-
-/** Each session as a `session:` ref in its issue's work log, unless the log already names it. */
+/**
+ * Each session as a `session:` ref in its issue's work log, unless the log
+ * already names it. A task's refs are read once, the first time one of its
+ * sessions comes up, and the set grows with what is written: an issue with
+ * thousands of sessions costs one read, not one per session.
+ */
 const moveSessions = (db: Db): void => {
 	const sessions = db
 		.query<SessionRow, []>(
@@ -218,9 +215,25 @@ const moveSessions = (db: Db): void => {
 			   FROM ${SESSIONS} ORDER BY started_at, id`,
 		)
 		.all();
+	const named = new Map<string, Set<string>>();
+	const namedOn = (taskId: string): Set<string> => {
+		const known = named.get(taskId);
+		if (known) return known;
+		const uris = new Set(
+			db
+				.query<{ refs: string }, [string]>(
+					`SELECT refs FROM ${TABLES.work_log} WHERE task_id = ?`,
+				)
+				.all(taskId)
+				.flatMap((row) => refUris(row.refs)),
+		);
+		named.set(taskId, uris);
+		return uris;
+	};
 	for (const s of sessions) {
 		const uri = `session:${s.id}`;
-		if (hasRef(db, s.task_id, uri)) continue;
+		const uris = namedOn(s.task_id);
+		if (uris.has(uri)) continue;
 		const refs = JSON.stringify([
 			{
 				uri,
@@ -230,8 +243,8 @@ const moveSessions = (db: Db): void => {
 				addedByType: "ai",
 			},
 		]);
-		// A row under the session's id that names it on this task was found
-		// above; any other would lose the session's ref under it.
+		// A row under the session's id that names it on this task is in `uris`;
+		// any other would lose the session's ref under it.
 		const taken = db
 			.query<{ one: number }, [string]>(
 				`SELECT 1 AS one FROM ${TABLES.work_log} WHERE id = ?`,
@@ -248,6 +261,7 @@ const moveSessions = (db: Db): void => {
 			[s.id, s.task_id, refs, actorOf(s.agent), s.started_at],
 		);
 		Oplog.afterWrite(db, TABLES.work_log, "insert", s.id);
+		uris.add(uri);
 	}
 };
 

@@ -21,6 +21,7 @@ import { TABLES } from "./helpers";
 import { Planner } from "./index";
 import { Migrations } from "./migrations";
 import { Oplog } from "./oplog";
+import { SessionOutcomes } from "./session-outcomes";
 
 const MIGRATOR = "cabane://actor/human/migrator";
 
@@ -566,5 +567,38 @@ describe("Migration session-outcomes loses nothing quietly", () => {
 		expect(
 			(await rows(base, TABLES.comments)).filter((r) => r.kind !== "comment"),
 		).toEqual([]);
+	});
+
+	it("reads an issue's work log once however many sessions ran on it", async () => {
+		const SESSIONS = 3000;
+		const base = await before("many");
+		const task = must(
+			await Planner.addTask(base, { title: "busy", kind: "issue" }),
+		);
+		await withDb(base, (db) => {
+			for (let i = 0; i < SESSIONS; i++)
+				db.run(
+					`INSERT INTO agent_sessions (id, task_id, agent, state, started_at, last_activity_at)
+					 VALUES (?, ?, 'claude', 'complete', ?, ?)`,
+					[`S${String(i).padStart(5, "0")}`, task.id, T0, T0],
+				);
+		});
+		let reads = 0;
+		await withDb(base, (db) => {
+			// The real database, with its reads of a task's work log counted
+			// (capture's own read of each row it records is by id).
+			const counted: Db = {
+				...db,
+				query: (sql) => {
+					if (sql.includes(`FROM ${TABLES.work_log} WHERE task_id`)) reads++;
+					return db.query(sql);
+				},
+			};
+			SessionOutcomes.migrate(counted);
+		});
+		expect(reads).toBe(1);
+		expect(must(await Planner.getWorkLogs(base, task.id))).toHaveLength(
+			SESSIONS,
+		);
 	});
 });
