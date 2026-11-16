@@ -397,6 +397,8 @@ const callTool = async (
 		stdout: "pipe",
 		stderr: "pipe",
 	});
+	// Read from the start, so a server that writes a lot to stderr never blocks on a full pipe.
+	const said = new Response(proc.stderr).text();
 	// A server that has exited breaks the pipe: what it printed says why, below.
 	const send = async (message: Record<string, unknown>) => {
 		try {
@@ -450,7 +452,7 @@ const callTool = async (
 	const called = ready ? await reply(2) : undefined;
 	proc.kill();
 	if (!ready)
-		return `the MCP server did not initialize: ${(await new Response(proc.stderr).text()).trim() || "it said nothing"}`;
+		return `the MCP server did not initialize: ${(await said).trim() || "it said nothing"}`;
 	if (!called) return `${name} got no answer`;
 	if (called.error) return `${name} failed: ${called.error.message}`;
 	return `${name} answered ${JSON.stringify(called.result)}`;
@@ -465,9 +467,11 @@ const git = async (
 		stdout: "ignore",
 		stderr: "pipe",
 	});
-	return (await proc.exited) === 0
-		? undefined
-		: `git ${args[0]} failed: ${(await new Response(proc.stderr).text()).trim()}`;
+	const [exit, said] = await Promise.all([
+		proc.exited,
+		new Response(proc.stderr).text(),
+	]);
+	return exit === 0 ? undefined : `git ${args[0]} failed: ${said.trim()}`;
 };
 
 /**
