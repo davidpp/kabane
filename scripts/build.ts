@@ -3,12 +3,10 @@
  * Builds the publishable `kabane` package into packages/cli/dist, the directory `npm pack` and
  * `npm publish` run in (docs/release.md):
  *
- *   bin/kabane.js         the CLI bundled for Bun, every `@cabane/*` workspace package inlined,
- *                         each official extension under extensions/ among them
+ *   bin/kabane.js         the CLI bundled for Bun, its `@cabane/*` workspace dependencies inlined
  *   bin/chunk-<hash>.js  lazy command modules and shared code
- *   templates/<name>/     each packages/acp/templates/<name> (the copilot's dispatch skill, the
- *                         loop's lenses among its references, and the grill skill) and any
- *                         extensions/<ext>/templates/<name>, read from disk at runtime as
+ *   templates/<name>/     each packages/acp/templates/<name> (the copilot's dispatch skill
+ *                         and the grill skill), read from disk at runtime as
  *                         ../templates/<name> from bin/kabane.js; one namespace, so two sources
  *                         of one name fail the build
  *   package.json          generated from packages/cli/package.json, no workspace dependency left
@@ -30,7 +28,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { generateDtsBundle } from "dts-bundle-generator";
 import { err, ok, type Result } from "../packages/core/result";
 
@@ -99,29 +97,6 @@ const publishManifest = (): Manifest => {
 	};
 };
 
-const EXTENSIONS = join(ROOT, "extensions");
-
-// Every workspace member under extensions/ is an official extension.
-const extensionNames = (): string[] =>
-	existsSync(EXTENSIONS)
-		? readdirSync(EXTENSIONS, { withFileTypes: true })
-				.filter((entry) => entry.isDirectory())
-				.map((entry) => entry.name)
-		: [];
-
-// The CLI's list has to import every extension: one the bundle leaves out would be a directory
-// nobody can enable.
-const checkExtensionsCarried = (bundled: readonly string[]): void => {
-	const files = bundled.map((input) => relative(ROOT, resolve(input)));
-	for (const name of extensionNames()) {
-		const prefix = `extensions/${name}/`;
-		if (!files.some((file) => file.startsWith(prefix)))
-			fail(
-				`${prefix} is not in the bundle; add it to the official list in packages/cli/src/extensions.ts`,
-			);
-	}
-};
-
 const bundle = async (): Promise<void> => {
 	const result = await Bun.build({
 		entrypoints: [join(CLI, "index.ts")],
@@ -135,14 +110,17 @@ const bundle = async (): Promise<void> => {
 			"process.env.NODE_ENV": JSON.stringify("production"),
 			"process.env.KABANE_BUNDLED": JSON.stringify("1"),
 		},
-		// Which source files went in, for the extension check below.
+		// Which source files went in, for build verification.
 		metafile: true,
 	});
 	if (!result.success) {
 		for (const log of result.logs) console.error(log);
 		fail("bun build failed");
 	}
-	checkExtensionsCarried(Object.keys(result.metafile?.inputs ?? {}));
+	writeFileSync(
+		join(DIST, "metafile.json"),
+		JSON.stringify(result.metafile, null, 2),
+	);
 	plainHashbang(join(DIST, "bin/kabane.js"));
 };
 
@@ -155,7 +133,7 @@ const plainHashbang = (file: string): void => {
 
 /**
  * Copies each `<root>/<name>` to `<into>/<name>`. Every bundled module resolves its templates as
- * ../templates/<name> from bin/kabane.js (CopilotInstructions, and through it the loop's Lenses),
+ * ../templates/<name> from bin/kabane.js (CopilotInstructions),
  * so the names share one directory: a name two roots both hold is an error, raised before anything
  * is copied.
  */
@@ -180,12 +158,9 @@ export const copyTemplates = (
 	return ok([...sources.keys()]);
 };
 
-// The copilot's templates, then each extension's.
+// Base kabane's copilot templates; directory extensions carry their own files.
 export const templateRoots = (): string[] =>
-	[
-		join(ROOT, "packages/acp/templates"),
-		...extensionNames().map((name) => join(EXTENSIONS, name, "templates")),
-	].filter((root) => existsSync(root));
+	[join(ROOT, "packages/acp/templates")].filter((root) => existsSync(root));
 
 /** Inline workspace and zod declarations so type-only consumers need no extra package. */
 const buildExtensionTypes = (into: string): void => {

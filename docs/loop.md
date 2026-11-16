@@ -5,8 +5,35 @@ machine. It follows blockers, runs your configured gates after completed work, a
 run verifier lenses before finishing. With worktrees enabled, it keeps the run's work on
 its own branch and checkpoints it as work passes the gates.
 
-Enable it by adding `"loop"` to the `extensions` array in `~/.kabane/config.json`, keeping
-any extensions already there. The harness you choose must be installed and logged in.
+## Install
+
+The loop is an optional directory extension, built separately from kabane. From a kabane
+source checkout with dependencies installed:
+
+```bash
+bun run --cwd extensions/loop build
+mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/loop"
+cp -R extensions/loop/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/loop/"
+```
+
+Add `"loop"` to the `extensions` array in `$KABANE_HOME/config.json` (default
+`~/.kabane/config.json`), keeping any extensions already there. If the list is empty,
+`kabane config set extensions loop --layer global` enables it. Restart a running board
+or MCP server after installation or enablement. The harness you choose must be installed
+and logged in.
+
+The artifact includes its harness client, copilot procedures and shipped verifier lenses.
+The compiled binary loads only the built `dist/` artifact. A source checkout can instead
+be symlinked from `extensions/loop` into `$KABANE_HOME/extensions/loop` when kabane runs
+through Bun (the npm/bun install or the sandbox). `bun run sandbox` makes that link in its
+disposable home.
+
+When upgrading from a version that bundled the loop, install this directory before using
+`kabane loop`. Until it is installed, an enabled `loop` reports `not installed; put it in
+<home>/extensions/loop/`. Existing settings and run state under `$KABANE_HOME/loops` remain
+in place. Loop settings written before installation are kept and read again once the loop
+is installed and enabled. Until then, `kabane config get loop.<key>` answers
+`Unknown config key`.
 
 ## Start and follow a run
 

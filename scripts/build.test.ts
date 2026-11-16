@@ -53,6 +53,14 @@ describe("copyTemplates", () => {
 
 it("publishes self-contained extension types that compile with only the built package installed", async () => {
 	await build();
+	const metafile = JSON.parse(
+		readFileSync(join(DIST, "metafile.json"), "utf8"),
+	);
+	expect(
+		Object.keys(metafile.inputs).filter((file) =>
+			/(^|\/)extensions\//.test(file),
+		),
+	).toEqual([]);
 	const declaration = readFileSync(join(DIST, "types/extension.d.ts"), "utf8");
 	expect(declaration).not.toContain("@cabane/");
 	expect(declaration).not.toMatch(/^import\s/m);

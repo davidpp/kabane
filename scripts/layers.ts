@@ -99,9 +99,6 @@ export const layers: Readonly<Record<string, Rule>> = {
 			"@cabane/sqlite",
 		],
 		devDependencies: [],
-		exceptions: {
-			"@cabane/loop": "JCAB-326: the build stops bundling the loop",
-		},
 	},
 	"cabane-worker": {
 		layer: "hub",
@@ -122,13 +119,12 @@ export const layers: Readonly<Record<string, Rule>> = {
 		layer: "extension",
 		// An extension brings its own harness client and bundles it (JCAB-316:2).
 		dependencies: ["@cabane/acp"],
-		devDependencies: ["@cabane/checklist"],
-		exceptions: {
-			"@cabane/core":
-				"JCAB-326: allow type-only development dependencies and package the extension API types",
-			"@cabane/extension":
-				"JCAB-326: allow type-only development dependencies and package the extension API types",
-		},
+		devDependencies: [
+			"@cabane/checklist",
+			"@cabane/core",
+			"@cabane/extension",
+			"@cabane/sqlite",
+		],
 	},
 };
 
@@ -173,19 +169,48 @@ function dependencyFindings(
 	return findings;
 }
 
+function isTypeOnly(node: ts.Node): boolean {
+	if (ts.isImportTypeNode(node)) return true;
+	if (ts.isImportDeclaration(node)) {
+		const clause = node.importClause;
+		if (!clause) return false;
+		if (clause.isTypeOnly) return true;
+		const names = clause.namedBindings;
+		return (
+			!clause.name &&
+			names !== undefined &&
+			ts.isNamedImports(names) &&
+			names.elements.length > 0 &&
+			names.elements.every((name) => name.isTypeOnly)
+		);
+	}
+	if (ts.isExportDeclaration(node)) {
+		if (node.isTypeOnly) return true;
+		const names = node.exportClause;
+		return (
+			names !== undefined &&
+			ts.isNamedExports(names) &&
+			names.elements.length > 0 &&
+			names.elements.every((name) => name.isTypeOnly)
+		);
+	}
+	return false;
+}
+
 // Parse syntax only: no resolver, type checker, or workspace code is executed.
 export function importSpecifiers(
 	file: string,
-): { specifier: string; line: number }[] {
+): { specifier: string; line: number; typeOnly: boolean }[] {
 	const source = ts.createSourceFile(
 		file,
 		readFileSync(file, "utf8"),
 		ts.ScriptTarget.Latest,
 		true,
 	);
-	const imports: { specifier: string; line: number }[] = [];
+	const imports: { specifier: string; line: number; typeOnly: boolean }[] = [];
 	function visit(node: ts.Node): void {
 		let literal: ts.Node | undefined;
+		const typeOnly = isTypeOnly(node);
 		if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
 			literal = node.moduleSpecifier;
 		else if (ts.isExternalModuleReference(node)) literal = node.expression;
@@ -205,6 +230,7 @@ export function importSpecifiers(
 		) {
 			imports.push({
 				specifier: literal.text,
+				typeOnly,
 				line:
 					source.getLineAndCharacterOfPosition(literal.getStart(source)).line +
 					1,
@@ -241,7 +267,15 @@ function workspaceImportFinding(
 		testSupport,
 		specifier,
 		location,
-	}: { testSupport: boolean; specifier: string; location: string },
+		typeOnly,
+		extension,
+	}: {
+		testSupport: boolean;
+		specifier: string;
+		location: string;
+		typeOnly: boolean;
+		extension: boolean;
+	},
 ): string | undefined {
 	const dependency = specifier.startsWith("@")
 		? specifier.split("/").slice(0, 2).join("/")
@@ -254,7 +288,11 @@ function workspaceImportFinding(
 		return undefined;
 	if (!(dependency in pkg.dependencies) && !(dependency in pkg.devDependencies))
 		return `${pkg.name} -> ${dependency}: undeclared workspace import ${specifier} in ${location}; declare it in package.json under the scripts/layers.ts allowance.`;
-	if (!(dependency in pkg.dependencies) && !testSupport)
+	if (
+		!(dependency in pkg.dependencies) &&
+		!testSupport &&
+		!(extension && typeOnly)
+	)
 		return `${pkg.name} -> ${dependency}: production workspace import ${specifier} in ${location} is only in devDependencies; declare it in dependencies under the scripts/layers.ts allowance.`;
 }
 
@@ -336,7 +374,7 @@ function importFindings(
 			continue;
 		const path = relative(root, file).split(sep).join("/");
 		const testSupport = isTestSupport(path, rule);
-		for (const { specifier, line } of importSpecifiers(file)) {
+		for (const { specifier, line, typeOnly } of importSpecifiers(file)) {
 			const location = `${relative(root, file)}:${line}`;
 			if (!testSupport && importsCoreTestSupport(pkg, file, specifier)) {
 				findings.push(
@@ -371,6 +409,8 @@ function importFindings(
 				testSupport,
 				specifier,
 				location,
+				typeOnly,
+				extension: rule?.layer === "extension",
 			});
 			if (finding) findings.push(finding);
 		}

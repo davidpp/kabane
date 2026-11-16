@@ -6,6 +6,7 @@ import {
 	readFileSync,
 	realpathSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,7 +14,11 @@ import { join } from "node:path";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope, ProjectDirs } from "@cabane/core/scope";
 
-const initial = { actor: "cabane://actor/human/tester", deviceId: "test" };
+const initial = {
+	actor: "cabane://actor/human/tester",
+	deviceId: "test",
+	extensions: ["loop"],
+};
 
 /** A fresh KABANE_HOME per case, so the cases can run side by side. */
 const withHome =
@@ -44,6 +49,11 @@ const withHome =
 		const home = join(root, "home");
 		const repo = join(root, "repo");
 		mkdirSync(home);
+		mkdirSync(join(home, "extensions"));
+		symlinkSync(
+			join(import.meta.dir, "../../../../extensions/loop"),
+			join(home, "extensions/loop"),
+		);
 		mkdirSync(repo);
 		GitFixture.run(repo, ["init", "-q"]);
 		GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
@@ -134,6 +144,10 @@ describe.concurrent("config through the real CLI", () => {
 						initial.deviceId,
 					)
 				).code,
+			).toBe(0);
+			expect(
+				(await run("config", "set", "extensions", "loop", "--layer", "global"))
+					.code,
 			).toBe(0);
 			const listed = await run("config", "--json");
 			expect(listed.code).toBe(0);
@@ -292,7 +306,8 @@ describe.concurrent("config through the real CLI", () => {
 				});
 			}
 			expect(JSON.parse(read())).toEqual({
-				...initial,
+				actor: initial.actor,
+				deviceId: initial.deviceId,
 				sync: { future: true },
 				copilot: { future: true },
 			});

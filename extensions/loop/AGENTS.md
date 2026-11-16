@@ -24,7 +24,8 @@ helpers through `src/result.ts` before constructing anything else. Thread the ho
 record through dependencies, never create a home or a global host. The loop parses checklist
 results from `host.record.call("kabane_checklist", ...)` with `host.z`.
 Production imports from `@cabane/core` are type-only; `src/test-host.ts` binds real host
-values for tests. JCAB-326 moves the type dependencies once the layer check accepts them.
+values for tests. Core and contract are development dependencies: the layer check allows
+only type imports from them in production files.
 Command entry points resolve case-insensitive short ids and unique ULID prefixes through
 `host.record.get`; an ambiguous prefix is an error, while an absent task is `null`.
 Activity, dispatch and header types come from `@cabane/extension`; forms and `FormField`
@@ -41,8 +42,9 @@ load; questions held in core's old session tables are not read (migration is JCA
 
 Several issues change this package; check main before you edit:
 
-- JCAB-326 ports the loop: values arrive on `host`, and the loop leaves the CLI's bundle. Plan
-  lint now lives in `src/lint/` (JCAB-338); `src/advice.ts` and `src/commands.ts` use it.
+- The loop builds independently with `bun run --cwd extensions/loop build`. Its `dist/` is a
+  directory extension with its harness client, copilot procedures and lenses included. Plan
+  lint lives in `src/lint/` (JCAB-338); `src/advice.ts` and `src/commands.ts` use it.
 - The copilot's loop procedures are files in `copilot/procedures/`, which the host reads only
   when the loop loads from a directory (`packages/board/README.md`, the copilot's instructions).
 
@@ -53,12 +55,16 @@ in `src/commands.ts` with its test.
 
 ```bash
 bun test extensions/loop                  # runner tests drive packages/acp/scripts/scripted-agent.ts
+bun run --cwd extensions/loop build        # dist/ is installed as a directory extension
 bun run sandbox init                      # once per fresh sandbox
 bun run sandbox config set extensions loop --layer global
 bun run sandbox add "try the loop" --kind issue
 bun run sandbox loop advise <id>          # the plan, the advice and the routing; changes no issue, run or setting
 bun run sandbox loop status
 ```
+
+`bun run sandbox` links this source extension into its disposable home when no loop directory
+is installed there. The sandbox prints its repository path; its home is the adjacent `.kabane`.
 
 `loop advise --dir <checkout>` reads that checkout's lenses and gates. A real `loop start`
 opens sessions on the harness the human is logged in to and spends its quota, so run one only

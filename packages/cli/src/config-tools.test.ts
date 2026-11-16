@@ -6,6 +6,7 @@ import {
 	readFileSync,
 	realpathSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +23,12 @@ import { Extensions } from "./extensions";
 it("manages device config through the real stdio MCP server", async () => {
 	const home = mkdtempSync(join(tmpdir(), "kabane-config-mcp-"));
 	const bin = join(import.meta.dir, "../index.ts");
-	const env = { ...process.env, KABANE_HOME: home };
+	mkdirSync(join(home, "extensions"), { recursive: true });
+	symlinkSync(
+		join(import.meta.dir, "../../../extensions/loop"),
+		join(home, "extensions/loop"),
+	);
+	const env = { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" };
 	const path = join(home, "config.json");
 	const read = () => readFileSync(path, "utf8");
 	const client = new Client({ name: "config-test", version: "1" });
@@ -87,6 +93,7 @@ it("manages device config through the real stdio MCP server", async () => {
 			"--device",
 			"config-test",
 		);
+		await cli("config", "set", "extensions", "loop", "--layer", "global");
 		await client.connect(
 			new StdioClientTransport({
 				command: process.execPath,
@@ -166,7 +173,7 @@ it("manages device config through the real stdio MCP server", async () => {
 		expect(look("extensions")).toEqual([
 			"extensions",
 			"Board",
-			Extensions.names,
+			Extensions.available(home),
 		]);
 		expect(look("harness.mode")).toEqual([
 			"start mode",
@@ -327,7 +334,12 @@ it("writes a project's local layer by default over stdio, and names layers the n
 	mkdirSync(repo);
 	GitFixture.run(repo, ["init", "-q"]);
 	GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
-	const env = { ...process.env, KABANE_HOME: home };
+	mkdirSync(join(home, "extensions"), { recursive: true });
+	symlinkSync(
+		join(import.meta.dir, "../../../extensions/loop"),
+		join(home, "extensions/loop"),
+	);
+	const env = { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" };
 	const bin = join(import.meta.dir, "../index.ts");
 	const init = Bun.spawnSync(
 		[
@@ -342,6 +354,14 @@ it("writes a project's local layer by default over stdio, and names layers the n
 		{ cwd: home, env },
 	);
 	expect(init.exitCode).toBe(0);
+	const configuration = join(home, "config.json");
+	writeFileSync(
+		configuration,
+		JSON.stringify({
+			...JSON.parse(readFileSync(configuration, "utf8")),
+			extensions: ["loop"],
+		}),
+	);
 	const client = new Client({ name: "config-test", version: "1" });
 	const text = async (name: string, args: Record<string, unknown>) => {
 		const result = z
@@ -445,7 +465,12 @@ it("reads and writes the project's shared layer over stdio from a nested directo
 	mkdirSync(nested, { recursive: true });
 	GitFixture.run(repo, ["init", "-q"]);
 	GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
-	const env = { ...process.env, KABANE_HOME: home };
+	mkdirSync(join(home, "extensions"), { recursive: true });
+	symlinkSync(
+		join(import.meta.dir, "../../../extensions/loop"),
+		join(home, "extensions/loop"),
+	);
+	const env = { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" };
 	const bin = join(import.meta.dir, "../index.ts");
 	const init = Bun.spawnSync(
 		[
@@ -460,6 +485,14 @@ it("reads and writes the project's shared layer over stdio from a nested directo
 		{ cwd: home, env },
 	);
 	expect(init.exitCode).toBe(0);
+	const configuration = join(home, "config.json");
+	writeFileSync(
+		configuration,
+		JSON.stringify({
+			...JSON.parse(readFileSync(configuration, "utf8")),
+			extensions: ["loop"],
+		}),
+	);
 	const client = new Client({ name: "config-test", version: "1" });
 	const text = async (name: string, args: Record<string, unknown>) => {
 		const result = z

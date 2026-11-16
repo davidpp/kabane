@@ -6,13 +6,18 @@
  * through OpenTUI's test renderer instead; the deps are the same object.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App, noActivity } from "@cabane/board";
 import { Planner, type Result, type Task } from "@cabane/core";
 import { parseArgs } from "@cabane/extension";
-import { loop } from "@cabane/loop";
 import { testRender } from "@opentui/react/test-utils";
 import {
 	type BoardWiring,
@@ -22,7 +27,7 @@ import {
 } from "./src/commands/board-runtime";
 import { saveConfig } from "./src/config";
 import { type Ctx, openContext, resolveScope } from "./src/context";
-import { hostFor } from "./src/host";
+import { Extensions } from "./src/extensions";
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,10 +63,15 @@ describe("kabane board", () => {
 	});
 
 	it("awaits the loop's board ports before merging them", async () => {
-		const built = await hostFor(home, "loop").build(loop);
-		if (!built.ok) throw built.error;
+		mkdirSync(join(home, "extensions"), { recursive: true });
+		symlinkSync(
+			join(import.meta.dir, "../../extensions/loop"),
+			join(home, "extensions/loop"),
+		);
+		const built = await Extensions.loadAll(["loop"], home);
+		expect(built.refused).toEqual([]);
 		const deps = await boardDeps(parseArgs([]), ctx, "claude", {
-			extensions: [built.value],
+			extensions: built.loaded,
 		});
 		try {
 			expect(deps.activity).toBeDefined();

@@ -102,7 +102,7 @@ export const settings = async (
 	if (!isPlainObject(stored))
 		return err(new Error(`${path}: expected an object`));
 	// A config that does not parse is this check's to report, so it enables no directory
-	// extension here; the bundled namespaces are still checked.
+	// extension here; known extension blocks are kept until their schemas can be loaded.
 	const enabled = Extensions.enabled(ctx.home);
 	const namespaces = await Extensions.namespaces(
 		ctx.home,
@@ -111,10 +111,20 @@ export const settings = async (
 	if (!namespaces.ok) return namespaces;
 	const where = await ConfigSettings.locate(ctx.home, ctx.cwd);
 	if (!where.ok) return where;
+	const extensionNames = new Set([
+		...Extensions.available(ctx.home),
+		...(Array.isArray(stored.extensions)
+			? stored.extensions.filter(
+					(name): name is string => typeof name === "string",
+				)
+			: []),
+	]);
 	const device = Object.fromEntries(
 		Object.entries(stored).filter(
 			([key]) =>
-				key !== "scopes" && !namespaces.value.some((ns) => ns.name === key),
+				key !== "scopes" &&
+				!extensionNames.has(key) &&
+				!namespaces.value.some((ns) => ns.name === key),
 		),
 	);
 	const findings = drift(

@@ -157,10 +157,8 @@ private, with a source bin and `workspace:*` dependencies. `scripts/build.ts` ge
 
 - `bin/kabane.js`: Bun bundle entry, workspace and pure-JS dependencies inlined, Bun shebang
   kept, plus `bin/chunk-<hash>.js`: code-split chunks for what loads lazily (the board's TUI,
-  the extensions), so a command that draws nothing never loads OpenTUI. The artifact check
-  admits exactly that shape. Every official extension under `extensions/` is bundled too; the
-  build fails when one of those directories is missing from the bundle, which means the CLI's
-  list does not import it.
+  lazy commands), so a command that draws nothing never loads OpenTUI. The artifact check
+  admits exactly that shape. Extensions are installed separately as directories; none is bundled.
 - `templates/dispatch/`, repository README and LICENSE, and generated package.json.
 - Exactly pinned external `@opentui/core`, `@opentui/react` and `react`, taken from the
   board manifest. OpenTUI installs its platform-native optional dependency; React must not
@@ -300,6 +298,12 @@ Default smoke builds/packs a temporary archive, checks safe members, published i
 exact externals, workspace dependencies, maps and machine-path leaks, installs into
 throwaway HOME/Bun global directories/cache/KABANE_HOME, then exercises installed CLI
 and stdio MCP, including concise queue/receipt/context checks and stdin-close exit.
+Both package and native binary smoke check that an empty extensions directory leaves no
+`loop` help entry or command. Enabling an absent loop reports its installation path while
+the CLI/MCP checks still work. The smoke then builds the loop separately in its temporary
+workspace, copies that artifact into `$KABANE_HOME/extensions/loop`, and checks its help,
+status and shipped `lenses/quality.md` (including failure when that installed file is removed).
+No loop harness is launched. Supplied kabane archives/binaries are not rebuilt.
 Installation preserves the invoking user's registry/release-age settings; it does not
 null out npmrc or weaken age/integrity policy. It does not open the board.
 
