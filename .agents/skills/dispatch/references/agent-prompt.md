@@ -5,6 +5,9 @@ neither of those can know. Fill in the angle brackets and leave out any line tha
 nothing to say.
 
 ```
+<The few-liner of the specialist whose territory holds the issue, from
+references/specialists.md, verbatim.>
+
 You are implementing <issue id> (<short title>). Read the full brief first with kabane_context
 on <issue id>. Since the brief was written, main has gained <what merged, or "nothing">.
 
