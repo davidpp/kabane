@@ -132,9 +132,44 @@ it("writes a row through host.store, converges it, parks it on a device with the
 	alpha.enable(false);
 	await alpha.open();
 	expect(await alpha.notes()).toHaveLength(1);
+	const [note] = await alpha.notes();
+	if (!note) throw new Error("alpha has no note");
 	unwrap(await Planner.deleteTask(alpha.home, task.id));
+	// What alpha captured: the note's delete, tagged from the recorded declaration, before the task's.
+	expect(
+		unwrap(
+			await withDb(alpha.home, (db) =>
+				db
+					.query<
+						{
+							tbl: string;
+							row_id: string;
+							module: string | null;
+							module_schema: number | null;
+						},
+						[]
+					>(
+						"SELECT tbl, row_id, module, module_schema FROM sync_oplog WHERE op = 'delete' ORDER BY seq",
+					)
+					.all(),
+			),
+		),
+	).toEqual([
+		{
+			tbl: NotesExtension.TABLE_NAME,
+			row_id: note.id,
+			module: "notes",
+			module_schema: 1,
+		},
+		{ tbl: "tasks", row_id: task.id, module: null, module_schema: null },
+	]);
 	await alpha.push();
-	expect((await beta.pull()).parked).toBe(0);
+	// Beta applies both deletes; without the note's, it would apply only the task's.
+	const pulled = await beta.pull();
+	expect({ applied: pulled.applied, parked: pulled.parked }).toEqual({
+		applied: 2,
+		parked: 0,
+	});
 	expect(await beta.notes()).toEqual([]);
 });
 
