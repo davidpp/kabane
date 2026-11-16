@@ -576,8 +576,9 @@ holds the dispatch and grill skills and `/setup-dispatch`, are directories you b
 yourself. Updating kabane does not install them.
 
 With `loop` still in `extensions` and nothing installed, the record commands (`kabane list`,
-`kabane add` and the others) work as before and say nothing about it. Help, `kabane config`,
-`kabane doctor` and any command kabane does not know start with this line on stderr:
+`kabane add` and the others) work as before and say nothing about it. `kabane --help`,
+`kabane config`, `kabane doctor` and any command kabane does not know start with this line on
+stderr, with your kabane home's path in it:
 
 ```text
 Extension loop: not installed; put it in /…/.kabane/extensions/loop/; or remove it from extensions with `kabane config set extensions <names> --layer global`.
@@ -603,15 +604,32 @@ board, `a` starts no run, and the copilot no longer offers `/setup-dispatch`.
 
 Kabane deletes nothing of the loop's. Its settings stay where you wrote them, `.kabane/loop.json`
 in a project included, and are read again once the loop is installed and enabled. Its runs stay
-under `KABANE_HOME/loops/`.
+under `KABANE_HOME/loops/`. Stop a loop runner the old version started before you update, as the
+sections above say for every process of the old version.
 
-To get them back, build both extensions from a clone of this repository and copy each build into
-`KABANE_HOME/extensions/`, as [Extensions](extensions.md) shows. This needs git and Bun 1.4 or
-later even when you run the npm package or the standalone binary. Build from the tag of the
-kabane you run: `kabane --version` prints the version, and `git checkout v<version>` selects it.
-Then enable both, since a `set` replaces the whole list:
+To get the loop back, build it from a clone of this repository. This needs git and
+[Bun](https://bun.sh) 1.4 or later, also when you run the npm package or the standalone binary.
+Build from the tag of the kabane you run: `kabane --version` prints its version, and every
+release is tagged `v<version>`. Stop the board first. From the directory you want the clone in:
 
 ```bash
+git clone https://github.com/davidpp/kabane.git
+cd kabane
+git checkout v<version>
+bun install
+bun run --cwd extensions/loop build
+mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/loop"
+cp -R extensions/loop/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/loop/"
+```
+
+`loop` is already in your `extensions`, so this is all the loop needs. The dispatch extension is
+optional: install it the same way if you used `/setup-dispatch`, and add it to the list, which a
+`set` replaces whole:
+
+```bash
+bun run --cwd extensions/dispatch build
+mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/dispatch"
+cp -R extensions/dispatch/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/dispatch/"
 kabane config set extensions loop,dispatch --layer global
 ```
 
@@ -619,11 +637,14 @@ kabane config set extensions loop,dispatch --layer global
 extensions = ["loop","dispatch"] (global)
 ```
 
-Restart a running board and the coding sessions whose `kabane mcp` should see the extensions.
-`kabane loop status` answers again, and `kabane config get loop.model` prints your setting.
+Start the board again, and restart the coding sessions whose `kabane mcp` should see the
+extensions. The line is gone, `kabane loop status` answers again, and `kabane config get
+loop.model` prints your setting. [Extensions](extensions.md) has the same steps, and how to
+update an extension later.
 
 A dispatch skill that `/setup-dispatch` wrote with 1.0.0-beta.0 keeps working as written. It
-carries no template stamp, so `kabane doctor`, run in that project, now routes it:
+carries no template stamp, so once dispatch is enabled, `kabane doctor` run in that project
+routes it:
 
 ```text
 route:
@@ -632,7 +653,8 @@ route:
 
 Type `/setup-dispatch` in the copilot when you want the current template.
 
-If you do not want the loop, take it off the list instead, and the line goes away:
+If you do not want the loop, empty the list instead, and the line goes away. `""` turns off
+every extension:
 
 ```bash
 kabane config set extensions "" --layer global
