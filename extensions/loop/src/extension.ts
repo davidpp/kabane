@@ -421,12 +421,21 @@ const routedLines = (s: Loop.Routed): string[] => [
 	...s.notes.map((note) => `    note: ${note}`),
 ];
 
+// What `loop.harnesses` launches instead of a harness's pinned adapter: a run that would not
+// launch the harness the human expects says so before it starts.
+const launches = (config: LoopConfig.Config): string[] =>
+	Object.entries(config.harnesses).map(
+		([id, launch]) =>
+			`  ${id} launches ${[launch.command ?? "its adapter", ...(launch.args ?? [])].join(" ")} (loop.harnesses.${id})`,
+	);
+
 const advisedText = (a: Loop.Advised): string => {
 	const flags = a.advice.flatMap(asFlags);
 	const settings = a.advice.flatMap(asSetting);
 	return [
 		`${a.parent} in ${a.projectDir}`,
 		`  implementer ${a.config.implementer}  model ${a.config.model ?? "unset"}  tiers ${LoopConfig.tierNames(a.config).join(", ")}`,
+		...launches(a.config),
 		"advised:",
 		...a.advice.map(
 			(r) =>

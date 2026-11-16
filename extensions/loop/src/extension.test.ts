@@ -469,6 +469,9 @@ describe("kabane loop advise", () => {
 									claude: { fast: "claude-haiku-4-5" },
 									codex: { frontier: "gpt-5.5" },
 								},
+								harnesses: {
+									codex: { command: "/opt/codex-acp", args: ["--local"] },
+								},
 							},
 						},
 					]),
@@ -478,8 +481,9 @@ describe("kabane loop advise", () => {
 		expect(advised.exitCode).toBe(0);
 		const lines = advised.text.split("\n");
 		// The project is no git repository, so a run works in place: one shared tree.
-		expect(lines.slice(1, 8)).toEqual([
+		expect(lines.slice(1, 9)).toEqual([
 			"  implementer claude  model unset  tiers frontier, balanced, fast",
+			"  codex launches /opt/codex-acp --local (loop.harnesses.codex)",
 			"advised:",
 			`  budget.concurrency 1 (now 1, the default in a shared tree): src/parser.ts referenced by ${header.shortId}, ${body.shortId} — potential merge conflict if run in parallel`,
 			'  gates test="bun run test" (now none): package.json scripts, using bun from the lockfile',
@@ -487,7 +491,7 @@ describe("kabane loop advise", () => {
 			'  start with: --concurrency 1 --gate test="bun run test"',
 			'  no start flag, a setting: loop.setup "bun install"',
 		]);
-		expect(lines.slice(8)).toEqual([
+		expect(lines.slice(9)).toEqual([
 			"subtasks:",
 			`  ${header.shortId}  header`,
 			"    tier:fast  claude  model claude-haiku-4-5 (tier fast)",
