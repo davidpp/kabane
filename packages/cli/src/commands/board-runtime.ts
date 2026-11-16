@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { Harnesses } from "@cabane/acp";
 import {
 	BoardCopilot,
@@ -37,6 +38,7 @@ import {
 	resolveScope,
 	type ScopeSelection,
 } from "../context";
+import { CopilotFiles } from "../copilot-files";
 import { Extensions } from "../extensions";
 import { UpdateNotice } from "../update-notice";
 import { BoardControl } from "./board-control";
@@ -177,6 +179,35 @@ const extensionPorts = async (
 	};
 };
 
+/**
+ * What the footer says of refusals. The board cuts it at the terminal's width, so what a reader
+ * needs comes first. A single refused extension is spelled out, its paths made relative to its
+ * directory; a single refused file leads with `kabane doctor`, which lists it with its full path.
+ * More than one refusal, of any kind, is counted, after the pointer to doctor.
+ */
+const refused = (
+	home: string,
+	extensions: readonly Extensions.Refusal[],
+	files: readonly CopilotFiles.Refusal[],
+): string | undefined => {
+	const names = [...new Set(extensions.map(({ name }) => name))];
+	const count = (n: number, one: string): string =>
+		`${n} ${one}${n === 1 ? "" : "s"}`;
+	const first = extensions[0];
+	const file = files[0];
+	let text: string | undefined;
+	if (names.length + files.length > 1)
+		text = `kabane doctor: refused ${[
+			...(names.length > 0 ? [count(names.length, "extension")] : []),
+			...(files.length > 0 ? [count(files.length, "file")] : []),
+		].join(", ")}`;
+	else if (first)
+		text = `Extension ${first.name} refused: ${(first.reason.split(";", 1)[0] ?? "").replaceAll(`${join(home, "extensions", first.name)}/`, "")}`;
+	else if (file)
+		text = `kabane doctor: ${file.name} file ${file.reason.split(";", 1)[0]}`;
+	return text?.replace(/[\r\n]+/g, " ");
+};
+
 /** A value the board saves, as `kabane config set` reads it from the command line. */
 const asInput = (value: string | number | boolean): string =>
 	typeof value === "string" ? value : JSON.stringify(value);
@@ -233,20 +264,27 @@ export const boardDeps = async (
 	{
 		extensions = [],
 		refusals = [],
+		directories = [],
 		issue,
 		requests,
 	}: {
 		extensions?: readonly Extension[];
 		refusals?: Extensions.Refusal[];
+		directories?: readonly Extensions.Directory[];
 		issue?: Task;
 		requests?: OpenRequests;
 	} = {},
 ): Promise<BoardWiring> => {
 	const scope = await boardScope(args, ctx, issue);
 	const overrides = copilotOverrides(ctx);
+	// Read before the announcer is built, so a refused file is announced like a refused extension.
+	const contributed = CopilotFiles.read(directories);
+	const files = contributed.refused;
 	return {
 		...(await extensionPorts(extensions, ctx, refusals)),
-		...(ctx.config.updates?.check === false && refusals.length === 0
+		...(ctx.config.updates?.check === false &&
+		refusals.length === 0 &&
+		files.length === 0
 			? {}
 			: {
 					announcer: {
@@ -256,23 +294,16 @@ export const boardDeps = async (
 									? ok(null)
 									: await UpdateNotice.announcer(ctx.home).announce();
 							if (!update.ok) return update;
-							const names = [...new Set(refusals.map(({ name }) => name))];
-							const first = refusals[0];
-							const notices = first
-								? [
-										names.length === 1
-											? `Extension ${first.name} refused: ${first.reason.split(";", 1)[0]}`.replace(
-													/[\r\n]+/g,
-													" ",
-												)
-											: `${names.length} extensions refused: ${names.join(", ")}; run kabane --help for why`,
-									]
-								: [];
-							const summary = notices[0];
+							const notices: string[] = [];
+							const summary = refused(ctx.home, refusals, files);
 							const available =
 								100 - (update.value ? update.value.length + 2 : 0);
-							if (summary && summary.length > available)
-								notices[0] = `${summary.slice(0, Math.max(0, available - 1))}…`;
+							if (summary)
+								notices.push(
+									summary.length > available
+										? `${summary.slice(0, Math.max(0, available - 1))}…`
+										: summary,
+								);
 							if (update.value) notices.push(update.value);
 							return ok(notices.length ? notices.join("; ") : null);
 						},
@@ -299,7 +330,9 @@ export const boardDeps = async (
 			mode: ctx.harnessMode,
 			setup: {
 				configPath: configPath(ctx.home),
-				extensions: Extensions.available(ctx.home),
+				extensions: await CopilotFiles.installed(ctx.home),
+				procedures: contributed.procedures,
+				shortcuts: contributed.shortcuts,
 			},
 		}),
 	};
@@ -379,6 +412,7 @@ export const runBoard: Command["run"] = async (args, ctx) => {
 	const deps = await boardDeps(args, ctx, harness.value, {
 		extensions: extensions.loaded,
 		refusals: extensions.refused,
+		directories: extensions.directories,
 		issue: issue.value,
 		requests: control.requests,
 	});

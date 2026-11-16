@@ -11,6 +11,7 @@ import { LoopConfig } from "./config";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 
 let home = "";
 
@@ -76,7 +77,9 @@ const deps = (signal?: AbortSignal) => ({
 	basePath: home,
 	kabaneBin: "/nonexistent/kabane",
 	pid: process.pid,
-	overrides: { claude: { command: "/nonexistent/harness" } },
+	overrides: TestHarnesses.overrides({
+		claude: { command: "/nonexistent/harness" },
+	}),
 	tree: async () => "tree",
 	tickMs: 5,
 	...(signal ? { signal } : {}),

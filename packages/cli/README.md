@@ -223,6 +223,9 @@ installed. Disabling such an extension keeps its tables and rows: deleting a tas
 the deletes of its rows for the other devices, which hold what they receive for that extension
 until it is enabled there.
 
+Markdown files under `copilot/` add procedures and `/` shortcuts to the board's copilot; the
+board's README describes them, under its copilot.
+
 Only enabled directories run code; a directory alone, a single `.ts` file, or a repository's
 files load nothing. Directory settings become known to `kabane config` only after enablement.
 The bundled loop's settings remain available before enablement. A directory named `loop`

@@ -39,6 +39,14 @@ const OFFICIAL: Readonly<Record<string, () => Promise<Extension>>> = {
 	loop: async () => (await import("@cabane/loop")).loop,
 };
 
+/**
+ * What each bundled extension says it adds, from its package.json, imported only when asked so a
+ * command that lists no extension loads nothing of it. JCAB-326 removes this with `OFFICIAL`.
+ */
+const BUNDLED_DESCRIPTIONS: Readonly<Record<string, () => Promise<string>>> = {
+	loop: async () => (await import("@cabane/loop/package.json")).description,
+};
+
 const Manifest = z.object({
 	kabane: z.object({
 		extension: z.string().min(1),
@@ -205,6 +213,34 @@ export namespace Extensions {
 			]),
 		];
 	};
+	/**
+	 * What an installed extension says it adds: the `description` of its `package.json`, read as
+	 * JSON and never imported. The bundled loop's comes from its package.json, bundled at build time
+	 * and imported only here, so a command that lists no extension loads nothing of the loop.
+	 */
+	export const description = async (
+		home: string,
+		name: string,
+	): Promise<string | undefined> => {
+		if (!installed(home, name)) {
+			const bundled = Object.hasOwn(BUNDLED_DESCRIPTIONS, name)
+				? BUNDLED_DESCRIPTIONS[name]
+				: undefined;
+			return bundled ? await bundled() : undefined;
+		}
+		const text = trySync(() =>
+			readFileSync(join(directory(home, name), "package.json"), "utf8"),
+		);
+		const manifest = text.ok
+			? trySync((): unknown => JSON.parse(text.value))
+			: text;
+		const parsed = z
+			.object({ description: z.string().trim().min(1) })
+			.safeParse(manifest.ok ? manifest.value : undefined);
+		return parsed.success
+			? parsed.data.description.replace(/\s+/g, " ")
+			: undefined;
+	};
 	export const enabled = (home: string): Result<string[]> => {
 		if (!existsSync(configPath(home))) return ok([]);
 		const config = loadConfig(home);
@@ -358,18 +394,33 @@ export namespace Extensions {
 			);
 		return ok(loaded.value as Extension);
 	};
+	/** A loaded directory extension and the resolved directory it was loaded from. */
+	export type Directory = { name: string; directory: string };
 	export const loadAll = async (
 		names: readonly string[],
 		home: string,
-	): Promise<{ loaded: Extension[]; refused: Refusal[] }> => {
+	): Promise<{
+		loaded: Extension[];
+		refused: Refusal[];
+		directories: Directory[];
+	}> => {
 		const loaded: Extension[] = [];
 		const refused: Refusal[] = [];
+		const directories: Directory[] = [];
 		for (const name of new Set(names)) {
 			const result = await load(name, home);
-			if (result.ok) loaded.push(result.value);
-			else refused.push({ name, reason: refusal(result.error.message) });
+			if (!result.ok) {
+				refused.push({ name, reason: refusal(result.error.message) });
+				continue;
+			}
+			loaded.push(result.value);
+			// `load` took the directory over the bundle exactly when one is installed.
+			const root = installed(home, name)
+				? trySync(() => realpathSync(directory(home, name)))
+				: undefined;
+			if (root?.ok) directories.push({ name, directory: root.value });
 		}
-		return { loaded, refused };
+		return { loaded, refused, directories };
 	};
 
 	/**

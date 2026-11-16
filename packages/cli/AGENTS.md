@@ -13,6 +13,7 @@ data modules; setup, configuration, updates and the board's runtime are the host
 | `src/context.ts` | `MODULES`, `configureRuntime`, `openContext` (the `Ctx` a command gets), scope selection |
 | `src/config*.ts` | `config.json`, the settings layers, `kabane config`, and the device config tools only `kabane mcp` serves (`config-tools.ts`) |
 | `src/extensions.ts` | directory extensions and the bundled fallback (`OFFICIAL`), loaded only when a command or the board needs one |
+| `src/copilot-files.ts` | a directory extension's `copilot/procedures` and `copilot/shortcuts` files, `{{extension}}` filled, unusable files refused |
 | `src/commands/board-runtime.ts` | builds the board's ports and `BoardCopilot` from `@cabane/board`, passing `Self.executable()`, then calls `startBoard` |
 | `src/first-run.ts`, `src/mcp-clients.ts`, `src/update-*.ts` | the setup screen, MCP registration in harness configs, self-update |
 
@@ -36,8 +37,12 @@ The extension API is implemented here:
   malformed report into that extension's `check-failed` finding; a refused extension is an
   `extension-refused` finding.
 - `src/extensions.ts` loads enabled directories from `$KABANE_HOME/extensions` before the bundled
-  fallback. `loadAll(names, home)` returns `loaded` and `refused`; callers must consume both.
-  Help, commands and MCP report refusals on stderr; the board uses its announcer. A disabled
+  fallback. `loadAll(names, home)` returns `loaded`, `refused` and `directories` (each
+  extension loaded from a directory, with that directory); callers must consume `loaded` and
+  `refused`. Help, commands and MCP report refusals on stderr; the board uses its announcer.
+  `src/copilot-files.ts` reads the copilot files of `directories` for the board; a refused file
+  is a line in the board's announcer and a `copilot-file-*` finding of `kabane doctor`
+  (`src/doctor/copilot-files.ts`). A disabled
   directory is discovered without importing it, including during command lookup and config.
   The manifest API and the resolved entry path are checked before import, and the factory
   result is validated before its contributions are accepted. A directory named `loop` overrides

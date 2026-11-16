@@ -17,6 +17,7 @@ import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
 import { Permission } from "./permission";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 import { Worktree } from "./worktree";
 
 // `start`'s refusals, which all come before a runner is spawned, and `restart`, whose runner is
@@ -45,6 +46,7 @@ const deps = () => ({
 const CONFIG: LoopConfig.Config = {
 	implementer: "claude",
 	tiers: {},
+	harnesses: {},
 	budget: { concurrency: 1, continuations: 0, currency: "USD" },
 	stallAfter: 1,
 	gates: {},
@@ -498,7 +500,7 @@ const RUNNER = [
 	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,
-	`const ran = await Loop.run({ home, basePath: home, kabaneBin: "/nonexistent/kabane", overrides: { claude: { command: "/nonexistent/harness" } } }, process.argv[1] ?? "");`,
+	`const ran = await Loop.run({ home, basePath: home, kabaneBin: "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
 	`process.exit(ran.ok ? 0 : 1);`,
 ].join("\n");
 
@@ -809,6 +811,7 @@ describe("Loop.stop", () => {
 			config: {
 				implementer: "claude",
 				tiers: {},
+				harnesses: {},
 				budget: { concurrency: 1, continuations: 0, currency: "USD" },
 				stallAfter: 1,
 				gates: {},

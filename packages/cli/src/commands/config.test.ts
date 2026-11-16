@@ -176,6 +176,7 @@ describe.concurrent("config through the real CLI", () => {
 					"loop.budget.currency",
 					"loop.stallAfter",
 					"loop.tiers",
+					"loop.harnesses",
 					"loop.gates",
 					"loop.worktree",
 					"loop.isolation",
@@ -679,6 +680,72 @@ describe.concurrent("config through the real CLI", () => {
 			expect(refused.err).toContain(
 				"Unknown config key: loop.tiers.claud.fast",
 			);
+		}),
+		30_000,
+	);
+
+	it(
+		"takes a key per field of a record of objects, layer by layer, as docs/loop.md shows for loop.harnesses",
+		withHome(async ({ home, repo, write, inRepo }) => {
+			write(initial);
+			const json = async (...args: string[]) => {
+				const result = await inRepo(...args, "--json");
+				expect(result.err).toBe("");
+				expect(result.code).toBe(0);
+				return JSON.parse(result.out);
+			};
+			const local = join(
+				home,
+				"projects",
+				ProjectDirs.slug(realpathSync(repo)),
+				"loop.json",
+			);
+			await json(
+				"config",
+				"set",
+				"loop.harnesses.claude.command",
+				"/opt/acp/claude",
+			);
+			// A list takes commas; `--` lets an argument start with a dash.
+			await json(
+				"config",
+				"set",
+				"--layer",
+				"global",
+				"loop.harnesses.claude.args",
+				"--",
+				"--verbose,--local",
+			);
+			expect(JSON.parse(readFileSync(local, "utf8"))).toEqual({
+				harnesses: { claude: { command: "/opt/acp/claude" } },
+			});
+			expect(await json("config", "get", "loop.harnesses")).toEqual({
+				claude: { command: "/opt/acp/claude", args: ["--verbose", "--local"] },
+			});
+			expect(await json("config", "get", "loop.harnesses.claude.command")).toBe(
+				"/opt/acp/claude",
+			);
+			const layers = (await json("config", "get", "loop.harnesses", "--layers"))
+				.leaves as Record<string, { layer: string }>;
+			expect(
+				Object.entries(layers).map(([key, leaf]) => [key, leaf.layer]),
+			).toEqual([
+				["loop.harnesses.claude.command", "local"],
+				["loop.harnesses.claude.args", "global"],
+			]);
+			await json("config", "unset", "loop.harnesses.claude.command");
+			expect(await json("config", "get", "loop.harnesses")).toEqual({
+				claude: { args: ["--verbose", "--local"] },
+			});
+			// A field the object does not have, and a harness kabane does not know, are no keys.
+			for (const key of [
+				"loop.harnesses.claude.comand",
+				"loop.harnesses.claud.command",
+			]) {
+				const refused = await inRepo("config", "set", key, "x");
+				expect(refused.code).not.toBe(0);
+				expect(refused.err).toContain(`Unknown config key: ${key}`);
+			}
 		}),
 		30_000,
 	);

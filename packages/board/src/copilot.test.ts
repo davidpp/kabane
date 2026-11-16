@@ -243,9 +243,11 @@ const context = (
 	...over,
 });
 
-const SETUP = {
+const SETUP: CopilotInstructions.Setup = {
 	configPath: "/home/me/.kabane/config.json",
-	extensions: ["loop"],
+	extensions: [{ name: "loop" }],
+	procedures: [],
+	shortcuts: [],
 };
 
 const BIN = "/usr/local/bin/kabane";
@@ -342,9 +344,7 @@ describe("BoardCopilot", () => {
 		const server = (seen.newSession[0] as { mcpServers: { command: string }[] })
 			.mcpServers[0];
 		expect(server?.command).toBe(bin);
-		expect(textOf(seen.prompts[0], 0)).toContain(
-			`\`'${bin}' loop start <id>\``,
-		);
+		expect(textOf(seen.prompts[0], 0)).toContain(`\`'${bin}' --help\``);
 		copilot.close();
 	});
 
@@ -993,6 +993,21 @@ describe("BoardCopilot", () => {
 			expect(shortcut.template.length).toBeGreaterThan(20);
 			expect(shortcut.hint).not.toBe("");
 		}
+		copilot.close();
+	});
+
+	it("offers the built-in shortcuts first, then the ones extensions contribute", () => {
+		const copilot = copilotOver(scriptedAgent(fresh()), {
+			setup: {
+				...SETUP,
+				shortcuts: [{ name: "start-run", hint: "a run", template: "Run it." }],
+			},
+		});
+		const names = copilot.shortcuts().map((s) => s.name);
+		expect(names.slice(0, CopilotInstructions.SHORTCUTS.length)).toEqual(
+			CopilotInstructions.SHORTCUTS.map((s) => s.name),
+		);
+		expect(names.at(-1)).toBe("start-run");
 		copilot.close();
 	});
 });

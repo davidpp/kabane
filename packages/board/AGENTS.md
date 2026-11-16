@@ -27,8 +27,9 @@ board-only ports and no-op defaults. `src/copilot.ts` implements `BoardCopilot` 
 does not read or answer them through core sessions. Legacy session activity remains in the detail
 log until JCAB-343 migrates outcomes.
 `Header` returns data: `src/card-header.tsx` polls it and lays out its rows, sharing tone mapping
-with trigger previews. JCAB-324 removes the loop procedure from `src/copilot-instructions.ts`
-and the text in `src/setup.tsx` that offers to turn on the loop.
+with trigger previews. Base kabane's copilot text and setup screen name no extension: an
+extension's procedures and shortcuts arrive in `CopilotInstructions.Setup`, read by the host from
+its files, and `systemPrompt` appends them after base kabane's text.
 
 Where things are drawn: `src/app.tsx` holds the state and wires the ports; `src/board.tsx` is
 the board view, one row per card; `src/detail.tsx` an issue's detail; `src/tab-bar.tsx` and

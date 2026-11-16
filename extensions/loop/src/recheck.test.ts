@@ -22,6 +22,7 @@ import { LoopPlan } from "./plan";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 
 let home = "";
 let first = "";
@@ -156,7 +157,9 @@ const run = async (
 		basePath: home,
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
-		overrides: { gemini: { command: process.execPath, args: [agent] } },
+		overrides: TestHarnesses.overrides({
+			gemini: { command: process.execPath, args: [agent] },
+		}),
 		tree,
 		tickMs: 5,
 	});

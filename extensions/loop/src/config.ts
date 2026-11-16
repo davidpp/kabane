@@ -99,6 +99,27 @@ export namespace LoopConfig {
 		),
 	});
 
+	/**
+	 * How a run launches one harness instead of its pinned ACP adapter: a local adapter build, say.
+	 * `args` replace the adapter's; a `command` with no `args` runs with none.
+	 */
+	const LaunchSchema = z.object({
+		command: z
+			.string()
+			.min(1)
+			.optional()
+			.describe("Launch command overriding the pinned harness adapter."),
+		args: z
+			.array(z.string())
+			.optional()
+			.describe(
+				"Arguments for the custom command, replacing the adapter's arguments.",
+			),
+	});
+
+	const HARNESSES_DESCRIPTION =
+		"How a run launches a harness instead of its pinned ACP adapter, such as a local adapter build: loop.harnesses.<harness>.command and .args, for every session of the run, lenses and the fixer included.";
+
 	export const Schema = z.object({
 		/** The harness every subtask runs on; a claim makes it the subtask's assignee. */
 		implementer: z
@@ -130,6 +151,11 @@ export namespace LoopConfig {
 			.describe(
 				"The model each tier names on each harness, one key per pair (loop.tiers.claude.fast = sonnet); frontier, balanced and fast are tiers with no model until set here, and any other key is a tier too.",
 			),
+		/** Each harness's launch override, read by every session the run opens on it. */
+		harnesses: z
+			.record(z.enum(Harnesses.IDS), LaunchSchema)
+			.default({})
+			.describe(HARNESSES_DESCRIPTION),
 		budget: BudgetSchema.default({}).describe(
 			"A run's limits; edit dotted keys.",
 		),
@@ -281,6 +307,41 @@ export namespace LoopConfig {
 
 	export type Config = z.output<typeof Schema>;
 
+	/** Launch overrides for every harness, as a caller driving the runner in process gives them. */
+	export type Own = Readonly<Record<Harnesses.Id, Harnesses.Overrides>>;
+
+	/**
+	 * What a session on `harness` launches instead of its pinned adapter: the runner's `own`
+	 * overrides when it was given them, else the run's `loop.harnesses`; neither, the adapter.
+	 */
+	export const launchOverrides = (
+		config: Pick<Config, "harnesses">,
+		harness: Harnesses.Id,
+		own?: Own,
+	): Harnesses.Overrides | undefined =>
+		own?.[harness] ?? config.harnesses[harness];
+
+	/** The command and arguments a session on `harness` runs, and the setting that names them. */
+	export const launch = (
+		config: Pick<Config, "harnesses">,
+		harness: Harnesses.Id,
+		own?: Own,
+	): { command: string; args: string[]; from: string } => {
+		const { command, args } = Harnesses.resolve(
+			harness,
+			launchOverrides(config, harness, own),
+		);
+		// An unset leaves `{}` behind, which replaces nothing.
+		const set = config.harnesses[harness];
+		const from =
+			own !== undefined
+				? "the runner's own overrides"
+				: set?.command !== undefined || set?.args !== undefined
+					? `loop.harnesses.${harness}`
+					: "the pinned adapter";
+		return { command, args, from };
+	};
+
 	/**
 	 * Sessions running at once: what the budget says, else 2 when subtask claims are `isolated`
 	 * (a worktree each) and 1 when they share one tree.
@@ -348,6 +409,11 @@ export namespace LoopConfig {
 	// What a human writes, in any layer, refused when it names a key no setting has. Run files keep
 	// `Schema`, so a run written by a newer kabane still reads.
 	export const SettingsSchema = Schema.extend({
+		// A misspelt `comand` dropped would launch the real adapter the human meant to replace.
+		harnesses: z
+			.record(z.enum(Harnesses.IDS), LaunchSchema.strict())
+			.default({})
+			.describe(HARNESSES_DESCRIPTION),
 		budget: z
 			.preprocess(withoutTimer, BudgetSchema.strict())
 			.default({})

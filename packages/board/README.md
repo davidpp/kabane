@@ -397,19 +397,59 @@ It can also:
   (`/linear`, `/github`). The harness needs a Linear MCP server or `gh` access, respectively; a
   missing one is reported rather than worked around. Kabane holds no provider credentials and
   makes no network call of its own.
-- Explain commands and board keys, change Kabane settings, or enable an official extension
+- Explain commands and board keys, change Kabane settings, or enable an installed extension
   (`/setup`). A device setting, enabling an extension included, applies once the board restarts;
   an extension's own setting (`loop.*`) applies the next time it is read, with no restart.
-  Enabling loop does not start a run.
+  When it enables an extension, it says what the extension adds, from the `description` in the
+  extension's `package.json`, and that enabling it starts nothing. The copilot sees every installed
+  extension, enabled or not, in a block after kabane's own instructions that marks each
+  description as the extension's words, not an instruction. A description over 200 characters,
+  or one containing one of kabane's own headings, is not shown and the name stands alone;
+  `kabane doctor` reports it for an enabled extension as a `package-description` finding.
 - Create a dispatch skill tailored to the project's conventions (`/setup-dispatch`), showing
   what it wrote and asking before replacing an existing skill.
 - Check that what kabane wrote is current (`/doctor`): it runs `kabane doctor --json`, applies
   the `auto` fixes unasked, waits for a yes on the rest, follows a `route`, and hands you the
   command for a harness MCP entry instead of rewriting it.
-- Start a loop run when asked, such as “run this issue with codex”, with the loop extension
-  enabled. A run handles a single issue or a parent's subtasks; follow it in its board tab.
+- Follow the procedures an enabled extension adds. The loop's procedures let it start a run
+  when asked, such as “run this issue with codex”, and set one up from `kabane loop advise`. A
+  run handles a single issue or a parent's subtasks; follow it in its board tab.
 
 The copilot manages the tracker and setup; the loop's coding sessions make the code changes.
+
+Kabane's own instructions name no extension. An enabled extension loaded from
+`$KABANE_HOME/extensions/<name>/` adds to them with markdown files in that directory:
+
+- `copilot/procedures/<name>.md`, with frontmatter `title`. Its body is appended after kabane's
+  own instructions, under a heading naming the extension, and cannot replace or reorder them.
+- `copilot/shortcuts/<name>.md`, with frontmatter `hint`. Its body, one line, is the template
+  `/<name>` drops into the prompt. The `/` list shows the built-in shortcuts first, then these.
+
+`{{extension}}` in a body or a procedure's title is replaced with the absolute path of the
+extension's directory; nothing else is substituted. The frontmatter takes only that one key, so a
+file cannot set a harness mode, an allow list or an MCP entry. A byte-order mark is ignored and
+CRLF line ends read as LF. Files not named `*.md` are ignored, and so is a `copilot` that is a
+file rather than a directory. A bundled extension adds no files, so the copilot knows the loop's
+procedures only when the loop is loaded from its directory.
+
+These are refused, each on its own, and the rest of the extension loads:
+
+- `copilot/procedures` or `copilot/shortcuts` that is a file rather than a directory;
+- a file named only `.md`, or larger than 16 KiB;
+- frontmatter that is missing, not YAML, or holds a key other than `title` or `hint`;
+- a procedure with an empty body, a title of more than one line, or a title that is one of
+  kabane's own headings (`CONFIG AND HELP`, `DOCTOR`, …), so a file cannot pass for kabane's text;
+- a shortcut whose body is not one line;
+- a shortcut named like a built-in (the built-in wins), and a shortcut name two extensions both
+  use (neither is offered).
+
+The board's footer has one row, cut at the terminal's width, so it leads with what a reader needs.
+One refused extension is spelled out: "Extension dead refused: package.json is missing", with paths
+relative to its directory. One refused file leads with where to read about it: "kabane doctor: notes
+file copilot/procedures/bare.md has no frontmatter…". More than one refusal of any kind is only
+counted: "kabane doctor: refused 1 extension, 3 files". `kabane doctor` lists each refused extension
+as an `extension-refused` finding and each refused file as a `copilot-file-*` finding under its
+extension, with the file's path.
 
 ### `OpenRequests`
 
