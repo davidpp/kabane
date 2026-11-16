@@ -15,6 +15,7 @@ import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
+import { DetailCard } from "./detail-card";
 import { DetailModel } from "./detail-model";
 import { ElicitationForm } from "./elicitation-form";
 import type { Keymap } from "./keymap";
@@ -2039,6 +2040,7 @@ export namespace BoardNav {
 			header: facts.header === true,
 			transcript: state.copilot.hasLog,
 			stoppable: turnStoppable(state) || card.stoppable,
+			cardStop: DetailCard.stoppable(state),
 			clearable:
 				state.marked.size > 0 ||
 				state.search.mode === "committed" ||
@@ -2344,6 +2346,9 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		if (state.view.type !== "detail") return { state, effect: NONE };
 		const { taskId } = state.view;
+		// The keys of the task's card without a tab: `X` stops it, before `x` can cancel the task.
+		const acted = DetailCard.reduceKey(state, key);
+		if (acted) return acted;
 		// The checklist's keys, `space` and `J/K`, ahead of `j/k`, which `J` and `K` are shifted from.
 		const ticked = BoardChecklist.reduceKey(state, key);
 		if (ticked) return ticked;

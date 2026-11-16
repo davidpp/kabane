@@ -162,6 +162,13 @@ all-lanes view, one of the card's `liveLanes` (every lane when the host lists no
 there; with several, its prompt opens aimed at the first and `tab`/`⇧tab` walk the others; with none
 the footer leaves it out. One with no prompt and several to choose from asks for a lane (`h/l`).
 
+A card without a tab is acted on from its task's detail instead, the newest such card still in
+flight. There `x` cancels the task, so `X` runs the card's `stop` (the footer says `X stop
+<label>`), and does nothing when there is nothing to stop. Its other actions answer under their own
+key where the detail has none (`h/l`, `j/k`, `g/G`, `J/K`, `space`, `enter`, `r`, `o`, `O`, `v`,
+`y`, `m`, `a`, `n`, `s`, `x`, `b`, `d`, `u`, `q`, the digits, the everywhere keys); one with
+`lane: true` is not offered there, as the detail has no lane to aim it at.
+
 An action with `input` opens the prompt: the copilot's own input (`PromptField`, the same textarea,
 bindings and `up` history as the copilot pane), in a raised panel above the copilot's row that says
 what it is for (`message → JREP-2`), with `input` as its placeholder. While it is open it has
