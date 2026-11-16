@@ -11,7 +11,7 @@
  */
 
 import { env, runInDurableObject } from "cloudflare:test";
-import { conformanceCases, Deadline, Planner } from "@cabane/core";
+import { conformanceCases, Deadline, Migrate, Planner } from "@cabane/core";
 import { describe, expect, it } from "vitest";
 import { DoDb } from "./db-do";
 import { type CabaneHub, HUB_BASE, hubTimezone } from "./hub";
@@ -37,6 +37,47 @@ describe("CabaneHub boot", () => {
 		// The module pass's bookkeeping, created outside the numbered migrations.
 		expect(tables).toContain("module_declarations");
 		expect(await h.taskCount()).toBe(0);
+	});
+});
+
+describe("a migration's after step over Durable Object SQLite", () => {
+	it("rolls the migration back with it when it throws", async () => {
+		await runInDurableObject(hub("after"), async (_i: CabaneHub, ctx) => {
+			const ran = unwrap(
+				await DoDb.provider(ctx.storage).withDb(HUB_BASE, (db) => {
+					const result = Migrate.run(
+						db,
+						[
+							{
+								name: "create-probe",
+								up: (tx) => tx.run("CREATE TABLE after_probe (id TEXT)"),
+							},
+						],
+						"schema_migrations_probe",
+						() => {
+							throw new Error("the after step failed");
+						},
+					);
+					const tables = db
+						.query<{ name: string }, []>(
+							"SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('after_probe', 'schema_migrations_probe')",
+						)
+						.all()
+						.map((row) => row.name);
+					const versions = db
+						.query<{ n: number }, []>(
+							"SELECT COUNT(*) AS n FROM schema_migrations_probe",
+						)
+						.get()?.n;
+					return { result, tables, versions };
+				}),
+			);
+			expect(ran.result.ok).toBe(false);
+			if (!ran.result.ok)
+				expect(ran.result.error.message).toContain("the after step failed");
+			expect(ran.tables).toEqual(["schema_migrations_probe"]);
+			expect(ran.versions).toBe(0);
+		});
 	});
 });
 
