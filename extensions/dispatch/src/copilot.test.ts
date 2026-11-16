@@ -63,9 +63,11 @@ describe("the copilot files", () => {
 		expect(SETUP).toContain(
 			"write the files without asking, then show the content of each one",
 		);
-		expect(SETUP).toContain("If .agents/skills/dispatch/ already exists");
-		expect(SETUP).toContain("show the diff");
-		expect(SETUP).toContain("write nothing without an explicit yes");
+		const existing = SETUP.split(/(?<=\.)\s+/).find((sentence) =>
+			sentence.startsWith("If .agents/skills/dispatch/ already exists"),
+		);
+		expect(existing).toContain("show the diff");
+		expect(existing).toContain("write nothing without an explicit yes");
 	});
 });
 
@@ -140,7 +142,7 @@ describe("setting up a dispatch skill", () => {
 		for (const path of ["SKILL.md", "references/issue-template.md"]) {
 			expect(prose(path)).toContain("no assignee");
 			expect(prose(path)).toContain("no state beyond done");
-			expect(prose(path)).toContain("subtask");
+			expect(prose(path)).toContain("if it needs any of those, it's a subtask");
 		}
 	});
 
@@ -178,16 +180,14 @@ describe("grilling the human", () => {
 	});
 
 	it("re-reads the issue before recording, because a handle can shift under sync", () => {
-		expect(GRILLING).toContain("before recording");
-		expect(GRILLING).toContain("re-read");
-		expect(GRILLING).toContain("kabane_questions");
-		expect(GRILLING).toContain("its id");
+		expect(GRILLING).toContain("before recording, re-read that issue");
+		expect(GRILLING).toContain("with kabane_questions and its id");
 		expect(grill()).toContain(
 			"re-read that issue (`kabane_questions` with its `id`)",
 		);
 		expect(grill()).toContain("same question text");
-		expect(grill()).toContain("use the handle");
-		expect(grill()).toContain("tell the human");
+		expect(grill()).toContain("use the handle that does");
+		expect(grill()).toContain("tell the human what moved");
 	});
 
 	it("records the human's reply as relayed, so the decision is credited to them", () => {
@@ -204,12 +204,10 @@ describe("grilling the human", () => {
 	it("reshapes a question the decision does not fit with replaces, never the nearest choice", () => {
 		expect(GRILLING).toContain("never squeeze");
 		expect(GRILLING).toContain("kabane_ask");
-		expect(GRILLING).toContain("replaces");
-		expect(GRILLING).toContain("handle");
+		expect(GRILLING).toContain("replaces set to its handle");
 		expect(grill()).toContain("do not squeeze");
 		expect(grill()).toContain("kabane_ask");
-		expect(grill()).toContain("replaces");
-		expect(grill()).toContain("handle");
+		expect(grill()).toContain("`replaces` set to its handle");
 	});
 
 	it("asks through the harness's choice prompt, with plain text only the fallback", () => {
