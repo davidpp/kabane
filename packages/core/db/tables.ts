@@ -23,6 +23,7 @@ export const TABLES = {
 	sync_parked_deletes: "sync_parked_deletes",
 	short_id_history: "short_id_history",
 	schema_migrations: "schema_migrations",
+	// Bookkeeping of the module pass, created idempotently, never replicated (`Modules.ensureDeclarations`).
 	module_declarations: "module_declarations",
 } as const;
 

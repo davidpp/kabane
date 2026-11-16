@@ -21,6 +21,13 @@
  * The loser waits on the lock, finds the row already there, and skips the
  * migration instead of running it twice or failing on the key.
  *
+ * BOOKKEEPING TABLES THE RUNNER OWNS are the one exception to "every schema
+ * change is an appended migration": a version table (`ensureVersionTable`,
+ * one per module) and the data modules' `module_declarations`
+ * (`Modules.ensureDeclarations`) are created idempotently, outside any
+ * numbered list, so they never move a schema version. None of them is ever
+ * replicated. Every other schema change is an appended migration.
+ *
  * Migrations are synchronous on purpose. A DO commits a synchronous block
  * atomically, and an `await` inside a bun transaction would commit it early.
  */
@@ -84,12 +91,16 @@ export namespace Migrate {
 		);
 	};
 
-	/** Claim `version` and run `up` in one transaction. False when already claimed. */
+	/**
+	 * Claim `version`, run `up` and then `after` in one transaction. False when
+	 * already claimed.
+	 */
 	const applyOne = (
 		db: Db,
 		table: string,
 		version: number,
 		migration: Migration,
+		after: AfterEach | undefined,
 	): boolean =>
 		db.transaction(() => {
 			const claimed = db.run(
@@ -98,8 +109,16 @@ export namespace Migrate {
 			);
 			if (claimed.changes === 0) return false;
 			migration.up(db);
+			after?.(db, version);
 			return true;
 		})();
+
+	/**
+	 * Bookkeeping that must move with each migration: it runs inside that
+	 * migration's transaction, after `up`, with the version just applied, and a
+	 * throw rolls both back.
+	 */
+	export type AfterEach = (db: Db, version: number) => void;
 
 	/**
 	 * Bring `db` up to `migrations.length`. A second call is a read of the
@@ -112,6 +131,7 @@ export namespace Migrate {
 		db: Db,
 		migrations: readonly Migration[],
 		table: string = TABLES.schema_migrations,
+		after?: AfterEach,
 	): Result<Report> => {
 		const prepared = trySync(() => {
 			ensureVersionTable(db, table);
@@ -132,7 +152,9 @@ export namespace Migrate {
 		for (const [index, migration] of migrations.entries()) {
 			const version = index + 1;
 			if (version <= from) continue;
-			const outcome = trySync(() => applyOne(db, table, version, migration));
+			const outcome = trySync(() =>
+				applyOne(db, table, version, migration, after),
+			);
 			if (!outcome.ok) {
 				return err(
 					new Error(

@@ -90,8 +90,8 @@ describe("Migrations on a fresh database", () => {
 		expect(again).toEqual({
 			ok: true,
 			value: {
-				from: Migrations.LIST.length,
-				to: Migrations.LIST.length,
+				from: Migrations.SCHEMA_VERSION,
+				to: Migrations.SCHEMA_VERSION,
 				applied: [],
 			},
 		});
@@ -101,7 +101,7 @@ describe("Migrations on a fresh database", () => {
 		await withDb((db) =>
 			db.run(
 				`INSERT INTO ${TABLES.schema_migrations} (version, name, applied_at) VALUES (?, 'from-the-future', ?)`,
-				[Migrations.LIST.length + 1, NOW],
+				[Migrations.SCHEMA_VERSION + 1, NOW],
 			),
 		);
 		const init = await Planner.init(base);
@@ -627,49 +627,24 @@ describe("Migrations when several processes boot one database at once", () => {
 	});
 });
 
-describe("Migration 11: module declarations, a device-local table", () => {
+describe("module_declarations, bookkeeping of the module pass", () => {
 	afterEach(() => rmSync(base, { recursive: true, force: true }));
 
-	it("adds an empty table to a database at version 10, keeps every row readable, and leaves the wire schema at 10", async () => {
+	it("is created on a database every migration already ran on, moves no version, and leaves every row readable", async () => {
 		base = freshBase("declarations");
 		await withDb((db) => {
-			const at10 = Migrate.run(db, Migrations.LIST.slice(0, 10));
-			if (!at10.ok) throw at10.error;
+			const all = Migrate.run(db, Migrations.LIST);
+			if (!all.ok) throw all.error;
 		});
 		const task = await Planner.addTask(base, { title: "kept", kind: "issue" });
 		if (!task.ok) throw task.error;
-		const comment = await Planner.addComment(base, {
-			taskId: task.value.id,
-			author: "david",
-			authorType: "human",
-			content: "kept too",
-		});
-		if (!comment.ok) throw comment.error;
+		expect(await tableNames()).not.toContain(TABLES.module_declarations);
 
 		await mustInit(base);
 
+		expect(await tableNames()).toContain(TABLES.module_declarations);
 		expect(await versionRows()).toEqual(ALL_VERSIONS);
-		expect(ALL_VERSIONS.at(-1)).toEqual({
-			version: 11,
-			name: "module-declarations",
-		});
-		expect(
-			await withDb((db) =>
-				db
-					.query<{ n: number }, []>(
-						`SELECT COUNT(*) AS n FROM ${TABLES.module_declarations}`,
-					)
-					.get(),
-			),
-		).toEqual({ n: 0 });
 		const kept = await Planner.getTask(base, task.value.id);
 		expect(kept.ok && kept.value?.title).toBe("kept");
-		const comments = await Planner.getComments(base, task.value.id);
-		expect(comments.ok && comments.value.map((c) => c.content)).toEqual([
-			"kept too",
-		]);
-		// Nothing an op carries changed, so a device on the build before this one
-		// still reads every op this one pushes.
-		expect(Migrations.SCHEMA_VERSION).toBe(10);
 	});
 });

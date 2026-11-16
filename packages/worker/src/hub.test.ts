@@ -34,6 +34,8 @@ describe("CabaneHub boot", () => {
 		expect(tables).toContain("tasks_fts");
 		expect(tables).toContain("agent_sessions");
 		expect(tables).toContain("sync_oplog");
+		// The module pass's bookkeeping, created outside the numbered migrations.
+		expect(tables).toContain("module_declarations");
 		expect(await h.taskCount()).toBe(0);
 	});
 });

@@ -374,50 +374,81 @@ export namespace Modules {
 	export const versionTable = (name: string): string => versionTableName(name);
 
 	/**
-	 * Write `module`'s declaration to the device-local `module_declarations`
-	 * when it differs from the one recorded: the first time the module
-	 * registers, and whenever its migrations move or its tables change. A boot
-	 * that changes nothing only reads.
+	 * Create `module_declarations` if it is missing. Bookkeeping of the module
+	 * pass, like each module's version table: created idempotently outside the
+	 * numbered migrations, so it moves no schema version, and never replicated.
+	 */
+	export const ensureDeclarations = (db: Db): Result<void> =>
+		trySync(() => {
+			db.run(
+				`CREATE TABLE IF NOT EXISTS ${TABLES.module_declarations} (
+				   tbl TEXT PRIMARY KEY,
+				   module TEXT NOT NULL,
+				   module_schema INTEGER NOT NULL,
+				   family TEXT NOT NULL,
+				   clock TEXT,
+				   child_of_tasks INTEGER NOT NULL
+				 )`,
+			);
+		});
+
+	/**
+	 * Write `module`'s declaration at `schema` when it differs from the one
+	 * recorded, inside the caller's transaction: the migration runner calls it in
+	 * the transaction of each migration it applies. Throws on a database error.
+	 */
+	export const recordIn = (
+		db: Db,
+		module: KabaneModule,
+		schema: number,
+	): void => {
+		const wanted: DeclarationRow[] = (module.syncTables ?? [])
+			.map((spec) => ({
+				tbl: spec.table,
+				module: module.name,
+				module_schema: schema,
+				family: spec.family,
+				clock: spec.clock ?? null,
+				child_of_tasks: spec.childOfTasks ? 1 : 0,
+			}))
+			.sort(byTable);
+		const held = db
+			.query<DeclarationRow, [string]>(
+				`SELECT tbl, module, module_schema, family, clock, child_of_tasks
+				   FROM ${TABLES.module_declarations} WHERE module = ?`,
+			)
+			.all(module.name)
+			.sort(byTable);
+		if (JSON.stringify(held) === JSON.stringify(wanted)) return;
+		db.run(`DELETE FROM ${TABLES.module_declarations} WHERE module = ?`, [
+			module.name,
+		]);
+		for (const row of wanted)
+			db.run(
+				`INSERT OR REPLACE INTO ${TABLES.module_declarations}
+				   (tbl, module, module_schema, family, clock, child_of_tasks)
+				 VALUES (?, ?, ?, ?, ?, ?)`,
+				[
+					row.tbl,
+					row.module,
+					row.module_schema,
+					row.family,
+					row.clock,
+					row.child_of_tasks,
+				],
+			);
+	};
+
+	/**
+	 * `recordIn` at the module's own schema, in a transaction of its own: for a
+	 * boot where no migration moved, so the first registration on a database
+	 * that predates the table, or a change to its tables. One that changes
+	 * nothing only reads.
 	 */
 	export const record = (db: Db, module: KabaneModule): Result<void> =>
-		trySync(() => {
-			const wanted: DeclarationRow[] = (module.syncTables ?? [])
-				.map((spec) => ({
-					tbl: spec.table,
-					module: module.name,
-					module_schema: schemaOf(module),
-					family: spec.family,
-					clock: spec.clock ?? null,
-					child_of_tasks: spec.childOfTasks ? 1 : 0,
-				}))
-				.sort((a, b) => a.tbl.localeCompare(b.tbl));
-			const held = db
-				.query<DeclarationRow, [string]>(
-					`SELECT tbl, module, module_schema, family, clock, child_of_tasks
-					   FROM ${TABLES.module_declarations} WHERE module = ? ORDER BY tbl`,
-				)
-				.all(module.name);
-			if (JSON.stringify(held) === JSON.stringify(wanted)) return;
-			db.transaction(() => {
-				db.run(`DELETE FROM ${TABLES.module_declarations} WHERE module = ?`, [
-					module.name,
-				]);
-				for (const row of wanted)
-					db.run(
-						`INSERT OR REPLACE INTO ${TABLES.module_declarations}
-						   (tbl, module, module_schema, family, clock, child_of_tasks)
-						 VALUES (?, ?, ?, ?, ?, ?)`,
-						[
-							row.tbl,
-							row.module,
-							row.module_schema,
-							row.family,
-							row.clock,
-							row.child_of_tasks,
-						],
-					);
-			})();
-		});
+		trySync(() =>
+			db.transaction(() => recordIn(db, module, schemaOf(module)))(),
+		);
 
 	/**
 	 * The recorded declarations of modules this process has not registered:
@@ -440,6 +471,10 @@ export namespace Modules {
 				childOfTasks: row.child_of_tasks === 1,
 			}));
 }
+
+/** One ordering for both sides of the comparison: code units, as SQLite's BINARY would. */
+const byTable = (a: { tbl: string }, b: { tbl: string }): number =>
+	a.tbl < b.tbl ? -1 : a.tbl > b.tbl ? 1 : 0;
 
 /** A row of `module_declarations`. */
 type DeclarationRow = {

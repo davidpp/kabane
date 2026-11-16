@@ -127,20 +127,12 @@ const dropTable = (db: Db, table: string): void => {
 	db.run(`DROP TABLE IF EXISTS ${table}`);
 };
 
-/**
- * A core migration. `deviceLocal` marks one that changes only tables that never
- * replicate, so nothing an op carries changes and it does not count toward
- * `SCHEMA_VERSION`: a device a version behind still reads every op this one
- * pushes.
- */
-type CoreMigration = Migrate.Migration & { deviceLocal?: true };
-
 export namespace Migrations {
 	/**
 	 * Append-only. Version = index + 1. A migration may be any SQL, including a
 	 * backfill or a table rebuild.
 	 */
-	export const LIST: readonly CoreMigration[] = [
+	export const LIST: readonly Migrate.Migration[] = [
 		{
 			name: "baseline",
 			up: (db) => {
@@ -298,67 +290,50 @@ export namespace Migrations {
 			name: "scope-scheme",
 			up: ScopeScheme.migrate,
 		},
-		{
-			// What capture needs from a data module, kept as data (JCAB-323): its
-			// name, schema version and each replicated table's family, clock and
-			// `childOfTasks`, written when the module registers or migrates
-			// (`Modules.record`). A task delete then captures the deletes of rows
-			// in a module this process has not registered (an extension disabled
-			// or failing to load) from the declaration instead of its code.
-			// Machine-local: never captured, never replicated.
-			name: "module-declarations",
-			deviceLocal: true,
-			up: (db) => {
-				db.run(
-					`CREATE TABLE IF NOT EXISTS ${TABLES.module_declarations} (
-					   tbl TEXT PRIMARY KEY,
-					   module TEXT NOT NULL,
-					   module_schema INTEGER NOT NULL,
-					   family TEXT NOT NULL,
-					   clock TEXT,
-					   child_of_tasks INTEGER NOT NULL
-					 )`,
-				);
-			},
-		},
 	];
 
 	/**
-	 * The schema version this build writes: the migrations that change what an
-	 * op carries, so every one but the `deviceLocal` ones. It rides on every
-	 * pushed op, and a device on an older schema stops pulling at the first op
-	 * above its own. It is not the database's version, which counts every
-	 * migration (`LIST.length`).
+	 * The schema version this build writes. It rides on every pushed op, and a
+	 * device on an older schema stops pulling at the first op above its own.
 	 */
-	export const SCHEMA_VERSION = LIST.filter(
-		(migration) => !migration.deviceLocal,
-	).length;
+	export const SCHEMA_VERSION = LIST.length;
 
-	/** Bring `db` up to `LIST.length`, or say which migration failed. */
+	/** Bring `db` up to `SCHEMA_VERSION`, or say which migration failed. */
 	export const apply = (db: Db): Result<Migrate.Report> =>
 		Migrate.run(db, LIST);
 
 	/**
 	 * Bring each registered module up to its own list, in registration order,
-	 * after core, and record its declaration. Each records its versions in its
-	 * own table, so a module migrating never moves `SCHEMA_VERSION`, and a
-	 * database a newer build of a module migrated is refused for that module the
-	 * way core refuses its own.
+	 * after core, and keep its declaration in `module_declarations`. Each records
+	 * its versions in its own table, so a module migrating never moves
+	 * `SCHEMA_VERSION`, and a database a newer build of a module migrated is
+	 * refused for that module the way core refuses its own.
+	 *
+	 * `module_declarations` is bookkeeping this pass owns, like each module's
+	 * version table: created here if missing, outside the numbered list, never
+	 * replicated (`Modules.record`).
 	 */
 	export const applyModules = (
 		db: Db,
 		modules: readonly KabaneModule[],
 	): Result<void> => {
+		const ready = Modules.ensureDeclarations(db);
+		if (!ready.ok) return ready;
 		for (const module of modules) {
 			// Run for an empty list too: a database a build of this module with
-			// migrations has opened must still be refused by one without.
+			// migrations has opened must still be refused by one without. Each
+			// migration that runs records the declaration in its own transaction.
 			const ran = Migrate.run(
 				db,
 				module.migrations ?? [],
 				Modules.versionTable(module.name),
+				(tx, version) => Modules.recordIn(tx, module, version),
 			);
 			if (!ran.ok)
 				return err(new Error(`module "${module.name}": ${ran.error.message}`));
+			// Nothing moved: the declaration may still be new (a module registered
+			// on a database that predates the table) or changed (its tables did).
+			if (ran.value.applied.length > 0) continue;
 			const recorded = Modules.record(db, module);
 			if (!recorded.ok)
 				return err(

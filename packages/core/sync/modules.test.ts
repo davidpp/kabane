@@ -23,7 +23,7 @@ import { SqliteDb } from "@cabane/sqlite";
 import { ulid } from "ulid";
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
-import type { KabaneModule } from "../module";
+import { type KabaneModule, Modules } from "../module";
 import { err, ok } from "../result";
 import { Runtime, withDb as runWithDb } from "../runtime";
 import { TABLES } from "../storage/helpers";
@@ -364,7 +364,7 @@ describe("a module's migrations", () => {
 				)
 				.all(),
 		}));
-		expect(versions.core).toBe(Migrations.LIST.length);
+		expect(versions.core).toBe(Migrations.SCHEMA_VERSION);
 		expect(versions.notes).toEqual([
 			{ version: 1, name: "create-task-notes" },
 			{ version: 2, name: "pin-task-notes" },
@@ -406,6 +406,52 @@ describe("a module's migrations", () => {
 		expect(await declarations(upgraded)).toEqual([
 			{ ...first, module_schema: 2 },
 		]);
+	});
+
+	it("compare declarations in one ordering, so an unchanged boot of mixed-case tables writes nothing", async () => {
+		const alpha = await createDevice("alpha", [notes()]);
+		const mixed: KabaneModule = {
+			name: "mixed",
+			syncTables: ["a_y", "B_x"].map((table) => ({
+				table,
+				family: "row-lww",
+				clock: "updated_at",
+				childOfTasks: false,
+			})),
+		};
+		const changes = () =>
+			as(alpha, (db) => {
+				const recorded = Modules.record(db, mixed);
+				if (!recorded.ok) throw recorded.error;
+				return db.query<{ n: number }, []>("SELECT total_changes() AS n").get()
+					?.n;
+			});
+		expect(await changes()).toBe(2);
+		expect(await changes()).toBe(0);
+	});
+
+	it("record the declaration in the transaction of the migration that moved it", async () => {
+		const alpha = await createDevice("alpha", [notes()]);
+		const failing: Migrate.Migration = {
+			name: "fails",
+			up: () => {
+				throw new Error("the second migration fails");
+			},
+		};
+		register([notes([CREATE_NOTES, PIN_NOTES, failing])]);
+		const init = await Planner.init(alpha.base);
+		expect(init.ok).toBe(false);
+		// PIN_NOTES committed with its declaration at schema 2; the failed third left it there.
+		const schema = await as(
+			alpha,
+			(db) =>
+				db
+					.query<{ module_schema: number }, []>(
+						`SELECT module_schema FROM ${TABLES.module_declarations} WHERE tbl = '${NOTES}'`,
+					)
+					.get()?.module_schema,
+		);
+		expect(schema).toBe(2);
 	});
 
 	it("refuse a database a newer build of the module migrated, naming the module", async () => {
