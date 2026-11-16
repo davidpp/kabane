@@ -331,10 +331,12 @@ export namespace LoopConfig {
 			harness,
 			launchOverrides(config, harness, own),
 		);
+		// An unset leaves `{}` behind, which replaces nothing.
+		const set = config.harnesses[harness];
 		const from =
 			own !== undefined
 				? "the runner's own overrides"
-				: config.harnesses[harness]
+				: set?.command !== undefined || set?.args !== undefined
 					? `loop.harnesses.${harness}`
 					: "the pinned adapter";
 		return { command, args, from };

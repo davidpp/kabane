@@ -233,6 +233,10 @@ describe("LoopConfig harnesses", () => {
 			args: ["--local"],
 			from: "loop.harnesses.claude",
 		});
+		// What `config unset loop.harnesses.claude.command` leaves.
+		expect(
+			LoopConfig.launch({ harnesses: { claude: {} } }, "claude").from,
+		).toBe("the pinned adapter");
 		const pinned = LoopConfig.launch({ harnesses: {} }, "claude");
 		expect([pinned.command, pinned.from]).toEqual([
 			"npx",
