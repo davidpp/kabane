@@ -39,7 +39,7 @@ it("adds, ticks, edits and lists an issue's checklist, with the receipts the MCP
 	expect((await kabane(["checklist", label])).text).toBe(
 		`No checklist items on ${label}.`,
 	);
-	expect((await kabane(["checklist", "add", label, "Write", "it"])).text).toBe(
+	expect((await kabane(["checklist", "add", label, "Write it"])).text).toBe(
 		`${label} 0/1 · added ${label}.1`,
 	);
 	expect(
@@ -78,4 +78,33 @@ it("adds, ticks, edits and lists an issue's checklist, with the receipts the MCP
 	const question = await kabane(["checklist", "tick", `${label}:2`]);
 	expect(question.exitCode).toBe(1);
 	expect(question.text).toContain(`reads ${label}.2`);
+});
+
+it("adds one item per argument, in order, at the position --at names", async () => {
+	const { home, kabane } = await device();
+	const task = unwrap(
+		await Planner.addTask(home, { title: "Steps", kind: "issue" }),
+	);
+	const label = task.shortId ?? task.id;
+
+	expect(
+		(await kabane(["checklist", "add", label, "write the test", "fix it"]))
+			.text,
+	).toBe(`${label} 0/2 · added ${label}.1, ${label}.2`);
+	expect(
+		(await kabane(["checklist", "add", label, "a", "b", "--at", "2"])).text,
+	).toBe(`${label} 0/4 · added ${label}.3, ${label}.4`);
+	const listed = await kabane(["checklist", label, "--json"]);
+	const { items } = listed.json as { items: ChecklistItemView[] };
+	expect(items.map((item) => [item.handle, item.text])).toEqual([
+		[`${label}.1`, "write the test"],
+		[`${label}.3`, "a"],
+		[`${label}.4`, "b"],
+		[`${label}.2`, "fix it"],
+	]);
+
+	const empty = await kabane(["checklist", "add", label, "c", " "]);
+	expect(empty.exitCode).toBe(2);
+	expect(empty.text).toContain("An item's text cannot be empty");
+	expect((await kabane(["checklist", "add", label])).exitCode).toBe(2);
 });

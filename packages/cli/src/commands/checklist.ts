@@ -17,7 +17,7 @@ import type { Command, Ctx } from "../context";
 
 const USAGE = [
 	"kabane checklist <id> [--json]",
-	"kabane checklist add <id> <text…> [--at <n>]",
+	'kabane checklist add <id> <item…> [--at <n>]   one item per argument: quote a text of several words ("write the test")',
 	"kabane checklist tick <item…> [--undo]",
 	"kabane checklist edit <item> [<text…>] [--at <n>] [--remove]",
 ].join("\n       ");
@@ -38,15 +38,16 @@ const valued = (args: ParsedArgs, flag: string): Outcome | undefined =>
 		: usage(`--${flag} takes no value; put it after the items`, USAGE);
 
 const add = async (rest: string[], args: ParsedArgs, store: string) => {
-	const [id, ...words] = rest;
-	const text = words.join(" ").trim();
-	if (!id || !text)
-		return usage("An issue id and the item's text are required", USAGE);
+	const [id, ...texts] = rest;
+	const items = texts.map((text) => text.trim());
+	if (!id || !items.length)
+		return usage("An issue id and at least one item are required", USAGE);
+	if (items.includes("")) return usage("An item's text cannot be empty", USAGE);
 	const at = position(args);
 	if (typeof at === "object") return at;
 	const change = await Checklist.add(store, {
 		id,
-		items: [text],
+		items,
 		position: at,
 	});
 	return change.ok

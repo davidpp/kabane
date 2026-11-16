@@ -304,7 +304,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `questions [<id>]` | `--all` (include answered and withdrawn) `--scope <uri>` `--limit <n>` `--cursor <cursor>` — open questions for the directory's scope or one issue, a bounded page as `kabane_questions` prints it; `--json` is the same page as `{ items, hasMore, nextCursor }`. Pass `nextCursor` back as `--cursor` with the same filters, in either output |
 | `answer <handle> <answer…>` | `--reason <text>` (why you chose it); or `--withdraw --reason <text>` — answer `JCAB-12:1` or `id:<ULID>` (a choice by its full text or its label, `B` for "B. One tree", ignoring case; a comma list for multi-select); the full text is recorded, and an unknown choice exits 1 listing the valid ones. The last answer moves a waiting issue to next |
 | `log <id>` | `--ref <type:value>` (repeatable) `--commit <sha>` `--branch <name>` `--pr <owner/repo#n>` `--url` `--session` `--file` `--note` |
-| `checklist <id>` | the issue's checklist, as the brief's `checklist.items` section prints it; `--json` gives `{ items }`. `checklist add <id> <text…>` `--at <n>` (1-based; default the end), `checklist tick <item…>` `--undo`, `checklist edit <item> [<text…>]` `--at <n>` `--remove` — an item is its handle `JCAB-12.3` or its ULID |
+| `checklist <id>` | the issue's checklist, as the brief's `checklist.items` section prints it; `--json` gives `{ items }`. `checklist add <id> <item…>` `--at <n>` (one item per argument, so quote a text of several words; 1-based; default the end), `checklist tick <item…>` `--undo`, `checklist edit <item> [<text…>]` `--at <n>` `--remove` — an item is its handle `JCAB-12.3` or its ULID |
 | `handoff <id>` | the issue's latest handoff, as the brief's `handoff.latest` section prints it; `--all` every one, oldest first; `--json` gives `{ handoffs }`, the entries. `handoff <id> --from <file\|->` records one whose body is the markdown in the file (`-` reads stdin); `handoff --template` prints the template |
 | `context <id>` | `--no-deref` `--no-subtasks` `--format concise\|full` `--sections metadata,description,handoff.latest,checklist.items,upstream,position,context,priorWork,discussion,questions.decisions` `--cursor <cursor>` — lossless bounded selected markdown in concise mode; complete legacy brief otherwise. Core's sections, each registered module's after the one it names (`checklist.items` after the description, `questions.decisions` after the discussion), and a `<kind>.latest` section (`handoff.latest`, after the description and before `checklist.items`) for each entry kind a module lifts out of the discussion |
 | `scope` | `--json` — resolve the current directory without device setup: `{ scopeUri, baseUri, scopeId, name, root, extensions }`; `scopeUri` includes branch/package extensions, `baseUri` omits them. Outside a project: `{ "scopeUri": null }`, exit 0. Text: `name · scopeUri · root` |
@@ -351,14 +351,15 @@ assignee, no state beyond done, and no brief; if it needs any of those, it's a s
 (`kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`) return:
 
 ```
-$ kabane checklist add JCAB-12 Write the migration
-JCAB-12 0/1 · added JCAB-12.1
+$ kabane checklist add JCAB-12 "Write the migration" "Run it on a copy"
+JCAB-12 0/2 · added JCAB-12.1, JCAB-12.2
 $ kabane checklist tick JCAB-12.1
-JCAB-12 1/1 · ticked JCAB-12.1
+JCAB-12 1/2 · ticked JCAB-12.1
 $ kabane checklist JCAB-12
-## Checklist 1/1
+## Checklist 1/2
 
 - [x] JCAB-12.1 Write the migration id:01K9Z3V4Q8M2D6E7F8G9H0J1K2
+- [ ] JCAB-12.2 Run it on a copy id:01K9Z3V4Q8M2D6E7F8G9H0J1K3
 ```
 
 `JCAB-12.3` counts every item ever added to the issue, so moving or removing one renumbers
