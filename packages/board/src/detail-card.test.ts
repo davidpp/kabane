@@ -78,10 +78,36 @@ describe("X on an issue's detail", () => {
 		expect(press(onDetail(), typed("X")).effect).toEqual(act);
 	});
 
+	it("stops an idle run, which reports completed yet still offers stop", () => {
+		const idle = onDetail([run({ status: "completed" })]);
+		expect(press(idle, SHIFT_X).effect).toEqual({
+			type: "act",
+			cardId: "recipes:run-1",
+			actionId: "stop",
+		});
+		expect(DetailCard.stoppable(idle)).toBe("review");
+	});
+
+	it("stops the newest card that offers stop, past a newer one that offers none", () => {
+		const state = onDetail([
+			run({
+				id: "recipes:run-2",
+				status: "stopped",
+				actions: [{ id: "open", key: "p", label: "open" }],
+			}),
+			run(),
+		]);
+		expect(press(state, SHIFT_X).effect).toEqual({
+			type: "act",
+			cardId: "recipes:run-1",
+			actionId: "stop",
+		});
+	});
+
 	it("does nothing without a card to stop, and never cancels the task in its place", () => {
 		for (const cards of [
 			[],
-			[run({ status: "completed" })],
+			[run({ status: "stopped", actions: [] })],
 			[run({ actions: [{ id: "open", key: "p", label: "open" }] })],
 			[run({ taskShortId: "MILL-9" })],
 			[run({ tab: true })],
@@ -146,10 +172,10 @@ describe("the detail's footer", () => {
 			),
 		);
 
-	it("names the card X stops while it runs, and drops it once it ends", () => {
+	it("names the card X stops while it offers stop, and drops it once the host stops offering it", () => {
 		expect(footer(onDetail())).toContain("X stop review");
-		expect(footer(onDetail([run({ status: "stopped" })]))).not.toContain(
-			"X stop",
-		);
+		expect(
+			footer(onDetail([run({ status: "stopped", actions: [] })])),
+		).not.toContain("X stop");
 	});
 });

@@ -162,9 +162,10 @@ all-lanes view, one of the card's `liveLanes` (every lane when the host lists no
 there; with several, its prompt opens aimed at the first and `tab`/`⇧tab` walk the others; with none
 the footer leaves it out. One with no prompt and several to choose from asks for a lane (`h/l`).
 
-A card without a tab is acted on from its task's detail instead, the newest such card still in
-flight. There `x` cancels the task, so `X` runs the card's `stop` (the footer says `X stop
-<label>`), and does nothing when there is nothing to stop. Its other actions answer under their own
+A card without a tab is acted on from its task's detail instead. There `x` cancels the task, so `X`
+runs the `stop` of the newest such card that offers one (the footer says `X stop <label>`), whatever
+its status: an idle run reports `completed` and can still be stopped. With no card offering `stop`,
+`X` does nothing. Its other actions answer under their own
 key where the detail has none (`h/l`, `j/k`, `g/G`, `J/K`, `space`, `enter`, `r`, `o`, `O`, `v`,
 `y`, `m`, `a`, `n`, `s`, `x`, `b`, `d`, `u`, `q`, the digits, the everywhere keys); one with
 `lane: true` is not offered there, as the detail has no lane to aim it at.

@@ -36,18 +36,22 @@ export namespace DetailCard {
 		"right",
 	]);
 
-	/** The open task's in-flight card without a tab that offers actions, the newest first. */
-	const cardOf = (state: State): Card | undefined => {
-		if (state.view.type !== "detail") return undefined;
+	/**
+	 * The open task's cards without a tab that offer actions, the newest first. Whether the run is in
+	 * flight is the host's call: it offers `stop` while there is something to stop, idle runs included,
+	 * which report `completed` yet still sit open.
+	 */
+	const cardsOf = (state: State): Card[] => {
+		if (state.view.type !== "detail") return [];
 		const { taskId } = state.view;
 		const shortId = BoardNav.taskById(state, taskId)?.shortId;
-		for (const [id, card] of state.tabs.loose) {
-			const ours =
-				card.taskId === taskId ||
-				(shortId !== undefined && card.taskShortId === shortId);
-			if (ours && !card.finished) return { id, card };
-		}
-		return undefined;
+		return [...state.tabs.loose]
+			.filter(
+				([, card]) =>
+					card.taskId === taskId ||
+					(shortId !== undefined && card.taskShortId === shortId),
+			)
+			.map(([id, card]) => ({ id, card }));
 	};
 
 	const actionsOf = (card: BoardTabs.TabCard): readonly CardAction[] =>
@@ -59,6 +63,24 @@ export namespace DetailCard {
 
 	const stopOf = (card: BoardTabs.TabCard): CardAction | undefined =>
 		actionsOf(card).find((action) => action.id === STOP_ACTION);
+
+	const othersOf = (card: BoardTabs.TabCard): readonly CardAction[] =>
+		actionsOf(card).filter((action) => action.id !== STOP_ACTION);
+
+	/** The newest card `X` stops, with its stop. */
+	const stopping = (
+		state: State,
+	): { id: string; card: BoardTabs.TabCard; stop: CardAction } | undefined => {
+		for (const { id, card } of cardsOf(state)) {
+			const stop = stopOf(card);
+			if (stop) return { id, card, stop };
+		}
+		return undefined;
+	};
+
+	/** The newest card that offers an action other than `stop`: the one whose keys the detail lends. */
+	const acting = (state: State): Card | undefined =>
+		cardsOf(state).find(({ card }) => othersOf(card).length > 0);
 
 	const run = (state: State, id: string, action: CardAction): Step =>
 		action.input === undefined
@@ -81,25 +103,20 @@ export namespace DetailCard {
 		// OpenTUI names `X` as `x` with shift; some terminals send the letter itself.
 		const typed =
 			key.sequence ?? (key.shift ? key.name.toUpperCase() : key.name);
-		const found = cardOf(state);
 		if (typed === STOP_KEY) {
-			const stop = found && stopOf(found.card);
-			return found && stop
-				? run(state, found.id, stop)
+			const found = stopping(state);
+			return found
+				? run(state, found.id, found.stop)
 				: { state, effect: { type: "none" } };
 		}
-		if (!found) return null;
-		const action = actionsOf(found.card).find(
-			(a) => a.id !== STOP_ACTION && a.key === typed,
-		);
-		return action ? run(state, found.id, action) : null;
+		const found = acting(state);
+		const action = found && othersOf(found.card).find((a) => a.key === typed);
+		return found && action ? run(state, found.id, action) : null;
 	};
 
 	/** What the detail's `X` hint names: the label of the card it stops, while there is one. */
-	export const stoppable = (state: State): string | undefined => {
-		const found = cardOf(state);
-		return found && stopOf(found.card) ? found.card.label : undefined;
-	};
+	export const stoppable = (state: State): string | undefined =>
+		stopping(state)?.card.label;
 
 	/**
 	 * The footer's hints for the card's own actions, `stop` left to the registry's `X`. Only while the
@@ -107,11 +124,12 @@ export namespace DetailCard {
 	 */
 	export const hints = (state: State): Keymap.Hint[] => {
 		if (BoardNav.keyContext(state) !== "detail") return [];
-		const found = cardOf(state);
+		const found = acting(state);
 		return found
-			? actionsOf(found.card)
-					.filter((action) => action.id !== STOP_ACTION)
-					.map((action) => ({ key: action.key, label: action.label }))
+			? othersOf(found.card).map((action) => ({
+					key: action.key,
+					label: action.label,
+				}))
 			: [];
 	};
 }
