@@ -521,38 +521,61 @@ type Extension = {
 
 ### Every process that opens the database registers the same modules
 
-Today the CLI registers a fixed module list once per process (`packages/cli/src/context.ts:54`,
-`:61-62`) and imports an extension only when a command or the board needs it, so `kabane list`
-loads no extension code (`resolveCommand` in `packages/cli/src/main.ts`). An extension's modules
-cannot follow that. `Oplog.cascadeOf` finds the module tables a task delete cascades into through the
-registered modules (`packages/core/storage/oplog.ts:225-231`), so a process without the module
-would delete a task without capturing those rows' deletes; it would also change a task's state
-without the module's `onTaskStateChange`, and park on a pull the ops it could apply. So every
-process that opens the database, `kabane list` included, registers every enabled extension's
-modules before `Runtime.configure`.
+Before JCAB-323 the CLI registered a fixed module list once per process and imported an extension
+only when a command or the board needed it, so `kabane list` loaded no extension code
+(`resolveCommand` in `packages/cli/src/main.ts`). An extension's modules cannot follow that.
+`Oplog.cascadeOf` finds the module tables a task delete cascades into through the registered
+modules, so a process without the module would delete a task without capturing those rows'
+deletes; it would also change a task's state without the module's `onTaskStateChange`, and park
+on a pull the ops it could apply. So every process that opens the database, `kabane list`
+included, registers every enabled extension's modules with `Runtime.configure`.
 
 To keep the rest of the extension off that path, the manifest names the modules as an entry of
 their own, `"kabane": { "modules": "./modules.ts" }`, whose default export is
-`(host) => KabaneModule[]`. `openContext` (`packages/cli/src/context.ts:72-93`) then runs in
-stages:
+`(host) => KabaneModule[]`. `openContext` and `doctor` run these stages through
+`registerModules` (`packages/cli/src/context.ts`) and then `Planner.init`:
 
-1. Read the device config and, for each enabled extension, its manifest; check `api`.
-2. Build `host`. Every member but `record` and `store` works now; those two return an `err`
-   ("the runtime is not configured yet") if called.
+1. Read the device config and, for each enabled extension, its manifest; check `api`
+   (`Extensions.modules` in `packages/cli/src/extensions.ts`, kept apart from the main entry's
+   loader because its failures stop instead of refusing).
+2. Build `host`, one per extension per process (`hostFor` in `packages/cli/src/host.ts`). Every
+   member but `record` and `store` works now; those two return an `err` ("the runtime is not
+   configured yet") if called, and keep doing so while any factory of that host runs.
 3. Import each modules entry and call its factory with `host`. The factory only builds module
-   objects; the `host.store` calls inside them run later.
-4. `Runtime.configure` with the first-party modules, then the extensions' in `extensions` order.
-5. `Planner.init`, which migrates core and every module.
+   objects; the `host.store` calls inside them run later. The tables they declare are the only
+   ones that host's `store` captures.
+4. `Runtime.configure` with the first-party modules, then the extensions' in `extensions` order,
+   one extension at a time so a refused set names the extension that brought it.
+5. `Planner.init`, which migrates core and every module and records each module's declaration.
 6. `record` and `store` start working. The main entry is imported later, when a command, the
    board, `kabane mcp` or the copilot needs it, and its factory receives the same `host` its
-   modules entry received.
+   modules entry received. An extension's own command resolves its main entry before
+   `openContext`; the host is the same object either way.
 
-That an entry imports only what its module objects need is a convention: nothing stops
-`modules.ts` from importing the extension's board. JCAB-323 measures the whole `openContext` path
-of `kabane list` on main and with one module-bearing extension enabled (manifest reads, the
-entry's transitive imports, the factory, registration, the migration check) and checks the import
-graph of a modules entry in a test. The loop has no modules entry yet, so the test runs on a
-fixture extension's and is wired to the loop's when the loop gains one.
+That an entry imports only what its module objects need is a convention: nothing at runtime stops
+`modules.ts` from importing the extension's board. `scripts/modules-entry.test.ts` walks the
+import graph of a modules entry (syntax only, with the parser `scripts/layers.ts` uses) and fails
+when it reaches the extension's main entry, a `.tsx`, a `commands`/`board*` file, or a board or
+harness-client package. It runs on the fixture extension (`packages/cli/src/extension-fixture.ts`)
+and on every `extensions/*` manifest that names `modules`. The loop has no modules entry yet, so
+it is not checked; the test picks it up the day its manifest names one.
+
+**What it costs `kabane list` (measured 2026-11-15, JCAB-323).** The fixture extension's modules
+entry imports one small file and declares one table. 30 runs per case after 2 warm-ups, cases
+interleaved, each a fresh process on an M4 Pro, while another agent's test suite was running on
+the same machine (load average 5 to 6):
+
+| | `kabane list`, process wall time | `openContext` alone |
+|---|---|---|
+| main (b47bfef), the extension enabled but never imported | median 118.1 ms, p90 122.4 ms | median 4.0 ms, p90 4.1 ms |
+| this change, no extension enabled | median 118.8 ms, p90 124.9 ms | median 4.2 ms, p90 4.3 ms |
+| this change, the extension enabled | median 119.8 ms, p90 123.2 ms | median 5.4 ms, p90 5.6 ms |
+
+`openContext` alone is timed inside the process around the call, after `context.ts` is imported:
+the manifest read, the modules entry's import and its transitive imports, the factory, the
+registration and the migration check, which on a boot that changes nothing only reads. The
+module-bearing extension costs about 1.2 ms of it, inside the noise of the process's wall time.
+An entry that imports more costs more; the import-graph test is what keeps that small.
 
 ### A module that fails to load stops writes; anything else that fails is skipped
 
@@ -569,22 +592,49 @@ consistent only while the module is registered. The rule has two parts:
   whether that module's code is loaded, broken or disabled. What capture needs is data, so it does
   not depend on code being present.
 - **An enabled extension whose modules entry fails stops every process that opens the database.**
-  A manifest that names a modules entry the host cannot import, a factory that throws, or a module
-  set `Runtime.configure` refuses ends `openContext` with one line: the extension, why, and the
-  two ways out, repair it or remove it from `extensions` in `config.json`, by hand or with
-  `kabane config set extensions <list>`. Commands that do not
-  open the database (`kabane --help`, and the commands marked `standalone`: `config`, `init`,
-  `scope`, `update`) still run, so the human can do either. `doctor` runs too: it opens the
-  database only when `config.json` parses, with the first-party modules, so a check can read issues.
-  Writing on in that state would change task states without the module's `onTaskStateChange`, and
-  the human never chose that.
+  A manifest that names a modules entry the host cannot import, a factory that throws or returns
+  no module list, a module set `Runtime.configure` refuses, or an `api` the host does not support
+  on a manifest that names `modules` ends `openContext` with one line: the extension, why, and
+  the two ways out, repair it or remove it from `extensions` in `config.json`, by hand or with
+  `kabane config set extensions <the others> --layer global` (`Extensions.stopLine`). Every
+  command that opens the database stops, `kabane mcp` and the board included. Commands that do
+  not open the database (`kabane --help`, and the commands marked `standalone`: `config`,
+  `init`, `scope`, `update`) still run, so the human can do either. `doctor` runs too: it goes
+  through the same stages, reports the stop as its `kabane/extension-modules` finding instead of
+  opening the store, and runs every check that needs no store. Writing on in that state would
+  change task states without the module's `onTaskStateChange`, and the human never chose that.
+  Any other manifest failure (missing, unreadable, invalid) cannot say whether the extension has
+  modules, so it stays the main entry's refusal.
 
 **Disabling an extension** (removing it from `extensions`) is the human choosing that state. Its
 tables stay, with their rows. Task deletes still capture their cascaded rows through the recorded
 declaration. Its `onTaskStateChange` no longer runs, its tools leave `kabane mcp`, and the ops
 other devices push for its tables park on this device, as for any device that lacks a module
 (`packages/core/module.ts:10-15`). Enabling it again registers the module, and the next pull
-replays what parked. Removing its tables is a separate, explicit step, which JCAB-323 designs.
+replays what parked. Removing its tables is a separate, explicit step, designed below and not
+built.
+
+**Removing a disabled extension's tables (designed in JCAB-323, not built).** A new command,
+`kabane modules forget <module>`, takes a module name as `module_declarations` records it,
+because a disabled or broken extension's code is not loaded and the declarations know modules,
+not extensions; `kabane modules` with no argument lists the recorded modules that are not
+registered, with their tables and row counts. It opens the database through the same stages as
+every other command, so it runs only when every enabled extension's modules load. It refuses:
+
+- a module that is registered, which means its extension is enabled: disable it first;
+- a module with ops parked in `sync_parked`: other devices' writes are waiting for it, so enable
+  it and sync, or accept losing them with `--discard-parked`, which deletes them in the same
+  transaction;
+- a module whose tables have ops in this device's own oplog past `last_pushed_seq`: sync first,
+  so the deletes and writes this device already captured reach the other devices.
+
+Then, in one transaction, it drops each table the declaration names, the module's version table
+(`schema_migrations_<name>`), its `module_declarations` rows and its tables' `sync_parked_deletes`
+rows. It captures nothing: the rows are this device's copy, the other devices keep theirs, and a
+delete op would erase them there. Afterwards the device is one that never had the module: its
+ops park on pull. Enabling it again migrates from version 0 and replays only what parked since,
+so rows nobody wrote after the forget stay absent here; rebuilding them needs the module's ops
+from the start of the log, which no device reads today, and the command says so before it runs.
 
 The alternatives, a read-only mode and refusing writes command by command, are in
 `wiki/extension-api.md`.
@@ -649,8 +699,8 @@ type, though its text can still ask for anything (JCAB-324).
    and the board, `kabane --help` and `kabane mcp` open. A failure of its modules entry stops
    database access instead, as "A module that fails to load stops writes" says.
    `Extensions.loadAll(names, home)` returns `{ loaded, refused }`; callers keep the loaded
-   contributions and report each refusal. Until JCAB-323, manifests naming modules are refused
-   before import and register nothing.
+   contributions and report each refusal. A manifest's modules entry is not the main entry's
+   concern: `Extensions.modules` loads it on the database path, and its failure is the stop.
 6. **A call failure** (a command's `run`, a board port, an MCP handler, a doctor check, a module
    hook) becomes a one-line error naming the extension. A module's `onTaskStateChange` that returns
    `err` rolls back the state change, as a first-party module's does.
@@ -698,9 +748,9 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | Core needs no Bun types | the hub's typecheck and vitest pool, partly: `bun` stays in its `tsconfig.json` | JCAB-326 and JCAB-328 remove `bun` from it, and the hub's typecheck then fails a Bun call on the barrel |
 | A client uses only what another client could | review | the lens (JCAB-325) |
 | An extension imports types only, apart from the harness client it bundles | review | JCAB-326: a check on the loop's imports |
-| A modules entry imports only what its module objects need | review | JCAB-323: an import-graph test on a fixture extension's modules entry, and on the loop's once it has one |
-| An extension writes only its own tables and changes tasks only through `tx.updateTask` | partly by the kit: capture refuses an undeclared table; raw SQL on `tx.db` is review | JCAB-323 builds the kit |
-| A failed module stops database access; a disabled one's deletes are captured | not built | JCAB-323 (persisted declarations, the stop) |
+| A modules entry imports only what its module objects need | `scripts/modules-entry.test.ts` on the fixture extension and every in-repo manifest naming `modules` (none of the loop's yet); an extension outside the repo, review | built (JCAB-323) |
+| An extension writes only its own tables and changes tasks only through `tx.updateTask` | partly by the kit (`host-store.ts`): capture refuses an undeclared table, and any `err` from a `tx` call rolls the write back; raw SQL on `tx.db` is review | built (JCAB-323) |
+| A failed module stops database access; a disabled one's deletes are captured | `registerModules` and `Extensions.modules` (`extension-modules.test.ts`); `module_declarations` read by `Oplog.cascadeOf` and capture (`packages/core/sync/modules.test.ts`) | built (JCAB-323); removing a disabled extension's tables is designed above, not built |
 | Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts`; Host carries the API 1 members above | built (JCAB-321) |
 | `host` and its typed record wrappers | `host-record.test.ts`, CLI host and directory-extension tests; isolated declaration typecheck | built (JCAB-322) |
 | Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` | built (JCAB-337) |
