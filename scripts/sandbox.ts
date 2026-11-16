@@ -33,17 +33,16 @@
 
 import {
 	existsSync,
-	lstatSync,
 	mkdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
-	symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { Harnesses } from "../packages/acp/src/harnesses";
 import { GitFixture } from "../packages/core/scope/git-fixture";
+import { checkoutExtensions, linkExtensions } from "./link-extensions";
 
 const ROOT = resolve(import.meta.dir, "..");
 const SANDBOX = join(tmpdir(), "kabane-sandbox", basename(ROOT));
@@ -190,18 +189,9 @@ const quietUpdates = (): void => {
 const { own, rest } = splitArgs(process.argv.slice(2));
 if (own.has("--fresh")) rmSync(SANDBOX, { recursive: true, force: true });
 seedRepo();
-const extensions = join(KABANE_HOME, "extensions");
-mkdirSync(extensions, { recursive: true });
 // The checkout's own extensions, linked unless the sandbox installed one of that name: installed,
 // not enabled, as `kabane config set extensions <name> --layer global` would find them.
-for (const name of ["loop", "dispatch", "recipes"]) {
-	const target = join(extensions, name);
-	const installed = lstatSync(target, { throwIfNoEntry: false });
-	if (installed && !(installed.isSymbolicLink() && !existsSync(target)))
-		continue;
-	if (installed) rmSync(target);
-	symlinkSync(join(ROOT, "extensions", name), target);
-}
+linkExtensions(ROOT, KABANE_HOME, checkoutExtensions(ROOT));
 // Codex refuses to start when CODEX_HOME names a directory that does not exist.
 if (own.has("--harnesses"))
 	mkdirSync(join(SANDBOX, ".codex"), { recursive: true });
