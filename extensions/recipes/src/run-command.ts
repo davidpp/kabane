@@ -4,11 +4,19 @@
 import { hostname } from "node:os";
 import { relative } from "node:path";
 import type { Extension, Host, Outcome, ProjectScope } from "@cabane/extension";
-import type { z } from "zod";
 import { Inputs } from "./inputs";
 import { Recipe } from "./recipe";
 import { Runs } from "./runs";
 import type { HcRuntime } from "./runtime-hc";
+
+/** The `recipes` settings namespace. */
+export const settingsSchema = (z: Host["z"]) =>
+	z
+		.object({
+			// The argv the prompt is appended to as its last argument.
+			harness: z.array(z.string().min(1)).min(1).default(["claude"]),
+		})
+		.strict();
 
 const USAGE =
 	"kabane run [<recipe>] [--target <issue>] [--input name=value]... [--json '{\"name\": value}']";
@@ -217,7 +225,7 @@ const launch = async (
 
 export const runCommand = (
 	host: Host,
-	settings: z.ZodTypeAny,
+	settings: ReturnType<typeof settingsSchema>,
 	runtime: HcRuntime.Runtime,
 ): Extension.Command => ({
 	name: "run",
@@ -263,7 +271,7 @@ export const runCommand = (
 			recipe: recipe.value,
 			...(target.value === undefined ? {} : { target: target.value }),
 			inputs: inputs.value,
-			harness: (configured.value as { harness: string[] }).harness,
+			harness: configured.value.harness,
 		});
 	},
 });
