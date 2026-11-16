@@ -259,7 +259,7 @@ export namespace Review {
 				"Do not write to the tracker: read the diff stat below, the brief after it, and the changed files themselves when the stat is not enough. Keep it short: this decision should cost a fraction of one review.",
 				Brief.reviewing(tree),
 				`The run's lenses, each with the changes it reviews:\n${lenses.map(describe).join("\n")}`,
-				`Skip a lens only when the change touches nothing it reviews, and say why in a sentence that names what the diff does not touch. Group lenses whose reviews read the same files. Weigh the diff’s size: a group reads it once while splitting re-reads it per lens, but a very large diff in one session may exceed what it can hold. Give each group a tier (${tiers.join(", ")}) only when it needs other than the run's model: a tier on a trivial diff, a stronger one on a risky change. A lens marked always runs is never skipped.`,
+				`Skip a lens only when the change touches nothing it reviews, and say why in a sentence that names what the diff does not touch. Group lenses whose reviews read the same files. Weigh the diff's size: a group reads it once while splitting re-reads it per lens, but a very large diff in one session may exceed what it can hold. Give each group a tier (${tiers.join(", ")}) only when it needs other than the run's model: a tier on a trivial diff, a stronger one on a risky change. A lens marked always runs is never skipped.`,
 				`End your turn with the review plan as one fenced JSON block and nothing after it, every lens in one group or skipped:\n\`\`\`json\n${EXAMPLE}\n\`\`\``,
 			].join("\n\n"),
 			[
