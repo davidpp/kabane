@@ -1,9 +1,9 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Whether a parent's next run goes on in its last run's worktree, and what `kabane loop prune`
 // removes, with real git: the project's remote is a bare repository on disk, and a squash merge
 // is made on it as GitHub makes one, so git calls the merged branch unmerged. What GitHub says of
 // the pull request is the one thing not real: `gh` is the start's port, here a recorder.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	existsSync,
 	mkdirSync,
@@ -20,6 +20,7 @@ import { Settings } from "@cabane/extension";
 import { Loop } from "./commands";
 import type { Land } from "./land";
 import { RunStore } from "./store";
+import { testHost } from "./test-host";
 import { Worktree } from "./worktree";
 
 let root = "";
@@ -70,6 +71,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 const deps = () => ({
 	home,
 	basePath: home,
+	host: testHost(home),
 	kabaneBin: "/nonexistent/kabane",
 	cwd: repo,
 	// Never reached: each start below stops at the (nonexistent) runner.
@@ -260,7 +262,13 @@ describe("a worktree a landing by hand holds", () => {
 		// Refused before a run is written, so the next start still finds the worktree's run last.
 		const runs = RunStore.list(home);
 		expect(runs.ok && runs.value.map((r) => r.id)).toEqual([first.id]);
-		const pruned = await Loop.prune({ home, basePath: home, git, gh });
+		const pruned = await Loop.prune({
+			home,
+			basePath: home,
+			host: testHost(home),
+			git,
+			gh,
+		});
 		expect(pruned.ok && pruned.value).toMatchObject([
 			{ removed: false, why: expect.stringContaining("is in use by") },
 		]);
@@ -295,7 +303,13 @@ describe("Loop.prune", () => {
 			return said ? ok(JSON.stringify(said)) : err(new Error("not found"));
 		};
 
-		const pruned = await Loop.prune({ home, basePath: home, git, gh: ghByPr });
+		const pruned = await Loop.prune({
+			home,
+			basePath: home,
+			host: testHost(home),
+			git,
+			gh: ghByPr,
+		});
 
 		if (!pruned.ok) throw pruned.error;
 		const by = new Map(pruned.value.map((p) => [p.runId, p]));
@@ -321,7 +335,13 @@ describe("Loop.prune", () => {
 		const run = await startOn(parent.id);
 		writeFileSync(join(run.worktree ?? "", "draft.txt"), "unsaved\n");
 
-		const pruned = await Loop.prune({ home, basePath: home, git, gh });
+		const pruned = await Loop.prune({
+			home,
+			basePath: home,
+			host: testHost(home),
+			git,
+			gh,
+		});
 
 		if (!pruned.ok) throw pruned.error;
 		expect(pruned.value).toMatchObject([{ runId: run.id, removed: false }]);
@@ -337,7 +357,13 @@ describe("Loop.prune", () => {
 		const written = RunStore.write(home, { ...run, worktree: mine });
 		if (!written.ok) throw written.error;
 
-		const pruned = await Loop.prune({ home, basePath: home, git, gh });
+		const pruned = await Loop.prune({
+			home,
+			basePath: home,
+			host: testHost(home),
+			git,
+			gh,
+		});
 
 		if (!pruned.ok) throw pruned.error;
 		expect(pruned.value).toMatchObject([{ runId: run.id, removed: false }]);

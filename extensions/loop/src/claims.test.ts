@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Settling ended sessions against a real tracker: the core sessions, the subtasks' states and the
 // gate results a settle records.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +16,7 @@ import type { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 let home = "";
 
@@ -67,6 +68,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 		deps: {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides(),
@@ -136,7 +138,7 @@ describe("Claims.settleAll", () => {
 		const created = RunStore.create(home, run);
 		if (!created.ok) throw created.error;
 		const ctx = ctxFor(run);
-		const plan = await LoopPlan.load(home, parent.id);
+		const plan = await LoopPlan.load(testHost(home).record, parent.id);
 		if (!plan.ok) throw plan.error;
 		// The mark as it stands: a's end changes nothing, so it alone reaches `stallAfter: 1`.
 		ctx.run = {
@@ -214,7 +216,7 @@ describe("Claims parking and ownership", () => {
 				const created = RunStore.create(home, run);
 				if (!created.ok) throw created.error;
 				const ctx = ctxFor(run);
-				const plan = await LoopPlan.load(home, parent.id);
+				const plan = await LoopPlan.load(testHost(home).record, parent.id);
 				if (!plan.ok) throw plan.error;
 				ctx.run.stall = {
 					mark: await Claims.mark(ctx, plan.value),
@@ -358,7 +360,7 @@ describe("Claims.claim", () => {
 			};
 			const created = RunStore.create(home, run);
 			if (!created.ok) throw created.error;
-			const plan = await LoopPlan.load(home, parent.id);
+			const plan = await LoopPlan.load(testHost(home).record, parent.id);
 			if (!plan.ok) throw plan.error;
 			const node = plan.value.nodes[0];
 			if (!node) throw new Error("missing child");
@@ -418,7 +420,7 @@ describe("Claims.claim", () => {
 				gemini: fails,
 			}),
 		};
-		const plan = await LoopPlan.load(home, parent.id);
+		const plan = await LoopPlan.load(testHost(home).record, parent.id);
 		if (!plan.ok) throw plan.error;
 		const node = plan.value.nodes.find((n) => n.task.id === child.id);
 		if (!node) throw new Error("child is not in the plan");
@@ -471,7 +473,7 @@ describe("Claims.claim", () => {
 				gemini: fails,
 			}),
 		};
-		const plan = await LoopPlan.load(home, parent.id);
+		const plan = await LoopPlan.load(testHost(home).record, parent.id);
 		if (!plan.ok) throw plan.error;
 		for (const task of [pinned, bad]) {
 			const node = plan.value.nodes.find((n) => n.task.id === task.id);
@@ -529,7 +531,7 @@ describe("Claims.claim", () => {
 		};
 		const created = RunStore.create(home, run);
 		if (!created.ok) throw created.error;
-		const plan = await LoopPlan.load(home, parent.id);
+		const plan = await LoopPlan.load(testHost(home).record, parent.id);
 		if (!plan.ok) throw plan.error;
 		const node = plan.value.nodes.find((n) => n.task.id === child.id);
 		if (!node) throw new Error("child is not in the plan");
@@ -612,7 +614,7 @@ describe("Claims.claim, resuming an attempt's session", () => {
 				gemini: fails,
 			}),
 		};
-		const plan = await LoopPlan.load(home, parent.id);
+		const plan = await LoopPlan.load(testHost(home).record, parent.id);
 		if (!plan.ok) throw plan.error;
 		const node = plan.value.nodes.find((n) => n.task.id === child.id);
 		if (!node) throw new Error("child is not in the plan");
@@ -838,7 +840,7 @@ describe("Claims.lens on a group", () => {
 				claude: { command: "/nonexistent/harness" },
 			}),
 		};
-		const plan = await LoopPlan.load(home, parent.id);
+		const plan = await LoopPlan.load(testHost(home).record, parent.id);
 		if (!plan.ok) throw plan.error;
 
 		const started = await Claims.lens(

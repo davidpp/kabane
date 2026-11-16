@@ -1,8 +1,8 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The review plan triage answers, held to its bounds, and the runner that triages before its lenses,
 // on a disposable tracker and a real git repository. An inline ACP subprocess stands in for the
 // model: a triage prompt is answered with the plan the test writes, any other prompt ends its turn.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	existsSync,
 	mkdtempSync,
@@ -20,6 +20,7 @@ import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 const LENSES: Review.Lens[] = [
 	{ name: "functional", always: true },
@@ -355,6 +356,7 @@ const start = async (
 	const ended = await Runner.run("run-1", {
 		home,
 		basePath: home,
+		host: testHost(home),
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
 		overrides: TestHarnesses.overrides({

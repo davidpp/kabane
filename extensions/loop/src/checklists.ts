@@ -1,50 +1,61 @@
-// An issue's checklist, as the loop reads it: the steps of one change, which the claim's session
-// works in order in the claim's tree and ticks as each lands (`@cabane/checklist`). The issue is
-// done only once every item is ticked, so a session that closes it with items open has it
-// reopened, and the checkpoint after a green pass names the items ticked since the last one.
 import { CopilotInstructions } from "@cabane/acp";
-import {
-	Checklist,
-	type ChecklistItemView,
-	checklistModule,
-} from "@cabane/checklist";
-import { ok, Planner, type Result, Runtime, type Task } from "@cabane/core";
+import type { Result, Task } from "@cabane/core";
+import type { Host } from "@cabane/extension";
+import type { z } from "zod";
+import { ok, err } from "./result";
+
+const itemSchema = (z: Host["z"]) =>
+	z.object({
+		id: z.string(),
+		taskId: z.string(),
+		text: z.string(),
+		done: z.boolean(),
+		doneAt: z.string().optional(),
+		doneBy: z.string().optional(),
+		removedAt: z.string().optional(),
+		rank: z.string(),
+		createdAt: z.string(),
+		updatedAt: z.string(),
+		updatedBy: z.string(),
+		version: z.number(),
+		visibility: z.string(),
+		handle: z.string(),
+		ordinal: z.number(),
+		shortId: z.string().optional(),
+	});
 
 export namespace Checklists {
-	export type Item = ChecklistItemView;
+	export type Item = z.output<ReturnType<typeof itemSchema>>;
 
-	const registered = (): boolean =>
-		Runtime.modules().some((module) => module.name === checklistModule.name);
-
-	/**
-	 * `taskId`'s live items in list order. A host that does not register the checklist module has
-	 * no checklist table, so no issue of its has items.
-	 */
-	export const of = (
-		basePath: string,
+	/** Read through the registered checklist tool; a host without that module has no items. */
+	export const of = async (
+		host: Host,
 		taskId: string,
-	): Promise<Result<Item[]>> =>
-		registered() ? Checklist.list(basePath, taskId) : Promise.resolve(ok([]));
+	): Promise<Result<Item[]>> => {
+		const result = await host.record.call("kabane_checklist", { id: taskId });
+		if (!result.ok)
+			return result.error.message === "Unknown tool: kabane_checklist"
+				? ok([])
+				: result;
+		const parsed = host.z.array(itemSchema(host.z)).safeParse(result.value);
+		return parsed.success ? ok(parsed.data) : err(parsed.error);
+	};
 
-	/**
-	 * How far the checklists of `taskIds` are ticked, as one string that changes with every tick or
-	 * untick: progress for the stall detector, apart from the tree's fingerprint. Empty when the host
-	 * has no checklist module or the read fails, which leaves the rest of the mark to speak.
-	 */
+	/** A stable mark of each task's ticked and total items; read failure leaves the other marks. */
 	export const progress = async (
-		basePath: string,
+		host: Host,
 		taskIds: readonly string[],
 	): Promise<string> => {
-		if (!registered()) return "";
-		const all = await Checklist.progress(basePath);
-		if (!all.ok) return "";
-		return [...new Set(taskIds)]
-			.sort()
-			.flatMap((id) => {
-				const of = all.value.get(id);
-				return of ? [`${id}:${of.done}/${of.total}`] : [];
-			})
-			.join(",");
+		const marks: string[] = [];
+		for (const id of [...new Set(taskIds)].sort()) {
+			const items = await of(host, id);
+			if (!items.ok) return "";
+			if (items.value.length > 0)
+				marks.push(
+					`${id}:${items.value.filter((item) => item.done).length}/${items.value.length}`,
+				);
+		}
+		return marks.join(",");
 	};
 
 	export const open = (items: readonly Item[]): Item[] =>
@@ -74,7 +85,7 @@ export namespace Checklists {
 	 * theirs, and leaves the close standing.
 	 */
 	export const refuseDone = async (
-		basePath: string,
+		host: Host,
 		task: Task,
 		harness: string,
 	): Promise<Result<Item[]>> => {
@@ -85,11 +96,12 @@ export namespace Checklists {
 			task.updatedBy !== CopilotInstructions.actorUri(harness)
 		)
 			return ok([]);
-		const items = await of(basePath, task.id);
+		const items = await of(host, task.id);
 		if (!items.ok) return items;
 		const left = open(items.value);
 		if (left.length === 0) return ok([]);
-		const reopened = await Planner.updateTask(basePath, task.id, {
+		const reopened = await host.record.edit({
+			id: task.id,
 			state: "in_progress",
 		});
 		return reopened.ok ? ok(left) : reopened;

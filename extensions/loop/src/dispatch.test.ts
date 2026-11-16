@@ -1,13 +1,14 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // One claim's handle on a real tracker. The harness command points nowhere, so the session ends
 // before any harness runs, and nothing reaches a paid one.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { err, Planner } from "@cabane/core";
 import { Dispatch } from "./dispatch";
 import type { RunStore } from "./store";
+import { testHost } from "./test-host";
 
 let home = "";
 
@@ -39,6 +40,7 @@ describe("Dispatch.Handle.inject", () => {
 			},
 			{
 				basePath: home,
+				host: testHost(home),
 				home,
 				kabaneBin: "/nonexistent/kabane",
 				cwd: home,

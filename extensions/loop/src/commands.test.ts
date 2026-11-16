@@ -1,5 +1,5 @@
-import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import "@cabane/core/testing";
 import {
 	existsSync,
 	mkdirSync,
@@ -18,6 +18,7 @@ import type { LoopConfig } from "./config";
 import { Permission } from "./permission";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 import { Worktree } from "./worktree";
 
 // `start`'s refusals, which all come before a runner is spawned, and `restart`, whose runner is
@@ -34,6 +35,7 @@ const fixtureGit: Worktree.Git = async (cwd, args) =>
 const deps = () => ({
 	home,
 	basePath: home,
+	host: testHost(home),
 	kabaneBin: "/nonexistent/kabane",
 	cwd: repo,
 	// Never reached: every case below is refused before the spawn.
@@ -88,6 +90,47 @@ const repoScope = async (): Promise<string> => {
 	if (!scope) throw new Error("the fixture repo has no scope");
 	return scope.scopeUri;
 };
+
+describe("Loop command id resolution", () => {
+	it("prepares a run from a lowercase short id", async () => {
+		const issue = await add("ready", { scopeUri: await repoScope() });
+		if (!issue.shortId) throw new Error("Missing short id");
+		const prepared = await Loop.prepare(deps(), {
+			parent: issue.shortId.toLowerCase(),
+		});
+		if (!prepared.ok) throw prepared.error;
+		expect(prepared.value.plan.parent.id).toBe(issue.id);
+	});
+
+	it("reports absence and preserves ambiguous candidates at both command entries", async () => {
+		const first = await add("First candidate");
+		const second = await add("Second candidate");
+		for (const id of ["JCAB-999999", "missing", "01AAAAAAAAAAAAAAAAAAAAAAAA"]) {
+			for (const result of [
+				await Loop.prepare(deps(), { parent: id }),
+				await Loop.direct(deps(), "skip", id),
+			]) {
+				expect(!result.ok && result.error.message).toBe(`No task ${id}`);
+			}
+		}
+		const prefix = first.id.slice(0, 1);
+		const expected = await Planner.resolveTaskId(home, prefix);
+		if (expected.ok) throw new Error("Expected ambiguous prefix");
+		for (const result of [
+			await Loop.prepare(deps(), { parent: prefix }),
+			await Loop.direct(deps(), "skip", prefix),
+		]) {
+			expect(!result.ok && result.error.message).toBe(expected.error.message);
+			if (!result.ok) {
+				for (const candidate of [first, second]) {
+					expect(result.error.message).toContain(
+						`${candidate.shortId}  ${candidate.title}`,
+					);
+				}
+			}
+		}
+	});
+});
 
 describe("Loop.start refusals", () => {
 	it("refuses a human task with no subtasks: nothing in it is a loop's to run", async () => {
@@ -497,10 +540,11 @@ describe("Loop.start's worktree", () => {
 // The runner `restart` spawns: the real `Loop.run` on this test's tracker, as `kabane loop run`
 // runs it, with no harness a claim could reach.
 const RUNNER = [
+	`import { testHost } from ${JSON.stringify(join(import.meta.dir, "test-host.ts"))};`,
 	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,
-	`const ran = await Loop.run({ home, basePath: home, kabaneBin: "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
+	`const ran = await Loop.run({ home, basePath: home, host: testHost(home), kabaneBin: "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
 	`process.exit(ran.ok ? 0 : 1);`,
 ].join("\n");
 
@@ -665,7 +709,7 @@ describe("Loop.answer", () => {
 		]);
 
 		const answered = await Loop.answer(
-			{ home, basePath: home, actor: HUMAN },
+			{ home, basePath: home, host: testHost(home), actor: HUMAN },
 			questionId,
 			"2",
 		);
@@ -684,7 +728,7 @@ describe("Loop.answer", () => {
 	});
 
 	it("refuses a question whose runner died, withdraws it from core's queue, and lists it as withdrawn", async () => {
-		const deps = { home, basePath: home, actor: HUMAN };
+		const deps = { home, basePath: home, host: testHost(home), actor: HUMAN };
 		const { run, sessionId } = await orphaned("dead-run");
 		const asked = await Planner.addActivity(home, {
 			sessionId,
@@ -786,7 +830,7 @@ describe("Loop.answer", () => {
 	it("refuses an answer that is none of the harness's options, and answers nothing", async () => {
 		const { sessionId, questionId } = await blocked("run-1");
 		const answered = await Loop.answer(
-			{ home, basePath: home, actor: HUMAN },
+			{ home, basePath: home, host: testHost(home), actor: HUMAN },
 			questionId,
 			"yes please",
 		);

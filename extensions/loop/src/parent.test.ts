@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The parent's state across a run, driven by the real runner on a real tracker. Every run here is
 // paused or has nothing to claim, so no harness is reached.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +11,7 @@ import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 let home = "";
 
@@ -58,6 +59,7 @@ const createRun = (parent: Task, paused: boolean): RunStore.Run => {
 const deps = (signal?: AbortSignal) => ({
 	home,
 	basePath: home,
+	host: testHost(home, "cabane://actor/human/runner"),
 	kabaneBin: "/nonexistent/kabane",
 	pid: process.pid,
 	overrides: TestHarnesses.overrides({
@@ -124,7 +126,11 @@ describe("Parent state across a run", () => {
 			expect(during?.state).toBe("in_progress");
 			const logs = await Planner.getWorkLogs(home, parent.id);
 			expect(logs.ok && logs.value.flatMap((l) => l.refs)).toMatchObject([
-				{ uri: "loop:run-1", label: "loop run started", addedBy: "loop:run-1" },
+				{
+					uri: "loop:run-1",
+					label: "loop run started",
+					addedBy: "cabane://actor/human/runner",
+				},
 			]);
 		});
 

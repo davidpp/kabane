@@ -22,6 +22,7 @@ import {
 } from "./src/commands/board-runtime";
 import { saveConfig } from "./src/config";
 import { type Ctx, openContext, resolveScope } from "./src/context";
+import { hostFor } from "./src/host";
 
 const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
@@ -57,8 +58,10 @@ describe("kabane board", () => {
 	});
 
 	it("awaits the loop's board ports before merging them", async () => {
+		const built = await hostFor(home, "loop").build(loop);
+		if (!built.ok) throw built.error;
 		const deps = await boardDeps(parseArgs([]), ctx, "claude", {
-			extensions: [loop],
+			extensions: [built.value],
 		});
 		try {
 			expect(deps.activity).toBeDefined();

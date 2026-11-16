@@ -3,7 +3,8 @@
 // because the runner calls them: a commit runs the user's hooks and gh waits on the network, and a
 // synchronous spawn would stall every session's stream and timer until they end.
 import { basename } from "node:path";
-import { err, ok, type Result, tryCatch } from "@cabane/core";
+import { type Result } from "@cabane/core";
+import { err, ok, tryCatch } from "./result";
 
 export namespace Exec {
 	/** One tool, `<tool> <args>` in `cwd`: its stdout, or an error carrying what it said. */

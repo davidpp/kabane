@@ -14,7 +14,7 @@
 // and checkpoint there, and a green pass merges its branch into the run's; one the tracker closed
 // or cancelled while it held that worktree is settled there (`settleHeld`).
 import { Harnesses } from "@cabane/acp";
-import { err, ok, Planner, type Result, type Task } from "@cabane/core";
+import { Planner, type Result, type Task } from "@cabane/core";
 import { Brief } from "./brief";
 import { Budget } from "./budget";
 import { Checklists } from "./checklists";
@@ -28,6 +28,7 @@ import { Lenses } from "./lenses";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import type { Questions } from "./questions";
+import { err, ok } from "./result";
 import { Retry } from "./retry";
 import { Review } from "./review";
 import { Route } from "./route";
@@ -50,10 +51,11 @@ export namespace Claims {
 		taskId: string,
 		harness: string,
 	): Promise<void> => {
-		const task = await Planner.getTask(ctx.deps.basePath, taskId);
+		const task = await ctx.deps.host.record.get({ id: taskId });
 		if (!task.ok || !task.value || !LoopPlan.isActive(task.value, harness))
 			return;
-		const reset = await Planner.updateTask(ctx.deps.basePath, taskId, {
+		const reset = await ctx.deps.host.record.edit({
+			id: taskId,
 			state: "next",
 		});
 		if (!reset.ok)
@@ -102,7 +104,7 @@ export namespace Claims {
 			LoopPlan.closed(plan),
 			await trees(ctx),
 			Gates.signature(ctx.run.gateRuns.at(-1)),
-			await Checklists.progress(ctx.deps.basePath, [
+			await Checklists.progress(ctx.deps.host, [
 				plan.parent.id,
 				...plan.nodes.map((n) => n.task.id),
 			]),
@@ -324,7 +326,8 @@ export namespace Claims {
 		}
 		const sessionId = session.value.id;
 		if (takes) {
-			const moved = await Planner.updateTask(ctx.deps.basePath, task.id, {
+			const moved = await ctx.deps.host.record.edit({
+				id: task.id,
 				state: "in_progress",
 				assignee: harness,
 			});
@@ -339,11 +342,12 @@ export namespace Claims {
 				return undefined;
 			}
 		}
-		const logged = await Planner.addWorkLog(ctx.deps.basePath, {
-			taskId: task.id,
-			refs: [{ uri: `session:${sessionId}`, label: `loop ${ctx.run.id}` }],
-			addedBy: `loop:${ctx.run.id}`,
-			addedByType: "ai",
+		const logged = await ctx.deps.host.record.log({
+			id: task.id,
+			refs: [
+				{ uri: `loop:${ctx.run.id}`, label: "claim started" },
+				{ uri: `session:${sessionId}`, label: `loop ${ctx.run.id}` },
+			],
 		});
 		if (!logged.ok)
 			RunState.event(ctx, {
@@ -381,7 +385,7 @@ export namespace Claims {
 		ctx: Ctx,
 		attempt: RunStore.Claim,
 	): Promise<string[]> => {
-		const logs = await Planner.getWorkLogs(ctx.deps.basePath, attempt.taskId);
+		const logs = await ctx.deps.host.record.workLogs({ id: attempt.taskId });
 		if (!logs.ok) return [];
 		const own = `session:${attempt.sessionId}`;
 		return logs.value
@@ -594,6 +598,7 @@ export namespace Claims {
 			},
 			{
 				basePath: ctx.deps.basePath,
+				host: ctx.deps.host,
 				home: ctx.deps.home,
 				kabaneBin: ctx.deps.kabaneBin,
 				cwd: place.dir,
@@ -621,7 +626,7 @@ export namespace Claims {
 		node: LoopPlan.Node,
 		plan: LoopPlan.Plan,
 	): Promise<Task | undefined> => {
-		const current = await Planner.getTask(ctx.deps.basePath, node.task.id);
+		const current = await ctx.deps.host.record.get({ id: node.task.id });
 		if (!current.ok) {
 			RunState.event(ctx, {
 				type: "warning",
@@ -995,10 +1000,10 @@ export namespace Claims {
 		return Checks.gateWhen(
 			ctx,
 			async () => {
-				const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
+				const task = await ctx.deps.host.record.get({ id: subject.taskId });
 				if (!task.ok || task.value?.state !== "done") return undefined;
 				const reopened = await Checklists.refuseDone(
-					ctx.deps.basePath,
+					ctx.deps.host,
 					task.value,
 					harness,
 				);
@@ -1032,7 +1037,7 @@ export namespace Claims {
 		taskId: string,
 		claim: RunStore.Claim | undefined,
 	): Promise<boolean> => {
-		const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
+		const plan = await LoopPlan.load(ctx.deps.host.record, ctx.run.parentId);
 		if (!plan.ok) return false;
 		const task = plan.value.nodes.find((n) => n.task.id === taskId)?.task;
 		// An intentional park/handoff is not a failed attempt. Do not increment OR reset the
@@ -1119,7 +1124,7 @@ export namespace Claims {
 				)
 			)
 				continue;
-			const task = await Planner.getTask(ctx.deps.basePath, held.taskId);
+			const task = await ctx.deps.host.record.get({ id: held.taskId });
 			if (!task.ok) continue;
 			if (!task.value || task.value.state === "cancelled") {
 				ClaimTrees.abandon(

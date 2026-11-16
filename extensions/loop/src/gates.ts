@@ -1,10 +1,11 @@
+import { tryCatch, trySync } from "./result";
 // Gates: the project's own checks, named shell commands from the run's config, run in the
 // directory the sessions work in. A run's gates are green when the latest time they ran every one
 // passed and the working tree has not changed since; that is what the stop predicate asks.
 //
 // They run in order and stop at the first failure: what reopens the subtask is the first red gate,
 // and the later ones would only spend time on a tree already known to be wrong.
-import { tryCatch, trySync } from "@cabane/core";
+
 import { z } from "zod";
 
 export namespace Gates {

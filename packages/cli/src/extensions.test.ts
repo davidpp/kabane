@@ -15,6 +15,7 @@ import { configPath } from "./config";
 import { ConfigSettings } from "./config-settings";
 import { openContext } from "./context";
 import { Extensions } from "./extensions";
+import { hostFor } from "./host";
 import { run } from "./main";
 
 const homes: string[] = [];
@@ -281,6 +282,38 @@ it("a bundled extension carries no directory, so it contributes no copilot files
 	expect(all.loaded.map((e) => e.name)).toEqual(["loop"]);
 	expect(all.directories).toEqual([]);
 });
+
+for (const enabled of [true, false]) {
+	it(`builds the ${enabled ? "enabled" : "disabled settings"} bundled factory with its per-home host`, async () => {
+		const home = makeHome({ extensions: [] });
+		const staged = hostFor(home, "loop");
+		const other = hostFor(makeHome(), "loop");
+		const build = spyOn(staged, "build");
+		try {
+			if (enabled) {
+				const loaded = await Extensions.loadAll(["loop"], home);
+				expect(loaded.refused).toEqual([]);
+				expect(loaded.loaded.map((extension) => extension.name)).toEqual([
+					"loop",
+				]);
+			} else {
+				const settings = await Extensions.namespaces(home);
+				expect(
+					settings.ok && settings.value.map((namespace) => namespace.name),
+				).toEqual(["loop"]);
+			}
+			expect(build).toHaveBeenCalledTimes(1);
+			expect(build.mock.calls[0]?.[0]).toBeTypeOf("function");
+			expect((await staged.host.record.list({})).ok).toBe(false);
+			const context = await openContext(home, home, parseArgs([]));
+			if (!context.ok) throw context.error;
+			expect((await staged.host.record.list({})).ok).toBe(true);
+			expect((await other.host.record.list({})).ok).toBe(false);
+		} finally {
+			build.mockRestore();
+		}
+	});
+}
 
 it("an enabled directory wins over the bundled extension", async () => {
 	const home = makeHome({ extensions: ["loop"] });

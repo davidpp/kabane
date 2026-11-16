@@ -14,6 +14,7 @@ import { LoopConfig } from "@cabane/loop";
 import { configPath } from "./config";
 import { ConfigLayers } from "./config-layers";
 import { projectAt, settingsPort } from "./context";
+import { hostFor } from "./host";
 
 // The port an extension resolves its settings through, as the CLI wires it: config.json, a real
 // checkout's `.kabane/loop.json`, the legacy scopes block for the scope it detects, and its local
@@ -35,10 +36,14 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 const loopAt = (projectDir: string, overrides?: Record<string, unknown>) =>
-	settingsPort(home)(LoopConfig.NAMESPACE, LoopConfig.SettingsSchema, {
-		projectDir,
-		...(overrides ? { overrides } : {}),
-	});
+	settingsPort(home)(
+		LoopConfig.NAMESPACE,
+		LoopConfig.schemas(hostFor(home, "loop").host.z).SettingsSchema,
+		{
+			projectDir,
+			...(overrides ? { overrides } : {}),
+		},
+	);
 
 it("layers global, shared, the legacy scopes block, the local file and the caller", async () => {
 	const scope = await projectAt(repo, home);

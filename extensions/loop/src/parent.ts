@@ -12,15 +12,10 @@
 // while its work waits to be merged. One a human gives a work child during the run is a parent
 // from then on: once its own session has ended, the run takes it as it takes any parent, and the
 // end of the run says it changed shape.
-import {
-	authorTypeOf,
-	ok,
-	Planner,
-	Runtime,
-	type Result,
-	type Task,
-} from "@cabane/core";
+import { type Result, type Task } from "@cabane/core";
+import type { Host } from "@cabane/extension";
 import { LoopPlan } from "./plan";
+import { ok } from "./result";
 import { RunState } from "./state";
 import { RunStore } from "./store";
 import { Worktree } from "./worktree";
@@ -42,7 +37,7 @@ export namespace Parent {
 		RunState.event(ctx, { type: "warning", summary });
 
 	const read = async (ctx: Ctx): Promise<Task | undefined> => {
-		const parent = await Planner.getTask(ctx.deps.basePath, ctx.run.parentId);
+		const parent = await ctx.deps.host.record.get({ id: ctx.run.parentId });
 		if (!parent.ok) {
 			warn(ctx, `parent not read: ${parent.error.message}`);
 			return undefined;
@@ -59,26 +54,25 @@ export namespace Parent {
 		why: string,
 		from: readonly Task["state"][] = TAKEN_FROM,
 	): Promise<void> => {
-		const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
+		const plan = await LoopPlan.load(ctx.deps.host.record, ctx.run.parentId);
 		if (!plan.ok) {
 			warn(ctx, `parent not read: ${plan.error.message}`);
 			return;
 		}
 		const { parent } = plan.value;
 		if (LoopPlan.single(plan.value) || !from.includes(parent.state)) return;
-		const moved = await Planner.updateTask(ctx.deps.basePath, parent.id, {
+		const moved = await ctx.deps.host.record.edit({
+			id: parent.id,
 			state: "in_progress",
 		});
 		if (!moved.ok) {
 			warn(ctx, `parent not moved to in_progress: ${moved.error.message}`);
 			return;
 		}
-		const logged = await Planner.addWorkLog(ctx.deps.basePath, {
-			taskId: parent.id,
+		const logged = await ctx.deps.host.record.log({
+			id: parent.id,
 			refs: [{ uri: `loop:${ctx.run.id}`, label: why }],
 			note: `${parent.state} → in_progress`,
-			addedBy: `loop:${ctx.run.id}`,
-			addedByType: "ai",
 		});
 		if (!logged.ok)
 			warn(ctx, `parent work log not written: ${logged.error.message}`);
@@ -210,8 +204,8 @@ export namespace Parent {
 		const { pr, landing } = ctx.run;
 		if (!landing?.ok || pr === undefined) return;
 		const path = URL.canParse(pr) ? PR_PATH.exec(new URL(pr).pathname) : null;
-		const linked = await Planner.upsertUpstreamLink(ctx.deps.basePath, {
-			taskId: parent.id,
+		const linked = await ctx.deps.host.record.upstreamLink({
+			id: parent.id,
 			provider: "github",
 			externalId: pr,
 			...(path ? { identifier: `${path[1]}/${path[2]}#${path[3]}` } : {}),
@@ -223,12 +217,9 @@ export namespace Parent {
 	};
 
 	const comment = async (ctx: Ctx, body: string): Promise<void> => {
-		const actor = Runtime.actor();
-		const commented = await Planner.addComment(ctx.deps.basePath, {
-			taskId: ctx.run.parentId,
-			author: actor,
-			authorType: authorTypeOf(actor),
-			content: body,
+		const commented = await ctx.deps.host.record.comment({
+			id: ctx.run.parentId,
+			body: body,
 		});
 		if (!commented.ok)
 			warn(ctx, `parent not commented: ${commented.error.message}`);
@@ -241,7 +232,7 @@ export namespace Parent {
 	 * gave it. A pull request is the parent's upstream twin either way.
 	 */
 	export const report = async (ctx: Ctx, exit: Exit): Promise<void> => {
-		const loaded = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
+		const loaded = await LoopPlan.load(ctx.deps.host.record, ctx.run.parentId);
 		const plan = loaded.ok ? loaded.value : undefined;
 		const single = plan !== undefined && LoopPlan.single(plan);
 		const body =
@@ -265,21 +256,20 @@ export namespace Parent {
 		// with it; one a human moved stays where they put it.
 		const insteadOf = merged ? landing?.insteadOf : undefined;
 		const waited = insteadOf
-			? await waitsOn(ctx.deps.basePath, parent, insteadOf)
+			? await waitsOn(ctx.deps.host.record, parent, insteadOf)
 			: ok(false);
 		if (!waited.ok)
 			warn(ctx, `parent's pull request not read: ${waited.error.message}`);
 		if (!(waited.ok && waited.value) && !flaggable(parent, single)) return;
-		const flagged = await Planner.updateTask(
-			ctx.deps.basePath,
-			parent.id,
-			merged
+		const flagged = await ctx.deps.host.record.edit({
+			id: parent.id,
+			...(merged
 				? { state: "done", needsReview: false }
 				: {
 						needsReview: true,
 						...(landing?.ok && pr ? { state: "waiting" } : {}),
-					},
-		);
+					}),
+		});
 		if (!flagged.ok)
 			warn(ctx, `parent not flagged for review: ${flagged.error.message}`);
 	};
@@ -287,12 +277,12 @@ export namespace Parent {
 	// Whether `parent` is as a landing that opened pull request `pr` left it: waiting on its
 	// review, with the pull request as its upstream twin. Anything else is a human's doing.
 	const waitsOn = async (
-		basePath: string,
+		record: Host.Record,
 		parent: Task,
 		pr: string,
 	): Promise<Result<boolean>> => {
 		if (parent.state !== "waiting" || !parent.needsReview) return ok(false);
-		const links = await Planner.getUpstreamLinksForTask(basePath, parent.id);
+		const links = await record.upstreamLinks({ id: parent.id });
 		if (!links.ok) return links;
 		return ok(
 			links.value.some((link) => link.provider === "github" && link.url === pr),
@@ -301,27 +291,26 @@ export namespace Parent {
 
 	/** Reconcile only a parent still waiting for review of this run's upstream PR. */
 	export const reconcile = async (
-		basePath: string,
+		record: Host.Record,
 		run: RunStore.Run,
 		state: "OPEN" | "CLOSED" | "MERGED",
 	): Promise<Result<void>> => {
 		if (!run.pr || state === "OPEN") return ok(undefined);
-		const parent = await Planner.getTask(basePath, run.parentId);
+		const parent = await record.get({ id: run.parentId });
 		if (!parent.ok) return parent;
 		if (!parent.value) return ok(undefined);
-		const waiting = await waitsOn(basePath, parent.value, run.pr);
+		const waiting = await waitsOn(record, parent.value, run.pr);
 		if (!waiting.ok) return waiting;
 		if (!waiting.value) return ok(undefined);
 		const merged = state === "MERGED";
-		const actor = Runtime.actor();
-		const commented = await Planner.addComment(basePath, {
-			taskId: run.parentId,
-			author: actor,
-			authorType: authorTypeOf(actor),
-			content: `Pull request ${run.pr} ${merged ? "merged" : "was closed without merging"}; ${run.parentShortId} moves from waiting to ${merged ? "done" : "next"}.`,
+
+		const commented = await record.comment({
+			id: run.parentId,
+			body: `Pull request ${run.pr} ${merged ? "merged" : "was closed without merging"}; ${run.parentShortId} moves from waiting to ${merged ? "done" : "next"}.`,
 		});
 		if (!commented.ok) return commented;
-		const moved = await Planner.updateTask(basePath, run.parentId, {
+		const moved = await record.edit({
+			id: run.parentId,
 			state: merged ? "done" : "next",
 			needsReview: false,
 		});
@@ -334,7 +323,7 @@ export namespace Parent {
 	 * done when it merged.
 	 */
 	export const landed = async (ctx: Ctx): Promise<void> => {
-		const loaded = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
+		const loaded = await LoopPlan.load(ctx.deps.host.record, ctx.run.parentId);
 		const single = loaded.ok && LoopPlan.single(loaded.value);
 		await comment(
 			ctx,

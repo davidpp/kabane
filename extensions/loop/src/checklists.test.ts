@@ -24,6 +24,7 @@ import { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 import { Worktree } from "./worktree";
 
 let root = "";
@@ -170,6 +171,7 @@ const drive = async (
 	const ended = await Runner.run("run-1", {
 		home,
 		basePath: home,
+		host: testHost(home),
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
 		git,
@@ -450,6 +452,7 @@ describe("A checkpoint on a task with a checklist", () => {
 			{
 				home,
 				basePath: home,
+				host: testHost(home),
 				kabaneBin: "/nonexistent/kabane",
 				pid: process.pid,
 				overrides: TestHarnesses.overrides(),
@@ -547,7 +550,11 @@ describe("Checklists.refuseDone", () => {
 
 	it("reopens an issue its session closed with items open", async () => {
 		const issue = await closedBySession("issue");
-		const refused = await Checklists.refuseDone(home, issue, "gemini");
+		const refused = await Checklists.refuseDone(
+			testHost(home),
+			issue,
+			"gemini",
+		);
 		expect(refused.ok && refused.value.length).toBe(3);
 		const after = await Planner.getTask(home, issue.id);
 		expect(after.ok && after.value?.state).toBe("in_progress");
@@ -555,7 +562,7 @@ describe("Checklists.refuseDone", () => {
 
 	it("never reopens a personal task", async () => {
 		const task = await closedBySession("task");
-		const refused = await Checklists.refuseDone(home, task, "gemini");
+		const refused = await Checklists.refuseDone(testHost(home), task, "gemini");
 		expect(refused.ok && refused.value).toEqual([]);
 		const after = await Planner.getTask(home, task.id);
 		expect(after.ok && after.value?.state).toBe("done");
@@ -638,4 +645,16 @@ describe("A parent run with two sessions at once", () => {
 		expect(ended.claims.map((c) => c.lane)).toContain(`${b}#2`);
 		expect((await items(second)).map((i) => i.done)).toEqual([true, true]);
 	});
+});
+
+it("treats an unregistered checklist as absent and preserves registered-tool read errors", async () => {
+	const task = await issueWithSteps();
+	configureTestRuntime();
+	expect(await Checklists.of(testHost(home), task.id)).toEqual({
+		ok: true,
+		value: [],
+	});
+	configureTestRuntime({ modules: [checklistModule] });
+	const failed = await Checklists.of(testHost(join(root, "unopened")), task.id);
+	expect(failed.ok).toBe(false);
 });

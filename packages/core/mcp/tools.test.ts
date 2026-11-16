@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { z } from "zod";
-import { err, type Result } from "../result";
+import { err, NotFoundError, type Result } from "../result";
 import { Runtime } from "../runtime";
 import type { Task, TaskComment, TaskWorkLog } from "../schemas";
 import { Planner } from "../storage";
@@ -572,9 +572,48 @@ describe("cabane tools", () => {
 		expect(edited.parentTaskId).toBe(parent.id);
 	});
 
-	it("reports an unknown id as a tool error, not a throw", async () => {
-		const result = await tool("kabane_get").handler({ id: "JCAB-999" }, ctx);
-		expect(result.ok).toBe(false);
+	it("gets lowercase short ids and unique prefixes, and distinguishes ambiguity from absence", async () => {
+		const task = unwrap(
+			await Planner.addTask(base, { title: "First candidate" }),
+		);
+		if (!task.shortId) throw new Error("Missing short id");
+		for (const id of [task.shortId.toLowerCase(), task.id.slice(0, 25)]) {
+			expect(unwrap(await tool("kabane_get").handler({ id }, ctx))).toEqual(
+				task,
+			);
+		}
+		const other = unwrap(
+			await Planner.addTask(base, { title: "Second candidate" }),
+		);
+		const ambiguous = await tool("kabane_get").handler(
+			{ id: task.id.slice(0, 1) },
+			ctx,
+		);
+		expect(ambiguous.ok).toBe(false);
+		if (!ambiguous.ok) {
+			expect(ambiguous.error).not.toBeInstanceOf(NotFoundError);
+			expect(ambiguous.error.message).toContain("Ambiguous ID prefix");
+			for (const candidate of [task, other]) {
+				expect(ambiguous.error.message).toContain(
+					`${candidate.shortId}  ${candidate.title}`,
+				);
+			}
+		}
+		for (const [id, message] of [
+			["JCAB-999", "No task found with ID: JCAB-999"],
+			["missing", "No task found with ID prefix: missing"],
+			[
+				"01AAAAAAAAAAAAAAAAAAAAAAAA",
+				"No task found: 01AAAAAAAAAAAAAAAAAAAAAAAA",
+			],
+		] as const) {
+			const absent = await tool("kabane_get").handler({ id }, ctx);
+			expect(absent.ok).toBe(false);
+			if (!absent.ok) {
+				expect(absent.error).toBeInstanceOf(NotFoundError);
+				expect(absent.error.message).toBe(message);
+			}
+		}
 	});
 	it("links and unlinks an external issue by the pair that made it", async () => {
 		const task = unwrap(

@@ -1,8 +1,8 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The fixer phase on the real runner and a disposable tracker. A scripted ACP subprocess stands in
 // for the model: it reads the finding ids off the fixer's prompt and closes each one, or parks the
 // ones the test marks as left, through the real kabane tools.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +15,7 @@ import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 let home = "";
 beforeEach(async () => {
@@ -127,6 +128,7 @@ const run = async (): Promise<RunStore.Run> => {
 	const ended = await Runner.run("run-1", {
 		home,
 		basePath: home,
+		host: testHost(home),
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
 		overrides: TestHarnesses.overrides({
@@ -291,6 +293,7 @@ describe("Runner fixer", () => {
 		const deps = {
 			home,
 			basePath: home,
+			host: testHost(home),
 			cwd: home,
 			settings: Settings.port(async () => ok([])),
 		};

@@ -24,6 +24,6 @@
 export { Budget } from "./src/budget";
 export { Loop } from "./src/commands";
 export { LoopConfig } from "./src/config";
-export { loop } from "./src/extension";
+export { loop, loop as default } from "./src/extension";
 export { LoopPlan } from "./src/plan";
 export { RunStore } from "./src/store";

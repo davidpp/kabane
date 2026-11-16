@@ -11,7 +11,7 @@
 // completes lands its branch when its `land` setting says so
 // (`Land`), then runs the user's `onLanded` command once it is over (`Landed`). A single issue that gains a work child mid-run is a parent from then on. Each
 // subtask may work in a worktree of its own (`ClaimTrees`), which the run's end removes once free.
-import { err, ok, type Result, type Task } from "@cabane/core";
+import { type Result, type Task } from "@cabane/core";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
 import { Claims } from "./claims";
@@ -22,6 +22,7 @@ import { Landed } from "./landed";
 import { Lenses } from "./lenses";
 import { Parent } from "./parent";
 import { LoopPlan } from "./plan";
+import { err, ok } from "./result";
 import { Review } from "./review";
 import { Stall } from "./stall";
 import { RunState } from "./state";
@@ -262,7 +263,7 @@ export namespace Runner {
 		// Before the plan is read: a subtask this lands is closed in it, and one it reopens is ready.
 		if (RunStore.isolated(ctx.run))
 			await hearingStop(ctx, () => Claims.settleHeld(ctx));
-		const loaded = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
+		const loaded = await LoopPlan.load(ctx.deps.host.record, ctx.run.parentId);
 		if (!loaded.ok) {
 			state.planFailures += 1;
 			RunState.event(ctx, {
@@ -616,7 +617,7 @@ export namespace Runner {
 		if (edited)
 			return { status: "stopped", reason: "recheck-failed", detail: edited };
 		if (ctx.run.stall === undefined) {
-			const plan = await LoopPlan.load(ctx.deps.basePath, ctx.run.parentId);
+			const plan = await LoopPlan.load(ctx.deps.host.record, ctx.run.parentId);
 			RunState.save(ctx, {
 				...ctx.run,
 				stall: Stall.start(plan.ok ? await Claims.mark(ctx, plan.value) : ""),

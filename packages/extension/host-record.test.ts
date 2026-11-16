@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	KABANE_TOOLS,
+	NotFoundError,
 	Planner,
 	type Result,
 	type CoreToolInputShapes,
@@ -38,10 +39,39 @@ it("maps every wrapper to the full tool result in a real database", async () => 
 	const parent = value(
 		await Planner.addTask(home, { title: "Parent", kind: "issue" }),
 	);
+	expect(value(await record.get({ id: parent.id.slice(0, 25) }))).toEqual(
+		parent,
+	);
 	const child = value(
 		await Planner.addTask(home, { title: "Child", parentTaskId: parent.id }),
 	);
 	expect(value(await record.get({ id: parent.id }))).toEqual(parent);
+	for (const [id, message] of [
+		["missing", "No task found with ID prefix: missing"],
+		["JCAB-999999", "No task found with ID: JCAB-999999"],
+		["01AAAAAAAAAAAAAAAAAAAAAAAA", "No task found: 01AAAAAAAAAAAAAAAAAAAAAAAA"],
+	] as const) {
+		expect(value(await record.get({ id }))).toBeNull();
+		expect(await record.call("kabane_get", { id })).toMatchObject({
+			ok: false,
+			error: { name: "NotFoundError", message },
+		});
+	}
+	if (!parent.shortId) throw new Error("Missing short id");
+	expect(value(await record.get({ id: parent.shortId.toLowerCase() }))).toEqual(
+		parent,
+	);
+	const ambiguous = await record.get({ id: parent.id.slice(0, 1) });
+	expect(ambiguous.ok).toBe(false);
+	if (!ambiguous.ok) {
+		expect(ambiguous.error).not.toBeInstanceOf(NotFoundError);
+		expect(ambiguous.error.message).toContain("Ambiguous ID prefix");
+		for (const candidate of [parent, child]) {
+			expect(ambiguous.error.message).toContain(
+				`${candidate.shortId}  ${candidate.title}`,
+			);
+		}
+	}
 	expect(
 		value(
 			await record.list({ parentTaskId: parent.id, includeDeferred: true }),
@@ -214,4 +244,52 @@ it("holds every named wrapper input equal to its tool schema", () => {
 		workLogs: true,
 	};
 	expect(Object.values(parity).every(Boolean)).toBe(true);
+});
+
+it("pages full records through the tool and named wrapper", async () => {
+	configureTestRuntime();
+	const home = mkdtempSync(join(tmpdir(), "kabane-pages-"));
+	homes.push(home);
+	value(await Planner.init(home));
+	const record = createHostRecord(KABANE_TOOLS, {
+		basePath: home,
+		actor: "cabane://actor/agent/test",
+		scopeRequired: false,
+	});
+	for (let i = 0; i < 5; i++) {
+		value(await Planner.addTask(home, { title: `Page ${i}` }));
+		await Bun.sleep(2);
+	}
+	const all = value(await record.list({}));
+	for (const offset of [0, 2, 4]) {
+		const expected = all.slice(offset, offset + 2);
+		expect(value(await record.list({ limit: 2, offset }))).toEqual(expected);
+		expect(
+			value(await record.call("kabane_list", { limit: 2, offset })),
+		).toEqual(expected);
+	}
+	expect(
+		await record.call("kabane_list", { responseFormat: "concise", offset: 0 }),
+	).toMatchObject({
+		ok: false,
+		error: {
+			message: "concise pages with cursor; offset requires full format.",
+		},
+	});
+	for (const offset of [-1, 0.5])
+		expect((await record.call("kabane_list", { offset })).ok).toBe(false);
+});
+
+it("preserves a real database read failure", async () => {
+	configureTestRuntime();
+	const home = mkdtempSync(join(tmpdir(), "kabane-unmigrated-"));
+	homes.push(home);
+	const record = createHostRecord(KABANE_TOOLS, {
+		basePath: home,
+		actor: "cabane://actor/agent/test",
+		scopeRequired: false,
+	});
+	const result = await record.get({ id: "missing" });
+	expect(result.ok).toBe(false);
+	if (!result.ok) expect(result.error.message).toContain("no such table");
 });

@@ -1,5 +1,5 @@
-import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import "@cabane/core/testing";
 import {
 	existsSync,
 	mkdirSync,
@@ -23,6 +23,7 @@ import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 let root = "";
 let home = "";
@@ -469,7 +470,7 @@ describe("LoopPlan.findings", () => {
 			parentTaskId: parent.id,
 			tags: ["finding", "p3", "quality"],
 		});
-		const plan = await LoopPlan.load(home, parent.id);
+		const plan = await LoopPlan.load(testHost(home).record, parent.id);
 		expect(plan.ok && LoopPlan.findings(plan.value)).toEqual({
 			total: 2,
 			open: 2,
@@ -509,6 +510,7 @@ describe("Runner lenses", () => {
 		const ended = await Runner.run("run-1", {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides({
@@ -572,6 +574,7 @@ describe("Runner lenses", () => {
 		const ended = await Runner.run("run-1", {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides({
@@ -597,6 +600,7 @@ describe("Runner lenses", () => {
 			{
 				home,
 				basePath: home,
+				host: testHost(home),
 				kabaneBin: "/nonexistent/kabane",
 				cwd: repo,
 				settings: Settings.port(async () => ok([])),

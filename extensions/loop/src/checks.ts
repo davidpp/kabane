@@ -6,9 +6,10 @@
 // the pass as a red gate would.
 // A subtask's pass goes on its work log, and a red one reopens it; the run's own final pass goes
 // on the parent's.
-import { ok, Planner, type Result } from "@cabane/core";
+import { type Result } from "@cabane/core";
 import { Checklists } from "./checklists";
 import { Gates } from "./gates";
+import { ok } from "./result";
 import { RunState } from "./state";
 import { RunStore } from "./store";
 import { ClaimTrees } from "./trees";
@@ -42,7 +43,7 @@ export namespace Checks {
 		subject: Subject,
 	): Promise<Snapshot | undefined> => {
 		const taskId = subject.taskId ?? ctx.run.parentId;
-		const items = await Checklists.of(ctx.deps.basePath, taskId);
+		const items = await Checklists.of(ctx.deps.host, taskId);
 		if (!items.ok) {
 			RunState.event(ctx, {
 				type: "warning",
@@ -202,7 +203,7 @@ export namespace Checks {
 	// do either while its gates run or its merge waits behind another. Unread, it counts as not.
 	const dropped = async (ctx: Ctx, subject: Subject): Promise<boolean> => {
 		if (subject.taskId === undefined) return false;
-		const task = await Planner.getTask(ctx.deps.basePath, subject.taskId);
+		const task = await ctx.deps.host.record.get({ id: subject.taskId });
 		return task.ok && (!task.value || task.value.state === "cancelled");
 	};
 
@@ -374,12 +375,10 @@ export namespace Checks {
 				: []),
 		];
 		if (refs.length > 0) {
-			const logged = await Planner.addWorkLog(ctx.deps.basePath, {
-				taskId,
-				refs,
+			const logged = await ctx.deps.host.record.log({
+				id: taskId,
+				refs: [{ uri: `loop:${ctx.run.id}`, label: "gate results" }, ...refs],
 				...(failed ? { note: failed.tail.slice(-NOTE_CHARS) } : {}),
-				addedBy: `loop:${ctx.run.id}`,
-				addedByType: "ai",
 			});
 			if (!logged.ok)
 				RunState.event(ctx, {
@@ -397,7 +396,7 @@ export namespace Checks {
 			return;
 		// A human can park, cancel, retype or hand off the work while its gates run. A red
 		// result only reopens the done issue owned by the claim that requested those gates.
-		const current = await Planner.getTask(ctx.deps.basePath, taskId);
+		const current = await ctx.deps.host.record.get({ id: taskId });
 		if (!current.ok) {
 			RunState.event(ctx, {
 				type: "warning",
@@ -411,7 +410,8 @@ export namespace Checks {
 			current.value.assignee !== target.assignee
 		)
 			return;
-		const reopened = await Planner.updateTask(ctx.deps.basePath, taskId, {
+		const reopened = await ctx.deps.host.record.edit({
+			id: taskId,
 			state: "next",
 		});
 		RunState.event(ctx, {

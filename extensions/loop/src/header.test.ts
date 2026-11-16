@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import "@cabane/core/testing";
 import { mkdtempSync, rmSync } from "node:fs";
+import "@cabane/core/testing";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner, type Task } from "@cabane/core";
@@ -9,6 +9,7 @@ import { LoopConfig } from "./config";
 import { LoopHeader } from "./header";
 import type { LoopPlan } from "./plan";
 import { RunStore } from "./store";
+import { testHost } from "./test-host";
 
 const NOW = new Date("2026-10-10T12:30:00.000Z");
 
@@ -472,7 +473,7 @@ it("reads the real run file and current tracker plan on each header call", async
 			startedAt: current.createdAt,
 			detail: [],
 		};
-		const header = LoopHeader.make(home, home);
+		const header = LoopHeader.make(home, testHost(home).record);
 		const first = await header(card, { width: 100, expanded: true });
 		if (!first.ok) throw first.error;
 		expect(

@@ -13,6 +13,7 @@ import { loop, start } from "./extension";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 let home = "";
 
@@ -24,7 +25,7 @@ beforeEach(async () => {
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 const kabaneLoop = (...argv: string[]) => {
-	const command = loop.commands?.find((c) => c.name === "loop");
+	const command = loop(testHost(home)).commands?.find((c) => c.name === "loop");
 	if (!command) throw new Error("no loop command");
 	return command.run(parseArgs(argv), {
 		home,
@@ -41,8 +42,9 @@ const kabaneLoop = (...argv: string[]) => {
 const RUNNER = [
 	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
+	`import { testHost } from ${JSON.stringify(join(import.meta.dir, "test-host.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,
-	`const ran = await Loop.run({ home, basePath: home, kabaneBin: "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
+	`const ran = await Loop.run({ home, basePath: home, host: testHost(home), kabaneBin: "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
 	`process.exit(ran.ok ? 0 : 1);`,
 ].join("\n");
 
@@ -64,6 +66,7 @@ describe("kabane loop start", () => {
 		const deps = {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			cwd: home,
 			actor: "cabane://actor/human/test",
@@ -450,7 +453,9 @@ describe("kabane loop advise", () => {
 			tags: ["agent:docs-writer", "tier:balanced", "area:docs"],
 			description: "Write docs/parser.md.",
 		});
-		const command = loop.commands?.find((c) => c.name === "loop");
+		const command = loop(testHost(home)).commands?.find(
+			(c) => c.name === "loop",
+		);
 		if (!command) throw new Error("no loop command");
 		const advised = await command.run(
 			parseArgs(["advise", parent.shortId ?? parent.id]),
@@ -535,7 +540,9 @@ describe("kabane loop advise", () => {
 				parentTaskId: parent.value.id,
 			});
 			if (!child.ok) throw child.error;
-			const command = loop.commands?.find((c) => c.name === "loop");
+			const command = loop(testHost(home)).commands?.find(
+				(c) => c.name === "loop",
+			);
 			if (!command) throw new Error("no loop command");
 			return command.run(
 				parseArgs(["advise", parent.value.shortId ?? parent.value.id]),
@@ -628,6 +635,7 @@ describe("kabane loop advise", () => {
 				{
 					home,
 					basePath: home,
+					host: testHost(home),
 					kabaneBin: "/nonexistent/kabane",
 					cwd: home,
 					settings: Settings.port(async () =>

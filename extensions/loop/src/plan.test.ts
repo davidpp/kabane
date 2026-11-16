@@ -1,5 +1,5 @@
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import { type LinkType, Planner, type TaskDraft } from "@cabane/core";
 import { Brief } from "./brief";
 import { LoopPlan } from "./plan";
 import { Stop } from "./stop";
+import { testHost } from "./test-host";
 
 let base = "";
 
@@ -33,7 +34,7 @@ const close = async (id: string) => {
 };
 
 const load = async (parentId: string): Promise<LoopPlan.Plan> => {
-	const plan = await LoopPlan.load(base, parentId);
+	const plan = await LoopPlan.load(testHost(base).record, parentId);
 	if (!plan.ok) throw plan.error;
 	return plan.value;
 };
@@ -50,6 +51,36 @@ beforeEach(async () => {
 });
 
 afterEach(() => rmSync(base, { recursive: true, force: true }));
+
+it("ignores an external blocker deleted after its link was read through the real host", async () => {
+	const parent = await add({ title: "parent" });
+	const outside = await add({ title: "outside" });
+	const child = await add({ title: "child", parentTaskId: parent });
+	await link(outside, "blocks", child);
+	const record = testHost(base).record;
+	const get = record.get;
+	const reading = spyOn(record, "get").mockImplementation(async (input) => {
+		if (input.id === outside) {
+			const deleted = await Planner.deleteTask(base, outside);
+			if (!deleted.ok) throw deleted.error;
+		}
+		return get(input);
+	});
+	try {
+		const loaded = await LoopPlan.load(record, parent);
+		if (!loaded.ok) throw loaded.error;
+		expect(reading.mock.calls.some(([input]) => input.id === outside)).toBe(
+			true,
+		);
+		expect(loaded.value.nodes[0]?.blockedBy).toEqual([outside]);
+		expect(loaded.value.outside.has(outside)).toBe(false);
+		expect(titles(LoopPlan.frontier(loaded.value, NONE, NOW))).toEqual([
+			"child",
+		]);
+	} finally {
+		reading.mockRestore();
+	}
+});
 
 describe("LoopPlan.fixable", () => {
 	it("takes every claimable finding of any severity, most severe first, and never as subtask work", async () => {

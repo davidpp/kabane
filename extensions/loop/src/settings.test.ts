@@ -1,12 +1,23 @@
-import { describe, expect, it } from "bun:test";
+import "@cabane/core/testing";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Planner } from "@cabane/core";
 import { Settings } from "@cabane/extension";
 import type { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
 import { loop } from "./extension";
 import { LoopSettings } from "./settings";
+import { testHost } from "./test-host";
+
+const hostHome = mkdtempSync(join(tmpdir(), "loop-settings-"));
+const host = testHost(hostHome);
+beforeAll(async () => {
+	const initialized = await Planner.init(hostHome);
+	if (!initialized.ok) throw initialized.error;
+});
+afterAll(() => rmSync(hostHome, { recursive: true, force: true }));
 
 const config = (input: LoopConfig.Input = {}): LoopConfig.Config => {
 	const parsed = LoopConfig.Schema.safeParse(input);
@@ -16,7 +27,10 @@ const config = (input: LoopConfig.Input = {}): LoopConfig.Config => {
 
 describe("LoopSettings.inputs", () => {
 	it("one input per setting the form can hold, read off the schema, grouped, at the config's values", () => {
-		const inputs = LoopSettings.inputs(config(), ["functional", "quality"]);
+		const inputs = LoopSettings.inputs(host, config(), [
+			"functional",
+			"quality",
+		]);
 		expect(Object.keys(inputs)).toEqual([
 			"implementer",
 			"model",
@@ -79,8 +93,10 @@ describe("LoopSettings.inputs", () => {
 		});
 		// A tier loop.tiers adds is one more step.
 		expect(
-			LoopSettings.inputs(config({ tiers: { codex: { docs: "gpt-6-luna" } } }))
-				.model?.options,
+			LoopSettings.inputs(
+				host,
+				config({ tiers: { codex: { docs: "gpt-6-luna" } } }),
+			).model?.options,
 		).toEqual(["your own", "frontier", "balanced", "fast", "docs"]);
 		// Unset, it follows isolation; a value set in a layer shows instead.
 		expect(inputs["budget.concurrency"]).toMatchObject({
@@ -95,7 +111,7 @@ describe("LoopSettings.inputs", () => {
 			"2",
 		]);
 		expect(
-			LoopSettings.inputs(config({ budget: { concurrency: 3 } }))[
+			LoopSettings.inputs(host, config({ budget: { concurrency: 3 } }))[
 				"budget.concurrency"
 			]?.default,
 		).toBe("3");
@@ -116,6 +132,7 @@ describe("LoopSettings.inputs", () => {
 
 	it("a configured value that is not among the steps joins them, in order", () => {
 		const inputs = LoopSettings.inputs(
+			host,
 			config({ model: "claude-opus-4", budget: { continuations: 4 } }),
 		);
 		expect(inputs.model?.default).toBe("claude-opus-4");
@@ -137,10 +154,10 @@ describe("LoopSettings.overrides", () => {
 		const configured = config({ lenses: ["quality"] });
 		const values = Object.fromEntries(
 			Object.entries(
-				LoopSettings.inputs(configured, ["functional", "quality"]),
+				LoopSettings.inputs(host, configured, ["functional", "quality"]),
 			).map(([name, input]) => [name, input.default]),
 		);
-		const overrides = LoopSettings.overrides({
+		const overrides = LoopSettings.overrides(host, {
 			...values,
 			"budget.concurrency": "3",
 			"lenses.functional": true,
@@ -180,11 +197,11 @@ describe("LoopSettings.overrides", () => {
 	});
 
 	it("only the values given, and a value that is no number is refused", () => {
-		expect(LoopSettings.overrides({ stallAfter: "2" })).toEqual({
+		expect(LoopSettings.overrides(host, { stallAfter: "2" })).toEqual({
 			ok: true,
 			value: { stallAfter: 2 },
 		});
-		expect(LoopSettings.overrides({ stallAfter: "soon" }).ok).toBe(false);
+		expect(LoopSettings.overrides(host, { stallAfter: "soon" }).ok).toBe(false);
 	});
 });
 
@@ -199,18 +216,18 @@ describe("the loop's looks", () => {
 	const optionsAt = (path: string, at: Settings.At = {}) =>
 		Settings.options(
 			fieldAt(path),
-			Settings.lookOf(loop.looks, path.split(".")),
+			Settings.lookOf(loop(host).looks, path.split(".")),
 			at,
 		);
 
 	it("are declared on the extension, and their groups are the form's sections in order", () => {
 		expect(
-			Settings.lookOf(loop.looks, ["budget", "concurrency"]),
+			Settings.lookOf(loop(host).looks, ["budget", "concurrency"]),
 		).toMatchObject({
 			label: "sessions at once",
 			group: "Limits",
 		});
-		expect(Settings.groupsOf(loop.looks)).toEqual([
+		expect(Settings.groupsOf(loop(host).looks)).toEqual([
 			"Agents",
 			"Limits",
 			"Checks",
@@ -252,11 +269,12 @@ it("an advised hint names no previous value when it is only the schema default",
 	const advice = [
 		{ path: "stallAfter", value: 2, reason: "thrash" },
 	] satisfies LoopAdvice.Recommendation[];
-	expect(LoopSettings.inputs(config({}), [], advice).stallAfter?.hint).toBe(
-		"advised: thrash",
-	);
 	expect(
-		LoopSettings.inputs(config({ stallAfter: 5 }), [], advice).stallAfter?.hint,
+		LoopSettings.inputs(host, config({}), [], advice).stallAfter?.hint,
+	).toBe("advised: thrash");
+	expect(
+		LoopSettings.inputs(host, config({ stallAfter: 5 }), [], advice).stallAfter
+			?.hint,
 	).toBe("advised: thrash (your setting: 5)");
 });
 
@@ -277,7 +295,7 @@ it("advice replaces task settings with a reason, preserves preferences, and user
 		},
 		{ path: "setup", value: "bun install", reason: "lockfile" },
 	] satisfies LoopAdvice.Recommendation[];
-	const inputs = LoopSettings.inputs(original, [], advice);
+	const inputs = LoopSettings.inputs(host, original, [], advice);
 	expect(inputs["budget.concurrency"]).toMatchObject({
 		default: "1",
 		hint: "advised: shared files (your setting: 3)",
@@ -286,15 +304,15 @@ it("advice replaces task settings with a reason, preserves preferences, and user
 	expect(inputs.verifier?.default).toBe("claude");
 	expect(inputs.model?.default).toBe("chosen");
 	expect(inputs.land?.default).toBe("pr");
-	expect(LoopSettings.overrides({ "budget.concurrency": "4" }, advice)).toEqual(
-		{
-			ok: true,
-			value: {
-				budget: { concurrency: 4 },
-				gates: { test: "bun run test" },
-				setup: "bun install",
-			},
+	expect(
+		LoopSettings.overrides(host, { "budget.concurrency": "4" }, advice),
+	).toEqual({
+		ok: true,
+		value: {
+			budget: { concurrency: 4 },
+			gates: { test: "bun run test" },
+			setup: "bun install",
 		},
-	);
+	});
 	expect(original.budget.concurrency).toBe(3);
 });

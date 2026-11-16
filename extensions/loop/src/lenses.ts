@@ -12,11 +12,12 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CopilotInstructions } from "@cabane/acp";
-import { err, ok, type Result, type Task, trySync } from "@cabane/core";
+import { type Result, type Task } from "@cabane/core";
 import { z } from "zod";
 import { LoopConfig } from "./config";
 import { Fixer } from "./fixer";
 import { LoopPlan } from "./plan";
+import { err, ok, trySync } from "./result";
 import type { RunStore } from "./store";
 
 export namespace Lenses {

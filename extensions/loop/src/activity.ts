@@ -2,6 +2,7 @@
 // run's `events.jsonl`, and its questions name the card and lane that ask them. Each
 // claim is a lane, so the tab can follow one session or tag every line with whose it is.
 import {
+	type Host,
 	type ActivityCard,
 	type ActivityQuestion,
 	type ActivitySource,
@@ -10,8 +11,9 @@ import {
 	type NoticeSeverity,
 	type StopAction,
 } from "@cabane/extension";
+import { err, ok } from "./result";
 
-import { err, ok, parseQuestionBody, Planner, type Result } from "@cabane/core";
+import { parseQuestionBody, Planner, type Result } from "@cabane/core";
 import { Loop } from "./commands";
 import { RunStore } from "./store";
 
@@ -105,7 +107,12 @@ export namespace LoopActivity {
 				: {}),
 	});
 
-	type ActDeps = { home: string; basePath: string; kabaneBin: string };
+	type ActDeps = {
+		host: Host;
+		home: string;
+		basePath: string;
+		kabaneBin: string;
+	};
 
 	/**
 	 * Run an action through the run's inbox, which the runner reads every tick. `stop` is the
@@ -213,6 +220,7 @@ export namespace LoopActivity {
 	 */
 	export const source = ({
 		home,
+		host,
 		basePath,
 		actor,
 		kabaneBin,
@@ -259,7 +267,7 @@ export namespace LoopActivity {
 				: events;
 		},
 		act: (id, actionId, input) =>
-			act({ home, basePath, kabaneBin }, id, actionId, input),
+			act({ home, basePath, host, kabaneBin }, id, actionId, input),
 		dismiss: async (id) => {
 			const dismissed = RunStore.dismiss(home, id, new Date());
 			return dismissed.ok ? ok(undefined) : dismissed;
@@ -295,7 +303,11 @@ export namespace LoopActivity {
 			return ok(questions);
 		},
 		answer: async (id, text) => {
-			const answered = await Loop.answer({ home, basePath, actor }, id, text);
+			const answered = await Loop.answer(
+				{ home, basePath, host, actor },
+				id,
+				text,
+			);
 			return answered.ok ? ok(`answered ${answered.value.answer}`) : answered;
 		},
 	});

@@ -350,6 +350,16 @@ self-contained, includes the reachable core and zod types, and exports types onl
 published `./extension` export has a `types` condition only. Build tests compile named type
 imports and reject value imports.
 
+An extension with module-level leaf functions can keep a local `result.ts` whose four typed
+live bindings (`ok`, `err`, `tryCatch`, `trySync`) are assigned from `host.result` by
+`Kabane.bind(host)`, the first call in its factory. Imports of that module do not call the
+helpers before the factory binds them. Tests bind the real result helpers before exercising
+leaf functions (`extensions/loop/src/result.test.ts` pins the live binding, and both lint
+passes accept the pattern). Review checks that module initialization calls none before binding.
+Only these stateless functions are shared: the record, scope, settings and
+other per-host values remain explicit dependencies. The loop uses this pattern; it does not
+retain a global host or a global record.
+
 The helpers on `result`, `args`, `outcome` and `settings` keep their signatures in
 `packages/core/result.ts` and `packages/extension/index.ts`, and `defineTool` is `define` in
 `packages/core/mcp/tools.ts:91`, which the loop's `kabane_loop_advise` uses since JCAB-275
@@ -380,7 +390,7 @@ read from the handlers in `packages/core/mcp/tools.ts` and the `Planner` functio
 ```ts
 namespace Host {
 	export type Record = {
-		get(input: { id: string }): Promise<Result<Task>>; // kabane_get
+		get(input: { id: string }): Promise<Result<Task | null>>; // kabane_get
 		list(input: ListInput): Promise<Result<Task[]>>; // kabane_list
 		edit(input: EditInput): Promise<Result<Task>>; // kabane_edit
 		done(input: { id: string }): Promise<Result<Task>>; // kabane_done
@@ -399,9 +409,12 @@ namespace Host {
 ```
 
 `ListInput`, `EditInput`, `ContextInput` and `UpstreamLinkInput` are the tools' zod shapes less
-the presentation fields. A data module's tools, `kabane_checklist` among them, are
+the presentation fields. `ListInput` includes optional `limit` and `offset` for full-format paging;
+concise tool calls page with `cursor` and refuse `offset`. A data module's tools, `kabane_checklist` among them, are
 reached through `call`, whose result is `unknown` until the caller parses it; core's tools get
 typed wrappers. `call` passes input unchanged, including cursors and response format.
+`get` accepts case-insensitive short ids, full ULIDs and unique ULID prefixes. It returns `null`
+for an absent task and an `err` for a failed read or an ambiguous prefix (with its candidates).
 `log` takes `refs` or `commit` or both, as `kabane_log` does. `context` always returns the full
 context. Inputs are spelled out in `Host`; compile-time assertions compare each mirror to
 the tool’s typed input shape, and real database tests pin the wrappers to the handlers’ full
@@ -423,10 +436,12 @@ argument by argument, the loop needed these, and JCAB-336 added the tools and in
 | `addWorkLog` (`checks.ts:377`, `claims.ts:342`, `parent.ts:76`) | `addedBy: "loop:<runId>"`, `addedByType` | `kabane_log` stamps the connected actor | nothing: the run is already named by its `loop:<runId>` ref (`parent.ts:78`), so the loop writes under `ctx.actor` and puts the run in the ref's label |
 | `startSession`, `getSession`, `endSession`, `addActivity`, `getActivities`, `getNeedsInput`, `answerQuestion` | sessions and their questions | no session tool | no host session API; the loop moves in JCAB-340 and core drops these in JCAB-343 |
 
-The other calls map to a tool as they are: `getTask` and `resolveTaskId` to `get` (the result
+The other calls map to a tool as they are: `getTask` to `get` (the result
 carries the ULID), `updateTask` with `state` and `assignee` to `edit`, `addComment` to `comment`
-(the tool stamps `authorType` from the actor, as the loop does by hand at `parent.ts:230`),
+(the tool stamps `authorType` from the actor),
 `assembleContext` to `context`, `upsertUpstreamLink` to `upstreamLink`.
+`resolveTaskId` also maps to `get`: it accepts case-insensitive short ids, full ULIDs and
+unique ULID prefixes. Ambiguous prefixes return an error with candidates; absence returns `null`.
 
 Why the tools and not `Planner`: opencode made its plugin context "essentially an OpenCode server
 client", and that keeps a host API from growing shortcuts only internal code can take. `Planner`
@@ -752,7 +767,7 @@ This follows the 2026-11-04 research note except in three places:
 
 | Rule | Where the code breaks it | Removed by |
 |---|---|---|
-| An extension imports no `@cabane/*` value except from the harness client it bundles | The loop lists `@cabane/acp`, `checklist`, `core` and `extension` (`extensions/loop/package.json`) and imports values from them in 30 source files | JCAB-326, which waits on JCAB-340 for the session calls, and JCAB-340 on JCAB-329 |
+| An extension imports no `@cabane/*` value except from the harness client it bundles | The loop retains core session/question imports for JCAB-340; checklist is a test-only dependency | JCAB-326, which waits on JCAB-340 for the session calls, and JCAB-340 on JCAB-329 |
 | A host depends on no extension | `packages/cli/package.json` lists `@cabane/loop`, which `OFFICIAL` in `packages/cli/src/extensions.ts` bundles; JCAB-318's table lists the edge as an exception tied to JCAB-326 | JCAB-326 |
 | Core keeps only what passes the four questions | Plan lint moved to `extensions/loop/src/lint/`; core no longer exports it | JCAB-338, done |
 | | `scope/detect.ts`, `self.ts`, `serveStdio`, `handleHttpRequest` | JCAB-328 |

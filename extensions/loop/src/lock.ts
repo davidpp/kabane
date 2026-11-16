@@ -11,8 +11,9 @@
 // which needs a process killed within that handful of syscalls.
 import { randomUUID } from "node:crypto";
 import { linkSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { err, ok, type Result, trySync } from "@cabane/core";
+import { type Result } from "@cabane/core";
 import { z } from "zod";
+import { err, ok, trySync } from "./result";
 import { RunStore } from "./store";
 
 export namespace FileLock {

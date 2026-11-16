@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "../mcp/server";
+import { NotFoundError } from "../result";
 import { withDb } from "../runtime";
 import type { Task } from "../schemas";
 import { LocalRelay } from "../sync/local-relay";
@@ -31,6 +32,26 @@ const createDevice = async (deviceId: string): Promise<string> => {
 	if (!armed.value.ok) throw armed.value.error;
 	return base;
 };
+
+it("types resolver absence without changing its messages or full-id passthrough", async () => {
+	const base = await createDevice("resolve-ids");
+	for (const [id, message] of [
+		["JCAB-999", "No task found with ID: JCAB-999"],
+		["missing", "No task found with ID prefix: missing"],
+	] as const) {
+		const result = await Planner.resolveTaskId(base, id);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toBeInstanceOf(NotFoundError);
+			expect(result.error.message).toBe(message);
+		}
+	}
+	const id = "01AAAAAAAAAAAAAAAAAAAAAAAA";
+	expect(await Planner.resolveTaskId(base, id)).toEqual({
+		ok: true,
+		value: id,
+	});
+});
 
 describe("task scope edits over MCP", () => {
 	for (const scopeUri of ["review", "kabane://scope/review"]) {

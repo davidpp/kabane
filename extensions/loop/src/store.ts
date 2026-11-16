@@ -19,12 +19,13 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { err, ok, type Result, trySync } from "@cabane/core";
+import { type Result } from "@cabane/core";
 import type { ActivityToolDetail } from "@cabane/extension";
 import { z } from "zod";
 import { Budget } from "./budget";
 import { LoopConfig } from "./config";
 import { Gates } from "./gates";
+import { err, ok, trySync } from "./result";
 import { Review } from "./review";
 import { Route } from "./route";
 import { Stall } from "./stall";

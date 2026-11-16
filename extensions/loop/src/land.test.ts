@@ -1,10 +1,10 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Landing a run's branch with real git: the project's remote is a bare repository on disk, so
 // fetch, rebase and push are git's own, and a teammate's clone of it moves the base meanwhile.
 // Only git's config is the fixture's (an identity, no signing), as in every test. GitHub is the
 // one thing not real: `gh` goes through the runner's port, here a recorder that answers as gh
 // does, so no test reaches a GitHub repository.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	chmodSync,
 	existsSync,
@@ -28,6 +28,7 @@ import type { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 import { Worktree } from "./worktree";
 
 let root = "";
@@ -163,6 +164,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 		deps: {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides(),
@@ -186,7 +188,7 @@ const landed = async (
 	ctx: RunState.Ctx,
 	mode: Land.Mode = "pr",
 ): Promise<RunStore.Landing> => {
-	const plan = await LoopPlan.load(home, ctx.run.parentId);
+	const plan = await LoopPlan.load(testHost(home).record, ctx.run.parentId);
 	if (!plan.ok) throw plan.error;
 	return Land.land(ctx, plan.value, mode);
 };
@@ -557,6 +559,7 @@ describe("a run with land: pr, through the real runner", () => {
 		const ran = await Runner.run(run.id, {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides(),
@@ -601,6 +604,7 @@ describe("a run with land: pr, through the real runner", () => {
 		const ran = await Runner.run(run.id, {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides(),
@@ -930,6 +934,7 @@ describe("a run with land: merge, through the real runner", () => {
 		const ran = await Runner.run(run.id, {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides(),
@@ -1013,7 +1018,14 @@ describe("onLanded after a merge landing", () => {
 		if (!written.ok) throw written.error;
 
 		const landed = await Loop.land(
-			{ home, basePath: home, kabaneBin: "/nonexistent/kabane", git, gh },
+			{
+				home,
+				basePath: home,
+				host: testHost(home),
+				kabaneBin: "/nonexistent/kabane",
+				git,
+				gh,
+			},
 			run.id,
 		);
 
@@ -1042,7 +1054,14 @@ describe("onLanded after a merge landing", () => {
 		GitFixture.run(repo, ["checkout", "-q", "-b", "elsewhere"]);
 
 		const landed = await Loop.land(
-			{ home, basePath: home, kabaneBin: "/nonexistent/kabane", git, gh },
+			{
+				home,
+				basePath: home,
+				host: testHost(home),
+				kabaneBin: "/nonexistent/kabane",
+				git,
+				gh,
+			},
 			run.id,
 		);
 
@@ -1106,6 +1125,7 @@ describe("Loop.land", () => {
 	const landDeps = () => ({
 		home,
 		basePath: home,
+		host: testHost(home),
 		kabaneBin: "/nonexistent/kabane",
 		git,
 		gh,
@@ -1220,7 +1240,7 @@ describe("Loop.land", () => {
 		});
 		// gh still says the pull request is open; prune does not ask it, git says the branch is in.
 		ghCalls = [];
-		const pruned = await Prune.prune({ home, basePath: home, git, gh });
+		const pruned = await Prune.prune({ home, host: testHost(home), git, gh });
 		if (!pruned.ok) throw pruned.error;
 		expect(pruned.value).toMatchObject([
 			{ removed: true, why: `branch ${BRANCH} is merged into HEAD` },
@@ -1415,6 +1435,7 @@ const staleIndexLock = (dir: string): string => {
 const runnerDeps = () => ({
 	home,
 	basePath: home,
+	host: testHost(home),
 	kabaneBin: "/nonexistent/kabane",
 	pid: process.pid,
 	overrides: TestHarnesses.overrides(),
@@ -1570,6 +1591,7 @@ describe("a landing whose runner died", () => {
 		const ran = await Runner.run(run.id, {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides(),

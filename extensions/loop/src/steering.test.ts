@@ -1,5 +1,5 @@
-import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import "@cabane/core/testing";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +11,7 @@ import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 let home = "";
 
@@ -32,7 +33,7 @@ const add = async (draft: Partial<TaskDraft> & { title: string }) => {
 };
 
 const load = async (parentId: string): Promise<LoopPlan.Plan> => {
-	const plan = await LoopPlan.load(home, parentId);
+	const plan = await LoopPlan.load(testHost(home).record, parentId);
 	if (!plan.ok) throw plan.error;
 	return plan.value;
 };
@@ -157,7 +158,7 @@ describe("Loop.pause and Loop.direct", () => {
 
 		expect(Loop.pause({ home }, "run-1", "pause").ok).toBe(true);
 		const skipped = await Loop.direct(
-			{ home, basePath: home },
+			{ home, basePath: home, host: testHost(home) },
 			"skip",
 			child.shortId ?? child.id,
 		);
@@ -166,7 +167,7 @@ describe("Loop.pause and Loop.direct", () => {
 			task: child.shortId ?? child.id,
 		});
 		const stray = await Loop.direct(
-			{ home, basePath: home },
+			{ home, basePath: home, host: testHost(home) },
 			"next",
 			other.id,
 			"run-1",
@@ -188,7 +189,7 @@ describe("Loop.pause and Loop.direct", () => {
 	it("steer a single issue in the run on it, and name the issue when no run has it", async () => {
 		const issue = await add({ title: "issue" });
 		const short = issue.shortId ?? issue.id;
-		const deps = { home, basePath: home };
+		const deps = { home, basePath: home, host: testHost(home) };
 		const none = await Loop.direct(deps, "skip", short);
 		expect(!none.ok && none.error.message).toBe(
 			`No live loop run is working on ${short}`,
@@ -241,6 +242,7 @@ describe("Runner inbox handling", () => {
 		const running = Runner.run("run-1", {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			signal: controller.signal,

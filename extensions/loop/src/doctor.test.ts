@@ -1,5 +1,5 @@
-import "@cabane/core/testing";
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import "@cabane/core/testing";
 import {
 	existsSync,
 	mkdirSync,
@@ -18,6 +18,7 @@ import { detectScope } from "@cabane/core/scope";
 import { Doctor, type Extension, Settings } from "@cabane/extension";
 import { LoopDoctor } from "./doctor";
 import { Lenses } from "./lenses";
+import { testHost } from "./test-host";
 
 let folder = "";
 let home = "";
@@ -55,7 +56,7 @@ const ctx = (loop: unknown = PINNED): Extension.Ctx => ({
 });
 
 const findings = async (loop?: unknown) => {
-	const found = await LoopDoctor.doctor(ctx(loop));
+	const found = await LoopDoctor.doctor(testHost(home), ctx(loop));
 	if (!found.ok) throw found.error;
 	return found.value;
 };
@@ -103,7 +104,7 @@ test("with a dispatch skill, the fix moves legacy lenses into it and removes the
 	write(legacy("docs"), "Review docs.\n");
 	expect(await ids()).toEqual(["legacy-lens-dir:auto"]);
 	const report = await Doctor.run(
-		[{ name: "loop", doctor: LoopDoctor.doctor }],
+		[{ name: "loop", doctor: (ctx) => LoopDoctor.doctor(testHost(home), ctx) }],
 		ctx(PINNED),
 		{ fix: true },
 	);
@@ -197,7 +198,7 @@ test("repair keeps a real Claude skill's active lens ahead of the legacy copy", 
 			.find(existsSync);
 	expect(active()).toBe(claude);
 	const report = await Doctor.run(
-		[{ name: "loop", doctor: LoopDoctor.doctor }],
+		[{ name: "loop", doctor: (ctx) => LoopDoctor.doctor(testHost(home), ctx) }],
 		ctx(),
 		{ fix: ["loop/legacy-lens-dir"] },
 	);

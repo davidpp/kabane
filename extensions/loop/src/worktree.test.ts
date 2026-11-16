@@ -1,3 +1,4 @@
+import "./test-host";
 // A checkpoint through the user's own git, the runner's default, in a real worktree. The fixture
 // repository's local config sets what the machine's could otherwise change: an identity, no
 // signing, and the hooks directory.

@@ -1,3 +1,4 @@
+import "./test-host";
 // The worktree lock with real processes contending for it at once, each a bun process of its own,
 // released together by a barrier file so their attempts overlap.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -33,6 +34,7 @@ const contender = (): string => {
 		script,
 		[
 			`import { existsSync, writeFileSync } from "node:fs";`,
+			`import ${JSON.stringify(join(import.meta.dir, "test-host.ts"))};`,
 			`import { Worktree } from ${JSON.stringify(join(import.meta.dir, "worktree.ts"))};`,
 			`const [dir, root, name] = process.argv.slice(2);`,
 			`writeFileSync(root + "/ready-" + name, "");`,

@@ -9,15 +9,17 @@
 // landing by hand holds (`Worktree.lock`).
 import { existsSync } from "node:fs";
 import { relative } from "node:path";
-import { err, ok, type Result } from "@cabane/core";
+import { type Result } from "@cabane/core";
+import type { Host } from "@cabane/extension";
 import { Land } from "./land";
 import { Parent } from "./parent";
+import { err, ok } from "./result";
 import { RunStore } from "./store";
 import { Worktree } from "./worktree";
 
 export namespace Prune {
 	type Deps = {
-		basePath: string;
+		host: Host;
 		home: string;
 		git?: Worktree.Git;
 		gh?: Land.Gh;
@@ -46,7 +48,7 @@ export namespace Prune {
 			)?.pr;
 			if (latestPr === pr) {
 				const reconciled = await Parent.reconcile(
-					deps.basePath,
+					deps.host.record,
 					run,
 					state.value.state,
 				);

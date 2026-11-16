@@ -10,13 +10,12 @@
 // cancels it through ACP instead and closes the question as withdrawn (`questions.ts`).
 import type { AcpClient } from "@cabane/acp";
 import {
-	err,
 	formatQuestionBody,
-	ok,
 	type PermissionRequestMeta,
 	type Result,
 } from "@cabane/core";
 import { Questions } from "./questions";
+import { err, ok } from "./result";
 
 export namespace Permission {
 	type Option = PermissionRequestMeta["options"][number];

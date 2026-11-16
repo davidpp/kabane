@@ -252,7 +252,7 @@ it("refuses a host.record write inside a write at once; a record read sees what 
 		scopeRequired: false,
 	});
 	let comment: [Result<unknown>, number] | undefined;
-	let seen: Result<{ state: string }> | undefined;
+	let seen: Result<{ state: string } | null> | undefined;
 	value(
 		await store().write(async (tx) => {
 			tx.updateTask(task.id, { state: "next" });
@@ -266,7 +266,7 @@ it("refuses a host.record write inside a write at once; a record read sees what 
 		"call kabane_comment after store.write returns",
 	);
 	expect(comment[1]).toBeLessThan(100);
-	expect(seen && value(seen).state).toBe("inbox");
+	expect(seen && value(seen)?.state).toBe("inbox");
 	// Once the write has returned, the same call works.
 	expect((await record.comment({ id: task.id, body: "now" })).ok).toBe(true);
 });

@@ -1,3 +1,8 @@
+/** A missing record is distinguishable from a failed read across the tool boundary. */
+export class NotFoundError extends Error {
+	override readonly name = "NotFoundError";
+}
+
 /**
  * Result type for operations that can fail.
  * Use this instead of throwing exceptions for expected failures.

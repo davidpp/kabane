@@ -1,9 +1,9 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The recheck after the fixer, on the real runner, a disposable tracker and a real git repository.
 // A scripted ACP subprocess stands in for the model, through the real kabane tools: as the fixer
 // it closes every finding it is given and edits a tracked file, and as a lens's recheck it reopens
 // the findings the test marks.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	appendFileSync,
 	existsSync,
@@ -23,6 +23,7 @@ import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 let home = "";
 let first = "";
@@ -155,6 +156,7 @@ const run = async (
 	const ended = await Runner.run("run-1", {
 		home,
 		basePath: home,
+		host: testHost(home),
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
 		overrides: TestHarnesses.overrides({
@@ -502,7 +504,7 @@ describe("Lenses.rechecks", () => {
 			});
 			if (!closed.ok) throw closed.error;
 		}
-		const loaded = await LoopPlan.load(home, parent.id);
+		const loaded = await LoopPlan.load(testHost(home).record, parent.id);
 		if (!loaded.ok) throw loaded.error;
 		const plan = loaded.value;
 		const config = { lenses: ["functional", "quality"], recheck: true };
