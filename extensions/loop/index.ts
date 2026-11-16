@@ -2,14 +2,14 @@
  * @cabane/loop
  *
  * The loop extension: drives a parent issue's subtasks to completion through ACP harnesses, one
- * core agent session per claimed subtask, or a single issue with no subtasks as its own one work
- * item, from a detached runner process whose state lives in
+ * ACP session per claimed subtask, or a single issue with no subtasks as its own one work item,
+ * from a detached runner process whose state, sessions included, lives in
  * `$KABANE_HOME/loops/<runId>/`. Once the work is done, the project's gates and the verifier
  * lenses check it; a lens files findings as child issues. A completed run whose `land` setting is
  * `pr` rebases its branch onto its base, pushes it and opens a pull request with the user's own
- * git and gh. `Loop` holds the entry points the CLI
- * wires as `kabane loop start|run|status|stop|pause|resume|skip|next|rollback|answer|land|prune`; the rest
- * is exported for the board's view of a run.
+ * git and gh. kabane calls only the default export, the `(host) => Extension` factory, whose
+ * `loop` command parses its verbs in `src/extension.ts` and runs them through `Loop`. The named
+ * exports are for tests that import the built bundle (`scripts/build.test.ts`).
  *
  * The loop is a thin wrapper over the user's own harness. It adds no security or policy the user
  * did not configure: no allow list or settings file, no model unless the run names one. A session

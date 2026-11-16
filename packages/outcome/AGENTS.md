@@ -11,8 +11,8 @@ Its layer is `data module`; its entry in `scripts/layers.ts` says what it may li
 `outcomeModule` immediately after `handoffModule`. Handoff remains that module's kind.
 
 Read before writing: `module.ts`, `module.test.ts`, and core's AGENTS.md, "Timeline entries".
-No session stream or question storage belongs here. The loop moves its session ownership in
-JCAB-340; JCAB-343 migrates existing outcomes and removes core's session tables.
+No session stream or question storage belongs here: the loop keeps its sessions and questions
+in its own run directory, and core keeps no session table.
 
 ## Verify
 
