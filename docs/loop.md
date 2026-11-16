@@ -261,15 +261,11 @@ have no start flags; set them through `kabane config set` if you want those sugg
 The board form applies the advice you reviewed to that run, without saving it as your
 defaults.
 
-You can also ask the board copilot to "set up a loop for X". It reads the advice and the
-subtasks' briefs, proposes settings and `tier:`/`agent:` tags with a reason for each, and
-waits for your yes before it tags anything or starts the run. It never changes the
-implementer or verifier unless you ask.
-
-The copilot knows how to start and set up a run from the loop's own procedure files, in
-`copilot/procedures/` of the loop's directory. Kabane reads those files only from an extension
-loaded as a directory under `$KABANE_HOME/extensions/`; the loop that ships inside kabane adds
-none, so with it the copilot does not start runs for you. Start them with `kabane loop start`.
+The board copilot sets up and starts runs only from the loop's procedure files, in
+`copilot/procedures/` of the loop's directory, and kabane reads those files only from an
+extension loaded as a directory under `$KABANE_HOME/extensions/`. The loop that ships inside
+kabane adds none, so with it the copilot neither sets up nor starts a run. Set one up with
+`kabane loop advise` or the board's `a` form, and start it with `kabane loop start`.
 
 ## How much review a run gets
 
