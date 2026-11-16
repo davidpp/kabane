@@ -395,13 +395,18 @@ const callTool = async (
 		},
 		stdin: "pipe",
 		stdout: "pipe",
-		stderr: "ignore",
+		stderr: "pipe",
 	});
+	// A server that has exited breaks the pipe: what it printed says why, below.
 	const send = async (message: Record<string, unknown>) => {
-		await proc.stdin.write(
-			`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`,
-		);
-		await proc.stdin.flush();
+		try {
+			await proc.stdin.write(
+				`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`,
+			);
+			await proc.stdin.flush();
+		} catch {
+			// Its exit and stderr are the answer.
+		}
 	};
 	const lines = (async function* () {
 		let buffered = "";
@@ -444,7 +449,8 @@ const callTool = async (
 	});
 	const called = ready ? await reply(2) : undefined;
 	proc.kill();
-	if (!ready) return "the MCP server did not initialize";
+	if (!ready)
+		return `the MCP server did not initialize: ${(await new Response(proc.stderr).text()).trim() || "it said nothing"}`;
 	if (!called) return `${name} got no answer`;
 	if (called.error) return `${name} failed: ${called.error.message}`;
 	return `${name} answered ${JSON.stringify(called.result)}`;
