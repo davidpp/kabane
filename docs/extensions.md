@@ -11,6 +11,7 @@ This repository has two:
 |---|---|
 | `loop` | `kabane loop`, which drives an issue or a parent issue's subtasks through coding harnesses on your machine; `a` on the board to start a run, with a tab per run; the copilot's procedures to start and advise a run; the `kabane_loop_advise` MCP tool; `loop.*` settings; doctor checks under `loop`. See [loop.md](loop.md). |
 | `dispatch` | The dispatch and grill skills for your projects; `/setup-dispatch` in the copilot, which writes a project's dispatch skill; `kabane dispatch stamp`; doctor checks under `dispatch`. See [its README](../extensions/dispatch/README.md). |
+| `recipes` | `kabane run`, which starts a prompt recipe from a project's `.kabane/recipes/` in a background `hc` (herdr core) terminal, and `kabane runs` to list, read, answer, attach to and stop those runs; the `recipes.harness` setting; a doctor check under `recipes`. See [recipes.md](recipes.md). |
 
 Without the loop, `a` on the board does nothing. Without dispatch, the copilot neither offers
 `/setup-dispatch` nor knows the grill skill.
