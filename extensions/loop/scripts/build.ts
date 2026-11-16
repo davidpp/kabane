@@ -1,15 +1,26 @@
 #!/usr/bin/env bun
 /** Build a directory extension with its harness client and runtime files included. */
 import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 export const DIST = join(ROOT, "dist");
 
-export const build = async (into = DIST): Promise<Bun.BuildOutput> => {
+export const build = async (
+	into = DIST,
+	root = ROOT,
+): Promise<Bun.BuildOutput> => {
 	rmSync(into, { recursive: true, force: true });
+	const source = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+	// A modules entry is built beside index.js, at its source path with a .js extension.
+	const modules: unknown = source.kabane?.modules;
+	const entry = typeof modules === "string" ? join(root, modules) : undefined;
 	const result = await Bun.build({
-		entrypoints: [join(ROOT, "index.ts")],
+		entrypoints: [
+			join(root, "index.ts"),
+			...(entry === undefined ? [] : [entry]),
+		],
+		root,
 		outdir: into,
 		target: "bun",
 		metafile: true,
@@ -30,7 +41,6 @@ export const build = async (into = DIST): Promise<Bun.BuildOutput> => {
 		],
 	});
 	if (!result.success) return result;
-	const source = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 	writeFileSync(
 		join(into, "package.json"),
 		`${JSON.stringify(
@@ -40,14 +50,22 @@ export const build = async (into = DIST): Promise<Bun.BuildOutput> => {
 				description: source.description,
 				license: source.license,
 				type: "module",
-				kabane: { extension: "./index.js", api: 1 },
+				kabane: {
+					extension: "./index.js",
+					api: 1,
+					...(entry === undefined
+						? {}
+						: {
+								modules: `./${relative(root, entry).replace(/\.[cm]?tsx?$/, ".js")}`,
+							}),
+				},
 			},
 			null,
 			"\t",
 		)}\n`,
 	);
 	for (const directory of ["copilot", "lenses"])
-		cpSync(join(ROOT, directory), join(into, directory), { recursive: true });
+		cpSync(join(root, directory), join(into, directory), { recursive: true });
 	writeFileSync(
 		`${into}.metafile.json`,
 		JSON.stringify(result.metafile, null, 2),
