@@ -9,7 +9,6 @@
  */
 
 import type { CONTEXT_REF_KINDS } from "./context-ref";
-import type { ACTIVITY_TYPES, SESSION_STATES } from "./session";
 import type { TaskPriority, TaskSource, TaskState } from "./task";
 
 export type DisplayConfig = {
@@ -87,50 +86,3 @@ export const CONTEXT_KIND_DISPLAY = {
 	spec: { label: "Spec", color: "text-indigo-400" },
 	doc: { label: "Doc", color: "text-gray-400" },
 } satisfies Record<(typeof CONTEXT_REF_KINDS)[number], DisplayConfig>;
-
-/**
- * Display config for agent session states. Covers well-known SESSION_STATES;
- * `state` is a soft string, so consumers must fall back for unknown states.
- */
-export const AGENT_SESSION_STATE_DISPLAY = {
-	pending: {
-		label: "Pending",
-		color: "text-gray-400",
-		bgColor: "bg-gray-400/10",
-	},
-	active: {
-		label: "Active",
-		color: "text-yellow-500",
-		bgColor: "bg-yellow-500/10",
-	},
-	awaiting_input: {
-		label: "Awaiting Input",
-		color: "text-purple-500",
-		bgColor: "bg-purple-500/10",
-	},
-	complete: {
-		label: "Complete",
-		color: "text-green-500",
-		bgColor: "bg-green-500/10",
-	},
-	error: { label: "Error", color: "text-red-500", bgColor: "bg-red-500/10" },
-	stale: { label: "Stale", color: "text-gray-500", bgColor: "bg-gray-500/10" },
-} satisfies Record<(typeof SESSION_STATES)[number], DisplayConfig>;
-
-/**
- * Display config for agent activity types. Covers well-known ACTIVITY_TYPES;
- * `type` is a soft string, so consumers must fall back for unknown types.
- */
-export const AGENT_ACTIVITY_TYPE_DISPLAY = {
-	progress: { label: "Progress", color: "text-gray-400" },
-	action: { label: "Action", color: "text-blue-400" },
-	finding: { label: "Finding", color: "text-orange-400" },
-	verification: { label: "Verification", color: "text-cyan-400" },
-	decision: { label: "Decision", color: "text-indigo-400" },
-	handoff: { label: "Handoff", color: "text-pink-400" },
-	response: { label: "Response", color: "text-green-400" },
-	error: { label: "Error", color: "text-red-400" },
-	question: { label: "Question", color: "text-purple-400" },
-	answer: { label: "Answer", color: "text-gray-400" },
-	withdrawn: { label: "Withdrawn", color: "text-gray-500" },
-} satisfies Record<(typeof ACTIVITY_TYPES)[number], DisplayConfig>;

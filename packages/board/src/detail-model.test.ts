@@ -1,7 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import type {
-	AgentActivity,
-	AgentSession,
 	EntryKind,
 	Task,
 	TaskEntry,
@@ -39,25 +37,6 @@ const entry = (over: Partial<TaskEntry>): TaskEntry => ({
 	...over,
 });
 
-const activity = (over: Partial<AgentActivity>): AgentActivity => ({
-	id: "a",
-	sessionId: "s1",
-	type: "progress",
-	ephemeral: false,
-	body: "did a thing",
-	createdAt: "2026-09-21T11:00:00.000Z",
-	...over,
-});
-
-const session: AgentSession = {
-	id: "s1",
-	taskId: "t1",
-	agent: "claude",
-	state: "active",
-	startedAt: "2026-09-21T09:00:00.000Z",
-	lastActivityAt: "2026-09-21T12:00:00.000Z",
-};
-
 const workLog = (over: Partial<TaskWorkLog>): TaskWorkLog => ({
 	id: "w",
 	taskId: "t1",
@@ -78,7 +57,6 @@ const records = (
 	entries: [],
 	kinds: [],
 	workLogs: [],
-	sessions: [],
 	links: [],
 	neighbors: [],
 	upstream: [],
@@ -88,37 +66,6 @@ const records = (
 	checklist: [],
 	...over,
 });
-
-// A session that asked two questions and had one of them answered.
-const askedTwice = (): BoardData.DetailRecords =>
-	records({
-		sessions: [
-			{
-				session,
-				activities: [
-					activity({
-						id: "q1",
-						type: "question",
-						body: "Tabs or one scroll?",
-						createdAt: "2026-09-21T10:00:00.000Z",
-					}),
-					activity({
-						id: "d1",
-						type: "decision",
-						body: "tabs",
-						context: "answers q1",
-						createdAt: "2026-09-21T10:05:00.000Z",
-					}),
-					activity({
-						id: "q2",
-						type: "question",
-						body: "Which tab opens first?",
-						createdAt: "2026-09-21T10:10:00.000Z",
-					}),
-				],
-			},
-		],
-	});
 
 const awaiting = (id = "q2", question = "Which tab opens first?") => ({
 	taskId: "t1",
@@ -630,100 +577,43 @@ describe("lifted", () => {
 });
 
 describe("log", () => {
-	it("keeps an unanswered session question in the log when the port does not pin it", () => {
-		expect(
-			DetailModel.log(askedTwice()).find((line) => line.id === "q2"),
-		).toMatchObject({ kind: "question", text: "Which tab opens first?" });
-	});
-
-	it("leaves a question pinned under a merged source's id out of the log", () => {
-		expect(
-			DetailModel.log(askedTwice(), [awaiting("loop:q2")]).some(
-				(line) => line.id === "q2",
-			),
-		).toBe(false);
-	});
-
-	it("puts every session activity and work log on one line, newest first, and leaves the pinned question out", () => {
+	it("puts every work log on one line, newest first, a session ref under its label", () => {
 		const lines = DetailModel.log(
 			records({
-				...askedTwice(),
-				sessions: [
-					{
-						session,
-						activities: [
-							...(askedTwice().sessions[0]?.activities ?? []),
-							activity({
-								id: "f1",
-								type: "finding",
-								severity: "P2",
-								body: "the bar overflows at 38 columns\nwith a long count",
-								createdAt: "2026-09-21T11:00:00.000Z",
-							}),
-							activity({
-								id: "e1",
-								type: "error",
-								body: "tests failed",
-								createdAt: "2026-09-21T12:00:00.000Z",
-							}),
+				workLogs: [
+					workLog({
+						id: "01S1",
+						refs: [
+							{
+								uri: "session:01S1",
+								label: "claude",
+								addedAt: "2026-09-21T09:00:00.000Z",
+							},
 						],
-					},
-				],
-				workLogs: [workLog({ id: "w1", note: "landed the tabs" })],
-			}),
-			[awaiting()],
-		);
-		expect(lines.map((l) => l.id)).toEqual(["w1", "e1", "f1", "d1", "q1"]);
-		const byId = new Map(lines.map((l) => [l.id, l]));
-		expect(byId.get("w1")).toMatchObject({
-			glyph: "•",
-			text: "commit 6f2a9c1 · landed the tabs",
-		});
-		expect(byId.get("f1")).toMatchObject({
-			glyph: "·",
-			kind: "finding P2",
-			text: "the bar overflows at 38 columns",
-		});
-		expect(byId.get("e1")).toMatchObject({ glyph: "✗", failed: true });
-		expect(byId.get("q1")).toMatchObject({ text: "Tabs or one scroll?" });
-		expect(lines.some((l) => l.id === "q2")).toBe(false);
-	});
-
-	it("reads an answer as its question, the choice, and who made it when on record", () => {
-		const lines = DetailModel.log(
-			records({
-				sessions: [
-					{
-						session,
-						activities: [
-							activity({
-								id: "q1",
-								type: "question",
-								body: "Tabs or one scroll?",
-							}),
-							activity({
-								id: "d1",
-								type: "decision",
-								body: "tabs",
-								context: "answers q1",
-								author: "cabane://actor/human/ada",
-							}),
-							activity({
-								id: "d0",
-								type: "decision",
-								body: "Going with SQLite",
-							}),
-						],
-					},
+						createdAt: "2026-09-21T09:00:00.000Z",
+					}),
+					workLog({ id: "w1", note: "landed the tabs" }),
 				],
 			}),
 		);
-		const byId = new Map(lines.map((l) => [l.id, l]));
-		expect(byId.get("d1")).toMatchObject({
-			kind: "decision",
-			text: "Tabs or one scroll? → tabs · ada",
-		});
-		expect(byId.get("d0")?.text).toBe("Going with SQLite");
+		expect(lines).toEqual([
+			{
+				id: "w1",
+				glyph: "•",
+				kind: "",
+				text: "commit 6f2a9c1 · landed the tabs",
+				at: "2026-09-21T13:00:00.000Z",
+				failed: false,
+			},
+			{
+				id: "01S1",
+				glyph: "•",
+				kind: "",
+				text: "claude",
+				at: "2026-09-21T09:00:00.000Z",
+				failed: false,
+			},
+		]);
 	});
 
 	it("takes its lines from a list of sources, so another source is one more item", () => {
@@ -739,7 +629,6 @@ describe("log", () => {
 		];
 		const lines = DetailModel.log(
 			records({ workLogs: [workLog({ id: "w1" })] }),
-			[],
 			[...DetailModel.LOG_SOURCES, extra],
 		);
 		expect(lines.map((l) => l.id)).toEqual(["x", "w1"]);

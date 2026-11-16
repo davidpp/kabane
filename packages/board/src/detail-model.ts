@@ -13,11 +13,8 @@
 // log's sources are lists, so another tab or another kind of log entry is one more item, not a
 // reshape.
 import {
-	type AgentActivity,
-	answeredQuestion,
 	CONTEXT_SECTIONS,
 	DEFAULT_ENTRY_KIND,
-	parseQuestionBody,
 	TASK_STATE_DISPLAY,
 	type Task,
 	type TaskContextRef,
@@ -129,14 +126,8 @@ export namespace DetailModel {
 			? (author.split("/").at(-1) ?? author)
 			: author;
 
-	const firstLine = (text: string): string =>
-		text.trim().split("\n")[0]?.trim() ?? "";
-
 	const byAtDescending = (a: string, b: string): number =>
 		a < b ? 1 : a > b ? -1 : 0;
-
-	const activitiesOf = (records: BoardData.DetailRecords): AgentActivity[] =>
-		records.sessions.flatMap((s) => s.activities);
 
 	// ── pinned ──────────────────────────────────────────────────────────────────────────────────
 
@@ -869,21 +860,6 @@ export namespace DetailModel {
 
 	// ── log ─────────────────────────────────────────────────────────────────────────────────────
 
-	// Glyphs from DESIGN.md's notation: `✗` failed, `✓` a check, `▶` a step taken, `•` work that
-	// landed, `·` everything else said along the way.
-	const activityGlyph = (type: string): string => {
-		switch (type) {
-			case "error":
-				return "✗";
-			case "verification":
-				return "✓";
-			case "action":
-				return "▶";
-			default:
-				return "·";
-		}
-	};
-
 	/** A work ref as a person reads it: `commit:6f2a9c1d…` → `commit 6f2a9c1`. */
 	export const refLabel = (ref: WorkRef): string => {
 		if (ref.label) return ref.label;
@@ -903,41 +879,6 @@ export namespace DetailModel {
 		}
 	};
 
-	// What one activity says on its line. An answer reads as its question, then the choice, then who
-	// made it when that is on record: `Plain text or markdown? → Plain text · ada`.
-	const activityText = (
-		a: AgentActivity,
-		activities: readonly AgentActivity[],
-	): string => {
-		if (a.type === "question") return parseQuestionBody(a.body).question;
-		const question = answeredQuestion(a.context, activities);
-		if (!question) return firstLine(a.body);
-		const by = a.author ? ` · ${actorName(a.author)}` : "";
-		return `${parseQuestionBody(question.body).question} → ${firstLine(a.body)}${by}`;
-	};
-
-	// Session questions stay in the log unless the activity port pins them above it.
-	const activityLines = (
-		records: BoardData.DetailRecords,
-		awaiting: readonly BoardActivity.AwaitingQuestion[],
-	): LogLine[] => {
-		const activities = activitiesOf(records);
-		// A merged question id is `<source>:<id>`, and a session activity carries the bare id.
-		const pinned = new Set(
-			awaiting.flatMap((q) => [q.id, q.id.slice(q.id.indexOf(":") + 1)]),
-		);
-		return activities
-			.filter((a) => !pinned.has(a.id))
-			.map((a) => ({
-				id: a.id,
-				glyph: activityGlyph(a.type),
-				kind: a.severity ? `${a.type} ${a.severity}` : a.type,
-				text: activityText(a, activities),
-				at: a.createdAt,
-				failed: a.type === "error",
-			}));
-	};
-
 	const workLogLines = (records: BoardData.DetailRecords): LogLine[] =>
 		records.workLogs.map((w) => ({
 			id: w.id,
@@ -951,24 +892,17 @@ export namespace DetailModel {
 		}));
 
 	/** Where log lines come from. Another kind of entry is one more source here. */
-	export type LogSource = (
-		records: BoardData.DetailRecords,
-		awaiting: readonly BoardActivity.AwaitingQuestion[],
-	) => LogLine[];
+	export type LogSource = (records: BoardData.DetailRecords) => LogLine[];
 
-	export const LOG_SOURCES: readonly LogSource[] = [
-		activityLines,
-		workLogLines,
-	];
+	export const LOG_SOURCES: readonly LogSource[] = [workLogLines];
 
 	/** The agent log, newest first, from every source. */
 	export const log = (
 		records: BoardData.DetailRecords,
-		awaiting: readonly BoardActivity.AwaitingQuestion[] = [],
 		sources: readonly LogSource[] = LOG_SOURCES,
 	): LogLine[] =>
 		sources
-			.flatMap((source) => source(records, awaiting))
+			.flatMap((source) => source(records))
 			.sort((a, b) => byAtDescending(a.at, b.at));
 
 	// ── tabs ────────────────────────────────────────────────────────────────────────────────────
@@ -982,10 +916,9 @@ export namespace DetailModel {
 		records: BoardData.DetailRecords | undefined,
 		liveCards = 0,
 		freshNow = false,
-		awaiting: readonly BoardActivity.AwaitingQuestion[] = [],
 	): TabSummary[] => {
 		const said = records ? records.entries.length : 0;
-		const logged = (records ? log(records, awaiting).length : 0) + liveCards;
+		const logged = (records ? log(records).length : 0) + liveCards;
 		const inForce = records ? now(records).length > 0 : false;
 		const described =
 			Boolean(records?.task.description?.trim()) ||

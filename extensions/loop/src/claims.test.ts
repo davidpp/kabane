@@ -417,8 +417,6 @@ describe("Claims.claim", () => {
 			expect(ctx.live.size).toBe(0);
 			const after = await Planner.getTask(home, child.id);
 			expect(after.ok && after.value).toEqual(changed.value);
-			const sessions = await Planner.querySessions(home, { taskId: child.id });
-			expect(sessions.ok && sessions.value).toEqual([]);
 		});
 	}
 	it("works a subtask on the run's harness and makes it the assignee, whoever filed it", async () => {
@@ -472,10 +470,6 @@ describe("Claims.claim", () => {
 		expect(
 			logs.ok && logs.value.flatMap((log) => log.refs.map((ref) => ref.uri)),
 		).toContain(`session:${ctx.run.claims[0]?.sessionId}`);
-		const coreSessions = await Planner.querySessions(home, {
-			taskId: child.id,
-		});
-		expect(coreSessions.ok && coreSessions.value).toEqual([]);
 		const task = await Planner.getTask(home, child.id);
 		expect(task.ok && task.value?.assignee).toBe("codex");
 	});

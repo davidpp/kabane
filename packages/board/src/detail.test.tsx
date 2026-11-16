@@ -317,61 +317,53 @@ test("Detail's log heads with the host's cards and offers the o events hint", as
 	}
 });
 
-test("Detail's log puts work logs and session activity on one line each, newest first, including an open question absent from the port", async () => {
+test("Detail's log puts each work log on one line, newest first, a session ref under its agent, and a merged loop question shows once", async () => {
 	const task = await seed({ state: "in_progress" });
-	const session = await Planner.startSession(TEST_BASE, {
+	// A session ref as migration session-outcomes writes one: its id, its agent as the label.
+	const session = await Planner.addWorkLog(TEST_BASE, {
 		taskId: task.id,
-		agent: "claude",
+		refs: [{ uri: "session:01JLEGACYSESSION0000000000", label: "claude" }],
+		addedBy: "loop:legacy-run",
+		addedByType: "ai",
 	});
 	if (!session.ok) throw session.error;
-	const add = async (
-		draft: Omit<Parameters<typeof Planner.addActivity>[1], "sessionId">,
-	) => {
-		const added = await Planner.addActivity(TEST_BASE, {
-			sessionId: session.value.id,
-			...draft,
-		});
-		if (!added.ok) throw added.error;
-		await sleep(5);
-		return added.value;
-	};
-	await add({ type: "progress", body: "read the brief" });
-	const q = await add({ type: "question", body: "Tabs or one scroll?" });
-	await add({ type: "decision", body: "tabs", context: `answers ${q.id}` });
-	await add({ type: "question", body: "Which tab opens first?" });
-	await add({ type: "error", body: "the gate failed on biome" });
+	await sleep(5);
 	const logged = await Planner.addWorkLog(TEST_BASE, {
 		taskId: task.id,
 		refs: [{ uri: "commit:6f2a9c1d0e3b4a5f" }],
 		note: "landed the tabs",
 	});
 	if (!logged.ok) throw logged.error;
-
-	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
-		task,
+	const questions: BoardActivity.AwaitingQuestion[] = [
 		{
-			tab: "log",
+			taskId: task.id,
+			cardId: "loop:r1",
+			id: "loop:01JQUESTION00000000000000",
+			question: "Which tab opens first?",
+			taskShortId: "MILL-1",
+			choices: [],
+			multiSelect: false,
+			allowFreeform: true,
+			agent: "claude",
+			askedAt: "2026-10-10T00:00:00.000Z",
 		},
-	);
+	];
+
+	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
+		tab: "log",
+		questions,
+	});
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
 			f.includes("landed the tabs"),
 		);
+		expect(frame).toContain("log 2");
 		expect(frame).toContain("• commit 6f2a9c1 · landed the tabs");
-		expect(frame).toContain("✗ error the gate failed on biome");
-		expect(frame).toContain("· decision Tabs or one scroll? → tabs");
-		expect(frame).toContain("· question Tabs or one scroll?");
-		expect(frame).toContain("· progress read the brief");
-		// Without a port question, the waiting session question remains in the log.
+		expect(frame).toContain("• claude");
 		expect(frame.split("Which tab opens first?").length - 1).toBe(1);
-		expect(frame).toContain("· question Which tab opens first?");
 		const commit = rows(frame).findIndex((r) => r.includes("landed the tabs"));
-		const progress = rows(frame).findIndex((r) => r.includes("read the brief"));
-		expect(commit).toBeLessThan(progress);
-		const error = captureSpans()
-			.lines.flatMap((line) => line.spans)
-			.find((span) => span.text.includes("the gate failed"));
-		expect(error?.fg.toInts().slice(0, 3)).toEqual([0xef, 0x44, 0x44]);
+		const ref = rows(frame).findIndex((r) => r.includes("• claude"));
+		expect(commit).toBeLessThan(ref);
 	} finally {
 		destroy();
 	}

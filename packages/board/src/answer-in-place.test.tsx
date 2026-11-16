@@ -1,16 +1,15 @@
 /** @jsxImportSource @opentui/react */
-// The board reads and answers through an ActivitySource backed by a real tracker.
+// The board reads and answers through the ActivitySource a host hands it, over a real tracker.
 // `!` lands on the owning card and a digit reaches the source once the question has been read.
+// The board cannot import the loop, so the source here is a recording of the port contract: it
+// lists one question until it is answered, and records every call the board makes. The real
+// store behind the port, which stamps the acting human on the answer (the port carries no actor),
+// is covered by `extensions/loop/src/activity.test.ts`, "lists only loop questions with their
+// card and lane, and answers through the port" (`LoopActivity.source`).
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	formatQuestionBody,
-	isAnswerTo,
-	ok,
-	parseQuestionBody,
-	Planner,
-} from "@cabane/core";
+import { ok, Planner, type Task } from "@cabane/core";
 import type { ActivityCard, ActivitySource } from "@cabane/extension";
 import { App } from "./app";
 import { BoardNav } from "./nav";
@@ -19,8 +18,8 @@ import { pumpUntil, renderTest } from "./testing";
 
 const BASE = join(tmpdir(), `cabane-board-answer-${crypto.randomUUID()}`);
 
-let sessionId = "";
-let questionId = "";
+const QUESTION_ID = "loop:q-1";
+let child: Task | undefined;
 
 beforeAll(async () => {
 	await freshDb(BASE);
@@ -30,35 +29,19 @@ beforeAll(async () => {
 		state: "in_progress",
 	});
 	if (!parent.ok) throw parent.error;
-	const child = await Planner.addTask(BASE, {
+	const asked = await Planner.addTask(BASE, {
 		title: "Child",
 		kind: "issue",
 		state: "in_progress",
 		parentTaskId: parent.value.id,
 	});
-	if (!child.ok) throw child.error;
-	const session = await Planner.startSession(BASE, {
-		taskId: child.value.id,
-		agent: "claude",
-	});
-	if (!session.ok) throw session.error;
-	sessionId = session.value.id;
-	const question = await Planner.addActivity(BASE, {
-		sessionId,
-		type: "question",
-		body: formatQuestionBody("claude asks to run: bun install", {
-			choices: ["Yes", "No"],
-			multiSelect: false,
-			allowFreeform: false,
-		}),
-	});
-	if (!question.ok) throw question.error;
-	questionId = question.value.id;
+	if (!asked.ok) throw asked.error;
+	child = asked.value;
 });
 
 afterAll(() => dropDb(BASE));
 
-it("! lands on the card's tab and a digit there answers the question in core, once it has been read", async () => {
+it("! lands on the card's tab and a digit there answers the question through the port, once it has been read", async () => {
 	const card: ActivityCard = {
 		id: "run-1",
 		kind: "loops",
@@ -69,44 +52,41 @@ it("! lands on the card's tab and a digit there answers the question in core, on
 		hasEvents: true,
 		tab: true,
 	};
-	const noted: string[] = [];
+	type Call =
+		| { call: "questions" }
+		| { call: "answer"; questionId: string; answer: string };
+	const calls: Call[] = [];
+	const answers = () => calls.filter((c) => c.call === "answer");
+	const askedAt = new Date().toISOString();
 	const source: ActivitySource = {
 		load: async () => ok([card]),
 		card: async () => ok(card),
 		events: async () => ok([]),
 		questions: async () => {
-			const rows = await Planner.getNeedsInput(BASE);
-			if (!rows.ok) return rows;
+			calls.push({ call: "questions" });
 			return ok(
-				rows.value.flatMap(({ session, task, question }) => {
-					if (!question) return [];
-					const parsed = parseQuestionBody(question.body);
-					return [
-						{
-							id: question.id,
-							cardId: card.id,
-							...(task
-								? { taskId: task.id, taskShortId: task.shortId ?? task.id }
-								: {}),
-							question: parsed.question,
-							choices: parsed.choices,
-							multiSelect: parsed.multiSelect,
-							allowFreeform: parsed.allowFreeform,
-							permission: Boolean(parsed.permission),
-							asker: session.agent,
-							askedAt: question.createdAt,
-						},
-					];
-				}),
+				answers().length > 0 || !child
+					? []
+					: [
+							{
+								id: QUESTION_ID,
+								cardId: card.id,
+								taskId: child.id,
+								taskShortId: child.shortId ?? child.id,
+								question: "claude asks to run: bun install",
+								choices: ["Yes", "No"],
+								multiSelect: false,
+								allowFreeform: false,
+								permission: true,
+								asker: "claude",
+								askedAt,
+							},
+						],
 			);
 		},
-		answer: async (id, answer) => {
-			noted.push(id);
-			const result = await Planner.answerQuestion(BASE, {
-				questionId: id,
-				answer,
-			});
-			return result.ok ? ok(`answered ${answer}`) : result;
+		answer: async (questionId, answer) => {
+			calls.push({ call: "answer", questionId, answer });
+			return ok(`answered ${answer}`);
 		},
 	};
 	let now = 0;
@@ -125,7 +105,7 @@ it("! lands on the card's tab and a digit there answers the question in core, on
 		// Landed this instant: a digit pressed now was not aimed at a question read on screen.
 		mockInput.pressKey("1");
 		await until((f) => f.includes("just asked"));
-		expect(noted).toEqual([]);
+		expect(answers()).toEqual([]);
 		now += BoardNav.ARM_MS;
 		mockInput.pressKey("1");
 		const answered = await until((f) => f.includes("answered Yes"));
@@ -135,15 +115,21 @@ it("! lands on the card's tab and a digit there answers the question in core, on
 				.find((row) => row.includes("answered Yes"))
 				?.trim(),
 		).toBe("answered Yes");
-		const activities = await Planner.getActivities(BASE, sessionId);
-		if (!activities.ok) throw activities.error;
-		const decision = activities.value.find(
-			(a) => a.type === "decision" && isAnswerTo(a.context, questionId),
+		// Answered once, with the question's id and the chosen option's label.
+		expect(answers()).toEqual([
+			{ call: "answer", questionId: QUESTION_ID, answer: "Yes" },
+		]);
+		// Then the board reads the questions again, and the answered one is gone from it.
+		const answeredAt = calls.findIndex((c) => c.call === "answer");
+		const cleared = await until(
+			(f) =>
+				calls.slice(answeredAt + 1).some((c) => c.call === "questions") &&
+				!f.includes("?1"),
 		);
-		expect(decision?.body).toBe("Yes");
-		expect(noted).toEqual([questionId]);
-		const needs = await Planner.getNeedsInput(BASE);
-		expect(needs.ok && needs.value).toEqual([]);
+		expect(
+			calls.slice(answeredAt + 1).some((c) => c.call === "questions"),
+		).toBe(true);
+		expect(cleared).not.toContain("?1");
 	} finally {
 		destroy();
 	}

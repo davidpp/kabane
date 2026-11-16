@@ -18,8 +18,7 @@ import { z } from "zod";
 /**
  * Core tables that replicate. A data module adds its own (`module.ts`).
  *
- * Deliberately excluded: `agent_sessions` / `agent_activities` (machine-local
- * agent runs) and `sequences` (local counter).
+ * Deliberately excluded: `sequences` (local counter).
  *
  * These are the core tables the resolver has a rule for; it finds a module's
  * in the registry. Whether a given ROW replicates is decided by its

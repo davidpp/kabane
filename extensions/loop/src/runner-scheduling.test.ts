@@ -199,10 +199,6 @@ describe("Runner scheduling", () => {
 			expect(readRun().claims).toEqual([]);
 			const unchanged = await Planner.getTask(home, human.value.id);
 			expect(unchanged.ok && unchanged.value).toEqual(human.value);
-			const sessions = await Planner.querySessions(home, {
-				taskId: human.value.id,
-			});
-			expect(sessions.ok && sessions.value).toEqual([]);
 			const dependent = await add("dependent", parent.id);
 			await link(human.value, dependent, "blocks");
 			const independent = await add("independent checklist issue", parent.id);

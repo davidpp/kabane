@@ -9,8 +9,6 @@ import {
 // Planner.* functions over the configured Db provider (same path as the CLI — no server required),
 // so a future swap to a remote client touches this file only.
 import {
-	type AgentActivity,
-	type AgentSession,
 	type EntryKind,
 	err,
 	type ItemKind,
@@ -285,12 +283,6 @@ export namespace BoardData {
 		return Planner.assembleContext(basePath, id);
 	};
 
-	/** One agent session on a task and what it recorded, oldest activity first. */
-	export type SessionRecords = {
-		session: AgentSession;
-		activities: AgentActivity[];
-	};
-
 	/**
 	 * Everything the detail view shows about a task: the same reads the agent brief makes, handed
 	 * over as records so the view can place each one once.
@@ -303,7 +295,6 @@ export namespace BoardData {
 		// description lifts, and under what title and framing line.
 		kinds: EntryKind[];
 		workLogs: TaskWorkLog[];
-		sessions: SessionRecords[];
 		links: TaskLink[];
 		// The parent and every linked task, for naming them in the meta lines.
 		neighbors: Task[];
@@ -383,16 +374,6 @@ export namespace BoardData {
 	// A parent with more subtasks than this is a plan, and the view names the first ones only.
 	const SUBTASK_LIMIT = 200;
 
-	const sessionRecords = async (
-		basePath: string,
-		session: AgentSession,
-	): Promise<Result<SessionRecords>> => {
-		const activities = await Planner.getActivities(basePath, session.id);
-		return activities.ok
-			? ok({ session, activities: activities.value })
-			: activities;
-	};
-
 	const neighborIds = (task: Task, links: TaskLink[]): string[] => {
 		const ids = new Set<string>();
 		if (task.parentTaskId) ids.add(task.parentTaskId);
@@ -414,7 +395,6 @@ export namespace BoardData {
 		const [
 			entries,
 			workLogs,
-			sessions,
 			links,
 			upstream,
 			subtasks,
@@ -424,7 +404,6 @@ export namespace BoardData {
 		] = await Promise.all([
 			Planner.getEntries(basePath, id),
 			Planner.getWorkLogs(basePath, id),
-			Planner.querySessions(basePath, { taskId: id }),
 			Planner.getLinksForTask(basePath, id),
 			Planner.getUpstreamLinksForTask(basePath, id),
 			Planner.queryTasks(basePath, {
@@ -441,19 +420,12 @@ export namespace BoardData {
 		]);
 		if (!entries.ok) return entries;
 		if (!workLogs.ok) return workLogs;
-		if (!sessions.ok) return sessions;
 		if (!links.ok) return links;
 		if (!upstream.ok) return upstream;
 		if (!subtasks.ok) return subtasks;
 		if (!contextRefs.ok) return contextRefs;
 		if (!questions.ok) return questions;
 		if (!checklist.ok) return checklist;
-		const perSession: SessionRecords[] = [];
-		for (const session of sessions.value) {
-			const records = await sessionRecords(basePath, session);
-			if (!records.ok) return records;
-			perSession.push(records.value);
-		}
 		const neighbors = await Planner.getTasks(
 			basePath,
 			neighborIds(task.value, links.value),
@@ -464,7 +436,6 @@ export namespace BoardData {
 			entries: entries.value,
 			kinds: Runtime.modules().flatMap((module) => module.kinds ?? []),
 			workLogs: workLogs.value,
-			sessions: perSession,
 			links: links.value,
 			neighbors: neighbors.value,
 			upstream: upstream.value,
@@ -479,7 +450,6 @@ export namespace BoardData {
 	export type StampParts = {
 		entries: readonly TaskEntry[];
 		workLogs: readonly TaskWorkLog[];
-		sessions: readonly AgentSession[];
 		links: readonly TaskLink[];
 		upstream: readonly UpstreamLink[];
 		questions: readonly QuestionView[];
@@ -490,9 +460,7 @@ export namespace BoardData {
 		stamps.reduce((newest, at) => (at > newest ? at : newest), "");
 
 	/**
-	 * A fingerprint of those records: a count and the newest timestamp per kind. A session's
-	 * `lastActivityAt` moves with every activity and transition, so a session that recorded
-	 * something moves the stamp without its activities being read. The checklist is fingerprinted
+	 * A fingerprint of those records: a count and the newest timestamp per kind. The checklist is fingerprinted
 	 * item by item (id, version, `updatedAt`): a write synced from another device can land on an
 	 * older item with an older timestamp, which leaves the count and the newest one as they were.
 	 * Two stamps differ when a record landed, went away or changed; pure, so a stamp read fresh and
@@ -502,7 +470,6 @@ export namespace BoardData {
 		[
 			`e${parts.entries.length}@${latest(parts.entries.map((e) => e.updatedAt ?? e.createdAt))}`,
 			`w${parts.workLogs.length}@${latest(parts.workLogs.map((w) => w.createdAt))}`,
-			`s${parts.sessions.length}@${latest(parts.sessions.map((s) => s.lastActivityAt))}`,
 			`l${parts.links
 				.map((l) => `${l.id}:${l.type}`)
 				.sort()
@@ -517,7 +484,6 @@ export namespace BoardData {
 		stampOf({
 			entries: records.entries,
 			workLogs: records.workLogs,
-			sessions: records.sessions.map((s) => s.session),
 			links: records.links,
 			upstream: records.upstream,
 			questions: records.questions,
@@ -526,18 +492,17 @@ export namespace BoardData {
 
 	/**
 	 * The stamp of a task's records as they stand now, for the poll to decide whether the open detail
-	 * view needs `taskDetail` again. One read per kind and none per session or per neighbor, which is
+	 * view needs `taskDetail` again. One read per kind and none per neighbor, which is
 	 * what makes it cheaper than the load it guards.
 	 */
 	export const detailStamp = async (
 		basePath: string,
 		id: string,
 	): Promise<Result<string>> => {
-		const [entries, workLogs, sessions, links, upstream, questions, checklist] =
+		const [entries, workLogs, links, upstream, questions, checklist] =
 			await Promise.all([
 				Planner.getEntries(basePath, id),
 				Planner.getWorkLogs(basePath, id),
-				Planner.querySessions(basePath, { taskId: id }),
 				Planner.getLinksForTask(basePath, id),
 				Planner.getUpstreamLinksForTask(basePath, id),
 				taskQuestions(basePath, id),
@@ -545,7 +510,6 @@ export namespace BoardData {
 			]);
 		if (!entries.ok) return entries;
 		if (!workLogs.ok) return workLogs;
-		if (!sessions.ok) return sessions;
 		if (!links.ok) return links;
 		if (!upstream.ok) return upstream;
 		if (!questions.ok) return questions;
@@ -554,7 +518,6 @@ export namespace BoardData {
 			stampOf({
 				entries: entries.value,
 				workLogs: workLogs.value,
-				sessions: sessions.value,
 				links: links.value,
 				upstream: upstream.value,
 				questions: questions.value,

@@ -51,18 +51,23 @@ const seedHistory = async (
 		note: "Synthetic prior work",
 	});
 	if (!log.ok) return log;
-	const session = await Planner.startSession(home, {
+	const session = await Planner.addWorkLog(home, {
 		taskId: parent,
-		agent: "synthetic-agent",
+		refs: [{ uri: "session:synthetic", label: "synthetic-agent" }],
 	});
 	if (!session.ok) return session;
 	for (let i = 0; i < 30; i++) {
-		const activity = await Planner.addActivity(home, {
-			sessionId: session.value.id,
-			type: i % 5 === 0 ? "decision" : "progress",
-			body: `Synthetic machine history ${i}`,
-		});
-		if (!activity.ok) return activity;
+		// A session's outcomes are typed entries; what it said along the way stays with it.
+		if (i % 5 === 0) {
+			const outcome = await Planner.addEntry(home, {
+				taskId: parent,
+				kind: "outcome.decision",
+				author: "synthetic-agent",
+				authorType: "ai",
+				content: `Synthetic machine history ${i}`,
+			});
+			if (!outcome.ok) return outcome;
+		}
 		const update = await Planner.updateTask(home, parent, {
 			state: i % 2 === 0 ? "next" : "waiting",
 		});

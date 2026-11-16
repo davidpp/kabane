@@ -493,8 +493,10 @@ An issue related to nothing has no such row.
   longer has reads as its id and `unknown`. `O` opens an upstream issue.
 - `description`: the ask, read when the issue is picked up. The description and the curated
   context.
-- `comments`: the whole timeline, newest first.
-- `log`: the host's cards, then the work logged and what agent sessions said.
+- `comments`: the whole timeline, newest first, an agent's outcomes (`outcome.summary`,
+  `outcome.decision` and the rest) among them.
+- `log`: the host's cards, then the work logged, newest first: each `session:` ref under its
+  label, the agent that ran it.
 
 The detail opens on `now` when it has anything in it but links, otherwise on `description`; a section with
 nothing in it is faint in the bar. The section it opened on, or the one you picked, stays when a

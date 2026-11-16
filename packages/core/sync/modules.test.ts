@@ -1147,19 +1147,43 @@ describe("a parked delete replayed before the rest of its row", () => {
 describe("a database from before data modules", () => {
 	it("opens, gains the parked-ops table, and syncs unchanged", async () => {
 		const alpha = await createDevice("alpha", []);
-		const beta = await createDevice("beta", []);
-		await addTask(beta, "already here");
-		// Beta as the release before this one left it: no parked-ops table, no
-		// module columns on the oplog, no entry kind, and no record of the
-		// migrations that add them.
+		// Beta as the release before this one left it, built by that release's
+		// migrations: version 7, so no parked-ops table, no module columns on
+		// the oplog and no entry kind.
+		const base = join(tmpdir(), `cabane-module-beta-${crypto.randomUUID()}`);
+		mkdirSync(base, { recursive: true });
+		bases.push(base);
+		const beta: Device = {
+			base,
+			transport: LocalRelay.transportFor(relay, "beta"),
+			modules: [],
+		};
 		await as(beta, (db) => {
-			db.run(`DROP TABLE ${TABLES.sync_parked}`);
-			db.run(`DROP TABLE ${TABLES.sync_parked_deletes}`);
-			db.run(`ALTER TABLE ${TABLES.sync_oplog} DROP COLUMN module`);
-			db.run(`ALTER TABLE ${TABLES.sync_oplog} DROP COLUMN module_schema`);
-			db.run(`DROP INDEX ${TABLES.comments}_task_kind_idx`);
-			db.run(`ALTER TABLE ${TABLES.comments} DROP COLUMN kind`);
-			db.run(`DELETE FROM ${TABLES.schema_migrations} WHERE version >= 8`);
+			const at = Migrate.run(db, Migrations.LIST.slice(0, 7));
+			if (!at.ok) throw at.error;
+		});
+		const here = await addTask(beta, "already here");
+		// Armed and captured as that release did: its oplog had no module columns.
+		await as(beta, (db) => {
+			const armed = Oplog.initDevice(db, "beta");
+			if (!armed.ok) throw armed.error;
+			const row = db
+				.query<Record<string, unknown>, [string]>(
+					`SELECT * FROM ${TABLES.tasks} WHERE id = ?`,
+				)
+				.get(here);
+			db.run(
+				`INSERT INTO ${TABLES.sync_oplog}
+				   (op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at)
+				 VALUES (?, 'beta', 'tasks', ?, 'insert', ?, ?, ?)`,
+				[
+					ulid(),
+					here,
+					String(row?.updated_at),
+					JSON.stringify(row),
+					new Date().toISOString(),
+				],
+			);
 		});
 
 		await boot(beta);
