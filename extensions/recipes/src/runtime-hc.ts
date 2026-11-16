@@ -33,6 +33,37 @@ export namespace HcRuntime {
 			turn: z.number().int().nonnegative().optional(),
 		});
 
+	/** `hc ls --json`, the field a run's terminal is found by. */
+	const listSchema = (z: Host["z"]) =>
+		z.object({
+			terminals: z.array(z.object({ name: z.string().optional() })),
+		});
+
+	/**
+	 * The name of run `run`'s terminal in what `hc ls --json --label kabane.run=<run>` printed: the
+	 * one whose name ends with the run id's last six, as `terminalName` builds it.
+	 */
+	export const named = (
+		z: Host["z"],
+		run: string,
+		stdout: string,
+	): Result<string | undefined> => {
+		const json = trySync((): unknown => JSON.parse(stdout));
+		if (!json.ok)
+			return err(new Error(`hc ls printed no JSON: ${stdout.slice(0, 200)}`));
+		const parsed = listSchema(z).safeParse(json.value);
+		if (!parsed.success)
+			return err(
+				new Error(
+					`hc ls --json printed terminals kabane cannot read: ${parsed.error.message}`,
+				),
+			);
+		const tail = `-${run.slice(-6).toLowerCase()}`;
+		return ok(
+			parsed.data.terminals.find(({ name }) => name?.endsWith(tail))?.name,
+		);
+	};
+
 	/** hc's error envelope on a failed `--json` call. */
 	const errorSchema = (z: Host["z"]) =>
 		z.object({ error: z.object({ message: z.string() }) });
@@ -163,6 +194,22 @@ export namespace HcRuntime {
 				if (ran.value.code === NOT_FOUND) return ok(stateOf(null));
 				if (ran.value.code !== 0) return err(failure(z, "get", ran.value));
 				return seen(z, ran.value.stdout);
+			},
+			find: async (run) => {
+				const blocked = missing();
+				if (blocked !== undefined) return err(new Error(blocked));
+				// --all: a terminal that already finished still tells the run ended rather than lost.
+				const ran = await exec([
+					"ls",
+					"--all",
+					"--json",
+					"--label",
+					`kabane.run=${run}`,
+				]);
+				if (!ran.ok) return ran;
+				return ran.value.code === 0
+					? named(z, run, ran.value.stdout)
+					: err(failure(z, "ls", ran.value));
 			},
 			read: (terminal) => call("read", terminal, [terminal]),
 			send: async (terminal, text) => {

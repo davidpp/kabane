@@ -190,7 +190,11 @@ export namespace Runs {
 	/** The session of a run recorded before its runtime started it. */
 	export const STARTING = "";
 
-	/** The handle the runtime returned for a run recorded as `STARTING`. */
+	/**
+	 * The handle the runtime returned for a run recorded as `STARTING`. The run is `running` again:
+	 * a listing may have ended it while its start was still on its way (`endStarting`), and the
+	 * next reconcile reads its real state.
+	 */
 	export const setSession = (
 		host: Store,
 		id: string,
@@ -199,11 +203,32 @@ export namespace Runs {
 	): Promise<Result<void>> =>
 		host.store.write((tx) => {
 			tx.db.run(
-				`UPDATE ${TABLE} SET session = ?, updated_at = ?, updated_by = ?,
-				   version = version + 1 WHERE id = ?`,
+				`UPDATE ${TABLE} SET session = ?, state = 'running', ended_at = NULL, updated_at = ?,
+				   updated_by = ?, version = version + 1 WHERE id = ?`,
 				[session, new Date().toISOString(), actor, id],
 			);
 			return tx.afterWrite(TABLE, "update", id);
+		});
+
+	/**
+	 * Ends a run whose runtime holds no session for it, if it is still `STARTING`; resolves to
+	 * whether it did. A start that records its session first keeps its run.
+	 */
+	export const endStarting = (
+		host: Store,
+		id: string,
+		actor: string,
+	): Promise<Result<boolean>> =>
+		host.store.write((tx) => {
+			const now = new Date().toISOString();
+			const { changes } = tx.db.run(
+				`UPDATE ${TABLE} SET state = 'ended', ended_at = ?, updated_at = ?, updated_by = ?,
+				   version = version + 1 WHERE id = ? AND session = ? AND state != 'ended'`,
+				[now, now, actor, id, STARTING],
+			);
+			if (changes === 0) return ok(false);
+			const captured = tx.afterWrite(TABLE, "update", id);
+			return captured.ok ? ok(true) : captured;
 		});
 
 	/** A run's new state; `ended` also stamps when it ended. */

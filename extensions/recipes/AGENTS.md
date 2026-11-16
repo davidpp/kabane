@@ -14,7 +14,7 @@ those runs. `docs/recipes.md` is what a user reads.
 | `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, their tab's screen lines and the stop action |
 | `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, and `dispatch` through `startRun` |
 | `src/runs.ts` | the run row and its table, `recipes_runs`; the only file that knows where a run is stored |
-| `src/runtime.ts` | the `Runtime` interface: `start`, `get`, `stop`, and the optional terminal operations `read`, `send`, `attach` |
+| `src/runtime.ts` | the `Runtime` interface: `start`, `get`, `stop`, the optional `find` that recovers an interrupted start's session, and the optional terminal operations `read`, `send`, `attach` |
 | `src/runtime-hc.ts` | the hc runtime; the only file that runs `hc` |
 | `modules.ts` | the modules entry: registers the run table, imports only `src/runs.ts` |
 
@@ -39,9 +39,15 @@ runtime reads: for hc, the terminal's name, which the adapter builds from the re
 run id. What a user reads calls `session` the run's terminal (the `TERMINAL` column of `kabane
 runs`, "in hc terminal …" from `kabane run`), because hc is the only runtime; `--json` and
 `docs/recipes.md`'s field table say `session`. A run is recorded before its runtime starts it, with `session` empty (`Runs.STARTING`)
-until `start` returns, so a start that fails still leaves an ended run. `read`, `send`, `attach` and
-`stop` refuse a run whose session is still `STARTING` before any runtime call, and reconcile skips
-it. The hc adapter also refuses an empty or blank terminal in every method before it spawns hc,
+until `start` returns, so a start that fails still leaves an ended run. A start interrupted between the two
+writes leaves a `running` row with no session (JCAB-467:1): reconcile asks the runtime's optional
+`find(run)` for it (hc: `hc ls --all --label kabane.run=<id>`, the terminal whose name ends with
+the id's last six), records the session it finds, and ends the run when there is none.
+`Runs.endStarting` ends it only while its session is still `STARTING`, and `Runs.setSession` sets
+the run `running` again, so a listing that runs during a start that is still on its way never
+ends it for good. `read`, `send`, `attach` and `stop` reconcile such a run first, and refuse it
+before any terminal call while its session is still `STARTING`; a runtime without `find` leaves
+it as recorded. The hc adapter also refuses an empty or blank terminal in every method before it spawns hc,
 because hc reads `""` as no terminal given and picks one from the caller's scope. `kabane runs` leaves a run
 in a runtime it does not have as recorded, and `read`, `send` and `attach` on a run whose runtime
 has no terminal fail with one line naming the runtime.

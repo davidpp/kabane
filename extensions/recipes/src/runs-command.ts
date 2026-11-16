@@ -30,16 +30,38 @@ export const reconcile = async (
 ): Promise<Result<Runs.Run[]>> => {
 	const here = hostname();
 	const current: Runs.Run[] = [];
-	for (const run of runs) {
-		// A run still starting has no session to read yet.
+	for (const recorded of runs) {
 		if (
-			run.machine !== here ||
-			run.state === "ended" ||
-			run.runtime !== runtime.name ||
-			run.session === Runs.STARTING
+			recorded.machine !== here ||
+			recorded.state === "ended" ||
+			recorded.runtime !== runtime.name
 		) {
-			current.push(run);
+			current.push(recorded);
 			continue;
+		}
+		let run = recorded;
+		// A run still starting may be one whose start was interrupted before its session was
+		// written: the runtime finds that session, or holds none and the run never started.
+		if (run.session === Runs.STARTING) {
+			if (runtime.find === undefined) {
+				current.push(run);
+				continue;
+			}
+			const found = await runtime.find(run.id);
+			if (!found.ok) return found;
+			if (found.value === undefined) {
+				const ended = await Runs.endStarting(host, run.id, actor);
+				if (!ended.ok) return ended;
+				current.push(
+					ended.value
+						? { ...run, state: "ended", endedAt: new Date().toISOString() }
+						: run,
+				);
+				continue;
+			}
+			const written = await Runs.setSession(host, run.id, found.value, actor);
+			if (!written.ok) return written;
+			run = { ...run, session: found.value };
 		}
 		const seen = await runtime.get(run.session);
 		if (!seen.ok) return seen;
@@ -106,6 +128,49 @@ const resolve = async (
 	return { ok: true, value: run };
 };
 
+/** "read", "stop", "send to", "attach to": what a verb does to a run, in a sentence. */
+const object = (verb: string): string =>
+	verb === "send" || verb === "attach" ? `${verb} to` : verb;
+
+/**
+ * The run with the session a verb acts on. A run recorded as starting gets its session, or its
+ * end, from the runtime first; one still without a session answers in place of any runtime call,
+ * because an empty session would reach hc as no terminal at all and hc would pick one of its own.
+ */
+const settle = async (
+	host: Host,
+	runtime: Runtime,
+	actor: string,
+	recorded: Runs.Run,
+	verb: string,
+): Promise<{ ok: true; value: Runs.Run } | { ok: false; outcome: Outcome }> => {
+	const answer = (outcome: Outcome) => ({ ok: false as const, outcome });
+	if (recorded.session !== Runs.STARTING) return { ok: true, value: recorded };
+	let run = recorded;
+	if (runtime.missing() === undefined) {
+		const now = await reconcile(host, runtime, [run], actor);
+		if (!now.ok) return answer(host.outcome.failure(now.error));
+		run = now.value[0] ?? run;
+	}
+	if (run.session !== Runs.STARTING) return { ok: true, value: run };
+	if (run.state !== "ended")
+		return answer(
+			host.outcome.failure(
+				`Run ${run.id} has no session yet: its start has not finished, so there is nothing to ${object(verb)}`,
+			),
+		);
+	return answer(
+		verb === "stop"
+			? host.outcome.success(
+					{ run: run.id, state: run.state },
+					`Run ${run.id} never started in ${run.runtime}; it is ended.`,
+				)
+			: host.outcome.failure(
+					`Run ${run.id} never started in ${run.runtime}: there is no ${run.runtime} session to ${object(verb)}`,
+				),
+	);
+};
+
 /** `attach`, `read`, `send` or `stop` on one run of this machine. */
 type Operation = { run: Runs.Run; verb: string; words: string[] };
 
@@ -113,17 +178,15 @@ const operate = async (
 	host: Host,
 	runtime: Runtime,
 	actor: string,
-	{ run, verb, words }: Operation,
+	{ run: resolved, verb, words }: Operation,
 ): Promise<Outcome> => {
-	if (run.runtime !== runtime.name)
+	if (resolved.runtime !== runtime.name)
 		return host.outcome.failure(
-			`Run ${run.id} runs in ${run.runtime}, which this kabane does not have`,
+			`Run ${resolved.id} runs in ${resolved.runtime}, which this kabane does not have`,
 		);
-	// An empty session would reach hc as no terminal at all, and hc would pick one of its own.
-	if (run.session === Runs.STARTING)
-		return host.outcome.failure(
-			`Run ${run.id} has no session yet: its start has not finished, so there is nothing to ${verb === "send" || verb === "attach" ? `${verb} to` : verb}`,
-		);
+	const settled = await settle(host, runtime, actor, resolved, verb);
+	if (!settled.ok) return settled.outcome;
+	const run = settled.value;
 	const lacks = (operation: string) =>
 		host.outcome.failure(
 			`Run ${run.id} runs in ${run.runtime}, which has no terminal to ${operation}`,

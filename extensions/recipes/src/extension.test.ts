@@ -304,6 +304,39 @@ test("a run with no session yet is refused by every verb before hc is called", (
 	);
 });
 
+// Looks the runs up through the real hc by a kabane.run label no terminal carries: hc lists none,
+// and nothing of the human's is touched. Skipped where hc is not installed.
+test.skipIf(Bun.which("hc") === null)(
+	"a run interrupted before its session was written ends when hc holds no terminal for it",
+	() => {
+		const { kabane, seed } = setup();
+		kabane(["runs"]);
+		seed("01M7JT0TFJB7MF38VYDWCG0GGG", { session: "" });
+		seed("01M7JT0TFJB7MF38VYDWCG0HHH", { session: "" });
+		seed("01M7JT0TFJB7MF38VYDWCG0JJJ", { session: "" });
+		expect(kabane(["runs", "stop", "ggg"])).toMatchObject({
+			code: 0,
+			stdout:
+				"Run 01M7JT0TFJB7MF38VYDWCG0GGG never started in hc; it is ended.",
+		});
+		expect(kabane(["runs", "read", "hhh"])).toMatchObject({
+			code: 1,
+			stderr:
+				"Error: Run 01M7JT0TFJB7MF38VYDWCG0HHH never started in hc: there is no hc session to read",
+		});
+		const all = JSON.parse(kabane(["runs", "--all", "--json"]).stdout).runs as {
+			id: string;
+			state: string;
+			session: string;
+		}[];
+		expect(all.map((r) => [r.id.slice(-3), r.state, r.session])).toEqual([
+			["JJJ", "ended", ""],
+			["HHH", "ended", ""],
+			["GGG", "ended", ""],
+		]);
+	},
+);
+
 // Reads one terminal through the real hc, by a name no terminal has: hc answers not found and
 // nothing of the human's is touched. Skipped where hc is not installed.
 test.skipIf(Bun.which("hc") === null)(
