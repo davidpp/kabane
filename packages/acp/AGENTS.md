@@ -13,22 +13,15 @@ change touches.
 | `ToolCalls` (`src/tool-calls.ts`): folds tool call updates | the loop, the copilot |
 | `Stdio` (`src/stdio.ts`): `Bun.spawn` pipes to the SDK's stream | `AcpClient` |
 | `FormField` (`src/form-field.ts`) and form types | the board and the loop, also through the SDK-free `/form-field` export |
-| `CopilotInstructions` (`src/instructions.ts`): `actorUri`, `SERVER_NAME`, `DISPATCH_TEMPLATE`, `GRILL_TEMPLATE` | the board's copilot and the loop |
-| `templates/dispatch`, `templates/grill` | the copilot's `/setup-dispatch` and grill procedures |
+| `CopilotInstructions` (`src/instructions.ts`): `actorUri`, `SERVER_NAME` | the board's copilot |
 | `scripts/scripted-agent.ts` | `bun run sandbox --scripted`, and tests that need a harness subprocess |
 
 ## It depends on core alone
 
 Its layer is `harness client`; its entry in `scripts/layers.ts` (`"@cabane/acp"`) says what it
 may list. The board and loop both use it as a library; it imports neither of them.
-`BoardCopilot`, `Mailbox` and the copilot's prose live in `packages/board/src`.
-The template paths stay here so `Self.templates` resolves beside this package's templates.
-
-The remaining template and host dependencies are tracked in these issues:
-
-- JCAB-327 moves `templates/` out of base kabane.
-- JCAB-326 removes the loop's use of `actorUri` and `SERVER_NAME`.
-- JCAB-328 moves `Self` (`@cabane/core/self`, read by `instructions.ts`) into the host.
+`BoardCopilot`, `Mailbox` and the copilot's prose live in `packages/board/src`. It ships no
+template: the dispatch and grill skills are `extensions/dispatch`'s.
 
 Read before writing: `src/client.ts`, `src/harnesses.ts`, `src/client.test.ts` (an in-process
 `AgentApp`, no subprocess).

@@ -21,7 +21,8 @@ packages/
 ├── board/     # @cabane/board  — OpenTUI kanban and ACP copilot; consumes extension ports, no-op defaults
 └── worker/    # cabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
 extensions/
-└── loop/      # @cabane/loop   — drives a parent issue's subtasks through ACP harnesses from a detached runner
+├── loop/      # @cabane/loop   — drives a parent issue's subtasks through ACP harnesses from a detached runner
+└── dispatch/  # @cabane/dispatch — the dispatch and grill skill templates, /setup-dispatch, `kabane dispatch stamp`, their doctor checks
 ```
 
 Two runtimes: Bun (devices) and Cloudflare Workers (the hub). The same core runs in both.

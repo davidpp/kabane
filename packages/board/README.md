@@ -406,12 +406,11 @@ It can also:
   description as the extension's words, not an instruction. A description over 200 characters,
   or one containing one of kabane's own headings, is not shown and the name stands alone;
   `kabane doctor` reports it for an enabled extension as a `package-description` finding.
-- Create a dispatch skill tailored to the project's conventions (`/setup-dispatch`), showing
-  what it wrote and asking before replacing an existing skill.
 - Check that what kabane wrote is current (`/doctor`): it runs `kabane doctor --json`, applies
   the `auto` fixes unasked, waits for a yes on the rest, follows a `route`, and hands you the
   command for a harness MCP entry instead of rewriting it.
-- Follow the procedures an enabled extension adds. The loop's procedures let it start a run
+- Follow the procedures an enabled extension adds. The dispatch extension's write a project's
+  dispatch skill (`/setup-dispatch`) and grill the human through open questions. The loop's procedures let it start a run
   when asked, such as “run this issue with codex”, and set one up from `kabane loop advise`. A
   run handles a single issue or a parent's subtasks; follow it in its board tab.
 
