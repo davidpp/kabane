@@ -429,6 +429,32 @@ describe("reconcile on a run recorded as starting", () => {
 		expect(hc.stopped).toEqual(["research-cg0603"]);
 		expect(hc.got).not.toContain(Runs.STARTING);
 	});
+
+	it("says on the board that a run with no terminal never started once it is ended, and is starting before", async () => {
+		const never = run("01M7JT0TFJB7MF38VYDWCG0604", {
+			session: Runs.STARTING,
+		});
+		value(await Runs.insert(host, never, "t"));
+		const source = sourceWith(finding(new Map()).runtime);
+		const tab = value((await source.events?.(never.id, 0)) ?? ok([]));
+		expect(tab.map((e) => e.summary)).toEqual([
+			`run ${never.id} never started in hc; it is ended`,
+		]);
+		const stop = await (source.act?.(never.id, "stop", {}) ?? ok(""));
+		expect(stop.ok ? "" : stop.error.message).toBe(
+			`run ${never.id} never started in hc; it is ended: nothing to stop`,
+		);
+		// A runtime that cannot look a start up leaves the run as recorded: still starting.
+		const waiting = run("01M7JT0TFJB7MF38VYDWCG0605", {
+			session: Runs.STARTING,
+		});
+		value(await Runs.insert(host, waiting, "t"));
+		const plain = sourceWith(scripted().runtime);
+		const starting = value((await plain.events?.(waiting.id, 0)) ?? ok([]));
+		expect(starting.map((e) => e.summary)).toEqual([
+			`run ${waiting.id} is still starting`,
+		]);
+	});
 });
 
 const recipe = (name: string, text: string) =>
