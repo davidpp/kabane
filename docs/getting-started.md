@@ -393,7 +393,7 @@ one with its fix, and enabled extensions add their own checks:
 ```bash
 kabane doctor                        # report drift without applying its repairs
 kabane doctor --fix                  # apply the findings that need no decision (severity auto)
-kabane doctor --fix kabane/<id>      # apply one other finding, by the source/id the report shows
+kabane doctor --fix <source>/<id>    # apply a named fix: copy the source/id from the report
 kabane doctor --json                 # the same report, for scripts and agents
 ```
 
@@ -401,6 +401,10 @@ Doctor opens an existing tracker to let extensions inspect issues. Like other co
 it applies pending database migrations on the first run after an update, even without
 `--fix`. Back up the database before that first run; returning to an older version may
 require restoring that backup. Reporting findings does not apply their offered repairs.
+
+The source identifies the check owner: `kabane` for settings and MCP, `project` for
+project files, and an extension name such as `loop`. For example,
+`kabane doctor --fix project/grill-skill-behind` applies that offered project repair.
 
 Each finding has a severity that says what to do with it, not how bad it is: `auto` needs no
 decision, `mention` is worth knowing and has a fix you can choose to run, `suggest` is a better
