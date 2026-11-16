@@ -489,7 +489,7 @@ describe("BoardData", () => {
 			return stamp.value;
 		};
 
-		it("holds while nothing lands, and moves for a comment, a work log and session activity", async () => {
+		it("holds while nothing lands, and moves for a comment and a work log", async () => {
 			const added = await Planner.addTask(TEST_BASE, draft());
 			if (!added.ok) throw added.error;
 			const id = added.value.id;
@@ -510,25 +510,7 @@ describe("BoardData", () => {
 				taskId: id,
 				refs: [{ uri: "commit:abc1234" }],
 			});
-			const logged = await stampNow(id);
-			expect(logged).not.toBe(commented);
-
-			await tick();
-			const session = await Planner.startSession(TEST_BASE, {
-				taskId: id,
-				agent: "claude",
-			});
-			if (!session.ok) throw session.error;
-			const started = await stampNow(id);
-			expect(started).not.toBe(logged);
-
-			await tick();
-			await Planner.addActivity(TEST_BASE, {
-				sessionId: session.value.id,
-				type: "progress",
-				body: "halfway",
-			});
-			expect(await stampNow(id)).not.toBe(started);
+			expect(await stampNow(id)).not.toBe(commented);
 		});
 
 		it("agrees with the stamp of the records taskDetail loads", async () => {
@@ -666,7 +648,6 @@ describe("BoardData", () => {
 			BoardData.stampOf({
 				entries: [],
 				workLogs: [],
-				sessions: [],
 				links: [],
 				upstream: [],
 				questions: [],

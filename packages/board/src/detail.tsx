@@ -320,7 +320,6 @@ export const Detail = ({
 		loaded,
 		cards?.length ?? 0,
 		marks.elsewhere,
-		questions,
 	);
 	const live: Keymap.Live = keys ?? {
 		context: focus === "copilot" ? "copilot" : "detail",
@@ -372,7 +371,6 @@ export const Detail = ({
 					tab={tab}
 					records={records}
 					cards={cards ?? []}
-					questions={questions}
 					spinnerFrame={spinnerFrame}
 					checklist={checklist}
 					onItem={onItem}
@@ -398,7 +396,6 @@ const TabBody = ({
 	tab,
 	records,
 	cards,
-	questions,
 	spinnerFrame,
 	checklist,
 	onItem,
@@ -408,7 +405,6 @@ const TabBody = ({
 	tab: DetailModel.Tab;
 	records: Result<BoardData.DetailRecords> | undefined;
 	cards: ActivityCard[];
-	questions: DetailProps["questions"];
 	spinnerFrame: string | undefined;
 	fresh: ReadonlySet<DetailModel.BlockName>;
 } & Pick<DetailProps, "checklist" | "onItem" | "onOpenTask">): ReactNode => {
@@ -431,7 +427,6 @@ const TabBody = ({
 			tab={tab}
 			records={records.value}
 			cards={cards}
-			questions={questions}
 			spinnerFrame={spinnerFrame}
 			room={Math.max(0, room - SCROLL_RESERVED - CONTENT_INSET)}
 			checklist={
@@ -682,7 +677,6 @@ const TabContent = ({
 	tab,
 	records,
 	cards,
-	questions,
 	spinnerFrame,
 	room,
 	checklist,
@@ -693,7 +687,6 @@ const TabContent = ({
 	tab: DetailModel.Tab;
 	records: BoardData.DetailRecords;
 	cards: readonly ActivityCard[];
-	questions: DetailProps["questions"];
 	spinnerFrame?: string;
 	// Columns a log row may use.
 	room: number;
@@ -737,7 +730,7 @@ const TabContent = ({
 			);
 		}
 		case "log": {
-			const lines = DetailModel.log(records, questions);
+			const lines = DetailModel.log(records);
 			return cards.length + lines.length > 0 ? (
 				<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
 					{cards.map((card) => (

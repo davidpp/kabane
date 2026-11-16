@@ -1,16 +1,12 @@
 /** @jsxImportSource @opentui/react */
-// The board reads and answers through an ActivitySource backed by a real tracker.
+// The board reads and answers through the ActivitySource a host hands it, over a real tracker.
 // `!` lands on the owning card and a digit reaches the source once the question has been read.
+// The question lives where its asker keeps it (the loop's own store, in the CLI); here the source
+// holds it, since the port is all the board sees of it.
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	formatQuestionBody,
-	isAnswerTo,
-	ok,
-	parseQuestionBody,
-	Planner,
-} from "@cabane/core";
+import { ok, Planner, type Task } from "@cabane/core";
 import type { ActivityCard, ActivitySource } from "@cabane/extension";
 import { App } from "./app";
 import { BoardNav } from "./nav";
@@ -19,8 +15,8 @@ import { pumpUntil, renderTest } from "./testing";
 
 const BASE = join(tmpdir(), `cabane-board-answer-${crypto.randomUUID()}`);
 
-let sessionId = "";
-let questionId = "";
+const QUESTION_ID = "loop:q-1";
+let child: Task | undefined;
 
 beforeAll(async () => {
 	await freshDb(BASE);
@@ -30,35 +26,19 @@ beforeAll(async () => {
 		state: "in_progress",
 	});
 	if (!parent.ok) throw parent.error;
-	const child = await Planner.addTask(BASE, {
+	const asked = await Planner.addTask(BASE, {
 		title: "Child",
 		kind: "issue",
 		state: "in_progress",
 		parentTaskId: parent.value.id,
 	});
-	if (!child.ok) throw child.error;
-	const session = await Planner.startSession(BASE, {
-		taskId: child.value.id,
-		agent: "claude",
-	});
-	if (!session.ok) throw session.error;
-	sessionId = session.value.id;
-	const question = await Planner.addActivity(BASE, {
-		sessionId,
-		type: "question",
-		body: formatQuestionBody("claude asks to run: bun install", {
-			choices: ["Yes", "No"],
-			multiSelect: false,
-			allowFreeform: false,
-		}),
-	});
-	if (!question.ok) throw question.error;
-	questionId = question.value.id;
+	if (!asked.ok) throw asked.error;
+	child = asked.value;
 });
 
 afterAll(() => dropDb(BASE));
 
-it("! lands on the card's tab and a digit there answers the question in core, once it has been read", async () => {
+it("! lands on the card's tab and a digit there answers the question through the port, once it has been read", async () => {
 	const card: ActivityCard = {
 		id: "run-1",
 		kind: "loops",
@@ -69,44 +49,35 @@ it("! lands on the card's tab and a digit there answers the question in core, on
 		hasEvents: true,
 		tab: true,
 	};
-	const noted: string[] = [];
+	const answers: { id: string; answer: string }[] = [];
+	const askedAt = new Date().toISOString();
 	const source: ActivitySource = {
 		load: async () => ok([card]),
 		card: async () => ok(card),
 		events: async () => ok([]),
-		questions: async () => {
-			const rows = await Planner.getNeedsInput(BASE);
-			if (!rows.ok) return rows;
-			return ok(
-				rows.value.flatMap(({ session, task, question }) => {
-					if (!question) return [];
-					const parsed = parseQuestionBody(question.body);
-					return [
-						{
-							id: question.id,
-							cardId: card.id,
-							...(task
-								? { taskId: task.id, taskShortId: task.shortId ?? task.id }
-								: {}),
-							question: parsed.question,
-							choices: parsed.choices,
-							multiSelect: parsed.multiSelect,
-							allowFreeform: parsed.allowFreeform,
-							permission: Boolean(parsed.permission),
-							asker: session.agent,
-							askedAt: question.createdAt,
-						},
-					];
-				}),
-			);
-		},
+		questions: async () =>
+			ok(
+				answers.length > 0 || !child
+					? []
+					: [
+							{
+								id: QUESTION_ID,
+								cardId: card.id,
+								taskId: child.id,
+								taskShortId: child.shortId ?? child.id,
+								question: "claude asks to run: bun install",
+								choices: ["Yes", "No"],
+								multiSelect: false,
+								allowFreeform: false,
+								permission: true,
+								asker: "claude",
+								askedAt,
+							},
+						],
+			),
 		answer: async (id, answer) => {
-			noted.push(id);
-			const result = await Planner.answerQuestion(BASE, {
-				questionId: id,
-				answer,
-			});
-			return result.ok ? ok(`answered ${answer}`) : result;
+			answers.push({ id, answer });
+			return ok(`answered ${answer}`);
 		},
 	};
 	let now = 0;
@@ -125,7 +96,7 @@ it("! lands on the card's tab and a digit there answers the question in core, on
 		// Landed this instant: a digit pressed now was not aimed at a question read on screen.
 		mockInput.pressKey("1");
 		await until((f) => f.includes("just asked"));
-		expect(noted).toEqual([]);
+		expect(answers).toEqual([]);
 		now += BoardNav.ARM_MS;
 		mockInput.pressKey("1");
 		const answered = await until((f) => f.includes("answered Yes"));
@@ -135,15 +106,7 @@ it("! lands on the card's tab and a digit there answers the question in core, on
 				.find((row) => row.includes("answered Yes"))
 				?.trim(),
 		).toBe("answered Yes");
-		const activities = await Planner.getActivities(BASE, sessionId);
-		if (!activities.ok) throw activities.error;
-		const decision = activities.value.find(
-			(a) => a.type === "decision" && isAnswerTo(a.context, questionId),
-		);
-		expect(decision?.body).toBe("Yes");
-		expect(noted).toEqual([questionId]);
-		const needs = await Planner.getNeedsInput(BASE);
-		expect(needs.ok && needs.value).toEqual([]);
+		expect(answers).toEqual([{ id: QUESTION_ID, answer: "Yes" }]);
 	} finally {
 		destroy();
 	}

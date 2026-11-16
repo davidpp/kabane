@@ -385,7 +385,6 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 		entries: [],
 		kinds: [],
 		workLogs: [],
-		sessions: [],
 		links: [],
 		neighbors: [],
 		upstream: [],
