@@ -154,8 +154,8 @@ scroll it when it is taller than the pane. A key that does nothing right now (no
   kind filter.
 - `y` copies a task's agent brief to paste into any chat.
 - `⌃z` undoes the last change.
-- `a` is dispatch, a hook for host apps. On its own, kabane has no dispatcher.
-  Install and enable the optional [loop extension](loop.md#install) to dispatch coding runs.
+- `a` on an issue offers to start a coding run once the [loop extension](extensions.md) is
+  enabled. Without it, `a` does nothing.
 - `,` lists every setting, its value and where it comes from: `default`, `global` (every
   project on this device), `shared` (the file in the repo) or `local` (this project, only
   you). `h`/`l` step a setting with choices, and `enter` types a string or a number; on a
@@ -185,8 +185,8 @@ hands a coding harness what you are looking at: the scope, the selected task, an
 you marked with `m`. Type a request and press `enter`. The agent runs in the background,
 the footer shows its last tool call, and the board reloads as its writes land. `o` opens
 its transcript. Typing `/` in the prompt lists the shortcuts: `/triage`, `/refine`,
-`/split`, `/duplicates`, `/reparent`, `/check-plan`, `/linear`, `/settings`, `/doctor`, and
-those of the extensions you enabled. Each one
+`/split`, `/duplicates`, `/reparent`, `/check-plan`, `/linear`, `/github`, `/setup`,
+`/settings`, `/doctor`, and those of the extensions you enabled. Each one
 expands into editable text, so you can read what will be sent before sending it.
 
 The [dispatch extension](../extensions/dispatch/README.md) adds `/setup-dispatch`, which writes
@@ -701,4 +701,3 @@ Known rough edges:
 - **Add the git remote before you file tasks.** A repo with no remote is scoped by its first
   commit (`git:<hash>`). Once a remote is added, the scope switches to the remote, and the
   tasks filed under the commit scope stop showing in that repo's board.
-- **`a` (dispatch) does nothing** without a host app.

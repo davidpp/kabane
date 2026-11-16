@@ -142,7 +142,7 @@ footer carries `⠹ copilot · <last tool call>` while it goes, then `✓ copilo
 last line>` until the next keypress. `o` opens the transcript — the session's last few turns,
 each under the prompt that started it — and `x` there stops a running one.
 Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicates`,
-`/reparent`, `/check-plan`, `/linear`, `/github`, `/settings`, `/doctor`), which expand into the window so you read what will be sent.
+`/reparent`, `/check-plan`, `/linear`, `/github`, `/setup`, `/settings`, `/doctor`), which expand into the window so you read what will be sent.
 An enabled extension adds its own: the [dispatch extension](extensions/dispatch/README.md) adds
 `/setup-dispatch`, which writes a project's dispatch skill for coding sessions to turn asks into
 issues here.
