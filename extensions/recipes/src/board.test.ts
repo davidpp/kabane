@@ -37,6 +37,7 @@ import {
 	flagList,
 	flagString,
 	type Host,
+	parseArgs,
 	Settings,
 	success,
 	usage,
@@ -47,7 +48,7 @@ import { RecipeDispatcher } from "./dispatcher";
 import { Kabane } from "./result";
 import { settingsSchema } from "./run-command";
 import { Runs } from "./runs";
-import { reconcile } from "./runs-command";
+import { reconcile, runsCommand } from "./runs-command";
 import type { Runtime } from "./runtime";
 
 Kabane.bind({ result: { ok, err, tryCatch, trySync } });
@@ -510,5 +511,59 @@ describe("RecipeDispatcher", () => {
 			`Research ${issue.shortId} at thorough depth in 3 rounds.`,
 		);
 		expect(hc.started[0]?.argv.slice(0, -1)).toEqual(["claude"]);
+	});
+});
+
+describe("kabane runs send", () => {
+	/** A runtime whose program waits on its human: `send` types only when forced. */
+	const blocked = () => {
+		const sends: { text: string; force: boolean | undefined }[] = [];
+		const runtime: Runtime = {
+			...scripted().runtime,
+			send: async (_session, text, options) => {
+				sends.push({ text, force: options?.force });
+				return ok(options?.force === true ? "sent" : "waiting");
+			},
+		};
+		return { runtime, sends };
+	};
+	const send = (runtime: Runtime, argv: string[]) =>
+		runsCommand(host, runtime).run(parseArgs(["send", ...argv]), {
+			home,
+			store: home,
+			cwd: project.root,
+			actor: "tester",
+			harnessMode: "auto",
+			settings: Settings.port(async () => ok([])),
+		});
+
+	it("refuses a waiting run in one line that names attach and --force, and types nothing", async () => {
+		const hc = blocked();
+		const waiting = run("01M7JT0TFJB7MF38VYDWCG0400", { state: "waiting" });
+		value(await Runs.insert(host, waiting, "t"));
+		const outcome = await send(hc.runtime, [waiting.id, "hi", "there"]);
+		expect(outcome.exitCode).toBe(1);
+		expect(outcome.text).toBe(
+			`Error: Run ${waiting.id} is waiting on you; answer it with kabane runs attach ${waiting.id}, or add --force to type into it anyway`,
+		);
+		expect(outcome.text).not.toContain("\n");
+		expect(hc.sends).toEqual([{ text: "hi there", force: false }]);
+	});
+
+	it("hands --force to the runtime, with the word the parser binds to the flag kept as the text's first", async () => {
+		const hc = blocked();
+		const waiting = run("01M7JT0TFJB7MF38VYDWCG0401", { state: "waiting" });
+		value(await Runs.insert(host, waiting, "t"));
+		const outcome = await send(hc.runtime, [
+			waiting.id,
+			"--force",
+			"hi",
+			"there",
+		]);
+		expect([outcome.exitCode, outcome.text]).toEqual([
+			0,
+			`Sent to ${waiting.session}.`,
+		]);
+		expect(hc.sends).toEqual([{ text: "hi there", force: true }]);
 	});
 });

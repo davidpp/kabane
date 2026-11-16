@@ -105,6 +105,8 @@ export namespace HcRuntime {
 	type Ran = { code: number; stdout: string; stderr: string };
 
 	const NOT_FOUND = 3;
+	/** `hc send` without `--force` to a blocked terminal: `{"error":{"kind":"blocked",…}}`. */
+	const BLOCKED = 9;
 
 	const exec = (args: readonly string[]): Promise<Result<Ran>> =>
 		tryCatch(async () => {
@@ -130,6 +132,26 @@ export namespace HcRuntime {
 		return new Error(
 			`hc ${command} failed (exit ${ran.code})${message ? `: ${message}` : ""}`,
 		);
+	};
+
+	/** `hc send`'s argv: `--force` types even while the program waits on its human. */
+	export const sendArgs = (
+		terminal: string,
+		text: string,
+		force: boolean,
+	): string[] => [
+		"send",
+		"--json",
+		...(force ? ["--force"] : []),
+		terminal,
+		text,
+	];
+
+	/** What `hc send --json` ended with: typed, refused because the program is blocked, or failed. */
+	export const sent = (z: Host["z"], ran: Ran): Result<"sent" | "waiting"> => {
+		if (ran.code === 0) return ok("sent");
+		if (ran.code === BLOCKED) return ok("waiting");
+		return err(failure(z, "send", ran));
 	};
 
 	/**
@@ -209,9 +231,13 @@ export namespace HcRuntime {
 					: err(failure(z, "ls", ran.value));
 			},
 			read: (terminal) => call("read", terminal, [terminal]),
-			send: async (terminal, text) => {
-				const sent = await call("send", terminal, ["--json", terminal, text]);
-				return sent.ok ? ok(undefined) : sent;
+			send: async (terminal, text, options) => {
+				const blocked = refused(terminal);
+				if (blocked !== undefined) return err(new Error(blocked));
+				const ran = await exec(
+					sendArgs(terminal, text, options?.force === true),
+				);
+				return ran.ok ? sent(z, ran.value) : ran;
 			},
 			stop: async (terminal) => {
 				const stopped = await call("kill", terminal, ["--json", terminal]);
