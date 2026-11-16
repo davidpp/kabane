@@ -159,7 +159,7 @@ const targetOf = async (
 };
 
 /** What starting a run takes: everything explicit, no cwd, no terminal, no settings read. */
-type Start = {
+export type Start = {
 	scopeUri: string;
 	/** The scope's root folder. */
 	root: string;
@@ -179,10 +179,10 @@ type Started = { run: Runs.Run; warnings: string[] };
 
 /**
  * Record the run, start it in the runtime and log it on the target. `kabane run` calls it after
- * resolving its inputs from the cwd, its flags and its prompts; anything else that starts a
- * recipe, such as JCAB-445's dispatcher, calls it the same way once it is exported.
+ * resolving its inputs from the cwd, its flags and its prompts; the board's dispatcher calls it
+ * with the form's inputs.
  */
-const startRun = async (
+export const startRun = async (
 	host: Host,
 	runtime: Runtime,
 	{ scopeUri, root, dir, recipe, target, inputs, harness, actor }: Start,

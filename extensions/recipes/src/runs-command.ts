@@ -22,7 +22,7 @@ const age = (iso: string, now = Date.now()): string => {
 };
 
 /** Each unfinished run of this machine, with the state its runtime reports now. */
-const reconcile = async (
+export const reconcile = async (
 	host: Host,
 	runtime: Runtime,
 	runs: Runs.Run[],
