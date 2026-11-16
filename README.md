@@ -25,10 +25,11 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 | `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource, Dispatcher and Copilot ports |
 | `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP over Streamable HTTP |
 
-Kabane bundles no extension. Two live in `extensions/`, each built and installed on its own:
-the [loop](docs/loop.md) runs issues through coding harnesses on your machine, and
+Kabane bundles no extension. Three live in `extensions/`, each built and installed on its own:
+the [loop](docs/loop.md) runs issues through coding harnesses on your machine,
 [dispatch](extensions/dispatch/README.md) gives your projects the dispatch and grill skills and
-the copilot's `/setup-dispatch`. [`docs/extensions.md`](docs/extensions.md) installs and enables
+the copilot's `/setup-dispatch`, and [recipes](docs/recipes.md) runs prompt recipes from your
+project in background terminals with `kabane run`. [`docs/extensions.md`](docs/extensions.md) installs and enables
 them, and [`docs/writing-an-extension.md`](docs/writing-an-extension.md) walks through writing
 your own.
 

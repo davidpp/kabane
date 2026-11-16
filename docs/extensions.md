@@ -5,7 +5,7 @@ use, and sync. It bundles no extension. An extension is a directory under
 `$KABANE_HOME/extensions/<name>/` (default `~/.kabane/extensions/<name>/`), and it runs only once
 its name is in the `extensions` setting.
 
-This repository has two:
+This repository has three:
 
 | Extension | What it adds |
 |---|---|
@@ -14,20 +14,21 @@ This repository has two:
 | `recipes` | `kabane run`, which starts a prompt recipe from a project's `.kabane/recipes/` in a background `hc` (herdr core) terminal, and `kabane runs` to list, read, answer, attach to and stop those runs; the `recipes.harness` setting; a doctor check under `recipes`. See [recipes.md](recipes.md). |
 
 Without the loop, `a` on the board does nothing. Without dispatch, the copilot neither offers
-`/setup-dispatch` nor knows the grill skill.
+`/setup-dispatch` nor knows the grill skill. Without recipes, kabane has no `run` or `runs`.
 
-## Build the loop and dispatch from a kabane checkout
+## Build them from a kabane checkout
 
 There is no install command or registry for extensions yet. You build each one from a clone of
 this repository, which needs git and [Bun](https://bun.sh) 1.4 or later, the standalone binary
-included. Build from the same kabane version you run: the loop and dispatch are tested against
-the kabane built beside them.
+included. Build from the same kabane version you run: the extensions are tested against the kabane
+built beside them.
 
 ```bash
 git clone https://github.com/davidpp/kabane.git
 cd kabane && bun install
 bun run --cwd extensions/loop build
 bun run --cwd extensions/dispatch build
+bun run --cwd extensions/recipes build
 ```
 
 Each build prints where it wrote, such as `build: /…/kabane/extensions/loop/dist`. The `dist/`
@@ -45,6 +46,8 @@ mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/loop"
 cp -R extensions/loop/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/loop/"
 mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/dispatch"
 cp -R extensions/dispatch/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/dispatch/"
+mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/recipes"
+cp -R extensions/recipes/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/recipes/"
 ```
 
 Then enable them by name. `extensions` is a list, and a `set` replaces the whole list, so read it
@@ -52,11 +55,11 @@ first and name every extension you want on:
 
 ```bash
 kabane config get extensions
-kabane config set extensions loop,dispatch --layer global
+kabane config set extensions loop,dispatch,recipes --layer global
 ```
 
 ```text
-extensions = ["loop","dispatch"] (global)
+extensions = ["loop","dispatch","recipes"] (global)
 ```
 
 In the board, the copilot's `/setup` shortcut, for its harness, model and extensions, can enable
@@ -69,6 +72,8 @@ the end of `kabane --help`:
 ```text
   loop      Drive an issue, or a parent issue's subtasks, to completion through coding harnesses
   dispatch  Print the dispatch template's stamp
+  run       Start a project recipe in a background terminal
+  runs      List recipe runs; attach to, read, answer or stop one
 ```
 
 and `kabane doctor`, run in a project, reports their checks under their names. On a project with
@@ -103,11 +108,11 @@ Extension loop: the entry could not be imported: Cannot find package '@cabane/ac
 
 ## Try them in the sandbox
 
-`bun run sandbox`, from a checkout, links `extensions/loop` and `extensions/dispatch` into its
-throwaway `KABANE_HOME`. They are installed there but not enabled:
+`bun run sandbox`, from a checkout, links `extensions/loop`, `extensions/dispatch` and
+`extensions/recipes` into its throwaway `KABANE_HOME`. They are installed there but not enabled:
 
 ```bash
-bun run sandbox config set extensions loop,dispatch --layer global
+bun run sandbox config set extensions loop,dispatch,recipes --layer global
 bun run sandbox loop --help
 bun run sandbox --scripted board
 ```
