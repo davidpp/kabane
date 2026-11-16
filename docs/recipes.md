@@ -99,6 +99,7 @@ kabane runs                 # this project's runs that have not ended, newest fi
 kabane runs --all           # ended ones too
 kabane runs read <id>       # print the terminal's screen
 kabane runs send <id> yes   # type an answer into it and press enter
+kabane runs send <id> --force yes   # type it even while the run is waiting
 kabane runs attach <id>     # take the terminal over; ctrl+\ gives it back
 kabane runs stop <id>       # end its program
 ```
@@ -119,6 +120,12 @@ Program Status Protocol; kabane never guesses a state from the screen:
 Any program can report its own state, a script set as `recipes.harness` included: it runs
 `printf '\033]7501;state=working:app=my-agent\033\\'`, with `state` one of `working`, `blocked`,
 `idle`, `done` or `error`. `blocked` shows `waiting`; `idle`, `done` and `error` show `idle`.
+
+A `waiting` run has a dialog open, and typed text would answer it unseen, so `send` refuses
+it: `Run <id> is waiting on you; answer it with kabane runs attach <id>, or add --force to type
+into it anyway`. Attach to see the dialog and answer it, or read its screen with `runs read`
+and then `send --force` the answer. `--force` goes before the text. Kabane never forces on its
+own.
 
 Kabane never says a run succeeded. `idle` means the agent stopped; what it did is what it
 wrote on the issue. A run started on another machine shows the state last recorded there and

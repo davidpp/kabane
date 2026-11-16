@@ -57,6 +57,35 @@ it("reads hc get's JSON through a schema, and refuses a shape hc does not print"
 	if (!text.ok) expect(text.error.message).toContain("hc get printed no JSON");
 });
 
+// `hc send --json` from hc 0.1.21 on a terminal whose program reported OSC 7501 `blocked`: without
+// `--force` it exits 9 and types nothing; with it, it types.
+const SEND_BLOCKED = {
+	code: 9,
+	stdout:
+		'{"error":{"hint":"typing would answer its dialog; read its screen first (hc read t3m), or --force","kind":"blocked","message":"t3m is blocked (waiting)"}}',
+	stderr: "",
+};
+const SEND_FORCED = {
+	code: 0,
+	stdout: '{"started":false,"status":"blocked","turn":0}',
+	stderr: "",
+};
+
+it("reads hc send's exit: typed, refused because the program is blocked, or failed", () => {
+	expect(HcRuntime.sent(z, SEND_FORCED)).toEqual(ok("sent"));
+	expect(HcRuntime.sent(z, SEND_BLOCKED)).toEqual(ok("waiting"));
+	const failed = HcRuntime.sent(z, {
+		code: 3,
+		stdout: '{"error":{"kind":"not_found","message":"no terminal t9"}}',
+		stderr: "",
+	});
+	expect(failed.ok).toBe(false);
+	if (!failed.ok)
+		expect(failed.error.message).toBe(
+			"hc send failed (exit 3): no terminal t9",
+		);
+});
+
 it("names hc when it is not on PATH", () => {
 	expect(HcRuntime.missing("/nonexistent")).toContain(
 		"hc (herdr core) is not on PATH",

@@ -323,6 +323,13 @@ test("a run with no terminal yet is refused by every verb before hc is called", 
 	expect(kabane(["runs", "send", "fff", "yes"], { path: NO_HC })).toMatchObject(
 		refused("send", "send to"),
 	);
+	// The parser hands `yes` to --force as its value; send still reads it as the text.
+	expect(
+		kabane(["runs", "send", "fff", "--force", "yes"], { path: NO_HC }),
+	).toMatchObject(refused("send", "send to"));
+	expect(
+		kabane(["runs", "send", "fff", "--force"], { path: NO_HC }),
+	).toMatchObject({ code: 2 });
 });
 
 // Looks the runs up through the real hc by a kabane.run label no terminal carries: hc lists none,
