@@ -34,7 +34,9 @@ test("a bar too wide for the pane keeps the tracker, the tab on screen and the o
 		...BoardTabs.NONE,
 		open: cards.map((card) => card.id),
 		active: "loop:r6",
-		cards: new Map(cards.map((card) => [card.id, { finished: true }])),
+		cards: new Map(
+			cards.map((card) => [card.id, { label: card.label, finished: true }]),
+		),
 		queue: [
 			{
 				taskId: "t2",
@@ -82,7 +84,7 @@ test("a card's tab pins its oldest question answerable, counts the rest, and say
 		...BoardTabs.NONE,
 		open: [card.id],
 		active: card.id,
-		cards: new Map([[card.id, { finished: false }]]),
+		cards: new Map([[card.id, { label: card.label, finished: false }]]),
 		queue: [asked(2, ["Yes", "No"]), asked(3, ["Yes", "No"])],
 	};
 	const waiting = await questionFrame(tabs);
@@ -110,7 +112,7 @@ test("a multi-select question shows what is toggled and that enter sends the pic
 		...BoardTabs.NONE,
 		open: [card.id],
 		active: card.id,
-		cards: new Map([[card.id, { finished: false }]]),
+		cards: new Map([[card.id, { label: card.label, finished: false }]]),
 		queue: [question],
 		picked: new Map([["q2", [1]]]),
 	});
@@ -130,7 +132,7 @@ test("a question's answers read as content: each key and its words in the text c
 					...BoardTabs.NONE,
 					open: [card.id],
 					active: card.id,
-					cards: new Map([[card.id, { finished: false }]]),
+					cards: new Map([[card.id, { label: card.label, finished: false }]]),
 					queue: [{ ...asked(2, ["Alpha", "Beta"]), multiSelect: true }],
 					picked: new Map([["q2", [1]]]),
 				}}
@@ -201,7 +203,7 @@ test("a taskless question names its asker without an empty task label", async ()
 		...BoardTabs.NONE,
 		open: [card.id],
 		active: card.id,
-		cards: new Map([[card.id, { finished: false }]]),
+		cards: new Map([[card.id, { label: card.label, finished: false }]]),
 		queue: [question],
 	});
 	expect(frame).toContain("waiting on you · claude asks");

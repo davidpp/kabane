@@ -829,7 +829,7 @@ export const STORIES: readonly Story[] = [
 						...BoardTabs.NONE,
 						open: [card.id],
 						active: card.id,
-						cards: new Map([[card.id, { finished: false }]]),
+						cards: new Map([[card.id, { label: card.label, finished: false }]]),
 						queue: [question, Fixtures.question(3, ["Yes", "No"])],
 					}}
 					onAnswer={() => {}}
@@ -1020,6 +1020,24 @@ export const STORIES: readonly Story[] = [
 				tab="description"
 				records={ok(TRAIL_ONLY)}
 				cards={[Fixtures.waitingRun(SITTING)]}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
+		name: "detail-run-stop",
+		about:
+			"the same run at forty columns: it has no tab, so its issue's footer offers X to stop it",
+		width: 40,
+		height: 12,
+		render: () => (
+			<Detail
+				taskId={SITTING.id}
+				task={SITTING}
+				tab="description"
+				records={ok(TRAIL_ONLY)}
+				cards={[Fixtures.waitingRun(SITTING)]}
+				keys={{ context: "detail", situation: { cardStop: "research" } }}
 				scrollRef={createRef<ScrollBoxRenderable>()}
 			/>
 		),

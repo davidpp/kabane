@@ -115,6 +115,7 @@ const TABS: BoardTabs.Tabs = {
 		[
 			LOOP,
 			{
+				label: "loop",
 				finished: true,
 				taskId: "p",
 				lanes: ["claude:MILL-3", "codex:MILL-4"],
@@ -140,6 +141,7 @@ const RUNNING: BoardTabs.Tabs = {
 		[
 			LOOP,
 			{
+				label: "loop",
 				finished: false,
 				taskId: "p",
 				actions: [{ id: "stop", key: "x", label: "stop" }],
@@ -147,6 +149,21 @@ const RUNNING: BoardTabs.Tabs = {
 		],
 	]),
 	queue: [FREEFORM],
+};
+
+const LOOSE: BoardTabs.Tabs = {
+	...BoardTabs.NONE,
+	loose: new Map([
+		[
+			"recipes:run-1",
+			{
+				label: "review",
+				finished: false,
+				taskId: "p",
+				actions: [{ id: "stop", key: "x", label: "stop" }],
+			},
+		],
+	]),
 };
 
 const TRIGGERS = [1, 2, 3].map((n) => ({
@@ -232,6 +249,8 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 			view: { type: "detail", taskId: "p", banner: { question: FREEFORM } },
 			tabs: { ...RUNNING, active: null },
 		}),
+		// A recipe run on MILL-2 without a tab, still going, offering stop: `X` has a card to stop.
+		state({ view: { type: "detail", taskId: "p" }, tabs: LOOSE }),
 	],
 	transcript: [
 		state({

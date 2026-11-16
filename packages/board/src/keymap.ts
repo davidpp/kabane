@@ -56,6 +56,8 @@ export namespace Keymap {
 		unanswered?: boolean;
 		/** A question is pinned over the detail view, so the digits are its own. */
 		pinned?: boolean;
+		/** The open task's card without a tab can be stopped: its label, which the detail's `X` names. */
+		cardStop?: string;
 		/** The card on screen has lanes to walk. */
 		lanes?: boolean;
 		/** The question on screen takes a typed answer (it offers none to pick, or allows one), so `enter` types it. */
@@ -416,6 +418,15 @@ export namespace Keymap {
 					tier: "footer",
 					keys: ["b"],
 					when: (s) => s.back === true,
+				},
+				// `x` cancels the task here, so its card's stop is the shifted key, named after the card.
+				{
+					key: "X",
+					label: "stop",
+					tier: "footer",
+					keys: ["X"],
+					when: (s) => s.cardStop !== undefined,
+					labelOf: (s) => (s.cardStop ? `stop ${s.cardStop}` : "stop"),
 				},
 				{
 					key: "space",

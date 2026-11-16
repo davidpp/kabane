@@ -25,7 +25,8 @@ export namespace BoardTabs {
 
 	// What the tab bar keeps of a card between polls: what `w`, `o`, `!` and the card's own keys
 	// route on.
-	type TabCard = {
+	export type TabCard = {
+		label: string;
 		finished: boolean;
 		taskId?: string;
 		taskShortId?: string;
@@ -50,6 +51,9 @@ export namespace BoardTabs {
 		tracker?: View;
 		// Every card that asked for a tab, as of the last poll.
 		cards: ReadonlyMap<string, TabCard>;
+		// Every card without a tab that offers actions, newest first, as of the last poll: its task's
+		// detail runs them (detail-card.ts).
+		loose: ReadonlyMap<string, TabCard>;
 		// Unanswered host questions, oldest first.
 		queue: readonly Question[];
 		// The question `!` last landed on, which is where the next press continues from.
@@ -80,6 +84,7 @@ export namespace BoardTabs {
 		closed: new Set<string>(),
 		active: null,
 		cards: new Map(),
+		loose: new Map(),
 		queue: [],
 		answered: new Map(),
 		picked: new Map(),
@@ -135,6 +140,7 @@ export namespace BoardTabs {
 	};
 
 	const tabCard = (card: ActivityCard): TabCard => ({
+		label: card.label,
 		finished: !isInFlight(card),
 		...(card.taskId ? { taskId: card.taskId } : {}),
 		...(card.taskShortId ? { taskShortId: card.taskShortId } : {}),
@@ -148,7 +154,12 @@ export namespace BoardTabs {
 
 	// Everything a poll can change that the bar or the keys read, as one comparable string.
 	const fingerprint = (tabs: Tabs): string =>
-		JSON.stringify([tabs.open, [...tabs.cards], tabs.queue.map((q) => q.id)]);
+		JSON.stringify([
+			tabs.open,
+			[...tabs.cards],
+			[...tabs.loose],
+			tabs.queue.map((q) => q.id),
+		]);
 
 	/**
 	 * The poll's cards and questions, into the bar: a card that asks for a tab opens one at the end
@@ -178,6 +189,11 @@ export namespace BoardTabs {
 			...tabs,
 			open: [...tabs.open.filter((id) => listed.has(id)), ...opened],
 			cards: new Map(tabbed.map((card) => [card.id, tabCard(card)])),
+			loose: new Map(
+				cards
+					.filter((card) => !card.tab && (card.actions?.length ?? 0) > 0)
+					.map((card) => [card.id, tabCard(card)]),
+			),
 			queue,
 			answered: new Map(
 				[...tabs.answered].filter(([questionId]) => waiting.has(questionId)),

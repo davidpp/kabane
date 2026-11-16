@@ -25,6 +25,7 @@ import type { BoardData } from "./data";
 import { DecisionPanel, DecisionsWaiting } from "./decision-panel";
 import { BoardDecisions } from "./decisions";
 import { Detail } from "./detail";
+import { DetailCard } from "./detail-card";
 import { DetailModel } from "./detail-model";
 import type { Fresh } from "./detail-records";
 import { EventView } from "./event-view";
@@ -197,7 +198,7 @@ export const Screen = (props: ScreenProps): ReactNode => {
 				) !== undefined,
 			lifted: lifted.map((entry) => entry.title),
 		}),
-		host: CardTab.hints(state),
+		host: [...CardTab.hints(state), ...DetailCard.hints(state)],
 	};
 	const view: ViewProps = {
 		...props,
