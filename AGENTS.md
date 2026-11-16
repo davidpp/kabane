@@ -107,6 +107,12 @@ without one: the default server holds the human's sessions. Mouse clicks are out
 A scripted ask does not prove a real harness sends that shape, so a change to how asks
 arrive still needs a run against a real one.
 
+`--scripted` also launches every session of a loop run on the scripted agent, through the
+sandbox's `loop.harnesses` setting, so `bun run sandbox --scripted loop start <id>` drives a
+run to its end with no quota spent and the board's loop tab shows a live run
+(`extensions/loop/AGENTS.md`, "Verify"). Without the flag the next sandbox call takes the
+setting out, and `loop start` is a real run.
+
 ## Constraints for agents
 
 - One concern per commit.
