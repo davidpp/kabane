@@ -18,9 +18,12 @@ Build it from a kabane checkout and install it under `$KABANE_HOME/extensions/di
 [the extensions guide](../../docs/extensions.md) says. The build holds the templates and the
 copilot's files. `kabane dispatch stamp` answers once it is enabled.
 
-Upgrading from a kabane that shipped these skills itself changes nothing in your projects: a
-skill `/setup-dispatch` wrote then keeps working, and its stamp compares equal against this
-extension's template, which is the same bytes.
+A skill that `/setup-dispatch` wrote before this extension existed keeps working as written. One
+written by 1.0.0-beta.0 carries no `metadata.kabane-template`, and the template has changed
+since, so with the extension enabled `kabane doctor` reports `dispatch-skill-unstamped` for it
+([upgrading from 1.0.0-beta.0](../../docs/getting-started.md#upgrading-from-100-beta0-the-loop-and-dispatch-are-extensions-you-install)).
+One written by a later source build carries a stamp, which compares equal against this
+extension's template while the template's bytes are unchanged.
 
 ## Setting up the dispatch skill
 
