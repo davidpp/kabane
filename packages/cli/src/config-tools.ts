@@ -35,7 +35,7 @@ export const configTools = (
 	{
 		name: "kabane_configSet",
 		description:
-			"Set a config key in one layer, or remove it from that layer with unset:true. layer: local (this project only, for this human on this device, kept outside the repo; the default inside a project), global (config.json, every project; the default outside a project), or shared (the repo's checked-in .kabane/<namespace>.json). Device keys (sync, db, identities, copilot, harness, timezone, extensions) are global only, and go there by default. Uses kabane config parsing: strings as text, booleans/numbers as JSON text, arrays comma-separated, headers and other records as a JSON object; one record entry is its own key (loop.gates.test). Identity keys are read-only. When a higher layer still sets the key the write changes nothing yet, and the result carries shadowedBy {layer, from, value}; an unset that leaves a lower layer deciding carries fallsBackTo. A device key applies once running board/MCP processes restart (restartRequired: true); an extension's key (loop.*) applies the next time it is read, such as the next loop run.",
+			"Set a config key in one layer, or remove it from that layer with unset:true. layer: local (this project only, for this human on this device, kept outside the repo; the default inside a project), global (config.json, every project; the default outside a project), or shared (the repo's checked-in .kabane/<namespace>.json). Device keys (sync, db, identities, copilot, harness, timezone, extensions) are global only, and go there by default. Uses kabane config parsing: strings as text, booleans/numbers as JSON text, arrays comma-separated, headers and other records as a JSON object; one record entry is its own key, <namespace>.<record>.<entry>. Identity keys are read-only. When a higher layer still sets the key the write changes nothing yet, and the result carries shadowedBy {layer, from, value}; an unset that leaves a lower layer deciding carries fallsBackTo. A device key applies once running board/MCP processes restart (restartRequired: true); an extension's own key applies the next time that extension reads its settings.",
 		input: {
 			key: z.string().min(1),
 			value: z
@@ -78,7 +78,7 @@ export const configTools = (
 			const applies =
 				restart === "start"
 					? "Restart running board and MCP processes to apply the change; a board already open will not load newly enabled extensions."
-					: "It applies the next time the settings are read, such as the next loop run; no restart needed.";
+					: "It applies the next time the settings are read; no restart needed.";
 			return ok({
 				...result.value,
 				restartRequired: restart === "start",

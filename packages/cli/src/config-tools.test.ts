@@ -97,6 +97,11 @@ it("manages device config through the real stdio MCP server", async () => {
 			}),
 		);
 		const { tools } = await client.listTools();
+		// What the copilot reads of the config tools names no extension.
+		for (const tool of tools.filter(({ name }) =>
+			name.startsWith("kabane_config"),
+		))
+			expect(tool.description).not.toMatch(/\bloop\b/i);
 		expect(
 			tools.find((tool) => tool.name === "kabane_configGet")?.annotations
 				?.readOnlyHint,
@@ -422,6 +427,9 @@ it("writes a project's local layer by default over stdio, and names layers the n
 		expect(unresolved).toMatchObject({ layer: "global", value: 5 });
 		expect(unresolved.unresolved).toContain(local);
 		expect(unresolved.note).toContain("no longer resolve");
+		expect(unresolved.note).toContain(
+			"It applies the next time the settings are read; no restart needed.",
+		);
 	} finally {
 		await client.close();
 		rmSync(root, { recursive: true, force: true });
