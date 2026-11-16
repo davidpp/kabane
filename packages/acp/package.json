@@ -11,8 +11,7 @@
 		".": "./index.ts",
 		"./form-field": "./src/form-field.ts",
 		"./harnesses": "./src/harnesses.ts",
-		"./instructions": "./src/instructions.ts",
-		"./templates": "./src/templates.ts"
+		"./instructions": "./src/instructions.ts"
 	},
 	"scripts": {
 		"test": "bun test",

@@ -2,7 +2,6 @@ import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import {
 	mkdirSync,
 	mkdtempSync,
-	readFileSync,
 	realpathSync,
 	rmSync,
 	symlinkSync,
@@ -10,18 +9,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Templates } from "@cabane/acp/templates";
 import { type Result } from "@cabane/core";
+import { settingsPort } from "../context";
+import { TRACKER_BLOCK } from "../first-run";
+import { project, uncheckedSkills } from "./project";
+
 const unwrap = <T>(result: Result<T>): T => {
 	if (!result.ok) throw result.error;
 	return result.value;
 };
-
-import { Doctor } from "@cabane/extension";
-import { settingsPort } from "../context";
-import { TRACKER_BLOCK } from "../first-run";
-import { kabane } from "./kabane";
-import { project } from "./project";
 
 // kabane's checks include the harness registrations; this machine's own are not these tests'.
 const harnesses = process.env.KABANE_HARNESSES;
@@ -47,7 +43,11 @@ const write = (path: string, text: string) => {
 const skill = (stamp?: string) =>
 	`---\nname: dispatch\ndescription: Dispatch.\n${stamp === undefined ? "" : `metadata:\n  kabane-template: ${stamp}\n`}---\n\n# Dispatch\n`;
 
-/** A git project with a current dispatch skill, symlinked for Claude Code, and the Tracker block. */
+// What `Templates.stamp("dispatch")` gave on main (e6b8506), as /setup-dispatch wrote it into projects
+// before the template left base kabane.
+const STAMPED = "dispatch@dacd7416f173";
+
+/** A git project with a stamped dispatch skill, symlinked for Claude Code, and the Tracker block. */
 const setup = () => {
 	const folder = realpathSync(mkdtempSync(join(tmpdir(), "doctor-project-")));
 	folders.push(folder);
@@ -57,10 +57,7 @@ const setup = () => {
 	mkdirSync(home);
 	expect(Bun.spawnSync(["git", "init", "-q", root]).exitCode).toBe(0);
 	writeFileSync(join(root, ".kabane/scope"), "pinned\n");
-	write(
-		join(root, ".agents/skills/dispatch/SKILL.md"),
-		skill(unwrap(Templates.stamp("dispatch"))),
-	);
+	write(join(root, ".agents/skills/dispatch/SKILL.md"), skill(STAMPED));
 	mkdirSync(join(root, ".claude/skills"), { recursive: true });
 	symlinkSync(
 		"../../.agents/skills/dispatch",
@@ -80,7 +77,9 @@ const setup = () => {
 		if (!found.ok) throw found.error;
 		return found.value.map(({ id, severity }) => `${id}:${severity}`);
 	};
-	return { root, ctx, ids };
+	const unchecked = async (enabled: readonly string[] = []) =>
+		unwrap(await uncheckedSkills(enabled)(ctx));
+	return { root, ctx, ids, unchecked };
 };
 
 test("a current project has no findings, and none outside a project", async () => {
@@ -90,57 +89,44 @@ test("a current project has no findings, and none outside a project", async () =
 	expect(outside).toEqual({ ok: true, value: [] });
 });
 
-test("a missing dispatch skill routes to /setup-dispatch", async () => {
-	const { root, ids } = setup();
+test("a skill kabane stamped before the move is mentioned while no extension checks it", async () => {
+	const { root, unchecked, ids } = setup();
+	// The project's own checks never read the skill: it is the dispatch extension's.
+	expect(await ids()).toEqual([]);
+	const [finding, ...others] = await unchecked();
+	expect(others).toEqual([]);
+	expect(finding).toMatchObject({
+		id: "skill-unchecked",
+		severity: "mention",
+		path: join(root, ".agents/skills/dispatch/SKILL.md"),
+	});
+	expect(finding?.summary).toBe(
+		".agents/skills/dispatch/SKILL.md (template dispatch) carries a kabane-template stamp, and no enabled extension is named dispatch, so doctor cannot tell whether it is current. It works as written; install and enable the extension that ships the template to check.",
+	);
+	expect(await unchecked(["dispatch"])).toEqual([]);
+});
+
+test("an unstamped skill, a skill of the project's own and no skills at all are not mentioned", async () => {
+	const { root, unchecked } = setup();
+	writeFileSync(join(root, ".agents/skills/dispatch/SKILL.md"), skill());
+	write(join(root, ".agents/skills/own/SKILL.md"), "---\nname: own\n---\n");
+	expect(await unchecked()).toEqual([]);
 	rmSync(join(root, ".agents"), { recursive: true });
 	rmSync(join(root, ".claude"), { recursive: true });
-	expect(await ids()).toEqual(["dispatch-skill-missing:suggest"]);
+	expect(await unchecked()).toEqual([]);
 });
 
-test("an unstamped skill and an old stamp are told apart", async () => {
-	const { root, ids, ctx } = setup();
-	const path = join(root, ".agents/skills/dispatch/SKILL.md");
-	writeFileSync(path, skill());
-	expect(await ids()).toEqual(["dispatch-skill-unstamped:route"]);
-	writeFileSync(path, skill("dispatch@000000000000"));
-	expect(await ids()).toEqual(["dispatch-skill-behind:route"]);
-	const found = await project(ctx);
-	if (!found.ok) throw found.error;
-	expect(found.value[0]?.summary).toContain("dispatch@000000000000");
-	expect(found.value[0]?.summary).toContain(
-		unwrap(Templates.stamp("dispatch")),
-	);
-});
-
-test("a real .claude/skills/dispatch directory is reported, a symlink is not", async () => {
-	const { root, ids } = setup();
+test("a real .claude/skills directory and CRLF are read the same", async () => {
+	const { root, unchecked } = setup();
 	rmSync(join(root, ".agents"), { recursive: true });
 	rmSync(join(root, ".claude/skills/dispatch"));
 	write(
 		join(root, ".claude/skills/dispatch/SKILL.md"),
-		skill(unwrap(Templates.stamp("dispatch"))),
+		skill(STAMPED).replaceAll("\n", "\r\n"),
 	);
-	expect(await ids()).toEqual(["dispatch-skill-location:route"]);
-});
-
-test("an edited grill copy is reported and --fix project/grill-skill-behind restores it", async () => {
-	const { root, ctx, ids } = setup();
-	const template = readFileSync(join(Templates.dir("grill"), "SKILL.md"));
-	const path = join(root, ".agents/skills/grill/SKILL.md");
-	write(path, template.toString());
-	symlinkSync("../../.agents/skills/grill", join(root, ".claude/skills/grill"));
-	expect(await ids()).toEqual([]);
-	writeFileSync(path, `${template}\nA project edit.\n`);
-	expect(await ids()).toEqual(["grill-skill-behind:mention"]);
-	const unasked = await Doctor.run([...kabane], ctx, { fix: true });
-	expect(unasked.fixes).toEqual([]);
-	const report = await Doctor.run([...kabane], ctx, {
-		fix: ["project/grill-skill-behind"],
-	});
-	expect(report.fixes).toHaveLength(1);
-	expect(report.fixes[0]?.result.ok).toBe(true);
-	expect(readFileSync(path).equals(template)).toBe(true);
-	expect(await ids()).toEqual([]);
+	expect((await unchecked()).map(({ path }) => path)).toEqual([
+		join(root, ".claude/skills/dispatch/SKILL.md"),
+	]);
 });
 
 // The block as first-run.ts wrote it before JCAB-219 (ce77e64^), when finishing meant a comment.
@@ -170,13 +156,8 @@ test("a Tracker block from before JCAB-219 is mentioned, a missing one suggested
 	expect(await ids()).toEqual(["tracker-block-missing:suggest"]);
 });
 
-test("CRLF preserves dispatch provenance and the current Tracker block", async () => {
+test("CRLF keeps the current Tracker block current", async () => {
 	const { root, ids } = setup();
-	writeFileSync(
-		join(root, ".agents/skills/dispatch/SKILL.md"),
-		skill(unwrap(Templates.stamp("dispatch"))).replaceAll("\n", "\r\n"),
-	);
-	expect(await ids()).toEqual([]);
 	writeFileSync(
 		join(root, "AGENTS.md"),
 		`# Project\n\n${TRACKER_BLOCK}\n`.replaceAll("\n", "\r\n"),

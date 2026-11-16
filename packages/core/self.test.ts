@@ -77,21 +77,3 @@ describe("Self.executable", () => {
 		expect(Self.executable({ ...SCRIPT, entry: undefined })).toBe("kabane");
 	});
 });
-
-describe("Self.templates", () => {
-	it("reads a script's templates beside the reading module's directory", () => {
-		expect(
-			Self.templates(
-				"dispatch",
-				"file:///repo/packages/acp/src/instructions.ts",
-				SCRIPT,
-			),
-		).toBe("/repo/packages/acp/templates/dispatch");
-	});
-
-	it("reads a binary's templates beside the executable", () => {
-		expect(
-			Self.templates("dispatch", "file:///$bunfs/root/kabane", BINARY),
-		).toBe("/opt/kabane/templates/dispatch");
-	});
-});

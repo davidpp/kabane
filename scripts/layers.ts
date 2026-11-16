@@ -126,6 +126,12 @@ export const layers: Readonly<Record<string, Rule>> = {
 			"@cabane/sqlite",
 		],
 	},
+	"@cabane/dispatch": {
+		layer: "extension",
+		// Templates, copilot files and node built-ins: no harness client to bundle.
+		dependencies: [],
+		devDependencies: ["@cabane/core", "@cabane/extension"],
+	},
 };
 
 const Manifest = z.object({

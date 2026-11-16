@@ -17,6 +17,16 @@
         "zod": "3.25.76",
       },
     },
+    "extensions/dispatch": {
+      "name": "@cabane/dispatch",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@cabane/core": "workspace:*",
+        "@cabane/extension": "workspace:*",
+        "@types/bun": "1.4.0",
+        "typescript": "5.9.3",
+      },
+    },
     "extensions/loop": {
       "name": "@cabane/loop",
       "version": "0.1.0",
@@ -219,6 +229,8 @@
     "@cabane/checklist": ["@cabane/checklist@workspace:packages/checklist"],
 
     "@cabane/core": ["@cabane/core@workspace:packages/core"],
+
+    "@cabane/dispatch": ["@cabane/dispatch@workspace:extensions/dispatch"],
 
     "@cabane/extension": ["@cabane/extension@workspace:packages/extension"],
 
