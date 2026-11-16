@@ -21,10 +21,8 @@ import { err, ok, tryCatch } from "./result";
 import type { Retry } from "./retry";
 import { Review } from "./review";
 import { Route } from "./route";
+import { SERVER_NAME, actorUri } from "./session-identity";
 import type { RunStore } from "./store";
-
-// Kept distinct from the human's configured kabane MCP server.
-const SERVER_NAME = "kabane-session";
 
 export namespace Dispatch {
 	type Env = {
@@ -216,7 +214,7 @@ export namespace Dispatch {
 			"mcp",
 			...(env.scopeUri ? ["--scope", env.scopeUri] : []),
 			"--as",
-			`cabane://actor/agent/${harness}`,
+			actorUri(harness),
 		],
 		env: { KABANE_HOME: env.home },
 	});

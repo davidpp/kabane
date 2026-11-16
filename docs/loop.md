@@ -23,13 +23,17 @@ or MCP server after installation or enablement. The harness you choose must be i
 and logged in.
 
 The artifact includes its harness client, copilot procedures and shipped verifier lenses.
-A source checkout can instead be symlinked from `extensions/loop` into
-`$KABANE_HOME/extensions/loop`; `bun run sandbox` makes that link in its disposable home.
+The compiled binary loads only the built `dist/` artifact. A source checkout can instead
+be symlinked from `extensions/loop` into `$KABANE_HOME/extensions/loop` when kabane runs
+through Bun (the npm/bun install or the sandbox). `bun run sandbox` makes that link in its
+disposable home.
 
 When upgrading from a version that bundled the loop, install this directory before using
 `kabane loop`. Until it is installed, an enabled `loop` reports `not installed; put it in
 <home>/extensions/loop/`. Existing settings and run state under `$KABANE_HOME/loops` remain
-in place.
+in place. Loop settings written before installation are kept and read again once the loop
+is installed and enabled. Until then, `kabane config get loop.<key>` answers
+`Unknown config key`.
 
 ## Start and follow a run
 

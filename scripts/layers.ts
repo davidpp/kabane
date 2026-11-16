@@ -410,7 +410,7 @@ function importFindings(
 				specifier,
 				location,
 				typeOnly,
-				extension: path.startsWith("extensions/"),
+				extension: rule?.layer === "extension",
 			});
 			if (finding) findings.push(finding);
 		}

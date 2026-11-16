@@ -33,6 +33,7 @@
 
 import {
 	existsSync,
+	lstatSync,
 	mkdirSync,
 	readFileSync,
 	rmSync,
@@ -191,8 +192,12 @@ if (own.has("--fresh")) rmSync(SANDBOX, { recursive: true, force: true });
 seedRepo();
 const extensions = join(KABANE_HOME, "extensions");
 mkdirSync(extensions, { recursive: true });
-if (!existsSync(join(extensions, "loop")))
-	symlinkSync(join(ROOT, "extensions/loop"), join(extensions, "loop"));
+const loop = join(extensions, "loop");
+const installedLoop = lstatSync(loop, { throwIfNoEntry: false });
+if (!installedLoop || (installedLoop.isSymbolicLink() && !existsSync(loop))) {
+	if (installedLoop) rmSync(loop);
+	symlinkSync(join(ROOT, "extensions/loop"), loop);
+}
 // Codex refuses to start when CODEX_HOME names a directory that does not exist.
 if (own.has("--harnesses"))
 	mkdirSync(join(SANDBOX, ".codex"), { recursive: true });

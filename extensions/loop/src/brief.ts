@@ -12,9 +12,7 @@ import type { Checklists } from "./checklists";
 import type { LoopConfig } from "./config";
 import { Gates } from "./gates";
 import { LoopPlan } from "./plan";
-
-// Kept distinct from the human's configured kabane MCP server.
-const SERVER_NAME = "kabane-session";
+import { SERVER_NAME } from "./session-identity";
 
 export namespace Brief {
 	/** Resolved run settings and the working copy actually assigned to this session. */

@@ -507,7 +507,6 @@ export namespace Extensions {
 	): Promise<Result<Settings.Namespace[]>> => {
 		if (!selected.ok) return selected;
 		const all = await loadAll(selected.value, home);
-
 		report(all.refused);
 		return namespacesOf(all.loaded);
 	};

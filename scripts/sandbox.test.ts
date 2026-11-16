@@ -2,7 +2,15 @@
 // the contributor's own sandbox is untouched: what `--scripted` writes into the sandbox's config and
 // takes out again.
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import {
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	mkdirSync,
+	symlinkSync,
+	lstatSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
@@ -71,3 +79,27 @@ describe("bun run sandbox --scripted", () => {
 		});
 	}, 60_000);
 });
+
+for (const installed of ["dangling link", "valid link", "directory"] as const) {
+	it(`handles an existing loop ${installed}`, async () => {
+		const loop = join(CONFIG, "../extensions/loop");
+		mkdirSync(join(loop, ".."), { recursive: true });
+		rmSync(loop, { recursive: true, force: true });
+		const target = join(TMP, `loop-${installed}`);
+		if (installed === "directory") mkdirSync(loop);
+		else {
+			if (installed === "valid link") mkdirSync(target);
+			symlinkSync(target, loop);
+		}
+		await after(await sandbox("--help"), () => {
+			if (installed === "directory")
+				expect(lstatSync(loop).isDirectory()).toBe(true);
+			else
+				expect(realpathSync(loop)).toBe(
+					realpathSync(
+						installed === "valid link" ? target : join(ROOT, "extensions/loop"),
+					),
+				);
+		});
+	}, 60_000);
+}

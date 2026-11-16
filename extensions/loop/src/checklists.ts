@@ -2,6 +2,7 @@ import type { Result, Task } from "@cabane/core";
 import type { Host } from "@cabane/extension";
 import type { z } from "zod";
 import { ok, err } from "./result";
+import { actorUri } from "./session-identity";
 
 const itemSchema = (z: Host["z"]) =>
 	z.object({
@@ -92,7 +93,7 @@ export namespace Checklists {
 			task.kind !== "issue" ||
 			task.state !== "done" ||
 			task.assignee !== harness ||
-			task.updatedBy !== `cabane://actor/agent/${harness}`
+			task.updatedBy !== actorUri(harness)
 		)
 			return ok([]);
 		const items = await of(host, task.id);

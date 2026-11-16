@@ -49,7 +49,7 @@ export const build = async (into = DIST): Promise<Bun.BuildOutput> => {
 	for (const directory of ["copilot", "lenses"])
 		cpSync(join(ROOT, directory), join(into, directory), { recursive: true });
 	writeFileSync(
-		join(into, "metafile.json"),
+		`${into}.metafile.json`,
 		JSON.stringify(result.metafile, null, 2),
 	);
 	return result;

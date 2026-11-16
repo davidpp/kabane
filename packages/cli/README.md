@@ -61,7 +61,9 @@ kabane list
   settings schemas and MCP tool inputs with `host.z`, the host's zod. Disabled directories
   are discovered without importing their code. The host
   checks the manifest and API before importing the entry, whose dependencies resolve from
-  its own `node_modules`. A refused extension prints one line naming the problem and how
+  its own `node_modules` when kabane runs through Bun. For the compiled binary, an
+  extension must be a bundle with its dependencies inlined: the binary cannot resolve
+  external on-disk packages using conditional or subpath `exports`. A refused extension prints one line naming the problem and how
   to repair or disable it; the others still load. The optional [loop](../../docs/loop.md) must be installed as a directory too.
 
 ### Settings layers
@@ -201,7 +203,9 @@ run `kabane config set extensions <name> --layer global` (comma-separated names 
 Its `package.json` must contain `"kabane": { "extension": "./index.ts", "api": 1 }`.
 The entry's default export is a factory receiving `{ api: 1, kabane: { version, executable } }`
 and returning an extension whose `name` matches the directory. Its own `node_modules` resolve
-normally.
+normally when kabane runs through Bun. For the compiled binary, supply a built bundle with
+its dependencies inlined; external on-disk packages using conditional or subpath `exports`
+do not resolve.
 
 An extension that keeps replicated data adds `"modules": "./modules.ts"` to that object. The
 modules entry's default export is a factory `(host) => KabaneModule[]`; its modules write

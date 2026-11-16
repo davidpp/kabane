@@ -1,6 +1,13 @@
 import { expect, it } from "bun:test";
 import "@cabane/core/testing";
-import { cpSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs";
+import {
+	cpSync,
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	unlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -18,6 +25,10 @@ it("builds a relocatable loop with its client, procedures and working shipped le
 		const result = await build(output);
 		expect(result.success).toBe(true);
 		expect(result.logs).toEqual([]);
+		expect(JSON.parse(readFileSync(`${output}.metafile.json`, "utf8"))).toEqual(
+			result.metafile,
+		);
+		expect(existsSync(join(output, "metafile.json"))).toBe(false);
 		expect(
 			Object.keys(result.metafile?.inputs ?? {}).some((file) =>
 				file.includes("packages/acp/src/client.ts"),
@@ -86,3 +97,15 @@ it("builds a relocatable loop with its client, procedures and working shipped le
 		rmSync(work, { recursive: true, force: true });
 	}
 }, 60_000);
+
+it("ships byte-identical copies of ACP's verifier lenses", () => {
+	for (const name of ["functional", "quality"])
+		expect(readFileSync(join(import.meta.dir, `../lenses/${name}.md`))).toEqual(
+			readFileSync(
+				join(
+					import.meta.dir,
+					`../../../packages/acp/templates/dispatch/references/lenses/${name}.md`,
+				),
+			),
+		);
+});

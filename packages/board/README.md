@@ -429,8 +429,8 @@ Kabane's own instructions name no extension. An enabled extension loaded from
 extension's directory; nothing else is substituted. The frontmatter takes only that one key, so a
 file cannot set a harness mode, an allow list or an MCP entry. A byte-order mark is ignored and
 CRLF line ends read as LF. Files not named `*.md` are ignored, and so is a `copilot` that is a
-file rather than a directory. A bundled extension adds no files, so the copilot knows the loop's
-procedures only when the loop is loaded from its directory.
+file rather than a directory. The copilot knows an extension's procedures only when the
+extension is enabled and loaded from its directory.
 
 These are refused, each on its own, and the rest of the extension loads:
 

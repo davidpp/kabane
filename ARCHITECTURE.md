@@ -649,7 +649,7 @@ consistent only while the module is registered. The rule has two parts:
   change task states without the module's `onTaskStateChange`, and the human never chose that.
   An enabled extension whose directory exists but whose `package.json` is missing, unreadable,
   not JSON or not a valid manifest stops the same way, naming the file: nothing proves it has no
-  modules. An enabled name with no directory (and no bundled fallback) is not a stop: it is as
+  modules. An enabled name with no directory is not a stop: it is as
   good as disabled (below), and where commands load extensions it stays the "not installed"
   refusal.
 
