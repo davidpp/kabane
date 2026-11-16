@@ -217,7 +217,7 @@ test("run and runs outside a project fail with one line", () => {
 test("runs refuses an unknown run and an unknown subcommand", () => {
 	const { kabane } = setup();
 	expect(kabane(["runs"]).stdout).toBe(
-		"No live runs in this project; --all shows ended ones.",
+		"No runs in flight in this project; --all shows ended ones.",
 	);
 	expect(kabane(["runs", "read", "ABC123"]).stderr).toBe(
 		'Error: No run "ABC123" in this project; kabane runs --all lists them',
@@ -235,7 +235,7 @@ test("with the extension not enabled, run and runs are unknown and help lists ne
 	expect(help).not.toMatch(/^\s+runs\s/m);
 });
 
-test("runs lists live runs unless --all, and refuses another machine's run by name", () => {
+test("runs lists the runs in flight unless --all, and refuses another machine's run by name", () => {
 	const { kabane, seed } = setup();
 	kabane(["runs"]); // opens the store, which creates the run table
 	seed("01M7JT0TFJB7MF38VYDWCG0AAA", { machine: "elsewhere" });

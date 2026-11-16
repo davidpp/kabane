@@ -117,7 +117,7 @@ it("ends a run still starting and nothing else, and a session written after brin
 	expect((await byId()).get(started.id)).toEqual(started);
 	expect((await byId()).get(starting.id)?.state).toBe("ended");
 
-	// The start that a listing ended early records its session: the run is live again.
+	// The start that a listing ended early records its session: the run is in flight again.
 	value(await Runs.setSession(host, starting.id, "research-cg0aaa", "tester"));
 	expect((await byId()).get(starting.id)).toEqual({
 		...starting,

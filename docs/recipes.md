@@ -94,7 +94,7 @@ instructions); kabane adds nothing to it.
 ## Follow your runs
 
 ```bash
-kabane runs                 # this project's live runs, newest first
+kabane runs                 # this project's runs that have not ended, newest first
 kabane runs --all           # ended ones too
 kabane runs read <id>       # print the terminal's screen
 kabane runs send <id> yes   # type an answer into it and press enter
@@ -103,19 +103,19 @@ kabane runs stop <id>       # end its program
 ```
 
 `<id>` is the run's id or its last few characters, as long as one run ends with them; the
-terminal's name ends with the id's last six. A run's state is what its program last reported to its terminal, read each time runs are
-listed. Programs report through OSC 7501, herdr's Program Status Protocol; kabane never guesses
-a state from the screen:
+terminal's name ends with the id's last six. A run's state is what its program last reported
+to its terminal, read each time runs are listed. Programs report through OSC 7501, herdr's
+Program Status Protocol; kabane never guesses a state from the screen:
 
 | State | The terminal |
 |---|---|
-| `live` | the program is running and has reported no status: a shell, or a harness that does not speak OSC 7501 |
+| `live` | the program is open and has reported no status: a shell, or a harness that does not speak OSC 7501 |
 | `running` | the agent is working |
 | `waiting` | the agent is blocked on you: a permission or a question in the terminal |
 | `idle` | the agent's turn ended and the program is still open |
 | `ended` | the program exited, or the terminal is gone |
 
-Any program can report its own state, a script set as `recipes.harness` included: it prints
+Any program can report its own state, a script set as `recipes.harness` included: it runs
 `printf '\033]7501;state=working:app=my-agent\033\\'`, with `state` one of `working`, `blocked`,
 `idle`, `done` or `error`. `blocked` shows `waiting`; `idle`, `done` and `error` show `idle`.
 
