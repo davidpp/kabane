@@ -345,6 +345,19 @@ it("refuses a nested store.write and a record write inside a write at once, from
 	for (const { ms } of Object.values(inside)) expect(ms).toBeLessThan(100);
 });
 
+it("runs a write a real extension command scheduled inside its write, once that write has ended", async () => {
+	const alpha = device("defer", true);
+	await alpha.open();
+	const task = unwrap(
+		await Planner.addTask(alpha.home, { title: "Defer", kind: "issue" }),
+	);
+	const deferred = await alpha.kabane(["notes", "defer", task.id]);
+	expect(deferred.json).toMatchObject({ outer: true, deferred: "ok" });
+	expect((await alpha.kabane(["notes", "list", task.id])).text).toBe(
+		"deferred",
+	);
+});
+
 it("names the other enabled extensions in the way out", async () => {
 	const home = mkdtempSync(join(tmpdir(), "kabane-modules-rest-"));
 	homes.push(home);

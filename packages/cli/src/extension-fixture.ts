@@ -52,7 +52,7 @@ export default (host: Host): Extension => ({
 	commands: [
 		{
 			name: "notes",
-			usage: "kabane notes add <task> <text> | kabane notes list <task> | kabane notes nest <task>",
+			usage: "kabane notes add <task> <text> | kabane notes list <task> | kabane notes nest <task> | kabane notes defer <task>",
 			summary: "Notes on a task, kept by the notes extension's data module",
 			run: async (args, ctx) => {
 				const [verb, id, ...words] = args.positionals;
@@ -72,6 +72,35 @@ export default (host: Host): Extension => ({
 					return written.ok
 						? host.outcome.success({ id: written.value, sameHost: seen.host === host }, \`noted \${written.value}\`)
 						: host.outcome.failure(written.error);
+				}
+				if (verb === "defer") {
+					// A write scheduled inside a write, as a debounce would: it runs once the outer one ends.
+					let fire: (write: Promise<{ ok: boolean; error?: Error }>) => void = () => {};
+					const fired = new Promise<Promise<{ ok: boolean; error?: Error }>>((resolve) => {
+						fire = resolve;
+					});
+					const started = performance.now();
+					const outer = await host.store.write(() => {
+						setTimeout(() => {
+							fire(
+								host.store.write((tx) => {
+									const noteId = \`\${Date.now().toString(36)}-\${crypto.randomUUID()}\`;
+									tx.db.run(
+										\`INSERT INTO \${NOTES} (id, task_id, body, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)\`,
+										[noteId, task.value.id, "deferred", new Date().toISOString(), ctx.actor],
+									);
+									return tx.afterWrite(NOTES, "insert", noteId);
+								}),
+							);
+						}, 50);
+						return host.result.ok(undefined);
+					});
+					const result = await (await fired);
+					const ms = Math.round(performance.now() - started);
+					return host.outcome.success(
+						{ outer: outer.ok, deferred: result.ok ? "ok" : result.error?.message, ms },
+						\`outer: \${outer.ok ? "ok" : "err"}; deferred write: \${result.ok ? "ok" : result.error?.message} (\${ms} ms)\`,
+					);
 				}
 				if (verb === "nest") {
 					// What an extension must not do: write again inside its own write.
