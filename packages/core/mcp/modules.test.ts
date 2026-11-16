@@ -162,7 +162,7 @@ it("lists and calls registered module tools and advertises their instructions", 
 	}
 });
 
-it("refuses tool collisions introduced after configuration before serving either transport", async () => {
+it("refuses tool collisions introduced after configuration when composing the server", async () => {
 	const core = KABANE_TOOLS[0];
 	if (!core) throw new Error("Missing core tools");
 	const tools: ToolDef[] = [];

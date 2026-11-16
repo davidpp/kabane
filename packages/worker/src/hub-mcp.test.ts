@@ -12,6 +12,7 @@
  */
 
 import { env, runDurableObjectAlarm, SELF } from "cloudflare:test";
+import { questionsModule } from "@cabane/questions";
 import { describe, expect, it } from "vitest";
 import { ACTOR_HEADER, HUB_NAME, PRINCIPAL_HEADER } from "./names";
 import { HERMES, HUMAN, withAccess } from "./test-access";
@@ -107,7 +108,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(get.status).toBe(405);
 	});
 
-	it("initializes with server instructions", async () => {
+	it("serves module tools and instructions over Streamable HTTP", async () => {
 		const { status, body } = await rpc(HUMAN, "initialize", {
 			protocolVersion: "2025-06-18",
 			capabilities: {},
@@ -120,6 +121,17 @@ describe("hub MCP over Streamable HTTP", () => {
 		};
 		expect(result.serverInfo.name).toBe("kabane-hub");
 		expect(result.instructions).toContain("kabane_scopeList");
+		expect(questionsModule.instructions).toBeTypeOf("string");
+		expect(result.instructions).toContain(questionsModule.instructions);
+		const listed = await rpc(HUMAN, "tools/list");
+		expect(listed.status).toBe(200);
+		expect(listed.body.result?.tools).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ name: "kabane_ask" }),
+				expect.objectContaining({ name: "kabane_questions" }),
+				expect.objectContaining({ name: "kabane_answer" }),
+			]),
+		);
 	});
 
 	it("lists replicated tools without session or local config tools", async () => {
