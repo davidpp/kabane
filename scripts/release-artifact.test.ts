@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import {
+	cpSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -158,13 +159,13 @@ const npmEnv = {
 	npm_config_fund: "false",
 	npm_config_audit: "false",
 };
-/** `npm pack` the built dist into a new directory and validate the archive it writes. */
-const packBuild = async () => {
+/** `npm pack` a package directory into a new directory and validate the archive it writes. */
+const packBuild = async (packageDir: string) => {
 	const dir = join(WORK, String(sequence++));
 	mkdirSync(dir);
 	const packed = Bun.spawnSync(
 		["npm", "pack", "--json", "--pack-destination", dir],
-		{ cwd: DIST, env: npmEnv, stdout: "pipe", stderr: "pipe" },
+		{ cwd: packageDir, env: npmEnv, stdout: "pipe", stderr: "pipe" },
 	);
 	if (packed.exitCode !== 0) throw new Error(packed.stderr.toString());
 	const [first] = z
@@ -176,13 +177,16 @@ const packBuild = async () => {
 	]);
 };
 test("the real build packs into an archive the check admits, and a stray type file is refused", async () => {
+	// build() writes only packages/cli/dist; copy it at once so a build running elsewhere
+	// cannot change what is packed, and the stray file never lands in the repository.
 	await build();
-	const checked = await packBuild();
+	const built = join(WORK, "built");
+	cpSync(DIST, built, { recursive: true });
+	const checked = await packBuild(built);
 	if (!checked.ok) throw checked.error;
 	expect(checked.value.name).toBe("kabane");
-	writeFileSync(join(DIST, "types/other.d.ts"), "export {};\n");
-	const stray = await packBuild();
-	rmSync(join(DIST, "types/other.d.ts"));
+	writeFileSync(join(built, "types/other.d.ts"), "export {};\n");
+	const stray = await packBuild(built);
 	expect(stray.ok).toBe(false);
 	if (!stray.ok) expect(stray.error.message).toBe(UNEXPECTED_SHAPE);
 }, 120_000);
