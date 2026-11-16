@@ -116,7 +116,9 @@ Kabane never says a run succeeded. `idle` means the agent stopped; what it did i
 wrote on the issue. A run started on another machine shows the state last recorded there and
 that machine's name, and `read`, `send`, `attach` and `stop` refuse it. A run in a runtime
 this kabane does not have is treated the same way, and `read`, `send` and `attach` on a runtime
-with no terminal fail with one line naming it.
+with no terminal fail with one line naming it. A run whose start has not recorded a terminal
+yet (an empty TERMINAL column) is refused by `read`, `send`, `attach` and `stop`, which say it
+has no session yet.
 
 With `--json`, `kabane run` prints `run` (the id), `session` and `attach` (the command that
 attaches to it), plus `warnings` when there are any. `kabane runs --json` prints `runs`, a list
