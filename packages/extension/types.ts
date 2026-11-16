@@ -6,6 +6,11 @@ export type { Outcome } from "./outcome";
 export type { Settings } from "./settings";
 export type { Doctor } from "./doctor";
 export type {
+	Db,
+	KabaneModule,
+	ModuleSyncTable,
+	Row,
+	TaskUpdate,
 	ItemKind,
 	Task,
 	TaskEntry,

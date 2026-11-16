@@ -307,9 +307,9 @@ An `import type` compiles to nothing, so the extension never resolves that path 
 is scoped to that extension's modules, so the kit knows whose tables a write may touch. It is
 built in two stages (see "Every process that opens the
 database registers the same modules"): everything but `record` and `store` works from the start,
-and `record` works once the runtime is configured and migrated and that host’s factory has
-returned. A doctor check can use it only when doctor successfully opened the store.
-Standalone extension commands do not open the store. `store` remains planned for JCAB-323. Each
+and `record` and `store` work once the runtime is configured and migrated and one of that host's
+factories has returned, and never while one runs. A doctor check can use them only when doctor
+successfully opened the store. Standalone extension commands do not open the store. Each
 member below exists because the loop's inventory needs it (`wiki/extension-api.md`); JCAB-322
 does not widen it beyond that.
 
@@ -343,7 +343,7 @@ type Host = {
 };
 ```
 
-`host.store` remains planned for JCAB-323. The compiled contract uses `typeof` for helper
+The compiled contract uses `typeof` for helper
 signatures and an explicit `harnessMode` member (Mode only, JCAB-316:8).
 `types/extension.d.ts` is generated from the types-only entry in `packages/extension`: it is
 self-contained, includes the reachable core and zod types, and exports types only. The
@@ -449,16 +449,17 @@ instead of handing an extension `atomic` and `updateTaskIn` to get right:
 ```ts
 namespace Host {
 	export type Store = {
-		/** Reads. A capture call made here is refused: writes go through `write`. */
+		/** Reads, on a connection that refuses writes (`PRAGMA query_only`). */
 		read<T>(fn: (db: Db) => Result<T> | Promise<Result<T>>): Promise<Result<T>>;
 		/**
-		 * One transaction. An `err` returned from `fn`, or a throw, rolls everything back. After the
-		 * commit, and only then, the host emits `TASK_UPDATED` for every task `tx.updateTask` changed.
+		 * One transaction. An `err` returned from `fn`, a throw, or an `err` from any `tx` call
+		 * rolls everything back. After the commit, and only then, the host emits `TASK_UPDATED`
+		 * for every task `tx.updateTask` changed.
 		 */
-		write<T>(fn: (tx: Host.Tx) => Result<T> | Promise<Result<T>>): Promise<Result<T>>;
+		write<T>(fn: (tx: Tx) => Result<T> | Promise<Result<T>>): Promise<Result<T>>;
 	};
 	export type Tx = {
-		db: Db;
+		readonly db: Db;
 		afterWrite(table: string, op: "insert" | "update", id: string): Result<void>;
 		snapshot(table: string, id: string): Result<Row | undefined>;
 		afterDelete(rows: readonly { tbl: string; row: Row }[]): Result<void>;
@@ -467,12 +468,23 @@ namespace Host {
 }
 ```
 
-The kit is built from `withDb` and `atomic` (`packages/core/runtime.ts:152`, `:167`),
-`Oplog.afterWrite`, `Oplog.snapshot` and `Oplog.afterDelete` (`packages/core/storage/oplog.ts:340`,
-`:381`, `:351`), `Planner.updateTaskIn` (`packages/core/storage/tasks.ts:407`) and `Events.emit`.
-`afterWrite` and `afterDelete` refuse a table the calling extension's modules do not declare, so an
-extension writes only its own tables and changes tasks only through `updateTask`. Raw SQL on
-`tx.db` against another package's table is not stopped by the kit; review holds that.
+This is `packages/extension/host.ts` as compiled. It departs from the first sketch in three
+places: `Db`, `Row` (core's `Record<string, unknown>`) and `TaskUpdate` are core types the
+published declaration now carries, with `KabaneModule` and `ModuleSyncTable` for the modules
+entry; an `err` from a `tx` call poisons the transaction even when `fn` ignores it and returns
+`ok`, so a refused capture or a refused state change can never commit half a write; and `read`
+gets a connection that refuses writes, where the sketch only promised that capture is refused
+there (capture is reachable only through `tx` either way). `Oplog.afterDelete` takes a readonly
+row list for the kit.
+
+The kit (`packages/extension/host-store.ts`) is built from `withDb` and `atomic`
+(`packages/core/runtime.ts`), `Oplog.afterWrite`, `Oplog.snapshot` and `Oplog.afterDelete`
+(`packages/core/storage/oplog.ts`), `Planner.updateTaskIn` (`packages/core/storage/tasks.ts`) and
+`Events.emit`, so an extension's module tests run the same kit over a real database
+(`host-store.test.ts`). `afterWrite` and `afterDelete` refuse a table the calling extension's
+modules do not declare, so an extension writes only its own tables and changes tasks only through
+`updateTask`. Raw SQL on `tx.db` against another package's table is not stopped by the kit;
+review holds that.
 
 ## An extension contributes through six optional fields on `Extension`, a modules entry and copilot files
 

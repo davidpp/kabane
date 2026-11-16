@@ -397,7 +397,7 @@ export namespace Oplog {
 	};
 
 	/** `captureDeletes` with the same throw-on-failure contract as `afterWrite`. */
-	export const afterDelete = (db: Db, rows: Cascade): void => {
+	export const afterDelete = (db: Db, rows: Readonly<Cascade>): void => {
 		const captured = captureDeletes(db, rows);
 		if (!captured.ok) throw captured.error;
 	};
@@ -416,7 +416,7 @@ export namespace Oplog {
 	};
 
 	/** Capture several rows as deletes, in the order given. */
-	const captureDeletes = (db: Db, rows: Cascade): Result<number> => {
+	const captureDeletes = (db: Db, rows: Readonly<Cascade>): Result<number> => {
 		let recorded = 0;
 		for (const { tbl, row } of rows) {
 			const done = capture(db, { tbl, op: "delete", row });

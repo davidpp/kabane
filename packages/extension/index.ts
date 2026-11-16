@@ -3,6 +3,7 @@
 export { flagBool, flagCsv, flagList, flagString, parseArgs } from "./args";
 export { Doctor } from "./doctor";
 export { createHostRecord } from "./host-record";
+export { createHostStore } from "./host-store";
 export { conciseSuccess, failure, success, usage } from "./outcome";
 export { Settings } from "./settings";
 export type * from "./types";

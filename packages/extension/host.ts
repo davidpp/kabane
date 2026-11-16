@@ -1,9 +1,12 @@
 /** The versioned host supplied to an extension factory. */
 import type {
+	Db,
 	defineTool,
 	err,
 	ok,
 	Result,
+	Row,
+	TaskUpdate,
 	tryCatch,
 	trySync,
 	Task,
@@ -135,5 +138,37 @@ export namespace Host {
 		}): Promise<Result<TaskWorkLog[]>>;
 		/** Any registered tool, including data modules; input passes through unchanged. */
 		call(tool: string, input: unknown): Promise<Result<unknown>>;
+	};
+	/**
+	 * Storage for the extension's data modules. Both calls return the "not configured yet" `err`
+	 * until the store is open and this host's factory has returned.
+	 */
+	export type Store = {
+		/** Reads, on a connection that refuses writes. */
+		read<T>(fn: (db: Db) => Result<T> | Promise<Result<T>>): Promise<Result<T>>;
+		/**
+		 * One transaction. An `err` returned from `fn`, a throw, or an `err` from any `tx` call
+		 * rolls everything back. After the commit, and only then, the host emits `TASK_UPDATED`
+		 * for every task `tx.updateTask` changed.
+		 */
+		write<T>(
+			fn: (tx: Tx) => Result<T> | Promise<Result<T>>,
+		): Promise<Result<T>>;
+	};
+	/** A write transaction. Capture calls exist only here. */
+	export type Tx = {
+		readonly db: Db;
+		/** Capture a row of one of the extension's tables after an insert or update. */
+		afterWrite(
+			table: string,
+			op: "insert" | "update",
+			id: string,
+		): Result<void>;
+		/** The row as it is, read before a delete. */
+		snapshot(table: string, id: string): Result<Row | undefined>;
+		/** Capture deleted rows of the extension's tables, children first. */
+		afterDelete(rows: readonly { tbl: string; row: Row }[]): Result<void>;
+		/** The one way to change a task: runs every module's `onTaskStateChange` on a state change. */
+		updateTask(id: string, updates: TaskUpdate): Result<Task | null>;
 	};
 }
