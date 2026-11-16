@@ -1,12 +1,12 @@
 # @cabane/core
 
-Coordination substrate for agent teams, with humans consuming it to plan and review. Most items are AI-created; the tracker's job is to hold the *structure* agents need — sessions, typed activities, curated context, a link DAG — so no consumer reinvents it in prose.
+Coordination substrate for agent teams, with humans consuming it to plan and review. Most items are AI-created; the tracker's job is to hold the *structure* agents need — typed timeline entries, work-log refs, curated context, a link DAG — so no consumer reinvents it in prose.
 
 ## Design principles
 
-1. **Unix composability.** Every capability is optional at use time. `addTask` touches the tasks table and nothing else. Sessions never gate commenting; the context registry costs zero when empty; `assembleContext` degrades over whatever exists.
-2. **Soft typing.** Freeform TEXT columns with Zod-*suggested* well-known values (`SESSION_STATES`, `ACTIVITY_TYPES`, context kinds) — never CHECK constraints or closed enums. Task `state` is the one hard enum (7 canonical values).
-3. **Write structured, read folded.** Agents classify at write time (activity type, severity, ref kind) so the read path can fold, filter, and assemble.
+1. **Unix composability.** Every capability is optional at use time. `addTask` touches the tasks table and nothing else. The context registry costs zero when empty; `assembleContext` degrades over whatever exists.
+2. **Soft typing.** Freeform TEXT columns with Zod-*suggested* well-known values (entry kinds, context kinds, work-ref schemes) — never CHECK constraints or closed enums. Task `state` is the one hard enum (7 canonical values).
+3. **Write structured, read folded.** Agents classify at write time (entry kind, ref kind) so the read path can fold, filter, and assemble.
 4. **Curation ≠ record.** Work logs are append-only and complete (outputs). The context registry is maintained and current (inputs). Same URI vocabulary, different lifecycle.
 
 ## The Db port and runtime wiring
@@ -80,13 +80,13 @@ Off by default. The local database stays authoritative; every storage write on a
 - **A log reset is detected from `PushAck.head`.**
 - `local-relay.ts` is the permanent test double, so every convergence assertion runs with no Cloudflare.
 
-Core sync set: `tasks`, `task_links`, `task_comments`, `task_work_log`, `projects`, `task_context_refs`, `upstream_links`, plus each registered module's `syncTables`. Excluded: `agent_sessions`/`agent_activities`, `sequences`.
+Core sync set: `tasks`, `task_links`, `task_comments`, `task_work_log`, `projects`, `task_context_refs`, `upstream_links`, plus each registered module's `syncTables`. Excluded: `sequences`.
 
 `upstream_links` holds the external issue a task points at, and identity only: provider, external id, identifier, url, title. It carries no copy of what the external issue says, which is both why it replicates (a url and a title are less sensitive than the task descriptions already on the wire) and why nothing reading it needs a staleness rule. Whatever matters about the external issue goes in the task's own description when the link is made.
 
 ## `assembleContext` — THE agent read entrypoint
 
-One primitive builds an issue's full brief as markdown. Sections in order, empty ones omitted: title + metadata, description (never truncated), position (parent, blockers, blocks, subtask states), context (registry refs, `file:` deref'd inline with caps), prior work (work-log refs), discussion (all human comments and every typed entry merged with the durable machine signal), then each registered module's `contextSections` and `<kind>.latest` sections after the core section they anchor to (`questions.decisions` after discussion), a module's own sections before its kinds', modules in registration order. Caps: `perRefCap` 8KB, `totalRefCap` 24KB, `maxTimelineEntries` 20.
+One primitive builds an issue's full brief as markdown. Sections in order, empty ones omitted: title + metadata, description (never truncated), position (parent, blockers, blocks, subtask states), context (registry refs, `file:` deref'd inline with caps), prior work (work-log refs), discussion (all human comments, every typed entry, and the AI comments the fold keeps), then each registered module's `contextSections` and `<kind>.latest` sections after the core section they anchor to (`questions.decisions` after discussion), a module's own sections before its kinds', modules in registration order. Caps: `perRefCap` 8KB, `totalRefCap` 24KB, `maxTimelineEntries` 20.
 
 ## Timeline entries
 
@@ -96,22 +96,24 @@ An issue has a **timeline** of **entries**. An entry has a **kind**, an author, 
 - **Append-only.** An entry is never edited or deleted on its own; there is no API for either. The table's sync family is `append-only`, which skips an op for a row already present, so an edit would never have replicated. Deleting a task removes its entries through the cascade.
 - **A kind is a soft string**: `name` or `name.key`, lowercase (`ENTRY_KIND_PATTERN`), checked on write with a one-line error, stored as TEXT, never a closed list. Any well-formed kind is stored whether or not a module declares it.
 - **Kinds are declared as data.** `KabaneModule.kinds` holds `EntryKind`s (`EntryKindSchema`): `name` (the module's name or `<module>.<key>`), `title` (one line, how it reads in the brief), `template`, and `projection`, either `"discussion"` or `{ latest: { after: <core section>, framing: <one line> } }`. It carries no code on purpose: an extension or a project's config, which can only supply data, will declare kinds the same way. `Runtime.configure` refuses a kind that fails the schema, one outside its module's namespace, `comment`, a duplicate, and a `latest` kind whose `<kind>.latest` section name is already taken. `Runtime.entryKind(name)` looks a registered kind up.
-- **The fold.** Every entry whose kind is not `comment` is in the brief, whoever wrote it and whether or not the issue has a session; plain comments keep their own rules (every human one; on a session-less issue the last three AI ones; none of the AI ones once a session exists). A `latest` kind's newest entry renders as its own section `<kind>.latest` after its anchor: a heading with the title, author and time, the framing line, the body verbatim, and a line counting older entries of the kind, which stay out of the Discussion. The section name is valid wherever a module section's is (concise `sections`, the tool's enum, `kabane context --sections`). A `discussion` kind, and any kind no registered module declares (another device's, an older build's, one a runner invented), stays in the Discussion in time order, labelled with its kind, and is never dropped or an error.
+- **The fold.** Every entry whose kind is not `comment` is in the brief, whoever wrote it; plain comments keep their own rules (every human one; the last three AI ones, or none once the work log holds a `session:` ref). A `latest` kind's newest entry renders as its own section `<kind>.latest` after its anchor: a heading with the title, author and time, the framing line, the body verbatim, and a line counting older entries of the kind, which stay out of the Discussion. The section name is valid wherever a module section's is (concise `sections`, the tool's enum, `kabane context --sections`). A `discussion` kind, and any kind no registered module declares (another device's, an older build's, one a runner invented), stays in the Discussion in time order, labelled with its kind, and is never dropped or an error.
 - **Writing one.** `kabane_comment` takes an optional `kind` (omitted, `comment`), and the CLI `kabane comment <id> "<text>" --kind <kind>`. The hub serves the same tool.
 
 ## Agent sessions
 
-The outcome kinds `outcome.decision`, `outcome.finding`, `outcome.verification` and
-`outcome.summary` live in `@cabane/outcome`; `handoff` remains in `@cabane/handoff`.
-JCAB-340 moves the loop's sessions and questions to its own store, then JCAB-343 migrates
-existing outcomes into timeline entries and removes sessions from core. Until then these
-session rows and the durable fold remain readable.
+Core keeps none. What a session leaves about the issue is on the record: its outcomes are
+timeline entries (`outcome.decision`, `outcome.finding`, `outcome.verification` and
+`outcome.summary` in `@cabane/outcome`, `handoff` in `@cabane/handoff`), and the session itself is
+a `session:` ref in the issue's work log. Its stream stays with whatever drove it (the loop's own
+store, a harness). The brief keys on that ref: a task whose work log holds one keeps none of its
+plain AI comments.
 
-`agent_sessions` + `agent_activities`, CASCADE from tasks, soft TEXT. State machine in `storage/sessions.ts`: `start → active`, a `question` activity → `awaiting_input`, any non-question activity once no question is unanswered → `active`, `end(complete|error)` compacts ephemerals and emits a `response` activity from the summary, an `active` session idle > 24h → `stale` via `sweepStaleSessions` (an `awaiting_input` one waits on a human and is never swept).
-
-Ephemeral rows are a query-time filter plus compact-on-close. The shared fold is `Planner.selectDurableActivities`: keeps `response`/`finding`/`verification`/`decision`/`handoff`, drops the rest plus all-but-latest ephemeral.
-
-**Questions and answers.** A `question` activity's body carries answerable metadata as a leading fenced `json` block (`schemas/question-body.ts`); one that relays a harness permission request also carries `permission`, the tool call's title and the harness's options verbatim (id, label, kind), with the labels as its `choices`. An activity answers a question when its `context` is exactly `answers <questionId>`, whatever its type. `Planner.answerQuestion(basePath, { questionId, answer })` writes that activity, body the answer, in the same transaction as the lookup: an `answer` for a question carrying `permission` (approving a tool call unblocks the session and is no decision, so it stays out of the durable fold and the brief) and a `decision` for any other question, the human's choice on the record. Either carries the runtime actor as `author` (migration 7's column; activities written before it have none), and `assembleContext` renders a decision answering a question as the question, then `→ <choice>`, under that author. It rejects an id that is not a `question` activity, a blank answer, and an ended session. The session leaves `awaiting_input` only once every question on it is answered. Re-answering appends another: the latest one is the answer in force and the earlier ones stay on the record, never erased. Migration 6 deleted the permission answers written as decisions before this, with their requests. A question nobody is left to answer (its harness withdrew the request, or the run stopped waiting) is closed by a `withdrawn` activity with the same `answers <questionId>` context, body the reason: every queue lets go of it as of an answer, and like an `answer` it stays out of the durable fold and the brief. `answerQuestion` and `addActivity` share one transaction body (`appendActivity`), so both move the state machine the same way.
+Core kept sessions in `agent_sessions` and `agent_activities` until migration 11,
+`session-outcomes` (`storage/session-outcomes.ts`), moved each durable activity (`response`,
+`decision`, `finding`, `verification`, `handoff`) to a shared entry and each session to a work-log
+ref, both under the source row's id, and dropped both tables; the stream went with them. A
+device's first push after it migrates sends rows that never left it before, and a device on
+schema 10 or older stops its pull at the first op from schema 11 until it upgrades.
 
 ## Context registry, work logs, links
 
@@ -134,9 +136,8 @@ Streamable HTTP, fresh server per request). The CLI adds device config tools fro
 and module surface. Each host registers
 `modules` once through `Runtime.configure`; module `instructions` paragraphs are
 appended to `SERVER_INSTRUCTIONS`. `createMcpServer` returns `Result<Server>` and
-refuses duplicate tool names before serving. The shared list exposes only replicated data —
-no session tools, because sessions do not sync and the hub would have nothing to
-answer with. A `ToolContext` carries `basePath`, the `actor`, an optional
+refuses duplicate tool names before serving. The shared list exposes only replicated data, so
+the hub answers every tool a device does. A `ToolContext` carries `basePath`, the `actor`, an optional
 `defaultScope`, and `scopeRequired`: a device defaults scope from its directory, the
 hub demands it and points at `kabane_scopeList`. It may also carry `humanActor`, the human
 the connection relays for: `kabane mcp` passes the device's configured actor before any
