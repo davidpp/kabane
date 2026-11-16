@@ -64,12 +64,14 @@ const drift = (
 ): Doctor.Finding[] =>
 	Settings.drift(namespace.schema, source.value).map((finding) => {
 		const key = [namespace.name, ...finding.path];
+		const prefix = namespace.name === "device" ? [] : [namespace.name];
+		const shown = [...prefix, ...finding.path].join(".");
 		const detail =
 			finding.category === "unknown"
-				? "unknown setting"
+				? "unknown setting; a strict extension schema rejects this layer until it is removed or corrected"
 				: finding.replacement
-					? `retired setting may map to ${[namespace.name, ...finding.replacement].join(".")}`
-					: "retired setting is dropped by preprocessing";
+					? `retired setting may map to ${[...prefix, ...finding.replacement].join(".")}`
+					: "setting is no longer used";
 		return {
 			id: [
 				`${finding.category}-setting`,
@@ -83,7 +85,7 @@ const drift = (
 
 			severity: "mention",
 			path: source.label,
-			summary: `${key.join(".")} in ${source.layer}: ${detail} (${source.label})`,
+			summary: `${shown} in ${source.layer}: ${detail}. Edit ${source.label} to remove or correct this key${finding.replacement ? "; review the suggested replacement before removing the old key" : ""}.`,
 		};
 	});
 
@@ -145,7 +147,7 @@ const legacySettings = (
 			return err(new Error(`${path}: scopes.${scope} must be an object`));
 		for (const [name, value] of Object.entries(block)) {
 			const namespace = namespaces.find((ns) => ns.name === name);
-			const label = `${ConfigLayers.scopeLabel(home, scope)}.${name}`;
+			const label = `${path} (scopes.${scope}.${name})`;
 			if (namespace)
 				findings.push(...drift(namespace, { layer: "local", label, value }));
 			const destination =

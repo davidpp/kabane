@@ -19,6 +19,8 @@ import { McpClients } from "../mcp-clients";
 
 const SOURCE = "project";
 const SETUP = "/setup-dispatch";
+const TRACKER_GUIDE =
+	"https://github.com/davidpp/kabane/blob/main/docs/getting-started.md";
 
 const FrontmatterSchema = z.object({
 	metadata: z.object({ "kabane-template": z.string() }).optional(),
@@ -162,7 +164,8 @@ const trackerBlock = (root: string, block: string): Doctor.Finding[] => {
 
 				severity: "suggest",
 				summary:
-					"No CLAUDE.md, AGENTS.md or GEMINI.md here has a ## Tracker section; agents use kabane unprompted only when the project tells them to. docs/getting-started.md gives the block to add.",
+					"No CLAUDE.md, AGENTS.md or GEMINI.md here has a ## Tracker section; agents use kabane unprompted only when the project tells them to. Add the current block from the linked guide.",
+				route: `Read the Tracker block at ${TRACKER_GUIDE} and add it to the project instruction file.`,
 			},
 		];
 	const differing = sections.filter(({ section }) => section !== block);
@@ -173,7 +176,8 @@ const trackerBlock = (root: string, block: string): Doctor.Finding[] => {
 
 			path: differing[0]?.path,
 			severity: "mention",
-			summary: `The ## Tracker section of ${differing.map(({ name }) => name).join(", ")} is not the block this kabane gives (docs/getting-started.md). It may hold the project's own edits, or come from an older kabane.`,
+			summary: `The ## Tracker section of ${differing.map(({ name }) => name).join(", ")} is not the block this kabane gives shown in the guide. It may hold the project's own edits, or come from an older kabane. Compare the blocks and preserve deliberate project edits.`,
+			route: `Read the current Tracker block at ${TRACKER_GUIDE}`,
 		},
 	];
 };

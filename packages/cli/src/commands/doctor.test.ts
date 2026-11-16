@@ -246,3 +246,13 @@ for (const linked of [false, true])
 		expect(stored.sync.token).toBe("private-token");
 		expect(stored.scopes).toBeUndefined();
 	});
+
+test("settings diagnostics name usable keys and a concrete edit", () => {
+	const { config, cli } = setup();
+	config({ bogusTop: true, loop: { budget: { wallMinutes: 3 } } });
+	const text = cli();
+	expect(text).toContain("bogusTop in global");
+	expect(text).not.toContain("device.bogusTop");
+	expect(text).toContain("setting is no longer used");
+	expect(text).toContain("to remove or correct this key");
+});
