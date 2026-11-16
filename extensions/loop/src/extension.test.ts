@@ -1,6 +1,6 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // `kabane loop` as the CLI calls it: argv parsed by the shared parser, run against a real tracker.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,7 @@ import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
 import { testHost } from "./test-host";
+import { TestSessions } from "./test-sessions";
 
 let home = "";
 
@@ -374,10 +375,10 @@ describe("kabane loop status", () => {
 			gateRuns: [],
 		});
 		if (!created.ok) throw created.error;
-		const session = await Planner.startSession(home, {
+		const session = await TestSessions.open(home, {
 			taskId: issue.value.id,
 			agent: "claude",
-			externalRef: RunStore.sessionRef("run-1"),
+			externalRef: "loop:run-1",
 		});
 		if (!session.ok) throw session.error;
 		const request = {
@@ -394,7 +395,7 @@ describe("kabane loop status", () => {
 		};
 		const [store] = Elicitation.questions(request.fields);
 		if (!store) throw new Error("no question");
-		const asked = await Planner.addActivity(home, {
+		const asked = await TestSessions.append(home, {
 			sessionId: session.value.id,
 			type: "question",
 			body: Elicitation.body("claude", request, store, { index: 0, total: 1 }),
@@ -412,6 +413,16 @@ describe("kabane loop status", () => {
 				`    kabane loop answer ${asked.value.id} <option>`,
 			].join("\n"),
 		);
+		const live = RunStore.readRaw(home, "run-1");
+		if (!live.ok) throw live.error;
+		expect(
+			RunStore.write(home, { ...live.value, pid: Bun.spawnSync(["true"]).pid })
+				.ok,
+		).toBe(true);
+		const dead = await kabaneLoop("status", "run-1");
+		expect(dead.text).toContain("no longer open because its runner died:");
+		expect(dead.text).toContain("(the restarted run asks again)");
+		expect(dead.text).not.toContain("withdrawn, its runner died");
 	});
 });
 

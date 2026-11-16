@@ -183,10 +183,15 @@ The migration has three ordered steps, so existing records remain readable throu
    Discussion. `handoff` stays with `@cabane/handoff`. Both hosts register outcome after handoff.
    The board reads questions and sends answers through `ActivitySource.questions` and `answer`;
    question ids and card ids are namespaced by the source merger. A question names its card and
-   optional lane directly, so cards carry no session ids. The loop temporarily adapts core's
-   session questions to that port.
-2. JCAB-340 moves the loop's sessions, stream and questions into its own store. It writes
-   outcomes through `host.record.comment` and session URIs through `host.record.log`.
+   optional lane directly, so cards carry no session ids.
+2. JCAB-340 keeps the loop's session lifecycle in `run.json` claims, its stream in
+   `events.jsonl`, and questions and their answers or withdrawals in `questions.jsonl`, under
+   `$KABANE_HOME/loops/<runId>/`. The loop mints session ids with `crypto.randomUUID()`. Only
+   the runner writes the stream and question journal; answer surfaces submit the human's
+   answer and actor through `inbox.jsonl`. Summaries and non-permission decisions become
+   `outcome.summary` and `outcome.decision` entries through `host.record.comment`; session URIs
+   use `host.record.log`. Runs without a question journal still load. The loop no longer
+   reads or writes core's session tables, including questions left open there by older runs.
 3. JCAB-343 migrates existing outcomes to timeline entries, drops `agent_sessions` and
    `agent_activities`, removes `storage/sessions.ts`, and changes the brief's fold. Until then,
    the board's detail log still reads session activities, preserving outcomes already written.
@@ -767,7 +772,7 @@ This follows the 2026-11-04 research note except in three places:
 
 | Rule | Where the code breaks it | Removed by |
 |---|---|---|
-| An extension imports no `@cabane/*` value except from the harness client it bundles | The loop retains core session/question imports for JCAB-340; checklist is a test-only dependency | JCAB-326, which waits on JCAB-340 for the session calls, and JCAB-340 on JCAB-329 |
+| An extension imports no `@cabane/*` value except from the harness client it bundles | The loop's production core and contract imports are type-only; their dependency exceptions remain until the layer check accepts type-only development dependencies. Checklist is test-only. | JCAB-326 (packaging and type-only import enforcement); JCAB-340 removed the session/question value imports |
 | A host depends on no extension | `packages/cli/package.json` lists `@cabane/loop`, which `OFFICIAL` in `packages/cli/src/extensions.ts` bundles; JCAB-318's table lists the edge as an exception tied to JCAB-326 | JCAB-326 |
 | Core keeps only what passes the four questions | Plan lint moved to `extensions/loop/src/lint/`; core no longer exports it | JCAB-338, done |
 | | `scope/detect.ts`, `self.ts`, `serveStdio`, `handleHttpRequest` | JCAB-328 |

@@ -13,8 +13,9 @@ import {
 } from "@cabane/extension";
 import { err, ok } from "./result";
 
-import { parseQuestionBody, Planner, type Result } from "@cabane/core";
+import type { Result } from "@cabane/core";
 import { Loop } from "./commands";
+import { parseQuestionBody } from "./question-body";
 import { RunStore } from "./store";
 
 const STOP_ACTION: StopAction = "stop";
@@ -226,15 +227,9 @@ export namespace LoopActivity {
 		kabaneBin,
 	}: ActDeps & { actor: string }): ActivitySource => ({
 		// A run whose tab the human closed is not listed again; `kabane loop status` still shows it.
-		// What a run whose runner died was asking is withdrawn here, on the board's poll, so its
-		// needs-input queue stops offering an answer nobody would read. A withdrawal that fails is
-		// tried again on the next poll; `loop status` and `loop answer` say why.
 		load: async () => {
 			const runs = RunStore.list(home);
 			if (!runs.ok) return runs;
-			for (const run of runs.value)
-				if (run.claims.some((c) => c.endedAt === undefined))
-					await Loop.withdraw({ basePath }, run);
 			return ok(listed(runs.value).map(card));
 		},
 		card: async (id) => {
@@ -273,32 +268,29 @@ export namespace LoopActivity {
 			return dismissed.ok ? ok(undefined) : dismissed;
 		},
 		questions: async () => {
-			const needs = await Planner.getNeedsInput(basePath);
-			if (!needs.ok) return needs;
+			const runs = RunStore.list(home);
+			if (!runs.ok) return runs;
 			const questions: ActivityQuestion[] = [];
-			for (const { session, question, task } of needs.value) {
-				const cardId = RunStore.runOfSession(session.externalRef);
-				if (!question || !cardId) continue;
-				const run = RunStore.read(home, cardId);
-				const lane = run.ok
-					? run.value.claims.find((claim) => claim.sessionId === session.id)
-							?.lane
-					: undefined;
-				const parsed = parseQuestionBody(question.body);
-				questions.push({
-					id: question.id,
-					cardId,
-					...(lane ? { lane } : {}),
-					taskId: session.taskId,
-					...(task?.shortId ? { taskShortId: task.shortId } : {}),
-					question: parsed.question,
-					choices: parsed.choices,
-					multiSelect: parsed.multiSelect,
-					allowFreeform: parsed.allowFreeform,
-					...(parsed.permission ? { permission: true } : {}),
-					asker: session.agent,
-					askedAt: question.createdAt,
-				});
+			for (const run of runs.value.filter((r) => RunStore.isLive(r.status))) {
+				const entries = RunStore.pendingQuestions(home, run);
+				if (!entries.ok) return entries;
+				for (const { question, claim } of entries.value) {
+					const parsed = parseQuestionBody(question.body);
+					questions.push({
+						id: question.id,
+						cardId: run.id,
+						lane: claim.lane,
+						taskId: claim.taskId,
+						taskShortId: claim.shortId,
+						question: parsed.question,
+						choices: parsed.choices,
+						multiSelect: parsed.multiSelect,
+						allowFreeform: parsed.allowFreeform,
+						...(parsed.permission ? { permission: true } : {}),
+						asker: claim.harness,
+						askedAt: question.createdAt,
+					});
+				}
 			}
 			return ok(questions);
 		},

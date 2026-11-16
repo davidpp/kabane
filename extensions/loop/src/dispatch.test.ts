@@ -7,8 +7,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { err, Planner } from "@cabane/core";
 import { Dispatch } from "./dispatch";
-import type { RunStore } from "./store";
+import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 import { testHost } from "./test-host";
+import { TestSessions } from "./test-sessions";
 
 let home = "";
 
@@ -77,4 +79,101 @@ describe("Dispatch.Handle.inject", () => {
 			summary: "inject for claude:K-1 dropped: its session has ended",
 		});
 	});
+});
+
+it("keeps consecutive tool calls in the on-disk stream without duplicate progress events", async () => {
+	const host = testHost(home);
+	const created = await Planner.addTask(home, {
+		title: "tools",
+		kind: "issue",
+	});
+	if (!created.ok) throw created.error;
+	const task = created.value;
+	const opened = await TestSessions.open(home, {
+		taskId: task.id,
+		agent: "claude",
+	});
+	if (!opened.ok) throw opened.error;
+	const run = TestSessions.owner(home, opened.value.id);
+	const log = RunStore.eventLog(home, run.id);
+	if (!log.ok) throw log.error;
+	const handle = Dispatch.begin(
+		{
+			parent: task,
+			task,
+			harness: "claude",
+			sessionId: opened.value.id,
+			lane: "claude:tools",
+			work: {
+				kind: "lens",
+				lenses: [{ name: "tools", prompt: "tools" }],
+				gates: [],
+			},
+		},
+		{
+			basePath: home,
+			host,
+			home,
+			kabaneBin: "/nonexistent/kabane",
+			cwd: home,
+			tree: {
+				worktree: false,
+				isolation: "shared",
+				land: "none",
+				dir: home,
+				branch: "",
+				runBranch: "",
+			},
+			runId: run.id,
+			overrides: TestHarnesses.overrides({
+				claude: {
+					command: process.execPath,
+					args: [
+						join(
+							import.meta.dir,
+							"../../../packages/acp/scripts/scripted-agent.ts",
+						),
+					],
+				},
+			}).claude,
+		},
+		{
+			event: (event) => {
+				const written = log.value.append(event);
+				if (!written.ok) throw written.error;
+			},
+			opened: () => {},
+			usage: () => {},
+			continueTurn: () => false,
+			permission: async () =>
+				err(new Error("tools script requests no permission")),
+			elicitation: async () => err(new Error("tools script requests no form")),
+		},
+	);
+	await handle.inject("tools");
+	const outcome = await handle.done;
+	expect(outcome.outcome).toBe("done");
+	const events = RunStore.readEvents(home, run.id);
+	if (!events.ok) throw events.error;
+	const calls = events.value.filter((event) => event.type === "tool_call");
+	expect(calls.map((event) => event.summary)).toEqual([
+		"kabane_list",
+		"kabane_context JREP-1",
+		"bun test",
+	]);
+	expect(
+		events.value
+			.filter((event) =>
+				["tool_call", "tool_completed", "progress"].includes(event.type),
+			)
+			.map((event) => event.type),
+	).toEqual([
+		"tool_call",
+		"tool_completed",
+		"tool_call",
+		"tool_completed",
+		"tool_call",
+		"tool_completed",
+	]);
+	expect(events.value.some((event) => event.type === "progress")).toBe(false);
 });

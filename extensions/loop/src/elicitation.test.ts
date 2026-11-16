@@ -1,19 +1,15 @@
-import "./test-host";
-import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import "@cabane/core/testing";
 import { join } from "node:path";
 import type { AcpClient } from "@cabane/acp";
-import {
-	type AgentActivity,
-	isAnswerTo,
-	parseQuestionBody,
-	Planner,
-	type Result,
-} from "@cabane/core";
+import { Planner, type Result } from "@cabane/core";
 import { Elicitation } from "./elicitation";
+import { isAnswerTo, parseQuestionBody } from "./question-body";
 import type { RunStore } from "./store";
+import { testHost } from "./test-host";
+import { TestSessions } from "./test-sessions";
 
 let base = "";
 
@@ -521,7 +517,7 @@ const session = async (): Promise<string> => {
 	const task = await Planner.addTask(base, { kind: "issue", title: "sub" });
 	expect(task).toMatchObject({ ok: true });
 	if (!task.ok) return "";
-	const started = await Planner.startSession(base, {
+	const started = await TestSessions.open(base, {
 		taskId: task.value.id,
 		agent: "claude",
 	});
@@ -545,7 +541,9 @@ const relay = (
 	const harness = new AbortController();
 	const result = Elicitation.relay(
 		{
-			basePath: base,
+			home: base,
+			runId: "test-run",
+			record: testHost(base).record,
 			sessionId,
 			harness: "claude",
 			origin: "test",
@@ -565,10 +563,10 @@ const relay = (
 const waiting = async (
 	sessionId: string,
 	count: number,
-): Promise<AgentActivity[]> => {
-	let rows: AgentActivity[] = [];
+): Promise<RunStore.QuestionEntry[]> => {
+	let rows: RunStore.QuestionEntry[] = [];
 	for (let i = 0; i < 200; i++) {
-		const needs = await Planner.getNeedsInput(base);
+		const needs = await TestSessions.pending(base);
 		expect(needs).toMatchObject({ ok: true });
 		if (!needs.ok) return [];
 		rows = needs.value.flatMap((r) =>
@@ -582,7 +580,7 @@ const waiting = async (
 };
 
 const answer = async (questionId: string, text: string) => {
-	const answered = await Planner.answerQuestion(base, {
+	const answered = await TestSessions.submit(base, {
 		questionId,
 		answer: text,
 	});
@@ -591,7 +589,7 @@ const answer = async (questionId: string, text: string) => {
 
 // How each question of the session was resolved, in order: [type, body] of what closes it.
 const resolutions = async (sessionId: string) => {
-	const activities = await Planner.getActivities(base, sessionId);
+	const activities = await TestSessions.journal(base, sessionId);
 	expect(activities).toMatchObject({ ok: true });
 	if (!activities.ok) return [];
 	return activities.value
@@ -629,7 +627,7 @@ describe("Elicitation.relay", () => {
 			by: "cabane://actor/human/david",
 			toolCallId: "toolu_ask_two",
 		});
-		const needs = await Planner.getNeedsInput(base);
+		const needs = await TestSessions.pending(base);
 		expect(needs.ok && needs.value).toEqual([]);
 	});
 
@@ -683,7 +681,7 @@ describe("Elicitation.relay", () => {
 			],
 		]);
 		expect(events.at(-1)?.data?.action).toBe("decline");
-		const needs = await Planner.getNeedsInput(base);
+		const needs = await TestSessions.pending(base);
 		expect(needs.ok && needs.value).toEqual([]);
 	});
 
@@ -742,7 +740,7 @@ describe("Elicitation.relay", () => {
 			"elicitation_asked",
 			"elicitation_withdrawn",
 		]);
-		const needs = await Planner.getNeedsInput(base);
+		const needs = await TestSessions.pending(base);
 		expect(needs.ok && needs.value).toEqual([]);
 	});
 
@@ -764,7 +762,7 @@ describe("Elicitation.relay", () => {
 		const { result, events } = relay(sessionId, ASK_TWO);
 		const [store] = await waiting(sessionId, 2);
 		if (!store) return;
-		const closed = await Planner.addActivity(base, {
+		const closed = await TestSessions.append(base, {
 			sessionId,
 			type: "withdrawn",
 			context: `answers ${store.id}`,

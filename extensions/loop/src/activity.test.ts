@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import "@cabane/core/testing";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import "@cabane/core/testing";
 import { join } from "node:path";
-import { formatQuestionBody, Planner } from "@cabane/core";
+import { Planner } from "@cabane/core";
 import { LoopActivity } from "./activity";
 import { LoopConfig } from "./config";
+import { formatQuestionBody } from "./question-body";
 import { RunStore } from "./store";
 import { testHost } from "./test-host";
+import { TestSessions } from "./test-sessions";
 
 let home = "";
 const ACTOR = "cabane://actor/human/david";
@@ -179,28 +181,33 @@ describe("LoopActivity", () => {
 		await Planner.init(home);
 		const task = await Planner.addTask(home, { title: "child", kind: "issue" });
 		if (!task.ok) throw task.error;
-		const session = await Planner.startSession(home, {
+		const session = await TestSessions.open(home, {
 			taskId: task.value.id,
 			agent: "claude",
-			externalRef: RunStore.sessionRef("KAB-1-abc"),
+			externalRef: "loop:KAB-1-abc",
 		});
 		if (!session.ok) throw session.error;
-		await Planner.addActivity(home, {
+		const asked = await TestSessions.append(home, {
 			sessionId: session.value.id,
 			type: "question",
 			body: "Fetch example.com?",
 		});
-		RunStore.create(
+		if (!asked.ok) throw asked.error;
+		RunStore.write(
 			home,
 			run({
 				status: "running",
 				exit: undefined,
-				pid: Bun.spawnSync(["true"]).pid,
-				claims: [claim(session.value.id, "claude:KAB-2")],
+				pid: process.pid,
+				claims: [
+					{
+						...claim(session.value.id, "claude:KAB-2"),
+						taskId: task.value.id,
+						shortId: task.value.shortId ?? task.value.id,
+					},
+				],
 			}),
 		);
-		const before = await Planner.getNeedsInput(home);
-		expect(before.ok && before.value).toHaveLength(1);
 
 		const source = LoopActivity.source({
 			home,
@@ -209,12 +216,22 @@ describe("LoopActivity", () => {
 			actor: ACTOR,
 			kabaneBin: "/nonexistent/kabane",
 		});
+		const before = await source.questions?.();
+		expect(before?.ok && before.value.map((q) => q.id)).toEqual([
+			asked.value.id,
+		]);
+		const live = RunStore.readRaw(home, "KAB-1-abc");
+		if (!live.ok) throw live.error;
+		expect(
+			RunStore.write(home, { ...live.value, pid: Bun.spawnSync(["true"]).pid })
+				.ok,
+		).toBe(true);
 		const loaded = await source.load();
 		expect(loaded.ok && loaded.value.map((c) => c.error)).toEqual([
 			expect.stringContaining("runner-died"),
 		]);
-		const after = await Planner.getNeedsInput(home);
-		expect(after.ok && after.value).toEqual([]);
+		const after = await source.questions?.();
+		expect(after?.ok && after.value).toEqual([]);
 	});
 
 	it("a dismissed run is not listed again, and a live one cannot be dismissed", async () => {
@@ -428,13 +445,13 @@ it("lists only loop questions with their card and lane, and answers through the 
 		kind: "issue",
 	});
 	if (!task.ok) throw task.error;
-	const session = await Planner.startSession(home, {
+	const session = await TestSessions.open(home, {
 		taskId: task.value.id,
 		agent: "claude",
-		externalRef: RunStore.sessionRef("KAB-1-abc"),
+		externalRef: "loop:KAB-1-abc",
 	});
 	if (!session.ok) throw session.error;
-	const question = await Planner.addActivity(home, {
+	const question = await TestSessions.append(home, {
 		sessionId: session.value.id,
 		type: "question",
 		body: formatQuestionBody("Which store?", {
@@ -443,24 +460,19 @@ it("lists only loop questions with their card and lane, and answers through the 
 		}),
 	});
 	if (!question.ok) throw question.error;
-	const unrelated = await Planner.startSession(home, {
-		taskId: task.value.id,
-		agent: "other",
-	});
-	if (!unrelated.ok) throw unrelated.error;
-	const otherQuestion = await Planner.addActivity(home, {
-		sessionId: unrelated.value.id,
-		type: "question",
-		body: "Not a loop question",
-	});
-	if (!otherQuestion.ok) throw otherQuestion.error;
-	const created = RunStore.create(
+	const created = RunStore.write(
 		home,
 		run({
 			status: "running",
 			pid: process.pid,
 			exit: undefined,
-			claims: [claim(session.value.id, "claude:KAB-2")],
+			claims: [
+				{
+					...claim(session.value.id, "claude:KAB-2"),
+					taskId: task.value.id,
+					shortId: task.value.shortId ?? task.value.id,
+				},
+			],
 		}),
 	);
 	if (!created.ok) throw created.error;
@@ -493,23 +505,75 @@ it("lists only loop questions with their card and lane, and answers through the 
 		ok: true,
 		value: "answered SQLite",
 	});
-	const activities = await Planner.getActivities(home, session.value.id);
+	const activities = await TestSessions.journal(home, session.value.id);
 	if (!activities.ok) throw activities.error;
-	expect(
-		activities.value.find((entry) => entry.type === "decision"),
-	).toMatchObject({
-		body: "SQLite",
-		context: `answers ${question.value.id}`,
-	});
+	expect(activities.value).toHaveLength(1);
 	const inbox = RunStore.readInbox(home, "KAB-1-abc", 0);
 	if (!inbox.ok) throw inbox.error;
 	expect(inbox.value.entries).toEqual([
 		{
 			kind: "answered",
 			questionId: question.value.id,
+			answer: "SQLite",
 			by: ACTOR,
 			at: expect.any(String),
 		},
 	]);
 	expect(await source.questions?.()).toEqual({ ok: true, value: [] });
+});
+
+it("does not list a question still open in core's session tables", async () => {
+	const host = testHost(home);
+	const initialized = await Planner.init(home);
+	if (!initialized.ok) throw initialized.error;
+	const task = await Planner.addTask(home, {
+		title: "legacy question",
+		kind: "issue",
+	});
+	if (!task.ok) throw task.error;
+	const session = await Planner.startSession(home, {
+		taskId: task.value.id,
+		agent: "claude",
+		externalRef: "loop:legacy-run",
+	});
+	if (!session.ok) throw session.error;
+	const question = await Planner.addActivity(home, {
+		sessionId: session.value.id,
+		type: "question",
+		body: "Legacy question?",
+	});
+	if (!question.ok) throw question.error;
+	const core = await Planner.getNeedsInput(home);
+	expect(core.ok && core.value.map((row) => row.question?.id)).toContain(
+		question.value.id,
+	);
+	const live = run({
+		id: "legacy-run",
+		parentId: task.value.id,
+		parentShortId: task.value.shortId ?? task.value.id,
+		status: "running",
+		exit: undefined,
+		pid: process.pid,
+		claims: [
+			{ ...claim(session.value.id, "claude:legacy"), taskId: task.value.id },
+		],
+	});
+	expect(RunStore.create(home, live).ok).toBe(true);
+	const local = RunStore.recordQuestion(home, live.id, {
+		sessionId: session.value.id,
+		type: "question",
+		body: "Local question?",
+	});
+	if (!local.ok) throw local.error;
+	const source = LoopActivity.source({
+		home,
+		basePath: home,
+		host,
+		actor: ACTOR,
+		kabaneBin: "/nonexistent/kabane",
+	});
+	const listed = await source.questions?.();
+	expect(listed?.ok && listed.value.map((row) => row.id)).toEqual([
+		local.value.id,
+	]);
 });

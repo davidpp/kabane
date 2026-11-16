@@ -23,16 +23,21 @@ schemas and tool definitions arrive through `host`; the factory binds its statel
 helpers through `src/result.ts` before constructing anything else. Thread the host or its
 record through dependencies, never create a home or a global host. The loop parses checklist
 results from `host.record.call("kabane_checklist", ...)` with `host.z`.
-The remaining `@cabane/core` values are the session and question stopgap for JCAB-340.
+Production imports from `@cabane/core` are type-only; `src/test-host.ts` binds real host
+values for tests. JCAB-326 moves the type dependencies once the layer check accepts them.
 Command entry points resolve case-insensitive short ids and unique ULID prefixes through
 `host.record.get`; an ambiguous prefix is an error, while an absent task is `null`.
 Activity, dispatch and header types come from `@cabane/extension`; forms and `FormField`
 come from `@cabane/acp`. The loop has no dependency on the board.
 
-The activity port reads questions with `Planner.getNeedsInput` and `parseQuestionBody` from
-`@cabane/core`, assigning each its run card id and claim lane. These new core uses are a
-JCAB-329 stopgap removed by JCAB-340. Answers go through `Loop.answer`, which records the
-answer and the answering actor's inbox note; the board no longer writes the answer itself.
+The activity port reads the run store's `questions.jsonl`, assigning each question its run card
+id and claim lane. `Loop.answer` submits the human's answer and actor through `inbox.jsonl`;
+the runner records the answer in the question journal before returning it to the harness.
+Question-body parsing belongs to the loop. Claims in `run.json` hold session lifecycle, and
+`events.jsonl` holds the session stream. The runner writes summaries and non-permission
+decisions through `host.record.comment` as `outcome.summary` and `outcome.decision`; session
+URIs reach the issue through `host.record.log`. Old run stores with no question journal still
+load; questions held in core's old session tables are not read (migration is JCAB-343).
 
 Several issues change this package; check main before you edit:
 
@@ -84,8 +89,8 @@ path the sandbox prints on every call: `git -C <repo> add -A && git -C <repo> co
 
 ## Mistakes that are easy to make here
 
-- Writing `run.json` or `events.jsonl` from outside the runner while a run is live. The runner
-  owns both; anyone else appends a request to `inbox.jsonl` (`src/store.ts:8`). The rename that
+- Writing `run.json`, `events.jsonl` or `questions.jsonl` from outside the runner while a run is
+  live. The runner owns them; anyone else appends a request to `inbox.jsonl`. The rename that
   replaces `run.json` keeps a reader from seeing half a file, not two writers apart.
 - Answering a harness's permission request, or adding an allow list, a settings file or a
   model the run did not name. A request becomes a question for the human

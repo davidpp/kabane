@@ -179,11 +179,7 @@ describe("Runner resume on a single issue", () => {
 			assignee: "claude",
 		});
 		if (!held.ok) throw held.error;
-		const session = await Planner.startSession(home, {
-			taskId: issue.id,
-			agent: "claude",
-		});
-		if (!session.ok) throw session.error;
+		const sessionId = RunStore.newSessionId();
 		const dead = await orphaned("run-1");
 		const run: RunStore.Run = {
 			...dead,
@@ -195,7 +191,7 @@ describe("Runner resume on a single issue", () => {
 					shortId: issue.shortId ?? issue.id,
 					harness: "claude",
 					lane: issue.shortId ?? issue.id,
-					sessionId: session.value.id,
+					sessionId: sessionId,
 					startedAt: new Date(Date.now() - HOUR).toISOString(),
 					continuations: 0,
 				},
@@ -230,11 +226,7 @@ describe("Runner resume on a single issue that has become a parent", () => {
 		});
 		if (!set.ok) throw set.error;
 		await add("split off", issue.id);
-		const session = await Planner.startSession(home, {
-			taskId: issue.id,
-			agent: "claude",
-		});
-		if (!session.ok) throw session.error;
+		const sessionId = RunStore.newSessionId();
 		const dead = await orphaned("run-1");
 		const written = RunStore.write(home, {
 			...dead,
@@ -246,7 +238,7 @@ describe("Runner resume on a single issue that has become a parent", () => {
 					shortId: issue.shortId ?? issue.id,
 					harness: "claude",
 					lane: issue.shortId ?? issue.id,
-					sessionId: session.value.id,
+					sessionId: sessionId,
 					startedAt: new Date(Date.now() - HOUR).toISOString(),
 					continuations: 0,
 					...claim,

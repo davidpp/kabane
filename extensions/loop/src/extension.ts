@@ -178,7 +178,7 @@ const landed = (run: RunStore.Run): string[] => {
 
 // A question the run's dead runner left: shown, with no answer to give.
 const withdrawn = (q: Loop.Waiting): string =>
-	`  withdrawn, its runner died: ${q.task} ${indented(q.question)} (the restarted run asks again)`;
+	`  no longer open because its runner died: ${q.task} ${indented(q.question)} (the restarted run asks again)`;
 
 // Where a claim's model came from, as `loop status` and `loop advise` read it.
 const modelSource = (

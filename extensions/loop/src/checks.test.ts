@@ -632,12 +632,7 @@ describe("Claims.recover after a runner died during a subtask's pass", () => {
 			state: "done",
 			assignee: "claude",
 		});
-		const session = await Planner.startSession(home, {
-			taskId: child.id,
-			agent: "claude",
-			externalRef: RunStore.sessionRef("run-1"),
-		});
-		if (!session.ok) throw session.error;
+		const sessionId = RunStore.newSessionId();
 		const startedAt = new Date().toISOString();
 		const run = await runOn(parent, gates, worktree);
 		writeFileSync(join(RunStore.sessionDir(run), "feature.txt"), "made\n");
@@ -650,7 +645,7 @@ describe("Claims.recover after a runner died during a subtask's pass", () => {
 					shortId: child.shortId ?? child.id,
 					harness: "claude",
 					lane: child.shortId ?? child.id,
-					sessionId: session.value.id,
+					sessionId: sessionId,
 					startedAt,
 					continuations: 0,
 				},
