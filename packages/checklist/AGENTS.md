@@ -29,7 +29,7 @@ bun test packages/checklist
 bun run --cwd packages/worker test             # the hub registers this module too
 bun run sandbox init                           # once per fresh sandbox
 bun run sandbox add "steps" --kind issue
-bun run sandbox checklist add <id> "first step"   # every word after the id is one item's text
+bun run sandbox checklist add <id> "first step" "second step"   # one item per argument
 bun run sandbox checklist <id>
 bun run gallery --print detail-checklist --width 80
 ```

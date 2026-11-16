@@ -37,7 +37,7 @@ orders them the same way everywhere, and the next insert between the pair re-ran
 
 ## On the CLI and in the brief
 
-`kabane checklist <id>` prints the list, `kabane checklist add <id> <text…>` adds an item,
+`kabane checklist <id>` prints the list, `kabane checklist add <id> <item…>` adds one item per argument (quote a text of several words),
 `kabane checklist tick <item…>` ticks, and `kabane checklist edit <item>` edits; `--json` gives
 `ChecklistItemView`s (camelCase, with `handle` and `done`).
 

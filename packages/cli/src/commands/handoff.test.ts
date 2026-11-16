@@ -100,7 +100,7 @@ it("puts the latest handoff after the description and before the checklist", asy
 		}),
 	);
 	const label = task.shortId ?? task.id;
-	await kabane(["checklist", "add", label, "Draw", "the", "empty", "state"]);
+	await kabane(["checklist", "add", label, "Draw the empty state"]);
 	writeFileSync(join(home, "design.md"), "### Summary\n\nThree states.");
 	await kabane(["handoff", label, "--from", "design.md"]);
 	const { markdown } = (await kabane(["context", label])).json as {
