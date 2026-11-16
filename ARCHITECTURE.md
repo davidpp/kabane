@@ -468,6 +468,17 @@ namespace Host {
 }
 ```
 
+`fn` runs inside the database's write lock, held on its own connection until it returns, and
+SQLite waits for a lock by blocking the one thread that could release it. So `fn` must not await
+I/O, and the kit refuses what would wait on it: a `store.write` nested in another (from any host
+in the process, found through an `AsyncLocalStorage` the kit sets around `fn`) and a `host.record`
+call to a write tool made inside `fn` return an `err` at once that says to use `tx.db` and
+`tx.updateTask` or to call after the write returns. A `host.record` read inside `fn` works and
+sees what was committed before the write began, not the write's own rows. Writes from separate
+call chains take turns through one queue per process, and a `host.record` write outside a write
+waits for that queue. `tx.db` is a raw handle: only the kit's capture calls are checked against
+the extension's declared tables.
+
 This is `packages/extension/host.ts` as compiled. It departs from the first sketch in three
 places: `Db`, `Row` (core's `Record<string, unknown>`) and `TaskUpdate` are core types the
 published declaration now carries, with `KabaneModule` and `ModuleSyncTable` for the modules

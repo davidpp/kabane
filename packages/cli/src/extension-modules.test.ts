@@ -261,6 +261,30 @@ it("stops on an installed extension whose manifest cannot be read, and treats an
 	expect((await kabane(["--help"])).exitCode).toBe(0);
 });
 
+it("refuses a nested store.write and a record write inside a write at once, from a real extension command", async () => {
+	const alpha = device("nest", true);
+	await alpha.open();
+	const task = unwrap(
+		await Planner.addTask(alpha.home, { title: "Nest", kind: "issue" }),
+	);
+	const started = performance.now();
+	const nested = await alpha.kabane(["notes", "nest", task.id]);
+	expect(performance.now() - started).toBeLessThan(2000);
+	expect(nested.exitCode).toBe(0);
+	const { outer, inside } = nested.json as {
+		outer: boolean;
+		inside: Record<string, { ms: number; error?: string }>;
+	};
+	expect(outer).toBe(true);
+	expect(inside["store.write"]?.error).toContain(
+		"store.write was called inside another store.write",
+	);
+	expect(inside["record.comment"]?.error).toContain(
+		"call kabane_comment after store.write returns",
+	);
+	for (const { ms } of Object.values(inside)) expect(ms).toBeLessThan(100);
+});
+
 it("names the other enabled extensions in the way out", async () => {
 	const home = mkdtempSync(join(tmpdir(), "kabane-modules-rest-"));
 	homes.push(home);

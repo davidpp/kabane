@@ -7,6 +7,7 @@ import {
 	type ToolDef,
 } from "@cabane/core";
 import type { Host } from "./host";
+import { HostWrites } from "./host-store";
 
 export const createHostRecord = (
 	tools: readonly ToolDef[] | (() => readonly ToolDef[]),
@@ -26,6 +27,15 @@ export const createHostRecord = (
 			(tool) => tool.name === name,
 		);
 		if (!tool) return err(new Error(`Unknown tool: ${name}`));
+		if (tool.kind === "write") {
+			if (HostWrites.open())
+				return err(
+					new Error(
+						`${name} writes, and a store.write is open in this call chain, holding the database's write lock until it returns; change the task with tx.updateTask, write with tx.db, or call ${name} after store.write returns`,
+					),
+				);
+			await HostWrites.idle();
+		}
 		return callTool(tool, input, ctx);
 	};
 	// ToolDef erases handler results. These named wrappers pin the full-format contract;

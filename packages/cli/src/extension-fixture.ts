@@ -52,7 +52,7 @@ export default (host: Host): Extension => ({
 	commands: [
 		{
 			name: "notes",
-			usage: "kabane notes add <task> <text> | kabane notes list <task>",
+			usage: "kabane notes add <task> <text> | kabane notes list <task> | kabane notes nest <task>",
 			summary: "Notes on a task, kept by the notes extension's data module",
 			run: async (args, ctx) => {
 				const [verb, id, ...words] = args.positionals;
@@ -72,6 +72,24 @@ export default (host: Host): Extension => ({
 					return written.ok
 						? host.outcome.success({ id: written.value, sameHost: seen.host === host }, \`noted \${written.value}\`)
 						: host.outcome.failure(written.error);
+				}
+				if (verb === "nest") {
+					// What an extension must not do: write again inside its own write.
+					const inside: Record<string, { ms: number; error?: string }> = {};
+					const timed = async (label: string, call: () => Promise<{ ok: boolean; error?: Error }>) => {
+						const start = performance.now();
+						const result = await call();
+						inside[label] = { ms: Math.round(performance.now() - start), ...(result.ok ? {} : { error: result.error?.message }) };
+					};
+					const outer = await host.store.write(async () => {
+						await timed("store.write", () => host.store.write(() => host.result.ok(1)));
+						await timed("record.comment", () => host.record.comment({ id: task.value.id, body: "from inside a write" }));
+						return host.result.ok(undefined);
+					});
+					return host.outcome.success(
+						{ outer: outer.ok, inside },
+						Object.entries(inside).map(([label, { ms, error }]) => \`\${label}: \${ms} ms, \${error ?? "ok"}\`).join("\\n"),
+					);
 				}
 				const read = await host.store.read((db) =>
 					host.result.ok(

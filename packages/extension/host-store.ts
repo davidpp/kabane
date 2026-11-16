@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 /**
  * The storage kit on `host.store`: an extension's data modules write through it, and it owns
  * the commit and the notification (`ARCHITECTURE.md`, "An extension's data modules get a storage
@@ -17,6 +18,24 @@ import {
 	withDb,
 } from "@cabane/core";
 import type { Host } from "./host";
+
+/**
+ * Whether the current call chain runs inside a `store.write`. The write holds the database's
+ * write lock on its connection until `fn` returns; a second write from inside it would open
+ * another connection that waits on that lock on the one thread that could release it.
+ */
+const inWrite = new AsyncLocalStorage<true>();
+/** Writes from separate call chains in this process take turns instead of meeting in SQLite's busy handler. */
+let turn: Promise<void> = Promise.resolve();
+
+export namespace HostWrites {
+	/** True inside the `fn` of a `store.write`, whichever host opened it. */
+	export const open = (): boolean => inWrite.getStore() === true;
+	/** Resolves once every write already started in this process has finished. */
+	export const idle = (): Promise<void> => turn;
+	export const NESTED =
+		"store.write was called inside another store.write, which holds the database's write lock until it returns; do this work in the open transaction with tx.db and tx.updateTask, or call store.write after the first one returns";
+}
 
 const NOT_CONFIGURED =
 	"the runtime is not configured yet for this host; use store after the factory returns and the store opens (standalone commands do not open it automatically)";
@@ -52,44 +71,55 @@ export const createHostStore = (
 		write: async (fn) => {
 			const base = basePath();
 			if (base === undefined) return err(new Error(NOT_CONFIGURED));
+			if (HostWrites.open()) return err(new Error(HostWrites.NESTED));
 			const changed = new Map<string, Task>();
-			const written = await atomic(base, async (db) => {
-				let failed: Error | undefined;
-				const checked = <T>(result: Result<T>): Result<T> => {
-					if (!result.ok) failed ??= result.error;
-					return result;
-				};
-				const owns = (table: string): boolean => tables().includes(table);
-				const tx: Host.Tx = {
-					db,
-					afterWrite: (table, op, id) =>
-						checked(
-							owns(table)
-								? trySync(() => Oplog.afterWrite(db, table, op, id))
-								: refuse(table),
-						),
-					snapshot: (table, id) => Oplog.snapshot(db, table, id),
-					afterDelete: (rows) => {
-						const foreign = rows.find(({ tbl }) => !owns(tbl));
-						return checked(
-							foreign
-								? refuse(foreign.tbl)
-								: trySync(() => Oplog.afterDelete(db, rows)),
-						);
-					},
-					updateTask: (id, updates) => {
-						const updated = checked(Planner.updateTaskIn(db, id, updates));
-						if (updated.ok && updated.value)
-							changed.set(updated.value.id, updated.value);
-						return updated;
-					},
-				};
-				const result = await fn(tx);
-				// Thrown inside the transaction to roll it back; `atomic` returns it as the err.
-				if (!result.ok) throw result.error;
-				if (failed) throw failed;
-				return result.value;
-			});
+			const attempt = () =>
+				atomic(base, async (db) => {
+					// `withDb` reruns this on a busy database: only the attempt that commits notifies.
+					changed.clear();
+					let failed: Error | undefined;
+					const checked = <T>(result: Result<T>): Result<T> => {
+						if (!result.ok) failed ??= result.error;
+						return result;
+					};
+					const owns = (table: string): boolean => tables().includes(table);
+					const tx: Host.Tx = {
+						db,
+						afterWrite: (table, op, id) =>
+							checked(
+								owns(table)
+									? trySync(() => Oplog.afterWrite(db, table, op, id))
+									: refuse(table),
+							),
+						snapshot: (table, id) => Oplog.snapshot(db, table, id),
+						afterDelete: (rows) => {
+							const foreign = rows.find(({ tbl }) => !owns(tbl));
+							return checked(
+								foreign
+									? refuse(foreign.tbl)
+									: trySync(() => Oplog.afterDelete(db, rows)),
+							);
+						},
+						updateTask: (id, updates) => {
+							const updated = checked(Planner.updateTaskIn(db, id, updates));
+							if (updated.ok && updated.value)
+								changed.set(updated.value.id, updated.value);
+							return updated;
+						},
+					};
+					const result = await fn(tx);
+					// Thrown inside the transaction to roll it back; `atomic` returns it as the err.
+					if (!result.ok) throw result.error;
+					if (failed) throw failed;
+					return result.value;
+				});
+			const slot = turn.then(() => inWrite.run(true, attempt));
+			turn = slot.then(
+				() => undefined,
+				() => undefined,
+			);
+			const written = await slot;
+			// After the turn is released, so a listener may write.
 			if (written.ok)
 				for (const task of changed.values())
 					await Events.emit(PLANNER_EVENTS.TASK_UPDATED, task);

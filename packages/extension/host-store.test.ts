@@ -6,6 +6,7 @@ import {
 	type Db,
 	err,
 	type KabaneModule,
+	KABANE_TOOLS,
 	ok,
 	Oplog,
 	PLANNER_EVENTS,
@@ -14,6 +15,7 @@ import {
 	withDb,
 } from "@cabane/core";
 import { configureTestRuntime } from "@cabane/core/testing";
+import { createHostRecord } from "./host-record";
 import { createHostStore } from "./host-store";
 
 const NOTES = "kit_notes";
@@ -212,4 +214,78 @@ it("returns the not-configured err before the store opens", async () => {
 		expect(result.ok ? "" : result.error.message).toContain(
 			"not configured yet",
 		);
+});
+
+const timed = async <T>(call: () => Promise<T>): Promise<[T, number]> => {
+	const start = performance.now();
+	const value = await call();
+	return [value, performance.now() - start];
+};
+
+it("refuses a store.write nested in a write, from any host, at once, and the outer write still commits", async () => {
+	const task = value(
+		await Planner.addTask(home, { title: "Kit", kind: "issue" }),
+	);
+	const other = store();
+	let nested: [Result<unknown>, number] | undefined;
+	const written = await store().write(async (tx) => {
+		nested = await timed(() => other.write(() => ok("inner")));
+		insert(tx.db, task.id, "n1");
+		return tx.afterWrite(NOTES, "insert", "n1");
+	});
+	expect(written.ok).toBe(true);
+	if (!nested) throw new Error("the nested write never ran");
+	const [result, ms] = nested;
+	expect(result.ok ? "" : result.error.message).toContain(
+		"store.write was called inside another store.write",
+	);
+	expect(ms).toBeLessThan(100);
+});
+
+it("refuses a host.record write inside a write at once; a record read sees what was committed before it", async () => {
+	const task = value(
+		await Planner.addTask(home, { title: "Kit", kind: "issue" }),
+	);
+	const record = createHostRecord(KABANE_TOOLS, {
+		basePath: home,
+		actor: "cabane://actor/agent/kit",
+		scopeRequired: false,
+	});
+	let comment: [Result<unknown>, number] | undefined;
+	let seen: Result<{ state: string }> | undefined;
+	value(
+		await store().write(async (tx) => {
+			tx.updateTask(task.id, { state: "next" });
+			comment = await timed(() => record.comment({ id: task.id, body: "no" }));
+			seen = await record.get({ id: task.id });
+			return ok(undefined);
+		}),
+	);
+	if (!comment) throw new Error("the record call never ran");
+	expect(comment[0].ok ? "" : comment[0].error.message).toContain(
+		"call kabane_comment after store.write returns",
+	);
+	expect(comment[1]).toBeLessThan(100);
+	expect(seen && value(seen).state).toBe("inbox");
+	// Once the write has returned, the same call works.
+	expect((await record.comment({ id: task.id, body: "now" })).ok).toBe(true);
+});
+
+it("lets writes from separate call chains take turns", async () => {
+	const task = value(
+		await Planner.addTask(home, { title: "Kit", kind: "issue" }),
+	);
+	const [both, ms] = await timed(() =>
+		Promise.all(
+			["n1", "n2"].map((id) =>
+				store().write(async (tx) => {
+					await Bun.sleep(5);
+					insert(tx.db, task.id, id);
+					return tx.afterWrite(NOTES, "insert", id);
+				}),
+			),
+		),
+	);
+	expect(both.map((result) => result.ok)).toEqual([true, true]);
+	expect(ms).toBeLessThan(1000);
 });

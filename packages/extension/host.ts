@@ -152,13 +152,22 @@ export namespace Host {
 		 * One transaction. An `err` returned from `fn`, a throw, or an `err` from any `tx` call
 		 * rolls everything back. After the commit, and only then, the host emits `TASK_UPDATED`
 		 * for every task `tx.updateTask` changed.
+		 *
+		 * `fn` runs inside the database's write lock: do not await I/O in it. A `store.write`
+		 * nested in it, from any host, and a `host.record` call that writes return an `err` at
+		 * once; `record` reads work and see what was committed before this write began. Writes
+		 * from separate call chains in one process take turns.
 		 */
 		write<T>(
 			fn: (tx: Tx) => Result<T> | Promise<Result<T>>,
 		): Promise<Result<T>>;
 	};
-	/** A write transaction. Capture calls exist only here. */
+	/**
+	 * A write transaction, valid only while `fn` runs. Capture calls exist only here, and only
+	 * they are checked against the tables the extension's modules declare.
+	 */
 	export type Tx = {
+		/** A raw handle on the open transaction: nothing checks which tables SQL on it touches. */
 		readonly db: Db;
 		/** Capture a row of one of the extension's tables after an insert or update. */
 		afterWrite(
