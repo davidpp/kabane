@@ -136,6 +136,11 @@ const Name = z
 	.min(1)
 	.refine((name) => name !== "." && name !== ".." && !/[\\/\0]/.test(name));
 const warned = new Set<string>();
+/**
+ * The extension whose data modules stopped this process's database access, if any: its stop line
+ * is the one report of that cause, so its main-entry refusal is not reported again.
+ */
+let stoppedBy: string | undefined;
 
 export namespace Extensions {
 	export const zodSchema = zodType;
@@ -174,6 +179,7 @@ export namespace Extensions {
 		`Extension ${name}: ${reason}`.replace(/[\r\n]+/g, " ");
 	export const report = (refused: readonly Refusal[]): void => {
 		for (const refusal of refused) {
+			if (refusal.name === stoppedBy) continue;
 			const message = line(refusal);
 			if (warned.has(message)) continue;
 			warned.add(message);
@@ -373,6 +379,9 @@ export namespace Extensions {
 	 */
 	type Contribution = { name: string; modules: KabaneModule[] };
 
+	/** The extension whose data modules stopped database access in this process, if any. */
+	export const stopped = (): string | undefined => stoppedBy;
+
 	/**
 	 * The one line a process that opens the database stops with when `name`'s data modules
 	 * cannot be registered: the extension, why, and the two ways out.
@@ -404,10 +413,13 @@ export namespace Extensions {
 	): Promise<Result<Contribution[]>> => {
 		const enabled = [...new Set(names)];
 		const contributions: Contribution[] = [];
+		stoppedBy = undefined;
 		for (const name of enabled) {
 			if (!installed(home, name)) continue;
-			const stop = (reason: string) =>
-				err(new Error(stopLine(home, enabled, name, reason)));
+			const stop = (reason: string) => {
+				stoppedBy = name;
+				return err(new Error(stopLine(home, enabled, name, reason)));
+			};
 			const manifest = readManifest(home, name);
 			if (!manifest.ok) return stop(manifest.error.message);
 			if (manifest.value.entry.modules === undefined) continue;

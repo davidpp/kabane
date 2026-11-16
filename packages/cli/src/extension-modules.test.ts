@@ -2,7 +2,7 @@
  * An extension's data modules through the real CLI: a real extension directory under a temp
  * `KABANE_HOME`, the real loader and `run`, two devices converging over `LocalRelay`.
  */
-import { afterAll, afterEach, expect, it } from "bun:test";
+import { afterAll, afterEach, expect, it, spyOn } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -278,6 +278,25 @@ it("stops on an installed extension whose manifest cannot be read, and treats an
 		expect(stopped.text).toContain(
 			"`kabane config set extensions absent --layer global`",
 		);
+	}
+
+	// One cause, one finding: the stop, with no refusal of the same extension on stderr or as a finding.
+	const stderr = spyOn(console, "error").mockImplementation(() => {});
+	try {
+		const doctor = await kabane(["doctor"]);
+		expect(doctor.exitCode).toBe(0);
+		expect(doctor.text.match(/Extension notes:/g)).toHaveLength(1);
+		expect(doctor.text).toContain(
+			"kabane/extension-modules: Extension notes: ",
+		);
+		expect(doctor.text).not.toContain("notes/extension-refused");
+		expect(
+			stderr.mock.calls.filter((call) =>
+				String(call[0]).includes("Extension notes"),
+			),
+		).toEqual([]);
+	} finally {
+		stderr.mockRestore();
 	}
 
 	// The enabled name "absent" has no directory: no stop, and commands that load extensions refuse it.

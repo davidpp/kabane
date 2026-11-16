@@ -93,7 +93,10 @@ export const doctor: Command = {
 			? await Extensions.loadAll(enabled.value, ctx.home)
 			: { loaded: [], refused: [] };
 		sources.push(...Extensions.doctors(loaded));
-		for (const refusal of refused)
+		// The modules stop is already that extension's finding (`kabane/extension-modules`).
+		for (const refusal of refused.filter(
+			({ name }) => name !== Extensions.stopped(),
+		))
 			sources.push({
 				name: refusal.name,
 				doctor: async () =>
