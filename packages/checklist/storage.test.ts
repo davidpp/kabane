@@ -237,3 +237,17 @@ it("goes with its task: a delete captures the items' deletes first", async () =>
 	expect((await ops()).map((op) => op.op)).toEqual(["insert", "delete"]);
 	expect(unwrap(await Checklist.progress(base)).size).toBe(0);
 });
+
+it("ticks nothing through a handle whose issue part is a LIKE wildcard", async () => {
+	const task = await issue();
+	unwrap(await Checklist.add(base, { id: task.id, items: ["Only step"] }));
+	for (const handle of ["%.1", "_.1"])
+		expect(failure(await Checklist.tick(base, { items: [handle] }))).toBe(
+			`No task has the id "${handle.slice(0, 1)}": an id is a short id (JCAB-12), a ULID or a ULID prefix, letters and digits only.`,
+		);
+	expect(await texts(task.id)).toEqual([`${task.shortId}.1 Only step`]);
+	expect(unwrap(await Checklist.progress(base)).get(task.id)).toEqual({
+		done: 0,
+		total: 1,
+	});
+});

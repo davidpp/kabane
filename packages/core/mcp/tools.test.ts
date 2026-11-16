@@ -306,6 +306,14 @@ describe("cabane tools", () => {
 		expect(finished.state).toBe("done");
 	});
 
+	it("closes no task when kabane_done gets a wildcard id", async () => {
+		const only = unwrap(await Planner.addTask(base, { title: "Only one" }));
+		const result = await tool("kabane_done").handler({ id: "%" }, ctx);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error).toBeInstanceOf(NotFoundError);
+		expect(unwrap(await Planner.getTask(base, only.id))?.state).toBe("inbox");
+	});
+
 	it("preserves Markdown and authors for every comment alias and identical combination", async () => {
 		const issue = unwrap(await Planner.addTask(base, { title: "Comments" }));
 		const markdown = "  ## Kept verbatim\n\n```ts\nconst x = 1;\n```\n";
