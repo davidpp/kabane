@@ -144,13 +144,21 @@ or a wrapper script instead, name its command, and its arguments if it takes any
 
 ```bash
 kabane config set loop.harnesses.claude.command /path/to/claude-agent-acp
-kabane config set loop.harnesses.claude.args '["--verbose"]'
+# a list takes commas; after --, an argument may start with a dash
+kabane config set loop.harnesses.claude.args -- --verbose,--debug
 ```
 
 The arguments replace the adapter's; a command with no arguments runs with none. Every
 session of the run on that harness uses it: implementers, the review triage, the lenses,
-the fixer and the rechecks. `kabane loop advise` lists each harness launched this way,
-and each session's `launch` event in the run's trace names the command it ran.
+the fixer and the rechecks.
+
+`command` and `args` resolve key by key through the layers, so a command in your local
+layer can sit over arguments in the global one. Once they merge, `args` with no `command`
+is refused: it would run the adapter's `npx` with your arguments and no adapter.
+
+`kabane loop advise` prints what each harness the run would use launches, the pinned
+adapter or your command, and each session's `launch` event in the run's trace names the
+command it ran.
 
 ## Pick models with tiers
 
