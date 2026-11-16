@@ -195,6 +195,14 @@ into kabane issues. Codex and Pi read it there; Claude Code reads it through a s
 files and then shows them; when the skill already exists it shows the diff and waits for your
 yes. A project set up before kabane moved the skill has a real `.claude/skills/dispatch/`:
 running `/setup-dispatch` again offers to move it to `.agents/skills/dispatch/` and link it.
+The written `SKILL.md` records its template origin as `metadata.kabane-template` in
+YAML frontmatter, with a value such as `dispatch@<12-character hash>`. Doctor compares
+that stamp with the shipped template, not with your edited skill's content. Keep the
+line when editing: removing it makes the origin unknown and doctor offers
+`/setup-dispatch`; an older stamp means the shipped template changed. Do not replace it
+with a current hash by hand: `/setup-dispatch` reviews and refreshes the skill while
+preserving project edits.
+
 `/doctor` checks that what kabane wrote is current: see [Keeping kabane current](#keeping-kabane-current).
 
 Ask the copilot to "grill me" and it walks you through the questions agents left open, one

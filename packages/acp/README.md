@@ -61,7 +61,10 @@ imports the SDK.
   no assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask. `DISPATCH_TEMPLATE` is the absolute path of `templates/dispatch/`, the generic
   dispatch skill `/setup-dispatch` fills from a project's own instructions and writes under its
   `.agents/skills/dispatch/`, with `.claude/skills/dispatch` a symlink to it for Claude Code. `PLACEHOLDERS.md` there says what fills each `{{NAME}}` and is
-  never copied. `GRILL_TEMPLATE` is `templates/grill/`, the skill the copilot follows to walk the
+  never copied. The filled `SKILL.md` keeps `metadata.kabane-template: dispatch@<hash12>`
+  in its YAML frontmatter: the hash identifies the shipped template, not the project's edits.
+  Preserve it when editing; a missing or older stamp makes doctor offer `/setup-dispatch`
+  to review and refresh the skill. `GRILL_TEMPLATE` is `templates/grill/`, the skill the copilot follows to walk the
   human through open questions, asking each through the harness's choice prompt where it has one
   and reshaping one the decision does not fit with `kabane_ask`'s `replaces`, and copies unchanged to `.agents/skills/grill/`, linked the same way, on request.
   `/doctor` runs `kabane doctor --json` and acts on each finding by severity: it applies `auto`
