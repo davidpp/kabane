@@ -253,10 +253,11 @@ ports and MCP handlers (a missed `activity.load` shows stale cards; a missed han
 
 ## Open points
 
-- **The loop's shipped lenses live in the dispatch template.** `Lenses` reads `functional` and
-  `quality` from `<dispatch template>/references/lenses` (`extensions/loop/src/lenses.ts:23-28`).
-  If the dispatch skill ships as an extension other than the loop's (JCAB-327), the loop needs
-  its own copy of the two lens files, since API v1 has no dependency between extensions.
+- **The loop's shipped lenses lived in the dispatch template.** Settled: the loop reads its own
+  copies (`extensions/loop/lenses/`, JCAB-326), and the dispatch template, now the dispatch
+  extension's (`extensions/dispatch/templates/dispatch/references/lenses/`, JCAB-327), keeps its
+  own for the skill's close review. API v1 has no dependency between extensions, so neither reads
+  the other's, and the two copies may drift.
 - **`@cabane/acp` imports `@cabane/core` for `Result`** (`packages/acp/src/client.ts:33`). An
   extension that bundles the harness client bundles that import too. Whether the harness client
   keeps a dependency on core, or the bundle's tree shaking keeps it to `result.ts`, is for

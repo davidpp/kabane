@@ -11,7 +11,6 @@ import {
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { err, ok, type Result } from "../packages/core/result";
-import { copyTemplates, templateRoots } from "./build";
 import { BinaryTargetSchema, sha256 } from "./release-artifact";
 import { queryRelease } from "./release-process";
 
@@ -71,8 +70,10 @@ export const buildBinary = async (
 		console.error(
 			`binary: ${target}, ${statSync(executable).size} bytes; ${embedded[0]}`,
 		);
-		const copied = copyTemplates(templateRoots(), join(contents, "templates"));
-		if (!copied.ok) return copied;
+		// Empty since no template ships with kabane: `kabane update` in every release so far takes a
+		// directory with `templates/` beside the executable for an extracted release, and an archive
+		// without one is refused by the kabane that downloads it.
+		mkdirSync(join(contents, "templates"));
 		for (const name of ["README.md", "LICENSE"])
 			cpSync(join(ROOT, name), join(contents, name));
 		const filename = binaryFilename(parsed.data);

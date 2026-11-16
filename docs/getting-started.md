@@ -22,7 +22,8 @@ why some internal names still use it.
 `SHA256SUMS` from one [GitHub release](https://github.com/davidpp/kabane/releases), verify
 and extract it following [the README](../README.md#install), and add the extracted directory
 to PATH. macOS arm64/x64 and Linux arm64/x64 are supported; Linux x64 uses Bun's baseline
-CPU target. Keep `templates/` beside the executable. This option does not require the Bun
+CPU target. Keep the extracted directory whole: `kabane update` knows a release by the
+`templates/` directory beside the executable. This option does not require the Bun
 prerequisite above; git and your chosen harness's runtime requirements still apply.
 
 Or install the npm package with Bun:
@@ -184,35 +185,18 @@ hands a coding harness what you are looking at: the scope, the selected task, an
 you marked with `m`. Type a request and press `enter`. The agent runs in the background,
 the footer shows its last tool call, and the board reloads as its writes land. `o` opens
 its transcript. Typing `/` in the prompt lists the shortcuts: `/triage`, `/refine`,
-`/split`, `/duplicates`, `/reparent`, `/check-plan`, `/linear`, `/settings`, `/setup-dispatch`,
-`/doctor`. Each one
+`/split`, `/duplicates`, `/reparent`, `/check-plan`, `/linear`, `/settings`, `/doctor`, and
+those of the extensions you enabled. Each one
 expands into editable text, so you can read what will be sent before sending it.
 
-`/setup-dispatch` is the only shortcut that writes files to your project. It reads the
-project's `CLAUDE.md`/`AGENTS.md`, its gate commands and `.claude/agents/`, then writes a
-dispatch skill under `.agents/skills/dispatch/` that lets your coding sessions turn asks
-into kabane issues. Codex and Pi read skills from `.agents/skills/`. Claude Code reads only
-`.claude/skills/`, so the copilot links `.claude/skills/dispatch` to
-`../../.agents/skills/dispatch` when the project already has a `.claude/` directory or you
-ask, and otherwise tells you the command that adds the link. On a project with no dispatch
-skill yet, it writes the skill and that link first, then shows you each file; deleting the
-directory undoes it. When `.agents/skills/dispatch/` already exists, it shows the diff and
-writes nothing without your yes. A dispatch skill an earlier kabane wrote as a real
-directory at `.claude/skills/dispatch/` keeps working; the copilot offers to move it and
-leave the link, shows the diff, and moves or writes nothing without your yes.
-
-The written `SKILL.md` records its template origin as `metadata.kabane-template` in
-YAML frontmatter, with a value such as `dispatch@<12-character hash>`. Doctor compares
-that stamp with the shipped template, not with your edited skill's content. Keep the
-line when editing: removing it makes the origin unknown and doctor offers
-`/setup-dispatch`; an older stamp means the shipped template changed. Do not replace it
-with a current hash by hand: `/setup-dispatch` reviews and refreshes the skill while
-preserving project edits.
+The [dispatch extension](../extensions/dispatch/README.md) adds `/setup-dispatch`, which writes
+a dispatch skill under `.agents/skills/dispatch/` that lets your coding sessions turn asks into
+kabane issues, and a grill skill: ask the copilot to "grill me" and it walks you through the
+questions agents left open, one at a time. Without it, the copilot offers neither. A skill an
+earlier kabane wrote keeps working without the extension; `kabane doctor` then says it cannot
+tell whether that skill is current.
 
 `/doctor` checks that what kabane wrote is current: see [Keeping kabane current](#keeping-kabane-current).
-
-Ask the copilot to "grill me" and it walks you through the questions agents left open, one
-at a time, and records each answer; any harness with the kabane MCP can use the same skill.
 
 The copilot has three requirements of its own. Setup does not check any of them:
 
@@ -386,7 +370,7 @@ kabane config set updates.check false
 ### Keeping kabane current
 
 An update can leave behind what an older kabane wrote: a setting under a retired key, a
-dispatch skill filled from an older template, a Tracker block that predates handoffs, a
+Tracker block that predates handoffs, a
 harness's MCP entry that launches a kabane you no longer have. `kabane doctor` lists each
 one with its fix, and enabled extensions add their own checks:
 
@@ -403,13 +387,14 @@ it applies pending database migrations on the first run after an update, even wi
 require restoring that backup. Reporting findings does not apply their offered repairs.
 
 The source identifies the check owner: `kabane` for settings and MCP, `project` for
-project files, and an extension name such as `loop`. For example,
-`kabane doctor --fix project/grill-skill-behind` applies that offered project repair.
+project files, and an extension name such as `loop` or `dispatch`. For example,
+`kabane doctor --fix dispatch/grill-skill-behind` applies the dispatch extension's offered
+repair.
 
 Each finding has a severity that says what to do with it, not how bad it is: `auto` needs no
 decision, `mention` is worth knowing and has a fix you can choose to run, `suggest` is a better
 setting rather than a broken one, and `route` names the procedure that repairs it, such as
-`/setup-dispatch`. Findings are not errors, and the command succeeds when it has some.
+the dispatch extension's `/setup-dispatch`. Findings are not errors, and the command succeeds when it has some.
 
 In the board, `/doctor` has the copilot run the same report and act on it: it applies the
 `auto` fixes without asking, tells you each `mention` and `suggest` and waits for your yes,
@@ -436,7 +421,7 @@ downloads `kabane-<os>-<arch>.tar.gz` and `SHA256SUMS` from that version's
 [GitHub release](https://github.com/davidpp/kabane/releases) and refuses on any checksum
 mismatch. It extracts into a temporary directory beside the executable, runs the new
 `kabane --version` and requires the candidate version, then renames the new executable and
-`templates/` over the old ones. A symlink on PATH is followed to the real executable, so
+`templates/` (empty now that kabane ships no template) over the old ones. A symlink on PATH is followed to the real executable, so
 harness MCP entries that point at it keep working. A failure before the rename leaves the old
 install as it was. The executable needs `templates/` beside it, as extracted from the release,
 and its directory must be writable; otherwise replace the directory with a verified download
@@ -517,8 +502,9 @@ the new version is in place.
 - **What your agents are told.** The Tracker block from 1.0.0-beta.0 has an agent finish with
   `kabane_comment`, which still works but leaves no handoff: replace it with the block under
   [Agents](#agents). A dispatch skill that `/setup-dispatch` wrote with 1.0.0-beta.0 reports the
-  same way; run `/doctor` in the copilot, which finds it and offers to write it again from the
-  current template.
+  same way once the [dispatch extension](../extensions/dispatch/README.md) is enabled; run
+  `/doctor` in the copilot, which finds it and offers to write it again from the current
+  template.
 
 ### Upgrading from 1.0.0-beta.0: scope URIs, and one place for the database
 

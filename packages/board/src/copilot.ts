@@ -433,9 +433,7 @@ export namespace BoardCopilot {
 		let commands: readonly AcpClient.Command[] = [];
 		const questions = createQuestions(options.harness);
 
-		// Built on the first prompt, not here: it hashes the dispatch template, and opening the board
-		// must not wait on that. Laziness is held by review: observing this call would require a
-		// test-only prompt-builder seam or a global module mock.
+		// Built once, on the first prompt: the setup it is built from is fixed for the session.
 		let built: string | null = null;
 		const instructions = (): string =>
 			(built ??= CopilotInstructions.systemPrompt(

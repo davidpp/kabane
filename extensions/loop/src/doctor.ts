@@ -91,7 +91,7 @@ export namespace LoopDoctor {
 		if (files.length === 0) return [];
 		const shown = relative(root, legacy);
 		// The `.agents` path is the skill every harness reads; a real `.claude/skills/dispatch` is
-		// the project check's to route to /setup-dispatch, not a place to move lenses into.
+		// the dispatch extension's to route to /setup-dispatch, not a place to move lenses into.
 		const skill = existsSync(
 			join(root, ".agents", "skills", "dispatch", "SKILL.md"),
 		);
@@ -103,7 +103,7 @@ export namespace LoopDoctor {
 
 					path: legacy,
 					severity: "mention",
-					summary: `${shown} holds ${files.join(", ")}, where lenses were kept before the dispatch skill. They still run from there; with a dispatch skill (/setup-dispatch writes one) they belong in ${target}.`,
+					summary: `${shown} holds ${files.join(", ")}, where lenses were kept before the dispatch skill. They still run from there. They belong in ${target}: move the files there by hand, and the loop reads them from it with or without a dispatch skill; or write a dispatch skill first with /setup-dispatch, which the dispatch extension adds, and kabane doctor --fix then moves them.`,
 				},
 			];
 		const blocked = files.every(

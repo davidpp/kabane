@@ -160,7 +160,8 @@ private, with a source bin and `workspace:*` dependencies. `scripts/build.ts` ge
   lazy commands), so a command that draws nothing never loads OpenTUI. The artifact check
   admits exactly that shape. Extensions are installed separately as directories; none is bundled.
 - `types/extension.d.ts`: the extension contract's declarations, exported as `kabane/extension`.
-- `templates/dispatch/`, repository README and LICENSE, and generated package.json.
+- Repository README and LICENSE, and generated package.json. No template ships: the dispatch and
+  grill skills are the dispatch extension's.
 - Exactly pinned external `@opentui/core`, `@opentui/react` and `react`, taken from the
   board manifest. OpenTUI installs its platform-native optional dependency; React must not
   be duplicated inside the bundle. No published dependency may name `@cabane/*`.
@@ -180,9 +181,11 @@ uses its installed OpenTUI optional dependency, and records an embedded `/$bunfs
 dylib/so path plus executable size in the log. Both x64 compilations use Bun's baseline target.
 Project bunfig preloads and dotenv autoload are disabled at compile time.
 
-Each `kabane-<os>-<arch>.tar.gz` contains `kabane/kabane`, `kabane/templates/<name>/`,
-`kabane/README.md` and `kabane/LICENSE`. Template roots and collision handling are shared
-with the npm builder. Keep the directory intact when installing. The copilot and loop still
+Each `kabane-<os>-<arch>.tar.gz` contains `kabane/kabane`, an empty `kabane/templates/`,
+`kabane/README.md` and `kabane/LICENSE`. `kabane update` in every release so far takes the
+`templates/` directory for the mark of an extracted release, on the archive it downloads and
+beside the executable it replaces, so the archive keeps it. Keep the directory intact when
+installing. The copilot and loop still
 need their harness runtime (currently Node/npx); bundling Bun does not bundle those harnesses.
 
 Each matrix job builds once and retains its archive and source/version/Bun/hash record.

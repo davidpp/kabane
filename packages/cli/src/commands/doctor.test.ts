@@ -9,13 +9,12 @@ import {
 	mkdtempSync,
 	readFileSync,
 	realpathSync,
+	renameSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Templates } from "@cabane/acp/templates";
-import { type Result } from "@cabane/core";
 import { Doctor, parseArgs } from "@cabane/extension";
 import { DB_NAME } from "../config";
 import { ConfigLayers } from "../config-layers";
@@ -23,11 +22,6 @@ import { openContext } from "../context";
 import { Extensions } from "../extensions";
 import { TRACKER_BLOCK } from "../first-run";
 import { doctor } from "./doctor";
-
-const unwrap = <T>(result: Result<T>): T => {
-	if (!result.ok) throw result.error;
-	return result.value;
-};
 
 const folders: string[] = [];
 afterEach(() => {
@@ -49,11 +43,6 @@ const setup = () => {
 	expect(Bun.spawnSync(["git", "init", "-q", cwd]).exitCode).toBe(0);
 	writeFileSync(join(cwd, ".kabane/scope"), "pinned\n");
 	// A project kabane set up with this version, so its project checks find nothing.
-	mkdirSync(join(cwd, ".agents/skills/dispatch"), { recursive: true });
-	writeFileSync(
-		join(cwd, ".agents/skills/dispatch/SKILL.md"),
-		`---\nname: dispatch\nmetadata:\n  kabane-template: ${unwrap(Templates.stamp("dispatch"))}\n---\n`,
-	);
 	writeFileSync(join(cwd, "AGENTS.md"), `${TRACKER_BLOCK}\n`);
 	const spawn = (...args: string[]) => {
 		const result = Bun.spawnSync(
@@ -97,6 +86,91 @@ test("clean home reports one line and closure-free JSON", () => {
 	expect(cli()).toBe("No findings.");
 	expect(JSON.parse(cli("--json"))).toEqual({ findings: [], fixes: [] });
 	expect(existsSync(join(home, DB_NAME))).toBe(false);
+});
+
+// A project /setup-dispatch filled before the dispatch skill left base kabane: its stamp is what
+// main (e6b8506) computed. It keeps working untouched; doctor says only what it can know.
+test("a stamped dispatch skill is mentioned without the dispatch extension, and checked by it", () => {
+	const { cwd, home, cli, config } = setup();
+	const path = join(cwd, ".agents/skills/dispatch/SKILL.md");
+	mkdirSync(join(cwd, ".agents/skills/dispatch"), { recursive: true });
+	const skill =
+		"---\nname: dispatch\nmetadata:\n  kabane-template: dispatch@dacd7416f173\n---\n";
+	writeFileSync(path, skill);
+	const without = JSON.parse(cli("--json")).findings;
+	expect(without).toEqual([
+		expect.objectContaining({
+			source: "project",
+			id: "skill-unchecked",
+			severity: "mention",
+			path,
+		}),
+	]);
+	expect(cli()).toContain("no enabled extension is named dispatch");
+	symlinkSync(
+		join(import.meta.dir, "../../../../extensions/dispatch"),
+		join(home, "extensions/dispatch"),
+	);
+	config({ extensions: ["dispatch"] });
+	expect(JSON.parse(cli("--json")).findings).toEqual([]);
+	expect(readFileSync(path, "utf8")).toBe(skill);
+});
+
+// The stamp is YAML, read as YAML: flow style counts, a stamp-like line inside another field's
+// text does not, and a frontmatter that does not parse is no stamped skill.
+test("a skill's stamp is read from its parsed frontmatter, in any YAML style", () => {
+	const { cwd, cli } = setup();
+	const path = join(cwd, ".agents/skills/dispatch/SKILL.md");
+	mkdirSync(join(cwd, ".agents/skills/dispatch"), { recursive: true });
+	const unchecked = (frontmatter: string) => {
+		writeFileSync(path, `---\n${frontmatter}\n---\n\n# Dispatch\n`);
+		return JSON.parse(cli("--json")).findings.map(
+			({ source, id }: { source: string; id: string }) => `${source}/${id}`,
+		);
+	};
+	expect(
+		unchecked(
+			"name: dispatch\nmetadata: {kabane-template: dispatch@dacd7416f173}",
+		),
+	).toEqual(["project/skill-unchecked"]);
+	expect(
+		unchecked(
+			"name: dispatch\ndescription: |\n  Our own skill.\n  kabane-template: dispatch@dacd7416f173",
+		),
+	).toEqual([]);
+	expect(
+		unchecked(
+			"name: [unclosed\nmetadata:\n  kabane-template: dispatch@dacd7416f173",
+		),
+	).toEqual([]);
+});
+
+// The loop cannot know whether the dispatch extension is there: its advice holds either way.
+test("the loop's legacy-lens finding names the dispatch extension and a manual route", () => {
+	const { cwd, cli, config } = setup();
+	config({});
+	mkdirSync(join(cwd, ".kabane/loop/lenses"), { recursive: true });
+	writeFileSync(
+		join(cwd, ".kabane/loop/lenses/security.md"),
+		"Review security.\n",
+	);
+	const finding = JSON.parse(cli("--json")).findings.find(
+		({ id }: { id: string }) => id === "legacy-lens-dir",
+	);
+	expect(finding).toMatchObject({ source: "loop", severity: "mention" });
+	expect(finding.summary).toBe(
+		".kabane/loop/lenses holds security.md, where lenses were kept before the dispatch skill. They still run from there. They belong in .agents/skills/dispatch/references/lenses: move the files there by hand, and the loop reads them from it with or without a dispatch skill; or write a dispatch skill first with /setup-dispatch, which the dispatch extension adds, and kabane doctor --fix then moves them.",
+	);
+	mkdirSync(join(cwd, ".agents/skills/dispatch/references/lenses"), {
+		recursive: true,
+	});
+	renameSync(
+		join(cwd, ".kabane/loop/lenses/security.md"),
+		join(cwd, ".agents/skills/dispatch/references/lenses/security.md"),
+	);
+	expect(
+		JSON.parse(cli("--json")).findings.map(({ id }: { id: string }) => id),
+	).not.toContain("legacy-lens-dir");
 });
 
 test("extension doctor counts open tier-tagged issues through the CLI store", () => {
@@ -204,7 +278,7 @@ test("selected repair refuses conflicting local settings without deleting legacy
 
 test("malformed config is reported without opening a database", () => {
 	const { home, cwd, cli } = setup();
-	rmSync(join(cwd, ".agents"), { recursive: true });
+	rmSync(join(cwd, "AGENTS.md"));
 	writeFileSync(join(home, "config.json"), "{broken");
 	expect(cli()).toContain("config.json");
 	expect(JSON.parse(cli("--json")).findings).toEqual(
@@ -215,7 +289,7 @@ test("malformed config is reported without opening a database", () => {
 			}),
 			expect.objectContaining({
 				source: "project",
-				id: "dispatch-skill-missing",
+				id: "tracker-block-missing",
 			}),
 		]),
 	);
@@ -344,7 +418,7 @@ test("an unreadable store leaves the other doctor findings in text and JSON", ()
 		extensions: ["loop"],
 	});
 	writeFileSync(join(home, DB_NAME), "not a database");
-	rmSync(join(cwd, ".agents"), { recursive: true });
+	rmSync(join(cwd, "AGENTS.md"));
 	const report = JSON.parse(cli("--json"));
 	expect(report.findings).toEqual(
 		expect.arrayContaining([
@@ -353,7 +427,7 @@ test("an unreadable store leaves the other doctor findings in text and JSON", ()
 				severity: "mention",
 				path: join(home, DB_NAME),
 			}),
-			expect.objectContaining({ id: "dispatch-skill-missing" }),
+			expect.objectContaining({ id: "tracker-block-missing" }),
 		]),
 	);
 	expect(cli()).toContain("Cannot open the store:");

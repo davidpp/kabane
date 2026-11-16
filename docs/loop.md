@@ -297,7 +297,8 @@ Those are your choices of harness, model and what happens to the finished branch
 
 A lens is a Markdown prompt in your dispatch skill,
 `.agents/skills/dispatch/references/lenses/<name>.md`, the same file the skill's close
-review reads; `functional` and `quality` ship with kabane.
+review reads; `functional` and `quality` ship with the loop, which reads its own copies when
+the project has none.
 
 Older lenses still run: lookup checks `.agents/skills/dispatch/references/lenses/`,
 then a real `.claude/skills/dispatch/references/lenses/`, then `.kabane/loop/lenses/`.
@@ -305,8 +306,9 @@ then a real `.claude/skills/dispatch/references/lenses/`, then `.kabane/loop/len
 (`loop/lens-shadowed`), naming the copy in force. `kabane doctor --fix` moves legacy loop
 lenses into the `.agents` dispatch skill once it exists and removes the old directory
 when empty. A conflicting copy in either skill directory is left for a manual merge;
-without a dispatch skill the finding is informational and points to `/setup-dispatch`.
-The project check offers `/setup-dispatch` for moving a real `.claude` skill itself.
+without a dispatch skill the finding is informational and points to `/setup-dispatch`, which
+the [dispatch extension](../extensions/dispatch/README.md) adds. That extension's doctor offers
+`/setup-dispatch` for moving a real `.claude` skill itself.
 
 A lens file can open with frontmatter that says which changes it reviews:
 

@@ -31,7 +31,9 @@ The extension API is implemented here:
 
 - The extension contract includes `mcp` and `doctor`; the `doctor` runner is in
   `packages/extension/doctor.ts`. `src/commands/doctor.ts` runs kabane's own checks
-  (`src/doctor/`) and each loaded extension's through `Extensions.doctors`, which turns a
+  (`src/doctor/`; a project skill's template stamp is checked by the extension named like the
+  template, and `project/skill-unchecked` only says when none is loaded) and each loaded
+  extension's through `Extensions.doctors`, which turns a
   malformed report into that extension's `check-failed` finding; a refused extension is an
   `extension-refused` finding.
 - `src/extensions.ts` loads enabled directories from `$KABANE_HOME/extensions`. `loadAll(names, home)` returns `loaded`, `refused` and `directories` (each

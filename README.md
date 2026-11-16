@@ -27,6 +27,9 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 
 The optional [loop extension](docs/loop.md#install), installed separately, runs issues through coding harnesses, with model tiers,
 subtask routing and advice on run settings.
+The optional [dispatch extension](extensions/dispatch/README.md), installed separately, gives a
+project the dispatch and grill skills and the copilot's `/setup-dispatch`, and checks with
+`kabane doctor` that a project's copies are current.
 
 ## Install
 
@@ -49,7 +52,8 @@ on [GitHub Releases](https://github.com/davidpp/kabane/releases), for macOS (`da
 `sha256sum --check --ignore-missing SHA256SUMS` on Linux, or
 `shasum -a 256 --check --ignore-missing SHA256SUMS` on macOS, then extract with
 `tar -xzf kabane-<os>-<arch>.tar.gz`. Keep the whole extracted `kabane/` directory together:
-`templates/` must stay beside the executable. Put that directory on PATH or symlink its
+`kabane update` knows an extracted release by the `templates/` directory beside the executable,
+empty now that kabane ships no template. Put that directory on PATH or symlink its
 `kabane` executable into a directory already on PATH. Run `kabane --version` to check.
 The binary includes Bun; git is still used for project scopes, and coding harness adapters
 still need their own runtime (currently Node/npx). Windows and notarization are not provided.
@@ -82,7 +86,8 @@ exists, with what your install runs to take it: `kabane update`, or `mise up kab
 `kabane config set updates.check false` turns it off. `kabane mcp` and other commands never
 check, and `kabane update` opens no tracker DB and rewires no MCP entry.
 After an update, `kabane doctor` reports what kabane wrote that the new version has moved past:
-settings, a project's dispatch and grill skills, a harness's MCP entry. `kabane doctor --fix`
+settings, a project's Tracker block, a harness's MCP entry, and what enabled extensions check.
+`kabane doctor --fix`
 repairs what needs no decision; `/doctor` in the board's copilot walks you through the rest.
 Doctor opens the tracker and applies pending database migrations even without `--fix`.
 Back up the database before its first run after an update; an older version may require
@@ -137,12 +142,9 @@ last line>` until the next keypress. `o` opens the transcript — the session's 
 each under the prompt that started it — and `x` there stops a running one.
 Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicates`,
 `/reparent`, `/check-plan`, `/linear`, `/github`, `/settings`, `/doctor`), which expand into the window so you read what will be sent.
-`/setup-dispatch` is the one that writes a file: it reads the project's CLAUDE.md/AGENTS.md,
-gate and `.claude/agents/`, and writes a dispatch skill under `.agents/skills/dispatch/` for
-coding sessions to turn asks into issues here, then shows you each file it wrote. Codex and Pi
-read `.agents/skills/`; Claude Code reaches it through a link, `.claude/skills/dispatch` ->
-`../../.agents/skills/dispatch`, which the copilot adds when the project has a `.claude/`
-directory or you ask.
+An enabled extension adds its own: the [dispatch extension](extensions/dispatch/README.md) adds
+`/setup-dispatch`, which writes a project's dispatch skill for coding sessions to turn asks into
+issues here.
 
 Every write the copilot makes goes through `kabane mcp` into this device's database, stamped
 `cabane://actor/agent/<harness>`, and the board reloads as each one lands. The harness is

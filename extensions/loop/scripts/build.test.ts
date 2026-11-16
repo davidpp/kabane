@@ -106,15 +106,3 @@ it("builds a relocatable loop with its client, procedures and working shipped le
 		rmSync(work, { recursive: true, force: true });
 	}
 }, 60_000);
-
-it("ships byte-identical copies of ACP's verifier lenses", () => {
-	for (const name of ["functional", "quality"])
-		expect(readFileSync(join(import.meta.dir, `../lenses/${name}.md`))).toEqual(
-			readFileSync(
-				join(
-					import.meta.dir,
-					`../../../packages/acp/templates/dispatch/references/lenses/${name}.md`,
-				),
-			),
-		);
-});

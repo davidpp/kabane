@@ -1,11 +1,9 @@
 // How this kabane runs itself again: the harness MCP entry, the copilot's session server and the
-// loop's runner all spawn it, and its readers find the templates shipped beside it. A binary from
-// `bun build --compile` sees its own entry as `/$bunfs/root/<name>` in `process.argv[1]` and
-// `Bun.main`, a virtual path nothing outside the process can run, and resolves `import.meta.url`
-// inside that same virtual root. Off the package barrel: it reads the Bun process, which the hub
-// does not have.
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+// loop's runner all spawn it. A binary from `bun build --compile` sees its own entry as
+// `/$bunfs/root/<name>` in `process.argv[1]` and `Bun.main`, a virtual path nothing outside the
+// process can run, and resolves `import.meta.url` inside that same virtual root. Off the package
+// barrel: it reads the Bun process, which the hub does not have.
+import { resolve } from "node:path";
 import { trySync } from "./result";
 
 export namespace Self {
@@ -64,19 +62,4 @@ export namespace Self {
 		compiled(host)
 			? { command: host.execPath, args: [] }
 			: { command: host.execPath, args: [host.main] };
-
-	/**
-	 * The directory of the shipped template `name`. A binary's archive carries `templates/` beside
-	 * the executable; anywhere else it is `../templates/<name>` from the reading module (`from`, its
-	 * `import.meta.url`): the package's own directory in the workspace, `templates/` beside `bin/`
-	 * in the published package.
-	 */
-	export const templates = (
-		name: string,
-		from: string,
-		host: Host = HOST,
-	): string =>
-		compiled(host)
-			? join(dirname(host.execPath), "templates", name)
-			: fileURLToPath(new URL(`../templates/${name}`, from));
 }

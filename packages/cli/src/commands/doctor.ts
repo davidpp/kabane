@@ -10,6 +10,7 @@ import {
 } from "../context";
 import { copilotFiles } from "../doctor/copilot-files";
 import { kabane } from "../doctor/kabane";
+import { uncheckedSkills } from "../doctor/project";
 import { Extensions } from "../extensions";
 import { activateHostRecord, hostHarnessMode } from "../host";
 
@@ -95,6 +96,12 @@ export const doctor: Command = {
 			? await Extensions.loadAll(enabled.value, ctx.home)
 			: { loaded: [], refused: [], directories: [] };
 		sources.push(
+			// A skill an extension filled is that extension's to check; only one that no loaded
+			// extension is named for is base kabane's to mention.
+			{
+				name: "project",
+				doctor: uncheckedSkills(loaded.map(({ name }) => name)),
+			},
 			...Extensions.doctors(loaded),
 			...copilotFiles(directories, ctx.home),
 		);

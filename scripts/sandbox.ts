@@ -2,7 +2,7 @@
 /**
  * A throwaway kabane device for trying a change by hand, or for an agent verifying one: its own
  * KABANE_HOME and a seeded git repo in a temp directory, so the first-run screen, the board, the
- * copilot and `/setup-dispatch` run against it without touching `~/.kabane` or the harness
+ * copilot and its extensions run against it without touching `~/.kabane` or the harness
  * configs a real install writes to. Written in TypeScript rather than shell so it runs the same
  * under fish, zsh and bash.
  *
@@ -72,7 +72,7 @@ const splitArgs = (argv: string[]): { own: Set<OwnFlag>; rest: string[] } => {
 	return { own, rest: rest[0] === "--" ? rest.slice(1) : rest };
 };
 
-// A CLAUDE.md and a gate give `/setup-dispatch` something real to read.
+// A CLAUDE.md and a gate give the dispatch extension's `/setup-dispatch` something real to read.
 const seedRepo = (): void => {
 	if (existsSync(REPO)) return;
 	mkdirSync(REPO, { recursive: true });
@@ -192,11 +192,15 @@ if (own.has("--fresh")) rmSync(SANDBOX, { recursive: true, force: true });
 seedRepo();
 const extensions = join(KABANE_HOME, "extensions");
 mkdirSync(extensions, { recursive: true });
-const loop = join(extensions, "loop");
-const installedLoop = lstatSync(loop, { throwIfNoEntry: false });
-if (!installedLoop || (installedLoop.isSymbolicLink() && !existsSync(loop))) {
-	if (installedLoop) rmSync(loop);
-	symlinkSync(join(ROOT, "extensions/loop"), loop);
+// The checkout's own extensions, linked unless the sandbox installed one of that name: installed,
+// not enabled, as `kabane config set extensions <name> --layer global` would find them.
+for (const name of ["loop", "dispatch"]) {
+	const target = join(extensions, name);
+	const installed = lstatSync(target, { throwIfNoEntry: false });
+	if (installed && !(installed.isSymbolicLink() && !existsSync(target)))
+		continue;
+	if (installed) rmSync(target);
+	symlinkSync(join(ROOT, "extensions", name), target);
 }
 // Codex refuses to start when CODEX_HOME names a directory that does not exist.
 if (own.has("--harnesses"))
