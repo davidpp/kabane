@@ -51,14 +51,16 @@ const CONTENT_INSET = 1;
 export const PROSE_MEASURE = 80;
 
 // The one-line status under the header for the task's first in-flight card:
-// `⠋ loop · implement · iteration 3 · $0.42` — the card's label then every detail line. When
+// `⠋ loop · implement · iteration 3 · $0.42` — the card's label then every detail line. A paused card
+// reads `⏸ research · paused` then its detail, which is where a waiting run's attach command is. When
 // `spinnerFrame` is provided (threaded from app.tsx), it animates; falls back to SPINNER_IDLE for
 // tests and static contexts. Exported pure so the text contract is assertable without a renderer.
 export const cardStatusLine = (
 	card: ActivityCard,
 	spinnerFrame?: string,
 ): string => {
-	if (card.status === "paused") return `⏸ ${card.label} · paused`;
+	if (card.status === "paused")
+		return [`⏸ ${card.label}`, "paused", ...card.detail].join(" · ");
 	const glyph = card.stale ? SPINNER_IDLE : (spinnerFrame ?? RUNNING_ECHO);
 	return [`${glyph} ${card.label}`, ...card.detail].join(" · ");
 };

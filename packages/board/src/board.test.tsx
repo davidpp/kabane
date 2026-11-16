@@ -536,9 +536,13 @@ test("cardBadge renders running/paused/stale variants with a constant-width glyp
 		muted: false,
 	});
 	expect(cardBadge(activeLoop({ status: "paused" }), "⠹")).toEqual({
-		text: " · ⏸ loop · paused",
+		text: " · ⏸ loop · paused · implement 3",
 		muted: false,
 	});
+	// A paused card with no detail stops at `paused`.
+	expect(
+		cardBadge(activeLoop({ status: "paused", detail: [] }), "⠹").text,
+	).toBe(" · ⏸ loop · paused");
 	// Stale running: static idle glyph (no animation frame) and muted color.
 	const stale = cardBadge(activeLoop({ stale: true }), "⠹");
 	expect(stale.muted).toBe(true);

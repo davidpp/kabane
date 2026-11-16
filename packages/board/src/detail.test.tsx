@@ -563,7 +563,11 @@ test("cardStatusLine covers paused and stale-agnostic running text", () => {
 	const running = loopCard({ detail: ["verify", "iteration 2", "$1.50"] });
 	// No frame threaded: the detail view echoes the header strip, which animates these same cards.
 	expect(cardStatusLine(running)).toBe("● loop · verify · iteration 2 · $1.50");
+	// A paused card keeps its detail: a waiting run's attach command is in it.
 	expect(cardStatusLine({ ...running, status: "paused" })).toBe(
+		"⏸ loop · paused · verify · iteration 2 · $1.50",
+	);
+	expect(cardStatusLine({ ...running, status: "paused", detail: [] })).toBe(
 		"⏸ loop · paused",
 	);
 });

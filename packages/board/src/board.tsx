@@ -126,15 +126,17 @@ const truncate = (text: string, max: number): string =>
 	text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
 
 // The ` · `-prefixed badge for a row's first in-flight card: `⠹ loop · implement 3`. Paused shows ⏸
-// with no churn; a stale running card (the host's crashed-runner heuristic) keeps the badge but drops
-// the animation and dims to muted. Exported pure so the badge text/width contract is assertable
-// without a renderer.
+// with no churn and its first detail line after `paused`; a stale running card (the host's
+// crashed-runner heuristic) keeps the badge but drops the animation and dims to muted. Exported pure
+// so the badge text/width contract is assertable without a renderer.
 export const cardBadge = (
 	card: ActivityCard,
 	frame: string,
 ): { text: string; muted: boolean } => {
-	if (card.status === "paused")
-		return { text: ` · ⏸ ${card.label} · paused`, muted: false };
+	if (card.status === "paused") {
+		const detail = card.detail[0] ? ` · ${card.detail[0]}` : "";
+		return { text: ` · ⏸ ${card.label} · paused${detail}`, muted: false };
+	}
 	const glyph = card.status === "running" && !card.stale ? frame : SPINNER_IDLE;
 	const detail = card.detail[0] ?? card.status;
 	return {
