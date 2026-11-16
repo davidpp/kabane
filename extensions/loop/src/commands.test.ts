@@ -11,7 +11,6 @@ import "@cabane/core/testing";
 import { join } from "node:path";
 import { ok, Planner, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
-import { detectScope } from "@cabane/core/scope";
 import { Settings } from "@cabane/extension";
 import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
@@ -19,7 +18,7 @@ import { Permission } from "./permission";
 import { isAnswerTo } from "./question-body";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
-import { testHost } from "./test-host";
+import { testHost, pinTestScope, testScope } from "./test-host";
 import { TestSessions } from "./test-sessions";
 import { Worktree } from "./worktree";
 
@@ -37,7 +36,7 @@ const fixtureGit: Worktree.Git = async (cwd, args) =>
 const deps = () => ({
 	home,
 	basePath: home,
-	host: testHost(home),
+	host: testHost(home, undefined, testScope(repo)),
 	kabaneBin: "/nonexistent/kabane",
 	cwd: repo,
 	// Never reached: every case below is refused before the spawn.
@@ -81,6 +80,8 @@ beforeEach(async () => {
 	mkdirSync(home);
 	mkdirSync(repo);
 	GitFixture.run(repo, ["init", "-q"]);
+	pinTestScope(repo);
+	GitFixture.run(repo, ["add", ".kabane/scope"]);
 	GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
 	await Planner.init(home);
 });
@@ -88,7 +89,7 @@ beforeEach(async () => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 const repoScope = async (): Promise<string> => {
-	const scope = await detectScope(repo, { home, detectExtensions: false });
+	const scope = testScope(repo);
 	if (!scope) throw new Error("the fixture repo has no scope");
 	return scope.scopeUri;
 };
@@ -542,7 +543,7 @@ describe("Loop.start's worktree", () => {
 // The runner `restart` spawns: the real `Loop.run` on this test's tracker, as `kabane loop run`
 // runs it, with no harness a claim could reach.
 const RUNNER = [
-	`import { testHost } from ${JSON.stringify(join(import.meta.dir, "test-host.ts"))};`,
+	`import { testHost, pinTestScope, testScope } from ${JSON.stringify(join(import.meta.dir, "test-host.ts"))};`,
 	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,

@@ -2,10 +2,8 @@ export {
 	type AfterWrite,
 	callTool,
 	createMcpServer,
-	handleHttpRequest,
 	type McpServerInfo,
 	registeredTools,
-	serveStdio,
 } from "./server";
 export {
 	authorTypeOf,

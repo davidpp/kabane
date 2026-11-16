@@ -14,11 +14,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { ok, Planner } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
-import { detectScope } from "@cabane/core/scope";
 import { Doctor, type Extension, Settings } from "@cabane/extension";
 import { LoopDoctor } from "./doctor";
 import { Lenses } from "./lenses";
-import { testHost } from "./test-host";
+import { testHost, pinTestScope, testScope } from "./test-host";
 
 let folder = "";
 let home = "";
@@ -31,6 +30,7 @@ beforeEach(async () => {
 	mkdirSync(home);
 	mkdirSync(root);
 	GitFixture.run(root, ["init", "-q"]);
+	pinTestScope(root);
 	await Planner.init(home);
 });
 
@@ -71,7 +71,7 @@ const skill = () =>
 	write(join(root, ".agents/skills/dispatch/SKILL.md"), "# Dispatch\n");
 
 const tagged = async (tags: string[], state: "next" | "done" = "next") => {
-	const scope = await detectScope(root, { home, detectExtensions: false });
+	const scope = testScope(root);
 	if (!scope) throw new Error("the fixture project has no scope");
 	const added = await Planner.addTask(home, {
 		title: "work",

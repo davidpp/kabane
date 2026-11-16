@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	readFileSync,
+	mkdirSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { SqliteDb } from "@cabane/sqlite";
 import type { Db, DbProvider } from "../db/port";
@@ -34,6 +40,17 @@ const assemble = async (
 
 describe("Planner — assembleContext", () => {
 	beforeEach(async () => {
+		configureTestRuntime({
+			fileReader: async (path, cap) => {
+				if (!existsSync(path)) return { status: "missing" };
+				const bytes = readFileSync(path);
+				return {
+					status: "read",
+					size: bytes.length,
+					head: bytes.subarray(0, cap).toString(),
+				};
+			},
+		});
 		rmSync(TEST_BASE, { recursive: true, force: true });
 		mkdirSync(TEST_BASE, { recursive: true });
 
@@ -41,6 +58,7 @@ describe("Planner — assembleContext", () => {
 	});
 
 	afterEach(() => {
+		configureTestRuntime();
 		rmSync(TEST_BASE, { recursive: true, force: true });
 	});
 
@@ -287,6 +305,22 @@ describe("Planner — assembleContext", () => {
 		const md = await assemble(id, { deref: false });
 		expect(md).toContain("## Context");
 		expect(md).not.toContain("should not appear");
+	});
+
+	it("keeps an existing file as a pointer when no reader is configured", async () => {
+		configureTestRuntime();
+		const id = await createTask({ title: "Host without files" });
+		const filePath = join(TEST_BASE, "private.txt");
+		writeFileSync(filePath, "CONTENT_NOT_READ");
+		await Planner.addContextRef(TEST_BASE, {
+			taskId: id,
+			uri: `file:${filePath}`,
+			kind: "doc",
+		});
+		const md = await assemble(id);
+		expect(md).toContain(`file:${filePath}`);
+		expect(md).not.toContain("CONTENT_NOT_READ");
+		expect(md).not.toContain("missing file");
 	});
 
 	// ── Prior work ──────────────────────────────────────────────────────

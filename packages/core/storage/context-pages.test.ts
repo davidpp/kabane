@@ -7,7 +7,7 @@ import {
 	expect,
 	it,
 } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SqliteDb } from "@cabane/sqlite";
 import { z } from "zod";
@@ -43,7 +43,17 @@ beforeEach(() => {
 	if (!template) return;
 	tracker = template.clone();
 	id = tracker.ids[24] ?? "";
-	configureTestRuntime();
+	configureTestRuntime({
+		fileReader: async (path, cap) => {
+			if (!existsSync(path)) return { status: "missing" };
+			const bytes = readFileSync(path);
+			return {
+				status: "read",
+				size: bytes.length,
+				head: bytes.subarray(0, cap).toString(),
+			};
+		},
+	});
 });
 afterEach(() => {
 	tracker?.close();
@@ -299,7 +309,8 @@ describe("bounded selected context", () => {
 			expect(pointers.value.markdown).toContain(huge);
 		}
 	});
-	it("bounded unreadable file pointers disclose host availability without changing full fallback", async () => {
+	it("bounded unavailable file pointers disclose host availability without changing full fallback", async () => {
+		configureTestRuntime();
 		expect(
 			(
 				await Planner.addContextRef(tracker.home, {

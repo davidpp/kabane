@@ -1,10 +1,9 @@
 // How this kabane runs itself again: the harness MCP entry, the copilot's session server and the
 // loop's runner all spawn it. A binary from `bun build --compile` sees its own entry as
 // `/$bunfs/root/<name>` in `process.argv[1]` and `Bun.main`, a virtual path nothing outside the
-// process can run, and resolves `import.meta.url` inside that same virtual root. Off the package
-// barrel: it reads the Bun process, which the hub does not have.
+// process can run, and resolves `import.meta.url` inside that same virtual root. This belongs to the CLI host: it reads the Bun process.
 import { resolve } from "node:path";
-import { trySync } from "./result";
+import { trySync } from "@cabane/core/result";
 
 export namespace Self {
 	/** What the process says about itself. Tests pass their own. */
@@ -19,7 +18,7 @@ export namespace Self {
 		entry: string | undefined;
 	};
 
-	export type Launch = { command: string; args: string[] };
+	type Launch = { command: string; args: string[] };
 
 	const HOST: Host = {
 		moduleUrl: import.meta.url,

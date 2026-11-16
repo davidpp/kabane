@@ -177,23 +177,16 @@ type DerefResult =
  */
 const derefFile = async (uri: string, cap: number): Promise<DerefResult> => {
 	try {
-		const path = filePathFromUri(uri);
-		const file = Bun.file(path);
-		if (!(await file.exists())) return { status: "missing" };
-
-		const size = file.size;
-		if (size > cap) {
-			// Read only the first `cap` bytes — never load the whole file.
-			const head = await file.slice(0, cap).text();
-			return {
-				status: "inlined",
-				content: `${head}\n\n… [truncated: ${size} bytes total, showing first ${cap}]`,
-				chars: head.length,
-			};
-		}
-
-		const text = await file.text();
-		return { status: "inlined", content: text, chars: text.length };
+		const file = await Runtime.fileReader()(filePathFromUri(uri), cap);
+		if (file.status !== "read") return file;
+		return {
+			status: "inlined",
+			content:
+				file.size > cap
+					? `${file.head}\n\n… [truncated: ${file.size} bytes total, showing first ${cap}]`
+					: file.head,
+			chars: file.head.length,
+		};
 	} catch {
 		return { status: "pointer" };
 	}

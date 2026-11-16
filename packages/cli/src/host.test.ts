@@ -3,10 +3,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner } from "@cabane/core";
-import * as scope from "@cabane/core/scope";
 import { parseArgs } from "@cabane/extension";
 import { openContext } from "./context";
 import { activateHostRecord, createHost } from "./host";
+import * as scope from "./scope/detect";
 
 const homes: string[] = [];
 afterEach(() => {

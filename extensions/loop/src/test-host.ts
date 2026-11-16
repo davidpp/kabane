@@ -1,5 +1,8 @@
-/** Real host helpers and tool-backed record for a disposable test database. */
+/** Real record helpers with pinned scope data for disposable test repositories. */
+import { readFileSync, realpathSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import {
+	type ProjectScope,
 	registeredTools,
 	Runtime,
 	ok,
@@ -9,8 +12,6 @@ import {
 	defineTool,
 	ScopeUri,
 } from "@cabane/core";
-import { detectScope } from "@cabane/core/scope";
-import { Self } from "@cabane/core/self";
 import {
 	createHostRecord,
 	createHostStore,
@@ -30,9 +31,34 @@ import { Kabane } from "./result";
 
 Kabane.bind({ result: { ok, err, tryCatch, trySync } });
 
-export const testHost = (basePath: string, actor = Runtime.actor()): Host => ({
+/** Scope data shared by the fixture repository and its host. Detection is tested in the CLI. */
+export const pinTestScope = (root: string): void => {
+	mkdirSync(join(root, ".kabane"), { recursive: true });
+	writeFileSync(join(root, ".kabane/scope"), "loop-test\n");
+};
+
+export const testScope = (root: string): ProjectScope | null => {
+	try {
+		const scopeId = readFileSync(join(root, ".kabane/scope"), "utf8").trim();
+		return {
+			root: realpathSync(root),
+			scopeId,
+			name: scopeId,
+			extensions: {},
+			scopeUri: ScopeUri.format({ scopeId }),
+		};
+	} catch {
+		return null;
+	}
+};
+
+export const testHost = (
+	basePath: string,
+	actor = Runtime.actor(),
+	project?: ProjectScope | null,
+): Host => ({
 	api: 1,
-	kabane: { version: "test", executable: Self.executable() },
+	kabane: { version: "test", executable: "/nonexistent/kabane" },
 	record: createHostRecord(registeredTools, {
 		basePath,
 		actor,
@@ -44,10 +70,16 @@ export const testHost = (basePath: string, actor = Runtime.actor()): Host => ({
 		"loop test",
 	),
 	scope: {
-		detect: (dir) =>
-			tryCatch(() =>
-				detectScope(dir, { home: basePath, detectExtensions: false }),
-			),
+		detect: async (dir) => {
+			const resolved = trySync(() => realpathSync(dir));
+			const path = resolved.ok ? resolved.value : dir;
+			return ok(
+				project &&
+					(path === project.root || path.startsWith(`${project.root}/`))
+					? project
+					: testScope(dir),
+			);
+		},
 		idOf: ScopeUri.getScopeId,
 	},
 	harnessMode: "auto",

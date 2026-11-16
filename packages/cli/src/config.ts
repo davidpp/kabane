@@ -18,9 +18,9 @@ import {
 	tryCatch,
 	trySync,
 } from "@cabane/core";
-import { findProjectRoot, localPinPath, SCOPE_FILE } from "@cabane/core/scope";
 import type { Extension } from "@cabane/extension";
 import { z } from "zod";
+import { findProjectRoot, localPinPath, SCOPE_FILE } from "./scope/detect";
 
 const CopilotConfigSchema = z.object({
 	// A plain string, not an enum, so a config naming a harness a newer kabane added still loads.

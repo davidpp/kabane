@@ -13,9 +13,9 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Announcer } from "@cabane/board";
 import { ok, type Result, tryCatch, trySync } from "@cabane/core";
-import { Self } from "@cabane/core/self";
 import { z } from "zod";
 import { version } from "../package.json";
+import { Self } from "./self";
 import { UpdateBinary } from "./update-binary";
 import { inspectRegistryInstall } from "./update-install";
 import {

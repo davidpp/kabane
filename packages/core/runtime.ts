@@ -39,6 +39,15 @@ export type Tracer = <TArgs extends unknown[], TReturn>(
 /** Receives domain events (task created, updated, deleted). No-op by default. */
 export type Notifier = (type: string, payload: unknown) => Promise<void>;
 
+/** A bounded file head; an unavailable host leaves the reference as a pointer. */
+export type FileHead =
+	| { status: "read"; head: string; size: number }
+	| { status: "missing" }
+	| { status: "pointer" };
+
+/** Reads a filesystem path from a file: reference, at most `cap` bytes. */
+export type FileReader = (path: string, cap: number) => Promise<FileHead>;
+
 /** Where the sync block comes from. Default: sync disabled. */
 export type SyncSettingsSource = () => Promise<Result<SyncConfig>>;
 
@@ -65,6 +74,7 @@ export type RuntimeConfig = {
 	provider: DbProvider;
 	tracer?: Tracer;
 	notifier?: Notifier;
+	fileReader?: FileReader;
 	syncSettings?: SyncSettingsSource;
 	actor?: ActorSource;
 	timezone?: TimezoneSource;
@@ -81,6 +91,7 @@ export type RuntimeConfig = {
 
 const identityTracer: Tracer = (_name, fn) => fn;
 const silentNotifier: Notifier = async () => {};
+const noFiles: FileReader = async () => ({ status: "pointer" });
 const anonymous: ActorSource = () => ANONYMOUS_ACTOR;
 const processZone: TimezoneSource = () => Deadline.systemZone();
 const syncDisabled: SyncSettingsSource = async () => {
@@ -105,6 +116,7 @@ let ports: Ports = {
 	provider: unconfigured,
 	tracer: identityTracer,
 	notifier: silentNotifier,
+	fileReader: noFiles,
 	syncSettings: syncDisabled,
 	actor: anonymous,
 	timezone: processZone,
@@ -127,6 +139,7 @@ export namespace Runtime {
 			provider: config.provider,
 			tracer: config.tracer ?? identityTracer,
 			notifier: config.notifier ?? silentNotifier,
+			fileReader: config.fileReader ?? noFiles,
 			syncSettings: config.syncSettings ?? syncDisabled,
 			actor: config.actor ?? anonymous,
 			timezone: config.timezone ?? processZone,
@@ -135,6 +148,7 @@ export namespace Runtime {
 	};
 
 	export const tracer = (): Tracer => ports.tracer;
+	export const fileReader = (): FileReader => ports.fileReader;
 	export const notifier = (): Notifier => ports.notifier;
 	export const syncSettings = (): SyncSettingsSource => ports.syncSettings;
 	/** The actor URI to stamp on a local write, resolved now. */

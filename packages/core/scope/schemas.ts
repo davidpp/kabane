@@ -37,3 +37,19 @@ export const ScopeQuerySchema = z.object({
 	extensions: z.record(z.string()).optional(),
 });
 export type ScopeQuery = z.infer<typeof ScopeQuerySchema>;
+
+/**
+ * A resolved project scope.
+ *
+ * `scopeUri` is what a query filters on and a new task records; `name` is what
+ * a UI shows. `extensions` are already folded into `scopeUri` — they ride along
+ * for provenance and never narrow a filter, since a scope-family match covers
+ * the base URI plus every extension-carrying variant.
+ */
+export type ProjectScope = {
+	root: string;
+	scopeId: string;
+	name: string;
+	extensions: Record<string, string>;
+	scopeUri: string;
+};

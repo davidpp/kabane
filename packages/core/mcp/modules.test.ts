@@ -13,7 +13,7 @@ import type { KabaneModule } from "../module";
 import { err, ok, type Result } from "../result";
 import { Planner } from "../storage";
 import { configureTestRuntime } from "../testing";
-import { createMcpServer, handleHttpRequest } from "./server";
+import { createMcpServer } from "./server";
 import { KABANE_TOOLS, SERVER_INSTRUCTIONS, type ToolDef } from "./tools";
 
 const unwrap = <T>(result: Result<T>): T => {
@@ -171,15 +171,6 @@ it("refuses tool collisions introduced after configuration before serving either
 	const result = createMcpServer(context());
 	expect(result.ok).toBe(false);
 	if (!result.ok) expect(result.error.message).toContain(core.name);
-	const response = await handleHttpRequest(
-		context(),
-		new Request("https://example.test/mcp", { method: "POST" }),
-	);
-	expect(response.status).toBe(500);
-	expect(response.headers.get("content-type")).toContain("application/json");
-	expect(await response.json()).toEqual({
-		error: `Duplicate MCP tool name: ${core.name}. Rename the module or host tool.`,
-	});
 });
 
 it("includes module sections by default and reports canonical selection and omissions", async () => {
@@ -456,43 +447,4 @@ it("renders modules sharing an anchor in registration order", async () => {
 		);
 		expect(bounded.markdown).toBe(expected);
 	}
-});
-
-it("serves module tools and instructions over Streamable HTTP", async () => {
-	const request = async (
-		method: string,
-		params: Record<string, unknown> = {},
-	) => {
-		const response = await handleHttpRequest(
-			context(),
-			new Request("https://example.test/mcp", {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					accept: "application/json, text/event-stream",
-				},
-				body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-			}),
-		);
-		expect(response.status).toBe(200);
-		return response.json();
-	};
-	expect(
-		await request("initialize", {
-			protocolVersion: "2025-03-26",
-			capabilities: {},
-			clientInfo: { name: "http-test", version: "1" },
-		}),
-	).toMatchObject({
-		result: {
-			instructions: `${SERVER_INSTRUCTIONS}\n\n${module.instructions}`,
-		},
-	});
-	expect(await request("tools/list")).toMatchObject({
-		result: {
-			tools: expect.arrayContaining([
-				expect.objectContaining({ name: "decisions_read" }),
-			]),
-		},
-	});
 });

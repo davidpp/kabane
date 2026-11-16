@@ -139,7 +139,6 @@ const buildExtensionTypes = (into: string): void => {
 				baseUrl: ROOT,
 				paths: {
 					"@cabane/core": ["packages/core/index.ts"],
-					"@cabane/core/scope": ["packages/core/scope/detect.ts"],
 				},
 			},
 		}),

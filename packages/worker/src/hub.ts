@@ -1,3 +1,4 @@
+import { handleHttpRequest } from "./mcp-http";
 /**
  * The cloud device: the Cabane core running on this object's SQLite, serving
  * MCP, and syncing with `CabaneLog` like any other device.
@@ -28,7 +29,6 @@ import {
 	ANONYMOUS_ACTOR,
 	Deadline,
 	err,
-	handleHttpRequest,
 	ok,
 	Planner,
 	type PullResult,

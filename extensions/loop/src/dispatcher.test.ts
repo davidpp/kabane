@@ -8,13 +8,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ok, Planner } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
-import { detectScope } from "@cabane/core/scope";
 import { Settings } from "@cabane/extension";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
 import { RunStore } from "./store";
-import { testHost } from "./test-host";
+import { testHost, pinTestScope, testScope } from "./test-host";
 
 let root = "";
 let home = "";
@@ -48,6 +47,8 @@ beforeEach(async () => {
 	mkdirSync(home);
 	mkdirSync(repo);
 	GitFixture.run(repo, ["init", "-q"]);
+	pinTestScope(repo);
+	GitFixture.run(repo, ["add", ".kabane/scope"]);
 	GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
 	await Planner.init(home);
 });
@@ -64,7 +65,7 @@ describe("LoopDispatcher.triggers", () => {
 	});
 
 	it("offers start loop on an issue with no subtasks, its one row as the plan", async () => {
-		const scope = await detectScope(repo, { home, detectExtensions: false });
+		const scope = testScope(repo);
 		const lone = await add("lone", { scopeUri: scope?.scopeUri });
 		const offered = await LoopDispatcher.triggers(deps(), lone.id);
 		const [start] = offered.ok ? offered.value : [];
@@ -82,7 +83,7 @@ describe("LoopDispatcher.triggers", () => {
 	});
 
 	it("offers start loop on a held single issue, unsatisfiable with the reason", async () => {
-		const scope = await detectScope(repo, { home, detectExtensions: false });
+		const scope = testScope(repo);
 		const held = await add("held", {
 			scopeUri: scope?.scopeUri,
 			state: "in_progress",
@@ -125,7 +126,7 @@ describe("LoopDispatcher.triggers", () => {
 	});
 
 	it("in the parent's checkout: the run's settings as a form and the plan as its preview", async () => {
-		const scope = await detectScope(repo, { home, detectExtensions: false });
+		const scope = testScope(repo);
 		const parent = await add("parent", { scopeUri: scope?.scopeUri });
 		const first = await add("first", { parentTaskId: parent.id });
 		const second = await add("second", { parentTaskId: parent.id });
@@ -153,7 +154,7 @@ describe("LoopDispatcher.triggers", () => {
 });
 
 it("the real tracker form advises overlapping children and project gates", async () => {
-	const scope = await detectScope(repo, { home, detectExtensions: false });
+	const scope = testScope(repo);
 	const parent = await add("parent", { scopeUri: scope?.scopeUri });
 	for (const title of ["first", "second"])
 		await add(title, {
@@ -193,7 +194,7 @@ it.each([
 ] as const)(
 	"submitted %s isolation preserves the right setup (%s)",
 	async (isolation, setup, expected) => {
-		const scope = await detectScope(repo, { home, detectExtensions: false });
+		const scope = testScope(repo);
 		const parent = await add("parent", { scopeUri: scope?.scopeUri });
 		writeFileSync(join(repo, "bun.lock"), "");
 		writeFileSync(
@@ -266,7 +267,7 @@ it.each([
 ] as const)(
 	"submitted on %s: the run's sessions at once",
 	async (_, where, sessions, edited, expected) => {
-		const scope = await detectScope(repo, { home, detectExtensions: false });
+		const scope = testScope(repo);
 		const parent = await add("parent", { scopeUri: scope?.scopeUri });
 		for (const title of ["first", "second", "third"])
 			await add(title, { parentTaskId: parent.id });
@@ -293,7 +294,7 @@ it.each([
 );
 
 it("advises stallAfter from this parent's stored reopen events, across past runs", async () => {
-	const scope = await detectScope(repo, { home, detectExtensions: false });
+	const scope = testScope(repo);
 	const parent = await add("parent", { scopeUri: scope?.scopeUri });
 	const child = await add("child", { parentTaskId: parent.id });
 	const other = await add("other", { scopeUri: scope?.scopeUri });
