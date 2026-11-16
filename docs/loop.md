@@ -7,26 +7,11 @@ its own branch and checkpoints it as work passes the gates.
 
 ## Install
 
-The loop is an optional directory extension, built separately from kabane. From a kabane
-source checkout with dependencies installed:
-
-```bash
-bun run --cwd extensions/loop build
-mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/loop"
-cp -R extensions/loop/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/loop/"
-```
-
-Add `"loop"` to the `extensions` array in `$KABANE_HOME/config.json` (default
-`~/.kabane/config.json`), keeping any extensions already there. If the list is empty,
-`kabane config set extensions loop --layer global` enables it. Restart a running board
-or MCP server after installation or enablement. The harness you choose must be installed
+The loop is an extension, built from a kabane checkout and installed under
+`$KABANE_HOME/extensions/loop`. [Extensions](extensions.md) says how to build, install and enable it;
+`kabane loop --help` then prints its commands. The build includes its harness client, its
+copilot procedures and the verifier lenses it ships. The harness you choose must be installed
 and logged in.
-
-The artifact includes its harness client, copilot procedures and shipped verifier lenses.
-The compiled binary loads only the built `dist/` artifact. A source checkout can instead
-be symlinked from `extensions/loop` into `$KABANE_HOME/extensions/loop` when kabane runs
-through Bun (the npm/bun install or the sandbox). `bun run sandbox` makes that link in its
-disposable home.
 
 When upgrading from a version that bundled the loop, install this directory before using
 `kabane loop`. Until it is installed, an enabled `loop` reports `not installed; put it in

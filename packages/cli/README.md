@@ -64,11 +64,12 @@ kabane list
   its own `node_modules` when kabane runs through Bun. For the compiled binary, an
   extension must be a bundle with its dependencies inlined: the binary cannot resolve
   external on-disk packages using conditional or subpath `exports`. A refused extension prints one line naming the problem and how
-  to repair or disable it; the others still load. The optional [loop](../../docs/loop.md) must be installed as a directory too.
+  to repair or disable it; the others still load. Kabane bundles none: the loop and dispatch
+  extensions are installed as directories too ([extensions](../../docs/extensions.md)).
 
 ### Settings layers
 
-An extension's settings (today the loop's, under `loop`) resolve through layers, lowest first,
+An extension's settings (the loop's under `loop`, say) resolve through layers, lowest first,
 key by key:
 
 1. the schema's defaults;
@@ -183,9 +184,9 @@ comma-separated values, with an empty string meaning an empty array.
 `sync.headers` and `loop.gates` take a JSON object of string values; one gate is its own key,
 `loop.gates.<name>`. Put `--` before a value starting with `--`. Object groups (`sync`,
 `copilot`, `loop`, `loop.budget`) can be read; edit or unset their dotted keys individually.
-`loop.lenses` names verifier lenses: `functional` and `quality` ship with kabane, and a lens of
-the project's own is `.agents/skills/dispatch/references/lenses/<name>.md` in its dispatch skill,
-where a file named after a shipped lens replaces it. A real `.claude/skills/dispatch/` from an
+`loop.lenses` names verifier lenses: `functional` and `quality` ship with the loop extension,
+and a lens of the project's own is `.agents/skills/dispatch/references/lenses/<name>.md` in its
+dispatch skill, where a file named after a shipped lens replaces it. A real `.claude/skills/dispatch/` from an
 earlier `/setup-dispatch`, then `.kabane/loop/lenses/`, are still read after it.
 `actor`, `deviceId` and `sync.deviceId` are read-only, including for `unset`.
 
@@ -201,8 +202,10 @@ they require an existing config and point to `kabane init` when none exists.
 Put an extension directory (or a symlink to one) at `$KABANE_HOME/extensions/<name>/`, then
 run `kabane config set extensions <name> --layer global` (comma-separated names for several).
 Its `package.json` must contain `"kabane": { "extension": "./index.ts", "api": 1 }`.
-The entry's default export is a factory receiving `{ api: 1, kabane: { version, executable } }`
-and returning an extension whose `name` matches the directory. Its own `node_modules` resolve
+The entry's default export is a factory that receives the host, API 1
+([`@cabane/extension`](../extension/README.md#factory-host)), and returns an extension whose
+`name` matches the directory. [Writing an extension](../../docs/writing-an-extension.md) walks
+through one. Its own `node_modules` resolve
 normally when kabane runs through Bun. For the compiled binary, supply a built bundle with
 its dependencies inlined; external on-disk packages using conditional or subpath `exports`
 do not resolve.

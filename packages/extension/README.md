@@ -1,6 +1,7 @@
 # @cabane/extension
 
-The shared contract for extension commands, board ports, settings and doctor checks.
+The shared contract for extension commands, board ports, settings and doctor checks. To write
+an extension, start with [writing an extension](../../docs/writing-an-extension.md).
 
 ## Factory host
 
@@ -9,7 +10,8 @@ package exports types only, including named record, command, settings, board and
 types and the reachable core and zod types; no `@cabane/*` package or additional type dependency is required.
 
 The factory receives API 1 with `kabane.version`, `kabane.executable`, `record`, `scope`,
-`harnessMode`, `z`, `defineTool`, and the `result`, `args`, `outcome` and `settings` helpers.
+`harnessMode`, `store` (for the extension's own data modules), `z`, `defineTool`, and the
+`result`, `args`, `outcome` and `settings` helpers.
 Build settings and tool schemas with `host.z`, even when the extension installs its own zod.
 
 `host.record` wraps MCP operations with validated inputs and full, unserialized results.
