@@ -13,7 +13,7 @@ import {
 	realpathSync,
 } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { Harnesses } from "@cabane/acp";
+import { Harnesses } from "@cabane/acp/harnesses";
 import type { Result, Task } from "@cabane/core";
 import type { Host, Settings } from "@cabane/extension";
 import { z } from "zod";

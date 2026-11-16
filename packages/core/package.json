@@ -9,6 +9,7 @@
 	"types": "index.ts",
 	"exports": {
 		".": "./index.ts",
+		"./result": "./result.ts",
 		"./schemas": "./schemas/index.ts",
 		"./scope": "./scope/detect.ts",
 		"./self": "./self.ts",

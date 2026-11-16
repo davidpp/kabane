@@ -2,7 +2,7 @@
 // it needs, `tier:<harness>/<name>` to also pin the harness it runs on, and `agent:<name>` for the
 // harness's own named agent to run as. A tag the run cannot honour never stops it: the claim runs on
 // the fallback (the run's implementer, the run's model, no agent) and the trace says why.
-import { Harnesses } from "@cabane/acp";
+import { Harnesses } from "@cabane/acp/harnesses";
 import { LoopConfig } from "./config";
 
 export namespace Route {
