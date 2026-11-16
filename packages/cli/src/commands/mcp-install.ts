@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { findProjectRoot } from "@cabane/core/scope";
 import { Self } from "@cabane/core/self";
 import {
 	flagBool,
@@ -8,6 +9,7 @@ import {
 	success,
 	usage,
 } from "@cabane/extension";
+import { resolveHome } from "../config";
 import { McpClients } from "../mcp-clients";
 
 /**
@@ -101,14 +103,25 @@ export namespace McpInstall {
 
 		const launch = McpClients.launchFor(deps.launcher, harness);
 		const probe = await deps.run(entry.find);
-		const present = entry.isPresent(probe);
+		const found = McpClients.registrations(harness, deps.where);
+		const present =
+			entry.isPresent(probe) || (found.ok && found.value.length > 0);
 		if (present && !opts.force) {
 			// An unreadable config says nothing either way; the harness found an entry, so it is present.
-			const found = McpClients.registrations(harness, deps.where);
 			const stale =
 				found.ok &&
 				found.value.some((r) => !McpClients.sameLaunch(r.launch, launch));
 			return { harness, status: stale ? "stale" : "present" };
+		}
+		if (present && entry.removeScoped && found.ok && found.value.length > 0) {
+			for (const registration of found.value) {
+				if (!registration.scope) continue;
+				const removed = await deps.run(entry.removeScoped(registration.scope));
+				if (removed.code !== 0) return failed(harness, removed);
+				const added = await deps.run(entry.add(launch, registration.scope));
+				if (added.code !== 0) return failed(harness, added);
+			}
+			return { harness, status: "replaced" };
 		}
 		if (present) {
 			const removed = await deps.run(entry.remove);
@@ -130,7 +143,12 @@ export namespace McpInstall {
 			run: deps.run ?? runSpawn,
 			which: deps.which ?? Bun.which,
 			launcher: deps.launcher ?? launcher(),
-			where: deps.where ?? { home: homedir(), env: process.env },
+			where: deps.where ?? {
+				home: homedir(),
+				env: process.env,
+				projectRoot:
+					(await findProjectRoot(process.cwd(), resolveHome())) ?? undefined,
+			},
 		};
 		const reports: Report[] = [];
 		for (const harness of harnesses) {

@@ -11,7 +11,6 @@
 // code) unsets what the layers below it say; it must still name a setting.
 import { err, ok, type Result } from "@cabane/core";
 import { z } from "zod";
-import type { Doctor } from "./doctor";
 import type { SettingField, SettingKind, SettingValue } from "./ports";
 
 export namespace Settings {
@@ -384,70 +383,50 @@ export namespace Settings {
 			});
 		});
 
-	// Escape separators, capitals and the escape marker itself, so paths and layers cannot
-	// collide (a-b vs a.b, or a camelCase setting vs its lowercase spelling).
-	const idPart = (value: string): string =>
-		Array.from(value, (char) =>
-			/^[a-wyz0-9]$/.test(char)
-				? char
-				: `x${char.codePointAt(0)?.toString(16)}x`,
-		).join("") || "xemptyx";
+	export type Drift = {
+		category: "unknown" | "retired";
+		path: string[];
+		replacement?: string[];
+	};
 
 	/**
-	 * Report drift in one raw layer. No writes: the storage owner attaches repair closures.
+	 * Report drift in one raw layer. No writes or repair grading: the storage owner decides what to offer.
 	 * A removed key is inferred to be a rename when a new, declared sibling has the same
 	 * JSON value. This is a heuristic, not migration metadata supplied by zod.
 	 */
-	export const drift = (
-		namespace: string,
-		schema: z.ZodTypeAny,
-		raw: unknown,
-		layer: Layer,
-	): Doctor.Finding[] =>
+	export const drift = (schema: z.ZodTypeAny, raw: unknown): Drift[] =>
 		walkWith(
 			schema,
 			structuredClone(raw),
 			({ inner, given, value, path }) => {
 				if (!isObject(given)) return [];
-				return Object.entries(given).flatMap(
-					([key, child]): Doctor.Finding[] => {
-						const retired = !isObject(value) || !Object.hasOwn(value, key);
-						if (
-							!retired &&
-							(!(
-								inner instanceof z.ZodObject || inner instanceof z.ZodRecord
-							) ||
-								childSchema(inner, key))
-						)
-							return [];
-						const replacement =
-							retired && isObject(value)
-								? Object.keys(value).find(
-										(name) =>
-											!Object.hasOwn(given, name) &&
-											childSchema(inner, name) !== undefined &&
-											JSON.stringify(value[name]) === JSON.stringify(child),
-									)
-								: undefined;
-						const category = retired ? "retired-setting" : "unknown-setting";
-						const at = [namespace, ...path, key];
-						return [
-							{
-								id: [category, layer, ...at.map(idPart)].join("-"),
-								source: namespace,
-								path: at.join("."),
-								severity: replacement === undefined ? "mention" : "auto",
-								summary: `${at.join(".")} in ${layer}: ${
-									retired
-										? replacement === undefined
-											? "retired setting is dropped by preprocessing"
-											: `retired setting maps to ${[namespace, ...path, replacement].join(".")}`
-										: "unknown setting"
-								}`,
-							},
-						];
-					},
-				);
+				return Object.entries(given).flatMap(([key, child]): Drift[] => {
+					const retired = !isObject(value) || !Object.hasOwn(value, key);
+					if (
+						!retired &&
+						(!(inner instanceof z.ZodObject || inner instanceof z.ZodRecord) ||
+							childSchema(inner, key))
+					)
+						return [];
+					const replacement =
+						retired && isObject(value)
+							? Object.keys(value).find(
+									(name) =>
+										!Object.hasOwn(given, name) &&
+										childSchema(inner, name) !== undefined &&
+										JSON.stringify(value[name]) === JSON.stringify(child),
+								)
+							: undefined;
+					return [
+						{
+							category: retired ? "retired" : "unknown",
+							path: [...path, key],
+							...(replacement === undefined
+								? {}
+								: { replacement: [...path, replacement] }),
+						},
+					];
+				});
 			},
 			[],
 			raw,

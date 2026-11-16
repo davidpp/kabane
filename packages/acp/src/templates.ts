@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { ok, type Result, trySync } from "@cabane/core";
 import { Self } from "@cabane/core/self";
 
 export namespace Templates {
@@ -20,37 +21,42 @@ export namespace Templates {
 	 * sha256 over a template directory: its files sorted by relative path, each contributing that
 	 * path and its bytes, `PLACEHOLDERS.md` excluded. The first 12 hex characters.
 	 */
-	export const hashDir = (root: string): string => {
-		const files = readdirSync(root, { recursive: true, withFileTypes: true })
-			.filter((entry) => entry.isFile())
-			.map((entry) =>
-				relative(root, join(entry.parentPath, entry.name)).split(sep).join("/"),
-			)
-			.filter((path) => !EXCLUDED.has(path))
-			.sort();
-		const hash = createHash("sha256");
-		// The path and the content are length-prefixed, so moving bytes between a file's name and its
-		// content, or between two files, cannot produce the same digest.
-		for (const path of files) {
-			const bytes = readFileSync(join(root, path));
-			hash.update(`${Buffer.byteLength(path)}:${path}\0${bytes.length}:`);
-			hash.update(bytes);
-		}
-		return hash.digest("hex").slice(0, 12);
-	};
+	export const hashDir = (root: string): Result<string> =>
+		trySync(() => {
+			const files = readdirSync(root, { recursive: true, withFileTypes: true })
+				.filter((entry) => entry.isFile())
+				.map((entry) =>
+					relative(root, join(entry.parentPath, entry.name))
+						.split(sep)
+						.join("/"),
+				)
+				.filter((path) => !EXCLUDED.has(path))
+				.sort();
+			const hash = createHash("sha256");
+			// The path and the content are length-prefixed, so moving bytes between a file's name and its
+			// content, or between two files, cannot produce the same digest.
+			for (const path of files) {
+				const bytes = readFileSync(join(root, path));
+				hash.update(`${Buffer.byteLength(path)}:${path}\0${bytes.length}:`);
+				hash.update(bytes);
+			}
+			return hash.digest("hex").slice(0, 12);
+		});
 
 	/** The content hash of the shipped template `name`. */
-	export const hash = (name: string): string => hashDir(dir(name));
+	export const hash = (name: string): Result<string> => hashDir(dir(name));
 
 	// A process's templates never change under it, so each is hashed at most once.
 	const stamps = new Map<string, string>();
 
 	/** `<name>@<hash12>`: what a project's copy of the template records as its origin. */
-	export const stamp = (name: string): string => {
+	export const stamp = (name: string): Result<string> => {
 		const known = stamps.get(name);
-		if (known) return known;
-		const computed = `${name}@${hash(name)}`;
+		if (known) return ok(known);
+		const hashed = hash(name);
+		if (!hashed.ok) return hashed;
+		const computed = `${name}@${hashed.value}`;
 		stamps.set(name, computed);
-		return computed;
+		return ok(computed);
 	};
 }

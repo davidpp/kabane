@@ -307,7 +307,9 @@ An `import type` compiles to nothing, so the extension never resolves that path 
 is scoped to that extension's modules, so the kit knows whose tables a write may touch. It is
 built in two stages (see "Every process that opens the
 database registers the same modules"): everything but `record` and `store` works from the start,
-and `record` and `store` work once the runtime is configured and migrated. Each
+and `record` works once the runtime is configured and migrated and that host’s factory has
+returned. A doctor check can use it only when doctor successfully opened the store.
+Standalone extension commands do not open the store. `store` remains planned for JCAB-323. Each
 member below exists because the loop's inventory needs it (`wiki/extension-api.md`); JCAB-322
 does not widen it beyond that.
 
@@ -321,6 +323,7 @@ type Host = {
 		readonly executable: string;
 	};
 	readonly record: Host.Record;
+	readonly harnessMode: "auto" | "default";
 	readonly scope: {
 		/** The project scope of a directory: marker walk, then git. */
 		detect(dir: string): Promise<Result<ProjectScope | null>>;
@@ -331,14 +334,21 @@ type Host = {
 	readonly store: Host.Store;
 	/** The host's zod. Settings schemas and tool input shapes are built with it. */
 	readonly z: typeof z;
-	readonly result: { ok; err; tryCatch; trySync };
-	readonly args: { flagBool; flagString; flagList; flagCsv };
-	readonly outcome: { success; conciseSuccess; failure; usage };
-	readonly settings: { fields; groupsOf; lookOf; options };
+	readonly result: { ok: typeof ok; err: typeof err; tryCatch: typeof tryCatch; trySync: typeof trySync };
+	readonly args: { flagBool: typeof flagBool; flagString: typeof flagString; flagList: typeof flagList; flagCsv: typeof flagCsv };
+	readonly outcome: { success: typeof success; conciseSuccess: typeof conciseSuccess; failure: typeof failure; usage: typeof usage };
+	readonly settings: Pick<typeof Settings, "fields" | "groupsOf" | "lookOf" | "options">;
 	/** Types a tool's handler against its input shape, for the tools `Extension.mcp` returns. */
-	readonly defineTool: <Shape extends z.ZodRawShape>(def: ToolDef<Shape>) => ToolDef;
+	readonly defineTool: typeof defineTool;
 };
 ```
+
+`host.store` remains planned for JCAB-323. The compiled contract uses `typeof` for helper
+signatures and an explicit `harnessMode` member (Mode only, JCAB-316:8).
+`types/extension.d.ts` is generated from the types-only entry in `packages/extension`: it is
+self-contained, includes the reachable core and zod types, and exports types only. The
+published `./extension` export has a `types` condition only. Build tests compile named type
+imports and reject value imports.
 
 The helpers on `result`, `args`, `outcome` and `settings` keep their signatures in
 `packages/core/result.ts` and `packages/extension/index.ts`, and `defineTool` is `define` in
@@ -352,13 +362,16 @@ it.
 
 `z` is on `host` because the host introspects the schemas an extension hands it:
 `Settings.fields` walks the schema of a settings namespace (`settings.ts:290`), and the MCP
-server validates a tool's input with `z.object(shape).safeParse`. A schema built with another copy
-of zod is untested against both (H3 of the 2026-11-04 research).
+server validates a tool's input with `z.object(shape).safeParse`. The loader refuses a schema built with another copy
+of zod and directs the extension to `host.z`.
 
 ### The record half of `host` is the MCP tools' operations, as typed wrappers
 
 `host.record` offers the operations the MCP tools expose, called in the host's process under
-`ctx.actor`. Each method is a wrapper over one tool, and says so: it takes the tool's input
+`ctx.actor`. `host.record` runs under the context's actor (the one `--as` sets) and the device's human
+actor, as an agent's call over local stdio does, so an extension can record a relayed answer;
+it cannot name another actor.
+Each named method is a wrapper over one tool, and says so: it takes the tool's input
 without the presentation fields (`responseFormat`, `cursor`, and `kabane_comment`'s `text` and
 `content` aliases of `body`), always runs the tool's full format, and returns the value the tool
 returns in that format before the MCP server serializes it. The types below are those values,
@@ -372,14 +385,14 @@ namespace Host {
 		edit(input: EditInput): Promise<Result<Task>>; // kabane_edit
 		done(input: { id: string }): Promise<Result<Task>>; // kabane_done
 		comment(input: { id: string; body: string; kind?: string }): Promise<Result<TaskEntry>>; // kabane_comment
-		log(input: { id: string; refs?: readonly { uri: string; label?: string }[]; commit?: string; note?: string }): Promise<Result<TaskWorkLog>>; // kabane_log
+		log(input: { id: string; refs?: { uri: string; label?: string }[]; commit?: string; note?: string }): Promise<Result<TaskWorkLog>>; // kabane_log
 		context(input: ContextInput): Promise<Result<{ id: string; markdown: string }>>; // kabane_context
 		upstreamLink(input: UpstreamLinkInput): Promise<Result<UpstreamLink>>; // kabane_upstream_link
 		// Wrappers over kabane_linkList, kabane_upstreamList and kabane_logList (JCAB-336).
 		links(input: { id: string }): Promise<Result<TaskLink[]>>;
 		upstreamLinks(input: { id: string }): Promise<Result<UpstreamLink[]>>;
 		workLogs(input: { id: string; limit?: number }): Promise<Result<TaskWorkLog[]>>;
-		/** Any registered tool by name, full format; a data module's included. An unregistered name is an err. */
+		/** Any registered tool by name, input unchanged; a data module's included. An unregistered name is an err. */
 		call(tool: string, input: unknown): Promise<Result<unknown>>;
 	};
 }
@@ -388,7 +401,11 @@ namespace Host {
 `ListInput`, `EditInput`, `ContextInput` and `UpstreamLinkInput` are the tools' zod shapes less
 the presentation fields. A data module's tools, `kabane_checklist` among them, are
 reached through `call`, whose result is `unknown` until the caller parses it; core's tools get
-typed wrappers. `log` takes `refs` or `commit` or both, as `kabane_log` does.
+typed wrappers. `call` passes input unchanged, including cursors and response format.
+`log` takes `refs` or `commit` or both, as `kabane_log` does. `context` always returns the full
+context. Inputs are spelled out in `Host`; compile-time assertions compare each mirror to
+the tool’s typed input shape, and real database tests pin the wrappers to the handlers’ full
+results. Default scope is resolved lazily on the first record call and reused.
 
 The rule that keeps this surface honest: **`host.record` has no operation an agent cannot perform
 through a tool.** An extension that needs an operation no tool offers gets a new tool or a new
@@ -467,7 +484,7 @@ type Extension = {
 	looks?: Settings.Looks;
 	commands?: readonly Extension.Command[];
 	board?: (ctx: Extension.Ctx) => Promise<Extension.BoardPorts>;
-	doctor?: (ctx: Extension.Ctx) => Promise<Doctor.Finding[] | Result<Doctor.Finding[]>>;
+	doctor?: (ctx: Extension.Ctx) => Promise<Result<Doctor.Finding[]>>;
 	mcp?: (ctx: Extension.Ctx) => Promise<{ instructions?: string; tools?: readonly ToolDef[] }>;
 };
 ```
@@ -672,8 +689,8 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | A modules entry imports only what its module objects need | review | JCAB-323: an import-graph test on a fixture extension's modules entry, and on the loop's once it has one |
 | An extension writes only its own tables and changes tasks only through `tx.updateTask` | partly by the kit: capture refuses an undeclared table; raw SQL on `tx.db` is review | JCAB-323 builds the kit |
 | A failed module stops database access; a disabled one's deletes are captured | not built | JCAB-323 (persisted declarations, the stop) |
-| Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts`; Host currently carries `api` and `kabane` | built (JCAB-321) |
-| `host` and its typed record wrappers | not built | JCAB-322 |
+| Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts`; Host carries the API 1 members above | built (JCAB-321) |
+| `host` and its typed record wrappers | `host-record.test.ts`, CLI host and directory-extension tests; isolated declaration typecheck | built (JCAB-322) |
 | Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` | built (JCAB-337) |
 | Procedures and shortcuts are files; `{{extension}}` is the only placeholder, and a computed value comes from a command | not built | JCAB-324; JCAB-327 for the stamp |
 | Core reaches files through a port | not built | JCAB-328 |

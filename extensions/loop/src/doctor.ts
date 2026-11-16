@@ -31,8 +31,6 @@ import { Lenses } from "./lenses";
 import { Route } from "./route";
 
 export namespace LoopDoctor {
-	const SOURCE = LoopConfig.NAMESPACE;
-
 	const MODEL_ROUTE =
 		"propose loop.model (a tier is best) and the loop.tiers mapping it needs; the human picks the models; write it with kabane_configSet in the global layer unless they say this project only";
 
@@ -41,6 +39,17 @@ export namespace LoopDoctor {
 	const markdownIn = (directory: string): string[] => {
 		const files = trySync(() => readdirSync(directory));
 		return (files.ok ? files.value : []).filter((file) => file.endsWith(".md"));
+	};
+
+	const conflictFor = (root: string, file: string): string | undefined => {
+		const source = join(Lenses.loopDir(root), file);
+		return Lenses.directories(root)
+			.slice(0, -1)
+			.map((directory) => join(directory, file))
+			.find(
+				(path) =>
+					existsSync(path) && !readFileSync(source).equals(readFileSync(path)),
+			);
 	};
 
 	/** Move each legacy lens into the skill's directory; refuse one the skill holds differently. */
@@ -53,6 +62,11 @@ export namespace LoopDoctor {
 		for (const file of markdownIn(from)) {
 			const source = join(from, file);
 			const target = join(to, file);
+			const conflict = conflictFor(root, file);
+			if (conflict) {
+				refused.push(`${file} (${relative(root, conflict)})`);
+				continue;
+			}
 			if (!existsSync(target)) {
 				renameSync(source, target);
 				moved.push(file);
@@ -74,7 +88,7 @@ export namespace LoopDoctor {
 		if (refused.length === 0) return ok(done);
 		return err(
 			new Error(
-				`${done ? `${done}; ` : ""}refused ${refused.join(", ")}: ${relative(root, to)} already has a lens by that name with other content; merge them by hand`,
+				`${done ? `${done}; ` : ""}refused ${refused.join(", ")}: a higher-priority lens directory already has that name with other content; merge them by hand`,
 			),
 		);
 	};
@@ -94,19 +108,24 @@ export namespace LoopDoctor {
 			return [
 				{
 					id: "legacy-lens-dir",
-					source: SOURCE,
+
 					path: legacy,
 					severity: "mention",
 					summary: `${shown} holds ${files.join(", ")}, where lenses were kept before the dispatch skill. They still run from there; with a dispatch skill (/setup-dispatch writes one) they belong in ${target}.`,
 				},
 			];
+		const blocked = files.every(
+			(file) => conflictFor(root, file) !== undefined,
+		);
 		return [
 			{
 				id: "legacy-lens-dir",
-				source: SOURCE,
+
 				path: legacy,
-				severity: "auto",
-				summary: `${shown} holds ${files.join(", ")}, where lenses were kept before the dispatch skill. --fix moves them to ${target}, refusing a name the skill already holds with other content, and removes ${shown} once it is empty.`,
+				severity: blocked ? "mention" : "auto",
+				summary: blocked
+					? `${shown} holds ${files.join(", ")}; each differs from a higher-priority skill copy. Merge them by hand and remove the obsolete copies.`
+					: `${shown} holds ${files.join(", ")}, where lenses were kept before the dispatch skill. --fix moves them to ${target}, refusing a name the skill already holds with other content, and removes ${shown} once it is empty.`,
 				fix: async () => {
 					const moved = trySync(() => moveLegacy(root));
 					return moved.ok ? moved.value : moved;
@@ -140,7 +159,7 @@ export namespace LoopDoctor {
 		return [
 			{
 				id: "lens-shadowed",
-				source: SOURCE,
+
 				severity: "mention",
 				summary: shadowed
 					.map(
@@ -181,7 +200,7 @@ export namespace LoopDoctor {
 		if (config.model === undefined)
 			findings.push({
 				id: "model-unpinned",
-				source: SOURCE,
+
 				severity: "suggest",
 				summary: `loop.model is unset, so every loop session runs on ${harness}'s own default model, which for Claude Code is whichever model was last picked interactively.`,
 				route: MODEL_ROUTE,
@@ -221,7 +240,7 @@ export namespace LoopDoctor {
 		if (unmapped.size > 0)
 			findings.push({
 				id: "tier-unmapped",
-				source: SOURCE,
+
 				severity: "suggest",
 				summary: [...unmapped]
 					.sort(([a], [b]) => a.localeCompare(b))
@@ -276,7 +295,7 @@ export namespace LoopDoctor {
 			: [
 					{
 						id: "tier-tags-unchecked",
-						source: SOURCE,
+
 						severity: "mention",
 						summary: `Open issues' tier: tags were not checked against loop.tiers: ${issues.error.message}`,
 					},

@@ -1,11 +1,10 @@
-import { type Result, tryCatch } from "@cabane/core";
+import { err, type Result, tryCatch } from "@cabane/core";
 import type { Extension } from "./contract";
 
 export namespace Doctor {
 	export type Finding = {
 		/** Stable kebab-case identifier, unique within its source. */
 		id: string;
-		source: string;
 		path?: string;
 		severity: "auto" | "mention" | "suggest" | "route";
 		summary: string;
@@ -15,12 +14,51 @@ export namespace Doctor {
 
 	export type Source = {
 		name: string;
-		doctor: (ctx: Extension.Ctx) => Promise<Finding[] | Result<Finding[]>>;
+		doctor: (ctx: Extension.Ctx) => Promise<Result<Finding[]>>;
 	};
 
 	export type Report = {
-		findings: Finding[];
+		findings: (Finding & { source: string })[];
 		fixes: { source: string; id: string; result: Result<string> }[];
+	};
+
+	const accountForSelectors = (report: Report, selectors: string[]): void => {
+		for (const selector of new Set(selectors)) {
+			if (report.fixes.some((fix) => `${fix.source}/${fix.id}` === selector))
+				continue;
+			const finding = report.findings.find(
+				(item) => `${item.source}/${item.id}` === selector,
+			);
+			const slash = selector.indexOf("/");
+			report.fixes.push({
+				source: finding?.source ?? (slash < 0 ? "" : selector.slice(0, slash)),
+				id: finding?.id ?? (slash < 0 ? selector : selector.slice(slash + 1)),
+				result: err(
+					new Error(
+						finding
+							? `${selector} has no mechanical fix.${finding.route ? ` Use ${finding.route}.` : ""}`
+							: `No finding matches ${selector}. Run kabane doctor to see current source/id handles.`,
+					),
+				),
+			});
+		}
+	};
+
+	const append = (report: Report, source: string, finding: Finding): void => {
+		const previous = report.findings.findIndex(
+			(item) => item.source === source && item.id === finding.id,
+		);
+		if (previous < 0) {
+			report.findings.push({ ...finding, source });
+			return;
+		}
+		const original = report.findings[previous];
+		report.findings[previous] = {
+			source,
+			id: finding.id,
+			severity: "mention",
+			summary: `Duplicate finding id ${source}/${finding.id}; no repair can be selected safely. ${original?.summary}; ${finding.summary}`,
+		};
 	};
 
 	/** Checks finish before repairs start; a failed check or repair does not stop the others. */
@@ -32,16 +70,12 @@ export namespace Doctor {
 		const report: Report = { findings: [], fixes: [] };
 		for (const source of sources) {
 			const checked = await tryCatch(() => source.doctor(ctx));
-			const found = checked.ok
-				? Array.isArray(checked.value)
-					? { ok: true as const, value: checked.value }
-					: checked.value
-				: checked;
-			if (found.ok) report.findings.push(...found.value);
+			const found = checked.ok ? checked.value : checked;
+			if (found.ok)
+				for (const finding of found.value) append(report, source.name, finding);
 			else
-				report.findings.push({
+				append(report, source.name, {
 					id: "check-failed",
-					source: source.name,
 					severity: "mention",
 					summary: `${source.name} check failed: ${found.error.message}`,
 				});
@@ -59,6 +93,8 @@ export namespace Doctor {
 				result: fixed.ok ? fixed.value : fixed,
 			});
 		}
+		if (Array.isArray(options.fix)) accountForSelectors(report, options.fix);
+
 		return report;
 	};
 

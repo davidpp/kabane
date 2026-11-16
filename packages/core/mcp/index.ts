@@ -1,5 +1,6 @@
 export {
 	type AfterWrite,
+	callTool,
 	createMcpServer,
 	handleHttpRequest,
 	type McpServerInfo,
@@ -12,6 +13,7 @@ export {
 	humanActorOf,
 	KABANE_TOOLS,
 	SERVER_INSTRUCTIONS,
+	type CoreToolInputShapes,
 	type ToolContext,
 	type ToolDef,
 	type ToolHandler,

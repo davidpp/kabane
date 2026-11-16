@@ -2,14 +2,18 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { err, ok, type Result, trySync } from "@cabane/core";
+import { z } from "zod";
 
 /**
  * What each coding harness needs to register this device's MCP server: the
  * binary to look for, the argv that adds, finds and removes the `kabane`
- * entry, where its config file keeps that entry, the config snippet a human
- * pastes instead, and the project file it reads its instructions from. One
- * table, so the install and the printed snippets cannot drift apart. Nothing
- * here spawns: a harness's own `mcp get` health-checks the server, starting it.
+ * entry, the config snippet a human pastes instead, and its project instruction
+ * file live in TABLE. REGISTRATIONS separately reads existing config files:
+ * registration commands and readable locations are not one-to-one (Claude
+ * holds user and per-project local entries in the same file). Keeping writes
+ * through the harness CLI distinct from read-only enumeration makes that
+ * boundary explicit. Both tables cover Id. Nothing here spawns: a harness's
+ * own `mcp get` health-checks the server, starting it.
  */
 export namespace McpClients {
 	/**
@@ -23,7 +27,11 @@ export namespace McpClients {
 	export const SERVER_NAME = "kabane";
 
 	/** How a harness spawns the server: an absolute command and its args. */
-	export type Launch = { command: string; args: string[] };
+	const LaunchSchema = z.object({
+		command: z.string(),
+		args: z.array(z.string()).default([]),
+	});
+	export type Launch = z.infer<typeof LaunchSchema>;
 
 	/** What a harness's own `mcp get`/`list` printed. */
 	export type Probe = { code: number; out: string; err: string };
@@ -31,10 +39,11 @@ export namespace McpClients {
 	type Entry = {
 		/** The binary on PATH that says the harness is installed. */
 		binary: string;
-		add: (launch: Launch) => string[];
+		add: (launch: Launch, scope?: "user" | "local") => string[];
 		find: string[];
 		isPresent: (probe: Probe) => boolean;
 		remove: string[];
+		removeScoped?: (scope: "user" | "local") => string[];
 		snippet: (launch: Launch) => Snippet;
 		/** The file at a project root this harness reads as its instructions. */
 		instructionFile: string;
@@ -50,10 +59,14 @@ export namespace McpClients {
 	};
 
 	/** A `kabane` entry found in a harness config file, and which file and key held it. */
-	type Registration = { at: string; launch: Launch };
+	type Registration = {
+		path: string;
+		at: string;
+		launch: Launch;
+		scope?: "user" | "local";
+	};
 
-	const isRecord = (value: unknown): value is Record<string, unknown> =>
-		typeof value === "object" && value !== null && !Array.isArray(value);
+	const ConfigSchema = z.record(z.unknown());
 
 	// JSONC, because Gemini's settings.json may carry comments; a plain JSON file parses the same.
 	const readConfig = (
@@ -63,25 +76,22 @@ export namespace McpClients {
 		if (!existsSync(path)) return ok(undefined);
 		const parsed = trySync(() => parse(readFileSync(path, "utf8")));
 		if (!parsed.ok) return err(new Error(`${path}: ${parsed.error.message}`));
-		return isRecord(parsed.value)
-			? ok(parsed.value)
+		const config = ConfigSchema.safeParse(parsed.value);
+		return config.success
+			? ok(config.data)
 			: err(new Error(`${path}: expected an object`));
 	};
 
 	// An entry without a command (an HTTP server) is not one `mcp install` writes.
-	const launchOf = (entry: unknown): Launch | undefined => {
-		if (!isRecord(entry) || typeof entry.command !== "string") return undefined;
-		const args = Array.isArray(entry.args)
-			? entry.args.filter((a): a is string => typeof a === "string")
-			: [];
-		return { command: entry.command, args };
-	};
-
-	const serverIn = (servers: unknown, at: string): Registration[] => {
-		const launch = isRecord(servers)
-			? launchOf(servers[SERVER_NAME])
-			: undefined;
-		return launch ? [{ at, launch }] : [];
+	const serverIn = (
+		servers: unknown,
+		path: string,
+		at: string,
+	): Registration[] => {
+		const map = ConfigSchema.safeParse(servers);
+		if (!map.success) return [];
+		const launch = LaunchSchema.safeParse(map.data[SERVER_NAME]);
+		return launch.success ? [{ path, at, launch: launch.data }] : [];
 	};
 
 	// User scope, then the project's local scope, which Claude keys by the project's path.
@@ -90,16 +100,24 @@ export namespace McpClients {
 		const config = readConfig(path, Bun.JSONC.parse);
 		if (!config.ok || config.value === undefined)
 			return config.ok ? ok([]) : config;
-		const found = serverIn(config.value.mcpServers, `${path} mcpServers`);
-		const projects = config.value.projects;
-		if (where.projectRoot !== undefined && isRecord(projects)) {
-			const project = projects[where.projectRoot];
-			if (isRecord(project))
+		const found: Registration[] = serverIn(
+			config.value.mcpServers,
+			path,
+			`${path} mcpServers`,
+		).map((registration) => ({ ...registration, scope: "user" }));
+		const projects = ConfigSchema.safeParse(config.value.projects);
+		if (where.projectRoot !== undefined && projects.success) {
+			const project = ConfigSchema.safeParse(projects.data[where.projectRoot]);
+			if (project.success)
 				found.push(
 					...serverIn(
-						project.mcpServers,
+						project.data.mcpServers,
+						path,
 						`${path} projects["${where.projectRoot}"].mcpServers`,
-					),
+					).map((registration): Registration => ({
+						...registration,
+						scope: "local",
+					})),
 				);
 		}
 		return ok(found);
@@ -113,7 +131,9 @@ export namespace McpClients {
 		const config = readConfig(path, Bun.TOML.parse);
 		if (!config.ok || config.value === undefined)
 			return config.ok ? ok([]) : config;
-		return ok(serverIn(config.value.mcp_servers, `${path} [mcp_servers]`));
+		return ok(
+			serverIn(config.value.mcp_servers, path, `${path} [mcp_servers]`),
+		);
 	};
 
 	const geminiRegistrations = (where: Where): Result<Registration[]> => {
@@ -121,7 +141,7 @@ export namespace McpClients {
 		const config = readConfig(path, Bun.JSONC.parse);
 		if (!config.ok || config.value === undefined)
 			return config.ok ? ok([]) : config;
-		return ok(serverIn(config.value.mcpServers, `${path} mcpServers`));
+		return ok(serverIn(config.value.mcpServers, path, `${path} mcpServers`));
 	};
 
 	const REGISTRATIONS: Record<Id, (where: Where) => Result<Registration[]>> = {
@@ -164,12 +184,12 @@ export namespace McpClients {
 	const TABLE: Record<Id, Entry> = {
 		claude: {
 			binary: "claude",
-			add: (launch) => [
+			add: (launch, scope = "user") => [
 				"claude",
 				"mcp",
 				"add",
 				"-s",
-				"user",
+				scope,
 				SERVER_NAME,
 				"--",
 				launch.command,
@@ -177,8 +197,16 @@ export namespace McpClients {
 			],
 			find: ["claude", "mcp", "get", SERVER_NAME],
 			isPresent: (probe) => probe.code === 0,
-			// No scope: removes the entry from whichever scope `get` found it in.
+			// A fallback for entries not represented by the launch schema.
 			remove: ["claude", "mcp", "remove", SERVER_NAME],
+			removeScoped: (scope) => [
+				"claude",
+				"mcp",
+				"remove",
+				"-s",
+				scope,
+				SERVER_NAME,
+			],
 			snippet: (launch) => ({
 				title: "Claude Code: .mcp.json at a project root",
 				text: mcpServersJson(launch),

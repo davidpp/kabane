@@ -28,7 +28,7 @@ A first-party data module is registered in `MODULES` and in `packages/worker/src
 core needs from the device reaches it through a port wired in `configureRuntime`, never by core
 reading the environment (`CODING_PRINCIPLE.md`, "Explicit dependencies").
 
-Most of the extension API lands here; check main before editing these files:
+The extension API is implemented here:
 
 - The extension contract includes `mcp` and `doctor`; the `doctor` runner is in
   `packages/extension/doctor.ts`. `src/commands/doctor.ts` runs kabane's own checks
@@ -43,7 +43,10 @@ Most of the extension API lands here; check main before editing these files:
   result is validated before its contributions are accepted. A directory named `loop` overrides
   the bundled fallback. Manifests naming data modules are refused until JCAB-323 adds
   registration and its database gate.
-- JCAB-322 builds the `host` object; JCAB-323 splits `openContext` into the stages
+- `src/host.ts` builds API 1 hosts; `openContext` activates their record after migration
+  with the MCP actor context and lazy, cached scope resolution. Each host also gates calls
+  until its factory returns. Doctor activates records only after it opens the store.
+  JCAB-323 splits `openContext` into the stages
   `ARCHITECTURE.md` lists under "Every process that opens the database registers the same
   modules".
 - JCAB-328 moves scope detection, `Self` and `serveStdio` from core into this package.

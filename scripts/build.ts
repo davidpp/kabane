@@ -22,12 +22,16 @@
 import {
 	cpSync,
 	existsSync,
+	mkdirSync,
+	mkdtempSync,
 	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
+import { generateDtsBundle } from "dts-bundle-generator";
 import { err, ok, type Result } from "../packages/core/result";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -88,7 +92,8 @@ const publishManifest = (): Manifest => {
 		...Object.fromEntries(CARRIED.map((field) => [field, cli[field]])),
 		type: "module",
 		bin: { kabane: "bin/kabane.js" },
-		files: ["bin", "templates"],
+		files: ["bin", "templates", "types"],
+		exports: { "./extension": { types: "./types/extension.d.ts" } },
 		engines: { bun: `>=${bunVersion}` },
 		dependencies: externalDependencies(),
 	};
@@ -182,9 +187,65 @@ export const templateRoots = (): string[] =>
 		...extensionNames().map((name) => join(EXTENSIONS, name, "templates")),
 	].filter((root) => existsSync(root));
 
+/** Inline workspace and zod declarations so type-only consumers need no extra package. */
+const buildExtensionTypes = (into: string): void => {
+	const work = mkdtempSync(join(tmpdir(), "kabane-types-"));
+	const config = join(work, "tsconfig.json");
+	// Workspace symlinks are source, not external declaration libraries.
+	writeFileSync(
+		config,
+		JSON.stringify({
+			extends: join(ROOT, "packages/extension/tsconfig.json"),
+			compilerOptions: {
+				typeRoots: [join(ROOT, "node_modules/@types")],
+				baseUrl: ROOT,
+				paths: {
+					"@cabane/core": ["packages/core/index.ts"],
+					"@cabane/core/scope": ["packages/core/scope/detect.ts"],
+				},
+			},
+		}),
+	);
+	try {
+		const [declaration] = generateDtsBundle(
+			[
+				{
+					filePath: join(ROOT, "packages/extension/types.ts"),
+					libraries: {
+						inlinedLibraries: ["@cabane/core", "zod"],
+						allowedTypesLibraries: [],
+					},
+					output: { exportReferencedTypes: false },
+				},
+			],
+			{ preferredConfigPath: config },
+		);
+		if (!declaration)
+			return fail("extension declaration generation produced no output");
+		mkdirSync(join(into, "types"), { recursive: true });
+		// The bundler promotes type-only namespace re-exports to value exports. Keep the
+		// declarations private and re-export their names explicitly as types.
+		const namespaces: string[] = [];
+		const typesOnly = declaration.replace(
+			/^export declare namespace (\w+)/gm,
+			(_, name: string) => {
+				namespaces.push(name);
+				return `declare namespace ${name}`;
+			},
+		);
+		writeFileSync(
+			join(into, "types/extension.d.ts"),
+			`${typesOnly}\nexport type { ${namespaces.join(", ")} };\n`,
+		);
+	} finally {
+		rmSync(work, { recursive: true, force: true });
+	}
+};
+
 export const build = async (): Promise<void> => {
 	rmSync(DIST, { recursive: true, force: true });
 	await bundle();
+	buildExtensionTypes(DIST);
 	const templates = copyTemplates(templateRoots(), join(DIST, "templates"));
 	if (!templates.ok) fail(templates.error.message);
 	cpSync(join(ROOT, "README.md"), join(DIST, "README.md"));

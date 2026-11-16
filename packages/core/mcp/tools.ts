@@ -194,6 +194,8 @@ Parameters:
 	},
 });
 
+const getInput = { id: z.string().min(1) };
+
 const get = define({
 	name: CORE_TOOL_NAMES.get,
 	kind: "read",
@@ -201,7 +203,7 @@ const get = define({
 
 Parameters:
 - id: ${ID_HINT}`,
-	input: { id: z.string().min(1) },
+	input: getInput,
 	handler: async (args, ctx) => {
 		const task = await Planner.getTask(ctx.basePath, args.id);
 		if (!task.ok) return task;
@@ -210,6 +212,21 @@ Parameters:
 			: err(new Error(`No task found: ${args.id}`));
 	},
 });
+
+const listInput = {
+	state: TaskStateSchema.optional(),
+	kind: ItemKindSchema.optional(),
+	priority: TaskPrioritySchema.optional(),
+	assignee: z.string().optional(),
+	scopeUri: z.string().optional(),
+	tag: z.string().optional(),
+	parentTaskId: z.string().min(1).optional(),
+	includeDeferred: z.boolean().optional(),
+	includeClosed: z.boolean().optional(),
+	limit: z.number().int().positive().optional(),
+	responseFormat: ResponseFormatSchema.optional(),
+	cursor: z.string().max(700).optional(),
+};
 
 const list = define({
 	name: CORE_TOOL_NAMES.list,
@@ -229,20 +246,7 @@ Parameters:
 - limit: Full default 100; concise default 20, maximum 100
 - responseFormat: concise returns a <=16KiB summary page; omitted/full returns raw records
 - cursor: Concise continuation; repeat the same filters. Relevant writes invalidate it`,
-	input: {
-		state: TaskStateSchema.optional(),
-		kind: ItemKindSchema.optional(),
-		priority: TaskPrioritySchema.optional(),
-		assignee: z.string().optional(),
-		scopeUri: z.string().optional(),
-		tag: z.string().optional(),
-		parentTaskId: z.string().min(1).optional(),
-		includeDeferred: z.boolean().optional(),
-		includeClosed: z.boolean().optional(),
-		limit: z.number().int().positive().optional(),
-		responseFormat: ResponseFormatSchema.optional(),
-		cursor: z.string().max(700).optional(),
-	},
+	input: listInput,
 	handler: async (args, ctx) => {
 		let parentTaskId: string | undefined;
 		if (args.parentTaskId !== undefined) {
@@ -358,6 +362,11 @@ Parameters:
 	},
 });
 
+const doneInput = {
+	id: z.string().min(1),
+	responseFormat: ResponseFormatSchema.optional(),
+};
+
 const done = define({
 	name: CORE_TOOL_NAMES.done,
 	kind: "write",
@@ -366,10 +375,7 @@ const done = define({
 Parameters:
 - id: ${ID_HINT}
 - responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
-	input: {
-		id: z.string().min(1),
-		responseFormat: ResponseFormatSchema.optional(),
-	},
+	input: doneInput,
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
@@ -387,6 +393,22 @@ Parameters:
 	},
 });
 
+const editInput = {
+	id: z.string().min(1),
+	title: z.string().min(1).max(500).optional(),
+	description: z.string().optional(),
+	state: TaskStateSchema.optional(),
+	needsReview: z.boolean().optional(),
+	priority: TaskPrioritySchema.optional(),
+	kind: ItemKindSchema.optional(),
+	assignee: z.string().optional(),
+	scopeUri: z.string().optional(),
+	parentTaskId: z.string().optional(),
+	tags: z.array(z.string()).optional(),
+	dueDate: z.string().optional(),
+	responseFormat: ResponseFormatSchema.optional(),
+};
+
 const edit = define({
 	name: CORE_TOOL_NAMES.edit,
 	kind: "write",
@@ -398,21 +420,7 @@ Parameters:
 - assignee 'none' and parentTaskId 'none' clear the field
 - needsReview: Flag or unflag the issue for human review
 - responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
-	input: {
-		id: z.string().min(1),
-		title: z.string().min(1).max(500).optional(),
-		description: z.string().optional(),
-		state: TaskStateSchema.optional(),
-		needsReview: z.boolean().optional(),
-		priority: TaskPrioritySchema.optional(),
-		kind: ItemKindSchema.optional(),
-		assignee: z.string().optional(),
-		scopeUri: z.string().optional(),
-		parentTaskId: z.string().optional(),
-		tags: z.array(z.string()).optional(),
-		dueDate: z.string().optional(),
-		responseFormat: ResponseFormatSchema.optional(),
-	},
+	input: editInput,
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
@@ -480,6 +488,26 @@ Parameters:
 	},
 });
 
+const commentInput = {
+	id: z.string().min(1),
+	body: z
+		.string()
+		.min(1)
+		.optional()
+		.describe("Markdown comment (recommended)."),
+	text: z
+		.string()
+		.min(1)
+		.optional()
+		.describe("Alias for body; must match exactly if combined."),
+	content: z
+		.string()
+		.min(1)
+		.optional()
+		.describe("Legacy alias for body; must match exactly if combined."),
+	kind: z.string().optional().describe("Entry kind; omitted, a plain comment."),
+};
+
 const comment = define({
 	name: CORE_TOOL_NAMES.comment,
 	kind: "write",
@@ -489,28 +517,7 @@ Parameters:
 - id: ${ID_HINT}
 - body: Markdown (recommended); text and legacy content are aliases. Supply at least one; multiple must be exactly equal
 - kind: Optional; lowercase "name" or "name.key" (review, handoff.summary). Default comment`,
-	input: {
-		id: z.string().min(1),
-		body: z
-			.string()
-			.min(1)
-			.optional()
-			.describe("Markdown comment (recommended)."),
-		text: z
-			.string()
-			.min(1)
-			.optional()
-			.describe("Alias for body; must match exactly if combined."),
-		content: z
-			.string()
-			.min(1)
-			.optional()
-			.describe("Legacy alias for body; must match exactly if combined."),
-		kind: z
-			.string()
-			.optional()
-			.describe("Entry kind; omitted, a plain comment."),
-	},
+	input: commentInput,
 	handler: async (args, ctx) => {
 		const content = args.body ?? args.text ?? args.content;
 		if (content === undefined)
@@ -541,6 +548,23 @@ Parameters:
 	},
 });
 
+const workLogInput = {
+	id: z.string().min(1),
+	refs: z
+		.array(z.object({ uri: z.string().min(1), label: z.string().optional() }))
+		.min(1)
+		.optional()
+		.describe("Work references {uri, label?}; supply refs or commit."),
+	commit: z
+		.string()
+		.min(1)
+		.optional()
+		.describe(
+			"Bare SHA or revision; adds commit:<value> unless already in refs.",
+		),
+	note: z.string().optional(),
+};
+
 const workLog = define({
 	name: CORE_TOOL_NAMES.workLog,
 	kind: "write",
@@ -553,22 +577,7 @@ Parameters:
 - refs: Optional nonempty array of { uri, label? }; supply refs or commit
 - commit: Optional bare SHA or revision, shorthand for a commit: URI; appended unless that exact URI is already in refs
 - note: Optional summary`,
-	input: {
-		id: z.string().min(1),
-		refs: z
-			.array(z.object({ uri: z.string().min(1), label: z.string().optional() }))
-			.min(1)
-			.optional()
-			.describe("Work references {uri, label?}; supply refs or commit."),
-		commit: z
-			.string()
-			.min(1)
-			.optional()
-			.describe(
-				"Bare SHA or revision; adds commit:<value> unless already in refs.",
-			),
-		note: z.string().optional(),
-	},
+	input: workLogInput,
 	handler: async (args, ctx) => {
 		if (args.refs === undefined && args.commit === undefined)
 			return err(
@@ -626,6 +635,8 @@ Parameters:
 	},
 });
 
+const linkListInput = { id: z.string().min(1) };
+
 const linkList = define({
 	name: CORE_TOOL_NAMES.linkList,
 	kind: "read",
@@ -633,13 +644,15 @@ const linkList = define({
 
 Parameters:
 - id: ${ID_HINT}`,
-	input: { id: z.string().min(1) },
+	input: linkListInput,
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
 		return Planner.getLinksForTask(ctx.basePath, id.value);
 	},
 });
+
+const upstreamListInput = { id: z.string().min(1) };
 
 const upstreamList = define({
 	name: CORE_TOOL_NAMES.upstreamList,
@@ -648,13 +661,18 @@ const upstreamList = define({
 
 Parameters:
 - id: ${ID_HINT}`,
-	input: { id: z.string().min(1) },
+	input: upstreamListInput,
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
 		return Planner.getUpstreamLinksForTask(ctx.basePath, id.value);
 	},
 });
+
+const logListInput = {
+	id: z.string().min(1),
+	limit: z.number().int().min(1).optional(),
+};
 
 const logList = define({
 	name: CORE_TOOL_NAMES.logList,
@@ -664,7 +682,7 @@ const logList = define({
 Parameters:
 - id: ${ID_HINT}
 - limit: Optional; only the newest N entries, still oldest first`,
-	input: { id: z.string().min(1), limit: z.number().int().min(1).optional() },
+	input: logListInput,
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
@@ -705,6 +723,15 @@ Parameters:
 	},
 });
 
+const contextInput = {
+	id: z.string().min(1),
+	deref: z.boolean().optional(),
+	includeSubtasks: z.boolean().optional(),
+	responseFormat: ResponseFormatSchema.optional(),
+	sections: ContextPageOptionsSchema.shape.sections.optional(),
+	cursor: ContextPageOptionsSchema.shape.cursor,
+};
+
 const context = define({
 	name: CORE_TOOL_NAMES.context,
 	kind: "read",
@@ -717,14 +744,7 @@ Parameters:
 - responseFormat: concise or full; omission preserves full
 - sections: Concise only; subset of metadata, description, upstream, position, context, priorWork, discussion and registered module section names (<module>.<key>, and <kind>.latest for a kind a module lifts out of the discussion); default all. Canonical order, duplicates ignored; omitted sections explicitly named.
 - cursor: Concise only; pass nextCursor with the same id/options. Concatenate markdown chunks by offset to recover exact selected text. Relevant content changes invalidate continuation; restart without cursor.`,
-	input: {
-		id: z.string().min(1),
-		deref: z.boolean().optional(),
-		includeSubtasks: z.boolean().optional(),
-		responseFormat: ResponseFormatSchema.optional(),
-		sections: ContextPageOptionsSchema.shape.sections.optional(),
-		cursor: ContextPageOptionsSchema.shape.cursor,
-	},
+	input: contextInput,
 	handler: async (args, ctx) => {
 		if (args.responseFormat === "concise")
 			return Planner.getContextPage(ctx.basePath, args.id, {
@@ -745,6 +765,15 @@ Parameters:
 	},
 });
 
+const upstreamLinkInput = {
+	id: z.string().min(1),
+	provider: z.string().trim().min(1),
+	externalId: z.string().trim().min(1),
+	identifier: z.string().trim().min(1).optional(),
+	url: z.string().url(),
+	title: z.string().trim().min(1),
+};
+
 const upstreamLink = define({
 	name: CORE_TOOL_NAMES.upstreamLink,
 	kind: "write",
@@ -757,14 +786,7 @@ Parameters:
 - identifier: The human-readable key (ENG-123, owner/repo#12)
 - url: The https link a human opens
 - title: The issue's title, as it reads today`,
-	input: {
-		id: z.string().min(1),
-		provider: z.string().trim().min(1),
-		externalId: z.string().trim().min(1),
-		identifier: z.string().trim().min(1).optional(),
-		url: z.string().url(),
-		title: z.string().trim().min(1),
-	},
+	input: upstreamLinkInput,
 	handler: async (args, ctx) => {
 		const id = await resolveId(ctx, args.id);
 		if (!id.ok) return id;
@@ -830,6 +852,21 @@ const scopeList = define({
 // ============================================================
 // Public surface
 // ============================================================
+
+/** Input shapes retained before define widens registered tools. */
+export type CoreToolInputShapes = {
+	get: typeof getInput;
+	list: typeof listInput;
+	edit: typeof editInput;
+	done: typeof doneInput;
+	comment: typeof commentInput;
+	workLog: typeof workLogInput;
+	context: typeof contextInput;
+	upstreamLink: typeof upstreamLinkInput;
+	linkList: typeof linkListInput;
+	upstreamList: typeof upstreamListInput;
+	logList: typeof logListInput;
+};
 
 /** Every tool, in the order an agent should discover them. */
 export const KABANE_TOOLS: readonly ToolDef[] = [

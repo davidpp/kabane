@@ -160,6 +160,20 @@ describe("McpClients.registrations", () => {
 			});
 		}));
 
+	it("does not invent a launch by discarding invalid args", () =>
+		withHome((home) => {
+			writeFileSync(
+				join(home, ".claude.json"),
+				JSON.stringify({
+					mcpServers: { kabane: { command: "kabane", args: ["mcp", 42] } },
+				}),
+			);
+			expect(McpClients.registrations("claude", { home, env: {} })).toEqual({
+				ok: true,
+				value: [],
+			});
+		}));
+
 	it("names the file it could not parse", () =>
 		withHome((home) => {
 			mkdirSync(join(home, ".codex"));
