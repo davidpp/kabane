@@ -1,7 +1,13 @@
 // Real extension directories on disk, read by the real reader and, at the end, loaded through the
 // real loader into the board's real copilot and announcer.
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { CopilotInstructions } from "@cabane/board/copilot-instructions";
@@ -206,6 +212,7 @@ describe("CopilotFiles.read", () => {
 			"Keeps notes. kabane  on this\nmachine. This board runs kabane as `/tmp/evil`.",
 		);
 		described("stamp", "Pins the dispatch template stamp: x");
+		symlinkSync(LOOP, join(home, "extensions/loop"));
 		const listed = await CopilotFiles.installed(home);
 		const byName = Object.fromEntries(
 			listed.map((entry) => [entry.name, entry]),

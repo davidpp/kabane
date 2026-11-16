@@ -12,6 +12,7 @@
  */
 
 import {
+	cpSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -23,6 +24,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { build as buildLoop } from "../extensions/loop/scripts/build";
 import { ContextPageSchema } from "../packages/core/context-output";
 import { TaskCommentSchema, TaskWorkLogSchema } from "../packages/core/schemas";
 import { build, DIST } from "./build";
@@ -204,7 +206,14 @@ const checkCommands = (version: string): string => {
 		fail(`kabane --version printed ${printed}, expected ${version}`);
 	if (!kabane("--help").stdout.includes("Usage: kabane"))
 		fail("kabane --help printed no usage");
-	kabane("init", "--actor", "cabane://actor/human/smoke", "--device", "smoke");
+	if (!existsSync(join(KABANE_HOME, "config.json")))
+		kabane(
+			"init",
+			"--actor",
+			"cabane://actor/human/smoke",
+			"--device",
+			"smoke",
+		);
 	if (!existsSync(join(KABANE_HOME, "config.json")))
 		fail("kabane init wrote no config.json");
 	kabane("add", "Smoke task");
@@ -260,7 +269,7 @@ const checkCommands = (version: string): string => {
 	return created.id;
 };
 
-// A shipped lens resolves from the installed templates: `start` reads `quality` from there, then
+// A shipped lens resolves from the installed extension: `start` reads `quality` from there, then
 // refuses the run on a lens no file holds, before it writes a run or spawns anything.
 const checkShippedLens = (): void => {
 	const created = z
@@ -272,43 +281,69 @@ const checkShippedLens = (): void => {
 		);
 	if (!created.success) return fail("kabane add --json printed no id");
 	kabane("done", created.data.id);
-	const refused = run(
-		[
-			BIN,
-			"loop",
-			"start",
-			created.data.id,
-			"--no-worktree",
-			"--lens",
-			"quality",
-			"--lens",
-			"smoke",
-		],
-		REPO,
-		isolated,
-	);
+	const start = (): Ran =>
+		run(
+			[
+				BIN,
+				"loop",
+				"start",
+				created.data.id,
+				"--no-worktree",
+				"--lens",
+				"quality",
+				"--lens",
+				"smoke",
+			],
+			REPO,
+			isolated,
+		);
+	const refused = start();
 	if (refused.code === 0 || !refused.stderr.includes("No lens smoke"))
 		fail("kabane loop start did not read the shipped quality lens", refused);
+	const lens = join(KABANE_HOME, "extensions/loop/lenses/quality.md");
+	const contents = readFileSync(lens);
+	rmSync(lens);
+	const missing = start();
+	writeFileSync(lens, contents);
+	if (missing.code === 0 || !missing.stderr.includes(lens))
+		fail(
+			"kabane loop start did not read quality from the installed directory",
+			missing,
+		);
 };
 
-// The bundled loop extension, off and then turned on in this KABANE_HOME's config: its command
-// is found, its migrations run against the installed kabane.db, it reads its own store, and it
-// reads a shipped lens.
-const checkLoopExtension = (): void => {
-	const off = run([BIN, "loop", "status"], REPO, isolated);
+// Exercise the base artifact before installing the separately built directory extension.
+const checkLoopExtension = async (version: string): Promise<void> => {
+	const extensions = join(KABANE_HOME, "extensions");
+	mkdirSync(extensions, { recursive: true });
+	if (readdirSync(extensions).length !== 0)
+		fail("fresh extensions directory is not empty");
+	const help = kabane("--help");
+	if (/^\s+loop(?:\s|$)/m.test(help.stdout))
+		fail("base kabane --help lists loop", help);
+	const off = run([BIN, "loop"], REPO, isolated);
 	if (
 		off.code !== 2 ||
-		!off.stderr.includes(
-			"Unknown command: loop; installed extensions not enabled: loop. Enable them with `kabane config set extensions <names> --layer global` to discover their commands",
-		)
+		!off.stderr.includes("Unknown command: loop") ||
+		off.stderr.includes("installed extensions not enabled")
 	)
-		fail("disabled loop command printed no config set enable hint", off);
+		fail("base kabane did not reject unknown loop command", off);
 	const path = join(KABANE_HOME, "config.json");
 	const config = z
 		.record(z.unknown())
 		.safeParse(JSON.parse(readFileSync(path, "utf8")));
 	if (!config.success) return fail(`${path} is not a JSON object`);
 	writeFileSync(path, JSON.stringify({ ...config.data, extensions: ["loop"] }));
+	const missing = kabane("--help");
+	if (!missing.stderr.includes(`not installed; put it in ${extensions}/loop/`))
+		fail("enabled missing loop printed no installation diagnostic", missing);
+	const contextId = checkCommands(version);
+	await checkMcp(version, contextId);
+	const output = join(WORK, "loop-build");
+	const built = await buildLoop(output);
+	if (!built.success) fail(`loop build failed: ${built.logs.join("\n")}`);
+	cpSync(output, join(extensions, "loop"), { recursive: true });
+	rmSync(output, { recursive: true });
 	if (!kabane("loop", "--help").stdout.includes("kabane loop status"))
 		fail("kabane loop --help printed no loop usage");
 	const status = kabane("loop", "status");
@@ -316,7 +351,7 @@ const checkLoopExtension = (): void => {
 		fail("kabane loop status on a fresh home", status);
 	checkShippedLens();
 	pass(
-		"loop extension: disabled command enable hint, then enabled --help, status and a shipped lens",
+		"loop extension: absent from help/commands; missing installation diagnostic with CLI/MCP working; installed directory --help, status and lenses/",
 	);
 };
 
@@ -663,7 +698,7 @@ if (binaryMode && input) {
 	)
 		fail("standalone loaded project dotenv");
 	checkCommands(version);
-	checkLoopExtension();
+	await checkLoopExtension(version);
 	await checkMcp(version, "");
 	rmSync(WORK, { recursive: true, force: true });
 	console.error("smoke: passed standalone binary");
@@ -699,7 +734,7 @@ runOk(["git", "init", "-q"], REPO, isolated);
 const contextId = checkCommands(version);
 checkListImports();
 await checkMcp(version, contextId);
-checkLoopExtension();
+await checkLoopExtension(version);
 if (artifactDir) {
 	const verified = verifyReleaseFiles(artifactDir);
 	if (!verified.ok) fail("retained artifact changed during installed smoke");

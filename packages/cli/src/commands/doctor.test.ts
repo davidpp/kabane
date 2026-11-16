@@ -41,6 +41,11 @@ const setup = () => {
 	const home = join(folder, "home");
 	mkdirSync(join(cwd, ".kabane"), { recursive: true });
 	mkdirSync(home);
+	mkdirSync(join(home, "extensions"));
+	symlinkSync(
+		join(import.meta.dir, "../../../../extensions/loop"),
+		join(home, "extensions/loop"),
+	);
 	expect(Bun.spawnSync(["git", "init", "-q", cwd]).exitCode).toBe(0);
 	writeFileSync(join(cwd, ".kabane/scope"), "pinned\n");
 	// A project kabane set up with this version, so its project checks find nothing.
@@ -67,8 +72,16 @@ const setup = () => {
 		expect(stderr).toBe("");
 		return stdout;
 	};
-	const config = (value: unknown) =>
-		writeFileSync(join(home, "config.json"), JSON.stringify(value));
+	const config = (value: Record<string, unknown>) =>
+		writeFileSync(
+			join(home, "config.json"),
+			JSON.stringify({
+				actor: "test",
+				deviceId: "test",
+				extensions: ["loop"],
+				...value,
+			}),
+		);
 	return {
 		cwd,
 		home,
@@ -110,10 +123,12 @@ test("extension doctor counts open tier-tagged issues through the CLI store", ()
 	).toBe(false);
 });
 
-test("reports unknown shared keys even with the extension disabled", () => {
-	const { cwd, cli } = setup();
+test("inspects shared keys only after enabling the directory extension", () => {
+	const { cwd, cli, config } = setup();
 	const path = join(cwd, ".kabane/loop.json");
 	writeFileSync(path, JSON.stringify({ mystery: 1 }));
+	expect(JSON.parse(cli("--json")).findings).toEqual([]);
+	config({});
 	const report = JSON.parse(cli("--json"));
 	expect(report.findings).toHaveLength(1);
 	expect(report.findings[0]).toMatchObject({
@@ -403,3 +418,46 @@ test("legacy setting drift reports the file path separately from its key", () =>
 	expect(finding.path).toBe(join(home, "config.json"));
 	expect(finding.summary).toContain("scopes.pinned.loop");
 });
+
+for (const known of ["enabled", "directory", "neither"] as const) {
+	test(`doctor preserves unloaded extension settings named by ${known}`, () => {
+		const { home, cwd, config, spawn } = setup();
+		if (known !== "directory") rmSync(join(home, "extensions/loop"));
+		config({
+			extensions: known === "enabled" ? ["loop"] : [],
+			loop: { stallAfter: 7 },
+		});
+		const unavailable = Bun.spawnSync(
+			[
+				process.execPath,
+				resolve(import.meta.dir, "../../index.ts"),
+				"config",
+				"get",
+				"loop.stallAfter",
+			],
+			{ cwd, env: { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" } },
+		);
+		expect(unavailable.exitCode).toBe(1);
+		expect(unavailable.stderr.toString()).toContain("Unknown config key");
+		const before = readFileSync(join(home, "config.json"), "utf8");
+		const report = JSON.parse(spawn("doctor", "--json").stdout);
+		const unknown = report.findings.filter((finding: { id: string }) =>
+			finding.id.startsWith("unknown-setting-global-device-loop-"),
+		);
+		expect(unknown).toHaveLength(known === "neither" ? 1 : 0);
+		if (known === "enabled")
+			expect(
+				report.findings.some((finding: { id: string }) =>
+					finding.id.startsWith("extension-refused"),
+				),
+			).toBe(true);
+		expect(readFileSync(join(home, "config.json"), "utf8")).toBe(before);
+		if (known !== "directory")
+			symlinkSync(
+				join(import.meta.dir, "../../../../extensions/loop"),
+				join(home, "extensions/loop"),
+			);
+		spawn("config", "set", "extensions", "loop", "--layer", "global");
+		expect(spawn("config", "get", "loop.stallAfter").stdout).toBe("7");
+	});
+}

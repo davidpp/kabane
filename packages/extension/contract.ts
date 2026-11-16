@@ -1,7 +1,7 @@
 /**
- * The extension contract: a plain object the CLI keeps in its list of official
- * extensions. It lives outside the CLI because the CLI imports every extension,
- * so an extension importing the CLI would be a cycle.
+ * The extension contract: a plain object returned by a directory extension's factory.
+ * It lives outside the CLI so hosts and extensions share the contract without
+ * extensions depending on a host implementation.
  */
 
 import type { ToolDef } from "@cabane/core";

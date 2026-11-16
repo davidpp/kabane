@@ -1,8 +1,7 @@
 // Verifier lenses: a prompt file each, run as their own session once the plan is done and the gates
 // are green. A lens is `references/lenses/<name>.md` in the project's dispatch skill, the same file
 // the skill's own close review reads, so a lens reaches an agent whether the loop drives the
-// session or a person dispatches from a plain one. `functional` and `quality` ship in kabane's
-// dispatch template, so a project with no skill still has them. The skill lives under
+// session or a person dispatches from a plain one. `functional` and `quality` ship with the loop, so a project with no skill still has them. The skill lives under
 // `.agents/skills/dispatch/`; one still at `.claude/skills/dispatch/`, where kabane wrote it before,
 // is read after it. `.kabane/loop/lenses/<name>.md`, where 0.3.0 and 1.0.0-beta.0 kept a project's
 // lenses, is read after both, so a lens written there keeps reviewing as it did. Once the fixer
@@ -11,7 +10,7 @@
 // was.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CopilotInstructions } from "@cabane/acp";
+import { fileURLToPath } from "node:url";
 import { type Result, type Task } from "@cabane/core";
 import { z } from "zod";
 import { LoopConfig } from "./config";
@@ -21,11 +20,7 @@ import { err, ok, trySync } from "./result";
 import type { RunStore } from "./store";
 
 export namespace Lenses {
-	const SHIPPED_DIR = join(
-		CopilotInstructions.DISPATCH_TEMPLATE,
-		"references",
-		"lenses",
-	);
+	const SHIPPED_DIR = fileURLToPath(new URL("../lenses/", import.meta.url));
 	const SHIPPED = ["functional", "quality"] as const;
 
 	/** Where a project keeps its own lenses: its dispatch skill's. */

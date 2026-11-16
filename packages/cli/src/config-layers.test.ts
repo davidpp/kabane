@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import {
 	mkdirSync,
+	symlinkSync,
 	mkdtempSync,
 	realpathSync,
 	rmSync,
@@ -10,11 +11,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { ProjectDirs } from "@cabane/core/scope";
-import { LoopConfig } from "@cabane/loop";
 import { configPath } from "./config";
 import { ConfigLayers } from "./config-layers";
 import { projectAt, settingsPort } from "./context";
-import { hostFor } from "./host";
+import { Extensions } from "./extensions";
 
 // The port an extension resolves its settings through, as the CLI wires it: config.json, a real
 // checkout's `.kabane/loop.json`, the legacy scopes block for the scope it detects, and its local
@@ -27,7 +27,15 @@ beforeEach(() => {
 	root = mkdtempSync(join(tmpdir(), "kabane-layers-"));
 	home = join(root, "home");
 	repo = join(root, "repo");
-	mkdirSync(home);
+	mkdirSync(join(home, "extensions"), { recursive: true });
+	symlinkSync(
+		join(import.meta.dir, "../../../extensions/loop"),
+		join(home, "extensions/loop"),
+	);
+	writeFileSync(
+		configPath(home),
+		JSON.stringify({ actor: "test", deviceId: "test", extensions: ["loop"] }),
+	);
 	mkdirSync(repo);
 	GitFixture.run(repo, ["init", "-q"]);
 	GitFixture.run(repo, ["commit", "-q", "--allow-empty", "-m", "first"]);
@@ -35,15 +43,19 @@ beforeEach(() => {
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-const loopAt = (projectDir: string, overrides?: Record<string, unknown>) =>
-	settingsPort(home)(
-		LoopConfig.NAMESPACE,
-		LoopConfig.schemas(hostFor(home, "loop").host.z).SettingsSchema,
-		{
-			projectDir,
-			...(overrides ? { overrides } : {}),
-		},
-	);
+const loopAt = async (
+	projectDir: string,
+	overrides?: Record<string, unknown>,
+) => {
+	const namespaces = await Extensions.namespaces(home);
+	if (!namespaces.ok) throw namespaces.error;
+	const loop = namespaces.value.find((namespace) => namespace.name === "loop");
+	if (!loop) throw new Error("the real loop settings schema was not loaded");
+	return settingsPort(home)("loop", loop.schema, {
+		projectDir,
+		...(overrides ? { overrides } : {}),
+	});
+};
 
 it("layers global, shared, the legacy scopes block, the local file and the caller", async () => {
 	const scope = await projectAt(repo, home);
@@ -54,6 +66,7 @@ it("layers global, shared, the legacy scopes block, the local file and the calle
 		JSON.stringify({
 			actor: "cabane://actor/human/tester",
 			deviceId: "test",
+			extensions: ["loop"],
 			loop: { stallAfter: 4, gates: { lint: "user lint" } },
 			scopes: {
 				[scopeId]: {
@@ -117,6 +130,7 @@ it("resolves before kabane init, and names the layer an error is in", async () =
 		JSON.stringify({
 			actor: "cabane://actor/human/tester",
 			deviceId: "test",
+			extensions: ["loop"],
 			scopes: [],
 		}),
 	);
