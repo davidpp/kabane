@@ -92,6 +92,7 @@ const setup = () => {
 	return {
 		cwd,
 		home,
+		env,
 		cli: (...args: string[]) => run("doctor", ...args),
 		run,
 		invoke,
@@ -184,6 +185,8 @@ test("the loop's legacy-lens finding names the dispatch extension and a manual r
 		".agents/skills/dispatch/references/lenses",
 	);
 	expect(finding.summary).toContain("/setup-dispatch");
+	expect(finding.summary).toContain("by hand");
+	expect(finding.summary).toContain("dispatch extension");
 
 	mkdirSync(join(cwd, ".agents/skills/dispatch/references/lenses"), {
 		recursive: true,
@@ -523,7 +526,7 @@ test("legacy setting drift reports the file path separately from its key", async
 
 for (const known of ["enabled", "directory", "neither"] as const) {
 	test(`doctor preserves unloaded extension settings named by ${known}`, async () => {
-		const { home, cwd, config, invoke } = setup();
+		const { home, cwd, env, config, invoke } = setup();
 		if (known !== "directory") rmSync(join(home, "extensions/loop"));
 		config({
 			extensions: known === "enabled" ? ["loop"] : [],
@@ -531,7 +534,7 @@ for (const known of ["enabled", "directory", "neither"] as const) {
 		});
 		const unavailable = await runCommand(
 			["config", "get", "loop.stallAfter"],
-			{ KABANE_HOME: home, KABANE_HARNESSES: "" },
+			env,
 			cwd,
 		);
 		expect(unavailable.exitCode).toBe(1);
@@ -549,6 +552,8 @@ for (const known of ["enabled", "directory", "neither"] as const) {
 				severity: "mention",
 			});
 			expect(unknown[0].summary).toContain("loop in global");
+			expect(unknown[0].summary).toContain("kept for when it is enabled");
+			expect(unknown[0].summary).not.toContain("remove");
 		}
 		if (known === "enabled")
 			expect(
