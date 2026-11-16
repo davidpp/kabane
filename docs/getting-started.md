@@ -18,15 +18,7 @@ why some internal names still use it.
 
 ## Install
 
-**Install a standalone binary.** Download the matching `kabane-<os>-<arch>.tar.gz` and
-`SHA256SUMS` from one [GitHub release](https://github.com/davidpp/kabane/releases), verify
-and extract it following [the README](../README.md#install), and add the extracted directory
-to PATH. macOS arm64/x64 and Linux arm64/x64 are supported; Linux x64 uses Bun's baseline
-CPU target. Keep the extracted directory whole: `kabane update` knows a release by the
-`templates/` directory beside the executable. This option does not require the Bun
-prerequisite above; git and your chosen harness's runtime requirements still apply.
-
-Or install the npm package with Bun:
+Install the npm package with Bun:
 
 ```bash
 bun add -g kabane
@@ -40,6 +32,15 @@ Kabane itself from source, use the [clone and `bun link` path](../README.md#inst
 
 `bun add -g kabane@beta` installs the current beta, which updates along its own channel
 ([beta installs](#beta-installs)).
+
+Standalone binaries arrive with the first release that ships binary assets; until then,
+install with Bun as above. From such a release, download its `kabane-<os>-<arch>.tar.gz` and
+`SHA256SUMS` from that [GitHub release](https://github.com/davidpp/kabane/releases), verify and
+extract it following [the README](../README.md#install), and add the extracted directory to
+PATH. macOS arm64/x64 and Linux arm64/x64 are planned; Linux x64 uses Bun's baseline CPU
+target. Keep the extracted directory whole: `kabane update` knows a release by the
+`templates/` directory beside the executable. A binary does not need the Bun prerequisite
+above; git and your chosen harness's runtime requirements still apply.
 
 ## Run `kabane`
 
@@ -408,6 +409,8 @@ for an existing entry whose launch differs from this installation. It previously
 Use `--force` or the named doctor repair only when you want to re-point it.
 
 ### Standalone binaries
+
+This applies once a release ships binaries ([install](#install)).
 
 ```bash
 kabane update --check        # metadata only: the candidate from npm's dist-tags
