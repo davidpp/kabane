@@ -206,7 +206,11 @@ describe.concurrent("config through the real CLI", () => {
 				].sort(),
 			);
 			for (const row of rows) expect(row.description.length).toBeGreaterThan(0);
-			expect((await run("config")).out).toContain("copilot.model = default");
+			const text = (await run("config")).out;
+			expect(text).toContain("copilot.model = default");
+			expect(text).toContain(
+				'extensions = ["loop"] (global) — Enabled extension names from $KABANE_HOME/extensions; absent enables none.',
+			);
 			expect(await get("actor")).toBe(initial.actor);
 			expect(await get("sync.enabled")).toBe(false);
 			expect(await get("sync.batchBytes")).toBe(262144);
@@ -216,6 +220,30 @@ describe.concurrent("config through the real CLI", () => {
 			});
 			expect(await get("timezone")).toBeNull();
 			expect((await run("config", "get", "timezone")).out).toBe("default");
+		}),
+		30_000,
+	);
+
+	it(
+		"lists a setting with no description without a trailing separator",
+		withHome(async ({ home, write, run }) => {
+			write({ ...initial, extensions: ["bare"] });
+			const dir = join(home, "extensions/bare");
+			mkdirSync(dir);
+			writeFileSync(
+				join(dir, "package.json"),
+				JSON.stringify({ kabane: { extension: "./index.ts", api: 1 } }),
+			);
+			writeFileSync(
+				join(dir, "index.ts"),
+				`export default (host) => ({
+					name: "bare",
+					settings: host.z.object({ word: host.z.string().default("hello") }),
+				});`,
+			);
+			const listed = await run("config", "list");
+			expect(listed.code).toBe(0);
+			expect(listed.out.split("\n")).toContain("bare.word = default");
 		}),
 		30_000,
 	);
