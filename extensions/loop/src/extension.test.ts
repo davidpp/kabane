@@ -512,4 +512,57 @@ describe("kabane loop advise", () => {
 			"Error: Unknown loop start flag: --work-tree\n",
 		);
 	});
+
+	describe("loop.harnesses", () => {
+		// `advise` on a parent with one subtask, under these settings layers, lowest first.
+		const adviseUnder = async (
+			...layers: { layer: "global" | "local"; value: unknown }[]
+		) => {
+			const parent = await Planner.addTask(home, {
+				title: "parent",
+				kind: "issue",
+				state: "next",
+			});
+			if (!parent.ok) throw parent.error;
+			const child = await Planner.addTask(home, {
+				title: "child",
+				kind: "issue",
+				state: "next",
+				parentTaskId: parent.value.id,
+			});
+			if (!child.ok) throw child.error;
+			const command = loop.commands?.find((c) => c.name === "loop");
+			if (!command) throw new Error("no loop command");
+			return command.run(
+				parseArgs(["advise", parent.value.shortId ?? parent.value.id]),
+				{
+					home,
+					store: home,
+					cwd: home,
+					actor: "cabane://actor/human/test",
+					harnessMode: "auto",
+					settings: Settings.port(async () =>
+						ok(layers.map((l) => ({ ...l, label: l.layer }))),
+					),
+				},
+			);
+		};
+
+		it("refuses args with no command once the layers merge, and takes a command from another layer", async () => {
+			const args = {
+				layer: "global" as const,
+				value: { harnesses: { claude: { args: ["--verbose"] } } },
+			};
+			const refused = await adviseUnder(args);
+			expect(refused.exitCode).not.toBe(0);
+			expect(refused.text).toContain(
+				"loop.harnesses.claude.args is set with no loop.harnesses.claude.command",
+			);
+			const taken = await adviseUnder(args, {
+				layer: "local",
+				value: { harnesses: { claude: { command: "/bin/echo" } } },
+			});
+			expect(taken.exitCode).toBe(0);
+		});
+	});
 });

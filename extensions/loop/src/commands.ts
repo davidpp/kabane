@@ -351,6 +351,21 @@ export namespace Loop {
 		);
 	};
 
+	/**
+	 * Refuses `loop.harnesses` args with no command once the layers have merged: `Harnesses.resolve`
+	 * would put them after the adapter's `npx`, with no adapter. Each layer alone may hold either.
+	 */
+	const launchable = (config: LoopConfig.Config): Result<void> => {
+		for (const [id, launch] of Object.entries(config.harnesses))
+			if (launch.args !== undefined && launch.command === undefined)
+				return err(
+					new Error(
+						`loop.harnesses.${id}.args is set with no loop.harnesses.${id}.command, so ${id} would run npx with those arguments and no adapter: set the command beside them, or unset them, in the layer \`kabane config get loop.harnesses --layers\` names`,
+					),
+				);
+		return ok(undefined);
+	};
+
 	/** What a run would start with: the plan as it stands, the checkout, the resolved config. */
 	export type Prepared = {
 		plan: LoopPlan.Plan;
@@ -389,6 +404,8 @@ export namespace Loop {
 			},
 		);
 		if (!config.ok) return config;
+		const launches = launchable(config.value);
+		if (!launches.ok) return launches;
 		// Whether there is anything to do depends on the config: checks can run on done work.
 		const checked = await checkParent(
 			deps,
