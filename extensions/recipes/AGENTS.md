@@ -43,9 +43,10 @@ until `start` returns, so a start that fails still leaves an ended run. A start 
 writes leaves a `running` row with no session (JCAB-467:1): reconcile asks the runtime's optional
 `find(run)` for it (hc: `hc ls --all --label kabane.run=<id>`, the terminal whose name ends with
 the id's last six), records the session it finds, and ends the run when there is none.
-`Runs.endStarting` ends it only while its session is still `STARTING`, and `Runs.setSession` sets
-the run `running` again, so a listing that runs during a start that is still on its way never
-ends it for good. `read`, `send`, `attach` and `stop` reconcile such a run first, and refuse it
+`Runs.endStarting` ends it only while its session is still `STARTING`, and `Runs.setSession` on a
+run still `STARTING` sets it `running` again, so a listing that runs during a start that is still
+on its way never ends it for good; on a run whose session a reconcile already recovered it keeps
+the state that reconcile read. `read`, `send`, `attach` and `stop` reconcile such a run first, and refuse it
 before any terminal call while its session is still `STARTING`; a runtime without `find` leaves
 it as recorded. The hc adapter also refuses an empty or blank terminal in every method before it spawns hc,
 because hc reads `""` as no terminal given and picks one from the caller's scope. `kabane runs` leaves a run

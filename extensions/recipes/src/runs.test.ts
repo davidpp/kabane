@@ -129,6 +129,14 @@ it("ends a run still starting and nothing else, and a session written after brin
 		"update",
 		"update",
 	]);
+
+	// A reconcile recovered the session and read the run ended first: the start's own write of
+	// the same session keeps that state.
+	value(await Runs.setState(host, starting.id, "ended", "tester"));
+	const stopped = (await byId()).get(starting.id);
+	value(await Runs.setSession(host, starting.id, "research-cg0aaa", "tester"));
+	expect((await byId()).get(starting.id)).toEqual(stopped);
+	expect(stopped?.state).toBe("ended");
 });
 
 it("lists a scope's runs newest first, and no other scope's", async () => {

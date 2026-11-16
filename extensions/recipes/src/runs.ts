@@ -191,9 +191,10 @@ export namespace Runs {
 	export const STARTING = "";
 
 	/**
-	 * The handle the runtime returned for a run recorded as `STARTING`. The run is `running` again:
-	 * a listing may have ended it while its start was still on its way (`endStarting`), and the
-	 * next reconcile reads its real state.
+	 * The handle the runtime returned for a run recorded as `STARTING`. A run whose session is
+	 * still `STARTING` is `running` again: a listing may have ended it while its start was still
+	 * on its way (`endStarting`), and the next reconcile reads its real state. A run whose session
+	 * a reconcile already recovered keeps the state it read.
 	 */
 	export const setSession = (
 		host: Store,
@@ -203,9 +204,11 @@ export namespace Runs {
 	): Promise<Result<void>> =>
 		host.store.write((tx) => {
 			tx.db.run(
-				`UPDATE ${TABLE} SET session = ?, state = 'running', ended_at = NULL, updated_at = ?,
+				`UPDATE ${TABLE} SET session = ?,
+				   state = CASE WHEN session = ? THEN 'running' ELSE state END,
+				   ended_at = CASE WHEN session = ? THEN NULL ELSE ended_at END, updated_at = ?,
 				   updated_by = ?, version = version + 1 WHERE id = ?`,
-				[session, new Date().toISOString(), actor, id],
+				[session, STARTING, STARTING, new Date().toISOString(), actor, id],
 			);
 			return tx.afterWrite(TABLE, "update", id);
 		});
