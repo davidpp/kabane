@@ -154,7 +154,9 @@ the fixer and the rechecks.
 
 `command` and `args` resolve key by key through the layers, so a command in your local
 layer can sit over arguments in the global one. Once they merge, `args` with no `command`
-is refused: it would run the adapter's `npx` with your arguments and no adapter.
+is refused: it would run the adapter's `npx` with your arguments and no adapter. So is a
+command that is not there: a bare name must be on PATH, and a path, relative to the
+project, must exist.
 
 `kabane loop advise` prints what each harness the run would use launches, the pinned
 adapter or your command, and each session's `launch` event in the run's trace names the
