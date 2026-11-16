@@ -31,6 +31,9 @@ export namespace Runs {
 
 	const TABLE = "recipes_runs";
 
+	/** What the store reads and writes with. */
+	type Store = Pick<Host, "store" | "z">;
+
 	export const module = (): KabaneModule => ({
 		name: "recipes",
 		migrations: [
@@ -139,7 +142,7 @@ export namespace Runs {
 	};
 
 	export const insert = (
-		host: Host,
+		host: Store,
 		run: Run,
 		actor: string,
 	): Promise<Result<Run>> =>
@@ -173,7 +176,7 @@ export namespace Runs {
 
 	/** A run's new state; `ended` also stamps when it ended. */
 	export const setState = (
-		host: Host,
+		host: Store,
 		id: string,
 		state: State,
 		actor: string,
@@ -209,12 +212,12 @@ export namespace Runs {
 	};
 
 	/** The scope's runs, newest first. */
-	export const list = (host: Host, scope: string): Promise<Result<Run[]>> =>
+	export const list = (host: Store, scope: string): Promise<Result<Run[]>> =>
 		host.store.read((db) => select(host.z, db, "scope_uri = ?", [scope]));
 
 	/** The scope's runs whose id is `key` or ends with it, case aside. */
 	export const find = (
-		host: Host,
+		host: Store,
 		scope: string,
 		key: string,
 	): Promise<Result<Run[]>> =>

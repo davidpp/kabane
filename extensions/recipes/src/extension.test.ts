@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 // The extension as kabane loads it: this directory linked into a disposable KABANE_HOME's
 // extensions/, enabled in its config.json, and driven through the real `kabane` entry in a real
 // project. Nothing here starts a terminal: hc has one core per user, holding the human's own
@@ -11,7 +12,7 @@ import {
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const EXTENSION = resolve(import.meta.dir, "..");
@@ -78,7 +79,36 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 		expect(added.code).toBe(0);
 		return JSON.parse(added.stdout).shortId;
 	};
-	return { root, home, kabane, issue };
+	/** A run row as `kabane run` writes it, put straight into the table: no terminal starts. */
+	const seed = (
+		id: string,
+		fields: { machine?: string; state?: string; terminal?: string } = {},
+	) => {
+		// The scope this project resolves to, read from an issue made here.
+		const added = kabane(["add", "Scope probe", "--json"]);
+		const scope = JSON.parse(added.stdout).scopeUri as string;
+		const db = new Database(join(home, "kabane.db"));
+		try {
+			db.run(
+				`INSERT INTO recipes_runs (id, recipe, recipe_hash, target_id, scope_uri, dir, machine,
+				   cwd, runtime, terminal, inputs, state, started_at, ended_at, updated_at)
+				 VALUES (?, 'research', 'abc', NULL, ?, '', ?, ?, 'hc', ?, '{}', ?, ?, NULL, ?)`,
+				[
+					id,
+					scope,
+					fields.machine ?? hostname(),
+					root,
+					fields.terminal ?? `kabane-test-${id.slice(-6).toLowerCase()}`,
+					fields.state ?? "running",
+					new Date().toISOString(),
+					new Date().toISOString(),
+				],
+			);
+		} finally {
+			db.close();
+		}
+	};
+	return { root, home, kabane, issue, seed };
 };
 
 test("kabane run with no recipe lists the project's recipes and their inputs", () => {
@@ -198,3 +228,62 @@ test("with the extension not enabled, run and runs are unknown and help lists ne
 	expect(help).not.toMatch(/^\s+run\s/m);
 	expect(help).not.toMatch(/^\s+runs\s/m);
 });
+
+test("runs lists live runs unless --all, and refuses another machine's run by name", () => {
+	const { kabane, seed } = setup();
+	kabane(["runs"]); // opens the store, which creates the run table
+	seed("01M7JT0TFJB7MF38VYDWCG0AAA", { machine: "elsewhere" });
+	seed("01M7JT0TFJB7MF38VYDWCG0BAA", { machine: "elsewhere", state: "ended" });
+	// Without hc nothing is reconciled, so each row shows what it recorded.
+	const live = JSON.parse(kabane(["runs", "--json"], { path: NO_HC }).stdout);
+	expect(live.runs.map((r: { id: string }) => r.id)).toEqual([
+		"01M7JT0TFJB7MF38VYDWCG0AAA",
+	]);
+	expect(kabane(["runs"], { path: NO_HC }).stdout).toContain(
+		"running (on elsewhere)",
+	);
+	const all = JSON.parse(
+		kabane(["runs", "--all", "--json"], { path: NO_HC }).stdout,
+	);
+	expect(all.runs.map((r: { state: string }) => r.state).sort()).toEqual([
+		"ended",
+		"running",
+	]);
+	for (const verb of ["attach", "read", "stop"])
+		expect(kabane(["runs", verb, "aaa"])).toMatchObject({
+			code: 1,
+			stderr: `Error: Run 01M7JT0TFJB7MF38VYDWCG0AAA runs on elsewhere, not on this machine (${hostname()}); ${verb} it there`,
+		});
+	expect(kabane(["runs", "send", "AAA", "yes"]).stderr).toContain(
+		"runs on elsewhere",
+	);
+	expect(kabane(["runs", "read", "aa"]).stderr).toStartWith(
+		'Error: "aa" names 2 runs',
+	);
+});
+
+// Reads one terminal through the real hc, by a name no terminal has: hc answers not found and
+// nothing of the human's is touched. Skipped where hc is not installed.
+test.skipIf(Bun.which("hc") === null)(
+	"runs writes back the state hc reports for this machine's runs and leaves another machine's",
+	() => {
+		const { kabane, seed } = setup();
+		kabane(["runs"]);
+		seed("01M7JT0TFJB7MF38VYDWCG0CCC", {
+			terminal: `kabane-test-gone-${Date.now().toString(36)}`,
+		});
+		seed("01M7JT0TFJB7MF38VYDWCG0DDD", { machine: "elsewhere" });
+		expect(
+			JSON.parse(kabane(["runs", "--json"]).stdout).runs.map(
+				(r: { id: string }) => r.id,
+			),
+		).toEqual(["01M7JT0TFJB7MF38VYDWCG0DDD"]);
+		const all = JSON.parse(
+			kabane(["runs", "--all", "--json"], { path: NO_HC }).stdout,
+		).runs as { id: string; state: string; endedAt?: string }[];
+		const gone = all.find((r) => r.id.endsWith("CCC"));
+		expect(gone?.state).toBe("ended");
+		expect(Date.parse(gone?.endedAt ?? "")).not.toBeNaN();
+		expect(all.find((r) => r.id.endsWith("DDD"))?.state).toBe("running");
+	},
+);
