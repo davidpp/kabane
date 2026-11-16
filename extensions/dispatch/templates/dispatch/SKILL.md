@@ -123,8 +123,11 @@ keeps later conflicts small and unblocks dependents sooner. As each agent finish
    any merge.
 2. Integrate the branch: {{INTEGRATION}}. When integration goes through a pull request, the
    issue counts as merged, and its dependents may start, only once that pull request has
-   merged. When two agents' additive edits conflict, keep both. When a test module conflicts,
-   it is usually two helpers with the same name: keep one helper and both sets of tests.
+   merged. Then, before cleanup or any dispatch, merge the remote's main into local main
+   (`git fetch`, then `git merge --no-edit` of the fetched main; never a pull that refuses
+   local-only commits or a rebase of main), and rebase a conflicting branch onto the fetched
+   main. When two agents' additive edits conflict, keep both. When a test module conflicts, it
+   is usually two helpers with the same name: keep one helper and both sets of tests.
 3. Run the full gate on the merged result, not just on the branch:
    {{GATE}}
 4. Remove the agent's working copy, keep the manual checks its handoff lists as not verified,

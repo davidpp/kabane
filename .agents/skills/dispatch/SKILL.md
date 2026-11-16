@@ -127,14 +127,18 @@ keeps later conflicts small and unblocks dependents sooner. As each agent finish
    running it again on the same branch is safe. The issue counts as merged, and its dependents
    may start, only once `gh pr view <url> --json state` says `MERGED`.
    - A PR whose `gate` check fails goes back to its agent, with the failing log.
-   - A PR that conflicts with main: rebase the branch in the agent's worktree and run
-     `bun run land <branch>` again. When two agents' additive edits conflict, keep both. When a
-     test module conflicts, it is usually two helpers with the same name: keep one helper and
-     both sets of tests.
+   - A PR that conflicts with main: `git fetch origin`, rebase the branch onto `origin/main` in
+     the agent's worktree, and run `bun run land <branch>` again. When two agents' additive
+     edits conflict, keep both. When a test module conflicts, it is usually two helpers with
+     the same name: keep one helper and both sets of tests.
 3. The PR's required `gate` check is the full gate on the merged result: CI runs the Gate
    section of AGENTS.md on the PR, and the agent already ran it on its branch.
-4. Once the PR has merged, remove the agent's working copy and its branch, keep the manual
-   checks its handoff lists as not verified, and mark the issue done with `kabane_done`.
+4. Once the PR has merged, bring the main checkout up to date before cleanup or any dispatch,
+   so new worktrees start from the merged work: `git fetch origin && git merge --no-edit
+   origin/main` on main. Never `git pull --ff-only` or a rebase of main: local main may hold
+   commits origin lacks, and pushing main is the human's call. Then remove the agent's working
+   copy and its branch, keep the manual checks its handoff lists as not verified, and mark the
+   issue done with `kabane_done`.
 5. Dispatch whatever that merge unblocked, and tell any agent that was working against a stub.
 
 Anything an agent reports outside its scope, whether a bug it noticed or a workaround it
