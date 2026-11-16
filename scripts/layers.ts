@@ -115,7 +115,10 @@ export const layers: Readonly<Record<string, Rule>> = {
 		devDependencies: [],
 	},
 	"@cabane/loop": {
-		testSupport: ["extensions/loop/src/test-host.ts"],
+		testSupport: [
+			"extensions/loop/src/test-host.ts",
+			"extensions/loop/src/test-sessions.ts",
+		],
 		layer: "extension",
 		// An extension brings its own harness client and bundles it (JCAB-316:2).
 		dependencies: ["@cabane/acp"],

@@ -12,13 +12,13 @@ import { LoopConfig } from "./config";
 import type { Gates } from "./gates";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
-import { TestSessions } from "./session-store.test";
 import { Stall } from "./stall";
 import type { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
 import { testHost } from "./test-host";
+import { TestSessions } from "./test-sessions";
 
 let home = "";
 
@@ -146,7 +146,11 @@ describe("Claims.settleAll", () => {
 			{
 				taskId: b.id,
 				sessionId: sb,
-				outcome: { outcome: "done", detail: "b is done" },
+				outcome: {
+					outcome: "done",
+					detail: "b is done",
+					summary: "Finished b and checked its result",
+				},
 				gates: red,
 			},
 		);
@@ -154,11 +158,18 @@ describe("Claims.settleAll", () => {
 		expect(await Claims.settleAll(ctx)).toBe(true);
 
 		expect(ctx.settled).toEqual([]);
+		const noSummary = await Planner.getEntries(home, a.id);
+		expect(
+			noSummary.ok &&
+				noSummary.value.filter((c) => c.kind === "outcome.summary"),
+		).toEqual([]);
 		const summaries = await Planner.getEntries(home, b.id);
 		expect(
 			summaries.ok &&
 				summaries.value.some(
-					(c) => c.kind === "outcome.summary" && c.content === "b is done",
+					(c) =>
+						c.kind === "outcome.summary" &&
+						c.content === "Finished b and checked its result",
 				),
 		).toBe(true);
 		expect(
@@ -728,6 +739,24 @@ describe("Claims.claim, resuming an attempt's session", () => {
 });
 
 describe("Claims.interruption", () => {
+	it("keeps a dead runner's explanation in the run store without publishing a summary", async () => {
+		const parent = await add("parent");
+		const sessionId = RunStore.newSessionId();
+		const ctx = runOn(parent, [
+			{ ...claimOf(parent, sessionId), lenses: ["quality"] },
+		]);
+		expect(RunStore.create(home, ctx.run).ok).toBe(true);
+		await Claims.recover(ctx);
+		const stored = RunStore.readRaw(home, ctx.run.id);
+		expect(stored.ok && stored.value.claims[0]?.detail).toBe(
+			"the runner exited while this session was open",
+		);
+		const comments = await Planner.getEntries(home, parent.id);
+		expect(
+			comments.ok && comments.value.filter((c) => c.kind === "outcome.summary"),
+		).toEqual([]);
+	});
+
 	// A real repository: one commit from before the attempt, one it made, and a file it left.
 	const repo = (): string => {
 		const dir = join(home, "project");

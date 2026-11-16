@@ -7,9 +7,9 @@ import type { AcpClient } from "@cabane/acp";
 import { Planner, type Result } from "@cabane/core";
 import { Elicitation } from "./elicitation";
 import { isAnswerTo, parseQuestionBody } from "./question-body";
-import { TestSessions } from "./session-store.test";
 import type { RunStore } from "./store";
 import { testHost } from "./test-host";
+import { TestSessions } from "./test-sessions";
 
 let base = "";
 

@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import "@cabane/core/testing";
 import { join } from "node:path";
 import { Planner } from "@cabane/core";
+import { Loop } from "./commands";
+import { Elicitation } from "./elicitation";
 import { Permission } from "./permission";
 import { answersContext } from "./question-body";
 import { Questions } from "./questions";
-import { TestSessions } from "./session-store.test";
 import { RunStore } from "./store";
 import { testHost } from "./test-host";
+import { TestSessions } from "./test-sessions";
 
 let base = "";
 let sessionId = "";
@@ -96,12 +98,13 @@ it("records only human non-permission decisions in the real task timeline, accep
 				kind: "answered",
 				questionId: id,
 				answer,
-				by: "human",
+				by: "cabane://actor/human/david",
 				at: new Date().toISOString(),
 			}).ok,
 		).toBe(true);
 	const waited = await Questions.awaitAnswers(deps(), [id], forever);
 	expect(waited?.get(id)?.body).toBe("SQLite");
+	expect(waited?.get(id)?.by).toBe("cabane://actor/human/david");
 	const permission = await ask(
 		Permission.body("claude", {
 			toolCallId: "call",
@@ -124,10 +127,52 @@ it("records only human non-permission decisions in the real task timeline, accep
 	).toBe("answer");
 	const comments = await Planner.getEntries(base, run.parentId);
 	expect(comments.ok && comments.value.map((c) => [c.kind, c.content])).toEqual(
-		[["outcome.decision", "Which store?\n→ SQLite"]],
+		[
+			[
+				"outcome.decision",
+				"Which store?\n→ SQLite (chosen by cabane://actor/human/david)",
+			],
+		],
 	);
 	const entries = RunStore.questionEntries(base, run.id);
 	expect(
 		entries.ok && entries.value.filter((e) => e.context === `answers ${id}`),
 	).toHaveLength(1);
+});
+
+it("records an optional form field's skip as an answer without a timeline decision", async () => {
+	const request = {
+		message: "Optional details",
+		fields: [
+			{ key: "note", title: "Note", type: "text" as const, required: false },
+		],
+	};
+	const [field] = Elicitation.questions(request.fields);
+	if (!field) throw new Error("no field");
+	const id = await ask(
+		Elicitation.body("claude", request, field, { index: 0, total: 1 }),
+	);
+	const answered = await Loop.answer(
+		{
+			home: base,
+			basePath: base,
+			host: testHost(base),
+			actor: "cabane://actor/human/david",
+		},
+		id,
+		"SKIP",
+	);
+	if (!answered.ok) throw answered.error;
+	const waited = await Questions.awaitAnswers(deps(), [id], forever);
+	expect(waited?.get(id)?.type).toBe("answer");
+	const journal = TestSessions.journal(base, sessionId);
+	expect(
+		journal.ok &&
+			journal.value
+				.filter((e) => e.context === answersContext(id))
+				.map((e) => e.type),
+	).toEqual(["answer"]);
+	const run = TestSessions.owner(base, sessionId);
+	const comments = await Planner.getEntries(base, run.parentId);
+	expect(comments.ok && comments.value).toEqual([]);
 });

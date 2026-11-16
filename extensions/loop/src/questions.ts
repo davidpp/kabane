@@ -80,19 +80,22 @@ export namespace Questions {
 			)
 				continue;
 			const parsed = parseQuestionBody(question.body);
+			const skipped =
+				parsed.skipAnswer?.toLowerCase() === entry.answer.toLowerCase();
+			const decision = !parsed.permission && !skipped;
 			const written = RunStore.recordQuestion(deps.home, deps.runId, {
 				sessionId: deps.sessionId,
-				type: parsed.permission ? "answer" : "decision",
+				type: decision ? "decision" : "answer",
 				body: entry.answer,
 				context: answersContext(question.id),
 				by: entry.by,
 			});
 			if (!written.ok) return written;
-			if (!parsed.permission) {
+			if (decision) {
 				const outcome = await deps.record.comment({
 					id: claim.taskId,
 					kind: "outcome.decision",
-					body: `${parsed.question}\n→ ${entry.answer}`,
+					body: `${parsed.question}\n→ ${entry.answer}${entry.by ? ` (chosen by ${entry.by})` : ""}`,
 				});
 				if (!outcome.ok)
 					deps.emit({

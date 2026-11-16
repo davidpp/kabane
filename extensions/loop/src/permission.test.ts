@@ -7,9 +7,9 @@ import type { AcpClient } from "@cabane/acp";
 import { Planner, type Result } from "@cabane/core";
 import { Permission } from "./permission";
 import { answersContext, isAnswerTo, parseQuestionBody } from "./question-body";
-import { TestSessions } from "./session-store.test";
 import type { RunStore } from "./store";
 import { testHost } from "./test-host";
+import { TestSessions } from "./test-sessions";
 
 let base = "";
 
@@ -228,7 +228,7 @@ describe("Permission.relay", () => {
 		]);
 
 		// What the runner's settle does with a cancelled claim.
-		const ended = await TestSessions.close(base, sessionId, { state: "error" });
+		const ended = await TestSessions.close(base, sessionId);
 		expect(ended.ok).toBe(true);
 		const needs = await TestSessions.pending(base);
 		expect(

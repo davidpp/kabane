@@ -17,10 +17,10 @@ import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
 import { Permission } from "./permission";
 import { isAnswerTo } from "./question-body";
-import { TestSessions } from "./session-store.test";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
 import { testHost } from "./test-host";
+import { TestSessions } from "./test-sessions";
 import { Worktree } from "./worktree";
 
 // `start`'s refusals, which all come before a runner is spawned, and `restart`, whose runner is
@@ -700,6 +700,10 @@ describe("Loop.answer", () => {
 
 	it("submits the chosen option to the inbox without writing the runner's journal", async () => {
 		const { sessionId, questionId } = await blocked("run-1");
+		const listed = await Loop.questions({ home }, "run-1");
+		expect(listed.ok && listed.value.map((q) => q.questionId)).toEqual([
+			questionId,
+		]);
 		const before = await TestSessions.journal(home, sessionId);
 		const answered = await Loop.answer(
 			{ home, basePath: home, host: testHost(home), actor: HUMAN },
@@ -742,6 +746,9 @@ describe("Loop.answer", () => {
 			"SQLite",
 		);
 		expect(!answered.ok && answered.error.message).toContain("runner died");
+		expect(!answered.ok && answered.error.message).toContain(
+			`kabane loop resume ${run.id}`,
+		);
 		const stranded = await Loop.withdraw({ home }, RunStore.effective(run));
 		expect(stranded.ok && stranded.value.map((q) => q.questionId)).toEqual([
 			asked.value.id,

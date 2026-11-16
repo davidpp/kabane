@@ -10,11 +10,11 @@ import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
 import { loop, start } from "./extension";
-import { TestSessions } from "./session-store.test";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
 import { testHost } from "./test-host";
+import { TestSessions } from "./test-sessions";
 
 let home = "";
 
@@ -413,6 +413,16 @@ describe("kabane loop status", () => {
 				`    kabane loop answer ${asked.value.id} <option>`,
 			].join("\n"),
 		);
+		const live = RunStore.readRaw(home, "run-1");
+		if (!live.ok) throw live.error;
+		expect(
+			RunStore.write(home, { ...live.value, pid: Bun.spawnSync(["true"]).pid })
+				.ok,
+		).toBe(true);
+		const dead = await kabaneLoop("status", "run-1");
+		expect(dead.text).toContain("no longer open because its runner died:");
+		expect(dead.text).toContain("(the restarted run asks again)");
+		expect(dead.text).not.toContain("withdrawn, its runner died");
 	});
 });
 

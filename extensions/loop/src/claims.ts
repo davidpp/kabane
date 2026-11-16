@@ -71,7 +71,7 @@ export namespace Claims {
 		outcome: Dispatch.Outcome,
 	): Promise<void> => {
 		const claim = ctx.run.claims.find((c) => c.sessionId === sessionId);
-		const summary = outcome.summary ?? outcome.detail;
+		const summary = outcome.summary;
 		if (!claim || !summary) return;
 		const ended = await ctx.deps.host.record.comment({
 			id: claim.taskId,
@@ -329,7 +329,6 @@ export namespace Claims {
 					type: "warning",
 					summary: `not moved to in_progress: ${detail}`,
 				});
-				await closeSession(ctx, sessionId, { outcome: "error", detail });
 				return undefined;
 			}
 		}

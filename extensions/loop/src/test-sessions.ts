@@ -96,7 +96,7 @@ export namespace TestSessions {
 			input.questionId,
 			input.answer,
 		);
-	export const close = (home: string, sessionId: string, _options: unknown) => {
+	export const close = (home: string, sessionId: string) => {
 		const run = owner(home, sessionId);
 		return RunStore.write(home, {
 			...run,

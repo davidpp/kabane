@@ -6,8 +6,7 @@
 // `hooks.event` tagged with the claim's lane and loop session.
 //
 // The loop session itself is opened and closed by the runner, which owns the claim; this module
-// only writes into it (an ephemeral progress row per tool call, so a card can show what the agent
-// is doing now). The one tracker write of its own: an implementing session that closed an issue
+// emits the session stream through its hooks. The one tracker write of its own: an implementing session that closed an issue
 // whose checklist still has items open has it reopened, and is nudged to go on from the first.
 import {
 	AcpClient,
@@ -270,7 +269,6 @@ export namespace Dispatch {
 		) => void;
 		/** One event of a tool call: its id and what it was given and gave back so far. */
 		tool: (type: string, id: string, call: ToolCalls.Call) => void;
-		progress: (body: string) => Promise<void>;
 		usage: Hooks["usage"];
 		/** The agent's latest complete message. */
 		message: (text: string) => void;
@@ -286,7 +284,6 @@ export namespace Dispatch {
 			case "tool_call": {
 				const call = ToolCalls.apply(calls, update);
 				sink.tool("tool_call", update.id, call);
-				await sink.progress(call.title);
 				return undefined;
 			}
 			// The updates in between (a refined title, the input once complete) are folded into the
@@ -999,9 +996,6 @@ export namespace Dispatch {
 				hooks.event({ ...tag, type, summary, ...(data ? { data } : {}) }),
 			tool: (type, id, call) =>
 				hooks.event({ ...tag, ...toolEvent(type, id, call) }),
-			progress: async (body) => {
-				sink.emit("progress", body);
-			},
 			usage: hooks.usage,
 			message: (text) => {
 				lastMessage = text;
