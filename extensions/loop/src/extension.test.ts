@@ -482,7 +482,11 @@ describe("kabane loop advise", () => {
 		expect(advised.exitCode).toBe(0);
 		const lines = advised.text.split("\n");
 		// The project is no git repository, so a run works in place: one shared tree.
-		expect(lines.slice(1, 9)).toEqual([
+		// Each harness a session would open on, the one loop.harnesses replaces and the one it does not.
+		expect(lines[2]).toMatch(
+			/^ {2}claude launches npx -y @agentclientprotocol\/claude-agent-acp@\S+ \(the pinned adapter\)$/,
+		);
+		expect([lines[1], ...lines.slice(3, 10)]).toEqual([
 			"  implementer claude  model unset  tiers frontier, balanced, fast",
 			"  codex launches /opt/codex-acp --local (loop.harnesses.codex)",
 			"advised:",
@@ -492,7 +496,7 @@ describe("kabane loop advise", () => {
 			'  start with: --concurrency 1 --gate test="bun run test"',
 			'  no start flag, a setting: loop.setup "bun install"',
 		]);
-		expect(lines.slice(9)).toEqual([
+		expect(lines.slice(10)).toEqual([
 			"subtasks:",
 			`  ${header.shortId}  header`,
 			"    tier:fast  claude  model claude-haiku-4-5 (tier fast)",
@@ -563,6 +567,9 @@ describe("kabane loop advise", () => {
 				value: { harnesses: { claude: { command: "/bin/echo" } } },
 			});
 			expect(taken.exitCode).toBe(0);
+			expect(taken.text).toContain(
+				"  claude launches /bin/echo --verbose (loop.harnesses.claude)",
+			);
 		});
 	});
 });

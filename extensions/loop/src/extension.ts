@@ -421,13 +421,23 @@ const routedLines = (s: Loop.Routed): string[] => [
 	...s.notes.map((note) => `    note: ${note}`),
 ];
 
-// What `loop.harnesses` launches instead of a harness's pinned adapter: a run that would not
-// launch the harness the human expects says so before it starts.
-const launches = (config: LoopConfig.Config): string[] =>
-	Object.entries(config.harnesses).map(
-		([id, launch]) =>
-			`  ${id} launches ${[launch.command ?? "its adapter", ...(launch.args ?? [])].join(" ")} (loop.harnesses.${id})`,
-	);
+// What each harness the run would open a session on launches, the pinned adapter or what
+// `loop.harnesses` names instead, so what spends quota shows before `loop start`. The implementer
+// always (a single issue, the fixer), each subtask's route, and the verifier when lenses run.
+const launches = (a: Loop.Advised): string[] => {
+	const { config } = a;
+	const used = new Set<Harnesses.Id>([
+		config.implementer,
+		...a.subtasks.map((s) => s.harness),
+		...(config.lenses.length > 0
+			? [config.verifier ?? config.implementer]
+			: []),
+	]);
+	return Harnesses.IDS.filter((id) => used.has(id)).map((id) => {
+		const { command, args, from } = LoopConfig.launch(config, id);
+		return `  ${id} launches ${[command, ...args].join(" ")} (${from})`;
+	});
+};
 
 const advisedText = (a: Loop.Advised): string => {
 	const flags = a.advice.flatMap(asFlags);
@@ -435,7 +445,7 @@ const advisedText = (a: Loop.Advised): string => {
 	return [
 		`${a.parent} in ${a.projectDir}`,
 		`  implementer ${a.config.implementer}  model ${a.config.model ?? "unset"}  tiers ${LoopConfig.tierNames(a.config).join(", ")}`,
-		...launches(a.config),
+		...launches(a),
 		"advised:",
 		...a.advice.map(
 			(r) =>
