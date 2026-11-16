@@ -8,7 +8,14 @@ import {
 } from "node:fs";
 import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
+import {
+	err,
+	type KabaneModule,
+	ok,
+	type Result,
+	tryCatch,
+	trySync,
+} from "@cabane/core";
 import {
 	type Doctor,
 	failure,
@@ -19,7 +26,7 @@ import {
 import { z } from "zod";
 import { ConfigSchema, configPath, loadConfig } from "./config";
 import { ConfigLayers } from "./config-layers";
-import { createHost, hostHarnessMode } from "./host";
+import { hostFor, hostHarnessMode } from "./host";
 
 /**
  * By the name `config.json` enables each with, as
@@ -42,6 +49,28 @@ const Manifest = z.object({
 const callable = <T extends (...args: never[]) => unknown>() =>
 	z.custom<T>((value) => typeof value === "function", "must be a function");
 const Factory = callable<(host: Host) => unknown>();
+// What the loader checks of a modules factory's result; `Runtime.configure` checks the rest.
+const ModuleShape = z.object({
+	name: z.string(),
+	migrations: z
+		.array(z.object({ name: z.string(), up: callable<(db: never) => void>() }))
+		.optional(),
+	syncTables: z
+		.array(
+			z.object({
+				table: z.string(),
+				family: z.string(),
+				clock: z.string().optional(),
+				childOfTasks: z.boolean(),
+			}),
+		)
+		.optional(),
+	onTaskStateChange:
+		callable<NonNullable<KabaneModule["onTaskStateChange"]>>().optional(),
+});
+const ModuleList = z.array(
+	z.custom<KabaneModule>((value) => ModuleShape.safeParse(value).success),
+);
 const zodType = z.custom<z.ZodType>(
 	(value) => value instanceof z.ZodType,
 	(value) => ({
@@ -187,6 +216,77 @@ export namespace Extensions {
 		reason: refusal(`not installed; put it in ${directory(home, name)}/`),
 	});
 
+	type ManifestFile = {
+		file: string;
+		entry: z.infer<typeof Manifest>["kabane"];
+	};
+	/** An installed extension's `package.json`, read and checked before anything is imported. */
+	const readManifest = (home: string, name: string): Result<ManifestFile> => {
+		const file = join(directory(home, name), "package.json");
+		const contents = trySync(() => readFileSync(file, "utf8"));
+		if (!contents.ok)
+			return err(
+				new Error(
+					existsSync(file)
+						? `${file} cannot be read; make it readable`
+						: `${file} is missing; add a package.json manifest`,
+				),
+			);
+		const manifest = trySync((): unknown => JSON.parse(contents.value));
+		if (!manifest.ok)
+			return err(new Error(`${file} contains invalid JSON; correct its JSON`));
+		const parsed = Manifest.safeParse(manifest.value);
+		if (!parsed.success)
+			return err(
+				new Error(
+					`${file} needs "kabane": { "extension": "<entry>", "api": 1 }`,
+				),
+			);
+		return ok({ file, entry: parsed.data.kabane });
+	};
+	const unsupported = (api: number): string =>
+		`requires API ${api}; this kabane supports API 1; install an API 1 version of the extension`;
+	/**
+	 * Import the manifest's `field` entry once its real path is inside the extension's real
+	 * directory, and return its default export; the error says what to correct.
+	 */
+	const importEntry = async (
+		home: string,
+		name: string,
+		{ file, entry }: ManifestFile,
+		field: "extension" | "modules",
+	): Promise<Result<unknown>> => {
+		const dir = directory(home, name);
+		const label = field === "extension" ? "entry" : "modules entry";
+		const article = field === "extension" ? "an" : "a";
+		const resolved = trySync(() => ({
+			root: realpathSync(dir),
+			entry: realpathSync(Bun.resolveSync(entry[field] ?? "", dir)),
+		}));
+		if (!resolved.ok)
+			return err(
+				new Error(
+					`${file} names ${article} ${label} that cannot be resolved; correct kabane.${field}`,
+				),
+			);
+		if (!resolved.value.entry.startsWith(`${resolved.value.root}${sep}`))
+			return err(
+				new Error(
+					`${file} names ${article} ${label} outside its extension directory; move the ${label} inside that directory`,
+				),
+			);
+		const imported = await tryCatch(
+			() => import(pathToFileURL(resolved.value.entry).href),
+		);
+		return imported.ok
+			? ok(imported.value.default)
+			: err(
+					new Error(
+						`the ${label} could not be imported: ${cause(imported.error)}; repair the ${label} and its dependencies`,
+					),
+				);
+	};
+
 	const load = async (
 		name: string,
 		home: string,
@@ -204,76 +304,25 @@ export namespace Extensions {
 				report([
 					{ name, reason: `directory ${dir}/ overrides bundled ${name}` },
 				]);
-			const file = join(dir, "package.json");
-			const contents = trySync(() => readFileSync(file, "utf8"));
-			if (!contents.ok)
-				return err(
-					new Error(
-						existsSync(file)
-							? `${file} cannot be read; make it readable`
-							: `${file} is missing; add a package.json manifest`,
-					),
-				);
-			const manifest = trySync((): unknown => JSON.parse(contents.value));
-			if (!manifest.ok)
-				return err(
-					new Error(`${file} contains invalid JSON; correct its JSON`),
-				);
-			const parsed = Manifest.safeParse(manifest.value);
-			if (!parsed.success)
-				return err(
-					new Error(
-						`${file} needs "kabane": { "extension": "<entry>", "api": 1 }`,
-					),
-				);
-			const entry = parsed.data.kabane;
-			if (entry.api !== 1)
-				return err(
-					new Error(
-						`requires API ${entry.api}; this kabane supports API 1; install an API 1 version of the extension`,
-					),
-				);
-			if (entry.modules !== undefined)
-				return err(
-					new Error(
-						"this kabane does not load data modules yet; install a version without data modules",
-					),
-				);
-			const resolved = trySync(() => ({
-				root: realpathSync(dir),
-				entry: realpathSync(Bun.resolveSync(entry.extension, dir)),
-			}));
-			if (!resolved.ok)
-				return err(
-					new Error(
-						`${file} names an entry that cannot be resolved; correct kabane.extension`,
-					),
-				);
-			if (!resolved.value.entry.startsWith(`${resolved.value.root}${sep}`))
-				return err(
-					new Error(
-						`${file} names an entry outside its extension directory; move the entry inside that directory`,
-					),
-				);
-			const imported = await tryCatch(
-				() => import(pathToFileURL(resolved.value.entry).href),
+			const manifest = readManifest(home, name);
+			if (!manifest.ok) return manifest;
+			if (manifest.value.entry.api !== 1)
+				return err(new Error(unsupported(manifest.value.entry.api)));
+			const imported = await importEntry(
+				home,
+				name,
+				manifest.value,
+				"extension",
 			);
-			if (!imported.ok)
-				return err(
-					new Error(
-						`the entry could not be imported: ${cause(imported.error)}; repair the entry and its dependencies`,
-					),
-				);
-			const factory = Factory.safeParse(imported.value.default);
+			if (!imported.ok) return imported;
+			const factory = Factory.safeParse(imported.value);
 			if (!factory.success)
 				return err(
 					new Error(
 						"the entry's default export must be a factory (host) => Extension",
 					),
 				);
-			const { host, ready } = createHost(home);
-			loaded = await tryCatch(async () => factory.data(host));
-			if (loaded.ok) ready();
+			loaded = await hostFor(home, name).build(factory.data);
 		} else {
 			const loader = Object.hasOwn(OFFICIAL, name) ? OFFICIAL[name] : undefined;
 			if (!loader)
@@ -315,6 +364,82 @@ export namespace Extensions {
 			else refused.push({ name, reason: refusal(result.error.message) });
 		}
 		return { loaded, refused };
+	};
+
+	/**
+	 * The data modules an enabled extension's modules entry built. A failure here is no refusal:
+	 * the extension's tables are already in the database, so it stops every process that opens
+	 * it (`stopLine`).
+	 */
+	type Contribution = { name: string; modules: KabaneModule[] };
+
+	/**
+	 * The one line a process that opens the database stops with when `name`'s data modules
+	 * cannot be registered: the extension, why, and the two ways out.
+	 */
+	export const stopLine = (
+		home: string,
+		enabled: readonly string[],
+		name: string,
+		reason: string,
+	): string => {
+		const rest = enabled.filter((other) => other !== name).join(",");
+		return line({
+			name,
+			reason: `${reason.replace(/\.+$/, "")}; kabane opens the database only with every enabled extension's data modules registered, so repair it or remove it from "extensions" in ${configPath(home)} by hand or with \`kabane config set extensions ${rest || '""'} --layer global\``,
+		});
+	};
+
+	/**
+	 * Each enabled extension's data modules, in `names` order: its manifest checked, its modules
+	 * entry imported and its factory called with the host its main entry will get. Only an
+	 * installed directory whose manifest names `modules` takes part; any other failure to read a
+	 * manifest is the main entry's refusal, reported where that entry loads.
+	 */
+	export const modules = async (
+		names: readonly string[],
+		home: string,
+	): Promise<Result<Contribution[]>> => {
+		const enabled = [...new Set(names)];
+		const contributions: Contribution[] = [];
+		for (const name of enabled) {
+			if (!installed(home, name)) continue;
+			const manifest = readManifest(home, name);
+			if (!manifest.ok || manifest.value.entry.modules === undefined) continue;
+			const stop = (reason: string) =>
+				err(new Error(stopLine(home, enabled, name, reason)));
+			if (manifest.value.entry.api !== 1)
+				return stop(unsupported(manifest.value.entry.api));
+			const imported = await importEntry(home, name, manifest.value, "modules");
+			if (!imported.ok) return stop(imported.error.message);
+			const factory = Factory.safeParse(imported.value);
+			if (!factory.success)
+				return stop(
+					"the modules entry's default export must be a factory (host) => KabaneModule[]",
+				);
+			const staged = hostFor(home, name);
+			const built = await staged.build(factory.data);
+			if (!built.ok)
+				return stop(
+					`the modules factory failed: ${cause(built.error)}; repair the modules factory`,
+				);
+			const parsed = ModuleList.safeParse(built.value);
+			if (!parsed.success)
+				return stop(
+					`the modules factory returned an invalid module list: ${invalidModules(built.value)}`,
+				);
+			staged.own(parsed.data);
+			contributions.push({ name, modules: parsed.data });
+		}
+		return ok(contributions);
+	};
+	const invalidModules = (value: unknown): string => {
+		if (!Array.isArray(value)) return "value must be an array";
+		for (const [index, module] of value.entries()) {
+			const parsed = ModuleShape.safeParse(module);
+			if (!parsed.success) return `[${index}].${invalid(parsed.error)}`;
+		}
+		return "value does not match the module contract";
 	};
 
 	// The top-level keys a namespace may not take: device config, the per-scope block, and `db`,

@@ -33,6 +33,8 @@ export type Host = {
 		idOf(uri: string): Result<string>;
 	};
 	readonly harnessMode: "auto" | "default";
+	/** For the extension's own data modules (the manifest's modules entry). */
+	readonly store: Host.Store;
 	readonly z: typeof z;
 	readonly result: {
 		ok: typeof ok;

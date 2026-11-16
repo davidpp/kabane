@@ -122,9 +122,9 @@ const install = (
 	return dir;
 };
 
-it("loads real directories and isolates import, API, factory name, and modules refusals before commands run", async () => {
+it("loads real directories and isolates import, API and factory name refusals before commands run", async () => {
 	const home = makeHome({
-		extensions: ["hello", "broken", "future", "wrong", "modules"],
+		extensions: ["hello", "broken", "future", "wrong"],
 	});
 	const dir = install(
 		home,
@@ -144,25 +144,14 @@ it("loads real directories and isolates import, API, factory name, and modules r
 	install(home, "broken", 'throw new Error("broken import");');
 	const never = `import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(join(home, "ran"))}, "bad"); export default () => ({name: "future"});`;
 	install(home, "future", never, { extension: "./index.ts", api: 2 });
-	install(home, "modules", never, {
-		extension: "./index.ts",
-		api: 1,
-		modules: "./modules.ts",
-	});
 	install(home, "wrong", 'export default () => ({name: "other"});');
 	const all = await Extensions.loadAll(
-		["hello", "broken", "future", "wrong", "modules"],
+		["hello", "broken", "future", "wrong"],
 		home,
 	);
 	expect(all.loaded.map((e) => e.name)).toEqual(["hello"]);
-	expect(all.refused.map((e) => e.name)).toEqual([
-		"broken",
-		"future",
-		"wrong",
-		"modules",
-	]);
+	expect(all.refused.map((e) => e.name)).toEqual(["broken", "future", "wrong"]);
 	expect(all.refused[1]?.reason).toContain("API 2; this kabane supports API 1");
-	expect(all.refused[3]?.reason).toContain("does not load data modules yet");
 	expect(await Bun.file(join(home, "ran")).exists()).toBe(false);
 	const env = { KABANE_HOME: home, KABANE_HARNESSES: "" };
 	expect((await run(["--help"], env, home)).text).toContain("Say hello");

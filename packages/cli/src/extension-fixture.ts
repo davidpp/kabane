@@ -1,0 +1,123 @@
+/**
+ * A real extension with a data module, written into `$KABANE_HOME/extensions/notes/` for tests
+ * and for a sandbox check: its modules entry declares one replicated `childOfTasks` table, and
+ * its `notes` command writes and reads that table through `host.store`.
+ */
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+/** The shape every entry shares: the table's name, and the host the modules entry received. */
+const TABLE = `export const NOTES = "extension_notes";
+export const seen: { host?: unknown } = {};
+`;
+
+const MODULES = `import type { Host, KabaneModule } from "kabane/extension";
+import { NOTES, seen } from "./table.ts";
+
+export default (host: Host): KabaneModule[] => {
+	seen.host = host;
+	return [
+		{
+			name: "notes",
+			migrations: [
+				{
+					name: "create-extension-notes",
+					up: (db) =>
+						db.run(
+							\`CREATE TABLE IF NOT EXISTS \${NOTES} (
+							   id TEXT PRIMARY KEY,
+							   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+							   body TEXT NOT NULL,
+							   updated_at TEXT NOT NULL,
+							   updated_by TEXT,
+							   version INTEGER NOT NULL DEFAULT 1,
+							   visibility TEXT NOT NULL DEFAULT 'shared'
+							 )\`,
+						),
+				},
+			],
+			syncTables: [
+				{ table: NOTES, family: "row-lww", clock: "updated_at", childOfTasks: true },
+			],
+		},
+	];
+};
+`;
+
+const INDEX = `import type { Extension, Host } from "kabane/extension";
+import { NOTES, seen } from "./table.ts";
+
+export default (host: Host): Extension => ({
+	name: "notes",
+	commands: [
+		{
+			name: "notes",
+			usage: "kabane notes add <task> <text> | kabane notes list <task>",
+			summary: "Notes on a task, kept by the notes extension's data module",
+			run: async (args, ctx) => {
+				const [verb, id, ...words] = args.positionals;
+				if (!id) return host.outcome.usage("a task id is required", "kabane notes add <task> <text>");
+				const task = await host.record.get({ id });
+				if (!task.ok) return host.outcome.failure(task.error);
+				if (verb === "add") {
+					const noteId = \`\${Date.now().toString(36)}-\${crypto.randomUUID()}\`;
+					const written = await host.store.write((tx) => {
+						tx.db.run(
+							\`INSERT INTO \${NOTES} (id, task_id, body, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)\`,
+							[noteId, task.value.id, words.join(" "), new Date().toISOString(), ctx.actor],
+						);
+						const captured = tx.afterWrite(NOTES, "insert", noteId);
+						return captured.ok ? host.result.ok(noteId) : captured;
+					});
+					return written.ok
+						? host.outcome.success({ id: written.value, sameHost: seen.host === host }, \`noted \${written.value}\`)
+						: host.outcome.failure(written.error);
+				}
+				const read = await host.store.read((db) =>
+					host.result.ok(
+						db
+							.query(\`SELECT body FROM \${NOTES} WHERE task_id = ? ORDER BY updated_at, id\`)
+							.all(task.value.id)
+							.map((row) => String((row as { body: unknown }).body)),
+					),
+				);
+				return read.ok
+					? host.outcome.success({ notes: read.value }, read.value.join("\\n"))
+					: host.outcome.failure(read.error);
+			},
+		},
+	],
+});
+`;
+
+export namespace NotesExtension {
+	export const NAME = "notes";
+	export const TABLE_NAME = "extension_notes";
+
+	/**
+	 * Write the extension into `home`. `modules` replaces the modules entry's source, so a test
+	 * can break it; `api` replaces the manifest's.
+	 */
+	export const install = (
+		home: string,
+		options: { modules?: string; api?: number } = {},
+	): string => {
+		const dir = join(home, "extensions", NAME);
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(
+			join(dir, "package.json"),
+			JSON.stringify({
+				name: NAME,
+				kabane: {
+					extension: "./index.ts",
+					api: options.api ?? 1,
+					modules: "./modules.ts",
+				},
+			}),
+		);
+		writeFileSync(join(dir, "table.ts"), TABLE);
+		writeFileSync(join(dir, "modules.ts"), options.modules ?? MODULES);
+		writeFileSync(join(dir, "index.ts"), INDEX);
+		return dir;
+	};
+}

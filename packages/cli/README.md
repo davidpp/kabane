@@ -204,7 +204,21 @@ run `kabane config set extensions <name> --layer global` (comma-separated names 
 Its `package.json` must contain `"kabane": { "extension": "./index.ts", "api": 1 }`.
 The entry's default export is a factory receiving `{ api: 1, kabane: { version, executable } }`
 and returning an extension whose `name` matches the directory. Its own `node_modules` resolve
-normally. A manifest naming `modules` is refused until data-module loading is supported.
+normally.
+
+An extension that keeps replicated data adds `"modules": "./modules.ts"` to that object. The
+modules entry's default export is a factory `(host) => KabaneModule[]`; its modules write
+through `host.store`, and their rows sync like kabane's own. Every command that opens the
+database imports the modules entry of every enabled extension, `kabane list` included, so keep
+it to what the modules need. When it cannot be imported, its factory throws, kabane refuses its
+modules, or the manifest asks for an API this kabane does not support, every command that opens
+the database stops with one line naming the extension and why (`kabane mcp` and the board
+included; `kabane doctor` reports it as a finding). Two ways out: repair the extension, or
+remove it from `extensions` in `config.json`, by hand or with
+`kabane config set extensions <the others> --layer global` (`""` for none); `config`, `init`,
+`scope`, `update`, `doctor` and `--help` still run. Disabling such an extension keeps its tables
+and rows: deleting a task still records the deletes of its rows for the other devices, which
+hold what they receive for that extension until it is enabled there.
 
 Only enabled directories run code; a directory alone, a single `.ts` file, or a repository's
 files load nothing. Directory settings become known to `kabane config` only after enablement.

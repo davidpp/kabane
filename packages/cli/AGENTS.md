@@ -41,14 +41,21 @@ The extension API is implemented here:
   directory is discovered without importing it, including during command lookup and config.
   The manifest API and the resolved entry path are checked before import, and the factory
   result is validated before its contributions are accepted. A directory named `loop` overrides
-  the bundled fallback. Manifests naming data modules are refused until JCAB-323 adds
-  registration and its database gate.
-- `src/host.ts` builds API 1 hosts; `openContext` activates their record after migration
-  with the MCP actor context and lazy, cached scope resolution. Each host also gates calls
-  until its factory returns. Doctor activates records only after it opens the store.
-  JCAB-323 splits `openContext` into the stages
-  `ARCHITECTURE.md` lists under "Every process that opens the database registers the same
-  modules".
+  the bundled fallback.
+- Data modules are the other path, kept apart in `src/extensions.ts`: `Extensions.modules`
+  imports each enabled extension's modules entry and calls its factory, and a failure there is
+  no refusal but the stop (`Extensions.stopLine`): `registerModules` in `src/context.ts` runs
+  those stages and `Runtime.configure`, one extension at a time so a refused set names its
+  extension, before `Planner.init`. Every process that opens the database goes through it:
+  `openContext` (so every non-standalone command, `kabane mcp` and the board) and `doctor`,
+  which reports the stop as its `kabane/extension-modules` finding and runs its other checks.
+  `init` writes a fresh config with no extensions and registers the first-party list.
+- `src/host.ts` builds API 1 hosts, one per extension per process (`hostFor`), so the modules
+  entry and the main entry receive the same object; `store` is scoped to the tables its
+  modules declare. `openContext` activates `record` and `store` after migration with the MCP
+  actor context and lazy, cached scope resolution; each host refuses both while one of its
+  factories runs and until one has returned. Doctor activates them only after it opens the
+  store.
 - JCAB-328 moves scope detection, `Self` and `serveStdio` from core into this package.
 - JCAB-326 removes `OFFICIAL` and the loop dependency.
 
