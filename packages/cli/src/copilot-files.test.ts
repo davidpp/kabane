@@ -298,9 +298,69 @@ it("an enabled directory's files reach the board's copilot, and a refused one it
 		]);
 		const notice = await wired.announcer?.announce();
 		expect(notice?.ok && notice.value).toBe(
-			"Extension notes refused: copilot/shortcuts/split.md: /split is a built-in shortcut, which wins",
+			"Extension notes file refused: copilot/shortcuts/split.md: /split is a built-in shortcut, which wins",
 		);
 	} finally {
 		wired.copilot.close();
+	}
+});
+
+it("several refused files are counted by extension and sent to doctor, apart from refused extensions", async () => {
+	const home = join(ROOT, "several");
+	const loaded = (name: string, files: Record<string, string>) =>
+		extension(
+			name,
+			{
+				"package.json": JSON.stringify({
+					kabane: { extension: "./index.ts", api: 1 },
+				}),
+				"index.ts": `export default () => ({name: ${JSON.stringify(name)}});`,
+				...files,
+			},
+			join(home, "extensions"),
+		);
+	loaded("notes", { "copilot/procedures/bare.md": "No frontmatter.\n" });
+	loaded("clash", { "copilot/shortcuts/go.md": shortcut("clash", "Go.") });
+	loaded("twin", { "copilot/shortcuts/go.md": shortcut("twin", "Go.") });
+	writeFileSync(
+		configPath(home),
+		JSON.stringify({
+			actor: "test",
+			deviceId: "test",
+			extensions: ["notes", "clash", "twin"],
+			updates: { check: false },
+		}),
+	);
+	const args = parseArgs([]);
+	const ctx = await openContext(home, home, args);
+	if (!ctx.ok) throw ctx.error;
+	const all = await Extensions.loadAll(
+		["notes", "clash", "twin", "gone"],
+		home,
+	);
+	const wired = await boardDeps(args, ctx.value, "claude", {
+		extensions: all.loaded,
+		refusals: [],
+		directories: all.directories,
+	});
+	const both = await boardDeps(args, ctx.value, "claude", {
+		extensions: all.loaded,
+		refusals: all.refused,
+		directories: all.directories,
+	});
+	try {
+		const notice = await wired.announcer?.announce();
+		expect(notice?.ok && notice.value).toBe(
+			"3 copilot files refused in notes, clash, twin; run kabane doctor for each",
+		);
+		const mixed = await both.announcer?.announce();
+		expect(mixed?.ok && mixed.value).toStartWith(
+			"Extension gone refused: not installed",
+		);
+		expect(mixed?.ok && mixed.value).toContain("; 3 copilot files refused");
+		expect(mixed?.ok && mixed.value).not.toContain("--help");
+	} finally {
+		wired.copilot.close();
+		both.copilot.close();
 	}
 });

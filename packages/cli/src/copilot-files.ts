@@ -39,7 +39,7 @@ const fill = (text: string, dir: string): string =>
 
 export namespace CopilotFiles {
 	/** A refused file, or copilot directory, by its path under the extension's directory. */
-	type Refusal = Extensions.Refusal & { file: string };
+	export type Refusal = Extensions.Refusal & { file: string };
 
 	type Read = {
 		procedures: CopilotInstructions.Contribution[];

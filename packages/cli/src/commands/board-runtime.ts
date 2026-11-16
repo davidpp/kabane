@@ -178,6 +178,40 @@ const extensionPorts = async (
 	};
 };
 
+/**
+ * What the footer says of refusals, an extension that did not load told apart from a file of
+ * one that did. One extension or one file is named; several are counted, with where to read them:
+ * help lists refused extensions, and doctor lists each refused copilot file.
+ */
+const refused = (
+	extensions: readonly Extensions.Refusal[],
+	files: readonly CopilotFiles.Refusal[],
+): string | undefined => {
+	const names = [...new Set(extensions.map(({ name }) => name))];
+	const owners = [...new Set(files.map(({ name }) => name))];
+	const first = extensions[0];
+	const file = files[0];
+	const notices = [
+		...(first === undefined
+			? []
+			: [
+					names.length === 1
+						? `Extension ${first.name} refused: ${first.reason.split(";", 1)[0]}`
+						: `${names.length} extensions refused: ${names.join(", ")}; run kabane --help for why`,
+				]),
+		...(file === undefined
+			? []
+			: [
+					files.length === 1
+						? `Extension ${file.name} file refused: ${file.reason.split(";", 1)[0]}`
+						: `${files.length} copilot files refused in ${owners.join(", ")}; run kabane doctor for each`,
+				]),
+	];
+	return notices.length > 0
+		? notices.join("; ").replace(/[\r\n]+/g, " ")
+		: undefined;
+};
+
 /** A value the board saves, as `kabane config set` reads it from the command line. */
 const asInput = (value: string | number | boolean): string =>
 	typeof value === "string" ? value : JSON.stringify(value);
@@ -249,10 +283,12 @@ export const boardDeps = async (
 	const overrides = copilotOverrides(ctx);
 	// Read before the announcer is built, so a refused file is announced like a refused extension.
 	const contributed = CopilotFiles.read(directories);
-	refusals.push(...contributed.refused);
+	const files = contributed.refused;
 	return {
 		...(await extensionPorts(extensions, ctx, refusals)),
-		...(ctx.config.updates?.check === false && refusals.length === 0
+		...(ctx.config.updates?.check === false &&
+		refusals.length === 0 &&
+		files.length === 0
 			? {}
 			: {
 					announcer: {
@@ -262,23 +298,16 @@ export const boardDeps = async (
 									? ok(null)
 									: await UpdateNotice.announcer(ctx.home).announce();
 							if (!update.ok) return update;
-							const names = [...new Set(refusals.map(({ name }) => name))];
-							const first = refusals[0];
-							const notices = first
-								? [
-										names.length === 1
-											? `Extension ${first.name} refused: ${first.reason.split(";", 1)[0]}`.replace(
-													/[\r\n]+/g,
-													" ",
-												)
-											: `${names.length} extensions refused: ${names.join(", ")}; run kabane --help for why`,
-									]
-								: [];
-							const summary = notices[0];
+							const notices: string[] = [];
+							const summary = refused(refusals, files);
 							const available =
 								100 - (update.value ? update.value.length + 2 : 0);
-							if (summary && summary.length > available)
-								notices[0] = `${summary.slice(0, Math.max(0, available - 1))}…`;
+							if (summary)
+								notices.push(
+									summary.length > available
+										? `${summary.slice(0, Math.max(0, available - 1))}…`
+										: summary,
+								);
 							if (update.value) notices.push(update.value);
 							return ok(notices.length ? notices.join("; ") : null);
 						},
