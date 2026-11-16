@@ -225,6 +225,30 @@ describe.concurrent("config through the real CLI", () => {
 	);
 
 	it(
+		"lists a setting with no description without a trailing separator",
+		withHome(async ({ home, write, run }) => {
+			write({ ...initial, extensions: ["bare"] });
+			const dir = join(home, "extensions/bare");
+			mkdirSync(dir);
+			writeFileSync(
+				join(dir, "package.json"),
+				JSON.stringify({ kabane: { extension: "./index.ts", api: 1 } }),
+			);
+			writeFileSync(
+				join(dir, "index.ts"),
+				`export default (host) => ({
+					name: "bare",
+					settings: host.z.object({ word: host.z.string().default("hello") }),
+				});`,
+			);
+			const listed = await run("config", "list");
+			expect(listed.code).toBe(0);
+			expect(listed.out.split("\n")).toContain("bare.word = default");
+		}),
+		30_000,
+	);
+
+	it(
 		"sets typed values without opening SQLite and preserves unknown fields at every level",
 		withHome(async ({ home, path, read, write, run }) => {
 			const future = {

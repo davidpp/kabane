@@ -133,7 +133,7 @@ const list = async (home: string, where: ConfigSettings.Where) => {
 		listed.value
 			.map(
 				(row) =>
-					`${row.key} = ${row.default ? "default" : `${display(row.value)} (${row.layer})`} — ${row.description}`,
+					`${row.key} = ${row.default ? "default" : `${display(row.value)} (${row.layer})`}${row.description ? ` — ${row.description}` : ""}`,
 			)
 			.join("\n"),
 	);
