@@ -134,6 +134,19 @@ export namespace HcRuntime {
 		);
 	};
 
+	/** `hc send`'s argv: `--force` types even while the program waits on its human. */
+	export const sendArgs = (
+		terminal: string,
+		text: string,
+		force: boolean,
+	): string[] => [
+		"send",
+		"--json",
+		...(force ? ["--force"] : []),
+		terminal,
+		text,
+	];
+
 	/** What `hc send --json` ended with: typed, refused because the program is blocked, or failed. */
 	export const sent = (z: Host["z"], ran: Ran): Result<"sent" | "waiting"> => {
 		if (ran.code === 0) return ok("sent");
@@ -221,13 +234,9 @@ export namespace HcRuntime {
 			send: async (terminal, text, options) => {
 				const blocked = refused(terminal);
 				if (blocked !== undefined) return err(new Error(blocked));
-				const ran = await exec([
-					"send",
-					"--json",
-					...(options?.force === true ? ["--force"] : []),
-					terminal,
-					text,
-				]);
+				const ran = await exec(
+					sendArgs(terminal, text, options?.force === true),
+				);
 				return ran.ok ? sent(z, ran.value) : ran;
 			},
 			stop: async (terminal) => {

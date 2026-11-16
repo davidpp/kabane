@@ -86,6 +86,22 @@ it("reads hc send's exit: typed, refused because the program is blocked, or fail
 		);
 });
 
+it("passes --force to hc send only when asked, before the terminal and the text", () => {
+	expect(HcRuntime.sendArgs("t3m", "hi there", false)).toEqual([
+		"send",
+		"--json",
+		"t3m",
+		"hi there",
+	]);
+	expect(HcRuntime.sendArgs("t3m", "hi there", true)).toEqual([
+		"send",
+		"--json",
+		"--force",
+		"t3m",
+		"hi there",
+	]);
+});
+
 it("names hc when it is not on PATH", () => {
 	expect(HcRuntime.missing("/nonexistent")).toContain(
 		"hc (herdr core) is not on PATH",
