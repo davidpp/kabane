@@ -94,7 +94,7 @@ instructions); kabane adds nothing to it.
 ## Follow your runs
 
 ```bash
-kabane runs                 # this project's live runs, newest first
+kabane runs                 # this project's runs that have not ended, newest first
 kabane runs --all           # ended ones too
 kabane runs read <id>       # print the terminal's screen
 kabane runs send <id> yes   # type an answer into it and press enter
@@ -103,15 +103,21 @@ kabane runs stop <id>       # end its program
 ```
 
 `<id>` is the run's id or its last few characters, as long as one run ends with them; the
-terminal's name ends with the id's last six. A run's state is read from its terminal each
-time runs are listed:
+terminal's name ends with the id's last six. A run's state is what its program last reported
+to its terminal, read each time runs are listed. Programs report through OSC 7501, herdr's
+Program Status Protocol; kabane never guesses a state from the screen:
 
 | State | The terminal |
 |---|---|
-| `running` | the agent is working, or its program never reports a status |
+| `live` | the program is open and has reported no status: a shell, or a harness that does not speak OSC 7501 |
+| `running` | the agent is working |
 | `waiting` | the agent is blocked on you: a permission or a question in the terminal |
 | `idle` | the agent's turn ended and the program is still open |
 | `ended` | the program exited, or the terminal is gone |
+
+Any program can report its own state, a script set as `recipes.harness` included: it runs
+`printf '\033]7501;state=working:app=my-agent\033\\'`, with `state` one of `working`, `blocked`,
+`idle`, `done` or `error`. `blocked` shows `waiting`; `idle`, `done` and `error` show `idle`.
 
 Kabane never says a run succeeded. `idle` means the agent stopped; what it did is what it
 wrote on the issue. A run started on another machine shows the state last recorded there and
@@ -122,7 +128,7 @@ yet (an empty TERMINAL column), because it is still starting or kabane was inter
 started, is looked up in hc by its `kabane.run` label whenever runs are listed: by `kabane runs`,
 a verb on it, or the board. When hc has its terminal, the run records it and goes on as usual.
 When hc has none, the run is shown `ended`; if its start was only still on its way, the run goes
-back to `running` once the start records its terminal. `read`, `send` and `attach` refuse a run
+back to `live` once the start records its terminal. `read`, `send` and `attach` refuse a run
 with no terminal, and `stop` on one hc has no terminal for only says it is ended.
 
 With `--json`, `kabane run` prints `run` (the id), `session` and `attach` (the command that
@@ -139,7 +145,7 @@ of runs with these fields:
 | `runtime` | what started the run: `hc` |
 | `session` | the runtime's own handle for it: for `hc`, the terminal's name |
 | `inputs` | the input values the run started with |
-| `state` | `running`, `waiting`, `idle` or `ended` |
+| `state` | `live`, `running`, `waiting`, `idle` or `ended` |
 | `startedAt`, `endedAt` | ISO timestamps; `endedAt` once the run has ended |
 
 ## On the board
@@ -150,10 +156,11 @@ each state from the terminal, as `kabane runs` does, and draws it this way:
 | State | On the board |
 |---|---|
 | `running` | in flight, with a spinner: the issue's row shows the recipe's name and the state, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy |
-| `waiting` | paused, with no spinner: the issue's row shows `⏸ <recipe> · paused` and the state, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy. The agent waits on you: answer it with `kabane runs attach <id>` or `kabane runs send <id>` |
+| `live` | paused, with no spinner, since nothing says the program is working: the issue's row shows `⏸ <recipe> · paused · live`, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy |
+| `waiting` | paused, with no spinner: the issue's row shows `⏸ <recipe> · paused` and the state, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy. The agent waits on you: answer it with `kabane runs attach <id>` |
 | `idle`, `ended` | finished: no badge on the row or line in the header. `kabane runs --all` says which of the two it is |
 
-Every run in flight (`running` or `waiting`) is listed, and the newest finished ones (`idle` or
+Every run in flight (`live`, `running` or `waiting`) is listed, and the newest finished ones (`idle` or
 `ended`) up to ten runs in all. A run with no target is not on the board: `kabane runs` lists
 it.
 

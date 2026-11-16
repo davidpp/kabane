@@ -40,11 +40,11 @@ run id. What a user reads calls `session` the run's terminal (the `TERMINAL` col
 runs`, "in hc terminal …" from `kabane run`), because hc is the only runtime; `--json` and
 `docs/recipes.md`'s field table say `session`. A run is recorded before its runtime starts it, with `session` empty (`Runs.STARTING`)
 until `start` returns, so a start that fails still leaves an ended run. A start interrupted between the two
-writes leaves a `running` row with no session (JCAB-467:1): reconcile asks the runtime's optional
+writes leaves a `live` row with no session (JCAB-467:1): reconcile asks the runtime's optional
 `find(run)` for it (hc: `hc ls --all --label kabane.run=<id>`, the terminal whose name ends with
 the id's last six), records the session it finds, and ends the run when there is none.
 `Runs.endStarting` ends it only while its session is still `STARTING`, and `Runs.setSession` on a
-run still `STARTING` sets it `running` again, so a listing that runs during a start that is still
+run still `STARTING` sets it `live` again, so a listing that runs during a start that is still
 on its way never ends it for good; on a run whose session a reconcile already recovered it keeps
 the state that reconcile read. `read`, `send`, `attach` and `stop` reconcile such a run first, and refuse it
 before any terminal call while its session is still `STARTING`; a runtime without `find` leaves
@@ -59,25 +59,29 @@ show their last recorded state.
 ## State is read from hc
 
 `HcRuntime.stateOf` maps `hc get --json`. `state` is `live` or `finished`; `status` is the
-program's own OSC 7501 record, `null` when it never reported one; `turn` goes up each time the
-status leaves `working`; `hc get` on a removed terminal exits 3 with
-`{"error":{"kind":"not_found",…}}`.
+program's own OSC 7501 record, `null` when it never reported one; `hc get` on a removed terminal
+exits 3 with `{"error":{"kind":"not_found",…}}`. A run's state is only what its program reported
+(JCAB-484): one that reported nothing is `live`, never a guessed `running` or `idle`, and
+`startRun` records a new run as `live` until reconcile reads otherwise. `turn` is not read.
 
 | hc | run state |
 |---|---|
 | `state: "live"`, `status.state: "working"` | `running` |
 | `state: "live"`, `status.state: "blocked"` (`status.kind` permission, question or auth) | `waiting` |
 | `state: "live"`, `status.state` `idle`, `done` or `error` | `idle` |
-| `state: "live"`, `status: null`, `turn: 0` | `running` (a program that never reports, such as a shell) |
-| `state: "live"`, `status: null`, `turn` above 0 | `idle` |
+| `state: "live"`, `status: null` (any `turn`) | `live` (a program that never reports, such as a shell) |
 | `state: "finished"` (any `reason`: `exited`, `killed`, …), or not found | `ended` |
 
 Captured with hc 0.1.21 on 2026-11-16 and kept in `src/runtime-hc.test.ts`: a shell one-liner
 started by `kabane run` (`"state":"live","status":null,"turn":0`, then after `hc kill`
 `"state":"finished","reason":"killed"`) and a Claude Code terminal mid-turn
-(`"status":{"app":"claude-code","state":"working"},"turn":13`). `blocked`, `idle`, `done` and
-`error` come from `hc schema` (`Status.state`: "idle, working, done, blocked or error"); no real
-Claude Code terminal was captured in those states, nor any Codex terminal.
+(`"status":{"app":"claude-code","state":"working"},"turn":13`). The words are `hc schema`'s
+(`Status.state`: "idle, working, done, blocked or error"). A shell harness reports any of them
+itself: `printf '\033]7501;state=blocked:app=my-agent\033\\'` gives
+`"status":{"app":"my-agent","state":"blocked"}` (fields split on `:`; with `;` between fields
+hc kept no record). That drove `live`, `running`, `waiting` and `idle` in the sandbox. No real
+Claude Code terminal was captured blocked or idle, nor any Codex terminal. hc refuses
+`hc send` to a blocked terminal (exit 9, "is blocked (waiting)") unless `--force`.
 
 ## On the board
 
@@ -87,8 +91,9 @@ a target are cards: a run without one belongs to a jobs view, not the issue boar
 
 | Run state | `ActivityStatus` | Why |
 |---|---|---|
+| `live` | `paused` | in flight without a spinner and without claiming work; `detail[0]` is `live`, so the row reads `⏸ <label> · paused · live` |
 | `running` | `running` | in flight, animated |
-| `waiting` | `paused` | in flight without a spinner: the harness waits on the human. The board draws a paused card as `⏸ <label> · paused` and drops its detail (JCAB-475) |
+| `waiting` | `paused` | in flight without a spinner: the harness waits on the human. The row reads `⏸ <label> · paused · waiting` |
 | `idle`, `ended` | `completed` | finished; `detail[0]` is the run state, though the board draws no badge or header line for a finished card, so only `kabane runs` tells the two apart |
 
 Listing and `card` run `reconcile` first, as `kabane runs` does; retention follows the loop's

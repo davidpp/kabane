@@ -29,8 +29,9 @@ it("maps hc's terminal state and the program's status word to a run state", () =
 	expect(HcRuntime.stateOf(claude("blocked"))).toBe("waiting");
 	for (const word of ["idle", "done", "error"])
 		expect(HcRuntime.stateOf(claude(word))).toBe("idle");
-	expect(HcRuntime.stateOf(SHELL_LIVE)).toBe("running");
-	expect(HcRuntime.stateOf({ ...SHELL_LIVE, turn: 2 })).toBe("idle");
+	// A program that never reported is live, whatever its turn count: kabane guesses no status.
+	expect(HcRuntime.stateOf(SHELL_LIVE)).toBe("live");
+	expect(HcRuntime.stateOf({ ...SHELL_LIVE, turn: 2 })).toBe("live");
 	expect(HcRuntime.stateOf(SHELL_KILLED)).toBe("ended");
 	expect(HcRuntime.stateOf(null)).toBe("ended");
 });
@@ -48,7 +49,7 @@ it("reads hc get's JSON through a schema, and refuses a shape hc does not print"
 		expect(renamed.error.message).toContain("hc get --json printed a terminal");
 	const typed = HcRuntime.seen(
 		z,
-		JSON.stringify({ ...CLAUDE_WORKING, turn: "13" }),
+		JSON.stringify({ ...CLAUDE_WORKING, status: "working" }),
 	);
 	expect(typed.ok).toBe(false);
 	const text = HcRuntime.seen(z, "not json");

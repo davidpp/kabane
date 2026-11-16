@@ -23,14 +23,12 @@ export namespace HcRuntime {
 	type Terminal = {
 		state: string;
 		status?: { state: string } | null;
-		turn?: number;
 	};
 
 	const terminalSchema = (z: Host["z"]) =>
 		z.object({
 			state: z.string(),
 			status: z.object({ state: z.string() }).nullish(),
-			turn: z.number().int().nonnegative().optional(),
 		});
 
 	/** `hc ls --json`, the field a run's terminal is found by. */
@@ -70,17 +68,16 @@ export namespace HcRuntime {
 
 	/**
 	 * A terminal's run state; null is a terminal hc no longer has. `status.state` is the program's
-	 * own word (idle, working, done, blocked or error) and is null when it never said; `turn`
-	 * counts the times it left working. A program that never reports reads as running until it
-	 * exits. Values recorded from real output in `AGENTS.md`.
+	 * own word (idle, working, done, blocked or error) and is null when it never said. A program
+	 * that never said is `live`, never a guessed running or idle. Values recorded from real output
+	 * in `AGENTS.md`.
 	 */
 	export const stateOf = (terminal: Terminal | null): Runs.State => {
 		if (terminal === null || terminal.state !== "live") return "ended";
 		const word = terminal.status?.state;
 		if (word === "working") return "running";
 		if (word === "blocked") return "waiting";
-		if (word === undefined)
-			return (terminal.turn ?? 0) > 0 ? "idle" : "running";
+		if (word === undefined) return "live";
 		return "idle";
 	};
 

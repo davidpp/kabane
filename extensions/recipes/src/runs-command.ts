@@ -268,7 +268,7 @@ export const runsCommand = (
 				{ runs: [] },
 				all
 					? "No runs in this project."
-					: "No live runs in this project; --all shows ended ones.",
+					: "No runs in flight in this project; --all shows ended ones.",
 			);
 		const here = hostname();
 		const rows = shown.map((run) => [
