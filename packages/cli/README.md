@@ -265,7 +265,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `update` | `--check` `--json` — metadata-only stable candidate (policy-unverified), or explicit verified update of a supported hoisted Bun global registry install; no tracker initialization |
 | `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
 | `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`kabane_*`), with the working directory's scope as the default so writes may omit `scopeUri` |
-| `mcp install` | `--harness claude\|codex\|gemini` (repeatable) `--force` `--print` — register `mcp` in each harness on PATH through its own `mcp add`, as `cabane://actor/agent/<harness>`; `--print` prints the snippets instead, also the fallback when none is found |
+| `mcp install` | `--harness claude\|codex\|gemini` (repeatable) `--force` `--print` — register `mcp` in each harness on PATH through its own `mcp add`, as `cabane://actor/agent/<harness>`; existing entries are unchanged, with `stale` for a different launch command (`present` for the current one); `--force` or `doctor --fix kabane/mcp-entry-stale-<harness>` re-points it; `--print` prints snippets, also the fallback when none is found |
 
 Updates are latest-stable only within the installed major (`0.x`: same minor). Source links,
 file/tarball/other-manager and unverified isolated/missing-global-bin installs refuse mutation;

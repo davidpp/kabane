@@ -351,6 +351,12 @@ a silent UTC.
 
 ## Updating
 
+Scripts reading `kabane mcp install --json` must accept `reports[].status: "stale"`
+for an existing entry whose launch differs from this installation. It previously returned
+`present`; the exit code remains 0 and the entry is unchanged. Text now says
+`registered with another command` instead of `already installed` for that state.
+Use `--force` or the named doctor repair only when you want to re-point it.
+
 ### Hearing about a release
 
 The board says when a release your install would update to is out: a line over its footer,
