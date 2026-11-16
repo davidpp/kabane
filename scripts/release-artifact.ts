@@ -242,6 +242,18 @@ export const inspectArchive = async (
 					"Unsafe or unsupported archive members; no extraction attempted.",
 				),
 			);
+		// Extraction keeps the last copy of a repeated path, so the content checks would never
+		// see the earlier ones. Compare paths without empty segments: `a//b` and `a/b/` land on `a/b`.
+		const paths = entries.map((name) =>
+			name
+				.split("/")
+				.filter((part) => part)
+				.join("/"),
+		);
+		if (new Set(paths).size !== paths.length)
+			return err(
+				new Error("Archive repeats a member path; no extraction attempted."),
+			);
 		if (existsSync(unpacked))
 			return err(new Error("Archive extraction destination must be new."));
 		mkdirSync(unpacked);

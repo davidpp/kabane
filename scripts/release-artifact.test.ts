@@ -23,6 +23,8 @@ import {
 const UNEXPECTED_SHAPE = "Unexpected published package file shape.";
 const MAP_OR_MACHINE_PATH =
 	"Archive exceeds bounds or contains a source map/machine path.";
+const DUPLICATE_MEMBER =
+	"Archive repeats a member path; no extraction attempted.";
 const WORK = mkdtempSync(join(tmpdir(), "kabane-artifact-test-"));
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));
 const manifest = {
@@ -200,6 +202,20 @@ for (const member of [
 	test(`unsafe archive member refuses extraction: ${member.name}/${member.type ?? 48}`, async () => {
 		const checked = await inspect(archive([...normal, member]));
 		expect(checked.result.ok).toBe(false);
+		expect(existsSync(checked.unpacked)).toBe(false);
+	});
+for (const name of ["package/types/extension.d.ts", "package/package.json"])
+	test(`a member path repeated in the archive refuses extraction: ${name}`, async () => {
+		const checked = await inspect(
+			archive([
+				...normal,
+				{ name: "package/types/extension.d.ts", text: "export {};" },
+				{ name, text: "{}" },
+			]),
+		);
+		expect(checked.result.ok).toBe(false);
+		if (!checked.result.ok)
+			expect(checked.result.error.message).toBe(DUPLICATE_MEMBER);
 		expect(existsSync(checked.unpacked)).toBe(false);
 	});
 test("gzip expansion is bounded before extraction", async () => {
