@@ -2,16 +2,17 @@ name: ci
 
 on:
   push:
-    branches: ["**"]
+    branches: ["main"]
   pull_request:
   workflow_dispatch:
 
+# A newer push supersedes a PR's run; every main commit keeps its own verdict.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  gate:
-    # A newer push supersedes a running gate on the same ref.
-    concurrency:
-      group: gate-${{ github.ref }}-${{ github.event_name }}
-      cancel-in-progress: true
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -19,8 +20,69 @@ jobs:
         with:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile
+      - run: bun run check:ci-tests
       - run: bun run check
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun run test
-      # Builds the npm package, packs it, installs the tarball into a throwaway HOME and runs it.
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      # Builds, packs and installs the npm tarball into a throwaway HOME.
       - run: bun run smoke
+
+  test:
+    name: test (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: cli
+            command: bun test ./packages/cli --path-ignore-patterns=**/commands/config.test.ts --path-ignore-patterns=**/update-binary.test.ts
+          - group: cli-processes
+            command: bun test ./packages/cli/src/commands/config.test.ts ./packages/cli/src/update-binary.test.ts
+          - group: extensions
+            command: bun test ./extensions
+          - group: scripts-board
+            command: bun test ./scripts ./packages/board
+          - group: core-modules
+            command: bun test ./packages/core ./packages/sqlite ./packages/acp ./packages/extension ./packages/questions ./packages/checklist ./packages/handoff ./packages/outcome
+          - group: worker
+            command: bun run test:worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: ${{ matrix.command }}
+
+  gate:
+    if: ${{ always() }}
+    needs: [check, typecheck, smoke, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to succeed
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          for result in ${RESULTS//,/ }; do
+            if [[ "$result" != success ]]; then
+              echo "Required job did not succeed: $RESULTS"
+              exit 1
+            fi
+          done
