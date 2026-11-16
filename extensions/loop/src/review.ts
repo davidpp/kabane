@@ -1,19 +1,14 @@
 // How much review a run gets. With `loop.review.mode: triage` and two lenses or more, one short
 // read-only session reads the run's diff stat, the parent's brief and each lens's `applies` line,
 // and answers with a review plan: which lenses review together in one session, at which tier, and
-// which it skips, each with a reason. The plan is bounded here, not trusted: an unknown lens is
-// dropped, an `always` lens is never skipped, a lens the plan forgot reviews on its own, and a diff
-// past the size cap gets one session per lens. A triage that fails, edits the tree or answers no
-// plan leaves every lens its own group, as a run without triage has; the run never stops on it.
+// which it skips, each with a reason. Only configured lens names and tiers are accepted, and
+// each lens keeps its first place. A triage that fails, edits the tree or answers no plan
+// leaves every lens its own group, as a run without triage has; the run never stops on it.
 import { z } from "zod";
 import { Brief } from "./brief";
 import type { LoopConfig } from "./config";
 
 export namespace Review {
-	/** A diff past either bound runs one session per lens, whatever the plan grouped. */
-	export const MAX_FILES = 20;
-	export const MAX_LINES = 800;
-
 	/** The lane the triage session runs in. */
 	export const LANE = "triage";
 
@@ -30,7 +25,7 @@ export namespace Review {
 
 	const SkipSchema = z.object({ lens: z.string(), reason: z.string() });
 
-	/** The run's review plan, after the bounds, as run.json keeps it. */
+	/** The run's review plan, after normalization, as run.json keeps it. */
 	export const PlanSchema = z.object({
 		groups: z.array(GroupSchema),
 		skipped: z.array(SkipSchema).default([]),
@@ -39,7 +34,7 @@ export namespace Review {
 	});
 	type Plan = z.infer<typeof PlanSchema>;
 
-	// What a session answers: reasons and skips may be missing, and the bounds fill them in. A
+	// What a session answers: reasons and skips may be missing, and normalization fills them in. A
 	// model writes `"tier": null` for "the run's model" as readily as it leaves the key out.
 	const AnswerSchema = z.object({
 		groups: z
@@ -123,9 +118,6 @@ export namespace Review {
 		};
 	};
 
-	const over = (d: Pick<Diff, "files" | "lines">): boolean =>
-		d.files > MAX_FILES || d.lines > MAX_LINES;
-
 	// The last fenced block in `text` that parses as a plan: a session may think aloud before it.
 	const answerIn = (text: string): Answer | undefined => {
 		const blocks = [...text.matchAll(/```(?:json)?[ \t]*\r?\n([\s\S]*?)```/g)];
@@ -142,19 +134,17 @@ export namespace Review {
 		return undefined;
 	};
 
-	/** A plan within its bounds, and what the bounds changed, one line each for the trace. */
+	/** A normalized plan and notes about dropped names or tiers for the trace. */
 	export type Decided = { plan: Plan; notes: string[] };
 
 	/**
-	 * The session's answer held to the bounds: only configured lenses, each in one place; a skipped
-	 * `always` lens and a forgotten one each review on their own; a tier no run knows dropped; and
-	 * past the size cap, every group split into one per lens.
+	 * Keep only configured lenses, each in one place, and known tiers.
+	 * Record omitted lenses as skipped so every configured lens appears on the trace.
 	 */
 	const bound = (
 		answer: Answer,
 		lenses: readonly Lens[],
 		tiers: readonly string[],
-		size: Pick<Diff, "files" | "lines">,
 	): Decided => {
 		const notes: string[] = [];
 		const known = new Map(lenses.map((l) => [l.name, l]));
@@ -170,7 +160,7 @@ export namespace Review {
 			placed.add(name);
 			return true;
 		};
-		let groups: Group[] = answer.groups.flatMap((g) => {
+		const groups: Group[] = answer.groups.flatMap((g) => {
 			const names = g.lenses.filter(take);
 			if (names.length === 0) return [];
 			const asked = g.tier ?? undefined;
@@ -191,45 +181,30 @@ export namespace Review {
 		const skipped: Plan["skipped"] = [];
 		for (const s of answer.skipped) {
 			if (!take(s.lens)) continue;
-			if (known.get(s.lens)?.always) {
-				groups.push({ lenses: [s.lens], reason: "always runs" });
-				notes.push(
-					`triage skipped ${s.lens}, which always runs: it reviews on its own`,
-				);
-			} else
-				skipped.push({
-					lens: s.lens,
-					reason: s.reason?.trim() || "no reason given",
-				});
+			skipped.push({
+				lens: s.lens,
+				reason: s.reason?.trim() || "no reason given",
+			});
 		}
 		for (const { name } of lenses)
 			if (!placed.has(name)) {
 				placed.add(name);
-				groups.push({
-					lenses: [name],
+				skipped.push({
+					lens: name,
 					reason: "the triage's plan did not place it",
 				});
 			}
-		if (over(size) && groups.some((g) => g.lenses.length > 1)) {
-			notes.push(
-				`the diff is past the size cap (${size.files} files, ${size.lines} lines; cap ${MAX_FILES} files or ${MAX_LINES} lines): one session per lens`,
-			);
-			groups = groups.flatMap((g) =>
-				g.lenses.map((name) => ({ ...g, lenses: [name] })),
-			);
-		}
 		return { plan: { groups, skipped }, notes };
 	};
 
 	/**
-	 * The plan a triage session's end gives: its answer within the bounds when it finished with
+	 * The plan a triage session's end gives: its normalized answer when it finished with
 	 * one, every lens on its own otherwise, saying why.
 	 */
 	export const decide = (
 		ended: { outcome: string; detail?: string; summary?: string },
 		lenses: readonly Lens[],
 		tiers: readonly string[],
-		size: Pick<Diff, "files" | "lines">,
 	): Decided => {
 		const names = lenses.map((l) => l.name);
 		if (ended.outcome !== "done")
@@ -242,7 +217,7 @@ export namespace Review {
 			};
 		const answer = answerIn(ended.summary ?? "");
 		return answer
-			? bound(answer, lenses, tiers, size)
+			? bound(answer, lenses, tiers)
 			: {
 					plan: fallback(names, "triage answered no review plan"),
 					notes: [],
@@ -284,7 +259,7 @@ export namespace Review {
 				"Do not write to the tracker: read the diff stat below, the brief after it, and the changed files themselves when the stat is not enough. Keep it short: this decision should cost a fraction of one review.",
 				Brief.reviewing(tree),
 				`The run's lenses, each with the changes it reviews:\n${lenses.map(describe).join("\n")}`,
-				`Skip a lens only when the change touches nothing it reviews, and say why in a sentence that names what the diff does not touch. Group lenses whose reviews read the same files. Give each group a tier (${tiers.join(", ")}) only when it needs other than the run's model: a tier on a trivial diff, a stronger one on a risky change. A lens marked always runs is never skipped.`,
+				`Skip a lens only when the change touches nothing it reviews, and say why in a sentence that names what the diff does not touch. Group lenses whose reviews read the same files. Weigh the diff’s size: a group reads it once while splitting re-reads it per lens, but a very large diff in one session may exceed what it can hold. Give each group a tier (${tiers.join(", ")}) only when it needs other than the run's model: a tier on a trivial diff, a stronger one on a risky change. A lens marked always runs is never skipped.`,
 				`End your turn with the review plan as one fenced JSON block and nothing after it, every lens in one group or skipped:\n\`\`\`json\n${EXAMPLE}\n\`\`\``,
 			].join("\n\n"),
 			[

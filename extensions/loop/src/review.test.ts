@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-// The review plan triage answers, held to its bounds, and the runner that triages before its lenses,
+// The review plan triage answers, normalized, and the runner that triages before its lenses,
 // on a disposable tracker and a real git repository. An inline ACP subprocess stands in for the
 // model: a triage prompt is answered with the plan the test writes, any other prompt ends its turn.
 import "@cabane/core/testing";
@@ -33,13 +33,12 @@ const LENSES: Review.Lens[] = [
 	},
 ];
 const TIERS = ["frontier", "balanced", "fast"];
-const SMALL = { files: 2, lines: 40 };
 
 const answered = (plan: unknown, prose = "Here is the plan."): string =>
 	`${prose}\n\n\`\`\`json\n${JSON.stringify(plan)}\n\`\`\``;
 
-const decide = (summary: string, size = SMALL) =>
-	Review.decide({ outcome: "done", summary }, LENSES, TIERS, size);
+const decide = (summary: string) =>
+	Review.decide({ outcome: "done", summary }, LENSES, TIERS);
 
 describe("Review.decide", () => {
 	it("takes a good plan as answered: its groups at their tiers, its skips, each with its reason", () => {
@@ -143,7 +142,6 @@ describe("Review.decide", () => {
 			{ outcome: "error", detail: "the recheck changed the working tree" },
 			LENSES,
 			TIERS,
-			SMALL,
 		);
 		expect(plan.fallback).toBe(
 			"triage error: the recheck changed the working tree",
@@ -151,24 +149,30 @@ describe("Review.decide", () => {
 		expect(plan.groups).toHaveLength(4);
 	});
 
-	it("never skips an always lens: it reviews on its own, as always runs", () => {
+	it("honors an explicit skip of an always lens and keeps each lens in its first place", () => {
 		const decided = decide(
 			answered({
-				groups: [{ lenses: ["quality", "docs", "compat"], reason: "code" }],
-				skipped: [{ lens: "functional", reason: "trivial" }],
+				groups: [{ lenses: ["quality", "quality"], reason: "code" }],
+				skipped: [
+					{ lens: "functional", reason: "triage chose to skip" },
+					{ lens: "quality", reason: "duplicate" },
+					{ lens: "docs", reason: "no docs" },
+					{ lens: "compat", reason: "no data" },
+				],
 			}),
 		);
 		expect(decided.plan.groups).toEqual([
-			{ lenses: ["quality", "docs", "compat"], reason: "code" },
-			{ lenses: ["functional"], reason: "always runs" },
+			{ lenses: ["quality"], reason: "code" },
 		]);
-		expect(decided.plan.skipped).toEqual([]);
-		expect(decided.notes).toEqual([
-			"triage skipped functional, which always runs: it reviews on its own",
+		expect(decided.plan.skipped).toEqual([
+			{ lens: "functional", reason: "triage chose to skip" },
+			{ lens: "docs", reason: "no docs" },
+			{ lens: "compat", reason: "no data" },
 		]);
+		expect(decided.notes).toEqual([]);
 	});
 
-	it("drops a lens the run does not have, and gives one the plan forgot a session of its own", () => {
+	it("drops a lens the run does not have, and records omitted lenses as skipped", () => {
 		const decided = decide(
 			answered({
 				groups: [{ lenses: ["functional", "perf"], reason: "code" }],
@@ -177,10 +181,15 @@ describe("Review.decide", () => {
 		);
 		expect(decided.plan.groups).toEqual([
 			{ lenses: ["functional"], reason: "code" },
-			{ lenses: ["quality"], reason: "the triage's plan did not place it" },
-			{ lenses: ["compat"], reason: "the triage's plan did not place it" },
 		]);
-		expect(decided.plan.skipped).toEqual([{ lens: "docs", reason: "no docs" }]);
+		expect(decided.plan.skipped).toEqual([
+			{ lens: "docs", reason: "no docs" },
+			{ lens: "quality", reason: "the triage's plan did not place it" },
+			{ lens: "compat", reason: "the triage's plan did not place it" },
+		]);
+		expect(Review.lines(decided.plan)).toContain(
+			"skipped quality: the triage's plan did not place it",
+		);
 		expect(decided.notes).toEqual([
 			"triage named perf, which is not a lens of this run: dropped",
 		]);
@@ -202,37 +211,6 @@ describe("Review.decide", () => {
 			{ lenses: ["functional", "quality", "docs", "compat"], reason: "all" },
 		]);
 		expect(decided.notes[0]).toContain("tier huge, which is not a tier");
-	});
-
-	it("splits every group into one session per lens past the size cap, keeping skips and tiers", () => {
-		const plan = answered({
-			groups: [
-				{ lenses: ["functional", "quality"], tier: "fast", reason: "code" },
-			],
-			skipped: [
-				{ lens: "docs", reason: "no docs" },
-				{ lens: "compat", reason: "no data" },
-			],
-		});
-		for (const size of [
-			{ files: Review.MAX_FILES + 1, lines: 10 },
-			{ files: 1, lines: Review.MAX_LINES + 1 },
-		]) {
-			const decided = decide(plan, size);
-			expect(decided.plan.groups).toEqual([
-				{ lenses: ["functional"], tier: "fast", reason: "code" },
-				{ lenses: ["quality"], tier: "fast", reason: "code" },
-			]);
-			expect(decided.plan.skipped.map((s) => s.lens)).toEqual([
-				"docs",
-				"compat",
-			]);
-			expect(decided.notes[0]).toContain("past the size cap");
-		}
-		expect(
-			decide(plan, { files: Review.MAX_FILES, lines: Review.MAX_LINES }).plan
-				.groups,
-		).toHaveLength(1);
 	});
 });
 
@@ -388,7 +366,12 @@ const trace = (type: string): string[] => {
 };
 
 describe("Runner review triage", () => {
-	it("triages once after the gates, at loop.review.tier, then runs the plan's group as one session", async () => {
+	it("keeps the answered group for a large diff after triaging once at loop.review.tier", async () => {
+		for (let i = 0; i < 25; i++) {
+			const name = `large-${i}.txt`;
+			writeFileSync(join(home, name), "changed\n".repeat(40));
+			GitFixture.run(home, ["add", "-f", name]);
+		}
 		const run = await start({ review: { tier: "triage" } });
 
 		expect([run.status, run.exit?.reason]).toEqual(["completed", "plan-done"]);
@@ -415,7 +398,7 @@ describe("Runner review triage", () => {
 		expect(claims[0]).toStartWith(
 			"gemini at tier triage triages the review of",
 		);
-		expect(claims[0]).toContain("1 file and 2 lines changed");
+		expect(claims[0]).toContain("26 files and 1002 lines changed");
 		expect(claims[1]).toContain("gemini at tier balanced reviews");
 		// The brief: the diff stat from the base, and each lens with its frontmatter.
 		const [triage] = prompts();

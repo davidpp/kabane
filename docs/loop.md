@@ -351,14 +351,13 @@ skipped compat: no persisted data, interface or config change in the diff
 ```
 
 The run then starts one session per group. A skipped lens files nothing and counts as
-reviewed. The plan cannot go below these bounds:
+reviewed. Triage decides the grouping, weighing the diff's size against repeated reads
+and how much one session can hold.
 
-- A lens marked `always: true` always reviews. A plan that skips it gets it back in a
-  session of its own.
-- A lens the plan does not mention reviews in a session of its own. A lens the run does
-  not have is dropped, and so is a tier that no run knows.
-- A diff of more than 20 files or 800 changed lines gets one session per lens, whatever
-  the plan grouped.
+- The triage prompt carries `always: true` as guidance to never skip that lens; code
+  does not enforce it.
+- A lens the plan does not mention does not review and shows as skipped on the trace.
+- A lens the run does not have is dropped, and so is a tier that no run knows.
 - Triage never changes `loop.implementer`, `loop.verifier`, `loop.model` or `loop.land`.
 
 Every lens reviews in a session of its own, with the reason on the trace, when triage
