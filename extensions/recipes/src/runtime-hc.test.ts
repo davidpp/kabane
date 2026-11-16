@@ -100,3 +100,23 @@ it("refuses an empty or blank terminal in every method before it looks for hc", 
 		process.env.PATH = path;
 	}
 });
+
+// `hc ls --all --json --label kabane.run=PROBE467` from hc 0.1.21, on a labelled `sleep` before and
+// after `hc kill`; and with no terminal carrying the label.
+const LS_LIVE =
+	'{"hidden_finished":0,"terminals":[{"address":"t2p","agent":"sleep","cwd":"/tmp","name":"probe-467abc","state":"live","turn":0}]}';
+const LS_KILLED =
+	'{"hidden_finished":0,"terminals":[{"address":"t2p","agent":"sleep","cwd":"/tmp","name":"probe-467abc","reason":"killed","signal":1,"state":"finished","turn":0}]}';
+const LS_NONE = '{"hidden_finished":0,"terminals":[]}';
+
+it("finds a run's terminal by the run id's last six among those hc lists for its label", () => {
+	const run = "01M7JT0TFJB7MF38VYDW467ABC";
+	for (const listed of [LS_LIVE, LS_KILLED])
+		expect(HcRuntime.named(z, run, listed)).toEqual(ok("probe-467abc"));
+	expect(HcRuntime.named(z, run, LS_NONE)).toEqual(ok(undefined));
+	expect(HcRuntime.named(z, "01M7JT0TFJB7MF38VYDWCG0FFF", LS_LIVE)).toEqual(
+		ok(undefined),
+	);
+	const unread = HcRuntime.named(z, run, "{}");
+	expect(unread.ok).toBe(false);
+});

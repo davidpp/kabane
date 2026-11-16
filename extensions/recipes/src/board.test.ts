@@ -47,6 +47,7 @@ import { RecipeDispatcher } from "./dispatcher";
 import { Kabane } from "./result";
 import { settingsSchema } from "./run-command";
 import { Runs } from "./runs";
+import { reconcile } from "./runs-command";
 import type { Runtime } from "./runtime";
 
 Kabane.bind({ result: { ok, err, tryCatch, trySync } });
@@ -95,6 +96,7 @@ const scripted = () => {
 	const screens = new Map<string, string>();
 	const started: Runtime.Start[] = [];
 	const stopped: string[] = [];
+	const got: string[] = [];
 	const runtime: Runtime = {
 		name: "hc",
 		missing: () => undefined,
@@ -104,7 +106,10 @@ const scripted = () => {
 			states.set(name, "running");
 			return ok(name);
 		},
-		get: async (session) => ok(states.get(session) ?? "ended"),
+		get: async (session) => {
+			got.push(session);
+			return ok(states.get(session) ?? "ended");
+		},
 		stop: async (session) => {
 			stopped.push(session);
 			states.set(session, "ended");
@@ -117,7 +122,7 @@ const scripted = () => {
 				: ok(screen);
 		},
 	};
-	return { runtime, states, screens, started, stopped };
+	return { runtime, states, screens, started, stopped, got };
 };
 
 let issue: { id: string; shortId: string; title: string };
@@ -350,6 +355,105 @@ describe("RecipeActivity", () => {
 		expect(card?.actions).toBeUndefined();
 		const again = await (source.act?.(one.id, "stop", {}) ?? ok(""));
 		expect(again.ok).toBe(false);
+	});
+});
+
+describe("reconcile on a run recorded as starting", () => {
+	/** The scripted runtime, with a `find` that knows the terminals in `found` by run id. */
+	const finding = (found: Map<string, string>) => {
+		const hc = scripted();
+		return {
+			...hc,
+			runtime: {
+				...hc.runtime,
+				find: async (id: string) => ok(found.get(id)),
+			} satisfies Runtime,
+		};
+	};
+	const stored = async (id: string) =>
+		value(await Runs.list(host, project.scopeUri)).find((r) => r.id === id);
+
+	it("records the session the runtime finds and the state it reads on that session", async () => {
+		const live = run("01M7JT0TFJB7MF38VYDWCG0600", {
+			session: Runs.STARTING,
+		});
+		const gone = run("01M7JT0TFJB7MF38VYDWCG0601", {
+			session: Runs.STARTING,
+		});
+		value(await Runs.insert(host, live, "t"));
+		value(await Runs.insert(host, gone, "t"));
+		const hc = finding(
+			new Map([
+				[live.id, "research-cg0600"],
+				[gone.id, "research-cg0601"],
+			]),
+		);
+		hc.states.set("research-cg0600", "idle");
+		hc.states.set("research-cg0601", "ended");
+		const now = value(await reconcile(host, hc.runtime, [live, gone], "t"));
+		expect(now.map((r) => [r.session, r.state])).toEqual([
+			["research-cg0600", "idle"],
+			["research-cg0601", "ended"],
+		]);
+		expect([
+			(await stored(live.id))?.session,
+			(await stored(live.id))?.state,
+			(await stored(gone.id))?.session,
+			(await stored(gone.id))?.state,
+		]).toEqual(["research-cg0600", "idle", "research-cg0601", "ended"]);
+		expect(hc.got).toEqual(["research-cg0600", "research-cg0601"]);
+	});
+
+	it("does not report ended a run whose start recorded its session meanwhile", async () => {
+		const listed = run("01M7JT0TFJB7MF38VYDWCG0602", {
+			session: Runs.STARTING,
+		});
+		value(await Runs.insert(host, listed, "t"));
+		// The start writes its session after the listing read the row, before reconcile ends it.
+		value(await Runs.setSession(host, listed.id, "research-cg0602", "t"));
+		const hc = finding(new Map());
+		const [now] = value(await reconcile(host, hc.runtime, [listed], "t"));
+		expect(now?.state).toBe("running");
+		expect((await stored(listed.id))?.state).toBe("running");
+		expect(hc.got).toEqual([]);
+	});
+
+	it("lets the board stop the run on the session it recovered, never on an empty one", async () => {
+		const one = run("01M7JT0TFJB7MF38VYDWCG0603", { session: Runs.STARTING });
+		value(await Runs.insert(host, one, "t"));
+		const hc = finding(new Map([[one.id, "research-cg0603"]]));
+		hc.states.set("research-cg0603", "running");
+		const source = sourceWith(hc.runtime);
+		const notice = value(await (source.act?.(one.id, "stop", {}) ?? ok("")));
+		expect(notice).toBe(`stopped run ${one.id}; it is ended`);
+		expect(hc.stopped).toEqual(["research-cg0603"]);
+		expect(hc.got).not.toContain(Runs.STARTING);
+	});
+
+	it("says on the board that a run with no terminal never started once it is ended, and is starting before", async () => {
+		const never = run("01M7JT0TFJB7MF38VYDWCG0604", {
+			session: Runs.STARTING,
+		});
+		value(await Runs.insert(host, never, "t"));
+		const source = sourceWith(finding(new Map()).runtime);
+		const tab = value((await source.events?.(never.id, 0)) ?? ok([]));
+		expect(tab.map((e) => e.summary)).toEqual([
+			`run ${never.id} never started in hc; it is ended`,
+		]);
+		const stop = await (source.act?.(never.id, "stop", {}) ?? ok(""));
+		expect(stop.ok ? "" : stop.error.message).toBe(
+			`run ${never.id} never started in hc; it is ended: nothing to stop`,
+		);
+		// A runtime that cannot look a start up leaves the run as recorded: still starting.
+		const waiting = run("01M7JT0TFJB7MF38VYDWCG0605", {
+			session: Runs.STARTING,
+		});
+		value(await Runs.insert(host, waiting, "t"));
+		const plain = sourceWith(scripted().runtime);
+		const starting = value((await plain.events?.(waiting.id, 0)) ?? ok([]));
+		expect(starting.map((e) => e.summary)).toEqual([
+			`run ${waiting.id} is still starting`,
+		]);
 	});
 });
 

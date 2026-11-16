@@ -99,6 +99,46 @@ it("stores a run, captures each write, stamps ended_at on ended and clears it af
 	]);
 });
 
+it("ends a run still starting and nothing else, and a session written after brings it back", async () => {
+	const starting = run("01M7JT0TFJB7MF38VYDWCG0AAA", {
+		session: Runs.STARTING,
+	});
+	const started = run("01M7JT0TFJB7MF38VYDWCG0BBB");
+	value(await Runs.insert(host, starting, "tester"));
+	value(await Runs.insert(host, started, "tester"));
+
+	expect(value(await Runs.endStarting(host, started.id, "tester"))).toBe(false);
+	expect(value(await Runs.endStarting(host, starting.id, "tester"))).toBe(true);
+	expect(value(await Runs.endStarting(host, starting.id, "tester"))).toBe(
+		false,
+	);
+	const byId = async () =>
+		new Map(value(await Runs.list(host, SCOPE)).map((r) => [r.id, r]));
+	expect((await byId()).get(started.id)).toEqual(started);
+	expect((await byId()).get(starting.id)?.state).toBe("ended");
+
+	// The start that a listing ended early records its session: the run is running again.
+	value(await Runs.setSession(host, starting.id, "research-cg0aaa", "tester"));
+	expect((await byId()).get(starting.id)).toEqual({
+		...starting,
+		session: "research-cg0aaa",
+	});
+	expect(value(await oplog()).map(({ op }) => op)).toEqual([
+		"insert",
+		"insert",
+		"update",
+		"update",
+	]);
+
+	// A reconcile recovered the session and read the run ended first: the start's own write of
+	// the same session keeps that state.
+	value(await Runs.setState(host, starting.id, "ended", "tester"));
+	const stopped = (await byId()).get(starting.id);
+	value(await Runs.setSession(host, starting.id, "research-cg0aaa", "tester"));
+	expect((await byId()).get(starting.id)).toEqual(stopped);
+	expect(stopped?.state).toBe("ended");
+});
+
 it("lists a scope's runs newest first, and no other scope's", async () => {
 	value(await Runs.insert(host, run("01M7JT0TFJB7MF38VYDWCG0001"), "t"));
 	value(

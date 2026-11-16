@@ -44,6 +44,12 @@ export namespace RecipeActivity {
 
 	const attach = (id: string): string => `kabane runs attach ${id}`;
 
+	/** A run with no session: still starting, or ended by a reconcile that found no terminal. */
+	const starting = (run: Runs.Run): string =>
+		run.state === "ended"
+			? `never started in ${run.runtime}; it is ended`
+			: "is still starting";
+
 	/** Whether this machine can act on the run's terminal: its own, started, and still there. */
 	const reachable = (run: Runs.Run, here: string): boolean =>
 		run.machine === here &&
@@ -163,7 +169,7 @@ export namespace RecipeActivity {
 					`run ${run.id} is ${run.state} on ${run.machine}: read its terminal there, with kabane runs read ${run.id}`,
 				);
 			if (run.session === Runs.STARTING)
-				return note(run.id, afterSeq, `run ${run.id} is starting`);
+				return note(run.id, afterSeq, `run ${run.id} ${starting(run)}`);
 			if (run.runtime !== runtime.name || runtime.read === undefined)
 				return note(
 					run.id,
@@ -289,7 +295,7 @@ export namespace RecipeActivity {
 					return err(
 						new Error(
 							run.value.machine === hostname()
-								? `run ${id} is ${run.value.session === Runs.STARTING ? "still starting" : run.value.state}: nothing to stop`
+								? `run ${id} ${run.value.session === Runs.STARTING ? starting(run.value) : `is ${run.value.state}`}: nothing to stop`
 								: `run ${id} runs on ${run.value.machine}: stop it there`,
 						),
 					);
