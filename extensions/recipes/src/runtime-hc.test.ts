@@ -73,3 +73,30 @@ it("names a terminal from the title and the run id's last six, within hc's rules
 	expect(long).toBe("preliminary-research-t-cg8pkx");
 	expect(long).toMatch(/^[a-z0-9_-]{1,32}$/);
 });
+
+it("refuses an empty or blank terminal in every method before it looks for hc", async () => {
+	// With PATH emptied, a method that went on to hc would fail naming hc instead.
+	const path = process.env.PATH;
+	process.env.PATH = "/nonexistent";
+	try {
+		const hc = HcRuntime.runtime(z);
+		for (const terminal of ["", "  "]) {
+			const calls = [
+				hc.get(terminal),
+				hc.read?.(terminal),
+				hc.send?.(terminal, "yes"),
+				hc.stop(terminal),
+				hc.attach?.(terminal),
+			];
+			for (const result of await Promise.all(calls)) {
+				expect(result?.ok).toBe(false);
+				if (result !== undefined && !result.ok)
+					expect(result.error.message).toBe(
+						"No terminal named: kabane never runs hc without the terminal it started",
+					);
+			}
+		}
+	} finally {
+		process.env.PATH = path;
+	}
+});

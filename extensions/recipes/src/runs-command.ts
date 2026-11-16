@@ -119,6 +119,11 @@ const operate = async (
 		return host.outcome.failure(
 			`Run ${run.id} runs in ${run.runtime}, which this kabane does not have`,
 		);
+	// An empty session would reach hc as no terminal at all, and hc would pick one of its own.
+	if (run.session === Runs.STARTING)
+		return host.outcome.failure(
+			`Run ${run.id} has no session yet: its start has not finished, so there is nothing to ${verb === "send" || verb === "attach" ? `${verb} to` : verb}`,
+		);
 	const lacks = (operation: string) =>
 		host.outcome.failure(
 			`Run ${run.id} runs in ${run.runtime}, which has no terminal to ${operation}`,
