@@ -33,7 +33,7 @@ it("names a modules entry that reaches the main entry, a board or command file, 
 });
 
 it("passes every in-repo extension that has a modules entry", () => {
-	// The loop has none yet; it is checked here the day its manifest names one.
+	// recipes names one today; the loop and dispatch are checked here the day theirs do.
 	const root = resolve(import.meta.dir, "..");
 	const manifests = [
 		...new Bun.Glob("extensions/*/package.json").scanSync({

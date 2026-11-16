@@ -1,10 +1,32 @@
 # Agent work in kabane needs seven contracts and no workflow engine
 
-Status: proposal for JCAB-426 (parent JCAB-420), 2026-11-16. Nothing here is built. The open
-decisions are filed as questions on JCAB-426. Research behind it is attached to that issue:
+Status: proposal for JCAB-426 (parent JCAB-420), 2026-11-16. Nothing here is built. David
+answered the decisions on JCAB-426 the same day; they are summarized below and override any
+section that disagrees with them. Research behind it is attached to that issue:
 the Jake recipe study (icitte `projects/kabane/research/recipe-primitive.md`), the always-on and
 code-mode notes in Second Brain, and the Codex reports on Coral, OpenMausBot, durable
 runtimes and cloud runtimes.
+
+## David's decisions, 2026-11-16
+
+Answered on JCAB-426 (:21, :27 to :36). Where a section below still shows an alternative, these
+win.
+
+| Topic | Decision |
+|---|---|
+| Packaging | Packages, no layer-rule change yet: the runtime port and ask relay go into `@cabane/acp` until a second adapter exists; data modules for jobs and runs; extensions stay leaves. |
+| Job | A job kind. Not necessarily shown on the board: a separate app, the way the loop is, that can sit in the TUI as a tab. |
+| Run | A small synced run row (state, runtime, machine, sessions, outcome, cost) plus a local journal file. |
+| Code mode | Later. The Coral-style `kabane_agent_exec` flow is not part of v1. |
+| Script recipes | No sandbox decision until the first script recipe exists. Code recipes run locally, as Jake's did. |
+| Folder | A scope URI plus a relative dir. A scope with no local path offers to configure one. A run may override the working directory. |
+| Schedules | The OS scheduler, through one tick entry running `kabane job tick`. Schedules live on job rows, so `kabane job list` filters them by scope and tag. A daemon can come later if needed. |
+| Agent profile | Yes, a kabane profile: the pattern recurred in Jake and in ZACT. Applied both ways: launch flags where the harness supports them, project files where it doesn't. Distribution of skills, profiles and recipes to harnesses is its own primitive (JCAB-436), generalizing what the dispatch skill does today. |
+| Machines | Profiles and recipes by chezmoi now. The hub revamp is the next step (JCAB-434, blocked by JCAB-426). |
+| First runtime after ACP | A dots trial. Keep the shape open to other allowances (Claude Code's monthly allocation was mentioned); which ones pay off is not known yet. |
+| Sessions | Kabane keeps session references. The store for performance, analytics and evals is a separate someday epic (JCAB-437): an existing tool with kabane's philosophy, adopted gradually and configured per user. |
+| Scope | Custom agents and jobs are always tied to a scope and a working folder. No user-level jobs in v1. |
+| MCP exposure | `kabane mcp` serves a small default set and turns the rest on per project through the existing settings layers (JCAB-438). A Cloudflare-style code-mode tool for the hidden tools comes later (JCAB-439). |
 
 ## David's questions, answered in one place
 

@@ -193,6 +193,19 @@ from three feet away.
    state of the work, who did what, and what runs when. What kabane does not define, it
    does not have to layer, configure, sync or document. A feature only one harness has is
    not shared, and earns no dependency.
+7. **Name the kind of tool, not the product.** A practice kabane carries (a recipe, a skill,
+   an agent profile) says what it needs by category: publish a page, run an agent, notify
+   the human, store knowledge. Each person's setup binds the category to the tool they use,
+   with the instruction that goes with it, through kabane's own settings layers. The same
+   practice then works for another person, on another machine or with another vendor.
+   Anthropic's knowledge-work plugins do this with `~~category` connectors. The record
+   follows the same rule: it keeps a URI for what it points at, kabane's own runs, recipes
+   and pages included, so any of them can be replaced. Where a scheme has a resolver in
+   the kabane ecosystem, kabane opens or reads it in place. Any other URI stays a link.
+8. **The folder is the context.** Work runs in a scope's folder, and the folder carries what
+   an agent needs: its instruction files, its skills, its `.kabane/`. A well-organised folder
+   is enough to start an agent with the right context. Kabane names where the work starts and
+   never pastes the project into the prompt.
 
 ## Accessibility & Inclusion
 

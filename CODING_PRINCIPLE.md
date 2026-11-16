@@ -17,6 +17,7 @@ The rules this repository holds itself to. Each one is true of the code today; a
 - **Namespaces over classes.** Related types and functions live in a namespace or a plain object of named functions. Classes exist only where a framework demands a subclass: the Worker's Durable Objects and the board's React error boundary. Each says why at its declaration and holds as little logic as the framework allows.
 - **Explicit dependencies.** The core reads no environment variables. A host wires a `DbProvider`, tracer, notifier, actor, and settings source through `Runtime.configure`; every port but the provider has a no-op default.
 - **Co-located tests.** A test sits beside the code it tests as `*.test.ts`. No `test/` directories.
+- **Comments are rare.** Names and types carry intent. Write a comment only for a contract, a rule the code cannot make obvious, or a non-obvious why; never to narrate what the code does or how it got there.
 
 ## Working posture
 

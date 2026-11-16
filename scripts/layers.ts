@@ -127,6 +127,12 @@ export const layers: Readonly<Record<string, Rule>> = {
 		dependencies: [],
 		devDependencies: ["@cabane/core", "@cabane/extension"],
 	},
+	"@cabane/recipes": {
+		layer: "extension",
+		// Recipe files, its run table and the hc CLI: no harness client to bundle.
+		dependencies: [],
+		devDependencies: ["@cabane/core", "@cabane/extension"],
+	},
 };
 
 const Manifest = z.object({
