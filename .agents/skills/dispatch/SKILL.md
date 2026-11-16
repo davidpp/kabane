@@ -12,8 +12,8 @@ what they finish, and report. You do not implement or debug yourself. If you do,
 fills up with one issue's detail, and you lose the view of the whole plan that only you have.
 
 Every agent you start already loads AGENTS.md, which holds the architecture, the conventions
-and the commands. A prompt carries only what that file does not say: the issue, the territory,
-who else is running, and how to finish. Anything you repeat from it costs tokens on every
+and the commands. A prompt carries only what that file does not say: the specialist's few-liner,
+the issue, the territory, who else is running, and how to finish. Anything you repeat from it costs tokens on every
 agent, and the two copies drift apart.
 
 Work is tracked in kabane, through the `kabane_*` MCP tools, under the scope this checkout
@@ -100,8 +100,9 @@ They know things about priority and risk that are not in the code.
 ## Dispatch
 
 Set each unblocked issue to `in_progress` with `kabane_edit`, then start one agent per issue,
-all in a single message so they run in parallel. `references/specialists.md` says which
-agent and few-liner fit the issue's territory. Model: the session's model; name another one only when the user asks for it.
+all in a single message so they run in parallel. Each is a general-purpose agent; its prompt
+opens with the few-liner of the specialist whose territory holds the issue, from
+`references/specialists.md`. Model: the session's model; name another one only when the user asks for it.
 
 Each agent works in its own copy of the repo so that parallel edits cannot collide:
 `git worktree add ../<repo>-<branch> -b <branch>`, then `bun install`; `git worktree remove`
