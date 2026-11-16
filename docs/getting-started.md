@@ -567,6 +567,77 @@ without that backup.
 - **No going back.** The old version refuses a database the new version has opened. Going back
   takes the backup.
 
+### Upgrading from 1.0.0-beta.0: the loop and dispatch are extensions you install
+
+In 1.0.0-beta.0 the loop came inside kabane, and `"extensions": ["loop"]` in `config.json` turned
+it on. The dispatch skill's template and `/setup-dispatch` came with the copilot. Kabane now
+bundles neither: the loop and the [dispatch extension](../extensions/dispatch/README.md), which
+holds the dispatch and grill skills and `/setup-dispatch`, are directories you build and install
+yourself. Updating kabane does not install them.
+
+With `loop` still in `extensions` and nothing installed, the record commands (`kabane list`,
+`kabane add` and the others) work as before and say nothing about it. Help, `kabane config`,
+`kabane doctor` and any command kabane does not know start with this line on stderr:
+
+```text
+Extension loop: not installed; put it in /…/.kabane/extensions/loop/; or remove it from extensions with `kabane config set extensions <names> --layer global`.
+```
+
+`kabane loop` is one of the commands kabane no longer knows. After that line it prints the
+following and exits with status 2:
+
+```text
+Error: Unknown command: loop
+Usage: kabane <command> [args]
+```
+
+The loop's settings are unknown keys until it loads again, so `kabane config get loop.model`
+exits with status 1:
+
+```text
+Error: Unknown config key: loop.model. Run `kabane config list` or call kabane_configGet without a key for known keys.
+```
+
+`kabane doctor` reports the missing directory as `loop/extension-refused` under `mention`. On the
+board, `a` starts no run, and the copilot no longer offers `/setup-dispatch`.
+
+Kabane deletes nothing of the loop's. Its settings stay where you wrote them, `.kabane/loop.json`
+in a project included, and are read again once the loop is installed and enabled. Its runs stay
+under `KABANE_HOME/loops/`.
+
+To get them back, build both extensions from a clone of this repository and copy each build into
+`KABANE_HOME/extensions/`, as [Extensions](extensions.md) shows. This needs git and Bun 1.4 or
+later even when you run the npm package or the standalone binary. Build from the tag of the
+kabane you run: `kabane --version` prints the version, and `git checkout v<version>` selects it.
+Then enable both, since a `set` replaces the whole list:
+
+```bash
+kabane config set extensions loop,dispatch --layer global
+```
+
+```text
+extensions = ["loop","dispatch"] (global)
+```
+
+Restart a running board and the coding sessions whose `kabane mcp` should see the extensions.
+`kabane loop status` answers again, and `kabane config get loop.model` prints your setting.
+
+A dispatch skill that `/setup-dispatch` wrote with 1.0.0-beta.0 keeps working as written. It
+carries no template stamp, so `kabane doctor`, run in that project, now routes it:
+
+```text
+route:
+  dispatch/dispatch-skill-unstamped: .agents/skills/dispatch/SKILL.md has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from dispatch@dacd7416f173, keeping the project's own edits, and shows the diff before writing. → /setup-dispatch
+```
+
+Type `/setup-dispatch` in the copilot when you want the current template.
+
+If you do not want the loop, take it off the list instead, and the line goes away:
+
+```bash
+kabane config set extensions "" --layer global
+```
+
 ### One-time upgrade from 0.1.0
 
 Version 0.1.0 predates `kabane update`. For an existing **Bun global registry install**, stop
