@@ -341,23 +341,38 @@ const recordEntry = (keys: readonly Key[], key: string): Key | undefined => {
 	return entry && recordChild(entry, key.slice(entry.key.length + 1));
 };
 
-// One entry of `entry`'s record named by `rest`. A record of records takes one name per segment
-// (`claude.fast`); a record of values takes the rest whole, so a gate's name may hold a dot.
-const recordChild = (entry: Key, rest: string): Key | undefined => {
-	const record = unwrap(entry.schema);
-	if (!(record instanceof z.ZodRecord)) return undefined;
-	const at =
-		unwrap(record.valueSchema) instanceof z.ZodRecord ? rest.indexOf(".") : -1;
-	const name = at < 0 ? rest : rest.slice(0, at);
-	if (!record.keySchema.safeParse(name).success) return undefined;
+// `entry` one segment down, at `name`, whose schema is `schema`.
+const childOf = (entry: Key, name: string, schema: z.ZodTypeAny): Key => {
 	const path = [...entry.path, name];
-	const child: Key = {
+	return {
 		...entry,
 		key: `${entry.key}.${name}`,
-		schema: record.valueSchema,
-		field: Settings.field(record.valueSchema, path),
+		schema,
+		field: Settings.field(schema, path),
 		path,
 	};
+};
+
+// One entry of `entry`'s record named by `rest`. A record of records or of objects takes one name
+// per segment (`claude.fast`, `claude.command`), and an object's then names one of its fields; a
+// record of values takes the rest whole, so a gate's name may hold a dot.
+const recordChild = (entry: Key, rest: string): Key | undefined => {
+	const record = unwrap(entry.schema);
+	if (record instanceof z.ZodObject) {
+		const at = rest.indexOf(".");
+		const name = at < 0 ? rest : rest.slice(0, at);
+		const field: unknown = record.shape[name];
+		if (!(field instanceof z.ZodType)) return undefined;
+		const child = childOf(entry, name, field);
+		return at < 0 ? child : recordChild(child, rest.slice(at + 1));
+	}
+	if (!(record instanceof z.ZodRecord)) return undefined;
+	const value = unwrap(record.valueSchema);
+	const nested = value instanceof z.ZodRecord || value instanceof z.ZodObject;
+	const at = nested ? rest.indexOf(".") : -1;
+	const name = at < 0 ? rest : rest.slice(0, at);
+	if (!record.keySchema.safeParse(name).success) return undefined;
+	const child = childOf(entry, name, record.valueSchema);
 	return at < 0 ? child : recordChild(child, rest.slice(at + 1));
 };
 
