@@ -303,18 +303,33 @@ export namespace Extensions {
 			);
 		return ok(loaded.value as Extension);
 	};
+	/** A loaded directory extension and the resolved directory it was loaded from. */
+	export type Directory = { name: string; directory: string };
 	export const loadAll = async (
 		names: readonly string[],
 		home: string,
-	): Promise<{ loaded: Extension[]; refused: Refusal[] }> => {
+	): Promise<{
+		loaded: Extension[];
+		refused: Refusal[];
+		directories: Directory[];
+	}> => {
 		const loaded: Extension[] = [];
 		const refused: Refusal[] = [];
+		const directories: Directory[] = [];
 		for (const name of new Set(names)) {
 			const result = await load(name, home);
-			if (result.ok) loaded.push(result.value);
-			else refused.push({ name, reason: refusal(result.error.message) });
+			if (!result.ok) {
+				refused.push({ name, reason: refusal(result.error.message) });
+				continue;
+			}
+			loaded.push(result.value);
+			// `load` took the directory over the bundle exactly when one is installed.
+			const root = installed(home, name)
+				? trySync(() => realpathSync(directory(home, name)))
+				: undefined;
+			if (root?.ok) directories.push({ name, directory: root.value });
 		}
-		return { loaded, refused };
+		return { loaded, refused, directories };
 	};
 
 	// The top-level keys a namespace may not take: device config, the per-scope block, and `db`,

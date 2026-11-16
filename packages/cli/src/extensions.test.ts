@@ -1,5 +1,12 @@
 import { afterAll, describe, expect, it, spyOn } from "bun:test";
-import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	cpSync,
+	mkdirSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseArgs } from "@cabane/extension";
@@ -163,6 +170,9 @@ it("loads real directories and isolates import, API, factory name, and modules r
 	]);
 	expect(all.refused[1]?.reason).toContain("API 2; this kabane supports API 1");
 	expect(all.refused[3]?.reason).toContain("does not load data modules yet");
+	expect(all.directories).toEqual([
+		{ name: "hello", directory: realpathSync(dir) },
+	]);
 	expect(await Bun.file(join(home, "ran")).exists()).toBe(false);
 	const env = { KABANE_HOME: home, KABANE_HARNESSES: "" };
 	expect((await run(["--help"], env, home)).text).toContain("Say hello");
@@ -246,6 +256,12 @@ it("discovers symlinks and directory settings only when enabled, preserving bund
 	expect(word.ok && word.value.value).toBe("hello");
 	const options = await ConfigSettings.get(home, {}, "extensions");
 	expect(options.ok && options.value.options).toContain("linked");
+});
+
+it("a bundled extension carries no directory, so it contributes no copilot files", async () => {
+	const all = await Extensions.loadAll(["loop"], makeHome());
+	expect(all.loaded.map((e) => e.name)).toEqual(["loop"]);
+	expect(all.directories).toEqual([]);
 });
 
 it("an enabled directory wins over the bundled extension", async () => {
