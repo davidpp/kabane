@@ -14,8 +14,6 @@ export const TABLES = {
 	context_refs: "task_context_refs",
 	upstream_links: "upstream_links",
 	projects: "projects",
-	agent_sessions: "agent_sessions",
-	agent_activities: "agent_activities",
 	sync_oplog: "sync_oplog",
 	sync_state: "sync_state",
 	sync_quarantine: "sync_quarantine",

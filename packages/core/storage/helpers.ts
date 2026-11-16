@@ -12,8 +12,6 @@ import { TABLES } from "../db/tables";
 import { err, ok, type Result } from "../result";
 import { withDb } from "../runtime";
 import type {
-	AgentActivity,
-	AgentSession,
 	Project,
 	Task,
 	TaskContextRef,
@@ -397,33 +395,6 @@ export const rowToUpstreamLink = (row: unknown): Result<UpstreamLink> => {
 
 	return ok(linkResult.data);
 };
-
-export const rowToSession = (row: Record<string, unknown>): AgentSession => ({
-	id: row.id as string,
-	taskId: row.task_id as string,
-	agent: row.agent as string,
-	state: row.state as string,
-	externalRef: (row.external_ref as string) || undefined,
-	summary: (row.summary as string) || undefined,
-	startedAt: row.started_at as string,
-	lastActivityAt: row.last_activity_at as string,
-	endedAt: (row.ended_at as string) || undefined,
-});
-
-export const rowToAgentActivity = (
-	row: Record<string, unknown>,
-): AgentActivity => ({
-	id: row.id as string,
-	sessionId: row.session_id as string,
-	type: row.type as string,
-	ephemeral: Boolean(row.ephemeral),
-	severity: (row.severity as string) || undefined,
-	category: (row.category as string) || undefined,
-	context: (row.context as string) || undefined,
-	body: row.body as string,
-	author: (row.author as string) || undefined,
-	createdAt: row.created_at as string,
-});
 
 // ============================================================
 // Schema introspection

@@ -1,7 +1,7 @@
 /**
  * Planner Storage
  *
- * Storage for tasks, projects, links, comments, work logs, sessions and sync
+ * Storage for tasks, projects, links, timeline entries, work logs and sync
  * state, over the Db port. The host decides the engine.
  *
  * Each domain file declares its own `export namespace Planner { ... }`.
@@ -15,8 +15,6 @@ import { Planner as ContextRefs } from "./context-refs";
 // Import domain namespaces
 import { Planner as Init } from "./init";
 import { Planner as Projects } from "./projects";
-import { Planner as SelectDurable } from "./select-durable";
-import { Planner as Sessions } from "./sessions";
 import { Planner as Stats } from "./stats";
 import { Planner as TaskLinks } from "./task-links";
 import { Planner as TaskPages } from "./task-pages";
@@ -81,26 +79,12 @@ export const Planner = {
 	getUpstreamSummariesForTasks: UpstreamLinks.getUpstreamSummariesForTasks,
 	getUpstreamLinksByExternalRef: UpstreamLinks.getUpstreamLinksByExternalRef,
 	deleteUpstreamLink: UpstreamLinks.deleteUpstreamLink,
-	// Durable activity selector + session card (S5)
-	selectDurableActivities: SelectDurable.selectDurableActivities,
-	toSessionCard: SelectDurable.toSessionCard,
 	// Context assembly (S3)
 	assembleContext: AssembleContext.assembleContext,
 	getContextPage: ContextPages.getContextPage,
 	// Stats
 	stats: Stats.stats,
 	listScopes: Stats.listScopes,
-	// Agent Sessions (S4a)
-	startSession: Sessions.startSession,
-	getSession: Sessions.getSession,
-	updateSessionState: Sessions.updateSessionState,
-	endSession: Sessions.endSession,
-	addActivity: Sessions.addActivity,
-	answerQuestion: Sessions.answerQuestion,
-	getActivities: Sessions.getActivities,
-	querySessions: Sessions.querySessions,
-	getNeedsInput: Sessions.getNeedsInput,
-	sweepStaleSessions: Sessions.sweepStaleSessions,
 } as const;
 
 export { normalizeScopeUri } from "./helpers";

@@ -51,11 +51,12 @@ describe("storage over bun:sqlite", () => {
 	it("creates the schema", () => {
 		const names = tableNames(base);
 		expect(names).toContain(TABLES.tasks);
-		expect(names).toContain(TABLES.agent_sessions);
 		expect(names).toContain(TABLES.tasks_fts);
+		expect(names).not.toContain("agent_sessions");
+		expect(names).not.toContain("agent_activities");
 	});
 
-	it("adds, links, searches, sessions, and assembles a brief", async () => {
+	it("adds, links, searches, records an outcome and a session ref, and assembles a brief", async () => {
 		const parent = unwrap(
 			await Planner.addTask(base, {
 				title: "Extract the planner into Cabane",
@@ -87,24 +88,21 @@ describe("storage over bun:sqlite", () => {
 		const found = unwrap(await Planner.searchTasks(base, "Durable"));
 		expect(found.map((t) => t.id)).toContain(parent.id);
 
-		const session = unwrap(
-			await Planner.startSession(base, { taskId: child.id, agent: "claude" }),
+		unwrap(
+			await Planner.addWorkLog(base, {
+				taskId: child.id,
+				refs: [{ uri: "session:01SMOKE", label: "claude" }],
+			}),
 		);
 		unwrap(
-			await Planner.addActivity(base, {
-				sessionId: session.id,
-				type: "finding",
-				severity: "P2",
-				body: "the adapter is a pass-through",
+			await Planner.addEntry(base, {
+				taskId: child.id,
+				kind: "outcome.finding",
+				author: "claude",
+				authorType: "ai",
+				content: "Severity: P2\nthe adapter is a pass-through",
 			}),
 		);
-		const ended = unwrap(
-			await Planner.endSession(base, session.id, {
-				state: "complete",
-				summary: "done",
-			}),
-		);
-		expect(ended.state).toBe("complete");
 
 		unwrap(
 			await Planner.addComment(base, {
@@ -118,6 +116,8 @@ describe("storage over bun:sqlite", () => {
 		const brief = unwrap(await Planner.assembleContext(base, child.id));
 		expect(brief).toContain("Write the bun:sqlite adapter");
 		expect(brief).toContain("keep the public names");
+		expect(brief).toContain("the adapter is a pass-through");
+		expect(brief).toContain("claude (session:01SMOKE)");
 	});
 
 	it("is idempotent on re-init", async () => {

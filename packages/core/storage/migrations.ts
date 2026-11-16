@@ -26,6 +26,7 @@ import { err, ok, type Result } from "../result";
 import { parseQuestionBody } from "../schemas";
 import { columnExists, TABLES } from "./helpers";
 import { ScopeScheme } from "./scope-scheme";
+import { SessionOutcomes } from "./session-outcomes";
 
 /**
  * A database with a tasks table and no version table predates the runner. The
@@ -104,20 +105,20 @@ namespace RelayedPermissions {
 				[]
 			>(
 				`SELECT q.id, q.session_id, q.body, s.state
-				   FROM ${TABLES.agent_activities} q
-				   JOIN ${TABLES.agent_sessions} s ON s.id = q.session_id
+				   FROM agent_activities q
+				   JOIN agent_sessions s ON s.id = q.session_id
 				  WHERE q.type = 'question' AND q.body LIKE '%"permission":%'`,
 			)
 			.all()
 			.filter((q) => isRelayed(q.body));
 		for (const q of questions) {
 			const answers = db.run(
-				`DELETE FROM ${TABLES.agent_activities}
+				`DELETE FROM agent_activities
 				  WHERE session_id = ? AND type = 'decision' AND context = ?`,
 				[q.session_id, `answers ${q.id}`],
 			);
 			if (answers.changes > 0 || q.state === "complete" || q.state === "error")
-				db.run(`DELETE FROM ${TABLES.agent_activities} WHERE id = ?`, [q.id]);
+				db.run(`DELETE FROM agent_activities WHERE id = ?`, [q.id]);
 		}
 	};
 }
@@ -196,10 +197,8 @@ export namespace Migrations {
 			// The guard is the body v1.0.0-beta.0 shipped; a shipped migration stays as it shipped.
 			name: "activity-author",
 			up: (db) => {
-				if (!columnExists(db, TABLES.agent_activities, "author"))
-					db.run(
-						`ALTER TABLE ${TABLES.agent_activities} ADD COLUMN author TEXT`,
-					);
+				if (!columnExists(db, "agent_activities", "author"))
+					db.run(`ALTER TABLE agent_activities ADD COLUMN author TEXT`);
 			},
 		},
 		{
@@ -289,6 +288,19 @@ export namespace Migrations {
 			// stops its own pull at the first op from this schema.
 			name: "scope-scheme",
 			up: ScopeScheme.migrate,
+		},
+		{
+			// Core keeps no agent session (JCAB-343). Nothing writes the session
+			// tables since the loop keeps its own (JCAB-340); what they hold about
+			// the issue moves onto the record, which replicates: each durable
+			// outcome a timeline entry, each session a `session:` ref in the work
+			// log (`storage/session-outcomes.ts`). The stream goes with the tables.
+			name: "session-outcomes",
+			up: (db) => {
+				SessionOutcomes.migrate(db);
+				dropTable(db, "agent_activities");
+				dropTable(db, "agent_sessions");
+			},
 		},
 	];
 
