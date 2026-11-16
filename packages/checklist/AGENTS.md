@@ -11,11 +11,11 @@ removal; read it before changing one.
 Its layer is `data module`; its entry in `scripts/layers.ts` (`"@cabane/checklist"`) says what
 it may list. The CLI (`MODULES` in `packages/cli/src/context.ts`) and the hub
 (`packages/worker/src/hub.ts`) register `checklistModule`. Its other entry points are
-`Checklist` (`storage.ts`), which the board reads for card progress and the detail, the CLI's
-`kabane checklist` calls, and the loop calls directly today (`Checklist.list`,
-`Checklist.progress`); and the receipts and markdown in `markdown.ts`. `kabane_checklist`
-returns live items in list order so that an extension can read checklists through a tool
-(`ARCHITECTURE.md`, "The record half of `host`").
+`Checklist` (`storage.ts`), which the board reads for card progress and the detail and the CLI's
+`kabane checklist` calls; and the receipts and markdown in `markdown.ts`. An extension reads
+checklists through `kabane_checklist`, which returns live items in list order: the loop calls it
+with `host.record.call("kabane_checklist", ...)` (`extensions/loop/src/checklists.ts`) and
+computes progress from the items (`ARCHITECTURE.md`, "The record half of `host`").
 
 The module seam's rules are in `packages/core/AGENTS.md`, "Data modules".
 

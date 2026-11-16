@@ -36,10 +36,9 @@ extension surface that differs from the one `ARCHITECTURE.md` specifies.
    Bun, Node or process call reachable from `packages/core/index.ts` beyond the ones
    `CODING_PRINCIPLE.md` names as never called by the hub? Is kabane the only tool that keeps
    it, or should the record hold a URI to it? Name where a "no" sends it. A subpath export
-   (`@cabane/core/scope`, `@cabane/core/self`) keeps a call off the barrel but is no more
-   Workers-safe, and `ARCHITECTURE.md` already sends both to the host (JCAB-328): something
-   new there that only a device runs is a finding too, and needs naming in the verdict table
-   even when it sits beside a file the table lists. Test support is exempt: the `./testing`
+   keeps a call off the barrel but is no more Workers-safe: something new on one that only a
+   device runs is a finding too, and needs naming in the verdict table even when it sits beside
+   a file the table lists. Test support is exempt: the `./testing` and `./git-fixture`
    subpaths and the files core's entry in `scripts/layers.ts` lists as `testSupport`.
    ("Core keeps only what passes four questions")
 3. **Does a new replicated table go in a data module?** A new table in core's
@@ -75,8 +74,9 @@ extension surface that differs from the one `ARCHITECTURE.md` specifies.
    named `kabane_<extension>_<verb>`, comes from its `mcp` field, and the hub never serves it.
 9. **Does code under `extensions/` take only types from kabane, apart from the harness client
    it bundles?** A new value used from `@cabane/core`, `board`, `checklist` or `extension` is
-   new dependence on kabane's internals, which JCAB-326 must then remove, even though the named
-   exception keeps the check green. An extension module writes only the tables it declares and
+   new dependence on kabane's internals: every value an extension needs from kabane arrives on
+   `host`, and `scripts/layers.ts` refuses a production value import from an extension's
+   development dependencies. An extension module writes only the tables it declares and
    changes tasks only through `tx.updateTask`; raw SQL on another package's table is a finding.
    ("The host passes values and the extension imports types only", "An extension's data
    modules get a storage kit")
@@ -103,7 +103,7 @@ table: a diff that removes a named exception and leaves its row there is a findi
 - **p2**: something placed in a layer that should not own it but cheap to move now (a helper
   with one consumer in core, a device-only export on a core subpath, a board import that only
   the CLI could satisfy); a `host` member or `Extension` field outside what `ARCHITECTURE.md`
-  specifies with no change to it; a new value used under `extensions/` that widens JCAB-326; a
+  specifies with no change to it; a value code under `extensions/` imports from kabane instead of taking it from `host`; a
   first-party data module registered by one host only; a package's `AGENTS.md` that the
   change made false.
 - **p3**: a rule stated with nothing holding it and no sentence saying review holds it; a row

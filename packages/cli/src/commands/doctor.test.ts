@@ -519,6 +519,11 @@ for (const known of ["enabled", "directory", "neither"] as const) {
 			finding.id.startsWith("unknown-setting-global-device-loop-"),
 		);
 		expect(unknown).toHaveLength(known === "neither" ? 1 : 0);
+		// Its settings stay for when it is enabled, so doctor never advises deleting them.
+		if (known === "neither")
+			expect(unknown[0].summary).toBe(
+				`loop in global: not a setting of this kabane or of an enabled extension; kabane ignores it. An extension's settings are kept for when it is enabled; correct the key in ${join(home, "config.json")} if it is misspelt.`,
+			);
 		if (known === "enabled")
 			expect(
 				report.findings.some((finding: { id: string }) =>
@@ -535,3 +540,16 @@ for (const known of ["enabled", "directory", "neither"] as const) {
 		expect(spawn("config", "get", "loop.stallAfter").stdout).toBe("7");
 	});
 }
+
+test("a device key named in extensions keeps the device settings check", () => {
+	const { config, spawn } = setup();
+	config({ extensions: ["loop", "updates"], updates: { chek: false } });
+	const { stdout, stderr } = spawn("doctor", "--json");
+	expect(stderr).toContain("Extension updates: not installed");
+	const finding = JSON.parse(stdout).findings.find((item: { id: string }) =>
+		item.id.startsWith("unknown-setting-global-device-updates-"),
+	);
+	expect(finding.summary).toStartWith(
+		"updates.chek in global: unknown device setting",
+	);
+});

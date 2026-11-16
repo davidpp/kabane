@@ -33,7 +33,7 @@ bun run sandbox list                   # a command that opens the record, on thi
 ```
 
 Not every command opens the record: `help` and the commands marked `standalone` start with a
-context that has no runtime (`packages/cli/src/main.ts:183`).
+context that has no runtime (`bareCtx` in `packages/cli/src/main.ts`).
 
 ## Mistakes that are easy to make here
 

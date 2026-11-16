@@ -10,7 +10,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { build } from "./build";
 
 const EXTENSION = resolve(import.meta.dir, "..");
@@ -79,6 +79,64 @@ it("builds a relocatable extension that kabane loads from a home, with its templ
 		const missing = kabane("dispatch", "stamp");
 		expect(missing.code).toBe(1);
 		expect(missing.stderr).toContain(join(installed, "templates/dispatch"));
+	} finally {
+		rmSync(work, { recursive: true, force: true });
+	}
+}, 60_000);
+
+// No extension here names a modules entry yet; a source manifest that does keeps it in the build.
+it("carries a modules entry into the built manifest, at the built path kabane imports", async () => {
+	const work = realpathSync(
+		mkdtempSync(join(tmpdir(), "dispatch-build-modules-")),
+	);
+	try {
+		const source = join(work, "source");
+		const files: Record<string, string> = {
+			"package.json": JSON.stringify({
+				name: "sample",
+				version: "0.0.0",
+				kabane: {
+					extension: "./index.ts",
+					api: 1,
+					modules: "./src/modules.ts",
+				},
+			}),
+			"index.ts": 'export default () => ({ name: "sample" });\n',
+			"src/modules.ts": "export default () => [];\n",
+		};
+		for (const [file, text] of Object.entries(files)) {
+			mkdirSync(dirname(join(source, file)), { recursive: true });
+			writeFileSync(join(source, file), text);
+		}
+		for (const directory of ["copilot", "templates"])
+			mkdirSync(join(source, directory));
+		const home = join(work, "home");
+		const installed = join(home, "extensions/sample");
+		const result = await build(installed, source);
+		expect(result.logs).toEqual([]);
+		expect(result.success).toBe(true);
+		expect(
+			JSON.parse(readFileSync(join(installed, "package.json"), "utf8")).kabane,
+		).toEqual({ extension: "./index.js", api: 1, modules: "./src/modules.js" });
+		writeFileSync(
+			join(home, "config.json"),
+			JSON.stringify({
+				actor: "test",
+				deviceId: "test",
+				extensions: ["sample"],
+			}),
+		);
+		const list = () =>
+			Bun.spawnSync([process.execPath, CLI, "list"], {
+				cwd: work,
+				env: { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" },
+			});
+		expect(list().exitCode).toBe(0);
+		// The built manifest is what kabane follows: without the file it names, the database stays shut.
+		rmSync(join(installed, "src/modules.js"));
+		const stopped = list();
+		expect(stopped.exitCode).toBe(1);
+		expect(stopped.stderr.toString()).toContain("Extension sample:");
 	} finally {
 		rmSync(work, { recursive: true, force: true });
 	}

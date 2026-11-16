@@ -41,15 +41,13 @@ Question-body parsing belongs to the loop. Claims in `run.json` hold session lif
 `events.jsonl` holds the session stream. The runner writes summaries and non-permission
 decisions through `host.record.comment` as `outcome.summary` and `outcome.decision`; session
 URIs reach the issue through `host.record.log`. Old run stores with no question journal still
-load; questions held in core's old session tables are not read (migration is JCAB-343).
+load.
 
-Several issues change this package; check main before you edit:
-
-- The loop builds independently with `bun run --cwd extensions/loop build`. Its `dist/` is a
-  directory extension with its harness client, copilot procedures and lenses included. Plan
-  lint lives in `src/lint/` (JCAB-338); `src/advice.ts` and `src/commands.ts` use it.
-- The copilot's loop procedures are files in `copilot/procedures/`, which the host reads only
-  when the loop loads from a directory (`packages/board/README.md`, the copilot's instructions).
+The loop builds on its own with `bun run --cwd extensions/loop build`. Its `dist/` is a
+directory extension with its harness client, copilot procedures and lenses included. Plan lint
+lives in `src/lint/`; `src/advice.ts` and `src/commands.ts` use it. The copilot's loop
+procedures are files in `copilot/procedures/`, which the host reads when the loop loads from a
+directory (`packages/board/README.md`, the copilot's instructions).
 
 Read before writing: `src/extension.ts`, `src/store.ts`, and the entry point you are changing
 in `src/commands.ts` with its test.

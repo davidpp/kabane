@@ -62,7 +62,7 @@ test("reports unknown device and other-project namespace keys without changing f
 				summary.startsWith("mystery in global:"),
 			)?.summary,
 		).toBe(
-			`mystery in global: unknown device setting; kabane ignores this key. Edit ${path} to remove or correct this key.`,
+			`mystery in global: not a setting of this kabane or of an enabled extension; kabane ignores it. An extension's settings are kept for when it is enabled; correct the key in ${path} if it is misspelt.`,
 		);
 		expect(
 			report.value.find(({ summary }) => summary.startsWith("loop.typo"))

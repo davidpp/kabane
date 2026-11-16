@@ -75,6 +75,14 @@ const drift = (
 				: finding.replacement
 					? `retired setting may map to ${[...prefix, ...finding.replacement].join(".")}`
 					: "setting is no longer used";
+		// A top-level block can be a disabled extension's settings, which stay for when it is
+		// enabled again (docs/extensions.md), so this finding never advises removing one.
+		const summary =
+			finding.category === "unknown" &&
+			namespace.name === "device" &&
+			finding.path.length === 1
+				? `${shown} in ${source.layer}: not a setting of this kabane or of an enabled extension; kabane ignores it. An extension's settings are kept for when it is enabled; correct the key in ${source.label} if it is misspelt.`
+				: `${shown} in ${source.layer}: ${detail}. Edit ${source.label} to remove or correct this key${finding.replacement ? "; review the suggested replacement before removing the old key" : ""}.`;
 		return {
 			id: [
 				`${finding.category}-setting`,
@@ -88,7 +96,7 @@ const drift = (
 
 			severity: "mention",
 			path,
-			summary: `${shown} in ${source.layer}: ${detail}. Edit ${source.label} to remove or correct this key${finding.replacement ? "; review the suggested replacement before removing the old key" : ""}.`,
+			summary,
 		};
 	});
 
@@ -111,14 +119,18 @@ export const settings = async (
 	if (!namespaces.ok) return namespaces;
 	const where = await ConfigSettings.locate(ctx.home, ctx.cwd);
 	if (!where.ok) return where;
-	const extensionNames = new Set([
-		...Extensions.available(ctx.home),
-		...(Array.isArray(stored.extensions)
-			? stored.extensions.filter(
-					(name): name is string => typeof name === "string",
-				)
-			: []),
-	]);
+	// An installed or enabled extension's block is its own settings, checked against its schema
+	// when it loads. A device key keeps the device check even when `extensions` names it.
+	const extensionNames = new Set(
+		[
+			...Extensions.available(ctx.home),
+			...(Array.isArray(stored.extensions)
+				? stored.extensions.filter(
+						(name): name is string => typeof name === "string",
+					)
+				: []),
+		].filter((name) => !Object.hasOwn(ConfigSchema.shape, name)),
+	);
 	const device = Object.fromEntries(
 		Object.entries(stored).filter(
 			([key]) =>

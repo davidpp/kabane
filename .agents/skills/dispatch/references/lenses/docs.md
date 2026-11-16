@@ -17,7 +17,7 @@ The code can be right while the help still describes yesterday.
     name a flag or a next step;
   - what an agent reads: MCP tool descriptions and input descriptions, the server
     instructions, the copilot's instructions (`packages/board/src/copilot-instructions.ts`), and the
-    templates kabane ships (`packages/acp/templates/`);
+    templates and copilot files an extension ships (`extensions/*/templates/`, `extensions/*/copilot/`);
   - the board: the `?` sheet, the footer hints, the keymap registry, empty states;
   - a setting's `.describe()` text, which is what `kabane config list` shows;
   - `AGENTS.md`, when a package, a command or the gate changed.
