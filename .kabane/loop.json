@@ -7,5 +7,5 @@
 		"test": "bun run test"
 	},
 	"land": "pr",
-	"onLanded": "if [ \"$KABANE_LAND\" = pr ]; then gh pr merge \"${KABANE_PR:?PR landing must provide KABANE_PR}\" --auto --merge; fi"
+	"onLanded": "bun run land"
 }
