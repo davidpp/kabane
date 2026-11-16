@@ -14,14 +14,11 @@ export namespace HcRuntime {
 		labels: Readonly<Record<string, string>>;
 	};
 
-	/** What a terminal is doing, as a run state, and the hc words it was read from. */
-	type Seen = { state: Runs.State; from: string };
-
 	export type Runtime = {
 		/** Why the runtime cannot start anything here, or undefined. */
 		missing(): string | undefined;
 		start(start: Start): Promise<Result<{ terminal: string }>>;
-		get(terminal: string): Promise<Result<Seen>>;
+		get(terminal: string): Promise<Result<Runs.State>>;
 		read(terminal: string): Promise<Result<string>>;
 		send(terminal: string, text: string): Promise<Result<void>>;
 		stop(terminal: string): Promise<Result<void>>;
@@ -34,7 +31,6 @@ export namespace HcRuntime {
 		state: string;
 		status?: { state: string } | null;
 		turn?: number;
-		reason?: string | null;
 	};
 
 	const terminalSchema = (z: Host["z"]) =>
@@ -42,7 +38,6 @@ export namespace HcRuntime {
 			state: z.string(),
 			status: z.object({ state: z.string() }).nullish(),
 			turn: z.number().int().nonnegative().optional(),
-			reason: z.string().nullish(),
 		});
 
 	/** hc's error envelope on a failed `--json` call. */
@@ -55,24 +50,18 @@ export namespace HcRuntime {
 	 * counts the times it left working. A program that never reports reads as running until it
 	 * exits. Values recorded from real output in `AGENTS.md`.
 	 */
-	export const stateOf = (terminal: Terminal | null): Seen => {
-		if (terminal === null) return { state: "ended", from: "gone" };
-		if (terminal.state !== "live")
-			return {
-				state: "ended",
-				from: `${terminal.state}${terminal.reason ? ` (${terminal.reason})` : ""}`,
-			};
+	export const stateOf = (terminal: Terminal | null): Runs.State => {
+		if (terminal === null || terminal.state !== "live") return "ended";
 		const word = terminal.status?.state;
-		const from = `live, status ${word ?? "null"}, turn ${terminal.turn ?? 0}`;
-		if (word === "working") return { state: "running", from };
-		if (word === "blocked") return { state: "waiting", from };
+		if (word === "working") return "running";
+		if (word === "blocked") return "waiting";
 		if (word === undefined)
-			return { state: (terminal.turn ?? 0) > 0 ? "idle" : "running", from };
-		return { state: "idle", from };
+			return (terminal.turn ?? 0) > 0 ? "idle" : "running";
+		return "idle";
 	};
 
 	/** The run state `hc get --json` printed, or an err naming hc when it is not that shape. */
-	export const seen = (z: Host["z"], stdout: string): Result<Seen> => {
+	export const seen = (z: Host["z"], stdout: string): Result<Runs.State> => {
 		const json = trySync((): unknown => JSON.parse(stdout));
 		if (!json.ok)
 			return err(new Error(`hc get printed no JSON: ${stdout.slice(0, 200)}`));

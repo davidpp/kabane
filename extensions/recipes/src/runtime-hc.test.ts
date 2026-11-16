@@ -25,28 +25,19 @@ const claude = (state: string) => ({
 });
 
 it("maps hc's terminal state and the program's status word to a run state", () => {
-	expect(HcRuntime.stateOf(CLAUDE_WORKING)).toEqual({
-		state: "running",
-		from: "live, status working, turn 13",
-	});
-	expect(HcRuntime.stateOf(claude("blocked")).state).toBe("waiting");
+	expect(HcRuntime.stateOf(CLAUDE_WORKING)).toBe("running");
+	expect(HcRuntime.stateOf(claude("blocked"))).toBe("waiting");
 	for (const word of ["idle", "done", "error"])
-		expect(HcRuntime.stateOf(claude(word)).state).toBe("idle");
-	expect(HcRuntime.stateOf(SHELL_LIVE)).toEqual({
-		state: "running",
-		from: "live, status null, turn 0",
-	});
-	expect(HcRuntime.stateOf({ ...SHELL_LIVE, turn: 2 }).state).toBe("idle");
-	expect(HcRuntime.stateOf(SHELL_KILLED)).toEqual({
-		state: "ended",
-		from: "finished (killed)",
-	});
-	expect(HcRuntime.stateOf(null)).toEqual({ state: "ended", from: "gone" });
+		expect(HcRuntime.stateOf(claude(word))).toBe("idle");
+	expect(HcRuntime.stateOf(SHELL_LIVE)).toBe("running");
+	expect(HcRuntime.stateOf({ ...SHELL_LIVE, turn: 2 })).toBe("idle");
+	expect(HcRuntime.stateOf(SHELL_KILLED)).toBe("ended");
+	expect(HcRuntime.stateOf(null)).toBe("ended");
 });
 
 it("reads hc get's JSON through a schema, and refuses a shape hc does not print", () => {
 	expect(HcRuntime.seen(z, JSON.stringify(CLAUDE_WORKING))).toEqual(
-		ok({ state: "running", from: "live, status working, turn 13" }),
+		ok("running"),
 	);
 	const renamed = HcRuntime.seen(
 		z,

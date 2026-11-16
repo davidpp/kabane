@@ -36,18 +36,16 @@ const reconcile = async (
 		}
 		const seen = await runtime.get(run.terminal);
 		if (!seen.ok) return seen;
-		if (seen.value.state === run.state) {
+		if (seen.value === run.state) {
 			current.push(run);
 			continue;
 		}
-		const written = await Runs.setState(host, run.id, seen.value.state, actor);
+		const written = await Runs.setState(host, run.id, seen.value, actor);
 		if (!written.ok) return written;
 		current.push({
 			...run,
-			state: seen.value.state,
-			...(seen.value.state === "ended"
-				? { endedAt: new Date().toISOString() }
-				: {}),
+			state: seen.value,
+			...(seen.value === "ended" ? { endedAt: new Date().toISOString() } : {}),
 		});
 	}
 	return ok(current);
