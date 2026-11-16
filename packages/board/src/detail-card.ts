@@ -7,7 +7,7 @@
 // nothing, and never falls through to cancelling the task. An action aimed at a lane is not offered:
 // the detail has no lane to aim it at, and `h/l` walk its sections.
 import type { CardAction, StopAction } from "@cabane/extension";
-import type { Keymap } from "./keymap";
+import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { BoardPrompt } from "./prompt";
 import type { BoardTabs } from "./tabs";
@@ -22,18 +22,14 @@ export namespace DetailCard {
 	/** The key that runs the card's `stop` action on the detail. */
 	const STOP_KEY = "X";
 
-	// Keys the detail answers, the everywhere keys among them, whatever a host binds.
+	// Keys the detail answers, the everywhere keys among them, whatever a host binds: read from the
+	// registry, whose drift guard holds it to nav.ts. Its answer row lists two digits for `1-9`; a
+	// question takes all nine.
 	const RESERVED: ReadonlySet<string> = new Set([
-		..."hljkgGJKrovymansxXbqOdu?!{},A:0123456789",
-		"space",
-		"escape",
-		"return",
-		"enter",
-		"tab",
-		"up",
-		"down",
-		"left",
-		"right",
+		...[...Keymap.CONTEXTS.detail.bindings, ...Keymap.EVERYWHERE].flatMap(
+			(binding) => binding.keys,
+		),
+		..."123456789",
 	]);
 
 	/**

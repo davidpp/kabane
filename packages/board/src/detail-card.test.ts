@@ -156,6 +156,8 @@ describe("the card's other actions on the detail", () => {
 		expect(DetailCard.hints(state)).toEqual([
 			{ key: "p", label: "open in hc" },
 			{ key: "c", label: "note" },
+			// The detail scrolls on ctrl+u, so a plain `u` is the card's.
+			{ key: "u", label: "nudge" },
 		]);
 		expect(press(state, typed("v")).effect.type).not.toBe("act");
 		expect(press(state, typed("z")).effect).toEqual({ type: "none" });
