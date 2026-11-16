@@ -105,8 +105,15 @@ bun run link-extensions recipes
 It links `${KABANE_HOME:-$HOME/.kabane}/extensions/<name>` to `extensions/<name>` and prints
 one line per extension: `linked`, `already linked here`, or `skipped` with what is already
 there. It never replaces an installed directory or a link to another place, and replaces a
-link whose target is gone. It installs only: enable the extensions with
-`kabane config set extensions <names> --layer global`.
+link whose target is gone.
+
+It installs only. `extensions` is a list and a `set` replaces it whole, so read it first and
+name every extension you want on:
+
+```bash
+kabane config get extensions
+kabane config set extensions loop,dispatch,recipes --layer global
+```
 
 The standalone binary cannot load the loop's source through that link. It resolves no package
 from disk, and the loop's source imports kabane's workspace packages, so it refuses the

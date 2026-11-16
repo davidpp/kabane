@@ -99,6 +99,7 @@ if (import.meta.main) {
 	for (const outcome of linkExtensions(ROOT, home, names))
 		console.log(describe(outcome));
 	console.log(
-		"Installed, not enabled: `kabane config set extensions <names> --layer global` enables them.",
+		"Installed, not enabled. `kabane config get extensions` shows what is on; " +
+			"`kabane config set extensions <every name you want on> --layer global` replaces that list.",
 	);
 }
