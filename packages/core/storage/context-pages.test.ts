@@ -7,7 +7,7 @@ import {
 	expect,
 	it,
 } from "bun:test";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SqliteDb } from "@cabane/sqlite";
 import { z } from "zod";
@@ -21,7 +21,7 @@ import { TABLES } from "../db/tables";
 import { err, ok, type Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 import { serializedBytes } from "../task-output";
-import { configureTestRuntime } from "../testing";
+import { configureTestRuntime, testFileReader } from "../testing";
 import { createCorpusTemplate } from "../testing/issue-corpus-harness";
 import { Planner } from "./index";
 
@@ -44,15 +44,7 @@ beforeEach(() => {
 	tracker = template.clone();
 	id = tracker.ids[24] ?? "";
 	configureTestRuntime({
-		fileReader: async (path, cap) => {
-			if (!existsSync(path)) return { status: "missing" };
-			const bytes = readFileSync(path);
-			return {
-				status: "read",
-				size: bytes.length,
-				head: bytes.subarray(0, cap).toString(),
-			};
-		},
+		fileReader: testFileReader,
 	});
 });
 afterEach(() => {

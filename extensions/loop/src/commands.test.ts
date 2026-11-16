@@ -543,7 +543,7 @@ describe("Loop.start's worktree", () => {
 // The runner `restart` spawns: the real `Loop.run` on this test's tracker, as `kabane loop run`
 // runs it, with no harness a claim could reach.
 const RUNNER = [
-	`import { testHost, pinTestScope, testScope } from ${JSON.stringify(join(import.meta.dir, "test-host.ts"))};`,
+	`import { testHost } from ${JSON.stringify(join(import.meta.dir, "test-host.ts"))};`,
 	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,

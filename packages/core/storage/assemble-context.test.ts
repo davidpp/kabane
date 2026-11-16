@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import {
-	existsSync,
-	readFileSync,
-	mkdirSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SqliteDb } from "@cabane/sqlite";
 import type { Db, DbProvider } from "../db/port";
@@ -13,7 +7,7 @@ import { TABLES } from "../db/tables";
 import type { KabaneModule } from "../module";
 import { Runtime } from "../runtime";
 import type { TaskDraft, TaskEntry } from "../schemas";
-import { configureTestRuntime, TEST_DB_NAME } from "../testing";
+import { configureTestRuntime, testFileReader, TEST_DB_NAME } from "../testing";
 import { steeringSections } from "./assemble-context";
 import { Planner } from "./index";
 
@@ -41,15 +35,7 @@ const assemble = async (
 describe("Planner — assembleContext", () => {
 	beforeEach(async () => {
 		configureTestRuntime({
-			fileReader: async (path, cap) => {
-				if (!existsSync(path)) return { status: "missing" };
-				const bytes = readFileSync(path);
-				return {
-					status: "read",
-					size: bytes.length,
-					head: bytes.subarray(0, cap).toString(),
-				};
-			},
+			fileReader: testFileReader,
 		});
 		rmSync(TEST_BASE, { recursive: true, force: true });
 		mkdirSync(TEST_BASE, { recursive: true });

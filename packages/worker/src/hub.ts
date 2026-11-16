@@ -1,4 +1,3 @@
-import { handleHttpRequest } from "./mcp-http";
 /**
  * The cloud device: the Cabane core running on this object's SQLite, serving
  * MCP, and syncing with `CabaneLog` like any other device.
@@ -45,6 +44,7 @@ import { outcomeModule } from "@cabane/outcome";
 import { questionsModule } from "@cabane/questions";
 import { DoDb } from "./db-do";
 import { LogTransport } from "./log-transport";
+import { handleHttpRequest } from "./mcp-http";
 import {
 	ACTOR_HEADER,
 	HUB_DEVICE_ID,

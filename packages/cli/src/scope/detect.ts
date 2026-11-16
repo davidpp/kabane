@@ -1,3 +1,8 @@
+/**
+ * Resolve a directory to its project scope from device and shared pins, git
+ * remotes, package metadata and the project root, with branch/package hints.
+ */
+
 import { execFile } from "node:child_process";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
