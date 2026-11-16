@@ -41,6 +41,17 @@ export namespace LoopDoctor {
 		return (files.ok ? files.value : []).filter((file) => file.endsWith(".md"));
 	};
 
+	const conflictFor = (root: string, file: string): string | undefined => {
+		const source = join(Lenses.loopDir(root), file);
+		return Lenses.directories(root)
+			.slice(0, -1)
+			.map((directory) => join(directory, file))
+			.find(
+				(path) =>
+					existsSync(path) && !readFileSync(source).equals(readFileSync(path)),
+			);
+	};
+
 	/** Move each legacy lens into the skill's directory; refuse one the skill holds differently. */
 	const moveLegacy = (root: string): Result<string> => {
 		const from = Lenses.loopDir(root);
@@ -51,14 +62,7 @@ export namespace LoopDoctor {
 		for (const file of markdownIn(from)) {
 			const source = join(from, file);
 			const target = join(to, file);
-			const conflict = Lenses.directories(root)
-				.slice(0, -1)
-				.map((directory) => join(directory, file))
-				.find(
-					(path) =>
-						existsSync(path) &&
-						!readFileSync(source).equals(readFileSync(path)),
-				);
+			const conflict = conflictFor(root, file);
 			if (conflict) {
 				refused.push(`${file} (${relative(root, conflict)})`);
 				continue;
@@ -110,13 +114,18 @@ export namespace LoopDoctor {
 					summary: `${shown} holds ${files.join(", ")}, where lenses were kept before the dispatch skill. They still run from there; with a dispatch skill (/setup-dispatch writes one) they belong in ${target}.`,
 				},
 			];
+		const blocked = files.every(
+			(file) => conflictFor(root, file) !== undefined,
+		);
 		return [
 			{
 				id: "legacy-lens-dir",
 
 				path: legacy,
-				severity: "auto",
-				summary: `${shown} holds ${files.join(", ")}, where lenses were kept before the dispatch skill. --fix moves them to ${target}, refusing a name the skill already holds with other content, and removes ${shown} once it is empty.`,
+				severity: blocked ? "mention" : "auto",
+				summary: blocked
+					? `${shown} holds ${files.join(", ")}; each differs from a higher-priority skill copy. Merge them by hand and remove the obsolete copies.`
+					: `${shown} holds ${files.join(", ")}, where lenses were kept before the dispatch skill. --fix moves them to ${target}, refusing a name the skill already holds with other content, and removes ${shown} once it is empty.`,
 				fix: async () => {
 					const moved = trySync(() => moveLegacy(root));
 					return moved.ok ? moved.value : moved;

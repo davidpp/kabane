@@ -152,6 +152,13 @@ const legacySettings = (
 				namespace && scope === where.scopeId && where.localRoot !== undefined
 					? ConfigLayers.localFile(home, where.localRoot, name)
 					: undefined;
+			const local =
+				destination === undefined
+					? ok(undefined)
+					: ConfigLayers.readJson(destination);
+			const conflict =
+				!local.ok ||
+				(local.value !== undefined && !isDeepStrictEqual(local.value, value));
 			findings.push({
 				id: `legacy-settings-${createHash("sha256")
 					.update(JSON.stringify([scope, name]))
@@ -159,8 +166,8 @@ const legacySettings = (
 					.slice(0, 12)}`,
 
 				path,
-				severity: destination === undefined ? "mention" : "auto",
-				summary: `Legacy scopes.${scope}.${name} in ${path}. ${destination === undefined ? "Run kabane doctor in that project with a version that ships this namespace to migrate it." : `--fix moves this block to ${destination} and removes it from config.json; conflicting local values are refused.`}`,
+				severity: destination === undefined || conflict ? "mention" : "auto",
+				summary: `Legacy scopes.${scope}.${name} in ${path}. ${destination === undefined ? "Run kabane doctor in that project with a version that ships this namespace to migrate it." : conflict ? `Merge this block with ${destination} by hand, then remove the legacy block; the local file differs or cannot be read.` : `--fix moves this block to ${destination} and removes it from config.json; conflicting local values are refused.`}`,
 				...(destination === undefined
 					? {}
 					: { fix: async () => migrate(home, scope, name, destination) }),

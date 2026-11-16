@@ -129,6 +129,9 @@ test("the fix refuses a lens the skill holds with other content, and moves the r
 	expect(readFileSync(legacy("security"), "utf8")).toBe("Old security.\n");
 	expect(readFileSync(skillLens("security"), "utf8")).toBe("New security.\n");
 	expect(readFileSync(skillLens("docs"), "utf8")).toBe("Review docs.\n");
+	expect(
+		(await findings()).find(({ id }) => id === "legacy-lens-dir")?.severity,
+	).toBe("mention");
 });
 
 test("a lens in two lookup directories is reported with the one in force", async () => {
@@ -196,7 +199,7 @@ test("repair keeps a real Claude skill's active lens ahead of the legacy copy", 
 	const report = await Doctor.run(
 		[{ name: "loop", doctor: LoopDoctor.doctor }],
 		ctx(),
-		{ fix: true },
+		{ fix: ["loop/legacy-lens-dir"] },
 	);
 	expect(report.fixes[0]?.result.ok).toBe(false);
 	expect(active()).toBe(claude);

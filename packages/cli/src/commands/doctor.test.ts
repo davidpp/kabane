@@ -157,10 +157,16 @@ test("selected repair refuses conflicting local settings without deleting legacy
 	const destination = ConfigLayers.localFile(home, cwd, "loop");
 	expect(ConfigLayers.writeJson(destination, { concurrency: 3 }).ok).toBe(true);
 	const report = JSON.parse(cli("--json"));
-	const finding = report.findings.find(
-		(item: { severity: string }) => item.severity === "auto",
+	const finding = report.findings.find((item: { id: string }) =>
+		item.id.startsWith("legacy-settings-"),
 	);
+	expect(finding.severity).toBe("mention");
 	const repaired = JSON.parse(cli("--fix", `kabane/${finding.id}`, "--json"));
+	expect(
+		JSON.parse(cli("--json")).findings.find(
+			(item: { id: string }) => item.id === finding.id,
+		).severity,
+	).toBe("mention");
 	expect(repaired.fixes[0].result).toMatchObject({ ok: false });
 	expect(repaired.fixes[0].result.error).toContain("Refused");
 	expect(readFileSync(join(home, "config.json"), "utf8")).toContain("pinned");
