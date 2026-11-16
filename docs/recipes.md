@@ -81,7 +81,9 @@ prints its own output as JSON.
 
 `kabane run` puts a short preamble above the recipe's prompt: the run's id, that nobody is
 watching the terminal, that a decision for you is filed with `kabane_ask` on the target issue
-before the agent stops, and that the result goes on the issue as a comment. It records the
+before the agent stops, and that the result goes on the issue as a comment. With `target: none`
+there is no issue to file on, so the preamble asks the agent to write its question or its
+result as its last message, which `kabane runs read` shows. It records the
 run, starts the harness in a new terminal in the current folder, logs a `run:<id>` reference
 on the target issue, prints the run's id and terminal, and returns.
 
