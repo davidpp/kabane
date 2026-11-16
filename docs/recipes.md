@@ -25,9 +25,16 @@ Runs start in terminals of `hc` (herdr core), which must be on your `PATH`. With
 
 ## Write a recipe
 
-A recipe is `.kabane/recipes/<name>.md` in your project; the file name is the recipe's name
-(lowercase letters, digits, `-` and `_`). The frontmatter says what it works on and what it
-asks for; the body is the prompt.
+A recipe is `.kabane/recipes/<name>.md` at your project's root: the folder that already holds
+`.kabane/`, or the repository's root when there is none yet. The file name is the recipe's
+name (lowercase letters, digits, `-` and `_`). The frontmatter says what it works on and what
+it asks for; the body is the prompt.
+
+Keep it there, even for a recipe about one package. A `.kabane/` folder marks a project's
+root, so creating one in a subfolder makes that subfolder a separate project: every command
+run inside it, `kabane run` included, files into its own scope, and a scope you pinned with
+`kabane init --scope` stops applying there. When `kabane run` finds no recipes, it names the
+root it looked in.
 
 ```markdown
 ---
