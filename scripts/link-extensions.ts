@@ -30,7 +30,8 @@ const ROOT = resolve(import.meta.dir, "..");
 type Outcome =
 	| { name: string; status: "linked" }
 	| { name: string; status: "already" }
-	| { name: string; status: "skipped"; reason: string };
+	| { name: string; status: "skipped"; reason: string }
+	| { name: string; status: "unknown"; root: string };
 
 /** The extension directories in a checkout, by name. */
 export const checkoutExtensions = (root: string): string[] =>
@@ -72,11 +73,7 @@ export const linkExtensions = (
 	return names.map((name) =>
 		available.has(name)
 			? linkOne(join(root, "extensions", name), join(directory, name), name)
-			: {
-					name,
-					status: "skipped",
-					reason: `no extensions/${name} in ${root}`,
-				},
+			: { name, status: "unknown", root },
 	);
 };
 
@@ -88,6 +85,8 @@ const describe = (outcome: Outcome): string => {
 			return `${outcome.name}: already linked here`;
 		case "skipped":
 			return `${outcome.name}: skipped, ${outcome.reason}`;
+		case "unknown":
+			return `${outcome.name}: skipped, no extensions/${outcome.name} in ${outcome.root}`;
 	}
 };
 
@@ -96,10 +95,15 @@ if (import.meta.main) {
 	const named = process.argv.slice(2);
 	const names = named.length > 0 ? named : checkoutExtensions(ROOT);
 	console.log(`Linking into ${join(home, "extensions")}:`);
-	for (const outcome of linkExtensions(ROOT, home, names))
-		console.log(describe(outcome));
-	console.log(
-		"Installed, not enabled. `kabane config get extensions` shows what is on; " +
-			"`kabane config set extensions <every name you want on> --layer global` replaces that list.",
-	);
+	const outcomes = linkExtensions(ROOT, home, names);
+	for (const outcome of outcomes) console.log(describe(outcome));
+	if (
+		outcomes.some(({ status }) => status === "linked" || status === "already")
+	)
+		console.log(
+			"Installed, not enabled. `kabane config get extensions` shows what is on; " +
+				"`kabane config set extensions <every name you want on> --layer global` replaces that list.",
+		);
+	// A name the checkout lacks is a typo, not a no-op: a caller checking $? must see it.
+	if (outcomes.some(({ status }) => status === "unknown")) process.exitCode = 1;
 }

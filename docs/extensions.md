@@ -105,7 +105,7 @@ bun run link-extensions recipes
 It links `${KABANE_HOME:-$HOME/.kabane}/extensions/<name>` to `extensions/<name>` and prints
 one line per extension: `linked`, `already linked here`, or `skipped` with what is already
 there. It never replaces an installed directory or a link to another place, and replaces a
-link whose target is gone.
+link whose target is gone. A name with no `extensions/<name>` in the checkout makes it exit 1.
 
 It installs only. `extensions` is a list and a `set` replaces it whole, so read it first and
 name every extension you want on:

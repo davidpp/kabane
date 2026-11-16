@@ -26,7 +26,7 @@ const freshHome = (): string => {
 	return home;
 };
 
-const link = async (home: string, ...names: string[]) => {
+const run = async (home: string, names: string[]) => {
 	const proc = Bun.spawn(
 		[process.execPath, join(ROOT, "scripts/link-extensions.ts"), ...names],
 		{
@@ -38,8 +38,13 @@ const link = async (home: string, ...names: string[]) => {
 		proc.exited,
 		new Response(proc.stdout).text(),
 	]);
+	return { code, lines: out.trim().split("\n") };
+};
+
+const link = async (home: string, ...names: string[]) => {
+	const { code, lines } = await run(home, names);
 	expect(code).toBe(0);
-	return out.trim().split("\n");
+	return lines;
 };
 
 const linksHere = (home: string, name: string): boolean =>
@@ -115,12 +120,25 @@ describe("link-extensions", () => {
 		expect(linksHere(home, "loop")).toBe(true);
 	});
 
-	it("skips a name the checkout has no extension for", async () => {
+	it("fails on a name the checkout has no extension for, and claims nothing installed", async () => {
 		const home = freshHome();
 
-		const lines = await link(home, "nope");
+		const { code, lines } = await run(home, ["nope"]);
 
+		expect(code).toBe(1);
 		expect(lines).toContain(`nope: skipped, no extensions/nope in ${ROOT}`);
+		expect(lines.join("\n")).not.toContain("Installed");
 		expect(existsSync(join(home, "extensions/nope"))).toBe(false);
+	});
+
+	it("links the known names and still fails when one name is unknown", async () => {
+		const home = freshHome();
+
+		const { code, lines } = await run(home, ["loop", "nope"]);
+
+		expect(code).toBe(1);
+		expect(lines).toContain("loop: linked");
+		expect(lines.at(-1)).toContain("--layer global");
+		expect(linksHere(home, "loop")).toBe(true);
 	});
 });
