@@ -1,3 +1,4 @@
+import "../test-host";
 import { describe, expect, it } from "bun:test";
 import { type ReopenEvent, RiskAnalyzer, type SubtaskInput } from "./risks";
 

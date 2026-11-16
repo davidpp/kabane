@@ -2,6 +2,7 @@
 // trace and a run.json save. A save replaces `ctx.run` and writes it before the step goes on,
 // which is what lets a run resume after its runner dies.
 import type { Harnesses } from "@cabane/acp";
+import type { Host } from "@cabane/extension";
 import type { LoopConfig } from "./config";
 import type { Dispatch } from "./dispatch";
 import type { Gates } from "./gates";
@@ -16,6 +17,7 @@ export namespace RunState {
 		home: string;
 		/** The core base path (the database's directory). */
 		basePath: string;
+		host: Host;
 		/** The `kabane` executable each session's MCP server runs as. */
 		kabaneBin: string;
 		/** This process's pid, recorded so readers can tell a live run from an orphaned one. */

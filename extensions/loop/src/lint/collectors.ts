@@ -1,3 +1,5 @@
+import type { Host } from "@cabane/extension";
+import { ok, tryCatch } from "../result";
 /**
  * Plan Lint Collectors
  *
@@ -8,7 +10,7 @@
  * history) are overlaid by callers via `AnalyzeOptions.progressEntries`.
  */
 
-import { ok, Planner, type Result, tryCatch } from "@cabane/core";
+import { type Result } from "@cabane/core";
 import { firstGroups } from "./regex";
 import type { SubtaskInput } from "./risks";
 
@@ -63,8 +65,8 @@ const discoverTestFiles = async (cwd: string): Promise<Set<string>> => {
 
 export interface CollectOptions {
 	/** The storage base path */
-	basePath: string;
-	/** Parent task ULID (resolve display IDs upstream via Planner.resolveTaskId) */
+	record: Host.Record;
+	/** Parent task ULID (resolve display IDs upstream via host.record.get) */
 	parentTaskId: string;
 	/** Working directory for test file discovery */
 	cwd?: string;
@@ -87,12 +89,12 @@ interface CollectedInputs {
 const collectImpl = async (
 	options: CollectOptions,
 ): Promise<Result<CollectedInputs>> => {
-	const { basePath, parentTaskId, cwd, includeParent = true } = options;
+	const { record, parentTaskId, cwd, includeParent = true } = options;
 
-	const parentResult = await Planner.getTask(basePath, parentTaskId);
+	const parentResult = await record.get({ id: parentTaskId });
 	const parent = parentResult.ok ? parentResult.value : null;
 
-	const subtasksResult = await Planner.queryTasks(basePath, {
+	const subtasksResult = await record.list({
 		parentTaskId,
 		includeClosed: true,
 	});

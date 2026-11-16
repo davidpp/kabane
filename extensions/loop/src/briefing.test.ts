@@ -1,3 +1,4 @@
+import "./test-host";
 import { describe, expect, it } from "bun:test";
 import type { Task, TaskState } from "@cabane/core";
 import type { PanelLine } from "@cabane/extension";

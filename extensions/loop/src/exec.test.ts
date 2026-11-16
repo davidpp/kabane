@@ -1,3 +1,4 @@
+import "./test-host";
 // A failed tool's error, with real processes. The gh here is a script named gh in a directory of
 // its own that only fails, so no test reaches the user's gh or GitHub.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";

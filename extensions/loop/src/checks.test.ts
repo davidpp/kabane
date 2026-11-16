@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Gates, checkpoints and rollback against a real tracker and a real git repository with a real
 // worktree. Only git's config is the fixture's (an identity, no signing), as in every test.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	existsSync,
 	mkdirSync,
@@ -25,6 +25,7 @@ import type { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 import { Worktree } from "./worktree";
 
 let root = "";
@@ -112,6 +113,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 		deps: {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides(),
@@ -161,6 +163,7 @@ describe("Checks", () => {
 		expect(head(repo)).toBe(before);
 		expect(RunStore.checkpoints(ctx.run)).toEqual([head(worktree)]);
 		expect(await refsOf(child.id)).toEqual([
+			"loop:run-1",
 			"gate:built",
 			`commit:${head(worktree)}`,
 		]);
@@ -262,7 +265,7 @@ describe("Checks", () => {
 				await Checks.record(ctx, pass, subject);
 				const after = await Planner.getTask(home, child.id);
 				expect(after.ok && after.value).toEqual(changed.value);
-				expect(await refsOf(child.id)).toEqual(["gate:test"]);
+				expect(await refsOf(child.id)).toEqual(["loop:run-1", "gate:test"]);
 			} finally {
 				writeFileSync(join(repo, "gate-release"), "");
 				await pending;
@@ -291,7 +294,7 @@ describe("Checks", () => {
 		expect(pass.results).toMatchObject([{ ok: false, exit: null }]);
 		const task = await Planner.getTask(home, child.id);
 		expect(task.ok && task.value?.state).toBe("done");
-		expect(await refsOf(child.id)).toEqual(["gate:slow"]);
+		expect(await refsOf(child.id)).toEqual(["loop:run-1", "gate:slow"]);
 	});
 
 	it("a run without a worktree commits nothing, and a checkpoint refuses the checkout", async () => {
@@ -479,6 +482,7 @@ describe("Runner final checks", () => {
 		const ended = await Runner.run(run.id, {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			git,
@@ -500,6 +504,7 @@ describe("Runner final checks", () => {
 		expect(ended.claims).toEqual([]);
 		expect(RunStore.checkpoints(ended)).toEqual([head(ended.worktree ?? "")]);
 		expect(await refsOf(ended.parentId)).toEqual([
+			"loop:run-1",
 			"loop:run-1",
 			"gate:stamp",
 			`commit:${head(ended.worktree ?? "")}`,
@@ -563,6 +568,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			const ended = await Runner.run(run.id, {
 				home,
 				basePath: home,
+				host: testHost(home),
 				kabaneBin: "/nonexistent/kabane",
 				pid: process.pid,
 				git,
@@ -744,6 +750,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 		const ended = await Runner.run(run.id, {
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			git,

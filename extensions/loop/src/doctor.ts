@@ -15,19 +15,11 @@ import {
 } from "node:fs";
 import { join, relative } from "node:path";
 import type { Harnesses } from "@cabane/acp";
-import {
-	err,
-	ok,
-	Planner,
-	type Result,
-	type Task,
-	tryCatch,
-	trySync,
-} from "@cabane/core";
-import { detectScope } from "@cabane/core/scope";
-import type { Doctor, Extension } from "@cabane/extension";
+import { type Result, type Task } from "@cabane/core";
+import type { Host, Doctor, Extension } from "@cabane/extension";
 import { LoopConfig } from "./config";
 import { Lenses } from "./lenses";
+import { err, ok, tryCatch, trySync } from "./result";
 import { Route } from "./route";
 
 export namespace LoopDoctor {
@@ -173,12 +165,12 @@ export namespace LoopDoctor {
 
 	/** Every open issue in the scope, a page at a time. */
 	const openIssues = async (
-		store: string,
+		record: Host.Record,
 		scopeUri: string,
 	): Promise<Result<Task[]>> => {
 		const issues: Task[] = [];
 		for (let offset = 0; ; offset += PAGE) {
-			const page = await Planner.queryTasks(store, {
+			const page = await record.list({
 				scopeUri,
 				kind: "issue",
 				includeDeferred: true,
@@ -264,16 +256,15 @@ export namespace LoopDoctor {
 	};
 
 	export const doctor = async (
+		host: Host,
 		ctx: Extension.Ctx,
 	): Promise<Result<Doctor.Finding[]>> => {
-		const scope = await tryCatch(() =>
-			detectScope(ctx.cwd, { home: ctx.home, detectExtensions: false }),
-		);
+		const scope = await host.scope.detect(ctx.cwd);
 		if (!scope.ok) return scope;
 		const root = scope.value?.root;
 		const config = await ctx.settings(
 			LoopConfig.NAMESPACE,
-			LoopConfig.SettingsSchema,
+			LoopConfig.schemas(host.z).SettingsSchema,
 			{ projectDir: root ?? ctx.cwd },
 		);
 		const lenses =
@@ -287,7 +278,7 @@ export namespace LoopDoctor {
 		const read: Result<Result<Task[]>> =
 			scopeUri === undefined
 				? ok(ok([]))
-				: await tryCatch(() => openIssues(ctx.store, scopeUri));
+				: await tryCatch(() => openIssues(host.record, scopeUri));
 		const issues: Result<Task[]> = read.ok ? read.value : read;
 		// The store may be out of reach (a host that opened none): the other findings still stand.
 		const unchecked: Doctor.Finding[] = issues.ok

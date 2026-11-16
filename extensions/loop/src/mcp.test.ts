@@ -8,6 +8,7 @@ import { Settings } from "@cabane/extension";
 import { LoopAdvice } from "./advice";
 import { loopMcp } from "./mcp";
 import { RunStore } from "./store";
+import { testHost } from "./test-host";
 
 test("MCP advice resolves tagged subtasks using the real tracker and settings resolver without starting a run", async () => {
 	const home = mkdtempSync(join(tmpdir(), "kabane-loop-mcp-"));
@@ -28,7 +29,7 @@ test("MCP advice resolves tagged subtasks using the real tracker and settings re
 			tags: ["tier:codex/fast"],
 		});
 		if (!child.ok) throw child.error;
-		const surface = await loopMcp({
+		const surface = await loopMcp(testHost(home))({
 			home,
 			store: home,
 			cwd: home,

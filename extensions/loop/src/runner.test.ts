@@ -1,8 +1,8 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The real runner resuming a run whose runner died, on a real tracker. The run is paused, so it
 // claims nothing and no harness is reached; a wrong claim would fail at the launch, which points
 // at no harness.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +12,7 @@ import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 let home = "";
 
@@ -75,6 +76,7 @@ const orphaned = async (
 const deps = (signal?: AbortSignal) => ({
 	home,
 	basePath: home,
+	host: testHost(home),
 	kabaneBin: "/nonexistent/kabane",
 	pid: process.pid,
 	overrides: TestHarnesses.overrides({

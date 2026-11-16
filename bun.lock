@@ -22,12 +22,12 @@
       "version": "0.1.0",
       "dependencies": {
         "@cabane/acp": "workspace:*",
-        "@cabane/checklist": "workspace:*",
         "@cabane/core": "workspace:*",
         "@cabane/extension": "workspace:*",
         "zod": "3.25.76",
       },
       "devDependencies": {
+        "@cabane/checklist": "workspace:*",
         "@types/bun": "1.4.0",
         "typescript": "5.9.3",
       },

@@ -1,7 +1,7 @@
 // Starting a loop from the board: `a` on an issue, or on a parent of issue subtasks, offers "start loop", whose form
 // holds the run's settings (LoopSettings) beside the plan it would start on (Briefing), and whose
 // `enter` is `kabane loop start` from the board's directory, with the same checks.
-import { err, ok, type Result } from "@cabane/core";
+import { type Result } from "@cabane/core";
 import type {
 	Dispatcher,
 	TriggerDescriptor,
@@ -12,6 +12,7 @@ import { Briefing } from "./briefing";
 import { Loop } from "./commands";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
+import { err, ok } from "./result";
 import { LoopSettings } from "./settings";
 
 export namespace LoopDispatcher {
@@ -25,7 +26,7 @@ export namespace LoopDispatcher {
 	// What a run needs to start that a trigger cannot ask for: where it was started from.
 	type Deps = Pick<
 		Loop.StartDeps,
-		"home" | "basePath" | "kabaneBin" | "cwd" | "settings"
+		"host" | "home" | "basePath" | "kabaneBin" | "cwd" | "settings"
 	>;
 
 	const trigger = (
@@ -53,7 +54,7 @@ export namespace LoopDispatcher {
 		now: Date = new Date(),
 		onAdvice?: (advice: LoopAdvice.Recommendation[]) => void,
 	): Promise<Result<TriggerDescriptor[]>> => {
-		const plan = await LoopPlan.load(deps.basePath, taskId);
+		const plan = await LoopPlan.load(deps.host.record, taskId);
 		if (!plan.ok) return plan;
 		if (!plan.value.nodes.some(LoopPlan.isWork)) return ok([]);
 		const prepared = await Loop.prepare(deps, { parent: taskId });
@@ -75,7 +76,12 @@ export namespace LoopDispatcher {
 		return ok([
 			trigger(
 				plan.value,
-				LoopSettings.inputs(config, Lenses.offered(projectRoot), advice),
+				LoopSettings.inputs(
+					deps.host,
+					config,
+					Lenses.offered(projectRoot),
+					advice,
+				),
 				{
 					preview: Briefing.preview(
 						prepared.value.plan,
@@ -108,6 +114,7 @@ export namespace LoopDispatcher {
 		const dropWidth =
 			sharedTree && width !== undefined && !edited.includes(width.path);
 		const config = LoopSettings.overrides(
+			deps.host,
 			dropWidth
 				? Object.fromEntries(
 						Object.entries(values).filter(([name]) => name !== width.path),

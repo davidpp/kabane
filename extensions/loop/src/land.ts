@@ -6,12 +6,13 @@
 // config; the loop adds none. The outcome is run.json's `landing`, and the pull request its `pr`.
 // A landing that fails leaves the run completed: the work is done and its gates were green, only
 // getting it onto the base is left, and the branch stays as the run left it.
-import { err, ok, type Result, type Task, trySync } from "@cabane/core";
+import { type Result, type Task } from "@cabane/core";
 import { z } from "zod";
 import { Checks } from "./checks";
 import { Exec } from "./exec";
 import { Gates } from "./gates";
 import { LoopPlan } from "./plan";
+import { err, ok, trySync } from "./result";
 import { RunState } from "./state";
 import { RunStore } from "./store";
 import { Worktree } from "./worktree";

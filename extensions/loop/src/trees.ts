@@ -13,8 +13,9 @@
 // merged is left, with its branch, for a human.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { err, ok, type Result, type Task } from "@cabane/core";
+import { type Result, type Task } from "@cabane/core";
 import { Gates } from "./gates";
+import { err, ok } from "./result";
 import { RunState } from "./state";
 import { RunStore } from "./store";
 import { Worktree } from "./worktree";

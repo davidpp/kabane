@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Exercise the runner's claim path on disposable trackers. Missing harnesses test the first
 // scheduling batch; the scripted ACP subprocess holds turns open while gates are exercised.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	existsSync,
 	mkdirSync,
@@ -26,6 +26,7 @@ import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 let home = "";
 beforeEach(async () => {
@@ -72,6 +73,7 @@ const createRun = (parent: Task, input: LoopConfig.Input): RunStore.Run => {
 const deps = () => ({
 	home,
 	basePath: home,
+	host: testHost(home),
 	kabaneBin: "/nonexistent/kabane",
 	pid: process.pid,
 	overrides: TestHarnesses.overrides({

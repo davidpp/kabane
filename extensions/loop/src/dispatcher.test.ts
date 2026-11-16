@@ -1,8 +1,8 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The board's "start loop" trigger against a real tracker and a real git checkout: when it is
 // offered, when it is refused and why, and what its form and preview are built from. Starting a
 // run spawns the runner, which is the sandbox check, not a unit test.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,7 @@ import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";
 import { RunStore } from "./store";
+import { testHost } from "./test-host";
 
 let root = "";
 let home = "";
@@ -22,6 +23,7 @@ let repo = "";
 const deps = () => ({
 	home,
 	basePath: home,
+	host: testHost(home),
 	kabaneBin: "/nonexistent",
 	cwd: repo,
 	// No stored layers: the form's values over the defaults, through the real resolver.

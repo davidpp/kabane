@@ -8,14 +8,13 @@
 // claims: once the lenses have reviewed, one fixer session takes every open finding, most severe
 // first. Severity (`p1`, `p2`, `p3`) orders that work and is reported; it does not decide it.
 import {
-	err,
-	ok,
-	Planner,
 	type Result,
 	type Task,
 	type TaskLink,
 	type TaskState,
 } from "@cabane/core";
+import type { Host } from "@cabane/extension";
+import { err, ok } from "./result";
 
 export namespace LoopPlan {
 	export type Node = {
@@ -89,13 +88,13 @@ export namespace LoopPlan {
 	const CHILD_LIMIT = 500;
 
 	export const load = async (
-		basePath: string,
+		record: Host.Record,
 		parentId: string,
 	): Promise<Result<Plan>> => {
-		const parent = await Planner.getTask(basePath, parentId);
+		const parent = await record.get({ id: parentId });
 		if (!parent.ok) return parent;
 		if (!parent.value) return err(new Error(`No task ${parentId}`));
-		const children = await Planner.queryTasks(basePath, {
+		const children = await record.list({
 			parentTaskId: parentId,
 			includeClosed: true,
 			includeDeferred: true,
@@ -107,13 +106,13 @@ export namespace LoopPlan {
 		);
 		const nodes: Node[] = [];
 		for (const task of sorted) {
-			const links = await Planner.getLinksForTask(basePath, task.id);
+			const links = await record.links({ id: task.id });
 			if (!links.ok) return links;
 			nodes.push(node(task, blockersOf(task.id, links.value)));
 		}
 		// Work, even when it is itself a finding someone chose to run: it is what the run was started on.
 		if (parent.value.kind === "issue" && !nodes.some(isWork)) {
-			const links = await Planner.getLinksForTask(basePath, parentId);
+			const links = await record.links({ id: parentId });
 			if (!links.ok) return links;
 			nodes.unshift({
 				...node(parent.value, blockersOf(parentId, links.value)),
@@ -124,7 +123,7 @@ export namespace LoopPlan {
 		const outside = new Map<string, Task>();
 		for (const id of new Set(nodes.flatMap((n) => n.blockedBy))) {
 			if (inside.has(id)) continue;
-			const blocker = await Planner.getTask(basePath, id);
+			const blocker = await record.get({ id: id });
 			if (!blocker.ok) return blocker;
 			// A blocker that no longer exists blocks nothing.
 			if (blocker.value) outside.set(id, blocker.value);

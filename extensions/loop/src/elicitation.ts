@@ -18,9 +18,10 @@
 // the questions still open as withdrawn (`questions.ts`).
 import type { AcpClient } from "@cabane/acp";
 import { FormField } from "@cabane/acp/form-field";
-import { err, formatQuestionBody, ok, type Result } from "@cabane/core";
+import { formatQuestionBody, type Result } from "@cabane/core";
 import { Permission } from "./permission";
 import { Questions } from "./questions";
+import { err, ok } from "./result";
 
 export namespace Elicitation {
 	type Field = AcpClient.ElicitationField;

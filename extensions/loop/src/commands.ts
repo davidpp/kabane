@@ -15,21 +15,15 @@ import {
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { Harnesses } from "@cabane/acp";
 import {
-	err,
-	ok,
 	type AgentActivity,
 	isAnswerTo,
 	type ParsedQuestion,
 	Planner,
 	parseQuestionBody,
 	type Result,
-	ScopeUri,
 	type Task,
-	tryCatch,
-	trySync,
 } from "@cabane/core";
-import { detectScope } from "@cabane/core/scope";
-import type { Settings } from "@cabane/extension";
+import type { Host, Settings } from "@cabane/extension";
 import { z } from "zod";
 import { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
@@ -44,6 +38,7 @@ import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Prune } from "./prune";
 import { Questions } from "./questions";
+import { err, ok, trySync } from "./result";
 import { Route } from "./route";
 import { Runner } from "./runner";
 import { RunState } from "./state";
@@ -58,6 +53,7 @@ export namespace Loop {
 		home: string;
 		/** The core base path (the database's directory). */
 		basePath: string;
+		host: Host;
 		/** The `kabane` executable: the runner's binary, and each session's MCP server. */
 		kabaneBin: string;
 	};
@@ -305,12 +301,10 @@ export namespace Loop {
 	 * resolve there too.
 	 */
 	const projectRootOf = async (
-		home: string,
+		host: Host,
 		projectDir: string,
 	): Promise<Result<string>> => {
-		const detected = await tryCatch(() =>
-			detectScope(projectDir, { home, detectExtensions: false }),
-		);
+		const detected = await host.scope.detect(projectDir);
 		if (!detected.ok) return detected;
 		const root = detected.value?.root;
 		if (root === undefined) return ok(projectDir);
@@ -329,20 +323,18 @@ export namespace Loop {
 	 * sessions work there, and only its settings and lenses come from the project root.
 	 */
 	const projectDirFor = async (
-		deps: Pick<StartDeps, "home" | "cwd">,
+		deps: Pick<StartDeps, "host" | "home" | "cwd">,
 		parent: Task,
 		dir: string | undefined,
 	): Promise<Result<string>> => {
 		if (dir !== undefined) return ok(resolve(deps.cwd, dir));
 		const projectDir = resolve(deps.cwd);
 		if (!parent.scopeUri) return ok(projectDir);
-		const detected = await tryCatch(() =>
-			detectScope(projectDir, { home: deps.home, detectExtensions: false }),
-		);
+		const detected = await deps.host.scope.detect(projectDir);
 		if (!detected.ok) return detected;
 		// Same scope id, whatever extensions either side carries (`?package=`, `?branch=`),
 		// the way a scoped query matches the family.
-		const wanted = ScopeUri.getScopeId(parent.scopeUri);
+		const wanted = deps.host.scope.idOf(parent.scopeUri);
 		const found = detected.value?.scopeUri;
 		if (wanted.ok && detected.value?.scopeId === wanted.value)
 			return ok(projectDir);
@@ -456,20 +448,22 @@ export namespace Loop {
 	 * with no prompt, and a parent that already has a live run.
 	 */
 	export const prepare = async (
-		deps: Pick<StartDeps, "home" | "basePath" | "cwd" | "settings">,
+		deps: Pick<StartDeps, "host" | "home" | "basePath" | "cwd" | "settings">,
 		input: StartInput,
 	): Promise<Result<Prepared>> => {
-		const parentId = await Planner.resolveTaskId(deps.basePath, input.parent);
-		if (!parentId.ok) return parentId;
-		const plan = await LoopPlan.load(deps.basePath, parentId.value);
+		const parent = await deps.host.record.get({ id: input.parent });
+		if (!parent.ok) return parent;
+		if (!parent.value) return err(new Error(`No task ${input.parent}`));
+
+		const plan = await LoopPlan.load(deps.host.record, parent.value.id);
 		if (!plan.ok) return plan;
 		const projectDir = await projectDirFor(deps, plan.value.parent, input.dir);
 		if (!projectDir.ok) return projectDir;
-		const projectRoot = await projectRootOf(deps.home, projectDir.value);
+		const projectRoot = await projectRootOf(deps.host, projectDir.value);
 		if (!projectRoot.ok) return projectRoot;
 		const config = await deps.settings(
 			LoopConfig.NAMESPACE,
-			LoopConfig.SettingsSchema,
+			LoopConfig.schemas(deps.host.z).SettingsSchema,
 			{
 				projectDir: projectDir.value,
 				...(input.config ? { overrides: input.config } : {}),
@@ -656,13 +650,13 @@ export namespace Loop {
 	 * could not be read, for the preview.
 	 */
 	export const adviceOf = async (
-		deps: Pick<Deps, "home" | "basePath">,
+		deps: Pick<Deps, "host" | "home" | "basePath">,
 		{ plan, projectDir, projectRoot, config, isolated }: Prepared,
 	): Promise<{ advice: LoopAdvice.Recommendation[]; messages: string[] }> => {
 		const messages: string[] = [];
 		const progressEntries = reopened(deps.home, plan.parent.id, messages);
 		const linted = await Lint.run({
-			basePath: deps.basePath,
+			record: deps.host.record,
 			parentTaskId: plan.parent.id,
 			cwd: projectDir,
 			progressEntries,
@@ -689,7 +683,10 @@ export namespace Loop {
 	 * setting; scope detection may cache the checkout's scope, as every scoped command does.
 	 */
 	export const advise = async (
-		deps: Pick<StartDeps, "home" | "basePath" | "cwd" | "settings" | "git">,
+		deps: Pick<
+			StartDeps,
+			"host" | "home" | "basePath" | "cwd" | "settings" | "git"
+		>,
 		input: StartInput,
 	): Promise<Result<Advised>> => {
 		const prepared = await prepare(deps, input);
@@ -1060,7 +1057,7 @@ export namespace Loop {
 		try {
 			const owned = ownWorktree(deps.home, run, dir);
 			if (!owned.ok) return owned;
-			const plan = await LoopPlan.load(deps.basePath, run.parentId);
+			const plan = await LoopPlan.load(deps.host.record, run.parentId);
 			if (!plan.ok) return plan;
 			const log = RunStore.eventLog(deps.home, runId);
 			if (!log.ok) return log;
@@ -1105,7 +1102,7 @@ export namespace Loop {
 	 * `kabane loop prune` does. A pull request's state is GitHub's to say (`Prune`).
 	 */
 	export const prune = (
-		deps: Pick<StartDeps, "home" | "basePath" | "git" | "gh">,
+		deps: Pick<StartDeps, "host" | "home" | "basePath" | "git" | "gh">,
 	): Promise<Result<Prune.Pruned[]>> => Prune.prune(deps);
 
 	/** One run as it is now: a run whose runner is gone reads as failed. */
@@ -1214,7 +1211,7 @@ export namespace Loop {
 
 	/** The run whose runner died while one of its sessions asked `questionId`, withdrawing it. */
 	const stranded = async (
-		deps: Pick<Deps, "home" | "basePath">,
+		deps: Pick<Deps, "host" | "home" | "basePath">,
 		questionId: string,
 	): Promise<Result<RunStore.Run | undefined>> => {
 		const runs = RunStore.list(deps.home);
@@ -1267,7 +1264,9 @@ export namespace Loop {
 	 * the same answer the board gives. A permission question takes one of the harness's options
 	 * by id, label or position, and the decision records its label.
 	 */
-	type AnswerDeps = Pick<Deps, "home" | "basePath"> & { actor: string };
+	type AnswerDeps = Pick<Deps, "host" | "home" | "basePath"> & {
+		actor: string;
+	};
 
 	type Asked = { question: AgentActivity; runId: string; task: string };
 
@@ -1366,13 +1365,13 @@ export namespace Loop {
 	// itself while the run works it as a single issue. A parent is never claimed, so skipping it
 	// would steer nothing.
 	const steerable = async (
-		basePath: string,
+		record: Host.Record,
 		run: RunStore.Run,
 		task: Task,
 		short: string,
 	): Promise<Result<void>> => {
 		if (task.parentTaskId === run.parentId) return ok(undefined);
-		const plan = await LoopPlan.load(basePath, run.parentId);
+		const plan = await LoopPlan.load(record, run.parentId);
 		if (!plan.ok) return plan;
 		const single = LoopPlan.single(plan.value);
 		if (task.id === run.parentId)
@@ -1398,14 +1397,12 @@ export namespace Loop {
 	 * single issue. `runId` names that run when the caller knows it.
 	 */
 	export const direct = async (
-		deps: Pick<Deps, "home" | "basePath">,
+		deps: Pick<Deps, "host" | "home" | "basePath">,
 		kind: "skip" | "next",
 		task: string,
 		runId?: string,
 	): Promise<Result<Directed>> => {
-		const id = await Planner.resolveTaskId(deps.basePath, task);
-		if (!id.ok) return id;
-		const found = await Planner.getTask(deps.basePath, id.value);
+		const found = await deps.host.record.get({ id: task });
 		if (!found.ok) return found;
 		if (!found.value) return err(new Error(`No task ${task}`));
 		const target = found.value;
@@ -1427,7 +1424,7 @@ export namespace Loop {
 						: `No loop run ${runId}`,
 				),
 			);
-		const inPlan = await steerable(deps.basePath, run, target, short);
+		const inPlan = await steerable(deps.host.record, run, target, short);
 		if (!inPlan.ok) return inPlan;
 		const live = liveRun(deps.home, run.id);
 		if (!live.ok) return live;

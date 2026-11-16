@@ -1,24 +1,48 @@
-import { describe, expect, it } from "bun:test";
+import "@cabane/core/testing";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Planner } from "@cabane/core";
 import { Settings } from "@cabane/extension";
 import { LoopConfig } from "./config";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 // The loop's settings schema through the resolver every namespace shares. Where each layer is
 // stored is the CLI's (config-layers.test.ts); this is what the loop accepts in one.
+const hostHome = mkdtempSync(join(tmpdir(), "loop-settings-"));
+const host = testHost(hostHome);
+beforeAll(async () => {
+	const initialized = await Planner.init(hostHome);
+	if (!initialized.ok) throw initialized.error;
+});
+afterAll(() => rmSync(hostHome, { recursive: true, force: true }));
+
 const PROJECT = "/repo/.kabane/loop.json";
 
 const resolve = (
 	project: unknown,
 	overrides?: Readonly<Record<string, unknown>>,
 ) =>
-	Settings.resolve(LoopConfig.NAMESPACE, LoopConfig.SettingsSchema, [
-		...(project === undefined
-			? []
-			: [{ layer: "shared" as const, label: PROJECT, value: project }]),
-		...(overrides
-			? [{ layer: "caller" as const, label: Settings.CALLER, value: overrides }]
-			: []),
-	]);
+	Settings.resolve(
+		LoopConfig.NAMESPACE,
+		LoopConfig.schemas(host.z).SettingsSchema,
+		[
+			...(project === undefined
+				? []
+				: [{ layer: "shared" as const, label: PROJECT, value: project }]),
+			...(overrides
+				? [
+						{
+							layer: "caller" as const,
+							label: Settings.CALLER,
+							value: overrides,
+						},
+					]
+				: []),
+		],
+	);
 
 const refusal = (
 	project: unknown,
@@ -28,7 +52,7 @@ const refusal = (
 	return resolved.ok ? "accepted" : resolved.error.message;
 };
 
-describe("LoopConfig.SettingsSchema", () => {
+describe("LoopConfig.schemas(host.z).SettingsSchema", () => {
 	it("is the defaults with no layer", () => {
 		const config = resolve(undefined);
 		expect(config.ok && config.value.value).toEqual({

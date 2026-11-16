@@ -1,3 +1,4 @@
+import "./test-host";
 // The scripted agent (packages/acp/scripts/scripted-agent.ts) that `bun run sandbox --scripted`
 // launches for a loop run, given the implementing brief this loop builds, over a real subprocess,
 // a real git repository and the real kabane MCP server. It recognises an implementer by the

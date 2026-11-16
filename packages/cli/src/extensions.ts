@@ -35,7 +35,9 @@ import { hostFor, hostHarnessMode } from "./host";
  * own chunk, and `scripts/build.ts` fails when a directory under `extensions/`
  * is missing from this list.
  */
-const OFFICIAL: Readonly<Record<string, () => Promise<Extension>>> = {
+const OFFICIAL: Readonly<
+	Record<string, () => Promise<(host: Host) => Extension>>
+> = {
 	loop: async () => (await import("@cabane/loop")).loop,
 };
 
@@ -371,7 +373,10 @@ export namespace Extensions {
 				return err(
 					new Error(`not installed; put it in ${directory(home, name)}/`),
 				);
-			loaded = await tryCatch(loader);
+			const factory = await tryCatch(loader);
+			loaded = factory.ok
+				? await hostFor(home, name).build(factory.value)
+				: factory;
 		}
 		if (!loaded.ok)
 			return err(
@@ -564,7 +569,10 @@ export namespace Extensions {
 			if (selected.value.includes(name)) continue;
 			const loader = Object.hasOwn(OFFICIAL, name) ? OFFICIAL[name] : undefined;
 			if (!loader) continue;
-			const bundled = await tryCatch(loader);
+			const factory = await tryCatch(loader);
+			const bundled = factory.ok
+				? await hostFor(home, name).build(factory.value)
+				: factory;
 			if (bundled.ok) all.loaded.push(bundled.value);
 			else all.refused.push({ name, reason: bundled.error.message });
 		}

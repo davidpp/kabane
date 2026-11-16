@@ -1,3 +1,4 @@
+import "./test-host";
 import { expect, test } from "bun:test";
 import type { Task, TaskState } from "@cabane/core";
 import { LoopAdvice } from "./advice";

@@ -1,3 +1,4 @@
+import "./test-host";
 import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";

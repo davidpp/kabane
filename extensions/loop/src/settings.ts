@@ -10,45 +10,51 @@
 // get a toggle each over the lenses the project can run. A field the form cannot hold (free text
 // with no options, a record) is left to the settings layers (`kabane config`) and flags: the gates,
 // named shell commands, which the preview lists read-only.
-import { err, ok, type Result } from "@cabane/core";
-import {
-	type SettingField,
+import type { Result } from "@cabane/core";
+import type {
+	Host,
+	SettingField,
 	Settings,
-	type TriggerInput,
+	TriggerInput,
 } from "@cabane/extension";
-import { z } from "zod";
 import type { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
-import { loop } from "./extension";
+import { looks } from "./extension";
+import { err, ok } from "./result";
 
 export namespace LoopSettings {
 	type Look = Settings.Look;
 
 	const NONE = "none";
 
-	// Read at a call, never at load: the extension's declaration imports this module.
-	const looks = (): Settings.Looks => loop.looks ?? {};
-
 	// Lenses are a list of names; the form holds one toggle per lens it can offer, `lenses.<name>`.
 	const LENS_PREFIX = "lenses.";
 
 	// The form holds settings, not the groups they sit in.
-	const FIELDS = Settings.fields(LoopConfig.Schema).filter(
-		(field) => field.kind !== "group",
-	);
+	const fields = (host: Host) =>
+		host.settings
+			.fields(LoopConfig.schemas(host.z).Schema)
+			.filter((field) => field.kind !== "group");
 
 	const nameOf = (field: SettingField): string => field.path.join(".");
 
-	const DEFAULTS = LoopConfig.Schema.parse({});
+	const defaults = (host: Host) => {
+		const parsed = LoopConfig.schemas(host.z).Schema.safeParse({});
+		return parsed.success ? parsed.data : {};
+	};
 
-	const lookOf = (field: SettingField): Look =>
-		Settings.lookOf(looks(), field.path);
+	const lookOf = (host: Host, field: SettingField): Look =>
+		host.settings.lookOf(looks, field.path);
 
-	const ObjectSchema = z.record(z.unknown());
+	const objectSchema = (host: Host) => host.z.record(host.z.unknown());
 
-	const valueAt = (config: unknown, path: readonly string[]): unknown =>
+	const valueAt = (
+		host: Host,
+		config: unknown,
+		path: readonly string[],
+	): unknown =>
 		path.reduce<unknown>((at, key) => {
-			const object = ObjectSchema.safeParse(at);
+			const object = objectSchema(host).safeParse(at);
 			return object.success ? object.data[key] : undefined;
 		}, config);
 
@@ -75,17 +81,18 @@ export namespace LoopSettings {
 
 	// The form steps through a scalar's options; the lenses get their toggles from the caller.
 	const optionsOf = (
+		host: Host,
 		field: SettingField,
 		look: Look,
 		config: LoopConfig.Config,
 	): string[] => {
-		const value = valueAt(config, field.path);
+		const value = valueAt(host, config, field.path);
 		const options =
 			field.kind === "list"
 				? undefined
 				: nameOf(field) === MODEL
 					? LoopConfig.tierNames(config)
-					: Settings.options(field, look, {});
+					: host.settings.options(field, look, {});
 		const listed = options ? withValue(options, value) : [];
 		return field.optional && listed.length > 0
 			? [look.none ?? NONE, ...listed]
@@ -94,12 +101,13 @@ export namespace LoopSettings {
 
 	/** One field's input, or undefined when the form cannot hold it. */
 	const inputOf = (
+		host: Host,
 		field: SettingField,
 		config: LoopConfig.Config,
 	): TriggerInput | undefined => {
-		const look = lookOf(field);
-		const value = valueAt(config, field.path);
-		const options = optionsOf(field, look, config);
+		const look = lookOf(host, field);
+		const value = valueAt(host, config, field.path);
+		const options = optionsOf(host, field, look, config);
 		const common = { label: look.label, group: look.group, required: false };
 		if (options.length > 0)
 			return {
@@ -145,23 +153,24 @@ export namespace LoopSettings {
 	 * named command each) is left out.
 	 */
 	export const inputs = (
+		host: Host,
 		config: LoopConfig.Config,
 		lenses: readonly string[] = [],
 		advice: readonly LoopAdvice.Recommendation[] = [],
 	): Record<string, TriggerInput> => {
 		// The lens toggles first: in their group, the recheck of what the lenses found follows them.
 		const entries: [string, TriggerInput][] = lensInputs(config, lenses);
-		for (const field of FIELDS) {
+		for (const field of fields(host)) {
 			const recommendation = advice.find((r) => r.path === nameOf(field));
-			const input = inputOf(field, config);
+			const input = inputOf(host, field, config);
 			if (input && recommendation) {
-				const previous = valueAt(config, field.path);
+				const previous = valueAt(host, config, field.path);
 				// The port resolves without origins, so a value equal to the schema's default is taken
 				// as unset: naming it "your setting" would credit the human with a default.
 				const yours =
 					previous !== undefined &&
 					previous !== recommendation.value &&
-					previous !== valueAt(DEFAULTS, field.path);
+					previous !== valueAt(host, defaults(host), field.path);
 				input.default =
 					input.options && typeof recommendation.value === "number"
 						? String(recommendation.value)
@@ -171,12 +180,13 @@ export namespace LoopSettings {
 			if (input) entries.push([nameOf(field), input]);
 		}
 		// A stable sort: within a group, the schema's order.
-		const groups = Settings.groupsOf(looks());
+		const groups = host.settings.groupsOf(looks);
 		entries.sort(([, a], [, b]) => groupRank(groups, a) - groupRank(groups, b));
 		return Object.fromEntries(entries);
 	};
 
 	const setAt = (
+		host: Host,
 		target: Record<string, unknown>,
 		path: readonly string[],
 		value: unknown,
@@ -187,16 +197,20 @@ export namespace LoopSettings {
 			target[head] = value;
 			return;
 		}
-		const existing = ObjectSchema.safeParse(target[head]);
+		const existing = objectSchema(host).safeParse(target[head]);
 		const child = existing.success ? existing.data : {};
 		target[head] = child;
-		setAt(child, rest, value);
+		setAt(host, child, rest, value);
 	};
 
 	// A form value as the config holds it: an option's text back to a number, the unset option to
 	// absent (undefined, so it unsets what the layers below say too).
-	const fromForm = (field: SettingField, value: unknown): Result<unknown> => {
-		if (field.optional && value === (lookOf(field).none ?? NONE))
+	const fromForm = (
+		host: Host,
+		field: SettingField,
+		value: unknown,
+	): Result<unknown> => {
+		if (field.optional && value === (lookOf(host, field).none ?? NONE))
 			return ok(undefined);
 		if (field.kind !== "number" || typeof value === "number") return ok(value);
 		const number = Number(value);
@@ -207,17 +221,18 @@ export namespace LoopSettings {
 
 	/** The form's values as the caller's layer, for `Loop.start` to put over the stored settings. */
 	export const overrides = (
+		host: Host,
 		values: Readonly<Record<string, unknown>>,
 		advice: readonly LoopAdvice.Recommendation[] = [],
 	): Result<LoopConfig.Overrides> => {
 		const out: Record<string, unknown> = {};
 		for (const recommendation of advice)
-			setAt(out, recommendation.path.split("."), recommendation.value);
-		for (const field of FIELDS) {
+			setAt(host, out, recommendation.path.split("."), recommendation.value);
+		for (const field of fields(host)) {
 			if (!(nameOf(field) in values)) continue;
-			const value = fromForm(field, values[nameOf(field)]);
+			const value = fromForm(host, field, values[nameOf(field)]);
 			if (!value.ok) return value;
-			setAt(out, field.path, value.value);
+			setAt(host, out, field.path, value.value);
 		}
 		// The lens toggles become the list, in the form's order; without any, the stored list stands.
 		const toggles = Object.entries(values).filter(([name]) =>

@@ -1,5 +1,5 @@
-import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import "@cabane/core/testing";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import { formatQuestionBody, Planner } from "@cabane/core";
 import { LoopActivity } from "./activity";
 import { LoopConfig } from "./config";
 import { RunStore } from "./store";
+import { testHost } from "./test-host";
 
 let home = "";
 const ACTOR = "cabane://actor/human/david";
@@ -76,6 +77,7 @@ describe("LoopActivity", () => {
 		const source = LoopActivity.source({
 			home,
 			basePath: home,
+			host: testHost(home),
 			actor: ACTOR,
 			kabaneBin: "/nonexistent/kabane",
 		});
@@ -105,6 +107,7 @@ describe("LoopActivity", () => {
 		const source = LoopActivity.source({
 			home,
 			basePath: home,
+			host: testHost(home),
 			actor: ACTOR,
 			kabaneBin: "/nonexistent/kabane",
 		});
@@ -137,6 +140,7 @@ describe("LoopActivity", () => {
 		const source = LoopActivity.source({
 			home,
 			basePath: home,
+			host: testHost(home),
 			actor: ACTOR,
 			kabaneBin: "/nonexistent/kabane",
 		});
@@ -201,6 +205,7 @@ describe("LoopActivity", () => {
 		const source = LoopActivity.source({
 			home,
 			basePath: home,
+			host: testHost(home),
 			actor: ACTOR,
 			kabaneBin: "/nonexistent/kabane",
 		});
@@ -216,6 +221,7 @@ describe("LoopActivity", () => {
 		const source = LoopActivity.source({
 			home,
 			basePath: home,
+			host: testHost(home),
 			actor: ACTOR,
 			kabaneBin: "/nonexistent/kabane",
 		});
@@ -238,6 +244,7 @@ describe("LoopActivity", () => {
 		const source = LoopActivity.source({
 			home,
 			basePath: home,
+			host: testHost(home),
 			actor: ACTOR,
 			kabaneBin: "/nonexistent/kabane",
 		});
@@ -321,7 +328,12 @@ describe("LoopActivity", () => {
 		});
 		RunStore.create(home, live);
 		const sent = await LoopActivity.act(
-			{ home, basePath: home, kabaneBin: "/nonexistent/kabane" },
+			{
+				home,
+				basePath: home,
+				host: testHost(home),
+				kabaneBin: "/nonexistent/kabane",
+			},
 			live.id,
 			"inject",
 			{
@@ -334,7 +346,12 @@ describe("LoopActivity", () => {
 			value: "message queued for claude:KAB-2#2",
 		});
 		const ended = await LoopActivity.act(
-			{ home, basePath: home, kabaneBin: "/nonexistent/kabane" },
+			{
+				home,
+				basePath: home,
+				host: testHost(home),
+				kabaneBin: "/nonexistent/kabane",
+			},
 			live.id,
 			"inject",
 			{
@@ -359,7 +376,12 @@ describe("LoopActivity", () => {
 		const live = run({ status: "running", exit: undefined, pid: process.pid });
 		RunStore.create(home, live);
 		const asked = await LoopActivity.act(
-			{ home, basePath: home, kabaneBin: "/nonexistent/kabane" },
+			{
+				home,
+				basePath: home,
+				host: testHost(home),
+				kabaneBin: "/nonexistent/kabane",
+			},
 			live.id,
 			"stop",
 			{},
@@ -371,7 +393,12 @@ describe("LoopActivity", () => {
 		]);
 		RunStore.write(home, run());
 		const over = await LoopActivity.act(
-			{ home, basePath: home, kabaneBin: "/nonexistent/kabane" },
+			{
+				home,
+				basePath: home,
+				host: testHost(home),
+				kabaneBin: "/nonexistent/kabane",
+			},
 			live.id,
 			"stop",
 			{},
@@ -440,6 +467,7 @@ it("lists only loop questions with their card and lane, and answers through the 
 	const source = LoopActivity.source({
 		home,
 		basePath: home,
+		host: testHost(home),
 		actor: ACTOR,
 		kabaneBin: "/nonexistent/kabane",
 	});

@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Where a gate retry runs: the decision on its own, then the real runner on a disposable tracker
 // with a scripted ACP subprocess that writes a draft the gate refuses, then the fix.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +13,7 @@ import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 const done: RunStore.Claim = {
 	taskId: "t1",
@@ -175,6 +176,7 @@ const retried = async (agent: { resume: boolean; used: number }) => {
 	const ended = await Runner.run("run-1", {
 		home,
 		basePath: home,
+		host: testHost(home),
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
 		overrides: TestHarnesses.overrides({

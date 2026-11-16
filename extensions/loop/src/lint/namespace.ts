@@ -1,3 +1,4 @@
+import { ok } from "../result";
 /**
  * Plan Lint Namespace
  *
@@ -6,7 +7,7 @@
  * progress entries.
  */
 
-import { ok, type Result } from "@cabane/core";
+import { type Result } from "@cabane/core";
 import { type CollectOptions, LintCollectors } from "./collectors";
 import { type ReopenEvent, RiskAnalyzer } from "./risks";
 import type { Risk, RiskSeverity } from "./schemas";

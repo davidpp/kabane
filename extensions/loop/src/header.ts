@@ -1,3 +1,5 @@
+import type { Host, Header, HeaderPart, PanelPart } from "@cabane/extension";
+import { ok } from "./result";
 // The loop tab's header: what the board draws above a run's stream, in place of its one-line title.
 // Three rows, in order of what matters: the run's state, its steps as a strip, its budgets as
 // meters. `e` adds the sessions and the plan. It shows only what the run has: the implement step,
@@ -7,8 +9,7 @@
 // and continuations.
 //
 // The board polls these lines and maps tones and session series onto its own theme.
-import { ok } from "@cabane/core";
-import type { Header, HeaderPart, PanelPart } from "@cabane/extension";
+
 import { Budget } from "./budget";
 import { Loop } from "./commands";
 import { Fixer } from "./fixer";
@@ -488,11 +489,11 @@ export namespace LoopHeader {
 
 	/** The header for loop cards, reading each run and its current plan on every call. */
 	export const make =
-		(home: string, basePath: string): Header =>
+		(home: string, record: Host.Record): Header =>
 		async (card, view) => {
 			const run = RunStore.read(home, card.id);
 			if (!run.ok) return run;
-			const plan = await LoopPlan.load(basePath, run.value.parentId);
+			const plan = await LoopPlan.load(record, run.value.parentId);
 			return ok(
 				lines(
 					run.value,

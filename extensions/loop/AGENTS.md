@@ -6,7 +6,7 @@ branch. `docs/loop.md` is what a user reads; read the part your change touches.
 
 | Where | What it holds |
 |---|---|
-| `src/extension.ts` | the `Extension` object: the one `loop` command, its settings and the board ports |
+| `src/extension.ts` | the `(host) => Extension` factory: the one `loop` command, its settings and the board ports |
 | `src/commands.ts` | `Loop`, every entry point (`start`, `run`, `status`, `stop`, `advise`, `land`, ...) |
 | `src/runner.ts`, `src/scheduler.ts`, `src/claims.ts`, `src/dispatch.ts` | the detached runner, what it claims, one ACP session per claim |
 | `src/store.ts` | run state as files under `$KABANE_HOME/loops/<runId>/`, never in the tracker |
@@ -18,11 +18,14 @@ branch. `docs/loop.md` is what a user reads; read the part your change touches.
 ## It takes types from kabane, and values only from the harness client it bundles
 
 Its layer is `extension`; its entry in `scripts/layers.ts` (`"@cabane/loop"`) allows one
-runtime dependency, `@cabane/acp`. Its other `@cabane/*` dependencies are named exceptions
-that JCAB-326 removes by porting the loop onto extension API v1 (`ARCHITECTURE.md`, "Extension
-API v1"). Until then, every value newly used from `@cabane/core`, `checklist` or
-`extension` is new dependence on kabane's internals that JCAB-326 must then undo, whichever
-import line it sits on. Use one only when the brief asks for it, and name it in the handoff.
+runtime dependency, `@cabane/acp`. Record calls, scope detection, the executable, settings
+schemas and tool definitions arrive through `host`; the factory binds its stateless result
+helpers through `src/result.ts` before constructing anything else. Thread the host or its
+record through dependencies, never create a home or a global host. The loop parses checklist
+results from `host.record.call("kabane_checklist", ...)` with `host.z`.
+The remaining `@cabane/core` values are the session and question stopgap for JCAB-340.
+Command entry points resolve case-insensitive short ids and unique ULID prefixes through
+`host.record.get`; an ambiguous prefix is an error, while an absent task is `null`.
 Activity, dispatch and header types come from `@cabane/extension`; forms and `FormField`
 come from `@cabane/acp`. The loop has no dependency on the board.
 

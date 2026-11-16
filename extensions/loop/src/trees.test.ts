@@ -1,9 +1,9 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Subtask claims in worktrees of their own, on the real runner, a disposable tracker and a real git
 // repository whose run has a real worktree. A scripted ACP subprocess stands in for the model,
 // through the real kabane tools: it writes the files its subtask is given, in the directory its
 // session was started in, and closes the subtask. No model or MCP server is reached.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
 	existsSync,
 	mkdirSync,
@@ -23,6 +23,7 @@ import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 import { ClaimTrees } from "./trees";
 import { Worktree } from "./worktree";
 
@@ -186,6 +187,7 @@ const drive = async (
 	const ended = await Runner.run("run-1", {
 		home,
 		basePath: home,
+		host: testHost(home),
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
 		git,

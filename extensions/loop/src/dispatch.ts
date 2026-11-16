@@ -15,20 +15,15 @@ import {
 	Harnesses,
 	ToolCalls,
 } from "@cabane/acp";
-import {
-	err,
-	ok,
-	Planner,
-	type Result,
-	type Task,
-	tryCatch,
-} from "@cabane/core";
+import { Planner, type Result, type Task } from "@cabane/core";
+import type { Host } from "@cabane/extension";
 import { Brief } from "./brief";
 import type { Budget } from "./budget";
 import { Checklists } from "./checklists";
 import type { LoopConfig } from "./config";
 import type { Gates } from "./gates";
 import { LoopPlan } from "./plan";
+import { err, ok, tryCatch } from "./result";
 import type { Retry } from "./retry";
 import { Review } from "./review";
 import { Route } from "./route";
@@ -38,6 +33,7 @@ export namespace Dispatch {
 	type Env = {
 		tree: Brief.Tree;
 		basePath: string;
+		host: Host;
 		/** KABANE_HOME, handed to the MCP server so it opens the same tracker. */
 		home: string;
 		kabaneBin: string;
@@ -658,7 +654,7 @@ export namespace Dispatch {
 		env: Env,
 	): Promise<Result<Checklists.Item[]>> =>
 		claim.work.kind === "implement"
-			? Checklists.of(env.basePath, claim.task.id)
+			? Checklists.of(env.host, claim.task.id)
 			: ok([]);
 
 	// What a resumed session hears first: it has its brief already, so only why it is prompted again.
@@ -736,7 +732,7 @@ export namespace Dispatch {
 		sink: Sink,
 		reason: string,
 	): Promise<Next> => {
-		const now = await Planner.getTask(env.basePath, claim.task.id);
+		const now = await env.host.record.get({ id: claim.task.id });
 		if (!now.ok)
 			return { kind: "end", outcome: "error", detail: now.error.message };
 		const task = now.value;
@@ -746,11 +742,7 @@ export namespace Dispatch {
 				outcome: "incomplete",
 				detail: `${label(claim.task)} was deleted`,
 			};
-		const reopened = await Checklists.refuseDone(
-			env.basePath,
-			task,
-			claim.harness,
-		);
+		const reopened = await Checklists.refuseDone(env.host, task, claim.harness);
 		if (!reopened.ok)
 			return { kind: "end", outcome: "error", detail: reopened.error.message };
 		const [first, ...rest] = reopened.value;
@@ -773,7 +765,7 @@ export namespace Dispatch {
 				outcome: "incomplete",
 				detail: `turn ended (${reason}) with ${label(task)} still ${task.state}`,
 			};
-		const checklist = await Checklists.of(env.basePath, task.id);
+		const checklist = await Checklists.of(env.host, task.id);
 		if (!checklist.ok)
 			return { kind: "end", outcome: "error", detail: checklist.error.message };
 		sink.emit("continuation", `${label(task)} still ${task.state}: nudged`);
@@ -792,7 +784,7 @@ export namespace Dispatch {
 	): Promise<Result<Task[]>> => {
 		const left: Task[] = [];
 		for (const finding of findings) {
-			const now = await Planner.getTask(env.basePath, finding.id);
+			const now = await env.host.record.get({ id: finding.id });
 			if (!now.ok) return now;
 			const task = now.value;
 			if (
@@ -876,10 +868,7 @@ export namespace Dispatch {
 	 * run's words and what an interrupted attempt before it left.
 	 */
 	const opening = async (claim: Claim, env: Env): Promise<Result<string>> => {
-		const assembled = await Planner.assembleContext(
-			env.basePath,
-			claim.task.id,
-		);
+		const assembled = await env.host.record.context({ id: claim.task.id });
 		if (!assembled.ok)
 			return err(new Error(`brief: ${assembled.error.message}`));
 		const checklist = await checklistOf(claim, env);
@@ -903,14 +892,14 @@ export namespace Dispatch {
 							gates: work.gates,
 							...(work.passed ? { passed: work.passed } : {}),
 						},
-						assembled.value,
+						assembled.value.markdown,
 					),
 				);
 			case "fix":
 				return ok(
 					Brief.fixer(
 						{ ...subject, findings: work.findings, gates: work.gates },
-						assembled.value,
+						assembled.value.markdown,
 					),
 				);
 			case "recheck":
@@ -926,7 +915,7 @@ export namespace Dispatch {
 							gates: work.gates,
 							...(work.passed ? { passed: work.passed } : {}),
 						},
-						assembled.value,
+						assembled.value.markdown,
 					),
 				);
 			case "triage":
@@ -940,7 +929,7 @@ export namespace Dispatch {
 							diff: work.diff,
 							tiers: work.tiers,
 						},
-						assembled.value,
+						assembled.value.markdown,
 					),
 				);
 			case "implement":
@@ -953,7 +942,7 @@ export namespace Dispatch {
 							checklist: checklist.value,
 							...(work.retry ? { retry: work.retry } : {}),
 						},
-						assembled.value,
+						assembled.value.markdown,
 					),
 				);
 		}

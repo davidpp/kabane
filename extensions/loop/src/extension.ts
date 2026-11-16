@@ -1,19 +1,13 @@
 // The loop as an official extension: one `kabane loop` command whose first positional picks the
 // entry point. The CLI has already wired the runtime (`openContext`) by the time `run` is called.
 import { Harnesses } from "@cabane/acp";
-import { err, ok, type Result } from "@cabane/core";
-import { Self } from "@cabane/core/self";
+import type { Result } from "@cabane/core";
 import {
 	type Extension,
-	failure,
-	flagBool,
-	flagList,
-	flagString,
+	type Host,
 	type Outcome,
 	type ParsedArgs,
 	type Settings,
-	success,
-	usage,
 } from "@cabane/extension";
 import { LoopActivity } from "./activity";
 import { LoopAdvice } from "./advice";
@@ -25,6 +19,7 @@ import type { Land } from "./land";
 import { Lenses } from "./lenses";
 import { loopMcp } from "./mcp";
 import { Parent } from "./parent";
+import { err, ok, Kabane } from "./result";
 import { RunStore } from "./store";
 
 const USAGE = `kabane loop start <issue> [--dir <path>] [--implementer claude|codex|gemini] [--model <tier|model>] [--concurrency <n>] [--continuations <n>] [--spend <amount>] [--gate <name>=<command>]... [--worktree|--no-worktree] [--isolation worktree|shared] [--lens <name>]... [--verifier claude|codex|gemini] [--recheck|--no-recheck] [--land none|pr|merge]
@@ -43,18 +38,22 @@ start applies no advice: loop advise shows it, and its "start with" line is the 
 
 ${LoopAdvice.TAG_VOCABULARY}`;
 
-// The executable the runner and each session's MCP server run as: this process's own.
-const kabaneBin = Self.executable;
-
-const number = (args: ParsedArgs, flag: string): number | undefined => {
-	const value = flagString(args, flag);
+const number = (
+	host: Host,
+	args: ParsedArgs,
+	flag: string,
+): number | undefined => {
+	const value = host.args.flagString(args, flag);
 	return value === undefined ? undefined : Number(value);
 };
 
 // `--gate test="bun test"`, repeated: the name before the first `=`, the command after it.
-const gatesFrom = (args: ParsedArgs): Result<Record<string, string>> => {
+const gatesFrom = (
+	host: Host,
+	args: ParsedArgs,
+): Result<Record<string, string>> => {
 	const gates: Record<string, string> = {};
-	for (const given of flagList(args, "gate")) {
+	for (const given of host.args.flagList(args, "gate")) {
 		const at = given.indexOf("=");
 		if (at <= 0)
 			return err(
@@ -73,12 +72,13 @@ const gatesFrom = (args: ParsedArgs): Result<Record<string, string>> => {
 const SWITCHES = ["worktree", "recheck"] as const;
 
 const switchesFrom = (
+	host: Host,
 	args: ParsedArgs,
 ): Partial<Record<(typeof SWITCHES)[number], boolean>> =>
 	Object.fromEntries(
 		SWITCHES.flatMap((name): [string, boolean][] => {
-			if (flagBool(args, `no-${name}`)) return [[name, false]];
-			return flagBool(args, name) ? [[name, true]] : [];
+			if (host.args.flagBool(args, `no-${name}`)) return [[name, false]];
+			return host.args.flagBool(args, name) ? [[name, true]] : [];
 		}),
 	);
 
@@ -89,20 +89,20 @@ const isIsolation = (value: string): value is LoopConfig.Config["isolation"] =>
 	(LoopConfig.ISOLATION as readonly string[]).includes(value);
 
 // Flags become the caller's layer, validated with the layers below it.
-const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
-	const implementer = flagString(args, "implementer");
-	const verifier = flagString(args, "verifier");
-	const model = flagString(args, "model");
-	const lenses = flagList(args, "lens");
-	const land = flagString(args, "land");
-	const isolation = flagString(args, "isolation");
-	const gates = gatesFrom(args);
+const configFrom = (host: Host, args: ParsedArgs): Result<LoopConfig.Input> => {
+	const implementer = host.args.flagString(args, "implementer");
+	const verifier = host.args.flagString(args, "verifier");
+	const model = host.args.flagString(args, "model");
+	const lenses = host.args.flagList(args, "lens");
+	const land = host.args.flagString(args, "land");
+	const isolation = host.args.flagString(args, "isolation");
+	const gates = gatesFrom(host, args);
 	if (!gates.ok) return gates;
 	const budget = Object.fromEntries(
 		[
-			["concurrency", number(args, "concurrency")],
-			["continuations", number(args, "continuations")],
-			["spend", number(args, "spend")],
+			["concurrency", number(host, args, "concurrency")],
+			["continuations", number(host, args, "continuations")],
+			["spend", number(host, args, "spend")],
 		].filter(([, value]) => value !== undefined),
 	);
 	return ok({
@@ -110,7 +110,7 @@ const configFrom = (args: ParsedArgs): Result<LoopConfig.Input> => {
 		...(model ? { model } : {}),
 		budget,
 		gates: gates.value,
-		...switchesFrom(args),
+		...switchesFrom(host, args),
 		...(isolation && isIsolation(isolation) ? { isolation } : {}),
 		...(lenses.length > 0 ? { lenses } : {}),
 		...(verifier && Harnesses.isId(verifier) ? { verifier } : {}),
@@ -216,17 +216,17 @@ const restart = (run: RunStore.Run): string[] =>
 
 /** One run, its worktree, and the questions its sessions are waiting on a human for. */
 const statusOf = async (
-	deps: Pick<Loop.Deps, "home" | "basePath">,
+	deps: Pick<Loop.Deps, "home" | "basePath" | "host">,
 	runId: string,
 ): Promise<Outcome> => {
 	const run = Loop.status(deps, runId);
-	if (!run.ok) return failure(run.error);
+	if (!run.ok) return deps.host.outcome.failure(run.error);
 	// Before the waiting ones: a dead run's are withdrawn, and no longer wait.
 	const gone = await Loop.withdraw(deps, run.value);
-	if (!gone.ok) return failure(gone.error);
+	if (!gone.ok) return deps.host.outcome.failure(gone.error);
 	const waiting = await Loop.questions(deps, runId);
-	if (!waiting.ok) return failure(waiting.error);
-	return success(
+	if (!waiting.ok) return deps.host.outcome.failure(waiting.error);
+	return deps.host.outcome.success(
 		{ ...run.value, questions: waiting.value, withdrawn: gone.value },
 		[
 			line(run.value),
@@ -242,20 +242,23 @@ const statusOf = async (
 
 const answer = async (
 	args: ParsedArgs,
-	deps: Pick<Loop.Deps, "home" | "basePath"> & { actor: string },
+	deps: Pick<Loop.Deps, "home" | "basePath" | "host"> & { actor: string },
 ): Promise<Outcome> => {
 	const [, questionId] = args.positionals;
 	// A label can be several words: everything after the id is the answer.
 	const given = args.positionals.slice(2).join(" ");
 	if (!questionId || given === "")
-		return usage("answer needs a question id and an option", USAGE);
+		return deps.host.outcome.usage(
+			"answer needs a question id and an option",
+			USAGE,
+		);
 	const answered = await Loop.answer(deps, questionId, given);
 	return answered.ok
-		? success(
+		? deps.host.outcome.success(
 				answered.value,
 				`${answered.value.task}: answered "${answered.value.answer}" (run ${answered.value.runId})`,
 			)
-		: failure(answered.error);
+		: deps.host.outcome.failure(answered.error);
 };
 
 type Deps = Loop.Deps &
@@ -265,8 +268,10 @@ type Deps = Loop.Deps &
 	};
 type Verb = (args: ParsedArgs, deps: Deps, target: string) => Promise<Outcome>;
 
-const ran = (result: Result<RunStore.Run>): Outcome =>
-	result.ok ? success(result.value, line(result.value)) : failure(result.error);
+const ran = (host: Host, result: Result<RunStore.Run>): Outcome =>
+	result.ok
+		? host.outcome.success(result.value, line(result.value))
+		: host.outcome.failure(result.error);
 
 // `git worktree add` checks out what is committed, and nothing git ignores comes with it: the
 // run's worktree, and each subtask's (`ClaimTrees`).
@@ -305,21 +310,24 @@ const CHOICES: readonly (readonly [string, readonly string[]])[] = [
 
 // Why `start`'s flags are refused, before any is read: one it does not take, a value not among a
 // flag's choices, a switch given a value or both ways.
-const refusedFlags = (args: ParsedArgs): string | undefined => {
+const refusedFlags = (host: Host, args: ParsedArgs): string | undefined => {
 	const unknown = Object.keys(args.flags).filter((f) => !START_FLAGS.has(f));
 	if (unknown.length > 0)
 		return `Unknown loop start flag${unknown.length === 1 ? "" : "s"}: ${unknown.map((f) => `--${f}`).join(", ")}`;
 	for (const [flag, values] of CHOICES) {
-		const given = flagString(args, flag);
+		const given = host.args.flagString(args, flag);
 		if (given !== undefined && !values.includes(given))
 			return `--${flag} must be one of ${values.join(", ")}`;
 	}
 	// A switch followed by a stray word takes it as a value and would read as not given.
 	for (const name of SWITCHES) {
 		for (const flag of [name, `no-${name}`])
-			if (flag in args.flags && !flagBool(args, flag))
+			if (flag in args.flags && !host.args.flagBool(args, flag))
 				return `--${flag} takes no value, not ${JSON.stringify(args.flags[flag])}`;
-		if (flagBool(args, name) && flagBool(args, `no-${name}`))
+		if (
+			host.args.flagBool(args, name) &&
+			host.args.flagBool(args, `no-${name}`)
+		)
 			return `Give one of --${name} and --no-${name}`;
 	}
 	return undefined;
@@ -327,23 +335,24 @@ const refusedFlags = (args: ParsedArgs): string | undefined => {
 
 // What `start`'s flags ask of a run of `parent`, `advise`'s too; an error is a usage line.
 const inputFrom = (
+	host: Host,
 	args: ParsedArgs,
 	parent: string,
 ): Result<Loop.StartInput> => {
-	const refused = refusedFlags(args);
+	const refused = refusedFlags(host, args);
 	if (refused !== undefined) return err(new Error(refused));
-	const config = configFrom(args);
+	const config = configFrom(host, args);
 	if (!config.ok) return config;
-	const dir = flagString(args, "dir");
+	const dir = host.args.flagString(args, "dir");
 	return ok({ parent, ...(dir ? { dir } : {}), config: config.value });
 };
 
 /** `kabane loop start`: exported so a test can drive it with a runner of its own. */
 export const start: Verb = async (args, deps, target) => {
-	const input = inputFrom(args, target);
-	if (!input.ok) return usage(input.error.message, USAGE);
+	const input = inputFrom(deps.host, args, target);
+	if (!input.ok) return deps.host.outcome.usage(input.error.message, USAGE);
 	const started = await Loop.start(deps, input.value);
-	if (!started.ok) return ran(started);
+	if (!started.ok) return ran(deps.host, started);
 	const placed = Loop.placement(started.value);
 	const isNew =
 		started.value.worktree !== undefined && !started.value.worktreeReused;
@@ -351,7 +360,7 @@ export const start: Verb = async (args, deps, target) => {
 		RunStore.projectRoot(started.value),
 		started.value.config.lenses,
 	);
-	return success(
+	return deps.host.outcome.success(
 		started.value,
 		[
 			line(started.value),
@@ -452,24 +461,28 @@ const advisedText = (a: Loop.Advised): string => {
 
 /** `kabane loop advise`: what `start` with the same flags would be advised, and how it would route. */
 const advise: Verb = async (args, deps, target) => {
-	const input = inputFrom(args, target);
-	if (!input.ok) return usage(input.error.message, USAGE);
+	const input = inputFrom(deps.host, args, target);
+	if (!input.ok) return deps.host.outcome.usage(input.error.message, USAGE);
 	const advised = await Loop.advise(deps, input.value);
 	return advised.ok
-		? success(advised.value, advisedText(advised.value))
-		: failure(advised.error);
+		? deps.host.outcome.success(advised.value, advisedText(advised.value))
+		: deps.host.outcome.failure(advised.error);
 };
 
 const rollback: Verb = async (args, deps, target) => {
 	const sha = args.positionals[2];
-	if (!sha) return usage("rollback needs a run id and a checkpoint sha", USAGE);
+	if (!sha)
+		return deps.host.outcome.usage(
+			"rollback needs a run id and a checkpoint sha",
+			USAGE,
+		);
 	const reset = await Loop.rollback(deps, target, sha);
 	return reset.ok
-		? success(
+		? deps.host.outcome.success(
 				reset.value,
 				`${reset.value.worktree} reset to ${reset.value.sha.slice(0, 12)}; the tracker is unchanged`,
 			)
-		: failure(reset.error);
+		: deps.host.outcome.failure(reset.error);
 };
 
 // The modes `land` takes over a run's setting: every one that lands something.
@@ -479,14 +492,19 @@ const isLanding = (value: string): value is Land.Mode =>
 	(LANDINGS as readonly string[]).includes(value);
 
 const land: Verb = async (args, deps, target) => {
-	const mode = flagString(args, "land");
+	const mode = deps.host.args.flagString(args, "land");
 	if (mode !== undefined && !isLanding(mode))
-		return usage(`--land must be one of ${LANDINGS.join(", ")}`, USAGE);
+		return deps.host.outcome.usage(
+			`--land must be one of ${LANDINGS.join(", ")}`,
+			USAGE,
+		);
 	const landed = await Loop.land(deps, target, mode);
-	if (!landed.ok) return failure(landed.error);
+	if (!landed.ok) return deps.host.outcome.failure(landed.error);
 	return landed.value.landing?.ok
-		? success(landed.value, landed.value.landing.summary)
-		: failure(new Error(landed.value.landing?.summary ?? "Not landed"));
+		? deps.host.outcome.success(landed.value, landed.value.landing.summary)
+		: deps.host.outcome.failure(
+				new Error(landed.value.landing?.summary ?? "Not landed"),
+			);
 };
 
 const pause =
@@ -494,8 +512,11 @@ const pause =
 	async (_args, deps, target) => {
 		const asked = Loop.pause(deps, target, kind);
 		return asked.ok
-			? success(asked.value, `${kind} requested for ${target}`)
-			: failure(asked.error);
+			? deps.host.outcome.success(
+					asked.value,
+					`${kind} requested for ${target}`,
+				)
+			: deps.host.outcome.failure(asked.error);
 	};
 
 // `resume` unpauses a live run and restarts one whose runner died, detached as `start` runs it.
@@ -505,8 +526,11 @@ const resume: Verb = async (args, deps, target) => {
 		return pause("resume")(args, deps, target);
 	const restarted = await Loop.restart(deps, target);
 	return restarted.ok
-		? success(restarted.value, `restarted ${line(restarted.value)}`)
-		: failure(restarted.error);
+		? deps.host.outcome.success(
+				restarted.value,
+				`restarted ${line(restarted.value)}`,
+			)
+		: deps.host.outcome.failure(restarted.error);
 };
 
 const direct =
@@ -514,11 +538,11 @@ const direct =
 	async (_args, deps, target) => {
 		const asked = await Loop.direct(deps, kind, target);
 		return asked.ok
-			? success(
+			? deps.host.outcome.success(
 					asked.value,
 					`${kind} ${asked.value.task} requested for ${asked.value.runId}`,
 				)
-			: failure(asked.error);
+			: deps.host.outcome.failure(asked.error);
 	};
 
 // Each verb that takes a target, with what the target is for the usage line when it is missing.
@@ -527,11 +551,11 @@ const VERBS: Record<string, { needs: string; run: Verb }> = {
 	advise: { needs: "an issue, or a parent issue", run: advise },
 	run: {
 		needs: "a run id",
-		run: async (_a, deps, id) => ran(await Loop.run(deps, id)),
+		run: async (_a, deps, id) => ran(deps.host, await Loop.run(deps, id)),
 	},
 	stop: {
 		needs: "a run id",
-		run: async (_a, deps, id) => ran(await Loop.stop(deps, id)),
+		run: async (_a, deps, id) => ran(deps.host, await Loop.stop(deps, id)),
 	},
 	pause: { needs: "a run id", run: pause("pause") },
 	resume: { needs: "a run id", run: resume },
@@ -549,22 +573,28 @@ const VERBS: Record<string, { needs: string; run: Verb }> = {
 
 const prune = async (deps: Deps): Promise<Outcome> => {
 	const pruned = await Loop.prune(deps);
-	if (!pruned.ok) return failure(pruned.error);
+	if (!pruned.ok) return deps.host.outcome.failure(pruned.error);
 	const lines = pruned.value.map(
 		(p) =>
 			`${p.removed ? "removed" : "kept"} ${p.dir}${p.branch ? ` (branch ${p.branch})` : ""}: ${p.why}`,
 	);
-	return success(pruned.value, lines.join("\n") || "No run worktrees left");
+	return deps.host.outcome.success(
+		pruned.value,
+		lines.join("\n") || "No run worktrees left",
+	);
 };
 
 const list = (deps: Deps): Outcome => {
 	const runs = Loop.list(deps);
 	return runs.ok
-		? success(runs.value, runs.value.map(line).join("\n") || "No loop runs")
-		: failure(runs.error);
+		? deps.host.outcome.success(
+				runs.value,
+				runs.value.map(line).join("\n") || "No loop runs",
+			)
+		: deps.host.outcome.failure(runs.error);
 };
 
-const command: Extension.Command = {
+const command = (host: Host): Extension.Command => ({
 	name: "loop",
 	summary:
 		"Drive an issue, or a parent issue's subtasks, to completion through coding harnesses",
@@ -573,8 +603,9 @@ const command: Extension.Command = {
 		const [verb, target] = args.positionals;
 		const deps: Deps = {
 			home: ctx.home,
+			host,
 			basePath: ctx.store,
-			kabaneBin: kabaneBin(),
+			kabaneBin: host.kabane.executable,
 			cwd: ctx.cwd,
 			actor: ctx.actor,
 			mode: ctx.harnessMode,
@@ -585,20 +616,20 @@ const command: Extension.Command = {
 		if (verb === "prune") return prune(deps);
 		const known = verb && Object.hasOwn(VERBS, verb) ? VERBS[verb] : undefined;
 		if (!known)
-			return usage(
+			return deps.host.outcome.usage(
 				verb ? `Unknown loop command: ${verb}` : "Missing loop command",
 				USAGE,
 			);
 		return target
 			? known.run(args, deps, target)
-			: usage(`${verb} needs ${known.needs}`, USAGE);
+			: deps.host.outcome.usage(`${verb} needs ${known.needs}`, USAGE);
 	},
-};
+});
 
 // How the loop's settings read, here and in the board's run form (`LoopSettings`): the form's
 // sections come in the order these first name them. A bound the schema states is not repeated: a
 // bounded integer steps through its range.
-const looks: Settings.Looks = {
+export const looks: Settings.Looks = {
 	implementer: { label: "implementer", group: "Agents" },
 	// A tier, resolved per harness through `loop.tiers`, or a model id the harness lists
 	// (`LoopConfig.resolveModel`). The form adds the tiers `loop.tiers` names (`LoopSettings`).
@@ -650,32 +681,39 @@ const looks: Settings.Looks = {
 	land: { label: "land the branch", group: "Workspace" },
 };
 
-export const loop: Extension = {
-	name: LoopConfig.NAMESPACE,
-	settings: LoopConfig.SettingsSchema,
-	looks,
-	doctor: LoopDoctor.doctor,
-	commands: [command],
-	mcp: loopMcp,
-	// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
-	// `a` on an issue, alone or with subtasks, starts one from the board's directory, as `loop start` would.
-	board: async (ctx) => {
-		const LoopHeader = (await import("./header")).LoopHeader;
-		return {
-			activity: LoopActivity.source({
-				home: ctx.home,
-				basePath: ctx.store,
-				actor: ctx.actor,
-				kabaneBin: kabaneBin(),
-			}),
-			dispatcher: LoopDispatcher.make({
-				home: ctx.home,
-				basePath: ctx.store,
-				kabaneBin: kabaneBin(),
-				cwd: ctx.cwd,
-				settings: ctx.settings,
-			}),
-			headers: { [LoopActivity.KIND]: LoopHeader.make(ctx.home, ctx.store) },
-		};
-	},
+export const loop = (host: Host): Extension => {
+	Kabane.bind(host);
+	return {
+		name: LoopConfig.NAMESPACE,
+		settings: LoopConfig.schemas(host.z).SettingsSchema,
+		looks,
+		doctor: (ctx) => LoopDoctor.doctor(host, ctx),
+		commands: [command(host)],
+		mcp: loopMcp(host),
+		// Each run on this device is a card with a tab of its own on the board, headed by the run's state.
+		// `a` on an issue, alone or with subtasks, starts one from the board's directory, as `loop start` would.
+		board: async (ctx) => {
+			const LoopHeader = (await import("./header")).LoopHeader;
+			return {
+				activity: LoopActivity.source({
+					home: ctx.home,
+					host,
+					basePath: ctx.store,
+					actor: ctx.actor,
+					kabaneBin: host.kabane.executable,
+				}),
+				dispatcher: LoopDispatcher.make({
+					home: ctx.home,
+					host,
+					basePath: ctx.store,
+					kabaneBin: host.kabane.executable,
+					cwd: ctx.cwd,
+					settings: ctx.settings,
+				}),
+				headers: {
+					[LoopActivity.KIND]: LoopHeader.make(ctx.home, host.record),
+				},
+			};
+		},
+	};
 };

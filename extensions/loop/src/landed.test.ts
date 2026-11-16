@@ -14,6 +14,7 @@ import { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
+import { testHost } from "./test-host";
 
 let root = "";
 let home = "";
@@ -72,6 +73,7 @@ const ctxFor = (
 		{
 			home,
 			basePath: home,
+			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides(),
