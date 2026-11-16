@@ -135,7 +135,9 @@ describe("CopilotInstructions.SKILLS", () => {
 	});
 
 	it("says what an extension adds from its description when enabling it, and that enabling starts nothing", () => {
-		expect(CopilotInstructions.SKILLS).toContain("description");
+		expect(CopilotInstructions.SKILLS).toContain(
+			"say what it adds from its description",
+		);
 		expect(CopilotInstructions.SKILLS).toContain("enabling it starts none");
 	});
 });
@@ -172,7 +174,9 @@ describe("CopilotInstructions reading the project", () => {
 		);
 		expect(split?.template).toContain("no assignee");
 		expect(split?.template).toContain("no state beyond done");
-		expect(split?.template).toContain("subtask");
+		expect(split?.template).toContain(
+			"if it needs any of those, it's a subtask",
+		);
 	});
 });
 
@@ -198,8 +202,7 @@ describe("CopilotInstructions writing files and running doctor", () => {
 			"never run a fix as a side effect of another request",
 		);
 		// A route to any procedure, an extension's included, keeps that procedure's rules on asking.
-		expect(skills).toContain("procedure");
-		expect(skills).toContain("offer to run");
+		expect(skills).toContain("offer to run that procedure");
 		expect(skills).toContain("write waits for a yes");
 	});
 });
@@ -243,14 +246,16 @@ describe("CopilotInstructions with no extension", () => {
 	});
 
 	it("enables an installed extension by keeping the list, passing it whole and reopening the board", () => {
-		const { SKILLS } = CopilotInstructions;
-		expect(SKILLS).toContain("installed extension");
-		expect(SKILLS).toContain("INSTALLED EXTENSIONS");
-		expect(SKILLS).toContain("preserve every existing entry in the new list");
-		expect(SKILLS).toContain("full comma-separated list");
-		expect(SKILLS).toContain("kabane_configSet");
-		expect(SKILLS).toContain("key extensions");
-		expect(SKILLS).toContain("remind the human to reopen the board");
+		const enable = CopilotInstructions.SKILLS.split("\n\n").find((paragraph) =>
+			paragraph.startsWith("To enable an installed extension"),
+		);
+		expect(enable).toContain("installed extension");
+		expect(enable).toContain("INSTALLED EXTENSIONS");
+		expect(enable).toContain("preserve every existing entry in the new list");
+		expect(enable).toContain("full comma-separated list");
+		expect(enable).toContain("kabane_configSet");
+		expect(enable).toContain("key extensions");
+		expect(enable).toContain("remind the human to reopen the board");
 	});
 });
 
