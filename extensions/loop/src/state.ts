@@ -19,7 +19,10 @@ export namespace RunState {
 		kabaneBin: string;
 		/** This process's pid, recorded so readers can tell a live run from an orphaned one. */
 		pid: number;
-		/** Launch overrides per harness (a local adapter build, a model). */
+		/**
+		 * Launch overrides per harness, over the run's `loop.harnesses` setting for that harness: what
+		 * a caller driving the runner in process (a test) launches instead.
+		 */
 		overrides?: Partial<Record<Harnesses.Id, Harnesses.Overrides>>;
 		/** The mode every session starts in; the harness's own auto mode when absent. */
 		mode?: Harnesses.Mode;

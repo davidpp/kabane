@@ -99,6 +99,27 @@ export namespace LoopConfig {
 		),
 	});
 
+	/**
+	 * How a run launches one harness instead of its pinned ACP adapter: a local adapter build, say.
+	 * `args` replace the adapter's; a `command` with no `args` runs with none.
+	 */
+	const LaunchSchema = z.object({
+		command: z
+			.string()
+			.min(1)
+			.optional()
+			.describe("Launch command overriding the pinned harness adapter."),
+		args: z
+			.array(z.string())
+			.optional()
+			.describe(
+				"Arguments for the custom command, replacing the adapter's arguments.",
+			),
+	});
+
+	const HARNESSES_DESCRIPTION =
+		"How a run launches a harness instead of its pinned ACP adapter, such as a local adapter build: loop.harnesses.<harness>.command and .args, for every session of the run, lenses and the fixer included.";
+
 	export const Schema = z.object({
 		/** The harness every subtask runs on; a claim makes it the subtask's assignee. */
 		implementer: z
@@ -130,6 +151,11 @@ export namespace LoopConfig {
 			.describe(
 				"The model each tier names on each harness, one key per pair (loop.tiers.claude.fast = sonnet); frontier, balanced and fast are tiers with no model until set here, and any other key is a tier too.",
 			),
+		/** Each harness's launch override, read by every session the run opens on it. */
+		harnesses: z
+			.record(z.enum(Harnesses.IDS), LaunchSchema)
+			.default({})
+			.describe(HARNESSES_DESCRIPTION),
 		budget: BudgetSchema.default({}).describe(
 			"A run's limits; edit dotted keys.",
 		),
@@ -348,6 +374,11 @@ export namespace LoopConfig {
 	// What a human writes, in any layer, refused when it names a key no setting has. Run files keep
 	// `Schema`, so a run written by a newer kabane still reads.
 	export const SettingsSchema = Schema.extend({
+		// A misspelt `comand` dropped would launch the real adapter the human meant to replace.
+		harnesses: z
+			.record(z.enum(Harnesses.IDS), LaunchSchema.strict())
+			.default({})
+			.describe(HARNESSES_DESCRIPTION),
 		budget: z
 			.preprocess(withoutTimer, BudgetSchema.strict())
 			.default({})

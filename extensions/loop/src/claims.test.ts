@@ -485,6 +485,58 @@ describe("Claims.claim", () => {
 		);
 		expect(said).toContain("tier:fast ignored: the first tag of its kind wins");
 	});
+
+	it("launches the harness the run's loop.harnesses setting names, under what the runner's own deps say", async () => {
+		const parent = await add("parent");
+		const first = await add("first", { parentTaskId: parent.id });
+		const second = await add("second", { parentTaskId: parent.id });
+		// Both fail at once, so no session starts: what is under test is what each claim launched.
+		const config = LoopConfig.Schema.safeParse({
+			harnesses: { claude: { command: "/usr/bin/false", args: ["setting"] } },
+		});
+		if (!config.success) throw config.error;
+		const run: RunStore.Run = {
+			version: 1,
+			id: "run-1",
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		};
+		const created = RunStore.create(home, run);
+		if (!created.ok) throw created.error;
+		const plan = await LoopPlan.load(home, parent.id);
+		if (!plan.ok) throw plan.error;
+		const nodeOf = (task: Task) => {
+			const node = plan.value.nodes.find((n) => n.task.id === task.id);
+			if (!node) throw new Error(`${task.title} is not in the plan`);
+			return node;
+		};
+		const ctx = ctxFor(run);
+
+		await Claims.claim(ctx, nodeOf(first), plan.value);
+		ctx.deps = {
+			...ctx.deps,
+			overrides: { claude: { command: "/usr/bin/false", args: ["deps"] } },
+		};
+		await Claims.claim(ctx, nodeOf(second), plan.value);
+		await Promise.all([...ctx.live.values()].map((l) => l.settled));
+
+		const events = RunStore.readEvents(home, run.id);
+		if (!events.ok) throw events.error;
+		const launched = events.value
+			.filter((e) => e.type === "launch")
+			.map((e) => e.summary.split(" · ")[0]);
+		expect(launched).toEqual(["/usr/bin/false setting", "/usr/bin/false deps"]);
+	});
 });
 
 describe("Claims.claim, resuming an attempt's session", () => {

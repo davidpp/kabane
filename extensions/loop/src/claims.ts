@@ -572,6 +572,9 @@ export namespace Claims {
 			summary: started.summary,
 		});
 		const place = briefTree(ctx.run, worktree);
+		// Every session, a lens's and the fixer's as much as an implementer's, launches through here.
+		const overrides =
+			ctx.deps.overrides?.[harness] ?? ctx.run.config.harnesses[harness];
 		const handle = Dispatch.begin(
 			{
 				parent: plan.parent,
@@ -594,9 +597,7 @@ export namespace Claims {
 				runId: ctx.run.id,
 				...(ctx.run.scopeUri ? { scopeUri: ctx.run.scopeUri } : {}),
 				...(ctx.deps.mode ? { mode: ctx.deps.mode } : {}),
-				...(ctx.deps.overrides?.[harness]
-					? { overrides: ctx.deps.overrides[harness] }
-					: {}),
+				...(overrides ? { overrides } : {}),
 				models: ctx.run.config,
 				tree: place,
 			},

@@ -33,6 +33,7 @@ describe("LoopConfig.SettingsSchema", () => {
 		expect(config.ok && config.value.value).toEqual({
 			implementer: "claude",
 			tiers: {},
+			harnesses: {},
 			budget: {
 				continuations: 3,
 				currency: "USD",
@@ -191,6 +192,25 @@ describe("LoopConfig.SettingsSchema", () => {
 		// A device key is not a loop setting either, so a checked-in file cannot reach the hub.
 		expect(refusal({ sync: { url: "https://elsewhere" } })).toBe(
 			`Invalid loop settings in ${PROJECT}:\n  sync: not a loop setting`,
+		);
+	});
+});
+
+describe("LoopConfig harnesses", () => {
+	it("takes a launch command and arguments per harness, and refuses a key either does not name", () => {
+		const config = resolve(
+			{ harnesses: { claude: { command: "/opt/acp/claude" } } },
+			{ harnesses: { claude: { args: ["--local"] } } },
+		);
+		expect(config.ok && config.value.value.harnesses).toEqual({
+			claude: { command: "/opt/acp/claude", args: ["--local"] },
+		});
+		expect(refusal({ harnesses: { claud: { command: "x" } } })).toContain(
+			"harnesses.claud",
+		);
+		// A misspelt key dropped would launch the adapter the human meant to replace.
+		expect(refusal({ harnesses: { claude: { comand: "x" } } })).toContain(
+			"comand",
 		);
 	});
 });
