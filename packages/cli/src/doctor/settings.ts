@@ -69,7 +69,9 @@ const drift = (
 		const shown = [...prefix, ...finding.path].join(".");
 		const detail =
 			finding.category === "unknown"
-				? "unknown setting; a strict extension schema rejects this layer until it is removed or corrected"
+				? namespace.name === "device"
+					? "unknown device setting; kabane ignores this key"
+					: "unknown setting; a strict extension schema rejects this layer until it is removed or corrected"
 				: finding.replacement
 					? `retired setting may map to ${[...prefix, ...finding.replacement].join(".")}`
 					: "setting is no longer used";
@@ -178,7 +180,7 @@ const legacySettings = (
 
 				path,
 				severity: destination === undefined || conflict ? "mention" : "auto",
-				summary: `Legacy scopes.${scope}.${name} in ${path}. ${destination === undefined ? "Run kabane doctor in that project with a version that ships this namespace to migrate it." : conflict ? `Merge this block with ${destination} by hand, then remove the legacy block; the local file differs or cannot be read.` : `--fix moves this block to ${destination} and removes it from config.json; conflicting local values are refused.`}`,
+				summary: `Legacy scopes.${scope}.${name} in ${path}. ${destination === undefined ? (namespace ? "Run kabane doctor in that project to migrate it." : "Run kabane doctor in that project with a version that ships this namespace to migrate it.") : conflict ? `Merge this block with ${destination} by hand, then remove the legacy block; the local file differs or cannot be read.` : `--fix moves this block to ${destination} and removes it from config.json; conflicting local values are refused.`}`,
 				...(destination === undefined
 					? {}
 					: { fix: async () => migrate(home, scope, name, destination) }),

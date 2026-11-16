@@ -189,3 +189,26 @@ it("owns source names and refuses duplicate handles before applying fixes", asyn
 	expect(repairs).toBe(0);
 	expect(report.fixes[0]?.result.ok).toBe(false);
 });
+
+// A route is a procedure's name, a phrase or a sentence: it is quoted after a label, never joined as prose.
+for (const route of [
+	"/setup-dispatch",
+	"/setup-dispatch writes one",
+	"Read the Tracker block at https://example.com/guide.",
+])
+	it(`quotes the route as it is: ${route}`, async () => {
+		const report = await Doctor.run(
+			[
+				{
+					name: "project",
+					doctor: async () => ok([{ ...finding("manual"), route }]),
+				},
+			],
+			ctx,
+			{ fix: ["project/manual"] },
+		);
+		expect(Doctor.toJson(report).fixes[0]?.result).toEqual({
+			ok: false,
+			error: `project/manual has no mechanical fix. Its route: ${route}`,
+		});
+	});

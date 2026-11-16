@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { ok, Planner } from "@cabane/core";
 import { Doctor, flagList, success, usage } from "@cabane/extension";
-import { configPath, loadConfig } from "../config";
+import { configPath, DB_NAME, loadConfig } from "../config";
 import {
 	activateContextRecord,
 	type Command,
@@ -31,7 +32,7 @@ const text = (report: Doctor.Report): string => {
 	}
 	for (const fix of report.fixes)
 		lines.push(
-			`${fix.source}/${fix.id}: ${fix.result.ok ? fix.result.value : fix.result.error.message}`,
+			`${fix.source ? `${fix.source}/` : ""}${fix.id}: ${fix.result.ok ? fix.result.value : fix.result.error.message}`,
 		);
 	return lines.join("\n");
 };
@@ -81,7 +82,7 @@ export const doctor: Command = {
 					unavailable.push({
 						id: "store-unavailable",
 						severity: "mention",
-						path: ctx.store,
+						path: join(ctx.store, DB_NAME),
 						summary: `Cannot open the store: ${initialized.error.message}. Restore a readable database before running checks that query issues.`,
 					});
 			}

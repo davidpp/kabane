@@ -313,6 +313,10 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`kabane_*`), with the working directory's scope as the default so writes may omit `scopeUri` |
 | `mcp install` | `--harness claude\|codex\|gemini` (repeatable) `--force` `--print` — register `mcp` in each harness on PATH through its own `mcp add`, as `cabane://actor/agent/<harness>`; existing entries are unchanged, with `stale` for a different launch command (`present` for the current one); `--force` or `doctor --fix kabane/mcp-entry-stale-<harness>` re-points it; `--print` prints snippets, also the fallback when none is found |
 
+Doctor and `mcp install` read Claude registrations from `$CLAUDE_CONFIG_DIR/.claude.json`
+when `CLAUDE_CONFIG_DIR` is nonempty, otherwise from `~/.claude.json`. This includes
+both user entries and the current project’s local entries.
+
 Updates are latest-stable only within the installed major (`0.x`: same minor). Source links,
 file/tarball/other-manager and unverified isolated/missing-global-bin installs refuse mutation;
 no automatic link repair, downgrade, git pull, startup networking or MCP rewiring is performed.

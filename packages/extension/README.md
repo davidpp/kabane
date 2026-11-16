@@ -27,6 +27,9 @@ exposes only the mode, never sessions.
 An extension can provide `doctor(ctx)`, returning
 `Result<Doctor.Finding[]>`. The host runs enabled sources in display order. Checks finish before any fixes run. A thrown or returned
 check error becomes a `mention` finding named `check-failed` for that source.
+Kabane’s built-in settings and install checks use `kabane/settings-check-failed` and
+`kabane/install-check-failed` so their failures remain separate. Extension failures keep
+`<extension>/check-failed`.
 
 The runner assigns `source` from its registered source name; a check cannot supply it.
 Duplicate IDs under one source become a mention with no repair, retaining both diagnostics.
