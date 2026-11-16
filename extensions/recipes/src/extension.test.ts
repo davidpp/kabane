@@ -152,8 +152,24 @@ test("outside a terminal, a missing required input is a usage error naming it", 
 	const missing = kabane(["run", "research", "--target", id]);
 	expect(missing.code).toBe(2);
 	expect(missing.stderr).toStartWith(
-		'Error: recipe "research" needs focus: pass --input name=value\nUsage: kabane run',
+		'Error: recipe "research" needs focus: pass --input focus=<value> or add it to the inputs JSON\nUsage: kabane run',
 	);
+	expect(
+		kabane([
+			"run",
+			"research",
+			'{"focus": "x"}',
+			"--target",
+			id,
+			"--inputs",
+			'{"focus": "y"}',
+		]),
+	).toMatchObject({
+		code: 2,
+		stderr: expect.stringContaining(
+			"Error: Give the inputs JSON once: with --inputs or after the recipe name\n",
+		),
+	});
 	expect(kabane(["run", "research"]).stderr).toStartWith(
 		'Error: recipe "research" works on an issue: pass --target <issue>',
 	);
@@ -181,13 +197,18 @@ test("a run with every input but no hc on PATH fails with one line naming hc, an
 	const { kabane, issue } = setup();
 	const id = issue();
 	const run = kabane(
-		["run", "research", "--target", id, "--json", '{"focus": "tests"}'],
+		["run", "research", "--target", id, "--inputs", '{"focus": "tests"}'],
 		{
 			path: NO_HC,
 		},
 	);
 	expect(run.code).toBe(1);
-	expect(JSON.parse(run.stdout || run.stderr).error).toStartWith(
+	expect(run.stderr).toStartWith("Error: hc (herdr core) is not on PATH");
+	const json = kabane(
+		["run", "research", "--target", id, "--json", '{"focus": "tests"}'],
+		{ path: NO_HC },
+	);
+	expect(JSON.parse(json.stdout || json.stderr).error).toStartWith(
 		"hc (herdr core) is not on PATH",
 	);
 	expect(kabane(["runs", "--all"], { path: NO_HC }).stdout).toBe(

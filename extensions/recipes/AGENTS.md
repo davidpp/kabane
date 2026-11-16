@@ -147,5 +147,5 @@ a real checkout is the real tracker: only the maintainer runs that.
   `succeeded`.
 - Adding flags, MCP entries or a system prompt to the harness command. The harness reads the
   folder's own configuration.
-- `--json` as an input flag: the CLI takes every `--json` as its output flag, so the inputs
-  object arrives as the positional after the recipe name.
+- `--json` as an input flag: the CLI takes every `--json` as its output flag. The inputs
+  object comes with `--inputs` or as the positional after the recipe name.
