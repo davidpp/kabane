@@ -2,14 +2,8 @@
  * In-process sync transport with an ordered, idempotent log.
  * Devices use it to exercise sync and convergence without a deployed Worker.
  *
- * In memory, not SQLite: the contract a transport owes an applier is a
- * monotonic total order with idempotent append, and an array plus a `Set` of
- * seen `opId`s is that, with no second database file to open or clean up.
- *
- * The wire is a boundary, so `push` re-parses every op with `SyncOpSchema`
- * rather than trusting the caller. That also strips the local `seq` a
- * `DrainedOp` carries, which means nothing to anyone but the device that
- * captured it.
+ * In memory, not SQLite: a transport owes an applier only a monotonic order
+ * with idempotent append, which an array and a `Set` of seen opIds provide.
  */
 
 import { err, ok, type Result } from "../result";
