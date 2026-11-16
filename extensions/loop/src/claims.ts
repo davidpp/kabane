@@ -496,7 +496,7 @@ export namespace Claims {
 				: undefined;
 		const review =
 			work.kind === "triage"
-				? Review.decide(outcome, work.lenses, work.tiers, work.diff)
+				? Review.decide(outcome, work.lenses, work.tiers)
 				: undefined;
 		return {
 			taskId: task.id,
@@ -1159,7 +1159,7 @@ export namespace Claims {
 	};
 
 	/**
-	 * Store the run's review plan and put it on the trace: what the bounds changed, as warnings, then
+	 * Store the run's review plan and put it on the trace: dropped names or tiers, as warnings, then
 	 * one `review` event per group and per skipped lens.
 	 */
 	export const planReview = (
@@ -1228,8 +1228,8 @@ export namespace Claims {
 			const { applies, always } = prompt.value;
 			lenses.push({ name, always, ...(applies ? { applies } : {}) });
 		}
-		// Read before any session: a plan made on a diff git could not give would skip lenses, and
-		// slip past the size cap, on no change information at all.
+		// Read before any session: a plan made on a diff git could not give would skip lenses
+		// on no change information at all.
 		const diff = await triageDiff(ctx, base);
 		if (!diff.ok) return diff;
 		const harness = ctx.run.config.verifier ?? ctx.run.config.implementer;

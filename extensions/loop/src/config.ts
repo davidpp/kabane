@@ -92,7 +92,7 @@ export namespace LoopConfig {
 				.enum(REVIEW_MODES)
 				.default("triage")
 				.describe(
-					"triage: with two lenses or more, one short read-only session reads the diff and decides which lenses run, grouped into shared sessions at a tier each, and which are skipped, never one whose frontmatter says always; all: every lens runs in a session of its own; defaults to triage.",
+					"triage: with two lenses or more, one short read-only session reads the diff and decides which lenses run, grouped into shared sessions at a tier each, and which are skipped (the prompt tells it never to skip a lens whose frontmatter says always; code does not enforce this); all: every lens runs in a session of its own; defaults to triage.",
 				),
 			tier: makeTierNameSchema(z)
 				.default("fast")
@@ -271,7 +271,7 @@ export namespace LoopConfig {
 			/**
 			 * How much review a run gets (`Review`): with `triage`, a run with two lenses or more first runs
 			 * one read-only session that groups the lenses its diff needs, at a tier each, and skips the
-			 * rest above the `always` floor; `all` runs every lens in a session of its own. `tier` is the
+			 * rest, with `always` carried as prompt guidance; `all` runs every lens in a session of its own. `tier` is the
 			 * tier that session runs at, so it can have a model of its own (`loop.tiers.<harness>.<tier>`).
 			 */
 			review: makeReviewSchema(z)
