@@ -9,6 +9,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	realpathSync,
+	renameSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -142,6 +143,34 @@ test("a skill's stamp is read from its parsed frontmatter, in any YAML style", (
 			"name: [unclosed\nmetadata:\n  kabane-template: dispatch@dacd7416f173",
 		),
 	).toEqual([]);
+});
+
+// The loop cannot know whether the dispatch extension is there: its advice holds either way.
+test("the loop's legacy-lens finding names the dispatch extension and a manual route", () => {
+	const { cwd, cli, config } = setup();
+	config({});
+	mkdirSync(join(cwd, ".kabane/loop/lenses"), { recursive: true });
+	writeFileSync(
+		join(cwd, ".kabane/loop/lenses/security.md"),
+		"Review security.\n",
+	);
+	const finding = JSON.parse(cli("--json")).findings.find(
+		({ id }: { id: string }) => id === "legacy-lens-dir",
+	);
+	expect(finding).toMatchObject({ source: "loop", severity: "mention" });
+	expect(finding.summary).toBe(
+		".kabane/loop/lenses holds security.md, where lenses were kept before the dispatch skill. They still run from there. They belong in .agents/skills/dispatch/references/lenses: move the files there by hand, and the loop reads them from it with or without a dispatch skill; or write a dispatch skill first with /setup-dispatch, which the dispatch extension adds, and kabane doctor --fix then moves them.",
+	);
+	mkdirSync(join(cwd, ".agents/skills/dispatch/references/lenses"), {
+		recursive: true,
+	});
+	renameSync(
+		join(cwd, ".kabane/loop/lenses/security.md"),
+		join(cwd, ".agents/skills/dispatch/references/lenses/security.md"),
+	);
+	expect(
+		JSON.parse(cli("--json")).findings.map(({ id }: { id: string }) => id),
+	).not.toContain("legacy-lens-dir");
 });
 
 test("extension doctor counts open tier-tagged issues through the CLI store", () => {
