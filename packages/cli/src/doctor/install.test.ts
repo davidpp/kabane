@@ -259,8 +259,11 @@ test.skipIf(Bun.which("claude") === null)(
 			{ kabane: expected },
 			{ kabane: s.entry("claude", "/gone/kabane") },
 		);
+		// Claude reads CLAUDE_CONFIG_DIR before HOME, so a contributor's own value would send these
+		// removes and adds to their real config.
+		const { CLAUDE_CONFIG_DIR: _own, ...inherited } = process.env;
 		const env = {
-			...process.env,
+			...inherited,
 			HOME: s.home,
 			KABANE_HOME: s.ctx.home,
 			KABANE_HARNESSES: "claude",
