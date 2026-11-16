@@ -19,6 +19,7 @@ import { Review } from "./review";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 
 const LENSES: Review.Lens[] = [
 	{ name: "functional", always: true },
@@ -356,7 +357,9 @@ const start = async (
 		basePath: home,
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
-		overrides: { gemini: { command: process.execPath, args: [agent] } },
+		overrides: TestHarnesses.overrides({
+			gemini: { command: process.execPath, args: [agent] },
+		}),
 		// The tree is code.txt: what a session edits there changes it.
 		tree: async () => readFileSync(join(home, "code.txt"), "utf8"),
 		tickMs: 5,

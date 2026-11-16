@@ -22,6 +22,7 @@ import { LoopPlan } from "./plan";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 
 let root = "";
 let home = "";
@@ -510,7 +511,9 @@ describe("Runner lenses", () => {
 			basePath: home,
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
-			overrides: { claude: { command: "/nonexistent/harness" } },
+			overrides: TestHarnesses.overrides({
+				claude: { command: "/nonexistent/harness" },
+			}),
 			tickMs: 5,
 		});
 		if (!ended.ok) throw ended.error;
@@ -571,7 +574,9 @@ describe("Runner lenses", () => {
 			basePath: home,
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
-			overrides: { claude: { command: "/nonexistent/harness" } },
+			overrides: TestHarnesses.overrides({
+				claude: { command: "/nonexistent/harness" },
+			}),
 			tickMs: 5,
 		});
 		if (!ended.ok) throw ended.error;

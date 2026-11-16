@@ -15,6 +15,7 @@ import { Stall } from "./stall";
 import type { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 
 let home = "";
 
@@ -68,6 +69,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 			basePath: home,
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
+			overrides: TestHarnesses.overrides(),
 		},
 		now: () => new Date(),
 		tree: async () => "tree",
@@ -365,7 +367,9 @@ describe("Claims.claim", () => {
 			const ctx = ctxFor(run);
 			ctx.deps = {
 				...ctx.deps,
-				overrides: { claude: { command: "/nonexistent/harness" } },
+				overrides: TestHarnesses.overrides({
+					claude: { command: "/nonexistent/harness" },
+				}),
 			};
 			await Claims.claim(ctx, node, plan.value);
 			expect(ctx.run.claims).toEqual([]);
@@ -408,7 +412,11 @@ describe("Claims.claim", () => {
 		const fails = { command: "/usr/bin/false", args: [] };
 		ctx.deps = {
 			...ctx.deps,
-			overrides: { claude: fails, codex: fails, gemini: fails },
+			overrides: TestHarnesses.overrides({
+				claude: fails,
+				codex: fails,
+				gemini: fails,
+			}),
 		};
 		const plan = await LoopPlan.load(home, parent.id);
 		if (!plan.ok) throw plan.error;
@@ -457,7 +465,11 @@ describe("Claims.claim", () => {
 		const fails = { command: "/usr/bin/false", args: [] };
 		ctx.deps = {
 			...ctx.deps,
-			overrides: { claude: fails, codex: fails, gemini: fails },
+			overrides: TestHarnesses.overrides({
+				claude: fails,
+				codex: fails,
+				gemini: fails,
+			}),
 		};
 		const plan = await LoopPlan.load(home, parent.id);
 		if (!plan.ok) throw plan.error;
@@ -484,6 +496,62 @@ describe("Claims.claim", () => {
 			"tier:cobol/fast: cobol is not a harness (claude, codex, gemini), so it runs on claude",
 		);
 		expect(said).toContain("tier:fast ignored: the first tag of its kind wins");
+	});
+
+	// The order of precedence is LoopConfig.launchOverrides's, tested on its own (config.test.ts);
+	// this is that a claim launches what it says, its runner's own overrides first. Every harness
+	// in the run's stored setting is a command no machine has, so a claim that stopped consulting
+	// the runner's overrides fails this by assertion and reaches no adapter.
+	it("launches the runner's own overrides over the run's stored setting", async () => {
+		const parent = await add("parent");
+		const child = await add("child", { parentTaskId: parent.id });
+		const nowhere = { command: "/nonexistent/harness", args: ["setting"] };
+		const config = LoopConfig.Schema.safeParse({
+			implementer: "gemini",
+			harnesses: { claude: nowhere, codex: nowhere, gemini: nowhere },
+		});
+		if (!config.success) throw config.error;
+		const run: RunStore.Run = {
+			version: 1,
+			id: "run-1",
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		};
+		const created = RunStore.create(home, run);
+		if (!created.ok) throw created.error;
+		const plan = await LoopPlan.load(home, parent.id);
+		if (!plan.ok) throw plan.error;
+		const node = plan.value.nodes.find((n) => n.task.id === child.id);
+		if (!node) throw new Error("child is not in the plan");
+		const ctx = ctxFor(run);
+		// It fails at once, so no session starts: what is under test is what the claim launched.
+		ctx.deps = {
+			...ctx.deps,
+			overrides: TestHarnesses.overrides({
+				gemini: { command: "/usr/bin/false", args: ["deps"] },
+			}),
+		};
+
+		await Claims.claim(ctx, node, plan.value);
+		await Promise.all([...ctx.live.values()].map((l) => l.settled));
+
+		const events = RunStore.readEvents(home, run.id);
+		if (!events.ok) throw events.error;
+		expect(
+			events.value
+				.filter((e) => e.type === "launch")
+				.map((e) => e.summary.split(" · ")[0]),
+		).toEqual(["/usr/bin/false deps"]);
 	});
 });
 
@@ -538,7 +606,11 @@ describe("Claims.claim, resuming an attempt's session", () => {
 		const fails = { command: "/usr/bin/false", args: [] };
 		ctx.deps = {
 			...ctx.deps,
-			overrides: { claude: fails, codex: fails, gemini: fails },
+			overrides: TestHarnesses.overrides({
+				claude: fails,
+				codex: fails,
+				gemini: fails,
+			}),
 		};
 		const plan = await LoopPlan.load(home, parent.id);
 		if (!plan.ok) throw plan.error;
@@ -762,7 +834,9 @@ describe("Claims.lens on a group", () => {
 		const ctx = ctxFor(run);
 		ctx.deps = {
 			...ctx.deps,
-			overrides: { claude: { command: "/nonexistent/harness" } },
+			overrides: TestHarnesses.overrides({
+				claude: { command: "/nonexistent/harness" },
+			}),
 		};
 		const plan = await LoopPlan.load(home, parent.id);
 		if (!plan.ok) throw plan.error;

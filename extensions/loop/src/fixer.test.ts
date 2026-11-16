@@ -14,6 +14,7 @@ import { Fixer } from "./fixer";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 
 let home = "";
 beforeEach(async () => {
@@ -128,7 +129,9 @@ const run = async (): Promise<RunStore.Run> => {
 		basePath: home,
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
-		overrides: { gemini: { command: process.execPath, args: [agent] } },
+		overrides: TestHarnesses.overrides({
+			gemini: { command: process.execPath, args: [agent] },
+		}),
 		tree: async () => "tree",
 		tickMs: 5,
 	});

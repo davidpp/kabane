@@ -27,6 +27,7 @@ import { Runner } from "./runner";
 import type { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 import { Worktree } from "./worktree";
 
 let root = "";
@@ -164,6 +165,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 			basePath: home,
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
+			overrides: TestHarnesses.overrides(),
 			git,
 			gh,
 		},
@@ -557,6 +559,7 @@ describe("a run with land: pr, through the real runner", () => {
 			basePath: home,
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
+			overrides: TestHarnesses.overrides(),
 			git,
 			gh,
 			tickMs: 10,
@@ -600,6 +603,7 @@ describe("a run with land: pr, through the real runner", () => {
 			basePath: home,
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
+			overrides: TestHarnesses.overrides(),
 			git,
 			gh,
 			tickMs: 10,
@@ -928,6 +932,7 @@ describe("a run with land: merge, through the real runner", () => {
 			basePath: home,
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
+			overrides: TestHarnesses.overrides(),
 			git,
 			gh,
 			tickMs: 10,
@@ -1412,6 +1417,7 @@ const runnerDeps = () => ({
 	basePath: home,
 	kabaneBin: "/nonexistent/kabane",
 	pid: process.pid,
+	overrides: TestHarnesses.overrides(),
 	git,
 	gh,
 	tickMs: 10,
@@ -1566,6 +1572,7 @@ describe("a landing whose runner died", () => {
 			basePath: home,
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
+			overrides: TestHarnesses.overrides(),
 			git,
 			gh,
 			tickMs: 10,

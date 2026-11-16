@@ -55,6 +55,29 @@ bun run sandbox loop status
 opens sessions on the harness the human is logged in to and spends its quota, so run one only
 when the brief allows it; otherwise list it as a manual check.
 
+To drive a whole run with no quota spent, start it with `--scripted` on every sandbox call.
+The flag writes `loop.harnesses.<id>` for every harness into the sandbox's global layer, so
+each session launches `packages/acp/scripts/scripted-agent.ts`: an implementer commits one
+file and calls `kabane_done` through the run's MCP server, the triage groups the lenses, and
+a lens files nothing. A sandbox call without the flag takes the setting out again, so a
+`loop start` without it is a real run.
+
+```bash
+bun run sandbox --fresh --scripted config set extensions loop --layer global
+bun run sandbox --scripted add "parent" --kind issue                     # say JGIT-1
+bun run sandbox --scripted add "one" --kind issue --state next --parent JGIT-1
+bun run sandbox --scripted add "two" --kind issue --state next --parent JGIT-1
+bun run sandbox --scripted loop advise JGIT-1     # each harness "launches .../scripted-agent.ts"
+bun run sandbox --scripted loop start JGIT-1 --lens functional --lens quality --gate ok=true
+bun run sandbox --scripted loop status <runId>    # until completed; events.jsonl's launch events name the command
+bun run sandbox show JGIT-1                       # the run's comment and its loop: work-log ref
+```
+
+Commit the sandbox repo's seed files first, before adding the issues (the scope id, and so the
+issue prefix, changes with the first commit): `seedRepo` leaves them untracked, and `loop start`
+fails on git in a repository with no commit to cut the run's worktree from. The repo is the
+path the sandbox prints on every call: `git -C <repo> add -A && git -C <repo> commit -m seed`.
+
 ## Mistakes that are easy to make here
 
 - Writing `run.json` or `events.jsonl` from outside the runner while a run is live. The runner
