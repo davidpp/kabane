@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import {
 	existsSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	statSync,
@@ -23,7 +24,7 @@ test("public target filenames omit the x64 compiler baseline suffix", () => {
 	]);
 });
 
-test("native compile archives executable, real templates, docs and checksum; refuses replacement", async () => {
+test("native compile archives executable, an empty templates/, docs and checksum; refuses replacement", async () => {
 	const target = `${process.platform}-${process.arch}`;
 	const output = join(work, "native");
 	const result = await buildBinary(target, output);
@@ -36,16 +37,10 @@ test("native compile archives executable, real templates, docs and checksum; ref
 	const tar = Bun.spawnSync(["tar", "-xzf", archive, "-C", work]);
 	expect(tar.exitCode).toBe(0);
 	const root = join(work, "kabane");
-	for (const name of [
-		"kabane",
-		"README.md",
-		"LICENSE",
-		"templates/dispatch/SKILL.md",
-		"templates/dispatch/references/lenses/functional.md",
-		"templates/dispatch/references/lenses/quality.md",
-	])
+	for (const name of ["kabane", "README.md", "LICENSE"])
 		expect(existsSync(join(root, name))).toBe(true);
-	expect(existsSync(join(root, "templates/lenses"))).toBe(false);
+	// What an older kabane's `update` requires of an extracted release; nothing ships in it.
+	expect(readdirSync(join(root, "templates"))).toEqual([]);
 	expect(statSync(join(root, "kabane")).mode & 0o111).not.toBe(0);
 	const smoke = Bun.spawnSync(
 		[process.execPath, "scripts/smoke.ts", "--binary", join(root, "kabane")],

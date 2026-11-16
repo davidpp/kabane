@@ -5,10 +5,7 @@
  *
  *   bin/kabane.js         the CLI bundled for Bun, its `@cabane/*` workspace dependencies inlined
  *   bin/chunk-<hash>.js  lazy command modules and shared code
- *   templates/<name>/     each packages/acp/templates/<name> (the copilot's dispatch skill
- *                         and the grill skill), read from disk at runtime as
- *                         ../templates/<name> from bin/kabane.js; one namespace, so two sources
- *                         of one name fail the build
+ *   types/extension.d.ts the extension contract's types, published as `kabane/extension`
  *   package.json          generated from packages/cli/package.json, no workspace dependency left
  *   README.md, LICENSE    the repository's own
  *
@@ -19,10 +16,8 @@
 
 import {
 	cpSync,
-	existsSync,
 	mkdirSync,
 	mkdtempSync,
-	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
@@ -30,7 +25,6 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { generateDtsBundle } from "dts-bundle-generator";
-import { err, ok, type Result } from "../packages/core/result";
 
 const ROOT = resolve(import.meta.dir, "..");
 const CLI = join(ROOT, "packages/cli");
@@ -90,7 +84,7 @@ const publishManifest = (): Manifest => {
 		...Object.fromEntries(CARRIED.map((field) => [field, cli[field]])),
 		type: "module",
 		bin: { kabane: "bin/kabane.js" },
-		files: ["bin", "templates", "types"],
+		files: ["bin", "types"],
 		exports: { "./extension": { types: "./types/extension.d.ts" } },
 		engines: { bun: `>=${bunVersion}` },
 		dependencies: externalDependencies(),
@@ -130,37 +124,6 @@ const plainHashbang = (file: string): void => {
 	const text = readFileSync(file, "utf8");
 	writeFileSync(file, text.replace(/^#!.*\n/, "#!/usr/bin/env bun\n"));
 };
-
-/**
- * Copies each `<root>/<name>` to `<into>/<name>`. Every bundled module resolves its templates as
- * ../templates/<name> from bin/kabane.js (CopilotInstructions),
- * so the names share one directory: a name two roots both hold is an error, raised before anything
- * is copied.
- */
-export const copyTemplates = (
-	roots: readonly string[],
-	into: string,
-): Result<string[]> => {
-	const sources = new Map<string, string>();
-	for (const root of roots)
-		for (const name of readdirSync(root)) {
-			const taken = sources.get(name);
-			if (taken !== undefined)
-				return err(
-					new Error(
-						`templates/${name} comes from both ${taken} and ${root}; rename one of them`,
-					),
-				);
-			sources.set(name, root);
-		}
-	for (const [name, root] of sources)
-		cpSync(join(root, name), join(into, name), { recursive: true });
-	return ok([...sources.keys()]);
-};
-
-// Base kabane's copilot templates; directory extensions carry their own files.
-export const templateRoots = (): string[] =>
-	[join(ROOT, "packages/acp/templates")].filter((root) => existsSync(root));
 
 /** Inline workspace and zod declarations so type-only consumers need no extra package. */
 const buildExtensionTypes = (into: string): void => {
@@ -221,8 +184,6 @@ export const build = async (): Promise<void> => {
 	rmSync(DIST, { recursive: true, force: true });
 	await bundle();
 	buildExtensionTypes(DIST);
-	const templates = copyTemplates(templateRoots(), join(DIST, "templates"));
-	if (!templates.ok) fail(templates.error.message);
 	cpSync(join(ROOT, "README.md"), join(DIST, "README.md"));
 	cpSync(join(ROOT, "LICENSE"), join(DIST, "LICENSE"));
 	writeFileSync(

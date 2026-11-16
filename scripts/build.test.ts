@@ -1,8 +1,7 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { expect, it } from "bun:test";
 import {
 	existsSync,
 	cpSync,
-	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -11,45 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
-import { build, copyTemplates, DIST } from "./build";
-
-describe("copyTemplates", () => {
-	const work = mkdtempSync(join(tmpdir(), "kabane-build-test-"));
-	const root = (name: string, templates: readonly string[]): string => {
-		const dir = join(work, name);
-		for (const template of templates) {
-			mkdirSync(join(dir, template), { recursive: true });
-			writeFileSync(join(dir, template, "prompt.md"), `${name}/${template}`);
-		}
-		return dir;
-	};
-
-	afterEach(() => rmSync(work, { recursive: true, force: true }));
-
-	it("puts every root's templates side by side under one directory", () => {
-		const into = join(work, "dist");
-		const copied = copyTemplates(
-			[root("acp", ["dispatch"]), root("ext", ["prompts"])],
-			into,
-		);
-		expect(copied.ok && copied.value).toEqual(["dispatch", "prompts"]);
-		expect(readFileSync(join(into, "prompts/prompt.md"), "utf8")).toBe(
-			"ext/prompts",
-		);
-	});
-
-	it("fails on a name two roots both ship, before copying either", () => {
-		const into = join(work, "dist");
-		const copied = copyTemplates(
-			[root("acp", ["dispatch"]), root("ext", ["dispatch"])],
-			into,
-		);
-		expect(copied.ok).toBe(false);
-		if (!copied.ok)
-			expect(copied.error.message).toContain("templates/dispatch");
-		expect(existsSync(into)).toBe(false);
-	});
-});
+import { build, DIST } from "./build";
 
 it("publishes self-contained extension types that compile with only the built package installed", async () => {
 	await build();
@@ -78,7 +39,9 @@ it("publishes self-contained extension types that compile with only the built pa
 		expect(manifest.exports).toEqual({
 			"./extension": { types: "./types/extension.d.ts" },
 		});
-		expect(manifest.files).toContain("types");
+		expect(manifest.files).toEqual(["bin", "types"]);
+		// No template ships with kabane: the dispatch and grill skills are the dispatch extension's.
+		expect(existsSync(join(DIST, "templates"))).toBe(false);
 		const source = join(work, "index.ts");
 		writeFileSync(
 			source,
