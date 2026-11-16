@@ -20,6 +20,7 @@
 		"layers": "bun scripts/layers.ts",
 		"check": "bun run layers && bun run lint && bun run fmt:check && bun run quality",
 		"fix": "oxlint --fix && oxfmt",
+		"check:ci-tests": "bun scripts/ci-tests.ts",
 		"check:staged": "lefthook run pre-commit",
 		"lint": "oxlint --deny-warnings && oxlint --type-aware --deny-warnings --config .oxlintrc.typed.json",
 		"fmt": "oxfmt",
