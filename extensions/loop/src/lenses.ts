@@ -70,7 +70,7 @@ export namespace Lenses {
 
 	/**
 	 * A lens's frontmatter: which changes it reviews, written for a model deciding from a diff stat
-	 * and the brief, and whether it runs on every run whatever a triage decides. A file without
+	 * and the brief, and whether the prompt tells triage never to skip it (not enforced by code). A file without
 	 * frontmatter has no `applies` and is not `always`.
 	 */
 	const FrontmatterSchema = z
