@@ -499,13 +499,16 @@ describe("Claims.claim", () => {
 	});
 
 	// The order of precedence is LoopConfig.launchOverrides's, tested on its own (config.test.ts);
-	// this is that a claim launches what it says. On gemini, which has no CLI to find on PATH.
-	it("launches what LoopConfig.launchOverrides gives the claim's harness", async () => {
+	// this is that a claim launches what it says, its runner's own overrides first. Every harness
+	// in the run's stored setting is a command no machine has, so a claim that stopped consulting
+	// the runner's overrides fails this by assertion and reaches no adapter.
+	it("launches the runner's own overrides over the run's stored setting", async () => {
 		const parent = await add("parent");
 		const child = await add("child", { parentTaskId: parent.id });
+		const nowhere = { command: "/nonexistent/harness", args: ["setting"] };
 		const config = LoopConfig.Schema.safeParse({
 			implementer: "gemini",
-			harnesses: { gemini: { command: "/usr/bin/false", args: ["setting"] } },
+			harnesses: { claude: nowhere, codex: nowhere, gemini: nowhere },
 		});
 		if (!config.success) throw config.error;
 		const run: RunStore.Run = {
