@@ -13,7 +13,7 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 
 | Package | Name | Runtime | Holds |
 |---|---|---|---|
-| `packages/core` | `@cabane/core` | Bun + Workers | schemas, storage over the Db port, sync, MCP tool definitions and servers (stdio, Streamable HTTP) |
+| `packages/core` | `@cabane/core` | Bun + Workers | schemas, storage over the Db port, sync, MCP tool definitions and server composition |
 | `packages/sqlite` | `@cabane/sqlite` | Bun | Db adapter over `bun:sqlite` |
 | `packages/acp` | `@cabane/acp` | Bun | Agent Client Protocol client: harness registry, session runner and form types |
 | `packages/extension` | `@cabane/extension` | Bun | the extension contract, and the argument parsing and outcomes every command is written with |
@@ -21,9 +21,9 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 | `packages/checklist` | `@cabane/checklist` | Bun + Workers | data module: the steps of one issue, ticked as they land (`kabane_checklist`, `kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`), replicated like tasks |
 | `packages/outcome` | `@cabane/outcome` | Bun + Workers | data module: decisions, findings, verifications and summaries projected into the issue's Discussion timeline |
 | `packages/handoff` | `@cabane/handoff` | Bun + Workers | data module: what whoever did the work on an issue, code, research or a design, leaves for the next reader, written from a template (summary, evidence, what is not verified, risk) with `kabane_handoff`; an entry on the issue's timeline, and the brief opens with the latest |
-| `packages/cli` | `kabane` | Bun | the device command line |
+| `packages/cli` | `kabane` | Bun | the device command line and MCP over stdio |
 | `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource, Dispatcher and Copilot ports |
-| `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP |
+| `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP over Streamable HTTP |
 
 Kabane bundles no extension. Two live in `extensions/`, each built and installed on its own:
 the [loop](docs/loop.md) runs issues through coding harnesses on your machine, and

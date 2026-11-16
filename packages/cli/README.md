@@ -276,8 +276,8 @@ Outside a project there is no scope and a query spans all of them. Bare ids
 normalize to `kabane://scope/<id>`, and `jake://scope/<id>`, the scheme before
 schema 10, is read as the same scope; a detected scope also carries `branch` and
 `package` as URI parameters, which record where a task was filed and never
-narrow a filter. The resolution itself is `@cabane/core/scope` — off the package
-barrel, because it needs git and a filesystem and the Worker has neither.
+narrow a filter. Scope resolution lives in `packages/cli/src/scope/detect.ts`. Core exports
+the stored scope URI helpers and the shared `ProjectScope` type.
 
 ## Output and exit codes
 
