@@ -91,8 +91,8 @@ layer, with four narrowings:
   for the loop. The loop takes `@cabane/acp` from the workspace, where it stays (JCAB-316:3); how an extension
   outside this repository gets a harness client belongs to distribution, which is not designed.
   From the rest of kabane it imports types only, with `import type`, which the compiler erases;
-  every value it needs from kabane arrives on `host`. The loop lists four workspace packages
-  today: `acp`, `checklist`, `core` and `extension` (JCAB-326).
+  every value it needs from kabane arrives on `host`. The loop lists `acp` as its only workspace runtime dependency;
+  `checklist`, `core` and `extension` are development dependencies for types and tests.
 
 A client may use the harness client as a library. The board lists `@cabane/acp` for
 its copilot (`packages/board/src/copilot.ts`; see "Ports").
@@ -659,7 +659,7 @@ consistent only while the module is registered. The rule has two parts:
   change task states without the module's `onTaskStateChange`, and the human never chose that.
   An enabled extension whose directory exists but whose `package.json` is missing, unreadable,
   not JSON or not a valid manifest stops the same way, naming the file: nothing proves it has no
-  modules. An enabled name with no directory (and no bundled fallback) is not a stop: it is as
+  modules. An enabled name with no directory is not a stop: it is as
   good as disabled (below), and where commands load extensions it stays the "not installed"
   refusal.
 
@@ -782,8 +782,8 @@ This follows the 2026-11-04 research note except in three places:
 
 | Rule | Where the code breaks it | Removed by |
 |---|---|---|
-| An extension imports no `@cabane/*` value except from the harness client it bundles | The loop's production core and contract imports are type-only; their dependency exceptions remain until the layer check accepts type-only development dependencies. Checklist is test-only. | JCAB-326 (packaging and type-only import enforcement); JCAB-340 removed the session/question value imports |
-| A host depends on no extension | `packages/cli/package.json` lists `@cabane/loop`, which `OFFICIAL` in `packages/cli/src/extensions.ts` bundles; JCAB-318's table lists the edge as an exception tied to JCAB-326 | JCAB-326 |
+| An extension imports no `@cabane/*` value except from the harness client it bundles | The loop's core and contract imports are type-only development dependencies; the layer check refuses production value imports. Its bundled harness client still brings core sources transitively. | JCAB-326 removed direct import exceptions; transitive harness dependencies remain |
+| A host depends on no extension | The CLI loads enabled directory extensions; it no longer depends on or bundles the loop | JCAB-326, done |
 | Core keeps only what passes the four questions | Plan lint moved to `extensions/loop/src/lint/`; core no longer exports it | JCAB-338, done |
 | | `scope/detect.ts`, `self.ts`, `serveStdio`, `handleHttpRequest` | JCAB-328 |
 | | `storage/sessions.ts` removed: outcomes are timeline entries, a session a `session:` work-log ref | JCAB-343, done |
@@ -800,9 +800,9 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | No package depends on one of its own layer; only a host uses the storage adapter at runtime | review | JCAB-318's table, once its entries say so |
 | A first-party package with a layer moves its code in the change that creates it | review | the lens (JCAB-325) |
 | Core keeps only what passes the four questions | review | the lens and per-package `AGENTS.md` (JCAB-325) |
-| Core needs no Bun types | the hub's typecheck and vitest pool, partly: `bun` stays in its `tsconfig.json` | JCAB-326 and JCAB-328 remove `bun` from it, and the hub's typecheck then fails a Bun call on the barrel |
+| Core needs no Bun types | the hub's typecheck and vitest pool, partly: `bun` stays in its `tsconfig.json` | JCAB-328 removes `bun` from it, and the hub's typecheck then fails a Bun call on the barrel |
 | A client uses only what another client could | review | the lens (JCAB-325) |
-| An extension imports types only, apart from the harness client it bundles | review | JCAB-326: a check on the loop's imports |
+| An extension imports types only, apart from the harness client it bundles | `scripts/layers.ts` permits production type-only imports from extension development dependencies and refuses value imports | built (JCAB-326) |
 | A modules entry imports only what its module objects need | `scripts/modules-entry.test.ts` on the fixture extension and every in-repo manifest naming `modules` (none of the loop's yet); an extension outside the repo, review | built (JCAB-323) |
 | An extension writes only its own tables and changes tasks only through `tx.updateTask` | partly by the kit (`host-store.ts`): capture refuses an undeclared table, and any `err` from a `tx` call rolls the write back; raw SQL on `tx.db` is review | built (JCAB-323) |
 | A failed module stops database access; a disabled one's deletes are captured | `registerModules` and `Extensions.modules` (`extension-modules.test.ts`); `module_declarations` read by `Oplog.cascadeOf` and capture (`packages/core/sync/modules.test.ts`) | built (JCAB-323); removing a disabled extension's tables is designed above, not built |

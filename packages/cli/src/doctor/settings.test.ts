@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigLayers } from "../config-layers";
@@ -9,8 +15,16 @@ import { settings } from "./settings";
 test("reports unknown device and other-project namespace keys without changing files", async () => {
 	const home = mkdtempSync(join(tmpdir(), "doctor-settings-"));
 	try {
+		mkdirSync(join(home, "extensions"));
+		symlinkSync(
+			join(import.meta.dir, "../../../../extensions/loop"),
+			join(home, "extensions/loop"),
+		);
 		const path = join(home, "config.json");
 		const stored = {
+			actor: "test",
+			deviceId: "test",
+			extensions: ["loop"],
 			mystery: true,
 			scopes: { other: { loop: { typo: 1 }, unknownNamespace: {} } },
 		};

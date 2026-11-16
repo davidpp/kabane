@@ -14,17 +14,22 @@
 	"scripts": {
 		"test": "bun test",
 		"typecheck": "tsc --noEmit",
-		"clean": "rm -rf node_modules"
+		"clean": "rm -rf node_modules",
+		"build": "bun scripts/build.ts"
 	},
 	"dependencies": {
 		"@cabane/acp": "workspace:*",
-		"@cabane/core": "workspace:*",
-		"@cabane/extension": "workspace:*",
 		"zod": "3.25.76"
 	},
 	"devDependencies": {
 		"@cabane/checklist": "workspace:*",
 		"@types/bun": "1.4.0",
-		"typescript": "5.9.3"
+		"typescript": "5.9.3",
+		"@cabane/core": "workspace:*",
+		"@cabane/extension": "workspace:*"
+	},
+	"kabane": {
+		"extension": "./index.ts",
+		"api": 1
 	}
 }
