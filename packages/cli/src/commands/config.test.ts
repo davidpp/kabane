@@ -206,7 +206,11 @@ describe.concurrent("config through the real CLI", () => {
 				].sort(),
 			);
 			for (const row of rows) expect(row.description.length).toBeGreaterThan(0);
-			expect((await run("config")).out).toContain("copilot.model = default");
+			const text = (await run("config")).out;
+			expect(text).toContain("copilot.model = default");
+			expect(text).toContain(
+				'extensions = ["loop"] (global) — Enabled extension names from $KABANE_HOME/extensions; absent enables none.',
+			);
 			expect(await get("actor")).toBe(initial.actor);
 			expect(await get("sync.enabled")).toBe(false);
 			expect(await get("sync.batchBytes")).toBe(262144);

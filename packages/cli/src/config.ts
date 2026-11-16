@@ -108,7 +108,7 @@ export const ConfigSchema = z.object({
 		.array(z.string().min(1))
 		.optional()
 		.describe(
-			"Enabled extension names from $KABANE_HOME/extensions or this build; absent enables none.",
+			"Enabled extension names from $KABANE_HOME/extensions; absent enables none.",
 		),
 });
 export type Config = z.infer<typeof ConfigSchema>;
