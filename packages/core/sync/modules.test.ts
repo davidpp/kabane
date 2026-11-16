@@ -364,10 +364,47 @@ describe("a module's migrations", () => {
 				)
 				.all(),
 		}));
-		expect(versions.core).toBe(Migrations.SCHEMA_VERSION);
+		expect(versions.core).toBe(Migrations.LIST.length);
 		expect(versions.notes).toEqual([
 			{ version: 1, name: "create-task-notes" },
 			{ version: 2, name: "pin-task-notes" },
+		]);
+	});
+
+	it("record the module's declaration when it registers, and again only when its migrations move", async () => {
+		const declarations = (device: Device) =>
+			as(device, (db) =>
+				db
+					.query<Row, []>(
+						`SELECT tbl, module, module_schema, family, clock, child_of_tasks FROM ${TABLES.module_declarations}`,
+					)
+					.all(),
+			);
+		const alpha = await createDevice("alpha", [notes()]);
+		const first = {
+			tbl: NOTES,
+			module: "notes",
+			module_schema: 1,
+			family: "row-lww",
+			clock: "updated_at",
+			child_of_tasks: 1,
+		};
+		expect(await declarations(alpha)).toEqual([first]);
+
+		// A boot that changes nothing writes nothing: the connection's change count stays 0.
+		register(alpha.modules);
+		const quiet = await runWithDb(alpha.base, (db) => {
+			const recorded = Migrations.applyModules(db, alpha.modules);
+			if (!recorded.ok) throw recorded.error;
+			return db.query<{ n: number }, []>("SELECT total_changes() AS n").get()
+				?.n;
+		});
+		expect(quiet).toEqual({ ok: true, value: 0 });
+
+		const upgraded = { ...alpha, modules: [notes([CREATE_NOTES, PIN_NOTES])] };
+		await boot(upgraded);
+		expect(await declarations(upgraded)).toEqual([
+			{ ...first, module_schema: 2 },
 		]);
 	});
 
@@ -496,6 +533,85 @@ describe("capturing a module table", () => {
 			undefined,
 			{ name: "notes", schema: 1 },
 		]);
+	});
+});
+
+describe("a device that no longer registers the module", () => {
+	it("captures the deletes of the module's rows a task delete cascades into, from the recorded declaration, and they replay elsewhere", async () => {
+		const alpha = await createDevice("alpha", [notes()]);
+		const beta = await createDevice("beta", [notes()]);
+		const parent = await addTask(alpha, "doomed");
+		register(alpha.modules);
+		const child = await Planner.addTask(alpha.base, {
+			title: "doomed child",
+			parentTaskId: parent,
+		});
+		if (!child.ok) throw child.error;
+		const onParent = await writeNote(alpha, { taskId: parent, body: "goes" });
+		const onChild = await writeNote(alpha, {
+			taskId: child.value.id,
+			body: "goes too",
+		});
+		await push(alpha);
+		await pull(beta);
+		expect(await notesOn(beta)).toHaveLength(2);
+
+		// Alpha restarts with the module disabled: its table and rows stay.
+		const disabled = { ...alpha, modules: [] };
+		await boot(disabled);
+		register(disabled.modules);
+		const deleted = await Planner.deleteTask(disabled.base, parent);
+		if (!deleted.ok) throw deleted.error;
+		const deletes = await as(disabled, (db) =>
+			db
+				.query<
+					{
+						tbl: string;
+						row_id: string;
+						module: string | null;
+						module_schema: number | null;
+					},
+					[]
+				>(
+					`SELECT tbl, row_id, module, module_schema FROM ${TABLES.sync_oplog} WHERE op = 'delete' ORDER BY seq`,
+				)
+				.all(),
+		);
+		expect(deletes).toEqual([
+			{ tbl: NOTES, row_id: onChild, module: "notes", module_schema: 1 },
+			{
+				tbl: "tasks",
+				row_id: child.value.id,
+				module: null,
+				module_schema: null,
+			},
+			{ tbl: NOTES, row_id: onParent, module: "notes", module_schema: 1 },
+			{ tbl: "tasks", row_id: parent, module: null, module_schema: null },
+		]);
+
+		await push(disabled);
+		expect(
+			LocalRelay.ops(relay)
+				.filter((op) => op.op === "delete" && op.tbl === NOTES)
+				.map((op) => [op.rowId, op.module]),
+		).toEqual([
+			[onChild, { name: "notes", schema: 1 }],
+			[onParent, { name: "notes", schema: 1 }],
+		]);
+		const pulled = await pull(beta);
+		expect(pulled.parked).toBe(0);
+		expect(await notesOn(beta)).toEqual([]);
+		expect(await titles(beta)).toEqual([]);
+	});
+
+	it("still refuses an insert into the module's table", async () => {
+		const alpha = await createDevice("alpha", [notes()]);
+		const task = await addTask(alpha, "parent");
+		const disabled = { ...alpha, modules: [] };
+		await boot(disabled);
+		await expect(
+			writeNote(disabled, { taskId: task, body: "lost" }),
+		).rejects.toThrow('Cannot capture a write to "task_notes"');
 	});
 });
 

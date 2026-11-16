@@ -23,6 +23,7 @@ export const TABLES = {
 	sync_parked_deletes: "sync_parked_deletes",
 	short_id_history: "short_id_history",
 	schema_migrations: "schema_migrations",
+	module_declarations: "module_declarations",
 } as const;
 
 export type TableKey = keyof typeof TABLES;
