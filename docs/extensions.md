@@ -94,11 +94,19 @@ The loop needs a coding harness installed and logged in before it starts a run;
 ## Run an extension from the checkout instead
 
 When kabane runs through Bun (the npm install, or `bun link` from a clone), the extension
-directory can be a symlink to the source in the checkout, so a change there needs no build:
+directory can be a symlink to the source in the checkout, so a change there needs no build.
+From the clone, link every extension of the checkout, or only the ones you name:
 
 ```bash
-ln -s "$PWD/extensions/loop" "${KABANE_HOME:-$HOME/.kabane}/extensions/loop"
+bun run link-extensions            # loop, dispatch, recipes
+bun run link-extensions recipes
 ```
+
+It links `${KABANE_HOME:-$HOME/.kabane}/extensions/<name>` to `extensions/<name>` and prints
+one line per extension: `linked`, `already linked here`, or `skipped` with what is already
+there. It never replaces an installed directory or a link to another place, and replaces a
+link whose target is gone. It installs only: enable the extensions with
+`kabane config set extensions <names> --layer global`.
 
 The standalone binary cannot load the loop's source through that link. It resolves no package
 from disk, and the loop's source imports kabane's workspace packages, so it refuses the
