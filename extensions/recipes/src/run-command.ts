@@ -97,7 +97,7 @@ const list = (host: Host, project: ProjectScope): Outcome => {
 		recipes.length > 0
 			? recipes.map(describe).join("\n")
 			: `No recipes in ${Recipe.DIR}/ of ${project.root}.`;
-	const broken = errors.map((error) => `Error: ${error.message}`);
+	const broken = errors.map(({ error }) => `Error: ${error.message}`);
 	return {
 		exitCode: errors.length > 0 ? 1 : 0,
 		json: {
@@ -108,7 +108,7 @@ const list = (host: Host, project: ProjectScope): Outcome => {
 				inputs,
 				file,
 			})),
-			errors: errors.map((error) => error.message),
+			errors: errors.map(({ error }) => error.message),
 		},
 		text: [shown, ...broken].join("\n"),
 	};

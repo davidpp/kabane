@@ -58,9 +58,8 @@ export namespace RecipeDispatcher {
 		};
 	};
 
-	/** A recipe file that failed to parse; `Recipe.all`'s errors start with the file's path. */
-	const broken = (error: Error): TriggerDescriptor => {
-		const file = error.message.split(":")[0] ?? "";
+	/** A recipe file that failed to parse, named after its file. */
+	const broken = ({ file, error }: Recipe.Broken): TriggerDescriptor => {
 		const name = basename(file, ".md");
 		return {
 			id: `${PREFIX}${name}`,

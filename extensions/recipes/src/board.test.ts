@@ -392,6 +392,8 @@ describe("RecipeDispatcher", () => {
 			"---\ntarget: issue\ninputs:\n  focus:\n    required: true\n---\nOn {{inputs.focus}}.\n",
 		);
 		recipe("broken", "---\ntarget: issue\ninputs: [\n---\nBody.\n");
+		// A `:` in the file's name: the trigger is named from the file, not from its error's text.
+		recipe("odd:name", "---\ntarget: issue\ninputs: [\n---\nBody.\n");
 		const triggers = value(
 			await dispatcherWith(scripted().runtime).triggers(issue.id),
 		);
@@ -401,6 +403,7 @@ describe("RecipeDispatcher", () => {
 			["recipe:ask", "ask", false],
 			["recipe:research", "research", true],
 			["recipe:broken", "broken", false],
+			["recipe:odd:name", "odd:name", false],
 		]);
 		const [ask, research, broken] = triggers;
 		expect(research).toMatchObject({
