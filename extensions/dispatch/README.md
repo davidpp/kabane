@@ -29,11 +29,11 @@ extension's template while the template's bytes are unchanged.
 
 `/setup-dispatch` in the copilot reads the project's `CLAUDE.md`/`AGENTS.md`, its gate commands
 and `.claude/agents/`, then writes `.agents/skills/dispatch/` from this extension's template.
-Codex and Pi read `.agents/skills/`; Claude Code reads only `.claude/skills/`, so the copilot links
-`.claude/skills/dispatch` to `../../.agents/skills/dispatch` when the project already has a
-`.claude/` directory or you ask, and otherwise tells you the command that adds the link. On a
-project with no dispatch skill yet it writes the skill first, then shows you each file; deleting
-the directory undoes it. When `.agents/skills/dispatch/` exists, it shows the diff and writes
+Codex, Pi, opencode and Gemini CLI read `.agents/skills/`; Claude Code reads only
+`.claude/skills/`, so the copilot links `.claude/skills/dispatch` to
+`../../.agents/skills/dispatch` when the project already has a `.claude/` directory or you ask,
+and otherwise tells you the command that adds the link. On a project with no dispatch skill yet
+it writes the skill first, then shows you each file; deleting the directory undoes it. When `.agents/skills/dispatch/` exists, it shows the diff and writes
 nothing without your yes. A real `.claude/skills/dispatch/` directory keeps working; the copilot
 offers to move it and leave the link.
 
@@ -41,6 +41,23 @@ The written `SKILL.md` records which template it was filled from as `metadata.ka
 in its frontmatter, a value such as `dispatch@<12-character hash>`. `kabane dispatch stamp`
 prints the current one. Keep the line when you edit the skill, and do not replace it by hand:
 `/setup-dispatch` refreshes the skill while keeping the project's edits.
+
+Each harness lists the skill under its own name and calls it its own way. A session also picks
+it up unasked when an ask matches its description.
+
+| Harness | Reads | Calls it |
+|---|---|---|
+| Claude Code | `.claude/skills/dispatch` (the link) | `/dispatch` |
+| Codex | `.agents/skills/dispatch` | `$dispatch`, or `/skills`; Codex has no `/dispatch` command |
+| Pi | `.agents/skills/dispatch` | `/skill:dispatch` |
+| opencode | `.agents/skills/dispatch` or `.claude/skills/dispatch` | its `skill` tool, by name |
+| Gemini CLI | `.agents/skills/dispatch` | `/skills list` shows it; the model activates it when an ask matches |
+
+Codex's `/skills` menu can switch a skill off for every session, which it saves to
+`~/.codex/config.toml` as a `[[skills.config]]` entry with `enabled = false`. A switched-off skill
+is not listed; switch it back on in the same menu. Pi loads a project's `.agents/skills/` only
+in a folder you trust: interactive Pi asks, and its print and RPC modes skip the skill unless the
+folder is trusted (`/trust`, saved in `~/.pi/agent/trust.json`) or the run passes `--approve`.
 
 ## Doctor
 
@@ -53,6 +70,8 @@ With the extension enabled, `kabane doctor` reports, under the source `dispatch`
 | `dispatch-skill-unstamped` | route | the skill has no `kabane-template`; `/setup-dispatch` re-fills it |
 | `dispatch-skill-behind` | route | the template changed since the skill was filled; `/setup-dispatch` re-fills it |
 | `dispatch-template-unavailable` | mention | the extension's own template cannot be read; reinstall it |
+| `dispatch-skill-unlinked` | mention | the project has `.claude/` but no `.claude/skills/dispatch` link, so Claude Code does not list the skill; `kabane doctor --fix dispatch/dispatch-skill-unlinked` adds the link |
+| `grill-skill-unlinked` | mention | the same for a grill copy under `.agents/skills/grill` |
 | `grill-skill-behind` | mention | a copy of the grill skill differs; `kabane doctor --fix dispatch/grill-skill-behind` copies the template over it |
 
 Without the extension, a project skill that carries a `kabane-template` stamp is one finding of
