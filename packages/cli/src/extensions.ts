@@ -245,7 +245,7 @@ export namespace Extensions {
 		if (!parsed.success)
 			return err(
 				new Error(
-					`${file} needs "kabane": { "extension": "<entry>", "api": 1 }`,
+					`${file} has no valid "kabane" field; add "kabane": { "extension": "<entry>", "api": 1 }`,
 				),
 			);
 		return ok({ file, entry: parsed.data.kabane });

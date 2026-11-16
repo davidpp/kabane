@@ -348,7 +348,7 @@ it("names malformed or missing manifests and a non-factory export with repair an
 		`${join(invalid, "package.json")} contains invalid JSON`,
 	);
 	expect(all.refused[2]?.reason).toContain(
-		'needs "kabane": { "extension": "<entry>", "api": 1 }',
+		'has no valid "kabane" field; add "kabane": { "extension": "<entry>", "api": 1 }',
 	);
 	expect(all.refused[3]?.reason).toContain(
 		"the entry's default export must be a factory (host) => Extension",

@@ -299,6 +299,12 @@ it("stops on an installed extension whose manifest cannot be read, and treats an
 		stderr.mockRestore();
 	}
 
+	// A manifest with no `kabane` field says what to add before the other way out.
+	writeFileSync(manifest, JSON.stringify({ name: "notes" }));
+	expect((await kabane(["list"])).text).toContain(
+		`${manifest} has no valid "kabane" field; add "kabane": { "extension": "<entry>", "api": 1 }, or remove it from "extensions"`,
+	);
+
 	// The enabled name "absent" has no directory: no stop, and commands that load extensions refuse it.
 	const cleared = await kabane([
 		"config",
