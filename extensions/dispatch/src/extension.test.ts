@@ -174,6 +174,23 @@ test("a broken skill link is told and has no fix; without .claude/ the missing l
 	expect(ids()).toEqual([]);
 });
 
+test("a skill link to a copy elsewhere is told and has no fix", () => {
+	const { root, ids, findings, kabane } = setup();
+	const link = join(root, ".claude/skills/dispatch");
+	rmSync(link);
+	write(join(root, "other/SKILL.md"), skill(STAMP_ON_MAIN));
+	symlinkSync("../../other", link);
+	expect(ids()).toEqual(["dispatch-skill-unlinked:mention"]);
+	const elsewhere = findings().find(({ source }) => source === "dispatch");
+	expect(elsewhere?.summary).toContain("Replace it");
+	const fixed = JSON.parse(
+		kabane("doctor", "--fix", "dispatch/dispatch-skill-unlinked", "--json")
+			.stdout,
+	);
+	expect(fixed.fixes[0].result.ok).toBe(false);
+	expect(readlinkSync(link)).toBe("../../other");
+});
+
 test("CRLF keeps the skill's stamp readable", () => {
 	const { root, ids } = setup();
 	writeFileSync(

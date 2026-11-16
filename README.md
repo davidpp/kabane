@@ -34,7 +34,7 @@ your own.
 
 ## Install
 
-Install the npm package with [Bun](https://bun.sh) 1.4 or later (not Node):
+Install the npm package with [Bun](https://bun.sh) 1.4.1 or later (not Node):
 
 ```bash
 bun add -g kabane           # `kabane` on PATH, in ~/.bun/bin

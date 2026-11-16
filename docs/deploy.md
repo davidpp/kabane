@@ -255,7 +255,7 @@ which is the RFC 9728 pointer ChatGPT and Claude.ai follow.
 
 ### 2.1 Install the CLI
 
-Bun 1.4 or later is required. The CLI installs independently of the hub clone:
+Bun 1.4.1 or later is required. The CLI installs independently of the hub clone:
 
 ```bash
 bun add -g kabane

@@ -33,9 +33,10 @@ Codex, Pi, opencode and Gemini CLI read `.agents/skills/`; Claude Code reads onl
 `.claude/skills/`, so the copilot links `.claude/skills/dispatch` to
 `../../.agents/skills/dispatch` when the project already has a `.claude/` directory or you ask,
 and otherwise tells you the command that adds the link. On a project with no dispatch skill yet
-it writes the skill first, then shows you each file; deleting the directory undoes it. When `.agents/skills/dispatch/` exists, it shows the diff and writes
-nothing without your yes. A real `.claude/skills/dispatch/` directory keeps working; the copilot
-offers to move it and leave the link.
+it writes the skill first, then shows you each file; deleting the directory undoes it. When
+`.agents/skills/dispatch/` exists, it shows the diff and writes nothing without your yes. A real
+`.claude/skills/dispatch/` directory keeps working; the copilot offers to move it and leave the
+link.
 
 The written `SKILL.md` records which template it was filled from as `metadata.kabane-template`
 in its frontmatter, a value such as `dispatch@<12-character hash>`. `kabane dispatch stamp`
@@ -70,7 +71,7 @@ With the extension enabled, `kabane doctor` reports, under the source `dispatch`
 | `dispatch-skill-unstamped` | route | the skill has no `kabane-template`; `/setup-dispatch` re-fills it |
 | `dispatch-skill-behind` | route | the template changed since the skill was filled; `/setup-dispatch` re-fills it |
 | `dispatch-template-unavailable` | mention | the extension's own template cannot be read; reinstall it |
-| `dispatch-skill-unlinked` | mention | the project has `.claude/` but no `.claude/skills/dispatch` link, so Claude Code does not list the skill; `kabane doctor --fix dispatch/dispatch-skill-unlinked` adds the link |
+| `dispatch-skill-unlinked` | mention | the project has `.claude/` but no `.claude/skills/dispatch` link, so Claude Code does not list the skill; `kabane doctor --fix dispatch/dispatch-skill-unlinked` adds the link. A link that leads anywhere but `.agents/skills/dispatch` is reported with no fix |
 | `grill-skill-unlinked` | mention | the same for a grill copy under `.agents/skills/grill` |
 | `grill-skill-behind` | mention | a copy of the grill skill differs; `kabane doctor --fix dispatch/grill-skill-behind` copies the template over it |
 

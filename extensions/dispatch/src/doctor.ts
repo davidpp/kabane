@@ -38,10 +38,18 @@ export namespace DispatchDoctor {
 	 */
 	const claudeLink = (root: string, name: string): Doctor.Finding[] => {
 		const link = join(root, ".claude/skills", name);
+		const skill = join(root, ".agents/skills", name);
 		if (
 			!isRealDirectory(join(root, ".claude")) ||
-			!existsSync(join(root, ".agents/skills", name, "SKILL.md")) ||
-			existsSync(join(link, "SKILL.md"))
+			!existsSync(join(skill, "SKILL.md"))
+		)
+			return [];
+		// A real directory here is the legacy layout dispatch-skill-location reports; a symlink
+		// counts only when it resolves to the .agents copy, not to some other SKILL.md.
+		if (
+			existsSync(join(link, "SKILL.md")) &&
+			(!lstatSync(link).isSymbolicLink() ||
+				realpathSync(link) === realpathSync(skill))
 		)
 			return [];
 		const target = `../../.agents/skills/${name}`;
