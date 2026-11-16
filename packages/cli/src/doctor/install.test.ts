@@ -3,6 +3,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	realpathSync,
+	renameSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -246,64 +247,76 @@ test("the fix re-registers through mcp install --force, and only when named", as
 	]);
 });
 
-test.skipIf(Bun.which("claude") === null)(
-	"real Claude registrations in user and local scopes are both repaired",
-	() => {
-		const s = setup();
-		const cli = join(import.meta.dir, "../../index.ts");
-		const expected = McpClients.launchFor(
-			{ command: process.execPath, args: [cli] },
-			"claude",
-		);
-		s.claude(
-			{ kabane: expected },
-			{ kabane: s.entry("claude", "/gone/kabane") },
-		);
-		// Claude reads CLAUDE_CONFIG_DIR before HOME, so a contributor's own value would send these
-		// removes and adds to their real config.
-		const { CLAUDE_CONFIG_DIR: _own, ...inherited } = process.env;
-		const env = {
-			...inherited,
-			HOME: s.home,
-			KABANE_HOME: s.ctx.home,
-			KABANE_HARNESSES: "claude",
-		};
-		const run = (...args: string[]) => {
-			const result = Bun.spawnSync([process.execPath, cli, ...args], {
-				cwd: s.root,
+for (const customConfig of [false, true])
+	test.skipIf(Bun.which("claude") === null)(
+		`real Claude registrations in user and local scopes are both repaired (custom config: ${customConfig})`,
+		() => {
+			const s = setup();
+			const cli = join(import.meta.dir, "../../index.ts");
+			const expected = McpClients.launchFor(
+				{ command: process.execPath, args: [cli] },
+				"claude",
+			);
+			s.claude(
+				{ kabane: expected },
+				{ kabane: s.entry("claude", "/gone/kabane") },
+			);
+			// Claude reads CLAUDE_CONFIG_DIR before HOME, so a contributor's own value would send these
+			// removes and adds to their real config.
+			const { CLAUDE_CONFIG_DIR: _own, ...inherited } = process.env;
+			const configDir = join(s.home, "custom-claude");
+			if (customConfig) {
+				mkdirSync(configDir);
+				renameSync(
+					join(s.home, ".claude.json"),
+					join(configDir, ".claude.json"),
+				);
+			}
+			const env = {
+				...inherited,
+				...(customConfig ? { CLAUDE_CONFIG_DIR: configDir } : {}),
+				HOME: s.home,
+				KABANE_HOME: s.ctx.home,
+				KABANE_HARNESSES: "claude",
+			};
+			const run = (...args: string[]) => {
+				const result = Bun.spawnSync([process.execPath, cli, ...args], {
+					cwd: s.root,
+					env,
+				});
+				expect(result.exitCode).toBe(0);
+				return JSON.parse(result.stdout.toString());
+			};
+			expect(
+				run("mcp", "install", "--harness", "claude", "--json").reports[0]
+					.status,
+			).toBe("stale");
+			const fixed = run(
+				"doctor",
+				"--fix",
+				"kabane/mcp-entry-stale-claude",
+				"--json",
+			);
+			expect(fixed.fixes[0].result.ok).toBe(true);
+			const registrations = McpClients.registrations("claude", {
+				home: s.home,
 				env,
+				projectRoot: s.root,
 			});
-			expect(result.exitCode).toBe(0);
-			return JSON.parse(result.stdout.toString());
-		};
-		expect(
-			run("mcp", "install", "--harness", "claude", "--json").reports[0].status,
-		).toBe("stale");
-		const fixed = run(
-			"doctor",
-			"--fix",
-			"kabane/mcp-entry-stale-claude",
-			"--json",
-		);
-		expect(fixed.fixes[0].result.ok).toBe(true);
-		const registrations = McpClients.registrations("claude", {
-			home: s.home,
-			env,
-			projectRoot: s.root,
-		});
-		if (!registrations.ok) throw registrations.error;
-		expect(registrations.value.map(({ scope }) => scope)).toEqual([
-			"user",
-			"local",
-		]);
-		for (const registration of registrations.value)
-			expect(registration.launch).toEqual(expected);
-		expect(
-			run("mcp", "install", "--harness", "claude", "--json").reports[0].status,
-		).toBe("present");
-	},
-	60_000,
-);
+			if (!registrations.ok) throw registrations.error;
+			expect(registrations.value.map(({ scope }) => scope)).toEqual([
+				"user",
+				"local",
+			]);
+			for (const registration of registrations.value)
+				expect(registration.launch).toEqual(expected);
+			expect(
+				run("mcp", "install", "--harness", "claude", "--json").reports[0]
+					.status,
+			).toBe("present");
+		},
+		60_000,
+	);
 
 test("one malformed config leaves both earlier and later harness findings intact", async () => {
 	const s = setup();
@@ -314,5 +327,45 @@ test("one malformed config leaves both earlier and later harness findings intact
 		"mcp-entry-stale-claude:mention",
 		"mcp-config-unreadable-codex:mention",
 		"mcp-entry-stale-gemini:mention",
+	]);
+});
+
+test("CLAUDE_CONFIG_DIR selects user and local registrations without falling back to HOME", async () => {
+	const s = setup();
+	s.claude({ kabane: s.entry("claude") });
+	const directory = join(s.home, "custom-claude");
+	const path = join(directory, ".claude.json");
+	const env = { CLAUDE_CONFIG_DIR: directory, KABANE_HARNESSES: "claude" };
+	write(
+		path,
+		JSON.stringify({
+			mcpServers: { kabane: s.entry("claude", "/gone/user") },
+			projects: {
+				[s.root]: { mcpServers: { kabane: s.entry("claude", "/gone/local") } },
+			},
+		}),
+	);
+	const found = await install(s.ctx, s.deps({ env }));
+	if (!found.ok) throw found.error;
+	expect(found.value).toHaveLength(1);
+	expect(found.value[0]?.path).toBe(path);
+	expect(found.value[0]?.summary).toContain("/gone/user");
+	expect(found.value[0]?.summary).toContain("/gone/local");
+	const registrations = McpClients.registrations("claude", {
+		home: s.home,
+		env,
+		projectRoot: s.root,
+	});
+	if (!registrations.ok) throw registrations.error;
+	expect(registrations.value.map(({ scope }) => scope)).toEqual([
+		"user",
+		"local",
+	]);
+	rmSync(path);
+	expect(await s.ids({ env })).toEqual([]);
+	s.claude({ kabane: s.entry("claude", "/gone/default") });
+	expect(await s.ids({ env })).toEqual([]);
+	expect(await s.ids({ env: { CLAUDE_CONFIG_DIR: "" } })).toEqual([
+		"mcp-entry-stale-claude:mention",
 	]);
 });

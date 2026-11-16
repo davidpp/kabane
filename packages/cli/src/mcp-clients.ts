@@ -96,7 +96,10 @@ export namespace McpClients {
 
 	// User scope, then the project's local scope, which Claude keys by the project's path.
 	const claudeRegistrations = (where: Where): Result<Registration[]> => {
-		const path = join(where.home, ".claude.json");
+		const path = join(
+			where.env.CLAUDE_CONFIG_DIR || where.home,
+			".claude.json",
+		);
 		const config = readConfig(path, Bun.JSONC.parse);
 		if (!config.ok || config.value === undefined)
 			return config.ok ? ok([]) : config;
