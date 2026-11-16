@@ -13,8 +13,13 @@ import type { HcRuntime } from "./runtime-hc";
 export const settingsSchema = (z: Host["z"]) =>
 	z
 		.object({
-			// The argv the prompt is appended to as its last argument.
-			harness: z.array(z.string().min(1)).min(1).default(["claude"]),
+			harness: z
+				.array(z.string().min(1))
+				.min(1)
+				.default(["claude"])
+				.describe(
+					"The command a recipe run starts, as a list; the prompt is added as its last argument. Kabane adds no flags of its own. Default: claude.",
+				),
 		})
 		.strict();
 
