@@ -119,10 +119,11 @@ that machine's name, and `read`, `send`, `attach` and `stop` refuse it. A run in
 this kabane does not have is treated the same way, and `read`, `send` and `attach` on a runtime
 with no terminal fail with one line naming it. A run whose start has not recorded a terminal
 yet (an empty TERMINAL column), because it is still starting or kabane was interrupted while it
-started, is looked up in hc by its `kabane.run` label on the next `kabane runs` or verb: when hc
-has its terminal, the run records it and goes on as usual; when hc has none, the run never
-started and is `ended`. `read`, `send` and `attach` refuse a run with no terminal, and `stop`
-on one that never started only says it is ended.
+started, is looked up in hc by its `kabane.run` label whenever runs are listed: by `kabane runs`,
+a verb on it, or the board. When hc has its terminal, the run records it and goes on as usual.
+When hc has none, the run is shown `ended`; if its start was only still on its way, the run goes
+back to `running` once the start records its terminal. `read`, `send` and `attach` refuse a run
+with no terminal, and `stop` on one hc has no terminal for only says it is ended.
 
 With `--json`, `kabane run` prints `run` (the id), `session` and `attach` (the command that
 attaches to it), plus `warnings` when there are any. `kabane runs --json` prints `runs`, a list
