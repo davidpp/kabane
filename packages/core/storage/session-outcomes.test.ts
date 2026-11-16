@@ -483,4 +483,71 @@ describe("Migration session-outcomes loses nothing quietly", () => {
 		]);
 		expect(await outcomesOf(base, other.id)).toEqual([]);
 	});
+
+	it("refuses an outcome whose id another comment holds, names the id, and keeps both", async () => {
+		const base = await before("collision");
+		const { issue } = await seedLegacy(base);
+		await withDb(base, (db) =>
+			db.run(
+				`INSERT INTO ${TABLES.comments} (id, task_id, kind, author, author_type, content, created_at)
+				 VALUES ('01D2', ?, 'comment', 'david', 'human', 'unrelated comment', ?)`,
+				[issue.id, T0],
+			),
+		);
+
+		const init = await Planner.init(base);
+
+		expect(init.ok).toBe(false);
+		if (!init.ok)
+			expect(init.error.message).toContain(
+				"task_comments already holds a different row with id 01D2",
+			);
+		expect(await version(base)).toBe(BEFORE);
+		expect(await tableNames(base)).toContain("agent_activities");
+		const held = (await rows(base, TABLES.comments)).filter(
+			(r) => r.id === "01D2" || r.kind !== "comment",
+		);
+		expect(held.map((r) => [r.id, r.content])).toEqual([
+			["01D2", "unrelated comment"],
+		]);
+	});
+
+	it("keeps an outcome a row already holds as the same entry", async () => {
+		const base = await before("same-entry");
+		const { issue } = await seedLegacy(base);
+		await withDb(base, (db) =>
+			db.run(
+				`INSERT INTO ${TABLES.comments} (id, task_id, kind, author, author_type, content, created_at)
+				 VALUES ('01D2', ?, 'outcome.decision', 'claude', 'ai', 'Going with SQLite', ?)`,
+				[issue.id, at(4)],
+			),
+		);
+		must(await Planner.init(base));
+		expect(await outcomesOf(base, issue.id)).toEqual(EXPECTED_ISSUE_OUTCOMES);
+	});
+
+	it("refuses a session whose id another work-log row holds, and keeps both", async () => {
+		const base = await before("log-collision");
+		const { issue } = await seedLegacy(base);
+		// Under 01S2's id, on another issue, naming something else.
+		await withDb(base, (db) =>
+			db.run(
+				`INSERT INTO ${TABLES.work_log} (id, task_id, refs, created_at)
+				 VALUES ('01S2', ?, '[{"uri":"commit:abc","addedAt":"${T0}"}]', ?)`,
+				[issue.id, T0],
+			),
+		);
+
+		const init = await Planner.init(base);
+
+		expect(init.ok).toBe(false);
+		if (!init.ok)
+			expect(init.error.message).toContain(
+				"task_work_log already holds a different row with id 01S2",
+			);
+		expect(await tableNames(base)).toContain("agent_sessions");
+		expect(
+			(await rows(base, TABLES.comments)).filter((r) => r.kind !== "comment"),
+		).toEqual([]);
+	});
 });

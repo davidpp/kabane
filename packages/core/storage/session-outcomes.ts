@@ -13,8 +13,10 @@
  * and two devices that migrate copies of one database write the same rows,
  * which the append-only sync family keeps once.
  *
- * A database missing one of the two tables fails the migration with what to
- * fix; its transaction rolls back and nothing is dropped.
+ * Nothing is lost quietly. A database missing one of the two tables, or one
+ * that already holds a different row under an id this step would write, fails
+ * the migration with what to fix; its transaction rolls back and nothing is
+ * dropped.
  *
  * The tables are retired, so they are named as strings (`migrations.ts`). One
  * statement per row, few parameters each: the hub's engine refuses `BEGIN`,
@@ -136,8 +138,28 @@ const moveOutcomes = (db: Db): void => {
 		const kind = KINDS.get(a.type);
 		if (kind === undefined) continue;
 		const { author, authorType } = authorOf(a);
-		const inserted = db.run(
-			`INSERT OR IGNORE INTO ${TABLES.comments}
+		const content = contentOf(db, a);
+		// An id already taken is this entry (an earlier run, or a device that
+		// migrated a copy and synced it here) or another row, whose outcome would
+		// be lost under it.
+		const held = db
+			.query<{ task_id: string; kind: string; content: string }, [string]>(
+				`SELECT task_id, kind, content FROM ${TABLES.comments} WHERE id = ?`,
+			)
+			.get(a.id);
+		if (held) {
+			if (
+				held.task_id !== a.task_id ||
+				held.kind !== kind ||
+				held.content !== content
+			)
+				refuse(
+					`${TABLES.comments} already holds a different row with id ${a.id}, the id of the ${a.type} it would keep from session ${a.session_id}`,
+				);
+			continue;
+		}
+		db.run(
+			`INSERT INTO ${TABLES.comments}
 			   (id, task_id, kind, author, author_type, content, updated_by, visibility, created_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, 'shared', ?)`,
 			[
@@ -146,13 +168,12 @@ const moveOutcomes = (db: Db): void => {
 				kind,
 				author,
 				authorType,
-				contentOf(db, a),
+				content,
 				Runtime.actor(),
 				a.created_at,
 			],
 		);
-		if (inserted.changes > 0)
-			Oplog.afterWrite(db, TABLES.comments, "insert", a.id);
+		Oplog.afterWrite(db, TABLES.comments, "insert", a.id);
 	}
 };
 
@@ -195,7 +216,7 @@ const moveSessions = (db: Db): void => {
 	for (const s of sessions) {
 		const uri = `session:${s.id}`;
 		if (hasRef(db, s.task_id, uri)) continue;
-		const refs = [
+		const refs = JSON.stringify([
 			{
 				uri,
 				label: s.agent,
@@ -203,15 +224,25 @@ const moveSessions = (db: Db): void => {
 				addedBy: s.external_ref ?? s.agent,
 				addedByType: "ai",
 			},
-		];
-		const inserted = db.run(
-			`INSERT OR IGNORE INTO ${TABLES.work_log}
+		]);
+		// A row under the session's id that names it on this task was found
+		// above; any other would lose the session's ref under it.
+		const taken = db
+			.query<{ one: number }, [string]>(
+				`SELECT 1 AS one FROM ${TABLES.work_log} WHERE id = ?`,
+			)
+			.get(s.id);
+		if (taken)
+			refuse(
+				`${TABLES.work_log} already holds a different row with id ${s.id}, the id of session ${s.id}'s ref`,
+			);
+		db.run(
+			`INSERT INTO ${TABLES.work_log}
 			   (id, task_id, refs, updated_by, visibility, created_at)
 			 VALUES (?, ?, ?, ?, 'shared', ?)`,
-			[s.id, s.task_id, JSON.stringify(refs), Runtime.actor(), s.started_at],
+			[s.id, s.task_id, refs, Runtime.actor(), s.started_at],
 		);
-		if (inserted.changes > 0)
-			Oplog.afterWrite(db, TABLES.work_log, "insert", s.id);
+		Oplog.afterWrite(db, TABLES.work_log, "insert", s.id);
 	}
 };
 
