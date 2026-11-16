@@ -590,3 +590,28 @@ it("gives standalone extension commands the host's cached harness mode", async (
 	);
 	expect(outcome.json).toEqual({ host: "default", context: "default" });
 });
+
+it("a compiled kabane still carries the bundled loop's description", () => {
+	const root = makeHome();
+	const entry = join(root, "describe.ts");
+	const binary = join(root, "describe");
+	writeFileSync(
+		entry,
+		`import { Extensions } from ${JSON.stringify(join(import.meta.dir, "extensions.ts"))}; console.log(await Extensions.description(${JSON.stringify(root)}, "loop"));`,
+	);
+	const build = Bun.spawnSync([
+		process.execPath,
+		"build",
+		"--compile",
+		entry,
+		"--outfile",
+		binary,
+	]);
+	expect(build.exitCode).toBe(0);
+	// Run from elsewhere, so nothing beside the source tree can stand in for the bundle.
+	const run = Bun.spawnSync([binary], { cwd: tmpdir() });
+	expect(run.exitCode).toBe(0);
+	expect(run.stdout.toString().trim()).toContain(
+		"`a` on an issue opens its run form",
+	);
+}, 120_000);
