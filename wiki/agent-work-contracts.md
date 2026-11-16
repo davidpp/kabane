@@ -25,6 +25,8 @@ win.
 | Machines | Profiles and recipes by chezmoi now. The hub revamp is the next step (JCAB-434, blocked by JCAB-426). |
 | First runtime after ACP | A dots trial. Keep the shape open to other allowances (Claude Code's monthly allocation was mentioned); which ones pay off is not known yet. |
 | Sessions | Kabane keeps session references. The store for performance, analytics and evals is a separate someday epic (JCAB-437): an existing tool with kabane's philosophy, adopted gradually and configured per user. |
+| Scope | Custom agents and jobs are always tied to a scope and a working folder. No user-level jobs in v1. |
+| MCP exposure | `kabane mcp` serves a small default set and turns the rest on per project through the existing settings layers (JCAB-438). A Cloudflare-style code-mode tool for the hidden tools comes later (JCAB-439). |
 
 ## David's questions, answered in one place
 
