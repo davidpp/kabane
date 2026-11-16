@@ -377,11 +377,16 @@ harness's MCP entry that launches a kabane you no longer have. `kabane doctor` l
 one with its fix, and enabled extensions add their own checks:
 
 ```bash
-kabane doctor                        # report; changes nothing
+kabane doctor                        # report drift without applying its repairs
 kabane doctor --fix                  # apply the findings that need no decision (severity auto)
 kabane doctor --fix kabane/<id>      # apply one other finding, by the source/id the report shows
 kabane doctor --json                 # the same report, for scripts and agents
 ```
+
+Doctor opens an existing tracker to let extensions inspect issues. Like other commands,
+it applies pending database migrations on the first run after an update, even without
+`--fix`. Back up the database before that first run; returning to an older version may
+require restoring that backup. Reporting findings does not apply their offered repairs.
 
 Each finding has a severity that says what to do with it, not how bad it is: `auto` needs no
 decision, `mention` is worth knowing and has a fix you can choose to run, `suggest` is a better
