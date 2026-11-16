@@ -68,7 +68,7 @@ kabane list
 
 ### Settings layers
 
-An extension's settings (today the loop's, under `loop`) resolve through layers, lowest first,
+An extension's settings (the loop's under `loop`, say) resolve through layers, lowest first,
 key by key:
 
 1. the schema's defaults;
@@ -201,8 +201,10 @@ they require an existing config and point to `kabane init` when none exists.
 Put an extension directory (or a symlink to one) at `$KABANE_HOME/extensions/<name>/`, then
 run `kabane config set extensions <name> --layer global` (comma-separated names for several).
 Its `package.json` must contain `"kabane": { "extension": "./index.ts", "api": 1 }`.
-The entry's default export is a factory receiving `{ api: 1, kabane: { version, executable } }`
-and returning an extension whose `name` matches the directory. Its own `node_modules` resolve
+The entry's default export is a factory that receives the host, API 1
+([`@cabane/extension`](../extension/README.md#factory-host)), and returns an extension whose
+`name` matches the directory. [Writing an extension](../../docs/writing-an-extension.md) walks
+through one. Its own `node_modules` resolve
 normally when kabane runs through Bun. For the compiled binary, supply a built bundle with
 its dependencies inlined; external on-disk packages using conditional or subpath `exports`
 do not resolve.
