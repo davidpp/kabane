@@ -11,6 +11,9 @@ references/specialists.md, verbatim.>
 You are implementing <issue id> (<short title>). Read the full brief first with kabane_context
 on <issue id>. Since the brief was written, main has gained <what merged, or "nothing">.
 
+Before your first edit, open these with your file-reading tool and say in your first message
+that you did: <the AGENTS.md files and other reading the few-liner names, as paths>.
+
 Work in your own copy: git worktree add ../<repo>-<branch> -b <branch>, then `bun install`. Do
 all of your work there and never in the main checkout.
 
