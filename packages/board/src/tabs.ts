@@ -6,10 +6,10 @@
 // and a closed one does not come back this session. While a card's tab is on screen the tracker's
 // own view is kept aside, so returning to it lands where the human left.
 //
-// The queue is every core session question nobody has answered, oldest first, whoever asked it. `!`
-// walks it: a question one of a tabbed card's sessions asked lands on that card's tab, pinned under
+// The queue is every host question nobody has answered, oldest first, whoever asked it. `!`
+// walks it: a question owned by a tabbed card lands on that card's tab, pinned under
 // its header, any other on its task's detail view with the question pinned over the brief as a
-// banner. Either way a digit answers it in place, through `Planner.answerQuestion`.
+// banner. Either way a digit answers it in place, through `ActivitySource.answer`.
 import { type ActivityCard, type CardAction } from "@cabane/extension";
 import type { BoardActivity } from "./activity";
 import { ElicitationForm } from "./elicitation-form";
@@ -27,7 +27,6 @@ export namespace BoardTabs {
 	// route on.
 	type TabCard = {
 		finished: boolean;
-		sessionIds: readonly string[];
 		taskId?: string;
 		taskShortId?: string;
 		lanes?: readonly string[];
@@ -51,7 +50,7 @@ export namespace BoardTabs {
 		tracker?: View;
 		// Every card that asked for a tab, as of the last poll.
 		cards: ReadonlyMap<string, TabCard>;
-		// Unanswered session questions, oldest first.
+		// Unanswered host questions, oldest first.
 		queue: readonly Question[];
 		// The question `!` last landed on, which is where the next press continues from.
 		landed?: string;
@@ -99,13 +98,11 @@ export namespace BoardTabs {
 		tabs: { ...state.tabs, ...tabs },
 	});
 
-	/** The open tab whose card owns the session that asked, if any. */
+	/** The open tab whose card owns the question, if any. */
 	const ownerOf = (tabs: Tabs, question: Question): string | undefined =>
-		tabs.open.find((id) =>
-			tabs.cards.get(id)?.sessionIds.includes(question.sessionId),
-		);
+		tabs.open.find((id) => id === question.cardId);
 
-	/** The `?n` on a tab: every question for the tracker, the ones its sessions asked for a card. */
+	/** The `?n` on a tab: every question for the tracker, the ones its card asked. */
 	export const waitingOn = (tabs: Tabs, id: string | null): number =>
 		id === null
 			? tabs.queue.length
@@ -114,11 +111,9 @@ export namespace BoardTabs {
 	/** Whether the banner's question is settled: answered here, or gone from the queue some other way. */
 	export const isAnswered = (tabs: Tabs, banner: Banner): boolean =>
 		banner.answer !== undefined ||
-		!tabs.queue.some(
-			(q) => q.questionActivityId === banner.question.questionActivityId,
-		);
+		!tabs.queue.some((q) => q.id === banner.question.id);
 
-	/** The questions the sessions of the card on screen wait on, oldest first. */
+	/** The questions the card on screen waits on, oldest first. */
 	const cardQuestions = (tabs: Tabs): Question[] =>
 		tabs.queue.filter((q) => ownerOf(tabs, q) === tabs.active);
 
@@ -128,20 +123,19 @@ export namespace BoardTabs {
 	 */
 	export const cardQuestion = (tabs: Tabs): Question | undefined => {
 		const mine = cardQuestions(tabs);
-		return mine.find((q) => q.questionActivityId === tabs.landed) ?? mine[0];
+		return mine.find((q) => q.id === tabs.landed) ?? mine[0];
 	};
 
 	/** How many of the card's questions wait besides the one its tab shows, unanswered. */
 	export const moreOnCard = (tabs: Tabs): number => {
 		const shown = cardQuestion(tabs);
 		return cardQuestions(tabs).filter(
-			(q) => q !== shown && !tabs.answered.has(q.questionActivityId),
+			(q) => q !== shown && !tabs.answered.has(q.id),
 		).length;
 	};
 
 	const tabCard = (card: ActivityCard): TabCard => ({
 		finished: !isInFlight(card),
-		sessionIds: card.sessionIds ?? [],
 		...(card.taskId ? { taskId: card.taskId } : {}),
 		...(card.taskShortId ? { taskShortId: card.taskShortId } : {}),
 		...(card.lanes && card.lanes.length > 0 ? { lanes: card.lanes } : {}),
@@ -154,11 +148,7 @@ export namespace BoardTabs {
 
 	// Everything a poll can change that the bar or the keys read, as one comparable string.
 	const fingerprint = (tabs: Tabs): string =>
-		JSON.stringify([
-			tabs.open,
-			[...tabs.cards],
-			tabs.queue.map((q) => q.questionActivityId),
-		]);
+		JSON.stringify([tabs.open, [...tabs.cards], tabs.queue.map((q) => q.id)]);
 
 	/**
 	 * The poll's cards and questions, into the bar: a card that asks for a tab opens one at the end
@@ -183,7 +173,7 @@ export namespace BoardTabs {
 			)
 			.toSorted((a, b) => a.startedAt.localeCompare(b.startedAt))
 			.map((card) => card.id);
-		const waiting = new Set(queue.map((q) => q.questionActivityId));
+		const waiting = new Set(queue.map((q) => q.id));
 		const next: Tabs = {
 			...tabs,
 			open: [...tabs.open.filter((id) => listed.has(id)), ...opened],
@@ -261,23 +251,27 @@ export namespace BoardTabs {
 	// tab on screen shows. Anywhere else the next press starts from the oldest.
 	const position = (state: State): string | undefined => {
 		const { view, tabs } = state;
-		if (view.type === "detail") return view.banner?.question.questionActivityId;
-		return tabs.active === null
-			? undefined
-			: cardQuestion(tabs)?.questionActivityId;
+		if (view.type === "detail") return view.banner?.question.id;
+		return tabs.active === null ? undefined : cardQuestion(tabs)?.id;
 	};
 
 	// The question's task in the tracker, with the question pinned over it.
 	const pin = (state: State, question: Question, cardId?: string): State => {
+		const taskId =
+			question.taskId ??
+			(question.taskShortId
+				? taskIdOfShortId(state, question.taskShortId)
+				: undefined);
+		if (!taskId) return state;
 		const tracker = show(state, null);
 		return {
 			...tracker,
 			view: {
 				type: "detail",
-				taskId: question.taskId,
+				taskId,
 				banner: { question, ...(cardId ? { cardId } : {}) },
 			},
-			tabs: { ...tracker.tabs, landed: question.questionActivityId },
+			tabs: { ...tracker.tabs, landed: question.id },
 		};
 	};
 
@@ -287,19 +281,27 @@ export namespace BoardTabs {
 		const { queue } = state.tabs;
 		if (queue.length === 0) return notice(state, "nothing is waiting on you");
 		const here = position(state);
-		const at = queue.findIndex((q) => q.questionActivityId === here);
-		const next = queue[(at + 1) % queue.length];
-		if (!next) return { state, effect: NOTHING };
-		if (next.questionActivityId === here)
-			return notice(state, "nothing else is waiting on you");
-		const owner = ownerOf(state.tabs, next);
-		if (owner === undefined)
-			return { state: pin(state, next), effect: NOTHING };
-		const shown = show(state, owner);
-		return {
-			state: withTabs(shown, { landed: next.questionActivityId }),
-			effect: NOTHING,
-		};
+		const at = queue.findIndex((q) => q.id === here);
+		let skipped = 0;
+		for (let offset = 1; offset <= queue.length; offset++) {
+			const next = queue[(at + offset) % queue.length];
+			if (!next) continue;
+			const owner = ownerOf(state.tabs, next);
+			const landed =
+				owner === undefined
+					? pin(state, next)
+					: withTabs(show(state, owner), { landed: next.id });
+			if (landed === state) {
+				skipped++;
+				continue;
+			}
+			if (skipped)
+				return notice(landed, `skipped ${skipped} without a task or tab`);
+			if (next.id === here)
+				return notice(state, "nothing else is waiting on you");
+			return { state: landed, effect: NOTHING };
+		}
+		return notice(state, `skipped ${skipped} without a task or tab`);
 	};
 
 	// `w`: close a finished card's tab for good, and tell the host so it stops listing the card across
@@ -390,12 +392,12 @@ export namespace BoardTabs {
 
 	/** The choices toggled on a multi-select question, by index, in the order they were picked. */
 	export const pickedOf = (tabs: Tabs, question: Question): readonly number[] =>
-		tabs.picked.get(question.questionActivityId) ?? [];
+		tabs.picked.get(question.id) ?? [];
 
 	// A digit on a multi-select toggles the choice it numbers, sending nothing yet.
 	const toggle = (state: State, question: Question, index: number): Step => {
 		const picked = new Map(state.tabs.picked).set(
-			question.questionActivityId,
+			question.id,
 			ElicitationForm.toggle(pickedOf(state.tabs, question), index),
 		);
 		return { state: withTabs(state, { picked }), effect: NOTHING };
@@ -421,7 +423,7 @@ export namespace BoardTabs {
 		question: Question,
 		answer: string,
 	): Step => {
-		const questionId = question.questionActivityId;
+		const questionId = question.id;
 		return {
 			state: withAnswered(state, questionId, answer),
 			effect: { type: "answerQuestion", questionId, answer },
@@ -430,7 +432,7 @@ export namespace BoardTabs {
 
 	// A question a card's tab shows is settled once this board answered it; the poll then drops it.
 	const isSettled = (tabs: Tabs, question: Question): boolean =>
-		tabs.answered.has(question.questionActivityId);
+		tabs.answered.has(question.id);
 
 	// The digit a key types, 1-9, or undefined. A shifted digit is not one: a terminal that reports
 	// shift+1 by its base key (kitty's protocol without alternate keys) means `!`, never answer 1.
@@ -440,7 +442,7 @@ export namespace BoardTabs {
 	/** Open the prompt for a typed answer to `question` (`enter` on its banner or its card's tab). */
 	const typeAnswer = (state: State, question: Question): Step =>
 		BoardPrompt.open(state, {
-			target: { type: "answer", questionId: question.questionActivityId },
+			target: { type: "answer", questionId: question.id },
 			title: "answer",
 			aim: question.taskShortId,
 			placeholder: "type the answer · enter sends it",
@@ -504,10 +506,7 @@ export namespace BoardTabs {
 		patch: (banner: Banner) => Banner,
 	): State => {
 		const { view } = state;
-		if (
-			view.type !== "detail" ||
-			view.banner?.question.questionActivityId !== questionId
-		)
+		if (view.type !== "detail" || view.banner?.question.id !== questionId)
 			return state;
 		return { ...state, view: { ...view, banner: patch(view.banner) } };
 	};
@@ -525,8 +524,7 @@ export namespace BoardTabs {
 			...banner,
 			answer,
 		}));
-		if (!state.tabs.queue.some((q) => q.questionActivityId === questionId))
-			return pinned;
+		if (!state.tabs.queue.some((q) => q.id === questionId)) return pinned;
 		const answered = new Map(state.tabs.answered).set(questionId, answer);
 		return withTabs(pinned, { answered });
 	};

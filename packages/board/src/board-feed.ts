@@ -46,7 +46,7 @@ const loadFeed = async (
 ) => {
 	const [rows, activity, counts, progress] = await Promise.all([
 		BoardData.loadBoard(basePath, filters),
-		BoardActivity.loadActivity(basePath, activitySource),
+		BoardActivity.loadActivity(activitySource),
 		BoardData.openQuestionCounts(basePath),
 		BoardData.checklistProgress(basePath),
 	]);

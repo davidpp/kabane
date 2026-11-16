@@ -17,7 +17,6 @@ import {
 	answeredQuestion,
 	CONTEXT_SECTIONS,
 	DEFAULT_ENTRY_KIND,
-	isAnswerTo,
 	parseQuestionBody,
 	TASK_STATE_DISPLAY,
 	type Task,
@@ -139,40 +138,20 @@ export namespace DetailModel {
 	const activitiesOf = (records: BoardData.DetailRecords): AgentActivity[] =>
 		records.sessions.flatMap((s) => s.activities);
 
-	// A session question is answered by an activity whose context is `answers <question-id>`.
-	const unansweredQuestions = (
-		activities: readonly AgentActivity[],
-	): AgentActivity[] =>
-		activities.filter(
-			(a) =>
-				a.type === "question" &&
-				!activities.some((d) => isAnswerTo(d.context, a.id)),
-		);
-
 	// ── pinned ──────────────────────────────────────────────────────────────────────────────────
 
-	/**
-	 * What waits on a human: every question a session asked that nothing answers yet, then any the
-	 * host reported that the records do not carry (a host that tracks sessions of its own). The one
-	 * `pinned` in a banner over the view is left to the banner, so it is not read twice.
-	 */
+	/** Questions supplied by the task's activity port, except the one already pinned in a banner. */
 	export const openQuestions = (
-		records: BoardData.DetailRecords | undefined,
 		awaiting: readonly BoardActivity.AwaitingQuestion[] = [],
 		pinned?: string,
-	): OpenQuestion[] => {
-		const fromSessions = records
-			? unansweredQuestions(activitiesOf(records)).map((a) => ({
-					id: a.id,
-					question: parseQuestionBody(a.body).question,
-				}))
-			: [];
-		const seen = new Set(fromSessions.map((q) => q.id));
-		const fromHost = awaiting
-			.filter((q) => !seen.has(q.questionActivityId))
-			.map((q) => ({ id: q.questionActivityId, question: q.question }));
-		return [...fromSessions, ...fromHost].filter((q) => q.id !== pinned);
-	};
+	): OpenQuestion[] =>
+		awaiting
+			.filter(
+				(q, index) =>
+					q.id !== pinned &&
+					awaiting.findIndex((other) => other.id === q.id) === index,
+			)
+			.map((q) => ({ id: q.id, question: q.question }));
 
 	/** The task at a glance: state, a priority other than normal, kind, assignee, review. */
 	export const summary = (task: Task): SummaryPart[] => {
@@ -937,10 +916,16 @@ export namespace DetailModel {
 		return `${parseQuestionBody(question.body).question} → ${firstLine(a.body)}${by}`;
 	};
 
-	// Everything a session recorded, except a question still waiting: that one is pinned on top.
-	const activityLines = (records: BoardData.DetailRecords): LogLine[] => {
+	// Session questions stay in the log unless the activity port pins them above it.
+	const activityLines = (
+		records: BoardData.DetailRecords,
+		awaiting: readonly BoardActivity.AwaitingQuestion[],
+	): LogLine[] => {
 		const activities = activitiesOf(records);
-		const pinned = new Set(unansweredQuestions(activities).map((a) => a.id));
+		// A merged question id is `<source>:<id>`, and a session activity carries the bare id.
+		const pinned = new Set(
+			awaiting.flatMap((q) => [q.id, q.id.slice(q.id.indexOf(":") + 1)]),
+		);
 		return activities
 			.filter((a) => !pinned.has(a.id))
 			.map((a) => ({
@@ -966,7 +951,10 @@ export namespace DetailModel {
 		}));
 
 	/** Where log lines come from. Another kind of entry is one more source here. */
-	export type LogSource = (records: BoardData.DetailRecords) => LogLine[];
+	export type LogSource = (
+		records: BoardData.DetailRecords,
+		awaiting: readonly BoardActivity.AwaitingQuestion[],
+	) => LogLine[];
 
 	export const LOG_SOURCES: readonly LogSource[] = [
 		activityLines,
@@ -976,10 +964,11 @@ export namespace DetailModel {
 	/** The agent log, newest first, from every source. */
 	export const log = (
 		records: BoardData.DetailRecords,
+		awaiting: readonly BoardActivity.AwaitingQuestion[] = [],
 		sources: readonly LogSource[] = LOG_SOURCES,
 	): LogLine[] =>
 		sources
-			.flatMap((source) => source(records))
+			.flatMap((source) => source(records, awaiting))
 			.sort((a, b) => byAtDescending(a.at, b.at));
 
 	// ── tabs ────────────────────────────────────────────────────────────────────────────────────
@@ -993,9 +982,10 @@ export namespace DetailModel {
 		records: BoardData.DetailRecords | undefined,
 		liveCards = 0,
 		freshNow = false,
+		awaiting: readonly BoardActivity.AwaitingQuestion[] = [],
 	): TabSummary[] => {
 		const said = records ? records.entries.length : 0;
-		const logged = (records ? log(records).length : 0) + liveCards;
+		const logged = (records ? log(records, awaiting).length : 0) + liveCards;
 		const inForce = records ? now(records).length > 0 : false;
 		const described =
 			Boolean(records?.task.description?.trim()) ||

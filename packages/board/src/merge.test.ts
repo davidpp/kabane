@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { err, ok } from "@cabane/core";
 import type {
 	ActivityCard,
+	ActivityQuestion,
 	ActivitySource,
 	Header,
 	Dispatcher,
@@ -81,25 +82,48 @@ describe("Activity.merge", () => {
 		expect((await merged.dismiss?.("c:1"))?.ok).toBe(false);
 	});
 
-	test("answering reaches every contributor that keeps who answered, and names the one that failed", async () => {
-		const noted: string[] = [];
-		const recording = (name: string, fails = false): ActivitySource => ({
-			...a,
-			answering: async (questionId) => {
-				noted.push(`${name}/${questionId}`);
-				return fails ? err(new Error("inbox gone")) : ok(undefined);
-			},
+	test("prefixes both question ids and card ids, skipping failed and absent question sources", async () => {
+		const question: ActivityQuestion = {
+			id: "q",
+			cardId: "1",
+			lane: "agent",
+			question: "Continue?",
+			choices: ["Yes"],
+			multiSelect: false,
+			allowFreeform: false,
+			asker: "claude",
+			askedAt: "now",
+		};
+		const asking = { ...a, questions: async () => ok([question]) };
+		const merged = Activity.merge({
+			a: asking,
+			b,
+			c: asking,
+			broken: { ...a, questions: async () => err(new Error("down")) },
 		});
-		expect(
-			await Activity.merge({ a: recording("a"), b }).answering?.("q1"),
-		).toEqual(ok(undefined));
-		expect(noted).toEqual(["a/q1"]);
+		expect(await merged.questions?.()).toEqual(
+			ok([
+				{ ...question, id: "a:q", cardId: "a:1" },
+				{ ...question, id: "c:q", cardId: "c:1" },
+			]),
+		);
+	});
+
+	test("routes an answer only to its owner and returns its notice or error", async () => {
+		const merged = Activity.merge({
+			a: { ...a, answer: async (id, text) => ok(`${id}: ${text}`) },
+			b,
+		});
+		expect(await merged.answer?.("a:q", "Yes")).toEqual(ok("q: Yes"));
+		const unsupported = await merged.answer?.("b:q", "Yes");
+		expect(unsupported?.ok === false && unsupported.error.message).toBe(
+			"b:q takes no answers",
+		);
+		expect((await merged.answer?.("unknown:q", "Yes"))?.ok).toBe(false);
 		const failed = await Activity.merge({
-			a: recording("a"),
-			c: recording("c", true),
-		}).answering?.("q2");
-		expect(failed?.ok === false && failed.error.message).toBe("c: inbox gone");
-		expect(noted).toEqual(["a/q1", "a/q2", "c/q2"]);
+			a: { ...a, answer: async () => err(new Error("write failed")) },
+		}).answer?.("a:q", "Yes");
+		expect(failed?.ok === false && failed.error.message).toBe("write failed");
 	});
 
 	test("act reaches its contributor with its own id; one that takes no actions says so", async () => {

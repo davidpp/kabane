@@ -215,8 +215,8 @@ test("Detail pins a waiting question above the tabs, with no answer hint for a c
 	const questions: BoardActivity.AwaitingQuestion[] = [
 		{
 			taskId: task.id,
-			sessionId: "sess-1",
-			questionActivityId: "act-1",
+			cardId: "loop:r1",
+			id: "act-1",
 			question: "Which auth flow should the CLI use?",
 			taskShortId: "MILL-1",
 			choices: [],
@@ -317,7 +317,7 @@ test("Detail's log heads with the host's cards and offers the o events hint", as
 	}
 });
 
-test("Detail's log puts work logs and session activity on one line each, newest first, and pins the open question instead", async () => {
+test("Detail's log puts work logs and session activity on one line each, newest first, including an open question absent from the port", async () => {
 	const task = await seed({ state: "in_progress" });
 	const session = await Planner.startSession(TEST_BASE, {
 		taskId: task.id,
@@ -349,7 +349,9 @@ test("Detail's log puts work logs and session activity on one line each, newest 
 
 	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
 		task,
-		{ tab: "log" },
+		{
+			tab: "log",
+		},
 	);
 	try {
 		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
@@ -360,9 +362,9 @@ test("Detail's log puts work logs and session activity on one line each, newest 
 		expect(frame).toContain("· decision Tabs or one scroll? → tabs");
 		expect(frame).toContain("· question Tabs or one scroll?");
 		expect(frame).toContain("· progress read the brief");
-		// The open question is pinned above the tabs and nowhere else.
+		// Without a port question, the waiting session question remains in the log.
 		expect(frame.split("Which tab opens first?").length - 1).toBe(1);
-		expect(frame).toContain("? Which tab opens first?");
+		expect(frame).toContain("· question Which tab opens first?");
 		const commit = rows(frame).findIndex((r) => r.includes("landed the tabs"));
 		const progress = rows(frame).findIndex((r) => r.includes("read the brief"));
 		expect(commit).toBeLessThan(progress);

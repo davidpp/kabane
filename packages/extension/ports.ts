@@ -35,9 +35,6 @@ export type ActivityCard = {
 	// Show this card as a tab of its own beside the tracker. A finished card keeps its tab until the
 	// human closes it with `w`.
 	tab?: boolean;
-	// The core agent sessions this card's work runs as. A question one of them asks is the card's:
-	// its tab counts it, and `!` lands on the tab rather than on the question's task.
-	sessionIds?: readonly string[];
 	// Named streams inside the card (one per agent session, say), in a stable order: on the card's
 	// tab `h/l` pick one, and every line of the all-lanes stream is tagged with its lane in a color
 	// that stays the lane's. Append, never reorder: a lane's place is its color.
@@ -117,6 +114,33 @@ export type ActivityEvent = {
 	detail?: ActivityToolDetail;
 };
 
+export type ActivityQuestion = {
+	// The host's question id, named by `answer`.
+	id: string;
+	// The card that owns this question, in the same source's card id space.
+	cardId: string;
+	// The owning card's lane to show when the question is opened.
+	lane?: string;
+	// Optional task identities; with neither, a question can be placed only through its card.
+	taskId?: string;
+	// The task's short label; a client may resolve it when `taskId` is absent.
+	taskShortId?: string;
+	// The question as shown to the human, already parsed by its owner.
+	question: string;
+	// Choice labels in display order, also used to answer.
+	choices: readonly string[];
+	// Whether several choices may be selected together.
+	multiSelect: boolean;
+	// Whether the human may send free text besides the choices.
+	allowFreeform: boolean;
+	// Whether this asks permission to run a tool.
+	permission?: boolean;
+	// The displayed name of whoever asked.
+	asker: string;
+	// When it was asked, as an ISO timestamp; clients order the queue oldest first.
+	askedAt: string;
+};
+
 export interface ActivitySource {
 	// Everything worth showing, newest first, already capped by the host.
 	load(): Promise<Result<ActivityCard[]>>;
@@ -135,12 +159,14 @@ export interface ActivitySource {
 	// The human closed a finished card's tab with `w`: stop listing it, for good, so it stays closed
 	// across a relaunch. Optional: without it the tab stays closed for this session only.
 	dismiss?(id: string): Promise<Result<void>>;
-	// The human is answering the core session question `questionId` from the board, whoever asked
-	// it. Called just before the answer is written, so a host that keeps who answered of its own
-	// has it on record by the time its work sees the answer; a host whose sessions did not ask it
-	// has nothing to do. A failure does not hold the answer back.
-	// Optional.
-	answering?(questionId: string): Promise<Result<void>>;
+	// Questions waiting on the human, with display text already parsed by their owner.
+	// Optional: without it the source contributes no questions.
+	questions?(): Promise<Result<ActivityQuestion[]>>;
+	// Answer the host's question id with a choice's label, multi-select labels joined as
+	// "Gamma, Alpha", a permission option's label, or free text when `allowFreeform`.
+	// Resolves to the notice the client shows. Optional: without it answers are refused.
+	// No identity is passed: each source records the actor it was built with; a client cannot attest it.
+	answer?(questionId: string, answer: string): Promise<Result<string>>;
 }
 
 // One setting a trigger takes. A trigger whose every input has a `default` and either `options` or

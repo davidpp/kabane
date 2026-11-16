@@ -824,10 +824,7 @@ export namespace BoardNav {
 		const asking = state.copilot.asks[0];
 		if (asking && !copilotOutranked(state)) return askTarget(asking);
 		if (state.focus === "copilot") return undefined;
-		return (
-			BoardTabs.inHand(state)?.question.questionActivityId ??
-			BoardDecisions.target(state)
-		);
+		return BoardTabs.inHand(state)?.question.id ?? BoardDecisions.target(state);
 	};
 
 	/**

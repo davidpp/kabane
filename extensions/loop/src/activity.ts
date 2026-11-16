@@ -1,8 +1,9 @@
 // The loop's runs as board activity: each run is a card with a tab of its own, its events are the
-// run's `events.jsonl`, and the core sessions it claimed are what its tab counts questions on. Each
+// run's `events.jsonl`, and its questions name the card and lane that ask them. Each
 // claim is a lane, so the tab can follow one session or tag every line with whose it is.
 import {
 	type ActivityCard,
+	type ActivityQuestion,
 	type ActivitySource,
 	type ActivityStatus,
 	type CardAction,
@@ -10,7 +11,7 @@ import {
 	type StopAction,
 } from "@cabane/extension";
 
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, parseQuestionBody, Planner, type Result } from "@cabane/core";
 import { Loop } from "./commands";
 import { RunStore } from "./store";
 
@@ -29,10 +30,6 @@ export namespace LoopActivity {
 		stopped: "stopped",
 		failed: "failed",
 	};
-
-	const sessionsOf = (run: RunStore.Run): string[] => [
-		...new Set(run.claims.map((claim) => claim.sessionId)),
-	];
 
 	const plural = (count: number, noun: string): string =>
 		`${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -98,7 +95,6 @@ export namespace LoopActivity {
 			: {}),
 		hasEvents: true,
 		tab: true,
-		sessionIds: sessionsOf(run),
 		// One lane per claim, in claim order: claims only append, so a session keeps its color.
 		lanes: run.claims.map((claim) => claim.lane),
 		laneNoun: "agents",
@@ -268,7 +264,39 @@ export namespace LoopActivity {
 			const dismissed = RunStore.dismiss(home, id, new Date());
 			return dismissed.ok ? ok(undefined) : dismissed;
 		},
-		answering: (questionId) =>
-			Loop.answering({ home, basePath, actor }, questionId),
+		questions: async () => {
+			const needs = await Planner.getNeedsInput(basePath);
+			if (!needs.ok) return needs;
+			const questions: ActivityQuestion[] = [];
+			for (const { session, question, task } of needs.value) {
+				const cardId = RunStore.runOfSession(session.externalRef);
+				if (!question || !cardId) continue;
+				const run = RunStore.read(home, cardId);
+				const lane = run.ok
+					? run.value.claims.find((claim) => claim.sessionId === session.id)
+							?.lane
+					: undefined;
+				const parsed = parseQuestionBody(question.body);
+				questions.push({
+					id: question.id,
+					cardId,
+					...(lane ? { lane } : {}),
+					taskId: session.taskId,
+					...(task?.shortId ? { taskShortId: task.shortId } : {}),
+					question: parsed.question,
+					choices: parsed.choices,
+					multiSelect: parsed.multiSelect,
+					allowFreeform: parsed.allowFreeform,
+					...(parsed.permission ? { permission: true } : {}),
+					asker: session.agent,
+					askedAt: question.createdAt,
+				});
+			}
+			return ok(questions);
+		},
+		answer: async (id, text) => {
+			const answered = await Loop.answer({ home, basePath, actor }, id, text);
+			return answered.ok ? ok(`answered ${answered.value.answer}`) : answered;
+		},
 	});
 }

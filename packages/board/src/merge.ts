@@ -82,20 +82,27 @@ export namespace Activity {
 				? routed.part.dismiss(routed.id)
 				: ok(undefined);
 		},
-		// A question id is core's, not a contributor's, so every contributor hears it and the one whose
-		// session asked notes it. The first failure is reported; the others still ran.
-		answering: async (questionId) => {
-			const noted = await Promise.all(
+		questions: async () => {
+			const loaded = await Promise.all(
 				Object.entries(sources).map(async ([name, source]) => {
-					const result = source.answering
-						? await source.answering(questionId)
-						: ok(undefined);
-					return result.ok
-						? result
-						: err(new Error(`${name}: ${result.error.message}`));
+					const questions = await source.questions?.();
+					return questions?.ok
+						? questions.value.map((question) => ({
+								...question,
+								id: prefixed(name, question.id),
+								cardId: prefixed(name, question.cardId),
+							}))
+						: [];
 				}),
 			);
-			return noted.find((result) => !result.ok) ?? ok(undefined);
+			return ok(loaded.flat());
+		},
+		answer: async (id, text) => {
+			const routed = route(sources, id);
+			if (!routed) return err(unrouted("question", id));
+			return routed.part.answer
+				? routed.part.answer(routed.id, text)
+				: err(new Error(`${id} takes no answers`));
 		},
 	});
 }
