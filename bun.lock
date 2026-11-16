@@ -42,6 +42,16 @@
         "typescript": "5.9.3",
       },
     },
+    "extensions/recipes": {
+      "name": "@cabane/recipes",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@cabane/core": "workspace:*",
+        "@cabane/extension": "workspace:*",
+        "@types/bun": "1.4.0",
+        "typescript": "5.9.3",
+      },
+    },
     "packages/acp": {
       "name": "@cabane/acp",
       "version": "0.1.0",
@@ -242,6 +252,8 @@
     "@cabane/outcome": ["@cabane/outcome@workspace:packages/outcome"],
 
     "@cabane/questions": ["@cabane/questions@workspace:packages/questions"],
+
+    "@cabane/recipes": ["@cabane/recipes@workspace:extensions/recipes"],
 
     "@cabane/sqlite": ["@cabane/sqlite@workspace:packages/sqlite"],
 

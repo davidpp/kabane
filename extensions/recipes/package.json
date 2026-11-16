@@ -1,0 +1,31 @@
+{
+	"name": "@cabane/recipes",
+	"version": "0.1.0",
+	"description": "Named prompt recipes from a project's .kabane/recipes/, started with `kabane run` in hc terminals and listed with `kabane runs`.",
+	"license": "MIT",
+	"private": true,
+	"type": "module",
+	"main": "index.ts",
+	"types": "index.ts",
+	"exports": {
+		".": "./index.ts",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"test": "bun test",
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf node_modules",
+		"build": "bun scripts/build.ts"
+	},
+	"devDependencies": {
+		"@cabane/core": "workspace:*",
+		"@cabane/extension": "workspace:*",
+		"@types/bun": "1.4.0",
+		"typescript": "5.9.3"
+	},
+	"kabane": {
+		"extension": "./index.ts",
+		"modules": "./modules.ts",
+		"api": 1
+	}
+}

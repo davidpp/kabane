@@ -194,7 +194,7 @@ const extensions = join(KABANE_HOME, "extensions");
 mkdirSync(extensions, { recursive: true });
 // The checkout's own extensions, linked unless the sandbox installed one of that name: installed,
 // not enabled, as `kabane config set extensions <name> --layer global` would find them.
-for (const name of ["loop", "dispatch"]) {
+for (const name of ["loop", "dispatch", "recipes"]) {
 	const target = join(extensions, name);
 	const installed = lstatSync(target, { throwIfNoEntry: false });
 	if (installed && !(installed.isSymbolicLink() && !existsSync(target)))

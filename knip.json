@@ -5,6 +5,9 @@
 			"entry": ["scripts/*.ts"]
 		},
 		"packages/questions": {},
+		"extensions/recipes": {
+			"entry": ["modules.ts"]
+		},
 		"packages/acp": {
 			"entry": ["scripts/*.ts"]
 		},
