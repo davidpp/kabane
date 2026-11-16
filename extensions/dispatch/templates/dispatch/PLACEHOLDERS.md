@@ -31,9 +31,10 @@ edited. Copy a value only when the project leaves it unstated and the fallback b
   step after it (an install), and how that copy is removed. Otherwise use `git worktree add
   ../<repo>-<branch> -b <branch>, then the project's install step; git worktree remove when
   merged`.
-- `{{INTEGRATION}}`: how finished work reaches main. That is either a local merge (`git merge
-  --no-edit <branch>` on main) or a pull request, if the project's history or instructions show
-  PRs. Otherwise use the local merge.
+- `{{INTEGRATION}}`: how finished work reaches main. When the project's package scripts,
+  Makefile or instructions define a land command, that command with the branch, as the project
+  runs it (for example `bun run land <branch>`). Otherwise the local merge, `git merge
+  --no-edit <branch>` on main.
 - `{{GATE}}`: a pointer to the instructions' gate section when it has one. Otherwise, the
   commands the package scripts provide (lint, typecheck, test), as a list. Never list a command
   the project does not have.
