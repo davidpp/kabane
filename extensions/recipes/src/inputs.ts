@@ -165,7 +165,7 @@ export namespace Inputs {
 		if (ask === undefined)
 			return err(
 				new Error(
-					`recipe "${recipe.name}" needs ${missing.map(([name]) => name).join(", ")}: pass --input name=value`,
+					`recipe "${recipe.name}" needs ${missing.map(([name]) => name).join(", ")}: pass ${missing.map(([name]) => `--input ${name}=<value>`).join(" ")} or add ${missing.length === 1 ? "it" : "them"} to the inputs JSON`,
 				),
 			);
 		for (const [name, input] of missing) {

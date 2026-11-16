@@ -152,7 +152,7 @@ test("outside a terminal, a missing required input is a usage error naming it", 
 	const missing = kabane(["run", "research", "--target", id]);
 	expect(missing.code).toBe(2);
 	expect(missing.stderr).toStartWith(
-		'Error: recipe "research" needs focus: pass --input name=value\nUsage: kabane run',
+		'Error: recipe "research" needs focus: pass --input focus=<value> or add it to the inputs JSON\nUsage: kabane run',
 	);
 	expect(
 		kabane([

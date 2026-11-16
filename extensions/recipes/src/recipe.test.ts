@@ -140,7 +140,10 @@ describe("Inputs.resolve", () => {
 	});
 
 	it.each([
-		[{ pairs: [] }, 'recipe "research" needs limit: pass --input name=value'],
+		[
+			{ pairs: [] },
+			'recipe "research" needs limit: pass --input limit=<value> or add it to the inputs JSON',
+		],
 		[
 			{ pairs: ["limit=4", "depth=deep"] },
 			'input "depth" must be one of quick, medium, thorough, not "deep"',
