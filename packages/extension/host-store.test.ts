@@ -16,7 +16,7 @@ import {
 } from "@cabane/core";
 import { configureTestRuntime } from "@cabane/core/testing";
 import { createHostRecord } from "./host-record";
-import { createHostStore } from "./host-store";
+import { createHostStore, HostWrites } from "./host-store";
 
 const NOTES = "kit_notes";
 const notes: KabaneModule = {
@@ -289,3 +289,128 @@ it("lets writes from separate call chains take turns", async () => {
 	expect(both.map((result) => result.ok)).toEqual([true, true]);
 	expect(ms).toBeLessThan(1000);
 });
+
+it("refuses a write a callback of fn starts while the outer write is open, and runs one it starts after", async () => {
+	const task = value(
+		await Planner.addTask(home, { title: "Kit", kind: "issue" }),
+	);
+	let early: Promise<Result<unknown>> | undefined;
+	let late: Promise<Result<unknown>> | undefined;
+	value(
+		await store().write(async () => {
+			setTimeout(() => {
+				early = store().write(() => ok("early"));
+			}, 5);
+			setTimeout(() => {
+				late = store().write((tx) => {
+					insert(tx.db, task.id, "late");
+					return tx.afterWrite(NOTES, "insert", "late");
+				});
+			}, 60);
+			await Bun.sleep(30);
+			return ok(undefined);
+		}),
+	);
+	await Bun.sleep(80);
+	if (!early || !late) throw new Error("the deferred writes never started");
+	const refused = await early;
+	expect(refused.ok ? "" : refused.error.message).toBe(
+		"store.write was called inside another store.write, which holds the database's write lock until it returns; do this work in the open transaction with tx.db and tx.updateTask, or call store.write after the first one returns",
+	);
+	expect((await late).ok).toBe(true);
+});
+
+it("gives up after the bound, naming the holder, when fn awaits a write that waits on it", async () => {
+	const task = value(
+		await Planner.addTask(home, { title: "Kit", kind: "issue" }),
+	);
+	// Started outside the write, as an emitter's callback would be: it has no write context.
+	let waited: [Result<unknown>, number] | undefined;
+	const fired = Bun.sleep(10)
+		.then(() =>
+			timed(() =>
+				createHostStore(
+					() => home,
+					() => [NOTES],
+					"extension other",
+				).write((tx) => {
+					insert(tx.db, task.id, "never");
+					return tx.afterWrite(NOTES, "insert", "never");
+				}),
+			),
+		)
+		.then((result) => {
+			waited = result;
+		});
+	const outer = await createHostStore(
+		() => home,
+		() => [NOTES],
+		"extension kit",
+	).write(async () => {
+		await fired;
+		return ok("outer");
+	});
+	expect(outer).toEqual(ok("outer"));
+	if (!waited) throw new Error("the callback never wrote");
+	const [result, ms] = waited;
+	expect(result.ok ? "" : result.error.message).toMatch(
+		/^extension other's store\.write waited 5000 ms for the write turn and gave up without writing: extension kit's store\.write has held it for \d+ ms\. A store\.write must not await I\/O/,
+	);
+	expect(ms).toBeGreaterThanOrEqual(HostWrites.WAIT_MS - 50);
+	expect(ms).toBeLessThan(HostWrites.WAIT_MS + 2000);
+	await Bun.sleep(20);
+	expect(
+		value(
+			await store().read((db) => ok(db.query(`SELECT id FROM ${NOTES}`).all())),
+		),
+	).toEqual([]);
+}, 15_000);
+
+it("fails every later write after the bound when fn does not settle, and none of them runs later", async () => {
+	const task = value(
+		await Planner.addTask(home, { title: "Kit", kind: "issue" }),
+	);
+	const record = createHostRecord(KABANE_TOOLS, {
+		basePath: home,
+		actor: "cabane://actor/agent/kit",
+		scopeRequired: false,
+	});
+	let settle = () => {};
+	const stuck = createHostStore(
+		() => home,
+		() => [NOTES],
+		"extension stuck",
+	).write(
+		() =>
+			new Promise<Result<undefined>>((resolve) => {
+				settle = () => resolve(ok(undefined));
+			}),
+	);
+	try {
+		const [comment, write] = await Promise.all([
+			timed(() => record.comment({ id: task.id, body: "waits" })),
+			timed(() =>
+				store().write((tx) => {
+					insert(tx.db, task.id, "waits");
+					return tx.afterWrite(NOTES, "insert", "waits");
+				}),
+			),
+		]);
+		for (const [result, ms] of [comment, write]) {
+			expect(result.ok ? "" : result.error.message).toContain(
+				"gave up without writing: extension stuck's store.write has held it for",
+			);
+			expect(ms).toBeLessThan(HostWrites.WAIT_MS + 2000);
+		}
+	} finally {
+		settle();
+	}
+	value(await stuck);
+	await Bun.sleep(20);
+	expect(value(await Planner.getEntries(home, task.id))).toEqual([]);
+	expect(
+		value(
+			await store().read((db) => ok(db.query(`SELECT id FROM ${NOTES}`).all())),
+		),
+	).toEqual([]);
+}, 15_000);

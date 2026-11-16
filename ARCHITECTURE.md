@@ -470,14 +470,27 @@ namespace Host {
 
 `fn` runs inside the database's write lock, held on its own connection until it returns, and
 SQLite waits for a lock by blocking the one thread that could release it. So `fn` must not await
-I/O, and the kit refuses what would wait on it: a `store.write` nested in another (from any host
-in the process, found through an `AsyncLocalStorage` the kit sets around `fn`) and a `host.record`
-call to a write tool made inside `fn` return an `err` at once that says to use `tx.db` and
-`tx.updateTask` or to call after the write returns. A `host.record` read inside `fn` works and
-sees what was committed before the write began, not the write's own rows. Writes from separate
-call chains take turns through one queue per process, and a `host.record` write outside a write
-waits for that queue. `tx.db` is a raw handle: only the kit's capture calls are checked against
-the extension's declared tables.
+I/O, a timer or another write. The kit refuses what would wait on it: a `store.write` nested in
+another (from any host in the process, found through an `AsyncLocalStorage` the kit sets around
+`fn`) and a `host.record` call to a write tool made inside `fn` return an `err` at once that says
+to use `tx.db` and `tx.updateTask` or to call after the write returns. The context carries the
+write itself, marked closed when it ends, so a callback `fn` scheduled may write once the outer
+write is over. A `host.record` read inside `fn` works and sees what was committed before the
+write began, not the write's own rows. `tx.db` is a raw handle: only the kit's capture calls are
+checked against the extension's declared tables.
+
+**What takes turns, and what does not.** Every `store.write` and every `host.record` write in the
+process takes one write turn (`HostWrites.take` in `packages/extension/host-store.ts`). A waiter
+waits at most 5000 ms, the busy timeout `@cabane/sqlite` sets, then returns an `err` naming the
+write that holds the turn (`extension notes's store.write has held it for 5004 ms`) and saying the
+holder must not await inside `fn`; a waiter that gave up is removed from the queue and never runs.
+So an `fn` that awaits a callback which writes, or never settles, costs the other writes of
+the process 5 s each and a loud error, not a silent stall. Kabane's own writes (CLI commands, the
+MCP tools through `callTool`, the board's `Planner` calls) do not take turns: they open their
+own connection and wait in SQLite's busy handler, which blocks the thread the awaiting `fn` would
+resume on, so they stall for the busy timeout and then go through (JCAB-323 measured 10.3 s).
+Awaiting inside `fn` is the misuse behind both. Putting first-party writes in the queue is
+JCAB-386.
 
 This is `packages/extension/host.ts` as compiled. It departs from the first sketch in three
 places: `Db`, `Row` (core's `Record<string, unknown>`) and `TaskUpdate` are core types the

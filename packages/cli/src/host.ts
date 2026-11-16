@@ -72,7 +72,8 @@ export type StagedHost = {
 	own: (modules: readonly KabaneModule[]) => void;
 };
 
-export const createHost = (home: string): StagedHost => {
+/** `name` is the extension's, for the messages its writes give. */
+export const createHost = (home: string, name = "an extension"): StagedHost => {
 	let returned = false;
 	let building = 0;
 	let tables: readonly string[] = [];
@@ -86,6 +87,7 @@ export const createHost = (home: string): StagedHost => {
 		store: createHostStore(
 			() => (live() ? home : undefined),
 			() => tables,
+			`extension ${name}`,
 		),
 		scope: {
 			detect: (dir) =>
@@ -137,7 +139,7 @@ export const hostFor = (home: string, name: string): StagedHost => {
 	const key = `${home}\0${name}`;
 	const cached = hosts.get(key);
 	if (cached) return cached;
-	const staged = createHost(home);
+	const staged = createHost(home, name);
 	hosts.set(key, staged);
 	return staged;
 };

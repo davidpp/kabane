@@ -34,7 +34,13 @@ export const createHostRecord = (
 						`${name} writes, and a store.write is open in this call chain, holding the database's write lock until it returns; change the task with tx.updateTask, write with tx.db, or call ${name} after store.write returns`,
 					),
 				);
-			await HostWrites.idle();
+			const turn = await HostWrites.take(`host.record ${name}`);
+			if (!turn.ok) return turn;
+			try {
+				return await callTool(tool, input, ctx);
+			} finally {
+				HostWrites.release(turn.value);
+			}
 		}
 		return callTool(tool, input, ctx);
 	};

@@ -153,10 +153,18 @@ export namespace Host {
 		 * rolls everything back. After the commit, and only then, the host emits `TASK_UPDATED`
 		 * for every task `tx.updateTask` changed.
 		 *
-		 * `fn` runs inside the database's write lock: do not await I/O in it. A `store.write`
-		 * nested in it, from any host, and a `host.record` call that writes return an `err` at
-		 * once; `record` reads work and see what was committed before this write began. Writes
-		 * from separate call chains in one process take turns.
+		 * `fn` runs inside the database's write lock: do not await I/O, a timer or another write
+		 * in it. A `store.write` nested in it, from any host, and a `host.record` call that writes
+		 * return an `err` at once; `record` reads work and see what was committed before this write
+		 * began. A callback `fn` schedules may write once this write has ended.
+		 *
+		 * What takes turns: every `store.write` and every `host.record` write in the process, each
+		 * waiting at most 5000 ms (SQLite's busy timeout) and then returning an `err` naming the
+		 * write that holds the turn, without ever running. What does not: kabane's own writes (CLI
+		 * commands, MCP tools, the board) open their own connection and wait in SQLite's busy
+		 * handler, which blocks the thread `fn` would resume on; so while `fn` awaits, a
+		 * first-party write in the same process stalls for that timeout. Awaiting inside `fn` is
+		 * the misuse that causes both.
 		 */
 		write<T>(
 			fn: (tx: Tx) => Result<T> | Promise<Result<T>>,
