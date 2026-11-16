@@ -222,6 +222,29 @@ export namespace Fixtures {
 	});
 
 	/**
+	 * A recipe run on `on` whose harness waits on the human: the recipes extension draws its
+	 * `waiting` as paused, and its detail ends with the command that attaches to it.
+	 */
+	export const waitingRun = (on: Task): ActivityCard => ({
+		id: "recipes:01M7JZQ9PDZYZKDTYX93KKZTZC",
+		kind: "runs",
+		label: "research",
+		status: "paused",
+		taskId: on.id,
+		taskShortId: on.shortId ?? on.id,
+		startedAt: "2026-11-16T10:00:00.000Z",
+		detail: [
+			"waiting",
+			"depth=thorough",
+			"on studio",
+			"kabane runs attach 01M7JZQ9PDZYZKDTYX93KKZTZC",
+		],
+		hasEvents: true,
+		tab: true,
+		actions: [{ id: "stop", key: "x", label: "stop" }],
+	});
+
+	/**
 	 * A decision an agent filed on `on`, its `n`th: open unless `over` answers it. `meta` is what
 	 * `kabane_ask` records beside the question (choices, recommended, multi-select, freeform).
 	 */

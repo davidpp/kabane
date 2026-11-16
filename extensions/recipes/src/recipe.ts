@@ -173,11 +173,17 @@ export namespace Recipe {
 		return read(z, root, path);
 	};
 
-	/** Every recipe of the project at `root`, by name, and each file that failed to parse. */
+	/** A recipe file that failed to read or parse: its path from the project root, and why. */
+	export type Broken = { file: string; error: Error };
+
+	/**
+	 * Every recipe of the project at `root`, by name, and each file that failed to parse. A
+	 * directory that cannot be listed is one broken entry under the directory's own path.
+	 */
 	export const all = (
 		z: Host["z"],
 		root: string,
-	): { recipes: Recipe[]; errors: Error[] } => {
+	): { recipes: Recipe[]; errors: Broken[] } => {
 		const files = trySync(() =>
 			existsSync(dir(root))
 				? readdirSync(dir(root))
@@ -185,13 +191,20 @@ export namespace Recipe {
 						.sort()
 				: [],
 		);
-		if (!files.ok) return { recipes: [], errors: [files.error] };
+		if (!files.ok) {
+			const file = relative(root, dir(root));
+			return {
+				recipes: [],
+				errors: [{ file, error: new Error(`${file}: ${files.error.message}`) }],
+			};
+		}
 		const recipes: Recipe[] = [];
-		const errors: Error[] = [];
+		const errors: Broken[] = [];
 		for (const entry of files.value) {
-			const recipe = read(z, root, join(dir(root), entry));
+			const path = join(dir(root), entry);
+			const recipe = read(z, root, path);
 			if (recipe.ok) recipes.push(recipe.value);
-			else errors.push(recipe.error);
+			else errors.push({ file: relative(root, path), error: recipe.error });
 		}
 		return { recipes, errors };
 	};

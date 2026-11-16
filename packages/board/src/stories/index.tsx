@@ -1008,6 +1008,23 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	{
+		name: "detail-run-waiting",
+		about:
+			"a recipe run on its issue, waiting on the human: paused, its inputs, machine and attach command",
+		width: 80,
+		height: 12,
+		render: () => (
+			<Detail
+				taskId={SITTING.id}
+				task={SITTING}
+				tab="description"
+				records={ok(TRAIL_ONLY)}
+				cards={[Fixtures.waitingRun(SITTING)]}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
 		name: "detail-links",
 		about:
 			"every link on now, grouped by how it relates, the cursor on an issue it blocks: enter opens it",
