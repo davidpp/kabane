@@ -36,7 +36,7 @@ export namespace Doctor {
 				result: err(
 					new Error(
 						finding
-							? `${selector} has no mechanical fix.${finding.route ? ` Use ${finding.route}.` : ""}`
+							? `${selector} has no mechanical fix.${finding.route ? ` ${finding.route}` : ""}`
 							: `No finding matches ${selector}. Run kabane doctor to see current source/id handles.`,
 					),
 				),

@@ -189,3 +189,24 @@ it("owns source names and refuses duplicate handles before applying fixes", asyn
 	expect(repairs).toBe(0);
 	expect(report.fixes[0]?.result.ok).toBe(false);
 });
+
+for (const route of [
+	"/setup-dispatch writes one",
+	"Read the Tracker block at https://example.com/guide.",
+])
+	it(`preserves the route sentence: ${route}`, async () => {
+		const report = await Doctor.run(
+			[
+				{
+					name: "project",
+					doctor: async () => ok([{ ...finding("manual"), route }]),
+				},
+			],
+			ctx,
+			{ fix: ["project/manual"] },
+		);
+		expect(Doctor.toJson(report).fixes[0]?.result).toEqual({
+			ok: false,
+			error: `project/manual has no mechanical fix. ${route}`,
+		});
+	});

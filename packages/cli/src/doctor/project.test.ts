@@ -155,12 +155,15 @@ const BEFORE_JCAB_219 = [
 ].join("\n");
 
 test("a Tracker block from before JCAB-219 is mentioned, a missing one suggested", async () => {
-	const { root, ids } = setup();
+	const { root, ids, ctx } = setup();
 	write(
 		join(root, "AGENTS.md"),
 		`# Project\n\n${BEFORE_JCAB_219}\n\n## Build\n\nbun test\n`,
 	);
 	expect(await ids()).toEqual(["tracker-block-differs:mention"]);
+	expect(unwrap(await project(ctx))[0]?.summary).toContain(
+		"The ## Tracker section of AGENTS.md differs from the current block in the guide.",
+	);
 	write(join(root, "AGENTS.md"), `# Project\n\n${TRACKER_BLOCK}\n\n## Build\n`);
 	expect(await ids()).toEqual([]);
 	write(join(root, "AGENTS.md"), "# Project\n");
